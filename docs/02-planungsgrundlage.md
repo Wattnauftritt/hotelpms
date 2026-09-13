@@ -222,6 +222,7 @@ Stand September 2026, beantwortet vom Auftraggeber.
 | 7 | Buchhaltung | **DATEV-Export genügt.** Keine Debitorenverwaltung mit Mahnwesen im PMS |
 | 8 | Ressourcen-Modell | Wie empfohlen: **Zeiteinheit als Feld von Anfang an**, im MVP nur „Nacht" implementiert |
 | 9 | Kassenfunktion | **Keine.** Kein Kassenbuch, keine TSE, kein DSFinV-K. Nur Fakturierung plus Zahlungsvermerk, dazu eine Kassenschnittstelle. Siehe [09-kassenbuch.md](09-kassenbuch.md) |
+| 10 | Nachrüstbarkeit des Kassenbuchs | **Offen halten, nicht vorbauen.** Das Backend muss ein Kassenbuch später additiv aufnehmen können, ohne Umbau. Kein ungenutztes Gerüst. Siehe unten |
 
 ### Was daraus folgt
 
@@ -243,6 +244,17 @@ Wir bauen **eine** ARI-Schnittstelle (Availability, Rates, Inventory) nach Branc
 **Zu 6: „Alle drei Payment-Anbieter" bedeutet zwingend eine Abstraktionsschicht.**
 Wie bei der Fiskalisierung: eine eigene interne Schnittstelle `PaymentAdapter` mit Autorisieren, Belasten, Erstatten, Token speichern, Pay-by-Link. Adyen, Stripe und Mollie sind Implementierungen dahinter. **Kartendaten fassen wir nie selbst an**, nur Tokens, sonst greift PCI DSS in voller Härte.
 Reihenfolge: Stripe zuerst, weil am schnellsten integriert und für den Start ausreichend. Mollie danach, weil im DACH-Raum bei kleinen Betrieben beliebt und günstiger. Adyen zuletzt, weil es sich erst ab Volumen und bei größeren Häusern lohnt.
+
+**Zu 10: Nachrüstbarkeit ist eine Entwurfsauflage, kein Arbeitspaket.**
+
+Es wird jetzt nichts für ein Kassenbuch gebaut. Es wird nur sichergestellt, dass ein späterer Einbau rein additiv bleibt. Verbindlich sind dafür zwei Punkte:
+
+1. **Der Zahlungsvermerk ist eine eigene Tabelle `settlement` mit einem Zahlartenkatalog `payment_method` als Stammdaten**, kein Statusfeld am Folio und kein Enum im Code. Ein späteres Kassenbuch ergänzt dann drei Tabellen und drei Spalten, ohne einen bestehenden Datensatz anzufassen.
+2. **Jede Erfassung eines Zahlungsvermerks läuft durch genau eine Dienstfunktion**, nicht verteilt über Check-out, Rechnungserstellung und Import. Damit gibt es später einen einzigen Ort für einen Fiskal-Hook.
+
+Beides ist ohnehin sauberer Aufbau und kostet keinen Zusatzaufwand. Alles Weitere, was Nachrüstbarkeit begünstigt, folgt bereits aus den GoBD-Entscheidungen in [08-compliance-in-der-praxis.md](08-compliance-in-der-praxis.md).
+
+**Ausdrücklich nicht erlaubt:** leere Tabellen auf Vorrat, eine Fiskal-Schnittstelle ohne Implementierung, `tse_`-Spalten für später, Schalter für ein Modul, das es nicht gibt. Details und Begründung in Abschnitt 10 von [09-kassenbuch.md](09-kassenbuch.md).
 
 **Zu 7: DATEV-Export vereinfacht Stufe 1 spürbar.**
 Kein Mahnwesen, keine Offene-Posten-Verwaltung, keine Zahlungsavise. Wir brauchen: sauber kontierte Buchungen, einen Export im DATEV-Format und die Firmen-Folios im City Ledger als Forderung. Was danach passiert, macht der Steuerberater.
