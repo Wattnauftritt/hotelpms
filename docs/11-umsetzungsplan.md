@@ -182,6 +182,15 @@ Der erklärte Reisezweck hängt am Aufenthalt, nicht am Gastprofil: derselbe Men
 
 **Definition of Done:** Ein Test weist nach, dass die Anwendungsrolle eine festgeschriebene Rechnung nicht ändern kann, dass ein Rollback keine Nummernlücke erzeugt, und dass 20 gleichzeitige Check-outs 20 aufeinanderfolgende Nummern ergeben.
 
+**Umgesetzt.** Die Prüfliste der Pflichtangaben nach § 14 UStG läuft vor dem Festschreiben und weist die Rechnung ab, solange eine Angabe fehlt. Das ist billiger als jede Korrektur: eine fehlende Pflichtangabe macht die Rechnung nicht ungültig, sie kostet dem **Empfänger** den Vorsteuerabzug — und das merkt niemand beim Ausstellen, sondern der Firmenkunde drei Monate später bei seiner Buchhaltung.
+
+Geprüft wird, was das System wissen kann. Ob eine Anschrift richtig ist, kann es nicht wissen; ob sie da ist, schon. Die Meldung nennt **alle** Mängel auf einmal samt Fundstelle im Gesetz: wer dreimal hintereinander abgewiesen wird, weil jedes Mal ein anderes Feld fehlt, hält das System für kaputt.
+
+Zwei Punkte, die dabei auffielen:
+
+- **Der Leistungszeitraum ist bei Beherbergung der Aufenthalt, nicht das Rechnungsdatum.** Diese Verwechslung ist der häufigste Mangel an Hotelrechnungen. Er wird aus den Geschäftsdaten der abgerechneten Positionen abgeleitet, nicht vom Aufrufer entgegengenommen: die Positionen wissen es, der Aufrufer könnte sich irren. Und er wird mitgeschrieben statt bei Bedarf nachgerechnet, denn eine festgeschriebene Rechnung darf sich nicht ändern, auch nicht, wenn später Positionen zum selben Folio kommen.
+- **Kleinbetragsrechnungen nach § 33 UStDV** brauchen bis 250 Euro brutto weder Empfänger noch Nummer noch Steuernummer. Das ist der Fall der Laufkundschaft an der Bar, und ihn wie eine Firmenrechnung zu behandeln hielte die Rezeption ohne Rechtsgrund auf.
+
 **Umgesetzt**, mit einem Entwurfskonflikt, der erst beim Schreiben auffiel: `charge` ist Härtegrad 1 und damit unveränderlich, aber die Fakturierung muss `invoice_id` setzen dürfen. Gelöst in Migration 0012, die genau den Übergang von NULL auf einen Wert erlaubt und nichts sonst, abgesichert durch Trigger **und** spaltenweises GRANT. Ein Feld freizugeben, ohne den Rest der Zeile freizugeben, ist der einzige Weg, der die Unveränderlichkeit erhält.
 
 ### AP 8 — Nachtlauf und Jobs
@@ -299,13 +308,13 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
 | Paket | Stand |
 |---|---|
 | AP 0 Grundgerüst | fertig |
-| AP 1 Mandanten und Rollen | fertig |
+| AP 1 Mandanten und Rollen | fertig, Account-Rollen wirken (Migration 0018) |
 | AP 2 Stammdaten und Einrichtung | fertig, Zimmerserie mit Vorschau und Prüfstand |
 | AP 3 Raten, Restriktionen, Steuern | fertig, Kurtaxe je Gemeinde |
 | AP 4 Verfügbarkeit | fertig, Nebenläufigkeitstest besteht |
 | AP 5 Reservierungen | fertig |
 | AP 6 Gäste und Firmen | fertig |
-| AP 7 Folio und Rechnung | fertig, PDF/A-3 und ZUGFeRD offen |
+| AP 7 Folio und Rechnung | fertig, § 14 UStG geprüft; PDF/A-3 und ZUGFeRD offen |
 | AP 8 Nachtlauf | fertig, Definition of Done nachgewiesen |
 | AP 9 Housekeeping | fertig |
 | AP 10 Meldeschein | fertig |

@@ -5,10 +5,16 @@ export interface Fixture {
   propertyId: number
 }
 
-/** Legt Account und Property an. Laeuft unter der Eigentuemerrolle, ohne RLS. */
+/**
+ * Legt Account und Property an. Laeuft unter der Eigentuemerrolle, ohne RLS.
+ *
+ * Anschrift und Steuernummer gehoeren zur Grundausstattung, nicht zur Kuer:
+ * ohne sie darf nach § 14 UStG keine Rechnung ausgestellt werden, und ein
+ * Testhaus ohne sie wuerde eine Luecke verdecken, die jedes echte Haus hat.
+ */
 export async function makeProperty(
   owner: Pool,
-  opts: { name?: string; code?: string } = {}
+  opts: { name?: string; code?: string; taxNumber?: string | null } = {}
 ): Promise<Fixture> {
   const a = await owner.query<{ id: number }>(
     `INSERT INTO account (name) VALUES ($1) RETURNING id`,
@@ -16,10 +22,28 @@ export async function makeProperty(
   )
   const accountId = a.rows[0]!.id
   const p = await owner.query<{ id: number }>(
-    `INSERT INTO property (account_id, code, name) VALUES ($1, $2, $3) RETURNING id`,
-    [accountId, opts.code ?? 'TEST', opts.name ?? 'Testhotel']
+    `INSERT INTO property (account_id, code, name, address_line1, postal_code,
+                           city, country, tax_number)
+     VALUES ($1,$2,$3,'Hafenstr. 1','25813','Husum','DE',$4) RETURNING id`,
+    [accountId, opts.code ?? 'TEST', opts.name ?? 'Testhotel',
+     opts.taxNumber === undefined ? '21/815/00123' : opts.taxNumber]
   )
   return { accountId, propertyId: p.rows[0]!.id }
+}
+
+/** Ein Gast mit vollstaendiger Anschrift, wie ihn eine Rechnung braucht. */
+export async function makeGuest(
+  owner: Pool, accountId: number,
+  opts: { lastName?: string; firstName?: string; country?: string } = {}
+): Promise<{ id: number; publicRef: string }> {
+  const r = await owner.query<{ id: number; public_ref: string }>(
+    `INSERT INTO guest (account_id, last_name, first_name, address_line1,
+                        postal_code, city, country)
+     VALUES ($1,$2,$3,'Deichweg 4','24937','Flensburg',$4)
+     RETURNING id, public_ref`,
+    [accountId, opts.lastName ?? 'Petersen', opts.firstName ?? 'Jan',
+     opts.country ?? 'DE'])
+  return { id: r.rows[0]!.id, publicRef: r.rows[0]!.public_ref }
 }
 
 export async function makeCategory(

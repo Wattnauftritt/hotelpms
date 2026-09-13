@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, makePaymentMethod, openBusinessDay } from '@hotelpms/testing'
+         makeResources, makeUser, makePaymentMethod, openBusinessDay,
+         makeGuest } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -185,6 +186,67 @@ describe('Plattformpersonal', () => {
   })
 })
 
+/**
+ * Der Zugriffsbereich entsteht bei der Anmeldung aus den Rollen. Beides
+ * darin war lange still kaputt: eine Account-Rolle wirkte auf kein Haus, und
+ * eine Property-Rolle brachte ihren Account nicht mit (Migration 0018). In
+ * den Tests fiel es nicht auf, weil dort immer beides zusammen vergeben
+ * wurde. Diese Tests vergeben deshalb bewusst nur eines.
+ */
+describe('Zugriffsbereich aus Rollen', () => {
+  it('laesst eine Account-Rolle auf alle Haeuser des Accounts wirken', async () => {
+    const a = await makeProperty(owner, { code: 'EINS' })
+    // Zweites Haus im selben Account.
+    const zweites = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name) VALUES ($1,'ZWEI','Haus Zwei')
+       RETURNING id`, [a.accountId])
+    await makeCategory(owner, a.propertyId)
+    await makeCategory(owner, zweites.rows[0]!.id)
+    await materialize(a.propertyId)
+    await materialize(zweites.rows[0]!.id)
+
+    // Nur eine Account-Rolle, ausdruecklich keine Property-Rolle.
+    const chef = await makeUser(owner,
+      { email: 'chef@kette.de', accountId: a.accountId, roleKey: 'hotel_director' })
+
+    for (const id of [a.propertyId, zweites.rows[0]!.id]) {
+      const r = await app.inject({
+        method: 'GET',
+        url: `/v1/properties/${id}/availability?from=2026-10-01&to=2026-10-05`,
+        headers: auth(chef.sessionId)
+      })
+      expect(r.statusCode, `Haus ${id}`).toBe(200)
+    }
+  })
+
+  it('bringt eine Property-Rolle ihren Account mit, damit Gaeste sichtbar sind', async () => {
+    const p = await makeProperty(owner)
+    // Nur eine Property-Rolle. Das Gastprofil haengt am Account.
+    const rez = await makeUser(owner,
+      { email: 'nurhaus@test.de', propertyId: p.propertyId, roleKey: 'reception' })
+    await makeGuest(owner, p.accountId, { lastName: 'Sichtbar' })
+
+    const r = await app.inject({
+      method: 'GET', url: '/v1/guests?q=Sichtbar', headers: auth(rez.sessionId) })
+    expect(r.statusCode).toBe(200)
+    const treffer = (JSON.parse(r.body) as { guests: Array<{ lastName: string }> }).guests
+    expect(treffer.map(g => g.lastName)).toContain('Sichtbar')
+  })
+
+  it('bleibt der Account des Nachbarn unsichtbar', async () => {
+    const a = await makeProperty(owner, { code: 'A' })
+    const b = await makeProperty(owner, { code: 'B' })
+    const rez = await makeUser(owner,
+      { email: 'a@haus.de', propertyId: a.propertyId, roleKey: 'reception' })
+    await makeGuest(owner, b.accountId, { lastName: 'Fremdgast' })
+
+    const r = await app.inject({
+      method: 'GET', url: '/v1/guests?q=Fremdgast', headers: auth(rez.sessionId) })
+    expect(r.statusCode).toBe(200)
+    expect((JSON.parse(r.body) as { guests: unknown[] }).guests).toHaveLength(0)
+  })
+})
+
 describe('Rechnungsnummern', () => {
   it('vergibt lueckenlos und ohne Doppelvergabe bei gleichzeitigen Check-outs', async () => {
     const p = await makeProperty(owner)
@@ -197,12 +259,14 @@ describe('Rechnungsnummern', () => {
       { email: 'rez@test.de', propertyId: p.propertyId, roleKey: 'reception' })
     const h = auth(user.sessionId)
 
-    // 20 Folios mit je einer Position.
+    // 20 Folios mit je einer Position. Jedes mit Gast, denn eine Rechnung
+    // ueber 250 Euro braucht einen Empfaenger mit Anschrift (§ 14 UStG).
+    const gast = await makeGuest(owner, p.accountId)
     const folioRefs: string[] = []
     for (let i = 0; i < 20; i++) {
       const f = await owner.query<{ public_ref: string; id: number }>(
-        `INSERT INTO folio (property_id, kind) VALUES ($1,'guest') RETURNING public_ref, id`,
-        [p.propertyId])
+        `INSERT INTO folio (property_id, kind, guest_id) VALUES ($1,'guest',$2)
+         RETURNING public_ref, id`, [p.propertyId, gast.id])
       folioRefs.push(f.rows[0]!.public_ref)
       await app.inject({
         method: 'POST', url: `/v1/folios/${f.rows[0]!.public_ref}/charges`,
@@ -237,9 +301,10 @@ describe('Rechnungsnummern', () => {
       { email: 'rez2@test.de', propertyId: p.propertyId, roleKey: 'reception' })
     const h = auth(user.sessionId)
 
+    const gast2 = await makeGuest(owner, p.accountId)
     const f = await owner.query<{ public_ref: string; id: number }>(
-      `INSERT INTO folio (property_id, kind) VALUES ($1,'guest') RETURNING public_ref, id`,
-      [p.propertyId])
+      `INSERT INTO folio (property_id, kind, guest_id) VALUES ($1,'guest',$2)
+       RETURNING public_ref, id`, [p.propertyId, gast2.id])
     await app.inject({
       method: 'POST', url: `/v1/folios/${f.rows[0]!.public_ref}/charges`,
       headers: { ...h, 'idempotency-key': 'c1' },

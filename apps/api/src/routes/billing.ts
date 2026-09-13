@@ -3,7 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
-import { sumInvoice, taxFromNet } from '@hotelpms/domain'
+import { sumInvoice, taxFromNet, blockingFindings, type Party } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 
 export function billingRoutes(app: FastifyInstance): void {
@@ -167,11 +167,14 @@ export function billingRoutes(app: FastifyInstance): void {
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
         // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
         const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
-                                             description: string; quantity: number }>(
+                                             description: string; quantity: number
+                                             business_date: string }>(
           body.chargeIds?.length
-            ? `SELECT id, net_cent, tax_rate_bp, description, quantity FROM charge
+            ? `SELECT id, net_cent, tax_rate_bp, description, quantity,
+                      business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2) ORDER BY id`
-            : `SELECT id, net_cent, tax_rate_bp, description, quantity FROM charge
+            : `SELECT id, net_cent, tax_rate_bp, description, quantity,
+                      business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL ORDER BY id`,
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
         if (charges.rowCount === 0) throw Errors.unprocessable('Keine offenen Positionen.')
@@ -179,16 +182,30 @@ export function billingRoutes(app: FastifyInstance): void {
         const totals = sumInvoice(
           charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })))
 
-        const prop = await client.query(
-          `SELECT name, address_line1, postal_code, city, country, tax_number, vat_id
+        /*
+         * Aussteller und Empfaenger werden gleich in der Form gelesen, in der
+         * sie geprueft und gespeichert werden. Eine Umbenennung zwischen
+         * Datenbank und Pruefung ist eine Stelle, an der ein Feld lautlos
+         * verschwindet: genau das ist hier einmal passiert, die Anschrift kam
+         * als postal_code an und wurde als postalCode gesucht.
+         */
+        const prop = await client.query<Party>(
+          `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+                  city, country, tax_number AS "taxNumber", vat_id AS "vatId"
              FROM property WHERE id = $1`, [folio.property_id])
         const recipient = folio.company_id
-          ? await client.query(`SELECT name, address_line1, postal_code, city, country, vat_id
-                                  FROM company WHERE id = $1`, [folio.company_id])
+          ? await client.query<Party>(
+              `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+                      city, country, vat_id AS "vatId"
+                 FROM company WHERE id = $1`, [folio.company_id])
           : folio.guest_id
-            ? await client.query(`SELECT last_name, first_name, address_line1, postal_code,
-                                         city, country FROM guest WHERE id = $1`, [folio.guest_id])
-            : { rows: [{}] }
+            ? await client.query<Party>(
+                `SELECT trim(both ', ' from
+                          coalesce(last_name,'') || ', ' || coalesce(first_name,'')) AS name,
+                        address_line1 AS "addressLine1", postal_code AS "postalCode",
+                        city, country
+                   FROM guest WHERE id = $1`, [folio.guest_id])
+            : { rows: [] as Party[] }
 
         const year = new Date().getUTCFullYear()
         const num = await client.query<{ next_invoice_number: string }>(
@@ -200,13 +217,48 @@ export function billingRoutes(app: FastifyInstance): void {
           [folio.property_id])
         const businessDate = bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
 
+        /*
+         * Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG.
+         *
+         * Bei Beherbergung ist das der **Aufenthalt**, nicht das
+         * Rechnungsdatum. Die Verwechslung ist der häufigste Mangel an
+         * Hotelrechnungen. Er wird aus den Geschäftsdaten der abzurechnenden
+         * Positionen abgeleitet und nicht vom Aufrufer entgegengenommen:
+         * die Positionen wissen es, der Aufrufer könnte sich irren.
+         */
+        const daten = charges.rows.map(c => c.business_date).sort()
+        const serviceFrom = daten[0]!
+        const serviceTo = daten[daten.length - 1]!
+
+        // Vor dem Festschreiben prüfen. Eine fehlende Pflichtangabe kostet
+        // dem Empfänger den Vorsteuerabzug, und das merkt niemand beim
+        // Ausstellen, sondern der Firmenkunde drei Monate später (E4).
+        const maengel = blockingFindings({
+          number: num.rows[0]!.next_invoice_number,
+          issuedOn: new Date().toISOString().slice(0, 10),
+          serviceFrom, serviceTo,
+          issuer: prop.rows[0] ?? {},
+          recipient: recipient.rows[0] ?? {},
+          lines: charges.rows.map(c => ({
+            description: c.description, quantity: c.quantity,
+            netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
+          grossCent: totals.grossCent,
+          kind: (body.kind ?? 'final') as 'final' | 'interim'
+        })
+        if (maengel.length > 0) {
+          throw Errors.unprocessable(
+            'Die Rechnung erfüllt die Pflichtangaben nicht: '
+            + maengel.map(m => `${m.de} (${m.reference})`).join(' '))
+        }
+
         const inv = await client.query<{ id: number; public_ref: string; number: string }>(
           `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
+                                service_from, service_to,
                                 issuer_snapshot, recipient_snapshot, totals, created_by)
-           VALUES ($1,$2,$3,current_date,$4::date,$5,$6,$7,$8,$9)
+           VALUES ($1,$2,$3,current_date,$4::date,$5,$6::date,$7::date,$8,$9,$10,$11)
            RETURNING id, public_ref, number`,
           [folio.property_id, folio.id, num.rows[0]!.next_invoice_number, businessDate,
-           body.kind ?? 'final',
+           body.kind ?? 'final', serviceFrom, serviceTo,
            JSON.stringify(prop.rows[0] ?? {}), JSON.stringify(recipient.rows[0] ?? {}),
            JSON.stringify(totals), principal.userId])
 
@@ -220,6 +272,7 @@ export function billingRoutes(app: FastifyInstance): void {
         const result = {
           invoiceRef: inv.rows[0]!.public_ref,
           number: inv.rows[0]!.number,
+          serviceFrom, serviceTo,
           totals
         }
         await completeIdempotent(client, principal.clientKey, key, 201, result)

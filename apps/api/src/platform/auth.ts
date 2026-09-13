@@ -56,23 +56,27 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
       }
     }
 
-    // Account-Rollen wirken auf alle Properties des Accounts.
-    if (accountIds.size > 0) {
-      const props = await client.query<{ id: number; account_id: number }>(
-        `SELECT id, account_id FROM property
-          WHERE account_id = ANY($1) AND status = 'active'`, [[...accountIds]])
-      for (const p of props.rows) {
-        if (!permissionsByProperty.has(p.id)) permissionsByProperty.set(p.id, new Set())
+    /*
+     * Zugriffsbereich aufloesen.
+     *
+     * Das ist ein Henne-Ei-Problem: um zu wissen, welche Haeuser jemand
+     * sehen darf, muss einmal etwas gelesen werden, das die
+     * Zeilenrichtlinie noch nicht freigibt. Zwei fruehere Abfragen taten das
+     * mit leerem Kontext und bekamen deshalb **nichts** zurueck. Die Folge
+     * war, dass eine Account-Rolle auf gar kein Haus wirkte und eine
+     * Property-Rolle ihren Account nicht mitbrachte, sodass die Rezeption
+     * keine Gastprofile sah (Migration 0018).
+     *
+     * Jetzt eine SECURITY-DEFINER-Funktion, die nur fuer diesen einen Nutzer
+     * antwortet und nur Kennungen liefert.
+     */
+    const scope = await client.query<{ property_id: number; account_id: number }>(
+      `SELECT property_id, account_id FROM user_property_scope($1)`, [userId])
+    for (const s of scope.rows) {
+      accountIds.add(s.account_id)
+      if (!permissionsByProperty.has(s.property_id)) {
+        permissionsByProperty.set(s.property_id, new Set())
       }
-    }
-
-    // Properties aus Property-Rollen bringen ihren Account mit, damit
-    // accountweite Daten wie Gaesteprofile sichtbar sind (Entscheidung 13).
-    const direct = [...permissionsByProperty.keys()]
-    if (direct.length > 0) {
-      const accs = await client.query<{ account_id: number }>(
-        `SELECT DISTINCT account_id FROM property WHERE id = ANY($1)`, [direct])
-      for (const a of accs.rows) accountIds.add(a.account_id)
     }
 
     return {
