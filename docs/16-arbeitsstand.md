@@ -210,7 +210,17 @@ Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf
 
 ---
 
-## 4. Umgebung
+## 4. Parallel arbeiten
+
+Der Stand liegt vollständig auf `main`. Jede Aufgabe bekommt einen eigenen Zweig von dort, einen Pull Request gegen `main`, und wird für sich gemergt.
+
+Die einzige Stelle, an der zwei Bearbeiter sich zuverlässig in die Quere kommen, ist die **Nummer einer neuen Migration**. Zwei Zweige von `main` legen beide `0020_` an; beim Mergen fällt das nicht auf, weil es verschiedene Dateien ohne Konflikt sind, und es schlägt erst beim nächsten frischen Schemaaufbau zu. `scripts/check-migrations.sh` prüft das in CI.
+
+Ansonsten schneiden sich die Aufgaben kaum: sie liegen in verschiedenen Routenmodulen, verschiedenen Worker-Jobs oder verschiedenen Bildschirmen. Wo doch, steht es in der Aufgabe.
+
+---
+
+## 5. Umgebung
 
 `.claude/hooks/session-start.sh` richtet eine frische Sitzung vollständig ein: Abhängigkeiten, PostgreSQL, Rollen, Datenbanken, Schema. Von Hand tut `scripts/setup-db.sh` den Datenbankteil.
 
@@ -218,10 +228,10 @@ Scheitern die Tests mit `ECONNREFUSED` auf Port 5432, liegt es nicht an den Test
 
 ---
 
-## 5. Vor dem Pushen
+## 6. Vor dem Pushen
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test && pnpm build
+./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
 Alle vier grün. Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.
