@@ -207,11 +207,11 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 
 ## 9. Offene Fragen
 
-1. **Zielgruppe:** Bauen wir für ein konkretes Haus (unser eigenes?) oder als Produkt für Dritte? Das entscheidet über Mandantenfähigkeit und Aufwand bei Konfigurierbarkeit.
-2. **Größe der Häuser:** 20 Zimmer oder 200? Gruppen, Tagungen und Blocks sind erst ab mittlerer Größe wichtig.
-3. **Technologie-Stack:** Vorschlag TypeScript (Backend und Web-App aus einer Sprache) mit PostgreSQL. Alternativen: Python/Django, .NET, Go. Gibt es Team-Präferenzen?
-4. **Betrieb:** Cloud-Hosting durch uns (SaaS) oder Installation beim Kunden? Cloud-TSE setzt Internetanbindung voraus.
-5. **Channel Manager:** Welchen Partner zertifizieren wir zuerst? Für DACH sind Dirs21, HotelSpider und SiteMinder verbreitet.
-6. **Payments:** Adyen (Hotel-Fokus, teurer) vs. Stripe/Mollie (einfacher Einstieg).
-7. **Buchhaltung:** Reicht ein DATEV-Export, oder brauchen wir Debitorenverwaltung mit Mahnwesen im PMS?
-8. **Ressourcen-Modell:** Bauen wir das Mews-Modell (Zeiteinheiten) von Anfang an ein oder starten wir mit Nächten und erweitern später? Empfehlung: Zeiteinheit als Feld anlegen, aber im MVP nur „Nacht“ implementieren.
+1. **Zielgruppe:** Bauen wir für ein konkretes Haus (unser eigenes?) oder als Produkt für Dritte? Das entscheidet über Mandantenfähigkeit und Aufwand bei Konfigurierbarkeit. -> wir bauen ein system das wir selbst anbieten und vermarkten wollen, wollen das aber auch für das hotel nutzen in dem ich arbeite. das hotel nutzen wir einfach als testobjekt.
+2. **Größe der Häuser:** 20 Zimmer oder 200? Gruppen, Tagungen und Blocks sind erst ab mittlerer Größe wichtig.sowohl als auch. von der ferienwohnung und pension bis zu großen hotels mit mehreren hundert zimmern und gruppen und auch multiproperty. 
+3. **Technologie-Stack:** Vorschlag TypeScript (Backend und Web-App aus einer Sprache) mit PostgreSQL. Alternativen: Python/Django, .NET, Go. Gibt es Team-Präferenzen? hier bin ich offen für das praktikabelste und performanteste. hier müssten wir sehen wie wir am performantesten arbeiten aber auch die kosten im blick haben. es gibt ja datenbanken die cloudflare hostet aber die sind sicher deutlicher teurer als selbst zu hosten. wobei wir da sehen müssen ob wir beim selber hosten genug performance haben ohne unbezahlbare hardware mit loadbalancer zu benötigen die wir teuer mieten müssen
+4. **Betrieb:** Cloud-Hosting durch uns (SaaS) oder Installation beim Kunden? Cloud-TSE setzt Internetanbindung voraus. SaaS
+5. **Channel Manager:** Welchen Partner zertifizieren wir zuerst? Für DACH sind Dirs21, HotelSpider und SiteMinder verbreitet. Wir zertifizieren später alle großen anbieter die in deutschland am verbreitetsten sind inkl. Roomcloud
+6. **Payments:** Adyen (Hotel-Fokus, teurer) vs. Stripe/Mollie (einfacher Einstieg). am besten alle drei
+7. **Buchhaltung:** Reicht ein DATEV-Export, oder brauchen wir Debitorenverwaltung mit Mahnwesen im PMS? DATEV-Export reicht
+8. **Ressourcen-Modell:** Bauen wir das Mews-Modell (Zeiteinheiten) von Anfang an ein oder starten wir mit Nächten und erweitern später? Empfehlung: Zeiteinheit als Feld anlegen, aber im MVP nur „Nacht“ implementieren. wir machen das wie empfohlen mit nächten arbeiten aber zeiteinheiten integriert haben.
