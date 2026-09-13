@@ -28,13 +28,13 @@ interface CreateBooking {
 }
 
 /** Uebersetzt den Fehlercode der Inventarfunktion in eine saubere Antwort. */
-function inventoryError(code: string | null): never | void {
+export function inventoryError(code: string | null): never | void {
   if (code === 'sold_out') throw Errors.soldOut()
   if (code === 'not_materialized') throw Errors.notMaterialized()
   if (code !== null) throw Errors.conflict(`Unbekannter Inventarfehler: ${code}`)
 }
 
-async function priceNights(
+export async function priceNights(
   client: PoolClient, ratePlanId: number | undefined, nights: string[]
 ): Promise<number[]> {
   if (!ratePlanId) return nights.map(() => 0)
