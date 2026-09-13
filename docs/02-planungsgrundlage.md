@@ -205,13 +205,48 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 - **API:** REST mit OpenAPI-Spezifikation, Versionierung im Pfad, Webhooks mit Signatur und Retry.
 - **Sprache/Framework:** noch offen, siehe unten.
 
-## 9. Offene Fragen
+## 9. Getroffene Entscheidungen
 
-1. **Zielgruppe:** Bauen wir für ein konkretes Haus (unser eigenes?) oder als Produkt für Dritte? Das entscheidet über Mandantenfähigkeit und Aufwand bei Konfigurierbarkeit. -> wir bauen ein system das wir selbst anbieten und vermarkten wollen, wollen das aber auch für das hotel nutzen in dem ich arbeite. das hotel nutzen wir einfach als testobjekt.
-2. **Größe der Häuser:** 20 Zimmer oder 200? Gruppen, Tagungen und Blocks sind erst ab mittlerer Größe wichtig.sowohl als auch. von der ferienwohnung und pension bis zu großen hotels mit mehreren hundert zimmern und gruppen und auch multiproperty. 
-3. **Technologie-Stack:** Vorschlag TypeScript (Backend und Web-App aus einer Sprache) mit PostgreSQL. Alternativen: Python/Django, .NET, Go. Gibt es Team-Präferenzen? hier bin ich offen für das praktikabelste und performanteste. hier müssten wir sehen wie wir am performantesten arbeiten aber auch die kosten im blick haben. es gibt ja datenbanken die cloudflare hostet aber die sind sicher deutlicher teurer als selbst zu hosten. wobei wir da sehen müssen ob wir beim selber hosten genug performance haben ohne unbezahlbare hardware mit loadbalancer zu benötigen die wir teuer mieten müssen
-4. **Betrieb:** Cloud-Hosting durch uns (SaaS) oder Installation beim Kunden? Cloud-TSE setzt Internetanbindung voraus. SaaS
-5. **Channel Manager:** Welchen Partner zertifizieren wir zuerst? Für DACH sind Dirs21, HotelSpider und SiteMinder verbreitet. Wir zertifizieren später alle großen anbieter die in deutschland am verbreitetsten sind inkl. Roomcloud
-6. **Payments:** Adyen (Hotel-Fokus, teurer) vs. Stripe/Mollie (einfacher Einstieg). am besten alle drei
-7. **Buchhaltung:** Reicht ein DATEV-Export, oder brauchen wir Debitorenverwaltung mit Mahnwesen im PMS? DATEV-Export reicht
-8. **Ressourcen-Modell:** Bauen wir das Mews-Modell (Zeiteinheiten) von Anfang an ein oder starten wir mit Nächten und erweitern später? Empfehlung: Zeiteinheit als Feld anlegen, aber im MVP nur „Nacht“ implementieren. wir machen das wie empfohlen mit nächten arbeiten aber zeiteinheiten integriert haben.
+Stand September 2026, beantwortet vom Auftraggeber.
+
+| # | Frage | Entscheidung |
+|---|---|---|
+| 1 | Zielgruppe | **Eigenes Produkt zur Vermarktung an Dritte.** Das Hotel, in dem der Auftraggeber arbeitet, dient als Testobjekt und Pilotkunde |
+| 2 | Größe der Häuser | **Alle.** Von Ferienwohnung und Pension bis zu Häusern mit mehreren hundert Zimmern, inklusive Gruppen und Multi-Property |
+| 3 | Technologie-Stack | Offen, Kriterium ist praktikabel plus performant plus kostenbewusst. Ausgearbeitet in [07-technologie-und-hosting.md](07-technologie-und-hosting.md) |
+| 4 | Betrieb | **SaaS**, gehostet von uns |
+| 5 | Channel Manager | Später **alle in Deutschland verbreiteten Anbieter**, ausdrücklich inklusive Roomcloud |
+| 6 | Payments | **Alle drei**: Adyen, Stripe, Mollie |
+| 7 | Buchhaltung | **DATEV-Export genügt.** Keine Debitorenverwaltung mit Mahnwesen im PMS |
+| 8 | Ressourcen-Modell | Wie empfohlen: **Zeiteinheit als Feld von Anfang an**, im MVP nur „Nacht" implementiert |
+
+### Was daraus folgt
+
+**Zu 1: Pilotkunde ist ein großer Vorteil, aber eine Falle.**
+Ein echtes Haus als Testobjekt ist Gold wert: echte Daten, echte Abläufe, sofortiges Feedback. Das Risiko ist, dass das Produkt zur Speziallösung für genau dieses Haus wird. Gegenmittel: Jede Anforderung aus dem Pilothaus wird bewusst danach bewertet, ob sie allgemein ist oder hausspezifisch. Hausspezifisches wird konfigurierbar gebaut oder gar nicht.
+
+**Zu 2: Die Spannweite ist die härteste Anforderung im ganzen Projekt.**
+Eine Ferienwohnung und ein Haus mit 400 Zimmern und Tagungsbetrieb sind unterschiedliche Produkte. Die Ferienwohnung braucht drei Bildschirme und darf nichts kosten. Das große Haus braucht Blocks, Gruppenrechnungen, Rollenrechte, Schichtabschlüsse und Multi-Property.
+
+Das ist machbar, aber nur unter zwei Bedingungen:
+- **Das Datenmodell muss von Anfang an das große Haus können.** Blocks, mehrere Folios je Reservierung, Routing, Mandantenfähigkeit, Rollen. Diese Dinge nachzurüsten bedeutet Migration von Bestandsdaten und ist der teuerste denkbare Umbau. Sie kosten jetzt wenig, weil sie nur Struktur sind.
+- **Die Oberfläche muss mitwachsen, nicht alles zeigen.** Funktionen werden je nach Betriebsgröße ein- und ausgeblendet. Eine Pension darf nie ein Feld für Marktsegment oder ein Menü für Kontingente sehen.
+
+**Vertrieblich bleibt es trotzdem eine Reihenfolge.** Wir bauen die Struktur für alle, gehen aber mit dem Mittelbau in den Markt, also 20 bis 150 Zimmer. Das ist der Bereich mit dem besten Verhältnis aus Zahlungsbereitschaft und Betreuungsaufwand, siehe [03-marktfuehrer-deutschland.md](03-marktfuehrer-deutschland.md).
+
+**Zu 5: „Alle Channel Manager" heißt, dass wir keinen einzeln bauen.**
+Wir bauen **eine** ARI-Schnittstelle (Availability, Rates, Inventory) nach Branchenstandard und lassen die Anbieter andocken. Dirs21, HotelSpider, SiteMinder, Roomcloud und Cultuzz sprechen alle Varianten desselben Musters. Eine saubere Standardschnittstelle plus eine gute Dokumentation ist billiger als fünf Einzelintegrationen und skaliert auf den sechsten Anbieter ohne Arbeit.
+
+**Zu 6: „Alle drei Payment-Anbieter" bedeutet zwingend eine Abstraktionsschicht.**
+Wie bei der Fiskalisierung: eine eigene interne Schnittstelle `PaymentAdapter` mit Autorisieren, Belasten, Erstatten, Token speichern, Pay-by-Link. Adyen, Stripe und Mollie sind Implementierungen dahinter. **Kartendaten fassen wir nie selbst an**, nur Tokens, sonst greift PCI DSS in voller Härte.
+Reihenfolge: Stripe zuerst, weil am schnellsten integriert und für den Start ausreichend. Mollie danach, weil im DACH-Raum bei kleinen Betrieben beliebt und günstiger. Adyen zuletzt, weil es sich erst ab Volumen und bei größeren Häusern lohnt.
+
+**Zu 7: DATEV-Export vereinfacht Stufe 1 spürbar.**
+Kein Mahnwesen, keine Offene-Posten-Verwaltung, keine Zahlungsavise. Wir brauchen: sauber kontierte Buchungen, einen Export im DATEV-Format und die Firmen-Folios im City Ledger als Forderung. Was danach passiert, macht der Steuerberater.
+
+### Neu aufgeworfene Fragen
+
+1. **Preisgestaltung über die Spannweite.** Bei 7 bis 12 Euro je Zimmer zahlt eine Ferienwohnung mit vier Einheiten unter 50 Euro im Monat und verursacht denselben Supportaufwand wie ein Haus mit 40 Zimmern. Brauchen wir einen Mindestpreis je Betrieb, und wie hoch?
+2. **Fiskalisierungskosten bei Kleinstbetrieben.** Cloud-TSE und Middleware kosten je Kasse 15 bis 40 Euro monatlich, siehe [06-fiskalisierung.md](06-fiskalisierung.md). Bei einer Pension übersteigt das schnell die halbe Grundgebühr. Weitergeben als eigene Position, wie SoftTec es macht?
+3. **Verkaufen wir Payment mit Marge?** Bei Mews ist das der wesentliche Ertragshebel, es widerspricht aber unserer Positionierung „kein Zwang zur Bündelung".
+4. **Datenimport aus Altsystemen.** Aus [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md): Unser Zielkunde ist der Migrationskandidat. Welche Altsysteme unterstützen wir zuerst? Vorschlag: hotline, HS/3, protel.
