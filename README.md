@@ -13,3 +13,6 @@ Eigenes Hotel Property Management System. Aktuell in der Planungsphase.
 - [docs/07-technologie-und-hosting.md](docs/07-technologie-und-hosting.md): Stack- und Hosting-Entscheidung mit Lastrechnung und Kosten. Warum Serverless-Datenbanken hier die falsche Wahl sind und ein einzelner Server weit reicht.
 - [docs/08-compliance-in-der-praxis.md](docs/08-compliance-in-der-praxis.md): Was „unveränderbar“ nach GoBD realistisch verlangt, welche Vorgänge die TSE wirklich signiert, Aufbewahrungsfristen nach der Änderung 2025, und ob wir ISO 27001 brauchen.
 - [docs/09-kassenbuch.md](docs/09-kassenbuch.md): Entscheidung gegen eine Kassenfunktion. Fakturierung und Zahlungsvermerk statt Kassenbuch, die vier Merkmale die uns rechtlich abgrenzen, und die Kassenschnittstelle als Ersatz.
+- [docs/10-systemarchitektur.md](docs/10-systemarchitektur.md): Zielbild, Tech-Stack, Modulschnitt, Datenmodell, API-Entwurf, Hintergrundverarbeitung und der Betrieb auf Linux mit Plesk.
+- [docs/11-umsetzungsplan.md](docs/11-umsetzungsplan.md): Repository-Struktur, 15 Arbeitspakete mit Reihenfolge und Definition of Done, Teststrategie, CI und Auslieferung.
+- [docs/12-security-und-performance-review.md](docs/12-security-und-performance-review.md): Kritische Durchsicht der Pläne. Drei Widersprüche, 13 Sicherheits- und 12 Performancebefunde, und was vor dem ersten Code zu ändern ist.

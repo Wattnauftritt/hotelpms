@@ -39,7 +39,9 @@ Wir wollen Stufe 3.
 ## 1.3 Was konkret dazugehört
 
 **Ein Vertrag, maschinenlesbar.**
-OpenAPI 3.1. Er wird von Hand gepflegt und ist die Quelle der Wahrheit, nicht aus Code generiert. Aus ihm entstehen: Server-Stubs, TypeScript-Typen für unsere Oberfläche, Client-SDKs für Partner, die Dokumentation und die Vertragstests.
+OpenAPI 3.1.
+
+> **Präzisiert in [10-systemarchitektur.md](10-systemarchitektur.md):** Der API-Entwurf wird vorab als Dokument festgelegt, die Spezifikation aber aus typisierten Routen-Schemata **generiert**, und ein Vertragstest schlägt bei brechenden Änderungen fehl. Handgepflegtes YAML plus generierte Rümpfe wäre strenger, driftet in der Praxis jedoch auseinander. Der folgende Absatz beschreibt das Prinzip, Dokument 10 die verbindliche Umsetzung. Aus ihm entstehen: Server-Stubs, TypeScript-Typen für unsere Oberfläche, Client-SDKs für Partner, die Dokumentation und die Vertragstests.
 
 **Ressourcen und Operationen, keine Tabellen.**
 `POST /reservations/{id}/check-in` ist eine Operation der Domäne. `PATCH /reservations/{id}` mit `{"status": "InHouse"}` ist eine Tabellenzeile mit anderem Wert. Ersteres kann validieren, Meldeschein prüfen, Zimmer sperren, Ereignis auslösen. Letzteres lädt zu Zuständen ein, die es nicht geben darf.
