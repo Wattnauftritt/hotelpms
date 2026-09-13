@@ -359,7 +359,7 @@ Das PMS läuft auf einer **eigenen VM ohne Plesk**, siehe nächster Abschnitt. D
 
 | Aufgabe | Wer |
 |---|---|
-| TLS-Zertifikate, Erneuerung | **Caddy** auf der PMS-VM |
+| TLS-Zertifikate, Erneuerung | **Caddy**, automatisch |
 | Reverse Proxy, statische Dateien | **Caddy** |
 | Firewall | **nftables** auf der VM plus **Proxmox-Firewall** zwischen den VMs |
 | VM-Sicherung | **Proxmox Backup Server** |
@@ -451,7 +451,23 @@ Ohne Plesk übernimmt die VM selbst, was vorher Plesk erledigt hat:
 | Firewall | Plesk | **nftables** plus Proxmox-Firewall |
 | Sicherung | Plesk | **Proxmox-Sicherung plus eigene PostgreSQL-Sicherung**, siehe unten |
 
-**Empfehlung für den Reverse Proxy: Caddy.** Automatische Zertifikate ohne Zusatzwerkzeug, sehr kurze Konfiguration, sichere Voreinstellungen. Nginx ist ebenso richtig, wenn Vertrautheit wichtiger ist.
+**Reverse Proxy: Caddy.** Entschieden. Caddy holt und erneuert die Let's-Encrypt-Zertifikate selbst, ohne certbot, Cron-Job oder Neuladen-Hook. Genau die Aufgabe, die vorher Plesk übernommen hat. Die vollständige Konfiguration für unseren Fall:
+
+```
+api.hotelpms.de {
+    reverse_proxy unix//run/hotelpms/api.sock
+    encode zstd gzip
+}
+
+app.hotelpms.de {
+    root * /opt/hotelpms/current/web
+    try_files {path} /index.html
+    file_server
+    encode zstd gzip
+}
+```
+
+HTTPS ist darin enthalten. Nginx wäre fachlich gleichwertig, braucht aber Zertifikatspfade, Protokolleinstellungen, einen zweiten Block für die Umleitung von Port 80 und certbot als eigenes Paket. Der Austausch bliebe jederzeit möglich, der Rest der Architektur merkt davon nichts.
 
 Der Rest des Aufbaus bleibt wie beschrieben: API und Worker als systemd-Dienste, PostgreSQL direkt installiert, Verbindung über Unix-Socket.
 

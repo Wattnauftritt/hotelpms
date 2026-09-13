@@ -223,6 +223,8 @@ Stand September 2026, beantwortet vom Auftraggeber.
 | 8 | Ressourcen-Modell | Wie empfohlen: **Zeiteinheit als Feld von Anfang an**, im MVP nur „Nacht" implementiert |
 | 9 | Kassenfunktion | **Keine.** Kein Kassenbuch, keine TSE, kein DSFinV-K. Nur Fakturierung plus Zahlungsvermerk, dazu eine Kassenschnittstelle. Siehe [09-kassenbuch.md](09-kassenbuch.md) |
 | 10 | Nachrüstbarkeit des Kassenbuchs | **Offen halten, nicht vorbauen.** Das Backend muss ein Kassenbuch später additiv aufnehmen können, ohne Umbau. Kein ungenutztes Gerüst. Siehe unten |
+| 11 | Betrieb | **Eigene VM auf dem vorhandenen Proxmox-Host**, ohne Plesk. Der bestehende Plesk-Server behält seine Projekte und bleibt unberührt. Siehe [10-systemarchitektur.md](10-systemarchitektur.md) |
+| 12 | Reverse Proxy und TLS | **Caddy.** Automatische Zertifikate ersetzen, was vorher Plesk übernommen hat |
 
 ### Was daraus folgt
 
@@ -244,6 +246,10 @@ Wir bauen **eine** ARI-Schnittstelle (Availability, Rates, Inventory) nach Branc
 **Zu 6: „Alle drei Payment-Anbieter" bedeutet zwingend eine Abstraktionsschicht.**
 Wie bei der Fiskalisierung: eine eigene interne Schnittstelle `PaymentAdapter` mit Autorisieren, Belasten, Erstatten, Token speichern, Pay-by-Link. Adyen, Stripe und Mollie sind Implementierungen dahinter. **Kartendaten fassen wir nie selbst an**, nur Tokens, sonst greift PCI DSS in voller Härte.
 Reihenfolge: Stripe zuerst, weil am schnellsten integriert und für den Start ausreichend. Mollie danach, weil im DACH-Raum bei kleinen Betrieben beliebt und günstiger. Adyen zuletzt, weil es sich erst ab Volumen und bei größeren Häusern lohnt.
+
+**Zu 11: Die eigene VM löst drei Probleme, zwei bleiben.**
+
+Gelöst sind Isolation von den PHP-Projekten auf der Plesk-VM, das Abrüstproblem (auf der PMS-VM läuft schlicht kein Plesk) und die Betriebskopplung bei Neustarts. **Nicht gelöst sind zwei Punkte**, die als P4b und P4c in [12-security-und-performance-review.md](12-security-und-performance-review.md) stehen: Beide VMs teilen sich die Hardware, und der Proxmox-Host bleibt gemeinsamer Ausfallpunkt. Daraus folgt die Bedingung für Fremdkunden: **eine verschlüsselte Sicherung außer Haus, nicht die zweite VM.**
 
 **Zu 10: Nachrüstbarkeit ist eine Entwurfsauflage, kein Arbeitspaket.**
 

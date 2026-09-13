@@ -51,58 +51,68 @@ Dazu kommt: **die Zählertabelle `inventory_day` mit Zeilensperren, auf der unse
 
 ## 3. Empfohlener Aufbau
 
+Die Infrastruktur ist vorhanden: ein eigener **Proxmox-Host**, auf dem bereits eine VM mit Plesk für andere Projekte läuft. Das PMS bekommt eine **eigene VM ohne Plesk**.
+
 ```
                          Internet
                             │
-                   ┌────────┴────────┐
-                   │   Loadbalancer   │   Hetzner Cloud LB, ca. 6 €/Monat
-                   └────────┬────────┘
-              ┌─────────────┴─────────────┐
-              ▼                           ▼
-   ┌────────────────────┐      ┌────────────────────┐
-   │  Server 1          │      │  Server 2          │
-   │  ├─ App-Instanzen  │      │  ├─ App-Instanzen  │
-   │  ├─ PgBouncer      │      │  ├─ PgBouncer      │
-   │  └─ PostgreSQL     │◄────►│  └─ PostgreSQL     │
-   │     (primär)       │ Repl.│     (Replikat)     │
-   └────────────────────┘      └────────────────────┘
-              │                           │
-              └──────────┬────────────────┘
-                         ▼
-              ┌────────────────────┐
-              │  Objektspeicher    │  Backups, PDFs, Belege
-              └────────────────────┘
+                    ┌───────┴────────┐
+                    │  Proxmox-Host  │  vorhanden
+                    └───┬────────┬───┘
+          ┌─────────────┘        └──────────────┐
+          ▼                                     ▼
+┌────────────────────┐              ┌────────────────────────┐
+│  VM: Plesk         │   Firewall   │  VM: hotelpms          │
+│  andere Projekte   │◀─ verweigern▶│  ├─ Caddy (TLS, Proxy) │
+│  unberührt         │              │  ├─ API + Worker       │
+└────────────────────┘              │  ├─ PgBouncer          │
+                                    │  └─ PostgreSQL         │
+                                    └───────────┬────────────┘
+                                                │
+                          ┌─────────────────────┴──────────────┐
+                          ▼                                    ▼
+              ┌────────────────────┐              ┌────────────────────┐
+              │  Objektspeicher    │              │  Zweiter Standort  │
+              │  PDFs, Exporte     │              │  Sicherung + später│
+              └────────────────────┘              │  Replikat          │
+                                                  └────────────────────┘
 ```
 
-**Der entscheidende Punkt: Anwendung und Datenbank laufen auf derselben Maschine.** Damit ist der Round Trip ein Unix-Socket und kostet 0,1 Millisekunden. Das ist die billigste Performance-Optimierung, die es gibt, und sie kostet nichts außer der Entscheidung.
+**Der entscheidende Punkt bleibt: Anwendung und Datenbank in derselben VM.** Der Round Trip ist ein Unix-Socket und kostet 0,1 Millisekunden. Das ist die billigste Performance-Optimierung, die es gibt, und sie kostet nichts außer der Entscheidung.
 
-Das Replikat auf Server 2 dient zwei Zwecken: Ausfallsicherheit und Leselast für Berichte und Exporte, die den Primärserver nicht stören sollen.
+Die VM-Auslegung im Detail steht in Abschnitt 7 von [10-systemarchitektur.md](10-systemarchitektur.md).
 
 ### Kosten
 
 | Position | Monatlich |
 |---|---|
-| 2 × dedizierter Server (etwa Hetzner AX-Linie, 64 GB RAM, NVMe) | 160 bis 200 € |
-| Loadbalancer | 6 € |
-| Objektspeicher und Backup-Ziel | 10 bis 20 € |
+| PMS-VM auf dem vorhandenen Proxmox-Host | **0 €**, nur Ressourcen |
+| Objektspeicher für PDFs und Exporte | 5 bis 20 € |
+| **Ausgelagerte verschlüsselte Sicherung** | 10 bis 30 € |
 | Monitoring, Logs, Fehlertracking | 0 bis 50 € |
-| **Summe** | **etwa 200 bis 280 €** |
+| **Summe zum Start** | **etwa 15 bis 100 €** |
+| Später: Replikat an einem zweiten Standort | 80 bis 120 € |
 
-Zur Einordnung: Bei 500 Betrieben mit 20.000 Zimmern und 8 Euro je Zimmer liegt der Monatsumsatz bei etwa 160.000 Euro. **Die Infrastruktur ist damit weit unter einem Prozent des Umsatzes.** Selbst bei 20 Betrieben in der Anfangsphase, also rund 6.000 Euro Umsatz, sind 250 Euro Infrastruktur unkritisch.
+Zur Einordnung: Bei 500 Betrieben mit 20.000 Zimmern und 8 Euro je Zimmer liegt der Monatsumsatz bei etwa 160.000 Euro. Die Infrastruktur ist damit weit unter einem Prozent. Zum Vergleich kostet ein gleichwertiger Aufbau mit verwalteter Datenbank bei einem großen Cloud-Anbieter 800 bis 2.500 Euro monatlich, bei schlechterer Latenz.
 
-Zum Vergleich: Ein gleichwertiger Aufbau mit verwalteter Datenbank und Anwendungshosting bei einem der großen Cloud-Anbieter liegt bei 800 bis 2.500 Euro monatlich, bei schlechterer Latenz.
+**Die Sorge vor unbezahlbarer Hardware ist damit erledigt. Der reale Kostenblock sind Personal und später die ISO-27001-Zertifizierung, nicht Server.**
 
-**Die Sorge vor unbezahlbarer Hardware ist damit erledigt. Der reale Kostenblock in diesem Projekt sind Personal und die ISO-27001-Zertifizierung, nicht Server.**
+### Was die eigene Hardware nicht löst
+
+Zwei Punkte, die später Geld kosten und in [12-security-und-performance-review.md](12-security-und-performance-review.md) als P4b und P4c stehen:
+
+1. **Beide VMs teilen sich die Hardware.** Eine Lastspitze auf der Plesk-VM kann die Rezeption ausbremsen. Steuerbar über `cpuunits` und Ein-/Ausgabe-Grenzen, aber nicht beseitigt.
+2. **Der Proxmox-Host ist gemeinsamer Ausfallpunkt.** Gegen Hardwaredefekt, Brand oder Diebstahl hilft nur eine Kopie außer Haus. **Das ist die Bedingung für die Aufnahme von Fremdkunden**, nicht die zweite VM.
 
 ### Serverstandort
 
-**Deutschland.** Nicht aus technischen Gründen, sondern aus Vertriebsgründen. „Daten in Deutschland" ist bei dieser Zielgruppe ein Kaufargument, und SoftTec wirbt genau damit. Hetzner in Nürnberg oder Falkenstein erfüllt das und ist zugleich der günstigste Anbieter im Markt.
+**Deutschland**, durch die eigene Hardware ohnehin erfüllt. Das ist kein technisches, sondern ein Vertriebsargument: „Daten in Deutschland, auf eigener Hardware" ist bei dieser Zielgruppe ein Kaufargument, und SoftTec wirbt mit deutlich weniger. Für die ausgelagerte Sicherung und das spätere Replikat gilt dasselbe, also ein deutscher Anbieter.
 
 ### Wann brauchen wir mehr?
 
-Erst wenn ein einzelner Server nicht mehr reicht, und das ist weit weg. Der Weg dahin, in dieser Reihenfolge:
+Erst wenn eine einzelne VM nicht mehr reicht, und das ist weit weg. Der Weg dahin, in dieser Reihenfolge:
 
-1. Größerer Server. Von 64 auf 256 GB RAM ist ein Preissprung von etwa 100 Euro, keine Architekturänderung.
+1. Mehr Kerne und Speicher für die VM zuteilen. Eine Konfigurationsänderung, keine Architekturänderung.
 2. Leseanfragen auf das Replikat verlagern.
 3. Mehr Anwendungsserver hinter den Loadbalancer, Datenbank bleibt eine.
 4. Erst ganz zuletzt: Mandanten auf mehrere Datenbanken aufteilen (Sharding nach `property_id`).
@@ -140,7 +150,7 @@ Begründung: Bei einem kleinen Team ist eine gemeinsame Sprache mit gemeinsamen 
 
 ## 5. Was jetzt zu tun ist
 
-1. Zwei Server bei Hetzner nehmen, PostgreSQL und Anwendung auf derselben Maschine, Replikation einrichten.
+1. Eigene VM auf dem Proxmox-Host anlegen, nach der Auslegung in Dokument 10. PostgreSQL und Anwendung darin, Caddy davor.
 2. Die OpenAPI-Spezifikation für die Kernressourcen schreiben, bevor Code entsteht.
 3. Das Seed-Skript für realistische Datenmengen bauen: 250 Zimmer, 15 Kategorien, drei Jahre Historie, 200.000 Reservierungen.
 4. Den Abfragezähler-Test und das Latenzbudget als CI-Schritt aufsetzen.
