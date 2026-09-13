@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto'
 import type { Pool } from '@hotelpms/db'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
 import type { Principal } from './context.js'
 import { ANONYMOUS } from './context.js'
-import type { Permission } from './permissions.js'
+import { isPermission, type Permission } from './permissions.js'
 
 interface RoleRow {
   level: 'platform' | 'account' | 'property'
@@ -87,6 +88,81 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
       permissionsByProperty,
       accountPermissions,
       platformPermissions,
+      supportSessionId: null
+    }
+  })
+}
+
+/**
+ * Ein Token ist ein Kennwort und liegt deshalb nur als Hash. SHA-256 genuegt,
+ * anders als beim Nutzerkennwort: das Token sind 32 zufaellige Byte, es gibt
+ * nichts zu raten, und eine langsame Ableitung je Anfrage waere teuer ohne
+ * Gewinn.
+ */
+export function hashToken(token: string): Buffer {
+  return createHash('sha256').update(token).digest()
+}
+
+interface TokenRow {
+  id: number
+  account_id: number
+  scopes: string[]
+  property_ids: string[]
+  public_ref: string
+  client_status: string
+}
+
+/**
+ * Principal aus einem Maschinentoken (Aufgabe 2, Dokument 16).
+ *
+ * Derselbe Berechtigungskatalog wie fuer Menschen: ein Scope **ist** ein
+ * Berechtigungsschluessel (Grundsatz 1, Dokument 14). Es gibt keinen zweiten
+ * Rechteweg und deshalb auch keine zweite Pruefung -- `registerRoute` sieht
+ * keinen Unterschied zwischen Mensch und Maschine.
+ */
+export async function loadPrincipalFromToken(pool: Pool, token: string): Promise<Principal> {
+  return withTransaction(pool, SYSTEM_CONTEXT, async client => {
+    /*
+     * Ueber eine SECURITY-DEFINER-Funktion, weil `oauth_client` eine
+     * Zeilenrichtlinie traegt und der Mandant hier noch nicht feststeht --
+     * er ergibt sich ja erst aus dem Token (Migration 0023, wie 0018).
+     */
+    const r = await client.query<TokenRow>(
+      `SELECT * FROM oauth_token_principal($1)`, [hashToken(token)])
+
+    if (r.rowCount === 0) return ANONYMOUS
+    const row = r.rows[0]!
+    if (row.client_status !== 'active') return ANONYMOUS
+
+    // Leere Liste bedeutet alle aktiven Haeuser des Accounts. Die Aufloesung
+    // geschieht hier und nicht bei der Ausgabe, damit ein spaeter angelegtes
+    // Haus ohne neues Token erreichbar ist.
+    const haeuser = row.property_ids.length > 0
+      ? row.property_ids.map(Number)
+      : (await client.query<{ id: number }>(
+          `SELECT id FROM oauth_account_properties($1)`,
+          [row.account_id])).rows.map(p => Number(p.id))
+
+    const scopes = row.scopes.filter(isPermission)
+    const permissionsByProperty = new Map<number, Set<Permission>>()
+    for (const p of haeuser) permissionsByProperty.set(p, new Set(scopes))
+
+    return {
+      userId: null,
+      // Eigener Schluessel je Client: sonst stoerte ein Client die Idempotenz
+      // eines anderen (S2, Dokument 12).
+      clientKey: `client:${row.public_ref}`,
+      isPlatformStaff: false,
+      accountIds: [Number(row.account_id)],
+      permissionsByProperty,
+      /*
+       * Bewusst leer. `can()` prueft accountPermissions zuerst und laesst sie
+       * auf **alle** Haeuser des Accounts wirken. Ein Client, der auf zwei von
+       * zwanzig Haeusern eingeschraenkt ist, bekaeme darueber die anderen
+       * achtzehn dazu -- die Einschraenkung waere wirkungslos.
+       */
+      accountPermissions: new Set(),
+      platformPermissions: new Set(),
       supportSessionId: null
     }
   })
