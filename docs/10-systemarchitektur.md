@@ -409,14 +409,40 @@ Plesk auf demselben Server wie die Anwendung ist richtig, **sofern dieser Server
 
 **Hostet derselbe Plesk-Server auch andere Websites, gehört das PMS auf einen eigenen Server.** Grund: Eine verwundbare PHP-Anwendung auf dem Rechner bedeutet lokalen Zugriff, und von dort ist PostgreSQL über den Socket auf `127.0.0.1` erreichbar. Ein veraltetes CMS neben einer Datenbank mit Gästedaten und Rechnungen ist eine Konstellation, die man nicht eingeht.
 
-| Lage | Empfehlung |
-|---|---|
-| Plesk-Server gehört allein dem PMS | Plesk bleibt, Anwendung unter systemd auf derselben Maschine |
-| Plesk-Server hostet auch Kundenseiten | **Eigener Server für das PMS.** Plesk dort gern wieder, aber ohne fremde Anwendungen |
+**Alleinbesitz des Servers ändert daran wenig.** Er schützt gegen autorisierte Dritte, nicht gegen Codeausführung in einer Webanwendung. Der häufigste Weg, wie ein Plesk-Server übernommen wird, ist ein veraltetes PHP-Projekt, und danach hat der Angreifer Codeausführung als Webbenutzer auf derselben Maschine.
 
-Ein zusätzlicher dedizierter Server kostet rund 80 bis 100 Euro im Monat. Gemessen an der Umsatzrechnung in [07-technologie-und-hosting.md](07-technologie-und-hosting.md) ist das kein Argument.
+**Das gewichtigere Argument ist ohnehin Performance, nicht Sicherheit.** Die Architektur ruht auf vorhersagbarer Latenz: Zählertabelle, drei Abfragen für den Zimmerplan, Latenzbudget in der CI. Auf einem geteilten Server gilt das nicht mehr. Ein Traffic-Spike auf einer Nachbarseite, ein durchgehender PHP-Prozess oder ein Sicherungslauf schlagen auf die Antwortzeit der Rezeption durch. Die systemd-Quoten schützen die anderen Projekte vor uns, aber nicht uns vor ihnen. Dazu kommt die Betriebskopplung: Ein Neustart wegen des PMS trifft die anderen Projekte und umgekehrt.
 
-Muss der Server aus anderen Gründen geteilt werden, sind dies die Mindestmaßnahmen: PostgreSQL mit `scram-sha-256` auch auf localhost und niemals `trust`, eigener Systembenutzer für die Anwendung, Anwendungsdateien und Umgebungsdatei nicht lesbar für die Plesk-Webbenutzer, und getrennte Datenbankinstanz statt einer geteilten.
+### Gestaffelte Empfehlung
+
+| Phase | Wo | Begründung |
+|---|---|---|
+| Entwicklung, Staging | Bestehender Plesk-Server | Keine echten Gästedaten |
+| Pilotbetrieb im eigenen Haus | Bestehender Server, gehärtet | Ein Betrieb, überschaubarer Schaden, Kosten noch ohne Umsatz |
+| **Ab dem ersten zahlenden Fremdkunden** | **Eigener Server** | Ab da haften wir für fremde Gästedaten, und die 80 bis 100 Euro sind gedeckt |
+
+### Härtung, wenn der Server geteilt bleibt
+
+Die wirksamste Maßnahme ist unabhängig von den anderen Projekten:
+
+**PostgreSQL ausschließlich über einen Unix-Socket in einem Verzeichnis mit Rechten 0700, das dem Anwendungsbenutzer gehört. Kein Lauschen auf `127.0.0.1`.**
+
+```
+unix_socket_directories = '/run/hotelpms'     # 0700, hotelpms:hotelpms
+listen_addresses = ''                          # kein TCP
+```
+
+Ein anderer Systembenutzer kann dann nicht einmal in das Verzeichnis hineinsehen. Es gibt keinen Port, an dem Passwörter geraten werden könnten. Das ist deutlich stärker als Passwortschutz auf localhost.
+
+Dazu:
+
+- **Eigene PostgreSQL-Instanz** mit eigenem Datenverzeichnis und eigenem Cluster, nicht eine mit anderen Projekten geteilte.
+- **Eigener Systembenutzer** für die Anwendung. Dateien und Umgebungsdatei außerhalb jedes Vhost-Verzeichnisses, Rechte 0600.
+- Plesk trennt PHP-Projekte bereits über Subscription-Benutzer und `open_basedir`. Das arbeitet für uns, ohne dass etwas abgeschaltet werden muss.
+- Die systemd-Härtung weiter unten.
+- **Eigene verschlüsselte Datenbanksicherung** an einen zweiten Ort, unabhängig von Plesks Sicherung. Plesks Serversicherung enthält sonst alle Gästedaten und liegt möglicherweise unverschlüsselt auf fremdem Speicher.
+
+Drei Härtungen sind auch bei laufenden Fremdprojekten möglich und berühren diese nicht: Panel auf Port 8443 per Firewall auf feste Adressen begrenzen, Zwei-Faktor-Anmeldung für das Panel, PHP-Handler nur auf der API-Domain abschalten.
 
 ### Fallstrick: Plesk überschreibt die Nginx-Konfiguration
 
@@ -426,7 +452,7 @@ Unsere Proxy-Direktiven gehören deshalb ausschließlich in das Panel-Feld für 
 
 ### Plesk abrüsten
 
-Plesk installiert viel, was wir nicht brauchen und was Angriffsfläche ist. Zu deaktivieren:
+Plesk installiert viel, was wir nicht brauchen und was Angriffsfläche ist. **Auf einem Server, der allein dem PMS gehört**, zu deaktivieren:
 
 - FTP und FTPS
 - Webmail, Roundcube
@@ -434,7 +460,7 @@ Plesk installiert viel, was wir nicht brauchen und was Angriffsfläche ist. Zu d
 - phpMyAdmin, phpPgAdmin
 - PHP-Handler auf der API-Domain
 
-Das Panel selbst auf Port 8443 wird per Firewall auf feste Adressen begrenzt und bekommt Zwei-Faktor-Anmeldung.
+**Teilt sich der Server mit anderen Projekten, ist das meiste davon nicht abschaltbar.** Dann gilt der vorige Abschnitt: Isolation über Socket-Rechte und Systembenutzer statt über Abrüsten. Möglich bleiben in jedem Fall die Begrenzung des Panels auf feste Adressen, Zwei-Faktor-Anmeldung und das Abschalten des PHP-Handlers auf der API-Domain.
 
 ### PostgreSQL
 

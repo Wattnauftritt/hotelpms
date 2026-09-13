@@ -134,7 +134,7 @@ Das Panel auf Port 8443 ist ein lohnendes Ziel und hatte in der Vergangenheit Sc
 
 - Panel per Firewall auf feste Adressen oder ein VPN begrenzen, Zwei-Faktor-Anmeldung erzwingen.
 - Automatische Sicherheitsaktualisierungen aktiv.
-- Abschalten: FTP, Webmail, eingehender Mailserver, phpMyAdmin, phpPgAdmin, PHP-Handler auf der API-Domain.
+- Abschalten: FTP, Webmail, eingehender Mailserver, phpMyAdmin, phpPgAdmin, PHP-Handler auf der API-Domain. **Auf einem geteilten Server meist nicht möglich**, dann greift stattdessen die Isolation über Socket-Rechte und Systembenutzer aus [10-systemarchitektur.md](10-systemarchitektur.md).
 - Prüfen, wohin Plesk-Sicherungen gehen und ob sie verschlüsselt sind. Eine unverschlüsselte Sicherung auf fremdem Speicher enthält alle Gästedaten.
 - Keine Geheimnisse in Plesk-verwalteten Umgebungsvariablen, siehe Dokument 10.
 
@@ -202,6 +202,12 @@ Im Transaction Mode funktionieren protokollseitig vorbereitete Anweisungen nur m
 Alle deutschen Betriebe haben denselben Tageswechsel, typisch 04:00 Uhr. Bei 500 Mandanten starten 500 Nachtläufe gleichzeitig auf einem Server.
 
 **Maßnahme:** Streuung über ein Zeitfenster, etwa 03:30 bis 05:30, abgeleitet aus der Property-ID. Begrenzte Nebenläufigkeit im Worker. Der fachliche Stichtag bleibt davon unberührt, nur der Ausführungszeitpunkt streut.
+
+## P4b — Fremde Lasten auf geteiltem Server (hoch, sofern geteilt)
+
+Liegt das PMS auf einem Plesk-Server mit weiteren Projekten, konkurriert es mit unvorhersehbaren PHP-Lasten um CPU, Arbeitsspeicher und Ein-/Ausgabe. Die gesamte Latenzargumentation aus [04-api-first-und-performance.md](04-api-first-und-performance.md) setzt aber eine Maschine voraus, die nicht von fremden Spitzen durchgerüttelt wird.
+
+**Maßnahme:** Systemd-Quoten schützen nur die Nachbarn vor uns, nicht umgekehrt. Wirksam ist entweder eine Quotierung der übrigen Subscriptions über Plesk oder, verlässlicher, ein eigener Server ab dem ersten zahlenden Fremdkunden. Bis dahin das Latenzbudget im Betrieb messen und nicht nur in der CI, damit sichtbar wird, ob fremde Lasten durchschlagen.
 
 ## P5 — Worker verdrängt die API (hoch)
 
