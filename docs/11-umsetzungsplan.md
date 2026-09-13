@@ -86,6 +86,17 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 
 **Definition of Done:** Ein zusätzliches Zimmer erhöht die Kapazität aller künftigen Tage der Kategorie, eine Out-of-Order-Sperrung senkt sie im Zeitraum. Beides in einer Transaktion, beides mit Test.
 
+**Umgesetzt**, mit einem Ablauf für die Einrichtung, der in der ursprünglichen Planung fehlte. Jedes Hotel hat einen anderen Zuschnitt: ein Ferienhaus hat drei Wohnungen mit Namen, ein Stadthotel 180 Zimmer in sieben Kategorien nach Etagen, ein Gutshof hat Zimmer, Ferienwohnungen und Tagungsräume in einer Anlage. Es gibt keine Vorlage, die davon mehr als die Hälfte trifft. Vier Regeln folgen daraus:
+
+1. **Zimmer werden nicht gelöscht, sondern stillgelegt.** An einem Zimmer hängen Reservierungen, Rechnungen und Meldescheine. Ein `DELETE` würde entweder am Fremdschlüssel scheitern oder Geschichte vernichten. Ein stillgelegtes Zimmer zählt nicht mehr zur Kapazität, seine Vergangenheit bleibt lesbar.
+2. **Zimmer entstehen in Serie.** Niemand tippt 180 Zimmer einzeln. Die Eingabe ist „101 bis 130, erste Etage, alles Doppelzimmer": Vorsatz, Nummernbereich, führende Nullen, Nachsatz, und einzelne auszulassende Nummern für die 13 oder die 404. Der Vorsatz trägt auch Namen ohne Nummernlogik, etwa „Wohnung 1 Nord".
+3. **Vorschau vor dem Anlegen.** Dieselbe Regel wie beim Import: ohne `commit` wird nichts geschrieben, aber alles geprüft, und der Bericht nennt je Nummer, ob sie entstünde oder schon vergeben ist. Eine Serie von 180 Zimmern mit einem Zahlendreher im Muster ist mühsam zurückzunehmen.
+4. **Ein Prüfstand sagt, was noch fehlt.** Eine Einrichtung scheitert selten an einem schweren Fehler, sondern daran, dass ein Schritt vergessen wurde und die erste Buchung mit „nicht materialisiert" abgewiesen wird. `setup-status` nennt den nächsten fehlenden Schritt und unterscheidet **buchbar** (Gruppen, Zimmer, Inventar) von **vollständig** (dazu Steuern, Raten, Preise, Zahlungsarten, offener Geschäftstag).
+
+Zwei Änderungen werden bewusst abgewiesen statt still zugelassen: eine Gruppe oder ein Zimmer mit künftigen Reservierungen stillzulegen. Beides zöge Kapazität unter gebuchten Aufenthalten weg, ohne dass es jemandem auffiele. Erst umbuchen, dann stilllegen.
+
+Ein Umzug zwischen Gruppen verschiebt die Kapazität von der einen zur anderen; die Haussumme bleibt gleich. Der Trigger aus [Migration 0013](../packages/db/migrations/0013_capacity_bulk.sql) rechnet beide Seiten in einer Anweisung nach.
+
 ### AP 3 — Raten und Steuern
 
 - `rate_plan`, `rate_day`, `restriction_day`, `cancellation_policy`
@@ -262,7 +273,7 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
 |---|---|
 | AP 0 Grundgerüst | fertig |
 | AP 1 Mandanten und Rollen | fertig |
-| AP 2 Stammdaten | fertig |
+| AP 2 Stammdaten und Einrichtung | fertig, Zimmerserie mit Vorschau und Prüfstand |
 | AP 3 Raten und Restriktionen | fertig |
 | AP 4 Verfügbarkeit | fertig, Nebenläufigkeitstest besteht |
 | AP 5 Reservierungen | fertig |

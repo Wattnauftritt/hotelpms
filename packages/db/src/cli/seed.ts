@@ -78,9 +78,22 @@ const accountId = account.rows[0]!.id
 await schritt('Gaeste',
   `INSERT INTO guest (account_id, last_name, first_name, email, city, postal_code, country)
    SELECT $1,
-          (ARRAY['Petersen','Jansen','Hansen','Nissen','Carstens','Boysen','Thomsen',
-                 'Lorenzen','Matthiesen','Clausen','Schmidt','Mueller','Wagner',
-                 'Feddersen','Iversen'])[1 + (i % 15)],
+          -- Namensvielfalt aus zwei Silben und einer Endung: rund 4600
+          -- verschiedene Nachnamen. Eine Liste von fuenfzehn Namen ueber
+          -- 60 000 Gaeste macht jede Messung der Namenssuche wertlos, weil
+          -- jeder Suchbegriff ein Zwanzigstel des Bestandes trifft und der
+          -- Planer dann zu Recht die Tabelle liest statt den Index.
+          ((ARRAY['Peter','Jan','Hans','Nis','Carst','Boy','Thom','Loren','Matthi',
+                  'Claus','Schmidt','Muell','Wagn','Fedder','Iver','Brod','Ketel',
+                  'Tammen','Ricklef','Sier','Momm','Hauke','Broder','Tede','Wiebke'])
+            [1 + (i % 25)])
+          || ((ARRAY['sen','s','er','mann','sohn','ing','ke','strom','holm','feld',
+                     'beck','koog','deich','warft','hallig'])[1 + ((i / 25) % 15)])
+          || (CASE WHEN (i / 375) % 13 = 0 THEN ''
+                   ELSE '-' || (ARRAY['Andresen','Bahnsen','Dethlefsen','Erichsen',
+                                      'Friedrichsen','Godber','Harms','Ingwersen',
+                                      'Jessen','Knudsen','Lassen','Nommensen'])
+                        [1 + ((i / 375) % 12)] END),
           (ARRAY['Anke','Jan','Lena','Ole','Maren','Sven','Birte','Kai','Silke',
                  'Torben'])[1 + (i % 10)],
           'gast' || i || '@example.invalid',
@@ -379,10 +392,18 @@ await messen('Belegungsplan 30 Tage, alle Zimmer',
            AND res.status IN ('Confirmed','InHouse')
            AND res.arrival < current_date + 30 AND res.departure > current_date
     WHERE r.property_id = $1 AND r.active ORDER BY r.code`, [p1])
-await messen('Gastsuche ueber Namensteil',
-  `SELECT id, last_name, first_name FROM guest
-    WHERE account_id = $1 AND last_name % 'Matthies'
-    ORDER BY similarity(last_name, 'Matthies') DESC LIMIT 20`, [accountId])
+// Die Form der Abfrage entscheidet, nicht der Index allein: der
+// Abstandsoperator laesst den GiST-Index sortiert liefern und nach zwanzig
+// Zeilen aufhoeren (Migration 0015). Beide Fassungen werden gemessen, damit
+// der Unterschied nachpruefbar bleibt.
+await messen('Gastsuche, naechste Nachbarn ueber Index',
+  `SELECT id, last_name FROM guest
+    WHERE status <> 'anonymized' AND last_name % 'Matthiesen'
+    ORDER BY last_name <-> 'Matthiesen' LIMIT 20`, [])
+await messen('Gastsuche, alle Treffer sortieren (Vergleich)',
+  `SELECT id, last_name FROM guest
+    WHERE account_id = $1 AND last_name % 'Matthiesen'
+    ORDER BY similarity(last_name, 'Matthiesen') DESC LIMIT 20`, [accountId])
 await messen('Anreiseliste eines Tages',
   `SELECT r.public_ref, g.last_name FROM reservation r
      LEFT JOIN guest g ON g.id = r.primary_guest_id

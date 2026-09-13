@@ -9,6 +9,7 @@ import { housekeepingRoutes } from './housekeeping.js'
 import { registrationRoutes } from './registrations.js'
 import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
+import { setupRoutes } from './setup.js'
 import { openApiRoutes } from './openapi.js'
 
 export function registerAllRoutes(app: FastifyInstance): void {
@@ -22,6 +23,7 @@ export function registerAllRoutes(app: FastifyInstance): void {
   registrationRoutes(app)
   reportRoutes(app)
   importRoutes(app)
+  setupRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }

@@ -131,14 +131,41 @@ export function guestRoutes(app: FastifyInstance): void {
       }
       const limit = Math.min(Number(q.limit ?? 20) || 20, 100)
       return tx(req.pool, req, async client => {
-        // Eine Abfrage, Trigramm-Index, feste Obergrenze. Die Rezeption tippt
-        // waehrend der Gast am Tresen steht (D2, Dokument 13).
-        const { rows } = await client.query<GuestRow>(
-          `SELECT ${FIELDS} FROM guest
-            WHERE status <> 'anonymized'
-              AND (last_name % $1 OR email % $1 OR last_name ILIKE $1 || '%')
-            ORDER BY similarity(last_name, $1) DESC, last_name
-            LIMIT $2`, [term, limit])
+        /*
+         * Eine Abfrage, feste Obergrenze, und vor allem: **kein
+         * Sortierschritt ueber alle Treffer**.
+         *
+         * `ORDER BY last_name <-> $1` laesst den GiST-Trigramm-Index die
+         * naechsten Nachbarn der Reihe nach liefern; der Scan hoert nach
+         * `limit` Zeilen auf. Die Vorgaengerfassung sortierte nach
+         * `similarity(...) DESC` und musste dafuer jeden Treffer holen: bei
+         * einem haeufigen Namen Tausende Zeilen fuer zwanzig Ausgaben, und
+         * ausgerechnet bei "Mueller" am langsamsten (Migration 0015).
+         *
+         * Die E-Mail wird nicht unscharf gesucht, sondern von vorn getippt,
+         * und laeuft deshalb ueber einen eigenen, eigenstaendig begrenzten
+         * Zweig statt ueber ein ODER, das beide Indizes ausschliessen wuerde.
+         */
+        const { rows } = await client.query<GuestRow & { dist: number }>(
+          `WITH nach_name AS (
+             SELECT ${FIELDS}, (last_name <-> $1) AS dist
+               FROM guest
+              WHERE status <> 'anonymized' AND last_name % $1
+              ORDER BY last_name <-> $1
+              LIMIT $2
+           ), nach_email AS (
+             SELECT ${FIELDS}, 0.0 AS dist
+               FROM guest
+              WHERE status <> 'anonymized' AND email IS NOT NULL
+                AND lower(email) LIKE lower($1) || '%'
+              LIMIT $2
+           ), zusammen AS (
+             SELECT DISTINCT ON (id) *
+               FROM (SELECT * FROM nach_name UNION ALL SELECT * FROM nach_email) k
+              ORDER BY id, dist
+           )
+           SELECT * FROM zusammen ORDER BY dist, last_name LIMIT $2`,
+          [term, limit])
         return { guests: rows.map(present) }
       })
     }
@@ -474,8 +501,8 @@ export function guestRoutes(app: FastifyInstance): void {
         const { rows } = await client.query(
           `SELECT public_ref AS "companyRef", name, vat_id AS "vatId", city,
                   payment_terms_days AS "paymentTermsDays"
-             FROM company WHERE active AND (name % $1 OR name ILIKE $1 || '%')
-            ORDER BY similarity(name, $1) DESC, name LIMIT 50`, [term])
+             FROM company WHERE active AND name % $1
+            ORDER BY name <-> $1 LIMIT 50`, [term])
         return { companies: rows }
       })
     }
