@@ -34,9 +34,10 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 
 | Entität | Felder (Auswahl) | Anmerkung |
 |---------|------------------|-----------|
-| `Guest` | Name, Geburtsdatum, Anschrift, Staatsangehörigkeit, E-Mail, Telefon, Sprache, Präferenzen, Notizen, Ausweisdaten (Typ, Nummer, kein Scan) | Personenbezogen, Löschkonzept nötig |
+| `Guest` | **Account**, Name, Geburtsdatum, Anschrift, Staatsangehörigkeit, E-Mail, Telefon, Sprache, Präferenzen, Ausweisdaten (Typ, Nummer verschlüsselt, kein Scan) | Je Account, nicht je Property (Entscheidung 13). Personenbezogen, Löschkonzept nötig |
+| `GuestPropertyNote` | Property, Guest, Text | Was ein einzelnes Haus über den Gast vermerkt, bleibt bei diesem Haus |
 | `Company` | Name, Anschrift, USt-ID, Zahlungsziel, Raten-Vereinbarungen, Rechnungs-E-Mail | City-Ledger-Kunde |
-| `User` | Name, Rolle, Property-Zugriff | Mitarbeitende; jedes Ereignis trägt die User-ID |
+| `User` | E-Mail, Passwort, TOTP, Arbeitsplatz-PIN, Rollen je Account und je Property | Mitarbeitende und Plattformpersonal; jedes Ereignis trägt die User-ID. Siehe [14-benutzerrollen.md](14-benutzerrollen.md) |
 
 ### Buchung und Aufenthalt
 
@@ -229,6 +230,8 @@ Stand September 2026, beantwortet vom Auftraggeber.
 | 10 | Nachrüstbarkeit des Kassenbuchs | **Offen halten, nicht vorbauen.** Das Backend muss ein Kassenbuch später additiv aufnehmen können, ohne Umbau. Kein ungenutztes Gerüst. Siehe unten |
 | 11 | Betrieb | **Eigene VM auf dem vorhandenen Proxmox-Host**, ohne Plesk. Der bestehende Plesk-Server behält seine Projekte und bleibt unberührt. Siehe [10-systemarchitektur.md](10-systemarchitektur.md) |
 | 12 | Reverse Proxy und TLS | **Caddy.** Automatische Zertifikate ersetzen, was vorher Plesk übernommen hat |
+| 13 | Gästeprofil | **Je Account, nicht je Property.** Die Modellgrenze fällt mit der Datenschutzgrenze zusammen. Hausbezogene Notizen bleiben je Property. Wer strikte Trennung will, bekommt zwei Accounts. Begründung in B8 von [13-gesamtreview.md](13-gesamtreview.md) |
+| 14 | Benutzerrollen | **Fester Berechtigungskatalog, Systemrollen auf drei Ebenen**, Support-Sitzung als einziger Weg zu Kundendaten für uns. Siehe [14-benutzerrollen.md](14-benutzerrollen.md) |
 
 ### Was daraus folgt
 

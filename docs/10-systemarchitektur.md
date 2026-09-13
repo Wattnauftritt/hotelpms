@@ -99,7 +99,7 @@ Auszug der tragenden Tabellen. Vollständige Definition entsteht in Arbeitspaket
 
 ### Konventionen
 
-- Jede Tabelle trägt `property_id` (Ausnahme: `account`, `property`, `user`).
+- Jede Tabelle trägt `property_id`. Ausnahmen: `account`, `property`, `user` und die Rollentabellen, sowie **`guest` mit `account_id`** nach Entscheidung 13. RLS-Richtlinien entsprechend auf `account_id` beziehungsweise `user_id`.
 - Geldbeträge als `bigint` in Cent, dazu `currency char(3)`.
 - Aufenthaltsdaten als `date`, Zeitpunkte als `timestamptz` in UTC.
 - Primärschlüssel als `bigint generated always as identity`.
@@ -192,6 +192,41 @@ CREATE INDEX reservation_active_range
   ON reservation (property_id, departure, arrival)
   WHERE status IN ('Optional','Confirmed','InHouse');
 ```
+
+### Gast, je Account
+
+```sql
+CREATE TABLE guest (
+  id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id         bigint NOT NULL REFERENCES account(id),   -- nicht property_id
+  public_ref         text   NOT NULL UNIQUE,
+  last_name          text   NOT NULL,
+  first_name         text,
+  email              text,
+  phone              text,
+  birth_date         date,
+  nationality        char(2),
+  id_document_type   text,
+  id_document_number_enc bytea,        -- AES-GCM, siehe C4 in Dokument 13
+  id_document_key_version smallint,
+  status             text NOT NULL DEFAULT 'active',   -- active, anonymized, blocked
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX guest_last_name_trgm ON guest USING gin (last_name gin_trgm_ops);
+CREATE INDEX guest_email_trgm     ON guest USING gin (email gin_trgm_ops);
+
+CREATE TABLE guest_property_note (      -- bleibt je Haus
+  id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  property_id bigint NOT NULL,
+  guest_id    bigint NOT NULL REFERENCES guest(id),
+  note        text   NOT NULL,
+  created_by  bigint NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+```
+
+RLS auf `guest` prüft `account_id = ANY(app.account_ids)`, auf `guest_property_note` wie überall `property_id`. Dublettenerkennung und DSGVO-Löschung arbeiten accountweit.
 
 ### Geld
 

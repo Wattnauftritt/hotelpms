@@ -74,7 +74,9 @@ Nach § 13 Abs. 1 Nr. 1a UStG entsteht die Umsatzsteuer auf eine Anzahlung mit V
 
 **Korrektur:** Tabelle `reservation_occupant` mit Alter zum Anreisetag statt Zähler. Das ist ohnehin die Struktur, die der Meldeschein für Mitreisende braucht.
 
-## B8 — Gästeprofil ist je Property, Ketten brauchen es je Account (Entscheidung)
+## B8 — Gästeprofil ist je Property, Ketten brauchen es je Account (entschieden)
+
+> **Entschieden als Entscheidung 13:** je Account. Datenmodell in Dokument 10 nachgezogen, Rollenmodell in Dokument 14.
 
 Entscheidung 2 schließt Multi-Property ein. Ein Stammgast einer Kette mit fünf Häusern ist derzeit fünf verschiedene Datensätze. `guest.property_id NOT NULL` verhindert ein gemeinsames Profil, und RLS auf `property_id` würde es sowieso verbergen.
 
@@ -281,7 +283,7 @@ Punkte, die die Struktur betreffen. Nachträglich sind sie Datenmigrationen.
 | B5 | Rundungsregel: Steuer je Satzgruppe auf der Rechnung | AP 7 |
 | B6 | Aussteller- und Empfänger-Momentaufnahme auf `invoice` | AP 7, Schema jetzt |
 | B7 | `reservation_occupant` statt Zähler | AP 5, Schema jetzt |
-| **B8** | **Gästeprofil je Account statt je Property** | **Entscheidung des Auftraggebers vor AP 6** |
+| B8 | Gästeprofil je Account statt je Property | **Entschieden**, Entscheidung 13 |
 | C1 | `public_ref` auf allen nach außen sichtbaren Entitäten | AP 0, Schema jetzt |
 | C2 | `node-oidc-provider` als Autorisierungsserver | AP 1 |
 | C5 | `app.user_id` je Transaktion, vom Audit-Trigger gelesen | AP 0 |

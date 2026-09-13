@@ -61,7 +61,11 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 
 ### AP 1 — Mandanten, Nutzer, Zugriff
 
-- `account`, `property`, `user`, `role`, `permission`, `user_property_role`
+- `account`, `property`, `user`, `role`, `permission`, `role_permission`, `user_account_role`, `user_property_role`, `support_session`, `oauth_client`, nach [14-benutzerrollen.md](14-benutzerrollen.md)
+- Berechtigungskatalog als Seed, dreizehn Systemrollen für Hotels, vier für die Plattform
+- Arbeitsplatz-Anmeldung mit persönlicher PIN für geteilte Rezeptions-PCs und Tablets
+- Support-Sitzung mit Freigabe durch den Kunden, Ablauf und `support_session_id` im Audit-Log
+- Einladungsfluss statt Nutzeranlage durch uns
 - Argon2id, Anmeldung, Sitzungen, Sperrung nach Fehlversuchen
 - OAuth 2.0: Authorization Code + PKCE und Client Credentials
 - Scopes und Rechteprüfung als Middleware
@@ -72,7 +76,7 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Sitzungen in PostgreSQL mit Aufräumjob, eigene RLS-Richtlinien für `session`, `user`, `account`, `oauth_client` (C6)
 - Ratenbegrenzung: Caddy je IP am Rand, API je Client-ID im Prozess (C7)
 
-**Definition of Done:** Ein Test weist nach, dass ein Token für Property A auf keiner Route Daten von Property B erhält, auch nicht bei manipuliertem Pfadparameter. Ein zweiter Test weist nach, dass RLS auch bei einer absichtlich fehlenden `WHERE`-Bedingung greift.
+**Definition of Done:** Ein Test weist nach, dass ein Token für Property A auf keiner Route Daten von Property B erhält, auch nicht bei manipuliertem Pfadparameter. Ein zweiter Test weist nach, dass RLS auch bei einer absichtlich fehlenden `WHERE`-Bedingung greift. Ein dritter weist nach, dass ein Plattform-Admin **ohne** aktive Support-Sitzung auf keiner Route eine einzige Kundenzeile erhält. Der generische Berechtigungstest läuft mit jeder Systemrolle gegen jede Route.
 
 ### AP 2 — Inventar
 
@@ -129,7 +133,7 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Löschkonzept: Sperren und Anonymisieren statt Löschen
 - **DSGVO-Auskunft** als Job, Archiv aller Daten zu einer Person (C9)
 - Trigramm-Indizes auf Name, E-Mail, Telefon (D2)
-- **Voraussetzung: Entscheidung B8 zum Gästeprofil je Account ist getroffen**
+- Gästeprofil je Account, hausbezogene Notizen je Property (Entscheidung 13)
 
 **Definition of Done:** Eine Löschanfrage nach DSGVO anonymisiert den Gast, lässt die Rechnungen mit historischem Namen bestehen und ist protokolliert.
 
