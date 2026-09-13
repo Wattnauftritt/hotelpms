@@ -11,10 +11,16 @@ import { registrationRoutes } from './registrations.js'
 import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
 import { setupRoutes } from './setup.js'
+import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
 import { webhookRoutes } from './webhooks.js'
 import { openApiRoutes } from './openapi.js'
 
-export function registerAllRoutes(app: FastifyInstance): void {
+export interface RouteOverrides {
+  /** Nur fuer Tests: ersetzt Aussenanbindungen, ohne echte Netzwerkaufrufe. */
+  payments?: PaymentRouteOverrides
+}
+
+export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverrides = {}): void {
   healthRoutes(app)
   authRoutes(app)
   availabilityRoutes(app)
@@ -27,6 +33,7 @@ export function registerAllRoutes(app: FastifyInstance): void {
   reportRoutes(app)
   importRoutes(app)
   setupRoutes(app)
+  paymentsRoutes(app, overrides.payments)
   webhookRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)

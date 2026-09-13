@@ -11,6 +11,10 @@ declare module 'fastify' {
   interface FastifyRequest {
     principal: Principal
     pool: Pool
+    /** Roher Rumpf vor dem Parsen. Der Stripe-Webhook braucht genau diese
+     *  Bytes fuer die Signaturpruefung; ein neu serialisiertes JSON waere
+     *  nicht mehr dieselbe Zeichenkette. */
+    rawBody: Buffer
   }
 }
 
@@ -47,6 +51,23 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
   // die Felder im onRequest-Hook, deklariert wird hier nur der Platz.
   app.decorateRequest('principal')
   app.decorateRequest('pool')
+  app.decorateRequest('rawBody')
+
+  // Ersetzt den eingebauten JSON-Parser nur soweit, dass der rohe Rumpf
+  // zusaetzlich erhalten bleibt. Ohne das koennte kein Aufrufer, der eine
+  // Signatur ueber den Rumpf prueft (Stripe-Webhook), das je nachweisen:
+  // ein erneut serialisiertes JSON ist nicht mehr byteidentisch mit dem
+  // signierten Original.
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' },
+    (req, body: Buffer, done) => {
+      req.rawBody = body
+      if (body.length === 0) { done(null, undefined); return }
+      try {
+        done(null, JSON.parse(body.toString('utf8')))
+      } catch (err) {
+        done(err as Error, undefined)
+      }
+    })
 
   app.addHook('onRequest', async (req) => {
     req.pool = pool

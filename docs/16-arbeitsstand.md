@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 278 Tests, 21 Migrationen.
+Stand: 13. September 2026. 289 Tests, 22 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -17,7 +17,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
 | AP 5 Reservierungen | fertig | `0009`, `routes/reservations.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
-| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0021`, `routes/billing.ts` |
+| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0022`, `routes/billing.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
 | AP 9 Housekeeping | fertig | `0011`, `routes/housekeeping.ts` |
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
@@ -27,7 +27,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 13 Integrationen | **teilweise** | Webhooks fertig (`0020`, `routes/webhooks.ts`, `jobs/webhookDelivery.ts`); offen Aufgaben 5 bis 7 |
 | AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
 
-**70 Routen**, alle mit deklarierter Berechtigung, davon sechs ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. (Die Zahl stand lange auf 52 und war schon vor den Webhooks nicht mehr richtig; sie ist jetzt aus der Routenregistrierung gezählt.)
+**72 Routen**, alle mit deklarierter Berechtigung, davon sieben ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. (Die Zahl stand lange auf 52 und war schon vor den Webhooks nicht mehr richtig; sie ist jetzt aus der Routenregistrierung gezählt.)
 
 ### Was das System nachweislich kann
 
@@ -56,7 +56,7 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 **Warum.** Die B2B-Ausstellungspflicht kommt gestaffelt bis 2028. ZUGFeRD ist PDF/A-3 mit eingebettetem CII-XML nach EN 16931. Ohne das sind Firmenrechnungen ab dem Stichtag nicht mehr verkehrsfähig (E3 in Dokument 13).
 
-**Wo es liegt.** `packages/domain/src/invoiceCii.ts` (XML und die Geschäftsregeln der Norm), `apps/worker/src/pdf/` (Blatt und PDF/A-3), `apps/worker/src/jobs/invoiceDocument.ts` (Erzeugung), Migration `0021` (Ablage), `GET /v1/invoices/:invoiceRef/pdf` (Auslieferung).
+**Wo es liegt.** `packages/domain/src/invoiceCii.ts` (XML und die Geschäftsregeln der Norm), `apps/worker/src/pdf/` (Blatt und PDF/A-3), `apps/worker/src/jobs/invoiceDocument.ts` (Erzeugung), Migration `0022` (Ablage), `GET /v1/invoices/:invoiceRef/pdf` (Auslieferung).
 
 **Was daraus entschieden wurde.**
 

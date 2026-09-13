@@ -61,6 +61,10 @@ export const Errors = {
   idempotencyInFlight: () =>
     new AppError(409, 'urn:hotelpms:idempotency_in_flight', 'Anfrage laeuft bereits',
       'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.'),
+  notConfigured: (detail: string) =>
+    new AppError(503, 'urn:hotelpms:not_configured', 'Nicht eingerichtet', detail),
+  invalidSignature: (detail: string) =>
+    new AppError(400, 'urn:hotelpms:invalid_signature', 'Signatur ungueltig', detail),
   // Der Beleg entsteht nach dem Festschreiben im Worker, nicht in derselben
   // Transaktion: die haelt die Zaehlerzeile der Rechnungsnummer gesperrt.
   // Ein eigener Fehlertyp, damit die Oberflaeche zwischen "gibt es nicht"
