@@ -167,16 +167,17 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 - Reservierungen mit Statusmaschine, Zimmerplan (Tape Chart), Anreise-/Abreise-/Hausliste
 - Gäste und Firmen, Meldeschein mit elektronischer Unterschrift
 - Folios, Charges, Payments (Bar, Karte extern erfasst, Überweisung), Routing, Rechnung mit fortlaufender Nummer, Storno
+- **Kassenbuch: Kassen, Schichten, Bewegungen, Zählprotokoll, Kassenabschluss**, siehe [09-kassenbuch.md](09-kassenbuch.md)
+- **Cloud-TSE-Anbindung und DSFinV-K-Export.** Ohne TSE darf kein Betrieb produktiv Bargeld über das System erfassen, siehe [06-fiskalisierung.md](06-fiskalisierung.md)
 - USt-Aufteilung 7 % / 19 %, Kurtaxe-Regel
-- Housekeeping-Status, automatischer Nachtlauf
+- Housekeeping-Status, automatischer Nachtlauf inklusive Auslösen fälliger Kassenabschlüsse
 - Audit-Log, Rollen, GoBD-Export (CSV mit Strukturbeschreibung)
 - Rezeptions-Web-App
 
-### Stufe 2: Verkaufen und kassieren
+### Stufe 2: Verkaufen und automatisieren
 
 - ARI-Schnittstelle für Channel Manager (Verfügbarkeit, Preise, Restriktionen raus; Reservierungen rein)
 - Payment-Gateway mit Token-Speicherung, Anzahlungen, Pre-Authorisierung, Pay-by-Link
-- Cloud-TSE für Barzahlungen, DSFinV-K-Export
 - E-Mail-Kommunikation (Bestätigung, Pre-Arrival, Rechnung)
 - Eigene Booking Engine
 - Blocks und Gruppen mit Sammelrechnung
