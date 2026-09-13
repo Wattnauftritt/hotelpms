@@ -497,11 +497,55 @@ describe('Berichte', () => {
       headers: auth(admin.sessionId) })
     expect(r.statusCode).toBe(200)
     const k = (json(r) as unknown as { days: Array<{ sold: number; adrCent: number
-      revparCent: number; occupancyPercent: number }> }).days[0]!
+      revparCent: number; occupancyPercent: number; source: string }> }).days[0]!
     expect(k.sold).toBe(2)
     expect(k.occupancyPercent).toBe(40)
     expect(k.adrCent).toBe(11000)        // 22000 Cent auf 2 verkaufte Zimmer
     expect(k.revparCent).toBe(4400)      // 22000 Cent auf 5 verfuegbare Zimmer
+    expect(k.source).toBe('auf den Buechern')
+  })
+
+  /**
+   * Der Kern des Befunds aus dem Saatlauf: `inventory_day.sold` ist ein
+   * laufender Zaehler und faellt nach der Abreise auf null. Die Auslastung
+   * der Vergangenheit muss aus der Aufzeichnung des Nachtlaufs kommen,
+   * sonst meldet jede Jahresauswertung nahezu null.
+   */
+  it('nimmt die Auslastung der Vergangenheit aus der Aufzeichnung', async () => {
+    const r = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-09-28',
+      departure: '2026-09-30', status: 'InHouse', resourceId: rooms[0]! })
+    const f = await owner.query<{ id: number }>(
+      `SELECT id FROM folio WHERE reservation_id = $1`, [r.reservationId])
+    await owner.query(
+      `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                           net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account)
+       VALUES ($1,$2,'2026-09-28','Uebernachtung',1,10000,700,10700,700,'8300')`,
+      [fx.propertyId, f.rows[0]!.id])
+    await owner.query(
+      `UPDATE reservation SET status = 'CheckedOut', checked_out_at = now() WHERE id = $1`,
+      [r.reservationId])
+    // Der Zaehler ist fuer diesen Tag jetzt wieder null.
+    await owner.query(`SELECT inventory_release($1,$2,'2026-09-28','2026-09-30',1)`,
+      [fx.propertyId, catId])
+    await owner.query(`SELECT record_day_statistics($1, '2026-09-28')`, [fx.propertyId])
+
+    const kpi = await app.inject({
+      method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/kpi?from=2026-09-28&to=2026-09-28`,
+      headers: auth(admin.sessionId) })
+    const tag = (JSON.parse(kpi.body) as { days: Array<{ sold: number; source: string
+      occupancyPercent: number; adrCent: number }> }).days[0]!
+    expect(tag.source).toBe('aufgezeichnet')
+    expect(tag.sold).toBe(1)
+    expect(tag.occupancyPercent).toBe(20)
+    expect(tag.adrCent).toBe(10_000)
+
+    // Gegenprobe: der laufende Zaehler weiss von diesem Tag nichts mehr.
+    const zaehler = await owner.query<{ sold: number }>(
+      `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=0
+         AND date='2026-09-28'`, [fx.propertyId])
+    expect(zaehler.rows[0]!.sold).toBe(0)
   })
 
   it('zaehlt Ankuenfte und Uebernachtungen je Wohnsitzland', async () => {

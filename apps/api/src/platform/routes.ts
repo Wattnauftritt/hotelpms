@@ -18,6 +18,12 @@ export interface RouteSpec {
   /** Name des Pfad- oder Query-Parameters, der die Property benennt. */
   propertyParam?: string
   summary: string
+  /**
+   * Abweichende Obergrenze fuer den Rumpf. Der Standard von einem Megabyte
+   * ist fuer Fachaufrufe reichlich und fuer eine Importdatei zu wenig:
+   * 20 000 Reservierungen als CSV sind mehrere Megabyte.
+   */
+  bodyLimit?: number
   handler: (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   schema?: any
@@ -48,6 +54,7 @@ export function registerRoute(app: FastifyInstance, spec: RouteSpec): void {
     method: spec.method,
     url: spec.url,
     ...(spec.schema ? { schema: spec.schema } : {}),
+    ...(spec.bodyLimit !== undefined ? { bodyLimit: spec.bodyLimit } : {}),
     preHandler: async (req) => {
       if (spec.permission === null) return
       const principal = req.principal as Principal

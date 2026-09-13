@@ -47,7 +47,10 @@ async function snapshot(propertyId: number): Promise<unknown> {
       `SELECT id, status FROM availability_block WHERE property_id=$1 ORDER BY id`),
     steps: await q(
       `SELECT business_date::text, step, detail FROM night_audit_step
-        WHERE property_id=$1 ORDER BY business_date, step`)
+        WHERE property_id=$1 ORDER BY business_date, step`),
+    stats: await q(
+      `SELECT date::text, capacity, sold, arrivals, departures, room_revenue_cent
+         FROM business_day_stat WHERE property_id=$1 ORDER BY date`)
   }
 }
 
@@ -110,7 +113,8 @@ describe('Nachtlauf', () => {
     expect(r!.businessDate).toBe(TAG)
     expect(r!.skipped).toEqual([])
     expect(r!.steps).toEqual({
-      rollover: 1, post_accommodation: 1, no_shows: 1, expire_options: 1, release_blocks: 1
+      rollover: 1, post_accommodation: 1, no_shows: 1, expire_options: 1,
+      release_blocks: 1, statistics: 1
     })
 
     const tage = await owner.query<{ date: string; status: string }>(
@@ -191,7 +195,8 @@ describe('Nachtlauf', () => {
     // Der Unterschied ist genau der, der sein soll: nichts wurde neu getan.
     expect(erster!.skipped).toEqual([])
     expect(zweiter!.skipped).toEqual(
-      ['rollover', 'post_accommodation', 'no_shows', 'expire_options', 'release_blocks'])
+      ['rollover', 'post_accommodation', 'no_shows', 'expire_options', 'release_blocks',
+       'statistics'])
   })
 
   it('bucht die Logis auch nach einem Abbruch nur einmal', async () => {
@@ -202,7 +207,7 @@ describe('Nachtlauf', () => {
     await run({ businessDate: TAG })
     await owner.query(
       `DELETE FROM night_audit_step WHERE property_id=$1 AND business_date=$2::date
-         AND step IN ('no_shows','expire_options','release_blocks')`,
+         AND step IN ('no_shows','expire_options','release_blocks','statistics')`,
       [fx.propertyId, TAG])
 
     // Ohne Vorgabe des Datums muss der Lauf den unvollstaendigen Tag finden,

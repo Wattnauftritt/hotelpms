@@ -137,6 +137,11 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 
 **Definition of Done:** Eine Löschanfrage nach DSGVO anonymisiert den Gast, lässt die Rechnungen mit historischem Namen bestehen und ist protokolliert.
 
+**Umgesetzt.** Zwei Präzisierungen aus der Umsetzung:
+
+- **Die Dublettenerkennung warnt, sie blockiert nicht.** Ein System, das das Anlegen verweigert, wird an der Rezeption mit „Müller2" umgangen, und dann stehen zwei Profile da statt einer Warnung. Die Antwort auf das Anlegen enthält die möglichen Dubletten samt Grund; die Entscheidung bleibt beim Menschen.
+- **Die Ausweisnummer liegt hinter einer eigenen Berechtigung und einer eigenen Anfrage.** Sie läuft nicht bei jeder Gastanzeige mit, wird standardmäßig maskiert geliefert, und jeder Abruf steht einzeln im Protokoll. Verschlüsselt mit AES-256-GCM und Schlüsselversion, damit eine Rotation ohne Stillstand möglich ist.
+
 ### AP 7 — Folio, Rechnung, GoBD
 
 - `folio`, `charge`, `settlement`, `payment_method`, `routing`
@@ -149,6 +154,8 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Entzug von UPDATE und DELETE auf den Finanztabellen für die Anwendungsrolle
 
 **Definition of Done:** Ein Test weist nach, dass die Anwendungsrolle eine festgeschriebene Rechnung nicht ändern kann, dass ein Rollback keine Nummernlücke erzeugt, und dass 20 gleichzeitige Check-outs 20 aufeinanderfolgende Nummern ergeben.
+
+**Umgesetzt**, mit einem Entwurfskonflikt, der erst beim Schreiben auffiel: `charge` ist Härtegrad 1 und damit unveränderlich, aber die Fakturierung muss `invoice_id` setzen dürfen. Gelöst in Migration 0012, die genau den Übergang von NULL auf einen Wert erlaubt und nichts sonst, abgesichert durch Trigger **und** spaltenweises GRANT. Ein Feld freizugeben, ohne den Rest der Zeile freizugeben, ist der einzige Weg, der die Unveränderlichkeit erhält.
 
 ### AP 8 — Nachtlauf und Jobs
 
@@ -221,6 +228,14 @@ Das Pilothaus hat am Starttag bereits Reservierungen für Monate. Ohne die geht 
 - Trockenlauf mit Bericht vor dem Übernehmen
 - Läuft durch dieselben Dienstfunktionen wie die Oberfläche, damit Inventar und Audit stimmen
 
+**Umgesetzt.** Drei Eigenschaften trennen einen Import von einem Datenunfall:
+
+1. **Der Trockenlauf ist der Regelfall.** Ohne `commit: true` wird nichts geschrieben, aber alles geprüft, und der Bericht ist derselbe. Technisch trägt ein Fehlerwurf das Ergebnis aus der Transaktion heraus und rollt sie dabei zurück; ein Ende mit `if (commit) COMMIT` ließe zu leicht eine Abzweigung offen, die doch schreibt.
+2. **Ganz oder gar nicht.** Eine einzige fehlerhafte Zeile rollt den gesamten Lauf zurück. Ein halb übernommener Bestand ist schlimmer als keiner, weil niemand weiß, welche Hälfte fehlt.
+3. **Dieselben Funktionen wie die Oberfläche.** Das Kontingent wird über `inventory_reserve` gebunden, nicht danebengeschrieben. Sonst stimmen die Zähler ab dem ersten Tag nicht.
+
+Dazu zwei Zugeständnisse an die Wirklichkeit: Datum als `TT.MM.JJJJ` **oder** ISO, Beträge als `1.234,50` **oder** `1234.50`. Das Altsystem liefert selten, was die Norm vorsieht.
+
 ### AP 14 — Datenimport aus Altsystemen
 
 Aus [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md): Der Zielkunde ist der Migrationskandidat. Ohne Importer gewinnen wir keine Kunden.
@@ -240,6 +255,29 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
       │                                            └─▶ AP12 (parallel)
       └────────────────────────────────────────────── AP13, AP14 (später)
 ```
+
+### Stand der Umsetzung
+
+| Paket | Stand |
+|---|---|
+| AP 0 Grundgerüst | fertig |
+| AP 1 Mandanten und Rollen | fertig |
+| AP 2 Stammdaten | fertig |
+| AP 3 Raten und Restriktionen | fertig |
+| AP 4 Verfügbarkeit | fertig, Nebenläufigkeitstest besteht |
+| AP 5 Reservierungen | fertig |
+| AP 6 Gäste und Firmen | fertig |
+| AP 7 Folio und Rechnung | fertig, PDF/A-3 und ZUGFeRD offen |
+| AP 8 Nachtlauf | fertig, Definition of Done nachgewiesen |
+| AP 9 Housekeeping | fertig |
+| AP 10 Meldeschein | fertig |
+| AP 11 Berichte und Exporte | fertig, Kurtaxe offen |
+| AP 11b CSV-Import | fertig |
+| AP 12 Rezeptions-Oberfläche | offen |
+| AP 13 Integrationen | offen |
+| AP 14 Import aus Altsystemen | offen |
+
+Dazu quer über alle Pakete: die Schnittstellenbeschreibung nach OpenAPI 3.1 entsteht aus der Routenregistrierung, ein Vertragstest hält beide zusammen. Ein Saatlauf erzeugt vier Häuser zu je 250 Zimmern über drei Jahre und misst daran die Abfragen, die im Betrieb zählen.
 
 **Stufe 1 der Roadmap ist erreicht mit AP 0 bis 12 plus 11b.** Das ist das erste verkaufbare Produkt. Dazu aus Dokument 13 die Betriebsvoraussetzungen: Plattenverschlüsselung (C3), Schlüsselrotation als Betriebsdokument (C4), Redaktionsliste für Logs (C8), Trainingsmodus je Property (C11), Archivierung ausscheidender Betriebe mit Mandantenexport (E7).
 

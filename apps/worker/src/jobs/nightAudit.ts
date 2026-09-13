@@ -22,7 +22,8 @@ export interface NightAuditOptions {
 
 /** Reihenfolge ist Teil der Fachlichkeit, nicht Geschmack. */
 const STEPS = [
-  'rollover', 'post_accommodation', 'no_shows', 'expire_options', 'release_blocks'
+  'rollover', 'post_accommodation', 'no_shows', 'expire_options', 'release_blocks',
+  'statistics'
 ] as const
 type Step = (typeof STEPS)[number]
 
@@ -123,6 +124,7 @@ async function execute(
     case 'no_shows':          return noShows(client, propertyId, businessDate)
     case 'expire_options':    return expireOptions(client, propertyId, businessDate)
     case 'release_blocks':    return releaseBlocks(client, propertyId, businessDate)
+    case 'statistics':        return statistics(client, propertyId, businessDate)
   }
 }
 
@@ -252,7 +254,23 @@ async function releaseBlocks(
 }
 
 /**
- * Schritt 6: Pruefliste. Macht Auffaelligkeiten sichtbar und loest sie nicht.
+ * Schritt 6: Kennzahlen des geschlossenen Tages festhalten.
+ *
+ * Muss **nach** dem Buchen der Logis laufen, sonst fehlt der Erloes. Und es
+ * muss ueberhaupt geschehen: `inventory_day.sold` ist ein laufender Zaehler,
+ * der nach der Abreise zu Recht auf null faellt. Wer Kennzahlen der
+ * Vergangenheit daraus liest, bekommt eine Auslastung nahe null
+ * (Befund aus dem Saatlauf, Migration 0014).
+ */
+async function statistics(
+  client: PoolClient, propertyId: number, businessDate: string
+): Promise<number> {
+  await client.query(`SELECT record_day_statistics($1, $2::date)`, [propertyId, businessDate])
+  return 1
+}
+
+/**
+ * Schritt 7: Pruefliste. Macht Auffaelligkeiten sichtbar und loest sie nicht.
  * Ein Nachtlauf, der selbsttaetig Salden korrigiert, ist ein Nachtlauf, dem
  * am Morgen niemand mehr glaubt.
  */

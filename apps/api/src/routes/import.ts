@@ -274,6 +274,10 @@ export function importRoutes(app: FastifyInstance): void {
     permission: 'settings:property',
     propertyParam: 'propertyId',
     summary,
+    // 20 000 Reservierungen als CSV sind mehrere Megabyte. Mit dem Standard
+    // von einem Megabyte waere der Import genau dann unbrauchbar, wenn er
+    // gebraucht wird: bei der Uebernahme eines ganzen Hauses.
+    bodyLimit: 32 * 1024 * 1024,
     handler: async (req) => {
       const body = req.body as ImportBody
       const principal = req.principal as Principal

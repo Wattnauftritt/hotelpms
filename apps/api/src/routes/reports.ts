@@ -125,22 +125,34 @@ export function reportRoutes(app: FastifyInstance): void {
       checkRange(q.from, q.to)
 
       return tx(req.pool, req, async client => {
+        // Vergangenheit aus der Aufzeichnung, Zukunft aus dem Zaehler, in
+        // einer Abfrage zusammengesetzt. Die Grenze ist der offene
+        // Geschaeftstag: alles davor ist festgehalten, alles ab heute ist
+        // eine Vorschau auf den Stand der Buecher.
         const { rows } = await client.query<{
           date: string; capacity: number; sold: number; blocked: number
-          revenue_cent: number }>(
-          `SELECT i.date::text AS date, i.capacity, i.sold, i.blocked,
-                  COALESCE(u.revenue_cent, 0)::bigint AS revenue_cent
-             FROM inventory_day i
-             LEFT JOIN (
-               SELECT business_date, sum(net_cent) AS revenue_cent
-                 FROM charge
-                WHERE property_id = $1 AND revenue_account = '8300'
-                  AND business_date BETWEEN $2::date AND $3::date
-                GROUP BY business_date
-             ) u ON u.business_date = i.date
+          revenue_cent: number; quelle: string }>(
+          `WITH heute AS (
+             SELECT COALESCE((SELECT min(date) FROM business_day
+                               WHERE property_id = $1 AND status = 'open'),
+                             current_date) AS d
+           )
+           SELECT s.date::text AS date, s.capacity, s.sold, s.blocked,
+                  s.room_revenue_cent AS revenue_cent, 'aufgezeichnet' AS quelle
+             FROM business_day_stat s, heute
+            WHERE s.property_id = $1 AND s.date BETWEEN $2::date AND $3::date
+              AND s.date < heute.d
+           UNION ALL
+           SELECT i.date::text, i.capacity, i.sold, i.blocked,
+                  COALESCE((SELECT sum(c.net_cent) FROM charge c
+                             WHERE c.property_id = $1 AND c.business_date = i.date
+                               AND c.revenue_account = '8300'), 0)::bigint,
+                  'auf den Buechern'
+             FROM inventory_day i, heute
             WHERE i.property_id = $1 AND i.category_id = 0
               AND i.date BETWEEN $2::date AND $3::date
-            ORDER BY i.date`,
+              AND i.date >= heute.d
+           ORDER BY date`,
           [Number(propertyId), q.from, q.to])
 
         const days = rows.map(r => {
@@ -154,7 +166,10 @@ export function reportRoutes(app: FastifyInstance): void {
               : Math.round((r.sold / verfuegbar) * 10000) / 100,
             roomRevenueCent: r.revenue_cent,
             adrCent: r.sold === 0 ? 0 : Math.round(r.revenue_cent / r.sold),
-            revparCent: verfuegbar === 0 ? 0 : Math.round(r.revenue_cent / verfuegbar)
+            revparCent: verfuegbar === 0 ? 0 : Math.round(r.revenue_cent / verfuegbar),
+            // Ehrlich benennen, woher die Zahl kommt: die Vergangenheit ist
+            // festgehalten, die Zukunft ist ein Stand, der sich noch aendert.
+            source: r.quelle
           }
         })
 
