@@ -22,8 +22,8 @@ export interface NightAuditOptions {
 
 /** Reihenfolge ist Teil der Fachlichkeit, nicht Geschmack. */
 const STEPS = [
-  'rollover', 'post_accommodation', 'no_shows', 'expire_options', 'release_blocks',
-  'statistics'
+  'rollover', 'post_accommodation', 'post_city_tax', 'no_shows', 'expire_options',
+  'release_blocks', 'statistics'
 ] as const
 type Step = (typeof STEPS)[number]
 
@@ -121,6 +121,7 @@ async function execute(
   switch (step) {
     case 'rollover':          return rollover(client, propertyId, businessDate)
     case 'post_accommodation': return postAccommodation(client, propertyId, businessDate)
+    case 'post_city_tax':     return postCityTax(client, propertyId, businessDate)
     case 'no_shows':          return noShows(client, propertyId, businessDate)
     case 'expire_options':    return expireOptions(client, propertyId, businessDate)
     case 'release_blocks':    return releaseBlocks(client, propertyId, businessDate)
@@ -183,7 +184,23 @@ async function postAccommodation(
   return r.rowCount ?? 0
 }
 
-/** Schritt 3: No-Shows. Das Kontingent wird frei, die Reservierung bleibt. */
+/**
+ * Schritt 3: Kurtaxe und Bettensteuer der geschlossenen Nacht.
+ *
+ * Nach der Logis, weil eine prozentuale Bettensteuer auf dem Logiserlös
+ * aufsetzt. Die Regeln je Gemeinde stehen in `tax_rule`, die Rechnung macht
+ * die Datenbank in einer Anweisung: bei 250 belegten Zimmern wären 250
+ * Runden im Nachtlauf eine schlechte Idee (Migration 0016).
+ */
+async function postCityTax(
+  client: PoolClient, propertyId: number, businessDate: string
+): Promise<number> {
+  const r = await client.query<{ post_city_tax: number }>(
+    `SELECT post_city_tax($1, $2::date)`, [propertyId, businessDate])
+  return r.rows[0]!.post_city_tax
+}
+
+/** Schritt 4: No-Shows. Das Kontingent wird frei, die Reservierung bleibt. */
 async function noShows(
   client: PoolClient, propertyId: number, businessDate: string
 ): Promise<number> {
@@ -203,7 +220,7 @@ async function noShows(
 }
 
 /**
- * Schritt 4: Abgelaufene Optionen verfallen.
+ * Schritt 5: Abgelaufene Optionen verfallen.
  *
  * Die Frist wird gegen das **Ende des geschlossenen Geschaeftstags** geprueft,
  * nicht gegen now(). Zwei Gruende: ein Wiederholungslauf faende mit der Uhr
@@ -231,7 +248,7 @@ async function expireOptions(
   return abgelaufen.rowCount ?? 0
 }
 
-/** Schritt 5: Abgelaufene Kontingente freigeben, nur den nicht abgerufenen Rest. */
+/** Schritt 6: Abgelaufene Kontingente freigeben, nur den nicht abgerufenen Rest. */
 async function releaseBlocks(
   client: PoolClient, propertyId: number, businessDate: string
 ): Promise<number> {
@@ -254,7 +271,7 @@ async function releaseBlocks(
 }
 
 /**
- * Schritt 6: Kennzahlen des geschlossenen Tages festhalten.
+ * Schritt 7: Kennzahlen des geschlossenen Tages festhalten.
  *
  * Muss **nach** dem Buchen der Logis laufen, sonst fehlt der Erloes. Und es
  * muss ueberhaupt geschehen: `inventory_day.sold` ist ein laufender Zaehler,
@@ -270,7 +287,7 @@ async function statistics(
 }
 
 /**
- * Schritt 7: Pruefliste. Macht Auffaelligkeiten sichtbar und loest sie nicht.
+ * Schritt 8: Pruefliste. Macht Auffaelligkeiten sichtbar und loest sie nicht.
  * Ein Nachtlauf, der selbsttaetig Salden korrigiert, ist ein Nachtlauf, dem
  * am Morgen niemand mehr glaubt.
  */

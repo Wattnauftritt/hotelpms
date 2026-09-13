@@ -104,6 +104,22 @@ Ein Umzug zwischen Gruppen verschiebt die Kapazität von der einen zur anderen; 
 - `tax_rule`: Umsatzsteuer 7 und 19 Prozent, Kurtaxe je Gemeinde mit Ausnahmen
 - Massenpflege über einen Aufruf für einen Zeitraum
 
+**Kurtaxe umgesetzt** ([Migration 0016](../packages/db/migrations/0016_city_tax.sql)). Kommunal geregelt und deshalb in jeder Gemeinde anders. Aus den Satzungen, die in der Praxis vorkommen, ergeben sich fünf Achsen, und jede einzelne fehlt irgendwo, wenn man sie nicht von Anfang an vorsieht:
+
+| Achse | Warum sie nötig ist |
+|---|---|
+| Betrag je Person und Nacht, je Nacht, oder prozentual | Alle drei Formen kommen vor, letztere als Bettensteuer |
+| Altersfreigrenze | Fast jede Satzung nimmt Kinder aus; die Grenze liegt je nach Ort bei 6, 14, 16 oder 18 Jahren |
+| Geschäftsreisende | In vielen Städten ist die Übernachtungsteuer beruflich veranlasst nicht zu zahlen |
+| Obergrenze der Nächte | Viele Satzungen enden nach der 21. oder 28. Übernachtung |
+| Gültigkeitszeitraum | Sätze ändern sich zum Jahreswechsel, und eine Dezembernacht muss den alten Satz behalten |
+
+Die Altersfreigrenze ist der Grund, warum `reservation_occupant` das Alter führt und nicht bloß eine Anzahl Kinder (B7). Aus einer Anzahl lässt sich keine Grenze rechnen.
+
+Zwei Festlegungen, die nicht selbsterklärend sind: **ein Gast ohne Altersangabe gilt als erwachsen** — lieber zu viel erheben und auf Nachweis erlassen als zu wenig und bei der Prüfung nachzahlen. Und **ob die Abgabe selbst Umsatzsteuer trägt, ist ein Feld, keine Annahme im Code**: das ist Landesrecht und teils strittig.
+
+Der erklärte Reisezweck hängt am Aufenthalt, nicht am Gastprofil: derselbe Mensch reist im März beruflich und im Juli mit der Familie. Das System hält fest, was erklärt wurde; den Nachweis führt das Haus in seiner Akte.
+
 **Definition of Done:** Ein Preis-Push für 365 Tage über alle Kategorien läuft in einer Datenbankrunde und unter 300 Millisekunden. Die Steueraufteilung eines Paketpreises ist testgedeckt.
 
 ### AP 4 — Verfügbarkeit
@@ -285,7 +301,7 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
 | AP 0 Grundgerüst | fertig |
 | AP 1 Mandanten und Rollen | fertig |
 | AP 2 Stammdaten und Einrichtung | fertig, Zimmerserie mit Vorschau und Prüfstand |
-| AP 3 Raten und Restriktionen | fertig |
+| AP 3 Raten, Restriktionen, Steuern | fertig, Kurtaxe je Gemeinde |
 | AP 4 Verfügbarkeit | fertig, Nebenläufigkeitstest besteht |
 | AP 5 Reservierungen | fertig |
 | AP 6 Gäste und Firmen | fertig |
@@ -293,7 +309,7 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
 | AP 8 Nachtlauf | fertig, Definition of Done nachgewiesen |
 | AP 9 Housekeeping | fertig |
 | AP 10 Meldeschein | fertig |
-| AP 11 Berichte und Exporte | fertig, Kurtaxe offen |
+| AP 11 Berichte und Exporte | fertig |
 | AP 11b CSV-Import | fertig |
 | AP 12 Rezeptions-Oberfläche | fertig, Zimmerplan, Tagesgeschäft, Housekeeping, Einrichtung |
 | AP 13 Integrationen | offen |

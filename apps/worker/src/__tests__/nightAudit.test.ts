@@ -113,8 +113,8 @@ describe('Nachtlauf', () => {
     expect(r!.businessDate).toBe(TAG)
     expect(r!.skipped).toEqual([])
     expect(r!.steps).toEqual({
-      rollover: 1, post_accommodation: 1, no_shows: 1, expire_options: 1,
-      release_blocks: 1, statistics: 1
+      rollover: 1, post_accommodation: 1, post_city_tax: 0, no_shows: 1,
+      expire_options: 1, release_blocks: 1, statistics: 1
     })
 
     const tage = await owner.query<{ date: string; status: string }>(
@@ -195,8 +195,8 @@ describe('Nachtlauf', () => {
     // Der Unterschied ist genau der, der sein soll: nichts wurde neu getan.
     expect(erster!.skipped).toEqual([])
     expect(zweiter!.skipped).toEqual(
-      ['rollover', 'post_accommodation', 'no_shows', 'expire_options', 'release_blocks',
-       'statistics'])
+      ['rollover', 'post_accommodation', 'post_city_tax', 'no_shows', 'expire_options',
+       'release_blocks', 'statistics'])
   })
 
   it('bucht die Logis auch nach einem Abbruch nur einmal', async () => {
@@ -214,7 +214,7 @@ describe('Nachtlauf', () => {
     // nicht den frisch geoeffneten Folgetag.
     const wieder = await run({ now: NACH_MITTERNACHT })
     expect(wieder!.businessDate).toBe(TAG)
-    expect(wieder!.skipped).toEqual(['rollover', 'post_accommodation'])
+    expect(wieder!.skipped).toEqual(['rollover', 'post_accommodation', 'post_city_tax'])
 
     const c = await owner.query(
       `SELECT 1 FROM charge WHERE property_id=$1 AND reservation_id=$2`,
