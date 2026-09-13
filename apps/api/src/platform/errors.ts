@@ -64,5 +64,13 @@ export const Errors = {
   notConfigured: (detail: string) =>
     new AppError(503, 'urn:hotelpms:not_configured', 'Nicht eingerichtet', detail),
   invalidSignature: (detail: string) =>
-    new AppError(400, 'urn:hotelpms:invalid_signature', 'Signatur ungueltig', detail)
+    new AppError(400, 'urn:hotelpms:invalid_signature', 'Signatur ungueltig', detail),
+  // Der Beleg entsteht nach dem Festschreiben im Worker, nicht in derselben
+  // Transaktion: die haelt die Zaehlerzeile der Rechnungsnummer gesperrt.
+  // Ein eigener Fehlertyp, damit die Oberflaeche zwischen "gibt es nicht"
+  // und "kommt gleich" unterscheiden kann.
+  documentPending: () =>
+    new AppError(409, 'urn:hotelpms:document_pending', 'Beleg noch nicht erzeugt',
+      'Die Rechnung ist festgeschrieben, der Beleg wird gerade erzeugt. '
+      + 'Bitte in Kuerze erneut abrufen.')
 }

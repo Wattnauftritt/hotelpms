@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 259 Tests, 22 Migrationen.
+Stand: 13. September 2026. 306 Tests, 23 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -17,7 +17,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
 | AP 5 Reservierungen | fertig | `0009`, `0022`, `routes/reservations.ts`, `routes/blocks.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
-| AP 7 Folio und Rechnung | fertig bis auf ZUGFeRD | `0010`, `0012`, `0017`, `routes/billing.ts` |
+| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0023`, `routes/billing.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
 | AP 9 Housekeeping | fertig | `0011`, `routes/housekeeping.ts` |
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
@@ -27,7 +27,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 13 Integrationen | **teilweise** | Webhooks (`0020`, `routes/webhooks.ts`, `jobs/webhookDelivery.ts`) und Payments (`0021`, `routes/payments.ts`) fertig; offen Aufgaben 5 und 7 |
 | AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
 
-**74 Routen**, alle mit deklarierter Berechtigung, davon sieben ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**75 Routen**, alle mit deklarierter Berechtigung, davon sieben ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -42,6 +42,8 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Ein Import mit einer fehlerhaften Zeile schreibt gar nichts.
 - Eine zurückgerollte Fachbuchung stellt kein Ereignis zu; ein Empfänger, der dreimal mit 500 antwortet, wird mit wachsendem Abstand erneut bedient und danach stillgelegt.
 - Ein Abruf aus einem Kontingent gelingt auch im vollen Haus, storniert fällt der Platz an die Gruppe zurück, und die Freigabe gibt nur den nicht abgerufenen Rest frei.
+- Der Beleg zu einer Rechnung ist ein PDF/A-3 mit eingebettetem CII-XML nach EN 16931; das XML kommt beim Empfänger byteweise so an, wie es erzeugt wurde.
+- Derselbe Beleg zweimal erzeugt ergibt dieselben Bytes, und ein bereits erzeugter wird nie durch einen zweiten ersetzt.
 
 ---
 
@@ -51,20 +53,23 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 ---
 
-### Aufgabe 1 — ZUGFeRD und PDF/A-3 für die Rechnung
+### Aufgabe 1 — ZUGFeRD und PDF/A-3 für die Rechnung — **erledigt**
 
 **Warum.** Die B2B-Ausstellungspflicht kommt gestaffelt bis 2028. ZUGFeRD ist PDF/A-3 mit eingebettetem CII-XML nach EN 16931. Ohne das sind Firmenrechnungen ab dem Stichtag nicht mehr verkehrsfähig (E3 in Dokument 13).
 
-**Umfang.**
-- Erzeugung des CII-XML aus `invoice`, `charge` und den beiden Momentaufnahmen. Profil EN 16931, mindestens die Pflichtfelder BT-1 bis BT-155.
-- PDF-Erzeugung im Worker, danach Konvertierung nach PDF/A-3 und Einbettung des XML.
-- Ein Endpunkt, der die Rechnung als PDF liefert.
+**Wo es liegt.** `packages/domain/src/invoiceCii.ts` (XML und die Geschäftsregeln der Norm), `apps/worker/src/pdf/` (Blatt und PDF/A-3), `apps/worker/src/jobs/invoiceDocument.ts` (Erzeugung), Migration `0023` (Ablage), `GET /v1/invoices/:invoiceRef/pdf` (Auslieferung).
 
-**Anhaltspunkte.** `packages/domain/src/invoiceRequirements.ts` prüft bereits die Pflichtangaben und hat die passende Feldstruktur. `invoice.service_from` und `service_to` liegen vor. Chromium erzeugt gewöhnliches PDF, nicht PDF/A-3; es braucht einen zweiten Schritt, etwa Ghostscript.
+**Was daraus entschieden wurde.**
 
-**Abnahme.** Eine erzeugte Rechnung besteht die Prüfung eines ZUGFeRD-Validators im Profil EN 16931. Ein Test vergleicht das erzeugte XML feldweise gegen eine erwartete Fassung.
+- **Der Beleg entsteht nach dem Festschreiben, nicht darin.** Das Festschreiben hält die Zählerzeile der Rechnungsnummer gesperrt und serialisiert damit alle Rechnungen einer Property; ein PDF in dieser Transaktion hielte bei zwanzig gleichzeitigen Check-outs zwanzig Kassen an. Der Preis dafür ist Wartezeit: der Worker tickt alle fünf Minuten, und bis dahin antwortet der Endpunkt mit `document_pending`. Die Warteschlange aus Aufgabe 4 beseitigt das.
+- **`invoice.pdf_path` ist unbenutzbar und bleibt leer.** Die Spalte gibt es seit `0010`, aber `invoice` ist Härtegrad 1: ein Pfad ließe sich nur beim Anlegen setzen, also bevor es das PDF gibt. Der Beleg liegt deshalb in `invoice_document`, selbst wieder append-only — eine ausgestellte Rechnung wird nicht neu gerendert, sonst ersetzte eine spätere Layoutänderung still das Dokument, das der Gast in der Hand hält.
+- **Nicht jede gültige Rechnung ist ein EN-16931-Beleg.** Die Norm kennt keine Kleinbetragsrechnung: § 33 UStDV erlaubt bis 250 Euro brutto den Verzicht auf den Empfänger, BR-07 und BR-10 tun das nicht. Und die Steuernummer genügt ihr nicht — § 14 Abs. 4 Nr. 2 UStG lässt Steuernummer *oder* USt-IdNr. genügen, BR-CO-26 verlangt eine Kennung des Verkäufers, und die Steuernummer ist keine. Solche Rechnungen bekommen ein PDF/A-3 **ohne** XML, mit dem Grund auf dem Blatt und in der Zeile. Fehlt die USt-IdNr. des Hauses, ist das keine Eigenschaft der Rechnung, sondern eine Lücke in den Stammdaten: sie trifft jede weitere und wird einmal als Alarm gemeldet.
+- **Eine Gegenbuchung wird über eine negative Menge ausgedrückt**, nicht über einen negativen Preis: BR-27 verbietet den negativen Einzelpreis, und ein Beleg, der ihn trotzdem trägt, fällt erst beim Empfänger durch.
+- **Kein Chromium und kein Ghostscript.** Das Blatt wird direkt gezeichnet und im selben Schritt zu PDF/A-3 ergänzt. Ein Browser oder ein zweiter Prozess wären zwei Laufzeitabhängigkeiten für ein A4-Blatt. Mitgeliefert werden dafür eine Schrift und ein Farbprofil (`apps/worker/assets/`): PDF/A verlangt eingebettete Schriften und ein Ausgabeziel, und beides darf sich nicht mit dem nächsten `pnpm install` ändern.
 
 **Nicht dazu.** Versand per E-Mail. Peppol.
+
+**Noch offen.** Ein Lauf gegen einen echten Validator (veraPDF für PDF/A-3, KoSIT oder Mustang für EN 16931) gehört in die Freigabe. Beides sind Java-Werkzeuge und laufen nicht in der Testrunde mit; geprüft wird dort stattdessen jedes einzelne Merkmal, das sie prüfen würden.
 
 ---
 
