@@ -4,6 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
+import { loadBlock } from './blocks.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          isIsoDate, occupiesInventory,
          type ReservationStatus, type ReservationAction,
@@ -22,6 +23,8 @@ interface CreateBooking {
   source?: string
   externalReference?: string
   notes?: string
+  /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
+  blockRef?: string
 }
 
 /** Uebersetzt den Fehlercode der Inventarfunktion in eine saubere Antwort. */
@@ -81,11 +84,60 @@ export function reservationRoutes(app: FastifyInstance): void {
         const stored = await beginIdempotent(client, principal.clientKey, key, body)
         if (stored) { reply.status(stored.status); return stored.body }
 
+        /*
+         * Abruf aus einem Kontingent. Der Platz ist dann schon gehalten und
+         * wandert nur von `blocked` nach `sold`.
+         *
+         * Der Zeitraum muss dem des Kontingents genau entsprechen. Das ist
+         * eine echte Einschraenkung und hat einen Grund: bei einem Teilabruf
+         * saenke `blocked` nur an den belegten Naechten, die Freigabe des
+         * Rests am Freigabedatum rechnet aber ueber den ganzen Zeitraum. An
+         * den uebrigen Naechten bliebe dann dauerhaft Kontingent gebunden,
+         * das niemandem mehr gehoert. Wer abweichend bucht, bucht frei.
+         */
+        const block = body.blockRef === undefined
+          ? null
+          : await loadBlock(client, body.blockRef)
+        if (block !== null) {
+          if (block.property_id !== body.propertyId) throw Errors.notFound('Kontingent')
+          if (block.status !== 'active') {
+            throw Errors.conflict(`Kontingent ist ${block.status} und nicht mehr abrufbar.`)
+          }
+          if (block.picked_up >= block.quantity) {
+            throw Errors.conflict('Kontingent ist vollstaendig abgerufen.')
+          }
+          if (block.category_id !== body.categoryId) {
+            throw Errors.validation({
+              categoryId: ['Muss der Zimmergruppe des Kontingents entsprechen'] })
+          }
+          if (body.arrival !== block.from_date || body.departure !== block.to_date) {
+            throw Errors.unprocessable(
+              `Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents `
+              + `(${block.from_date} bis ${block.to_date}). Fuer abweichende Naechte `
+              + 'eine eigene Reservierung anlegen.')
+          }
+          /*
+           * Erst freigeben, dann binden -- umgekehrt als `inventory_move`,
+           * und aus dem umgekehrten Grund: dort haelt noch niemand den Platz,
+           * hier haelt ihn das Kontingent bereits. Im vollen Haus schluege
+           * ein Binden vor dem Freigeben an der eigenen Reservierung fehl.
+           * Ein Fenster entsteht nicht, beides liegt in einer Transaktion.
+           */
+          await client.query(`SELECT inventory_unblock($1,$2,$3::date,$4::date,1)`,
+            [body.propertyId, block.category_id, block.from_date, block.to_date])
+        }
+
         // Kontingent zuerst binden. Schlaegt das fehl, wird alles zurueckgerollt.
         const inv = await client.query<{ e: string | null }>(
           `SELECT inventory_reserve($1,$2,$3::date,$4::date,1) AS e`,
           [body.propertyId, body.categoryId, body.arrival, body.departure])
         inventoryError(inv.rows[0]!.e)
+
+        if (block !== null) {
+          await client.query(
+            `UPDATE availability_block SET picked_up = picked_up + 1 WHERE id = $1`,
+            [block.id])
+        }
 
         const booking = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO booking (property_id, booker_guest_id, source, external_reference, created_by)
@@ -93,24 +145,30 @@ export function reservationRoutes(app: FastifyInstance): void {
           [body.propertyId, body.guestId ?? null, body.source ?? 'direct',
            body.externalReference ?? null, principal.userId])
 
+        // Der Ratenplan des Kontingents gilt, wenn keiner genannt ist: eine
+        // Gruppe hat ihren Preis vereinbart, und ihn je Abruf erneut
+        // eintippen zu lassen, waere die Stelle, an der er abweicht.
+        const ratePlanId = body.ratePlanId ?? block?.rate_plan_id ?? undefined
+
         const res = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO reservation
              (property_id, booking_id, category_id, arrival, departure, status,
-              rate_plan_id, primary_guest_id, notes, created_by)
-           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9)
+              rate_plan_id, primary_guest_id, notes, block_id, created_by)
+           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10)
            RETURNING id, public_ref`,
           [body.propertyId, booking.rows[0]!.id, body.categoryId, body.arrival, body.departure,
-           body.ratePlanId ?? null, body.guestId ?? null, body.notes ?? null, principal.userId])
+           ratePlanId ?? null, body.guestId ?? null, body.notes ?? null,
+           block?.id ?? null, principal.userId])
         const reservationId = res.rows[0]!.id
 
         const nights = eachNight(body.arrival, body.departure)
-        const prices = await priceNights(client, body.ratePlanId, nights)
+        const prices = await priceNights(client, ratePlanId, nights)
         for (let i = 0; i < nights.length; i++) {
           await client.query(
             `INSERT INTO reservation_night
                (reservation_id, property_id, date, rate_plan_id, price_cent)
              VALUES ($1,$2,$3::date,$4,$5)`,
-            [reservationId, body.propertyId, nights[i], body.ratePlanId ?? null, prices[i]])
+            [reservationId, body.propertyId, nights[i], ratePlanId ?? null, prices[i]])
         }
 
         // Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein.
@@ -148,6 +206,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           categoryId: body.categoryId,
           source: body.source ?? 'direct',
           externalReference: body.externalReference ?? null,
+          blockRef: body.blockRef ?? null,
           totalCent: result.totalCent
         })
 
@@ -170,8 +229,9 @@ export function reservationRoutes(app: FastifyInstance): void {
         const cur = await client.query<{
           id: number; property_id: number; category_id: number; status: ReservationStatus
           arrival: string; departure: string; resource_id: number | null
+          block_id: number | null
         }>(`SELECT id, property_id, category_id, status,
-                   arrival::text, departure::text, resource_id
+                   arrival::text, departure::text, resource_id, block_id
               FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (cur.rowCount === 0) throw Errors.notFound('Reservierung')
         const r = cur.rows[0]!
@@ -187,16 +247,51 @@ export function reservationRoutes(app: FastifyInstance): void {
           throw Errors.unprocessable('Check-in erfordert ein zugewiesenes Zimmer.')
         }
 
+        /*
+         * Ein abgerufener Platz faellt an die Gruppe zurueck, nicht in den
+         * freien Verkauf.
+         *
+         * Sonst verloere eine Gruppe bei jedem Storno ein Zimmer an
+         * Laufkundschaft und stuende am Anreisetag mit zu wenigen da, obwohl
+         * sie dieselbe Menge vereinbart hatte. Ist das Kontingent bereits
+         * freigegeben, gibt es nichts mehr, wohin der Platz zurueckkoennte;
+         * dann ist der freie Verkauf richtig.
+         */
+        const block = r.block_id === null
+          ? null
+          : (await client.query<{ id: number; status: string; category_id: number
+                                  from_date: string; to_date: string }>(
+              `SELECT id, status, category_id, from_date::text, to_date::text
+                 FROM availability_block WHERE id = $1 FOR UPDATE`, [r.block_id])).rows[0] ?? null
+
         // Kontingent freigeben, sobald die Reservierung es nicht mehr bindet.
         if (target === 'Canceled' || target === 'NoShow') {
           await client.query(`SELECT inventory_release($1,$2,$3::date,$4::date,1)`,
             [r.property_id, r.category_id, r.arrival, r.departure])
+          if (block !== null && block.status === 'active') {
+            await client.query(`SELECT inventory_block($1,$2,$3::date,$4::date,1)`,
+              [r.property_id, block.category_id, block.from_date, block.to_date])
+            await client.query(
+              `UPDATE availability_block SET picked_up = picked_up - 1 WHERE id = $1`,
+              [block.id])
+          }
         }
         if (r.status === 'Canceled' && target === 'Confirmed') {
+          // Wiederherstellung: derselbe Weg wie beim Abruf, erst freigeben,
+          // dann binden.
+          if (block !== null && block.status === 'active') {
+            await client.query(`SELECT inventory_unblock($1,$2,$3::date,$4::date,1)`,
+              [r.property_id, block.category_id, block.from_date, block.to_date])
+          }
           const inv = await client.query<{ e: string | null }>(
             `SELECT inventory_reserve($1,$2,$3::date,$4::date,1) AS e`,
             [r.property_id, r.category_id, r.arrival, r.departure])
           inventoryError(inv.rows[0]!.e)
+          if (block !== null && block.status === 'active') {
+            await client.query(
+              `UPDATE availability_block SET picked_up = picked_up + 1 WHERE id = $1`,
+              [block.id])
+          }
         }
 
         const stamp = act === 'check_in' ? 'checked_in_at = now(),'
@@ -301,12 +396,25 @@ export function reservationRoutes(app: FastifyInstance): void {
         const cur = await client.query<{
           id: number; property_id: number; category_id: number; status: ReservationStatus
           arrival: string; departure: string; resource_id: number | null
-          rate_plan_id: number | null }>(
+          rate_plan_id: number | null; block_id: number | null }>(
           `SELECT id, property_id, category_id, status, arrival::text, departure::text,
-                  resource_id, rate_plan_id
+                  resource_id, rate_plan_id, block_id
              FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (cur.rowCount === 0) throw Errors.notFound('Reservierung')
         const r = cur.rows[0]!
+
+        /*
+         * Ein Abruf laeuft ueber den Zeitraum seines Kontingents. Waere er
+         * verschiebbar, stimmte die Rechnung beim Freigeben des Rests nicht
+         * mehr: sie geht ueber den Zeitraum des Kontingents, nicht den der
+         * einzelnen Reservierung. Wer anders buchen will, storniert den Abruf
+         * und legt eine freie Reservierung an.
+         */
+        if (r.block_id !== null) {
+          throw Errors.conflict(
+            'Ein Abruf aus einem Kontingent laesst sich nicht verschieben. '
+            + 'Abruf stornieren und frei neu buchen.')
+        }
 
         if (!occupiesInventory(r.status)) {
           throw Errors.conflict(
