@@ -5,6 +5,7 @@ import { loadConfig, type Config } from './config.js'
 import { AppError, Errors } from './errors.js'
 import { ANONYMOUS, type Principal } from './context.js'
 import { loadPrincipal, applySupportSession } from './auth.js'
+import { registerRateLimit } from './rateLimit.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -72,6 +73,9 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
     req.pool = pool
     req.principal = ANONYMOUS
   })
+
+  // Nach dem Cookie-Plugin, weil die Grenze angemeldete Anfragen auslaesst.
+  registerRateLimit(app)
 
   // Aufrufer bestimmen. Der Mandantenkontext kommt ausschliesslich von hier.
   app.addHook('preValidation', async (req) => {

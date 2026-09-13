@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 193 Tests, 19 Migrationen.
+Stand: 13. September 2026. 231 Tests, 20 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -24,10 +24,10 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
 | AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
-| AP 13 Integrationen | **offen** | Aufgaben 4 bis 7 |
+| AP 13 Integrationen | **teilweise** | Webhooks fertig (`0020`, `routes/webhooks.ts`, `jobs/webhookDelivery.ts`); offen Aufgaben 5 bis 7 |
 | AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
 
-**52 Endpunkte**, alle mit deklarierter Berechtigung. Ein Vertragstest prüft, dass jeder in der OpenAPI-Beschreibung steht.
+**69 Routen**, alle mit deklarierter Berechtigung, davon sechs ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. (Die Zahl stand lange auf 52 und war schon vor den Webhooks nicht mehr richtig; sie ist jetzt aus der Routenregistrierung gezählt.)
 
 ### Was das System nachweislich kann
 
@@ -40,6 +40,7 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Der Nachtlauf läuft zweimal für denselben Tag mit identischem Ergebnis über alle berührten Tabellen.
 - Eine festgeschriebene Rechnung lässt sich nicht mehr ändern.
 - Ein Import mit einer fehlerhaften Zeile schreibt gar nichts.
+- Eine zurückgerollte Fachbuchung stellt kein Ereignis zu; ein Empfänger, der dreimal mit 500 antwortet, wird mit wachsendem Abstand erneut bedient und danach stillgelegt.
 
 ---
 
@@ -97,17 +98,43 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 ---
 
-### Aufgabe 4 — Webhooks
+### Aufgabe 4 — Webhooks — **erledigt**
 
-**Warum.** Ohne ausgehende Ereignisse muss jedes Fremdsystem fragen statt zu erfahren.
+Migration `0020`, `apps/api/src/routes/webhooks.ts`, `apps/api/src/platform/events.ts`,
+`apps/worker/src/jobs/webhookDelivery.ts`, `packages/domain/src/webhooks.ts`.
 
-**Umfang.**
-- Abonnements je Account, Ereignisarten aus dem Fachmodell (Reservierung angelegt, geändert, storniert, Check-in, Check-out, Rechnung festgeschrieben).
-- Signatur über einen gemeinsamen Schlüssel, Zeitstempel gegen Wiedereinspielung.
-- Wiederholung mit wachsendem Abstand, Stilllegung nach dauerhaftem Fehlschlag.
-- Einreihen in **derselben Transaktion** wie die Fachbuchung. Das ist der Grund für Graphile Worker.
+Sechs Ereignisarten: `reservation.created`, `.changed`, `.canceled`, `.checked_in`,
+`.checked_out` und `invoice.finalized`. Abonnements liegen am Account und lassen sich auf
+einzelne Häuser und Ereignisarten einschränken; leer bedeutet jeweils alle.
 
-**Abnahme.** Ein Empfänger, der dreimal mit 500 antwortet, bekommt die Zustellung mit wachsendem Abstand erneut; nach der letzten Wiederholung ist das Abonnement stillgelegt und im Protokoll sichtbar. Eine zurückgerollte Fachbuchung stellt nichts zu.
+Drei Festlegungen, die dabei getroffen wurden:
+
+**Kein Graphile Worker.** Der ursprüngliche Grund für ihn war, einen Job in derselben
+Transaktion wie die Fachbuchung einreihen zu können. Genau das tut `webhook_enqueue()` als
+SQL-Funktion, aufgerufen mit dem Client der laufenden Transaktion — ohne eigenes Schema,
+eigene Migrationen und eigene Rechte neben denen, die hier ohnehin gelten. Der bestehende
+Worker war schon eine Polling-Schleife ohne diese Abhängigkeit; sie jetzt für einen
+Tabelleneintrag einzuführen, hätte mehr gekostet als gebracht. Die Zusage selbst steht:
+eine zurückgerollte Fachbuchung stellt nichts zu, und ein Test weist es nach.
+
+**Der Zeitstempel steht im signierten Text, nicht nur in der Kopfzeile.** Signiert wird
+`Zeitstempel.Rumpf` mit HMAC-SHA256. Stünde er nur daneben, könnte ein Mitschneider ihn auf
+jetzt setzen und eine alte Zustellung erneut einspielen, ohne die Signatur zu brechen. So
+bricht jede Änderung an ihm die Signatur, und der Empfänger darf alles verwerfen, was älter
+ist als sein Toleranzfenster.
+
+**Der Versuchszähler steigt beim Beanspruchen, nicht beim Vermerken.** Der Netzaufruf liegt
+zwischen zwei Transaktionen und damit außerhalb der Zeilensperre — ein Empfänger, der zehn
+Sekunden braucht, hielte sonst zehn Sekunden eine Sperre. Unter der Sperre ist die
+Versuchsnummer eindeutig vergeben, und ein Versuch, dessen Ergebnis ein Absturz verschluckt,
+zählt trotzdem: abgeschickt wurde er ja möglicherweise. Zugestellt wird deshalb **mindestens
+einmal**, nicht genau einmal; jedes Ereignis trägt eine Kennung, an der der Empfänger eine
+Wiederholung erkennt.
+
+**Offen geblieben:** Die Zustellung hängt am Fünf-Minuten-Takt des Workers, ein Ereignis kann
+also bis zu fünf Minuten alt sein, wenn es ankommt. Für einen Channel Manager ist das zu
+langsam. Der Weg dahin ist `LISTEN/NOTIFY` — der Worker verbindet aus genau diesem Grund
+schon direkt und nicht über PgBouncer (D1, Dokument 13).
 
 ---
 
@@ -158,19 +185,19 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 ### Aufgabe 9 — Betriebsvoraussetzungen für Fremdkunden
 
-**Warum.** Für das Pilothaus im eigenen Betrieb tragbar, für zahlende Kunden nicht.
+**Teilweise erledigt.** Alles, was Code ist, steht; was Betrieb ist, steht als Handbuch in [`17-betrieb.md`](17-betrieb.md) und muss einmal tatsächlich durchgeführt werden.
 
-**Umfang.**
-- Plattenverschlüsselung der VM (C3).
-- Schlüsselrotation als Betriebsdokument mit erprobtem Ablauf (C4). Die Schlüsselversion liegt bereits an jedem verschlüsselten Feld.
-- Verschlüsselte Sicherung außer Haus, mit erprobter Rückspielung.
-- Ratenbegrenzung je IP am Rand (C7).
-- Trainingsmodus je Property (C11). `property.is_training` ist angelegt, wird aber nirgends ausgewertet.
-- Archivierung ausscheidender Betriebe mit vollständigem Mandantenexport (E7).
+| Punkt | Stand |
+|---|---|
+| Ratenbegrenzung je Herkunft (C7) | **erledigt**, `platform/rateLimit.ts`, zweite Linie hinter Caddy |
+| Schulungsbetrieb (C11) | **erledigt**, `platform/training.ts` |
+| Schlüsselrotation (C4) | **erledigt** als Werkzeug, `apps/api/src/cli/rotate-keys.ts` |
+| Mandantenexport (E7) | **erledigt**, `GET /v1/properties/:id/exports/tenant` |
+| Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit, Anleitung in Dokument 17 |
+| Sicherung außer Haus | **offen**, Betriebsarbeit; die Rückspielung muss einmal erprobt sein |
+| Ratenbegrenzung in Caddy | **offen**, Baustein in Dokument 17 |
 
-**Abnahme.** Eine Rückspielung aus der Sicherung ist einmal durchgeführt und protokolliert.
-
----
+Dabei ist ein Fehler aufgefallen, der die Rotation still unbrauchbar gemacht hätte: der Zwischenspeicher der abgeleiteten Schlüssel merkte sich nur die **Version**, nicht das Geheimnis. Bei einer Rotation sind beide Geheimnisse gleichzeitig in Gebrauch; der erste Aufruf hätte den Eintrag für alle weiteren belegt, das Entschlüsseln mit dem falschen Geheimnis hätte still funktioniert, und die Rotation hätte Chiffrate erzeugt, die niemand mehr öffnen kann. Ein Test fängt das jetzt ab.
 
 ### Aufgabe 10 — Kleinere Lücken
 

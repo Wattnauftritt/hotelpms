@@ -3,9 +3,11 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
+import { emitEvent } from '../platform/events.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          isIsoDate, occupiesInventory,
-         type ReservationStatus, type ReservationAction } from '@hotelpms/domain'
+         type ReservationStatus, type ReservationAction,
+         type WebhookEventType } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
@@ -38,6 +40,22 @@ async function priceNights(
       WHERE rate_plan_id = $1 AND date = ANY($2::date[])`, [ratePlanId, nights])
   const byDate = new Map(rows.map(r => [r.date, r.price_cent]))
   return nights.map(n => byDate.get(n)?.[1] ?? byDate.get(n)?.[0] ?? 0)
+}
+
+/**
+ * Jede Zustandsaktion hat genau eine Ereignisart. Vollstaendig ueber alle
+ * Aktionen des Automaten, nicht nur ueber die heute als Route angebotenen:
+ * so entscheidet der Typ die Frage mit, sobald eine weitere hinzukommt,
+ * statt sie stillschweigend offen zu lassen.
+ */
+const EVENT_FOR_ACTION: Record<ReservationAction, WebhookEventType> = {
+  confirm:   'reservation.changed',
+  hold:      'reservation.changed',
+  check_in:  'reservation.checked_in',
+  check_out: 'reservation.checked_out',
+  cancel:    'reservation.canceled',
+  no_show:   'reservation.changed',
+  reinstate: 'reservation.changed'
 }
 
 export function reservationRoutes(app: FastifyInstance): void {
@@ -120,6 +138,19 @@ export function reservationRoutes(app: FastifyInstance): void {
           nights: nights.length,
           totalCent: prices.reduce((s, p) => s + p, 0)
         }
+
+        await emitEvent(client, body.propertyId, 'reservation.created', {
+          reservationRef: result.reservationRef,
+          bookingRef: result.bookingRef,
+          status: 'Confirmed',
+          arrival: body.arrival,
+          departure: body.departure,
+          categoryId: body.categoryId,
+          source: body.source ?? 'direct',
+          externalReference: body.externalReference ?? null,
+          totalCent: result.totalCent
+        })
+
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
@@ -175,6 +206,12 @@ export function reservationRoutes(app: FastifyInstance): void {
           `UPDATE reservation SET status = $2, ${stamp} updated_at = now() WHERE id = $1`,
           [r.id, target])
 
+        await emitEvent(client, r.property_id, EVENT_FOR_ACTION[act], {
+          reservationRef, status: target,
+          arrival: r.arrival, departure: r.departure,
+          categoryId: r.category_id, resourceId: r.resource_id
+        })
+
         return { reservationRef, status: target, by: principal.userId }
       })
     }
@@ -224,6 +261,13 @@ export function reservationRoutes(app: FastifyInstance): void {
         await client.query(
           `UPDATE reservation SET resource_id = $2, updated_at = now() WHERE id = $1`,
           [res.id, resourceId])
+
+        await emitEvent(client, res.property_id, 'reservation.changed', {
+          reservationRef, resourceId,
+          arrival: res.arrival, departure: res.departure,
+          categoryId: res.category_id
+        })
+
         return { reservationRef, resourceId }
       })
     }
@@ -336,6 +380,16 @@ export function reservationRoutes(app: FastifyInstance): void {
         const summe = await client.query<{ n: number; total: number }>(
           `SELECT count(*)::int AS n, COALESCE(sum(price_cent),0)::bigint AS total
              FROM reservation_night WHERE reservation_id = $1`, [r.id])
+
+        await emitEvent(client, r.property_id, 'reservation.changed', {
+          reservationRef, status: r.status,
+          arrival: neuAnkunft, departure: neuAbreise,
+          categoryId: neuKategorie,
+          previousArrival: r.arrival, previousDeparture: r.departure,
+          previousCategoryId: r.category_id,
+          nights: summe.rows[0]!.n,
+          totalCent: Number(summe.rows[0]!.total)
+        })
 
         return {
           reservationRef,

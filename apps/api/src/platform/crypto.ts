@@ -1,5 +1,5 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual }
-  from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync,
+         timingSafeEqual } from 'node:crypto'
 
 /**
  * Verschluesselung der Ausweisnummer.
@@ -24,13 +24,31 @@ const TAG_LENGTH = 16
 /** Fester Salt je Version: der Schluessel muss reproduzierbar sein. */
 const SALT = 'hotelpms-id-document-v'
 
-const cache = new Map<number, Buffer>()
+/*
+ * Zwischenspeicher der abgeleiteten Schluessel. scrypt ist absichtlich
+ * langsam; ihn je Datensatz erneut zu rechnen waere bei einer Rotation ueber
+ * Zehntausende Profile der teuerste Teil.
+ *
+ * Der Schluessel des Zwischenspeichers ist **Version und Geheimnis**, nicht
+ * die Version allein. Genau das war er einmal, und es war ein Fehler mit
+ * Zaehnen: bei einer Rotation sind beide Geheimnisse gleichzeitig in
+ * Gebrauch, und der erste Aufruf haette den Eintrag fuer alle weiteren
+ * belegt. Das Entschluesseln mit dem falschen Geheimnis haette dann still
+ * funktioniert, solange die Version dieselbe war, und die Rotation haette
+ * Chiffrate erzeugt, die niemand mehr oeffnen kann. Ein Test faengt das ab.
+ *
+ * Im Schluessel steht nur ein Abdruck des Geheimnisses, nicht das Geheimnis
+ * selbst: eine Speicherauswertung soll es dort nicht im Klartext finden.
+ */
+const cache = new Map<string, Buffer>()
 
 function keyFor(version: number, secret: string): Buffer {
-  const cached = cache.get(version)
+  const abdruck = createHash('sha256').update(secret).digest('base64url').slice(0, 16)
+  const kennung = `${version}:${abdruck}`
+  const cached = cache.get(kennung)
   if (cached) return cached
   const key = scryptSync(secret, `${SALT}${version}`, 32)
-  cache.set(version, key)
+  cache.set(kennung, key)
   return key
 }
 
