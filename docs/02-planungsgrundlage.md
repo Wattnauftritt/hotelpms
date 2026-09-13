@@ -10,7 +10,7 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 - **Append-only im Rechnungswesen.** Buchungen werden nie geändert oder gelöscht, nur storniert. Rechnungen werden festgeschrieben.
 - **Deutsche Pflichten sind Kern**: Meldeschein, GoBD, TSE, Kurtaxe, Beherbergungsstatistik, DSGVO.
 - **Nicht selbst bauen**: Channel Manager, Payment-Processing, Kartenspeicherung, TSE-Hardware. Dafür saubere Schnittstellen.
-- **Abschaltbar, wofür der Betrieb schon ein System hat.** Kassenbuch, Buchungsmaschine, Channel Manager, Restaurantkasse und Schließsystem müssen einzeln deaktivierbar sein. Ein Umstieg darf nie erzwungen werden. Siehe [09-kassenbuch.md](09-kassenbuch.md)
+- **Was der Betrieb schon führt, bauen wir nicht. Wir schließen an.** Kassenbuch und Kasse gar nicht, Buchungsmaschine und Channel Manager anbindbar, Restaurantkasse und Schließsystem per Schnittstelle, Buchhaltung als DATEV-Export. Ein Umstieg darf nie erzwungen werden. Siehe [09-kassenbuch.md](09-kassenbuch.md)
 
 ## 2. Domänenmodell (Entwurf)
 
@@ -168,17 +168,17 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 - Reservierungen mit Statusmaschine, Zimmerplan (Tape Chart), Anreise-/Abreise-/Hausliste
 - Gäste und Firmen, Meldeschein mit elektronischer Unterschrift
 - Folios, Charges, Payments (Bar, Karte extern erfasst, Überweisung), Routing, Rechnung mit fortlaufender Nummer, Storno
-- **Modus A ohne Kassenfunktion: keine Zahlart Bar, keine TSE.** Der Betrieb behält sein Kassenbuch, wo es heute ist. Siehe [09-kassenbuch.md](09-kassenbuch.md)
+- **Keine Kassenfunktion, keine TSE.** Zahlungen nur als strukturierter Vermerk mit externer Referenz. Das Kassenbuch bleibt beim Betrieb, siehe [09-kassenbuch.md](09-kassenbuch.md)
 - USt-Aufteilung 7 % / 19 %, Kurtaxe-Regel
 - Housekeeping-Status, automatischer Nachtlauf
 - Audit-Log, Rollen, GoBD-Export (CSV mit Strukturbeschreibung)
 - Rezeptions-Web-App
 
-### Stufe 2: Verkaufen und kassieren
+### Stufe 2: Verkaufen und anbinden
 
 - ARI-Schnittstelle für Channel Manager (Verfügbarkeit, Preise, Restriktionen raus; Reservierungen rein)
 - Payment-Gateway mit Token-Speicherung, Anzahlungen, Pre-Authorisierung, Pay-by-Link
-- **Modus B als zuschaltbares Kassenmodul**: Kassen, Schichten, Bargeldbewegungen, Zählprotokoll, Kassenabschluss, Cloud-TSE, DSFinV-K-Export. **Muss deutlich vor Ende 2027 erprobt sein**, weil die geplante Registrierkassenpflicht ab 1. Januar 2028 praktisch jedes Hotel trifft
+- **Kassenschnittstelle in beide Richtungen**: Ladenkasse und Restaurantkasse buchen Umsätze auf Zimmer und Folio, das PMS liefert offene Folios zurück. Sollte stehen, bevor die Betriebe wegen der geplanten Registrierkassenpflicht ab 2028 auf elektronische Kassen umstellen
 - E-Mail-Kommunikation (Bestätigung, Pre-Arrival, Rechnung)
 - Eigene Booking Engine
 - Blocks und Gruppen mit Sammelrechnung
@@ -221,6 +221,7 @@ Stand September 2026, beantwortet vom Auftraggeber.
 | 6 | Payments | **Alle drei**: Adyen, Stripe, Mollie |
 | 7 | Buchhaltung | **DATEV-Export genügt.** Keine Debitorenverwaltung mit Mahnwesen im PMS |
 | 8 | Ressourcen-Modell | Wie empfohlen: **Zeiteinheit als Feld von Anfang an**, im MVP nur „Nacht" implementiert |
+| 9 | Kassenfunktion | **Keine.** Kein Kassenbuch, keine TSE, kein DSFinV-K. Nur Fakturierung plus Zahlungsvermerk, dazu eine Kassenschnittstelle. Siehe [09-kassenbuch.md](09-kassenbuch.md) |
 
 ### Was daraus folgt
 
@@ -249,6 +250,6 @@ Kein Mahnwesen, keine Offene-Posten-Verwaltung, keine Zahlungsavise. Wir brauche
 ### Neu aufgeworfene Fragen
 
 1. **Preisgestaltung über die Spannweite.** Bei 7 bis 12 Euro je Zimmer zahlt eine Ferienwohnung mit vier Einheiten unter 50 Euro im Monat und verursacht denselben Supportaufwand wie ein Haus mit 40 Zimmern. Brauchen wir einen Mindestpreis je Betrieb, und wie hoch?
-2. **Fiskalisierungskosten bei Kleinstbetrieben.** Cloud-TSE und Middleware kosten je Kasse 15 bis 40 Euro monatlich, siehe [06-fiskalisierung.md](06-fiskalisierung.md). Bei einer Pension übersteigt das schnell die halbe Grundgebühr. Weitergeben als eigene Position, wie SoftTec es macht?
+2. ~~**Fiskalisierungskosten bei Kleinstbetrieben.**~~ **Erledigt** durch Entscheidung 9: Ohne Kassenfunktion entstehen keine Fiskalisierungskosten je Kunde.
 3. **Verkaufen wir Payment mit Marge?** Bei Mews ist das der wesentliche Ertragshebel, es widerspricht aber unserer Positionierung „kein Zwang zur Bündelung".
 4. **Datenimport aus Altsystemen.** Aus [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md): Unser Zielkunde ist der Migrationskandidat. Welche Altsysteme unterstützen wir zuerst? Vorschlag: hotline, HS/3, protel.

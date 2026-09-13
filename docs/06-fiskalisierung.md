@@ -1,5 +1,9 @@
 # Fiskalisierung: was das ist und was SoftTec da eigentlich zukauft
 
+> **Statushinweis:** Nach Entscheidung 9 in [02-planungsgrundlage.md](02-planungsgrundlage.md) bekommt unser PMS **keine Kassenfunktion**. Damit brauchen wir weder TSE noch Fiskal-Middleware noch DSFinV-K. Die Begründung steht in [09-kassenbuch.md](09-kassenbuch.md).
+>
+> Dieses Dokument bleibt als Hintergrundwissen erhalten. Es erklärt, wie der Wettbewerb Fiskalisierung löst, was unsere Kunden bei ihrer eigenen Kasse erwartet, und was zu tun wäre, falls wir die Entscheidung später umkehren.
+
 Antwort auf die Frage, was hinter „SoftTec kauft Fiskalisierung ein" steckt. Kurz vorweg: **es ist nicht ein Chip, es ist eine komplette Compliance-Schicht als Dienst.**
 
 ---

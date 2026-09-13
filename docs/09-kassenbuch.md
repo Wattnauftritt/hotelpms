@@ -1,196 +1,191 @@
-# Kassenfunktion und Kassenbuch: als Modul, nicht als Pflicht
+# Keine Kassenfunktion: Entscheidung und Abgrenzung
 
-**Korrigierte Fassung.** Die erste Version dieses Dokuments behauptete, das Kassenbuch sei zwangsläufig und müsse in Stufe 1. Das war in zwei Punkten falsch. Die Korrektur steht in Abschnitt 1, die daraus folgende Produktentscheidung in Abschnitt 3.
+**Entscheidung: Unser PMS führt kein Kassenbuch, weder verpflichtend noch als Modul. Es hat keine Kassenfunktion und braucht daher keine TSE.**
 
----
-
-## 1. Was ich falsch hatte
-
-**Falsch war: „Ein Hotel nimmt Bargeld an, also brauchen wir TSE und Kassenbuch."**
-
-Richtig ist:
-
-1. **Es gibt in Deutschland derzeit keine Registrierkassenpflicht.** Die **offene Ladenkasse** ist zulässig. Ein Betrieb darf Bargeld ohne jedes elektronische System annehmen, solange er täglich einen Kassenbericht erstellt und ein Zählprotokoll führt. Genau so arbeitet das Pilothaus, und das ist vollkommen korrekt.
-2. **Die TSE-Pflicht knüpft nicht an das Hotel an, sondern an unsere Software.** Sie greift nur, wenn ein **elektronisches Aufzeichnungssystem mit Kassenfunktion** eingesetzt wird. Nimmt das Hotel bar an und schreibt es woanders auf, entsteht für uns keine Pflicht.
-3. **Ein elektronisches Kassenbuch ist keine Kasse.** Das ist der Punkt, den ich verwechselt hatte. Ein digitales Kassenbuch, auch als Onlinewerkzeug oder Tabelle, hat keine Kassenfunktion und fällt **nicht** unter § 146a AO. Es besteht dafür auch keine Meldepflicht. Kassenfunktion setzt voraus, dass das System Zahlungsvorgänge am Verkaufspunkt **erfasst und abwickelt**, Rückgaben und Gutscheine behandelt und einen ordnungsgemäßen Beleg ausgibt.
-
-**Und die Produktkritik war ebenfalls berechtigt.** In [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md) habe ich SoftTec für vertikale Bündelung als Kundenbindung kritisiert und im nächsten Dokument selbst ein Pflicht-Kassenbuch vorgeschlagen. Das widerspricht sich. Ein Hotel mit laufendem Kassenbuch zum Umstieg zu zwingen, ist genau die Hürde, die wir bei anderen bemängeln.
+Das ist die dritte und finale Fassung dieses Dokuments. Die ersten beiden lagen falsch: die erste machte das Kassenbuch zur Pflicht, die zweite zum optionalen Modul. Beides war mehr, als das Produkt braucht.
 
 ---
 
-## 2. Die Antwort auf die Frage nach dem zweiten Kassenbuch
+## 1. Die Begründung
 
-**Wenn wir nur Einnahmen aus Buchungen erfassen, ist das kein Kassenbuch.** Ein Kassenbuch bildet die Geldlade ab: Bestand, Einlagen, Entnahmen, Zählung, Differenz. Eine reine Umsatzaufzeichnung ist Fakturierung, nicht Kassenführung.
+Die Marktrealität, an der sich die Entscheidung ausrichtet:
 
-**Aber die Gefahr, die du benennst, ist real.** Wenn wir Barzahlungen erfassen und das Hotel dieselben Vorgänge in seinem eigenen Kassenbuch führt, gibt es **zwei Grundaufzeichnungen desselben Geldflusses**. Die driften auseinander, und in der Prüfung stellt sich die Frage, welche die maßgebliche ist. Zwei Kassenbücher sind schlechter als eines, egal welches.
+- **Jedes Hotel führt bereits ein Kassenbuch.** Es gibt keinen Betrieb ohne Kassenführung, also gibt es auch keinen Bedarf, den wir decken würden.
+- **Die meisten Hotels planen mit dem PMS die Belegung** und wickeln Zahlungen getrennt ab: bar oder Karte an der Rezeption, oder gleich über das Buchungsportal und den Channel Manager.
+- **Die Fiskalisierung passiert dort, wo kassiert wird**, also an der Ladenkasse der Rezeption oder beim Portal. Nicht bei uns.
+- **Hat die Rezeption eine Ladenkasse mit TSE**, über die sie Buchungen abrechnet, betrifft uns das nicht. Die TSE-Pflicht knüpft an das System an, das kassiert.
 
-Daraus folgt die harte Regel:
-
-> **Genau ein System ist das Kassenbuch. Entweder unseres oder das des Betriebs. Nie beide.**
-
-Und damit das nicht durch die Hintertür verletzt wird: **In Modus A gibt es keine Zahlart „Bar".** Nicht ausgegraut, nicht versteckt, sondern nicht vorhanden. Bargeld existiert in diesem Modus im PMS schlicht nicht. Damit ist die Abgrenzung eindeutig, es gibt keine Doppelerfassung, und die Frage, ob ein Zahlungsvermerk schon eine Aufzeichnung ist, stellt sich gar nicht erst.
+Und der Produktgrundsatz dahinter: **Nichts aufzwingen, was der Betrieb schon führt.** Ein erzwungener Umstieg bei einem laufenden System ist abschreckend, und zwar genau bei der Zielgruppe, die wir gewinnen wollen. Das ist dieselbe Kritik, die wir in [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md) an der vertikalen Bündelung von SoftTec formuliert haben.
 
 ---
 
-## 3. Die Produktentscheidung: zwei Betriebsmodi
+## 2. Was das PMS stattdessen tut
 
-Das Kassenmodul wird **je Betrieb zuschaltbar**. Das ist nicht nur eine Produktentscheidung, es ist auch die vom Bundesfinanzministerium ausdrücklich vorgesehene Konstruktion für Systeme mit optionalem Kassenmodul.
+### Fakturierung: ja
 
-### Modus A: ohne Kassenfunktion (Standard)
+Rechnungen erstellen bleibt Kernfunktion. Das ist ausdrücklich **keine Kassenfunktion**. Die amtliche Position nennt Fakturierungslösungen neben Warenwirtschafts- und Buchhaltungssystemen als Beispiele für Systeme, die **nicht** unter § 146a AO fallen, solange sie kein Kassenmodul haben.
 
-| | |
+Was das bedeutet:
+
+- Folios, Charges, Routing, Split Billing, Rechnung mit fortlaufender Nummer, Storno als Gegenbuchung
+- Umsatzsteueraufteilung 7 zu 19 Prozent, Kurtaxe
+- Vollständig GoBD-fest nach [08-compliance-in-der-praxis.md](08-compliance-in-der-praxis.md)
+- **Keine TSE, keine Meldepflicht nach § 146a AO, kein DSFinV-K**
+
+### Zahlungsvermerk: ja, aber strukturiert und nicht führend
+
+Der Betrieb muss im PMS sehen, was offen ist und was beglichen wurde. Sonst funktioniert keine Debitorenübersicht und kein Check-out.
+
+**Ein Freitextfeld taugt dafür nicht.** Ein strukturierter Vermerk schon:
+
+| Feld | Inhalt |
 |---|---|
-| Was das PMS tut | Belegung, Reservierungen, Gäste, Preise, Folios, Rechnungen, unbare Zahlungen |
-| Zahlarten | Überweisung, Karte über ein externes Terminal, OTA-Zahlung, Rechnung an Firma |
-| **Keine Zahlart** | **Bar** |
-| Kassenbuch | Bleibt beim Betrieb, wo es heute ist. Offene Ladenkasse, Excel, separate Software |
-| TSE | Nein, nicht erforderlich, keine Meldepflicht |
-| GoBD | **Trotzdem voll anwendbar**, siehe unten |
+| `beglichen_am` | Datum |
+| `beglichen_art` | Bar, Karte vor Ort, Überweisung, Portal, Firmenrechnung |
+| `beglichen_betrag` | Betrag |
+| `externe_referenz` | Belegnummer der Ladenkasse, Terminal-Referenz, Portal-Zahlungs-ID |
+| `erfasst_von` | Benutzer |
 
-Das ist **der Standard und der Auslieferungszustand**. Ein Hotel kann uns einsetzen, ohne irgendetwas an seiner Kassenführung zu ändern. Genau das, was du willst.
+Das ist ein **Statusvermerk über einen Vorgang, der anderswo stattgefunden hat**, nicht die Aufzeichnung des Vorgangs selbst. Das Feld `externe_referenz` ist dabei der wichtigste: Es macht sichtbar, dass die maßgebliche Aufzeichnung woanders liegt, und erlaubt dem Steuerberater den Abgleich.
 
-### Modus B: mit Kassenfunktion
+### Kassenbuch: nein
 
-| | |
+Ausdrücklich nicht enthalten, und das ist die Abgrenzung, die uns rechtlich sauber hält:
+
+- Kein Kassenbestand, kein Anfangs- und Endbestand
+- Keine Schichten, keine Zählprotokolle
+- Keine Einlagen, Entnahmen, Überträge, Bankeinzahlungen
+- Keine Kassendifferenz
+- Kein Kassenabschluss, kein Z-Bon
+- Keine Kassensturzfähigkeit, und das ist kein Mangel, sondern Absicht
+
+---
+
+## 3. Die vier Merkmale, die uns außerhalb der Kassenfunktion halten
+
+Die gesetzliche Definition: Kassenfunktion liegt vor, wenn ein System dem Verkauf von Waren oder Dienstleistungen **und deren Abrechnung** dient und dabei zumindest teilweise **bare Zahlungsvorgänge erfasst und abwickelt**.
+
+Vier Merkmale halten uns klar davon getrennt. Sie gehören als bewusste Nicht-Funktionen ins Produkt, nicht als vergessene Lücken:
+
+1. **Wir führen keinen Kassenbestand.** Das System kann die Frage „wie viel Geld liegt in der Lade" nicht beantworten und soll es nicht können. Das ist das deutlichste Unterscheidungsmerkmal zwischen Fakturierung und Kassenführung.
+2. **Wir wickeln keine Zahlung ab.** Kein Kassenladen-Auslöser, kein Rückgeld, keine Stornierung eines Kassiervorgangs, keine Gutscheineinlösung an der Kasse.
+3. **Wir geben keinen Kassenbon aus.** Wir geben eine Hotelrechnung aus. Das ist ein Leistungsnachweis, kein Zahlungsbeleg eines Aufzeichnungssystems.
+4. **Die maßgebliche Zahlungsaufzeichnung liegt nachweislich woanders**, dokumentiert über die externe Referenz und die Verfahrensdokumentation.
+
+**Zur Belegausgabepflicht:** Sie gilt nur für elektronische Aufzeichnungssysteme. Ein Betrieb mit offener Ladenkasse hat keine. Ein Betrieb mit elektronischer Kasse erfüllt sie an dieser Kasse. In beiden Fällen ist unsere Hotelrechnung davon unberührt.
+
+---
+
+## 4. Sonderfall Kartenzahlung und unser Payment-Gateway
+
+Hier ist eine Unterscheidung wichtig, damit die Payment-Pläne aus Entscheidung 6 nicht versehentlich gekippt werden.
+
+| Zahlungsweg | Kassenfunktion? |
 |---|---|
-| Zusätzlich | Kassen, Schichten, Bargeldbewegungen, Einlagen und Entnahmen, Zählprotokoll, Kassendifferenz, Kassenabschluss |
-| Zahlarten | Zusätzlich Bar und Kartenzahlung am Terminal vor Ort |
-| TSE | **Zwingend.** Wird gemeinsam mit dem Modul bereitgestellt |
-| Kassenbuch | Jetzt führt das PMS es. Das externe wird eingestellt |
-| Kosten | Fiskalisierung je Kasse, siehe [06-fiskalisierung.md](06-fiskalisierung.md) |
+| Karte am Terminal an der Rezeption | **Vor Ort.** Gehört zur Kassenfunktion des kassierenden Systems, also des Terminals oder der Ladenkasse. Bei uns nur als Vermerk |
+| Pay-by-Link, Anzahlung online, Kartenzahlung bei der Buchung | **Nicht vor Ort.** Fernzahlung über einen Zahlungsdienstleister, keine Kassenfunktion |
+| Zahlung beim Buchungsportal, Virtual Credit Card, OTA-Inkasso | **Nicht vor Ort.** Findet vollständig außerhalb statt |
+| Überweisung, Firmenrechnung | Unbar, nie Kassenfunktion |
 
-### Die entscheidende Umsetzungsregel
-
-Die amtliche Position lautet, dass ein Kassenmodul nur in Verkehr gebracht werden darf, wenn es eine TSE anbinden kann, und dass die TSE-Anbindung zwingend ist, **sobald der Anwender das Kassenmodul nutzen kann**. Maßgeblich ist also die Nutzbarkeit, nicht die tatsächliche Nutzung.
-
-Daraus folgt zwingend:
-
-> **Es darf keinen Zustand geben, in dem die Kassenfunktion nutzbar ist und keine TSE angebunden ist.**
-
-Praktisch heißt das:
-
-- Das Kassenmodul kann **nicht vom Kunden selbst** in den Einstellungen eingeschaltet werden.
-- Die Aktivierung ist ein **Bereitstellungsvorgang**: TSE beim Dienstleister anlegen, Seriennummer eintragen, Kasse anlegen, Modul freischalten. Alles in einem Schritt, protokolliert, mit Datum.
-- Schlägt die TSE-Bereitstellung fehl, bleibt das Modul aus. Kein Teilzustand.
-- Die Umschaltung braucht ein **Stichdatum**, ab dem das PMS das Kassenbuch führt, damit die Übergabe vom Altsystem sauber dokumentiert ist.
-
-Das ist gleichzeitig die Antwort auf die Zwangsfrage: Weil die Aktivierung ein bewusster, begleiteter Vorgang ist, kann niemand versehentlich hineinrutschen.
+**Unsere Anbindung an Stripe, Mollie und Adyen bleibt also unverändert möglich.** Ein Zahlungsdienstleister ist kein Kassensystem, und eine Fernzahlung ist kein Vorgang vor Ort. Das ist genau die Bauweise, die Mews und Apaleo nutzen.
 
 ---
 
-## 4. Was in beiden Modi gilt
+## 5. Was wir stattdessen brauchen: die Kassenschnittstelle
 
-**GoBD ist nicht optional.** Auch ohne Kassenfunktion erzeugt das PMS Rechnungen, und die sind Buchungsbelege. Alles aus [08-compliance-in-der-praxis.md](08-compliance-in-der-praxis.md) bleibt unverändert:
+Wenn wir die Kasse nicht bauen, müssen wir uns mit ihr vertragen. Zwei Richtungen:
 
-- Unveränderliche Charges, Payments und Rechnungen
-- Fortlaufende Rechnungsnummern je Betrieb und Jahr, vergeben beim Festschreiben
-- Storno als Gegenbuchung, nie Löschung
-- Audit-Log per Datenbank-Trigger
-- Aufbewahrung und Löschkonzept
+| Richtung | Zweck |
+|---|---|
+| **Kasse zum PMS** | Die Ladenkasse oder Restaurantkasse bucht Umsätze auf ein Zimmer oder Folio. Der klassische Zimmerbon |
+| **PMS zur Kasse** | Das PMS liefert offene Folios, Zimmernummer und Gastname, damit die Kasse zuordnen kann. Und meldet zurück, wenn beglichen wurde |
 
-**Das ist wichtig für die Positionierung:** Wir sind auch in Modus A GoBD-fest. Der Unterschied zwischen den Modi betrifft ausschließlich die Kassenfunktion, nicht die Ordnungsmäßigkeit.
+Das ist ohnehin die Bauweise von Mews und Apaleo und passt zum API-first-Ansatz aus [04-api-first-und-performance.md](04-api-first-und-performance.md).
+
+**Und der Zeitpunkt ist günstig.** Wenn die geplante Registrierkassenpflicht kommt, muss nach heutigem Stand jeder Betrieb über 100.000 Euro Umsatz bis zum 1. Januar 2028 eine elektronische Kasse mit TSE haben. Das heißt: **In zwei Jahren hat praktisch jedes Hotel eine TSE-Kasse.** Eine gute Kassenschnittstelle ist dann mehr wert als eine eigene Kasse, weil der Betrieb die Kasse ohnehin hat und sie nicht doppelt kaufen will.
+
+Die Registrierkassenpflicht ist damit kein Problem für uns, sondern ein Argument für unsere Bauweise. Details zum Gesetzgebungsstand in Abschnitt 7.
 
 ---
 
-## 5. Der Grund, warum wir Modus B trotzdem bauen: 2028
+## 6. Was diese Entscheidung spart und was sie kostet
 
-Bei der Recherche ist etwas aufgetaucht, das für die ganze Planung relevanter ist als die Modulfrage.
+### Gespart
 
-**Die Registrierkassenpflicht kommt.** Stand der Gesetzgebung:
+| Posten | Einsparung |
+|---|---|
+| Kassenbuch-Fachlichkeit | Kassen, Schichten, Bewegungen, Zählprotokoll, Differenzen, Abschluss |
+| TSE-Anbindung | Fiskal-Middleware, Adapter, Belegdarstellung mit QR-Code |
+| DSFinV-K-Export | 22 Dateien, drei Module, Versionspflege von 2.5 auf 3.0 |
+| Laufende Fiskal-Compliance | Gesetzesänderungen, BMF-Schreiben, Auslegungen |
+| Kosten je Kunde | 15 bis 40 Euro monatlich je Kasse, die wir weiterberechnen müssten |
+| Support | Kassendifferenzen sind der supportintensivste Bereich eines PMS überhaupt |
+
+**Der letzte Punkt ist der größte.** Kassendifferenzen erzeugen Anrufe, in denen es um Geld und Schuldzuweisung geht. Wer die Kasse nicht führt, führt diese Gespräche nicht.
+
+Zusätzlich entfällt ein Preisproblem: Die Fiskalisierungskosten hätten bei einer Pension mit acht Zimmern die halbe Monatsgebühr ausgemacht. Diese offene Frage aus [02-planungsgrundlage.md](02-planungsgrundlage.md) erledigt sich.
+
+### Bewusst aufgegeben
+
+Ehrlichkeitshalber, damit die Entscheidung mit offenen Augen getroffen ist:
+
+- **Kein Alles-aus-einer-Hand.** Ein Betrieb, der genau das sucht, ist bei SoftTec besser aufgehoben. Das ist in Ordnung, denn er ist nicht unser Zielkunde.
+- **Der DATEV-Export enthält Umsätze und Forderungen, keine Kassenbewegungen.** Der Steuerberater führt Kasse und PMS zusammen. Das ist der Normalfall, muss aber im Vertrieb klar gesagt werden, damit keine falsche Erwartung entsteht.
+- **Kein Umsatzbericht, der Kassenbestände zeigt.** Unsere Berichte zeigen Umsatz, Belegung, ADR und RevPAR, nicht den Kassenstand.
+- **Die Entscheidung ist rückholbar, aber nicht billig.** Sollte die Nachfrage später eindeutig sein, ist ein Kassenmodul nachrüstbar. Der Aufwand bleibt derselbe wie heute, nur ohne Zeitdruck.
+
+---
+
+## 7. Gesetzgebungsstand zur Registrierkassenpflicht
+
+Zur Einordnung, weil es die Kassenschnittstelle terminiert:
 
 | | |
 |---|---|
 | Grundlage | Koalitionsvertrag CDU/CSU und SPD |
-| Referentenentwurf des BMF | seit Juni 2026 |
+| Referentenentwurf des BMF | Juni 2026 |
 | Aktueller Gesetzentwurf | 7. August 2026 |
-| Maßgebliches Umsatzjahr | **2027** |
-| Pflicht ab | **1. Januar 2028** |
-| Schwelle | **100.000 Euro Gesamtumsatz**, bar und unbar zusammen |
-| Folge | Elektronisches Kassensystem mit TSE ist Pflicht, offene Ladenkasse entfällt |
-| Status | **Noch nicht verabschiedet.** Details, insbesondere Ausnahmen, sind offen und werden vom Steuerberaterverband kritisiert |
+| Maßgebliches Umsatzjahr | 2027 |
+| Pflicht ab | 1. Januar 2028 |
+| Schwelle | 100.000 Euro Gesamtumsatz, bar und unbar |
+| Status | **Nicht verabschiedet.** Ausnahmen und Details offen, vom Steuerberaterverband als unklar kritisiert |
 
-**Die Schwelle von 100.000 Euro Gesamtumsatz überschreitet praktisch jedes Hotel.** Schon ein Haus mit zehn Zimmern liegt darüber. Das heißt:
+**Wichtig: Diese Pflicht trifft die Hotels, nicht uns.** Wir sind kein Kassensystem und werden es nicht. Für uns ist es ein Terminhinweis: Die Kassenschnittstelle sollte stehen, bevor die Betriebe umstellen, damit wir bei der Umstellung die zweite Wahl sind, mit der die neue Kasse sprechen soll.
 
-- Die offene Ladenkasse des Pilothauses läuft nach heutigem Stand **Ende 2027 aus**.
-- **Der gesamte deutsche Hotelmarkt muss bis zum 1. Januar 2028 eine TSE-Kasse haben.**
-
-Das ist eine erzwungene Umstellungswelle mit festem Datum, und sie trifft genau unsere Zielgruppe. Für uns bedeutet das dreierlei:
-
-1. **Modus B muss deutlich vor 2028 fertig und erprobt sein.** Wer im Herbst 2027 noch keine Kasse anbieten kann, verliert die Welle.
-2. **Es ist ein Vertriebsanlass.** Ein Betrieb, der ohnehin eine TSE-Kasse anschaffen muss, ist offen dafür, gleich das ganze System zu wechseln. Das ist der beste Aufhänger für die Migrationskandidaten aus [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md).
-3. **Das Argument bleibt freiwillig.** Wir zwingen niemanden. Der Gesetzgeber übernimmt das. Wir müssen nur bereit sein.
-
-**Vorbehalt:** Das Gesetz ist nicht verabschiedet, die Daten können sich verschieben und Ausnahmen sind möglich. Wir sollten den Gesetzgebungsstand halbjährlich nachverfolgen und die Planung nicht darauf verwetten, sondern nur darauf ausrichten.
+Der Stand sollte halbjährlich nachverfolgt werden.
 
 ---
 
-## 6. Was Modus B enthält
+## 8. Was noch zu klären ist
 
-Der fachliche Inhalt aus der ersten Fassung bleibt richtig, nur eben als Modul.
+**Ein Steuerberater oder Wirtschaftsprüfer muss die Abgrenzung vor dem Produktivgang bestätigen.** Die Grenze zwischen Fakturierung mit Zahlungsvermerk und Kassenfunktion ist schmal, und wir wollen sie nicht selbst auslegen. Konkret zu bestätigen:
 
-### Entitäten
+1. Dass ein strukturierter Zahlungsvermerk ohne Kassenbestand und ohne Belegausgabe keine Kassenfunktion begründet.
+2. Wie die Verfahrensdokumentation formulieren muss, dass die maßgebliche Kassenaufzeichnung beim Betrieb liegt.
+3. Ob der Zahlungsvermerk im DATEV-Export mitgehen soll oder besser nicht.
 
-| Entität | Inhalt |
+Das gehört ohnehin zur Verfahrensdokumentation, die wir als Vorlage mitliefern wollen. Der Aufwand ist also gering und der Nutzen hoch, weil wir die Abgrenzung dann schriftlich haben und im Vertrieb zeigen können.
+
+---
+
+## 9. Das übergreifende Muster
+
+Diese Entscheidung ist ein Beispiel für einen Grundsatz, der für weitere Module gilt:
+
+> **Was der Betrieb schon führt, bauen wir nicht. Wir schließen an.**
+
+Das betrifft mindestens:
+
+| Bereich | Unser Ansatz |
 |---|---|
-| `cash_register` | Physische Kasse. Ein Betrieb hat oft mehrere: Rezeption, Bar, Restaurant. **Je Kasse eine eigene TSE**, plus Seriennummer und ELSTER-Meldedatum |
-| `cash_shift` | Schicht mit Anfangsbestand, verantwortlicher Person, Soll- und Ist-Bestand, Differenz |
-| `cash_movement` | Jede Bargeldbewegung. Härtegrad 1, hart unveränderlich |
-| `cash_count` | Zählprotokoll, nach Stückelung |
-| `cash_closing` | Tagesabschluss, füllt das DSFinV-K-Kassenabschlussmodul |
+| Kassenbuch und Kasse | Schnittstelle statt eigener Kasse |
+| Buchungsmaschine | Eigene anbieten, fremde anbindbar |
+| Channel Manager | Nur ARI-Schnittstelle, kein eigener |
+| Restaurantkasse | Schnittstelle |
+| Schließsystem | Schnittstelle |
+| Buchhaltung | DATEV-Export, keine eigene Fibu |
 
-### Bewegungsarten
-
-| Art | Umsatz? | TSE? |
-|---|---|---|
-| Einnahme, Gast zahlt bar | ja | ja |
-| Ausgabe, Barauslage mit Beleg | nein | ja |
-| Einlage, Wechselgeld aus dem Tresor | nein | **ja** |
-| Entnahme, Abschöpfung in den Tresor | nein | **ja** |
-| Übertrag zwischen Kassen | nein | ja |
-| Bankeinzahlung | nein | ja |
-| Gebuchte Kassendifferenz | nein | ja |
-
-Der nicht offensichtliche Punkt bleibt: **Einlagen und Entnahmen sind TSE-pflichtig**, obwohl sie keine Umsätze sind. Sie sind kassensturzrelevant, und der Anwendungserlass verlangt die Absicherung aller Vorgänge, die zu einem baren oder kassensturzrelevanten Vorgang gehören. Eine Lücke dort wäre der offensichtliche Weg, Bargeld unbemerkt zu bewegen.
-
-### Die sechs Prüfungspunkte als harte Checks im Code
-
-1. **Der Kassenbestand darf nie negativ werden.** Man kann nicht mehr herausgeben, als in der Lade liegt. Wirksamste Einzelmaßnahme.
-2. **Kassensturzfähigkeit jederzeit**, nicht erst nach einem Abschluss.
-3. **Differenzen werden gebucht**, mit Grund und Verantwortlichem, nie stillschweigend ausgeglichen.
-4. **Jede Ausgabe braucht einen Beleg**, Pflichtfeld.
-5. **Täglich abschließen.** Ein ausgelassener Abschluss ist ein Mangel und muss sichtbar sein.
-6. **Kassenbestand und Umsatz sind getrennt.** Eine Kartenzahlung ist Umsatz, aber keine Bargeldbewegung. Wer beides vermischt, hat jeden Abend eine Differenz.
-
----
-
-## 7. Korrektur der Roadmap, zweiter Anlauf
-
-Die erste Fassung zog Kassenbuch und TSE nach Stufe 1. **Das wird zurückgenommen.**
-
-| Stufe | Kassenthema |
-|---|---|
-| **Stufe 1** | **Modus A.** Keine Zahlart Bar, keine Kassenfunktion, keine TSE. Rechnungen und unbare Zahlungen, voll GoBD-fest. Das Pilothaus kann so sofort produktiv arbeiten und behält seine offene Ladenkasse |
-| **Stufe 2** | **Modus B** als zuschaltbares Modul: Kassenbuch, TSE-Anbindung, DSFinV-K-Export. Muss deutlich vor Ende 2027 erprobt sein |
-
-Das war ursprünglich die Aufteilung, bevor ich sie mit falscher Begründung geändert habe. Sie ist richtig, aber aus einem anderen Grund als zunächst gedacht: **nicht weil die Kasse unwichtig wäre, sondern weil sie optional sein muss.**
-
-Die Roadmap in [02-planungsgrundlage.md](02-planungsgrundlage.md) ist entsprechend zurückgesetzt.
-
----
-
-## 8. Was das über das Produkt insgesamt sagt
-
-Dieser Fall ist ein Muster, das für weitere Module gilt: **Alles, wofür ein Betrieb schon ein laufendes System hat, muss bei uns abschaltbar sein.** Das betrifft neben der Kasse mindestens:
-
-- Kassenbuch
-- Buchungsmaschine, viele Häuser haben eine und wollen sie behalten
-- Channel Manager
-- Restaurantkasse
-- Schließsystem
-
-**Das ist die praktische Umsetzung von „kein Zwang zur Bündelung" aus [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md).** Es ist gleichzeitig der Grund, warum das offene API kein Luxus ist: Wer ein Modul bei uns abschaltet, muss sein eigenes anbinden können.
-
-Und es hat eine Konsequenz für die Preisgestaltung: Ein modulares Produkt braucht einen modularen Preis. Wer nur die Belegungsplanung nutzt, zahlt weniger als wer Kasse, Buchungsmaschine und Kiosk dazunimmt. Das ist auch das Modell von SoftTec mit dem Einstieg ab 7 Euro je Zimmer und Aufpreisen je Modul.
+Das hält das Produkt schlank, senkt die Umstiegshürde und ist der eigentliche Grund, warum das offene API keine Kür ist: **Jedes Modul, das wir nicht bauen, muss anbindbar sein.**
 
 ---
 
@@ -202,8 +197,6 @@ Und es hat eine Konsequenz für die Preisgestaltung: Ein modulares Produkt brauc
 - [tax & bytes: Quo vadis elektronisches Kassenbuch, Einordnung nach § 146a AO](https://www.taxandbytes.de/360/quo-vadis-elektronisches-kassenbuch)
 - [Steuerberater te Heesen: Elektronische Kassenbücher und § 146a AO, Meldepflicht](https://stb-teheesen.de/elektronische-kassenbuecher-%C2%A7-146a-ao-muessen-sie-gemeldet-werden/)
 - [sevdesk: Offene Ladenkasse, Voraussetzungen und Anforderungen](https://sevdesk.de/ratgeber/buchhaltung-finanzen/kassenfuehrung/offene-ladenkasse/)
-- [Handwerksblatt: Bundesregierung plant Registrierkassenpflicht ab 2027](https://www.handwerksblatt.de/themen-specials/registrierkassen-worauf-muessen-haendler-achten/bundesregierung-plant-registrierkassenpflicht)
 - [kassensystemevergleich: Registrierkassenpflicht, Umsatzjahr 2027, Pflicht ab 2028](https://www.kassensystemevergleich.de/registrierkassenpflicht-deutschland/)
 - [Haufe: Gesetz zur Einführung einer Kassenpflicht](https://www.haufe.de/steuern/gesetzgebung-politik/gesetz-zur-einfuehrung-einer-kassenpflicht_168_691756.html)
-- [IHK Darmstadt: Registrierkassenpflicht soll kommen](https://www.ihk.de/darmstadt/produktmarken/recht-und-fair-play/steuerinfo/registrierkassenpflicht-soll-kommen-der-papierbon-soll-gehen-7123986)
 - [IWW: Elektronische Aufzeichnungsgeräte und § 146a AO in der Praxis](https://www.iww.de/bbp/unternehmensberatung/kassenfuehrung-elektronische-aufzeichnungsgeraete-und-der-146a-ao-in-der-praxis-f132011)
