@@ -8,6 +8,7 @@ import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Setup } from './routes/Setup.tsx'
 import { Login } from './routes/Login.tsx'
 import { Folio } from './routes/Folio.tsx'
+import { Blocks } from './routes/Blocks.tsx'
 import { LOCALES, I18nContext, type Locale } from './lib/i18n.js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './lib/api.js'
@@ -100,6 +101,7 @@ function App(): JSX.Element {
       {screen === 'tape' && <Tape propertyId={propertyId} />}
       {screen === 'today' && <Today propertyId={propertyId} onFolio={setFolioRef} />}
       {screen === 'housekeeping' && <Housekeeping propertyId={propertyId} />}
+      {screen === 'blocks' && <Blocks propertyId={propertyId} />}
       {screen === 'setup' && <Setup propertyId={propertyId} />}
           </>}
     </Shell>

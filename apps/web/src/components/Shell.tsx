@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { I18nContext, useT, LOCALES, type Locale } from '../lib/i18n.js'
 import { useOnline } from '../lib/offline.js'
 
-export type Screen = 'tape' | 'today' | 'housekeeping' | 'setup'
+export type Screen = 'tape' | 'today' | 'housekeeping' | 'blocks' | 'setup'
 
 interface Props {
   screen: Screen
@@ -15,9 +15,10 @@ interface Props {
 function Nav({ screen, onScreen }: Pick<Props, 'screen' | 'onScreen'>): JSX.Element {
   const t = useT()
   const eintraege: Array<[Screen, 'nav.tape' | 'nav.today' | 'nav.housekeeping'
-                                | 'nav.setup']> = [
+                                | 'nav.blocks' | 'nav.setup']> = [
     ['tape', 'nav.tape'], ['today', 'nav.today'],
-    ['housekeeping', 'nav.housekeeping'], ['setup', 'nav.setup']
+    ['housekeeping', 'nav.housekeeping'], ['blocks', 'nav.blocks'],
+    ['setup', 'nav.setup']
   ]
   return (
     <nav className="flex gap-1">

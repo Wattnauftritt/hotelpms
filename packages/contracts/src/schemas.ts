@@ -284,7 +284,9 @@ export const CreateBooking = Type.Object({
   guestId: Type.Optional(Type.Integer()),
   source: Type.Optional(Type.String()),
   externalReference: Type.Optional(Type.String()),
-  notes: Type.Optional(Type.String())
+  notes: Type.Optional(Type.String()),
+  /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
+  blockRef: Type.Optional(Type.String())
   // Es gibt bewusst kein Feld fuer Kartendaten. Eine Garantie laeuft ueber
   // Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters,
   // damit keine Kartendaten durch dieses System laufen (E8, Dokument 13).
@@ -300,6 +302,54 @@ export const BookingCreated = Type.Object({
   totalCent: Cent
 })
 export type BookingCreated = Static<typeof BookingCreated>
+
+// ------------------------------------------------------- Kontingent / Gruppe
+
+/**
+ * Ein Kontingent haelt Zimmer einer Kategorie, ohne sie zu verkaufen. Ein
+ * Abruf ist eine Reservierung dagegen: der Platz wandert von `blocked` nach
+ * `sold`, die Summe bleibt gleich.
+ */
+export const BlockPickup = Type.Object({
+  reservationRef: Type.String(),
+  status: ReservationStatus,
+  arrival: IsoDate,
+  departure: IsoDate,
+  guest: Type.String()
+})
+export type BlockPickup = Static<typeof BlockPickup>
+
+export const Block = Type.Object({
+  blockRef: Type.String(),
+  name: Type.String(),
+  categoryId: Type.Integer(),
+  categoryName: Type.String(),
+  companyName: Type.Union([Type.String(), Type.Null()]),
+  fromDate: IsoDate,
+  toDate: IsoDate,
+  quantity: Type.Integer(),
+  pickedUp: Type.Integer(),
+  /** Noch nicht abgerufen und damit weiterhin gehalten. */
+  remaining: Type.Integer(),
+  releaseDate: Type.Union([IsoDate, Type.Null()]),
+  status: Type.Union([
+    Type.Literal('active'), Type.Literal('released'), Type.Literal('closed')]),
+  pickups: Type.Array(BlockPickup)
+})
+export type Block = Static<typeof Block>
+
+export const CreateBlock = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  categoryId: Type.Integer(),
+  fromDate: IsoDate,
+  toDate: IsoDate,
+  quantity: Type.Integer({ minimum: 1 }),
+  companyId: Type.Optional(Type.Integer()),
+  ratePlanId: Type.Optional(Type.Integer()),
+  /** Ab diesem Tag gibt der Nachtlauf den nicht abgerufenen Rest frei. */
+  releaseDate: Type.Optional(IsoDate)
+})
+export type CreateBlock = Static<typeof CreateBlock>
 
 // -------------------------------------------------------------------- Gast
 
