@@ -1,0 +1,23 @@
+# Caddy holt und erneuert die Zertifikate selbst. Kein certbot, kein Cron-Job.
+{
+	email admin@hotelpms.de
+}
+
+api.hotelpms.de {
+	reverse_proxy unix//run/hotelpms/api.sock
+	encode zstd gzip
+	# Ratenbegrenzung je IP am Rand, vor allem fuer unauthentifizierte Pfade.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+app.hotelpms.de {
+	root * /opt/hotelpms/current/web
+	try_files {path} /index.html
+	file_server
+	encode zstd gzip
+}

@@ -1,0 +1,34 @@
+[Unit]
+Description=hotelpms API
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=hotelpms
+Group=hotelpms
+WorkingDirectory=/opt/hotelpms/current
+EnvironmentFile=/opt/hotelpms/shared/env
+Environment=NODE_ENV=production
+Environment=LISTEN_SOCKET=/run/hotelpms/api.sock
+ExecStart=/usr/bin/node /opt/hotelpms/current/apps/api/dist/server.js
+Restart=always
+RestartSec=2
+# Legt /run/hotelpms an und raeumt es beim Stopp weg. Caddy muss in der
+# Gruppe hotelpms sein, um den Socket zu erreichen.
+RuntimeDirectory=hotelpms
+RuntimeDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/log/hotelpms
+# Die API bekommt keine Quote und damit Vorrang vor dem Worker.
+
+[Install]
+WantedBy=multi-user.target

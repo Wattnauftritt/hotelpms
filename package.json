@@ -1,0 +1,26 @@
+{
+  "name": "hotelpms",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r --filter './packages/**' build && pnpm -r --filter './apps/**' build",
+    "typecheck": "tsc -b --pretty",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "pnpm --filter @hotelpms/db migrate",
+    "db:reset": "pnpm --filter @hotelpms/db reset",
+    "db:seed": "pnpm --filter @hotelpms/db seed",
+    "dev:api": "pnpm --filter @hotelpms/api dev"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "eslint-plugin-import-x": "^4.6.1",
+    "vitest": "^2.1.8",
+    "tsx": "^4.19.2"
+  }
+}
