@@ -168,7 +168,113 @@ Das gehört ohnehin zur Verfahrensdokumentation, die wir als Vorlage mitliefern 
 
 ---
 
-## 9. Das übergreifende Muster
+## 9. Die regulatorischen Hürden, realistisch betrachtet
+
+Die Frage war, ob ein eigenes Kassenbuch an Lizenzen, Zertifizierungen oder der DATEV-Anbindung scheitert. **Tut es nicht.** Die vermuteten Hürden existieren größtenteils nicht.
+
+| Vermutete Hürde | Realität |
+|---|---|
+| Zulassung oder Lizenz für Kassensoftware | **Existiert in Deutschland nicht.** Es gibt keine staatliche Genehmigung für Kassensoftware. Anders als etwa in Italien oder Frankreich |
+| GoBD-Zertifizierung | **Gibt es amtlich nicht.** Die Finanzverwaltung erteilt keine Positivtestate zur Ordnungsmäßigkeit. Was Anbieter „GoBD-zertifiziert" nennen, ist ein privates Testat eines Wirtschaftsprüfers. Nützlich als Vertriebsargument, kein Rechtsakt |
+| BSI-Zertifizierung | Betrifft **nur die TSE**, und die kaufen wir ein. Die Kassensoftware selbst wird nicht zertifiziert |
+| DATEV-Lizenz | **Nicht erforderlich.** Das DATEV-Format für Buchungsstapel ist im DATEV Developer Portal nach kostenfreier Registrierung dokumentiert, samt Prüfprogramm. Schnittstellen dürfen ausdrücklich ohne Partnerschaft umgesetzt werden |
+| DATEV-Marktplatz | **Optional.** Kostet Grundgebühr und Klickpreis und setzt eine Mindestnutzerzahl voraus. Ein Vertriebskanal, keine Voraussetzung |
+
+**Wichtig zur Einordnung:** Der DATEV-Export ist ohnehin Teil des Produkts, unabhängig vom Kassenbuch. Er ist also keine zusätzliche Hürde, sondern ohnehin zu bauen.
+
+### Die echten Hürden
+
+Sie sind nicht regulatorisch, sondern betrieblich und kommerziell:
+
+1. **DSFinV-K korrekt erzeugen.** 22 Dateien in drei Modulen, mit exakten Feldnamen und Wertebereichen, und die Spezifikation wandert von 2.5 auf 3.0. Das ist echte, wiederkehrende Arbeit.
+2. **Laufende Compliance-Pflege.** BMF-Schreiben, geänderte Auslegungen, neue Meldepflichten. Wer die Kasse führt, pflegt dauerhaft Steuerrecht statt Produkt.
+3. **Supportlast.** Kassendifferenzen sind der supportintensivste Bereich eines PMS, weil es um Geld und Schuldzuweisung geht.
+4. **Haftungs- und Vertrauensrisiko, und das ist der gewichtigste Punkt.** Kassenführungsmängel berechtigen das Finanzamt zu **Hinzuschätzungen**, und die können für ein Hotel existenzbedrohend werden. Strafrechtlich haftet ein Anbieter nur bei Vorsatz, etwa beim Vertrieb von Manipulationssoftware. Aber wenn ein Kunde wegen eines Fehlers in unserer Kasse eine Hinzuschätzung kassiert, ist das ein Konflikt, den keine Haftungsbeschränkung im Vertrag heilt.
+
+**Fazit: Der Grund, das Kassenbuch nicht zu bauen, ist nicht Regulatorik. Es ist Aufwand, Supportlast und Haftungsexposition.** Die Entscheidung aus Abschnitt 1 bleibt richtig, aber sie ist eine Abwägung, keine Unmöglichkeit. Das ist ein Unterschied, weil es bedeutet: Wir können sie jederzeit umkehren, wenn der Markt es verlangt.
+
+---
+
+## 10. Wie wir die Tür offenhalten, ohne etwas zu bauen
+
+**Ja, das Backend sollte so gebaut sein, dass ein Kassenbuch später additiv möglich ist. Und die gute Nachricht: Das kostet praktisch nichts extra**, weil fast alles davon ohnehin aus der GoBD-Festigkeit folgt.
+
+### Was ohnehin entschieden ist und bereits passt
+
+| Entscheidung | Quelle |
+|---|---|
+| Geldbeträge als ganze Zahlen in Cent | [07-technologie-und-hosting.md](07-technologie-und-hosting.md) |
+| Finanztabellen append-only, Korrektur nur als Gegenbuchung | [08-compliance-in-der-praxis.md](08-compliance-in-der-praxis.md) |
+| Audit-Log per Datenbank-Trigger | dito |
+| Fortlaufende Nummern aus einer Sequenz beim Festschreiben | dito |
+| `property_id` in jeder Tabelle | [02-planungsgrundlage.md](02-planungsgrundlage.md) |
+| Geschäftsdatum getrennt vom Zeitstempel | dito |
+
+Ein Kassenabschluss braucht genau diese sechs Dinge. Sie sind alle schon da.
+
+### Die eine Entscheidung, die man bewusst treffen muss
+
+**Der Zahlungsvermerk muss eine eigene Tabelle mit Zahlartenkatalog sein, kein Statusfeld am Folio.**
+
+Das ist der Angelpunkt. Ist „bezahlt" ein Boolean am Folio, wird ein späteres Kassenbuch zur Datenmigration mit Rekonstruktion von Historie. Ist es eine Zeilentabelle, ist es rein additiv.
+
+```sql
+-- Zahlarten als Stammdaten, nicht als Enum im Code
+CREATE TABLE payment_method (
+  id           bigserial PRIMARY KEY,
+  property_id  bigint NOT NULL,
+  name         text   NOT NULL,     -- Bar, Karte vor Ort, Ueberweisung, Portal
+  aktiv        boolean NOT NULL DEFAULT true
+  -- spaeter additiv: ist_bar, beruehrt_kassenbestand, tse_pflichtig
+);
+
+-- Der Zahlungsvermerk. Haertegrad 1, hart unveraenderlich.
+CREATE TABLE settlement (
+  id                bigserial PRIMARY KEY,
+  property_id       bigint  NOT NULL,
+  folio_id          bigint  NOT NULL,
+  geschaeftsdatum   date    NOT NULL,
+  betrag_cent       bigint  NOT NULL,
+  payment_method_id bigint  NOT NULL,
+  externe_referenz  text,             -- Beleg der Ladenkasse, Portal-ID, Terminal
+  erfasst_von       bigint  NOT NULL,
+  erfasst_am        timestamptz NOT NULL DEFAULT now(),
+  storniert_von_id  bigint            -- Verweis auf die Gegenbuchung
+);
+```
+
+Diese Form braucht man ohnehin, unabhängig vom Kassenbuch:
+
+- Ein Folio kann in Teilen beglichen werden, etwa Anzahlung plus Restzahlung.
+- Die Offene-Posten-Sicht ist die Differenz aus Charges und Settlements.
+- Der Storno funktioniert wie überall sonst im Finanzteil.
+
+Ein späteres Kassenbuch wäre dann: drei neue Tabellen für Kasse, Schicht und Bargeldbewegung, drei zusätzliche Spalten an `payment_method`, ein Hook im Erfassungsdienst. **Kein bestehender Datensatz muss angefasst werden.**
+
+### Der zweite Punkt: eine einzige Stelle im Code
+
+Jede Erfassung eines Zahlungsvermerks läuft durch **eine** Dienstfunktion. Nicht durch drei Stellen in Check-out, Rechnungserstellung und Import. Dann gibt es später genau einen Ort, an dem ein Fiskal-Hook ansetzt.
+
+Das ist keine Vorbereitung auf das Kassenbuch, sondern schlicht sauberer Aufbau. Es zahlt nur zufällig darauf ein.
+
+### Was wir ausdrücklich nicht tun
+
+Vorbereitung heißt, die allgemeinen Entscheidungen richtig zu treffen, **nicht ungenutztes Gerüst zu bauen**:
+
+- Keine leeren Tabellen `cash_register`, `cash_shift`, `cash_movement` auf Vorrat.
+- Keine `FiskalAdapter`-Schnittstelle ohne Implementierung. Eine Abstraktion mit genau null Implementierungen ist keine Abstraktion, sondern eine Vermutung.
+- Keine `tse_`-Spalten „für später" an bestehenden Tabellen.
+- Keine Konfigurationsschalter für ein Modul, das es nicht gibt.
+
+Ungenutztes Gerüst kostet bei jeder Migration, jedem Review und jedem neuen Entwickler Aufmerksamkeit, und es ist am Ende doch falsch geschnitten, weil man beim Bauen immer klüger ist als beim Vorbereiten.
+
+### Und zur Beruhigung
+
+Die Form der `settlement`-Tabelle macht uns **nicht** zu einem Kassensystem. Maßgeblich ist die Funktion, nicht das Schema: kein Kassenbestand, keine Abwicklung, kein Bon. Die vier Abgrenzungsmerkmale aus Abschnitt 3 bleiben unberührt.
+
+---
+
+## 11. Das übergreifende Muster
 
 Diese Entscheidung ist ein Beispiel für einen Grundsatz, der für weitere Module gilt:
 
@@ -200,3 +306,10 @@ Das hält das Produkt schlank, senkt die Umstiegshürde und ist der eigentliche 
 - [kassensystemevergleich: Registrierkassenpflicht, Umsatzjahr 2027, Pflicht ab 2028](https://www.kassensystemevergleich.de/registrierkassenpflicht-deutschland/)
 - [Haufe: Gesetz zur Einführung einer Kassenpflicht](https://www.haufe.de/steuern/gesetzgebung-politik/gesetz-zur-einfuehrung-einer-kassenpflicht_168_691756.html)
 - [IWW: Elektronische Aufzeichnungsgeräte und § 146a AO in der Praxis](https://www.iww.de/bbp/unternehmensberatung/kassenfuehrung-elektronische-aufzeichnungsgeraete-und-der-146a-ao-in-der-praxis-f132011)
+- [kassensystem-der-zukunft: GoBD-Zertifizierung, gibt es ein GoBD-Zertifikat?](https://kassensystem-der-zukunft.com/gobd-zertifizierung-gibt-es-eigentlich-ein-gobd-zertifikat/)
+- [Bayerisches Landesamt für Steuern: Elektronische Kassensysteme](https://www.lfst.bayern.de/steuerinfos/weitere-themen/elektronische-kassensysteme)
+- [DATEV: FAQ für Software-Hersteller zum Marktplatz](https://www.datev.de/web/de/ueber-datev/das-digitale-oekosystem-von-datev/partnering/datev-marktplatz/faq-fuer-interessierte-software-hersteller/)
+- [DATEV: Erste Schritte zum Partnerstatus](https://www.datev.de/web/de/berufsgruppenuebergreifend/ueber-datev/portfolio/oekosystem/partnering/datev-marktplatz/erste-schritte-zum-partnerstatus)
+- [auditplan: DATEV Buchungsstapel EXTF, Format und Export](https://auditplan.io/datev-buchungsstapel-extf)
+- [LHP: Zuschätzung in der Betriebsprüfung und Haftung bei Manipulation durch Kassensoftware](https://www.lhp-gruppe.de/themen/zuschaetzung-in-betriebspruefung-und-haftung-bei-manipulation-durch-kassen-software/)
+- [Gastgewerbe-Magazin: Hinzuschätzung bei gravierenden Kassenführungsmängeln zulässig](https://gastgewerbe-magazin.de/urteil-hinzuschaetzung-bei-gravierenden-kassenfuehrungsmaengeln-zulaessig-27411)
