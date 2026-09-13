@@ -14,6 +14,7 @@ import { setupRoutes } from './setup.js'
 import { blockRoutes } from './blocks.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
 import { webhookRoutes } from './webhooks.js'
+import { channelRoutes } from './channel.js'
 import { openApiRoutes } from './openapi.js'
 
 export interface RouteOverrides {
@@ -37,6 +38,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   blockRoutes(app)
   paymentsRoutes(app, overrides.payments)
   webhookRoutes(app)
+  channelRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }
