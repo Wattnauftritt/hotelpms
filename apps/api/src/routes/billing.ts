@@ -168,6 +168,42 @@ export function billingRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Der Beleg zur Rechnung: PDF/A-3 mit eingebettetem CII-XML nach
+   * EN 16931, also ZUGFeRD.
+   *
+   * Ausgeliefert wird, was der Worker erzeugt hat, und nichts wird hier
+   * nachgerechnet oder neu gezeichnet. Ein Beleg, der bei jedem Abruf neu
+   * entstuende, waere bei jedem Abruf ein anderer -- und der Gast haelt
+   * eine Fassung in der Hand, die das Haus nicht mehr kennt.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/invoices/:invoiceRef/pdf',
+    permission: 'folio:read',
+    summary: 'Rechnung als PDF/A-3 mit eingebettetem ZUGFeRD-XML',
+    handler: async (req, reply) => {
+      const { invoiceRef } = req.params as { invoiceRef: string }
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ number: string; pdf: Buffer | null }>(
+          `SELECT i.number, d.pdf
+             FROM invoice i
+             LEFT JOIN invoice_document d ON d.invoice_id = i.id
+            WHERE i.public_ref = $1`, [invoiceRef])
+        if (r.rowCount === 0) throw Errors.notFound('Rechnung')
+        const pdf = r.rows[0]!.pdf
+        if (pdf === null) throw Errors.documentPending()
+
+        // Die Rechnungsnummer kann einen Praefix aus den Stammdaten tragen;
+        // was dort steht, gehoert nicht ungeprueft in einen Dateinamen.
+        const name = `Rechnung-${r.rows[0]!.number.replace(/[^\w.-]/g, '-')}.pdf`
+        reply.header('content-type', 'application/pdf')
+        reply.header('content-disposition', `attachment; filename="${name}"`)
+        return pdf
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'POST',
     url: '/v1/folios/:folioRef/invoice',

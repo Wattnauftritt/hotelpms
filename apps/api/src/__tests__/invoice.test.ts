@@ -159,6 +159,78 @@ describe('Rechnung und Pflichtangaben', () => {
     expect(g.rows[0]!.service_to).toBe('2026-10-03')
   })
 
+  /**
+   * Der Beleg selbst entsteht im Worker, nicht hier. Geprüft wird deshalb
+   * die Auslieferung: was in der Datenbank liegt, geht unverändert hinaus,
+   * und was nicht da ist, wird als „kommt gleich" beantwortet und nicht
+   * als „gibt es nicht".
+   */
+  describe('Auslieferung des Belegs', () => {
+    async function mitBeleg(pdf = Buffer.from('%PDF-1.7 Testbeleg')): Promise<string> {
+      const r = await fakturieren(await folioMit([{ netCent: 30_000 }]))
+      const inv = JSON.parse(r.body) as { invoiceRef: string }
+      await owner.query(
+        // Beide Male ausdruecklich als bytea: derselbe Parameter in zwei
+        // Rollen laesst PostgreSQL sonst raten und scheitern.
+        `INSERT INTO invoice_document (invoice_id, property_id, pdf, xml, byte_count, sha256)
+         SELECT id, property_id, $2::bytea, '<xml/>', length($2::bytea), 'x'
+           FROM invoice WHERE public_ref = $1`, [inv.invoiceRef, pdf])
+      return inv.invoiceRef
+    }
+
+    it('liefert das PDF mit Typ und Dateinamen', async () => {
+      const ref = await mitBeleg()
+      const r = await app.inject({
+        method: 'GET', url: `/v1/invoices/${ref}/pdf`, headers: auth })
+      expect(r.statusCode).toBe(200)
+      expect(r.headers['content-type']).toBe('application/pdf')
+      expect(r.headers['content-disposition']).toMatch(/^attachment; filename="Rechnung-\d{4}-\d{5}\.pdf"$/)
+      expect(r.rawPayload.subarray(0, 5).toString()).toBe('%PDF-')
+    })
+
+    it('liefert die Bytes unveraendert', async () => {
+      // Ein Beleg mit Nullbytes und hohen Zeichen: wer ihn durch eine
+      // Zeichenkette schickt, macht ihn unbrauchbar, und zwar erst beim
+      // Empfaenger.
+      const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x00, 0xff, 0xfe, 0x0a])
+      const ref = await mitBeleg(pdf)
+      const r = await app.inject({
+        method: 'GET', url: `/v1/invoices/${ref}/pdf`, headers: auth })
+      expect(r.rawPayload.equals(pdf)).toBe(true)
+    })
+
+    it('unterscheidet den noch nicht erzeugten Beleg von der fehlenden Rechnung', async () => {
+      const r = await fakturieren(await folioMit([{ netCent: 30_000 }]))
+      const { invoiceRef } = JSON.parse(r.body) as { invoiceRef: string }
+
+      const offen = await app.inject({
+        method: 'GET', url: `/v1/invoices/${invoiceRef}/pdf`, headers: auth })
+      expect(offen.statusCode).toBe(409)
+      expect(JSON.parse(offen.body).type).toBe('urn:hotelpms:document_pending')
+
+      const unbekannt = await app.inject({
+        method: 'GET', url: '/v1/invoices/inv_gibtesnicht/pdf', headers: auth })
+      expect(unbekannt.statusCode).toBe(404)
+    })
+
+    /**
+     * Ein Beleg trägt Namen und Anschrift des Gastes. Die öffentliche
+     * Referenz ist keine Berechtigung: das fremde Haus darf ihn auch dann
+     * nicht bekommen, wenn es sie kennt.
+     */
+    it('gibt den Beleg nicht an ein fremdes Haus', async () => {
+      const ref = await mitBeleg()
+      const fremd = await makeProperty(owner, { name: 'Fremdhotel', code: 'FREMD' })
+      const fremderNutzer = await makeUser(owner,
+        { email: 'fremd@test.de', propertyId: fremd.propertyId, roleKey: 'reception' })
+
+      const r = await app.inject({
+        method: 'GET', url: `/v1/invoices/${ref}/pdf`,
+        headers: { cookie: `hp_session=${fremderNutzer.sessionId}` } })
+      expect(r.statusCode).toBe(404)
+    })
+  })
+
   it('nennt alle Maengel auf einmal', async () => {
     await owner.query(
       `UPDATE property SET postal_code = NULL, tax_number = NULL, vat_id = NULL
