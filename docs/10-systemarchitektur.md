@@ -403,6 +403,27 @@ Dazu `hotelpms-worker.service` analog.
 
 Die Plesk-Domain wird auf **Proxy-Modus** gestellt und über zusätzliche Nginx-Direktiven auf `127.0.0.1:3000` geleitet, mit `proxy_http_version 1.1` und Keepalive zum Upstream.
 
+### Eigener Server oder geteilt? Die entscheidende Vorfrage
+
+Plesk auf demselben Server wie die Anwendung ist richtig, **sofern dieser Server allein dem PMS gehört**.
+
+**Hostet derselbe Plesk-Server auch andere Websites, gehört das PMS auf einen eigenen Server.** Grund: Eine verwundbare PHP-Anwendung auf dem Rechner bedeutet lokalen Zugriff, und von dort ist PostgreSQL über den Socket auf `127.0.0.1` erreichbar. Ein veraltetes CMS neben einer Datenbank mit Gästedaten und Rechnungen ist eine Konstellation, die man nicht eingeht.
+
+| Lage | Empfehlung |
+|---|---|
+| Plesk-Server gehört allein dem PMS | Plesk bleibt, Anwendung unter systemd auf derselben Maschine |
+| Plesk-Server hostet auch Kundenseiten | **Eigener Server für das PMS.** Plesk dort gern wieder, aber ohne fremde Anwendungen |
+
+Ein zusätzlicher dedizierter Server kostet rund 80 bis 100 Euro im Monat. Gemessen an der Umsatzrechnung in [07-technologie-und-hosting.md](07-technologie-und-hosting.md) ist das kein Argument.
+
+Muss der Server aus anderen Gründen geteilt werden, sind dies die Mindestmaßnahmen: PostgreSQL mit `scram-sha-256` auch auf localhost und niemals `trust`, eigener Systembenutzer für die Anwendung, Anwendungsdateien und Umgebungsdatei nicht lesbar für die Plesk-Webbenutzer, und getrennte Datenbankinstanz statt einer geteilten.
+
+### Fallstrick: Plesk überschreibt die Nginx-Konfiguration
+
+Plesk erzeugt seine Nginx-Konfiguration neu, sobald im Panel etwas an der Domain geändert wird. **Von Hand bearbeitete generierte Dateien gehen dabei verloren.**
+
+Unsere Proxy-Direktiven gehören deshalb ausschließlich in das Panel-Feld für zusätzliche Nginx-Direktiven, nie in die generierten Dateien. Ebenso wichtig: Port 3000 ist nur an `127.0.0.1` gebunden und in der Firewall nicht nach außen geöffnet.
+
 ### Plesk abrüsten
 
 Plesk installiert viel, was wir nicht brauchen und was Angriffsfläche ist. Zu deaktivieren:
