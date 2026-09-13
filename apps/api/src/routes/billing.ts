@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { sumInvoice, taxFromNet, blockingFindings, type Party } from '@hotelpms/domain'
+import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import type { Principal } from '../platform/context.js'
 
 export function billingRoutes(app: FastifyInstance): void {
@@ -233,7 +234,24 @@ export function billingRoutes(app: FastifyInstance): void {
                    FROM guest WHERE id = $1`, [folio.guest_id])
             : { rows: [] as Party[] }
 
+        /*
+         * Ein Uebungshaus bekommt ein sichtbares Kuerzel vor der Nummer.
+         * Die Nummernfolge ist ohnehin je Property getrennt, aber eine
+         * Uebungsrechnung muss man auch dann als solche erkennen, wenn sie
+         * ausgedruckt auf dem Tresen liegt (C11, Dokument 13).
+         *
+         * Das Kuerzel wird einmal am Zaehler gesetzt, nicht bei jeder
+         * Nummer: sonst haette dieselbe Property mal mit und mal ohne
+         * Kuerzel numeriert, und die Folge waere nicht mehr lueckenlos
+         * nachvollziehbar.
+         */
         const year = new Date().getUTCFullYear()
+        if (await isTrainingProperty(client, folio.property_id)) {
+          await client.query(
+            `INSERT INTO invoice_counter (property_id, year, prefix)
+             VALUES ($1,$2,$3) ON CONFLICT (property_id, year) DO NOTHING`,
+            [folio.property_id, year, TRAINING_PREFIX])
+        }
         const num = await client.query<{ next_invoice_number: string }>(
           `SELECT next_invoice_number($1, $2)`, [folio.property_id, year])
 
