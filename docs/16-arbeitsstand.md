@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 193 Tests, 19 Migrationen.
+Stand: 13. September 2026. 209 Tests, 19 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -158,19 +158,19 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 ### Aufgabe 9 — Betriebsvoraussetzungen für Fremdkunden
 
-**Warum.** Für das Pilothaus im eigenen Betrieb tragbar, für zahlende Kunden nicht.
+**Teilweise erledigt.** Alles, was Code ist, steht; was Betrieb ist, steht als Handbuch in [`17-betrieb.md`](17-betrieb.md) und muss einmal tatsächlich durchgeführt werden.
 
-**Umfang.**
-- Plattenverschlüsselung der VM (C3).
-- Schlüsselrotation als Betriebsdokument mit erprobtem Ablauf (C4). Die Schlüsselversion liegt bereits an jedem verschlüsselten Feld.
-- Verschlüsselte Sicherung außer Haus, mit erprobter Rückspielung.
-- Ratenbegrenzung je IP am Rand (C7).
-- Trainingsmodus je Property (C11). `property.is_training` ist angelegt, wird aber nirgends ausgewertet.
-- Archivierung ausscheidender Betriebe mit vollständigem Mandantenexport (E7).
+| Punkt | Stand |
+|---|---|
+| Ratenbegrenzung je Herkunft (C7) | **erledigt**, `platform/rateLimit.ts`, zweite Linie hinter Caddy |
+| Schulungsbetrieb (C11) | **erledigt**, `platform/training.ts` |
+| Schlüsselrotation (C4) | **erledigt** als Werkzeug, `apps/api/src/cli/rotate-keys.ts` |
+| Mandantenexport (E7) | **erledigt**, `GET /v1/properties/:id/exports/tenant` |
+| Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit, Anleitung in Dokument 17 |
+| Sicherung außer Haus | **offen**, Betriebsarbeit; die Rückspielung muss einmal erprobt sein |
+| Ratenbegrenzung in Caddy | **offen**, Baustein in Dokument 17 |
 
-**Abnahme.** Eine Rückspielung aus der Sicherung ist einmal durchgeführt und protokolliert.
-
----
+Dabei ist ein Fehler aufgefallen, der die Rotation still unbrauchbar gemacht hätte: der Zwischenspeicher der abgeleiteten Schlüssel merkte sich nur die **Version**, nicht das Geheimnis. Bei einer Rotation sind beide Geheimnisse gleichzeitig in Gebrauch; der erste Aufruf hätte den Eintrag für alle weiteren belegt, das Entschlüsseln mit dem falschen Geheimnis hätte still funktioniert, und die Rotation hätte Chiffrate erzeugt, die niemand mehr öffnen kann. Ein Test fängt das jetzt ab.
 
 ### Aufgabe 10 — Kleinere Lücken
 

@@ -3,6 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
+import { assertNotTraining } from '../platform/training.js'
 
 /** Kennzahlen ueber mehr als zwei Jahre gehoeren ins Berichtsreplikat. */
 const MAX_DAYS = 800
@@ -217,6 +218,10 @@ export function reportRoutes(app: FastifyInstance): void {
       const von = `${q.month}-01`
 
       return tx(req.pool, req, async client => {
+        // Eine Meldung aus Uebungsdaten waere eine falsche Meldung an eine
+        // Behoerde, nicht bloss eine falsche Zahl im Haus.
+        await assertNotTraining(client, Number(propertyId), 'Die Beherbergungsstatistik')
+
         const { rows } = await client.query<{
           country: string | null; arrivals: number; nights: number }>(
           `WITH zeitraum AS (
@@ -292,6 +297,10 @@ export function reportRoutes(app: FastifyInstance): void {
       const id = Number(propertyId)
 
       return tx(req.pool, req, async client => {
+        // Ein Stapel aus Uebungsdaten landet in der echten Buchhaltung und
+        // ist dort schwerer zu entfernen als hier zu verhindern (C11).
+        await assertNotTraining(client, id, 'Der DATEV-Export')
+
         const prop = await client.query<{ name: string }>(
           `SELECT name FROM property WHERE id = $1`, [id])
         if (prop.rowCount === 0) throw Errors.notFound('Property')
@@ -371,6 +380,8 @@ export function reportRoutes(app: FastifyInstance): void {
       const id = Number(propertyId)
 
       return tx(req.pool, req, async client => {
+        await assertNotTraining(client, id, 'Der GoBD-Export')
+
         const invoices = await client.query(
           `SELECT number, issued_on::text AS "issuedOn",
                   business_date::text AS "businessDate", kind,
@@ -419,6 +430,136 @@ export function reportRoutes(app: FastifyInstance): void {
             betraege: 'Alle Betraege in Cent als ganze Zahl. taxRateBp in Basispunkten, '
                     + '700 entspricht 7 Prozent.'
           }
+        }
+      })
+    }
+  })
+
+  /**
+   * Mandantenexport für einen ausscheidenden Betrieb (E7, Dokument 13).
+   *
+   * **Warum das zum Produkt gehört und nicht zur Kulanz.** Ein Betrieb, der
+   * kündigt, muss seine Daten mitnehmen können. Das ist erstens Art. 20
+   * DSGVO für die personenbezogenen Teile, zweitens die steuerliche
+   * Aufbewahrungspflicht, die beim Betrieb bleibt und nicht bei uns, und
+   * drittens schlicht Anstand: ein Anbieter, der Daten als Geisel hält, wird
+   * genau einmal empfohlen.
+   *
+   * Der Export ist deshalb **vollständig und offen**: alles, was zu dieser
+   * Property gehört, in JSON, ohne dieses System lesbar. Keine Auswahl, kein
+   * Format, das nur wir lesen können.
+   *
+   * Ausgenommen ist nur, was nicht zu ihr gehört: die Schlüsselversion der
+   * Ausweisnummern wird mitgegeben, die Chiffrate nicht. Sie ohne den
+   * Schlüssel zu exportieren wäre nutzlos, mit dem Schlüssel wäre es eine
+   * Weitergabe des Schlüssels.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/exports/tenant',
+    // Bewusst die Einstellungsberechtigung des Accounts, nicht die des
+    // Hauses: wer das ganze Haus exportiert, beendet in der Regel den
+    // Vertrag, und das ist keine Entscheidung der Rezeption.
+    permission: 'settings:account',
+    propertyParam: 'propertyId',
+    summary: 'Vollstaendiger Mandantenexport einer Property',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const id = Number(propertyId)
+
+      return tx(req.pool, req, async client => {
+        const p = await client.query(
+          `SELECT id, public_ref, code, name, timezone, currency, rollover_time::text,
+                  checkin_time::text, checkout_time::text, address_line1, postal_code,
+                  city, country, tax_number, vat_id, municipality_key, is_training,
+                  status, created_at::text
+             FROM property WHERE id = $1`, [id])
+        if (p.rowCount === 0) throw Errors.notFound('Property')
+
+        // Je Tabelle eine Abfrage. Der Export ist selten und darf gruendlich
+        // sein; er laeuft einmal je Vertragsende, nicht je Bildschirm.
+        const hole = async (name: string, sql: string): Promise<[string, unknown[]]> =>
+          [name, (await client.query(sql, [id])).rows]
+
+        const teile = await Promise.all([
+          hole('categories', `SELECT * FROM resource_category WHERE property_id = $1
+                               ORDER BY id`),
+          hole('rooms', `SELECT * FROM resource WHERE property_id = $1 ORDER BY id`),
+          hole('maintenanceBlocks', `SELECT * FROM maintenance_block WHERE property_id = $1
+                                      ORDER BY id`),
+          hole('ratePlans', `SELECT * FROM rate_plan WHERE property_id = $1 ORDER BY id`),
+          hole('rateDays', `SELECT * FROM rate_day WHERE property_id = $1
+                             ORDER BY rate_plan_id, date`),
+          hole('restrictions', `SELECT * FROM restriction_day WHERE property_id = $1
+                                 ORDER BY rate_plan_id, date`),
+          hole('taxRules', `SELECT * FROM tax_rule WHERE property_id = $1 ORDER BY id`),
+          hole('cancellationPolicies', `SELECT * FROM cancellation_policy
+                                         WHERE property_id = $1 ORDER BY id`),
+          hole('products', `SELECT * FROM product WHERE property_id = $1 ORDER BY id`),
+          hole('paymentMethods', `SELECT * FROM payment_method WHERE property_id = $1
+                                   ORDER BY id`),
+          hole('bookings', `SELECT * FROM booking WHERE property_id = $1 ORDER BY id`),
+          hole('reservations', `SELECT * FROM reservation WHERE property_id = $1
+                                 ORDER BY id`),
+          hole('reservationNights', `SELECT * FROM reservation_night WHERE property_id = $1
+                                      ORDER BY reservation_id, date`),
+          hole('occupants', `SELECT * FROM reservation_occupant WHERE property_id = $1
+                              ORDER BY id`),
+          hole('availabilityBlocks', `SELECT * FROM availability_block WHERE property_id = $1
+                                       ORDER BY id`),
+          hole('folios', `SELECT * FROM folio WHERE property_id = $1 ORDER BY id`),
+          hole('charges', `SELECT * FROM charge WHERE property_id = $1 ORDER BY id`),
+          hole('settlements', `SELECT * FROM settlement WHERE property_id = $1 ORDER BY id`),
+          hole('invoices', `SELECT * FROM invoice WHERE property_id = $1 ORDER BY id`),
+          hole('invoiceCounters', `SELECT * FROM invoice_counter WHERE property_id = $1
+                                    ORDER BY year`),
+          hole('businessDays', `SELECT * FROM business_day WHERE property_id = $1
+                                 ORDER BY date`),
+          hole('dayStatistics', `SELECT * FROM business_day_stat WHERE property_id = $1
+                                  ORDER BY date`),
+          hole('housekeepingStatus', `SELECT * FROM housekeeping_status
+                                       WHERE property_id = $1 ORDER BY resource_id`),
+          hole('maintenanceTickets', `SELECT * FROM maintenance_ticket WHERE property_id = $1
+                                       ORDER BY id`),
+          hole('guestNotes', `SELECT * FROM guest_property_note WHERE property_id = $1
+                               ORDER BY id`),
+          // Gaeste haengen am Account, nicht am Haus (Entscheidung 13).
+          // Mitgegeben werden die, die hier tatsaechlich waren.
+          hole('guests', `SELECT g.id, g.public_ref, g.last_name, g.first_name, g.email,
+                                 g.phone, g.birth_date, g.nationality, g.language,
+                                 g.address_line1, g.postal_code, g.city, g.country,
+                                 g.id_document_type, g.id_document_key_version,
+                                 g.preferences, g.status, g.created_at
+                            FROM guest g
+                           WHERE EXISTS (SELECT 1 FROM reservation r
+                                          WHERE r.property_id = $1
+                                            AND r.primary_guest_id = g.id)
+                           ORDER BY g.id`)
+        ])
+
+        const daten = Object.fromEntries(teile)
+        const zeilen = Object.entries(daten)
+          .map(([k, v]) => [k, (v as unknown[]).length] as const)
+
+        return {
+          exportedAt: new Date().toISOString(),
+          property: p.rows[0],
+          ...daten,
+          zeilenzahl: Object.fromEntries(zeilen),
+          hinweise: [
+            'Alle Betraege in Cent als ganze Zahl. Steuersaetze in Basispunkten, '
+            + '700 entspricht 7 Prozent.',
+            'Aufenthaltsdaten sind Kalenderdaten in der Zeitzone der Property, '
+            + 'keine Zeitpunkte.',
+            'Ausweisnummern sind nicht enthalten. Sie liegen verschluesselt vor; '
+            + 'sie ohne den Schluessel zu exportieren waere nutzlos, mit dem '
+            + 'Schluessel waere es eine Weitergabe des Schluessels. Die '
+            + 'Schluesselversion ist als id_document_key_version vermerkt.',
+            'Meldescheine sind nicht enthalten: sie unterliegen der Jahresfrist '
+            + 'nach § 30 BMG und werden vernichtet, nicht weitergegeben.',
+            'Die steuerliche Aufbewahrungspflicht fuer Buchungsbelege liegt beim '
+            + 'Betrieb und betraegt acht Jahre.'
+          ]
         }
       })
     }

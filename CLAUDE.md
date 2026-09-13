@@ -72,6 +72,7 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 - **Löschen heißt anonymisieren.** Buchungsbelege unterliegen der achtjährigen Aufbewahrungsfrist.
 - **Keine Gastdaten in Protokollen.** `pino` ist entsprechend eingerichtet; wer ein Feld hinzufügt, prüft die Redaktionsliste.
 - **Keine Kassenfunktion.** Kein Kassenbestand, keine TSE, kein Bon. Das ist eine Produktentscheidung (Dokument 09), keine Lücke.
+- **Ein Schulungshaus exportiert nicht nach draußen.** `is_training` weist DATEV-, GoBD- und Statistikexport hart ab. Eine Warnung wird geklickt; ein Stapel aus Übungsdaten in der echten Buchhaltung ist schwerer zu entfernen als zu verhindern.
 
 ### Leistung
 
@@ -115,3 +116,4 @@ Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zu
 | Abfrage liefert nichts, obwohl Daten da sind | Kein Mandantenkontext. Läuft die Abfrage in `tx(...)`? |
 | `not_materialized` bei einer Buchung | `inventory_day` fehlt für den Zeitraum, `inventory_materialize` |
 | `inconsistent types deduced for parameter $n` | Derselbe Parameter in zwei Typen benutzt. Explizit casten oder zweimal übergeben |
+| Tests bekommen unerwartet `429` | Die Ratenbegrenzung. Wer viele Anmeldungen erzeugt, ruft `limiters.reset()` im `beforeEach` |
