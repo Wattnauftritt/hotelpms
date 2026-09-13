@@ -189,6 +189,23 @@ Dieser Punkt war in einer früheren Fassung falsch dargestellt. Er ist wichtig, 
 | **2. DATEV-Datenservice** | Ein API, das Daten direkt in die DATEV-Cloud schiebt, etwa der **Datenservice Kassenarchiv** nach DATEV Kassenarchiv online und weiter nach Kassenbuch online. Die Umsetzung läuft über ein von DATEV-Beratern begleitetes Onboarding | **Kostenpflichtig.** Erstes Onboarding **1.500 Euro zzgl. USt.** inklusive vier Beratungsstunden, jede weitere angefangene Stunde **210 Euro zzgl. USt.** Dazu ein DATEV-Testsystem, das eigene Kosten verursachen kann. Laufende Kosten je API-Aufruf nach gewähltem API-Plan, die typischerweise beim DATEV-Endkunden anfallen, also beim Steuerberater oder Mandanten |
 | **3. DATEV-Marktplatz-Partner** | Eigene Marktplatzseite, Partnermanager, das Siegel „von DATEV technisch geprüft" | **Zusätzlich.** Setzt einen umgesetzten Datenservice mit **mindestens 25 aktiven Kunden** und drei Referenzkunden voraus. Partner zahlen monatliche Grundgebühr plus Klickpreis, deren Höhe nicht öffentlich ist |
 
+#### Was die laufenden API-Kosten konkret sind
+
+**DATEV veröffentlicht keinen Preis „je API-Aufruf".** Die Kosten werden im Developer Portal erst bei der Auswahl eines API-Plans angezeigt. Abgerechnet wird nicht je Aufruf, sondern **mengengestaffelt je Monat**, und laut DATEV fallen sie **typischerweise beim Endkunden an**, also beim Steuerberater oder Mandanten, nicht beim Softwarehersteller.
+
+Öffentlich sind die Endkundenpreise der betroffenen Produkte:
+
+| Produkt | Preis | Anmerkung |
+|---|---|---|
+| DATEV Kassenarchiv online | 5,00 bis 7,50 Euro je Monat und Kasse | Quellen streuen: der Ratgeber von 2022 nennt 5,00 Euro, der von 10/2024 nennt 7,50 Euro. Je physischer Kasse ein Kassenordner |
+| DATEV Kassenbuch online | 2,50 Euro je Monat und Kasse | Auch als Bestandteil von Unternehmen online |
+| DATEV Unternehmen online | 11,56 Euro netto je Monat und Mandant | Enthält unter anderem Kassenbuch online |
+| DATEV Rechnungsdatenservice 1.0 | ab 2,00 Euro je Monat inklusive 200 Belegen, 4,00 Euro bis 400 Belege | Beispiel für die Staffelung nach Menge |
+
+Alle Preise netto. Die verbindliche Quelle ist die DATEV-Preisliste, die halbjährlich aktualisiert wird; die oben genannten Werte stammen aus Ratgebern und Produktseiten und streuen entsprechend.
+
+**Für unsere Kalkulation heißt das:** Die laufenden Kosten einer DATEV-Datenservice-Anbindung trägt der Kunde, nicht wir. Unsere Kosten sind das einmalige Onboarding und die Entwicklungszeit. Das relativiert Stufe 2 etwas, ändert aber nichts daran, dass wir sie für den beschlossenen Umfang nicht brauchen.
+
 **Zur genannten Zahl von 5.000 Euro:** Die konnte ich in den öffentlichen Quellen nicht als Festpreis bestätigen. Der dokumentierte Einstieg liegt bei 1.500 Euro. Realistisch ist die Größenordnung trotzdem: 1.500 Euro plus rund 17 Beratungsstunden ergeben bereits 5.000 Euro, und ein Onboarding mit Testsystem, Abstimmung und Fehlerbehebung kommt schnell dorthin. **Wer von 5.000 Euro als realistischen Gesamtkosten ausgeht, liegt vermutlich richtig.** Die verbindliche Auskunft gibt nur DATEV selbst.
 
 ### Was das für uns bedeutet
@@ -334,5 +351,9 @@ Das hält das Produkt schlank, senkt die Umstiegshürde und ist der eigentliche 
 - [DATEV: Infos für Kassen- und TSE-Hersteller](https://www.datev.de/web/de/berufsgruppenuebergreifend/ueber-datev/portfolio/oekosystem/partnering/datev-marktplatz/infos-fuer-kassen-und-tse-hersteller)
 - [DATEV: Datenservice Kassenarchiv einrichten](https://www.datev.de/web/de/berufsgruppenuebergreifend/mydatev/datenservices/datenservice-kassenarchiv-einrichten)
 - [DATEV: Kassenarchiv online, Produktseite](https://www.datev.de/web/de/shop/produkt-details/datev-kassenarchiv-online-97337)
+- [DATEV: Ratgeber Kassenarchiv online, Stand 10/2024 (PDF)](https://www.datev.de/content/dam/markenassets/themen-und-produktgruppen/service/pdf/Ratgeber_Kassenarchiv_online.pdf)
+- [DATEV: Preisliste Kassenarchiv online (PDF)](https://www.datev.de/content/dam/markenassets/preislisten/datev-preisliste_datev_kassenarchiv_online.pdf)
+- [DATEV: Preisliste für Unternehmen (PDF)](https://www.datev.de/content/dam/markenassets/preislisten/DATEV-Preisliste_fuer_Unternehmen.pdf)
+- [DATEV: Rechnungsdatenservice 1.0, Produktseite](https://www.datev.de/web/de/shop/produkt-details/datev-rechnungsdatenservice-1)
 - [LHP: Zuschätzung in der Betriebsprüfung und Haftung bei Manipulation durch Kassensoftware](https://www.lhp-gruppe.de/themen/zuschaetzung-in-betriebspruefung-und-haftung-bei-manipulation-durch-kassen-software/)
 - [Gastgewerbe-Magazin: Hinzuschätzung bei gravierenden Kassenführungsmängeln zulässig](https://gastgewerbe-magazin.de/urteil-hinzuschaetzung-bei-gravierenden-kassenfuehrungsmaengeln-zulaessig-27411)
