@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 248 Tests, 21 Migrationen.
+Stand: 13. September 2026. 259 Tests, 22 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -15,7 +15,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 2 Stammdaten und Einrichtung | fertig | `0004`, `0013`, `routes/setup.ts` |
 | AP 3 Raten, Restriktionen, Steuern | fertig | `0007`, `0016`, `routes/rates.ts` |
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
-| AP 5 Reservierungen | fertig | `0009`, `0021`, `routes/reservations.ts`, `routes/blocks.ts` |
+| AP 5 Reservierungen | fertig | `0009`, `0022`, `routes/reservations.ts`, `routes/blocks.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
 | AP 7 Folio und Rechnung | fertig bis auf ZUGFeRD | `0010`, `0012`, `0017`, `routes/billing.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
@@ -24,10 +24,10 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
 | AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
-| AP 13 Integrationen | **teilweise** | Webhooks fertig (`0020`, `routes/webhooks.ts`, `jobs/webhookDelivery.ts`); offen Aufgaben 5 bis 7 |
+| AP 13 Integrationen | **teilweise** | Webhooks (`0020`, `routes/webhooks.ts`, `jobs/webhookDelivery.ts`) und Payments (`0021`, `routes/payments.ts`) fertig; offen Aufgaben 5 und 7 |
 | AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
 
-**72 Routen**, alle mit deklarierter Berechtigung, davon sechs ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**74 Routen**, alle mit deklarierter Berechtigung, davon sieben ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -208,7 +208,7 @@ Dabei ist ein Fehler aufgefallen, der die Rotation still unbrauchbar gemacht hä
 | `guaranteed` und Stornoregel beim No-Show auswerten (B10) | `jobs/nightAudit.ts`, Schritt 4 | **erledigt** |
 | Routing-Regeln anwenden, wenn der Nachtlauf bucht | `jobs/nightAudit.ts`, Schritt 2 | **erledigt** |
 | Alarm bei ausgefallenem Nachtlauf | `jobs/maintenance.ts` | **erledigt** |
-| Gruppen und Kontingente | `0021`, `routes/blocks.ts`, `apps/web/src/routes/Blocks.tsx` | **erledigt** |
+| Gruppen und Kontingente | `0022`, `routes/blocks.ts`, `apps/web/src/routes/Blocks.tsx` | **erledigt** |
 | Folio-Bildschirm in der Oberfläche | `apps/web/src/routes/Folio.tsx` | **erledigt** |
 
 Aus den vier erledigten Punkten ist eine Entscheidung hervorgegangen, die andernorts gilt: **`inventory_move` bindet zuerst und gibt erst danach frei**, und es bindet bei gleicher Kategorie nur die Differenz. Beides hat einen Grund. Zwischen Freigeben und Neubelegen wäre das Kontingent frei, und genau dann kauft es das Portal. Und wer bei einer Verlängerung den ganzen Aufenthalt neu bindet, konkurriert mit sich selbst und scheitert im vollen Haus an der eigenen Buchung.
