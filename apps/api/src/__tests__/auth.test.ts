@@ -6,6 +6,7 @@ import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { hashPassword } from '../routes/auth.js'
+import { limiters } from '../platform/rateLimit.js'
 
 let owner: Pool
 let app: FastifyInstance
@@ -28,6 +29,9 @@ afterAll(async () => { await app.close(); await owner.end(); await pool.end() })
 beforeEach(async () => {
   await truncateAll()
   fx = await makeProperty(owner)
+  // Diese Datei erzeugt absichtlich viele Fehlanmeldungen. Ohne Ruecksetzen
+  // liefe sie in die Ratenbegrenzung, die hier nicht geprueft wird.
+  limiters.reset()
 })
 
 async function benutzerMitKennwort(email = 'rezeption@test.de'): Promise<number> {
