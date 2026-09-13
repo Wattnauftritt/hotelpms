@@ -5,6 +5,7 @@ import { runNightAudit } from './jobs/nightAudit.js'
 import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
          reconcileInventory, purgeRegistrations, purgeExpired,
          overdueNightAudits } from './jobs/maintenance.js'
+import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
 
@@ -94,6 +95,28 @@ async function propertyMaintenance(p: PropertyRow): Promise<void> {
       log.info({ property: p.id, registrations }, 'Meldescheine nach Jahresfrist vernichtet')
     }
   })
+
+  // Eigene Transaktionen je Beleg, deshalb ausserhalb der obigen: das
+  // Zeichnen eines PDF ist Rechenarbeit und hat in einer offenen
+  // Datenbanktransaktion nichts verloren.
+  const belege = await renderPendingInvoices(pool, ctx, p.id)
+  if (belege.created > 0) {
+    log.info({ property: p.id, created: belege.created, withoutXml: belege.withoutXml },
+      'Rechnungsbelege erzeugt')
+  }
+  for (const fehler of belege.failed) {
+    // Kein Beleg heisst: die Rechnung ist festgeschrieben, aber nicht
+    // ausgebbar. Das faellt sonst erst dem Gast an der Rezeption auf.
+    log.error({ property: p.id, invoice: fehler.invoiceId, reason: fehler.reason },
+      'ALARM: Rechnungsbeleg konnte nicht erzeugt werden')
+  }
+  for (const luecke of belege.masterDataGaps) {
+    // Am Haus, nicht an der Rechnung: ohne diese Angabe traegt **keine**
+    // Rechnung dieses Hauses die elektronische Fassung, und ab dem
+    // Stichtag ist sie damit gegenueber Firmenkunden nicht verkehrsfaehig.
+    log.error({ property: p.id, rule: luecke.rule, key: luecke.key },
+      `ALARM: Stammdaten unvollstaendig fuer ZUGFeRD. ${luecke.de}`)
+  }
 }
 
 /**
