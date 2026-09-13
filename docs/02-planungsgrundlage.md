@@ -8,8 +8,9 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 - **Mandantenfähig von Anfang an.** Ein Account kann mehrere Betriebe (Properties) haben; jede Tabelle trägt die Property-ID.
 - **Ressourcen statt Zimmer.** Zimmer, Parkplätze, Tagungsräume, Tagesnutzung sind Ressourcen mit einer Zeiteinheit (Nacht, Stunde, Tag, Monat).
 - **Append-only im Rechnungswesen.** Buchungen werden nie geändert oder gelöscht, nur storniert. Rechnungen werden festgeschrieben.
-- **Deutsche Pflichten sind Kern**: Meldeschein, GoBD, TSE, Kurtaxe, Beherbergungsstatistik, DSGVO.
+- **Deutsche Pflichten sind Kern**: Meldeschein, GoBD, Kurtaxe, Beherbergungsstatistik, DSGVO. Keine Kassenfunktion und damit keine TSE, siehe Entscheidung 9.
 - **Nicht selbst bauen**: Channel Manager, Payment-Processing, Kartenspeicherung, TSE-Hardware. Dafür saubere Schnittstellen.
+- **Was der Betrieb schon führt, bauen wir nicht. Wir schließen an.** Kassenbuch und Kasse gar nicht, Buchungsmaschine und Channel Manager anbindbar, Restaurantkasse und Schließsystem per Schnittstelle, Buchhaltung als DATEV-Export. Ein Umstieg darf nie erzwungen werden. Siehe [09-kassenbuch.md](09-kassenbuch.md)
 
 ## 2. Domänenmodell (Entwurf)
 
@@ -33,16 +34,18 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 
 | Entität | Felder (Auswahl) | Anmerkung |
 |---------|------------------|-----------|
-| `Guest` | Name, Geburtsdatum, Anschrift, Staatsangehörigkeit, E-Mail, Telefon, Sprache, Präferenzen, Notizen, Ausweisdaten (Typ, Nummer, kein Scan) | Personenbezogen, Löschkonzept nötig |
+| `Guest` | **Account**, Name, Geburtsdatum, Anschrift, Staatsangehörigkeit, E-Mail, Telefon, Sprache, Präferenzen, Ausweisdaten (Typ, Nummer verschlüsselt, kein Scan) | Je Account, nicht je Property (Entscheidung 13). Personenbezogen, Löschkonzept nötig |
+| `GuestPropertyNote` | Property, Guest, Text | Was ein einzelnes Haus über den Gast vermerkt, bleibt bei diesem Haus |
 | `Company` | Name, Anschrift, USt-ID, Zahlungsziel, Raten-Vereinbarungen, Rechnungs-E-Mail | City-Ledger-Kunde |
-| `User` | Name, Rolle, Property-Zugriff | Mitarbeitende; jedes Ereignis trägt die User-ID |
+| `User` | E-Mail, Passwort, TOTP, Arbeitsplatz-PIN, Rollen je Account und je Property | Mitarbeitende und Plattformpersonal; jedes Ereignis trägt die User-ID. Siehe [14-benutzerrollen.md](14-benutzerrollen.md) |
 
 ### Buchung und Aufenthalt
 
 | Entität | Felder (Auswahl) | Anmerkung |
 |---------|------------------|-----------|
 | `Booking` | Bucher (Guest oder Company), Herkunft (Direkt, Booking Engine, Channel, API, Walk-in), externe Buchungsnummer, Marktsegment | Klammer um Reservierungen |
-| `Reservation` | Booking, Kategorie, zugewiesene Resource (optional), Anreise, Abreise, Erwachsene/Kinder, RatePlan, Status, Hauptgast, Begleitpersonen, Garantie, Wünsche | Ein Aufenthalt |
+| `Reservation` | Booking, Kategorie, zugewiesene Resource (optional), Anreise, Abreise, RatePlan, Status, Hauptgast, Garantie, Wünsche, `public_ref` | Ein Aufenthalt |
+| `ReservationOccupant` | Reservation, Gast (optional), Alter zum Anreisetag, Rolle | Ersetzt reine Zähler. Nötig für Kurtaxe-Staffeln, Kinderpreise und Meldeschein |
 | `ReservationNight` | Reservation, Datum, Preis, Steuern, RatePlan | Preis je Nacht wird bei Buchung eingefroren |
 | `Block` | Name, Kategorie, Zeitraum, Anzahl, Freigabedatum, Firma/Gruppe, RatePlan | Kontingent; gebuchte Reservierungen ziehen vom Block ab |
 | `Registration` | Reservation, Guest, Meldedaten nach § 30 BMG, Unterschrift (Bild/Vektor, nur bei Ausländern Pflicht), Zeitstempel, Vernichtungsdatum | Meldeschein; Aufbewahrung 1 Jahr |
@@ -53,9 +56,9 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 |---------|------------------|-----------|
 | `Folio` | Property, Inhaber (Guest oder Company), Reservation (optional), Typ (Gast / Firma / Gruppe / Kasse), Status (offen / geschlossen) | Mehrere Folios je Reservierung möglich |
 | `Charge` | Folio, Datum, Geschäftsdatum, Service/Produkt, Menge, Netto, Steuer, Brutto, Konto, Storno-von, erfasst von | Unveränderlich; Storno erzeugt Gegenbuchung |
-| `Payment` | Folio, Datum, Geschäftsdatum, Art (Bar, Karte, Überweisung, Anzahlung, Gutschein), Betrag, Gateway-Referenz, TSE-Signatur (bei Bar) | Unveränderlich |
+| `Settlement` | Folio, Geschäftsdatum, Zahlart aus Katalog, Betrag, externe Referenz (Beleg der Ladenkasse, Portal-ID, Gateway-Referenz), Storno-von | Zahlungsvermerk, unveränderlich. Kein Kassenbestand, siehe [09-kassenbuch.md](09-kassenbuch.md) |
 | `Routing` | Reservation, Regel (welche Services/Produkte), Ziel-Folio | Split Billing |
-| `Invoice` | Folio, fortlaufende Nummer je Property, Datum, Empfängeradresse, Positionen (Snapshot), Steuerausweis, PDF, XRechnung/ZUGFeRD, Storno-von | Festgeschrieben |
+| `Invoice` | Menge von Charges, fortlaufende Nummer je Property und Jahr, Datum, **Aussteller und Empfänger als Momentaufnahme**, Steuer je Satzgruppe aus der Nettosumme, PDF/A-3 mit ZUGFeRD, Storno-von | Festgeschrieben. Ein Folio kann mehrere Rechnungen haben, siehe B3 bis B6 in [13-gesamtreview.md](13-gesamtreview.md) |
 | `BusinessDay` | Property, Datum, geöffnet, geschlossen um, Abschlussprüfungen | Nachtlauf-Ergebnis |
 | `AuditLog` | Entität, ID, Aktion, Vorher, Nachher, User, Zeitstempel | GoBD-Änderungsprotokoll, auf allen Tabellen |
 
@@ -113,20 +116,23 @@ verfügbar = Anzahl Resources der Kategorie
           + Overbooking-Limit der Kategorie
 ```
 
-Zusätzlich gibt es die Property-Gesamtverfügbarkeit, damit Upgrades in eine andere Kategorie kein Overbooking auf Hausebene erzeugen. Verfügbarkeit wird berechnet und nur als Cache gehalten; der Cache wird bei jeder Änderung an Reservierungen, Blocks oder Sperrungen invalidiert.
+Zusätzlich gibt es die Property-Gesamtverfügbarkeit, damit Kategorien-Overbooking kein Overbooking auf Hausebene erzeugt. Umgesetzt als **Haussummenzeile** in `inventory_day` mit `category_id = 0`, die von denselben drei SQL-Funktionen mitgeführt und bei jeder Belegung in derselben Anweisung geprüft wird. Siehe B2 in [13-gesamtreview.md](13-gesamtreview.md) und Abschnitt 4 von [10-systemarchitektur.md](10-systemarchitektur.md).
 
 ## 5. Nachtlauf als Job
 
-Läuft automatisch zur Tageswechsel-Uhrzeit der Property (Standard 04:00 Uhr):
+Läuft automatisch zur Tageswechsel-Uhrzeit der Property (Standard 04:00 Uhr), gestreut über ein Zeitfenster, damit nicht alle Betriebe gleichzeitig starten.
 
-1. Für jede InHouse-Reservierung Logis, inkludierte Produkte und Kurtaxe für die vergangene Nacht auf das Folio buchen (Routing beachten).
-2. Confirmed-Reservierungen mit Anreise gestern und ohne Check-in auf `NoShow` setzen und Gebühr nach Policy buchen.
-3. Optional-Reservierungen mit abgelaufenem Verfallsdatum auf `Canceled` setzen.
-4. Abgelaufene Blocks freigeben.
-5. Prüfliste erzeugen: Folios mit hohem Saldo, Zimmer mit Belegung ohne Housekeeping-Status, Zahlungen ohne Zuordnung.
-6. `BusinessDay` schließen, nächsten öffnen, Tagesbericht (Belegung, ADR, RevPAR, Umsatz je Konto) speichern.
+**Der Tageswechsel ist Schritt 1, nicht der letzte.** Alle folgenden Schritte arbeiten ausdrücklich mit dem **geschlossenen** Datum als Parameter, nie mit „dem aktuellen". Jeder Schritt hinterlässt nach Abschluss eine Marke je `(property, business_date, schritt)`, ein Wiederholungslauf überspringt markierte Schritte. Begründung in B1 von [13-gesamtreview.md](13-gesamtreview.md).
 
-Buchungen von Charges nach dem Tageswechsel tragen das neue Geschäftsdatum. Es gibt keinen Zustand, in dem die Rezeption „nicht buchen darf, weil der Nachtlauf läuft“.
+1. `BusinessDay` des abgelaufenen Tages schließen und den nächsten öffnen. Eine atomare Zeilenänderung. Ab jetzt tragen neue Charges das neue Datum.
+2. Für jede InHouse-Reservierung Logis, inkludierte Produkte und Kurtaxe für die geschlossene Nacht auf das Folio buchen, mit dem geschlossenen Datum (Routing beachten).
+3. Confirmed-Reservierungen mit Anreise am geschlossenen Tag und ohne Check-in auf `NoShow` setzen, Gebühr nach Policy buchen, Bestand freigeben.
+4. Optional-Reservierungen mit abgelaufenem Verfallsdatum auf `Canceled` setzen, Bestand freigeben.
+5. Abgelaufene Blocks freigeben.
+6. Prüfliste erzeugen: Folios mit hohem Saldo, Zimmer mit Belegung ohne Housekeeping-Status, Zahlungsvermerke ohne Zuordnung.
+7. Tagesbericht (Belegung, ADR, RevPAR, Umsatz je Konto) für den geschlossenen Tag speichern.
+
+Es gibt keinen Zustand, in dem die Rezeption „nicht buchen darf, weil der Nachtlauf läuft". Eine Charge, die während des Laufs erfasst wird, trägt bereits das neue Datum.
 
 ## 6. Modulschnitt
 
@@ -145,13 +151,13 @@ Buchungen von Charges nach dem Tageswechsel tragen das neue Geschäftsdatum. Es 
 │  ├─ Guests         Gäste, Firmen, Dubletten, Meldeschein       │
 │  ├─ Finance        Folios, Charges, Payments, Rechnungen, Ledger │
 │  ├─ Operations     Housekeeping, Aufgaben, Nachtlauf           │
-│  ├─ Compliance     TSE, DSFinV-K, GoBD-Export, Statistik, Löschkonzept │
+│  ├─ Compliance     Meldeschein, GoBD-Export, Statistik, Löschkonzept │
 │  └─ Reporting      Kennzahlen, Listen, Exporte                 │
 └───────────────────────────┬────────────────────────────────────┘
                             │ Adapter
 ┌───────────────────────────┴────────────────────────────────────┐
 │  Extern: Channel Manager (ARI) · Payment (Adyen/Stripe/Mollie) │
-│          Cloud-TSE (fiskaly) · eSTATISTIK.core · E-Mail        │
+│          Kassenschnittstelle · eSTATISTIK.core · E-Mail        │
 │          Schließsystem · POS · Buchhaltung (DATEV-Export)       │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -167,16 +173,17 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 - Reservierungen mit Statusmaschine, Zimmerplan (Tape Chart), Anreise-/Abreise-/Hausliste
 - Gäste und Firmen, Meldeschein mit elektronischer Unterschrift
 - Folios, Charges, Payments (Bar, Karte extern erfasst, Überweisung), Routing, Rechnung mit fortlaufender Nummer, Storno
+- **Keine Kassenfunktion, keine TSE.** Zahlungen nur als strukturierter Vermerk mit externer Referenz. Das Kassenbuch bleibt beim Betrieb, siehe [09-kassenbuch.md](09-kassenbuch.md)
 - USt-Aufteilung 7 % / 19 %, Kurtaxe-Regel
 - Housekeeping-Status, automatischer Nachtlauf
 - Audit-Log, Rollen, GoBD-Export (CSV mit Strukturbeschreibung)
 - Rezeptions-Web-App
 
-### Stufe 2: Verkaufen und kassieren
+### Stufe 2: Verkaufen und anbinden
 
 - ARI-Schnittstelle für Channel Manager (Verfügbarkeit, Preise, Restriktionen raus; Reservierungen rein)
 - Payment-Gateway mit Token-Speicherung, Anzahlungen, Pre-Authorisierung, Pay-by-Link
-- Cloud-TSE für Barzahlungen, DSFinV-K-Export
+- **Kassenschnittstelle in beide Richtungen**: Ladenkasse und Restaurantkasse buchen Umsätze auf Zimmer und Folio, das PMS liefert offene Folios zurück. Sollte stehen, bevor die Betriebe wegen der geplanten Registrierkassenpflicht ab 2028 auf elektronische Kassen umstellen
 - E-Mail-Kommunikation (Bestätigung, Pre-Arrival, Rechnung)
 - Eigene Booking Engine
 - Blocks und Gruppen mit Sammelrechnung
@@ -199,19 +206,75 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 ## 8. Technische Leitplanken (Vorschlag)
 
 - **Datenbank:** PostgreSQL. Alle Geld-Felder als Integer in Cent plus Währung, nie Float. Zeitstempel in UTC, Aufenthaltsdaten als Kalenderdatum in der Zeitzone der Property.
-- **Rechnungswesen:** Tabellen `charge`, `payment`, `invoice` ohne UPDATE/DELETE-Rechte für die App-Rolle; Korrektur nur per neuer Zeile.
+- **Rechnungswesen:** Tabellen `charge`, `settlement`, `invoice` ohne UPDATE/DELETE-Rechte für die Anwendungsrolle; Korrektur nur per neuer Zeile.
 - **Audit-Log:** Datenbank-Trigger, nicht Anwendungslogik, damit nichts vergessen wird.
 - **Nebenläufigkeit:** Verfügbarkeitsprüfung und Reservierungsanlage in einer Transaktion mit Sperre je Kategorie und Zeitraum, sonst Doppelverkauf bei gleichzeitigen Buchungen.
 - **API:** REST mit OpenAPI-Spezifikation, Versionierung im Pfad, Webhooks mit Signatur und Retry.
-- **Sprache/Framework:** noch offen, siehe unten.
+- **Sprache/Framework:** TypeScript, Fastify, PostgreSQL. Entschieden in [10-systemarchitektur.md](10-systemarchitektur.md).
 
-## 9. Offene Fragen
+## 9. Getroffene Entscheidungen
 
-1. **Zielgruppe:** Bauen wir für ein konkretes Haus (unser eigenes?) oder als Produkt für Dritte? Das entscheidet über Mandantenfähigkeit und Aufwand bei Konfigurierbarkeit. -> wir bauen ein system das wir selbst anbieten und vermarkten wollen, wollen das aber auch für das hotel nutzen in dem ich arbeite. das hotel nutzen wir einfach als testobjekt.
-2. **Größe der Häuser:** 20 Zimmer oder 200? Gruppen, Tagungen und Blocks sind erst ab mittlerer Größe wichtig.sowohl als auch. von der ferienwohnung und pension bis zu großen hotels mit mehreren hundert zimmern und gruppen und auch multiproperty. 
-3. **Technologie-Stack:** Vorschlag TypeScript (Backend und Web-App aus einer Sprache) mit PostgreSQL. Alternativen: Python/Django, .NET, Go. Gibt es Team-Präferenzen? hier bin ich offen für das praktikabelste und performanteste. hier müssten wir sehen wie wir am performantesten arbeiten aber auch die kosten im blick haben. es gibt ja datenbanken die cloudflare hostet aber die sind sicher deutlicher teurer als selbst zu hosten. wobei wir da sehen müssen ob wir beim selber hosten genug performance haben ohne unbezahlbare hardware mit loadbalancer zu benötigen die wir teuer mieten müssen
-4. **Betrieb:** Cloud-Hosting durch uns (SaaS) oder Installation beim Kunden? Cloud-TSE setzt Internetanbindung voraus. SaaS
-5. **Channel Manager:** Welchen Partner zertifizieren wir zuerst? Für DACH sind Dirs21, HotelSpider und SiteMinder verbreitet. Wir zertifizieren später alle großen anbieter die in deutschland am verbreitetsten sind inkl. Roomcloud
-6. **Payments:** Adyen (Hotel-Fokus, teurer) vs. Stripe/Mollie (einfacher Einstieg). am besten alle drei
-7. **Buchhaltung:** Reicht ein DATEV-Export, oder brauchen wir Debitorenverwaltung mit Mahnwesen im PMS? DATEV-Export reicht
-8. **Ressourcen-Modell:** Bauen wir das Mews-Modell (Zeiteinheiten) von Anfang an ein oder starten wir mit Nächten und erweitern später? Empfehlung: Zeiteinheit als Feld anlegen, aber im MVP nur „Nacht“ implementieren. wir machen das wie empfohlen mit nächten arbeiten aber zeiteinheiten integriert haben.
+Stand September 2026, beantwortet vom Auftraggeber.
+
+| # | Frage | Entscheidung |
+|---|---|---|
+| 1 | Zielgruppe | **Eigenes Produkt zur Vermarktung an Dritte.** Das Hotel, in dem der Auftraggeber arbeitet, dient als Testobjekt und Pilotkunde |
+| 2 | Größe der Häuser | **Alle.** Von Ferienwohnung und Pension bis zu Häusern mit mehreren hundert Zimmern, inklusive Gruppen und Multi-Property |
+| 3 | Technologie-Stack | Offen, Kriterium ist praktikabel plus performant plus kostenbewusst. Ausgearbeitet in [07-technologie-und-hosting.md](07-technologie-und-hosting.md) |
+| 4 | Betrieb | **SaaS**, gehostet von uns |
+| 5 | Channel Manager | Später **alle in Deutschland verbreiteten Anbieter**, ausdrücklich inklusive Roomcloud |
+| 6 | Payments | **Alle drei**: Adyen, Stripe, Mollie |
+| 7 | Buchhaltung | **DATEV-Export genügt.** Keine Debitorenverwaltung mit Mahnwesen im PMS |
+| 8 | Ressourcen-Modell | Wie empfohlen: **Zeiteinheit als Feld von Anfang an**, im MVP nur „Nacht" implementiert |
+| 9 | Kassenfunktion | **Keine.** Kein Kassenbuch, keine TSE, kein DSFinV-K. Nur Fakturierung plus Zahlungsvermerk, dazu eine Kassenschnittstelle. Siehe [09-kassenbuch.md](09-kassenbuch.md) |
+| 10 | Nachrüstbarkeit des Kassenbuchs | **Offen halten, nicht vorbauen.** Das Backend muss ein Kassenbuch später additiv aufnehmen können, ohne Umbau. Kein ungenutztes Gerüst. Siehe unten |
+| 11 | Betrieb | **Eigene VM auf dem vorhandenen Proxmox-Host**, ohne Plesk. Der bestehende Plesk-Server behält seine Projekte und bleibt unberührt. Siehe [10-systemarchitektur.md](10-systemarchitektur.md) |
+| 12 | Reverse Proxy und TLS | **Caddy.** Automatische Zertifikate ersetzen, was vorher Plesk übernommen hat |
+| 13 | Gästeprofil | **Je Account, nicht je Property.** Die Modellgrenze fällt mit der Datenschutzgrenze zusammen. Hausbezogene Notizen bleiben je Property. Wer strikte Trennung will, bekommt zwei Accounts. Begründung in B8 von [13-gesamtreview.md](13-gesamtreview.md) |
+| 14 | Benutzerrollen | **Fester Berechtigungskatalog, Systemrollen auf drei Ebenen**, Support-Sitzung als einziger Weg zu Kundendaten für uns. Siehe [14-benutzerrollen.md](14-benutzerrollen.md) |
+
+### Was daraus folgt
+
+**Zu 1: Pilotkunde ist ein großer Vorteil, aber eine Falle.**
+Ein echtes Haus als Testobjekt ist Gold wert: echte Daten, echte Abläufe, sofortiges Feedback. Das Risiko ist, dass das Produkt zur Speziallösung für genau dieses Haus wird. Gegenmittel: Jede Anforderung aus dem Pilothaus wird bewusst danach bewertet, ob sie allgemein ist oder hausspezifisch. Hausspezifisches wird konfigurierbar gebaut oder gar nicht.
+
+**Zu 2: Die Spannweite ist die härteste Anforderung im ganzen Projekt.**
+Eine Ferienwohnung und ein Haus mit 400 Zimmern und Tagungsbetrieb sind unterschiedliche Produkte. Die Ferienwohnung braucht drei Bildschirme und darf nichts kosten. Das große Haus braucht Blocks, Gruppenrechnungen, Rollenrechte, Schichtabschlüsse und Multi-Property.
+
+Das ist machbar, aber nur unter zwei Bedingungen:
+- **Das Datenmodell muss von Anfang an das große Haus können.** Blocks, mehrere Folios je Reservierung, Routing, Mandantenfähigkeit, Rollen. Diese Dinge nachzurüsten bedeutet Migration von Bestandsdaten und ist der teuerste denkbare Umbau. Sie kosten jetzt wenig, weil sie nur Struktur sind.
+- **Die Oberfläche muss mitwachsen, nicht alles zeigen.** Funktionen werden je nach Betriebsgröße ein- und ausgeblendet. Eine Pension darf nie ein Feld für Marktsegment oder ein Menü für Kontingente sehen.
+
+**Vertrieblich bleibt es trotzdem eine Reihenfolge.** Wir bauen die Struktur für alle, gehen aber mit dem Mittelbau in den Markt, also 20 bis 150 Zimmer. Das ist der Bereich mit dem besten Verhältnis aus Zahlungsbereitschaft und Betreuungsaufwand, siehe [03-marktfuehrer-deutschland.md](03-marktfuehrer-deutschland.md).
+
+**Zu 5: „Alle Channel Manager" heißt, dass wir keinen einzeln bauen.**
+Wir bauen **eine** ARI-Schnittstelle (Availability, Rates, Inventory) nach Branchenstandard und lassen die Anbieter andocken. Dirs21, HotelSpider, SiteMinder, Roomcloud und Cultuzz sprechen alle Varianten desselben Musters. Eine saubere Standardschnittstelle plus eine gute Dokumentation ist billiger als fünf Einzelintegrationen und skaliert auf den sechsten Anbieter ohne Arbeit.
+
+**Zu 6: „Alle drei Payment-Anbieter" bedeutet zwingend eine Abstraktionsschicht.**
+Wie bei der Fiskalisierung: eine eigene interne Schnittstelle `PaymentAdapter` mit Autorisieren, Belasten, Erstatten, Token speichern, Pay-by-Link. Adyen, Stripe und Mollie sind Implementierungen dahinter. **Kartendaten fassen wir nie selbst an**, nur Tokens, sonst greift PCI DSS in voller Härte.
+Reihenfolge: Stripe zuerst, weil am schnellsten integriert und für den Start ausreichend. Mollie danach, weil im DACH-Raum bei kleinen Betrieben beliebt und günstiger. Adyen zuletzt, weil es sich erst ab Volumen und bei größeren Häusern lohnt.
+
+**Zu 11: Die eigene VM löst drei Probleme, zwei bleiben.**
+
+Gelöst sind Isolation von den PHP-Projekten auf der Plesk-VM, das Abrüstproblem (auf der PMS-VM läuft schlicht kein Plesk) und die Betriebskopplung bei Neustarts. **Nicht gelöst sind zwei Punkte**, die als P4b und P4c in [12-security-und-performance-review.md](12-security-und-performance-review.md) stehen: Beide VMs teilen sich die Hardware, und der Proxmox-Host bleibt gemeinsamer Ausfallpunkt. Daraus folgt die Bedingung für Fremdkunden: **eine verschlüsselte Sicherung außer Haus, nicht die zweite VM.**
+
+**Zu 10: Nachrüstbarkeit ist eine Entwurfsauflage, kein Arbeitspaket.**
+
+Es wird jetzt nichts für ein Kassenbuch gebaut. Es wird nur sichergestellt, dass ein späterer Einbau rein additiv bleibt. Verbindlich sind dafür zwei Punkte:
+
+1. **Der Zahlungsvermerk ist eine eigene Tabelle `settlement` mit einem Zahlartenkatalog `payment_method` als Stammdaten**, kein Statusfeld am Folio und kein Enum im Code. Ein späteres Kassenbuch ergänzt dann drei Tabellen und drei Spalten, ohne einen bestehenden Datensatz anzufassen.
+2. **Jede Erfassung eines Zahlungsvermerks läuft durch genau eine Dienstfunktion**, nicht verteilt über Check-out, Rechnungserstellung und Import. Damit gibt es später einen einzigen Ort für einen Fiskal-Hook.
+
+Beides ist ohnehin sauberer Aufbau und kostet keinen Zusatzaufwand. Alles Weitere, was Nachrüstbarkeit begünstigt, folgt bereits aus den GoBD-Entscheidungen in [08-compliance-in-der-praxis.md](08-compliance-in-der-praxis.md).
+
+**Ausdrücklich nicht erlaubt:** leere Tabellen auf Vorrat, eine Fiskal-Schnittstelle ohne Implementierung, `tse_`-Spalten für später, Schalter für ein Modul, das es nicht gibt. Details und Begründung in Abschnitt 10 von [09-kassenbuch.md](09-kassenbuch.md).
+
+**Zu 7: DATEV-Export vereinfacht Stufe 1 spürbar.**
+Kein Mahnwesen, keine Offene-Posten-Verwaltung, keine Zahlungsavise. Wir brauchen: sauber kontierte Buchungen, einen Export im DATEV-Format und die Firmen-Folios im City Ledger als Forderung. Was danach passiert, macht der Steuerberater.
+
+### Neu aufgeworfene Fragen
+
+1. **Preisgestaltung über die Spannweite.** Bei 7 bis 12 Euro je Zimmer zahlt eine Ferienwohnung mit vier Einheiten unter 50 Euro im Monat und verursacht denselben Supportaufwand wie ein Haus mit 40 Zimmern. Brauchen wir einen Mindestpreis je Betrieb, und wie hoch?
+2. ~~**Fiskalisierungskosten bei Kleinstbetrieben.**~~ **Erledigt** durch Entscheidung 9: Ohne Kassenfunktion entstehen keine Fiskalisierungskosten je Kunde.
+3. **Verkaufen wir Payment mit Marge?** Bei Mews ist das der wesentliche Ertragshebel, es widerspricht aber unserer Positionierung „kein Zwang zur Bündelung".
+4. **Datenimport aus Altsystemen.** Aus [05-wettbewerber-softtec.md](05-wettbewerber-softtec.md): Unser Zielkunde ist der Migrationskandidat. Welche Altsysteme unterstützen wir zuerst? Vorschlag: hotline, HS/3, protel.

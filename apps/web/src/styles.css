@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Zahlen im Zimmerplan und in Salden stehen untereinander. */
+.tabular-nums { font-variant-numeric: tabular-nums; }

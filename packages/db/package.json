@@ -1,0 +1,17 @@
+{
+  "name": "@hotelpms/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -b",
+    "migrate": "tsx src/cli/migrate.ts",
+    "reset": "tsx src/cli/reset.ts",
+    "seed": "tsx src/cli/seed.ts"
+  },
+  "dependencies": { "pg": "^8.13.1" },
+  "devDependencies": { "@types/pg": "^8.11.10" }
+}

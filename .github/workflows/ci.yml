@@ -1,0 +1,50 @@
+name: CI
+# Nur der Hauptzweig und Pull Requests. Vorher lief beides fuer jeden Zweig
+# mit offenem Pull Request, also jeder Lauf doppelt.
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ['5432:5432']
+    env:
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      TEST_DATABASE_URL: postgres://hotelpms_app:devapp@127.0.0.1:5432/hotelpms_test
+      TEST_DATABASE_URL_OWNER: postgres://hotelpms_owner:devowner@127.0.0.1:5432/hotelpms_test
+      DATABASE_URL: postgres://hotelpms_app:devapp@127.0.0.1:5432/hotelpms_test
+      DATABASE_URL_OWNER: postgres://hotelpms_owner:devowner@127.0.0.1:5432/hotelpms_test
+      SESSION_SECRET: ci-secret-mindestens-zweiunddreissig-zeichen
+      ID_DOCUMENT_KEY: ci-key-mindestens-zweiunddreissig-zeichen!!
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # Keine version-Angabe: package.json nennt pnpm unter "packageManager",
+      # und die Aktion bricht ab, wenn die Version an zwei Stellen steht.
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with: { node-version: 22, cache: pnpm }
+      - name: Datenbankrollen anlegen
+        run: |
+          psql -c "CREATE ROLE hotelpms_owner LOGIN PASSWORD 'devowner' BYPASSRLS;"
+          psql -c "CREATE ROLE hotelpms_app LOGIN PASSWORD 'devapp';"
+          psql -c "CREATE ROLE hotelpms_readonly LOGIN PASSWORD 'devro';"
+          psql -c "CREATE DATABASE hotelpms_test OWNER hotelpms_owner;"
+          psql -d hotelpms_test -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION pgcrypto;"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high || true
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

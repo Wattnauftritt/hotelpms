@@ -1,0 +1,27 @@
+[Unit]
+Description=hotelpms Worker
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=hotelpms
+Group=hotelpms
+WorkingDirectory=/opt/hotelpms/current
+EnvironmentFile=/opt/hotelpms/shared/env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/hotelpms/current/apps/worker/dist/worker.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/hotelpms
+# Der Worker darf die API nicht verdraengen (P5, Dokument 12).
+CPUQuota=150%
+MemoryMax=4G
+IOWeight=50
+
+[Install]
+WantedBy=multi-user.target
