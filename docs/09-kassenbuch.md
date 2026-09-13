@@ -177,10 +177,29 @@ Die Frage war, ob ein eigenes Kassenbuch an Lizenzen, Zertifizierungen oder der 
 | Zulassung oder Lizenz für Kassensoftware | **Existiert in Deutschland nicht.** Es gibt keine staatliche Genehmigung für Kassensoftware. Anders als etwa in Italien oder Frankreich |
 | GoBD-Zertifizierung | **Gibt es amtlich nicht.** Die Finanzverwaltung erteilt keine Positivtestate zur Ordnungsmäßigkeit. Was Anbieter „GoBD-zertifiziert" nennen, ist ein privates Testat eines Wirtschaftsprüfers. Nützlich als Vertriebsargument, kein Rechtsakt |
 | BSI-Zertifizierung | Betrifft **nur die TSE**, und die kaufen wir ein. Die Kassensoftware selbst wird nicht zertifiziert |
-| DATEV-Lizenz | **Nicht erforderlich.** Das DATEV-Format für Buchungsstapel ist im DATEV Developer Portal nach kostenfreier Registrierung dokumentiert, samt Prüfprogramm. Schnittstellen dürfen ausdrücklich ohne Partnerschaft umgesetzt werden |
-| DATEV-Marktplatz | **Optional.** Kostet Grundgebühr und Klickpreis und setzt eine Mindestnutzerzahl voraus. Ein Vertriebskanal, keine Voraussetzung |
+| DATEV-Anbindung | **Kommt darauf an, welche.** Es gibt drei Stufen mit sehr unterschiedlichen Kosten, siehe unten. Die für uns nötige ist kostenfrei |
 
-**Wichtig zur Einordnung:** Der DATEV-Export ist ohnehin Teil des Produkts, unabhängig vom Kassenbuch. Er ist also keine zusätzliche Hürde, sondern ohnehin zu bauen.
+### Die drei Stufen der DATEV-Anbindung
+
+Dieser Punkt war in einer früheren Fassung falsch dargestellt. Er ist wichtig, weil die Stufen um Größenordnungen auseinanderliegen.
+
+| Stufe | Was es ist | Kosten für uns |
+|---|---|---|
+| **1. DATEV-Format-Datei** | Wir erzeugen eine Datei im DATEV-Format für Buchungsstapel. Der Betrieb oder sein Steuerberater importiert sie. Das Format ist im DATEV Developer Portal nach kostenfreier Registrierung dokumentiert, samt Prüfprogramm | **Keine.** Kein Onboarding, keine Partnerschaft, keine Gebühr |
+| **2. DATEV-Datenservice** | Ein API, das Daten direkt in die DATEV-Cloud schiebt, etwa der **Datenservice Kassenarchiv** nach DATEV Kassenarchiv online und weiter nach Kassenbuch online. Die Umsetzung läuft über ein von DATEV-Beratern begleitetes Onboarding | **Kostenpflichtig.** Erstes Onboarding **1.500 Euro zzgl. USt.** inklusive vier Beratungsstunden, jede weitere angefangene Stunde **210 Euro zzgl. USt.** Dazu ein DATEV-Testsystem, das eigene Kosten verursachen kann. Laufende Kosten je API-Aufruf nach gewähltem API-Plan, die typischerweise beim DATEV-Endkunden anfallen, also beim Steuerberater oder Mandanten |
+| **3. DATEV-Marktplatz-Partner** | Eigene Marktplatzseite, Partnermanager, das Siegel „von DATEV technisch geprüft" | **Zusätzlich.** Setzt einen umgesetzten Datenservice mit **mindestens 25 aktiven Kunden** und drei Referenzkunden voraus. Partner zahlen monatliche Grundgebühr plus Klickpreis, deren Höhe nicht öffentlich ist |
+
+**Zur genannten Zahl von 5.000 Euro:** Die konnte ich in den öffentlichen Quellen nicht als Festpreis bestätigen. Der dokumentierte Einstieg liegt bei 1.500 Euro. Realistisch ist die Größenordnung trotzdem: 1.500 Euro plus rund 17 Beratungsstunden ergeben bereits 5.000 Euro, und ein Onboarding mit Testsystem, Abstimmung und Fehlerbehebung kommt schnell dorthin. **Wer von 5.000 Euro als realistischen Gesamtkosten ausgeht, liegt vermutlich richtig.** Die verbindliche Auskunft gibt nur DATEV selbst.
+
+### Was das für uns bedeutet
+
+**Für den beschlossenen Umfang genügt Stufe 1, und die ist kostenfrei.** Entscheidung 7 in [02-planungsgrundlage.md](02-planungsgrundlage.md) lautet „DATEV-Export genügt". Wir erzeugen eine Datei, der Steuerberater importiert sie. Genau so arbeiten die meisten PMS.
+
+Stufe 2 wäre erst dann interessant, wenn wir Daten aktiv in die DATEV-Cloud schieben wollen. Bemerkenswert dabei: **Der Datenservice Kassenarchiv ist genau der Kassenweg**, den wir nach Entscheidung 9 nicht gehen. Er ist für uns also doppelt irrelevant, solange wir keine Kassenfunktion haben.
+
+Stufe 3 ist ein Vertriebskanal und scheidet ohnehin aus, solange wir keine 25 Kunden mit umgesetztem Datenservice haben.
+
+**Für die Bewertung eines späteren Kassenbuchs ändert das die Rechnung aber spürbar:** Ein Kassenbuch, das seinen Nutzen ausspielt, will die Daten nach DATEV Kassenarchiv online schieben. Dann kommen zu TSE, DSFinV-K und Supportlast noch ein vierstelliges Onboarding und laufende API-Kosten. Das stärkt die Entscheidung aus Abschnitt 1 zusätzlich.
 
 ### Die echten Hürden
 
@@ -311,5 +330,9 @@ Das hält das Produkt schlank, senkt die Umstiegshürde und ist der eigentliche 
 - [DATEV: FAQ für Software-Hersteller zum Marktplatz](https://www.datev.de/web/de/ueber-datev/das-digitale-oekosystem-von-datev/partnering/datev-marktplatz/faq-fuer-interessierte-software-hersteller/)
 - [DATEV: Erste Schritte zum Partnerstatus](https://www.datev.de/web/de/berufsgruppenuebergreifend/ueber-datev/portfolio/oekosystem/partnering/datev-marktplatz/erste-schritte-zum-partnerstatus)
 - [auditplan: DATEV Buchungsstapel EXTF, Format und Export](https://auditplan.io/datev-buchungsstapel-extf)
+- [DATEV Developer Portal: Hilfe und Kontakt, Onboarding-Kosten](https://developer.datev.de/de/help)
+- [DATEV: Infos für Kassen- und TSE-Hersteller](https://www.datev.de/web/de/berufsgruppenuebergreifend/ueber-datev/portfolio/oekosystem/partnering/datev-marktplatz/infos-fuer-kassen-und-tse-hersteller)
+- [DATEV: Datenservice Kassenarchiv einrichten](https://www.datev.de/web/de/berufsgruppenuebergreifend/mydatev/datenservices/datenservice-kassenarchiv-einrichten)
+- [DATEV: Kassenarchiv online, Produktseite](https://www.datev.de/web/de/shop/produkt-details/datev-kassenarchiv-online-97337)
 - [LHP: Zuschätzung in der Betriebsprüfung und Haftung bei Manipulation durch Kassensoftware](https://www.lhp-gruppe.de/themen/zuschaetzung-in-betriebspruefung-und-haftung-bei-manipulation-durch-kassen-software/)
 - [Gastgewerbe-Magazin: Hinzuschätzung bei gravierenden Kassenführungsmängeln zulässig](https://gastgewerbe-magazin.de/urteil-hinzuschaetzung-bei-gravierenden-kassenfuehrungsmaengeln-zulaessig-27411)
