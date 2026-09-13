@@ -60,5 +60,13 @@ export const Errors = {
       'Derselbe Schluessel wurde bereits mit einem anderen Rumpf benutzt.'),
   idempotencyInFlight: () =>
     new AppError(409, 'urn:hotelpms:idempotency_in_flight', 'Anfrage laeuft bereits',
-      'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.')
+      'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.'),
+  // Der Beleg entsteht nach dem Festschreiben im Worker, nicht in derselben
+  // Transaktion: die haelt die Zaehlerzeile der Rechnungsnummer gesperrt.
+  // Ein eigener Fehlertyp, damit die Oberflaeche zwischen "gibt es nicht"
+  // und "kommt gleich" unterscheiden kann.
+  documentPending: () =>
+    new AppError(409, 'urn:hotelpms:document_pending', 'Beleg noch nicht erzeugt',
+      'Die Rechnung ist festgeschrieben, der Beleg wird gerade erzeugt. '
+      + 'Bitte in Kuerze erneut abrufen.')
 }
