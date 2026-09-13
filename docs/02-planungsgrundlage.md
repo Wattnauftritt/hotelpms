@@ -8,7 +8,7 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 - **Mandantenfähig von Anfang an.** Ein Account kann mehrere Betriebe (Properties) haben; jede Tabelle trägt die Property-ID.
 - **Ressourcen statt Zimmer.** Zimmer, Parkplätze, Tagungsräume, Tagesnutzung sind Ressourcen mit einer Zeiteinheit (Nacht, Stunde, Tag, Monat).
 - **Append-only im Rechnungswesen.** Buchungen werden nie geändert oder gelöscht, nur storniert. Rechnungen werden festgeschrieben.
-- **Deutsche Pflichten sind Kern**: Meldeschein, GoBD, TSE, Kurtaxe, Beherbergungsstatistik, DSGVO.
+- **Deutsche Pflichten sind Kern**: Meldeschein, GoBD, Kurtaxe, Beherbergungsstatistik, DSGVO. Keine Kassenfunktion und damit keine TSE, siehe Entscheidung 9.
 - **Nicht selbst bauen**: Channel Manager, Payment-Processing, Kartenspeicherung, TSE-Hardware. Dafür saubere Schnittstellen.
 - **Was der Betrieb schon führt, bauen wir nicht. Wir schließen an.** Kassenbuch und Kasse gar nicht, Buchungsmaschine und Channel Manager anbindbar, Restaurantkasse und Schließsystem per Schnittstelle, Buchhaltung als DATEV-Export. Ein Umstieg darf nie erzwungen werden. Siehe [09-kassenbuch.md](09-kassenbuch.md)
 
@@ -43,7 +43,8 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 | Entität | Felder (Auswahl) | Anmerkung |
 |---------|------------------|-----------|
 | `Booking` | Bucher (Guest oder Company), Herkunft (Direkt, Booking Engine, Channel, API, Walk-in), externe Buchungsnummer, Marktsegment | Klammer um Reservierungen |
-| `Reservation` | Booking, Kategorie, zugewiesene Resource (optional), Anreise, Abreise, Erwachsene/Kinder, RatePlan, Status, Hauptgast, Begleitpersonen, Garantie, Wünsche | Ein Aufenthalt |
+| `Reservation` | Booking, Kategorie, zugewiesene Resource (optional), Anreise, Abreise, RatePlan, Status, Hauptgast, Garantie, Wünsche, `public_ref` | Ein Aufenthalt |
+| `ReservationOccupant` | Reservation, Gast (optional), Alter zum Anreisetag, Rolle | Ersetzt reine Zähler. Nötig für Kurtaxe-Staffeln, Kinderpreise und Meldeschein |
 | `ReservationNight` | Reservation, Datum, Preis, Steuern, RatePlan | Preis je Nacht wird bei Buchung eingefroren |
 | `Block` | Name, Kategorie, Zeitraum, Anzahl, Freigabedatum, Firma/Gruppe, RatePlan | Kontingent; gebuchte Reservierungen ziehen vom Block ab |
 | `Registration` | Reservation, Guest, Meldedaten nach § 30 BMG, Unterschrift (Bild/Vektor, nur bei Ausländern Pflicht), Zeitstempel, Vernichtungsdatum | Meldeschein; Aufbewahrung 1 Jahr |
@@ -54,9 +55,9 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 |---------|------------------|-----------|
 | `Folio` | Property, Inhaber (Guest oder Company), Reservation (optional), Typ (Gast / Firma / Gruppe / Kasse), Status (offen / geschlossen) | Mehrere Folios je Reservierung möglich |
 | `Charge` | Folio, Datum, Geschäftsdatum, Service/Produkt, Menge, Netto, Steuer, Brutto, Konto, Storno-von, erfasst von | Unveränderlich; Storno erzeugt Gegenbuchung |
-| `Payment` | Folio, Datum, Geschäftsdatum, Art (Bar, Karte, Überweisung, Anzahlung, Gutschein), Betrag, Gateway-Referenz, TSE-Signatur (bei Bar) | Unveränderlich |
+| `Settlement` | Folio, Geschäftsdatum, Zahlart aus Katalog, Betrag, externe Referenz (Beleg der Ladenkasse, Portal-ID, Gateway-Referenz), Storno-von | Zahlungsvermerk, unveränderlich. Kein Kassenbestand, siehe [09-kassenbuch.md](09-kassenbuch.md) |
 | `Routing` | Reservation, Regel (welche Services/Produkte), Ziel-Folio | Split Billing |
-| `Invoice` | Folio, fortlaufende Nummer je Property, Datum, Empfängeradresse, Positionen (Snapshot), Steuerausweis, PDF, XRechnung/ZUGFeRD, Storno-von | Festgeschrieben |
+| `Invoice` | Menge von Charges, fortlaufende Nummer je Property und Jahr, Datum, **Aussteller und Empfänger als Momentaufnahme**, Steuer je Satzgruppe aus der Nettosumme, PDF/A-3 mit ZUGFeRD, Storno-von | Festgeschrieben. Ein Folio kann mehrere Rechnungen haben, siehe B3 bis B6 in [13-gesamtreview.md](13-gesamtreview.md) |
 | `BusinessDay` | Property, Datum, geöffnet, geschlossen um, Abschlussprüfungen | Nachtlauf-Ergebnis |
 | `AuditLog` | Entität, ID, Aktion, Vorher, Nachher, User, Zeitstempel | GoBD-Änderungsprotokoll, auf allen Tabellen |
 
@@ -114,20 +115,23 @@ verfügbar = Anzahl Resources der Kategorie
           + Overbooking-Limit der Kategorie
 ```
 
-Zusätzlich gibt es die Property-Gesamtverfügbarkeit, damit Upgrades in eine andere Kategorie kein Overbooking auf Hausebene erzeugen. Verfügbarkeit wird berechnet und nur als Cache gehalten; der Cache wird bei jeder Änderung an Reservierungen, Blocks oder Sperrungen invalidiert.
+Zusätzlich gibt es die Property-Gesamtverfügbarkeit, damit Kategorien-Overbooking kein Overbooking auf Hausebene erzeugt. Umgesetzt als **Haussummenzeile** in `inventory_day` mit `category_id = 0`, die von denselben drei SQL-Funktionen mitgeführt und bei jeder Belegung in derselben Anweisung geprüft wird. Siehe B2 in [13-gesamtreview.md](13-gesamtreview.md) und Abschnitt 4 von [10-systemarchitektur.md](10-systemarchitektur.md).
 
 ## 5. Nachtlauf als Job
 
-Läuft automatisch zur Tageswechsel-Uhrzeit der Property (Standard 04:00 Uhr):
+Läuft automatisch zur Tageswechsel-Uhrzeit der Property (Standard 04:00 Uhr), gestreut über ein Zeitfenster, damit nicht alle Betriebe gleichzeitig starten.
 
-1. Für jede InHouse-Reservierung Logis, inkludierte Produkte und Kurtaxe für die vergangene Nacht auf das Folio buchen (Routing beachten).
-2. Confirmed-Reservierungen mit Anreise gestern und ohne Check-in auf `NoShow` setzen und Gebühr nach Policy buchen.
-3. Optional-Reservierungen mit abgelaufenem Verfallsdatum auf `Canceled` setzen.
-4. Abgelaufene Blocks freigeben.
-5. Prüfliste erzeugen: Folios mit hohem Saldo, Zimmer mit Belegung ohne Housekeeping-Status, Zahlungen ohne Zuordnung.
-6. `BusinessDay` schließen, nächsten öffnen, Tagesbericht (Belegung, ADR, RevPAR, Umsatz je Konto) speichern.
+**Der Tageswechsel ist Schritt 1, nicht der letzte.** Alle folgenden Schritte arbeiten ausdrücklich mit dem **geschlossenen** Datum als Parameter, nie mit „dem aktuellen". Jeder Schritt hinterlässt nach Abschluss eine Marke je `(property, business_date, schritt)`, ein Wiederholungslauf überspringt markierte Schritte. Begründung in B1 von [13-gesamtreview.md](13-gesamtreview.md).
 
-Buchungen von Charges nach dem Tageswechsel tragen das neue Geschäftsdatum. Es gibt keinen Zustand, in dem die Rezeption „nicht buchen darf, weil der Nachtlauf läuft“.
+1. `BusinessDay` des abgelaufenen Tages schließen und den nächsten öffnen. Eine atomare Zeilenänderung. Ab jetzt tragen neue Charges das neue Datum.
+2. Für jede InHouse-Reservierung Logis, inkludierte Produkte und Kurtaxe für die geschlossene Nacht auf das Folio buchen, mit dem geschlossenen Datum (Routing beachten).
+3. Confirmed-Reservierungen mit Anreise am geschlossenen Tag und ohne Check-in auf `NoShow` setzen, Gebühr nach Policy buchen, Bestand freigeben.
+4. Optional-Reservierungen mit abgelaufenem Verfallsdatum auf `Canceled` setzen, Bestand freigeben.
+5. Abgelaufene Blocks freigeben.
+6. Prüfliste erzeugen: Folios mit hohem Saldo, Zimmer mit Belegung ohne Housekeeping-Status, Zahlungsvermerke ohne Zuordnung.
+7. Tagesbericht (Belegung, ADR, RevPAR, Umsatz je Konto) für den geschlossenen Tag speichern.
+
+Es gibt keinen Zustand, in dem die Rezeption „nicht buchen darf, weil der Nachtlauf läuft". Eine Charge, die während des Laufs erfasst wird, trägt bereits das neue Datum.
 
 ## 6. Modulschnitt
 
@@ -146,13 +150,13 @@ Buchungen von Charges nach dem Tageswechsel tragen das neue Geschäftsdatum. Es 
 │  ├─ Guests         Gäste, Firmen, Dubletten, Meldeschein       │
 │  ├─ Finance        Folios, Charges, Payments, Rechnungen, Ledger │
 │  ├─ Operations     Housekeeping, Aufgaben, Nachtlauf           │
-│  ├─ Compliance     TSE, DSFinV-K, GoBD-Export, Statistik, Löschkonzept │
+│  ├─ Compliance     Meldeschein, GoBD-Export, Statistik, Löschkonzept │
 │  └─ Reporting      Kennzahlen, Listen, Exporte                 │
 └───────────────────────────┬────────────────────────────────────┘
                             │ Adapter
 ┌───────────────────────────┴────────────────────────────────────┐
 │  Extern: Channel Manager (ARI) · Payment (Adyen/Stripe/Mollie) │
-│          Cloud-TSE (fiskaly) · eSTATISTIK.core · E-Mail        │
+│          Kassenschnittstelle · eSTATISTIK.core · E-Mail        │
 │          Schließsystem · POS · Buchhaltung (DATEV-Export)       │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -201,11 +205,11 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 ## 8. Technische Leitplanken (Vorschlag)
 
 - **Datenbank:** PostgreSQL. Alle Geld-Felder als Integer in Cent plus Währung, nie Float. Zeitstempel in UTC, Aufenthaltsdaten als Kalenderdatum in der Zeitzone der Property.
-- **Rechnungswesen:** Tabellen `charge`, `payment`, `invoice` ohne UPDATE/DELETE-Rechte für die App-Rolle; Korrektur nur per neuer Zeile.
+- **Rechnungswesen:** Tabellen `charge`, `settlement`, `invoice` ohne UPDATE/DELETE-Rechte für die Anwendungsrolle; Korrektur nur per neuer Zeile.
 - **Audit-Log:** Datenbank-Trigger, nicht Anwendungslogik, damit nichts vergessen wird.
 - **Nebenläufigkeit:** Verfügbarkeitsprüfung und Reservierungsanlage in einer Transaktion mit Sperre je Kategorie und Zeitraum, sonst Doppelverkauf bei gleichzeitigen Buchungen.
 - **API:** REST mit OpenAPI-Spezifikation, Versionierung im Pfad, Webhooks mit Signatur und Retry.
-- **Sprache/Framework:** noch offen, siehe unten.
+- **Sprache/Framework:** TypeScript, Fastify, PostgreSQL. Entschieden in [10-systemarchitektur.md](10-systemarchitektur.md).
 
 ## 9. Getroffene Entscheidungen
 

@@ -22,7 +22,7 @@ hotelpms/
   docs/                  Diese Dokumente
   ops/
     systemd/             Unit-Dateien
-    nginx/               Plesk-Zusatzdirektiven
+    caddy/               Caddyfile
     deploy/              Auslieferungsskripte
   .github/workflows/     CI
 ```
@@ -52,6 +52,10 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - **Drei Datenbankrollen**, Migrationen laufen unter der Eigentümerrolle
 - **Generischer Berechtigungstest über alle registrierten Routen**, siehe S13 in [12-security-und-performance-review.md](12-security-und-performance-review.md)
 - **systemd-Einheiten mit Ressourcenbegrenzung** in `ops/systemd/`
+- **`public_ref` als Konvention** auf jeder nach außen sichtbaren Entität (C1 in Dokument 13)
+- **`app.user_id` je Transaktion**, vom Audit-Trigger gelesen, mit Test auf leeren Benutzer (C5)
+- **Zwei Verbindungsziele:** API über PgBouncer, Worker direkt (D1)
+- **`pg_trgm`** aktiviert
 
 **Definition of Done:** Ein leerer Endpunkt ist erreichbar, die CI ist grün, der Abfragezähler schlägt bei einem absichtlich eingebauten N+1 fehl, eine Route ohne Berechtigungsangabe bricht den Build, der Seed läuft in unter fünf Minuten durch.
 
@@ -64,6 +68,9 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - **Mandantenkontext aus dem Token**, nie aus einem Parameter des Clients
 - **Row Level Security** auf allen Tabellen mit `property_id`, siehe [12-security-und-performance-review.md](12-security-und-performance-review.md)
 - TOTP für Rollen mit Verwaltungsrechten
+- **Autorisierungsserver: `node-oidc-provider`**, eingebettet, keine Eigenentwicklung der Protokollteile (C2)
+- Sitzungen in PostgreSQL mit Aufräumjob, eigene RLS-Richtlinien für `session`, `user`, `account`, `oauth_client` (C6)
+- Ratenbegrenzung: Caddy je IP am Rand, API je Client-ID im Prozess (C7)
 
 **Definition of Done:** Ein Test weist nach, dass ein Token für Property A auf keiner Route Daten von Property B erhält, auch nicht bei manipuliertem Pfadparameter. Ein zweiter Test weist nach, dass RLS auch bei einer absichtlich fehlenden `WHERE`-Bedingung greift.
 
@@ -93,6 +100,7 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Trigger auf `maintenance_block` und `resource` rufen `inventory_set_capacity`, sie schreiben nicht selbst
 - Materialisierungsjob für einen rollierenden Horizont von 24 Monaten, plus Alarm bei zu wenig Vorlauf
 - Belegung mit Kapazitätsprüfung in einer Anweisung, Fehlerfall unterscheidet „ausgebucht" von „nicht materialisiert"
+- **Haussummenzeile** `category_id = 0`, in derselben Anweisung geprüft (B2)
 - Sperrreihenfolge nach aufsteigender Kategorie-ID gegen Deadlocks
 - Abgleichjob, der die Zähler gegen die Reservierungen nachrechnet
 - Verfügbarkeits-API für Zeitraum und Kategorien, mit Obergrenze für den Zeitraum
@@ -107,6 +115,9 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Gruppen und Kontingente
 - Herkunft und externe Buchungsnummer
 - Zimmerplan-Endpunkt mit höchstens drei Abfragen
+- `reservation_occupant` mit Alter statt Zähler (B7)
+- Verlängerung mit Kategoriewechsel als atomarer Fall (E11)
+- `no_show_cutoff` und `guaranteed` an `cancellation_policy` (B10)
 
 **Definition of Done:** Jeder unerlaubte Zustandsübergang wird abgewiesen und ist getestet. Der Zimmerplan über 30 Tage und 250 Zimmer liefert in unter 80 Millisekunden mit drei Abfragen.
 
@@ -116,6 +127,9 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Suche über Name, E-Mail, Telefon, Buchungsnummer
 - Historie eines Gastes
 - Löschkonzept: Sperren und Anonymisieren statt Löschen
+- **DSGVO-Auskunft** als Job, Archiv aller Daten zu einer Person (C9)
+- Trigramm-Indizes auf Name, E-Mail, Telefon (D2)
+- **Voraussetzung: Entscheidung B8 zum Gästeprofil je Account ist getroffen**
 
 **Definition of Done:** Eine Löschanfrage nach DSGVO anonymisiert den Gast, lässt die Rechnungen mit historischem Namen bestehen und ist protokolliert.
 
@@ -125,7 +139,9 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Split Billing und Sammelrechnung
 - **Lückenlose Rechnungsnummern über eine gesperrte Zählerzeile**, nicht über eine Sequenz
 - Festschreiben, Storno als Gegenbuchung
-- Rechnungs-PDF im Worker
+- Rechnungs-PDF im Worker, danach **Konvertierung nach PDF/A-3 und ZUGFeRD-Einbettung** (E3)
+- Rechnung als Charge-Menge, Zwischen- und Anzahlungsrechnung, Momentaufnahmen, Steuer je Satzgruppe (B3 bis B6)
+- Prüfliste der Pflichtangaben nach § 14 UStG, ein Test je Angabe, Deutsch und Englisch (E4)
 - Entzug von UPDATE und DELETE auf den Finanztabellen für die Anwendungsrolle
 
 **Definition of Done:** Ein Test weist nach, dass die Anwendungsrolle eine festgeschriebene Rechnung nicht ändern kann, dass ein Rollback keine Nummernlücke erzeugt, und dass 20 gleichzeitige Check-outs 20 aufeinanderfolgende Nummern ergeben.
@@ -134,7 +150,9 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 
 - Graphile Worker, Job in derselben Transaktion wie die Fachbuchung
 - Nachtlauf je Property: Logis und Kurtaxe buchen, No-Shows, abgelaufene Optionen, Blocks freigeben, Geschäftsdatum weiterschalten, Tagesbericht
+- **Tageswechsel als Schritt 1**, Schrittmarken je `(property, business_date, schritt)` (B1)
 - **Idempotent**, ein zweiter Lauf desselben Tages darf nichts doppelt buchen
+- Streuung der Startzeit über ein Zeitfenster (P4 in Dokument 12)
 - Prüfliste mit Auffälligkeiten
 - Alarm bei ausgefallenem Lauf
 
@@ -150,7 +168,8 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 
 - Datenfelder nach § 30 Abs. 2 BMG
 - Elektronische Unterschrift, Pflicht nur für ausländische Gäste
-- **Keine Ausweiskopien**, nur die Dokumentnummer, verschlüsselt
+- **Keine Ausweiskopien**, nur die Dokumentnummer, verschlüsselt mit `key_version` für Rotation (C4)
+- Sammelmeldeschein für Gruppen (E6)
 - Automatischer Löschjob nach einem Jahr
 
 **Definition of Done:** Der Löschjob entfernt Meldescheine nach Ablauf zuverlässig und protokolliert das. Ein Test weist nach, dass kein Feld für einen Dokumenten-Upload existiert.
@@ -160,7 +179,9 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 - Belegung, ADR, RevPAR, Pickup
 - Anreise-, Abreise-, Hausliste, Offene Posten
 - **DATEV-Format-Datei**, Stufe 1 nach [09-kassenbuch.md](09-kassenbuch.md)
-- GoBD-Export mit Strukturbeschreibung
+- GoBD-Export mit Strukturbeschreibung, geschnitten nach `business_date`, späte Stornos im Zeitraum des Stornos (B11)
+- **Monatsbericht Beherbergungsstatistik** mit Ankünften, Übernachtungen, Herkunftsländern (E2)
+- Provision je Kanal aus `booking.commission_bp` (E10)
 - Vorlage für die Verfahrensdokumentation
 
 ### AP 12 — Rezeptions-Oberfläche
@@ -171,6 +192,8 @@ Startet, sobald AP 5 steht, und läuft parallel weiter.
 - Typen aus `packages/contracts`, keine handgeschriebenen API-Typen
 - Zimmerplan, Reservierungsmaske, Check-in, Check-out, Folio, Listen
 - Deutsch und Englisch von Anfang an
+- **Lesbare Offline-Kopie** von Anreise-, Hausliste und Zimmerstatus im Service Worker (E5)
+- Kein Feld für Kartendaten, Garantie nur per Pay-by-Link oder virtuellem Terminal (E8)
 
 ### AP 13 — Integrationen
 
@@ -179,6 +202,14 @@ Startet, sobald AP 5 steht, und läuft parallel weiter.
 - Payment-Adapter, Stripe zuerst
 - Kassenschnittstelle in beide Richtungen
 - Öffentliches Entwicklerportal mit Selbstbedienungs-Registrierung
+
+### AP 11b — Minimaler CSV-Import (Stufe 1)
+
+Das Pilothaus hat am Starttag bereits Reservierungen für Monate. Ohne die geht es nicht produktiv (E1). Daher nach Stufe 1 vorgezogen:
+
+- CSV-Import für künftige Reservierungen, Gäste und Kategorien
+- Trockenlauf mit Bericht vor dem Übernehmen
+- Läuft durch dieselben Dienstfunktionen wie die Oberfläche, damit Inventar und Audit stimmen
 
 ### AP 14 — Datenimport aus Altsystemen
 
@@ -200,7 +231,7 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
       └────────────────────────────────────────────── AP13, AP14 (später)
 ```
 
-**Stufe 1 der Roadmap ist erreicht mit AP 0 bis 12.** Das ist das erste verkaufbare Produkt.
+**Stufe 1 der Roadmap ist erreicht mit AP 0 bis 12 plus 11b.** Das ist das erste verkaufbare Produkt. Dazu aus Dokument 13 die Betriebsvoraussetzungen: Plattenverschlüsselung (C3), Schlüsselrotation als Betriebsdokument (C4), Redaktionsliste für Logs (C8), Trainingsmodus je Property (C11), Archivierung ausscheidender Betriebe mit Mandantenexport (E7).
 
 ---
 
@@ -262,7 +293,7 @@ push → Lint → Typecheck → Unit → Integration (Testcontainers)
 |---|---|---|
 | PostgreSQL | Kontinuierliche WAL-Archivierung plus täglicher Basis-Dump, verschlüsselt, an einen zweiten Ort | **Monatliche Wiederherstellungsübung**, sonst ist es keine Sicherung |
 | Dateien, PDFs | Objektspeicher mit Versionierung | |
-| Plesk-Konfiguration | Plesk-eigene Sicherung | |
+| VM | Proxmox Backup Server, verschlüsselt an einen zweiten Standort | Monatliche Wiederherstellungsübung |
 
 ---
 

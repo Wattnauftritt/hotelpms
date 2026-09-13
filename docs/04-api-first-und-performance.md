@@ -279,7 +279,7 @@ Zwei Details, die sonst später wehtun:
 
 Alles, was Bestand verändert, muss in derselben Transaktion die Zähler anpassen: Reservierung anlegen, ändern, stornieren, No-Show, Out-of-Order-Sperrung, Kontingent anlegen oder freigeben, Zimmer hinzufügen oder deaktivieren.
 
-Das kann man in der Anwendung machen oder per Datenbank-Trigger. **Empfehlung: Trigger.** Der Grund ist derselbe wie beim Audit-Log: Was in der Anwendung liegt, wird irgendwann an einer Stelle vergessen, etwa in einem Migrationsskript oder einem Import. Was im Trigger liegt, kann nicht umgangen werden.
+**Genau ein Besitzer, keine konkurrierenden Schreiber.** Alle Änderungen an `inventory_day` laufen durch drei SQL-Funktionen: `inventory_reserve`, `inventory_release`, `inventory_set_capacity`. Der Buchungspfad ruft `reserve` und `release`, Trigger auf Sperrungen und Zimmern rufen `set_capacity`. Die Anwendungsrolle bekommt kein `UPDATE` auf die Tabelle, nur `EXECUTE` auf die Funktionen. Damit kann kein Pfad die Zähler umgehen und keiner sie doppelt zählen. Eine frühere Fassung dieses Abschnitts empfahl Trigger auf der Reservierungstabelle; das kollidierte mit der atomaren Belegungsanweisung oben, siehe W1 in [12-security-und-performance-review.md](12-security-und-performance-review.md).
 
 Dazu ein täglicher Abgleichjob, der die Zähler gegen die Reservierungstabelle nachrechnet und Abweichungen meldet. Nicht weil wir mit Fehlern rechnen, sondern weil ein stiller Zählerfehler das Schlimmste ist, was einem Bestandssystem passieren kann.
 

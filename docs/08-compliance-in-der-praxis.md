@@ -39,7 +39,7 @@ Die Praxis dreht sich um die **Festschreibung**. Vorher gilt ein weicheres Regim
 | Unbare Geschäftsvorfälle | innerhalb von **zehn Tagen** erfassen |
 | Festschreibung IT-gestützt erfasster unbarer Vorgänge | bis zum **Ablauf des Folgemonats** |
 
-Für uns heißt das konkret: Der Nachtlauf ist nicht nur ein betrieblicher Ablauf, er ist der **Festschreibungszeitpunkt für den Kassenbereich**. Was der Nachtlauf abgeschlossen hat, ist hart.
+Für uns heißt das konkret: Der Nachtlauf ist nicht nur ein betrieblicher Ablauf, er ist der **Festschreibungszeitpunkt für die Charges des geschlossenen Geschäftstags**. Was der Nachtlauf abgeschlossen hat, ist hart. Eine Kassenfunktion gibt es nach Entscheidung 9 nicht.
 
 ## 1.3 Was das für unsere Tabellen bedeutet
 
@@ -52,9 +52,8 @@ Kein UPDATE, kein DELETE. Die Anwendungsrolle bekommt in PostgreSQL schlicht kei
 | Tabelle | Begründung |
 |---|---|
 | `charge` | Umsatzbuchung |
-| `payment` | Zahlung |
+| `settlement` | Zahlungsvermerk |
 | `invoice` | Festgeschriebenes Dokument mit fortlaufender Nummer |
-| `tse_transaction` | Signaturprotokoll |
 | `audit_log` | Das Protokoll selbst darf erst recht nicht änderbar sein |
 
 Ein Storno ist hier eine **zweite Zeile** mit negativem Betrag und einem Feld `storniert_von` beziehungsweise `storniert_durch`. Die Ursprungszeile bleibt unangetastet stehen. Die Summe über beide ist null. Genau so will es der Prüfer sehen.
@@ -95,7 +94,7 @@ Ein Punkt, der oft unterschätzt wird: Rechnungsnummern müssen **fortlaufend un
 
 - Ein Nummernkreis **je Property und Jahr**.
 - Die Nummer wird erst beim **Festschreiben** vergeben, nicht beim Anlegen des Entwurfs. Sonst entstehen Lücken durch abgebrochene Vorgänge.
-- Die Vergabe läuft über eine Datenbanksequenz oder eine gesperrte Zählerzeile in derselben Transaktion. **Keine Vergabe in der Anwendung**, sonst gibt es bei gleichzeitigen Check-outs Doppelvergaben.
+- Die Vergabe läuft über eine **gesperrte Zählerzeile** in derselben Transaktion. **Keine Datenbanksequenz**, die hinterlässt bei jedem Rollback eine Lücke. **Keine Vergabe in der Anwendung**, sonst gibt es bei gleichzeitigen Check-outs Doppelvergaben.
 - Ein Storno bekommt eine **eigene** Nummer aus demselben Kreis.
 
 ---

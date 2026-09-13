@@ -1,6 +1,6 @@
 # Systemarchitektur und Tech-Stack
 
-Gesamtentwurf für die Umsetzung. Baut auf den Entscheidungen 1 bis 10 in [02-planungsgrundlage.md](02-planungsgrundlage.md) auf.
+Gesamtentwurf für die Umsetzung. Baut auf den Entscheidungen 1 bis 12 in [02-planungsgrundlage.md](02-planungsgrundlage.md) auf.
 
 ---
 
@@ -14,9 +14,9 @@ Gesamtentwurf für die Umsetzung. Baut auf den Entscheidungen 1 bis 10 in [02-pl
 └─────────────────────────────┬─────────────────────────────────────┘
                               │ HTTPS, OAuth 2.0
 ┌─────────────────────────────┴─────────────────────────────────────┐
-│  Plesk-Nginx (TLS, Reverse Proxy, statische Dateien)              │
+│  Caddy (TLS automatisch, Reverse Proxy, statische Dateien)        │
 └─────────────────────────────┬─────────────────────────────────────┘
-                              │ 127.0.0.1
+                              │ Unix-Socket
 ┌─────────────────────────────┴─────────────────────────────────────┐
 │  API-Prozess (systemd, Node/Fastify)   ×N                         │
 │  ├─ Auth & Mandantenkontext                                       │
@@ -61,7 +61,7 @@ Der entscheidende Punkt bleibt aus [04-api-first-und-performance.md](04-api-firs
 
 - **Kein schwergewichtiges ORM** (TypeORM, Prisma mit Relations-Laden). Lazy Loading ist der Hauptweg, wie N+1-Probleme entstehen.
 - **Kein Redis** zu Beginn. Ein weiterer Dienst mit eigenem Ausfallverhalten für Funktionen, die PostgreSQL genauso erfüllt.
-- **Kein Kubernetes.** Zwei Server mit systemd sind für diese Last richtig und debugbar.
+- **Kein Kubernetes.** Eine VM mit systemd ist für diese Last richtig und debugbar.
 - **Kein Microservice-Schnitt.** Ein Monolith mit klaren Modulgrenzen. Verteilte Transaktionen über Verfügbarkeit und Folio wären ein selbstgemachtes Problem.
 
 ---
@@ -147,7 +147,9 @@ inventory_set_capacity(property, category, from, to, capacity)
 
 Der Buchungspfad ruft `inventory_reserve`. Trigger auf `maintenance_block` und `resource` rufen `inventory_set_capacity`. Storno und No-Show rufen `inventory_release`. Durchgesetzt über Rechte: die Anwendungsrolle bekommt **kein `UPDATE` auf `inventory_day`**, nur `EXECUTE` auf die Funktionen. Ohne diese Regel zählen Buchungspfad und Trigger doppelt, siehe W1 in [12-security-und-performance-review.md](12-security-und-performance-review.md).
 
-**Materialisierung:** Ein täglicher Job hält für jede Kategorie einen rollierenden Horizont von 24 Monaten vor. Fehlt eine Zeile, liefert der `UPDATE` weniger Zeilen zurück und die Buchung schlägt fehl. Die Fehlerbehandlung muss „Kapazität erschöpft" und „Zeitraum nicht materialisiert" unterscheiden, Letzteres löst einen Alarm aus.
+**Haussumme.** Je Property und Tag existiert zusätzlich eine Zeile mit `category_id = 0`, die die Summen aller Kategorien führt. `inventory_reserve` prüft Kategoriezeile und Hauszeile in einer Anweisung, damit erlaubtes Overbooking je Kategorie nicht zu unbemerktem Overbooking des Hauses führt (B2 in Dokument 13). Die Hauszeile hat die kleinste `category_id` und wird daher in der Sperrreihenfolge immer zuerst gesperrt.
+
+**Materialisierung:** Ein täglicher Job hält für jede Kategorie und die Hauszeile einen rollierenden Horizont von 24 Monaten vor. Fehlt eine Zeile, liefert der `UPDATE` weniger Zeilen zurück und die Buchung schlägt fehl. Die Fehlerbehandlung muss „Kapazität erschöpft" und „Zeitraum nicht materialisiert" unterscheiden, Letzteres löst einen Alarm aus.
 
 ### Reservierung
 
@@ -169,8 +171,19 @@ CREATE TABLE reservation (
   rate_plan_id     bigint,
   primary_guest_id bigint,
   option_expires_at timestamptz,
+  public_ref       text   NOT NULL UNIQUE,   -- zufaellig, nach aussen sichtbar, nie die id
   created_at       timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT stay_valid CHECK (departure > arrival)
+  CONSTRAINT stay_valid CHECK (departure > arrival)  -- faellt spaeter fuer Tagesnutzung
+);
+
+-- Personen statt Zaehler: noetig fuer Kurtaxe-Staffeln, Kinderpreise, Meldeschein
+CREATE TABLE reservation_occupant (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  property_id     bigint NOT NULL,
+  reservation_id  bigint NOT NULL REFERENCES reservation(id),
+  guest_id        bigint,
+  age_at_arrival  smallint,
+  is_primary      boolean NOT NULL DEFAULT false
 );
 
 -- Nur aktive Reservierungen im Index. Stornierte und abgereiste
@@ -225,6 +238,35 @@ REVOKE UPDATE, DELETE ON charge, settlement, invoice, audit_log FROM hotelpms_ap
 REVOKE UPDATE           ON inventory_day                        FROM hotelpms_app;
 ALTER TABLE reservation FORCE ROW LEVEL SECURITY;  -- sonst umgeht der Eigentuemer die Richtlinie
 ```
+
+### Rechnung als Menge von Charges
+
+Eine Rechnung schließt **nicht** das Folio. Sie umfasst eine Menge von Charges; ein Folio kann viele Rechnungen haben, etwa wöchentliche Zwischenrechnungen bei Langzeitgästen oder getrennte Rechnungen an Firma und Gast aus einem Aufenthalt.
+
+```sql
+CREATE TABLE invoice (
+  id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  property_id        bigint NOT NULL,
+  folio_id           bigint NOT NULL REFERENCES folio(id),
+  number             text   NOT NULL,           -- aus invoice_counter, lueckenlos
+  issued_on          date   NOT NULL,
+  public_ref         text   NOT NULL UNIQUE,
+  issuer_snapshot    jsonb  NOT NULL,           -- Name, Anschrift, Steuernummer zum Zeitpunkt
+  recipient_snapshot jsonb  NOT NULL,
+  totals             jsonb  NOT NULL,           -- je Steuersatz: Netto, Steuer, Brutto
+  kind               text   NOT NULL,           -- final, interim, deposit, credit_note
+  reverses_id        bigint REFERENCES invoice(id),
+  UNIQUE (property_id, number)
+);
+
+ALTER TABLE charge ADD COLUMN invoice_id bigint REFERENCES invoice(id);  -- nullable, einmal gesetzt
+```
+
+Drei Regeln, die daraus folgen:
+
+- **Rundung:** Charges speichern Netto und Steuersatz. Die Rechnung berechnet die Steuer **je Satzgruppe aus der Nettosumme** und speichert ihre Summen in `totals`. `tax_cent` je Charge ist nur eine Näherung für offene Folios (B5 in Dokument 13).
+- **Momentaufnahme:** Aussteller und Empfänger werden als JSON eingefroren. Zieht das Hotel um, bleiben alte Rechnungen unverändert (B6).
+- **Anzahlung:** `kind = deposit` erzeugt eine Anzahlungsrechnung mit Steuerausweis nach § 13 Abs. 1 Nr. 1a UStG. Die Schlussrechnung setzt sie als negative Position ab (B4). Steuerliche Aufteilung mit dem Steuerberater klären.
 
 ### Lückenlose Rechnungsnummern
 
@@ -384,6 +426,9 @@ Zwei systemd-Einheiten:
 User=hotelpms
 EnvironmentFile=/opt/hotelpms/shared/env
 ExecStart=/usr/bin/node /opt/hotelpms/current/dist/api.js
+Environment=LISTEN_SOCKET=/run/hotelpms/api.sock
+RuntimeDirectory=hotelpms
+RuntimeDirectoryMode=0750
 Restart=always
 NoNewPrivileges=true
 PrivateTmp=true
@@ -392,9 +437,9 @@ ProtectHome=true
 ReadWritePaths=/var/log/hotelpms
 ```
 
-Dazu `hotelpms-worker.service` analog.
+Die API lauscht auf dem Unix-Socket, Caddy verbindet sich darauf. `RuntimeDirectory` legt `/run/hotelpms` beim Start an und räumt es beim Stopp weg. Caddy muss Mitglied der Gruppe `hotelpms` sein, um den Socket zu erreichen.
 
-Die Plesk-Domain wird auf **Proxy-Modus** gestellt und über zusätzliche Nginx-Direktiven auf `127.0.0.1:3000` geleitet, mit `proxy_http_version 1.1` und Keepalive zum Upstream.
+`hotelpms-worker.service` analog, zusätzlich mit `CPUQuota=150%`, `MemoryMax=4G` und `IOWeight=50`, damit der Worker die API nicht verdrängt (P5 in Dokument 12). **Der Worker verbindet sich direkt mit PostgreSQL, nicht über PgBouncer**, weil `LISTEN/NOTIFY` durch Transaction-Pooling nicht ankommt (D1 in [13-gesamtreview.md](13-gesamtreview.md)).
 
 ### Eigene VM auf dem Proxmox-Host
 
@@ -519,24 +564,27 @@ Plesk installiert viel, was wir nicht brauchen und was Angriffsfläche ist. **Au
 
 ### PostgreSQL
 
-Direkt installiert, nicht über Plesk. Verbindungen nur über Unix-Socket beziehungsweise `127.0.0.1`. Grundeinstellungen bei 64 GB RAM, unter Berücksichtigung dessen, dass Plesk selbst Dienste betreibt:
+Direkt installiert. Verbindungen ausschließlich über den Unix-Socket in `/run/hotelpms`, kein TCP. Zwei Verbindungswege: die API über PgBouncer, der Worker direkt. Grundeinstellungen bei einer VM mit 32 GB RAM und 8 vCPU (3 API-Prozesse, 1 Worker, Rest für die Datenbank):
 
 | Parameter | Wert |
 |---|---|
-| `shared_buffers` | 12 GB |
-| `effective_cache_size` | 32 GB |
+| `shared_buffers` | 8 GB |
+| `effective_cache_size` | 20 GB |
 | `work_mem` | 32 MB |
-| `max_connections` | 100, davor PgBouncer |
+| `max_connections` | 100, davor PgBouncer mit `default_pool_size = 20` |
 | `wal_level` | `replica` |
 | `checkpoint_timeout` | 15min |
+| `statement_timeout` für `hotelpms_readonly` | 30s |
+
+Erweiterungen: `pg_trgm` für die Gästesuche (D2 in Dokument 13), `pgcrypto` optional.
 
 ### Umgebungen
 
 | Umgebung | Zweck |
 |---|---|
 | lokal | Entwicklung, PostgreSQL in Docker |
-| staging | Eigene Plesk-Subdomain, gleiche Konfiguration wie Produktion, anonymisierte Daten |
-| produktion | Zwei Server, primär und Replikat |
+| staging | Zweite VM auf dem Proxmox-Host oder ein Container auf der Plesk-VM, gleiche Konfiguration wie Produktion, anonymisierte Daten |
+| produktion | Eigene VM, später Replikat an einem zweiten Standort |
 
 ---
 
