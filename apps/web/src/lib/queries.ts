@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient, type UseQueryResult }
   from '@tanstack/react-query'
 import type { TapeChart, DailySheet, HousekeepingBoard, Category, Room,
               SetupStatus, RoomSeries, RoomSeriesReport, CreateCategory,
-              HousekeepingState, FolioView, PaymentMethod } from '@hotelpms/contracts'
+              HousekeepingState, FolioView, PaymentMethod, Block,
+              CreateBlock } from '@hotelpms/contracts'
 import { api, newIdempotencyKey } from './api.js'
 import { cacheRead, cacheWrite } from './offline.js'
 
@@ -176,6 +177,43 @@ export function usePostSettlement(folioRef: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
       void qc.invalidateQueries({ queryKey: ['daily'] })
+    }
+  })
+}
+
+/**
+ * Kontingente mit ihrem Abrufstand. Die Abrufe kommen im selben Aufruf mit;
+ * sie je Kontingent nachzuladen machte aus der Gruppenliste eine Runde je
+ * Zeile.
+ */
+export const useBlocks = (propertyId: number, status?: 'active') =>
+  useQuery<{ blocks: Block[] }>({
+    queryKey: ['blocks', propertyId, status ?? 'alle'],
+    queryFn: () => api.get(
+      `/v1/properties/${propertyId}/blocks${status ? `?status=${status}` : ''}`)
+  })
+
+export function useCreateBlock(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: CreateBlock) =>
+      api.post<{ blockRef: string }>(`/v1/properties/${propertyId}/blocks`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['blocks', propertyId] })
+      // Ein Kontingent nimmt dem freien Verkauf Zimmer weg; der Zimmerplan
+      // zeigt sonst weiter die alte Verfuegbarkeit.
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
+export function useReleaseBlock(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (blockRef: string) => api.post(`/v1/blocks/${blockRef}/release`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['blocks', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
     }
   })
 }
