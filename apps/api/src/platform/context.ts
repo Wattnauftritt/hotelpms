@@ -1,4 +1,5 @@
 import type { Permission } from './permissions.js'
+import { Errors } from './errors.js'
 
 /**
  * Was der Server ueber den Aufrufer weiss.
@@ -49,4 +50,21 @@ export function can(p: Principal, permission: Permission, property?: number): bo
 
 export function hasProperty(p: Principal, property: number): boolean {
   return p.permissionsByProperty.has(property)
+}
+
+/**
+ * Der einzige Account, in dem dieser Aufrufer schreiben darf.
+ * Wer mehrere Accounts sieht, muss ihn angeben; sonst landet der Datensatz im
+ * falschen Mandanten und die Zeilenrichtlinie bemerkt es nicht, weil beide
+ * im Kontext stehen.
+ */
+export function accountFor(p: Principal, given: number | undefined): number {
+  if (given !== undefined) {
+    if (!p.accountIds.includes(given)) {
+      throw Errors.forbidden('Account liegt nicht im Zugriffsbereich.')
+    }
+    return given
+  }
+  if (p.accountIds.length === 1) return p.accountIds[0]!
+  throw Errors.validation({ accountId: ['Pflichtfeld bei mehreren Accounts'] })
 }

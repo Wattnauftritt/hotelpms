@@ -169,11 +169,17 @@ export function authRoutes(app: FastifyInstance): void {
       // In einer Transaktion mit gesetztem Mandantenkontext lesen. Ohne die
       // greift die Zeilenrichtlinie auf `property` mit leerem Kontext und
       // liefert nichts: der Benutzer saehe seine eigenen Haeuser nicht.
+      interface PropertyRow {
+        id: number; code: string; name: string; timezone: string; is_training: boolean
+      }
       const properties = haeuser.length === 0
-        ? { rows: [] as Array<{ id: number; code: string; name: string; timezone: string }> }
+        ? { rows: [] as PropertyRow[] }
         : await tx(req.pool, req, client =>
-            client.query<{ id: number; code: string; name: string; timezone: string }>(
-              `SELECT id, code, name, timezone FROM property
+            client.query<PropertyRow>(
+              // is_training gehoert in die Antwort, damit die Oberflaeche es
+              // dauerhaft anzeigen kann. Wer nicht sieht, dass er uebt, uebt
+              // irgendwann versehentlich am echten Haus (C11).
+              `SELECT id, code, name, timezone, is_training FROM property
                 WHERE id = ANY($1::bigint[]) AND status = 'active' ORDER BY code`,
               [haeuser]))
 
@@ -185,7 +191,8 @@ export function authRoutes(app: FastifyInstance): void {
         supportSession: p.supportSessionId !== null,
         accountPermissions: [...p.accountPermissions].sort(),
         properties: properties.rows.map(r => ({
-          ...r,
+          id: r.id, code: r.code, name: r.name, timezone: r.timezone,
+          isTraining: r.is_training,
           permissions: [...(p.permissionsByProperty.get(r.id) ?? [])].sort()
         }))
       }

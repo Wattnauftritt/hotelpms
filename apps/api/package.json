@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "rotate-keys": "tsx src/cli/rotate-keys.ts"
   },
   "dependencies": {
     "@hotelpms/db": "workspace:*",
