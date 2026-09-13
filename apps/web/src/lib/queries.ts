@@ -2,8 +2,8 @@ import { useQuery, useMutation, useQueryClient, type UseQueryResult }
   from '@tanstack/react-query'
 import type { TapeChart, DailySheet, HousekeepingBoard, Category, Room,
               SetupStatus, RoomSeries, RoomSeriesReport, CreateCategory,
-              HousekeepingState } from '@hotelpms/contracts'
-import { api } from './api.js'
+              HousekeepingState, FolioView, PaymentMethod } from '@hotelpms/contracts'
+import { api, newIdempotencyKey } from './api.js'
 import { cacheRead, cacheWrite } from './offline.js'
 
 /**
@@ -127,5 +127,66 @@ export function useSetHousekeeping(propertyId: number, date: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['hk', propertyId, date] })
     }
+  })
+}
+
+export const useFolio = (folioRef: string | null) =>
+  useQuery<FolioView>({
+    queryKey: ['folio', folioRef],
+    queryFn: () => api.get(`/v1/folios/${folioRef!}`),
+    enabled: folioRef !== null
+  })
+
+export const usePaymentMethods = (propertyId: number) =>
+  useQuery<{ paymentMethods: PaymentMethod[]; hinweis: string }>({
+    queryKey: ['paymentMethods', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/payment-methods`),
+    // Zahlungsarten aendern sich im Betrieb praktisch nie.
+    staleTime: 30 * 60_000
+  })
+
+/**
+ * Leistung buchen und Zahlung vermerken.
+ *
+ * Der Idempotenzschluessel wird **einmal je Absicht** erzeugt, nicht je
+ * Versuch: die Rezeption drueckt zweimal, wenn es einen Moment dauert, und
+ * ohne Schluessel stuende die Position dann doppelt auf der Rechnung.
+ */
+export function usePostCharge(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { description: string; netCent: number; taxRateBp: number
+                         quantity?: number }) =>
+      api.post(`/v1/folios/${folioRef}/charges`, body,
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['daily'] })
+    }
+  })
+}
+
+export function usePostSettlement(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { amountCent: number; paymentMethodCode: string
+                         externalReference?: string }) =>
+      api.post(`/v1/folios/${folioRef}/settlements`, body,
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['daily'] })
+    }
+  })
+}
+
+export function useIssueInvoice(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ number: string; serviceFrom: string; serviceTo: string }>(
+        `/v1/folios/${folioRef}/invoice`, {},
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['folio', folioRef] }) }
   })
 }

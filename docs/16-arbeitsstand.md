@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 185 Tests, 19 Migrationen.
+Stand: 13. September 2026. 193 Tests, 19 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -181,11 +181,13 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 | Routing-Regeln anwenden, wenn der Nachtlauf bucht | `jobs/nightAudit.ts`, Schritt 2 | **erledigt** |
 | Alarm bei ausgefallenem Nachtlauf | `jobs/maintenance.ts` | **erledigt** |
 | Gruppen und Kontingente in der Oberfläche | `apps/web` | offen |
-| Folio-Bildschirm in der Oberfläche | `apps/web` | offen |
+| Folio-Bildschirm in der Oberfläche | `apps/web/src/routes/Folio.tsx` | **erledigt** |
 
 Aus den vier erledigten Punkten ist eine Entscheidung hervorgegangen, die andernorts gilt: **`inventory_move` bindet zuerst und gibt erst danach frei**, und es bindet bei gleicher Kategorie nur die Differenz. Beides hat einen Grund. Zwischen Freigeben und Neubelegen wäre das Kontingent frei, und genau dann kauft es das Portal. Und wer bei einer Verlängerung den ganzen Aufenthalt neu bindet, konkurriert mit sich selbst und scheitert im vollen Haus an der eigenen Buchung.
 
 Zwei weitere Festlegungen daraus: eine **No-Show-Gebühr ohne hinterlegte Stornoregel wird nicht berechnet** — eine Gebühr ohne vereinbarte Grundlage ist nicht durchsetzbar, und sie trotzdem aufs Folio zu buchen erzeugt einen Streit, den das Haus verliert. Und sie trägt den **vollen Steuersatz auf einem eigenen Erlöskonto**, denn eine Gebühr ist keine Beherbergung; auf das Logiskonto gebucht fälschte sie ADR und RevPAR.
+
+Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt keinen Löschknopf** (Positionen sind Härtegrad 1, eine Korrektur ist eine Gegenbuchung und steht sichtbar darunter), **fakturierte Positionen sind erkennbar** (statt eine Änderung erst beim Versuch mit einer Fehlermeldung zu beantworten), und **der Hinweis steht am Zahlungsformular, nicht in einer Fußnote**: wer hier tippt, soll wissen, dass er zuordnet und nicht abwickelt.
 
 ---
 

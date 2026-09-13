@@ -7,6 +7,7 @@ import { Today } from './routes/Today.tsx'
 import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Setup } from './routes/Setup.tsx'
 import { Login } from './routes/Login.tsx'
+import { Folio } from './routes/Folio.tsx'
 import { LOCALES, I18nContext, type Locale } from './lib/i18n.js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './lib/api.js'
@@ -49,6 +50,9 @@ interface Me {
 function App(): JSX.Element {
   const [screen, setScreen] = useState<Screen>('tape')
   const [locale, setLocale] = useState<Locale>(spracheDesBrowsers)
+  // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
+  // geoeffnet und danach wieder geschlossen.
+  const [folioRef, setFolioRef] = useState<string | null>(null)
   const qc = useQueryClient()
 
   // Wer ist angemeldet. Schlaegt das mit 401 fehl, kommt die Anmeldemaske.
@@ -89,10 +93,15 @@ function App(): JSX.Element {
 
   return (
     <Shell screen={screen} onScreen={setScreen} locale={locale} onLocale={setLocale}>
+      {folioRef !== null
+        ? <Folio folioRef={folioRef} propertyId={propertyId}
+                 onClose={() => setFolioRef(null)} />
+        : <>
       {screen === 'tape' && <Tape propertyId={propertyId} />}
-      {screen === 'today' && <Today propertyId={propertyId} />}
+      {screen === 'today' && <Today propertyId={propertyId} onFolio={setFolioRef} />}
       {screen === 'housekeeping' && <Housekeeping propertyId={propertyId} />}
       {screen === 'setup' && <Setup propertyId={propertyId} />}
+          </>}
     </Shell>
   )
 }

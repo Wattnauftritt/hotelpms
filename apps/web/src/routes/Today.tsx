@@ -12,7 +12,9 @@ import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
  * gebraucht und nie einzeln; sie getrennt zu holen kostet drei Runden für
  * denselben Bildschirm.
  */
-export function Today({ propertyId }: { propertyId: number }): JSX.Element {
+export function Today({ propertyId, onFolio }: {
+  propertyId: number; onFolio: (folioRef: string) => void
+}): JSX.Element {
   const [datum, setDatum] = useState(today())
   const t = useT()
   const locale = useLocale()
@@ -64,7 +66,8 @@ export function Today({ propertyId }: { propertyId: number }): JSX.Element {
         <Spalte titel={`${t('today.departures')} (${d.departures.length})`}>
           {d.departures.map(r => (
             <Zeile key={r.reservationRef} name={namen(r)} raum={r.roomCode}
-                   kategorie={r.categoryCode}>
+                   kategorie={r.categoryCode}
+                   onFolio={r.folioRef === null ? undefined : () => onFolio(r.folioRef!)}>
               <div className="flex items-center gap-2">
                 {r.balanceCent !== null && r.balanceCent !== 0 && (
                   <span className={`text-[11px] px-1 rounded tabular-nums
@@ -90,7 +93,8 @@ export function Today({ propertyId }: { propertyId: number }): JSX.Element {
         <Spalte titel={`${t('today.inhouse')} (${d.inHouse.length})`}>
           {d.inHouse.map(r => (
             <Zeile key={r.reservationRef} name={namen(r)} raum={r.roomCode}
-                   kategorie={r.categoryCode}>
+                   kategorie={r.categoryCode}
+                   onFolio={r.folioRef === null ? undefined : () => onFolio(r.folioRef!)}>
               <span className="text-[11px] text-neutral-500 tabular-nums">
                 → {formatDate(r.departure, locale)}
               </span>
@@ -122,15 +126,21 @@ function Spalte({ titel, children }: { titel: string; children: React.ReactNode 
   )
 }
 
-function Zeile({ name, raum, kategorie, children }: {
-  name: string; raum: string | null; kategorie: string; children: React.ReactNode
+function Zeile({ name, raum, kategorie, onFolio, children }: {
+  name: string; raum: string | null; kategorie: string
+  onFolio?: () => void; children: React.ReactNode
 }) {
   return (
     <div className="flex items-center gap-2 px-3 py-2">
       <span className="w-14 shrink-0 text-sm font-medium tabular-nums">
         {raum ?? <span className="text-neutral-400">{kategorie}</span>}
       </span>
-      <span className="grow truncate text-sm">{name}</span>
+      {onFolio === undefined
+        ? <span className="grow truncate text-sm">{name}</span>
+        : <button onClick={onFolio}
+                  className="grow truncate text-sm text-left hover:underline">
+            {name}
+          </button>}
       {children}
     </div>
   )

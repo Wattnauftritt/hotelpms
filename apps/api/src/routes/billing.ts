@@ -9,6 +9,31 @@ import type { Principal } from '../platform/context.js'
 export function billingRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
+    url: '/v1/properties/:propertyId/payment-methods',
+    permission: 'folio:read',
+    propertyParam: 'propertyId',
+    summary: 'Zahlungsarten der Property',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query(
+          `SELECT code, name, is_external AS "isExternal"
+             FROM payment_method WHERE property_id = $1 AND active
+            ORDER BY sort_order, code`, [Number(propertyId)])
+        // Der Hinweis gehoert an die Liste, nicht in eine Fussnote: dieses
+        // System wickelt keine Zahlung ab und fuehrt keinen Kassenbestand.
+        // Es vermerkt, wo abgerechnet wurde (Entscheidung 9, Dokument 09).
+        return {
+          paymentMethods: rows,
+          hinweis: 'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. '
+                 + 'Die Zahlung selbst laeuft ueber Kasse, Portal oder Bank des Betriebs.'
+        }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'GET',
     url: '/v1/folios/:folioRef',
     permission: 'folio:read',
     summary: 'Folio mit Positionen und Saldo',

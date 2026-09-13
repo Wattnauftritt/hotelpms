@@ -171,6 +171,8 @@ export type TapeChart = Static<typeof TapeChart>
 
 const DailyRow = Type.Object({
   reservationRef: Type.String(),
+  /** Verweis auf das Gastfolio. Null, solange keines angelegt ist. */
+  folioRef: Type.Union([Type.String(), Type.Null()]),
   arrival: Type.String(),
   departure: Type.String(),
   status: ReservationStatus,
@@ -213,6 +215,63 @@ export const HousekeepingBoard = Type.Object({
   rooms: Type.Array(HousekeepingRoom)
 })
 export type HousekeepingBoard = Static<typeof HousekeepingBoard>
+
+// ------------------------------------------------------------------- Folio
+
+export const Charge = Type.Object({
+  id: Type.Integer(),
+  business_date: Type.String(),
+  description: Type.String(),
+  quantity: Type.Integer(),
+  net_cent: Cent,
+  tax_cent: Cent,
+  gross_cent: Cent,
+  tax_rate_bp: Type.Integer(),
+  revenue_account: Type.String(),
+  /** Gesetzt, sobald die Position auf einer Rechnung steht. Dann unveraenderlich. */
+  invoice_id: Type.Union([Type.Integer(), Type.Null()]),
+  /** Verweis auf die Position, die diese Zeile storniert. */
+  reverses_id: Type.Union([Type.Integer(), Type.Null()])
+})
+export type Charge = Static<typeof Charge>
+
+export const Settlement = Type.Object({
+  id: Type.Integer(),
+  business_date: Type.String(),
+  amount_cent: Cent,
+  method: Type.String(),
+  /**
+   * Verweis auf die Aufzeichnung ausserhalb dieses Systems: Bonnummer der
+   * Kasse, Vorgang des Portals, Verwendungszweck der Ueberweisung. Macht
+   * sichtbar, dass die massgebliche Aufzeichnung woanders liegt.
+   */
+  external_reference: Type.Union([Type.String(), Type.Null()]),
+  reverses_id: Type.Union([Type.Integer(), Type.Null()])
+})
+export type Settlement = Static<typeof Settlement>
+
+export const FolioView = Type.Object({
+  folio: Type.Object({
+    id: Type.Integer(),
+    public_ref: Type.String(),
+    property_id: Type.Integer(),
+    reservation_id: Type.Union([Type.Integer(), Type.Null()]),
+    kind: Type.String(),
+    status: Type.String(),
+    label: Type.Union([Type.String(), Type.Null()])
+  }),
+  charges: Type.Array(Charge),
+  settlements: Type.Array(Settlement),
+  balanceCent: Cent
+})
+export type FolioView = Static<typeof FolioView>
+
+export const PaymentMethod = Type.Object({
+  code: Type.String(),
+  name: Type.String(),
+  isExternal: Type.Boolean()
+})
+export type PaymentMethod = Static<typeof PaymentMethod>
 
 // ------------------------------------------------------------------ Buchung
 

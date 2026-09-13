@@ -57,16 +57,21 @@ export function reportRoutes(app: FastifyInstance): void {
         const d = tag.rows[0]!.d
         if (d === null) throw Errors.unprocessable('Fuer die Property ist kein Tag geoeffnet.')
 
+        // Der Folio-Verweis gehoert in jede Zeile: die Rezeption springt vom
+        // Tagesgeschaeft zur Rechnung, und ihn einzeln nachzuladen waere je
+        // Zeile eine Runde.
         const basis = `r.public_ref AS "reservationRef", r.arrival::text AS arrival,
                        r.departure::text AS departure, r.status::text AS status,
                        res.code AS "roomCode", c.code AS "categoryCode",
                        g.last_name AS "lastName", g.first_name AS "firstName",
+                       fo.public_ref AS "folioRef",
                        (SELECT count(*) FROM reservation_occupant o
                          WHERE o.reservation_id = r.id)::int AS occupants`
         const von = `FROM reservation r
                      LEFT JOIN resource res ON res.id = r.resource_id
                      JOIN resource_category c ON c.id = r.category_id
-                     LEFT JOIN guest g ON g.id = r.primary_guest_id`
+                     LEFT JOIN guest g ON g.id = r.primary_guest_id
+                     LEFT JOIN folio fo ON fo.reservation_id = r.id AND fo.kind = 'guest'`
 
         const arrivals = await client.query(
           `SELECT ${basis}, (reg.id IS NOT NULL) AS "registered"
@@ -81,10 +86,9 @@ export function reportRoutes(app: FastifyInstance): void {
           `SELECT ${basis},
                   (SELECT COALESCE(sum(ch.gross_cent),0)
                      - COALESCE((SELECT sum(s.amount_cent) FROM settlement s
-                                  WHERE s.folio_id = f.id),0)
-                     FROM charge ch WHERE ch.folio_id = f.id)::bigint AS "balanceCent"
+                                  WHERE s.folio_id = fo.id),0)
+                     FROM charge ch WHERE ch.folio_id = fo.id)::bigint AS "balanceCent"
              ${von}
-             LEFT JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
             WHERE r.property_id = $1 AND r.departure = $2::date
               AND r.status IN ('InHouse','CheckedOut')
             ORDER BY res.code`, [id, d])
