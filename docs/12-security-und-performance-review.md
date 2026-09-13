@@ -126,7 +126,11 @@ Die Rechnungsvorlage rendert Gastnamen, Adressen und Notizen. Unmaskierte Ausgab
 
 **Maßnahme:** Alles maskieren, JavaScript im Renderer abschalten, Netzwerkzugriff des Renderers blockieren, Schriften und Bilder lokal einbetten, als eigener unprivilegierter Benutzer laufen lassen, **Sandbox nicht deaktivieren**. Begrenzte Nebenläufigkeit, siehe P5.
 
-## S7 — Plesk als Angriffsfläche (hoch)
+## S7 — Plesk als Angriffsfläche (entschärft)
+
+> **Status:** Weitgehend entschärft. Das PMS bekommt eine **eigene VM ohne Plesk** auf dem vorhandenen Proxmox-Host, siehe [10-systemarchitektur.md](10-systemarchitektur.md). Damit entfällt Plesk als Angriffsfläche für das PMS vollständig. Es bleibt: die Proxmox-Firewall muss zwischen den VMs standardmäßig verweigern, und der Proxmox-Host selbst wird zum wichtigsten zu schützenden System. Sein Web-Interface auf Port 8006 braucht dieselbe Behandlung, die unten für das Plesk-Panel beschrieben ist.
+
+Der folgende Text gilt nur noch, falls das PMS doch auf der Plesk-VM betrieben wird, etwa für Staging.
 
 Das Panel auf Port 8443 ist ein lohnendes Ziel und hatte in der Vergangenheit Schwachstellen. Zusätzlich installiert Plesk Dienste, die wir nicht brauchen.
 
@@ -203,11 +207,17 @@ Alle deutschen Betriebe haben denselben Tageswechsel, typisch 04:00 Uhr. Bei 500
 
 **Maßnahme:** Streuung über ein Zeitfenster, etwa 03:30 bis 05:30, abgeleitet aus der Property-ID. Begrenzte Nebenläufigkeit im Worker. Der fachliche Stichtag bleibt davon unberührt, nur der Ausführungszeitpunkt streut.
 
-## P4b — Fremde Lasten auf geteiltem Server (hoch, sofern geteilt)
+## P4b — Fremde Lasten auf demselben Proxmox-Host (mittel)
 
-Liegt das PMS auf einem Plesk-Server mit weiteren Projekten, konkurriert es mit unvorhersehbaren PHP-Lasten um CPU, Arbeitsspeicher und Ein-/Ausgabe. Die gesamte Latenzargumentation aus [04-api-first-und-performance.md](04-api-first-und-performance.md) setzt aber eine Maschine voraus, die nicht von fremden Spitzen durchgerüttelt wird.
+Die eigene VM löst die Sicherheitsfrage, **nicht aber die Ressourcenfrage**. VMs teilen sich weiterhin CPU, Arbeitsspeicher und Ein-/Ausgabe des Hosts. Ein durchgehender PHP-Prozess oder ein Sicherungslauf auf der Plesk-VM kann die Antwortzeit der Rezeption beeinträchtigen.
 
-**Maßnahme:** Systemd-Quoten schützen nur die Nachbarn vor uns, nicht umgekehrt. Wirksam ist entweder eine Quotierung der übrigen Subscriptions über Plesk oder, verlässlicher, ein eigener Server ab dem ersten zahlenden Fremdkunden. Bis dahin das Latenzbudget im Betrieb messen und nicht nur in der CI, damit sichtbar wird, ob fremde Lasten durchschlagen.
+**Maßnahme:** `cpuunits` der PMS-VM über die der Plesk-VM setzen, Ein-/Ausgabe-Grenzen an den Platten der Plesk-VM, nach Möglichkeit verschiedene physische Datenträger, feste CPU-Zuteilung statt Überbuchung. Zusätzlich das Latenzbudget im laufenden Betrieb messen und nicht nur in der CI.
+
+## P4c — Der Proxmox-Host ist gemeinsamer Ausfallpunkt (hoch)
+
+Zwei VMs auf einem Host schützen gegen VM-Fehler, nicht gegen Hardwaredefekt, Brand oder Diebstahl. Ein Replikat auf demselben Host schützt gegen genau das nicht.
+
+**Maßnahme:** Verschlüsselte Sicherung an einen **zweiten Standort**, VM-Ebene und Datenbank-Ebene getrennt. Monatliche Wiederherstellungsübung. **Das ist die Bedingung für die Aufnahme von Fremdkunden**, nicht die zweite VM.
 
 ## P5 — Worker verdrängt die API (hoch)
 

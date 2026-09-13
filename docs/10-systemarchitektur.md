@@ -349,30 +349,23 @@ Der Nachtlauf ist ein Job je Property, ausgelöst zur konfigurierten Tageswechse
 
 ---
 
-## 7. Betrieb auf Linux mit Plesk
+## 7. Betrieb: eigene VM auf dem Proxmox-Host
 
 Plesk ist ein Hosting-Panel, kein Anwendungslaufzeit-Werkzeug. Die Aufgabenteilung sollte entsprechend sein.
 
 ### Aufteilung
 
+Das PMS läuft auf einer **eigenen VM ohne Plesk**, siehe nächster Abschnitt. Der bestehende Plesk-Server bleibt unberührt und behält seine Projekte.
+
 | Aufgabe | Wer |
 |---|---|
-| TLS-Zertifikate, Erneuerung | **Plesk**, Let's Encrypt |
-| DNS | **Plesk** |
-| Nginx als Reverse Proxy und für statische Dateien | **Plesk** |
-| Firewall, fail2ban | **Plesk** |
-| Systemsicherung | **Plesk**, ergänzt um eigene Datenbanksicherung |
-| **Anwendungsprozesse** | **systemd**, nicht Plesk |
-| **PostgreSQL** | **direkt installiert**, nicht über Plesk verwaltet |
-
-### Warum nicht die Node.js-Erweiterung von Plesk
-
-Plesk führt Node-Anwendungen über **Phusion Passenger** aus. Das ist bequem für eine einfache Webanwendung, für uns aber nachteilig:
-
-- Das Prozessmodell ist kaum steuerbar, Anzahl und Lebenszyklus liegen bei Passenger.
-- **Ein dauerhafter Worker-Prozess lässt sich damit nicht sauber betreiben.** Wir brauchen aber einen.
-- Sanftes Herunterfahren und Bereitstellung ohne Ausfall sind umständlich.
-- Umgebungsvariablen sind im Plesk-Panel sichtbar. **Das Datenbankpasswort wäre für jeden mit Panel-Zugang lesbar.**
+| TLS-Zertifikate, Erneuerung | **Caddy** auf der PMS-VM |
+| Reverse Proxy, statische Dateien | **Caddy** |
+| Firewall | **nftables** auf der VM plus **Proxmox-Firewall** zwischen den VMs |
+| VM-Sicherung | **Proxmox Backup Server** |
+| Datenbanksicherung | **Eigene Basissicherung plus WAL-Archivierung**, ausgelagert |
+| **Anwendungsprozesse** | **systemd** |
+| **PostgreSQL** | **direkt installiert**, Unix-Socket |
 
 ### Empfohlener Aufbau
 
@@ -403,52 +396,98 @@ Dazu `hotelpms-worker.service` analog.
 
 Die Plesk-Domain wird auf **Proxy-Modus** gestellt und über zusätzliche Nginx-Direktiven auf `127.0.0.1:3000` geleitet, mit `proxy_http_version 1.1` und Keepalive zum Upstream.
 
-### Eigener Server oder geteilt? Die entscheidende Vorfrage
+### Eigene VM auf dem Proxmox-Host
 
-Plesk auf demselben Server wie die Anwendung ist richtig, **sofern dieser Server allein dem PMS gehört**.
+Der bestehende Plesk-Server ist eine VM auf einem eigenen Proxmox-Host. Damit ist die Frage einfach beantwortet: **Das PMS bekommt eine eigene VM, ohne Plesk.** Das kostet kein zusätzliches Geld, nur Ressourcen auf vorhandener Hardware, und räumt den größten Risikoposten sofort ab.
 
-**Hostet derselbe Plesk-Server auch andere Websites, gehört das PMS auf einen eigenen Server.** Grund: Eine verwundbare PHP-Anwendung auf dem Rechner bedeutet lokalen Zugriff, und von dort ist PostgreSQL über den Socket auf `127.0.0.1` erreichbar. Ein veraltetes CMS neben einer Datenbank mit Gästedaten und Rechnungen ist eine Konstellation, die man nicht eingeht.
+Was das löst:
 
-**Alleinbesitz des Servers ändert daran wenig.** Er schützt gegen autorisierte Dritte, nicht gegen Codeausführung in einer Webanwendung. Der häufigste Weg, wie ein Plesk-Server übernommen wird, ist ein veraltetes PHP-Projekt, und danach hat der Angreifer Codeausführung als Webbenutzer auf derselben Maschine.
+| Problem | Gelöst? |
+|---|---|
+| Kompromittierte PHP-Anwendung erreicht unsere Datenbank | **Ja.** Andere VM, anderer Kernel. Ohne Netzfreigabe gibt es keinen Pfad |
+| Plesk lässt sich nicht abrüsten | **Entfällt.** Auf der PMS-VM läuft kein Plesk, kein Mailserver, kein FTP, kein PHP |
+| Betriebskopplung bei Neustart und Aktualisierung | **Ja.** Unabhängig voneinander |
+| Konkurrenz um CPU, RAM und Ein-/Ausgabe | **Teilweise.** VMs teilen sich die Hardware. Steuerbar über Proxmox-Grenzen, siehe unten |
+| Ausfall des Proxmox-Hosts | **Nein.** Bleibt gemeinsamer Ausfallpunkt, siehe Abschnitt zu Sicherungen |
 
-**Das gewichtigere Argument ist ohnehin Performance, nicht Sicherheit.** Die Architektur ruht auf vorhersagbarer Latenz: Zählertabelle, drei Abfragen für den Zimmerplan, Latenzbudget in der CI. Auf einem geteilten Server gilt das nicht mehr. Ein Traffic-Spike auf einer Nachbarseite, ein durchgehender PHP-Prozess oder ein Sicherungslauf schlagen auf die Antwortzeit der Rezeption durch. Die systemd-Quoten schützen die anderen Projekte vor uns, aber nicht uns vor ihnen. Dazu kommt die Betriebskopplung: Ein Neustart wegen des PMS trifft die anderen Projekte und umgekehrt.
+### VM-Auslegung
 
-### Gestaffelte Empfehlung
-
-| Phase | Wo | Begründung |
+| Einstellung | Wert | Begründung |
 |---|---|---|
-| Entwicklung, Staging | Bestehender Plesk-Server | Keine echten Gästedaten |
-| Pilotbetrieb im eigenen Haus | Bestehender Server, gehärtet | Ein Betrieb, überschaubarer Schaden, Kosten noch ohne Umsatz |
-| **Ab dem ersten zahlenden Fremdkunden** | **Eigener Server** | Ab da haften wir für fremde Gästedaten, und die 80 bis 100 Euro sind gedeckt |
+| Betriebssystem | Debian stable oder Ubuntu LTS, Minimalinstallation | Kein Panel, keine Oberfläche, nichts Überflüssiges |
+| CPU-Typ | **`host`** | Gibt die CPU-Merkmale durch. Merklich schneller für PostgreSQL als der Standardtyp |
+| Arbeitsspeicher | **Feste Zuteilung, Ballooning aus** (`balloon: 0`) | Ballooning und `shared_buffers` vertragen sich nicht. PostgreSQL rechnet mit festem Speicher |
+| Plattencontroller | **VirtIO SCSI single mit `iothread=1`** | Eigener Ein-/Ausgabe-Thread je Platte, spürbar bei Schreiblast |
+| Plattencache | **`cache=none`** | `writeback` ist schneller, verliert bei Stromausfall aber Daten. Für eine Datenbank nicht vertretbar, solange keine gepufferte Hardware dahintersteht |
+| Speicherart | **LVM-thin oder ZFS zvol auf NVMe**, nicht qcow2 auf einem Dateisystem | Vermeidet eine zusätzliche Indirektionsschicht |
+| Discard | `discard=on` | TRIM bis zur SSD durchreichen |
+| Gast-Agent | `agent: 1` | Erlaubt dem Sicherungslauf ein Einfrieren des Dateisystems |
 
-### Härtung, wenn der Server geteilt bleibt
+Bei **ZFS** zusätzlich: `recordsize=8K` auf dem Datensatz mit dem PostgreSQL-Datenverzeichnis, `atime=off`, und die ARC-Größe so wählen, dass sie nicht mit `shared_buffers` um denselben Speicher kämpft. Ohne diese Einstellungen schreibt ZFS für jeden 8-KB-Datenbankblock einen viel größeren Datensatz.
 
-Die wirksamste Maßnahme ist unabhängig von den anderen Projekten:
+### Ressourcen gegen die Nachbar-VM absichern
 
-**PostgreSQL ausschließlich über einen Unix-Socket in einem Verzeichnis mit Rechten 0700, das dem Anwendungsbenutzer gehört. Kein Lauschen auf `127.0.0.1`.**
+VMs auf einem Host teilen sich weiterhin Hardware. Ein durchgehender PHP-Prozess auf der Plesk-VM kann die PMS-VM ausbremsen, wenn nichts begrenzt ist.
+
+- **`cpuunits`** der PMS-VM höher setzen als die der Plesk-VM, damit sie bei Knappheit Vorrang bekommt.
+- **Ein-/Ausgabe-Grenzen** an den Platten der Plesk-VM setzen (`mbps_rd`, `mbps_wr`, `iops_rd`, `iops_wr`), damit ein Sicherungslauf dort die Datenbank hier nicht ausbremst.
+- Wenn möglich, die Platten der beiden VMs auf **verschiedene physische Datenträger** legen.
+- Feste CPU-Kerne zuteilen statt zu überbuchen.
+
+### Netzwerk
+
+Die Proxmox-Firewall auf VM-Ebene setzt zwischen den beiden VMs **standardmäßig Verweigern**. Die Plesk-VM hat keinen Grund, den PostgreSQL-Port der PMS-VM zu erreichen, und darf es nicht können.
+
+Nach außen offen ist ausschließlich 443 auf der PMS-VM. PostgreSQL lauscht dort nur auf einem Unix-Socket, siehe unten.
+
+### Was sich am Aufbau innerhalb der VM ändert
+
+Ohne Plesk übernimmt die VM selbst, was vorher Plesk erledigt hat:
+
+| Aufgabe | Vorher Plesk | Jetzt |
+|---|---|---|
+| TLS-Zertifikate | Plesk, Let's Encrypt | **Caddy** oder `certbot` mit nginx |
+| Reverse Proxy | Plesk-Nginx | **Caddy oder nginx**, eigene Konfiguration, keine Überschreibung mehr |
+| Firewall | Plesk | **nftables** plus Proxmox-Firewall |
+| Sicherung | Plesk | **Proxmox-Sicherung plus eigene PostgreSQL-Sicherung**, siehe unten |
+
+**Empfehlung für den Reverse Proxy: Caddy.** Automatische Zertifikate ohne Zusatzwerkzeug, sehr kurze Konfiguration, sichere Voreinstellungen. Nginx ist ebenso richtig, wenn Vertrautheit wichtiger ist.
+
+Der Rest des Aufbaus bleibt wie beschrieben: API und Worker als systemd-Dienste, PostgreSQL direkt installiert, Verbindung über Unix-Socket.
 
 ```
 unix_socket_directories = '/run/hotelpms'     # 0700, hotelpms:hotelpms
-listen_addresses = ''                          # kein TCP
+listen_addresses = ''                          # kein TCP, auch nicht auf localhost
 ```
 
-Ein anderer Systembenutzer kann dann nicht einmal in das Verzeichnis hineinsehen. Es gibt keinen Port, an dem Passwörter geraten werden könnten. Das ist deutlich stärker als Passwortschutz auf localhost.
+Ohne Plesk auf der VM ist das weniger zwingend als vorher, aber es bleibt die einfachste sichere Voreinstellung und kostet nichts.
 
-Dazu:
+### Sicherungen: Proxmox allein genügt nicht
 
-- **Eigene PostgreSQL-Instanz** mit eigenem Datenverzeichnis und eigenem Cluster, nicht eine mit anderen Projekten geteilte.
-- **Eigener Systembenutzer** für die Anwendung. Dateien und Umgebungsdatei außerhalb jedes Vhost-Verzeichnisses, Rechte 0600.
-- Plesk trennt PHP-Projekte bereits über Subscription-Benutzer und `open_basedir`. Das arbeitet für uns, ohne dass etwas abgeschaltet werden muss.
-- Die systemd-Härtung weiter unten.
-- **Eigene verschlüsselte Datenbanksicherung** an einen zweiten Ort, unabhängig von Plesks Sicherung. Plesks Serversicherung enthält sonst alle Gästedaten und liegt möglicherweise unverschlüsselt auf fremdem Speicher.
+Proxmox-Sicherungen mit aktivem Gast-Agenten frieren das Dateisystem ein und sind damit konsistent. PostgreSQL stellt sich beim Start über das Write-Ahead-Log wieder her. Für das schnelle Zurückholen einer ganzen VM ist das ideal.
 
-Drei Härtungen sind auch bei laufenden Fremdprojekten möglich und berühren diese nicht: Panel auf Port 8443 per Firewall auf feste Adressen begrenzen, Zwei-Faktor-Anmeldung für das Panel, PHP-Handler nur auf der API-Domain abschalten.
+**Es ersetzt aber keine Datenbanksicherung**, aus einem konkreten Grund: Damit kann man auf den Stand eines Sicherungslaufs zurück, nicht auf den Zeitpunkt unmittelbar vor einem versehentlichen Löschbefehl. Punktgenaue Wiederherstellung braucht fortlaufende WAL-Archivierung.
 
-### Fallstrick: Plesk überschreibt die Nginx-Konfiguration
+| Ebene | Werkzeug | Wofür |
+|---|---|---|
+| VM | Proxmox Backup Server oder `vzdump` | Totalausfall, schnelles Zurückholen |
+| Datenbank | Basissicherung plus **fortlaufende WAL-Archivierung** | Punktgenaue Wiederherstellung, etwa vor einem fehlerhaften Import |
+| **Auslagerung** | Beides verschlüsselt an einen **zweiten Standort** | Der Proxmox-Host ist ein gemeinsamer Ausfallpunkt |
 
-Plesk erzeugt seine Nginx-Konfiguration neu, sobald im Panel etwas an der Domain geändert wird. **Von Hand bearbeitete generierte Dateien gehen dabei verloren.**
+Der letzte Punkt ist der wichtige. Zwei VMs auf einem Host schützen gegen VM-Fehler, nicht gegen Hardwaredefekt, Brand oder Diebstahl. **Eine verschlüsselte Kopie außer Haus ist die Bedingung, unter der wir Fremdkunden aufnehmen können**, nicht die zweite VM.
 
-Unsere Proxy-Direktiven gehören deshalb ausschließlich in das Panel-Feld für zusätzliche Nginx-Direktiven, nie in die generierten Dateien. Ebenso wichtig: Port 3000 ist nur an `127.0.0.1` gebunden und in der Firewall nicht nach außen geöffnet.
+Das Replikat aus [07-technologie-und-hosting.md](07-technologie-und-hosting.md) läuft sinnvollerweise nicht auf demselben Proxmox-Host, sonst schützt es gegen genau das nicht.
+
+### Monatliche Wiederherstellungsübung
+
+Eine Sicherung, die nie zurückgespielt wurde, ist keine Sicherung. Einmal im Monat: VM aus der Sicherung in ein Testnetz holen, Datenbank punktgenau auf einen Zeitpunkt zurückholen, Ergebnis protokollieren.
+
+### Falls das PMS doch auf der Plesk-VM landet
+
+Nur als Rückfallebene, etwa für Staging auf der bestehenden VM. Zwei Punkte, die dann gelten:
+
+- **Plesk erzeugt seine Nginx-Konfiguration neu**, sobald im Panel etwas an der Domain geändert wird. Von Hand bearbeitete generierte Dateien gehen verloren. Proxy-Direktiven gehören ausschließlich in das Panel-Feld für zusätzliche Nginx-Direktiven.
+- **Nicht die Node.js-Erweiterung von Plesk benutzen.** Sie führt Anwendungen über Passenger aus. Das Prozessmodell ist kaum steuerbar, ein dauerhafter Worker lässt sich nicht sauber betreiben, und Umgebungsvariablen sind im Panel sichtbar, womit das Datenbankpasswort für jeden mit Panel-Zugang lesbar wäre. Stattdessen auch dort systemd plus Proxy-Direktiven.
 
 ### Plesk abrüsten
 
