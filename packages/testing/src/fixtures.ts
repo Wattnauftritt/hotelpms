@@ -52,3 +52,134 @@ export async function makeResources(
   }
   return ids
 }
+
+/** Legt einen Nutzer mit einer Systemrolle auf einer Property an. */
+export async function makeUser(
+  owner: Pool,
+  opts: {
+    email: string
+    propertyId?: number
+    accountId?: number
+    roleKey?: string
+    platformRoleKey?: string
+    isPlatformStaff?: boolean
+  }
+): Promise<{ userId: number; sessionId: string }> {
+  const u = await owner.query<{ id: number }>(
+    `INSERT INTO app_user (email, display_name, status, is_platform_staff)
+     VALUES ($1, $2, 'active', $3) RETURNING id`,
+    [opts.email, opts.email, opts.isPlatformStaff ?? false])
+  const userId = u.rows[0]!.id
+
+  if (opts.roleKey && opts.propertyId !== undefined) {
+    await owner.query(
+      `INSERT INTO user_property_role (user_id, property_id, role_id)
+       SELECT $1, $2, id FROM role WHERE key = $3 AND account_id IS NULL`,
+      [userId, opts.propertyId, opts.roleKey])
+  }
+  if (opts.roleKey && opts.accountId !== undefined && opts.propertyId === undefined) {
+    await owner.query(
+      `INSERT INTO user_account_role (user_id, account_id, role_id)
+       SELECT $1, $2, id FROM role WHERE key = $3 AND account_id IS NULL`,
+      [userId, opts.accountId, opts.roleKey])
+  }
+  if (opts.platformRoleKey) {
+    await owner.query(
+      `INSERT INTO user_platform_role (user_id, role_id)
+       SELECT $1, id FROM role WHERE key = $2 AND account_id IS NULL`,
+      [userId, opts.platformRoleKey])
+  }
+
+  const sessionId = `sess_${Math.random().toString(36).slice(2)}${Date.now()}`
+  await owner.query(
+    `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at)
+     VALUES ($1, $2, now() + interval '1 hour', now() + interval '8 hours')`,
+    [sessionId, userId])
+  return { userId, sessionId }
+}
+
+export async function makePaymentMethod(
+  owner: Pool, propertyId: number, code = 'TRANSFER'
+): Promise<number> {
+  const r = await owner.query<{ id: number }>(
+    `INSERT INTO payment_method (property_id, code, name) VALUES ($1,$2,$3) RETURNING id`,
+    [propertyId, code, 'Ueberweisung'])
+  return r.rows[0]!.id
+}
+
+export async function openBusinessDay(
+  owner: Pool, propertyId: number, date = '2026-10-01'
+): Promise<void> {
+  await owner.query(
+    `INSERT INTO business_day (property_id, date) VALUES ($1, $2::date)
+     ON CONFLICT DO NOTHING`, [propertyId, date])
+}
+
+export interface ReservationFixture {
+  bookingId: number
+  reservationId: number
+  folioId: number
+}
+
+/**
+ * Legt Buchung, Reservierung, Naechte und Folio in einem Zug an und belegt
+ * das Kontingent. Umgeht die Fachlogik der API bewusst: hier wird der
+ * Nachtlauf getestet, nicht der Buchungsweg.
+ */
+export async function makeReservation(
+  owner: Pool,
+  opts: {
+    propertyId: number
+    categoryId: number
+    arrival: string
+    departure: string
+    status?: 'Optional' | 'Confirmed' | 'InHouse'
+    resourceId?: number
+    priceCent?: number
+    optionExpiresAt?: string | null
+    reserveInventory?: boolean
+    withFolio?: boolean
+  }
+): Promise<ReservationFixture> {
+  const status = opts.status ?? 'Confirmed'
+  const price = opts.priceCent ?? 11_000
+
+  const b = await owner.query<{ id: number }>(
+    `INSERT INTO booking (property_id, source) VALUES ($1, 'direct') RETURNING id`,
+    [opts.propertyId])
+  const bookingId = b.rows[0]!.id
+
+  const r = await owner.query<{ id: number }>(
+    `INSERT INTO reservation (property_id, booking_id, category_id, resource_id,
+                              arrival, departure, status, option_expires_at, checked_in_at)
+     VALUES ($1,$2,$3,$4,$5::date,$6::date,$7::reservation_status,$8::timestamptz,
+             CASE WHEN $7::text = 'InHouse' THEN now() END)
+     RETURNING id`,
+    [opts.propertyId, bookingId, opts.categoryId, opts.resourceId ?? null,
+     opts.arrival, opts.departure, status, opts.optionExpiresAt ?? null])
+  const reservationId = r.rows[0]!.id
+
+  await owner.query(
+    `INSERT INTO reservation_night (reservation_id, property_id, date, price_cent)
+     SELECT $1, $2, d::date, $5
+       FROM generate_series($3::date, $4::date - 1, interval '1 day') d`,
+    [reservationId, opts.propertyId, opts.arrival, opts.departure, price])
+
+  let folioId = 0
+  if (opts.withFolio !== false) {
+    const f = await owner.query<{ id: number }>(
+      `INSERT INTO folio (property_id, reservation_id) VALUES ($1,$2) RETURNING id`,
+      [opts.propertyId, reservationId])
+    folioId = f.rows[0]!.id
+  }
+
+  if (opts.reserveInventory !== false) {
+    const res = await owner.query<{ inventory_reserve: string | null }>(
+      `SELECT inventory_reserve($1,$2,$3::date,$4::date,1)`,
+      [opts.propertyId, opts.categoryId, opts.arrival, opts.departure])
+    const fehler = res.rows[0]!.inventory_reserve
+    if (fehler !== null) throw new Error(`inventory_reserve: ${fehler}`)
+  }
+
+  return { bookingId, reservationId, folioId }
+}

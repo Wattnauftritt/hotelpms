@@ -1,0 +1,22 @@
+{
+  "name": "@hotelpms/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@hotelpms/db": "workspace:*",
+    "@hotelpms/domain": "workspace:*",
+    "@hotelpms/contracts": "workspace:*",
+    "@fastify/cookie": "^11.0.1",
+    "@sinclair/typebox": "^0.34.13",
+    "fastify": "^5.2.0",
+    "pino": "^9.5.0",
+    "@node-rs/argon2": "^2.0.2"
+  },
+  "devDependencies": { "@types/node": "^22.10.2", "tsx": "^4.19.2" }
+}

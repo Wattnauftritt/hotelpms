@@ -1,5 +1,10 @@
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import pg from 'pg'
 import { createPool, migrate, type Pool } from '@hotelpms/db'
+
+const CATALOG_MIGRATION = fileURLToPath(
+  new URL('../../db/migrations/0003_permissions.sql', import.meta.url))
 
 let migrated = false
 
@@ -25,14 +30,18 @@ export async function truncateAll(): Promise<void> {
   const { rows } = await client.query<{ tablename: string }>(`
     SELECT tablename FROM pg_tables
      WHERE schemaname = 'public'
-       AND tablename NOT IN ('schema_migration','permission','role','role_permission',
-                             'inventory_error')
+       AND tablename NOT IN ('schema_migration','inventory_error')
        AND tablename NOT LIKE 'audit_log%'`)
   if (rows.length > 0) {
     await client.query(
       `TRUNCATE ${rows.map(r => `public.${r.tablename}`).join(', ')} RESTART IDENTITY CASCADE`)
   }
   await client.query('TRUNCATE audit_log')
+
+  // Berechtigungskatalog und Systemrollen werden mit geleert und aus
+  // derselben Quelle wie die Migration neu gesaet. Sonst raeumt
+  // TRUNCATE account CASCADE sie ueber role.account_id stillschweigend ab.
+  await client.query(await readFile(CATALOG_MIGRATION, 'utf8'))
   await client.end()
 }
 

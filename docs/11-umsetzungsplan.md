@@ -162,6 +162,12 @@ Jedes Paket ist abgeschlossen, wenn seine Definition of Done erfüllt ist. Kein 
 
 **Definition of Done:** Der Nachtlauf läuft zweimal hintereinander für denselben Tag, das Ergebnis ist identisch.
 
+**Umgesetzt.** Drei Punkte haben sich bei der Umsetzung gegenüber der Planung präzisiert:
+
+- **Jeder Schritt hat eine eigene Transaktion.** Ein Lauf über alle Schritte in einer Transaktion bräuchte keine Schrittmarken, würde aber bei 300 Zimmern minutenlang Zeilen sperren. Die Marke wird in derselben Transaktion geschrieben wie die Wirkung des Schritts, nie danach.
+- **Der Lauf findet seinen Geschäftstag selbst**: den ältesten Tag mit unvollständigen Schrittmarken. Nach einem Abbruch nimmt er damit genau dort wieder auf, statt den bereits geschlossenen Tag zu überspringen und die Logis der Nacht zu verlieren. Ist dieser Tag noch offen und das Geschäftsdatum nicht weiter, ist der Lauf nicht fällig; ein Neustart des Workers schließt so nicht mitten am Nachmittag den Tag ab.
+- **Fristen werden gegen den Geschäftstag geprüft, nicht gegen `now()`.** Eine abgelaufene Option, die mit der Uhr gesucht wird, findet beim Wiederholungslauf andere Zeilen als beim ersten. Die Grenze ist das Ende des geschlossenen Geschäftstags in der Zeitzone der Property.
+
 ### AP 9 — Housekeeping
 
 - Zimmerstatus, automatischer Wechsel bei Check-out

@@ -1,0 +1,13 @@
+{
+  "name": "@hotelpms/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -b", "dev": "tsx watch src/worker.ts", "start": "node dist/worker.js" },
+  "dependencies": {
+    "@hotelpms/db": "workspace:*",
+    "@hotelpms/domain": "workspace:*",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": { "@types/node": "^22.10.2", "tsx": "^4.19.2" }
+}

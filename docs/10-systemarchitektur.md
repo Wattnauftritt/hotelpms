@@ -264,8 +264,8 @@ CREATE TABLE settlement (               -- Zahlungsvermerk, Entscheidung 9
 
 | Rolle | Zweck |
 |---|---|
-| `hotelpms_owner` | Besitzt Schema und Tabellen, wird **ausschließlich** von Migrationen benutzt |
-| `hotelpms_app` | Die Anwendung. Kein Eigentum, kein `UPDATE`/`DELETE` auf Finanztabellen, kein `UPDATE` auf `inventory_day` |
+| `hotelpms_owner` | Besitzt Schema und Tabellen. Migrationen **und** Bereitstellung neuer Accounts und Properties. Hat `BYPASSRLS`, weil beim Anlegen eines Accounts noch kein Mandantenkontext existieren kann. Nie für normale Anfragen |
+| `hotelpms_app` | Die Anwendung. Kein Eigentum, kein `BYPASSRLS`, kein `UPDATE`/`DELETE` auf Finanztabellen, kein `UPDATE` auf `inventory_day` |
 | `hotelpms_readonly` | Berichte und Replikat |
 
 ```sql
@@ -273,6 +273,21 @@ REVOKE UPDATE, DELETE ON charge, settlement, invoice, audit_log FROM hotelpms_ap
 REVOKE UPDATE           ON inventory_day                        FROM hotelpms_app;
 ALTER TABLE reservation FORCE ROW LEVEL SECURITY;  -- sonst umgeht der Eigentuemer die Richtlinie
 ```
+
+Weil `hotelpms_owner` die Zeilenrichtlinie umgeht, müssen die `SECURITY DEFINER`-Funktionen des Bestands den Mandanten selbst prüfen. `assert_property_in_context()` tut das in jeder von ihnen; sonst könnte ein Aufruf fremdes Kontingent belegen.
+
+#### Der Worker bekommt keine Sonderrechte
+
+Naheliegend wäre, den Worker mit `BYPASSRLS` laufen zu lassen: er arbeitet ja für alle Mandanten. Genau das ist der Fehler. Der Worker ist der Prozess mit den weitreichendsten Schreibrechten im System, er läuft unbeaufsichtigt, und ein Programmfehler in ihm hätte mit `BYPASSRLS` keine zweite Verteidigungslinie mehr.
+
+Stattdessen zwei Verbindungen mit klarer Aufgabenteilung:
+
+| Verbindung | Rolle | Wofür |
+|---|---|---|
+| Arbeitsverbindung | `hotelpms_app` | Alle Fachdaten. Jede Arbeitseinheit läuft im Kontext **genau einer Property**, die Zeilenrichtlinie schränkt den Worker damit genauso ein wie die Rezeption |
+| Verwaltungsverbindung | `hotelpms_owner` | Nur zwei Dinge: Partitionen des Audit-Logs anlegen und die Liste der aktiven Properties lesen. Beides ist mandantenübergreifend und lässt sich in keiner Zeilenrichtlinie ausdrücken. Bewusst klein, nie für Fachdaten |
+
+Der praktische Nebeneffekt: Sitzungen und Idempotenzschlüssel gehören keinem Mandanten und haben keine Zeilenrichtlinie, für sie genügt die Anwendungsrolle mit leerem Kontext. Alles andere, auch das Vernichten abgelaufener Meldescheine, läuft je Property.
 
 ### Rechnung als Menge von Charges
 
