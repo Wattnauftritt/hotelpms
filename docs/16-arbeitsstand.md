@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 342 Tests, 25 Migrationen.
+Stand: 13. September 2026. 364 Tests, 26 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -24,10 +24,10 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
 | AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
-| AP 13 Integrationen | **teilweise** | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`) und ARI (`0023`, `routes/channel.ts`) fertig; offen Aufgabe 7 (Kasse) |
+| AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
 
-**85 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**88 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -45,6 +45,7 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Der Beleg zu einer Rechnung ist ein PDF/A-3 mit eingebettetem CII-XML nach EN 16931; das XML kommt beim Empfänger byteweise so an, wie es erzeugt wurde.
 - Derselbe Beleg zweimal erzeugt ergibt dieselben Bytes, und ein bereits erzeugter wird nie durch einen zweiten ersetzt.
 - Ein Maschinentoken erreicht genau die Endpunkte seiner Zugriffsbereiche und keinen weiteren — geprüft über die gesamte Routenliste, nicht an Beispielen.
+- Ein Kassenumsatz landet als Position auf dem Gastkonto, folgt dabei den Umleitungsregeln, und derselbe Beleg zweimal zugestellt bucht kein zweites Mal — auch nicht mit neuem Idempotenzschlüssel.
 
 ---
 
@@ -200,13 +201,23 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 
 ---
 
-### Aufgabe 7 — Kassenschnittstelle
+### Aufgabe 7 — Kassenschnittstelle — **erledigt**
 
 **Warum.** Das Haus hat eine Kasse mit TSE. Ihre Umsätze sollen auf das Gastkonto laufen, ohne dass dieses System zur Kasse wird.
 
-**Umfang.** Eingehend: Buchung eines Kassenumsatzes auf ein Folio. Ausgehend: offene Folios für die Kasse sichtbar machen.
+**Wo es liegt.** Migration `0026` (Herkunftsvermerk an `charge`), `apps/api/src/routes/pos.ts` mit drei Routen: offene Folios lesen, Umsatz buchen, Umsatz stornieren.
 
-**Abnahme.** Ein Kassenumsatz erscheint als `charge` mit Herkunftsvermerk. Es entsteht **kein** Kassenbestand und **kein** Bon in diesem System.
+**Was daraus entschieden wurde.**
+
+- **Kein eigener Zugangsweg für die Kasse.** Sie bekommt einen Maschinenzugang aus Aufgabe 2 mit den Zugriffsbereichen `folio:read` und `folio:post`. Ein dritter Anmeldeweg neben Sitzung und Token wäre eine dritte Stelle, an der eine Berechtigungsprüfung fehlen kann.
+- **Zwei Sicherungen gegen die Doppelbuchung, und beide werden gebraucht.** Der Idempotenzschlüssel fängt die Wiederholung derselben Anfrage; der eindeutige Index über die Belegnummer der Kasse fängt auch die Wiederholung nach einem Neustart, bei der die Kasse einen neuen Schlüssel bildet, ihre Belegnummer aber behält. Eine Wiederholung ist kein Fehler: sie bekommt dieselbe Antwort wie beim ersten Mal, sonst gerät die Kasse in eine Schleife oder der Umsatz geht verloren.
+- **Der Artikel kommt aus den Stammdaten, der Betrag von der Kasse.** Erlöskonto und Steuersatz stehen dort, wo DATEV-Export und Umsatzberichte sie lesen. Ein unbekanntes Artikelkürzel wird abgewiesen und **nicht** auf ein Standardkonto gebucht — ein Getränkeumsatz auf dem Logiskonto fälschte ADR und RevPAR, derselbe Fehler, der bei der No-Show-Gebühr schon einmal drohte.
+- **Den Steuersatz darf die Kasse übersteuern.** Dasselbe Getränk ist im Haus 19 und außer Haus 7 Prozent, und die Kasse weiß, was der Gast getan hat. Weicht ihr TSE-signierter Beleg von unserer Rechnung ab, fällt das bei einer Prüfung auf das Haus zurück.
+- **Brutto herein, netto und Steuer heraus.** Eine Kasse rechnet in Bruttopreisen, weil die Karte brutto ausgezeichnet ist. Rechnete sie selbst um, stünde auf der Hotelrechnung ein anderer Betrag als auf dem Beleg in der Tasche des Gastes.
+- **Die Umleitungsregeln gelten auch für die Kasse.** Umleitung ist genau für diesen Fall gemacht — die Firma zahlt die Übernachtung, die Getränke der Gast. Die genauere Regel gewinnt (Artikel vor Erlöskonto vor „alles"); ein geschlossenes Zielfolio wird übergangen, weil es schon abgerechnet ist.
+- **Zwei angereiste Gäste im selben Zimmer sind eine Rückfrage, keine Vermutung.** Geraten landete der Umsatz beim Falschen, und auffallen würde es beim Check-out des Anderen.
+
+**Abnahme.** Ein Kassenumsatz erscheint als `charge` mit Herkunftsvermerk. Es entsteht **kein** Kassenbestand und **kein** Bon in diesem System — geprüft, indem jeder Buchungstest auch zählt, was *nicht* entsteht: kein Zahlungsvermerk, keine Abwicklung. Ein Zimmerbon ist keine Abrechnung, sondern ihre Verschiebung; der Gast zahlt beim Check-out.
 
 ---
 
