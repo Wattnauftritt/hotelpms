@@ -44,6 +44,10 @@ jobs:
           psql -d hotelpms_test -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION pgcrypto;"
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level high || true
+      # Vor allem anderen: doppelte Migrationsnummern. Sie entstehen, wenn
+      # zwei Bearbeiter gleichzeitig von main abzweigen, und fallen beim
+      # Mergen nicht auf, weil es verschiedene Dateien ohne Konflikt sind.
+      - run: ./scripts/check-migrations.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
