@@ -60,5 +60,9 @@ export const Errors = {
       'Derselbe Schluessel wurde bereits mit einem anderen Rumpf benutzt.'),
   idempotencyInFlight: () =>
     new AppError(409, 'urn:hotelpms:idempotency_in_flight', 'Anfrage laeuft bereits',
-      'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.')
+      'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.'),
+  notConfigured: (detail: string) =>
+    new AppError(503, 'urn:hotelpms:not_configured', 'Nicht eingerichtet', detail),
+  invalidSignature: (detail: string) =>
+    new AppError(400, 'urn:hotelpms:invalid_signature', 'Signatur ungueltig', detail)
 }
