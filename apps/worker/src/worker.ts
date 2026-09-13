@@ -5,6 +5,7 @@ import { runNightAudit } from './jobs/nightAudit.js'
 import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
          reconcileInventory, purgeRegistrations, purgeExpired,
          overdueNightAudits } from './jobs/maintenance.js'
+import { deliverWebhooks } from './jobs/webhookDelivery.js'
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
 
@@ -109,6 +110,17 @@ async function nightAudit(p: PropertyRow): Promise<void> {
     'Nachtlauf abgeschlossen')
 }
 
+/** Faellige ausgehende Ereignisse zustellen (Aufgabe 4, Dokument 16). */
+async function webhooks(p: PropertyRow): Promise<void> {
+  const r = await deliverWebhooks(pool, propertyContext(p.account_id, p.id), p.id)
+  if (r.attempted === 0) return
+  log.info({ property: p.id, ...r }, 'Ereignisse zugestellt')
+  if (r.disabled > 0) {
+    log.error({ property: p.id, disabled: r.disabled },
+      'ALARM: Abonnement nach dauerhaftem Fehlschlag stillgelegt')
+  }
+}
+
 async function tick(): Promise<void> {
   await platformMaintenance()
   for (const p of await activeProperties()) {
@@ -116,6 +128,7 @@ async function tick(): Promise<void> {
     try {
       await propertyMaintenance(p)
       await nightAudit(p)
+      await webhooks(p)
     } catch (e) {
       log.error({ property: p.id, err: e }, 'Arbeit fuer Property fehlgeschlagen')
     }

@@ -3,6 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
+import { emitEvent } from '../platform/events.js'
 import { sumInvoice, taxFromNet, blockingFindings, type Party } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 
@@ -300,6 +301,16 @@ export function billingRoutes(app: FastifyInstance): void {
           serviceFrom, serviceTo,
           totals
         }
+
+        await emitEvent(client, folio.property_id, 'invoice.finalized', {
+          invoiceRef: result.invoiceRef,
+          number: result.number,
+          folioRef,
+          kind: body.kind ?? 'final',
+          serviceFrom, serviceTo,
+          grossCent: totals.grossCent
+        })
+
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
