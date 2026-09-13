@@ -89,3 +89,41 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
   const i = await client.query(`DELETE FROM idempotency_key WHERE expires_at < now()`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0)
 }
+
+/**
+ * Alarm bei ausgefallenem Nachtlauf.
+ *
+ * Der schlimmste Ausfall ist der stille. Laeuft der Nachtlauf nicht, faellt
+ * es tagelang niemandem auf: die Rezeption bucht weiter, nur die Logis fehlt
+ * auf den Folios, und beim Check-out steht ein zu kleiner Betrag. Bemerkt
+ * wird es dann vom Gast, nicht vom Betrieb.
+ *
+ * Erkannt wird es am offenen Geschaeftstag: liegt er mehr als einen Tag
+ * hinter dem heutigen Geschaeftsdatum, hat mindestens ein Lauf gefehlt.
+ */
+export interface NightAuditLag {
+  propertyId: number
+  propertyName: string
+  openDate: string | null
+  daysBehind: number
+}
+
+export async function overdueNightAudits(
+  client: PoolClient, toleranceDays = 1
+): Promise<NightAuditLag[]> {
+  const r = await client.query<NightAuditLag>(
+    `SELECT p.id AS "propertyId", p.name AS "propertyName",
+            bd.date::text AS "openDate",
+            (current_date - bd.date)::int AS "daysBehind"
+       FROM property p
+       LEFT JOIN LATERAL (
+         SELECT date FROM business_day b
+          WHERE b.property_id = p.id AND b.status = 'open'
+          ORDER BY date LIMIT 1
+       ) bd ON true
+      WHERE p.status = 'active'
+        AND (bd.date IS NULL OR current_date - bd.date > $1)
+      ORDER BY bd.date NULLS FIRST`,
+    [toleranceDays])
+  return r.rows
+}

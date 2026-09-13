@@ -4,7 +4,8 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
-         isIsoDate, type ReservationStatus, type ReservationAction } from '@hotelpms/domain'
+         isIsoDate, occupiesInventory,
+         type ReservationStatus, type ReservationAction } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
@@ -224,6 +225,130 @@ export function reservationRoutes(app: FastifyInstance): void {
           `UPDATE reservation SET resource_id = $2, updated_at = now() WHERE id = $1`,
           [res.id, resourceId])
         return { reservationRef, resourceId }
+      })
+    }
+  })
+
+  /**
+   * Aufenthalt ändern: Verlängerung, Verkürzung, Kategoriewechsel, einzeln
+   * oder zusammen (E11, Dokument 13).
+   *
+   * Der Fall, der diese Route nötig macht: der Gast bleibt länger, seine
+   * Kategorie ist aber ausgebucht, eine andere frei. Das ist eine
+   * Verlängerung **plus** einen Umzug, und beides muss zusammen gelingen
+   * oder zusammen scheitern.
+   *
+   * Zwei Aufrufe hintereinander wären falsch, nicht nur unbequem: zwischen
+   * Freigeben und Neubelegen ist das Kontingent frei, und genau dann kauft
+   * es das Portal. Der Gast verlöre sein Zimmer, obwohl er es schon hatte.
+   * `inventory_move` bindet deshalb zuerst und gibt erst danach frei.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/change-stay',
+    permission: 'reservation:write',
+    summary: 'Aufenthalt verlaengern, verkuerzen oder umbuchen',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const body = req.body as {
+        arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number }
+
+      return tx(req.pool, req, async client => {
+        const cur = await client.query<{
+          id: number; property_id: number; category_id: number; status: ReservationStatus
+          arrival: string; departure: string; resource_id: number | null
+          rate_plan_id: number | null }>(
+          `SELECT id, property_id, category_id, status, arrival::text, departure::text,
+                  resource_id, rate_plan_id
+             FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
+        if (cur.rowCount === 0) throw Errors.notFound('Reservierung')
+        const r = cur.rows[0]!
+
+        if (!occupiesInventory(r.status)) {
+          throw Errors.conflict(
+            `Eine Reservierung im Zustand ${r.status} bindet kein Kontingent und `
+            + 'laesst sich nicht aendern.')
+        }
+
+        const neuAnkunft = body.arrival ?? r.arrival
+        const neuAbreise = body.departure ?? r.departure
+        const neuKategorie = body.categoryId ?? r.category_id
+        if (!isIsoDate(neuAnkunft) || !isIsoDate(neuAbreise)) {
+          throw Errors.validation({ arrival: ['Datum im Format YYYY-MM-DD erwartet'] })
+        }
+        if (nightsBetween(neuAnkunft, neuAbreise) <= 0) {
+          throw Errors.validation({ departure: ['Muss nach arrival liegen'] })
+        }
+        // Bei InHouse ist die Anreise geschehen und nicht mehr verschiebbar.
+        if (r.status === 'InHouse' && neuAnkunft !== r.arrival) {
+          throw Errors.conflict('Die Anreise eines Gastes im Haus laesst sich nicht verlegen.')
+        }
+        if (neuKategorie !== r.category_id) {
+          const k = await client.query(
+            `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
+            [neuKategorie, r.property_id])
+          if (k.rowCount === 0) throw Errors.notFound('Zimmergruppe')
+        }
+
+        const inv = await client.query<{ e: string | null }>(
+          `SELECT inventory_move($1,$2,$3::date,$4::date,$5,$6::date,$7::date) AS e`,
+          [r.property_id, r.category_id, r.arrival, r.departure,
+           neuKategorie, neuAnkunft, neuAbreise])
+        inventoryError(inv.rows[0]!.e)
+
+        // Bei Kategoriewechsel passt das zugewiesene Zimmer nicht mehr. Es
+        // stehen zu lassen waere schlimmer als es zu entfernen: die
+        // Hausliste zeigte dann ein Zimmer der falschen Gruppe.
+        const zimmerBleibt = neuKategorie === r.category_id
+        await client.query(
+          `UPDATE reservation
+              SET arrival = $2::date, departure = $3::date, category_id = $4,
+                  rate_plan_id = COALESCE($5, rate_plan_id),
+                  resource_id = CASE WHEN $6 THEN resource_id ELSE NULL END,
+                  updated_at = now()
+            WHERE id = $1`,
+          [r.id, neuAnkunft, neuAbreise, neuKategorie, body.ratePlanId ?? null, zimmerBleibt])
+
+        /*
+         * Naechte fortschreiben. Bereits gebuchte Naechte bleiben unberuehrt:
+         * an ihnen haengen Belege, und `posted` sagt, dass die Logis schon
+         * auf dem Folio steht. Entfernt werden nur ungebuchte Naechte
+         * ausserhalb des neuen Zeitraums.
+         */
+        const entfernt = await client.query(
+          `DELETE FROM reservation_night
+            WHERE reservation_id = $1 AND NOT posted
+              AND (date < $2::date OR date >= $3::date)`,
+          [r.id, neuAnkunft, neuAbreise])
+
+        const nights = eachNight(neuAnkunft, neuAbreise)
+        const planId = body.ratePlanId ?? r.rate_plan_id ?? undefined
+        const prices = await priceNights(client, planId, nights)
+        for (let i = 0; i < nights.length; i++) {
+          await client.query(
+            `INSERT INTO reservation_night
+               (reservation_id, property_id, date, rate_plan_id, price_cent)
+             VALUES ($1,$2,$3::date,$4,$5)
+             ON CONFLICT (reservation_id, date) DO NOTHING`,
+            [r.id, r.property_id, nights[i], planId ?? null, prices[i]])
+        }
+
+        const summe = await client.query<{ n: number; total: number }>(
+          `SELECT count(*)::int AS n, COALESCE(sum(price_cent),0)::bigint AS total
+             FROM reservation_night WHERE reservation_id = $1`, [r.id])
+
+        return {
+          reservationRef,
+          arrival: neuAnkunft,
+          departure: neuAbreise,
+          categoryId: neuKategorie,
+          // Beim Kategoriewechsel faellt die Zimmerzuweisung weg und muss
+          // neu erfolgen. Das gehoert in die Antwort, nicht in eine Fussnote.
+          roomAssignmentCleared: !zimmerBleibt && r.resource_id !== null,
+          nights: summe.rows[0]!.n,
+          removedNights: entfernt.rowCount ?? 0,
+          totalCent: Number(summe.rows[0]!.total)
+        }
       })
     }
   })

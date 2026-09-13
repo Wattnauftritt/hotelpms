@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 164 Tests, 18 Migrationen.
+Stand: 13. September 2026. 185 Tests, 19 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -174,16 +174,18 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 ### Aufgabe 10 — Kleinere Lücken
 
-Jede für sich klein, zusammen ein Nachmittag.
+| Lücke | Wo | Stand |
+|---|---|---|
+| Verlängerung mit Kategoriewechsel als atomarer Fall (E11) | `0019`, `routes/reservations.ts` | **erledigt** |
+| `guaranteed` und Stornoregel beim No-Show auswerten (B10) | `jobs/nightAudit.ts`, Schritt 4 | **erledigt** |
+| Routing-Regeln anwenden, wenn der Nachtlauf bucht | `jobs/nightAudit.ts`, Schritt 2 | **erledigt** |
+| Alarm bei ausgefallenem Nachtlauf | `jobs/maintenance.ts` | **erledigt** |
+| Gruppen und Kontingente in der Oberfläche | `apps/web` | offen |
+| Folio-Bildschirm in der Oberfläche | `apps/web` | offen |
 
-| Lücke | Wo |
-|---|---|
-| Verlängerung mit Kategoriewechsel als atomarer Fall (E11) | `routes/reservations.ts` |
-| `no_show_cutoff` und `guaranteed` auswerten (B10) | `jobs/nightAudit.ts`, Schritt 4 |
-| Routing-Regeln anwenden, wenn der Nachtlauf bucht | `jobs/nightAudit.ts`, Schritt 2 |
-| Alarm bei ausgefallenem Nachtlauf | `apps/worker` |
-| Gruppen und Kontingente in der Oberfläche | `apps/web` |
-| Folio-Bildschirm in der Oberfläche | `apps/web` |
+Aus den vier erledigten Punkten ist eine Entscheidung hervorgegangen, die andernorts gilt: **`inventory_move` bindet zuerst und gibt erst danach frei**, und es bindet bei gleicher Kategorie nur die Differenz. Beides hat einen Grund. Zwischen Freigeben und Neubelegen wäre das Kontingent frei, und genau dann kauft es das Portal. Und wer bei einer Verlängerung den ganzen Aufenthalt neu bindet, konkurriert mit sich selbst und scheitert im vollen Haus an der eigenen Buchung.
+
+Zwei weitere Festlegungen daraus: eine **No-Show-Gebühr ohne hinterlegte Stornoregel wird nicht berechnet** — eine Gebühr ohne vereinbarte Grundlage ist nicht durchsetzbar, und sie trotzdem aufs Folio zu buchen erzeugt einen Streit, den das Haus verliert. Und sie trägt den **vollen Steuersatz auf einem eigenen Erlöskonto**, denn eine Gebühr ist keine Beherbergung; auf das Logiskonto gebucht fälschte sie ADR und RevPAR.
 
 ---
 

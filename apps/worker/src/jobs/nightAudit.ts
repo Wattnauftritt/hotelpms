@@ -158,10 +158,23 @@ async function postAccommodation(
                          WHERE property_id = $1 AND kind = 'vat' AND basis = 'percent'
                            AND active ORDER BY id LIMIT 1), 700) AS rate_bp
      ), faellig AS (
-       SELECT rn.reservation_id, rn.date, rn.price_cent, r.property_id, f.id AS folio_id
+       SELECT rn.reservation_id, rn.date, rn.price_cent, r.property_id,
+              -- Umleitung beachten: sagt eine Regel, dass Logis auf ein
+              -- anderes Folio geht, etwa das der Firma, dann dorthin. Ohne
+              -- das landet die Firmenrechnung beim Gast, und der Check-out
+              -- am Morgen wird zur Diskussion.
+              COALESCE(rr.target_folio_id, f.id) AS folio_id
          FROM reservation_night rn
          JOIN reservation r ON r.id = rn.reservation_id
          JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
+         LEFT JOIN LATERAL (
+           SELECT target_folio_id FROM routing_rule x
+            WHERE x.reservation_id = r.id
+              AND x.match_kind IN ('all', 'accommodation')
+            -- Die genauere Regel gewinnt: 'accommodation' vor 'all'.
+            ORDER BY CASE x.match_kind WHEN 'accommodation' THEN 0 ELSE 1 END, x.id
+            LIMIT 1
+         ) rr ON true
         WHERE r.property_id = $1 AND rn.date = $2::date
           AND r.status IN ('InHouse', 'CheckedOut') AND NOT rn.posted
         FOR UPDATE OF rn
@@ -200,23 +213,89 @@ async function postCityTax(
   return r.rows[0]!.post_city_tax
 }
 
-/** Schritt 4: No-Shows. Das Kontingent wird frei, die Reservierung bleibt. */
+/**
+ * Schritt 4: No-Shows.
+ *
+ * Das Kontingent wird frei, die Reservierung bleibt bestehen: sie ist ein
+ * Beleg dafuer, dass jemand gebucht und nicht abgesagt hat, und bei einer
+ * garantierten Buchung ist sie die Grundlage der Gebuehr.
+ *
+ * **Garantiert und ungarantiert werden unterschieden** (B10, Dokument 13).
+ * Eine garantierte Reservierung wird dem Gast in Rechnung gestellt, soweit
+ * die Stornoregel das vorsieht; eine ungarantierte verfaellt folgenlos. Wer
+ * beide gleich behandelt, stellt entweder zu Unrecht in Rechnung oder
+ * verschenkt den Erloes einer verkauften Nacht.
+ */
 async function noShows(
   client: PoolClient, propertyId: number, businessDate: string
 ): Promise<number> {
-  const offen = await client.query<{ id: number; category_id: number
-                                     arrival: string; departure: string }>(
-    `SELECT id, category_id, arrival::text, departure::text FROM reservation
-      WHERE property_id = $1 AND arrival = $2::date AND status = 'Confirmed'
-      ORDER BY id FOR UPDATE`,
+  const offen = await client.query<{
+    id: number; category_id: number; arrival: string; departure: string
+    guaranteed: boolean; fee_kind: string | null; fee_value: number | null
+    folio_id: number | null; erste_nacht: number | null; gesamt: number | null }>(
+    `SELECT r.id, r.category_id, r.arrival::text, r.departure::text,
+            -- Die Regel am Ratenplan hat Vorrang; ohne Regel gilt, was an
+            -- der Reservierung steht.
+            COALESCE(cp.guaranteed, r.guaranteed) AS guaranteed,
+            cp.fee_kind, cp.fee_value,
+            f.id AS folio_id,
+            (SELECT price_cent FROM reservation_night n
+              WHERE n.reservation_id = r.id ORDER BY n.date LIMIT 1) AS erste_nacht,
+            (SELECT sum(price_cent) FROM reservation_night n
+              WHERE n.reservation_id = r.id) AS gesamt
+       FROM reservation r
+       LEFT JOIN rate_plan rp ON rp.id = r.rate_plan_id
+       LEFT JOIN cancellation_policy cp ON cp.id = rp.cancellation_policy_id
+       LEFT JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
+      WHERE r.property_id = $1 AND r.arrival = $2::date AND r.status = 'Confirmed'
+      ORDER BY r.id FOR UPDATE OF r`,
     [propertyId, businessDate])
+
   for (const r of offen.rows) {
     await client.query(`SELECT inventory_release($1,$2,$3::date,$4::date,1)`,
       [propertyId, r.category_id, r.arrival, r.departure])
+
+    const gebuehr = r.guaranteed ? noShowFee(r) : 0
+    if (gebuehr > 0 && r.folio_id !== null) {
+      // Die Gebuehr ist keine Beherbergung: sie traegt den vollen Satz und
+      // ein eigenes Erloeskonto, sonst faelscht sie ADR und RevPAR.
+      await client.query(
+        `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                             net_cent, tax_cent, gross_cent, tax_rate_bp,
+                             revenue_account, reservation_id)
+         VALUES ($1,$2,$3::date,'No-Show-Gebuehr',1,
+                 $4 - round($4 * 1900.0 / 11900.0), round($4 * 1900.0 / 11900.0),
+                 $4, 1900, '8400', $5)`,
+        [propertyId, r.folio_id, businessDate, gebuehr, r.id])
+    }
+
     await client.query(
-      `UPDATE reservation SET status = 'NoShow', updated_at = now() WHERE id = $1`, [r.id])
+      `UPDATE reservation SET status = 'NoShow', updated_at = now(),
+                              cancellation_fee_cent = $2
+        WHERE id = $1`, [r.id, gebuehr > 0 ? gebuehr : null])
   }
   return offen.rowCount ?? 0
+}
+
+/**
+ * Gebuehr eines No-Shows nach der Stornoregel.
+ *
+ * Ohne hinterlegte Regel wird **nichts** berechnet. Eine stillschweigende
+ * Annahme wie "erste Nacht" waere hier falsch: eine Gebuehr ohne vereinbarte
+ * Grundlage ist nicht durchsetzbar, und sie dem Gast aufs Folio zu buchen
+ * erzeugt einen Streit, den das Haus verliert.
+ */
+function noShowFee(r: {
+  fee_kind: string | null; fee_value: number | null
+  erste_nacht: number | null; gesamt: number | null
+}): number {
+  if (r.fee_kind === null) return 0
+  switch (r.fee_kind) {
+    case 'first_night': return r.erste_nacht ?? 0
+    case 'percent':     return Math.round(((r.gesamt ?? 0) * (r.fee_value ?? 0)) / 100)
+    case 'amount':      return r.fee_value ?? 0
+    default:            return 0
+  }
 }
 
 /**

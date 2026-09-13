@@ -3,7 +3,8 @@ import { createPool, withTransaction, SYSTEM_CONTEXT, type DbContext, type Pool 
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
 import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
-         reconcileInventory, purgeRegistrations, purgeExpired } from './jobs/maintenance.js'
+         reconcileInventory, purgeRegistrations, purgeExpired,
+         overdueNightAudits } from './jobs/maintenance.js'
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
 
@@ -62,6 +63,19 @@ async function platformMaintenance(): Promise<void> {
   await withTransaction(pool, SYSTEM_CONTEXT, async client => {
     const purged = await purgeExpired(client)
     if (purged > 0) log.info({ purged }, 'Abgelaufene Sitzungen und Schluessel entfernt')
+  })
+
+  // Der schlimmste Ausfall ist der stille: laeuft der Nachtlauf nicht, fehlt
+  // die Logis auf den Folios, und bemerkt wird es vom Gast beim Check-out.
+  await withTransaction(admin, SYSTEM_CONTEXT, async client => {
+    const rueckstand = await overdueNightAudits(client)
+    for (const r of rueckstand) {
+      log.error({ property: r.propertyId, name: r.propertyName,
+                  openDate: r.openDate, daysBehind: r.daysBehind },
+        r.openDate === null
+          ? 'ALARM: Property hat keinen offenen Geschaeftstag'
+          : 'ALARM: Nachtlauf ist im Rueckstand')
+    }
   })
 }
 
