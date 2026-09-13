@@ -17,6 +17,8 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     include: ['{apps,packages}/**/*.test.ts'],
+    // dist der Weboberflaeche enthaelt gebaute Dateien, keine Tests.
+    exclude: ['**/node_modules/**', '**/dist/**'],
     setupFiles: ['./packages/testing/src/setup.ts'],
     pool: 'forks',
     poolOptions: { forks: { singleFork: true } },

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { healthRoutes } from './health.js'
+import { authRoutes } from './auth.js'
 import { availabilityRoutes } from './availability.js'
 import { reservationRoutes } from './reservations.js'
 import { billingRoutes } from './billing.js'
@@ -14,6 +15,7 @@ import { openApiRoutes } from './openapi.js'
 
 export function registerAllRoutes(app: FastifyInstance): void {
   healthRoutes(app)
+  authRoutes(app)
   availabilityRoutes(app)
   reservationRoutes(app)
   billingRoutes(app)

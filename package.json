@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "pnpm -r --filter './packages/**' build && pnpm -r --filter './apps/**' build",
     "typecheck": "tsc -b --pretty",
@@ -13,7 +15,8 @@
     "db:migrate": "pnpm --filter @hotelpms/db migrate",
     "db:reset": "pnpm --filter @hotelpms/db reset",
     "db:seed": "pnpm --filter @hotelpms/db seed",
-    "dev:api": "pnpm --filter @hotelpms/api dev"
+    "dev:api": "pnpm --filter @hotelpms/api dev",
+    "dev:web": "pnpm --filter @hotelpms/web dev"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

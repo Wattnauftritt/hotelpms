@@ -223,6 +223,17 @@ Startet, sobald AP 5 steht, und läuft parallel weiter.
 - **Lesbare Offline-Kopie** von Anreise-, Hausliste und Zimmerstatus im Service Worker (E5)
 - Kein Feld für Kartendaten, Garantie nur per Pay-by-Link oder virtuellem Terminal (E8)
 
+**Umgesetzt**, mit vier Entscheidungen, die in der Planung offen waren:
+
+- **Eine Herkunft für Oberfläche und Schnittstelle.** Vorher lagen sie auf `app.` und `api.`. Das erzwingt CORS mit Anmeldedaten, `SameSite=None` am Sitzungscookie und eine gepflegte Liste erlaubter Herkünfte. Jede dieser drei Stellen ist eine Gelegenheit, sich zu vertun, und ein Fehler darin ist eine Sitzungsübernahme. Unter einer Herkunft entfällt das alles; der Preis ist eine Pfadregel in Caddy. Der Name `api.` bleibt für Maschinen: Channel Manager und Kassensysteme brauchen keine Oberfläche.
+- **Sitzung im `HttpOnly`-Cookie, kein Token im JavaScript.** Ein Token, das die Oberfläche lesen kann, kann auch ein eingeschleustes Skript lesen. Dazu zwei Ablaufzeiten: eine Untätigkeitsfrist, die mitwandert, und eine absolute, die feststeht. Ohne die zweite bleibt eine gestohlene Sitzung unbegrenzt gültig, solange sie benutzt wird.
+- **Die Anmeldung unterscheidet nicht zwischen unbekannter Adresse und falschem Kennwort**, und sie verbraucht auch für eine unbekannte Adresse Rechenzeit. Sonst antwortet sie für Unbekannte in zwei Millisekunden und für Bekannte in hundert, und damit lässt sich die Benutzerliste abfragen, ohne ein Kennwort zu kennen.
+- **Offline nur lesend.** Anreise-, Hausliste und Zimmerstatus liegen lokal und sind bei Netzausfall lesbar. Ausdrücklich nicht offline: alles Schreibende. Eine Buchung, die im Browser wartet und später hochgeht, bindet Kontingent, das inzwischen jemand anders verkauft hat. Ein Kalender, der Doppelbelegungen erzeugt, ist schlimmer als eine Fehlermeldung.
+
+Der Zimmerplan zeichnet **einen Balken je Reservierung**, nicht eine Zelle je Nacht: ein Aufenthalt ist eine Sache und wird als eine gelesen. Der Balken endet am Abreisetag, denn die Abreisenacht gibt es nicht, und ein Balken, der in den Abreisetag hineinreicht, lässt ein verkäufliches Zimmer belegt aussehen. Nicht zugewiesene Reservierungen stehen oben statt unsichtbar unten; sie sind die Arbeit des Tages.
+
+Kein Feld für Kartendaten, nirgends (E8). Eine Garantie läuft über Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters.
+
 ### AP 13 — Integrationen
 
 - Webhooks mit Signatur und Wiederholung
@@ -284,7 +295,7 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
 | AP 10 Meldeschein | fertig |
 | AP 11 Berichte und Exporte | fertig, Kurtaxe offen |
 | AP 11b CSV-Import | fertig |
-| AP 12 Rezeptions-Oberfläche | offen |
+| AP 12 Rezeptions-Oberfläche | fertig, Zimmerplan, Tagesgeschäft, Housekeeping, Einrichtung |
 | AP 13 Integrationen | offen |
 | AP 14 Import aus Altsystemen | offen |
 

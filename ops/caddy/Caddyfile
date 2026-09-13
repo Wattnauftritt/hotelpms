@@ -3,21 +3,69 @@
 	email admin@hotelpms.de
 }
 
+# ---------------------------------------------------------------------------
+# Eine Herkunft für Oberfläche und Schnittstelle.
+#
+# Vorher lagen sie auf app.hotelpms.de und api.hotelpms.de. Das erzwingt CORS
+# mit Anmeldedaten, `SameSite=None` am Sitzungscookie und eine gepflegte
+# Liste erlaubter Herkünfte. Jede dieser drei Stellen ist eine Gelegenheit,
+# sich zu vertun, und ein Fehler darin ist eine Sitzungsübernahme.
+#
+# Unter einer Herkunft entfällt das alles: das Cookie ist `SameSite=Lax`,
+# es gibt keinen Vorabflug, keine erlaubte Herkunftsliste und keinen
+# Cross-Site-Pfad, den jemand ausnutzen könnte. Der Preis ist eine
+# Pfadregel in Caddy.
+# ---------------------------------------------------------------------------
+app.hotelpms.de {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		# Kein eval, keine fremden Herkünfte. Die Oberfläche lädt nichts
+		# von außen; ein eingeschleustes Skript hat damit kein Ziel.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		-Server
+	}
+
+	# Die Schnittstelle unter demselben Namen. Der Unix-Socket bedeutet:
+	# PostgreSQL und die Anwendung sprechen nie über TCP, und der Dienst
+	# lauscht auf keinem Netzwerkport.
+	handle /v1/* {
+		reverse_proxy unix//run/hotelpms/api.sock
+	}
+	handle /openapi.json {
+		reverse_proxy unix//run/hotelpms/api.sock
+	}
+	handle /healthz {
+		reverse_proxy unix//run/hotelpms/api.sock
+	}
+
+	# Alles andere ist die Oberfläche. Gebaute Dateien tragen einen Hash im
+	# Namen und dürfen deshalb lange zwischengespeichert werden; index.html
+	# nicht, sonst sieht die Rezeption nach einer Auslieferung noch die alte
+	# Fassung und meldet Fehler, die längst behoben sind.
+	handle {
+		root * /opt/hotelpms/current/web
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Eigener Name für Maschinen: Channel Manager, Buchungsstrecke, Kassensysteme.
+# Sie brauchen keine Oberfläche und sollen sie auch nicht sehen.
 api.hotelpms.de {
 	reverse_proxy unix//run/hotelpms/api.sock
 	encode zstd gzip
-	# Ratenbegrenzung je IP am Rand, vor allem fuer unauthentifizierte Pfade.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
 		-Server
 	}
-}
-
-app.hotelpms.de {
-	root * /opt/hotelpms/current/web
-	try_files {path} /index.html
-	file_server
-	encode zstd gzip
 }
