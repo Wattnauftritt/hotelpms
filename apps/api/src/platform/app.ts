@@ -4,7 +4,7 @@ import { createPool, type Pool } from '@hotelpms/db'
 import { loadConfig, type Config } from './config.js'
 import { AppError, Errors } from './errors.js'
 import { ANONYMOUS, type Principal } from './context.js'
-import { loadPrincipal, applySupportSession } from './auth.js'
+import { loadPrincipal, applySupportSession, loadPrincipalFromToken } from './auth.js'
 import { registerRateLimit } from './rateLimit.js'
 
 declare module 'fastify' {
@@ -69,6 +69,21 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
       }
     })
 
+  /*
+   * Der Tokenendpunkt nimmt formularkodierte Daten entgegen, nicht JSON.
+   * RFC 6749 schreibt das so vor, und jede fremde OAuth-Bibliothek sendet
+   * entsprechend; JSON zu verlangen machte aus jedem Standardclient einen
+   * Sonderfall. Kein zusaetzliches Paket noetig, URLSearchParams genuegt.
+   */
+  app.addContentTypeParser('application/x-www-form-urlencoded',
+    { parseAs: 'string' }, (_req, body: string, done) => {
+      try {
+        done(null, Object.fromEntries(new URLSearchParams(body)))
+      } catch (err) {
+        done(err as Error, undefined)
+      }
+    })
+
   app.addHook('onRequest', async (req) => {
     req.pool = pool
     req.principal = ANONYMOUS
@@ -79,6 +94,15 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
 
   // Aufrufer bestimmen. Der Mandantenkontext kommt ausschliesslich von hier.
   app.addHook('preValidation', async (req) => {
+    // Maschinen kommen mit einem Bearer-Token, Menschen mit dem Cookie. Das
+    // Token zuerst: ein Client schickt kein Cookie, und wer beides schickt,
+    // meint das Token.
+    const bearer = req.headers.authorization
+    if (bearer?.startsWith('Bearer ')) {
+      req.principal = await loadPrincipalFromToken(pool, bearer.slice(7))
+      return
+    }
+
     const sessionId = req.cookies['hp_session']
     if (!sessionId) return
     const { rows } = await pool.query<{ user_id: number; active_user_id: number | null }>(

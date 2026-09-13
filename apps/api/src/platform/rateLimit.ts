@@ -117,8 +117,15 @@ export const ANON_LIMIT: RateLimitOptions = {
   limit: Number(process.env.RATE_LIMIT_ANON ?? 300), windowMs: 60_000
 }
 
-/** Pfade, die die enge Grenze bekommen. */
-const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch']
+/**
+ * Pfade, die die enge Grenze bekommen.
+ *
+ * `/oauth/token` gehoert dazu, und zwar aus demselben Grund wie die
+ * Anmeldung: dort wird ein Geheimnis geprueft, und ohne Grenze liesse es
+ * sich durchprobieren. Ein Client holt sich ein Token je Stunde, nicht je
+ * Anfrage; die Grenze trifft ihn nie.
+ */
+const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch', '/oauth/token']
 
 /**
  * Die aktiven Zaehler. Nach aussen gegeben, damit ein Test sie zuruecksetzen

@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 320 Tests, 24 Migrationen.
+Stand: 13. September 2026. 342 Tests, 25 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -11,7 +11,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | Paket | Stand | Wo |
 |---|---|---|
 | AP 0 Grundgerüst | fertig | Monorepo, CI, Testaufbau |
-| AP 1 Mandanten und Rollen | fertig | `0002`, `0003`, `0018`, `platform/auth.ts` |
+| AP 1 Mandanten und Rollen | fertig | `0002`, `0003`, `0018`, `0025`, `platform/auth.ts`, `routes/oauth.ts` |
 | AP 2 Stammdaten und Einrichtung | fertig | `0004`, `0013`, `routes/setup.ts` |
 | AP 3 Raten, Restriktionen, Steuern | fertig | `0007`, `0016`, `routes/rates.ts` |
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
@@ -24,10 +24,10 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
 | AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
-| AP 13 Integrationen | **teilweise** | Webhooks (`0020`, `routes/webhooks.ts`, `jobs/webhookDelivery.ts`) und Payments (`0021`, `routes/payments.ts`) fertig; offen Aufgaben 5 und 7 |
+| AP 13 Integrationen | **teilweise** | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`) und ARI (`0023`, `routes/channel.ts`) fertig; offen Aufgabe 7 (Kasse) |
 | AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
 
-**81 Routen**, alle mit deklarierter Berechtigung, davon zehn ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**85 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -44,6 +44,7 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Ein Abruf aus einem Kontingent gelingt auch im vollen Haus, storniert fällt der Platz an die Gruppe zurück, und die Freigabe gibt nur den nicht abgerufenen Rest frei.
 - Der Beleg zu einer Rechnung ist ein PDF/A-3 mit eingebettetem CII-XML nach EN 16931; das XML kommt beim Empfänger byteweise so an, wie es erzeugt wurde.
 - Derselbe Beleg zweimal erzeugt ergibt dieselben Bytes, und ein bereits erzeugter wird nie durch einen zweiten ersetzt.
+- Ein Maschinentoken erreicht genau die Endpunkte seiner Zugriffsbereiche und keinen weiteren — geprüft über die gesamte Routenliste, nicht an Beispielen.
 
 ---
 
@@ -73,19 +74,47 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 ---
 
-### Aufgabe 2 — OAuth-Autorisierungsserver
+### Aufgabe 2 — Maschinenzugang mit Client Credentials — **erledigt**
 
-**Warum.** Fremdsysteme, Channel Manager und ein späteres Entwicklerportal brauchen einen Zugang, der nicht das Sitzungscookie der Rezeption ist. Der Server ist in Dokument 10 benannt, aber nicht gebaut (C2 in Dokument 13).
+Migration `0025`, `apps/api/src/routes/oauth.ts`, `loadPrincipalFromToken` in
+`apps/api/src/platform/auth.ts`.
 
-**Umfang.**
-- `node-oidc-provider`, Client Credentials für Maschinen, Authorization Code mit PKCE für Anwendungen im Namen eines Nutzers.
-- Zugriffsbereiche (Scopes) auf den bestehenden Berechtigungskatalog abbilden.
-- `oauth_client` ist bereits angelegt.
-- `loadPrincipal` muss auch aus einem Token einen Principal bauen können, nicht nur aus einer Sitzung.
+`POST /oauth/token` gibt gegen Kennung und Geheimnis ein Token auf eine Stunde aus,
+formularkodiert nach RFC 6749. Dazu drei Routen unter `integration:manage`, um
+Maschinenzugänge anzulegen, aufzulisten und zu sperren — ohne sie wäre der Zugang nur
+per SQL erreichbar.
 
-**Abnahme.** Ein Maschinentoken erreicht genau die Endpunkte seiner Zugriffsbereiche und keinen weiteren. Der generische Berechtigungstest läuft auch über den Tokenweg.
+**Scopes sind Berechtigungsschlüssel**, kein zweiter Rechteweg (Grundsatz 1, Dokument 14).
+`registerRoute` sieht keinen Unterschied zwischen Mensch und Maschine; der generische
+Berechtigungstest läuft deshalb unverändert über den Tokenweg.
 
-**Nicht dazu.** Das Entwicklerportal als Oberfläche.
+Vier Festlegungen:
+
+**Kein `oidc-provider`, obwohl der Umfang ihn nennt.** Die Bibliothek vergleicht
+Client-Geheimnisse selbst und braucht sie dafür entschlüsselbar; `oauth_client.secret_hash`
+ist ein Argon2-Hash und sollte einer bleiben. Dazu kämen ein Adapter für ihre Artefakte,
+JWKS-Verwaltung und eine Einwilligungsseite. Für Client Credentials — das einzige, was die
+Abnahme prüft — trägt nichts davon.
+
+**Ein undurchsichtiges Token, kein JWT.** Ein JWT bliebe bis zum Ablauf gültig, auch
+nachdem der Kunde den Zugang entzogen hat. Das einzufangen braucht eine Sperrliste, also
+wieder die Datenbank; dann kann die Prüfung auch gleich dort stattfinden. Der Preis ist
+eine Abfrage je Anfrage, und die läuft ohnehin für den Mandantenkontext.
+
+**Ein Token bekommt keine accountweiten Berechtigungen.** `can()` prüft
+`accountPermissions` zuerst und lässt sie auf **alle** Häuser des Accounts wirken. Ein
+Client, der auf zwei von zwanzig Häusern eingeschränkt ist, bekäme darüber die anderen
+achtzehn dazu — die Einschränkung wäre wirkungslos. Die Scopes hängen deshalb je Haus.
+
+**Plattformrechte sind keine Scopes.** Sie gehören unserem eigenen Personal und wirken
+über Mandanten hinweg; ein Kundenclient mit `platform:accounts` hätte Zugriff auf fremde
+Betriebe. Die Anlage weist sie ab.
+
+**Offen geblieben:** Authorization Code mit PKCE. Er hat heute keinen Abnehmer — die
+Rezeptions-Oberfläche läuft über das Sitzungscookie, und das Entwicklerportal ist
+ausdrücklich nicht Teil der Aufgabe. Wer ihn baut, braucht zusätzlich eine
+Einwilligungsseite und muss entscheiden, ob Client-Geheimnisse dafür entschlüsselbar
+werden dürfen.
 
 ---
 
@@ -144,7 +173,9 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 
 ---
 
-### Aufgabe 5 — ARI-Schnittstelle für Channel Manager
+### Aufgabe 5 — ARI-Schnittstelle für Channel Manager — **erledigt**
+
+**Wo es liegt.** Migration `0023`, `apps/api/src/routes/channel.ts`, `apps/api/src/platform/channelAuth.ts`. Gemergt mit #8; die Begründungen dort stehen in der Beschreibung des Pull Requests, nicht hier.
 
 **Warum.** Der Zielkunde verkauft über Portale. Ohne Verfügbarkeits-, Raten- und Restriktionsabgleich ist das System für ihn nicht benutzbar.
 
@@ -157,7 +188,9 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 
 ---
 
-### Aufgabe 6 — Payment-Adapter
+### Aufgabe 6 — Payment-Adapter — **erledigt**
+
+**Wo es liegt.** Migration `0021`, `apps/api/src/routes/payments.ts`, `apps/api/src/platform/payments/stripe.ts`, `packages/domain/src/payments.ts`. Gemergt mit #5; die Begründungen dort stehen in der Beschreibung des Pull Requests, nicht hier.
 
 **Warum.** Pay-by-Link ist der einzige vorgesehene Weg, eine Buchung zu garantieren, ohne Kartendaten anzufassen.
 
