@@ -4,7 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { encryptIdDocument, decryptIdDocument, maskIdDocument } from '../platform/crypto.js'
-import type { Principal } from '../platform/context.js'
+import { accountFor, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
 const config = loadConfig()
@@ -56,23 +56,6 @@ function present(r: GuestRow): Record<string, unknown> {
     preferences: r.preferences,
     status: r.status
   }
-}
-
-/**
- * Der einzige Account, in dem dieser Aufrufer schreiben darf.
- * Wer mehrere Accounts sieht, muss ihn angeben; sonst landet ein Gast im
- * falschen Mandanten und die Zeilenrichtlinie bemerkt es nicht, weil beide
- * im Kontext stehen.
- */
-function accountFor(principal: Principal, given: number | undefined): number {
-  if (given !== undefined) {
-    if (!principal.accountIds.includes(given)) {
-      throw Errors.forbidden('Account liegt nicht im Zugriffsbereich.')
-    }
-    return given
-  }
-  if (principal.accountIds.length === 1) return principal.accountIds[0]!
-  throw Errors.validation({ accountId: ['Pflichtfeld bei mehreren Accounts'] })
 }
 
 /**
