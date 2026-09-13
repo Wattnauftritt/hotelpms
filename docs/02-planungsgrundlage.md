@@ -10,6 +10,7 @@ Abgeleitet aus der [Marktanalyse](01-marktanalyse-pms.md). Dieses Dokument ist e
 - **Append-only im Rechnungswesen.** Buchungen werden nie geändert oder gelöscht, nur storniert. Rechnungen werden festgeschrieben.
 - **Deutsche Pflichten sind Kern**: Meldeschein, GoBD, TSE, Kurtaxe, Beherbergungsstatistik, DSGVO.
 - **Nicht selbst bauen**: Channel Manager, Payment-Processing, Kartenspeicherung, TSE-Hardware. Dafür saubere Schnittstellen.
+- **Abschaltbar, wofür der Betrieb schon ein System hat.** Kassenbuch, Buchungsmaschine, Channel Manager, Restaurantkasse und Schließsystem müssen einzeln deaktivierbar sein. Ein Umstieg darf nie erzwungen werden. Siehe [09-kassenbuch.md](09-kassenbuch.md)
 
 ## 2. Domänenmodell (Entwurf)
 
@@ -167,17 +168,17 @@ Ziel: Ein einzelnes Hotel kann Opera/Cloudbeds durch uns ersetzen, ohne OTA-Anbi
 - Reservierungen mit Statusmaschine, Zimmerplan (Tape Chart), Anreise-/Abreise-/Hausliste
 - Gäste und Firmen, Meldeschein mit elektronischer Unterschrift
 - Folios, Charges, Payments (Bar, Karte extern erfasst, Überweisung), Routing, Rechnung mit fortlaufender Nummer, Storno
-- **Kassenbuch: Kassen, Schichten, Bewegungen, Zählprotokoll, Kassenabschluss**, siehe [09-kassenbuch.md](09-kassenbuch.md)
-- **Cloud-TSE-Anbindung und DSFinV-K-Export.** Ohne TSE darf kein Betrieb produktiv Bargeld über das System erfassen, siehe [06-fiskalisierung.md](06-fiskalisierung.md)
+- **Modus A ohne Kassenfunktion: keine Zahlart Bar, keine TSE.** Der Betrieb behält sein Kassenbuch, wo es heute ist. Siehe [09-kassenbuch.md](09-kassenbuch.md)
 - USt-Aufteilung 7 % / 19 %, Kurtaxe-Regel
-- Housekeeping-Status, automatischer Nachtlauf inklusive Auslösen fälliger Kassenabschlüsse
+- Housekeeping-Status, automatischer Nachtlauf
 - Audit-Log, Rollen, GoBD-Export (CSV mit Strukturbeschreibung)
 - Rezeptions-Web-App
 
-### Stufe 2: Verkaufen und automatisieren
+### Stufe 2: Verkaufen und kassieren
 
 - ARI-Schnittstelle für Channel Manager (Verfügbarkeit, Preise, Restriktionen raus; Reservierungen rein)
 - Payment-Gateway mit Token-Speicherung, Anzahlungen, Pre-Authorisierung, Pay-by-Link
+- **Modus B als zuschaltbares Kassenmodul**: Kassen, Schichten, Bargeldbewegungen, Zählprotokoll, Kassenabschluss, Cloud-TSE, DSFinV-K-Export. **Muss deutlich vor Ende 2027 erprobt sein**, weil die geplante Registrierkassenpflicht ab 1. Januar 2028 praktisch jedes Hotel trifft
 - E-Mail-Kommunikation (Bestätigung, Pre-Arrival, Rechnung)
 - Eigene Booking Engine
 - Blocks und Gruppen mit Sammelrechnung
