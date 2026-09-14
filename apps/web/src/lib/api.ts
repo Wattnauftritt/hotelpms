@@ -63,7 +63,11 @@ export const api = {
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>('POST', path, body ?? {}, headers),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
-  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
+  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
+  // Loescht in dieser API nie Fachdaten: DELETE steht dort, wo eine
+  // Einrichtung abgeschaltet wird -- ein Webhook-Abonnement etwa. Belege,
+  // Reservierungen und Gaeste kennen diesen Weg nicht.
+  delete: <T>(path: string) => request<T>('DELETE', path)
 }
 
 /**

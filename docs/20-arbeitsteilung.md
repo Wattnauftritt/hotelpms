@@ -200,9 +200,9 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | C5 | Wartungsmeldungen | im PR #27 | #27 | Eigener Bildschirm „Wartung". Brauchte `PATCH /v1/maintenance-tickets/:id`; die Sperrung nimmt jetzt beide Arten |
 | C6 | Absenderangaben Gastpost | im PR #27 | #27 | Reiter in „Einstellungen" |
 | C7 | Zahlungsarten | im PR #27 | #27 | Reiter in „Einstellungen". Brauchte POST und PATCH; **kein** Löschen |
-| C8 | Webhooks | offen | — | |
-| C9 | Maschinenzugänge, Channel Manager | offen | — | |
-| C10 | Benutzer und Rollen | offen | — | |
+| C8 | Webhooks | im PR #28 | #28 | Reiter in „Schnittstellen", mit Zustellprotokoll und Grund der Stilllegung an der Zeile |
+| C9 | Maschinenzugänge, Channel Manager | im PR #28 | #28 | Zwei Reiter. Geheimnis einmal, mit ausdrücklicher Bestätigung |
+| C10 | Benutzer und Rollen | im PR #28 | #28 | Reiter. Brauchte drei Endpunkte (`users`, `roles`, Rollen setzen). Benutzer **anlegen** gehört zur Einladung und ist nicht dabei |
 | C11 | Stammdaten vollständig pflegen | im PR #27 | #27 | `components/Stammdaten.tsx`, eingehängt in `Setup.tsx`. Alle Felder des Modells, stilllegen statt löschen |
 
 ---
