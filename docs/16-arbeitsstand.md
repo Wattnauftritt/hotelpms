@@ -25,7 +25,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
-| AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
+| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Sieben Bildschirme; buchen kann man darin nicht — [`19-frontend.md`](19-frontend.md) |
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
