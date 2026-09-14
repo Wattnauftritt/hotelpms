@@ -320,13 +320,15 @@ AP0 ──┬─▶ AP1 ──┬─▶ AP2 ──▶ AP3 ──▶ AP4 ──�
 | AP 10 Meldeschein | fertig |
 | AP 11 Berichte und Exporte | fertig |
 | AP 11b CSV-Import | fertig |
-| AP 12 Rezeptions-Oberfläche | fertig, Zimmerplan, Tagesgeschäft, Housekeeping, Einrichtung |
+| AP 12 Rezeptions-Oberfläche | **teilweise**, sieben Bildschirme; Reservierungsmaske, Gast und Check-in fehlen (siehe [`19-frontend.md`](19-frontend.md)) |
 | AP 13 Integrationen | offen |
 | AP 14 Import aus Altsystemen | offen |
 
 Dazu quer über alle Pakete: die Schnittstellenbeschreibung nach OpenAPI 3.1 entsteht aus der Routenregistrierung, ein Vertragstest hält beide zusammen. Ein Saatlauf erzeugt vier Häuser zu je 250 Zimmern über drei Jahre und misst daran die Abfragen, die im Betrieb zählen.
 
-**Stufe 1 der Roadmap ist erreicht mit AP 0 bis 12 plus 11b.** Das ist das erste verkaufbare Produkt. Dazu aus Dokument 13 die Betriebsvoraussetzungen: Plattenverschlüsselung (C3), Schlüsselrotation als Betriebsdokument (C4), Redaktionsliste für Logs (C8), Trainingsmodus je Property (C11), Archivierung ausscheidender Betriebe mit Mandantenexport (E7).
+**Stufe 1 ist backendseitig erreicht, als Produkt noch nicht.** Hier stand einmal, sie sei mit AP 0 bis 12 plus 11b erreicht und das erste verkaufbare Produkt. Das war falsch, und der Fehler ist lehrreich genug, um stehen zu bleiben: AP 12 nennt oben ausdrücklich die **Reservierungsmaske**, die Statuszeile zählte vier gebaute Bildschirme auf, und keiner davon war sie. Der Stand wurde also gegen das Gebaute geprüft statt gegen das Geplante — dieselbe Klasse stiller Fehler, gegen die dieses System sonst gebaut ist, nur in einer Tabelle statt in einer Abfrage.
+
+Verkaufbar ist das Produkt, wenn die Oberfläche kann, was AP 12 nennt. Die Lücke ist in [`19-frontend.md`](19-frontend.md) gegen die vollständige Routenliste ausgemessen und in [`20-arbeitsteilung.md`](20-arbeitsteilung.md) auf drei Spuren verteilt. Dazu aus Dokument 13 die Betriebsvoraussetzungen: Plattenverschlüsselung (C3), Schlüsselrotation als Betriebsdokument (C4), Redaktionsliste für Logs (C8), Trainingsmodus je Property (C11), Archivierung ausscheidender Betriebe mit Mandantenexport (E7).
 
 ---
 
