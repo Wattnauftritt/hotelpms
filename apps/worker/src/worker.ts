@@ -3,10 +3,12 @@ import { createPool, withTransaction, SYSTEM_CONTEXT, type DbContext, type Pool 
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
 import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
-         reconcileInventory, purgeRegistrations, purgeExpired,
+         reconcileInventory, purgeRegistrations, purgeExpired, redactOldEmails,
          overdueNightAudits } from './jobs/maintenance.js'
 import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
+import { deliverEmails } from './jobs/emailDelivery.js'
+import { createBrevoAdapter } from './email/brevo.js'
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
 
@@ -95,6 +97,11 @@ async function propertyMaintenance(p: PropertyRow): Promise<void> {
     if (registrations > 0) {
       log.info({ property: p.id, registrations }, 'Meldescheine nach Jahresfrist vernichtet')
     }
+    const geschwaerzt = await redactOldEmails(client, p.id)
+    if (geschwaerzt > 0) {
+      log.info({ property: p.id, emails: geschwaerzt },
+        'Gastadressen im Postausgang entfernt')
+    }
   })
 
   // Eigene Transaktionen je Beleg, deshalb ausserhalb der obigen: das
@@ -144,6 +151,34 @@ async function webhooks(p: PropertyRow): Promise<void> {
   }
 }
 
+/*
+ * Zugang zum Mailanbieter. Ohne Schluessel bleibt der Versand aus, statt den
+ * Worker anzuhalten: der Nachtlauf ist wichtiger als die Post, und ein Haus
+ * ohne Brevo-Vertrag soll trotzdem laufen. Die Nachrichten bleiben dann in
+ * der Warteschlange stehen und gehen hinaus, sobald der Schluessel da ist --
+ * verloren ist nichts.
+ */
+const brevoKey = process.env.BREVO_API_KEY ?? null
+const mailer = brevoKey ? createBrevoAdapter(brevoKey) : null
+if (mailer === null) {
+  log.warn('BREVO_API_KEY ist nicht gesetzt: ausgehende Gastpost bleibt in der Warteschlange.')
+}
+
+/** Faellige Gastpost zustellen. */
+async function emails(p: PropertyRow): Promise<void> {
+  if (mailer === null) return
+  const r = await deliverEmails(pool, propertyContext(p.account_id, p.id), p.id, mailer)
+  if (r.attempted === 0) return
+  // Kein Empfaenger und kein Betreff ins Protokoll: beides ist Gastdatum
+  // (C8, Dokument 13). Die Zahlen genuegen; das Einzelne steht im
+  // Postausgang, der der Zeilenrichtlinie unterliegt.
+  log.info({ property: p.id, ...r }, 'Gastpost zugestellt')
+  if (r.failed > 0) {
+    log.error({ property: p.id, failed: r.failed },
+      'ALARM: Gastpost endgueltig nicht zustellbar')
+  }
+}
+
 async function tick(): Promise<void> {
   await platformMaintenance()
   for (const p of await activeProperties()) {
@@ -152,6 +187,7 @@ async function tick(): Promise<void> {
       await propertyMaintenance(p)
       await nightAudit(p)
       await webhooks(p)
+      await emails(p)
     } catch (e) {
       log.error({ property: p.id, err: e }, 'Arbeit fuer Property fehlgeschlagen')
     }

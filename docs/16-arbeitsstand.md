@@ -1,6 +1,8 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 14. September 2026. 415 Tests, 28 Migrationen.
+Stand: 14. September 2026. 448 Tests, 29 Migrationen.
+
+> **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -17,7 +19,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
 | AP 5 Reservierungen | fertig | `0009`, `0022`, `routes/reservations.ts`, `routes/blocks.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
-| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `0027`, `0028`, `routes/billing.ts` |
+| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `0027`, `0029`, `routes/billing.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
 | AP 9 Housekeeping | fertig | `0011`, `routes/housekeeping.ts` |
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
@@ -26,8 +28,10 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
+| AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
+| AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
 
-**94 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**100 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -122,7 +126,7 @@ werden dürfen.
 
 ### Aufgabe 3 — Anzahlungen und ihre Steuerpflicht — **erledigt**
 
-Migrationen `0027` und `0028`, `apps/api/src/routes/billing.ts` (`POST .../deposit-invoice`,
+Migrationen `0027` und `0029`, `apps/api/src/routes/billing.ts` (`POST .../deposit-invoice`,
 erweitertes `POST .../invoice`), `packages/domain/src/deposit.ts`,
 `apps/worker/src/jobs/invoiceDocument.ts`, DATEV-Stapel in `apps/api/src/routes/reports.ts`.
 
@@ -149,7 +153,7 @@ zwei Mechanismen leise vermischt. Stattdessen trägt `deposit_ledger.settlement_
 mit einem eindeutigen Index als eigentlichem Schutz gegen doppelte Verbuchung unter
 Nebenläufigkeit — dieselbe Lehre wie bei Aufgabe 5 und 6.
 
-**Im Buchungsstapel, nicht nur auf dem Beleg (`0028`).** Der DATEV-Export las ausschließlich über
+**Im Buchungsstapel, nicht nur auf dem Beleg (`0029`).** Der DATEV-Export las ausschließlich über
 `invoice JOIN charge`. Eine Anzahlung erzeugt aber keine `charge` — sie ist keine Leistung —, und
 damit stand ihre Steuer zwar im ZUGFeRD-Beleg, aber in keinem Stapel, den der Steuerberater
 einspielt. Genau das verlangt die Abnahme jedoch. Gebucht wird deshalb zusätzlich aus dem
@@ -160,7 +164,7 @@ Stapel läuft chronologisch und trägt nur positive Beträge: DATEV kennt keinen
 die Richtung steht im Soll/Haben-Kennzeichen. Das galt auch schon für die Storno-Position der
 Kasse, die bisher ein Minus ins Betragsfeld schrieb.
 
-**Eine Anzahlung trägt so viele Steuersätze wie der Aufenthalt (`0028`).** Anfangs war es genau
+**Eine Anzahlung trägt so viele Steuersätze wie der Aufenthalt (`0029`).** Anfangs war es genau
 einer, vom Aufrufer mitgegeben. Das Haus verkauft aber Übernachtung zum ermäßigten und Getränke
 zum vollen Satz, und ein Frühstücksbuffet beides in einem Preis. Fehlt der Satz, wird er nun im
 Verhältnis der **erwarteten** Leistung abgeleitet: der geplante Aufenthalt und die im Ratenpreis
@@ -347,6 +351,29 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 ---
 
+### Aufgabe 11 — Mailversand über Brevo — **erledigt**
+
+**Warum.** Das System erzeugte den Beleg nach EN 16931, legte ihn ab — und beim Gast kam er nie an. Der Weg vom Check-out bis zur Rechnung war an genau einer Stelle unterbrochen, und zwar an der letzten. Jede Rechnung musste von Hand heruntergeladen und aus einem zweiten Programm verschickt werden.
+
+**Wo es liegt.** Migration `0028`, `packages/domain/src/email.ts` (Vorlagen und Wiederholungsregel), `apps/api/src/routes/email.ts` (Einstellungen, Versand, Postausgang), `apps/worker/src/jobs/emailDelivery.ts` und `apps/worker/src/email/brevo.ts`. Der Anbieter wird über seine **REST-API** angesprochen, nicht über SMTP.
+
+**Was daraus entschieden wurde.**
+
+- **Die API verschickt nichts.** Sie rendert das Anschreiben und reiht es in der Transaktion der Fachbuchung ein; zugestellt wird im Worker. Wer beides in einem Schritt täte, hätte die Wahl zwischen einer Rechnung ohne Mail und einer Mail ohne Rechnung — und der Check-out hinge am langsamsten Glied.
+- **Der Aufrufer bestimmt den Empfänger, nie den Inhalt.** Das ist die Grenze, an der aus einem Rechnungsversand ein Versandapparat für beliebige Post würde. Betreff und Rumpf entstehen aus dem Fachdatum; übergeben werden kann nur die Adresse — und auch das nur, weil die Firma ihre Rechnung in der Buchhaltung will und nicht beim Reisenden.
+- **Der Anhang ist der archivierte Beleg, nicht eine neu erzeugte Fassung.** Verschickt werden dieselben Bytes, die in `invoice_document` liegen, und ihr Fingerabdruck wandert an die Zustellung. Damit ist belegbar, welche Fassung der Gast bekommen hat.
+- **Eine Rechnungsmail darf eingereiht werden, bevor der Beleg existiert.** Der Worker holt sie erst, wenn der Anhang bereitsteht — ohne einen Versuch zu verbrauchen. Sie ist nicht fehlgeschlagen, sie ist noch nicht dran. Wer sie trotzdem holte, hätte nach fünf Minuten eine Rechnung ohne Anhang aufgegeben, deren Beleg inzwischen fertig ist.
+- **Ein dauerhafter Fehler wird nicht wiederholt.** Eine abgelehnte Adresse ist beim fünften Versuch genauso abgelehnt wie beim ersten. Fünfmal gegen eine 400 zu laufen verzögert alles andere und färbt beim Anbieter die eigene Absenderbewertung ein.
+- **Nichts wird stillgelegt.** Beim Webhook ist die Stilllegung richtig, dort steht eine kaputte Gegenstelle. Hier hieße sie, dass eine einzige falsch getippte Gastadresse den Rechnungsversand des ganzen Hauses anhält.
+- **Ein Übungshaus verschickt nichts**, und der Versand lässt sich dort nicht einmal einschalten. Schulungsdaten tragen echte Adressen, weil jemand seine eigene einträgt, um zu sehen wie es aussieht.
+- **Gastadressen im Postausgang altern nach 90 Tagen.** Entfernt werden Empfänger und Anschreiben, nicht die Zeile: die Frage „ist die Rechnung rausgegangen" kann noch Jahre später kommen und lässt sich ohne Gastdaten beantworten.
+
+**Mitbehoben, und das war der eigentliche Fund.** `truncateAll()` in `packages/testing` leerte den Berechtigungskatalog und säte ihn aus **Migration 0003 allein** wieder aus. Der Katalog wächst aber in späteren Migrationen — jedes dort hinzugefügte Recht fehlte damit in **jedem** Test. Der Befund sieht aus wie ein Fehler in der Route (403 statt 202), und gesucht wird an der falschen Stelle. Wiederhergestellt wird jetzt aus einer Kopie des tatsächlichen Standes; die kennt diese Frage nicht. Ebenso ist `formatCent` aus dem PDF-Blatt in die Domäne gewandert: zwei Formatierer für dieselbe Währung laufen auseinander, und der Unterschied fällt erst auf, wenn Rechnung und Anschreiben nebeneinander liegen.
+
+**Noch offen.** Rückmeldungen über Zustellung und Bounces holt das System nicht ab — das wäre ein eingehender Webhook von Brevo. `sent` heißt deshalb *angenommen*, nicht *zugestellt*. Und der Adapter hat noch nie mit dem echten Brevo gesprochen: geprüft ist er gegen einen echten HTTP-Empfänger mit umgelenktem Ziel, also Kopfzeilen, Rumpfaufbau und Kodierung des Anhangs — aber nicht die Gegenseite.
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
@@ -361,6 +388,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | snake_case gelesen, camelCase geprüft | Die Anschrift verschwand lautlos, die Rechnung wurde grundlos abgewiesen |
 | Frist gegen `now()` statt gegen den Geschäftstag | Ein Wiederholungslauf hätte andere Zeilen gefunden als der erste |
 | Zwei Testrollen zusammen vergeben | Verdeckte, dass jede einzeln nicht funktionierte |
+| Testaufbau sät den Katalog aus einer festen Migration | Jedes später hinzugefügte Recht fehlte in jedem Test, und der Befund sah aus wie ein Fehler in der Route |
 | Bestand am Handlungspaar statt am Zustand gebunden | Ein No-Show, der doch noch anreiste, belegte ein Zimmer, das der Zaehler als frei fuehrte |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).

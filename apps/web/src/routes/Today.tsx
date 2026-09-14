@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDailySheet, useReservationAction } from '../lib/queries.js'
-import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n.js'
+import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'

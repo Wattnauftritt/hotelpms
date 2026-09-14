@@ -8,6 +8,23 @@ export type BasisPoints = number
 export const VAT_ACCOMMODATION: BasisPoints = 700
 export const VAT_STANDARD: BasisPoints = 1900
 
+/**
+ * 123456 wird zu 1.234,56. Ganzzahlig gerechnet, nie ueber Fliesskomma:
+ * `(cent / 100).toFixed(2)` ist bei grossen Betraegen nicht mehr genau, und
+ * bei Geld faellt das als fehlender Cent auf, nicht als Rundungsfehler.
+ *
+ * Liegt hier und nicht im PDF-Blatt, weil inzwischen auch die Gastpost
+ * Betraege schreibt. Zwei Formatierer fuer dieselbe Waehrung laufen
+ * auseinander, und der Unterschied faellt erst auf, wenn Rechnung und
+ * Anschreiben nebeneinander liegen.
+ */
+export function formatCent(cent: Cent): string {
+  const negativ = cent < 0
+  const abs = Math.abs(Math.trunc(cent))
+  const ganz = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${negativ ? '-' : ''}${ganz},${String(abs % 100).padStart(2, '0')}`
+}
+
 /** Kaufmaennisch runden, symmetrisch um null. */
 export function roundHalfUp(value: number): number {
   return value < 0 ? -Math.round(-value) : Math.round(value)

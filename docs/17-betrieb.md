@@ -160,7 +160,42 @@ Was der Export **nicht** enthält und warum:
 
 ---
 
-## 7. Was regelmäßig zu prüfen ist
+## 7. Mailversand über Brevo
+
+Gastpost — Rechnungen und Buchungsbestätigungen — geht über die **REST-API** von Brevo, nicht über SMTP. Der Endpunkt heißt `POST /v3/smtp/email` und meint trotzdem HTTP; das ist eine Eigenheit der Benennung. Der Unterschied ist keine Geschmacksfrage: über SMTP gäbe es keine Nachrichtenkennung, keinen verwertbaren Fehlercode und eine Verbindung, die der Worker offenhalten müsste.
+
+### Einrichten
+
+1. **Absender bei Brevo verifizieren.** Ohne verifizierten Absender weist der Anbieter jede Nachricht ab, und zwar mit 400 — also dauerhaft, ohne Wiederholung. Das ist der häufigste Fehler bei der Inbetriebnahme.
+2. **SPF und DKIM für die Domäne setzen**, wie Brevo es vorgibt. Ohne beides landet die Rechnung im Spam-Ordner des Gastes, und das fällt niemandem auf — der Gast ruft nicht an, er wartet.
+3. **`BREVO_API_KEY` in die Umgebung des Workers.** Nicht in die Datenbank: ein Schlüssel in einer Fachtabelle wandert in jede Sicherung und in jeden Mandantenexport.
+4. **Absenderangaben je Haus setzen**, über `PUT /v1/properties/:id/email-settings` oder den Einrichtungsbildschirm. Erst `enabled: true` schaltet den Versand ein.
+
+Ohne Schlüssel läuft der Worker unverändert weiter und meldet es einmal beim Start. Eingereihte Post bleibt stehen und geht hinaus, sobald der Schlüssel da ist — verloren ist nichts.
+
+### Was der Betrieb wissen muss
+
+**`sent` heißt angenommen, nicht zugestellt.** Der Status sagt, dass Brevo die Nachricht entgegengenommen hat. Ob sie im Postfach ankam, weiß nur Brevo; die `providerMessageId` im Postausgang ist der Schlüssel, mit dem sich eine Nachricht dort wiederfinden lässt. Rückmeldungen über Zustellung und Bounces holt das System **nicht** ab — das wäre ein eingehender Webhook und ist noch nicht gebaut.
+
+**Ein Übungshaus verschickt nichts.** Der Versand lässt sich dort nicht einmal einschalten. Grund: Schulungsdaten tragen echte Adressen, weil jemand seine eigene einträgt, um zu sehen wie es aussieht.
+
+**Eine unzustellbare Adresse hält das Haus nicht an.** Anders als ein Webhook-Abonnement wird nichts stillgelegt: die einzelne Nachricht scheitert, der Rest geht hinaus.
+
+**Gastadressen im Postausgang altern.** Nach 90 Tagen entfernt der Pflegejob Empfänger und Anschreiben und behält den Nachweis — wann, welche Art, welcher Ausgang, welcher Fingerabdruck des Anhangs. Die Rechnung selbst liegt davon unberührt in `invoice_document` unter der achtjährigen Aufbewahrung.
+
+### Wenn nichts ankommt
+
+| Befund im Postausgang | Ursache |
+|---|---|
+| `pending`, Versuche 0, älter als ein paar Minuten | Kein `BREVO_API_KEY`, oder der Versand ist nicht eingeschaltet |
+| `pending`, Versuche 0, Rechnungsmail | Der Beleg ist noch nicht erzeugt. Die Mail wartet darauf, absichtlich |
+| `failed` nach **einem** Versuch, Fehler 400 | Adresse abgelehnt oder Absender nicht verifiziert. Kein Wiederholungsfall |
+| `failed` nach fünf Versuchen | Anbieter war dauerhaft nicht erreichbar |
+| `sent`, Gast sagt nichts bekommen | Mit der `providerMessageId` im Protokoll bei Brevo nachsehen. Meist SPF/DKIM |
+
+---
+
+## 8. Was regelmäßig zu prüfen ist
 
 | Wann | Was |
 |---|---|

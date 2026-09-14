@@ -1,6 +1,6 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { ciiTotals, type CiiInvoice, type CiiLine } from '@hotelpms/domain'
+import { ciiTotals, formatCent, type CiiInvoice, type CiiLine } from '@hotelpms/domain'
 import { loadAssets } from './pdfa3.js'
 
 /**
@@ -53,13 +53,11 @@ const TITEL: Record<CiiInvoice['kind'], string> = {
   credit_note: 'Stornorechnung'
 }
 
-/** 123456 wird zu 1.234,56. Ganzzahlig gerechnet, nie ueber Fliesskomma. */
-export function euro(cent: number): string {
-  const negativ = cent < 0
-  const abs = Math.abs(Math.trunc(cent))
-  const ganz = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return `${negativ ? '-' : ''}${ganz},${String(abs % 100).padStart(2, '0')}`
-}
+/**
+ * 123456 wird zu 1.234,56. Steht seit dem Mailversand in der Domaene, damit
+ * Rechnungsblatt und Anschreiben denselben Betrag gleich schreiben.
+ */
+export const euro = formatCent
 
 /** 2026-10-01 wird zu 01.10.2026, ohne den Umweg ueber eine Zeitzone. */
 export function datum(iso: string): string {

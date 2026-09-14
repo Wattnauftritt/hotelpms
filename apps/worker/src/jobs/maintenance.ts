@@ -82,6 +82,26 @@ export async function purgeRegistrations(
   return r.rowCount ?? 0
 }
 
+/**
+ * Gastdaten im Postausgang altern lassen.
+ *
+ * Eine Zustellung ist kein Buchungsbeleg: die Rechnung selbst liegt in
+ * `invoice_document` und unterliegt dort der achtjaehrigen Aufbewahrung. Was
+ * im Postausgang steht, ist eine Adresse und ein Anschreiben, und dafuer gibt
+ * es nach ein paar Wochen keinen Zweck mehr -- nur noch ein Risiko.
+ *
+ * Entfernt werden deshalb Empfaenger und Rumpf, nicht die Zeile: die Frage
+ * "ist die Rechnung rausgegangen" kann noch Jahre spaeter kommen, und sie
+ * laesst sich ohne Gastdaten beantworten.
+ */
+export async function redactOldEmails(
+  client: PoolClient, propertyId: number, days = 90
+): Promise<number> {
+  const r = await client.query<{ n: number }>(
+    `SELECT email_redact_old($1,$2) AS n`, [propertyId, days])
+  return r.rows[0]?.n ?? 0
+}
+
 /** Abgelaufene Sitzungen und Idempotenzschluessel aufraeumen. */
 export async function purgeExpired(client: PoolClient): Promise<number> {
   const s = await client.query(

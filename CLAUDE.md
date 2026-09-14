@@ -2,6 +2,8 @@
 
 Hotel-Property-Management-System. Deutsches Recht ist Kern, nicht Lokalisierung.
 
+**Zum Einlesen:** [`docs/18-einarbeitung.md`](docs/18-einarbeitung.md) sagt in zwanzig Minuten, was das System tut, wo es das tut und warum. Wer die Oberfläche anfasst, liest danach [`docs/19-frontend.md`](docs/19-frontend.md) und [`docs/20-arbeitsteilung.md`](docs/20-arbeitsteilung.md).
+
 **Vor jeder Änderung:** [`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md) sagt, was fertig ist und welche Aufgaben offen und abgegrenzt sind. Die Begründungen hinter dem Entwurf stehen in `docs/01` bis `docs/15`; sie sind keine Ziererei, sondern der Grund, warum Dinge so und nicht anders gebaut sind.
 
 ---
