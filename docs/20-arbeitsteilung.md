@@ -181,10 +181,10 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | B1 | Preisraster für ein ganzes Jahr | im PR #26 | #26 | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
 | B2 | Massenänderung mit Vorschau | im PR #26 | #26 | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
 | B3 | Restriktionen | im PR #26 | #26 | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
-| B4 | Ratenpläne | im PR #n | #n | Anlegen und abgeleitete Raten neu rechnen, unter dem Raster statt in der Einrichtung |
-| B5 | Rechnungsliste | im PR #n | #n | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
-| B6 | Rechnungsansicht | im PR #n | #n | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
-| B7 | Rechnung verschicken | im PR #n | #n | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
+| B4 | Ratenpläne | im PR #30 | #30 | Anlegen und abgeleitete Raten neu rechnen, unter dem Raster statt in der Einrichtung |
+| B5 | Rechnungsliste | im PR #30 | #30 | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
+| B6 | Rechnungsansicht | im PR #30 | #30 | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
+| B7 | Rechnung verschicken | im PR #30 | #30 | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
 | B8 | Anzahlung | offen | — | |
 | B9 | Pay-by-Link | offen | — | |
 | B10 | Was der Channel Manager sieht | offen | — | |
