@@ -30,24 +30,6 @@ export function tageInklusive(from: string, to: string): string[] {
   return out
 }
 
-/**
- * Die Rechte dieses Benutzers in diesem Haus.
- *
- * Sie stehen schon in der Antwort von `/v1/auth/me`, die der Rahmen beim
- * Start holt; hier wird nur derselbe Zwischenspeicher gelesen. Das kostet
- * keine zusaetzliche Runde und haelt die Maske ehrlich: wer nur lesen darf,
- * sieht keinen Knopf, der ihm eine 403 antwortet. Die Sicherheit liegt in
- * der API und nirgends sonst -- das hier ist Brauchbarkeit.
- */
-export function useRechte(propertyId: number): readonly string[] {
-  const me = useQuery<{ properties: Array<{ id: number; permissions: string[] }> }>({
-    queryKey: ['me'],
-    queryFn: () => api.get('/v1/auth/me'),
-    retry: false
-  })
-  return me.data?.properties.find(p => p.id === propertyId)?.permissions ?? []
-}
-
 export const useRatePlans = (propertyId: number) =>
   useQuery<{ ratePlans: RatePlan[] }>({
     queryKey: ['ratePlans', propertyId],
@@ -80,6 +62,40 @@ export function useSetRates(propertyId: number) {
   return useMutation({
     mutationFn: (body: SetRates) =>
       api.put<{ ratePlanId: number; days: number }>('/v1/rates/bulk', body),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] }) }
+  })
+}
+
+/**
+ * Einen Ratenplan anlegen.
+ *
+ * Abgeleitet oder eigenstaendig: eine abgeleitete Rate traegt ihre Preise
+ * nicht als Formel, sondern materialisiert -- sonst kostete jede
+ * Verfuegbarkeitsanfrage eine rekursive Aufloesung ueber die Kette. Nach dem
+ * Anlegen steht sie deshalb **leer** da, bis einmal neu gerechnet wurde.
+ */
+export function useCreateRatePlan(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      code: string; name: string; categoryId: number
+      baseRatePlanId?: number; deriveKind?: 'amount' | 'percent'; deriveValue?: number
+    }) => api.post<{ ratePlanId: number; ratePlanRef: string }>(
+      `/v1/properties/${propertyId}/rate-plans`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+    }
+  })
+}
+
+/** Abgeleitete Raten fuer einen Zeitraum neu rechnen. */
+export function useRebuildDerived(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { from: string; to: string }) =>
+      api.post<{ plans: number; days: number }>(
+        '/v1/rates/rebuild-derived', { propertyId, ...body }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] }) }
   })
 }

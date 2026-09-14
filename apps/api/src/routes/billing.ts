@@ -4,6 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
+import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party }
@@ -93,6 +94,12 @@ async function erwarteteSaetze(
 
   return expectedRateMix(posten)
 }
+
+/**
+ * Ein Jahr Rechnungen je Anfrage. Mehr braucht keine Ansicht, und die
+ * Buchhaltung nimmt ohnehin den GoBD-Export.
+ */
+const MAX_RECHNUNGSTAGE = 400
 
 export function billingRoutes(app: FastifyInstance): void {
   registerRoute(app, {
@@ -570,6 +577,71 @@ export function billingRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
+      })
+    }
+  })
+
+  /**
+   * Die Rechnungen eines Hauses zu einem Zeitraum.
+   *
+   * Bisher liess sich eine Rechnung nur ueber ihr Folio finden. Wer wissen
+   * will, was im Oktober hinausgegangen ist, musste den GoBD-Export nehmen
+   * -- der weist ein Uebungshaus hart ab und haengt an einem Recht, das die
+   * Rezeption nicht hat.
+   *
+   * **Was hier bewusst nicht steht: ob die Rechnung bezahlt ist.** Das
+   * Modell weiss es nicht. `settlement.invoice_id` waere die Stelle dafuer,
+   * aber dieses Feld wird nirgends geschrieben -- es hat einen Leser (der
+   * ZUGFeRD-Beleg fuer BT-113) und ein Schreibrecht aus Migration 0012,
+   * und keinen Schreiber. Eine Spalte "offen" oder "zugeordnet" waere
+   * damit strukturell immer der volle Betrag beziehungsweise null: eine
+   * Zahl, die richtig aussieht und es nie ist. Der Stand einer Zahlung
+   * steht am Folio, und dorthin fuehrt `folioRef`.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/invoices',
+    permission: 'folio:read',
+    propertyParam: 'propertyId',
+    summary: 'Rechnungen eines Zeitraums',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const q = req.query as { from: string; to: string; kind?: string; limit?: string }
+      if (!isIsoDate(q.from) || !isIsoDate(q.to)) {
+        throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+      }
+      const tage = nightsBetween(q.from, q.to) + 1
+      if (tage <= 0) throw Errors.validation({ to: ['Muss auf oder nach from liegen'] })
+      if (tage > MAX_RECHNUNGSTAGE) throw Errors.rangeTooLarge(MAX_RECHNUNGSTAGE)
+      // Obergrenze wie bei jedem Listenendpunkt: ohne sie ist er ein
+      // Selbstangriff. Ein Haus mit 200 Zimmern schreibt an einem starken
+      // Tag ueber hundert Rechnungen.
+      const limit = Math.min(Math.max(Number(q.limit ?? 200), 1), 500)
+
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query(
+          `SELECT i.public_ref AS "invoiceRef", i.number,
+                  i.issued_on::text AS "issuedOn",
+                  i.business_date::text AS "businessDate",
+                  i.kind, i.currency,
+                  (i.totals->>'grossCent')::bigint AS "grossCent",
+                  COALESCE(i.recipient_snapshot->>'name', '') AS recipient,
+                  f.public_ref AS "folioRef",
+                  d.invoice_id IS NOT NULL AS "documentReady",
+                  d.xml IS NOT NULL AS "hasXml",
+                  (SELECT e.status FROM outbound_email e
+                    WHERE e.invoice_id = i.id
+                    ORDER BY e.id DESC LIMIT 1) AS "mailStatus"
+             FROM invoice i
+             JOIN folio f ON f.id = i.folio_id
+             LEFT JOIN invoice_document d ON d.invoice_id = i.id
+            WHERE i.property_id = $1
+              AND i.issued_on BETWEEN $2::date AND $3::date
+              AND ($4::text IS NULL OR i.kind = $4)
+            ORDER BY i.issued_on DESC, i.id DESC
+            LIMIT $5`,
+          [Number(propertyId), q.from, q.to, q.kind ?? null, limit])
+        return { from: q.from, to: q.to, limit, invoices: rows }
       })
     }
   })
