@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 13. September 2026. 364 Tests, 26 Migrationen.
+Stand: 14. September 2026. 376 Tests, 26 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -25,9 +25,9 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
 | AP 12 Rezeptions-Oberfläche | fertig | `apps/web` |
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
-| AP 14 Import aus Altsystemen | **offen** | Aufgabe 8 |
+| AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 
-**88 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**89 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -221,7 +221,7 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 
 ---
 
-### Aufgabe 8 — Import aus Altsystemen
+### Aufgabe 8 — Import aus Altsystemen — **erledigt**
 
 **Warum.** Der Zielkunde ist Migrationskandidat. Ohne Importer gewinnt das Produkt keine Kunden (Dokument 05).
 
@@ -229,7 +229,9 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 
 **Anhaltspunkte.** `routes/import.ts` hat die Mechanik bereits: Trockenlauf als Regelfall, ganz oder gar nicht, Bindung über dieselben Inventarfunktionen. Der Adapter muss nur auf dieses Format abbilden.
 
-**Abnahme.** Ein Altbestand von 5000 Reservierungen läuft ohne überbuchte Kategorietage durch. Der Abgleich nennt jede nicht übernommene Zeile mit Grund.
+**Abnahme.** Beide Kriterien sind als Test hinterlegt: 5000 Reservierungen über den hotline-Adapter laufen in 13,5 Sekunden durch, ohne einen einzigen überbuchten Kategorietag, und der bestehende Bericht nennt jede nicht übernommene Zeile mit Zeilennummer und Grund.
+
+**Was daraus entschieden wurde.** Die Adapter übersetzen nur die Rohform und rufen dann dieselbe `runImport()` wie der generische Import — die korrektursensible Logik gibt es einmal, nicht viermal. Die drei Spaltenformen in `platform/legacyImport/` sind **begründete, aber unbestätigte Annahmen**: für keines der drei Systeme gibt es eine veröffentlichte Formatbeschreibung, und das steht auch in der Antwort von `GET /v1/imports/legacy/templates`. Vor dem ersten echten Kunden gehören sie gegen eine tatsächliche Exportdatei geprüft. Protels amerikanisches Datum ist der Grund, warum ein Adapter das Datum selbst umrechnet: `07/01/2026` wäre sonst der 7. Januar statt des 1. Juli.
 
 ---
 
@@ -259,6 +261,8 @@ Dabei ist ein Fehler aufgefallen, der die Rotation still unbrauchbar gemacht hä
 | Alarm bei ausgefallenem Nachtlauf | `jobs/maintenance.ts` | **erledigt** |
 | Gruppen und Kontingente | `0022`, `routes/blocks.ts`, `apps/web/src/routes/Blocks.tsx` | **erledigt** |
 | Folio-Bildschirm in der Oberfläche | `apps/web/src/routes/Folio.tsx` | **erledigt** |
+| Bestand am Zustand statt am Handlungspaar binden | `routes/reservations.ts` | **erledigt** |
+| Wiederherstellen nach Storno oder No-Show als Endpunkt | `routes/reservations.ts` | **erledigt** |
 
 Aus den vier erledigten Punkten ist eine Entscheidung hervorgegangen, die andernorts gilt: **`inventory_move` bindet zuerst und gibt erst danach frei**, und es bindet bei gleicher Kategorie nur die Differenz. Beides hat einen Grund. Zwischen Freigeben und Neubelegen wäre das Kontingent frei, und genau dann kauft es das Portal. Und wer bei einer Verlängerung den ganzen Aufenthalt neu bindet, konkurriert mit sich selbst und scheitert im vollen Haus an der eigenen Buchung.
 
@@ -267,6 +271,10 @@ Zwei weitere Festlegungen daraus: eine **No-Show-Gebühr ohne hinterlegte Storno
 Bei den Kontingenten lag die eigentliche Lücke nicht in der Oberfläche: `availability_block` gab es seit `0009`, und der Nachtlauf gab bei Ablauf `quantity - picked_up` frei — nur gab es keinen Weg, `picked_up` zu erhöhen. Es fehlten die API und der Verweis `reservation.block_id`. Ein Kontingent ließ sich anlegen und freigeben, aber nie benutzen.
 
 Drei Festlegungen daraus: Ein **Abruf verschiebt**, er bindet nicht zusätzlich — `inventory_unblock` und dann `inventory_reserve`, in dieser Reihenfolge und damit umgekehrt zu `inventory_move`. Dort hält noch niemand den Platz, hier hält ihn das Kontingent bereits; im vollen Haus scheiterte ein Binden vor dem Freigeben an der eigenen Gruppe. Ein **Storno gibt an die Gruppe zurück**, nicht in den freien Verkauf, sonst verlöre eine Gruppe bei jedem Storno ein Zimmer an Laufkundschaft. Und ein **Abruf läuft über den ganzen Zeitraum des Kontingents**: bei einem Teilabruf sänke `blocked` nur an den belegten Nächten, die Freigabe des Rests rechnet aber über den ganzen Zeitraum, und an den übrigen Nächten bliebe dauerhaft Kontingent gebunden, das niemandem mehr gehört.
+
+Beim Nachlesen der Kontingent-Umsetzung ist ein älterer Fehler aufgefallen, der nichts mit Kontingenten zu tun hat: **ob Bestand gebunden wird, hing am Handlungspaar Storno/Wiederherstellen statt am Zustand.** Ein No-Show, der doch noch anreist, geht aber nicht über dieses Paar — er geht über `check_in` direkt nach `InHouse`, einen bindenden Zustand, ohne dass je wieder gebunden wurde. Das Zimmer war belegt, der Zähler sagte frei, und auffallen würde die Differenz als Überbuchung, nicht als Fehlermeldung. Der Übergang fragt jetzt `occupiesInventory` für Vorher und Nachher; damit ist jeder Weg in einen bindenden Zustand abgedeckt, auch die, die es noch nicht gibt. Dabei fiel auf, dass der Zustandsautomat `reinstate` seit jeher kennt, es aber keinen Endpunkt dafür gab: ein versehentlicher Storno war bis dahin endgültig.
+
+Ein manueller No-Show-Endpunkt ist bewusst **nicht** dazugekommen. Den No-Show setzt der Nachtlauf, und er bucht dabei die Stornogebühr nach hinterlegter Regel. Eine Route, die nur den Zustand umlegt, sähe aus wie dasselbe und wäre es nicht.
 
 Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt keinen Löschknopf** (Positionen sind Härtegrad 1, eine Korrektur ist eine Gegenbuchung und steht sichtbar darunter), **fakturierte Positionen sind erkennbar** (statt eine Änderung erst beim Versuch mit einer Fehlermeldung zu beantworten), und **der Hinweis steht am Zahlungsformular, nicht in einer Fußnote**: wer hier tippt, soll wissen, dass er zuordnet und nicht abwickelt.
 
@@ -286,6 +294,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | snake_case gelesen, camelCase geprüft | Die Anschrift verschwand lautlos, die Rechnung wurde grundlos abgewiesen |
 | Frist gegen `now()` statt gegen den Geschäftstag | Ein Wiederholungslauf hätte andere Zeilen gefunden als der erste |
 | Zwei Testrollen zusammen vergeben | Verdeckte, dass jede einzeln nicht funktionierte |
+| Bestand am Handlungspaar statt am Zustand gebunden | Ein No-Show, der doch noch anreiste, belegte ein Zimmer, das der Zaehler als frei fuehrte |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).
 

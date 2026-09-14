@@ -264,8 +264,22 @@ export function reservationRoutes(app: FastifyInstance): void {
               `SELECT id, status, category_id, from_date::text, to_date::text
                  FROM availability_block WHERE id = $1 FOR UPDATE`, [r.block_id])).rows[0] ?? null
 
+        /*
+         * Ob Bestand gebunden wird, entscheidet der **Zustand**, nicht die
+         * Handlung. Hier stand das Paar Storno/Wiederherstellen
+         * ausgeschrieben, und dabei fehlte ein Fall: ein No-Show, der doch
+         * noch anreist, geht nicht ueber dieses Paar - er geht ueber
+         * `check_in` direkt nach `InHouse`, einen bindenden Zustand, ohne
+         * dass je wieder gebunden wurde. Das Zimmer war belegt und der
+         * Zaehler sagte frei; auffallen wuerde das als Ueberbuchung, nicht
+         * als Fehlermeldung. `occupiesInventory` fuer Vorher und Nachher
+         * deckt jeden Weg ab, auch die, die es noch nicht gibt.
+         */
+        const bandVorher = occupiesInventory(r.status)
+        const bindetNachher = occupiesInventory(target)
+
         // Kontingent freigeben, sobald die Reservierung es nicht mehr bindet.
-        if (target === 'Canceled' || target === 'NoShow') {
+        if (bandVorher && !bindetNachher) {
           await client.query(`SELECT inventory_release($1,$2,$3::date,$4::date,1)`,
             [r.property_id, r.category_id, r.arrival, r.departure])
           if (block !== null && block.status === 'active') {
@@ -276,7 +290,7 @@ export function reservationRoutes(app: FastifyInstance): void {
               [block.id])
           }
         }
-        if (r.status === 'Canceled' && target === 'Confirmed') {
+        if (!bandVorher && bindetNachher) {
           // Wiederherstellung: derselbe Weg wie beim Abruf, erst freigeben,
           // dann binden.
           if (block !== null && block.status === 'active') {
@@ -316,6 +330,11 @@ export function reservationRoutes(app: FastifyInstance): void {
   action('/v1/reservations/:reservationRef/check-in', 'check_in', 'reservation:checkin', 'Check-in')
   action('/v1/reservations/:reservationRef/check-out', 'check_out', 'reservation:checkin', 'Check-out')
   action('/v1/reservations/:reservationRef/cancel', 'cancel', 'reservation:write', 'Stornieren')
+  // Der Zustandsautomat kennt `reinstate` seit jeher, einen Weg dorthin gab
+  // es nicht: ein versehentlicher Storno war damit endgueltig, und ein
+  // No-Show, der doch noch anreist, kam nur ueber den Check-in zurueck.
+  action('/v1/reservations/:reservationRef/reinstate', 'reinstate', 'reservation:write',
+    'Storno oder No-Show zuruecknehmen')
 
   registerRoute(app, {
     method: 'POST',
