@@ -162,17 +162,17 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
 | A1 | Balken anklicken | fertig | #24 | `ReservationPanel`, `GET /v1/reservations/:ref` in einem Aufruf. Im Browser gegen die echte API geprüft |
-| A2 | Im Plan buchen | offen | — | |
-| A3 | Verschieben | offen | — | |
-| A4 | Verkürzen und verlängern | offen | — | |
+| A2 | Im Plan buchen | im PR #31 | #31 | Ziehen im leeren Bereich oeffnet `BookingDialog` mit vorbelegtem Zimmer/Zeitraum. `POST /v1/bookings` bekam `guestRef` (die Oberflaeche kennt nie die laufende Gast-id). Im Browser geprueft |
+| A3 | Verschieben | im PR #31 | #31 | Balken auf andere Zimmerzeile ziehen, `assign-unit`. Schattenbalken waehrend des Ziehens, kein optimistischer Sprung |
+| A4 | Verkürzen und verlängern | im PR #31 | #31 | Balkenrand ziehen, `change-stay` — nie Storno plus Neubuchung |
 | A5 | Notiz am Balken | fertig | #24 | Im selben Seitenfenster wie A1 erledigt: `PATCH /v1/reservations/:ref`, Merkmal (📌) am Balken samt Tooltip. Speichern und Persistenz im Browser geprüft |
-| A6 | Gastsuche und -profil | offen | — | |
-| A7 | Warnungen im Plan | offen | — | |
-| A8 | Verfügbarkeitsraster | offen | — | |
-| A9 | Check-in mit Meldeschein | offen | — | |
-| A10 | Firmen | offen | — | |
-| A11 | Storno und Wiederherstellen | offen | — | |
-| A12 | Bestätigung schicken | offen | — | |
+| A6 | Gastsuche und -profil | im PR #31 | #31 | Eigener Bildschirm `Guests.tsx`: Suche, Anlegen, Profil. Ausweisnummer maskiert, Klartext erst nach Klick hinter `guest:read_identity` |
+| A7 | Warnungen im Plan | im PR #31 | #31 | Unzugewiesene Ankuenfte und Ueberbuchung je Zimmergruppe, clientseitig aus den geladenen Plandaten — kein Aufruf je Zeile |
+| A8 | Verfügbarkeitsraster | im PR #31 | #31 | Zimmergruppe × Tag, bis 731 Tage in einem Aufruf, Zelle fuehrt in den Buchungsdialog |
+| A9 | Check-in mit Meldeschein | im PR #31 | #31 | Aus dem Plan erreichbar (`ReservationPanel` → `CheckIn.tsx`). Kein Unterschriftsfeld fuer inlaendische Gaeste seit 1.1.2025; ohne Zimmer sagt die Maske es vor dem Knopf |
+| A10 | Firmen | im PR #31 | #31 | Reiter im Gaeste-Bildschirm. Neue Endpunkte `GET`/`PATCH /v1/companies/:ref` |
+| A11 | Storno und Wiederherstellen | im PR #31 | #31 | Reversibel mit Bestaetigung vor dem Storno. Dabei gefunden: `reinstate` liess `canceled_at` stehen — jetzt zurueckgesetzt |
+| A12 | Bestätigung schicken | im PR #31 | #31 | Fehlt die Adresse, sagt das Seitenfenster es explizit statt stillschweigend nichts zu tun |
 
 ### Spur B — Preise, Rechnung, Geld
 
