@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 14. September 2026. 423 Tests, 28 Migrationen.
+Stand: 14. September 2026. 448 Tests, 29 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -19,7 +19,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
 | AP 5 Reservierungen | fertig | `0009`, `0022`, `routes/reservations.ts`, `routes/blocks.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
-| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `0027`, `routes/billing.ts` |
+| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `0027`, `0029`, `routes/billing.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
 | AP 9 Housekeeping | fertig | `0011`, `routes/housekeeping.ts` |
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
@@ -126,8 +126,9 @@ werden dürfen.
 
 ### Aufgabe 3 — Anzahlungen und ihre Steuerpflicht — **erledigt**
 
-Migration `0027`, `apps/api/src/routes/billing.ts` (`POST .../deposit-invoice`, erweitertes
-`POST .../invoice`), `apps/worker/src/jobs/invoiceDocument.ts`.
+Migrationen `0027` und `0029`, `apps/api/src/routes/billing.ts` (`POST .../deposit-invoice`,
+erweitertes `POST .../invoice`), `packages/domain/src/deposit.ts`,
+`apps/worker/src/jobs/invoiceDocument.ts`, DATEV-Stapel in `apps/api/src/routes/reports.ts`.
 
 Die steuerliche Behandlung wurde mit dem Steuerberater bestätigt: die Vereinnahmung ist sofort
 umsatzsteuerpflichtig, § 13 Abs. 1 Nr. 1a UStG in seiner einfachen Lesart, ohne Sonderfall.
@@ -152,10 +153,55 @@ zwei Mechanismen leise vermischt. Stattdessen trägt `deposit_ledger.settlement_
 mit einem eindeutigen Index als eigentlichem Schutz gegen doppelte Verbuchung unter
 Nebenläufigkeit — dieselbe Lehre wie bei Aufgabe 5 und 6.
 
+**Im Buchungsstapel, nicht nur auf dem Beleg (`0029`).** Der DATEV-Export las ausschließlich über
+`invoice JOIN charge`. Eine Anzahlung erzeugt aber keine `charge` — sie ist keine Leistung —, und
+damit stand ihre Steuer zwar im ZUGFeRD-Beleg, aber in keinem Stapel, den der Steuerberater
+einspielt. Genau das verlangt die Abnahme jedoch. Gebucht wird deshalb zusätzlich aus dem
+Anzahlungsjournal: die Vereinnahmung am Geschäftstag des Zahlungsvermerks gegen das Konto für
+erhaltene, versteuerte Anzahlungen (SKR03 1718, bewusst kein Erlöskonto — bis geleistet wurde,
+ist es eine Verbindlichkeit), die Verrechnung am Tag der Schlussrechnung wieder heraus. Der
+Stapel läuft chronologisch und trägt nur positive Beträge: DATEV kennt keinen negativen Umsatz,
+die Richtung steht im Soll/Haben-Kennzeichen. Das galt auch schon für die Storno-Position der
+Kasse, die bisher ein Minus ins Betragsfeld schrieb.
+
+**Eine Anzahlung trägt so viele Steuersätze wie der Aufenthalt (`0029`).** Anfangs war es genau
+einer, vom Aufrufer mitgegeben. Das Haus verkauft aber Übernachtung zum ermäßigten und Getränke
+zum vollen Satz, und ein Frühstücksbuffet beides in einem Preis. Fehlt der Satz, wird er nun im
+Verhältnis der **erwarteten** Leistung abgeleitet: der geplante Aufenthalt und die im Ratenpreis
+enthaltenen Leistungen, das Buffet nach dem Verhältnis, das an `product` steht (üblich 30 Prozent
+Getränke). Gerechnet wird mit dem Plan und nicht mit dem schon Gebuchten — bei einer Anzahlung
+zur Buchungszeit ist noch keine Nacht gebucht, und für die Aufteilung zählt nur das Verhältnis.
+
+**Die Rechnung weist den vereinnahmten Betrag aus, nicht einen Cent daneben.** Netto
+herausrechnen und die Steuer wieder daraufschlagen trifft ihn nicht: beide Schritte runden, und
+bei jeder fünfzehnten Anzahlung fehlte danach ein Cent — eine Anzahlung über 250,00 Euro stand
+als 249,99 Euro auf dem Beleg, während das Journal 250,00 führte. Die Nettobeträge werden deshalb
+absichtlich nachgestellt, bis die Rechnung den Eingang trifft; ins Journal kommt, was der Beleg
+ausweist. Bei zwei Sätzen geht das fast immer auf. Bleibt ein Cent, ist er eine Grenze der Norm
+und nicht ein Rundungsfehler: zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer genau
+250,00 Euro ergibt, und BR-CO-14 lässt nichts anderes zu. Aus demselben Grund kann der ausgewiesene
+Endbetrag einer Schlussrechnung um einen Cent von „Leistung minus Anzahlung" abweichen; der Saldo
+des Folios, also das Geld, ist davon unberührt und exakt.
+
+**Beim Nachprüfen gefunden und mitbehoben.** Eine Zwischenrechnung über ausgewählte Positionen
+verbrauchte die ganze Anzahlung: die Schlussrechnung bekam nichts mehr, und eine Zwischenrechnung
+über ein Mineralwasser hätte über einen negativen Betrag gelautet. Verrechnet wird nun nur auf der
+Schlussrechnung über alle offenen Positionen. Übersteigt die Anzahlung die abzurechnenden
+Leistungen — der Gast reist früher ab —, wird die Rechnung abgewiesen statt negativ ausgestellt:
+das ist eine Rückzahlung, und dafür ist eine Rechnung das falsche Papier. Ein negativer
+Zahlungsvermerk (Storno, Erstattung) wird nicht mehr als Anzahlung angenommen; vorher schlug erst
+die Bedingung am Journal zu, als Fehler 500.
+
 **Abnahme geprüft:** eine Anzahlung von 200 Euro auf einen Aufenthalt von 500 Euro ergibt eine
 Schlussrechnung über netto 500 Euro Leistung mit einer Verrechnungsposition und 300 Euro offen;
 die Steuer der Anzahlung steht im Geschäftsdatum ihres Zahlungsvermerks, nicht im
-Ausstellungsdatum der Anzahlungsrechnung.
+Ausstellungsdatum der Anzahlungsrechnung, und sie steht dort auch im DATEV-Stapel.
+
+**Noch offen.** Die Rückzahlung einer nicht verbrauchten Anzahlung: das Journal kennt die Art
+`refunded` nicht, und es gibt keinen Weg, sie zu erzeugen. Sie gehört zum Storno und braucht eine
+eigene Entscheidung darüber, ob eine Stornogebühr einbehalten wird. Ebenfalls offen: das
+Anzahlungsjournal steht nicht im GoBD-Export — die Anzahlungsrechnung selbst schon, die Verbindung
+zu Zahlungsvermerk und Verrechnung nicht.
 
 ---
 
