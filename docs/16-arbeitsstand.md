@@ -378,7 +378,7 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme
 
-**Warum.** Die Steuer wird je Satzgruppe aus der **Nettosumme** gerechnet — so steht es in `CLAUDE.md`, und die Norm verlangt es ebenso (BR-CO-14 in EN 16931). Netto und Steuer sind beide auf den Cent gerundet, und daraus folgt etwas, das leicht zu übersehen ist: **nicht jeder Bruttobetrag ist darstellbar.** Zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer 250,00 Euro ergibt — 233,64 plus 16,35 sind 249,99, 233,65 plus 16,36 sind 250,01. Rund jeder fünfzehnte Bruttobetrag fällt zu 7 Prozent in eine solche Lücke, zu 19 Prozent etwa jeder dritte.
+**Warum.** Die Steuer wird je Satzgruppe aus der **Nettosumme** gerechnet — so steht es in `CLAUDE.md`, und die Norm verlangt es ebenso (BR-CO-14 in EN 16931). Netto und Steuer sind beide auf den Cent gerundet, und daraus folgt etwas, das leicht zu übersehen ist: **nicht jeder Bruttobetrag ist darstellbar.** Zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer 250,00 Euro ergibt — 233,64 plus 16,35 sind 249,99, 233,65 plus 16,36 sind 250,01. **Nachgemessen über die ersten 100 000 Centbeträge:** zu 7 Prozent sind **6,5 Prozent** der Bruttobeträge nicht darstellbar, zu 19 Prozent **16,0 Prozent** — also etwa jeder fünfzehnte und etwa jeder sechste. (Hier stand zuvor „zu 19 Prozent etwa jeder dritte"; das war geschätzt und zu hoch.)
 
 Das trifft überall dort, wo ein **Bruttobetrag vorgegeben** ist und die Rechnung ihn ausweisen soll:
 
@@ -386,10 +386,12 @@ Das trifft überall dort, wo ein **Bruttobetrag vorgegeben** ist und die Rechnun
 |---|---|
 | Anzahlung (`depositLines` in `packages/domain/src/deposit.ts`) | abgefedert: die Nettobeträge werden nachgestellt, bis die Rechnung den Eingang trifft; bei zwei Sätzen geht das fast immer auf, sonst bleibt ein Cent |
 | Schlussrechnung mit Anrechnung | der ausgewiesene Endbetrag kann um einen Cent von „Leistung minus Anzahlung" abweichen, weil beide Seiten je Satzgruppe eigenständig runden |
-| Kassenumsatz (`routes/pos.ts`) | brutto herein, netto und Steuer heraus — **ungeprüft**, ob der Beleg der Kasse und unsere Position denselben Betrag tragen |
+| Kassenumsatz (`routes/pos.ts`) | **gemessen und bestätigt**: die `charge`-Zeile trägt den Bruttobetrag der Kasse exakt (`gross_cent` kommt unverändert von dort), aber die **Rechnung** weicht ab. Ein Beleg über 250,00 zu 7 Prozent erscheint auf der Rechnung als 249,99, weil `sumInvoice` die Steuer je Satzgruppe aus der Nettosumme neu rechnet. Über mehrere Posten einer Satzgruppe wächst die Abweichung: bei bis zu 40 Kassenposten gemessene **3 Cent** |
 | Paketpreis (`splitPackage`) | setzt Zusatzleistungen mit festem Brutto an; dieselbe Frage, **ungeprüft** |
 
-**Zu klären ist nicht, ob gerundet wird, sondern wo der Cent liegen darf.** Das Geld ist davon unberührt: der Saldo eines Folios kommt aus `charge` und `settlement` und ist exakt. Es geht um die Beträge auf den Belegen und darum, dass sie überall nach derselben Regel entstehen.
+**Zu klären ist nicht, ob gerundet wird, sondern wo der Cent liegen darf.** Das Geld ist davon unberührt: der Saldo eines Folios kommt aus `charge.gross_cent` und `settlement.amount_cent` und ist exakt.
+
+**Damit ist aber auch die Folge benannt**, und sie ist unangenehmer als „ein Cent auf dem Papier": weicht die ausgewiesene Rechnungssumme vom Folio-Saldo ab, bleibt nach dem Bezahlen der Rechnung ein Rest auf dem Konto stehen. Das Folio schließt nie auf null, und niemand merkt es — weil es ein Cent ist und niemand danach sucht. Wer die Aufgabe übernimmt, prüft diesen Fall zuerst.
 
 **Umfang.**
 - Feststellen, an welchen Stellen ein vorgegebener Bruttobetrag in Netto und Steuer zerlegt wird, und ob sie sich gleich verhalten.

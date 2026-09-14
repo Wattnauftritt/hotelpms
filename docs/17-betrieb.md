@@ -6,6 +6,10 @@ Dieses Dokument beschreibt den Betrieb, nicht den Entwurf. Warum die Dinge so ge
 
 ---
 
+> **Die Maschine steht noch nicht?** [`21-inbetriebnahme.md`](21-inbetriebnahme.md) führt von der leeren VM bis zum laufenden Betrieb. Dieses Dokument sagt, was danach gilt.
+
+---
+
 ## 1. Plattenverschlüsselung (C3)
 
 **Warum.** Die Datenbank enthält Namen, Anschriften, Geburtsdaten und Ausweisnummern. Ohne verschlüsselte Platte genügt der physische Zugriff auf den Proxmox-Host oder eine mitgenommene Sicherung, um alles zu lesen. Die Verschlüsselung der Ausweisnummer in der Anwendung schützt genau ein Feld; sie ersetzt das hier nicht.
