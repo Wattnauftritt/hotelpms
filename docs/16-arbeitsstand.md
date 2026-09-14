@@ -320,7 +320,7 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 | Schulungsbetrieb (C11) | **erledigt**, `platform/training.ts` |
 | Schlüsselrotation (C4) | **erledigt** als Werkzeug, `apps/api/src/cli/rotate-keys.ts` |
 | Mandantenexport (E7) | **erledigt**, `GET /v1/properties/:id/exports/tenant` |
-| Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit, Anleitung in Dokument 17 |
+| Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit. Entwurf steht: verschlüsselt wird der **Host-Speicher**, nicht die VM, entsperrt über das physische TPM und einen Tang-Server statt durch einen wachen Menschen. Anleitung in Dokument 17 §1 |
 | Sicherung außer Haus | **offen**, Betriebsarbeit; die Rückspielung muss einmal erprobt sein |
 | Ratenbegrenzung in Caddy | **offen**, Baustein in Dokument 17 |
 

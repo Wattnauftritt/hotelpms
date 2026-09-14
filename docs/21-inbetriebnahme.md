@@ -2,7 +2,7 @@
 
 Von der leeren VM bis zum laufenden Betrieb. [`17-betrieb.md`](17-betrieb.md) sagt, **was** im Betrieb gilt; dieses Dokument sagt, **wie** die Maschine dorthin kommt.
 
-Der Host ist Proxmox — das setzt Dokument 17 bereits voraus (Plattenverschlüsselung, C3).
+Der Host ist Proxmox. **Die Verschlüsselung sitzt dort und nicht in dieser VM** — warum, steht in [`17-betrieb.md`](17-betrieb.md) §1, und es ist wichtig genug, um es vor dem ersten Schritt gelesen zu haben.
 
 ---
 
@@ -26,9 +26,11 @@ Der Host ist Proxmox — das setzt Dokument 17 bereits voraus (Plattenverschlüs
 
 Der Platzbedarf wächst vor allem durch zwei Dinge: die Rechnungsbelege liegen als PDF **in der Datenbank** (`invoice_document`, rund 2 GB bei 20 000 Rechnungen im Jahr) und das `audit_log` ist partitioniert und bleibt acht Jahre liegen. 80 GB tragen einige Jahre; beobachten statt raten.
 
-**Die Platte wird bei der Installation verschlüsselt** — LUKS, wie in Dokument 17 §1. Nachträglich geht das nur über Neuanlage und Rückspielung, deshalb ist es der erste Schritt und nicht der letzte.
+**Die VM selbst wird nicht verschlüsselt.** Sie wird auf einen **verschlüsselten Datenspeicher des Hosts** gelegt; das ist der erste Schritt und er passiert auf dem Host, bevor diese VM entsteht. Die Begründung steht in Dokument 17 §1 und lässt sich in einem Satz sagen: Proxmox kann das physische TPM nicht durchreichen, sein `swtpm` legt den Schlüssel als Volume **neben** die Platte, und damit entsperrt sich eine gestohlene VM von allein.
 
-Die Passphrase liegt nicht auf dem Host. Beim Neustart wird sie eingegeben, oder über `clevis` an einen TPM gebunden. **Das ist der unbequeme Teil und er ist der Punkt:** ein System, das automatisch entschlüsselt, weil der Schlüssel danebenliegt, ist unverschlüsselt mit Zusatzschritten.
+**Kein vTPM an dieser VM.** Es kauft nichts und kostet die Sicherung — Sicherungen von VMs mit TPM-Gerät bleiben hängen, und der übliche Behelf (`backup=0`) nimmt den vTPM-Zustand aus der Sicherung heraus. Die zurückgespielte VM entsperrt sich dann nie wieder.
+
+**Und niemand tippt beim Neustart eine Passphrase.** Ein PMS läuft rund um die Uhr, und `unattended-upgrades` weiter unten will nach jedem Kernel-Update neu starten. Entsperrt wird auf dem Host über `clevis`, „eines von zweien": physisches TPM oder Tang-Server. Dazu eine Notfall-Passphrase im Tresor, erreichbar für mindestens zwei Personen.
 
 ---
 
@@ -268,6 +270,8 @@ pg_dump --format=custom --file=/var/backups/hotelpms/$(date +%F).dump hotelpms
 
 Dazu ein Ziel **außer Haus** — eine Kopie auf derselben verschlüsselten Platte überlebt keinen Plattenfehler und keinen Verschlüsselungstrojaner. Ein Anbieter mit Objektspeicher in Deutschland, Übertragung verschlüsselt, Aufbewahrung nach Generationen.
 
+**Gesichert wird aus der laufenden VM heraus, nicht das Blockgerät.** Eine Sicherung der verschlüsselten Platte ist ein undurchsichtiger Klumpen: zurückspielen lässt er sich, öffnen nur mit dem Schlüssel — und steckt der bloß in einem Kopf oder in einem vTPM-Zustand, der gar nicht mitgesichert wurde, ist die Sicherung wertlos. Entsperrung und Sicherung sind dieselbe Frage; wer die eine plant, muss die andere mitplanen. `pg_dump` plus die Belege, eigenständig verschlüsselt, zum Objektspeicher.
+
 **Der Teil, der übersprungen wird und der eigentlich zählt: die Rückspielung.** Vierteljährlich in eine leere Datenbank zurückspielen und nachsehen, ob die Zahlen stimmen. Eine Sicherung, die nie zurückgespielt wurde, ist eine Vermutung. Sie gehört ins Protokoll mit Datum und Ergebnis.
 
 ---
@@ -276,7 +280,7 @@ Dazu ein Ziel **außer Haus** — eine Kopie auf derselben verschlüsselten Plat
 
 | # | Schritt | Fertig, wenn |
 |---|---|---|
-| 1 | VM anlegen, **LUKS bei der Installation** | `lsblk` zeigt `crypt` |
+| 1 | **Auf dem Host:** verschlüsselter Datenspeicher, Entsperrung über TPM und Tang; dann die VM darauf anlegen | Auf dem Host zeigt `lsblk` ein `crypt`, `clevis luks list` die Pins — **in der VM nicht**. Probe: Host kalt neu starten, VM kommt ohne Zutun hoch |
 | 2 | Pakete, Benutzer, Firewall | `ufw status` zeigt nur 22, 80, 443 |
 | 3 | PostgreSQL, Erweiterungen, drei Rollen mit **eigenen** Kennwörtern | `scripts/setup-db.sh` durchgelaufen |
 | 4 | Deploy Key, Repository geklont | `git log -1` zeigt den Stand von `main` |
@@ -288,7 +292,7 @@ Dazu ein Ziel **außer Haus** — eine Kopie auf derselben verschlüsselten Plat
 | 10 | Sicherung eingerichtet **und einmal zurückgespielt** | Protokolleintrag mit Datum |
 | 11 | Schlüsselrotation einmal geprobt | Dokument 17 §2 |
 
-**Vor Schritt 8 keine echten Gastdaten.** Die Punkte 9 bis 11 sind kein Nachklapp: ohne erprobte Rückspielung und ohne verschlüsselte Platte dürfen dort keine personenbezogenen Daten liegen.
+**Vor Schritt 8 keine echten Gastdaten.** Die Punkte 9 bis 11 sind kein Nachklapp: ohne erprobte Rückspielung und ohne verschlüsselten **Host-Speicher** dürfen dort keine personenbezogenen Daten liegen.
 
 ---
 
