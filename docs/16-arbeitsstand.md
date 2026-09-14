@@ -1,6 +1,8 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 14. September 2026. 418 Tests, 28 Migrationen.
+Stand: 14. September 2026. 423 Tests, 28 Migrationen.
+
+> **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -27,6 +29,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
+| AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
 
 **100 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 

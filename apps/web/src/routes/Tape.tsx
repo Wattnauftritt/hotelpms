@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTapeChart } from '../lib/queries.js'
-import { useT } from '../lib/i18n.js'
+import { useT } from '../lib/i18n/index.js'
 import { today, addDays } from '../lib/dates.js'
 import { TapeChart } from '../components/TapeChart.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'

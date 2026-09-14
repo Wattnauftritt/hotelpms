@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { RoomSeriesReport } from '@hotelpms/contracts'
 import { useCategories, useSetupStatus, useCreateCategory, useRoomSeries }
   from '../lib/queries.js'
-import { useT } from '../lib/i18n.js'
+import { useT } from '../lib/i18n/index.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
 /**
