@@ -10,6 +10,7 @@ import { housekeepingRoutes } from './housekeeping.js'
 import { registrationRoutes } from './registrations.js'
 import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
+import { legacyImportRoutes } from './legacyImport.js'
 import { setupRoutes } from './setup.js'
 import { blockRoutes } from './blocks.js'
 import { oauthRoutes } from './oauth.js'
@@ -35,6 +36,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   registrationRoutes(app)
   reportRoutes(app)
   importRoutes(app)
+  legacyImportRoutes(app)
   setupRoutes(app)
   blockRoutes(app)
   oauthRoutes(app)

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -28,7 +28,7 @@ import type { PoolClient } from '@hotelpms/db'
 
 const MAX_ZEILEN = 20_000
 
-interface Befund {
+export interface Befund {
   row: number
   level: 'error' | 'warning'
   message: string
@@ -42,7 +42,7 @@ interface ImportBody {
   commit?: boolean
 }
 
-interface ImportResult {
+export interface ImportResult {
   dryRun: boolean
   rows: number
   imported: number
@@ -261,6 +261,64 @@ async function importReservations(
   return { imported, findings }
 }
 
+/**
+ * Fuehrt einen Import durch, gleich welche Quelle die Zeilen geliefert hat
+ * (CSV eines Aufrufers oder ein Adapter fuer ein Altsystem, siehe
+ * routes/legacyImport.ts). Ganz oder gar nicht, Trockenlauf als Regelfall:
+ * ein Aufrufer, der wiederholt importiert - etwa bei einer
+ * Stichtagsmigration, erst zur Probe, dann kurz vor und am Stichtag selbst -
+ * bekommt jedes Mal denselben Bericht, und eine schon uebernommene externe
+ * Nummer wird uebersprungen, nicht doppelt angelegt (siehe importReservations
+ * oben). Der Bericht selbst ist der Abgleich: jede nicht uebernommene Zeile
+ * steht mit Grund darin, ob Ursache ein Fehler im Altbestand ist oder eine
+ * bereits erledigte Zeile aus einem frueheren Lauf.
+ */
+export async function runImport(
+  req: FastifyRequest, propertyId: number, commit: boolean,
+  records: Array<Record<string, string>>,
+  art: 'categories' | 'guests' | 'reservations'
+): Promise<ImportResult> {
+  const principal = req.principal as Principal
+  return tx(req.pool, req, async client => {
+    const account = await client.query<{ account_id: number }>(
+      `SELECT account_id FROM property WHERE id = $1`, [propertyId])
+    if (account.rowCount === 0) throw Errors.notFound('Property')
+    const accountId = account.rows[0]!.account_id
+
+    const r = art === 'categories'
+      ? await importCategories(client, propertyId, records)
+      : art === 'guests'
+        ? await importGuests(client, accountId, records)
+        : await importReservations(client, propertyId, accountId,
+                                   principal.userId, records)
+
+    const fehler = r.findings.filter(f => f.level === 'error').length
+    const result: ImportResult = {
+      dryRun: commit !== true,
+      rows: records.length,
+      imported: r.imported,
+      skipped: records.length - r.imported,
+      findings: r.findings.slice(0, 500)
+    }
+
+    // Der Trockenlauf ist der Regelfall: ohne commit wird zurueckgerollt,
+    // aber alles geprueft. Der Bericht ist in beiden Faellen derselbe.
+    if (commit !== true) {
+      throw new DryRun(result)
+    }
+    if (fehler > 0) {
+      // Ganz oder gar nicht. Ein halb uebernommener Bestand ist schlimmer
+      // als keiner, weil niemand weiss, welche Haelfte fehlt.
+      throw new DryRun({ ...result, dryRun: true, imported: 0,
+                         skipped: records.length })
+    }
+    return result
+  }).catch((e: unknown) => {
+    if (e instanceof DryRun) return e.result
+    throw e
+  })
+}
+
 export function importRoutes(app: FastifyInstance): void {
   const route = (
     art: 'categories' | 'guests' | 'reservations',
@@ -280,7 +338,6 @@ export function importRoutes(app: FastifyInstance): void {
     bodyLimit: 32 * 1024 * 1024,
     handler: async (req) => {
       const body = req.body as ImportBody
-      const principal = req.principal as Principal
       if (typeof body.csv !== 'string' || body.csv.trim() === '') {
         throw Errors.validation({ csv: ['Pflichtfeld'] })
       }
@@ -294,44 +351,7 @@ export function importRoutes(app: FastifyInstance): void {
         throw e
       }
 
-      return tx(req.pool, req, async client => {
-        const account = await client.query<{ account_id: number }>(
-          `SELECT account_id FROM property WHERE id = $1`, [body.propertyId])
-        if (account.rowCount === 0) throw Errors.notFound('Property')
-        const accountId = account.rows[0]!.account_id
-
-        const r = art === 'categories'
-          ? await importCategories(client, body.propertyId, records)
-          : art === 'guests'
-            ? await importGuests(client, accountId, records)
-            : await importReservations(client, body.propertyId, accountId,
-                                       principal.userId, records)
-
-        const fehler = r.findings.filter(f => f.level === 'error').length
-        const result: ImportResult = {
-          dryRun: body.commit !== true,
-          rows: records.length,
-          imported: r.imported,
-          skipped: records.length - r.imported,
-          findings: r.findings.slice(0, 500)
-        }
-
-        // Der Trockenlauf ist der Regelfall: ohne commit wird zurueckgerollt,
-        // aber alles geprueft. Der Bericht ist in beiden Faellen derselbe.
-        if (body.commit !== true) {
-          throw new DryRun(result)
-        }
-        if (fehler > 0) {
-          // Ganz oder gar nicht. Ein halb uebernommener Bestand ist schlimmer
-          // als keiner, weil niemand weiss, welche Haelfte fehlt.
-          throw new DryRun({ ...result, dryRun: true, imported: 0,
-                             skipped: records.length })
-        }
-        return result
-      }).catch((e: unknown) => {
-        if (e instanceof DryRun) return e.result
-        throw e
-      })
+      return runImport(req, body.propertyId, body.commit === true, records, art)
     }
   })
 
