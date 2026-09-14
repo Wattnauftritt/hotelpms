@@ -197,13 +197,13 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | C2 | Nachtlauf-Stand | im PR #25 | #25 | Reiter „Nachtlauf". Brauchte einen Endpunkt: `GET /v1/properties/:id/night-audit-status` |
 | C3 | Beherbergungsstatistik | im PR #25 | #25 | Reiter „Beherbergung". Im Übungshaus gar nicht erst angeboten |
 | C4 | Exporte | im PR #25 | #25 | Reiter „Ausgaben": DATEV, GoBD, Mandantenexport. Läuft neben der Oberfläche |
-| C5 | Wartungsmeldungen | läuft | — | Eigener Bildschirm „Wartung". Brauchte `PATCH /v1/maintenance-tickets/:id`; die Sperrung nimmt jetzt beide Arten |
-| C6 | Absenderangaben Gastpost | läuft | — | Reiter in „Einstellungen" |
-| C7 | Zahlungsarten | läuft | — | Reiter in „Einstellungen". Brauchte POST und PATCH; **kein** Löschen |
+| C5 | Wartungsmeldungen | im PR #27 | #27 | Eigener Bildschirm „Wartung". Brauchte `PATCH /v1/maintenance-tickets/:id`; die Sperrung nimmt jetzt beide Arten |
+| C6 | Absenderangaben Gastpost | im PR #27 | #27 | Reiter in „Einstellungen" |
+| C7 | Zahlungsarten | im PR #27 | #27 | Reiter in „Einstellungen". Brauchte POST und PATCH; **kein** Löschen |
 | C8 | Webhooks | offen | — | |
 | C9 | Maschinenzugänge, Channel Manager | offen | — | |
 | C10 | Benutzer und Rollen | offen | — | |
-| C11 | Stammdaten vollständig pflegen | läuft | — | `components/Stammdaten.tsx`, eingehängt in `Setup.tsx`. Alle Felder des Modells, stilllegen statt löschen |
+| C11 | Stammdaten vollständig pflegen | im PR #27 | #27 | `components/Stammdaten.tsx`, eingehängt in `Setup.tsx`. Alle Felder des Modells, stilllegen statt löschen |
 
 ---
 
