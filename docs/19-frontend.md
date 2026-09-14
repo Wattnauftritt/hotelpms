@@ -39,7 +39,21 @@ Drei von zwölf. Und die drei sind nicht die, an denen ein Haus sein Geld verdie
 
 ---
 
-## 3. Die drei Kalender — und wir haben einen davon, halb
+## 3. Der Belegungsplan ist das Kernelement
+
+Bevor die Einzelheiten kommen, die Festlegung, an der sich alles andere ausrichtet:
+
+> **Der Belegungsplan ist das Hauptwerkzeug der Rezeption.** Dort wird geplant und geändert: Buchungen anlegen, ändern, verschieben, verkürzen, verlängern, Notizen setzen. Er bekommt die meiste Aufmerksamkeit.
+
+Das ist keine Geschmacksfrage, sondern die Arbeitsweise des Betriebs. SIHOT beschreibt den Belegungsplan als „ein zentrales Element im Front-Office-Bereich, **von dem aus viele Funktionen direkt abgerufen** werden können". Mews als „live, interactive timeline" mit „**move, extend or split stays and fix gaps instantly** with drag-and-drop". Wer an einer Rezeption steht, plant nicht in einem Formular — er sieht auf den Plan und zieht.
+
+Daraus folgt für jede Entscheidung an dieser Oberfläche: **was man im Plan sieht, muss man im Plan tun können.** Eine Maske, die man nur über ein Menü erreicht, ist eine Maske, die im Betrieb nicht benutzt wird.
+
+Und daraus folgt die Reihenfolge in Abschnitt 8: der Plan zuerst, alles andere danach.
+
+---
+
+## 4. Die drei Kalender — und wir haben einen davon, halb
 
 Hier liegt der Kern des Missverständnisses, das beim Draufschauen entsteht. Ein PMS hat **drei** Rasteransichten, und sie beantworten drei verschiedene Fragen. Sie werden leicht verwechselt, weil alle drei „Kalender" heißen.
 
@@ -59,7 +73,7 @@ Die beiden anderen Raster fehlen ganz — und das sind die, an denen ein Haus Ge
 
 ---
 
-## 4. Was heute steht
+## 5. Was heute steht
 
 | Bildschirm | Datei | Kann | Kann nicht |
 |---|---|---|---|
@@ -89,7 +103,7 @@ Beim Zimmer dasselbe: `floor` und `attributes` (Balkon, barrierefrei, Raucher) s
 
 ---
 
-## 5. Was der Wettbewerb macht, und was wir davon übernehmen
+## 6. Was der Wettbewerb macht, und was wir davon übernehmen
 
 ### Mews
 
@@ -129,7 +143,7 @@ Drei Dinge, bei denen die deutschen Pflichten ein Vorteil und kein Ballast sind 
 
 ---
 
-## 6. Grundsätze
+## 7. Grundsätze
 
 Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen können, warum.
 
@@ -153,18 +167,17 @@ Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen 
 
 ---
 
-## 7. Was gebaut werden muss
+## 8. Was gebaut werden muss
 
 Nach Nutzen geordnet, nicht nach Bequemlichkeit.
 
-### Stufe 1 — ohne das ist es kein PMS
+### Stufe 1 — der Belegungsplan, und was er braucht
 
-1. **Verfügbarkeitsraster** (Gruppe × Tag). Der Bildschirm, auf den man sieht, bevor man zusagt.
-2. **Buchungsmaske**, erreichbar aus Raster und Zimmerplan.
-3. **Gastsuche und -profil.** Jede Buchung braucht einen Gast.
-4. **Zimmerplan als Arbeitsfläche**: anklicken, zuweisen, verschieben, verlängern.
-5. **Check-in mit Meldeschein.**
-6. **Preisraster** mit Massenänderung und Vorschau — ein Jahr am Stück.
+1. **Belegungsplan als Arbeitsfläche.** Balken anklicken und alles sehen; Zimmer zuweisen; verschieben, verkürzen, verlängern mit der Maus; Notiz setzen; im leeren Bereich aufziehen und buchen. **Das ist der Schwerpunkt der ganzen Oberfläche.**
+2. **Gastsuche und -profil.** Jede Buchung braucht einen Gast, und der Plan braucht ihn beim Aufziehen.
+3. **Verfügbarkeitsraster** (Gruppe × Tag). Der Blick daneben: was ist noch frei, ohne auf einzelne Zimmer zu sehen.
+4. **Check-in mit Meldeschein**, erreichbar aus dem Plan.
+5. **Preisraster** mit Massenänderung und Vorschau — ein Jahr am Stück.
 
 ### Stufe 2 — ohne das verkauft man schlecht
 
@@ -184,11 +197,13 @@ Nach Nutzen geordnet, nicht nach Bequemlichkeit.
 
 15. Zahlungsarten, Gastpost-Absender, Webhooks, Maschinenzugänge, Benutzer und Rollen.
 
-**Stufe 1 ist die Schwelle zur Vorführbarkeit.** Punkte 1 bis 5 sind ein zusammenhängender Vorgang und gehören in eine Hand.
+**Stufe 1 ist die Schwelle zur Vorführbarkeit**, und Punkt 1 ist ihr Schwerpunkt. Alles darin ist derselbe Vorgang und gehört in eine Hand.
+
+**Die API trägt das inzwischen.** Was dem Plan fehlte, ist nachgereicht: `GET /v1/reservations/:ref` liefert in einem Aufruf alles, was beim Anklicken eines Balkens zu sehen sein muss; `PATCH /v1/reservations/:ref` setzt die Notiz, ohne Bestand oder Preis anzufassen; `POST /v1/bookings` nimmt jetzt ein `resourceId` entgegen, sodass ein im Plan aufgezogener Balken **in einem** Schritt im richtigen Zimmer landet; und der Zimmerplan liefert die Notiz gleich mit. Verschieben ist `assign-unit`, verkürzen und verlängern ist `change-stay` — beide gab es schon.
 
 ---
 
-## 8. Technische Festlegungen
+## 9. Technische Festlegungen
 
 **React 19, Vite, TanStack Query, Tailwind.** Kein Router-Paket: Haus und Bildschirm stehen in der Adresse (`lib/adresse.ts`, `history.pushState`). Der Plan nannte einen Router; für sieben bis fünfzehn Bildschirme ist die Abhängigkeit nicht gerechtfertigt. Werden verschachtelte Routen nötig — etwa eine Reservierung als eigene Adresse unter dem Zimmerplan —, ist das die Stelle, an der man neu abwägt.
 
@@ -200,7 +215,7 @@ Nach Nutzen geordnet, nicht nach Bequemlichkeit.
 
 ---
 
-## 9. Der Umbau, der dieser Arbeit vorausging
+## 10. Der Umbau, der dieser Arbeit vorausging
 
 Damit mehrere gleichzeitig arbeiten können, sind drei Stellen entschärft — im Frontend das, was die Migrationsnummer im Schema ist.
 

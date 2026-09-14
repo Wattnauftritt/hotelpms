@@ -45,31 +45,49 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 
 ## 3. Die drei Spuren
 
-### Spur A — Buchen, Gast, Anreise
+### Spur A — Der Belegungsplan
 
-**Der zusammenhängendste und wichtigste Teil.** Ohne ihn kann man in dieser Oberfläche kein Zimmer buchen, und das Produkt ist nicht vorführbar.
+**Das Kernelement der ganzen Oberfläche, und die Spur, die die meiste Aufmerksamkeit bekommt.**
 
-Diese Spur ist **erkennbar größer als B und C**, und das ist Absicht: A0 bis A6 sind ein einziger Vorgang — sehen, was frei ist, buchen, den Gast anlegen, anreisen lassen. Auf zwei Bearbeiter verteilt entstehen zwei halbe Masken, die nicht ineinandergreifen. Wer Luft hat, nimmt sich A9 und A10 zuletzt vor; sie hängen am selben Zimmerplan, sind aber vom Buchungsvorgang trennbar.
+Der Belegungsplan ist das Hauptwerkzeug der Rezeption: dort wird geplant und geändert — Buchungen anlegen, ändern, verschieben, verkürzen, verlängern, Notizen setzen. Heute ist er ein Bild. Er kann nicht einmal das, wofür seine eigene Komponente schon einen Anschluss hat: `TapeChart` nimmt ein `onSelect` entgegen, und `Tape.tsx` übergibt es nicht.
 
-**Eigene Dateien:** `routes/Booking.tsx`, `routes/Guests.tsx`, `routes/CheckIn.tsx`, `routes/Availability.tsx`, `components/AvailabilityGrid.tsx`, `components/GuestPicker.tsx`, `lib/queries/booking.ts`, `lib/queries/guests.ts`, `lib/i18n/buchen.ts`, `lib/i18n/gaeste.ts`
+Diese Spur ist **deutlich größer als B und C**, und das ist Absicht. A1 bis A6 sind ein einziger Vorgang: auf den Plan sehen, aufziehen, Gast wählen, buchen, anreisen lassen. Auf zwei Bearbeiter verteilt entstehen zwei halbe Masken, die nicht ineinandergreifen.
 
-**Ausnahme von der Regel „keine fremden Bildschirme":** A9 und A10 ändern `routes/Tape.tsx` und `components/TapeChart.tsx`. Die gehören für die Dauer dieser Spur **dir**; B und C fassen sie nicht an.
+**Die API trägt das inzwischen.** Was dem Plan fehlte, ist nachgereicht und getestet:
+
+| Neu | Wofür im Plan |
+|---|---|
+| `GET /v1/reservations/:ref` | Balken anklicken: Gast, Zimmer, Nächte, Preise, Mitreisende, Folio — **in einem Aufruf** |
+| `PATCH /v1/reservations/:ref` | Notiz setzen, ohne Bestand oder Preis anzufassen |
+| `resourceId` an `POST /v1/bookings` | Im Plan aufgezogen heißt **in einem** Schritt im richtigen Zimmer |
+| `notes` im `tape-chart` | Die Notiz steht am Balken, nicht zwei Klicks entfernt |
+
+Verschieben ist `assign-unit`, verkürzen und verlängern ist `change-stay`. Beide gab es schon.
+
+**Eigene Dateien:** `routes/Tape.tsx` und `components/TapeChart.tsx` (**gehören für die Dauer dieser Spur dir**, B und C fassen sie nicht an), dazu `components/ReservationPanel.tsx`, `components/BookingDialog.tsx`, `components/GuestPicker.tsx`, `components/AvailabilityGrid.tsx`, `routes/Guests.tsx`, `routes/CheckIn.tsx`, `routes/Availability.tsx`, `lib/queries/booking.ts`, `lib/queries/guests.ts`, `lib/i18n/plan.ts`, `lib/i18n/gaeste.ts`
 
 | # | Aufgabe | Fertig, wenn |
 |---|---|---|
-| A0 | **Verfügbarkeitsraster.** Zimmergruppe senkrecht, Tage waagerecht, freie Einheiten je Zelle. `GET .../availability` liefert bis **731 Tage** in einer Anfrage | Ein Blick beantwortet „was kann ich noch verkaufen". Überbuchte Tage sind als solche erkennbar, nicht nur als negative Zahl. Aus einer Zelle heraus führt ein Weg in A2 |
-| A1 | **Verfügbarkeitssuche.** Zeitraum, Personenzahl, Zimmergruppe → freie Kategorien mit Preis | Ein Zeitraum ohne Verfügbarkeit sagt das, statt eine leere Liste zu zeigen. Der Zeitraum ist nach oben begrenzt |
-| A2 | **Buchungsmaske.** Aus dem Suchergebnis heraus buchen, mit Gast und Ratenplan | Eine Buchung entsteht mit `Idempotency-Key`; zweimaliges Absenden erzeugt **eine** Reservierung. Ein volles Haus antwortet verständlich, nicht mit „409" |
-| A3 | **Gastsuche.** Nach Name, Mail, Firma; Treffer in einer Anfrage | Die Suche lädt nicht je Zeile nach. Ein anonymisierter Gast ist als solcher erkennbar |
-| A4 | **Gastprofil.** Anlegen, ändern, Aufenthaltshistorie | Es gibt **kein** Feld für eine Ausweiskopie. Die Ausweisnummer erscheint maskiert, im Klartext nur mit `guest:read_identity` |
-| A5 | **Firmen.** Anlegen, ändern, Zahlungsbedingungen | Die Rechnungsadresse der Firma ist sichtbar, weil dorthin die Rechnung geht |
-| A6 | **Check-in mit Meldeschein.** Vorbelegtes Formular, Unterschrift nur bei ausländischen Gästen | Bei einem inländischen Gast erscheint **gar kein** Unterschriftsfeld. Ohne zugewiesenes Zimmer sagt die Maske das, bevor der Knopf gedrückt wird |
-| A7 | **Aufenthalt ändern.** Verlängern, verkürzen, Kategorie wechseln | Die Maske ruft `change-stay` auf, nicht Storno plus Neubuchung. Der Unterschied ist im vollen Haus der zwischen „geht" und „geht nicht" |
-| A8 | **Bestätigung schicken.** Knopf in der Reservierung | Ohne hinterlegte Adresse sagt er, dass die Adresse fehlt, statt still nichts zu tun |
-| A9 | **Zimmerplan als Arbeitsfläche.** Reservierung anklicken, Zimmer zuweisen, verschieben, verlängern — mit der Maus auf dem Balken | Der Zimmerplan ist heute ein Bild: `TapeChart` nimmt ein `onSelect` entgegen, und `Tape.tsx` übergibt es nicht. Fertig, wenn von dort aus dasselbe geht wie aus dem Tagesgeschäft. Verschieben ruft `change-stay`/`assign-unit`, nie Storno plus Neubuchung |
-| A10 | **Warnungen im Plan.** Überbuchung und nicht zugewiesene Anreisen sichtbar | Beides liegt in den Daten (`overbooking_limit`, `resource_id IS NULL`) und wird heute nicht gezeigt. Der Wettbewerb zeigt es; wer es erst beim Check-in merkt, merkt es zu spät |
+| A1 | **Balken anklicken.** Auswahl an `TapeChart` durchreichen, Seitenfenster mit `GET /v1/reservations/:ref` | Ein Klick zeigt Gast, Zimmer, Nächte mit Preisen, Mitreisende, Folio und Notiz. **Ein** Aufruf, nicht sechs |
+| A2 | **Im Plan buchen.** Im leeren Bereich einer Zimmerzeile über Tage aufziehen → Buchungsdialog mit vorbelegtem Zimmer und Zeitraum | Die Buchung entsteht mit `resourceId` in **einem** Aufruf und liegt im aufgezogenen Zimmer. Zweimaliges Absenden erzeugt **eine** Reservierung (`Idempotency-Key`). Ein volles Haus antwortet verständlich, nicht mit „409" |
+| A3 | **Verschieben.** Balken auf eine andere Zimmerzeile ziehen | Ruft `assign-unit`. Ein belegtes oder außer Betrieb stehendes Zimmer wird abgelehnt, **bevor** der Balken springt — kein Zurückschnappen nach der Antwort |
+| A4 | **Verkürzen und verlängern.** Am Rand des Balkens ziehen | Ruft `change-stay`, nie Storno plus Neubuchung. Der Unterschied ist im vollen Haus der zwischen „geht" und „geht nicht" |
+| A5 | **Notiz am Balken.** Setzen, ändern, löschen; am Balken als Merkmal sichtbar | Ruft `PATCH /v1/reservations/:ref`. Die Maske sagt, dass hier **keine Gesundheitsdaten** hingehören: das Feld ist Freitext und wird weder durchsucht noch anonymisiert |
+| A6 | **Gastsuche und -profil.** Aus dem Buchungsdialog heraus und als eigener Bildschirm | Die Suche lädt nicht je Zeile nach. **Kein** Feld für eine Ausweiskopie; die Nummer erscheint maskiert, im Klartext nur mit `guest:read_identity`. Ein anonymisierter Gast ist erkennbar |
+| A7 | **Warnungen im Plan.** Überbuchung und nicht zugewiesene Anreisen sichtbar | Beides liegt in den Daten (`overbooking_limit`, `resource_id IS NULL`) und wird heute nicht gezeigt. Wer es erst beim Check-in merkt, merkt es zu spät |
+| A8 | **Verfügbarkeitsraster.** Zimmergruppe × Tag, freie Einheiten je Zelle; `GET .../availability` liefert bis **731 Tage** | Der Blick neben dem Plan: was ist frei, ohne auf einzelne Zimmer zu sehen. Aus einer Zelle heraus führt ein Weg in A2 |
+| A9 | **Check-in mit Meldeschein**, erreichbar aus dem Plan | Bei einem inländischen Gast erscheint **gar kein** Unterschriftsfeld (seit 1.1.2025). Ohne zugewiesenes Zimmer sagt die Maske das, bevor der Knopf gedrückt wird |
+| A10 | **Firmen.** Anlegen, ändern, Zahlungsbedingungen | Die Rechnungsadresse der Firma ist sichtbar, weil dorthin die Rechnung geht |
+| A11 | **Storno und Wiederherstellen** aus dem Plan | `cancel` und `reinstate`. Ein versehentlicher Storno ist zurücknehmbar, und die Maske sagt das |
+| A12 | **Bestätigung schicken.** Knopf im Seitenfenster | Ohne hinterlegte Adresse sagt er, dass die Adresse fehlt, statt still nichts zu tun |
 
-**Neuer Endpunkt absehbar (3.1):** Für A1 könnte `GET .../availability` zu grob sein — es liefert Verfügbarkeit, aber nicht Verfügbarkeit *mit Preis je Kategorie*. Prüfe erst `rate-grid`; reicht es nicht, ist ein Aggregat `GET .../offers?from=&to=&guests=` gerechtfertigt. **Ein Aufruf je Bildschirm**, keine Schleife.
+**Zwei Hinweise zur Bedienung**, weil sie über Brauchbarkeit entscheiden:
+
+**Erst fragen, dann springen.** Beim Ziehen darf der Balken nicht an der neuen Stelle liegen bleiben, bevor die API zugestimmt hat. Ein Balken, der zurückspringt, sieht aus wie ein Fehler der Software; einer, der gar nicht erst springt, ist eine Antwort.
+
+**Die Tastatur bleibt gleichwertig.** An einer Rezeption steht jemand neben dem Bildschirm und tippt, während er redet. Alles, was per Ziehen geht, muss auch über die Auswahl im Seitenfenster gehen — Ziehen ist die schnelle, nicht die einzige Bedienung.
+
+**Neuer Endpunkt absehbar (3.1):** Für den Buchungsdialog könnte `GET .../availability` zu grob sein — es liefert Verfügbarkeit, aber nicht Verfügbarkeit *mit Preis je Kategorie*. Prüfe erst `rate-grid`; reicht es nicht, ist ein Aggregat `GET .../offers?from=&to=&guests=` gerechtfertigt. **Ein Aufruf je Bildschirm**, keine Schleife.
 
 ---
 
@@ -139,21 +157,22 @@ Diese Spur ist **erkennbar größer als B und C**, und das ist Absicht: A0 bis A
 
 Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
-### Spur A — Buchen, Gast, Anreise
+### Spur A — Der Belegungsplan
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| A0 | Verfügbarkeitsraster | offen | — | |
-| A1 | Verfügbarkeitssuche | offen | — | |
-| A2 | Buchungsmaske | offen | — | |
-| A3 | Gastsuche | offen | — | |
-| A4 | Gastprofil | offen | — | |
-| A5 | Firmen | offen | — | |
-| A6 | Check-in mit Meldeschein | offen | — | |
-| A7 | Aufenthalt ändern | offen | — | |
-| A8 | Bestätigung schicken | offen | — | |
-| A9 | Zimmerplan als Arbeitsfläche | offen | — | |
-| A10 | Warnungen im Plan | offen | — | |
+| A1 | Balken anklicken | offen | — | |
+| A2 | Im Plan buchen | offen | — | |
+| A3 | Verschieben | offen | — | |
+| A4 | Verkürzen und verlängern | offen | — | |
+| A5 | Notiz am Balken | offen | — | |
+| A6 | Gastsuche und -profil | offen | — | |
+| A7 | Warnungen im Plan | offen | — | |
+| A8 | Verfügbarkeitsraster | offen | — | |
+| A9 | Check-in mit Meldeschein | offen | — | |
+| A10 | Firmen | offen | — | |
+| A11 | Storno und Wiederherstellen | offen | — | |
+| A12 | Bestätigung schicken | offen | — | |
 
 ### Spur B — Preise, Rechnung, Geld
 
