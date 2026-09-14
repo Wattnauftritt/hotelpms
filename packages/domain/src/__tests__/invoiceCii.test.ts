@@ -149,6 +149,39 @@ describe('CII-XML nach EN 16931', () => {
     expect(s).toContain('<ram:TaxTotalAmount currencyID="EUR">')
   })
 
+  /**
+   * BT-114. Nicht jeder Bruttobetrag ist darstellbar, wenn die Steuer je
+   * Satzgruppe aus der Nettosumme gerechnet wird. Der Rundungsbetrag gleicht
+   * das auf Belegebene aus -- ohne Position, ohne Steuerkategorie und ohne
+   * Befreiungsgrund, den es fuer eine Rundung nicht gaebe.
+   */
+  it('gleicht einen nicht darstellbaren Betrag ueber BT-114 aus', () => {
+    const s = feld(buildInvoiceCii({ ...rechnung, roundingCent: 2 }),
+      'ram:SpecifiedTradeSettlementHeaderMonetarySummation')!
+    expect(feld(s, 'ram:RoundingAmount')).toBe('0.02')                 // BT-114
+    // Die Gesamtsumme bleibt, was die Satzgruppen ergeben (BR-CO-15);
+    // der Ausgleich wirkt allein auf den Zahlbetrag (BR-CO-16).
+    expect(feld(s, 'ram:GrandTotalAmount')).toBe('370.98')
+    expect(feld(s, 'ram:DuePayableAmount')).toBe('371.00')
+    // Die Reihenfolge ist eine XSD-Sequenz: BT-114 vor BT-112.
+    expect(s.indexOf('<ram:RoundingAmount>'))
+      .toBeLessThan(s.indexOf('<ram:GrandTotalAmount>'))
+  })
+
+  it('gibt ohne Ausgleich kein RoundingAmount aus', () => {
+    // Ein Rundungsbetrag von 0,00 auf jedem Beleg ist Rauschen, das ein
+    // Pruefer erst einmal fuer einen Fehler haelt.
+    expect(feld(xml, 'ram:RoundingAmount')).toBeNull()
+    expect(feld(buildInvoiceCii({ ...rechnung, roundingCent: 0 }),
+      'ram:RoundingAmount')).toBeNull()
+  })
+
+  it('verrechnet Ausgleich und Anzahlung zusammen', () => {
+    const s = feld(buildInvoiceCii({ ...rechnung, prepaidCent: 20_000, roundingCent: -1 }),
+      'ram:SpecifiedTradeSettlementHeaderMonetarySummation')!
+    expect(feld(s, 'ram:DuePayableAmount')).toBe('170.97')
+  })
+
   it('zieht eine Anzahlung vom offenen Betrag ab', () => {
     const s = feld(buildInvoiceCii({ ...rechnung, prepaidCent: 20_000 }),
       'ram:SpecifiedTradeSettlementHeaderMonetarySummation')!

@@ -44,6 +44,8 @@ interface RechnungOpts {
   // Fuer Aufgabe 3: eine Verrechnung ist keine charge, geht aber in die
   // festgeschriebene Summe ein, genau wie im echten Festschreiben.
   zusaetzlicheSummen?: Array<{ netCent: number; rateBp: number }>
+  // Fuer Aufgabe 12: der festgeschriebene Rundungsausgleich (BT-114).
+  roundingCent?: number
 }
 
 /**
@@ -87,11 +89,14 @@ async function rechnung(
     const taxCent = Math.round(netCent * rateBp / 10_000)
     return { rateBp, netCent, taxCent, grossCent: netCent + taxCent }
   })
+  const brutto = groups.reduce((s, g) => s + g.grossCent, 0)
   const totals = {
     groups,
     netCent: groups.reduce((s, g) => s + g.netCent, 0),
     taxCent: groups.reduce((s, g) => s + g.taxCent, 0),
-    grossCent: groups.reduce((s, g) => s + g.grossCent, 0)
+    grossCent: brutto,
+    roundingCent: opts.roundingCent ?? 0,
+    payableCent: brutto + (opts.roundingCent ?? 0)
   }
 
   const aussteller = await owner.query(
@@ -296,6 +301,26 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
     const d = (await beleg(r.id))!
     expect(d.xml).toContain('<ram:TotalPrepaidAmount>100.00</ram:TotalPrepaidAmount>')
     expect(d.xml).toContain('<ram:DuePayableAmount>221.00</ram:DuePayableAmount>')
+  })
+
+  /**
+   * Aufgabe 12: der Rundungsausgleich steht in der festgeschriebenen
+   * Momentaufnahme und muss von dort in den Beleg kommen. Wuerde der Beleg
+   * ihn neu rechnen, waere er nicht noetig -- und er kaeme im Zweifel
+   * anders heraus als beim Festschreiben.
+   */
+  it('traegt den festgeschriebenen Rundungsausgleich in das XML', async () => {
+    const r = await rechnung({ positionen: [{ netCent: 30_000 }], roundingCent: 2 })
+
+    await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    const d = (await beleg(r.id))!
+    expect(d.xml_findings).toEqual([])
+    expect(d.xml).toContain('<ram:RoundingAmount>0.02</ram:RoundingAmount>')
+    // BT-112 bleibt, was die Satzgruppen ergeben; nur BT-115 verschiebt sich.
+    expect(d.xml).toContain('<ram:GrandTotalAmount>321.00</ram:GrandTotalAmount>')
+    expect(d.xml).toContain('<ram:DuePayableAmount>321.02</ram:DuePayableAmount>')
+    // Und auf dem Blatt steht der Ausgleich benannt, nicht still in der Summe.
+    expect(d.pdf.toString('latin1')).toContain('factur-x.xml')
   })
 
   /**
