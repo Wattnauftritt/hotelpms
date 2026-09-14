@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 14. September 2026. 448 Tests, 29 Migrationen.
+Stand: 14. September 2026. 462 Tests, 28 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -31,7 +31,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
 | AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
 
-**100 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**102 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -417,6 +417,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | snake_case gelesen, camelCase geprüft | Die Anschrift verschwand lautlos, die Rechnung wurde grundlos abgewiesen |
 | Frist gegen `now()` statt gegen den Geschäftstag | Ein Wiederholungslauf hätte andere Zeilen gefunden als der erste |
 | Zwei Testrollen zusammen vergeben | Verdeckte, dass jede einzeln nicht funktionierte |
+| Zimmer zuweisen ohne Hauspruefung | Ein Benutzer mit zwei Haeusern konnte ein Zimmer aus Haus B an eine Reservierung in Haus A haengen; mit nur einem Haus faengt die Zeilenrichtlinie es ab, was leicht fuer ausreichend gehalten wird |
 | Testaufbau sät den Katalog aus einer festen Migration | Jedes später hinzugefügte Recht fehlte in jedem Test, und der Befund sah aus wie ein Fehler in der Route |
 | Bestand am Handlungspaar statt am Zustand gebunden | Ein No-Show, der doch noch anreiste, belegte ein Zimmer, das der Zaehler als frei fuehrte |
 | Netto aus dem Brutto herausgerechnet und die Steuer wieder daraufgeschlagen | Eine Anzahlung ueber 250,00 Euro stand als 249,99 Euro auf dem Beleg, waehrend das Journal 250,00 fuehrte (Aufgabe 12) |

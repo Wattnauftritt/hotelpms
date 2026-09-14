@@ -67,6 +67,12 @@ export function availabilityRoutes(app: FastifyInstance): void {
           `SELECT r.id, r.public_ref, r.resource_id, r.category_id,
                   r.arrival::text, r.departure::text, r.status,
                   g.last_name, g.first_name,
+                  -- Die Notiz gehoert auf den Balken, wenigstens als
+                  -- Merkmal: die Rezeption haelt hier fest, was beim
+                  -- naechsten Blick auf den Plan zaehlt ("Spaetanreise",
+                  -- "Hochzeitstag"). Eine Notiz, die man erst nach zwei
+                  -- Klicks sieht, wird nicht geschrieben.
+                  r.notes,
                   b.source, b.external_reference,
                   rp.code AS rate_code,
                   (SELECT count(*) FROM reservation_occupant o

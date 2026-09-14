@@ -12,6 +12,13 @@ import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
+/**
+ * Obergrenze der Notiz. Nicht als Schikane, sondern weil ein Freitextfeld
+ * ohne Grenze frueher oder spaeter einen Roman enthaelt, den niemand liest
+ * und der jede Antwort aufblaeht, in der die Reservierung vorkommt.
+ */
+const NOTES_MAX_LENGTH = 2000
+
 interface CreateBooking {
   propertyId: number
   categoryId: number
@@ -25,6 +32,80 @@ interface CreateBooking {
   notes?: string
   /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
   blockRef?: string
+  /**
+   * Zimmer gleich mit zuweisen.
+   *
+   * Fuer den Belegungsplan: wer dort ueber Zimmer 101 aufzieht, will die
+   * Buchung **in** 101 haben, nicht in irgendeinem Zimmer der Gruppe. Ohne
+   * dieses Feld braeuchte es zwei Aufrufe -- buchen, dann zuweisen -- mit
+   * einem Fenster dazwischen, in dem ein zweiter Vorgang dasselbe Zimmer
+   * belegt. Der Gast haette dann eine Reservierung ohne das Zimmer, das die
+   * Rezeption ihm gerade zugesagt hat.
+   */
+  resourceId?: number
+}
+
+/**
+ * Darf diese Reservierung in dieses Zimmer?
+ *
+ * Drei Fragen, und jede einzelne hat einen Grund:
+ *
+ * **Gehoert das Zimmer zu diesem Haus?** Die Zeilenrichtlinie filtert nach
+ * Mandant, nicht nach Haus -- CLAUDE.md, "Bei mehreren Haeusern im Account
+ * reicht die Zeilenrichtlinie nicht".
+ *
+ * Wichtig ist, wann das zuschlaegt, denn es verfuehrt dazu, die Pruefung fuer
+ * ueberfluessig zu halten: bei einem Benutzer mit **einem** Haus faengt die
+ * Richtlinie es ab, das fremde Zimmer ist fuer ihn nicht sichtbar. Hat er
+ * dagegen Zugriff auf **beide** Haeuser -- in einer Kette der Normalfall --,
+ * steht es in seinem Kontext, und `assign-unit` nahm es bis hierher an. Die
+ * Reservierung in Haus A trug dann ein Zimmer aus Haus B, und der
+ * Belegungsplan von Haus A zeigte sie gar nicht mehr, weil das Zimmer dort
+ * nicht vorkommt. Zwei Tests halten genau diese Besetzung fest.
+ *
+ * **Ist es ausser Betrieb?** Out of Order heisst unbelegbar.
+ *
+ * **Liegt schon jemand darin?** Der Bestandszaehler rechnet je Gruppe, nicht
+ * je Zimmer; zwei Reservierungen im selben Zimmer waeren rechnerisch in
+ * Ordnung und im Haus ein Streit an der Rezeption.
+ *
+ * Bewusst **nicht** geprueft wird, ob das Zimmer zur gebuchten Gruppe
+ * gehoert. Ein Upgrade ist Alltag: der Gast hat ein Doppelzimmer gebucht und
+ * bekommt die Juniorsuite. Abgerechnet wird, was gebucht wurde; wer wirklich
+ * die Gruppe wechseln will, nimmt `change-stay`.
+ */
+async function assertUnitAssignable(
+  client: PoolClient, opts: {
+    resourceId: number; propertyId: number; arrival: string; departure: string
+    exceptReservationId?: number }
+): Promise<void> {
+  const unit = await client.query<{ property_id: number; active: boolean }>(
+    `SELECT property_id, active FROM resource WHERE id = $1`, [opts.resourceId])
+  if (unit.rowCount === 0 || unit.rows[0]!.property_id !== opts.propertyId) {
+    throw Errors.notFound('Zimmer')
+  }
+  if (!unit.rows[0]!.active) {
+    throw Errors.conflict('Zimmer ist stillgelegt.')
+  }
+
+  const blocked = await client.query(
+    `SELECT 1 FROM maintenance_block
+      WHERE resource_id = $1 AND kind = 'out_of_order'
+        AND from_date < $3::date AND to_date > $2::date LIMIT 1`,
+    [opts.resourceId, opts.arrival, opts.departure])
+  if (blocked.rowCount && blocked.rowCount > 0) {
+    throw Errors.conflict('Zimmer ist im Zeitraum ausser Betrieb.')
+  }
+
+  const taken = await client.query(
+    `SELECT 1 FROM reservation
+      WHERE resource_id = $1 AND id <> COALESCE($2, -1)
+        AND status IN ('Confirmed','InHouse')
+        AND arrival < $4::date AND departure > $3::date LIMIT 1`,
+    [opts.resourceId, opts.exceptReservationId ?? null, opts.arrival, opts.departure])
+  if (taken.rowCount && taken.rowCount > 0) {
+    throw Errors.conflict('Zimmer ist im Zeitraum bereits belegt.')
+  }
 }
 
 /** Uebersetzt den Fehlercode der Inventarfunktion in eine saubere Antwort. */
@@ -150,15 +231,28 @@ export function reservationRoutes(app: FastifyInstance): void {
         // eintippen zu lassen, waere die Stelle, an der er abweicht.
         const ratePlanId = body.ratePlanId ?? block?.rate_plan_id ?? undefined
 
+        /*
+         * Das Zimmer, falls eines mitkommt, wird **vor** dem Anlegen geprueft
+         * und in derselben Anweisung gesetzt. Ein zweiter Aufruf danach
+         * haette ein Fenster, in dem jemand anders dasselbe Zimmer belegt --
+         * und die Reservierung stuende ohne das Zimmer da, das die Rezeption
+         * im Belegungsplan gerade zugesagt hat.
+         */
+        if (body.resourceId !== undefined) {
+          await assertUnitAssignable(client, {
+            resourceId: body.resourceId, propertyId: body.propertyId,
+            arrival: body.arrival, departure: body.departure })
+        }
+
         const res = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO reservation
              (property_id, booking_id, category_id, arrival, departure, status,
-              rate_plan_id, primary_guest_id, notes, block_id, created_by)
-           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10)
+              rate_plan_id, primary_guest_id, notes, block_id, resource_id, created_by)
+           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
            RETURNING id, public_ref`,
           [body.propertyId, booking.rows[0]!.id, body.categoryId, body.arrival, body.departure,
            ratePlanId ?? null, body.guestId ?? null, body.notes ?? null,
-           block?.id ?? null, principal.userId])
+           block?.id ?? null, body.resourceId ?? null, principal.userId])
         const reservationId = res.rows[0]!.id
 
         const nights = eachNight(body.arrival, body.departure)
@@ -213,6 +307,135 @@ export function reservationRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
+      })
+    }
+  })
+
+  /**
+   * Eine einzelne Reservierung, vollstaendig.
+   *
+   * Der Belegungsplan ist das Hauptwerkzeug der Rezeption, und wer dort
+   * einen Balken anklickt, will alles sehen, was zu diesem Aufenthalt
+   * gehoert -- nicht nur das, was auf den Balken passt. Bisher gab es
+   * dafuer gar nichts: `GET /v1/reservations/:ref` existierte nicht, und
+   * `notes` liess sich nach dem Anlegen weder lesen noch aendern.
+   *
+   * Ein Aufruf, nicht sechs. Gast, Zimmer, Ratenplan, Naechte mit Preisen,
+   * Mitreisende, Folio und Kontingent kommen zusammen; sonst kostet jeder
+   * Klick im Plan eine Handvoll Runden.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/reservations/:reservationRef',
+    permission: 'reservation:read',
+    summary: 'Eine Reservierung mit allem, was dazugehoert',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ id: number }>(
+          `SELECT r.id,
+                  r.public_ref            AS "reservationRef",
+                  b.public_ref            AS "bookingRef",
+                  r.status, r.arrival::text, r.departure::text,
+                  r.notes,
+                  r.category_id           AS "categoryId",
+                  c.code                  AS "categoryCode",
+                  c.name                  AS "categoryName",
+                  r.resource_id           AS "resourceId",
+                  u.code                  AS "roomCode",
+                  u.floor,
+                  r.rate_plan_id          AS "ratePlanId",
+                  rp.code                 AS "ratePlanCode",
+                  g.public_ref            AS "guestRef",
+                  nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
+                  g.email                 AS "guestEmail",
+                  g.language              AS "guestLanguage",
+                  co.public_ref           AS "companyRef",
+                  co.name                 AS "companyName",
+                  bl.public_ref           AS "blockRef",
+                  bl.name                 AS "blockName",
+                  b.source, b.external_reference AS "externalReference",
+                  r.checked_in_at         AS "checkedInAt",
+                  r.checked_out_at        AS "checkedOutAt",
+                  r.canceled_at           AS "canceledAt",
+                  f.public_ref            AS "folioRef"
+             FROM reservation r
+             JOIN booking b            ON b.id = r.booking_id
+             JOIN resource_category c  ON c.id = r.category_id
+             LEFT JOIN resource u      ON u.id = r.resource_id
+             LEFT JOIN rate_plan rp    ON rp.id = r.rate_plan_id
+             LEFT JOIN guest g         ON g.id = r.primary_guest_id
+             LEFT JOIN company co      ON co.id = b.booker_company_id
+             LEFT JOIN availability_block bl ON bl.id = r.block_id
+             LEFT JOIN folio f         ON f.reservation_id = r.id
+            WHERE r.public_ref = $1`, [reservationRef])
+        if (r.rowCount === 0) throw Errors.notFound('Reservierung')
+        const kopf = r.rows[0]! as Record<string, unknown>
+
+        const naechte = await client.query(
+          `SELECT date::text, price_cent AS "priceCent",
+                  rate_plan_id AS "ratePlanId"
+             FROM reservation_night WHERE reservation_id = $1 ORDER BY date`,
+          [kopf.id])
+
+        const mitreisende = await client.query(
+          `SELECT o.age_at_arrival AS "ageAtArrival", o.is_primary AS "isPrimary",
+                  g.public_ref AS "guestRef",
+                  nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name
+             FROM reservation_occupant o
+             LEFT JOIN guest g ON g.id = o.guest_id
+            WHERE o.reservation_id = $1
+            ORDER BY o.is_primary DESC, o.id`, [kopf.id])
+
+        // Die laufende id bleibt drinnen; nach aussen geht die oeffentliche
+        // Referenz (C1, Dokument 13).
+        delete kopf.id
+        return {
+          ...kopf,
+          nights: naechte.rows,
+          occupants: mitreisende.rows,
+          totalCent: naechte.rows.reduce(
+            (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
+        }
+      })
+    }
+  })
+
+  /**
+   * Die Notiz an der Reservierung.
+   *
+   * Eine eigene Route und kein Feld in `change-stay`: eine Notiz beruehrt
+   * weder Bestand noch Preis noch Zustand. Sie durch dieselbe Tuer zu
+   * schicken wie eine Verlaengerung hiesse, fuer einen Satz Text den ganzen
+   * Apparat aus Inventarbewegung und Neubepreisung anzuwerfen -- und ein
+   * Tippfehler in der Notiz koennte an einem vollen Haus scheitern.
+   *
+   * Notizen sind **kein** Ort fuer Gesundheitsdaten oder aehnlich
+   * Heikles. Das steht so in der Maske, nicht nur hier: das Feld ist
+   * Freitext und wird weder durchsucht noch anonymisiert.
+   */
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/reservations/:reservationRef',
+    permission: 'reservation:write',
+    summary: 'Notiz an der Reservierung aendern',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const body = req.body as { notes?: string | null }
+      if (body.notes !== undefined && body.notes !== null
+          && body.notes.length > NOTES_MAX_LENGTH) {
+        throw Errors.validation({
+          notes: [`Hoechstens ${NOTES_MAX_LENGTH} Zeichen`] })
+      }
+
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ id: number; property_id: number }>(
+          `UPDATE reservation SET notes = NULLIF($2, ''), updated_at = now()
+            WHERE public_ref = $1
+            RETURNING id, property_id`,
+          [reservationRef, body.notes ?? ''])
+        if (r.rowCount === 0) throw Errors.notFound('Reservierung')
+        return { reservationRef, notes: body.notes ?? null }
       })
     }
   })
@@ -352,25 +575,9 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (r.rowCount === 0) throw Errors.notFound('Reservierung')
         const res = r.rows[0]!
 
-        // Out of Order: das Zimmer ist im Zeitraum nicht belegbar.
-        const blocked = await client.query(
-          `SELECT 1 FROM maintenance_block
-            WHERE resource_id = $1 AND kind = 'out_of_order'
-              AND from_date < $3::date AND to_date > $2::date LIMIT 1`,
-          [resourceId, res.arrival, res.departure])
-        if (blocked.rowCount && blocked.rowCount > 0) {
-          throw Errors.conflict('Zimmer ist im Zeitraum ausser Betrieb.')
-        }
-
-        const taken = await client.query(
-          `SELECT 1 FROM reservation
-            WHERE resource_id = $1 AND id <> $2
-              AND status IN ('Confirmed','InHouse')
-              AND arrival < $4::date AND departure > $3::date LIMIT 1`,
-          [resourceId, res.id, res.arrival, res.departure])
-        if (taken.rowCount && taken.rowCount > 0) {
-          throw Errors.conflict('Zimmer ist im Zeitraum bereits belegt.')
-        }
+        await assertUnitAssignable(client, {
+          resourceId, propertyId: res.property_id,
+          arrival: res.arrival, departure: res.departure, exceptReservationId: res.id })
 
         await client.query(
           `UPDATE reservation SET resource_id = $2, updated_at = now() WHERE id = $1`,
