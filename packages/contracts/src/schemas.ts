@@ -755,6 +755,43 @@ export const SetRestrictions = Type.Object({
 })
 export type SetRestrictions = Static<typeof SetRestrictions>
 
+// ------------------------------------------------------------- Rechnungen
+
+/**
+ * Eine Zeile der Rechnungsliste.
+ *
+ * Kein Feld fuer "offen" oder "bezahlt": `settlement.invoice_id` waere die
+ * Stelle dafuer und wird nirgends geschrieben. Der Zahlungsstand steht am
+ * Folio, und `folioRef` fuehrt dorthin.
+ */
+export const InvoiceListItem = Type.Object({
+  invoiceRef: Type.String(),
+  number: Type.String(),
+  issuedOn: IsoDate,
+  businessDate: IsoDate,
+  kind: Type.Union([
+    Type.Literal('final'), Type.Literal('interim'),
+    Type.Literal('deposit'), Type.Literal('credit_note')]),
+  currency: Type.String(),
+  grossCent: Cent,
+  recipient: Type.String(),
+  folioRef: Type.String(),
+  /** Der Beleg entsteht nach dem Festschreiben im Worker. */
+  documentReady: Type.Boolean(),
+  /** Nicht jede gueltige Rechnung ist ein EN-16931-Beleg (Kleinbetrag). */
+  hasXml: Type.Boolean(),
+  mailStatus: Type.Union([Type.String(), Type.Null()])
+})
+export type InvoiceListItem = Static<typeof InvoiceListItem>
+
+export const InvoiceList = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  limit: Type.Integer(),
+  invoices: Type.Array(InvoiceListItem)
+})
+export type InvoiceList = Static<typeof InvoiceList>
+
 // ------------------------------------------------------------------ Fehler
 
 /** Fehlerdarstellung nach RFC 9457. */

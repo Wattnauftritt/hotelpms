@@ -181,10 +181,10 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | B1 | Preisraster für ein ganzes Jahr | im PR #26 | #26 | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
 | B2 | Massenänderung mit Vorschau | im PR #26 | #26 | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
 | B3 | Restriktionen | im PR #26 | #26 | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
-| B4 | Ratenpläne | offen | — | |
-| B5 | Rechnungsliste | offen | — | |
-| B6 | Rechnungsansicht | offen | — | |
-| B7 | Rechnung verschicken | offen | — | |
+| B4 | Ratenpläne | im PR #30 | #30 | Anlegen und abgeleitete Raten neu rechnen, unter dem Raster statt in der Einrichtung |
+| B5 | Rechnungsliste | im PR #30 | #30 | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
+| B6 | Rechnungsansicht | im PR #30 | #30 | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
+| B7 | Rechnung verschicken | im PR #30 | #30 | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
 | B8 | Anzahlung | offen | — | |
 | B9 | Pay-by-Link | offen | — | |
 | B10 | Was der Channel Manager sieht | offen | — | |
@@ -220,6 +220,7 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 | C | (Rahmen) | Ein Bildschirm konnte nur **ein** Recht tragen. Die Berichte bündeln drei (`report:operational`, `report:revenue`, `report:export`), und eine Rezeption hat nur das erste. `permission` in `screens.tsx` nimmt deshalb jetzt auch eine **Liste**; sie heißt „eines davon genügt". Bestehende Einträge bleiben unverändert | erledigt |
 | B | (Rahmen) | `formatMoney` in `lib/i18n/index.ts` baut bei **jedem** Aufruf ein `Intl.NumberFormat`. Auf einer Liste unauffällig, im Raster nicht: 1 600 Objekte je Neuzeichnen, gemessen 328 ms je Mausbewegung. Spur B hält sich deshalb einen eigenen Formatierer (`geldFormatierer` in `lib/preisraster.ts`, danach 22 ms). Gehört auf Dauer in den Rahmen, nicht in drei Spuren | offen |
 | B | (alle) | `web.test.ts` schrieb die Bildschirmliste **exakt** fest und wäre damit bei jeder Spur rot geworden, sobald sie ihren ersten Bildschirm anhängt. Spur B hat die Prüfung auf ihre Absicht zurückgeführt: die bekannten Schlüssel stehen weiterhin in dieser Reihenfolge am Anfang, angehängte kommen dahinter. Wer einen Bildschirm anhängt, muss dort nichts mehr ändern | erledigt |
+| B | (alle) | **`settlement.invoice_id` wird nirgends geschrieben.** Das Feld hat einen Leser — der ZUGFeRD-Beleg setzt daraus BT-113, den vorausgezahlten Betrag — und ein eigenes Schreibrecht aus Migration `0012`, aber keinen Schreiber. Folge: auf **jedem** Beleg steht als Vorauszahlung null, auch wenn der Gast angezahlt hat, und eine Rechnungsliste kann kein „offen" führen. Wer eine Zahlung an eine Rechnung hängt, entscheidet das; gehört zur Fakturierung, nicht in diese Spur | offen |
 | B | (Rahmen) | Die Rechte des Benutzers stehen nur in `main.tsx`, ein Bildschirm kommt nicht an sie heran. Spur B liest dafür denselben Zwischenspeicher (`useRechte` in `lib/queries/rates.ts`); sauberer wäre ein Feld am `ScreenContext` — das ändert aber `screens.tsx` für alle drei und wartet deshalb auf eine Absprache | offen |
 | B | (gefunden bei A1) | `Folio.tsx` zeigt den Hinweistext von `GET .../payment-methods` unübersetzt an — die API liefert ihn fest auf Deutsch, unabhängig von der Sprache der Oberfläche. Fällt in Spur B, nicht angefasst | offen |
 

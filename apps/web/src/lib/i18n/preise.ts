@@ -43,7 +43,25 @@ export const preise = {
     'rate.ctd': 'Keine Abreise',
     'rate.unchangedField': 'unverändert',
     'rate.clear': 'löschen',
-    'rate.legend': 'G geschlossen · A keine Anreise · B keine Abreise · n Mindestaufenthalt'
+    'rate.legend': 'G geschlossen · A keine Anreise · B keine Abreise · n Mindestaufenthalt',
+    'rate.plans': 'Ratenpläne',
+    'rate.plan.new': 'Ratenplan anlegen',
+    'rate.plan.code': 'Kürzel',
+    'rate.plan.name': 'Name',
+    'rate.plan.base': 'Abgeleitet von',
+    'rate.plan.base.none': 'eigenständig',
+    'rate.plan.deriveKind': 'Ableitung',
+    'rate.plan.derive.amount': 'Betrag in Cent',
+    'rate.plan.derive.percent': 'Prozent',
+    'rate.plan.deriveValue': 'Wert',
+    'rate.plan.deriveHint': 'Negativ heißt günstiger: −15 Prozent oder −1000 Cent.',
+    'rate.plan.emptyHint': 'Eine abgeleitete Rate steht leer da, bis einmal neu '
+                         + 'gerechnet wurde — ihre Preise liegen als Zahlen vor, '
+                         + 'nicht als Formel.',
+    'rate.rebuild': 'Abgeleitete Raten neu rechnen',
+    'rate.rebuild.done': 'Tage neu gerechnet, über',
+    'rate.rebuild.plan': 'abgeleitete Rate',
+    'rate.rebuild.plans': 'abgeleitete Raten'
   },
   en: {
     'nav.rates': 'Rates',
@@ -88,6 +106,23 @@ export const preise = {
     'rate.ctd': 'No departure',
     'rate.unchangedField': 'unchanged',
     'rate.clear': 'clear',
-    'rate.legend': 'G closed · A no arrival · B no departure · n minimum stay'
+    'rate.legend': 'G closed · A no arrival · B no departure · n minimum stay',
+    'rate.plans': 'Rate plans',
+    'rate.plan.new': 'Create a rate plan',
+    'rate.plan.code': 'Code',
+    'rate.plan.name': 'Name',
+    'rate.plan.base': 'Derived from',
+    'rate.plan.base.none': 'standalone',
+    'rate.plan.deriveKind': 'Derivation',
+    'rate.plan.derive.amount': 'Amount in cents',
+    'rate.plan.derive.percent': 'Percent',
+    'rate.plan.deriveValue': 'Value',
+    'rate.plan.deriveHint': 'Negative means cheaper: −15 percent or −1000 cents.',
+    'rate.plan.emptyHint': 'A derived rate stays empty until it has been rebuilt once — '
+                         + 'its prices are stored as numbers, not as a formula.',
+    'rate.rebuild': 'Rebuild derived rates',
+    'rate.rebuild.done': 'days rebuilt, across',
+    'rate.rebuild.plan': 'derived rate',
+    'rate.rebuild.plans': 'derived rates'
   }
 } as const
