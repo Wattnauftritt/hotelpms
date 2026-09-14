@@ -4,7 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
-import { sumInvoice, taxFromNet, blockingFindings, type Party } from '@hotelpms/domain'
+import { sumInvoice, taxFromNet, netFromGross, blockingFindings, type Party } from '@hotelpms/domain'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import type { Principal } from '../platform/context.js'
 
@@ -169,6 +169,158 @@ export function billingRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Anzahlungsrechnung: dokumentiert eine Vereinnahmung vor der Leistung.
+   *
+   * Nach § 13 Abs. 1 Nr. 1a UStG entsteht die Steuer mit dem Zufluss, nicht
+   * mit dem Aufenthalt. Der Zahlungsvermerk muss deshalb bereits existieren
+   * (`POST .../settlements`); diese Route macht daraus die Rechnung, die
+   * das Finanzamt verlangt, und traegt die Vereinnahmung ins Anzahlungs-
+   * journal ein. Der Zahlungsvermerk selbst bleibt unangetastet: sein
+   * `invoice_id` ist fuer eine andere, bereits bestehende Zuordnung reserviert
+   * (Zahlung direkt der eigenen Rechnung zugeordnet, siehe BT-113) und wuerde
+   * dort zu Verwirrung fuehren, wenn er hier zusaetzlich auf die
+   * Anzahlungsrechnung zeigte.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/deposit-invoice',
+    permission: 'invoice:issue',
+    summary: 'Anzahlungsrechnung erstellen',
+    handler: async (req, reply) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = req.body as { settlementId: number; taxRateBp: number }
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const f = await client.query<{ id: number; property_id: number; guest_id: number | null
+                                       company_id: number | null; reservation_id: number | null }>(
+          `SELECT id, property_id, guest_id, company_id, reservation_id
+             FROM folio WHERE public_ref = $1 FOR UPDATE`, [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        const folio = f.rows[0]!
+
+        // Der Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG ist der
+        // geplante Aufenthalt: die Leistung selbst steht noch aus, aber
+        // wofuer angezahlt wird, muss feststehen.
+        if (folio.reservation_id === null) {
+          throw Errors.unprocessable(
+            'Eine Anzahlungsrechnung braucht die Reservierung des Folios '
+            + 'fuer den Leistungszeitraum.')
+        }
+        const res = await client.query<{ arrival: string; departure: string }>(
+          `SELECT arrival::text, departure::text FROM reservation WHERE id = $1`,
+          [folio.reservation_id])
+        if (res.rowCount === 0) throw Errors.notFound('Reservierung')
+        const { arrival, departure } = res.rows[0]!
+
+        const s = await client.query<{ id: number; amount_cent: number; business_date: string }>(
+          `SELECT id, amount_cent, business_date::text FROM settlement
+            WHERE id = $1 AND folio_id = $2 FOR UPDATE`, [body.settlementId, folio.id])
+        if (s.rowCount === 0) throw Errors.notFound('Zahlungsvermerk')
+        const settlement = s.rows[0]!
+
+        const bereits = await client.query(
+          `SELECT 1 FROM deposit_ledger WHERE settlement_id = $1`, [settlement.id])
+        if ((bereits.rowCount ?? 0) > 0) {
+          throw Errors.conflict('Zu diesem Zahlungsvermerk gibt es bereits eine Anzahlungsrechnung.')
+        }
+
+        const netCent = netFromGross(settlement.amount_cent, body.taxRateBp)
+        const taxCent = settlement.amount_cent - netCent
+
+        const prop = await client.query<Party>(
+          `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+                  city, country, tax_number AS "taxNumber", vat_id AS "vatId"
+             FROM property WHERE id = $1`, [folio.property_id])
+        const recipient = folio.company_id
+          ? await client.query<Party>(
+              `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+                      city, country, vat_id AS "vatId"
+                 FROM company WHERE id = $1`, [folio.company_id])
+          : folio.guest_id
+            ? await client.query<Party>(
+                `SELECT trim(both ', ' from
+                          coalesce(last_name,'') || ', ' || coalesce(first_name,'')) AS name,
+                        address_line1 AS "addressLine1", postal_code AS "postalCode",
+                        city, country
+                   FROM guest WHERE id = $1`, [folio.guest_id])
+            : { rows: [] as Party[] }
+
+        const year = new Date().getUTCFullYear()
+        if (await isTrainingProperty(client, folio.property_id)) {
+          await client.query(
+            `INSERT INTO invoice_counter (property_id, year, prefix)
+             VALUES ($1,$2,$3) ON CONFLICT (property_id, year) DO NOTHING`,
+            [folio.property_id, year, TRAINING_PREFIX])
+        }
+        const num = await client.query<{ next_invoice_number: string }>(
+          `SELECT next_invoice_number($1, $2)`, [folio.property_id, year])
+
+        const maengel = blockingFindings({
+          number: num.rows[0]!.next_invoice_number,
+          issuedOn: new Date().toISOString().slice(0, 10),
+          serviceFrom: arrival, serviceTo: departure,
+          issuer: prop.rows[0] ?? {},
+          recipient: recipient.rows[0] ?? {},
+          lines: [{ description: 'Anzahlung auf den Aufenthalt', quantity: 1, netCent, rateBp: body.taxRateBp }],
+          grossCent: settlement.amount_cent,
+          kind: 'deposit'
+        })
+        if (maengel.length > 0) {
+          throw Errors.unprocessable(
+            'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: '
+            + maengel.map(m => `${m.de} (${m.reference})`).join(' '))
+        }
+
+        const totals = sumInvoice([{ netCent, rateBp: body.taxRateBp }])
+
+        const inv = await client.query<{ id: number; public_ref: string; number: string }>(
+          `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
+                                service_from, service_to,
+                                issuer_snapshot, recipient_snapshot, totals, created_by)
+           VALUES ($1,$2,$3,current_date,$4::date,'deposit',$5::date,$6::date,$7,$8,$9,$10)
+           RETURNING id, public_ref, number`,
+          [folio.property_id, folio.id, num.rows[0]!.next_invoice_number, settlement.business_date,
+           arrival, departure, JSON.stringify(prop.rows[0] ?? {}),
+           JSON.stringify(recipient.rows[0] ?? {}), JSON.stringify(totals), principal.userId])
+
+        // Die Vereinnahmung ins Anzahlungsjournal eintragen. business_date
+        // ist das des Zahlungsvermerks, nicht das der heutigen Ausstellung:
+        // die Steuer entsteht im Monat des Zuflusses (§ 13 Abs. 1 Nr. 1a UStG),
+        // und der kann vor dem Ausstellungstag dieser Rechnung liegen.
+        await client.query(
+          `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                       amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                       business_date, settlement_id, created_by)
+           VALUES ($1,$2,$3,'received',$4,$5,$6,$7,$8::date,$9,$10)`,
+          [folio.property_id, folio.id, inv.rows[0]!.id, settlement.amount_cent,
+           netCent, taxCent, body.taxRateBp, settlement.business_date, settlement.id,
+           principal.userId])
+
+        const result = {
+          invoiceRef: inv.rows[0]!.public_ref, number: inv.rows[0]!.number,
+          netCent, taxCent, grossCent: settlement.amount_cent
+        }
+
+        await emitEvent(client, folio.property_id, 'invoice.finalized', {
+          invoiceRef: result.invoiceRef, number: result.number, folioRef,
+          kind: 'deposit', serviceFrom: arrival, serviceTo: departure,
+          grossCent: settlement.amount_cent
+        })
+
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
    * Der Beleg zur Rechnung: PDF/A-3 mit eingebettetem CII-XML nach
    * EN 16931, also ZUGFeRD.
    *
@@ -242,8 +394,37 @@ export function billingRoutes(app: FastifyInstance): void {
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
         if (charges.rowCount === 0) throw Errors.unprocessable('Keine offenen Positionen.')
 
-        const totals = sumInvoice(
-          charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })))
+        /*
+         * Offene Anzahlungen dieses Folios: Verrechnung als eigene Position
+         * mit negativem Betrag und Verweis auf die Anzahlungsrechnung
+         * (Aufgabe 3, § 13 Abs. 1 Nr. 1a UStG). Der Steuersatz der Position
+         * bleibt der der Anzahlung, nicht der des Aufenthalts: verrechnet
+         * wird, was schon versteuert wurde, zum Satz, zu dem es versteuert
+         * wurde. Das Folio selbst bleibt unberuehrt, dessen Saldo kommt
+         * allein aus charge und settlement; die Anzahlung stand dort schon
+         * als settlement und wuerde sonst doppelt gezaehlt.
+         */
+        const deposits = await client.query<{
+          deposit_invoice_id: number; net_cent: string; tax_cent: string
+          tax_rate_bp: number; amount_gross_cent: string
+          deposit_number: string; deposit_issued_on: string
+        }>(
+          `SELECT dl.deposit_invoice_id, dl.net_cent, dl.tax_cent, dl.tax_rate_bp,
+                  dl.amount_gross_cent, di.number AS deposit_number,
+                  di.issued_on::text AS deposit_issued_on
+             FROM deposit_ledger dl
+             JOIN invoice di ON di.id = dl.deposit_invoice_id
+            WHERE dl.folio_id = $1 AND dl.kind = 'received'
+              AND NOT EXISTS (
+                SELECT 1 FROM deposit_ledger a
+                 WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied')
+            ORDER BY dl.id`,
+          [folio.id])
+
+        const totals = sumInvoice([
+          ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
+          ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
+        ])
 
         /*
          * Aussteller und Empfaenger werden gleich in der Form gelesen, in der
@@ -349,11 +530,27 @@ export function billingRoutes(app: FastifyInstance): void {
           `UPDATE charge SET invoice_id = $2 WHERE id = ANY($1)`,
           [charges.rows.map(c => c.id), inv.rows[0]!.id])
 
+        // Verrechnet, nicht mehr offen: eine Anzahlung wird genau einer
+        // Schlussrechnung zugeordnet (deposit_ledger_applied_once).
+        for (const d of deposits.rows) {
+          await client.query(
+            `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                         amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                         business_date, applied_invoice_id, created_by)
+             VALUES ($1,$2,$3,'applied',$4,$5,$6,$7,$8::date,$9,$10)`,
+            [folio.property_id, folio.id, d.deposit_invoice_id, d.amount_gross_cent,
+             d.net_cent, d.tax_cent, d.tax_rate_bp, businessDate, inv.rows[0]!.id,
+             principal.userId])
+        }
+
         const result = {
           invoiceRef: inv.rows[0]!.public_ref,
           number: inv.rows[0]!.number,
           serviceFrom, serviceTo,
-          totals
+          totals,
+          depositsApplied: deposits.rows.map(d => ({
+            depositInvoiceNumber: d.deposit_number, amountGrossCent: Number(d.amount_gross_cent)
+          }))
         }
 
         await emitEvent(client, folio.property_id, 'invoice.finalized', {
