@@ -315,6 +315,7 @@ ALTER TABLE charge ADD COLUMN invoice_id bigint REFERENCES invoice(id);  -- null
 Drei Regeln, die daraus folgen:
 
 - **Rundung:** Charges speichern Netto und Steuersatz. Die Rechnung berechnet die Steuer **je Satzgruppe aus der Nettosumme** und speichert ihre Summen in `totals`. `tax_cent` je Charge ist nur eine Näherung für offene Folios (B5 in Dokument 13).
+- **Rundungsausgleich:** Weil beide Seiten auf den Cent runden, ist nicht jeder Bruttobetrag darstellbar — zu 7 Prozent etwa jeder fünfzehnte nicht, zu 19 Prozent etwa jeder sechste. Die Differenz steht als **BT-114 auf Belegebene** in `totals.roundingCent`; sie verändert die Gesamtsumme nicht, sondern nur den Zahlbetrag (BR-CO-16). Als Position ginge es nicht: ohne Steuer verlangt § 14 Abs. 4 Nr. 8 UStG einen Befreiungsgrund, den eine Rundung nicht hat, und im Satz der Gruppe verschöbe sie deren Steuer mit (Aufgabe 12 in Dokument 16).
 - **Momentaufnahme:** Aussteller und Empfänger werden als JSON eingefroren. Zieht das Hotel um, bleiben alte Rechnungen unverändert (B6).
 - **Anzahlung:** `kind = deposit` erzeugt eine Anzahlungsrechnung mit Steuerausweis nach § 13 Abs. 1 Nr. 1a UStG. Die Schlussrechnung setzt sie als negative Position ab (B4). Steuerliche Aufteilung mit dem Steuerberater klären.
 

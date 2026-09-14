@@ -636,13 +636,14 @@ export function billingRoutes(app: FastifyInstance): void {
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
         // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
         const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
+                                             gross_cent: number
                                              description: string; quantity: number
                                              business_date: string }>(
           body.chargeIds?.length
-            ? `SELECT id, net_cent, tax_rate_bp, description, quantity,
+            ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
                       business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2) ORDER BY id`
-            : `SELECT id, net_cent, tax_rate_bp, description, quantity,
+            : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
                       business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL ORDER BY id`,
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
@@ -686,10 +687,55 @@ export function billingRoutes(app: FastifyInstance): void {
             tax_rate_bp: number; amount_gross_cent: string
             deposit_number: string; deposit_issued_on: string }> }
 
-        const totals = sumInvoice([
+        const positionen = [
           ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
           ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
-        ])
+        ]
+
+        /*
+         * Rundungsausgleich (Aufgabe 12).
+         *
+         * Die Rechnung kann nicht jeden Bruttobetrag treffen. Die Steuer wird
+         * je Satzgruppe aus der Nettosumme gerechnet (BR-CO-14), und bei
+         * ganzzahligem Netto und ganzzahliger Steuer gibt es Bruttobetraege,
+         * zu denen kein Netto passt: zu 7 Prozent 6,5 Prozent aller Betraege,
+         * zu 19 Prozent 16,0 Prozent. Ein Kassenbeleg ueber glatte 250,00 zu
+         * 7 Prozent ergibt 233,64 + 16,35 = 249,99; darueber liegt erst
+         * wieder 250,01.
+         *
+         * Ohne Ausgleich fordert die Rechnung einen Cent weniger, als die
+         * Positionen zusammen ergeben. Der Gast zahlt, was auf dem Papier
+         * steht, und der Cent bleibt auf dem Folio offen -- fuer immer, weil
+         * niemand nach einem Cent sucht. Ueber viele Posten waren es bis zu
+         * drei.
+         *
+         * **Warum keine eigene Position.** Das war der erste Entwurf und ist
+         * an der eigenen Pflichtangabenpruefung gescheitert: eine Position zu
+         * 0 Prozent braucht nach § 14 Abs. 4 Nr. 8 UStG den Grund der
+         * Steuerbefreiung, und fuer eine Rundung gibt es keinen -- sie ist
+         * kein Umsatz. Im Satz der Gruppe wiederum muesste die Position rund
+         * vierzehn Cent gross sein, um einen Cent Wirkung zu haben, weil sie
+         * die Steuer der ganzen Gruppe mitverschiebt.
+         *
+         * EN 16931 hat dafuer den Rundungsbetrag auf Belegebene (BT-114): er
+         * laesst Satzgruppen und Gesamtsumme unberuehrt und wirkt allein auf
+         * den Zahlbetrag (BR-CO-16). Keine Position, keine Steuerkategorie,
+         * kein Befreiungsgrund -- und auf dem Blatt eine benannte Zeile.
+         */
+        const gerundet = sumInvoice(positionen)
+        const zielBrutto =
+          charges.rows.reduce((sum, c) => sum + Number(c.gross_cent), 0)
+          - deposits.rows.reduce((sum, d) => sum + Number(d.amount_gross_cent), 0)
+        const roundingCent = zielBrutto - gerundet.grossCent
+
+        /*
+         * Was festgeschrieben und zurueckgegeben wird, traegt beides: die
+         * normgerechten Summen (BT-106, BT-110, BT-112) und daneben den
+         * Ausgleich und den Betrag, den die Rechnung tatsaechlich fordert.
+         * Der Beleg liest den Ausgleich spaeter von hier und rechnet ihn
+         * nicht neu -- waere er ableitbar, waere er nicht noetig.
+         */
+        const totals = { ...gerundet, roundingCent, payableCent: zielBrutto }
 
         /*
          * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
@@ -784,7 +830,9 @@ export function billingRoutes(app: FastifyInstance): void {
           lines: charges.rows.map(c => ({
             description: c.description, quantity: c.quantity,
             netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
-          grossCent: totals.grossCent,
+          // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet
+          // der geforderte Betrag, nicht die Summe vor dem Rundungsausgleich.
+          grossCent: totals.payableCent,
           kind: (body.kind ?? 'final') as 'final' | 'interim'
         })
         if (maengel.length > 0) {
@@ -840,7 +888,11 @@ export function billingRoutes(app: FastifyInstance): void {
           folioRef,
           kind: body.kind ?? 'final',
           serviceFrom, serviceTo,
-          grossCent: totals.grossCent
+          // grossCent bleibt die Gesamtsumme nach BT-112; payableCent ist,
+          // was der Gast zahlt. Wer die beiden gleichsetzt, bekommt keine
+          // Fehlermeldung, sondern einen Cent Abweichung im Abgleich.
+          grossCent: totals.grossCent,
+          payableCent: totals.payableCent
         })
 
         await completeIdempotent(client, principal.clientKey, key, 201, result)
