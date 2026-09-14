@@ -375,6 +375,95 @@ export const Guest = Type.Object({
 })
 export type Guest = Static<typeof Guest>
 
+// ---------------------------------------------------------------- Berichte
+
+export const KpiDay = Type.Object({
+  date: IsoDate,
+  capacity: Type.Integer(),
+  sold: Type.Integer(),
+  /** Kapazitaet abzueglich gesperrter Einheiten. Bezugsgroesse fuer RevPAR. */
+  available: Type.Integer(),
+  occupancyPercent: Type.Number(),
+  roomRevenueCent: Cent,
+  adrCent: Cent,
+  revparCent: Cent,
+  /**
+   * `aufgezeichnet` kommt aus `business_day_stat`, `auf den Buechern` aus dem
+   * laufenden Zaehler. Der Unterschied gehoert an den Bildschirm: das eine
+   * ist festgehalten, das andere aendert sich noch.
+   */
+  source: Type.String()
+})
+export type KpiDay = Static<typeof KpiDay>
+
+export const KpiTotal = Type.Object({
+  sold: Type.Integer(),
+  available: Type.Integer(),
+  roomRevenueCent: Cent,
+  occupancyPercent: Type.Number(),
+  adrCent: Cent,
+  revparCent: Cent
+})
+export type KpiTotal = Static<typeof KpiTotal>
+
+export const KpiReport = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  days: Type.Array(KpiDay),
+  total: KpiTotal,
+  /** Nur bei `compare=previous-year`. Derselbe Zeitraum ein Jahr zurueck. */
+  comparison: Type.Optional(Type.Object({
+    from: IsoDate, to: IsoDate, days: Type.Array(KpiDay), total: KpiTotal
+  }))
+})
+export type KpiReport = Static<typeof KpiReport>
+
+export const NightAuditStep = Type.Object({
+  step: Type.String(),
+  completedAt: Type.String(),
+  count: Type.Union([Type.Integer(), Type.Null()])
+})
+export type NightAuditStep = Static<typeof NightAuditStep>
+
+export const NightAuditDay = Type.Object({
+  date: IsoDate,
+  status: Type.Union([Type.Literal('open'), Type.Literal('closed')]),
+  closedAt: Type.Union([Type.String(), Type.Null()]),
+  steps: Type.Array(NightAuditStep),
+  sold: Type.Union([Type.Integer(), Type.Null()]),
+  arrivals: Type.Union([Type.Integer(), Type.Null()]),
+  departures: Type.Union([Type.Integer(), Type.Null()]),
+  roomRevenueCent: Type.Union([Cent, Type.Null()])
+})
+export type NightAuditDay = Static<typeof NightAuditDay>
+
+export const NightAuditStatus = Type.Object({
+  /** Geschaeftsdatum der Property, nicht der Kalendertag des Betrachters. */
+  businessDate: IsoDate,
+  openDate: Type.Union([IsoDate, Type.Null()]),
+  daysBehind: Type.Union([Type.Integer(), Type.Null()]),
+  overdue: Type.Boolean(),
+  expectedSteps: Type.Array(Type.String()),
+  days: Type.Array(NightAuditDay)
+})
+export type NightAuditStatus = Static<typeof NightAuditStatus>
+
+export const AccommodationStatistics = Type.Object({
+  month: Type.String(),
+  rooms: Type.Integer(),
+  beds: Type.Integer(),
+  /** Meldepflichtig ab zehn Schlafgelegenheiten. */
+  reportingRequired: Type.Boolean(),
+  byCountry: Type.Array(Type.Object({
+    country: Type.Union([Type.String(), Type.Null()]),
+    arrivals: Type.Integer(),
+    nights: Type.Integer()
+  })),
+  totals: Type.Object({ arrivals: Type.Integer(), nights: Type.Integer() }),
+  hinweis: Type.String()
+})
+export type AccommodationStatistics = Static<typeof AccommodationStatistics>
+
 // ------------------------------------------------------------------ Fehler
 
 /** Fehlerdarstellung nach RFC 9457. */
