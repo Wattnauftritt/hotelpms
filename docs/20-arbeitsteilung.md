@@ -161,11 +161,11 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| A1 | Balken anklicken | fertig | — | `ReservationPanel`, `GET /v1/reservations/:ref` in einem Aufruf. Im Browser gegen die echte API geprüft |
+| A1 | Balken anklicken | fertig | #24 | `ReservationPanel`, `GET /v1/reservations/:ref` in einem Aufruf. Im Browser gegen die echte API geprüft |
 | A2 | Im Plan buchen | offen | — | |
 | A3 | Verschieben | offen | — | |
 | A4 | Verkürzen und verlängern | offen | — | |
-| A5 | Notiz am Balken | fertig | — | Im selben Seitenfenster wie A1 erledigt: `PATCH /v1/reservations/:ref`, Merkmal (📌) am Balken samt Tooltip. Speichern und Persistenz im Browser geprüft |
+| A5 | Notiz am Balken | fertig | #24 | Im selben Seitenfenster wie A1 erledigt: `PATCH /v1/reservations/:ref`, Merkmal (📌) am Balken samt Tooltip. Speichern und Persistenz im Browser geprüft |
 | A6 | Gastsuche und -profil | offen | — | |
 | A7 | Warnungen im Plan | offen | — | |
 | A8 | Verfügbarkeitsraster | offen | — | |
