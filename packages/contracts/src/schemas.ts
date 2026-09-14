@@ -538,6 +538,94 @@ export const AccommodationStatistics = Type.Object({
 })
 export type AccommodationStatistics = Static<typeof AccommodationStatistics>
 
+// ------------------------------------------------------------ Schnittstellen
+
+export const WebhookSubscription = Type.Object({
+  subscriptionRef: Type.String(),
+  url: Type.String(),
+  eventTypes: Type.Array(Type.String()),
+  /** Leer gespeichert heisst alle. Die Antwort sagt es ausdruecklich. */
+  allEventTypes: Type.Boolean(),
+  propertyIds: Type.Array(Type.Integer()),
+  allProperties: Type.Boolean(),
+  status: Type.String(),
+  disabledAt: Type.Union([Type.String(), Type.Null()]),
+  /** Warum stillgelegt. Gehoert an die Zeile, nicht in ein Protokoll. */
+  disabledReason: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String()
+})
+export type WebhookSubscription = Static<typeof WebhookSubscription>
+
+export const WebhookAttempt = Type.Object({
+  attempt: Type.Integer(),
+  statusCode: Type.Union([Type.Integer(), Type.Null()]),
+  error: Type.Union([Type.String(), Type.Null()]),
+  durationMs: Type.Union([Type.Integer(), Type.Null()]),
+  attemptedAt: Type.String()
+})
+export type WebhookAttempt = Static<typeof WebhookAttempt>
+
+export const WebhookDelivery = Type.Object({
+  eventRef: Type.String(),
+  eventType: Type.String(),
+  status: Type.String(),
+  attempts: Type.Integer(),
+  lastStatusCode: Type.Union([Type.Integer(), Type.Null()]),
+  lastError: Type.Union([Type.String(), Type.Null()]),
+  occurredAt: Type.String(),
+  nextAttemptAt: Type.Union([Type.String(), Type.Null()]),
+  deliveredAt: Type.Union([Type.String(), Type.Null()]),
+  attemptLog: Type.Array(WebhookAttempt)
+})
+export type WebhookDelivery = Static<typeof WebhookDelivery>
+
+export const OAuthClient = Type.Object({
+  clientId: Type.String(),
+  name: Type.String(),
+  scopes: Type.Array(Type.String()),
+  propertyIds: Type.Array(Type.Integer()),
+  status: Type.String(),
+  createdAt: Type.String(),
+  activeTokens: Type.Integer(),
+  lastUsedAt: Type.Union([Type.String(), Type.Null()])
+})
+export type OAuthClient = Static<typeof OAuthClient>
+
+export const ChannelConnection = Type.Object({
+  connectionRef: Type.String(),
+  provider: Type.String(),
+  name: Type.String(),
+  status: Type.String(),
+  lastUsedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String()
+})
+export type ChannelConnection = Static<typeof ChannelConnection>
+
+export const PropertyRole = Type.Object({
+  key: Type.String(),
+  name: Type.String(),
+  level: Type.String(),
+  isSystem: Type.Boolean(),
+  /**
+   * Die Rechte, wie die API sie liefert. Die Oberflaeche zeigt sie und
+   * schliesst nicht aus dem Rollennamen auf sie -- sonst liegt sie bei der
+   * ersten eigenen Rolle eines Kunden falsch, und zwar still.
+   */
+  permissions: Type.Array(Type.String())
+})
+export type PropertyRole = Static<typeof PropertyRole>
+
+export const PropertyUser = Type.Object({
+  userRef: Type.String(),
+  displayName: Type.String(),
+  email: Type.String(),
+  status: Type.String(),
+  lastLoginAt: Type.Union([Type.String(), Type.Null()]),
+  roles: Type.Array(Type.Object({ key: Type.String(), name: Type.String() })),
+  permissions: Type.Array(Type.String())
+})
+export type PropertyUser = Static<typeof PropertyUser>
+
 // ------------------------------------------------------------------ Fehler
 
 /** Fehlerdarstellung nach RFC 9457. */

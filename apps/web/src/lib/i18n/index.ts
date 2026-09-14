@@ -7,6 +7,7 @@ import { folio } from './folio.js'
 import { gruppen } from './gruppen.js'
 import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
+import { schnittstellen } from './schnittstellen.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -42,7 +43,8 @@ const texts = {
     ...folio.de,
     ...gruppen.de,
     ...berichte.de,
-    ...einstellungen.de
+    ...einstellungen.de,
+    ...schnittstellen.de
   },
   en: {
     ...common.en,
@@ -52,7 +54,8 @@ const texts = {
     ...folio.en,
     ...gruppen.en,
     ...berichte.en,
-    ...einstellungen.en
+    ...einstellungen.en,
+    ...schnittstellen.en
   }
 } as const
 

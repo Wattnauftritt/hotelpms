@@ -109,6 +109,6 @@ describe('Bildschirme und Rechte', () => {
   it('haelt die Schluessel stabil: es gibt Lesezeichen darauf', () => {
     expect(SCREENS.map(s => s.key))
       .toEqual(['tape', 'today', 'housekeeping', 'blocks', 'setup', 'reports',
-                'maintenance', 'settings'])
+                'maintenance', 'settings', 'integrations'])
   })
 })
