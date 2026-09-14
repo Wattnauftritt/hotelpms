@@ -138,23 +138,58 @@ export const limiters = {
   reset(): void { this.anmeldung.reset(); this.allgemein.reset() }
 }
 
+/** Wurden ueberhaupt Zugangsdaten vorgelegt? Sagt nichts ueber ihre Gueltigkeit. */
+function zeigtZugangsdaten(req: FastifyRequest): boolean {
+  return req.cookies['hp_session'] !== undefined
+      || req.headers.authorization?.startsWith('Bearer ') === true
+}
+
+function pruefe(req: FastifyRequest): void {
+  const teuer = TEURE_PFADE.some(p => req.url.startsWith(p))
+  const limiter = teuer ? limiters.anmeldung : limiters.allgemein
+  const opts = teuer ? LOGIN_LIMIT : ANON_LIMIT
+
+  if (limiter.check(herkunft(req)) === null) {
+    throw tooManyRequests(Math.ceil(opts.windowMs / 1000))
+  }
+}
+
+/**
+ * Muss **nach** dem Hook registriert werden, der den Aufrufer bestimmt.
+ *
+ * **Der Fehler, den diese Aufteilung behebt.** Vorher genuegte das
+ * *Vorhandensein* eines Cookies, um die Grenze zu ueberspringen -- der Wert
+ * wurde nie angesehen. `hp_session=x` mitzuschicken hob die Begrenzung damit
+ * vollstaendig auf, und genau das haette ein Angreifer als Erstes probiert.
+ *
+ * Ausnehmen laesst sich nur, wer sich tatsaechlich ausgewiesen hat, und das
+ * steht erst nach der Aufloesung fest. Deshalb zwei Stellen:
+ *
+ *   onRequest      wer gar keine Zugangsdaten zeigt, wird sofort gezaehlt --
+ *                  ohne eine einzige Datenbankabfrage, wie bisher.
+ *   preValidation  wer welche gezeigt hat, wird gezaehlt, falls sie nicht
+ *                  getragen haben.
+ *
+ * Der Preis: eine ungueltige Sitzung kostet eine indizierte Suche, bevor sie
+ * an der Grenze scheitert. Das ist der Unterschied zwischen einer Grenze, die
+ * sich mit sieben Zeichen umgehen laesst, und einer, die haelt.
+ */
 export function registerRateLimit(app: FastifyInstance): void {
-  const { anmeldung, allgemein } = limiters
-
   app.addHook('onRequest', async (req) => {
-    // Angemeldete Anfragen sind nicht begrenzt: sie sind einer Person
-    // zurechenbar, und eine Rezeption, die im Andrang gebremst wird, ist
-    // ein Schaden ohne Gegenwert. Missbrauch durch einen angemeldeten
-    // Benutzer ist ein Rollenproblem, kein Ratenproblem.
-    if (req.cookies['hp_session'] !== undefined) return
+    if (zeigtZugangsdaten(req)) return
+    pruefe(req)
+  })
 
-    const teuer = TEURE_PFADE.some(p => req.url.startsWith(p))
-    const limiter = teuer ? anmeldung : allgemein
-    const opts = teuer ? LOGIN_LIMIT : ANON_LIMIT
-
-    if (limiter.check(herkunft(req)) === null) {
-      throw tooManyRequests(Math.ceil(opts.windowMs / 1000))
-    }
+  app.addHook('preValidation', async (req) => {
+    if (!zeigtZugangsdaten(req)) return
+    /*
+     * Angemeldete Anfragen bleiben unbegrenzt: sie sind einer Person oder
+     * einem Client zurechenbar, und eine Rezeption, die im Andrang gebremst
+     * wird, ist ein Schaden ohne Gegenwert. Missbrauch durch einen
+     * angemeldeten Benutzer ist ein Rollenproblem, kein Ratenproblem.
+     */
+    if (req.principal.clientKey !== 'anonymous') return
+    pruefe(req)
   })
 }
 

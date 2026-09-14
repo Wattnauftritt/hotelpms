@@ -89,9 +89,6 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
     req.principal = ANONYMOUS
   })
 
-  // Nach dem Cookie-Plugin, weil die Grenze angemeldete Anfragen auslaesst.
-  registerRateLimit(app)
-
   // Aufrufer bestimmen. Der Mandantenkontext kommt ausschliesslich von hier.
   app.addHook('preValidation', async (req) => {
     // Maschinen kommen mit einem Bearer-Token, Menschen mit dem Cookie. Das
@@ -118,6 +115,10 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
     req.principal = principal
     await pool.query(`UPDATE user_session SET last_seen_at = now() WHERE id = $1`, [sessionId])
   })
+
+  // Erst jetzt, nicht vorher: ausnehmen laesst sich nur, wer sich
+  // tatsaechlich ausgewiesen hat, und das steht erst hier fest.
+  registerRateLimit(app)
 
   app.setErrorHandler((err, req, reply) => {
     const instance = `urn:request:${req.id}`

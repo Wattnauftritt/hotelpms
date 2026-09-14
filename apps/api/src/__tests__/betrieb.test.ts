@@ -7,7 +7,7 @@ import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { RateLimiter, limiters } from '../platform/rateLimit.js'
 import { encryptIdDocument, decryptIdDocument } from '../platform/crypto.js'
-import { LOGIN_LIMIT } from '../platform/rateLimit.js'
+import { LOGIN_LIMIT, ANON_LIMIT } from '../platform/rateLimit.js'
 
 let owner: Pool
 let app: FastifyInstance
@@ -94,6 +94,39 @@ describe('Ratenbegrenzung', () => {
       // Gegenwert. Missbrauch durch Angemeldete ist ein Rollenproblem.
       expect(r.statusCode).toBe(200)
     }
+  })
+
+  /**
+   * Der Fehler, den dieser Test festhaelt: die Ausnahme fuer Angemeldete
+   * pruefte nur, **ob** ein Sitzungscookie da war, nie **was** darin stand.
+   * `hp_session=x` hob die Begrenzung damit vollstaendig auf -- sieben
+   * Zeichen, die ein Angreifer als Erstes probiert.
+   */
+  it('laesst sich nicht mit einem erfundenen Sitzungscookie umgehen', async () => {
+    let letzte = 0
+    for (let i = 0; i < ANON_LIMIT.limit + 5; i++) {
+      const r = await app.inject({
+        method: 'GET', url: `/v1/properties/${fx.propertyId}/setup-status`,
+        headers: { cookie: 'hp_session=erfunden' }, remoteAddress: '203.0.113.11' })
+      letzte = r.statusCode
+      if (letzte === 429) break
+      // Solange die Grenze nicht greift, bleibt es bei "nicht angemeldet".
+      expect(r.statusCode).toBe(401)
+    }
+    expect(letzte).toBe(429)
+  })
+
+  it('laesst sich auch nicht mit einem erfundenen Bearer-Token umgehen', async () => {
+    let letzte = 0
+    for (let i = 0; i < ANON_LIMIT.limit + 5; i++) {
+      const r = await app.inject({
+        method: 'GET', url: `/v1/properties/${fx.propertyId}/setup-status`,
+        headers: { authorization: 'Bearer erfunden' }, remoteAddress: '203.0.113.12' })
+      letzte = r.statusCode
+      if (letzte === 429) break
+      expect(r.statusCode).toBe(401)
+    }
+    expect(letzte).toBe(429)
   })
 })
 
