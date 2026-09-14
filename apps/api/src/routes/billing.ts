@@ -4,9 +4,95 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
-import { sumInvoice, taxFromNet, netFromGross, blockingFindings, type Party } from '@hotelpms/domain'
+import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
+         splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
+         type Party }
+  from '@hotelpms/domain'
+import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import type { Principal } from '../platform/context.js'
+
+/** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
+const VAT_FALLBACK = 700
+
+/**
+ * Die erwartete Zusammensetzung des Aufenthalts nach Steuersaetzen: die
+ * Grundlage, in deren Verhaeltnis eine pauschale Anzahlung aufgeteilt wird.
+ *
+ * Gerechnet wird mit dem **geplanten** Aufenthalt, nicht mit dem schon
+ * Gebuchten. Fuer die Aufteilung zaehlt nur das Verhaeltnis, und der Plan
+ * kennt es auch dann, wenn noch keine einzige Nacht gebucht ist -- der
+ * Regelfall bei einer Anzahlung, die bei der Buchung gefordert wird.
+ */
+async function erwarteteSaetze(
+  client: PoolClient, propertyId: number, reservationId: number
+): Promise<RateGroupAmount[]> {
+  const r = await client.query<{ rate_plan_id: number | null; naechte: number
+                                 logis_cent: number; personen: number }>(
+    `SELECT res.rate_plan_id, (res.departure - res.arrival) AS naechte,
+            COALESCE((SELECT sum(rn.price_cent) FROM reservation_night rn
+                       WHERE rn.reservation_id = res.id), 0)::bigint AS logis_cent,
+            GREATEST((SELECT count(*) FROM reservation_occupant o
+                       WHERE o.reservation_id = res.id), 1)::int AS personen
+       FROM reservation res WHERE res.id = $1 AND res.property_id = $2`,
+    [reservationId, propertyId])
+  if (r.rowCount === 0) return []
+  const res = r.rows[0]!
+  if (Number(res.logis_cent) <= 0) return []
+
+  const steuer = await client.query<{ rate_bp: number }>(
+    `SELECT COALESCE((SELECT rate_bp FROM tax_rule
+                       WHERE property_id = $1 AND kind = 'vat' AND basis = 'percent'
+                         AND active ORDER BY id LIMIT 1), $2) AS rate_bp`,
+    [propertyId, VAT_FALLBACK])
+  const logisSatz = steuer.rows[0]!.rate_bp
+
+  /*
+   * Im Ratenpreis enthaltene Leistungen. Das Fruehstueck steckt dann im
+   * Zimmerpreis und muss herausgerechnet werden (Aufteilungsgebot): der
+   * Preis der Uebernachtung traegt den ermaessigten Satz, das Fruehstueck
+   * seinen eigenen -- und ein Buffet gleich zwei.
+   */
+  const enthalten = res.rate_plan_id === null ? { rows: [] } : await client.query<{
+    price_cent: number; charge_mode: string; rate_bp: number | null
+    split_rate_bp: number | null; split_share_bp: number | null }>(
+    `SELECT p.price_cent, p.charge_mode, tr.rate_bp,
+            sp.rate_bp AS split_rate_bp, p.split_share_bp
+       FROM rate_plan_product rpp
+       JOIN product p ON p.id = rpp.product_id AND p.active AND p.property_id = $2
+       LEFT JOIN tax_rule tr ON tr.id = p.tax_rule_id
+       LEFT JOIN tax_rule sp ON sp.id = p.split_tax_rule_id
+      WHERE rpp.rate_plan_id = $1`,
+    [res.rate_plan_id, propertyId])
+
+  const naechte = Math.max(Number(res.naechte), 1)
+  const personen = Number(res.personen)
+  const posten: ExpectedItem[] = []
+  let extras = 0
+
+  for (const p of enthalten.rows) {
+    const menge = p.charge_mode === 'once' ? 1
+      : p.charge_mode === 'per_person_night' ? naechte * personen
+        : naechte
+    const brutto = Number(p.price_cent) * menge
+    if (brutto <= 0) continue
+    extras += brutto
+    posten.push({
+      grossCent: brutto,
+      rateBp: p.rate_bp ?? logisSatz,
+      splitShareBp: p.split_share_bp,
+      splitRateBp: p.split_rate_bp
+    })
+  }
+
+  // Was nach Abzug der enthaltenen Leistungen bleibt, ist Logis. Nie
+  // negativ: ein Ratenpreis unter dem Wert der enthaltenen Leistungen ist
+  // eine Frage an die Stammdaten, aber kein Grund, hier Unsinn zu rechnen.
+  const logis = Math.max(Number(res.logis_cent) - extras, 0)
+  if (logis > 0) posten.unshift({ grossCent: logis, rateBp: logisSatz })
+
+  return expectedRateMix(posten)
+}
 
 export function billingRoutes(app: FastifyInstance): void {
   registerRoute(app, {
@@ -180,6 +266,13 @@ export function billingRoutes(app: FastifyInstance): void {
    * (Zahlung direkt der eigenen Rechnung zugeordnet, siehe BT-113) und wuerde
    * dort zu Verwirrung fuehren, wenn er hier zusaetzlich auf die
    * Anzahlungsrechnung zeigte.
+   *
+   * Der Steuersatz kommt entweder ausdruecklich mit -- dann hat jemand
+   * hingesehen -- oder wird aus dem erwarteten Aufenthalt abgeleitet. Eine
+   * Anzahlung ist ein pauschaler Betrag, die spaetere Leistung ist es
+   * nicht: die Uebernachtung traegt den ermaessigten Satz, das Fruehstueck
+   * seinen eigenen und ein Buffet gleich zwei. Ausgewiesen werden muss das
+   * schon jetzt (§ 14 Abs. 5 UStG).
    */
   registerRoute(app, {
     method: 'POST',
@@ -188,7 +281,13 @@ export function billingRoutes(app: FastifyInstance): void {
     summary: 'Anzahlungsrechnung erstellen',
     handler: async (req, reply) => {
       const { folioRef } = req.params as { folioRef: string }
-      const body = req.body as { settlementId: number; taxRateBp: number }
+      const body = req.body as {
+        settlementId: number
+        /** Ein einziger Satz fuer die ganze Anzahlung. */
+        taxRateBp?: number
+        /** Ausdrueckliche Aufteilung. Ueberschreibt die Ableitung. */
+        lines?: Array<{ grossCent: number; taxRateBp: number }>
+      }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
       if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
@@ -224,14 +323,59 @@ export function billingRoutes(app: FastifyInstance): void {
         if (s.rowCount === 0) throw Errors.notFound('Zahlungsvermerk')
         const settlement = s.rows[0]!
 
+        /*
+         * Eine Rueckzahlung ist keine Anzahlung. Negative Zahlungsvermerke
+         * gibt es (Storno, Erstattung), und ohne diese Pruefung schlaegt
+         * erst die Bedingung am Anzahlungsjournal zu -- als Fehler 500
+         * statt als Antwort, die sagt, was falsch war.
+         */
+        if (settlement.amount_cent <= 0) {
+          throw Errors.validation({ settlementId: [
+            'Der Zahlungsvermerk ist kein Zahlungseingang.'] })
+        }
+
         const bereits = await client.query(
           `SELECT 1 FROM deposit_ledger WHERE settlement_id = $1`, [settlement.id])
         if ((bereits.rowCount ?? 0) > 0) {
           throw Errors.conflict('Zu diesem Zahlungsvermerk gibt es bereits eine Anzahlungsrechnung.')
         }
 
-        const netCent = netFromGross(settlement.amount_cent, body.taxRateBp)
-        const taxCent = settlement.amount_cent - netCent
+        /*
+         * Die Aufteilung auf die Steuersaetze. Die Summe der Teile ist auf
+         * den Cent der vereinnahmte Betrag: die Anzahlungsrechnung weist
+         * diese Teile aus, und eine Differenz zum Zahlungseingang ist genau
+         * die Art Fehler, die erst der Betriebspruefer findet.
+         */
+        let teile: RateGroupAmount[]
+        if (body.lines?.length) {
+          const summe = body.lines.reduce((acc, l) => acc + l.grossCent, 0)
+          if (summe !== settlement.amount_cent) {
+            throw Errors.validation({ lines: [
+              `Die Teile ergeben ${summe} Cent, vereinnahmt sind `
+              + `${settlement.amount_cent}.`] })
+          }
+          teile = body.lines.map(l => ({ rateBp: l.taxRateBp, grossCent: l.grossCent }))
+        } else if (body.taxRateBp !== undefined) {
+          teile = [{ rateBp: body.taxRateBp, grossCent: settlement.amount_cent }]
+        } else {
+          const mix = await erwarteteSaetze(client, folio.property_id, folio.reservation_id)
+          if (mix.length === 0) {
+            throw Errors.unprocessable(
+              'Zu diesem Aufenthalt sind keine Preise hinterlegt, aus denen sich die '
+              + 'Steuersaetze ableiten liessen. Bitte taxRateBp oder lines mitgeben.')
+          }
+          teile = splitDeposit(settlement.amount_cent, mix)
+        }
+
+        /*
+         * Brutto herein, netto heraus: eine Anzahlung wird brutto
+         * vereinbart, der Gast ueberweist 200 Euro und nicht 186,92 plus
+         * Steuer. Die Nettobetraege werden dabei so gewaehlt, dass die
+         * Rechnung den vereinnahmten Betrag ausweist -- herausrechnen und
+         * wieder daraufschlagen verfehlt ihn sonst um einen Cent, weil
+         * beide Schritte runden.
+         */
+        const positionen = depositLines(settlement.amount_cent, teile)
 
         const prop = await client.query<Party>(
           `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
@@ -261,14 +405,21 @@ export function billingRoutes(app: FastifyInstance): void {
         const num = await client.query<{ next_invoice_number: string }>(
           `SELECT next_invoice_number($1, $2)`, [folio.property_id, year])
 
+        const totals = sumInvoice(positionen)
+
         const maengel = blockingFindings({
           number: num.rows[0]!.next_invoice_number,
           issuedOn: new Date().toISOString().slice(0, 10),
           serviceFrom: arrival, serviceTo: departure,
           issuer: prop.rows[0] ?? {},
           recipient: recipient.rows[0] ?? {},
-          lines: [{ description: 'Anzahlung auf den Aufenthalt', quantity: 1, netCent, rateBp: body.taxRateBp }],
-          grossCent: settlement.amount_cent,
+          lines: positionen.map(pos => ({
+            description: 'Anzahlung auf den Aufenthalt', quantity: 1,
+            netCent: pos.netCent, rateBp: pos.rateBp })),
+          // Geprueft wird, was der Beleg sagt, nicht was ueberwiesen wurde:
+          // an der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet
+          // der ausgewiesene Betrag.
+          grossCent: totals.grossCent,
           kind: 'deposit'
         })
         if (maengel.length > 0) {
@@ -276,8 +427,6 @@ export function billingRoutes(app: FastifyInstance): void {
             'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: '
             + maengel.map(m => `${m.de} (${m.reference})`).join(' '))
         }
-
-        const totals = sumInvoice([{ netCent, rateBp: body.taxRateBp }])
 
         const inv = await client.query<{ id: number; public_ref: string; number: string }>(
           `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
@@ -289,28 +438,39 @@ export function billingRoutes(app: FastifyInstance): void {
            arrival, departure, JSON.stringify(prop.rows[0] ?? {}),
            JSON.stringify(recipient.rows[0] ?? {}), JSON.stringify(totals), principal.userId])
 
-        // Die Vereinnahmung ins Anzahlungsjournal eintragen. business_date
-        // ist das des Zahlungsvermerks, nicht das der heutigen Ausstellung:
-        // die Steuer entsteht im Monat des Zuflusses (§ 13 Abs. 1 Nr. 1a UStG),
-        // und der kann vor dem Ausstellungstag dieser Rechnung liegen.
-        await client.query(
-          `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
-                                       amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
-                                       business_date, settlement_id, created_by)
-           VALUES ($1,$2,$3,'received',$4,$5,$6,$7,$8::date,$9,$10)`,
-          [folio.property_id, folio.id, inv.rows[0]!.id, settlement.amount_cent,
-           netCent, taxCent, body.taxRateBp, settlement.business_date, settlement.id,
-           principal.userId])
+        /*
+         * Die Vereinnahmung ins Anzahlungsjournal eintragen, je Satzgruppe
+         * eine Zeile. business_date ist das des Zahlungsvermerks, nicht das
+         * der heutigen Ausstellung: die Steuer entsteht im Monat des
+         * Zuflusses (§ 13 Abs. 1 Nr. 1a UStG), und der kann vor dem
+         * Ausstellungstag dieser Rechnung liegen.
+         *
+         * Eingetragen wird, was der Beleg ausweist, und nicht noch einmal
+         * gerechnet: aus dem Journal bucht der DATEV-Stapel, und ein Stapel,
+         * der einen anderen Betrag traegt als der Beleg beim Gast, ist bei
+         * der naechsten Pruefung ein Fund.
+         */
+        for (const g of totals.groups) {
+          await client.query(
+            `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                         amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                         business_date, settlement_id, created_by)
+             VALUES ($1,$2,$3,'received',$4,$5,$6,$7,$8::date,$9,$10)`,
+            [folio.property_id, folio.id, inv.rows[0]!.id, g.grossCent,
+             g.netCent, g.taxCent, g.rateBp, settlement.business_date, settlement.id,
+             principal.userId])
+        }
 
         const result = {
           invoiceRef: inv.rows[0]!.public_ref, number: inv.rows[0]!.number,
-          netCent, taxCent, grossCent: settlement.amount_cent
+          netCent: totals.netCent, taxCent: totals.taxCent, grossCent: totals.grossCent,
+          groups: totals.groups
         }
 
         await emitEvent(client, folio.property_id, 'invoice.finalized', {
           invoiceRef: result.invoiceRef, number: result.number, folioRef,
           kind: 'deposit', serviceFrom: arrival, serviceTo: departure,
-          grossCent: settlement.amount_cent
+          grossCent: totals.grossCent
         })
 
         await completeIdempotent(client, principal.clientKey, key, 201, result)
@@ -403,8 +563,16 @@ export function billingRoutes(app: FastifyInstance): void {
          * wurde. Das Folio selbst bleibt unberuehrt, dessen Saldo kommt
          * allein aus charge und settlement; die Anzahlung stand dort schon
          * als settlement und wuerde sonst doppelt gezaehlt.
+         *
+         * Nur auf der Schlussrechnung ueber alle offenen Positionen. Eine
+         * Zwischenrechnung ueber eine Auswahl darf die Anzahlung nicht
+         * verbrauchen: sie gehoert zum ganzen Aufenthalt, nicht zu einer
+         * Auswahl daraus. Sonst zoege eine Zwischenrechnung ueber ein
+         * Mineralwasser die ganze Anzahlung ab -- und lautete ueber einen
+         * negativen Betrag.
          */
-        const deposits = await client.query<{
+        const schlussrechnung = (body.kind ?? 'final') === 'final' && !body.chargeIds?.length
+        const deposits = schlussrechnung ? await client.query<{
           deposit_invoice_id: number; net_cent: string; tax_cent: string
           tax_rate_bp: number; amount_gross_cent: string
           deposit_number: string; deposit_issued_on: string
@@ -419,12 +587,31 @@ export function billingRoutes(app: FastifyInstance): void {
                 SELECT 1 FROM deposit_ledger a
                  WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied')
             ORDER BY dl.id`,
-          [folio.id])
+          [folio.id]) : { rows: [] as Array<{
+            deposit_invoice_id: number; net_cent: string; tax_cent: string
+            tax_rate_bp: number; amount_gross_cent: string
+            deposit_number: string; deposit_issued_on: string }> }
 
         const totals = sumInvoice([
           ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
           ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
         ])
+
+        /*
+         * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
+         * frueher abreist oder ein Teil des Aufenthalts schon
+         * zwischenabgerechnet wurde. Dem Gast steht dann Geld zu -- und
+         * dafuer ist eine Rechnung ueber einen negativen Betrag das falsche
+         * Papier. Abgewiesen wird hier deshalb, solange es die Rueckzahlung
+         * ('refunded' im Anzahlungsjournal) noch nicht gibt: lieber keine
+         * Rechnung als eine, die niemand buchen kann.
+         */
+        if (deposits.rows.length > 0 && totals.grossCent < 0) {
+          throw Errors.unprocessable(
+            'Die angerechnete Anzahlung uebersteigt die abzurechnenden Leistungen um '
+            + `${-totals.grossCent} Cent. Das ist eine Rueckzahlung und keine Rechnung; `
+            + 'sie ist in diesem System noch nicht vorgesehen.')
+        }
 
         /*
          * Aussteller und Empfaenger werden gleich in der Form gelesen, in der

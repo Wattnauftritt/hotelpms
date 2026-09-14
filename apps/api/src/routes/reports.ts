@@ -281,6 +281,12 @@ export function reportRoutes(app: FastifyInstance): void {
    * Zahlungen stehen **nicht** im Stapel: sie laufen ueber die Kasse oder das
    * Bankkonto des Betriebs, und genau dort werden sie ohnehin gebucht
    * (Entscheidung 9).
+   *
+   * Anzahlungen kommen aus dem Anzahlungsjournal und nicht aus `charge`: eine
+   * Anzahlung ist keine Leistung und erzeugt deshalb keine Position. Ohne
+   * diesen zweiten Zugriff stuende ihre Steuer auf dem Beleg und in keinem
+   * Buchungsstapel -- und genau sie schuldet das Haus schon mit der
+   * Vereinnahmung (§ 13 Abs. 1 Nr. 1a UStG, Aufgabe 3).
    */
   registerRoute(app, {
     method: 'GET',
@@ -320,6 +326,30 @@ export function reportRoutes(app: FastifyInstance): void {
             ORDER BY i.issued_on, i.number, c.revenue_account, c.tax_rate_bp`,
           [id, q.from, q.to])
 
+        /*
+         * Anzahlungen: die Vereinnahmung am Geschaeftstag des
+         * Zahlungsvermerks, die Verrechnung am Tag der Schlussrechnung. Der
+         * Buchungstag ist damit der Steuerzeitpunkt und nicht der
+         * Ausstellungstag der Anzahlungsrechnung -- die kann Wochen frueher
+         * geschrieben sein, und im Monat ihrer Ausstellung ist noch nichts
+         * geschuldet.
+         */
+        const anzahlungen = await client.query<{
+          kind: string; gross_cent: number; tax_rate_bp: number
+          business_date: string; deposit_number: string
+          applied_number: string | null; recipient: string }>(
+          `SELECT d.kind, d.amount_gross_cent::bigint AS gross_cent, d.tax_rate_bp,
+                  d.business_date::text AS business_date,
+                  di.number AS deposit_number, fi.number AS applied_number,
+                  COALESCE(di.recipient_snapshot->>'name', 'Divers') AS recipient
+             FROM deposit_ledger d
+             JOIN invoice di ON di.id = d.deposit_invoice_id
+             LEFT JOIN invoice fi ON fi.id = d.applied_invoice_id
+            WHERE d.property_id = $1
+              AND d.business_date BETWEEN $2::date AND $3::date
+            ORDER BY d.business_date, d.id`,
+          [id, q.from, q.to])
+
         const jahr = (q.fiscalYearStart ?? q.from).slice(0, 4)
         const kopf = [
           'EXTF', 700, 21, 'Buchungsstapel', 9, '', '', '', '',
@@ -339,17 +369,63 @@ export function reportRoutes(app: FastifyInstance): void {
         // Rechnung ein eigener Debitor, und der Steuerberater haette die
         // Pflege am Hals.
         const DEBITOR_SAMMEL = '10000'
-        const zeilen = rows.map(r => {
-          const betrag = (r.gross_cent / 100).toFixed(2).replace('.', ',')
-          const haben = r.kind === 'credit_note'
-          return [
-            betrag, haben ? 'H' : 'S', 'EUR', '', '', '',
-            DEBITOR_SAMMEL, r.revenue_account, '', r.issued_on.slice(8, 10)
-              + r.issued_on.slice(5, 7),
-            r.number, '', '',
-            `${r.recipient} ${r.tax_rate_bp / 100}%`.slice(0, 60)
+
+        /*
+         * Erhaltene, versteuerte Anzahlungen (SKR03 1718). Bewusst kein
+         * Erloeskonto: bis geleistet wurde, ist eine Anzahlung eine
+         * Verbindlichkeit. Auf einem Erloeskonto verfaelschte sie jede
+         * Umsatzauswertung und liesse das Haus im Januar reich aussehen,
+         * weil im Mai jemand anreist.
+         */
+        const ANZAHLUNG_KONTO = '1718'
+
+        /** Belegdatum im DATEV-Format: Tag und Monat, ohne Jahr. */
+        const belegdatum = (iso: string): string => iso.slice(8, 10) + iso.slice(5, 7)
+
+        /*
+         * DATEV kennt keinen negativen Umsatz: die Richtung steht im
+         * Soll/Haben-Kennzeichen, der Betrag ist immer positiv. Eine
+         * stornierte Kassenposition ist eine negative charge, und ein Minus
+         * im Betragsfeld liest der Import als Fehler oder, schlimmer, gar
+         * nicht.
+         */
+        const zeile = (
+          betragCent: number, haben: boolean, gegenkonto: string,
+          datum: string, belegfeld: string, text: string
+        ): { datum: string; felder: Array<string | number> } => ({
+          datum,
+          felder: [
+            (Math.abs(betragCent) / 100).toFixed(2).replace('.', ','),
+            (betragCent < 0) !== haben ? 'H' : 'S', 'EUR', '', '', '',
+            DEBITOR_SAMMEL, gegenkonto, '', belegdatum(datum), belegfeld, '', '',
+            text.slice(0, 60)
           ]
         })
+
+        const gebucht = [
+          ...rows.map(r => zeile(
+            r.gross_cent, r.kind === 'credit_note', r.revenue_account,
+            r.issued_on, r.number,
+            `${r.recipient} ${r.tax_rate_bp / 100}%`)),
+          /*
+           * Die Vereinnahmung bucht auf das Anzahlungskonto, die Verrechnung
+           * loest sie wieder auf. Die Verrechnung traegt die Nummer der
+           * Schlussrechnung: sie gehoert zu deren Beleg, auf dem sie als
+           * Position steht.
+           */
+          ...anzahlungen.rows.map(a => zeile(
+            a.gross_cent, a.kind === 'applied', ANZAHLUNG_KONTO,
+            a.business_date,
+            a.kind === 'applied' ? (a.applied_number ?? a.deposit_number) : a.deposit_number,
+            `${a.recipient} Anzahlung ${a.deposit_number} ${a.tax_rate_bp / 100}%`))
+        ]
+
+        // Der Stapel laeuft chronologisch, sonst stuenden die Anzahlungen
+        // als Block hinter den Rechnungen. Sortiert wird nach dem
+        // vollstaendigen Datum: das Belegfeld traegt nur Tag und Monat.
+        const zeilen = gebucht
+          .sort((a, b) => a.datum.localeCompare(b.datum))
+          .map(z => z.felder)
 
         reply.header('content-type', 'text/csv; charset=utf-8')
         reply.header('content-disposition',
