@@ -9,6 +9,7 @@ import { Reports } from './routes/Reports.tsx'
 import { Maintenance } from './routes/Maintenance.tsx'
 import { Settings } from './routes/Settings.tsx'
 import { Integrations } from './routes/Integrations.tsx'
+import { Rates } from './routes/Rates.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -78,7 +79,9 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Settings propertyId={c.propertyId} /> },
   { key: 'integrations', nav: 'nav.integrations',
     permission: ['integration:manage', 'user:manage'],
-    render: c => <Integrations propertyId={c.propertyId} /> }
+    render: c => <Integrations propertyId={c.propertyId} /> },
+  { key: 'rates', nav: 'nav.rates', permission: 'rate:read',
+    render: c => <Rates propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */
