@@ -5,6 +5,7 @@ import { housekeeping } from './housekeeping.js'
 import { einrichtung } from './einrichtung.js'
 import { folio } from './folio.js'
 import { gruppen } from './gruppen.js'
+import { plan } from './plan.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -38,7 +39,8 @@ const texts = {
     ...housekeeping.de,
     ...einrichtung.de,
     ...folio.de,
-    ...gruppen.de
+    ...gruppen.de,
+    ...plan.de
   },
   en: {
     ...common.en,
@@ -46,7 +48,8 @@ const texts = {
     ...housekeeping.en,
     ...einrichtung.en,
     ...folio.en,
-    ...gruppen.en
+    ...gruppen.en,
+    ...plan.en
   }
 } as const
 

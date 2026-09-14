@@ -155,7 +155,8 @@ export const TapeChart = Type.Object({
     source: Type.String(),
     external_reference: Type.Union([Type.String(), Type.Null()]),
     rate_code: Type.Union([Type.String(), Type.Null()]),
-    occupants: Type.Integer()
+    occupants: Type.Integer(),
+    notes: Type.Union([Type.String(), Type.Null()])
   })),
   blocks: Type.Array(Type.Object({
     resource_id: Type.Integer(),
@@ -374,6 +375,61 @@ export const Guest = Type.Object({
   status: Type.String()
 })
 export type Guest = Static<typeof Guest>
+
+// ------------------------------------------------------------- Reservierung
+
+/**
+ * Eine Reservierung, vollständig: Gast, Zimmer, Ratenplan, Nächte mit
+ * Preisen, Mitreisende, Folio und Kontingent in einem Aufruf. Das ist die
+ * Antwort auf einen angeklickten Balken im Belegungsplan (Aufgabe A1).
+ */
+export const ReservationNight = Type.Object({
+  date: Type.String(),
+  priceCent: Cent,
+  ratePlanId: Type.Union([Type.Integer(), Type.Null()])
+})
+
+export const ReservationOccupant = Type.Object({
+  ageAtArrival: Type.Union([Type.Integer(), Type.Null()]),
+  isPrimary: Type.Boolean(),
+  guestRef: Type.Union([Type.String(), Type.Null()]),
+  name: Type.Union([Type.String(), Type.Null()])
+})
+
+export const ReservationDetail = Type.Object({
+  reservationRef: Type.String(),
+  bookingRef: Type.String(),
+  status: ReservationStatus,
+  arrival: Type.String(),
+  departure: Type.String(),
+  notes: Type.Union([Type.String(), Type.Null()]),
+  categoryId: Type.Integer(),
+  categoryCode: Type.String(),
+  categoryName: Type.String(),
+  resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  roomCode: Type.Union([Type.String(), Type.Null()]),
+  floor: Type.Union([Type.String(), Type.Null()]),
+  ratePlanId: Type.Union([Type.Integer(), Type.Null()]),
+  ratePlanCode: Type.Union([Type.String(), Type.Null()]),
+  guestRef: Type.Union([Type.String(), Type.Null()]),
+  guestName: Type.Union([Type.String(), Type.Null()]),
+  guestEmail: Type.Union([Type.String(), Type.Null()]),
+  guestLanguage: Type.Union([Type.String(), Type.Null()]),
+  companyRef: Type.Union([Type.String(), Type.Null()]),
+  companyName: Type.Union([Type.String(), Type.Null()]),
+  blockRef: Type.Union([Type.String(), Type.Null()]),
+  blockName: Type.Union([Type.String(), Type.Null()]),
+  source: Type.String(),
+  externalReference: Type.Union([Type.String(), Type.Null()]),
+  checkedInAt: Type.Union([Type.String(), Type.Null()]),
+  checkedOutAt: Type.Union([Type.String(), Type.Null()]),
+  canceledAt: Type.Union([Type.String(), Type.Null()]),
+  folioRef: Type.Union([Type.String(), Type.Null()]),
+  nights: Type.Array(ReservationNight),
+  occupants: Type.Array(ReservationOccupant),
+  totalCent: Cent
+})
+export type ReservationDetail = Static<typeof ReservationDetail>
 
 // ------------------------------------------------------------------ Fehler
 

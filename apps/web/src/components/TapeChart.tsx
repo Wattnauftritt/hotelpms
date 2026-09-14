@@ -149,11 +149,16 @@ export function TapeChart({ data, onSelect }: Props): JSX.Element {
                         title={`${r.last_name ?? ''} ${r.first_name ?? ''} · `
                              + `${formatDate(r.arrival, locale)} – `
                              + `${formatDate(r.departure, locale)} · `
-                             + `${t(`status.${r.status}` as never)}`}
+                             + `${t(`status.${r.status}` as never)}`
+                             + (r.notes ? ` · ${r.notes}` : '')}
                         style={{ ...balken(r.arrival, r.departure), top: 4, height: ZEILE - 8 }}
                         className={`absolute rounded px-1 text-[11px] text-white truncate
                                     text-left hover:ring-2 ring-black/30
                                     ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                  {/* Die Notiz ist der Grund, warum man den Balken anders
+                      behandelt als jeden anderen -- deshalb ein Merkmal am
+                      Balken selbst, nicht erst im Seitenfenster. */}
+                  {r.notes && <span aria-hidden className="mr-0.5">📌</span>}
                   {r.last_name ?? r.public_ref}
                 </button>
               ))}
