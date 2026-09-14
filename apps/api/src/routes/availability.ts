@@ -30,7 +30,7 @@ export function availabilityRoutes(app: FastifyInstance): void {
       const { from, to } = range(req, MAX_AVAILABILITY_DAYS)
       // Eine Abfrage, unabhaengig von der Zahl der Reservierungen.
       const rows = await tx(req.pool, req, client => client.query(
-        `SELECT category_id, date,
+        `SELECT category_id, date::text,
                 capacity, sold, blocked, overbooking,
                 capacity - sold - blocked + overbooking AS available
            FROM inventory_day
@@ -65,7 +65,7 @@ export function availabilityRoutes(app: FastifyInstance): void {
 
         const reservations = await client.query(
           `SELECT r.id, r.public_ref, r.resource_id, r.category_id,
-                  r.arrival, r.departure, r.status,
+                  r.arrival::text, r.departure::text, r.status,
                   g.last_name, g.first_name,
                   b.source, b.external_reference,
                   rp.code AS rate_code,
@@ -80,7 +80,16 @@ export function availabilityRoutes(app: FastifyInstance): void {
               AND r.status IN ('Optional','Confirmed','InHouse')`, [pid, from, to])
 
         const blocks = await client.query(
-          `SELECT resource_id, from_date, to_date, kind, reason
+          /*
+           * `::text` ist hier nicht Geschmackssache. Eine `date`-Spalte kommt
+           * ohne den Cast als `Date` zurueck und wird als voller Zeitstempel
+           * serialisiert; die Oberflaeche rechnet damit `NaN` und setzt jeden
+           * Balken auf `left: NaN`. Der Zimmerplan zeigte dann kein einziges
+           * belegtes Zimmer, ohne dass irgendwo ein Fehler auftrat. Und ein
+           * Zeitstempel verschiebt das Kalenderdatum je nach Zeitzone um
+           * einen Tag (CLAUDE.md, "Geld und Datum").
+           */
+          `SELECT resource_id, from_date::text, to_date::text, kind, reason
              FROM maintenance_block
             WHERE property_id = $1 AND from_date < $3::date AND to_date > $2::date`,
           [pid, from, to])
