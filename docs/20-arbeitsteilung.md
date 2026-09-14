@@ -178,9 +178,9 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| B1 | Preisraster für ein ganzes Jahr | im PR #n | #n | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
-| B2 | Massenänderung mit Vorschau | im PR #n | #n | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
-| B3 | Restriktionen | im PR #n | #n | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
+| B1 | Preisraster für ein ganzes Jahr | im PR #26 | #26 | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
+| B2 | Massenänderung mit Vorschau | im PR #26 | #26 | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
+| B3 | Restriktionen | im PR #26 | #26 | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
 | B4 | Ratenpläne | offen | — | |
 | B5 | Rechnungsliste | offen | — | |
 | B6 | Rechnungsansicht | offen | — | |
