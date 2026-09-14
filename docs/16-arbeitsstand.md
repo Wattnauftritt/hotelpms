@@ -181,7 +181,9 @@ ausweist. Bei zwei Sätzen geht das fast immer auf. Bleibt ein Cent, ist er eine
 und nicht ein Rundungsfehler: zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer genau
 250,00 Euro ergibt, und BR-CO-14 lässt nichts anderes zu. Aus demselben Grund kann der ausgewiesene
 Endbetrag einer Schlussrechnung um einen Cent von „Leistung minus Anzahlung" abweichen; der Saldo
-des Folios, also das Geld, ist davon unberührt und exakt.
+des Folios, also das Geld, ist davon unberührt und exakt. Dieselbe Frage stellt sich überall, wo ein
+Bruttobetrag vorgegeben wird — an der Kasse und beim Paketpreis ist sie ungeprüft; das steht als
+**Aufgabe 12** offen.
 
 **Beim Nachprüfen gefunden und mitbehoben.** Eine Zwischenrechnung über ausgewählte Positionen
 verbrauchte die ganze Anzahlung: die Schlussrechnung bekam nichts mehr, und eine Zwischenrechnung
@@ -374,6 +376,33 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 ---
 
+### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme
+
+**Warum.** Die Steuer wird je Satzgruppe aus der **Nettosumme** gerechnet — so steht es in `CLAUDE.md`, und die Norm verlangt es ebenso (BR-CO-14 in EN 16931). Netto und Steuer sind beide auf den Cent gerundet, und daraus folgt etwas, das leicht zu übersehen ist: **nicht jeder Bruttobetrag ist darstellbar.** Zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer 250,00 Euro ergibt — 233,64 plus 16,35 sind 249,99, 233,65 plus 16,36 sind 250,01. Rund jeder fünfzehnte Bruttobetrag fällt zu 7 Prozent in eine solche Lücke, zu 19 Prozent etwa jeder dritte.
+
+Das trifft überall dort, wo ein **Bruttobetrag vorgegeben** ist und die Rechnung ihn ausweisen soll:
+
+| Stelle | Stand |
+|---|---|
+| Anzahlung (`depositLines` in `packages/domain/src/deposit.ts`) | abgefedert: die Nettobeträge werden nachgestellt, bis die Rechnung den Eingang trifft; bei zwei Sätzen geht das fast immer auf, sonst bleibt ein Cent |
+| Schlussrechnung mit Anrechnung | der ausgewiesene Endbetrag kann um einen Cent von „Leistung minus Anzahlung" abweichen, weil beide Seiten je Satzgruppe eigenständig runden |
+| Kassenumsatz (`routes/pos.ts`) | brutto herein, netto und Steuer heraus — **ungeprüft**, ob der Beleg der Kasse und unsere Position denselben Betrag tragen |
+| Paketpreis (`splitPackage`) | setzt Zusatzleistungen mit festem Brutto an; dieselbe Frage, **ungeprüft** |
+
+**Zu klären ist nicht, ob gerundet wird, sondern wo der Cent liegen darf.** Das Geld ist davon unberührt: der Saldo eines Folios kommt aus `charge` und `settlement` und ist exakt. Es geht um die Beträge auf den Belegen und darum, dass sie überall nach derselben Regel entstehen.
+
+**Umfang.**
+- Feststellen, an welchen Stellen ein vorgegebener Bruttobetrag in Netto und Steuer zerlegt wird, und ob sie sich gleich verhalten.
+- Entscheiden, ob die Nachstellung aus `depositLines` allgemein gilt (dann gehört sie in `money.ts`) oder ob die Kasse den Cent anders tragen soll als eine Anzahlung.
+- Klären, ob eine Differenz zwischen Belegsumme und Folio-Saldo irgendwo sichtbar werden muss — heute merkt es niemand.
+- Einen nachgestellten Beleg gegen einen echten Validator halten (KoSIT oder Mustang), denn genau diese Beträge prüft BR-CO-14.
+
+**Abnahme.** Es gibt eine Aussage darüber, wo der Cent liegen darf und wo nicht, und sie ist durch Tests belegt. Jede Stelle, die einen Bruttobetrag entgegennimmt, hält sich daran.
+
+**Anhaltspunkte.** `packages/domain/src/money.ts` (`sumInvoice`, `taxFromGross`, `netFromGross`, `splitPackage`), `packages/domain/src/deposit.ts` (`depositLines` samt Tests, die die Grenze schon beschreiben), `apps/api/src/routes/pos.ts`, `apps/api/src/routes/billing.ts`.
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
@@ -390,6 +419,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | Zwei Testrollen zusammen vergeben | Verdeckte, dass jede einzeln nicht funktionierte |
 | Testaufbau sät den Katalog aus einer festen Migration | Jedes später hinzugefügte Recht fehlte in jedem Test, und der Befund sah aus wie ein Fehler in der Route |
 | Bestand am Handlungspaar statt am Zustand gebunden | Ein No-Show, der doch noch anreiste, belegte ein Zimmer, das der Zaehler als frei fuehrte |
+| Netto aus dem Brutto herausgerechnet und die Steuer wieder daraufgeschlagen | Eine Anzahlung ueber 250,00 Euro stand als 249,99 Euro auf dem Beleg, waehrend das Journal 250,00 fuehrte (Aufgabe 12) |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).
 
