@@ -375,6 +375,79 @@ export const Guest = Type.Object({
 })
 export type Guest = Static<typeof Guest>
 
+// ------------------------------------------------------------------ Raten
+
+export const RatePlan = Type.Object({
+  id: Type.Integer(),
+  ratePlanRef: Type.String(),
+  code: Type.String(),
+  name: Type.String(),
+  categoryId: Type.Integer(),
+  categoryCode: Type.String(),
+  /** Gesetzt bei einer abgeleiteten Rate: die Basis, aus der sie entsteht. */
+  baseRatePlanId: Type.Union([Type.Integer(), Type.Null()]),
+  deriveKind: Type.Union([Type.Literal('amount'), Type.Literal('percent'), Type.Null()]),
+  deriveValue: Type.Union([Type.Integer(), Type.Null()]),
+  active: Type.Boolean()
+})
+export type RatePlan = Static<typeof RatePlan>
+
+/**
+ * Eine Zelle des Preisrasters: ein Ratenplan an einem Tag.
+ *
+ * `priceCent` ist ein Preis **je Belegung**, Index 0 ist eine Person. Ein
+ * Doppelzimmer kostet einzeln belegt anders als zu zweit, und beides gehoert
+ * an denselben Tag desselben Plans. `null` heisst: fuer diesen Tag ist kein
+ * Preis gepflegt -- nicht null Euro.
+ */
+export const RateGridCell = Type.Object({
+  ratePlanId: Type.Integer(),
+  ratePlanCode: Type.String(),
+  date: IsoDate,
+  priceCent: Type.Union([Type.Array(Cent), Type.Null()]),
+  minLos: Type.Union([Type.Integer(), Type.Null()]),
+  maxLos: Type.Union([Type.Integer(), Type.Null()]),
+  closed: Type.Boolean(),
+  closedToArrival: Type.Boolean(),
+  closedToDeparture: Type.Boolean()
+})
+export type RateGridCell = Static<typeof RateGridCell>
+
+export const RateGrid = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  cells: Type.Array(RateGridCell)
+})
+export type RateGrid = Static<typeof RateGrid>
+
+/** Wochentage, Montag = 0. Ohne Angabe gilt die Aenderung fuer alle. */
+export const Weekdays = Type.Array(Type.Integer({ minimum: 0, maximum: 6 }))
+
+export const SetRates = Type.Object({
+  propertyId: Type.Integer(),
+  ratePlanId: Type.Integer(),
+  from: IsoDate,
+  to: IsoDate,
+  weekdays: Type.Optional(Weekdays),
+  /** Ersetzt den ganzen Preisvektor des Tages, Index 0 ist eine Person. */
+  priceCent: Type.Array(Cent)
+})
+export type SetRates = Static<typeof SetRates>
+
+export const SetRestrictions = Type.Object({
+  propertyId: Type.Integer(),
+  ratePlanId: Type.Integer(),
+  from: IsoDate,
+  to: IsoDate,
+  weekdays: Type.Optional(Weekdays),
+  minLos: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  maxLos: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  closed: Type.Optional(Type.Boolean()),
+  closedToArrival: Type.Optional(Type.Boolean()),
+  closedToDeparture: Type.Optional(Type.Boolean())
+})
+export type SetRestrictions = Static<typeof SetRestrictions>
+
 // ------------------------------------------------------------------ Fehler
 
 /** Fehlerdarstellung nach RFC 9457. */

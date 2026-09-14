@@ -103,7 +103,17 @@ describe('Bildschirme und Rechte', () => {
   })
 
   it('haelt die Schluessel stabil: es gibt Lesezeichen darauf', () => {
-    expect(SCREENS.map(s => s.key))
-      .toEqual(['tape', 'today', 'housekeeping', 'blocks', 'setup'])
+    /*
+     * Geprueft wird, dass die bekannten Schluessel weder umbenannt noch
+     * umgestellt werden -- daran haengen Lesezeichen. Ein **angehaengter**
+     * Bildschirm ist dagegen der vorgesehene Weg (Dokument 20, Abschnitt 2:
+     * anhaengen, nie einfuegen), und die feste Gesamtliste haette jede der
+     * drei Spuren blockiert, sobald sie ihren ersten Bildschirm bringt.
+     */
+    const bekannt = ['tape', 'today', 'housekeeping', 'blocks', 'setup']
+    expect(SCREENS.map(s => s.key).slice(0, bekannt.length)).toEqual(bekannt)
+    // Kein Schluessel doppelt: zwei gleiche waeren in der Adresse nicht
+    // unterscheidbar, und `screenByKey` faende immer nur den ersten.
+    expect(new Set(SCREENS.map(s => s.key)).size).toBe(SCREENS.length)
   })
 })

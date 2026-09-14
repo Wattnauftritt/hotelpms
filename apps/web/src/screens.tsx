@@ -5,6 +5,7 @@ import { Today } from './routes/Today.tsx'
 import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Blocks } from './routes/Blocks.tsx'
 import { Setup } from './routes/Setup.tsx'
+import { Rates } from './routes/Rates.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -56,7 +57,9 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'blocks', nav: 'nav.blocks', permission: 'inventory:read',
     render: c => <Blocks propertyId={c.propertyId} /> },
   { key: 'setup', nav: 'nav.setup', permission: 'settings:property',
-    render: c => <Setup propertyId={c.propertyId} /> }
+    render: c => <Setup propertyId={c.propertyId} /> },
+  { key: 'rates', nav: 'nav.rates', permission: 'rate:read',
+    render: c => <Rates propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */
