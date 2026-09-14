@@ -161,11 +161,11 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| A1 | Balken anklicken | offen | — | |
+| A1 | Balken anklicken | fertig | #24 | `ReservationPanel`, `GET /v1/reservations/:ref` in einem Aufruf. Im Browser gegen die echte API geprüft |
 | A2 | Im Plan buchen | offen | — | |
 | A3 | Verschieben | offen | — | |
 | A4 | Verkürzen und verlängern | offen | — | |
-| A5 | Notiz am Balken | offen | — | |
+| A5 | Notiz am Balken | fertig | #24 | Im selben Seitenfenster wie A1 erledigt: `PATCH /v1/reservations/:ref`, Merkmal (📌) am Balken samt Tooltip. Speichern und Persistenz im Browser geprüft |
 | A6 | Gastsuche und -profil | offen | — | |
 | A7 | Warnungen im Plan | offen | — | |
 | A8 | Verfügbarkeitsraster | offen | — | |
@@ -221,6 +221,7 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 | B | (Rahmen) | `formatMoney` in `lib/i18n/index.ts` baut bei **jedem** Aufruf ein `Intl.NumberFormat`. Auf einer Liste unauffällig, im Raster nicht: 1 600 Objekte je Neuzeichnen, gemessen 328 ms je Mausbewegung. Spur B hält sich deshalb einen eigenen Formatierer (`geldFormatierer` in `lib/preisraster.ts`, danach 22 ms). Gehört auf Dauer in den Rahmen, nicht in drei Spuren | offen |
 | B | (alle) | `web.test.ts` schrieb die Bildschirmliste **exakt** fest und wäre damit bei jeder Spur rot geworden, sobald sie ihren ersten Bildschirm anhängt. Spur B hat die Prüfung auf ihre Absicht zurückgeführt: die bekannten Schlüssel stehen weiterhin in dieser Reihenfolge am Anfang, angehängte kommen dahinter. Wer einen Bildschirm anhängt, muss dort nichts mehr ändern | erledigt |
 | B | (Rahmen) | Die Rechte des Benutzers stehen nur in `main.tsx`, ein Bildschirm kommt nicht an sie heran. Spur B liest dafür denselben Zwischenspeicher (`useRechte` in `lib/queries/rates.ts`); sauberer wäre ein Feld am `ScreenContext` — das ändert aber `screens.tsx` für alle drei und wartet deshalb auf eine Absprache | offen |
+| B | (gefunden bei A1) | `Folio.tsx` zeigt den Hinweistext von `GET .../payment-methods` unübersetzt an — die API liefert ihn fest auf Deutsch, unabhängig von der Sprache der Oberfläche. Fällt in Spur B, nicht angefasst | offen |
 
 ---
 

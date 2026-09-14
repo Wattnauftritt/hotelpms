@@ -3,13 +3,19 @@ import { useTapeChart } from '../lib/queries.js'
 import { useT } from '../lib/i18n/index.js'
 import { today, addDays } from '../lib/dates.js'
 import { TapeChart } from '../components/TapeChart.tsx'
+import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
 
-export function Tape({ propertyId }: { propertyId: number }): JSX.Element {
+export function Tape({ propertyId, onFolio }: {
+  propertyId: number; onFolio: (folioRef: string) => void
+}): JSX.Element {
   const [von, setVon] = useState(today())
   const [tage, setTage] = useState<number>(30)
+  // Balken anklicken zeigt die Reservierung im Seitenfenster (A1); der Plan
+  // bleibt dahinter sichtbar.
+  const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
   const t = useT()
   const q = useTapeChart(propertyId, von, addDays(von, tage))
 
@@ -38,7 +44,13 @@ export function Tape({ propertyId }: { propertyId: number }): JSX.Element {
 
       {q.isError && q.data === undefined ? <Fehler error={q.error} />
         : q.data === undefined ? <Laedt />
-        : <TapeChart data={q.data} />}
+        : <TapeChart data={q.data} onSelect={setAusgewaehlt} />}
+
+      {ausgewaehlt !== null && (
+        <ReservationPanel reservationRef={ausgewaehlt}
+                          onClose={() => setAusgewaehlt(null)}
+                          onOpenFolio={onFolio} />
+      )}
     </div>
   )
 }

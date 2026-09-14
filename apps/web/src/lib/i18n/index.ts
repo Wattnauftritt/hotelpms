@@ -5,6 +5,7 @@ import { housekeeping } from './housekeeping.js'
 import { einrichtung } from './einrichtung.js'
 import { folio } from './folio.js'
 import { gruppen } from './gruppen.js'
+import { plan } from './plan.js'
 import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
@@ -43,6 +44,7 @@ const texts = {
     ...einrichtung.de,
     ...folio.de,
     ...gruppen.de,
+    ...plan.de,
     ...berichte.de,
     ...einstellungen.de,
     ...schnittstellen.de,
@@ -55,6 +57,7 @@ const texts = {
     ...einrichtung.en,
     ...folio.en,
     ...gruppen.en,
+    ...plan.en,
     ...berichte.en,
     ...einstellungen.en,
     ...schnittstellen.en,

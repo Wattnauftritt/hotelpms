@@ -59,7 +59,7 @@ export interface ScreenDefinition {
 
 export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'tape', nav: 'nav.tape', permission: 'reservation:read',
-    render: c => <Tape propertyId={c.propertyId} /> },
+    render: c => <Tape propertyId={c.propertyId} onFolio={c.openFolio} /> },
   { key: 'today', nav: 'nav.today', permission: 'reservation:read',
     render: c => <Today propertyId={c.propertyId} onFolio={c.openFolio} /> },
   { key: 'housekeeping', nav: 'nav.housekeeping', permission: 'housekeeping:read',
