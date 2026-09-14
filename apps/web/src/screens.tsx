@@ -6,6 +6,8 @@ import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Blocks } from './routes/Blocks.tsx'
 import { Setup } from './routes/Setup.tsx'
 import { Reports } from './routes/Reports.tsx'
+import { Maintenance } from './routes/Maintenance.tsx'
+import { Settings } from './routes/Settings.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -66,7 +68,13 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Setup propertyId={c.propertyId} /> },
   { key: 'reports', nav: 'nav.reports',
     permission: ['report:operational', 'report:revenue', 'report:export'],
-    render: c => <Reports propertyId={c.propertyId} /> }
+    render: c => <Reports propertyId={c.propertyId} /> },
+  { key: 'maintenance', nav: 'nav.maintenance',
+    permission: ['housekeeping:read', 'maintenance:write'],
+    render: c => <Maintenance propertyId={c.propertyId} /> },
+  { key: 'settings', nav: 'nav.settings',
+    permission: ['integration:manage', 'settings:property'],
+    render: c => <Settings propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

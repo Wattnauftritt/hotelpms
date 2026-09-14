@@ -267,9 +267,18 @@ export const FolioView = Type.Object({
 export type FolioView = Static<typeof FolioView>
 
 export const PaymentMethod = Type.Object({
+  id: Type.Integer(),
   code: Type.String(),
   name: Type.String(),
-  isExternal: Type.Boolean()
+  /** Die Abwicklung liegt ausser Haus. Keine Buchungsregel, nur eine Angabe. */
+  isExternal: Type.Boolean(),
+  sortOrder: Type.Integer(),
+  /**
+   * Stillgelegt statt geloescht. An einer Zahlungsart haengen Verrechnungen,
+   * und `settlement` ist Haertegrad 1: geloescht bliebe ein Beleg zurueck,
+   * dessen Zahlungsweg niemand mehr benennen kann.
+   */
+  active: Type.Boolean()
 })
 export type PaymentMethod = Static<typeof PaymentMethod>
 
@@ -374,6 +383,71 @@ export const Guest = Type.Object({
   status: Type.String()
 })
 export type Guest = Static<typeof Guest>
+
+// ------------------------------------------------------- Haus und Betrieb
+
+export const MaintenanceBlock = Type.Object({
+  /**
+   * `out_of_order` senkt die Kapazitaet, `out_of_service` nicht. Der
+   * Unterschied ist die ganze Aussage: ein defektes Zimmer ist nicht
+   * verkaeuflich, ein abgenutztes schon.
+   */
+  kind: Type.Union([Type.Literal('out_of_order'), Type.Literal('out_of_service')]),
+  from: IsoDate,
+  to: IsoDate,
+  reason: Type.String()
+})
+export type MaintenanceBlock = Static<typeof MaintenanceBlock>
+
+export const MaintenanceTicket = Type.Object({
+  id: Type.Integer(),
+  title: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  priority: Type.Union([
+    Type.Literal('low'), Type.Literal('normal'), Type.Literal('high')]),
+  status: Type.Union([
+    Type.Literal('open'), Type.Literal('in_progress'), Type.Literal('done')]),
+  createdAt: Type.String(),
+  closedAt: Type.Union([Type.String(), Type.Null()]),
+  resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  roomCode: Type.Union([Type.String(), Type.Null()]),
+  /** Laufende Sperrungen des Zimmers. Kommen mit, nicht je Zeile nachgeladen. */
+  blocks: Type.Array(MaintenanceBlock)
+})
+export type MaintenanceTicket = Static<typeof MaintenanceTicket>
+
+export const CreateMaintenanceTicket = Type.Object({
+  propertyId: Type.Integer(),
+  title: Type.String({ minLength: 1 }),
+  description: Type.Optional(Type.String()),
+  resourceId: Type.Optional(Type.Integer()),
+  priority: Type.Optional(Type.Union([
+    Type.Literal('low'), Type.Literal('normal'), Type.Literal('high')])),
+  block: Type.Optional(Type.Object({
+    from: IsoDate, to: IsoDate,
+    kind: Type.Optional(Type.Union([
+      Type.Literal('out_of_order'), Type.Literal('out_of_service')]))
+  }))
+})
+export type CreateMaintenanceTicket = Static<typeof CreateMaintenanceTicket>
+
+export const EmailSettings = Type.Object({
+  fromName: Type.Union([Type.String(), Type.Null()]),
+  fromEmail: Type.Union([Type.String(), Type.Null()]),
+  replyTo: Type.Union([Type.String(), Type.Null()]),
+  bccEmail: Type.Union([Type.String(), Type.Null()]),
+  enabled: Type.Boolean(),
+  updatedAt: Type.Union([Type.String(), Type.Null()])
+})
+export type EmailSettings = Static<typeof EmailSettings>
+
+export const CreatePaymentMethod = Type.Object({
+  code: Type.String({ minLength: 1, maxLength: 20 }),
+  name: Type.String({ minLength: 1, maxLength: 120 }),
+  isExternal: Type.Optional(Type.Boolean()),
+  sortOrder: Type.Optional(Type.Integer())
+})
+export type CreatePaymentMethod = Static<typeof CreatePaymentMethod>
 
 // ---------------------------------------------------------------- Berichte
 

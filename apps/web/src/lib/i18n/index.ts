@@ -6,6 +6,7 @@ import { einrichtung } from './einrichtung.js'
 import { folio } from './folio.js'
 import { gruppen } from './gruppen.js'
 import { berichte } from './berichte.js'
+import { einstellungen } from './einstellungen.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -40,7 +41,8 @@ const texts = {
     ...einrichtung.de,
     ...folio.de,
     ...gruppen.de,
-    ...berichte.de
+    ...berichte.de,
+    ...einstellungen.de
   },
   en: {
     ...common.en,
@@ -49,7 +51,8 @@ const texts = {
     ...einrichtung.en,
     ...folio.en,
     ...gruppen.en,
-    ...berichte.en
+    ...berichte.en,
+    ...einstellungen.en
   }
 } as const
 
