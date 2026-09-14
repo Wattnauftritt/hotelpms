@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 14. September 2026. 376 Tests, 26 Migrationen.
+Stand: 14. September 2026. 405 Tests, 27 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -17,7 +17,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
 | AP 5 Reservierungen | fertig | `0009`, `0022`, `routes/reservations.ts`, `routes/blocks.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
-| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `routes/billing.ts` |
+| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `0027`, `routes/billing.ts`, `routes/deposits.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
 | AP 9 Housekeeping | fertig | `0011`, `routes/housekeeping.ts` |
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
@@ -27,7 +27,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 
-**89 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
+**95 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
 ### Was das System nachweislich kann
 
@@ -119,18 +119,26 @@ werden dürfen.
 
 ---
 
-### Aufgabe 3 — Anzahlungen und ihre Steuerpflicht
+### Aufgabe 3 — Anzahlungen und ihre Steuerpflicht — **erledigt**
 
-**Warum.** Nach § 13 Abs. 1 Nr. 1a UStG entsteht die Steuer bei Anzahlungen mit der Vereinnahmung, nicht mit der Leistung. Das Modell kennt `invoice.kind = 'deposit'`, aber es gibt keinen Weg, eine Anzahlung zu fordern, zu vereinnahmen und später gegen die Schlussrechnung zu verrechnen (B4 in Dokument 13).
+**Warum.** Nach § 13 Abs. 1 Nr. 1a UStG entsteht die Steuer bei Anzahlungen mit der Vereinnahmung, nicht mit der Leistung. Das Modell kannte `invoice.kind = 'deposit'`, aber es gab keinen Weg, eine Anzahlung zu fordern, zu vereinnahmen und später gegen die Schlussrechnung zu verrechnen (B4 in Dokument 13).
 
-**Umfang.**
-- Anzahlungsrechnung erstellen, mit eigener Nummer aus demselben Zähler.
-- Verrechnung in der Schlussrechnung als eigene Position mit negativem Betrag und Verweis auf die Anzahlungsrechnung.
-- `deposit_ledger` als eigener Saldo neben dem Gastkonto.
+**Wo es liegt.** Migration `0027` (`deposit_ledger`, `charge.deposit_invoice_id`, Aufteilungsfelder an `product`), `packages/domain/src/deposit.ts` (die Rechnung ohne Datenbank), `apps/api/src/routes/deposits.ts` (Anzahlungsrechnung und Saldo), die Ergänzungen in `routes/billing.ts` (Vereinnahmung am Zahlungsvermerk, Anrechnung auf der Schlussrechnung) und in `routes/reports.ts` (Buchungstag im DATEV-Stapel).
 
-**Abnahme.** Eine Anzahlung von 200 Euro auf einen Aufenthalt von 500 Euro ergibt eine Schlussrechnung über 500 Euro mit ausgewiesener Anrechnung und 300 Euro offen. Die Steuer der Anzahlung ist im Monat der Vereinnahmung ausgewiesen.
+**Was daraus entschieden wurde.**
 
-**Vorher klären.** Die steuerliche Behandlung ist mit einem Steuerberater zu bestätigen; das steht als offener Punkt in Dokument 02.
+- **Eine Anzahlung ist eine Rechnung, kein Zahlungsvermerk.** Ein `settlement` ohne Rechnung wäre nur ein negativer Saldo und steuerlich unsichtbar — das Haus schuldete die Steuer, ohne dass irgendetwas davon wüsste. Die Nummer kommt aus **demselben** Zähler wie jede andere Rechnung: § 14 Abs. 4 Nr. 4 UStG verlangt eine einmalige, fortlaufende Nummer, und ein zweiter Kreis für Anzahlungen wäre genau die Lücke, die ein Prüfer sucht.
+- **Die Steuer hängt am Eingang, nicht an der Ausstellung.** Der Geschäftstag der Zeile `received` ist der Steuerzeitpunkt, und der DATEV-Export bucht danach: eine gestellte, aber noch nicht bezahlte Anzahlungsrechnung ist steuerlich noch nichts und steht deshalb in **keinem** Stapel. Sonst wäre die Steuer im Monat der Ausstellung angemeldet und im Monat des Eingangs geschuldet.
+- **Aufgeteilt wird im Verhältnis der erwarteten Leistung.** Eine Anzahlung ist ein pauschaler Betrag, die spätere Leistung ist es nicht: die Übernachtung trägt 7 Prozent, das Frühstücksbuffet trägt zwei Sätze in einem Preis — Speisen ermäßigt, Getränke voll. Das Verhältnis legt das Haus an `product` fest (üblich sind 30 Prozent Getränke), weil es von seinem Angebot abhängt. Wer pauschal den vollen Satz nimmt, weist zu viel aus und korrigiert jede Schlussrechnung; wer pauschal den ermäßigten nimmt, schuldet die Differenz.
+- **Die Summe der Teile ist auf den Cent der vereinnahmte Betrag.** Verteilt wird nach dem größten Bruchteil, und gerechnet wird aus dem **Brutto**: eine Anzahlung wird brutto vereinbart, der Gast überweist 200 Euro und nicht 186,92 plus Steuer. Aus den Nettosummen zurückgerechnet ergäbe die ausgewiesene Summe in Randfällen einen Cent Differenz zum Kontoauszug — genau die Art Fehler, die erst der Betriebsprüfer findet.
+- **Die Schlussrechnung lautet über den vollen Betrag.** § 14 Abs. 5 Satz 2 UStG: abgesetzt wird die Anzahlung samt Steuer, je Steuersatz getrennt und mit Verweis auf die Anzahlungsrechnung. Ein Sammelbetrag ohne Satzaufteilung wäre für den Empfänger nicht nachvollziehbar und für das Finanzamt nicht prüfbar. Eine **Zwischenrechnung** über ausgewählte Positionen verbraucht die Anzahlung nicht: sie gehört zum ganzen Aufenthalt, nicht zu einer Auswahl daraus.
+- **1718 statt eines Erlöskontos.** Eine erhaltene Anzahlung ist eine Verbindlichkeit, bis geleistet wurde. Auf einem Erlöskonto verfälschte sie jede Umsatzauswertung und ließe das Haus im Januar reich aussehen, weil im Mai jemand anreist.
+- **Vereinnahmt und angerechnet wird je genau einmal**, erzwungen durch einen eindeutigen Index und nicht durch die Reihenfolge der Aufrufe. Ein doppelt erfasster Zahlungseingang zöge sonst 400 Euro ab, wo 200 gezahlt wurden.
+- **DATEV kennt keinen negativen Umsatz.** Die Richtung steht im Soll/Haben-Kennzeichen; die Anrechnung bucht andersherum, der Betrag bleibt positiv. Bisher hätte eine negative Position ein Minus im Betragsfeld erzeugt.
+
+**Abnahme.** 200 Euro auf 500 ergeben eine Schlussrechnung über 500 Euro mit ausgewiesener Anrechnung und 300 Euro offen; die Steuer der Anzahlung steht im Stapel des Vereinnahmungsmonats und nicht in dem der Ausstellung. Belegt in `apps/api/src/__tests__/deposit.test.ts` und `packages/domain/src/__tests__/deposit.test.ts`.
+
+**Noch offen.** Die Rückzahlung einer nicht verbrauchten Anzahlung: `deposit_ledger` kennt die Art `refunded`, aber es gibt keinen Weg, sie zu erzeugen. Sie gehört zum Storno, nicht zur Anzahlung, und braucht eine eigene Entscheidung darüber, ob eine Stornogebühr einbehalten wird. Und die steuerliche Behandlung ist weiterhin mit einem Steuerberater zu bestätigen; das steht als offener Punkt in Dokument 02.
 
 ---
 

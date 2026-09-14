@@ -6,7 +6,21 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { sumInvoice, taxFromNet, blockingFindings, type Party } from '@hotelpms/domain'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
+import { deductDeposits, recordDepositApplication, recordDepositReceipt }
+  from './deposits.js'
+import type { PoolClient } from '@hotelpms/db'
 import type { Principal } from '../platform/context.js'
+
+/** Der offene Geschaeftstag der Property, sonst heute. */
+async function offenerGeschaeftstag(
+  client: PoolClient, propertyId: number
+): Promise<string> {
+  const bd = await client.query<{ date: string }>(
+    `SELECT date::text FROM business_day
+      WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
+    [propertyId])
+  return bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
+}
 
 export function billingRoutes(app: FastifyInstance): void {
   registerRoute(app, {
@@ -129,6 +143,9 @@ export function billingRoutes(app: FastifyInstance): void {
       const { folioRef } = req.params as { folioRef: string }
       const body = req.body as {
         amountCent: number; paymentMethodCode: string; externalReference?: string
+        /** Bezug zu einer Rechnung. Bei einer Anzahlungsrechnung ist dieser
+         *  Eingang die Vereinnahmung, und an ihr haengt die Steuer. */
+        invoiceRef?: string
       }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
@@ -152,13 +169,43 @@ export function billingRoutes(app: FastifyInstance): void {
           `SELECT date::text FROM business_day
             WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
           [folio.property_id])
+        const businessDate = bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
+
+        /*
+         * Bezug zu einer Rechnung. Bei einer Anzahlungsrechnung ist dieser
+         * Eingang die **Vereinnahmung**: mit ihm entsteht die Steuer
+         * (§ 13 Abs. 1 Nr. 1a UStG), nicht mit der Ausstellung. Deshalb
+         * haelt das Anzahlungsbuch den Geschaeftstag dieses Vermerks fest
+         * und nicht den der Rechnung.
+         */
+        let rechnung: { id: number; kind: string } | null = null
+        if (body.invoiceRef) {
+          const i = await client.query<{ id: number; kind: string; folio_id: number }>(
+            `SELECT id, kind, folio_id FROM invoice
+              WHERE public_ref = $1 AND property_id = $2`,
+            [body.invoiceRef, folio.property_id])
+          if (i.rowCount === 0) throw Errors.notFound('Rechnung')
+          if (i.rows[0]!.folio_id !== folio.id) {
+            throw Errors.validation({ invoiceRef: ['Die Rechnung gehoert zu einem anderen Folio'] })
+          }
+          rechnung = { id: i.rows[0]!.id, kind: i.rows[0]!.kind }
+        }
 
         const r = await client.query<{ id: number }>(
           `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent,
-                                   payment_method_id, external_reference, created_by)
-           VALUES ($1,$2,$3::date,$4,$5,$6,$7) RETURNING id`,
-          [folio.property_id, folio.id, bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10),
-           body.amountCent, pm.rows[0]!.id, body.externalReference ?? null, principal.userId])
+                                   payment_method_id, external_reference, invoice_id, created_by)
+           VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8) RETURNING id`,
+          [folio.property_id, folio.id, businessDate,
+           body.amountCent, pm.rows[0]!.id, body.externalReference ?? null,
+           rechnung?.id ?? null, principal.userId])
+
+        if (rechnung?.kind === 'deposit') {
+          await recordDepositReceipt(client, {
+            propertyId: folio.property_id, folioId: folio.id,
+            depositInvoiceId: rechnung.id, settlementId: r.rows[0]!.id,
+            amountCent: body.amountCent, businessDate, userId: principal.userId
+          })
+        }
 
         const result = { settlementId: r.rows[0]!.id, amountCent: body.amountCent }
         await completeIdempotent(client, principal.clientKey, key, 201, result)
@@ -227,17 +274,45 @@ export function billingRoutes(app: FastifyInstance): void {
         if (f.rowCount === 0) throw Errors.notFound('Folio')
         const folio = f.rows[0]!
 
+        /*
+         * Vereinnahmte Anzahlungen absetzen (§ 14 Abs. 5 Satz 2 UStG). Die
+         * Rechnung lautet weiter ueber den vollen Betrag; abgesetzt wird
+         * als eigene Position je Steuersatz, mit Verweis auf die
+         * Anzahlungsrechnung.
+         *
+         * Nur bei der Schlussrechnung und nur, wenn alle offenen Positionen
+         * abgerechnet werden. Eine Zwischenrechnung ueber ausgewaehlte
+         * Positionen darf die Anzahlung nicht verbrauchen: sie gehoert zum
+         * ganzen Aufenthalt, nicht zu einer Auswahl daraus.
+         */
+        const offenePositionen = await client.query(
+          `SELECT 1 FROM charge WHERE folio_id = $1 AND invoice_id IS NULL LIMIT 1`,
+          [folio.id])
+        const schlussrechnung = (body.kind ?? 'final') === 'final'
+          && !body.chargeIds?.length
+          // Ohne offene Position gaebe die Anrechnung eine Rechnung ueber
+          // einen negativen Betrag. Eine Rueckzahlung ist aber keine
+          // Rechnung, und die Anzahlung waere still verbraucht.
+          && offenePositionen.rowCount !== 0
+        const angerechnet = schlussrechnung
+          ? await deductDeposits(client, {
+              propertyId: folio.property_id, folioId: folio.id,
+              businessDate: await offenerGeschaeftstag(client, folio.property_id),
+              userId: principal.userId })
+          : { chargeIds: [], grossCent: 0, invoiceIds: [] }
+
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
         // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
         const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
                                              description: string; quantity: number
-                                             business_date: string }>(
+                                             business_date: string
+                                             deposit_invoice_id: number | null }>(
           body.chargeIds?.length
             ? `SELECT id, net_cent, tax_rate_bp, description, quantity,
-                      business_date::text FROM charge
+                      business_date::text, deposit_invoice_id FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2) ORDER BY id`
             : `SELECT id, net_cent, tax_rate_bp, description, quantity,
-                      business_date::text FROM charge
+                      business_date::text, deposit_invoice_id FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL ORDER BY id`,
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
         if (charges.rowCount === 0) throw Errors.unprocessable('Keine offenen Positionen.')
@@ -306,7 +381,14 @@ export function billingRoutes(app: FastifyInstance): void {
          * Positionen abgeleitet und nicht vom Aufrufer entgegengenommen:
          * die Positionen wissen es, der Aufrufer könnte sich irren.
          */
-        const daten = charges.rows.map(c => c.business_date).sort()
+        /*
+         * Die Anrechnung einer Anzahlung ist keine Leistung. Ihr
+         * Geschaeftstag ist der Tag der Abrechnung und wuerde den
+         * Leistungszeitraum ueber den Aufenthalt hinaus dehnen.
+         */
+        const daten = charges.rows
+          .filter(c => c.deposit_invoice_id === null)
+          .map(c => c.business_date).sort()
         const serviceFrom = daten[0]!
         const serviceTo = daten[daten.length - 1]!
 
@@ -349,11 +431,30 @@ export function billingRoutes(app: FastifyInstance): void {
           `UPDATE charge SET invoice_id = $2 WHERE id = ANY($1)`,
           [charges.rows.map(c => c.id), inv.rows[0]!.id])
 
+        if (angerechnet.invoiceIds.length > 0) {
+          await recordDepositApplication(client, {
+            propertyId: folio.property_id, folioId: folio.id,
+            depositInvoiceIds: angerechnet.invoiceIds,
+            finalInvoiceId: inv.rows[0]!.id, businessDate,
+            userId: principal.userId })
+        }
+
         const result = {
           invoiceRef: inv.rows[0]!.public_ref,
           number: inv.rows[0]!.number,
           serviceFrom, serviceTo,
-          totals
+          // totals sind die Summen des Dokuments: Leistungen **abzueglich**
+          // der angerechneten Anzahlung, also der Zahlbetrag.
+          totals,
+          // Die Leistung selbst, vor Anrechnung. Die Rechnung weist sie in
+          // voller Hoehe aus (§ 14 Abs. 5 Satz 2 UStG); die Anzahlung
+          // mindert den Zahlbetrag, nicht die Leistung.
+          serviceGrossCent: sumInvoice(
+            charges.rows
+              .filter(c => c.deposit_invoice_id === null)
+              .map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp }))).grossCent,
+          depositAppliedCent: angerechnet.grossCent,
+          openCent: totals.grossCent
         }
 
         await emitEvent(client, folio.property_id, 'invoice.finalized', {

@@ -305,19 +305,34 @@ export function reportRoutes(app: FastifyInstance): void {
           `SELECT name FROM property WHERE id = $1`, [id])
         if (prop.rowCount === 0) throw Errors.notFound('Property')
 
+        // Der Buchungstag ist nicht immer der Rechnungstag. Bei einer
+        // Anzahlung entsteht die Steuer mit der **Vereinnahmung**
+        // (§ 13 Abs. 1 Nr. 1a UStG), also am Tag des Geldeingangs; eine
+        // gestellte, aber noch nicht bezahlte Anzahlungsrechnung ist
+        // steuerlich noch nichts und gehört nicht in den Stapel.
         const { rows } = await client.query<{
           number: string; issued_on: string; tax_rate_bp: number
           revenue_account: string; gross_cent: number
           recipient: string; kind: string }>(
-          `SELECT i.number, i.issued_on::text AS issued_on, c.tax_rate_bp,
+          `WITH beleg AS (
+             SELECT i.id, i.number, i.kind, i.recipient_snapshot,
+                    COALESCE(CASE WHEN i.kind = 'deposit' THEN d.business_date END,
+                             i.issued_on) AS buchungstag
+               FROM invoice i
+               LEFT JOIN deposit_ledger d
+                      ON d.deposit_invoice_id = i.id AND d.kind = 'received'
+              WHERE i.property_id = $1
+                AND (i.kind <> 'deposit' OR d.id IS NOT NULL)
+           )
+           SELECT b.number, b.buchungstag::text AS issued_on, c.tax_rate_bp,
                   c.revenue_account, sum(c.gross_cent)::bigint AS gross_cent,
-                  COALESCE(i.recipient_snapshot->>'name', 'Divers') AS recipient,
-                  i.kind
-             FROM invoice i JOIN charge c ON c.invoice_id = i.id
-            WHERE i.property_id = $1 AND i.issued_on BETWEEN $2::date AND $3::date
-            GROUP BY i.id, i.number, i.issued_on, c.tax_rate_bp, c.revenue_account,
-                     i.recipient_snapshot, i.kind
-            ORDER BY i.issued_on, i.number, c.revenue_account, c.tax_rate_bp`,
+                  COALESCE(b.recipient_snapshot->>'name', 'Divers') AS recipient,
+                  b.kind
+             FROM beleg b JOIN charge c ON c.invoice_id = b.id
+            WHERE b.buchungstag BETWEEN $2::date AND $3::date
+            GROUP BY b.id, b.number, b.buchungstag, c.tax_rate_bp, c.revenue_account,
+                     b.recipient_snapshot, b.kind
+            ORDER BY b.buchungstag, b.number, c.revenue_account, c.tax_rate_bp`,
           [id, q.from, q.to])
 
         const jahr = (q.fiscalYearStart ?? q.from).slice(0, 4)
@@ -340,8 +355,12 @@ export function reportRoutes(app: FastifyInstance): void {
         // Pflege am Hals.
         const DEBITOR_SAMMEL = '10000'
         const zeilen = rows.map(r => {
-          const betrag = (r.gross_cent / 100).toFixed(2).replace('.', ',')
-          const haben = r.kind === 'credit_note'
+          // DATEV kennt keinen negativen Umsatz: die Richtung steht im
+          // Soll/Haben-Kennzeichen, der Betrag ist immer positiv. Eine
+          // angerechnete Anzahlung ist eine negative Zeile der
+          // Schlussrechnung und bucht deshalb andersherum als ein Erloes.
+          const betrag = (Math.abs(r.gross_cent) / 100).toFixed(2).replace('.', ',')
+          const haben = r.gross_cent < 0 ? true : r.kind === 'credit_note'
           return [
             betrag, haben ? 'H' : 'S', 'EUR', '', '', '',
             DEBITOR_SAMMEL, r.revenue_account, '', r.issued_on.slice(8, 10)
