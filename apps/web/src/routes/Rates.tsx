@@ -2,7 +2,9 @@ import { useMemo, useState, type JSX } from 'react'
 import type { RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
-         useRechte, tageInklusive, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
+         useCreateRatePlan, useRebuildDerived,
+         tageInklusive, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
+import { useRechte } from '../lib/queries/rechte.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
 import { betroffeneTage, centAusEingabe, eingabeAusCent, preisVorschau,
          preisNutzlast, restriktionsNutzlast, wochentagKuerzel,
@@ -307,6 +309,144 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
   )
 }
 
+/**
+ * Ratenpläne anlegen und abgeleitete Raten neu rechnen (B4).
+ *
+ * Steht unter dem Raster und nicht in der Einrichtung: wer Preise pflegt,
+ * legt den Plan an, für den er sie pflegt, und sieht ihn gleich in der
+ * Zeile darüber.
+ */
+function Ratenplaene(
+  { propertyId, plaene, kategorien, von, bis, darfSchreiben }: {
+    propertyId: number
+    plaene: readonly RatePlan[]
+    kategorien: ReadonlyArray<{ id: number; name: string }>
+    von: string; bis: string; darfSchreiben: boolean }
+): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const anlegen = useCreateRatePlan(propertyId)
+  const neuRechnen = useRebuildDerived(propertyId)
+
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const [categoryId, setCategoryId] = useState(0)
+  const [baseId, setBaseId] = useState(0)
+  const [deriveKind, setDeriveKind] = useState<'amount' | 'percent'>('percent')
+  const [deriveValue, setDeriveValue] = useState('-15')
+
+  const gewaehlteKategorie = categoryId !== 0 ? categoryId : kategorien[0]?.id ?? 0
+  const wert = Number(deriveValue)
+  const abgeleitet = baseId !== 0
+  const bereit = code.trim() !== '' && name.trim() !== '' && gewaehlteKategorie !== 0
+    && (!abgeleitet || Number.isInteger(wert))
+
+  const absenden = (e: React.FormEvent): void => {
+    e.preventDefault()
+    if (!bereit) return
+    anlegen.mutate({
+      code: code.trim(), name: name.trim(), categoryId: gewaehlteKategorie,
+      ...(abgeleitet
+        ? { baseRatePlanId: baseId, deriveKind, deriveValue: wert }
+        : {})
+    }, { onSuccess: () => { setCode(''); setName('') } })
+  }
+
+  return (
+    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="font-medium">{t('rate.plans')}</div>
+        <div className="grow" />
+        <button type="button"
+                onClick={() => neuRechnen.mutate({ from: von, to: bis })}
+                disabled={!online || !darfSchreiben || neuRechnen.isPending}
+                className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('rate.rebuild')}
+        </button>
+        {neuRechnen.isSuccess && (
+          <span role="status" className="text-sm text-emerald-800">
+            <span className="tabular-nums">{neuRechnen.data.days}</span>{' '}
+            {t('rate.rebuild.done')}{' '}
+            <span className="tabular-nums">{neuRechnen.data.plans}</span>{' '}
+            {/* Eine abgeleitete Rate, nicht "1 abgeleitete Raten". */}
+            {t(neuRechnen.data.plans === 1 ? 'rate.rebuild.plan' : 'rate.rebuild.plans')}
+          </span>
+        )}
+      </div>
+      {neuRechnen.isError && <Fehler error={neuRechnen.error} />}
+
+      {darfSchreiben && (
+        <form onSubmit={absenden} className="space-y-2 border-t border-neutral-200 pt-3">
+          <div className="text-sm text-neutral-600">{t('rate.plan.new')}</div>
+          <div className="flex flex-wrap gap-3">
+            <label className="text-sm">
+              <div className="text-neutral-600">{t('rate.plan.code')}</div>
+              <input value={code} onChange={e => setCode(e.target.value)} required
+                     className="border border-neutral-300 rounded px-2 py-1 w-28" />
+            </label>
+            <label className="text-sm">
+              <div className="text-neutral-600">{t('rate.plan.name')}</div>
+              <input value={name} onChange={e => setName(e.target.value)} required
+                     className="border border-neutral-300 rounded px-2 py-1 w-56" />
+            </label>
+            <label className="text-sm">
+              <div className="text-neutral-600">{t('common.category')}</div>
+              <select value={gewaehlteKategorie}
+                      onChange={e => setCategoryId(Number(e.target.value))}
+                      className="border border-neutral-300 rounded px-2 py-1">
+                {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm">
+              <div className="text-neutral-600">{t('rate.plan.base')}</div>
+              <select value={baseId} onChange={e => setBaseId(Number(e.target.value))}
+                      className="border border-neutral-300 rounded px-2 py-1">
+                <option value={0}>{t('rate.plan.base.none')}</option>
+                {plaene.filter(p => p.baseRatePlanId === null)
+                  .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            {abgeleitet && (
+              <>
+                <label className="text-sm">
+                  <div className="text-neutral-600">{t('rate.plan.deriveKind')}</div>
+                  <select value={deriveKind}
+                          onChange={e => setDeriveKind(e.target.value as 'percent')}
+                          className="border border-neutral-300 rounded px-2 py-1">
+                    <option value="percent">{t('rate.plan.derive.percent')}</option>
+                    <option value="amount">{t('rate.plan.derive.amount')}</option>
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <div className="text-neutral-600">{t('rate.plan.deriveValue')}</div>
+                  <input type="number" value={deriveValue}
+                         onChange={e => setDeriveValue(e.target.value)}
+                         className="border border-neutral-300 rounded px-2 py-1 w-24
+                                    text-right tabular-nums" />
+                </label>
+              </>
+            )}
+          </div>
+
+          {abgeleitet && (
+            <div className="text-xs text-neutral-500">
+              {t('rate.plan.deriveHint')} {t('rate.plan.emptyHint')}
+            </div>
+          )}
+          {anlegen.isError && <Fehler error={anlegen.error} />}
+
+          <button type="submit" disabled={!online || !bereit || anlegen.isPending}
+                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                             disabled:opacity-40">
+            {t('common.save')}
+          </button>
+        </form>
+      )}
+    </section>
+  )
+}
+
 export function Rates({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -390,6 +530,11 @@ export function Rates({ propertyId }: { propertyId: number }): JSX.Element {
                           belegung={belegung} auswahl={auswahl}
                           onAuswahl={setAuswahl} />
                 <div className="text-xs text-neutral-500">{t('rate.legend')}</div>
+
+                <Ratenplaene propertyId={propertyId}
+                             plaene={plaene.data?.ratePlans ?? []}
+                             kategorien={kategorien.data?.categories ?? []}
+                             von={von} bis={bis} darfSchreiben={darfSchreiben} />
 
                 {auswahl === null || gewaehlterPlan === undefined
                   ? <div className="text-sm text-neutral-500">

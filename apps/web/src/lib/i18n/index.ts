@@ -11,6 +11,7 @@ import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
 import { preise } from './preise.js'
 import { gaeste } from './gaeste.js'
+import { rechnung } from './rechnung.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -50,7 +51,8 @@ const texts = {
     ...einstellungen.de,
     ...schnittstellen.de,
     ...preise.de,
-    ...gaeste.de
+    ...gaeste.de,
+    ...rechnung.de
   },
   en: {
     ...common.en,
@@ -64,7 +66,8 @@ const texts = {
     ...einstellungen.en,
     ...schnittstellen.en,
     ...preise.en,
-    ...gaeste.en
+    ...gaeste.en,
+    ...rechnung.en
   }
 } as const
 
