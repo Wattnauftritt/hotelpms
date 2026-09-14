@@ -193,17 +193,17 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| C1 | Kennzahlen | offen | — | |
-| C2 | Nachtlauf-Stand | offen | — | |
-| C3 | Beherbergungsstatistik | offen | — | |
-| C4 | Exporte | offen | — | |
-| C5 | Wartungsmeldungen | offen | — | |
-| C6 | Absenderangaben Gastpost | offen | — | |
-| C7 | Zahlungsarten | offen | — | |
-| C8 | Webhooks | offen | — | |
-| C9 | Maschinenzugänge, Channel Manager | offen | — | |
-| C10 | Benutzer und Rollen | offen | — | |
-| C11 | Stammdaten vollständig pflegen | offen | — | |
+| C1 | Kennzahlen | im PR #25 | #25 | Reiter „Kennzahlen". Vorjahresvergleich im selben Aufruf: `kpi` nimmt jetzt `compare=previous-year` |
+| C2 | Nachtlauf-Stand | im PR #25 | #25 | Reiter „Nachtlauf". Brauchte einen Endpunkt: `GET /v1/properties/:id/night-audit-status` |
+| C3 | Beherbergungsstatistik | im PR #25 | #25 | Reiter „Beherbergung". Im Übungshaus gar nicht erst angeboten |
+| C4 | Exporte | im PR #25 | #25 | Reiter „Ausgaben": DATEV, GoBD, Mandantenexport. Läuft neben der Oberfläche |
+| C5 | Wartungsmeldungen | im PR #27 | #27 | Eigener Bildschirm „Wartung". Brauchte `PATCH /v1/maintenance-tickets/:id`; die Sperrung nimmt jetzt beide Arten |
+| C6 | Absenderangaben Gastpost | im PR #27 | #27 | Reiter in „Einstellungen" |
+| C7 | Zahlungsarten | im PR #27 | #27 | Reiter in „Einstellungen". Brauchte POST und PATCH; **kein** Löschen |
+| C8 | Webhooks | im PR #28 | #28 | Reiter in „Schnittstellen", mit Zustellprotokoll und Grund der Stilllegung an der Zeile |
+| C9 | Maschinenzugänge, Channel Manager | im PR #28 | #28 | Zwei Reiter. Geheimnis einmal, mit ausdrücklicher Bestätigung |
+| C10 | Benutzer und Rollen | im PR #28 | #28 | Reiter. Brauchte drei Endpunkte (`users`, `roles`, Rollen setzen). Benutzer **anlegen** gehört zur Einladung und ist nicht dabei |
+| C11 | Stammdaten vollständig pflegen | im PR #27 | #27 | `components/Stammdaten.tsx`, eingehängt in `Setup.tsx`. Alle Felder des Modells, stilllegen statt löschen |
 
 ---
 
@@ -215,7 +215,9 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 |---|---|---|---|
 | A | (Rahmen) | Ein Weg, aus dem Zimmerplan heraus zu buchen — `TapeChart` müsste einen leeren Bereich anklickbar machen | offen |
 | B | A | Gastauswahl (`GuestPicker`) für die Rechnungsadresse | offen |
-| C | (Rahmen) | Ein Ort für Einstellungen, die nicht Einrichtung sind — heute gibt es nur `Setup` | offen |
+| C | (Rahmen) | Ein Ort für Einstellungen, die nicht Einrichtung sind — heute gibt es nur `Setup` | erledigt: `routes/Settings.tsx` |
+| C | B | `PaymentMethod` in `schemas.ts` trägt jetzt zusätzlich `id`, `sortOrder` und `active` — die Liste war ansehbar, aber nicht pflegbar. Rein additiv; `GET .../payment-methods` liefert weiterhin nur die aktiven, `?includeInactive=true` auch die stillgelegten | erledigt |
+| C | (Rahmen) | Ein Bildschirm konnte nur **ein** Recht tragen. Die Berichte bündeln drei (`report:operational`, `report:revenue`, `report:export`), und eine Rezeption hat nur das erste. `permission` in `screens.tsx` nimmt deshalb jetzt auch eine **Liste**; sie heißt „eines davon genügt". Bestehende Einträge bleiben unverändert | erledigt |
 | B | (Rahmen) | `formatMoney` in `lib/i18n/index.ts` baut bei **jedem** Aufruf ein `Intl.NumberFormat`. Auf einer Liste unauffällig, im Raster nicht: 1 600 Objekte je Neuzeichnen, gemessen 328 ms je Mausbewegung. Spur B hält sich deshalb einen eigenen Formatierer (`geldFormatierer` in `lib/preisraster.ts`, danach 22 ms). Gehört auf Dauer in den Rahmen, nicht in drei Spuren | offen |
 | B | (alle) | `web.test.ts` schrieb die Bildschirmliste **exakt** fest und wäre damit bei jeder Spur rot geworden, sobald sie ihren ersten Bildschirm anhängt. Spur B hat die Prüfung auf ihre Absicht zurückgeführt: die bekannten Schlüssel stehen weiterhin in dieser Reihenfolge am Anfang, angehängte kommen dahinter. Wer einen Bildschirm anhängt, muss dort nichts mehr ändern | erledigt |
 | B | (Rahmen) | Die Rechte des Benutzers stehen nur in `main.tsx`, ein Bildschirm kommt nicht an sie heran. Spur B liest dafür denselben Zwischenspeicher (`useRechte` in `lib/queries/rates.ts`); sauberer wäre ein Feld am `ScreenContext` — das ändert aber `screens.tsx` für alle drei und wartet deshalb auf eine Absprache | offen |

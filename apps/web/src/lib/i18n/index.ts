@@ -5,6 +5,9 @@ import { housekeeping } from './housekeeping.js'
 import { einrichtung } from './einrichtung.js'
 import { folio } from './folio.js'
 import { gruppen } from './gruppen.js'
+import { berichte } from './berichte.js'
+import { einstellungen } from './einstellungen.js'
+import { schnittstellen } from './schnittstellen.js'
 import { preise } from './preise.js'
 
 /**
@@ -40,6 +43,9 @@ const texts = {
     ...einrichtung.de,
     ...folio.de,
     ...gruppen.de,
+    ...berichte.de,
+    ...einstellungen.de,
+    ...schnittstellen.de,
     ...preise.de
   },
   en: {
@@ -49,6 +55,9 @@ const texts = {
     ...einrichtung.en,
     ...folio.en,
     ...gruppen.en,
+    ...berichte.en,
+    ...einstellungen.en,
+    ...schnittstellen.en,
     ...preise.en
   }
 } as const

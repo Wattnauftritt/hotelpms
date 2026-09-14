@@ -214,6 +214,7 @@ Sieben davon waren **stille** Fehler: keine Ausnahme, keine rote Zeile, nur eine
 | Was ist fertig, was ist offen? | [`16-arbeitsstand.md`](16-arbeitsstand.md) |
 | Welche Regeln gelten beim Programmieren? | [`../CLAUDE.md`](../CLAUDE.md) |
 | Wie betreibe ich das System? | [`17-betrieb.md`](17-betrieb.md) |
+| Wie setze ich die Maschine auf? | [`21-inbetriebnahme.md`](21-inbetriebnahme.md) |
 | Wie sieht die Oberfläche aus und was fehlt ihr? | [`19-frontend.md`](19-frontend.md) |
 | Woran arbeiten gerade mehrere parallel? | [`20-arbeitsteilung.md`](20-arbeitsteilung.md) |
 | Warum ist das Datenmodell so? | [`10-systemarchitektur.md`](10-systemarchitektur.md), [`13-gesamtreview.md`](13-gesamtreview.md) |

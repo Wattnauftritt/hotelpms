@@ -78,12 +78,16 @@ describe('Bildschirme und Rechte', () => {
     // Ein Housekeeping-Konto sieht den Zimmerplan nicht. Nicht aus
     // Geheimhaltung -- die Sicherheit liegt in der API --, sondern weil
     // ein Knopf, der 403 antwortet, schlechter ist als kein Knopf.
+    // Die Wartungsliste steht bewusst mit dabei: sie haengt an
+    // `housekeeping:read`, und wer die Zimmer macht, findet die Schaeden.
+    // Anlegen und Erledigen bleiben ohne `maintenance:write` verborgen.
     const nurHk = visibleScreens(['housekeeping:read']).map(s => s.key)
-    expect(nurHk).toEqual(['housekeeping'])
+    expect(nurHk).toEqual(['housekeeping', 'maintenance'])
 
     const rezeption = visibleScreens(
       ['reservation:read', 'housekeeping:read', 'inventory:read']).map(s => s.key)
-    expect(rezeption).toEqual(['tape', 'today', 'housekeeping', 'blocks'])
+    expect(rezeption).toEqual(
+      ['tape', 'today', 'housekeeping', 'blocks', 'maintenance'])
     expect(rezeption).not.toContain('setup')
   })
 
@@ -107,10 +111,13 @@ describe('Bildschirme und Rechte', () => {
      * Geprueft wird, dass die bekannten Schluessel weder umbenannt noch
      * umgestellt werden -- daran haengen Lesezeichen. Ein **angehaengter**
      * Bildschirm ist dagegen der vorgesehene Weg (Dokument 20, Abschnitt 2:
-     * anhaengen, nie einfuegen), und die feste Gesamtliste haette jede der
-     * drei Spuren blockiert, sobald sie ihren ersten Bildschirm bringt.
+     * anhaengen, nie einfuegen). Als feste Gesamtliste wurde die Pruefung
+     * bei jeder der drei Spuren rot, sobald sie ihren naechsten Bildschirm
+     * brachte -- an einer Stelle, die keiner von ihnen gehoert. Als
+     * Anfangsstueck haelt sie dasselbe fest und steht niemandem im Weg.
      */
-    const bekannt = ['tape', 'today', 'housekeeping', 'blocks', 'setup']
+    const bekannt = ['tape', 'today', 'housekeeping', 'blocks', 'setup',
+                     'reports', 'maintenance', 'settings', 'integrations']
     expect(SCREENS.map(s => s.key).slice(0, bekannt.length)).toEqual(bekannt)
     // Kein Schluessel doppelt: zwei gleiche waeren in der Adresse nicht
     // unterscheidbar, und `screenByKey` faende immer nur den ersten.

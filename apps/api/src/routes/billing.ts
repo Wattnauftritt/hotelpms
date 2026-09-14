@@ -103,11 +103,18 @@ export function billingRoutes(app: FastifyInstance): void {
     summary: 'Zahlungsarten der Property',
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
+      const q = req.query as { includeInactive?: string }
       return tx(req.pool, req, async client => {
+        // `id`, `sortOrder` und `active` kommen immer mit: ohne sie ist die
+        // Liste ansehbar, aber nicht pflegbar, und die Pflegemaske muesste
+        // sie einzeln nachfragen.
         const { rows } = await client.query(
-          `SELECT code, name, is_external AS "isExternal"
-             FROM payment_method WHERE property_id = $1 AND active
-            ORDER BY sort_order, code`, [Number(propertyId)])
+          `SELECT id, code, name, is_external AS "isExternal",
+                  sort_order AS "sortOrder", active
+             FROM payment_method
+            WHERE property_id = $1 AND (active OR $2::boolean)
+            ORDER BY sort_order, code`,
+          [Number(propertyId), q.includeInactive === 'true'])
         // Der Hinweis gehoert an die Liste, nicht in eine Fussnote: dieses
         // System wickelt keine Zahlung ab und fuehrt keinen Kassenbestand.
         // Es vermerkt, wo abgerechnet wurde (Entscheidung 9, Dokument 09).
@@ -116,6 +123,93 @@ export function billingRoutes(app: FastifyInstance): void {
           hinweis: 'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. '
                  + 'Die Zahlung selbst laeuft ueber Kasse, Portal oder Bank des Betriebs.'
         }
+      })
+    }
+  })
+
+
+  /**
+   * Zahlungsart anlegen.
+   *
+   * Was hier **nicht** entsteht, ist eine Kasse. Ein Zahlungsvermerk ordnet
+   * zu, er wickelt nicht ab: es gibt keinen Kassenbestand, keine TSE und
+   * keinen Bon (Entscheidung 10, Dokument 09). `isExternal` sagt deshalb
+   * nur, ob die Abwicklung ausser Haus liegt -- eine Buchungsregel ist es
+   * nicht.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/payment-methods',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Zahlungsart anlegen',
+    handler: async (req, reply) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const b = req.body as { code: string; name: string; isExternal?: boolean
+                              sortOrder?: number }
+      const fehler: Record<string, string[]> = {}
+      if (!b.code?.trim()) fehler.code = ['Pflichtfeld']
+      if (!b.name?.trim()) fehler.name = ['Pflichtfeld']
+      if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
+
+      return tx(req.pool, req, async client => {
+        const da = await client.query(
+          `SELECT 1 FROM payment_method WHERE property_id = $1 AND code = $2`,
+          [Number(propertyId), b.code.trim()])
+        if (da.rowCount && da.rowCount > 0) {
+          throw Errors.conflict(`Die Zahlungsart ${b.code} gibt es in diesem Haus schon.`)
+        }
+        const { rows } = await client.query<{ id: number }>(
+          `INSERT INTO payment_method (property_id, code, name, is_external, sort_order)
+           VALUES ($1,$2,$3,COALESCE($4,true),
+                   COALESCE($5,(SELECT COALESCE(max(sort_order),0)+10
+                                  FROM payment_method WHERE property_id = $1)))
+           RETURNING id`,
+          [Number(propertyId), b.code.trim(), b.name.trim(),
+           b.isExternal ?? null, b.sortOrder ?? null])
+        reply.status(201)
+        return { paymentMethodId: rows[0]!.id, code: b.code.trim() }
+      })
+    }
+  })
+
+  /**
+   * Zahlungsart aendern oder stilllegen.
+   *
+   * Es gibt **kein** Loeschen, und das ist keine Bequemlichkeit: an einer
+   * Zahlungsart haengen Verrechnungen, und `settlement` ist Haertegrad 1.
+   * Eine geloeschte Zahlungsart liesse Belege zurueck, deren Zahlungsweg
+   * niemand mehr benennen kann. Stillgelegt verschwindet sie aus der Auswahl
+   * und bleibt in der Geschichte.
+   */
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/payment-methods/:paymentMethodId',
+    permission: 'settings:property',
+    summary: 'Zahlungsart aendern oder stilllegen',
+    handler: async (req) => {
+      const { paymentMethodId } = req.params as { paymentMethodId: string }
+      const b = req.body as { name?: string; isExternal?: boolean
+                              sortOrder?: number; active?: boolean }
+      if (b.name !== undefined && b.name.trim() === '') {
+        throw Errors.validation({ name: ['Pflichtfeld'] })
+      }
+      return tx(req.pool, req, async client => {
+        const { rows, rowCount } = await client.query(
+          `UPDATE payment_method SET
+             name = COALESCE($2, name),
+             is_external = COALESCE($3, is_external),
+             sort_order = COALESCE($4, sort_order),
+             active = COALESCE($5, active)
+           WHERE id = $1
+           RETURNING id, code, name, is_external AS "isExternal",
+                     sort_order AS "sortOrder", active`,
+          [Number(paymentMethodId), b.name?.trim() ?? null, b.isExternal ?? null,
+           b.sortOrder ?? null, b.active ?? null])
+        // Die Zeilenrichtlinie hat fremde Haeuser schon aussortiert; hier
+        // bleibt nur "gibt es nicht".
+        if (rowCount === 0) throw Errors.notFound('Zahlungsart')
+        return rows[0]!
       })
     }
   })
