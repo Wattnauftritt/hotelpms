@@ -193,10 +193,10 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| C1 | Kennzahlen | offen | — | |
-| C2 | Nachtlauf-Stand | offen | — | |
-| C3 | Beherbergungsstatistik | offen | — | |
-| C4 | Exporte | offen | — | |
+| C1 | Kennzahlen | läuft | — | Reiter „Kennzahlen". Vorjahresvergleich im selben Aufruf: `kpi` nimmt jetzt `compare=previous-year` |
+| C2 | Nachtlauf-Stand | läuft | — | Reiter „Nachtlauf". Brauchte einen Endpunkt: `GET /v1/properties/:id/night-audit-status` |
+| C3 | Beherbergungsstatistik | läuft | — | Reiter „Beherbergung". Im Übungshaus gar nicht erst angeboten |
+| C4 | Exporte | läuft | — | Reiter „Ausgaben": DATEV, GoBD, Mandantenexport. Läuft neben der Oberfläche |
 | C5 | Wartungsmeldungen | offen | — | |
 | C6 | Absenderangaben Gastpost | offen | — | |
 | C7 | Zahlungsarten | offen | — | |
@@ -216,6 +216,7 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 | A | (Rahmen) | Ein Weg, aus dem Zimmerplan heraus zu buchen — `TapeChart` müsste einen leeren Bereich anklickbar machen | offen |
 | B | A | Gastauswahl (`GuestPicker`) für die Rechnungsadresse | offen |
 | C | (Rahmen) | Ein Ort für Einstellungen, die nicht Einrichtung sind — heute gibt es nur `Setup` | offen |
+| C | (Rahmen) | Ein Bildschirm konnte nur **ein** Recht tragen. Die Berichte bündeln drei (`report:operational`, `report:revenue`, `report:export`), und eine Rezeption hat nur das erste. `permission` in `screens.tsx` nimmt deshalb jetzt auch eine **Liste**; sie heißt „eines davon genügt". Bestehende Einträge bleiben unverändert | erledigt |
 
 ---
 

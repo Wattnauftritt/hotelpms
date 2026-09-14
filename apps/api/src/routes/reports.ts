@@ -1,12 +1,39 @@
 import type { FastifyInstance } from 'fastify'
+import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { isIsoDate, nightsBetween } from '@hotelpms/domain'
+import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
 
 /** Kennzahlen ueber mehr als zwei Jahre gehoeren ins Berichtsreplikat. */
 const MAX_DAYS = 800
+
+/** So weit zurueck zeigt der Nachtlauf-Stand hoechstens. */
+const NACHTLAUF_TAGE_MAX = 60
+
+/**
+ * Die Schritte, die ein vollstaendiger Lauf hinterlaesst. Steht hier, damit
+ * die Oberflaeche einen unvollstaendigen Tag erkennt, ohne die Liste selbst
+ * zu kennen; die Reihenfolge ist die des Laufs (B1, Dokument 13).
+ */
+const NACHTLAUF_SCHRITTE = [
+  'rollover', 'post_accommodation', 'post_city_tax', 'no_shows', 'expire_options',
+  'release_blocks', 'statistics'
+] as const
+
+interface KennzahlenTag {
+  date: string; capacity: number; sold: number; available: number
+  occupancyPercent: number; roomRevenueCent: number; adrCent: number
+  revparCent: number; source: string
+}
+
+interface KennzahlenZeitraum {
+  from: string; to: string
+  days: KennzahlenTag[]
+  total: { sold: number; available: number; roomRevenueCent: number
+           occupancyPercent: number; adrCent: number; revparCent: number }
+}
 
 function checkRange(from: string, to: string): number {
   if (!isIsoDate(from) || !isIsoDate(to)) {
@@ -107,6 +134,90 @@ export function reportRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Kennzahlen eines Zeitraums, Tag fuer Tag.
+   *
+   * Vergangenheit aus der Aufzeichnung, Zukunft aus dem Zaehler, in einer
+   * Abfrage zusammengesetzt. Die Grenze ist der offene Geschaeftstag: alles
+   * davor ist festgehalten, alles ab heute ist eine Vorschau auf den Stand
+   * der Buecher.
+   *
+   * `jahreZurueck` verschiebt den Zeitraum in der Datenbank statt in
+   * JavaScript. Ein Jahr von einem Kalenderdatum abzuziehen ist keine
+   * Zeichenkettenrechnung: der 29. Februar hat im Vorjahr keine
+   * Entsprechung, und PostgreSQL loest das nach derselben Regel wie der
+   * Rest des Schemas.
+   */
+  async function kennzahlen(
+    client: PoolClient, propertyId: number, from: string, to: string, jahreZurueck = 0
+  ): Promise<KennzahlenZeitraum> {
+    const { rows } = await client.query<{
+      date: string; capacity: number; sold: number; blocked: number
+      revenue_cent: number; quelle: string }>(
+      `WITH zeitraum AS (
+         SELECT ($2::date - make_interval(years => $4::int))::date AS von,
+                ($3::date - make_interval(years => $4::int))::date AS bis
+       ),
+       heute AS (
+         SELECT COALESCE((SELECT min(date) FROM business_day
+                           WHERE property_id = $1 AND status = 'open'),
+                         current_date) AS d
+       )
+       SELECT s.date::text AS date, s.capacity, s.sold, s.blocked,
+              s.room_revenue_cent AS revenue_cent, 'aufgezeichnet' AS quelle
+         FROM business_day_stat s, heute, zeitraum z
+        WHERE s.property_id = $1 AND s.date BETWEEN z.von AND z.bis
+          AND s.date < heute.d
+       UNION ALL
+       SELECT i.date::text, i.capacity, i.sold, i.blocked,
+              COALESCE((SELECT sum(c.net_cent) FROM charge c
+                         WHERE c.property_id = $1 AND c.business_date = i.date
+                           AND c.revenue_account = '8300'), 0)::bigint,
+              'auf den Buechern'
+         FROM inventory_day i, heute, zeitraum z
+        WHERE i.property_id = $1 AND i.category_id = 0
+          AND i.date BETWEEN z.von AND z.bis
+          AND i.date >= heute.d
+       ORDER BY date`,
+      [propertyId, from, to, jahreZurueck])
+
+    const days = rows.map(r => {
+      const verfuegbar = r.capacity - r.blocked
+      return {
+        date: r.date,
+        capacity: r.capacity,
+        sold: r.sold,
+        available: verfuegbar,
+        occupancyPercent: verfuegbar === 0 ? 0
+          : Math.round((r.sold / verfuegbar) * 10000) / 100,
+        roomRevenueCent: r.revenue_cent,
+        adrCent: r.sold === 0 ? 0 : Math.round(r.revenue_cent / r.sold),
+        revparCent: verfuegbar === 0 ? 0 : Math.round(r.revenue_cent / verfuegbar),
+        // Ehrlich benennen, woher die Zahl kommt: die Vergangenheit ist
+        // festgehalten, die Zukunft ist ein Stand, der sich noch aendert.
+        source: r.quelle
+      }
+    })
+
+    const sold = days.reduce((s, d) => s + d.sold, 0)
+    const available = days.reduce((s, d) => s + d.available, 0)
+    const revenue = days.reduce((s, d) => s + d.roomRevenueCent, 0)
+    return {
+      // Der Zeitraum kommt aus den Zeilen, nicht aus der Anfrage: bei einem
+      // verschobenen Vergleich ist er ein anderer, und die Oberflaeche soll
+      // beschriften koennen, was sie zeigt.
+      from: days[0]?.date ?? from, to: days[days.length - 1]?.date ?? to,
+      days,
+      total: {
+        sold, available, roomRevenueCent: revenue,
+        occupancyPercent: available === 0 ? 0
+          : Math.round((sold / available) * 10000) / 100,
+        adrCent: sold === 0 ? 0 : Math.round(revenue / sold),
+        revparCent: available === 0 ? 0 : Math.round(revenue / available)
+      }
+    }
+  }
+
+  /**
    * Kennzahlen je Tag: Belegung, ADR, RevPAR.
    *
    * Gerechnet wird auf `inventory_day` und den gebuchten Logiserloesen, nicht
@@ -117,79 +228,103 @@ export function reportRoutes(app: FastifyInstance): void {
    * ADR ist der Logiserloes je verkaufter Einheit, RevPAR der Logiserloes je
    * **verfuegbarer** Einheit. Der Unterschied ist der ganze Punkt der
    * Kennzahl: ein Haus mit hohem ADR und leeren Zimmern verdient nichts.
+   *
+   * Der Vorjahresvergleich kommt im selben Aufruf mit. Ihn als zweite Anfrage
+   * zu holen waere zwar moeglich, macht aber aus einem Bildschirm zwei Runden
+   * -- und die Zahl, auf die es ankommt, ist ohnehin die Differenz.
    */
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/kpi',
     permission: 'report:revenue',
     propertyParam: 'propertyId',
-    summary: 'Belegung, ADR und RevPAR je Tag',
+    summary: 'Belegung, ADR und RevPAR je Tag, wahlweise mit Vorjahresvergleich',
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
-      const q = req.query as { from: string; to: string }
+      const q = req.query as { from: string; to: string; compare?: string }
       checkRange(q.from, q.to)
+      if (q.compare !== undefined && q.compare !== 'previous-year') {
+        throw Errors.validation({ compare: ['Erlaubt ist nur previous-year'] })
+      }
 
       return tx(req.pool, req, async client => {
-        // Vergangenheit aus der Aufzeichnung, Zukunft aus dem Zaehler, in
-        // einer Abfrage zusammengesetzt. Die Grenze ist der offene
-        // Geschaeftstag: alles davor ist festgehalten, alles ab heute ist
-        // eine Vorschau auf den Stand der Buecher.
-        const { rows } = await client.query<{
-          date: string; capacity: number; sold: number; blocked: number
-          revenue_cent: number; quelle: string }>(
-          `WITH heute AS (
-             SELECT COALESCE((SELECT min(date) FROM business_day
-                               WHERE property_id = $1 AND status = 'open'),
-                             current_date) AS d
-           )
-           SELECT s.date::text AS date, s.capacity, s.sold, s.blocked,
-                  s.room_revenue_cent AS revenue_cent, 'aufgezeichnet' AS quelle
-             FROM business_day_stat s, heute
-            WHERE s.property_id = $1 AND s.date BETWEEN $2::date AND $3::date
-              AND s.date < heute.d
-           UNION ALL
-           SELECT i.date::text, i.capacity, i.sold, i.blocked,
-                  COALESCE((SELECT sum(c.net_cent) FROM charge c
-                             WHERE c.property_id = $1 AND c.business_date = i.date
-                               AND c.revenue_account = '8300'), 0)::bigint,
-                  'auf den Buechern'
-             FROM inventory_day i, heute
-            WHERE i.property_id = $1 AND i.category_id = 0
-              AND i.date BETWEEN $2::date AND $3::date
-              AND i.date >= heute.d
-           ORDER BY date`,
-          [Number(propertyId), q.from, q.to])
+        const id = Number(propertyId)
+        const jetzt = await kennzahlen(client, id, q.from, q.to)
+        if (q.compare === undefined) return jetzt
+        return { ...jetzt, comparison: await kennzahlen(client, id, q.from, q.to, 1) }
+      })
+    }
+  })
 
-        const days = rows.map(r => {
-          const verfuegbar = r.capacity - r.blocked
-          return {
-            date: r.date,
-            capacity: r.capacity,
-            sold: r.sold,
-            available: verfuegbar,
-            occupancyPercent: verfuegbar === 0 ? 0
-              : Math.round((r.sold / verfuegbar) * 10000) / 100,
-            roomRevenueCent: r.revenue_cent,
-            adrCent: r.sold === 0 ? 0 : Math.round(r.revenue_cent / r.sold),
-            revparCent: verfuegbar === 0 ? 0 : Math.round(r.revenue_cent / verfuegbar),
-            // Ehrlich benennen, woher die Zahl kommt: die Vergangenheit ist
-            // festgehalten, die Zukunft ist ein Stand, der sich noch aendert.
-            source: r.quelle
-          }
-        })
+  /**
+   * Stand des Nachtlaufs.
+   *
+   * Der schlimmste Ausfall ist der stille: laeuft der Nachtlauf nicht, fehlt
+   * die Logis auf den Folios, und bemerkt wird es vom Gast beim Check-out.
+   * Der Worker meldet das ins Protokoll -- das liest an der Rezeption
+   * niemand. Deshalb dieselbe Pruefung als Bildschirm.
+   *
+   * `daysBehind` wird gegen das **Geschaeftsdatum** der Property gerechnet,
+   * nicht gegen `current_date`: ein Haus mit Tageswechsel um 04:00 Uhr ist um
+   * 02:00 Uhr nicht im Rueckstand, sondern noch im Vortag.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/night-audit-status',
+    permission: 'report:operational',
+    propertyParam: 'propertyId',
+    summary: 'Offener Geschaeftstag, Rueckstand und Schritte der letzten Laeufe',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const q = req.query as { days?: string }
+      const tage = Math.min(Math.max(Number(q.days) || 14, 1), NACHTLAUF_TAGE_MAX)
 
-        const sold = days.reduce((s, d) => s + d.sold, 0)
-        const available = days.reduce((s, d) => s + d.available, 0)
-        const revenue = days.reduce((s, d) => s + d.roomRevenueCent, 0)
+      return tx(req.pool, req, async client => {
+        const id = Number(propertyId)
+        const p = await client.query<{ timezone: string; rollover: string }>(
+          `SELECT timezone, rollover_time::text AS rollover FROM property WHERE id = $1`,
+          [id])
+        if (p.rowCount === 0) throw Errors.notFound('Property')
+        const businessDate = businessDateFor(
+          new Date(), p.rows[0]!.timezone, p.rows[0]!.rollover)
+
+        const offen = await client.query<{ date: string }>(
+          `SELECT date::text FROM business_day
+            WHERE property_id = $1 AND status = 'open' ORDER BY date LIMIT 1`, [id])
+        const openDate = offen.rows[0]?.date ?? null
+
+        // Ein Aufruf je Bildschirm: die Schrittmarken und die Kennzahlen des
+        // Tages kommen als Feld mit, nicht als eine Nachfrage je Zeile.
+        const { rows: days } = await client.query(
+          `SELECT bd.date::text AS date, bd.status, bd.closed_at AS "closedAt",
+                  COALESCE(s.schritte, '[]'::jsonb) AS steps,
+                  st.sold, st.arrivals, st.departures,
+                  st.room_revenue_cent AS "roomRevenueCent"
+             FROM business_day bd
+             LEFT JOIN LATERAL (
+               SELECT jsonb_agg(jsonb_build_object(
+                        'step', n.step, 'completedAt', n.completed_at,
+                        'count', (n.detail->>'count')::int)
+                      ORDER BY n.completed_at) AS schritte
+                 FROM night_audit_step n
+                WHERE n.property_id = bd.property_id AND n.business_date = bd.date
+             ) s ON true
+             LEFT JOIN business_day_stat st
+                    ON st.property_id = bd.property_id AND st.date = bd.date
+            WHERE bd.property_id = $1
+            ORDER BY bd.date DESC
+            LIMIT $2`,
+          [id, tage])
+
         return {
-          from: q.from, to: q.to, days,
-          total: {
-            sold, available, roomRevenueCent: revenue,
-            occupancyPercent: available === 0 ? 0
-              : Math.round((sold / available) * 10000) / 100,
-            adrCent: sold === 0 ? 0 : Math.round(revenue / sold),
-            revparCent: available === 0 ? 0 : Math.round(revenue / available)
-          }
+          businessDate,
+          openDate,
+          // Kein offener Tag ist der schwerere Fall: dann laeuft im Haus
+          // nichts mehr, was ein Geschaeftsdatum braucht.
+          daysBehind: openDate === null ? null : nightsBetween(openDate, businessDate),
+          overdue: openDate === null || nightsBetween(openDate, businessDate) > 1,
+          expectedSteps: NACHTLAUF_SCHRITTE,
+          days
         }
       })
     }
