@@ -10,6 +10,7 @@ import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
 import { preise } from './preise.js'
+import { gaeste } from './gaeste.js'
 import { rechnung } from './rechnung.js'
 
 /**
@@ -50,6 +51,7 @@ const texts = {
     ...einstellungen.de,
     ...schnittstellen.de,
     ...preise.de,
+    ...gaeste.de,
     ...rechnung.de
   },
   en: {
@@ -64,6 +66,7 @@ const texts = {
     ...einstellungen.en,
     ...schnittstellen.en,
     ...preise.en,
+    ...gaeste.en,
     ...rechnung.en
   }
 } as const

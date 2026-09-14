@@ -87,7 +87,7 @@ describe('Bildschirme und Rechte', () => {
     const rezeption = visibleScreens(
       ['reservation:read', 'housekeeping:read', 'inventory:read']).map(s => s.key)
     expect(rezeption).toEqual(
-      ['tape', 'today', 'housekeeping', 'blocks', 'maintenance'])
+      ['tape', 'today', 'housekeeping', 'blocks', 'maintenance', 'availability'])
     expect(rezeption).not.toContain('setup')
   })
 

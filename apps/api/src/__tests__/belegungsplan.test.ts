@@ -113,6 +113,29 @@ describe('Buchen mit Zimmer', () => {
   })
 })
 
+describe('Buchen mit Gast ueber die oeffentliche Referenz', () => {
+  /**
+   * Die Oberflaeche kennt nur `guestRef`: die laufende id bleibt innen
+   * (C1, Dokument 13). Ohne diesen Weg liesse sich ein in der Gastsuche
+   * gefundener Gast nicht an eine neue Buchung haengen.
+   */
+  it('haengt den per Suche gefundenen Gast an die neue Buchung', async () => {
+    const g = await owner.query<{ public_ref: string }>(
+      `INSERT INTO guest (account_id, last_name, first_name) VALUES ($1,'Petersen','Jan')
+       RETURNING public_ref`, [fx.accountId])
+    const r = await buchen({ guestRef: g.rows[0]!.public_ref, resourceId: zimmer[0] })
+    expect(r.statusCode, r.body).toBe(201)
+    const ref = JSON.parse(r.body).reservationRef as string
+    const d = await get(`/v1/reservations/${ref}`)
+    expect(JSON.parse(d.body).guestName).toBe('Jan Petersen')
+  })
+
+  it('meldet eine unbekannte Referenz als nicht gefunden', async () => {
+    const r = await buchen({ guestRef: 'guest_gibtesnicht' })
+    expect(r.statusCode).toBe(404)
+  })
+})
+
 describe('Zimmer eines fremden Hauses', () => {
   /**
    * Der Fall, den CLAUDE.md unter "Bei mehreren Haeusern im Account reicht

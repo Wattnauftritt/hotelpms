@@ -385,6 +385,65 @@ export const Guest = Type.Object({
 })
 export type Guest = Static<typeof Guest>
 
+export const CreateGuest = Type.Object({
+  accountId: Type.Optional(Type.Integer()),
+  lastName: Type.String({ minLength: 1 }),
+  firstName: Type.Optional(Type.String()),
+  email: Type.Optional(Type.String()),
+  phone: Type.Optional(Type.String()),
+  birthDate: Type.Optional(IsoDate),
+  nationality: Type.Optional(Type.String()),
+  language: Type.Optional(Type.String()),
+  addressLine1: Type.Optional(Type.String()),
+  postalCode: Type.Optional(Type.String()),
+  city: Type.Optional(Type.String()),
+  country: Type.Optional(Type.String()),
+  idDocumentType: Type.Optional(Type.Union([
+    Type.Literal('passport'), Type.Literal('id_card'), Type.Literal('other')])),
+  idDocumentNumber: Type.Optional(Type.String())
+})
+export type CreateGuest = Static<typeof CreateGuest>
+
+/** Antwort auf das Anlegen: das Profil, dazu moegliche Dubletten. */
+export const GuestCreated = Type.Composite([
+  Guest,
+  Type.Object({
+    possibleDuplicates: Type.Array(Type.Object({
+      guestRef: Type.String(), score: Type.Number(), reason: Type.String()
+    }))
+  })
+])
+export type GuestCreated = Static<typeof GuestCreated>
+
+// ------------------------------------------------------------------- Firma
+
+export const Company = Type.Object({
+  companyRef: Type.String(),
+  name: Type.String(),
+  vatId: Type.Union([Type.String(), Type.Null()]),
+  addressLine1: Type.Union([Type.String(), Type.Null()]),
+  postalCode: Type.Union([Type.String(), Type.Null()]),
+  city: Type.Union([Type.String(), Type.Null()]),
+  country: Type.String(),
+  paymentTermsDays: Type.Integer(),
+  invoiceEmail: Type.Union([Type.String(), Type.Null()]),
+  active: Type.Boolean()
+})
+export type Company = Static<typeof Company>
+
+export const CreateCompany = Type.Object({
+  accountId: Type.Optional(Type.Integer()),
+  name: Type.String({ minLength: 1 }),
+  vatId: Type.Optional(Type.String()),
+  addressLine1: Type.Optional(Type.String()),
+  postalCode: Type.Optional(Type.String()),
+  city: Type.Optional(Type.String()),
+  country: Type.Optional(Type.String()),
+  paymentTermsDays: Type.Optional(Type.Integer({ minimum: 0 })),
+  invoiceEmail: Type.Optional(Type.String())
+})
+export type CreateCompany = Static<typeof CreateCompany>
+
 // ------------------------------------------------------------- Reservierung
 
 /**
