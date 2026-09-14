@@ -193,10 +193,10 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| C1 | Kennzahlen | läuft | — | Reiter „Kennzahlen". Vorjahresvergleich im selben Aufruf: `kpi` nimmt jetzt `compare=previous-year` |
-| C2 | Nachtlauf-Stand | läuft | — | Reiter „Nachtlauf". Brauchte einen Endpunkt: `GET /v1/properties/:id/night-audit-status` |
-| C3 | Beherbergungsstatistik | läuft | — | Reiter „Beherbergung". Im Übungshaus gar nicht erst angeboten |
-| C4 | Exporte | läuft | — | Reiter „Ausgaben": DATEV, GoBD, Mandantenexport. Läuft neben der Oberfläche |
+| C1 | Kennzahlen | im PR #25 | #25 | Reiter „Kennzahlen". Vorjahresvergleich im selben Aufruf: `kpi` nimmt jetzt `compare=previous-year` |
+| C2 | Nachtlauf-Stand | im PR #25 | #25 | Reiter „Nachtlauf". Brauchte einen Endpunkt: `GET /v1/properties/:id/night-audit-status` |
+| C3 | Beherbergungsstatistik | im PR #25 | #25 | Reiter „Beherbergung". Im Übungshaus gar nicht erst angeboten |
+| C4 | Exporte | im PR #25 | #25 | Reiter „Ausgaben": DATEV, GoBD, Mandantenexport. Läuft neben der Oberfläche |
 | C5 | Wartungsmeldungen | offen | — | |
 | C6 | Absenderangaben Gastpost | offen | — | |
 | C7 | Zahlungsarten | offen | — | |
