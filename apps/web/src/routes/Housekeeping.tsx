@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { HousekeepingState } from '@hotelpms/contracts'
 import { useHousekeeping, useSetHousekeeping } from '../lib/queries.js'
-import { useT } from '../lib/i18n.js'
+import { useT } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'

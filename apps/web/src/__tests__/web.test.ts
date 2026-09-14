@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { today, addDays, daysBetween, eachDay, isWeekend } from '../lib/dates.js'
-import { formatMoney, formatDate, weekdayShort } from '../lib/i18n.js'
+import { formatMoney, formatDate, weekdayShort } from '../lib/i18n/index.js'
+import { SCREENS, visibleScreens, resolveScreen } from '../screens.js'
 
 /**
  * Geprueft wird hier die Logik, bei der ein Fehler echtes Geld oder echte
@@ -69,5 +70,40 @@ describe('Anzeige', () => {
   it('benennt den Wochentag in beiden Sprachen', () => {
     expect(weekdayShort('2026-10-05', 'de')).toMatch(/Mo/)
     expect(weekdayShort('2026-10-05', 'en')).toMatch(/Mon/)
+  })
+})
+
+describe('Bildschirme und Rechte', () => {
+  it('zeigt nur, was der Benutzer auch benutzen darf', () => {
+    // Ein Housekeeping-Konto sieht den Zimmerplan nicht. Nicht aus
+    // Geheimhaltung -- die Sicherheit liegt in der API --, sondern weil
+    // ein Knopf, der 403 antwortet, schlechter ist als kein Knopf.
+    const nurHk = visibleScreens(['housekeeping:read']).map(s => s.key)
+    expect(nurHk).toEqual(['housekeeping'])
+
+    const rezeption = visibleScreens(
+      ['reservation:read', 'housekeeping:read', 'inventory:read']).map(s => s.key)
+    expect(rezeption).toEqual(['tape', 'today', 'housekeeping', 'blocks'])
+    expect(rezeption).not.toContain('setup')
+  })
+
+  it('nimmt den Bildschirm aus der Adresse, wenn er erlaubt ist', () => {
+    expect(resolveScreen('today', ['reservation:read'])?.key).toBe('today')
+  })
+
+  it('faellt still zurueck statt in eine Fehlerseite', () => {
+    // Ein Lesezeichen ueberlebt damit eine Umbenennung ...
+    expect(resolveScreen('gibtesnicht', ['reservation:read'])?.key).toBe('tape')
+    // ... und den Entzug eines Rechts.
+    expect(resolveScreen('setup', ['housekeeping:read'])?.key).toBe('housekeeping')
+  })
+
+  it('sagt es, statt einen leeren Rahmen zu zeigen, wenn nichts erlaubt ist', () => {
+    expect(resolveScreen('tape', [])).toBeUndefined()
+  })
+
+  it('haelt die Schluessel stabil: es gibt Lesezeichen darauf', () => {
+    expect(SCREENS.map(s => s.key))
+      .toEqual(['tape', 'today', 'housekeeping', 'blocks', 'setup'])
   })
 })

@@ -1,29 +1,15 @@
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Shell, type Screen } from './components/Shell.tsx'
-import { Tape } from './routes/Tape.tsx'
-import { Today } from './routes/Today.tsx'
-import { Housekeeping } from './routes/Housekeeping.tsx'
-import { Setup } from './routes/Setup.tsx'
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
+  from '@tanstack/react-query'
+import { Shell, type Haus } from './components/Shell.tsx'
 import { Login } from './routes/Login.tsx'
 import { Folio } from './routes/Folio.tsx'
-import { Blocks } from './routes/Blocks.tsx'
-import { LOCALES, I18nContext, type Locale } from './lib/i18n.js'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { visibleScreens, resolveScreen } from './screens.js'
+import { useAdresse } from './lib/adresse.js'
+import { LOCALES, I18nContext, type Locale } from './lib/i18n/index.js'
 import { api } from './lib/api.js'
 import './styles.css'
-
-/**
- * Die Property steht in der Adresse, nicht in einem verborgenen Zustand.
- * Wer in einer Kette zwischen Häusern wechselt, will den Link weitergeben
- * können, und ein Lesezeichen soll dasselbe Haus öffnen.
- */
-function propertyAusAdresse(): number | null {
-  const p = new URLSearchParams(location.search).get('property')
-  const n = Number(p)
-  return Number.isFinite(n) && n > 0 ? n : null
-}
 
 function spracheDesBrowsers(): Locale {
   const l = navigator.language.slice(0, 2)
@@ -45,12 +31,19 @@ const queryClient = new QueryClient({
 interface Me {
   userId: number
   displayName: string
-  properties: Array<{ id: number; code: string; name: string }>
+  properties: Array<{ id: number; code: string; name: string; isTraining: boolean
+                      permissions: string[] }>
+}
+
+function Hinweis({ children }: { children: React.ReactNode }): JSX.Element {
+  return <div className="min-h-screen grid place-items-center p-8 text-sm text-neutral-600">
+    {children}
+  </div>
 }
 
 function App(): JSX.Element {
-  const [screen, setScreen] = useState<Screen>('tape')
   const [locale, setLocale] = useState<Locale>(spracheDesBrowsers)
+  const [adresse, setAdresse] = useAdresse()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
   const [folioRef, setFolioRef] = useState<string | null>(null)
@@ -78,32 +71,37 @@ function App(): JSX.Element {
   // Das Haus aus der Adresse, sonst das erste, auf das der Benutzer Zugriff
   // hat. Ein Haus zu raten, auf das er keinen Zugriff hat, ergaebe auf jedem
   // Bildschirm eine 403.
-  const ausAdresse = propertyAusAdresse()
-  const erlaubt = me.data.properties.map(p => p.id)
-  const propertyId = ausAdresse !== null && erlaubt.includes(ausAdresse)
-    ? ausAdresse
-    : erlaubt[0] ?? 0
+  const haeuser: Haus[] = me.data.properties.map(p => ({
+    id: p.id, code: p.code, name: p.name, isTraining: p.isTraining }))
+  const haus = haeuser.find(h => h.id === adresse.property) ?? haeuser[0]
 
-  if (propertyId === 0) {
+  if (haus === undefined) {
     return <I18nContext.Provider value={locale}>
-      <div className="min-h-screen grid place-items-center p-8 text-sm text-neutral-600">
-        Diesem Benutzer ist noch kein Haus zugeordnet.
-      </div>
+      <Hinweis>Diesem Benutzer ist noch kein Haus zugeordnet.</Hinweis>
+    </I18nContext.Provider>
+  }
+
+  const rechte = me.data.properties.find(p => p.id === haus.id)?.permissions ?? []
+  const erlaubte = visibleScreens(rechte)
+  const screen = resolveScreen(adresse.screen, rechte)
+
+  if (screen === undefined) {
+    return <I18nContext.Provider value={locale}>
+      <Hinweis>Dieses Konto hat in {haus.name} keine Rechte, die einen
+        Bildschirm öffnen.</Hinweis>
     </I18nContext.Provider>
   }
 
   return (
-    <Shell screen={screen} onScreen={setScreen} locale={locale} onLocale={setLocale}>
+    <Shell screen={screen.key} onScreen={k => { setAdresse({ screen: k }) }}
+           screens={erlaubte}
+           locale={locale} onLocale={setLocale}
+           haeuser={haeuser} haus={haus}
+           onHaus={id => { setAdresse({ property: id, screen: null }) }}>
       {folioRef !== null
-        ? <Folio folioRef={folioRef} propertyId={propertyId}
+        ? <Folio folioRef={folioRef} propertyId={haus.id}
                  onClose={() => setFolioRef(null)} />
-        : <>
-      {screen === 'tape' && <Tape propertyId={propertyId} />}
-      {screen === 'today' && <Today propertyId={propertyId} onFolio={setFolioRef} />}
-      {screen === 'housekeeping' && <Housekeeping propertyId={propertyId} />}
-      {screen === 'blocks' && <Blocks propertyId={propertyId} />}
-      {screen === 'setup' && <Setup propertyId={propertyId} />}
-          </>}
+        : screen.render({ propertyId: haus.id, openFolio: setFolioRef })}
     </Shell>
   )
 }

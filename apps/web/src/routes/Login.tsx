@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, ApiError } from '../lib/api.js'
-import { useT } from '../lib/i18n.js'
+import { useT } from '../lib/i18n/index.js'
 
 /**
  * Anmeldung.

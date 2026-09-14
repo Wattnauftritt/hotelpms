@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, daysBetween } from '../lib/dates.js'
-import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n.js'
+import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 
 /**
  * Der Zimmerplan.

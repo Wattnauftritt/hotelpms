@@ -14,6 +14,9 @@ export const PERMISSIONS = [
   'housekeeping:read', 'housekeeping:write', 'maintenance:write',
   'report:operational', 'report:revenue', 'report:export',
   'nightaudit:run',
+  // Gastpost (0028): eigenes Recht, weil Hinausschicken etwas anderes ist
+  // als Festschreiben -- es verlaesst das Haus und kommt nicht zurueck.
+  'email:send',
   'settings:property', 'settings:account', 'user:manage', 'integration:manage',
   'account:contract',
   'platform:accounts', 'platform:support_session', 'platform:billing',

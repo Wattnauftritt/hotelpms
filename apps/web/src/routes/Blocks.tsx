@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Block } from '@hotelpms/contracts'
 import { useBlocks, useCreateBlock, useReleaseBlock, useCategories } from '../lib/queries.js'
-import { useT, useLocale, formatDate } from '../lib/i18n.js'
+import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today, addDays } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
