@@ -1,23 +1,41 @@
-import { useState } from 'react'
-import { useTapeChart } from '../lib/queries.js'
+import { useMemo, useState } from 'react'
+import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
+import { useTapeChart, useCategories } from '../lib/queries.js'
+import { useAssignUnit, useChangeStay } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
-import { today, addDays } from '../lib/dates.js'
+import { today, addDays, eachDay } from '../lib/dates.js'
 import { TapeChart } from '../components/TapeChart.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
+import { BookingDialog } from '../components/BookingDialog.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
+/** Zustaende, die ein Zimmer wirklich belegen. Storniert und No-Show nicht. */
+const BINDEND = new Set(['Optional', 'Confirmed', 'InHouse'])
 
-export function Tape({ propertyId, onFolio }: {
+interface Auswahl {
+  resourceId: number; categoryId: number; categoryName: string; roomCode: string
+  arrival: string; departure: string
+}
+
+export function Tape({ propertyId, onFolio, onCheckIn }: {
   propertyId: number; onFolio: (folioRef: string) => void
+  onCheckIn: (reservationRef: string) => void
 }): JSX.Element {
   const [von, setVon] = useState(today())
   const [tage, setTage] = useState<number>(30)
   // Balken anklicken zeigt die Reservierung im Seitenfenster (A1); der Plan
   // bleibt dahinter sichtbar.
   const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
+  const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
   const t = useT()
-  const q = useTapeChart(propertyId, von, addDays(von, tage))
+  const bis = addDays(von, tage)
+  const q = useTapeChart(propertyId, von, bis)
+  const kategorien = useCategories(propertyId)
+  const zuweisen = useAssignUnit()
+  const umbuchen = useChangeStay()
+
+  const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
 
   return (
     <div className="space-y-3">
@@ -42,17 +60,90 @@ export function Tape({ propertyId, onFolio }: {
         <Legende />
       </div>
 
+      {warnungen.length > 0 && (
+        <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs
+                        text-amber-900 space-y-0.5">
+          <div className="font-medium">{t('warnings.title')}</div>
+          {warnungen.map((w, i) => <div key={i}>{w}</div>)}
+        </div>
+      )}
+
+      {(zuweisen.isError || umbuchen.isError) && (
+        <Fehler error={zuweisen.error ?? umbuchen.error} />
+      )}
+
       {q.isError && q.data === undefined ? <Fehler error={q.error} />
         : q.data === undefined ? <Laedt />
-        : <TapeChart data={q.data} onSelect={setAusgewaehlt} />}
+        : <TapeChart data={q.data}
+                      onSelect={setAusgewaehlt}
+                      onCreate={sel => {
+                        const u = q.data!.units.find(x => x.id === sel.resourceId)
+                        setAuswahl({ ...sel, roomCode: u?.code ?? '',
+                                      categoryName: u?.category_name ?? '' })
+                      }}
+                      onMove={(reservationRef, resourceId) =>
+                        zuweisen.mutate({ reservationRef, resourceId })}
+                      onChangeStay={(reservationRef, arrival, departure) =>
+                        umbuchen.mutate({ reservationRef, arrival, departure })} />}
 
       {ausgewaehlt !== null && (
         <ReservationPanel reservationRef={ausgewaehlt}
                           onClose={() => setAusgewaehlt(null)}
-                          onOpenFolio={onFolio} />
+                          onOpenFolio={onFolio}
+                          onOpenCheckIn={onCheckIn} />
+      )}
+
+      {auswahl !== null && (
+        <BookingDialog propertyId={propertyId}
+                        categoryId={auswahl.categoryId} categoryName={auswahl.categoryName}
+                        resourceId={auswahl.resourceId} roomCode={auswahl.roomCode}
+                        arrival={auswahl.arrival} departure={auswahl.departure}
+                        onClose={() => setAuswahl(null)} />
       )}
     </div>
   )
+}
+
+/**
+ * Überbuchung sichtbar machen (A7). Gerechnet wird aus dem, was ohnehin
+ * schon geladen ist -- Balken und Zimmergruppen -- kein zweiter Aufruf je
+ * Zeile, nur eine zusätzliche, feste Anfrage für die Gruppendaten.
+ */
+function useWarnungen(
+  data: TapeChartData | undefined,
+  kategorien: Array<{ id: number; name: string }>
+): string[] {
+  const t = useT()
+  return useMemo(() => {
+    if (data === undefined) return []
+    const out: string[] = []
+
+    const ohneZimmer = data.reservations.filter(
+      r => r.resource_id === null && BINDEND.has(r.status)).length
+    if (ohneZimmer > 0) out.push(`${ohneZimmer} ${t('warnings.unassigned')}`)
+
+    const kapazitaet = new Map<number, number>()
+    for (const u of data.units) {
+      kapazitaet.set(u.category_id, (kapazitaet.get(u.category_id) ?? 0) + 1)
+    }
+    const namen = new Map(kategorien.map(k => [k.id, k.name]))
+    const tageListe = eachDay(data.from, data.to)
+
+    for (const [categoryId, kapa] of kapazitaet) {
+      let betroffeneTage = 0
+      for (const tag of tageListe) {
+        const belegt = data.reservations.filter(r =>
+          r.category_id === categoryId && BINDEND.has(r.status)
+          && r.arrival <= tag && r.departure > tag).length
+        if (belegt > kapa) betroffeneTage++
+      }
+      if (betroffeneTage > 0) {
+        out.push(`${t('warnings.overbooked')}: ${namen.get(categoryId) ?? categoryId} `
+          + `(${betroffeneTage})`)
+      }
+    }
+    return out
+  }, [data, kategorien, t])
 }
 
 function Legende(): JSX.Element {

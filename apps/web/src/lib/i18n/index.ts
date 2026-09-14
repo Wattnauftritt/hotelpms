@@ -10,6 +10,7 @@ import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
 import { preise } from './preise.js'
+import { gaeste } from './gaeste.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -48,7 +49,8 @@ const texts = {
     ...berichte.de,
     ...einstellungen.de,
     ...schnittstellen.de,
-    ...preise.de
+    ...preise.de,
+    ...gaeste.de
   },
   en: {
     ...common.en,
@@ -61,7 +63,8 @@ const texts = {
     ...berichte.en,
     ...einstellungen.en,
     ...schnittstellen.en,
-    ...preise.en
+    ...preise.en,
+    ...gaeste.en
   }
 } as const
 

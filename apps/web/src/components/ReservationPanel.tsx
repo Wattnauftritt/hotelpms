@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { ReservationDetail } from '@hotelpms/contracts'
-import { useReservation, usePatchReservationNotes } from '../lib/queries/booking.js'
+import { useReservation, usePatchReservationNotes, useReservationStatusAction,
+         useSendConfirmation } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, type Locale } from '../lib/i18n/index.js'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
+/** Storno ist aus diesen Zustaenden erlaubt (reservationState.ts). */
+const STORNIERBAR = new Set(['Optional', 'Confirmed'])
+/** Wiederherstellen ist aus diesen Zustaenden erlaubt. */
+const WIEDERHERSTELLBAR = new Set(['Canceled', 'NoShow'])
 
 /**
  * Das Seitenfenster einer Reservierung: alles, was zu einem angeklickten
@@ -15,8 +20,9 @@ const NOTES_MAX_LENGTH = 2000
  * während er die Reservierung liest — nicht ihn hinter einem Dialog
  * verlieren.
  */
-export function ReservationPanel({ reservationRef, onClose, onOpenFolio }: {
+export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenCheckIn }: {
   reservationRef: string; onClose: () => void; onOpenFolio: (folioRef: string) => void
+  onOpenCheckIn: (reservationRef: string) => void
 }): JSX.Element {
   const t = useT()
   const q = useReservation(reservationRef)
@@ -36,7 +42,7 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio }: {
         {q.isError && <Fehler error={q.error} />}
         {q.data === undefined && !q.isError && <Laedt />}
         {q.data !== undefined && (
-          <Inhalt reservation={q.data} onOpenFolio={onOpenFolio} />
+          <Inhalt reservation={q.data} onOpenFolio={onOpenFolio} onOpenCheckIn={onOpenCheckIn} />
         )}
       </div>
     </div>
@@ -53,16 +59,17 @@ function Feld({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Inhalt({ reservation: r, onOpenFolio }: {
+function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn }: {
   reservation: ReservationDetail
   onOpenFolio: (folioRef: string) => void
+  onOpenCheckIn: (reservationRef: string) => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <span className={`text-xs px-2 py-0.5 rounded bg-neutral-100`}>
           {t(`status.${r.status}` as never)}
         </span>
@@ -71,7 +78,18 @@ function Inhalt({ reservation: r, onOpenFolio }: {
             {t('plan.block')}: {r.blockName}
           </span>
         )}
+        <div className="grow" />
+        {r.checkedInAt === null && r.canceledAt === null && (
+          <button onClick={() => onOpenCheckIn(r.reservationRef)}
+                  className="text-xs px-2 py-1 rounded border border-neutral-300
+                             hover:bg-neutral-50">
+            {t('checkin.title')}
+          </button>
+        )}
+        <StornoAktionen reservationRef={r.reservationRef} status={r.status} />
       </div>
+
+      <BestaetigungSchicken reservationRef={r.reservationRef} />
 
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded p-3">
         <Feld label={t('plan.guest')}>
@@ -199,6 +217,66 @@ function NotizFeld({ reservationRef, notes }: {
         )}
       </div>
       {speichern.isError && <div className="mt-2"><Fehler error={speichern.error} /></div>}
+    </section>
+  )
+}
+
+/**
+ * Storno und Wiederherstellen (A11). Beide Knöpfe erscheinen nur dort, wo
+ * der Zustandsautomat den Übergang überhaupt zulässt -- ein Knopf, der 409
+ * antwortet, ist schlechter als kein Knopf.
+ */
+function StornoAktionen({ reservationRef, status }: {
+  reservationRef: string; status: string
+}): JSX.Element | null {
+  const t = useT()
+  const aktion = useReservationStatusAction(reservationRef)
+
+  if (STORNIERBAR.has(status)) {
+    return (
+      <button onClick={() => { if (confirm(t('plan.cancelConfirm'))) aktion.mutate('cancel') }}
+              disabled={aktion.isPending}
+              className="text-xs px-2 py-1 rounded border border-red-300 text-red-800
+                         hover:bg-red-50 disabled:opacity-40">
+        {t('plan.cancel')}
+      </button>
+    )
+  }
+  if (WIEDERHERSTELLBAR.has(status)) {
+    return (
+      <button onClick={() => aktion.mutate('reinstate')}
+              disabled={aktion.isPending}
+              className="text-xs px-2 py-1 rounded border border-neutral-300
+                         hover:bg-neutral-50 disabled:opacity-40">
+        {t('plan.reinstate')}
+      </button>
+    )
+  }
+  return null
+}
+
+/**
+ * Buchungsbestätigung schicken (A12). Fehlt die Adresse, antwortet die API
+ * mit einer klaren Meldung statt eines stillen Nichtstuns -- die Meldung
+ * steht hier, unverändert.
+ */
+function BestaetigungSchicken({ reservationRef }: { reservationRef: string }): JSX.Element {
+  const t = useT()
+  const schicken = useSendConfirmation(reservationRef)
+
+  return (
+    <section className="bg-white border border-neutral-200 rounded p-3">
+      <div className="flex items-center gap-3">
+        <button onClick={() => schicken.mutate()} disabled={schicken.isPending}
+                className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('plan.sendConfirmation')}
+        </button>
+        {schicken.isSuccess && (
+          <span className="text-sm text-emerald-700">✓ {t('plan.confirmationSent')}</span>
+        )}
+      </div>
+      {schicken.isError && <div className="mt-2"><Fehler error={schicken.error} /></div>}
     </section>
   )
 }

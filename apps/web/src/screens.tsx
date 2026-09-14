@@ -10,6 +10,8 @@ import { Maintenance } from './routes/Maintenance.tsx'
 import { Settings } from './routes/Settings.tsx'
 import { Integrations } from './routes/Integrations.tsx'
 import { Rates } from './routes/Rates.tsx'
+import { Guests } from './routes/Guests.tsx'
+import { Availability } from './routes/Availability.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -37,6 +39,8 @@ export interface ScreenContext {
   propertyId: number
   /** Das Folio liegt über dem Tagesgeschäft, nicht daneben. */
   openFolio: (folioRef: string) => void
+  /** Der Check-in liegt ebenso über dem jeweiligen Bildschirm, meist dem Plan (A9). */
+  openCheckIn: (reservationRef: string) => void
 }
 
 export interface ScreenDefinition {
@@ -59,7 +63,8 @@ export interface ScreenDefinition {
 
 export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'tape', nav: 'nav.tape', permission: 'reservation:read',
-    render: c => <Tape propertyId={c.propertyId} onFolio={c.openFolio} /> },
+    render: c => <Tape propertyId={c.propertyId} onFolio={c.openFolio}
+                        onCheckIn={c.openCheckIn} /> },
   { key: 'today', nav: 'nav.today', permission: 'reservation:read',
     render: c => <Today propertyId={c.propertyId} onFolio={c.openFolio} /> },
   { key: 'housekeeping', nav: 'nav.housekeeping', permission: 'housekeeping:read',
@@ -81,7 +86,11 @@ export const SCREENS: readonly ScreenDefinition[] = [
     permission: ['integration:manage', 'user:manage'],
     render: c => <Integrations propertyId={c.propertyId} /> },
   { key: 'rates', nav: 'nav.rates', permission: 'rate:read',
-    render: c => <Rates propertyId={c.propertyId} /> }
+    render: c => <Rates propertyId={c.propertyId} /> },
+  { key: 'guests', nav: 'nav.guests', permission: 'guest:read',
+    render: c => <Guests propertyId={c.propertyId} /> },
+  { key: 'availability', nav: 'nav.availability', permission: 'reservation:read',
+    render: c => <Availability propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

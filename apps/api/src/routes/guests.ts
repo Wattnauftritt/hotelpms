@@ -490,4 +490,63 @@ export function guestRoutes(app: FastifyInstance): void {
       })
     }
   })
+
+  const COMPANY_FIELDS = `public_ref AS "companyRef", name, vat_id AS "vatId",
+                           address_line1 AS "addressLine1", postal_code AS "postalCode",
+                           city, country, payment_terms_days AS "paymentTermsDays",
+                           invoice_email AS "invoiceEmail", active`
+
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/companies/:companyRef',
+    permission: 'guest:read',
+    summary: 'Firma lesen',
+    handler: async (req) => {
+      const { companyRef } = req.params as { companyRef: string }
+      return tx(req.pool, req, async client => {
+        const { rows, rowCount } = await client.query(
+          `SELECT ${COMPANY_FIELDS} FROM company WHERE public_ref = $1`, [companyRef])
+        if (rowCount === 0) throw Errors.notFound('Firma')
+        return rows[0]
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/companies/:companyRef',
+    permission: 'guest:write',
+    summary: 'Firma aendern',
+    handler: async (req) => {
+      const { companyRef } = req.params as { companyRef: string }
+      const body = req.body as {
+        name?: string; vatId?: string; addressLine1?: string; postalCode?: string
+        city?: string; country?: string; paymentTermsDays?: number; invoiceEmail?: string
+        active?: boolean
+      }
+      return tx(req.pool, req, async client => {
+        const cur = await client.query<{ id: number }>(
+          `SELECT id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
+        if (cur.rowCount === 0) throw Errors.notFound('Firma')
+
+        const { rows } = await client.query(
+          `UPDATE company SET
+             name               = COALESCE($2, name),
+             vat_id             = COALESCE($3, vat_id),
+             address_line1      = COALESCE($4, address_line1),
+             postal_code        = COALESCE($5, postal_code),
+             city               = COALESCE($6, city),
+             country            = COALESCE($7, country),
+             payment_terms_days = COALESCE($8, payment_terms_days),
+             invoice_email      = COALESCE($9, invoice_email),
+             active             = COALESCE($10, active),
+             updated_at         = now()
+           WHERE id = $1 RETURNING ${COMPANY_FIELDS}`,
+          [cur.rows[0]!.id, body.name ?? null, body.vatId ?? null, body.addressLine1 ?? null,
+           body.postalCode ?? null, body.city ?? null, body.country ?? null,
+           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, body.active ?? null])
+        return rows[0]
+      })
+    }
+  })
 }

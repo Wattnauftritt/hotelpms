@@ -110,6 +110,12 @@ describe('Bestand bei Zustandswechseln', () => {
     expect(w.statusCode, w.body).toBe(200)
     expect(JSON.parse(w.body).status).toBe('Confirmed')
     expect(await verkauft()).toBe(1)
+
+    // Der Zeitstempel muss mit dem Zustand zurueckgehen -- sonst zeigt das
+    // Seitenfenster "Storniert am" an einer wieder bestaetigten Reservierung.
+    const r = await owner.query<{ canceled_at: string | null }>(
+      `SELECT canceled_at FROM reservation WHERE public_ref = $1`, [ref])
+    expect(r.rows[0]!.canceled_at).toBeNull()
   })
 
   it('bindet nicht zweimal, wenn eine bindende Handlung auf eine bindende folgt',
