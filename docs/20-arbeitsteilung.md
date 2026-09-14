@@ -49,10 +49,15 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 
 **Der zusammenhängendste und wichtigste Teil.** Ohne ihn kann man in dieser Oberfläche kein Zimmer buchen, und das Produkt ist nicht vorführbar.
 
-**Eigene Dateien:** `routes/Booking.tsx`, `routes/Guests.tsx`, `routes/CheckIn.tsx`, `components/AvailabilityPicker.tsx`, `components/GuestPicker.tsx`, `lib/queries/booking.ts`, `lib/queries/guests.ts`, `lib/i18n/buchen.ts`, `lib/i18n/gaeste.ts`
+Diese Spur ist **erkennbar größer als B und C**, und das ist Absicht: A0 bis A6 sind ein einziger Vorgang — sehen, was frei ist, buchen, den Gast anlegen, anreisen lassen. Auf zwei Bearbeiter verteilt entstehen zwei halbe Masken, die nicht ineinandergreifen. Wer Luft hat, nimmt sich A9 und A10 zuletzt vor; sie hängen am selben Zimmerplan, sind aber vom Buchungsvorgang trennbar.
+
+**Eigene Dateien:** `routes/Booking.tsx`, `routes/Guests.tsx`, `routes/CheckIn.tsx`, `routes/Availability.tsx`, `components/AvailabilityGrid.tsx`, `components/GuestPicker.tsx`, `lib/queries/booking.ts`, `lib/queries/guests.ts`, `lib/i18n/buchen.ts`, `lib/i18n/gaeste.ts`
+
+**Ausnahme von der Regel „keine fremden Bildschirme":** A9 und A10 ändern `routes/Tape.tsx` und `components/TapeChart.tsx`. Die gehören für die Dauer dieser Spur **dir**; B und C fassen sie nicht an.
 
 | # | Aufgabe | Fertig, wenn |
 |---|---|---|
+| A0 | **Verfügbarkeitsraster.** Zimmergruppe senkrecht, Tage waagerecht, freie Einheiten je Zelle. `GET .../availability` liefert bis **731 Tage** in einer Anfrage | Ein Blick beantwortet „was kann ich noch verkaufen". Überbuchte Tage sind als solche erkennbar, nicht nur als negative Zahl. Aus einer Zelle heraus führt ein Weg in A2 |
 | A1 | **Verfügbarkeitssuche.** Zeitraum, Personenzahl, Zimmergruppe → freie Kategorien mit Preis | Ein Zeitraum ohne Verfügbarkeit sagt das, statt eine leere Liste zu zeigen. Der Zeitraum ist nach oben begrenzt |
 | A2 | **Buchungsmaske.** Aus dem Suchergebnis heraus buchen, mit Gast und Ratenplan | Eine Buchung entsteht mit `Idempotency-Key`; zweimaliges Absenden erzeugt **eine** Reservierung. Ein volles Haus antwortet verständlich, nicht mit „409" |
 | A3 | **Gastsuche.** Nach Name, Mail, Firma; Treffer in einer Anfrage | Die Suche lädt nicht je Zeile nach. Ein anonymisierter Gast ist als solcher erkennbar |
@@ -61,6 +66,8 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 | A6 | **Check-in mit Meldeschein.** Vorbelegtes Formular, Unterschrift nur bei ausländischen Gästen | Bei einem inländischen Gast erscheint **gar kein** Unterschriftsfeld. Ohne zugewiesenes Zimmer sagt die Maske das, bevor der Knopf gedrückt wird |
 | A7 | **Aufenthalt ändern.** Verlängern, verkürzen, Kategorie wechseln | Die Maske ruft `change-stay` auf, nicht Storno plus Neubuchung. Der Unterschied ist im vollen Haus der zwischen „geht" und „geht nicht" |
 | A8 | **Bestätigung schicken.** Knopf in der Reservierung | Ohne hinterlegte Adresse sagt er, dass die Adresse fehlt, statt still nichts zu tun |
+| A9 | **Zimmerplan als Arbeitsfläche.** Reservierung anklicken, Zimmer zuweisen, verschieben, verlängern — mit der Maus auf dem Balken | Der Zimmerplan ist heute ein Bild: `TapeChart` nimmt ein `onSelect` entgegen, und `Tape.tsx` übergibt es nicht. Fertig, wenn von dort aus dasselbe geht wie aus dem Tagesgeschäft. Verschieben ruft `change-stay`/`assign-unit`, nie Storno plus Neubuchung |
+| A10 | **Warnungen im Plan.** Überbuchung und nicht zugewiesene Anreisen sichtbar | Beides liegt in den Daten (`overbooking_limit`, `resource_id IS NULL`) und wird heute nicht gezeigt. Der Wettbewerb zeigt es; wer es erst beim Check-in merkt, merkt es zu spät |
 
 **Neuer Endpunkt absehbar (3.1):** Für A1 könnte `GET .../availability` zu grob sein — es liefert Verfügbarkeit, aber nicht Verfügbarkeit *mit Preis je Kategorie*. Prüfe erst `rate-grid`; reicht es nicht, ist ein Aggregat `GET .../offers?from=&to=&guests=` gerechtfertigt. **Ein Aufruf je Bildschirm**, keine Schleife.
 
@@ -72,7 +79,7 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 
 | # | Aufgabe | Fertig, wenn |
 |---|---|---|
-| B1 | **Preisraster.** Tage waagerecht, Ratenpläne senkrecht, ein Aufruf für den ganzen Bildschirm | 365 Tage × 10 Ratenpläne laden in einer Anfrage und scrollen flüssig |
+| B1 | **Preisraster für ein ganzes Jahr.** Tage waagerecht, Ratenpläne senkrecht, ein Aufruf. `GET .../rate-grid` liefert bis **400 Tage** | 400 Tage × 10 Ratenpläne laden in **einer** Anfrage und scrollen flüssig. Das ist die Ansicht, aus der die Preise an den Channel Manager gehen — sie muss ein Jahr am Stück tragen |
 | B2 | **Massenänderung mit Vorschau.** Bereich markieren, Preis setzen, **erst ansehen, dann übernehmen** | Die Vorschau zeigt die Zahl der betroffenen Tage. Ohne Vorschau kein Übernehmen |
 | B3 | **Restriktionen.** Mindestaufenthalt, Anreisesperre, Stopp im selben Raster | Eine gesetzte Restriktion ist im Raster sichtbar, nicht nur in einem Formular |
 | B4 | **Ratenpläne.** Anlegen, abgeleitete Raten neu rechnen | Nach dem Neurechnen zeigt die Oberfläche, wie viele Tage sich geändert haben |
@@ -81,6 +88,7 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 | B7 | **Rechnung verschicken.** Knopf mit abweichender Adresse, Postausgang einsehen | Ein zweiter Klick erzeugt keine zweite Mail — die API antwortet mit 409 und verlangt `resend` |
 | B8 | **Anzahlung.** Anzahlungsrechnung erzeugen, Verrechnung sichtbar | Die Verrechnung erscheint als Position auf der Schlussrechnung, nicht als Kopfangabe |
 | B9 | **Pay-by-Link.** Zahlungslink erzeugen und dem Gast geben | Die Maske sagt, dass ein Link keine Zahlung ist, bis sie eingeht |
+| B10 | **Was der Channel Manager sieht.** Zu einem Zeitraum zeigen, welche Preise, Verfügbarkeiten und Restriktionen über `GET /v1/channel/ari/*` hinausgehen | Dieselbe Antwort wie die Maschine bekommt, nur lesbar dargestellt. Ohne das ist „warum steht bei Booking.com ein anderer Preis" nicht zu beantworten, ohne Protokolle zu lesen |
 
 **Zu B2:** Die Vorschau ist keine Bequemlichkeit. Wer 365 Tage auf einmal ändert und sich vertippt, merkt es sonst, wenn die ersten Buchungen zum falschen Preis hereinkommen — und Preise rückwirkend zu ändern geht nicht, weil eine bestätigte Buchung ihren Preis behält.
 
@@ -102,6 +110,7 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 | C8 | **Webhooks.** Abonnements anlegen, Zustellprotokoll ansehen, stillgelegte wieder einschalten | Der Grund der Stilllegung steht an der Zeile |
 | C9 | **Maschinenzugänge und Channel Manager.** Anlegen, sperren, Zugriffsbereiche sehen | Ein Geheimnis wird **einmal** bei der Anlage gezeigt und nie wieder |
 | C10 | **Benutzer und Rollen.** Wer darf was, je Haus | Die Rechte werden gezeigt, wie die API sie liefert, nicht nachgebaut |
+| C11 | **Stammdaten vollständig pflegen.** Zimmergruppe und Zimmer **ändern und stilllegen**, mit allen Feldern des Modells | Heute lässt sich beides nur anlegen, obwohl `PATCH /v1/categories/:id` und `PATCH /v1/rooms/:id` existieren. Eine Gruppe hat neben Code, Name und Belegung auch `description` (geht an den Channel Manager), `sort_order`, `overbooking_limit` und `active`; ein Zimmer hat `floor` und `attributes` (Balkon, barrierefrei, Raucher) — an letzterem hängt später die Zimmerzuweisung |
 
 **Zu C9:** Ein angezeigtes Geheimnis, das sich erneut abrufen lässt, ist ein Geheimnis, das in jedem Bildschirmfoto liegt. Einmal zeigen, mit Hinweis, dann nie wieder.
 
@@ -134,6 +143,7 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
+| A0 | Verfügbarkeitsraster | offen | — | |
 | A1 | Verfügbarkeitssuche | offen | — | |
 | A2 | Buchungsmaske | offen | — | |
 | A3 | Gastsuche | offen | — | |
@@ -142,12 +152,14 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | A6 | Check-in mit Meldeschein | offen | — | |
 | A7 | Aufenthalt ändern | offen | — | |
 | A8 | Bestätigung schicken | offen | — | |
+| A9 | Zimmerplan als Arbeitsfläche | offen | — | |
+| A10 | Warnungen im Plan | offen | — | |
 
 ### Spur B — Preise, Rechnung, Geld
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| B1 | Preisraster | offen | — | |
+| B1 | Preisraster für ein ganzes Jahr | offen | — | |
 | B2 | Massenänderung mit Vorschau | offen | — | |
 | B3 | Restriktionen | offen | — | |
 | B4 | Ratenpläne | offen | — | |
@@ -156,6 +168,7 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | B7 | Rechnung verschicken | offen | — | |
 | B8 | Anzahlung | offen | — | |
 | B9 | Pay-by-Link | offen | — | |
+| B10 | Was der Channel Manager sieht | offen | — | |
 
 ### Spur C — Haus, Berichte, Einstellungen
 
@@ -171,6 +184,7 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | C8 | Webhooks | offen | — | |
 | C9 | Maschinenzugänge, Channel Manager | offen | — | |
 | C10 | Benutzer und Rollen | offen | — | |
+| C11 | Stammdaten vollständig pflegen | offen | — | |
 
 ---
 
