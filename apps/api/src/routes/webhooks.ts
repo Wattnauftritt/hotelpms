@@ -122,7 +122,11 @@ export function webhookRoutes(app: FastifyInstance): void {
     handler: async (req) => tx(req.pool, req, async client => {
       const { rows } = await client.query<SubscriptionRow>(
         `SELECT ${FIELDS} FROM webhook_subscription ORDER BY id`)
-      return { subscriptions: rows.map(present) }
+      // Der Katalog kommt mit, wie bei den Maschinenzugaengen die Scopes:
+      // sonst fuehrt jeder Aufrufer eine eigene Liste, und nach der
+      // naechsten neuen Ereignisart fehlt in jeder genau diese.
+      return { subscriptions: rows.map(present),
+               availableEventTypes: [...WEBHOOK_EVENT_TYPES] }
     })
   })
 

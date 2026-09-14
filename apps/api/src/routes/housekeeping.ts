@@ -192,10 +192,23 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       const body = req.body as {
         propertyId: number; resourceId?: number; title: string; description?: string
         priority?: 'low' | 'normal' | 'high'
-        outOfOrder?: { from: string; to: string } }
+        outOfOrder?: { from: string; to: string }
+        /**
+         * Sperrung beider Arten. `outOfOrder` bleibt daneben bestehen: es
+         * gibt Aufrufer, die es benutzen, und eine Kurzform fuer den
+         * haeufigeren Fall schadet nicht.
+         */
+        block?: { from: string; to: string; kind?: 'out_of_order' | 'out_of_service' } }
       const principal = req.principal as Principal
       if (!body.title || body.title.trim() === '') {
         throw Errors.validation({ title: ['Pflichtfeld'] })
+      }
+      const sperre = body.block ?? (body.outOfOrder === undefined ? undefined
+        : { ...body.outOfOrder, kind: 'out_of_order' as const })
+      if (sperre !== undefined && body.resourceId === undefined) {
+        // Eine Sperrung ohne Zimmer waere eine Sperrung von nichts. Still zu
+        // uebergehen hiesse: der Melder glaubt, das Zimmer sei gesperrt.
+        throw Errors.validation({ resourceId: ['Eine Sperrung braucht ein Zimmer'] })
       }
       return tx(req.pool, req, async client => {
         const t = await client.query<{ id: number }>(
@@ -207,16 +220,16 @@ export function housekeepingRoutes(app: FastifyInstance): void {
 
         // Out of Order senkt die Kapazitaet, Out of Service nicht. Der
         // Trigger auf maintenance_block rechnet inventory_day nach.
-        if (body.outOfOrder && body.resourceId !== undefined) {
-          if (!isIsoDate(body.outOfOrder.from) || !isIsoDate(body.outOfOrder.to)) {
-            throw Errors.validation({ outOfOrder: ['Datum im Format YYYY-MM-DD erwartet'] })
+        if (sperre !== undefined && body.resourceId !== undefined) {
+          if (!isIsoDate(sperre.from) || !isIsoDate(sperre.to)) {
+            throw Errors.validation({ block: ['Datum im Format YYYY-MM-DD erwartet'] })
           }
           await client.query(
             `INSERT INTO maintenance_block (property_id, resource_id, from_date, to_date,
                                             kind, reason)
-             VALUES ($1,$2,$3::date,$4::date,'out_of_order',$5)`,
-            [body.propertyId, body.resourceId, body.outOfOrder.from,
-             body.outOfOrder.to, body.title.trim()])
+             VALUES ($1,$2,$3::date,$4::date,COALESCE($5,'out_of_order'),$6)`,
+            [body.propertyId, body.resourceId, sperre.from, sperre.to,
+             sperre.kind ?? null, body.title.trim()])
         }
         reply.status(201)
         return { ticketId: t.rows[0]!.id }
@@ -234,11 +247,25 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { status?: string }
       return tx(req.pool, req, async client => {
+        // Die Sperrungen des Zimmers kommen als Feld mit. Sie je Meldung
+        // nachzuladen waere eine Runde je Zeile -- und ohne sie ist an der
+        // Meldung nicht zu sehen, ob das Zimmer gerade Kapazitaet kostet.
         const { rows } = await client.query(
           `SELECT m.id, m.title, m.description, m.priority, m.status,
-                  m.created_at::text AS "createdAt", r.code AS "roomCode"
+                  m.created_at::text AS "createdAt", m.closed_at AS "closedAt",
+                  m.resource_id AS "resourceId", r.code AS "roomCode",
+                  COALESCE(b.sperren, '[]'::jsonb) AS blocks
              FROM maintenance_ticket m
              LEFT JOIN resource r ON r.id = m.resource_id
+             LEFT JOIN LATERAL (
+               SELECT jsonb_agg(jsonb_build_object(
+                        'kind', mb.kind, 'from', mb.from_date::text,
+                        'to', mb.to_date::text, 'reason', mb.reason)
+                      ORDER BY mb.from_date) AS sperren
+                 FROM maintenance_block mb
+                WHERE mb.resource_id = m.resource_id
+                  AND mb.to_date > current_date
+             ) b ON true
             WHERE m.property_id = $1
               AND ($2::text IS NULL OR m.status = $2)
             ORDER BY CASE m.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
@@ -246,6 +273,55 @@ export function housekeepingRoutes(app: FastifyInstance): void {
             LIMIT 500`,
           [Number(propertyId), q.status ?? null])
         return { tickets: rows }
+      })
+    }
+  })
+
+  /**
+   * Stand einer Wartungsmeldung aendern.
+   *
+   * Es gibt bewusst **keinen Loeschknopf**: eine Meldung ist die
+   * Aufzeichnung eines Befundes, und wer sie loescht, loescht die Frage, ob
+   * das Zimmer je in Ordnung gebracht wurde. Erledigt ist ein Zustand, kein
+   * Verschwinden.
+   *
+   * Die Sperrung bleibt, wo sie ist. Sie mit der Meldung aufzuheben waere
+   * bequem und falsch: eine Meldung wird erledigt, wenn jemand die Arbeit
+   * getan hat, und ob das Zimmer wieder verkaeuflich ist, entscheidet, wer
+   * hineingesehen hat -- nicht die Software.
+   */
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/maintenance-tickets/:ticketId',
+    permission: 'maintenance:write',
+    summary: 'Wartungsmeldung in Arbeit nehmen oder erledigen',
+    handler: async (req) => {
+      const { ticketId } = req.params as { ticketId: string }
+      const body = req.body as { status?: string; priority?: string }
+      const STAENDE = ['open', 'in_progress', 'done']
+      const PRIORITAETEN = ['low', 'normal', 'high']
+      if (body.status !== undefined && !STAENDE.includes(body.status)) {
+        throw Errors.validation({ status: [`Erlaubt: ${STAENDE.join(', ')}`] })
+      }
+      if (body.priority !== undefined && !PRIORITAETEN.includes(body.priority)) {
+        throw Errors.validation({ priority: [`Erlaubt: ${PRIORITAETEN.join(', ')}`] })
+      }
+
+      return tx(req.pool, req, async client => {
+        const { rows, rowCount } = await client.query(
+          `UPDATE maintenance_ticket SET
+             status = COALESCE($2, status),
+             priority = COALESCE($3, priority),
+             -- Der Zeitpunkt haengt am Zustand, nicht am Aufruf: ein
+             -- zweites "erledigt" darf ihn nicht nach hinten schieben.
+             closed_at = CASE WHEN $2 = 'done' THEN COALESCE(closed_at, now())
+                              WHEN $2 IS NOT NULL THEN NULL
+                              ELSE closed_at END
+           WHERE id = $1
+           RETURNING id, status, priority, closed_at AS "closedAt"`,
+          [Number(ticketId), body.status ?? null, body.priority ?? null])
+        if (rowCount === 0) throw Errors.notFound('Wartungsmeldung')
+        return rows[0]!
       })
     }
   })

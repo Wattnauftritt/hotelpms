@@ -5,6 +5,10 @@ import { Today } from './routes/Today.tsx'
 import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Blocks } from './routes/Blocks.tsx'
 import { Setup } from './routes/Setup.tsx'
+import { Reports } from './routes/Reports.tsx'
+import { Maintenance } from './routes/Maintenance.tsx'
+import { Settings } from './routes/Settings.tsx'
+import { Integrations } from './routes/Integrations.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -41,8 +45,14 @@ export interface ScreenDefinition {
   /**
    * Ohne dieses Recht erscheint der Bildschirm nicht in der Navigation.
    * `null` heißt: für jeden sichtbar, der überhaupt angemeldet ist.
+   *
+   * Eine Liste heißt **eines davon genügt**. Das gibt es, weil ein
+   * Bildschirm mehrere Bereiche bündeln kann: die Berichte zeigen Betrieb,
+   * Umsatz und Ausgaben, und wer nur eines davon darf, soll sie trotzdem
+   * sehen — und darin nur seinen Bereich. Mit einem einzelnen Recht wäre
+   * entweder die Rezeption oder das Revenue Management ausgesperrt.
    */
-  permission: string | null
+  permission: string | readonly string[] | null
   render: (ctx: ScreenContext) => JSX.Element
 }
 
@@ -56,12 +66,28 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'blocks', nav: 'nav.blocks', permission: 'inventory:read',
     render: c => <Blocks propertyId={c.propertyId} /> },
   { key: 'setup', nav: 'nav.setup', permission: 'settings:property',
-    render: c => <Setup propertyId={c.propertyId} /> }
+    render: c => <Setup propertyId={c.propertyId} /> },
+  { key: 'reports', nav: 'nav.reports',
+    permission: ['report:operational', 'report:revenue', 'report:export'],
+    render: c => <Reports propertyId={c.propertyId} /> },
+  { key: 'maintenance', nav: 'nav.maintenance',
+    permission: ['housekeeping:read', 'maintenance:write'],
+    render: c => <Maintenance propertyId={c.propertyId} /> },
+  { key: 'settings', nav: 'nav.settings',
+    permission: ['integration:manage', 'settings:property'],
+    render: c => <Settings propertyId={c.propertyId} /> },
+  { key: 'integrations', nav: 'nav.integrations',
+    permission: ['integration:manage', 'user:manage'],
+    render: c => <Integrations propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */
 export function visibleScreens(permissions: readonly string[]): ScreenDefinition[] {
-  return SCREENS.filter(s => s.permission === null || permissions.includes(s.permission))
+  return SCREENS.filter(s =>
+    s.permission === null ||
+    (typeof s.permission === 'string'
+      ? permissions.includes(s.permission)
+      : s.permission.some(p => permissions.includes(p))))
 }
 
 export function screenByKey(key: string | null): ScreenDefinition | undefined {

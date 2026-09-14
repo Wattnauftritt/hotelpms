@@ -78,12 +78,16 @@ describe('Bildschirme und Rechte', () => {
     // Ein Housekeeping-Konto sieht den Zimmerplan nicht. Nicht aus
     // Geheimhaltung -- die Sicherheit liegt in der API --, sondern weil
     // ein Knopf, der 403 antwortet, schlechter ist als kein Knopf.
+    // Die Wartungsliste steht bewusst mit dabei: sie haengt an
+    // `housekeeping:read`, und wer die Zimmer macht, findet die Schaeden.
+    // Anlegen und Erledigen bleiben ohne `maintenance:write` verborgen.
     const nurHk = visibleScreens(['housekeeping:read']).map(s => s.key)
-    expect(nurHk).toEqual(['housekeeping'])
+    expect(nurHk).toEqual(['housekeeping', 'maintenance'])
 
     const rezeption = visibleScreens(
       ['reservation:read', 'housekeeping:read', 'inventory:read']).map(s => s.key)
-    expect(rezeption).toEqual(['tape', 'today', 'housekeeping', 'blocks'])
+    expect(rezeption).toEqual(
+      ['tape', 'today', 'housekeeping', 'blocks', 'maintenance'])
     expect(rezeption).not.toContain('setup')
   })
 
@@ -104,6 +108,7 @@ describe('Bildschirme und Rechte', () => {
 
   it('haelt die Schluessel stabil: es gibt Lesezeichen darauf', () => {
     expect(SCREENS.map(s => s.key))
-      .toEqual(['tape', 'today', 'housekeeping', 'blocks', 'setup'])
+      .toEqual(['tape', 'today', 'housekeeping', 'blocks', 'setup', 'reports',
+                'maintenance', 'settings', 'integrations'])
   })
 })

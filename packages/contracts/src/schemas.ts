@@ -268,9 +268,18 @@ export const FolioView = Type.Object({
 export type FolioView = Static<typeof FolioView>
 
 export const PaymentMethod = Type.Object({
+  id: Type.Integer(),
   code: Type.String(),
   name: Type.String(),
-  isExternal: Type.Boolean()
+  /** Die Abwicklung liegt ausser Haus. Keine Buchungsregel, nur eine Angabe. */
+  isExternal: Type.Boolean(),
+  sortOrder: Type.Integer(),
+  /**
+   * Stillgelegt statt geloescht. An einer Zahlungsart haengen Verrechnungen,
+   * und `settlement` ist Haertegrad 1: geloescht bliebe ein Beleg zurueck,
+   * dessen Zahlungsweg niemand mehr benennen kann.
+   */
+  active: Type.Boolean()
 })
 export type PaymentMethod = Static<typeof PaymentMethod>
 
@@ -430,6 +439,248 @@ export const ReservationDetail = Type.Object({
   totalCent: Cent
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
+
+// ------------------------------------------------------- Haus und Betrieb
+
+export const MaintenanceBlock = Type.Object({
+  /**
+   * `out_of_order` senkt die Kapazitaet, `out_of_service` nicht. Der
+   * Unterschied ist die ganze Aussage: ein defektes Zimmer ist nicht
+   * verkaeuflich, ein abgenutztes schon.
+   */
+  kind: Type.Union([Type.Literal('out_of_order'), Type.Literal('out_of_service')]),
+  from: IsoDate,
+  to: IsoDate,
+  reason: Type.String()
+})
+export type MaintenanceBlock = Static<typeof MaintenanceBlock>
+
+export const MaintenanceTicket = Type.Object({
+  id: Type.Integer(),
+  title: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  priority: Type.Union([
+    Type.Literal('low'), Type.Literal('normal'), Type.Literal('high')]),
+  status: Type.Union([
+    Type.Literal('open'), Type.Literal('in_progress'), Type.Literal('done')]),
+  createdAt: Type.String(),
+  closedAt: Type.Union([Type.String(), Type.Null()]),
+  resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  roomCode: Type.Union([Type.String(), Type.Null()]),
+  /** Laufende Sperrungen des Zimmers. Kommen mit, nicht je Zeile nachgeladen. */
+  blocks: Type.Array(MaintenanceBlock)
+})
+export type MaintenanceTicket = Static<typeof MaintenanceTicket>
+
+export const CreateMaintenanceTicket = Type.Object({
+  propertyId: Type.Integer(),
+  title: Type.String({ minLength: 1 }),
+  description: Type.Optional(Type.String()),
+  resourceId: Type.Optional(Type.Integer()),
+  priority: Type.Optional(Type.Union([
+    Type.Literal('low'), Type.Literal('normal'), Type.Literal('high')])),
+  block: Type.Optional(Type.Object({
+    from: IsoDate, to: IsoDate,
+    kind: Type.Optional(Type.Union([
+      Type.Literal('out_of_order'), Type.Literal('out_of_service')]))
+  }))
+})
+export type CreateMaintenanceTicket = Static<typeof CreateMaintenanceTicket>
+
+export const EmailSettings = Type.Object({
+  fromName: Type.Union([Type.String(), Type.Null()]),
+  fromEmail: Type.Union([Type.String(), Type.Null()]),
+  replyTo: Type.Union([Type.String(), Type.Null()]),
+  bccEmail: Type.Union([Type.String(), Type.Null()]),
+  enabled: Type.Boolean(),
+  updatedAt: Type.Union([Type.String(), Type.Null()])
+})
+export type EmailSettings = Static<typeof EmailSettings>
+
+export const CreatePaymentMethod = Type.Object({
+  code: Type.String({ minLength: 1, maxLength: 20 }),
+  name: Type.String({ minLength: 1, maxLength: 120 }),
+  isExternal: Type.Optional(Type.Boolean()),
+  sortOrder: Type.Optional(Type.Integer())
+})
+export type CreatePaymentMethod = Static<typeof CreatePaymentMethod>
+
+// ---------------------------------------------------------------- Berichte
+
+export const KpiDay = Type.Object({
+  date: IsoDate,
+  capacity: Type.Integer(),
+  sold: Type.Integer(),
+  /** Kapazitaet abzueglich gesperrter Einheiten. Bezugsgroesse fuer RevPAR. */
+  available: Type.Integer(),
+  occupancyPercent: Type.Number(),
+  roomRevenueCent: Cent,
+  adrCent: Cent,
+  revparCent: Cent,
+  /**
+   * `aufgezeichnet` kommt aus `business_day_stat`, `auf den Buechern` aus dem
+   * laufenden Zaehler. Der Unterschied gehoert an den Bildschirm: das eine
+   * ist festgehalten, das andere aendert sich noch.
+   */
+  source: Type.String()
+})
+export type KpiDay = Static<typeof KpiDay>
+
+export const KpiTotal = Type.Object({
+  sold: Type.Integer(),
+  available: Type.Integer(),
+  roomRevenueCent: Cent,
+  occupancyPercent: Type.Number(),
+  adrCent: Cent,
+  revparCent: Cent
+})
+export type KpiTotal = Static<typeof KpiTotal>
+
+export const KpiReport = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  days: Type.Array(KpiDay),
+  total: KpiTotal,
+  /** Nur bei `compare=previous-year`. Derselbe Zeitraum ein Jahr zurueck. */
+  comparison: Type.Optional(Type.Object({
+    from: IsoDate, to: IsoDate, days: Type.Array(KpiDay), total: KpiTotal
+  }))
+})
+export type KpiReport = Static<typeof KpiReport>
+
+export const NightAuditStep = Type.Object({
+  step: Type.String(),
+  completedAt: Type.String(),
+  count: Type.Union([Type.Integer(), Type.Null()])
+})
+export type NightAuditStep = Static<typeof NightAuditStep>
+
+export const NightAuditDay = Type.Object({
+  date: IsoDate,
+  status: Type.Union([Type.Literal('open'), Type.Literal('closed')]),
+  closedAt: Type.Union([Type.String(), Type.Null()]),
+  steps: Type.Array(NightAuditStep),
+  sold: Type.Union([Type.Integer(), Type.Null()]),
+  arrivals: Type.Union([Type.Integer(), Type.Null()]),
+  departures: Type.Union([Type.Integer(), Type.Null()]),
+  roomRevenueCent: Type.Union([Cent, Type.Null()])
+})
+export type NightAuditDay = Static<typeof NightAuditDay>
+
+export const NightAuditStatus = Type.Object({
+  /** Geschaeftsdatum der Property, nicht der Kalendertag des Betrachters. */
+  businessDate: IsoDate,
+  openDate: Type.Union([IsoDate, Type.Null()]),
+  daysBehind: Type.Union([Type.Integer(), Type.Null()]),
+  overdue: Type.Boolean(),
+  expectedSteps: Type.Array(Type.String()),
+  days: Type.Array(NightAuditDay)
+})
+export type NightAuditStatus = Static<typeof NightAuditStatus>
+
+export const AccommodationStatistics = Type.Object({
+  month: Type.String(),
+  rooms: Type.Integer(),
+  beds: Type.Integer(),
+  /** Meldepflichtig ab zehn Schlafgelegenheiten. */
+  reportingRequired: Type.Boolean(),
+  byCountry: Type.Array(Type.Object({
+    country: Type.Union([Type.String(), Type.Null()]),
+    arrivals: Type.Integer(),
+    nights: Type.Integer()
+  })),
+  totals: Type.Object({ arrivals: Type.Integer(), nights: Type.Integer() }),
+  hinweis: Type.String()
+})
+export type AccommodationStatistics = Static<typeof AccommodationStatistics>
+
+// ------------------------------------------------------------ Schnittstellen
+
+export const WebhookSubscription = Type.Object({
+  subscriptionRef: Type.String(),
+  url: Type.String(),
+  eventTypes: Type.Array(Type.String()),
+  /** Leer gespeichert heisst alle. Die Antwort sagt es ausdruecklich. */
+  allEventTypes: Type.Boolean(),
+  propertyIds: Type.Array(Type.Integer()),
+  allProperties: Type.Boolean(),
+  status: Type.String(),
+  disabledAt: Type.Union([Type.String(), Type.Null()]),
+  /** Warum stillgelegt. Gehoert an die Zeile, nicht in ein Protokoll. */
+  disabledReason: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String()
+})
+export type WebhookSubscription = Static<typeof WebhookSubscription>
+
+export const WebhookAttempt = Type.Object({
+  attempt: Type.Integer(),
+  statusCode: Type.Union([Type.Integer(), Type.Null()]),
+  error: Type.Union([Type.String(), Type.Null()]),
+  durationMs: Type.Union([Type.Integer(), Type.Null()]),
+  attemptedAt: Type.String()
+})
+export type WebhookAttempt = Static<typeof WebhookAttempt>
+
+export const WebhookDelivery = Type.Object({
+  eventRef: Type.String(),
+  eventType: Type.String(),
+  status: Type.String(),
+  attempts: Type.Integer(),
+  lastStatusCode: Type.Union([Type.Integer(), Type.Null()]),
+  lastError: Type.Union([Type.String(), Type.Null()]),
+  occurredAt: Type.String(),
+  nextAttemptAt: Type.Union([Type.String(), Type.Null()]),
+  deliveredAt: Type.Union([Type.String(), Type.Null()]),
+  attemptLog: Type.Array(WebhookAttempt)
+})
+export type WebhookDelivery = Static<typeof WebhookDelivery>
+
+export const OAuthClient = Type.Object({
+  clientId: Type.String(),
+  name: Type.String(),
+  scopes: Type.Array(Type.String()),
+  propertyIds: Type.Array(Type.Integer()),
+  status: Type.String(),
+  createdAt: Type.String(),
+  activeTokens: Type.Integer(),
+  lastUsedAt: Type.Union([Type.String(), Type.Null()])
+})
+export type OAuthClient = Static<typeof OAuthClient>
+
+export const ChannelConnection = Type.Object({
+  connectionRef: Type.String(),
+  provider: Type.String(),
+  name: Type.String(),
+  status: Type.String(),
+  lastUsedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String()
+})
+export type ChannelConnection = Static<typeof ChannelConnection>
+
+export const PropertyRole = Type.Object({
+  key: Type.String(),
+  name: Type.String(),
+  level: Type.String(),
+  isSystem: Type.Boolean(),
+  /**
+   * Die Rechte, wie die API sie liefert. Die Oberflaeche zeigt sie und
+   * schliesst nicht aus dem Rollennamen auf sie -- sonst liegt sie bei der
+   * ersten eigenen Rolle eines Kunden falsch, und zwar still.
+   */
+  permissions: Type.Array(Type.String())
+})
+export type PropertyRole = Static<typeof PropertyRole>
+
+export const PropertyUser = Type.Object({
+  userRef: Type.String(),
+  displayName: Type.String(),
+  email: Type.String(),
+  status: Type.String(),
+  lastLoginAt: Type.Union([Type.String(), Type.Null()]),
+  roles: Type.Array(Type.Object({ key: Type.String(), name: Type.String() })),
+  permissions: Type.Array(Type.String())
+})
+export type PropertyUser = Static<typeof PropertyUser>
 
 // ------------------------------------------------------------------ Fehler
 
