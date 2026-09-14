@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 14. September 2026. 376 Tests, 26 Migrationen.
+Stand: 14. September 2026. 390 Tests, 27 Migrationen.
 
 Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in Aufgaben, die **einzeln und ohne Rückfrage** bearbeitet werden können. Die Regeln, die dabei gelten, stehen in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -17,7 +17,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 4 Verfügbarkeit | fertig | `0005`, `0006`, `routes/availability.ts` |
 | AP 5 Reservierungen | fertig | `0009`, `0022`, `routes/reservations.ts`, `routes/blocks.ts` |
 | AP 6 Gäste und Firmen | fertig | `0008`, `0015`, `routes/guests.ts` |
-| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `routes/billing.ts` |
+| AP 7 Folio und Rechnung | fertig | `0010`, `0012`, `0017`, `0024`, `0027`, `routes/billing.ts` |
 | AP 8 Nachtlauf | fertig | `jobs/nightAudit.ts`, `0014` |
 | AP 9 Housekeeping | fertig | `0011`, `routes/housekeeping.ts` |
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
@@ -46,6 +46,7 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Derselbe Beleg zweimal erzeugt ergibt dieselben Bytes, und ein bereits erzeugter wird nie durch einen zweiten ersetzt.
 - Ein Maschinentoken erreicht genau die Endpunkte seiner Zugriffsbereiche und keinen weiteren — geprüft über die gesamte Routenliste, nicht an Beispielen.
 - Ein Kassenumsatz landet als Position auf dem Gastkonto, folgt dabei den Umleitungsregeln, und derselbe Beleg zweimal zugestellt bucht kein zweites Mal — auch nicht mit neuem Idempotenzschlüssel.
+- Eine Anzahlung erzeugt eine eigene Rechnung aus derselben Nummernfolge; die Schlussrechnung verrechnet sie als eigene Position mit negativem Betrag, und das Folio zeigt den tatsächlich offenen Betrag ohne doppelte Zählung.
 
 ---
 
@@ -119,18 +120,38 @@ werden dürfen.
 
 ---
 
-### Aufgabe 3 — Anzahlungen und ihre Steuerpflicht
+### Aufgabe 3 — Anzahlungen und ihre Steuerpflicht — **erledigt**
 
-**Warum.** Nach § 13 Abs. 1 Nr. 1a UStG entsteht die Steuer bei Anzahlungen mit der Vereinnahmung, nicht mit der Leistung. Das Modell kennt `invoice.kind = 'deposit'`, aber es gibt keinen Weg, eine Anzahlung zu fordern, zu vereinnahmen und später gegen die Schlussrechnung zu verrechnen (B4 in Dokument 13).
+Migration `0027`, `apps/api/src/routes/billing.ts` (`POST .../deposit-invoice`, erweitertes
+`POST .../invoice`), `apps/worker/src/jobs/invoiceDocument.ts`.
 
-**Umfang.**
-- Anzahlungsrechnung erstellen, mit eigener Nummer aus demselben Zähler.
-- Verrechnung in der Schlussrechnung als eigene Position mit negativem Betrag und Verweis auf die Anzahlungsrechnung.
-- `deposit_ledger` als eigener Saldo neben dem Gastkonto.
+Die steuerliche Behandlung wurde mit dem Steuerberater bestätigt: die Vereinnahmung ist sofort
+umsatzsteuerpflichtig, § 13 Abs. 1 Nr. 1a UStG in seiner einfachen Lesart, ohne Sonderfall.
 
-**Abnahme.** Eine Anzahlung von 200 Euro auf einen Aufenthalt von 500 Euro ergibt eine Schlussrechnung über 500 Euro mit ausgewiesener Anrechnung und 300 Euro offen. Die Steuer der Anzahlung ist im Monat der Vereinnahmung ausgewiesen.
+**Eigenes Journal statt charge/settlement-Paar.** `deposit_ledger` führt die Anzahlung als
+eigenen Saldo neben dem Gastkonto, mit zwei Ereignisarten: `received` bei der Vereinnahmung,
+`applied` bei der Verrechnung in einer Schlussrechnung. Eine Anzahlung als `charge` zu buchen
+hätte sie doppelt gezählt, sobald die Schlussrechnung entsteht: einmal als gebuchte Leistung,
+einmal als bereits bezahlte. Das Folio selbst bleibt deshalb unberührt — sein Saldo kommt
+weiterhin allein aus `charge` und `settlement`, die Anzahlung stand dort schon als `settlement`.
 
-**Vorher klären.** Die steuerliche Behandlung ist mit einem Steuerberater zu bestätigen; das steht als offener Punkt in Dokument 02.
+**Verrechnung als Position, nicht als Kopfangabe.** Die Schlussrechnung bekommt eine zusätzliche
+Position mit negativem Betrag (negative Menge nach BR-27, nicht negativer Einzelpreis) und dem
+Verweis auf die Anzahlungsrechnung im Positionstext. Die bereits vorhandene `prepaidCent`-Angabe
+(BT-113) ist etwas anderes — eine Zahlung, die derselben Rechnung direkt zugeordnet ist — und
+bleibt davon unberührt.
+
+**`settlement.invoice_id` bleibt unangetastet.** Der Zahlungsvermerk der Anzahlung wird nicht auf
+die Anzahlungsrechnung umgebogen: dieses Feld trägt bereits eine andere, bestehende Bedeutung
+(Zahlung direkt der eigenen Rechnung zugeordnet), und eine zweite Bedeutung am selben Feld hätte
+zwei Mechanismen leise vermischt. Stattdessen trägt `deposit_ledger.settlement_id` den Verweis,
+mit einem eindeutigen Index als eigentlichem Schutz gegen doppelte Verbuchung unter
+Nebenläufigkeit — dieselbe Lehre wie bei Aufgabe 5 und 6.
+
+**Abnahme geprüft:** eine Anzahlung von 200 Euro auf einen Aufenthalt von 500 Euro ergibt eine
+Schlussrechnung über netto 500 Euro Leistung mit einer Verrechnungsposition und 300 Euro offen;
+die Steuer der Anzahlung steht im Geschäftsdatum ihres Zahlungsvermerks, nicht im
+Ausstellungsdatum der Anzahlungsrechnung.
 
 ---
 

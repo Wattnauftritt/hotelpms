@@ -41,13 +41,18 @@ interface RechnungOpts {
   kind?: 'final' | 'interim' | 'deposit' | 'credit_note'
   propertyId?: number
   accountId?: number
+  // Fuer Aufgabe 3: eine Verrechnung ist keine charge, geht aber in die
+  // festgeschriebene Summe ein, genau wie im echten Festschreiben.
+  zusaetzlicheSummen?: Array<{ netCent: number; rateBp: number }>
 }
 
 /**
  * Legt eine festgeschriebene Rechnung an. Bewusst ueber SQL und nicht ueber
  * die API: hier wird der Beleg geprueft, nicht der Weg zur Rechnung.
  */
-async function rechnung(opts: RechnungOpts = {}): Promise<{ id: number; ref: string }> {
+async function rechnung(
+  opts: RechnungOpts = {}
+): Promise<{ id: number; ref: string; folioId: number }> {
   const propertyId = opts.propertyId ?? fx.propertyId
   const accountId = opts.accountId ?? fx.accountId
   const positionen = opts.positionen ?? [{ netCent: 30_000 }]
@@ -73,6 +78,9 @@ async function rechnung(opts: RechnungOpts = {}): Promise<{ id: number; ref: str
       [propertyId, folioId, `2026-10-0${i + 1}`, p.description ?? 'Uebernachtung',
        p.quantity ?? 1, netto, steuer, netto + steuer, rateBp, p.account ?? '8300'])
     chargeIds.push(c.rows[0]!.id)
+  }
+  for (const zs of opts.zusaetzlicheSummen ?? []) {
+    gruppen.set(zs.rateBp, (gruppen.get(zs.rateBp) ?? 0) + zs.netCent)
   }
 
   const groups = [...gruppen.entries()].sort((a, b) => a[0] - b[0]).map(([rateBp, netCent]) => {
@@ -109,7 +117,7 @@ async function rechnung(opts: RechnungOpts = {}): Promise<{ id: number; ref: str
 
   await owner.query(`UPDATE charge SET invoice_id = $2 WHERE id = ANY($1)`,
     [chargeIds, inv.rows[0]!.id])
-  return { id: inv.rows[0]!.id, ref: inv.rows[0]!.public_ref }
+  return { id: inv.rows[0]!.id, ref: inv.rows[0]!.public_ref, folioId }
 }
 
 interface Beleg {
@@ -291,10 +299,109 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
   })
 
   /**
-   * Weichen die Positionen von der festgeschriebenen Summe ab, ist etwas
-   * grundlegend falsch. Ein gedruckter Beleg würde es zementieren, deshalb
-   * entsteht lieber keiner.
+   * Aufgabe 3: eine Anzahlung wird auf der Anzahlungsrechnung selbst als
+   * Vereinnahmung ausgewiesen, und in der Schlussrechnung als eigene
+   * Position mit negativem Betrag und Verweis auf die Anzahlungsrechnung
+   * verrechnet.
    */
+  describe('Anzahlung', () => {
+    async function anzahlung(
+      depositGrossCent: number, rateBp = 700
+    ): Promise<{ id: number; ref: string; number: string; folioId: number }> {
+      const netCent = Math.round(depositGrossCent - depositGrossCent * rateBp / (10_000 + rateBp))
+      const taxCent = depositGrossCent - netCent
+      const gast = (await makeGuest(owner, fx.accountId)).id
+      const f = await owner.query<{ id: number }>(
+        `INSERT INTO folio (property_id, kind, guest_id) VALUES ($1,'guest',$2) RETURNING id`,
+        [fx.propertyId, gast])
+      const folioId = f.rows[0]!.id
+      const pm = await makePaymentMethod(owner, fx.propertyId)
+      const s = await owner.query<{ id: number }>(
+        `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent, payment_method_id)
+         VALUES ($1,$2,'2026-09-15'::date,$3,$4) RETURNING id`,
+        [fx.propertyId, folioId, depositGrossCent, pm])
+
+      const aussteller = await owner.query(
+        `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+                city, country, tax_number AS "taxNumber", vat_id AS "vatId"
+           FROM property WHERE id = $1`, [fx.propertyId])
+      const empfaenger = (await owner.query(
+        `SELECT trim(both ', ' from coalesce(last_name,'') || ', ' || coalesce(first_name,''))
+                  AS name,
+                address_line1 AS "addressLine1", postal_code AS "postalCode",
+                city, country FROM guest WHERE id = $1`, [gast])).rows[0]
+      const totals = { groups: [{ rateBp, netCent, taxCent, grossCent: depositGrossCent }],
+                        netCent, taxCent, grossCent: depositGrossCent }
+
+      const inv = await owner.query<{ id: number; public_ref: string; number: string }>(
+        `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
+                              service_from, service_to,
+                              issuer_snapshot, recipient_snapshot, totals)
+         VALUES ($1,$2,$3,'2026-09-15'::date,'2026-09-15'::date,'deposit',
+                 '2026-10-01'::date,'2026-10-03'::date,$4,$5,$6)
+         RETURNING id, public_ref, number`,
+        [fx.propertyId, folioId, `2026-${String(Date.now() % 100000).padStart(5, '0')}`,
+         JSON.stringify(aussteller.rows[0]), JSON.stringify(empfaenger), JSON.stringify(totals)])
+
+      await owner.query(
+        `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                     amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                     business_date, settlement_id)
+         VALUES ($1,$2,$3,'received',$4,$5,$6,$7,'2026-09-15'::date,$8)`,
+        [fx.propertyId, folioId, inv.rows[0]!.id, depositGrossCent, netCent, taxCent, rateBp,
+         s.rows[0]!.id])
+
+      return { id: inv.rows[0]!.id, ref: inv.rows[0]!.public_ref, number: inv.rows[0]!.number,
+               folioId }
+    }
+
+    it('weist die Anzahlungsrechnung mit ihrer einen Position aus', async () => {
+      const dep = await anzahlung(20_000)
+      const ergebnis = await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+      expect(ergebnis).toMatchObject({ created: 1, withoutXml: 0 })
+
+      const d = (await beleg(dep.id))!
+      expect(d.xml).toContain('<ram:TypeCode>386</ram:TypeCode>')
+      expect(d.xml).toContain('<ram:GrandTotalAmount>200.00</ram:GrandTotalAmount>')
+      expect(d.xml).toContain('Anzahlung auf den Aufenthalt')
+    })
+
+    it('verrechnet die Anzahlung in der Schlussrechnung mit negativer Position', async () => {
+      const dep = await anzahlung(20_000)
+      const dl = await owner.query<{ net_cent: number; tax_cent: number; tax_rate_bp: number
+                                     amount_gross_cent: number }>(
+        `SELECT net_cent, tax_cent, tax_rate_bp, amount_gross_cent
+           FROM deposit_ledger WHERE deposit_invoice_id = $1`, [dep.id])
+      const row = dl.rows[0]!
+
+      // Die festgeschriebene Summe muss die Verrechnung schon enthalten, so
+      // wie es das echte Festschreiben tut: die Rechnung ist Haertegrad 1
+      // und kann nicht nachtraeglich angepasst werden.
+      const schluss = await rechnung({
+        positionen: [{ netCent: 46_729 }],
+        zusaetzlicheSummen: [{ netCent: -row.net_cent, rateBp: row.tax_rate_bp }]
+      })
+
+      // Die Verrechnung so eintragen, wie es das Festschreiben taete: eine
+      // 'applied'-Zeile, die auf dieselbe Anzahlungsrechnung verweist.
+      await owner.query(
+        `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                     amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                     business_date, applied_invoice_id)
+         VALUES ($1,$2,$3,'applied',$4,$5,$6,$7,'2026-10-04'::date,$8)`,
+        [fx.propertyId, schluss.folioId, dep.id, row.amount_gross_cent, row.net_cent,
+         row.tax_cent, row.tax_rate_bp, schluss.id])
+
+      const ergebnis = await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+      expect(ergebnis.failed).toEqual([])
+
+      const d = (await beleg(schluss.id))!
+      expect(d.xml).toContain(`Anzahlung verrechnet (Rechnung ${dep.number}`)
+      expect(d.xml).toContain('<ram:BilledQuantity unitCode="C62">-1</ram:BilledQuantity>')
+      expect(d.xml).toContain('<ram:GrandTotalAmount>300.00</ram:GrandTotalAmount>')
+    })
+  })
+
   it('verweigert den Beleg, wenn Positionen und Summe auseinandergehen', async () => {
     const kaputt = await rechnung()
     // Eine zusaetzliche Position derselben Rechnung zuordnen, ohne die

@@ -68,6 +68,14 @@ interface ChargeRow {
   business_date: string
 }
 
+interface DepositLedgerRow {
+  kind: 'received' | 'applied'
+  net_cent: string | number
+  tax_rate_bp: number
+  deposit_number: string
+  deposit_issued_on: string
+}
+
 function party(snapshot: Partial<CiiParty>): CiiParty {
   return {
     name: snapshot.name ?? '',
@@ -87,6 +95,23 @@ function line(c: ChargeRow): CiiLine {
     unitCode: c.revenue_account === KONTO_LOGIS ? 'DAY' : 'C62',
     netCent: Number(c.net_cent),
     rateBp: c.tax_rate_bp
+  }
+}
+
+/**
+ * Anzahlung als Position (Aufgabe 3). Auf der Anzahlungsrechnung selbst die
+ * Vereinnahmung, auf der Schlussrechnung die Verrechnung mit negativem
+ * Betrag und Verweis auf die Anzahlungsrechnung -- als Text in der
+ * Position, denn eine eigene Position ist es, keine Kopfangabe.
+ */
+function depositLine(d: DepositLedgerRow): CiiLine {
+  if (d.kind === 'received') {
+    return { name: 'Anzahlung auf den Aufenthalt', quantity: 1,
+              netCent: Number(d.net_cent), rateBp: d.tax_rate_bp }
+  }
+  return {
+    name: `Anzahlung verrechnet (Rechnung ${d.deposit_number} vom ${d.deposit_issued_on})`,
+    quantity: -1, netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp
   }
 }
 
@@ -130,6 +155,17 @@ async function load(
     `SELECT coalesce(sum(amount_cent), 0)::text AS prepaid
        FROM settlement WHERE invoice_id = $1`, [invoiceId])
 
+  // Anzahlung (Aufgabe 3): auf der Anzahlungsrechnung selbst die
+  // Vereinnahmung als einzige Position, auf einer Schlussrechnung die
+  // Verrechnung als zusaetzliche Position mit negativem Betrag.
+  const d = await client.query<DepositLedgerRow>(
+    `SELECT dl.kind, dl.net_cent, dl.tax_rate_bp,
+            di.number AS deposit_number, di.issued_on::text AS deposit_issued_on
+       FROM deposit_ledger dl
+       JOIN invoice di ON di.id = dl.deposit_invoice_id
+      WHERE (dl.deposit_invoice_id = $1 AND dl.kind = 'received')
+         OR dl.applied_invoice_id = $1`, [invoiceId])
+
   const daten = c.rows.map(x => x.business_date).sort()
   const invoice: CiiInvoice = {
     number: row.number,
@@ -138,7 +174,7 @@ async function load(
     currency: row.currency,
     seller: party(row.issuer_snapshot),
     buyer: party(row.recipient_snapshot),
-    lines: c.rows.map(line),
+    lines: [...c.rows.map(line), ...d.rows.map(depositLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,
