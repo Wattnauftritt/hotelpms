@@ -4,6 +4,7 @@ import { useCategories, useSetupStatus, useCreateCategory, useRoomSeries }
   from '../lib/queries.js'
 import { useT } from '../lib/i18n/index.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { Stammdaten } from '../components/Stammdaten.tsx'
 
 /**
  * Einrichtung eines Hauses.
@@ -59,33 +60,10 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
              kategorien={kategorien.data.categories.map(c => ({ id: c.id, code: c.code,
                                                                 name: c.name }))} />
 
-      <section className="bg-white border border-neutral-200 rounded">
-        <h2 className="px-4 py-2 text-sm font-medium border-b border-neutral-200">
-          {t('setup.categories')}
-        </h2>
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-neutral-100">
-            {kategorien.data.categories.map(c => (
-              <tr key={c.id} className={c.active ? '' : 'opacity-50'}>
-                <td className="px-4 py-2 font-medium">{c.code}</td>
-                <td className="px-4 py-2">{c.name}</td>
-                <td className="px-4 py-2 text-neutral-500 tabular-nums">
-                  {c.maxOccupancy} P.
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums">
-                  {c.activeRooms} {t('setup.activeRooms')}
-                  {c.inactiveRooms > 0 && (
-                    <span className="text-neutral-400"> (+{c.inactiveRooms})</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {kategorien.data.categories.length === 0 && (
-              <tr><td className="px-4 py-4 text-neutral-400">{t('common.none')}</td></tr>
-            )}
-          </tbody>
-        </table>
-      </section>
+      {/* Anlegen konnte die Einrichtung schon, aendern nicht -- obwohl die
+          API es seit jeher kann. Die reine Anzeigetabelle weicht deshalb
+          der pflegbaren Liste. */}
+      <Stammdaten propertyId={propertyId} />
     </div>
   )
 }
