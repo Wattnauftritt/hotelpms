@@ -421,9 +421,17 @@ Drei Stücke, in dieser Reihenfolge, weil jedes auf dem vorigen steht:
 
 | # | Was | Stand |
 |---|---|---|
-| 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | offen. Derselbe Mechanismus, zwei Anlässe — `app_user.status` steht schon auf `'invited'` als Vorgabe, die Einladung wurde nie gebaut. Brevo steht. Ohne Kontoaufzählung: die Antwort ist immer 202, egal ob die Adresse existiert |
+| 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | **fertig.** Migration 0030 (`auth_token`, `platform_email`), `POST /v1/auth/password-reset` und `.../confirm`, Zustellung im Worker. Ein Mechanismus für beide Anlässe, verschieden nur in Frist und Text |
 | 13b | **Onboarding-Endpunkt** hinter Plattformrecht | offen. Account, erstes Haus, erster Benutzer, Einladungsmail — in einer Transaktion. Kein Selbstbedienungsweg; das ist eine Produktentscheidung, keine Lücke |
 | 13c | **Adminoberfläche** mit Support-Sitzungen | offen, aber das Fundament steht: `support_session` (Migration 0002), `applySupportSession()` und `audit_log.support_session_id` gibt es. Es fehlen Routen und Oberfläche |
+
+**Was 13a hinterlässt, worauf 13b aufsetzt.** Ein Token wird über `POST /v1/auth/password-reset` angefordert oder — für eine Einladung — beim Anlegen eines Benutzers als Zeile in `auth_token` hinterlegt; eingelöst wird beides über dieselbe Route. Der Onboarding-Endpunkt muss also keinen eigenen Einladungsweg bauen, sondern nur Token und Nachricht einreihen.
+
+Drei Entwurfsentscheidungen darin, die beim Weiterbauen zu kennen sind:
+
+- **In `auth_token` steht nur der Hash**, nie das Token. Wer eine Sicherung liest, bekommt damit keinen Zugang. Der Klartext steht einzig im Rumpf der wartenden Nachricht, und der Worker leert ihn, sobald sie durch ist.
+- **`platform_email` statt `outbound_email`.** Gastpost ist hausgebunden, weist Übungshäuser ab und bleibt aus, solange der Versand am Haus nicht eingeschaltet ist. Für eine Zugangsmail wäre jede dieser Regeln falsch — sie gehört zu einem Benutzer, nicht zu einem Haus. Absender aus der Umgebung (`PLATFORM_EMAIL_FROM`), siehe [`17-betrieb.md`](17-betrieb.md) §7.
+- **Immer 202**, auch für eine unbekannte Adresse, und die Route steht auf der strengen Liste der Ratenbegrenzung. Sonst wäre sie ein Verzeichnis darüber, welche Häuser diese Software benutzen.
 
 **Zu 13c, weil es leicht falsch verstanden wird.** „Anmelden, als wäre man der Kunde" ist hier bewusst **nicht** gebaut und soll es nicht werden. Plattformpersonal ohne freigegebene, befristete Sitzung bekommt einen leeren Mandantenkontext — die Zeilenrichtlinie liefert dann nichts. Der Kunde gibt frei, die Sitzung läuft ab, und jede Handlung trägt im Protokoll ihre `support_session_id`. Eine stille Übernahme wäre bei Auftragsverarbeitung (Art. 28 DSGVO) nicht haltbar und im Protokoll nicht von der Handlung des Kunden zu unterscheiden.
 
