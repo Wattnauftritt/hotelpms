@@ -19,6 +19,9 @@ interface Props {
   screens: readonly ScreenDefinition[]
   locale: Locale
   onLocale: (l: Locale) => void
+  /** Wer gerade angemeldet ist. Steht neben dem Abmelden-Knopf. */
+  benutzer: string
+  onAbmelden: () => void
   haeuser: readonly Haus[]
   haus: Haus | undefined
   onHaus: (id: number) => void
@@ -76,6 +79,37 @@ function Hauswahl({ haeuser, haus, onHaus }: Pick<Props, 'haeuser' | 'haus' | 'o
   )
 }
 
+/**
+ * Abmelden.
+ *
+ * **Warum das ueberhaupt erwaehnenswert ist.** An einer Rezeption steht ein
+ * geteilter Rechner, und die Sitzung laeuft zwoelf Stunden ohne Taetigkeit
+ * weiter. Wer Feierabend hat und nur den Bildschirm zuklappt, laesst sie fuer
+ * die Nachtschicht offen -- und im Protokoll steht danach sein Name an
+ * fremden Buchungen. Ohne diesen Knopf gab es keinen Weg, das zu beenden,
+ * ausser das Cookie von Hand zu loeschen.
+ *
+ * Der Name daneben ist kein Schmuck: an einem geteilten Rechner ist die
+ * erste Frage "bin ich das ueberhaupt", und sie wird sonst nicht gestellt.
+ */
+function Abmelden(
+  { benutzer, onAbmelden }: { benutzer: string; onAbmelden: () => void }
+): JSX.Element {
+  const t = useT()
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-neutral-600 max-w-40 truncate" title={benutzer}>
+        {benutzer}
+      </span>
+      <button type="button" onClick={onAbmelden}
+              className="text-sm px-2 py-1 border border-neutral-300 rounded
+                         hover:bg-neutral-50">
+        {t('auth.logout')}
+      </button>
+    </div>
+  )
+}
+
 export function Shell(props: Props): JSX.Element {
   const online = useOnline()
   return (
@@ -93,6 +127,7 @@ export function Shell(props: Props): JSX.Element {
                     className="text-sm border border-neutral-300 rounded px-2 py-1">
               {LOCALES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
             </select>
+            <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden} />
           </div>
           {props.haus?.isTraining === true && <Uebungshinweis haus={props.haus} />}
           {!online && <OfflineHinweis />}

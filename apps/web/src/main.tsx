@@ -78,6 +78,28 @@ function App(): JSX.Element {
   const [checkInRef, setCheckInRef] = useState<string | null>(null)
   const qc = useQueryClient()
 
+  /*
+   * Abmelden: Sitzung zurueckziehen und den geladenen Stand wegwerfen.
+   *
+   * Das Leeren des Zwischenspeichers ist der Punkt, nicht die Hoeflichkeit.
+   * Ohne es bliebe an einem geteilten Rezeptionsrechner der Hausstand des
+   * Vorgaengers im Speicher stehen und waere fuer den Naechsten noch einen
+   * Wimpernschlag lang zu sehen -- und die abgemeldete Sitzung liefe in
+   * jeder offenen Abfrage weiter gegen eine API, die sie nicht mehr kennt.
+   *
+   * Scheitert der Aufruf -- kein Netz --, wird trotzdem geleert: lokal
+   * abgemeldet zu sein ist besser als am Bildschirm angemeldet zu bleiben.
+   * Die Sitzung laeuft dann serverseitig ab.
+   */
+  const abmelden = async (): Promise<void> => {
+    try {
+      await api.post('/v1/auth/logout')
+    } finally {
+      qc.clear()
+      await qc.invalidateQueries({ queryKey: ['me'] })
+    }
+  }
+
   if (zugang !== null) {
     return <I18nContext.Provider value={locale}>
       <Zugang art={zugang.art} token={zugang.token} />
@@ -145,6 +167,8 @@ function App(): JSX.Element {
     <Shell screen={screen.key} onScreen={k => { setAdresse({ screen: k }) }}
            screens={erlaubte}
            locale={locale} onLocale={setLocale}
+           benutzer={me.data.displayName}
+           onAbmelden={() => { void abmelden() }}
            haeuser={haeuser} haus={haus}
            onHaus={id => { setAdresse({ property: id, screen: null }) }}>
       {folioRef !== null
