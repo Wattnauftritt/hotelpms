@@ -229,6 +229,14 @@ const M = {
     'Es laeuft bereits ein Ausrollvorgang. Warten Sie, bis er durch ist.',
     'A deployment is already in progress. Please wait until it finishes.'],
 
+  'deploy.unknownRelease': [
+    'Dieser Stand ist nicht mehr auf der Maschine. Zurueckgerollt werden kann '
+      + 'nur auf einen Stand, der noch dort liegt.',
+    'That release is no longer on the machine. You can only roll back to a '
+      + 'release that is still there.'],
+  'deploy.alreadyCurrent': [
+    'Dieser Stand laeuft bereits.', 'That release is already running.'],
+
   // -------------------------------------------------------- Support-Sitzung
 
   'support.unknownSession': [

@@ -13,7 +13,7 @@
 set -uo pipefail
 
 WURZEL="${HOTELPMS_ROOT:-/opt/hotelpms}"
-STAND="$WURZEL/current"
+CURRENT="$WURZEL/current"
 UMGEBUNG="$WURZEL/shared/env"
 
 set -a; . "$UMGEBUNG"; set +a
@@ -30,13 +30,16 @@ GEHOLT="$(psql_ -c "
                 WHERE status = 'pending'
                 ORDER BY id LIMIT 1
                 FOR UPDATE SKIP LOCKED)
-  RETURNING id || E'\t' || target_ref")"
+  RETURNING id || E'\t' || kind || E'\t' || target_ref")"
 
 [ -z "$GEHOLT" ] && exit 0
 
-ID="${GEHOLT%%$'\t'*}"
-REF="${GEHOLT##*$'\t'}"
-VORHER="$(cd "$STAND" && git rev-parse HEAD 2>/dev/null || echo unbekannt)"
+IFS=$'\t' read -r ID ART REF <<< "$GEHOLT"
+# Der laufende Stand ist der Name des Verzeichnisses, auf das current zeigt.
+# Ein `git rev-parse` im Release-Verzeichnis ginge nicht: dort liegt keine
+# Geschichte, und das ist Absicht (git archive statt Klon).
+laufender() { basename "$(readlink -f "$CURRENT" 2>/dev/null || echo unbekannt)"; }
+VORHER="$(laufender)"
 
 AUSGABE="$(mktemp)"
 
@@ -46,7 +49,7 @@ AUSGABE="$(mktemp)"
 # laesst psql selbst quoten, samt Zeilenumbruechen.
 vermerken() {
   local status="$1" nachher
-  nachher="$(cd "$STAND" && git rev-parse HEAD 2>/dev/null || echo unbekannt)"
+  nachher="$(laufender)"
   # Ueber stdin, NICHT ueber -c: psql ersetzt :'name' nur in gelesenem
   # Text, bei -c schickt es die Zeichenkette unveraendert weiter. Hier stand
   # einmal -c, und die Folge war eine Anforderung, die auf 'running' haengen
@@ -76,16 +79,21 @@ SQL
 trap 'vermerken failed; rm -f "$AUSGABE"' EXIT
 
 # HOTELPMS_DEPLOY_REQUEST sagt deploy.sh, dass der Lauf schon verbucht ist.
-if HOTELPMS_DEPLOY_REQUEST="$ID" "$STAND/ops/deploy/deploy.sh" "$REF" \
+# deploy.sh wird aus dem LAUFENDEN Stand genommen, nicht aus dem, der
+# gerade gebaut wird -- sonst tauschte sich das Skript mitten im Lauf unter
+# sich selbst aus. Wer deploy.sh aendert, dessen Aenderung wirkt also erst
+# beim uebernaechsten Ausrollen; das ist der Preis dafuer, dass ein Lauf
+# nicht auf halber Strecke die Bauart wechselt.
+if HOTELPMS_DEPLOY_REQUEST="$ID" "$CURRENT/ops/deploy/deploy.sh" "$ART" "$REF" \
      > "$AUSGABE" 2>&1; then
   trap - EXIT
   vermerken done
   rm -f "$AUSGABE"
-  echo "Ausrollung $ID auf $REF durch."
+  echo "Ausrollung $ID ($ART $REF) durch."
 else
   trap - EXIT
   vermerken failed
-  echo "Ausrollung $ID auf $REF gescheitert. Letzte Zeilen:" >&2
+  echo "Ausrollung $ID ($ART $REF) gescheitert. Letzte Zeilen:" >&2
   tail -20 "$AUSGABE" >&2 2>/dev/null || true
   rm -f "$AUSGABE"
   exit 1

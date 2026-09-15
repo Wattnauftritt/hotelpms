@@ -90,6 +90,7 @@ export function useRequestSupportSession() {
 
 export interface Deployment {
   id: number
+  kind: 'deploy' | 'rollback'
   /** Leer heisst: von Hand auf der Maschine gestartet. */
   requestedBy: string | null
   requestedAt: string
@@ -103,7 +104,8 @@ export interface Deployment {
 }
 
 export const useDeployments = () =>
-  useQuery<{ deployments: Deployment[]; currentCommit: string | null }>({
+  useQuery<{ deployments: Deployment[]; currentCommit: string | null
+             rollbackTargets: string[] }>({
     queryKey: ['deployments'],
     queryFn: () => api.get('/v1/platform/deployments'),
     /*
@@ -123,6 +125,22 @@ export function useRequestDeployment() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => api.post<Deployment>('/v1/platform/deployments'),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['deployments'] }) }
+  })
+}
+
+/**
+ * Zurueckrollen auf einen frueheren Stand.
+ *
+ * Kein Bau, nur Umschalten und Neustart -- deshalb in Sekunden durch, wo ein
+ * Ausrollen ein bis zwei Minuten braucht. Was es nicht zurueckdreht, sind
+ * Migrationen; das Schema bleibt auf dem Stand des neueren Codes.
+ */
+export function useRollbackDeployment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (commit: string) =>
+      api.post<Deployment>('/v1/platform/deployments/rollback', { commit }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['deployments'] }) }
   })
 }
