@@ -213,7 +213,7 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 
 | Wer | Braucht von | Was | Stand |
 |---|---|---|---|
-| A | (Rahmen) | Ein Weg, aus dem Zimmerplan heraus zu buchen — `TapeChart` müsste einen leeren Bereich anklickbar machen | offen |
+| A | (Rahmen) | Ein Weg, aus dem Zimmerplan heraus zu buchen — `TapeChart` müsste einen leeren Bereich anklickbar machen | erledigt: #31, Ziehen im leeren Bereich öffnet `BookingDialog` |
 | B | A | Gastauswahl (`GuestPicker`) für die Rechnungsadresse | offen |
 | C | (Rahmen) | Ein Ort für Einstellungen, die nicht Einrichtung sind — heute gibt es nur `Setup` | erledigt: `routes/Settings.tsx` |
 | C | B | `PaymentMethod` in `schemas.ts` trägt jetzt zusätzlich `id`, `sortOrder` und `active` — die Liste war ansehbar, aber nicht pflegbar. Rein additiv; `GET .../payment-methods` liefert weiterhin nur die aktiven, `?includeInactive=true` auch die stillgelegten | erledigt |
