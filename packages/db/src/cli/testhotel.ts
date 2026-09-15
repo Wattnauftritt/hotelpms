@@ -46,7 +46,15 @@ const KATEGORIEN = [
   { code: 'SUITE', name: 'Suite',          belegung: 3, zimmer: 2,  ab: 400 }
 ]
 
-async function main(): Promise<void> {
+/**
+ * Legt das Testhotel an.
+ *
+ * Nach aussen gegeben, damit ein Test es aufrufen kann, ohne einen
+ * Unterprozess zu starten. Der Aufruf am Dateiende laeuft nur, wenn diese
+ * Datei das Startmodul ist -- sonst saete ein blosser Import ein Hotel in
+ * die Testdatenbank.
+ */
+export async function testhotelAnlegen(): Promise<void> {
   const client = new pg.Client({ connectionString: dbUrl('owner') })
   await client.connect()
 
@@ -239,18 +247,41 @@ async function main(): Promise<void> {
          LEFT JOIN rate_day rd ON rd.rate_plan_id = r.rate_plan_id AND rd.date = d::date
         WHERE r.property_id = $1`, [propertyId])
 
-    // Der Zaehler wird einmal aus den Reservierungen gerechnet. Im Betrieb ist
-    // es umgekehrt: dort bindet jede Buchung ihr Kontingent einzeln und
-    // geprueft. Hier ist der Bestand schon ueberschneidungsfrei erzeugt.
+    /*
+     * Der Zaehler wird einmal aus den Reservierungen gerechnet. Im Betrieb ist
+     * es umgekehrt: dort bindet jede Buchung ihr Kontingent einzeln und
+     * geprueft. Hier ist der Bestand schon ueberschneidungsfrei erzeugt.
+     *
+     * **Die Hauszeile muss mit.** inventory_day fuehrt je Tag eine Zeile je
+     * Kategorie UND eine mit category_id = 0 fuer das ganze Haus;
+     * inventory_reserve erhoeht immer beide. Hier stand einmal nur der
+     * Verbund ueber die Kategorie -- die Hauszeile wurde von keiner Gruppe
+     * getroffen und blieb auf null.
+     *
+     * Der Befund sah harmlos aus und war es nicht: die Verfuegbarkeit auf
+     * Hausebene meldete alle 24 Zimmer frei, waehrend sechs belegt waren.
+     * Der taegliche Abgleich des Workers faellt darauf nicht herein, er
+     * faellt gar nicht erst darauf: reconcileInventory filtert ausdruecklich
+     * category_id <> 0. Der Fehler war also weder auf dem Bildschirm noch im
+     * Protokoll zu sehen -- nur in der Zahl.
+     */
     await client.query(
-      `UPDATE inventory_day i SET sold = COALESCE(z.n, 0)
-         FROM (SELECT r.category_id, d.day::date AS date, count(*)::int AS n
-                 FROM reservation r
-                 CROSS JOIN LATERAL
-                   generate_series(r.arrival, r.departure - 1, interval '1 day') d(day)
-                WHERE r.property_id = $1
-                  AND r.status IN ('Optional','Confirmed','InHouse')
-                GROUP BY 1, 2) z
+      `WITH belegt AS (
+         SELECT r.category_id, d.day::date AS date, count(*)::int AS n
+           FROM reservation r
+           CROSS JOIN LATERAL
+             generate_series(r.arrival, r.departure - 1, interval '1 day') d(day)
+          WHERE r.property_id = $1
+            AND r.status IN ('Optional','Confirmed','InHouse')
+          GROUP BY 1, 2
+       ), je_zeile AS (
+         SELECT category_id, date, n FROM belegt
+         UNION ALL
+         -- Das ganze Haus: die Summe ueber alle Kategorien desselben Tages.
+         SELECT 0, date, sum(n)::int FROM belegt GROUP BY date
+       )
+       UPDATE inventory_day i SET sold = z.n
+         FROM je_zeile z
         WHERE i.property_id = $1 AND i.category_id = z.category_id AND i.date = z.date`,
       [propertyId])
 
@@ -296,7 +327,11 @@ Testhotel Wattenblick steht.
   }
 }
 
-main().catch((fehler: unknown) => {
-  console.error(fehler)
-  process.exit(1)
-})
+// Nur als Programm, nicht beim Import.
+if (process.argv[1] !== undefined
+    && import.meta.url === `file://${process.argv[1]}`) {
+  testhotelAnlegen().catch((fehler: unknown) => {
+    console.error(fehler)
+    process.exit(1)
+  })
+}
