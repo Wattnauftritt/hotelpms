@@ -8,6 +8,7 @@ import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
 import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
+import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { createBrevoAdapter } from './email/brevo.js'
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
@@ -164,6 +165,46 @@ if (mailer === null) {
   log.warn('BREVO_API_KEY ist nicht gesetzt: ausgehende Gastpost bleibt in der Warteschlange.')
 }
 
+/*
+ * Absender der Zugangspost. Aus der Umgebung, weil diese Nachrichten zu
+ * keinem Haus gehoeren -- die Gastpost holt ihren Absender aus
+ * property_email_setting, hier gibt es keine Property, aus der man ihn
+ * nehmen koennte.
+ *
+ * Ohne PLATFORM_EMAIL_FROM bleibt der Versand aus, statt auf einen
+ * erfundenen Absender auszuweichen: eine Einladung von noreply@localhost
+ * landet im Spam, und das faellt niemandem auf -- der Eingeladene wartet,
+ * und wir sehen eine Nachricht, die der Anbieter angenommen hat.
+ */
+const platformFrom = process.env.PLATFORM_EMAIL_FROM ?? null
+const platformSender: PlatformSender | null = platformFrom === null ? null : {
+  from: { email: platformFrom, name: process.env.PLATFORM_EMAIL_FROM_NAME ?? 'hotelpms' },
+  replyTo: process.env.PLATFORM_EMAIL_REPLY_TO
+    ? { email: process.env.PLATFORM_EMAIL_REPLY_TO } : null
+}
+if (platformSender === null) {
+  log.warn('PLATFORM_EMAIL_FROM ist nicht gesetzt: '
+    + 'Einladungen und Kennwortruecksetzungen bleiben in der Warteschlange.')
+}
+
+/**
+ * Zugangspost zustellen. Mandantenuebergreifend und deshalb genau einmal je
+ * Tick, nicht je Property: eine Einladung gehoert einem Benutzer.
+ */
+async function platformEmails(): Promise<void> {
+  if (mailer === null || platformSender === null) return
+  const r = await deliverPlatformEmails(pool, SYSTEM_CONTEXT, mailer, platformSender)
+  if (r.attempted === 0) return
+  // Weder Empfaenger noch Betreff ins Protokoll, und schon gar nicht der
+  // Rumpf: darin steht das Token, also der Zugang selbst.
+  log.info(r, 'Zugangspost zugestellt')
+  if (r.failed > 0) {
+    log.error({ failed: r.failed },
+      'ALARM: Zugangspost endgueltig nicht zustellbar -- '
+      + 'der Empfaenger wartet auf einen Link, der nie kommt')
+  }
+}
+
 /** Faellige Gastpost zustellen. */
 async function emails(p: PropertyRow): Promise<void> {
   if (mailer === null) return
@@ -181,6 +222,13 @@ async function emails(p: PropertyRow): Promise<void> {
 
 async function tick(): Promise<void> {
   await platformMaintenance()
+  // Vor der Arbeit je Property: wer auf einen Zugangslink wartet, wartet
+  // sonst hinter dem Nachtlauf von fuenfhundert Haeusern.
+  try {
+    await platformEmails()
+  } catch (e) {
+    log.error({ err: e }, 'Zustellung der Zugangspost fehlgeschlagen')
+  }
   for (const p of await activeProperties()) {
     // Eine fehlerhafte Property darf die anderen nicht aufhalten.
     try {

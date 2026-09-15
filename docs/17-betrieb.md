@@ -260,6 +260,31 @@ Ohne Schlüssel läuft der Worker unverändert weiter und meldet es einmal beim 
 | `failed` nach fünf Versuchen | Anbieter war dauerhaft nicht erreichbar |
 | `sent`, Gast sagt nichts bekommen | Mit der `providerMessageId` im Protokoll bei Brevo nachsehen. Meist SPF/DKIM |
 
+### Zugangspost ist keine Gastpost
+
+Einladungen und Kennwortrücksetzungen laufen über eine **eigene** Warteschlange, `platform_email`, und nicht über den Postausgang oben. Der Unterschied ist kein Ordnungsprinzip, sondern eine Notwendigkeit: Gastpost ist hausgebunden, weist Übungshäuser ab und bleibt aus, solange der Versand am Haus nicht eingeschaltet ist. Für eine Zugangsmail wäre jede dieser Regeln falsch — sie gehört zu einem **Benutzer**, der in mehreren Häusern arbeiten kann oder, beim Onboarding, noch in keinem. Ein Kunde, der den Gastversand nie eingeschaltet hat, könnte sonst sein Kennwort nie zurücksetzen.
+
+Deshalb ein eigener Absender, aus der Umgebung statt aus den Stammdaten eines Hauses:
+
+```
+PLATFORM_EMAIL_FROM=zugang@example.de
+PLATFORM_EMAIL_FROM_NAME=hotelpms
+PLATFORM_EMAIL_REPLY_TO=hilfe@example.de      # optional
+```
+
+**Ohne `PLATFORM_EMAIL_FROM` bleibt diese Post liegen** — bewusst, statt unter einem erfundenen Absender hinauszugehen. Der Worker meldet es einmal beim Start. Die Adresse muss bei Brevo verifiziert sein, sonst gilt Punkt 1 oben: 400, dauerhaft, ohne Wiederholung.
+
+**Der Rumpf verschwindet nach dem Versand.** In `auth_token` steht bewusst nur der *Hash* des Tokens, damit ein Datenbankauszug keinen Zugang verschafft; im Rumpf der Nachricht steht es im Klartext. Der Worker leert `body_text` und `body_html`, sobald die Nachricht durch ist — und ebenso, wenn sie endgültig scheitert. Was bleibt, ist der Nachweis: wer, welche Art, wann, welcher Ausgang. Wer im Rumpf einer versendeten Zeile noch einen Link findet, hat einen Befund, keine Nebensächlichkeit.
+
+| Befund in `platform_email` | Ursache |
+|---|---|
+| `pending`, Versuche 0, älter als ein paar Minuten | Kein `BREVO_API_KEY` oder kein `PLATFORM_EMAIL_FROM` |
+| `failed` nach **einem** Versuch, Fehler 400 | Absender nicht bei Brevo verifiziert, oder Adresse abgelehnt |
+| `sent`, aber niemand hat einen Link bekommen | SPF/DKIM. Der Empfänger wartet und ruft nicht an |
+| Der Benutzer meldet „Link ungültig" | Token schon benutzt, abgelaufen (Einladung 7 Tage, Rücksetzung 1 Stunde), oder durch eine neuere Anforderung entwertet. Neu anfordern |
+
+Die Rücksetzung antwortet **immer** mit 202, auch für eine unbekannte Adresse. Das ist Absicht und keine Nachlässigkeit: ein anderer Statuscode machte den Endpunkt zu einem Verzeichnis, mit dem sich abfragen ließe, welche Häuser diese Software benutzen. Wer prüfen will, ob eine Anforderung angekommen ist, sieht in `platform_email` nach, nicht in der Antwort.
+
 ---
 
 ## 8. Was regelmäßig zu prüfen ist

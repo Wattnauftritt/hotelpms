@@ -125,7 +125,12 @@ export const ANON_LIMIT: RateLimitOptions = {
  * sich durchprobieren. Ein Client holt sich ein Token je Stunde, nicht je
  * Anfrage; die Grenze trifft ihn nie.
  */
-const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch', '/oauth/token']
+// Die Kennwortruecksetzung gehoert dazu, auch wenn sie nichts prueft: sie
+// verschickt eine Mail an eine frei waehlbare Adresse. Unter der lockeren
+// Grenze waere sie ein Werkzeug, um ein fremdes Postfach zu fluten -- und
+// die Absenderreputation dieses Systems gleich mit.
+const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch',
+                     '/v1/auth/password-reset', '/oauth/token']
 
 /**
  * Die aktiven Zaehler. Nach aussen gegeben, damit ein Test sie zuruecksetzen
