@@ -6,9 +6,10 @@ import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { propertyIds, type Principal } from '../platform/context.js'
 import { tx } from '../platform/db.js'
-import { neuesToken, hashToken, kennwortZuKurz, KENNWORT_MIN, TOKEN_GUELTIGKEIT,
+import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
          renderPasswordResetEmail, renderInviteEmail,
          type AuthTokenKind } from '@hotelpms/domain'
+import { kennwortZuKurz, KENNWORT_MIN } from '@hotelpms/contracts'
 
 const config = loadConfig()
 

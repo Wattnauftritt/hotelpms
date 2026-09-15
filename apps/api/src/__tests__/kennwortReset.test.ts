@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
-import { KENNWORT_MIN } from '@hotelpms/domain'
+import { KENNWORT_MIN } from '@hotelpms/contracts'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { hashPassword } from '../routes/auth.js'
