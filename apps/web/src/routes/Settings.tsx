@@ -6,7 +6,8 @@ import { useEmailSettings, useSaveEmailSettings, usePaymentMethodsAll,
   from '../lib/queries/settings.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
-import { useT, type TextKey } from '../lib/i18n/index.js'
+import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
+import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
@@ -205,6 +206,7 @@ function Zahlart(
 
 function Zahlungsarten({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const online = useOnline()
   const q = usePaymentMethodsAll(propertyId)
   const anlegen = useCreatePaymentMethod(propertyId)
@@ -263,7 +265,7 @@ function Zahlungsarten({ propertyId }: { propertyId: number }): JSX.Element {
       {/* Zwei Sätze, die beide eine Erwartung korrigieren: hier wird nichts
           abgewickelt, und es wird nichts gelöscht. */}
       <div className="text-xs text-neutral-500">
-        {q.data?.hinweis} {t('pay.noDelete')}
+        {apiText(q.data?.hinweisKey, q.data?.hinweis ?? '', locale)} {t('pay.noDelete')}
       </div>
 
       {q.isError

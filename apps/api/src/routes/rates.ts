@@ -21,14 +21,14 @@ interface BulkWindow {
 
 function checkWindow(w: BulkWindow): void {
   if (!isIsoDate(w.from) || !isIsoDate(w.to)) {
-    throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+    throw Errors.validation({ from: ['field.isoDate'] })
   }
   const days = nightsBetween(w.from, w.to) + 1
-  if (days <= 0) throw Errors.validation({ to: ['Muss auf oder nach from liegen'] })
+  if (days <= 0) throw Errors.validation({ to: ['field.onOrAfterFrom'] })
   if (days > MAX_DAYS) throw Errors.rangeTooLarge(MAX_DAYS)
   for (const d of w.weekdays ?? []) {
     if (!Number.isInteger(d) || d < 0 || d > 6) {
-      throw Errors.validation({ weekdays: ['Werte von 0 (Montag) bis 6 (Sonntag)'] })
+      throw Errors.validation({ weekdays: ['field.weekday'] })
     }
   }
 }
@@ -47,7 +47,7 @@ async function assertPlan(
   const { rows, rowCount } = await client.query<{ category_id: number }>(
     `SELECT category_id FROM rate_plan WHERE id = $1 AND property_id = $2`,
     [ratePlanId, propertyId])
-  if (rowCount === 0) throw Errors.notFound('Ratenplan')
+  if (rowCount === 0) throw Errors.notFound('res.ratePlan')
   return { categoryId: rows[0]!.category_id }
 }
 
@@ -87,13 +87,13 @@ export function rateRoutes(app: FastifyInstance): void {
         baseRatePlanId?: number; deriveKind?: 'amount' | 'percent'; deriveValue?: number
         cancellationPolicyId?: number }
       if (!body.code || !body.name) {
-        throw Errors.validation({ code: ['Pflichtfeld'], name: ['Pflichtfeld'] })
+        throw Errors.validation({ code: ['field.required'], name: ['field.required'] })
       }
       const abgeleitet = body.baseRatePlanId !== undefined
       if (abgeleitet && (body.deriveKind === undefined || body.deriveValue === undefined)) {
         throw Errors.validation({
-          deriveKind: ['Bei abgeleiteter Rate erforderlich'],
-          deriveValue: ['Bei abgeleiteter Rate erforderlich'] })
+          deriveKind: ['field.requiredForDerived'],
+          deriveValue: ['field.requiredForDerived'] })
       }
       return tx(req.pool, req, async client => {
         if (abgeleitet) await assertPlan(client, Number(propertyId), body.baseRatePlanId!)
@@ -129,10 +129,10 @@ export function rateRoutes(app: FastifyInstance): void {
       const body = req.body as BulkWindow & { priceCent: number[] }
       checkWindow(body)
       if (!Array.isArray(body.priceCent) || body.priceCent.length === 0) {
-        throw Errors.validation({ priceCent: ['Preis je Belegung erwartet, Index 0 = 1 Person'] })
+        throw Errors.validation({ priceCent: ['field.occupancyPrices'] })
       }
       if (body.priceCent.some(p => !Number.isInteger(p) || p < 0)) {
-        throw Errors.validation({ priceCent: ['Ganze Cent-Betraege, nicht negativ'] })
+        throw Errors.validation({ priceCent: ['field.centAmount'] })
       }
       const weekdays = body.weekdays ?? ALL_WEEKDAYS
 
@@ -211,7 +211,7 @@ export function rateRoutes(app: FastifyInstance): void {
           }
         }
         if (offen.length > 0) {
-          throw Errors.conflict('Die Ableitungskette enthaelt einen Zyklus.')
+          throw Errors.conflict('rate.derivationCycle')
         }
         return { plans: plans.rowCount, days: geschrieben }
       })
@@ -234,7 +234,7 @@ export function rateRoutes(app: FastifyInstance): void {
         closed?: boolean; closedToArrival?: boolean; closedToDeparture?: boolean }
       checkWindow(body)
       if (body.minLos != null && body.maxLos != null && body.minLos > body.maxLos) {
-        throw Errors.validation({ minLos: ['Darf nicht groesser als maxLos sein'] })
+        throw Errors.validation({ minLos: ['field.notAboveMaxLos'] })
       }
       const weekdays = body.weekdays ?? ALL_WEEKDAYS
 
@@ -275,7 +275,7 @@ export function rateRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { from: string; to: string; categoryId?: string }
       if (!isIsoDate(q.from) || !isIsoDate(q.to)) {
-        throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ from: ['field.isoDate'] })
       }
       const days = nightsBetween(q.from, q.to) + 1
       if (days <= 0 || days > MAX_DAYS) throw Errors.rangeTooLarge(MAX_DAYS)

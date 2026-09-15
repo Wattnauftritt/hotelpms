@@ -130,7 +130,7 @@ export function userRoutes(app: FastifyInstance): void {
       const body = req.body as { roleKeys?: string[] }
       const principal = req.principal as Principal
       if (!Array.isArray(body.roleKeys)) {
-        throw Errors.validation({ roleKeys: ['Liste der Rollenschluessel erwartet'] })
+        throw Errors.validation({ roleKeys: ['field.roleKeyList'] })
       }
       const gewuenscht = [...new Set(body.roleKeys)]
 
@@ -138,7 +138,7 @@ export function userRoutes(app: FastifyInstance): void {
         const id = Number(propertyId)
         const prop = await client.query<{ account_id: number }>(
           `SELECT account_id FROM property WHERE id = $1`, [id])
-        if (prop.rowCount === 0) throw Errors.notFound('Property')
+        if (prop.rowCount === 0) throw Errors.notFound('res.property')
         const accountId = prop.rows[0]!.account_id
 
         // Bekannt heisst: hat im selben Account bereits eine Rolle, auf
@@ -152,7 +152,7 @@ export function userRoutes(app: FastifyInstance): void {
                              JOIN property p ON p.id = upr.property_id
                             WHERE upr.user_id = u.id AND p.account_id = $2))`,
           [userRef, accountId])
-        if (u.rowCount === 0) throw Errors.notFound('Benutzer')
+        if (u.rowCount === 0) throw Errors.notFound('res.user')
         const userId = u.rows[0]!.id
 
         const rollen = gewuenscht.length === 0
@@ -164,9 +164,8 @@ export function userRoutes(app: FastifyInstance): void {
               [gewuenscht, accountId])
         if (rollen.rows.length !== gewuenscht.length) {
           const gefunden = new Set(rollen.rows.map(r => r.key))
-          throw Errors.validation({
-            roleKeys: [`Unbekannte Rolle: `
-                       + gewuenscht.filter(k => !gefunden.has(k)).join(', ')] })
+          throw Errors.validation({ roleKeys: ['field.unknownRole'] },
+            { values: gewuenscht.filter(k => !gefunden.has(k)).join(', ') })
         }
 
         // Wer sich selbst das Verwaltungsrecht nimmt, sperrt sich aus, und
@@ -181,8 +180,7 @@ export function userRoutes(app: FastifyInstance): void {
             [rollen.rows.map(r => r.id)])
           if (Number(nochRecht.rows[0]!.n) === 0) {
             throw Errors.conflict(
-              'Damit naehmen Sie sich selbst das Recht, Rollen zu vergeben. '
-              + 'Lassen Sie das jemand anderen tun.')
+              'user.wouldLockYourselfOut')
           }
         }
 

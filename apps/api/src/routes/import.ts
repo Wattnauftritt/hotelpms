@@ -282,7 +282,7 @@ export async function runImport(
   return tx(req.pool, req, async client => {
     const account = await client.query<{ account_id: number }>(
       `SELECT account_id FROM property WHERE id = $1`, [propertyId])
-    if (account.rowCount === 0) throw Errors.notFound('Property')
+    if (account.rowCount === 0) throw Errors.notFound('res.property')
     const accountId = account.rows[0]!.account_id
 
     const r = art === 'categories'
@@ -339,7 +339,7 @@ export function importRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const body = req.body as ImportBody
       if (typeof body.csv !== 'string' || body.csv.trim() === '') {
-        throw Errors.validation({ csv: ['Pflichtfeld'] })
+        throw Errors.validation({ csv: ['field.required'] })
       }
 
       let records: Array<Record<string, string>>

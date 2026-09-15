@@ -81,7 +81,8 @@ export function useSaveEmailSettings(propertyId: number) {
  * die aktiven -- eine stillgelegte Zahlungsart soll dort nicht auftauchen.
  */
 export const usePaymentMethodsAll = (propertyId: number) =>
-  useQuery<{ paymentMethods: PaymentMethod[]; hinweis: string }>({
+  useQuery<{ paymentMethods: PaymentMethod[]; hinweis: string
+                   hinweisKey: string }>({
     queryKey: ['paymentMethods', propertyId, 'alle'],
     queryFn: () => api.get(
       `/v1/properties/${propertyId}/payment-methods?includeInactive=true`)

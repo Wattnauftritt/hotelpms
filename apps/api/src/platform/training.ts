@@ -1,4 +1,5 @@
 import { Errors } from './errors.js'
+import { apiText, type Meldung } from './texte.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -42,11 +43,12 @@ export async function isTrainingProperty(
  * Bewusst eine harte Absage und keine Warnung: eine Warnung wird geklickt.
  */
 export async function assertNotTraining(
-  client: PoolClient, propertyId: number, was: string
+  client: PoolClient, propertyId: number, was: Meldung
 ): Promise<void> {
   if (await isTrainingProperty(client, propertyId)) {
-    throw Errors.unprocessable(
-      `${was} ist fuer ein Schulungshaus nicht moeglich. `
-      + 'Uebungsdaten duerfen nicht in die Buchhaltung oder an eine Behoerde gelangen.')
+    // `was` ist selbst ein Schluessel und wird zuerst aufgeloest: die
+    // Meldung setzt einen Satzteil ein, keinen Schluessel.
+    throw Errors.unprocessable('training.notPossible',
+      { was: apiText(was) })
   }
 }

@@ -69,7 +69,7 @@ export function authRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { email, password } = req.body as { email?: string; password?: string }
       if (!email || !password) {
-        throw Errors.validation({ email: ['Pflichtfeld'], password: ['Pflichtfeld'] })
+        throw Errors.validation({ email: ['field.required'], password: ['field.required'] })
       }
 
       const { rows } = await req.pool.query<{
@@ -82,7 +82,7 @@ export function authRoutes(app: FastifyInstance): void {
       if (benutzer?.locked_until !== null && benutzer?.locked_until !== undefined
           && Date.parse(benutzer.locked_until) > Date.now()) {
         // Auch hier keine genaue Auskunft: die Sperre selbst ist schon eine.
-        throw Errors.unauthorized('Zu viele Fehlversuche. Bitte später erneut versuchen.')
+        throw Errors.unauthorized('auth.tooManyAttempts')
       }
 
       const passt = await pruefeKennwort(benutzer?.password_hash ?? null, password)
@@ -100,7 +100,7 @@ export function authRoutes(app: FastifyInstance): void {
         }
         // Eine Meldung für alle Fälle: falsche Adresse, falsches Kennwort,
         // gesperrtes Konto. Wer unterscheidet, verrät, welche Adressen es gibt.
-        throw Errors.unauthorized('E-Mail oder Kennwort stimmt nicht.')
+        throw Errors.unauthorized('auth.badCredentials')
       }
 
       const sessionId = neueSitzungsKennung()
@@ -214,7 +214,7 @@ export function authRoutes(app: FastifyInstance): void {
       if (sessionId === undefined) throw Errors.unauthorized()
       const { email, pin } = req.body as { email?: string; pin?: string }
       if (!email || !pin) {
-        throw Errors.validation({ email: ['Pflichtfeld'], pin: ['Pflichtfeld'] })
+        throw Errors.validation({ email: ['field.required'], pin: ['field.required'] })
       }
 
       const { rows } = await req.pool.query<{ id: number; workstation_pin_hash: string | null
@@ -224,7 +224,7 @@ export function authRoutes(app: FastifyInstance): void {
       const ziel = rows[0]
       const passt = await pruefeKennwort(ziel?.workstation_pin_hash ?? null, pin)
       if (!passt || ziel === undefined || ziel.status !== 'active') {
-        throw Errors.unauthorized('E-Mail oder PIN stimmt nicht.')
+        throw Errors.unauthorized('auth.badPin')
       }
 
       const r = await req.pool.query(

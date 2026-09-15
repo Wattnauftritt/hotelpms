@@ -96,9 +96,9 @@ export function emailRoutes(app: FastifyInstance): void {
 
       const fehler: Record<string, string[]> = {}
       if (!b.fromName?.trim()) fehler.fromName = ['Pflichtangabe']
-      if (!isSendableAddress(b.fromEmail)) fehler.fromEmail = ['Keine brauchbare Adresse']
-      if (b.replyTo && !isSendableAddress(b.replyTo)) fehler.replyTo = ['Keine brauchbare Adresse']
-      if (b.bccEmail && !isSendableAddress(b.bccEmail)) fehler.bccEmail = ['Keine brauchbare Adresse']
+      if (!isSendableAddress(b.fromEmail)) fehler.fromEmail = ['field.email']
+      if (b.replyTo && !isSendableAddress(b.replyTo)) fehler.replyTo = ['field.email']
+      if (b.bccEmail && !isSendableAddress(b.bccEmail)) fehler.bccEmail = ['field.email']
       if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
 
       return tx(req.pool, req, async client => {
@@ -106,10 +106,10 @@ export function emailRoutes(app: FastifyInstance): void {
         // einschalten zu koennen, waere eine Falle mit Ansage.
         const t = await client.query<{ is_training: boolean }>(
           `SELECT is_training FROM property WHERE id = $1`, [Number(propertyId)])
-        if (t.rowCount === 0) throw Errors.notFound('Property')
+        if (t.rowCount === 0) throw Errors.notFound('res.property')
         if (t.rows[0]!.is_training && b.enabled) {
           throw Errors.unprocessable(
-            'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.')
+            'training.noEmail')
         }
 
         await client.query(
@@ -139,7 +139,7 @@ export function emailRoutes(app: FastifyInstance): void {
       const b = (req.body ?? {}) as SendInvoiceBody
       const principal = req.principal as Principal
       if (b.to !== undefined && !isSendableAddress(b.to)) {
-        throw Errors.validation({ to: ['Keine brauchbare Adresse'] })
+        throw Errors.validation({ to: ['field.email'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -168,7 +168,7 @@ export function emailRoutes(app: FastifyInstance): void {
              JOIN folio f      ON f.id = i.folio_id
              LEFT JOIN company c ON c.id = f.company_id
             WHERE i.public_ref = $1`, [invoiceRef])
-        if (inv.rowCount === 0) throw Errors.notFound('Rechnung')
+        if (inv.rowCount === 0) throw Errors.notFound('res.invoice')
         const i = inv.rows[0]!
 
         // Schon heraus? Dann nicht noch einmal, ausser jemand sagt es
@@ -179,20 +179,18 @@ export function emailRoutes(app: FastifyInstance): void {
             WHERE invoice_id = $1 AND status IN ('pending','sent')`, [i.id])
         if (Number(schon.rows[0]!.n) > 0 && b.resend !== true) {
           throw Errors.conflict(
-            'Diese Rechnung ist bereits verschickt oder eingereiht. '
-            + 'Zum erneuten Versand resend=true angeben.')
+            'mail.alreadySent')
         }
 
         const e = await invoiceRecipient(client, i.id)
         if (e.anonymized) {
           throw Errors.unprocessable(
-            'Der Gast ist anonymisiert. An eine geloeschte Adresse wird nicht versandt.')
+            'mail.guestAnonymized')
         }
         const adresse = b.to ?? e.email
         if (!isSendableAddress(adresse)) {
           throw Errors.unprocessable(
-            'Zu dieser Rechnung ist keine brauchbare Empfaengeradresse hinterlegt. '
-            + 'Adresse am Gast- oder Firmenprofil ergaenzen oder mit to angeben.')
+            'mail.noInvoiceAddress')
         }
 
         const text = renderInvoiceEmail({
@@ -232,7 +230,7 @@ export function emailRoutes(app: FastifyInstance): void {
       const b = (req.body ?? {}) as { to?: string }
       const principal = req.principal as Principal
       if (b.to !== undefined && !isSendableAddress(b.to)) {
-        throw Errors.validation({ to: ['Keine brauchbare Adresse'] })
+        throw Errors.validation({ to: ['field.email'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -257,17 +255,17 @@ export function emailRoutes(app: FastifyInstance): void {
              JOIN resource_category rc ON rc.id = r.category_id
              LEFT JOIN guest g      ON g.id = r.primary_guest_id
             WHERE r.public_ref = $1`, [reservationRef])
-        if (r.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
 
         if (res.anonymized) {
           throw Errors.unprocessable(
-            'Der Gast ist anonymisiert. An eine geloeschte Adresse wird nicht versandt.')
+            'mail.guestAnonymized')
         }
         const adresse = b.to ?? res.email
         if (!isSendableAddress(adresse)) {
           throw Errors.unprocessable(
-            'Zu dieser Reservierung ist keine brauchbare Empfaengeradresse hinterlegt.')
+            'mail.noReservationAddress')
         }
 
         const text = renderReservationEmail({
@@ -349,7 +347,7 @@ export function emailRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1 AND status = 'pending'`, [messageRef])
         if (r.rowCount === 0) {
           throw Errors.conflict(
-            'Nur eine noch nicht abgeschickte Nachricht laesst sich zurueckziehen.')
+            'mail.onlyUnsentCancellable')
         }
         return { messageRef, status: 'canceled' }
       })

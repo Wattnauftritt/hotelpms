@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText } from '../platform/texte.js'
 import { LEGACY_ADAPTERS, LegacyFormatError, type LegacySystem } from '../platform/legacyImport/index.js'
 import { runImport } from './import.js'
 
@@ -39,7 +40,7 @@ export function legacyImportRoutes(app: FastifyInstance): void {
       handler: async (req) => {
         const body = req.body as LegacyImportBody
         if (typeof body.data !== 'string' || body.data.trim() === '') {
-          throw Errors.validation({ data: ['Pflichtfeld'] })
+          throw Errors.validation({ data: ['field.required'] })
         }
 
         let records: Array<Record<string, string>>
@@ -61,9 +62,8 @@ export function legacyImportRoutes(app: FastifyInstance): void {
     permission: 'settings:property',
     summary: 'Erwartete Rohform je Altsystem',
     handler: async () => ({
-      hinweis: 'Keines dieser drei Formate ist eine veroeffentlichte '
-             + 'Spezifikation (Dokument 05, Abschnitt 6). Vor dem ersten '
-             + 'echten Kunden gegen eine tatsaechliche Exportdatei pruefen.',
+      hinweis: hinweisText('hint.legacyFormatsUnverified'),
+      hinweisKey: 'hint.legacyFormatsUnverified',
       hotline: {
         delimiter: ';',
         example: 'Belegnummer;Zimmerkategorie;Anreise;Abreise;Nachname;Vorname;'

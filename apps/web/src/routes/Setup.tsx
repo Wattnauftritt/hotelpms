@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { RoomSeriesReport } from '@hotelpms/contracts'
 import { useCategories, useSetupStatus, useCreateCategory, useRoomSeries }
   from '../lib/queries.js'
-import { useT } from '../lib/i18n/index.js'
+import { useT, useLocale } from '../lib/i18n/index.js'
+import { apiText } from '../lib/meldungen.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Stammdaten } from '../components/Stammdaten.tsx'
 
@@ -19,6 +20,7 @@ import { Stammdaten } from '../components/Stammdaten.tsx'
  */
 export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const status = useSetupStatus(propertyId)
   const kategorien = useCategories(propertyId)
 
@@ -48,8 +50,12 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
               <span className={s.done ? 'text-emerald-600' : 'text-neutral-300'}>
                 {s.done ? '✓' : '○'}
               </span>
-              <span className="w-56 shrink-0">{s.label}</span>
-              <span className="text-neutral-500">{s.hint}</span>
+              <span className="w-56 shrink-0">
+                {apiText(s.labelKey, s.label, locale)}
+              </span>
+              <span className="text-neutral-500">
+                {apiText(s.hintKey, s.hint, locale, s.hintParams)}
+              </span>
             </li>
           ))}
         </ol>

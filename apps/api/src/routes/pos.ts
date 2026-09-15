@@ -79,7 +79,7 @@ async function folioByRoom(
     `SELECT id FROM resource WHERE property_id = $1 AND upper(code) = upper($2)`,
     [propertyId, room])
   if (zimmer.rowCount === 0) {
-    throw Errors.unprocessable(`Zimmer ${room} gibt es in diesem Haus nicht.`)
+    throw Errors.unprocessable('pos.roomUnknown', { room })
   }
 
   const r = await client.query<FolioTreffer>(
@@ -97,7 +97,7 @@ async function folioByRoom(
 
   if (r.rowCount === 0) {
     throw Errors.unprocessable(
-      `Auf Zimmer ${room} ist niemand angereist. Fehlt der Check-in?`)
+      'pos.nobodyCheckedIn', { room })
   }
   return r.rows
 }
@@ -119,9 +119,9 @@ async function folioByRef(
        LEFT JOIN resource res ON res.id = r.resource_id
       WHERE f.public_ref = $1 AND f.property_id = $2`,
     [folioRef, propertyId])
-  if (r.rowCount === 0) throw Errors.notFound('Folio')
+  if (r.rowCount === 0) throw Errors.notFound('res.folio')
   if (r.rows[0]!.status === 'closed') {
-    throw Errors.conflict('Das Folio ist geschlossen und nimmt nichts mehr auf.')
+    throw Errors.conflict('folio.closedNoPosting')
   }
   return r.rows[0]!
 }
@@ -240,10 +240,10 @@ export function posRoutes(app: FastifyInstance): void {
       const body = req.body as ChargeBody
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       const fehler: Record<string, string[]> = {}
-      if (!body.productCode) fehler.productCode = ['Pflichtfeld']
+      if (!body.productCode) fehler.productCode = ['field.required']
       if (!body.reference) fehler.reference = ['Belegnummer der Kasse ist Pflichtfeld']
       if (!Number.isInteger(body.grossCent) || body.grossCent <= 0) {
         fehler.grossCent = ['Ganze Cent, groesser als null. Eine Gutschrift laeuft ueber /reverse']
@@ -279,8 +279,7 @@ export function posRoutes(app: FastifyInstance): void {
           [property, body.productCode])
         if (p.rowCount === 0) {
           throw Errors.unprocessable(
-            `Artikel ${body.productCode} ist in diesem Haus nicht eingerichtet. `
-            + 'Er braucht ein Erloeskonto und einen Steuersatz, bevor die Kasse darauf buchen kann.')
+            'pos.productUnknown', { product: body.productCode })
         }
         const artikel = p.rows[0]!
 
@@ -294,8 +293,7 @@ export function posRoutes(app: FastifyInstance): void {
         const rateBp = body.taxRateBp ?? artikel.rate_bp
         if (rateBp === null || !Number.isInteger(rateBp) || rateBp < 0) {
           throw Errors.unprocessable(
-            `Fuer ${body.productCode} ist kein Steuersatz hinterlegt. `
-            + 'Entweder am Artikel einrichten oder als taxRateBp mitschicken.')
+            'pos.productNoTaxRate', { product: body.productCode })
         }
 
         const treffer = body.folioRef
@@ -306,10 +304,10 @@ export function posRoutes(app: FastifyInstance): void {
           // Abrechnung. Raten waere hier die schlechteste Antwort: der
           // Umsatz landete beim Falschen, und auffallen wuerde es beim
           // Check-out des Anderen.
-          throw Errors.conflict(
-            `Auf Zimmer ${body.room} sind mehrere Gaeste angereist. `
-            + 'Bitte folioRef mitschicken: '
-            + treffer.map(t => `${t.public_ref} (${t.bezeichnung})`).join(', '))
+          throw Errors.conflict('pos.severalGuestsInRoom', {
+            room: body.room ?? '',
+            folios: treffer.map(t => `${t.public_ref} (${t.bezeichnung})`).join(', ')
+          })
         }
         const folio = treffer[0]!
 
@@ -409,11 +407,11 @@ export function posRoutes(app: FastifyInstance): void {
       const body = req.body as { reference: string; reversalReference: string; reason?: string }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
       if (!body.reference || !body.reversalReference) {
         throw Errors.validation({
-          reference: ['Belegnummer des Originals'],
-          reversalReference: ['Belegnummer des Stornos']
+          reference: ['field.originalDocumentNumber'],
+          reversalReference: ['field.reversalDocumentNumber']
         })
       }
 
@@ -433,7 +431,8 @@ export function posRoutes(app: FastifyInstance): void {
             WHERE property_id = $1 AND source = 'pos' AND external_reference = $2`,
           [property, body.reference])
         if (o.rowCount === 0) {
-          throw Errors.notFound(`Kassenumsatz mit der Belegnummer ${body.reference}`)
+          throw Errors.notFound('res.posChargeByReference',
+            { reference: body.reference })
         }
         const original = o.rows[0]!
 

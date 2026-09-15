@@ -26,15 +26,15 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
     permission: 'folio:post',
     summary: 'Pay-by-Link ueber Stripe anfordern',
     handler: async (req, reply) => {
-      if (!stripe) throw Errors.notConfigured('STRIPE_SECRET_KEY ist nicht gesetzt.')
+      if (!stripe) throw Errors.notConfigured('payments.stripeKeyMissing')
 
       const { folioRef } = req.params as { folioRef: string }
       const body = req.body as { amountCent: number }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
       if (!Number.isInteger(body.amountCent) || body.amountCent <= 0) {
-        throw Errors.validation({ amountCent: ['Muss eine positive Centzahl sein'] })
+        throw Errors.validation({ amountCent: ['field.positiveCent'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -43,9 +43,9 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
 
         const f = await client.query<{ id: number; property_id: number; status: string }>(
           `SELECT id, property_id, status FROM folio WHERE public_ref = $1`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
-        if (folio.status === 'closed') throw Errors.conflict('Folio ist geschlossen.')
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
 
         const session = await stripe.createCheckoutSession({
           amountCent: body.amountCent,
@@ -75,9 +75,9 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
     permission: null,
     summary: 'Stripe-Benachrichtigung ueber eine Pay-by-Link-Zahlung entgegennehmen',
     handler: async (req, reply) => {
-      if (!config.stripeWebhookSecret) throw Errors.notConfigured('STRIPE_WEBHOOK_SECRET ist nicht gesetzt.')
+      if (!config.stripeWebhookSecret) throw Errors.notConfigured('payments.stripeWebhookSecretMissing')
       const raw = req.rawBody
-      if (!raw || raw.length === 0) throw Errors.validation({ body: ['Rumpf fehlt'] })
+      if (!raw || raw.length === 0) throw Errors.validation({ body: ['field.bodyMissing'] })
 
       try {
         verifyStripeSignature(

@@ -93,8 +93,8 @@ export class RateLimiter {
 }
 
 export function tooManyRequests(retryAfterSeconds: number): AppError {
-  return new AppError(429, 'urn:hotelpms:rate_limited', 'Zu viele Anfragen',
-    `Bitte in ${retryAfterSeconds} Sekunden erneut versuchen.`)
+  return new AppError(429, 'urn:hotelpms:rate_limited', 'error.rateLimited',
+    'error.rateLimited.detail', undefined, { seconds: retryAfterSeconds })
 }
 
 /**

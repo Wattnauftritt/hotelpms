@@ -61,11 +61,35 @@ const texts = {
 
 export type TextKey = keyof (typeof texts)['de']
 
+/** Alle Schluessel. Ein Test prueft damit beide Sprachen durch. */
+export function textKeys(): TextKey[] {
+  return Object.keys(texts.de) as TextKey[]
+}
+
+/** Ein Text ohne React, fuer Tests und fuer den Aufruf ausserhalb einer Komponente. */
+export function textFor(key: TextKey, locale: Locale): string {
+  return texts[locale][key] ?? key
+}
+
 export const I18nContext = createContext<Locale>('de')
 
-export function useT(): (key: TextKey) => string {
+/**
+ * Ein Text der Oberflaeche, mit eingesetzten Werten.
+ *
+ * Platzhalter stehen in geschweiften Klammern, wie im Meldungskatalog der
+ * Schnittstelle: `{haus}`. Einen Satz stattdessen aus Stuecken
+ * zusammenzusetzen -- "Dieses Konto hat in " + name + " keine Rechte" --
+ * geht in jeder Sprache schief, in der die Wortstellung eine andere ist.
+ */
+export function useT(): (key: TextKey, params?: Record<string, string | number>)
+  => string {
   const locale = useContext(I18nContext)
-  return (key) => texts[locale][key] ?? key
+  return (key, params) => {
+    const text: string = texts[locale][key] ?? key
+    if (params === undefined) return text
+    return text.replace(/\{(\w+)\}/g, (ganz, name: string) =>
+      Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : ganz)
+  }
 }
 
 export function useLocale(): Locale {

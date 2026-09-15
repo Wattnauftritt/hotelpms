@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { I18nContext, useT, LOCALES, type Locale } from '../lib/i18n/index.js'
+import { I18nContext, useT, useLocale, LOCALES, type Locale }
+  from '../lib/i18n/index.js'
+import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import type { ScreenDefinition } from '../screens.js'
 
@@ -115,13 +117,30 @@ function OfflineHinweis(): JSX.Element {
   )
 }
 
+/**
+ * Ein Fehler der Schnittstelle, in der Sprache des Personals.
+ *
+ * Die Meldungen an einzelnen Feldern stehen mit da. Sie nur zu verschlucken
+ * waere bequem und liesse den Benutzer raten, welches der acht Felder die
+ * Maske nicht annimmt.
+ */
 export function Fehler({ error }: { error: unknown }): JSX.Element {
   const t = useT()
-  const text = error instanceof Error ? error.message : String(error)
+  const locale = useLocale()
+  const { text, felder } = fehlerMeldung(error, locale)
   return (
     <div role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm">
       <div className="font-medium text-red-900">{t('error.title')}</div>
       <div className="text-red-800">{text}</div>
+      {felder.length > 0 && (
+        <ul className="mt-1 text-red-800">
+          {felder.map(([feld, meldung], i) => (
+            <li key={`${feld}-${i}`}>
+              <span className="font-mono text-xs">{feld}</span>: {meldung}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

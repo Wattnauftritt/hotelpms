@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText } from '../platform/texte.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
@@ -120,8 +121,8 @@ export function billingRoutes(app: FastifyInstance): void {
         // Es vermerkt, wo abgerechnet wurde (Entscheidung 9, Dokument 09).
         return {
           paymentMethods: rows,
-          hinweis: 'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. '
-                 + 'Die Zahlung selbst laeuft ueber Kasse, Portal oder Bank des Betriebs.'
+          hinweis: hinweisText('hint.settlementIsNotPayment'),
+          hinweisKey: 'hint.settlementIsNotPayment'
         }
       })
     }
@@ -148,8 +149,8 @@ export function billingRoutes(app: FastifyInstance): void {
       const b = req.body as { code: string; name: string; isExternal?: boolean
                               sortOrder?: number }
       const fehler: Record<string, string[]> = {}
-      if (!b.code?.trim()) fehler.code = ['Pflichtfeld']
-      if (!b.name?.trim()) fehler.name = ['Pflichtfeld']
+      if (!b.code?.trim()) fehler.code = ['field.required']
+      if (!b.name?.trim()) fehler.name = ['field.required']
       if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
 
       return tx(req.pool, req, async client => {
@@ -157,7 +158,7 @@ export function billingRoutes(app: FastifyInstance): void {
           `SELECT 1 FROM payment_method WHERE property_id = $1 AND code = $2`,
           [Number(propertyId), b.code.trim()])
         if (da.rowCount && da.rowCount > 0) {
-          throw Errors.conflict(`Die Zahlungsart ${b.code} gibt es in diesem Haus schon.`)
+          throw Errors.conflict('paymentMethod.duplicateCode', { code: b.code })
         }
         const { rows } = await client.query<{ id: number }>(
           `INSERT INTO payment_method (property_id, code, name, is_external, sort_order)
@@ -192,7 +193,7 @@ export function billingRoutes(app: FastifyInstance): void {
       const b = req.body as { name?: string; isExternal?: boolean
                               sortOrder?: number; active?: boolean }
       if (b.name !== undefined && b.name.trim() === '') {
-        throw Errors.validation({ name: ['Pflichtfeld'] })
+        throw Errors.validation({ name: ['field.required'] })
       }
       return tx(req.pool, req, async client => {
         const { rows, rowCount } = await client.query(
@@ -208,7 +209,7 @@ export function billingRoutes(app: FastifyInstance): void {
            b.sortOrder ?? null, b.active ?? null])
         // Die Zeilenrichtlinie hat fremde Haeuser schon aussortiert; hier
         // bleibt nur "gibt es nicht".
-        if (rowCount === 0) throw Errors.notFound('Zahlungsart')
+        if (rowCount === 0) throw Errors.notFound('res.paymentMethod')
         return rows[0]!
       })
     }
@@ -225,7 +226,7 @@ export function billingRoutes(app: FastifyInstance): void {
         const f = await client.query(
           `SELECT id, public_ref, property_id, reservation_id, kind, status, label
              FROM folio WHERE public_ref = $1`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
 
         const charges = await client.query(
@@ -262,7 +263,7 @@ export function billingRoutes(app: FastifyInstance): void {
       }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
         const stored = await beginIdempotent(client, principal.clientKey, key, body)
@@ -270,8 +271,8 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const f = await client.query<{ id: number; property_id: number; status: string }>(
           `SELECT id, property_id, status FROM folio WHERE public_ref = $1`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
-        if (f.rows[0]!.status === 'closed') throw Errors.conflict('Folio ist geschlossen.')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        if (f.rows[0]!.status === 'closed') throw Errors.conflict('folio.closed')
         const folio = f.rows[0]!
 
         const bd = await client.query<{ date: string }>(
@@ -312,7 +313,7 @@ export function billingRoutes(app: FastifyInstance): void {
       }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
         const stored = await beginIdempotent(client, principal.clientKey, key, body)
@@ -320,13 +321,13 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const f = await client.query<{ id: number; property_id: number; status: string }>(
           `SELECT id, property_id, status FROM folio WHERE public_ref = $1`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
 
         const pm = await client.query<{ id: number }>(
           `SELECT id FROM payment_method WHERE property_id = $1 AND code = $2 AND active`,
           [folio.property_id, body.paymentMethodCode])
-        if (pm.rowCount === 0) throw Errors.validation({ paymentMethodCode: ['Unbekannte Zahlart'] })
+        if (pm.rowCount === 0) throw Errors.validation({ paymentMethodCode: ['field.unknownPaymentMethod'] })
 
         const bd = await client.query<{ date: string }>(
           `SELECT date::text FROM business_day
@@ -384,7 +385,7 @@ export function billingRoutes(app: FastifyInstance): void {
       }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
         const stored = await beginIdempotent(client, principal.clientKey, key, body)
@@ -394,7 +395,7 @@ export function billingRoutes(app: FastifyInstance): void {
                                        company_id: number | null; reservation_id: number | null }>(
           `SELECT id, property_id, guest_id, company_id, reservation_id
              FROM folio WHERE public_ref = $1 FOR UPDATE`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
 
         // Der Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG ist der
@@ -402,19 +403,18 @@ export function billingRoutes(app: FastifyInstance): void {
         // wofuer angezahlt wird, muss feststehen.
         if (folio.reservation_id === null) {
           throw Errors.unprocessable(
-            'Eine Anzahlungsrechnung braucht die Reservierung des Folios '
-            + 'fuer den Leistungszeitraum.')
+            'deposit.needsReservation')
         }
         const res = await client.query<{ arrival: string; departure: string }>(
           `SELECT arrival::text, departure::text FROM reservation WHERE id = $1`,
           [folio.reservation_id])
-        if (res.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (res.rowCount === 0) throw Errors.notFound('res.reservation')
         const { arrival, departure } = res.rows[0]!
 
         const s = await client.query<{ id: number; amount_cent: number; business_date: string }>(
           `SELECT id, amount_cent, business_date::text FROM settlement
             WHERE id = $1 AND folio_id = $2 FOR UPDATE`, [body.settlementId, folio.id])
-        if (s.rowCount === 0) throw Errors.notFound('Zahlungsvermerk')
+        if (s.rowCount === 0) throw Errors.notFound('res.settlement')
         const settlement = s.rows[0]!
 
         /*
@@ -425,13 +425,13 @@ export function billingRoutes(app: FastifyInstance): void {
          */
         if (settlement.amount_cent <= 0) {
           throw Errors.validation({ settlementId: [
-            'Der Zahlungsvermerk ist kein Zahlungseingang.'] })
+            'field.notAnIncomingPayment'] })
         }
 
         const bereits = await client.query(
           `SELECT 1 FROM deposit_ledger WHERE settlement_id = $1`, [settlement.id])
         if ((bereits.rowCount ?? 0) > 0) {
-          throw Errors.conflict('Zu diesem Zahlungsvermerk gibt es bereits eine Anzahlungsrechnung.')
+          throw Errors.conflict('deposit.alreadyInvoiced')
         }
 
         /*
@@ -444,9 +444,8 @@ export function billingRoutes(app: FastifyInstance): void {
         if (body.lines?.length) {
           const summe = body.lines.reduce((acc, l) => acc + l.grossCent, 0)
           if (summe !== settlement.amount_cent) {
-            throw Errors.validation({ lines: [
-              `Die Teile ergeben ${summe} Cent, vereinnahmt sind `
-              + `${settlement.amount_cent}.`] })
+            throw Errors.validation({ lines: ['field.depositPartsMismatch'] },
+              { sum: summe, received: settlement.amount_cent })
           }
           teile = body.lines.map(l => ({ rateBp: l.taxRateBp, grossCent: l.grossCent }))
         } else if (body.taxRateBp !== undefined) {
@@ -455,8 +454,7 @@ export function billingRoutes(app: FastifyInstance): void {
           const mix = await erwarteteSaetze(client, folio.property_id, folio.reservation_id)
           if (mix.length === 0) {
             throw Errors.unprocessable(
-              'Zu diesem Aufenthalt sind keine Preise hinterlegt, aus denen sich die '
-              + 'Steuersaetze ableiten liessen. Bitte taxRateBp oder lines mitgeben.')
+              'deposit.noRatesForSplit')
           }
           teile = splitDeposit(settlement.amount_cent, mix)
         }
@@ -518,8 +516,8 @@ export function billingRoutes(app: FastifyInstance): void {
         })
         if (maengel.length > 0) {
           throw Errors.unprocessable(
-            'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: '
-            + maengel.map(m => `${m.de} (${m.reference})`).join(' '))
+            'deposit.requirementsUnmet',
+            { maengel: maengel.map(m => `${m.de} (${m.reference})`).join(' ') })
         }
 
         const inv = await client.query<{ id: number; public_ref: string; number: string }>(
@@ -596,7 +594,7 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM invoice i
              LEFT JOIN invoice_document d ON d.invoice_id = i.id
             WHERE i.public_ref = $1`, [invoiceRef])
-        if (r.rowCount === 0) throw Errors.notFound('Rechnung')
+        if (r.rowCount === 0) throw Errors.notFound('res.invoice')
         const pdf = r.rows[0]!.pdf
         if (pdf === null) throw Errors.documentPending()
 
@@ -620,7 +618,7 @@ export function billingRoutes(app: FastifyInstance): void {
       const body = (req.body ?? {}) as { kind?: 'final' | 'interim'; chargeIds?: number[] }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
         const stored = await beginIdempotent(client, principal.clientKey, key, body)
@@ -630,7 +628,7 @@ export function billingRoutes(app: FastifyInstance): void {
                                        company_id: number | null }>(
           `SELECT id, property_id, guest_id, company_id FROM folio WHERE public_ref = $1
              FOR UPDATE`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
 
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
@@ -646,7 +644,7 @@ export function billingRoutes(app: FastifyInstance): void {
                       business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL ORDER BY id`,
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
-        if (charges.rowCount === 0) throw Errors.unprocessable('Keine offenen Positionen.')
+        if (charges.rowCount === 0) throw Errors.unprocessable('folio.nothingOpen')
 
         /*
          * Offene Anzahlungen dieses Folios: Verrechnung als eigene Position
@@ -702,9 +700,7 @@ export function billingRoutes(app: FastifyInstance): void {
          */
         if (deposits.rows.length > 0 && totals.grossCent < 0) {
           throw Errors.unprocessable(
-            'Die angerechnete Anzahlung uebersteigt die abzurechnenden Leistungen um '
-            + `${-totals.grossCent} Cent. Das ist eine Rueckzahlung und keine Rechnung; `
-            + 'sie ist in diesem System noch nicht vorgesehen.')
+            'deposit.exceedsServices', { cent: -totals.grossCent })
         }
 
         /*
@@ -789,8 +785,8 @@ export function billingRoutes(app: FastifyInstance): void {
         })
         if (maengel.length > 0) {
           throw Errors.unprocessable(
-            'Die Rechnung erfüllt die Pflichtangaben nicht: '
-            + maengel.map(m => `${m.de} (${m.reference})`).join(' '))
+            'invoice.requirementsUnmet',
+            { maengel: maengel.map(m => `${m.de} (${m.reference})`).join(' ') })
         }
 
         const inv = await client.query<{ id: number; public_ref: string; number: string }>(

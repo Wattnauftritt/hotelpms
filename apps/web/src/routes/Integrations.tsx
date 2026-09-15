@@ -9,7 +9,8 @@ import { useWebhookSubscriptions, useWebhookDeliveries, useCreateWebhook,
   from '../lib/queries/integrations.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
-import { useT, type TextKey } from '../lib/i18n/index.js'
+import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
+import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
@@ -171,6 +172,7 @@ function Abonnement({ hook }: { hook: WebhookSubscription }): JSX.Element {
 
 function Webhooks(): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const online = useOnline()
   const q = useWebhookSubscriptions()
   const anlegen = useCreateWebhook()
@@ -195,7 +197,8 @@ function Webhooks(): JSX.Element {
               anlegen.mutate(
                 { url: url.trim(), ...(arten.length === 0 ? {} : { eventTypes: arten }) },
                 { onSuccess: r => {
-                    setGeheimnis({ wert: r.signingSecret, hinweis: r.hinweis })
+                    setGeheimnis({ wert: r.signingSecret,
+                                   hinweis: apiText(r.hinweisKey, r.hinweis, locale) })
                     setUrl('https://'); setArten([])
                   } })
             }}>
@@ -296,6 +299,7 @@ function Zugang({ client }: { client: OAuthClient }): JSX.Element {
 
 function Maschinenzugaenge(): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const online = useOnline()
   const q = useOAuthClients()
   const anlegen = useCreateOAuthClient()
@@ -322,7 +326,7 @@ function Maschinenzugaenge(): JSX.Element {
                 { onSuccess: r => {
                     setGeheimnis({
                       wert: `${r.clientId}:${r.clientSecret}`,
-                      hinweis: `${r.hinweis} ${t('client.tokenHint')}` })
+                      hinweis: apiText(r.hinweisKey, r.hinweis, locale) })
                     setName(''); setScopes([])
                   } })
             }}>

@@ -61,10 +61,10 @@ export function hasProperty(p: Principal, property: number): boolean {
 export function accountFor(p: Principal, given: number | undefined): number {
   if (given !== undefined) {
     if (!p.accountIds.includes(given)) {
-      throw Errors.forbidden('Account liegt nicht im Zugriffsbereich.')
+      throw Errors.forbidden('access.accountOutOfScope')
     }
     return given
   }
   if (p.accountIds.length === 1) return p.accountIds[0]!
-  throw Errors.validation({ accountId: ['Pflichtfeld bei mehreren Accounts'] })
+  throw Errors.validation({ accountId: ['field.requiredWithManyAccounts'] })
 }

@@ -17,13 +17,13 @@ const MAX_ARI_DAYS = 400
 function ariRange(req: FastifyRequest): { from: string; to: string; since: string | null } {
   const q = req.query as { from?: string; to?: string; since?: string }
   if (!q.from || !q.to || !isIsoDate(q.from) || !isIsoDate(q.to)) {
-    throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+    throw Errors.validation({ from: ['field.isoDate'] })
   }
   const days = nightsBetween(q.from, q.to)
-  if (days <= 0) throw Errors.validation({ to: ['Muss nach from liegen'] })
+  if (days <= 0) throw Errors.validation({ to: ['field.afterFrom'] })
   if (days > MAX_ARI_DAYS) throw Errors.rangeTooLarge(MAX_ARI_DAYS)
   if (q.since !== undefined && Number.isNaN(Date.parse(q.since))) {
-    throw Errors.validation({ since: ['Zeitstempel nach ISO 8601 erwartet'] })
+    throw Errors.validation({ since: ['field.isoTimestamp'] })
   }
   return { from: q.from, to: q.to, since: q.since ?? null }
 }
@@ -54,9 +54,9 @@ export function channelRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const body = req.body as { provider: string; name: string }
       if (body.provider !== 'roomcloud') {
-        throw Errors.validation({ provider: ['Nur roomcloud ist bisher angebunden'] })
+        throw Errors.validation({ provider: ['field.onlyRoomcloud'] })
       }
-      if (!body.name) throw Errors.validation({ name: ['Pflichtfeld'] })
+      if (!body.name) throw Errors.validation({ name: ['field.required'] })
       const principal = req.principal as Principal
 
       // Das Geheimnis wird nur diesmal ausgegeben. Gespeichert wird der Hash,
@@ -67,7 +67,7 @@ export function channelRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const prop = await client.query<{ account_id: number }>(
           `SELECT account_id FROM property WHERE id = $1`, [Number(propertyId)])
-        if (prop.rowCount === 0) throw Errors.notFound('Property')
+        if (prop.rowCount === 0) throw Errors.notFound('res.property')
 
         const r = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO channel_connection
@@ -117,7 +117,7 @@ export function channelRoutes(app: FastifyInstance): void {
           `UPDATE channel_connection SET status = 'disabled'
             WHERE public_ref = $1 AND property_id = $2 RETURNING id`,
           [connectionRef, Number(propertyId)])
-        if (r.rowCount === 0) throw Errors.notFound('Verbindung')
+        if (r.rowCount === 0) throw Errors.notFound('res.connection')
         return { ok: true }
       })
     }
@@ -198,21 +198,21 @@ export function channelRoutes(app: FastifyInstance): void {
       const body = req.body as InboundBooking
 
       if (!body.externalReference) {
-        throw Errors.validation({ externalReference: ['Pflichtfeld'] })
+        throw Errors.validation({ externalReference: ['field.required'] })
       }
-      if (!body.categoryCode) throw Errors.validation({ categoryCode: ['Pflichtfeld'] })
+      if (!body.categoryCode) throw Errors.validation({ categoryCode: ['field.required'] })
       if (!isIsoDate(body.arrival) || !isIsoDate(body.departure)) {
-        throw Errors.validation({ arrival: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ arrival: ['field.isoDate'] })
       }
       if (nightsBetween(body.arrival, body.departure) <= 0) {
-        throw Errors.validation({ departure: ['Muss nach arrival liegen'] })
+        throw Errors.validation({ departure: ['field.afterArrival'] })
       }
 
       const result = await withTransaction(req.pool, channelContext(principal), async client => {
         const cat = await client.query<{ id: number }>(
           `SELECT id FROM resource_category WHERE property_id = $1 AND code = $2 AND active`,
           [principal.propertyId, body.categoryCode])
-        if (cat.rowCount === 0) throw Errors.validation({ categoryCode: ['Unbekannte Kategorie'] })
+        if (cat.rowCount === 0) throw Errors.validation({ categoryCode: ['field.unknownCategory'] })
         const categoryId = cat.rows[0]!.id
 
         let ratePlanId: number | undefined
@@ -220,7 +220,7 @@ export function channelRoutes(app: FastifyInstance): void {
           const rp = await client.query<{ id: number }>(
             `SELECT id FROM rate_plan WHERE property_id = $1 AND code = $2 AND active`,
             [principal.propertyId, body.ratePlanCode])
-          if (rp.rowCount === 0) throw Errors.validation({ ratePlanCode: ['Unbekannter Ratenplan'] })
+          if (rp.rowCount === 0) throw Errors.validation({ ratePlanCode: ['field.unknownRatePlan'] })
           ratePlanId = rp.rows[0]!.id
         }
 
@@ -264,7 +264,7 @@ export function channelRoutes(app: FastifyInstance): void {
             // geloescht hat; beides ist ein Grund, es dem Anbieter zu sagen,
             // statt eine erfundene Antwort zu liefern.
             throw Errors.conflict(
-              'Externe Nummer ist bereits in Bearbeitung. Bitte spaeter erneut zustellen.')
+              'channel.referenceInFlight')
           }
           const e = existing.rows[0]!
           return {

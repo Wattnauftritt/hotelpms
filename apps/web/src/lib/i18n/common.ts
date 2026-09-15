@@ -34,7 +34,13 @@ export const common = {
     'status.Canceled': 'Storniert',
     'status.NoShow': 'No-Show',
     'error.title': 'Das hat nicht geklappt',
-    'error.offlineWrite': 'Ohne Verbindung lässt sich nichts speichern.'
+    'error.offlineWrite': 'Ohne Verbindung lässt sich nichts speichern.',
+    'login.email': 'E-Mail',
+    'login.password': 'Kennwort',
+    'login.submit': 'Anmelden',
+    'app.noProperty': 'Diesem Benutzer ist noch kein Haus zugeordnet.',
+    'app.noScreen': 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
+                  + 'öffnen.'
   },
   en: {
     'app.title': 'hotelpms',
@@ -70,6 +76,11 @@ export const common = {
     'status.Canceled': 'Cancelled',
     'status.NoShow': 'No show',
     'error.title': 'That did not work',
-    'error.offlineWrite': 'Nothing can be saved without a connection.'
+    'error.offlineWrite': 'Nothing can be saved without a connection.',
+    'login.email': 'Email',
+    'login.password': 'Password',
+    'login.submit': 'Sign in',
+    'app.noProperty': 'This user is not assigned to any property yet.',
+    'app.noScreen': 'This account has no rights in {haus} that open a screen.'
   }
 } as const

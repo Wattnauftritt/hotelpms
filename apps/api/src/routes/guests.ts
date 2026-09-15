@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText } from '../platform/texte.js'
 import { loadConfig } from '../platform/config.js'
 import { encryptIdDocument, decryptIdDocument, maskIdDocument } from '../platform/crypto.js'
 import { accountFor, type Principal } from '../platform/context.js'
@@ -110,7 +111,7 @@ export function guestRoutes(app: FastifyInstance): void {
       const q = req.query as { q?: string; limit?: string }
       const term = (q.q ?? '').trim()
       if (term.length < 2) {
-        throw Errors.validation({ q: ['Mindestens zwei Zeichen'] })
+        throw Errors.validation({ q: ['field.minTwoChars'] })
       }
       const limit = Math.min(Number(q.limit ?? 20) || 20, 100)
       return tx(req.pool, req, async client => {
@@ -163,7 +164,7 @@ export function guestRoutes(app: FastifyInstance): void {
       const body = req.body as GuestBody
       const principal = req.principal as Principal
       if (!body.lastName || body.lastName.trim() === '') {
-        throw Errors.validation({ lastName: ['Pflichtfeld'] })
+        throw Errors.validation({ lastName: ['field.required'] })
       }
       const accountId = accountFor(principal, body.accountId)
 
@@ -202,7 +203,7 @@ export function guestRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const { rows, rowCount } = await client.query<GuestRow>(
           `SELECT ${FIELDS} FROM guest WHERE public_ref = $1`, [guestRef])
-        if (rowCount === 0) throw Errors.notFound('Gast')
+        if (rowCount === 0) throw Errors.notFound('res.guest')
         return present(rows[0]!)
       })
     }
@@ -219,9 +220,9 @@ export function guestRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number; status: string }>(
           `SELECT id, status FROM guest WHERE public_ref = $1 FOR UPDATE`, [guestRef])
-        if (cur.rowCount === 0) throw Errors.notFound('Gast')
+        if (cur.rowCount === 0) throw Errors.notFound('res.guest')
         if (cur.rows[0]!.status === 'anonymized') {
-          throw Errors.conflict('Ein anonymisiertes Profil wird nicht wiederbelebt.')
+          throw Errors.conflict('guest.anonymizedNotRevived')
         }
         const enc = body.idDocumentNumber
           ? encryptIdDocument(body.idDocumentNumber, config.idDocumentKey) : null
@@ -276,7 +277,7 @@ export function guestRoutes(app: FastifyInstance): void {
           id_document_number_enc: Buffer | null; id_document_key_version: number | null }>(
           `SELECT id, id_document_type, id_document_number_enc, id_document_key_version
              FROM guest WHERE public_ref = $1`, [guestRef])
-        if (rowCount === 0) throw Errors.notFound('Gast')
+        if (rowCount === 0) throw Errors.notFound('res.guest')
         const g = rows[0]!
         if (g.id_document_number_enc === null || g.id_document_key_version === null) {
           return { guestRef, idDocumentType: g.id_document_type, number: null }
@@ -318,7 +319,7 @@ export function guestRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const g = await client.query<GuestRow & { created_at: string }>(
           `SELECT ${FIELDS}, created_at::text FROM guest WHERE public_ref = $1`, [guestRef])
-        if (g.rowCount === 0) throw Errors.notFound('Gast')
+        if (g.rowCount === 0) throw Errors.notFound('res.guest')
         const id = g.rows[0]!.id
 
         const stays = await client.query(
@@ -352,8 +353,8 @@ export function guestRoutes(app: FastifyInstance): void {
           invoices: invoices.rows,
           notes: notes.rows,
           registrations: registrations.rows,
-          hinweis: 'Rechnungen unterliegen der steuerlichen Aufbewahrungsfrist '
-                 + 'und werden bei einer Loeschung nicht entfernt.'
+          hinweis: hinweisText('hint.invoiceRetention'),
+          hinweisKey: 'hint.invoiceRetention'
         }
       })
     }
@@ -378,7 +379,7 @@ export function guestRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number; status: string }>(
           `SELECT id, status FROM guest WHERE public_ref = $1 FOR UPDATE`, [guestRef])
-        if (cur.rowCount === 0) throw Errors.notFound('Gast')
+        if (cur.rowCount === 0) throw Errors.notFound('res.guest')
         const id = cur.rows[0]!.id
         if (cur.rows[0]!.status === 'anonymized') {
           return { guestRef, status: 'anonymized', alreadyDone: true }
@@ -394,7 +395,7 @@ export function guestRoutes(app: FastifyInstance): void {
               AND r.status IN ('Optional','Confirmed','InHouse') LIMIT 1`, [id])
         if (aktiv.rowCount && aktiv.rowCount > 0) {
           throw Errors.conflict(
-            'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.')
+            'guest.hasOpenReservations')
         }
 
         await client.query(
@@ -426,11 +427,11 @@ export function guestRoutes(app: FastifyInstance): void {
       const { guestRef } = req.params as { guestRef: string }
       const { propertyId, note } = req.body as { propertyId: number; note: string }
       const principal = req.principal as Principal
-      if (!note || note.trim() === '') throw Errors.validation({ note: ['Pflichtfeld'] })
+      if (!note || note.trim() === '') throw Errors.validation({ note: ['field.required'] })
       return tx(req.pool, req, async client => {
         const g = await client.query<{ id: number }>(
           `SELECT id FROM guest WHERE public_ref = $1`, [guestRef])
-        if (g.rowCount === 0) throw Errors.notFound('Gast')
+        if (g.rowCount === 0) throw Errors.notFound('res.guest')
         await client.query(
           `INSERT INTO guest_property_note (property_id, guest_id, note, created_by)
            VALUES ($1,$2,$3,$4)`,
@@ -453,7 +454,7 @@ export function guestRoutes(app: FastifyInstance): void {
         paymentTermsDays?: number; invoiceEmail?: string }
       const principal = req.principal as Principal
       if (!body.name || body.name.trim() === '') {
-        throw Errors.validation({ name: ['Pflichtfeld'] })
+        throw Errors.validation({ name: ['field.required'] })
       }
       const accountId = accountFor(principal, body.accountId)
       return tx(req.pool, req, async client => {
@@ -479,7 +480,7 @@ export function guestRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const q = req.query as { q?: string }
       const term = (q.q ?? '').trim()
-      if (term.length < 2) throw Errors.validation({ q: ['Mindestens zwei Zeichen'] })
+      if (term.length < 2) throw Errors.validation({ q: ['field.minTwoChars'] })
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
           `SELECT public_ref AS "companyRef", name, vat_id AS "vatId", city,

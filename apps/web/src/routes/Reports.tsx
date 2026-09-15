@@ -7,6 +7,7 @@ import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
 import { useT, useLocale, formatMoney, formatDate, type TextKey, type Locale }
   from '../lib/i18n/index.js'
+import { apiText } from '../lib/meldungen.js'
 import { today, addDays } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
@@ -302,6 +303,7 @@ function Nachtlauf({ propertyId }: { propertyId: number }): JSX.Element {
 
 function Beherbergung({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const [month, setMonth] = useState(() => today().slice(0, 7))
   const q = useAccommodationStatistics(propertyId, month, /^\d{4}-\d{2}$/.test(month))
   const ausgabe = useAusgabe()
@@ -329,7 +331,7 @@ function Beherbergung({ propertyId }: { propertyId: number }): JSX.Element {
               </div>
               <div className="text-xs text-neutral-500">
                 {t(q.data.reportingRequired ? 'stat.required' : 'stat.notRequired')}
-                {' '}{q.data.hinweis}
+                {' '}{apiText(q.data.hinweisKey, q.data.hinweis, locale)}
               </div>
 
               <table className="text-sm">
