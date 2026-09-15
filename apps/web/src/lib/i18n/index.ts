@@ -108,10 +108,43 @@ export function useLocale(): Locale {
   return useContext(I18nContext)
 }
 
+/**
+ * Die Formatierer, gemerkt.
+ *
+ * **Warum das nötig ist.** `new Intl.NumberFormat(...)` ist nicht billig:
+ * es baut jedes Mal die Regeln einer Sprache auf. Auf einer Liste fällt das
+ * nicht auf, im Preisraster schon — 400 Tage mal zehn Ratenpläne sind
+ * sechzehnhundert Zellen, und bei jeder Mausbewegung entstand für jede ein
+ * eigenes Objekt. Gemessen waren das 328 ms je Zug mit der Maus; das Raster
+ * hing spürbar am Zeiger.
+ *
+ * Spur B hat sich deshalb eine Zeit lang einen eigenen Formatierer gehalten.
+ * Das gehört nicht in eine Spur, sondern hierher: die Kombinationen sind
+ * abzählbar (zwei Sprachen mal den Währungen des Hauses), der Schlüssel ist
+ * genau das Paar, und ein Formatierer ist unveränderlich und damit gefahrlos
+ * zu teilen.
+ */
+const formatierer = new Map<string, Intl.NumberFormat>()
+
+/**
+ * Der gemerkte Formatierer selbst. Für heiße Pfade, die ihn behalten und
+ * durchreichen wollen — seine Identität bleibt über Neuzeichnen hinweg
+ * gleich und trägt deshalb durch ein `memo` hindurch.
+ */
+export function geldFormatierer(locale: Locale, currency = 'EUR'): Intl.NumberFormat {
+  const schluessel = `${locale}|${currency}`
+  let f = formatierer.get(schluessel)
+  if (f === undefined) {
+    f = new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+      { style: 'currency', currency })
+    formatierer.set(schluessel, f)
+  }
+  return f
+}
+
 /** Cent als Betrag in der Sprache des Betrachters. */
 export function formatMoney(cent: number, locale: Locale, currency = 'EUR'): string {
-  return new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB',
-    { style: 'currency', currency }).format(cent / 100)
+  return geldFormatierer(locale, currency).format(cent / 100)
 }
 
 /** Aufenthaltsdaten sind Kalenderdaten, keine Zeitpunkte. Nie als Date parsen. */
@@ -120,7 +153,22 @@ export function formatDate(iso: string, locale: Locale): string {
   return locale === 'de' ? `${d}.${m}.${y}` : `${y}-${m}-${d}`
 }
 
+const wochentage = new Map<Locale, Intl.DateTimeFormat>()
+
+/**
+ * Das Kürzel eines Wochentags.
+ *
+ * Gemerkt aus demselben Grund wie der Geldformatierer: dieselbe Zeile steht
+ * im Preisraster, im Verfügbarkeitsraster und im Zimmerplan, und in allen
+ * dreien einmal **je Tagesspalte**. Bei 400 Tagen entstanden 400 Objekte,
+ * nur um dreimal „Mo" zu schreiben.
+ */
 export function weekdayShort(iso: string, locale: Locale): string {
-  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
-    { weekday: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`))
+  let f = wochentage.get(locale)
+  if (f === undefined) {
+    f = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+      { weekday: 'short', timeZone: 'UTC' })
+    wochentage.set(locale, f)
+  }
+  return f.format(new Date(`${iso}T00:00:00Z`))
 }

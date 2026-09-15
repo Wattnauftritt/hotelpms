@@ -177,19 +177,6 @@ export function restriktionsNutzlast(e: RestriktionsEingabe): SetRestrictions {
   }
 }
 
-/**
- * Ein Geldformatierer, den der Aufrufer behält.
- *
- * `formatMoney` baut bei **jedem** Aufruf ein `Intl.NumberFormat`. Auf einer
- * Liste fällt das nicht auf, im Raster schon: 400 Tage mal vier Plänen sind
- * 1 600 Objekte je Neuzeichnen, und gemessen kostete ein Zug mit der Maus
- * damit 328 Millisekunden je Schritt -- das Raster hing an der Maus statt
- * ihr zu folgen. Mit einem einmal gebauten Formatierer sind es 5.
- */
-export function geldFormatierer(locale: 'de' | 'en', currency = 'EUR'): Intl.NumberFormat {
-  return new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB',
-    { style: 'currency', currency })
-}
 
 /**
  * Das Kürzel eines Wochentags in der Sprache des Betrachters, Montag = 0.
@@ -202,10 +189,19 @@ export function geldFormatierer(locale: 'de' | 'en', currency = 'EUR'): Intl.Num
  * Bildschirm stürzte beim ersten Klick ab.
  */
 export function wochentagKuerzel(index: number, locale: 'de' | 'en'): string {
-  const tag = String(5 + index).padStart(2, '0')
-  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
-    { weekday: 'short', timeZone: 'UTC' }).format(new Date(`2026-01-${tag}T00:00:00Z`))
+  let woche = wochenKuerzel.get(locale)
+  if (woche === undefined) {
+    const f = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+      { weekday: 'short', timeZone: 'UTC' })
+    woche = Array.from({ length: 7 }, (_, i) =>
+      f.format(new Date(`2026-01-${String(5 + i).padStart(2, '0')}T00:00:00Z`)))
+    wochenKuerzel.set(locale, woche)
+  }
+  return woche[index] ?? ''
 }
+
+/** Sieben Kürzel je Sprache. Mehr gibt es nicht, also wird es einmal gebaut. */
+const wochenKuerzel = new Map<'de' | 'en', string[]>()
 
 /** Kurzzeichen einer Zelle: was an Restriktionen an diesem Tag gilt. */
 export function restriktionsZeichen(z: RateGridCell): string {

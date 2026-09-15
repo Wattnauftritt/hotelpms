@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { LOCALES, textKeys, textFor } from '../lib/i18n/index.js'
+import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
+         weekdayShort } from '../lib/i18n/index.js'
 
 /**
  * Der Katalog der Oberflaeche.
@@ -58,5 +59,46 @@ describe('Katalog der Oberflaeche', () => {
       expect(index, `${bereich} fehlt im englischen Block`)
         .toContain(`...${bereich}.en`)
     }
+  })
+})
+
+/**
+ * Die Formatierer.
+ *
+ * `new Intl.NumberFormat(...)` baut jedes Mal die Regeln einer Sprache auf.
+ * Auf einer Liste faellt das nicht auf, im Preisraster schon: 400 Tage mal
+ * zehn Ratenplaene sind sechzehnhundert Zellen, und bei jeder Mausbewegung
+ * entstand fuer jede ein eigenes Objekt -- gemessen 328 ms je Zug mit der
+ * Maus. Geprueft wird deshalb nicht die Geschwindigkeit (das waere ein
+ * wackliger Test), sondern die Ursache: dass derselbe Formatierer
+ * wiederkommt.
+ */
+describe('Formatierer', () => {
+  it('gibt fuer dieselbe Sprache und Waehrung denselben Formatierer zurueck', () => {
+    expect(geldFormatierer('de')).toBe(geldFormatierer('de'))
+    expect(geldFormatierer('de', 'CHF')).toBe(geldFormatierer('de', 'CHF'))
+  })
+
+  it('unterscheidet Sprache und Waehrung', () => {
+    // Waere der Schluessel nur die Sprache, bekaeme die zweite Waehrung den
+    // Formatierer der ersten -- und der Betrag stuende in Euro da.
+    expect(geldFormatierer('de')).not.toBe(geldFormatierer('en'))
+    expect(geldFormatierer('de')).not.toBe(geldFormatierer('de', 'CHF'))
+    expect(formatMoney(12_950, 'de')).toContain('€')
+    expect(formatMoney(12_950, 'de', 'CHF')).not.toContain('€')
+  })
+
+  it('rechnet Cent in Betrag um, nicht ueber Fliesskomma', () => {
+    expect(formatMoney(12_950, 'de')).toMatch(/129[,.]50/)
+    expect(formatMoney(-1, 'de')).toMatch(/0[,.]01/)
+    expect(formatMoney(0, 'en')).toMatch(/0[.,]00/)
+  })
+
+  it('haelt das Wochentagskuerzel ueber Aufrufe hinweg gleich', () => {
+    // Derselbe Tag, zweimal gefragt: dieselbe Antwort, aus demselben
+    // gemerkten Formatierer.
+    expect(weekdayShort('2026-01-05', 'de')).toBe(weekdayShort('2026-01-05', 'de'))
+    expect(weekdayShort('2026-01-05', 'de')).toMatch(/^Mo/)
+    expect(weekdayShort('2026-01-11', 'en')).toMatch(/^Sun/)
   })
 })
