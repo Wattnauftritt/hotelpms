@@ -177,3 +177,26 @@ describe('Anmeldung', () => {
     expect(w.statusCode).toBe(401)
   })
 })
+
+/**
+ * Abmelden ohne Sitzung.
+ *
+ * Das Zurueckziehen selbst prueft schon der Test oben. Was dort fehlt, ist
+ * der zweite Klick: an einem geteilten Rezeptionsrechner passiert genau das,
+ * und ein Fehler waere dort unverstaendlich -- das Ziel ist ja erreicht.
+ */
+describe('Abmelden ohne Sitzung', () => {
+  it('vertraegt einen Aufruf ohne Cookie', async () => {
+    expect((await app.inject({ method: 'POST', url: '/v1/auth/logout' })).statusCode)
+      .toBe(200)
+  })
+
+  it('vertraegt einen zweiten Klick', async () => {
+    await benutzerMitKennwort()
+    const cookie = cookieAus(await login('rezeption@test.de', KENNWORT))
+    const ab = () => app.inject({ method: 'POST', url: '/v1/auth/logout',
+      headers: { cookie } })
+    expect((await ab()).statusCode).toBe(200)
+    expect((await ab()).statusCode).toBe(200)
+  })
+})

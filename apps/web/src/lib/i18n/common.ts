@@ -38,6 +38,7 @@ export const common = {
     'login.email': 'E-Mail',
     'login.password': 'Kennwort',
     'login.submit': 'Anmelden',
+    'auth.logout': 'Abmelden',
     'app.noProperty': 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     'app.noScreen': 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
                   + 'öffnen.'
@@ -80,6 +81,7 @@ export const common = {
     'login.email': 'Email',
     'login.password': 'Password',
     'login.submit': 'Sign in',
+    'auth.logout': 'Sign out',
     'app.noProperty': 'This user is not assigned to any property yet.',
     'app.noScreen': 'This account has no rights in {haus} that open a screen.'
   }

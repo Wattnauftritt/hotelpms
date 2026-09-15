@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { HousekeepingState } from '@hotelpms/contracts'
-import { useHousekeeping, useSetHousekeeping } from '../lib/queries.js'
+import { useHousekeeping, useSetHousekeeping, useGenerateTasks, useFinishTask }
+  from '../lib/queries.js'
 import { useT } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
@@ -32,6 +33,8 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
   const online = useOnline()
   const q = useHousekeeping(propertyId, datum)
   const setzen = useSetHousekeeping(propertyId, datum)
+  const erzeugen = useGenerateTasks(propertyId, datum)
+  const erledigen = useFinishTask(propertyId, datum)
 
   if (q.isError && q.data === undefined) return <Fehler error={q.error} />
   if (q.data === undefined) return <Laedt />
@@ -62,8 +65,26 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
             {t(LABEL[s])}
           </button>
         ))}
+        {/*
+          * Aufgaben erzeugen: Abreise oder Bleibegast je belegtem Zimmer.
+          * Ein zweiter Klick schadet nicht -- die Route ist idempotent und
+          * ergaenzt nur, was seit dem ersten dazugekommen ist.
+          */}
+        <button onClick={() => erzeugen.mutate()}
+                disabled={!online || erzeugen.isPending}
+                className="text-sm px-3 py-1 rounded border border-neutral-300
+                           disabled:opacity-40">
+          {t(erzeugen.isPending ? 'common.loading' : 'hk.generateTasks')}
+        </button>
       </div>
       {setzen.isError && <Fehler error={setzen.error} />}
+      {erzeugen.isError && <Fehler error={erzeugen.error} />}
+      {erledigen.isError && <Fehler error={erledigen.error} />}
+      {erzeugen.isSuccess && (
+        <p className="text-sm text-neutral-600">
+          {t('hk.tasksCreated', { n: erzeugen.data.created })}
+        </p>
+      )}
 
       <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(120px,1fr))]">
         {q.data.rooms.map(r => (
@@ -84,7 +105,37 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
               {r.openTickets > 0 && (
                 <div className="text-red-800">🔧 {r.openTickets} {t('hk.openTickets')}</div>
               )}
+              {r.taskKind !== null && (
+                <div className={r.taskStatus === 'done' ? 'line-through opacity-60' : ''}>
+                  {t(r.taskKind === 'departure' ? 'hk.taskDeparture' : 'hk.taskStayover')}
+                </div>
+              )}
             </div>
+            {/*
+              * Der Erledigen-Knopf liegt IN der Kachel, aber ausserhalb ihrer
+              * Auswahl: stopPropagation, sonst waehlte jeder Klick darauf das
+              * Zimmer mit aus und die naechste Massenaenderung traefe es.
+              *
+              * Als div mit role=button, nicht als <button>: die Kachel ist
+              * selbst schon ein Knopf, und ein Knopf im Knopf ist ungueltiges
+              * HTML -- der Browser zieht ihn heraus, und dann sitzt er
+              * woanders als gedacht.
+              */}
+            {r.taskId !== null && r.taskStatus === 'open' && (
+              <div role="button" tabIndex={0}
+                   aria-label={t('hk.finishTask')}
+                   onClick={e => { e.stopPropagation(); erledigen.mutate(r.taskId!) }}
+                   onKeyDown={e => {
+                     if (e.key !== 'Enter' && e.key !== ' ') return
+                     e.preventDefault()
+                     e.stopPropagation()
+                     erledigen.mutate(r.taskId!)
+                   }}
+                   className="mt-1 text-[11px] text-center border border-current/40
+                              rounded py-0.5 hover:bg-white/50 cursor-pointer">
+                {t('hk.finishTask')}
+              </div>
+            )}
           </button>
         ))}
       </div>

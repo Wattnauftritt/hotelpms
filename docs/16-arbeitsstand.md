@@ -463,6 +463,14 @@ Ein Trigger hält Stufe, Anlass und Beteiligte fest, sobald angefragt ist, und v
 
 ---
 
+### Was bewusst keine Oberfläche bekommt
+
+**Die Kassenschnittstelle.** In einer früheren Sichtung stand hier „keine POS-Maske" als offener Punkt. Das war ein Missverständnis: `routes/pos.ts` ist der Vertrag mit einer **externen** Ladenkasse mit TSE, nicht ein Bildschirm, der noch fehlt. Die Kasse holt sich die offenen Folios und bucht ihre Zimmerbons dagegen; sie meldet sich über einen Maschinenzugang mit `folio:read` und `folio:post` an.
+
+Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Dokument 09 ausschließt — mit allen Folgen aus § 146a AO. Wer den Punkt das nächste Mal auf einer Liste offener Arbeiten findet, streicht ihn.
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
