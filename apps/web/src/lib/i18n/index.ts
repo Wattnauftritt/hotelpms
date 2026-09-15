@@ -5,9 +5,13 @@ import { housekeeping } from './housekeeping.js'
 import { einrichtung } from './einrichtung.js'
 import { folio } from './folio.js'
 import { gruppen } from './gruppen.js'
+import { plan } from './plan.js'
 import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
+import { preise } from './preise.js'
+import { gaeste } from './gaeste.js'
+import { rechnung } from './rechnung.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -42,9 +46,13 @@ const texts = {
     ...einrichtung.de,
     ...folio.de,
     ...gruppen.de,
+    ...plan.de,
     ...berichte.de,
     ...einstellungen.de,
-    ...schnittstellen.de
+    ...schnittstellen.de,
+    ...preise.de,
+    ...gaeste.de,
+    ...rechnung.de
   },
   en: {
     ...common.en,
@@ -53,9 +61,13 @@ const texts = {
     ...einrichtung.en,
     ...folio.en,
     ...gruppen.en,
+    ...plan.en,
     ...berichte.en,
     ...einstellungen.en,
-    ...schnittstellen.en
+    ...schnittstellen.en,
+    ...preise.en,
+    ...gaeste.en,
+    ...rechnung.en
   }
 } as const
 

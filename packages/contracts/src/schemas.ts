@@ -161,7 +161,8 @@ export const TapeChart = Type.Object({
     source: Type.String(),
     external_reference: Type.Union([Type.String(), Type.Null()]),
     rate_code: Type.Union([Type.String(), Type.Null()]),
-    occupants: Type.Integer()
+    occupants: Type.Integer(),
+    notes: Type.Union([Type.String(), Type.Null()])
   })),
   blocks: Type.Array(Type.Object({
     resource_id: Type.Integer(),
@@ -389,6 +390,120 @@ export const Guest = Type.Object({
   status: Type.String()
 })
 export type Guest = Static<typeof Guest>
+
+export const CreateGuest = Type.Object({
+  accountId: Type.Optional(Type.Integer()),
+  lastName: Type.String({ minLength: 1 }),
+  firstName: Type.Optional(Type.String()),
+  email: Type.Optional(Type.String()),
+  phone: Type.Optional(Type.String()),
+  birthDate: Type.Optional(IsoDate),
+  nationality: Type.Optional(Type.String()),
+  language: Type.Optional(Type.String()),
+  addressLine1: Type.Optional(Type.String()),
+  postalCode: Type.Optional(Type.String()),
+  city: Type.Optional(Type.String()),
+  country: Type.Optional(Type.String()),
+  idDocumentType: Type.Optional(Type.Union([
+    Type.Literal('passport'), Type.Literal('id_card'), Type.Literal('other')])),
+  idDocumentNumber: Type.Optional(Type.String())
+})
+export type CreateGuest = Static<typeof CreateGuest>
+
+/** Antwort auf das Anlegen: das Profil, dazu moegliche Dubletten. */
+export const GuestCreated = Type.Composite([
+  Guest,
+  Type.Object({
+    possibleDuplicates: Type.Array(Type.Object({
+      guestRef: Type.String(), score: Type.Number(), reason: Type.String()
+    }))
+  })
+])
+export type GuestCreated = Static<typeof GuestCreated>
+
+// ------------------------------------------------------------------- Firma
+
+export const Company = Type.Object({
+  companyRef: Type.String(),
+  name: Type.String(),
+  vatId: Type.Union([Type.String(), Type.Null()]),
+  addressLine1: Type.Union([Type.String(), Type.Null()]),
+  postalCode: Type.Union([Type.String(), Type.Null()]),
+  city: Type.Union([Type.String(), Type.Null()]),
+  country: Type.String(),
+  paymentTermsDays: Type.Integer(),
+  invoiceEmail: Type.Union([Type.String(), Type.Null()]),
+  active: Type.Boolean()
+})
+export type Company = Static<typeof Company>
+
+export const CreateCompany = Type.Object({
+  accountId: Type.Optional(Type.Integer()),
+  name: Type.String({ minLength: 1 }),
+  vatId: Type.Optional(Type.String()),
+  addressLine1: Type.Optional(Type.String()),
+  postalCode: Type.Optional(Type.String()),
+  city: Type.Optional(Type.String()),
+  country: Type.Optional(Type.String()),
+  paymentTermsDays: Type.Optional(Type.Integer({ minimum: 0 })),
+  invoiceEmail: Type.Optional(Type.String())
+})
+export type CreateCompany = Static<typeof CreateCompany>
+
+// ------------------------------------------------------------- Reservierung
+
+/**
+ * Eine Reservierung, vollständig: Gast, Zimmer, Ratenplan, Nächte mit
+ * Preisen, Mitreisende, Folio und Kontingent in einem Aufruf. Das ist die
+ * Antwort auf einen angeklickten Balken im Belegungsplan (Aufgabe A1).
+ */
+export const ReservationNight = Type.Object({
+  date: Type.String(),
+  priceCent: Cent,
+  ratePlanId: Type.Union([Type.Integer(), Type.Null()])
+})
+
+export const ReservationOccupant = Type.Object({
+  ageAtArrival: Type.Union([Type.Integer(), Type.Null()]),
+  isPrimary: Type.Boolean(),
+  guestRef: Type.Union([Type.String(), Type.Null()]),
+  name: Type.Union([Type.String(), Type.Null()])
+})
+
+export const ReservationDetail = Type.Object({
+  reservationRef: Type.String(),
+  bookingRef: Type.String(),
+  status: ReservationStatus,
+  arrival: Type.String(),
+  departure: Type.String(),
+  notes: Type.Union([Type.String(), Type.Null()]),
+  categoryId: Type.Integer(),
+  categoryCode: Type.String(),
+  categoryName: Type.String(),
+  resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  roomCode: Type.Union([Type.String(), Type.Null()]),
+  floor: Type.Union([Type.String(), Type.Null()]),
+  ratePlanId: Type.Union([Type.Integer(), Type.Null()]),
+  ratePlanCode: Type.Union([Type.String(), Type.Null()]),
+  guestRef: Type.Union([Type.String(), Type.Null()]),
+  guestName: Type.Union([Type.String(), Type.Null()]),
+  guestEmail: Type.Union([Type.String(), Type.Null()]),
+  guestLanguage: Type.Union([Type.String(), Type.Null()]),
+  companyRef: Type.Union([Type.String(), Type.Null()]),
+  companyName: Type.Union([Type.String(), Type.Null()]),
+  blockRef: Type.Union([Type.String(), Type.Null()]),
+  blockName: Type.Union([Type.String(), Type.Null()]),
+  source: Type.String(),
+  externalReference: Type.Union([Type.String(), Type.Null()]),
+  checkedInAt: Type.Union([Type.String(), Type.Null()]),
+  checkedOutAt: Type.Union([Type.String(), Type.Null()]),
+  canceledAt: Type.Union([Type.String(), Type.Null()]),
+  folioRef: Type.Union([Type.String(), Type.Null()]),
+  nights: Type.Array(ReservationNight),
+  occupants: Type.Array(ReservationOccupant),
+  totalCent: Cent
+})
+export type ReservationDetail = Static<typeof ReservationDetail>
 
 // ------------------------------------------------------- Haus und Betrieb
 
@@ -632,6 +747,116 @@ export const PropertyUser = Type.Object({
   permissions: Type.Array(Type.String())
 })
 export type PropertyUser = Static<typeof PropertyUser>
+
+// ------------------------------------------------------------------ Raten
+
+export const RatePlan = Type.Object({
+  id: Type.Integer(),
+  ratePlanRef: Type.String(),
+  code: Type.String(),
+  name: Type.String(),
+  categoryId: Type.Integer(),
+  categoryCode: Type.String(),
+  /** Gesetzt bei einer abgeleiteten Rate: die Basis, aus der sie entsteht. */
+  baseRatePlanId: Type.Union([Type.Integer(), Type.Null()]),
+  deriveKind: Type.Union([Type.Literal('amount'), Type.Literal('percent'), Type.Null()]),
+  deriveValue: Type.Union([Type.Integer(), Type.Null()]),
+  active: Type.Boolean()
+})
+export type RatePlan = Static<typeof RatePlan>
+
+/**
+ * Eine Zelle des Preisrasters: ein Ratenplan an einem Tag.
+ *
+ * `priceCent` ist ein Preis **je Belegung**, Index 0 ist eine Person. Ein
+ * Doppelzimmer kostet einzeln belegt anders als zu zweit, und beides gehoert
+ * an denselben Tag desselben Plans. `null` heisst: fuer diesen Tag ist kein
+ * Preis gepflegt -- nicht null Euro.
+ */
+export const RateGridCell = Type.Object({
+  ratePlanId: Type.Integer(),
+  ratePlanCode: Type.String(),
+  date: IsoDate,
+  priceCent: Type.Union([Type.Array(Cent), Type.Null()]),
+  minLos: Type.Union([Type.Integer(), Type.Null()]),
+  maxLos: Type.Union([Type.Integer(), Type.Null()]),
+  closed: Type.Boolean(),
+  closedToArrival: Type.Boolean(),
+  closedToDeparture: Type.Boolean()
+})
+export type RateGridCell = Static<typeof RateGridCell>
+
+export const RateGrid = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  cells: Type.Array(RateGridCell)
+})
+export type RateGrid = Static<typeof RateGrid>
+
+/** Wochentage, Montag = 0. Ohne Angabe gilt die Aenderung fuer alle. */
+export const Weekdays = Type.Array(Type.Integer({ minimum: 0, maximum: 6 }))
+
+export const SetRates = Type.Object({
+  propertyId: Type.Integer(),
+  ratePlanId: Type.Integer(),
+  from: IsoDate,
+  to: IsoDate,
+  weekdays: Type.Optional(Weekdays),
+  /** Ersetzt den ganzen Preisvektor des Tages, Index 0 ist eine Person. */
+  priceCent: Type.Array(Cent)
+})
+export type SetRates = Static<typeof SetRates>
+
+export const SetRestrictions = Type.Object({
+  propertyId: Type.Integer(),
+  ratePlanId: Type.Integer(),
+  from: IsoDate,
+  to: IsoDate,
+  weekdays: Type.Optional(Weekdays),
+  minLos: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  maxLos: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  closed: Type.Optional(Type.Boolean()),
+  closedToArrival: Type.Optional(Type.Boolean()),
+  closedToDeparture: Type.Optional(Type.Boolean())
+})
+export type SetRestrictions = Static<typeof SetRestrictions>
+
+// ------------------------------------------------------------- Rechnungen
+
+/**
+ * Eine Zeile der Rechnungsliste.
+ *
+ * Kein Feld fuer "offen" oder "bezahlt": `settlement.invoice_id` waere die
+ * Stelle dafuer und wird nirgends geschrieben. Der Zahlungsstand steht am
+ * Folio, und `folioRef` fuehrt dorthin.
+ */
+export const InvoiceListItem = Type.Object({
+  invoiceRef: Type.String(),
+  number: Type.String(),
+  issuedOn: IsoDate,
+  businessDate: IsoDate,
+  kind: Type.Union([
+    Type.Literal('final'), Type.Literal('interim'),
+    Type.Literal('deposit'), Type.Literal('credit_note')]),
+  currency: Type.String(),
+  grossCent: Cent,
+  recipient: Type.String(),
+  folioRef: Type.String(),
+  /** Der Beleg entsteht nach dem Festschreiben im Worker. */
+  documentReady: Type.Boolean(),
+  /** Nicht jede gueltige Rechnung ist ein EN-16931-Beleg (Kleinbetrag). */
+  hasXml: Type.Boolean(),
+  mailStatus: Type.Union([Type.String(), Type.Null()])
+})
+export type InvoiceListItem = Static<typeof InvoiceListItem>
+
+export const InvoiceList = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  limit: Type.Integer(),
+  invoices: Type.Array(InvoiceListItem)
+})
+export type InvoiceList = Static<typeof InvoiceList>
 
 // ------------------------------------------------------------------ Fehler
 

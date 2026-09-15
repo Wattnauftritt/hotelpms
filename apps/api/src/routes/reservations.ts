@@ -26,6 +26,13 @@ interface CreateBooking {
   departure: string
   ratePlanId?: number
   guestId?: number
+  /**
+   * Wie `guestId`, aber ueber die oeffentliche Referenz. Die Oberflaeche
+   * kennt die laufende id nicht -- sie bleibt bewusst innen (C1, Dokument
+   * 13) -- und braucht deshalb diesen Weg, um einen in der Gastsuche
+   * gefundenen Gast an eine neue Buchung zu haengen.
+   */
+  guestRef?: string
   occupants?: Array<{ guestId?: number; ageAtArrival?: number; isPrimary?: boolean }>
   source?: string
   externalReference?: string
@@ -165,6 +172,14 @@ export function reservationRoutes(app: FastifyInstance): void {
         const stored = await beginIdempotent(client, principal.clientKey, key, body)
         if (stored) { reply.status(stored.status); return stored.body }
 
+        let guestId = body.guestId
+        if (body.guestRef !== undefined) {
+          const g = await client.query<{ id: number }>(
+            `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
+          if (g.rowCount === 0) throw Errors.notFound('Gast')
+          guestId = g.rows[0]!.id
+        }
+
         /*
          * Abruf aus einem Kontingent. Der Platz ist dann schon gehalten und
          * wandert nur von `blocked` nach `sold`.
@@ -222,7 +237,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         const booking = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO booking (property_id, booker_guest_id, source, external_reference, created_by)
            VALUES ($1,$2,$3,$4,$5) RETURNING id, public_ref`,
-          [body.propertyId, body.guestId ?? null, body.source ?? 'direct',
+          [body.propertyId, guestId ?? null, body.source ?? 'direct',
            body.externalReference ?? null, principal.userId])
 
         // Der Ratenplan des Kontingents gilt, wenn keiner genannt ist: eine
@@ -250,7 +265,7 @@ export function reservationRoutes(app: FastifyInstance): void {
            VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
            RETURNING id, public_ref`,
           [body.propertyId, booking.rows[0]!.id, body.categoryId, body.arrival, body.departure,
-           ratePlanId ?? null, body.guestId ?? null, body.notes ?? null,
+           ratePlanId ?? null, guestId ?? null, body.notes ?? null,
            block?.id ?? null, body.resourceId ?? null, principal.userId])
         const reservationId = res.rows[0]!.id
 
@@ -265,8 +280,8 @@ export function reservationRoutes(app: FastifyInstance): void {
         }
 
         // Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein.
-        const occupants = body.occupants ?? (body.guestId
-          ? [{ guestId: body.guestId, isPrimary: true }] : [])
+        const occupants = body.occupants ?? (guestId
+          ? [{ guestId, isPrimary: true }] : [])
         for (const o of occupants) {
           await client.query(
             `INSERT INTO reservation_occupant
@@ -279,7 +294,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         await client.query(
           `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
            VALUES ($1,$2,$3,'guest')`,
-          [body.propertyId, reservationId, body.guestId ?? null])
+          [body.propertyId, reservationId, guestId ?? null])
 
         const result = {
           bookingRef: booking.rows[0]!.public_ref,
@@ -530,9 +545,13 @@ export function reservationRoutes(app: FastifyInstance): void {
           }
         }
 
+        // Ein zurueckgenommener Storno ist kein Storno mehr: der Zeitstempel
+        // muss mit dem Zustand zurueckgehen, sonst zeigt das Seitenfenster
+        // "Storniert am" an einer wieder bestaetigten Reservierung (A11).
         const stamp = act === 'check_in' ? 'checked_in_at = now(),'
           : act === 'check_out' ? 'checked_out_at = now(),'
-          : act === 'cancel' ? 'canceled_at = now(),' : ''
+          : act === 'cancel' ? 'canceled_at = now(),'
+          : act === 'reinstate' ? 'canceled_at = NULL,' : ''
         await client.query(
           `UPDATE reservation SET status = $2, ${stamp} updated_at = now() WHERE id = $1`,
           [r.id, target])

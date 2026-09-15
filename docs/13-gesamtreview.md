@@ -116,6 +116,8 @@ Eigene Hardware bedeutet: Ein ausgebauter Datenträger, ein weiterverkaufter Hos
 
 **Korrektur:** LUKS auf dem VM-Datenträger oder native ZFS-Verschlüsselung auf dem Host. Der Schlüssel darf nicht auf demselben Datenträger liegen. Dasselbe gilt für jedes Sicherungsmedium.
 
+> **Nachtrag aus der Umsetzung.** Von den beiden genannten Wegen trägt nur der zweite. Proxmox kann das physische TPM nicht an einen Gast durchreichen; sein `swtpm` legt den Schlüssel als Volume neben die VM-Platte und verletzt damit den Satz, der hier direkt darüber steht. Verschlüsselt wird der Host-Speicher, nicht die VM — [`17-betrieb.md`](17-betrieb.md) §1.
+
 ## C4 — Schlüsselverwaltung und Rotation haben keinen Prozess (hoch)
 
 Datenbankpasswort, Sitzungsgeheimnis, AES-Schlüssel für Ausweisnummern, Sicherungsschlüssel, Webhook-Geheimnisse. Alle in `shared/env`, keine Rotation.

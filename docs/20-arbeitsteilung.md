@@ -161,30 +161,30 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| A1 | Balken anklicken | offen | — | |
-| A2 | Im Plan buchen | offen | — | |
-| A3 | Verschieben | offen | — | |
-| A4 | Verkürzen und verlängern | offen | — | |
-| A5 | Notiz am Balken | offen | — | |
-| A6 | Gastsuche und -profil | offen | — | |
-| A7 | Warnungen im Plan | offen | — | |
-| A8 | Verfügbarkeitsraster | offen | — | |
-| A9 | Check-in mit Meldeschein | offen | — | |
-| A10 | Firmen | offen | — | |
-| A11 | Storno und Wiederherstellen | offen | — | |
-| A12 | Bestätigung schicken | offen | — | |
+| A1 | Balken anklicken | fertig | #24 | `ReservationPanel`, `GET /v1/reservations/:ref` in einem Aufruf. Im Browser gegen die echte API geprüft |
+| A2 | Im Plan buchen | im PR #31 | #31 | Ziehen im leeren Bereich oeffnet `BookingDialog` mit vorbelegtem Zimmer/Zeitraum. `POST /v1/bookings` bekam `guestRef` (die Oberflaeche kennt nie die laufende Gast-id). Im Browser geprueft |
+| A3 | Verschieben | im PR #31 | #31 | Balken auf andere Zimmerzeile ziehen, `assign-unit`. Schattenbalken waehrend des Ziehens, kein optimistischer Sprung |
+| A4 | Verkürzen und verlängern | im PR #31 | #31 | Balkenrand ziehen, `change-stay` — nie Storno plus Neubuchung |
+| A5 | Notiz am Balken | fertig | #24 | Im selben Seitenfenster wie A1 erledigt: `PATCH /v1/reservations/:ref`, Merkmal (📌) am Balken samt Tooltip. Speichern und Persistenz im Browser geprüft |
+| A6 | Gastsuche und -profil | im PR #31 | #31 | Eigener Bildschirm `Guests.tsx`: Suche, Anlegen, Profil. Ausweisnummer maskiert, Klartext erst nach Klick hinter `guest:read_identity` |
+| A7 | Warnungen im Plan | im PR #31 | #31 | Unzugewiesene Ankuenfte und Ueberbuchung je Zimmergruppe, clientseitig aus den geladenen Plandaten — kein Aufruf je Zeile |
+| A8 | Verfügbarkeitsraster | im PR #31 | #31 | Zimmergruppe × Tag, bis 731 Tage in einem Aufruf, Zelle fuehrt in den Buchungsdialog |
+| A9 | Check-in mit Meldeschein | im PR #31 | #31 | Aus dem Plan erreichbar (`ReservationPanel` → `CheckIn.tsx`). Kein Unterschriftsfeld fuer inlaendische Gaeste seit 1.1.2025; ohne Zimmer sagt die Maske es vor dem Knopf |
+| A10 | Firmen | im PR #31 | #31 | Reiter im Gaeste-Bildschirm. Neue Endpunkte `GET`/`PATCH /v1/companies/:ref` |
+| A11 | Storno und Wiederherstellen | im PR #31 | #31 | Reversibel mit Bestaetigung vor dem Storno. Dabei gefunden: `reinstate` liess `canceled_at` stehen — jetzt zurueckgesetzt |
+| A12 | Bestätigung schicken | im PR #31 | #31 | Fehlt die Adresse, sagt das Seitenfenster es explizit statt stillschweigend nichts zu tun |
 
 ### Spur B — Preise, Rechnung, Geld
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| B1 | Preisraster für ein ganzes Jahr | offen | — | |
-| B2 | Massenänderung mit Vorschau | offen | — | |
-| B3 | Restriktionen | offen | — | |
-| B4 | Ratenpläne | offen | — | |
-| B5 | Rechnungsliste | offen | — | |
-| B6 | Rechnungsansicht | offen | — | |
-| B7 | Rechnung verschicken | offen | — | |
+| B1 | Preisraster für ein ganzes Jahr | im PR #26 | #26 | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
+| B2 | Massenänderung mit Vorschau | im PR #26 | #26 | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
+| B3 | Restriktionen | im PR #26 | #26 | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
+| B4 | Ratenpläne | im PR #30 | #30 | Anlegen und abgeleitete Raten neu rechnen, unter dem Raster statt in der Einrichtung |
+| B5 | Rechnungsliste | im PR #30 | #30 | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
+| B6 | Rechnungsansicht | im PR #30 | #30 | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
+| B7 | Rechnung verschicken | im PR #30 | #30 | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
 | B8 | Anzahlung | offen | — | |
 | B9 | Pay-by-Link | offen | — | |
 | B10 | Was der Channel Manager sieht | offen | — | |
@@ -218,6 +218,11 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 | C | (Rahmen) | Ein Ort für Einstellungen, die nicht Einrichtung sind — heute gibt es nur `Setup` | erledigt: `routes/Settings.tsx` |
 | C | B | `PaymentMethod` in `schemas.ts` trägt jetzt zusätzlich `id`, `sortOrder` und `active` — die Liste war ansehbar, aber nicht pflegbar. Rein additiv; `GET .../payment-methods` liefert weiterhin nur die aktiven, `?includeInactive=true` auch die stillgelegten | erledigt |
 | C | (Rahmen) | Ein Bildschirm konnte nur **ein** Recht tragen. Die Berichte bündeln drei (`report:operational`, `report:revenue`, `report:export`), und eine Rezeption hat nur das erste. `permission` in `screens.tsx` nimmt deshalb jetzt auch eine **Liste**; sie heißt „eines davon genügt". Bestehende Einträge bleiben unverändert | erledigt |
+| B | (Rahmen) | `formatMoney` in `lib/i18n/index.ts` baut bei **jedem** Aufruf ein `Intl.NumberFormat`. Auf einer Liste unauffällig, im Raster nicht: 1 600 Objekte je Neuzeichnen, gemessen 328 ms je Mausbewegung. Spur B hält sich deshalb einen eigenen Formatierer (`geldFormatierer` in `lib/preisraster.ts`, danach 22 ms). Gehört auf Dauer in den Rahmen, nicht in drei Spuren | offen |
+| B | (alle) | `web.test.ts` schrieb die Bildschirmliste **exakt** fest und wäre damit bei jeder Spur rot geworden, sobald sie ihren ersten Bildschirm anhängt. Spur B hat die Prüfung auf ihre Absicht zurückgeführt: die bekannten Schlüssel stehen weiterhin in dieser Reihenfolge am Anfang, angehängte kommen dahinter. Wer einen Bildschirm anhängt, muss dort nichts mehr ändern | erledigt |
+| B | (alle) | **`settlement.invoice_id` wird nirgends geschrieben.** Das Feld hat einen Leser — der ZUGFeRD-Beleg setzt daraus BT-113, den vorausgezahlten Betrag — und ein eigenes Schreibrecht aus Migration `0012`, aber keinen Schreiber. Folge: auf **jedem** Beleg steht als Vorauszahlung null, auch wenn der Gast angezahlt hat, und eine Rechnungsliste kann kein „offen" führen. Wer eine Zahlung an eine Rechnung hängt, entscheidet das; gehört zur Fakturierung, nicht in diese Spur | offen |
+| B | (Rahmen) | Die Rechte des Benutzers stehen nur in `main.tsx`, ein Bildschirm kommt nicht an sie heran. Spur B liest dafür denselben Zwischenspeicher (`useRechte` in `lib/queries/rates.ts`); sauberer wäre ein Feld am `ScreenContext` — das ändert aber `screens.tsx` für alle drei und wartet deshalb auf eine Absprache | offen |
+| B | (gefunden bei A1) | `Folio.tsx` zeigt den Hinweistext von `GET .../payment-methods` unübersetzt an — die API liefert ihn fest auf Deutsch, unabhängig von der Sprache der Oberfläche. Fällt in Spur B, nicht angefasst | offen |
 
 ---
 

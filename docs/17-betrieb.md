@@ -14,16 +14,67 @@ Dieses Dokument beschreibt den Betrieb, nicht den Entwurf. Warum die Dinge so ge
 
 **Warum.** Die Datenbank enthält Namen, Anschriften, Geburtsdaten und Ausweisnummern. Ohne verschlüsselte Platte genügt der physische Zugriff auf den Proxmox-Host oder eine mitgenommene Sicherung, um alles zu lesen. Die Verschlüsselung der Ausweisnummer in der Anwendung schützt genau ein Feld; sie ersetzt das hier nicht.
 
-**Wie.** LUKS auf dem Datenträger der VM, eingerichtet bei der Installation. Nachträglich geht es nur über Neuanlage und Rückspielung.
+**Wogegen genau.** Das entscheidet über den Preis, den die Verschlüsselung kosten darf. LUKS schützt einen einzigen Zustand: **Platte aus, oder Platte vom Rechner getrennt.** Also den ausgebauten Datenträger, die RMA-Rücksendung, den weiterverkauften Host, den Einbruch mit Blechmitnahme, das kopierte VM-Abbild. Gegen ein *laufendes* System schützt sie nicht — ist einmal entsperrt, liegt der Schlüssel im RAM, und wer Root hat, liest alles. Sie ist kein Schutz gegen Angreifer über das Netz, sondern gegen Hardware, die das Haus verlässt.
 
-Die Passphrase liegt **nicht** auf dem Host. Beim Neustart wird sie eingegeben, oder über `clevis` gegen einen TPM gebunden. Ein automatisch entschlüsselndes System, dessen Schlüssel daneben liegt, ist unverschlüsselt mit Zusatzschritten.
+### Verschlüsselt wird der Host, nicht die VM
+
+| Ebene | Was | Warum |
+|---|---|---|
+| **PVE-Wurzel** | unverschlüsselt | Dort liegen keine Gastdaten. Und der Host bleibt nach einem Stromausfall **immer** über Netz erreichbar, auch wenn das Entsperren scheitert — das ist der Unterschied zwischen „aus der Ferne zu reparieren" und „jemand muss hinfahren" |
+| **Datenpool** (die VM-Platten) | LUKS, entsperrt über das **physische** TPM des Hosts | Das TPM sitzt auf der Hauptplatine und geht mit der ausgebauten Platte nicht mit |
+| **VM** | **keine Verschlüsselung** | Ihre Platte liegt auf verschlüsseltem Speicher. Sie startet unbeaufsichtigt, ohne Sonderfall |
+
+**Warum nicht LUKS in der VM — obwohl es naheliegt und hier einmal so stand.** Proxmox kann das physische TPM nicht an einen Gast durchreichen; es bietet nur `swtpm`, einen **Software-Emulator**. Dessen Zustand liegt als gewöhnliches Volume (`tpmstate0`) auf demselben Speicher wie die VM-Platte — Proxmox behandelt es wie die EFI-Disk. Wer die Platte kopiert, kopiert den Schlüssel mit, und die VM entsperrt sich beim Dieb von allein.
+
+Das verletzt wörtlich die Regel aus C3: *der Schlüssel darf nicht auf demselben Datenträger liegen*. LUKS in der VM plus vTPM ist genau das, wovor die Regel warnt — unverschlüsselt mit Zusatzschritten.
+
+Dazu ein zweiter Grund, der im Ernstfall zählt: Sicherungen von VMs mit TPM-Gerät bleiben hängen, und der übliche Behelf ist `backup=0` am `tpmstate0`. Dann fehlt der vTPM-Zustand in der Sicherung, und die **zurückgespielte VM entsperrt sich nie wieder**. Ein Bauteil, das die Wiederherstellung verhindert, hat in einem System mit acht Jahren Aufbewahrungsfrist nichts zu suchen.
+
+### Entsperren ohne Menschen
+
+**Eine Passphrase von Hand einzugeben ist keine Möglichkeit, sondern ein Ausfall mit Ansage.** Ein PMS läuft rund um die Uhr; eine Rezeption um drei Uhr nachts kann nicht warten, bis jemand wach wird. Und der häufige Fall ist nicht einmal der Absturz: `unattended-upgrades` will nach einem Kernel-Update neu starten. Bei manueller Passphrase heißt das entweder „startet nie neu und läuft ungepatcht" oder „jemand tippt nachts". Beides ist falsch.
+
+Entsperrt wird deshalb über `clevis` mit einer **Eines-von-zweien-Regel**:
+
+```bash
+# 1 von 2 genuegt: das physische TPM ODER der Tang-Server.
+clevis luks bind -d /dev/<datenplatte> sss '{"t":1,"pins":{
+  "tpm2": {"pcr_ids":"7"},
+  "tang": [{"url":"http://<tang-im-eigenen-netz>"}]
+}}'
+```
+
+**PCR 7 und nicht 4, 8 oder 9.** PCR 7 ist der Secure-Boot-Zustand. Die anderen ändern sich bei jedem Kernel-Update — die Maschine startet dann nach einem Sicherheitspatch nicht mehr, und das ist dieselbe Ausfallfalle in Grün.
+
+Der Datenpool wird **nach** dem Hochfahren entsperrt, nicht in der initramfs. Das ist der Grund für die unverschlüsselte Wurzel: scheitert das Entsperren, steht der Host trotzdem im Netz und lässt sich anmelden.
+
+**Und eine Notfall-Passphrase**, in einem eigenen LUKS-Schlüsselfach, ausgedruckt im Tresor und im Passwortspeicher, erreichbar für **mindestens zwei** Personen. Nicht als Betriebsweg, sondern für den Tag, an dem Hauptplatine und Tang zusammen sterben. Ein Schlüssel, den nur ein Kopf kennt, ist kein Schlüssel, sondern ein Einzelausfallpunkt mit Menschenrechten.
+
+**Das Entsperren ist nicht das eigentliche Problem.** „Kein Administrator ist wach" gilt genauso, wenn nachts die Platte vollläuft, der Nachtlauf hängt oder Caddy stirbt. Ein System für fremde Betriebe braucht Überwachung und einen Rufweg; die Verschlüsselung ist davon nur eine Spielart. Siehe §5.
 
 **Prüfen.**
 
 ```bash
+# Auf dem Host: der Datenpool ist verschluesselt
 lsblk -o NAME,FSTYPE,MOUNTPOINT | grep crypt
-cryptsetup status <gerät>
+cryptsetup status <geraet>
+clevis luks list -d /dev/<datenplatte>     # zeigt die gebundenen Pins
+
+# In der VM: hier darf KEIN crypt stehen
+lsblk -o NAME,FSTYPE,MOUNTPOINT | grep crypt || echo 'richtig so'
 ```
+
+**Die Probe, die zählt**, ist nicht `lsblk`, sondern: den Host **kalt neu starten** und nachsehen, ob die VM ohne Zutun wieder Gäste bedient. Mit Datum ins Protokoll, wie die Rückspielung.
+
+### Wenn LUKS schon in der VM steckt
+
+Kommt vor — es stand bis hierher so in diesem Dokument. Neu installieren muss man deswegen **nicht**; die Host-Verschlüsselung ist eine Arbeit am Host und rührt die VM nicht an.
+
+1. Auf dem Host einen **verschlüsselten Datenspeicher** anlegen und die VM-Platte dorthin schieben (`qm move-disk`). Ein bestehendes ZFS-Dataset lässt sich nicht nachträglich verschlüsseln — die Eigenschaft wird beim Anlegen gesetzt; es braucht also ein neues Ziel und einen Umzug.
+2. Das LUKS **in** der VM kann bleiben. Es schadet nicht, und es trägt sogar eine Kleinigkeit bei: gegen einen laufenden, übernommenen Host schützt es die VM-Platte weiter. Damit es den unbeaufsichtigten Neustart nicht blockiert, wird es an den Tang-Server auf dem Host gebunden — ein `clevis luks bind`, kein Umbau.
+3. Wer es sauber will, setzt die VM ohne LUKS neu auf, sobald der Host-Speicher verschlüsselt ist. Das lohnt, **solange noch keine echten Gastdaten daraufliegen** — dann kostet es eine Stunde nach Dokument 21 und spart eine Schicht, die sonst für immer mitläuft.
+
+**Ein vTPM-Gerät an der VM wird in jedem Fall entfernt.** Es kostet die Sicherung (siehe oben) und kauft nichts.
 
 ---
 

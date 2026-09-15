@@ -225,7 +225,9 @@ function positionen(z: Zeichner, inv: CiiInvoice): void {
 function summen(z: Zeichner, inv: CiiInvoice): void {
   const totals = ciiTotals(inv)
   const prepaid = inv.prepaidCent ?? 0
-  const benoetigt = 90 + totals.groups.length * 12 + (prepaid !== 0 ? 24 : 0)
+  const rundung = inv.roundingCent ?? 0
+  const benoetigt = 90 + totals.groups.length * 12
+    + (prepaid !== 0 ? 24 : 0) + (rundung !== 0 ? 26 : 0)
   if (z.y - benoetigt < UNTEN) neueSeite(z)
 
   const SATZ = RAND + 240
@@ -263,9 +265,19 @@ function summen(z: Zeichner, inv: CiiInvoice): void {
   zeile(inv.kind === 'credit_note' ? 'Gutschriftsbetrag' : 'Rechnungsbetrag',
     `${euro(totals.grossCent)} EUR`, { bold: true, size: 11 })
 
+  // BT-114. Der Rundungsbetrag steht als eigene Zeile und nicht still in der
+  // Endsumme: der Gast zahlt einen anderen Betrag als die Steueraufstellung
+  // ergibt, und wer das nicht auf dem Blatt sieht, haelt es fuer einen Fehler
+  // des Hauses.
+  if (rundung !== 0) {
+    zeile('Rundung', `${euro(rundung)} EUR`)
+  }
   if (prepaid !== 0) {
     zeile('davon bereits gezahlt', `${euro(-prepaid)} EUR`)
-    zeile('Offener Betrag', `${euro(totals.grossCent - prepaid)} EUR`, { bold: true })
+  }
+  if (prepaid !== 0 || rundung !== 0) {
+    zeile(prepaid !== 0 ? 'Offener Betrag' : 'Zahlbetrag',
+      `${euro(totals.grossCent - prepaid + rundung)} EUR`, { bold: true })
   }
   z.y -= 10
 }

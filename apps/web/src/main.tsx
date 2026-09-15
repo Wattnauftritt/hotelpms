@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
 import { Shell, type Haus } from './components/Shell.tsx'
 import { Login } from './routes/Login.tsx'
 import { Folio } from './routes/Folio.tsx'
+import { CheckIn } from './routes/CheckIn.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
 import { LOCALES, I18nContext, useT, type Locale, type TextKey }
@@ -59,6 +60,9 @@ function App(): JSX.Element {
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
   const [folioRef, setFolioRef] = useState<string | null>(null)
+  // Der Check-in liegt ebenso ueber dem jeweiligen Bildschirm -- meist dem
+  // Plan (A9) -- und schliesst sich danach wieder von selbst.
+  const [checkInRef, setCheckInRef] = useState<string | null>(null)
   const qc = useQueryClient()
 
   // Wer ist angemeldet. Schlaegt das mit 401 fehl, kommt die Anmeldemaske.
@@ -112,7 +116,11 @@ function App(): JSX.Element {
       {folioRef !== null
         ? <Folio folioRef={folioRef} propertyId={haus.id}
                  onClose={() => setFolioRef(null)} />
-        : screen.render({ propertyId: haus.id, openFolio: setFolioRef })}
+        : checkInRef !== null
+          ? <CheckIn reservationRef={checkInRef} propertyId={haus.id}
+                     onClose={() => setCheckInRef(null)} />
+          : screen.render({ propertyId: haus.id, openFolio: setFolioRef,
+                            openCheckIn: setCheckInRef })}
     </Shell>
   )
 }

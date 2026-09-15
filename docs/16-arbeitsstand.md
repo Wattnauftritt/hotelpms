@@ -182,8 +182,10 @@ und nicht ein Rundungsfehler: zu 7 Prozent gibt es kein Netto, dessen aufgeschla
 250,00 Euro ergibt, und BR-CO-14 lässt nichts anderes zu. Aus demselben Grund kann der ausgewiesene
 Endbetrag einer Schlussrechnung um einen Cent von „Leistung minus Anzahlung" abweichen; der Saldo
 des Folios, also das Geld, ist davon unberührt und exakt. Dieselbe Frage stellt sich überall, wo ein
-Bruttobetrag vorgegeben wird — an der Kasse und beim Paketpreis ist sie ungeprüft; das steht als
-**Aufgabe 12** offen.
+Bruttobetrag vorgegeben wird — an der Kasse und beim Paketpreis. Die Schlussrechnung gleicht das
+seit **Aufgabe 12** über den Rundungsbetrag BT-114 aus; bei der Anzahlung bleibt es bei der
+Nachstellung, weil dort ein vereinnahmter Betrag aufgeteilt und nicht ein geforderter ausgeglichen
+wird.
 
 **Beim Nachprüfen gefunden und mitbehoben.** Eine Zwischenrechnung über ausgewählte Positionen
 verbrauchte die ganze Anzahlung: die Schlussrechnung bekam nichts mehr, und eine Zwischenrechnung
@@ -318,7 +320,7 @@ schon direkt und nicht über PgBouncer (D1, Dokument 13).
 | Schulungsbetrieb (C11) | **erledigt**, `platform/training.ts` |
 | Schlüsselrotation (C4) | **erledigt** als Werkzeug, `apps/api/src/cli/rotate-keys.ts` |
 | Mandantenexport (E7) | **erledigt**, `GET /v1/properties/:id/exports/tenant` |
-| Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit, Anleitung in Dokument 17 |
+| Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit. Entwurf steht: verschlüsselt wird der **Host-Speicher**, nicht die VM, entsperrt über das physische TPM und einen Tang-Server statt durch einen wachen Menschen. Anleitung in Dokument 17 §1 |
 | Sicherung außer Haus | **offen**, Betriebsarbeit; die Rückspielung muss einmal erprobt sein |
 | Ratenbegrenzung in Caddy | **offen**, Baustein in Dokument 17 |
 
@@ -376,32 +378,38 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 ---
 
-### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme
+### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**
 
 **Warum.** Die Steuer wird je Satzgruppe aus der **Nettosumme** gerechnet — so steht es in `CLAUDE.md`, und die Norm verlangt es ebenso (BR-CO-14 in EN 16931). Netto und Steuer sind beide auf den Cent gerundet, und daraus folgt etwas, das leicht zu übersehen ist: **nicht jeder Bruttobetrag ist darstellbar.** Zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer 250,00 Euro ergibt — 233,64 plus 16,35 sind 249,99, 233,65 plus 16,36 sind 250,01. **Nachgemessen über die ersten 100 000 Centbeträge:** zu 7 Prozent sind **6,5 Prozent** der Bruttobeträge nicht darstellbar, zu 19 Prozent **16,0 Prozent** — also etwa jeder fünfzehnte und etwa jeder sechste. (Hier stand zuvor „zu 19 Prozent etwa jeder dritte"; das war geschätzt und zu hoch.)
 
-Das trifft überall dort, wo ein **Bruttobetrag vorgegeben** ist und die Rechnung ihn ausweisen soll:
+Die Folge war unangenehmer als „ein Cent auf dem Papier". Ein Kassenbeleg über glatte 250,00 zu 7 Prozent erschien auf der Rechnung als 249,99. Der Gast zahlt, was auf dem Papier steht — und der eine Cent blieb auf dem Folio offen stehen. Für immer, weil niemand nach einem Cent sucht. Über mehrere Posten einer Satzgruppe wuchs die Abweichung; ein Barumsatz aus zehn Posten zu 19 Prozent ergab drei Cent.
+
+**Was gebaut wurde.** Die Schlussrechnung weist jetzt den **Rundungsbetrag auf Belegebene** aus, BT-114 der EN 16931. Er berührt weder die Satzgruppen noch die Gesamtsumme BT-112, sondern allein den Zahlbetrag BT-115 über BR-CO-16: *Zahlbetrag = Gesamtsumme − Anzahlung + Rundung.* Damit fordert die Rechnung genau, was die Positionen zusammen ergeben, das Folio schließt auf null, und die Steuer bleibt normgerecht je Satzgruppe aus der Nettosumme gerechnet.
+
+Sichtbar ist er an drei Stellen: als eigene Zeile „Rundung" auf dem Blatt (still in der Endsumme wäre er ein Fehler, den niemand erklären kann), als `ram:RoundingAmount` im eingebetteten XML, und als `roundingCent` samt `payableCent` in der festgeschriebenen Momentaufnahme `invoice.totals`. Der Beleg liest ihn von dort und rechnet ihn nicht neu — wäre er ableitbar, wäre er nicht nötig. Ist er null, wird er nirgends ausgegeben: ein `RoundingAmount` über 0,00 auf jedem Beleg ist Rauschen, das ein Prüfer erst einmal für einen Fehler hält.
+
+**Warum keine eigene Position, obwohl das der naheliegende Weg ist.** Das war der erste Entwurf, und er ist an der eigenen Pflichtangabenprüfung gescheitert — zu Recht:
+
+- **Zu 0 Prozent** braucht eine Position nach § 14 Abs. 4 Nr. 8 UStG den **Grund der Steuerbefreiung**. Für eine Rundung gibt es keinen, denn sie ist kein Umsatz. `invoiceRequirements.ts` hat die Rechnung entsprechend abgewiesen. Ein erfundener Grund wäre eine Falschangabe auf einem steuerlichen Beleg.
+- **Im Satz der Gruppe** wirkt eine Position nicht in ihrer eigenen Höhe: sie verschiebt die Steuer der ganzen Gruppe mit. Um einen Cent Wirkung zu erzielen, müsste sie zu 7 Prozent rund **vierzehn Cent** groß sein — also genau der Betrag, den sie ausgleichen soll, wäre falsch.
+- Eine Gruppe zu 0 Prozent in `totals.groups` stünde außerdem im DATEV-Stapel als steuerfreier Umsatz, den es nie gab.
+
+BT-114 ist für genau diesen Fall in der Norm vorgesehen. Keine Position, keine Steuerkategorie, kein Befreiungsgrund.
+
+**Wo der Cent sonst noch liegt.**
 
 | Stelle | Stand |
 |---|---|
-| Anzahlung (`depositLines` in `packages/domain/src/deposit.ts`) | abgefedert: die Nettobeträge werden nachgestellt, bis die Rechnung den Eingang trifft; bei zwei Sätzen geht das fast immer auf, sonst bleibt ein Cent |
-| Schlussrechnung mit Anrechnung | der ausgewiesene Endbetrag kann um einen Cent von „Leistung minus Anzahlung" abweichen, weil beide Seiten je Satzgruppe eigenständig runden |
-| Kassenumsatz (`routes/pos.ts`) | **gemessen und bestätigt**: die `charge`-Zeile trägt den Bruttobetrag der Kasse exakt (`gross_cent` kommt unverändert von dort), aber die **Rechnung** weicht ab. Ein Beleg über 250,00 zu 7 Prozent erscheint auf der Rechnung als 249,99, weil `sumInvoice` die Steuer je Satzgruppe aus der Nettosumme neu rechnet. Über mehrere Posten einer Satzgruppe wächst die Abweichung: bei bis zu 40 Kassenposten gemessene **3 Cent** |
-| Paketpreis (`splitPackage`) | setzt Zusatzleistungen mit festem Brutto an; dieselbe Frage, **ungeprüft** |
+| Schlussrechnung (`routes/billing.ts`) | **erledigt**: BT-114 gleicht auf den Cent aus, auch über mehrere Satzgruppen und gegen angerechnete Anzahlungen |
+| Anzahlung (`depositLines` in `packages/domain/src/deposit.ts`) | unverändert: die Nettobeträge werden nachgestellt, bis die Rechnung den Eingang trifft. Das bleibt richtig, weil hier ein **vereinnahmter** Betrag aufgeteilt wird und das Journal denselben tragen muss — nicht ein geforderter Betrag ausgeglichen wird |
+| Kassenumsatz (`routes/pos.ts`) | unverändert und richtig: die `charge`-Zeile trägt `gross_cent` der Kasse exakt. Die Abweichung entstand erst auf der Rechnung und wird dort ausgeglichen |
+| Paketpreis (`splitPackage`) | setzt Zusatzleistungen mit festem Brutto an; die Summe der Teile trifft den Paketpreis exakt, weil der Rest Logis ist. Auf der Rechnung greift derselbe Ausgleich |
 
-**Zu klären ist nicht, ob gerundet wird, sondern wo der Cent liegen darf.** Das Geld ist davon unberührt: der Saldo eines Folios kommt aus `charge.gross_cent` und `settlement.amount_cent` und ist exakt.
+**Nebenbefund.** An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV, 250 Euro) entscheidet jetzt der **geforderte** Betrag, nicht die Summe vor dem Ausgleich. Ein Beleg über glatte 250,00 lag vorher mit 249,99 unter der Grenze und wäre ohne Empfänger durchgegangen.
 
-**Damit ist aber auch die Folge benannt**, und sie ist unangenehmer als „ein Cent auf dem Papier": weicht die ausgewiesene Rechnungssumme vom Folio-Saldo ab, bleibt nach dem Bezahlen der Rechnung ein Rest auf dem Konto stehen. Das Folio schließt nie auf null, und niemand merkt es — weil es ein Cent ist und niemand danach sucht. Wer die Aufgabe übernimmt, prüft diesen Fall zuerst.
+**Abnahme geprüft:** ein Kassenbeleg über 250,00 zu 7 Prozent ergibt eine Rechnung mit Gesamtsumme 249,99, Rundung 0,01 und Zahlbetrag 250,00; zahlt der Gast den Zahlbetrag, steht das Folio auf null. Ein Barumsatz aus zehn Posten zu 19 Prozent trägt drei Cent. Ist der Betrag darstellbar, gibt es keinen Rundungsbetrag und keine zusätzliche Position. Die Satzgruppen der Leistung bleiben unberührt; es entsteht keine Gruppe zu 0 Prozent. Belegt in `apps/api/src/__tests__/rundung.test.ts`, `packages/domain/src/__tests__/invoiceCii.test.ts` und `apps/worker/src/__tests__/invoiceDocument.test.ts`.
 
-**Umfang.**
-- Feststellen, an welchen Stellen ein vorgegebener Bruttobetrag in Netto und Steuer zerlegt wird, und ob sie sich gleich verhalten.
-- Entscheiden, ob die Nachstellung aus `depositLines` allgemein gilt (dann gehört sie in `money.ts`) oder ob die Kasse den Cent anders tragen soll als eine Anzahlung.
-- Klären, ob eine Differenz zwischen Belegsumme und Folio-Saldo irgendwo sichtbar werden muss — heute merkt es niemand.
-- Einen nachgestellten Beleg gegen einen echten Validator halten (KoSIT oder Mustang), denn genau diese Beträge prüft BR-CO-14.
-
-**Abnahme.** Es gibt eine Aussage darüber, wo der Cent liegen darf und wo nicht, und sie ist durch Tests belegt. Jede Stelle, die einen Bruttobetrag entgegennimmt, hält sich daran.
-
-**Anhaltspunkte.** `packages/domain/src/money.ts` (`sumInvoice`, `taxFromGross`, `netFromGross`, `splitPackage`), `packages/domain/src/deposit.ts` (`depositLines` samt Tests, die die Grenze schon beschreiben), `apps/api/src/routes/pos.ts`, `apps/api/src/routes/billing.ts`.
+**Noch offen.** Ein Beleg mit gesetztem BT-114 ist noch nicht gegen einen **echten Validator** (KoSIT oder Mustang) gelaufen. Geprüft ist die XSD-Sequenz (BT-114 vor BT-112) und die Summenregel BR-CO-16 gegen den Wortlaut der Norm, nicht gegen ein Prüfwerkzeug.
 
 ---
 
@@ -423,6 +431,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | Testaufbau sät den Katalog aus einer festen Migration | Jedes später hinzugefügte Recht fehlte in jedem Test, und der Befund sah aus wie ein Fehler in der Route |
 | Bestand am Handlungspaar statt am Zustand gebunden | Ein No-Show, der doch noch anreiste, belegte ein Zimmer, das der Zaehler als frei fuehrte |
 | Netto aus dem Brutto herausgerechnet und die Steuer wieder daraufgeschlagen | Eine Anzahlung ueber 250,00 Euro stand als 249,99 Euro auf dem Beleg, waehrend das Journal 250,00 fuehrte (Aufgabe 12) |
+| Rundungsdifferenz als Position zu 0 Prozent gebucht | Faellt nach § 14 Abs. 4 Nr. 8 UStG durch die eigene Pflichtangabenpruefung: ohne Befreiungsgrund geht keine Position ohne Steuer. Im Satz der Gruppe wiederum verschiebt eine Position die Steuer der ganzen Gruppe mit und muesste vierzehn Cent gross sein, um einen zu bewegen. Richtig ist BT-114 auf Belegebene (Aufgabe 12) |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).
 

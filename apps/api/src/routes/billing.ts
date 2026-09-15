@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
+import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party }
@@ -94,6 +95,12 @@ async function erwarteteSaetze(
 
   return expectedRateMix(posten)
 }
+
+/**
+ * Ein Jahr Rechnungen je Anfrage. Mehr braucht keine Ansicht, und die
+ * Buchhaltung nimmt ohnehin den GoBD-Export.
+ */
+const MAX_RECHNUNGSTAGE = 400
 
 export function billingRoutes(app: FastifyInstance): void {
   registerRoute(app, {
@@ -573,6 +580,71 @@ export function billingRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Die Rechnungen eines Hauses zu einem Zeitraum.
+   *
+   * Bisher liess sich eine Rechnung nur ueber ihr Folio finden. Wer wissen
+   * will, was im Oktober hinausgegangen ist, musste den GoBD-Export nehmen
+   * -- der weist ein Uebungshaus hart ab und haengt an einem Recht, das die
+   * Rezeption nicht hat.
+   *
+   * **Was hier bewusst nicht steht: ob die Rechnung bezahlt ist.** Das
+   * Modell weiss es nicht. `settlement.invoice_id` waere die Stelle dafuer,
+   * aber dieses Feld wird nirgends geschrieben -- es hat einen Leser (der
+   * ZUGFeRD-Beleg fuer BT-113) und ein Schreibrecht aus Migration 0012,
+   * und keinen Schreiber. Eine Spalte "offen" oder "zugeordnet" waere
+   * damit strukturell immer der volle Betrag beziehungsweise null: eine
+   * Zahl, die richtig aussieht und es nie ist. Der Stand einer Zahlung
+   * steht am Folio, und dorthin fuehrt `folioRef`.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/invoices',
+    permission: 'folio:read',
+    propertyParam: 'propertyId',
+    summary: 'Rechnungen eines Zeitraums',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const q = req.query as { from: string; to: string; kind?: string; limit?: string }
+      if (!isIsoDate(q.from) || !isIsoDate(q.to)) {
+        throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+      }
+      const tage = nightsBetween(q.from, q.to) + 1
+      if (tage <= 0) throw Errors.validation({ to: ['Muss auf oder nach from liegen'] })
+      if (tage > MAX_RECHNUNGSTAGE) throw Errors.rangeTooLarge(MAX_RECHNUNGSTAGE)
+      // Obergrenze wie bei jedem Listenendpunkt: ohne sie ist er ein
+      // Selbstangriff. Ein Haus mit 200 Zimmern schreibt an einem starken
+      // Tag ueber hundert Rechnungen.
+      const limit = Math.min(Math.max(Number(q.limit ?? 200), 1), 500)
+
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query(
+          `SELECT i.public_ref AS "invoiceRef", i.number,
+                  i.issued_on::text AS "issuedOn",
+                  i.business_date::text AS "businessDate",
+                  i.kind, i.currency,
+                  (i.totals->>'grossCent')::bigint AS "grossCent",
+                  COALESCE(i.recipient_snapshot->>'name', '') AS recipient,
+                  f.public_ref AS "folioRef",
+                  d.invoice_id IS NOT NULL AS "documentReady",
+                  d.xml IS NOT NULL AS "hasXml",
+                  (SELECT e.status FROM outbound_email e
+                    WHERE e.invoice_id = i.id
+                    ORDER BY e.id DESC LIMIT 1) AS "mailStatus"
+             FROM invoice i
+             JOIN folio f ON f.id = i.folio_id
+             LEFT JOIN invoice_document d ON d.invoice_id = i.id
+            WHERE i.property_id = $1
+              AND i.issued_on BETWEEN $2::date AND $3::date
+              AND ($4::text IS NULL OR i.kind = $4)
+            ORDER BY i.issued_on DESC, i.id DESC
+            LIMIT $5`,
+          [Number(propertyId), q.from, q.to, q.kind ?? null, limit])
+        return { from: q.from, to: q.to, limit, invoices: rows }
+      })
+    }
+  })
+
+  /**
    * Der Beleg zur Rechnung: PDF/A-3 mit eingebettetem CII-XML nach
    * EN 16931, also ZUGFeRD.
    *
@@ -634,13 +706,14 @@ export function billingRoutes(app: FastifyInstance): void {
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
         // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
         const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
+                                             gross_cent: number
                                              description: string; quantity: number
                                              business_date: string }>(
           body.chargeIds?.length
-            ? `SELECT id, net_cent, tax_rate_bp, description, quantity,
+            ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
                       business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2) ORDER BY id`
-            : `SELECT id, net_cent, tax_rate_bp, description, quantity,
+            : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
                       business_date::text FROM charge
                 WHERE folio_id = $1 AND invoice_id IS NULL ORDER BY id`,
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
@@ -684,10 +757,55 @@ export function billingRoutes(app: FastifyInstance): void {
             tax_rate_bp: number; amount_gross_cent: string
             deposit_number: string; deposit_issued_on: string }> }
 
-        const totals = sumInvoice([
+        const positionen = [
           ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
           ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
-        ])
+        ]
+
+        /*
+         * Rundungsausgleich (Aufgabe 12).
+         *
+         * Die Rechnung kann nicht jeden Bruttobetrag treffen. Die Steuer wird
+         * je Satzgruppe aus der Nettosumme gerechnet (BR-CO-14), und bei
+         * ganzzahligem Netto und ganzzahliger Steuer gibt es Bruttobetraege,
+         * zu denen kein Netto passt: zu 7 Prozent 6,5 Prozent aller Betraege,
+         * zu 19 Prozent 16,0 Prozent. Ein Kassenbeleg ueber glatte 250,00 zu
+         * 7 Prozent ergibt 233,64 + 16,35 = 249,99; darueber liegt erst
+         * wieder 250,01.
+         *
+         * Ohne Ausgleich fordert die Rechnung einen Cent weniger, als die
+         * Positionen zusammen ergeben. Der Gast zahlt, was auf dem Papier
+         * steht, und der Cent bleibt auf dem Folio offen -- fuer immer, weil
+         * niemand nach einem Cent sucht. Ueber viele Posten waren es bis zu
+         * drei.
+         *
+         * **Warum keine eigene Position.** Das war der erste Entwurf und ist
+         * an der eigenen Pflichtangabenpruefung gescheitert: eine Position zu
+         * 0 Prozent braucht nach § 14 Abs. 4 Nr. 8 UStG den Grund der
+         * Steuerbefreiung, und fuer eine Rundung gibt es keinen -- sie ist
+         * kein Umsatz. Im Satz der Gruppe wiederum muesste die Position rund
+         * vierzehn Cent gross sein, um einen Cent Wirkung zu haben, weil sie
+         * die Steuer der ganzen Gruppe mitverschiebt.
+         *
+         * EN 16931 hat dafuer den Rundungsbetrag auf Belegebene (BT-114): er
+         * laesst Satzgruppen und Gesamtsumme unberuehrt und wirkt allein auf
+         * den Zahlbetrag (BR-CO-16). Keine Position, keine Steuerkategorie,
+         * kein Befreiungsgrund -- und auf dem Blatt eine benannte Zeile.
+         */
+        const gerundet = sumInvoice(positionen)
+        const zielBrutto =
+          charges.rows.reduce((sum, c) => sum + Number(c.gross_cent), 0)
+          - deposits.rows.reduce((sum, d) => sum + Number(d.amount_gross_cent), 0)
+        const roundingCent = zielBrutto - gerundet.grossCent
+
+        /*
+         * Was festgeschrieben und zurueckgegeben wird, traegt beides: die
+         * normgerechten Summen (BT-106, BT-110, BT-112) und daneben den
+         * Ausgleich und den Betrag, den die Rechnung tatsaechlich fordert.
+         * Der Beleg liest den Ausgleich spaeter von hier und rechnet ihn
+         * nicht neu -- waere er ableitbar, waere er nicht noetig.
+         */
+        const totals = { ...gerundet, roundingCent, payableCent: zielBrutto }
 
         /*
          * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
@@ -780,7 +898,9 @@ export function billingRoutes(app: FastifyInstance): void {
           lines: charges.rows.map(c => ({
             description: c.description, quantity: c.quantity,
             netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
-          grossCent: totals.grossCent,
+          // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet
+          // der geforderte Betrag, nicht die Summe vor dem Rundungsausgleich.
+          grossCent: totals.payableCent,
           kind: (body.kind ?? 'final') as 'final' | 'interim'
         })
         if (maengel.length > 0) {
@@ -836,7 +956,11 @@ export function billingRoutes(app: FastifyInstance): void {
           folioRef,
           kind: body.kind ?? 'final',
           serviceFrom, serviceTo,
-          grossCent: totals.grossCent
+          // grossCent bleibt die Gesamtsumme nach BT-112; payableCent ist,
+          // was der Gast zahlt. Wer die beiden gleichsetzt, bekommt keine
+          // Fehlermeldung, sondern einen Cent Abweichung im Abgleich.
+          grossCent: totals.grossCent,
+          payableCent: totals.payableCent
         })
 
         await completeIdempotent(client, principal.clientKey, key, 201, result)

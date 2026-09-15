@@ -78,6 +78,22 @@ export interface CiiInvoice {
   serviceTo: IsoDate
   /** BT-113, bereits vereinnahmt und auf diese Rechnung angerechnet. */
   prepaidCent?: Cent
+  /**
+   * BT-114, Rundungsbetrag auf Belegebene.
+   *
+   * Die Norm rechnet die Steuer je Satzgruppe aus der Nettosumme (BR-CO-14).
+   * Damit sind nicht alle Bruttobetraege darstellbar: zu 7 Prozent liegt zu
+   * jedem sechzehnten Cent-Betrag kein ganzzahliges Netto, zu 19 Prozent zu
+   * jedem sechsten. Ein Kassenbeleg ueber glatte 250,00 zu 7 Prozent ergibt
+   * 233,64 + 16,35 = 249,99; der naechste darstellbare Betrag ist 250,01.
+   *
+   * Fuer genau diesen Fall kennt EN 16931 den Rundungsbetrag: er beruehrt
+   * weder die Satzgruppen noch die Gesamtsumme (BT-112), sondern nur den
+   * Zahlbetrag (BT-115) ueber BR-CO-16. So bleibt die Steuer normgerecht
+   * gerechnet und der geforderte Betrag trifft trotzdem, was die Positionen
+   * zusammen ergeben.
+   */
+  roundingCent?: Cent
   /** § 13b UStG. Setzt die Kategorie aller Positionen auf AE. */
   reverseCharge?: boolean
   /** BT-120. Pflicht, sobald eine Kategorie ohne Steuer vorkommt. */
@@ -340,6 +356,7 @@ export function ciiFindings(inv: CiiInvoice): CiiFinding[] {
 export function buildInvoiceCii(inv: CiiInvoice): string {
   const totals = ciiTotals(inv)
   const prepaid = inv.prepaidCent ?? 0
+  const rundung = inv.roundingCent ?? 0
 
   const hinweise = [
     ...(inv.reverseCharge === true ? [REVERSE_CHARGE_NOTE] : []),
@@ -413,9 +430,15 @@ export function buildInvoiceCii(inv: CiiInvoice): string {
             leaf('ram:LineTotalAmount', amount(totals.netCent)),
             leaf('ram:TaxBasisTotalAmount', amount(totals.netCent)),
             leaf('ram:TaxTotalAmount', amount(totals.taxCent), { currencyID: inv.currency }),
+            // BT-114 vor BT-112: die XSD-Sequenz setzt den Rundungsbetrag vor
+            // die Gesamtsumme. Er wird nur ausgegeben, wenn es ihn gibt --
+            // ein RoundingAmount ueber 0,00 auf jedem Beleg ist Rauschen, das
+            // ein Pruefer erst einmal fuer einen Fehler haelt.
+            rundung !== 0 ? leaf('ram:RoundingAmount', amount(rundung)) : null,
             leaf('ram:GrandTotalAmount', amount(totals.grossCent)),
             leaf('ram:TotalPrepaidAmount', amount(prepaid)),
-            leaf('ram:DuePayableAmount', amount(totals.grossCent - prepaid)))))
+            // BR-CO-16: Zahlbetrag = Gesamtsumme - Anzahlung + Rundung.
+            leaf('ram:DuePayableAmount', amount(totals.grossCent - prepaid + rundung)))))
     ]
   }
 
