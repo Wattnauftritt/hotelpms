@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
 import { Shell, type Haus } from './components/Shell.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
+import { SupportKonsole } from './routes/SupportKonsole.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
@@ -34,6 +35,7 @@ const queryClient = new QueryClient({
 interface Me {
   userId: number
   displayName: string
+  isPlatformStaff: boolean
   properties: Array<{ id: number; code: string; name: string; isTraining: boolean
                       permissions: string[] }>
 }
@@ -109,6 +111,21 @@ function App(): JSX.Element {
   const haus = haeuser.find(h => h.id === adresse.property) ?? haeuser[0]
 
   if (haus === undefined) {
+    /*
+     * Fuer Plattformpersonal ohne laufende Support-Sitzung ist "kein Haus"
+     * der Normalzustand, keine Stoerung: ohne Freigabe des Kunden bleibt der
+     * Mandantenkontext leer, und die Zeilenrichtlinie liefert nichts. Der
+     * richtige Bildschirm ist deshalb die Konsole, nicht eine Fehlermeldung.
+     *
+     * Laeuft eine Sitzung, bringt sie Haeuser mit, und dieser Zweig wird
+     * gar nicht erreicht -- dann steht die normale Oberflaeche da, im Haus
+     * des Kunden.
+     */
+    if (me.data.isPlatformStaff) {
+      return <I18nContext.Provider value={locale}>
+        <SupportKonsole />
+      </I18nContext.Provider>
+    }
     return <I18nContext.Provider value={locale}>
       <Hinweis><Text k="app.noProperty" /></Hinweis>
     </I18nContext.Provider>

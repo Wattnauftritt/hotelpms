@@ -10,6 +10,7 @@ import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { SupportZugriff } from '../components/SupportZugriff.tsx'
 
 /**
  * Einstellungen des Hauses, die nicht Einrichtung sind.
@@ -20,7 +21,7 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay'] as const
+const REITER = ['mail', 'pay', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -29,6 +30,14 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   const bereiche: Bereich[] = []
   if (darf('integration:manage')) bereiche.push({ key: 'mail', label: 'mail.title' })
   if (darf('settings:property')) bereiche.push({ key: 'pay', label: 'pay.title' })
+  /*
+   * Support-Zugriff an settings:account, nicht an settings:property: die
+   * Freigabe gilt fuer den ganzen Account, nicht fuer ein Haus. Wer nur ein
+   * Haus verwaltet, entscheidet das nicht.
+   */
+  if (darf('settings:account')) {
+    bereiche.push({ key: 'support', label: 'support.title' })
+  }
   return bereiche
 }
 
@@ -316,6 +325,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
         <Gastpost propertyId={propertyId} isTraining={isTraining} />
       )}
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
+      {aktiv.key === 'support' && <SupportZugriff />}
     </div>
   )
 }

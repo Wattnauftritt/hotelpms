@@ -21,6 +21,7 @@ import { posRoutes } from './pos.js'
 import { emailRoutes } from './email.js'
 import { userRoutes } from './users.js'
 import { onboardingRoutes } from './onboarding.js'
+import { supportRoutes } from './support.js'
 import { openApiRoutes } from './openapi.js'
 
 export interface RouteOverrides {
@@ -51,6 +52,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   emailRoutes(app)
   userRoutes(app)
   onboardingRoutes(app)
+  supportRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }

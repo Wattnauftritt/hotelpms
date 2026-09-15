@@ -15,7 +15,10 @@ describe('Bereiche der Einstellungen', () => {
       .toEqual(['mail'])
     expect(einstellungsBereiche(p => p === 'settings:property').map(b => b.key))
       .toEqual(['pay'])
-    expect(einstellungsBereiche(() => true).map(b => b.key)).toEqual(['mail', 'pay'])
+    // Support-Zugriff kam mit Aufgabe 13c dazu und haengt an
+    // settings:account -- siehe support.test.ts.
+    expect(einstellungsBereiche(() => true).map(b => b.key))
+      .toEqual(['mail', 'pay', 'support'])
     expect(einstellungsBereiche(() => false)).toEqual([])
   })
 })
