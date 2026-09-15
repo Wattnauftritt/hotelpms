@@ -178,16 +178,16 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 
 | # | Aufgabe | Stand | PR | Bemerkung |
 |---|---|---|---|---|
-| B1 | Preisraster für ein ganzes Jahr | im PR #26 | #26 | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
-| B2 | Massenänderung mit Vorschau | im PR #26 | #26 | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
-| B3 | Restriktionen | im PR #26 | #26 | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
-| B4 | Ratenpläne | im PR #30 | #30 | Anlegen und abgeleitete Raten neu rechnen, unter dem Raster statt in der Einrichtung |
-| B5 | Rechnungsliste | im PR #30 | #30 | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
-| B6 | Rechnungsansicht | im PR #30 | #30 | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
-| B7 | Rechnung verschicken | im PR #30 | #30 | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
-| B8 | Anzahlung | offen | — | |
-| B9 | Pay-by-Link | offen | — | |
-| B10 | Was der Channel Manager sieht | offen | — | |
+| B1 | Preisraster für ein ganzes Jahr | fertig | #26 | 400 Tage in einer Anfrage, gemessen: 283 ms laden, 22 ms je Zug mit der Maus |
+| B2 | Massenänderung mit Vorschau | fertig | #26 | Ohne Vorschau kein Übernehmen; die Vorschau verfällt, sobald sich die Eingabe ändert |
+| B3 | Restriktionen | fertig | #26 | Im selben Raster als Kürzel an der Zelle (G / A / B / Mindestaufenthalt) |
+| B4 | Ratenpläne | fertig | #30 | Anlegen und abgeleitete Raten neu rechnen, unter dem Raster statt in der Einrichtung |
+| B5 | Rechnungsliste | fertig | #30 | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
+| B6 | Rechnungsansicht | fertig | #30 | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
+| B7 | Rechnung verschicken | fertig | #30 | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
+| B8 | Anzahlung | im PR #33 | #33 | Eingeklapptes Feld am Folio. Neuer Endpunkt `GET /v1/folios/:ref/prepayments`; die Verrechnung steht an der Anzahlung, sobald die Schlussrechnung sie zieht |
+| B9 | Pay-by-Link | im PR #33 | #33 | Im selben Feld. Die Adresse wird **einmal** gezeigt und nicht gespeichert; ohne Zahlungsdienstleister sagt die Maske das, statt eine 503 zu zeigen |
+| B10 | Was der Channel Manager sieht | im PR #33 | #33 | Unter dem Raster. Neuer Endpunkt `GET .../channel-view` mit **demselben SQL** wie ARI; ein Klick aufs Datum zeigt die Rohantwort dieses Tages |
 
 ### Spur C — Haus, Berichte, Einstellungen
 
@@ -222,6 +222,8 @@ Hier steht, was einer braucht und ein anderer liefert — und was aufgefallen is
 | B | (alle) | `web.test.ts` schrieb die Bildschirmliste **exakt** fest und wäre damit bei jeder Spur rot geworden, sobald sie ihren ersten Bildschirm anhängt. Spur B hat die Prüfung auf ihre Absicht zurückgeführt: die bekannten Schlüssel stehen weiterhin in dieser Reihenfolge am Anfang, angehängte kommen dahinter. Wer einen Bildschirm anhängt, muss dort nichts mehr ändern | erledigt |
 | B | (alle) | **`settlement.invoice_id` wird nirgends geschrieben.** Das Feld hat einen Leser — der ZUGFeRD-Beleg setzt daraus BT-113, den vorausgezahlten Betrag — und ein eigenes Schreibrecht aus Migration `0012`, aber keinen Schreiber. Folge: auf **jedem** Beleg steht als Vorauszahlung null, auch wenn der Gast angezahlt hat, und eine Rechnungsliste kann kein „offen" führen. Wer eine Zahlung an eine Rechnung hängt, entscheidet das; gehört zur Fakturierung, nicht in diese Spur | offen |
 | B | (Rahmen) | Die Rechte des Benutzers stehen nur in `main.tsx`, ein Bildschirm kommt nicht an sie heran. Spur B liest dafür denselben Zwischenspeicher (`useRechte` in `lib/queries/rates.ts`); sauberer wäre ein Feld am `ScreenContext` — das ändert aber `screens.tsx` für alle drei und wartet deshalb auf eine Absprache | offen |
+| B | (alle) | **`sum()` über eine `bigint`-Spalte liefert `numeric`, und `numeric` kommt als Zeichenkette an.** Der Typenparser in `packages/db/src/pool.ts` deckt `int8` und `int8[]` ab, nicht `numeric`. Eine Centsumme als Zeichenkette fällt nicht auf — sie rechnet sich nur falsch, sobald jemand sie addiert. Gefunden in der eigenen Abfrage und dort mit `::bigint` behoben; wer eine Summe zurückgibt, castet sie. Auf Dauer gehört `numeric` in den Parser, das ändert aber das Verhalten aller bestehenden Abfragen | offen |
+| B | (Rahmen) | Die Adresse eines Zahlungslinks wird **nicht gespeichert** — `payment_intent` trägt nur die Referenz des Anbieters. Wer den Link ein zweites Mal braucht, erzeugt einen neuen; die Maske sagt das. Gespeichert wäre er ein Link, den jeder mit Lesezugriff einlösen kann, deshalb ist das Absicht und keine Lücke | erledigt: benannt |
 | B | (gefunden bei A1) | `Folio.tsx` zeigt den Hinweistext von `GET .../payment-methods` unübersetzt an — die API liefert ihn fest auf Deutsch, unabhängig von der Sprache der Oberfläche. Fällt in Spur B, nicht angefasst | offen |
 
 ---
