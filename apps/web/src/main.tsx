@@ -119,7 +119,8 @@ function App(): JSX.Element {
         : checkInRef !== null
           ? <CheckIn reservationRef={checkInRef} propertyId={haus.id}
                      onClose={() => setCheckInRef(null)} />
-          : screen.render({ propertyId: haus.id, openFolio: setFolioRef,
+          : screen.render({ propertyId: haus.id, permissions: rechte,
+                            openFolio: setFolioRef,
                             openCheckIn: setCheckInRef })}
     </Shell>
   )

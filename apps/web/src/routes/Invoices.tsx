@@ -2,7 +2,6 @@ import { useEffect, useState, type JSX } from 'react'
 import type { InvoiceListItem } from '@hotelpms/contracts'
 import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail,
          istBelegInArbeit, zeitraum, MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
-import { useRechte } from '../lib/queries/rechte.js'
 import { ApiError } from '../lib/api.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -270,7 +269,10 @@ function Postausgang({ propertyId }: { propertyId: number }): JSX.Element {
 }
 
 export function Invoices(
-  { propertyId, onFolio }: { propertyId: number; onFolio: (folioRef: string) => void }
+  { propertyId, onFolio, permissions }: {
+    propertyId: number; onFolio: (folioRef: string) => void
+    permissions: readonly string[]
+  }
 ): JSX.Element {
   const t = useT()
   const [laenge, setLaenge] = useState<number>(30)
@@ -279,8 +281,7 @@ export function Invoices(
   const [offen, setOffen] = useState<{ ref: string; was: 'beleg' | 'versand' } | null>(null)
 
   const { von } = zeitraum(bis, laenge)
-  const rechte = useRechte(propertyId)
-  const darfSenden = rechte.includes('email:send')
+  const darfSenden = permissions.includes('email:send')
   const q = useInvoices(propertyId, von, bis, kind)
 
   return (
