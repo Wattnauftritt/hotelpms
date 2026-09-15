@@ -17,6 +17,57 @@ import type { Principal } from '../platform/context.js'
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
 const VAT_FALLBACK = 700
 
+/**
+ * Wer die Rechnung bekommt.
+ *
+ * Die Firma geht vor: ist eine gesetzt, geht die Rechnung an sie, und der
+ * Gast bleibt der Gast des Aufenthalts. Dieselbe Reihenfolge benutzt das
+ * Festschreiben, und sie steht hier noch einmal, damit die Maske vorher
+ * zeigt, was der Beleg nachher traegt.
+ *
+ * `folio.guest_id` ist dabei **nicht** der Gast des Aufenthalts -- der
+ * steht an der Reservierung (`primary_guest_id`). Am Folio steht, an wen
+ * abgerechnet wird, und das kann jemand anderes sein: der Ehepartner zahlt,
+ * der Gast reist.
+ */
+async function empfaenger(
+  client: PoolClient, guestId: number | null, companyId: number | null
+): Promise<{
+  kind: 'company' | 'guest' | 'none'
+  name: string
+  guestRef: string | null
+  companyRef: string | null
+  hasAddress: boolean
+}> {
+  if (companyId !== null) {
+    const { rows } = await client.query<{ companyRef: string; name: string
+                                          hasAddress: boolean }>(
+      `SELECT public_ref AS "companyRef", name,
+              (address_line1 IS NOT NULL AND city IS NOT NULL) AS "hasAddress"
+         FROM company WHERE id = $1`, [companyId])
+    const c = rows[0]
+    if (c !== undefined) {
+      return { kind: 'company', name: c.name, guestRef: null,
+               companyRef: c.companyRef, hasAddress: c.hasAddress }
+    }
+  }
+  if (guestId !== null) {
+    const { rows } = await client.query<{ guestRef: string; name: string
+                                          hasAddress: boolean }>(
+      `SELECT public_ref AS "guestRef",
+              trim(both ', ' from coalesce(last_name,'') || ', ' || coalesce(first_name,''))
+                AS name,
+              (address_line1 IS NOT NULL AND city IS NOT NULL) AS "hasAddress"
+         FROM guest WHERE id = $1`, [guestId])
+    const g = rows[0]
+    if (g !== undefined) {
+      return { kind: 'guest', name: g.name, guestRef: g.guestRef,
+               companyRef: null, hasAddress: g.hasAddress }
+    }
+  }
+  return { kind: 'none', name: '', guestRef: null, companyRef: null, hasAddress: false }
+}
+
 /** Ein Zahlungsvermerk, der noch keiner Rechnung zugeordnet ist. */
 interface OffenerVermerk { id: number; amount_cent: number }
 
@@ -299,7 +350,8 @@ export function billingRoutes(app: FastifyInstance): void {
       const { folioRef } = req.params as { folioRef: string }
       return tx(req.pool, req, async client => {
         const f = await client.query(
-          `SELECT id, public_ref, property_id, reservation_id, kind, status, label
+          `SELECT id, public_ref, property_id, reservation_id, kind, status, label,
+                  guest_id, company_id
              FROM folio WHERE public_ref = $1`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
@@ -319,8 +371,87 @@ export function billingRoutes(app: FastifyInstance): void {
         const settled = settlements.rows.reduce((s, p) => s + Number(p.amount_cent), 0)
         return {
           folio, charges: charges.rows, settlements: settlements.rows,
-          balanceCent: charged - settled
+          balanceCent: charged - settled,
+          recipient: await empfaenger(client, folio.guest_id, folio.company_id)
         }
+      })
+    }
+  })
+
+  /**
+   * Wer die Rechnung bekommt.
+   *
+   * **Warum das ueberhaupt aenderbar ist.** Die Rechnung geht nicht immer
+   * an den, der im Zimmer schlaeft: die Firma zahlt, der Ehepartner zahlt,
+   * die Reisestelle zahlt. Bisher stand der Empfaenger nur da, wo ihn die
+   * Buchung hingeschrieben hatte, und eine Korrektur war an der Oberflaeche
+   * nicht moeglich -- wer sich vertippt hatte, bekam die Rechnung an den
+   * Falschen und musste sie stornieren.
+   *
+   * **`invoice:issue` und nicht `folio:post`.** Wer eine Minibar bucht,
+   * soll keine Rechnung umleiten koennen. Wer sie ausstellen darf,
+   * entscheidet auch, an wen.
+   *
+   * Schon **festgeschriebene** Rechnungen aendert das nicht: ihr Empfaenger
+   * steht als Momentaufnahme an der Rechnung (B6, Dokument 13) und ist
+   * Haertegrad 1. Das hier wirkt auf die naechste.
+   */
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/folios/:folioRef/recipient',
+    permission: 'invoice:issue',
+    summary: 'Rechnungsempfaenger des Folios setzen',
+    handler: async (req) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = req.body as {
+        guestRef?: string | null
+        companyRef?: string | null
+      }
+      if (body.guestRef === undefined && body.companyRef === undefined) {
+        throw Errors.validation({ guestRef: ['field.required'] })
+      }
+
+      return tx(req.pool, req, async client => {
+        const f = await client.query<{ id: number; property_id: number; status: string
+                                       guest_id: number | null; company_id: number | null }>(
+          `SELECT id, property_id, status, guest_id, company_id
+             FROM folio WHERE public_ref = $1`, [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+
+        /*
+         * Gast und Firma haengen am Account, nicht an der Property. Die
+         * Zeilenrichtlinie filtert nach Mandant, und mehr braucht es hier
+         * nicht: wer den Verweis nicht finden darf, findet ihn nicht.
+         */
+        let guestId = folio.guest_id
+        if (body.guestRef !== undefined) {
+          if (body.guestRef === null) guestId = null
+          else {
+            const g = await client.query<{ id: number }>(
+              `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
+            if (g.rowCount === 0) throw Errors.notFound('res.guest')
+            guestId = g.rows[0]!.id
+          }
+        }
+        let companyId = folio.company_id
+        if (body.companyRef !== undefined) {
+          if (body.companyRef === null) companyId = null
+          else {
+            const c = await client.query<{ id: number }>(
+              `SELECT id FROM company WHERE public_ref = $1 AND active`,
+              [body.companyRef])
+            if (c.rowCount === 0) throw Errors.notFound('res.company')
+            companyId = c.rows[0]!.id
+          }
+        }
+
+        await client.query(
+          `UPDATE folio SET guest_id = $2, company_id = $3 WHERE id = $1`,
+          [folio.id, guestId, companyId])
+
+        return { recipient: await empfaenger(client, guestId, companyId) }
       })
     }
   })

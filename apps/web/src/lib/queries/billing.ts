@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { InvoiceList, PrepaymentView } from '@hotelpms/contracts'
+import type { InvoiceList, InvoiceRecipient,
+              PrepaymentView } from '@hotelpms/contracts'
 import { api, ApiError } from '../api.js'
 import { addDays } from '../dates.js'
 
@@ -192,5 +193,25 @@ export function useCreatePaymentLink(folioRef: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
     }
+  })
+}
+
+// ------------------------------------------- Rechnungsempfaenger (S6)
+
+/**
+ * Wer die Rechnung bekommt.
+ *
+ * Wirkt auf die **naechste** Rechnung. Eine festgeschriebene traegt ihren
+ * Empfaenger als Momentaufnahme und aendert sich nie wieder -- deshalb
+ * macht die Maske den Unterschied sichtbar, statt so zu tun, als liesse
+ * sich ein gedruckter Beleg nachtraeglich umadressieren.
+ */
+export function useSetRecipient(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { guestRef?: string | null; companyRef?: string | null }) =>
+      api.patch<{ recipient: InvoiceRecipient }>(
+        `/v1/folios/${folioRef}/recipient`, body),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['folio', folioRef] }) }
   })
 }

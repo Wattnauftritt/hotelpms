@@ -102,7 +102,27 @@ export const rechnung = {
                            + 'Ohne ihn gibt es keinen Zahlungslink; eine Garantie läuft '
                            + 'dann über das virtuelle Terminal des Anbieters.',
     'vz.link.noCard': 'Kartendaten werden hier nie erfasst und nie gespeichert. '
-                    + 'Der Gast gibt sie beim Zahlungsdienstleister ein.'
+                    + 'Der Gast gibt sie beim Zahlungsdienstleister ein.',
+
+    // Rechnungsempfänger (S6)
+    'emp.title': 'Rechnungsempfänger',
+    'emp.none': 'niemand hinterlegt',
+    'emp.guest': 'Gast',
+    'emp.company': 'Firma',
+    'emp.change': 'Ändern',
+    'emp.close': 'Schließen',
+    'emp.noAddress': 'ohne Anschrift — so lässt sich keine Rechnung schreiben',
+    'emp.guestPick': 'An diesen Gast',
+    'emp.guestHint': 'Das ist nicht zwingend der Gast des Aufenthalts: der steht an der '
+                   + 'Reservierung. Hier steht, an wen abgerechnet wird — der Ehepartner '
+                   + 'zahlt, der Gast reist.',
+    'emp.companyPick': 'An diese Firma',
+    'emp.companySearch': 'Name der Firma, ab zwei Zeichen',
+    'emp.companyNone': 'Keine Firma gefunden.',
+    'emp.companyClear': 'Firma entfernen',
+    'emp.snapshotHint': 'Wirkt auf die nächste Rechnung. Eine festgeschriebene trägt '
+                      + 'ihren Empfänger als Momentaufnahme und ändert sich nie wieder; '
+                      + 'dort hilft nur eine Stornorechnung.'
   },
   en: {
     'nav.invoices': 'Invoices',
@@ -203,6 +223,25 @@ export const rechnung = {
                            + 'payment link; a guarantee then runs through the provider’s '
                            + 'virtual terminal.',
     'vz.link.noCard': 'Card data is never captured and never stored here. The guest '
-                    + 'enters it at the payment provider.'
+                    + 'enters it at the payment provider.',
+
+    'emp.title': 'Invoice recipient',
+    'emp.none': 'nobody set',
+    'emp.guest': 'Guest',
+    'emp.company': 'Company',
+    'emp.change': 'Change',
+    'emp.close': 'Close',
+    'emp.noAddress': 'no address — no invoice can be issued like this',
+    'emp.guestPick': 'To this guest',
+    'emp.guestHint': 'Not necessarily the guest of the stay — that one is on the '
+                   + 'reservation. This is who gets billed: the spouse pays, the guest '
+                   + 'travels.',
+    'emp.companyPick': 'To this company',
+    'emp.companySearch': 'Company name, from two characters',
+    'emp.companyNone': 'No company found.',
+    'emp.companyClear': 'Remove company',
+    'emp.snapshotHint': 'Applies to the next invoice. An issued one carries its '
+                      + 'recipient as a snapshot and never changes; there only a credit '
+                      + 'note helps.'
   }
 } as const

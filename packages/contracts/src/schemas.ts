@@ -257,6 +257,27 @@ export const Settlement = Type.Object({
 })
 export type Settlement = Static<typeof Settlement>
 
+/**
+ * Wer die Rechnung dieses Folios bekommt.
+ *
+ * Die Firma geht vor dem Gast. `guestRef` am Folio ist **nicht** der Gast
+ * des Aufenthalts -- der steht an der Reservierung; hier steht, an wen
+ * abgerechnet wird, und das kann jemand anderes sein.
+ *
+ * `hasAddress` sagt, ob Anschrift und Ort da sind. Ohne sie weist das
+ * Festschreiben die Rechnung ab (Paragraph 14 Abs. 4 Nr. 1 UStG), und die
+ * Maske soll das vorher sagen statt hinterher.
+ */
+export const InvoiceRecipient = Type.Object({
+  kind: Type.Union([
+    Type.Literal('company'), Type.Literal('guest'), Type.Literal('none')]),
+  name: Type.String(),
+  guestRef: Type.Union([Type.String(), Type.Null()]),
+  companyRef: Type.Union([Type.String(), Type.Null()]),
+  hasAddress: Type.Boolean()
+})
+export type InvoiceRecipient = Static<typeof InvoiceRecipient>
+
 export const FolioView = Type.Object({
   folio: Type.Object({
     id: Type.Integer(),
@@ -269,7 +290,8 @@ export const FolioView = Type.Object({
   }),
   charges: Type.Array(Charge),
   settlements: Type.Array(Settlement),
-  balanceCent: Cent
+  balanceCent: Cent,
+  recipient: InvoiceRecipient
 })
 export type FolioView = Static<typeof FolioView>
 
