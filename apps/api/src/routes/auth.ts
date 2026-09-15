@@ -363,17 +363,21 @@ export function authRoutes(app: FastifyInstance): void {
  * Das Token selbst steht **nur** in der Nachricht, nie in der Antwort der
  * API und nie im Protokoll. Wer die Antwort mitliest, bekommt keinen Zugang.
  */
-async function einmalTokenUndPost(
+export async function einmalTokenUndPost(
   client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  opts: { userId: number; name: string | null; email: string; kind: AuthTokenKind }
+  opts: {
+    userId: number; name: string | null; email: string; kind: AuthTokenKind
+    /** Wer eingeladen hat. Bei einer Ruecksetzung durch den Benutzer selbst leer. */
+    createdBy?: number | null
+  }
 ): Promise<void> {
   const { token, hash } = neuesToken()
   const gueltigMs = TOKEN_GUELTIGKEIT[opts.kind]
 
   await client.query(
-    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at)
-     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval)`,
-    [opts.userId, opts.kind, hash, String(gueltigMs)])
+    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, created_by)
+     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5)`,
+    [opts.userId, opts.kind, hash, String(gueltigMs), opts.createdBy ?? null])
 
   const pfad = opts.kind === 'invite' ? 'einladung' : 'kennwort'
   const link = `${config.publicAppUrl}/${pfad}?token=${token}`
