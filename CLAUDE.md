@@ -17,8 +17,11 @@ pnpm install
 ./scripts/setup-db.sh         # PostgreSQL, drei Rollen, zwei Datenbanken
 cp .env.example .env
 pnpm db:reset                 # Schema neu aufbauen
-pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre
+pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre — zum **Messen**
+pnpm db:testhotel             # optional: ein benutzbares Haus — zum **Ausprobieren**
 ```
+
+Die beiden Datensätze haben verschiedene Zwecke und sind nicht austauschbar. `db:seed` erzeugt 180 000 Reservierungen, damit sich zeigt, ob ein Index greift; überblicken kann man das nicht. `db:testhotel` legt **ein** Haus mit 24 Zimmern und rund vierzig Reservierungen um den heutigen Tag an, in dem ein Mensch jede Zeile nachrechnet. Es ist ein **Übungshaus** (`is_training`), exportiert also nichts nach draußen und verschickt keine Gastpost — ein Testhaus ohne dieses Kennzeichen schiebt früher oder später eine Übungsrechnung in die echte Buchhaltung.
 
 Die Tests brauchen ein **echtes PostgreSQL** (17 in CI, 16 genügt lokal) mit den Erweiterungen `pg_trgm` und `pgcrypto` sowie drei Rollen. `.github/workflows/ci.yml` zeigt dasselbe für CI.
 
@@ -113,6 +116,10 @@ Wortstellung Unsinn. Zwei Tests halten das fest —
 `apps/api/src/__tests__/meldungen.test.ts` liest die Quelle und findet jeden
 deutschen Satz, der noch in einem `Errors.*`-Aufruf steht;
 `apps/web/src/__tests__/i18n.test.ts` prüft den Katalog der Oberfläche.
+
+**Betriebsdateien.** Was auf der Maschine läuft, steht in `ops/` und wird in der Dokumentation **verwiesen, nicht abgeschrieben**. Zwei Fassungen derselben Datei laufen auseinander, und beide sehen für sich stimmig aus: `ops/` sagte `/opt/hotelpms`, Dokument 21 sagte `/srv/hotelpms`, und aufgefallen ist es erst beim Aufsetzen der echten Maschine.
+
+Jede Zeile darin gehört an einem echten System nachgerechnet, bevor sie eingecheckt wird. Bei Code fängt der Test den Irrtum; bei einem Runbook gibt es keinen. Bisher gefunden: eine systemd-Unit, die Node nie hätte starten können (`MemoryDenyWriteExecute`), ein Caddyfile, den der Lexer abweist (`match { … }` einzeilig — `scripts/check-caddyfile.sh` prüft das jetzt in CI), und ein `blkdiscard`, das den ganzen Host verworfen hätte.
 
 **Neue Migration.** Fortlaufend nummeriert, nie eine bestehende ändern. Der Kopfkommentar nennt den Befund oder die Anforderung, die sie auslöst.
 
