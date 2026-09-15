@@ -185,9 +185,9 @@ Zustände: `offen` · `läuft` · `im PR #n` · `fertig` · `blockiert (Grund)`
 | B5 | Rechnungsliste | fertig | #30 | Neuer Endpunkt `GET .../invoices`; **kein** „offen"-Merkmal, siehe Befund in Abschnitt 6 |
 | B6 | Rechnungsansicht | fertig | #30 | Beleg im Blatt, `document_pending` als Zustand statt als Fehler |
 | B7 | Rechnung verschicken | fertig | #30 | Zweiter Versand nur ausdrücklich; Postausgang mit Zurückziehen |
-| B8 | Anzahlung | im PR | — | Eingeklapptes Feld am Folio. Neuer Endpunkt `GET /v1/folios/:ref/prepayments`; die Verrechnung steht an der Anzahlung, sobald die Schlussrechnung sie zieht |
-| B9 | Pay-by-Link | im PR | — | Im selben Feld. Die Adresse wird **einmal** gezeigt und nicht gespeichert; ohne Zahlungsdienstleister sagt die Maske das, statt eine 503 zu zeigen |
-| B10 | Was der Channel Manager sieht | im PR | — | Unter dem Raster. Neuer Endpunkt `GET .../channel-view` mit **demselben SQL** wie ARI; ein Klick aufs Datum zeigt die Rohantwort dieses Tages |
+| B8 | Anzahlung | im PR #33 | #33 | Eingeklapptes Feld am Folio. Neuer Endpunkt `GET /v1/folios/:ref/prepayments`; die Verrechnung steht an der Anzahlung, sobald die Schlussrechnung sie zieht |
+| B9 | Pay-by-Link | im PR #33 | #33 | Im selben Feld. Die Adresse wird **einmal** gezeigt und nicht gespeichert; ohne Zahlungsdienstleister sagt die Maske das, statt eine 503 zu zeigen |
+| B10 | Was der Channel Manager sieht | im PR #33 | #33 | Unter dem Raster. Neuer Endpunkt `GET .../channel-view` mit **demselben SQL** wie ARI; ein Klick aufs Datum zeigt die Rohantwort dieses Tages |
 
 ### Spur C — Haus, Berichte, Einstellungen
 
