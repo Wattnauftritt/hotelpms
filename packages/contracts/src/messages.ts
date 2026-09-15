@@ -220,6 +220,31 @@ const M = {
     'Address and tax number are required: without them the property may not '
       + 'issue invoices under § 14 UStG.'],
 
+  // -------------------------------------------------------- Support-Sitzung
+
+  'support.unknownSession': [
+    'Diese Support-Sitzung gibt es nicht.', 'This support session does not exist.'],
+  'support.alreadyGranted': [
+    'Diese Sitzung ist bereits freigegeben.', 'This session has already been approved.'],
+  'support.notPending': [
+    'Diese Sitzung laesst sich nicht mehr freigeben: sie ist abgelaufen oder '
+      + 'widerrufen.',
+    'This session can no longer be approved: it has expired or been revoked.'],
+  'support.badLevel': [
+    'Unbekannte Stufe. Erlaubt sind lesen und schreiben.',
+    'Unknown level. Allowed are read and write.'],
+  'support.badHours': [
+    'Die Laufzeit muss zwischen 1 und {max} Stunden liegen.',
+    'The duration must be between 1 and {max} hours.'],
+  'support.reasonRequired': [
+    'Ohne Anlass keine Anfrage: der Kunde entscheidet danach.',
+    'No request without a reason: the customer decides based on it.'],
+  // Es gibt niemanden, der die Anfrage sehen und freigeben koennte -- eine
+  // Anfrage ins Leere zu stellen waere schlimmer als sie abzuweisen.
+  'support.noApprover': [
+    'Dieser Account hat niemanden, der eine Support-Sitzung freigeben kann.',
+    'This account has nobody who could approve a support session.'],
+
   // ----------------------------------------------------------- Uebungshaus
 
   'training.notPossible': [

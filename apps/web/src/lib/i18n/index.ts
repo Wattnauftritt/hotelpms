@@ -13,6 +13,7 @@ import { preise } from './preise.js'
 import { gaeste } from './gaeste.js'
 import { rechnung } from './rechnung.js'
 import { zugang } from './zugang.js'
+import { support } from './support.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -54,7 +55,8 @@ const texts = {
     ...preise.de,
     ...gaeste.de,
     ...rechnung.de,
-    ...zugang.de
+    ...zugang.de,
+    ...support.de
   },
   en: {
     ...common.en,
@@ -70,7 +72,8 @@ const texts = {
     ...preise.en,
     ...gaeste.en,
     ...rechnung.en,
-    ...zugang.en
+    ...zugang.en,
+    ...support.en
   }
 } as const
 

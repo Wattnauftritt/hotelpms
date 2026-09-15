@@ -424,7 +424,7 @@ Drei Stücke, in dieser Reihenfolge, weil jedes auf dem vorigen steht:
 | 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | **fertig.** Migration 0030 (`auth_token`, `platform_email`), `POST /v1/auth/password-reset` und `.../confirm`, Zustellung im Worker. Ein Mechanismus für beide Anlässe, verschieden nur in Frist und Text |
 | 13b | **Onboarding-Endpunkt** hinter Plattformrecht | **fertig.** `POST /v1/platform/accounts` hinter `platform:accounts`, Migration 0031 (`account_provision`). Account, erstes Haus, Inhaber und Einladung in einer Transaktion. Kein Selbstbedienungsweg; das ist eine Produktentscheidung, keine Lücke |
 | 13d | **Zugangsseiten** der Oberfläche | **fertig.** `/einladung` und `/kennwort` samt „Kennwort vergessen" an der Anmeldung. Ohne sie bekam der eingeladene Kunde einen gültigen Link auf eine Seite, die es nicht gab |
-| 13c | **Adminoberfläche** mit Support-Sitzungen | offen, aber das Fundament steht: `support_session` (Migration 0002), `applySupportSession()` und `audit_log.support_session_id` gibt es. Es fehlen Routen und Oberfläche |
+| 13c | **Adminoberfläche** mit Support-Sitzungen | **fertig.** Migration 0032, Routen unter `/v1/platform/support-sessions` und `/v1/support-sessions`, Konsole für die Plattform, Freigabe beim Kunden unter Einstellungen. Ticketsystem weiterhin angebunden statt gebaut — siehe unten |
 
 **Was 13a hinterlässt, worauf 13b aufsetzt.** Ein Token wird über `POST /v1/auth/password-reset` angefordert oder — für eine Einladung — beim Anlegen eines Benutzers als Zeile in `auth_token` hinterlegt; eingelöst wird beides über dieselbe Route. Der Onboarding-Endpunkt muss also keinen eigenen Einladungsweg bauen, sondern nur Token und Nachricht einreihen.
 
@@ -447,6 +447,17 @@ Die Funktion prüft zusätzlich selbst, dass der Mandantenkontext **leer** ist. 
 Die Kennwortregel ist dabei von `packages/domain` nach `packages/contracts` gewandert. Sie ist keine Fachlogik, sondern eine Zusage an beide Enden: die Schnittstelle weist ein zu kurzes Kennwort ab, die Oberfläche nennt die Länge vorher. Zwei Fassungen liefen auseinander, und der Befund wäre ein Benutzer, dem die Maske zwölf Zeichen nennt und die Antwort vierzehn verlangt.
 
 **Zu 13c, weil es leicht falsch verstanden wird.** „Anmelden, als wäre man der Kunde" ist hier bewusst **nicht** gebaut und soll es nicht werden. Plattformpersonal ohne freigegebene, befristete Sitzung bekommt einen leeren Mandantenkontext — die Zeilenrichtlinie liefert dann nichts. Der Kunde gibt frei, die Sitzung läuft ab, und jede Handlung trägt im Protokoll ihre `support_session_id`. Eine stille Übernahme wäre bei Auftragsverarbeitung (Art. 28 DSGVO) nicht haltbar und im Protokoll nicht von der Handlung des Kunden zu unterscheiden.
+
+**Was 13c tatsächlich tut — und was dabei gefunden wurde.** Das Fundament stand seit Migration 0002, aber es war **doppelt wirkungslos**, und beides fiel nicht auf, weil der Test dazu `accountIds` und `supportSessionId` prüft und nie, ob jemand mit der Sitzung etwas lesen kann:
+
+1. `applySupportSession` trug `permissionsByProperty` mit **leeren** Rechtemengen ein, während der Kommentar daneben „die Rechte einer Hoteldirektion" versprach. Eine freigegebene Sitzung bekam auf jeder Fachroute 403.
+2. Der Zugriffsbereich kam aus `SELECT id FROM property WHERE account_id = $1` unter `SYSTEM_CONTEXT` — also mit leeren `app_property_ids()`, während `property` eine erzwungene Zeilenrichtlinie über genau diese Liste trägt. Die Abfrage lieferte **null** Zeilen. Dieselbe Falle wie in den Migrationen 0014 und 0018; für OAuth ist sie in 0025 als `oauth_account_properties()` gelöst, der Support-Pfad hat es nie bekommen. Jetzt `account_active_properties()`.
+
+Was eine Sitzung darf, steht in [`apps/api/src/platform/support.ts`](../apps/api/src/platform/support.ts) als **positive** Liste je Stufe — eine Sperrliste wäre die falsche Bauart, weil ein später hinzugefügtes Recht darin automatisch erlaubt wäre. Zwei Stufen, weil Datenminimierung (Art. 5 Abs. 1 lit. c DSGVO) „nicht mehr als nötig" heißt und das am Anlass hängt: Fehlersuche braucht Lesen, eine erbetene Korrektur braucht Schreiben. Der Kunde gibt die Stufe mit frei und sieht dabei, was sie umfasst.
+
+**Keine Stufe enthält je:** Ausweisdaten (§ 30 BMG), das Anstoßen von DSGVO-Auskunft und Löschung, Rechnungen festschreiben oder gutschreiben, Exporte nach außen (DATEV, GoBD, Statistik), Benutzer- und Schnittstellenverwaltung, Account-Einstellungen und Vertrag. Die beiden vorletzten sind der eigentliche Punkt: `user:manage` und `integration:manage` würden erlauben, sich einen Benutzer oder einen API-Client anzulegen — beides überlebt die Sitzung, und damit wäre die Befristung, also der ganze Mechanismus, umgangen.
+
+Ein Trigger hält Stufe, Anlass und Beteiligte fest, sobald angefragt ist, und verhindert das Verlängern der Frist und das Wiederbeleben einer widerrufenen Sitzung. Ohne ihn ließe sich nach der Freigabe nachschieben — und im Protokoll stehen die Handlungen, nicht die Rechte, unter denen sie geschahen.
 
 **Ticketsystem:** angebunden, nicht gebaut. Verlauf, Postfachanbindung, Zuweisung und Suche sind Wochen Arbeit und haben mit Hotels nichts zu tun. Die Adminoberfläche verlinkt, und die Support-Sitzung trägt die Ticketnummer als Grund.
 

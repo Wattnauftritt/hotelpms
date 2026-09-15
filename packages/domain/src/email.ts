@@ -318,3 +318,58 @@ export function renderPasswordResetEmail(
   ]
   return { subject: 'Kennwort zuruecksetzen', text: lines.join('\n\n'), html: htmlBody(lines) }
 }
+
+/**
+ * Anfrage einer Support-Sitzung.
+ *
+ * **Der Ton ist Absicht.** Diese Nachricht bittet um Zugriff auf Daten, fuer
+ * die der Empfaenger verantwortlich ist -- nicht wir. Sie nennt deshalb
+ * Anlass, Stufe und Frist, und sie sagt ausdruecklich, dass Nichtstun die
+ * Anfrage verfallen laesst. Eine Mail, die zum Klicken draengt, waere bei
+ * einer Einwilligung genau das Falsche.
+ */
+export interface SupportRequestEmailData {
+  userName: string | null
+  /** Wer fragt. Ein Mensch, kein "Ihr Support-Team". */
+  staffName: string
+  reason: string
+  /** Was die Stufe erlaubt, schon ausformuliert. */
+  levelText: string
+  hours: number
+  link: string
+}
+
+export function renderSupportRequestEmail(
+  d: SupportRequestEmailData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      `${d.staffName} is asking for temporary access to your data in order to `
+        + `help you. Stated reason:`,
+      d.reason,
+      `Scope: ${d.levelText}. The session ends automatically after `
+        + `${d.hours} hour(s), and you can end it earlier at any time.`,
+      'Nothing happens until you approve it here:',
+      d.link,
+      'If you do nothing, the request expires on its own. Access to your data '
+        + 'is never granted without your approval.'
+    ]
+    return { subject: 'Support is asking for access', text: lines.join('\n\n'),
+             html: htmlBody(lines) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    `${d.staffName} bittet um befristeten Zugriff auf Ihre Daten, um Ihnen zu `
+      + `helfen. Angegebener Anlass:`,
+    d.reason,
+    `Umfang: ${d.levelText}. Die Sitzung endet nach ${d.hours} Stunde(n) von `
+      + `selbst, und Sie koennen sie jederzeit vorher beenden.`,
+    'Es geschieht nichts, bevor Sie hier freigeben:',
+    d.link,
+    'Tun Sie nichts, verfaellt die Anfrage von allein. Ohne Ihre Freigabe '
+      + 'bekommt niemand Zugriff auf Ihre Daten.'
+  ]
+  return { subject: 'Support bittet um Zugriff', text: lines.join('\n\n'),
+           html: htmlBody(lines) }
+}

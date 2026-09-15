@@ -3,6 +3,7 @@ import type { Pool } from '@hotelpms/db'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
 import type { Principal } from './context.js'
 import { ANONYMOUS } from './context.js'
+import { isSupportLevel, supportPermissions } from './support.js'
 import { isPermission, type Permission } from './permissions.js'
 
 interface RoleRow {
@@ -179,8 +180,8 @@ export async function applySupportSession(
   if (!principal.isPlatformStaff || principal.userId === null) return principal
 
   const active = await withTransaction(pool, SYSTEM_CONTEXT, client =>
-    client.query<{ id: number; account_id: number }>(
-      `SELECT id, account_id FROM support_session
+    client.query<{ id: number; account_id: number; level: string }>(
+      `SELECT id, account_id, level FROM support_session
         WHERE platform_user_id = $1
           AND granted_at IS NOT NULL
           AND revoked_at IS NULL
@@ -193,20 +194,52 @@ export async function applySupportSession(
   }
 
   const session = active.rows[0]!
+  /*
+   * Ueber eine SECURITY-DEFINER-Funktion, nicht direkt auf `property`.
+   *
+   * Hier stand `SELECT id FROM property WHERE account_id = $1` unter
+   * SYSTEM_CONTEXT -- also mit leeren app_property_ids(), waehrend die
+   * Tabelle eine erzwungene Zeilenrichtlinie ueber genau diese Liste traegt.
+   * Die Abfrage lieferte null Zeilen, und eine freigegebene Support-Sitzung
+   * bekam kein einziges Haus. Dieselbe Falle wie in den Migrationen 0014 und
+   * 0018 (Migration 0032).
+   */
   const props = await withTransaction(pool, SYSTEM_CONTEXT, client =>
     client.query<{ id: number }>(
-      `SELECT id FROM property WHERE account_id = $1 AND status = 'active'`,
-      [session.account_id]))
+      `SELECT id FROM account_active_properties($1)`, [session.account_id]))
+
+  /*
+   * Die Rechte der freigegebenen Stufe, nicht die des Kunden.
+   *
+   * Hier stand einmal eine leere Menge, waehrend der Kommentar daneben "die
+   * Rechte einer Hoteldirektion" versprach -- eine freigegebene Sitzung
+   * bekam damit auf jeder Fachroute 403, und der Test dazu pruefte nur, dass
+   * der Mandantenkontext gesetzt ist. Was eine Stufe umfasst und was keine
+   * je umfasst, steht in support.ts, jedes Weggelassene mit seinem Grund.
+   */
+  const rechte = isSupportLevel(session.level)
+    ? supportPermissions(session.level)
+    // Ein unbekannter Wert ist kein Anlass zu raten. Die Pruefbedingung der
+    // Spalte laesst ihn nicht zu; kaeme er doch, ist nichts die richtige
+    // Antwort.
+    : new Set<Permission>()
 
   const permissionsByProperty = new Map<number, Set<Permission>>()
-  for (const p of props.rows) permissionsByProperty.set(p.id, new Set())
+  for (const p of props.rows) permissionsByProperty.set(p.id, new Set(rechte))
 
   return {
     ...principal,
     accountIds: [session.account_id],
     permissionsByProperty,
-    // Waehrend der Sitzung gelten die Rechte einer Hoteldirektion.
-    accountPermissions: new Set(principal.accountPermissions),
+    /*
+     * Bewusst leer, aus demselben Grund wie beim Maschinentoken oben: `can()`
+     * prueft accountPermissions zuerst und laesst sie auf **alle** Haeuser
+     * wirken, ohne je nach einer Property zu fragen. Die Rechte der Sitzung
+     * gehoeren deshalb je Haus eingetragen -- sonst wuerde jede spaetere
+     * Einschraenkung auf einzelne Haeuser wirkungslos, und die Trennung
+     * zwischen "sehen" und "aendern" haengt an derselben Stelle.
+     */
+    accountPermissions: new Set(),
     supportSessionId: session.id
   }
 }
