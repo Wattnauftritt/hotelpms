@@ -114,6 +114,10 @@ Wortstellung Unsinn. Zwei Tests halten das fest —
 deutschen Satz, der noch in einem `Errors.*`-Aufruf steht;
 `apps/web/src/__tests__/i18n.test.ts` prüft den Katalog der Oberfläche.
 
+**Betriebsdateien.** Was auf der Maschine läuft, steht in `ops/` und wird in der Dokumentation **verwiesen, nicht abgeschrieben**. Zwei Fassungen derselben Datei laufen auseinander, und beide sehen für sich stimmig aus: `ops/` sagte `/opt/hotelpms`, Dokument 21 sagte `/srv/hotelpms`, und aufgefallen ist es erst beim Aufsetzen der echten Maschine.
+
+Jede Zeile darin gehört an einem echten System nachgerechnet, bevor sie eingecheckt wird. Bei Code fängt der Test den Irrtum; bei einem Runbook gibt es keinen. Bisher gefunden: eine systemd-Unit, die Node nie hätte starten können (`MemoryDenyWriteExecute`), ein Caddyfile, den der Lexer abweist (`match { … }` einzeilig — `scripts/check-caddyfile.sh` prüft das jetzt in CI), und ein `blkdiscard`, das den ganzen Host verworfen hätte.
+
 **Neue Migration.** Fortlaufend nummeriert, nie eine bestehende ändern. Der Kopfkommentar nennt den Befund oder die Anforderung, die sie auslöst.
 
 Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zuverlässig in die Quere kommen: zwei Zweige von `main` legen beide `0020_` an, und beim Mergen fällt das nicht auf, weil es verschiedene Dateien ohne Konflikt sind. Auffallen würde es erst beim nächsten frischen Schemaaufbau, als Fehler, dessen Ursache Tage zurückliegt. `scripts/check-migrations.sh` prüft das in CI. Wer die Meldung sieht, benennt die spätere um; zwischen unabhängigen Migrationen ist die Reihenfolge ohnehin beliebig.
