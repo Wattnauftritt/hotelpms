@@ -1,6 +1,12 @@
 /** Support-Sitzungen: Anfrage, Freigabe, Widerruf. */
 export const support = {
   de: {
+    'deploy.rollback': 'Zurück auf',
+    'deploy.rollbackHint': 'Schaltet auf einen früheren Stand zurück — ohne Bau, '
+                         + 'in Sekunden. Das Datenbankschema bleibt dabei auf dem '
+                         + 'neueren Stand.',
+    'deploy.rollbackNone': 'Kein früherer Stand verfügbar.',
+    'deploy.kind.rollback': 'zurückgerollt',
     'deploy.title': 'Ausrollen',
     'deploy.hint': 'Ausgerollt wird der Stand, der auf GitHub mit dem Tag '
                  + '„produktion“ markiert ist — nie einfach der letzte. Dieser '
@@ -50,6 +56,12 @@ export const support = {
     'support.mine': 'Meine Anfragen'
   },
   en: {
+    'deploy.rollback': 'Roll back to',
+    'deploy.rollbackHint': 'Switches back to an earlier release — no build, done '
+                         + 'in seconds. The database schema stays at the newer '
+                         + 'state.',
+    'deploy.rollbackNone': 'No earlier release available.',
+    'deploy.kind.rollback': 'rolled back',
     'deploy.title': 'Deploy',
     'deploy.hint': 'What gets deployed is the commit tagged “produktion” on '
                  + 'GitHub — never simply the latest one. This button only '

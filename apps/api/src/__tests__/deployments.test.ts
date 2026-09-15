@@ -120,6 +120,84 @@ describe('Was gerade laeuft', () => {
   })
 })
 
+describe('Zurueckrollen', () => {
+  /** Einen geglueckten Lauf mit gegebenem Stand hinterlassen. */
+  async function gelaufen(commit: string): Promise<void> {
+    await owner.query(
+      `INSERT INTO deploy_request (target_ref, status, finished_at, commit_after)
+       VALUES ('produktion','done', now(), $1)`, [commit])
+  }
+
+  const rollback = (commit: string, session = betrieb.sessionId) =>
+    app.inject({ method: 'POST', url: '/v1/platform/deployments/rollback',
+      headers: auth(session), payload: { commit } })
+
+  it('reiht einen Rollback auf einen frueheren Stand ein', async () => {
+    await gelaufen('aaaaaaa1')
+    await gelaufen('bbbbbbb2')
+
+    const r = await rollback('aaaaaaa1')
+    expect(r.statusCode).toBe(202)
+    const d = r.json() as { kind: string; targetRef: string; status: string }
+    // Eigene Art, damit der ausfuehrende Dienst nicht am Wert raten muss, ob
+    // er bauen soll -- Raten waere hier die schlechteste Moeglichkeit.
+    expect(d.kind).toBe('rollback')
+    expect(d.targetRef).toBe('aaaaaaa1')
+    expect(d.status).toBe('pending')
+  })
+
+  it('nimmt nur Staende an, die schon einmal gelaufen sind', async () => {
+    await gelaufen('aaaaaaa1')
+    // Ein beliebiger Commit waere kein Zurueckrollen, sondern ein
+    // unbemerktes Ausrollen ohne Freigabe.
+    const r = await rollback('cccccccc')
+    expect(r.statusCode).toBe(422)
+    expect((await owner.query(
+      `SELECT 1 FROM deploy_request WHERE kind = 'rollback'`)).rowCount).toBe(0)
+  })
+
+  it('weist einen Stand ab, der gar kein Commit sein kann', async () => {
+    await gelaufen('aaaaaaa1')
+    expect((await rollback('../../etc/passwd')).statusCode).toBe(422)
+    expect((await rollback('produktion')).statusCode).toBe(422)
+  })
+
+  it('weist den laufenden Stand ab', async () => {
+    await gelaufen('aaaaaaa1')
+    await gelaufen('bbbbbbb2')
+    // Sonst startete es die Dienste ohne jeden Gewinn neu -- mitten im
+    // Betrieb.
+    expect((await rollback('bbbbbbb2')).statusCode).toBe(409)
+  })
+
+  it('laesst keinen Rollback neben einem laufenden Vorgang zu', async () => {
+    await gelaufen('aaaaaaa1')
+    await gelaufen('bbbbbbb2')
+    await anfordern()
+    expect((await rollback('aaaaaaa1')).statusCode).toBe(409)
+  })
+
+  it('bietet frueher gelaufene Staende an, ohne den laufenden', async () => {
+    await gelaufen('aaaaaaa1')
+    await gelaufen('bbbbbbb2')
+    const d = (await liste()).json() as {
+      currentCommit: string; rollbackTargets: string[] }
+    expect(d.currentCommit).toBe('bbbbbbb2')
+    expect(d.rollbackTargets).toEqual(['aaaaaaa1'])
+  })
+
+  it('nennt denselben Stand nicht zweimal', async () => {
+    // Derselbe Stand kann mehrfach ausgerollt worden sein -- als Liste zum
+    // Anklicken ist er trotzdem einer.
+    await gelaufen('aaaaaaa1')
+    await gelaufen('bbbbbbb2')
+    await gelaufen('aaaaaaa1')
+    await gelaufen('ccccccc3')
+    const d = (await liste()).json() as { rollbackTargets: string[] }
+    expect(d.rollbackTargets).toEqual(['aaaaaaa1', 'bbbbbbb2'])
+  })
+})
+
 describe('Wer darf das', () => {
   it('weist einen Kunden ab, auch den Inhaber', async () => {
     const inhaber = await makeUser(owner,
@@ -139,5 +217,17 @@ describe('Wer darf das', () => {
   it('weist einen Aufruf ohne Anmeldung ab', async () => {
     expect((await app.inject({ method: 'POST', url: '/v1/platform/deployments' }))
       .statusCode).toBe(401)
+    expect((await app.inject({ method: 'POST',
+      url: '/v1/platform/deployments/rollback', payload: { commit: 'aaaaaaa1' } }))
+      .statusCode).toBe(401)
+  })
+
+  it('laesst einen Kunden auch nicht zurueckrollen', async () => {
+    const inhaber = await makeUser(owner,
+      { email: 'inhaber2@kunde.de', accountId: fx.accountId, roleKey: 'owner' })
+    expect((await app.inject({ method: 'POST',
+      url: '/v1/platform/deployments/rollback',
+      headers: auth(inhaber.sessionId), payload: { commit: 'aaaaaaa1' } }))
+      .statusCode).toBe(403)
   })
 })

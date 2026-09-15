@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Ausrollen auf der Produktivmaschine. Als Benutzer hotelpms ausfuehren.
 #
+#   deploy.sh deploy   [marker]   baut den Stand am Marker und schaltet um
+#   deploy.sh rollback <sha>      schaltet auf einen schon gebauten Stand
+#
 # **Warum hier und nicht nur in der Anleitung.** Dieses Skript stand bis zur
 # Erstinbetriebnahme ausschliesslich in docs/21 §8 -- und lief damit
 # zwangslaeufig auseinander: die Anleitung nannte /srv/hotelpms, die Units in
@@ -8,64 +11,136 @@
 # fuer sich stimmig aussahen. Was auf der Maschine laeuft, gehoert ins
 # Repository; die Anleitung verweist darauf, statt es zu wiederholen.
 #
-# Immer dieselbe Reihenfolge, und die Reihenfolge ist der Punkt.
+# **Gebaut wird neben dem laufenden Stand, nicht in ihm.**
+#
+# Hier wurde einmal im selben Verzeichnis gebaut, aus dem die Dienste laufen.
+# Scheitert der Bau, steht der Quellbaum dann schon auf dem neuen Commit,
+# waehrend dist/ halb alt und halb neu ist. Die laufenden Prozesse merken
+# nichts -- ihr Code liegt im Speicher. Startet die Maschine aber aus einem
+# anderen Grund neu, faehrt sie mit einem halben Bau hoch, und der Befund
+# liegt Tage zurueck.
+#
+# Jetzt entsteht je Stand ein eigenes Verzeichnis unter releases/, und erst
+# wenn es vollstaendig ist, zeigt der Symlink `current` darauf. Ein
+# gescheiterter Bau laesst den laufenden Stand voellig unberuehrt -- und das
+# Zurueckrollen faellt nebenbei ab.
 set -euo pipefail
 
 WURZEL="${HOTELPMS_ROOT:-/opt/hotelpms}"
-STAND="$WURZEL/current"
+REPO="$WURZEL/shared/repo"
+RELEASES="$WURZEL/releases"
+CURRENT="$WURZEL/current"
 UMGEBUNG="$WURZEL/shared/env"
 
-# Was ausgerollt wird: der Marker, nicht main.
-#
-# **Der Unterschied ist der Punkt.** main traegt, was zuletzt gemergt wurde --
-# auch einen Stand, den niemand fuer die Produktion vorgesehen hat. Bei
-# mehreren Bearbeitern ist das der Normalfall, nicht die Ausnahme. Der Tag
-# `produktion` wird bewusst verschoben; nur er kommt auf die Maschine.
-#
-#   git tag -f produktion <commit> && git push -f origin produktion
-MARKER="${1:-${HOTELPMS_DEPLOY_REF:-produktion}}"
+# So viele Staende bleiben stehen. Muss mindestens so gross sein wie das,
+# was die Oberflaeche zum Zurueckrollen anbietet -- sonst zeigt sie einen
+# Stand an, den es auf der Platte nicht mehr gibt.
+BEHALTEN="${HOTELPMS_RELEASES_BEHALTEN:-5}"
 
-cd "$STAND"
-
-# git reset --hard und nicht git pull. Die Maschine ist kein Arbeitsplatz:
-# sie soll genau den Stand tragen, der am Marker haengt. Ein pull kann in
-# einen Konflikt laufen und stehen bleiben -- und dann laeuft ein halber
-# Stand.
-#
-# --force bei den Tags, weil `produktion` wandert: ohne das behielte die
-# Maschine den ersten Stand, den sie je gesehen hat, und niemand saehe warum.
-git fetch --prune --force --tags origin
-git checkout --detach "$MARKER"
-git reset --hard "$MARKER"
-
-echo "Ausgerollt wird $MARKER = $(git rev-parse HEAD)" 
+MODUS="${1:-deploy}"
 
 set -a; . "$UMGEBUNG"; set +a
 
+# ---------------------------------------------------------------- umschalten
+#
+# Der Symlink wird ueber ein Zwischenziel gesetzt und dann verschoben:
+# `ln -sfn` auf einen bestehenden Symlink ist NICHT atomar -- es loescht erst
+# und legt dann neu an, und in der Luecke zeigt `current` ins Leere. `mv -T`
+# ist ein rename(2) und damit unteilbar.
+umschalten() {
+  local ziel="$1"
+  ln -sfn "$ziel" "$WURZEL/current.neu"
+  mv -Tf "$WURZEL/current.neu" "$CURRENT"
+
+  # Migrationen mit der Eigentuemerrolle, nie mit der Anwendungsrolle.
+  #
+  # Nach dem Umschalten und vor dem Neustart: das Schema ist dabei kurz neuer
+  # als der laufende Code, und das ist die richtige Richtung. Eine
+  # hinzugefuegte Spalte stoert den alten Code nicht, ein fehlendes Schema
+  # den neuen schon.
+  (cd "$CURRENT" && pnpm --filter @hotelpms/db migrate)
+
+  # Braucht die Regel in /etc/sudoers.d/hotelpms -- genau diese beiden
+  # Neustarts, nichts weiter.
+  sudo systemctl restart hotelpms-api hotelpms-worker
+
+  # Nicht "gestartet", sondern "antwortet". Ein Dienst, der sofort wieder
+  # stirbt, laeuft fuer systemd trotzdem kurz.
+  sleep 2
+  curl -fsS --unix-socket /run/hotelpms/api.sock http://localhost/health
+  echo
+}
+
+# ----------------------------------------------------------------- zurueck
+if [ "$MODUS" = "rollback" ]; then
+  SHA="${2:?rollback braucht den Stand: deploy.sh rollback <sha>}"
+  ZIEL="$RELEASES/$SHA"
+  if [ ! -d "$ZIEL" ]; then
+    echo "Stand $SHA liegt nicht mehr unter $RELEASES." >&2
+    echo "Vorhanden: $(ls -1 "$RELEASES" 2>/dev/null | tr '\n' ' ')" >&2
+    exit 1
+  fi
+  echo "Zurueck auf $SHA"
+  # **Die Migrationen wandern NICHT mit zurueck.** Das Schema bleibt auf dem
+  # Stand des neueren Codes. Fuer hinzufuegende Aenderungen ist das
+  # unproblematisch -- der aeltere Code sieht eine Spalte mehr und benutzt
+  # sie nicht. Wer eine Migration schreibt, die Bestehendes wegnimmt oder
+  # umdeutet, nimmt dem Zurueckrollen genau diese Eigenschaft.
+  umschalten "$ZIEL"
+  exit 0
+fi
+
+# ------------------------------------------------------------------ bauen
+MARKER="${2:-${HOTELPMS_DEPLOY_REF:-produktion}}"
+
+# Ein eigener Klon, aus dem heraus geholt wird. Er ist nie der Stand, der
+# laeuft: dort steht nur Geschichte, kein Arbeitsbaum, den ein halber Lauf
+# beschaedigen koennte.
+git -C "$REPO" fetch --prune --force --tags origin
+SHA="$(git -C "$REPO" rev-parse "$MARKER^{commit}")"
+ZIEL="$RELEASES/$SHA"
+
+echo "Ausgerollt wird $MARKER = $SHA"
+
+if [ -d "$ZIEL" ] && [ -e "$ZIEL/.fertig" ]; then
+  echo "Stand $SHA ist schon gebaut, es wird nur umgeschaltet."
+  umschalten "$ZIEL"
+  exit 0
+fi
+
+# Ein Rest aus einem abgebrochenen Lauf wird weggeraeumt, nicht
+# weiterbenutzt: er ist genau der halbe Bau, den diese Bauart verhindern soll.
+rm -rf "$ZIEL"
+mkdir -p "$ZIEL"
+
+# git archive statt eines Klons je Stand: ein Release-Verzeichnis braucht
+# keine Geschichte, und ohne .git kann kein spaeterer Lauf versehentlich
+# darin arbeiten.
+git -C "$REPO" archive "$SHA" | tar -x -C "$ZIEL"
+
+cd "$ZIEL"
 pnpm install --frozen-lockfile
 pnpm build
 
 # Die gebaute Oberflaeche dorthin, wo Caddy sie sucht. Ohne diesen Schritt
 # zeigt Caddy nach einem frischen Bau ein leeres Verzeichnis: pnpm build legt
-# sie in apps/web/dist, der Caddyfile bedient $STAND/web. Fiel bei der
+# sie in apps/web/dist, der Caddyfile bedient current/web. Fiel bei der
 # Erstinbetriebnahme auf, weil beide Seiten fuer sich richtig waren.
-rm -rf "$STAND/web"
-cp -a "$STAND/apps/web/dist" "$STAND/web"
+cp -a "$ZIEL/apps/web/dist" "$ZIEL/web"
 
-# Migrationen mit der Eigentuemerrolle, nie mit der Anwendungsrolle. Das
-# Skript liest DATABASE_URL_OWNER aus der Umgebung, die oben schon steht.
-#
-# Vor dem Neustart: das Schema ist dabei kurz neuer als der laufende Code,
-# und das ist die richtige Richtung. Eine hinzugefuegte Spalte stoert den
-# alten Code nicht, ein fehlendes Schema den neuen schon.
-pnpm --filter @hotelpms/db migrate
+# Erst jetzt gilt der Stand als vollstaendig. Bricht irgendetwas davor ab,
+# fehlt diese Marke, und der naechste Lauf baut neu statt umzuschalten.
+touch "$ZIEL/.fertig"
 
-# Braucht die Regel in /etc/sudoers.d/hotelpms -- genau diese beiden
-# Neustarts, nichts weiter.
-sudo systemctl restart hotelpms-api hotelpms-worker
+umschalten "$ZIEL"
 
-# Nicht "gestartet", sondern "antwortet". Ein Dienst, der sofort wieder
-# stirbt, laeuft fuer systemd trotzdem kurz.
-sleep 2
-curl -fsS --unix-socket /run/hotelpms/api.sock http://localhost/health
-echo
+# Alte Staende wegraeumen -- aber nie den laufenden, auch wenn er alt ist.
+# Ein Zurueckrollen auf einen Stand, dessen Verzeichnis gerade geloescht
+# wurde, waere der teuerste Weg, Platz zu sparen.
+LAEUFT="$(basename "$(readlink -f "$CURRENT")")"
+# shellcheck disable=SC2012
+ls -1t "$RELEASES" | tail -n +"$((BEHALTEN + 1))" | while read -r alt; do
+  [ "$alt" = "$LAEUFT" ] && continue
+  echo "raeume alten Stand $alt"
+  rm -rf "${RELEASES:?}/$alt"
+done

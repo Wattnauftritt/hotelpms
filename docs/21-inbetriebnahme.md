@@ -272,7 +272,59 @@ visudo -c
 
 **Kein allgemeines `NOPASSWD: ALL`.** Das wäre bequemer und machte den Dienstbenutzer zu Root — und der Dienstbenutzer ist genau der, den ein Angreifer über die Anwendung bekommt.
 
-**`git reset --hard` und nicht `git pull`.** Die Maschine ist kein Arbeitsplatz: sie soll genau den Stand tragen, der am Marker hängt. Ein `pull` kann in einen Konflikt laufen und stehen bleiben — und dann läuft ein halber Stand.
+### Die Ablage: gebaut wird neben dem laufenden Stand
+
+```
+/opt/hotelpms/
+  current  ->  releases/<sha>      Symlink. Darauf zeigen die systemd-Units und Caddy
+  releases/<sha>/                  ein fertig gebauter Stand, ohne .git
+  shared/repo/                     der Klon, aus dem geholt wird
+  shared/env                       die Umgebungsdatei, chmod 600
+```
+
+Hier wurde einmal **im** laufenden Verzeichnis gebaut. Scheitert der Bau, steht der Quellbaum dann schon auf dem neuen Commit, während `dist/` halb alt und halb neu ist. Die laufenden Prozesse merken nichts — ihr Code liegt im Speicher. Startet die Maschine aber aus einem anderen Grund neu, fährt sie mit einem halben Bau hoch, und der Befund liegt Tage zurück.
+
+Jetzt entsteht je Stand ein eigenes Verzeichnis, und erst wenn es vollständig ist (`.fertig`), schaltet der Symlink um — über `mv -T`, also ein `rename(2)` und damit unteilbar. Ein `ln -sfn` auf einen bestehenden Symlink wäre es **nicht**: es löscht erst und legt dann neu an, und in der Lücke zeigt `current` ins Leere.
+
+Ein gescheiterter Bau lässt den laufenden Stand damit völlig unberührt.
+
+### Zurückrollen
+
+Fällt nebenbei ab: Symlink auf einen älteren Stand, Dienste neu starten. Kein Bau, in Sekunden durch — in der Konsole ein Knopf je verfügbarem Stand, auf der Maschine:
+
+```bash
+/opt/hotelpms/current/ops/deploy/deploy.sh rollback <sha>
+```
+
+**Die Migrationen wandern nicht mit zurück.** Das Schema bleibt auf dem Stand des neueren Codes. Für hinzufügende Änderungen ist das unproblematisch — der ältere Code sieht eine Spalte mehr und benutzt sie nicht. Wer eine Migration schreibt, die Bestehendes wegnimmt oder umdeutet, nimmt dem Zurückrollen genau diese Eigenschaft; das ist der Preis, und er ist beim Schreiben der Migration zu zahlen, nicht beim Zurückrollen.
+
+Die Maschine behält die letzten fünf Stände (`HOTELPMS_RELEASES_BEHALTEN`) — und nie den laufenden, auch wenn er älter ist. Die Konsole bietet vier an; die beiden Zahlen gehören zusammen, sonst zeigt sie einen Stand, den es auf der Platte nicht mehr gibt.
+
+### Umstieg einer Maschine, die noch die alte Ablage hat
+
+War `current` bisher ein Arbeitsverzeichnis (kein Symlink), einmalig:
+
+```bash
+systemctl stop hotelpms-api hotelpms-worker
+cd /opt/hotelpms
+mkdir -p releases shared
+git clone --bare https://github.com/Wattnauftritt/hotelpms.git shared/repo
+git -C shared/repo remote add origin https://github.com/Wattnauftritt/hotelpms.git
+
+# Den alten Arbeitsbaum beiseite, damit deploy.sh den Symlink anlegen kann.
+mv current current.alt
+
+# Erster Lauf aus dem alten Baum heraus -- er legt releases/<sha> an und
+# setzt current als Symlink.
+./current.alt/ops/deploy/deploy.sh deploy produktion
+
+# Erst wenn die Gesundheitspruefung durch ist:
+rm -rf current.alt
+```
+
+Die Umgebungsdatei unter `shared/env` bleibt dabei unberührt — sie liegt außerhalb der Stände, und genau dafür ist `shared/` da.
+
+**`git reset --hard` und nicht `git pull`.** Der Klon unter `shared/repo` ist kein Arbeitsplatz: aus ihm wird nur geholt und mit `git archive` ausgepackt. Ein `pull` könnte in einen Konflikt laufen und stehen bleiben — und dann läuft ein halber Stand.
 
 ### Was ausgerollt wird: der Tag `produktion`, nie `main`
 

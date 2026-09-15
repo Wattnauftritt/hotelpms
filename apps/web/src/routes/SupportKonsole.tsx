@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { usePlatformSupportSessions, useRequestSupportSession,
-         useDeployments, useRequestDeployment,
+         useDeployments, useRequestDeployment, useRollbackDeployment,
          type SupportSession, type Deployment } from '../lib/queries/support.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
@@ -170,6 +170,7 @@ function Ausrollen(): JSX.Element {
   const locale = useLocale()
   const q = useDeployments()
   const anfordern = useRequestDeployment()
+  const zurueck = useRollbackDeployment()
   const [offenesLog, setOffenesLog] = useState<number | null>(null)
 
   const zeit = (iso: string) =>
@@ -203,6 +204,31 @@ function Ausrollen(): JSX.Element {
         {t(anfordern.isPending ? 'common.loading' : 'deploy.request')}
       </button>
 
+      {/*
+        * Zurueckrollen steht unter dem Ausrollknopf und nicht daneben: es ist
+        * der seltenere Fall, und ein Knopf, der den laufenden Stand aendert,
+        * gehoert nicht versehentlich getroffen.
+        */}
+      <div className="border-t border-neutral-100 pt-3 space-y-2">
+        <p className="text-xs text-neutral-600">{t('deploy.rollbackHint')}</p>
+        {zurueck.isError && <Fehler error={zurueck.error} />}
+        {q.data !== undefined && q.data.rollbackTargets.length === 0 ? (
+          <p className="text-xs text-neutral-500">{t('deploy.rollbackNone')}</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-neutral-600">{t('deploy.rollback')}</span>
+            {q.data?.rollbackTargets.map(c => (
+              <button key={c} type="button" disabled={zurueck.isPending || laeuft}
+                      onClick={() => zurueck.mutate(c)}
+                      className="text-xs font-mono px-2 py-1 border border-neutral-300
+                                 rounded hover:bg-neutral-50 disabled:text-neutral-400">
+                {c.slice(0, 12)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {q.isError && <Fehler error={q.error} />}
       {q.data !== undefined && q.data.deployments.length > 0 && (
         <ul className="space-y-1 text-xs">
@@ -214,6 +240,9 @@ function Ausrollen(): JSX.Element {
                   {t(DEPLOY_ZUSTAND[d.status])}
                 </span>
                 <span className="text-neutral-600">{zeit(d.requestedAt)}</span>
+                {d.kind === 'rollback' && (
+                  <span className="text-amber-800">{t('deploy.kind.rollback')}</span>
+                )}
                 <span className="text-neutral-500">
                   {d.requestedBy ?? t('deploy.byHand')}
                 </span>
