@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { today, addDays, daysBetween, eachDay, isWeekend } from '../lib/dates.js'
 import { formatMoney, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { SCREENS, visibleScreens, resolveScreen } from '../screens.js'
@@ -122,5 +124,30 @@ describe('Bildschirme und Rechte', () => {
     // Kein Schluessel doppelt: zwei gleiche waeren in der Adresse nicht
     // unterscheidbar, und `screenByKey` faende immer nur den ersten.
     expect(new Set(SCREENS.map(s => s.key)).size).toBe(SCREENS.length)
+  })
+
+  /**
+   * Die Rechte kommen vom Rahmen, nicht aus einem zweiten Blick in den
+   * Zwischenspeicher.
+   *
+   * Vorher standen sie nur in `main.tsx`; ein Bildschirm kam nicht an sie
+   * heran und las deshalb dieselbe Antwort (`/v1/auth/me`) noch einmal aus
+   * dem Cache von React Query. Das funktionierte, war aber eine Umgehung:
+   * der Rahmen wusste es und reichte es nicht weiter, und wer den
+   * Schluessel `['me']` einmal umbenannt haette, haette zwei Bildschirme
+   * stumm entrechtet -- ohne Fehlermeldung, nur mit verschwundenen Knoepfen.
+   *
+   * Geprueft wird die Ursache: dass es die Umgehung nicht mehr gibt.
+   */
+  it('reicht die Rechte durch, statt sie im Zwischenspeicher nachzuschlagen', () => {
+    const web = join(import.meta.dirname, '..')
+    expect(existsSync(join(web, 'lib/queries/rechte.ts')),
+      'lib/queries/rechte.ts sollte es nicht mehr geben').toBe(false)
+
+    for (const datei of readdirSync(join(web, 'routes'))) {
+      const inhalt = readFileSync(join(web, 'routes', datei), 'utf8')
+      expect(inhalt, `${datei} liest die Rechte selbst`).not.toContain("queryKey: ['me']")
+      expect(inhalt, `${datei} benutzt useRechte`).not.toContain('useRechte')
+    }
   })
 })

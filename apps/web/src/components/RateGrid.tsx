@@ -1,8 +1,9 @@
 import { memo, useCallback, useMemo, useRef, type JSX } from 'react'
 import type { RateGridCell, RatePlan } from '@hotelpms/contracts'
-import { useT, useLocale, weekdayShort, type Locale } from '../lib/i18n/index.js'
+import { useT, useLocale, weekdayShort, geldFormatierer,
+         type Locale } from '../lib/i18n/index.js'
 import { isWeekend } from '../lib/dates.js'
-import { geldFormatierer, restriktionsZeichen } from '../lib/preisraster.js'
+import { restriktionsZeichen } from '../lib/preisraster.js'
 
 /**
  * Das Preisraster: Tage waagerecht, Ratenpläne senkrecht.

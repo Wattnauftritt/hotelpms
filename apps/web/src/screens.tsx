@@ -38,6 +38,24 @@ import { Invoices } from './routes/Invoices.tsx'
 
 export interface ScreenContext {
   propertyId: number
+  /**
+   * Die Rechte dieses Benutzers in diesem Haus.
+   *
+   * Sie stehen in der Antwort von `/v1/auth/me`, die der Rahmen ohnehin
+   * beim Start holt. Ein Bildschirm kam bisher nicht an sie heran und las
+   * deshalb denselben Zwischenspeicher noch einmal — was ging, aber eine
+   * Umgehung war: der Rahmen wusste es und reichte es nicht weiter.
+   *
+   * Sie stehen hier und nicht nur am Eintrag, weil beides verschiedene
+   * Fragen sind. `permission` entscheidet, **ob** ein Bildschirm erscheint;
+   * das hier entscheidet, **was darin** erscheint. Die Rechnungsliste zeigt
+   * jedem mit `folio:read` die Rechnungen und den Versandknopf nur dem mit
+   * `email:send`.
+   *
+   * Sicherheit ist das nicht — die liegt in der API und nirgends sonst.
+   * Es ist Brauchbarkeit: kein Knopf, der mit 403 antwortet.
+   */
+  permissions: readonly string[]
   /** Das Folio liegt über dem Tagesgeschäft, nicht daneben. */
   openFolio: (folioRef: string) => void
   /** Der Check-in liegt ebenso über dem jeweiligen Bildschirm, meist dem Plan (A9). */
@@ -87,13 +105,14 @@ export const SCREENS: readonly ScreenDefinition[] = [
     permission: ['integration:manage', 'user:manage'],
     render: c => <Integrations propertyId={c.propertyId} /> },
   { key: 'rates', nav: 'nav.rates', permission: 'rate:read',
-    render: c => <Rates propertyId={c.propertyId} /> },
+    render: c => <Rates propertyId={c.propertyId} permissions={c.permissions} /> },
   { key: 'guests', nav: 'nav.guests', permission: 'guest:read',
     render: c => <Guests propertyId={c.propertyId} /> },
   { key: 'availability', nav: 'nav.availability', permission: 'reservation:read',
     render: c => <Availability propertyId={c.propertyId} /> },
   { key: 'invoices', nav: 'nav.invoices', permission: 'folio:read',
-    render: c => <Invoices propertyId={c.propertyId} onFolio={c.openFolio} /> }
+    render: c => <Invoices propertyId={c.propertyId} onFolio={c.openFolio}
+                           permissions={c.permissions} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

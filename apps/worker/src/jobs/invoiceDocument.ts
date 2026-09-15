@@ -56,7 +56,7 @@ interface InvoiceRow {
   service_to: string | null
   issuer_snapshot: Partial<CiiParty>
   recipient_snapshot: Partial<CiiParty>
-  totals: { grossCent: number; roundingCent?: number }
+  totals: { grossCent: number; roundingCent?: number; prepaidCent?: number }
 }
 
 interface ChargeRow {
@@ -148,9 +148,20 @@ async function load(
             business_date::text
        FROM charge WHERE invoice_id = $1 ORDER BY id`, [invoiceId])
 
-  // Bereits vereinnahmt und dieser Rechnung zugeordnet (BT-113). Heute
-  // setzt das Festschreiben die Zuordnung nicht; sobald es das tut, steht
-  // der Betrag ohne weiteres Zutun im Beleg.
+  /*
+   * Bereits vereinnahmt und dieser Rechnung zugeordnet (BT-113).
+   *
+   * Der Betrag kommt aus der **Momentaufnahme** und wird nicht aus den
+   * Zahlungsvermerken gerechnet: die Zuordnung laeuft weiter, auch nachdem
+   * die Rechnung geschrieben ist (der Gast zahlt beim Auschecken), und ein
+   * live gerechneter Betrag machte den Beleg davon abhaengig, wann dieser
+   * Lauf ihn gezeichnet hat. Zwei Ausdrucke derselben Rechnung truegen dann
+   * verschiedene Zahlen.
+   *
+   * Rechnungen von vor dieser Aenderung haben das Feld nicht. Fuer sie gilt
+   * die Summe der zugeordneten Vermerke -- die damals niemand gesetzt hat,
+   * also null, und genau das stand auch bisher auf ihnen.
+   */
   const s = await client.query<{ prepaid: string }>(
     `SELECT coalesce(sum(amount_cent), 0)::text AS prepaid
        FROM settlement WHERE invoice_id = $1`, [invoiceId])
@@ -179,7 +190,7 @@ async function load(
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,
     serviceTo: row.service_to ?? daten[daten.length - 1] ?? row.issued_on,
-    prepaidCent: Number(s.rows[0]!.prepaid),
+    prepaidCent: Number(row.totals.prepaidCent ?? s.rows[0]!.prepaid),
     // BT-114. Der Ausgleich steht in der festgeschriebenen Momentaufnahme und
     // wird nicht neu gerechnet: waere er ableitbar, waere er nicht noetig.
     // Rechnungen vor Aufgabe 12 haben ihn nicht; dort ist er null.

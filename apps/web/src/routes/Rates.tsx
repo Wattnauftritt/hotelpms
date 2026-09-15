@@ -4,7 +4,6 @@ import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
          useCreateRatePlan, useRebuildDerived,
          tageInklusive, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
-import { useRechte } from '../lib/queries/rechte.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
 import { ChannelSicht } from '../components/ChannelSicht.tsx'
 import { betroffeneTage, centAusEingabe, eingabeAusCent, preisVorschau,
@@ -448,7 +447,9 @@ function Ratenplaene(
   )
 }
 
-export function Rates({ propertyId }: { propertyId: number }): JSX.Element {
+export function Rates(
+  { propertyId, permissions }: { propertyId: number; permissions: readonly string[] }
+): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const [von, setVon] = useState(today())
@@ -462,8 +463,7 @@ export function Rates({ propertyId }: { propertyId: number }): JSX.Element {
   // die Zeilen des Rasters ihre Eingaben jedes Mal veraendert und
   // zeichneten sich alle neu -- damit waere das Merken dort wirkungslos.
   const tage = useMemo(() => tageInklusive(von, bis), [von, bis])
-  const rechte = useRechte(propertyId)
-  const darfSchreiben = rechte.includes('rate:write')
+  const darfSchreiben = permissions.includes('rate:write')
 
   const plaene = useRatePlans(propertyId)
   const kategorien = useCategories(propertyId)

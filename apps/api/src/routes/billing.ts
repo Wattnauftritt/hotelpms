@@ -18,6 +18,125 @@ import type { Principal } from '../platform/context.js'
 const VAT_FALLBACK = 700
 
 /**
+ * Wer die Rechnung bekommt.
+ *
+ * Die Firma geht vor: ist eine gesetzt, geht die Rechnung an sie, und der
+ * Gast bleibt der Gast des Aufenthalts. Dieselbe Reihenfolge benutzt das
+ * Festschreiben, und sie steht hier noch einmal, damit die Maske vorher
+ * zeigt, was der Beleg nachher traegt.
+ *
+ * `folio.guest_id` ist dabei **nicht** der Gast des Aufenthalts -- der
+ * steht an der Reservierung (`primary_guest_id`). Am Folio steht, an wen
+ * abgerechnet wird, und das kann jemand anderes sein: der Ehepartner zahlt,
+ * der Gast reist.
+ */
+async function empfaenger(
+  client: PoolClient, guestId: number | null, companyId: number | null
+): Promise<{
+  kind: 'company' | 'guest' | 'none'
+  name: string
+  guestRef: string | null
+  companyRef: string | null
+  hasAddress: boolean
+}> {
+  if (companyId !== null) {
+    const { rows } = await client.query<{ companyRef: string; name: string
+                                          hasAddress: boolean }>(
+      `SELECT public_ref AS "companyRef", name,
+              (address_line1 IS NOT NULL AND city IS NOT NULL) AS "hasAddress"
+         FROM company WHERE id = $1`, [companyId])
+    const c = rows[0]
+    if (c !== undefined) {
+      return { kind: 'company', name: c.name, guestRef: null,
+               companyRef: c.companyRef, hasAddress: c.hasAddress }
+    }
+  }
+  if (guestId !== null) {
+    const { rows } = await client.query<{ guestRef: string; name: string
+                                          hasAddress: boolean }>(
+      `SELECT public_ref AS "guestRef",
+              trim(both ', ' from coalesce(last_name,'') || ', ' || coalesce(first_name,''))
+                AS name,
+              (address_line1 IS NOT NULL AND city IS NOT NULL) AS "hasAddress"
+         FROM guest WHERE id = $1`, [guestId])
+    const g = rows[0]
+    if (g !== undefined) {
+      return { kind: 'guest', name: g.name, guestRef: g.guestRef,
+               companyRef: null, hasAddress: g.hasAddress }
+    }
+  }
+  return { kind: 'none', name: '', guestRef: null, companyRef: null, hasAddress: false }
+}
+
+/** Ein Zahlungsvermerk, der noch keiner Rechnung zugeordnet ist. */
+interface OffenerVermerk { id: number; amount_cent: number }
+
+/**
+ * Zahlungsvermerke eines Folios, die noch keiner Rechnung zugeordnet sind.
+ *
+ * **Warum nur positive.** Eine Erstattung ist keine Zahlung auf eine
+ * Rechnung. Sie automatisch der naechsten offenen Rechnung zuzuordnen
+ * hiesse, sie gegen einen Beleg zu rechnen, den sie nicht betrifft; der
+ * Saldo des Folios traegt sie ohnehin.
+ *
+ * **Warum nicht die einer Anzahlung.** Ein Vermerk, aus dem eine
+ * Anzahlungsrechnung geworden ist, steht auf der Schlussrechnung schon als
+ * Position (Anzahlungsjournal, Aufgabe 3). Ihn zusaetzlich als Zahlung
+ * anzuhaengen zoege denselben Betrag zweimal ab.
+ */
+async function offeneVermerke(
+  client: PoolClient, folioId: number
+): Promise<OffenerVermerk[]> {
+  const { rows } = await client.query<OffenerVermerk>(
+    `SELECT s.id, s.amount_cent
+       FROM settlement s
+      WHERE s.folio_id = $1 AND s.invoice_id IS NULL AND s.amount_cent > 0
+        AND NOT EXISTS (SELECT 1 FROM deposit_ledger dl WHERE dl.settlement_id = s.id)
+      ORDER BY s.id`, [folioId])
+  return rows
+}
+
+/**
+ * Welche Vermerke auf eine Rechnung passen, bis zu ihrem Zahlbetrag.
+ *
+ * **Die Obergrenze ist nicht kosmetisch.** Mehr zuzuordnen als die Rechnung
+ * fordert hiesse, einen vorausgezahlten Betrag (BT-113) auszuweisen, der
+ * groesser ist als die Summe -- der Zahlbetrag (BT-115) waere negativ, und
+ * ein Beleg, der Geld fordert und zugleich Geld zurueckgibt, ist keiner.
+ *
+ * Uebersteigt ein Vermerk die Grenze, bleibt er **ganz** offen und die
+ * Auswahl endet: ein Vermerk ist nicht teilbar, und ihn zu ueberspringen,
+ * um einen spaeteren kleineren zu nehmen, waere am Gastkonto nicht mehr
+ * nachzuvollziehen.
+ */
+function passendeVermerke(
+  vermerke: readonly OffenerVermerk[], obergrenzeCent: number
+): { ids: number[]; summeCent: number } {
+  const ids: number[] = []
+  let summeCent = 0
+  for (const v of vermerke) {
+    if (summeCent + v.amount_cent > obergrenzeCent) break
+    ids.push(v.id)
+    summeCent += v.amount_cent
+  }
+  return { ids, summeCent }
+}
+
+/**
+ * Die Zuordnung schreiben. `settlement` ist Haertegrad 1; das ist der
+ * **eine** erlaubte Uebergang (Migration 0012, `NULL` -> Wert), und was
+ * hier zugeordnet wird, ist zugeordnet.
+ */
+async function vermerkeZuordnen(
+  client: PoolClient, invoiceId: number, ids: readonly number[]
+): Promise<void> {
+  if (ids.length === 0) return
+  await client.query(
+    `UPDATE settlement SET invoice_id = $2 WHERE id = ANY($1) AND invoice_id IS NULL`,
+    [ids, invoiceId])
+}
+
+/**
  * Die erwartete Zusammensetzung des Aufenthalts nach Steuersaetzen: die
  * Grundlage, in deren Verhaeltnis eine pauschale Anzahlung aufgeteilt wird.
  *
@@ -231,7 +350,8 @@ export function billingRoutes(app: FastifyInstance): void {
       const { folioRef } = req.params as { folioRef: string }
       return tx(req.pool, req, async client => {
         const f = await client.query(
-          `SELECT id, public_ref, property_id, reservation_id, kind, status, label
+          `SELECT id, public_ref, property_id, reservation_id, kind, status, label,
+                  guest_id, company_id
              FROM folio WHERE public_ref = $1`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
@@ -251,8 +371,87 @@ export function billingRoutes(app: FastifyInstance): void {
         const settled = settlements.rows.reduce((s, p) => s + Number(p.amount_cent), 0)
         return {
           folio, charges: charges.rows, settlements: settlements.rows,
-          balanceCent: charged - settled
+          balanceCent: charged - settled,
+          recipient: await empfaenger(client, folio.guest_id, folio.company_id)
         }
+      })
+    }
+  })
+
+  /**
+   * Wer die Rechnung bekommt.
+   *
+   * **Warum das ueberhaupt aenderbar ist.** Die Rechnung geht nicht immer
+   * an den, der im Zimmer schlaeft: die Firma zahlt, der Ehepartner zahlt,
+   * die Reisestelle zahlt. Bisher stand der Empfaenger nur da, wo ihn die
+   * Buchung hingeschrieben hatte, und eine Korrektur war an der Oberflaeche
+   * nicht moeglich -- wer sich vertippt hatte, bekam die Rechnung an den
+   * Falschen und musste sie stornieren.
+   *
+   * **`invoice:issue` und nicht `folio:post`.** Wer eine Minibar bucht,
+   * soll keine Rechnung umleiten koennen. Wer sie ausstellen darf,
+   * entscheidet auch, an wen.
+   *
+   * Schon **festgeschriebene** Rechnungen aendert das nicht: ihr Empfaenger
+   * steht als Momentaufnahme an der Rechnung (B6, Dokument 13) und ist
+   * Haertegrad 1. Das hier wirkt auf die naechste.
+   */
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/folios/:folioRef/recipient',
+    permission: 'invoice:issue',
+    summary: 'Rechnungsempfaenger des Folios setzen',
+    handler: async (req) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = req.body as {
+        guestRef?: string | null
+        companyRef?: string | null
+      }
+      if (body.guestRef === undefined && body.companyRef === undefined) {
+        throw Errors.validation({ guestRef: ['field.required'] })
+      }
+
+      return tx(req.pool, req, async client => {
+        const f = await client.query<{ id: number; property_id: number; status: string
+                                       guest_id: number | null; company_id: number | null }>(
+          `SELECT id, property_id, status, guest_id, company_id
+             FROM folio WHERE public_ref = $1`, [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+
+        /*
+         * Gast und Firma haengen am Account, nicht an der Property. Die
+         * Zeilenrichtlinie filtert nach Mandant, und mehr braucht es hier
+         * nicht: wer den Verweis nicht finden darf, findet ihn nicht.
+         */
+        let guestId = folio.guest_id
+        if (body.guestRef !== undefined) {
+          if (body.guestRef === null) guestId = null
+          else {
+            const g = await client.query<{ id: number }>(
+              `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
+            if (g.rowCount === 0) throw Errors.notFound('res.guest')
+            guestId = g.rows[0]!.id
+          }
+        }
+        let companyId = folio.company_id
+        if (body.companyRef !== undefined) {
+          if (body.companyRef === null) companyId = null
+          else {
+            const c = await client.query<{ id: number }>(
+              `SELECT id FROM company WHERE public_ref = $1 AND active`,
+              [body.companyRef])
+            if (c.rowCount === 0) throw Errors.notFound('res.company')
+            companyId = c.rows[0]!.id
+          }
+        }
+
+        await client.query(
+          `UPDATE folio SET guest_id = $2, company_id = $3 WHERE id = $1`,
+          [folio.id, guestId, companyId])
+
+        return { recipient: await empfaenger(client, guestId, companyId) }
       })
     }
   })
@@ -348,6 +547,34 @@ export function billingRoutes(app: FastifyInstance): void {
           [folio.property_id, folio.id, bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10),
            body.amountCent, pm.rows[0]!.id, body.externalReference ?? null, principal.userId])
 
+        /*
+         * Zahlt der Gast **nach** dem Festschreiben -- der Regelfall, wenn
+         * die Rechnung beim Auschecken gedruckt und danach bezahlt wird --,
+         * gehoert der Vermerk an die aelteste Rechnung dieses Folios, die
+         * noch nicht ausgeglichen ist. Ohne diese Zuordnung wuesste das
+         * System nur, dass das Folio ausgeglichen ist, nicht **welche**
+         * Rechnung bezahlt wurde; eine Liste koennte kein "offen" fuehren,
+         * ohne zu raten.
+         *
+         * Auf den Beleg wirkt das nicht mehr: der vorausgezahlte Betrag
+         * steht seit dem Festschreiben in der Momentaufnahme.
+         */
+        const offen = await client.query<{ id: number; rest: number }>(
+          `SELECT i.id,
+                  coalesce((i.totals->>'payableCent')::bigint,
+                           (i.totals->>'grossCent')::bigint, 0)
+                  - coalesce((SELECT sum(s.amount_cent)
+                                FROM settlement s WHERE s.invoice_id = i.id), 0)
+                  AS rest
+             FROM invoice i
+            WHERE i.folio_id = $1 AND i.kind IN ('final','interim')
+            ORDER BY i.id`, [folio.id])
+        const ziel = offen.rows.find(z => Number(z.rest) > 0)
+        if (ziel !== undefined && body.amountCent > 0
+            && body.amountCent <= Number(ziel.rest)) {
+          await vermerkeZuordnen(client, ziel.id, [r.rows[0]!.id])
+        }
+
         const result = { settlementId: r.rows[0]!.id, amountCent: body.amountCent }
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
@@ -433,6 +660,21 @@ export function billingRoutes(app: FastifyInstance): void {
         if (settlement.amount_cent <= 0) {
           throw Errors.validation({ settlementId: [
             'field.notAnIncomingPayment'] })
+        }
+
+        /*
+         * Ein Vermerk, der schon auf einer Rechnung als Zahlung steht, kann
+         * nicht zusaetzlich eine Anzahlungsrechnung tragen: derselbe Betrag
+         * waere zweimal abgerechnet, einmal als vorausgezahlt (BT-113) und
+         * einmal als verrechnete Anzahlung. Seit die Zuordnung geschrieben
+         * wird, ist das erreichbar -- vorher nicht, weil niemand sie setzte.
+         */
+        const schonAufRechnung = await client.query<{ number: string }>(
+          `SELECT i.number FROM settlement s JOIN invoice i ON i.id = s.invoice_id
+            WHERE s.id = $1`, [settlement.id])
+        if (schonAufRechnung.rowCount !== null && schonAufRechnung.rowCount > 0) {
+          throw Errors.conflict('deposit.settlementOnInvoice',
+            { number: schonAufRechnung.rows[0]!.number })
         }
 
         const bereits = await client.query(
@@ -587,14 +829,19 @@ export function billingRoutes(app: FastifyInstance): void {
    * -- der weist ein Uebungshaus hart ab und haengt an einem Recht, das die
    * Rezeption nicht hat.
    *
-   * **Was hier bewusst nicht steht: ob die Rechnung bezahlt ist.** Das
-   * Modell weiss es nicht. `settlement.invoice_id` waere die Stelle dafuer,
-   * aber dieses Feld wird nirgends geschrieben -- es hat einen Leser (der
-   * ZUGFeRD-Beleg fuer BT-113) und ein Schreibrecht aus Migration 0012,
-   * und keinen Schreiber. Eine Spalte "offen" oder "zugeordnet" waere
-   * damit strukturell immer der volle Betrag beziehungsweise null: eine
-   * Zahl, die richtig aussieht und es nie ist. Der Stand einer Zahlung
-   * steht am Folio, und dorthin fuehrt `folioRef`.
+   * **Zum Zahlungsstand.** `settledCent` ist die Summe der Zahlungsvermerke,
+   * die dieser Rechnung zugeordnet sind, `openCent` der Rest zum Zahlbetrag.
+   * Das Feld `settlement.invoice_id` hatte lange keinen Schreiber; solange
+   * das so war, stand hier bewusst nichts ueber Zahlungen, weil jede Zahl
+   * strukturell falsch gewesen waere. Seit das Festschreiben und das
+   * Vermerken einer Zahlung die Zuordnung setzen, sagt sie etwas.
+   *
+   * **Sie sagt nicht alles.** Eine Zahlung, die vor dieser Aenderung
+   * vermerkt wurde, ist keiner Rechnung zugeordnet und wird nie eine
+   * bekommen -- `NULL` -> Wert ist der einzige erlaubte Uebergang, und
+   * niemand darf ihn nachtraeglich fuer alte Zeilen raten. Solche
+   * Rechnungen stehen als offen da, obwohl sie bezahlt sind. Der Saldo des
+   * Folios ist in dem Fall die Wahrheit, und `folioRef` fuehrt dorthin.
    */
   registerRoute(app, {
     method: 'GET',
@@ -623,6 +870,14 @@ export function billingRoutes(app: FastifyInstance): void {
                   i.business_date::text AS "businessDate",
                   i.kind, i.currency,
                   (i.totals->>'grossCent')::bigint AS "grossCent",
+                  -- Der Zahlbetrag steht erst seit Aufgabe 12 in der
+                  -- Momentaufnahme; aeltere Rechnungen fordern ihre
+                  -- Bruttosumme.
+                  COALESCE((i.totals->>'payableCent')::bigint,
+                           (i.totals->>'grossCent')::bigint) AS "payableCent",
+                  -- ::bigint, weil sum() ueber bigint numeric liefert und
+                  -- numeric als Zeichenkette ankommt.
+                  COALESCE(z.summe, 0)::bigint AS "settledCent",
                   COALESCE(i.recipient_snapshot->>'name', '') AS recipient,
                   f.public_ref AS "folioRef",
                   d.invoice_id IS NOT NULL AS "documentReady",
@@ -633,6 +888,13 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM invoice i
              JOIN folio f ON f.id = i.folio_id
              LEFT JOIN invoice_document d ON d.invoice_id = i.id
+             -- Gruppiert statt je Zeile: eine Rechnung kann mehrere
+             -- Zahlungsvermerke tragen, und ein Verbund gegen settlement
+             -- selbst vervielfachte die Zeile.
+             LEFT JOIN (SELECT invoice_id, sum(amount_cent) AS summe
+                          FROM settlement
+                         WHERE property_id = $1 AND invoice_id IS NOT NULL
+                         GROUP BY invoice_id) z ON z.invoice_id = i.id
             WHERE i.property_id = $1
               AND i.issued_on BETWEEN $2::date AND $3::date
               AND ($4::text IS NULL OR i.kind = $4)
@@ -805,7 +1067,22 @@ export function billingRoutes(app: FastifyInstance): void {
          * Der Beleg liest den Ausgleich spaeter von hier und rechnet ihn
          * nicht neu -- waere er ableitbar, waere er nicht noetig.
          */
-        const totals = { ...gerundet, roundingCent, payableCent: zielBrutto }
+        /*
+         * Was schon bezahlt ist, wird **jetzt** festgestellt und in die
+         * Momentaufnahme geschrieben, statt es spaeter beim Zeichnen des
+         * Belegs aus den Zahlungsvermerken zu rechnen.
+         *
+         * Der Grund ist derselbe wie beim Ausgleich: der Beleg ist eine
+         * Momentaufnahme. Zahlt der Gast nach dem Festschreiben und ist der
+         * Beleg noch nicht gezeichnet, stuende auf ihm ein anderer
+         * vorausgezahlter Betrag als auf dem gleich ausgedruckten -- und
+         * welcher, haenge davon ab, wann der Worker gelaufen ist. Die
+         * Zuordnung selbst laeuft weiter, damit eine Liste sagen kann, was
+         * offen ist; der Beleg liest sie nicht.
+         */
+        const { ids: vorausbezahlt, summeCent: prepaidCent } =
+          passendeVermerke(await offeneVermerke(client, folio.id), zielBrutto)
+        const totals = { ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent }
 
         /*
          * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
@@ -926,6 +1203,10 @@ export function billingRoutes(app: FastifyInstance): void {
         await client.query(
           `UPDATE charge SET invoice_id = $2 WHERE id = ANY($1)`,
           [charges.rows.map(c => c.id), inv.rows[0]!.id])
+
+        // Dasselbe fuer die Zahlungsvermerke, und aus demselben Grund
+        // erlaubt: NULL -> Wert, einmal und nie wieder (Migration 0012).
+        await vermerkeZuordnen(client, inv.rows[0]!.id, vorausbezahlt)
 
         // Verrechnet, nicht mehr offen: eine Anzahlung wird genau einer
         // Schlussrechnung zugeordnet (deposit_ledger_applied_once).

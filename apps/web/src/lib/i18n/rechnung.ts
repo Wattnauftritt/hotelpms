@@ -40,8 +40,14 @@ export const rechnung = {
     'inv.outbox.cancel': 'Zurückziehen',
     'inv.outbox.attempts': 'Versuche',
     'inv.none': 'Keine Rechnung in diesem Zeitraum.',
-    'inv.paymentHint': 'Ob eine Rechnung bezahlt ist, steht am Gastkonto: eine Zahlung '
-                     + 'wird dort vermerkt, nicht an der Rechnung.',
+    'inv.paid': 'bezahlt',
+    'inv.open': 'offen',
+    'inv.settled': 'davon vermerkt',
+    'inv.paymentHint': 'Zugeordnet wird eine Zahlung beim Festschreiben und beim '
+                     + 'Vermerken. Zahlungen von vor dieser Zuordnung tragen keine '
+                     + 'Rechnungsnummer und lassen sich nicht nachtragen — solche '
+                     + 'Rechnungen stehen hier als offen, auch wenn sie bezahlt sind. '
+                     + 'Im Zweifel gilt der Saldo am Gastkonto.',
 
     // Vorauszahlung: Anzahlungsrechnung und Zahlungslink (B8, B9)
     'vz.title': 'Vorauszahlung',
@@ -96,7 +102,27 @@ export const rechnung = {
                            + 'Ohne ihn gibt es keinen Zahlungslink; eine Garantie läuft '
                            + 'dann über das virtuelle Terminal des Anbieters.',
     'vz.link.noCard': 'Kartendaten werden hier nie erfasst und nie gespeichert. '
-                    + 'Der Gast gibt sie beim Zahlungsdienstleister ein.'
+                    + 'Der Gast gibt sie beim Zahlungsdienstleister ein.',
+
+    // Rechnungsempfänger (S6)
+    'emp.title': 'Rechnungsempfänger',
+    'emp.none': 'niemand hinterlegt',
+    'emp.guest': 'Gast',
+    'emp.company': 'Firma',
+    'emp.change': 'Ändern',
+    'emp.close': 'Schließen',
+    'emp.noAddress': 'ohne Anschrift — so lässt sich keine Rechnung schreiben',
+    'emp.guestPick': 'An diesen Gast',
+    'emp.guestHint': 'Das ist nicht zwingend der Gast des Aufenthalts: der steht an der '
+                   + 'Reservierung. Hier steht, an wen abgerechnet wird — der Ehepartner '
+                   + 'zahlt, der Gast reist.',
+    'emp.companyPick': 'An diese Firma',
+    'emp.companySearch': 'Name der Firma, ab zwei Zeichen',
+    'emp.companyNone': 'Keine Firma gefunden.',
+    'emp.companyClear': 'Firma entfernen',
+    'emp.snapshotHint': 'Wirkt auf die nächste Rechnung. Eine festgeschriebene trägt '
+                      + 'ihren Empfänger als Momentaufnahme und ändert sich nie wieder; '
+                      + 'dort hilft nur eine Stornorechnung.'
   },
   en: {
     'nav.invoices': 'Invoices',
@@ -137,8 +163,14 @@ export const rechnung = {
     'inv.outbox.cancel': 'Withdraw',
     'inv.outbox.attempts': 'attempts',
     'inv.none': 'No invoice in this period.',
-    'inv.paymentHint': 'Whether an invoice is paid is shown on the guest account: '
-                     + 'a payment is recorded there, not on the invoice.',
+    'inv.paid': 'paid',
+    'inv.open': 'open',
+    'inv.settled': 'of which recorded',
+    'inv.paymentHint': 'A payment is assigned when the invoice is issued and when the '
+                     + 'payment is recorded. Payments made before this assignment '
+                     + 'existed carry no invoice number and cannot be added later — '
+                     + 'such invoices show as open even though they are paid. In doubt '
+                     + 'the guest account balance is the truth.',
 
     'vz.title': 'Prepayment',
     'vz.open': 'Deposit and payment link',
@@ -191,6 +223,25 @@ export const rechnung = {
                            + 'payment link; a guarantee then runs through the provider’s '
                            + 'virtual terminal.',
     'vz.link.noCard': 'Card data is never captured and never stored here. The guest '
-                    + 'enters it at the payment provider.'
+                    + 'enters it at the payment provider.',
+
+    'emp.title': 'Invoice recipient',
+    'emp.none': 'nobody set',
+    'emp.guest': 'Guest',
+    'emp.company': 'Company',
+    'emp.change': 'Change',
+    'emp.close': 'Close',
+    'emp.noAddress': 'no address — no invoice can be issued like this',
+    'emp.guestPick': 'To this guest',
+    'emp.guestHint': 'Not necessarily the guest of the stay — that one is on the '
+                   + 'reservation. This is who gets billed: the spouse pays, the guest '
+                   + 'travels.',
+    'emp.companyPick': 'To this company',
+    'emp.companySearch': 'Company name, from two characters',
+    'emp.companyNone': 'No company found.',
+    'emp.companyClear': 'Remove company',
+    'emp.snapshotHint': 'Applies to the next invoice. An issued one carries its '
+                      + 'recipient as a snapshot and never changes; there only a credit '
+                      + 'note helps.'
   }
 } as const

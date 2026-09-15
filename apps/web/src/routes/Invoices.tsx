@@ -2,7 +2,6 @@ import { useEffect, useState, type JSX } from 'react'
 import type { InvoiceListItem } from '@hotelpms/contracts'
 import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail,
          istBelegInArbeit, zeitraum, MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
-import { useRechte } from '../lib/queries/rechte.js'
 import { ApiError } from '../lib/api.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -157,6 +156,25 @@ function Zeile(
         </span>
       </div>
 
+      {/* Der Zahlungsstand steht in der Zeile, nicht als Ampel: „bezahlt"
+          faerbt niemand gruen, und ein offener Rest ist keine Warnung,
+          sondern eine Zahl. */}
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-xs">
+        {r.settledCent >= r.payableCent
+          ? <span className="text-emerald-800">✓ {t('inv.paid')}</span>
+          : <>
+              <span className="text-amber-800 tabular-nums">
+                {t('inv.open')}: {formatMoney(
+                  r.payableCent - r.settledCent, locale, r.currency)}
+              </span>
+              {r.settledCent > 0 && (
+                <span className="text-neutral-500 tabular-nums">
+                  {t('inv.settled')}: {formatMoney(r.settledCent, locale, r.currency)}
+                </span>
+              )}
+            </>}
+      </div>
+
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <span className={r.documentReady ? 'text-neutral-600' : 'text-amber-800'}>
           {t('inv.document')}: {r.documentReady
@@ -251,7 +269,10 @@ function Postausgang({ propertyId }: { propertyId: number }): JSX.Element {
 }
 
 export function Invoices(
-  { propertyId, onFolio }: { propertyId: number; onFolio: (folioRef: string) => void }
+  { propertyId, onFolio, permissions }: {
+    propertyId: number; onFolio: (folioRef: string) => void
+    permissions: readonly string[]
+  }
 ): JSX.Element {
   const t = useT()
   const [laenge, setLaenge] = useState<number>(30)
@@ -260,8 +281,7 @@ export function Invoices(
   const [offen, setOffen] = useState<{ ref: string; was: 'beleg' | 'versand' } | null>(null)
 
   const { von } = zeitraum(bis, laenge)
-  const rechte = useRechte(propertyId)
-  const darfSenden = rechte.includes('email:send')
+  const darfSenden = permissions.includes('email:send')
   const q = useInvoices(propertyId, von, bis, kind)
 
   return (

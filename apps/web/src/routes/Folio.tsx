@@ -6,6 +6,7 @@ import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Vorauszahlung } from '../components/Vorauszahlung.tsx'
+import { Rechnungsempfaenger } from '../components/Rechnungsempfaenger.tsx'
 
 /**
  * Das Folio: Positionen, Zahlungsvermerke, Saldo.
@@ -128,6 +129,12 @@ export function Folio({ folioRef, propertyId, onClose }: {
           </tbody>
         </table>
       </section>
+
+      {/* Der Empfaenger steht ueber den Eingabefeldern, weil er vor dem
+          Fakturieren stimmen muss: auf einem festgeschriebenen Beleg ist er
+          eine Momentaufnahme und nicht mehr zu aendern. */}
+      <Rechnungsempfaenger folioRef={folioRef} recipient={f.recipient}
+                           geschlossen={f.folio.status === 'closed'} />
 
       {/* Anzahlung und Zahlungslink stehen zwischen dem Bestand und den
           Eingabefeldern: sie setzen einen Zahlungsvermerk voraus und gehen
