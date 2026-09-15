@@ -413,6 +413,24 @@ BT-114 ist für genau diesen Fall in der Norm vorgesehen. Keine Position, keine 
 
 ---
 
+### Aufgabe 13 — Onboarding, Einladung, Supportzugang
+
+Beim Aufsetzen des Testhotels aufgefallen und hier benannt, weil es zusammengehört: **es gibt keinen Weg, einen Account oder ein Haus anzulegen.** Keine Route, nirgends. Die Tests und `db:testhotel` schreiben mit der Eigentümerrolle direkt in die Tabellen. Auf einer Produktivmaschine heißt das: der erste Kunde kommt nur über die Datenbank hinein.
+
+Drei Stücke, in dieser Reihenfolge, weil jedes auf dem vorigen steht:
+
+| # | Was | Stand |
+|---|---|---|
+| 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | offen. Derselbe Mechanismus, zwei Anlässe — `app_user.status` steht schon auf `'invited'` als Vorgabe, die Einladung wurde nie gebaut. Brevo steht. Ohne Kontoaufzählung: die Antwort ist immer 202, egal ob die Adresse existiert |
+| 13b | **Onboarding-Endpunkt** hinter Plattformrecht | offen. Account, erstes Haus, erster Benutzer, Einladungsmail — in einer Transaktion. Kein Selbstbedienungsweg; das ist eine Produktentscheidung, keine Lücke |
+| 13c | **Adminoberfläche** mit Support-Sitzungen | offen, aber das Fundament steht: `support_session` (Migration 0002), `applySupportSession()` und `audit_log.support_session_id` gibt es. Es fehlen Routen und Oberfläche |
+
+**Zu 13c, weil es leicht falsch verstanden wird.** „Anmelden, als wäre man der Kunde" ist hier bewusst **nicht** gebaut und soll es nicht werden. Plattformpersonal ohne freigegebene, befristete Sitzung bekommt einen leeren Mandantenkontext — die Zeilenrichtlinie liefert dann nichts. Der Kunde gibt frei, die Sitzung läuft ab, und jede Handlung trägt im Protokoll ihre `support_session_id`. Eine stille Übernahme wäre bei Auftragsverarbeitung (Art. 28 DSGVO) nicht haltbar und im Protokoll nicht von der Handlung des Kunden zu unterscheiden.
+
+**Ticketsystem:** angebunden, nicht gebaut. Verlauf, Postfachanbindung, Zuweisung und Suche sind Wochen Arbeit und haben mit Hotels nichts zu tun. Die Adminoberfläche verlinkt, und die Support-Sitzung trägt die Ticketnummer als Grund.
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.

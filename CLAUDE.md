@@ -17,8 +17,11 @@ pnpm install
 ./scripts/setup-db.sh         # PostgreSQL, drei Rollen, zwei Datenbanken
 cp .env.example .env
 pnpm db:reset                 # Schema neu aufbauen
-pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre
+pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre — zum **Messen**
+pnpm db:testhotel             # optional: ein benutzbares Haus — zum **Ausprobieren**
 ```
+
+Die beiden Datensätze haben verschiedene Zwecke und sind nicht austauschbar. `db:seed` erzeugt 180 000 Reservierungen, damit sich zeigt, ob ein Index greift; überblicken kann man das nicht. `db:testhotel` legt **ein** Haus mit 24 Zimmern und rund vierzig Reservierungen um den heutigen Tag an, in dem ein Mensch jede Zeile nachrechnet. Es ist ein **Übungshaus** (`is_training`), exportiert also nichts nach draußen und verschickt keine Gastpost — ein Testhaus ohne dieses Kennzeichen schiebt früher oder später eine Übungsrechnung in die echte Buchhaltung.
 
 Die Tests brauchen ein **echtes PostgreSQL** (17 in CI, 16 genügt lokal) mit den Erweiterungen `pg_trgm` und `pgcrypto` sowie drei Rollen. `.github/workflows/ci.yml` zeigt dasselbe für CI.
 
