@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { RateGrid, RatePlan, SetRates, SetRestrictions } from '@hotelpms/contracts'
+import type { ChannelView, RateGrid, RatePlan, SetRates,
+              SetRestrictions } from '@hotelpms/contracts'
 import { api } from '../api.js'
 import { addDays } from '../dates.js'
 
@@ -108,3 +109,34 @@ export function useSetRestrictions(propertyId: number) {
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] }) }
   })
 }
+
+// -------------------------------------- Was der Channel Manager sieht (B10)
+
+/**
+ * Dieselbe Antwort, die der Channel Manager bekommt.
+ *
+ * **Das Ende ist ausschliesslich, nicht einschliesslich.** ARI zaehlt
+ * Naechte: `from` bis `to` sind die Naechte dazwischen, und der letzte Tag
+ * gehoert nicht dazu. Das Raster daneben zeigt Tage einschliesslich.
+ * Beides ungeprueft zu verbinden heisst, dass der letzte Tag des Zeitraums
+ * in der Gegenueberstellung fehlt -- und genau dieser Tag ist es dann, an
+ * dem beim Portal ein anderer Preis steht.
+ */
+export function kanalZeitraum(von: string, bis: string): { from: string; to: string } {
+  return { from: von, to: addDays(bis, 1) }
+}
+
+export const useChannelView = (
+  propertyId: number, von: string, bis: string, aktiv: boolean
+) =>
+  useQuery<ChannelView>({
+    queryKey: ['channelView', propertyId, von, bis],
+    queryFn: () => {
+      const { from, to } = kanalZeitraum(von, bis)
+      return api.get(`/v1/properties/${propertyId}/channel-view?from=${from}&to=${to}`)
+    },
+    enabled: aktiv,
+    // Was hinausgeht, aendert sich mit jeder Preispflege. Kurz gehalten,
+    // damit die Gegenueberstellung nicht einen alten Stand zeigt.
+    staleTime: 10_000
+  })

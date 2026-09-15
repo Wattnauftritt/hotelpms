@@ -6,6 +6,7 @@ import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
          tageInklusive, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
 import { useRechte } from '../lib/queries/rechte.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
+import { ChannelSicht } from '../components/ChannelSicht.tsx'
 import { betroffeneTage, centAusEingabe, eingabeAusCent, preisVorschau,
          preisNutzlast, restriktionsNutzlast, wochentagKuerzel,
          type Vorschau } from '../lib/preisraster.js'
@@ -530,6 +531,12 @@ export function Rates({ propertyId }: { propertyId: number }): JSX.Element {
                           belegung={belegung} auswahl={auswahl}
                           onAuswahl={setAuswahl} />
                 <div className="text-xs text-neutral-500">{t('rate.legend')}</div>
+
+                {/* Unter dem Raster, weil die Frage dort entsteht: wer
+                    gerade Preise gesetzt hat, will sehen, was davon
+                    hinausgeht. Derselbe Zeitraum wie oben. */}
+                <ChannelSicht propertyId={propertyId} von={von} bis={bis}
+                              belegung={belegung} />
 
                 <Ratenplaene propertyId={propertyId}
                              plaene={plaene.data?.ratePlans ?? []}
