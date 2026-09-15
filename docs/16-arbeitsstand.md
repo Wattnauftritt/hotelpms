@@ -421,9 +421,30 @@ Drei Stücke, in dieser Reihenfolge, weil jedes auf dem vorigen steht:
 
 | # | Was | Stand |
 |---|---|---|
-| 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | offen. Derselbe Mechanismus, zwei Anlässe — `app_user.status` steht schon auf `'invited'` als Vorgabe, die Einladung wurde nie gebaut. Brevo steht. Ohne Kontoaufzählung: die Antwort ist immer 202, egal ob die Adresse existiert |
-| 13b | **Onboarding-Endpunkt** hinter Plattformrecht | offen. Account, erstes Haus, erster Benutzer, Einladungsmail — in einer Transaktion. Kein Selbstbedienungsweg; das ist eine Produktentscheidung, keine Lücke |
+| 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | **fertig.** Migration 0030 (`auth_token`, `platform_email`), `POST /v1/auth/password-reset` und `.../confirm`, Zustellung im Worker. Ein Mechanismus für beide Anlässe, verschieden nur in Frist und Text |
+| 13b | **Onboarding-Endpunkt** hinter Plattformrecht | **fertig.** `POST /v1/platform/accounts` hinter `platform:accounts`, Migration 0031 (`account_provision`). Account, erstes Haus, Inhaber und Einladung in einer Transaktion. Kein Selbstbedienungsweg; das ist eine Produktentscheidung, keine Lücke |
+| 13d | **Zugangsseiten** der Oberfläche | **fertig.** `/einladung` und `/kennwort` samt „Kennwort vergessen" an der Anmeldung. Ohne sie bekam der eingeladene Kunde einen gültigen Link auf eine Seite, die es nicht gab |
 | 13c | **Adminoberfläche** mit Support-Sitzungen | offen, aber das Fundament steht: `support_session` (Migration 0002), `applySupportSession()` und `audit_log.support_session_id` gibt es. Es fehlen Routen und Oberfläche |
+
+**Was 13a hinterlässt, worauf 13b aufsetzt.** Ein Token wird über `POST /v1/auth/password-reset` angefordert oder — für eine Einladung — beim Anlegen eines Benutzers als Zeile in `auth_token` hinterlegt; eingelöst wird beides über dieselbe Route. Der Onboarding-Endpunkt muss also keinen eigenen Einladungsweg bauen, sondern nur Token und Nachricht einreihen.
+
+Drei Entwurfsentscheidungen darin, die beim Weiterbauen zu kennen sind:
+
+- **In `auth_token` steht nur der Hash**, nie das Token. Wer eine Sicherung liest, bekommt damit keinen Zugang. Der Klartext steht einzig im Rumpf der wartenden Nachricht, und der Worker leert ihn, sobald sie durch ist.
+- **`platform_email` statt `outbound_email`.** Gastpost ist hausgebunden, weist Übungshäuser ab und bleibt aus, solange der Versand am Haus nicht eingeschaltet ist. Für eine Zugangsmail wäre jede dieser Regeln falsch — sie gehört zu einem Benutzer, nicht zu einem Haus. Absender aus der Umgebung (`PLATFORM_EMAIL_FROM`), siehe [`17-betrieb.md`](17-betrieb.md) §7.
+- **Immer 202**, auch für eine unbekannte Adresse, und die Route steht auf der strengen Liste der Ratenbegrenzung. Sonst wäre sie ein Verzeichnis darüber, welche Häuser diese Software benutzen.
+
+**Warum 13b eine SQL-Funktion ist und keine Route mit Eigentümerverbindung.** Die Zeilenrichtlinie auf `account` lautet `USING (id = ANY (app_account_ids()))`, und ohne eigenes `WITH CHECK` gilt sie auch für `INSERT`. Ein neuer Account hat naturgemäß eine `id`, die in keinem Kontext steht — die Anwendungsrolle kann ihn deshalb **grundsätzlich** nicht anlegen. Migration 0006 benennt das schon: die Bereitstellung gehört der Eigentümerrolle und „wird nie für normale Anfragen benutzt".
+
+Der naheliegende Weg wäre also eine zweite Verbindung in der API unter `hotelpms_owner`. Das wäre ein stehender `BYPASSRLS` im Anfrageprozess: wer dort Code ausführen kann, liest jeden Mandanten. `account_provision` ist statt dessen genau ein Loch, und es ist schmal — wer es aufruft, legt einen leeren Account an und sonst nichts. Die API hält weiterhin **keine** Eigentümerverbindung.
+
+Die Funktion prüft zusätzlich selbst, dass der Mandantenkontext **leer** ist. Das Recht an der Route ist die eigentliche Tür; diese Prüfung ist die, die hält, wenn die erste beim nächsten Umbau falsch verdrahtet wird. Ein Test ruft die Funktion direkt mit gesetztem Kontext auf und erwartet den Abbruch.
+
+**Mitgefunden, noch offen:** `assert_property_in_context` (Migration 0006) behandelt einen leeren Kontext als Systemarbeit und lässt dann **jede** Property durch. Für Worker und Migration ist das richtig. Plattformpersonal hat aber ebenfalls einen leeren Kontext — für das Lesen ist das folgenlos, weil die Zeilenrichtlinie nichts liefert, aber die Inventarfunktionen sind `SECURITY DEFINER` und prüfen nur über diese Zusicherung. Heute nicht erreichbar, weil die Plattformrollen keines der Fachrechte tragen, mit denen man an die betreffenden Routen käme. Wer der Plattform jemals ein Fachrecht gibt, muss das vorher auflösen — etwa über eine ausdrückliche Systemkennzeichnung statt „leer heißt System".
+
+**Zu 13d.** Die beiden Seiten liegen in `main.tsx` **vor** der Frage, wer angemeldet ist: wer den Link aus seiner E-Mail anklickt, ist es gerade nicht, und die Anmeldemaske verlangte genau das Kennwort, das er nicht hat. Ausgewertet wird der Pfad (`try_files` in Caddy liefert dafür `index.html`); `zugangAusAdresse()` nimmt Pfad und Abfrageteil als Parameter, damit sich das ohne Browser prüfen lässt — ein zu großzügiger Vergleich ersetzt sonst die ganze Anwendung durch die Zugangsseite.
+
+Die Kennwortregel ist dabei von `packages/domain` nach `packages/contracts` gewandert. Sie ist keine Fachlogik, sondern eine Zusage an beide Enden: die Schnittstelle weist ein zu kurzes Kennwort ab, die Oberfläche nennt die Länge vorher. Zwei Fassungen liefen auseinander, und der Befund wäre ein Benutzer, dem die Maske zwölf Zeichen nennt und die Antwort vierzehn verlangt.
 
 **Zu 13c, weil es leicht falsch verstanden wird.** „Anmelden, als wäre man der Kunde" ist hier bewusst **nicht** gebaut und soll es nicht werden. Plattformpersonal ohne freigegebene, befristete Sitzung bekommt einen leeren Mandantenkontext — die Zeilenrichtlinie liefert dann nichts. Der Kunde gibt frei, die Sitzung läuft ab, und jede Handlung trägt im Protokoll ihre `support_session_id`. Eine stille Übernahme wäre bei Auftragsverarbeitung (Art. 28 DSGVO) nicht haltbar und im Protokoll nicht von der Handlung des Kunden zu unterscheiden.
 

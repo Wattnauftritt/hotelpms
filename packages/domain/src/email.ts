@@ -233,3 +233,88 @@ export function renderReservationEmail(
     html: htmlBody(lines)
   }
 }
+
+// ---------------------------------------------------------------------------
+// Zugangspost (Aufgabe 13a)
+//
+// Getrennt von der Gastpost oben, und nicht nur der Ordnung halber: diese
+// Nachrichten gehen an einen **Benutzer** des Systems, nicht an einen Gast
+// eines Hauses. Sie tragen kein Haus im Absender, kennen keine Sprache des
+// Gastprofils und duerfen nicht ausbleiben, weil ein Haus den Gastversand
+// nicht eingeschaltet hat.
+// ---------------------------------------------------------------------------
+
+export interface AuthEmailData {
+  /** Anzeigename des Benutzers, nicht des Gastes. */
+  userName: string | null
+  /** Der fertige Link samt Token. Die Domaene weiss nichts von URLs. */
+  link: string
+  /** Wie lange der Link gilt, in Stunden — ausgeschrieben im Text. */
+  gueltigStunden: number
+}
+
+/**
+ * Einladung eines neuen Benutzers.
+ *
+ * **Warum der Link und kein Kennwort im Text.** Ein Kennwort in einer Mail
+ * bleibt im Postfach stehen, wird weitergeleitet und landet in Sicherungen.
+ * Ein Einmaltoken verfaellt.
+ */
+export function renderInviteEmail(
+  d: AuthEmailData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      'an account has been created for you. Choose your password using the link below:',
+      d.link,
+      `The link is valid for ${d.gueltigStunden} hours and can be used once.`,
+      'If you were not expecting this message, you can ignore it — '
+        + 'without the link nothing happens.'
+    ]
+    return { subject: 'Your access', text: lines.join('\n\n'), html: htmlBody(lines) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    'fuer Sie wurde ein Zugang eingerichtet. Ueber den folgenden Link vergeben '
+      + 'Sie Ihr Kennwort:',
+    d.link,
+    `Der Link gilt ${d.gueltigStunden} Stunden und laesst sich einmal verwenden.`,
+    'Haben Sie diese Nachricht nicht erwartet, koennen Sie sie liegen lassen — '
+      + 'ohne den Link geschieht nichts.'
+  ]
+  return { subject: 'Ihr Zugang', text: lines.join('\n\n'), html: htmlBody(lines) }
+}
+
+/**
+ * Kennwort zuruecksetzen.
+ *
+ * Der letzte Absatz ist kein Beiwerk: Diese Mail geht auch an jemanden, der
+ * sie nicht angefordert hat — naemlich dann, wenn ein Fremder seine Adresse
+ * eingetippt hat. Der Empfaenger muss wissen, dass sein Zugang unveraendert
+ * ist und er nichts tun muss.
+ */
+export function renderPasswordResetEmail(
+  d: AuthEmailData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      'you can set a new password using the link below:',
+      d.link,
+      `The link is valid for ${d.gueltigStunden} hour(s) and can be used once.`,
+      'If you did not request this, nothing has changed: your current password '
+        + 'remains valid and this link expires on its own.'
+    ]
+    return { subject: 'Reset your password', text: lines.join('\n\n'), html: htmlBody(lines) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    'ueber den folgenden Link vergeben Sie ein neues Kennwort:',
+    d.link,
+    `Der Link gilt ${d.gueltigStunden} Stunde(n) und laesst sich einmal verwenden.`,
+    'Haben Sie das nicht angefordert, hat sich nichts geaendert: Ihr bisheriges '
+      + 'Kennwort gilt weiter, und dieser Link verfaellt von selbst.'
+  ]
+  return { subject: 'Kennwort zuruecksetzen', text: lines.join('\n\n'), html: htmlBody(lines) }
+}

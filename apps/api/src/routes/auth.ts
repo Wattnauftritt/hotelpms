@@ -6,6 +6,10 @@ import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { propertyIds, type Principal } from '../platform/context.js'
 import { tx } from '../platform/db.js'
+import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
+         renderPasswordResetEmail, renderInviteEmail,
+         type AuthTokenKind } from '@hotelpms/domain'
+import { kennwortZuKurz, KENNWORT_MIN } from '@hotelpms/contracts'
 
 const config = loadConfig()
 
@@ -235,4 +239,158 @@ export function authRoutes(app: FastifyInstance): void {
       return { ok: true, activeUserId: ziel.id }
     }
   })
+
+  /*
+   * Kennwort vergessen. Oeffentlich, und deshalb die Stelle, an der man am
+   * meisten falsch machen kann.
+   *
+   * **Die Antwort ist immer 202.** Auch fuer eine Adresse, die es nicht gibt.
+   * Andernfalls waere dieser Endpunkt ein Verzeichnis: wer wissen will, ob
+   * eine Adresse Kunde bei uns ist, tippt sie ein und liest die Antwort. Das
+   * ist keine Kleinigkeit -- die Kundenliste eines Hotelsystems sagt, welche
+   * Haeuser welche Software benutzen.
+   *
+   * Aus demselben Grund steht in der Antwort auch keine Andeutung: kein
+   * "falls die Adresse bekannt ist" mit einem anderen Statuscode daneben,
+   * keine unterschiedliche Antwortzeit, die sich messen liesse. Die
+   * Ratenbegrenzung steht auf der strengen Liste (rateLimit.ts).
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/password-reset',
+    permission: null,
+    summary: 'Kennwort zuruecksetzen anfordern',
+    handler: async (req, reply) => {
+      const { email } = req.body as { email?: string }
+      if (!email) throw Errors.validation({ email: ['field.required'] })
+
+      await tx(req.pool, req, async client => {
+        const u = await client.query<{ id: number; display_name: string; status: string }>(
+          `SELECT id, display_name, status FROM app_user WHERE lower(email) = lower($1)`,
+          [email])
+        const benutzer = u.rows[0]
+        // Ein stillgelegter Zugang bekommt keinen Link. Er koennte sich sonst
+        // selbst wieder anmelden, und das Stilllegen waere wirkungslos.
+        if (benutzer === undefined || benutzer.status === 'disabled') return
+
+        await einmalTokenUndPost(client, {
+          userId: benutzer.id, name: benutzer.display_name, email,
+          kind: 'password_reset'
+        })
+      })
+
+      reply.status(202)
+      return { status: 'accepted' }
+    }
+  })
+
+  /*
+   * Den Link einloesen. Dieselbe Route fuer Einladung und Ruecksetzung: was
+   * dahinter passiert, ist in beiden Faellen dasselbe -- ein Kennwort setzen,
+   * ohne das alte zu kennen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/password-reset/confirm',
+    permission: null,
+    summary: 'Neues Kennwort setzen',
+    handler: async (req) => {
+      const { token, password } = req.body as { token?: string; password?: string }
+      if (!token || !password) {
+        throw Errors.validation({ token: ['field.required'], password: ['field.required'] })
+      }
+      if (kennwortZuKurz(password)) {
+        throw Errors.validation({ password: ['auth.passwordTooShort'] }, { min: KENNWORT_MIN })
+      }
+
+      return tx(req.pool, req, async client => {
+        /*
+         * Das Token wird ueber seinen Hash gesucht und in derselben Anweisung
+         * entwertet. Zwei Anweisungen -- erst suchen, dann als benutzt
+         * markieren -- liessen zwei gleichzeitige Aufrufe beide durch; bei
+         * einem Einmaltoken ist genau das der Fehler, den es nicht geben darf.
+         */
+        const t = await client.query<{ user_id: number }>(
+          `UPDATE auth_token SET used_at = now()
+            WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+            RETURNING user_id`, [hashToken(token)])
+        if (t.rowCount === 0) throw Errors.validation({ token: ['auth.tokenInvalid'] })
+
+        const userId = t.rows[0]!.user_id
+        await client.query(
+          `UPDATE app_user
+              SET password_hash = $2,
+                  -- Eine Einladung wird mit dem ersten Kennwort angenommen.
+                  status = CASE WHEN status = 'invited' THEN 'active' ELSE status END,
+                  -- Wer sich ausgesperrt hat, setzt deshalb sein Kennwort
+                  -- zurueck. Bliebe die Sperre stehen, waere er es danach
+                  -- immer noch -- mit einem Kennwort, das er gerade erst
+                  -- vergeben hat.
+                  failed_login_count = 0,
+                  locked_until = NULL,
+                  updated_at = now()
+            WHERE id = $1`, [userId, await hashPassword(password)])
+
+        /*
+         * Alle Sitzungen beenden. Wer sein Kennwort zuruecksetzt, tut das oft
+         * genug, weil jemand anderes es kennt -- und dann nuetzt das neue
+         * Kennwort nichts, solange die alte Sitzung weiterlaeuft.
+         */
+        await client.query(
+          `UPDATE user_session SET revoked_at = now()
+            WHERE user_id = $1 AND revoked_at IS NULL`, [userId])
+
+        // Weitere offene Token desselben Benutzers verfallen mit. Sonst laege
+        // nach drei Anforderungen dreimal ein gueltiger Zugang im Postfach.
+        await client.query(
+          `UPDATE auth_token SET used_at = now()
+            WHERE user_id = $1 AND used_at IS NULL`, [userId])
+
+        return { status: 'ok' }
+      })
+    }
+  })
+}
+
+/**
+ * Token anlegen und die Nachricht einreihen.
+ *
+ * **Warum nicht ueber email_enqueue.** Das ist Gastpost: hausgebunden, und es
+ * weist Uebungshaeuser ab und haelt an, wenn der Versand am Haus nicht
+ * eingeschaltet ist. Fuer eine Zugangsmail waere jede dieser Regeln falsch --
+ * ein Kunde, der den Gastversand nie eingeschaltet hat, koennte sonst sein
+ * Kennwort nie zuruecksetzen (Migration 0030).
+ *
+ * Das Token selbst steht **nur** in der Nachricht, nie in der Antwort der
+ * API und nie im Protokoll. Wer die Antwort mitliest, bekommt keinen Zugang.
+ */
+export async function einmalTokenUndPost(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  opts: {
+    userId: number; name: string | null; email: string; kind: AuthTokenKind
+    /** Wer eingeladen hat. Bei einer Ruecksetzung durch den Benutzer selbst leer. */
+    createdBy?: number | null
+  }
+): Promise<void> {
+  const { token, hash } = neuesToken()
+  const gueltigMs = TOKEN_GUELTIGKEIT[opts.kind]
+
+  await client.query(
+    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, created_by)
+     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5)`,
+    [opts.userId, opts.kind, hash, String(gueltigMs), opts.createdBy ?? null])
+
+  const pfad = opts.kind === 'invite' ? 'einladung' : 'kennwort'
+  const link = `${config.publicAppUrl}/${pfad}?token=${token}`
+  const stunden = Math.round(gueltigMs / 3_600_000)
+  const text = opts.kind === 'invite'
+    ? renderInviteEmail({ userName: opts.name, link, gueltigStunden: stunden })
+    : renderPasswordResetEmail({ userName: opts.name, link, gueltigStunden: stunden })
+
+  await client.query(
+    `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
+                                 body_text, body_html)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [opts.userId, opts.kind, opts.email, opts.name,
+     text.subject, text.text, text.html])
 }

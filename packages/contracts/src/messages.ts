@@ -197,6 +197,28 @@ const M = {
   'auth.badCredentials': [
     'E-Mail oder Kennwort stimmt nicht.', 'Email or password is not correct.'],
   'auth.badPin': ['E-Mail oder PIN stimmt nicht.', 'Email or PIN is not correct.'],
+  // Bewusst ohne Unterscheidung zwischen unbekannt, abgelaufen und schon
+  // benutzt: jede davon waere eine Auskunft ueber ein Token, das der
+  // Aufrufer nicht hat.
+  'auth.tokenInvalid': [
+    'Der Link ist ungueltig oder abgelaufen. Fordern Sie einen neuen an.',
+    'The link is invalid or has expired. Please request a new one.'],
+  'auth.passwordTooShort': [
+    'Das Kennwort muss mindestens {min} Zeichen haben.',
+    'The password must be at least {min} characters long.'],
+
+  // ------------------------------------------------------------ Onboarding
+
+  'onboarding.emailTaken': [
+    'Diese E-Mail-Adresse gehoert bereits zu einem Zugang.',
+    'This email address already belongs to an account.'],
+  // Nicht "Feld fehlt": der Grund gehoert dazu, sonst traegt jemand einen
+  // Punkt ein und das Haus stellt Rechnungen aus, die nicht gelten.
+  'onboarding.invoiceDataRequired': [
+    'Anschrift und Steuernummer sind Pflicht: ohne sie darf das Haus nach '
+      + '§ 14 UStG keine Rechnung ausstellen.',
+    'Address and tax number are required: without them the property may not '
+      + 'issue invoices under § 14 UStG.'],
 
   // ----------------------------------------------------------- Uebungshaus
 

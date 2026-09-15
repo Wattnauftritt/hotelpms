@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
   from '@tanstack/react-query'
 import { Shell, type Haus } from './components/Shell.tsx'
 import { Login } from './routes/Login.tsx'
+import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
@@ -56,6 +57,16 @@ function Hinweis({ children }: { children: React.ReactNode }): JSX.Element {
 
 function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(spracheDesBrowsers)
+  /*
+   * Einladung und Kennwortruecksetzung stehen **vor** allem anderen, auch vor
+   * der Frage, wer angemeldet ist. Wer diesen Link aus einer E-Mail anklickt,
+   * ist es naemlich gerade nicht -- und die Anmeldemaske waere hier die
+   * falsche Antwort: sie verlangt genau das Kennwort, das er nicht hat.
+   *
+   * Einmal gelesen und dann festgehalten: der Zustand haengt an der Adresse
+   * beim Aufruf, und die aendert sich waehrend dieser beiden Seiten nicht.
+   */
+  const [zugang] = useState(zugangAusAdresse)
   const [adresse, setAdresse] = useAdresse()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
@@ -64,6 +75,12 @@ function App(): JSX.Element {
   // Plan (A9) -- und schliesst sich danach wieder von selbst.
   const [checkInRef, setCheckInRef] = useState<string | null>(null)
   const qc = useQueryClient()
+
+  if (zugang !== null) {
+    return <I18nContext.Provider value={locale}>
+      <Zugang art={zugang.art} token={zugang.token} />
+    </I18nContext.Provider>
+  }
 
   // Wer ist angemeldet. Schlaegt das mit 401 fehl, kommt die Anmeldemaske.
   // Nicht erneut versuchen: 401 ist eine Antwort, kein Ausfall.

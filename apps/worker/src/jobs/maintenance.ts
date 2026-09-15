@@ -102,12 +102,20 @@ export async function redactOldEmails(
   return r.rows[0]?.n ?? 0
 }
 
-/** Abgelaufene Sitzungen und Idempotenzschluessel aufraeumen. */
+/**
+ * Abgelaufene Sitzungen, Idempotenzschluessel und Einmaltoken aufraeumen.
+ *
+ * Die Token mit derselben Nachlauffrist wie die Sitzungen, und aus einem
+ * eigenen Grund: eine Woche nach Ablauf laesst sich die Frage "wurde die
+ * Einladung angenommen" noch beantworten, danach interessiert sie niemanden
+ * mehr (Migration 0030).
+ */
 export async function purgeExpired(client: PoolClient): Promise<number> {
   const s = await client.query(
     `DELETE FROM user_session WHERE absolute_expires_at < now() - interval '7 days'`)
   const i = await client.query(`DELETE FROM idempotency_key WHERE expires_at < now()`)
-  return (s.rowCount ?? 0) + (i.rowCount ?? 0)
+  const t = await client.query<{ n: number }>(`SELECT auth_token_cleanup() AS n`)
+  return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0)
 }
 
 /**
