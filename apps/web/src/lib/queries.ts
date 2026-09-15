@@ -131,6 +131,37 @@ export function useSetHousekeeping(propertyId: number, date: string) {
   })
 }
 
+/**
+ * Aufgaben des Tages erzeugen.
+ *
+ * Idempotent, und das ist der Grund, warum ein Knopf dafuer vertretbar ist:
+ * ein zweiter Klick legt nichts doppelt an, sondern ergaenzt nur, was
+ * seither dazugekommen ist -- eine Reservierung, die seit dem Fruehstueck
+ * eingecheckt hat, etwa.
+ */
+export function useGenerateTasks(propertyId: number, date: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<{ created: number }>(
+      '/v1/housekeeping/tasks/generate', { propertyId, date }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['hk', propertyId, date] }) }
+  })
+}
+
+/**
+ * Aufgabe abschliessen. Setzt den Zimmerstatus auf sauber mit -- so macht es
+ * die Route, damit die Kraft nicht zwei Dinge tippen muss und eines davon
+ * vergisst.
+ */
+export function useFinishTask(propertyId: number, date: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (taskId: number) => api.post<{ taskId: number; status: string }>(
+      `/v1/housekeeping/tasks/${taskId}/done`),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['hk', propertyId, date] }) }
+  })
+}
+
 export const useFolio = (folioRef: string | null) =>
   useQuery<FolioView>({
     queryKey: ['folio', folioRef],
