@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { Guest, GuestCreated, Company } from '@hotelpms/contracts'
 import { useSearchGuests, useGuest, useCreateGuest, usePatchGuest, useIdDocument,
-         useSearchCompanies, useCompany, useCreateCompany, usePatchCompany }
+         useSearchCompanies, useCompany, useCreateCompany, usePatchCompany,
+         useGuestDataExport, useAnonymizeGuest, type GuestDataExport }
   from '../lib/queries/guests.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
@@ -52,14 +53,15 @@ export function Guests({ propertyId }: { propertyId: number }): JSX.Element {
       {!geladen ? <Laedt />
         : reiter === 'guests'
           ? <GaesteReiter darfSchreiben={darf('guest:write')}
-                          darfIdentitaet={darf('guest:read_identity')} />
+                          darfIdentitaet={darf('guest:read_identity')}
+                          darfExport={darf('guest:export')} />
           : <FirmenReiter darfSchreiben={darf('guest:write')} />}
     </div>
   )
 }
 
-function GaesteReiter({ darfSchreiben, darfIdentitaet }: {
-  darfSchreiben: boolean; darfIdentitaet: boolean
+function GaesteReiter({ darfSchreiben, darfIdentitaet, darfExport }: {
+  darfSchreiben: boolean; darfIdentitaet: boolean; darfExport: boolean
 }): JSX.Element {
   const t = useT()
   const [begriff, setBegriff] = useState('')
@@ -108,15 +110,16 @@ function GaesteReiter({ darfSchreiben, darfIdentitaet }: {
         )}
         {ausgewaehlt !== null && ausgewaehlt !== 'new' && (
           <GastProfil guestRef={ausgewaehlt} darfSchreiben={darfSchreiben}
-                      darfIdentitaet={darfIdentitaet} />
+                      darfIdentitaet={darfIdentitaet} darfExport={darfExport} />
         )}
       </div>
     </div>
   )
 }
 
-function GastProfil({ guestRef, darfSchreiben, darfIdentitaet }: {
+function GastProfil({ guestRef, darfSchreiben, darfIdentitaet, darfExport }: {
   guestRef: string; darfSchreiben: boolean; darfIdentitaet: boolean
+  darfExport: boolean
 }): JSX.Element {
   const t = useT()
   const q = useGuest(guestRef)
@@ -140,6 +143,7 @@ function GastProfil({ guestRef, darfSchreiben, darfIdentitaet }: {
       <GastFormular initial={q.data} darfSchreiben={darfSchreiben} onSaved={() => {}} />
       <AusweisFeld guestRef={guestRef} hasIdDocumentNumber={q.data.hasIdDocumentNumber}
                     idDocumentType={q.data.idDocumentType} darfLesen={darfIdentitaet} />
+      {darfExport && <Betroffenenrechte guestRef={guestRef} />}
     </div>
   )
 }
@@ -425,6 +429,147 @@ function FirmaFormular({ initial, darfSchreiben, onSaved }: {
             <span className="text-xs text-emerald-700">✓ {t('companies.saved')}</span>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Betroffenenrechte: Auskunft (Art. 15) und Loeschung (Art. 17).
+ *
+ * **Warum beides hier und nicht in einem eigenen Bildschirm.** Ein Gast, der
+ * sein Recht geltend macht, ruft an oder schreibt, und die Rezeption sucht
+ * ihn dann genau hier. Ein eigener Bildschirm hiesse, denselben Gast zweimal
+ * zu suchen -- und die Frist von einem Monat laeuft, waehrend man sucht.
+ *
+ * **Warum die Auskunft nicht von selbst laedt.** Sie zieht Aufenthalte,
+ * Rechnungen, Notizen und Meldescheine zusammen. Bei jedem Oeffnen eines
+ * Profils mitzuladen waere eine Handvoll Abfragen fuer etwas, das ein
+ * paarmal im Jahr gebraucht wird.
+ */
+function Betroffenenrechte({ guestRef }: { guestRef: string }): JSX.Element {
+  const t = useT()
+  const [auskunft, setAuskunft] = useState(false)
+  const q = useGuestDataExport(guestRef, auskunft)
+
+  return (
+    <section className="border border-neutral-200 rounded p-3 space-y-3">
+      <h2 className="text-sm font-medium">{t('dsgvo.title')}</h2>
+
+      <div className="space-y-1">
+        <p className="text-xs text-neutral-600">{t('dsgvo.exportHint')}</p>
+        <button type="button" onClick={() => setAuskunft(true)}
+                disabled={auskunft && q.isPending}
+                className="text-sm px-3 py-1.5 border border-neutral-300 rounded
+                           hover:bg-neutral-50 disabled:text-neutral-400">
+          {t(auskunft && q.isPending ? 'common.loading' : 'dsgvo.export')}
+        </button>
+      </div>
+
+      {q.isError && <Fehler error={q.error} />}
+      {q.data !== undefined && <Auskunft daten={q.data} />}
+
+      <Loeschen guestRef={guestRef} />
+    </section>
+  )
+}
+
+/** Die Auskunft selbst. Zum Ausdrucken gedacht, deshalb schlicht. */
+function Auskunft({ daten }: { daten: GuestDataExport }): JSX.Element {
+  const t = useT()
+
+  const Abschnitt = ({ titel, zeilen }: {
+    titel: string; zeilen: string[]
+  }): JSX.Element => (
+    <div>
+      <h3 className="text-xs font-medium text-neutral-700">{titel}</h3>
+      {zeilen.length === 0
+        ? <p className="text-xs text-neutral-500">{t('common.none')}</p>
+        : <ul className="text-xs text-neutral-700 space-y-0.5">
+            {zeilen.map((z, i) => <li key={i}>{z}</li>)}
+          </ul>}
+    </div>
+  )
+
+  return (
+    <div className="border-t border-neutral-200 pt-3 space-y-3">
+      <p className="text-xs text-neutral-600">
+        {t('dsgvo.createdAt')}: {daten.createdAt.slice(0, 10)}
+      </p>
+
+      <Abschnitt titel={t('dsgvo.stays')} zeilen={daten.stays.map(
+        a => `${a.arrival} – ${a.departure} · ${a.property} · ${a.status}`)} />
+      <Abschnitt titel={t('dsgvo.invoices')} zeilen={daten.invoices.map(
+        r => `${r.number} · ${r.issuedOn} · ${(r.grossCent / 100).toFixed(2)}`)} />
+      <Abschnitt titel={t('dsgvo.notes')} zeilen={daten.notes.map(
+        n => `${n.createdAt.slice(0, 10)} · ${n.property} · ${n.note}`)} />
+      <Abschnitt titel={t('dsgvo.registrations')} zeilen={daten.registrations.map(
+        m => `${m.arrival} – ${m.plannedDeparture}`)} />
+
+      {/*
+        * Der Hinweis der Schnittstelle, nicht unserer: sie sagt, was von der
+        * Auskunft nicht geloescht werden kann und warum. Er gehoert mit auf
+        * das Papier, das der Gast bekommt.
+        */}
+      <p className="text-xs text-neutral-500">{daten.hinweis}</p>
+
+      <button type="button" onClick={() => window.print()}
+              className="text-sm px-3 py-1.5 border border-neutral-300 rounded
+                         hover:bg-neutral-50">
+        {t('dsgvo.print')}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Loeschen, also anonymisieren.
+ *
+ * Die Bestaetigung ist kein Ritual: das hier laesst sich nicht rueckgaengig
+ * machen, und die API weist eine Wiederbelebung ausdruecklich ab. Der
+ * Hinweis daneben rueckt die Erwartung gerade, bevor geklickt wird -- wer
+ * "geloescht" hoert und die Rechnung spaeter wiederfindet, haelt das sonst
+ * fuer einen Fehler.
+ */
+function Loeschen({ guestRef }: { guestRef: string }): JSX.Element {
+  const t = useT()
+  const [gefragt, setGefragt] = useState(false)
+  const anonymisieren = useAnonymizeGuest(guestRef)
+
+  if (anonymisieren.isSuccess) {
+    return (
+      <p className="border-t border-neutral-200 pt-3 text-sm text-neutral-700">
+        {t(anonymisieren.data.alreadyDone ? 'dsgvo.alreadyDone' : 'dsgvo.anonymized')}
+      </p>
+    )
+  }
+
+  return (
+    <div className="border-t border-neutral-200 pt-3 space-y-2">
+      <p className="text-xs text-neutral-600">{t('dsgvo.anonymizeHint')}</p>
+      {anonymisieren.isError && <Fehler error={anonymisieren.error} />}
+      {gefragt ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t('dsgvo.anonymizeConfirm')}</p>
+          <div className="flex gap-2">
+            <button type="button" disabled={anonymisieren.isPending}
+                    onClick={() => anonymisieren.mutate()}
+                    className="text-sm px-3 py-1.5 rounded bg-red-700 text-white
+                               disabled:bg-neutral-300">
+              {t(anonymisieren.isPending ? 'common.loading' : 'dsgvo.anonymize')}
+            </button>
+            <button type="button" onClick={() => setGefragt(false)}
+                    className="text-sm px-3 py-1.5 border border-neutral-300 rounded">
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setGefragt(true)}
+                className="text-sm px-3 py-1.5 border border-red-300 text-red-800
+                           rounded hover:bg-red-50">
+          {t('dsgvo.anonymize')}
+        </button>
       )}
     </div>
   )

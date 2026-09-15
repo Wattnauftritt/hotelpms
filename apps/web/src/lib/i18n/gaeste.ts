@@ -43,6 +43,27 @@ export const gaeste = {
     'companies.inactive': 'Stillgelegt',
     'companies.save': 'Speichern',
     'companies.saved': 'Gespeichert',
+    'dsgvo.title': 'Betroffenenrechte',
+    'dsgvo.export': 'Auskunft erstellen (Art. 15)',
+    'dsgvo.exportHint': 'Trägt alles zusammen, was über diesen Gast gespeichert '
+                      + 'ist. Die Frist beträgt einen Monat.',
+    'dsgvo.stays': 'Aufenthalte',
+    'dsgvo.invoices': 'Rechnungen',
+    'dsgvo.notes': 'Hausnotizen',
+    'dsgvo.registrations': 'Meldescheine',
+    'dsgvo.createdAt': 'Profil angelegt',
+    'dsgvo.print': 'Drucken',
+    'dsgvo.anonymize': 'Löschen (Art. 17)',
+    // Der Satz muss die Erwartung geraderücken, bevor geklickt wird: wer
+    // „gelöscht" hört und die Rechnung später wiederfindet, hält das für
+    // einen Fehler.
+    'dsgvo.anonymizeHint': 'Löschen heißt anonymisieren: das Profil wird '
+                         + 'entpersonalisiert, Hausnotizen und Meldescheine werden '
+                         + 'vernichtet. Rechnungen bleiben unverändert — sie '
+                         + 'unterliegen der achtjährigen Aufbewahrungsfrist.',
+    'dsgvo.anonymizeConfirm': 'Diesen Gast unwiderruflich anonymisieren?',
+    'dsgvo.anonymized': 'Anonymisiert. Das Profil lässt sich nicht wiederherstellen.',
+    'dsgvo.alreadyDone': 'Dieses Profil war bereits anonymisiert.',
   },
   en: {
     'guests.title': 'Guests',
@@ -87,5 +108,23 @@ export const gaeste = {
     'companies.inactive': 'Deactivated',
     'companies.save': 'Save',
     'companies.saved': 'Saved',
+    'dsgvo.title': 'Data subject rights',
+    'dsgvo.export': 'Create access report (Art. 15)',
+    'dsgvo.exportHint': 'Collects everything stored about this guest. '
+                      + 'The deadline is one month.',
+    'dsgvo.stays': 'Stays',
+    'dsgvo.invoices': 'Invoices',
+    'dsgvo.notes': 'Property notes',
+    'dsgvo.registrations': 'Registration forms',
+    'dsgvo.createdAt': 'Profile created',
+    'dsgvo.print': 'Print',
+    'dsgvo.anonymize': 'Erase (Art. 17)',
+    'dsgvo.anonymizeHint': 'Erasure means anonymisation: the profile is '
+                         + 'depersonalised, property notes and registration forms '
+                         + 'are destroyed. Invoices remain unchanged — they are '
+                         + 'subject to the eight-year retention period.',
+    'dsgvo.anonymizeConfirm': 'Anonymise this guest irreversibly?',
+    'dsgvo.anonymized': 'Anonymised. The profile cannot be restored.',
+    'dsgvo.alreadyDone': 'This profile was already anonymised.',
   }
 } as const

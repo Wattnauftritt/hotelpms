@@ -86,3 +86,52 @@ export function usePatchCompany(companyRef: string) {
     }
   })
 }
+
+// --------------------------------------------------- Betroffenenrechte (DSGVO)
+
+/** Was die Auskunft nach Art. 15 DSGVO ueber einen Gast zusammentraegt. */
+export interface GuestDataExport {
+  profile: Guest
+  createdAt: string
+  stays: Array<{ reservationRef: string; property: string; arrival: string
+                 departure: string; status: string }>
+  invoices: Array<{ number: string; issuedOn: string; grossCent: number }>
+  notes: Array<{ note: string; createdAt: string; property: string }>
+  registrations: Array<{ arrival: string; plannedDeparture: string
+                         destroyAfter: string }>
+  hinweis: string
+  hinweisKey?: string
+}
+
+/**
+ * Auskunft nach Art. 15 DSGVO.
+ *
+ * `enabled` steht auf false und wird erst durch einen Klick wahr: die
+ * Auskunft zieht Aufenthalte, Rechnungen, Notizen und Meldescheine zusammen.
+ * Sie bei jedem Oeffnen eines Profils mitzuladen waere eine Handvoll
+ * Abfragen fuer etwas, das ein paarmal im Jahr gebraucht wird.
+ */
+export const useGuestDataExport = (guestRef: string, aktiv: boolean) =>
+  useQuery<GuestDataExport>({
+    queryKey: ['guest', guestRef, 'data-export'],
+    queryFn: () => api.get(`/v1/guests/${guestRef}/data-export`),
+    enabled: aktiv,
+    // Eine Auskunft ist eine Momentaufnahme, die ausgedruckt und
+    // herausgegeben wird. Sie unter der Hand nachzuladen hiesse, dass das
+    // Papier und der Bildschirm auseinanderlaufen.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false
+  })
+
+export function useAnonymizeGuest(guestRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<{ guestRef: string; status: string; alreadyDone: boolean }>(
+      `/v1/guests/${guestRef}/anonymize`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['guest', guestRef] })
+      // Die Suche zeigt anonymisierte Profile nicht mehr an.
+      void qc.invalidateQueries({ queryKey: ['guests', 'search'] })
+    }
+  })
+}
