@@ -33,6 +33,7 @@ export interface WebhookCreated extends WebhookSubscription {
   /** Nur bei der Anlage. Wird nie wieder ausgegeben. */
   signingSecret: string
   hinweis: string
+  hinweisKey: string
 }
 
 export function useCreateWebhook() {
@@ -74,6 +75,7 @@ export interface OAuthClientCreated {
   propertyIds: number[]
   allProperties: boolean
   hinweis: string
+  hinweisKey: string
 }
 
 export function useCreateOAuthClient() {

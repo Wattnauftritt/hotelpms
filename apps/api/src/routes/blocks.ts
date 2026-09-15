@@ -40,7 +40,7 @@ const FIELDS = `id, property_id, public_ref, name, category_id, company_id, rate
 export async function loadBlock(client: PoolClient, ref: string): Promise<BlockRow> {
   const { rows, rowCount } = await client.query<BlockRow>(
     `SELECT ${FIELDS} FROM availability_block WHERE public_ref = $1 FOR UPDATE`, [ref])
-  if (rowCount === 0) throw Errors.notFound('Kontingent')
+  if (rowCount === 0) throw Errors.notFound('res.block')
   return rows[0]!
 }
 
@@ -61,16 +61,16 @@ export function blockRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
 
       if (!isIsoDate(body.fromDate) || !isIsoDate(body.toDate)) {
-        throw Errors.validation({ fromDate: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ fromDate: ['field.isoDate'] })
       }
       if (nightsBetween(body.fromDate, body.toDate) <= 0) {
-        throw Errors.validation({ toDate: ['Muss nach fromDate liegen'] })
+        throw Errors.validation({ toDate: ['field.afterFromDate'] })
       }
       if (!Number.isInteger(body.quantity) || body.quantity <= 0) {
-        throw Errors.validation({ quantity: ['Ganze Zahl groesser als null erwartet'] })
+        throw Errors.validation({ quantity: ['field.positiveInteger'] })
       }
       if (body.releaseDate !== undefined && !isIsoDate(body.releaseDate)) {
-        throw Errors.validation({ releaseDate: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ releaseDate: ['field.isoDate'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -79,7 +79,7 @@ export function blockRoutes(app: FastifyInstance): void {
         const k = await client.query(
           `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
           [body.categoryId, pid])
-        if (k.rowCount === 0) throw Errors.notFound('Zimmergruppe')
+        if (k.rowCount === 0) throw Errors.notFound('res.category')
 
         // Kontingent zuerst binden. Schlaegt das fehl, wird alles
         // zurueckgerollt und es entsteht kein Kontingent ohne Deckung.
@@ -88,7 +88,7 @@ export function blockRoutes(app: FastifyInstance): void {
           [pid, body.categoryId, body.fromDate, body.toDate, body.quantity])
         if (inv.rows[0]!.e === 'sold_out') throw Errors.soldOut()
         if (inv.rows[0]!.e !== null) {
-          throw Errors.conflict(`Unbekannter Inventarfehler: ${inv.rows[0]!.e}`)
+          throw Errors.conflict('inventory.unknownError', { code: inv.rows[0]!.e })
         }
 
         const r = await client.query<{ public_ref: string }>(
@@ -172,7 +172,7 @@ export function blockRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const b = await loadBlock(client, blockRef)
         if (b.status !== 'active') {
-          throw Errors.conflict(`Kontingent ist bereits ${b.status}.`)
+          throw Errors.conflict('block.alreadyStatus', { status: b.status })
         }
 
         // Nur der Rest. Die abgerufenen Plaetze sind verkauft und stehen in

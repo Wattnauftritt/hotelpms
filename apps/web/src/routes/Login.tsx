@@ -37,14 +37,14 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
         }}>
         <h1 className="font-semibold">hotelpms</h1>
         <label className="block">
-          <span className="block text-xs text-neutral-600">E-Mail</span>
+          <span className="block text-xs text-neutral-600">{t('login.email')}</span>
           <input type="email" required autoComplete="username" value={email}
                  onChange={e => setEmail(e.target.value)}
                  className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1
                             text-sm" />
         </label>
         <label className="block">
-          <span className="block text-xs text-neutral-600">Kennwort</span>
+          <span className="block text-xs text-neutral-600">{t('login.password')}</span>
           <input type="password" required autoComplete="current-password" value={kennwort}
                  onChange={e => setKennwort(e.target.value)}
                  className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1
@@ -59,7 +59,7 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
         <button type="submit" disabled={laeuft}
                 className="w-full py-1.5 text-sm rounded bg-neutral-900 text-white
                            disabled:bg-neutral-300">
-          {laeuft ? t('common.loading') : 'Anmelden'}
+          {t(laeuft ? 'common.loading' : 'login.submit')}
         </button>
       </form>
     </div>

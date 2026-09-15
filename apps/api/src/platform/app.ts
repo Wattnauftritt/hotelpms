@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify'
 import cookie from '@fastify/cookie'
 import { createPool, type Pool } from '@hotelpms/db'
 import { loadConfig, type Config } from './config.js'
+import { renderMessage } from '@hotelpms/contracts'
 import { AppError, Errors } from './errors.js'
 import { ANONYMOUS, type Principal } from './context.js'
 import { loadPrincipal, applySupportSession, loadPrincipalFromToken } from './auth.js'
@@ -129,12 +130,14 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
     const maybe = err as { validation?: unknown; message?: string }
     if (maybe.validation) {
       return reply.status(422).type('application/problem+json')
-        .send(Errors.validation({ body: [maybe.message ?? 'ungueltig'] }).toProblem(instance))
+        .send(Errors.validation({ body: [maybe.message ?? 'field.invalid'] })
+          .toProblem(instance))
     }
     req.log.error({ err }, 'Unbehandelter Fehler')
     // In Produktion keine Stapelspur, nur die Anfrage-ID fuer den Support.
     return reply.status(500).type('application/problem+json').send({
-      type: 'urn:hotelpms:internal', title: 'Interner Fehler', status: 500,
+      type: 'urn:hotelpms:internal', title: renderMessage('error.internal', 'de'),
+      code: 'error.internal', status: 500,
       detail: config.nodeEnv === 'production' ? undefined : (err as Error).message,
       instance
     })

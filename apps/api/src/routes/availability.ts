@@ -10,10 +10,10 @@ const MAX_TAPE_CHART_DAYS = 92
 function range(req: FastifyRequest, max: number): { from: string; to: string } {
   const q = req.query as { from?: string; to?: string }
   if (!q.from || !q.to || !isIsoDate(q.from) || !isIsoDate(q.to)) {
-    throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+    throw Errors.validation({ from: ['field.isoDate'] })
   }
   const days = nightsBetween(q.from, q.to)
-  if (days <= 0) throw Errors.validation({ to: ['Muss nach from liegen'] })
+  if (days <= 0) throw Errors.validation({ to: ['field.afterFrom'] })
   if (days > max) throw Errors.rangeTooLarge(max)
   return { from: q.from, to: q.to }
 }

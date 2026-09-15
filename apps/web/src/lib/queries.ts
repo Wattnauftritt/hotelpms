@@ -139,7 +139,8 @@ export const useFolio = (folioRef: string | null) =>
   })
 
 export const usePaymentMethods = (propertyId: number) =>
-  useQuery<{ paymentMethods: PaymentMethod[]; hinweis: string }>({
+  useQuery<{ paymentMethods: PaymentMethod[]; hinweis: string
+                   hinweisKey: string }>({
     queryKey: ['paymentMethods', propertyId],
     queryFn: () => api.get(`/v1/properties/${propertyId}/payment-methods`),
     // Zahlungsarten aendern sich im Betrieb praktisch nie.

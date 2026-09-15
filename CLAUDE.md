@@ -99,6 +99,21 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 
 **Neue Route.** Immer über `registerRoute`. Die Berechtigung ist ein Pflichtfeld; es gibt keinen anderen Weg, eine Route anzulegen, und ein Test läuft über die gesamte Routenliste. `permission: null` bedeutet ausdrücklich öffentlich und will begründet sein.
 
+**Neue Meldung.** Jeder Satz, den ein Mensch zu sehen bekommt, ist ein
+Schlüssel, kein Text im Code. Fehlermeldungen und Hinweise der Schnittstelle
+stehen in [`packages/contracts/src/messages.ts`](packages/contracts/src/messages.ts),
+deutsch und englisch nebeneinander; Beschriftungen der Oberfläche in
+`apps/web/src/lib/i18n/`, eine Datei je Bereich. Die API antwortet **deutsch**
+und legt den Schlüssel daneben — ein Protokoll soll ohne Katalog lesbar
+bleiben, die Rezeption den Satz in ihrer Sprache sehen.
+
+Werte kommen als Platzhalter (`{max}`), nie durch Zusammensetzen: „Die Gruppe
+hat noch " + n + " Reservierungen" ergibt in jeder Sprache mit anderer
+Wortstellung Unsinn. Zwei Tests halten das fest —
+`apps/api/src/__tests__/meldungen.test.ts` liest die Quelle und findet jeden
+deutschen Satz, der noch in einem `Errors.*`-Aufruf steht;
+`apps/web/src/__tests__/i18n.test.ts` prüft den Katalog der Oberfläche.
+
 **Neue Migration.** Fortlaufend nummeriert, nie eine bestehende ändern. Der Kopfkommentar nennt den Befund oder die Anforderung, die sie auslöst.
 
 Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zuverlässig in die Quere kommen: zwei Zweige von `main` legen beide `0020_` an, und beim Mergen fällt das nicht auf, weil es verschiedene Dateien ohne Konflikt sind. Auffallen würde es erst beim nächsten frischen Schemaaufbau, als Fehler, dessen Ursache Tage zurückliegt. `scripts/check-migrations.sh` prüft das in CI. Wer die Meldung sieht, benennt die spätere um; zwischen unabhängigen Migrationen ist die Reihenfolge ohnehin beliebig.

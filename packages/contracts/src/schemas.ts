@@ -107,8 +107,14 @@ export const SetupStep = Type.Object({
   key: Type.String(),
   done: Type.Boolean(),
   count: Type.Integer(),
+  /** Deutsch, wie die ganze Schnittstelle. Zum Uebersetzen `labelKey`. */
   label: Type.String(),
-  hint: Type.String()
+  hint: Type.String(),
+  labelKey: Type.String(),
+  hintKey: Type.String(),
+  /** Nur wo der Hinweis einen Wert nennt, etwa das Datum des Horizonts. */
+  hintParams: Type.Optional(Type.Record(Type.String(),
+    Type.Union([Type.String(), Type.Number()])))
 })
 export const SetupStatus = Type.Object({
   bookable: Type.Boolean(),
@@ -649,7 +655,8 @@ export const AccommodationStatistics = Type.Object({
     nights: Type.Integer()
   })),
   totals: Type.Object({ arrivals: Type.Integer(), nights: Type.Integer() }),
-  hinweis: Type.String()
+  hinweis: Type.String(),
+  hinweisKey: Type.String()
 })
 export type AccommodationStatistics = Static<typeof AccommodationStatistics>
 
@@ -980,13 +987,31 @@ export type ChannelView = Static<typeof ChannelView>
 
 // ------------------------------------------------------------------ Fehler
 
-/** Fehlerdarstellung nach RFC 9457. */
+/**
+ * Fehlerdarstellung nach RFC 9457.
+ *
+ * `title`, `detail` und `errors` sind **deutsch** -- die Sprache der
+ * Schnittstelle. Wer uebersetzen will, nimmt `code`, `params` und
+ * `errorKeys`: das sind stabile Schluessel aus `messages.ts`, die sich
+ * nicht aendern, wenn jemand einen Satz umformuliert.
+ *
+ * Beides steht nebeneinander, weil beides gebraucht wird. Ein Protokoll und
+ * ein Skript, das eine Antwort ausgibt, sollen ohne Katalog lesbar bleiben;
+ * die Oberflaeche soll den Satz in der Sprache des Personals zeigen.
+ */
 export const Problem = Type.Object({
   type: Type.String(),
   title: Type.String(),
   status: Type.Integer(),
   detail: Type.Optional(Type.String()),
   instance: Type.Optional(Type.String()),
-  errors: Type.Optional(Type.Record(Type.String(), Type.Array(Type.String())))
+  errors: Type.Optional(Type.Record(Type.String(), Type.Array(Type.String()))),
+  /** Schluessel der Meldung in `detail`, sonst der des Titels. */
+  code: Type.Optional(Type.String()),
+  /** Werte fuer die Platzhalter von `code` und `errorKeys`. */
+  params: Type.Optional(Type.Record(Type.String(),
+    Type.Union([Type.String(), Type.Number()]))),
+  /** Dieselben Feldfehler wie `errors`, als Schluessel. */
+  errorKeys: Type.Optional(Type.Record(Type.String(), Type.Array(Type.String())))
 })
 export type Problem = Static<typeof Problem>

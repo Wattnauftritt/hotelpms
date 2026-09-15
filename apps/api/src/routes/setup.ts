@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText, type Meldung } from '../platform/texte.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -66,13 +67,13 @@ interface RoomPlan { code: string; exists: boolean; reason?: string }
 
 function buildCodes(s: RoomSeries): string[] {
   if (!Number.isInteger(s.from) || !Number.isInteger(s.to)) {
-    throw Errors.validation({ from: ['Ganze Zahl erwartet'], to: ['Ganze Zahl erwartet'] })
+    throw Errors.validation({ from: ['field.integer'], to: ['field.integer'] })
   }
-  if (s.to < s.from) throw Errors.validation({ to: ['Darf nicht kleiner als from sein'] })
+  if (s.to < s.from) throw Errors.validation({ to: ['field.notBeforeFrom'] })
   const anzahl = s.to - s.from + 1
   if (anzahl > MAX_SERIE) throw Errors.rangeTooLarge(MAX_SERIE)
   const pad = s.pad ?? 0
-  if (pad < 0 || pad > 6) throw Errors.validation({ pad: ['Zwischen 0 und 6'] })
+  if (pad < 0 || pad > 6) throw Errors.validation({ pad: ['field.weekdayRange'] })
   const skip = new Set(s.skip ?? [])
 
   const codes: string[] = []
@@ -81,7 +82,7 @@ function buildCodes(s: RoomSeries): string[] {
     codes.push(`${s.prefix ?? ''}${String(n).padStart(pad, '0')}${s.suffix ?? ''}`)
   }
   if (codes.length === 0) {
-    throw Errors.validation({ skip: ['Die Serie ist nach den Auslassungen leer'] })
+    throw Errors.validation({ skip: ['field.seriesEmpty'] })
   }
   return codes
 }
@@ -97,7 +98,7 @@ async function assertCategory(
   const { rowCount } = await client.query(
     `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
     [categoryId, propertyId])
-  if (rowCount === 0) throw Errors.notFound('Zimmergruppe')
+  if (rowCount === 0) throw Errors.notFound('res.category')
 }
 
 export function setupRoutes(app: FastifyInstance): void {
@@ -142,21 +143,21 @@ export function setupRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const body = req.body as CategoryBody
       if (!body.code?.trim() || !body.name?.trim()) {
-        throw Errors.validation({ code: ['Pflichtfeld'], name: ['Pflichtfeld'] })
+        throw Errors.validation({ code: ['field.required'], name: ['field.required'] })
       }
       if (body.timeUnit !== undefined && body.timeUnit !== 'night') {
         // Das Feld steht von Anfang an im Modell, damit Tages- und
         // Stundennutzung später ohne Umbau möglich ist (Entscheidung 8).
         // Bedient wird im ersten Schritt bewusst nur die Nacht.
         throw Errors.unprocessable(
-          'Andere Zeiteinheiten als die Nacht sind noch nicht freigeschaltet.')
+          'setup.onlyNightUnit')
       }
       return tx(req.pool, req, async client => {
         const da = await client.query(
           `SELECT 1 FROM resource_category WHERE property_id = $1 AND code = $2`,
           [Number(propertyId), body.code.trim()])
         if (da.rowCount && da.rowCount > 0) {
-          throw Errors.conflict(`Eine Zimmergruppe mit dem Kürzel ${body.code} gibt es schon.`)
+          throw Errors.conflict('setup.duplicateCategoryCode', { code: body.code })
         }
         const { rows } = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO resource_category (property_id, code, name, description,
@@ -187,7 +188,7 @@ export function setupRoutes(app: FastifyInstance): void {
         const cur = await client.query<{ id: number; property_id: number; active: boolean }>(
           `SELECT id, property_id, active FROM resource_category WHERE id = $1 FOR UPDATE`,
           [Number(categoryId)])
-        if (cur.rowCount === 0) throw Errors.notFound('Zimmergruppe')
+        if (cur.rowCount === 0) throw Errors.notFound('res.category')
 
         // Stilllegen mit belegten Zimmern in der Zukunft würde Kapazität
         // unter gebuchten Reservierungen wegziehen. Erst umbuchen, dann
@@ -199,8 +200,8 @@ export function setupRoutes(app: FastifyInstance): void {
                 AND departure > current_date`, [Number(categoryId)])
           if (Number(offen.rows[0]!.n) > 0) {
             throw Errors.conflict(
-              `Die Gruppe hat noch ${offen.rows[0]!.n} künftige Reservierungen. `
-              + 'Erst umbuchen, dann stilllegen.')
+              'setup.categoryHasFutureReservations',
+              { count: offen.rows[0]!.n })
           }
         }
 
@@ -222,9 +223,13 @@ export function setupRoutes(app: FastifyInstance): void {
 
         // Die Belegungszahl ändert die Kapazität nicht: Kapazität ist die
         // Zahl der Einheiten, nicht die Zahl der Betten.
-        return { ...rows[0]!, hinweis: body.maxOccupancy !== undefined
-          ? 'Die Belegungszahl wirkt auf Preise und Meldeschein, nicht auf die Kapazität.'
-          : undefined }
+        // Die Belegungszahl aendert die Kapazität nicht: Kapazität ist die
+        // Zahl der Einheiten, nicht die Zahl der Betten.
+        return { ...rows[0]!,
+          hinweis: body.maxOccupancy !== undefined
+            ? hinweisText('hint.occupancyNotCapacity') : undefined,
+          hinweisKey: body.maxOccupancy !== undefined
+            ? 'hint.occupancyNotCapacity' : undefined }
       })
     }
   })
@@ -332,14 +337,14 @@ export function setupRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const body = req.body as { propertyId: number; categoryId: number; code: string
                                  floor?: string; attributes?: string[] }
-      if (!body.code?.trim()) throw Errors.validation({ code: ['Pflichtfeld'] })
+      if (!body.code?.trim()) throw Errors.validation({ code: ['field.required'] })
       return tx(req.pool, req, async client => {
         await assertCategory(client, body.propertyId, body.categoryId)
         const da = await client.query(
           `SELECT 1 FROM resource WHERE property_id = $1 AND code = $2`,
           [body.propertyId, body.code.trim()])
         if (da.rowCount && da.rowCount > 0) {
-          throw Errors.conflict(`Die Nummer ${body.code} ist im Haus schon vergeben.`)
+          throw Errors.conflict('setup.duplicateRoomCode', { code: body.code })
         }
         const { rows } = await client.query<{ id: number }>(
           `INSERT INTO resource (property_id, category_id, code, floor, attributes)
@@ -366,7 +371,7 @@ export function setupRoutes(app: FastifyInstance): void {
                                          category_id: number; active: boolean }>(
           `SELECT id, property_id, category_id, active FROM resource
             WHERE id = $1 FOR UPDATE`, [Number(roomId)])
-        if (cur.rowCount === 0) throw Errors.notFound('Zimmer')
+        if (cur.rowCount === 0) throw Errors.notFound('res.room')
         const zimmer = cur.rows[0]!
 
         if (body.categoryId !== undefined && body.categoryId !== zimmer.category_id) {
@@ -387,9 +392,8 @@ export function setupRoutes(app: FastifyInstance): void {
               ORDER BY arrival LIMIT 5`, [Number(roomId)])
           if (belegt.rowCount && belegt.rowCount > 0) {
             throw Errors.conflict(
-              'Auf dem Zimmer liegen noch künftige Reservierungen: '
-              + belegt.rows.map(b => `${b.ref} ab ${b.arrival}`).join(', ')
-              + '. Erst umbuchen, dann stilllegen.')
+              'setup.roomHasFutureReservations',
+              { reservations: belegt.rows.map(b => `${b.ref} ab ${b.arrival}`).join(', ') })
           }
         }
 
@@ -456,36 +460,46 @@ export function setupRoutes(app: FastifyInstance): void {
           [Number(propertyId)])
         const s = rows[0]!
 
+        /*
+         * Jeder Schritt traegt seinen Schluessel und den deutschen Satz. Der
+         * Schluessel ist ohnehin schon da -- `key` benennt den Schritt --,
+         * aber die Saetze haengen nicht an ihm: zwei Schritte haben je nach
+         * Stand einen anderen Hinweis, und der eine traegt ein Datum.
+         */
+        const schritt = (
+          key: string, done: boolean, count: number,
+          hintKey: Meldung, hintParams?: Record<string, string | number>
+        ) => ({
+          key, done, count,
+          label: hinweisText(`setup.step.${key}` as Meldung),
+          labelKey: `setup.step.${key}`,
+          hint: hinweisText(hintKey, hintParams),
+          hintKey,
+          ...(hintParams === undefined ? {} : { hintParams })
+        })
+
         const schritte = [
-          { key: 'categories', done: s.categories > 0, count: s.categories,
-            label: 'Zimmergruppen angelegt',
-            hint: 'Mindestens eine Gruppe, etwa Doppelzimmer oder Ferienwohnung.' },
-          { key: 'rooms', done: s.rooms > 0, count: s.rooms,
-            label: 'Zimmer angelegt',
-            hint: 'Am schnellsten als Serie: Nummernbereich und Etage angeben.' },
-          { key: 'inventory', done: s.horizon !== null, count: 0,
-            label: 'Inventar materialisiert',
-            hint: s.horizon === null
-              ? 'Ohne materialisierten Zeitraum weist jede Buchung ab. '
-                + 'Der Worker legt ihn an, oder einmal von Hand anstoßen.'
-              : `Belegbar bis ${s.horizon}.` },
-          { key: 'tax_rules', done: s.tax_rules > 0, count: s.tax_rules,
-            label: 'Steuersätze hinterlegt',
-            hint: 'Ohne Regel bucht der Nachtlauf Logis mit 7 Prozent.' },
-          { key: 'rate_plans', done: s.rate_plans > 0, count: s.rate_plans,
-            label: 'Ratenpläne angelegt',
-            hint: 'Je Gruppe mindestens eine Basisrate.' },
-          { key: 'prices', done: s.priced_days > 0, count: s.priced_days,
-            label: 'Preise gepflegt',
-            hint: 'Ohne Preise werden Reservierungen mit 0 Cent gebucht.' },
-          { key: 'payment_methods', done: s.payment_methods > 0, count: s.payment_methods,
-            label: 'Zahlungsarten angelegt',
-            hint: 'Nur zur Zuordnung. Die Zahlung selbst läuft außerhalb dieses Systems.' },
-          { key: 'business_day', done: s.open_day !== null, count: 0,
-            label: 'Geschäftstag geöffnet',
-            hint: s.open_day === null
-              ? 'Ohne offenen Tag läuft kein Nachtlauf.'
-              : `Offen seit ${s.open_day}.` }
+          schritt('categories', s.categories > 0, s.categories,
+            'setup.step.categories.hint'),
+          schritt('rooms', s.rooms > 0, s.rooms, 'setup.step.rooms.hint'),
+          schritt('inventory', s.horizon !== null, 0,
+            s.horizon === null
+              ? 'setup.step.inventory.hint.missing'
+              : 'setup.step.inventory.hint.until',
+            s.horizon === null ? undefined : { date: s.horizon }),
+          schritt('tax_rules', s.tax_rules > 0, s.tax_rules,
+            'setup.step.tax_rules.hint'),
+          schritt('rate_plans', s.rate_plans > 0, s.rate_plans,
+            'setup.step.rate_plans.hint'),
+          schritt('prices', s.priced_days > 0, s.priced_days,
+            'setup.step.prices.hint'),
+          schritt('payment_methods', s.payment_methods > 0, s.payment_methods,
+            'setup.step.payment_methods.hint'),
+          schritt('business_day', s.open_day !== null, 0,
+            s.open_day === null
+              ? 'setup.step.business_day.hint.missing'
+              : 'setup.step.business_day.hint.since',
+            s.open_day === null ? undefined : { date: s.open_day })
         ]
 
         const offen = schritte.filter(x => !x.done)

@@ -8,7 +8,8 @@ import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
-import { LOCALES, I18nContext, type Locale } from './lib/i18n/index.js'
+import { LOCALES, I18nContext, useT, type Locale, type TextKey }
+  from './lib/i18n/index.js'
 import { api } from './lib/api.js'
 import './styles.css'
 
@@ -34,6 +35,17 @@ interface Me {
   displayName: string
   properties: Array<{ id: number; code: string; name: string; isTraining: boolean
                       permissions: string[] }>
+}
+
+/**
+ * Ein Text aus dem Katalog. Eine eigene Komponente, weil `useT` den Kontext
+ * braucht und der erst innerhalb des Providers steht -- die Hinweise hier
+ * werden gezeigt, **bevor** die Oberflaeche selbst aufgebaut ist.
+ */
+function Text(
+  { k, params }: { k: TextKey; params?: Record<string, string | number> }
+): JSX.Element {
+  return <>{useT()(k, params)}</>
 }
 
 function Hinweis({ children }: { children: React.ReactNode }): JSX.Element {
@@ -81,7 +93,7 @@ function App(): JSX.Element {
 
   if (haus === undefined) {
     return <I18nContext.Provider value={locale}>
-      <Hinweis>Diesem Benutzer ist noch kein Haus zugeordnet.</Hinweis>
+      <Hinweis><Text k="app.noProperty" /></Hinweis>
     </I18nContext.Provider>
   }
 
@@ -91,8 +103,7 @@ function App(): JSX.Element {
 
   if (screen === undefined) {
     return <I18nContext.Provider value={locale}>
-      <Hinweis>Dieses Konto hat in {haus.name} keine Rechte, die einen
-        Bildschirm öffnen.</Hinweis>
+      <Hinweis><Text k="app.noScreen" params={{ haus: haus.name }} /></Hinweis>
     </I18nContext.Provider>
   }
 

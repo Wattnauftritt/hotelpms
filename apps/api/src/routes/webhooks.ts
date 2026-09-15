@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText } from '../platform/texte.js'
 import { accountFor, type Principal } from '../platform/context.js'
 import { isWebhookEventType, WEBHOOK_EVENT_TYPES } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
@@ -51,7 +52,7 @@ async function loadSubscription(
 ): Promise<{ id: number; status: string }> {
   const { rows, rowCount } = await client.query<{ id: number; status: string }>(
     `SELECT id, status FROM webhook_subscription WHERE public_ref = $1 FOR UPDATE`, [ref])
-  if (rowCount === 0) throw Errors.notFound('Abonnement')
+  if (rowCount === 0) throw Errors.notFound('res.subscription')
   return rows[0]!
 }
 
@@ -69,14 +70,14 @@ export function webhookRoutes(app: FastifyInstance): void {
       // https erzwingen: ueber http reist der Rumpf im Klartext, und die
       // Signatur schuetzt seine Echtheit, nicht seine Vertraulichkeit.
       if (typeof body.url !== 'string' || !body.url.startsWith('https://')) {
-        throw Errors.validation({ url: ['Muss mit https:// beginnen'] })
+        throw Errors.validation({ url: ['field.httpsOnly'] })
       }
 
       const eventTypes = body.eventTypes ?? []
       const unbekannt = eventTypes.filter(t => !isWebhookEventType(t))
       if (unbekannt.length > 0) {
-        throw Errors.validation({
-          eventTypes: [`Unbekannte Ereignisart: ${unbekannt.join(', ')}`] })
+        throw Errors.validation({ eventTypes: ['field.unknownEventType'] },
+          { values: unbekannt.join(', ') })
       }
 
       // Der gemeinsame Schluessel entsteht hier und wird genau einmal
@@ -92,7 +93,7 @@ export function webhookRoutes(app: FastifyInstance): void {
             `SELECT 1 FROM property WHERE account_id = $1 AND id = ANY($2::bigint[])`,
             [accountId, propertyIds])
           if (eigene.rowCount !== propertyIds.length) {
-            throw Errors.notFound('Property')
+            throw Errors.notFound('res.property')
           }
         }
 
@@ -107,8 +108,8 @@ export function webhookRoutes(app: FastifyInstance): void {
         return {
           ...present(r.rows[0]!),
           signingSecret: secret,
-          hinweis: 'Der Schluessel wird nur hier einmal ausgegeben. '
-                 + 'Signatur: HMAC-SHA256 ueber "Zeitstempel.Rumpf".'
+          hinweis: hinweisText('hint.webhookSecretOnce'),
+          hinweisKey: 'hint.webhookSecretOnce'
         }
       })
     }
@@ -188,7 +189,7 @@ export function webhookRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const s = await client.query<{ id: number }>(
           `SELECT id FROM webhook_subscription WHERE public_ref = $1`, [subscriptionRef])
-        if (s.rowCount === 0) throw Errors.notFound('Abonnement')
+        if (s.rowCount === 0) throw Errors.notFound('res.subscription')
 
         // Ein Aufruf je Bildschirm: die Versuche kommen als Feld mit, nicht
         // als eine Nachfrage je Zustellung.

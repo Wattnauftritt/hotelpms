@@ -38,7 +38,7 @@ async function loadReservation(
     `SELECT id, arrival::text, departure::text, primary_guest_id
        FROM reservation WHERE public_ref = $1 AND property_id = $2`,
     [reservationRef, propertyId])
-  if (rowCount === 0) throw Errors.notFound('Reservierung')
+  if (rowCount === 0) throw Errors.notFound('res.reservation')
   return rows[0]!
 }
 
@@ -77,7 +77,7 @@ export function registrationRoutes(app: FastifyInstance): void {
              LEFT JOIN registration reg ON reg.reservation_id = r.id
                    AND reg.group_registration_id IS NULL
             WHERE r.public_ref = $1`, [reservationRef])
-        if (rowCount === 0) throw Errors.notFound('Reservierung')
+        if (rowCount === 0) throw Errors.notFound('res.reservation')
         const r = rows[0]!
         const auslaendisch = r.country !== null && r.country !== 'DE'
 
@@ -113,19 +113,19 @@ export function registrationRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const body = req.body as RegistrationBody
       if (!body.reservationRef) {
-        throw Errors.validation({ reservationRef: ['Pflichtfeld'] })
+        throw Errors.validation({ reservationRef: ['field.required'] })
       }
 
       return tx(req.pool, req, async client => {
         const res = await loadReservation(client, body.propertyId, body.reservationRef)
         if (res.primary_guest_id === null) {
           throw Errors.unprocessable(
-            'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.')
+            'registration.noPrimaryGuest')
         }
         const vorhanden = await client.query(
           `SELECT 1 FROM registration WHERE reservation_id = $1 LIMIT 1`, [res.id])
         if (vorhanden.rowCount && vorhanden.rowCount > 0) {
-          throw Errors.conflict('Fuer diese Reservierung liegt bereits ein Meldeschein vor.')
+          throw Errors.conflict('registration.alreadyExists')
         }
 
         const g = await client.query<{ country: string | null }>(
@@ -137,7 +137,7 @@ export function registrationRoutes(app: FastifyInstance): void {
         // Rechtsgrund waere eine Datenerhebung ohne Rechtsgrund.
         if (auslaendisch && !body.signatureSvg) {
           throw Errors.unprocessable(
-            'Fuer auslaendische Gaeste ist die Unterschrift nach § 30 BMG erforderlich.')
+            'registration.signatureRequired')
         }
         const signatur = auslaendisch ? body.signatureSvg ?? null : null
 
@@ -164,7 +164,7 @@ export function registrationRoutes(app: FastifyInstance): void {
         for (const ref of mitreisende) {
           const m = await client.query<{ id: number; country: string | null }>(
             `SELECT id, country FROM guest WHERE public_ref = $1`, [ref])
-          if (m.rowCount === 0) throw Errors.notFound(`Gast ${ref}`)
+          if (m.rowCount === 0) throw Errors.notFound('res.guest')
           await client.query(
             `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
                                        planned_departure, occupant_count, is_foreign,
@@ -203,18 +203,18 @@ export function registrationRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { registrationId } = req.params as { registrationId: string }
       const { signatureSvg } = req.body as { signatureSvg: string }
-      if (!signatureSvg) throw Errors.validation({ signatureSvg: ['Pflichtfeld'] })
+      if (!signatureSvg) throw Errors.validation({ signatureSvg: ['field.required'] })
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ is_foreign: boolean; signed_at: string | null }>(
           `SELECT is_foreign, signed_at::text FROM registration WHERE id = $1 FOR UPDATE`,
           [Number(registrationId)])
-        if (cur.rowCount === 0) throw Errors.notFound('Meldeschein')
+        if (cur.rowCount === 0) throw Errors.notFound('res.registration')
         if (!cur.rows[0]!.is_foreign) {
           throw Errors.unprocessable(
-            'Fuer inlaendische Gaeste ist seit dem 1.1.2025 keine Unterschrift vorgesehen.')
+            'registration.signatureNotForeseen')
         }
         if (cur.rows[0]!.signed_at !== null) {
-          throw Errors.conflict('Der Meldeschein ist bereits unterschrieben.')
+          throw Errors.conflict('registration.alreadySigned')
         }
         await client.query(
           `UPDATE registration SET signature_svg = $2, signed_at = now() WHERE id = $1`,

@@ -3,6 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText } from '../platform/texte.js'
 import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
 
@@ -37,10 +38,10 @@ interface KennzahlenZeitraum {
 
 function checkRange(from: string, to: string): number {
   if (!isIsoDate(from) || !isIsoDate(to)) {
-    throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+    throw Errors.validation({ from: ['field.isoDate'] })
   }
   const days = nightsBetween(from, to) + 1
-  if (days <= 0) throw Errors.validation({ to: ['Muss auf oder nach from liegen'] })
+  if (days <= 0) throw Errors.validation({ to: ['field.onOrAfterFrom'] })
   if (days > MAX_DAYS) throw Errors.rangeTooLarge(MAX_DAYS)
   return days
 }
@@ -73,7 +74,7 @@ export function reportRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { date?: string }
       if (q.date !== undefined && !isIsoDate(q.date)) {
-        throw Errors.validation({ date: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ date: ['field.isoDate'] })
       }
       const id = Number(propertyId)
 
@@ -83,7 +84,7 @@ export function reportRoutes(app: FastifyInstance): void {
              WHERE property_id = $1 AND status = 'open' ORDER BY date LIMIT 1))::text AS d`,
           [id, q.date ?? null])
         const d = tag.rows[0]!.d
-        if (d === null) throw Errors.unprocessable('Fuer die Property ist kein Tag geoeffnet.')
+        if (d === null) throw Errors.unprocessable('report.noOpenBusinessDay')
 
         // Der Folio-Verweis gehoert in jede Zeile: die Rezeption springt vom
         // Tagesgeschaeft zur Rechnung, und ihn einzeln nachzuladen waere je
@@ -244,7 +245,7 @@ export function reportRoutes(app: FastifyInstance): void {
       const q = req.query as { from: string; to: string; compare?: string }
       checkRange(q.from, q.to)
       if (q.compare !== undefined && q.compare !== 'previous-year') {
-        throw Errors.validation({ compare: ['Erlaubt ist nur previous-year'] })
+        throw Errors.validation({ compare: ['field.onlyPreviousYear'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -284,7 +285,7 @@ export function reportRoutes(app: FastifyInstance): void {
         const p = await client.query<{ timezone: string; rollover: string }>(
           `SELECT timezone, rollover_time::text AS rollover FROM property WHERE id = $1`,
           [id])
-        if (p.rowCount === 0) throw Errors.notFound('Property')
+        if (p.rowCount === 0) throw Errors.notFound('res.property')
         const businessDate = businessDateFor(
           new Date(), p.rows[0]!.timezone, p.rows[0]!.rollover)
 
@@ -348,14 +349,14 @@ export function reportRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { month: string }
       if (!/^\d{4}-\d{2}$/.test(q.month ?? '')) {
-        throw Errors.validation({ month: ['Format YYYY-MM erwartet'] })
+        throw Errors.validation({ month: ['field.isoMonth'] })
       }
       const von = `${q.month}-01`
 
       return tx(req.pool, req, async client => {
         // Eine Meldung aus Uebungsdaten waere eine falsche Meldung an eine
         // Behoerde, nicht bloss eine falsche Zahl im Haus.
-        await assertNotTraining(client, Number(propertyId), 'Die Beherbergungsstatistik')
+        await assertNotTraining(client, Number(propertyId), 'training.what.statistics')
 
         const { rows } = await client.query<{
           country: string | null; arrivals: number; nights: number }>(
@@ -398,8 +399,8 @@ export function reportRoutes(app: FastifyInstance): void {
             arrivals: rows.reduce((s, r) => s + r.arrivals, 0),
             nights: rows.reduce((s, r) => s + r.nights, 0)
           },
-          hinweis: 'Uebermittlung an das Statistische Landesamt ueber eSTATISTIK.core. '
-                 + 'Land XX bedeutet: kein Wohnsitzland erfasst.'
+          hinweis: hinweisText('hint.statisticsSubmission'),
+          hinweisKey: 'hint.statisticsSubmission'
         }
       })
     }
@@ -440,11 +441,11 @@ export function reportRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         // Ein Stapel aus Uebungsdaten landet in der echten Buchhaltung und
         // ist dort schwerer zu entfernen als hier zu verhindern (C11).
-        await assertNotTraining(client, id, 'Der DATEV-Export')
+        await assertNotTraining(client, id, 'training.what.datev')
 
         const prop = await client.query<{ name: string }>(
           `SELECT name FROM property WHERE id = $1`, [id])
-        if (prop.rowCount === 0) throw Errors.notFound('Property')
+        if (prop.rowCount === 0) throw Errors.notFound('res.property')
 
         const { rows } = await client.query<{
           number: string; issued_on: string; tax_rate_bp: number
@@ -591,7 +592,7 @@ export function reportRoutes(app: FastifyInstance): void {
       const id = Number(propertyId)
 
       return tx(req.pool, req, async client => {
-        await assertNotTraining(client, id, 'Der GoBD-Export')
+        await assertNotTraining(client, id, 'training.what.gobd')
 
         const invoices = await client.query(
           `SELECT number, issued_on::text AS "issuedOn",
@@ -685,7 +686,7 @@ export function reportRoutes(app: FastifyInstance): void {
                   city, country, tax_number, vat_id, municipality_key, is_training,
                   status, created_at::text
              FROM property WHERE id = $1`, [id])
-        if (p.rowCount === 0) throw Errors.notFound('Property')
+        if (p.rowCount === 0) throw Errors.notFound('res.property')
 
         // Je Tabelle eine Abfrage. Der Export ist selten und darf gruendlich
         // sein; er laeuft einmal je Vertragsende, nicht je Bildschirm.

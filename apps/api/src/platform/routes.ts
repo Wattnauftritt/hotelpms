@@ -65,10 +65,11 @@ export function registerRoute(app: FastifyInstance, spec: RouteSpec): void {
       if (property !== undefined && !hasProperty(principal, property)) {
         // Bewusst nicht 404 gegen 403 unterscheiden: wer keinen Zugriff hat,
         // soll nicht erfahren, ob die Property existiert.
-        throw Errors.forbidden('Property liegt nicht im Zugriffsbereich.')
+        throw Errors.forbidden('access.propertyOutOfScope')
       }
       if (!can(principal, spec.permission, property)) {
-        throw Errors.forbidden(`Fehlende Berechtigung: ${spec.permission}`)
+        throw Errors.forbidden('access.missingPermission',
+          { permission: spec.permission })
       }
     },
     handler: spec.handler

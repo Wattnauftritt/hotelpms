@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { hinweisText } from '../platform/texte.js'
 import { hashToken } from '../platform/auth.js'
 import { accountFor, type Principal } from '../platform/context.js'
 import { isPermission, PERMISSIONS } from '../platform/permissions.js'
@@ -161,14 +162,15 @@ export function oauthRoutes(app: FastifyInstance): void {
       const accountId = accountFor(principal, body.accountId)
 
       if (typeof body.name !== 'string' || body.name.trim() === '') {
-        throw Errors.validation({ name: ['Pflichtfeld'] })
+        throw Errors.validation({ name: ['field.required'] })
       }
       if (!Array.isArray(body.scopes) || body.scopes.length === 0) {
-        throw Errors.validation({ scopes: ['Mindestens ein Zugriffsbereich'] })
+        throw Errors.validation({ scopes: ['field.atLeastOneScope'] })
       }
       const unbekannt = body.scopes.filter(s => !isPermission(s))
       if (unbekannt.length > 0) {
-        throw Errors.validation({ scopes: [`Unbekannt: ${unbekannt.join(', ')}`] })
+        throw Errors.validation({ scopes: ['field.unknownValues'] },
+          { values: unbekannt.join(', ') })
       }
       /*
        * Plattformrechte sind keine Scopes. Sie gehoeren unserem eigenen
@@ -177,8 +179,8 @@ export function oauthRoutes(app: FastifyInstance): void {
        */
       const plattform = body.scopes.filter(s => s.startsWith('platform:'))
       if (plattform.length > 0) {
-        throw Errors.validation({
-          scopes: [`Plattformrechte sind keine Zugriffsbereiche: ${plattform.join(', ')}`] })
+        throw Errors.validation({ scopes: ['field.noPlatformScopes'] },
+          { values: plattform.join(', ') })
       }
 
       // Das Geheimnis entsteht hier und wird genau einmal herausgegeben.
@@ -190,7 +192,7 @@ export function oauthRoutes(app: FastifyInstance): void {
           const eigene = await client.query(
             `SELECT 1 FROM property WHERE account_id = $1 AND id = ANY($2::bigint[])`,
             [accountId, propertyIds])
-          if (eigene.rowCount !== propertyIds.length) throw Errors.notFound('Property')
+          if (eigene.rowCount !== propertyIds.length) throw Errors.notFound('res.property')
         }
 
         const r = await client.query<{ public_ref: string }>(
@@ -207,8 +209,8 @@ export function oauthRoutes(app: FastifyInstance): void {
           scopes: body.scopes,
           propertyIds,
           allProperties: propertyIds.length === 0,
-          hinweis: 'Das Geheimnis wird nur hier einmal ausgegeben. '
-                 + 'Token holen: POST /oauth/token mit grant_type=client_credentials.'
+          hinweis: hinweisText('hint.oauthSecretOnce'),
+          hinweisKey: 'hint.oauthSecretOnce'
         }
       })
     }
@@ -244,7 +246,7 @@ export function oauthRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const c = await client.query<{ id: number }>(
           `SELECT id FROM oauth_client WHERE public_ref = $1 FOR UPDATE`, [clientRef])
-        if (c.rowCount === 0) throw Errors.notFound('Maschinenzugang')
+        if (c.rowCount === 0) throw Errors.notFound('res.oauthClient')
 
         await client.query(
           `UPDATE oauth_client SET status = 'disabled' WHERE id = $1`, [c.rows[0]!.id])

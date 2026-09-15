@@ -28,7 +28,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       const q = req.query as { date?: string }
       const date = q.date ?? null
       if (date !== null && !isIsoDate(date)) {
-        throw Errors.validation({ date: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ date: ['field.isoDate'] })
       }
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
@@ -80,10 +80,11 @@ export function housekeepingRoutes(app: FastifyInstance): void {
         assignedTo?: number | null }
       const principal = req.principal as Principal
       if (!STATES.includes(body.status)) {
-        throw Errors.validation({ status: [`Erlaubt: ${STATES.join(', ')}`] })
+        throw Errors.validation({ status: ['field.allowedValues'] },
+          { values: STATES.join(', ') })
       }
       if (!Array.isArray(body.resourceIds) || body.resourceIds.length === 0) {
-        throw Errors.validation({ resourceIds: ['Mindestens ein Zimmer'] })
+        throw Errors.validation({ resourceIds: ['field.atLeastOneRoom'] })
       }
       if (body.resourceIds.length > 500) throw Errors.rangeTooLarge(500)
 
@@ -95,7 +96,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
           `SELECT id FROM resource WHERE property_id = $1 AND id = ANY($2::bigint[])`,
           [body.propertyId, body.resourceIds])
         if (gueltig.rowCount !== body.resourceIds.length) {
-          throw Errors.notFound('Zimmer')
+          throw Errors.notFound('res.room')
         }
         const { rowCount } = await client.query(
           `INSERT INTO housekeeping_status (property_id, resource_id, status,
@@ -129,7 +130,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const body = req.body as { propertyId: number; date?: string }
       if (body.date !== undefined && !isIsoDate(body.date)) {
-        throw Errors.validation({ date: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ date: ['field.isoDate'] })
       }
       return tx(req.pool, req, async client => {
         const { rowCount } = await client.query(
@@ -168,7 +169,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
           `UPDATE housekeeping_task SET status = 'done', done_at = now()
             WHERE id = $1 AND status = 'open'
             RETURNING resource_id, property_id`, [Number(taskId)])
-        if (rowCount === 0) throw Errors.notFound('Aufgabe')
+        if (rowCount === 0) throw Errors.notFound('res.task')
         // Eine erledigte Reinigung setzt den Zimmerstatus mit, sonst muss
         // die Kraft zwei Dinge tippen und tippt eines davon nicht.
         await client.query(
@@ -201,14 +202,14 @@ export function housekeepingRoutes(app: FastifyInstance): void {
         block?: { from: string; to: string; kind?: 'out_of_order' | 'out_of_service' } }
       const principal = req.principal as Principal
       if (!body.title || body.title.trim() === '') {
-        throw Errors.validation({ title: ['Pflichtfeld'] })
+        throw Errors.validation({ title: ['field.required'] })
       }
       const sperre = body.block ?? (body.outOfOrder === undefined ? undefined
         : { ...body.outOfOrder, kind: 'out_of_order' as const })
       if (sperre !== undefined && body.resourceId === undefined) {
         // Eine Sperrung ohne Zimmer waere eine Sperrung von nichts. Still zu
         // uebergehen hiesse: der Melder glaubt, das Zimmer sei gesperrt.
-        throw Errors.validation({ resourceId: ['Eine Sperrung braucht ein Zimmer'] })
+        throw Errors.validation({ resourceId: ['field.blockNeedsRoom'] })
       }
       return tx(req.pool, req, async client => {
         const t = await client.query<{ id: number }>(
@@ -222,7 +223,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
         // Trigger auf maintenance_block rechnet inventory_day nach.
         if (sperre !== undefined && body.resourceId !== undefined) {
           if (!isIsoDate(sperre.from) || !isIsoDate(sperre.to)) {
-            throw Errors.validation({ block: ['Datum im Format YYYY-MM-DD erwartet'] })
+            throw Errors.validation({ block: ['field.isoDate'] })
           }
           await client.query(
             `INSERT INTO maintenance_block (property_id, resource_id, from_date, to_date,
@@ -301,10 +302,12 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       const STAENDE = ['open', 'in_progress', 'done']
       const PRIORITAETEN = ['low', 'normal', 'high']
       if (body.status !== undefined && !STAENDE.includes(body.status)) {
-        throw Errors.validation({ status: [`Erlaubt: ${STAENDE.join(', ')}`] })
+        throw Errors.validation({ status: ['field.allowedValues'] },
+          { values: STAENDE.join(', ') })
       }
       if (body.priority !== undefined && !PRIORITAETEN.includes(body.priority)) {
-        throw Errors.validation({ priority: [`Erlaubt: ${PRIORITAETEN.join(', ')}`] })
+        throw Errors.validation({ priority: ['field.allowedValues'] },
+          { values: PRIORITAETEN.join(', ') })
       }
 
       return tx(req.pool, req, async client => {
@@ -320,7 +323,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
            WHERE id = $1
            RETURNING id, status, priority, closed_at AS "closedAt"`,
           [Number(ticketId), body.status ?? null, body.priority ?? null])
-        if (rowCount === 0) throw Errors.notFound('Wartungsmeldung')
+        if (rowCount === 0) throw Errors.notFound('res.maintenanceTicket')
         return rows[0]!
       })
     }

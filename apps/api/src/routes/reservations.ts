@@ -89,10 +89,10 @@ async function assertUnitAssignable(
   const unit = await client.query<{ property_id: number; active: boolean }>(
     `SELECT property_id, active FROM resource WHERE id = $1`, [opts.resourceId])
   if (unit.rowCount === 0 || unit.rows[0]!.property_id !== opts.propertyId) {
-    throw Errors.notFound('Zimmer')
+    throw Errors.notFound('res.room')
   }
   if (!unit.rows[0]!.active) {
-    throw Errors.conflict('Zimmer ist stillgelegt.')
+    throw Errors.conflict('room.inactive')
   }
 
   const blocked = await client.query(
@@ -101,7 +101,7 @@ async function assertUnitAssignable(
         AND from_date < $3::date AND to_date > $2::date LIMIT 1`,
     [opts.resourceId, opts.arrival, opts.departure])
   if (blocked.rowCount && blocked.rowCount > 0) {
-    throw Errors.conflict('Zimmer ist im Zeitraum ausser Betrieb.')
+    throw Errors.conflict('room.outOfOrder')
   }
 
   const taken = await client.query(
@@ -111,7 +111,7 @@ async function assertUnitAssignable(
         AND arrival < $4::date AND departure > $3::date LIMIT 1`,
     [opts.resourceId, opts.exceptReservationId ?? null, opts.arrival, opts.departure])
   if (taken.rowCount && taken.rowCount > 0) {
-    throw Errors.conflict('Zimmer ist im Zeitraum bereits belegt.')
+    throw Errors.conflict('room.occupied')
   }
 }
 
@@ -119,7 +119,7 @@ async function assertUnitAssignable(
 export function inventoryError(code: string | null): never | void {
   if (code === 'sold_out') throw Errors.soldOut()
   if (code === 'not_materialized') throw Errors.notMaterialized()
-  if (code !== null) throw Errors.conflict(`Unbekannter Inventarfehler: ${code}`)
+  if (code !== null) throw Errors.conflict('inventory.unknownError', { code })
 }
 
 export async function priceNights(
@@ -160,12 +160,12 @@ export function reservationRoutes(app: FastifyInstance): void {
       const body = req.body as CreateBooking
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['Kopfzeile erforderlich'] })
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
       if (!isIsoDate(body.arrival) || !isIsoDate(body.departure)) {
-        throw Errors.validation({ arrival: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ arrival: ['field.isoDate'] })
       }
       if (nightsBetween(body.arrival, body.departure) <= 0) {
-        throw Errors.validation({ departure: ['Muss nach arrival liegen'] })
+        throw Errors.validation({ departure: ['field.afterArrival'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -176,7 +176,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (body.guestRef !== undefined) {
           const g = await client.query<{ id: number }>(
             `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
-          if (g.rowCount === 0) throw Errors.notFound('Gast')
+          if (g.rowCount === 0) throw Errors.notFound('res.guest')
           guestId = g.rows[0]!.id
         }
 
@@ -195,22 +195,21 @@ export function reservationRoutes(app: FastifyInstance): void {
           ? null
           : await loadBlock(client, body.blockRef)
         if (block !== null) {
-          if (block.property_id !== body.propertyId) throw Errors.notFound('Kontingent')
+          if (block.property_id !== body.propertyId) throw Errors.notFound('res.block')
           if (block.status !== 'active') {
-            throw Errors.conflict(`Kontingent ist ${block.status} und nicht mehr abrufbar.`)
+            throw Errors.conflict('block.notPickable', { status: block.status })
           }
           if (block.picked_up >= block.quantity) {
-            throw Errors.conflict('Kontingent ist vollstaendig abgerufen.')
+            throw Errors.conflict('block.fullyPickedUp')
           }
           if (block.category_id !== body.categoryId) {
             throw Errors.validation({
-              categoryId: ['Muss der Zimmergruppe des Kontingents entsprechen'] })
+              categoryId: ['field.mustMatchBlockCategory'] })
           }
           if (body.arrival !== block.from_date || body.departure !== block.to_date) {
             throw Errors.unprocessable(
-              `Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents `
-              + `(${block.from_date} bis ${block.to_date}). Fuer abweichende Naechte `
-              + 'eine eigene Reservierung anlegen.')
+              'block.pickupWholePeriod',
+              { from: block.from_date, to: block.to_date })
           }
           /*
            * Erst freigeben, dann binden -- umgekehrt als `inventory_move`,
@@ -384,7 +383,7 @@ export function reservationRoutes(app: FastifyInstance): void {
              LEFT JOIN availability_block bl ON bl.id = r.block_id
              LEFT JOIN folio f         ON f.reservation_id = r.id
             WHERE r.public_ref = $1`, [reservationRef])
-        if (r.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const kopf = r.rows[0]! as Record<string, unknown>
 
         const naechte = await client.query(
@@ -439,8 +438,8 @@ export function reservationRoutes(app: FastifyInstance): void {
       const body = req.body as { notes?: string | null }
       if (body.notes !== undefined && body.notes !== null
           && body.notes.length > NOTES_MAX_LENGTH) {
-        throw Errors.validation({
-          notes: [`Hoechstens ${NOTES_MAX_LENGTH} Zeichen`] })
+        throw Errors.validation({ notes: ['field.maxLength'] },
+          { max: NOTES_MAX_LENGTH })
       }
 
       return tx(req.pool, req, async client => {
@@ -449,7 +448,7 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1
             RETURNING id, property_id`,
           [reservationRef, body.notes ?? ''])
-        if (r.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         return { reservationRef, notes: body.notes ?? null }
       })
     }
@@ -471,7 +470,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         }>(`SELECT id, property_id, category_id, status,
                    arrival::text, departure::text, resource_id, block_id
               FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
-        if (cur.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (cur.rowCount === 0) throw Errors.notFound('res.reservation')
         const r = cur.rows[0]!
 
         let target: ReservationStatus
@@ -482,7 +481,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         }
 
         if (act === 'check_in' && r.resource_id === null) {
-          throw Errors.unprocessable('Check-in erfordert ein zugewiesenes Zimmer.')
+          throw Errors.unprocessable('stay.checkinNeedsRoom')
         }
 
         /*
@@ -591,7 +590,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                                        arrival: string; departure: string }>(
           `SELECT id, property_id, category_id, arrival::text, departure::text
              FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
-        if (r.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
 
         await assertUnitAssignable(client, {
@@ -645,7 +644,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           `SELECT id, property_id, category_id, status, arrival::text, departure::text,
                   resource_id, rate_plan_id, block_id
              FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
-        if (cur.rowCount === 0) throw Errors.notFound('Reservierung')
+        if (cur.rowCount === 0) throw Errors.notFound('res.reservation')
         const r = cur.rows[0]!
 
         /*
@@ -657,34 +656,32 @@ export function reservationRoutes(app: FastifyInstance): void {
          */
         if (r.block_id !== null) {
           throw Errors.conflict(
-            'Ein Abruf aus einem Kontingent laesst sich nicht verschieben. '
-            + 'Abruf stornieren und frei neu buchen.')
+            'stay.pickupNotMovable')
         }
 
         if (!occupiesInventory(r.status)) {
           throw Errors.conflict(
-            `Eine Reservierung im Zustand ${r.status} bindet kein Kontingent und `
-            + 'laesst sich nicht aendern.')
+            'stay.statusHoldsNoInventory', { status: r.status })
         }
 
         const neuAnkunft = body.arrival ?? r.arrival
         const neuAbreise = body.departure ?? r.departure
         const neuKategorie = body.categoryId ?? r.category_id
         if (!isIsoDate(neuAnkunft) || !isIsoDate(neuAbreise)) {
-          throw Errors.validation({ arrival: ['Datum im Format YYYY-MM-DD erwartet'] })
+          throw Errors.validation({ arrival: ['field.isoDate'] })
         }
         if (nightsBetween(neuAnkunft, neuAbreise) <= 0) {
-          throw Errors.validation({ departure: ['Muss nach arrival liegen'] })
+          throw Errors.validation({ departure: ['field.afterArrival'] })
         }
         // Bei InHouse ist die Anreise geschehen und nicht mehr verschiebbar.
         if (r.status === 'InHouse' && neuAnkunft !== r.arrival) {
-          throw Errors.conflict('Die Anreise eines Gastes im Haus laesst sich nicht verlegen.')
+          throw Errors.conflict('stay.inHouseArrivalFixed')
         }
         if (neuKategorie !== r.category_id) {
           const k = await client.query(
             `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
             [neuKategorie, r.property_id])
-          if (k.rowCount === 0) throw Errors.notFound('Zimmergruppe')
+          if (k.rowCount === 0) throw Errors.notFound('res.category')
         }
 
         const inv = await client.query<{ e: string | null }>(

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useFolio, usePaymentMethods, usePostCharge, usePostSettlement,
          useIssueInvoice } from '../lib/queries.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
+import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Vorauszahlung } from '../components/Vorauszahlung.tsx'
@@ -142,7 +143,8 @@ export function Folio({ folioRef, propertyId, onClose }: {
           <NeuePosition folioRef={folioRef} />
           <NeueZahlung folioRef={folioRef} offenCent={f.balanceCent}
                        methoden={zahlarten.data?.paymentMethods ?? []}
-                       hinweis={zahlarten.data?.hinweis ?? ''} />
+                       hinweis={apiText(zahlarten.data?.hinweisKey,
+                                        zahlarten.data?.hinweis ?? '', locale)} />
         </div>
       )}
 
