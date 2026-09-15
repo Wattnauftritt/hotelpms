@@ -25,3 +25,4 @@ Eigenes Hotel Property Management System für den deutschen Markt. Backend und R
 - [docs/19-frontend.md](docs/19-frontend.md): Die Rezeptions-Oberfläche gemessen am Wettbewerb (Mews, Apaleo, SIHOT, Cloudbeds) und an der eigenen API — was fehlte, in Zahlen, und der daraus abgeleitete Bauplan.
 - [docs/20-arbeitsteilung.md](docs/20-arbeitsteilung.md): Die Oberflächenarbeit aus Dokument 19 auf drei parallele Bearbeiter aufgeteilt, zugleich die laufende Fortschrittstafel.
 - [docs/21-inbetriebnahme.md](docs/21-inbetriebnahme.md): Die Maschine aufsetzen — von der leeren VM auf dem Proxmox-Host bis zum laufenden Betrieb unter Debian.
+- [docs/22-luks-nachruesten.md](docs/22-luks-nachruesten.md): Verschlüsselung nachrüsten, wenn der Host kein TPM hat — ohne die VM neu aufzusetzen.
