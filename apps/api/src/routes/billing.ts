@@ -1005,7 +1005,7 @@ export function billingRoutes(app: FastifyInstance): void {
                                        reservation_id: number | null; status: string }>(
           `SELECT id, property_id, reservation_id, status FROM folio WHERE public_ref = $1`,
           [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
 
         /*
