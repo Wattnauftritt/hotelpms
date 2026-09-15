@@ -236,6 +236,13 @@ const M = {
     + 'Steuersaetze ableiten liessen. Bitte taxRateBp oder lines mitgeben.',
     'This stay has no rates from which tax rates could be derived. Please '
     + 'send taxRateBp or lines.'],
+  'deposit.settlementOnInvoice': [
+    'Dieser Zahlungsvermerk steht schon als Zahlung auf Rechnung {number}. '
+    + 'Aus ihm laesst sich keine Anzahlungsrechnung mehr machen, sonst waere '
+    + 'derselbe Betrag zweimal abgerechnet.',
+    'This settlement is already recorded as a payment on invoice {number}. '
+    + 'It cannot also become a deposit invoice; the same amount would be '
+    + 'billed twice.'],
   'deposit.exceedsServices': [
     'Die angerechnete Anzahlung uebersteigt die abzurechnenden Leistungen um '
     + '{cent} Cent. Das ist eine Rueckzahlung und keine Rechnung; sie ist in '

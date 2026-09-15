@@ -157,6 +157,25 @@ function Zeile(
         </span>
       </div>
 
+      {/* Der Zahlungsstand steht in der Zeile, nicht als Ampel: „bezahlt"
+          faerbt niemand gruen, und ein offener Rest ist keine Warnung,
+          sondern eine Zahl. */}
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-xs">
+        {r.settledCent >= r.payableCent
+          ? <span className="text-emerald-800">✓ {t('inv.paid')}</span>
+          : <>
+              <span className="text-amber-800 tabular-nums">
+                {t('inv.open')}: {formatMoney(
+                  r.payableCent - r.settledCent, locale, r.currency)}
+              </span>
+              {r.settledCent > 0 && (
+                <span className="text-neutral-500 tabular-nums">
+                  {t('inv.settled')}: {formatMoney(r.settledCent, locale, r.currency)}
+                </span>
+              )}
+            </>}
+      </div>
+
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <span className={r.documentReady ? 'text-neutral-600' : 'text-amber-800'}>
           {t('inv.document')}: {r.documentReady

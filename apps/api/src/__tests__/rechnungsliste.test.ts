@@ -25,7 +25,8 @@ let auth: Record<string, string>
 
 interface Zeile {
   invoiceRef: string; number: string; issuedOn: string; kind: string
-  grossCent: number; recipient: string; folioRef: string
+  grossCent: number; payableCent: number; settledCent: number
+  recipient: string; folioRef: string
   documentReady: boolean; hasXml: boolean; mailStatus: string | null
 }
 
@@ -98,31 +99,57 @@ describe('Rechnungsliste', () => {
 
   /**
    * Der Punkt, an dem eine Liste leicht lügt: beim Check-out zahlt der Gast
-   * aufs Folio, nicht auf die Rechnung. `settlement.invoice_id` wäre die
-   * Stelle, an der eine Zahlung an einer Rechnung hinge — das Feld wird
-   * aber nirgends geschrieben. Eine Spalte „offen" zeigte deshalb bei
-   * **jeder** Rechnung den vollen Betrag, auch bei der längst bezahlten.
-   * Die Liste behauptet dazu nichts und verweist aufs Folio.
+   * aufs Folio, nicht auf die Rechnung. Lange schrieb niemand
+   * `settlement.invoice_id`, und eine Spalte „offen" hätte bei **jeder**
+   * Rechnung den vollen Betrag gezeigt, auch bei der längst bezahlten.
+   *
+   * Seit das Vermerken einer Zahlung sie der ältesten offenen Rechnung des
+   * Folios zuordnet, sagt die Spalte etwas — und das wird hier geprüft,
+   * inklusive der Zuordnung in der Datenbank selbst.
    */
-  it('behauptet keinen Zahlungsstand, den das Modell nicht kennt', async () => {
+  it('führt eine nach dem Festschreiben vermerkte Zahlung an der Rechnung', async () => {
     const { invoiceRef, folioRef } = await rechnung()
+
+    const vorher = zeilen((await liste(heute(), heute())).body)
+      .find(x => x.invoiceRef === invoiceRef)!
+    expect(vorher.settledCent).toBe(0)
+    expect(vorher.payableCent).toBeGreaterThan(0)
+
     await app.inject({
       method: 'POST', url: `/v1/folios/${folioRef}/settlements`,
       headers: { ...auth, 'idempotency-key': `s-${++lauf}` },
-      payload: { amountCent: 50_000, paymentMethodCode: 'BAR' } })
+      payload: { amountCent: vorher.payableCent, paymentMethodCode: 'BAR' } })
 
-    const z = zeilen((await liste(heute(), heute())).body)
+    const nachher = zeilen((await liste(heute(), heute())).body)
       .find(x => x.invoiceRef === invoiceRef)!
-    expect(z).not.toHaveProperty('openCent')
-    expect(z).not.toHaveProperty('settledCent')
-    expect(z.folioRef).toBe(folioRef)
+    expect(nachher.settledCent).toBe(vorher.payableCent)
+    expect(nachher.folioRef).toBe(folioRef)
 
-    // Und der Befund dahinter, damit er nicht in Vergessenheit geraet:
-    // niemand schreibt settlement.invoice_id.
     const verknuepft = await owner.query<{ n: string }>(
       `SELECT count(*) AS n FROM settlement
         WHERE property_id = $1 AND invoice_id IS NOT NULL`, [fx.propertyId])
-    expect(Number(verknuepft.rows[0]!.n)).toBe(0)
+    expect(Number(verknuepft.rows[0]!.n)).toBe(1)
+  })
+
+  /**
+   * Die Obergrenze ist der Zahlbetrag. Mehr zuzuordnen hiesse, auf dem
+   * Beleg einen vorausgezahlten Betrag auszuweisen, der groesser ist als
+   * die Summe — der Zahlbetrag (BT-115) waere negativ.
+   */
+  it('ordnet eine Zahlung nicht zu, die über den Zahlbetrag hinausgeht', async () => {
+    const { invoiceRef, folioRef } = await rechnung()
+    const z = zeilen((await liste(heute(), heute())).body)
+      .find(x => x.invoiceRef === invoiceRef)!
+
+    await app.inject({
+      method: 'POST', url: `/v1/folios/${folioRef}/settlements`,
+      headers: { ...auth, 'idempotency-key': `s-${++lauf}` },
+      payload: { amountCent: z.payableCent + 1, paymentMethodCode: 'BAR' } })
+
+    const nachher = zeilen((await liste(heute(), heute())).body)
+      .find(x => x.invoiceRef === invoiceRef)!
+    // Der Vermerk bleibt ganz offen: er ist nicht teilbar.
+    expect(nachher.settledCent).toBe(0)
   })
 
   /**

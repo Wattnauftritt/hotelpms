@@ -40,8 +40,14 @@ export const rechnung = {
     'inv.outbox.cancel': 'Zurückziehen',
     'inv.outbox.attempts': 'Versuche',
     'inv.none': 'Keine Rechnung in diesem Zeitraum.',
-    'inv.paymentHint': 'Ob eine Rechnung bezahlt ist, steht am Gastkonto: eine Zahlung '
-                     + 'wird dort vermerkt, nicht an der Rechnung.',
+    'inv.paid': 'bezahlt',
+    'inv.open': 'offen',
+    'inv.settled': 'davon vermerkt',
+    'inv.paymentHint': 'Zugeordnet wird eine Zahlung beim Festschreiben und beim '
+                     + 'Vermerken. Zahlungen von vor dieser Zuordnung tragen keine '
+                     + 'Rechnungsnummer und lassen sich nicht nachtragen — solche '
+                     + 'Rechnungen stehen hier als offen, auch wenn sie bezahlt sind. '
+                     + 'Im Zweifel gilt der Saldo am Gastkonto.',
 
     // Vorauszahlung: Anzahlungsrechnung und Zahlungslink (B8, B9)
     'vz.title': 'Vorauszahlung',
@@ -137,8 +143,14 @@ export const rechnung = {
     'inv.outbox.cancel': 'Withdraw',
     'inv.outbox.attempts': 'attempts',
     'inv.none': 'No invoice in this period.',
-    'inv.paymentHint': 'Whether an invoice is paid is shown on the guest account: '
-                     + 'a payment is recorded there, not on the invoice.',
+    'inv.paid': 'paid',
+    'inv.open': 'open',
+    'inv.settled': 'of which recorded',
+    'inv.paymentHint': 'A payment is assigned when the invoice is issued and when the '
+                     + 'payment is recorded. Payments made before this assignment '
+                     + 'existed carry no invoice number and cannot be added later — '
+                     + 'such invoices show as open even though they are paid. In doubt '
+                     + 'the guest account balance is the truth.',
 
     'vz.title': 'Prepayment',
     'vz.open': 'Deposit and payment link',
