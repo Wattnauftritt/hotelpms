@@ -61,6 +61,15 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
                            disabled:bg-neutral-300">
           {t(laeuft ? 'common.loading' : 'login.submit')}
         </button>
+        {/*
+          * Ein echter Verweis, kein Knopf mit Sprungbefehl: wer sein Kennwort
+          * vergessen hat, macht die Seite gern in einem zweiten Reiter auf,
+          * um die Mail danebenzulegen.
+          */}
+        <a href="/kennwort" className="block text-center text-xs text-neutral-600
+                                       underline underline-offset-2">
+          {t('zugang.forgot')}
+        </a>
       </form>
     </div>
   )

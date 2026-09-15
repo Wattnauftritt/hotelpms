@@ -68,19 +68,11 @@ export function gleicherHash(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb)
 }
 
-/** Mindestlaenge eines Kennworts. */
-export const KENNWORT_MIN = 12
-
-/**
- * Prueft ein Kennwort auf Laenge, sonst nichts.
+/*
+ * Die Kennwortregel steht in @hotelpms/contracts, nicht hier.
  *
- * **Keine Regeln ueber Zeichenarten.** Die Vorgabe "ein Grossbuchstabe, eine
- * Ziffer, ein Sonderzeichen" erzeugt `Passwort1!` und sonst nichts; das NIST
- * hat sie 2017 gestrichen (SP 800-63B), und das BSI empfiehlt seit 2020
- * Laenge statt Zusammensetzung. Was wirklich hilft, ist Laenge -- und dass
- * niemand gezwungen wird, sich etwas Unmerkbares auszudenken und dann
- * aufzuschreiben.
+ * Sie ist keine Fachlogik dieses Pakets, sondern eine Zusage an beide Enden:
+ * die Schnittstelle weist ein zu kurzes Kennwort ab, die Oberflaeche nennt
+ * die Laenge vorher. Stuende die Zahl an zwei Stellen, liefe sie
+ * auseinander. Siehe packages/contracts/src/kennwort.ts.
  */
-export function kennwortZuKurz(kennwort: string): boolean {
-  return [...kennwort].length < KENNWORT_MIN
-}

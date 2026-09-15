@@ -2,3 +2,4 @@ export { buildOpenApi, toOpenApiPath, pathParameters, operationId,
          type RouteDescription, type OpenApiOptions } from './openapi.js'
 export * from './schemas.js'
 export * from './messages.js'
+export * from './kennwort.js'
