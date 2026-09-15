@@ -157,16 +157,24 @@ Die zweite Linie zählt im Arbeitsspeicher des Prozesses. Bei drei API-Prozessen
 **In Caddy zu ergänzen:**
 
 ```caddyfile
-# Erfordert das Modul caddy-ratelimit.
+# Erfordert das Modul caddy-ratelimit. Die gepflegte Fassung steht in
+# ops/caddy/Caddyfile; hier nur zur Erlaeuterung.
 rate_limit {
     zone anmeldung {
-        match { path /v1/auth/* }
+        # Ausgeschrieben, nicht einzeilig: ein mit { geoeffneter Block braucht
+        # die schliessende Klammer auf einer eigenen Zeile. Sonst weist Caddy
+        # die Datei ab -- "Unexpected next token after '{' on same line".
+        match {
+            path /v1/auth/*
+        }
         key    {remote_host}
-        events 30
+        events 300
         window 5m
     }
 }
 ```
+
+**Lockerer als die Anwendung, nicht strenger.** Hier stand einmal `events 30` — bei `RATE_LIMIT_LOGIN=60` im selben Fenster von fünf Minuten hätte Caddy immer zuerst zugeschlagen, und die Grenze der Anwendung wäre nie zum Tragen gekommen. Deren Höhe ist aber begründet: ein Haus hat mehrere Arbeitsplätze hinter **einer** öffentlichen Adresse, und ausgesperrt zu sein ist der größere Schaden (C7). Die vorgelagerte Linie fängt den Massenangriff ab, bevor er einen Node-Prozess beschäftigt; über die Feinheit entscheidet die Anwendung.
 
 ---
 
