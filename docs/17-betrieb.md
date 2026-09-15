@@ -66,6 +66,10 @@ lsblk -o NAME,FSTYPE,MOUNTPOINT | grep crypt || echo 'richtig so'
 
 **Die Probe, die zählt**, ist nicht `lsblk`, sondern: den Host **kalt neu starten** und nachsehen, ob die VM ohne Zutun wieder Gäste bedient. Mit Datum ins Protokoll, wie die Rückspielung.
 
+### Wenn der Host kein TPM hat
+
+Kommt bei gemieteter Hardware regelmaessig vor. Dann faellt der TPM-Pin weg, und der Tang-Pin traegt nur, wenn er auf einer **anderen** Maschine steht — auf demselben Blech liegt sein Schluessel auch auf denselben Platten. Schritt fuer Schritt, ohne die VM neu aufzusetzen: [`22-luks-nachruesten.md`](22-luks-nachruesten.md).
+
 ### Wenn LUKS schon in der VM steckt
 
 Kommt vor — es stand bis hierher so in diesem Dokument. Neu installieren muss man deswegen **nicht**; die Host-Verschlüsselung ist eine Arbeit am Host und rührt die VM nicht an.

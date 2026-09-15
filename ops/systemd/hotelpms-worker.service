@@ -17,7 +17,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/hotelpms
+# Siehe API-Unit: LogsDirectory legt das Verzeichnis selbst an.
+LogsDirectory=hotelpms
 # Der Worker darf die API nicht verdraengen (P5, Dokument 12).
 CPUQuota=150%
 MemoryMax=4G

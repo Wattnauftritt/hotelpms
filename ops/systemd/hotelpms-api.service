@@ -26,8 +26,19 @@ ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
-ReadWritePaths=/var/log/hotelpms
+# MemoryDenyWriteExecute steht hier bewusst NICHT. Die Option verbietet
+# Speicherseiten, die zugleich beschreibbar und ausfuehrbar sind -- genau
+# die braucht jeder JIT-Compiler, und V8 ist einer. Der Dienst stirbt beim
+# Start mit SIGTRAP im BaselineCompiler, bevor ein Socket entsteht. Es gibt
+# keine vertraegliche Einstellung; --jitless waere die Alternative und
+# kostet ein Vielfaches an Ausfuehrungsgeschwindigkeit. Wer sie in einem
+# Drop-in abschalten muss: eine leere Zuweisung setzt sie NICHT zurueck,
+# es muss =false dastehen.
+# Protokoll nach journald. LogsDirectory statt ReadWritePaths, weil
+# systemd das Verzeichnis dann selbst anlegt -- ein ReadWritePaths auf
+# einen Pfad, den niemand anlegt, ist unter ProtectSystem=strict ein
+# Startfehler.
+LogsDirectory=hotelpms
 # Die API bekommt keine Quote und damit Vorrang vor dem Worker.
 
 [Install]
