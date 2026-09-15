@@ -18,6 +18,13 @@ RestartSec=2
 # Gruppe hotelpms sein, um den Socket zu erreichen.
 RuntimeDirectory=hotelpms
 RuntimeDirectoryMode=0750
+# Der Socket entsteht sonst mit der Standard-Umask 022 als srwxr-xr-x, und
+# die Gruppe haette nur r-x. Zum *Verbinden* mit einem Unix-Socket braucht
+# man aber Schreibrecht: Caddy bekommt 502, obwohl es korrekt in der Gruppe
+# hotelpms ist und das Verzeichnis betreten darf. Die Fehlersuche laeuft
+# zuverlaessig in die falsche Richtung, weil alle Rechte am Verzeichnis
+# stimmen. Mit 0007 entsteht er als srwxrwx---.
+UMask=0007
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

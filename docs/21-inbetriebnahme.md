@@ -234,7 +234,15 @@ Eine Herkunft für Oberfläche und Schnittstelle — die Entscheidung steht in A
 
 ```bash
 usermod -aG hotelpms caddy
-systemctl restart caddy
+systemctl restart caddy        # restart, NICHT reload
+```
+
+**`restart`, nicht `reload`.** Zusätzliche Gruppen übernimmt ein Prozess nur beim Start. Nach einem `reload` steht in `/proc/<pid>/status` weiterhin die alte Gruppenliste, der 502 bleibt — bei unverändert richtiger Konfiguration. Wer das nicht weiß, sucht den Fehler an der einen Stelle, an der er nicht ist.
+
+**Und die Gruppe allein genügt nicht.** Node legt den Socket mit der Standard-Umask 022 an, also `srwxr-xr-x`; die Gruppe hätte nur `r-x`. Zum **Verbinden** mit einem Unix-Socket braucht man aber Schreibrecht. Deshalb steht `UMask=0007` in der API-Unit — damit entsteht er als `srwxrwx---`. Die Falle daran: alle Rechte am *Verzeichnis* stimmen, und die Fehlersuche läuft zuverlässig dorthin.
+
+```bash
+ls -l /run/hotelpms/api.sock   # muss srwxrwx--- hotelpms hotelpms zeigen
 ```
 
 **Die Bereitschaftsroute heißt `/health`.** Sie hieß im Caddyfile einmal `/healthz`, und der Fehler war nicht „keine Antwort", sondern eine falsche: `/health` fiel in den Oberflächen-Zweig und lieferte `index.html` mit Status 200. Eine Überwachung, die auf den Statuscode schaut, meldet einen toten Dienst als gesund. Die Probe ist deshalb nicht der Statuscode, sondern der Inhalt:
