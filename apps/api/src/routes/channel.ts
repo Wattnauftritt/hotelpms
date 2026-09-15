@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { hash as argonHash } from '@node-rs/argon2'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { withTransaction } from '@hotelpms/db'
+import { withTransaction, type PoolClient } from '@hotelpms/db'
 import { isIsoDate, nightsBetween, eachNight } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
@@ -26,6 +26,58 @@ function ariRange(req: FastifyRequest): { from: string; to: string; since: strin
     throw Errors.validation({ since: ['field.isoTimestamp'] })
   }
   return { from: q.from, to: q.to, since: q.since ?? null }
+}
+
+/*
+ * Die beiden ARI-Abfragen stehen als Funktion da, weil sie **zwei** Aufrufer
+ * haben: den Channel Manager mit Verbindungstoken und die Oberflaeche mit
+ * Sitzung (`/channel-view`). Zweimal dasselbe SQL waere die falsche Art von
+ * Kopie -- die Oberflaeche soll nicht zeigen, was ungefaehr hinausgeht,
+ * sondern was hinausgeht. Waere sie nachgebaut, waere sie beim naechsten
+ * Feld eine andere Antwort, und die Frage "warum steht bei Booking.com ein
+ * anderer Preis" waere mit ihr nicht mehr zu beantworten.
+ */
+async function ariAvailability(
+  client: PoolClient, propertyId: number, from: string, to: string, since: string | null
+): Promise<unknown[]> {
+  const { rows } = await client.query(
+    `SELECT rc.code AS "categoryCode", d.date::text,
+            d.capacity, d.sold, d.blocked, d.overbooking,
+            d.capacity - d.sold - d.blocked + d.overbooking AS available,
+            d.updated_at AS "updatedAt"
+       FROM inventory_day d
+       JOIN resource_category rc ON rc.id = d.category_id
+      WHERE d.property_id = $1 AND d.date >= $2::date AND d.date < $3::date
+        AND ($4::timestamptz IS NULL OR d.updated_at >= $4::timestamptz)
+      ORDER BY rc.code, d.date`,
+    [propertyId, from, to, since])
+  return rows
+}
+
+async function ariRates(
+  client: PoolClient, propertyId: number, from: string, to: string, since: string | null
+): Promise<unknown[]> {
+  const { rows } = await client.query(
+    `SELECT rc.code AS "categoryCode", rp.code AS "ratePlanCode",
+            d.day::date::text AS date,
+            rd.price_cent AS "priceCent",
+            rs.min_los AS "minLos", rs.max_los AS "maxLos",
+            COALESCE(rs.closed, false) AS closed,
+            COALESCE(rs.closed_to_arrival, false) AS "closedToArrival",
+            COALESCE(rs.closed_to_departure, false) AS "closedToDeparture",
+            GREATEST(rd.updated_at, rs.updated_at) AS "updatedAt"
+       FROM rate_plan rp
+       JOIN resource_category rc ON rc.id = rp.category_id
+       CROSS JOIN generate_series($2::date, $3::date - interval '1 day', interval '1 day')
+               AS d(day)
+       LEFT JOIN rate_day rd ON rd.rate_plan_id = rp.id AND rd.date = d.day::date
+       LEFT JOIN restriction_day rs ON rs.rate_plan_id = rp.id AND rs.date = d.day::date
+      WHERE rp.property_id = $1 AND rp.active
+        AND ($4::timestamptz IS NULL
+             OR rd.updated_at >= $4::timestamptz OR rs.updated_at >= $4::timestamptz)
+      ORDER BY rc.code, rp.code, d.day`,
+    [propertyId, from, to, since])
+  return rows
 }
 
 interface InboundBooking {
@@ -123,6 +175,48 @@ export function channelRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Dieselbe Antwort, die der Channel Manager bekommt -- nur mit Sitzung.
+   *
+   * **Wofuer.** "Bei Booking.com steht ein anderer Preis" ist sonst nur
+   * ueber Protokolle zu beantworten. Was hinausgeht, steht in `rate_day`
+   * und `restriction_day`, aber nicht jede Zeile davon geht hinaus: ein
+   * stillgelegter Ratenplan faellt weg, ein Tag ohne Preis geht als
+   * `priceCent: null` hinaus (und wird drueben nicht verkauft), und eine
+   * Sperre steht nicht im Preisraster, sondern daneben. Das Raster der
+   * Preispflege zeigt den Pflegestand; hier steht die Auslieferung.
+   *
+   * **Warum derselbe Code und nicht dieselbe Abfrage abgeschrieben:**
+   * siehe `ariAvailability`. Beide Aufrufer teilen sich die Funktion, damit
+   * die Antworten nicht auseinanderlaufen koennen.
+   *
+   * `rate:read` und nicht `integration:manage`: die Frage stellt sich dem,
+   * der die Preise pflegt, und nicht dem, der den Zugang einrichtet. Wer
+   * Preise sehen darf, darf auch sehen, welche davon das Haus verlassen.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/channel-view',
+    permission: 'rate:read',
+    propertyParam: 'propertyId',
+    summary: 'Was der Channel Manager zu einem Zeitraum sieht',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      // Dieselbe Pruefung und dieselbe Obergrenze wie bei ARI. Ein Zeitraum,
+      // den die Maschine nicht bekommt, darf die Oberflaeche nicht zeigen --
+      // sonst zeigt sie etwas, das so nie ausgeliefert wird.
+      const { from, to, since } = ariRange(req)
+
+      return tx(req.pool, req, async client => {
+        const days = await ariAvailability(client, Number(propertyId), from, to, since)
+        const cells = await ariRates(client, Number(propertyId), from, to, since)
+        // generatedAt steht auch hier, weil es drueben steht: wer die
+        // Antwort mit einem Protokolleintrag vergleicht, vergleicht Zeiten.
+        return { from, to, generatedAt: new Date().toISOString(), days, cells }
+      })
+    }
+  })
+
   // ---------------------------------------------------------------------
   // ARI selbst, durch den Channel Manager, mit Verbindungstoken statt
   // Sitzung. Deshalb permission: null - die Absicherung ist die
@@ -139,18 +233,8 @@ export function channelRoutes(app: FastifyInstance): void {
       const { from, to, since } = ariRange(req)
 
       const rows = await withTransaction(req.pool, channelContext(principal), client =>
-        client.query(
-          `SELECT rc.code AS "categoryCode", d.date::text,
-                  d.capacity, d.sold, d.blocked, d.overbooking,
-                  d.capacity - d.sold - d.blocked + d.overbooking AS available,
-                  d.updated_at AS "updatedAt"
-             FROM inventory_day d
-             JOIN resource_category rc ON rc.id = d.category_id
-            WHERE d.property_id = $1 AND d.date >= $2::date AND d.date < $3::date
-              AND ($4::timestamptz IS NULL OR d.updated_at >= $4::timestamptz)
-            ORDER BY rc.code, d.date`,
-          [principal.propertyId, from, to, since]))
-      return { from, to, generatedAt: new Date().toISOString(), days: rows.rows }
+        ariAvailability(client, principal.propertyId, from, to, since))
+      return { from, to, generatedAt: new Date().toISOString(), days: rows }
     }
   })
 
@@ -164,27 +248,8 @@ export function channelRoutes(app: FastifyInstance): void {
       const { from, to, since } = ariRange(req)
 
       const rows = await withTransaction(req.pool, channelContext(principal), client =>
-        client.query(
-          `SELECT rc.code AS "categoryCode", rp.code AS "ratePlanCode",
-                  d.day::date::text AS date,
-                  rd.price_cent AS "priceCent",
-                  rs.min_los AS "minLos", rs.max_los AS "maxLos",
-                  COALESCE(rs.closed, false) AS closed,
-                  COALESCE(rs.closed_to_arrival, false) AS "closedToArrival",
-                  COALESCE(rs.closed_to_departure, false) AS "closedToDeparture",
-                  GREATEST(rd.updated_at, rs.updated_at) AS "updatedAt"
-             FROM rate_plan rp
-             JOIN resource_category rc ON rc.id = rp.category_id
-             CROSS JOIN generate_series($2::date, $3::date - interval '1 day', interval '1 day')
-                     AS d(day)
-             LEFT JOIN rate_day rd ON rd.rate_plan_id = rp.id AND rd.date = d.day::date
-             LEFT JOIN restriction_day rs ON rs.rate_plan_id = rp.id AND rs.date = d.day::date
-            WHERE rp.property_id = $1 AND rp.active
-              AND ($4::timestamptz IS NULL
-                   OR rd.updated_at >= $4::timestamptz OR rs.updated_at >= $4::timestamptz)
-            ORDER BY rc.code, rp.code, d.day`,
-          [principal.propertyId, from, to, since]))
-      return { from, to, generatedAt: new Date().toISOString(), cells: rows.rows }
+        ariRates(client, principal.propertyId, from, to, since))
+      return { from, to, generatedAt: new Date().toISOString(), cells: rows }
     }
   })
 

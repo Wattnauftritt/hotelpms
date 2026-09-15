@@ -858,6 +858,133 @@ export const InvoiceList = Type.Object({
 })
 export type InvoiceList = Static<typeof InvoiceList>
 
+// ------------------------------------------------------ Vorauszahlung
+
+/** Eine Satzgruppe einer Anzahlungsrechnung. */
+export const DepositGroup = Type.Object({
+  rateBp: Type.Integer(),
+  grossCent: Cent,
+  taxCent: Cent
+})
+export type DepositGroup = Static<typeof DepositGroup>
+
+/**
+ * Eine Anzahlungsrechnung mit ihrem Verrechnungsstand.
+ *
+ * `appliedInvoiceNumber` bleibt null, solange nicht verrechnet ist. Das
+ * unterscheidet "angezahlt" von "abgerechnet", und die Verrechnung steht
+ * als Position auf der Schlussrechnung, nicht als Kopfangabe.
+ */
+export const DepositInvoice = Type.Object({
+  invoiceRef: Type.String(),
+  number: Type.String(),
+  issuedOn: IsoDate,
+  settlementId: Type.Union([Type.Integer(), Type.Null()]),
+  amountGrossCent: Cent,
+  taxCent: Cent,
+  groups: Type.Array(DepositGroup),
+  appliedInvoiceNumber: Type.Union([Type.String(), Type.Null()]),
+  appliedInvoiceRef: Type.Union([Type.String(), Type.Null()]),
+  appliedOn: Type.Union([IsoDate, Type.Null()])
+})
+export type DepositInvoice = Static<typeof DepositInvoice>
+
+/**
+ * Ein Zahlungslink.
+ *
+ * **Die Adresse steht hier nicht.** Sie wird bei der Anlage einmal
+ * ausgegeben und nicht gespeichert -- ein Link, der in der Datenbank liegt,
+ * ist ein Link, den jeder mit Lesezugriff einloesen kann. Wer ihn noch
+ * einmal braucht, erzeugt einen neuen.
+ */
+export const PaymentLink = Type.Object({
+  id: Type.Integer(),
+  createdAt: Type.String(),
+  amountCent: Cent,
+  status: Type.Union([
+    Type.Literal('pending'), Type.Literal('succeeded'), Type.Literal('failed')]),
+  settledAt: Type.Union([Type.String(), Type.Null()]),
+  /** Erst mit dem Zahlungsvermerk ist aus dem Link Geld geworden. */
+  hasSettlement: Type.Boolean()
+})
+export type PaymentLink = Static<typeof PaymentLink>
+
+/** Ein Zahlungsvermerk in der Sicht der Vorauszahlung. */
+export const PrepaymentSettlement = Type.Object({
+  id: Type.Integer(),
+  businessDate: IsoDate,
+  amountCent: Cent,
+  method: Type.String(),
+  externalReference: Type.Union([Type.String(), Type.Null()]),
+  /** Gesetzt heisst: zu diesem Vermerk gibt es schon eine Anzahlungsrechnung. */
+  depositInvoiceRef: Type.Union([Type.String(), Type.Null()]),
+  depositInvoiceNumber: Type.Union([Type.String(), Type.Null()])
+})
+export type PrepaymentSettlement = Static<typeof PrepaymentSettlement>
+
+export const PrepaymentView = Type.Object({
+  folioRef: Type.String(),
+  /**
+   * Ohne Reservierung fehlt der Leistungszeitraum (Paragraph 14 Abs. 4
+   * Nr. 6 UStG), und ein geschlossenes Folio nimmt nichts mehr an.
+   */
+  canIssueDeposit: Type.Boolean(),
+  settlements: Type.Array(PrepaymentSettlement),
+  deposits: Type.Array(DepositInvoice),
+  paymentLinks: Type.Array(PaymentLink)
+})
+export type PrepaymentView = Static<typeof PrepaymentView>
+
+// --------------------------------------------- Sicht des Channel Managers
+
+/** Ein Tag je Kategorie, genau wie `GET /v1/channel/ari/availability`. */
+export const ChannelAvailabilityDay = Type.Object({
+  categoryCode: Type.String(),
+  date: IsoDate,
+  capacity: Type.Integer(),
+  sold: Type.Integer(),
+  blocked: Type.Integer(),
+  overbooking: Type.Integer(),
+  available: Type.Integer(),
+  updatedAt: Type.String()
+})
+export type ChannelAvailabilityDay = Static<typeof ChannelAvailabilityDay>
+
+/**
+ * Ein Tag je Ratenplan, genau wie `GET /v1/channel/ari/rates`.
+ *
+ * `priceCent: null` ist kein Fehler: der Tag ist ungepflegt und wird
+ * drueben nicht verkauft. Genau das ist der haeufigste Grund dafuer, dass
+ * bei einem Portal nichts oder etwas anderes steht.
+ */
+export const ChannelRateCell = Type.Object({
+  categoryCode: Type.String(),
+  ratePlanCode: Type.String(),
+  date: IsoDate,
+  /**
+   * Preis **je Belegung**: Index 0 ist eine Person, Index 1 sind zwei.
+   * Hinaus geht die ganze Reihe, nicht ein Preis -- welchen ein Portal
+   * anzeigt, haengt daran, wie viele Personen gesucht werden.
+   */
+  priceCent: Type.Union([Type.Array(Cent), Type.Null()]),
+  minLos: Type.Union([Type.Integer(), Type.Null()]),
+  maxLos: Type.Union([Type.Integer(), Type.Null()]),
+  closed: Type.Boolean(),
+  closedToArrival: Type.Boolean(),
+  closedToDeparture: Type.Boolean(),
+  updatedAt: Type.Union([Type.String(), Type.Null()])
+})
+export type ChannelRateCell = Static<typeof ChannelRateCell>
+
+export const ChannelView = Type.Object({
+  from: IsoDate,
+  to: IsoDate,
+  generatedAt: Type.String(),
+  days: Type.Array(ChannelAvailabilityDay),
+  cells: Type.Array(ChannelRateCell)
+})
+export type ChannelView = Static<typeof ChannelView>
+
 // ------------------------------------------------------------------ Fehler
 
 /**

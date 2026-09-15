@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { InvoiceList } from '@hotelpms/contracts'
+import type { InvoiceList, PrepaymentView } from '@hotelpms/contracts'
 import { api, ApiError } from '../api.js'
 import { addDays } from '../dates.js'
 
@@ -123,6 +123,74 @@ export function useCancelMail(propertyId: number) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['outbox', propertyId] })
       void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
+    }
+  })
+}
+
+// ------------------------------------------------- Vorauszahlung (B8, B9)
+
+/**
+ * Anzahlungen und Zahlungslinks eines Folios.
+ *
+ * `stand` ist kein Filter, sondern der Grund zum Neuholen: die Verrechnung
+ * einer Anzahlung entsteht nicht hier, sondern beim Festschreiben der
+ * Schlussrechnung -- einer Mutation aus `lib/queries.ts`, die diesen
+ * Schluessel nicht kennt und nicht kennen soll. Faellt der Zaehler der
+ * fakturierten Positionen anders aus, ist dieselbe Frage neu zu stellen.
+ * Die Zahl der moeglichen Werte ist klein und waechst nur mit den
+ * Positionen des Folios.
+ */
+export const usePrepayments = (folioRef: string, stand: number) =>
+  useQuery<PrepaymentView>({
+    queryKey: ['prepayments', folioRef, stand],
+    queryFn: () => api.get(`/v1/folios/${folioRef}/prepayments`)
+  })
+
+export interface DepositLine { grossCent: number; taxRateBp: number }
+
+/**
+ * Anzahlungsrechnung aus einem Zahlungseingang.
+ *
+ * Der Idempotenzschluessel kommt von aussen: er gehoert zur Absicht und
+ * nicht zum Versuch. Wer nach einer Zeitueberschreitung noch einmal
+ * drueckt, soll keine zweite Rechnungsnummer verbrauchen -- fortlaufend
+ * heisst fortlaufend (§ 14 Abs. 4 Nr. 4 UStG).
+ */
+export function useIssueDepositInvoice(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ settlementId, taxRateBp, lines, key }: {
+      settlementId: number; taxRateBp?: number; lines?: DepositLine[]; key: string
+    }) =>
+      api.post<{ invoiceRef: string; number: string
+                 netCent: number; taxCent: number; grossCent: number }>(
+        `/v1/folios/${folioRef}/deposit-invoice`,
+        { settlementId,
+          ...(taxRateBp === undefined ? {} : { taxRateBp }),
+          ...(lines === undefined ? {} : { lines }) },
+        { 'idempotency-key': key }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
+      // Die Rechnung taucht auch in der Rechnungsliste auf.
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+    }
+  })
+}
+
+/** Ist kein Zahlungsdienstleister eingerichtet? Dann fehlt eine Einstellung, kein Recht. */
+export function istNichtEingerichtet(fehler: unknown): boolean {
+  return fehler instanceof ApiError
+    && fehler.problem.type === 'urn:hotelpms:not_configured'
+}
+
+export function useCreatePaymentLink(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ amountCent, key }: { amountCent: number; key: string }) =>
+      api.post<{ url: string }>(`/v1/folios/${folioRef}/payment-links`,
+        { amountCent }, { 'idempotency-key': key }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
     }
   })
 }

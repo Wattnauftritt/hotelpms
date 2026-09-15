@@ -2,6 +2,8 @@
 
 Dieses Dokument misst die Rezeptions-Oberfläche (`apps/web`) an drei Dingen: an dem, was ein PMS im Kern können muss ([`01-marktanalyse-pms.md`](01-marktanalyse-pms.md)), an dem, was der Wettbewerb tatsächlich macht, und an dem, was unsere eigene API bereits hergibt. Die Aufteilung der Arbeit steht daneben in [`20-arbeitsteilung.md`](20-arbeitsteilung.md).
 
+> **Stand.** Die Lückenanalyse und der Plan unten sind der Befund, der zu [`20-arbeitsteilung.md`](20-arbeitsteilung.md) geführt hat — Zahlen und Tabellen zeigen den Zustand **vor** dieser Arbeit. Inzwischen sind Spur A (Belegungsplan, Gäste, Firmen, Verfügbarkeit, Check-in) und Spur C (Berichte, Einstellungen, Schnittstellen) vollständig, Spur B (Preise, Rechnung, Geld) bis auf Anzahlung, Pay-by-Link und die Channel-Manager-Ansicht. Was tatsächlich steht, sagt [`16-arbeitsstand.md`](16-arbeitsstand.md) §1, was noch offen ist, [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5. Die Analyse hier bleibt trotzdem lesenswert: sie ist die Begründung, warum die Oberfläche so gebaut wurde und nicht anders.
+
 ---
 
 ## 1. Die Lücke, in Zahlen

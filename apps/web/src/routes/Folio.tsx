@@ -5,6 +5,7 @@ import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { Vorauszahlung } from '../components/Vorauszahlung.tsx'
 
 /**
  * Das Folio: Positionen, Zahlungsvermerke, Saldo.
@@ -127,6 +128,15 @@ export function Folio({ folioRef, propertyId, onClose }: {
           </tbody>
         </table>
       </section>
+
+      {/* Anzahlung und Zahlungslink stehen zwischen dem Bestand und den
+          Eingabefeldern: sie setzen einen Zahlungsvermerk voraus und gehen
+          dem Fakturieren voraus. Zugeklappt kosten sie keinen Aufruf. */}
+      {online && (
+        <Vorauszahlung folioRef={folioRef} saldoCent={f.balanceCent}
+                       stand={f.charges.length - offen.length}
+                       geschlossen={f.folio.status === 'closed'} />
+      )}
 
       {f.folio.status === 'open' && online && (
         <div className="grid gap-4 lg:grid-cols-2">

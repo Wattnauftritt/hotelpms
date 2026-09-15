@@ -32,6 +32,26 @@ Der Platzbedarf wächst vor allem durch zwei Dinge: die Rechnungsbelege liegen a
 
 **Und niemand tippt beim Neustart eine Passphrase.** Ein PMS läuft rund um die Uhr, und `unattended-upgrades` weiter unten will nach jedem Kernel-Update neu starten. Entsperrt wird auf dem Host über `clevis`, „eines von zweien": physisches TPM oder Tang-Server. Dazu eine Notfall-Passphrase im Tresor, erreichbar für mindestens zwei Personen.
 
+### Wenn der Host kein TPM hat — **derzeit offen**
+
+Bei der Erstinbetriebnahme auf einem gemieteten Strato-Host kam heraus: **kein physisches TPM** (`ima: No TPM chip found`), und **kein freier Platz** für einen eigenen Pool — beide SSDs vollständig in `md1`. Entschieden wurde am 15.09.2026, **vorerst ohne Verschlüsselung** zu fahren.
+
+**Diese Sperre steht damit offen, und sie steht hier, statt übergangen zu werden.** Punkt 8 der Reihenfolge unten knüpft echte Gastdaten an verschlüsselten Speicher; solange das nicht gilt, gilt der Punkt nicht.
+
+Die Begründung, die dabei fiel — *„wer Zugriff auf den Host hat, kommt ohnehin an die Daten"* — trägt **nicht**. Plattenverschlüsselung war nie ein Schutz gegen den Host-Administrator (siehe Dokument 17 §1: sie schützt die Platte, die das Haus verlässt). Bei **gemieteter** Hardware wiegt das schwerer als bei eigener: die Platten gehören dem Anbieter, und RMA, Austausch und Ausmusterung sind sein Vorgang. Genau das Szenario, gegen das sie gedacht ist, ist das, über das man am wenigsten Kontrolle hat.
+
+**Das fehlende TPM nimmt nicht das Problem weg, es ändert die Antwort.** Ohne TPM ist der eine Pin weg, der zweite bleibt — aber nur, wenn er woanders steht:
+
+| Weg | Trägt? |
+|---|---|
+| Tang **auf demselben Blech** (etwa der Plesk-VM) | **Nein.** Der Tang-Schlüssel liegt auch auf `md1`. Wer die Platten hat, hat beide Hälften |
+| Tang **auf einer anderen Maschine** — kleiner VPS, Kasten im Hotel | **Ja.** Die Platten allein sind wertlos, der Neustart bleibt unbeaufsichtigt, solange das Netz die andere Maschine erreicht. Kostet ein paar Euro im Monat |
+| `dropbear-initramfs`, Entsperren per SSH aus der Ferne | Hält das Geheimnis ganz von der Maschine fern — holt aber den wachen Menschen zurück |
+
+**Nachrüsten kostet keine Neuinstallation.** Ein LUKS-Container als Datei auf `md1`, in Proxmox als Verzeichnis-Speicher eingetragen, dann `qm move-disk <vmid> scsi0 <speicher>`. Die VM merkt davon nichts. Die Entsperrung als systemd-Unit mit `Before=pve-guests.service`, sonst startet Proxmox die Gäste, bevor der Speicher da ist.
+
+**Aber es hat ein Verfallsdatum.** Was heute unverschlüsselt geschrieben wird, bleibt im Klartext auf `md1` liegen, bis es überschrieben wird; ein späterer Umzug verschlüsselt die Kopie, nicht die alten Blöcke. Solange keine echten Gastdaten auf der Maschine waren, ist das folgenlos — **danach nicht mehr.** Der billige Zeitpunkt ist vor Punkt 8, nicht nach ihm.
+
 ---
 
 ## 3. Bestückung
@@ -39,9 +59,16 @@ Der Platzbedarf wächst vor allem durch zwei Dinge: die Rechnungsbelege liegen a
 ```bash
 # Grundlage
 apt update && apt full-upgrade
-apt install -y curl git ca-certificates gnupg ufw fail2ban unattended-upgrades
+# sudo ist dabei, weil ein minimales Debian-netinst es nicht mitbringt und
+# das Ausrollskript darauf endet. Ohne es bricht es mit "Kommando nicht
+# gefunden" ab -- nach dem Bau und nach den Migrationen, also im
+# unguenstigsten Moment.
+apt install -y curl git ca-certificates gnupg sudo ufw fail2ban unattended-upgrades
 
-# PostgreSQL 17 aus dem PGDG-Depot (Debian liefert eine aeltere Version)
+# PostgreSQL 17 aus dem PGDG-Depot. Debian 13 (Trixie) bringt 17 selbst mit;
+# PGDG liefert Minor-Updates schneller und traegt die Version laenger.
+# Fehlt das Depot fuer einen Codenamen einmal, tut Debians eigenes Paket es
+# auch -- die Entscheidung ist keine Voraussetzung, sondern eine Vorliebe.
 install -d /usr/share/postgresql-common/pgdg
 curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
   -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
@@ -74,10 +101,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- oeffentliche Referenzen
 Kein Betrieb als `root`, und kein Anmelden als der Anwendungsbenutzer:
 
 ```bash
-adduser --system --group --home /srv/hotelpms --shell /usr/sbin/nologin hotelpms
+adduser --system --group --home /opt/hotelpms --shell /usr/sbin/nologin hotelpms
 ```
 
-Der Programmstand liegt unter `/srv/hotelpms/app`, die Umgebung in `/srv/hotelpms/.env` mit `chmod 600` und dem Benutzer als Eigentümer. **Nicht im Repository** — dort steht nur `.env.example`.
+Der Programmstand liegt unter `/opt/hotelpms/current`, die Umgebung in `/opt/hotelpms/shared/env` mit `chmod 600` und dem Benutzer als Eigentümer. **Nicht im Repository** — dort steht nur `.env.example`.
 
 ---
 
@@ -92,8 +119,8 @@ Drei Wege stehen zur Wahl. Der mittlere ist der richtige.
 | Artefakt aus CI ziehen | Sauberer für viele Maschinen, aber es braucht eine Ablage, eine Versionierung und ein Zugriffsrecht darauf. Bei **einer** Maschine ist das mehr Apparat als Nutzen |
 
 ```bash
-sudo -u hotelpms ssh-keygen -t ed25519 -f /srv/hotelpms/.ssh/id_deploy -N ''
-cat /srv/hotelpms/.ssh/id_deploy.pub
+sudo -u hotelpms ssh-keygen -t ed25519 -f /opt/hotelpms/shared/.ssh/id_deploy -N ''
+cat /opt/hotelpms/shared/.ssh/id_deploy.pub
 # → GitHub → Repository → Settings → Deploy keys → Add
 #   "Allow write access" bleibt AUS.
 ```
@@ -101,14 +128,24 @@ cat /srv/hotelpms/.ssh/id_deploy.pub
 **Warum ohne Schreibrecht:** die Maschine hat nichts ins Repository zu schreiben. Ein Schlüssel, der es könnte, ist ein Weg vom Produktivsystem in den Quellcode — und den will man nicht, wenn die Maschine einmal kompromittiert ist.
 
 ```bash
-sudo -u hotelpms git clone git@github.com:Wattnauftritt/hotelpms.git /srv/hotelpms/app
+sudo -u hotelpms git clone git@github.com:Wattnauftritt/hotelpms.git /opt/hotelpms/current
 ```
 
 ---
 
 ## 6. Datenbank einrichten
 
-Die drei Rollen legt `scripts/setup-db.sh` an — dasselbe Skript wie in der Entwicklung, damit Entwicklung und Betrieb nicht auseinanderlaufen. **Die Kennwörter werden dabei ersetzt**; die Vorgabewerte aus der Entwicklung (`devapp`, `devowner`) gehören nicht auf eine Maschine, die aus dem Netz erreichbar ist.
+Die drei Rollen legt `scripts/setup-db.sh` an — dasselbe Skript wie in der Entwicklung, damit Entwicklung und Betrieb nicht auseinanderlaufen. **Kennwörter und Datenbanknamen kommen aus der Umgebung**; die Vorgabewerte sind die der Entwicklung und gehören nicht auf eine Maschine, die aus dem Netz erreichbar ist.
+
+```bash
+HOTELPMS_DB_OWNER_PASSWORD="$(openssl rand -base64 33)" \
+HOTELPMS_DB_APP_PASSWORD="$(openssl rand -base64 33)"   \
+HOTELPMS_DB_RO_PASSWORD="$(openssl rand -base64 33)"    \
+HOTELPMS_DATABASES="hotelpms"                           \
+  ./scripts/setup-db.sh
+```
+
+Die Kennwörter werden bei **jedem** Lauf gesetzt, nicht nur beim Anlegen. Sonst behielte eine Maschine, die einmal mit den Entwicklungsvorgaben aufgesetzt wurde, diese für immer — und niemand sähe es. Hier stand einmal, die Kennwörter würden „dabei ersetzt"; das Skript sah keine Ersetzung vor, und wer der Anleitung folgte, hatte `devapp` auf einer Maschine am Netz.
 
 | Rolle | Darf | Benutzt von |
 |---|---|---|
@@ -127,7 +164,41 @@ hotelpms = host=/var/run/postgresql dbname=hotelpms
 [pgbouncer]
 pool_mode = transaction
 listen_addr = 127.0.0.1
+listen_port = 6432
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+
+# Ohne diese Zeile kommt KEINE Verbindung zustande. packages/db/src/pool.ts
+# setzt statement_timeout (30 s) und idle_in_transaction_session_timeout
+# (10 s) als Startparameter; PgBouncer fuehrt sie von Haus aus nicht mit und
+# weist jede Verbindung mit 08P01 "unsupported startup parameter" ab.
+track_extra_parameters = statement_timeout, idle_in_transaction_session_timeout
 ```
+
+**Nicht mit `ignore_startup_parameters` beheben.** Das ist der Rat, den man zuerst findet, und er verwirft die beiden Zeitlimits stillschweigend — die Schutzgrenze gegen Dauerläufer-Abfragen wäre weg, ohne Fehlermeldung, ohne dass es jemand merkt. `track_extra_parameters` führt sie je Client mit und setzt sie auf der Serververbindung. Probe: `SHOW statement_timeout` muss über Port 6432 `30s` liefern, nicht `0`.
+
+**Der Fehler zeigt sich nur über PgBouncer.** Direkt auf 5432 funktioniert alles, `/health` antwortet über 6432 mit 500 — eine Fehlersuche, die bei der Datenbank anfängt, läuft daran vorbei.
+
+`userlist.txt` wird aus `pg_authid` erzeugt, damit kein Klartextkennwort in einer Datei steht:
+
+```bash
+su postgres -c "psql -tAqc \"SELECT concat('\\\"', rolname, '\\\" \\\"', rolpassword, '\\\"') \
+  FROM pg_authid WHERE rolname LIKE 'hotelpms%' AND rolpassword IS NOT NULL\"" \
+  > /etc/pgbouncer/userlist.txt
+chown postgres:postgres /etc/pgbouncer/userlist.txt && chmod 640 /etc/pgbouncer/userlist.txt
+```
+
+**Unter systemd auf Debian keine `pidfile`- und keine `logfile`-Zeile.** Debians Unit legt kein `/var/run/pgbouncer` an, und der Dienst bricht mit `could not open pidfile` ab. Ohne beide Zeilen läuft er im Vordergrund und protokolliert ins Journal, wo er hingehört.
+
+**PgBouncer muss sich an PostgreSQL anmelden dürfen.** Es verbindet über den Unix-Socket und läuft dabei als Systembenutzer `postgres`, will aber als `hotelpms_app` herein. Debians Vorgabe `local all all peer` leitet die Kennung aus dem Systembenutzer ab und weist das mit `Peer authentication failed` zurück. In `/etc/postgresql/17/main/pg_hba.conf`:
+
+```
+  local   all   postgres                 peer
+- local   all   all                      peer
++ local   all   all                      scram-sha-256
+```
+
+Die Zeile für `postgres` bleibt `peer` — sonst funktioniert `su postgres -c psql` nicht mehr, auch nicht in `scripts/setup-db.sh`.
 
 `pool_mode = transaction` ist richtig und der Grund, warum der Worker **nicht** darüber geht: in diesem Modus wechselt die Sitzung nach jeder Transaktion, und `LISTEN/NOTIFY` kommt nie an. Zwei Verbindungsziele in `.env`:
 
@@ -141,115 +212,57 @@ DATABASE_URL_OWNER=postgres://hotelpms_owner@/hotelpms               # nur fuer 
 
 ## 7. Die Dienste
 
-Zwei Prozesse: die API und der Worker. Beide als systemd-Dienst, beide als `hotelpms`.
+**Die Unit-Dateien stehen im Repository und werden nicht abgeschrieben:** [`ops/systemd/hotelpms-api.service`](../ops/systemd/hotelpms-api.service) und [`ops/systemd/hotelpms-worker.service`](../ops/systemd/hotelpms-worker.service). Hier stand einmal eine zweite, leicht abweichende Fassung — dieselbe Falle wie beim Ausrollskript.
 
-```ini
-# /etc/systemd/system/hotelpms-api.service
-[Unit]
-Description=hotelpms API
-After=network.target postgresql.service pgbouncer.service
-Requires=postgresql.service
-
-[Service]
-Type=simple
-User=hotelpms
-WorkingDirectory=/srv/hotelpms/app
-EnvironmentFile=/srv/hotelpms/.env
-ExecStart=/usr/bin/node apps/api/dist/server.js
-Restart=always
-RestartSec=5
-
-# Was der Dienst nicht koennen muss, soll er auch nicht koennen.
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/srv/hotelpms
-ProtectKernelTunables=true
-ProtectControlGroups=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-[Install]
-WantedBy=multi-user.target
+```bash
+install -m 0644 /opt/hotelpms/current/ops/systemd/hotelpms-*.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now hotelpms-api hotelpms-worker
 ```
 
-Für den Worker dasselbe mit `apps/worker/dist/worker.js`. **Der Worker läuft genau einmal** — zwei Nachtläufe für dieselbe Property wären zwar idempotent, aber es gibt keinen Grund, das auszuprobieren.
+**Der Worker läuft genau einmal** — zwei Nachtläufe für dieselbe Property wären zwar idempotent, aber es gibt keinen Grund, das auszuprobieren.
+
+**`MemoryDenyWriteExecute` gehört nicht hinein**, und das ist kein Versehen: die Option verbietet Speicherseiten, die zugleich beschreibbar und ausführbar sind — genau die braucht jeder JIT-Compiler, und V8 ist einer. Der Dienst stirbt beim Start mit `SIGTRAP`, bevor ein Socket entsteht. Die Zeile stand hier einmal und hat die Erstinbetriebnahme aufgehalten; wer sie „der Vollständigkeit halber" wieder einsetzt, legt den Dienst still. In einem Drop-in setzt eine leere Zuweisung sie übrigens **nicht** zurück — es muss `=false` dastehen.
 
 ### Caddy
 
 Eine Herkunft für Oberfläche und Schnittstelle — die Entscheidung steht in AP 12 des Umsetzungsplans. Der Grund: getrennte Namen erzwingen CORS mit Anmeldedaten, `SameSite=None` am Sitzungscookie und eine gepflegte Liste erlaubter Herkünfte. Jede dieser drei Stellen ist eine Gelegenheit, sich zu vertun, und ein Fehler darin ist eine Sitzungsübernahme.
 
-```caddyfile
-pms.beispielhotel.de {
-    encode zstd gzip
+**Auch der Caddyfile steht im Repository:** [`ops/caddy/Caddyfile`](../ops/caddy/Caddyfile). Er trägt die Ratenbegrenzung aus Dokument 17 §4 und die Sicherheitskopfzeilen. Der Name der Herkunft ist darin noch ein Platzhalter und muss vor dem ersten echten Aufruf gesetzt werden — an **drei** Stellen: die beiden Blöcke und der `email`-Eintrag für Let's Encrypt, dazu `PUBLIC_APP_URL` in der Umgebungsdatei.
 
-    rate_limit {
-        zone anmeldung {
-            match { path /v1/auth/* }
-            key    {remote_host}
-            events 30
-            window 5m
-        }
-    }
-
-    handle /v1/* {
-        reverse_proxy unix//run/hotelpms/api.sock
-    }
-    handle /openapi.json {
-        reverse_proxy unix//run/hotelpms/api.sock
-    }
-    handle {
-        root * /srv/hotelpms/app/apps/web/dist
-        try_files {path} /index.html
-        file_server
-    }
-}
-```
-
-`api.beispielhotel.de` kommt später dazu, wenn Channel Manager und Kasse anbinden: Maschinen brauchen keine Oberfläche.
-
-**Unix-Socket statt Port.** `.env` kennt dafür `LISTEN_SOCKET`. Ein Dienst, der gar nicht auf einem Netzwerkport lauscht, ist an dieser Stelle nicht erreichbar, auch wenn die Firewall einmal falsch steht.
-
-### Firewall
+**Caddy muss in die Gruppe `hotelpms`**, sonst erreicht es den Socket nicht. `RuntimeDirectoryMode=0750` sperrt es sonst aus, und jede Anfrage endet in 502 — ein Fehlerbild, das nach einem kaputten Dienst aussieht, obwohl beide Seiten laufen.
 
 ```bash
-ufw default deny incoming
-ufw allow 22/tcp      # besser: nur aus dem eigenen Netz
-ufw allow 80,443/tcp
-ufw enable
+usermod -aG hotelpms caddy
+systemctl restart caddy
 ```
 
-PostgreSQL und PgBouncer lauschen auf `127.0.0.1` und gehören **nicht** in die Firewallregeln. Was von außen nicht erreichbar sein soll, bekommt keine Regel, sondern keinen Zuhörer.
+**Die Bereitschaftsroute heißt `/health`.** Sie hieß im Caddyfile einmal `/healthz`, und der Fehler war nicht „keine Antwort", sondern eine falsche: `/health` fiel in den Oberflächen-Zweig und lieferte `index.html` mit Status 200. Eine Überwachung, die auf den Statuscode schaut, meldet einen toten Dienst als gesund. Die Probe ist deshalb nicht der Statuscode, sondern der Inhalt:
+
+```bash
+curl -fsS https://<name>/health | grep -q '"status":"ok"'
+```
+
+**Das Modul `caddy-ratelimit` muss dabei sein.** Debians Paket bringt es nicht mit; `caddy list-modules | grep rate_limit` sagt, ob es da ist. Fehlt es, weist Caddy die Konfiguration ab — das ist die richtige Richtung, denn eine stillschweigend weggelassene Ratenbegrenzung merkt niemand.
 
 ---
 
 ## 8. Ausrollen
 
-Ein Skript, immer dieselbe Reihenfolge:
+**Das Skript steht im Repository: [`ops/deploy/deploy.sh`](../ops/deploy/deploy.sh).** Hier stand es einmal abgeschrieben, und genau das ist schiefgegangen: die Anleitung nannte `/srv/hotelpms`, die Units in `ops/systemd/` `/opt/hotelpms`, und niemandem fiel es auf, weil beide Seiten für sich stimmig aussahen. Was auf der Maschine läuft, gehört ins Repository.
 
 ```bash
-#!/usr/bin/env bash
-# /srv/hotelpms/deploy.sh — als Benutzer hotelpms ausfuehren
-set -euo pipefail
-cd /srv/hotelpms/app
-
-git fetch --prune origin
-git checkout main
-git reset --hard origin/main        # die Maschine aendert nie selbst etwas
-
-set -a; . /srv/hotelpms/.env; set +a
-
-pnpm install --frozen-lockfile
-pnpm build
-
-# Migrationen mit der Eigentuemerrolle, nie mit der Anwendungsrolle.
-# Das Skript liest DATABASE_URL_OWNER aus der Umgebung, die oben schon steht.
-pnpm --filter @hotelpms/db migrate
-
-sudo systemctl restart hotelpms-api hotelpms-worker
-sleep 2
-curl -fsS --unix-socket /run/hotelpms/api.sock http://localhost/health
+/opt/hotelpms/current/ops/deploy/deploy.sh
 ```
+
+Es braucht eine eng gefasste `sudo`-Regel — genau die beiden Neustarts, nichts weiter. Vorlage: [`ops/deploy/hotelpms.sudoers`](../ops/deploy/hotelpms.sudoers).
+
+```bash
+install -m 0440 /opt/hotelpms/current/ops/deploy/hotelpms.sudoers /etc/sudoers.d/hotelpms
+visudo -c
+```
+
+**Kein allgemeines `NOPASSWD: ALL`.** Das wäre bequemer und machte den Dienstbenutzer zu Root — und der Dienstbenutzer ist genau der, den ein Angreifer über die Anwendung bekommt.
 
 **`git reset --hard` und nicht `git pull`.** Die Maschine ist kein Arbeitsplatz: sie soll genau den Stand tragen, der auf `main` steht. Ein `pull` kann in einen Konflikt laufen und stehen bleiben — und dann läuft ein halber Stand.
 
@@ -280,7 +293,7 @@ Dazu ein Ziel **außer Haus** — eine Kopie auf derselben verschlüsselten Plat
 
 | # | Schritt | Fertig, wenn |
 |---|---|---|
-| 1 | **Auf dem Host:** verschlüsselter Datenspeicher, Entsperrung über TPM und Tang; dann die VM darauf anlegen | Auf dem Host zeigt `lsblk` ein `crypt`, `clevis luks list` die Pins — **in der VM nicht**. Probe: Host kalt neu starten, VM kommt ohne Zutun hoch |
+| 1 | **Auf dem Host:** verschlüsselter Datenspeicher, Entsperrung über TPM oder Tang; dann die VM darauf anlegen. Geht das nicht (kein TPM, kein Platz): §2 lesen und die Entscheidung dort eintragen | Auf dem Host zeigt `lsblk` ein `crypt`, `clevis luks list` die Pins — **in der VM nicht**. Probe: Host kalt neu starten, VM kommt ohne Zutun hoch. Nachrüsten: [`22-luks-nachruesten.md`](22-luks-nachruesten.md) |
 | 2 | Pakete, Benutzer, Firewall | `ufw status` zeigt nur 22, 80, 443 |
 | 3 | PostgreSQL, Erweiterungen, drei Rollen mit **eigenen** Kennwörtern | `scripts/setup-db.sh` durchgelaufen |
 | 4 | Deploy Key, Repository geklont | `git log -1` zeigt den Stand von `main` |
@@ -294,9 +307,25 @@ Dazu ein Ziel **außer Haus** — eine Kopie auf derselben verschlüsselten Plat
 
 **Vor Schritt 8 keine echten Gastdaten.** Die Punkte 9 bis 11 sind kein Nachklapp: ohne erprobte Rückspielung und ohne verschlüsselten **Host-Speicher** dürfen dort keine personenbezogenen Daten liegen.
 
+> **Stand 15.09.2026: die zweite Hälfte dieser Sperre ist offen.** Der Host hat kein TPM und keinen freien Platz, entschieden wurde vorerst ohne Verschlüsselung (§2). Für das eigene Pilothaus ist das ein bewusst getragenes, hier dokumentiertes Risiko. Für einen zahlenden Fremdbetrieb ist es keines.
+
 ---
 
-## 11. Was nicht auf die Maschine gehört
+## 11. Proxmox: zwei Fallen beim Anlegen der VM
+
+Beides bei der Erstinbetriebnahme aufgelaufen, beides reproduziert.
+
+**Bootreihenfolge: Platte vor CD.** Mit `boot: order=ide2;scsi0` startet die VM nach der fertigen Installation wieder von der Installer-ISO und beginnt von vorn — inklusive Überschreiben der gerade fertigen Installation. Richtig ist `order=scsi0;ide2`: die leere Platte trägt keinen Bootloader, OVMF fällt von selbst auf die CD zurück, und nach der Installation kommt die CD nie wieder an die Reihe.
+
+**`qm set --boot` ersetzt nicht immer.** Auf Proxmox 9.0.11 hängt ein zweites `qm set <vmid> --boot` kurz nach dem ersten eine **zweite** `boot:`-Zeile an, statt die vorhandene zu ändern. Zweimal reproduziert. Nach jedem Ändern nachsehen:
+
+```bash
+grep -c '^boot' /etc/pve/qemu-server/<vmid>.conf   # muss 1 sein
+```
+
+---
+
+## 12. Was nicht auf die Maschine gehört
 
 - **Kein Geheimnis im Repository.** `.env` liegt daneben, nicht darin.
 - **Kein Schreibrecht des Deploy Keys.**

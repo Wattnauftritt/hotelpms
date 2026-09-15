@@ -969,4 +969,128 @@ export function billingRoutes(app: FastifyInstance): void {
       })
     }
   })
+
+  /**
+   * Was am Folio vorausbezahlt ist: Anzahlungsrechnungen und Zahlungslinks.
+   *
+   * **Warum nicht im Folio-Aufruf.** `GET /v1/folios/:folioRef` liefert
+   * Positionen, Zahlungsvermerke und Saldo -- das taegliche Geschaeft. Die
+   * Vorauszahlung ist ein eigener Vorgang mit eigener Maske, und sie wird
+   * nur geholt, wenn jemand sie aufmacht. Ein Aufruf je Bildschirmteil,
+   * nicht je Zeile: hier sind es drei Abfragen fester Zahl, keine je
+   * Zahlungsvermerk.
+   *
+   * Drei Dinge stehen hier zusammen, weil sie nur zusammen eine Aussage
+   * ergeben:
+   *
+   * 1. **Welcher Zahlungsvermerk schon eine Anzahlungsrechnung hat.** Ein
+   *    zweiter Versuch auf denselben Vermerk wird abgewiesen
+   *    (`deposit_ledger_settlement_once`); die Maske soll ihn gar nicht
+   *    erst anbieten.
+   * 2. **Ob eine Anzahlungsrechnung schon verrechnet ist.** Verrechnet wird
+   *    auf der Schlussrechnung, als Position und nicht als Kopfangabe --
+   *    hier steht, auf welcher.
+   * 3. **Welche Zahlungslinks offen sind.** Ein Link ist keine Zahlung; er
+   *    wird es erst, wenn der Zahlungsdienstleister sich meldet.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/folios/:folioRef/prepayments',
+    permission: 'folio:read',
+    summary: 'Anzahlungen und Zahlungslinks eines Folios',
+    handler: async (req) => {
+      const { folioRef } = req.params as { folioRef: string }
+      return tx(req.pool, req, async client => {
+        const f = await client.query<{ id: number; property_id: number
+                                       reservation_id: number | null; status: string }>(
+          `SELECT id, property_id, reservation_id, status FROM folio WHERE public_ref = $1`,
+          [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('Folio')
+        const folio = f.rows[0]!
+
+        /*
+         * Der Verbund gegen eine *gruppierte* Unterabfrage, nicht gegen
+         * deposit_ledger selbst: das Journal traegt eine Zeile je
+         * Satzgruppe, und ein Vermerk mit 7 % und 19 % erschiene sonst
+         * zweimal in der Liste.
+         */
+        const settlements = await client.query(
+          `SELECT s.id, s.business_date::text AS "businessDate",
+                  s.amount_cent AS "amountCent", s.external_reference AS "externalReference",
+                  pm.name AS method,
+                  di.public_ref AS "depositInvoiceRef", di.number AS "depositInvoiceNumber"
+             FROM settlement s
+             JOIN payment_method pm ON pm.id = s.payment_method_id
+             LEFT JOIN (SELECT settlement_id, min(deposit_invoice_id) AS deposit_invoice_id
+                          FROM deposit_ledger
+                         WHERE folio_id = $1 AND settlement_id IS NOT NULL
+                         GROUP BY settlement_id) d ON d.settlement_id = s.id
+             LEFT JOIN invoice di ON di.id = d.deposit_invoice_id
+            WHERE s.folio_id = $1
+            ORDER BY s.id`,
+          [folio.id])
+
+        /*
+         * Die Anzahlungsrechnungen dieses Folios, je Rechnung eine Zeile.
+         * `applied...` bleibt null, solange nicht verrechnet ist -- das
+         * unterscheidet "angezahlt" von "abgerechnet". Die Satzgruppen
+         * kommen als JSON mit, statt sie je Rechnung nachzuladen.
+         */
+        const deposits = await client.query(
+          `SELECT di.public_ref AS "invoiceRef", di.number, di.issued_on::text AS "issuedOn",
+                  max(dl.settlement_id) AS "settlementId",
+                  -- ::bigint ist nicht kosmetisch: sum() ueber bigint liefert
+                  -- numeric, und numeric kommt als Zeichenkette an. Eine
+                  -- Zeichenkette in einer Centsumme faellt nicht auf -- sie
+                  -- rechnet sich nur falsch, sobald jemand sie addiert.
+                  sum(dl.amount_gross_cent) FILTER (WHERE dl.kind = 'received')::bigint
+                    AS "amountGrossCent",
+                  sum(dl.tax_cent) FILTER (WHERE dl.kind = 'received')::bigint AS "taxCent",
+                  jsonb_agg(jsonb_build_object(
+                      'rateBp', dl.tax_rate_bp,
+                      'grossCent', dl.amount_gross_cent,
+                      'taxCent', dl.tax_cent)
+                    ORDER BY dl.tax_rate_bp) FILTER (WHERE dl.kind = 'received') AS groups,
+                  max(ai.number) AS "appliedInvoiceNumber",
+                  max(ai.public_ref) AS "appliedInvoiceRef",
+                  max(dl.business_date) FILTER (WHERE dl.kind = 'applied')::text AS "appliedOn"
+             FROM deposit_ledger dl
+             JOIN invoice di ON di.id = dl.deposit_invoice_id
+             LEFT JOIN invoice ai ON ai.id = dl.applied_invoice_id
+            WHERE dl.folio_id = $1
+            GROUP BY di.id, di.public_ref, di.number, di.issued_on
+            ORDER BY di.number`,
+          [folio.id])
+
+        /*
+         * payment_intent traegt **keine** Zeilenrichtlinie (0021): sie ist
+         * vor Herstellung des Mandantenkontexts nachschlagbar, weil die
+         * Benachrichtigung des Zahlungsdienstleisters ohne Sitzung kommt.
+         * Hier muss die Property deshalb von Hand mitgefiltert werden --
+         * folio_id allein stammt zwar aus einem Fund unter Zeilenrichtlinie,
+         * aber darauf verlaesst sich diese Abfrage nicht.
+         */
+        const links = await client.query(
+          `SELECT pi.id, pi.created_at AS "createdAt", pi.amount_cent AS "amountCent",
+                  pi.status, pi.settled_at AS "settledAt",
+                  pi.settlement_id IS NOT NULL AS "hasSettlement"
+             FROM payment_intent pi
+            WHERE pi.folio_id = $1 AND pi.property_id = $2
+            ORDER BY pi.id DESC
+            LIMIT 20`,
+          [folio.id, folio.property_id])
+
+        return {
+          folioRef,
+          // Ohne Reservierung fehlt der Leistungszeitraum nach
+          // Paragraph 14 Abs. 4 Nr. 6 UStG, und die Anzahlungsrechnung wird
+          // abgewiesen. Die Maske sagt das vorher statt hinterher.
+          canIssueDeposit: folio.reservation_id !== null && folio.status === 'open',
+          settlements: settlements.rows,
+          deposits: deposits.rows,
+          paymentLinks: links.rows
+        }
+      })
+    }
+  })
 }

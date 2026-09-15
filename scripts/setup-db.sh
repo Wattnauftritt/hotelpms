@@ -6,9 +6,35 @@
 # genau dort liegt die Fachlichkeit dieses Systems.
 #
 # Idempotent. Mehrfaches Ausfuehren ist unschaedlich.
+#
+# **Auch auf einer Produktivmaschine benutzbar** (Dokument 21 §6 sagt das zu).
+# Dafuer kommen Kennwoerter und Datenbanknamen aus der Umgebung; die
+# Vorgabewerte sind die der Entwicklung. Frueher standen die Kennwoerter fest
+# im Skript, und die Anleitung behauptete trotzdem, sie wuerden "dabei
+# ersetzt" -- wer ihr folgte, hatte devapp und devowner auf einer Maschine
+# am Netz.
+#
+#   HOTELPMS_DB_OWNER_PASSWORD   Kennwort der Eigentuemerrolle
+#   HOTELPMS_DB_APP_PASSWORD     Kennwort der Anwendungsrolle
+#   HOTELPMS_DB_RO_PASSWORD      Kennwort der Leserolle
+#   HOTELPMS_DATABASES           Datenbanken, durch Leerzeichen getrennt
 set -euo pipefail
 
-PG_VERSION="${PG_VERSION:-16}"
+# Ohne Angabe der neueste eingerichtete Cluster statt einer festen Zahl: die
+# Entwicklung laeuft auf 16, die Maschine auf 17, und eine Vorgabe trifft
+# immer nur eines von beiden.
+erkenne_version() {
+  if command -v pg_lsclusters >/dev/null 2>&1; then
+    pg_lsclusters --no-header 2>/dev/null | awk '{print $1}' | sort -rV | head -1
+  fi
+}
+PG_VERSION="${PG_VERSION:-$(erkenne_version)}"
+PG_VERSION="${PG_VERSION:-17}"
+
+OWNER_PW="${HOTELPMS_DB_OWNER_PASSWORD:-devowner}"
+APP_PW="${HOTELPMS_DB_APP_PASSWORD:-devapp}"
+RO_PW="${HOTELPMS_DB_RO_PASSWORD:-devro}"
+DATENBANKEN="${HOTELPMS_DATABASES:-hotelpms_test hotelpms_dev}"
 
 starte_postgres() {
   if pg_isready -q 2>/dev/null; then return 0; fi
@@ -37,19 +63,23 @@ als_postgres() { su postgres -c "psql -v ON_ERROR_STOP=1 $*"; }
 #             Mandantenkontext existieren kann.
 #   app       alle Anfragen. Kein Eigentum, kein BYPASSRLS.
 #   readonly  Berichte und Replikat.
-als_postgres -c "\"DO \\\$\\\$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='hotelpms_owner') THEN
-    CREATE ROLE hotelpms_owner LOGIN PASSWORD 'devowner' BYPASSRLS;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='hotelpms_app') THEN
-    CREATE ROLE hotelpms_app LOGIN PASSWORD 'devapp';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='hotelpms_readonly') THEN
-    CREATE ROLE hotelpms_readonly LOGIN PASSWORD 'devro';
-  END IF;
-END \\\$\\\$;\""
+rolle() {   # name kennwort [zusatz]
+  su postgres -c "psql -v ON_ERROR_STOP=1 -c \"DO \\\$\\\$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='$1') THEN
+      CREATE ROLE $1 LOGIN PASSWORD '$2' ${3:-};
+    END IF;
+  END \\\$\\\$;\""
+  # Das Kennwort wird bei jedem Lauf gesetzt, nicht nur beim Anlegen. Sonst
+  # behielte eine Maschine, die einmal mit den Entwicklungsvorgaben
+  # aufgesetzt wurde, diese fuer immer -- und niemand saehe es.
+  su postgres -c "psql -v ON_ERROR_STOP=1 -c \"ALTER ROLE $1 PASSWORD '$2'\"" >/dev/null
+}
 
-for db in hotelpms_test hotelpms_dev; do
+rolle hotelpms_owner    "$OWNER_PW" BYPASSRLS
+rolle hotelpms_app      "$APP_PW"
+rolle hotelpms_readonly "$RO_PW"
+
+for db in $DATENBANKEN; do
   vorhanden=$(su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='$db'\"")
   if [ "$vorhanden" != "1" ]; then
     su postgres -c "psql -v ON_ERROR_STOP=1 -c \"CREATE DATABASE $db OWNER hotelpms_owner\""
@@ -59,4 +89,4 @@ for db in hotelpms_test hotelpms_dev; do
     'CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS pgcrypto;'"
 done
 
-echo "PostgreSQL bereit: hotelpms_test und hotelpms_dev, drei Rollen angelegt."
+echo "PostgreSQL $PG_VERSION bereit: $DATENBANKEN, drei Rollen angelegt."

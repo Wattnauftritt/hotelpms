@@ -61,7 +61,30 @@ export const preise = {
     'rate.rebuild': 'Abgeleitete Raten neu rechnen',
     'rate.rebuild.done': 'Tage neu gerechnet, über',
     'rate.rebuild.plan': 'abgeleitete Rate',
-    'rate.rebuild.plans': 'abgeleitete Raten'
+    'rate.rebuild.plans': 'abgeleitete Raten',
+
+    // Was der Channel Manager sieht (B10)
+    'cv.title': 'Was der Channel Manager sieht',
+    'cv.open': 'Auslieferung zu diesem Zeitraum ansehen',
+    'cv.intro': 'Dieselbe Antwort, die der Channel Manager über die Schnittstelle '
+              + 'bekommt — nur lesbar dargestellt. Das Raster darüber zeigt den '
+              + 'Pflegestand; hier steht, was das Haus verlässt.',
+    'cv.generatedAt': 'Stand',
+    'cv.availability': 'Verfügbarkeit',
+    'cv.rates': 'Preise und Restriktionen',
+    'cv.noPrice': 'ohne Preis',
+    'cv.noPriceHint': 'Ein Tag ohne Preis geht als „kein Preis“ hinaus und wird drüben '
+                    + 'nicht verkauft. Das ist der häufigste Grund dafür, dass bei einem '
+                    + 'Portal nichts oder etwas anderes steht.',
+    'cv.closedDays': 'gesperrt',
+    'cv.inactiveHint': 'Ein stillgelegter Ratenplan steht hier gar nicht: er geht '
+                     + 'nicht hinaus, auch wenn im Raster noch Preise an ihm hängen.',
+    'cv.days': 'Tage',
+    'cv.raw': 'Rohdaten dieses Tages',
+    'cv.raw.hint': 'Ein Klick auf ein Datum zeigt die Antwort zu diesem Tag so, wie sie '
+                 + 'über die Leitung geht.',
+    'cv.raw.close': 'Schließen',
+    'cv.empty': 'Zu diesem Zeitraum geht nichts hinaus.'
   },
   en: {
     'nav.rates': 'Rates',
@@ -123,6 +146,28 @@ export const preise = {
     'rate.rebuild': 'Rebuild derived rates',
     'rate.rebuild.done': 'days rebuilt, across',
     'rate.rebuild.plan': 'derived rate',
-    'rate.rebuild.plans': 'derived rates'
+    'rate.rebuild.plans': 'derived rates',
+
+    'cv.title': 'What the channel manager sees',
+    'cv.open': 'Show what goes out for this period',
+    'cv.intro': 'The same answer the channel manager gets over the interface — just '
+              + 'readable. The grid above shows what is maintained; this shows what '
+              + 'leaves the property.',
+    'cv.generatedAt': 'As of',
+    'cv.availability': 'Availability',
+    'cv.rates': 'Rates and restrictions',
+    'cv.noPrice': 'without a price',
+    'cv.noPriceHint': 'A day without a price goes out as “no price” and is not sold over '
+                    + 'there. That is the most common reason a portal shows nothing or '
+                    + 'something else.',
+    'cv.closedDays': 'closed',
+    'cv.inactiveHint': 'An inactive rate plan does not appear here at all: it does not '
+                     + 'go out, even if the grid still carries prices for it.',
+    'cv.days': 'days',
+    'cv.raw': 'Raw answer for this day',
+    'cv.raw.hint': 'Clicking a date shows the answer for that day exactly as it goes '
+                 + 'over the wire.',
+    'cv.raw.close': 'Close',
+    'cv.empty': 'Nothing goes out for this period.'
   }
 } as const
