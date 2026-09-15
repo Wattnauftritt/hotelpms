@@ -176,7 +176,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (body.guestRef !== undefined) {
           const g = await client.query<{ id: number }>(
             `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
-          if (g.rowCount === 0) throw Errors.notFound('Gast')
+          if (g.rowCount === 0) throw Errors.notFound('res.guest')
           guestId = g.rows[0]!.id
         }
 

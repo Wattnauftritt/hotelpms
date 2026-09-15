@@ -606,10 +606,10 @@ export function billingRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { from: string; to: string; kind?: string; limit?: string }
       if (!isIsoDate(q.from) || !isIsoDate(q.to)) {
-        throw Errors.validation({ from: ['Datum im Format YYYY-MM-DD erwartet'] })
+        throw Errors.validation({ from: ['field.isoDate'] })
       }
       const tage = nightsBetween(q.from, q.to) + 1
-      if (tage <= 0) throw Errors.validation({ to: ['Muss auf oder nach from liegen'] })
+      if (tage <= 0) throw Errors.validation({ to: ['field.onOrAfterFrom'] })
       if (tage > MAX_RECHNUNGSTAGE) throw Errors.rangeTooLarge(MAX_RECHNUNGSTAGE)
       // Obergrenze wie bei jedem Listenendpunkt: ohne sie ist er ein
       // Selbstangriff. Ein Haus mit 200 Zimmern schreibt an einem starken

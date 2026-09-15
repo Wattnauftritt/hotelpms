@@ -507,7 +507,7 @@ export function guestRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const { rows, rowCount } = await client.query(
           `SELECT ${COMPANY_FIELDS} FROM company WHERE public_ref = $1`, [companyRef])
-        if (rowCount === 0) throw Errors.notFound('Firma')
+        if (rowCount === 0) throw Errors.notFound('res.company')
         return rows[0]
       })
     }
@@ -528,7 +528,7 @@ export function guestRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number }>(
           `SELECT id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
-        if (cur.rowCount === 0) throw Errors.notFound('Firma')
+        if (cur.rowCount === 0) throw Errors.notFound('res.company')
 
         const { rows } = await client.query(
           `UPDATE company SET
