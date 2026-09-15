@@ -19,6 +19,20 @@
 app.hotelpms.de {
 	encode zstd gzip
 
+	# Erste Linie vor der Anwendung. Sie kennt selbst RATE_LIMIT_LOGIN und
+	# RATE_LIMIT_ANON, aber die greifen erst, wenn die Anfrage schon einen
+	# Node-Prozess beschaeftigt hat. Dokument 17 §4 verlangt beides.
+	# Braucht das Modul caddy-ratelimit -- ohne es weist Caddy die
+	# Konfiguration ab, statt die Begrenzung stillschweigend wegzulassen.
+	rate_limit {
+		zone anmeldung {
+			match { path /v1/auth/* }
+			key    {remote_host}
+			events 30
+			window 5m
+		}
+	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
@@ -39,7 +53,12 @@ app.hotelpms.de {
 	handle /openapi.json {
 		reverse_proxy unix//run/hotelpms/api.sock
 	}
-	handle /healthz {
+	# /health, nicht /healthz: so heisst die Route in routes/health.ts. Stand
+	# hier einmal falsch, und der Fehler war nicht "keine Antwort", sondern
+	# eine falsche: /health fiel in den Oberflaechen-Zweig unten und lieferte
+	# index.html mit Status 200. Wer auf den Statuscode schaut, bekam von
+	# einem toten Dienst ein "gesund".
+	handle /health {
 		reverse_proxy unix//run/hotelpms/api.sock
 	}
 

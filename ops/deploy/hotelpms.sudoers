@@ -1,0 +1,8 @@
+# Nach /etc/sudoers.d/hotelpms, Rechte 0440, mit visudo -c geprueft.
+#
+# Eng gefasst mit Absicht: das Ausrollskript braucht genau diese beiden
+# Neustarts. Ein allgemeines "hotelpms ALL=(root) NOPASSWD: ALL" waere
+# bequemer und machte den Dienstbenutzer zu Root -- und der Dienstbenutzer
+# ist genau der, den ein Angreifer ueber die Anwendung bekommt.
+hotelpms ALL=(root) NOPASSWD: /usr/bin/systemctl restart hotelpms-api
+hotelpms ALL=(root) NOPASSWD: /usr/bin/systemctl restart hotelpms-worker
