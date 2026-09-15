@@ -23,6 +23,18 @@ pnpm db:testhotel             # optional: ein benutzbares Haus — zum **Ausprob
 
 Die beiden Datensätze haben verschiedene Zwecke und sind nicht austauschbar. `db:seed` erzeugt 180 000 Reservierungen, damit sich zeigt, ob ein Index greift; überblicken kann man das nicht. `db:testhotel` legt **ein** Haus mit 24 Zimmern und rund vierzig Reservierungen um den heutigen Tag an, in dem ein Mensch jede Zeile nachrechnet. Es ist ein **Übungshaus** (`is_training`), exportiert also nichts nach draußen und verschickt keine Gastpost — ein Testhaus ohne dieses Kennzeichen schiebt früher oder später eine Übungsrechnung in die echte Buchhaltung.
 
+**Ausprobieren.** Das Testhotel ist Datenbankinhalt, kein laufender Dienst — es sichtbar zu machen, braucht zwei Prozesse:
+
+```bash
+TESTHOTEL_PASSWORD='…' pnpm db:testhotel   # Haus anlegen, Kennwort selbst setzen
+pnpm dev:api                               # Terminal 1: API auf :3000
+pnpm dev:web                               # Terminal 2: Oberfläche auf :5173
+```
+
+Dann `http://localhost:5173` öffnen und mit `test@hotelpms.local` und dem gesetzten Kennwort anmelden. Vite reicht `/v1` an die API weiter; im Betrieb tut das Caddy unter **einer** Herkunft, damit die Sitzung im Cookie ohne Sonderregeln funktioniert.
+
+Ohne `TESTHOTEL_PASSWORD` erzeugt das Skript eines und gibt es **einmal** aus — fest im Skript wäre es in jedem Klon dasselbe, und dieses Haus steht am Ende auf einer Maschine, die aus dem Netz erreichbar ist.
+
 Die Tests brauchen ein **echtes PostgreSQL** (17 in CI, 16 genügt lokal) mit den Erweiterungen `pg_trgm` und `pgcrypto` sowie drei Rollen. `.github/workflows/ci.yml` zeigt dasselbe für CI.
 
 ```bash
