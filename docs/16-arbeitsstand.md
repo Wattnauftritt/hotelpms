@@ -463,6 +463,21 @@ Ein Trigger hält Stufe, Anlass und Beteiligte fest, sobald angefragt ist, und v
 
 ---
 
+### Ausrollen: was und wann sind getrennt
+
+Bis zur Erstinbetriebnahme gab es nur `deploy.sh` von Hand. Bei mehreren Bearbeitern, die täglich nach `main` mergen, heißt das: die Maschine hinkt beliebig weit hinterher, und niemand sieht es.
+
+Ein Timer, der einfach zieht, wäre die falsche Antwort gewesen — er rollte mitten im Check-in aus und nähme, was gerade auf `main` liegt. Getrennt wird deshalb:
+
+- **was** — der Git-Tag `produktion`. Die Maschine holt nur diesen Stand. Wer ihn verschiebt, gibt frei.
+- **wann** — ein Knopf in der Plattformkonsole hinter `platform:operations`. Die API schreibt eine Zeile in `deploy_request`; `ops/deploy/deploy-agent.sh` führt sie aus.
+
+**Die API führt nichts aus, und das ist der Kern.** Sie läuft unter `NoNewPrivileges=true` — `sudo` ist ihr gesperrt, der Dienstneustart braucht es. Genau deshalb ist ein Einbruch in die Anwendung nicht gleich die Maschine. Der ausführende Dienst trägt die Rechte, die Anwendung nicht.
+
+Ein eindeutiger Teilindex lässt höchstens eine offene Anforderung zu: zwei gleichzeitige Läufe zögen sich im selben Verzeichnis die Dateien weg, und heraus käme ein halber Stand, den niemand als solchen erkennt. Einzelheiten in [`21-inbetriebnahme.md`](21-inbetriebnahme.md) §8.
+
+---
+
 ### Was bewusst keine Oberfläche bekommt
 
 **Die Kassenschnittstelle.** In einer früheren Sichtung stand hier „keine POS-Maske" als offener Punkt. Das war ein Missverständnis: `routes/pos.ts` ist der Vertrag mit einer **externen** Ladenkasse mit TSE, nicht ein Bildschirm, der noch fehlt. Die Kasse holt sich die offenen Folios und bucht ihre Zimmerbons dagegen; sie meldet sich über einen Maschinenzugang mit `folio:read` und `folio:post` an.

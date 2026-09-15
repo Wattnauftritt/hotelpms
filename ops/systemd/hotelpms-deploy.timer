@@ -1,0 +1,17 @@
+# Sieht nach, ob jemand eine Ausrollung angefordert hat.
+#
+# Eine Minute ist der richtige Abstand: der Knopf im Adminpanel soll sich
+# anfuehlen, als geschaehe etwas, und ein psql-Aufruf je Minute kostet
+# nichts. Findet der Lauf nichts, endet er sofort.
+[Unit]
+Description=Minuetlich nach angeforderten Ausrollungen sehen
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+# Ohne das laufen nach einem Neustart alle Timer zur selben Sekunde.
+RandomizedDelaySec=15
+Unit=hotelpms-deploy.service
+
+[Install]
+WantedBy=timers.target

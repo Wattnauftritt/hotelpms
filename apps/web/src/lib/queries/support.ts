@@ -85,3 +85,44 @@ export function useRequestSupportSession() {
     }
   })
 }
+
+// ------------------------------------------------------------- Ausrollen
+
+export interface Deployment {
+  id: number
+  /** Leer heisst: von Hand auf der Maschine gestartet. */
+  requestedBy: string | null
+  requestedAt: string
+  targetRef: string
+  status: 'pending' | 'running' | 'done' | 'failed'
+  startedAt: string | null
+  finishedAt: string | null
+  commitBefore: string | null
+  commitAfter: string | null
+  log: string | null
+}
+
+export const useDeployments = () =>
+  useQuery<{ deployments: Deployment[]; currentCommit: string | null }>({
+    queryKey: ['deployments'],
+    queryFn: () => api.get('/v1/platform/deployments'),
+    /*
+     * Waehrend eines Laufs haeufiger nachsehen als sonst. Ein Ausrollen
+     * dauert ein bis zwei Minuten, und wer den Knopf gedrueckt hat, will
+     * sehen, dass etwas passiert -- ein Bildschirm, der drei Minuten
+     * unveraendert dasteht, sieht aus wie ein Fehler.
+     */
+    refetchInterval: (q) => {
+      const laeuft = q.state.data?.deployments.some(
+        d => d.status === 'pending' || d.status === 'running')
+      return laeuft === true ? 5_000 : 60_000
+    }
+  })
+
+export function useRequestDeployment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<Deployment>('/v1/platform/deployments'),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['deployments'] }) }
+  })
+}

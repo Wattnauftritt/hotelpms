@@ -220,6 +220,15 @@ const M = {
     'Address and tax number are required: without them the property may not '
       + 'issue invoices under § 14 UStG.'],
 
+  // ----------------------------------------------------------- Ausrollen
+
+  // Der Teilindex laesst nur eine offene Anforderung zu. Das ist kein
+  // Gedraenge, sondern der Schutz davor, dass sich zwei Laeufe im selben
+  // Verzeichnis die Dateien wegziehen.
+  'deploy.alreadyRunning': [
+    'Es laeuft bereits ein Ausrollvorgang. Warten Sie, bis er durch ist.',
+    'A deployment is already in progress. Please wait until it finishes.'],
+
   // -------------------------------------------------------- Support-Sitzung
 
   'support.unknownSession': [

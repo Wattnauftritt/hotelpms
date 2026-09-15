@@ -15,14 +15,30 @@ WURZEL="${HOTELPMS_ROOT:-/opt/hotelpms}"
 STAND="$WURZEL/current"
 UMGEBUNG="$WURZEL/shared/env"
 
+# Was ausgerollt wird: der Marker, nicht main.
+#
+# **Der Unterschied ist der Punkt.** main traegt, was zuletzt gemergt wurde --
+# auch einen Stand, den niemand fuer die Produktion vorgesehen hat. Bei
+# mehreren Bearbeitern ist das der Normalfall, nicht die Ausnahme. Der Tag
+# `produktion` wird bewusst verschoben; nur er kommt auf die Maschine.
+#
+#   git tag -f produktion <commit> && git push -f origin produktion
+MARKER="${1:-${HOTELPMS_DEPLOY_REF:-produktion}}"
+
 cd "$STAND"
 
 # git reset --hard und nicht git pull. Die Maschine ist kein Arbeitsplatz:
-# sie soll genau den Stand tragen, der auf main steht. Ein pull kann in einen
-# Konflikt laufen und stehen bleiben -- und dann laeuft ein halber Stand.
-git fetch --prune origin
-git checkout main
-git reset --hard origin/main
+# sie soll genau den Stand tragen, der am Marker haengt. Ein pull kann in
+# einen Konflikt laufen und stehen bleiben -- und dann laeuft ein halber
+# Stand.
+#
+# --force bei den Tags, weil `produktion` wandert: ohne das behielte die
+# Maschine den ersten Stand, den sie je gesehen hat, und niemand saehe warum.
+git fetch --prune --force --tags origin
+git checkout --detach "$MARKER"
+git reset --hard "$MARKER"
+
+echo "Ausgerollt wird $MARKER = $(git rev-parse HEAD)" 
 
 set -a; . "$UMGEBUNG"; set +a
 
