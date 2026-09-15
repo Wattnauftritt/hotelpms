@@ -272,7 +272,47 @@ visudo -c
 
 **Kein allgemeines `NOPASSWD: ALL`.** Das wäre bequemer und machte den Dienstbenutzer zu Root — und der Dienstbenutzer ist genau der, den ein Angreifer über die Anwendung bekommt.
 
-**`git reset --hard` und nicht `git pull`.** Die Maschine ist kein Arbeitsplatz: sie soll genau den Stand tragen, der auf `main` steht. Ein `pull` kann in einen Konflikt laufen und stehen bleiben — und dann läuft ein halber Stand.
+**`git reset --hard` und nicht `git pull`.** Die Maschine ist kein Arbeitsplatz: sie soll genau den Stand tragen, der am Marker hängt. Ein `pull` kann in einen Konflikt laufen und stehen bleiben — und dann läuft ein halber Stand.
+
+### Was ausgerollt wird: der Tag `produktion`, nie `main`
+
+`main` trägt, was zuletzt gemergt wurde — auch einen Stand, den niemand für die Produktion vorgesehen hat. Bei mehreren Bearbeitern ist das der Normalfall, nicht die Ausnahme. Freigegeben wird deshalb ausdrücklich:
+
+```bash
+git tag -f produktion <commit>
+git push -f origin produktion
+```
+
+Geht ebenso aus der GitHub-Oberfläche. Die Maschine holt **nur** diesen Stand; ein Merge nach `main` allein bewirkt nichts.
+
+### Wann ausgerollt wird: der Knopf in der Konsole
+
+Ein Timer, der von selbst zieht, rollte mitten im Check-in aus. Stattdessen fordert jemand mit `platform:operations` in der Plattformkonsole an; ein Dienst auf der Maschine sieht minütlich nach und führt es aus.
+
+| | |
+|---|---|
+| [`ops/deploy/deploy-agent.sh`](../ops/deploy/deploy-agent.sh) | holt die offene Anforderung, ruft `deploy.sh`, vermerkt den Ausgang |
+| [`ops/systemd/hotelpms-deploy.service`](../ops/systemd/hotelpms-deploy.service) | führt ihn aus |
+| [`ops/systemd/hotelpms-deploy.timer`](../ops/systemd/hotelpms-deploy.timer) | weckt ihn jede Minute |
+
+```bash
+install -m 0644 /opt/hotelpms/current/ops/systemd/hotelpms-deploy.{service,timer} \
+        /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now hotelpms-deploy.timer
+```
+
+**Warum die API nicht selbst ausrollt.** Sie läuft unter `NoNewPrivileges=true`; `sudo` ist aus dem Prozess heraus gesperrt, und der Neustart der Dienste braucht genau das. Das ist keine Hürde, die man umgeht, sondern der Grund, warum ein Einbruch in die Anwendung nicht gleich die Maschine ist. Die API schreibt deshalb nur eine Zeile in `deploy_request`; wer sie ausführt, ist ein anderer Prozess mit anderen Rechten — und `hotelpms-deploy.service` trägt bewusst **kein** `NoNewPrivileges`.
+
+Damit ist diese Unit die empfindlichste auf der Maschine. Was sie trägt, ist nicht Härtung, sondern dass sie nur tut, was in der Datenbank steht — und dorthin schreibt nur, wer `platform:operations` hat.
+
+**Ein Lauf von Hand bleibt möglich** und wird gesehen: `deploy.sh` direkt aufzurufen ist der Weg für den ersten Start und für den Fall, dass die Konsole selbst nicht läuft.
+
+**Wenn der Knopf nicht mehr geht**, steht meist eine Anforderung auf `running` fest — ein abgebrochener Lauf. Der eindeutige Teilindex lässt dann keine weitere zu, und das ist so gewollt: zwei gleichzeitige Läufe zögen sich im selben Verzeichnis die Dateien weg. Nachsehen und freigeben:
+
+```sql
+SELECT id, status, started_at, log FROM deploy_request ORDER BY id DESC LIMIT 5;
+UPDATE deploy_request SET status = 'failed', finished_at = now() WHERE id = <id>;
+```
 
 **Migrationen vor dem Neustart.** Das Schema ist dabei kurz neuer als der laufende Code. Das ist die richtige Richtung: eine hinzugefügte Spalte stört den alten Code nicht, ein fehlendes Schema den neuen schon.
 

@@ -1,6 +1,20 @@
 /** Support-Sitzungen: Anfrage, Freigabe, Widerruf. */
 export const support = {
   de: {
+    'deploy.title': 'Ausrollen',
+    'deploy.hint': 'Ausgerollt wird der Stand, der auf GitHub mit dem Tag '
+                 + '„produktion“ markiert ist — nie einfach der letzte. Dieser '
+                 + 'Knopf bestimmt nur den Zeitpunkt.',
+    'deploy.request': 'Jetzt ausrollen',
+    'deploy.requested': 'Angefordert. Die Maschine holt sich das binnen einer Minute.',
+    'deploy.current': 'Läuft gerade',
+    'deploy.currentUnknown': 'Noch kein Lauf verzeichnet',
+    'deploy.byHand': 'von Hand auf der Maschine',
+    'deploy.state.pending': 'Wartet',
+    'deploy.state.running': 'Läuft',
+    'deploy.state.done': 'Durch',
+    'deploy.state.failed': 'Gescheitert',
+    'deploy.showLog': 'Ausgabe zeigen',
     'support.title': 'Support-Zugriff',
     'support.hint': 'Unser Support sieht Ihre Daten nur, wenn Sie es hier '
                   + 'freigeben — befristet, und jede Handlung steht im Protokoll.',
@@ -36,6 +50,20 @@ export const support = {
     'support.mine': 'Meine Anfragen'
   },
   en: {
+    'deploy.title': 'Deploy',
+    'deploy.hint': 'What gets deployed is the commit tagged “produktion” on '
+                 + 'GitHub — never simply the latest one. This button only '
+                 + 'decides when.',
+    'deploy.request': 'Deploy now',
+    'deploy.requested': 'Requested. The machine picks it up within a minute.',
+    'deploy.current': 'Currently running',
+    'deploy.currentUnknown': 'No run recorded yet',
+    'deploy.byHand': 'by hand on the machine',
+    'deploy.state.pending': 'Waiting',
+    'deploy.state.running': 'Running',
+    'deploy.state.done': 'Done',
+    'deploy.state.failed': 'Failed',
+    'deploy.showLog': 'Show output',
     'support.title': 'Support access',
     'support.hint': 'Our support team sees your data only if you approve it here '
                   + '— for a limited time, and every action is recorded in the log.',

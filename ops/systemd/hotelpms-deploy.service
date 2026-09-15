@@ -1,0 +1,36 @@
+# Fuehrt eine angeforderte Ausrollung aus. Vom Timer gestartet, nicht dauernd.
+[Unit]
+Description=Angeforderte Ausrollung von hotelpms ausfuehren
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hotelpms
+Group=hotelpms
+WorkingDirectory=/opt/hotelpms/current
+ExecStart=/opt/hotelpms/current/ops/deploy/deploy-agent.sh
+
+# KEIN NoNewPrivileges hier -- und das ist der ganze Zweck dieser Unit.
+#
+# Die API traegt es (siehe hotelpms-api.service) und kann deshalb kein sudo
+# ausfuehren; genau darum rollt sie nicht selbst aus, sondern schreibt eine
+# Zeile in deploy_request. Dieser Dienst ist die andere Haelfte: er darf die
+# beiden Neustarts aus /etc/sudoers.d/hotelpms, und sonst nichts.
+#
+# Er ist damit die empfindlichste Unit auf der Maschine. Was ihn traegt, ist
+# nicht Haertung, sondern dass er nur tut, was in der Datenbank steht -- und
+# dorthin schreibt nur, wer platform:operations hat.
+
+# Ein Ausrollen dauert laenger als ein Tick. Ohne das schoesse systemd
+# mitten in `pnpm build`.
+TimeoutStartSec=900
+
+PrivateTmp=true
+ProtectHome=true
+# Kein ProtectSystem=strict: das Skript schreibt nach /opt/hotelpms.
+ProtectSystem=full
+ReadWritePaths=/opt/hotelpms
+
+[Install]
+WantedBy=multi-user.target

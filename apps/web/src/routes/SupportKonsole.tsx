@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { usePlatformSupportSessions, useRequestSupportSession,
-         type SupportSession } from '../lib/queries/support.js'
+         useDeployments, useRequestDeployment,
+         type SupportSession, type Deployment } from '../lib/queries/support.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
@@ -144,6 +145,108 @@ function Liste(): JSX.Element {
   )
 }
 
+const DEPLOY_ZUSTAND: Record<Deployment['status'], TextKey> = {
+  pending: 'deploy.state.pending',
+  running: 'deploy.state.running',
+  done: 'deploy.state.done',
+  failed: 'deploy.state.failed'
+}
+
+/**
+ * Ausrollen.
+ *
+ * **Der Knopf bestimmt den Zeitpunkt, nicht den Inhalt.** Was auf die
+ * Maschine kommt, haengt am Git-Tag `produktion`; wer ihn verschiebt, gibt
+ * frei. Ohne diese Trennung waere jeder Merge nach main ein Kandidat fuer
+ * die Produktion, und bei mehreren Bearbeitern ist das der Normalfall.
+ *
+ * **Die API rollt nicht aus, sie reiht ein.** Sie laeuft unter
+ * NoNewPrivileges; der Neustart der Dienste braucht sudo, und das ist ihr
+ * gesperrt. Ein eigener Dienst auf der Maschine sieht minuetlich nach --
+ * daher die Wartezeit nach dem Klick, und daher der Hinweis darauf.
+ */
+function Ausrollen(): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const q = useDeployments()
+  const anfordern = useRequestDeployment()
+  const [offenesLog, setOffenesLog] = useState<number | null>(null)
+
+  const zeit = (iso: string) =>
+    new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
+
+  const laeuft = q.data?.deployments.some(
+    d => d.status === 'pending' || d.status === 'running') === true
+
+  return (
+    <section className="space-y-3 border border-neutral-200 rounded p-4 bg-white">
+      <h2 className="text-sm font-medium">{t('deploy.title')}</h2>
+      <p className="text-sm text-neutral-600">{t('deploy.hint')}</p>
+
+      <p className="text-sm">
+        <span className="text-neutral-600">{t('deploy.current')}: </span>
+        {q.data?.currentCommit != null
+          ? <code className="font-mono">{q.data.currentCommit.slice(0, 12)}</code>
+          : <span className="text-neutral-500">{t('deploy.currentUnknown')}</span>}
+      </p>
+
+      {anfordern.isError && <Fehler error={anfordern.error} />}
+      {anfordern.isSuccess && (
+        <p className="text-sm text-green-900 bg-green-50 border border-green-200
+                      rounded px-2 py-1">{t('deploy.requested')}</p>
+      )}
+
+      <button type="button" disabled={anfordern.isPending || laeuft}
+              onClick={() => anfordern.mutate()}
+              className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                         disabled:bg-neutral-300">
+        {t(anfordern.isPending ? 'common.loading' : 'deploy.request')}
+      </button>
+
+      {q.isError && <Fehler error={q.error} />}
+      {q.data !== undefined && q.data.deployments.length > 0 && (
+        <ul className="space-y-1 text-xs">
+          {q.data.deployments.slice(0, 8).map(d => (
+            <li key={d.id} className="border-t border-neutral-100 pt-1">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className={d.status === 'failed'
+                  ? 'text-red-800 font-medium' : 'font-medium'}>
+                  {t(DEPLOY_ZUSTAND[d.status])}
+                </span>
+                <span className="text-neutral-600">{zeit(d.requestedAt)}</span>
+                <span className="text-neutral-500">
+                  {d.requestedBy ?? t('deploy.byHand')}
+                </span>
+                {d.commitAfter !== null && (
+                  <code className="font-mono text-neutral-500">
+                    {d.commitAfter.slice(0, 12)}
+                  </code>
+                )}
+                {d.log !== null && d.log !== '' && (
+                  <button type="button"
+                          onClick={() => setOffenesLog(
+                            offenesLog === d.id ? null : d.id)}
+                          className="underline underline-offset-2 text-neutral-600">
+                    {t('deploy.showLog')}
+                  </button>
+                )}
+              </div>
+              {offenesLog === d.id && d.log !== null && (
+                // Vorformatiert und scrollbar: eine Bauausgabe hat lange
+                // Zeilen, und umgebrochen ist sie nicht mehr zu lesen.
+                <pre className="mt-1 p-2 bg-neutral-50 border border-neutral-200
+                                rounded overflow-x-auto whitespace-pre">
+                  {d.log}
+                </pre>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 export function SupportKonsole(): JSX.Element {
   const t = useT()
   return (
@@ -155,6 +258,7 @@ export function SupportKonsole(): JSX.Element {
           <h2 className="text-sm font-medium">{t('support.mine')}</h2>
           <Liste />
         </section>
+        <Ausrollen />
       </div>
     </div>
   )
