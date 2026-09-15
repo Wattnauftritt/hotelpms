@@ -1,6 +1,6 @@
 # hotelpms
 
-Eigenes Hotel Property Management System. Aktuell in der Planungsphase.
+Eigenes Hotel Property Management System für den deutschen Markt. Backend und Rezeptions-Oberfläche sind gebaut und getestet ([`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md)); die Inbetriebnahme für den ersten Kunden steht an ([`docs/17-betrieb.md`](docs/17-betrieb.md), [`docs/21-inbetriebnahme.md`](docs/21-inbetriebnahme.md)).
 
 ## Dokumente
 
@@ -18,3 +18,10 @@ Eigenes Hotel Property Management System. Aktuell in der Planungsphase.
 - [docs/12-security-und-performance-review.md](docs/12-security-und-performance-review.md): Kritische Durchsicht der Pläne. Drei Widersprüche, 13 Sicherheits- und 12 Performancebefunde, und was vor dem ersten Code zu ändern ist.
 - [docs/13-gesamtreview.md](docs/13-gesamtreview.md): Zweites Review über alle Dokumente im Zusammenhang. Zwölf veraltete Stellen korrigiert, elf logische Fehler, elf neue Sicherheits- und fünf Performancebefunde, und elf Dinge, die einem Hotel gefehlt hätten.
 - [docs/14-benutzerrollen.md](docs/14-benutzerrollen.md): Berechtigungskatalog, dreizehn Systemrollen für Hotels und vier für uns, Support-Sitzung als einziger Weg zu Kundendaten, Arbeitsplatz-PIN für geteilte Rezeptionen, Datenmodell.
+- [docs/15-messungen-aus-dem-saatlauf.md](docs/15-messungen-aus-dem-saatlauf.md): Was ein Bestand realistischer Größe (vier Häuser, 214 000 Reservierungen über drei Jahre) über den Entwurf verraten hat: drei Leistungsbefunde, ihre Ursache und die Migration, die sie behoben hat.
+- [docs/16-arbeitsstand.md](docs/16-arbeitsstand.md): Die Übergabe. Was fertig ist, durch Tests belegt statt behauptet, und offene Aufgaben, jede einzeln und ohne Rückfrage bearbeitbar.
+- [docs/17-betrieb.md](docs/17-betrieb.md): Betriebshandbuch für fremde Kunden — Plattenverschlüsselung, Sicherung außer Haus, Schulungsbetrieb, Schlüsselrotation, Ratenbegrenzung in der ersten Linie.
+- [docs/18-einarbeitung.md](docs/18-einarbeitung.md): Einarbeitung in zwanzig Minuten für alle, die das Repository zum ersten Mal öffnen — was das System tut, wo, und warum es an den entscheidenden Stellen so gebaut ist.
+- [docs/19-frontend.md](docs/19-frontend.md): Die Rezeptions-Oberfläche gemessen am Wettbewerb (Mews, Apaleo, SIHOT, Cloudbeds) und an der eigenen API — was fehlte, in Zahlen, und der daraus abgeleitete Bauplan.
+- [docs/20-arbeitsteilung.md](docs/20-arbeitsteilung.md): Die Oberflächenarbeit aus Dokument 19 auf drei parallele Bearbeiter aufgeteilt, zugleich die laufende Fortschrittstafel.
+- [docs/21-inbetriebnahme.md](docs/21-inbetriebnahme.md): Die Maschine aufsetzen — von der leeren VM auf dem Proxmox-Host bis zum laufenden Betrieb unter Debian.

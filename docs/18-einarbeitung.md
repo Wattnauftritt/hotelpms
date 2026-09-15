@@ -124,7 +124,7 @@ Sie in Reihenfolge zu überfliegen ist der schnellste Weg zum Datenmodell. Jede 
 | `0013`–`0015` | **Drei Leistungsbefunde**: Massenänderung, Tagesstatistik, Gastsuche. Lies [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md) dazu |
 | `0016`–`0019` | Kurtaxe, Leistungszeitraum, Zugriffsbereich, Aufenthaltsänderung |
 | `0020`–`0023` | Webhooks, Zahlungen, Kontingentabruf, Channel-Schnittstelle |
-| `0024`–`0028` | Rechnungsbeleg (ZUGFeRD), OAuth, Kasse, Anzahlungen, Gastpost |
+| `0024`–`0029` | Rechnungsbeleg (ZUGFeRD), OAuth, Kasse, Anzahlungen, Gastpost |
 
 ---
 
