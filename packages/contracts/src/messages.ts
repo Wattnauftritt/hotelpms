@@ -207,6 +207,19 @@ const M = {
     'Das Kennwort muss mindestens {min} Zeichen haben.',
     'The password must be at least {min} characters long.'],
 
+  // ------------------------------------------------------------ Onboarding
+
+  'onboarding.emailTaken': [
+    'Diese E-Mail-Adresse gehoert bereits zu einem Zugang.',
+    'This email address already belongs to an account.'],
+  // Nicht "Feld fehlt": der Grund gehoert dazu, sonst traegt jemand einen
+  // Punkt ein und das Haus stellt Rechnungen aus, die nicht gelten.
+  'onboarding.invoiceDataRequired': [
+    'Anschrift und Steuernummer sind Pflicht: ohne sie darf das Haus nach '
+      + '§ 14 UStG keine Rechnung ausstellen.',
+    'Address and tax number are required: without them the property may not '
+      + 'issue invoices under § 14 UStG.'],
+
   // ----------------------------------------------------------- Uebungshaus
 
   'training.notPossible': [
