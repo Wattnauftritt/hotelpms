@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { MESSAGE_KEYS, isMessageKey, renderMessage } from '@hotelpms/contracts'
+import { LOCALES, MESSAGE_KEYS, isMessageKey, renderMessage }
+  from '@hotelpms/contracts'
 
 /**
  * Der Test, der die Uebersetzung vollstaendig haelt.
@@ -108,15 +109,23 @@ function hinweiseIn(quelle: string): string[] {
 const quellen = quellDateien(WURZEL).map(p => readFileSync(p, 'utf8'))
 
 describe('Meldungskatalog', () => {
-  it('uebersetzt jeden Schluessel in beide Sprachen', () => {
+  /**
+   * Ueber `LOCALES`, nicht ueber zwei fest genannte Sprachen: wer eine
+   * Sprache hinzufuegt, bekommt die Vollstaendigkeitspruefung dafuer,
+   * ohne den Test anzufassen. Genau das ist der Sinn der Liste -- eine
+   * Sprache steht dort erst, wenn sie vollstaendig ist.
+   */
+  it('uebersetzt jeden Schluessel in jede angebotene Sprache', () => {
     for (const key of MESSAGE_KEYS) {
-      const de = renderMessage(key, 'de')
-      const en = renderMessage(key, 'en')
-      expect(de.length, `${key} hat keinen deutschen Satz`).toBeGreaterThan(0)
-      expect(en.length, `${key} hat keinen englischen Satz`).toBeGreaterThan(0)
-      // Ein Schluessel, der unveraendert zurueckkommt, steht nicht im
-      // Katalog -- dann waere `MESSAGE_KEYS` nicht die Wahrheit.
-      expect(de, `${key} faellt auf sich selbst zurueck`).not.toBe(key)
+      for (const locale of LOCALES) {
+        const satz = renderMessage(key, locale)
+        expect(satz.trim().length, `${key} hat keinen Satz in ${locale}`)
+          .toBeGreaterThan(0)
+        // Ein Schluessel, der unveraendert zurueckkommt, steht nicht im
+        // Katalog -- dann waere `MESSAGE_KEYS` nicht die Wahrheit.
+        expect(satz, `${key} faellt in ${locale} auf sich selbst zurueck`)
+          .not.toBe(key)
+      }
     }
   })
 
@@ -125,12 +134,15 @@ describe('Meldungskatalog', () => {
    * deutsche Satz nennt die Zahl, der englische verschweigt sie, und niemand
    * merkt es, bis ein Gast fragt, wie viele Tage denn erlaubt sind.
    */
-  it('haelt die Platzhalter in beiden Sprachen gleich', () => {
+  it('haelt die Platzhalter in allen Sprachen gleich', () => {
     const platzhalter = (s: string) =>
       [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]!).sort()
     for (const key of MESSAGE_KEYS) {
-      expect(platzhalter(renderMessage(key, 'en')), `${key}`)
-        .toEqual(platzhalter(renderMessage(key, 'de')))
+      const erwartet = platzhalter(renderMessage(key, 'de'))
+      for (const locale of LOCALES) {
+        expect(platzhalter(renderMessage(key, locale)), `${key} / ${locale}`)
+          .toEqual(erwartet)
+      }
     }
   })
 
