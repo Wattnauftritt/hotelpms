@@ -1,55 +1,77 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Einrichtung: Zimmergruppen und Zimmer. */
 export const einrichtung = {
-  de: {
-    'setup.title': 'Einrichtung des Hauses',
-    'setup.bookable': 'Buchbar',
-    'setup.notBookable': 'Noch nicht buchbar',
-    'setup.complete': 'Vollständig eingerichtet',
-    'setup.nextStep': 'Nächster Schritt',
-    'setup.categories': 'Zimmergruppen',
-    'setup.newCategory': 'Neue Zimmergruppe',
-    'setup.code': 'Kürzel',
-    'setup.name': 'Bezeichnung',
-    'setup.maxOccupancy': 'Personen je Einheit',
-    'setup.activeRooms': 'Aktive Zimmer',
-    'setup.series': 'Zimmerserie anlegen',
-    'setup.prefix': 'Vorsatz',
-    'setup.suffix': 'Nachsatz',
-    'setup.numberFrom': 'Nummer von',
-    'setup.numberTo': 'Nummer bis',
-    'setup.pad': 'Stellen mit führender Null',
-    'setup.floor': 'Etage',
-    'setup.skip': 'Nummern auslassen',
-    'setup.skipHint': 'Mit Komma getrennt, etwa 13, 404',
-    'setup.seriesPreview': 'Diese Nummern entstehen',
-    'setup.seriesExists': 'Schon vergeben',
-    'setup.seriesResult': 'Zimmer angelegt',
-    'setup.seriesEmpty': 'Alle Nummern der Serie gibt es bereits.',
-  },
-  en: {
-    'setup.title': 'Property setup',
-    'setup.bookable': 'Bookable',
-    'setup.notBookable': 'Not bookable yet',
-    'setup.complete': 'Setup complete',
-    'setup.nextStep': 'Next step',
-    'setup.categories': 'Room types',
-    'setup.newCategory': 'New room type',
-    'setup.code': 'Code',
-    'setup.name': 'Name',
-    'setup.maxOccupancy': 'People per unit',
-    'setup.activeRooms': 'Active rooms',
-    'setup.series': 'Create room series',
-    'setup.prefix': 'Prefix',
-    'setup.suffix': 'Suffix',
-    'setup.numberFrom': 'Number from',
-    'setup.numberTo': 'Number to',
-    'setup.pad': 'Digits, zero padded',
-    'setup.floor': 'Floor',
-    'setup.skip': 'Skip numbers',
-    'setup.skipHint': 'Comma separated, e.g. 13, 404',
-    'setup.seriesPreview': 'These numbers will be created',
-    'setup.seriesExists': 'Already taken',
-    'setup.seriesResult': 'Rooms created',
-    'setup.seriesEmpty': 'Every number in this series already exists.',
-  }
-} as const
+  'setup.title': {
+    de: 'Einrichtung des Hauses',
+    en: 'Property setup' },
+  'setup.bookable': {
+    de: 'Buchbar',
+    en: 'Bookable' },
+  'setup.notBookable': {
+    de: 'Noch nicht buchbar',
+    en: 'Not bookable yet' },
+  'setup.complete': {
+    de: 'Vollständig eingerichtet',
+    en: 'Setup complete' },
+  'setup.nextStep': {
+    de: 'Nächster Schritt',
+    en: 'Next step' },
+  'setup.categories': {
+    de: 'Zimmergruppen',
+    en: 'Room types' },
+  'setup.newCategory': {
+    de: 'Neue Zimmergruppe',
+    en: 'New room type' },
+  'setup.code': {
+    de: 'Kürzel',
+    en: 'Code' },
+  'setup.name': {
+    de: 'Bezeichnung',
+    en: 'Name' },
+  'setup.maxOccupancy': {
+    de: 'Personen je Einheit',
+    en: 'People per unit' },
+  'setup.activeRooms': {
+    de: 'Aktive Zimmer',
+    en: 'Active rooms' },
+  'setup.series': {
+    de: 'Zimmerserie anlegen',
+    en: 'Create room series' },
+  'setup.prefix': {
+    de: 'Vorsatz',
+    en: 'Prefix' },
+  'setup.suffix': {
+    de: 'Nachsatz',
+    en: 'Suffix' },
+  'setup.numberFrom': {
+    de: 'Nummer von',
+    en: 'Number from' },
+  'setup.numberTo': {
+    de: 'Nummer bis',
+    en: 'Number to' },
+  'setup.pad': {
+    de: 'Stellen mit führender Null',
+    en: 'Digits, zero padded' },
+  'setup.floor': {
+    de: 'Etage',
+    en: 'Floor' },
+  'setup.skip': {
+    de: 'Nummern auslassen',
+    en: 'Skip numbers' },
+  'setup.skipHint': {
+    de: 'Mit Komma getrennt, etwa 13, 404',
+    en: 'Comma separated, e.g. 13, 404' },
+  'setup.seriesPreview': {
+    de: 'Diese Nummern entstehen',
+    en: 'These numbers will be created' },
+  'setup.seriesExists': {
+    de: 'Schon vergeben',
+    en: 'Already taken' },
+  'setup.seriesResult': {
+    de: 'Zimmer angelegt',
+    en: 'Rooms created' },
+  'setup.seriesEmpty': {
+    de: 'Alle Nummern der Serie gibt es bereits.',
+    en: 'Every number in this series already exists.' },
+} as const satisfies Record<string, LocalizedText>

@@ -1,47 +1,65 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Gastkonto und Rechnung. */
 export const folio = {
-  de: {
-    'folio.title': 'Folio',
-    'folio.closed': 'Geschlossen',
-    'folio.charges': 'Positionen',
-    'folio.settlements': 'Zahlungsvermerke',
-    'folio.newCharge': 'Position buchen',
-    'folio.newSettlement': 'Zahlung vermerken',
-    'folio.description': 'Bezeichnung',
-    'folio.netAmount': 'Netto in Euro',
-    'folio.taxRate': 'Steuersatz',
-    'folio.post': 'Buchen',
-    'folio.amount': 'Betrag in Euro',
-    'folio.method': 'Zahlungsart',
-    'folio.reference': 'Beleg beim Abrechnungsort',
-    'folio.note': 'Vermerken',
-    'folio.fullBalance': 'Offener Saldo',
-    'folio.reversal': 'Gegenbuchung',
-    'folio.invoiced': 'Auf einer Rechnung, damit unveränderlich',
-    'folio.issueInvoice': 'Rechnung festschreiben',
-    'folio.issueHint': 'Prüft die Pflichtangaben nach § 14 UStG.',
-    'folio.invoiceNumber': 'Rechnungsnummer',
-  },
-  en: {
-    'folio.title': 'Folio',
-    'folio.closed': 'Closed',
-    'folio.charges': 'Charges',
-    'folio.settlements': 'Payment notes',
-    'folio.newCharge': 'Post a charge',
-    'folio.newSettlement': 'Note a payment',
-    'folio.description': 'Description',
-    'folio.netAmount': 'Net amount in euro',
-    'folio.taxRate': 'Tax rate',
-    'folio.post': 'Post',
-    'folio.amount': 'Amount in euro',
-    'folio.method': 'Payment method',
-    'folio.reference': 'Reference at the place of settlement',
-    'folio.note': 'Note',
-    'folio.fullBalance': 'Open balance',
-    'folio.reversal': 'Reversal',
-    'folio.invoiced': 'On an invoice, therefore immutable',
-    'folio.issueInvoice': 'Issue invoice',
-    'folio.issueHint': 'Checks the mandatory details under § 14 UStG.',
-    'folio.invoiceNumber': 'Invoice number',
-  }
-} as const
+  'folio.title': {
+    de: 'Folio',
+    en: 'Folio' },
+  'folio.closed': {
+    de: 'Geschlossen',
+    en: 'Closed' },
+  'folio.charges': {
+    de: 'Positionen',
+    en: 'Charges' },
+  'folio.settlements': {
+    de: 'Zahlungsvermerke',
+    en: 'Payment notes' },
+  'folio.newCharge': {
+    de: 'Position buchen',
+    en: 'Post a charge' },
+  'folio.newSettlement': {
+    de: 'Zahlung vermerken',
+    en: 'Note a payment' },
+  'folio.description': {
+    de: 'Bezeichnung',
+    en: 'Description' },
+  'folio.netAmount': {
+    de: 'Netto in Euro',
+    en: 'Net amount in euro' },
+  'folio.taxRate': {
+    de: 'Steuersatz',
+    en: 'Tax rate' },
+  'folio.post': {
+    de: 'Buchen',
+    en: 'Post' },
+  'folio.amount': {
+    de: 'Betrag in Euro',
+    en: 'Amount in euro' },
+  'folio.method': {
+    de: 'Zahlungsart',
+    en: 'Payment method' },
+  'folio.reference': {
+    de: 'Beleg beim Abrechnungsort',
+    en: 'Reference at the place of settlement' },
+  'folio.note': {
+    de: 'Vermerken',
+    en: 'Note' },
+  'folio.fullBalance': {
+    de: 'Offener Saldo',
+    en: 'Open balance' },
+  'folio.reversal': {
+    de: 'Gegenbuchung',
+    en: 'Reversal' },
+  'folio.invoiced': {
+    de: 'Auf einer Rechnung, damit unveränderlich',
+    en: 'On an invoice, therefore immutable' },
+  'folio.issueInvoice': {
+    de: 'Rechnung festschreiben',
+    en: 'Issue invoice' },
+  'folio.issueHint': {
+    de: 'Prüft die Pflichtangaben nach § 14 UStG.',
+    en: 'Checks the mandatory details under § 14 UStG.' },
+  'folio.invoiceNumber': {
+    de: 'Rechnungsnummer',
+    en: 'Invoice number' },
+} as const satisfies Record<string, LocalizedText>

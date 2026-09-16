@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { MessageLocale } from '@hotelpms/contracts'
+import type { LocalizedText, MessageLocale } from '@hotelpms/contracts'
 import { common } from './common.js'
 import { tagesgeschaeft } from './tagesgeschaeft.js'
 import { housekeeping } from './housekeeping.js'
@@ -34,9 +34,16 @@ import { support } from './support.js'
  * und **eine** Zeile hier.
  *
  * Wer einen Bereich hinzufügt: Datei daneben legen, hier importieren, unten
- * in `texts` eintragen. Der Typ `TextKey` wächst von allein mit; ein
- * Schlüssel, den es in einer der beiden Sprachen nicht gibt, fällt beim
- * Typecheck auf.
+ * in `texts` eintragen. Der Typ `TextKey` wächst von allein mit.
+ *
+ * **Die Sprachen stehen je Schlüssel beieinander, nicht in Blöcken.** Ein
+ * Bereich hatte früher einen `de`- und einen `en`-Block; wer einen Satz
+ * änderte, musste zweihundert Zeilen weiter unten den zweiten finden. Ab der
+ * dritten Sprache liest das niemand mehr ab. Nebeneinander fällt die Lücke
+ * beim Hinsehen auf — und `satisfies Record<string, LocalizedText>` in jeder
+ * Bereichsdatei macht aus einer vergessenen Sprache einen Typfehler an
+ * genau dem Schlüssel, dem sie fehlt, statt einer kryptischen Meldung hier.
+ * Der Meldungskatalog der Schnittstelle ist aus demselben Grund so gebaut.
  */
 /**
  * Die Sprachen kommen aus dem Vertrag, nicht von hier.
@@ -82,52 +89,33 @@ const DATUMSFORM: Record<Locale, Datumsform> = {
 }
 
 const texts = {
-  de: {
-    ...common.de,
-    ...tagesgeschaeft.de,
-    ...housekeeping.de,
-    ...einrichtung.de,
-    ...folio.de,
-    ...gruppen.de,
-    ...plan.de,
-    ...berichte.de,
-    ...einstellungen.de,
-    ...schnittstellen.de,
-    ...preise.de,
-    ...gaeste.de,
-    ...rechnung.de,
-    ...zugang.de,
-    ...support.de
-  },
-  en: {
-    ...common.en,
-    ...tagesgeschaeft.en,
-    ...housekeeping.en,
-    ...einrichtung.en,
-    ...folio.en,
-    ...gruppen.en,
-    ...plan.en,
-    ...berichte.en,
-    ...einstellungen.en,
-    ...schnittstellen.en,
-    ...preise.en,
-    ...gaeste.en,
-    ...rechnung.en,
-    ...zugang.en,
-    ...support.en
-  }
-} as const
+  ...common,
+  ...tagesgeschaeft,
+  ...housekeeping,
+  ...einrichtung,
+  ...folio,
+  ...gruppen,
+  ...plan,
+  ...berichte,
+  ...einstellungen,
+  ...schnittstellen,
+  ...preise,
+  ...gaeste,
+  ...rechnung,
+  ...zugang,
+  ...support
+} as const satisfies Record<string, LocalizedText>
 
-export type TextKey = keyof (typeof texts)['de']
+export type TextKey = keyof typeof texts
 
 /** Alle Schluessel. Ein Test prueft damit beide Sprachen durch. */
 export function textKeys(): TextKey[] {
-  return Object.keys(texts.de) as TextKey[]
+  return Object.keys(texts) as TextKey[]
 }
 
 /** Ein Text ohne React, fuer Tests und fuer den Aufruf ausserhalb einer Komponente. */
 export function textFor(key: TextKey, locale: Locale): string {
-  return texts[locale][key] ?? key
+  return texts[key][locale]
 }
 
 export const I18nContext = createContext<Locale>('de')
@@ -144,7 +132,7 @@ export function useT(): (key: TextKey, params?: Record<string, string | number>)
   => string {
   const locale = useContext(I18nContext)
   return (key, params) => {
-    const text: string = texts[locale][key] ?? key
+    const text: string = texts[key][locale]
     if (params === undefined) return text
     return text.replace(/\{(\w+)\}/g, (ganz, name: string) =>
       Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : ganz)

@@ -80,8 +80,12 @@ export function emailLanguage(code: string | null | undefined): EmailLanguage {
  * Liste knapper; ab der dritten liest niemand mehr ab, welcher Satz zu
  * welcher Sprache gehoert, und eine vertauschte Reihenfolge faellt keinem
  * Typ auf. Ein fehlendes Feld dagegen bricht den Build.
+ *
+ * Ausgefuehrt, weil die Beschriftungen der Oberflaeche dieselbe Form haben.
+ * Zweimal dieselbe Zeile zu schreiben hiesse, sie beim Hinzufuegen einer
+ * Sprache an zwei Stellen zu aendern -- und eine davon zu vergessen.
  */
-type Eintrag = { readonly [L in MessageLocale]: string }
+export type LocalizedText = { readonly [L in MessageLocale]: string }
 
 const M = {
   // ------------------------------------------------------------ Fehlertitel
@@ -801,7 +805,7 @@ const M = {
   'field.depositPartsMismatch': {
     de: 'Die Teile ergeben {sum} Cent, vereinnahmt sind {received} Cent.',
     en: 'The parts add up to {sum} cents, {received} cents were received.' }
-} as const satisfies Record<string, Eintrag>
+} as const satisfies Record<string, LocalizedText>
 
 export type MessageKey = keyof typeof M
 export type MessageParams = Record<string, string | number>
