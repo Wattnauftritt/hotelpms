@@ -1,33 +1,44 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Housekeeping und Zimmerstatus. */
 export const housekeeping = {
-  de: {
-    'hk.generateTasks': 'Aufgaben des Tages erzeugen',
-    'hk.tasksCreated': '{n} Aufgaben ergänzt',
-    'hk.taskDeparture': 'Abreisereinigung',
-    'hk.taskStayover': 'Bleibereinigung',
-    'hk.finishTask': 'Erledigt',
-    'hk.dirty': 'Schmutzig',
-    'hk.clean': 'Sauber',
-    'hk.inspected': 'Kontrolliert',
-    'hk.occupied': 'Belegt',
-    'hk.departureToday': 'Abreise heute',
-    'hk.arrivalToday': 'Anreise heute',
-    'hk.markClean': 'Auf sauber setzen',
-    'hk.openTickets': 'Offene Meldungen',
-  },
-  en: {
-    'hk.generateTasks': 'Create today’s tasks',
-    'hk.tasksCreated': '{n} tasks added',
-    'hk.taskDeparture': 'Departure clean',
-    'hk.taskStayover': 'Stayover clean',
-    'hk.finishTask': 'Done',
-    'hk.dirty': 'Dirty',
-    'hk.clean': 'Clean',
-    'hk.inspected': 'Inspected',
-    'hk.occupied': 'Occupied',
-    'hk.departureToday': 'Departing today',
-    'hk.arrivalToday': 'Arriving today',
-    'hk.markClean': 'Mark as clean',
-    'hk.openTickets': 'Open tickets',
-  }
-} as const
+  'hk.generateTasks': {
+    de: 'Aufgaben des Tages erzeugen',
+    en: 'Create today’s tasks' },
+  'hk.tasksCreated': {
+    de: '{n} Aufgaben ergänzt',
+    en: '{n} tasks added' },
+  'hk.taskDeparture': {
+    de: 'Abreisereinigung',
+    en: 'Departure clean' },
+  'hk.taskStayover': {
+    de: 'Bleibereinigung',
+    en: 'Stayover clean' },
+  'hk.finishTask': {
+    de: 'Erledigt',
+    en: 'Done' },
+  'hk.dirty': {
+    de: 'Schmutzig',
+    en: 'Dirty' },
+  'hk.clean': {
+    de: 'Sauber',
+    en: 'Clean' },
+  'hk.inspected': {
+    de: 'Kontrolliert',
+    en: 'Inspected' },
+  'hk.occupied': {
+    de: 'Belegt',
+    en: 'Occupied' },
+  'hk.departureToday': {
+    de: 'Abreise heute',
+    en: 'Departing today' },
+  'hk.arrivalToday': {
+    de: 'Anreise heute',
+    en: 'Arriving today' },
+  'hk.markClean': {
+    de: 'Auf sauber setzen',
+    en: 'Mark as clean' },
+  'hk.openTickets': {
+    de: 'Offene Meldungen',
+    en: 'Open tickets' },
+} as const satisfies Record<string, LocalizedText>

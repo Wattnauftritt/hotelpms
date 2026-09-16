@@ -1,155 +1,209 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Schnittstellen: Webhooks, Maschinenzugänge, Channel Manager, Benutzer. */
 export const schnittstellen = {
-  de: {
-    'nav.integrations': 'Schnittstellen',
-    'int.title': 'Schnittstellen',
-    'int.tab.webhooks': 'Webhooks',
-    'int.tab.clients': 'Maschinenzugänge',
-    'int.tab.channel': 'Channel Manager',
-    'int.tab.users': 'Benutzer und Rollen',
+  'nav.integrations': {
+    de: 'Schnittstellen',
+    en: 'Integrations' },
+  'int.title': {
+    de: 'Schnittstellen',
+    en: 'Integrations' },
+  'int.tab.webhooks': {
+    de: 'Webhooks',
+    en: 'Webhooks' },
+  'int.tab.clients': {
+    de: 'Maschinenzugänge',
+    en: 'Machine access' },
+  'int.tab.channel': {
+    de: 'Channel Manager',
+    en: 'Channel manager' },
+  'int.tab.users': {
+    de: 'Benutzer und Rollen',
+    en: 'Users and roles' },
 
-    'secret.title': 'Einmal zu sehen',
-    'secret.hint': 'Dieses Geheimnis wird jetzt gezeigt und nie wieder. Ein Geheimnis, '
-                 + 'das sich erneut abrufen lässt, liegt in jedem Bildschirmfoto.',
-    'secret.copy': 'Kopieren',
-    'secret.done': 'Habe ich notiert',
+  'secret.title': {
+    de: 'Einmal zu sehen',
+    en: 'Shown once' },
+  'secret.hint': {
+    de: 'Dieses Geheimnis wird jetzt gezeigt und nie wieder. Ein Geheimnis, '
+      + 'das sich erneut abrufen lässt, liegt in jedem Bildschirmfoto.',
+    en: 'This secret is shown now and never again. A secret that can be '
+      + 'fetched again is a secret that sits in every screenshot.' },
+  'secret.copy': {
+    de: 'Kopieren',
+    en: 'Copy' },
+  'secret.done': {
+    de: 'Habe ich notiert',
+    en: 'I have written it down' },
 
-    'hook.new': 'Abonnement anlegen',
-    'hook.url': 'Zieladresse',
-    'hook.urlHint': 'Muss mit https:// beginnen. Über http reist der Inhalt im Klartext; '
-                  + 'die Signatur schützt seine Echtheit, nicht seine Vertraulichkeit.',
-    'hook.eventTypes': 'Ereignisarten',
-    'hook.allEventTypes': 'Alle Ereignisarten',
-    'hook.status.active': 'Aktiv',
-    'hook.status.disabled': 'Stillgelegt',
-    'hook.disabledBecause': 'Stillgelegt, weil',
-    'hook.enable': 'Wieder einschalten',
-    'hook.disable': 'Stilllegen',
-    'hook.deliveries': 'Zustellprotokoll',
-    'hook.noDeliveries': 'Noch nichts zugestellt',
-    'hook.attempts': 'Versuche',
-    'hook.nextAttempt': 'Nächster Versuch',
-    'hook.deliveredAt': 'Zugestellt',
-    'hook.lastError': 'Letzter Fehler',
-    'hook.signature': 'Signatur: HMAC-SHA256 über „Zeitstempel.Rumpf".',
-    'hook.enableHint': 'Verpasste Ereignisse werden beim Einschalten nicht nachgeholt. '
-                     + 'Was fehlt, steht im Protokoll.',
+  'hook.new': {
+    de: 'Abonnement anlegen',
+    en: 'New subscription' },
+  'hook.url': {
+    de: 'Zieladresse',
+    en: 'Target address' },
+  'hook.urlHint': {
+    de: 'Muss mit https:// beginnen. Über http reist der Inhalt im Klartext; '
+      + 'die Signatur schützt seine Echtheit, nicht seine Vertraulichkeit.',
+    en: 'Must start with https://. Over http the body travels in the clear; '
+      + 'the signature protects its authenticity, not its confidentiality.' },
+  'hook.eventTypes': {
+    de: 'Ereignisarten',
+    en: 'Event types' },
+  'hook.allEventTypes': {
+    de: 'Alle Ereignisarten',
+    en: 'All event types' },
+  'hook.status.active': {
+    de: 'Aktiv',
+    en: 'Active' },
+  'hook.status.disabled': {
+    de: 'Stillgelegt',
+    en: 'Disabled' },
+  'hook.disabledBecause': {
+    de: 'Stillgelegt, weil',
+    en: 'Disabled because' },
+  'hook.enable': {
+    de: 'Wieder einschalten',
+    en: 'Re-enable' },
+  'hook.disable': {
+    de: 'Stilllegen',
+    en: 'Disable' },
+  'hook.deliveries': {
+    de: 'Zustellprotokoll',
+    en: 'Delivery log' },
+  'hook.noDeliveries': {
+    de: 'Noch nichts zugestellt',
+    en: 'Nothing delivered yet' },
+  'hook.attempts': {
+    de: 'Versuche',
+    en: 'Attempts' },
+  'hook.nextAttempt': {
+    de: 'Nächster Versuch',
+    en: 'Next attempt' },
+  'hook.deliveredAt': {
+    de: 'Zugestellt',
+    en: 'Delivered' },
+  'hook.lastError': {
+    de: 'Letzter Fehler',
+    en: 'Last error' },
+  'hook.signature': {
+    de: 'Signatur: HMAC-SHA256 über „Zeitstempel.Rumpf".',
+    en: 'Signature: HMAC-SHA256 over "timestamp.body".' },
+  'hook.enableHint': {
+    de: 'Verpasste Ereignisse werden beim Einschalten nicht nachgeholt. '
+      + 'Was fehlt, steht im Protokoll.',
+    en: 'Missed events are not replayed on re-enabling. What is missing '
+      + 'is in the log.' },
 
-    'client.new': 'Maschinenzugang anlegen',
-    'client.name': 'Bezeichnung',
-    'client.scopes': 'Zugriffsbereiche',
-    'client.scopesHint': 'Zugriffsbereiche sind dieselben Rechte wie im Haus. Es gibt '
-                       + 'kein zweites Rechtesystem daneben.',
-    'client.status.active': 'Aktiv',
-    'client.status.disabled': 'Gesperrt',
-    'client.revoke': 'Sperren',
-    'client.revokeConfirm': 'Zugang sperren und alle laufenden Token entwerten?',
-    'client.activeTokens': 'Laufende Token',
-    'client.lastUsed': 'Zuletzt benutzt',
-    'client.never': 'Noch nie',
-    'client.allProperties': 'Alle Häuser',
-    'client.tokenHint': 'Token holen: POST /oauth/token mit grant_type=client_credentials.',
+  'client.new': {
+    de: 'Maschinenzugang anlegen',
+    en: 'New machine access' },
+  'client.name': {
+    de: 'Bezeichnung',
+    en: 'Name' },
+  'client.scopes': {
+    de: 'Zugriffsbereiche',
+    en: 'Scopes' },
+  'client.scopesHint': {
+    de: 'Zugriffsbereiche sind dieselben Rechte wie im Haus. Es gibt '
+      + 'kein zweites Rechtesystem daneben.',
+    en: 'Scopes are the same permissions as in the property. There is '
+      + 'no second rights system beside it.' },
+  'client.status.active': {
+    de: 'Aktiv',
+    en: 'Active' },
+  'client.status.disabled': {
+    de: 'Gesperrt',
+    en: 'Revoked' },
+  'client.revoke': {
+    de: 'Sperren',
+    en: 'Revoke' },
+  'client.revokeConfirm': {
+    de: 'Zugang sperren und alle laufenden Token entwerten?',
+    en: 'Revoke this access and invalidate all its live tokens?' },
+  'client.activeTokens': {
+    de: 'Laufende Token',
+    en: 'Live tokens' },
+  'client.lastUsed': {
+    de: 'Zuletzt benutzt',
+    en: 'Last used' },
+  'client.never': {
+    de: 'Noch nie',
+    en: 'Never' },
+  'client.allProperties': {
+    de: 'Alle Häuser',
+    en: 'All properties' },
+  'client.tokenHint': {
+    de: 'Token holen: POST /oauth/token mit grant_type=client_credentials.',
+    en: 'Get a token: POST /oauth/token with grant_type=client_credentials.' },
 
-    'chan.new': 'Zugang anlegen',
-    'chan.provider': 'Anbieter',
-    'chan.name': 'Bezeichnung',
-    'chan.status.active': 'Aktiv',
-    'chan.status.disabled': 'Gesperrt',
-    'chan.disable': 'Sperren',
-    'chan.lastUsed': 'Zuletzt geholt',
-    'chan.never': 'Noch nie',
-    'chan.pullHint': 'Der Channel Manager holt Preise, Verfügbarkeit und Restriktionen '
-                   + 'selbst ab. Wer gerade nicht erreichbar ist, verliert nichts.',
+  'chan.new': {
+    de: 'Zugang anlegen',
+    en: 'New connection' },
+  'chan.provider': {
+    de: 'Anbieter',
+    en: 'Provider' },
+  'chan.name': {
+    de: 'Bezeichnung',
+    en: 'Name' },
+  'chan.status.active': {
+    de: 'Aktiv',
+    en: 'Active' },
+  'chan.status.disabled': {
+    de: 'Gesperrt',
+    en: 'Disabled' },
+  'chan.disable': {
+    de: 'Sperren',
+    en: 'Disable' },
+  'chan.lastUsed': {
+    de: 'Zuletzt geholt',
+    en: 'Last fetched' },
+  'chan.never': {
+    de: 'Noch nie',
+    en: 'Never' },
+  'chan.pullHint': {
+    de: 'Der Channel Manager holt Preise, Verfügbarkeit und Restriktionen '
+      + 'selbst ab. Wer gerade nicht erreichbar ist, verliert nichts.',
+    en: 'The channel manager fetches rates, availability and restrictions '
+      + 'itself. Anyone unreachable for a while loses nothing.' },
 
-    'user.roles': 'Rollen',
-    'user.permissions': 'Rechte',
-    'user.noRoles': 'Keine Rolle in diesem Haus',
-    'user.lastLogin': 'Zuletzt angemeldet',
-    'user.never': 'Noch nie',
-    'user.status.active': 'Aktiv',
-    'user.status.invited': 'Eingeladen',
-    'user.status.disabled': 'Gesperrt',
-    'user.edit': 'Rollen ändern',
-    'user.rolesHint': 'Die Rechte stehen so da, wie die API sie liefert — sie werden '
-                    + 'nicht aus dem Rollennamen erraten.',
-    'user.noCreate': 'Einen Benutzer anzulegen gehört zur Einladung mit Erstkennwort '
-                   + 'und zweitem Faktor; das ist ein eigener Vorgang. Hier werden '
-                   + 'Rollen von Menschen geändert, die es im Account schon gibt.'
-  },
-  en: {
-    'nav.integrations': 'Integrations',
-    'int.title': 'Integrations',
-    'int.tab.webhooks': 'Webhooks',
-    'int.tab.clients': 'Machine access',
-    'int.tab.channel': 'Channel manager',
-    'int.tab.users': 'Users and roles',
-
-    'secret.title': 'Shown once',
-    'secret.hint': 'This secret is shown now and never again. A secret that can be '
-                 + 'fetched again is a secret that sits in every screenshot.',
-    'secret.copy': 'Copy',
-    'secret.done': 'I have written it down',
-
-    'hook.new': 'New subscription',
-    'hook.url': 'Target address',
-    'hook.urlHint': 'Must start with https://. Over http the body travels in the clear; '
-                  + 'the signature protects its authenticity, not its confidentiality.',
-    'hook.eventTypes': 'Event types',
-    'hook.allEventTypes': 'All event types',
-    'hook.status.active': 'Active',
-    'hook.status.disabled': 'Disabled',
-    'hook.disabledBecause': 'Disabled because',
-    'hook.enable': 'Re-enable',
-    'hook.disable': 'Disable',
-    'hook.deliveries': 'Delivery log',
-    'hook.noDeliveries': 'Nothing delivered yet',
-    'hook.attempts': 'Attempts',
-    'hook.nextAttempt': 'Next attempt',
-    'hook.deliveredAt': 'Delivered',
-    'hook.lastError': 'Last error',
-    'hook.signature': 'Signature: HMAC-SHA256 over "timestamp.body".',
-    'hook.enableHint': 'Missed events are not replayed on re-enabling. What is missing '
-                     + 'is in the log.',
-
-    'client.new': 'New machine access',
-    'client.name': 'Name',
-    'client.scopes': 'Scopes',
-    'client.scopesHint': 'Scopes are the same permissions as in the property. There is '
-                       + 'no second rights system beside it.',
-    'client.status.active': 'Active',
-    'client.status.disabled': 'Revoked',
-    'client.revoke': 'Revoke',
-    'client.revokeConfirm': 'Revoke this access and invalidate all its live tokens?',
-    'client.activeTokens': 'Live tokens',
-    'client.lastUsed': 'Last used',
-    'client.never': 'Never',
-    'client.allProperties': 'All properties',
-    'client.tokenHint': 'Get a token: POST /oauth/token with grant_type=client_credentials.',
-
-    'chan.new': 'New connection',
-    'chan.provider': 'Provider',
-    'chan.name': 'Name',
-    'chan.status.active': 'Active',
-    'chan.status.disabled': 'Disabled',
-    'chan.disable': 'Disable',
-    'chan.lastUsed': 'Last fetched',
-    'chan.never': 'Never',
-    'chan.pullHint': 'The channel manager fetches rates, availability and restrictions '
-                   + 'itself. Anyone unreachable for a while loses nothing.',
-
-    'user.roles': 'Roles',
-    'user.permissions': 'Permissions',
-    'user.noRoles': 'No role in this property',
-    'user.lastLogin': 'Last signed in',
-    'user.never': 'Never',
-    'user.status.active': 'Active',
-    'user.status.invited': 'Invited',
-    'user.status.disabled': 'Disabled',
-    'user.edit': 'Change roles',
-    'user.rolesHint': 'Permissions are shown as the API delivers them — they are not '
-                    + 'guessed from the role name.',
-    'user.noCreate': 'Creating a user belongs to the invitation flow with a first '
-                   + 'password and a second factor; that is a separate matter. Here '
-                   + 'the roles of people who already exist in the account are changed.'
-  }
-} as const
+  'user.roles': {
+    de: 'Rollen',
+    en: 'Roles' },
+  'user.permissions': {
+    de: 'Rechte',
+    en: 'Permissions' },
+  'user.noRoles': {
+    de: 'Keine Rolle in diesem Haus',
+    en: 'No role in this property' },
+  'user.lastLogin': {
+    de: 'Zuletzt angemeldet',
+    en: 'Last signed in' },
+  'user.never': {
+    de: 'Noch nie',
+    en: 'Never' },
+  'user.status.active': {
+    de: 'Aktiv',
+    en: 'Active' },
+  'user.status.invited': {
+    de: 'Eingeladen',
+    en: 'Invited' },
+  'user.status.disabled': {
+    de: 'Gesperrt',
+    en: 'Disabled' },
+  'user.edit': {
+    de: 'Rollen ändern',
+    en: 'Change roles' },
+  'user.rolesHint': {
+    de: 'Die Rechte stehen so da, wie die API sie liefert — sie werden '
+      + 'nicht aus dem Rollennamen erraten.',
+    en: 'Permissions are shown as the API delivers them — they are not '
+      + 'guessed from the role name.' },
+  'user.noCreate': {
+    de: 'Einen Benutzer anzulegen gehört zur Einladung mit Erstkennwort '
+      + 'und zweitem Faktor; das ist ein eigener Vorgang. Hier werden '
+      + 'Rollen von Menschen geändert, die es im Account schon gibt.',
+    en: 'Creating a user belongs to the invitation flow with a first '
+      + 'password and a second factor; that is a separate matter. Here '
+      + 'the roles of people who already exist in the account are changed.' },
+} as const satisfies Record<string, LocalizedText>

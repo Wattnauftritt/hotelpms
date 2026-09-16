@@ -1,88 +1,126 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Rahmen, Navigation und was ueberall vorkommt. */
 export const common = {
-  de: {
-    'app.title': 'hotelpms',
-    'nav.tape': 'Zimmerplan',
-    'nav.today': 'Tagesgeschäft',
-    'nav.housekeeping': 'Housekeeping',
-    'nav.setup': 'Einrichtung',
-    'nav.guests': 'Gäste',
-    'nav.blocks': 'Gruppen',
-    'common.from': 'Von',
-    'common.to': 'Bis',
-    'common.date': 'Datum',
-    'common.room': 'Zimmer',
-    'common.rooms': 'Zimmer',
-    'common.category': 'Zimmergruppe',
-    'common.guest': 'Gast',
-    'common.status': 'Status',
-    'common.save': 'Speichern',
-    'common.cancel': 'Abbrechen',
-    'common.preview': 'Vorschau',
-    'common.apply': 'Übernehmen',
-    'common.loading': 'Lädt…',
-    'common.none': 'Nichts vorhanden',
-    'common.today': 'Heute',
-    'common.back': 'Zurück',
-    'common.forward': 'Weiter',
-    'common.retry': 'Erneut versuchen',
-    'common.offline': 'Offline. Angezeigt wird der zuletzt geladene Stand.',
-    'status.Optional': 'Option',
-    'status.Confirmed': 'Bestätigt',
-    'status.InHouse': 'Im Haus',
-    'status.CheckedOut': 'Abgereist',
-    'status.Canceled': 'Storniert',
-    'status.NoShow': 'No-Show',
-    'error.title': 'Das hat nicht geklappt',
-    'error.offlineWrite': 'Ohne Verbindung lässt sich nichts speichern.',
-    'login.email': 'E-Mail',
-    'login.password': 'Kennwort',
-    'login.submit': 'Anmelden',
-    'auth.logout': 'Abmelden',
-    'app.noProperty': 'Diesem Benutzer ist noch kein Haus zugeordnet.',
-    'app.noScreen': 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
-                  + 'öffnen.'
-  },
-  en: {
-    'app.title': 'hotelpms',
-    'nav.tape': 'Room chart',
-    'nav.today': 'Front desk',
-    'nav.housekeeping': 'Housekeeping',
-    'nav.setup': 'Setup',
-    'nav.guests': 'Guests',
-    'nav.blocks': 'Groups',
-    'common.from': 'From',
-    'common.to': 'To',
-    'common.date': 'Date',
-    'common.room': 'Room',
-    'common.rooms': 'Rooms',
-    'common.category': 'Room type',
-    'common.guest': 'Guest',
-    'common.status': 'Status',
-    'common.save': 'Save',
-    'common.cancel': 'Cancel',
-    'common.preview': 'Preview',
-    'common.apply': 'Apply',
-    'common.loading': 'Loading…',
-    'common.none': 'Nothing here',
-    'common.today': 'Today',
-    'common.back': 'Back',
-    'common.forward': 'Forward',
-    'common.retry': 'Try again',
-    'common.offline': 'Offline. Showing the last loaded state.',
-    'status.Optional': 'Option',
-    'status.Confirmed': 'Confirmed',
-    'status.InHouse': 'In house',
-    'status.CheckedOut': 'Checked out',
-    'status.Canceled': 'Cancelled',
-    'status.NoShow': 'No show',
-    'error.title': 'That did not work',
-    'error.offlineWrite': 'Nothing can be saved without a connection.',
-    'login.email': 'Email',
-    'login.password': 'Password',
-    'login.submit': 'Sign in',
-    'auth.logout': 'Sign out',
-    'app.noProperty': 'This user is not assigned to any property yet.',
-    'app.noScreen': 'This account has no rights in {haus} that open a screen.'
-  }
-} as const
+  'app.title': {
+    de: 'hotelpms',
+    en: 'hotelpms' },
+  'nav.tape': {
+    de: 'Zimmerplan',
+    en: 'Room chart' },
+  'nav.today': {
+    de: 'Tagesgeschäft',
+    en: 'Front desk' },
+  'nav.housekeeping': {
+    de: 'Housekeeping',
+    en: 'Housekeeping' },
+  'nav.setup': {
+    de: 'Einrichtung',
+    en: 'Setup' },
+  'nav.guests': {
+    de: 'Gäste',
+    en: 'Guests' },
+  'nav.blocks': {
+    de: 'Gruppen',
+    en: 'Groups' },
+  'common.from': {
+    de: 'Von',
+    en: 'From' },
+  'common.to': {
+    de: 'Bis',
+    en: 'To' },
+  'common.date': {
+    de: 'Datum',
+    en: 'Date' },
+  'common.room': {
+    de: 'Zimmer',
+    en: 'Room' },
+  'common.rooms': {
+    de: 'Zimmer',
+    en: 'Rooms' },
+  'common.category': {
+    de: 'Zimmergruppe',
+    en: 'Room type' },
+  'common.guest': {
+    de: 'Gast',
+    en: 'Guest' },
+  'common.status': {
+    de: 'Status',
+    en: 'Status' },
+  'common.save': {
+    de: 'Speichern',
+    en: 'Save' },
+  'common.cancel': {
+    de: 'Abbrechen',
+    en: 'Cancel' },
+  'common.preview': {
+    de: 'Vorschau',
+    en: 'Preview' },
+  'common.apply': {
+    de: 'Übernehmen',
+    en: 'Apply' },
+  'common.loading': {
+    de: 'Lädt…',
+    en: 'Loading…' },
+  'common.none': {
+    de: 'Nichts vorhanden',
+    en: 'Nothing here' },
+  'common.today': {
+    de: 'Heute',
+    en: 'Today' },
+  'common.back': {
+    de: 'Zurück',
+    en: 'Back' },
+  'common.forward': {
+    de: 'Weiter',
+    en: 'Forward' },
+  'common.retry': {
+    de: 'Erneut versuchen',
+    en: 'Try again' },
+  'common.offline': {
+    de: 'Offline. Angezeigt wird der zuletzt geladene Stand.',
+    en: 'Offline. Showing the last loaded state.' },
+  'status.Optional': {
+    de: 'Option',
+    en: 'Option' },
+  'status.Confirmed': {
+    de: 'Bestätigt',
+    en: 'Confirmed' },
+  'status.InHouse': {
+    de: 'Im Haus',
+    en: 'In house' },
+  'status.CheckedOut': {
+    de: 'Abgereist',
+    en: 'Checked out' },
+  'status.Canceled': {
+    de: 'Storniert',
+    en: 'Cancelled' },
+  'status.NoShow': {
+    de: 'No-Show',
+    en: 'No show' },
+  'error.title': {
+    de: 'Das hat nicht geklappt',
+    en: 'That did not work' },
+  'error.offlineWrite': {
+    de: 'Ohne Verbindung lässt sich nichts speichern.',
+    en: 'Nothing can be saved without a connection.' },
+  'login.email': {
+    de: 'E-Mail',
+    en: 'Email' },
+  'login.password': {
+    de: 'Kennwort',
+    en: 'Password' },
+  'login.submit': {
+    de: 'Anmelden',
+    en: 'Sign in' },
+  'auth.logout': {
+    de: 'Abmelden',
+    en: 'Sign out' },
+  'app.noProperty': {
+    de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
+    en: 'This user is not assigned to any property yet.' },
+  'app.noScreen': {
+    de: 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
+      + 'öffnen.',
+    en: 'This account has no rights in {haus} that open a screen.' },
+} as const satisfies Record<string, LocalizedText>

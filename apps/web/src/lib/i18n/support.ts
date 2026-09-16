@@ -1,111 +1,150 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Support-Sitzungen: Anfrage, Freigabe, Widerruf. */
 export const support = {
-  de: {
-    'deploy.rollback': 'Zurück auf',
-    'deploy.rollbackHint': 'Schaltet auf einen früheren Stand zurück — ohne Bau, '
-                         + 'in Sekunden. Das Datenbankschema bleibt dabei auf dem '
-                         + 'neueren Stand.',
-    'deploy.rollbackNone': 'Kein früherer Stand verfügbar.',
-    'deploy.kind.rollback': 'zurückgerollt',
-    'deploy.title': 'Ausrollen',
-    'deploy.hint': 'Ausgerollt wird der Stand, der auf GitHub mit dem Tag '
-                 + '„produktion“ markiert ist — nie einfach der letzte. Dieser '
-                 + 'Knopf bestimmt nur den Zeitpunkt.',
-    'deploy.request': 'Jetzt ausrollen',
-    'deploy.requested': 'Angefordert. Die Maschine holt sich das binnen einer Minute.',
-    'deploy.current': 'Läuft gerade',
-    'deploy.currentUnknown': 'Noch kein Lauf verzeichnet',
-    'deploy.byHand': 'von Hand auf der Maschine',
-    'deploy.state.pending': 'Wartet',
-    'deploy.state.running': 'Läuft',
-    'deploy.state.done': 'Durch',
-    'deploy.state.failed': 'Gescheitert',
-    'deploy.showLog': 'Ausgabe zeigen',
-    'support.title': 'Support-Zugriff',
-    'support.hint': 'Unser Support sieht Ihre Daten nur, wenn Sie es hier '
-                  + 'freigeben — befristet, und jede Handlung steht im Protokoll.',
-    'support.none': 'Zurzeit bittet niemand um Zugriff.',
-    'support.reason': 'Anlass',
-    'support.who': 'Angefragt von',
-    'support.level': 'Umfang',
-    'support.level.read': 'Nur lesen',
-    'support.level.write': 'Lesen und ändern',
-    'support.until': 'Läuft ab',
-    'support.grant': 'Freigeben',
-    'support.deny': 'Ablehnen',
-    'support.revoke': 'Jetzt beenden',
-    'support.grantedBy': 'Freigegeben von {name}',
-    'support.state.pending': 'Wartet auf Ihre Entscheidung',
-    'support.state.active': 'Läuft',
-    'support.state.expired': 'Abgelaufen',
-    'support.state.revoked': 'Beendet',
-    'support.showPermissions': 'Was wird damit erlaubt?',
-    // Die Auslassungen sind der Punkt: der Kunde soll sehen, was auch bei
-    // Freigabe nicht geht.
-    'support.never': 'Nie enthalten: Ausweisdaten, DSGVO-Auskunft und Löschung, '
-                   + 'Rechnungen festschreiben, Exporte nach außen, Benutzer '
-                   + 'und Schnittstellen verwalten.',
+  'deploy.rollback': {
+    de: 'Zurück auf',
+    en: 'Roll back to' },
+  'deploy.rollbackHint': {
+    de: 'Schaltet auf einen früheren Stand zurück — ohne Bau, '
+      + 'in Sekunden. Das Datenbankschema bleibt dabei auf dem '
+      + 'neueren Stand.',
+    en: 'Switches back to an earlier release — no build, done '
+      + 'in seconds. The database schema stays at the newer '
+      + 'state.' },
+  'deploy.rollbackNone': {
+    de: 'Kein früherer Stand verfügbar.',
+    en: 'No earlier release available.' },
+  'deploy.kind.rollback': {
+    de: 'zurückgerollt',
+    en: 'rolled back' },
+  'deploy.title': {
+    de: 'Ausrollen',
+    en: 'Deploy' },
+  'deploy.hint': {
+    de: 'Ausgerollt wird der Stand, der auf GitHub mit dem Tag '
+      + '„produktion“ markiert ist — nie einfach der letzte. Dieser '
+      + 'Knopf bestimmt nur den Zeitpunkt.',
+    en: 'What gets deployed is the commit tagged “produktion” on '
+      + 'GitHub — never simply the latest one. This button only '
+      + 'decides when.' },
+  'deploy.request': {
+    de: 'Jetzt ausrollen',
+    en: 'Deploy now' },
+  'deploy.requested': {
+    de: 'Angefordert. Die Maschine holt sich das binnen einer Minute.',
+    en: 'Requested. The machine picks it up within a minute.' },
+  'deploy.current': {
+    de: 'Läuft gerade',
+    en: 'Currently running' },
+  'deploy.currentUnknown': {
+    de: 'Noch kein Lauf verzeichnet',
+    en: 'No run recorded yet' },
+  'deploy.byHand': {
+    de: 'von Hand auf der Maschine',
+    en: 'by hand on the machine' },
+  'deploy.state.pending': {
+    de: 'Wartet',
+    en: 'Waiting' },
+  'deploy.state.running': {
+    de: 'Läuft',
+    en: 'Running' },
+  'deploy.state.done': {
+    de: 'Durch',
+    en: 'Done' },
+  'deploy.state.failed': {
+    de: 'Gescheitert',
+    en: 'Failed' },
+  'deploy.showLog': {
+    de: 'Ausgabe zeigen',
+    en: 'Show output' },
+  'support.title': {
+    de: 'Support-Zugriff',
+    en: 'Support access' },
+  'support.hint': {
+    de: 'Unser Support sieht Ihre Daten nur, wenn Sie es hier '
+      + 'freigeben — befristet, und jede Handlung steht im Protokoll.',
+    en: 'Our support team sees your data only if you approve it here '
+      + '— for a limited time, and every action is recorded in the log.' },
+  'support.none': {
+    de: 'Zurzeit bittet niemand um Zugriff.',
+    en: 'Nobody is currently asking for access.' },
+  'support.reason': {
+    de: 'Anlass',
+    en: 'Reason' },
+  'support.who': {
+    de: 'Angefragt von',
+    en: 'Requested by' },
+  'support.level': {
+    de: 'Umfang',
+    en: 'Scope' },
+  'support.level.read': {
+    de: 'Nur lesen',
+    en: 'Read only' },
+  'support.level.write': {
+    de: 'Lesen und ändern',
+    en: 'Read and change' },
+  'support.until': {
+    de: 'Läuft ab',
+    en: 'Expires' },
+  'support.grant': {
+    de: 'Freigeben',
+    en: 'Approve' },
+  'support.deny': {
+    de: 'Ablehnen',
+    en: 'Decline' },
+  'support.revoke': {
+    de: 'Jetzt beenden',
+    en: 'End now' },
+  'support.grantedBy': {
+    de: 'Freigegeben von {name}',
+    en: 'Approved by {name}' },
+  'support.state.pending': {
+    de: 'Wartet auf Ihre Entscheidung',
+    en: 'Waiting for your decision' },
+  'support.state.active': {
+    de: 'Läuft',
+    en: 'Running' },
+  'support.state.expired': {
+    de: 'Abgelaufen',
+    en: 'Expired' },
+  'support.state.revoked': {
+    de: 'Beendet',
+    en: 'Ended' },
+  'support.showPermissions': {
+    de: 'Was wird damit erlaubt?',
+    en: 'What does this allow?' },
+  // Die Auslassungen sind der Punkt: der Kunde soll sehen, was auch bei
+  // Freigabe nicht geht.
+  'support.never': {
+    de: 'Nie enthalten: Ausweisdaten, DSGVO-Auskunft und Löschung, '
+      + 'Rechnungen festschreiben, Exporte nach außen, Benutzer '
+      + 'und Schnittstellen verwalten.',
+    en: 'Never included: identity documents, GDPR access and erasure, '
+      + 'issuing invoices, exports out of the house, managing users '
+      + 'and integrations.' },
 
-    'support.console': 'Support',
-    'support.console.hint': 'Ohne Freigabe des Kunden sehen Sie keine Kundendaten. '
-                          + 'Fragen Sie mit einem Anlass an; der Kunde entscheidet.',
-    'support.accountId': 'Account-Nummer',
-    'support.hours': 'Laufzeit in Stunden',
-    'support.request': 'Zugriff anfragen',
-    'support.requested': 'Angefragt. Der Kunde wurde benachrichtigt.',
-    'support.mine': 'Meine Anfragen'
-  },
-  en: {
-    'deploy.rollback': 'Roll back to',
-    'deploy.rollbackHint': 'Switches back to an earlier release — no build, done '
-                         + 'in seconds. The database schema stays at the newer '
-                         + 'state.',
-    'deploy.rollbackNone': 'No earlier release available.',
-    'deploy.kind.rollback': 'rolled back',
-    'deploy.title': 'Deploy',
-    'deploy.hint': 'What gets deployed is the commit tagged “produktion” on '
-                 + 'GitHub — never simply the latest one. This button only '
-                 + 'decides when.',
-    'deploy.request': 'Deploy now',
-    'deploy.requested': 'Requested. The machine picks it up within a minute.',
-    'deploy.current': 'Currently running',
-    'deploy.currentUnknown': 'No run recorded yet',
-    'deploy.byHand': 'by hand on the machine',
-    'deploy.state.pending': 'Waiting',
-    'deploy.state.running': 'Running',
-    'deploy.state.done': 'Done',
-    'deploy.state.failed': 'Failed',
-    'deploy.showLog': 'Show output',
-    'support.title': 'Support access',
-    'support.hint': 'Our support team sees your data only if you approve it here '
-                  + '— for a limited time, and every action is recorded in the log.',
-    'support.none': 'Nobody is currently asking for access.',
-    'support.reason': 'Reason',
-    'support.who': 'Requested by',
-    'support.level': 'Scope',
-    'support.level.read': 'Read only',
-    'support.level.write': 'Read and change',
-    'support.until': 'Expires',
-    'support.grant': 'Approve',
-    'support.deny': 'Decline',
-    'support.revoke': 'End now',
-    'support.grantedBy': 'Approved by {name}',
-    'support.state.pending': 'Waiting for your decision',
-    'support.state.active': 'Running',
-    'support.state.expired': 'Expired',
-    'support.state.revoked': 'Ended',
-    'support.showPermissions': 'What does this allow?',
-    'support.never': 'Never included: identity documents, GDPR access and erasure, '
-                   + 'issuing invoices, exports out of the house, managing users '
-                   + 'and integrations.',
-
-    'support.console': 'Support',
-    'support.console.hint': 'Without the customer’s approval you see no customer '
-                          + 'data. Ask with a stated reason; the customer decides.',
-    'support.accountId': 'Account number',
-    'support.hours': 'Duration in hours',
-    'support.request': 'Request access',
-    'support.requested': 'Requested. The customer has been notified.',
-    'support.mine': 'My requests'
-  }
-} as const
+  'support.console': {
+    de: 'Support',
+    en: 'Support' },
+  'support.console.hint': {
+    de: 'Ohne Freigabe des Kunden sehen Sie keine Kundendaten. '
+      + 'Fragen Sie mit einem Anlass an; der Kunde entscheidet.',
+    en: 'Without the customer’s approval you see no customer '
+      + 'data. Ask with a stated reason; the customer decides.' },
+  'support.accountId': {
+    de: 'Account-Nummer',
+    en: 'Account number' },
+  'support.hours': {
+    de: 'Laufzeit in Stunden',
+    en: 'Duration in hours' },
+  'support.request': {
+    de: 'Zugriff anfragen',
+    en: 'Request access' },
+  'support.requested': {
+    de: 'Angefragt. Der Kunde wurde benachrichtigt.',
+    en: 'Requested. The customer has been notified.' },
+  'support.mine': {
+    de: 'Meine Anfragen',
+    en: 'My requests' },
+} as const satisfies Record<string, LocalizedText>
