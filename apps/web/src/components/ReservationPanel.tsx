@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ReservationDetail } from '@hotelpms/contracts'
 import { useReservation, usePatchReservationNotes, useReservationStatusAction,
          useSendConfirmation } from '../lib/queries/booking.js'
-import { useT, useLocale, formatMoney, formatDate, type Locale } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
+  from '../lib/i18n/index.js'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
@@ -282,6 +283,6 @@ function BestaetigungSchicken({ reservationRef }: { reservationRef: string }): J
 }
 
 function zeitpunkt(iso: string, locale: Locale): string {
-  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+  return new Intl.DateTimeFormat(intlTag(locale),
     { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
 }

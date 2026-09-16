@@ -1,4 +1,4 @@
-import { StrictMode, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
   from '@tanstack/react-query'
@@ -64,6 +64,17 @@ function Hinweis({ children }: { children: React.ReactNode }): JSX.Element {
 
 function App(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(spracheDesBrowsers)
+  /*
+   * Das `lang` des Dokuments folgt der Sprachwahl.
+   *
+   * In `index.html` steht `lang="de"` fest -- richtig, solange nichts
+   * anderes angeboten wird. Ein Vorleseprogramm spricht danach aus: es
+   * laese tuerkische Saetze nach deutschen Regeln, und dieselbe Angabe
+   * entscheidet ueber Silbentrennung und darueber, welche Sprache ein
+   * Uebersetzer im Browser zu erkennen glaubt. Der Effekt faellt sehend
+   * niemandem auf, und genau deshalb bliebe er stehen.
+   */
+  useEffect(() => { document.documentElement.lang = locale }, [locale])
   /*
    * Einladung und Kennwortruecksetzung stehen **vor** allem anderen, auch vor
    * der Frage, wer angemeldet ist. Wer diesen Link aus einer E-Mail anklickt,

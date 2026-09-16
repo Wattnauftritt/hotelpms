@@ -1,4 +1,5 @@
 import type { RateGridCell, SetRates, SetRestrictions } from '@hotelpms/contracts'
+import { intlTag, type Locale } from './i18n/index.js'
 
 /**
  * Die Rechenarbeit hinter dem Preisraster, ohne React und ohne Netz.
@@ -188,10 +189,10 @@ export function restriktionsNutzlast(e: RestriktionsEingabe): SetRestrictions {
  * ist hier passiert -- Typprüfung, Lint und die Tests waren grün, und der
  * Bildschirm stürzte beim ersten Klick ab.
  */
-export function wochentagKuerzel(index: number, locale: 'de' | 'en'): string {
+export function wochentagKuerzel(index: number, locale: Locale): string {
   let woche = wochenKuerzel.get(locale)
   if (woche === undefined) {
-    const f = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+    const f = new Intl.DateTimeFormat(intlTag(locale),
       { weekday: 'short', timeZone: 'UTC' })
     woche = Array.from({ length: 7 }, (_, i) =>
       f.format(new Date(`2026-01-${String(5 + i).padStart(2, '0')}T00:00:00Z`)))
@@ -201,7 +202,7 @@ export function wochentagKuerzel(index: number, locale: 'de' | 'en'): string {
 }
 
 /** Sieben Kürzel je Sprache. Mehr gibt es nicht, also wird es einmal gebaut. */
-const wochenKuerzel = new Map<'de' | 'en', string[]>()
+const wochenKuerzel = new Map<Locale, string[]>()
 
 /** Kurzzeichen einer Zelle: was an Restriktionen an diesem Tag gilt. */
 export function restriktionsZeichen(z: RateGridCell): string {

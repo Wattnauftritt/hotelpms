@@ -119,10 +119,21 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 **Neue Meldung.** Jeder Satz, den ein Mensch zu sehen bekommt, ist ein
 Schlüssel, kein Text im Code. Fehlermeldungen und Hinweise der Schnittstelle
 stehen in [`packages/contracts/src/messages.ts`](packages/contracts/src/messages.ts),
-deutsch und englisch nebeneinander; Beschriftungen der Oberfläche in
-`apps/web/src/lib/i18n/`, eine Datei je Bereich. Die API antwortet **deutsch**
-und legt den Schlüssel daneben — ein Protokoll soll ohne Katalog lesbar
-bleiben, die Rezeption den Satz in ihrer Sprache sehen.
+Beschriftungen der Oberfläche in `apps/web/src/lib/i18n/`, eine Datei je
+Bereich. In beiden stehen die Sprachen **je Schlüssel nebeneinander**, nicht
+in getrennten Blöcken; jede Datei trägt `satisfies Record<string,
+LocalizedText>`, und eine vergessene Sprache ist damit ein Typfehler an
+genau dem Schlüssel. Die API antwortet **deutsch** und legt den Schlüssel
+daneben — ein Protokoll soll ohne Katalog lesbar bleiben, die Rezeption den
+Satz in ihrer Sprache sehen.
+
+Angeboten wird eine Sprache erst, wenn sie **vollständig** ist: `LOCALES` in
+`messages.ts` ist die Zusage, und halb übersetzt anzubieten hieße, dem
+Benutzer die Hälfte in einer Sprache zu zeigen, die er nicht gewählt hat.
+Deutsche Rechtsbegriffe bleiben dabei stehen — `Meldeschein`, `GoBD`,
+`DATEV`, `USt-IdNr.`, `§ 30 BMG` sind Namen, keine beschreibenden Wörter:
+wer den Bildschirm dem Papier zuordnen soll, das vor ihm liegt, braucht
+dasselbe Wort auf beiden.
 
 Werte kommen als Platzhalter (`{max}`), nie durch Zusammensetzen: „Die Gruppe
 hat noch " + n + " Reservierungen" ergibt in jeder Sprache mit anderer
