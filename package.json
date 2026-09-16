@@ -16,6 +16,7 @@
     "db:reset": "pnpm --filter @hotelpms/db reset",
     "db:seed": "pnpm --filter @hotelpms/db seed",
     "db:testhotel": "pnpm --filter @hotelpms/db testhotel",
+    "db:plattformbenutzer": "pnpm --filter @hotelpms/db plattformbenutzer",
     "dev:api": "pnpm --filter @hotelpms/api dev",
     "dev:web": "pnpm --filter @hotelpms/web dev"
   },

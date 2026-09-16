@@ -16,7 +16,8 @@
     "migrate": "tsx src/cli/migrate.ts",
     "reset": "tsx src/cli/reset.ts",
     "seed": "tsx src/cli/seed.ts",
-    "testhotel": "tsx src/cli/testhotel.ts"
+    "testhotel": "tsx src/cli/testhotel.ts",
+    "plattformbenutzer": "tsx src/cli/plattformbenutzer.ts"
   },
   "dependencies": {
     "pg": "^8.13.1",
