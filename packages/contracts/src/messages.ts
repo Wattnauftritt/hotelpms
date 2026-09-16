@@ -36,14 +36,56 @@ export const LOCALES = ['de', 'en'] as const
 export type MessageLocale = (typeof LOCALES)[number]
 
 /**
+ * Die Sprachen, in denen **Gastpost** entsteht.
+ *
+ * Bewusst eine zweite Liste neben `LOCALES` und nicht dieselbe: die eine
+ * folgt dem Personal am Bildschirm, die andere dem Gast an seinem Profil.
+ * Ein deutsches Haus, dessen Rezeption die Oberflaeche auf Deutsch fuehrt,
+ * schreibt einem niederlaendischen Gast trotzdem niederlaendisch -- und
+ * eine Sprache in die Oberflaeche zu uebersetzen ist ein Vielfaches der
+ * Arbeit, die ein Anschreiben kostet. Die Listen waeren zusammengelegt
+ * entweder zu klein oder zu teuer.
+ *
+ * Bewusst hier und nicht in `packages/domain`, wo die Vorlagen stehen:
+ * die Gastmaske bietet diese Sprachen zur Auswahl an und braucht dafuer
+ * nur die Liste. Sie ueber die Domaene zu holen zog deren Barrel in das
+ * Buendel der Oberflaeche -- mit `node:crypto` darin, das ein Browser
+ * nicht hat.
+ */
+export const EMAIL_LANGUAGES = ['de', 'en', 'nl', 'pl'] as const
+export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
+
+/**
+ * Die Sprache eines Gastes auf eine Sprache abbilden, in der wir schreiben.
+ *
+ * Gegen die Liste und nicht gegen eine einzelne Sprache: mit
+ * `code === 'en' ? 'en' : 'de'` bekaeme jede neue Sprache stillschweigend
+ * deutsche Post, und aufgefallen waere es dem Gast, nicht uns.
+ *
+ * Nur die ersten beiden Zeichen: am Profil steht mal `en`, mal `en-GB`.
+ * Einen Gast deutsch anzuschreiben, weil sein Profil die Region mitfuehrt,
+ * waere eine seltsame Art, genau zu sein.
+ */
+export function emailLanguage(code: string | null | undefined): EmailLanguage {
+  const kurz = (code ?? '').slice(0, 2).toLowerCase()
+  return (EMAIL_LANGUAGES as readonly string[]).includes(kurz)
+    ? (kurz as EmailLanguage)
+    : 'de'
+}
+
+/**
  * Ein Eintrag: ein Satz je Sprache.
  *
  * Bewusst benannte Felder und keine Liste. Bei zwei Sprachen waere eine
  * Liste knapper; ab der dritten liest niemand mehr ab, welcher Satz zu
  * welcher Sprache gehoert, und eine vertauschte Reihenfolge faellt keinem
  * Typ auf. Ein fehlendes Feld dagegen bricht den Build.
+ *
+ * Ausgefuehrt, weil die Beschriftungen der Oberflaeche dieselbe Form haben.
+ * Zweimal dieselbe Zeile zu schreiben hiesse, sie beim Hinzufuegen einer
+ * Sprache an zwei Stellen zu aendern -- und eine davon zu vergessen.
  */
-type Eintrag = { readonly [L in MessageLocale]: string }
+export type LocalizedText = { readonly [L in MessageLocale]: string }
 
 const M = {
   // ------------------------------------------------------------ Fehlertitel
@@ -787,7 +829,7 @@ const M = {
   'field.depositPartsMismatch': {
     de: 'Die Teile ergeben {sum} Cent, vereinnahmt sind {received} Cent.',
     en: 'The parts add up to {sum} cents, {received} cents were received.' }
-} as const satisfies Record<string, Eintrag>
+} as const satisfies Record<string, LocalizedText>
 
 export type MessageKey = keyof typeof M
 export type MessageParams = Record<string, string | number>

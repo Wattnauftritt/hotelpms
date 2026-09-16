@@ -1,20 +1,44 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
 import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
          weekdayShort } from '../lib/i18n/index.js'
 
 /**
  * Der Katalog der Oberflaeche.
  *
- * Dass ein Schluessel in beiden Sprachen **existiert**, faengt schon der
- * Typecheck ab: `TextKey` leitet sich aus dem deutschen Block ab, und ein
- * fehlender englischer Eintrag bricht den Build. Was er nicht faengt, steht
- * hier: ein leerer Satz, ein Platzhalter, den nur eine Sprache kennt, und
- * ein Text, der im Code steht statt im Katalog.
+ * Dass ein Schluessel jede Sprache **hat**, faengt schon der Typecheck ab:
+ * jede Bereichsdatei traegt `satisfies Record<string, LocalizedText>`, und
+ * eine fehlende Sprache bricht den Build an genau dem Schluessel. Was er
+ * nicht faengt, steht hier: ein leerer Satz, ein Platzhalter, den nur eine
+ * Sprache kennt, und ein Schluessel, den zwei Bereiche fuer sich
+ * beanspruchen.
  */
 
 const I18N = join(import.meta.dirname, '..', 'lib', 'i18n')
+
+function bereichsDateien(): string[] {
+  return readdirSync(I18N)
+    .filter(n => n.endsWith('.ts') && n !== 'index.ts')
+    .map(n => n.replace(/\.ts$/, ''))
+}
+
+describe('Sprachen der Gastpost in der Maske', () => {
+  /**
+   * Die Gastmaske bietet die Sprachen an, in denen wir schreiben -- und die
+   * Liste dafuer ist `EMAIL_LANGUAGES`, nicht eine zweite im Bildschirm.
+   * Kommt eine Sprache dazu und fehlt hier ihr Name, stuende im Auswahlfeld
+   * der Schluessel: "guests.language.nl".
+   */
+  it('benennt jede Sprache, in der Gastpost hinausgeht', () => {
+    const vorhanden = new Set<string>(textKeys())
+    for (const lang of EMAIL_LANGUAGES) {
+      expect(vorhanden.has(`guests.language.${lang}`),
+        `guests.language.${lang} fehlt im Katalog`).toBe(true)
+    }
+  })
+})
 
 describe('Katalog der Oberflaeche', () => {
   it('hat in jeder Sprache einen Satz zu jedem Schluessel', () => {
@@ -48,20 +72,39 @@ describe('Katalog der Oberflaeche', () => {
    * Eine Datei, die niemand importiert, faellt sonst erst auf, wenn ein
    * Bildschirm seine Schluessel unuebersetzt zeigt.
    */
-  it('traegt jeden Bereich in beide Sprachbloecke ein', () => {
+  it('traegt jeden Bereich in den Katalog ein', () => {
     const index = readFileSync(join(I18N, 'index.ts'), 'utf8')
-    const bereiche = readdirSync(I18N)
-      .filter(n => n.endsWith('.ts') && n !== 'index.ts')
-      .map(n => n.replace(/\.ts$/, ''))
-    expect(bereiche.length).toBeGreaterThan(5)
-    for (const bereich of bereiche) {
+    expect(bereichsDateien().length).toBeGreaterThan(5)
+    for (const bereich of bereichsDateien()) {
       expect(index, `${bereich} ist nicht importiert`)
         .toContain(`from './${bereich}.js'`)
-      expect(index, `${bereich} fehlt im deutschen Block`)
-        .toContain(`...${bereich}.de`)
-      expect(index, `${bereich} fehlt im englischen Block`)
-        .toContain(`...${bereich}.en`)
+      expect(new RegExp(`\\.\\.\\.${bereich}\\b`).test(index),
+        `${bereich} fehlt im Katalog`).toBe(true)
     }
+  })
+
+  /**
+   * Die Bereiche werden zu einem Katalog verschmolzen. Beansprucht ein
+   * Schluessel zwei Bereiche, gewinnt stillschweigend der spaeter
+   * eingetragene -- und der andere Bildschirm zeigt eine Beschriftung, die
+   * niemand fuer ihn geschrieben hat. Ohne diesen Test faellt das erst auf,
+   * wenn jemand hinsieht.
+   */
+  it('laesst keinen Schluessel in zwei Bereichen stehen', () => {
+    const woher = new Map<string, string>()
+    const doppelt: string[] = []
+    for (const bereich of bereichsDateien()) {
+      const quelle = readFileSync(join(I18N, `${bereich}.ts`), 'utf8')
+      for (const m of quelle.matchAll(/^ {2}'([^']+)': \{$/gm)) {
+        const key = m[1]!
+        const schon = woher.get(key)
+        if (schon !== undefined) doppelt.push(`${key}: ${schon} und ${bereich}`)
+        else woher.set(key, bereich)
+      }
+    }
+    expect(doppelt, 'Diese Schluessel stehen zweimal').toEqual([])
+    // Der Ausdruck oben muss auch wirklich greifen.
+    expect(woher.size).toBe(textKeys().length)
   })
 })
 

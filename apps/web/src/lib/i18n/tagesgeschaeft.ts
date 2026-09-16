@@ -1,23 +1,29 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Tagesgeschaeft: Anreisen, Abreisen, Hausliste. */
 export const tagesgeschaeft = {
-  de: {
-    'today.arrivals': 'Anreisen',
-    'today.departures': 'Abreisen',
-    'today.inhouse': 'Im Haus',
-    'today.checkin': 'Check-in',
-    'today.checkout': 'Check-out',
-    'today.registered': 'Meldeschein liegt vor',
-    'today.balance': 'Offener Saldo',
-    'today.needsRoom': 'Kein Zimmer zugewiesen',
-  },
-  en: {
-    'today.arrivals': 'Arrivals',
-    'today.departures': 'Departures',
-    'today.inhouse': 'In house',
-    'today.checkin': 'Check in',
-    'today.checkout': 'Check out',
-    'today.registered': 'Registration form on file',
-    'today.balance': 'Open balance',
-    'today.needsRoom': 'No room assigned',
-  }
-} as const
+  'today.arrivals': {
+    de: 'Anreisen',
+    en: 'Arrivals' },
+  'today.departures': {
+    de: 'Abreisen',
+    en: 'Departures' },
+  'today.inhouse': {
+    de: 'Im Haus',
+    en: 'In house' },
+  'today.checkin': {
+    de: 'Check-in',
+    en: 'Check in' },
+  'today.checkout': {
+    de: 'Check-out',
+    en: 'Check out' },
+  'today.registered': {
+    de: 'Meldeschein liegt vor',
+    en: 'Registration form on file' },
+  'today.balance': {
+    de: 'Offener Saldo',
+    en: 'Open balance' },
+  'today.needsRoom': {
+    de: 'Kein Zimmer zugewiesen',
+    en: 'No room assigned' },
+} as const satisfies Record<string, LocalizedText>

@@ -1,129 +1,178 @@
+import type { LocalizedText } from '@hotelpms/contracts'
+
 /** Rahmen, Navigation und was ueberall vorkommt. */
 export const common = {
-  de: {
-    'app.title': 'hotelpms',
-    'nav.tape': 'Zimmerplan',
-    'nav.today': 'Tagesgeschäft',
-    'nav.housekeeping': 'Housekeeping',
-    'nav.setup': 'Einrichtung',
-    'nav.guests': 'Gäste',
-    'nav.blocks': 'Gruppen',
-    'common.from': 'Von',
-    'common.to': 'Bis',
-    'common.date': 'Datum',
-    'common.room': 'Zimmer',
-    'common.rooms': 'Zimmer',
-    'common.category': 'Zimmergruppe',
-    'common.guest': 'Gast',
-    'common.status': 'Status',
-    'common.save': 'Speichern',
-    'common.cancel': 'Abbrechen',
-    'common.preview': 'Vorschau',
-    'common.apply': 'Übernehmen',
-    'common.loading': 'Lädt…',
-    'common.none': 'Nichts vorhanden',
-    'common.today': 'Heute',
-    'common.back': 'Zurück',
-    'common.forward': 'Weiter',
-    'common.retry': 'Erneut versuchen',
-    'common.offline': 'Offline. Angezeigt wird der zuletzt geladene Stand.',
-    'status.Optional': 'Option',
-    'status.Confirmed': 'Bestätigt',
-    'status.InHouse': 'Im Haus',
-    'status.CheckedOut': 'Abgereist',
-    'status.Canceled': 'Storniert',
-    'status.NoShow': 'No-Show',
-    'error.title': 'Das hat nicht geklappt',
-    'error.offlineWrite': 'Ohne Verbindung lässt sich nichts speichern.',
-    'login.email': 'E-Mail',
-    'login.password': 'Kennwort',
-    'login.submit': 'Anmelden',
-    'auth.logout': 'Abmelden',
-    'workstation.switch': 'Person wechseln',
-    'workstation.title': 'Arbeitsplatz',
-    'workstation.acting': 'Es handelt gerade nicht die angemeldete Person.',
-    'workstation.switchHint': 'Am geteilten Rezeptionsrechner übernimmt eine andere '
-                            + 'Person, ohne dass sich jemand neu anmeldet. Die Sitzung '
-                            + 'bleibt; im Protokoll steht, wer wirklich gebucht hat.',
-    'workstation.pin': 'Arbeitsplatz-PIN',
-    'workstation.switchSubmit': 'Übernehmen',
-    'workstation.switched': 'Übernommen',
-    'workstation.ownPin': 'Eigener Arbeitsplatz-PIN',
-    'workstation.ownPinHint': 'Vier bis zwölf Ziffern. Nur damit kann jemand an einem '
-                            + 'anderen Arbeitsplatz in Ihrem Namen weiterarbeiten — und '
-                            + 'nur damit kommen Sie nach einem Wechsel in Ihre eigene '
-                            + 'Sitzung zurück.',
-    'workstation.pinSet': 'Hinterlegt',
-    'workstation.pinNotSet': 'Nicht hinterlegt',
-    'workstation.pinSave': 'PIN setzen',
-    'workstation.pinRemove': 'PIN entfernen',
-    'workstation.pinSaved': 'Gespeichert',
-    'workstation.needOwnPin': 'Hinterlegen Sie zuerst einen eigenen PIN. Ohne ihn '
-                            + 'kämen Sie nach einem Wechsel nicht zurück.',
-    'app.noProperty': 'Diesem Benutzer ist noch kein Haus zugeordnet.',
-    'app.noScreen': 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
-                  + 'öffnen.'
-  },
-  en: {
-    'app.title': 'hotelpms',
-    'nav.tape': 'Room chart',
-    'nav.today': 'Front desk',
-    'nav.housekeeping': 'Housekeeping',
-    'nav.setup': 'Setup',
-    'nav.guests': 'Guests',
-    'nav.blocks': 'Groups',
-    'common.from': 'From',
-    'common.to': 'To',
-    'common.date': 'Date',
-    'common.room': 'Room',
-    'common.rooms': 'Rooms',
-    'common.category': 'Room type',
-    'common.guest': 'Guest',
-    'common.status': 'Status',
-    'common.save': 'Save',
-    'common.cancel': 'Cancel',
-    'common.preview': 'Preview',
-    'common.apply': 'Apply',
-    'common.loading': 'Loading…',
-    'common.none': 'Nothing here',
-    'common.today': 'Today',
-    'common.back': 'Back',
-    'common.forward': 'Forward',
-    'common.retry': 'Try again',
-    'common.offline': 'Offline. Showing the last loaded state.',
-    'status.Optional': 'Option',
-    'status.Confirmed': 'Confirmed',
-    'status.InHouse': 'In house',
-    'status.CheckedOut': 'Checked out',
-    'status.Canceled': 'Cancelled',
-    'status.NoShow': 'No show',
-    'error.title': 'That did not work',
-    'error.offlineWrite': 'Nothing can be saved without a connection.',
-    'login.email': 'Email',
-    'login.password': 'Password',
-    'login.submit': 'Sign in',
-    'auth.logout': 'Sign out',
-    'workstation.switch': 'Switch person',
-    'workstation.title': 'Workstation',
-    'workstation.acting': 'Someone other than the signed-in person is acting.',
-    'workstation.switchHint': 'At a shared front-desk machine another person takes '
-                            + 'over without anyone signing in again. The session stays; '
-                            + 'the audit log records who actually booked.',
-    'workstation.pin': 'Workstation PIN',
-    'workstation.switchSubmit': 'Take over',
-    'workstation.switched': 'Taken over',
-    'workstation.ownPin': 'Your own workstation PIN',
-    'workstation.ownPinHint': 'Four to twelve digits. Only with it can someone carry '
-                            + 'on in your name at another workstation — and only with '
-                            + 'it do you get back into your own session after a switch.',
-    'workstation.pinSet': 'On file',
-    'workstation.pinNotSet': 'Not on file',
-    'workstation.pinSave': 'Set PIN',
-    'workstation.pinRemove': 'Remove PIN',
-    'workstation.pinSaved': 'Saved',
-    'workstation.needOwnPin': 'Set a PIN of your own first. Without it you could not '
-                            + 'get back after a switch.',
-    'app.noProperty': 'This user is not assigned to any property yet.',
-    'app.noScreen': 'This account has no rights in {haus} that open a screen.'
-  }
-} as const
+  'app.title': {
+    de: 'hotelpms',
+    en: 'hotelpms' },
+  'nav.tape': {
+    de: 'Zimmerplan',
+    en: 'Room chart' },
+  'nav.today': {
+    de: 'Tagesgeschäft',
+    en: 'Front desk' },
+  'nav.housekeeping': {
+    de: 'Housekeeping',
+    en: 'Housekeeping' },
+  'nav.setup': {
+    de: 'Einrichtung',
+    en: 'Setup' },
+  'nav.guests': {
+    de: 'Gäste',
+    en: 'Guests' },
+  'nav.blocks': {
+    de: 'Gruppen',
+    en: 'Groups' },
+  'common.from': {
+    de: 'Von',
+    en: 'From' },
+  'common.to': {
+    de: 'Bis',
+    en: 'To' },
+  'common.date': {
+    de: 'Datum',
+    en: 'Date' },
+  'common.room': {
+    de: 'Zimmer',
+    en: 'Room' },
+  'common.rooms': {
+    de: 'Zimmer',
+    en: 'Rooms' },
+  'common.category': {
+    de: 'Zimmergruppe',
+    en: 'Room type' },
+  'common.guest': {
+    de: 'Gast',
+    en: 'Guest' },
+  'common.status': {
+    de: 'Status',
+    en: 'Status' },
+  'common.save': {
+    de: 'Speichern',
+    en: 'Save' },
+  'common.cancel': {
+    de: 'Abbrechen',
+    en: 'Cancel' },
+  'common.preview': {
+    de: 'Vorschau',
+    en: 'Preview' },
+  'common.apply': {
+    de: 'Übernehmen',
+    en: 'Apply' },
+  'common.loading': {
+    de: 'Lädt…',
+    en: 'Loading…' },
+  'common.none': {
+    de: 'Nichts vorhanden',
+    en: 'Nothing here' },
+  'common.today': {
+    de: 'Heute',
+    en: 'Today' },
+  'common.back': {
+    de: 'Zurück',
+    en: 'Back' },
+  'common.forward': {
+    de: 'Weiter',
+    en: 'Forward' },
+  'common.retry': {
+    de: 'Erneut versuchen',
+    en: 'Try again' },
+  'common.offline': {
+    de: 'Offline. Angezeigt wird der zuletzt geladene Stand.',
+    en: 'Offline. Showing the last loaded state.' },
+  'status.Optional': {
+    de: 'Option',
+    en: 'Option' },
+  'status.Confirmed': {
+    de: 'Bestätigt',
+    en: 'Confirmed' },
+  'status.InHouse': {
+    de: 'Im Haus',
+    en: 'In house' },
+  'status.CheckedOut': {
+    de: 'Abgereist',
+    en: 'Checked out' },
+  'status.Canceled': {
+    de: 'Storniert',
+    en: 'Cancelled' },
+  'status.NoShow': {
+    de: 'No-Show',
+    en: 'No show' },
+  'error.title': {
+    de: 'Das hat nicht geklappt',
+    en: 'That did not work' },
+  'error.offlineWrite': {
+    de: 'Ohne Verbindung lässt sich nichts speichern.',
+    en: 'Nothing can be saved without a connection.' },
+  'login.email': {
+    de: 'E-Mail',
+    en: 'Email' },
+  'login.password': {
+    de: 'Kennwort',
+    en: 'Password' },
+  'login.submit': {
+    de: 'Anmelden',
+    en: 'Sign in' },
+  'auth.logout': {
+    de: 'Abmelden',
+    en: 'Sign out' },
+  'workstation.switch': {
+    de: 'Person wechseln',
+    en: 'Switch person' },
+  'workstation.title': {
+    de: 'Arbeitsplatz',
+    en: 'Workstation' },
+  'workstation.acting': {
+    de: 'Es handelt gerade nicht die angemeldete Person.',
+    en: 'Someone other than the signed-in person is acting.' },
+  'workstation.switchHint': {
+    de: 'Am geteilten Rezeptionsrechner übernimmt eine andere Person, ohne dass '
+      + 'sich jemand neu anmeldet. Die Sitzung bleibt; im Protokoll steht, wer '
+      + 'wirklich gebucht hat.',
+    en: 'At a shared front-desk machine another person takes over without anyone '
+      + 'signing in again. The session stays; the audit log records who actually '
+      + 'booked.' },
+  'workstation.pin': {
+    de: 'Arbeitsplatz-PIN',
+    en: 'Workstation PIN' },
+  'workstation.switchSubmit': {
+    de: 'Übernehmen',
+    en: 'Take over' },
+  'workstation.ownPin': {
+    de: 'Eigener Arbeitsplatz-PIN',
+    en: 'Your own workstation PIN' },
+  'workstation.ownPinHint': {
+    de: 'Vier bis zwölf Ziffern. Nur damit kann jemand an einem anderen '
+      + 'Arbeitsplatz in Ihrem Namen weiterarbeiten — und nur damit kommen Sie '
+      + 'nach einem Wechsel in Ihre eigene Sitzung zurück.',
+    en: 'Four to twelve digits. Only with it can someone carry on in your name at '
+      + 'another workstation — and only with it do you get back into your own '
+      + 'session after a switch.' },
+  'workstation.pinSet': {
+    de: 'Hinterlegt',
+    en: 'On file' },
+  'workstation.pinNotSet': {
+    de: 'Nicht hinterlegt',
+    en: 'Not on file' },
+  'workstation.pinSave': {
+    de: 'PIN setzen',
+    en: 'Set PIN' },
+  'workstation.pinRemove': {
+    de: 'PIN entfernen',
+    en: 'Remove PIN' },
+  'workstation.pinSaved': {
+    de: 'Gespeichert',
+    en: 'Saved' },
+  'workstation.needOwnPin': {
+    de: 'Hinterlegen Sie zuerst einen eigenen PIN. Ohne ihn kämen Sie nach einem '
+      + 'Wechsel nicht zurück.',
+    en: 'Set a PIN of your own first. Without it you could not get back after a '
+      + 'switch.' },
+  'app.noProperty': {
+    de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
+    en: 'This user is not assigned to any property yet.' },
+  'app.noScreen': {
+    de: 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
+      + 'öffnen.',
+    en: 'This account has no rights in {haus} that open a screen.' },
+} as const satisfies Record<string, LocalizedText>
