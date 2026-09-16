@@ -42,12 +42,14 @@ Die Absenderadresse muss **bei Brevo verifiziert** sein. Ist sie es nicht, weist
 
 Ausgerollt wird **nur**, was mit diesem Tag markiert ist — nie einfach `main`. Ohne ihn bricht der erste Ausrollversuch mit einem Git-Fehler ab.
 
+**Am einfachsten über GitHub:** Actions → *Für die Produktion freigeben* → **Run workflow**. Das Feld steht schon auf `main`, bestätigen genügt. Der Workflow weist einen Stand ab, der nicht grün durch CI ist — du kannst dabei also nichts Unfertiges erwischen.
+
+Von Hand, wo Git offen ist:
+
 ```bash
 git tag -f produktion <commit>
 git push -f origin produktion
 ```
-
-Geht ebenso aus der GitHub-Oberfläche. Nimm den Stand, der zuletzt grün durch CI ist.
 
 **Fertig, wenn:** `git ls-remote --tags origin produktion` eine Zeile liefert.
 

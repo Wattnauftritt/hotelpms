@@ -1,0 +1,113 @@
+name: Fuer die Produktion freigeben
+
+# Setzt den Tag `produktion` auf einen Commit. Die Maschine rollt nur diesen
+# Stand aus, nie einfach main -- was hier passiert, ist also die Freigabe,
+# und der Knopf in der Support-Konsole bestimmt danach nur noch den
+# Zeitpunkt (Dokument 21 §8).
+#
+# **Warum ein Workflow und nicht `git push --tags` von Hand.** Von Hand geht
+# es auch, und fuer wen Git ohnehin offen ist, bleibt es der kuerzere Weg.
+# Ueber die GitHub-Oberflaeche dagegen liess sich ein Tag bisher nur
+# umstaendlich verschieben: Release loeschen, Tag loeschen, beides neu
+# anlegen. Vier Klicks und jedes Mal die Gelegenheit, den falschen Commit zu
+# erwischen.
+#
+# **Warum kein Schluessel noetig ist.** Der eingebaute GITHUB_TOKEN reicht,
+# und er wirkt nur in diesem Repository. Ein Deploy-Key mit Schreibrecht auf
+# der Produktivmaschine waere der Weg vom Produktivsystem in den Quellcode
+# und ist deshalb ausgeschlossen (Dokument 21 §5) -- hier steht das Problem
+# gar nicht erst.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit, Zweig oder Tag. Vorgabe: der neueste Stand von main'
+        required: true
+        default: 'main'
+
+# Nur das Noetige: Tags schreiben. Kein Zugriff auf Pakete, Seiten, Issues.
+permissions:
+  contents: write
+
+# Zwei gleichzeitige Freigaben waeren ein Wettlauf um denselben Tag, und wer
+# gewinnt, saehe man erst auf der Maschine.
+concurrency:
+  group: freigabe
+  cancel-in-progress: false
+
+jobs:
+  freigeben:
+    runs-on: ubuntu-latest
+    steps:
+      # Die ganze Geschichte, nicht nur der Kopf: sonst laesst sich ein
+      # aelterer Commit nicht aufloesen, und genau dafuer ist das Eingabefeld
+      # da.
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Stand aufloesen
+        id: stand
+        run: |
+          set -euo pipefail
+          # ^{commit} loest auch einen Zweig oder einen Tag auf einen Commit
+          # auf. Ohne das zeigte `produktion` auf ein Tag-Objekt statt auf
+          # den Stand, und `git checkout --detach` auf der Maschine bekaeme
+          # etwas anderes, als hier ausgewaehlt wurde.
+          if ! sha="$(git rev-parse --verify "${{ inputs.ref }}^{commit}" 2>/dev/null)"; then
+            echo "::error::'${{ inputs.ref }}' ist kein Commit, Zweig oder Tag in diesem Repository."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "kurz=${sha:0:12}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Freigegeben"
+            echo
+            echo "\`$sha\`"
+            echo
+            git log -1 --pretty='**%s**%n%n%an, %ad' --date=short "$sha"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Der Stand muss durch CI gekommen sein. Freizugeben, was nie gebaut
+      # wurde, waere genau das, was der Marker verhindern soll -- und es
+      # faellt sonst erst auf der Maschine auf, beim Bau, mitten im Betrieb.
+      - name: Ist dieser Stand gruen durch CI?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="${{ steps.stand.outputs.sha }}"
+          # Drei Faelle auseinanderhalten, nicht zwei: ein Lauf, der noch
+          # laeuft, hat conclusion == null und ist KEIN fehlender Lauf. Wer
+          # dort "es gibt keinen CI-Lauf" liest, sucht an der falschen
+          # Stelle -- er muss nur eine Minute warten.
+          ergebnis="$(gh api "repos/${{ github.repository }}/commits/$sha/check-runs" \
+            --jq '[.check_runs[] | select(.name == "build")] | first
+                  | if . == null then "fehlt"
+                    elif .conclusion == null then "laeuft"
+                    else .conclusion end')"
+          case "$ergebnis" in
+            success) echo "CI ist gruen." ;;
+            fehlt)
+              echo "::error::Fuer $sha gibt es keinen CI-Lauf. Nicht freigegeben."
+              exit 1 ;;
+            laeuft)
+              echo "::error::CI fuer $sha laeuft noch. Warte, bis sie durch ist."
+              exit 1 ;;
+            *)
+              echo "::error::CI fuer $sha steht auf '$ergebnis'. Nicht freigegeben."
+              exit 1 ;;
+          esac
+
+      - name: Tag setzen
+        run: |
+          set -euo pipefail
+          sha="${{ steps.stand.outputs.sha }}"
+          # -f, weil `produktion` wandert. Der Tag ist ein Zeiger auf den
+          # freigegebenen Stand, keine Wegmarke in der Geschichte -- wer
+          # wissen will, was wann lief, liest deploy_request auf der
+          # Maschine, nicht die Tagliste.
+          git tag -f produktion "$sha"
+          git push -f origin produktion
+          echo "produktion zeigt jetzt auf ${{ steps.stand.outputs.kurz }}" \
+            >> "$GITHUB_STEP_SUMMARY"
