@@ -23,7 +23,7 @@ export function isEmailKind(v: string): v is EmailKind {
  * das Personal sieht, und wird beim Umbau eines Bildschirms mit geaendert.
  * Ein Anschreiben an einen Gast ist kein Bildschirmtext.
  */
-export const EMAIL_LANGUAGES = ['de', 'en'] as const
+export const EMAIL_LANGUAGES = ['de', 'en', 'nl', 'pl'] as const
 export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
 
 /**
@@ -154,51 +154,199 @@ function htmlBody(lines: string[]): string {
     + `font-size:15px;line-height:1.5;color:#111">\n${absaetze}\n</div>`
 }
 
+/**
+ * Die Saetze der Gastpost, je Sprache.
+ *
+ * **Warum eine Tabelle und nicht ein Block je Sprache.** Vorher stand jede
+ * Vorlage zweimal untereinander, einmal deutsch und einmal englisch, mit
+ * derselben Struktur. Bei vier Sprachen waeren das acht Bloecke, in denen
+ * die Reihenfolge der Zeilen und die Bedingung fuer den offenen Betrag
+ * jeweils nachgebaut werden -- und irgendwann weicht einer ab, ohne dass es
+ * jemand merkt: die Sprache, in der man den Fehler sieht, ist ja nicht die,
+ * in der man arbeitet. Jetzt steht die Struktur einmal und die Saetze
+ * viermal.
+ *
+ * **Vollstaendige Saetze, keine Bausteine.** `offenMitFrist` und
+ * `offenOhneFrist` sind zwei eigene Saetze und nicht einer plus ein
+ * angehaengtes Komma. Wo im Deutschen ein Nachsatz passt, steht im
+ * Polnischen ein eigener Hauptsatz; wer den Satz zusammenklebt, bekommt in
+ * jeder Sprache mit anderer Wortstellung Unsinn.
+ *
+ * Platzhalter in geschweiften Klammern, wie ueberall im Haus.
+ */
+interface Gastposttexte {
+  anredeMitName: string
+  anredeOhneName: string
+
+  rechnungBetreff: string
+  rechnungAnhang: string
+  rechnungOffenMitFrist: string
+  rechnungOffenOhneFrist: string
+  rechnungBeglichen: string
+  rechnungDank: string
+
+  buchungBetreff: string
+  buchungBestaetigt: string
+  buchungNummer: string
+  buchungAnreise: string
+  buchungAbreise: string
+  buchungZimmer: string
+  buchungGesamt: string
+  buchungHinweis: string
+}
+
+const TEXTE: Record<EmailLanguage, Gastposttexte> = {
+  de: {
+    // Ohne Namen kein "Sehr geehrte Damen und Herren" an eine Privatperson:
+    // das liest sich wie ein Serienbrief. "Guten Tag" passt in beiden Faellen.
+    anredeMitName: 'Guten Tag {name},',
+    anredeOhneName: 'Guten Tag,',
+
+    rechnungBetreff: 'Rechnung {nummer} — {haus}',
+    rechnungAnhang: 'anbei erhalten Sie Ihre Rechnung {nummer} des Hauses {haus} '
+      + 'als PDF, ueber insgesamt {betrag}.',
+    rechnungOffenMitFrist: 'Offen sind davon {offen}, zahlbar bis zum {frist}.',
+    rechnungOffenOhneFrist: 'Offen sind davon {offen}.',
+    rechnungBeglichen: 'Die Rechnung ist vollstaendig beglichen. '
+      + 'Dieses Exemplar ist fuer Ihre Unterlagen.',
+    rechnungDank: 'Vielen Dank fuer Ihren Aufenthalt — wir wuerden uns freuen, '
+      + 'Sie wieder begruessen zu duerfen.',
+
+    buchungBetreff: 'Buchungsbestaetigung {ref} — {haus}',
+    buchungBestaetigt: 'wir haben Ihre Buchung im Hause {haus} bestaetigt.',
+    buchungNummer: 'Buchungsnummer: {ref}',
+    buchungAnreise: 'Anreise: {datum} ab {zeit} Uhr',
+    buchungAbreise: 'Abreise: {datum} bis {zeit} Uhr',
+    buchungZimmer: 'Zimmer: {zimmer}',
+    buchungGesamt: 'Gesamtbetrag: {betrag}',
+    buchungHinweis: 'Bitte geben Sie die Buchungsnummer bei Rueckfragen an. '
+      + 'Sie koennen auf diese E-Mail antworten, wenn sich etwas aendern soll.'
+  },
+
+  en: {
+    anredeMitName: 'Dear {name},',
+    anredeOhneName: 'Dear guest,',
+
+    rechnungBetreff: 'Invoice {nummer} — {haus}',
+    rechnungAnhang: 'please find your invoice {nummer} from {haus} attached '
+      + 'as a PDF, totalling {betrag}.',
+    rechnungOffenMitFrist: 'An amount of {offen} is still outstanding, '
+      + 'payable by {frist}.',
+    rechnungOffenOhneFrist: 'An amount of {offen} is still outstanding.',
+    rechnungBeglichen: 'The invoice has been settled in full. '
+      + 'This copy is for your records.',
+    rechnungDank: 'Thank you for your stay — we would be glad to welcome you again.',
+
+    buchungBetreff: 'Booking confirmation {ref} — {haus}',
+    buchungBestaetigt: 'we have confirmed your booking at {haus}.',
+    buchungNummer: 'Booking reference: {ref}',
+    buchungAnreise: 'Arrival: {datum} from {zeit}',
+    buchungAbreise: 'Departure: {datum} until {zeit}',
+    buchungZimmer: 'Room: {zimmer}',
+    buchungGesamt: 'Total: {betrag}',
+    buchungHinweis: 'Please quote the booking reference in any correspondence. '
+      + 'You can reply to this email if anything needs changing.'
+  },
+
+  nl: {
+    anredeMitName: 'Beste {name},',
+    anredeOhneName: 'Geachte gast,',
+
+    rechnungBetreff: 'Factuur {nummer} — {haus}',
+    rechnungAnhang: 'hierbij ontvangt u factuur {nummer} van {haus} als pdf, '
+      + 'voor een totaalbedrag van {betrag}.',
+    rechnungOffenMitFrist: 'Hiervan staat nog {offen} open, '
+      + 'te voldoen uiterlijk {frist}.',
+    rechnungOffenOhneFrist: 'Hiervan staat nog {offen} open.',
+    rechnungBeglichen: 'De factuur is volledig voldaan. '
+      + 'Dit exemplaar is voor uw administratie.',
+    rechnungDank: 'Hartelijk dank voor uw verblijf — wij verwelkomen u graag opnieuw.',
+
+    buchungBetreff: 'Boekingsbevestiging {ref} — {haus}',
+    buchungBestaetigt: 'wij hebben uw boeking bij {haus} bevestigd.',
+    buchungNummer: 'Boekingsnummer: {ref}',
+    buchungAnreise: 'Aankomst: {datum} vanaf {zeit}',
+    buchungAbreise: 'Vertrek: {datum} tot {zeit}',
+    buchungZimmer: 'Kamer: {zimmer}',
+    buchungGesamt: 'Totaalbedrag: {betrag}',
+    buchungHinweis: 'Vermeld het boekingsnummer bij vragen. '
+      + 'U kunt op deze e-mail antwoorden als er iets gewijzigd moet worden.'
+  },
+
+  pl: {
+    /*
+     * Im Polnischen **ohne** Namen, auch wenn einer vorliegt.
+     *
+     * Eine Anrede verlangt dort den Vokativ und das grammatische Geschlecht
+     * ("Szanowna Pani Anno", "Szanowny Panie Janie"). Das Gastprofil traegt
+     * weder das eine noch das andere, und ein falsch gebeugter Name ist
+     * unhoeflicher als gar keiner. "Dzień dobry" ist im polnischen
+     * Geschaeftsverkehr die uebliche neutrale Anrede und braucht beides
+     * nicht.
+     */
+    anredeMitName: 'Dzień dobry,',
+    anredeOhneName: 'Dzień dobry,',
+
+    rechnungBetreff: 'Faktura {nummer} — {haus}',
+    // Grossschreibung am Satzanfang, anders als im Deutschen: nach
+    // "Dzień dobry," beginnt der Brief mit einem eigenen Hauptsatz.
+    rechnungAnhang: 'W załączeniu przesyłamy fakturę {nummer} z obiektu {haus} '
+      + 'w formacie PDF, na łączną kwotę {betrag}.',
+    rechnungOffenMitFrist: 'Do zapłaty pozostaje {offen}, '
+      + 'termin płatności: {frist}.',
+    rechnungOffenOhneFrist: 'Do zapłaty pozostaje {offen}.',
+    rechnungBeglichen: 'Faktura została opłacona w całości. '
+      + 'Ten egzemplarz jest dla Państwa dokumentacji.',
+    rechnungDank: 'Dziękujemy za pobyt — będzie nam miło gościć Państwa ponownie.',
+
+    buchungBetreff: 'Potwierdzenie rezerwacji {ref} — {haus}',
+    buchungBestaetigt: 'Potwierdzamy Państwa rezerwację w obiekcie {haus}.',
+    buchungNummer: 'Numer rezerwacji: {ref}',
+    buchungAnreise: 'Przyjazd: {datum} od godz. {zeit}',
+    buchungAbreise: 'Wyjazd: {datum} do godz. {zeit}',
+    buchungZimmer: 'Pokój: {zimmer}',
+    buchungGesamt: 'Kwota łączna: {betrag}',
+    buchungHinweis: 'Prosimy o podanie numeru rezerwacji w korespondencji. '
+      + 'Na tę wiadomość można odpowiedzieć, jeśli coś wymaga zmiany.'
+  }
+}
+
+/** Werte einsetzen. Ein Platzhalter ohne Wert bleibt stehen, statt zu verschwinden. */
+function einsetzen(satz: string, werte: Record<string, string>): string {
+  return satz.replace(/\{(\w+)\}/g, (ganz, name: string) =>
+    Object.prototype.hasOwnProperty.call(werte, name) ? werte[name]! : ganz)
+}
+
 function anrede(name: string | null, lang: EmailLanguage): string {
-  if (lang === 'en') return name ? `Dear ${name},` : 'Dear guest,'
-  // Ohne Namen kein "Sehr geehrte Damen und Herren" an eine Privatperson:
-  // das liest sich wie ein Serienbrief. "Guten Tag" passt in beiden Faellen.
-  return name ? `Guten Tag ${name},` : 'Guten Tag,'
+  const t = TEXTE[lang]
+  return name === null || name === ''
+    ? t.anredeOhneName
+    : einsetzen(t.anredeMitName, { name })
 }
 
 export function renderInvoiceEmail(
   d: InvoiceEmailData, lang: EmailLanguage = 'de'
 ): RenderedEmail {
-  const betrag = `${formatCent(d.grossCent)} ${d.currency}`
-  const offen = `${formatCent(d.openCent)} ${d.currency}`
-
-  if (lang === 'en') {
-    const lines = [
-      anrede(d.guestName, 'en'),
-      `please find your invoice ${d.invoiceNumber} from ${d.propertyName} attached `
-        + `as a PDF, totalling ${betrag}.`,
-      d.openCent > 0
-        ? `An amount of ${offen} is still outstanding`
-          + (d.dueDate ? `, payable by ${d.dueDate}.` : '.')
-        : 'The invoice has been settled in full. This copy is for your records.',
-      'Thank you for your stay — we would be glad to welcome you again.',
-      d.propertyName
-    ]
-    return {
-      subject: `Invoice ${d.invoiceNumber} — ${d.propertyName}`,
-      text: lines.join('\n\n'),
-      html: htmlBody(lines)
-    }
+  const t = TEXTE[lang]
+  const werte = {
+    nummer: d.invoiceNumber,
+    haus: d.propertyName,
+    betrag: `${formatCent(d.grossCent)} ${d.currency}`,
+    offen: `${formatCent(d.openCent)} ${d.currency}`,
+    frist: d.dueDate ?? ''
   }
 
   const lines = [
-    anrede(d.guestName, 'de'),
-    `anbei erhalten Sie Ihre Rechnung ${d.invoiceNumber} des Hauses ${d.propertyName} `
-      + `als PDF, ueber insgesamt ${betrag}.`,
+    anrede(d.guestName, lang),
+    einsetzen(t.rechnungAnhang, werte),
     d.openCent > 0
-      ? `Offen sind davon ${offen}`
-        + (d.dueDate ? `, zahlbar bis zum ${d.dueDate}.` : '.')
-      : 'Die Rechnung ist vollstaendig beglichen. Dieses Exemplar ist fuer Ihre Unterlagen.',
-    'Vielen Dank fuer Ihren Aufenthalt — wir wuerden uns freuen, Sie wieder begruessen zu duerfen.',
+      ? einsetzen(d.dueDate ? t.rechnungOffenMitFrist : t.rechnungOffenOhneFrist, werte)
+      : t.rechnungBeglichen,
+    t.rechnungDank,
     d.propertyName
   ]
   return {
-    subject: `Rechnung ${d.invoiceNumber} — ${d.propertyName}`,
+    subject: einsetzen(t.rechnungBetreff, werte),
     text: lines.join('\n\n'),
     html: htmlBody(lines)
   }
@@ -207,42 +355,34 @@ export function renderInvoiceEmail(
 export function renderReservationEmail(
   d: ReservationEmailData, lang: EmailLanguage = 'de'
 ): RenderedEmail {
-  const betrag = `${formatCent(d.totalCent)} ${d.currency}`
-
-  if (lang === 'en') {
-    const lines = [
-      anrede(d.guestName, 'en'),
-      `we have confirmed your booking at ${d.propertyName}.`,
-      `Booking reference: ${d.reservationRef}\n`
-        + `Arrival: ${d.arrival} from ${d.checkinTime}\n`
-        + `Departure: ${d.departure} until ${d.checkoutTime}\n`
-        + `Room: ${d.categoryName}\n`
-        + `Total: ${betrag}`,
-      'Please quote the booking reference in any correspondence. '
-        + 'You can reply to this email if anything needs changing.',
-      d.propertyName
-    ]
-    return {
-      subject: `Booking confirmation ${d.reservationRef} — ${d.propertyName}`,
-      text: lines.join('\n\n'),
-      html: htmlBody(lines)
-    }
+  const t = TEXTE[lang]
+  const werte = {
+    ref: d.reservationRef,
+    haus: d.propertyName,
+    zimmer: d.categoryName,
+    betrag: `${formatCent(d.totalCent)} ${d.currency}`
   }
 
+  // Die Eckdaten als ein Absatz mit Zeilenumbruechen: in jeder Sprache
+  // dieselbe Reihenfolge, damit ein Gast sie wiederfindet, auch wenn er die
+  // Sprache nicht liest.
+  const eckdaten = [
+    einsetzen(t.buchungNummer, werte),
+    einsetzen(t.buchungAnreise, { datum: d.arrival, zeit: d.checkinTime }),
+    einsetzen(t.buchungAbreise, { datum: d.departure, zeit: d.checkoutTime }),
+    einsetzen(t.buchungZimmer, werte),
+    einsetzen(t.buchungGesamt, werte)
+  ].join('\n')
+
   const lines = [
-    anrede(d.guestName, 'de'),
-    `wir haben Ihre Buchung im Hause ${d.propertyName} bestaetigt.`,
-    `Buchungsnummer: ${d.reservationRef}\n`
-      + `Anreise: ${d.arrival} ab ${d.checkinTime} Uhr\n`
-      + `Abreise: ${d.departure} bis ${d.checkoutTime} Uhr\n`
-      + `Zimmer: ${d.categoryName}\n`
-      + `Gesamtbetrag: ${betrag}`,
-    'Bitte geben Sie die Buchungsnummer bei Rueckfragen an. '
-      + 'Sie koennen auf diese E-Mail antworten, wenn sich etwas aendern soll.',
+    anrede(d.guestName, lang),
+    einsetzen(t.buchungBestaetigt, werte),
+    eckdaten,
+    t.buchungHinweis,
     d.propertyName
   ]
   return {
-    subject: `Buchungsbestaetigung ${d.reservationRef} — ${d.propertyName}`,
+    subject: einsetzen(t.buchungBetreff, werte),
     text: lines.join('\n\n'),
     html: htmlBody(lines)
   }

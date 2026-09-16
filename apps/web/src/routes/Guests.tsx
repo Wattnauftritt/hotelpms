@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { EMAIL_LANGUAGES } from '@hotelpms/domain'
 import type { Guest, GuestCreated, Company } from '@hotelpms/contracts'
 import { useSearchGuests, useGuest, useCreateGuest, usePatchGuest, useIdDocument,
          useSearchCompanies, useCompany, useCreateCompany, usePatchCompany,
@@ -158,6 +159,7 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [birthDate, setBirthDate] = useState(initial?.birthDate ?? '')
   const [nationality, setNationality] = useState(initial?.nationality ?? '')
+  const [language, setLanguage] = useState(initial?.language ?? 'de')
   const [addressLine1, setAddressLine1] = useState(initial?.address.line1 ?? '')
   const [postalCode, setPostalCode] = useState(initial?.address.postalCode ?? '')
   const [city, setCity] = useState(initial?.address.city ?? '')
@@ -172,6 +174,7 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
     const body = {
       lastName: lastName.trim(), firstName: orUndef(firstName), email: orUndef(email),
       phone: orUndef(phone), birthDate: orUndef(birthDate), nationality: orUndef(nationality),
+      language,
       addressLine1: orUndef(addressLine1), postalCode: orUndef(postalCode),
       city: orUndef(city), country: orUndef(country)
     }
@@ -204,9 +207,24 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
                disabled={!darfSchreiben}
                className="border border-neutral-300 rounded px-2 py-1 text-sm" />
       </div>
-      <input value={nationality} onChange={e => setNationality(e.target.value)}
-             disabled={!darfSchreiben} placeholder={t('guests.nationality')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+      <div className="grid grid-cols-2 gap-2">
+        <input value={nationality} onChange={e => setNationality(e.target.value)}
+               disabled={!darfSchreiben} placeholder={t('guests.nationality')}
+               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+        {/* Nur die Sprachen, in denen wir tatsaechlich schreiben. Franzoesisch
+            anzubieten waere ein Versprechen, das die Post nicht haelt: sie
+            ginge auf Deutsch hinaus, und niemand saehe warum. */}
+        <label className="text-sm">
+          <select value={language} onChange={e => setLanguage(e.target.value)}
+                  disabled={!darfSchreiben} aria-label={t('guests.language')}
+                  className="w-full border border-neutral-300 rounded px-2 py-1 text-sm">
+            {EMAIL_LANGUAGES.map(l => (
+              <option key={l} value={l}>{t(`guests.language.${l}`)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="text-[11px] text-neutral-500">{t('guests.languageHint')}</div>
       <input value={addressLine1} onChange={e => setAddressLine1(e.target.value)}
              disabled={!darfSchreiben} placeholder={t('guests.address')}
              className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
