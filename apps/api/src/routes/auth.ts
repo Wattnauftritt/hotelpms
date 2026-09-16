@@ -36,6 +36,22 @@ const MAX_FEHLVERSUCHE = 10
 const SPERRE_MINUTEN = 15
 
 /**
+ * Der Arbeitsplatz-PIN ist kurz, und das ist Absicht: er wird an einem
+ * Tresen zwanzigmal am Tag getippt, während jemand danebensteht. Vier
+ * Ziffern sind zehntausend Möglichkeiten — das hält nur, weil nach fünf
+ * Fehlversuchen für eine Viertelstunde Schluss ist. Ohne die Sperre wäre er
+ * in Sekunden geraten, mit ihr braucht es Jahre.
+ *
+ * Zwölf Ziffern als Obergrenze, damit niemand ein Kennwort hineinschreibt:
+ * ein PIN ist kein Kennwort, und wer ihn dafür hält, benutzt am Ende
+ * dasselbe Geheimnis für beides.
+ */
+const PIN_MIN_ZIFFERN = 4
+const PIN_MAX_ZIFFERN = 12
+const PIN_MAX_FEHLVERSUCHE = 5
+const PIN_SPERRE_MINUTEN = 15
+
+/**
  * Rechenzeit auch dann verbrauchen, wenn es den Benutzer nicht gibt.
  *
  * Sonst antwortet die Anmeldung für eine unbekannte Adresse in zwei
@@ -166,8 +182,10 @@ export function authRoutes(app: FastifyInstance): void {
       const p = req.principal as Principal
       if (p.userId === null) throw Errors.unauthorized()
 
-      const benutzer = await req.pool.query<{ display_name: string; email: string }>(
-        `SELECT display_name, email FROM app_user WHERE id = $1`, [p.userId])
+      const benutzer = await req.pool.query<{ display_name: string; email: string
+                                             hat_pin: boolean }>(
+        `SELECT display_name, email, workstation_pin_hash IS NOT NULL AS hat_pin
+           FROM app_user WHERE id = $1`, [p.userId])
 
       const haeuser = propertyIds(p)
       // In einer Transaktion mit gesetztem Mandantenkontext lesen. Ohne die
@@ -193,6 +211,17 @@ export function authRoutes(app: FastifyInstance): void {
         email: benutzer.rows[0]?.email ?? '',
         isPlatformStaff: p.isPlatformStaff,
         supportSession: p.supportSessionId !== null,
+        /*
+         * Arbeitsplatz: hat diese Person einen PIN, und handelt gerade
+         * jemand anderes als der Angemeldete?
+         *
+         * Das zweite ist der Grund, warum es ueberhaupt in der Antwort
+         * steht. Ein Wechsel, den man nicht sieht, wird vergessen, und dann
+         * bucht eine Stunde lang jemand unter fremdem Namen -- was den
+         * Personenwechsel genau um das bringt, wofuer es ihn gibt.
+         */
+        workstationPinSet: benutzer.rows[0]?.hat_pin ?? false,
+        workstationSwitched: p.sessionUserId !== null && p.sessionUserId !== p.userId,
         accountPermissions: [...p.accountPermissions].sort(),
         properties: properties.rows.map(r => ({
           id: r.id, code: r.code, name: r.name, timezone: r.timezone,
@@ -204,9 +233,85 @@ export function authRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Den eigenen Arbeitsplatz-PIN setzen oder entfernen.
+   *
+   * **Warum das Kennwort dazugehört.** Der PIN ist der Schlüssel, mit dem
+   * jemand an einem fremden Arbeitsplatz in seinem Namen weiterarbeitet. Wer
+   * ihn setzen kann, kann diesen Schlüssel neu vergeben — und an einem
+   * Tresen steht die Sitzung offen, während die Person Kaffee holt. Das
+   * Kennwort ist die Stelle, an der sich beweisen lässt, dass wirklich der
+   * Betroffene davorsitzt und nicht der nächste, der vorbeikommt.
+   *
+   * **Nur der eigene.** Es gibt bewusst keinen Weg, den PIN eines Kollegen
+   * zu setzen — auch nicht für die Hausleitung. Ein von jemand anderem
+   * vergebener PIN taugt nicht als Nachweis, wer gehandelt hat, und genau
+   * dafür ist er da. Wer seinen PIN vergessen hat, setzt einen neuen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/workstation-pin',
+    permission: null,
+    summary: 'Eigenen Arbeitsplatz-PIN setzen oder entfernen',
+    handler: async (req) => {
+      const p = req.principal as Principal
+      if (p.userId === null) throw Errors.unauthorized()
+      const { password, pin } = req.body as { password?: string; pin?: string | null }
+      if (!password) throw Errors.validation({ password: ['field.required'] })
+
+      const u = await req.pool.query<{ password_hash: string | null }>(
+        `SELECT password_hash FROM app_user WHERE id = $1`, [p.userId])
+      if (!await pruefeKennwort(u.rows[0]?.password_hash ?? null, password)) {
+        throw Errors.unauthorized('auth.badCredentials')
+      }
+
+      // Kein PIN mehr: der Personenwechsel auf diese Person ist damit zu.
+      if (pin === null || pin === undefined || pin === '') {
+        await req.pool.query(
+          `UPDATE app_user
+              SET workstation_pin_hash = NULL, workstation_pin_set_at = NULL,
+                  workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL
+            WHERE id = $1`, [p.userId])
+        return { ok: true, pinSet: false }
+      }
+
+      if (!/^[0-9]+$/.test(pin)
+          || pin.length < PIN_MIN_ZIFFERN || pin.length > PIN_MAX_ZIFFERN) {
+        throw Errors.validation({ pin: ['field.pinDigits'] },
+          { min: PIN_MIN_ZIFFERN, max: PIN_MAX_ZIFFERN })
+      }
+
+      await req.pool.query(
+        `UPDATE app_user
+            SET workstation_pin_hash = $2, workstation_pin_set_at = now(),
+                workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL
+          WHERE id = $1`, [p.userId, await hashPassword(pin)])
+      return { ok: true, pinSet: true }
+    }
+  })
+
+  /**
    * Arbeitsplatz-PIN: an einem geteilten Rezeptionsrechner wechselt die
    * handelnde Person, ohne dass sich jemand neu anmeldet. Die Sitzung bleibt,
    * `active_user_id` wechselt, und das Protokoll hält fest, wer gebucht hat.
+   *
+   * Drei Dinge prüft diese Route, die sie vorher nicht prüfte, und jedes
+   * einzelne war ein offenes Tor:
+   *
+   * **Die Ratenbegrenzung greift hier nicht.** Sie nimmt angemeldete
+   * Anfragen aus, und diese Route trägt immer ein gültiges Sitzungscookie —
+   * der Pfad steht zwar auf der strengen Liste, wurde davon aber nie
+   * erreicht. Ein vierstelliger PIN ließ sich damit in Sekunden
+   * durchprobieren. Deshalb zählt sie ihre Fehlversuche selbst, je Zielperson
+   * und getrennt von der Anmeldung (Migration 0035).
+   *
+   * **Das Ziel muss zum selben Arbeitsplatz gehören.** Vorher genügten
+   * Adresse und PIN irgendeines Benutzers der ganzen Datenbank. Wer sich
+   * hier ausweist, muss mindestens ein Haus mit der angemeldeten Person
+   * teilen; sonst wäre dies ein Weg von einem Kunden zum nächsten.
+   *
+   * **Die angemeldete Person braucht selbst einen PIN.** Sonst käme sie nach
+   * einem Wechsel nicht in ihre eigene Sitzung zurück — zurückwechseln
+   * verlangt denselben Nachweis wie hinwechseln.
    */
   registerRoute(app, {
     method: 'POST',
@@ -216,18 +321,63 @@ export function authRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const sessionId = req.cookies[COOKIE]
       if (sessionId === undefined) throw Errors.unauthorized()
+      const p = req.principal as Principal
+      if (p.sessionUserId === null) throw Errors.unauthorized()
       const { email, pin } = req.body as { email?: string; pin?: string }
       if (!email || !pin) {
         throw Errors.validation({ email: ['field.required'], pin: ['field.required'] })
       }
 
-      const { rows } = await req.pool.query<{ id: number; workstation_pin_hash: string | null
-                                              status: string }>(
-        `SELECT id, workstation_pin_hash, status FROM app_user
-          WHERE lower(email) = lower($1)`, [email])
+      const inhaber = await req.pool.query<{ hat_pin: boolean }>(
+        `SELECT workstation_pin_hash IS NOT NULL AS hat_pin
+           FROM app_user WHERE id = $1`, [p.sessionUserId])
+      if (!inhaber.rows[0]?.hat_pin) {
+        throw Errors.unprocessable('auth.ownerNeedsPin')
+      }
+
+      const { rows } = await req.pool.query<{
+        id: number; workstation_pin_hash: string | null; status: string
+        workstation_pin_locked_until: string | null }>(
+        `SELECT id, workstation_pin_hash, status, workstation_pin_locked_until
+           FROM app_user WHERE lower(email) = lower($1)`, [email])
       const ziel = rows[0]
+
+      if (ziel?.workstation_pin_locked_until != null
+          && Date.parse(ziel.workstation_pin_locked_until) > Date.now()) {
+        throw Errors.unauthorized('auth.tooManyAttempts')
+      }
+
+      /*
+       * Die Zugehoerigkeit wird **vor** dem Ausgang der PIN-Pruefung
+       * ermittelt, aber erst danach ausgewertet. Sonst antwortete die Route
+       * fuer einen fremden Benutzer schneller als fuer einen eigenen, und
+       * damit liesse sich abfragen, wer im selben Haus arbeitet.
+       */
+      const gemeinsam = ziel === undefined ? { rowCount: 0 } : await req.pool.query(
+        `SELECT 1 FROM user_property_scope($1) a
+           JOIN user_property_scope($2) b USING (property_id) LIMIT 1`,
+        [p.sessionUserId, ziel.id])
+
       const passt = await pruefeKennwort(ziel?.workstation_pin_hash ?? null, pin)
-      if (!passt || ziel === undefined || ziel.status !== 'active') {
+      const erlaubt = passt && ziel !== undefined && ziel.status === 'active'
+        && (gemeinsam.rowCount ?? 0) > 0
+
+      if (!erlaubt) {
+        // Gezaehlt wird nur, wenn der PIN wirklich falsch war. Ein Zaehler,
+        // der auch bei fremder Zugehoerigkeit steigt, waere ein Weg, einen
+        // beliebigen Kollegen auszusperren, ohne seinen PIN je zu treffen.
+        if (ziel !== undefined && !passt) {
+          await req.pool.query(
+            `UPDATE app_user
+                SET workstation_pin_failed_count = workstation_pin_failed_count + 1,
+                    workstation_pin_locked_until =
+                      CASE WHEN workstation_pin_failed_count + 1 >= $2
+                           THEN now() + ($3 || ' minutes')::interval END
+              WHERE id = $1`,
+            [ziel.id, PIN_MAX_FEHLVERSUCHE, PIN_SPERRE_MINUTEN])
+        }
+        // Eine Meldung fuer alle Faelle: falsche Adresse, falscher PIN,
+        // fremdes Haus. Wer unterscheidet, verraet die Benutzerliste.
         throw Errors.unauthorized('auth.badPin')
       }
 
@@ -236,6 +386,10 @@ export function authRoutes(app: FastifyInstance): void {
           WHERE id = $1 AND revoked_at IS NULL AND absolute_expires_at > now()`,
         [sessionId, ziel.id])
       if (r.rowCount === 0) throw Errors.unauthorized()
+      await req.pool.query(
+        `UPDATE app_user SET workstation_pin_failed_count = 0,
+                             workstation_pin_locked_until = NULL WHERE id = $1`,
+        [ziel.id])
       return { ok: true, activeUserId: ziel.id }
     }
   })

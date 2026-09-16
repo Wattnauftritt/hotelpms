@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
   from '@tanstack/react-query'
 import { Shell, type Haus } from './components/Shell.tsx'
+import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
 import { SupportKonsole } from './routes/SupportKonsole.tsx'
@@ -36,6 +37,10 @@ interface Me {
   userId: number
   displayName: string
   isPlatformStaff: boolean
+  /** Hat diese Person einen Arbeitsplatz-PIN hinterlegt? */
+  workstationPinSet: boolean
+  /** Es handelt gerade jemand anderes als der Angemeldete. */
+  workstationSwitched: boolean
   properties: Array<{ id: number; code: string; name: string; isTraining: boolean
                       permissions: string[] }>
 }
@@ -76,6 +81,9 @@ function App(): JSX.Element {
   // Der Check-in liegt ebenso ueber dem jeweiligen Bildschirm -- meist dem
   // Plan (A9) -- und schliesst sich danach wieder von selbst.
   const [checkInRef, setCheckInRef] = useState<string | null>(null)
+  // Der Arbeitsplatz liegt ueber allem: der Personenwechsel betrifft nicht
+  // einen Bildschirm, sondern wer gerade handelt.
+  const [arbeitsplatz, setArbeitsplatz] = useState(false)
   const qc = useQueryClient()
 
   /*
@@ -169,8 +177,16 @@ function App(): JSX.Element {
            locale={locale} onLocale={setLocale}
            benutzer={me.data.displayName}
            onAbmelden={() => { void abmelden() }}
+           onArbeitsplatz={() => setArbeitsplatz(true)}
+           gewechselt={me.data.workstationSwitched}
            haeuser={haeuser} haus={haus}
            onHaus={id => { setAdresse({ property: id, screen: null }) }}>
+      {arbeitsplatz && (
+        <Arbeitsplatz benutzer={me.data.displayName}
+                      pinGesetzt={me.data.workstationPinSet}
+                      gewechselt={me.data.workstationSwitched}
+                      onClose={() => setArbeitsplatz(false)} />
+      )}
       {folioRef !== null
         ? <Folio folioRef={folioRef} propertyId={haus.id}
                  onClose={() => setFolioRef(null)} />

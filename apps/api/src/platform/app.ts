@@ -113,6 +113,9 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
     const effectiveUser = row.active_user_id ?? row.user_id
     let principal = await loadPrincipal(pool, effectiveUser)
     principal = await applySupportSession(pool, principal)
+    // Wer sich angemeldet hat, bleibt bekannt, auch wenn gerade jemand
+    // anderes handelt: die Oberflaeche zeigt den Wechsel damit an.
+    principal = { ...principal, sessionUserId: row.user_id }
     req.principal = principal
     await pool.query(`UPDATE user_session SET last_seen_at = now() WHERE id = $1`, [sessionId])
   })

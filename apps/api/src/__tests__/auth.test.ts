@@ -136,29 +136,136 @@ describe('Anmeldung', () => {
     expect(s.rows[0]!.revoked_at).not.toBeNull()
   })
 
-  it('wechselt am Arbeitsplatz die handelnde Person ueber den PIN', async () => {
+  it('braucht fuer den Arbeitsplatzwechsel eine bestehende Sitzung', async () => {
+    const w = await app.inject({ method: 'POST', url: '/v1/auth/workstation-switch',
+      payload: { email: 'nacht@test.de', pin: '4711' } })
+    expect(w.statusCode).toBe(401)
+  })
+})
+
+/**
+ * Der Arbeitsplatz-PIN.
+ *
+ * Am geteilten Rezeptionsrechner wechselt er die handelnde Person, ohne dass
+ * sich jemand neu anmeldet -- damit im Protokoll steht, wer wirklich gebucht
+ * hat. Die Pruefungen hier sind keine Formalitaeten: der PIN ist kurz, und
+ * die Ratenbegrenzung greift auf dieser Route nicht, weil sie angemeldete
+ * Anfragen ausnimmt.
+ */
+describe('Arbeitsplatz-PIN', () => {
+  /** Setzt den PIN so, wie es die Route tut -- ueber Kennwort und Route. */
+  async function pinSetzen(cookie: string, pin: string | null) {
+    return app.inject({ method: 'POST', url: '/v1/auth/workstation-pin',
+      headers: { cookie }, payload: { password: KENNWORT, pin } })
+  }
+
+  /** Zwei Personen am selben Haus, beide mit Kennwort und PIN. */
+  async function arbeitsplatz(): Promise<{ cookie: string }> {
     await benutzerMitKennwort('tag@test.de')
     const nacht = await makeUser(owner,
       { email: 'nacht@test.de', propertyId: fx.propertyId, roleKey: 'night_audit' })
-    await owner.query(`UPDATE app_user SET workstation_pin_hash = $2 WHERE id = $1`,
-      [nacht.userId, await hashPassword('4711')])
+    await owner.query(`UPDATE app_user SET password_hash = $2 WHERE id = $1`,
+      [nacht.userId, await hashPassword(KENNWORT)])
 
-    const an = await login('tag@test.de', KENNWORT)
-    const cookie = cookieAus(an)
+    const nachtCookie = cookieAus(await login('nacht@test.de', KENNWORT))
+    expect((await pinSetzen(nachtCookie, '4711')).statusCode).toBe(200)
 
-    const w = await app.inject({ method: 'POST', url: '/v1/auth/workstation-switch',
-      headers: { cookie }, payload: { email: 'nacht@test.de', pin: '4711' } })
-    expect(w.statusCode).toBe(200)
+    const cookie = cookieAus(await login('tag@test.de', KENNWORT))
+    expect((await pinSetzen(cookie, '1234')).statusCode).toBe(200)
+    return { cookie }
+  }
+
+  const wechseln = (cookie: string, email: string, pin: string) =>
+    app.inject({ method: 'POST', url: '/v1/auth/workstation-switch',
+      headers: { cookie }, payload: { email, pin } })
+
+  it('wechselt die handelnde Person ueber den PIN', async () => {
+    const { cookie } = await arbeitsplatz()
+
+    const w = await wechseln(cookie, 'nacht@test.de', '4711')
+    expect(w.statusCode, w.body).toBe(200)
 
     // Dieselbe Sitzung, andere handelnde Person und andere Berechtigungen.
     const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } })
     const ich = JSON.parse(me.body) as
-      { email: string; properties: Array<{ permissions: string[] }> }
+      { email: string; workstationSwitched: boolean
+        properties: Array<{ permissions: string[] }> }
     expect(ich.email).toBe('nacht@test.de')
     expect(ich.properties[0]!.permissions).toContain('nightaudit:run')
+    // Ein Wechsel, den man nicht sieht, wird vergessen -- und dann bucht
+    // eine Stunde lang jemand unter fremdem Namen.
+    expect(ich.workstationSwitched).toBe(true)
   })
 
-  it('weist einen falschen Arbeitsplatz-PIN ab', async () => {
+  it('laesst denselben Weg wieder zurueck', async () => {
+    const { cookie } = await arbeitsplatz()
+    await wechseln(cookie, 'nacht@test.de', '4711')
+
+    expect((await wechseln(cookie, 'tag@test.de', '1234')).statusCode).toBe(200)
+    const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } })
+    expect(JSON.parse(me.body).email).toBe('tag@test.de')
+    expect(JSON.parse(me.body).workstationSwitched).toBe(false)
+  })
+
+  it('weist einen falschen PIN ab', async () => {
+    const { cookie } = await arbeitsplatz()
+    expect((await wechseln(cookie, 'nacht@test.de', '0000')).statusCode).toBe(401)
+  })
+
+  /**
+   * Die Ratenbegrenzung nimmt angemeldete Anfragen aus, und diese Route
+   * traegt immer ein gueltiges Sitzungscookie. Ohne eigenen Zaehler liesse
+   * sich ein vierstelliger PIN in Sekunden durchprobieren.
+   */
+  it('sperrt nach fuenf Fehlversuchen, auch mit gueltiger Sitzung', async () => {
+    const { cookie } = await arbeitsplatz()
+    for (let i = 0; i < 5; i++) {
+      expect((await wechseln(cookie, 'nacht@test.de', '0000')).statusCode).toBe(401)
+    }
+    // Jetzt zaehlt auch der richtige PIN nicht mehr.
+    const r = await wechseln(cookie, 'nacht@test.de', '4711')
+    expect(r.statusCode).toBe(401)
+    expect(r.body).toMatch(/Fehlversuche|attempts/)
+  })
+
+  it('setzt den Zaehler nach einem gelungenen Wechsel zurueck', async () => {
+    const { cookie } = await arbeitsplatz()
+    await wechseln(cookie, 'nacht@test.de', '0000')
+    await wechseln(cookie, 'nacht@test.de', '0000')
+    expect((await wechseln(cookie, 'nacht@test.de', '4711')).statusCode).toBe(200)
+
+    const z = await owner.query<{ n: number }>(
+      `SELECT workstation_pin_failed_count AS n FROM app_user
+        WHERE lower(email) = 'nacht@test.de'`)
+    expect(z.rows[0]!.n).toBe(0)
+  })
+
+  /**
+   * Vorher genuegten Adresse und PIN irgendeines Benutzers der ganzen
+   * Datenbank. Damit waere dies ein Weg von einem Kunden zum naechsten
+   * gewesen -- die Zeilenrichtlinie schuetzt hier nicht, weil die Abfrage
+   * ohne Mandantenkontext laeuft.
+   */
+  it('wechselt nicht zu jemandem aus einem fremden Haus', async () => {
+    const { cookie } = await arbeitsplatz()
+    const fremd = await makeProperty(owner, { name: 'Fremdes Haus', code: 'FRD' })
+    const fremder = await makeUser(owner,
+      { email: 'fremd@test.de', propertyId: fremd.propertyId, roleKey: 'reception' })
+    await owner.query(`UPDATE app_user SET workstation_pin_hash = $2 WHERE id = $1`,
+      [fremder.userId, await hashPassword('4711')])
+
+    const w = await wechseln(cookie, 'fremd@test.de', '4711')
+    expect(w.statusCode).toBe(401)
+
+    // Und der Fehlversuch geht nicht auf sein Konto: sonst waere das ein
+    // Weg, einen beliebigen Fremden auszusperren.
+    const z = await owner.query<{ n: number }>(
+      `SELECT workstation_pin_failed_count AS n FROM app_user WHERE id = $1`,
+      [fremder.userId])
+    expect(z.rows[0]!.n).toBe(0)
+  })
+
+  it('wechselt nicht, wenn die angemeldete Person selbst keinen PIN hat', async () => {
     await benutzerMitKennwort('tag@test.de')
     const nacht = await makeUser(owner,
       { email: 'nacht@test.de', propertyId: fx.propertyId, roleKey: 'night_audit' })
@@ -166,15 +273,53 @@ describe('Anmeldung', () => {
       [nacht.userId, await hashPassword('4711')])
     const cookie = cookieAus(await login('tag@test.de', KENNWORT))
 
-    const w = await app.inject({ method: 'POST', url: '/v1/auth/workstation-switch',
-      headers: { cookie }, payload: { email: 'nacht@test.de', pin: '0000' } })
-    expect(w.statusCode).toBe(401)
+    // Sonst kaeme sie nach dem Wechsel nicht in ihre eigene Sitzung zurueck.
+    const w = await wechseln(cookie, 'nacht@test.de', '4711')
+    expect(w.statusCode).toBe(422)
   })
 
-  it('braucht fuer den Arbeitsplatzwechsel eine bestehende Sitzung', async () => {
-    const w = await app.inject({ method: 'POST', url: '/v1/auth/workstation-switch',
-      payload: { email: 'nacht@test.de', pin: '4711' } })
-    expect(w.statusCode).toBe(401)
+  describe('Den eigenen PIN setzen', () => {
+    it('verlangt das eigene Kennwort', async () => {
+      await benutzerMitKennwort()
+      const cookie = cookieAus(await login('rezeption@test.de', KENNWORT))
+
+      const r = await app.inject({ method: 'POST', url: '/v1/auth/workstation-pin',
+        headers: { cookie }, payload: { password: 'falsch-aber-lang-genug', pin: '1234' } })
+      expect(r.statusCode).toBe(401)
+
+      const z = await owner.query<{ gesetzt: boolean }>(
+        `SELECT workstation_pin_hash IS NOT NULL AS gesetzt FROM app_user
+          WHERE lower(email) = 'rezeption@test.de'`)
+      expect(z.rows[0]!.gesetzt).toBe(false)
+    })
+
+    it('nimmt nur Ziffern und nur in der erlaubten Laenge', async () => {
+      await benutzerMitKennwort()
+      const cookie = cookieAus(await login('rezeption@test.de', KENNWORT))
+
+      expect((await pinSetzen(cookie, '12a4')).statusCode).toBe(422)
+      expect((await pinSetzen(cookie, '123')).statusCode).toBe(422)
+      expect((await pinSetzen(cookie, '1234567890123')).statusCode).toBe(422)
+      expect((await pinSetzen(cookie, '1234')).statusCode).toBe(200)
+    })
+
+    it('meldet ihn in /v1/auth/me und nimmt ihn wieder zurueck', async () => {
+      await benutzerMitKennwort()
+      const cookie = cookieAus(await login('rezeption@test.de', KENNWORT))
+      const me = () => app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } })
+
+      expect(JSON.parse((await me()).body).workstationPinSet).toBe(false)
+      await pinSetzen(cookie, '1234')
+      expect(JSON.parse((await me()).body).workstationPinSet).toBe(true)
+      await pinSetzen(cookie, null)
+      expect(JSON.parse((await me()).body).workstationPinSet).toBe(false)
+    })
+
+    it('braucht eine Anmeldung', async () => {
+      const r = await app.inject({ method: 'POST', url: '/v1/auth/workstation-pin',
+        payload: { password: KENNWORT, pin: '1234' } })
+      expect(r.statusCode).toBe(401)
+    })
   })
 })
 

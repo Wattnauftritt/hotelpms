@@ -463,6 +463,41 @@ Ein Trigger hält Stufe, Anlass und Beteiligte fest, sobald angefragt ist, und v
 
 ---
 
+### Belegungsplan: Gruppenbuchung und Arbeitsplatzwechsel — **erledigt**
+
+**Warum.** Eine Sichtung der Oberfläche gegen die laufende Anwendung, angestoßen von der Rezeption: „Buchungen lassen sich im Kalender nicht verschieben, und Gruppenbuchungen über mehrere markierte Zimmer gibt es nicht."
+
+Der erste Teil des Befunds war **falsch, und die Ursache trotzdem echt**. Verschieben gibt es seit `33cd009`; ein Zug mit der Maus löst `assign-unit` aus, im Browser nachgefahren. Nur sagte es niemand: der Balken trug `hover:ring-2` und keinen `cursor-move`, der Zeiger blieb ein Pfeil. **Eine Funktion, die niemand findet, ist keine** — das ist der eigentliche Fund, und er gilt über diesen Bildschirm hinaus. Jetzt tragen die Balken `cursor-move`, die freie Fläche `cursor-crosshair`, und unter dem Plan steht eine Zeile, die die drei Gesten benennt.
+
+Der zweite Teil stimmte: eine Modifikatortaste wurde in der gesamten Oberfläche nirgends ausgewertet.
+
+**Was eine Gruppenbuchung hier ist.** Eine `booking` mit mehreren `reservation`, so wie das Datenmodell es seit `0009` vorsieht — nicht mehrere Buchungen nebeneinander. Der Unterschied ist nicht kosmetisch: die Gruppe hat einen Besteller, eine Herkunft und am Ende eine Rechnung; acht lose Vorgänge verbindet später nichts mehr. `POST /v1/bookings` nimmt dafür `rooms`, und die Einzelbuchung ist von innen die Gruppe mit einem Zimmer — zwei Pfade wären zwei Fassungen von Zimmerprüfung, Preis, Folio und Ereignis, und die zweite würde beim nächsten Befund vergessen.
+
+Das ist ausdrücklich **nicht** dasselbe wie ein Kontingent. Ein Kontingent hält Zimmer einer Kategorie, ohne sie zu verkaufen, und die Zimmernummern stehen erst am Anreisetag fest; das bleibt der Weg für die große Reisegruppe. Die Mehrfachauswahl ist der Weg für die acht Zimmer, die jemand jetzt konkret zusagt.
+
+Vier Festlegungen daraus:
+
+- **Der Zeitraum gilt für alle Zimmer.** Aufgezogen wurde ein Rechteck, und ein Rechteck hat eine Breite. Ein Feld je Zimmer hätte den Abruf aus einem Kontingent unentscheidbar gemacht, der immer über den ganzen Zeitraum läuft.
+- **Der Besteller wird nur im ersten Zimmer als Mitreisender geführt.** Er ist nicht der Bewohner von acht Zimmern; in jedes eingetragen zählte die Kurtaxe ihn achtmal, und die Rechnung sähe dabei plausibel aus. Die übrigen Zimmer bleiben ohne Eintrag, und `erwarteteSaetze` rechnet dann mit einer Person je Zimmer.
+- **Bestand wird je Zimmergruppe in einem Aufruf gebunden**, nicht je Zimmer. `inventory_reserve` sperrt die Bestandszeilen des Zeitraums; acht Aufrufe sperrten sie achtmal.
+- **Ein Ereignis je Reservierung**, mit derselben `bookingRef`. Ein Kanalmanager führt seine Zimmer einzeln, und die bestehenden Empfänger erwarten `reservationRef` im Singular.
+
+**Mitgefunden und behoben:** `POST /v1/bookings` prüfte nie, ob die Zimmergruppe zu diesem Haus gehört. Bei einem Benutzer mit **einem** Haus fängt die Zeilenrichtlinie das ab; bei zweien — in einer Kette der Normalfall — stand die fremde Gruppe in seinem Kontext, und die Buchung scheiterte erst an `inventory_reserve`, also mit einer Meldung über fehlenden Bestand statt über die falsche Gruppe.
+
+**Noch offen, ausdrücklich:** die **Namensliste**. Alle Zimmer einer Gruppe tragen den Besteller als Hauptgast, und es gibt keinen Weg, das je Zimmer zu ändern — `PATCH /v1/reservations/:ref` kann nur die Notiz. Für den Meldeschein (§ 30 BMG) ist das zu wenig: er verlangt den tatsächlichen Gast. Solange das fehlt, lässt der Dialog das Gastfeld bewusst leer, statt einen falschen Namen in acht Meldescheine zu schreiben. Wer das angeht, berührt dabei `folio.guest_id` und den Rechnungsempfänger und sollte es deshalb für sich nehmen.
+
+**Der Arbeitsplatzwechsel** war derselbe Fall wie das Verschieben, nur schlimmer: `POST /v1/auth/workstation-switch` steht seit Anfang, prüft den PIN korrekt — und **niemand konnte je einen PIN setzen**. Es gab keine Route dafür; außer zwei Tests, die die Spalte direkt beschreiben, war das Feld in der ganzen Anwendung leer. Dazu kam jetzt `POST /v1/auth/workstation-pin` (nur der eigene, und nur gegen das eigene Kennwort) und die Maske hinter dem Namen in der Kopfleiste.
+
+Beim Bauen fielen an dieser Route drei Löcher auf, und jedes einzelne stand offen:
+
+1. **Die Ratenbegrenzung greift hier nicht.** Sie nimmt angemeldete Anfragen aus, und diese Route trägt immer ein gültiges Sitzungscookie — der Pfad steht zwar auf der strengen Liste, wurde davon aber nie erreicht. Ein vierstelliger PIN ließ sich in Sekunden durchprobieren. Jetzt zählt sie ihre Fehlversuche selbst, je Zielperson.
+2. **Das Ziel musste zu nichts gehören.** Adresse und PIN irgendeines Benutzers der ganzen Datenbank genügten — ein Weg von einem Kunden zum nächsten, den die Zeilenrichtlinie nicht deckt, weil die Abfrage ohne Mandantenkontext läuft. Jetzt muss das Ziel mindestens ein Haus mit der angemeldeten Person teilen.
+3. **Der Weg zurück war nicht gesichert.** Zurückwechseln verlangt denselben Nachweis wie hinwechseln; wer selbst keinen PIN hat, wäre nach dem ersten Wechsel aus seiner eigenen Sitzung ausgesperrt gewesen. Die Route verlangt deshalb, dass die angemeldete Person selbst einen PIN hinterlegt hat.
+
+Der Fehlversuchszähler ist **getrennt von dem der Anmeldung** (Migration `0035`), und das ist die Stelle, an der das Naheliegende falsch gewesen wäre. Dasselbe Konto, dieselbe Gefahr — aber wer bei einem gemeinsamen Zähler den PIN eines Kollegen falsch rät, sperrt dessen **Anmeldung**. Ein Mitarbeiter mit irgendeiner Sitzung könnte die Hausleitung aus dem System aussperren, ohne ein Kennwort zu kennen. Getrennt gezählt sperrt derselbe Angriff nur den Personenwechsel.
+
+---
+
 ### Ausrollen: was und wann sind getrennt
 
 Bis zur Erstinbetriebnahme gab es nur `deploy.sh` von Hand. Bei mehreren Bearbeitern, die täglich nach `main` mergen, heißt das: die Maschine hinkt beliebig weit hinterher, und niemand sieht es.
@@ -477,6 +512,20 @@ Ein Timer, der einfach zieht, wäre die falsche Antwort gewesen — er rollte mi
 **Gebaut wird neben dem laufenden Stand.** Je Commit ein Verzeichnis unter `releases/`, und erst wenn es vollständig ist, schaltet ein Symlink um. Vorher wurde im laufenden Verzeichnis gebaut — ein gescheiterter Bau ließ dann einen Quellbaum auf dem neuen Commit und ein halb überschriebenes `dist/` zurück, was erst beim nächsten Neustart der Maschine aufgefallen wäre. Das Zurückrollen fällt dabei ab: Symlink umlegen, Dienste neu starten, in Sekunden durch. Migrationen wandern nicht mit zurück — das Schema bleibt auf dem neueren Stand, was für hinzufügende Änderungen folgenlos ist.
 
 Ein eindeutiger Teilindex lässt höchstens eine offene Anforderung zu: zwei gleichzeitige Läufe zögen sich im selben Verzeichnis die Dateien weg, und heraus käme ein halber Stand, den niemand als solchen erkennt. Einzelheiten in [`21-inbetriebnahme.md`](21-inbetriebnahme.md) §8.
+
+---
+
+### Was der Oberfläche noch fehlt
+
+Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen. Alles hier ist gebaut, geprüft und über die Schnittstelle erreichbar — nur über keinen Bildschirm. Das ist kein Entwurf, sondern eine Liste; der Abschnitt darunter sagt, was ausdrücklich **nicht** dazugehört.
+
+| Fehlt | Route | Was das bedeutet |
+|---|---|---|
+| CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
+| Kunden anlegen | `POST /v1/platform/accounts` | Onboarding läuft heute über `curl`. Die Plattformkonsole hat dafür keine Maske. |
+| Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
+| Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
+| Namensliste einer Gruppe | — | Es gibt keine Route dafür. Siehe den Abschnitt zum Belegungsplan. |
 
 ---
 

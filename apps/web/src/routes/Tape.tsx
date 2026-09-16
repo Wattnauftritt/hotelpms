@@ -7,6 +7,8 @@ import { today, addDays, eachDay } from '../lib/dates.js'
 import { TapeChart } from '../components/TapeChart.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
+import { GroupBookingDialog, type GroupSelection }
+  from '../components/GroupBookingDialog.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
@@ -28,6 +30,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   // bleibt dahinter sichtbar.
   const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
+  // Mehrere Zimmerzeilen zugleich markiert: daraus wird **eine** Buchung
+  // mit mehreren Zimmern, nicht eine Buchung je Zimmer.
+  const [gruppe, setGruppe] = useState<GroupSelection | null>(null)
   const t = useT()
   const bis = addDays(von, tage)
   const q = useTapeChart(propertyId, von, bis)
@@ -81,16 +86,36 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                         setAuswahl({ ...sel, roomCode: u?.code ?? '',
                                       categoryName: u?.category_name ?? '' })
                       }}
+                      onCreateGroup={sel => {
+                        const zimmer = new Map(q.data!.units.map(u => [u.id, u]))
+                        setGruppe({
+                          arrival: sel.arrival, departure: sel.departure,
+                          rooms: sel.rooms.map(r => ({
+                            ...r,
+                            roomCode: zimmer.get(r.resourceId)?.code ?? '',
+                            categoryName: zimmer.get(r.resourceId)?.category_name ?? ''
+                          }))
+                        })
+                      }}
                       onMove={(reservationRef, resourceId) =>
                         zuweisen.mutate({ reservationRef, resourceId })}
                       onChangeStay={(reservationRef, arrival, departure) =>
                         umbuchen.mutate({ reservationRef, arrival, departure })} />}
+
+      {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
+          Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden. */}
+      <p className="text-xs text-neutral-500">{t('plan.dragHint')}</p>
 
       {ausgewaehlt !== null && (
         <ReservationPanel reservationRef={ausgewaehlt}
                           onClose={() => setAusgewaehlt(null)}
                           onOpenFolio={onFolio}
                           onOpenCheckIn={onCheckIn} />
+      )}
+
+      {gruppe !== null && (
+        <GroupBookingDialog propertyId={propertyId} selection={gruppe}
+                            onClose={() => setGruppe(null)} />
       )}
 
       {auswahl !== null && (

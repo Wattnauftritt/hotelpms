@@ -39,6 +39,27 @@ export const common = {
     'login.password': 'Kennwort',
     'login.submit': 'Anmelden',
     'auth.logout': 'Abmelden',
+    'workstation.switch': 'Person wechseln',
+    'workstation.title': 'Arbeitsplatz',
+    'workstation.acting': 'Es handelt gerade nicht die angemeldete Person.',
+    'workstation.switchHint': 'Am geteilten Rezeptionsrechner übernimmt eine andere '
+                            + 'Person, ohne dass sich jemand neu anmeldet. Die Sitzung '
+                            + 'bleibt; im Protokoll steht, wer wirklich gebucht hat.',
+    'workstation.pin': 'Arbeitsplatz-PIN',
+    'workstation.switchSubmit': 'Übernehmen',
+    'workstation.switched': 'Übernommen',
+    'workstation.ownPin': 'Eigener Arbeitsplatz-PIN',
+    'workstation.ownPinHint': 'Vier bis zwölf Ziffern. Nur damit kann jemand an einem '
+                            + 'anderen Arbeitsplatz in Ihrem Namen weiterarbeiten — und '
+                            + 'nur damit kommen Sie nach einem Wechsel in Ihre eigene '
+                            + 'Sitzung zurück.',
+    'workstation.pinSet': 'Hinterlegt',
+    'workstation.pinNotSet': 'Nicht hinterlegt',
+    'workstation.pinSave': 'PIN setzen',
+    'workstation.pinRemove': 'PIN entfernen',
+    'workstation.pinSaved': 'Gespeichert',
+    'workstation.needOwnPin': 'Hinterlegen Sie zuerst einen eigenen PIN. Ohne ihn '
+                            + 'kämen Sie nach einem Wechsel nicht zurück.',
     'app.noProperty': 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     'app.noScreen': 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
                   + 'öffnen.'
@@ -82,6 +103,26 @@ export const common = {
     'login.password': 'Password',
     'login.submit': 'Sign in',
     'auth.logout': 'Sign out',
+    'workstation.switch': 'Switch person',
+    'workstation.title': 'Workstation',
+    'workstation.acting': 'Someone other than the signed-in person is acting.',
+    'workstation.switchHint': 'At a shared front-desk machine another person takes '
+                            + 'over without anyone signing in again. The session stays; '
+                            + 'the audit log records who actually booked.',
+    'workstation.pin': 'Workstation PIN',
+    'workstation.switchSubmit': 'Take over',
+    'workstation.switched': 'Taken over',
+    'workstation.ownPin': 'Your own workstation PIN',
+    'workstation.ownPinHint': 'Four to twelve digits. Only with it can someone carry '
+                            + 'on in your name at another workstation — and only with '
+                            + 'it do you get back into your own session after a switch.',
+    'workstation.pinSet': 'On file',
+    'workstation.pinNotSet': 'Not on file',
+    'workstation.pinSave': 'Set PIN',
+    'workstation.pinRemove': 'Remove PIN',
+    'workstation.pinSaved': 'Saved',
+    'workstation.needOwnPin': 'Set a PIN of your own first. Without it you could not '
+                            + 'get back after a switch.',
     'app.noProperty': 'This user is not assigned to any property yet.',
     'app.noScreen': 'This account has no rights in {haus} that open a screen.'
   }

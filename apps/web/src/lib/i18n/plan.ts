@@ -47,6 +47,24 @@ export const plan = {
     'booking.created': 'Gebucht',
     'booking.needsGuest': 'Ohne Gast lässt sich nicht buchen. Suchen oder neu anlegen.',
 
+    'plan.dragHint': 'Balken ziehen verschiebt die Reservierung, die Ränder verlängern '
+                    + 'sie. Auf freier Fläche aufziehen legt eine Buchung an — mit '
+                    + 'gedrückter Strg-, ⌘- oder Umschalttaste über mehrere Zimmer '
+                    + 'hinweg eine Gruppenbuchung.',
+
+    'group.title': 'Gruppenbuchung',
+    'group.rooms': 'Zimmer',
+    'group.selection': 'Ausgewählte Zimmer',
+    'group.remove': 'Entfernen',
+    'group.submit': 'Gruppe buchen',
+    'group.created': 'Gruppe gebucht',
+    'group.createdDetail': '{n} Zimmer unter einer Buchung',
+    'group.guestHint': 'Der Gast ist der Besteller der Gruppe, nicht der Bewohner '
+                      + 'jedes Zimmers. Er wird nur im ersten Zimmer als Mitreisender '
+                      + 'geführt — sonst zählte die Kurtaxe ihn mehrfach. Die Namen '
+                      + 'der übrigen Zimmer kommen mit der Namensliste.',
+    'group.empty': 'Kein Zimmer mehr ausgewählt.',
+
     'guestPicker.placeholder': 'Nachname, E-Mail oder Telefon',
     'guestPicker.hint': 'Mindestens zwei Zeichen',
     'guestPicker.noResults': 'Keine Treffer',
@@ -120,6 +138,23 @@ export const plan = {
     'booking.close': 'Cancel',
     'booking.created': 'Booked',
     'booking.needsGuest': 'Booking needs a guest. Search or create one.',
+
+    'plan.dragHint': 'Drag a bar to move the reservation, drag its edges to extend '
+                    + 'it. Drag across free space to create a booking — hold Ctrl, ⌘ '
+                    + 'or Shift and drag across several rooms for a group booking.',
+
+    'group.title': 'Group booking',
+    'group.rooms': 'rooms',
+    'group.selection': 'Selected rooms',
+    'group.remove': 'Remove',
+    'group.submit': 'Book the group',
+    'group.created': 'Group booked',
+    'group.createdDetail': '{n} rooms under one booking',
+    'group.guestHint': 'The guest is the person who booked the group, not the '
+                      + 'occupant of every room. They are recorded as an occupant of '
+                      + 'the first room only — otherwise city tax would count them '
+                      + 'several times. The other names arrive with the rooming list.',
+    'group.empty': 'No room selected any more.',
 
     'guestPicker.placeholder': 'Last name, email or phone',
     'guestPicker.hint': 'At least two characters',
