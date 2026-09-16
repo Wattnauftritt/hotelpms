@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
 import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
          weekdayShort } from '../lib/i18n/index.js'
 
@@ -15,6 +16,22 @@ import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
  */
 
 const I18N = join(import.meta.dirname, '..', 'lib', 'i18n')
+
+describe('Sprachen der Gastpost in der Maske', () => {
+  /**
+   * Die Gastmaske bietet die Sprachen an, in denen wir schreiben -- und die
+   * Liste dafuer ist `EMAIL_LANGUAGES`, nicht eine zweite im Bildschirm.
+   * Kommt eine Sprache dazu und fehlt hier ihr Name, stuende im Auswahlfeld
+   * der Schluessel: "guests.language.nl".
+   */
+  it('benennt jede Sprache, in der Gastpost hinausgeht', () => {
+    const vorhanden = new Set<string>(textKeys())
+    for (const lang of EMAIL_LANGUAGES) {
+      expect(vorhanden.has(`guests.language.${lang}`),
+        `guests.language.${lang} fehlt im Katalog`).toBe(true)
+    }
+  })
+})
 
 describe('Katalog der Oberflaeche', () => {
   it('hat in jeder Sprache einen Satz zu jedem Schluessel', () => {
