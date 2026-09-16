@@ -52,10 +52,10 @@ describe('Katalog der Oberflaeche', () => {
 
   /**
    * Ein Platzhalter, der nur in einer Sprache steht, ist der teure Fall: der
-   * deutsche Satz nennt das Haus, der englische verschweigt es, und auf dem
-   * Bildschirm steht ein Satz, der niemanden meint.
+   * deutsche Satz nennt das Haus, eine andere Sprache verschweigt es, und auf
+   * dem Bildschirm steht ein Satz, der niemanden meint.
    */
-  it('haelt die Platzhalter in beiden Sprachen gleich', () => {
+  it('haelt die Platzhalter in allen Sprachen gleich', () => {
     const platzhalter = (s: string) =>
       [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]!).sort()
     for (const key of textKeys()) {

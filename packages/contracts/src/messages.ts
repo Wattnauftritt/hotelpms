@@ -1,5 +1,5 @@
 /**
- * Meldungen der Schnittstelle in beiden Sprachen.
+ * Meldungen der Schnittstelle in allen angebotenen Sprachen.
  *
  * **Warum das hier liegt und nicht in der API.** Ein Fehler der Schnittstelle
  * wird an zwei Orten gelesen: von einer Maschine, die auf ihn reagiert, und
@@ -8,10 +8,12 @@
  * Der Schluessel gehoert damit zum Vertrag, genau wie ein Feldname -- und
  * deshalb steht er hier neben den Schemata und nicht in `apps/api`.
  *
- * **Deutsch und Englisch stehen nebeneinander, nicht in zwei Listen.** Zwei
- * getrennte Bloecke laufen auseinander, sobald jemand einen Satz aendert und
- * den anderen vergisst; nebeneinander faellt die Luecke beim Hinsehen auf,
- * und ein Test faengt sie ohnehin ab.
+ * **Die Sprachen stehen nebeneinander, nicht in getrennten Listen.**
+ * Getrennte Bloecke laufen auseinander, sobald jemand einen Satz aendert und
+ * die anderen vergisst; nebeneinander faellt die Luecke beim Hinsehen auf,
+ * und ein Test faengt sie ohnehin ab. Ab der dritten Sprache ist das kein
+ * Geschmack mehr, sondern die einzige Form, in der sich ein Satz noch
+ * gegenlesen laesst.
  *
  * **Platzhalter** stehen in geschweiften Klammern: `{max}`. Eine Meldung mit
  * Platzhaltern ohne Werte bleibt lesbar -- der Platzhalter bleibt stehen,
@@ -32,7 +34,7 @@
  * Benutzer die Haelfte in einer Sprache zu zeigen, die er nicht gewaehlt
  * hat.
  */
-export const LOCALES = ['de', 'en'] as const
+export const LOCALES = ['de', 'en', 'tr'] as const
 export type MessageLocale = (typeof LOCALES)[number]
 
 /**
@@ -92,78 +94,102 @@ const M = {
 
   'error.unauthorized': {
     de: 'Nicht angemeldet',
-    en: 'Not signed in' },
+    en: 'Not signed in',
+    tr: 'Oturum açılmamış' },
   'error.forbidden': {
     de: 'Keine Berechtigung',
-    en: 'Not permitted' },
+    en: 'Not permitted',
+    tr: 'Yetki yok' },
   'error.notFound': {
     de: '{what} nicht gefunden',
-    en: '{what} not found' },
+    en: '{what} not found',
+    tr: '{what} bulunamadı' },
   'error.conflict': {
     de: 'Konflikt',
-    en: 'Conflict' },
+    en: 'Conflict',
+    tr: 'Çakışma' },
   'error.validation': {
     de: 'Eingabe ungueltig',
-    en: 'Invalid input' },
+    en: 'Invalid input',
+    tr: 'Girdi geçersiz' },
   'error.unprocessable': {
     de: 'Nicht verarbeitbar',
-    en: 'Cannot be processed' },
+    en: 'Cannot be processed',
+    tr: 'İşlenemiyor' },
   'error.soldOut': {
     de: 'Kein Kontingent verfuegbar',
-    en: 'No availability left' },
+    en: 'No availability left',
+    tr: 'Kontenjan kalmadı' },
   'error.soldOut.detail': {
     de: 'Fuer mindestens eine Nacht des Zeitraums ist die Kapazitaet erschoepft.',
-    en: 'For at least one night of the period there is no capacity left.' },
+    en: 'For at least one night of the period there is no capacity left.',
+    tr: 'Dönemin en az bir gecesinde kapasite tükenmiş durumda.' },
   'error.notMaterialized': {
     de: 'Zeitraum nicht verfuegbar',
-    en: 'Period not available' },
+    en: 'Period not available',
+    tr: 'Dönem kullanılamıyor' },
   'error.notMaterialized.detail': {
     de: 'Der Zeitraum liegt ausserhalb des vorbereiteten Horizonts. '
       + 'Der Betrieb wurde benachrichtigt.',
-    en: 'The period lies beyond the prepared horizon. Operations have been notified.' },
+    en: 'The period lies beyond the prepared horizon. Operations have been notified.',
+    tr: 'Dönem, hazırlanmış ufkun dışında kalıyor. İşletme bilgilendirildi.' },
   'error.rangeTooLarge': {
     de: 'Zeitraum zu gross',
-    en: 'Period too large' },
+    en: 'Period too large',
+    tr: 'Dönem çok geniş' },
   'error.rangeTooLarge.detail': {
     de: 'Hoechstens {max} Tage je Anfrage.',
-    en: 'At most {max} days per request.' },
+    en: 'At most {max} days per request.',
+    tr: 'Sorgu başına en fazla {max} gün.' },
   'error.idempotencyMismatch': {
     de: 'Idempotenzschluessel wiederverwendet',
-    en: 'Idempotency key reused' },
+    en: 'Idempotency key reused',
+    tr: 'Idempotency anahtarı yeniden kullanıldı' },
   'error.idempotencyMismatch.detail': {
     de: 'Derselbe Schluessel wurde bereits mit einem anderen Rumpf benutzt.',
-    en: 'The same key has already been used with a different body.' },
+    en: 'The same key has already been used with a different body.',
+    tr: 'Aynı anahtar daha önce başka bir gövdeyle kullanılmış.' },
   'error.idempotencyInFlight': {
     de: 'Anfrage laeuft bereits',
-    en: 'Request already in flight' },
+    en: 'Request already in flight',
+    tr: 'İstek zaten işleniyor' },
   'error.idempotencyInFlight.detail': {
     de: 'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.',
-    en: 'A request with this key is being processed. Please try again.' },
+    en: 'A request with this key is being processed. Please try again.',
+    tr: 'Bu anahtarla gelen bir istek şu anda işleniyor. Lütfen tekrar deneyin.' },
   'error.notConfigured': {
     de: 'Nicht eingerichtet',
-    en: 'Not configured' },
+    en: 'Not configured',
+    tr: 'Kurulmamış' },
   'error.invalidSignature': {
     de: 'Signatur ungueltig',
-    en: 'Invalid signature' },
+    en: 'Invalid signature',
+    tr: 'İmza geçersiz' },
   'error.documentPending': {
     de: 'Beleg noch nicht erzeugt',
-    en: 'Document not generated yet' },
+    en: 'Document not generated yet',
+    tr: 'Belge henüz oluşturulmadı' },
   'error.documentPending.detail': {
     de: 'Die Rechnung ist festgeschrieben, der Beleg wird gerade erzeugt. '
       + 'Bitte in Kuerze erneut abrufen.',
-    en: 'The invoice is final; the document is being generated. Please retry shortly.' },
+    en: 'The invoice is final; the document is being generated. Please retry shortly.',
+    tr: 'Fatura kesinleşti, belge şu anda oluşturuluyor. Lütfen birazdan tekrar çağırın.' },
   'error.unknown': {
     de: 'Unbekannter Fehler',
-    en: 'Unknown error' },
+    en: 'Unknown error',
+    tr: 'Bilinmeyen hata' },
   'error.internal': {
     de: 'Interner Fehler',
-    en: 'Internal error' },
+    en: 'Internal error',
+    tr: 'İç hata' },
   'error.rateLimited': {
     de: 'Zu viele Anfragen',
-    en: 'Too many requests' },
+    en: 'Too many requests',
+    tr: 'Çok fazla istek' },
   'error.rateLimited.detail': {
     de: 'Bitte in {seconds} Sekunden erneut versuchen.',
-    en: 'Please try again in {seconds} seconds.' },
+    en: 'Please try again in {seconds} seconds.',
+    tr: 'Lütfen {seconds} saniye sonra tekrar deneyin.' },
 
   // -------------------------------------------------------------- Ressourcen
   //
@@ -172,73 +198,96 @@ const M = {
 
   'res.resource': {
     de: 'Ressource',
-    en: 'Resource' },
+    en: 'Resource',
+    tr: 'Kaynak' },
   'res.property': {
     de: 'Property',
-    en: 'Property' },
+    en: 'Property',
+    tr: 'Property' },
   'res.reservation': {
     de: 'Reservierung',
-    en: 'Reservation' },
+    en: 'Reservation',
+    tr: 'Rezervasyon' },
   'res.folio': {
     de: 'Folio',
-    en: 'Folio' },
+    en: 'Folio',
+    tr: 'Folio' },
   'res.guest': {
     de: 'Gast',
-    en: 'Guest' },
+    en: 'Guest',
+    tr: 'Misafir' },
   'res.company': {
     de: 'Firma',
-    en: 'Company' },
+    en: 'Company',
+    tr: 'Firma' },
   'res.category': {
     de: 'Zimmergruppe',
-    en: 'Room type' },
+    en: 'Room type',
+    tr: 'Oda tipi' },
   'res.room': {
     de: 'Zimmer',
-    en: 'Room' },
+    en: 'Room',
+    tr: 'Oda' },
   'res.invoice': {
     de: 'Rechnung',
-    en: 'Invoice' },
+    en: 'Invoice',
+    tr: 'Fatura' },
   'res.block': {
     de: 'Kontingent',
-    en: 'Block' },
+    en: 'Block',
+    tr: 'Kontenjan' },
   'res.subscription': {
     de: 'Abonnement',
-    en: 'Subscription' },
+    en: 'Subscription',
+    tr: 'Abonelik' },
   'res.settlement': {
     de: 'Zahlungsvermerk',
-    en: 'Settlement' },
+    en: 'Settlement',
+    tr: 'Ödeme kaydı' },
   'res.paymentMethod': {
     de: 'Zahlungsart',
-    en: 'Payment method' },
+    en: 'Payment method',
+    tr: 'Ödeme türü' },
   'res.maintenanceTicket': {
     de: 'Wartungsmeldung',
-    en: 'Maintenance ticket' },
+    en: 'Maintenance ticket',
+    tr: 'Bakım bildirimi' },
   'res.connection': {
     de: 'Verbindung',
-    en: 'Connection' },
+    en: 'Connection',
+    tr: 'Bağlantı' },
   'res.ratePlan': {
     de: 'Ratenplan',
-    en: 'Rate plan' },
+    en: 'Rate plan',
+    tr: 'Fiyat planı' },
   'res.registration': {
     de: 'Meldeschein',
-    en: 'Registration form' },
+    en: 'Registration form',
+    tr: 'Meldeschein' },
   'res.oauthClient': {
     de: 'Maschinenzugang',
-    en: 'Machine access' },
+    en: 'Machine access',
+    tr: 'Makine erişimi' },
   'res.user': {
     de: 'Benutzer',
-    en: 'User' },
+    en: 'User',
+    tr: 'Kullanıcı' },
   'res.task': {
     de: 'Aufgabe',
-    en: 'Task' },
+    en: 'Task',
+    tr: 'Görev' },
   'res.message': {
     de: 'Nachricht',
-    en: 'Message' },
+    en: 'Message',
+    tr: 'Mesaj' },
   'res.product': {
     de: 'Artikel',
-    en: 'Product' },
+    en: 'Product',
+    tr: 'Ürün' },
   'res.posChargeByReference': {
     de: 'Kassenumsatz mit der Belegnummer {reference}',
-    en: 'POS charge with document number {reference}' },
+    en: 'POS charge with document number {reference}',
+    tr: '{reference} belge numaralı kasa hareketi' },
 
   // ------------------------------------------------------------- Feldfehler
   //
@@ -247,184 +296,239 @@ const M = {
 
   'field.required': {
     de: 'Pflichtfeld',
-    en: 'Required' },
+    en: 'Required',
+    tr: 'Zorunlu alan' },
   'field.requiredWithManyAccounts': {
     de: 'Pflichtfeld bei mehreren Accounts',
-    en: 'Required when there are several accounts' },
+    en: 'Required when there are several accounts',
+    tr: 'Birden çok account varsa zorunlu alan' },
   'field.requiredForDerived': {
     de: 'Bei abgeleiteter Rate erforderlich',
-    en: 'Required for a derived rate' },
+    en: 'Required for a derived rate',
+    tr: 'Türetilmiş fiyatta zorunlu' },
   'field.headerRequired': {
     de: 'Kopfzeile erforderlich',
-    en: 'Header required' },
+    en: 'Header required',
+    tr: 'Başlık satırı gerekli' },
   'field.bodyMissing': {
     de: 'Rumpf fehlt',
-    en: 'Body missing' },
+    en: 'Body missing',
+    tr: 'Gövde eksik' },
   'field.invalid': {
     de: 'ungueltig',
-    en: 'invalid' },
+    en: 'invalid',
+    tr: 'geçersiz' },
   'field.isoDate': {
     de: 'Datum im Format YYYY-MM-DD erwartet',
-    en: 'Date in the format YYYY-MM-DD expected' },
+    en: 'Date in the format YYYY-MM-DD expected',
+    tr: 'YYYY-MM-DD biçiminde tarih bekleniyor' },
   'field.isoMonth': {
     de: 'Format YYYY-MM erwartet',
-    en: 'Format YYYY-MM expected' },
+    en: 'Format YYYY-MM expected',
+    tr: 'YYYY-MM biçimi bekleniyor' },
   'field.isoTimestamp': {
     de: 'Zeitstempel nach ISO 8601 erwartet',
-    en: 'Timestamp in ISO 8601 expected' },
+    en: 'Timestamp in ISO 8601 expected',
+    tr: 'ISO 8601 biçiminde zaman damgası bekleniyor' },
   'field.email': {
     de: 'Keine brauchbare Adresse',
-    en: 'Not a usable address' },
+    en: 'Not a usable address',
+    tr: 'Kullanılabilir bir adres değil' },
   'field.httpsOnly': {
     de: 'Muss mit https:// beginnen',
-    en: 'Must start with https://' },
+    en: 'Must start with https://',
+    tr: 'https:// ile başlamalı' },
   'field.integer': {
     de: 'Ganze Zahl erwartet',
-    en: 'Whole number expected' },
+    en: 'Whole number expected',
+    tr: 'Tam sayı bekleniyor' },
   'field.positiveInteger': {
     de: 'Ganze Zahl groesser als null erwartet',
-    en: 'Whole number greater than zero expected' },
+    en: 'Whole number greater than zero expected',
+    tr: 'Sıfırdan büyük tam sayı bekleniyor' },
   'field.centAmount': {
     de: 'Ganze Cent-Betraege, nicht negativ',
-    en: 'Whole amounts in cents, not negative' },
+    en: 'Whole amounts in cents, not negative',
+    tr: 'Tam kuruş tutarları, negatif olmamalı' },
   'field.positiveCent': {
     de: 'Muss eine positive Centzahl sein',
-    en: 'Must be a positive amount in cents' },
+    en: 'Must be a positive amount in cents',
+    tr: 'Pozitif bir kuruş tutarı olmalı' },
   'field.minTwoChars': {
     de: 'Mindestens zwei Zeichen',
-    en: 'At least two characters' },
+    en: 'At least two characters',
+    tr: 'En az iki karakter' },
   'field.maxLength': {
     de: 'Hoechstens {max} Zeichen',
-    en: 'At most {max} characters' },
+    en: 'At most {max} characters',
+    tr: 'En fazla {max} karakter' },
   'field.afterArrival': {
     de: 'Muss nach arrival liegen',
-    en: 'Must be after arrival' },
+    en: 'Must be after arrival',
+    tr: 'arrival tarihinden sonra olmalı' },
   'field.afterFrom': {
     de: 'Muss nach from liegen',
-    en: 'Must be after from' },
+    en: 'Must be after from',
+    tr: 'from tarihinden sonra olmalı' },
   'field.afterFromDate': {
     de: 'Muss nach fromDate liegen',
-    en: 'Must be after fromDate' },
+    en: 'Must be after fromDate',
+    tr: 'fromDate tarihinden sonra olmalı' },
   'field.onOrAfterFrom': {
     de: 'Muss auf oder nach from liegen',
-    en: 'Must be on or after from' },
+    en: 'Must be on or after from',
+    tr: 'from tarihinde veya sonrasında olmalı' },
   'field.notBeforeFrom': {
     de: 'Darf nicht kleiner als from sein',
-    en: 'Must not be smaller than from' },
+    en: 'Must not be smaller than from',
+    tr: 'from değerinden küçük olamaz' },
   'field.notAboveMaxLos': {
     de: 'Darf nicht groesser als maxLos sein',
-    en: 'Must not be greater than maxLos' },
+    en: 'Must not be greater than maxLos',
+    tr: 'maxLos değerinden büyük olamaz' },
   'field.weekday': {
     de: 'Werte von 0 (Montag) bis 6 (Sonntag)',
-    en: 'Values from 0 (Monday) to 6 (Sunday)' },
+    en: 'Values from 0 (Monday) to 6 (Sunday)',
+    tr: '0 (Pazartesi) ile 6 (Pazar) arası değerler' },
   'field.weekdayRange': {
     de: 'Zwischen 0 und 6',
-    en: 'Between 0 and 6' },
+    en: 'Between 0 and 6',
+    tr: '0 ile 6 arasında' },
   'field.atLeastOneRoom': {
     de: 'Mindestens ein Zimmer',
-    en: 'At least one room' },
+    en: 'At least one room',
+    tr: 'En az bir oda' },
   'field.atLeastOneScope': {
     de: 'Mindestens ein Zugriffsbereich',
-    en: 'At least one scope' },
+    en: 'At least one scope',
+    tr: 'En az bir erişim alanı' },
   'field.roleKeyList': {
     de: 'Liste der Rollenschluessel erwartet',
-    en: 'A list of role keys is expected' },
+    en: 'A list of role keys is expected',
+    tr: 'Rol anahtarlarının listesi bekleniyor' },
   'field.allowedValues': {
     de: 'Erlaubt: {values}',
-    en: 'Allowed: {values}' },
+    en: 'Allowed: {values}',
+    tr: 'İzin verilen: {values}' },
   'field.unknownValues': {
     de: 'Unbekannt: {values}',
-    en: 'Unknown: {values}' },
+    en: 'Unknown: {values}',
+    tr: 'Bilinmeyen: {values}' },
   'field.seriesEmpty': {
     de: 'Die Serie ist nach den Auslassungen leer',
-    en: 'After the exclusions the series is empty' },
+    en: 'After the exclusions the series is empty',
+    tr: 'Seri, çıkarmalardan sonra boş kalıyor' },
   'field.occupancyPrices': {
     de: 'Preis je Belegung erwartet, Index 0 = 1 Person',
-    en: 'A price per occupancy is expected, index 0 = 1 person' },
+    en: 'A price per occupancy is expected, index 0 = 1 person',
+    tr: 'Doluluğa göre fiyat bekleniyor, indeks 0 = 1 kişi' },
   'field.unknownCategory': {
     de: 'Unbekannte Kategorie',
-    en: 'Unknown room type' },
+    en: 'Unknown room type',
+    tr: 'Bilinmeyen oda tipi' },
   'field.unknownRatePlan': {
     de: 'Unbekannter Ratenplan',
-    en: 'Unknown rate plan' },
+    en: 'Unknown rate plan',
+    tr: 'Bilinmeyen fiyat planı' },
   'field.unknownPaymentMethod': {
     de: 'Unbekannte Zahlart',
-    en: 'Unknown payment method' },
+    en: 'Unknown payment method',
+    tr: 'Bilinmeyen ödeme türü' },
   'field.unknownEventType': {
     de: 'Unbekannte Ereignisart: {values}',
-    en: 'Unknown event type: {values}' },
+    en: 'Unknown event type: {values}',
+    tr: 'Bilinmeyen olay türü: {values}' },
   'field.unknownRole': {
     de: 'Unbekannte Rolle: {values}',
-    en: 'Unknown role: {values}' },
+    en: 'Unknown role: {values}',
+    tr: 'Bilinmeyen rol: {values}' },
   'field.mustMatchBlockCategory': {
     de: 'Muss der Zimmergruppe des Kontingents entsprechen',
-    en: 'Must match the room type of the block' },
+    en: 'Must match the room type of the block',
+    tr: 'Kontenjanın oda tipiyle aynı olmalı' },
   'field.blockNeedsRoom': {
     de: 'Eine Sperrung braucht ein Zimmer',
-    en: 'A block needs a room' },
+    en: 'A block needs a room',
+    tr: 'Bir bloke için oda gerekir' },
   'field.onlyRoomcloud': {
     de: 'Nur roomcloud ist bisher angebunden',
-    en: 'Only roomcloud is connected so far' },
+    en: 'Only roomcloud is connected so far',
+    tr: 'Şimdilik yalnızca roomcloud bağlı' },
   'field.onlyPreviousYear': {
     de: 'Erlaubt ist nur previous-year',
-    en: 'Only previous-year is allowed' },
+    en: 'Only previous-year is allowed',
+    tr: 'Yalnızca previous-year kabul edilir' },
   'field.notAnIncomingPayment': {
     de: 'Der Zahlungsvermerk ist kein Zahlungseingang.',
-    en: 'That settlement is not an incoming payment.' },
+    en: 'That settlement is not an incoming payment.',
+    tr: 'Ödeme kaydı bir tahsilat değil.' },
   'field.originalDocumentNumber': {
     de: 'Belegnummer des Originals',
-    en: 'Document number of the original' },
+    en: 'Document number of the original',
+    tr: 'Aslın belge numarası' },
   'field.reversalDocumentNumber': {
     de: 'Belegnummer des Stornos',
-    en: 'Document number of the reversal' },
+    en: 'Document number of the reversal',
+    tr: 'İptalin belge numarası' },
   'field.noPlatformScopes': {
     de: 'Plattformrechte sind keine Zugriffsbereiche: {values}',
-    en: 'Platform permissions are not scopes: {values}' },
+    en: 'Platform permissions are not scopes: {values}',
+    tr: 'Platform yetkileri erişim alanı değildir: {values}' },
   // ------------------------------------------------- Zugriff und Anmeldung
 
   'access.accountOutOfScope': {
     de: 'Account liegt nicht im Zugriffsbereich.',
-    en: 'That account is outside your scope.' },
+    en: 'That account is outside your scope.',
+    tr: 'Account erişim alanının dışında.' },
   'access.propertyOutOfScope': {
     de: 'Property liegt nicht im Zugriffsbereich.',
-    en: 'That property is outside your scope.' },
+    en: 'That property is outside your scope.',
+    tr: 'Property erişim alanının dışında.' },
   'access.missingPermission': {
     de: 'Fehlende Berechtigung: {permission}',
-    en: 'Missing permission: {permission}' },
+    en: 'Missing permission: {permission}',
+    tr: 'Eksik yetki: {permission}' },
   'auth.tooManyAttempts': {
     de: 'Zu viele Fehlversuche. Bitte später erneut versuchen.',
-    en: 'Too many failed attempts. Please try again later.' },
+    en: 'Too many failed attempts. Please try again later.',
+    tr: 'Çok fazla başarısız deneme. Lütfen daha sonra tekrar deneyin.' },
   // Bewusst dieselbe Antwort fuer "Adresse unbekannt" und "Kennwort falsch":
   // eine hilfreichere Meldung waere eine Auskunft darueber, welche Adressen
   // es gibt.
   'auth.badCredentials': {
     de: 'E-Mail oder Kennwort stimmt nicht.',
-    en: 'Email or password is not correct.' },
+    en: 'Email or password is not correct.',
+    tr: 'E-posta veya parola doğru değil.' },
   'auth.badPin': {
     de: 'E-Mail oder PIN stimmt nicht.',
-    en: 'Email or PIN is not correct.' },
+    en: 'Email or PIN is not correct.',
+    tr: 'E-posta veya PIN doğru değil.' },
   // Bewusst ohne Unterscheidung zwischen unbekannt, abgelaufen und schon
   // benutzt: jede davon waere eine Auskunft ueber ein Token, das der
   // Aufrufer nicht hat.
   'auth.tokenInvalid': {
     de: 'Der Link ist ungueltig oder abgelaufen. Fordern Sie einen neuen an.',
-    en: 'The link is invalid or has expired. Please request a new one.' },
+    en: 'The link is invalid or has expired. Please request a new one.',
+    tr: 'Bağlantı geçersiz veya süresi dolmuş. Yeni bir tane isteyin.' },
   'auth.passwordTooShort': {
     de: 'Das Kennwort muss mindestens {min} Zeichen haben.',
-    en: 'The password must be at least {min} characters long.' },
+    en: 'The password must be at least {min} characters long.',
+    tr: 'Parola en az {min} karakter olmalı.' },
 
   // ------------------------------------------------------------ Onboarding
 
   'onboarding.emailTaken': {
     de: 'Diese E-Mail-Adresse gehoert bereits zu einem Zugang.',
-    en: 'This email address already belongs to an account.' },
+    en: 'This email address already belongs to an account.',
+    tr: 'Bu e-posta adresi zaten bir erişime bağlı.' },
   // Nicht "Feld fehlt": der Grund gehoert dazu, sonst traegt jemand einen
   // Punkt ein und das Haus stellt Rechnungen aus, die nicht gelten.
   'onboarding.invoiceDataRequired': {
     de: 'Anschrift und Steuernummer sind Pflicht: ohne sie darf das Haus nach '
         + '§ 14 UStG keine Rechnung ausstellen.',
     en: 'Address and tax number are required: without them the property may not '
-        + 'issue invoices under § 14 UStG.' },
+        + 'issue invoices under § 14 UStG.',
+    tr: 'Adres ve vergi numarası zorunludur: bunlar olmadan tesis § 14 UStG uyarınca fatura kesemez.' },
 
   // ----------------------------------------------------------- Ausrollen
 
@@ -433,43 +537,53 @@ const M = {
   // Verzeichnis die Dateien wegziehen.
   'deploy.alreadyRunning': {
     de: 'Es laeuft bereits ein Ausrollvorgang. Warten Sie, bis er durch ist.',
-    en: 'A deployment is already in progress. Please wait until it finishes.' },
+    en: 'A deployment is already in progress. Please wait until it finishes.',
+    tr: 'Halihazırda bir dağıtım sürüyor. Bitmesini bekleyin.' },
 
   'deploy.unknownRelease': {
     de: 'Dieser Stand ist nicht mehr auf der Maschine. Zurueckgerollt werden kann '
         + 'nur auf einen Stand, der noch dort liegt.',
     en: 'That release is no longer on the machine. You can only roll back to a '
-        + 'release that is still there.' },
+        + 'release that is still there.',
+    tr: 'Bu sürüm artık makinede yok. Yalnızca hâlâ orada duran bir sürüme geri dönülebilir.' },
   'deploy.alreadyCurrent': {
     de: 'Dieser Stand laeuft bereits.',
-    en: 'That release is already running.' },
+    en: 'That release is already running.',
+    tr: 'Bu sürüm zaten çalışıyor.' },
 
   // -------------------------------------------------------- Support-Sitzung
 
   'support.unknownSession': {
     de: 'Diese Support-Sitzung gibt es nicht.',
-    en: 'This support session does not exist.' },
+    en: 'This support session does not exist.',
+    tr: 'Böyle bir destek oturumu yok.' },
   'support.alreadyGranted': {
     de: 'Diese Sitzung ist bereits freigegeben.',
-    en: 'This session has already been approved.' },
+    en: 'This session has already been approved.',
+    tr: 'Bu oturum zaten onaylanmış.' },
   'support.notPending': {
     de: 'Diese Sitzung laesst sich nicht mehr freigeben: sie ist abgelaufen oder '
         + 'widerrufen.',
-    en: 'This session can no longer be approved: it has expired or been revoked.' },
+    en: 'This session can no longer be approved: it has expired or been revoked.',
+    tr: 'Bu oturum artık onaylanamaz: süresi dolmuş veya iptal edilmiş.' },
   'support.badLevel': {
     de: 'Unbekannte Stufe. Erlaubt sind lesen und schreiben.',
-    en: 'Unknown level. Allowed are read and write.' },
+    en: 'Unknown level. Allowed are read and write.',
+    tr: 'Bilinmeyen düzey. İzin verilenler: okuma ve yazma.' },
   'support.badHours': {
     de: 'Die Laufzeit muss zwischen 1 und {max} Stunden liegen.',
-    en: 'The duration must be between 1 and {max} hours.' },
+    en: 'The duration must be between 1 and {max} hours.',
+    tr: 'Süre 1 ile {max} saat arasında olmalı.' },
   'support.reasonRequired': {
     de: 'Ohne Anlass keine Anfrage: der Kunde entscheidet danach.',
-    en: 'No request without a reason: the customer decides based on it.' },
+    en: 'No request without a reason: the customer decides based on it.',
+    tr: 'Gerekçesiz talep olmaz: müşteri buna bakarak karar verir.' },
   // Es gibt niemanden, der die Anfrage sehen und freigeben koennte -- eine
   // Anfrage ins Leere zu stellen waere schlimmer als sie abzuweisen.
   'support.noApprover': {
     de: 'Dieser Account hat niemanden, der eine Support-Sitzung freigeben kann.',
-    en: 'This account has nobody who could approve a support session.' },
+    en: 'This account has nobody who could approve a support session.',
+    tr: 'Bu account\'ta destek oturumunu onaylayabilecek kimse yok.' },
 
   // ----------------------------------------------------------- Uebungshaus
 
@@ -477,113 +591,141 @@ const M = {
     de: '{was} ist fuer ein Schulungshaus nicht moeglich. Uebungsdaten duerfen '
       + 'nicht in die Buchhaltung oder an eine Behoerde gelangen.',
     en: '{was} is not possible for a training property. Practice data must not '
-      + 'reach the books or an authority.' },
+      + 'reach the books or an authority.',
+    tr: '{was} bir eğitim tesisi için mümkün değildir. Alıştırma verileri muhasebeye veya bir resmi kuruma ulaşmamalıdır.' },
   // Was ein Uebungshaus nicht darf. Wird in `training.notPossible` eingesetzt.
   'training.what.statistics': {
     de: 'Die Beherbergungsstatistik',
-    en: 'The accommodation statistics' },
+    en: 'The accommodation statistics',
+    tr: 'Beherbergungsstatistik (konaklama istatistiği)' },
   'training.what.datev': {
     de: 'Der DATEV-Export',
-    en: 'The DATEV export' },
+    en: 'The DATEV export',
+    tr: 'DATEV aktarımı' },
   'training.what.gobd': {
     de: 'Der GoBD-Export',
-    en: 'The GoBD export' },
+    en: 'The GoBD export',
+    tr: 'GoBD aktarımı' },
   'training.noEmail': {
     de: 'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.',
-    en: 'A training property sends no email. Sending stays switched off.' },
+    en: 'A training property sends no email. Sending stays switched off.',
+    tr: 'Eğitim tesisi e-posta göndermez. Gönderim kapalı kalır.' },
 
   // ------------------------------------------------- Folio, Rechnung, Geld
 
   'folio.closed': {
     de: 'Folio ist geschlossen.',
-    en: 'The folio is closed.' },
+    en: 'The folio is closed.',
+    tr: 'Folio kapalı.' },
   'folio.closedNoPosting': {
     de: 'Das Folio ist geschlossen und nimmt nichts mehr auf.',
-    en: 'The folio is closed and takes no further postings.' },
+    en: 'The folio is closed and takes no further postings.',
+    tr: 'Folio kapalı ve artık kayıt almıyor.' },
   'folio.nothingOpen': {
     de: 'Keine offenen Positionen.',
-    en: 'No open items.' },
+    en: 'No open items.',
+    tr: 'Açık kalem yok.' },
   'paymentMethod.duplicateCode': {
     de: 'Die Zahlungsart {code} gibt es in diesem Haus schon.',
-    en: 'A payment method {code} already exists in this property.' },
+    en: 'A payment method {code} already exists in this property.',
+    tr: '{code} ödeme türü bu tesiste zaten var.' },
   'deposit.needsReservation': {
     de: 'Eine Anzahlungsrechnung braucht die Reservierung des Folios '
       + 'fuer den Leistungszeitraum.',
-    en: 'A deposit invoice needs the folio reservation for the service period.' },
+    en: 'A deposit invoice needs the folio reservation for the service period.',
+    tr: 'Bir ön ödeme faturası, hizmet dönemi için folionun rezervasyonunu gerektirir.' },
   'deposit.alreadyInvoiced': {
     de: 'Zu diesem Zahlungsvermerk gibt es bereits eine Anzahlungsrechnung.',
-    en: 'There is already a deposit invoice for this settlement.' },
+    en: 'There is already a deposit invoice for this settlement.',
+    tr: 'Bu ödeme kaydı için zaten bir ön ödeme faturası var.' },
   'deposit.noRatesForSplit': {
     de: 'Zu diesem Aufenthalt sind keine Preise hinterlegt, aus denen sich die '
       + 'Steuersaetze ableiten liessen. Bitte taxRateBp oder lines mitgeben.',
     en: 'This stay has no rates from which tax rates could be derived. Please '
-      + 'send taxRateBp or lines.' },
+      + 'send taxRateBp or lines.',
+    tr: 'Bu konaklama için vergi oranlarının türetilebileceği bir fiyat kaydı yok. Lütfen taxRateBp veya lines gönderin.' },
   'deposit.settlementOnInvoice': {
     de: 'Dieser Zahlungsvermerk steht schon als Zahlung auf Rechnung {number}. '
       + 'Aus ihm laesst sich keine Anzahlungsrechnung mehr machen, sonst waere '
       + 'derselbe Betrag zweimal abgerechnet.',
     en: 'This settlement is already recorded as a payment on invoice {number}. '
       + 'It cannot also become a deposit invoice; the same amount would be '
-      + 'billed twice.' },
+      + 'billed twice.',
+    tr: 'Bu ödeme kaydı {number} numaralı faturada ödeme olarak yer alıyor. Ondan artık ön ödeme faturası çıkarılamaz, yoksa aynı tutar iki kez faturalanmış olur.' },
   'deposit.exceedsServices': {
     de: 'Die angerechnete Anzahlung uebersteigt die abzurechnenden Leistungen um '
       + '{cent} Cent. Das ist eine Rueckzahlung und keine Rechnung; sie ist in '
       + 'diesem System noch nicht vorgesehen.',
     en: 'The applied deposit exceeds the services to be billed by {cent} cents. '
       + 'That is a refund and not an invoice; this system does not provide for '
-      + 'it yet.' },
+      + 'it yet.',
+    tr: 'Mahsup edilen ön ödeme, faturalanacak hizmetleri {cent} kuruş aşıyor. Bu bir iade olur, fatura değil; bu sistemde henüz öngörülmemiştir.' },
   'invoice.requirementsUnmet': {
     de: 'Die Rechnung erfüllt die Pflichtangaben nicht: {maengel}',
-    en: 'The invoice does not meet the mandatory particulars: {maengel}' },
+    en: 'The invoice does not meet the mandatory particulars: {maengel}',
+    tr: 'Fatura zorunlu bilgileri karşılamıyor: {maengel}' },
   'deposit.requirementsUnmet': {
     de: 'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: {maengel}',
-    en: 'The deposit invoice does not meet the mandatory particulars: {maengel}' },
+    en: 'The deposit invoice does not meet the mandatory particulars: {maengel}',
+    tr: 'Ön ödeme faturası zorunlu bilgileri karşılamıyor: {maengel}' },
 
   // ------------------------------------------------------------ Kontingent
 
   'block.alreadyStatus': {
     de: 'Kontingent ist bereits {status}.',
-    en: 'The block is already {status}.' },
+    en: 'The block is already {status}.',
+    tr: 'Kontenjan zaten {status} durumunda.' },
   'block.notPickable': {
     de: 'Kontingent ist {status} und nicht mehr abrufbar.',
-    en: 'The block is {status} and can no longer be picked up.' },
+    en: 'The block is {status} and can no longer be picked up.',
+    tr: 'Kontenjan {status} durumunda ve artık çekilemez.' },
   'block.fullyPickedUp': {
     de: 'Kontingent ist vollstaendig abgerufen.',
-    en: 'The block is fully picked up.' },
+    en: 'The block is fully picked up.',
+    tr: 'Kontenjan tamamen çekilmiş.' },
   'block.pickupWholePeriod': {
     de: 'Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents ({from} bis '
       + '{to}). Fuer abweichende Naechte eine eigene Reservierung anlegen.',
     en: 'A pickup runs for the whole period of the block ({from} to {to}). For '
-      + 'different nights, create a separate reservation.' },
+      + 'different nights, create a separate reservation.',
+    tr: 'Bir çekim, kontenjanın tüm dönemini kapsar ({from} - {to}). Farklı geceler için ayrı bir rezervasyon oluşturun.' },
 
   // --------------------------------------------------- Zimmer und Aufenthalt
 
   'room.inactive': {
     de: 'Zimmer ist stillgelegt.',
-    en: 'The room is deactivated.' },
+    en: 'The room is deactivated.',
+    tr: 'Oda devre dışı.' },
   'room.outOfOrder': {
     de: 'Zimmer ist im Zeitraum ausser Betrieb.',
-    en: 'The room is out of order during that period.' },
+    en: 'The room is out of order during that period.',
+    tr: 'Oda bu dönemde arızalı.' },
   'room.occupied': {
     de: 'Zimmer ist im Zeitraum bereits belegt.',
-    en: 'The room is already occupied during that period.' },
+    en: 'The room is already occupied during that period.',
+    tr: 'Oda bu dönemde zaten dolu.' },
   'inventory.unknownError': {
     de: 'Unbekannter Inventarfehler: {code}',
-    en: 'Unknown inventory error: {code}' },
+    en: 'Unknown inventory error: {code}',
+    tr: 'Bilinmeyen envanter hatası: {code}' },
   'stay.pickupNotMovable': {
     de: 'Ein Abruf aus einem Kontingent laesst sich nicht verschieben. '
       + 'Abruf stornieren und frei neu buchen.',
-    en: 'A pickup from a block cannot be moved. Cancel the pickup and book again.' },
+    en: 'A pickup from a block cannot be moved. Cancel the pickup and book again.',
+    tr: 'Kontenjandan yapılan bir çekim taşınamaz. Çekimi iptal edip serbestçe yeniden rezerve edin.' },
   'stay.statusHoldsNoInventory': {
     de: 'Eine Reservierung im Zustand {status} bindet kein Kontingent und '
       + 'laesst sich nicht aendern.',
-    en: 'A reservation in state {status} holds no inventory and cannot be changed.' },
+    en: 'A reservation in state {status} holds no inventory and cannot be changed.',
+    tr: '{status} durumundaki bir rezervasyon kontenjan bağlamaz ve değiştirilemez.' },
   'stay.inHouseArrivalFixed': {
     de: 'Die Anreise eines Gastes im Haus laesst sich nicht verlegen.',
-    en: 'The arrival of a guest in house cannot be moved.' },
+    en: 'The arrival of a guest in house cannot be moved.',
+    tr: 'Tesiste bulunan bir misafirin giriş tarihi değiştirilemez.' },
   'stay.checkinNeedsRoom': {
     de: 'Check-in erfordert ein zugewiesenes Zimmer.',
-    en: 'Check-in requires an assigned room.' },
+    en: 'Check-in requires an assigned room.',
+    tr: 'Check-in için atanmış bir oda gerekir.' },
 
   // ---------------------------------------------------------------- Gastpost
 
@@ -591,115 +733,143 @@ const M = {
     de: 'Diese Rechnung ist bereits verschickt oder eingereiht. '
       + 'Zum erneuten Versand resend=true angeben.',
     en: 'This invoice has already been sent or queued. To send it again, pass '
-      + 'resend=true.' },
+      + 'resend=true.',
+    tr: 'Bu fatura zaten gönderilmiş veya kuyruğa alınmış. Yeniden göndermek için resend=true verin.' },
   'mail.guestAnonymized': {
     de: 'Der Gast ist anonymisiert. An eine geloeschte Adresse wird nicht versandt.',
-    en: 'The guest is anonymized. Nothing is sent to a deleted address.' },
+    en: 'The guest is anonymized. Nothing is sent to a deleted address.',
+    tr: 'Misafir anonimleştirilmiş. Silinmiş bir adrese gönderim yapılmaz.' },
   'mail.noInvoiceAddress': {
     de: 'Zu dieser Rechnung ist keine brauchbare Empfaengeradresse hinterlegt. '
       + 'Adresse am Gast- oder Firmenprofil ergaenzen oder mit to angeben.',
     en: 'This invoice has no usable recipient address. Add one to the guest or '
-      + 'company profile, or pass it as to.' },
+      + 'company profile, or pass it as to.',
+    tr: 'Bu fatura için kullanılabilir bir alıcı adresi yok. Misafir veya firma profiline adres ekleyin ya da to ile belirtin.' },
   'mail.noReservationAddress': {
     de: 'Zu dieser Reservierung ist keine brauchbare Empfaengeradresse hinterlegt.',
-    en: 'This reservation has no usable recipient address.' },
+    en: 'This reservation has no usable recipient address.',
+    tr: 'Bu rezervasyon için kullanılabilir bir alıcı adresi yok.' },
   'mail.onlyUnsentCancellable': {
     de: 'Nur eine noch nicht abgeschickte Nachricht laesst sich zurueckziehen.',
-    en: 'Only a message that has not gone out yet can be withdrawn.' },
+    en: 'Only a message that has not gone out yet can be withdrawn.',
+    tr: 'Yalnızca henüz gönderilmemiş bir mesaj geri çekilebilir.' },
 
   // -------------------------------------------------------------------- Gast
 
   'guest.anonymizedNotRevived': {
     de: 'Ein anonymisiertes Profil wird nicht wiederbelebt.',
-    en: 'An anonymized profile is not revived.' },
+    en: 'An anonymized profile is not revived.',
+    tr: 'Anonimleştirilmiş bir profil geri getirilmez.' },
   'guest.hasOpenReservations': {
     de: 'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.',
-    en: 'There are still open or current reservations for this guest.' },
+    en: 'There are still open or current reservations for this guest.',
+    tr: 'Bu misafir için hâlâ açık veya süren rezervasyonlar var.' },
 
   // -------------------------------------------------------------- Meldeschein
 
   'registration.noPrimaryGuest': {
     de: 'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',
-    en: 'The reservation has no primary guest. No registration form is possible.' },
+    en: 'The reservation has no primary guest. No registration form is possible.',
+    tr: 'Rezervasyonun ana misafiri yok. Meldeschein düzenlenemez.' },
   'registration.alreadyExists': {
     de: 'Fuer diese Reservierung liegt bereits ein Meldeschein vor.',
-    en: 'A registration form already exists for this reservation.' },
+    en: 'A registration form already exists for this reservation.',
+    tr: 'Bu rezervasyon için zaten bir Meldeschein var.' },
   // Seit dem 1.1.2025 unterschreiben nur noch auslaendische Gaeste.
   'registration.signatureRequired': {
     de: 'Fuer auslaendische Gaeste ist die Unterschrift nach § 30 BMG erforderlich.',
-    en: 'For foreign guests the signature is required under § 30 BMG.' },
+    en: 'For foreign guests the signature is required under § 30 BMG.',
+    tr: 'Yabancı misafirler için § 30 BMG uyarınca imza zorunludur.' },
   'registration.signatureNotForeseen': {
     de: 'Fuer inlaendische Gaeste ist seit dem 1.1.2025 keine Unterschrift vorgesehen.',
-    en: 'For domestic guests no signature has been foreseen since 1 January 2025.' },
+    en: 'For domestic guests no signature has been foreseen since 1 January 2025.',
+    tr: 'Yurt içinde ikamet eden misafirler için 1.1.2025 tarihinden beri imza öngörülmemiştir.' },
   'registration.alreadySigned': {
     de: 'Der Meldeschein ist bereits unterschrieben.',
-    en: 'The registration form is already signed.' },
+    en: 'The registration form is already signed.',
+    tr: 'Meldeschein zaten imzalanmış.' },
 
   // -------------------------------------------------------- Kasse und Kanal
 
   'pos.roomUnknown': {
     de: 'Zimmer {room} gibt es in diesem Haus nicht.',
-    en: 'There is no room {room} in this property.' },
+    en: 'There is no room {room} in this property.',
+    tr: '{room} numaralı oda bu tesiste yok.' },
   'pos.nobodyCheckedIn': {
     de: 'Auf Zimmer {room} ist niemand angereist. Fehlt der Check-in?',
-    en: 'Nobody has checked in to room {room}. Is the check-in missing?' },
+    en: 'Nobody has checked in to room {room}. Is the check-in missing?',
+    tr: '{room} numaralı odaya kimse giriş yapmamış. Check-in eksik mi?' },
   'pos.productUnknown': {
     de: 'Artikel {product} ist in diesem Haus nicht eingerichtet. Er braucht ein '
       + 'Erloeskonto und einen Steuersatz, bevor die Kasse darauf buchen kann.',
     en: 'Product {product} is not set up in this property. It needs a revenue '
-      + 'account and a tax rate before the POS can post to it.' },
+      + 'account and a tax rate before the POS can post to it.',
+    tr: '{product} ürünü bu tesiste tanımlı değil. Kasanın ona kayıt yapabilmesi için bir gelir hesabı ve bir vergi oranı gerekir.' },
   'pos.productNoTaxRate': {
     de: 'Fuer {product} ist kein Steuersatz hinterlegt. Entweder am Artikel '
       + 'einrichten oder als taxRateBp mitschicken.',
     en: 'No tax rate is stored for {product}. Either set it up on the product or '
-      + 'pass it as taxRateBp.' },
+      + 'pass it as taxRateBp.',
+    tr: '{product} için vergi oranı tanımlı değil. Ya üründe tanımlayın ya da taxRateBp olarak gönderin.' },
   'pos.severalGuestsInRoom': {
     de: 'Auf Zimmer {room} sind mehrere Gaeste angereist. Bitte folioRef '
       + 'mitschicken: {folios}',
     en: 'Several guests have checked in to room {room}. Please pass folioRef: '
-      + '{folios}' },
+      + '{folios}',
+    tr: '{room} numaralı odaya birden çok misafir giriş yapmış. Lütfen folioRef gönderin: {folios}' },
   'channel.referenceInFlight': {
     de: 'Externe Nummer ist bereits in Bearbeitung. Bitte spaeter erneut zustellen.',
-    en: 'That external reference is being processed. Please deliver again later.' },
+    en: 'That external reference is being processed. Please deliver again later.',
+    tr: 'Dış numara halihazırda işleniyor. Lütfen daha sonra tekrar iletin.' },
 
   // ---------------------------------------------- Raten, Einrichtung, Rollen
 
   'rate.derivationCycle': {
     de: 'Die Ableitungskette enthaelt einen Zyklus.',
-    en: 'The derivation chain contains a cycle.' },
+    en: 'The derivation chain contains a cycle.',
+    tr: 'Türetme zinciri bir döngü içeriyor.' },
   'setup.onlyNightUnit': {
     de: 'Andere Zeiteinheiten als die Nacht sind noch nicht freigeschaltet.',
-    en: 'Time units other than the night are not enabled yet.' },
+    en: 'Time units other than the night are not enabled yet.',
+    tr: 'Gece dışındaki zaman birimleri henüz açılmadı.' },
   'setup.duplicateCategoryCode': {
     de: 'Eine Zimmergruppe mit dem Kürzel {code} gibt es schon.',
-    en: 'A room type with the code {code} already exists.' },
+    en: 'A room type with the code {code} already exists.',
+    tr: '{code} kodlu bir oda tipi zaten var.' },
   'setup.duplicateRoomCode': {
     de: 'Die Nummer {code} ist im Haus schon vergeben.',
-    en: 'The number {code} is already taken in this property.' },
+    en: 'The number {code} is already taken in this property.',
+    tr: '{code} numarası tesiste zaten kullanılıyor.' },
   'setup.categoryHasFutureReservations': {
     de: 'Die Gruppe hat noch {count} künftige Reservierungen. '
       + 'Erst umbuchen, dann stilllegen.',
     en: 'The room type still has {count} future reservations. Move them first, '
-      + 'then deactivate.' },
+      + 'then deactivate.',
+    tr: 'Bu tipte hâlâ {count} gelecek rezervasyon var. Önce aktarın, sonra devre dışı bırakın.' },
   'setup.roomHasFutureReservations': {
     de: 'Auf dem Zimmer liegen noch künftige Reservierungen: {reservations}. '
       + 'Erst umbuchen, dann stilllegen.',
     en: 'The room still carries future reservations: {reservations}. Move them '
-      + 'first, then deactivate.' },
+      + 'first, then deactivate.',
+    tr: 'Odada hâlâ gelecek rezervasyonlar var: {reservations}. Önce aktarın, sonra devre dışı bırakın.' },
   'report.noOpenBusinessDay': {
     de: 'Fuer die Property ist kein Tag geoeffnet.',
-    en: 'No business day is open for this property.' },
+    en: 'No business day is open for this property.',
+    tr: 'Property için açık bir gün yok.' },
   'user.wouldLockYourselfOut': {
     de: 'Damit naehmen Sie sich selbst das Recht, Rollen zu vergeben. '
       + 'Lassen Sie das jemand anderen tun.',
     en: 'That would take away your own right to assign roles. Let somebody else '
-      + 'do it.' },
+      + 'do it.',
+    tr: 'Bununla rol verme yetkinizi kendinizden almış olursunuz. Bunu başkası yapsın.' },
   'payments.stripeKeyMissing': {
     de: 'STRIPE_SECRET_KEY ist nicht gesetzt.',
-    en: 'STRIPE_SECRET_KEY is not set.' },
+    en: 'STRIPE_SECRET_KEY is not set.',
+    tr: 'STRIPE_SECRET_KEY tanımlı değil.' },
   'payments.stripeWebhookSecretMissing': {
     de: 'STRIPE_WEBHOOK_SECRET ist nicht gesetzt.',
-    en: 'STRIPE_WEBHOOK_SECRET is not set.' },
+    en: 'STRIPE_WEBHOOK_SECRET is not set.',
+    tr: 'STRIPE_WEBHOOK_SECRET tanımlı değil.' },
 
   // ------------------------------------------------ Hinweise in Antworten
   //
@@ -711,100 +881,126 @@ const M = {
     de: 'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. Die Zahlung selbst '
       + 'laeuft ueber Kasse, Portal oder Bank des Betriebs.',
     en: 'A settlement records where money was taken; it does not process it. The '
-      + 'payment itself runs through the till, the portal or the bank.' },
+      + 'payment itself runs through the till, the portal or the bank.',
+    tr: 'Ödeme kaydı yalnızca eşleştirir, tahsilatı kendisi yapmaz. Ödemenin kendisi kasa, portal veya işletmenin bankası üzerinden yürür.' },
   'hint.invoiceRetention': {
     de: 'Rechnungen unterliegen der steuerlichen Aufbewahrungsfrist und werden '
       + 'bei einer Loeschung nicht entfernt.',
     en: 'Invoices are subject to the statutory retention period and are not '
-      + 'removed when a profile is deleted.' },
+      + 'removed when a profile is deleted.',
+    tr: 'Faturalar vergisel saklama süresine tabidir ve silme işleminde kaldırılmaz.' },
   'hint.statisticsSubmission': {
     de: 'Uebermittlung an das Statistische Landesamt ueber eSTATISTIK.core. '
       + 'Land XX bedeutet: kein Wohnsitzland erfasst.',
     en: 'Submission to the statistical office via eSTATISTIK.core. Country XX '
-      + 'means no country of residence was recorded.' },
+      + 'means no country of residence was recorded.',
+    tr: 'eSTATISTIK.core üzerinden Statistisches Landesamt\'a iletim. XX ülkesi şu demektir: ikamet ülkesi kaydedilmemiş.' },
   'hint.webhookSecretOnce': {
     de: 'Der Schluessel wird nur hier einmal ausgegeben. Signatur: HMAC-SHA256 '
       + 'ueber "Zeitstempel.Rumpf".',
     en: 'The key is handed out here once and never again. Signature: HMAC-SHA256 '
-      + 'over "timestamp.body".' },
+      + 'over "timestamp.body".',
+    tr: 'Anahtar yalnızca burada bir kez gösterilir. İmza: "zaman damgası.gövde" üzerinden HMAC-SHA256.' },
   'hint.oauthSecretOnce': {
     de: 'Das Geheimnis wird nur hier einmal ausgegeben. Token holen: POST '
       + '/oauth/token mit grant_type=client_credentials.',
     en: 'The secret is handed out here once and never again. Get a token: POST '
-      + '/oauth/token with grant_type=client_credentials.' },
+      + '/oauth/token with grant_type=client_credentials.',
+    tr: 'Gizli anahtar yalnızca burada bir kez gösterilir. Token almak için: POST /oauth/token, grant_type=client_credentials.' },
   'hint.occupancyNotCapacity': {
     de: 'Die Belegungszahl wirkt auf Preise und Meldeschein, nicht auf die Kapazität.',
-    en: 'Occupancy affects prices and the registration form, not capacity.' },
+    en: 'Occupancy affects prices and the registration form, not capacity.',
+    tr: 'Doluluk sayısı fiyatları ve Meldeschein\'i etkiler, kapasiteyi değil.' },
   'hint.legacyFormatsUnverified': {
     de: 'Keines dieser drei Formate ist eine veroeffentlichte Spezifikation '
       + '(Dokument 05, Abschnitt 6). Vor dem ersten echten Kunden gegen eine '
       + 'tatsaechliche Exportdatei pruefen.',
     en: 'None of these three formats is a published specification (document 05, '
       + 'section 6). Check against a real export file before the first real '
-      + 'customer.' },
+      + 'customer.',
+    tr: 'Bu üç biçimin hiçbiri yayımlanmış bir şartname değildir (Belge 05, Bölüm 6). İlk gerçek müşteriden önce gerçek bir aktarım dosyasıyla doğrulayın.' },
 
   // ------------------------------------------------------- Einrichtungsstand
 
   'setup.step.categories': {
     de: 'Zimmergruppen angelegt',
-    en: 'Room types created' },
+    en: 'Room types created',
+    tr: 'Oda tipleri oluşturuldu' },
   'setup.step.categories.hint': {
     de: 'Mindestens eine Gruppe, etwa Doppelzimmer oder Ferienwohnung.',
-    en: 'At least one type, such as a double room or a holiday flat.' },
+    en: 'At least one type, such as a double room or a holiday flat.',
+    tr: 'En az bir tip, örneğin çift kişilik oda veya apart daire.' },
   'setup.step.rooms': {
     de: 'Zimmer angelegt',
-    en: 'Rooms created' },
+    en: 'Rooms created',
+    tr: 'Odalar oluşturuldu' },
   'setup.step.rooms.hint': {
     de: 'Am schnellsten als Serie: Nummernbereich und Etage angeben.',
-    en: 'Fastest as a series: give a number range and a floor.' },
+    en: 'Fastest as a series: give a number range and a floor.',
+    tr: 'En hızlısı seri olarak: numara aralığı ve kat verin.' },
   'setup.step.inventory': {
     de: 'Inventar materialisiert',
-    en: 'Inventory materialized' },
+    en: 'Inventory materialized',
+    tr: 'Envanter hazırlandı' },
   'setup.step.inventory.hint.missing': {
     de: 'Ohne materialisierten Zeitraum weist jede Buchung ab. Der Worker legt '
       + 'ihn an, oder einmal von Hand anstoßen.',
     en: 'Without a materialized period every booking is refused. The worker '
-      + 'creates it, or trigger it once by hand.' },
+      + 'creates it, or trigger it once by hand.',
+    tr: 'Hazırlanmış bir dönem olmadan her rezervasyon reddedilir. Worker bunu oluşturur veya bir kez elle başlatın.' },
   'setup.step.inventory.hint.until': {
     de: 'Belegbar bis {date}.',
-    en: 'Bookable until {date}.' },
+    en: 'Bookable until {date}.',
+    tr: '{date} tarihine kadar rezerve edilebilir.' },
   'setup.step.tax_rules': {
     de: 'Steuersätze hinterlegt',
-    en: 'Tax rates stored' },
+    en: 'Tax rates stored',
+    tr: 'Vergi oranları tanımlandı' },
   'setup.step.tax_rules.hint': {
     de: 'Ohne Regel bucht der Nachtlauf Logis mit 7 Prozent.',
-    en: 'Without a rule the night audit posts accommodation at 7 percent.' },
+    en: 'Without a rule the night audit posts accommodation at 7 percent.',
+    tr: 'Kural olmadan gece işlemi konaklamayı yüzde 7 ile kaydeder.' },
   'setup.step.rate_plans': {
     de: 'Ratenpläne angelegt',
-    en: 'Rate plans created' },
+    en: 'Rate plans created',
+    tr: 'Fiyat planları oluşturuldu' },
   'setup.step.rate_plans.hint': {
     de: 'Je Gruppe mindestens eine Basisrate.',
-    en: 'At least one base rate per type.' },
+    en: 'At least one base rate per type.',
+    tr: 'Her tip için en az bir temel fiyat.' },
   'setup.step.prices': {
     de: 'Preise gepflegt',
-    en: 'Prices maintained' },
+    en: 'Prices maintained',
+    tr: 'Fiyatlar işlendi' },
   'setup.step.prices.hint': {
     de: 'Ohne Preise werden Reservierungen mit 0 Cent gebucht.',
-    en: 'Without prices, reservations are booked at 0 cents.' },
+    en: 'Without prices, reservations are booked at 0 cents.',
+    tr: 'Fiyat olmadan rezervasyonlar 0 kuruş ile kaydedilir.' },
   'setup.step.payment_methods': {
     de: 'Zahlungsarten angelegt',
-    en: 'Payment methods created' },
+    en: 'Payment methods created',
+    tr: 'Ödeme türleri oluşturuldu' },
   'setup.step.payment_methods.hint': {
     de: 'Nur zur Zuordnung. Die Zahlung selbst läuft außerhalb dieses Systems.',
-    en: 'For assignment only. The payment itself runs outside this system.' },
+    en: 'For assignment only. The payment itself runs outside this system.',
+    tr: 'Yalnızca eşleştirme içindir. Ödemenin kendisi bu sistemin dışında yürür.' },
   'setup.step.business_day': {
     de: 'Geschäftstag geöffnet',
-    en: 'Business day open' },
+    en: 'Business day open',
+    tr: 'İşletme günü açıldı' },
   'setup.step.business_day.hint.missing': {
     de: 'Ohne offenen Tag läuft kein Nachtlauf.',
-    en: 'Without an open day no night audit runs.' },
+    en: 'Without an open day no night audit runs.',
+    tr: 'Açık gün olmadan gece işlemi çalışmaz.' },
   'setup.step.business_day.hint.since': {
     de: 'Offen seit {date}.',
-    en: 'Open since {date}.' },
+    en: 'Open since {date}.',
+    tr: '{date} tarihinden beri açık.' },
 
   'field.depositPartsMismatch': {
     de: 'Die Teile ergeben {sum} Cent, vereinnahmt sind {received} Cent.',
-    en: 'The parts add up to {sum} cents, {received} cents were received.' }
+    en: 'The parts add up to {sum} cents, {received} cents were received.',
+    tr: 'Parçalar {sum} kuruş ediyor, tahsil edilen {received} kuruş.' }
 } as const satisfies Record<string, LocalizedText>
 
 export type MessageKey = keyof typeof M

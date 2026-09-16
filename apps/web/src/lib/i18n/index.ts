@@ -71,7 +71,20 @@ export type Locale = MessageLocale
  */
 const INTL_TAG: Record<Locale, string> = {
   de: 'de-DE',
-  en: 'en-GB'
+  en: 'en-GB',
+  tr: 'tr-TR'
+}
+
+/**
+ * Der Sprachschluessel fuer `Intl`, fuer Aufrufer ausserhalb dieser Datei.
+ *
+ * Ausgefuehrt, weil das Preisraster sich sein eigenes
+ * `locale === 'de' ? 'de-DE' : 'en-GB'` gehalten hatte -- genau die
+ * Bedingung, gegen die diese Tabelle gebaut ist. Wer die Zuordnung
+ * braucht, holt sie hier, statt sie ein zweites Mal zu treffen.
+ */
+export function intlTag(locale: Locale): string {
+  return INTL_TAG[locale]
 }
 
 /**
@@ -85,7 +98,9 @@ const INTL_TAG: Record<Locale, string> = {
 export type Datumsform = 'tag-zuerst' | 'iso'
 const DATUMSFORM: Record<Locale, Datumsform> = {
   de: 'tag-zuerst',
-  en: 'iso'
+  en: 'iso',
+  // Tuerkisch schreibt 01.10.2026, mit Punkten und Tag zuerst -- wie Deutsch.
+  tr: 'tag-zuerst'
 }
 
 const texts = {
@@ -108,7 +123,7 @@ const texts = {
 
 export type TextKey = keyof typeof texts
 
-/** Alle Schluessel. Ein Test prueft damit beide Sprachen durch. */
+/** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */
 export function textKeys(): TextKey[] {
   return Object.keys(texts) as TextKey[]
 }
@@ -155,7 +170,7 @@ export function useLocale(): Locale {
  *
  * Spur B hat sich deshalb eine Zeit lang einen eigenen Formatierer gehalten.
  * Das gehört nicht in eine Spur, sondern hierher: die Kombinationen sind
- * abzählbar (zwei Sprachen mal den Währungen des Hauses), der Schlüssel ist
+ * abzählbar (die Sprachen mal den Währungen des Hauses), der Schlüssel ist
  * genau das Paar, und ein Formatierer ist unveränderlich und damit gefahrlos
  * zu teilen.
  */

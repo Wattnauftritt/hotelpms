@@ -4,41 +4,54 @@ import type { LocalizedText } from '@hotelpms/contracts'
 export const housekeeping = {
   'hk.generateTasks': {
     de: 'Aufgaben des Tages erzeugen',
-    en: 'Create today’s tasks' },
+    en: 'Create today’s tasks',
+    tr: 'Günün görevlerini oluştur' },
   'hk.tasksCreated': {
     de: '{n} Aufgaben ergänzt',
-    en: '{n} tasks added' },
+    en: '{n} tasks added',
+    tr: '{n} görev eklendi' },
   'hk.taskDeparture': {
     de: 'Abreisereinigung',
-    en: 'Departure clean' },
+    en: 'Departure clean',
+    tr: 'Çıkış temizliği' },
   'hk.taskStayover': {
     de: 'Bleibereinigung',
-    en: 'Stayover clean' },
+    en: 'Stayover clean',
+    tr: 'Konaklama temizliği' },
   'hk.finishTask': {
     de: 'Erledigt',
-    en: 'Done' },
+    en: 'Done',
+    tr: 'Tamamlandı' },
   'hk.dirty': {
     de: 'Schmutzig',
-    en: 'Dirty' },
+    en: 'Dirty',
+    tr: 'Kirli' },
   'hk.clean': {
     de: 'Sauber',
-    en: 'Clean' },
+    en: 'Clean',
+    tr: 'Temiz' },
   'hk.inspected': {
     de: 'Kontrolliert',
-    en: 'Inspected' },
+    en: 'Inspected',
+    tr: 'Kontrol edildi' },
   'hk.occupied': {
     de: 'Belegt',
-    en: 'Occupied' },
+    en: 'Occupied',
+    tr: 'Dolu' },
   'hk.departureToday': {
     de: 'Abreise heute',
-    en: 'Departing today' },
+    en: 'Departing today',
+    tr: 'Bugün çıkış' },
   'hk.arrivalToday': {
     de: 'Anreise heute',
-    en: 'Arriving today' },
+    en: 'Arriving today',
+    tr: 'Bugün giriş' },
   'hk.markClean': {
     de: 'Auf sauber setzen',
-    en: 'Mark as clean' },
+    en: 'Mark as clean',
+    tr: 'Temiz olarak işaretle' },
   'hk.openTickets': {
     de: 'Offene Meldungen',
-    en: 'Open tickets' },
+    en: 'Open tickets',
+    tr: 'Açık bildirimler' },
 } as const satisfies Record<string, LocalizedText>

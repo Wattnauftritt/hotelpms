@@ -4,123 +4,163 @@ import type { LocalizedText } from '@hotelpms/contracts'
 export const common = {
   'app.title': {
     de: 'hotelpms',
-    en: 'hotelpms' },
+    en: 'hotelpms',
+    tr: 'hotelpms' },
   'nav.tape': {
     de: 'Zimmerplan',
-    en: 'Room chart' },
+    en: 'Room chart',
+    tr: 'Oda planı' },
   'nav.today': {
     de: 'Tagesgeschäft',
-    en: 'Front desk' },
+    en: 'Front desk',
+    tr: 'Günlük işler' },
   'nav.housekeeping': {
     de: 'Housekeeping',
-    en: 'Housekeeping' },
+    en: 'Housekeeping',
+    tr: 'Kat hizmetleri' },
   'nav.setup': {
     de: 'Einrichtung',
-    en: 'Setup' },
+    en: 'Setup',
+    tr: 'Kurulum' },
   'nav.guests': {
     de: 'Gäste',
-    en: 'Guests' },
+    en: 'Guests',
+    tr: 'Misafirler' },
   'nav.blocks': {
     de: 'Gruppen',
-    en: 'Groups' },
+    en: 'Groups',
+    tr: 'Gruplar' },
   'common.from': {
     de: 'Von',
-    en: 'From' },
+    en: 'From',
+    tr: 'Başlangıç' },
   'common.to': {
     de: 'Bis',
-    en: 'To' },
+    en: 'To',
+    tr: 'Bitiş' },
   'common.date': {
     de: 'Datum',
-    en: 'Date' },
+    en: 'Date',
+    tr: 'Tarih' },
   'common.room': {
     de: 'Zimmer',
-    en: 'Room' },
+    en: 'Room',
+    tr: 'Oda' },
   'common.rooms': {
     de: 'Zimmer',
-    en: 'Rooms' },
+    en: 'Rooms',
+    tr: 'Oda' },
   'common.category': {
     de: 'Zimmergruppe',
-    en: 'Room type' },
+    en: 'Room type',
+    tr: 'Oda tipi' },
   'common.guest': {
     de: 'Gast',
-    en: 'Guest' },
+    en: 'Guest',
+    tr: 'Misafir' },
   'common.status': {
     de: 'Status',
-    en: 'Status' },
+    en: 'Status',
+    tr: 'Durum' },
   'common.save': {
     de: 'Speichern',
-    en: 'Save' },
+    en: 'Save',
+    tr: 'Kaydet' },
   'common.cancel': {
     de: 'Abbrechen',
-    en: 'Cancel' },
+    en: 'Cancel',
+    tr: 'Vazgeç' },
   'common.preview': {
     de: 'Vorschau',
-    en: 'Preview' },
+    en: 'Preview',
+    tr: 'Önizleme' },
   'common.apply': {
     de: 'Übernehmen',
-    en: 'Apply' },
+    en: 'Apply',
+    tr: 'Uygula' },
   'common.loading': {
     de: 'Lädt…',
-    en: 'Loading…' },
+    en: 'Loading…',
+    tr: 'Yükleniyor…' },
   'common.none': {
     de: 'Nichts vorhanden',
-    en: 'Nothing here' },
+    en: 'Nothing here',
+    tr: 'Kayıt yok' },
   'common.today': {
     de: 'Heute',
-    en: 'Today' },
+    en: 'Today',
+    tr: 'Bugün' },
   'common.back': {
     de: 'Zurück',
-    en: 'Back' },
+    en: 'Back',
+    tr: 'Geri' },
   'common.forward': {
     de: 'Weiter',
-    en: 'Forward' },
+    en: 'Forward',
+    tr: 'İleri' },
   'common.retry': {
     de: 'Erneut versuchen',
-    en: 'Try again' },
+    en: 'Try again',
+    tr: 'Tekrar dene' },
   'common.offline': {
     de: 'Offline. Angezeigt wird der zuletzt geladene Stand.',
-    en: 'Offline. Showing the last loaded state.' },
+    en: 'Offline. Showing the last loaded state.',
+    tr: 'Çevrimdışı. Son yüklenen durum gösteriliyor.' },
   'status.Optional': {
     de: 'Option',
-    en: 'Option' },
+    en: 'Option',
+    tr: 'Opsiyon' },
   'status.Confirmed': {
     de: 'Bestätigt',
-    en: 'Confirmed' },
+    en: 'Confirmed',
+    tr: 'Onaylandı' },
   'status.InHouse': {
     de: 'Im Haus',
-    en: 'In house' },
+    en: 'In house',
+    tr: 'Tesiste' },
   'status.CheckedOut': {
     de: 'Abgereist',
-    en: 'Checked out' },
+    en: 'Checked out',
+    tr: 'Çıkış yaptı' },
   'status.Canceled': {
     de: 'Storniert',
-    en: 'Cancelled' },
+    en: 'Cancelled',
+    tr: 'İptal edildi' },
   'status.NoShow': {
     de: 'No-Show',
-    en: 'No show' },
+    en: 'No show',
+    tr: 'No-Show' },
   'error.title': {
     de: 'Das hat nicht geklappt',
-    en: 'That did not work' },
+    en: 'That did not work',
+    tr: 'Bu işlem yürümedi' },
   'error.offlineWrite': {
     de: 'Ohne Verbindung lässt sich nichts speichern.',
-    en: 'Nothing can be saved without a connection.' },
+    en: 'Nothing can be saved without a connection.',
+    tr: 'Bağlantı olmadan hiçbir şey kaydedilemez.' },
   'login.email': {
     de: 'E-Mail',
-    en: 'Email' },
+    en: 'Email',
+    tr: 'E-posta' },
   'login.password': {
     de: 'Kennwort',
-    en: 'Password' },
+    en: 'Password',
+    tr: 'Parola' },
   'login.submit': {
     de: 'Anmelden',
-    en: 'Sign in' },
+    en: 'Sign in',
+    tr: 'Oturum aç' },
   'auth.logout': {
     de: 'Abmelden',
-    en: 'Sign out' },
+    en: 'Sign out',
+    tr: 'Oturumu kapat' },
   'app.noProperty': {
     de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
-    en: 'This user is not assigned to any property yet.' },
+    en: 'This user is not assigned to any property yet.',
+    tr: 'Bu kullanıcıya henüz bir tesis atanmamış.' },
   'app.noScreen': {
     de: 'Dieses Konto hat in {haus} keine Rechte, die einen Bildschirm '
       + 'öffnen.',
-    en: 'This account has no rights in {haus} that open a screen.' },
+    en: 'This account has no rights in {haus} that open a screen.',
+    tr: 'Bu hesabın {haus} tesisinde ekran açacak bir yetkisi yok.' },
 } as const satisfies Record<string, LocalizedText>

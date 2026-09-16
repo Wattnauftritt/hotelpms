@@ -64,14 +64,19 @@ describe('Anzeige', () => {
   it('stellt Datum sprachgerecht dar, ohne es zu verschieben', () => {
     expect(formatDate('2026-10-01', 'de')).toBe('01.10.2026')
     expect(formatDate('2026-10-01', 'en')).toBe('2026-10-01')
+    // Tuerkisch schreibt wie Deutsch: Tag zuerst, mit Punkten.
+    expect(formatDate('2026-10-01', 'tr')).toBe('01.10.2026')
     // Auch der 1. Januar bleibt der 1. Januar, egal in welcher Zeitzone
     // der Browser steht.
     expect(formatDate('2026-01-01', 'de')).toBe('01.01.2026')
   })
 
-  it('benennt den Wochentag in beiden Sprachen', () => {
+  it('benennt den Wochentag in jeder Sprache', () => {
     expect(weekdayShort('2026-10-05', 'de')).toMatch(/Mo/)
     expect(weekdayShort('2026-10-05', 'en')).toMatch(/Mon/)
+    // Pazartesi. Steht hier, weil eine Sprache ohne Eintrag in INTL_TAG
+    // stillschweigend die britischen Kuerzel bekaeme.
+    expect(weekdayShort('2026-10-05', 'tr')).toMatch(/Pzt/)
   })
 })
 
