@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { EMAIL_LANGUAGES } from '@hotelpms/domain'
+import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
 import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
          weekdayShort } from '../lib/i18n/index.js'
 
