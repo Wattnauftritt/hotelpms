@@ -330,12 +330,20 @@ Die Umgebungsdatei unter `shared/env` bleibt dabei unberührt — sie liegt auß
 
 `main` trägt, was zuletzt gemergt wurde — auch einen Stand, den niemand für die Produktion vorgesehen hat. Bei mehreren Bearbeitern ist das der Normalfall, nicht die Ausnahme. Freigegeben wird deshalb ausdrücklich:
 
+**Über GitHub:** Actions → *Für die Produktion freigeben* → **Run workflow**. Das Feld steht schon auf `main`; bestätigen genügt. Für einen älteren Stand trägst du Commit, Zweig oder Tag ein.
+
+Der Workflow ([`.github/workflows/freigeben.yml`](../.github/workflows/freigeben.yml)) **weigert sich, einen Stand freizugeben, der nicht grün durch CI ist** — und unterscheidet dabei „kein Lauf" von „läuft noch". Freizugeben, was nie gebaut wurde, fiele sonst erst auf der Maschine auf, beim Bau, mitten im Betrieb.
+
+Er braucht keinen Schlüssel: der eingebaute `GITHUB_TOKEN` reicht und wirkt nur in diesem Repository. Ein Deploy-Key mit Schreibrecht auf der Produktivmaschine wäre der Weg vom Produktivsystem in den Quellcode und bleibt ausgeschlossen (§5).
+
+**Von Hand**, wo Git ohnehin offen ist:
+
 ```bash
 git tag -f produktion <commit>
 git push -f origin produktion
 ```
 
-Geht ebenso aus der GitHub-Oberfläche. Die Maschine holt **nur** diesen Stand; ein Merge nach `main` allein bewirkt nichts.
+Die Maschine holt **nur** diesen Stand; ein Merge nach `main` allein bewirkt nichts.
 
 ### Wann ausgerollt wird: der Knopf in der Konsole
 
