@@ -1,3 +1,4 @@
+import type { EmailLanguage } from '@hotelpms/contracts'
 import { formatCent } from './money.js'
 
 /**
@@ -16,33 +17,16 @@ export function isEmailKind(v: string): v is EmailKind {
 }
 
 /**
- * Sprachen, in denen Gastpost entsteht. `guest.language` traegt sie je
- * Profil; alles andere faellt auf Deutsch zurueck.
+ * Die Sprachliste und die Abbildung stehen im Vertrag, nicht hier.
  *
- * Bewusst nicht ueber die i18n-Dateien der Oberflaeche: die uebersetzt, was
- * das Personal sieht, und wird beim Umbau eines Bildschirms mit geaendert.
- * Ein Anschreiben an einen Gast ist kein Bildschirmtext.
+ * Hier standen sie, solange nur API und Worker sie brauchten. Die Gastmaske
+ * braucht sie auch -- und holte sie sich ueber das Barrel der Domaene, das
+ * `node:crypto` mitbringt. Im Browser gibt es das nicht; der Build der
+ * Oberflaeche brach. Die Liste ist ohnehin eine Zusage des Produkts und
+ * damit Vertrag; die Vorlagen darunter sind Fachtext und bleiben hier.
  */
-export const EMAIL_LANGUAGES = ['de', 'en', 'nl', 'pl'] as const
-export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
-
-/**
- * Die Sprache eines Gastes auf eine Sprache abbilden, in der wir schreiben.
- *
- * Gegen die Liste und nicht gegen eine einzelne Sprache: mit
- * `code === 'en' ? 'en' : 'de'` bekaeme jede neue Sprache stillschweigend
- * deutsche Post, und aufgefallen waere es dem Gast, nicht uns.
- *
- * Nur die ersten beiden Zeichen: am Profil steht mal `en`, mal `en-GB`.
- * Einen Gast deutsch anzuschreiben, weil sein Profil die Region mitfuehrt,
- * waere eine seltsame Art, genau zu sein.
- */
-export function emailLanguage(code: string | null | undefined): EmailLanguage {
-  const kurz = (code ?? '').slice(0, 2).toLowerCase()
-  return (EMAIL_LANGUAGES as readonly string[]).includes(kurz)
-    ? (kurz as EmailLanguage)
-    : 'de'
-}
+export { EMAIL_LANGUAGES, emailLanguage } from '@hotelpms/contracts'
+export type { EmailLanguage } from '@hotelpms/contracts'
 
 /**
  * Genuegt die Adresse fuer einen Zustellversuch?

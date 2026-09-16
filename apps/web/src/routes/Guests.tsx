@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { EMAIL_LANGUAGES } from '@hotelpms/domain'
+import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
 import type { Guest, GuestCreated, Company } from '@hotelpms/contracts'
 import { useSearchGuests, useGuest, useCreateGuest, usePatchGuest, useIdDocument,
          useSearchCompanies, useCompany, useCreateCompany, usePatchCompany,

@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@hotelpms/contracts": "workspace:*",
-    "@hotelpms/domain": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tanstack/react-router": "^1.92.3",
     "react": "^18.3.1",
