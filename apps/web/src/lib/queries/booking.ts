@@ -36,7 +36,13 @@ export function usePatchReservationNotes(reservationRef: string) {
 
 export interface CreateBookingBody {
   propertyId: number
-  categoryId: number
+  /** Entfaellt bei der Gruppenbuchung -- dann steht die Gruppe je Zimmer. */
+  categoryId?: number
+  /**
+   * Mehrere Zimmer in **einer** Buchung. Kommt aus der Mehrfachauswahl im
+   * Belegungsplan; die Reihenfolge ist die des Plans.
+   */
+  rooms?: Array<{ categoryId: number; resourceId?: number }>
   arrival: string
   departure: string
   ratePlanId?: number

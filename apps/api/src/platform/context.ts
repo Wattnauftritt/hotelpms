@@ -18,6 +18,18 @@ export interface Principal {
   accountPermissions: Set<Permission>
   platformPermissions: Set<Permission>
   supportSessionId: number | null
+  /**
+   * Wer sich angemeldet hat, falls das jemand anderes ist als `userId`.
+   *
+   * Am geteilten Rezeptionsrechner wechselt der Arbeitsplatz-PIN die
+   * handelnde Person, ohne dass sich jemand neu anmeldet. `userId` ist dann
+   * die handelnde Person -- sie entscheidet ueber Rechte und steht im
+   * Protokoll --, waehrend hier steht, auf wessen Sitzung das laeuft. Die
+   * Oberflaeche zeigt damit an, dass gerade nicht der Angemeldete arbeitet;
+   * ohne diesen Hinweis bucht irgendwann jemand unter fremdem Namen weiter,
+   * weil er den Wechsel vergessen hat.
+   */
+  sessionUserId: number | null
 }
 
 export const ANONYMOUS: Principal = {
@@ -28,7 +40,8 @@ export const ANONYMOUS: Principal = {
   permissionsByProperty: new Map(),
   accountPermissions: new Set(),
   platformPermissions: new Set(),
-  supportSessionId: null
+  supportSessionId: null,
+  sessionUserId: null
 }
 
 export function propertyIds(p: Principal): number[] {

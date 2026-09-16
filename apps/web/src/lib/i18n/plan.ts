@@ -178,6 +178,58 @@ export const plan = {
     en: 'Booking needs a guest. Search or create one.',
     tr: 'Misafir olmadan rezervasyon yapılamaz. Arayın veya yeni kayıt oluşturun.' },
 
+  'plan.dragHint': {
+    de: 'Balken ziehen verschiebt die Reservierung, die Ränder verlängern sie. Auf '
+      + 'freier Fläche aufziehen legt eine Buchung an — mit gedrückter Strg-, ⌘- '
+      + 'oder Umschalttaste über mehrere Zimmer hinweg eine Gruppenbuchung.',
+    en: 'Drag a bar to move the reservation, drag its edges to extend it. Drag '
+      + 'across free space to create a booking — hold Ctrl, ⌘ or Shift and drag '
+      + 'across several rooms for a group booking.',
+    tr: 'Çubuğu sürüklemek rezervasyonu taşır, kenarları uzatır. Boş alanda sürükleyerek açmak yeni bir rezervasyon oluşturur — Strg, ⌘ veya Shift tuşu basılıyken birden çok oda üzerinde grup rezervasyonu.' },
+
+  'group.title': {
+    de: 'Gruppenbuchung',
+    en: 'Group booking',
+    tr: 'Grup rezervasyonu' },
+  'group.rooms': {
+    de: 'Zimmer',
+    en: 'rooms',
+    tr: 'Oda' },
+  'group.selection': {
+    de: 'Ausgewählte Zimmer',
+    en: 'Selected rooms',
+    tr: 'Seçilen odalar' },
+  'group.remove': {
+    de: 'Entfernen',
+    en: 'Remove',
+    tr: 'Kaldır' },
+  'group.submit': {
+    de: 'Gruppe buchen',
+    en: 'Book the group',
+    tr: 'Grubu rezerve et' },
+  'group.created': {
+    de: 'Gruppe gebucht',
+    en: 'Group booked',
+    tr: 'Grup rezerve edildi' },
+  'group.createdDetail': {
+    de: '{n} Zimmer unter einer Buchung',
+    en: '{n} rooms under one booking',
+    tr: 'tek rezervasyon altında {n} oda' },
+  'group.guestHint': {
+    de: 'Der Gast ist der Besteller der Gruppe, nicht der Bewohner jedes Zimmers. '
+      + 'Er wird nur im ersten Zimmer als Mitreisender geführt — sonst zählte die '
+      + 'Kurtaxe ihn mehrfach. Die Namen der übrigen Zimmer kommen mit der '
+      + 'Namensliste.',
+    en: 'The guest is the person who booked the group, not the occupant of every '
+      + 'room. They are recorded as an occupant of the first room only — otherwise '
+      + 'city tax would count them several times. The other names arrive with the '
+      + 'rooming list.',
+    tr: 'Misafir, grubun siparişini verendir, her odanın sakini değil. Yalnızca ilk odada birlikte kalan olarak gösterilir — yoksa konaklama vergisi onu birden çok kez sayardı. Diğer odaların adları isim listesiyle gelir.' },
+  'group.empty': {
+    de: 'Kein Zimmer mehr ausgewählt.',
+    en: 'No room selected any more.',
+    tr: 'Artık seçili oda yok.' },
+
   'guestPicker.placeholder': {
     de: 'Nachname, E-Mail oder Telefon',
     en: 'Last name, email or phone',

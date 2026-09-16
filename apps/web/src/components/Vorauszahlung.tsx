@@ -6,7 +6,8 @@ import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
 import { anzahlungBereit, anzahlungsNutzlast, summeTeile,
          type Steuerart, type Teil } from '../lib/vorauszahlung.js'
 import { newIdempotencyKey } from '../lib/api.js'
-import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate, intlTag }
+  from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -282,8 +283,7 @@ function Zahlungslinks({ folioRef, links, saldoCent, geschlossen }: {
             {links.map(l => (
               <li key={l.id} className="flex items-baseline gap-2">
                 <span className="text-xs text-neutral-500 tabular-nums">
-                  {new Date(l.createdAt).toLocaleDateString(
-                    locale === 'de' ? 'de-DE' : 'en-GB')}
+                  {new Date(l.createdAt).toLocaleDateString(intlTag(locale))}
                 </span>
                 <span className="tabular-nums">{formatMoney(l.amountCent, locale)}</span>
                 <span className={`text-xs px-1.5 rounded ${

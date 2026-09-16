@@ -398,6 +398,23 @@ const M = {
     de: 'Mindestens ein Zimmer',
     en: 'At least one room',
     tr: 'En az bir oda' },
+  'field.tooManyRooms': {
+    de: 'Hoechstens {max} Zimmer je Buchung. Groessere Gruppen laufen ueber ein '
+      + 'Kontingent.',
+    en: 'At most {max} rooms per booking. Larger groups go through a block.',
+    tr: 'Rezervasyon başına en fazla {max} oda. Daha büyük gruplar kontenjan üzerinden yürür.' },
+  'field.pinDigits': {
+    de: 'Zwischen {min} und {max} Ziffern, nur Ziffern',
+    en: 'Between {min} and {max} digits, digits only',
+    tr: '{min} ile {max} basamak arasında, yalnızca rakam' },
+  'field.duplicateRoom': {
+    de: 'Dasselbe Zimmer steht zweimal in der Auswahl',
+    en: 'The same room appears twice in the selection',
+    tr: 'Aynı oda seçimde iki kez var' },
+  'field.eitherCategoryOrRooms': {
+    de: 'Entweder eine Zimmergruppe oder eine Zimmerliste',
+    en: 'Either a room category or a list of rooms',
+    tr: 'Ya bir oda tipi ya da bir oda listesi' },
   'field.atLeastOneScope': {
     de: 'Mindestens ein Zugriffsbereich',
     en: 'At least one scope',
@@ -503,6 +520,15 @@ const M = {
     de: 'E-Mail oder PIN stimmt nicht.',
     en: 'Email or PIN is not correct.',
     tr: 'E-posta veya PIN doğru değil.' },
+  // Wer wechselt, muss auch zurueckwechseln koennen -- und das verlangt
+  // denselben Nachweis. Ohne eigenen PIN waere der Angemeldete nach dem
+  // ersten Wechsel aus seiner eigenen Sitzung ausgesperrt.
+  'auth.ownerNeedsPin': {
+    de: 'Die angemeldete Person braucht selbst einen Arbeitsplatz-PIN, bevor '
+      + 'gewechselt werden kann. Sonst ist der Weg zurueck versperrt.',
+    en: 'The signed-in person needs a workstation PIN of their own before '
+      + 'switching. Otherwise there is no way back.',
+    tr: 'Devretmeden önce oturum açmış kişinin kendisinin bir çalışma yeri PIN\'i olmalıdır. Aksi hâlde geri dönüş yolu kapalıdır.' },
   // Bewusst ohne Unterscheidung zwischen unbekannt, abgelaufen und schon
   // benutzt: jede davon waere eine Auskunft ueber ein Token, das der
   // Aufrufer nicht hat.
@@ -683,6 +709,10 @@ const M = {
     de: 'Kontingent ist vollstaendig abgerufen.',
     en: 'The block is fully picked up.',
     tr: 'Kontenjan tamamen çekilmiş.' },
+  'block.notEnoughLeft': {
+    de: 'Das Kontingent hat nur noch {left} von {quantity} Zimmern frei.',
+    en: 'The block has only {left} of {quantity} rooms left.',
+    tr: 'Kontenjanda {quantity} odadan yalnızca {left} tanesi boş.' },
   'block.pickupWholePeriod': {
     de: 'Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents ({from} bis '
       + '{to}). Fuer abweichende Naechte eine eigene Reservierung anlegen.',

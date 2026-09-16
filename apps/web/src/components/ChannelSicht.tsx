@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { ChannelAvailabilityDay, ChannelRateCell } from '@hotelpms/contracts'
 import { useChannelView } from '../lib/queries/rates.js'
-import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate, intlTag }
+  from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -107,7 +108,7 @@ function Inhalt({ propertyId, von, bis, belegung }: {
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
         <span>
           {t('cv.generatedAt')}: {new Date(daten.generatedAt)
-            .toLocaleTimeString(locale === 'de' ? 'de-DE' : 'en-GB')}
+            .toLocaleTimeString(intlTag(locale))}
         </span>
         <span className="tabular-nums">{tage.length} {t('cv.days')}</span>
         <span className="tabular-nums">{plaene.length} {t('rate.plans')}</span>

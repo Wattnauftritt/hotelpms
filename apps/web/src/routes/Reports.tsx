@@ -5,8 +5,8 @@ import { useKpi, useNightAuditStatus, useAccommodationStatistics, useAusgabe }
   from '../lib/queries/reports.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
-import { useT, useLocale, formatMoney, formatDate, type TextKey, type Locale }
-  from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate, intlTag,
+         type TextKey, type Locale } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { today, addDays } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
@@ -64,7 +64,7 @@ export function berichtsBereiche(
  * Komma, auf demselben Bildschirm.
  */
 function prozent(n: number, locale: Locale): string {
-  return new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+  return new Intl.NumberFormat(intlTag(locale),
     { maximumFractionDigits: 1 }).format(n) + ' %'
 }
 

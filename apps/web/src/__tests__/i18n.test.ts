@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
 import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
@@ -105,6 +105,45 @@ describe('Katalog der Oberflaeche', () => {
     expect(doppelt, 'Diese Schluessel stehen zweimal').toEqual([])
     // Der Ausdruck oben muss auch wirklich greifen.
     expect(woher.size).toBe(textKeys().length)
+  })
+})
+
+/**
+ * Niemand baut sich die Sprachzuordnung ein zweites Mal.
+ *
+ * `locale === 'de' ? 'de-DE' : 'en-GB'` ist richtig, solange es zwei
+ * Sprachen gibt, und wird bei der dritten still falsch: ein tuerkischer
+ * Betrag bekaeme britische Regeln, und eine Fehlermeldung gibt es dafuer
+ * nicht. Die Tabelle `INTL_TAG` gibt es genau deshalb -- aber eine Tabelle
+ * hilft nur, wenn sie auch benutzt wird.
+ *
+ * Beim Hinzufuegen der dritten Sprache standen fuenf solche Bedingungen im
+ * Code. Eine davon fiel dem Typ auf, weil ihre Signatur eine eigene Union
+ * trug; die anderen vier nahmen bereits `Locale` und waren damit
+ * typrichtig und trotzdem falsch. Gefunden hat sie ein Griff nach `grep`,
+ * und der naechste faende sie nicht. Deshalb steht es hier.
+ */
+describe('Sprachzuordnung steht an einer Stelle', () => {
+  it('baut keinen Intl-Sprachschluessel aus einer Bedingung', () => {
+    const fundstellen: string[] = []
+    const suchen = (verzeichnis: string): void => {
+      for (const name of readdirSync(verzeichnis)) {
+        const pfad = join(verzeichnis, name)
+        if (statSync(pfad).isDirectory()) {
+          if (name !== '__tests__') suchen(pfad)
+          continue
+        }
+        if (!/\.tsx?$/.test(name)) continue
+        // Der Katalog selbst haelt die Tabelle und begruendet sie im Text.
+        if (pfad.endsWith(join('lib', 'i18n', 'index.ts'))) continue
+        const quelle = readFileSync(pfad, 'utf8')
+        for (const m of quelle.matchAll(/'[a-z]{2}-[A-Z]{2}'/g)) {
+          fundstellen.push(`${name}: ${m[0]}`)
+        }
+      }
+    }
+    suchen(join(import.meta.dirname, '..'))
+    expect(fundstellen, 'Diese Stellen gehoeren an intlTag()').toEqual([])
   })
 })
 

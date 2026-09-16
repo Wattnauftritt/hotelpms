@@ -19,9 +19,33 @@ import type { PoolClient } from '@hotelpms/db'
  */
 const NOTES_MAX_LENGTH = 2000
 
+/**
+ * Obergrenze einer Gruppenbuchung.
+ *
+ * Nicht willkuerlich, sondern die Grenze zwischen zwei Werkzeugen: bis
+ * hierher ist eine Reisegruppe eine Buchung mit mehreren Zimmern, darueber
+ * gehoert sie in ein Kontingent, das Plaetze haelt, ohne sie schon zu
+ * verkaufen. Ausserdem kostet jedes Zimmer eine Reservierung, ein Folio,
+ * seine Naechte und ein Ereignis -- eine versehentlich aufgezogene Auswahl
+ * ueber ein ganzes Haus waere sonst eine Anfrage, die minutenlang schreibt.
+ */
+const GRUPPE_MAX_ZIMMER = 50
+
+/** Ein Zimmer einer Gruppenbuchung. */
+interface CreateBookingRoom {
+  categoryId: number
+  resourceId?: number
+}
+
 interface CreateBooking {
   propertyId: number
-  categoryId: number
+  /** Entfaellt, wenn `rooms` die Zimmer einzeln nennt. */
+  categoryId?: number
+  /**
+   * Mehrere Zimmer in **einer** Buchung. Siehe `CreateBooking` im Vertrag;
+   * der Zeitraum gilt fuer alle gemeinsam.
+   */
+  rooms?: CreateBookingRoom[]
   arrival: string
   departure: string
   ratePlanId?: number
@@ -155,7 +179,7 @@ export function reservationRoutes(app: FastifyInstance): void {
     url: '/v1/bookings',
     permission: 'reservation:write',
     propertyParam: 'propertyId',
-    summary: 'Buchung mit einer Reservierung anlegen',
+    summary: 'Buchung mit einem oder mehreren Zimmern anlegen',
     handler: async (req, reply) => {
       const body = req.body as CreateBooking
       const principal = req.principal as Principal
@@ -166,6 +190,42 @@ export function reservationRoutes(app: FastifyInstance): void {
       }
       if (nightsBetween(body.arrival, body.departure) <= 0) {
         throw Errors.validation({ departure: ['field.afterArrival'] })
+      }
+
+      /*
+       * Ein Weg fuer beide Faelle.
+       *
+       * Die Einzelbuchung ist von hier an die Gruppenbuchung mit einem
+       * Zimmer. Das ist nicht Sparsamkeit, sondern die Stelle, an der sonst
+       * zwei Pfade entstuenden, die auseinanderlaufen: die Zimmerpruefung,
+       * die Preisermittlung, das Folio und das Ereignis muessten zweimal
+       * dastehen, und die zweite Fassung wuerde beim naechsten Befund
+       * vergessen.
+       */
+      if (body.rooms !== undefined && body.categoryId !== undefined) {
+        throw Errors.validation({ rooms: ['field.eitherCategoryOrRooms'] })
+      }
+      if (body.rooms === undefined && body.categoryId === undefined) {
+        throw Errors.validation({ categoryId: ['field.required'] })
+      }
+      const zimmer: CreateBookingRoom[] = body.rooms
+        ?? [{ categoryId: body.categoryId!, resourceId: body.resourceId }]
+
+      if (zimmer.length === 0) throw Errors.validation({ rooms: ['field.atLeastOneRoom'] })
+      if (zimmer.length > GRUPPE_MAX_ZIMMER) {
+        throw Errors.validation({ rooms: ['field.tooManyRooms'] },
+          { max: GRUPPE_MAX_ZIMMER })
+      }
+      if (zimmer.some(z => !Number.isInteger(z.categoryId))) {
+        throw Errors.validation({ categoryId: ['field.required'] })
+      }
+      // Dasselbe Zimmer zweimal in einer Gruppe waere eine Doppelbelegung,
+      // die keine Pruefung spaeter noch abfaengt: `assertUnitAssignable`
+      // sieht nur, was in der Datenbank steht, und die zweite Reservierung
+      // dieser Anfrage steht dort noch nicht.
+      const belegt = zimmer.map(z => z.resourceId).filter(r => r !== undefined)
+      if (new Set(belegt).size !== belegt.length) {
+        throw Errors.validation({ rooms: ['field.duplicateRoom'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -202,7 +262,15 @@ export function reservationRoutes(app: FastifyInstance): void {
           if (block.picked_up >= block.quantity) {
             throw Errors.conflict('block.fullyPickedUp')
           }
-          if (block.category_id !== body.categoryId) {
+          // Bei einer Gruppe reicht "nicht ganz abgerufen" nicht: es muessen
+          // so viele Plaetze frei sein, wie Zimmer gebucht werden. Sonst
+          // stiege `picked_up` ueber `quantity`, und der Nachtlauf gaebe am
+          // Freigabedatum eine negative Menge frei.
+          if (block.picked_up + zimmer.length > block.quantity) {
+            throw Errors.conflict('block.notEnoughLeft',
+              { left: block.quantity - block.picked_up, quantity: block.quantity })
+          }
+          if (zimmer.some(z => z.categoryId !== block.category_id)) {
             throw Errors.validation({
               categoryId: ['field.mustMatchBlockCategory'] })
           }
@@ -218,20 +286,54 @@ export function reservationRoutes(app: FastifyInstance): void {
            * ein Binden vor dem Freigeben an der eigenen Reservierung fehl.
            * Ein Fenster entsteht nicht, beides liegt in einer Transaktion.
            */
-          await client.query(`SELECT inventory_unblock($1,$2,$3::date,$4::date,1)`,
-            [body.propertyId, block.category_id, block.from_date, block.to_date])
+          await client.query(`SELECT inventory_unblock($1,$2,$3::date,$4::date,$5)`,
+            [body.propertyId, block.category_id, block.from_date, block.to_date,
+             zimmer.length])
         }
 
-        // Kontingent zuerst binden. Schlaegt das fehl, wird alles zurueckgerollt.
-        const inv = await client.query<{ e: string | null }>(
-          `SELECT inventory_reserve($1,$2,$3::date,$4::date,1) AS e`,
-          [body.propertyId, body.categoryId, body.arrival, body.departure])
-        inventoryError(inv.rows[0]!.e)
+        /*
+         * Die Zimmergruppen gehoeren zu diesem Haus.
+         *
+         * Die Zeilenrichtlinie filtert nach Mandant, nicht nach Haus
+         * (CLAUDE.md). Bei einem Benutzer mit zwei Haeusern stuende eine
+         * fremde Gruppe in seinem Kontext, und die Buchung landete in einem
+         * Haus, dessen Belegungsplan sie nie zeigt. Bisher scheiterte das
+         * erst an `inventory_reserve` -- mit `not_materialized`, also einer
+         * Meldung ueber fehlenden Bestand statt ueber die falsche Gruppe.
+         */
+        const gruppen = [...new Set(zimmer.map(z => z.categoryId))]
+        const bekannt = await client.query<{ id: number }>(
+          `SELECT id FROM resource_category
+            WHERE id = ANY($1::bigint[]) AND property_id = $2`,
+          [gruppen, body.propertyId])
+        if (bekannt.rowCount !== gruppen.length) {
+          throw Errors.validation({ categoryId: ['field.unknownCategory'] })
+        }
+
+        /*
+         * Kontingent zuerst binden. Schlaegt das fehl, wird alles
+         * zurueckgerollt.
+         *
+         * Je Zimmergruppe **ein** Aufruf mit der Anzahl, nicht einer je
+         * Zimmer: `inventory_reserve` sperrt die Bestandszeilen des
+         * Zeitraums, und acht Aufrufe nacheinander sperrten sie achtmal.
+         * Fuer eine Gruppe aus acht Doppelzimmern ist das derselbe Vorgang.
+         */
+        const jeGruppe = new Map<number, number>()
+        for (const z of zimmer) {
+          jeGruppe.set(z.categoryId, (jeGruppe.get(z.categoryId) ?? 0) + 1)
+        }
+        for (const [categoryId, anzahl] of jeGruppe) {
+          const inv = await client.query<{ e: string | null }>(
+            `SELECT inventory_reserve($1,$2,$3::date,$4::date,$5) AS e`,
+            [body.propertyId, categoryId, body.arrival, body.departure, anzahl])
+          inventoryError(inv.rows[0]!.e)
+        }
 
         if (block !== null) {
           await client.query(
-            `UPDATE availability_block SET picked_up = picked_up + 1 WHERE id = $1`,
-            [block.id])
+            `UPDATE availability_block SET picked_up = picked_up + $2 WHERE id = $1`,
+            [block.id, zimmer.length])
         }
 
         const booking = await client.query<{ id: number; public_ref: string }>(
@@ -246,77 +348,120 @@ export function reservationRoutes(app: FastifyInstance): void {
         const ratePlanId = body.ratePlanId ?? block?.rate_plan_id ?? undefined
 
         /*
-         * Das Zimmer, falls eines mitkommt, wird **vor** dem Anlegen geprueft
-         * und in derselben Anweisung gesetzt. Ein zweiter Aufruf danach
-         * haette ein Fenster, in dem jemand anders dasselbe Zimmer belegt --
-         * und die Reservierung stuende ohne das Zimmer da, das die Rezeption
-         * im Belegungsplan gerade zugesagt hat.
+         * Der Preis haengt am Ratenplan und am Tag, nicht am Zimmer. Einmal
+         * ermittelt und fuer alle Zimmer der Gruppe benutzt: acht Zimmer
+         * derselben Nacht kosten acht Abfragen, die achtmal dieselbe Antwort
+         * geben.
          */
-        if (body.resourceId !== undefined) {
-          await assertUnitAssignable(client, {
-            resourceId: body.resourceId, propertyId: body.propertyId,
-            arrival: body.arrival, departure: body.departure })
-        }
-
-        const res = await client.query<{ id: number; public_ref: string }>(
-          `INSERT INTO reservation
-             (property_id, booking_id, category_id, arrival, departure, status,
-              rate_plan_id, primary_guest_id, notes, block_id, resource_id, created_by)
-           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
-           RETURNING id, public_ref`,
-          [body.propertyId, booking.rows[0]!.id, body.categoryId, body.arrival, body.departure,
-           ratePlanId ?? null, guestId ?? null, body.notes ?? null,
-           block?.id ?? null, body.resourceId ?? null, principal.userId])
-        const reservationId = res.rows[0]!.id
-
         const nights = eachNight(body.arrival, body.departure)
         const prices = await priceNights(client, ratePlanId, nights)
-        for (let i = 0; i < nights.length; i++) {
-          await client.query(
-            `INSERT INTO reservation_night
-               (reservation_id, property_id, date, rate_plan_id, price_cent)
-             VALUES ($1,$2,$3::date,$4,$5)`,
-            [reservationId, body.propertyId, nights[i], ratePlanId ?? null, prices[i]])
-        }
+        const preisSumme = prices.reduce((s, p) => s + p, 0)
 
-        // Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein.
-        const occupants = body.occupants ?? (guestId
-          ? [{ guestId, isPrimary: true }] : [])
-        for (const o of occupants) {
-          await client.query(
-            `INSERT INTO reservation_occupant
-               (property_id, reservation_id, guest_id, age_at_arrival, is_primary)
-             VALUES ($1,$2,$3,$4,$5)`,
-            [body.propertyId, reservationId, o.guestId ?? null,
-             o.ageAtArrival ?? null, o.isPrimary ?? false])
-        }
+        const angelegt: Array<{ reservationRef: string; categoryId: number
+                                resourceId: number | null; totalCent: number }> = []
 
-        await client.query(
-          `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
-           VALUES ($1,$2,$3,'guest')`,
-          [body.propertyId, reservationId, guestId ?? null])
+        for (const [i, z] of zimmer.entries()) {
+          /*
+           * Das Zimmer, falls eines mitkommt, wird **vor** dem Anlegen
+           * geprueft und in derselben Anweisung gesetzt. Ein zweiter Aufruf
+           * danach haette ein Fenster, in dem jemand anders dasselbe Zimmer
+           * belegt -- und die Reservierung stuende ohne das Zimmer da, das
+           * die Rezeption im Belegungsplan gerade zugesagt hat.
+           */
+          if (z.resourceId !== undefined) {
+            await assertUnitAssignable(client, {
+              resourceId: z.resourceId, propertyId: body.propertyId,
+              arrival: body.arrival, departure: body.departure })
+          }
+
+          const res = await client.query<{ id: number; public_ref: string }>(
+            `INSERT INTO reservation
+               (property_id, booking_id, category_id, arrival, departure, status,
+                rate_plan_id, primary_guest_id, notes, block_id, resource_id, created_by)
+             VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
+             RETURNING id, public_ref`,
+            [body.propertyId, booking.rows[0]!.id, z.categoryId, body.arrival, body.departure,
+             ratePlanId ?? null, guestId ?? null, body.notes ?? null,
+             block?.id ?? null, z.resourceId ?? null, principal.userId])
+          const reservationId = res.rows[0]!.id
+
+          for (let n = 0; n < nights.length; n++) {
+            await client.query(
+              `INSERT INTO reservation_night
+                 (reservation_id, property_id, date, rate_plan_id, price_cent)
+               VALUES ($1,$2,$3::date,$4,$5)`,
+              [reservationId, body.propertyId, nights[n], ratePlanId ?? null, prices[n]])
+          }
+
+          /*
+           * Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein --
+           * und genau deshalb **nur am ersten Zimmer**.
+           *
+           * Der Gast einer Gruppenbuchung ist der Besteller, nicht der
+           * Bewohner von acht Zimmern. Ihn in jedes einzutragen hiesse, ihn
+           * achtmal zu zaehlen: die Kurtaxe rechnet je Mitreisendem, und aus
+           * einer Person wuerden acht. Die uebrigen Zimmer bleiben ohne
+           * Eintrag; `erwarteteSaetze` rechnet dann mit einer Person je
+           * Zimmer, was der Wahrheit vor der Namensliste am naechsten kommt.
+           */
+          const occupants = i === 0
+            ? body.occupants ?? (guestId ? [{ guestId, isPrimary: true }] : [])
+            : []
+          for (const o of occupants) {
+            await client.query(
+              `INSERT INTO reservation_occupant
+                 (property_id, reservation_id, guest_id, age_at_arrival, is_primary)
+               VALUES ($1,$2,$3,$4,$5)`,
+              [body.propertyId, reservationId, o.guestId ?? null,
+               o.ageAtArrival ?? null, o.isPrimary ?? false])
+          }
+
+          await client.query(
+            `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
+             VALUES ($1,$2,$3,'guest')`,
+            [body.propertyId, reservationId, guestId ?? null])
+
+          angelegt.push({
+            reservationRef: res.rows[0]!.public_ref,
+            categoryId: z.categoryId,
+            resourceId: z.resourceId ?? null,
+            totalCent: preisSumme
+          })
+        }
 
         const result = {
           bookingRef: booking.rows[0]!.public_ref,
-          reservationRef: res.rows[0]!.public_ref,
+          reservationRef: angelegt[0]!.reservationRef,
+          reservations: angelegt,
           arrival: body.arrival,
           departure: body.departure,
           nights: nights.length,
-          totalCent: prices.reduce((s, p) => s + p, 0)
+          totalCent: preisSumme * zimmer.length
         }
 
-        await emitEvent(client, body.propertyId, 'reservation.created', {
-          reservationRef: result.reservationRef,
-          bookingRef: result.bookingRef,
-          status: 'Confirmed',
-          arrival: body.arrival,
-          departure: body.departure,
-          categoryId: body.categoryId,
-          source: body.source ?? 'direct',
-          externalReference: body.externalReference ?? null,
-          blockRef: body.blockRef ?? null,
-          totalCent: result.totalCent
-        })
+        /*
+         * Ein Ereignis **je Reservierung**, nicht eines je Buchung.
+         *
+         * Ein Kanalmanager fuehrt seine Zimmer einzeln; ein Ereignis mit
+         * acht Referenzen darin muesste er auseinandernehmen, und die
+         * bestehenden Empfaenger erwarten `reservationRef` im Singular.
+         * `bookingRef` ist in allen acht dasselbe -- daran haengen sie
+         * zusammen.
+         */
+        for (const a of angelegt) {
+          await emitEvent(client, body.propertyId, 'reservation.created', {
+            reservationRef: a.reservationRef,
+            bookingRef: result.bookingRef,
+            status: 'Confirmed',
+            arrival: body.arrival,
+            departure: body.departure,
+            categoryId: a.categoryId,
+            source: body.source ?? 'direct',
+            externalReference: body.externalReference ?? null,
+            blockRef: body.blockRef ?? null,
+            totalCent: a.totalCent
+          })
+        }
 
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)

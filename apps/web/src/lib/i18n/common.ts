@@ -154,6 +154,72 @@ export const common = {
     de: 'Abmelden',
     en: 'Sign out',
     tr: 'Oturumu kapat' },
+  'workstation.switch': {
+    de: 'Person wechseln',
+    en: 'Switch person',
+    tr: 'Kişi değiştir' },
+  'workstation.title': {
+    de: 'Arbeitsplatz',
+    en: 'Workstation',
+    tr: 'Çalışma yeri' },
+  'workstation.acting': {
+    de: 'Es handelt gerade nicht die angemeldete Person.',
+    en: 'Someone other than the signed-in person is acting.',
+    tr: 'Şu anda işlemi yapan, oturum açmış kişi değil.' },
+  'workstation.switchHint': {
+    de: 'Am geteilten Rezeptionsrechner übernimmt eine andere Person, ohne dass '
+      + 'sich jemand neu anmeldet. Die Sitzung bleibt; im Protokoll steht, wer '
+      + 'wirklich gebucht hat.',
+    en: 'At a shared front-desk machine another person takes over without anyone '
+      + 'signing in again. The session stays; the audit log records who actually '
+      + 'booked.',
+    tr: 'Ortak kullanılan resepsiyon bilgisayarında, kimse yeniden oturum açmadan başka bir kişi devralır. Oturum aynı kalır; kayıtta gerçekte kimin işlem yaptığı yazar.' },
+  'workstation.pin': {
+    de: 'Arbeitsplatz-PIN',
+    en: 'Workstation PIN',
+    tr: 'Çalışma yeri PIN\'i' },
+  'workstation.switchSubmit': {
+    de: 'Übernehmen',
+    en: 'Take over',
+    tr: 'Devral' },
+  'workstation.ownPin': {
+    de: 'Eigener Arbeitsplatz-PIN',
+    en: 'Your own workstation PIN',
+    tr: 'Kendi çalışma yeri PIN\'iniz' },
+  'workstation.ownPinHint': {
+    de: 'Vier bis zwölf Ziffern. Nur damit kann jemand an einem anderen '
+      + 'Arbeitsplatz in Ihrem Namen weiterarbeiten — und nur damit kommen Sie '
+      + 'nach einem Wechsel in Ihre eigene Sitzung zurück.',
+    en: 'Four to twelve digits. Only with it can someone carry on in your name at '
+      + 'another workstation — and only with it do you get back into your own '
+      + 'session after a switch.',
+    tr: 'Dört ile on iki basamak arası. Yalnızca onunla biri başka bir çalışma yerinde sizin adınıza çalışmayı sürdürebilir — ve yalnızca onunla bir devirden sonra kendi oturumunuza geri dönersiniz.' },
+  'workstation.pinSet': {
+    de: 'Hinterlegt',
+    en: 'On file',
+    tr: 'Kayıtlı' },
+  'workstation.pinNotSet': {
+    de: 'Nicht hinterlegt',
+    en: 'Not on file',
+    tr: 'Kayıtlı değil' },
+  'workstation.pinSave': {
+    de: 'PIN setzen',
+    en: 'Set PIN',
+    tr: 'PIN belirle' },
+  'workstation.pinRemove': {
+    de: 'PIN entfernen',
+    en: 'Remove PIN',
+    tr: 'PIN\'i kaldır' },
+  'workstation.pinSaved': {
+    de: 'Gespeichert',
+    en: 'Saved',
+    tr: 'Kaydedildi' },
+  'workstation.needOwnPin': {
+    de: 'Hinterlegen Sie zuerst einen eigenen PIN. Ohne ihn kämen Sie nach einem '
+      + 'Wechsel nicht zurück.',
+    en: 'Set a PIN of your own first. Without it you could not get back after a '
+      + 'switch.',
+    tr: 'Önce kendinize bir PIN belirleyin. O olmadan bir devirden sonra geri dönemezsiniz.' },
   'app.noProperty': {
     de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     en: 'This user is not assigned to any property yet.',
