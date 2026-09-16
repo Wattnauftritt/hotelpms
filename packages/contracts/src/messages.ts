@@ -21,461 +21,643 @@
  * am Gastprofil und wird nicht hier entschieden (Dokument 19).
  */
 
-/** Ein Eintrag: deutsch, dann englisch. */
-type Eintrag = readonly [de: string, en: string]
+/**
+ * Die Sprachen, in denen Oberflaeche und Meldungen **vollstaendig**
+ * vorliegen.
+ *
+ * Bewusst hier und nicht in `apps/web`: die Liste ist eine Zusage des
+ * Produkts, kein Merkmal eines Bildschirms, und der Test ueber den Katalog
+ * braucht sie genauso wie die Oberflaeche. Eine Sprache steht hier erst,
+ * wenn jeder Schluessel sie hat -- halb uebersetzt anzubieten heisst, dem
+ * Benutzer die Haelfte in einer Sprache zu zeigen, die er nicht gewaehlt
+ * hat.
+ */
+export const LOCALES = ['de', 'en'] as const
+export type MessageLocale = (typeof LOCALES)[number]
+
+/**
+ * Ein Eintrag: ein Satz je Sprache.
+ *
+ * Bewusst benannte Felder und keine Liste. Bei zwei Sprachen waere eine
+ * Liste knapper; ab der dritten liest niemand mehr ab, welcher Satz zu
+ * welcher Sprache gehoert, und eine vertauschte Reihenfolge faellt keinem
+ * Typ auf. Ein fehlendes Feld dagegen bricht den Build.
+ */
+type Eintrag = { readonly [L in MessageLocale]: string }
 
 const M = {
   // ------------------------------------------------------------ Fehlertitel
 
-  'error.unauthorized': ['Nicht angemeldet', 'Not signed in'],
-  'error.forbidden': ['Keine Berechtigung', 'Not permitted'],
-  'error.notFound': ['{what} nicht gefunden', '{what} not found'],
-  'error.conflict': ['Konflikt', 'Conflict'],
-  'error.validation': ['Eingabe ungueltig', 'Invalid input'],
-  'error.unprocessable': ['Nicht verarbeitbar', 'Cannot be processed'],
-  'error.soldOut': ['Kein Kontingent verfuegbar', 'No availability left'],
-  'error.soldOut.detail': [
-    'Fuer mindestens eine Nacht des Zeitraums ist die Kapazitaet erschoepft.',
-    'For at least one night of the period there is no capacity left.'],
-  'error.notMaterialized': ['Zeitraum nicht verfuegbar', 'Period not available'],
-  'error.notMaterialized.detail': [
-    'Der Zeitraum liegt ausserhalb des vorbereiteten Horizonts. '
-    + 'Der Betrieb wurde benachrichtigt.',
-    'The period lies beyond the prepared horizon. Operations have been notified.'],
-  'error.rangeTooLarge': ['Zeitraum zu gross', 'Period too large'],
-  'error.rangeTooLarge.detail': [
-    'Hoechstens {max} Tage je Anfrage.', 'At most {max} days per request.'],
-  'error.idempotencyMismatch': [
-    'Idempotenzschluessel wiederverwendet', 'Idempotency key reused'],
-  'error.idempotencyMismatch.detail': [
-    'Derselbe Schluessel wurde bereits mit einem anderen Rumpf benutzt.',
-    'The same key has already been used with a different body.'],
-  'error.idempotencyInFlight': ['Anfrage laeuft bereits', 'Request already in flight'],
-  'error.idempotencyInFlight.detail': [
-    'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.',
-    'A request with this key is being processed. Please try again.'],
-  'error.notConfigured': ['Nicht eingerichtet', 'Not configured'],
-  'error.invalidSignature': ['Signatur ungueltig', 'Invalid signature'],
-  'error.documentPending': ['Beleg noch nicht erzeugt', 'Document not generated yet'],
-  'error.documentPending.detail': [
-    'Die Rechnung ist festgeschrieben, der Beleg wird gerade erzeugt. '
-    + 'Bitte in Kuerze erneut abrufen.',
-    'The invoice is final; the document is being generated. Please retry shortly.'],
-  'error.unknown': ['Unbekannter Fehler', 'Unknown error'],
-  'error.internal': ['Interner Fehler', 'Internal error'],
-  'error.rateLimited': ['Zu viele Anfragen', 'Too many requests'],
-  'error.rateLimited.detail': [
-    'Bitte in {seconds} Sekunden erneut versuchen.',
-    'Please try again in {seconds} seconds.'],
+  'error.unauthorized': {
+    de: 'Nicht angemeldet',
+    en: 'Not signed in' },
+  'error.forbidden': {
+    de: 'Keine Berechtigung',
+    en: 'Not permitted' },
+  'error.notFound': {
+    de: '{what} nicht gefunden',
+    en: '{what} not found' },
+  'error.conflict': {
+    de: 'Konflikt',
+    en: 'Conflict' },
+  'error.validation': {
+    de: 'Eingabe ungueltig',
+    en: 'Invalid input' },
+  'error.unprocessable': {
+    de: 'Nicht verarbeitbar',
+    en: 'Cannot be processed' },
+  'error.soldOut': {
+    de: 'Kein Kontingent verfuegbar',
+    en: 'No availability left' },
+  'error.soldOut.detail': {
+    de: 'Fuer mindestens eine Nacht des Zeitraums ist die Kapazitaet erschoepft.',
+    en: 'For at least one night of the period there is no capacity left.' },
+  'error.notMaterialized': {
+    de: 'Zeitraum nicht verfuegbar',
+    en: 'Period not available' },
+  'error.notMaterialized.detail': {
+    de: 'Der Zeitraum liegt ausserhalb des vorbereiteten Horizonts. '
+      + 'Der Betrieb wurde benachrichtigt.',
+    en: 'The period lies beyond the prepared horizon. Operations have been notified.' },
+  'error.rangeTooLarge': {
+    de: 'Zeitraum zu gross',
+    en: 'Period too large' },
+  'error.rangeTooLarge.detail': {
+    de: 'Hoechstens {max} Tage je Anfrage.',
+    en: 'At most {max} days per request.' },
+  'error.idempotencyMismatch': {
+    de: 'Idempotenzschluessel wiederverwendet',
+    en: 'Idempotency key reused' },
+  'error.idempotencyMismatch.detail': {
+    de: 'Derselbe Schluessel wurde bereits mit einem anderen Rumpf benutzt.',
+    en: 'The same key has already been used with a different body.' },
+  'error.idempotencyInFlight': {
+    de: 'Anfrage laeuft bereits',
+    en: 'Request already in flight' },
+  'error.idempotencyInFlight.detail': {
+    de: 'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.',
+    en: 'A request with this key is being processed. Please try again.' },
+  'error.notConfigured': {
+    de: 'Nicht eingerichtet',
+    en: 'Not configured' },
+  'error.invalidSignature': {
+    de: 'Signatur ungueltig',
+    en: 'Invalid signature' },
+  'error.documentPending': {
+    de: 'Beleg noch nicht erzeugt',
+    en: 'Document not generated yet' },
+  'error.documentPending.detail': {
+    de: 'Die Rechnung ist festgeschrieben, der Beleg wird gerade erzeugt. '
+      + 'Bitte in Kuerze erneut abrufen.',
+    en: 'The invoice is final; the document is being generated. Please retry shortly.' },
+  'error.unknown': {
+    de: 'Unbekannter Fehler',
+    en: 'Unknown error' },
+  'error.internal': {
+    de: 'Interner Fehler',
+    en: 'Internal error' },
+  'error.rateLimited': {
+    de: 'Zu viele Anfragen',
+    en: 'Too many requests' },
+  'error.rateLimited.detail': {
+    de: 'Bitte in {seconds} Sekunden erneut versuchen.',
+    en: 'Please try again in {seconds} seconds.' },
 
   // -------------------------------------------------------------- Ressourcen
   //
   // Der Name, der in "X nicht gefunden" eingesetzt wird. Eine kleine, feste
   // Liste: was es nicht gibt, ist immer eines dieser Dinge.
 
-  'res.resource': ['Ressource', 'Resource'],
-  'res.property': ['Property', 'Property'],
-  'res.reservation': ['Reservierung', 'Reservation'],
-  'res.folio': ['Folio', 'Folio'],
-  'res.guest': ['Gast', 'Guest'],
-  'res.company': ['Firma', 'Company'],
-  'res.category': ['Zimmergruppe', 'Room type'],
-  'res.room': ['Zimmer', 'Room'],
-  'res.invoice': ['Rechnung', 'Invoice'],
-  'res.block': ['Kontingent', 'Block'],
-  'res.subscription': ['Abonnement', 'Subscription'],
-  'res.settlement': ['Zahlungsvermerk', 'Settlement'],
-  'res.paymentMethod': ['Zahlungsart', 'Payment method'],
-  'res.maintenanceTicket': ['Wartungsmeldung', 'Maintenance ticket'],
-  'res.connection': ['Verbindung', 'Connection'],
-  'res.ratePlan': ['Ratenplan', 'Rate plan'],
-  'res.registration': ['Meldeschein', 'Registration form'],
-  'res.oauthClient': ['Maschinenzugang', 'Machine access'],
-  'res.user': ['Benutzer', 'User'],
-  'res.task': ['Aufgabe', 'Task'],
-  'res.message': ['Nachricht', 'Message'],
-  'res.product': ['Artikel', 'Product'],
-  'res.posChargeByReference': [
-    'Kassenumsatz mit der Belegnummer {reference}',
-    'POS charge with document number {reference}'],
+  'res.resource': {
+    de: 'Ressource',
+    en: 'Resource' },
+  'res.property': {
+    de: 'Property',
+    en: 'Property' },
+  'res.reservation': {
+    de: 'Reservierung',
+    en: 'Reservation' },
+  'res.folio': {
+    de: 'Folio',
+    en: 'Folio' },
+  'res.guest': {
+    de: 'Gast',
+    en: 'Guest' },
+  'res.company': {
+    de: 'Firma',
+    en: 'Company' },
+  'res.category': {
+    de: 'Zimmergruppe',
+    en: 'Room type' },
+  'res.room': {
+    de: 'Zimmer',
+    en: 'Room' },
+  'res.invoice': {
+    de: 'Rechnung',
+    en: 'Invoice' },
+  'res.block': {
+    de: 'Kontingent',
+    en: 'Block' },
+  'res.subscription': {
+    de: 'Abonnement',
+    en: 'Subscription' },
+  'res.settlement': {
+    de: 'Zahlungsvermerk',
+    en: 'Settlement' },
+  'res.paymentMethod': {
+    de: 'Zahlungsart',
+    en: 'Payment method' },
+  'res.maintenanceTicket': {
+    de: 'Wartungsmeldung',
+    en: 'Maintenance ticket' },
+  'res.connection': {
+    de: 'Verbindung',
+    en: 'Connection' },
+  'res.ratePlan': {
+    de: 'Ratenplan',
+    en: 'Rate plan' },
+  'res.registration': {
+    de: 'Meldeschein',
+    en: 'Registration form' },
+  'res.oauthClient': {
+    de: 'Maschinenzugang',
+    en: 'Machine access' },
+  'res.user': {
+    de: 'Benutzer',
+    en: 'User' },
+  'res.task': {
+    de: 'Aufgabe',
+    en: 'Task' },
+  'res.message': {
+    de: 'Nachricht',
+    en: 'Message' },
+  'res.product': {
+    de: 'Artikel',
+    en: 'Product' },
+  'res.posChargeByReference': {
+    de: 'Kassenumsatz mit der Belegnummer {reference}',
+    en: 'POS charge with document number {reference}' },
 
   // ------------------------------------------------------------- Feldfehler
   //
   // Die Meldung, die an einem einzelnen Feld haengt. Bewusst knapp: sie steht
   // neben dem Feld, nicht allein auf einer Seite.
 
-  'field.required': ['Pflichtfeld', 'Required'],
-  'field.requiredWithManyAccounts': [
-    'Pflichtfeld bei mehreren Accounts', 'Required when there are several accounts'],
-  'field.requiredForDerived': [
-    'Bei abgeleiteter Rate erforderlich', 'Required for a derived rate'],
-  'field.headerRequired': ['Kopfzeile erforderlich', 'Header required'],
-  'field.bodyMissing': ['Rumpf fehlt', 'Body missing'],
-  'field.invalid': ['ungueltig', 'invalid'],
-  'field.isoDate': [
-    'Datum im Format YYYY-MM-DD erwartet', 'Date in the format YYYY-MM-DD expected'],
-  'field.isoMonth': ['Format YYYY-MM erwartet', 'Format YYYY-MM expected'],
-  'field.isoTimestamp': [
-    'Zeitstempel nach ISO 8601 erwartet', 'Timestamp in ISO 8601 expected'],
-  'field.email': ['Keine brauchbare Adresse', 'Not a usable address'],
-  'field.httpsOnly': ['Muss mit https:// beginnen', 'Must start with https://'],
-  'field.integer': ['Ganze Zahl erwartet', 'Whole number expected'],
-  'field.positiveInteger': [
-    'Ganze Zahl groesser als null erwartet', 'Whole number greater than zero expected'],
-  'field.centAmount': [
-    'Ganze Cent-Betraege, nicht negativ', 'Whole amounts in cents, not negative'],
-  'field.positiveCent': [
-    'Muss eine positive Centzahl sein', 'Must be a positive amount in cents'],
-  'field.minTwoChars': ['Mindestens zwei Zeichen', 'At least two characters'],
-  'field.maxLength': ['Hoechstens {max} Zeichen', 'At most {max} characters'],
-  'field.afterArrival': ['Muss nach arrival liegen', 'Must be after arrival'],
-  'field.afterFrom': ['Muss nach from liegen', 'Must be after from'],
-  'field.afterFromDate': ['Muss nach fromDate liegen', 'Must be after fromDate'],
-  'field.onOrAfterFrom': [
-    'Muss auf oder nach from liegen', 'Must be on or after from'],
-  'field.notBeforeFrom': [
-    'Darf nicht kleiner als from sein', 'Must not be smaller than from'],
-  'field.notAboveMaxLos': [
-    'Darf nicht groesser als maxLos sein', 'Must not be greater than maxLos'],
-  'field.weekday': [
-    'Werte von 0 (Montag) bis 6 (Sonntag)', 'Values from 0 (Monday) to 6 (Sunday)'],
-  'field.weekdayRange': ['Zwischen 0 und 6', 'Between 0 and 6'],
-  'field.atLeastOneRoom': ['Mindestens ein Zimmer', 'At least one room'],
-  'field.atLeastOneScope': [
-    'Mindestens ein Zugriffsbereich', 'At least one scope'],
-  'field.roleKeyList': [
-    'Liste der Rollenschluessel erwartet', 'A list of role keys is expected'],
-  'field.allowedValues': ['Erlaubt: {values}', 'Allowed: {values}'],
-  'field.unknownValues': ['Unbekannt: {values}', 'Unknown: {values}'],
-  'field.seriesEmpty': [
-    'Die Serie ist nach den Auslassungen leer',
-    'After the exclusions the series is empty'],
-  'field.occupancyPrices': [
-    'Preis je Belegung erwartet, Index 0 = 1 Person',
-    'A price per occupancy is expected, index 0 = 1 person'],
-  'field.unknownCategory': ['Unbekannte Kategorie', 'Unknown room type'],
-  'field.unknownRatePlan': ['Unbekannter Ratenplan', 'Unknown rate plan'],
-  'field.unknownPaymentMethod': ['Unbekannte Zahlart', 'Unknown payment method'],
-  'field.unknownEventType': [
-    'Unbekannte Ereignisart: {values}', 'Unknown event type: {values}'],
-  'field.unknownRole': ['Unbekannte Rolle: {values}', 'Unknown role: {values}'],
-  'field.mustMatchBlockCategory': [
-    'Muss der Zimmergruppe des Kontingents entsprechen',
-    'Must match the room type of the block'],
-  'field.blockNeedsRoom': [
-    'Eine Sperrung braucht ein Zimmer', 'A block needs a room'],
-  'field.onlyRoomcloud': [
-    'Nur roomcloud ist bisher angebunden', 'Only roomcloud is connected so far'],
-  'field.onlyPreviousYear': [
-    'Erlaubt ist nur previous-year', 'Only previous-year is allowed'],
-  'field.notAnIncomingPayment': [
-    'Der Zahlungsvermerk ist kein Zahlungseingang.',
-    'That settlement is not an incoming payment.'],
-  'field.originalDocumentNumber': [
-    'Belegnummer des Originals', 'Document number of the original'],
-  'field.reversalDocumentNumber': [
-    'Belegnummer des Stornos', 'Document number of the reversal'],
-  'field.noPlatformScopes': [
-    'Plattformrechte sind keine Zugriffsbereiche: {values}',
-    'Platform permissions are not scopes: {values}'],
+  'field.required': {
+    de: 'Pflichtfeld',
+    en: 'Required' },
+  'field.requiredWithManyAccounts': {
+    de: 'Pflichtfeld bei mehreren Accounts',
+    en: 'Required when there are several accounts' },
+  'field.requiredForDerived': {
+    de: 'Bei abgeleiteter Rate erforderlich',
+    en: 'Required for a derived rate' },
+  'field.headerRequired': {
+    de: 'Kopfzeile erforderlich',
+    en: 'Header required' },
+  'field.bodyMissing': {
+    de: 'Rumpf fehlt',
+    en: 'Body missing' },
+  'field.invalid': {
+    de: 'ungueltig',
+    en: 'invalid' },
+  'field.isoDate': {
+    de: 'Datum im Format YYYY-MM-DD erwartet',
+    en: 'Date in the format YYYY-MM-DD expected' },
+  'field.isoMonth': {
+    de: 'Format YYYY-MM erwartet',
+    en: 'Format YYYY-MM expected' },
+  'field.isoTimestamp': {
+    de: 'Zeitstempel nach ISO 8601 erwartet',
+    en: 'Timestamp in ISO 8601 expected' },
+  'field.email': {
+    de: 'Keine brauchbare Adresse',
+    en: 'Not a usable address' },
+  'field.httpsOnly': {
+    de: 'Muss mit https:// beginnen',
+    en: 'Must start with https://' },
+  'field.integer': {
+    de: 'Ganze Zahl erwartet',
+    en: 'Whole number expected' },
+  'field.positiveInteger': {
+    de: 'Ganze Zahl groesser als null erwartet',
+    en: 'Whole number greater than zero expected' },
+  'field.centAmount': {
+    de: 'Ganze Cent-Betraege, nicht negativ',
+    en: 'Whole amounts in cents, not negative' },
+  'field.positiveCent': {
+    de: 'Muss eine positive Centzahl sein',
+    en: 'Must be a positive amount in cents' },
+  'field.minTwoChars': {
+    de: 'Mindestens zwei Zeichen',
+    en: 'At least two characters' },
+  'field.maxLength': {
+    de: 'Hoechstens {max} Zeichen',
+    en: 'At most {max} characters' },
+  'field.afterArrival': {
+    de: 'Muss nach arrival liegen',
+    en: 'Must be after arrival' },
+  'field.afterFrom': {
+    de: 'Muss nach from liegen',
+    en: 'Must be after from' },
+  'field.afterFromDate': {
+    de: 'Muss nach fromDate liegen',
+    en: 'Must be after fromDate' },
+  'field.onOrAfterFrom': {
+    de: 'Muss auf oder nach from liegen',
+    en: 'Must be on or after from' },
+  'field.notBeforeFrom': {
+    de: 'Darf nicht kleiner als from sein',
+    en: 'Must not be smaller than from' },
+  'field.notAboveMaxLos': {
+    de: 'Darf nicht groesser als maxLos sein',
+    en: 'Must not be greater than maxLos' },
+  'field.weekday': {
+    de: 'Werte von 0 (Montag) bis 6 (Sonntag)',
+    en: 'Values from 0 (Monday) to 6 (Sunday)' },
+  'field.weekdayRange': {
+    de: 'Zwischen 0 und 6',
+    en: 'Between 0 and 6' },
+  'field.atLeastOneRoom': {
+    de: 'Mindestens ein Zimmer',
+    en: 'At least one room' },
+  'field.atLeastOneScope': {
+    de: 'Mindestens ein Zugriffsbereich',
+    en: 'At least one scope' },
+  'field.roleKeyList': {
+    de: 'Liste der Rollenschluessel erwartet',
+    en: 'A list of role keys is expected' },
+  'field.allowedValues': {
+    de: 'Erlaubt: {values}',
+    en: 'Allowed: {values}' },
+  'field.unknownValues': {
+    de: 'Unbekannt: {values}',
+    en: 'Unknown: {values}' },
+  'field.seriesEmpty': {
+    de: 'Die Serie ist nach den Auslassungen leer',
+    en: 'After the exclusions the series is empty' },
+  'field.occupancyPrices': {
+    de: 'Preis je Belegung erwartet, Index 0 = 1 Person',
+    en: 'A price per occupancy is expected, index 0 = 1 person' },
+  'field.unknownCategory': {
+    de: 'Unbekannte Kategorie',
+    en: 'Unknown room type' },
+  'field.unknownRatePlan': {
+    de: 'Unbekannter Ratenplan',
+    en: 'Unknown rate plan' },
+  'field.unknownPaymentMethod': {
+    de: 'Unbekannte Zahlart',
+    en: 'Unknown payment method' },
+  'field.unknownEventType': {
+    de: 'Unbekannte Ereignisart: {values}',
+    en: 'Unknown event type: {values}' },
+  'field.unknownRole': {
+    de: 'Unbekannte Rolle: {values}',
+    en: 'Unknown role: {values}' },
+  'field.mustMatchBlockCategory': {
+    de: 'Muss der Zimmergruppe des Kontingents entsprechen',
+    en: 'Must match the room type of the block' },
+  'field.blockNeedsRoom': {
+    de: 'Eine Sperrung braucht ein Zimmer',
+    en: 'A block needs a room' },
+  'field.onlyRoomcloud': {
+    de: 'Nur roomcloud ist bisher angebunden',
+    en: 'Only roomcloud is connected so far' },
+  'field.onlyPreviousYear': {
+    de: 'Erlaubt ist nur previous-year',
+    en: 'Only previous-year is allowed' },
+  'field.notAnIncomingPayment': {
+    de: 'Der Zahlungsvermerk ist kein Zahlungseingang.',
+    en: 'That settlement is not an incoming payment.' },
+  'field.originalDocumentNumber': {
+    de: 'Belegnummer des Originals',
+    en: 'Document number of the original' },
+  'field.reversalDocumentNumber': {
+    de: 'Belegnummer des Stornos',
+    en: 'Document number of the reversal' },
+  'field.noPlatformScopes': {
+    de: 'Plattformrechte sind keine Zugriffsbereiche: {values}',
+    en: 'Platform permissions are not scopes: {values}' },
   // ------------------------------------------------- Zugriff und Anmeldung
 
-  'access.accountOutOfScope': [
-    'Account liegt nicht im Zugriffsbereich.',
-    'That account is outside your scope.'],
-  'access.propertyOutOfScope': [
-    'Property liegt nicht im Zugriffsbereich.',
-    'That property is outside your scope.'],
-  'access.missingPermission': [
-    'Fehlende Berechtigung: {permission}', 'Missing permission: {permission}'],
-  'auth.tooManyAttempts': [
-    'Zu viele Fehlversuche. Bitte später erneut versuchen.',
-    'Too many failed attempts. Please try again later.'],
+  'access.accountOutOfScope': {
+    de: 'Account liegt nicht im Zugriffsbereich.',
+    en: 'That account is outside your scope.' },
+  'access.propertyOutOfScope': {
+    de: 'Property liegt nicht im Zugriffsbereich.',
+    en: 'That property is outside your scope.' },
+  'access.missingPermission': {
+    de: 'Fehlende Berechtigung: {permission}',
+    en: 'Missing permission: {permission}' },
+  'auth.tooManyAttempts': {
+    de: 'Zu viele Fehlversuche. Bitte später erneut versuchen.',
+    en: 'Too many failed attempts. Please try again later.' },
   // Bewusst dieselbe Antwort fuer "Adresse unbekannt" und "Kennwort falsch":
   // eine hilfreichere Meldung waere eine Auskunft darueber, welche Adressen
   // es gibt.
-  'auth.badCredentials': [
-    'E-Mail oder Kennwort stimmt nicht.', 'Email or password is not correct.'],
-  'auth.badPin': ['E-Mail oder PIN stimmt nicht.', 'Email or PIN is not correct.'],
+  'auth.badCredentials': {
+    de: 'E-Mail oder Kennwort stimmt nicht.',
+    en: 'Email or password is not correct.' },
+  'auth.badPin': {
+    de: 'E-Mail oder PIN stimmt nicht.',
+    en: 'Email or PIN is not correct.' },
   // Bewusst ohne Unterscheidung zwischen unbekannt, abgelaufen und schon
   // benutzt: jede davon waere eine Auskunft ueber ein Token, das der
   // Aufrufer nicht hat.
-  'auth.tokenInvalid': [
-    'Der Link ist ungueltig oder abgelaufen. Fordern Sie einen neuen an.',
-    'The link is invalid or has expired. Please request a new one.'],
-  'auth.passwordTooShort': [
-    'Das Kennwort muss mindestens {min} Zeichen haben.',
-    'The password must be at least {min} characters long.'],
+  'auth.tokenInvalid': {
+    de: 'Der Link ist ungueltig oder abgelaufen. Fordern Sie einen neuen an.',
+    en: 'The link is invalid or has expired. Please request a new one.' },
+  'auth.passwordTooShort': {
+    de: 'Das Kennwort muss mindestens {min} Zeichen haben.',
+    en: 'The password must be at least {min} characters long.' },
 
   // ------------------------------------------------------------ Onboarding
 
-  'onboarding.emailTaken': [
-    'Diese E-Mail-Adresse gehoert bereits zu einem Zugang.',
-    'This email address already belongs to an account.'],
+  'onboarding.emailTaken': {
+    de: 'Diese E-Mail-Adresse gehoert bereits zu einem Zugang.',
+    en: 'This email address already belongs to an account.' },
   // Nicht "Feld fehlt": der Grund gehoert dazu, sonst traegt jemand einen
   // Punkt ein und das Haus stellt Rechnungen aus, die nicht gelten.
-  'onboarding.invoiceDataRequired': [
-    'Anschrift und Steuernummer sind Pflicht: ohne sie darf das Haus nach '
-      + '§ 14 UStG keine Rechnung ausstellen.',
-    'Address and tax number are required: without them the property may not '
-      + 'issue invoices under § 14 UStG.'],
+  'onboarding.invoiceDataRequired': {
+    de: 'Anschrift und Steuernummer sind Pflicht: ohne sie darf das Haus nach '
+        + '§ 14 UStG keine Rechnung ausstellen.',
+    en: 'Address and tax number are required: without them the property may not '
+        + 'issue invoices under § 14 UStG.' },
 
   // ----------------------------------------------------------- Ausrollen
 
   // Der Teilindex laesst nur eine offene Anforderung zu. Das ist kein
   // Gedraenge, sondern der Schutz davor, dass sich zwei Laeufe im selben
   // Verzeichnis die Dateien wegziehen.
-  'deploy.alreadyRunning': [
-    'Es laeuft bereits ein Ausrollvorgang. Warten Sie, bis er durch ist.',
-    'A deployment is already in progress. Please wait until it finishes.'],
+  'deploy.alreadyRunning': {
+    de: 'Es laeuft bereits ein Ausrollvorgang. Warten Sie, bis er durch ist.',
+    en: 'A deployment is already in progress. Please wait until it finishes.' },
 
-  'deploy.unknownRelease': [
-    'Dieser Stand ist nicht mehr auf der Maschine. Zurueckgerollt werden kann '
-      + 'nur auf einen Stand, der noch dort liegt.',
-    'That release is no longer on the machine. You can only roll back to a '
-      + 'release that is still there.'],
-  'deploy.alreadyCurrent': [
-    'Dieser Stand laeuft bereits.', 'That release is already running.'],
+  'deploy.unknownRelease': {
+    de: 'Dieser Stand ist nicht mehr auf der Maschine. Zurueckgerollt werden kann '
+        + 'nur auf einen Stand, der noch dort liegt.',
+    en: 'That release is no longer on the machine. You can only roll back to a '
+        + 'release that is still there.' },
+  'deploy.alreadyCurrent': {
+    de: 'Dieser Stand laeuft bereits.',
+    en: 'That release is already running.' },
 
   // -------------------------------------------------------- Support-Sitzung
 
-  'support.unknownSession': [
-    'Diese Support-Sitzung gibt es nicht.', 'This support session does not exist.'],
-  'support.alreadyGranted': [
-    'Diese Sitzung ist bereits freigegeben.', 'This session has already been approved.'],
-  'support.notPending': [
-    'Diese Sitzung laesst sich nicht mehr freigeben: sie ist abgelaufen oder '
-      + 'widerrufen.',
-    'This session can no longer be approved: it has expired or been revoked.'],
-  'support.badLevel': [
-    'Unbekannte Stufe. Erlaubt sind lesen und schreiben.',
-    'Unknown level. Allowed are read and write.'],
-  'support.badHours': [
-    'Die Laufzeit muss zwischen 1 und {max} Stunden liegen.',
-    'The duration must be between 1 and {max} hours.'],
-  'support.reasonRequired': [
-    'Ohne Anlass keine Anfrage: der Kunde entscheidet danach.',
-    'No request without a reason: the customer decides based on it.'],
+  'support.unknownSession': {
+    de: 'Diese Support-Sitzung gibt es nicht.',
+    en: 'This support session does not exist.' },
+  'support.alreadyGranted': {
+    de: 'Diese Sitzung ist bereits freigegeben.',
+    en: 'This session has already been approved.' },
+  'support.notPending': {
+    de: 'Diese Sitzung laesst sich nicht mehr freigeben: sie ist abgelaufen oder '
+        + 'widerrufen.',
+    en: 'This session can no longer be approved: it has expired or been revoked.' },
+  'support.badLevel': {
+    de: 'Unbekannte Stufe. Erlaubt sind lesen und schreiben.',
+    en: 'Unknown level. Allowed are read and write.' },
+  'support.badHours': {
+    de: 'Die Laufzeit muss zwischen 1 und {max} Stunden liegen.',
+    en: 'The duration must be between 1 and {max} hours.' },
+  'support.reasonRequired': {
+    de: 'Ohne Anlass keine Anfrage: der Kunde entscheidet danach.',
+    en: 'No request without a reason: the customer decides based on it.' },
   // Es gibt niemanden, der die Anfrage sehen und freigeben koennte -- eine
   // Anfrage ins Leere zu stellen waere schlimmer als sie abzuweisen.
-  'support.noApprover': [
-    'Dieser Account hat niemanden, der eine Support-Sitzung freigeben kann.',
-    'This account has nobody who could approve a support session.'],
+  'support.noApprover': {
+    de: 'Dieser Account hat niemanden, der eine Support-Sitzung freigeben kann.',
+    en: 'This account has nobody who could approve a support session.' },
 
   // ----------------------------------------------------------- Uebungshaus
 
-  'training.notPossible': [
-    '{was} ist fuer ein Schulungshaus nicht moeglich. Uebungsdaten duerfen '
-    + 'nicht in die Buchhaltung oder an eine Behoerde gelangen.',
-    '{was} is not possible for a training property. Practice data must not '
-    + 'reach the books or an authority.'],
+  'training.notPossible': {
+    de: '{was} ist fuer ein Schulungshaus nicht moeglich. Uebungsdaten duerfen '
+      + 'nicht in die Buchhaltung oder an eine Behoerde gelangen.',
+    en: '{was} is not possible for a training property. Practice data must not '
+      + 'reach the books or an authority.' },
   // Was ein Uebungshaus nicht darf. Wird in `training.notPossible` eingesetzt.
-  'training.what.statistics': [
-    'Die Beherbergungsstatistik', 'The accommodation statistics'],
-  'training.what.datev': ['Der DATEV-Export', 'The DATEV export'],
-  'training.what.gobd': ['Der GoBD-Export', 'The GoBD export'],
-  'training.noEmail': [
-    'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.',
-    'A training property sends no email. Sending stays switched off.'],
+  'training.what.statistics': {
+    de: 'Die Beherbergungsstatistik',
+    en: 'The accommodation statistics' },
+  'training.what.datev': {
+    de: 'Der DATEV-Export',
+    en: 'The DATEV export' },
+  'training.what.gobd': {
+    de: 'Der GoBD-Export',
+    en: 'The GoBD export' },
+  'training.noEmail': {
+    de: 'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.',
+    en: 'A training property sends no email. Sending stays switched off.' },
 
   // ------------------------------------------------- Folio, Rechnung, Geld
 
-  'folio.closed': ['Folio ist geschlossen.', 'The folio is closed.'],
-  'folio.closedNoPosting': [
-    'Das Folio ist geschlossen und nimmt nichts mehr auf.',
-    'The folio is closed and takes no further postings.'],
-  'folio.nothingOpen': ['Keine offenen Positionen.', 'No open items.'],
-  'paymentMethod.duplicateCode': [
-    'Die Zahlungsart {code} gibt es in diesem Haus schon.',
-    'A payment method {code} already exists in this property.'],
-  'deposit.needsReservation': [
-    'Eine Anzahlungsrechnung braucht die Reservierung des Folios '
-    + 'fuer den Leistungszeitraum.',
-    'A deposit invoice needs the folio reservation for the service period.'],
-  'deposit.alreadyInvoiced': [
-    'Zu diesem Zahlungsvermerk gibt es bereits eine Anzahlungsrechnung.',
-    'There is already a deposit invoice for this settlement.'],
-  'deposit.noRatesForSplit': [
-    'Zu diesem Aufenthalt sind keine Preise hinterlegt, aus denen sich die '
-    + 'Steuersaetze ableiten liessen. Bitte taxRateBp oder lines mitgeben.',
-    'This stay has no rates from which tax rates could be derived. Please '
-    + 'send taxRateBp or lines.'],
-  'deposit.settlementOnInvoice': [
-    'Dieser Zahlungsvermerk steht schon als Zahlung auf Rechnung {number}. '
-    + 'Aus ihm laesst sich keine Anzahlungsrechnung mehr machen, sonst waere '
-    + 'derselbe Betrag zweimal abgerechnet.',
-    'This settlement is already recorded as a payment on invoice {number}. '
-    + 'It cannot also become a deposit invoice; the same amount would be '
-    + 'billed twice.'],
-  'deposit.exceedsServices': [
-    'Die angerechnete Anzahlung uebersteigt die abzurechnenden Leistungen um '
-    + '{cent} Cent. Das ist eine Rueckzahlung und keine Rechnung; sie ist in '
-    + 'diesem System noch nicht vorgesehen.',
-    'The applied deposit exceeds the services to be billed by {cent} cents. '
-    + 'That is a refund and not an invoice; this system does not provide for '
-    + 'it yet.'],
-  'invoice.requirementsUnmet': [
-    'Die Rechnung erfüllt die Pflichtangaben nicht: {maengel}',
-    'The invoice does not meet the mandatory particulars: {maengel}'],
-  'deposit.requirementsUnmet': [
-    'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: {maengel}',
-    'The deposit invoice does not meet the mandatory particulars: {maengel}'],
+  'folio.closed': {
+    de: 'Folio ist geschlossen.',
+    en: 'The folio is closed.' },
+  'folio.closedNoPosting': {
+    de: 'Das Folio ist geschlossen und nimmt nichts mehr auf.',
+    en: 'The folio is closed and takes no further postings.' },
+  'folio.nothingOpen': {
+    de: 'Keine offenen Positionen.',
+    en: 'No open items.' },
+  'paymentMethod.duplicateCode': {
+    de: 'Die Zahlungsart {code} gibt es in diesem Haus schon.',
+    en: 'A payment method {code} already exists in this property.' },
+  'deposit.needsReservation': {
+    de: 'Eine Anzahlungsrechnung braucht die Reservierung des Folios '
+      + 'fuer den Leistungszeitraum.',
+    en: 'A deposit invoice needs the folio reservation for the service period.' },
+  'deposit.alreadyInvoiced': {
+    de: 'Zu diesem Zahlungsvermerk gibt es bereits eine Anzahlungsrechnung.',
+    en: 'There is already a deposit invoice for this settlement.' },
+  'deposit.noRatesForSplit': {
+    de: 'Zu diesem Aufenthalt sind keine Preise hinterlegt, aus denen sich die '
+      + 'Steuersaetze ableiten liessen. Bitte taxRateBp oder lines mitgeben.',
+    en: 'This stay has no rates from which tax rates could be derived. Please '
+      + 'send taxRateBp or lines.' },
+  'deposit.settlementOnInvoice': {
+    de: 'Dieser Zahlungsvermerk steht schon als Zahlung auf Rechnung {number}. '
+      + 'Aus ihm laesst sich keine Anzahlungsrechnung mehr machen, sonst waere '
+      + 'derselbe Betrag zweimal abgerechnet.',
+    en: 'This settlement is already recorded as a payment on invoice {number}. '
+      + 'It cannot also become a deposit invoice; the same amount would be '
+      + 'billed twice.' },
+  'deposit.exceedsServices': {
+    de: 'Die angerechnete Anzahlung uebersteigt die abzurechnenden Leistungen um '
+      + '{cent} Cent. Das ist eine Rueckzahlung und keine Rechnung; sie ist in '
+      + 'diesem System noch nicht vorgesehen.',
+    en: 'The applied deposit exceeds the services to be billed by {cent} cents. '
+      + 'That is a refund and not an invoice; this system does not provide for '
+      + 'it yet.' },
+  'invoice.requirementsUnmet': {
+    de: 'Die Rechnung erfüllt die Pflichtangaben nicht: {maengel}',
+    en: 'The invoice does not meet the mandatory particulars: {maengel}' },
+  'deposit.requirementsUnmet': {
+    de: 'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: {maengel}',
+    en: 'The deposit invoice does not meet the mandatory particulars: {maengel}' },
 
   // ------------------------------------------------------------ Kontingent
 
-  'block.alreadyStatus': [
-    'Kontingent ist bereits {status}.', 'The block is already {status}.'],
-  'block.notPickable': [
-    'Kontingent ist {status} und nicht mehr abrufbar.',
-    'The block is {status} and can no longer be picked up.'],
-  'block.fullyPickedUp': [
-    'Kontingent ist vollstaendig abgerufen.', 'The block is fully picked up.'],
-  'block.pickupWholePeriod': [
-    'Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents ({from} bis '
-    + '{to}). Fuer abweichende Naechte eine eigene Reservierung anlegen.',
-    'A pickup runs for the whole period of the block ({from} to {to}). For '
-    + 'different nights, create a separate reservation.'],
+  'block.alreadyStatus': {
+    de: 'Kontingent ist bereits {status}.',
+    en: 'The block is already {status}.' },
+  'block.notPickable': {
+    de: 'Kontingent ist {status} und nicht mehr abrufbar.',
+    en: 'The block is {status} and can no longer be picked up.' },
+  'block.fullyPickedUp': {
+    de: 'Kontingent ist vollstaendig abgerufen.',
+    en: 'The block is fully picked up.' },
+  'block.pickupWholePeriod': {
+    de: 'Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents ({from} bis '
+      + '{to}). Fuer abweichende Naechte eine eigene Reservierung anlegen.',
+    en: 'A pickup runs for the whole period of the block ({from} to {to}). For '
+      + 'different nights, create a separate reservation.' },
 
   // --------------------------------------------------- Zimmer und Aufenthalt
 
-  'room.inactive': ['Zimmer ist stillgelegt.', 'The room is deactivated.'],
-  'room.outOfOrder': [
-    'Zimmer ist im Zeitraum ausser Betrieb.',
-    'The room is out of order during that period.'],
-  'room.occupied': [
-    'Zimmer ist im Zeitraum bereits belegt.',
-    'The room is already occupied during that period.'],
-  'inventory.unknownError': [
-    'Unbekannter Inventarfehler: {code}', 'Unknown inventory error: {code}'],
-  'stay.pickupNotMovable': [
-    'Ein Abruf aus einem Kontingent laesst sich nicht verschieben. '
-    + 'Abruf stornieren und frei neu buchen.',
-    'A pickup from a block cannot be moved. Cancel the pickup and book again.'],
-  'stay.statusHoldsNoInventory': [
-    'Eine Reservierung im Zustand {status} bindet kein Kontingent und '
-    + 'laesst sich nicht aendern.',
-    'A reservation in state {status} holds no inventory and cannot be changed.'],
-  'stay.inHouseArrivalFixed': [
-    'Die Anreise eines Gastes im Haus laesst sich nicht verlegen.',
-    'The arrival of a guest in house cannot be moved.'],
-  'stay.checkinNeedsRoom': [
-    'Check-in erfordert ein zugewiesenes Zimmer.',
-    'Check-in requires an assigned room.'],
+  'room.inactive': {
+    de: 'Zimmer ist stillgelegt.',
+    en: 'The room is deactivated.' },
+  'room.outOfOrder': {
+    de: 'Zimmer ist im Zeitraum ausser Betrieb.',
+    en: 'The room is out of order during that period.' },
+  'room.occupied': {
+    de: 'Zimmer ist im Zeitraum bereits belegt.',
+    en: 'The room is already occupied during that period.' },
+  'inventory.unknownError': {
+    de: 'Unbekannter Inventarfehler: {code}',
+    en: 'Unknown inventory error: {code}' },
+  'stay.pickupNotMovable': {
+    de: 'Ein Abruf aus einem Kontingent laesst sich nicht verschieben. '
+      + 'Abruf stornieren und frei neu buchen.',
+    en: 'A pickup from a block cannot be moved. Cancel the pickup and book again.' },
+  'stay.statusHoldsNoInventory': {
+    de: 'Eine Reservierung im Zustand {status} bindet kein Kontingent und '
+      + 'laesst sich nicht aendern.',
+    en: 'A reservation in state {status} holds no inventory and cannot be changed.' },
+  'stay.inHouseArrivalFixed': {
+    de: 'Die Anreise eines Gastes im Haus laesst sich nicht verlegen.',
+    en: 'The arrival of a guest in house cannot be moved.' },
+  'stay.checkinNeedsRoom': {
+    de: 'Check-in erfordert ein zugewiesenes Zimmer.',
+    en: 'Check-in requires an assigned room.' },
 
   // ---------------------------------------------------------------- Gastpost
 
-  'mail.alreadySent': [
-    'Diese Rechnung ist bereits verschickt oder eingereiht. '
-    + 'Zum erneuten Versand resend=true angeben.',
-    'This invoice has already been sent or queued. To send it again, pass '
-    + 'resend=true.'],
-  'mail.guestAnonymized': [
-    'Der Gast ist anonymisiert. An eine geloeschte Adresse wird nicht versandt.',
-    'The guest is anonymized. Nothing is sent to a deleted address.'],
-  'mail.noInvoiceAddress': [
-    'Zu dieser Rechnung ist keine brauchbare Empfaengeradresse hinterlegt. '
-    + 'Adresse am Gast- oder Firmenprofil ergaenzen oder mit to angeben.',
-    'This invoice has no usable recipient address. Add one to the guest or '
-    + 'company profile, or pass it as to.'],
-  'mail.noReservationAddress': [
-    'Zu dieser Reservierung ist keine brauchbare Empfaengeradresse hinterlegt.',
-    'This reservation has no usable recipient address.'],
-  'mail.onlyUnsentCancellable': [
-    'Nur eine noch nicht abgeschickte Nachricht laesst sich zurueckziehen.',
-    'Only a message that has not gone out yet can be withdrawn.'],
+  'mail.alreadySent': {
+    de: 'Diese Rechnung ist bereits verschickt oder eingereiht. '
+      + 'Zum erneuten Versand resend=true angeben.',
+    en: 'This invoice has already been sent or queued. To send it again, pass '
+      + 'resend=true.' },
+  'mail.guestAnonymized': {
+    de: 'Der Gast ist anonymisiert. An eine geloeschte Adresse wird nicht versandt.',
+    en: 'The guest is anonymized. Nothing is sent to a deleted address.' },
+  'mail.noInvoiceAddress': {
+    de: 'Zu dieser Rechnung ist keine brauchbare Empfaengeradresse hinterlegt. '
+      + 'Adresse am Gast- oder Firmenprofil ergaenzen oder mit to angeben.',
+    en: 'This invoice has no usable recipient address. Add one to the guest or '
+      + 'company profile, or pass it as to.' },
+  'mail.noReservationAddress': {
+    de: 'Zu dieser Reservierung ist keine brauchbare Empfaengeradresse hinterlegt.',
+    en: 'This reservation has no usable recipient address.' },
+  'mail.onlyUnsentCancellable': {
+    de: 'Nur eine noch nicht abgeschickte Nachricht laesst sich zurueckziehen.',
+    en: 'Only a message that has not gone out yet can be withdrawn.' },
 
   // -------------------------------------------------------------------- Gast
 
-  'guest.anonymizedNotRevived': [
-    'Ein anonymisiertes Profil wird nicht wiederbelebt.',
-    'An anonymized profile is not revived.'],
-  'guest.hasOpenReservations': [
-    'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.',
-    'There are still open or current reservations for this guest.'],
+  'guest.anonymizedNotRevived': {
+    de: 'Ein anonymisiertes Profil wird nicht wiederbelebt.',
+    en: 'An anonymized profile is not revived.' },
+  'guest.hasOpenReservations': {
+    de: 'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.',
+    en: 'There are still open or current reservations for this guest.' },
 
   // -------------------------------------------------------------- Meldeschein
 
-  'registration.noPrimaryGuest': [
-    'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',
-    'The reservation has no primary guest. No registration form is possible.'],
-  'registration.alreadyExists': [
-    'Fuer diese Reservierung liegt bereits ein Meldeschein vor.',
-    'A registration form already exists for this reservation.'],
+  'registration.noPrimaryGuest': {
+    de: 'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',
+    en: 'The reservation has no primary guest. No registration form is possible.' },
+  'registration.alreadyExists': {
+    de: 'Fuer diese Reservierung liegt bereits ein Meldeschein vor.',
+    en: 'A registration form already exists for this reservation.' },
   // Seit dem 1.1.2025 unterschreiben nur noch auslaendische Gaeste.
-  'registration.signatureRequired': [
-    'Fuer auslaendische Gaeste ist die Unterschrift nach § 30 BMG erforderlich.',
-    'For foreign guests the signature is required under § 30 BMG.'],
-  'registration.signatureNotForeseen': [
-    'Fuer inlaendische Gaeste ist seit dem 1.1.2025 keine Unterschrift vorgesehen.',
-    'For domestic guests no signature has been foreseen since 1 January 2025.'],
-  'registration.alreadySigned': [
-    'Der Meldeschein ist bereits unterschrieben.',
-    'The registration form is already signed.'],
+  'registration.signatureRequired': {
+    de: 'Fuer auslaendische Gaeste ist die Unterschrift nach § 30 BMG erforderlich.',
+    en: 'For foreign guests the signature is required under § 30 BMG.' },
+  'registration.signatureNotForeseen': {
+    de: 'Fuer inlaendische Gaeste ist seit dem 1.1.2025 keine Unterschrift vorgesehen.',
+    en: 'For domestic guests no signature has been foreseen since 1 January 2025.' },
+  'registration.alreadySigned': {
+    de: 'Der Meldeschein ist bereits unterschrieben.',
+    en: 'The registration form is already signed.' },
 
   // -------------------------------------------------------- Kasse und Kanal
 
-  'pos.roomUnknown': [
-    'Zimmer {room} gibt es in diesem Haus nicht.',
-    'There is no room {room} in this property.'],
-  'pos.nobodyCheckedIn': [
-    'Auf Zimmer {room} ist niemand angereist. Fehlt der Check-in?',
-    'Nobody has checked in to room {room}. Is the check-in missing?'],
-  'pos.productUnknown': [
-    'Artikel {product} ist in diesem Haus nicht eingerichtet. Er braucht ein '
-    + 'Erloeskonto und einen Steuersatz, bevor die Kasse darauf buchen kann.',
-    'Product {product} is not set up in this property. It needs a revenue '
-    + 'account and a tax rate before the POS can post to it.'],
-  'pos.productNoTaxRate': [
-    'Fuer {product} ist kein Steuersatz hinterlegt. Entweder am Artikel '
-    + 'einrichten oder als taxRateBp mitschicken.',
-    'No tax rate is stored for {product}. Either set it up on the product or '
-    + 'pass it as taxRateBp.'],
-  'pos.severalGuestsInRoom': [
-    'Auf Zimmer {room} sind mehrere Gaeste angereist. Bitte folioRef '
-    + 'mitschicken: {folios}',
-    'Several guests have checked in to room {room}. Please pass folioRef: '
-    + '{folios}'],
-  'channel.referenceInFlight': [
-    'Externe Nummer ist bereits in Bearbeitung. Bitte spaeter erneut zustellen.',
-    'That external reference is being processed. Please deliver again later.'],
+  'pos.roomUnknown': {
+    de: 'Zimmer {room} gibt es in diesem Haus nicht.',
+    en: 'There is no room {room} in this property.' },
+  'pos.nobodyCheckedIn': {
+    de: 'Auf Zimmer {room} ist niemand angereist. Fehlt der Check-in?',
+    en: 'Nobody has checked in to room {room}. Is the check-in missing?' },
+  'pos.productUnknown': {
+    de: 'Artikel {product} ist in diesem Haus nicht eingerichtet. Er braucht ein '
+      + 'Erloeskonto und einen Steuersatz, bevor die Kasse darauf buchen kann.',
+    en: 'Product {product} is not set up in this property. It needs a revenue '
+      + 'account and a tax rate before the POS can post to it.' },
+  'pos.productNoTaxRate': {
+    de: 'Fuer {product} ist kein Steuersatz hinterlegt. Entweder am Artikel '
+      + 'einrichten oder als taxRateBp mitschicken.',
+    en: 'No tax rate is stored for {product}. Either set it up on the product or '
+      + 'pass it as taxRateBp.' },
+  'pos.severalGuestsInRoom': {
+    de: 'Auf Zimmer {room} sind mehrere Gaeste angereist. Bitte folioRef '
+      + 'mitschicken: {folios}',
+    en: 'Several guests have checked in to room {room}. Please pass folioRef: '
+      + '{folios}' },
+  'channel.referenceInFlight': {
+    de: 'Externe Nummer ist bereits in Bearbeitung. Bitte spaeter erneut zustellen.',
+    en: 'That external reference is being processed. Please deliver again later.' },
 
   // ---------------------------------------------- Raten, Einrichtung, Rollen
 
-  'rate.derivationCycle': [
-    'Die Ableitungskette enthaelt einen Zyklus.',
-    'The derivation chain contains a cycle.'],
-  'setup.onlyNightUnit': [
-    'Andere Zeiteinheiten als die Nacht sind noch nicht freigeschaltet.',
-    'Time units other than the night are not enabled yet.'],
-  'setup.duplicateCategoryCode': [
-    'Eine Zimmergruppe mit dem Kürzel {code} gibt es schon.',
-    'A room type with the code {code} already exists.'],
-  'setup.duplicateRoomCode': [
-    'Die Nummer {code} ist im Haus schon vergeben.',
-    'The number {code} is already taken in this property.'],
-  'setup.categoryHasFutureReservations': [
-    'Die Gruppe hat noch {count} künftige Reservierungen. '
-    + 'Erst umbuchen, dann stilllegen.',
-    'The room type still has {count} future reservations. Move them first, '
-    + 'then deactivate.'],
-  'setup.roomHasFutureReservations': [
-    'Auf dem Zimmer liegen noch künftige Reservierungen: {reservations}. '
-    + 'Erst umbuchen, dann stilllegen.',
-    'The room still carries future reservations: {reservations}. Move them '
-    + 'first, then deactivate.'],
-  'report.noOpenBusinessDay': [
-    'Fuer die Property ist kein Tag geoeffnet.',
-    'No business day is open for this property.'],
-  'user.wouldLockYourselfOut': [
-    'Damit naehmen Sie sich selbst das Recht, Rollen zu vergeben. '
-    + 'Lassen Sie das jemand anderen tun.',
-    'That would take away your own right to assign roles. Let somebody else '
-    + 'do it.'],
-  'payments.stripeKeyMissing': [
-    'STRIPE_SECRET_KEY ist nicht gesetzt.', 'STRIPE_SECRET_KEY is not set.'],
-  'payments.stripeWebhookSecretMissing': [
-    'STRIPE_WEBHOOK_SECRET ist nicht gesetzt.',
-    'STRIPE_WEBHOOK_SECRET is not set.'],
+  'rate.derivationCycle': {
+    de: 'Die Ableitungskette enthaelt einen Zyklus.',
+    en: 'The derivation chain contains a cycle.' },
+  'setup.onlyNightUnit': {
+    de: 'Andere Zeiteinheiten als die Nacht sind noch nicht freigeschaltet.',
+    en: 'Time units other than the night are not enabled yet.' },
+  'setup.duplicateCategoryCode': {
+    de: 'Eine Zimmergruppe mit dem Kürzel {code} gibt es schon.',
+    en: 'A room type with the code {code} already exists.' },
+  'setup.duplicateRoomCode': {
+    de: 'Die Nummer {code} ist im Haus schon vergeben.',
+    en: 'The number {code} is already taken in this property.' },
+  'setup.categoryHasFutureReservations': {
+    de: 'Die Gruppe hat noch {count} künftige Reservierungen. '
+      + 'Erst umbuchen, dann stilllegen.',
+    en: 'The room type still has {count} future reservations. Move them first, '
+      + 'then deactivate.' },
+  'setup.roomHasFutureReservations': {
+    de: 'Auf dem Zimmer liegen noch künftige Reservierungen: {reservations}. '
+      + 'Erst umbuchen, dann stilllegen.',
+    en: 'The room still carries future reservations: {reservations}. Move them '
+      + 'first, then deactivate.' },
+  'report.noOpenBusinessDay': {
+    de: 'Fuer die Property ist kein Tag geoeffnet.',
+    en: 'No business day is open for this property.' },
+  'user.wouldLockYourselfOut': {
+    de: 'Damit naehmen Sie sich selbst das Recht, Rollen zu vergeben. '
+      + 'Lassen Sie das jemand anderen tun.',
+    en: 'That would take away your own right to assign roles. Let somebody else '
+      + 'do it.' },
+  'payments.stripeKeyMissing': {
+    de: 'STRIPE_SECRET_KEY ist nicht gesetzt.',
+    en: 'STRIPE_SECRET_KEY is not set.' },
+  'payments.stripeWebhookSecretMissing': {
+    de: 'STRIPE_WEBHOOK_SECRET ist nicht gesetzt.',
+    en: 'STRIPE_WEBHOOK_SECRET is not set.' },
 
   // ------------------------------------------------ Hinweise in Antworten
   //
@@ -483,90 +665,108 @@ const M = {
   // Sie gehen denselben Weg wie eine Fehlermeldung: die Antwort traegt den
   // deutschen Satz **und** den Schluessel.
 
-  'hint.settlementIsNotPayment': [
-    'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. Die Zahlung selbst '
-    + 'laeuft ueber Kasse, Portal oder Bank des Betriebs.',
-    'A settlement records where money was taken; it does not process it. The '
-    + 'payment itself runs through the till, the portal or the bank.'],
-  'hint.invoiceRetention': [
-    'Rechnungen unterliegen der steuerlichen Aufbewahrungsfrist und werden '
-    + 'bei einer Loeschung nicht entfernt.',
-    'Invoices are subject to the statutory retention period and are not '
-    + 'removed when a profile is deleted.'],
-  'hint.statisticsSubmission': [
-    'Uebermittlung an das Statistische Landesamt ueber eSTATISTIK.core. '
-    + 'Land XX bedeutet: kein Wohnsitzland erfasst.',
-    'Submission to the statistical office via eSTATISTIK.core. Country XX '
-    + 'means no country of residence was recorded.'],
-  'hint.webhookSecretOnce': [
-    'Der Schluessel wird nur hier einmal ausgegeben. Signatur: HMAC-SHA256 '
-    + 'ueber "Zeitstempel.Rumpf".',
-    'The key is handed out here once and never again. Signature: HMAC-SHA256 '
-    + 'over "timestamp.body".'],
-  'hint.oauthSecretOnce': [
-    'Das Geheimnis wird nur hier einmal ausgegeben. Token holen: POST '
-    + '/oauth/token mit grant_type=client_credentials.',
-    'The secret is handed out here once and never again. Get a token: POST '
-    + '/oauth/token with grant_type=client_credentials.'],
-  'hint.occupancyNotCapacity': [
-    'Die Belegungszahl wirkt auf Preise und Meldeschein, nicht auf die Kapazität.',
-    'Occupancy affects prices and the registration form, not capacity.'],
-  'hint.legacyFormatsUnverified': [
-    'Keines dieser drei Formate ist eine veroeffentlichte Spezifikation '
-    + '(Dokument 05, Abschnitt 6). Vor dem ersten echten Kunden gegen eine '
-    + 'tatsaechliche Exportdatei pruefen.',
-    'None of these three formats is a published specification (document 05, '
-    + 'section 6). Check against a real export file before the first real '
-    + 'customer.'],
+  'hint.settlementIsNotPayment': {
+    de: 'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. Die Zahlung selbst '
+      + 'laeuft ueber Kasse, Portal oder Bank des Betriebs.',
+    en: 'A settlement records where money was taken; it does not process it. The '
+      + 'payment itself runs through the till, the portal or the bank.' },
+  'hint.invoiceRetention': {
+    de: 'Rechnungen unterliegen der steuerlichen Aufbewahrungsfrist und werden '
+      + 'bei einer Loeschung nicht entfernt.',
+    en: 'Invoices are subject to the statutory retention period and are not '
+      + 'removed when a profile is deleted.' },
+  'hint.statisticsSubmission': {
+    de: 'Uebermittlung an das Statistische Landesamt ueber eSTATISTIK.core. '
+      + 'Land XX bedeutet: kein Wohnsitzland erfasst.',
+    en: 'Submission to the statistical office via eSTATISTIK.core. Country XX '
+      + 'means no country of residence was recorded.' },
+  'hint.webhookSecretOnce': {
+    de: 'Der Schluessel wird nur hier einmal ausgegeben. Signatur: HMAC-SHA256 '
+      + 'ueber "Zeitstempel.Rumpf".',
+    en: 'The key is handed out here once and never again. Signature: HMAC-SHA256 '
+      + 'over "timestamp.body".' },
+  'hint.oauthSecretOnce': {
+    de: 'Das Geheimnis wird nur hier einmal ausgegeben. Token holen: POST '
+      + '/oauth/token mit grant_type=client_credentials.',
+    en: 'The secret is handed out here once and never again. Get a token: POST '
+      + '/oauth/token with grant_type=client_credentials.' },
+  'hint.occupancyNotCapacity': {
+    de: 'Die Belegungszahl wirkt auf Preise und Meldeschein, nicht auf die Kapazität.',
+    en: 'Occupancy affects prices and the registration form, not capacity.' },
+  'hint.legacyFormatsUnverified': {
+    de: 'Keines dieser drei Formate ist eine veroeffentlichte Spezifikation '
+      + '(Dokument 05, Abschnitt 6). Vor dem ersten echten Kunden gegen eine '
+      + 'tatsaechliche Exportdatei pruefen.',
+    en: 'None of these three formats is a published specification (document 05, '
+      + 'section 6). Check against a real export file before the first real '
+      + 'customer.' },
 
   // ------------------------------------------------------- Einrichtungsstand
 
-  'setup.step.categories': ['Zimmergruppen angelegt', 'Room types created'],
-  'setup.step.categories.hint': [
-    'Mindestens eine Gruppe, etwa Doppelzimmer oder Ferienwohnung.',
-    'At least one type, such as a double room or a holiday flat.'],
-  'setup.step.rooms': ['Zimmer angelegt', 'Rooms created'],
-  'setup.step.rooms.hint': [
-    'Am schnellsten als Serie: Nummernbereich und Etage angeben.',
-    'Fastest as a series: give a number range and a floor.'],
-  'setup.step.inventory': ['Inventar materialisiert', 'Inventory materialized'],
-  'setup.step.inventory.hint.missing': [
-    'Ohne materialisierten Zeitraum weist jede Buchung ab. Der Worker legt '
-    + 'ihn an, oder einmal von Hand anstoßen.',
-    'Without a materialized period every booking is refused. The worker '
-    + 'creates it, or trigger it once by hand.'],
-  'setup.step.inventory.hint.until': [
-    'Belegbar bis {date}.', 'Bookable until {date}.'],
-  'setup.step.tax_rules': ['Steuersätze hinterlegt', 'Tax rates stored'],
-  'setup.step.tax_rules.hint': [
-    'Ohne Regel bucht der Nachtlauf Logis mit 7 Prozent.',
-    'Without a rule the night audit posts accommodation at 7 percent.'],
-  'setup.step.rate_plans': ['Ratenpläne angelegt', 'Rate plans created'],
-  'setup.step.rate_plans.hint': [
-    'Je Gruppe mindestens eine Basisrate.', 'At least one base rate per type.'],
-  'setup.step.prices': ['Preise gepflegt', 'Prices maintained'],
-  'setup.step.prices.hint': [
-    'Ohne Preise werden Reservierungen mit 0 Cent gebucht.',
-    'Without prices, reservations are booked at 0 cents.'],
-  'setup.step.payment_methods': ['Zahlungsarten angelegt', 'Payment methods created'],
-  'setup.step.payment_methods.hint': [
-    'Nur zur Zuordnung. Die Zahlung selbst läuft außerhalb dieses Systems.',
-    'For assignment only. The payment itself runs outside this system.'],
-  'setup.step.business_day': ['Geschäftstag geöffnet', 'Business day open'],
-  'setup.step.business_day.hint.missing': [
-    'Ohne offenen Tag läuft kein Nachtlauf.',
-    'Without an open day no night audit runs.'],
-  'setup.step.business_day.hint.since': [
-    'Offen seit {date}.', 'Open since {date}.'],
+  'setup.step.categories': {
+    de: 'Zimmergruppen angelegt',
+    en: 'Room types created' },
+  'setup.step.categories.hint': {
+    de: 'Mindestens eine Gruppe, etwa Doppelzimmer oder Ferienwohnung.',
+    en: 'At least one type, such as a double room or a holiday flat.' },
+  'setup.step.rooms': {
+    de: 'Zimmer angelegt',
+    en: 'Rooms created' },
+  'setup.step.rooms.hint': {
+    de: 'Am schnellsten als Serie: Nummernbereich und Etage angeben.',
+    en: 'Fastest as a series: give a number range and a floor.' },
+  'setup.step.inventory': {
+    de: 'Inventar materialisiert',
+    en: 'Inventory materialized' },
+  'setup.step.inventory.hint.missing': {
+    de: 'Ohne materialisierten Zeitraum weist jede Buchung ab. Der Worker legt '
+      + 'ihn an, oder einmal von Hand anstoßen.',
+    en: 'Without a materialized period every booking is refused. The worker '
+      + 'creates it, or trigger it once by hand.' },
+  'setup.step.inventory.hint.until': {
+    de: 'Belegbar bis {date}.',
+    en: 'Bookable until {date}.' },
+  'setup.step.tax_rules': {
+    de: 'Steuersätze hinterlegt',
+    en: 'Tax rates stored' },
+  'setup.step.tax_rules.hint': {
+    de: 'Ohne Regel bucht der Nachtlauf Logis mit 7 Prozent.',
+    en: 'Without a rule the night audit posts accommodation at 7 percent.' },
+  'setup.step.rate_plans': {
+    de: 'Ratenpläne angelegt',
+    en: 'Rate plans created' },
+  'setup.step.rate_plans.hint': {
+    de: 'Je Gruppe mindestens eine Basisrate.',
+    en: 'At least one base rate per type.' },
+  'setup.step.prices': {
+    de: 'Preise gepflegt',
+    en: 'Prices maintained' },
+  'setup.step.prices.hint': {
+    de: 'Ohne Preise werden Reservierungen mit 0 Cent gebucht.',
+    en: 'Without prices, reservations are booked at 0 cents.' },
+  'setup.step.payment_methods': {
+    de: 'Zahlungsarten angelegt',
+    en: 'Payment methods created' },
+  'setup.step.payment_methods.hint': {
+    de: 'Nur zur Zuordnung. Die Zahlung selbst läuft außerhalb dieses Systems.',
+    en: 'For assignment only. The payment itself runs outside this system.' },
+  'setup.step.business_day': {
+    de: 'Geschäftstag geöffnet',
+    en: 'Business day open' },
+  'setup.step.business_day.hint.missing': {
+    de: 'Ohne offenen Tag läuft kein Nachtlauf.',
+    en: 'Without an open day no night audit runs.' },
+  'setup.step.business_day.hint.since': {
+    de: 'Offen seit {date}.',
+    en: 'Open since {date}.' },
 
-  'field.depositPartsMismatch': [
-    'Die Teile ergeben {sum} Cent, vereinnahmt sind {received} Cent.',
-    'The parts add up to {sum} cents, {received} cents were received.']
+  'field.depositPartsMismatch': {
+    de: 'Die Teile ergeben {sum} Cent, vereinnahmt sind {received} Cent.',
+    en: 'The parts add up to {sum} cents, {received} cents were received.' }
 } as const satisfies Record<string, Eintrag>
 
 export type MessageKey = keyof typeof M
 export type MessageParams = Record<string, string | number>
-export type MessageLocale = 'de' | 'en'
 
 /** Alle Schluessel. Ein Test prueft damit, dass die Quelle keine erfindet. */
 export const MESSAGE_KEYS = Object.keys(M) as MessageKey[]
@@ -587,7 +787,7 @@ export function renderMessage(
   key: string, locale: MessageLocale, params?: MessageParams
 ): string {
   const eintrag = isMessageKey(key) ? M[key] : null
-  const text = eintrag === null ? key : eintrag[locale === 'en' ? 1 : 0]
+  const text = eintrag === null ? key : eintrag[locale]
   if (params === undefined) return text
   return text.replace(/\{(\w+)\}/g, (ganz, name: string) =>
     // Ein Platzhalter ohne Wert bleibt stehen. Ihn durch nichts zu ersetzen

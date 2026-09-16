@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react'
+import type { MessageLocale } from '@hotelpms/contracts'
 import { common } from './common.js'
 import { tagesgeschaeft } from './tagesgeschaeft.js'
 import { housekeeping } from './housekeeping.js'
@@ -37,8 +38,48 @@ import { support } from './support.js'
  * Schlüssel, den es in einer der beiden Sprachen nicht gibt, fällt beim
  * Typecheck auf.
  */
-export const LOCALES = ['de', 'en'] as const
-export type Locale = (typeof LOCALES)[number]
+/**
+ * Die Sprachen kommen aus dem Vertrag, nicht von hier.
+ *
+ * Sonst stuenden sie an zwei Stellen: in `contracts/messages.ts` fuer die
+ * Meldungen der Schnittstelle und hier fuer die Beschriftungen. Zwei Listen
+ * laufen auseinander, und das Ergebnis waere eine Sprache, die man waehlen
+ * kann und in der die Fehlermeldungen deutsch bleiben.
+ */
+export { LOCALES } from '@hotelpms/contracts'
+export type Locale = MessageLocale
+
+/**
+ * Wie eine Sprache Zahlen, Geld und Wochentage schreibt.
+ *
+ * **Warum das eine Tabelle ist und keine Bedingung.** Hier stand
+ * `locale === 'de' ? 'de-DE' : 'en-GB'`. Das ist richtig, solange es genau
+ * zwei Sprachen gibt, und wird beim Hinzufuegen der dritten still falsch:
+ * ein niederlaendischer Betrag bekaeme britisches Trennzeichen, und eine
+ * Fehlermeldung gibt es dafuer nicht -- nur eine Zahl, die plausibel
+ * aussieht und um den Faktor tausend danebenliegt.
+ *
+ * Als `Record<Locale, ...>` kann das nicht passieren: wer eine Sprache
+ * hinzufuegt und diese Zeile vergisst, bekommt einen Typfehler.
+ */
+const INTL_TAG: Record<Locale, string> = {
+  de: 'de-DE',
+  en: 'en-GB'
+}
+
+/**
+ * Wie eine Sprache ein Kalenderdatum schreibt.
+ *
+ * Bewusst eine eigene Angabe und nicht `Intl`: Englisch steht hier
+ * absichtlich auf ISO und nicht auf `01/10/2026`. Ein Datum mit
+ * Schraegstrichen ist zwischen britischer und amerikanischer Lesart
+ * mehrdeutig, und an einer Rezeption liest es beides -- `2026-10-01` nicht.
+ */
+export type Datumsform = 'tag-zuerst' | 'iso'
+const DATUMSFORM: Record<Locale, Datumsform> = {
+  de: 'tag-zuerst',
+  en: 'iso'
+}
 
 const texts = {
   de: {
@@ -141,8 +182,7 @@ export function geldFormatierer(locale: Locale, currency = 'EUR'): Intl.NumberFo
   const schluessel = `${locale}|${currency}`
   let f = formatierer.get(schluessel)
   if (f === undefined) {
-    f = new Intl.NumberFormat(locale === 'de' ? 'de-DE' : 'en-GB',
-      { style: 'currency', currency })
+    f = new Intl.NumberFormat(INTL_TAG[locale], { style: 'currency', currency })
     formatierer.set(schluessel, f)
   }
   return f
@@ -156,7 +196,7 @@ export function formatMoney(cent: number, locale: Locale, currency = 'EUR'): str
 /** Aufenthaltsdaten sind Kalenderdaten, keine Zeitpunkte. Nie als Date parsen. */
 export function formatDate(iso: string, locale: Locale): string {
   const [y, m, d] = iso.split('-')
-  return locale === 'de' ? `${d}.${m}.${y}` : `${y}-${m}-${d}`
+  return DATUMSFORM[locale] === 'tag-zuerst' ? `${d}.${m}.${y}` : `${y}-${m}-${d}`
 }
 
 const wochentage = new Map<Locale, Intl.DateTimeFormat>()
@@ -172,7 +212,7 @@ const wochentage = new Map<Locale, Intl.DateTimeFormat>()
 export function weekdayShort(iso: string, locale: Locale): string {
   let f = wochentage.get(locale)
   if (f === undefined) {
-    f = new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : 'en-GB',
+    f = new Intl.DateTimeFormat(INTL_TAG[locale],
       { weekday: 'short', timeZone: 'UTC' })
     wochentage.set(locale, f)
   }

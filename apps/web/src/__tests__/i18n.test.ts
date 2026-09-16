@@ -35,8 +35,11 @@ describe('Katalog der Oberflaeche', () => {
     const platzhalter = (s: string) =>
       [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]!).sort()
     for (const key of textKeys()) {
-      expect(platzhalter(textFor(key, 'en')), key)
-        .toEqual(platzhalter(textFor(key, 'de')))
+      const erwartet = platzhalter(textFor(key, 'de'))
+      for (const locale of LOCALES) {
+        expect(platzhalter(textFor(key, locale)), `${key} / ${locale}`)
+          .toEqual(erwartet)
+      }
     }
   })
 

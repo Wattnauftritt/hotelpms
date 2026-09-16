@@ -26,8 +26,22 @@ export function isEmailKind(v: string): v is EmailKind {
 export const EMAIL_LANGUAGES = ['de', 'en'] as const
 export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
 
+/**
+ * Die Sprache eines Gastes auf eine Sprache abbilden, in der wir schreiben.
+ *
+ * Gegen die Liste und nicht gegen eine einzelne Sprache: mit
+ * `code === 'en' ? 'en' : 'de'` bekaeme jede neue Sprache stillschweigend
+ * deutsche Post, und aufgefallen waere es dem Gast, nicht uns.
+ *
+ * Nur die ersten beiden Zeichen: am Profil steht mal `en`, mal `en-GB`.
+ * Einen Gast deutsch anzuschreiben, weil sein Profil die Region mitfuehrt,
+ * waere eine seltsame Art, genau zu sein.
+ */
 export function emailLanguage(code: string | null | undefined): EmailLanguage {
-  return code === 'en' ? 'en' : 'de'
+  const kurz = (code ?? '').slice(0, 2).toLowerCase()
+  return (EMAIL_LANGUAGES as readonly string[]).includes(kurz)
+    ? (kurz as EmailLanguage)
+    : 'de'
 }
 
 /**
