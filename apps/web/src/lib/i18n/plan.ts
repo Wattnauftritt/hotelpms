@@ -135,6 +135,48 @@ export const plan = {
     de: 'Ohne Gast lässt sich nicht buchen. Suchen oder neu anlegen.',
     en: 'Booking needs a guest. Search or create one.' },
 
+  'plan.dragHint': {
+    de: 'Balken ziehen verschiebt die Reservierung, die Ränder verlängern sie. Auf '
+      + 'freier Fläche aufziehen legt eine Buchung an — mit gedrückter Strg-, ⌘- '
+      + 'oder Umschalttaste über mehrere Zimmer hinweg eine Gruppenbuchung.',
+    en: 'Drag a bar to move the reservation, drag its edges to extend it. Drag '
+      + 'across free space to create a booking — hold Ctrl, ⌘ or Shift and drag '
+      + 'across several rooms for a group booking.' },
+
+  'group.title': {
+    de: 'Gruppenbuchung',
+    en: 'Group booking' },
+  'group.rooms': {
+    de: 'Zimmer',
+    en: 'rooms' },
+  'group.selection': {
+    de: 'Ausgewählte Zimmer',
+    en: 'Selected rooms' },
+  'group.remove': {
+    de: 'Entfernen',
+    en: 'Remove' },
+  'group.submit': {
+    de: 'Gruppe buchen',
+    en: 'Book the group' },
+  'group.created': {
+    de: 'Gruppe gebucht',
+    en: 'Group booked' },
+  'group.createdDetail': {
+    de: '{n} Zimmer unter einer Buchung',
+    en: '{n} rooms under one booking' },
+  'group.guestHint': {
+    de: 'Der Gast ist der Besteller der Gruppe, nicht der Bewohner jedes Zimmers. '
+      + 'Er wird nur im ersten Zimmer als Mitreisender geführt — sonst zählte die '
+      + 'Kurtaxe ihn mehrfach. Die Namen der übrigen Zimmer kommen mit der '
+      + 'Namensliste.',
+    en: 'The guest is the person who booked the group, not the occupant of every '
+      + 'room. They are recorded as an occupant of the first room only — otherwise '
+      + 'city tax would count them several times. The other names arrive with the '
+      + 'rooming list.' },
+  'group.empty': {
+    de: 'Kein Zimmer mehr ausgewählt.',
+    en: 'No room selected any more.' },
+
   'guestPicker.placeholder': {
     de: 'Nachname, E-Mail oder Telefon',
     en: 'Last name, email or phone' },

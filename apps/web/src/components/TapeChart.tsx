@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, daysBetween, addDays } from '../lib/dates.js'
+import { auswahlZeitraum, gruppenAuswahl } from '../lib/tapeSelection.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 
 /**
@@ -19,6 +20,13 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  *   verkäufliches Zimmer belegt aussehen.
  * - **Nicht zugewiesene Reservierungen stehen oben**, nicht unsichtbar unten.
  *   Sie sind die Arbeit des Tages.
+ *
+ * - **Mehrere Zimmerzeilen zugleich markieren ist eine Gruppenbuchung.**
+ *   Nicht acht Buchungen nebeneinander, sondern eine mit acht Zimmern --
+ *   genau das, was eine Reisegruppe ist. Die Geste dafür ist Strg (oder ⌘,
+ *   oder Umschalt) gedrückt halten und über die Zeilen ziehen; ohne
+ *   Modifikator bleibt es beim einen Zimmer, damit sich das gewohnte
+ *   Aufziehen nicht ändert.
  *
  * **Erst fragen, dann springen (A2–A4).** Waehrend des Ziehens zeigt ein
  * Schattenbalken die Absicht; der echte Balken bewegt sich erst, wenn die
@@ -43,6 +51,9 @@ type ReservationRow = TapeChartData['reservations'][number]
 
 type DragState =
   | { kind: 'create'; resourceId: number; categoryId: number; startDay: number; day: number }
+  /** Mehrere Zimmerzeilen zugleich: die Gruppenbuchung. Zeilen als Index,
+      nicht als id -- aufgezogen wird über die sichtbare Reihenfolge. */
+  | { kind: 'group'; startIndex: number; index: number; startDay: number; day: number }
   | { kind: 'move'; reservationRef: string; arrival: string; departure: string
       pointerDownX: number; pointerDownY: number; overResourceId: number | null
       moved: boolean }
@@ -56,13 +67,22 @@ interface Props {
   onCreate?: (sel: {
     resourceId: number; categoryId: number; arrival: string; departure: string
   }) => void
+  /**
+   * Über mehrere Zimmerzeilen aufgezogen: eine Buchung mit mehreren
+   * Zimmern. Die Zimmer kommen in der Reihenfolge des Plans.
+   */
+  onCreateGroup?: (sel: {
+    rooms: Array<{ resourceId: number; categoryId: number }>
+    arrival: string; departure: string
+  }) => void
   /** Balken auf eine andere Zimmerzeile gezogen (A3). */
   onMove?: (reservationRef: string, resourceId: number) => void
   /** Balkenrand gezogen (A4). */
   onChangeStay?: (reservationRef: string, arrival: string, departure: string) => void
 }
 
-export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Props): JSX.Element {
+export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
+                            onChangeStay }: Props): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
@@ -86,6 +106,15 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
     }
     return m
   }, [data.reservations])
+
+  /**
+   * Welche Zeile ist das sechste Zimmer? Für die Mehrfachauswahl wird über
+   * Zeilen aufgezogen, und der Bereich dazwischen ergibt sich nur aus der
+   * sichtbaren Reihenfolge, nicht aus den ids.
+   */
+  const zeileVonZimmer = useMemo(
+    () => new Map(data.units.map((u, i) => [u.id, i])),
+    [data.units])
 
   const blockeJeZimmer = useMemo(() => {
     const m = new Map<number, typeof data.blocks>()
@@ -124,6 +153,16 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
         setDragState({ ...d, day: tagUnter(e.clientX) })
         return
       }
+      if (d.kind === 'group') {
+        const zeile = document.elementFromPoint(e.clientX, e.clientY)
+          ?.closest<HTMLElement>('[data-resource-row]')
+        const ueber = zeile ? zeileVonZimmer.get(Number(zeile.dataset.resourceRow)) : undefined
+        // Über dem Rand des Plans bleibt die zuletzt getroffene Zeile
+        // stehen: die Auswahl soll nicht zusammenschnappen, nur weil der
+        // Zeiger kurz über der Kopfzeile war.
+        setDragState({ ...d, day: tagUnter(e.clientX), index: ueber ?? d.index })
+        return
+      }
       // move: welche Zimmerzeile liegt gerade unter dem Zeiger.
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const zeile = el?.closest<HTMLElement>('[data-resource-row]')
@@ -144,12 +183,12 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
       setDragState(null)
       if (d === null) return
       if (d.kind === 'create') {
-        const von = Math.min(d.startDay, d.day)
-        const bis = Math.max(d.startDay, d.day) + 1
         onCreate?.({
           resourceId: d.resourceId, categoryId: d.categoryId,
-          arrival: tage[von]!, departure: bis < tage.length ? tage[bis]! : addDays(tage[tage.length - 1]!, 1)
+          ...auswahlZeitraum(tage, d.startDay, d.day)
         })
+      } else if (d.kind === 'group') {
+        onCreateGroup?.(gruppenAuswahl(data.units, tage, d))
       } else if (d.kind === 'move') {
         if (d.moved && d.overResourceId !== null) onMove?.(d.reservationRef, d.overResourceId)
         else if (!d.moved) onSelect?.(d.reservationRef)
@@ -175,32 +214,65 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
     // unnoetig.
   }, [drag !== null])
 
-  const ghost = useMemo(() => {
+  /**
+   * Der Schattenbalken. Eine Menge von Zeilen, nicht eine: bei der
+   * Mehrfachauswahl liegt in jeder markierten Zeile einer.
+   */
+  const ghost = useMemo((): {
+    resourceIds: Set<number>; left: number; width: number
+    /** Zeile, an der die Anzahl steht. Nur bei der Mehrfachauswahl gesetzt. */
+    zaehlerAn?: number
+  } | null => {
     if (drag === null) return null
     if (drag.kind === 'create') {
       const von = Math.min(drag.startDay, drag.day)
       const bis = Math.max(drag.startDay, drag.day)
-      return { resourceId: drag.resourceId,
+      return { resourceIds: new Set([drag.resourceId]),
                left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
+    }
+    if (drag.kind === 'group') {
+      const von = Math.min(drag.startDay, drag.day)
+      const bis = Math.max(drag.startDay, drag.day)
+      const vonZeile = Math.min(drag.startIndex, drag.index)
+      const bisZeile = Math.max(drag.startIndex, drag.index)
+      const zeilen = data.units.slice(vonZeile, bisZeile + 1)
+      return {
+        resourceIds: new Set(zeilen.map(u => u.id)),
+        zaehlerAn: zeilen[0]?.id,
+        left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
     }
     if (drag.kind === 'resize') {
       const startTag = drag.edge === 'start' ? drag.day : daysBetween(data.from, drag.arrival)
       const endTag = drag.edge === 'end' ? drag.day + 1 : daysBetween(data.from, drag.departure)
       const von = Math.max(0, Math.min(startTag, endTag - 1))
       const bis = Math.max(von + 1, endTag)
-      return { resourceId: drag.resourceId, left: von * SPALTE, width: (bis - von) * SPALTE - 4 }
+      return { resourceIds: new Set([drag.resourceId]),
+               left: von * SPALTE, width: (bis - von) * SPALTE - 4 }
     }
     if (drag.moved && drag.overResourceId !== null) {
       const b = balken(drag.arrival, drag.departure)
-      return { resourceId: drag.overResourceId, ...b }
+      return { resourceIds: new Set([drag.overResourceId]), ...b }
     }
     return null
-  }, [drag, balken, data.from])
+  }, [drag, balken, data.from, data.units])
 
   const beginneErstellen = (resourceId: number, categoryId: number) => (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return
     e.preventDefault()
     const startDay = tagUnter(e.clientX)
+    /*
+     * Mit Modifikator wird über Zeilen hinweg aufgezogen, ohne ihn wie
+     * bisher nur in dieser einen. Umschalt steht daneben, weil es auf jeder
+     * Tastatur dieselbe Taste ist -- Strg und ⌘ sind es nicht, und wer am
+     * Mac arbeitet, greift nach beidem.
+     */
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      const index = zeileVonZimmer.get(resourceId)
+      if (index !== undefined) {
+        setDragState({ kind: 'group', startIndex: index, index, startDay, day: startDay })
+        return
+      }
+    }
     setDragState({ kind: 'create', resourceId, categoryId, startDay, day: startDay })
   }
 
@@ -257,7 +329,8 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
                           title={`${r.last_name ?? ''} · ${r.public_ref}`}
                           style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
                           className={`absolute rounded px-1 text-[11px] text-white
-                                      truncate text-left ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                                      truncate text-left cursor-move
+                                      ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
                     {r.last_name ?? r.public_ref}
                   </button>
                 )
@@ -276,7 +349,8 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
               <span className="font-medium tabular-nums">{u.code}</span>
               <span className="text-neutral-400 truncate">{u.category_name}</span>
             </div>
-            <div className="relative grow" onPointerDown={beginneErstellen(u.id, u.category_id)}>
+            <div className="relative grow cursor-crosshair"
+                 onPointerDown={beginneErstellen(u.id, u.category_id)}>
               {tage.map((d, i) => (
                 <div key={d}
                      style={{ left: i * SPALTE, width: SPALTE }}
@@ -309,8 +383,15 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
                                + (r.notes ? ` · ${r.notes}` : '')}
                           style={{ ...b, top: 4, height: ZEILE - 8,
                                    opacity: versteckt ? 0.35 : 1 }}
+                          /*
+                           * `cursor-move` ist hier keine Kosmetik. Das
+                           * Verschieben gab es lange, und es wurde nicht
+                           * benutzt: der Zeiger blieb ein Pfeil, und nichts
+                           * am Balken sagte, dass er anfassbar ist. Eine
+                           * Funktion, die niemand findet, ist keine.
+                           */
                           className={`absolute rounded px-1 text-[11px] text-white truncate
-                                      text-left hover:ring-2 ring-black/30
+                                      text-left hover:ring-2 ring-black/30 cursor-move
                                       ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
                     {/* Die Notiz ist der Grund, warum man den Balken anders
                         behandelt als jeden anderen -- deshalb ein Merkmal am
@@ -325,10 +406,16 @@ export function TapeChart({ data, onSelect, onCreate, onMove, onChangeStay }: Pr
                   </button>
                 )
               })}
-              {ghost !== null && ghost.resourceId === u.id && (
+              {ghost !== null && ghost.resourceIds.has(u.id) && (
                 <div style={{ left: ghost.left, width: ghost.width, top: 4, height: ZEILE - 8 }}
                      className="absolute rounded border-2 border-dashed border-neutral-900
-                                bg-neutral-900/10 pointer-events-none" />
+                                bg-neutral-900/10 pointer-events-none
+                                text-[11px] leading-[18px] px-1 truncate">
+                  {/* Wie viele Zimmer es werden, steht an der obersten Zeile
+                      der Auswahl -- in jeder zu wiederholen waere Laerm. */}
+                  {ghost.zaehlerAn === u.id
+                    && `${ghost.resourceIds.size} ${t('group.rooms')}`}
+                </div>
               )}
             </div>
           </div>

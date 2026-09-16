@@ -22,6 +22,10 @@ interface Props {
   /** Wer gerade angemeldet ist. Steht neben dem Abmelden-Knopf. */
   benutzer: string
   onAbmelden: () => void
+  /** Arbeitsplatz: Person wechseln, eigenen PIN setzen. */
+  onArbeitsplatz: () => void
+  /** Es handelt gerade jemand anderes als der Angemeldete. */
+  gewechselt: boolean
   haeuser: readonly Haus[]
   haus: Haus | undefined
   onHaus: (id: number) => void
@@ -93,14 +97,27 @@ function Hauswahl({ haeuser, haus, onHaus }: Pick<Props, 'haeuser' | 'haus' | 'o
  * erste Frage "bin ich das ueberhaupt", und sie wird sonst nicht gestellt.
  */
 function Abmelden(
-  { benutzer, onAbmelden }: { benutzer: string; onAbmelden: () => void }
+  { benutzer, onAbmelden, onArbeitsplatz, gewechselt }:
+  { benutzer: string; onAbmelden: () => void
+    onArbeitsplatz: () => void; gewechselt: boolean }
 ): JSX.Element {
   const t = useT()
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-neutral-600 max-w-40 truncate" title={benutzer}>
+      {/*
+        * Der Name ist der Knopf. Am geteilten Rechner ist "bin ich das
+        * ueberhaupt" die erste Frage, und die Antwort darauf ist auch der
+        * Weg, es zu aendern -- ein zweiter Knopf daneben waere eine Zeile
+        * mehr in einer Kopfleiste, die ohnehin voll ist.
+        */}
+      <button type="button" onClick={onArbeitsplatz} title={t('workstation.title')}
+              className={`text-sm max-w-40 truncate px-2 py-1 rounded border
+                          ${gewechselt
+                            ? 'border-amber-300 bg-amber-50 text-amber-900'
+                            : 'border-transparent text-neutral-600 hover:bg-neutral-100'}`}>
+        {gewechselt && <span aria-hidden className="mr-1">⇄</span>}
         {benutzer}
-      </span>
+      </button>
       <button type="button" onClick={onAbmelden}
               className="text-sm px-2 py-1 border border-neutral-300 rounded
                          hover:bg-neutral-50">
@@ -127,7 +144,9 @@ export function Shell(props: Props): JSX.Element {
                     className="text-sm border border-neutral-300 rounded px-2 py-1">
               {LOCALES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
             </select>
-            <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden} />
+            <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
+                      onArbeitsplatz={props.onArbeitsplatz}
+                      gewechselt={props.gewechselt} />
           </div>
           {props.haus?.isTraining === true && <Uebungshinweis haus={props.haus} />}
           {!online && <OfflineHinweis />}

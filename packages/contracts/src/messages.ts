@@ -323,6 +323,19 @@ const M = {
   'field.atLeastOneRoom': {
     de: 'Mindestens ein Zimmer',
     en: 'At least one room' },
+  'field.tooManyRooms': {
+    de: 'Hoechstens {max} Zimmer je Buchung. Groessere Gruppen laufen ueber ein '
+      + 'Kontingent.',
+    en: 'At most {max} rooms per booking. Larger groups go through a block.' },
+  'field.pinDigits': {
+    de: 'Zwischen {min} und {max} Ziffern, nur Ziffern',
+    en: 'Between {min} and {max} digits, digits only' },
+  'field.duplicateRoom': {
+    de: 'Dasselbe Zimmer steht zweimal in der Auswahl',
+    en: 'The same room appears twice in the selection' },
+  'field.eitherCategoryOrRooms': {
+    de: 'Entweder eine Zimmergruppe oder eine Zimmerliste',
+    en: 'Either a room category or a list of rooms' },
   'field.atLeastOneScope': {
     de: 'Mindestens ein Zugriffsbereich',
     en: 'At least one scope' },
@@ -403,6 +416,14 @@ const M = {
   'auth.badPin': {
     de: 'E-Mail oder PIN stimmt nicht.',
     en: 'Email or PIN is not correct.' },
+  // Wer wechselt, muss auch zurueckwechseln koennen -- und das verlangt
+  // denselben Nachweis. Ohne eigenen PIN waere der Angemeldete nach dem
+  // ersten Wechsel aus seiner eigenen Sitzung ausgesperrt.
+  'auth.ownerNeedsPin': {
+    de: 'Die angemeldete Person braucht selbst einen Arbeitsplatz-PIN, bevor '
+      + 'gewechselt werden kann. Sonst ist der Weg zurueck versperrt.',
+    en: 'The signed-in person needs a workstation PIN of their own before '
+      + 'switching. Otherwise there is no way back.' },
   // Bewusst ohne Unterscheidung zwischen unbekannt, abgelaufen und schon
   // benutzt: jede davon waere eine Auskunft ueber ein Token, das der
   // Aufrufer nicht hat.
@@ -550,6 +571,9 @@ const M = {
   'block.fullyPickedUp': {
     de: 'Kontingent ist vollstaendig abgerufen.',
     en: 'The block is fully picked up.' },
+  'block.notEnoughLeft': {
+    de: 'Das Kontingent hat nur noch {left} von {quantity} Zimmern frei.',
+    en: 'The block has only {left} of {quantity} rooms left.' },
   'block.pickupWholePeriod': {
     de: 'Ein Abruf laeuft ueber den ganzen Zeitraum des Kontingents ({from} bis '
       + '{to}). Fuer abweichende Naechte eine eigene Reservierung anlegen.',

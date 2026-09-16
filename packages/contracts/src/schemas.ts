@@ -313,9 +313,44 @@ export type PaymentMethod = Static<typeof PaymentMethod>
 
 // ------------------------------------------------------------------ Buchung
 
+/**
+ * Ein Zimmer einer Gruppenbuchung.
+ *
+ * Die Zimmergruppe steht hier und nicht nur oben, weil eine Reisegruppe
+ * selten in einer einzigen Gruppe liegt: zwei Suiten, sechs Doppelzimmer.
+ * `resourceId` ist frei -- wer im Belegungsplan ueber konkrete Zeilen
+ * aufzieht, meint genau diese Zimmer; wer nur die Anzahl kennt, laesst es
+ * weg und weist spaeter zu.
+ */
+export const CreateBookingRoom = Type.Object({
+  categoryId: Type.Integer(),
+  resourceId: Type.Optional(Type.Integer())
+})
+export type CreateBookingRoom = Static<typeof CreateBookingRoom>
+
 export const CreateBooking = Type.Object({
   propertyId: Type.Integer(),
-  categoryId: Type.Integer(),
+  /**
+   * Die Zimmergruppe der einen Reservierung. Entfaellt, wenn `rooms` die
+   * Zimmer einzeln nennt -- dann steht die Gruppe je Zimmer.
+   */
+  categoryId: Type.Optional(Type.Integer()),
+  /**
+   * Mehrere Zimmer in **einer** Buchung: die Gruppenbuchung.
+   *
+   * Nicht mehrere Buchungen nebeneinander, sondern eine mit mehreren
+   * Reservierungen -- so, wie das Datenmodell es ohnehin vorsieht
+   * (`booking` 1:n `reservation`). Der Unterschied ist nicht kosmetisch: die
+   * Gruppe hat einen Besteller, eine Herkunft und eine Rechnung, und wer sie
+   * als acht einzelne Buchungen anlegt, hat acht Vorgaenge, die nichts mehr
+   * verbindet.
+   *
+   * Der Zeitraum gilt fuer alle Zimmer gemeinsam. Wer fuer ein Zimmer
+   * abweichende Tage braucht, aendert danach dessen Aufenthalt; ein Feld je
+   * Zimmer haette den Abruf aus einem Kontingent unentscheidbar gemacht,
+   * das immer ueber den ganzen Zeitraum laeuft.
+   */
+  rooms: Type.Optional(Type.Array(CreateBookingRoom)),
   arrival: IsoDate,
   departure: IsoDate,
   ratePlanId: Type.Optional(Type.Integer()),
@@ -331,12 +366,29 @@ export const CreateBooking = Type.Object({
 })
 export type CreateBooking = Static<typeof CreateBooking>
 
+export const BookingCreatedRoom = Type.Object({
+  reservationRef: Type.String(),
+  categoryId: Type.Integer(),
+  resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  totalCent: Cent
+})
+export type BookingCreatedRoom = Static<typeof BookingCreatedRoom>
+
 export const BookingCreated = Type.Object({
   bookingRef: Type.String(),
+  /**
+   * Die **erste** Reservierung der Buchung.
+   *
+   * Bleibt, weil die weitaus meisten Buchungen genau eine haben und jeder
+   * bestehende Aufrufer dieses Feld liest. Wer die Gruppe meint, nimmt
+   * `reservations` -- dort steht sie vollstaendig, auch im Einzelfall.
+   */
   reservationRef: Type.String(),
+  reservations: Type.Array(BookingCreatedRoom),
   arrival: IsoDate,
   departure: IsoDate,
   nights: Type.Integer(),
+  /** Ueber alle Zimmer der Buchung, nicht nur ueber das erste. */
   totalCent: Cent
 })
 export type BookingCreated = Static<typeof BookingCreated>

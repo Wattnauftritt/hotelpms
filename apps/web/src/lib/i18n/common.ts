@@ -116,6 +116,58 @@ export const common = {
   'auth.logout': {
     de: 'Abmelden',
     en: 'Sign out' },
+  'workstation.switch': {
+    de: 'Person wechseln',
+    en: 'Switch person' },
+  'workstation.title': {
+    de: 'Arbeitsplatz',
+    en: 'Workstation' },
+  'workstation.acting': {
+    de: 'Es handelt gerade nicht die angemeldete Person.',
+    en: 'Someone other than the signed-in person is acting.' },
+  'workstation.switchHint': {
+    de: 'Am geteilten Rezeptionsrechner übernimmt eine andere Person, ohne dass '
+      + 'sich jemand neu anmeldet. Die Sitzung bleibt; im Protokoll steht, wer '
+      + 'wirklich gebucht hat.',
+    en: 'At a shared front-desk machine another person takes over without anyone '
+      + 'signing in again. The session stays; the audit log records who actually '
+      + 'booked.' },
+  'workstation.pin': {
+    de: 'Arbeitsplatz-PIN',
+    en: 'Workstation PIN' },
+  'workstation.switchSubmit': {
+    de: 'Übernehmen',
+    en: 'Take over' },
+  'workstation.ownPin': {
+    de: 'Eigener Arbeitsplatz-PIN',
+    en: 'Your own workstation PIN' },
+  'workstation.ownPinHint': {
+    de: 'Vier bis zwölf Ziffern. Nur damit kann jemand an einem anderen '
+      + 'Arbeitsplatz in Ihrem Namen weiterarbeiten — und nur damit kommen Sie '
+      + 'nach einem Wechsel in Ihre eigene Sitzung zurück.',
+    en: 'Four to twelve digits. Only with it can someone carry on in your name at '
+      + 'another workstation — and only with it do you get back into your own '
+      + 'session after a switch.' },
+  'workstation.pinSet': {
+    de: 'Hinterlegt',
+    en: 'On file' },
+  'workstation.pinNotSet': {
+    de: 'Nicht hinterlegt',
+    en: 'Not on file' },
+  'workstation.pinSave': {
+    de: 'PIN setzen',
+    en: 'Set PIN' },
+  'workstation.pinRemove': {
+    de: 'PIN entfernen',
+    en: 'Remove PIN' },
+  'workstation.pinSaved': {
+    de: 'Gespeichert',
+    en: 'Saved' },
+  'workstation.needOwnPin': {
+    de: 'Hinterlegen Sie zuerst einen eigenen PIN. Ohne ihn kämen Sie nach einem '
+      + 'Wechsel nicht zurück.',
+    en: 'Set a PIN of your own first. Without it you could not get back after a '
+      + 'switch.' },
   'app.noProperty': {
     de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     en: 'This user is not assigned to any property yet.' },

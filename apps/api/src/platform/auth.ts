@@ -89,7 +89,10 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
       permissionsByProperty,
       accountPermissions,
       platformPermissions,
-      supportSessionId: null
+      supportSessionId: null,
+      // Wer die Sitzung eroeffnet hat, weiss nur der Aufrufer dieser
+      // Funktion; hier steht bewusst die handelnde Person selbst.
+      sessionUserId: userId
     }
   })
 }
@@ -164,7 +167,8 @@ export async function loadPrincipalFromToken(pool: Pool, token: string): Promise
        */
       accountPermissions: new Set(),
       platformPermissions: new Set(),
-      supportSessionId: null
+      supportSessionId: null,
+      sessionUserId: null
     }
   })
 }
