@@ -329,6 +329,26 @@ export const plan = {
       + 'a collective registration: everyone gets their own record, signed once.',
     tr: 'Bildirim yükümlülüğü kişi başınadır. Bir tur grubunda bundan toplu '
       + 'Meldeschein oluşur: herkesin kendi kaydı olur, bir kez imzalanır.' },
+  'terms.title': {
+    de: 'Hausbedingungen',
+    en: 'House terms',
+    tr: 'Konaklama koşulları' },
+  'terms.sign': {
+    de: 'Unterschreiben',
+    en: 'Sign',
+    tr: 'İmzala' },
+  'terms.accept': {
+    de: 'Zur Kenntnis genommen',
+    en: 'Acknowledged',
+    tr: 'Okudum, kabul ediyorum' },
+  'terms.signed': {
+    de: 'Unterschrieben',
+    en: 'Signed',
+    tr: 'İmzalandı' },
+  'terms.accepted': {
+    de: 'Zugestimmt',
+    en: 'Agreed',
+    tr: 'Kabul edildi' },
   'checkin.clear': {
     de: 'Löschen',
     en: 'Clear',

@@ -236,6 +236,10 @@ const M = {
     de: 'Kontingent',
     en: 'Block',
     tr: 'Kontenjan' },
+  'res.terms': {
+    de: 'Hausbedingung',
+    en: 'House terms',
+    tr: 'Konaklama koşulları' },
   'res.subscription': {
     de: 'Abonnement',
     en: 'Subscription',
@@ -790,6 +794,17 @@ const M = {
     de: 'Ein anonymisiertes Profil wird nicht wiederbelebt.',
     en: 'An anonymized profile is not revived.',
     tr: 'Anonimleştirilmiş bir profil geri getirilmez.' },
+  'guest.levyRetentionRunning': {
+    de: 'Fuer diesen Gast laeuft noch die Aufbewahrung des '
+      + 'Gaestebeitragsnachweises bis zum {until}. Bis dahin ist die '
+      + 'Aufbewahrung eine rechtliche Verpflichtung (Art. 17 Abs. 3 lit. b '
+      + 'DSGVO).',
+    en: 'The retention of the guest levy record for this guest runs until '
+      + '{until}. Until then keeping it is a legal obligation (Art. 17(3)(b) '
+      + 'GDPR).',
+    tr: 'Bu misafir için konaklama katkısı kaydının saklama süresi {until} '
+      + 'tarihine kadar devam ediyor. O tarihe kadar saklama yasal bir '
+      + 'yükümlülüktür (GDPR Md. 17(3)(b)).' },
   'guest.hasOpenReservations': {
     de: 'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.',
     en: 'There are still open or current reservations for this guest.',
@@ -812,6 +827,16 @@ const M = {
       + 'a document and is not rewritten afterwards.',
     tr: 'Bu rezervasyon için fatura zaten düzenlendi. Fatura alıcısı bir belgede '
       + 'yer alır ve sonradan değiştirilmez.' },
+  // ------------------------------------------------------ Hausbedingungen
+  'terms.signatureRequired': {
+    de: 'Diese Bedingung verlangt eine Unterschrift.',
+    en: 'These terms require a signature.',
+    tr: 'Bu koşullar imza gerektirir.' },
+  'terms.alreadyAgreed': {
+    de: 'Dieser Aufenthalt hat der Bedingung bereits zugestimmt.',
+    en: 'This stay has already agreed to these terms.',
+    tr: 'Bu konaklama için koşullar zaten kabul edilmiş.' },
+
   'registration.noPrimaryGuest': {
     de: 'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',
     en: 'The reservation has no primary guest. No registration form is possible.',

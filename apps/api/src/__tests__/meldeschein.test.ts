@@ -107,17 +107,23 @@ describe('Der vorbefuellte Schein', () => {
 })
 
 describe('Erfassen', () => {
-  it('legt den Schein an und setzt die Frist auf ein Jahr ab Anreise', async () => {
+  /**
+   * "vom Tag der Abreise der beherbergten Person an ein Jahr"
+   * (§ 30 Abs. 4 BMG). Gerechnet wurde hier bis zuletzt ab **Anreise** --
+   * bei drei Naechten drei Tage zu frueh vernichtet, bei einem Langzeitgast
+   * Wochen. Zu frueh vernichtet heisst: die Meldebehoerde verlangt Einsicht
+   * und bekommt sie nicht, obwohl die Frist noch laeuft.
+   */
+  it('setzt die Frist auf ein Jahr ab Abreise, nicht ab Anreise', async () => {
     const ref = await reservierung(await gast('Petersen'))
     const r = await melden(ref)
     expect(r.statusCode, r.body).toBe(201)
 
-    // Die Frist laeuft ab Anreise, nicht ab Erfassung: ein spaet erfasster
-    // Schein duerfte sonst laenger liegen als ein puenktlicher.
     const reg = await owner.query<{ destroy_after: string; occupant_count: number }>(
       `SELECT destroy_after::text, occupant_count FROM registration
         WHERE property_id = $1`, [fx.propertyId])
-    expect(reg.rows[0]!.destroy_after).toBe('2027-10-01')
+    // Anreise 1.10., Abreise 4.10.
+    expect(reg.rows[0]!.destroy_after).toBe('2027-10-04')
     expect(reg.rows[0]!.occupant_count).toBe(1)
   })
 

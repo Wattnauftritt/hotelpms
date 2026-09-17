@@ -398,6 +398,50 @@ export function guestRoutes(app: FastifyInstance): void {
             'guest.hasOpenReservations')
         }
 
+        /*
+         * Der Gaestebeitragsnachweis geht vor.
+         *
+         * Kommunale Satzungen verlangen ein Gaesteverzeichnis mit Name,
+         * Anschrift, Zeitraum, Naechten, Satz und Betrag -- die Stadt
+         * Cuxhaven etwa sechs Jahre ab Beginn des Folgejahres, mit Geldbusse
+         * bis 10 000 Euro bei Verstoss (§ 9 Abs. 5 ihrer
+         * Gaestebeitragssatzung). Solange diese Frist laeuft, ist die
+         * Aufbewahrung eine rechtliche Verpflichtung, und Art. 17 Abs. 3
+         * lit. b DSGVO nimmt sie von der Loeschung aus.
+         *
+         * Gesperrt wird nur, wo wirklich eine Abgabe gebucht wurde -- also
+         * an einer Position mit einer Regel der Art `city_tax` oder
+         * `bed_tax`. Ein Haus ohne Kurtaxe hat keinen Nachweis zu fuehren,
+         * und dort waere die Sperre eine erfundene Frist.
+         *
+         * Die Frist steht am Haus, weil sie kommunal geregelt ist: die
+         * Ermaechtigung liegt in den Kommunalabgabengesetzen der Laender,
+         * nicht im Bundesrecht, und damit ist sie in jedem Ort anders.
+         */
+        const nachweis = await client.query<{ bis: string }>(
+          `SELECT max((date_trunc('year', r.departure)
+                       + INTERVAL '1 year'
+                       + make_interval(years => p.guest_levy_retention_years))
+                      ::date)::text AS bis
+             FROM reservation r
+             JOIN property p ON p.id = r.property_id
+            WHERE (r.primary_guest_id = $1
+                   OR EXISTS (SELECT 1 FROM reservation_occupant o
+                               WHERE o.reservation_id = r.id AND o.guest_id = $1))
+              AND p.guest_levy_retention_years > 0
+              AND EXISTS (SELECT 1 FROM charge c
+                            JOIN tax_rule t ON t.id = c.tax_rule_id
+                           WHERE c.reservation_id = r.id
+                             AND t.kind IN ('city_tax','bed_tax'))
+              AND (date_trunc('year', r.departure)
+                   + INTERVAL '1 year'
+                   + make_interval(years => p.guest_levy_retention_years))
+                  > current_date`, [id])
+        const bis = nachweis.rows[0]?.bis ?? null
+        if (bis !== null) {
+          throw Errors.conflict('guest.levyRetentionRunning', { until: bis })
+        }
+
         await client.query(
           `UPDATE guest SET
              last_name = 'Anonymisiert', first_name = NULL, email = NULL, phone = NULL,
