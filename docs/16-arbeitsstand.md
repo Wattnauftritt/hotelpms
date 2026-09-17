@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 15. September 2026. 572 Tests, 29 Migrationen.
+Stand: 17. September 2026. 835 Tests, 37 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -574,6 +574,24 @@ Was dagegen überall gleich ist, ist der **Inhalt**: wer, woher, wie lange, wie 
 Drei Festlegungen: **eine Zeile je Aufenthalt und Abgabenart** — zwei Abgaben nebeneinander sind zwei Satzungen. **Gerechnet wird aus den gebuchten Positionen, nicht aus der Regel** — ein Satz, der zum Jahreswechsel gestiegen ist, machte aus einer Neuberechnung eine plausibel aussehende falsche Zahl, und der Nachweis muss zu der Rechnung passen, die der Gast bekommen hat. Und die **Gästekartennummer fehlt bewusst**: die vergibt das System der Gemeinde, nicht das Haus.
 
 **Noch offen:** die Adapter selbst. Für AVS und feratel fehlen die Schnittstellenbeschreibungen; das ist eine Anfrage beim Anbieter, keine Programmierarbeit.
+
+---
+
+### Das Band der Buchungen ohne Zimmer
+
+**Was dort liegt.** Eine Reservierung braucht eine Zimmergruppe, aber kein Zimmer. Der Channel Manager legt gar keines an — `routes/channel.ts` kennt die Spalte `resource_id` in seinem `INSERT` nicht —, und auch eine Option am Telefon wird oft nur auf die Gruppe gebucht. Solche Buchungen zählen in der Verfügbarkeit voll mit, stehen aber in keiner Zimmerzeile. Der Plan zeigt sie deshalb in einem eigenen Band über den Zeilen, und von dort zieht die Rezeption sie in ein Zimmer.
+
+**Drei Befunde beim Nachsehen, alle drei still:**
+
+**Das Band zeigte vier und zählte alle.** Es war auf `slice(0, 4)` begrenzt. Die Warnung darüber nannte die richtige Zahl — „19 ohne Zimmer" —, sichtbar und damit zuweisbar waren vier. Bei einem Haus mit angebundenem Channel Manager ist das nicht der Randfall, sondern der Normalfall: der Rest war im Plan unerreichbar. Das Band scrollt jetzt statt abzuschneiden, standardmäßig vier Zeilen hoch. `overscroll-contain` hält das Scrollen im Band: sonst rutscht der ganze Plan weg, sobald man unten ankommt — zwei Scrollflächen ineinander sind genau dann unangenehm, wenn man sie nicht auseinanderhält.
+
+**Am Balken stand die Zimmergruppe nicht.** Im Band liegen Einzelzimmer, Doppelzimmer, Ferienwohnungen und Suiten übereinander, und beim Ziehen entscheidet sich in einer Sekunde, wohin. Jeder Balken trägt jetzt das Kürzel der gebuchten Gruppe, und das Band ist nach Gruppe sortiert, nicht nur nach Anreise.
+
+**Die Warnung „zu klein" rechnete mit der falschen Zahl.** Sie verglich die Plätze des Zielzimmers mit der Zahl der erfassten Belegten — und die steht bei einer Buchung aus dem Channel Manager auf **1**: angelegt wird genau ein Belegter, der Bucher; die weiteren Namen fallen erst beim Check-in an. Ein Doppelzimmer aus dem Channel war damit im Einzelzimmer „groß genug", und die Warnung fehlte genau dort, wofür sie gebaut war.
+
+Gerechnet wird jetzt mit dem **verkauften Produkt**: ein Doppelzimmer ist für zwei verkauft, ob der zweite Name bekannt ist oder nicht (`category_max_occupancy` im Belegungsplan, `platzbedarf()` in `tapeSelection.ts`). Sind mehr Personen erfasst, als die Gruppe fasst — vier in einem Doppelzimmer mit Aufbettung —, zählt die größere Zahl.
+
+Beim Ziehen färben sich die Zeilen danach: grün die gebuchte Gruppe, rot die zu kleinen, neutral der Rest. Neutral ist die wichtige Mitte — eine andere Gruppe, die groß genug ist, ist ein Upgrade und Alltag; abgerechnet wird, was gebucht wurde. Die API prüft die Gruppe deshalb bewusst nicht. Gefragt wird beim Loslassen, nicht beim Ziehen: eine Rückfrage mitten in der Geste steht im Weg.
 
 ---
 

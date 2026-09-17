@@ -4,7 +4,7 @@ import { useTapeChart, useCategories } from '../lib/queries.js'
 import { useAssignUnit, useChangeStay } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
 import { today, addDays, eachDay } from '../lib/dates.js'
-import { TapeChart } from '../components/TapeChart.tsx'
+import { TapeChart, type Umzug } from '../components/TapeChart.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
 import { GroupBookingDialog, type GroupSelection }
@@ -33,6 +33,15 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   // Mehrere Zimmerzeilen zugleich markiert: daraus wird **eine** Buchung
   // mit mehreren Zimmern, nicht eine Buchung je Zimmer.
   const [gruppe, setGruppe] = useState<GroupSelection | null>(null)
+  /*
+   * Ein Umzug in eine andere Zimmergruppe wird nicht stillschweigend
+   * ausgefuehrt. Die API laesst ihn zu -- ein Upgrade ist Alltag --, aber
+   * versehentlich passiert dabei auch das Gegenteil: eine Buchung fuer zwei
+   * Personen landet in einem Einzelzimmer. Gefragt wird erst beim
+   * Loslassen, nicht beim Ziehen; eine Frage mitten in der Geste waere im
+   * Weg.
+   */
+  const [umzug, setUmzug] = useState<Umzug | null>(null)
   const t = useT()
   const bis = addDays(von, tage)
   const q = useTapeChart(propertyId, von, bis)
@@ -97,8 +106,12 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           }))
                         })
                       }}
-                      onMove={(reservationRef, resourceId) =>
-                        zuweisen.mutate({ reservationRef, resourceId })}
+                      onMove={u => {
+                        if (u.wechsel === null) {
+                          zuweisen.mutate({ reservationRef: u.reservationRef,
+                                            resourceId: u.resourceId })
+                        } else setUmzug(u)
+                      }}
                       onChangeStay={(reservationRef, arrival, departure) =>
                         umbuchen.mutate({ reservationRef, arrival, departure })} />}
 
@@ -111,6 +124,15 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           onClose={() => setAusgewaehlt(null)}
                           onOpenFolio={onFolio}
                           onOpenCheckIn={onCheckIn} />
+      )}
+
+      {umzug !== null && umzug.wechsel !== null && (
+        <UmzugBestaetigen umzug={umzug} onClose={() => setUmzug(null)}
+                          onConfirm={() => {
+                            zuweisen.mutate({ reservationRef: umzug.reservationRef,
+                                              resourceId: umzug.resourceId })
+                            setUmzug(null)
+                          }} />
       )}
 
       {gruppe !== null && (
@@ -186,6 +208,59 @@ function Legende(): JSX.Element {
           {t(key)}
         </span>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Nachfrage vor einem Umzug in eine andere Zimmergruppe.
+ *
+ * **Warum gefragt und nicht verboten.** Ein Upgrade ist Alltag: der Gast hat
+ * ein Doppelzimmer gebucht und bekommt die Juniorsuite; abgerechnet wird,
+ * was gebucht wurde. Die API laesst das deshalb bewusst zu. Versehentlich
+ * passiert im Plan aber auch das Gegenteil, und **das** ist der Fall, für
+ * den diese Maske da ist: zwei Personen in einem Einzelzimmer merkt sonst
+ * erst der Gast.
+ */
+function UmzugBestaetigen({ umzug, onClose, onConfirm }: {
+  umzug: Umzug; onClose: () => void; onConfirm: () => void
+}): JSX.Element {
+  const t = useT()
+  const w = umzug.wechsel!
+  const zuKlein = w.platz < w.bedarf
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+         onClick={onClose}>
+      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-3"
+           onClick={e => e.stopPropagation()}>
+        <h2 className="text-sm font-medium">{t('plan.moveOtherCategory')}</h2>
+
+        <p className="text-sm text-neutral-700">
+          {t('plan.moveUpgrade', { ref: umzug.reservationRef, von: w.von,
+                                   nach: w.nach, raum: umzug.roomCode })}
+        </p>
+
+        {zuKlein && (
+          <p role="alert" className="text-sm text-red-800 bg-red-50 border
+                                     border-red-200 rounded p-2">
+            {t('plan.moveTooSmall', { raum: umzug.roomCode, platz: w.platz,
+                                      bedarf: w.bedarf })}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button type="button" onClick={onConfirm}
+                  className={`px-3 py-1.5 text-sm rounded text-white
+                              ${zuKlein ? 'bg-red-700' : 'bg-neutral-900'}`}>
+            {t('plan.moveConfirm')}
+          </button>
+          <button type="button" onClick={onClose}
+                  className="px-3 py-1.5 text-sm rounded border border-neutral-300">
+            {t('booking.close')}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

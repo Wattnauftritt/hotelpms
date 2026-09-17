@@ -56,8 +56,12 @@ export function availabilityRoutes(app: FastifyInstance): void {
       // Ein Aggregat-Endpunkt statt 400 Einzelaufrufen durch den Client.
       return tx(req.pool, req, async client => {
         const units = await client.query(
+          // `max_occupancy` traegt die Warnung beim Verschieben: wer eine
+          // Buchung fuer zwei Personen in ein Zimmer fuer eine zieht, soll
+          // das vorher lesen. Ohne die Zahl koennte die Oberflaeche nur
+          // "andere Zimmergruppe" sagen und nicht, in welche Richtung.
           `SELECT r.id, r.code, r.floor, r.category_id, c.name AS category_name,
-                  c.sort_order
+                  c.code AS category_code, c.max_occupancy, c.sort_order
              FROM resource r
              JOIN resource_category c ON c.id = r.category_id
             WHERE r.property_id = $1 AND r.active
@@ -76,9 +80,16 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   b.source, b.external_reference,
                   rp.code AS rate_code,
                   (SELECT count(*) FROM reservation_occupant o
-                    WHERE o.reservation_id = r.id) AS occupants
+                    WHERE o.reservation_id = r.id) AS occupants,
+                  -- Die Personenzahl allein taugt als Mass nicht: eine
+                  -- Buchung aus dem Channel traegt genau einen Belegten,
+                  -- den Bucher, auch wenn zwei anreisen. Was feststeht, ist
+                  -- das verkaufte Produkt -- ein Doppelzimmer bleibt fuer
+                  -- zwei verkauft, auch wenn der zweite Name noch fehlt.
+                  rc.max_occupancy AS category_max_occupancy
              FROM reservation r
              JOIN booking b ON b.id = r.booking_id
+             JOIN resource_category rc ON rc.id = r.category_id
              LEFT JOIN guest g ON g.id = r.primary_guest_id
              LEFT JOIN rate_plan rp ON rp.id = r.rate_plan_id
             WHERE r.property_id = $1

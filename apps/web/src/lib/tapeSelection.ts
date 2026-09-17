@@ -60,3 +60,51 @@ export function gruppenAuswahl(
       .map(u => ({ resourceId: u.id, categoryId: u.category_id }))
   }
 }
+
+/**
+ * Passt diese Buchung in dieses Zimmer?
+ *
+ * **Drei Zustände, und die Mitte ist der Punkt.** Eine andere Zimmergruppe
+ * ist für sich kein Fehler: der Gast hat ein Doppelzimmer gebucht und
+ * bekommt die Juniorsuite, abgerechnet wird, was gebucht wurde -- deshalb
+ * laesst die API es zu (`assertUnitAssignable` prueft die Gruppe bewusst
+ * nicht). Falsch ist erst die andere Richtung, und die faellt sonst
+ * niemandem auf: zwei Personen in einem Einzelzimmer merkt der Gast.
+ *
+ * Steht hier und nicht in der Komponente, weil dieselbe Frage an zwei
+ * Stellen gestellt wird -- die Zeile faerbt sich danach, und der Dialog
+ * warnt danach. Zweimal formuliert liefen die beiden auseinander, und der
+ * Befund waere eine rot markierte Zeile, die beim Loslassen nichts sagt.
+ */
+export type Passung = 'passt' | 'andere' | 'zuKlein'
+
+/**
+ * Wie viele Plaetze das Zielzimmer mindestens haben muss.
+ *
+ * **Warum nicht die Personenzahl.** Die war der erste Versuch und ist
+ * falsch: eine Buchung aus dem Channel Manager traegt genau einen
+ * Belegten -- den Bucher --, auch wenn zwei anreisen; die weiteren Namen
+ * stehen erst beim Check-in fest. Gerechnet mit der Personenzahl waere
+ * jedes Doppelzimmer aus dem Channel "eine Person" und damit im
+ * Einzelzimmer unauffaellig gross genug. Genau dort, im Band der
+ * unzugewiesenen Buchungen, ist die Warnung aber gebraucht.
+ *
+ * Was feststeht, ist das verkaufte Produkt: ein Doppelzimmer ist fuer zwei
+ * verkauft, ob der zweite Name bekannt ist oder nicht. Sind schon mehr
+ * Personen erfasst als die Zimmergruppe fasst -- drei in einer Ferienwohnung
+ * fuer vier ist gewoehnlich, vier in einem Doppelzimmer mit Aufbettung
+ * kommt vor --, zaehlt die groessere der beiden Zahlen.
+ */
+export function platzbedarf(
+  buchung: { occupants: number; categoryMaxOccupancy: number }
+): number {
+  return Math.max(buchung.occupants, buchung.categoryMaxOccupancy, 1)
+}
+
+export function zimmerPassung(
+  zimmer: { category_id: number; max_occupancy: number },
+  buchung: { categoryId: number; occupants: number; categoryMaxOccupancy: number }
+): Passung {
+  if (zimmer.category_id === buchung.categoryId) return 'passt'
+  return zimmer.max_occupancy < platzbedarf(buchung) ? 'zuKlein' : 'andere'
+}
