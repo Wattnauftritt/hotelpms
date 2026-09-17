@@ -139,6 +139,80 @@ async function assertUnitAssignable(
   }
 }
 
+/**
+ * Den Hauptgast einer Reservierung setzen -- die Namensliste.
+ *
+ * **Warum es das braucht.** Ein Bucher nimmt fuenf Zimmer, und die uebrigen
+ * Namen stehen bis zum Anreisetag nicht fest; geplant wird deshalb mit
+ * seinem Namen, an allen fuenf Balken. Das ist richtig so. Nur blieb es
+ * bisher auch dabei: nach dem Anlegen konnte niemand den Gast eines Zimmers
+ * mehr aendern -- ausser `channel.ts` fuer Kanalbuchungen. Am Tresen stand
+ * dann auf fuenf Meldescheinen derselbe Name, obwohl in vier Zimmern andere
+ * Leute schlafen, und § 30 BMG verlangt den tatsaechlichen Gast.
+ *
+ * **Nur vor dem Check-in.** Danach liegt der Meldeschein vor, und er ist
+ * eine Erklaerung des Gastes ueber sich selbst. Wer den Hauptgast
+ * nachtraeglich austauschte, liesse eine Unterschrift unter einem fremden
+ * Namen stehen. Wer sich wirklich vertan hat, storniert den Meldeschein
+ * nicht, sondern legt fuer die richtige Person einen an.
+ *
+ * **Nur ohne Rechnung.** Am Folio haengt der Rechnungsempfaenger. Ist
+ * fakturiert, steht der Name auf einem Beleg mit Haertegrad 1, und ihn
+ * hier stillschweigend umzuschreiben hiesse, den Beleg zu verfaelschen.
+ *
+ * Der Mitreisendeneintrag wandert mit. Sonst stuende in
+ * `reservation_occupant` weiter der Bucher, und die Personenzahl auf dem
+ * Meldeschein zaehlte einen Gast, der gar nicht da ist.
+ */
+async function setzeHauptgast(
+  client: PoolClient,
+  res: { id: number; property_id: number; status: ReservationStatus },
+  guestRef: string
+): Promise<string> {
+  if (res.status !== 'Inquired' && res.status !== 'Optional'
+      && res.status !== 'Confirmed') {
+    throw Errors.conflict('reservation.guestFixedAfterCheckIn',
+      { status: res.status })
+  }
+
+  const g = await client.query<{ id: number }>(
+    `SELECT id FROM guest WHERE public_ref = $1`, [guestRef])
+  if (g.rowCount === 0) throw Errors.notFound('res.guest')
+  const guestId = g.rows[0]!.id
+
+  const fakturiert = await client.query(
+    `SELECT 1 FROM charge c
+      WHERE c.reservation_id = $1 AND c.invoice_id IS NOT NULL LIMIT 1`,
+    [res.id])
+  if (fakturiert.rowCount && fakturiert.rowCount > 0) {
+    throw Errors.conflict('reservation.guestFixedAfterInvoice')
+  }
+
+  await client.query(
+    `UPDATE reservation SET primary_guest_id = $2, updated_at = now()
+      WHERE id = $1`, [res.id, guestId])
+
+  // Das Gastfolio traegt den Rechnungsempfaenger. Ein Firmenfolio bleibt
+  // unberuehrt -- dort zahlt die Firma, nicht der Gast im Zimmer.
+  await client.query(
+    `UPDATE folio SET guest_id = $2
+      WHERE reservation_id = $1 AND kind = 'guest'`, [res.id, guestId])
+
+  const haupt = await client.query(
+    `UPDATE reservation_occupant SET guest_id = $2
+      WHERE reservation_id = $1 AND is_primary`, [res.id, guestId])
+  if (haupt.rowCount === 0) {
+    // Die Zimmer zwei bis fuenf einer Gruppe haben bewusst keinen Eintrag:
+    // den Bucher in jedes zu schreiben zaehlte ihn mehrfach. Jetzt, mit
+    // einem eigenen Namen, bekommt das Zimmer seinen.
+    await client.query(
+      `INSERT INTO reservation_occupant
+         (property_id, reservation_id, guest_id, is_primary)
+       VALUES ($1,$2,$3,true)`, [res.property_id, res.id, guestId])
+  }
+  return guestRef
+}
+
 /** Uebersetzt den Fehlercode der Inventarfunktion in eine saubere Antwort. */
 export function inventoryError(code: string | null): never | void {
   if (code === 'sold_out') throw Errors.soldOut()
@@ -577,10 +651,10 @@ export function reservationRoutes(app: FastifyInstance): void {
     method: 'PATCH',
     url: '/v1/reservations/:reservationRef',
     permission: 'reservation:write',
-    summary: 'Notiz an der Reservierung aendern',
+    summary: 'Notiz oder Hauptgast einer Reservierung aendern',
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
-      const body = req.body as { notes?: string | null }
+      const body = req.body as { notes?: string | null; guestRef?: string }
       if (body.notes !== undefined && body.notes !== null
           && body.notes.length > NOTES_MAX_LENGTH) {
         throw Errors.validation({ notes: ['field.maxLength'] },
@@ -588,13 +662,29 @@ export function reservationRoutes(app: FastifyInstance): void {
       }
 
       return tx(req.pool, req, async client => {
-        const r = await client.query<{ id: number; property_id: number }>(
-          `UPDATE reservation SET notes = NULLIF($2, ''), updated_at = now()
-            WHERE public_ref = $1
-            RETURNING id, property_id`,
-          [reservationRef, body.notes ?? ''])
+        const r = await client.query<{ id: number; property_id: number
+                                       status: ReservationStatus }>(
+          `SELECT id, property_id, status FROM reservation
+            WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
-        return { reservationRef, notes: body.notes ?? null }
+        const res = r.rows[0]!
+
+        if (body.notes !== undefined) {
+          await client.query(
+            `UPDATE reservation SET notes = NULLIF($2, ''), updated_at = now()
+              WHERE id = $1`, [res.id, body.notes ?? ''])
+        }
+
+        let gastRef: string | null | undefined
+        if (body.guestRef !== undefined) {
+          gastRef = await setzeHauptgast(client, res, body.guestRef)
+        }
+
+        return {
+          reservationRef,
+          notes: body.notes ?? null,
+          ...(gastRef === undefined ? {} : { guestRef: gastRef })
+        }
       })
     }
   })

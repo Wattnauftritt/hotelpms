@@ -108,3 +108,42 @@ describe('Die Gesten sind zu sehen', () => {
     expect(quelle).toMatch(/e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey/)
   })
 })
+
+/**
+ * Die Gastauswahl darf in keinem <label> stehen.
+ *
+ * Der Fehler, den das festhaelt, war zwei Bildschirme lang unsichtbar: ein
+ * Klick auf einen Treffer der Gastsuche waehlte den Gast aus und nahm die
+ * Auswahl im selben Wimpernschlag zurueck. Ein <label> leitet einen Klick an
+ * sein erstes bedienbares Kind weiter; vor der Auswahl ist das das Suchfeld,
+ * danach steht dort der Knopf "Aendern" -- und der raeumt die Auswahl wieder
+ * ab. Die Buchungsmaske ging deshalb ohne `guestRef` hinaus, und niemandem
+ * fiel es auf, weil die Buchung ja gelang.
+ *
+ * Geprueft wird an der Quelle, nicht im Browser: die Oberflaeche hat hier
+ * keine DOM-Umgebung, und die Regel ist ohnehin eine ueber den Aufbau.
+ */
+describe('Gastauswahl', () => {
+  const dateien = [
+    'BookingDialog.tsx', 'GroupBookingDialog.tsx', 'Rechnungsempfaenger.tsx'
+  ]
+
+  /** Kommentare zaehlen nicht mit -- in ihnen steht das Wort ja gerade. */
+  const ohneKommentare = (q: string): string =>
+    q.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+
+  for (const datei of dateien) {
+    it(`steht in ${datei} nicht in einem <label>`, () => {
+      const quelle = ohneKommentare(readFileSync(
+        new URL(`../components/${datei}`, import.meta.url), 'utf8'))
+      const bis = quelle.indexOf('<GuestPicker')
+      expect(bis, `${datei} benutzt GuestPicker nicht mehr`).toBeGreaterThan(-1)
+
+      const davor = quelle.slice(0, bis)
+      const offen = (davor.match(/<label[\s>]/g) ?? []).length
+      const geschlossen = (davor.match(/<\/label>/g) ?? []).length
+      expect(offen - geschlossen,
+        `${datei}: <GuestPicker> steht in einem <label>`).toBe(0)
+    })
+  }
+})

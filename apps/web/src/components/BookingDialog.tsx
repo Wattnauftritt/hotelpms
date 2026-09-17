@@ -56,10 +56,23 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
           </label>
         </div>
 
-        <label className="block text-sm">
+        {/*
+          * Kein <label> um die Gastauswahl, und das ist kein Stilfrage.
+          *
+          * Ein Klick auf einen Treffer der Liege loeste die Auswahl aus --
+          * und nahm sie im selben Wimpernschlag wieder zurueck. Der Grund
+          * liegt im <label>: es leitet einen Klick an sein erstes
+          * bedienbares Kind weiter. Vor der Auswahl ist das das Suchfeld,
+          * danach steht dort der Knopf "Aendern" -- und der ruft
+          * `onChange(null)`. Das Ergebnis war eine Buchungsmaske, in der
+          * sich schlicht kein Gast setzen liess; der Aufruf ging ohne
+          * `guestRef` hinaus, und niemandem fiel es auf, weil die Buchung
+          * ja gelang.
+          */}
+        <div className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
           <GuestPicker value={guest} onChange={setGuest} />
-        </label>
+        </div>
 
         <label className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('booking.notes')}</span>

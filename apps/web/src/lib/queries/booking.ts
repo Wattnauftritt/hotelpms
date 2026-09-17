@@ -34,6 +34,32 @@ export function usePatchReservationNotes(reservationRef: string) {
   })
 }
 
+/**
+ * Den Hauptgast eines Zimmers setzen -- die Namensliste.
+ *
+ * Ein Bucher nimmt fuenf Zimmer, und die uebrigen Namen stehen bis zum
+ * Anreisetag nicht fest; geplant wird mit seinem Namen. Am Tresen bekommt
+ * dann jedes Zimmer seinen eigenen, weil § 30 BMG den tatsaechlichen Gast
+ * verlangt und nicht den, der bestellt hat.
+ *
+ * Der Meldeschein wird mit ungueltig: er ist aus genau diesem Gast
+ * vorbefuellt, und ein stehengebliebener Vordruck auf den alten Namen ist
+ * die Art Fehler, die am Tresen niemand bemerkt.
+ */
+export function useSetReservationGuest(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (guestRef: string) =>
+      api.patch<{ reservationRef: string; guestRef: string }>(
+        `/v1/reservations/${reservationRef}`, { guestRef }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
 export interface CreateBookingBody {
   propertyId: number
   /** Entfaellt bei der Gruppenbuchung -- dann steht die Gruppe je Zimmer. */
@@ -173,7 +199,15 @@ export const useRegistrationForm = (reservationRef: string | null) =>
 export function useSubmitRegistration(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { reservationRef: string; signatureSvg?: string }) =>
+    /**
+     * `occupantGuestRefs` nimmt die API seit jeher an -- daraus entsteht bei
+     * einer Reisegruppe der Sammelmeldeschein, bei dem jeder Mitreisende
+     * einen eigenen Datensatz bekommt, der auf den Hauptschein zeigt.
+     * Geschickt hat die Oberflaeche sie nie, und damit war die halbe
+     * Meldepflicht nicht bedienbar: gemeldet wurde nur, wer gebucht hatte.
+     */
+    mutationFn: (body: { reservationRef: string; signatureSvg?: string
+                         occupantGuestRefs?: string[] }) =>
       api.post<{ registrationId: number }>('/v1/registrations', { propertyId, ...body }),
     onSuccess: (_r, { reservationRef }) => {
       void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })

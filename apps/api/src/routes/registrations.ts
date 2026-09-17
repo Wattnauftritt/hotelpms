@@ -174,6 +174,29 @@ export function registrationRoutes(app: FastifyInstance): void {
             [body.propertyId, res.id, m.rows[0]!.id, res.arrival, res.departure,
              m.rows[0]!.country != null && m.rows[0]!.country !== 'DE',
              hauptId, AUFBEWAHRUNG_MONATE])
+
+          /*
+           * Wer gemeldet ist, wohnt auch im Zimmer.
+           *
+           * Bisher entstand hier **nur** der Meldeschein. Die Kurtaxe rechnet
+           * aber aus `reservation_occupant`, und so meldete das Haus zwei
+           * Personen und berechnete eine -- ohne Fehlermeldung, mit einer
+           * Rechnung, die plausibel aussieht. Aufgefallen ist es erst, als
+           * die Maske ueberhaupt anfing, Mitreisende zu schicken.
+           *
+           * Nur, wenn diese Person nicht schon in der Liste steht: bei einer
+           * Buchung koennen Mitreisende bereits angegeben sein, und ein
+           * zweiter Eintrag zaehlte denselben Menschen doppelt. Verglichen
+           * wird ueber den Gast; ein Eintrag, der nur ein Alter traegt und
+           * keinen Gast, bleibt deshalb unberuehrt.
+           */
+          await client.query(
+            `INSERT INTO reservation_occupant
+               (property_id, reservation_id, guest_id, is_primary)
+             SELECT $1,$2,$3,false
+              WHERE NOT EXISTS (SELECT 1 FROM reservation_occupant o
+                                 WHERE o.reservation_id = $2 AND o.guest_id = $3)`,
+            [body.propertyId, res.id, m.rows[0]!.id])
           angelegt++
         }
 

@@ -310,6 +310,25 @@ export const plan = {
     de: 'Inländischer Gast: seit dem 1.1.2025 keine Unterschrift nötig.',
     en: 'Domestic guest: no signature needed since 1 Jan 2025.',
     tr: 'Yurt içinde ikamet eden misafir: 1.1.2025 tarihinden beri imza gerekmiyor.' },
+  'checkin.whoStaysHere': {
+    de: 'Wer wohnt in diesem Zimmer? Bei einer Gruppe steht hier bis zur Anreise '
+      + 'der Name des Buchers; jetzt bekommt das Zimmer seinen eigenen.',
+    en: 'Who is staying in this room? For a group the booker\u2019s name stands '
+      + 'here until arrival; now the room gets its own.',
+    tr: 'Bu odada kim kalıyor? Bir grupta varışa kadar burada rezervasyonu yapanın '
+      + 'adı yazar; şimdi oda kendi adını alır.' },
+  'checkin.occupants': {
+    de: 'Mitreisende',
+    en: 'Further occupants',
+    tr: 'Birlikte kalanlar' },
+  'checkin.occupantsHint': {
+    de: 'Die Meldepflicht gilt je Person. Bei einer Reisegruppe entsteht daraus '
+      + 'ein Sammelmeldeschein: jeder bekommt einen eigenen Datensatz, '
+      + 'unterschrieben wird einmal.',
+    en: 'The duty to register applies per person. For a travel group this becomes '
+      + 'a collective registration: everyone gets their own record, signed once.',
+    tr: 'Bildirim yükümlülüğü kişi başınadır. Bir tur grubunda bundan toplu '
+      + 'Meldeschein oluşur: herkesin kendi kaydı olur, bir kez imzalanır.' },
   'checkin.clear': {
     de: 'Löschen',
     en: 'Clear',
