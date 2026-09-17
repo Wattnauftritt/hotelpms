@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { auswahlZeitraum, gruppenAuswahl } from '../lib/tapeSelection.js'
+import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
+  from '../lib/tapeSelection.js'
 
 /**
  * Was eine aufgezogene Auswahl im Belegungsplan bedeutet.
@@ -146,4 +147,98 @@ describe('Gastauswahl', () => {
         `${datei}: <GuestPicker> steht in einem <label>`).toBe(0)
     })
   }
+})
+
+/**
+ * Wohin eine Buchung ohne Zimmer darf.
+ *
+ * Der Fall, für den das gebaut ist: ein Kanalmanager legt jede Buchung ohne
+ * Zimmer an -- die Route kennt das Feld gar nicht --, und sie landet im Band
+ * oben im Plan. Von dort zieht die Rezeption sie in eine Zeile, und in
+ * diesem einen Moment entscheidet sich, ob zwei Personen in einem
+ * Einzelzimmer schlafen.
+ */
+describe('Passung eines Zimmers zur Buchung', () => {
+  const dz = { category_id: 1, max_occupancy: 2 }
+  const ez = { category_id: 2, max_occupancy: 1 }
+  const suite = { category_id: 3, max_occupancy: 4 }
+  /** Gebucht als Doppelzimmer, nur der Bucher erfasst -- der Normalfall
+      im Band. */
+  const dzBuchung = { categoryId: 1, occupants: 1, categoryMaxOccupancy: 2 }
+
+  it('nennt die gebuchte Zimmergruppe passend', () => {
+    expect(zimmerPassung(dz, dzBuchung)).toBe('passt')
+  })
+
+  /**
+   * Ein Upgrade ist Alltag: gebucht Doppelzimmer, bekommen Juniorsuite.
+   * Abgerechnet wird, was gebucht wurde -- die API prueft die Gruppe
+   * deshalb bewusst nicht.
+   */
+  it('nennt eine groessere Zimmergruppe anders, aber nicht falsch', () => {
+    expect(zimmerPassung(suite, dzBuchung)).toBe('andere')
+  })
+
+  /**
+   * Der Befund, der diese Regel gedreht hat. Gerechnet wurde zuerst mit der
+   * Personenzahl, und die steht bei einer Buchung aus dem Channel Manager
+   * auf 1: angelegt wird genau ein Belegter, der Bucher (`channel.ts`).
+   * Ein Doppelzimmer aus dem Channel war damit im Einzelzimmer "gross
+   * genug" -- die Warnung fehlte an der einzigen Stelle, an der sie
+   * gebraucht wird.
+   */
+  it('warnt beim Doppelzimmer im Einzelzimmer, auch wenn nur der Bucher erfasst ist', () => {
+    expect(zimmerPassung(ez, dzBuchung)).toBe('zuKlein')
+  })
+
+  it('warnt auch ohne jeden erfassten Belegten', () => {
+    expect(zimmerPassung(ez, { categoryId: 1, occupants: 0, categoryMaxOccupancy: 2 }))
+      .toBe('zuKlein')
+  })
+
+  /**
+   * Andersherum bleibt es still: ein Einzelzimmer im Doppelzimmer ist ein
+   * Upgrade, keine Enge. Eine Warnung, die auch dabei kaeme, liest niemand.
+   */
+  it('schweigt beim Einzelzimmer im Doppelzimmer', () => {
+    expect(zimmerPassung(dz, { categoryId: 2, occupants: 1, categoryMaxOccupancy: 1 }))
+      .toBe('andere')
+  })
+
+  /**
+   * Sind mehr Personen erfasst, als die gebuchte Gruppe fasst -- vier in
+   * einem Doppelzimmer mit Aufbettung --, zaehlt die groessere Zahl.
+   */
+  it('zaehlt die erfassten Personen, wenn sie ueber die Zimmergruppe hinausgehen', () => {
+    expect(zimmerPassung(suite, { categoryId: 1, occupants: 5, categoryMaxOccupancy: 2 }))
+      .toBe('zuKlein')
+    expect(platzbedarf({ occupants: 5, categoryMaxOccupancy: 2 })).toBe(5)
+  })
+
+  it('bleibt bei gleicher Gruppe passend, auch wenn die Zahl nicht aufgeht', () => {
+    // Ueberbelegung innerhalb der eigenen Gruppe ist eine Frage an die
+    // Rezeption, nicht an den Plan: das Zusatzbett steht nicht im System.
+    expect(zimmerPassung(dz, { categoryId: 1, occupants: 3, categoryMaxOccupancy: 2 }))
+      .toBe('passt')
+  })
+})
+
+/**
+ * Das Band der Buchungen ohne Zimmer zeigte vier und zaehlte alle. Die
+ * uebrigen waren im Plan unsichtbar und nicht erreichbar -- bei einem
+ * Kanalmanager, der jede Buchung ohne Zimmer anlegt, der Normalfall.
+ */
+describe('Das Band scrollt, statt abzuschneiden', () => {
+  const quelle = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('zeichnet alle Buchungen ohne Zimmer, nicht die ersten vier', () => {
+    expect(quelle).not.toMatch(/nichtZugewiesen\.slice\(/)
+  })
+
+  it('scrollt im Band und nimmt die Seite nicht mit', () => {
+    // `overscroll-contain`: sonst rutscht der ganze Plan weg, sobald das
+    // Band unten ankommt.
+    expect(quelle).toContain('overscroll-contain')
+  })
 })

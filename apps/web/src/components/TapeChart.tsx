@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, daysBetween, addDays } from '../lib/dates.js'
-import { auswahlZeitraum, gruppenAuswahl } from '../lib/tapeSelection.js'
+import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
+  from '../lib/tapeSelection.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 
 /**
@@ -28,6 +29,13 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  *   Modifikator bleibt es beim einen Zimmer, damit sich das gewohnte
  *   Aufziehen nicht ändert.
  *
+ * - **Das Band der Buchungen ohne Zimmer scrollt für sich.** Ein
+ *   Kanalmanager legt seine Buchungen immer ohne Zimmer an; in einem vollen
+ *   Haus stehen dort schnell zwanzig. Das Band zeigte davon vier und zählte
+ *   zwanzig — die übrigen sechzehn waren unsichtbar und unerreichbar. Jetzt
+ *   scrollt es innerhalb seiner eigenen Höhe, mit `overscroll-contain`,
+ *   damit ein Rad im Band nicht die ganze Seite mitnimmt.
+ *
  * **Erst fragen, dann springen (A2–A4).** Waehrend des Ziehens zeigt ein
  * Schattenbalken die Absicht; der echte Balken bewegt sich erst, wenn die
  * API zugestimmt hat und die Daten neu geladen sind. Schlaegt der Aufruf
@@ -38,6 +46,12 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 const SPALTE = 44        // Pixel je Tag
 const ZEILE = 34
 const LABEL_BREITE = 160
+/**
+ * So hoch ist das Band der Buchungen ohne Zimmer, in Zeilen. Vier, weil der
+ * Plan darunter der eigentliche Bildschirm ist; darüber hinaus wird
+ * gescrollt statt abgeschnitten.
+ */
+const BAND_ZEILEN = 4
 /** Ab dieser Bewegung ist es ein Ziehen und kein Klick mehr. */
 const KLICK_SCHWELLE = 5
 
@@ -55,10 +69,27 @@ type DragState =
       nicht als id -- aufgezogen wird über die sichtbare Reihenfolge. */
   | { kind: 'group'; startIndex: number; index: number; startDay: number; day: number }
   | { kind: 'move'; reservationRef: string; arrival: string; departure: string
+      /** Die gebuchte Zimmergruppe. Faerbt die passenden Zeilen ein und
+          entscheidet, ob beim Loslassen gefragt wird. */
+      categoryId: number; occupants: number; categoryMaxOccupancy: number
       pointerDownX: number; pointerDownY: number; overResourceId: number | null
       moved: boolean }
   | { kind: 'resize'; reservationRef: string; resourceId: number; edge: 'start' | 'end'
       arrival: string; departure: string; day: number }
+
+export interface Umzug {
+  reservationRef: string
+  resourceId: number
+  roomCode: string
+  wechsel: {
+    von: string
+    nach: string
+    /** Plaetze im Zielzimmer. Weniger als `bedarf` heisst: zu klein. */
+    platz: number
+    /** Plaetze, die die **gebuchte** Zimmergruppe zusagt (`platzbedarf`). */
+    bedarf: number
+  } | null
+}
 
 interface Props {
   data: TapeChartData
@@ -75,8 +106,17 @@ interface Props {
     rooms: Array<{ resourceId: number; categoryId: number }>
     arrival: string; departure: string
   }) => void
-  /** Balken auf eine andere Zimmerzeile gezogen (A3). */
-  onMove?: (reservationRef: string, resourceId: number) => void
+  /**
+   * Balken auf eine andere Zimmerzeile gezogen (A3).
+   *
+   * `wechsel` ist gesetzt, wenn das Zielzimmer zu einer **anderen**
+   * Zimmergruppe gehört. Die API laesst das bewusst zu -- ein Upgrade ist
+   * Alltag --, aber versehentlich passiert dabei auch das Gegenteil: eine
+   * Buchung fuer zwei Personen landet in einem Einzelzimmer. Der Plan sagt
+   * deshalb, was der Wechsel bedeutet, und der Bildschirm entscheidet, ob
+   * er fragt.
+   */
+  onMove?: (umzug: Umzug) => void
   /** Balkenrand gezogen (A4). */
   onChangeStay?: (reservationRef: string, arrival: string, departure: string) => void
 }
@@ -93,9 +133,38 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   const dragRef = useRef<DragState | null>(null)
   const setDragState = (d: DragState | null): void => { dragRef.current = d; setDrag(d) }
 
+  /** Zimmer und Zimmergruppen zum Nachschlagen. */
+  const zimmerNach = useMemo(
+    () => new Map(data.units.map(u => [u.id, u])), [data.units])
+
+  const gruppeNach = useMemo(() => {
+    const m = new Map<number, { name: string; code: string; platz: number
+                                reihe: number }>()
+    for (const u of data.units) {
+      if (!m.has(u.category_id)) {
+        m.set(u.category_id, { name: u.category_name, code: u.category_code,
+                               platz: u.max_occupancy, reihe: u.sort_order })
+      }
+    }
+    return m
+  }, [data.units])
+
+  /*
+   * Nach Zimmergruppe sortiert, dann nach Anreise.
+   *
+   * Ungeordnet steht im Band ein Doppelzimmer neben einem Einzelzimmer neben
+   * einer Suite, und wer zwanzig davon abarbeitet, greift irgendwann daneben.
+   * Beieinander ist es eine Liste, die man Gruppe für Gruppe abräumt.
+   */
   const nichtZugewiesen = useMemo(
-    () => data.reservations.filter(r => r.resource_id === null),
-    [data.reservations])
+    () => data.reservations
+      .filter(r => r.resource_id === null)
+      .sort((a, b) =>
+        (gruppeNach.get(a.category_id)?.reihe ?? 0)
+          - (gruppeNach.get(b.category_id)?.reihe ?? 0)
+        || a.category_id - b.category_id
+        || a.arrival.localeCompare(b.arrival)),
+    [data.reservations, gruppeNach])
 
   const jeZimmer = useMemo(() => {
     const m = new Map<number, typeof data.reservations>()
@@ -190,8 +259,21 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       } else if (d.kind === 'group') {
         onCreateGroup?.(gruppenAuswahl(data.units, tage, d))
       } else if (d.kind === 'move') {
-        if (d.moved && d.overResourceId !== null) onMove?.(d.reservationRef, d.overResourceId)
-        else if (!d.moved) onSelect?.(d.reservationRef)
+        if (d.moved && d.overResourceId !== null) {
+          const ziel = zimmerNach.get(d.overResourceId)
+          const anders = ziel !== undefined && ziel.category_id !== d.categoryId
+          onMove?.({
+            reservationRef: d.reservationRef,
+            resourceId: d.overResourceId,
+            roomCode: ziel?.code ?? '',
+            wechsel: anders
+              ? { von: gruppeNach.get(d.categoryId)?.name ?? '',
+                  nach: ziel.category_name,
+                  platz: ziel.max_occupancy,
+                  bedarf: platzbedarf(d) }
+              : null
+          })
+        } else if (!d.moved) onSelect?.(d.reservationRef)
       } else if (d.kind === 'resize') {
         const neuerTag = tage[d.day] ?? d.arrival
         if (d.edge === 'start') {
@@ -279,8 +361,12 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   const beginneVerschieben = (r: ReservationRow) => (e: React.PointerEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setDragState({ kind: 'move', reservationRef: r.public_ref, arrival: r.arrival, departure: r.departure,
-               pointerDownX: e.clientX, pointerDownY: e.clientY, overResourceId: null, moved: false })
+    setDragState({ kind: 'move', reservationRef: r.public_ref,
+               arrival: r.arrival, departure: r.departure,
+               categoryId: r.category_id, occupants: r.occupants,
+               categoryMaxOccupancy: r.category_max_occupancy,
+               pointerDownX: e.clientX, pointerDownY: e.clientY,
+               overResourceId: null, moved: false })
   }
 
   const beginneGroesseAendern = (r: ReservationRow, edge: 'start' | 'end') =>
@@ -312,42 +398,104 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           ))}
         </div>
 
-        {/* Ohne Zimmer: die Arbeit des Tages, deshalb oben. */}
+        {/*
+          * Ohne Zimmer: die Arbeit des Tages, deshalb oben.
+          *
+          * Ein Kanalmanager legt jede Buchung ohne Zimmer an -- die Route
+          * kennt das Feld gar nicht --, und in einem vollen Haus stehen hier
+          * schnell zwanzig. Vorher zeigte das Band vier davon und schrieb
+          * zwanzig daneben; die uebrigen sechzehn waren im Plan unsichtbar
+          * und nicht erreichbar. Jetzt scrollt es fuer sich.
+          */}
         {nichtZugewiesen.length > 0 && (
-          <div className="flex relative bg-amber-50 border-b border-amber-200"
-               style={{ height: ZEILE * Math.min(nichtZugewiesen.length, 4) }}>
+          <div className="flex relative bg-amber-50 border-b border-amber-200">
             <div className="w-40 shrink-0 px-2 py-1 text-xs text-amber-800
                             border-r border-amber-200">
-              {t('today.needsRoom')} ({nichtZugewiesen.length})
+              <div>{t('today.needsRoom')} ({nichtZugewiesen.length})</div>
+              {nichtZugewiesen.length > BAND_ZEILEN && (
+                <div className="text-[10px] text-amber-700 mt-0.5">
+                  {t('plan.bandScroll')}
+                </div>
+              )}
             </div>
-            <div className="relative grow">
-              {nichtZugewiesen.slice(0, 4).map((r, i) => {
-                const b = balken(r.arrival, r.departure)
-                return (
-                  <button key={r.id}
-                          onPointerDown={beginneVerschieben(r)}
-                          title={`${r.last_name ?? ''} · ${r.public_ref}`}
-                          style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
-                          className={`absolute rounded px-1 text-[11px] text-white
-                                      truncate text-left cursor-move
-                                      ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
-                    {r.last_name ?? r.public_ref}
-                  </button>
-                )
-              })}
+            {/*
+              * `overscroll-contain`: ein Rad im Band scrollt das Band und
+              * springt am Ende **nicht** weiter auf die Seite. Ohne das
+              * rutscht der ganze Plan weg, sobald das Band unten ankommt --
+              * und man sucht die Zeile wieder, die man gerade anfassen
+              * wollte.
+              */}
+            <div className="relative grow overflow-y-auto overscroll-contain"
+                 style={{ maxHeight: ZEILE * BAND_ZEILEN }}>
+              <div className="relative"
+                   style={{ height: ZEILE * nichtZugewiesen.length }}>
+                {nichtZugewiesen.map((r, i) => {
+                  const b = balken(r.arrival, r.departure)
+                  const gruppe = gruppeNach.get(r.category_id)
+                  return (
+                    <button key={r.id}
+                            onPointerDown={beginneVerschieben(r)}
+                            title={`${r.last_name ?? ''} · ${gruppe?.name ?? ''}`
+                                 + ` · ${t('plan.capacityUpTo', {
+                                       n: platzbedarf({
+                                         occupants: r.occupants,
+                                         categoryMaxOccupancy: r.category_max_occupancy })
+                                     })}`
+                                 + ` · ${r.public_ref}`}
+                            style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
+                            className={`absolute rounded px-1 text-[11px] text-white
+                                        truncate text-left cursor-move
+                                        ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                      {/* Die Zimmergruppe steht am Balken, nicht nur im
+                          Hinweis: hier liegen Doppelzimmer, Einzelzimmer und
+                          Suiten nebeneinander, und beim Ziehen entscheidet
+                          sich in einer Sekunde, wohin. */}
+                      {gruppe !== undefined && (
+                        <span className="mr-1 px-1 rounded bg-black/25 tabular-nums">
+                          {gruppe.code}
+                        </span>
+                      )}
+                      {r.last_name ?? r.public_ref}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}
 
         {/* Eine Zeile je Zimmer */}
-        {data.units.map(u => (
-          <div key={u.id} className="flex relative border-b border-neutral-100"
+        {data.units.map(u => {
+          /*
+           * Waehrend eines Umzugs faerbt sich die Zeile nach ihrer
+           * Eignung. Das ist die eigentliche Sicherung gegen "Doppelzimmer
+           * versehentlich ins Einzelzimmer": man sieht vor dem Loslassen,
+           * wohin es passt -- nicht erst danach an einer Meldung.
+           *
+           * Drei Zustaende, und die Mitte ist wichtig: eine andere
+           * Zimmergruppe, die gross genug ist, ist ein Upgrade und damit
+           * Alltag. Nur zu klein ist ein Fehler.
+           */
+          const passung = drag?.kind === 'move' && drag.moved
+            ? zimmerPassung(u, { categoryId: drag.categoryId,
+                                 occupants: drag.occupants,
+                                 categoryMaxOccupancy: drag.categoryMaxOccupancy })
+            : null
+          return (
+          <div key={u.id}
+               className={`flex relative border-b border-neutral-100
+                           ${passung === 'passt' ? 'bg-emerald-50/70' : ''}
+                           ${passung === 'zuKlein' ? 'bg-red-50/70' : ''}`}
                data-resource-row={u.id}
                style={{ height: ZEILE }}>
             <div className="w-40 shrink-0 px-2 py-1 text-xs border-r border-neutral-200
                             flex items-center gap-2">
               <span className="font-medium tabular-nums">{u.code}</span>
               <span className="text-neutral-400 truncate">{u.category_name}</span>
+              {passung === 'zuKlein' && (
+                <span aria-hidden title={t('plan.tooSmall')}
+                      className="text-red-700 shrink-0">!</span>
+              )}
             </div>
             <div className="relative grow cursor-crosshair"
                  onPointerDown={beginneErstellen(u.id, u.category_id)}>
@@ -419,7 +567,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
               )}
             </div>
           </div>
-        ))}
+          )
+        })}
 
         {data.units.length === 0 && (
           <div className="p-6 text-sm text-neutral-500">{t('common.none')}</div>

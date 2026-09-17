@@ -146,6 +146,10 @@ export const TapeChart = Type.Object({
     floor: Type.Union([Type.String(), Type.Null()]),
     category_id: Type.Integer(),
     category_name: Type.String(),
+    /** Kurz genug, um auf einen Balken zu passen. */
+    category_code: Type.String(),
+    /** Traegt die Warnung beim Verschieben in eine kleinere Zimmergruppe. */
+    max_occupancy: Type.Integer(),
     sort_order: Type.Integer()
   })),
   reservations: Type.Array(Type.Object({
@@ -162,6 +166,8 @@ export const TapeChart = Type.Object({
     external_reference: Type.Union([Type.String(), Type.Null()]),
     rate_code: Type.Union([Type.String(), Type.Null()]),
     occupants: Type.Integer(),
+    /** Plaetze der **gebuchten** Zimmergruppe, nicht des zugewiesenen Zimmers. */
+    category_max_occupancy: Type.Integer(),
     notes: Type.Union([Type.String(), Type.Null()])
   })),
   blocks: Type.Array(Type.Object({

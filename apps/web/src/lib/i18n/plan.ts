@@ -178,6 +178,47 @@ export const plan = {
     en: 'Booking needs a guest. Search or create one.',
     tr: 'Misafir olmadan rezervasyon yapılamaz. Arayın veya yeni kayıt oluşturun.' },
 
+  'plan.bandScroll': {
+    de: 'Liste scrollt',
+    en: 'list scrolls',
+    tr: 'liste kayar' },
+  /*
+   * "Bis zu" ist hier keine Unschaerfe, sondern das Genaue: bekannt ist der
+   * Bucher, zugesagt sind die Plaetze der gebuchten Zimmergruppe. Eine feste
+   * Personenzahl stuende im Band bei jeder Buchung aus dem Channel auf 1.
+   */
+  'plan.capacityUpTo': {
+    de: 'Platz für bis zu {n} Personen',
+    en: 'space for up to {n} people',
+    tr: 'en fazla {n} kişilik' },
+  'plan.tooSmall': {
+    de: 'Zu klein für diese Buchung',
+    en: 'Too small for this booking',
+    tr: 'Bu rezervasyon için çok küçük' },
+  'plan.moveOtherCategory': {
+    de: 'Andere Zimmergruppe',
+    en: 'Different room category',
+    tr: 'Farklı oda kategorisi' },
+  'plan.moveUpgrade': {
+    de: '{ref} ist als {von} gebucht. {raum} gehört zu {nach} — das ist ein '
+      + 'Wechsel der Zimmergruppe. Abgerechnet wird weiterhin, was gebucht '
+      + 'wurde.',
+    en: '{ref} is booked as {von}. Room {raum} belongs to {nach} — that is a '
+      + 'change of room category. Billing still follows what was booked.',
+    tr: '{ref}, {von} olarak rezerve edildi. {raum} odası {nach} kategorisine '
+      + 'ait — bu bir kategori değişikliğidir. Faturalandırma rezerve edilene '
+      + 'göre kalır.' },
+  'plan.moveTooSmall': {
+    de: 'Achtung: {raum} bietet Platz für {platz}, gebucht sind {bedarf} '
+      + 'Plätze. Die Buchung passt dort nicht vollständig hinein.',
+    en: 'Careful: room {raum} has space for {platz}, but {bedarf} places were '
+      + 'booked. The booking does not fit in there completely.',
+    tr: 'Dikkat: {raum} odası {platz} kişiliktir, ancak {bedarf} kişilik '
+      + 'rezervasyon yapılmıştır. Rezervasyon oraya tam sığmaz.' },
+  'plan.moveConfirm': {
+    de: 'Trotzdem verschieben',
+    en: 'Move anyway',
+    tr: 'Yine de taşı' },
   'plan.dragHint': {
     de: 'Balken ziehen verschiebt die Reservierung, die Ränder verlängern sie. Auf '
       + 'freier Fläche aufziehen legt eine Buchung an — mit gedrückter Strg-, ⌘- '
