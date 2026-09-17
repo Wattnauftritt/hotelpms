@@ -316,3 +316,157 @@ describe('Gruppe aus einem Kontingent', () => {
     expect(r.statusCode).toBe(422)
   })
 })
+
+/**
+ * Die Namensliste.
+ *
+ * Der Bucher nimmt fuenf Zimmer, und die uebrigen Namen stehen bis zum
+ * Anreisetag nicht fest. Geplant wird deshalb mit seinem Namen -- an allen
+ * fuenf Balken, und das ist richtig. Am Tresen bekommt dann jedes Zimmer
+ * seinen eigenen: § 30 BMG verlangt den tatsaechlichen Gast, nicht den, der
+ * bestellt hat.
+ */
+describe('Hauptgast je Zimmer setzen', () => {
+  const patch = (ref: string, payload: unknown) =>
+    app.inject({ method: 'PATCH', url: `/v1/reservations/${ref}`,
+      headers: auth, payload })
+
+  async function gast(nachname: string): Promise<string> {
+    const g = await owner.query<{ public_ref: string }>(
+      `INSERT INTO guest (account_id, last_name) VALUES ($1,$2)
+       RETURNING public_ref`, [fx.accountId, nachname])
+    return g.rows[0]!.public_ref
+  }
+
+  /** Eine Gruppe aus drei Zimmern auf den Namen des Buchers. */
+  async function gruppe(): Promise<{ refs: string[]; bucher: string }> {
+    const bucher = await gast('Petersen')
+    const r = await buchen({ rooms: zimmerListe(dzZimmer.slice(0, 3), dz),
+                             guestRef: bucher })
+    expect(r.statusCode, r.body).toBe(201)
+    const body = JSON.parse(r.body) as { reservations: Array<{ reservationRef: string }> }
+    return { refs: body.reservations.map(x => x.reservationRef), bucher }
+  }
+
+  it('setzt den Gast eines Zimmers und laesst die uebrigen in Ruhe', async () => {
+    const { refs } = await gruppe()
+    const mueller = await gast('Mueller')
+
+    const r = await patch(refs[1]!, { guestRef: mueller })
+    expect(r.statusCode, r.body).toBe(200)
+
+    const namen = await owner.query<{ public_ref: string; last_name: string }>(
+      `SELECT r.public_ref, g.last_name FROM reservation r
+         JOIN guest g ON g.id = r.primary_guest_id
+        WHERE r.property_id = $1 ORDER BY r.id`, [fx.propertyId])
+    expect(namen.rows.map(x => x.last_name)).toEqual(['Petersen', 'Mueller', 'Petersen'])
+  })
+
+  it('legt den Mitreisendeneintrag an, wo das Zimmer keinen hatte', async () => {
+    const { refs } = await gruppe()
+    // Zimmer zwei und drei haben bewusst keinen: den Bucher in jedes zu
+    // schreiben zaehlte ihn dreimal, und die Kurtaxe rechnet je Person.
+    const vorher = await owner.query(
+      `SELECT 1 FROM reservation_occupant WHERE property_id = $1`, [fx.propertyId])
+    expect(vorher.rowCount).toBe(1)
+
+    await patch(refs[1]!, { guestRef: await gast('Mueller') })
+
+    const nachher = await owner.query<{ last_name: string }>(
+      `SELECT g.last_name FROM reservation_occupant o
+         JOIN guest g ON g.id = o.guest_id
+         JOIN reservation r ON r.id = o.reservation_id
+        WHERE r.public_ref = $1`, [refs[1]!])
+    expect(nachher.rows.map(x => x.last_name)).toEqual(['Mueller'])
+  })
+
+  it('tauscht den bestehenden Eintrag, statt einen zweiten anzulegen', async () => {
+    const { refs } = await gruppe()
+    await patch(refs[0]!, { guestRef: await gast('Mueller') })
+
+    // Sonst stuende der Bucher weiter daneben, und die Personenzahl auf dem
+    // Meldeschein zaehlte jemanden mit, der gar nicht da ist.
+    const o = await owner.query<{ last_name: string }>(
+      `SELECT g.last_name FROM reservation_occupant o
+         JOIN guest g ON g.id = o.guest_id
+         JOIN reservation r ON r.id = o.reservation_id
+        WHERE r.public_ref = $1`, [refs[0]!])
+    expect(o.rows.map(x => x.last_name)).toEqual(['Mueller'])
+  })
+
+  it('zieht den Rechnungsempfaenger am Gastfolio mit', async () => {
+    const { refs } = await gruppe()
+    const mueller = await gast('Mueller')
+    await patch(refs[1]!, { guestRef: mueller })
+
+    const f = await owner.query<{ last_name: string }>(
+      `SELECT g.last_name FROM folio f
+         JOIN guest g ON g.id = f.guest_id
+         JOIN reservation r ON r.id = f.reservation_id
+        WHERE r.public_ref = $1 AND f.kind = 'guest'`, [refs[1]!])
+    expect(f.rows[0]!.last_name).toBe('Mueller')
+  })
+
+  it('nimmt Notiz und Gast in einem Aufruf', async () => {
+    const { refs } = await gruppe()
+    const r = await patch(refs[0]!, { notes: 'Spaete Anreise', guestRef: await gast('Mueller') })
+    expect(r.statusCode, r.body).toBe(200)
+
+    const z = await owner.query<{ notes: string; last_name: string }>(
+      `SELECT r.notes, g.last_name FROM reservation r
+         JOIN guest g ON g.id = r.primary_guest_id
+        WHERE r.public_ref = $1`, [refs[0]!])
+    expect(z.rows[0]).toMatchObject({ notes: 'Spaete Anreise', last_name: 'Mueller' })
+  })
+
+  it('weist eine unbekannte Gastreferenz ab', async () => {
+    const { refs } = await gruppe()
+    expect((await patch(refs[0]!, { guestRef: 'GIBTESNICHT' })).statusCode).toBe(404)
+  })
+
+  /**
+   * Nach dem Check-in liegt der Meldeschein vor, und er ist eine Erklaerung
+   * des Gastes ueber sich selbst. Den Hauptgast dann auszutauschen liesse
+   * eine Unterschrift unter einem fremden Namen stehen.
+   */
+  it('wechselt den Gast nach dem Check-in nicht mehr', async () => {
+    const { refs } = await gruppe()
+    const ein = await app.inject({ method: 'POST', headers: auth,
+      url: `/v1/reservations/${refs[0]!}/check-in` })
+    expect(ein.statusCode, ein.body).toBe(200)
+
+    const r = await patch(refs[0]!, { guestRef: await gast('Mueller') })
+    expect(r.statusCode).toBe(409)
+
+    const z = await owner.query<{ last_name: string }>(
+      `SELECT g.last_name FROM reservation r JOIN guest g ON g.id = r.primary_guest_id
+        WHERE r.public_ref = $1`, [refs[0]!])
+    expect(z.rows[0]!.last_name).toBe('Petersen')
+  })
+
+  /**
+   * Am Folio haengt der Rechnungsempfaenger. Ist fakturiert, steht der Name
+   * auf einem Beleg mit Haertegrad 1.
+   */
+  it('wechselt den Gast nach dem Fakturieren nicht mehr', async () => {
+    const { refs } = await gruppe()
+    const f = await owner.query<{ id: number; res_id: number }>(
+      `SELECT f.id, f.reservation_id AS res_id FROM folio f
+         JOIN reservation r ON r.id = f.reservation_id
+        WHERE r.public_ref = $1 AND f.kind = 'guest'`, [refs[0]!])
+    const inv = await owner.query<{ id: number }>(
+      `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date,
+                            issuer_snapshot, recipient_snapshot, totals)
+       VALUES ($1,$2,'RE-1', current_date, current_date, '{}'::jsonb, '{}'::jsonb,
+               '{}'::jsonb) RETURNING id`, [fx.propertyId, f.rows[0]!.id])
+    await owner.query(
+      `INSERT INTO charge (property_id, folio_id, business_date, description,
+                           net_cent, tax_cent, gross_cent, tax_rate_bp,
+                           revenue_account, reservation_id, invoice_id)
+       VALUES ($1,$2,current_date,'Logis',10000,700,10700,700,'4200',$3,$4)`,
+      [fx.propertyId, f.rows[0]!.id, f.rows[0]!.res_id, inv.rows[0]!.id])
+
+    const r = await patch(refs[0]!, { guestRef: await gast('Mueller') })
+    expect(r.statusCode).toBe(409)
+  })
+})

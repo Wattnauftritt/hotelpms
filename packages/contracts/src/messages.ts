@@ -797,6 +797,21 @@ const M = {
 
   // -------------------------------------------------------------- Meldeschein
 
+  'reservation.guestFixedAfterCheckIn': {
+    de: 'Der Gast laesst sich nach dem Check-in nicht mehr wechseln (Zustand '
+      + '{status}). Der Meldeschein ist eine Erklaerung dieser Person ueber '
+      + 'sich selbst.',
+    en: 'The guest can no longer be changed after check-in (status {status}). '
+      + 'The registration form is that person\u2019s own declaration.',
+    tr: 'Misafir, check-in sonrasında değiştirilemez (durum: {status}). '
+      + 'Meldeschein, o kişinin kendisi hakkında verdiği beyandır.' },
+  'reservation.guestFixedAfterInvoice': {
+    de: 'Zu dieser Reservierung ist bereits fakturiert. Der Rechnungsempfaenger '
+      + 'steht auf einem Beleg und wird nicht nachtraeglich umgeschrieben.',
+    en: 'This reservation has already been invoiced. The invoice recipient is on '
+      + 'a document and is not rewritten afterwards.',
+    tr: 'Bu rezervasyon için fatura zaten düzenlendi. Fatura alıcısı bir belgede '
+      + 'yer alır ve sonradan değiştirilmez.' },
   'registration.noPrimaryGuest': {
     de: 'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',
     en: 'The reservation has no primary guest. No registration form is possible.',

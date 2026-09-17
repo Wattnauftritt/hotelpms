@@ -484,7 +484,11 @@ Vier Festlegungen daraus:
 
 **Mitgefunden und behoben:** `POST /v1/bookings` prüfte nie, ob die Zimmergruppe zu diesem Haus gehört. Bei einem Benutzer mit **einem** Haus fängt die Zeilenrichtlinie das ab; bei zweien — in einer Kette der Normalfall — stand die fremde Gruppe in seinem Kontext, und die Buchung scheiterte erst an `inventory_reserve`, also mit einer Meldung über fehlenden Bestand statt über die falsche Gruppe.
 
-**Noch offen, ausdrücklich:** die **Namensliste**. Alle Zimmer einer Gruppe tragen den Besteller als Hauptgast, und es gibt keinen Weg, das je Zimmer zu ändern — `PATCH /v1/reservations/:ref` kann nur die Notiz. Für den Meldeschein (§ 30 BMG) ist das zu wenig: er verlangt den tatsächlichen Gast. Solange das fehlt, lässt der Dialog das Gastfeld bewusst leer, statt einen falschen Namen in acht Meldescheine zu schreiben. Wer das angeht, berührt dabei `folio.guest_id` und den Rechnungsempfänger und sollte es deshalb für sich nehmen.
+**Die Namensliste, nachgereicht.** Hier stand zuerst, alle Zimmer einer Gruppe trügen den Besteller als Hauptgast und das sei die Lücke. Das war an der falschen Stelle aufgehängt: **im Plan ist der Name des Buchers richtig.** Ein Bucher nimmt fünf Zimmer, die übrigen Namen stehen bis zum Anreisetag nicht fest, und ein Balken ohne Namen ist an der Rezeption unbrauchbar.
+
+Die Lücke lag einen Moment später — am Tresen, wenn die Namen bekannt sind. Dort ging es nicht: `PATCH /v1/reservations/:ref` konnte nur die Notiz, und die Check-in-Maske zeigte den Hauptgast an, ohne ihn ändern zu können. Ohne Gast war sie sogar eine Sackgasse („kein Gast hinterlegt", und nichts weiter) — bei einer Gruppe der Normalfall für vier von fünf Zimmern.
+
+`PATCH` nimmt jetzt zusätzlich `guestRef`, unter zwei Bedingungen. **Nicht nach dem Check-in:** der Meldeschein liegt dann vor und ist eine Erklärung dieser Person über sich selbst; den Hauptgast danach auszutauschen ließe eine Unterschrift unter einem fremden Namen stehen. **Nicht nach dem Fakturieren:** am Folio hängt der Rechnungsempfänger, und der steht dann auf einem Beleg mit Härtegrad 1. Der Mitreisendeneintrag wandert mit — sonst stünde in `reservation_occupant` weiter der Bucher, und die Personenzahl auf dem Meldeschein zählte jemanden, der gar nicht da ist.
 
 **Der Arbeitsplatzwechsel** war derselbe Fall wie das Verschieben, nur schlimmer: `POST /v1/auth/workstation-switch` steht seit Anfang, prüft den PIN korrekt — und **niemand konnte je einen PIN setzen**. Es gab keine Route dafür; außer zwei Tests, die die Spalte direkt beschreiben, war das Feld in der ganzen Anwendung leer. Dazu kam jetzt `POST /v1/auth/workstation-pin` (nur der eigene, und nur gegen das eigene Kennwort) und die Maske hinter dem Namen in der Kopfleiste.
 
@@ -515,6 +519,16 @@ Ein eindeutiger Teilindex lässt höchstens eine offene Anforderung zu: zwei gle
 
 ---
 
+### Meldeschein: zwei Befunde beim Bauen der Namensliste
+
+**Die Gastauswahl war zwei Bildschirme lang wirkungslos.** Ein Klick auf einen Treffer der Gastsuche wählte den Gast aus und nahm die Auswahl im selben Wimpernschlag zurück. Der Grund liegt im `<label>`, das sie umschloss: es leitet einen Klick an sein erstes bedienbares Kind weiter. Vor der Auswahl ist das das Suchfeld, **danach** steht dort der Knopf „Ändern" — und der ruft `onChange(null)`. `POST /v1/bookings` ging deshalb aus dem Buchungsdialog immer ohne `guestRef` hinaus, und niemandem fiel es auf, weil die Buchung ja gelang: sie hatte nur keinen Gast. Ein Test über die Quelle hält jetzt fest, dass die Auswahl in keinem `<label>` steht; im Browser nachgefahren, weil eine DOM-Umgebung für die Oberfläche hier nicht eingerichtet ist.
+
+**Ein Mitreisender kam auf den Meldeschein, aber nicht in die Personenliste.** `POST /v1/registrations` legte den Sammelmeldeschein an und ließ `reservation_occupant` unberührt. Die Kurtaxe rechnet aus dieser Tabelle — gemeldet waren drei Personen, berechnet wurde eine, und die Rechnung sah dabei richtig aus. Genau der Fall aus Migration 0014: keine Fehlermeldung, sondern eine plausibel aussehende falsche Zahl. Aufgefallen ist es erst, als die Maske überhaupt anfing, `occupantGuestRefs` zu schicken — die API nahm sie seit jeher an, geschickt hat sie nie jemand.
+
+Für den Meldeschein gab es bis dahin **keinen einzigen Test**, obwohl dort drei Regeln zusammenkommen, deren Bruch erst bei einer Prüfung auffällt. Jetzt dreizehn: dass ein inländischer Gast keine Unterschrift bekommt und eine mitgeschickte **verworfen** wird, dass ein ausländischer ohne Unterschrift abgewiesen wird, dass die Frist ab **Anreise** läuft, und dass jeder Mitreisende einen eigenen Datensatz am Hauptschein bekommt.
+
+---
+
 ### Was der Oberfläche noch fehlt
 
 Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen. Alles hier ist gebaut, geprüft und über die Schnittstelle erreichbar — nur über keinen Bildschirm. Das ist kein Entwurf, sondern eine Liste; der Abschnitt darunter sagt, was ausdrücklich **nicht** dazugehört.
@@ -525,7 +539,6 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 | Kunden anlegen | `POST /v1/platform/accounts` | Onboarding läuft heute über `curl`. Die Plattformkonsole hat dafür keine Maske. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
 | Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
-| Namensliste einer Gruppe | — | Es gibt keine Route dafür. Siehe den Abschnitt zum Belegungsplan. |
 
 ---
 
