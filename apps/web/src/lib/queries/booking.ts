@@ -228,3 +228,88 @@ export function useCheckIn(reservationRef: string) {
     }
   })
 }
+
+export interface Hausbedingung {
+  termsRef: string
+  code: string
+  version: number
+  title: string
+  body: string
+  requiresSignature: boolean
+  agreed: boolean
+  agreedAt: string | null
+  signed: boolean
+}
+
+/**
+ * Die Hausbedingungen, die fuer **diesen** Aufenthalt gelten.
+ *
+ * Nicht die neuesten, sondern die am Anreisetag geltenden: der Gast hat bei
+ * der Ankunft den Text vor sich, der dann haengt. Ein Aufruf fuer alle, mit
+ * dem Stand der Zustimmung darin -- sonst braeuchte die Maske einen zweiten
+ * je Bedingung.
+ */
+export const useTerms = (reservationRef: string | null) =>
+  useQuery<{ reservationRef: string; terms: Hausbedingung[] }>({
+    queryKey: ['terms', reservationRef],
+    queryFn: () => api.get(`/v1/reservations/${reservationRef!}/terms`),
+    enabled: reservationRef !== null
+  })
+
+/**
+ * Zustimmung zu **einer Fassung**.
+ *
+ * Getrennt vom Meldeschein, und das ist der Punkt: der Meldeschein ist
+ * oeffentlich-rechtlich und wird nach einem Jahr vernichtet, eine
+ * Vereinbarung ueber eine Pauschale ist privatrechtlich und muss laenger
+ * nachweisbar bleiben. Ein inlaendischer Gast unterschreibt seit dem
+ * 1.1.2025 keinen Meldeschein mehr -- diese Bedingung sehr wohl.
+ */
+export function useAgreeTerms(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ termsRef, signatureSvg }:
+                 { termsRef: string; signatureSvg?: string }) =>
+      api.post<{ termsRef: string; signed: boolean }>(
+        `/v1/reservations/${reservationRef}/terms/${termsRef}/agree`,
+        { signatureSvg }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['terms', reservationRef] })
+    }
+  })
+}
+
+export interface TermsFassung {
+  termsRef: string
+  code: string
+  version: number
+  title: string
+  body: string
+  requiresSignature: boolean
+  activeFrom: string
+  activeTo: string | null
+}
+
+/** Alle Fassungen des Hauses, fuer die Einrichtung. */
+export const usePropertyTerms = (propertyId: number) =>
+  useQuery<{ terms: TermsFassung[] }>({
+    queryKey: ['property-terms', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/terms`)
+  })
+
+/**
+ * Neue Fassung anlegen. Nie aendern: ein geaenderter Text unter einer alten
+ * Unterschrift waere als Nachweis wertlos.
+ */
+export function useCreateTerms(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { code: string; title: string; body: string
+                         requiresSignature: boolean }) =>
+      api.post<{ termsRef: string; version: number }>(
+        `/v1/properties/${propertyId}/terms`, { propertyId, ...body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['property-terms', propertyId] })
+    }
+  })
+}

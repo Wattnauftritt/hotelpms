@@ -428,14 +428,15 @@ describe('Meldeschein', () => {
     expect(gespeichert.rows[0]!.signature_svg).toBeNull()
   })
 
-  it('setzt die Vernichtungsfrist auf ein Jahr nach Anreise', async () => {
+  it('setzt die Vernichtungsfrist auf ein Jahr nach Abreise', async () => {
     const { reservationRef } = await gastMitReservierung('DE')
     await app.inject({
       method: 'POST', url: '/v1/registrations', headers: auth(admin.sessionId),
       payload: { propertyId: fx.propertyId, reservationRef } })
     const d = await owner.query<{ destroy_after: string }>(
       `SELECT destroy_after::text FROM registration WHERE property_id = $1`, [fx.propertyId])
-    expect(d.rows[0]!.destroy_after).toBe('2027-10-01')
+    // Anreise 1.10., Abreise 4.10. -- § 30 Abs. 4 BMG zaehlt ab Abreise.
+    expect(d.rows[0]!.destroy_after).toBe('2027-10-04')
   })
 
   it('nimmt denselben Meldeschein nicht zweimal an', async () => {

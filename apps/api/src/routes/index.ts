@@ -8,6 +8,7 @@ import { guestRoutes } from './guests.js'
 import { rateRoutes } from './rates.js'
 import { housekeepingRoutes } from './housekeeping.js'
 import { registrationRoutes } from './registrations.js'
+import { termsRoutes } from './terms.js'
 import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
 import { legacyImportRoutes } from './legacyImport.js'
@@ -40,6 +41,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   rateRoutes(app)
   housekeepingRoutes(app)
   registrationRoutes(app)
+  termsRoutes(app)
   reportRoutes(app)
   importRoutes(app)
   legacyImportRoutes(app)

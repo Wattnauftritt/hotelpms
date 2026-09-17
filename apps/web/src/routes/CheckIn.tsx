@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import type { Guest } from '@hotelpms/contracts'
 import { useReservation, useRegistrationForm, useSubmitRegistration, useCheckIn,
-         useSetReservationGuest } from '../lib/queries/booking.js'
+         useSetReservationGuest, useTerms, useAgreeTerms,
+         type Hausbedingung } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { GuestPicker } from '../components/GuestPicker.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
@@ -21,6 +22,15 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
  * den, der bestellt hat. Bisher ging das hier nicht: die Maske zeigte den
  * Hauptgast an und konnte ihn nicht ändern, und ohne Gast war sie eine
  * Sackgasse.
+ *
+ * **Hausbedingungen stehen daneben, nicht darin.** Viele Häuser lassen den
+ * Gast am selben Tresen mehr unterschreiben als seine Meldedaten — eine
+ * Pauschale bei Verlust der Zimmerkarte etwa. Das ist zulässig und hier
+ * vorgesehen, aber als **eigener** Nachweis: der Meldeschein ist
+ * öffentlich-rechtlich, zweckgebunden und wird nach einem Jahr vernichtet;
+ * eine Vereinbarung über 50 Euro ist privatrechtlich und muss länger halten.
+ * Deshalb unterschreibt hier auch ein inländischer Gast — die Bedingung,
+ * nicht den Meldeschein.
  *
  * **Mitreisende gehören dazu, nicht in eine zweite Maske.** Die Meldepflicht
  * gilt je Person; bei einer Reisegruppe entsteht daraus ein
@@ -42,6 +52,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   const anmelden = useSubmitRegistration(propertyId)
   const einchecken = useCheckIn(reservationRef)
   const gastSetzen = useSetReservationGuest(reservationRef)
+  const bedingungen = useTerms(reservationRef)
 
   const uebernehmen = (g: Guest | null): void => {
     if (g === null) return
@@ -136,7 +147,15 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               </div>
 
               {f.alreadyRegistered ? (
-                <p className="text-sm text-emerald-800">✓ {t('checkin.alreadyRegistered')}</p>
+                <>
+                  <p className="text-sm text-emerald-800">✓ {t('checkin.alreadyRegistered')}</p>
+                  {/* Die Bedingungen bleiben sichtbar: der Meldeschein kann
+                      vorliegen und die Unterschrift darunter noch fehlen. */}
+                  {(bedingungen.data?.terms ?? []).map(b => (
+                    <Bedingung key={b.termsRef} bedingung={b}
+                               reservationRef={reservationRef} />
+                  ))}
+                </>
               ) : (
                 <>
                   <p className="text-xs text-neutral-600">
@@ -180,6 +199,10 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                   {f.signatureRequired && (
                     <Unterschriftsfeld onChange={setSignatur} />
                   )}
+                  {(bedingungen.data?.terms ?? []).map(b => (
+                    <Bedingung key={b.termsRef} bedingung={b}
+                               reservationRef={reservationRef} />
+                  ))}
                   {anmelden.isError && <Fehler error={anmelden.error} />}
                   <button type="button"
                           disabled={anmelden.isPending
@@ -260,6 +283,50 @@ function Unterschriftsfeld({ onChange }: { onChange: (svg: string | null) => voi
               className="text-xs text-neutral-500 underline">
         {t('checkin.clear')}
       </button>
+    </div>
+  )
+}
+
+/**
+ * Eine Hausbedingung am Tresen.
+ *
+ * Der Text steht vollständig da, nicht als Verweis: unterschrieben wird,
+ * was man gelesen hat. Verlangt die Fassung keine Unterschrift, genügt ein
+ * Klick — eine Unterschrift ohne Anlass wäre eine Erhebung ohne Rechtsgrund,
+ * dieselbe Überlegung wie beim Meldeschein des inländischen Gastes.
+ */
+function Bedingung({ bedingung, reservationRef }: {
+  bedingung: Hausbedingung; reservationRef: string
+}): JSX.Element {
+  const t = useT()
+  const [signatur, setSignatur] = useState<string | null>(null)
+  const zustimmen = useAgreeTerms(reservationRef)
+
+  return (
+    <div className="border border-neutral-200 rounded p-2 space-y-2">
+      <div className="text-sm font-medium">{bedingung.title}</div>
+      <p className="text-xs text-neutral-600 whitespace-pre-line">{bedingung.body}</p>
+
+      {bedingung.agreed ? (
+        <p className="text-sm text-emerald-800">
+          ✓ {bedingung.signed ? t('terms.signed') : t('terms.accepted')}
+        </p>
+      ) : (
+        <>
+          {bedingung.requiresSignature && <Unterschriftsfeld onChange={setSignatur} />}
+          {zustimmen.isError && <Fehler error={zustimmen.error} />}
+          <button type="button"
+                  disabled={zustimmen.isPending
+                    || (bedingung.requiresSignature && signatur === null)}
+                  onClick={() => zustimmen.mutate({
+                    termsRef: bedingung.termsRef,
+                    signatureSvg: signatur ?? undefined })}
+                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                             disabled:opacity-40">
+            {bedingung.requiresSignature ? t('terms.sign') : t('terms.accept')}
+          </button>
+        </>
+      )}
     </div>
   )
 }

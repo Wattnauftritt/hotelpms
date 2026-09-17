@@ -529,6 +529,34 @@ Für den Meldeschein gab es bis dahin **keinen einzigen Test**, obwohl dort drei
 
 ---
 
+### Fristen nach Landes- und Kommunalrecht, und Hausbedingungen
+
+Ausgelöst von der Frage, ob Länder und Gemeinden längere Aufbewahrung vorschreiben. Die Antwort ist dreigeteilt, und die Trennung ist der ganze Punkt.
+
+**Der Meldeschein lief ab dem falschen Tag.** § 30 Abs. 4 BMG sagt „vom Tag der **Abreise** der beherbergten Person an ein Jahr". Gerechnet wurde ab **Anreise** — bei drei Nächten drei Tage zu früh vernichtet, bei einem Langzeitgast Wochen. Zu früh vernichtet heißt: die Meldebehörde verlangt Einsicht und bekommt sie nicht, obwohl die Frist noch läuft. Der Test dazu hielt den Fehler fest, statt ihn zu fangen.
+
+Die Abreise steht bei der Erfassung außerdem noch nicht fest. Ein Trigger auf Anweisungsebene zieht die Frist nach, wenn sich der Aufenthalt ändert, und rechnet mit dem **tatsächlichen** Abreisetag (`checked_out_at`), sonst dem geplanten. Nicht ein Aufruf in jeder Route, die an `departure` rührt: davon gibt es mehrere, und die nächste würde ihn vergessen.
+
+**Die längere Frist gilt einem anderen Nachweis.** Die Gästebeitragssatzung der Stadt Cuxhaven verlangt in § 9 Abs. 5 das Gästeverzeichnis „sechs Jahre ab Beginn des auf die Eintragung folgenden Kalenderjahres"; ein Verstoß ist eine Ordnungswidrigkeit mit Geldbuße bis 10 000 Euro. Das ist **nicht** der Meldeschein: das Verzeichnis führt Name, Anschrift, Zeitraum, Nächte, Satz und Betrag — also das, was ohnehin in Beleg und Rechnung steht. Der Meldeschein trägt darüber hinaus Ausweisnummer und Staatsangehörigkeit, und für die gibt es nach einem Jahr keinen Rechtsgrund mehr; ihn „wegen der Gästebeiträge" länger zu halten, wäre der falsche Schluss.
+
+Die Frist steht deshalb am Haus (`property.guest_levy_retention_years`, Standard sechs) und bremst die **Anonymisierung**, nicht den Meldeschein — und auch die nur dort, wo wirklich eine Abgabe gebucht wurde, also an einer Position mit einer Regel der Art `city_tax` oder `bed_tax`. Solange sie läuft, ist die Aufbewahrung eine rechtliche Verpflichtung, und Art. 17 Abs. 3 lit. b DSGVO nimmt sie von der Löschung aus. Die Ermächtigung steht in den Kommunalabgabengesetzen der Länder, nicht im Bundesrecht — deshalb je Haus und nicht als Konstante.
+
+**Unterschrieben wird in der Praxis mehr als der Meldeschein.** Viele Häuser lassen den Gast zugleich eine Hausbedingung unterschreiben, etwa eine Pauschale bei Verlust der Zimmerkarte. Zulässig — aber nicht auf demselben Blatt im System:
+
+| | Meldeschein | Hausbedingung |
+|---|---|---|
+| Rechtsnatur | öffentlich-rechtlich, § 30 BMG | privatrechtlich |
+| Unterschrift | nur ausländische Gäste (seit 1.1.2025) | jeder Gast |
+| Frist | ein Jahr nach Abreise, dann Vernichtung | über die Verjährung hinaus |
+
+Beides in ein Feld zu schreiben hieße, entweder den Meldeschein zu lange zu halten oder den Nachweis der Vereinbarung mit ihm zu vernichten. Deshalb `property_terms` (der Text am Haus) und `guest_agreement` (die Zustimmung am **Aufenthalt**, nicht am Meldeschein).
+
+Zwei Festlegungen daraus: **Fassungen statt Änderungen** — wer die Pauschale von 50 auf 60 setzt, legt eine neue an; ein geänderter Text unter einer alten Unterschrift wäre als Nachweis wertlos, dieselbe Überlegung wie bei `invoice.issuer_snapshot`. Und **maßgeblich ist die am Anreisetag geltende Fassung**, nicht die neueste: der Gast hat bei der Ankunft den Text vor sich, der dann hängt.
+
+**Noch offen:** das **Gästeverzeichnis als Ausgabe**. Die Daten liegen vollständig vor, aber den Vordruck, den eine Gemeinde verlangt (Cuxhaven gibt einen heraus und will ihn quartalsweise), erzeugt das System nicht. Das ist je Gemeinde verschieden und gehört in einen eigenen Export.
+
+---
+
 ### Was der Oberfläche noch fehlt
 
 Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen. Alles hier ist gebaut, geprüft und über die Schnittstelle erreichbar — nur über keinen Bildschirm. Das ist kein Entwurf, sondern eine Liste; der Abschnitt darunter sagt, was ausdrücklich **nicht** dazugehört.

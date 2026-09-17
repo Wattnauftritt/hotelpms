@@ -4,9 +4,10 @@ import type { PaymentMethod } from '@hotelpms/contracts'
 import { useEmailSettings, useSaveEmailSettings, usePaymentMethodsAll,
          useCreatePaymentMethod, useUpdatePaymentMethod }
   from '../lib/queries/settings.js'
+import { usePropertyTerms, useCreateTerms } from '../lib/queries/booking.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
-import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
+import { useT, useLocale, formatDate, type TextKey } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
@@ -21,7 +22,7 @@ import { SupportZugriff } from '../components/SupportZugriff.tsx'
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'support'] as const
+const REITER = ['mail', 'pay', 'terms', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -30,6 +31,7 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   const bereiche: Bereich[] = []
   if (darf('integration:manage')) bereiche.push({ key: 'mail', label: 'mail.title' })
   if (darf('settings:property')) bereiche.push({ key: 'pay', label: 'pay.title' })
+  if (darf('settings:property')) bereiche.push({ key: 'terms', label: 'terms.title' })
   /*
    * Support-Zugriff an settings:account, nicht an settings:property: die
    * Freigabe gilt fuer den ganzen Account, nicht fuer ein Haus. Wer nur ein
@@ -292,6 +294,114 @@ function Zahlungsarten({ propertyId }: { propertyId: number }): JSX.Element {
   )
 }
 
+// ----------------------------------------------------------- Hausbedingungen
+
+/**
+ * Was das Haus am Tresen unterschreiben lässt.
+ *
+ * **Fassungen, keine Änderungen.** Wer die Pauschale von 50 auf 60 Euro
+ * setzt, legt eine neue Fassung an; die alte Unterschrift behält ihren Text.
+ * Deshalb gibt es hier kein Bearbeiten-Feld, sondern nur ein Anlegen — ein
+ * geänderter Text unter einer alten Unterschrift wäre als Nachweis wertlos.
+ *
+ * **Nicht der Meldeschein.** Der ist öffentlich-rechtlich und wird nach
+ * einem Jahr vernichtet; was hier steht, ist privatrechtlich, gilt für jeden
+ * Gast — auch den inländischen, der seit dem 1.1.2025 keinen Meldeschein
+ * mehr unterschreibt — und bleibt länger nachweisbar.
+ */
+function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const online = useOnline()
+  const q = usePropertyTerms(propertyId)
+  const anlegen = useCreateTerms(propertyId)
+  const [code, setCode] = useState('')
+  const [titel, setTitel] = useState('')
+  const [text, setText] = useState('')
+  const [unterschrift, setUnterschrift] = useState(true)
+
+  const gueltig = code.trim() !== '' && titel.trim() !== '' && text.trim() !== ''
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-neutral-600">{t('terms.hint')}</p>
+
+      {q.isError && <Fehler error={q.error} />}
+      {q.data === undefined && !q.isError ? <Laedt /> : (
+        <ul className="space-y-2">
+          {(q.data?.terms ?? []).map(b => (
+            <li key={b.termsRef}
+                className={`border rounded p-2 text-sm
+                            ${b.activeTo === null
+                              ? 'border-neutral-300'
+                              : 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{b.title}</span>
+                <span className="text-xs text-neutral-500">
+                  {b.code} · {t('terms.version')} {b.version}
+                </span>
+                <div className="grow" />
+                <span className="text-xs text-neutral-500">
+                  {formatDate(b.activeFrom, locale)}
+                  {b.activeTo === null
+                    ? ` — ${t('terms.current')}`
+                    : ` — ${formatDate(b.activeTo, locale)}`}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-600 mt-1 whitespace-pre-line">{b.body}</p>
+              {!b.requiresSignature && (
+                <p className="text-xs text-neutral-500 mt-1">{t('terms.noSignature')}</p>
+              )}
+            </li>
+          ))}
+          {(q.data?.terms ?? []).length === 0 && (
+            <li className="text-sm text-neutral-500">{t('common.none')}</li>
+          )}
+        </ul>
+      )}
+
+      <div className="border-t border-neutral-200 pt-3 space-y-2">
+        <h2 className="text-sm font-medium">{t('terms.new')}</h2>
+        <p className="text-xs text-neutral-500">{t('terms.newHint')}</p>
+        <div className="flex gap-2">
+          <label className="block text-sm w-1/3">
+            <span className="block text-xs text-neutral-600 mb-1">{t('terms.code')}</span>
+            <input value={code} onChange={e => setCode(e.target.value)}
+                   placeholder="key_deposit"
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm grow">
+            <span className="block text-xs text-neutral-600 mb-1">{t('terms.heading')}</span>
+            <input value={titel} onChange={e => setTitel(e.target.value)}
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          </label>
+        </div>
+        <label className="block text-sm">
+          <span className="block text-xs text-neutral-600 mb-1">{t('terms.text')}</span>
+          <textarea value={text} onChange={e => setText(e.target.value)} rows={4}
+                    className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={unterschrift}
+                 onChange={e => setUnterschrift(e.target.checked)} />
+          {t('terms.requiresSignature')}
+        </label>
+        {anlegen.isError && <Fehler error={anlegen.error} />}
+        {!online && <div className="text-sm text-amber-800">{t('error.offlineWrite')}</div>}
+        <button type="button" disabled={!gueltig || anlegen.isPending || !online}
+                onClick={() => anlegen.mutate(
+                  { code: code.trim(), title: titel.trim(), body: text.trim(),
+                    requiresSignature: unterschrift },
+                  { onSuccess: () => { setCode(''); setTitel(''); setText('') } })}
+                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t('common.save')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const { darf, isTraining, geladen } = useHausrechte(propertyId)
@@ -325,6 +435,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
         <Gastpost propertyId={propertyId} isTraining={isTraining} />
       )}
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
+      {aktiv.key === 'terms' && <Hausbedingungen propertyId={propertyId} />}
       {aktiv.key === 'support' && <SupportZugriff />}
     </div>
   )

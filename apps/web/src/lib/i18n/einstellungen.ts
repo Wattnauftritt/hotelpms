@@ -319,4 +319,63 @@ export const einstellungen = {
       + 'freigeschaltet.',
     en: 'Time units other than the night are not enabled yet.',
     tr: 'Gece dışındaki zaman birimleri henüz açılmadı.' },
+  'terms.hint': {
+    de: 'Was das Haus am Tresen unterschreiben lässt — etwa eine Pauschale bei '
+      + 'Verlust der Zimmerkarte. Das ist nicht der Meldeschein: der ist '
+      + 'öffentlich-rechtlich und wird nach einem Jahr vernichtet. Diese '
+      + 'Bedingungen gelten für jeden Gast, auch für den inländischen, der '
+      + 'seit dem 1.1.2025 keinen Meldeschein mehr unterschreibt.',
+    en: 'What the house has guests sign at the desk — a flat fee for a lost key '
+      + 'card, for instance. This is not the Meldeschein: that one is public law '
+      + 'and is destroyed after a year. These terms apply to every guest, '
+      + 'including the domestic one who has not signed a Meldeschein since '
+      + '1 January 2025.',
+    tr: 'Otelin resepsiyonda imzalattığı koşullar — örneğin oda kartının '
+      + 'kaybında uygulanan sabit ücret. Bu, Meldeschein değildir: o kamu '
+      + 'hukukuna tabidir ve bir yıl sonra imha edilir. Bu koşullar her misafir '
+      + 'için geçerlidir; 1 Ocak 2025’ten beri Meldeschein imzalamayan yurt içi '
+      + 'misafirler için de.' },
+  'terms.new': {
+    de: 'Neue Fassung',
+    en: 'New version',
+    tr: 'Yeni sürüm' },
+  'terms.newHint': {
+    de: 'Eine Bedingung wird nie geändert, sondern neu gefasst: ein geänderter '
+      + 'Text unter einer alten Unterschrift wäre als Nachweis wertlos. Wer '
+      + 'dasselbe Kürzel wählt, löst die bisherige Fassung ab.',
+    en: 'Terms are never edited, only re-issued: changed text under an old '
+      + 'signature would be worthless as evidence. Using the same code replaces '
+      + 'the previous version.',
+    tr: 'Koşullar hiçbir zaman düzenlenmez, yalnızca yeniden yayımlanır: eski '
+      + 'bir imzanın altındaki değişmiş metin kanıt olarak değersizdir. Aynı '
+      + 'kodu kullanmak önceki sürümün yerine geçer.' },
+  'terms.code': {
+    de: 'Kürzel',
+    en: 'Code',
+    tr: 'Kod' },
+  'terms.heading': {
+    de: 'Überschrift',
+    en: 'Heading',
+    tr: 'Başlık' },
+  'terms.text': {
+    de: 'Text',
+    en: 'Text',
+    tr: 'Metin' },
+  'terms.requiresSignature': {
+    de: 'Unterschrift verlangen',
+    en: 'Require a signature',
+    tr: 'İmza iste' },
+  'terms.noSignature': {
+    de: 'Ohne Unterschrift, Kenntnisnahme genügt',
+    en: 'No signature, acknowledgement is enough',
+    tr: 'İmzasız, bilgilendirme yeterli' },
+  'terms.version': {
+    de: 'Fassung',
+    en: 'Version',
+    tr: 'Sürüm' },
+  'terms.current': {
+    de: 'gilt',
+    en: 'in force',
+    tr: 'yürürlükte' },
+
 } as const satisfies Record<string, LocalizedText>

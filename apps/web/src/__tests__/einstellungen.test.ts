@@ -13,12 +13,14 @@ describe('Bereiche der Einstellungen', () => {
   it('trennt Gastpost und Zahlungsarten nach ihren Rechten', () => {
     expect(einstellungsBereiche(p => p === 'integration:manage').map(b => b.key))
       .toEqual(['mail'])
+    // Zahlungsarten und Hausbedingungen haengen beide an settings:property:
+    // beides ist, wie das Haus nach aussen abrechnet und auftritt.
     expect(einstellungsBereiche(p => p === 'settings:property').map(b => b.key))
-      .toEqual(['pay'])
+      .toEqual(['pay', 'terms'])
     // Support-Zugriff kam mit Aufgabe 13c dazu und haengt an
     // settings:account -- siehe support.test.ts.
     expect(einstellungsBereiche(() => true).map(b => b.key))
-      .toEqual(['mail', 'pay', 'support'])
+      .toEqual(['mail', 'pay', 'terms', 'support'])
     expect(einstellungsBereiche(() => false)).toEqual([])
   })
 })

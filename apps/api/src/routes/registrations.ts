@@ -15,9 +15,22 @@ import type { PoolClient } from '@hotelpms/db'
  * 2. **Keine Ausweiskopie.** § 30 erlaubt es, Angaben zu erheben und die
  *    Ausweisnummer zu notieren. Eine Kopie oder ein Scan ist unzulaessig.
  *    Es gibt in diesem System deshalb kein Feld dafuer.
- * 3. **Ein Jahr Aufbewahrung, danach Vernichtung.** Die Frist laeuft ab dem
- *    Tag der Anreise. Das Vernichten ist Pflicht, nicht Ermessen, und laeuft
- *    deshalb automatisch im Worker, nicht auf Zuruf.
+ * 3. **Ein Jahr Aufbewahrung, danach Vernichtung.** Die Frist laeuft
+ *    "vom Tag der Abreise der beherbergten Person an" (§ 30 Abs. 4 BMG),
+ *    nicht ab Anreise -- hier stand das Gegenteil, und bei einem Aufenthalt
+ *    von drei Naechten wurde der Schein drei Tage zu frueh vernichtet, bei
+ *    einem Langzeitgast Wochen. Das Vernichten ist Pflicht, nicht Ermessen,
+ *    und laeuft deshalb automatisch im Worker, nicht auf Zuruf.
+ *
+ * **Was nicht hierher gehoert.** Kommunale Gaestebeitragssatzungen verlangen
+ * laengere Aufbewahrung -- die Stadt Cuxhaven etwa sechs Jahre fuer das
+ * Gaesteverzeichnis (§ 9 Abs. 5 ihrer Satzung). Das ist ein **anderer**
+ * Nachweis: Name, Anschrift, Zeitraum, Naechte, Satz, Betrag, also das, was
+ * in Beleg und Rechnung steht. Der Meldeschein traegt darueber hinaus
+ * Ausweisnummer und Staatsangehoerigkeit, und fuer die gibt es nach einem
+ * Jahr keinen Rechtsgrund mehr. Die laengere Frist haengt deshalb am Haus
+ * (`property.guest_levy_retention_years`) und bremst die Anonymisierung,
+ * nicht diese Tabelle.
  */
 const AUFBEWAHRUNG_MONATE = 12
 
@@ -148,7 +161,8 @@ export function registrationRoutes(app: FastifyInstance): void {
                                      signature_svg, signed_at, destroy_after)
            VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,$8::text,
                    CASE WHEN $8::text IS NULL THEN NULL ELSE now() END,
-                   ($4::date + ($9 || ' months')::interval)::date)
+                   -- Ab Abreise, nicht ab Anreise: § 30 Abs. 4 BMG.
+                   ($5::date + ($9 || ' months')::interval)::date)
            RETURNING id`,
           [body.propertyId, res.id, res.primary_guest_id, res.arrival, res.departure,
            mitreisende.length + 1, auslaendisch, signatur, AUFBEWAHRUNG_MONATE])
@@ -170,7 +184,7 @@ export function registrationRoutes(app: FastifyInstance): void {
                                        planned_departure, occupant_count, is_foreign,
                                        group_registration_id, destroy_after)
              VALUES ($1,$2,$3,$4::date,$5::date,1,$6,$7,
-                     ($4::date + ($8 || ' months')::interval)::date)`,
+                     ($5::date + ($8 || ' months')::interval)::date)`,
             [body.propertyId, res.id, m.rows[0]!.id, res.arrival, res.departure,
              m.rows[0]!.country != null && m.rows[0]!.country !== 'DE',
              hauptId, AUFBEWAHRUNG_MONATE])
