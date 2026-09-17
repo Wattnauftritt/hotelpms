@@ -563,7 +563,17 @@ Aufgelöst nicht dadurch, dass eine der beiden Fristen weicht — die eine steht
 
 **Und die Löschung läuft jetzt in zwei Schritten.** Das glatte 409 aus 0036 hielt mehr zurück, als die Satzung verlangt: E-Mail, Telefon, Geburtsdatum, Vorlieben und Hausnotizen braucht kein Verzeichnis, und Art. 17 Abs. 3 lit. b DSGVO nimmt nur aus, was die Pflicht wirklich fordert. Wer heute Löschung verlangt, bekommt sofort alles außer Name und Anschrift; der Rest fällt im Nachtlauf, sobald die Frist abgelaufen ist (`erasure_requested_at`, `guest_erasure_complete`). Dass das nicht vergessen wird, hängt an einer Spalte und nicht an einer Wiedervorlage — zwischen Antrag und Frist liegen Jahre.
 
-**Noch offen:** das **Gästeverzeichnis als Ausgabe**. Die Daten liegen vollständig vor, aber den Vordruck, den eine Gemeinde verlangt (Cuxhaven gibt einen heraus und will ihn quartalsweise), erzeugt das System nicht. Das ist je Gemeinde verschieden und gehört in einen eigenen Export.
+**Das Gästeverzeichnis als Ausgabe** gibt es jetzt: `GET /v1/properties/:id/exports/guest-levy`, als JSON und als CSV.
+
+**Warum eine Liste und kein Anbieterformat.** Die Meldung an die Gemeinde läuft in Deutschland über verschiedene Wege. [AVS](https://www.avs.de/tourismus/meldeschein) ist der größte Anbieter — über 300 Orte in DACH, Auftragsverarbeiterin der Gemeinden, zwei Wege (XML-Import von Hand und ein Webservice), über 120 angebundene Hotelprogramme. Daneben [feratel Deskline](https://www.feratel.de/unsere-loesungen/meldewesen/) mit XML über HTTP POST und SOAP, `secra bookings`, Gemeindeportale wie Amt24 in Sachsen — und Orte, die schlicht einen Vordruck herausgeben, wie Cuxhaven.
+
+Die Schnittstellenbeschreibungen von AVS und feratel sind **nicht öffentlich**; AVS gibt sie auf Anfrage heraus. Wer ohne sie ein Format nachbaut, baut eine Vermutung und merkt es beim ersten echten Kunden.
+
+Was dagegen überall gleich ist, ist der **Inhalt**: wer, woher, wie lange, wie viele Nächte, welcher Satz, welcher Betrag. Genau das liefert der Endpunkt — als Liste, die jede Gemeinde annimmt, und als Grundlage, auf der ein Anbieteradapter später aufsetzt, statt die Abfrage ein zweites Mal zu schreiben. Dieselbe Bauart wie bei den Altsystem-Importen (`platform/legacyImport/`): ein Kern, dünne Adapter.
+
+Drei Festlegungen: **eine Zeile je Aufenthalt und Abgabenart** — zwei Abgaben nebeneinander sind zwei Satzungen. **Gerechnet wird aus den gebuchten Positionen, nicht aus der Regel** — ein Satz, der zum Jahreswechsel gestiegen ist, machte aus einer Neuberechnung eine plausibel aussehende falsche Zahl, und der Nachweis muss zu der Rechnung passen, die der Gast bekommen hat. Und die **Gästekartennummer fehlt bewusst**: die vergibt das System der Gemeinde, nicht das Haus.
+
+**Noch offen:** die Adapter selbst. Für AVS und feratel fehlen die Schnittstellenbeschreibungen; das ist eine Anfrage beim Anbieter, keine Programmierarbeit.
 
 ---
 

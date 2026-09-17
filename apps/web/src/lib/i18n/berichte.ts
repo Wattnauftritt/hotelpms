@@ -246,6 +246,23 @@ export const berichte = {
     en: 'Invoices, charges and settlements of the period in open form, '
       + 'with a description of the fields.',
     tr: 'Dönemin faturaları, kalemleri ve mahsupları açık biçimde, alan açıklamalarıyla birlikte.' },
+  'export.guestLevy': {
+    de: 'Gästeverzeichnis',
+    en: 'Guest levy register',
+    tr: 'Konaklama katkısı kaydı' },
+  'export.guestLevyHint': {
+    de: 'Der Nachweis für die Gemeinde: je Aufenthalt Name, Anschrift, '
+      + 'Zeitraum, Nächte, Abgabe und Betrag. Die Beträge sind die damals '
+      + 'gebuchten, nicht neu gerechnete. Die Gästekartennummer vergibt das '
+      + 'System der Gemeinde und steht deshalb nicht darin.',
+    en: 'The record for the municipality: per stay the name, address, period, '
+      + 'nights, levy and amount. The amounts are the ones posted at the time, '
+      + 'not recalculated. The guest card number is issued by the '
+      + 'municipality’s system and is therefore not included.',
+    tr: 'Belediye için kayıt: her konaklama başına ad, adres, dönem, gece '
+      + 'sayısı, katkı ve tutar. Tutarlar o zaman kaydedilenlerdir, yeniden '
+      + 'hesaplanmış değildir. Misafir kartı numarasını belediyenin sistemi '
+      + 'verir, bu nedenle burada yer almaz.' },
   'export.tenant': {
     de: 'Mandantenexport',
     en: 'Tenant export',

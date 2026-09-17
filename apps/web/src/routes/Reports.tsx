@@ -391,7 +391,7 @@ function Ausgaben(
   const starten = (pfad: string, dateiname: string): void => {
     ausgabe.mutate({ pfad, dateiname })
   }
-  // Ein laufender Export sperrt alle drei Knoepfe -- zwei Jahresexporte
+  // Ein laufender Export sperrt alle Knoepfe -- zwei Jahresexporte
   // gleichzeitig helfen niemandem --, aber nur der laufende sagt es auch.
   const laeuft = (pfad: string): boolean =>
     ausgabe.isPending && ausgabe.variables?.pfad === pfad
@@ -400,6 +400,8 @@ function Ausgaben(
     + (berater === '' ? '' : `&consultantNumber=${encodeURIComponent(berater)}`)
     + (mandant === '' ? '' : `&clientNumber=${encodeURIComponent(mandant)}`)
   const gobdPfad = `/v1/properties/${propertyId}/exports/gobd?from=${from}&to=${to}`
+  const abgabePfad = `/v1/properties/${propertyId}/exports/guest-levy`
+    + `?from=${from}&to=${to}&format=csv`
   const mandantPfad = `/v1/properties/${propertyId}/exports/tenant`
 
   return (
@@ -441,6 +443,18 @@ function Ausgaben(
             className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
                        disabled:opacity-40">
             {t(laeuft(datevPfad) ? 'export.running' : 'export.start')}
+          </button>
+        </div>
+
+        <div className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+          <div className="font-medium">{t('export.guestLevy')}</div>
+          <div className="text-xs text-neutral-500">{t('export.guestLevyHint')}</div>
+          <button
+            onClick={() => starten(abgabePfad, `gaesteverzeichnis-${from}-${to}.csv`)}
+            disabled={ausgabe.isPending}
+            className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                       disabled:opacity-40">
+            {t(laeuft(abgabePfad) ? 'export.running' : 'export.start')}
           </button>
         </div>
 
