@@ -648,6 +648,150 @@ export function reportRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Gaesteverzeichnis: der Nachweis fuer den Gaestebeitrag.
+   *
+   * **Warum das ein eigener Export ist und nicht ein Bericht.** Kommunale
+   * Satzungen verlangen ihn als Nachweis, nicht als Auskunft: die Stadt
+   * Cuxhaven etwa "tagaktuell und kontrollfaehig", quartalsweise
+   * uebermittelt und sechs Jahre aufbewahrt, mit Geldbusse bis 10 000 Euro
+   * bei Verstoss (§ 9 Abs. 5 und § 12 ihrer Gaestebeitragssatzung).
+   *
+   * **Warum eine Liste und kein Anbieterformat.** Die Meldung an die
+   * Gemeinde laeuft in Deutschland ueber verschiedene Wege -- AVS und
+   * feratel decken zusammen einige hundert Orte ab, daneben gibt es
+   * Gemeindeportale und Vordrucke. Ihre Schnittstellenbeschreibungen sind
+   * nicht oeffentlich; wer ohne sie ein Format nachbaut, baut eine
+   * Vermutung. Was dagegen ueberall gleich ist, ist der **Inhalt**: wer,
+   * woher, wie lange, wie viele Naechte, welcher Satz, welcher Betrag. Das
+   * liefert dieser Endpunkt -- als Liste, die jede Gemeinde annimmt, und
+   * als Grundlage, auf der ein Anbieteradapter spaeter aufsetzt, statt die
+   * Abfrage ein zweites Mal zu schreiben.
+   *
+   * **Eine Zeile je Aufenthalt und Abgabenart**, nicht je Nacht: die Satzung
+   * fragt nach dem Beitragsschuldner und seinem Aufenthalt. Zwei Abgaben
+   * nebeneinander -- Kurtaxe und Bettensteuer -- sind zwei Satzungen und
+   * deshalb zwei Zeilen.
+   *
+   * **Was hier bewusst fehlt: die Gaestekartennummer.** Die vergibt das
+   * System der Gemeinde, nicht das Haus. Sie hier zu erfinden hiesse, eine
+   * Nummer in einen Nachweis zu schreiben, die nirgends sonst existiert.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/exports/guest-levy',
+    permission: 'report:export',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteverzeichnis fuer die Gaestebeitragsabrechnung',
+    handler: async (req, reply) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const q = req.query as { from: string; to: string; format?: string }
+      checkRange(q.from, q.to)
+      const id = Number(propertyId)
+
+      return tx(req.pool, req, async client => {
+        // Ein Nachweis aus Uebungsdaten geht an eine Behoerde. Derselbe
+        // Grund wie bei DATEV und der Beherbergungsstatistik (C11).
+        await assertNotTraining(client, id, 'training.what.guestLevy')
+
+        /*
+         * Gerechnet wird aus den gebuchten Positionen, nicht aus der Regel.
+         *
+         * Der Unterschied ist der zwischen Zaehler und Aufzeichnung
+         * (CLAUDE.md): die Regel sagt, was heute gelten wuerde; die Position
+         * sagt, was damals berechnet wurde. Ein Satz, der zum Jahreswechsel
+         * gestiegen ist, macht aus einer Neuberechnung eine plausibel
+         * aussehende falsche Zahl -- und der Nachweis muss zur Rechnung
+         * passen, die der Gast bekommen hat.
+         *
+         * Gegenbuchungen zaehlen mit ihrem Vorzeichen mit; eine stornierte
+         * Abgabe verschwindet damit aus der Summe, ohne dass eine Zeile
+         * verschwindet.
+         */
+        const { rows } = await client.query<{
+          reservationRef: string; lastName: string | null; firstName: string | null
+          street: string | null; postalCode: string | null; city: string | null
+          country: string | null; arrival: string; departure: string
+          levyCode: string; levyName: string; nights: number; persons: number
+          amountCent: string; businessTrip: boolean; exemptChildren: number }>(
+          `SELECT r.public_ref                        AS "reservationRef",
+                  g.last_name                         AS "lastName",
+                  g.first_name                        AS "firstName",
+                  g.address_line1                     AS "street",
+                  g.postal_code                       AS "postalCode",
+                  g.city                              AS "city",
+                  g.country                           AS "country",
+                  r.arrival::text                     AS "arrival",
+                  r.departure::text                   AS "departure",
+                  t.code                              AS "levyCode",
+                  t.name                              AS "levyName",
+                  count(DISTINCT c.business_date)::int AS "nights",
+                  COALESCE(max(c.quantity), 0)::int   AS "persons",
+                  sum(c.gross_cent)::text             AS "amountCent",
+                  r.business_trip                     AS "businessTrip",
+                  (SELECT count(*) FROM reservation_occupant o
+                    WHERE o.reservation_id = r.id
+                      AND t.exempt_below_age IS NOT NULL
+                      AND o.age_at_arrival IS NOT NULL
+                      AND o.age_at_arrival < t.exempt_below_age)::int AS "exemptChildren"
+             FROM charge c
+             JOIN tax_rule t    ON t.id = c.tax_rule_id
+             JOIN reservation r ON r.id = c.reservation_id
+             LEFT JOIN guest g  ON g.id = r.primary_guest_id
+            WHERE c.property_id = $1
+              AND t.kind IN ('city_tax','bed_tax')
+              AND c.business_date BETWEEN $2::date AND $3::date
+            GROUP BY r.id, r.public_ref, g.last_name, g.first_name, g.address_line1,
+                     g.postal_code, g.city, g.country, r.arrival, r.departure,
+                     -- Die Regel-id und die Altersgrenze gehoeren mit hinein: die
+                     -- Unterabfrage nach den befreiten Kindern greift auf sie
+                     -- zu, und PostgreSQL erkennt die Abhaengigkeit dort
+                     -- nicht von selbst.
+                     t.id, t.code, t.name, t.exempt_below_age, r.business_trip
+           HAVING sum(c.gross_cent) <> 0
+            ORDER BY r.arrival, r.public_ref, t.code`,
+          [id, q.from, q.to])
+
+        const summe = rows.reduce((s, r) => s + Number(r.amountCent), 0)
+        const naechte = rows.reduce((s, r) => s + r.nights, 0)
+
+        if (q.format !== 'csv') {
+          return {
+            from: q.from, to: q.to,
+            rows,
+            totals: { rows: rows.length, nights: naechte, amountCent: summe },
+            hinweis: 'Eine Zeile je Aufenthalt und Abgabenart. Betraege in Cent, '
+                   + 'aus den gebuchten Positionen und nicht aus der heute '
+                   + 'geltenden Regel gerechnet. Die Gaestekartennummer vergibt '
+                   + 'das System der Gemeinde und steht deshalb nicht darin.'
+          }
+        }
+
+        // Deutsche Ueberschriften, Semikolon, Komma als Dezimaltrenner: der
+        // Empfaenger ist eine Gemeindeverwaltung mit einer deutschen
+        // Tabellenkalkulation, kein Programm.
+        const euro = (cent: number): string => (cent / 100).toFixed(2).replace('.', ',')
+        const kopf = ['Nachname', 'Vorname', 'Strasse', 'PLZ', 'Ort', 'Land',
+                      'Anreise', 'Abreise', 'Uebernachtungen', 'Personen',
+                      'Abgabe', 'Betrag EUR', 'Geschaeftsreise', 'Kinder frei',
+                      'Referenz']
+        const zeilen = rows.map(r => [
+          r.lastName, r.firstName, r.street, r.postalCode, r.city, r.country,
+          r.arrival, r.departure, r.nights, r.persons,
+          r.levyName, euro(Number(r.amountCent)),
+          r.businessTrip ? 'ja' : 'nein', r.exemptChildren, r.reservationRef
+        ])
+        const fuss = ['Summe', null, null, null, null, null, null, null,
+                      naechte, null, null, euro(summe), null, null, null]
+
+        reply.header('content-type', 'text/csv; charset=utf-8')
+        reply.header('content-disposition',
+          `attachment; filename="gaesteverzeichnis-${q.from}-${q.to}.csv"`)
+        return csv([kopf, ...zeilen, fuss])
+      })
+    }
+  })
+
+  /**
    * Mandantenexport für einen ausscheidenden Betrieb (E7, Dokument 13).
    *
    * **Warum das zum Produkt gehört und nicht zur Kulanz.** Ein Betrieb, der

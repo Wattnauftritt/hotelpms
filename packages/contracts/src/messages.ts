@@ -636,6 +636,10 @@ const M = {
     de: 'Der GoBD-Export',
     en: 'The GoBD export',
     tr: 'GoBD aktarımı' },
+  'training.what.guestLevy': {
+    de: 'Das Gaesteverzeichnis',
+    en: 'The guest levy register',
+    tr: 'Konaklama katkısı kaydı' },
   'training.noEmail': {
     de: 'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.',
     en: 'A training property sends no email. Sending stays switched off.',
