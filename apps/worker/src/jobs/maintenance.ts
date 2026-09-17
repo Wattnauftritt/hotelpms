@@ -83,6 +83,51 @@ export async function purgeRegistrations(
 }
 
 /**
+ * Ausweisnummern nach der Jahresfrist entfernen (§ 30 Abs. 2 und 4 BMG).
+ *
+ * **Warum das nicht in `purgeRegistrations` steckt.** Die Nummer stand nie
+ * auf dem Meldeschein, sondern am Gastprofil -- `registration` zu loeschen
+ * liess sie unberuehrt liegen, und zwar unbegrenzt. Der einzige Weg, sie
+ * loszuwerden, war die Anonymisierung auf Antrag des Gastes; seit die
+ * Abgabenfrist des Hauses davorsteht, waere das bis zu sieben Jahre lang
+ * kein Weg mehr gewesen.
+ *
+ * Das Gaesteverzeichnis, fuer das die lange Frist gilt, braucht die Nummer
+ * nicht -- es fuehrt Name, Anschrift, Zeitraum, Naechte, Satz und Betrag.
+ * Beide Fristen koennen deshalb nebeneinander gelten, und genau das tun sie
+ * jetzt.
+ *
+ * Laeuft je Property wie die uebrigen Pflegejobs, wirkt aber je **Account**:
+ * ein Gast, der auch im Schwesterhaus wohnte, haette sonst eine spaetere
+ * Abreise, die dieser Lauf nicht saehe. Ein zweiter Aufruf fuer dasselbe
+ * Haus findet nichts mehr und kostet einen Indexzugriff.
+ */
+export async function purgeGuestDocuments(client: PoolClient): Promise<number> {
+  const r = await client.query<{ n: number }>(
+    `SELECT guest_document_purge() AS n`)
+  return r.rows[0]?.n ?? 0
+}
+
+/**
+ * Aufgeschobene Loeschungen vollenden (Art. 17 DSGVO).
+ *
+ * Wer Loeschung verlangt, waehrend die Aufbewahrung des
+ * Gaestebeitragsnachweises noch laeuft, bekommt sie sofort so weit, wie der
+ * Nachweis sie zulaesst -- Name und Anschrift bleiben. Der Rest faellt
+ * hier, sobald die Frist abgelaufen ist.
+ *
+ * **Warum das ein Job ist und kein Vermerk in einer Liste.** Zwischen
+ * Antrag und Frist liegen Jahre. Bis dahin hat niemand mehr eine
+ * Wiedervorlage, und die Loeschung unterbliebe -- nicht aus Absicht,
+ * sondern weil sich niemand erinnert.
+ */
+export async function completeGuestErasures(client: PoolClient): Promise<number> {
+  const r = await client.query<{ n: number }>(
+    `SELECT guest_erasure_complete() AS n`)
+  return r.rows[0]?.n ?? 0
+}
+
+/**
  * Gastdaten im Postausgang altern lassen.
  *
  * Eine Zustellung ist kein Buchungsbeleg: die Rechnung selbst liegt in
