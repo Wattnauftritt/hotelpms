@@ -399,47 +399,43 @@ export function guestRoutes(app: FastifyInstance): void {
         }
 
         /*
-         * Der Gaestebeitragsnachweis geht vor.
+         * Der Gaestebeitragsnachweis geht vor -- aber nur so weit, wie er
+         * wirklich reicht.
          *
          * Kommunale Satzungen verlangen ein Gaesteverzeichnis mit Name,
          * Anschrift, Zeitraum, Naechten, Satz und Betrag -- die Stadt
          * Cuxhaven etwa sechs Jahre ab Beginn des Folgejahres, mit Geldbusse
-         * bis 10 000 Euro bei Verstoss (§ 9 Abs. 5 ihrer
-         * Gaestebeitragssatzung). Solange diese Frist laeuft, ist die
-         * Aufbewahrung eine rechtliche Verpflichtung, und Art. 17 Abs. 3
-         * lit. b DSGVO nimmt sie von der Loeschung aus.
+         * bis 10 000 Euro (§ 9 Abs. 5 ihrer Gaestebeitragssatzung). Art. 17
+         * Abs. 3 lit. b DSGVO nimmt deshalb aus, was diese Verpflichtung
+         * fordert -- und nur das.
          *
-         * Gesperrt wird nur, wo wirklich eine Abgabe gebucht wurde -- also
-         * an einer Position mit einer Regel der Art `city_tax` oder
-         * `bed_tax`. Ein Haus ohne Kurtaxe hat keinen Nachweis zu fuehren,
-         * und dort waere die Sperre eine erfundene Frist.
+         * Hier stand zuerst ein glattes 409. Das war zu viel: E-Mail,
+         * Telefon, Geburtsdatum, Staatsangehoerigkeit, Vorlieben und
+         * Hausnotizen braucht kein Verzeichnis, und sie jahrelang
+         * liegenzulassen, weil ein Name bleiben muss, ist keine Erfuellung
+         * einer Pflicht, sondern Bequemlichkeit.
          *
-         * Die Frist steht am Haus, weil sie kommunal geregelt ist: die
-         * Ermaechtigung liegt in den Kommunalabgabengesetzen der Laender,
-         * nicht im Bundesrecht, und damit ist sie in jedem Ort anders.
+         * Also zwei Schritte: jetzt faellt alles, was der Nachweis nicht
+         * braucht; der Rest faellt im Nachtlauf, sobald die Frist abgelaufen
+         * ist. Dass das nicht vergessen wird, haengt nicht an einem
+         * Menschen, sondern an `erasure_requested_at`.
          */
-        const nachweis = await client.query<{ bis: string }>(
-          `SELECT max((date_trunc('year', r.departure)
-                       + INTERVAL '1 year'
-                       + make_interval(years => p.guest_levy_retention_years))
-                      ::date)::text AS bis
-             FROM reservation r
-             JOIN property p ON p.id = r.property_id
-            WHERE (r.primary_guest_id = $1
-                   OR EXISTS (SELECT 1 FROM reservation_occupant o
-                               WHERE o.reservation_id = r.id AND o.guest_id = $1))
-              AND p.guest_levy_retention_years > 0
-              AND EXISTS (SELECT 1 FROM charge c
-                            JOIN tax_rule t ON t.id = c.tax_rule_id
-                           WHERE c.reservation_id = r.id
-                             AND t.kind IN ('city_tax','bed_tax'))
-              AND (date_trunc('year', r.departure)
-                   + INTERVAL '1 year'
-                   + make_interval(years => p.guest_levy_retention_years))
-                  > current_date`, [id])
-        const bis = nachweis.rows[0]?.bis ?? null
+        const frist = await client.query<{ bis: string | null }>(
+          `SELECT guest_levy_retention_until($1)::text AS bis`, [id])
+        const bis = frist.rows[0]?.bis ?? null
+
         if (bis !== null) {
-          throw Errors.conflict('guest.levyRetentionRunning', { until: bis })
+          await client.query(
+            `UPDATE guest SET
+               email = NULL, phone = NULL, birth_date = NULL, nationality = NULL,
+               id_document_type = NULL, id_document_number_enc = NULL,
+               id_document_key_version = NULL, preferences = '{}',
+               erasure_requested_at = COALESCE(erasure_requested_at, now()),
+               updated_at = now()
+             WHERE id = $1`, [id])
+          await client.query(`DELETE FROM guest_property_note WHERE guest_id = $1`, [id])
+          await client.query(`DELETE FROM registration WHERE guest_id = $1`, [id])
+          return { guestRef, status: 'partial', alreadyDone: false, completesAfter: bis }
         }
 
         await client.query(

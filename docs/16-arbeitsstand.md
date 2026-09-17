@@ -553,6 +553,16 @@ Beides in ein Feld zu schreiben hieße, entweder den Meldeschein zu lange zu hal
 
 Zwei Festlegungen daraus: **Fassungen statt Änderungen** — wer die Pauschale von 50 auf 60 setzt, legt eine neue an; ein geänderter Text unter einer alten Unterschrift wäre als Nachweis wertlos, dieselbe Überlegung wie bei `invoice.issuer_snapshot`. Und **maßgeblich ist die am Anreisetag geltende Fassung**, nicht die neueste: der Gast hat bei der Ankunft den Text vor sich, der dann hängt.
 
+**Nachgetragen: die Ausweisnummer hatte gar keine Frist.** Die Frage „widersprechen sich die sechs Jahre und die zwölf Monate nicht?" hat einen echten Fehler aufgedeckt, und zwar einen, den der Abschnitt oben erst scharf gemacht hat.
+
+§ 30 Abs. 2 BMG erlaubt, die Nummer des Identitätsdokuments zu notieren; Absatz 4 verlangt, den Meldeschein ein Jahr nach Abreise zu vernichten. In diesem System stand die Nummer aber **nie auf dem Meldeschein**, sondern am Gastprofil (`guest.id_document_number_enc`, seit Migration 0008) — und `purgeRegistrations` löschte nur `registration`. Die Nummer blieb unbegrenzt liegen; der einzige Weg, sie loszuwerden, war die Anonymisierung auf Antrag.
+
+Und genau davor hat Migration 0036 die Abgabenfrist gestellt. Damit stand der letzte Löschweg bis zu sieben Jahre lang zu, und aus einem stillen Versäumnis wurde ein handfester Widerspruch: eine kommunale Abgabenfrist hätte eine bundesrechtliche Vernichtungspflicht ausgehebelt.
+
+Aufgelöst nicht dadurch, dass eine der beiden Fristen weicht — die eine steht im BMG, die andere in der Satzung —, sondern dadurch, dass jede das tut, wofür sie da ist: **das Gästeverzeichnis braucht die Ausweisnummer nicht.** Sie fällt jetzt im Nachtlauf ein Jahr nach der Abreise, unabhängig von jedem Antrag und jeder Abgabenfrist (`guest_document_purge`). Geburtsdatum und Staatsangehörigkeit bleiben: sie tragen die Beherbergungsstatistik, die Unterschriftspflicht und die Altersfreigrenze der Kurtaxe — sie mitzulöschen wäre Übererfüllung mit Folgeschaden.
+
+**Und die Löschung läuft jetzt in zwei Schritten.** Das glatte 409 aus 0036 hielt mehr zurück, als die Satzung verlangt: E-Mail, Telefon, Geburtsdatum, Vorlieben und Hausnotizen braucht kein Verzeichnis, und Art. 17 Abs. 3 lit. b DSGVO nimmt nur aus, was die Pflicht wirklich fordert. Wer heute Löschung verlangt, bekommt sofort alles außer Name und Anschrift; der Rest fällt im Nachtlauf, sobald die Frist abgelaufen ist (`erasure_requested_at`, `guest_erasure_complete`). Dass das nicht vergessen wird, hängt an einer Spalte und nicht an einer Wiedervorlage — zwischen Antrag und Frist liegen Jahre.
+
 **Noch offen:** das **Gästeverzeichnis als Ausgabe**. Die Daten liegen vollständig vor, aber den Vordruck, den eine Gemeinde verlangt (Cuxhaven gibt einen heraus und will ihn quartalsweise), erzeugt das System nicht. Das ist je Gemeinde verschieden und gehört in einen eigenen Export.
 
 ---

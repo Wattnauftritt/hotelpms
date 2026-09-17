@@ -3,7 +3,8 @@ import { createPool, withTransaction, SYSTEM_CONTEXT, type DbContext, type Pool 
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
 import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
-         reconcileInventory, purgeRegistrations, purgeExpired, redactOldEmails,
+         reconcileInventory, purgeRegistrations, purgeGuestDocuments,
+         completeGuestErasures, purgeExpired, redactOldEmails,
          overdueNightAudits } from './jobs/maintenance.js'
 import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
@@ -97,6 +98,16 @@ async function propertyMaintenance(p: PropertyRow): Promise<void> {
     const registrations = await purgeRegistrations(client, p.id)
     if (registrations > 0) {
       log.info({ property: p.id, registrations }, 'Meldescheine nach Jahresfrist vernichtet')
+    }
+    const ausweise = await purgeGuestDocuments(client)
+    if (ausweise > 0) {
+      log.info({ property: p.id, ausweise },
+        'Ausweisnummern nach Jahresfrist entfernt')
+    }
+    const vollendet = await completeGuestErasures(client)
+    if (vollendet > 0) {
+      log.info({ property: p.id, vollendet },
+        'Aufgeschobene Loeschungen vollendet')
     }
     const geschwaerzt = await redactOldEmails(client, p.id)
     if (geschwaerzt > 0) {

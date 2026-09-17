@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeResources, makeUser, type Fixture } from '@hotelpms/testing'
-import type { Pool } from '@hotelpms/db'
+import { withTransaction, type Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
@@ -317,16 +317,80 @@ describe('Gaestebeitragsnachweis vor Anonymisierung', () => {
         WHERE public_ref = $1`, [reservationRef])
   }
 
-  it('sperrt die Anonymisierung, solange die Frist des Hauses laeuft', async () => {
+  /**
+   * Hier stand zuerst ein glattes 409. Das war zu viel: das
+   * Gaesteverzeichnis fuehrt Name, Anschrift, Zeitraum, Naechte, Satz und
+   * Betrag -- E-Mail, Telefon, Geburtsdatum und Ausweisnummer braucht es
+   * nicht, und Art. 17 Abs. 3 lit. b DSGVO nimmt nur aus, was die Pflicht
+   * wirklich fordert.
+   */
+  it('loescht sofort, was der Nachweis nicht braucht, und schiebt den Rest', async () => {
     const guestRef = await gast('Petersen')
+    await owner.query(
+      `UPDATE guest SET email = 'gast@example.invalid', phone = '0123',
+                        birth_date = '1980-01-01', nationality = 'DE',
+                        id_document_type = 'passport',
+                        id_document_number_enc = '\\x01'::bytea,
+                        id_document_key_version = 1
+        WHERE public_ref = $1`, [guestRef])
     const ref = await reservierung(guestRef)
     await kurtaxe(ref)
     await abgereist(ref)
 
     const r = await anonymisieren(guestRef)
-    expect(r.statusCode).toBe(409)
+    expect(r.statusCode, r.body).toBe(200)
+    const body = JSON.parse(r.body) as { status: string; completesAfter: string }
+    expect(body.status).toBe('partial')
     // Sechs Jahre ab Beginn des Folgejahres: Aufenthalt 2026, also bis 2033.
-    expect(r.body).toMatch(/2033-01-01/)
+    expect(body.completesAfter).toBe('2033-01-01')
+
+    const g = await owner.query<{ last_name: string; email: string | null
+                                  phone: string | null; birth_date: string | null
+                                  ausweis: boolean; erasure: string | null
+                                  status: string }>(
+      `SELECT last_name, email, phone, birth_date::text,
+              id_document_number_enc IS NOT NULL AS ausweis,
+              erasure_requested_at::text AS erasure, status
+         FROM guest WHERE public_ref = $1`, [guestRef])
+    // Der Nachweis braucht den Namen -- alles andere nicht.
+    expect(g.rows[0]).toMatchObject({
+      last_name: 'Petersen', email: null, phone: null, birth_date: null,
+      ausweis: false, status: 'active' })
+    expect(g.rows[0]!.erasure).not.toBeNull()
+  })
+
+  it('vollendet die Loeschung, sobald die Frist abgelaufen ist', async () => {
+    const guestRef = await gast('Petersen')
+    const ref = await reservierung(guestRef)
+    await kurtaxe(ref)
+    await abgereist(ref)
+    expect((await anonymisieren(guestRef)).statusCode).toBe(200)
+
+    /*
+     * Der Nachtlauf im Mandantenkontext -- ohne ihn ist `app_account_ids()`
+     * leer, und die Funktion tut zu Recht nichts.
+     */
+    const ctx = { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null }
+    const lauf = (): Promise<number> => withTransaction(pool, ctx, async c => {
+      const r = await c.query<{ n: number }>(`SELECT guest_erasure_complete() AS n`)
+      return r.rows[0]!.n
+    })
+
+    // Solange die Frist laeuft, bleibt der Name stehen.
+    expect(await lauf()).toBe(0)
+
+    // Dasselbe, was der Ablauf der Frist bewirkt.
+    await owner.query(
+      `UPDATE property SET guest_levy_retention_years = 0 WHERE id = $1`,
+      [fx.propertyId])
+    expect(await lauf()).toBe(1)
+
+    const g = await owner.query<{ last_name: string; status: string }>(
+      `SELECT last_name, status FROM guest WHERE public_ref = $1`, [guestRef])
+    expect(g.rows[0]).toMatchObject({ last_name: 'Anonymisiert', status: 'anonymized' })
+
+    // Ein zweiter Lauf findet nichts mehr.
+    expect(await lauf()).toBe(0)
   })
 
   it('laesst sie zu, sobald die Frist des Hauses abgelaufen waere', async () => {
