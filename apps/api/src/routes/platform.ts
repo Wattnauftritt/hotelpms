@@ -40,6 +40,12 @@ interface BenutzerZeile {
   roles: string | null
 }
 
+/** Die letzte Einladung oder Ruecksetzung je Benutzer -- ob sie ankam. */
+interface PostZeile {
+  user_id: number; kind: string; status: string; created_at: string
+  last_error: string | null
+}
+
 interface PersonalZeile {
   id: number; public_ref: string; email: string; display_name: string
   status: string; role_key: string | null; role_name: string | null
@@ -62,7 +68,7 @@ const PLATTFORM_ROLLEN = [
   'platform_admin', 'platform_support', 'platform_billing', 'platform_ops'
 ] as const
 
-function kennung(req: { params?: unknown }, feld = 'id'): number {
+export function kennung(req: { params?: unknown }, feld = 'id'): number {
   const roh = (req.params as Record<string, string> | undefined)?.[feld]
   const n = Number(roh)
   if (!Number.isInteger(n) || n <= 0) {
@@ -116,6 +122,26 @@ export function platformRoutes(app: FastifyInstance): void {
         const benutzer = await client.query<BenutzerZeile>(
           `SELECT * FROM platform_account_users($1)`, [id])
 
+        /*
+         * Die letzte Post an jeden Benutzer. "Die Einladung ist nie
+         * angekommen" ist der zweithaeufigste Anruf, und die Antwort steht
+         * in platform_email: noch nicht versucht, gescheitert (mit dem
+         * Fehler des Anbieters), oder gesendet -- dann liegt es im Spam.
+         * platform_email traegt keine Zeilenrichtlinie und keine Gastdaten;
+         * `last_error` ist die Meldung des Mailanbieters, sonst nichts.
+         */
+        const post = benutzer.rows.length === 0
+          ? { rows: [] as PostZeile[] }
+          : await client.query<PostZeile>(
+              `SELECT DISTINCT ON (user_id) user_id, kind, status,
+                      created_at::text, last_error
+                 FROM platform_email
+                WHERE user_id = ANY($1::bigint[])
+                  AND kind IN ('invite', 'password_reset')
+                ORDER BY user_id, created_at DESC`,
+              [benutzer.rows.map(u => u.id)])
+        const letztePost = new Map(post.rows.map(z => [z.user_id, z]))
+
         const a = konto.rows[0]!
         return {
           account: {
@@ -129,12 +155,18 @@ export function platformRoutes(app: FastifyInstance): void {
             status: h.status, isTraining: h.is_training, timezone: h.timezone,
             rooms: Number(h.rooms)
           })),
-          users: benutzer.rows.map(u => ({
-            id: u.id, ref: u.public_ref, email: u.email,
-            displayName: u.display_name, status: u.status,
-            lockedUntil: u.locked_until, lastLoginAt: u.last_login_at,
-            roles: u.roles
-          }))
+          users: benutzer.rows.map(u => {
+            const m = letztePost.get(u.id)
+            return {
+              id: u.id, ref: u.public_ref, email: u.email,
+              displayName: u.display_name, status: u.status,
+              lockedUntil: u.locked_until, lastLoginAt: u.last_login_at,
+              roles: u.roles,
+              lastMail: m === undefined ? null
+                : { kind: m.kind, status: m.status, at: m.created_at,
+                    error: m.last_error }
+            }
+          })
         }
       })
     }
@@ -342,9 +374,54 @@ export function platformRoutes(app: FastifyInstance): void {
     permission: 'platform:operations',
     summary: 'Betriebszustand je Kunde',
     handler: async (req) => {
-      const rows = await tx(req.pool, req, client =>
-        client.query<ZustandZeile>(`SELECT * FROM platform_health()`))
+      const { rows, post, ausrollung } = await tx(req.pool, req, async client => ({
+        rows: await client.query<ZustandZeile>(`SELECT * FROM platform_health()`),
+        /*
+         * Die Post der Plattform selbst: Einladungen, Kennwort-Links,
+         * Support-Anfragen. Steht der Versand (Brevo) nicht, sammelt sich
+         * hier alles, und der Kunde wartet auf eine Einladung, die nie
+         * losging. Der letzte Fehler ist die Meldung des Anbieters -- die
+         * eine Zeile, mit der man den Grund sieht, ohne auf die Maschine
+         * zu muessen.
+         */
+        post: await client.query<{ pending: string; failed: string
+                                   oldest: string | null; last_error: string | null }>(
+          `SELECT count(*) FILTER (WHERE status = 'pending') AS pending,
+                  count(*) FILTER (WHERE status = 'failed') AS failed,
+                  min(created_at) FILTER (WHERE status IN ('pending','failed'))::text
+                    AS oldest,
+                  (SELECT last_error FROM platform_email
+                    WHERE status = 'failed' ORDER BY created_at DESC LIMIT 1)
+                    AS last_error
+             FROM platform_email`),
+        /*
+         * Eine Ausrollung, die auf 'running' steht und nicht fertig wird,
+         * sperrt ueber den eindeutigen Teilindex jede weitere -- und am
+         * Knopf sieht man nur, dass er nicht mehr geht (Dokument 21 §8).
+         * Fuenfzehn Minuten sind das Doppelte eines Baus.
+         */
+        ausrollung: await client.query<{ id: number; status: string; started_at: string | null
+                                         requested_at: string }>(
+          `SELECT id, status, started_at::text, requested_at::text
+             FROM deploy_request
+            WHERE status IN ('pending', 'running')
+            ORDER BY id LIMIT 1`)
+      }))
+      const offen = ausrollung.rows[0]
+      const haengt = offen !== undefined && (
+        (offen.status === 'running' && offen.started_at !== null
+          && Date.now() - Date.parse(offen.started_at) > 15 * 60_000)
+        || (offen.status === 'pending'
+          && Date.now() - Date.parse(offen.requested_at) > 5 * 60_000))
       return {
+        platform: {
+          emailsPending: Number(post.rows[0]!.pending),
+          emailsFailed: Number(post.rows[0]!.failed),
+          emailsOldest: post.rows[0]!.oldest,
+          emailsLastError: post.rows[0]!.last_error,
+          deployment: offen === undefined ? null
+            : { id: offen.id, status: offen.status, stuck: haengt }
+        },
         accounts: rows.rows.map(z => ({
           accountId: z.account_id,
           accountName: z.account_name,

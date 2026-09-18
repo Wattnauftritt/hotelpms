@@ -91,3 +91,46 @@ describe('Das Panel bleibt ohne Kundendaten', () => {
     expect(quelle).toContain('admin.staff.you')
   })
 })
+
+/**
+ * Die Handgriffe des Supports -- was die Oberflaeche dabei nie tut.
+ */
+describe('Die Handgriffe des Supports', () => {
+  const quelle = readFileSync(
+    new URL('../routes/Adminpanel.tsx', import.meta.url), 'utf8')
+  const abfragen = readFileSync(
+    new URL('../lib/queries/platform.ts', import.meta.url), 'utf8')
+
+  it('setzt nie ein Kennwort, sondern schickt einen Link', () => {
+    // Ein Kennwort, das durch ein Telefonat ging, bleibt dort stehen.
+    expect(abfragen).not.toMatch(/password['"]?\s*:/)
+    expect(abfragen).toContain('/access-link')
+  })
+
+  it('fragt vor dem Abmelden mit dem Satz, der sagt, was passiert', () => {
+    expect(quelle).toContain('admin.user.revokeConfirm')
+  })
+
+  it('zeigt am Benutzer, ob die letzte Post ankam', () => {
+    // "Die Einladung ist nie angekommen" ist die zweithaeufigste Frage.
+    expect(quelle).toContain('lastMail')
+    expect(quelle).toContain('admin.mail.failed')
+  })
+
+  it('nimmt fuer den Kunden keine Plattformrolle in die Auswahl', () => {
+    // KUNDEN_ROLLEN ist die Liste des Kunden. Steht dort einmal
+    // platform_admin, ist das Panel der Weg vom Kunden zur Plattform.
+    const block = quelle.slice(quelle.indexOf('const KUNDEN_ROLLEN'),
+                               quelle.indexOf('const SITZUNG_ZUSTAND'))
+    expect(block).not.toMatch(/platform_/)
+  })
+
+  it('belegt die Support-Anfrage aus der Kundenkarte vor', () => {
+    // Bis hierher tippte man die numerische Kennung von Hand ein.
+    expect(quelle).toMatch(/<Anfrage accountId=\{accountId\}/)
+  })
+
+  it('zeigt die Aufsicht nur dem Admin', () => {
+    expect(quelle).toMatch(/darfAufsicht && <Aufsicht/)
+  })
+})

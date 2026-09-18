@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 18. September 2026. 868 Tests, 38 Migrationen.
+Stand: 18. September 2026. 901 Tests, 39 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -626,6 +626,14 @@ Jetzt endet der Zugriffsbereich am Zustand des Kunden, und zwar auf beiden Ebene
 
 **Und der gesperrte Kunde erfährt, warum.** Er meldet sich weiterhin an — gesperrt ist der Account, nicht der Benutzer — und läse sonst „diesem Benutzer ist noch kein Haus zugeordnet". Das ist der Satz, nach dem montags um sieben jemand anruft und niemand weiß, warum. `/v1/auth/me` unterscheidet die beiden Fälle jetzt (`accountSuspended`), und die Oberfläche sagt den passenden Satz, ohne einen Grund zu nennen: der gehört zwischen den Kunden und uns, nicht auf einen Anmeldebildschirm.
 
+**Zweiter Durchgang: die Handgriffe des Supports.** Der erste konnte mit dem häufigsten Anruf nichts anfangen — „Frau X kommt nicht mehr rein". Zu sehen war, dass sie gesperrt ist; zu tun war nichts. Jetzt stehen an jedem Benutzer des Kunden drei Knöpfe, und keiner davon fasst ein Kennwort an: **Entsperren** (Anmelde- und PIN-Sperre, Migration 0035), **Link schicken** (Einladung erneut für `invited`, Kennwort-Ruecksetzung für aktive — dasselbe Einmaltoken wie „Kennwort vergessen"), **alle Sitzungen beenden** (für den Vorfall, nicht den Alltag). Daneben steht, ob die letzte Post ankam: „die Einladung ist nie angekommen" ist die zweithäufigste Frage, und die Antwort steht in `platform_email` — noch nicht versendet, gescheitert samt Fehler des Anbieters, oder versendet und dann im Spam.
+
+**Und ein Befund dabei, der über das Panel hinausgeht: der Kunde kann keinen zweiten Benutzer anlegen.** `users.ts` kennt nur die Rollenvergabe für Benutzer, die im Account schon bekannt sind — bekannt wird man aber nur durch das Onboarding. Ein Haus mit einer neuen Rezeptionistin hatte also keinen Weg außer einem Anruf bei uns, und wir hatten keinen außer SQL. Das Panel kann es jetzt (`POST /v1/platform/accounts/:id/users`, Account- oder Hausrolle, mit Einladung); die Maske für den Kunden selbst steht unten in der Liste der Lücken, und sie ist dort die wichtigste.
+
+Ebenso neu: ein **weiteres Haus** an einem bestehenden Kunden (`platform_property_add`, dieselben Pflichtangaben nach § 14 UStG, derselbe offene Geschäftstag wie in 0031), die **Support-Anfrage aus der Kundenkarte** (vorbelegt statt einer von Hand getippten Nummer), die **Sitzungen eines Kunden** auf seiner Karte, und für den Admin die **Aufsicht**: alle Sitzungen aller Kollegen, mit den Änderungen darunter als Zahlen je Tabelle. Art. 5 Abs. 2 DSGVO verlangt, dass der Auftragsverarbeiter nachweisen kann, was er getan hat — und ein Nachweis, den nur der Handelnde selbst sieht, ist keiner. `audit_log.changed` trägt die Zeile selbst, bei `guest` also Name und Anschrift; deshalb Zahlen, nicht Inhalte (`platform_session_activity`, Migration 0039).
+
+Der Betriebszustand nennt jetzt auch die **Post der Plattform** — Einladungen, Kennwort-Links, Support-Anfragen — mit dem letzten Fehler des Anbieters, und eine **hängende Ausrollung**, die über den eindeutigen Teilindex jede weitere sperrt. Plattformbenutzer bekommen eine Rollenwahl in der Liste und den Link-Knopf.
+
 **Was das Panel noch nicht kann:** Abrechnung. `platform:billing` gibt es als Recht seit Migration 0003, aber es steht kein Modell dahinter — keine Abo-Tabelle, keine Route, nichts. Einen Reiter dafür zu bauen hieße, eine Maske vor ein leeres Feld zu stellen. Ebenso fehlt weiterhin die Anzeige, **welcher** Stand freigegeben ist: der Ausrollknopf nennt nur den Marker `produktion`, nicht den Commit dahinter. Dafür müsste die Maschine bei jedem Lauf den aufgelösten Stand mitschreiben — sie hat keinen Netzzugang zu GitHub, und das soll so bleiben.
 
 ---
@@ -637,6 +645,7 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 | Fehlt | Route | Was das bedeutet |
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
+| **Benutzer einladen — beim Kunden selbst** | *(Route fehlt)* | Der Kunde kann keinen zweiten Benutzer anlegen: `users.ts` vergibt Rollen nur an Benutzer, die es schon gibt. Heute läuft es über das Adminpanel, also über einen Anruf bei uns. Das ist die wichtigste Zeile dieser Liste — eine neue Rezeptionistin ist Alltag, kein Supportfall. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
 | Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
 

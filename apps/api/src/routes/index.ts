@@ -25,6 +25,7 @@ import { onboardingRoutes } from './onboarding.js'
 import { supportRoutes } from './support.js'
 import { deploymentRoutes } from './deployments.js'
 import { platformRoutes } from './platform.js'
+import { platformSupportRoutes } from './platformSupport.js'
 import { openApiRoutes } from './openapi.js'
 
 export interface RouteOverrides {
@@ -59,6 +60,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   supportRoutes(app)
   deploymentRoutes(app)
   platformRoutes(app)
+  platformSupportRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }
