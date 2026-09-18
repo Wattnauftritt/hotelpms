@@ -41,22 +41,22 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
          JOIN role_permission rp ON rp.role_id = upr2.role_id
         WHERE upr2.user_id = $1`, [userId])
 
-    const accountIds = new Set<number>()
-    const accountPermissions = new Set<Permission>()
-    const platformPermissions = new Set<Permission>()
-    const permissionsByProperty = new Map<number, Set<Permission>>()
-
-    for (const r of rows.rows) {
-      if (r.level === 'platform') platformPermissions.add(r.permission_key)
-      else if (r.level === 'account' && r.account_id !== null) {
-        accountIds.add(r.account_id)
-        accountPermissions.add(r.permission_key)
-      } else if (r.level === 'property' && r.property_id !== null) {
-        let set = permissionsByProperty.get(r.property_id)
-        if (!set) { set = new Set(); permissionsByProperty.set(r.property_id, set) }
-        set.add(r.permission_key)
-      }
-    }
+    /*
+     * Welche Accounts dieses Nutzers ueberhaupt noch offen sind.
+     *
+     * Ein gesperrter Kunde (`account.status`) soll nicht weiterarbeiten, als
+     * waere nichts -- und bis Migration 0038 tat er genau das: die Spalte
+     * gab es seit 0002, gelesen hat sie niemand. Eine Account-Rolle bringt
+     * ihren Account hier **direkt** mit, auch ohne Haus; ohne diese Liste
+     * bliebe die Sperre auf halbem Weg stehen.
+     *
+     * Ueber eine SECURITY-DEFINER-Funktion, weil `account` eine erzwungene
+     * Zeilenrichtlinie traegt und hier noch kein Kontext gesetzt ist -- die
+     * Falle aus den Migrationen 0014, 0018 und 0032.
+     */
+    const offen = await client.query<{ account_id: number }>(
+      `SELECT account_id FROM user_account_scope($1)`, [userId])
+    const offeneAccounts = new Set(offen.rows.map(r => r.account_id))
 
     /*
      * Zugriffsbereich aufloesen.
@@ -70,10 +70,43 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
      * keine Gastprofile sah (Migration 0018).
      *
      * Jetzt eine SECURITY-DEFINER-Funktion, die nur fuer diesen einen Nutzer
-     * antwortet und nur Kennungen liefert.
+     * antwortet und nur Kennungen liefert -- und die seit Migration 0038
+     * auch am Zustand des Kunden endet. Sie steht deshalb **vor** der
+     * Schleife: sie entscheidet mit, welche Rolle ueberhaupt noch wirkt.
      */
     const scope = await client.query<{ property_id: number; account_id: number }>(
       `SELECT property_id, account_id FROM user_property_scope($1)`, [userId])
+    const offeneHaeuser = new Set(scope.rows.map(r => r.property_id))
+
+    const accountIds = new Set<number>()
+    const accountPermissions = new Set<Permission>()
+    const platformPermissions = new Set<Permission>()
+    const permissionsByProperty = new Map<number, Set<Permission>>()
+
+    for (const r of rows.rows) {
+      if (r.level === 'platform') platformPermissions.add(r.permission_key)
+      else if (r.level === 'account' && r.account_id !== null) {
+        // Rollen an einem gesperrten Account wirken nicht. Auch die Rechte
+        // nicht: sie gelten in diesem Modell ueber alle Accounts des
+        // Nutzers zugleich, und ein gesperrter darf keine mitbringen.
+        if (!offeneAccounts.has(r.account_id)) continue
+        accountIds.add(r.account_id)
+        accountPermissions.add(r.permission_key)
+      } else if (r.level === 'property' && r.property_id !== null) {
+        /*
+         * Dieselbe Sperre eine Ebene tiefer. Eine Property-Rolle wirkte
+         * bisher unabhaengig vom Zugriffsbereich -- ein gesperrter Kunde
+         * haette seine Rezeption also weiterarbeiten lassen, waehrend die
+         * Account-Ebene schon zu war. Was der Zugriffsbereich nicht nennt,
+         * traegt hier auch keine Rechte.
+         */
+        if (!offeneHaeuser.has(r.property_id)) continue
+        let set = permissionsByProperty.get(r.property_id)
+        if (!set) { set = new Set(); permissionsByProperty.set(r.property_id, set) }
+        set.add(r.permission_key)
+      }
+    }
+
     for (const s of scope.rows) {
       accountIds.add(s.account_id)
       if (!permissionsByProperty.has(s.property_id)) {

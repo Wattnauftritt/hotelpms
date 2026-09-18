@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 17. September 2026. 835 Tests, 37 Migrationen.
+Stand: 18. September 2026. 868 Tests, 38 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -509,7 +509,7 @@ Bis zur Erstinbetriebnahme gab es nur `deploy.sh` von Hand. Bei mehreren Bearbei
 Ein Timer, der einfach zieht, wäre die falsche Antwort gewesen — er rollte mitten im Check-in aus und nähme, was gerade auf `main` liegt. Getrennt wird deshalb:
 
 - **was** — der Git-Tag `produktion`. Die Maschine holt nur diesen Stand. Wer ihn verschiebt, gibt frei.
-- **wann** — ein Knopf in der Plattformkonsole hinter `platform:operations`. Die API schreibt eine Zeile in `deploy_request`; `ops/deploy/deploy-agent.sh` führt sie aus.
+- **wann** — ein Knopf im Adminpanel unter *Betrieb*, hinter `platform:operations`. Die API schreibt eine Zeile in `deploy_request`; `ops/deploy/deploy-agent.sh` führt sie aus.
 
 **Die API führt nichts aus, und das ist der Kern.** Sie läuft unter `NoNewPrivileges=true` — `sudo` ist ihr gesperrt, der Dienstneustart braucht es. Genau deshalb ist ein Einbruch in die Anwendung nicht gleich die Maschine. Der ausführende Dienst trägt die Rechte, die Anwendung nicht.
 
@@ -595,6 +595,41 @@ Beim Ziehen färben sich die Zeilen danach: grün die gebuchte Gruppe, rot die z
 
 ---
 
+### Das Adminpanel
+
+**Was es vorher gab.** Eine Seite mit drei Abschnitten — Support-Sitzung anfragen, eigene Sitzungen, Ausrollen —, erreichbar in genau einem Zustand: angemeldet als Plattformpersonal **ohne** laufende Support-Sitzung. Dann hat der Benutzer kein Haus, und statt einer Fehlermeldung erschien die Konsole. Das war als Normalzustand gedacht und hieß zugleich: sobald eine Sitzung lief, war der Bildschirm weg, samt Ausrollknopf. Erreichbar sein und zufällig sichtbar sein ist nicht dasselbe.
+
+Dazu kam: es gab **keine Route, die Kunden aufzählt**. Das Formular für die Support-Sitzung fragte deshalb nach einer numerischen Konto-Kennung, die man von Hand eintippt — man musste die Nummer des Kunden kennen, um ihm zu helfen. Kunden anlegen lief über `curl`, ein weiterer Plattformbenutzer über ein Skript auf der Maschine.
+
+**Was jetzt steht.** Ein eigener Eintrag in der Navigation für Plattformpersonal, unabhängig von einer laufenden Sitzung, mit vier Reitern — und jeder Reiter erscheint nur, wer das passende Plattformrecht hat. Ein Support-Zugang sieht zwei davon, nicht vier mit drei Fehlermeldungen darin.
+
+| Reiter | Recht | Was er kann |
+|---|---|---|
+| Kunden | `platform:accounts` | Liste mit Häusern, Benutzern und letzter Anmeldung; Detail mit Häusern (samt `is_training`), Benutzern und ihren Rollen; sperren, entsperren, archivieren; Kunden anlegen |
+| Plattformbenutzer | `platform:staff` | Liste mit Rolle und Zustand; anlegen und einladen; stilllegen und freigeben |
+| Betrieb | `platform:operations` | Was hängt, je Kunde; ausrollen und zurückrollen |
+| Support | `platform:support_session` | Sitzung anfragen, eigene Sitzungen |
+
+**`platform:staff` ist ein neues, eigenes Recht** und hängt allein an `platform_admin`. Plattformbenutzer anzulegen ist die eine Handlung, mit der sich der Kreis der Berechtigten selbst erweitert; wer Kunden betreut, muss nicht auch Kollegen mit Vollzugriff anlegen dürfen. Zwei Sperren stehen davor: den eigenen Zugang legt niemand still, und der letzte aktive Plattform-Admin bleibt stehen.
+
+**Ein vorhandener Benutzer wird nie nachträglich zu Plattformpersonal.** Dieselbe Regel wie im Skript `db:plattformbenutzer`, und aus demselben Grund: ein Tippfehler in der Adresse genügte sonst, um einem Hotelier Vollzugriff auf die Plattform zu geben. Ein neuer Zugang bekommt eine Einladung und setzt sein Kennwort selbst — eines, das durch einen Chat gegangen ist, ist ab dem ersten Tag kompromittiert.
+
+**Warum jede Abfrage durch eine SQL-Funktion geht.** `account` und `property` tragen eine erzwungene Zeilenrichtlinie, und Plattformpersonal hat ohne freigegebene Sitzung einen **leeren** Mandantenkontext — das ist der Kern des Entwurfs. Eine gewöhnliche Abfrage käme hier still leer zurück, ohne Fehler und ohne Meldung. Genau so sind die Befunde der Migrationen 0014, 0018 und 0032 entstanden. Migration 0038 legt deshalb `SECURITY DEFINER`-Funktionen an, und die Rechteprüfung steht **in** der Funktion (`platform_can`), nicht nur an der Route: eine vergessene Berechtigung an einer Route wäre sonst der ganze Datenbestand.
+
+**Was das Panel bewusst nicht zeigt:** keine Gastdaten, keine Buchungen, keine Umsätze. Der Zugriff auf Kundendaten läuft über eine vom Kunden freigegebene Support-Sitzung und ausschließlich darüber. Der Betriebszustand nennt Zahlen und Zeitpunkte — eine Gastpost trägt Namen und Anschrift, ein Webhook den Rumpf einer Buchung. Zwei Tests halten das fest: einer prüft, dass keine Antwort des Panels ein Kennwort oder Geheimnis enthält, einer, dass die Oberfläche keine einzige Fachroute eines Hauses aufruft.
+
+**Und der Befund beim Bauen: die Sperre sperrte nichts.** `account.status` gibt es seit Migration 0002 mit `active`, `suspended`, `archived`, und das Recht heißt seit Migration 0003 „Accounts anlegen, **sperren**". Gelesen wurde die Spalte an keiner einzigen Stelle — weder beim Anmelden noch beim Aufbau des Zugriffsbereichs. Ein Knopf dafür wäre ein Knopf gewesen, der lügt.
+
+Jetzt endet der Zugriffsbereich am Zustand des Kunden, und zwar auf beiden Ebenen: `user_property_scope` verlangt zusätzlich einen aktiven Account, `user_account_scope` deckt die Account-Rolle ab, die ihren Account im Aufbau des Principals direkt mitbringt — ohne sie wäre die Sperre auf halbem Weg stehengeblieben. Eine Property-Rolle wirkt außerdem nur noch, wenn ihr Haus im Zugriffsbereich steht; vorher wirkte sie unabhängig davon.
+
+**Der Support bleibt ausdrücklich davon unberührt** (`account_active_properties`): wer gesperrt ist, ist meist gerade der, dem geholfen werden muss, und eine Sperre, die auch den Support aussperrt, macht aus einer offenen Rechnung einen Totalausfall.
+
+**Und der gesperrte Kunde erfährt, warum.** Er meldet sich weiterhin an — gesperrt ist der Account, nicht der Benutzer — und läse sonst „diesem Benutzer ist noch kein Haus zugeordnet". Das ist der Satz, nach dem montags um sieben jemand anruft und niemand weiß, warum. `/v1/auth/me` unterscheidet die beiden Fälle jetzt (`accountSuspended`), und die Oberfläche sagt den passenden Satz, ohne einen Grund zu nennen: der gehört zwischen den Kunden und uns, nicht auf einen Anmeldebildschirm.
+
+**Was das Panel noch nicht kann:** Abrechnung. `platform:billing` gibt es als Recht seit Migration 0003, aber es steht kein Modell dahinter — keine Abo-Tabelle, keine Route, nichts. Einen Reiter dafür zu bauen hieße, eine Maske vor ein leeres Feld zu stellen. Ebenso fehlt weiterhin die Anzeige, **welcher** Stand freigegeben ist: der Ausrollknopf nennt nur den Marker `produktion`, nicht den Commit dahinter. Dafür müsste die Maschine bei jedem Lauf den aufgelösten Stand mitschreiben — sie hat keinen Netzzugang zu GitHub, und das soll so bleiben.
+
+---
+
 ### Was der Oberfläche noch fehlt
 
 Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen. Alles hier ist gebaut, geprüft und über die Schnittstelle erreichbar — nur über keinen Bildschirm. Das ist kein Entwurf, sondern eine Liste; der Abschnitt darunter sagt, was ausdrücklich **nicht** dazugehört.
@@ -602,7 +637,6 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 | Fehlt | Route | Was das bedeutet |
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
-| Kunden anlegen | `POST /v1/platform/accounts` | Onboarding läuft heute über `curl`. Die Plattformkonsole hat dafür keine Maske. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
 | Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
 

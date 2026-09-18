@@ -31,7 +31,7 @@ const ZUSTAND: Record<SupportSession['state'], TextKey> = {
 
 const FELD = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
 
-function Anfrage(): JSX.Element {
+export function Anfrage(): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const anfragen = useRequestSupportSession()
@@ -106,7 +106,7 @@ function Anfrage(): JSX.Element {
   )
 }
 
-function Liste(): JSX.Element {
+export function Liste(): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const q = usePlatformSupportSessions()
@@ -165,7 +165,7 @@ const DEPLOY_ZUSTAND: Record<Deployment['status'], TextKey> = {
  * gesperrt. Ein eigener Dienst auf der Maschine sieht minuetlich nach --
  * daher die Wartezeit nach dem Klick, und daher der Hinweis darauf.
  */
-function Ausrollen(): JSX.Element {
+export function Ausrollen(): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const q = useDeployments()

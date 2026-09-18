@@ -97,7 +97,9 @@ Ohne `PLATTFORM_PASSWORD` erzeugt das Skript eines und gibt es **einmal** aus. D
 
 Das Skript **erhöht keinen vorhandenen Benutzer**. Gibt es die Adresse schon, weist es ab — das wäre der Weg, auf dem ein Kundenzugang unbemerkt zu einem Plattformzugang wird.
 
-**Fertig, wenn:** die Anmeldung unter `https://<name>` klappt und die Oberfläche die **Support-Konsole** zeigt (nicht ein Haus). Das ist richtig so: Plattformpersonal ohne freigegebene Support-Sitzung hat einen leeren Mandantenkontext und sieht keine Kundendaten.
+**Fertig, wenn:** die Anmeldung unter `https://<name>` klappt und die Oberfläche das **Adminpanel** zeigt (nicht ein Haus). Das ist richtig so: Plattformpersonal ohne freigegebene Support-Sitzung hat einen leeren Mandantenkontext und sieht keine Kundendaten.
+
+Weitere Zugänge legst du danach **im Panel** an, Reiter *Plattformbenutzer* — das Skript hier braucht es nur für den ersten. Es erhöht auch bewusst keinen vorhandenen Benutzer; wer eine vergebene Adresse eingibt, wird abgewiesen.
 
 ---
 
@@ -119,7 +121,7 @@ visudo -c
 
 **Fertig, wenn:** `systemctl list-timers hotelpms-deploy.timer` eine nächste Auslösung zeigt.
 
-**Die Probe:** in der Konsole „Jetzt ausrollen" drücken. Binnen einer Minute muss die Zeile auf „Läuft" und dann auf „Durch" springen. Bleibt sie auf „Wartet", läuft der Timer nicht — `journalctl -u hotelpms-deploy -n 50`.
+**Die Probe:** im Adminpanel unter *Betrieb* „Jetzt ausrollen" drücken. Binnen einer Minute muss die Zeile auf „Läuft" und dann auf „Durch" springen. Bleibt sie auf „Wartet", läuft der Timer nicht — `journalctl -u hotelpms-deploy -n 50`.
 
 ---
 

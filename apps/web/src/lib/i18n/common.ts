@@ -220,6 +220,15 @@ export const common = {
     en: 'Set a PIN of your own first. Without it you could not get back after a '
       + 'switch.',
     tr: 'Önce kendinize bir PIN belirleyin. O olmadan bir devirden sonra geri dönemezsiniz.' },
+  /*
+   * Der Satz fuer den gesperrten Account. Er nennt keinen Grund -- das ist
+   * eine Frage zwischen dem Kunden und uns, nicht etwas, das ein
+   * Anmeldebildschirm ausplaudert -- sagt aber klar, wohin man sich wendet.
+   */
+  'app.accountSuspended': {
+    de: 'Dieser Zugang ist zurzeit gesperrt. Bitte wenden Sie sich an uns.',
+    en: 'This account is currently suspended. Please get in touch with us.',
+    tr: 'Bu hesap şu anda askıya alınmıştır. Lütfen bizimle iletişime geçin.' },
   'app.noProperty': {
     de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     en: 'This user is not assigned to any property yet.',
