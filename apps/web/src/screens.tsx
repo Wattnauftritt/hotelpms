@@ -13,6 +13,7 @@ import { Rates } from './routes/Rates.tsx'
 import { Guests } from './routes/Guests.tsx'
 import { Availability } from './routes/Availability.tsx'
 import { Invoices } from './routes/Invoices.tsx'
+import { Adminpanel } from './routes/Adminpanel.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -56,6 +57,17 @@ export interface ScreenContext {
    * Es ist Brauchbarkeit: kein Knopf, der mit 403 antwortet.
    */
   permissions: readonly string[]
+  /**
+   * Der angemeldete Benutzer. Das Adminpanel braucht ihn, um den eigenen
+   * Zugang in der Personalliste zu erkennen — ein Knopf, der nur mit 409
+   * antwortet, ist eine Falle und keine Sicherung.
+   */
+  userId: number | null
+  /**
+   * Die Rechte auf der Plattform. Sie hängen an keinem Haus und stehen
+   * deshalb neben `permissions`, nicht darin.
+   */
+  platformPermissions: readonly string[]
   /** Das Folio liegt über dem Tagesgeschäft, nicht daneben. */
   openFolio: (folioRef: string) => void
   /** Der Check-in liegt ebenso über dem jeweiligen Bildschirm, meist dem Plan (A9). */
@@ -77,6 +89,15 @@ export interface ScreenDefinition {
    * entweder die Rezeption oder das Revenue Management ausgesperrt.
    */
   permission: string | readonly string[] | null
+  /**
+   * Nur fuer Plattformpersonal, unabhaengig von jedem Recht an einem Haus.
+   *
+   * Die Plattformrechte haengen nicht an einer Property -- `permissions`
+   * oben sind die Rechte **in diesem Haus**, und dort steht
+   * `platform:accounts` nie. Ohne dieses Merkmal waere das Adminpanel
+   * entweder fuer jeden sichtbar oder fuer niemanden.
+   */
+  platformStaff?: boolean
   render: (ctx: ScreenContext) => JSX.Element
 }
 
@@ -112,16 +133,30 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Availability propertyId={c.propertyId} /> },
   { key: 'invoices', nav: 'nav.invoices', permission: 'folio:read',
     render: c => <Invoices propertyId={c.propertyId} onFolio={c.openFolio}
-                           permissions={c.permissions} /> }
+                           permissions={c.permissions} /> },
+  /*
+   * Das Adminpanel steht am Ende und nicht am Anfang: es ist der einzige
+   * Bildschirm, der nicht zum Haus gehoert, und es soll nie der
+   * Startbildschirm sein, nur weil jemand zufaellig beides darf.
+   */
+  { key: 'admin', nav: 'nav.admin', permission: null, platformStaff: true,
+    render: c => <Adminpanel userId={c.userId}
+                             platformPermissions={c.platformPermissions} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */
-export function visibleScreens(permissions: readonly string[]): ScreenDefinition[] {
-  return SCREENS.filter(s =>
-    s.permission === null ||
-    (typeof s.permission === 'string'
-      ? permissions.includes(s.permission)
-      : s.permission.some(p => permissions.includes(p))))
+export function visibleScreens(
+  permissions: readonly string[], platformStaff = false
+): ScreenDefinition[] {
+  return SCREENS.filter(s => {
+    // Ein Plattformbildschirm folgt nicht den Rechten am Haus, sondern nur
+    // dem Kennzeichen. Umgekehrt taucht er bei niemandem sonst auf.
+    if (s.platformStaff === true) return platformStaff
+    return s.permission === null ||
+      (typeof s.permission === 'string'
+        ? permissions.includes(s.permission)
+        : s.permission.some(p => permissions.includes(p)))
+  })
 }
 
 export function screenByKey(key: string | null): ScreenDefinition | undefined {
@@ -140,8 +175,8 @@ export function screenByKey(key: string | null): ScreenDefinition | undefined {
  * eine Umbenennung als auch den Entzug eines Rechts.
  */
 export function resolveScreen(
-  adresse: string | null, permissions: readonly string[]
+  adresse: string | null, permissions: readonly string[], platformStaff = false
 ): ScreenDefinition | undefined {
-  const erlaubt = visibleScreens(permissions)
+  const erlaubt = visibleScreens(permissions, platformStaff)
   return erlaubt.find(s => s.key === adresse) ?? erlaubt[0]
 }

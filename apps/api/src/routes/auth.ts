@@ -205,8 +205,27 @@ export function authRoutes(app: FastifyInstance): void {
                 WHERE id = ANY($1::bigint[]) AND status = 'active' ORDER BY code`,
               [haeuser]))
 
+      /*
+       * Warum hier kein Haus steht, wenn keines dasteht.
+       *
+       * Ein gesperrter Kunde meldet sich weiterhin an -- gesperrt ist der
+       * Account, nicht der Benutzer -- und bekaeme sonst "diesem Benutzer ist
+       * kein Haus zugeordnet" zu lesen. Das ist der Satz, nach dem montags um
+       * sieben jemand anruft und niemand weiss, warum. Gefragt wird nur im
+       * einzigen Fall, in dem die Antwort zaehlt: kein Haus, und kein
+       * Plattformpersonal (fuer das "kein Haus" der Normalzustand ist).
+       */
+      let accountSuspended = false
+      if (haeuser.length === 0 && !p.isPlatformStaff) {
+        const zustaende = await req.pool.query<{ status: string }>(
+          `SELECT status FROM user_account_states($1)`, [p.userId])
+        accountSuspended = zustaende.rowCount !== 0
+          && zustaende.rows.every(z => z.status !== 'active')
+      }
+
       return {
         userId: p.userId,
+        accountSuspended,
         displayName: benutzer.rows[0]?.display_name ?? '',
         email: benutzer.rows[0]?.email ?? '',
         isPlatformStaff: p.isPlatformStaff,
@@ -223,6 +242,14 @@ export function authRoutes(app: FastifyInstance): void {
         workstationPinSet: benutzer.rows[0]?.hat_pin ?? false,
         workstationSwitched: p.sessionUserId !== null && p.sessionUserId !== p.userId,
         accountPermissions: [...p.accountPermissions].sort(),
+        /*
+         * Die Plattformrechte. Sie haengen an keiner Property und standen
+         * deshalb bisher in keiner Antwort -- das Adminpanel haette ohne sie
+         * jedem Plattformbenutzer alle Reiter gezeigt und drei davon mit
+         * einer 403 beantwortet. Sichtbarkeit ist hier Brauchbarkeit, nicht
+         * Sicherheit: die liegt in der API und nirgends sonst.
+         */
+        platformPermissions: [...p.platformPermissions].sort(),
         properties: properties.rows.map(r => ({
           id: r.id, code: r.code, name: r.name, timezone: r.timezone,
           isTraining: r.is_training,

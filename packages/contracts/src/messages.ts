@@ -581,6 +581,39 @@ const M = {
     en: 'That release is already running.',
     tr: 'Bu sürüm zaten çalışıyor.' },
 
+  // ------------------------------------------------------------ Adminpanel
+
+  /*
+   * Ein vorhandener Benutzer wird nie nachtraeglich zu Plattformpersonal
+   * erhoben -- dieselbe Regel wie im Skript `db:plattformbenutzer`. Ein
+   * Tippfehler in der Adresse genuegte sonst, um einem Hotelier Vollzugriff
+   * auf die Plattform zu geben.
+   */
+  'platform.staffExists': {
+    de: 'Diese Adresse hat schon einen Zugang. Ein vorhandener Benutzer wird '
+        + 'nicht nachtraeglich zu Plattformpersonal gemacht.',
+    en: 'That address already has an account. An existing user is never '
+        + 'turned into platform staff after the fact.',
+    tr: 'Bu adresin zaten bir hesabı var. Mevcut bir kullanıcı sonradan '
+        + 'platform personeline dönüştürülmez.' },
+  'platform.staffNotFound': {
+    de: 'Diesen Plattformbenutzer gibt es nicht.',
+    en: 'That platform user does not exist.',
+    tr: 'Böyle bir platform kullanıcısı yok.' },
+  'platform.staffSelf': {
+    de: 'Den eigenen Zugang koennen Sie hier nicht stilllegen.',
+    en: 'You cannot disable your own account here.',
+    tr: 'Kendi hesabınızı buradan devre dışı bırakamazsınız.' },
+  'platform.staffLastAdmin': {
+    de: 'Das ist der letzte aktive Plattform-Admin. Legen Sie zuerst einen '
+        + 'weiteren an.',
+    en: 'That is the last active platform admin. Create another one first.',
+    tr: 'Bu, son etkin platform yöneticisidir. Önce bir tane daha oluşturun.' },
+  'platform.accountNotFound': {
+    de: 'Diesen Kunden gibt es nicht.',
+    en: 'That customer does not exist.',
+    tr: 'Böyle bir müşteri yok.' },
+
   // -------------------------------------------------------- Support-Sitzung
 
   'support.unknownSession': {

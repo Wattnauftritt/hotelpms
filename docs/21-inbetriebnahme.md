@@ -345,9 +345,9 @@ git push -f origin produktion
 
 Die Maschine holt **nur** diesen Stand; ein Merge nach `main` allein bewirkt nichts.
 
-### Wann ausgerollt wird: der Knopf in der Konsole
+### Wann ausgerollt wird: der Knopf im Adminpanel
 
-Ein Timer, der von selbst zieht, rollte mitten im Check-in aus. Stattdessen fordert jemand mit `platform:operations` in der Plattformkonsole an; ein Dienst auf der Maschine sieht minütlich nach und führt es aus.
+Ein Timer, der von selbst zieht, rollte mitten im Check-in aus. Stattdessen fordert jemand mit `platform:operations` im Adminpanel unter *Betrieb* an; ein Dienst auf der Maschine sieht minütlich nach und führt es aus.
 
 | | |
 |---|---|

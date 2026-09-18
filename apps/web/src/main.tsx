@@ -6,7 +6,7 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
-import { SupportKonsole } from './routes/SupportKonsole.tsx'
+import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
@@ -37,6 +37,10 @@ interface Me {
   userId: number
   displayName: string
   isPlatformStaff: boolean
+  /** Der Account ist gesperrt oder archiviert -- nicht: kein Haus. */
+  accountSuspended: boolean
+  /** Rechte der Plattform. Haengen an keinem Haus. */
+  platformPermissions: string[]
   /** Hat diese Person einen Arbeitsplatz-PIN hinterlegt? */
   workstationPinSet: boolean
   /** Es handelt gerade jemand anderes als der Angemeldete. */
@@ -164,17 +168,25 @@ function App(): JSX.Element {
      */
     if (me.data.isPlatformStaff) {
       return <I18nContext.Provider value={locale}>
-        <SupportKonsole />
+        <AdminpanelSeite userId={me.data.userId}
+                         platformPermissions={me.data.platformPermissions} />
       </I18nContext.Provider>
     }
+    /*
+     * Zwei Gruende, kein Haus zu sehen, und sie brauchen verschiedene Saetze.
+     * "Noch kein Haus zugeordnet" an jemanden, dessen Account gesperrt ist,
+     * schickt ihn und den Support in die falsche Richtung.
+     */
     return <I18nContext.Provider value={locale}>
-      <Hinweis><Text k="app.noProperty" /></Hinweis>
+      <Hinweis>
+        <Text k={me.data.accountSuspended ? 'app.accountSuspended' : 'app.noProperty'} />
+      </Hinweis>
     </I18nContext.Provider>
   }
 
   const rechte = me.data.properties.find(p => p.id === haus.id)?.permissions ?? []
-  const erlaubte = visibleScreens(rechte)
-  const screen = resolveScreen(adresse.screen, rechte)
+  const erlaubte = visibleScreens(rechte, me.data.isPlatformStaff)
+  const screen = resolveScreen(adresse.screen, rechte, me.data.isPlatformStaff)
 
   if (screen === undefined) {
     return <I18nContext.Provider value={locale}>
@@ -205,6 +217,8 @@ function App(): JSX.Element {
           ? <CheckIn reservationRef={checkInRef} propertyId={haus.id}
                      onClose={() => setCheckInRef(null)} />
           : screen.render({ propertyId: haus.id, permissions: rechte,
+                            userId: me.data.userId,
+                            platformPermissions: me.data.platformPermissions,
                             openFolio: setFolioRef,
                             openCheckIn: setCheckInRef })}
     </Shell>

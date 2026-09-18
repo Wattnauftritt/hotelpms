@@ -20,7 +20,11 @@ export const PERMISSIONS = [
   'settings:property', 'settings:account', 'user:manage', 'integration:manage',
   'account:contract',
   'platform:accounts', 'platform:support_session', 'platform:billing',
-  'platform:operations'
+  'platform:operations',
+  // Plattformbenutzer anlegen und Rollen vergeben (0038): eigenes Recht,
+  // weil das die eine Handlung ist, mit der sich der Kreis der Berechtigten
+  // selbst erweitert.
+  'platform:staff'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

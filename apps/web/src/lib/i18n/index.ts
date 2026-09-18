@@ -15,6 +15,7 @@ import { gaeste } from './gaeste.js'
 import { rechnung } from './rechnung.js'
 import { zugang } from './zugang.js'
 import { support } from './support.js'
+import { admin } from './admin.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -118,7 +119,8 @@ const texts = {
   ...gaeste,
   ...rechnung,
   ...zugang,
-  ...support
+  ...support,
+  ...admin
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts
