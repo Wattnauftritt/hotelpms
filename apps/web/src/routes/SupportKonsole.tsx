@@ -31,11 +31,20 @@ const ZUSTAND: Record<SupportSession['state'], TextKey> = {
 
 const FELD = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
 
-export function Anfrage(): JSX.Element {
+/**
+ * Vorbelegt aus der Kundenkarte, oder leer aus dem Support-Reiter.
+ *
+ * Bis hierher tippte man die numerische Kennung des Kunden von Hand ein,
+ * weil es keine Liste gab, aus der man ihn haette waehlen koennen. Jetzt
+ * kommt sie mit, und das Feld zeigt den Namen statt einer Zahl.
+ */
+export function Anfrage({ accountId: vorgabe, accountName, onDone }: {
+  accountId?: number; accountName?: string; onDone?: () => void
+} = {}): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const anfragen = useRequestSupportSession()
-  const [accountId, setAccountId] = useState('')
+  const [accountId, setAccountId] = useState(vorgabe === undefined ? '' : String(vorgabe))
   const [reason, setReason] = useState('')
   const [level, setLevel] = useState<'read' | 'write'>('read')
   const [hours, setHours] = useState('2')
@@ -47,15 +56,23 @@ export function Anfrage(): JSX.Element {
         anfragen.mutate({
           accountId: Number(accountId), reason: reason.trim(),
           level, hours: Number(hours)
-        }, { onSuccess: () => { setReason(''); setAccountId('') } })
+        }, { onSuccess: () => {
+          setReason('')
+          if (vorgabe === undefined) setAccountId('')
+          onDone?.()
+        } })
       }}>
       <p className="text-sm text-neutral-600">{t('support.console.hint')}</p>
 
-      <label className="block">
-        <span className="block text-xs text-neutral-600">{t('support.accountId')}</span>
-        <input required inputMode="numeric" value={accountId}
-               onChange={e => setAccountId(e.target.value)} className={FELD} />
-      </label>
+      {vorgabe === undefined ? (
+        <label className="block">
+          <span className="block text-xs text-neutral-600">{t('support.accountId')}</span>
+          <input required inputMode="numeric" value={accountId}
+                 onChange={e => setAccountId(e.target.value)} className={FELD} />
+        </label>
+      ) : (
+        <p className="text-sm"><span className="font-medium">{accountName ?? vorgabe}</span></p>
+      )}
 
       {/*
         * Der Anlass ist Pflicht und ein Freitext. Er steht in der Mail an den
@@ -84,12 +101,23 @@ export function Anfrage(): JSX.Element {
                onChange={e => setHours(e.target.value)} className={FELD} />
       </label>
 
-      {anfragen.isError && (
-        <p role="alert" className="text-sm text-red-800 bg-red-50 border
-                                   border-red-200 rounded px-2 py-1">
-          {fehlerMeldung(anfragen.error, locale).text}
-        </p>
-      )}
+      {anfragen.isError && (() => {
+        /*
+         * Die Meldung am Feld, nicht nur die Ueberschrift. "Dieser Account
+         * hat niemanden, der freigeben kann" steht an `accountId` -- und in
+         * der vorbelegten Fassung gibt es das Feld nicht. Ohne diese Zeile
+         * laese der Support nur "Ungueltige Eingabe" und suchte den Fehler
+         * bei sich.
+         */
+        const m = fehlerMeldung(anfragen.error, locale)
+        const saetze = m.felder.length > 0 ? m.felder.map(([, satz]) => satz) : [m.text]
+        return (
+          <p role="alert" className="text-sm text-red-800 bg-red-50 border
+                                     border-red-200 rounded px-2 py-1">
+            {saetze.join(' ')}
+          </p>
+        )
+      })()}
       {anfragen.isSuccess && (
         <p className="text-sm text-green-900 bg-green-50 border border-green-200
                       rounded px-2 py-1">

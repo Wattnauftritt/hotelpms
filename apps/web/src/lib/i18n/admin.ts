@@ -339,5 +339,231 @@ export const admin = {
   'admin.health.since': {
     de: 'seit {seit}',
     en: 'since {seit}',
-    tr: '{seit} tarihinden beri' }
+    tr: '{seit} tarihinden beri' },
+  'admin.health.platformMail': {
+    de: 'Post der Plattform',
+    en: 'Platform mail',
+    tr: 'Platform postası' },
+  /*
+   * Einladungen, Kennwort-Links, Support-Anfragen. Steht der Versand nicht,
+   * sammelt sich hier alles -- und der Kunde wartet auf eine Einladung, die
+   * nie losging.
+   */
+  'admin.health.platformMailHint': {
+    de: 'Einladungen, Kennwort-Links, Support-Anfragen. Hängt hier etwas, kommt '
+      + 'beim Kunden keine Einladung an.',
+    en: 'Invitations, password links, support requests. If something is stuck '
+      + 'here, no invitation reaches the customer.',
+    tr: 'Davetler, parola bağlantıları, destek talepleri. Burada bir şey '
+      + 'takılırsa müşteriye davet ulaşmaz.' },
+  'admin.health.lastError': {
+    de: 'Letzter Fehler',
+    en: 'Last error',
+    tr: 'Son hata' },
+  'admin.health.deployStuck': {
+    de: 'Eine Ausrollung hängt (#{id}, {status}). Sie sperrt jede weitere — '
+      + 'Dokument 21 §8 sagt, wie man sie freigibt.',
+    en: 'A deployment is stuck (#{id}, {status}). It blocks every further one — '
+      + 'document 21 §8 says how to release it.',
+    tr: 'Bir dağıtım takıldı (#{id}, {status}). Sonrakileri engelliyor — '
+      + '21 §8 belgesi nasıl serbest bırakılacağını anlatır.' },
+
+  // ------------------------------------------- Kundenkarte: Handgriffe
+  'admin.accounts.filter': {
+    de: 'Kunden suchen …',
+    en: 'Search customers …',
+    tr: 'Müşteri ara …' },
+  'admin.user.unlock': {
+    de: 'Entsperren',
+    en: 'Unlock',
+    tr: 'Kilidi aç' },
+  'admin.user.sendInvite': {
+    de: 'Einladung erneut schicken',
+    en: 'Resend invitation',
+    tr: 'Daveti yeniden gönder' },
+  'admin.user.sendReset': {
+    de: 'Kennwort-Link schicken',
+    en: 'Send password link',
+    tr: 'Parola bağlantısı gönder' },
+  'admin.user.linkSent': {
+    de: 'Link ist unterwegs.',
+    en: 'Link is on its way.',
+    tr: 'Bağlantı yolda.' },
+  'admin.user.revokeSessions': {
+    de: 'Alle Sitzungen beenden',
+    en: 'End all sessions',
+    tr: 'Tüm oturumları sonlandır' },
+  /*
+   * Der Fall dahinter ist der Vorfall, nicht der Alltag: ein Rechner steht
+   * noch angemeldet an der Rezeption, ein Kennwort ist unterwegs.
+   */
+  'admin.user.revokeConfirm': {
+    de: '{name} überall abmelden? Jede laufende Sitzung endet sofort — auch die '
+      + 'an der Rezeption. Zum Anmelden braucht die Person ihr Kennwort.',
+    en: 'Sign {name} out everywhere? Every running session ends at once — '
+      + 'including the one at the front desk. Signing in again needs their '
+      + 'password.',
+    tr: '{name} her yerden çıkış yapsın mı? Süren her oturum hemen sona erer — '
+      + 'resepsiyondaki dahil. Yeniden giriş için parolası gerekir.' },
+  'admin.user.sessionsRevoked': {
+    de: '{n} Sitzungen beendet.',
+    en: '{n} sessions ended.',
+    tr: '{n} oturum sonlandırıldı.' },
+  'admin.mail.invite': {
+    de: 'Einladung',
+    en: 'Invitation',
+    tr: 'Davet' },
+  'admin.mail.password_reset': {
+    de: 'Kennwort-Link',
+    en: 'Password link',
+    tr: 'Parola bağlantısı' },
+  'admin.mail.pending': {
+    de: 'noch nicht versendet',
+    en: 'not sent yet',
+    tr: 'henüz gönderilmedi' },
+  'admin.mail.sent': {
+    de: 'versendet',
+    en: 'sent',
+    tr: 'gönderildi' },
+  'admin.mail.failed': {
+    de: 'gescheitert',
+    en: 'failed',
+    tr: 'başarısız' },
+
+  // ------------------------------------------------- Benutzer einladen
+  'admin.invite.title': {
+    de: 'Benutzer einladen',
+    en: 'Invite user',
+    tr: 'Kullanıcı davet et' },
+  /*
+   * Der Kunde kann das heute selbst nicht -- es gibt nur die Rollenvergabe
+   * fuer Benutzer, die er schon hat. Bis das gebaut ist, ist dies der Weg.
+   */
+  'admin.invite.hint': {
+    de: 'Entweder eine Rolle für den ganzen Kunden (Inhaber, Buchhaltung …) '
+      + 'oder eine Rolle in einem Haus. Die Person bekommt eine Einladung und '
+      + 'setzt ihr Kennwort selbst.',
+    en: 'Either a role for the whole customer (owner, accounting …) or a role '
+      + 'in one property. The person gets an invitation and sets their own '
+      + 'password.',
+    tr: 'Ya tüm müşteri için bir rol (sahip, muhasebe …) ya da bir tesiste bir '
+      + 'rol. Kişi bir davet alır ve parolasını kendisi belirler.' },
+  'admin.invite.scope': {
+    de: 'Wo',
+    en: 'Where',
+    tr: 'Nerede' },
+  'admin.invite.scopeAccount': {
+    de: 'Ganzer Kunde',
+    en: 'Whole customer',
+    tr: 'Tüm müşteri' },
+  'admin.invite.done': {
+    de: 'Eingeladen. Die Einladung ist unterwegs.',
+    en: 'Invited. The invitation is on its way.',
+    tr: 'Davet edildi. Davet yolda.' },
+  'admin.crole.owner': {
+    de: 'Inhaber',
+    en: 'Owner',
+    tr: 'Sahip' },
+  'admin.crole.account_admin': {
+    de: 'Account-Admin',
+    en: 'Account admin',
+    tr: 'Hesap yöneticisi' },
+  'admin.crole.accounting': {
+    de: 'Buchhaltung',
+    en: 'Accounting',
+    tr: 'Muhasebe' },
+  'admin.crole.revenue': {
+    de: 'Revenue',
+    en: 'Revenue',
+    tr: 'Gelir yönetimi' },
+  'admin.crole.tax_advisor': {
+    de: 'Steuerberatung',
+    en: 'Tax advisor',
+    tr: 'Vergi danışmanı' },
+  'admin.crole.read_only': {
+    de: 'Nur lesen',
+    en: 'Read only',
+    tr: 'Salt okunur' },
+  'admin.crole.hotel_director': {
+    de: 'Hoteldirektion',
+    en: 'Hotel director',
+    tr: 'Otel müdürü' },
+  'admin.crole.front_office_mgr': {
+    de: 'Empfangsleitung',
+    en: 'Front office manager',
+    tr: 'Ön büro müdürü' },
+  'admin.crole.reception': {
+    de: 'Rezeption',
+    en: 'Reception',
+    tr: 'Resepsiyon' },
+  'admin.crole.reservations': {
+    de: 'Reservierung',
+    en: 'Reservations',
+    tr: 'Rezervasyon' },
+  'admin.crole.night_audit': {
+    de: 'Nachtdienst',
+    en: 'Night audit',
+    tr: 'Gece denetimi' },
+  'admin.crole.housekeeping': {
+    de: 'Housekeeping',
+    en: 'Housekeeping',
+    tr: 'Kat hizmetleri' },
+  'admin.crole.maintenance': {
+    de: 'Haustechnik',
+    en: 'Maintenance',
+    tr: 'Teknik servis' },
+
+  // ------------------------------------------------------ Weiteres Haus
+  'admin.property.new': {
+    de: 'Weiteres Haus anlegen',
+    en: 'Add another property',
+    tr: 'Başka bir tesis ekle' },
+  'admin.property.done': {
+    de: 'Haus angelegt. Zimmer und Kategorien legt der Kunde selbst an.',
+    en: 'Property created. Rooms and categories are set up by the customer.',
+    tr: 'Tesis oluşturuldu. Odaları ve kategorileri müşteri kendisi tanımlar.' },
+
+  // ------------------------------------------------ Support-Sitzungen
+  'admin.sessions.title': {
+    de: 'Support-Sitzungen bei diesem Kunden',
+    en: 'Support sessions at this customer',
+    tr: 'Bu müşterideki destek oturumları' },
+  'admin.sessions.request': {
+    de: 'Support-Sitzung anfragen',
+    en: 'Request support session',
+    tr: 'Destek oturumu iste' },
+  'admin.sessions.none': {
+    de: 'Noch keine.',
+    en: 'None yet.',
+    tr: 'Henüz yok.' },
+  'admin.audit.title': {
+    de: 'Aufsicht: alle Sitzungen',
+    en: 'Oversight: all sessions',
+    tr: 'Denetim: tüm oturumlar' },
+  /*
+   * Art. 5 Abs. 2 DSGVO: der Auftragsverarbeiter muss nachweisen koennen,
+   * was er getan hat. Ein Nachweis, den nur der Handelnde selbst sieht, ist
+   * keiner.
+   */
+  'admin.audit.hint': {
+    de: 'Wer von uns wann in wessen Daten war, und was dabei geändert wurde — '
+      + 'als Zahlen je Tabelle, nicht als Inhalte.',
+    en: 'Who of us was in whose data when, and what changed — as counts per '
+      + 'table, not as contents.',
+    tr: 'Bizden kimin ne zaman kimin verisinde olduğu ve nelerin değiştiği — '
+      + 'içerik olarak değil, tablo başına sayılar olarak.' },
+  'admin.audit.activity': {
+    de: 'Änderungen zeigen',
+    en: 'Show changes',
+    tr: 'Değişiklikleri göster' },
+  'admin.audit.noActivity': {
+    de: 'Nichts geändert.',
+    en: 'Nothing changed.',
+    tr: 'Hiçbir şey değişmedi.' },
+
+  // ----------------------------------------------- Plattformbenutzer
+  'admin.staff.sendLink': {
+    de: 'Link schicken',
+    en: 'Send link',
+    tr: 'Bağlantı gönder' }
 } satisfies Record<string, LocalizedText>

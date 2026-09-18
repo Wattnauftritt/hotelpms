@@ -44,6 +44,8 @@ export interface PlatformAccountUser {
   lockedUntil: string | null
   lastLoginAt: string | null
   roles: string | null
+  /** Die letzte Einladung oder Ruecksetzung -- ob sie ankam. */
+  lastMail: { kind: string; status: string; at: string; error: string | null } | null
 }
 
 export interface PlatformStaff {
@@ -134,8 +136,127 @@ export function useSetStaffStatus() {
   })
 }
 
+export interface PlatformHealthGlobal {
+  emailsPending: number
+  emailsFailed: number
+  emailsOldest: string | null
+  /** Die Meldung des Mailanbieters zum letzten Fehlschlag. */
+  emailsLastError: string | null
+  deployment: { id: number; status: string; stuck: boolean } | null
+}
+
+export interface SupportAuditRow {
+  id: number
+  accountId: number
+  accountName: string
+  staffName: string
+  grantedByName: string | null
+  level: 'read' | 'write'
+  reason: string
+  isEmergency: boolean
+  requestedAt: string
+  grantedAt: string | null
+  expiresAt: string
+  revokedAt: string | null
+  state: 'pending' | 'active' | 'expired' | 'revoked'
+}
+
+export function useUnlockUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, userId }: { accountId: number; userId: number }) =>
+      api.post(`/v1/platform/accounts/${accountId}/users/${userId}/unlock`),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
+    }
+  })
+}
+
+export function useSendAccessLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, userId }: { accountId: number; userId: number }) =>
+      api.post<{ kind: string }>(
+        `/v1/platform/accounts/${accountId}/users/${userId}/access-link`),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
+    }
+  })
+}
+
+export function useRevokeSessions() {
+  return useMutation({
+    mutationFn: ({ accountId, userId }: { accountId: number; userId: number }) =>
+      api.post<{ revoked: number }>(
+        `/v1/platform/accounts/${accountId}/users/${userId}/sessions/revoke`)
+  })
+}
+
+export function useInviteAccountUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, ...body }: {
+      accountId: number; email: string; displayName: string; roleKey: string
+      propertyId: number | null }) =>
+      api.post(`/v1/platform/accounts/${accountId}/users`, body),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
+      void qc.invalidateQueries({ queryKey: ['platform-accounts'] })
+    }
+  })
+}
+
+export function useAddProperty() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, ...body }: { accountId: number } & Record<string, unknown>) =>
+      api.post(`/v1/platform/accounts/${accountId}/properties`, body),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
+      void qc.invalidateQueries({ queryKey: ['platform-accounts'] })
+    }
+  })
+}
+
+export const useAccountSupportSessions = (accountId: number) =>
+  useQuery<{ sessions: SupportAuditRow[] }>({
+    queryKey: ['platform-account-sessions', accountId],
+    queryFn: () => api.get(`/v1/platform/accounts/${accountId}/support-sessions`),
+    refetchInterval: 60_000
+  })
+
+export const useSupportAudit = (enabled: boolean) =>
+  useQuery<{ sessions: SupportAuditRow[] }>({
+    queryKey: ['platform-support-audit'],
+    queryFn: () => api.get('/v1/platform/support-audit'),
+    enabled
+  })
+
+export const useSessionActivity = (sessionId: number | null) =>
+  useQuery<{ activity: Array<{ table: string; action: string; count: number }> }>({
+    queryKey: ['platform-session-activity', sessionId],
+    queryFn: () => api.get(`/v1/platform/support-sessions/${sessionId!}/activity`),
+    enabled: sessionId !== null
+  })
+
+export function useSetStaffRole() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, roleKey }: { id: number; roleKey: string }) =>
+      api.put(`/v1/platform/staff/${id}/role`, { roleKey }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['platform-staff'] }) }
+  })
+}
+
+export function useStaffAccessLink() {
+  return useMutation({
+    mutationFn: (id: number) =>
+      api.post<{ kind: string }>(`/v1/platform/staff/${id}/access-link`)
+  })
+}
+
 export const usePlatformHealth = () =>
-  useQuery<{ accounts: PlatformHealthRow[] }>({
+  useQuery<{ platform: PlatformHealthGlobal; accounts: PlatformHealthRow[] }>({
     queryKey: ['platform-health'],
     queryFn: () => api.get('/v1/platform/health'),
     /*

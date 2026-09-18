@@ -609,6 +609,25 @@ const M = {
         + 'weiteren an.',
     en: 'That is the last active platform admin. Create another one first.',
     tr: 'Bu, son etkin platform yöneticisidir. Önce bir tane daha oluşturun.' },
+  'platform.userNotFound': {
+    de: 'Diesen Benutzer gibt es bei diesem Kunden nicht.',
+    en: 'That user does not exist at this customer.',
+    tr: 'Bu müşteride böyle bir kullanıcı yok.' },
+  'platform.userDisabled': {
+    de: 'Dieser Zugang ist stillgelegt. Erst freigeben, dann einen Link schicken.',
+    en: 'That account is disabled. Enable it first, then send a link.',
+    tr: 'Bu hesap devre dışı. Önce etkinleştirin, sonra bağlantı gönderin.' },
+  'platform.userExists': {
+    de: 'Diese Adresse hat schon einen Zugang. Ein Benutzer, der in zwei '
+        + 'Betrieben arbeitet, bekommt seine Rolle vom Kunden selbst.',
+    en: 'That address already has an account. A user working at two '
+        + 'businesses gets their role from the customer directly.',
+    tr: 'Bu adresin zaten bir hesabı var. İki işletmede çalışan bir '
+        + 'kullanıcı rolünü doğrudan müşteriden alır.' },
+  'platform.propertyCodeTaken': {
+    de: 'Dieses Kürzel gibt es bei diesem Kunden schon.',
+    en: 'That code already exists at this customer.',
+    tr: 'Bu kod bu müşteride zaten var.' },
   'platform.accountNotFound': {
     de: 'Diesen Kunden gibt es nicht.',
     en: 'That customer does not exist.',
