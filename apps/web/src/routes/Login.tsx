@@ -35,7 +35,7 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
             setLaeuft(false)
           }
         }}>
-        <h1 className="font-semibold">hotelpms</h1>
+        <h1 className="font-semibold">StayGrid</h1>
         <label className="block">
           <span className="block text-xs text-neutral-600">{t('login.email')}</span>
           <input type="email" required autoComplete="username" value={email}

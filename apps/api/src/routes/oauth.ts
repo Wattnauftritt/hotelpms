@@ -44,7 +44,7 @@ function oauthFehler(
   reply: FastifyReply, status: number, error: string, beschreibung: string
 ): { error: string; error_description: string } {
   reply.status(status).type('application/json')
-  if (status === 401) reply.header('www-authenticate', 'Basic realm="hotelpms"')
+  if (status === 401) reply.header('www-authenticate', 'Basic realm="staygrid"')
   return { error, error_description: beschreibung }
 }
 

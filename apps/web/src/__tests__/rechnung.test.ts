@@ -41,11 +41,11 @@ describe('Beleg in Arbeit', () => {
    * Fehler, sondern „gleich".
    */
   it('erkennt den Zustand am Typ, nicht am Statuscode', () => {
-    expect(istBelegInArbeit(problem('urn:hotelpms:document_pending', 409))).toBe(true)
+    expect(istBelegInArbeit(problem('urn:staygrid:document_pending', 409))).toBe(true)
     // Ein anderer Konflikt ist keiner davon: eine schon verschickte
     // Rechnung antwortet ebenfalls mit 409.
-    expect(istBelegInArbeit(problem('urn:hotelpms:conflict', 409))).toBe(false)
-    expect(istBelegInArbeit(problem('urn:hotelpms:not_found', 404))).toBe(false)
+    expect(istBelegInArbeit(problem('urn:staygrid:conflict', 409))).toBe(false)
+    expect(istBelegInArbeit(problem('urn:staygrid:not_found', 404))).toBe(false)
     expect(istBelegInArbeit(new Error('Netz weg'))).toBe(false)
     expect(istBelegInArbeit(null)).toBe(false)
   })

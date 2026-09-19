@@ -1,6 +1,8 @@
 # Arbeiten in diesem Repository
 
-Hotel-Property-Management-System. Deutsches Recht ist Kern, nicht Lokalisierung.
+StayGrid, ein Hotel-Property-Management-System unter `staygrid.cloud`. Deutsches Recht ist Kern, nicht Lokalisierung.
+
+**Name und Kennungen.** Sichtbar heißt das Produkt StayGrid: Oberfläche, Post, Belege, OpenAPI, die Fehler-URNs `urn:staygrid:*` und die Webhook-Kopfzeilen `x-staygrid-*`. Die technischen Kennungen heißen weiter `hotelpms` — Pakete `@hotelpms/*`, Datenbankrollen, systemd-Units, `/opt/hotelpms`, das Cookie — weil ein Umbenennen dort ein Umzug der Maschine wäre, den niemand sieht.
 
 **Zum Einlesen:** [`docs/18-einarbeitung.md`](docs/18-einarbeitung.md) sagt in zwanzig Minuten, was das System tut, wo es das tut und warum. Wer die Oberfläche anfasst, liest danach [`docs/19-frontend.md`](docs/19-frontend.md) und [`docs/20-arbeitsteilung.md`](docs/20-arbeitsteilung.md).
 
@@ -40,7 +42,7 @@ pnpm dev:api                               # Terminal 1: API auf :3000
 pnpm dev:web                               # Terminal 2: Oberfläche auf :5173
 ```
 
-Dann `http://localhost:5173` öffnen und mit `test@hotelpms.local` und dem gesetzten Kennwort anmelden. Vite reicht `/v1` an die API weiter; im Betrieb tut das Caddy unter **einer** Herkunft, damit die Sitzung im Cookie ohne Sonderregeln funktioniert.
+Dann `http://localhost:5173` öffnen und mit `test@staygrid.local` und dem gesetzten Kennwort anmelden. Vite reicht `/v1` an die API weiter; im Betrieb tut das Caddy unter **einer** Herkunft, damit die Sitzung im Cookie ohne Sonderregeln funktioniert.
 
 Ohne `TESTHOTEL_PASSWORD` erzeugt das Skript eines und gibt es **einmal** aus — fest im Skript wäre es in jedem Klon dasselbe, und dieses Haus steht am Ende auf einer Maschine, die aus dem Netz erreichbar ist.
 

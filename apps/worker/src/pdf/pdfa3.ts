@@ -74,7 +74,7 @@ function xmpDate(d: Date): string {
   return `${d.toISOString().slice(0, 19)}Z`
 }
 
-const PRODUCER = 'hotelpms'
+const PRODUCER = 'StayGrid'
 
 /**
  * XMP-Block.

@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
  * inzwischen jemand anders verkauft hat. Ein Kalender, der Doppelbelegungen
  * erzeugt, ist schlimmer als eine Fehlermeldung.
  */
-const PRAEFIX = 'hotelpms.offline.'
+const PRAEFIX = 'staygrid.offline.'
 
 export function cacheRead<T>(key: string): { data: T; at: string } | null {
   try {

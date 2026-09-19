@@ -496,7 +496,7 @@ export function reportRoutes(app: FastifyInstance): void {
           'EXTF', 700, 21, 'Buchungsstapel', 9, '', '', '', '',
           q.consultantNumber ?? '', q.clientNumber ?? '',
           `${jahr}0101`, 4, q.from.replace(/-/g, ''), q.to.replace(/-/g, ''),
-          `hotelpms ${prop.rows[0]!.name}`, '', 1, 0, '', 'EUR',
+          `StayGrid ${prop.rows[0]!.name}`, '', 1, 0, '', 'EUR',
           '', '', '', '', '', '', '', '', ''
         ]
         const spalten = [

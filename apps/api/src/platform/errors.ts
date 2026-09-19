@@ -71,10 +71,10 @@ export class AppError extends Error {
 
 export const Errors = {
   unauthorized: (detail?: Meldung, params?: MessageParams) =>
-    new AppError(401, 'urn:hotelpms:unauthorized', 'error.unauthorized',
+    new AppError(401, 'urn:staygrid:unauthorized', 'error.unauthorized',
       detail, undefined, params),
   forbidden: (detail?: Meldung, params?: MessageParams) =>
-    new AppError(403, 'urn:hotelpms:forbidden', 'error.forbidden',
+    new AppError(403, 'urn:staygrid:forbidden', 'error.forbidden',
       detail, undefined, params),
   /**
    * `what` ist ein Ressourcenschluessel, etwa `res.category`. Traegt der
@@ -82,42 +82,42 @@ export const Errors = {
    * {reference}" --, kommen die Werte als zweites Argument dazu.
    */
   notFound: (what: Meldung = 'res.resource', params?: MessageParams) =>
-    new AppError(404, 'urn:hotelpms:not_found', 'error.notFound', undefined, undefined,
+    new AppError(404, 'urn:staygrid:not_found', 'error.notFound', undefined, undefined,
       { ...params, what: text(what, params) }),
   conflict: (detail: Meldung, params?: MessageParams) =>
-    new AppError(409, 'urn:hotelpms:conflict', 'error.conflict',
+    new AppError(409, 'urn:staygrid:conflict', 'error.conflict',
       detail, undefined, params),
   validation: (errors: Record<string, Meldung[]>, params?: MessageParams) =>
-    new AppError(422, 'urn:hotelpms:validation', 'error.validation', undefined,
+    new AppError(422, 'urn:staygrid:validation', 'error.validation', undefined,
       errors as Record<string, string[]>, params),
   unprocessable: (detail: Meldung, params?: MessageParams) =>
-    new AppError(422, 'urn:hotelpms:unprocessable', 'error.unprocessable',
+    new AppError(422, 'urn:staygrid:unprocessable', 'error.unprocessable',
       detail, undefined, params),
   soldOut: () =>
-    new AppError(409, 'urn:hotelpms:sold_out', 'error.soldOut', 'error.soldOut.detail'),
+    new AppError(409, 'urn:staygrid:sold_out', 'error.soldOut', 'error.soldOut.detail'),
   notMaterialized: () =>
-    new AppError(503, 'urn:hotelpms:not_materialized', 'error.notMaterialized',
+    new AppError(503, 'urn:staygrid:not_materialized', 'error.notMaterialized',
       'error.notMaterialized.detail'),
   rangeTooLarge: (max: number) =>
-    new AppError(422, 'urn:hotelpms:range_too_large', 'error.rangeTooLarge',
+    new AppError(422, 'urn:staygrid:range_too_large', 'error.rangeTooLarge',
       'error.rangeTooLarge.detail', undefined, { max }),
   idempotencyMismatch: () =>
-    new AppError(422, 'urn:hotelpms:idempotency_mismatch', 'error.idempotencyMismatch',
+    new AppError(422, 'urn:staygrid:idempotency_mismatch', 'error.idempotencyMismatch',
       'error.idempotencyMismatch.detail'),
   idempotencyInFlight: () =>
-    new AppError(409, 'urn:hotelpms:idempotency_in_flight', 'error.idempotencyInFlight',
+    new AppError(409, 'urn:staygrid:idempotency_in_flight', 'error.idempotencyInFlight',
       'error.idempotencyInFlight.detail'),
   notConfigured: (detail: Meldung, params?: MessageParams) =>
-    new AppError(503, 'urn:hotelpms:not_configured', 'error.notConfigured',
+    new AppError(503, 'urn:staygrid:not_configured', 'error.notConfigured',
       detail, undefined, params),
   invalidSignature: (detail: Meldung, params?: MessageParams) =>
-    new AppError(400, 'urn:hotelpms:invalid_signature', 'error.invalidSignature',
+    new AppError(400, 'urn:staygrid:invalid_signature', 'error.invalidSignature',
       detail, undefined, params),
   // Der Beleg entsteht nach dem Festschreiben im Worker, nicht in derselben
   // Transaktion: die haelt die Zaehlerzeile der Rechnungsnummer gesperrt.
   // Ein eigener Fehlertyp, damit die Oberflaeche zwischen "gibt es nicht"
   // und "kommt gleich" unterscheiden kann.
   documentPending: () =>
-    new AppError(409, 'urn:hotelpms:document_pending', 'error.documentPending',
+    new AppError(409, 'urn:staygrid:document_pending', 'error.documentPending',
       'error.documentPending.detail')
 }

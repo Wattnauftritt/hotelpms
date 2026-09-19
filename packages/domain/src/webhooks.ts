@@ -25,10 +25,10 @@ export function isWebhookEventType(v: string): v is WebhookEventType {
 
 /** Kopfzeilen, unter denen Kennung, Art, Zeitstempel und Signatur reisen. */
 export const WEBHOOK_HEADERS = {
-  event: 'x-hotelpms-event',
-  delivery: 'x-hotelpms-event-id',
-  timestamp: 'x-hotelpms-timestamp',
-  signature: 'x-hotelpms-signature'
+  event: 'x-staygrid-event',
+  delivery: 'x-staygrid-event-id',
+  timestamp: 'x-staygrid-timestamp',
+  signature: 'x-staygrid-signature'
 } as const
 
 /**

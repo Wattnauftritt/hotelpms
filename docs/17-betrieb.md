@@ -267,10 +267,11 @@ Einladungen und Kennwortrücksetzungen laufen über eine **eigene** Warteschlang
 Deshalb ein eigener Absender, aus der Umgebung statt aus den Stammdaten eines Hauses:
 
 ```
-PLATFORM_EMAIL_FROM=zugang@example.de
-PLATFORM_EMAIL_FROM_NAME=hotelpms
-PLATFORM_EMAIL_REPLY_TO=hilfe@example.de      # optional
+PLATFORM_EMAIL_FROM=mail@staygrid.cloud
+PLATFORM_EMAIL_FROM_NAME=StayGrid
 ```
+
+`PLATFORM_EMAIL_REPLY_TO` bleibt leer, solange Antworten an den Absender gehen sollen. Ohne `Reply-To` tut jedes Mailprogramm genau das; dieselbe Adresse ein zweites Mal einzutragen ändert nichts und läuft beim nächsten Wechsel auseinander.
 
 **Ohne `PLATFORM_EMAIL_FROM` bleibt diese Post liegen** — bewusst, statt unter einem erfundenen Absender hinauszugehen. Der Worker meldet es einmal beim Start. Die Adresse muss bei Brevo verifiziert sein, sonst gilt Punkt 1 oben: 400, dauerhaft, ohne Wiederholung.
 

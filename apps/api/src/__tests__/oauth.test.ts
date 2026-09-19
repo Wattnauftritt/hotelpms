@@ -115,7 +115,7 @@ describe('Tokenausgabe', () => {
     expect(f.error).toBe('invalid_client')
     expect(f.error_description.length).toBeGreaterThan(0)
     // Kein Problem-Dokument: eine fremde OAuth-Bibliothek erwartet dieses Format.
-    expect(r.body).not.toContain('urn:hotelpms')
+    expect(r.body).not.toContain('urn:staygrid')
   })
 
   it('unterscheidet unbekannte Kennung nicht von falschem Geheimnis', async () => {

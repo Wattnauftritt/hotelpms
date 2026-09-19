@@ -3,9 +3,9 @@ import type { LocalizedText } from '@hotelpms/contracts'
 /** Rahmen, Navigation und was ueberall vorkommt. */
 export const common = {
   'app.title': {
-    de: 'hotelpms',
-    en: 'hotelpms',
-    tr: 'hotelpms' },
+    de: 'StayGrid',
+    en: 'StayGrid',
+    tr: 'StayGrid' },
   'nav.tape': {
     de: 'Zimmerplan',
     en: 'Room chart',
