@@ -180,7 +180,7 @@ export async function buildServer(
     req.log.error({ err }, 'Unbehandelter Fehler')
     // In Produktion keine Stapelspur, nur die Anfrage-ID fuer den Support.
     return reply.status(500).type('application/problem+json').send({
-      type: 'urn:hotelpms:internal', title: renderMessage('error.internal', 'de'),
+      type: 'urn:staygrid:internal', title: renderMessage('error.internal', 'de'),
       code: 'error.internal', status: 500,
       detail: config.nodeEnv === 'production' ? undefined : (err as Error).message,
       instance

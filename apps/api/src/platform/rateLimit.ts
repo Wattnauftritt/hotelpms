@@ -93,7 +93,7 @@ export class RateLimiter {
 }
 
 export function tooManyRequests(retryAfterSeconds: number): AppError {
-  return new AppError(429, 'urn:hotelpms:rate_limited', 'error.rateLimited',
+  return new AppError(429, 'urn:staygrid:rate_limited', 'error.rateLimited',
     'error.rateLimited.detail', undefined, { seconds: retryAfterSeconds })
 }
 

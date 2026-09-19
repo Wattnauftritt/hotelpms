@@ -69,7 +69,7 @@ async function holeDatei({ pfad, dateiname }: Ausgabe): Promise<void> {
     throw new ApiError(
       problem !== null && typeof problem === 'object' && 'title' in problem
         ? problem as ApiError['problem']
-        : { type: 'urn:hotelpms:unknown', title: res.statusText, status: res.status },
+        : { type: 'urn:staygrid:unknown', title: res.statusText, status: res.status },
       res.status)
   }
   const blob = await res.blob()

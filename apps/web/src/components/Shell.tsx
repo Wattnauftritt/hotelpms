@@ -134,7 +134,7 @@ export function Shell(props: Props): JSX.Element {
       <div className="min-h-screen bg-neutral-50 text-neutral-900">
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
           <div className="flex items-center gap-4 px-4 py-2">
-            <span className="font-semibold">hotelpms</span>
+            <span className="font-semibold">StayGrid</span>
             <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
             <div className="grow" />
             <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />

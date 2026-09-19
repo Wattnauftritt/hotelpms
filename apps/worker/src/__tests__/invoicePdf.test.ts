@@ -150,7 +150,7 @@ describe('Rechnungsbeleg als PDF/A-3 mit ZUGFeRD', () => {
     const doc = await PDFDocument.load(bytes, { updateMetadata: false })
     expect(doc.getTitle()).toBe('Rechnung 2026-00042')
     expect(doc.getAuthor()).toBe('Seehotel Wattenblick')
-    expect(doc.getProducer()).toBe('hotelpms')
+    expect(doc.getProducer()).toBe('StayGrid')
   })
 
   it('erzeugt denselben Beleg zweimal gleich', async () => {

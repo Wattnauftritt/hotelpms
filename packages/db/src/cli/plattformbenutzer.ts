@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   if (!EMAIL) {
     console.error(
       'PLATTFORM_EMAIL fehlt.\n\n'
-      + '  PLATTFORM_EMAIL=betrieb@example.de pnpm db:plattformbenutzer\n')
+      + '  PLATTFORM_EMAIL=betrieb@staygrid.cloud pnpm db:plattformbenutzer\n')
     process.exitCode = 1
     return
   }

@@ -1,12 +1,12 @@
 # Caddy holt und erneuert die Zertifikate selbst. Kein certbot, kein Cron-Job.
 {
-	email admin@hotelpms.de
+	email admin@staygrid.cloud
 }
 
 # ---------------------------------------------------------------------------
 # Eine Herkunft für Oberfläche und Schnittstelle.
 #
-# Vorher lagen sie auf app.hotelpms.de und api.hotelpms.de. Das erzwingt CORS
+# Vorher lagen sie auf app.staygrid.cloud und api.staygrid.cloud getrennt. Das erzwingt CORS
 # mit Anmeldedaten, `SameSite=None` am Sitzungscookie und eine gepflegte
 # Liste erlaubter Herkünfte. Jede dieser drei Stellen ist eine Gelegenheit,
 # sich zu vertun, und ein Fehler darin ist eine Sitzungsübernahme.
@@ -16,7 +16,7 @@
 # Cross-Site-Pfad, den jemand ausnutzen könnte. Der Preis ist eine
 # Pfadregel in Caddy.
 # ---------------------------------------------------------------------------
-app.hotelpms.de {
+app.staygrid.cloud {
 	encode zstd gzip
 
 	# Erste Linie vor der Anwendung. Sie kennt selbst RATE_LIMIT_LOGIN und
@@ -114,7 +114,7 @@ app.hotelpms.de {
 
 # Eigener Name für Maschinen: Channel Manager, Buchungsstrecke, Kassensysteme.
 # Sie brauchen keine Oberfläche und sollen sie auch nicht sehen.
-api.hotelpms.de {
+api.staygrid.cloud {
 	reverse_proxy unix//run/hotelpms/api.sock
 	encode zstd gzip
 	header {

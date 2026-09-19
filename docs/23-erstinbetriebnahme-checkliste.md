@@ -25,8 +25,8 @@ Ist es schon ein Symlink, ist Schritt 3 erledigt — weiter mit 4.
 `/opt/hotelpms/shared/env`, Rechte `600`. Zwei Werte fehlen, und **beide fallen still aus**: ohne sie geht keine Einladung und keine Support-Anfrage hinaus, und niemand bekommt eine Fehlermeldung.
 
 ```
-PLATFORM_EMAIL_FROM=zugang@<eure-domain>
-PLATFORM_EMAIL_FROM_NAME=hotelpms
+PLATFORM_EMAIL_FROM=mail@staygrid.cloud
+PLATFORM_EMAIL_FROM_NAME=StayGrid
 PUBLIC_APP_URL=https://<der-echte-name>
 ```
 
@@ -88,7 +88,7 @@ Ohne ihn kann niemand einen Kunden anlegen oder ausrollen — und ihn über die 
 
 ```bash
 cd /opt/hotelpms/current
-PLATTFORM_EMAIL=betrieb@<eure-domain> \
+PLATTFORM_EMAIL=betrieb@staygrid.cloud \
 PLATTFORM_PASSWORD='<mindestens zwölf Zeichen>' \
   pnpm db:plattformbenutzer
 ```

@@ -1,6 +1,6 @@
-# hotelpms
+# StayGrid
 
-Eigenes Hotel Property Management System für den deutschen Markt. Backend und Rezeptions-Oberfläche sind gebaut und getestet ([`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md)); die Inbetriebnahme für den ersten Kunden steht an ([`docs/17-betrieb.md`](docs/17-betrieb.md), [`docs/21-inbetriebnahme.md`](docs/21-inbetriebnahme.md)).
+Hotel Property Management System für den deutschen Markt, erreichbar unter `staygrid.cloud`. Der technische Name im Repository, in Paketen, Datenbankrollen und auf der Maschine bleibt `hotelpms`. Backend und Rezeptions-Oberfläche sind gebaut und getestet ([`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md)); die Inbetriebnahme für den ersten Kunden steht an ([`docs/17-betrieb.md`](docs/17-betrieb.md), [`docs/21-inbetriebnahme.md`](docs/21-inbetriebnahme.md)).
 
 ## Dokumente
 

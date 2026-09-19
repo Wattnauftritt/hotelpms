@@ -11,8 +11,8 @@ let owner: Pool
 let app: Pool
 
 const ABSENDER: PlatformSender = {
-  from: { email: 'zugang@hotelpms.test', name: 'hotelpms' },
-  replyTo: { email: 'hilfe@hotelpms.test' }
+  from: { email: 'mail@staygrid.test', name: 'StayGrid' },
+  replyTo: { email: 'antwort@staygrid.test' }
 }
 
 /** Das Token, wie es in einer echten Nachricht steht. */
@@ -112,8 +112,8 @@ describe('Zugangspost zustellen', () => {
     expect(gesendet.headers['api-key']).toBe('schluessel')
     // Der Absender kommt aus der Umgebung: diese Nachricht gehoert zu einem
     // Benutzer, und der hat kein Haus, aus dem man ihn nehmen koennte.
-    expect(gesendet.body.sender).toEqual({ email: 'zugang@hotelpms.test', name: 'hotelpms' })
-    expect(gesendet.body.replyTo).toEqual({ email: 'hilfe@hotelpms.test' })
+    expect(gesendet.body.sender).toEqual({ email: 'mail@staygrid.test', name: 'StayGrid' })
+    expect(gesendet.body.replyTo).toEqual({ email: 'antwort@staygrid.test' })
     expect(gesendet.body.to?.[0]?.email).toBe('empfaenger@test.de')
     expect(gesendet.body.textContent).toContain(TOKEN)
 

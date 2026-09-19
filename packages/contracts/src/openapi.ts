@@ -107,7 +107,7 @@ export function buildOpenApi(
   return {
     openapi: '3.1.0',
     info: {
-      title: opts.title ?? 'hotelpms API',
+      title: opts.title ?? 'StayGrid API',
       version: opts.version ?? '1.0.0',
       description: opts.description
         ?? 'Schnittstelle des Hotel-Property-Management-Systems. '
@@ -126,7 +126,7 @@ export function buildOpenApi(
           description: 'Fehlerdarstellung nach RFC 9457.',
           required: ['type', 'title', 'status'],
           properties: {
-            type: { type: 'string', examples: ['urn:hotelpms:sold_out'] },
+            type: { type: 'string', examples: ['urn:staygrid:sold_out'] },
             title: { type: 'string' },
             status: { type: 'integer' },
             detail: { type: 'string' },

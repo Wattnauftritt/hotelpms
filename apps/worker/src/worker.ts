@@ -214,7 +214,7 @@ if (mailer === null) {
  */
 const platformFrom = process.env.PLATFORM_EMAIL_FROM ?? null
 const platformSender: PlatformSender | null = platformFrom === null ? null : {
-  from: { email: platformFrom, name: process.env.PLATFORM_EMAIL_FROM_NAME ?? 'hotelpms' },
+  from: { email: platformFrom, name: process.env.PLATFORM_EMAIL_FROM_NAME ?? 'StayGrid' },
   replyTo: process.env.PLATFORM_EMAIL_REPLY_TO
     ? { email: process.env.PLATFORM_EMAIL_REPLY_TO } : null
 }

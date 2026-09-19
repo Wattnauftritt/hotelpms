@@ -206,7 +206,7 @@ describe('Rechnung und Pflichtangaben', () => {
       const offen = await app.inject({
         method: 'GET', url: `/v1/invoices/${invoiceRef}/pdf`, headers: auth })
       expect(offen.statusCode).toBe(409)
-      expect(JSON.parse(offen.body).type).toBe('urn:hotelpms:document_pending')
+      expect(JSON.parse(offen.body).type).toBe('urn:staygrid:document_pending')
 
       const unbekannt = await app.inject({
         method: 'GET', url: '/v1/invoices/inv_gibtesnicht/pdf', headers: auth })

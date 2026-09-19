@@ -42,7 +42,7 @@ async function request<T>(
 
   if (!res.ok) {
     const problem: Problem = isProblem(parsed) ? parsed : {
-      type: 'urn:hotelpms:unknown',
+      type: 'urn:staygrid:unknown',
       title: res.statusText || 'Unbekannter Fehler',
       status: res.status
     }

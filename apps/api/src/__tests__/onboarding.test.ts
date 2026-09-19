@@ -30,7 +30,7 @@ beforeEach(async () => {
   // sieht und er nichts vom neuen.
   fx = await makeProperty(owner)
   const u = await makeUser(owner,
-    { email: 'plattform@hotelpms.test', platformRoleKey: 'platform_admin',
+    { email: 'plattform@staygrid.test', platformRoleKey: 'platform_admin',
       isPlatformStaff: true })
   plattform = u.sessionId
   limiters.reset()
@@ -200,7 +200,7 @@ describe('Wer darf das', () => {
 
   it('weist Support ohne platform:accounts ab', async () => {
     const support = await makeUser(owner,
-      { email: 'support@hotelpms.test', platformRoleKey: 'platform_support',
+      { email: 'support@staygrid.test', platformRoleKey: 'platform_support',
         isPlatformStaff: true })
     expect((await anlegen(VOLLSTAENDIG, support.sessionId)).statusCode).toBe(403)
   })

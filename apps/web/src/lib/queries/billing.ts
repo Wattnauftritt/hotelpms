@@ -68,7 +68,7 @@ export async function holeBeleg(invoiceRef: string): Promise<Blob> {
     throw new ApiError(
       problem !== null && typeof problem === 'object' && 'title' in problem
         ? problem as never
-        : { type: 'urn:hotelpms:unknown', title: res.statusText, status: res.status },
+        : { type: 'urn:staygrid:unknown', title: res.statusText, status: res.status },
       res.status)
   }
   return await res.blob()
@@ -77,7 +77,7 @@ export async function holeBeleg(invoiceRef: string): Promise<Blob> {
 /** Wartet der Beleg noch auf den Worker? */
 export function istBelegInArbeit(fehler: unknown): boolean {
   return fehler instanceof ApiError
-    && fehler.problem.type === 'urn:hotelpms:document_pending'
+    && fehler.problem.type === 'urn:staygrid:document_pending'
 }
 
 export function useBeleg(invoiceRef: string | null) {
@@ -181,7 +181,7 @@ export function useIssueDepositInvoice(folioRef: string) {
 /** Ist kein Zahlungsdienstleister eingerichtet? Dann fehlt eine Einstellung, kein Recht. */
 export function istNichtEingerichtet(fehler: unknown): boolean {
   return fehler instanceof ApiError
-    && fehler.problem.type === 'urn:hotelpms:not_configured'
+    && fehler.problem.type === 'urn:staygrid:not_configured'
 }
 
 export function useCreatePaymentLink(folioRef: string) {

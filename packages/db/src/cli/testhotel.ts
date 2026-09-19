@@ -34,7 +34,7 @@ import { dbUrl } from '../config.js'
 
 const CODE = process.env.TESTHOTEL_CODE ?? 'TEST'
 const EMAIL = process.env.TESTHOTEL_EMAIL
-  ?? `${(process.env.TESTHOTEL_CODE ?? 'test').toLowerCase()}@hotelpms.local`
+  ?? `${(process.env.TESTHOTEL_CODE ?? 'test').toLowerCase()}@staygrid.local`
 const VON = "(current_date - 30)"
 const BIS = "(current_date + 180)"
 
