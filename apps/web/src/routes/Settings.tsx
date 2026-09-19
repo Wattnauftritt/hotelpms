@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
 import type { PaymentMethod } from '@hotelpms/contracts'
-import { useEmailSettings, useSaveEmailSettings, usePaymentMethodsAll,
-         useCreatePaymentMethod, useUpdatePaymentMethod }
+import { useEmailSettings, useSaveEmailSettings, useEmailDomain,
+         useRequestEmailDomain, useCheckEmailDomain, useWithdrawEmailDomain,
+         usePaymentMethodsAll, useCreatePaymentMethod, useUpdatePaymentMethod }
   from '../lib/queries/settings.js'
 import { usePropertyTerms, useCreateTerms } from '../lib/queries/booking.js'
 import { useHausrechte } from '../lib/rechte.js'
@@ -51,6 +52,7 @@ function Gastpost(
   const t = useT()
   const online = useOnline()
   const q = useEmailSettings(propertyId)
+  const domain = useEmailDomain(propertyId)
   const speichern = useSaveEmailSettings(propertyId)
 
   const [fromName, setFromName] = useState('')
@@ -74,6 +76,10 @@ function Gastpost(
   if (q.data === undefined) return <Laedt />
 
   const bereit = fromName.trim() !== '' && fromEmail.trim() !== ''
+  // Solange der Stand nicht da ist, gilt "nicht frei": lieber ein Häkchen,
+  // das kurz gesperrt aussieht, als eines, das sich anklicken lässt und
+  // beim Speichern abgewiesen wird.
+  const domainFrei = domain.data?.status === 'active'
 
   return (
     <form className="rounded border border-neutral-200 bg-white p-3 space-y-3 max-w-2xl"
@@ -111,14 +117,18 @@ function Gastpost(
       </div>
 
       <label className="text-sm flex items-center gap-1.5 text-neutral-700">
-        <input type="checkbox" checked={enabled} disabled={isTraining}
+        <input type="checkbox" checked={enabled}
+               disabled={isTraining || !domainFrei}
                onChange={e => setEnabled(e.target.checked)} />
         {t('mail.enabled')}
       </label>
       {/* Der Grund steht an der gesperrten Stelle, nicht irgendwo: sonst
-          sucht jemand den Fehler bei sich. */}
+          sucht jemand den Fehler bei sich. Drei Gründe, drei Sätze -- ein
+          gemeinsamer "geht nicht" ließe offen, was zu tun ist. */}
       <div className="text-xs text-neutral-500">
-        {isTraining ? t('mail.training') : t('mail.enabledHint')}
+        {isTraining ? t('mail.training')
+          : !domainFrei ? t('mailDomain.needed')
+          : t('mail.enabledHint')}
       </div>
 
       <div className="text-xs text-neutral-500">
@@ -135,6 +145,197 @@ function Gastpost(
         {t('common.save')}
       </button>
     </form>
+  )
+}
+
+// ------------------------------------------------------- Absenderdomain
+
+/**
+ * Antrag, Wartezeit und die drei Zeilen zum Abtippen.
+ *
+ * **Über dem Formular für die Absenderangaben**, nicht darunter: ohne
+ * freigeschaltete Domain lässt sich der Versand nicht einschalten, und ein
+ * Formular, dessen entscheidende Bedingung weiter unten steht, wird ausgefüllt
+ * und dann abgewiesen.
+ */
+function Absenderdomain(
+  { propertyId, isTraining }: { propertyId: number; isTraining: boolean }
+): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const q = useEmailDomain(propertyId)
+  const beantragen = useRequestEmailDomain(propertyId)
+  const nachsehen = useCheckEmailDomain(propertyId)
+  const zuruecknehmen = useWithdrawEmailDomain(propertyId)
+
+  const [modus, setModus] = useState<'own' | 'relay'>('own')
+  const [domain, setDomain] = useState('')
+  const [localPart, setLocalPart] = useState('')
+
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return <Laedt />
+
+  const d = q.data
+  const relay = d.relayDomain ?? 'mail.staygrid.cloud'
+
+  // Noch nichts beantragt, oder abgelehnt: das Formular.
+  if (d.status === null || d.status === 'rejected') {
+    const bereit = modus === 'own' ? domain.trim() !== '' : localPart.trim() !== ''
+    return (
+      <form className="rounded border border-neutral-200 bg-white p-3 space-y-3
+                       max-w-2xl"
+            onSubmit={e => {
+              e.preventDefault()
+              if (!bereit) return
+              beantragen.mutate(modus === 'own'
+                ? { mode: 'own', domain: domain.trim() }
+                : { mode: 'relay', localPart: localPart.trim() })
+            }}>
+        <div className="font-medium">{t('mailDomain.title')}</div>
+        <p className="text-sm text-neutral-600">{t('mailDomain.intro')}</p>
+
+        {/* Die Ablehnung steht über dem neuen Antrag, nicht daneben: wer
+            gerade abgelehnt wurde, soll den Grund lesen, bevor er dasselbe
+            noch einmal einträgt. */}
+        {d.status === 'rejected' && (
+          <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+            <div className="font-medium">{t('mailDomain.statusRejected')}</div>
+            <div className="text-neutral-700">{d.decisionNote}</div>
+          </div>
+        )}
+
+        <div className="space-y-1.5 text-sm">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={modus === 'own'}
+                   onChange={() => setModus('own')} />
+            {t('mailDomain.modeOwn')}
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={modus === 'relay'}
+                   onChange={() => setModus('relay')} />
+            {t('mailDomain.modeRelay')}
+          </label>
+        </div>
+
+        {modus === 'own' ? (
+          <label className="text-sm block">
+            <div className="text-neutral-600">{t('mailDomain.domainLabel')}</div>
+            <input value={domain} onChange={e => setDomain(e.target.value)}
+                   placeholder="hotel-wattenblick.de"
+                   className="border border-neutral-300 rounded px-2 py-1 w-72" />
+            <div className="text-xs text-neutral-500 mt-0.5">
+              {t('mailDomain.domainHint')}
+            </div>
+          </label>
+        ) : (
+          <label className="text-sm block">
+            <div className="text-neutral-600">{t('mailDomain.localPartLabel')}</div>
+            <div className="flex items-center gap-1">
+              <input value={localPart} onChange={e => setLocalPart(e.target.value)}
+                     placeholder="wattenblick"
+                     className="border border-neutral-300 rounded px-2 py-1 w-48" />
+              <span className="text-neutral-600">@{relay}</span>
+            </div>
+            <div className="text-xs text-neutral-500 mt-0.5">
+              {t('mailDomain.relayHint',
+                 { address: `${localPart.trim() || 'name'}@${relay}` })}
+            </div>
+          </label>
+        )}
+
+        {beantragen.isError && <Fehler error={beantragen.error} />}
+
+        <button type="submit"
+                disabled={!online || !bereit || isTraining || beantragen.isPending}
+                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                           disabled:opacity-40">
+          {t('mailDomain.request')}
+        </button>
+        {isTraining && (
+          <div className="text-xs text-neutral-500">{t('mail.training')}</div>
+        )}
+      </form>
+    )
+  }
+
+  const statusText: TextKey =
+    d.status === 'requested'   ? 'mailDomain.statusRequested'
+    : d.status === 'dns_pending' ? 'mailDomain.statusDnsPending'
+    : 'mailDomain.statusActive'
+
+  return (
+    <div className="rounded border border-neutral-200 bg-white p-3 space-y-3
+                    max-w-3xl">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="font-medium">{t('mailDomain.title')}</span>
+        <span className="font-mono text-sm">
+          {d.mode === 'relay' ? `${d.localPart}@${d.domain}` : d.domain}
+        </span>
+      </div>
+      <div className={`text-sm ${d.status === 'active'
+                                 ? 'text-emerald-700' : 'text-neutral-600'}`}>
+        {t(statusText)}
+      </div>
+
+      {d.status === 'dns_pending' && (
+        <>
+          <p className="text-sm text-neutral-600">{t('mailDomain.dnsIntro')}</p>
+          {/* Eine Tabelle und kein Fließtext: das hier wird abgetippt, und
+              ein Wert mit einem verschluckten Zeichen ist der häufigste
+              Grund, warum die Prüfung danach fehlschlägt. */}
+          <div className="overflow-x-auto">
+            <table className="text-xs w-full">
+              <thead className="text-neutral-500 text-left">
+                <tr>
+                  <th className="pr-3 pb-1 font-normal">{t('mailDomain.host')}</th>
+                  <th className="pr-3 pb-1 font-normal">{t('mailDomain.type')}</th>
+                  <th className="pr-3 pb-1 font-normal">{t('mailDomain.value')}</th>
+                  <th className="pb-1 font-normal" />
+                </tr>
+              </thead>
+              <tbody className="font-mono align-top">
+                {d.dnsRecords.map(r => (
+                  <tr key={`${r.host}-${r.type}`} className="border-t border-neutral-100">
+                    <td className="pr-3 py-1">{r.host}</td>
+                    <td className="pr-3 py-1">{r.type}</td>
+                    <td className="pr-3 py-1 break-all">{r.value}</td>
+                    <td className={`py-1 font-sans whitespace-nowrap
+                                    ${r.ok ? 'text-emerald-700' : 'text-neutral-500'}`}>
+                      {t(r.ok ? 'mailDomain.recordOk' : 'mailDomain.recordMissing')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="text-xs text-neutral-500">
+            {t('mailDomain.lastChecked')}: {d.checkedAt === null
+              ? t('mailDomain.neverChecked')
+              : new Date(d.checkedAt).toLocaleString()}
+          </div>
+
+          {nachsehen.isError && <Fehler error={nachsehen.error} />}
+
+          <button type="button" disabled={!online || nachsehen.isPending}
+                  onClick={() => nachsehen.mutate()}
+                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                             disabled:opacity-40">
+            {t('mailDomain.check')}
+          </button>
+        </>
+      )}
+
+      {zuruecknehmen.isError && <Fehler error={zuruecknehmen.error} />}
+      <div>
+        <button type="button" disabled={!online || zuruecknehmen.isPending}
+                onClick={() => zuruecknehmen.mutate()}
+                className="text-sm px-2 py-1 rounded border border-neutral-300
+                           text-neutral-700 disabled:opacity-40">
+          {t('mailDomain.withdraw')}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -432,7 +633,13 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
       </div>
 
       {aktiv.key === 'mail' && (
-        <Gastpost propertyId={propertyId} isTraining={isTraining} />
+        <div className="space-y-4">
+          {/* Die Domain steht oben: ohne sie lässt sich der Versand darunter
+              nicht einschalten, und eine Bedingung, die unter dem Formular
+              steht, liest niemand vorher. */}
+          <Absenderdomain propertyId={propertyId} isTraining={isTraining} />
+          <Gastpost propertyId={propertyId} isTraining={isTraining} />
+        </div>
       )}
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
       {aktiv.key === 'terms' && <Hausbedingungen propertyId={propertyId} />}

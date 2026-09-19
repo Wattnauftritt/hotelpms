@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { MaintenanceTicket, CreateMaintenanceTicket, EmailSettings,
-              PaymentMethod, CreatePaymentMethod, Category, Room }
+              EmailDomain, PaymentMethod, CreatePaymentMethod, Category, Room }
   from '@hotelpms/contracts'
 import { api } from '../api.js'
 
@@ -69,6 +69,62 @@ export function useSaveEmailSettings(propertyId: number) {
                          enabled?: boolean }) =>
       api.put(`/v1/properties/${propertyId}/email-settings`, body),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['emailSettings', propertyId] })
+    }
+  })
+}
+
+// ------------------------------------------------------- Absenderdomain
+
+/**
+ * Der Stand der Absenderdomain.
+ *
+ * Eine eigene Abfrage neben den Absenderangaben, obwohl beides auf einem
+ * Bildschirm steht: sie aendert sich auf einem anderen Weg. Die Angaben
+ * aendert das Haus selbst, den Stand aendern wir und der Domainanbieter des
+ * Hauses. Zusammengelegt muesste nach jedem Speichern eines Absendernamens
+ * auch der Domainstand neu geholt werden, und nach jedem Nachsehen die
+ * Absenderangaben.
+ */
+export const useEmailDomain = (propertyId: number) =>
+  useQuery<EmailDomain>({
+    queryKey: ['emailDomain', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/email-domain`)
+  })
+
+export function useRequestEmailDomain(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { mode: 'own' | 'relay'; domain?: string
+                         localPart?: string }) =>
+      api.post(`/v1/properties/${propertyId}/email-domain`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['emailDomain', propertyId] })
+    }
+  })
+}
+
+export function useCheckEmailDomain(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post(`/v1/properties/${propertyId}/email-domain/check`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['emailDomain', propertyId] })
+      // Der Versand laesst sich jetzt vielleicht einschalten; die Maske
+      // daneben muss das sehen, ohne dass jemand neu laedt.
+      void qc.invalidateQueries({ queryKey: ['emailSettings', propertyId] })
+    }
+  })
+}
+
+export function useWithdrawEmailDomain(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete(`/v1/properties/${propertyId}/email-domain`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['emailDomain', propertyId] })
+      // Die Ruecknahme schaltet den Versand mit aus.
       void qc.invalidateQueries({ queryKey: ['emailSettings', propertyId] })
     }
   })

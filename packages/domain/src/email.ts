@@ -45,6 +45,57 @@ export function isSendableAddress(value: string | null | undefined): boolean {
   return domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.')
 }
 
+/*
+ * Anbieter, unter deren Domain niemand eine Absenderdomain anmelden kann --
+ * und zwar mit gutem Grund: wer `gmx.de` anmelden koennte, koennte im Namen
+ * jedes GMX-Kunden schreiben. Der Versandanbieter weist das ohnehin ab.
+ *
+ * Die Liste steht hier trotzdem, weil die Fehlermeldung ankommen muss,
+ * **bevor** ein Antrag gestellt und von einem Menschen bearbeitet wird. Ein
+ * Haus, das drei Tage auf eine Freigabe wartet, um dann zu erfahren, dass
+ * seine GMX-Adresse nie gehen konnte, hat drei Tage verloren.
+ *
+ * Sie ist bewusst kurz und deckt den deutschsprachigen Alltag ab. Sie muss
+ * nicht vollstaendig sein: was durchrutscht, faellt beim Anbieter, und das
+ * ist der Zaun dahinter.
+ */
+const FREEMAIL = new Set([
+  'gmx.de', 'gmx.net', 'gmx.at', 'gmx.ch', 'web.de', 't-online.de',
+  'freenet.de', 'arcor.de', 'gmail.com', 'googlemail.com', 'outlook.com',
+  'outlook.de', 'hotmail.com', 'hotmail.de', 'live.de', 'live.com',
+  'yahoo.com', 'yahoo.de', 'aol.com', 'icloud.com', 'me.com', 'mail.de',
+  'posteo.de', 'mailbox.org', 'protonmail.com', 'proton.me', 'bluewin.ch',
+  'a1.net', 'chello.at', 'aon.at'
+])
+
+/**
+ * Laesst sich unter dieser Domain eine eigene Absenderdomain anmelden?
+ *
+ * Nimmt eine Domain **oder** eine ganze Adresse entgegen: an der Oberflaeche
+ * tippt jemand mal das eine, mal das andere ein, und ein Formular, das bei
+ * `info@hotel.de` etwas anderes antwortet als bei `hotel.de`, ist ein
+ * Formular, dem man nicht glaubt.
+ */
+export function isFreemailDomain(value: string | null | undefined): boolean {
+  if (!value) return false
+  const v = value.trim().toLowerCase()
+  return FREEMAIL.has(v.includes('@') ? v.slice(v.lastIndexOf('@') + 1) : v)
+}
+
+/**
+ * Die Domain aus einer Adresse, kleingeschrieben. Leer, wenn keine drin ist.
+ *
+ * Eine eigene Funktion, weil dieselbe Zeile sonst an vier Stellen stuende --
+ * und an der fuenften mit `split('@')[1]` statt `lastIndexOf`, was bei einer
+ * Adresse mit zwei Klammeraffen etwas anderes ergibt.
+ */
+export function domainOf(value: string | null | undefined): string {
+  if (!value) return ''
+  const v = value.trim().toLowerCase()
+  const at = v.lastIndexOf('@')
+  return at < 0 ? '' : v.slice(at + 1)
+}
+
 /**
  * Versuche, bis eine Nachricht aufgegeben wird. Groesser als bei den
  * Webhooks (dort drei), und der Unterschied hat einen Grund: ein Webhook
@@ -501,4 +552,45 @@ export function renderSupportRequestEmail(
   ]
   return { subject: 'Support bittet um Zugriff', text: lines.join('\n\n'),
            html: htmlBody(lines) }
+}
+
+/*
+ * Hinweis an uns selbst: im Adminpanel liegt ein Antrag auf eine
+ * Absenderdomain.
+ *
+ * **Nur ein Hinweis, keine Anfrage.** Entschieden wird im Adminpanel, wo
+ * die Zeile mit allem steht, was zur Entscheidung gehoert. Deshalb steht
+ * hier weder ein Knopf noch ein Merkmal, mit dem sich etwas freigeben
+ * liesse: eine Freigabe per Antwortmail haenge an einem Postfach, das
+ * niemand absichert, und sie liesse sich faelschen.
+ *
+ * Und deshalb steht hier auch **kein Name eines Menschen**. Die Mail geht
+ * an ein Postfach, ihr Inhalt ist "es liegt Arbeit an", und wer den Antrag
+ * gestellt hat, sieht das Adminpanel. Ein Name hier waere ein
+ * personenbezogener Wert in einer Nachricht, die ihn nicht braucht.
+ *
+ * Nur deutsch: sie geht an uns, nicht an einen Kunden.
+ */
+export interface DomainRequestNoticeData {
+  /** Wie viele offen sind, nicht welcher. Der Hinweis ist ein Anstoss. */
+  offen: number
+  link: string
+}
+
+export function renderDomainRequestNotice(d: DomainRequestNoticeData): RenderedEmail {
+  const lines = [
+    'Guten Tag,',
+    d.offen === 1
+      ? 'im Adminpanel liegt ein Antrag auf eine Absenderdomain zur Freigabe.'
+      : `im Adminpanel liegen ${d.offen} Antraege auf eine Absenderdomain zur `
+        + 'Freigabe.',
+    'Entschieden wird dort, nicht per Antwort auf diese Nachricht:',
+    d.link,
+    'Solange nichts entschieden ist, verschickt das betroffene Haus keine '
+      + 'Gastpost. Es wartet also jemand.'
+  ]
+  return { subject: d.offen === 1
+             ? 'Antrag auf eine Absenderdomain'
+             : `${d.offen} Antraege auf eine Absenderdomain`,
+           text: lines.join('\n\n'), html: htmlBody(lines) }
 }

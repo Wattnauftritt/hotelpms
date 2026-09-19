@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty,
-         type Fixture } from '@hotelpms/testing'
+         makeEmailDomain, type Fixture } from '@hotelpms/testing'
 import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
 import { EMAIL_MAX_ATTEMPTS } from '@hotelpms/domain'
 import { deliverEmails } from '../jobs/emailDelivery.js'
@@ -62,6 +62,10 @@ async function anbieter(antwortCode: (nummer: number) => number): Promise<{
 }
 
 async function absender(enabled = true, bcc: string | null = null): Promise<void> {
+  // Ohne freigeschaltete Domain reiht email_enqueue nichts mehr ein
+  // (Migration 0052). Auch bei enabled = false, weil dieselben Tests danach
+  // einreihen und erst dann ausschalten.
+  await makeEmailDomain(owner, fx.propertyId, 'seeblick.test')
   await owner.query(
     `INSERT INTO property_email_setting
        (property_id, from_name, from_email, reply_to, bcc_email, enabled)

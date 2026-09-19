@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { EmailDomainRequest } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /**
@@ -294,3 +295,42 @@ export const usePlatformHealth = () =>
      */
     refetchInterval: 60_000
   })
+
+// ------------------------------------------------------- Absenderdomains
+
+/**
+ * Antraege auf eine Absenderdomain.
+ *
+ * Ohne Filter: offene zuerst, danach die entschiedenen. Zwei Abfragen --
+ * eine fuer offene, eine fuer entschiedene -- waeren zwei Runden fuer einen
+ * Bildschirm, und die Liste ist klein genug, dass die Trennung in der
+ * Anzeige genuegt.
+ */
+export const useEmailDomainRequests = () =>
+  useQuery<{ requests: EmailDomainRequest[]; relayDomain: string }>({
+    queryKey: ['platformEmailDomains'],
+    queryFn: () => api.get('/v1/platform/email-domains')
+  })
+
+export function useApproveEmailDomain() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (propertyId: number) =>
+      api.post(`/v1/platform/email-domains/${propertyId}/approve`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['platformEmailDomains'] })
+    }
+  })
+}
+
+export function useRejectEmailDomain() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { propertyId: number; note: string }) =>
+      api.post(`/v1/platform/email-domains/${v.propertyId}/reject`,
+               { note: v.note }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['platformEmailDomains'] })
+    }
+  })
+}

@@ -426,6 +426,25 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 ---
 
+### Aufgabe 11b — Absenderdomain der Gastpost — **erledigt**
+
+**Warum.** Aufgabe 11 brachte die Post hinaus, aber unter unserem Absender. Eine Rechnung, die beim Gast als Post von „StayGrid" ankommt, erzeugt zwei Probleme auf einmal: der Gast weiß nicht, wovon sie handelt, und seine Antwort landet bei uns statt an der Rezeption. Technisch kommt ein drittes dazu, und es ist das teuerste — ohne signierfähige Hoteldomain scheitert die Prüfung beim Empfänger, die Nachricht landet im Werbeordner, und der Versand meldet trotzdem Erfolg. **Still.**
+
+**Wo es liegt.** Migration `0052`, `apps/api/src/platform/brevoDomains.ts` (Anmeldung und Nachschau beim Anbieter), `apps/api/src/routes/email.ts` (Antrag, Nachsehen, Rücknahme), `apps/api/src/routes/platformDomains.ts` (Freigabe im Adminpanel), Oberfläche in `Settings.tsx` und `Adminpanel.tsx`. Begründungen in Dokument 27.
+
+**Was daraus entschieden wurde.**
+
+- **Die Domain meldet die Plattform an, nicht das Hotel.** Der Einwand, der den Entwurf geformt hat, lautete: das Hotel kann seine Domain nicht in unser Konto beim Anbieter eintragen. Es muss auch nicht. Wir melden sie mit unserem Schlüssel an, zurück kommen drei **öffentliche** TXT-Einträge, und die trägt das Haus bei seinem eigenen DNS-Anbieter ein. Unser Konto und unser Schlüssel bleiben unsichtbar.
+- **Eine Freigabe steht dazwischen.** Was ein Haus beantragt, verbraucht Kontingent in unserem Konto und hängt an unserem Ruf als Versender. Selbstbedienung wäre bequemer und hieße, dass ein Tippfehler ungeprüft dorthin durchschlägt.
+- **Entschieden wird im Adminpanel, nicht per Mail.** An `info@staygrid.cloud` geht nur der Hinweis, dass etwas offen ist, und davon höchstens einer gleichzeitig. Ein Postfach, das bei jedem Antrag klingelt, wird nach einer Woche nicht mehr gelesen. Eine Freigabe per Antwortmail hinge an einem Postfach, das niemand absichert, und ließe sich fälschen.
+- **Zwei Wege, und der zweite ist kein Sonderfall.** Wer keine eigene Domain hat, sondern GMX oder T-Online, sendet unter `mail.staygrid.cloud` mit seinem Namen davor und seiner echten Adresse als Antwortadresse. Eine Freemail-Domain anzumelden geht nicht, und wer es könnte, könnte im Namen jedes GMX-Kunden schreiben. Die Häuser ohne eigene Domain sind nicht die, die auf Gastpost verzichten können.
+- **Der Zaun liegt in `email_enqueue`, nicht nur in der Route.** Die Route ist die Antwort an einen Menschen; die Funktion fängt jeden, der an ihr vorbei einreiht. Geprüft wird auf Gleichheit der Domain, nicht auf Endung: wer auf `hotel.de` endet, ist auch `nicht-mein-hotel.de`.
+- **Freemail fällt vor dem Antrag durch, nicht danach.** Der Anbieter wiese sie ohnehin ab — aber erst, nachdem ein Mensch bei uns drei Tage lang nichts entschieden hat. Drei verlorene Tage für eine Auskunft, die vorher feststand.
+
+**Noch offen.** Ein Haus, das Brevo schon selbst benutzt, hat auf `mail._domainkey` bereits einen anderen Wert stehen; zwei gehen dort nicht, und bisher fällt das erst beim Nachsehen auf. Eine zurückgenommene Domain bleibt vorerst in unserem Konto stehen — `entfernen()` ist gebaut, aber nicht verdrahtet, und gehört an einen Pflegejob statt an eine Route, die jemand aus Versehen zweimal drückt.
+
+---
+
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**
 
 **Warum.** Die Steuer wird je Satzgruppe aus der **Nettosumme** gerechnet — so steht es in `CLAUDE.md`, und die Norm verlangt es ebenso (BR-CO-14 in EN 16931). Netto und Steuer sind beide auf den Cent gerundet, und daraus folgt etwas, das leicht zu übersehen ist: **nicht jeder Bruttobetrag ist darstellbar.** Zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer 250,00 Euro ergibt — 233,64 plus 16,35 sind 249,99, 233,65 plus 16,36 sind 250,01. **Nachgemessen über die ersten 100 000 Centbeträge:** zu 7 Prozent sind **6,5 Prozent** der Bruttobeträge nicht darstellbar, zu 19 Prozent **16,0 Prozent** — also etwa jeder fünfzehnte und etwa jeder sechste. (Hier stand zuvor „zu 19 Prozent etwa jeder dritte"; das war geschätzt und zu hoch.)

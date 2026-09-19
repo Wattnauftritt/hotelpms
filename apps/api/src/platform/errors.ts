@@ -110,6 +110,16 @@ export const Errors = {
   notConfigured: (detail: Meldung, params?: MessageParams) =>
     new AppError(503, 'urn:staygrid:not_configured', 'error.notConfigured',
       detail, undefined, params),
+  /*
+   * Ein fremdes System hat abgelehnt oder war nicht erreichbar. Ein eigener
+   * Typ, weil 500 hier luegt: bei uns ist nichts kaputt, der Aufrufer hat
+   * nichts falsch gemacht, und ein zweiter Versuch hilft oft. Wer das als
+   * 500 meldet, schickt jemanden in unsere Protokolle statt an den Knopf
+   * "nochmal".
+   */
+  upstreamFailed: (detail: Meldung, params?: MessageParams) =>
+    new AppError(502, 'urn:staygrid:upstream_failed', 'error.upstreamFailed',
+      detail, undefined, params),
   invalidSignature: (detail: Meldung, params?: MessageParams) =>
     new AppError(400, 'urn:staygrid:invalid_signature', 'error.invalidSignature',
       detail, undefined, params),

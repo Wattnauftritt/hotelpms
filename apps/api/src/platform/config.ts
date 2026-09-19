@@ -34,6 +34,28 @@ export interface Config {
    * der zuverlaessigste Weg, die Pruefung ganz abschalten zu lassen.
    */
   allowedWebhookCidrs: Cidr[]
+  /**
+   * Zugang zum Versandanbieter, hier nur fuer die Verwaltung der
+   * Absenderdomains. Bewusst kein need(): ohne Gastpost laeuft das System,
+   * und der Serverstart fuer alle abzubrechen, weil ein Haus keine Rechnung
+   * per Mail schickt, waere die falsche Reihenfolge. Die betroffene Route
+   * meldet stattdessen klar, dass nichts eingerichtet ist.
+   */
+  brevoApiKey: string | null
+  /**
+   * Postfach fuer Hinweise an uns selbst, etwa auf einen offenen Antrag auf
+   * eine Absenderdomain. Ein Postfach und keine Personenliste: wer
+   * ausscheidet, muss sonst aus einer Verteilerliste im Code entfernt
+   * werden, und das geschieht nie.
+   */
+  platformNoticeEmail: string
+  /**
+   * Unterdomain fuer Haeuser ohne eigene Domain. Sie ist beim Anbieter
+   * **einmal** hinterlegt; ein Haus bekommt darunter nur einen Namensteil.
+   * Steht sie nicht, laesst sich dieser Weg nicht freigeben -- besser als
+   * eine Freigabe, nach der die Post im Werbeordner landet.
+   */
+  relayEmailDomain: string
 }
 
 function need(name: string, minLength = 1): string {
@@ -62,6 +84,9 @@ export function loadConfig(): Config {
     publicAppUrl: process.env.PUBLIC_APP_URL ?? 'http://localhost:5173',
     // Wirft bei einem Tippfehler, und zwar hier: ein verworfenes Netz faellt
     // sonst erst auf, wenn eine Zustellung ausbleibt.
-    allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS)
+    allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS),
+    brevoApiKey: process.env.BREVO_API_KEY ?? null,
+    platformNoticeEmail: process.env.PLATFORM_NOTICE_EMAIL ?? 'info@staygrid.cloud',
+    relayEmailDomain: process.env.RELAY_EMAIL_DOMAIN ?? 'mail.staygrid.cloud'
   }
 }

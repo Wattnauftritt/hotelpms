@@ -97,6 +97,23 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 - **Die Ratenbegrenzung greift nur bei anonymen Anfragen** (`platform/rateLimit.ts`). Das ist Absicht: eine Rezeption im Andrang zu bremsen ist Schaden ohne Gegenwert, und Missbrauch durch einen Angemeldeten ist ein Rollenproblem.
 - **Deshalb bringt jede empfindliche Handlung hinter einer Sitzung ihren eigenen Zähler mit.** Wer ein Geheimnis prüft — einen PIN, ein Kennwort, ein Token — und die Anfrage trägt schon ein gültiges Sitzungscookie, den erreicht die allgemeine Grenze **nicht**. Genau das ist einmal passiert: `workstation-switch` stand auf der strengen Liste und wurde von ihr nie erreicht, weil die Anfrage angemeldet war — ein vierstelliger PIN ließ sich in Sekunden durchprobieren. Behoben mit einem eigenen Zähler an der Route; die Ausnahme selbst ist strukturell und bleibt (H4, Dokument 25).
 
+### Gastpost
+
+- **Keine Gastpost ohne freigeschaltete Absenderdomain.** Eine ungedeckte
+  Absenderadresse geht **still** schief: der Anbieter nimmt die Nachricht an,
+  die Prüfung beim Empfänger schlägt fehl, die Post landet im Werbeordner, und
+  der Versand meldet Erfolg. Deshalb prüft `email_enqueue` es selbst, nicht
+  nur die Route (Migration 0052, Dokument 27).
+- **Die Domain meldet die Plattform an, nicht das Hotel.** Das Hotel bekommt
+  unser Konto beim Anbieter nie zu sehen; es trägt drei öffentliche
+  TXT-Einträge bei seinem **eigenen** DNS-Anbieter ein. Freigegeben wird im
+  Adminpanel; per Mail geht nur der Hinweis, dass etwas offen ist, und davon
+  höchstens einer gleichzeitig.
+- **Ein Haus ohne eigene Domain sendet unter `mail.staygrid.cloud`**, mit
+  seinem Namen davor und seiner echten Adresse als Antwortadresse. Eine
+  GMX-Domain lässt sich nicht anmelden, und wer es könnte, könnte im Namen
+  jedes GMX-Kunden schreiben.
+
 ### Datenschutz und deutsches Recht
 
 - **Nie Kartendaten speichern.** Es gibt kein Feld dafür, und es kommt keines dazu. Eine Garantie läuft über Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters.

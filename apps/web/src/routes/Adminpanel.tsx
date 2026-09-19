@@ -6,9 +6,11 @@ import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
          useInviteAccountUser, useAddProperty, useAccountSupportSessions,
          useSetCustomerPropertyRoles, useSetCustomerAccountRoles,
          useSupportAudit, useSessionActivity, useSetStaffRole, useStaffAccessLink,
+         useEmailDomainRequests, useApproveEmailDomain, useRejectEmailDomain,
          type PlatformAccount, type PlatformAccountUser, type PlatformProperty,
          type SupportAuditRow } from '../lib/queries/platform.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
+import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Anfrage, Liste, Ausrollen } from './SupportKonsole.tsx'
 
@@ -39,7 +41,7 @@ import { Anfrage, Liste, Ausrollen } from './SupportKonsole.tsx'
  * dasselbe.
  */
 
-type Reiter = 'accounts' | 'staff' | 'operations' | 'support'
+type Reiter = 'accounts' | 'domains' | 'staff' | 'operations' | 'support'
 
 const KONTO_ZUSTAND: Record<PlatformAccount['status'], TextKey> = {
   active: 'admin.status.active',
@@ -975,6 +977,124 @@ export function Adminpanel({ userId, platformPermissions = [] }: {
   const t = useT()
   const [kunde, setKunde] = useState<number | null>(null)
 
+// ------------------------------------------------------- Absenderdomains
+
+/**
+ * Freigabe der Absenderdomains.
+ *
+ * **Warum wir das entscheiden und nicht der Kunde selbst.** Eine Freigabe
+ * meldet die Domain in unserem Konto beim Versandanbieter an, verbraucht
+ * dort Kontingent und hängt an unserem Ruf als Versender. Der Kunde trägt
+ * dafür keinen Preis, wir schon.
+ *
+ * **Der Kunde bekommt unseren Zugang dabei nie zu sehen.** Er trägt die
+ * drei TXT-Einträge bei seinem eigenen Domainanbieter ein.
+ */
+function AbsenderdomainFreigaben(): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const q = useEmailDomainRequests()
+  const freigeben = useApproveEmailDomain()
+  const ablehnen = useRejectEmailDomain()
+  // Je Antrag ein eigener Grund: ein gemeinsames Feld schriebe den Grund
+  // der einen Ablehnung in die nächste.
+  const [gruende, setGruende] = useState<Record<number, string>>({})
+  const [entschiedene, setEntschiedene] = useState(false)
+
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return <Laedt />
+
+  const offen = q.data.requests.filter(r => r.status === 'requested')
+  const rest = q.data.requests.filter(r => r.status !== 'requested')
+  const zeigen = entschiedene ? [...offen, ...rest] : offen
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-neutral-600 max-w-2xl">
+        {t('admin.domain.intro')}
+      </p>
+
+      {zeigen.length === 0 && (
+        <p className="text-sm text-neutral-600">{t('admin.domain.none')}</p>
+      )}
+
+      <ul className="space-y-2">
+        {zeigen.map(r => (
+          <li key={r.propertyId}
+              className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="font-mono text-sm">
+                {r.mode === 'relay' ? `${r.localPart}@${r.domain}` : r.domain}
+              </span>
+              <span className="text-sm text-neutral-700">{r.propertyName}</span>
+              <span className="text-xs text-neutral-500">{r.accountName}</span>
+              {r.status !== 'requested' && (
+                <span className="text-xs rounded bg-neutral-100 px-1.5 py-0.5">
+                  {r.status}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-neutral-500">
+              {t('admin.domain.requestedBy')}: {r.requestedByName ?? '—'},{' '}
+              {new Date(r.requestedAt).toLocaleString()}
+            </div>
+            {r.mode === 'relay' && (
+              <div className="text-xs text-neutral-500">
+                {t('admin.domain.relayNote', { relay: r.domain })}
+              </div>
+            )}
+            {r.decisionNote !== null && (
+              <div className="text-xs text-neutral-700">{r.decisionNote}</div>
+            )}
+
+            {r.status === 'requested' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={!online || freigeben.isPending}
+                        onClick={() => freigeben.mutate(r.propertyId)}
+                        className="text-sm px-3 py-1.5 rounded bg-neutral-900
+                                   text-white disabled:opacity-40">
+                  {t('admin.domain.approve')}
+                </button>
+                <input value={gruende[r.propertyId] ?? ''}
+                       placeholder={t('admin.domain.rejectReason')}
+                       onChange={e => setGruende(
+                         g => ({ ...g, [r.propertyId]: e.target.value }))}
+                       className="border border-neutral-300 rounded px-2 py-1
+                                  text-sm grow min-w-64" />
+                {/* Ablehnen erst mit Grund. Der Knopf bleibt sichtbar und
+                    gesperrt, statt zu erscheinen, wenn jemand tippt: ein
+                    Knopf, der auftaucht, wird übersehen. */}
+                <button type="button"
+                        disabled={!online || ablehnen.isPending
+                                  || (gruende[r.propertyId] ?? '').trim() === ''}
+                        onClick={() => ablehnen.mutate({
+                          propertyId: r.propertyId,
+                          note: (gruende[r.propertyId] ?? '').trim()
+                        })}
+                        className="text-sm px-3 py-1.5 rounded border
+                                   border-neutral-300 disabled:opacity-40">
+                  {t('admin.domain.reject')}
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {freigeben.isError && <Fehler error={freigeben.error} />}
+      {ablehnen.isError && <Fehler error={ablehnen.error} />}
+
+      {rest.length > 0 && (
+        <label className="text-sm flex items-center gap-1.5 text-neutral-600">
+          <input type="checkbox" checked={entschiedene}
+                 onChange={e => setEntschiedene(e.target.checked)} />
+          {t('admin.domain.showDecided')}
+        </label>
+      )}
+    </div>
+  )
+}
+
   /*
    * Ein Reiter je Recht. Nicht aus Sicherheit -- die liegt in der API und in
    * den Funktionen dahinter --, sondern damit niemand einen Reiter oeffnet,
@@ -983,6 +1103,7 @@ export function Adminpanel({ userId, platformPermissions = [] }: {
    */
   const reiters: Array<[Reiter, TextKey, string]> = ([
     ['accounts', 'admin.tab.accounts', 'platform:accounts'],
+    ['domains', 'admin.domain.title', 'platform:accounts'],
     ['staff', 'admin.tab.staff', 'platform:staff'],
     ['operations', 'admin.tab.operations', 'platform:operations'],
     ['support', 'admin.tab.support', 'platform:support_session']
@@ -1025,6 +1146,8 @@ export function Adminpanel({ userId, platformPermissions = [] }: {
           <KundeAnlegen />
         </div>
       )}
+
+      {offen === 'domains' && <AbsenderdomainFreigaben />}
 
       {offen === 'staff' && <Personal eigeneId={userId ?? null} />}
 
