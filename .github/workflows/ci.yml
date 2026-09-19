@@ -49,6 +49,7 @@ jobs:
       # Mergen nicht auf, weil es verschiedene Dateien ohne Konflikt sind.
       - run: ./scripts/check-migrations.sh
       - run: ./scripts/check-caddyfile.sh
+      - run: ./scripts/check-sudoers.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
