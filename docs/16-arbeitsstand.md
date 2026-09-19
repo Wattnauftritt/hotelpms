@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 929 Tests, 42 Migrationen.
+Stand: 19. September 2026. 932 Tests, 42 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -683,6 +683,8 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 
 **Das Zurückrollen kannte nur die Geschichte, nicht die Platte** (`deployments.ts`, Migration 0041). Das Panel bot „kein früherer Stand" an, während unter `releases/` drei gebaute Stände lagen: einer von Hand ausgerollt (keine Zeile in `deploy_request`), einer zweimal nach umgelegtem Symlink am Neustart gescheitert (`failed`, obwohl gebaut, umgeschaltet und nach dem Neustart von Hand gelaufen). Ziel war nur, was ein geglückter Lauf des Agenten hinterlassen hatte. Jetzt trägt der Agent bei jedem Tick ein, was mit `.fertig` auf der Platte liegt und worauf `current` zeigt (`release`); das Panel liest von dort. Solange der Agent noch nicht mit dem neuen Skript gelaufen ist, gilt die alte Ableitung, erweitert um den Stand **vor** jedem geglückten Lauf — den hat `deploy.sh` nicht weggeräumt.
+
+**Vier Hashes ohne Zeit** (Migration 0042). Kaum stand die Liste, war sie unbrauchbar: welcher der vier Stände der von gestern Mittag war und welcher der von vor zwei Wochen, stand nirgends, und ein von Hand ausgerollter kommt in der Geschichte der Anforderungen gar nicht vor. Der Agent meldet jetzt die Änderungszeit von `.fertig` mit — den Moment, in dem der Bau auf der Maschine durch war —, das Panel zeigt sie als „gebaut …" neben jedem Ziel und dem laufenden Stand und ordnet die Ziele danach, den jüngsten zuerst. `seen_at` taugte dafür nicht: beim ersten Tick nach 0041 bekamen alle drei alten Stände dieselbe Sekunde. Ein Stand, den ein Agent von vor 0042 eingetragen hat, steht ohne Zeit da, bis der nächste Tick sie nachträgt.
 
 **`sudo`-Regel und Skript passten nicht zusammen** (deploy.sh, hotelpms.sudoers). Die Regel erlaubte `systemctl restart hotelpms-api` und `… hotelpms-worker` als zwei Kommandos; das Skript rief `systemctl restart hotelpms-api hotelpms-worker` auf — für `sudoers` ein drittes, das keine Regel kannte. Die erste Ausrollung über den Agenten endete mit „a password is required", und zwar **nach** umgelegtem Symlink und angewandten Migrationen: der alte Code lief auf dem neuen Schema weiter, bis jemand von Hand neu startete. Beim Ausrollen als root war es nie aufgefallen, weil root nicht gefragt wird. Jetzt zwei Aufrufe im Skript und `scripts/check-sudoers.sh` in CI, das jeden `sudo`-Aufruf gegen die Regeln hält — dieselbe Bauart wie `check-caddyfile.sh`, aus demselben Grund: bei einer Betriebsdatei gibt es keinen Test, der den Irrtum fängt, nur den ersten echten Lauf.
 

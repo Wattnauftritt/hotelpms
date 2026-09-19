@@ -217,6 +217,11 @@ export function Ausrollen(): JSX.Element {
         {q.data?.currentCommit != null
           ? <code className="font-mono">{q.data.currentCommit.slice(0, 12)}</code>
           : <span className="text-neutral-500">{t('deploy.currentUnknown')}</span>}
+        {q.data?.currentBuiltAt != null && (
+          <span className="text-neutral-500">
+            {' · '}{t('deploy.builtAt', { when: zeit(q.data.currentBuiltAt) })}
+          </span>
+        )}
       </p>
 
       {anfordern.isError && <Fehler error={anfordern.error} />}
@@ -245,12 +250,17 @@ export function Ausrollen(): JSX.Element {
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-neutral-600">{t('deploy.rollback')}</span>
-            {q.data?.rollbackTargets.map(c => (
-              <button key={c} type="button" disabled={zurueck.isPending || laeuft}
-                      onClick={() => zurueck.mutate(c)}
-                      className="text-xs font-mono px-2 py-1 border border-neutral-300
+            {q.data?.rollbackTargets.map(z => (
+              <button key={z.commit} type="button" disabled={zurueck.isPending || laeuft}
+                      onClick={() => zurueck.mutate(z.commit)}
+                      className="text-xs px-2 py-1 border border-neutral-300
                                  rounded hover:bg-neutral-50 disabled:text-neutral-400">
-                {c.slice(0, 12)}
+                <span className="font-mono">{z.commit.slice(0, 12)}</span>
+                {z.builtAt !== null && (
+                  <span className="ml-1.5 text-neutral-500">
+                    {t('deploy.builtAt', { when: zeit(z.builtAt) })}
+                  </span>
+                )}
               </button>
             ))}
           </div>

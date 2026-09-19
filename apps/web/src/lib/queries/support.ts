@@ -105,7 +105,8 @@ export interface Deployment {
 
 export const useDeployments = () =>
   useQuery<{ deployments: Deployment[]; currentCommit: string | null
-             rollbackTargets: string[] }>({
+             currentBuiltAt: string | null
+             rollbackTargets: { commit: string; builtAt: string | null }[] }>({
     queryKey: ['deployments'],
     queryFn: () => api.get('/v1/platform/deployments'),
     /*
