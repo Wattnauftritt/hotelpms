@@ -258,7 +258,8 @@ export function posRoutes(app: FastifyInstance): void {
       if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
         const property = Number(propertyId)
@@ -416,7 +417,8 @@ export function posRoutes(app: FastifyInstance): void {
       }
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
         const property = Number(propertyId)
 
