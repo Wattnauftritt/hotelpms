@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 18. September 2026. 901 Tests, 39 Migrationen.
+Stand: 19. September 2026. 926 Tests, 40 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -634,6 +634,14 @@ Ebenso neu: ein **weiteres Haus** an einem bestehenden Kunden (`platform_propert
 
 Der Betriebszustand nennt jetzt auch die **Post der Plattform** — Einladungen, Kennwort-Links, Support-Anfragen — mit dem letzten Fehler des Anbieters, und eine **hängende Ausrollung**, die über den eindeutigen Teilindex jede weitere sperrt. Plattformbenutzer bekommen eine Rollenwahl in der Liste und den Link-Knopf.
 
+**Dritter Durchgang: der Kunde verwaltet sein Personal selbst.** Der zweite Durchgang hatte es als wichtigste Lücke benannt, und die Begründung ist Arithmetik: bei hundert Häusern sind wir sonst keine Plattform, sondern deren Personalabteilung. Jetzt kann eine Hausleitung mit `user:manage` unter *Schnittstellen → Benutzer* einladen (mit Hausrollen, per E-Mail, Kennwort setzt die Person selbst), Rollen ändern, umbenennen, einen Zugangslink schicken, nach Fehlversuchen entsperren, **sperren** und **entfernen**.
+
+**So autark wie möglich, so eingeschränkt wie nötig — die Grenze ist das Eigentliche.** Zwei Ebenen, zwei Rechte: `user:manage` am Haus für Menschen, deren Rollen im Haus liegen; `settings:account` am Betrieb für Menschen mit einer Rolle für den ganzen Betrieb (Inhaber, Buchhaltung, Steuerberatung) und für die Vergabe dieser Rollen (`PUT …/users/:ref/account-roles`, `GET …/account-roles`). Ohne diese Grenze könnte die Direktion eines Hauses den Inhaber aussperren. Mit ihr kann sie es nicht; und der Inhaber kann sich nicht selbst aussperren, weil der letzte Mensch mit `settings:account` bleibt — er ist der, der Support-Sitzungen freigibt, und ohne ihn bliebe der Betrieb stumm. Die Oberfläche zeigt die Grenze, wie die API sie zieht: an einem Inhaber sieht die Direktion keinen Knopf, der ihr ohnehin nur mit 403 antwortete.
+
+**Was „sperren" beim Kunden heißt** (Migration 0040, `account_user_block`): die Sperre hängt am **Paar** (Kunde, Benutzer), nicht am Benutzer. `app_user.status` ist eine Eigenschaft des Menschen; eine Aushilfe in zwei Betrieben darf vom einen gesperrt werden, ohne dass der andere sie verliert — und ohne dass der eine vom anderen erfährt. Der Zugriffsbereich endet an der Sperre wie am Zustand des Kunden (0038); die Rollen bleiben stehen, sodass die Rückkehr ein Klick ist. Beim Sperren enden die laufenden Sitzungen — der Rechner, der noch angemeldet an der Rezeption steht, ist der Fall, für den man sperrt. **Entfernen** nimmt alle Rollen im Betrieb; der Benutzer selbst bleibt, weil das Protokoll auf ihn verweist, und wird nur dann stillgelegt, wenn er nirgends mehr eine Rolle hat.
+
+Eine vergebene Adresse wird beim Einladen abgewiesen — auch wenn sie zum eigenen Betrieb gehört (dann ist die Rollenvergabe der Weg), und mit **demselben Satz**, wenn sie zu einem anderen gehört: eine Route, die dann anders antwortet, verriete, wer sonst noch Kunde ist. Die E-Mail-Adresse lässt sich nicht ändern: sie ist die Anmeldung, und wer sie ändern könnte, könnte einen Zugang auf sich umleiten.
+
 **Was das Panel noch nicht kann:** Abrechnung. `platform:billing` gibt es als Recht seit Migration 0003, aber es steht kein Modell dahinter — keine Abo-Tabelle, keine Route, nichts. Einen Reiter dafür zu bauen hieße, eine Maske vor ein leeres Feld zu stellen. Ebenso fehlt weiterhin die Anzeige, **welcher** Stand freigegeben ist: der Ausrollknopf nennt nur den Marker `produktion`, nicht den Commit dahinter. Dafür müsste die Maschine bei jedem Lauf den aufgelösten Stand mitschreiben — sie hat keinen Netzzugang zu GitHub, und das soll so bleiben.
 
 ---
@@ -645,7 +653,6 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 | Fehlt | Route | Was das bedeutet |
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
-| **Benutzer einladen — beim Kunden selbst** | *(Route fehlt)* | Der Kunde kann keinen zweiten Benutzer anlegen: `users.ts` vergibt Rollen nur an Benutzer, die es schon gibt. Heute läuft es über das Adminpanel, also über einen Anruf bei uns. Das ist die wichtigste Zeile dieser Liste — eine neue Rezeptionistin ist Alltag, kein Supportfall. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
 | Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
 

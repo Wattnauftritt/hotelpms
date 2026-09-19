@@ -33,6 +33,14 @@ interface UserRow {
   lastLoginAt: string | null
   roles: Array<{ key: string; name: string }>
   permissions: string[]
+  /** Gesperrt bei diesem Betrieb (0040). Die Rollen stehen noch, wirken nicht. */
+  blocked: boolean
+  /** Nach Fehlversuchen ausgesperrt -- laeuft ab, aber nicht schnell genug. */
+  lockedUntil: string | null
+  /** Rollen fuer den ganzen Betrieb. Wer eine hat, wird nur mit settings:account angefasst. */
+  accountRoles: Array<{ key: string; name: string }>
+  /** Der Angemeldete selbst -- die Oberflaeche zeigt ihm weder Sperre noch Entfernen. */
+  isSelf: boolean
 }
 
 export function userRoutes(app: FastifyInstance): void {
@@ -48,27 +56,49 @@ export function userRoutes(app: FastifyInstance): void {
         // Ein Aufruf je Bildschirm: Rollen und Rechte kommen als Feld mit.
         // Je Benutzer nachzufragen waere bei einem Haus mit dreissig
         // Mitarbeitern eine Runde je Zeile.
+        /*
+         * Das Haus kennt seinen Betrieb; die Betriebsrollen und die Sperre
+         * haengen daran. Ein Benutzer mit Betriebsrolle steht auch dann in
+         * der Liste, wenn er in diesem Haus keine Hausrolle hat: der
+         * Inhaber soll sich selbst sehen, sonst sucht er sich.
+         */
+        const konto = await client.query<{ account_id: number }>(
+          `SELECT account_id FROM property WHERE id = $1`, [Number(propertyId)])
+        const accountId = konto.rows[0]?.account_id ?? -1
         const { rows } = await client.query<UserRow>(
           `SELECT u.public_ref AS "userRef", u.display_name AS "displayName",
                   u.email, u.status, u.last_login_at AS "lastLoginAt",
                   COALESCE(r.rollen, '[]'::jsonb) AS roles,
-                  COALESCE(p.rechte, '{}'::text[]) AS permissions
+                  COALESCE(p.rechte, '{}'::text[]) AS permissions,
+                  EXISTS (SELECT 1 FROM account_user_block b
+                           WHERE b.account_id = $2 AND b.user_id = u.id) AS blocked,
+                  CASE WHEN u.locked_until > now() THEN u.locked_until END AS "lockedUntil",
+                  COALESCE(a.rollen, '[]'::jsonb) AS "accountRoles",
+                  u.id = $3 AS "isSelf"
              FROM app_user u
-             JOIN LATERAL (
+             LEFT JOIN LATERAL (
+               SELECT jsonb_agg(jsonb_build_object('key', ro.key, 'name', ro.name)
+                                ORDER BY ro.key) AS rollen
+                 FROM user_account_role uar
+                 JOIN role ro ON ro.id = uar.role_id
+                WHERE uar.user_id = u.id AND uar.account_id = $2
+             ) a ON true
+             LEFT JOIN LATERAL (
                SELECT jsonb_agg(jsonb_build_object('key', ro.key, 'name', ro.name)
                                 ORDER BY ro.key) AS rollen
                  FROM user_property_role upr
                  JOIN role ro ON ro.id = upr.role_id
                 WHERE upr.user_id = u.id AND upr.property_id = $1
-             ) r ON r.rollen IS NOT NULL
+             ) r ON true
              LEFT JOIN LATERAL (
                SELECT array_agg(DISTINCT rp.permission_key) AS rechte
                  FROM user_property_role upr
                  JOIN role_permission rp ON rp.role_id = upr.role_id
                 WHERE upr.user_id = u.id AND upr.property_id = $1
              ) p ON true
+            WHERE r.rollen IS NOT NULL OR a.rollen IS NOT NULL
             ORDER BY u.display_name, u.email`,
-          [Number(propertyId)])
+          [Number(propertyId), accountId, (req.principal as Principal).userId])
         return { users: rows }
       })
     }
