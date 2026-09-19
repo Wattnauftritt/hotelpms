@@ -157,6 +157,10 @@ const M = {
     de: 'Eine Anfrage mit diesem Schluessel wird gerade verarbeitet. Bitte wiederholen.',
     en: 'A request with this key is being processed. Please try again.',
     tr: 'Bu anahtarla gelen bir istek şu anda işleniyor. Lütfen tekrar deneyin.' },
+  'error.upstreamFailed': {
+    de: 'Ein beteiligtes System hat nicht geantwortet',
+    en: 'An upstream system did not respond',
+    tr: 'Bağlı bir sistem yanıt vermedi' },
   'error.notConfigured': {
     de: 'Nicht eingerichtet',
     en: 'Not configured',
@@ -864,6 +868,78 @@ const M = {
     de: 'Nur eine noch nicht abgeschickte Nachricht laesst sich zurueckziehen.',
     en: 'Only a message that has not gone out yet can be withdrawn.',
     tr: 'Yalnızca henüz gönderilmemiş bir mesaj geri çekilebilir.' },
+
+  // -------------------------------------------- Absenderdomain der Gastpost
+
+  'domain.alreadyRequested': {
+    de: 'Fuer dieses Haus liegt bereits ein Antrag vor. Erst zuruecknehmen, '
+      + 'dann neu stellen.',
+    en: 'A request already exists for this property. Withdraw it first, then '
+      + 'submit a new one.',
+    tr: 'Bu tesis için zaten bir başvuru var. Önce geri çekin, sonra yeniden gönderin.' },
+  'domain.freemail': {
+    de: 'Eine Adresse bei GMX, Web.de oder T-Online laesst sich nicht als '
+      + 'Absenderdomain anmelden. Waehlen Sie den Versand ueber {relay}.',
+    en: 'An address at GMX, Web.de or T-Online cannot be registered as a '
+      + 'sender domain. Choose sending via {relay} instead.',
+    tr: 'GMX, Web.de veya T-Online adresi gönderen alan adı olarak kaydedilemez. '
+      + '{relay} üzerinden gönderimi seçin.' },
+  'domain.taken': {
+    de: 'Diese Domain ist bereits fuer ein anderes Haus angemeldet.',
+    en: 'This domain is already registered for another property.',
+    tr: 'Bu alan adı başka bir tesis için zaten kayıtlı.' },
+  'domain.localPartTaken': {
+    de: 'Dieser Name ist unter {relay} schon vergeben. Waehlen Sie einen anderen.',
+    en: 'This name is already taken under {relay}. Please choose another.',
+    tr: '{relay} altında bu ad zaten alınmış. Lütfen başka bir ad seçin.' },
+  'domain.notRequested': {
+    de: 'Fuer dieses Haus ist keine Absenderdomain beantragt.',
+    en: 'No sender domain has been requested for this property.',
+    tr: 'Bu tesis için gönderen alan adı başvurusu yok.' },
+  'domain.onlyWhilePending': {
+    de: 'Nachsehen laesst sich erst, wenn der Antrag freigegeben ist und die '
+      + 'DNS-Eintraege vorliegen.',
+    en: 'Checking is only possible once the request is approved and the DNS '
+      + 'records are available.',
+    tr: 'Kontrol ancak başvuru onaylandıktan ve DNS kayıtları hazır olduktan sonra yapılabilir.' },
+  'domain.notActive': {
+    de: 'Der Versand laesst sich erst einschalten, wenn die Absenderdomain '
+      + 'freigeschaltet ist. Sonst landet die Post beim Gast im Werbeordner, '
+      + 'ohne dass es jemand merkt.',
+    en: 'Sending can only be switched on once the sender domain is active. '
+      + 'Otherwise mail lands in the guest\u2019s spam folder unnoticed.',
+    tr: 'Gönderim ancak gönderen alan adı etkinleştirildikten sonra açılabilir. '
+      + 'Aksi halde posta misafirin istenmeyen klasörüne düşer ve kimse fark etmez.' },
+  'domain.senderMismatch': {
+    de: 'Die Absenderadresse liegt nicht auf der freigeschalteten Domain {domain}.',
+    en: 'The sender address is not on the activated domain {domain}.',
+    tr: 'Gönderen adresi etkinleştirilmiş {domain} alan adında değil.' },
+  'domain.notDecidable': {
+    de: 'Dieser Antrag ist bereits entschieden.',
+    en: 'This request has already been decided.',
+    tr: 'Bu başvuru zaten karara bağlanmış.' },
+  'domain.rejectNeedsNote': {
+    de: 'Eine Ablehnung braucht einen Grund. Er geht an den Kunden hinaus.',
+    en: 'A rejection needs a reason. It is sent to the customer.',
+    tr: 'Ret için bir gerekçe gerekir. Gerekçe müşteriye iletilir.' },
+  'domain.providerUnavailable': {
+    de: 'Der Versandanbieter hat den Antrag abgewiesen oder war nicht '
+      + 'erreichbar. Der Antrag bleibt offen und laesst sich erneut freigeben.',
+    en: 'The email provider rejected the request or was unreachable. The '
+      + 'request stays open and can be approved again.',
+    tr: 'E-posta sağlayıcısı başvuruyu reddetti veya ulaşılamadı. Başvuru açık kalır '
+      + 've yeniden onaylanabilir.' },
+  'domain.providerNotConfigured': {
+    de: 'Der Zugang zum Versandanbieter ist nicht eingerichtet. Ohne ihn '
+      + 'laesst sich keine Absenderdomain anmelden.',
+    en: 'Access to the email provider is not configured. Without it no sender '
+      + 'domain can be registered.',
+    tr: 'E-posta sağlayıcısı erişimi yapılandırılmamış. Bu olmadan gönderen alan adı kaydedilemez.' },
+  'domain.relayNotConfigured': {
+    de: 'Der Versand ueber eine Unterdomain der Plattform ist nicht '
+      + 'eingerichtet.',
+    en: 'Sending via a platform subdomain is not configured.',
+    tr: 'Platform alt alan adı üzerinden gönderim yapılandırılmamış.' },
 
   // -------------------------------------------------------------------- Gast
 

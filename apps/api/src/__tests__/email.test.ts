@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, makeEmailDomain, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -45,6 +45,10 @@ const put = (url: string, payload: unknown) =>
 const get = (url: string) => app.inject({ method: 'GET', url, headers: auth })
 
 async function absenderEinrichten(enabled = true): Promise<void> {
+  // Ohne freigeschaltete Domain laesst sich der Versand nicht einschalten
+  // (Migration 0052). Der Weg durch die Freigabe steht in
+  // absenderdomain.test.ts; hier ist er Vorbedingung, nicht Gegenstand.
+  if (enabled) await makeEmailDomain(owner, fx.propertyId, 'seeblick.test')
   const r = await put(`/v1/properties/${fx.propertyId}/email-settings`, {
     fromName: 'Hotel Seeblick', fromEmail: 'post@seeblick.test',
     replyTo: 'rezeption@seeblick.test', enabled

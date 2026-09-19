@@ -26,12 +26,20 @@ import { supportRoutes } from './support.js'
 import { deploymentRoutes } from './deployments.js'
 import { platformRoutes } from './platform.js'
 import { platformSupportRoutes } from './platformSupport.js'
+import { platformDomainRoutes } from './platformDomains.js'
 import { userAdminRoutes } from './userAdmin.js'
 import { openApiRoutes } from './openapi.js'
+import type { DomainVerwaltung } from '../platform/brevoDomains.js'
 
 export interface RouteOverrides {
   /** Nur fuer Tests: ersetzt Aussenanbindungen, ohne echte Netzwerkaufrufe. */
   payments?: PaymentRouteOverrides
+  /**
+   * Die Verwaltung der Absenderdomains beim Versandanbieter. An zwei
+   * Stellen eingesetzt -- der Kunde sieht nach, die Plattform meldet an --
+   * und deshalb hier einmal statt zweimal im Test.
+   */
+  domains?: DomainVerwaltung
 }
 
 export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverrides = {}): void {
@@ -55,13 +63,14 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   webhookRoutes(app)
   channelRoutes(app)
   posRoutes(app)
-  emailRoutes(app)
+  emailRoutes(app, { domains: overrides.domains })
   userRoutes(app)
   onboardingRoutes(app)
   supportRoutes(app)
   deploymentRoutes(app)
   platformRoutes(app)
   platformSupportRoutes(app)
+  platformDomainRoutes(app, { domains: overrides.domains })
   userAdminRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)

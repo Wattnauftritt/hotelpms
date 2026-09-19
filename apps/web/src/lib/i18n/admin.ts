@@ -588,5 +588,48 @@ export const admin = {
   'admin.staff.sendLink': {
     de: 'Link schicken',
     en: 'Send link',
-    tr: 'Bağlantı gönder' }
+    tr: 'Bağlantı gönder' },
+
+  // ------------------------------------------------- Absenderdomains
+  'admin.domain.title': {
+    de: 'Absenderdomains',
+    en: 'Sender domains',
+    tr: 'Gönderen alan adları' },
+  'admin.domain.intro': {
+    de: 'Eine Freigabe meldet die Domain in unserem Konto beim Versandanbieter '
+      + 'an. Das Haus trägt die Einträge danach bei seinem eigenen '
+      + 'Domainanbieter ein.',
+    en: 'An approval registers the domain in our account at the email '
+      + 'provider. The property then adds the records at its own domain '
+      + 'provider.',
+    tr: 'Onay, alan adını e-posta sağlayıcısındaki hesabımıza kaydeder. Tesis daha '
+      + 'sonra kayıtları kendi alan adı sağlayıcısında ekler.' },
+  'admin.domain.none': {
+    de: 'Nichts zu entscheiden.',
+    en: 'Nothing to decide.',
+    tr: 'Karar verilecek bir şey yok.' },
+  'admin.domain.requestedBy': {
+    de: 'Beantragt von',
+    en: 'Requested by',
+    tr: 'Başvuran' },
+  'admin.domain.approve': {
+    de: 'Freigeben',
+    en: 'Approve',
+    tr: 'Onayla' },
+  'admin.domain.reject': {
+    de: 'Ablehnen',
+    en: 'Reject',
+    tr: 'Reddet' },
+  'admin.domain.rejectReason': {
+    de: 'Grund der Ablehnung, er geht an den Kunden',
+    en: 'Reason for rejection, it is sent to the customer',
+    tr: 'Ret gerekçesi, müşteriye iletilir' },
+  'admin.domain.relayNote': {
+    de: 'Eigene Domain über {relay}',
+    en: 'Own domain via {relay}',
+    tr: '{relay} üzerinden kendi alan adı' },
+  'admin.domain.showDecided': {
+    de: 'Entschiedene zeigen',
+    en: 'Show decided',
+    tr: 'Karara bağlananları göster' }
 } satisfies Record<string, LocalizedText>

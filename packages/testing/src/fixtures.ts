@@ -131,6 +131,37 @@ export async function makePaymentMethod(
   return r.rows[0]!.id
 }
 
+/**
+ * Eine freigeschaltete Absenderdomain fuer das Haus.
+ *
+ * Ohne sie reiht `email_enqueue` nichts mehr ein und der Versand laesst
+ * sich nicht einschalten (Migration 0052). Das ist gewollt: eine ungedeckte
+ * Absenderdomain geht **still** schief -- der Anbieter nimmt die Nachricht
+ * an, die Pruefung beim Empfaenger schlaegt fehl, die Post landet im
+ * Werbeordner, und der Versand meldet Erfolg.
+ *
+ * Deshalb hier als Fixture und nicht je Test von Hand: was eine Bedingung
+ * fuer jeden Mailtest ist, gehoert an eine Stelle. Der Weg **durch** die
+ * Freigabe -- beantragen, freigeben, DNS-Eintraege, nachsehen -- ist eine
+ * eigene Pruefung (absenderdomain.test.ts) und nicht die Vorbedingung von
+ * fuenfzehn anderen.
+ *
+ * Ueber den Eigentuemer, wie alle Fixtures: die Zeile traegt eine
+ * Zeilenrichtlinie, und ein Kontext ist hier noch nicht gesetzt.
+ */
+export async function makeEmailDomain(
+  owner: Pool, propertyId: number, domain = 'seeblick.test'
+): Promise<void> {
+  await owner.query(
+    `INSERT INTO property_email_domain
+       (property_id, mode, domain, status, verified, authenticated, checked_at)
+     VALUES ($1, 'own', $2, 'active', true, true, now())
+     ON CONFLICT (property_id) DO UPDATE
+       SET domain = EXCLUDED.domain, status = 'active',
+           verified = true, authenticated = true`,
+    [propertyId, domain])
+}
+
 export async function openBusinessDay(
   owner: Pool, propertyId: number, date = '2026-10-01'
 ): Promise<void> {

@@ -98,6 +98,29 @@ beforeAll(async () => {
 afterAll(async () => { await owner.end(); await app.end() })
 beforeEach(async () => { await truncateAll() })
 
+describe('Hinweis an ein Postfach der Plattform', () => {
+  it('geht hinaus, obwohl kein Benutzer daran haengt', async () => {
+    /*
+     * Ein Hinweis auf einen offenen Antrag geht an info@staygrid.cloud, und
+     * daran haengt kein Benutzerkonto (Migration 0052). Faende der Worker
+     * ihn nicht, waere der Antrag eine Zeile im Adminpanel, die niemand
+     * ansieht -- und das Haus wartet auf eine Entscheidung, die niemand
+     * trifft.
+     */
+    const e = await owner.query<{ id: number }>(
+      `INSERT INTO platform_email (user_id, kind, to_email, subject, body_text)
+       VALUES (NULL,'domain_request','info@staygrid.cloud','Antrag','Text')
+       RETURNING id`)
+    const a = await anbieter(() => 201)
+    const r = await deliverPlatformEmails(
+      app, SYSTEM_CONTEXT, createBrevoAdapter('schluessel', { baseUrl: a.url }), ABSENDER)
+    await a.schliessen()
+
+    expect(r).toEqual({ attempted: 1, sent: 1, retrying: 0, failed: 0 })
+    expect((await zeile(e.rows[0]!.id)).status).toBe('sent')
+  })
+})
+
 describe('Zugangspost zustellen', () => {
   it('verschickt mit dem Absender der Plattform, nicht dem eines Hauses', async () => {
     const id = await einreihen()

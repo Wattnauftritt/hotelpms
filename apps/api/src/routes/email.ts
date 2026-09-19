@@ -2,8 +2,12 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { isSendableAddress, emailLanguage, renderInvoiceEmail, renderReservationEmail }
+import { isSendableAddress, isFreemailDomain, domainOf, emailLanguage,
+         renderInvoiceEmail, renderReservationEmail, renderDomainRequestNotice }
   from '@hotelpms/domain'
+import { loadConfig } from '../platform/config.js'
+import { createBrevoDomains, DomainApiError, type DomainVerwaltung }
+  from '../platform/brevoDomains.js'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
@@ -58,7 +62,17 @@ async function invoiceRecipient(
            language: r?.language ?? 'de', anonymized: r?.anonymized ?? false }
 }
 
-export function emailRoutes(app: FastifyInstance): void {
+export interface EmailRouteOverrides {
+  /** Fuer Tests: ein Client ohne echten Netzwerkzugriff auf den Anbieter. */
+  domains?: DomainVerwaltung
+}
+
+export function emailRoutes(
+  app: FastifyInstance, overrides: EmailRouteOverrides = {}
+): void {
+  const config = loadConfig()
+  const brevoDomains = overrides.domains ?? null
+
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/email-settings',
@@ -110,6 +124,35 @@ export function emailRoutes(app: FastifyInstance): void {
         if (t.rows[0]!.is_training && b.enabled) {
           throw Errors.unprocessable(
             'training.noEmail')
+        }
+
+        /*
+         * Einschalten geht nur mit freigeschalteter Absenderdomain.
+         *
+         * Die Datenbank prueft dasselbe noch einmal beim Einreihen jeder
+         * Nachricht (email_enqueue), und das ist keine Doppelung aus
+         * Versehen: dort ist es der Zaun, hier die Antwort an einen
+         * Menschen. Wer nur den Zaun hat, schaltet ein, sieht keinen
+         * Fehler, und merkt erst beim ersten Check-out, dass nichts geht.
+         *
+         * Zwei getrennte Meldungen, weil die beiden Faelle verschiedene
+         * naechste Schritte haben: keine Domain heisst beantragen, falsche
+         * Adresse heisst die Adresse aendern.
+         */
+        if (b.enabled) {
+          const d = await client.query<{ domain: string; status: string
+                                         erlaubt: boolean }>(
+            `SELECT d.domain, d.status,
+                    email_sender_allowed($1, $2) AS erlaubt
+               FROM property_email_domain d WHERE d.property_id = $1`,
+            [Number(propertyId), b.fromEmail.trim()])
+          if (d.rowCount === 0 || d.rows[0]!.status !== 'active') {
+            throw Errors.unprocessable('domain.notActive')
+          }
+          if (!d.rows[0]!.erlaubt) {
+            throw Errors.unprocessable('domain.senderMismatch',
+              { domain: d.rows[0]!.domain })
+          }
         }
 
         await client.query(
@@ -350,6 +393,259 @@ export function emailRoutes(app: FastifyInstance): void {
             'mail.onlyUnsentCancellable')
         }
         return { messageRef, status: 'canceled' }
+      })
+    }
+  })
+
+  // ------------------------------------------------ Absenderdomain des Hauses
+  /*
+   * Der Weg, den eine Domain nimmt: beantragen -> wir geben frei -> das Haus
+   * traegt drei DNS-Eintraege ein -> nachsehen lassen -> Versand moeglich.
+   *
+   * **Warum eine Freigabe dazwischen steht.** Was ein Haus hier beantragt,
+   * landet in unserem Konto beim Anbieter, kostet dort Kontingent und traegt
+   * unseren Ruf als Versender. Selbstbedienung waere bequemer und hiesse,
+   * dass ein falsch geschriebener oder fremder Domainname ungeprueft dorthin
+   * durchschlaegt.
+   *
+   * **Das Haus bekommt unseren Zugang dabei nie zu sehen.** Angemeldet wird
+   * mit unserem Schluessel, hier, nach der Freigabe; zurueck kommen drei
+   * oeffentliche TXT-Eintraege, und die traegt das Haus bei seinem eigenen
+   * DNS-Anbieter ein.
+   */
+
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/email-domain',
+    permission: 'integration:manage',
+    propertyParam: 'propertyId',
+    summary: 'Stand der Absenderdomain',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query(
+          `SELECT mode, domain, local_part AS "localPart", status,
+                  verified, authenticated, dns_records AS "dnsRecords",
+                  requested_at AS "requestedAt", decided_at AS "decidedAt",
+                  decision_note AS "decisionNote", checked_at AS "checkedAt"
+             FROM property_email_domain WHERE property_id = $1`,
+          [Number(propertyId)])
+        // Kein 404: "noch nicht beantragt" ist ein gueltiger Zustand des
+        // Hauses und keine fehlende Ressource -- wie bei den
+        // Absenderangaben daneben.
+        return rows[0] ?? {
+          mode: null, domain: null, localPart: null, status: null,
+          verified: false, authenticated: false, dnsRecords: [],
+          requestedAt: null, decidedAt: null, decisionNote: null, checkedAt: null,
+          relayDomain: config.relayEmailDomain
+        }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/email-domain',
+    permission: 'integration:manage',
+    propertyParam: 'propertyId',
+    summary: 'Absenderdomain beantragen',
+    handler: async (req, reply) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const b = req.body as { mode?: string; domain?: string; localPart?: string }
+      const principal = req.principal as Principal
+      const mode = b.mode === 'relay' ? 'relay' : 'own'
+
+      let domain: string
+      let localPart: string | null = null
+
+      if (mode === 'relay') {
+        if (config.relayEmailDomain.trim() === '') {
+          throw Errors.notConfigured('domain.relayNotConfigured')
+        }
+        domain = config.relayEmailDomain.toLowerCase()
+        localPart = (b.localPart ?? '').trim().toLowerCase()
+        // Dieselbe Form wie in der Bedingung der Tabelle. Hier, weil eine
+        // Meldung aus der Datenbank den Benutzer nicht erreicht.
+        if (!/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(localPart)) {
+          throw Errors.validation({ localPart: ['field.required'] })
+        }
+      } else {
+        // Wer eine ganze Adresse eintippt, meint ihre Domain. Das
+        // abzuweisen waere formal richtig und praktisch aergerlich.
+        domain = (domainOf(b.domain) || (b.domain ?? '').trim().toLowerCase())
+        if (domain === '' || /[@\s]/.test(domain) || !domain.includes('.')) {
+          throw Errors.validation({ domain: ['field.required'] })
+        }
+        /*
+         * Freemail hier abfangen und nicht erst beim Anbieter: sonst wartet
+         * ein Haus drei Tage auf eine Freigabe, um dann zu erfahren, dass
+         * seine GMX-Adresse nie gehen konnte.
+         */
+        if (isFreemailDomain(domain)) {
+          throw Errors.unprocessable('domain.freemail',
+            { relay: config.relayEmailDomain })
+        }
+      }
+
+      return tx(req.pool, req, async client => {
+        const t = await client.query<{ is_training: boolean }>(
+          `SELECT is_training FROM property WHERE id = $1`, [Number(propertyId)])
+        if (t.rowCount === 0) throw Errors.notFound('res.property')
+        // Ein Uebungshaus verschickt nichts, also braucht es auch keine
+        // Domain -- und ein Antrag daraus kostete jemanden bei uns Zeit.
+        if (t.rows[0]!.is_training) throw Errors.unprocessable('training.noEmail')
+
+        const da = await client.query<{ status: string }>(
+          `SELECT status FROM property_email_domain WHERE property_id = $1`,
+          [Number(propertyId)])
+        // Ein abgelehnter oder zurueckgenommener Antrag darf ersetzt werden;
+        // ein offener oder laufender nicht, sonst verschwaende die Freigabe,
+        // die gerade jemand bearbeitet.
+        if (da.rows.length > 0 && da.rows[0]!.status !== 'rejected') {
+          throw Errors.conflict('domain.alreadyRequested')
+        }
+
+        try {
+          await client.query(
+            `INSERT INTO property_email_domain
+               (property_id, mode, domain, local_part, status, requested_by,
+                requested_at, dns_records, verified, authenticated,
+                provider_id, decided_by, decided_at, decision_note, checked_at)
+             VALUES ($1,$2,$3,$4,'requested',$5, now(), '[]'::jsonb, false, false,
+                     NULL, NULL, NULL, NULL, NULL)
+             ON CONFLICT (property_id) DO UPDATE
+               SET mode = EXCLUDED.mode, domain = EXCLUDED.domain,
+                   local_part = EXCLUDED.local_part, status = 'requested',
+                   requested_by = EXCLUDED.requested_by, requested_at = now(),
+                   dns_records = '[]'::jsonb, verified = false,
+                   authenticated = false, provider_id = NULL,
+                   decided_by = NULL, decided_at = NULL, decision_note = NULL,
+                   checked_at = NULL, updated_at = now()`,
+            [Number(propertyId), mode, domain, localPart, principal.userId])
+        } catch (e) {
+          // Die beiden teilweisen eindeutigen Indizes. Welcher gegriffen
+          // hat, sagt der Modus -- zwei Meldungen, weil "schon vergeben"
+          // bei einer Domain etwas anderes heisst als bei einem Namensteil.
+          if ((e as { code?: string }).code === '23505') {
+            throw mode === 'relay'
+              ? Errors.conflict('domain.localPartTaken',
+                  { relay: config.relayEmailDomain })
+              : Errors.conflict('domain.taken')
+          }
+          throw e
+        }
+
+        /*
+         * Der Hinweis an uns. Hoechstens einer offen, darum kuemmert sich
+         * platform_notice_enqueue -- zehn Antraege an einem Vormittag sollen
+         * zehn Zeilen im Adminpanel ergeben und eine Mail, nicht zehn.
+         *
+         * SECURITY DEFINER, weil hier eine Kundensitzung laeuft: sie soll
+         * weder einen Empfaenger bestimmen noch erfahren, wer bei uns
+         * arbeitet.
+         */
+        const offen = await client.query<{ n: string }>(
+          `SELECT count(*) AS n FROM property_email_domain WHERE status = 'requested'`)
+        const text = renderDomainRequestNotice({
+          offen: Number(offen.rows[0]!.n),
+          link: `${config.publicAppUrl}/?screen=adminpanel`
+        })
+        await client.query(`SELECT platform_notice_enqueue($1,$2,$3)`,
+          [config.platformNoticeEmail, text.subject, text.text])
+
+        reply.status(202)
+        return { propertyId: Number(propertyId), mode, domain, localPart,
+                 status: 'requested' }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/email-domain/check',
+    permission: 'integration:manage',
+    propertyParam: 'propertyId',
+    summary: 'Nachsehen, ob die DNS-Eintraege stehen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      // Wie bei der Freigabe: der Schluessel wird nur gebraucht, wenn
+      // wirklich der echte Client entsteht.
+      if (brevoDomains === null && config.brevoApiKey === null) {
+        throw Errors.notConfigured('domain.providerNotConfigured')
+      }
+
+      const zeile = await tx(req.pool, req, async client => {
+        const { rows } = await client.query<{ domain: string; status: string }>(
+          `SELECT domain, status FROM property_email_domain WHERE property_id = $1`,
+          [Number(propertyId)])
+        if (rows.length === 0) throw Errors.notFound('domain.notRequested')
+        if (rows[0]!.status !== 'dns_pending') {
+          throw Errors.conflict('domain.onlyWhilePending')
+        }
+        return rows[0]!
+      })
+
+      /*
+       * Der Aufruf nach draussen liegt **zwischen** den beiden
+       * Transaktionen, nicht in einer: eine offene Transaktion haelt
+       * Sperren, und der Anbieter braucht, was er braucht.
+       */
+      const anbieter = brevoDomains
+        ?? createBrevoDomains(config.brevoApiKey as string)
+      let stand
+      try {
+        stand = await anbieter.pruefenLassen(zeile.domain)
+      } catch (e) {
+        if (e instanceof DomainApiError) {
+          throw Errors.upstreamFailed('domain.providerUnavailable')
+        }
+        throw e
+      }
+
+      return tx(req.pool, req, async client => {
+        const fertig = stand.verified && stand.authenticated
+        const { rows } = await client.query(
+          `UPDATE property_email_domain
+              SET verified = $2, authenticated = $3, dns_records = $4::jsonb,
+                  checked_at = now(), updated_at = now(),
+                  status = CASE WHEN $5 THEN 'active' ELSE status END
+            WHERE property_id = $1
+            RETURNING status, verified, authenticated,
+                      dns_records AS "dnsRecords", checked_at AS "checkedAt"`,
+          [Number(propertyId), stand.verified, stand.authenticated,
+           JSON.stringify(stand.records), fertig])
+        return rows[0]
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/email-domain',
+    permission: 'integration:manage',
+    propertyParam: 'propertyId',
+    summary: 'Absenderdomain zuruecknehmen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async client => {
+        /*
+         * Der Versand geht mit. Eine Domain zurueckzunehmen und den Versand
+         * eingeschaltet zu lassen, hiesse: ab jetzt scheitert jede Rechnung
+         * beim Einreihen, und zwar mit einer Meldung ueber eine Domain, die
+         * niemand mehr sucht.
+         *
+         * Die Zeile beim Anbieter bleibt zunaechst stehen. Sie dort zu
+         * entfernen ist Aufraeumen und gehoert nicht an eine Route, die ein
+         * Mensch aus Versehen zweimal drueckt.
+         */
+        await client.query(
+          `UPDATE property_email_setting SET enabled = false, updated_at = now()
+            WHERE property_id = $1`, [Number(propertyId)])
+        const r = await client.query(
+          `DELETE FROM property_email_domain WHERE property_id = $1`,
+          [Number(propertyId)])
+        if (r.rowCount === 0) throw Errors.notFound('domain.notRequested')
+        return { propertyId: Number(propertyId), status: null }
       })
     }
   })

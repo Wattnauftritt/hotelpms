@@ -642,6 +642,62 @@ export const EmailSettings = Type.Object({
 })
 export type EmailSettings = Static<typeof EmailSettings>
 
+/**
+ * Ein DNS-Eintrag, wie ihn das Haus bei seinem Domainanbieter abtippt.
+ * `ok` kommt vom Versandanbieter, nicht aus einer eigenen Abfrage: was wir
+ * selbst aufloesen wuerden, koennte aus einem Zwischenspeicher stammen und
+ * dem Haus ein "steht" zeigen, mit dem der Anbieter nicht einverstanden ist.
+ */
+export const DnsRecord = Type.Object({
+  host: Type.String(),
+  type: Type.String(),
+  value: Type.String(),
+  ok: Type.Boolean()
+})
+export type DnsRecord = Static<typeof DnsRecord>
+
+export const EmailDomain = Type.Object({
+  mode: Type.Union([Type.Literal('own'), Type.Literal('relay'), Type.Null()]),
+  domain: Type.Union([Type.String(), Type.Null()]),
+  localPart: Type.Union([Type.String(), Type.Null()]),
+  status: Type.Union([
+    Type.Literal('requested'), Type.Literal('rejected'),
+    Type.Literal('dns_pending'), Type.Literal('active'), Type.Null()]),
+  verified: Type.Boolean(),
+  authenticated: Type.Boolean(),
+  dnsRecords: Type.Array(DnsRecord),
+  requestedAt: Type.Union([Type.String(), Type.Null()]),
+  decidedAt: Type.Union([Type.String(), Type.Null()]),
+  decisionNote: Type.Union([Type.String(), Type.Null()]),
+  checkedAt: Type.Union([Type.String(), Type.Null()]),
+  /** Nur mitgeliefert, solange nichts beantragt ist: der Weg fuer Haeuser
+   *  ohne eigene Domain. */
+  relayDomain: Type.Optional(Type.String())
+})
+export type EmailDomain = Static<typeof EmailDomain>
+
+/** Ein Antrag, wie ihn das Adminpanel sieht. Kein Gast, keine Buchung. */
+export const EmailDomainRequest = Type.Object({
+  propertyId: Type.Integer(),
+  propertyName: Type.String(),
+  accountId: Type.Integer(),
+  accountName: Type.String(),
+  mode: Type.Union([Type.Literal('own'), Type.Literal('relay')]),
+  domain: Type.String(),
+  localPart: Type.Union([Type.String(), Type.Null()]),
+  status: Type.String(),
+  verified: Type.Boolean(),
+  authenticated: Type.Boolean(),
+  dnsRecords: Type.Array(DnsRecord),
+  requestedByName: Type.Union([Type.String(), Type.Null()]),
+  requestedAt: Type.String(),
+  decidedByName: Type.Union([Type.String(), Type.Null()]),
+  decidedAt: Type.Union([Type.String(), Type.Null()]),
+  decisionNote: Type.Union([Type.String(), Type.Null()]),
+  checkedAt: Type.Union([Type.String(), Type.Null()])
+})
+export type EmailDomainRequest = Static<typeof EmailDomainRequest>
+
 export const CreatePaymentMethod = Type.Object({
   code: Type.String({ minLength: 1, maxLength: 20 }),
   name: Type.String({ minLength: 1, maxLength: 120 }),

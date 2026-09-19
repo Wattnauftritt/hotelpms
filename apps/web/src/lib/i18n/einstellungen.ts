@@ -378,4 +378,118 @@ export const einstellungen = {
     en: 'in force',
     tr: 'yürürlükte' },
 
+  // ------------------------------------------------------- Absenderdomain
+  'mailDomain.title': {
+    de: 'Absenderdomain',
+    en: 'Sender domain',
+    tr: 'Gönderen alan adı' },
+  'mailDomain.intro': {
+    de: 'Damit Gastpost von Ihrem Haus kommt und nicht von uns, muss Ihre '
+      + 'Domain einmal freigeschaltet werden. Sie beantragen sie hier, wir '
+      + 'geben sie frei, und Sie tragen danach drei Zeilen bei Ihrem '
+      + 'Domainanbieter ein.',
+    en: 'So guest mail comes from your property and not from us, your domain '
+      + 'has to be activated once. You request it here, we approve it, and '
+      + 'you then add three records at your domain provider.',
+    tr: 'Misafir postasının bizden değil tesisinizden gelmesi için alan adınızın '
+      + 'bir kez etkinleştirilmesi gerekir. Buradan başvurursunuz, biz onaylarız, '
+      + 'ardından alan adı sağlayıcınızda üç kayıt eklersiniz.' },
+  'mailDomain.modeOwn': {
+    de: 'Wir haben eine eigene Domain',
+    en: 'We have our own domain',
+    tr: 'Kendi alan adımız var' },
+  'mailDomain.modeRelay': {
+    de: 'Wir haben nur eine Adresse bei GMX, Web.de oder T-Online',
+    en: 'We only have an address at GMX, Web.de or T-Online',
+    tr: 'Yalnızca GMX, Web.de veya T-Online adresimiz var' },
+  'mailDomain.domainLabel': {
+    de: 'Ihre Domain',
+    en: 'Your domain',
+    tr: 'Alan adınız' },
+  'mailDomain.domainHint': {
+    de: 'Nur der Teil hinter dem @, also hotel-wattenblick.de',
+    en: 'Only the part after the @, e.g. hotel-wattenblick.de',
+    tr: '@ işaretinden sonraki kısım, örneğin hotel-wattenblick.de' },
+  'mailDomain.localPartLabel': {
+    de: 'Name vor dem @',
+    en: 'Name before the @',
+    tr: '@ işaretinden önceki ad' },
+  'mailDomain.relayHint': {
+    de: 'Ihre Post geht dann von {address} hinaus, mit Ihrem Hotelnamen davor. '
+      + 'Antworten gehen an Ihre eigene Adresse, nicht an uns.',
+    en: 'Your mail then goes out from {address}, with your property name in '
+      + 'front. Replies go to your own address, not to us.',
+    tr: 'Postanız {address} adresinden, önünde tesis adınızla çıkar. '
+      + 'Yanıtlar bize değil kendi adresinize gider.' },
+  'mailDomain.request': {
+    de: 'Freigabe beantragen',
+    en: 'Request approval',
+    tr: 'Onay talep et' },
+  'mailDomain.withdraw': {
+    de: 'Antrag zurücknehmen',
+    en: 'Withdraw request',
+    tr: 'Başvuruyu geri çek' },
+  'mailDomain.check': {
+    de: 'Nachsehen, ob die Einträge stehen',
+    en: 'Check whether the records are in place',
+    tr: 'Kayıtların yerinde olup olmadığını kontrol et' },
+  'mailDomain.statusRequested': {
+    de: 'Beantragt. Wir sehen es uns an und melden uns.',
+    en: 'Requested. We are looking at it and will get back to you.',
+    tr: 'Başvuruldu. İnceliyoruz ve size döneceğiz.' },
+  'mailDomain.statusRejected': {
+    de: 'Abgelehnt',
+    en: 'Rejected',
+    tr: 'Reddedildi' },
+  'mailDomain.statusDnsPending': {
+    de: 'Freigegeben. Jetzt fehlen noch die Einträge bei Ihrem Domainanbieter.',
+    en: 'Approved. The records at your domain provider are still missing.',
+    tr: 'Onaylandı. Alan adı sağlayıcınızdaki kayıtlar hâlâ eksik.' },
+  'mailDomain.statusActive': {
+    de: 'Freigeschaltet. Der Versand lässt sich einschalten.',
+    en: 'Active. Sending can be switched on.',
+    tr: 'Etkin. Gönderim açılabilir.' },
+  'mailDomain.dnsIntro': {
+    de: 'Tragen Sie diese Einträge bei Ihrem Domainanbieter ein, dort wo die '
+      + 'DNS-Einträge stehen. Bis sie überall bekannt sind, vergehen meist '
+      + 'Minuten, manchmal Stunden.',
+    en: 'Add these records at your domain provider, where the DNS records '
+      + 'live. It usually takes minutes, sometimes hours, until they are '
+      + 'known everywhere.',
+    tr: 'Bu kayıtları alan adı sağlayıcınızda, DNS kayıtlarının bulunduğu yere ekleyin. '
+      + 'Her yerde bilinmeleri genelde dakikalar, bazen saatler sürer.' },
+  'mailDomain.host': {
+    de: 'Name',
+    en: 'Host',
+    tr: 'Ad' },
+  'mailDomain.type': {
+    de: 'Typ',
+    en: 'Type',
+    tr: 'Tür' },
+  'mailDomain.value': {
+    de: 'Wert',
+    en: 'Value',
+    tr: 'Değer' },
+  'mailDomain.recordOk': {
+    de: 'steht',
+    en: 'in place',
+    tr: 'mevcut' },
+  'mailDomain.recordMissing': {
+    de: 'fehlt noch',
+    en: 'still missing',
+    tr: 'hâlâ eksik' },
+  'mailDomain.lastChecked': {
+    de: 'Zuletzt nachgesehen',
+    en: 'Last checked',
+    tr: 'Son kontrol' },
+  'mailDomain.neverChecked': {
+    de: 'noch nicht nachgesehen',
+    en: 'not checked yet',
+    tr: 'henüz kontrol edilmedi' },
+  'mailDomain.needed': {
+    de: 'Der Versand lässt sich erst einschalten, wenn die Absenderdomain '
+      + 'freigeschaltet ist.',
+    en: 'Sending can only be switched on once the sender domain is active.',
+    tr: 'Gönderim ancak gönderen alan adı etkinleştirildikten sonra açılabilir.' },
+
 } as const satisfies Record<string, LocalizedText>
