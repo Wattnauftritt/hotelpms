@@ -346,6 +346,47 @@ export function guestRoutes(app: FastifyInstance): void {
                   destroy_after::text AS "destroyAfter"
              FROM registration WHERE guest_id = $1 ORDER BY arrival DESC`, [id])
 
+        // Gastpost. Sie ist unstreitig seine Auskunft: Adresse, Betreff und
+        // Text dessen, was an ihn hinausging (Befund 6, Dokument 26). Redigierte
+        // Zustellungen sind mit aufgefuehrt, aber ohne Inhalt -- dass etwas
+        // geschickt wurde, bleibt Teil der Antwort.
+        const mails = await client.query(
+          `SELECT e.created_at::text AS "sentAt", e.kind, e.status,
+                  CASE WHEN e.redacted_at IS NULL THEN e.subject END AS subject,
+                  CASE WHEN e.redacted_at IS NULL THEN e.body_text END AS "bodyText",
+                  e.redacted_at IS NOT NULL AS redacted
+             FROM outbound_email e
+             LEFT JOIN reservation r ON r.id = e.reservation_id
+             LEFT JOIN invoice i ON i.id = e.invoice_id
+             LEFT JOIN folio f ON f.id = i.folio_id
+             LEFT JOIN reservation r2 ON r2.id = f.reservation_id
+            WHERE r.primary_guest_id = $1 OR r2.primary_guest_id = $1
+            ORDER BY e.created_at DESC`, [id])
+
+        // Einwilligungen: wann welcher Fassung zugestimmt wurde. Das Bild der
+        // Unterschrift geht nicht mit hinaus -- es gehoert ihm, aber eine
+        // Auskunft ist kein Anlass, es ein zweites Mal in Umlauf zu bringen.
+        const agreements = await client.query(
+          `SELECT ga.agreed_at::text AS "agreedAt", p.name AS property,
+                  t.version, ga.signature_svg IS NOT NULL AS signed
+             FROM guest_agreement ga
+             JOIN property p ON p.id = ga.property_id
+             JOIN property_terms t ON t.id = ga.terms_id
+            WHERE ga.guest_id = $1 ORDER BY ga.agreed_at DESC`, [id])
+
+        // Art. 15 Abs. 1 verlangt nicht nur die Daten, sondern die Angaben
+        // nach lit. a bis h. Sie aendern sich je Betrieb kaum und gehoeren
+        // deshalb als fester Kopf an die Auskunft -- wer sie jedesmal von Hand
+        // dazuschreibt, vergisst sie eines Tages.
+        const auskunft = {
+          zwecke: 'zwecke.beherbergung',
+          kategorien: 'kategorien.gast',
+          empfaenger: 'empfaenger.gast',
+          speicherdauer: 'speicherdauer.gast',
+          rechte: 'rechte.betroffene',
+          herkunft: 'herkunft.gast'
+        }
+
         return {
           profile: present(g.rows[0]!),
           createdAt: g.rows[0]!.created_at,
@@ -353,6 +394,11 @@ export function guestRoutes(app: FastifyInstance): void {
           invoices: invoices.rows,
           notes: notes.rows,
           registrations: registrations.rows,
+          mails: mails.rows,
+          agreements: agreements.rows,
+          auskunft,
+          auskunftTexte: Object.fromEntries(
+            Object.entries(auskunft).map(([k, key]) => [k, hinweisText(key)])),
           hinweis: hinweisText('hint.invoiceRetention'),
           hinweisKey: 'hint.invoiceRetention'
         }
@@ -425,32 +471,16 @@ export function guestRoutes(app: FastifyInstance): void {
         const bis = frist.rows[0]?.bis ?? null
 
         if (bis !== null) {
-          await client.query(
-            `UPDATE guest SET
-               email = NULL, phone = NULL, birth_date = NULL, nationality = NULL,
-               id_document_type = NULL, id_document_number_enc = NULL,
-               id_document_key_version = NULL, preferences = '{}',
-               erasure_requested_at = COALESCE(erasure_requested_at, now()),
-               updated_at = now()
-             WHERE id = $1`, [id])
-          await client.query(`DELETE FROM guest_property_note WHERE guest_id = $1`, [id])
-          await client.query(`DELETE FROM registration WHERE guest_id = $1`, [id])
+          // Name und Anschrift bleiben, das Gaesteverzeichnis braucht sie bis
+          // zum Fristende. Alles uebrige faellt sofort.
+          await client.query(`SELECT guest_erase_partial($1)`, [id])
           return { guestRef, status: 'partial', alreadyDone: false, completesAfter: bis }
         }
 
-        await client.query(
-          `UPDATE guest SET
-             last_name = 'Anonymisiert', first_name = NULL, email = NULL, phone = NULL,
-             birth_date = NULL, nationality = NULL, address_line1 = NULL,
-             postal_code = NULL, city = NULL, country = NULL,
-             id_document_type = NULL, id_document_number_enc = NULL,
-             id_document_key_version = NULL, preferences = '{}',
-             status = 'anonymized', anonymized_at = now(), updated_at = now()
-           WHERE id = $1`, [id])
-        // Hausnotizen sind freier Text und koennen alles enthalten.
-        await client.query(`DELETE FROM guest_property_note WHERE guest_id = $1`, [id])
-        // Meldescheine haben eine eigene, kuerzere Frist und gehen mit.
-        await client.query(`DELETE FROM registration WHERE guest_id = $1`, [id])
+        // Eine Stelle, nicht drei. Welche Tabellen zu einem Gast gehoeren,
+        // stand frueher hier, im aufgeschobenen Zweig und im Nachtlauf -- und
+        // genau deshalb hat die Einwilligung gefehlt (Befund 5, Dokument 26).
+        await client.query(`SELECT guest_erase_one($1)`, [id])
 
         return { guestRef, status: 'anonymized', alreadyDone: false }
       })
@@ -462,7 +492,7 @@ export function guestRoutes(app: FastifyInstance): void {
     url: '/v1/guests/:guestRef/notes',
     permission: 'guest:write',
     propertyParam: 'propertyId',
-    summary: 'Hausnotiz zum Gast anlegen',
+    summary: 'Hausnotiz zum Gast anlegen (Anforderung, nicht ihr Grund)',
     handler: async (req, reply) => {
       const { guestRef } = req.params as { guestRef: string }
       const { propertyId, note } = req.body as { propertyId: number; note: string }
@@ -477,7 +507,15 @@ export function guestRoutes(app: FastifyInstance): void {
            VALUES ($1,$2,$3,$4)`,
           [propertyId, g.rows[0]!.id, note.trim(), principal.userId])
         reply.status(201)
-        return { guestRef, propertyId }
+        // Der Hinweis geht mit der Antwort hinaus und nicht nur in die
+        // Beschreibung: eine Hausnotiz hat keine Maske, sie entsteht ueber
+        // die Schnittstelle. Wer sie schreibt, liest kein Handbuch
+        // (Befund 4, Dokument 26).
+        return {
+          guestRef, propertyId,
+          hinweis: hinweisText('hint.noteNoHealthData'),
+          hinweisKey: 'hint.noteNoHealthData'
+        }
       })
     }
   })

@@ -1061,6 +1061,73 @@ const M = {
   // Sie gehen denselben Weg wie eine Fehlermeldung: die Antwort traegt den
   // deutschen Satz **und** den Schluessel.
 
+  // ---------------------------------------------- Auskunft nach Art. 15
+  //
+  // Die Angaben nach Abs. 1 lit. a bis h. Sie gehoeren als fester Kopf an
+  // jede Auskunft: Daten allein sind keine Auskunft im Sinne der Norm
+  // (Befund 6, Dokument 26). Sie stehen hier und nicht im Code, weil ein
+  // Gast sie in seiner Sprache lesen soll.
+
+  'zwecke.beherbergung': {
+    de: 'Abwicklung des Beherbergungsvertrags: Reservierung, Aufenthalt, '
+      + 'Abrechnung sowie die gesetzlichen Melde- und Aufbewahrungspflichten.',
+    en: 'Performance of the accommodation contract: reservation, stay, billing, '
+      + 'and the statutory registration and retention duties.',
+    tr: 'Konaklama sözleşmesinin yürütülmesi: rezervasyon, konaklama, '
+      + 'faturalandırma ve yasal bildirim ile saklama yükümlülükleri.' },
+  'kategorien.gast': {
+    de: 'Stammdaten, Kontaktdaten, Aufenthaltsdaten, Rechnungsdaten, '
+      + 'Meldedaten und was die Rezeption als Hausnotiz erfasst hat.',
+    en: 'Master data, contact details, stay data, billing data, registration '
+      + 'data, and whatever the front desk recorded as a property note.',
+    tr: 'Ana veriler, iletişim bilgileri, konaklama verileri, fatura verileri, '
+      + 'bildirim verileri ve resepsiyonun tesis notu olarak kaydettikleri.' },
+  'empfaenger.gast': {
+    de: 'Das Haus selbst, sein Zahlungsdienstleister, sein Versanddienst fuer '
+      + 'Gastpost, und bei gesetzlicher Pflicht die Meldebehoerde und das '
+      + 'Statistische Landesamt. Kartendaten werden nie gespeichert.',
+    en: 'The property itself, its payment provider, its delivery service for '
+      + 'guest mail, and where required by law the registration authority and '
+      + 'the statistical office. Card details are never stored.',
+    tr: 'Tesisin kendisi, ödeme sağlayıcısı, misafir yazışması için gönderim '
+      + 'hizmeti ve yasal zorunluluk hâlinde nüfus idaresi ile istatistik '
+      + 'kurumu. Kart bilgileri asla saklanmaz.' },
+  'speicherdauer.gast': {
+    de: 'Der Meldeschein wird nach der gesetzlichen Frist vernichtet, '
+      + 'Rechnungen unterliegen der steuerlichen Aufbewahrungsfrist, das '
+      + 'Profil wird auf Verlangen anonymisiert, sobald keine Frist entgegensteht.',
+    en: 'The registration form is destroyed after the statutory period, invoices '
+      + 'are subject to the tax retention period, and the profile is anonymised '
+      + 'on request as soon as no retention period stands in the way.',
+    tr: 'Meldeschein yasal sürenin ardından imha edilir, faturalar vergisel '
+      + 'saklama süresine tabidir, profil ise talep hâlinde, önünde bir süre '
+      + 'kalmadığı anda anonimleştirilir.' },
+  'rechte.betroffene': {
+    de: 'Auskunft, Berichtigung, Loeschung, Einschraenkung, Datenuebertragbarkeit, '
+      + 'Widerspruch, und das Recht auf Beschwerde bei einer Aufsichtsbehoerde.',
+    en: 'Access, rectification, erasure, restriction, data portability, objection, '
+      + 'and the right to lodge a complaint with a supervisory authority.',
+    tr: 'Bilgi edinme, düzeltme, silme, kısıtlama, veri taşınabilirliği, itiraz '
+      + 've bir denetim makamına şikâyette bulunma hakkı.' },
+  'herkunft.gast': {
+    de: 'Vom Gast selbst, aus seiner Buchung, oder von dem Portal, ueber das '
+      + 'er gebucht hat.',
+    en: 'From the guest, from their booking, or from the portal they booked through.',
+    tr: 'Misafirin kendisinden, rezervasyonundan veya rezervasyonu yaptığı '
+      + 'portaldan.' },
+
+  'hint.noteNoHealthData': {
+    de: 'Eine Hausnotiz haelt eine Anforderung fest, nicht ihren Grund: '
+      + '"barrierefreies Zimmer" gehoert hierher, die Diagnose dahinter nicht. '
+      + 'Gesundheitsdaten stehen nach Art. 9 DSGVO unter einer deutlich '
+      + 'hoeheren Schwelle als der Rest dieses Profils.',
+    en: 'A property note records a requirement, not its reason: "step-free room" '
+      + 'belongs here, the diagnosis behind it does not. Health data is held to a '
+      + 'far higher standard under Art. 9 GDPR than the rest of this profile.',
+    tr: 'Tesis notu bir gereksinimi kaydeder, nedenini değil: "engelsiz oda" '
+      + 'buraya aittir, arkasındaki teşhis ait değildir. Sağlık verileri DSGVO '
+      + 'Madde 9 uyarınca bu profilin geri kalanından çok daha yüksek bir '
+      + 'eşiğe tabidir.' },
   'hint.settlementIsNotPayment': {
     de: 'Ein Zahlungsvermerk ordnet zu, er wickelt nicht ab. Die Zahlung selbst '
       + 'laeuft ueber Kasse, Portal oder Bank des Betriebs.',

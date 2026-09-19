@@ -39,6 +39,30 @@ export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Serv
             paths: ['req.headers.authorization', 'req.headers.cookie',
                     'req.body', 'res.body', '*.password', '*.idDocumentNumber'],
             remove: true
+          },
+          /*
+           * Die Adresszeile traegt Gastdaten, und `redact` erreicht sie nicht.
+           *
+           * `GET /v1/guests?q=Petersen` schrieb den Nachnamen eines Gastes ins
+           * Protokoll -- gegen die eigene Regel, und die Anonymisierung
+           * erreicht ihn dort nicht mehr. Die Redaktionsliste deckt Kopfzeilen
+           * und Ruempfe ab; die URL ist keines von beiden, sondern ein Feld,
+           * das Fastify selbst erzeugt.
+           *
+           * Die Namen der Parameter bleiben stehen, nur ihre Werte fallen: an
+           * einem Protokoll ist ablesbar, **wonach** gesucht wurde, ohne dass
+           * dort steht, **wer** gesucht wurde. Ein Protokoll ohne Pfad waere
+           * beim Suchen eines Fehlers wertlos.
+           */
+          serializers: {
+            req (req: { method: string; url: string; id: string }) {
+              const schnitt = req.url.indexOf('?')
+              const url = schnitt < 0 ? req.url
+                : req.url.slice(0, schnitt) + '?' + [...new URLSearchParams(
+                    req.url.slice(schnitt + 1)).keys()]
+                    .map(k => `${k}=[redigiert]`).join('&')
+              return { id: req.id, method: req.method, url }
+            }
           }
         },
     genReqId: () => crypto.randomUUID(),
