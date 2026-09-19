@@ -150,6 +150,8 @@ Jede Zeile darin gehört an einem echten System nachgerechnet, bevor sie eingech
 
 Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zuverlässig in die Quere kommen: zwei Zweige von `main` legen beide `0020_` an, und beim Mergen fällt das nicht auf, weil es verschiedene Dateien ohne Konflikt sind. Auffallen würde es erst beim nächsten frischen Schemaaufbau, als Fehler, dessen Ursache Tage zurückliegt. `scripts/check-migrations.sh` prüft das in CI. Wer die Meldung sieht, benennt die spätere um; zwischen unabhängigen Migrationen ist die Reihenfolge ohnehin beliebig.
 
+**Neues Dokument.** Fortlaufend nummeriert wie die Migrationen, und aus demselben Grund geprüft: am 19.09.2026 entstanden an einem Tag drei Berichte aus drei Sitzungen, und alle drei hießen `docs/24-*.md`. `scripts/check-docs.sh` prüft das in CI. Wer die Meldung sieht, benennt das spätere um und zieht die Verweise nach — README, Dokument 16, Kopfkommentare.
+
 **Neuer Test.** Gegen echtes PostgreSQL, keine Mocks: eine gemockte Datenbank prüft weder Zeilenrichtlinien noch Trigger noch Sperren, und genau dort liegt die Fachlichkeit. Getestet wird Verhalten, nicht Darstellung.
 
 **Commits.** Deutsch, erste Zeile eine Aussage, danach der Grund. Was gefunden und mitbehoben wurde, gehört hinein.
