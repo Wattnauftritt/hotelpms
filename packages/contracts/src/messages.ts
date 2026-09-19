@@ -407,6 +407,10 @@ const M = {
       + 'Kontingent.',
     en: 'At most {max} rooms per booking. Larger groups go through a block.',
     tr: 'Rezervasyon başına en fazla {max} oda. Daha büyük gruplar kontenjan üzerinden yürür.' },
+  'field.stayTooLong': {
+    de: 'Hoechstens {max} Naechte je Aufenthalt.',
+    en: 'At most {max} nights per stay.',
+    tr: 'Konaklama başına en fazla {max} gece.' },
   'field.pinDigits': {
     de: 'Zwischen {min} und {max} Ziffern, nur Ziffern',
     en: 'Between {min} and {max} digits, digits only',

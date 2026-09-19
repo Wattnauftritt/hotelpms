@@ -668,6 +668,18 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 ---
 
+### Aufgabe 14 — Performanceaudit — **erledigt**
+
+**Wo es liegt.** [`24-performanceaudit.md`](24-performanceaudit.md), Migration `0042`, `apps/api/src/routes/registrations.ts`, `reservations.ts`, `apps/web/src/components/TapeChart.tsx`.
+
+**Warum.** Systematische Durchsicht des ganzen Bestands gegen die fünf Leistungsregeln aus `CLAUDE.md`, nicht ausgelöst durch eine einzelne Messung wie bei Dokument 15, sondern auf Zuruf.
+
+**Vier Befunde behoben.** Die Kundenliste und der Betriebszustand des Adminpanels liefen über korrelierte Unterabfragen je Kontozeile — dieselbe Form, die Migration 0013 und 0015 schon einmal als Fehler gefunden hatten, jetzt mengenbasiert (128 ms → 6 ms bei 51 Konten). Der Meldeschein-Export hatte keine Obergrenze für den Zeitraum. Ein Aufenthalt hatte keine Höchstdauer, obwohl die Gruppengröße längst eine hat. Der Zimmerplan zeichnete bei jedem Mausschritt während eines Zugs alle Zimmerzeilen neu, statt wie das Preisraster nur die betroffene.
+
+**Noch offen**, nach Dringlichkeit geordnet in Dokument 24: allen voran die Schleife mit zwei bis drei Abfragen je Reservierung im Nachtlauf (`noShows`/`expireOptions`/`releaseBlocks`) und die Schleife mit einem `INSERT` je Nacht beim Buchen — beide bewusst nicht in diesem Durchgang mitgefixt, weil sie den empfindlichsten Pfad im System berühren und eine eigene, sorgfältig getestete Änderung verdienen.
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
