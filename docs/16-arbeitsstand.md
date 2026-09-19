@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 972 Tests, 51 Migrationen.
+Stand: 19. September 2026. 974 Tests, 51 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -360,7 +360,7 @@ spätere statt der sofortigen Meldung.
 
 **Teilweise erledigt.** Alles, was Code ist, steht; was Betrieb ist, steht als Handbuch in [`17-betrieb.md`](17-betrieb.md) und muss einmal tatsächlich durchgeführt werden.
 
-Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in [`25-sicherheitspruefung.md`](25-sicherheitspruefung.md): zwei Befunde mittleren Grades (ausgehende Anfragen an kundengesteuerte Adressen über Webhook-Abonnements; Gastdaten im Protokoll über die Abfragezeichenfolge) und sieben Härtungspunkte. **Alle neun sind abgearbeitet**; Abschnitt 8 des Dokuments nennt je Punkt die Stelle und die fünf Dinge, die beim Abarbeiten dazugekommen sind. Was daraus offen bleibt, ist Betrieb und steht in der Tabelle unten.
+Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in [`25-sicherheitspruefung.md`](25-sicherheitspruefung.md): zwei Befunde mittleren Grades (ausgehende Anfragen an kundengesteuerte Adressen über Webhook-Abonnements; Gastdaten im Protokoll über die Abfragezeichenfolge) und sieben Härtungspunkte. **Alle neun sind abgearbeitet**; Abschnitt 8 des Dokuments nennt je Punkt die Stelle und die sechs Dinge, die beim Abarbeiten dazugekommen sind. Was daraus offen bleibt, ist Betrieb und steht in der Tabelle unten.
 
 | Punkt | Stand |
 |---|---|
