@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 975 Tests, 51 Migrationen.
+Stand: 19. September 2026. 981 Tests, 51 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -693,6 +693,8 @@ Eine vergebene Adresse wird beim Einladen abgewiesen — auch wenn sie zum eigen
 **Was das Panel noch nicht kann:** Abrechnung. `platform:billing` gibt es als Recht seit Migration 0003, aber es steht kein Modell dahinter — keine Abo-Tabelle, keine Route, nichts. Einen Reiter dafür zu bauen hieße, eine Maske vor ein leeres Feld zu stellen. Ebenso fehlt weiterhin die Anzeige, **welcher** Stand freigegeben ist: der Ausrollknopf nennt nur den Marker `produktion`, nicht den Commit dahinter. Dafür müsste die Maschine bei jedem Lauf den aufgelösten Stand mitschreiben — sie hat keinen Netzzugang zu GitHub, und das soll so bleiben.
 
 ---
+
+**Rollen ändern, auf beiden Seiten.** Der Kunde konnte seit der Selbstverwaltung Haus- und Betriebsrollen unter Einstellungen → Benutzer ersetzend setzen; das Adminpanel zeigte sie nur als Text. Jetzt trägt jede Benutzerzeile der Kundenkarte einen Editor: je Haus des Kunden ein Satz Hausrollen, dazu die Rollen für den ganzen Betrieb (`PUT /v1/platform/accounts/:id/users/:userId/roles` und `…/account-roles`, `platform:accounts`). Dieselben Grenzen wie beim Kunden: nur Rollen der richtigen Ebene, die dem Kunden gehören oder System sind, also nie eine Plattformrolle; und der letzte Verwalter des Betriebs bleibt, auch für uns. Die Kundenkarte liefert die Rollen dafür strukturiert (`accountRoles`, `propertyRoles`) neben dem bisherigen Text.
 
 ### Was der Oberfläche noch fehlt
 

@@ -4,6 +4,7 @@ import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
          useCreateAccount, usePlatformStaff, useCreateStaff, useSetStaffStatus,
          usePlatformHealth, useUnlockUser, useSendAccessLink, useRevokeSessions,
          useInviteAccountUser, useAddProperty, useAccountSupportSessions,
+         useSetCustomerPropertyRoles, useSetCustomerAccountRoles,
          useSupportAudit, useSessionActivity, useSetStaffRole, useStaffAccessLink,
          type PlatformAccount, type PlatformAccountUser, type PlatformProperty,
          type SupportAuditRow } from '../lib/queries/platform.js'
@@ -197,14 +198,15 @@ function KundenListe({ onOpen }: { onOpen: (id: number) => void }): JSX.Element 
  * noch nicht versendet, gescheitert (mit dem Fehler), oder versendet -- dann
  * liegt sie im Spam.
  */
-function KundenBenutzer({ accountId, u }: {
-  accountId: number; u: PlatformAccountUser
+function KundenBenutzer({ accountId, u, properties }: {
+  accountId: number; u: PlatformAccountUser; properties: PlatformProperty[]
 }): JSX.Element {
   const t = useT()
   const zeit = useZeit()
   const entsperren = useUnlockUser()
   const link = useSendAccessLink()
   const abmelden = useRevokeSessions()
+  const [rollenOffen, setRollenOffen] = useState(false)
 
   return (
     <li className="py-1.5 space-y-1">
@@ -254,6 +256,10 @@ function KundenBenutzer({ accountId, u }: {
               {t('admin.user.revokeSessions')}
             </button>
           )}
+          <button type="button" className={KNOPF_KLEIN}
+                  onClick={() => setRollenOffen(o => !o)}>
+            {t('admin.user.roles')}
+          </button>
           {link.isSuccess && <span className="text-xs text-green-800">{t('admin.user.linkSent')}</span>}
           {abmelden.isSuccess && (
             <span className="text-xs text-green-800">
@@ -262,6 +268,9 @@ function KundenBenutzer({ accountId, u }: {
           )}
         </div>
       )}
+      {rollenOffen && u.status !== 'disabled' && (
+        <RollenEditor accountId={accountId} u={u} properties={properties} />
+      )}
       {entsperren.isError && <Fehler error={entsperren.error} />}
       {link.isError && <Fehler error={link.error} />}
       {abmelden.isError && <Fehler error={abmelden.error} />}
@@ -269,12 +278,89 @@ function KundenBenutzer({ accountId, u }: {
   )
 }
 
+/** Ein Satz Kaestchen je Rolle -- ersetzend gespeichert. */
+function RollenKaestchen({ rollen, gewaehlt, onChange }: {
+  rollen: Array<[string, TextKey]>; gewaehlt: string[]; onChange: (keys: string[]) => void
+}): JSX.Element {
+  const t = useT()
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1">
+      {rollen.map(([k, label]) => (
+        <label key={k} className="text-xs flex items-center gap-1.5">
+          <input type="checkbox" checked={gewaehlt.includes(k)}
+                 onChange={() => onChange(gewaehlt.includes(k)
+                   ? gewaehlt.filter(x => x !== k) : [...gewaehlt, k])} />
+          {t(label)}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Rollen eines Kundenbenutzers aendern: je Haus des Kunden ein Satz
+ * Hausrollen, dazu die Rollen fuer den ganzen Betrieb. Ersetzend, wie beim
+ * Kunden selbst -- und dieselbe Sperre: der letzte Verwalter bleibt, die
+ * Route sagt es, und der Fehler steht dann hier.
+ */
+function RollenEditor({ accountId, u, properties }: {
+  accountId: number; u: PlatformAccountUser; properties: PlatformProperty[]
+}): JSX.Element {
+  const t = useT()
+  const hausRollen = KUNDEN_ROLLEN.filter(r => r[2] === 'property')
+    .map(([k, label]) => [k, label] as [string, TextKey])
+  const betriebsRollen = KUNDEN_ROLLEN.filter(r => r[2] === 'account')
+    .map(([k, label]) => [k, label] as [string, TextKey])
+  const hausSetzen = useSetCustomerPropertyRoles()
+  const betriebSetzen = useSetCustomerAccountRoles()
+  const [jeHaus, setJeHaus] = useState<Record<number, string[]>>(() =>
+    Object.fromEntries(properties.map(p => [
+      p.id, u.propertyRoles.find(r => r.propertyId === p.id)?.roleKeys ?? []])))
+  const [betrieb, setBetrieb] = useState<string[]>(u.accountRoles)
+
+  return (
+    <div className="mt-1 space-y-2 border-l-2 border-neutral-200 pl-3">
+      <p className="text-xs text-neutral-600">{t('admin.user.rolesHint')}</p>
+      {properties.map(p => (
+        <form key={p.id} className="space-y-1"
+              onSubmit={e => {
+                e.preventDefault()
+                hausSetzen.mutate({ accountId, userId: u.id, propertyId: p.id,
+                                    roleKeys: jeHaus[p.id] ?? [] })
+              }}>
+          <span className="text-xs font-medium">{t('admin.user.rolesIn', { code: p.code })}</span>
+          <RollenKaestchen rollen={hausRollen} gewaehlt={jeHaus[p.id] ?? []}
+                           onChange={keys => setJeHaus(alt => ({ ...alt, [p.id]: keys }))} />
+          <button type="submit" className={KNOPF_KLEIN} disabled={hausSetzen.isPending}>
+            {t('common.save')}
+          </button>
+        </form>
+      ))}
+      <form className="space-y-1"
+            onSubmit={e => {
+              e.preventDefault()
+              betriebSetzen.mutate({ accountId, userId: u.id, roleKeys: betrieb })
+            }}>
+        <span className="text-xs font-medium">{t('admin.user.rolesAccount')}</span>
+        <RollenKaestchen rollen={betriebsRollen} gewaehlt={betrieb} onChange={setBetrieb} />
+        <button type="submit" className={KNOPF_KLEIN} disabled={betriebSetzen.isPending}>
+          {t('common.save')}
+        </button>
+      </form>
+      {(hausSetzen.isSuccess || betriebSetzen.isSuccess) && (
+        <span className="text-xs text-green-800">{t('admin.user.rolesSaved')}</span>
+      )}
+      {hausSetzen.isError && <Fehler error={hausSetzen.error} />}
+      {betriebSetzen.isError && <Fehler error={betriebSetzen.error} />}
+    </div>
+  )
+}
+
 /**
  * Benutzer beim Kunden einladen.
  *
- * Der Kunde kann das heute selbst nicht: es gibt nur die Rollenvergabe fuer
- * Benutzer, die er schon hat. Bis das gebaut ist, laeuft es ueber uns -- und
- * ohne diese Maske ueber SQL.
+ * Der Kunde kann das seit der Selbstverwaltung (0040) auch selbst; hier
+ * bleibt es fuer den Fall, dass niemand beim Kunden mehr hereinkommt.
  */
 function BenutzerEinladen({ accountId, properties }: {
   accountId: number; properties: PlatformProperty[]
@@ -563,7 +649,9 @@ function KundeDetail({ id, onClose, darfSupport }: {
       <div>
         <h3 className={UEBERSCHRIFT}>{t('admin.accounts.users')}</h3>
         <ul className="mt-1 divide-y divide-neutral-100 text-sm">
-          {users.map(u => <KundenBenutzer key={u.id} accountId={id} u={u} />)}
+          {users.map(u => (
+            <KundenBenutzer key={u.id} accountId={id} u={u} properties={properties} />
+          ))}
         </ul>
       </div>
 

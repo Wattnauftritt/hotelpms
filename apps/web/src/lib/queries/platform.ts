@@ -44,6 +44,9 @@ export interface PlatformAccountUser {
   lockedUntil: string | null
   lastLoginAt: string | null
   roles: string | null
+  /** Dieselben Rollen strukturiert, fuer den Editor. */
+  accountRoles: string[]
+  propertyRoles: Array<{ propertyId: number; code: string; roleKeys: string[] }>
   /** Die letzte Einladung oder Ruecksetzung -- ob sie ankam. */
   lastMail: { kind: string; status: string; at: string; error: string | null } | null
 }
@@ -202,6 +205,31 @@ export function useInviteAccountUser() {
     onSuccess: (_r, { accountId }) => {
       void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
       void qc.invalidateQueries({ queryKey: ['platform-accounts'] })
+    }
+  })
+}
+
+export function useSetCustomerPropertyRoles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, userId, ...body }: {
+      accountId: number; userId: number; propertyId: number; roleKeys: string[] }) =>
+      api.put(`/v1/platform/accounts/${accountId}/users/${userId}/roles`, body),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
+    }
+  })
+}
+
+export function useSetCustomerAccountRoles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, userId, roleKeys }: {
+      accountId: number; userId: number; roleKeys: string[] }) =>
+      api.put(`/v1/platform/accounts/${accountId}/users/${userId}/account-roles`,
+        { roleKeys }),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-account', accountId] })
     }
   })
 }

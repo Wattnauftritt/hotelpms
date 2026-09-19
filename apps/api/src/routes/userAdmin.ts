@@ -105,7 +105,7 @@ function verlangtBetriebsrecht(ziel: Ziel, principal: Principal): void {
  * vergibt. Ohne ihn koennte der Kunde weder sich selbst helfen noch uns
  * hereinlassen -- und dann sind wir wieder bei SQL.
  */
-async function nichtDenLetztenVerwalter(
+export async function nichtDenLetztenVerwalter(
   client: PoolClient, accountId: number, userId: number
 ): Promise<void> {
   const andere = await client.query<{ n: string }>(
