@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 932 Tests, 42 Migrationen.
+Stand: 19. September 2026. 947 Tests, 43 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -357,7 +357,7 @@ spätere statt der sofortigen Meldung.
 
 **Teilweise erledigt.** Alles, was Code ist, steht; was Betrieb ist, steht als Handbuch in [`17-betrieb.md`](17-betrieb.md) und muss einmal tatsächlich durchgeführt werden.
 
-Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in [`24-sicherheitspruefung.md`](24-sicherheitspruefung.md): zwei Befunde mittleren Grades (ausgehende Anfragen an kundengesteuerte Adressen über Webhook-Abonnements; Gastdaten im Protokoll über die Abfragezeichenfolge) und sieben Härtungspunkte, mit Abarbeitungsreihenfolge.
+Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in [`25-sicherheitspruefung.md`](25-sicherheitspruefung.md): zwei Befunde mittleren Grades (ausgehende Anfragen an kundengesteuerte Adressen über Webhook-Abonnements; Gastdaten im Protokoll über die Abfragezeichenfolge) und sieben Härtungspunkte, mit Abarbeitungsreihenfolge.
 
 | Punkt | Stand |
 |---|---|
@@ -713,7 +713,7 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 ### Aufgabe 14 — Performanceaudit — **erledigt**
 
-**Wo es liegt.** [`24-performanceaudit.md`](24-performanceaudit.md), Migration `0042`, `apps/api/src/routes/registrations.ts`, `reservations.ts`, `apps/web/src/components/TapeChart.tsx`.
+**Wo es liegt.** [`24-performanceaudit.md`](24-performanceaudit.md), Migration `0043`, `apps/api/src/routes/registrations.ts`, `reservations.ts`, `apps/web/src/components/TapeChart.tsx`.
 
 **Warum.** Systematische Durchsicht des ganzen Bestands gegen die fünf Leistungsregeln aus `CLAUDE.md`, nicht ausgelöst durch eine einzelne Messung wie bei Dokument 15, sondern auf Zuruf.
 
