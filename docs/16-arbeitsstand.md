@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 926 Tests, 41 Migrationen.
+Stand: 19. September 2026. 929 Tests, 42 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -668,7 +668,7 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 ### Aufgabe 14 — Performanceaudit — **erledigt**
 
-**Wo es liegt.** [`24-performanceaudit.md`](24-performanceaudit.md), Migration `0041`, `apps/api/src/routes/registrations.ts`, `reservations.ts`, `apps/web/src/components/TapeChart.tsx`.
+**Wo es liegt.** [`24-performanceaudit.md`](24-performanceaudit.md), Migration `0042`, `apps/api/src/routes/registrations.ts`, `reservations.ts`, `apps/web/src/components/TapeChart.tsx`.
 
 **Warum.** Systematische Durchsicht des ganzen Bestands gegen die fünf Leistungsregeln aus `CLAUDE.md`, nicht ausgelöst durch eine einzelne Messung wie bei Dokument 15, sondern auf Zuruf.
 
@@ -681,6 +681,8 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
+
+**Das Zurückrollen kannte nur die Geschichte, nicht die Platte** (`deployments.ts`, Migration 0041). Das Panel bot „kein früherer Stand" an, während unter `releases/` drei gebaute Stände lagen: einer von Hand ausgerollt (keine Zeile in `deploy_request`), einer zweimal nach umgelegtem Symlink am Neustart gescheitert (`failed`, obwohl gebaut, umgeschaltet und nach dem Neustart von Hand gelaufen). Ziel war nur, was ein geglückter Lauf des Agenten hinterlassen hatte. Jetzt trägt der Agent bei jedem Tick ein, was mit `.fertig` auf der Platte liegt und worauf `current` zeigt (`release`); das Panel liest von dort. Solange der Agent noch nicht mit dem neuen Skript gelaufen ist, gilt die alte Ableitung, erweitert um den Stand **vor** jedem geglückten Lauf — den hat `deploy.sh` nicht weggeräumt.
 
 **`sudo`-Regel und Skript passten nicht zusammen** (deploy.sh, hotelpms.sudoers). Die Regel erlaubte `systemctl restart hotelpms-api` und `… hotelpms-worker` als zwei Kommandos; das Skript rief `systemctl restart hotelpms-api hotelpms-worker` auf — für `sudoers` ein drittes, das keine Regel kannte. Die erste Ausrollung über den Agenten endete mit „a password is required", und zwar **nach** umgelegtem Symlink und angewandten Migrationen: der alte Code lief auf dem neuen Schema weiter, bis jemand von Hand neu startete. Beim Ausrollen als root war es nie aufgefallen, weil root nicht gefragt wird. Jetzt zwei Aufrufe im Skript und `scripts/check-sudoers.sh` in CI, das jeden `sudo`-Aufruf gegen die Regeln hält — dieselbe Bauart wie `check-caddyfile.sh`, aus demselben Grund: bei einer Betriebsdatei gibt es keinen Test, der den Irrtum fängt, nur den ersten echten Lauf.
 

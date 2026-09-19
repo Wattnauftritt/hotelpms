@@ -16,7 +16,7 @@ Vier Befunde sind in diesem Durchgang behoben. Der Rest steht als offene Liste a
 
 **Ursache.** Je Kontozeile liefen vier bis fünf Unterabfragen: eine für die Häuserzahl, zwei verschachtelte für die Benutzerzahl, dieselben zwei verschachtelt noch einmal für die letzte Anmeldung. `platform_health()` (dieselbe Migration) hatte dieselbe Form mit sechs Unterabfragen je Kontozeile für Postausgang, Zustellungen und Nachtlauf-Stand. Beides ist exakt die Form, die dieses System zweimal schon als Fehler gefunden hat — Migration 0013 beim Kapazitätstrigger, Migration 0015 bei der Gastsuche —, nur an einer neuen Stelle wieder eingeführt.
 
-**Änderung** ([Migration 0041](../packages/db/migrations/0041_plattformkonsole_mengenbasiert.sql)). Je Kennzahl eine CTE, einmal nach Konto gruppiert, dann ein `LEFT JOIN` auf `account`. Rückgabetyp, Reihenfolge und Berechtigungsprüfung bleiben unverändert; geprüft mit einem zeilenweisen Vergleich der Ausgabe vor und nach der Änderung, byteidentisch.
+**Änderung** ([Migration 0042](../packages/db/migrations/0042_plattformkonsole_mengenbasiert.sql)). Je Kennzahl eine CTE, einmal nach Konto gruppiert, dann ein `LEFT JOIN` auf `account`. Rückgabetyp, Reihenfolge und Berechtigungsprüfung bleiben unverändert; geprüft mit einem zeilenweisen Vergleich der Ausgabe vor und nach der Änderung, byteidentisch.
 
 | | vorher | nachher |
 |---|---|---|

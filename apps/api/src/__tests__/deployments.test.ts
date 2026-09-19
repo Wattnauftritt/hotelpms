@@ -231,3 +231,60 @@ describe('Wer darf das', () => {
       .statusCode).toBe(403)
   })
 })
+
+/**
+ * Die Platte ist die Wahrheit (Migration 0041).
+ *
+ * Das Panel bot "kein frueherer Stand" an, waehrend auf der Maschine drei
+ * gebaute Staende lagen: einer von Hand ausgerollt, einer nach umgelegtem
+ * Symlink am Neustart gescheitert. Die Liste kannte nur gegluecke Laeufe.
+ * Jetzt traegt der Agent bei jedem Tick ein, was unter releases/ liegt.
+ */
+describe('Zurueckrollen auf das, was auf der Platte liegt', () => {
+  async function aufPlatte(commit: string, laeuft = false): Promise<void> {
+    await owner.query(
+      `INSERT INTO release (commit, present, is_current) VALUES ($1, true, $2)`,
+      [commit, laeuft])
+  }
+  const liste = () =>
+    app.inject({ method: 'GET', url: '/v1/platform/deployments',
+      headers: auth(betrieb.sessionId) })
+  const rollback = (commit: string) =>
+    app.inject({ method: 'POST', url: '/v1/platform/deployments/rollback',
+      headers: auth(betrieb.sessionId), payload: { commit } })
+
+  it('bietet gebaute Staende an, auch ohne geglueckten Lauf', async () => {
+    // Von Hand ausgerollt, dann zweimal am Neustart gescheitert: keine
+    // einzige 'done'-Zeile -- und trotzdem drei Verzeichnisse mit .fertig.
+    await aufPlatte('aa000001')
+    await aufPlatte('bb000002')
+    await aufPlatte('cc000003', true)
+    await owner.query(
+      `INSERT INTO deploy_request (target_ref, status, finished_at, commit_after)
+       VALUES ('produktion','failed', now(), 'bb000002')`)
+    const d = (await liste()).json() as { currentCommit: string; rollbackTargets: string[] }
+    expect(d.currentCommit).toBe('cc000003')
+    expect(d.rollbackTargets.sort()).toEqual(['aa000001', 'bb000002'])
+    expect((await rollback('aa000001')).statusCode).toBe(202)
+  })
+
+  it('bietet einen weggeraeumten Stand nicht mehr an', async () => {
+    await aufPlatte('cc000003', true)
+    await owner.query(
+      `INSERT INTO release (commit, present) VALUES ('dd000004', false)`)
+    const d = (await liste()).json() as { rollbackTargets: string[] }
+    expect(d.rollbackTargets).toEqual([])
+    expect((await rollback('dd000004')).statusCode).toBe(422)
+  })
+
+  it('nimmt, solange der Agent nichts eingetragen hat, die Geschichte -- samt Vorgaenger', async () => {
+    // Der Stand VOR einem gegluecken Lauf liegt noch da: deploy.sh raeumt
+    // nie den laufenden weg, und der vorige war es gerade noch.
+    await owner.query(
+      `INSERT INTO deploy_request (target_ref, status, finished_at, commit_before, commit_after)
+       VALUES ('produktion','done', now(), 'ee000005', 'ff000006')`)
+    const d = (await liste()).json() as { currentCommit: string; rollbackTargets: string[] }
+    expect(d.currentCommit).toBe('ff000006')
+    expect(d.rollbackTargets).toEqual(['ee000005'])
+  })
+})
