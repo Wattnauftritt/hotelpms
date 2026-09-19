@@ -33,8 +33,12 @@ psql_() { psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq "$@"; }
 # psql-Variablen. Schlaegt das fehl, laeuft der Tick trotzdem weiter -- eine
 # veraltete Liste ist ein kleineres Uebel als eine liegengebliebene
 # Ausrollung.
+#
+# Je Stand "sha:sekunden" -- die Aenderungszeit von .fertig ist der Moment,
+# in dem der Bau durch war. Ohne sie waren die Ziele im Panel vier Hashes,
+# und welcher davon der von gestern Mittag war, stand nirgends (0042).
 STAENDE="$(for d in "$WURZEL"/releases/*/; do
-  [ -e "$d/.fertig" ] && basename "$d"
+  [ -e "$d/.fertig" ] && printf '%s:%s\n' "$(basename "$d")" "$(stat -c %Y "$d/.fertig")"
 done | paste -sd, -)"
 LAEUFT="$(basename "$(readlink -f "$CURRENT" 2>/dev/null || echo unbekannt)")"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq \
@@ -44,13 +48,17 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq \
 -- laesst nur eine laufende Zeile zu, und innerhalb EINER Anweisung stuenden
 -- beim Wechsel kurz zwei da.
 UPDATE release SET is_current = false WHERE is_current;
-INSERT INTO release (commit, seen_at, present, is_current)
-SELECT c, now(), true, c = :'laeuft'
-  FROM unnest(string_to_array(:'staende', ',')) AS c
+INSERT INTO release (commit, seen_at, present, is_current, built_at)
+SELECT split_part(x, ':', 1), now(), true, split_part(x, ':', 1) = :'laeuft',
+       to_timestamp(split_part(x, ':', 2)::bigint)
+  FROM unnest(string_to_array(:'staende', ',')) AS x
+ WHERE x <> ''
     ON CONFLICT (commit) DO UPDATE
-   SET seen_at = now(), present = true, is_current = (release.commit = :'laeuft');
+   SET seen_at = now(), present = true, is_current = (release.commit = :'laeuft'),
+       built_at = EXCLUDED.built_at;
 UPDATE release SET present = false, is_current = false
- WHERE commit <> ALL (string_to_array(:'staende', ','));
+ WHERE commit <> ALL (SELECT split_part(x, ':', 1)
+                        FROM unnest(string_to_array(:'staende', ',')) AS x);
 SQL
 
 # Beanspruchen: aelteste offene Anforderung, unter Sperre und ohne Warten.
