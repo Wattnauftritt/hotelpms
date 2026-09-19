@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 974 Tests, 51 Migrationen.
+Stand: 19. September 2026. 975 Tests, 51 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -757,6 +757,8 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).
 
 ---
+
+**Eine Migration, die nur auf leeren Tabellen getestet war** (Migration 0044). Die nachträgliche Redaktion des Audit-Protokolls lief als `UPDATE` auf `audit_log` — und `trg_append_only` aus 0001 weist jedes `UPDATE` ab, unabhängig von der Rolle, als Klon an jeder Partition. In CI und in jedem Test war das Protokoll bei der Migration leer, das `UPDATE` traf keine Zeile, der Trigger feuerte nie. Auf der Produktivmaschine brach die Ausrollung nach umgelegtem Symlink und vor dem Neustart ab, die Datenbank blieb auf 0043 stehen. Jetzt setzt die Migration den Trigger für die eine Anweisung an Eltern und Partitionen aus und schaltet ihn in derselben Transaktion wieder scharf; ein Test führt genau diesen Block gegen eine gefüllte Tabelle aus. Die Lehre: wer in einer Migration Bestandsdaten anfasst, prüft sie gegen eine Datenbank, in der welche liegen — `pnpm db:testhotel` vor `pnpm db:migrate`, nicht `db:reset`.
 
 ## 4. Parallel arbeiten
 

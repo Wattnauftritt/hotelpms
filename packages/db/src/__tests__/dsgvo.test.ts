@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool,
          makeProperty, makeCategory, type Fixture } from '@hotelpms/testing'
@@ -172,6 +173,44 @@ describe('Befund 1: die Loeschung schreibt keine Kopie mehr', () => {
                         'app_user.totp_secret_enc', 'app_user.workstation_pin_hash']) {
       expect(paare.has(feld), `${feld} fehlt in audit_redaction`).toBe(true)
     }
+  })
+})
+
+describe('Befund 1, Altbestand: die Migration redigiert auch eine gefuellte Tabelle', () => {
+  /*
+   * Der Block aus Migration 0044, der die schon geschriebenen Kopien
+   * redigiert, lief in jedem Test gegen ein leeres Protokoll -- und
+   * scheiterte auf der Produktivmaschine an trg_append_only, weil dort
+   * Zeilen lagen. Hier wird genau dieser Block aus der Datei gelesen und
+   * gegen eine Zeile mit Gastdaten ausgefuehrt, mit scharfem Trigger.
+   */
+  it('setzt den Unveraenderlichkeits-Trigger aus und danach wieder scharf', async () => {
+    const datei = readFileSync(
+      new URL('../../migrations/0044_audit_redaktion.sql', import.meta.url), 'utf8')
+    const block = datei.slice(
+      datei.indexOf('-- >>> altbestand'), datei.indexOf('-- <<< altbestand'))
+    expect(block).toContain('DO $$')
+
+    // Ohne Mandant: die Zeile bleibt stehen (Haertegrad 1, kein DELETE) und
+    // darf keinem spaeteren Test unter dessen Kontext auftauchen.
+    await owner.query(
+      `INSERT INTO audit_log (account_id, table_name, row_id, row_key, action, changed)
+       VALUES (NULL, 'guest', 4711, '{"id":4711}', 'DELETE',
+               '{"last_name":"Musterfrau","status":"active"}')`)
+    await owner.query(block)
+
+    const r = await owner.query<{ changed: Record<string, unknown> }>(
+      `SELECT changed FROM audit_log WHERE table_name='guest' AND row_id=4711`)
+    expect(r.rows[0]!.changed).toEqual({ last_name: '[redigiert]', status: 'active' })
+
+    // Danach ist das Protokoll wieder unveraenderlich -- auf jeder Partition.
+    const scharf = await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_trigger
+        WHERE tgname = 'trg_append_only' AND tgenabled <> 'O'
+          AND tgrelid::regclass::text LIKE 'audit_log%'`)
+    expect(scharf.rows[0]!.n).toBe(0)
+    await expect(owner.query(
+      `UPDATE audit_log SET action = 'UPDATE' WHERE row_id = 4711`)).rejects.toThrow(/unveraenderlich/)
   })
 })
 
