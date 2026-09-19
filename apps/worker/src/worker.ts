@@ -12,8 +12,24 @@ import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { createBrevoAdapter } from './email/brevo.js'
+import { parseCidrList } from '@hotelpms/domain'
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
+
+/*
+ * Netze, in die ein Webhook trotz Sperrliste zugestellt werden darf
+ * (Befund B1). Leer in jeder gehosteten Installation; wer selbst betreibt
+ * und ein System im eigenen Netz beliefert, traegt genau dieses Netz ein.
+ *
+ * Gelesen beim Start, nicht je Zustellung: ein Tippfehler soll den Worker
+ * anhalten, solange jemand hinsieht, und nicht Wochen spaeter als
+ * ausbleibende Zustellung auffallen.
+ */
+const allowedWebhookCidrs = parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS)
+if (allowedWebhookCidrs.length > 0) {
+  log.warn({ netze: allowedWebhookCidrs.length },
+    'Webhook-Ziele in private Netze sind freigegeben')
+}
 
 // Der Worker verbindet DIREKT mit PostgreSQL, nicht ueber PgBouncer:
 // LISTEN/NOTIFY kommt im Transaction Mode nie an (D1, Dokument 13).
@@ -162,7 +178,8 @@ async function nightAudit(p: PropertyRow): Promise<void> {
 
 /** Faellige ausgehende Ereignisse zustellen (Aufgabe 4, Dokument 16). */
 async function webhooks(p: PropertyRow): Promise<void> {
-  const r = await deliverWebhooks(pool, propertyContext(p.account_id, p.id), p.id)
+  const r = await deliverWebhooks(pool, propertyContext(p.account_id, p.id), p.id,
+    { allowedCidrs: allowedWebhookCidrs })
   if (r.attempted === 0) return
   log.info({ property: p.id, ...r }, 'Ereignisse zugestellt')
   if (r.disabled > 0) {

@@ -31,6 +31,16 @@ const NOTES_MAX_LENGTH = 2000
  */
 const GRUPPE_MAX_ZIMMER = 50
 
+/**
+ * Wie jeder andere Zeitraumparameter hat auch die Aufenthaltsdauer eine
+ * Obergrenze (Performanceaudit): eine Nacht wird als eigene Zeile in
+ * `reservation_night` angelegt, und ohne Grenze waere eine Buchung ueber
+ * `GRUPPE_MAX_ZIMMER` Zimmer und Jahre hinweg eine Anfrage, die
+ * zehntausende Zeilen in einer Transaktion schreibt. 400 Tage, damit sich
+ * dieselbe Zahl wie beim Preisraster (`rates.ts`) einpraegt.
+ */
+const MAX_STAY_NIGHTS = 400
+
 /** Ein Zimmer einer Gruppenbuchung. */
 interface CreateBookingRoom {
   categoryId: number
@@ -262,8 +272,12 @@ export function reservationRoutes(app: FastifyInstance): void {
       if (!isIsoDate(body.arrival) || !isIsoDate(body.departure)) {
         throw Errors.validation({ arrival: ['field.isoDate'] })
       }
-      if (nightsBetween(body.arrival, body.departure) <= 0) {
+      const naechte = nightsBetween(body.arrival, body.departure)
+      if (naechte <= 0) {
         throw Errors.validation({ departure: ['field.afterArrival'] })
+      }
+      if (naechte > MAX_STAY_NIGHTS) {
+        throw Errors.validation({ departure: ['field.stayTooLong'] }, { max: MAX_STAY_NIGHTS })
       }
 
       /*
@@ -906,8 +920,12 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (!isIsoDate(neuAnkunft) || !isIsoDate(neuAbreise)) {
           throw Errors.validation({ arrival: ['field.isoDate'] })
         }
-        if (nightsBetween(neuAnkunft, neuAbreise) <= 0) {
+        const neueNaechte = nightsBetween(neuAnkunft, neuAbreise)
+        if (neueNaechte <= 0) {
           throw Errors.validation({ departure: ['field.afterArrival'] })
+        }
+        if (neueNaechte > MAX_STAY_NIGHTS) {
+          throw Errors.validation({ departure: ['field.stayTooLong'] }, { max: MAX_STAY_NIGHTS })
         }
         // Bei InHouse ist die Anreise geschehen und nicht mehr verschiebbar.
         if (r.status === 'InHouse' && neuAnkunft !== r.arrival) {
