@@ -6,6 +6,13 @@ Hotel-Property-Management-System. Deutsches Recht ist Kern, nicht Lokalisierung.
 
 **Wer die Produktivmaschine aufsetzt:** [`docs/23-erstinbetriebnahme-checkliste.md`](docs/23-erstinbetriebnahme-checkliste.md) gibt die Reihenfolge fürs erste Mal, [`docs/21-inbetriebnahme.md`](docs/21-inbetriebnahme.md) die Begründungen dahinter.
 
+**Datenschutz:** [`docs/26-dsgvo-audit.md`](docs/26-dsgvo-audit.md) ist die Prüfung gegen die Quelle; alle zehn Befunde sind behoben, die Vermerke stehen im Dokument. [`docs/datenschutz/`](docs/datenschutz/) hält den organisatorischen Teil — Verarbeitungsverzeichnis, TOM, AVV-Entwurf, Meldeprozess, DSFA-Schwellenwert.
+
+Zwei Regeln sind daraus entstanden und nicht verhandelbar:
+
+- **Der Audit-Trigger schreibt keinen personenbezogenen Wert und kein Geheimnis mit.** Wer eine Spalte hinzufügt, die einen Menschen bezeichnet oder ein Geheimnis trägt, trägt sie in `audit_redaction` ein. Sonst erzeugt die nächste Löschung wieder eine Kopie, die niemand entfernen kann (Migration 0044).
+- **Was zu einem Gast gehört, wird an einer Stelle gelöscht:** `guest_erase_one()` und `guest_erase_partial()`. Nicht in der Route, nicht im Nachtlauf, nicht in beidem. Genau diese Verdreifachung hat die Einwilligungsunterschrift überleben lassen.
+
 **Vor jeder Änderung:** [`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md) sagt, was fertig ist und welche Aufgaben offen und abgegrenzt sind. Die Begründungen hinter dem Entwurf stehen in `docs/01` bis `docs/15`; sie sind keine Ziererei, sondern der Grund, warum Dinge so und nicht anders gebaut sind.
 
 ---
@@ -94,7 +101,7 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 - **Nie eine Ausweiskopie speichern.** § 30 BMG erlaubt die Nummer und verbietet die Kopie. Es gibt kein Feld für einen Upload.
 - **Seit dem 1.1.2025 unterschreiben nur noch ausländische Gäste den Meldeschein.** Für inländische wird eine mitgeschickte Unterschrift verworfen, nicht gespeichert.
 - **Löschen heißt anonymisieren.** Buchungsbelege unterliegen der achtjährigen Aufbewahrungsfrist.
-- **Keine Gastdaten in Protokollen.** `pino` ist entsprechend eingerichtet; wer ein Feld hinzufügt, prüft die Redaktionsliste. Die Liste deckt Felder ab, **nicht die Adresse**: ein Suchbegriff in der Abfragezeichenfolge ist ein Gastname und gehört nicht ins Protokoll. Deshalb filtert der `req`-Serialisierer in `platform/app.ts` die Abfrage gegen eine Positivliste; wer einen neuen harmlosen Parameter protokolliert haben will, trägt ihn dort ein (Befund B2, Dokument 25).
+- **Keine Gastdaten in Protokollen.** `pino` ist entsprechend eingerichtet; wer ein Feld hinzufügt, prüft die Redaktionsliste. Die Liste deckt Felder ab, **nicht die Adresse**: ein Suchbegriff in der Abfragezeichenfolge ist ein Gastname und gehört nicht ins Protokoll. Deshalb ersetzt der `req`-Serialisierer in `platform/app.ts` **jeden** Wert der Abfragezeichenfolge und lässt nur die Namen der Parameter stehen — an einem Protokoll soll ablesbar sein, wonach gesucht wurde, nicht wer (Befund B2, Dokument 25; Befund 3, Dokument 26). Eine Positivliste harmloser Parameter wäre die naheliegende Alternative und die schlechtere: der nächste Endpunkt bringt einen neuen Parameter mit, und niemand trägt ihn nach.
 - **Keine Kassenfunktion.** Kein Kassenbestand, keine TSE, kein Bon. Das ist eine Produktentscheidung (Dokument 09), keine Lücke.
 - **Ein Schulungshaus exportiert nicht nach draußen.** `is_training` weist DATEV-, GoBD- und Statistikexport hart ab. Eine Warnung wird geklickt; ein Stapel aus Übungsdaten in der echten Buchhaltung ist schwerer zu entfernen als zu verhindern.
 
@@ -154,6 +161,8 @@ Jede Zeile darin gehört an einem echten System nachgerechnet, bevor sie eingech
 **Neue Migration.** Fortlaufend nummeriert, nie eine bestehende ändern. Der Kopfkommentar nennt den Befund oder die Anforderung, die sie auslöst.
 
 Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zuverlässig in die Quere kommen: zwei Zweige von `main` legen beide `0020_` an, und beim Mergen fällt das nicht auf, weil es verschiedene Dateien ohne Konflikt sind. Auffallen würde es erst beim nächsten frischen Schemaaufbau, als Fehler, dessen Ursache Tage zurückliegt. `scripts/check-migrations.sh` prüft das in CI. Wer die Meldung sieht, benennt die spätere um; zwischen unabhängigen Migrationen ist die Reihenfolge ohnehin beliebig.
+
+**Neues Dokument.** Fortlaufend nummeriert wie die Migrationen, und aus demselben Grund geprüft: am 19.09.2026 entstanden an einem Tag drei Berichte aus drei Sitzungen, und alle drei hießen `docs/24-*.md`. `scripts/check-docs.sh` prüft das in CI. Wer die Meldung sieht, benennt das spätere um und zieht die Verweise nach — README, Dokument 16, Kopfkommentare.
 
 **Neuer Test.** Gegen echtes PostgreSQL, keine Mocks: eine gemockte Datenbank prüft weder Zeilenrichtlinien noch Trigger noch Sperren, und genau dort liegt die Fachlichkeit. Getestet wird Verhalten, nicht Darstellung.
 

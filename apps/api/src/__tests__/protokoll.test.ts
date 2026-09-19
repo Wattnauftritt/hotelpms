@@ -9,13 +9,19 @@ import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 
 /**
- * Befund B2, Dokument 25: Gastdaten im Protokoll ueber die
- * Abfragezeichenfolge.
+ * Gastdaten im Protokoll ueber die Abfragezeichenfolge -- Befund B2,
+ * Dokument 25, und derselbe Befund als Nummer 3 in Dokument 26.
+ *
+ * Behoben ist er in `platform/app.ts`: der `req`-Serialisierer laesst die
+ * Namen der Parameter stehen und ersetzt jeden Wert. Dieser Test ist der
+ * Nachweis dazu, den die Behebung noch nicht hatte.
  *
  * Geprueft wird am **geschriebenen** Protokoll, nicht am Serialisierer
  * allein: die Redaktionsliste war vollstaendig und die Regel trotzdem
- * gebrochen, weil Fastify die Adresse aus einer anderen Quelle nimmt. Ein
- * Test, der nur die Funktion aufruft, haette genau das nicht gesehen.
+ * gebrochen, weil Fastify die Adresse aus einer anderen Quelle nimmt und gar
+ * nicht durch die Liste laeuft. Ein Test, der nur die Funktion aufruft,
+ * haette genau das nicht gesehen -- er haette bewiesen, dass der
+ * Serialisierer richtig rechnet, nicht dass pino ihn benutzt.
  */
 
 let owner: Pool
@@ -57,23 +63,31 @@ describe('Anfrageprotokoll', () => {
     // weitergeleitet und laenger aufbewahrt als die Suche, und die
     // Anonymisierung eines Gastes erreicht es nicht.
     expect(protokoll).not.toContain('Petersen')
-    // Der Zeitraum und die Grenze bleiben, sonst ist eine Fehlersuche blind.
-    expect(protokoll).toContain('limit=10')
-    // Und dass etwas entfernt wurde, ist erkennbar.
-    expect(protokoll).toContain('entfernt')
+    // Der Pfad und die Namen der Parameter bleiben: ohne sie ist beim Suchen
+    // eines Fehlers nicht mehr ablesbar, wonach ueberhaupt gefragt wurde.
     expect(protokoll).toContain('/v1/guests')
+    expect(protokoll).toContain('q=[redigiert]')
   })
 
-  it('protokolliert das Routenmuster statt der ausgefuellten Kennung', async () => {
+  it('redigiert jeden Wert, nicht nur den bekannten Suchbegriff', async () => {
+    /*
+     * Eine Sperrliste waere hier das naheliegende und das falsche Mittel.
+     * Der naechste Endpunkt bringt einen neuen Parameter mit, und niemand
+     * traegt ihn nach -- geprueft wird deshalb an einem Parameter, den es im
+     * Katalog gar nicht gibt.
+     */
     const haus = await makeProperty(owner)
     const nutzer = await makeUser(owner,
       { email: 'rezeption2@test.de', propertyId: haus.propertyId, roleKey: 'reception' })
-    const gast = await makeGuest(owner, haus.accountId, { lastName: 'Petersen' })
+    await makeGuest(owner, haus.accountId, { lastName: 'Petersen' })
 
     await app.inject({
-      method: 'GET', url: `/v1/guests/${gast.publicRef}`, headers: auth(nutzer.sessionId) })
+      method: 'GET', url: '/v1/guests?q=Meier&erfunden=Petersen',
+      headers: auth(nutzer.sessionId) })
 
     const protokoll = zeilen.join('\n')
-    expect(protokoll).toContain('/v1/guests/:guestRef')
+    expect(protokoll).not.toContain('Meier')
+    expect(protokoll).not.toContain('Petersen')
+    expect(protokoll).toContain('erfunden=[redigiert]')
   })
 })

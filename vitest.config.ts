@@ -28,7 +28,7 @@ export default defineConfig({
      *
      * `fileParallelism: false` setzt `maxWorkers` selbst auf 1. In Vitest 3
      * stand hier `poolOptions.forks.singleFork`; Vitest 4 hat die
-     * Pool-Optionen nach oben gezogen (H5, Dokument 24).
+     * Pool-Optionen nach oben gezogen (H5, Dokument 25).
      *
      * `isolate` bleibt beim Standard `true`, und das ist keine Kleinigkeit:
      * ohne die Isolation teilen alle Dateien den Modulzustand, und die

@@ -12,6 +12,26 @@ export async function ensureAuditPartitions(client: PoolClient): Promise<number>
 }
 
 /**
+ * Protokollpartitionen jenseits der Aufbewahrungsfrist entfernen
+ * (Befund 3, Dokument 26).
+ *
+ * Das Gegenstueck zu `ensureAuditPartitions`. Ohne es wuchs das Protokoll
+ * unbegrenzt -- zwoelf Monate Vorlauf, aber nichts, was je wieder
+ * verschwindet. Art. 5 Abs. 1 lit. e verlangt eine Frist, und "so lange wie
+ * die Platte reicht" ist keine.
+ *
+ * Zehn Jahre, weil das der laengsten handels- und steuerrechtlichen Frist
+ * entspricht: laenger als der Beleg, auf den sich ein Eintrag bezieht, muss
+ * das Protokoll nicht leben. Die Zahl steht in der Datenbankfunktion und
+ * nicht hier -- sie gehoert zur Aufbewahrungsregel, nicht zum Job.
+ */
+export async function dropOldAuditPartitions(client: PoolClient): Promise<number> {
+  const r = await client.query<{ audit_log_drop_old_partitions: number }>(
+    `SELECT audit_log_drop_old_partitions()`)
+  return r.rows[0]!.audit_log_drop_old_partitions
+}
+
+/**
  * Alarm, wenn die Default-Partition Zeilen enthaelt: dann wurde eine
  * Monatspartition zu spaet angelegt.
  */

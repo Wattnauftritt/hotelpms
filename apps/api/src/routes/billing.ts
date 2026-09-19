@@ -472,7 +472,8 @@ export function billingRoutes(app: FastifyInstance): void {
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
         const f = await client.query<{ id: number; property_id: number; status: string }>(
@@ -522,7 +523,8 @@ export function billingRoutes(app: FastifyInstance): void {
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
         const f = await client.query<{ id: number; property_id: number; status: string }>(
@@ -622,7 +624,8 @@ export function billingRoutes(app: FastifyInstance): void {
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
         const f = await client.query<{ id: number; property_id: number; guest_id: number | null
@@ -955,7 +958,8 @@ export function billingRoutes(app: FastifyInstance): void {
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
         const f = await client.query<{ id: number; property_id: number; guest_id: number | null

@@ -233,10 +233,10 @@ Punkte stehen hier.
 
 | | Punkt | Wo |
 |---|---|---|
-| B2 | `req`-Serialisierer mit Positivliste für die Abfrage | `apps/api/src/platform/app.ts` |
-| H1 | Leserecht entzogen, samt Partitionen | Migration `0044` |
-| H2 | `property_id`, Zeilenrichtlinie, zusammengesetzte Fremdschlüssel | Migration `0045` |
-| H3 | Sperre je Paar aus Konto und Herkunft | Migration `0046`, `routes/auth.ts` |
+| B2 | `req`-Serialisierer redigiert jeden Wert der Abfrage | `apps/api/src/platform/app.ts` |
+| H1 | Rechte an den Partitionen entzogen | Migration `0048` |
+| H2 | `property_id`, Zeilenrichtlinie, zusammengesetzte Fremdschlüssel | Migration `0049` |
+| H3 | Sperre je Paar aus Konto und Herkunft | Migration `0050`, `routes/auth.ts` |
 | H4 | Regel im eigenen Abschnitt „Ratenbegrenzung" | `CLAUDE.md` |
 | H5 | `vitest` auf 4.1.11, `pnpm audit` ohne Befund | `package.json`, `vitest.config.ts` |
 | H6 | `sameSite: 'strict'` | `routes/auth.ts` |
@@ -246,18 +246,45 @@ Abweichungen von der Reihenfolge in Abschnitt 7: **H4** wurde vorgezogen, weil
 es ein Absatz in `CLAUDE.md` ist und die nächste empfindliche Route sonst
 dieselbe Erfahrung wieder selbst macht. **H5** war teurer als dort angenommen.
 
+**Zwei Punkte wurden zweimal gefunden.** Das DSGVO-Audit (Dokument 26) lief
+parallel und fand denselben Protokollbefund als seine Nummer 3 und dieselbe
+fehlende Zeilenrichtlinie am Protokoll als seine Nummer 2. Gemergt ist dessen
+Fassung, weil sie in beiden Fällen weiter reicht:
+
+- **B2.** Statt einer Positivliste harmloser Parameter wird **jeder** Wert
+  ersetzt und nur der Name behalten. Das ist das bessere Mittel: eine
+  Positivliste ist nur so gut wie ihre Pflege, und der nächste Endpunkt
+  bringt einen Parameter mit, den niemand nachträgt. Aus dieser Runde bleibt
+  der Nachweis — das Protokollziel in `buildServer` und
+  `apps/api/src/__tests__/protokoll.test.ts`, den die gemergte Behebung nicht
+  hatte.
+- **H1.** Statt das Leserecht zu entziehen, trägt `audit_log` seit Migration
+  `0045` eine Zeilenrichtlinie. Auch das ist besser: die erste Route, die ein
+  Prüfprotokoll anzeigen will, lässt sich damit bauen. Aus dieser Runde
+  bleiben die Partitionen, und das ist der Teil, den keine der beiden
+  Prüfungen gesehen hatte — siehe unten.
+
 Fünf Dinge sind beim Abarbeiten dazugekommen, und das erste hätte die Prüfung
 selbst finden können:
 
-**Die Partitionen des Audit-Logs führen eigene Rechte**, und die kommen aus
-`ALTER DEFAULT PRIVILEGES` in `0001` — also `SELECT`, `INSERT`, `UPDATE` und
-`DELETE` für die Anwendungsrolle. Nachgerechnet an der laufenden Datenbank:
-`audit_log` hatte `INSERT, SELECT`, `audit_log_2026_09` alle vier. Der
-Rechteentzug aus `make_append_only` traf nur die Elterntabelle. Ein `UPDATE`
-auf die Partition scheitert heute am Trigger, der mitwandert — die
-Unveränderlichkeit hängt damit an **einer** Sicherung statt an zwei, während
-Härtegrad 1 ausdrücklich heißt: kein `UPDATE`, kein `DELETE`. `0044` entzieht
-beides, an jeder bestehenden Partition und in der Funktion, die neue anlegt.
+**Die Partitionen des Audit-Logs führen eigene Rechte und erben keine
+Zeilenrichtlinie**, und die Rechte kommen aus `ALTER DEFAULT PRIVILEGES` in
+`0001` — also `SELECT`, `INSERT`, `UPDATE` und `DELETE` für die
+Anwendungsrolle. Das ist der Befund, den weder diese Prüfung noch das
+DSGVO-Audit gesehen hat, und er macht die Zeilenrichtlinie aus `0045`
+umgehbar. Nachgerechnet an der laufenden Datenbank: zwei Häuser, je eine
+Protokollzeile, gelesen als Anwendungsrolle im Kontext des einen — über
+`audit_log` **eine** Zeile, direkt auf `audit_log_2026_09` **221**, die des
+fremden Hauses eingeschlossen. Der Monatsname ist in einer Sekunde geraten.
+
+Dasselbe gilt für die Unveränderlichkeit: der Rechteentzug aus
+`make_append_only` traf nur die Elterntabelle, und ein
+`DELETE FROM audit_log_2026_09` scheiterte nicht an der Rechteprüfung, sondern
+am Trigger. Härtegrad 1 hing damit an **einer** Sicherung statt an zwei.
+`0048` entzieht an jeder Partition alles außer `INSERT` — bestehende und, in
+der Funktion, die Partitionen anlegt, jede künftige. Gelesen wird über die
+Elterntabelle, wo die Richtlinie greift. `packages/db/src/__tests__/auditlogPartitionen.test.ts`
+hält beides fest.
 
 **Entsperren muss auch die Sperre je Herkunft aufheben.** Sonst hieße
 „entsperrt" nur, dass die Sperre am Konto weg ist, während der Arbeitsplatz,

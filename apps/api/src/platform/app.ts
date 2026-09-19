@@ -25,72 +25,24 @@ export interface Server {
   config: Config
 }
 
-/**
- * Abfrageparameter, die ins Protokoll duerfen (Befund B2, Dokument 25).
- *
- * Eine Positivliste, nicht eine Sperrliste: was neu hinzukommt, ist
- * stillschweigend **nicht** dabei, und der schlechtere Fall ist ein Protokoll
- * ohne Zeitraum, nicht ein Protokoll mit einem Gastnamen. Drin sind die
- * Parameter, die bei der Fehlersuche wirklich helfen und keine Person
- * bezeichnen; `q` ist der Nachname eines Gastes und deshalb draussen.
- */
-const PROTOKOLL_PARAMETER = new Set([
-  'from', 'to', 'date', 'since', 'month', 'days', 'limit', 'status',
-  'kind', 'format', 'full', 'compare', 'includeInactive'
-])
-
-/**
- * Serialisierer der Anfrage fuers Protokoll (Befund B2, Dokument 25).
- *
- * Der Befund: die Redaktionsliste deckte Kopfzeilen, Rumpf, Kennwort und
- * Ausweisnummer ab, nicht aber die Adresse selbst -- und Fastify protokolliert
- * sie mitsamt Abfragezeichenfolge. `GET /v1/guests?q=Petersen` schrieb damit
- * bei jeder Suche den Nachnamen eines Gastes ins Protokoll, mit Zeitstempel
- * und Anfrage-ID daneben. Ein Protokoll geht andere Wege als eine Datenbank:
- * es wird eingesammelt, weitergeleitet, laenger aufbewahrt und von mehr
- * Leuten gelesen, und die Anonymisierung eines Gastes erreicht es nicht --
- * nach der Loeschung stand der Name dort weiter.
- *
- * Der Serialisierer ist die richtige Stelle, weil er greift, ohne dass jede
- * Route daran denken muss.
- */
-function protokollAnfrage(req: {
-  method: string; url: string; hostname?: string; ip?: string
-  routeOptions?: { url?: string }
-  socket?: { remotePort?: number }
-}): Record<string, unknown> {
-  const [pfad = '', abfrage] = req.url.split('?')
-  const behalten: string[] = []
-  let entfernt = 0
-  if (abfrage !== undefined && abfrage !== '') {
-    for (const [k, v] of new URLSearchParams(abfrage)) {
-      if (PROTOKOLL_PARAMETER.has(k)) behalten.push(`${k}=${v}`)
-      else entfernt++
-    }
-  }
-  // Dass etwas entfernt wurde, steht als Zahl dabei. Ohne diesen Hinweis
-  // sieht eine Suche im Protokoll wie ein Aufruf ohne Parameter aus, und die
-  // Fehlersuche sucht an der falschen Stelle.
-  if (entfernt > 0) behalten.push(`[${entfernt} entfernt]`)
-
-  return {
-    method: req.method,
-    url: behalten.length > 0 ? `${pfad}?${behalten.join('&')}` : pfad,
-    // Das Routenmuster, nicht der ausgefuellte Pfad: damit sind Aufrufe
-    // derselben Route zusammenzaehlbar, ohne die Kennungen darin zu lesen.
-    routerPath: req.routeOptions?.url,
-    hostname: req.hostname,
-    remoteAddress: req.ip,
-    remotePort: req.socket?.remotePort
-  }
-}
-
 export async function buildServer(
   overrides: { pool?: Pool; logStream?: NodeJS.WritableStream } = {}
 ): Promise<Server> {
   const config = loadConfig()
   const pool = overrides.pool ?? createPool({ kind: 'app', max: 10, applicationName: 'hotelpms-api' })
 
+  /*
+   * Ein Protokollziel, das der Aufrufer vorgibt. Nur ein Test setzt es, und
+   * er braucht es: dass in der Adresszeile kein Gastname landet, zeigt sich
+   * nur am **geschriebenen** Protokoll. Der Serialisierer allein laesst sich
+   * pruefen, ohne dass bewiesen ist, dass pino ihn auch benutzt -- und genau
+   * dort lag der Befund, denn die Redaktionsliste war vollstaendig und die
+   * Regel trotzdem gebrochen (Befund B2, Dokument 25; Befund 3, Dokument 26).
+   *
+   * Die Stufe steht dabei fest auf `info`: mit `silent` aus der Umgebung
+   * schriebe pino nichts, und der Test pruefte eine leere Senke gegen sich
+   * selbst.
+   */
   const logOptions = {
     level: overrides.logStream === undefined ? config.logLevel : 'info',
     // Gaestedaten gehoeren nicht ins Protokoll (C8, Dokument 13).
@@ -99,10 +51,30 @@ export async function buildServer(
               'req.body', 'res.body', '*.password', '*.idDocumentNumber'],
       remove: true
     },
-    serializers: { req: protokollAnfrage },
-    // Ein Ziel, das der Aufrufer vorgibt: nur ein Test setzt es, und er
-    // braucht es, weil sich nur am geschriebenen Protokoll zeigt, was
-    // wirklich darin steht (Befund B2, Dokument 25).
+    /*
+     * Die Adresszeile traegt Gastdaten, und `redact` erreicht sie nicht.
+     *
+     * `GET /v1/guests?q=Petersen` schrieb den Nachnamen eines Gastes ins
+     * Protokoll -- gegen die eigene Regel, und die Anonymisierung
+     * erreicht ihn dort nicht mehr. Die Redaktionsliste deckt Kopfzeilen
+     * und Ruempfe ab; die URL ist keines von beiden, sondern ein Feld,
+     * das Fastify selbst erzeugt.
+     *
+     * Die Namen der Parameter bleiben stehen, nur ihre Werte fallen: an
+     * einem Protokoll ist ablesbar, **wonach** gesucht wurde, ohne dass
+     * dort steht, **wer** gesucht wurde. Ein Protokoll ohne Pfad waere
+     * beim Suchen eines Fehlers wertlos.
+     */
+    serializers: {
+      req (req: { method: string; url: string; id: string }) {
+        const schnitt = req.url.indexOf('?')
+        const url = schnitt < 0 ? req.url
+          : req.url.slice(0, schnitt) + '?' + [...new URLSearchParams(
+              req.url.slice(schnitt + 1)).keys()]
+              .map(k => `${k}=[redigiert]`).join('&')
+        return { id: req.id, method: req.method, url }
+      }
+    },
     ...(overrides.logStream === undefined ? {} : { stream: overrides.logStream })
   }
 

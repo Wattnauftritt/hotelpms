@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 950 Tests, 46 Migrationen.
+Stand: 19. September 2026. 966 Tests, 50 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -51,7 +51,8 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Ein Maschinentoken erreicht genau die Endpunkte seiner Zugriffsbereiche und keinen weiteren — geprüft über die gesamte Routenliste, nicht an Beispielen.
 - Ein Kassenumsatz landet als Position auf dem Gastkonto, folgt dabei den Umleitungsregeln, und derselbe Beleg zweimal zugestellt bucht kein zweites Mal — auch nicht mit neuem Idempotenzschlüssel.
 - Eine Anzahlung erzeugt eine eigene Rechnung aus derselben Nummernfolge; die Schlussrechnung verrechnet sie als eigene Position mit negativem Betrag, und das Folio zeigt den tatsächlich offenen Betrag ohne doppelte Zählung.
-- Eine Gastsuche schreibt den Suchbegriff nicht ins Anfrageprotokoll; der Zeitraum und die Zeilengrenze bleiben darin stehen.
+- Eine Gastsuche schreibt den Suchbegriff nicht ins Anfrageprotokoll; die Namen der Parameter bleiben darin stehen, jeder Wert fällt — auch der eines Parameters, den es im Katalog nicht gibt.
+- Die Anwendungsrolle kommt nicht über eine Monatspartition an das Prüfprotokoll fremder Mandanten, und sie kann dort weder ändern noch löschen — auch an einer Partition nicht, die erst in einem Jahr angelegt wird.
 - Zehn Fehlanmeldungen sperren die Herkunft, nicht das Konto: von einer zweiten Adresse kommt derselbe Nutzer mit richtigem Kennwort herein, und Entsperren hebt beide Sperren auf.
 
 ---
@@ -751,7 +752,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | Netto aus dem Brutto herausgerechnet und die Steuer wieder daraufgeschlagen | Eine Anzahlung ueber 250,00 Euro stand als 249,99 Euro auf dem Beleg, waehrend das Journal 250,00 fuehrte (Aufgabe 12) |
 | Rundungsdifferenz als Position zu 0 Prozent gebucht | Faellt nach § 14 Abs. 4 Nr. 8 UStG durch die eigene Pflichtangabenpruefung: ohne Befreiungsgrund geht keine Position ohne Steuer. Im Satz der Gruppe wiederum verschiebt eine Position die Steuer der ganzen Gruppe mit und muesste vierzehn Cent gross sein, um einen zu bewegen. Richtig ist BT-114 auf Belegebene (Aufgabe 12) |
 | `sum()` über eine `bigint`-Spalte ohne Cast zurückgegeben | `sum()` liefert `numeric`, und `numeric` kommt als **Zeichenkette** an — mit Absicht, damit nichts still gerundet wird. Eine Centsumme sieht dann richtig aus und rechnet sich falsch, sobald jemand sie addiert: `"100" + 50` ist `"10050"`. Wer eine Summe zurückgibt, castet sie (`::bigint`); `count()` ist die Ausnahme, das ist schon `bigint`. Ein Test in `packages/db` hält beides fest und sieht die Routen durch |
-| Suchbegriff in der Adresse statt im Rumpf | Die Redaktionsliste von `pino` deckt Kopfzeilen und Rumpf ab, nicht die Adresse — und Fastify protokolliert sie samt Abfragezeichenfolge. `GET /v1/guests?q=Petersen` schreibt damit den Nachnamen eines Gastes ins Protokoll, gegen die eigene Regel, und die Anonymisierung erreicht ihn dort nicht mehr (Befund B2 in Dokument 24) |
+| Suchbegriff in der Adresse statt im Rumpf | Die Redaktionsliste von `pino` deckt Kopfzeilen und Rumpf ab, nicht die Adresse — und Fastify protokolliert sie samt Abfragezeichenfolge. `GET /v1/guests?q=Petersen` schreibt damit den Nachnamen eines Gastes ins Protokoll, gegen die eigene Regel, und die Anonymisierung erreicht ihn dort nicht mehr (Befund B2 in Dokument 25) |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).
 
