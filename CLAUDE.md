@@ -6,6 +6,8 @@ Hotel-Property-Management-System. Deutsches Recht ist Kern, nicht Lokalisierung.
 
 **Wer die Produktivmaschine aufsetzt:** [`docs/23-erstinbetriebnahme-checkliste.md`](docs/23-erstinbetriebnahme-checkliste.md) gibt die Reihenfolge fürs erste Mal, [`docs/21-inbetriebnahme.md`](docs/21-inbetriebnahme.md) die Begründungen dahinter.
 
+**Datenschutz:** [`docs/24-dsgvo-audit.md`](docs/24-dsgvo-audit.md) ist die Prüfung gegen die Quelle, mit den offenen Befunden und ihrer Reihenfolge. Wer am Audit-Trigger, an einer Löschroutine oder an `audit_log` arbeitet, liest zuerst Befund 1 bis 3 — sie hängen zusammen.
+
 **Vor jeder Änderung:** [`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md) sagt, was fertig ist und welche Aufgaben offen und abgegrenzt sind. Die Begründungen hinter dem Entwurf stehen in `docs/01` bis `docs/15`; sie sind keine Ziererei, sondern der Grund, warum Dinge so und nicht anders gebaut sind.
 
 ---
