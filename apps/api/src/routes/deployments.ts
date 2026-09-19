@@ -3,6 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { tx } from '../platform/db.js'
 import type { Principal } from '../platform/context.js'
+import type { PoolClient } from '@hotelpms/db'
 
 /**
  * Ausrollen anfordern (Dokument 21 §8).
@@ -61,6 +62,50 @@ function nachAussen(z: Zeile): Record<string, unknown> {
     commitAfter: z.commit_after,
     log: z.log
   }
+}
+
+/**
+ * Was laeuft, und wohin zurueckgerollt werden kann.
+ *
+ * **Von der Platte, nicht aus der Geschichte.** Hier stand einmal: Ziel ist,
+ * was ein gegluecker Lauf des Agenten hinterlassen hat (`status = 'done'`).
+ * Das Panel bot daraufhin "kein frueherer Stand" an, waehrend auf der
+ * Maschine drei gebaute Staende lagen -- einer von Hand ausgerollt (keine
+ * Zeile), einer nach umgelegtem Symlink am Neustart gescheitert
+ * ('failed', obwohl gebaut, umgeschaltet und spaeter gelaufen). Der Agent
+ * traegt seit Migration 0041 bei jedem Tick ein, was unter releases/ liegt
+ * und worauf `current` zeigt (`release`). Das ist die Wahrheit; die
+ * Anforderungen sind ihre Geschichte.
+ *
+ * Solange der Agent noch nicht mit dem neuen Skript gelaufen ist, ist die
+ * Tabelle leer. Dann gilt die alte Ableitung -- erweitert um den Stand
+ * **vor** jedem gegluecken Lauf, denn den hat deploy.sh nicht weggeraeumt.
+ */
+async function staende(client: { query: PoolClient['query'] }):
+  Promise<{ laufend: string | null; ziele: string[] }> {
+  const platte = await client.query<{ commit: string; is_current: boolean }>(
+    `SELECT r.commit, r.is_current
+       FROM release r
+      WHERE r.present
+      ORDER BY (SELECT max(d.id) FROM deploy_request d
+                 WHERE d.commit_after = r.commit OR d.commit_before = r.commit)
+               DESC NULLS LAST, r.commit`)
+  if (platte.rowCount !== 0) {
+    const laufend = platte.rows.find(z => z.is_current)?.commit ?? null
+    return { laufend, ziele: platte.rows.map(z => z.commit).filter(c => c !== laufend) }
+  }
+
+  const gelaufen = await client.query<{ commit_after: string | null
+                                        commit_before: string | null }>(
+    `SELECT commit_after, commit_before FROM deploy_request
+      WHERE status = 'done' ORDER BY id DESC`)
+  const laufend = gelaufen.rows[0]?.commit_after ?? null
+  const ziele = [...new Set(gelaufen.rows
+    .flatMap(z => [z.commit_after, z.commit_before])
+    .filter((c): c is string => c !== null && c !== 'unbekannt'))]
+    .filter(c => c !== laufend)
+    .slice(0, 4)
+  return { laufend, ziele }
 }
 
 export function deploymentRoutes(app: FastifyInstance): void {
@@ -125,27 +170,17 @@ export function deploymentRoutes(app: FastifyInstance): void {
         if (offen.rowCount !== 0) throw Errors.conflict('deploy.alreadyRunning')
 
         /*
-         * Angeboten wird nur, was schon einmal geglueckt ist -- die Maschine
-         * behaelt genauso viele Staende, wie hier zurueckgegeben werden.
-         * Ein beliebiger Commit waere kein Zurueckrollen, sondern ein
-         * unbemerktes Ausrollen ohne Freigabe.
+         * Angeboten wird, was auf der Platte liegt -- nicht, was die
+         * Geschichte des Agenten kennt. Ein beliebiger Commit waere kein
+         * Zurueckrollen, sondern ein unbemerktes Ausrollen ohne Freigabe;
+         * ein gebauter Stand mit .fertig ist genau das Gegenteil davon.
          */
-        const kandidaten = await client.query<{ commit_after: string }>(
-          `SELECT DISTINCT ON (commit_after) commit_after
-             FROM deploy_request
-            WHERE status = 'done' AND commit_after IS NOT NULL
-            ORDER BY commit_after, id DESC`)
-        const erlaubt = kandidaten.rows.map(z => z.commit_after)
-        if (!erlaubt.includes(commit)) {
+        const { laufend, ziele } = await staende(client)
+        // Der laufende Stand zuerst: er ist kein Ziel, aber auch kein
+        // unbekannter -- "laeuft schon" ist die richtige Antwort.
+        if (commit === laufend) throw Errors.conflict('deploy.alreadyCurrent')
+        if (!ziele.includes(commit)) {
           throw Errors.validation({ commit: ['deploy.unknownRelease'] })
-        }
-
-        const jetzt = await client.query<{ commit_after: string }>(
-          `SELECT commit_after FROM deploy_request
-            WHERE status = 'done' AND commit_after IS NOT NULL
-            ORDER BY id DESC LIMIT 1`)
-        if (jetzt.rows[0]?.commit_after === commit) {
-          throw Errors.conflict('deploy.alreadyCurrent')
         }
 
         const r = await client.query<{ id: number }>(
@@ -172,30 +207,8 @@ export function deploymentRoutes(app: FastifyInstance): void {
           `SELECT ${SPALTEN} ORDER BY d.id DESC LIMIT 20`))
       const liste = rows.rows.map(nachAussen)
 
-      /*
-       * Was gerade laeuft, ist der Stand des letzten geglueckten Laufs --
-       * abgeleitet, nicht gespeichert. Ein eigenes Feld dafuer waere eine
-       * zweite Wahrheit, die beim ersten Lauf von Hand danebenliegt.
-       */
-      const laufend = rows.rows.find(z => z.status === 'done')?.commit_after ?? null
-
-      /*
-       * Wohin zurueckgerollt werden kann: die Staende frueherer geglueckter
-       * Laeufe, ohne den laufenden. Aus der Datenbank und nicht von der
-       * Platte -- die API kaeme dort ohnehin nicht heran, und eine Liste,
-       * die sie sich selbst zusammensucht, waere eine zweite Wahrheit.
-       *
-       * Ob das Verzeichnis wirklich noch steht, weiss nur die Maschine. Sie
-       * sagt es deutlich, wenn nicht; die Zahl hier und was deploy.sh
-       * behaelt, sind aufeinander abgestimmt.
-       */
-      const zurueck = [...new Set(rows.rows
-        .filter(z => z.status === 'done' && z.commit_after !== null)
-        .map(z => z.commit_after!))]
-        .filter(c => c !== laufend)
-        .slice(0, 4)
-
-      return { deployments: liste, currentCommit: laufend, rollbackTargets: zurueck }
+      const { laufend, ziele } = await tx(req.pool, req, staende)
+      return { deployments: liste, currentCommit: laufend, rollbackTargets: ziele }
     }
   })
 }

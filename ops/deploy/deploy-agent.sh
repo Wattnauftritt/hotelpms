@@ -21,6 +21,38 @@ set -a; . "$UMGEBUNG"; set +a
 
 psql_() { psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq "$@"; }
 
+# Was auf der Platte liegt, in die Datenbank -- bei jedem Tick, vor allem
+# anderen. Das Zurueckrollen im Panel bot "kein frueherer Stand" an, waehrend
+# hier drei gebaute Staende lagen: die Liste kannte nur gegluecke Laeufe
+# dieses Skripts, nicht von Hand ausgerollte und nicht solche, die nach
+# umgelegtem Symlink am Neustart scheiterten. Die Platte ist die Wahrheit;
+# hier wird sie abgeschrieben. Ein Stand gilt, wenn .fertig gesetzt ist --
+# ein halber Bau ist kein Ziel.
+#
+# Ueber stdin und :'name', wie beim Vermerken unten: -c ersetzt keine
+# psql-Variablen. Schlaegt das fehl, laeuft der Tick trotzdem weiter -- eine
+# veraltete Liste ist ein kleineres Uebel als eine liegengebliebene
+# Ausrollung.
+STAENDE="$(for d in "$WURZEL"/releases/*/; do
+  [ -e "$d/.fertig" ] && basename "$d"
+done | paste -sd, -)"
+LAEUFT="$(basename "$(readlink -f "$CURRENT" 2>/dev/null || echo unbekannt)")"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq \
+     -v staende="$STAENDE" -v laeuft="$LAEUFT" <<'SQL' >/dev/null 2>&1 \
+  || echo "WARNUNG: Staende auf der Platte konnten nicht vermerkt werden." >&2
+-- Erst alle auf "nicht laufend", dann eintragen: der eindeutige Teilindex
+-- laesst nur eine laufende Zeile zu, und innerhalb EINER Anweisung stuenden
+-- beim Wechsel kurz zwei da.
+UPDATE release SET is_current = false WHERE is_current;
+INSERT INTO release (commit, seen_at, present, is_current)
+SELECT c, now(), true, c = :'laeuft'
+  FROM unnest(string_to_array(:'staende', ',')) AS c
+    ON CONFLICT (commit) DO UPDATE
+   SET seen_at = now(), present = true, is_current = (release.commit = :'laeuft');
+UPDATE release SET present = false, is_current = false
+ WHERE commit <> ALL (string_to_array(:'staende', ','));
+SQL
+
 # Beanspruchen: aelteste offene Anforderung, unter Sperre und ohne Warten.
 # SKIP LOCKED, damit zwei Timerlaeufe sich nicht gegenseitig blockieren --
 # der zweite findet dann nichts und endet, was richtig ist.
