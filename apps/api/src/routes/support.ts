@@ -154,8 +154,12 @@ export function supportRoutes(app: FastifyInstance): void {
          * Jeder, der freigeben darf, bekommt die Anfrage -- nicht nur der
          * erste. An einem Haus ist der Inhaber im Urlaub, und die Anfrage
          * soll nicht bis zu seiner Rueckkehr liegen bleiben.
+         *
+         * Eine Anweisung fuer alle Empfaenger statt einer je Empfaenger
+         * (Performanceaudit): der Text wird weiterhin je Empfaenger gerendert
+         * (die Anrede ist personalisiert), nur das Schreiben ist gebuendelt.
          */
-        for (const e of empfaenger.rows) {
+        const post = empfaenger.rows.map(e => {
           const text = renderSupportRequestEmail({
             userName: e.display_name,
             staffName: staff.rows[0]?.display_name ?? 'Support',
@@ -164,12 +168,19 @@ export function supportRoutes(app: FastifyInstance): void {
             hours: stunden,
             link: `${config.publicAppUrl}/?screen=settings`
           })
-          await client.query(
-            `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
-                                         body_text, body_html)
-             VALUES ($1,'support_request',$2,$3,$4,$5,$6)`,
-            [e.id, e.email, e.display_name, text.subject, text.text, text.html])
-        }
+          return { userId: e.id, email: e.email, name: e.display_name,
+                    subject: text.subject, bodyText: text.text, bodyHtml: text.html }
+        })
+        await client.query(
+          `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
+                                       body_text, body_html)
+           SELECT x.user_id, 'support_request', x.email, x.name, x.subject, x.body_text,
+                  x.body_html
+             FROM unnest($1::bigint[], $2::text[], $3::text[], $4::text[], $5::text[],
+                          $6::text[])
+                  AS x(user_id, email, name, subject, body_text, body_html)`,
+          [post.map(p => p.userId), post.map(p => p.email), post.map(p => p.name),
+           post.map(p => p.subject), post.map(p => p.bodyText), post.map(p => p.bodyHtml)])
 
         /*
          * Zurueckgelesen ueber support_session_mine(): der Name des Kunden

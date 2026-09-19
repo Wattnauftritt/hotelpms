@@ -266,3 +266,115 @@ describe('Nachtlauf', () => {
     expect(result!.checklist.some(c => c.kind === 'hoher_saldo')).toBe(true)
   })
 })
+
+/**
+ * Die drei Schritte 4-6 wurden mengenbasiert umgestellt (Performanceaudit,
+ * docs/24-performanceaudit.md): eine Freigabe je Schritt statt einer je
+ * Zeile. Diese Tests pruefen genau die Stelle, an der ein Aggregationsfehler
+ * am ehesten entsteht -- mehrere Zeilen, die am selben Tag wirken.
+ */
+describe('Mengenbasierte Freigabe bei mehreren Zeilen gleichzeitig', () => {
+  it('summiert No-Shows derselben Kategorie mit unterschiedlicher Aufenthaltsdauer korrekt', async () => {
+    const kurz = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-03',
+      status: 'Confirmed' })
+    const lang = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-05',
+      status: 'Confirmed' })
+
+    const sold = async (): Promise<Record<string, number>> => {
+      const r = await owner.query<{ date: string; sold: number }>(
+        `SELECT date::text, sold FROM inventory_day WHERE property_id=$1 AND category_id=$2
+           AND date BETWEEN $3::date AND $4::date ORDER BY date`,
+        [fx.propertyId, catId, TAG, '2026-10-04'])
+      return Object.fromEntries(r.rows.map(x => [x.date, x.sold]))
+    }
+
+    // TAG und 10-02 tragen beide Reservierungen, 10-03/10-04 nur "lang".
+    expect(await sold()).toEqual(
+      { '2026-10-01': 2, '2026-10-02': 2, '2026-10-03': 1, '2026-10-04': 1 })
+
+    await run({ businessDate: TAG })
+
+    // Beide werden No-Show; jede gibt genau ihren eigenen Zeitraum frei --
+    // eine falsch aggregierte Summe liesse hier entweder Bestand uebrig
+    // oder risse die andere Reservierung mit.
+    expect(await sold()).toEqual(
+      { '2026-10-01': 0, '2026-10-02': 0, '2026-10-03': 0, '2026-10-04': 0 })
+
+    const status = await owner.query<{ status: string }>(
+      `SELECT status::text FROM reservation WHERE id = ANY($1::bigint[])`,
+      [[kurz.reservationId, lang.reservationId]])
+    expect(status.rows.every(r => r.status === 'NoShow')).toBe(true)
+  })
+
+  it('haelt verfallende Optionen in verschiedenen Kategorien auseinander', async () => {
+    const catB = await makeCategory(owner, fx.propertyId, { code: 'EZ' })
+    await makeResources(owner, fx.propertyId, catB, 3, 'EZ')
+    await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
+      [fx.propertyId])
+
+    const optA = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-20',
+      departure: '2026-10-22', status: 'Optional', optionExpiresAt: '2026-09-30T12:00:00Z' })
+    const optB = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catB, arrival: '2026-10-20',
+      departure: '2026-10-23', status: 'Optional', optionExpiresAt: '2026-09-30T12:00:00Z' })
+
+    await run({ businessDate: TAG })
+
+    const invA = await owner.query<{ sold: number }>(
+      `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=$2
+         AND date='2026-10-20'`, [fx.propertyId, catId])
+    const invB = await owner.query<{ sold: number }>(
+      `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=$2
+         AND date='2026-10-22'`, [fx.propertyId, catB])
+    // Die dritte Nacht gehoert nur zu B -- waere die Freigabe ueber
+    // Kategorien hinweg vertauscht oder vermengt, stuende hier noch Bestand.
+    expect(invA.rows[0]!.sold).toBe(0)
+    expect(invB.rows[0]!.sold).toBe(0)
+
+    const status = await owner.query<{ status: string }>(
+      `SELECT status::text FROM reservation WHERE id = ANY($1::bigint[])`,
+      [[optA.reservationId, optB.reservationId]])
+    expect(status.rows.every(r => r.status === 'Canceled')).toBe(true)
+  })
+
+  it('summiert das freigegebene Kontingent zweier Bloecke und laesst einen leeren unberuehrt', async () => {
+    // Haus hat 5 Zimmer dieser Kategorie (Fixture) -- die Bloecke zusammen
+    // duerfen die Kapazitaet nicht uebersteigen.
+    const voll = await owner.query<{ id: number }>(
+      `INSERT INTO availability_block (property_id, name, category_id, from_date, to_date,
+                                       quantity, picked_up, release_date)
+       VALUES ($1,'Gruppe A',$2,'2026-10-15','2026-10-17',3,2,'2026-09-25') RETURNING id`,
+      [fx.propertyId, catId])
+    const zweite = await owner.query<{ id: number }>(
+      `INSERT INTO availability_block (property_id, name, category_id, from_date, to_date,
+                                       quantity, picked_up, release_date)
+       VALUES ($1,'Gruppe B',$2,'2026-10-15','2026-10-17',1,0,'2026-09-25') RETURNING id`,
+      [fx.propertyId, catId])
+    // Komplett abgerufen: hat keinen Rest, darf das Kontingent der anderen
+    // Gruppe nicht beeinflussen und braucht keinen Aufruf der Bulk-Funktion.
+    const leer = await owner.query<{ id: number }>(
+      `INSERT INTO availability_block (property_id, name, category_id, from_date, to_date,
+                                       quantity, picked_up, release_date)
+       VALUES ($1,'Gruppe C',$2,'2026-10-15','2026-10-17',1,1,'2026-09-25') RETURNING id`,
+      [fx.propertyId, catId])
+    await owner.query(`SELECT inventory_block($1,$2,'2026-10-15','2026-10-17',5)`,
+      [fx.propertyId, catId])   // 3 + 1 + 1, passt genau in die Kapazitaet
+
+    await run({ businessDate: TAG })
+
+    const inv = await owner.query<{ blocked: number }>(
+      `SELECT blocked FROM inventory_day WHERE property_id=$1 AND category_id=$2
+         AND date='2026-10-15'`, [fx.propertyId, catId])
+    // Rest von A (3-2=1) plus Rest von B (1-0=1) werden frei, macht 2. C ist
+    // voll abgerufen und traegt nichts bei.
+    expect(inv.rows[0]!.blocked).toBe(3)  // 5 gebucht minus 2 freigegeben
+
+    const status = await owner.query<{ id: number; status: string }>(
+      `SELECT id, status FROM availability_block WHERE id = ANY($1::bigint[]) ORDER BY id`,
+      [[voll.rows[0]!.id, zweite.rows[0]!.id, leer.rows[0]!.id]])
+    expect(status.rows.every(r => r.status === 'released')).toBe(true)
+  })
+})

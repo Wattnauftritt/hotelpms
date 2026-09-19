@@ -473,13 +473,14 @@ export function reservationRoutes(app: FastifyInstance): void {
              block?.id ?? null, z.resourceId ?? null, principal.userId])
           const reservationId = res.rows[0]!.id
 
-          for (let n = 0; n < nights.length; n++) {
-            await client.query(
-              `INSERT INTO reservation_night
-                 (reservation_id, property_id, date, rate_plan_id, price_cent)
-               VALUES ($1,$2,$3::date,$4,$5)`,
-              [reservationId, body.propertyId, nights[n], ratePlanId ?? null, prices[n]])
-          }
+          // Eine Anweisung fuer alle Naechte der Reservierung statt einer je
+          // Nacht (Performanceaudit): dieselbe Form wie bei `priceNights`.
+          await client.query(
+            `INSERT INTO reservation_night
+               (reservation_id, property_id, date, rate_plan_id, price_cent)
+             SELECT $1, $2, x.date, $3, x.price
+               FROM unnest($4::date[], $5::bigint[]) AS x(date, price)`,
+            [reservationId, body.propertyId, ratePlanId ?? null, nights, prices])
 
           /*
            * Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein --
@@ -971,14 +972,14 @@ export function reservationRoutes(app: FastifyInstance): void {
         const nights = eachNight(neuAnkunft, neuAbreise)
         const planId = body.ratePlanId ?? r.rate_plan_id ?? undefined
         const prices = await priceNights(client, planId, nights)
-        for (let i = 0; i < nights.length; i++) {
-          await client.query(
-            `INSERT INTO reservation_night
-               (reservation_id, property_id, date, rate_plan_id, price_cent)
-             VALUES ($1,$2,$3::date,$4,$5)
-             ON CONFLICT (reservation_id, date) DO NOTHING`,
-            [r.id, r.property_id, nights[i], planId ?? null, prices[i]])
-        }
+        // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
+        await client.query(
+          `INSERT INTO reservation_night
+             (reservation_id, property_id, date, rate_plan_id, price_cent)
+           SELECT $1, $2, x.date, $3, x.price
+             FROM unnest($4::date[], $5::bigint[]) AS x(date, price)
+           ON CONFLICT (reservation_id, date) DO NOTHING`,
+          [r.id, r.property_id, planId ?? null, nights, prices])
 
         const summe = await client.query<{ n: number; total: number }>(
           `SELECT count(*)::int AS n, COALESCE(sum(price_cent),0)::bigint AS total

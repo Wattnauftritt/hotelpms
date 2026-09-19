@@ -8,6 +8,8 @@ Dieses Dokument hält fest, was eine systematische Durchsicht des ganzen Bestand
 
 Vier Befunde sind in diesem Durchgang behoben. Der Rest steht als offene Liste am Ende, nach Dringlichkeit geordnet, mit Fundstelle und Begründung, warum er nicht in diesem Durchgang mitgefixt wurde.
 
+**Nachtrag vom 19.9.2026.** Die gesamte Dringend-Stufe und der größte Teil der Mittel-Stufe aus „Was noch offen" sind seither behoben — Befund 5 bis 9 unten. Offen aus der Mittel-Stufe bleibt nur der Teil des CSV-Imports, der Fachlogik je Zeile ist (`inventory_reserve()`), nicht mengenweise auflösbar.
+
 ---
 
 ## Befund 1 — Die Kundenliste des Adminpanels lief über korrelierte Unterabfragen
@@ -59,24 +61,59 @@ Geprüft im Browser gegen den echten Saatlauf (250 Zimmer, Property 1): Aufziehe
 
 ---
 
+## Befund 5 — Der Nachtlauf löste Bestand und Buchungsstatus je Zeile auf
+
+**Ursache.** `noShows`, `expireOptions` und `releaseBlocks` (`apps/worker/src/jobs/nightAudit.ts`) riefen `inventory_release`/`inventory_unblock` je Reservierung/Option/Sperrung einzeln auf, dazu je eine bedingte `INSERT`- oder `UPDATE`-Anweisung — zwei bis drei Abfragen je Zeile, jede Nacht über den ganzen Bestand des Hauses. Exakt die Form, die dieses System zweimal schon als Fehler gefunden hat (Migration 0013, 0015), hier im empfindlichsten Pfad (Bestand, Nachtlauf) nie nachgezogen.
+
+**Änderung** ([Migration 0044](../packages/db/migrations/0044_inventory_bulk_release.sql)). Zwei neue SQL-Funktionen, `inventory_release_bulk` und `inventory_unblock_bulk`, als mengenbasiertes Gegenstück zu `inventory_release`/`inventory_unblock`: parallele Arrays statt eines einzelnen Aufrufs, eine `UPDATE`-Anweisung für den ganzen Nachtlauf statt einer je Zeile. Mehrere Einträge für denselben Tag (zwei No-Shows derselben Kategorie am selben Anreisetag etwa) addieren sich vor dem Schreiben, statt die Zeile zweimal zu treffen. Die drei Funktionen ergänzen das um je eine gebündelte `INSERT`- bzw. `UPDATE`-Anweisung über `unnest(...)` für Gebühr/Status. Geprüft mit den bestehenden Nachtlauf-Tests unverändert grün, dazu drei neue Tests für die mengenbasierte Zusammenfassung: gleiche Kategorie mit unterschiedlicher Aufenthaltsdauer, verschiedene Kategorien in derselben Nacht, mehrere Sperrungen mit unterschiedlichem Restbestand (`apps/worker/src/__tests__/nightAudit.test.ts`).
+
+---
+
+## Befund 6 — `reservation_night` wurde Nacht für Nacht einzeln eingefügt
+
+**Ursache.** Buchen, Verlängern/Verkürzen (`apps/api/src/routes/reservations.ts`), die ARI-Buchungsübernahme (`channel.ts`) und der Reservierungsimport (`import.ts`) fügten je Nacht der Reservierung eine eigene `INSERT`-Zeile ein, statt der Mengenform, die `priceNights` in derselben Datei schon zeigt. Befund 3 begrenzt den Schaden über `MAX_STAY_NIGHTS`, behebt aber nicht die Schleife selbst.
+
+**Änderung.** An allen vier Stellen `INSERT INTO reservation_night ... SELECT ... FROM unnest(...)` statt der Schleife — eine Anweisung für alle Nächte einer Reservierung statt einer je Nacht, bei Verlängern/Verkürzen weiter mit `ON CONFLICT (reservation_id, date) DO NOTHING`. Geprüft mit den bestehenden Buchungs-, Kanal- und Import-Tests unverändert grün.
+
+---
+
+## Befund 7 — CSV-Import: Kategorien und Gäste wurden Zeile für Zeile upsertet
+
+**Ursache.** `importCategories` und `importGuests` (`apps/api/src/routes/import.ts`) prüften und schrieben jede Zeile einzeln, obwohl beides einfache Upserts ohne Zeilenabhängigkeit sind.
+
+**Änderung.** Zweistufig: erst alle Zeilen einer Datei gegen ihre eigenen Regeln validieren, dann eine einzige `INSERT ... SELECT ... FROM unnest(...) ON CONFLICT ... DO NOTHING RETURNING ...` für alle gültigen Zeilen zusammen. Dubletten in derselben Datei (gleicher Kategoriecode, gleiche E-Mail) lässt weiterhin nur die erste Zeile gewinnen, jetzt über eine Mengenoperation in JavaScript (`Set`) statt implizit durch die Reihenfolge der Einzel-Upserts; die Fundliste wird am Ende nach Zeilennummer sortiert, damit die Meldungen wieder in Dateireihenfolge erscheinen. Der Reservierungsimport selbst — Bestandsabruf, Gast- und Reservierungsanlage, `inventory_reserve()` — bleibt unverändert je Zeile, weil das Fachlogik ist, die eine Bestandsprüfung je Reservierung braucht (siehe „Was noch offen" unten). Zwei neue Tests decken die Dublettenfälle ab (`apps/api/src/__tests__/import.test.ts`).
+
+---
+
+## Befund 8 — `reports.ts`: Beherbergungsstatistik und Gästebeitrag-Export nutzten korrelierte Unterabfragen
+
+**Ursache.** Beide Endpunkte zählten je Gruppenzeile über eine korrelierte Unterabfrage statt über einen Verbund — bei bis zu 800 Tagen Zeitraum potenziell viele tausend Zeilen.
+
+**Änderung.** Beherbergungsstatistik: `LEFT JOIN reservation_night` statt Unterabfrage, mit `count(DISTINCT ...) FILTER (...)` für die Ankünfte — ein einfacher `count(*)` hätte hier durch die Vervielfachung der Zeilen über den Verbund zu hohe Werte ergeben, weshalb ein eigener Regressionstest genau diesen Fall prüft: zwei Aufenthalte desselben Gasts im selben Land dürfen zwei Ankünfte ergeben, nicht mehr. Gästebeitrag-Export: zwei CTEs (Grundlage, vorab je Reservierung aggregierte befreite Kinder) statt der korrelierten Unterabfrage, mit `IS NOT DISTINCT FROM` für den nullwertsicheren Verbund über das befreite Höchstalter. Geprüft mit den bestehenden Berichts-Tests unverändert grün plus dem neuen Regressionstest (`apps/api/src/__tests__/routes.test.ts`).
+
+---
+
+## Befund 9 — `support.ts`: eine `INSERT`-Anweisung je Empfänger
+
+**Ursache.** Der Versand der Support-Sitzungs-Mail rendere den Text und fügte die Zeile je Empfänger einzeln ein.
+
+**Änderung.** Text weiter je Empfänger gerendert (das ist Inhalt, keine Mengenoperation), aber eine einzige `INSERT ... SELECT ... FROM unnest(...)` für alle Empfänger zusammen statt einer Anweisung je Empfänger. Geprüft mit den bestehenden Support-Tests unverändert grün.
+
+---
+
 ## Was noch offen ist
 
 Nach Dringlichkeit geordnet. Jeder Eintrag nennt die Fundstelle und den Grund, warum er nicht in diesem Durchgang behoben wurde — meist, weil er den Kernpfad einer Buchung oder des Nachtlaufs berührt und eine eigene, sorgfältig getestete Änderung verdient statt in einem Sammeldurchgang mitzulaufen.
 
 ### Dringend
 
-| Fundstelle | Befund | Warum nicht jetzt |
-|---|---|---|
-| `apps/worker/src/jobs/nightAudit.ts`, `noShows`/`expireOptions`/`releaseBlocks` | Je Reservierung/Option/Sperrung zwei bis drei einzelne Abfragen statt einer Mengenoperation — exakt die Form, die `postCityTax` in derselben Datei mit Verweis auf Migration 0016 schon einmal behoben hat, hier aber nie nachgezogen wurde. Läuft **jede Nacht** über den ganzen Bestand des Hauses | Der Nachtlauf ist der empfindlichste Pfad im System (Bestand, Gebühren, Aufzeichnung); eine Änderung daran gehört in einen eigenen Durchgang mit der vollen Testabdeckung des Nachtlaufs, nicht in einen Sammeldurchgang |
-| `apps/api/src/routes/reservations.ts` (Buchen, Verlängern), `channel.ts`, `apps/api/src/routes/import.ts` | `INSERT INTO reservation_night` in einer Schleife, eine Zeile je Nacht, statt eines `INSERT ... SELECT ... FROM unnest(...)`. `priceNights` in derselben Datei zeigt die richtige Form bereits, nur an dieser Stelle nicht angewendet. Befund 3 begrenzt den Schaden, behebt aber nicht die Schleife selbst | Berührt den Kernpfad jeder Buchung; verdient eine eigene Änderung mit der vollen Testabdeckung der Buchungsrouten |
+Keine — beide Einträge dieser Stufe sind behoben (Befund 5, Befund 6).
 
 ### Mittel
 
 | Fundstelle | Befund |
 |---|---|
-| `apps/api/src/routes/import.ts` | CSV-Import: pro Zeile sechs bis acht Abfragen (Dublettenprüfung, Bestandsabruf, Gast, Buchung, Reservierung, Nächte, Folio); bei `MAX_ZEILEN = 20 000` potenziell über 100 000 Abfragen in einer gehaltenen Transaktion. Teils unvermeidlich (`inventory_reserve()` je Zeile ist Fachlogik), aber die einfachen Upserts (Kategorien, Gäste) könnten auf `unnest()` umgestellt werden |
-| `apps/api/src/routes/reports.ts`, Gästebeitrag-Export (Z. 731) und Beherbergungsstatistik (Z. 379) | Korrelierte Unterabfrage je Zeile in einer Gruppierung; bei bis zu 800 Tagen Zeitraum potenziell viele tausend Zeilen. Kandidat für `LEFT JOIN` plus Aggregat statt Unterabfrage |
-| `apps/api/src/routes/support.ts` (Z. 158) | Eine `INSERT`-Anweisung je Empfänger einer Support-Sitzungs-Mail statt einer Mengenoperation. Niedrige Dringlichkeit, da die Empfängerzahl (Mitarbeiter mit `settings:account`) klein und fest ist |
+| `apps/api/src/routes/import.ts` | CSV-Import: Bestandsabruf, Gast- und Reservierungsanlage, `inventory_reserve()` je Zeile; bei `MAX_ZEILEN = 20 000` potenziell noch immer viele Abfragen in einer gehaltenen Transaktion. Unvermeidlich in dieser Form, weil `inventory_reserve()` je Zeile eine eigene Bestandsprüfung ist, die nicht ohne weiteres zusammenfasst — die einfachen Upserts (Kategorien, Gäste) und die Nächte-Zeile sind seither auf `unnest()` umgestellt (Befund 6, Befund 7) |
 
 ### Gering, beobachten statt jetzt ändern
 

@@ -209,6 +209,44 @@ describe('Import', () => {
     expect(bericht.findings[0]!.message).toContain('E-Mail existiert')
   })
 
+  /*
+   * Die Kategorien- und Gaesteuebernahme laufen mengenbasiert (Performanceaudit):
+   * eine Anweisung fuer die ganze Datei statt einer je Zeile. Genau an
+   * Dubletten *innerhalb* derselben Datei -- nicht gegen die Datenbank --
+   * zeigt sich, ob die Aggregation noch dieselbe "erste gewinnt"-Regel
+   * durchsetzt wie die alte Schleife.
+   */
+  it('laesst bei doppeltem Kategoriecode in derselben Datei nur den ersten gewinnen', async () => {
+    const { bericht } = await importieren('categories',
+      'code;name;max_occupancy\r\nDZ;Erste Fassung;2\r\nDZ;Zweite Fassung;2\r\n'
+      + 'EZ;Einzelzimmer;1\r\n', true)
+    expect(bericht.imported).toBe(2)
+    expect(bericht.findings).toHaveLength(1)
+    expect(bericht.findings[0]!.row).toBe(3)
+    expect(bericht.findings[0]!.message).toBe('Kategorie existiert bereits')
+
+    const da = await owner.query<{ code: string; name: string }>(
+      `SELECT code, name FROM resource_category WHERE property_id = $1 AND code = 'DZ'`,
+      [fx.propertyId])
+    expect(da.rows).toHaveLength(1)
+    expect(da.rows[0]!.name).toBe('Erste Fassung')
+  })
+
+  it('laesst bei doppelter E-Mail in derselben Datei nur den ersten Gast gewinnen', async () => {
+    const { bericht } = await importieren('guests',
+      'last_name;email\r\nZuerst;doppel@example.de\r\nDanach;Doppel@Example.de\r\n', true)
+    expect(bericht.imported).toBe(1)
+    expect(bericht.findings).toHaveLength(1)
+    expect(bericht.findings[0]!.row).toBe(3)
+    expect(bericht.findings[0]!.message).toContain('E-Mail existiert')
+
+    const da = await owner.query<{ last_name: string }>(
+      `SELECT last_name FROM guest WHERE account_id = $1 AND lower(email) = 'doppel@example.de'`,
+      [fx.accountId])
+    expect(da.rows).toHaveLength(1)
+    expect(da.rows[0]!.last_name).toBe('Zuerst')
+  })
+
   it('weist eine unlesbare Datei mit Zeilennummer ab', async () => {
     const r = await app.inject({
       method: 'POST', url: '/v1/imports/categories', headers: auth(admin.sessionId),
