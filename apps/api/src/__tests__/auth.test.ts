@@ -122,6 +122,25 @@ describe('Anmeldung', () => {
     expect((await login('rezeption@test.de', KENNWORT, '198.51.100.4')).statusCode).toBe(200)
   })
 
+  it('haelt eine Sperre am Konto auch neben einer abgelaufenen Herkunftssperre', async () => {
+    /*
+     * Die Pruefung nahm mit `??` die Herkunftssperre, sobald es eine Zeile
+     * gab -- auch eine abgelaufene -- und sah dann nicht mehr auf das Konto.
+     * Eine Stilllegung von Hand waere damit von genau dem Arbeitsplatz aus
+     * umgangen worden, an dem sich jemand vorher einmal vertippt hatte.
+     */
+    const userId = await benutzerMitKennwort()
+    await owner.query(
+      `UPDATE app_user SET locked_until = now() + interval '20 min' WHERE id = $1`, [userId])
+    await owner.query(
+      `INSERT INTO login_failure (user_id, origin, failed_count, locked_until)
+       VALUES ($1, '203.0.113.9', 10, now() - interval '1 min')`, [userId])
+
+    const r = await login('rezeption@test.de', KENNWORT, '203.0.113.9')
+    expect(r.statusCode).toBe(401)
+    expect(JSON.parse(r.body).detail).toContain('Fehlversuche')
+  })
+
   it('hebt mit dem Entsperren auch die Sperre der Herkunft auf', async () => {
     const userId = await benutzerMitKennwort()
     for (let i = 0; i < 10; i++) await login('rezeption@test.de', 'daneben', '203.0.113.9')
