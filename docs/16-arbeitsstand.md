@@ -242,10 +242,53 @@ zählt trotzdem: abgeschickt wurde er ja möglicherweise. Zugestellt wird deshal
 einmal**, nicht genau einmal; jedes Ereignis trägt eine Kennung, an der der Empfänger eine
 Wiederholung erkennt.
 
+**Das Ziel wird geprüft, nicht nur sein Präfix** (Befund B1 der Sicherheitsprüfung,
+nachgetragen). Vorher stand in der Route ein `url.startsWith('https://')`, und das war
+alles. Ein Webhook-Ziel ist aber eine Adresse, die **wir** ansprechen, und der Worker läuft
+neben Datenbank und API: `https://127.0.0.1:6379/` und
+`https://169.254.169.254/latest/meta-data/` beginnen beide mit `https://`, und das zweite
+liefert bei jedem Hoster die Zugangsdaten der Maschine aus. Das Zustellprotokoll gab die
+Antwort zurück — aus abgelehnt, gefiltert und beantwortet ließ sich das innere Netz
+abtasten.
+
+Dagegen steht jetzt `packages/domain/src/webhookTarget.ts` mit einer Sperrliste (die drei
+privaten Bereiche, Loopback, Link-Local einschließlich der Metadatenadresse, CGNAT,
+Multicast, die reservierten und dokumentierten Bereiche, dazu die IPv6-Entsprechungen und
+jede Form, in der eine IPv4 in einer IPv6 steckt — `::ffff:`, NAT64, 6to4). Geprüft wird
+**zweimal**: die Route weist beim Anlegen ab, damit jemand eine brauchbare Meldung bekommt,
+und der Worker prüft unmittelbar vor dem Verbinden noch einmal. Das zweite ist die
+eigentliche Absicherung: ein Name, der beim Anlegen nach draußen zeigt, zeigt eine Stunde
+später vielleicht auf `127.0.0.1`, und wer die Zone besitzt, entscheidet das im Sekundentakt.
+
+Deshalb löst der Worker selbst auf, hält **jede** zurückgegebene Adresse gegen die Liste und
+steuert dann über `lookup` genau die geprüfte Adresse an — zwischen Prüfung und Verbindung
+liegt keine zweite Auflösung mehr. Aus demselben Grund steht dort `node:https` statt `fetch`:
+`fetch` folgt einer Umleitung von sich aus, und ein sauberes öffentliches Ziel, das mit `302`
+auf `169.254.169.254` zeigt, hätte die ganze Prüfung umgangen.
+
+Im Protokoll steht seither die **Art** des Fehlers (`timeout`, `dns`, `refused`,
+`unreachable`, `reset`, `tls`, `blockedTarget`, `httpStatus`), nicht mehr der Rohtext von
+Node mit Adresse und Port darin; die API macht daraus den deutschen Satz und legt den
+Schlüssel daneben, wie überall sonst. Zeilen aus der Zeit davor tragen noch den alten Text
+und kommen unverändert durch.
+
+**`WEBHOOK_ALLOWED_PRIVATE_CIDRS`** ist die eine Ausnahme und in jeder gehosteten
+Installation leer. Ein selbst betriebenes Haus, das die Schnittstelle an ein System im
+eigenen Netz hängt, trägt dort genau dieses Netz ein — `10.0.1.0/24`, nicht `10.0.0.0/8`.
+Nur in ein so freigegebenes Netz ist auch `http` erlaubt, und dann als Adresse, nicht als
+Name: ein eigenes Zertifikat für ein Kassensystem im Serverraum zu verlangen ist der
+zuverlässigste Weg, die Prüfung ganz abschalten zu lassen. Ins offene Netz geht nichts ohne
+TLS. Ein Tippfehler in der Variablen hält API und Worker beim Start an, statt still zu wirken.
+
 **Offen geblieben:** Die Zustellung hängt am Fünf-Minuten-Takt des Workers, ein Ereignis kann
 also bis zu fünf Minuten alt sein, wenn es ankommt. Für einen Channel Manager ist das zu
 langsam. Der Weg dahin ist `LISTEN/NOTIFY` — der Worker verbindet aus genau diesem Grund
 schon direkt und nicht über PgBouncer (D1, Dokument 13).
+
+Ebenfalls offen: `localhost` als **Name** kommt beim Anlegen noch durch und scheitert erst
+beim Zustellen mit `blockedTarget`. Die Route löst bewusst nicht auf — eine Namensauflösung
+im Anfragepfad wäre selbst wieder ein Weg, von innen Namen abzufragen —, der Preis ist die
+spätere statt der sofortigen Meldung.
 
 ---
 

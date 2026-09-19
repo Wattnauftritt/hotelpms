@@ -109,6 +109,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@hotelpms/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@hotelpms/db':
         specifier: workspace:*
         version: link:../../packages/db

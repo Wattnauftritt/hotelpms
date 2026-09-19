@@ -339,9 +339,26 @@ const M = {
     en: 'Not a usable address',
     tr: 'Kullanılabilir bir adres değil' },
   'field.httpsOnly': {
-    de: 'Muss mit https:// beginnen',
-    en: 'Must start with https://',
-    tr: 'https:// ile başlamalı' },
+    de: 'Muss mit https:// beginnen. Ohne TLS nur an eine Adresse aus einem '
+      + 'freigegebenen Netz, und dann als Adresse, nicht als Name',
+    en: 'Must start with https://. Without TLS only to an address in an '
+      + 'allowed network, and then as an address, not as a name',
+    tr: 'https:// ile başlamalı. TLS olmadan yalnızca izin verilen bir ağdaki '
+      + 'adrese, o zaman da ad olarak değil adres olarak' },
+  'field.urlMalformed': {
+    de: 'Kein lesbarer URL',
+    en: 'Not a readable URL',
+    tr: 'Okunabilir bir URL değil' },
+  'field.urlCredentials': {
+    de: 'Keine Zugangsdaten im URL. Die Echtheit belegt die Signatur',
+    en: 'No credentials in the URL. The signature proves authenticity',
+    tr: "URL'de kimlik bilgisi olmaz. Gerçekliği imza kanıtlar" },
+  'field.blockedTarget': {
+    de: 'Diese Adresse wird nicht angesprochen: sie liegt in einem privaten, '
+      + 'lokalen oder reservierten Netz',
+    en: 'This address is not contacted: it is in a private, local or '
+      + 'reserved network',
+    tr: 'Bu adrese bağlanılmaz: özel, yerel veya ayrılmış bir ağda bulunuyor' },
   'field.integer': {
     de: 'Ganze Zahl erwartet',
     en: 'Whole number expected',
@@ -1163,7 +1180,50 @@ const M = {
   'field.depositPartsMismatch': {
     de: 'Die Teile ergeben {sum} Cent, vereinnahmt sind {received} Cent.',
     en: 'The parts add up to {sum} cents, {received} cents were received.',
-    tr: 'Parçalar {sum} kuruş ediyor, tahsil edilen {received} kuruş.' }
+    tr: 'Parçalar {sum} kuruş ediyor, tahsil edilen {received} kuruş.' },
+
+  'webhookError.timeout': {
+    de: 'Der Empfaenger hat nicht rechtzeitig geantwortet',
+    en: 'The receiver did not answer in time',
+    tr: 'Alıcı zamanında yanıt vermedi' },
+  'webhookError.dns': {
+    de: 'Der Name des Empfaengers liess sich nicht aufloesen',
+    en: 'The receiver name could not be resolved',
+    tr: 'Alıcının adı çözümlenemedi' },
+  'webhookError.refused': {
+    de: 'Der Empfaenger hat die Verbindung abgelehnt',
+    en: 'The receiver refused the connection',
+    tr: 'Alıcı bağlantıyı reddetti' },
+  'webhookError.unreachable': {
+    de: 'Der Empfaenger war nicht erreichbar',
+    en: 'The receiver was unreachable',
+    tr: 'Alıcıya ulaşılamadı' },
+  'webhookError.reset': {
+    de: 'Der Empfaenger hat die Verbindung abgebrochen',
+    en: 'The receiver dropped the connection',
+    tr: 'Alıcı bağlantıyı kesti' },
+  'webhookError.tls': {
+    de: 'Die gesicherte Verbindung kam nicht zustande. Zertifikat pruefen',
+    en: 'The secured connection failed. Check the certificate',
+    tr: 'Güvenli bağlantı kurulamadı. Sertifikayı denetleyin' },
+  'webhookError.blockedTarget': {
+    de: 'Das Ziel wird nicht angesprochen. Es liegt in einem privaten, '
+      + 'lokalen oder reservierten Netz oder ist kein brauchbares '
+      + 'https-Ziel. Abonnement mit einem anderen Ziel neu anlegen',
+    en: 'The target is not contacted. It is in a private, local or reserved '
+      + 'network, or it is not a usable https target. Create the '
+      + 'subscription anew with a different target',
+    tr: 'Hedefe bağlanılmaz. Özel, yerel veya ayrılmış bir ağda bulunuyor ya '
+      + 'da kullanılabilir bir https hedefi değil. Aboneliği başka bir '
+      + 'hedefle yeniden oluşturun' },
+  'webhookError.httpStatus': {
+    de: 'Der Empfaenger hat die Zustellung abgelehnt',
+    en: 'The receiver rejected the delivery',
+    tr: 'Alıcı iletimi reddetti' },
+  'webhookError.other': {
+    de: 'Die Zustellung ist gescheitert',
+    en: 'The delivery failed',
+    tr: 'İletim başarısız oldu' }
 } as const satisfies Record<string, LocalizedText>
 
 export type MessageKey = keyof typeof M
