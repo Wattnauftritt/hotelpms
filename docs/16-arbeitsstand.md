@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 947 Tests, 43 Migrationen.
+Stand: 19. September 2026. 965 Tests, 48 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -719,7 +719,7 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 **Vier Befunde behoben.** Die Kundenliste und der Betriebszustand des Adminpanels liefen über korrelierte Unterabfragen je Kontozeile — dieselbe Form, die Migration 0013 und 0015 schon einmal als Fehler gefunden hatten, jetzt mengenbasiert (128 ms → 6 ms bei 51 Konten). Der Meldeschein-Export hatte keine Obergrenze für den Zeitraum. Ein Aufenthalt hatte keine Höchstdauer, obwohl die Gruppengröße längst eine hat. Der Zimmerplan zeichnete bei jedem Mausschritt während eines Zugs alle Zimmerzeilen neu, statt wie das Preisraster nur die betroffene.
 
-**Nachtrag.** Die Nachtlauf-Schleife (`noShows`/`expireOptions`/`releaseBlocks`, Migration 0044), die `INSERT`-je-Nacht-Schleife beim Buchen/Verlängern/Kanalübernahme/Import, die einfachen CSV-Import-Upserts, die korrelierten Unterabfragen in `reports.ts` und der `INSERT`-je-Empfänger in `support.ts` sind seither ebenfalls behoben (Dokument 24, Befund 5–9). Offen bleibt aus Dokument 24 nur die Mittel-Stufe des CSV-Imports (Bestandsabruf und `inventory_reserve()` je Zeile, Fachlogik) sowie die als „bewusst so" markierten Punkte der Gering-Stufe.
+**Nachtrag.** Die Nachtlauf-Schleife (`noShows`/`expireOptions`/`releaseBlocks`, Migration 0048), die `INSERT`-je-Nacht-Schleife beim Buchen/Verlängern/Kanalübernahme/Import, die einfachen CSV-Import-Upserts, die korrelierten Unterabfragen in `reports.ts` und der `INSERT`-je-Empfänger in `support.ts` sind seither ebenfalls behoben (Dokument 24, Befund 5–9). Offen bleibt aus Dokument 24 nur die Mittel-Stufe des CSV-Imports (Bestandsabruf und `inventory_reserve()` je Zeile, Fachlogik) sowie die als „bewusst so" markierten Punkte der Gering-Stufe.
 
 ---
 

@@ -13,7 +13,9 @@
 --
 -- Die Semantik bleibt bewusst identisch zur Einzelfunktion: eine Freigabe
 -- wirkt auf Kategorie *und* Haussumme (category_id 0), taggenau ueber den
--- halboffenen Zeitraum [from, to). Bei mehreren Eintraegen fuer denselben
+-- halboffenen Zeitraum [from, to), und `updated_at` rueckt mit -- wie in
+-- inventory_release/inventory_unblock, damit die Zeile weiter sagt, wann
+-- sie sich zuletzt geaendert hat. Bei mehreren Eintraegen fuer denselben
 -- Tag -- zwei No-Shows derselben Kategorie am selben Anreisetag etwa --
 -- addieren sich die Mengen vor dem Schreiben, statt die Zeile zweimal
 -- (und damit potenziell mit einer Zwischenlesung) zu treffen.
@@ -40,7 +42,7 @@ BEGIN
   ), summe AS (
     SELECT category_id, date, sum(cnt) AS gesamt FROM je_zeile GROUP BY category_id, date
   )
-  UPDATE inventory_day inv SET sold = greatest(inv.sold - s.gesamt, 0)
+  UPDATE inventory_day inv SET sold = greatest(inv.sold - s.gesamt, 0), updated_at = now()
     FROM summe s
    WHERE inv.property_id = p_property AND inv.category_id = s.category_id
      AND inv.date = s.date;
@@ -66,7 +68,7 @@ BEGIN
   ), summe AS (
     SELECT category_id, date, sum(cnt) AS gesamt FROM je_zeile GROUP BY category_id, date
   )
-  UPDATE inventory_day inv SET blocked = greatest(inv.blocked - s.gesamt, 0)
+  UPDATE inventory_day inv SET blocked = greatest(inv.blocked - s.gesamt, 0), updated_at = now()
     FROM summe s
    WHERE inv.property_id = p_property AND inv.category_id = s.category_id
      AND inv.date = s.date;
