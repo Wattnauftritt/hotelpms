@@ -105,6 +105,35 @@ describe('Abonnements', () => {
     expect(unbekannt.statusCode).toBe(422)
   })
 
+  /*
+   * Befund B1. Der Praefix https:// sagte nichts darueber, wohin das Ziel
+   * zeigt, und der Worker steht neben Datenbank und API.
+   */
+  it('weist ein Ziel im inneren Netz ab, auch mit https davor', async () => {
+    for (const url of [
+      'https://127.0.0.1:6379/',
+      'https://169.254.169.254/latest/meta-data/',
+      'https://10.0.0.5/hook',
+      'https://[::1]/hook',
+      'https://[::ffff:127.0.0.1]/hook'
+    ]) {
+      const r = await app.inject({
+        method: 'POST', url: '/v1/webhook-subscriptions', headers: auth(admin.sessionId),
+        payload: { url } })
+      expect(r.statusCode, url).toBe(422)
+      expect((r.json() as { errorKeys?: Record<string, string[]> })
+        .errorKeys?.url).toContain('field.blockedTarget')
+    }
+  })
+
+  it('weist Zugangsdaten im Ziel ab', async () => {
+    // Der gemeinsame Schluessel ist der Weg; im URL stehen sie im Protokoll.
+    const r = await app.inject({
+      method: 'POST', url: '/v1/webhook-subscriptions', headers: auth(admin.sessionId),
+      payload: { url: 'https://nutzer:geheim@portal.example.de/hook' } })
+    expect(r.statusCode).toBe(422)
+  })
+
   it('weist ein Haus ab, das dem Account nicht gehoert', async () => {
     const fremd = await makeProperty(owner, { code: 'FREMD' })
     const r = await app.inject({

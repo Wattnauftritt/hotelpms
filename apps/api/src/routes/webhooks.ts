@@ -3,10 +3,35 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { hinweisText } from '../platform/texte.js'
+import { apiText, hinweisText } from '../platform/texte.js'
 import { accountFor, type Principal } from '../platform/context.js'
-import { isWebhookEventType, WEBHOOK_EVENT_TYPES } from '@hotelpms/domain'
+import { isWebhookEventType, WEBHOOK_EVENT_TYPES, checkWebhookTargetUrl,
+         isWebhookFailureKind, type WebhookTargetProblem } from '@hotelpms/domain'
+import { loadConfig } from '../platform/config.js'
 import type { PoolClient } from '@hotelpms/db'
+
+/** Jede Ablehnung eines Ziels hat ihren eigenen Satz; „ungueltig" hilft niemandem. */
+const TARGET_PROBLEM_KEYS: Record<WebhookTargetProblem, string> = {
+  malformed: 'field.urlMalformed',
+  scheme: 'field.httpsOnly',
+  credentials: 'field.urlCredentials',
+  blockedAddress: 'field.blockedTarget'
+}
+
+/**
+ * Aus der gespeicherten Fehlerart wird der Satz, und der Schluessel steht
+ * daneben -- wie ueberall sonst in der Schnittstelle.
+ *
+ * Zeilen aus der Zeit vor Befund B1 tragen noch den Rohtext von Node. Der
+ * kommt unveraendert durch, statt als unbekannter Schluessel zu verschwinden;
+ * neu entsteht er nicht mehr.
+ */
+function fehler(gespeichert: string | null): { text: string | null; key: string | null } {
+  if (gespeichert === null) return { text: null, key: null }
+  if (!isWebhookFailureKind(gespeichert)) return { text: gespeichert, key: null }
+  const key = `webhookError.${gespeichert}`
+  return { text: apiText(key), key }
+}
 
 interface SubscriptionBody {
   accountId?: number
@@ -43,6 +68,19 @@ function present(r: SubscriptionRow): Record<string, unknown> {
   }
 }
 
+interface AttemptLogRow {
+  attempt: number
+  statusCode: number | null
+  error: string | null
+  durationMs: number
+  attemptedAt: string
+}
+
+interface DeliveryRow {
+  lastError: string | null
+  attemptLog: AttemptLogRow[]
+}
+
 const FIELDS = `public_ref, url, event_types, property_ids, status,
                 disabled_at, disabled_reason, created_at`
 
@@ -67,10 +105,25 @@ export function webhookRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       const accountId = accountFor(principal, body.accountId)
 
-      // https erzwingen: ueber http reist der Rumpf im Klartext, und die
-      // Signatur schuetzt seine Echtheit, nicht seine Vertraulichkeit.
-      if (typeof body.url !== 'string' || !body.url.startsWith('https://')) {
-        throw Errors.validation({ url: ['field.httpsOnly'] })
+      /*
+       * Das Ziel pruefen, nicht nur seinen Praefix (Befund B1).
+       *
+       * https erzwingen hat den offensichtlichen Grund: ueber http reist der
+       * Rumpf im Klartext, und die Signatur schuetzt seine Echtheit, nicht
+       * seine Vertraulichkeit. Der zweite Grund ist der wichtigere: der
+       * Worker laeuft neben Datenbank und API, und ein Abonnement ist die
+       * Aufforderung, eine Adresse von innen anzusprechen. `127.0.0.1` und
+       * `169.254.169.254` beginnen auch mit https.
+       *
+       * Aufgeloest wird hier **nicht**. Ein Name, der jetzt nicht aufloest,
+       * ist kein Grund, ein Abonnement abzulehnen, und einer, der jetzt
+       * aufloest, kein Versprechen fuer die Zustellung in einer Stunde. Das
+       * entscheidet der Worker unmittelbar vor dem Verbinden; hier steht die
+       * fruehe, verstaendliche Absage.
+       */
+      const ziel = checkWebhookTargetUrl(body.url, loadConfig().allowedWebhookCidrs)
+      if ('problem' in ziel) {
+        throw Errors.validation({ url: [TARGET_PROBLEM_KEYS[ziel.problem]] })
       }
 
       const eventTypes = body.eventTypes ?? []
@@ -193,7 +246,7 @@ export function webhookRoutes(app: FastifyInstance): void {
 
         // Ein Aufruf je Bildschirm: die Versuche kommen als Feld mit, nicht
         // als eine Nachfrage je Zustellung.
-        const { rows } = await client.query(
+        const { rows } = await client.query<DeliveryRow>(
           `SELECT d.event_ref AS "eventRef", d.event_type AS "eventType",
                   d.status, d.attempts, d.last_status_code AS "lastStatusCode",
                   d.last_error AS "lastError", d.occurred_at AS "occurredAt",
@@ -212,7 +265,23 @@ export function webhookRoutes(app: FastifyInstance): void {
             ORDER BY d.id DESC
             LIMIT $3`,
           [s.rows[0]!.id, status ?? null, max])
-        return { subscriptionRef, deliveries: rows }
+
+        // Die Art aus der Datenbank wird erst hier zum Satz. Im Protokoll
+        // steht sie als Art, damit sie sich auswerten laesst; am Bildschirm
+        // soll ein Mensch lesen, warum nichts ankommt.
+        const deliveries = rows.map(d => {
+          const letzter = fehler(d.lastError)
+          return {
+            ...d,
+            lastError: letzter.text,
+            lastErrorKey: letzter.key,
+            attemptLog: (d.attemptLog as AttemptLogRow[]).map(v => {
+              const f = fehler(v.error)
+              return { ...v, error: f.text, errorKey: f.key }
+            })
+          }
+        })
+        return { subscriptionRef, deliveries }
       })
     }
   })
