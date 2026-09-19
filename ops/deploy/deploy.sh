@@ -62,7 +62,18 @@ umschalten() {
 
   # Braucht die Regel in /etc/sudoers.d/hotelpms -- genau diese beiden
   # Neustarts, nichts weiter.
-  sudo systemctl restart hotelpms-api hotelpms-worker
+  #
+  # **Zwei Aufrufe, nicht einer.** sudoers vergleicht die ganze Kommandozeile
+  # mit der Regel, Wort fuer Wort. `systemctl restart hotelpms-api
+  # hotelpms-worker` ist ein drittes Kommando, das keine der beiden Regeln
+  # kennt -- sudo fragt dann nach einem Kennwort, das es in einem Dienst
+  # nicht gibt, und die Ausrollung endet nach umgelegtem Symlink und
+  # angewandten Migrationen mit "a password is required". Genau so ist es
+  # beim ersten Lauf ueber den Agenten passiert; von Hand als root fiel es
+  # nie auf, weil root nicht gefragt wird. scripts/check-sudoers.sh haelt
+  # Skript und Regel jetzt in CI aneinander.
+  sudo systemctl restart hotelpms-api
+  sudo systemctl restart hotelpms-worker
 
   # Nicht "gestartet", sondern "antwortet". Ein Dienst, der sofort wieder
   # stirbt, laeuft fuer systemd trotzdem kurz.

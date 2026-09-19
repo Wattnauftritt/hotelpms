@@ -265,6 +265,8 @@ curl -fsS https://<name>/health | grep -q '"status":"ok"'
 
 Es braucht eine eng gefasste `sudo`-Regel — genau die beiden Neustarts, nichts weiter. Vorlage: [`ops/deploy/hotelpms.sudoers`](../ops/deploy/hotelpms.sudoers).
 
+**Skript und Regel müssen Wort für Wort zusammenpassen**, und das ist schon einmal schiefgegangen: die Regel erlaubte zwei Neustarts als zwei Kommandos, das Skript rief beide in *einem* Kommando auf — für `sudoers` ein drittes, unbekanntes. Die erste Ausrollung über den Agenten endete mit „a password is required", nach umgelegtem Symlink und angewandten Migrationen; von Hand als root war es nie aufgefallen, weil root nicht gefragt wird. `scripts/check-sudoers.sh` prüft den Abgleich jetzt in CI.
+
 ```bash
 install -m 0440 /opt/hotelpms/current/ops/deploy/hotelpms.sudoers /etc/sudoers.d/hotelpms
 visudo -c

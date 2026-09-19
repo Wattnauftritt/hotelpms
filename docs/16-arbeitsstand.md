@@ -670,6 +670,8 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 
+**`sudo`-Regel und Skript passten nicht zusammen** (deploy.sh, hotelpms.sudoers). Die Regel erlaubte `systemctl restart hotelpms-api` und `… hotelpms-worker` als zwei Kommandos; das Skript rief `systemctl restart hotelpms-api hotelpms-worker` auf — für `sudoers` ein drittes, das keine Regel kannte. Die erste Ausrollung über den Agenten endete mit „a password is required", und zwar **nach** umgelegtem Symlink und angewandten Migrationen: der alte Code lief auf dem neuen Schema weiter, bis jemand von Hand neu startete. Beim Ausrollen als root war es nie aufgefallen, weil root nicht gefragt wird. Jetzt zwei Aufrufe im Skript und `scripts/check-sudoers.sh` in CI, das jeden `sudo`-Aufruf gegen die Regeln hält — dieselbe Bauart wie `check-caddyfile.sh`, aus demselben Grund: bei einer Betriebsdatei gibt es keinen Test, der den Irrtum fängt, nur den ersten echten Lauf.
+
 | Falle | Was passierte |
 |---|---|
 | Lesen ohne Mandantenkontext | Zweimal still kaputt: der Benutzer sah seine eigenen Häuser nicht, und eine Account-Rolle wirkte auf gar kein Haus |
