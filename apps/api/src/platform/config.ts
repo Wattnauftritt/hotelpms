@@ -1,3 +1,5 @@
+import { parseCidrList, type Cidr } from '@hotelpms/domain'
+
 /**
  * Konfiguration aus der Umgebung, beim Start validiert.
  * Kein stiller Standardwert fuer Geheimnisse: lieber gar nicht starten als
@@ -21,6 +23,17 @@ export interface Config {
   stripeWebhookSecret: string | null
   /** Ziel fuer Erfolgs- und Abbruchseite nach Pay-by-Link. Keine geheime Angabe. */
   publicAppUrl: string
+  /**
+   * Netze, in die ein Webhook trotz Sperrliste zugestellt werden darf.
+   *
+   * Leer in jeder gehosteten Installation, und das ist der Normalfall. Wer
+   * selbst betreibt und die Schnittstelle an ein System im eigenen Netz
+   * haengt, traegt genau dieses Netz ein -- `10.0.1.0/24`, nicht `10.0.0.0/8`.
+   * Die Freigabe erlaubt dort als einzige Stelle auch `http`, denn ein
+   * eigenes Zertifikat fuer ein Kassensystem im Serverraum zu verlangen ist
+   * der zuverlaessigste Weg, die Pruefung ganz abschalten zu lassen.
+   */
+  allowedWebhookCidrs: Cidr[]
 }
 
 function need(name: string, minLength = 1): string {
@@ -46,6 +59,9 @@ export function loadConfig(): Config {
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean),
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? null,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null,
-    publicAppUrl: process.env.PUBLIC_APP_URL ?? 'http://localhost:5173'
+    publicAppUrl: process.env.PUBLIC_APP_URL ?? 'http://localhost:5173',
+    // Wirft bei einem Tippfehler, und zwar hier: ein verworfenes Netz faellt
+    // sonst erst auf, wenn eine Zustellung ausbleibt.
+    allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS)
   }
 }

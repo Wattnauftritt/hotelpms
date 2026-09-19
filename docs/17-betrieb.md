@@ -287,7 +287,31 @@ Die Rücksetzung antwortet **immer** mit 202, auch für eine unbekannte Adresse.
 
 ---
 
-## 8. Was regelmäßig zu prüfen ist
+## 8. Webhook-Ziele im eigenen Netz
+
+Ein Webhook-Ziel ist eine Adresse, die **der Worker** ansprechen soll, und der Worker steht neben Datenbank und API. Deshalb wird nicht zugestellt, was in ein privates, lokales oder reserviertes Netz zeigt — geprüft beim Anlegen und noch einmal unmittelbar vor dem Verbinden, gegen die Adresse, die das DNS in diesem Augenblick liefert. `https://169.254.169.254/latest/meta-data/` ist der Grund: die Adresse liefert bei jedem Hoster die Zugangsdaten der Maschine aus, und sie beginnt mit `https://` (Befund B1).
+
+**Wer selbst betreibt und ein System im eigenen Netz beliefert**, trägt dessen Netz in `WEBHOOK_ALLOWED_PRIVATE_CIDRS` ein, in der Umgebung von API **und** Worker:
+
+```
+WEBHOOK_ALLOWED_PRIVATE_CIDRS=10.0.1.0/24
+```
+
+So eng wie möglich: das Netz, in dem der Empfänger steht, nicht `10.0.0.0/8`. Nur in ein so freigegebenes Netz ist auch `http://` erlaubt, und dann als Adresse, nicht als Name — ins offene Netz geht nichts ohne TLS. Ein Tippfehler hält API und Worker beim Start an; das ist Absicht, ein still verworfenes Netz fiele erst Wochen später als ausbleibende Zustellung auf.
+
+**In einer gehosteten Installation bleibt die Variable leer.** Sie zu füllen, um „erstmal zum Laufen zu kommen", öffnet genau den Weg, den die Prüfung zumacht.
+
+| Befund im Zustellprotokoll | Ursache |
+|---|---|
+| `blockedTarget` | Das Ziel zeigt in ein gesperrtes Netz, oder es ist kein brauchbares https-Ziel. Auch `localhost` als Name landet hier |
+| `dns` | Der Name des Empfängers löst nicht auf |
+| `tls` | Zertifikat des Empfängers abgelaufen, selbst ausgestellt oder auf einen anderen Namen |
+| `httpStatus` mit 301/302 | Eine Umleitung wird nicht verfolgt. Das endgültige Ziel direkt eintragen |
+| `refused`, `unreachable`, `timeout` | Der Empfänger nimmt nicht an. Nach drei Versuchen wird das Abonnement stillgelegt |
+
+---
+
+## 9. Was regelmäßig zu prüfen ist
 
 | Wann | Was |
 |---|---|

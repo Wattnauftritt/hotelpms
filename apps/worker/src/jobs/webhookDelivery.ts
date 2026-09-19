@@ -1,6 +1,12 @@
+import { lookup as dnsLookup } from 'node:dns/promises'
+import { request as httpRequest, type ClientRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import { withTransaction, type Pool, type PoolClient, type DbContext } from '@hotelpms/db'
 import { webhookSignature, webhookDelivered, webhookRetryDelaySeconds,
-         WEBHOOK_MAX_ATTEMPTS, WEBHOOK_HEADERS } from '@hotelpms/domain'
+         WEBHOOK_MAX_ATTEMPTS, WEBHOOK_HEADERS, checkWebhookTargetUrl,
+         checkResolvedAddress, classifyDeliveryError,
+         type Cidr, type WebhookFailureKind } from '@hotelpms/domain'
+import { renderMessage } from '@hotelpms/contracts'
 
 /**
  * Zustellung ausgehender Ereignisse (Aufgabe 4, Dokument 16).
@@ -38,7 +44,15 @@ interface ClaimedDelivery {
 
 interface AttemptResult {
   statusCode: number | null
-  error: string | null
+  /**
+   * Die Art des Fehlers, nicht sein Text (Befund B1).
+   *
+   * Der Rohtext von Node nennt Adresse und Port und unterscheidet abgelehnt,
+   * gefiltert und beantwortet. Er landete bisher in `webhook_delivery_attempt`
+   * und wurde ueber die Schnittstelle wieder herausgegeben -- zusammen mit
+   * einem frei waehlbaren Ziel ist das ein Portscan mit unserer Hilfe.
+   */
+  kind: WebhookFailureKind | null
   durationMs: number
 }
 
@@ -62,6 +76,11 @@ export interface WebhookDeliveryOptions {
   requestTimeoutMs?: number
   /** Grundabstand der Wiederholung, der sich mit jedem Versuch verdoppelt. */
   baseDelaySeconds?: number
+  /**
+   * Netze, in die trotz Sperrliste zugestellt werden darf, aus
+   * `WEBHOOK_ALLOWED_PRIVATE_CIDRS`. Leer in jeder gehosteten Installation.
+   */
+  allowedCidrs?: readonly Cidr[]
 }
 
 async function claim(
@@ -98,36 +117,148 @@ async function claim(
   return rows
 }
 
-async function send(d: ClaimedDelivery, timeoutMs: number): Promise<AttemptResult> {
+/**
+ * Aufgeloeste Adresse, an die genau diese Zustellung gehen darf.
+ *
+ * `null` heisst: das Ziel ist nicht ansprechbar, und zwar nicht, weil der
+ * Empfaenger streikt, sondern weil wir es nicht ansprechen.
+ */
+type Ziel = { address: string; family: number } | null
+
+/**
+ * Loest den Namen auf und haelt **jede** Antwort gegen die Sperrliste.
+ *
+ * Jede, nicht nur die erste: ein Name, der zugleich eine oeffentliche und
+ * eine innere Adresse zurueckgibt, ist entweder falsch eingerichtet oder ein
+ * Angriff, und sich die brauchbare herauszusuchen hiesse, beim naechsten
+ * Verbindungsaufbau doch die andere zu erwischen. Steht im URL schon eine
+ * Adresse, ist sie beim statischen Pruefen bereits geprueft worden.
+ */
+async function resolveTarget(
+  url: URL, literal: string | null, allowed: readonly Cidr[]
+): Promise<Ziel> {
+  if (literal !== null) {
+    return { address: literal, family: literal.includes(':') ? 6 : 4 }
+  }
+  const antworten = await dnsLookup(url.hostname, { all: true, verbatim: true })
+  if (antworten.length === 0) return null
+  for (const a of antworten) {
+    if (checkResolvedAddress(url.protocol, a.address, allowed) !== null) return null
+  }
+  return { address: antworten[0]!.address, family: antworten[0]!.family }
+}
+
+/**
+ * Verbindet auf genau die geprueft Adresse.
+ *
+ * Das ist der Kern der Absicherung und der Grund, warum hier `node:https`
+ * statt `fetch` steht: `lookup` bekommt der Verbindungsaufbau mitgegeben und
+ * gibt die Adresse zurueck, die wir eben geprueft haben, statt ein zweites
+ * Mal zu fragen. Ohne das liegt zwischen Pruefung und Verbindung eine zweite
+ * Aufloesung, und wer die Zone besitzt, laesst die erste nach draussen und
+ * die zweite auf `127.0.0.1` zeigen (DNS-Rebinding).
+ *
+ * Der zweite Grund: `node:https` folgt keiner Umleitung. `fetch` tut es von
+ * sich aus, und damit fuehrt ein sauberes oeffentliches Ziel per `302` genau
+ * dorthin, wo die Pruefung es nicht haben wollte.
+ */
+function sendRequest(
+  url: URL, ziel: { address: string; family: number },
+  headers: Record<string, string>, body: string, timeoutMs: number
+): Promise<number> {
+  const transport = url.protocol === 'https:' ? httpsRequest : httpRequest
+  return new Promise<number>((resolve, reject) => {
+    let req: ClientRequest
+    try {
+      req = transport(url, {
+        method: 'POST',
+        headers,
+        // Kein gemeinsamer Verbindungspool: eine wiederverwendete Verbindung
+        // haengt an einer frueher aufgeloesten Adresse und macht die
+        // Bindung an `lookup` wertlos.
+        agent: false,
+        lookup: (_name, opts, cb: (
+          err: NodeJS.ErrnoException | null,
+          address: string | { address: string; family: number }[],
+          family?: number
+        ) => void) => {
+          if ((opts as { all?: boolean }).all === true) cb(null, [ziel])
+          else cb(null, ziel.address, ziel.family)
+        }
+      }, res => {
+        // Der Rumpf der Antwort interessiert nicht, muss aber gelesen werden,
+        // sonst bleibt die Verbindung offen, bis die Frist sie abraeumt.
+        res.resume()
+        res.on('end', () => resolve(res.statusCode ?? 0))
+        res.on('error', reject)
+      })
+    } catch (e) {
+      reject(e)
+      return
+    }
+    // Eine Frist ueber den ganzen Vorgang, nicht nur ueber das Stillstehen
+    // der Verbindung: ein Empfaenger, der endlos langsam Bytes schickt, soll
+    // die Warteschlange nicht anhalten.
+    const frist = setTimeout(() => {
+      const e: NodeJS.ErrnoException = new Error('Zeitueberschreitung')
+      e.code = 'ETIMEDOUT'
+      req.destroy(e)
+    }, timeoutMs)
+    req.on('error', e => { clearTimeout(frist); reject(e) })
+    req.on('close', () => clearTimeout(frist))
+    req.end(body)
+  })
+}
+
+async function send(
+  d: ClaimedDelivery, timeoutMs: number, allowed: readonly Cidr[]
+): Promise<AttemptResult> {
   const body = JSON.stringify(d.payload)
   const timestamp = Math.floor(Date.now() / 1000)
   const begonnen = Date.now()
+  const dauer = (): number => Date.now() - begonnen
+
+  /*
+   * Geprueft wird hier noch einmal, obwohl die Route beim Anlegen schon
+   * geprueft hat (Befund B1). Nicht aus Misstrauen gegen die Route, sondern
+   * weil sich die Antwort des DNS zwischen Anlegen und Zustellen aendert --
+   * das ist der einzige Zeitpunkt, an dem die Pruefung etwas wert ist.
+   */
+  const geprueft = checkWebhookTargetUrl(d.url, allowed)
+  if ('problem' in geprueft) {
+    return { statusCode: null, kind: 'blockedTarget', durationMs: dauer() }
+  }
+
+  let ziel: Ziel
   try {
-    const res = await fetch(d.url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [WEBHOOK_HEADERS.event]: d.event_type,
-        [WEBHOOK_HEADERS.delivery]: d.event_ref,
-        [WEBHOOK_HEADERS.timestamp]: String(timestamp),
-        [WEBHOOK_HEADERS.signature]: webhookSignature(d.signing_secret, timestamp, body)
-      },
-      body,
-      signal: AbortSignal.timeout(timeoutMs)
-    })
+    ziel = await resolveTarget(
+      geprueft.target.url, geprueft.target.literalAddress, allowed)
+  } catch (e) {
+    return { statusCode: null, kind: classifyDeliveryError(e), durationMs: dauer() }
+  }
+  if (ziel === null) {
+    return { statusCode: null, kind: 'blockedTarget', durationMs: dauer() }
+  }
+
+  try {
+    const status = await sendRequest(geprueft.target.url, ziel, {
+      'content-type': 'application/json',
+      [WEBHOOK_HEADERS.event]: d.event_type,
+      [WEBHOOK_HEADERS.delivery]: d.event_ref,
+      [WEBHOOK_HEADERS.timestamp]: String(timestamp),
+      [WEBHOOK_HEADERS.signature]: webhookSignature(d.signing_secret, timestamp, body)
+    }, body, timeoutMs)
+    // Eine Umleitung wird nicht verfolgt und zaehlt damit wie jede andere
+    // Antwort ausserhalb der 2xx: nicht zugestellt.
     return {
-      statusCode: res.status,
-      error: webhookDelivered(res.status) ? null : `HTTP ${res.status}`,
-      durationMs: Date.now() - begonnen
+      statusCode: status,
+      kind: webhookDelivered(status) ? null : 'httpStatus',
+      durationMs: dauer()
     }
   } catch (e) {
     // Zeitueberschreitung, Namensaufloesung, abgelehnte Verbindung: aus Sicht
     // der Wiederholung dasselbe wie eine 500.
-    return {
-      statusCode: null,
-      error: (e as Error).message.slice(0, 500),
-      durationMs: Date.now() - begonnen
-    }
+    return { statusCode: null, kind: classifyDeliveryError(e), durationMs: dauer() }
   }
 }
 
@@ -139,7 +270,7 @@ async function record(
     `INSERT INTO webhook_delivery_attempt
        (delivery_id, property_id, attempt, status_code, error, duration_ms)
      VALUES ($1,$2,$3,$4,$5,$6)`,
-    [d.id, propertyId, d.attempt, r.statusCode, r.error, r.durationMs])
+    [d.id, propertyId, d.attempt, r.statusCode, r.kind, r.durationMs])
 
   if (r.statusCode !== null && webhookDelivered(r.statusCode)) {
     await client.query(
@@ -161,7 +292,7 @@ async function record(
                                    ELSE now() + make_interval(secs => $5) END,
             last_status_code = $2, last_error = $3
       WHERE id = $1`,
-    [d.id, r.statusCode, r.error, erschoepft,
+    [d.id, r.statusCode, r.kind, erschoepft,
      webhookRetryDelaySeconds(d.attempt, baseDelaySeconds)])
 
   if (!erschoepft) return { ausgang: 'retrying', stillgelegt: false }
@@ -173,12 +304,15 @@ async function record(
    * fahren; der Grund steht an der Zeile, damit die Frage "warum kommt nichts
    * mehr an" ohne Protokollsuche zu beantworten ist.
    */
+  // Der Grund ist ein Satz, kein Fehlercode: hier steht die Art aus dem
+  // Katalog, nicht mehr die Meldung von Node mit Adresse und Port darin.
+  const grund = renderMessage(`webhookError.${r.kind ?? 'other'}`, 'de')
   const stillgelegt = await client.query(
     `UPDATE webhook_subscription
         SET status = 'disabled', disabled_at = now(), disabled_reason = $2
       WHERE id = $1 AND status = 'active'`,
     [d.subscription_id,
-     `Zustellung ${d.event_ref} nach ${d.attempt} Versuchen aufgegeben: ${r.error}`])
+     `Zustellung ${d.event_ref} nach ${d.attempt} Versuchen aufgegeben: ${grund}`])
   // Hat eine andere Zustellung desselben Abonnements es schon stillgelegt,
   // aendert das hier nichts mehr und soll auch nicht noch einmal zaehlen.
   return { ausgang: 'failed', stillgelegt: stillgelegt.rowCount === 1 }
@@ -191,6 +325,7 @@ export async function deliverWebhooks(
   const leaseSeconds = opts.leaseSeconds ?? 300
   const timeoutMs = opts.requestTimeoutMs ?? 10_000
   const baseDelaySeconds = opts.baseDelaySeconds ?? 60
+  const allowed = opts.allowedCidrs ?? []
 
   const claimed = await withTransaction(pool, ctx, c =>
     claim(c, propertyId, batchSize, leaseSeconds))
@@ -198,7 +333,7 @@ export async function deliverWebhooks(
     attempted: claimed.length, delivered: 0, retrying: 0, failed: 0, disabled: 0 }
 
   for (const d of claimed) {
-    const versuch = await send(d, timeoutMs)
+    const versuch = await send(d, timeoutMs, allowed)
     const { ausgang, stillgelegt } = await withTransaction(pool, ctx, c =>
       record(c, propertyId, d, versuch, baseDelaySeconds))
     result[ausgang]++
