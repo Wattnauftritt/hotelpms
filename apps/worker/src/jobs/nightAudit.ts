@@ -250,30 +250,43 @@ async function noShows(
       WHERE r.property_id = $1 AND r.arrival = $2::date AND r.status = 'Confirmed'
       ORDER BY r.id FOR UPDATE OF r`,
     [propertyId, businessDate])
+  if (offen.rowCount === 0) return 0
 
-  for (const r of offen.rows) {
-    await client.query(`SELECT inventory_release($1,$2,$3::date,$4::date,1)`,
-      [propertyId, r.category_id, r.arrival, r.departure])
+  // Mengenbasiert statt je Zeile (Performanceaudit): eine Freigabe, eine
+  // Gebuehrenbuchung, ein Zustandswechsel -- unabhaengig davon, wie viele
+  // No-Shows dieser Anreisetag hat.
+  await client.query(
+    `SELECT inventory_release_bulk($1,$2::bigint[],$3::date[],$4::date[],$5::int[])`,
+    [propertyId, offen.rows.map(r => r.category_id), offen.rows.map(r => r.arrival),
+     offen.rows.map(r => r.departure), offen.rows.map(() => 1)])
 
-    const gebuehr = r.guaranteed ? noShowFee(r) : 0
-    if (gebuehr > 0 && r.folio_id !== null) {
-      // Die Gebuehr ist keine Beherbergung: sie traegt den vollen Satz und
-      // ein eigenes Erloeskonto, sonst faelscht sie ADR und RevPAR.
-      await client.query(
-        `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
-                             net_cent, tax_cent, gross_cent, tax_rate_bp,
-                             revenue_account, reservation_id)
-         VALUES ($1,$2,$3::date,'No-Show-Gebuehr',1,
-                 $4 - round($4 * 1900.0 / 11900.0), round($4 * 1900.0 / 11900.0),
-                 $4, 1900, '8400', $5)`,
-        [propertyId, r.folio_id, businessDate, gebuehr, r.id])
-    }
+  const zeilen = offen.rows.map(r => ({
+    id: r.id, folioId: r.folio_id, fee: r.guaranteed ? noShowFee(r) : 0 }))
 
+  // Die Gebuehr ist keine Beherbergung: sie traegt den vollen Satz und ein
+  // eigenes Erloeskonto, sonst faelscht sie ADR und RevPAR.
+  const mitGebuehr = zeilen.filter(z => z.fee > 0 && z.folioId !== null)
+  if (mitGebuehr.length > 0) {
     await client.query(
-      `UPDATE reservation SET status = 'NoShow', updated_at = now(),
-                              cancellation_fee_cent = $2
-        WHERE id = $1`, [r.id, gebuehr > 0 ? gebuehr : null])
+      `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                           net_cent, tax_cent, gross_cent, tax_rate_bp,
+                           revenue_account, reservation_id)
+       SELECT $1, x.folio_id, $2::date, 'No-Show-Gebuehr', 1,
+              x.fee - round(x.fee * 1900.0 / 11900.0), round(x.fee * 1900.0 / 11900.0),
+              x.fee, 1900, '8400', x.reservation_id
+         FROM unnest($3::bigint[], $4::bigint[], $5::bigint[])
+              AS x(folio_id, reservation_id, fee)`,
+      [propertyId, businessDate, mitGebuehr.map(z => z.folioId),
+       mitGebuehr.map(z => z.id), mitGebuehr.map(z => z.fee)])
   }
+
+  await client.query(
+    `UPDATE reservation r SET status = 'NoShow', updated_at = now(),
+                              cancellation_fee_cent = x.fee
+       FROM unnest($1::bigint[], $2::bigint[]) AS x(id, fee)
+      WHERE r.id = x.id`,
+    [zeilen.map(z => z.id), zeilen.map(z => z.fee > 0 ? z.fee : null)])
+
   return offen.rowCount ?? 0
 }
 
@@ -318,12 +331,17 @@ async function expireOptions(
               AT TIME ZONE (SELECT timezone FROM property WHERE id = $1))
       ORDER BY id FOR UPDATE`,
     [propertyId, businessDate])
-  for (const r of abgelaufen.rows) {
-    await client.query(`SELECT inventory_release($1,$2,$3::date,$4::date,1)`,
-      [propertyId, r.category_id, r.arrival, r.departure])
-    await client.query(
-      `UPDATE reservation SET status = 'Canceled', canceled_at = now() WHERE id = $1`, [r.id])
-  }
+  if (abgelaufen.rowCount === 0) return 0
+
+  // Mengenbasiert statt je Zeile (Performanceaudit).
+  await client.query(
+    `SELECT inventory_release_bulk($1,$2::bigint[],$3::date[],$4::date[],$5::int[])`,
+    [propertyId, abgelaufen.rows.map(r => r.category_id),
+     abgelaufen.rows.map(r => r.arrival), abgelaufen.rows.map(r => r.departure),
+     abgelaufen.rows.map(() => 1)])
+  await client.query(
+    `UPDATE reservation SET status = 'Canceled', canceled_at = now()
+      WHERE id = ANY($1::bigint[])`, [abgelaufen.rows.map(r => r.id)])
   return abgelaufen.rowCount ?? 0
 }
 
@@ -338,14 +356,22 @@ async function releaseBlocks(
       WHERE property_id = $1 AND status = 'active' AND release_date <= $2::date
       ORDER BY id FOR UPDATE`,
     [propertyId, businessDate])
-  for (const b of blocks.rows) {
-    const rest = b.quantity - b.picked_up
-    if (rest > 0) {
-      await client.query(`SELECT inventory_unblock($1,$2,$3::date,$4::date,$5)`,
-        [propertyId, b.category_id, b.from_date, b.to_date, rest])
-    }
-    await client.query(`UPDATE availability_block SET status = 'released' WHERE id = $1`, [b.id])
+  if (blocks.rowCount === 0) return 0
+
+  // Mengenbasiert statt je Zeile (Performanceaudit): nur die Bloecke mit
+  // ungenutztem Rest wirken auf das Kontingent, alle wechseln den Zustand.
+  const mitRest = blocks.rows
+    .map(b => ({ ...b, rest: b.quantity - b.picked_up }))
+    .filter(b => b.rest > 0)
+  if (mitRest.length > 0) {
+    await client.query(
+      `SELECT inventory_unblock_bulk($1,$2::bigint[],$3::date[],$4::date[],$5::int[])`,
+      [propertyId, mitRest.map(b => b.category_id), mitRest.map(b => b.from_date),
+       mitRest.map(b => b.to_date), mitRest.map(b => b.rest)])
   }
+  await client.query(
+    `UPDATE availability_block SET status = 'released' WHERE id = ANY($1::bigint[])`,
+    [blocks.rows.map(b => b.id)])
   return blocks.rowCount ?? 0
 }
 

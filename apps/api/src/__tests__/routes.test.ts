@@ -575,6 +575,41 @@ describe('Berichte', () => {
     expect(s.reportingRequired).toBe(true)
   })
 
+  /**
+   * Zwei Aufenthalte desselben Landes mit unterschiedlicher Nachtzahl:
+   * der Verbund mit den Naechten (Performanceaudit, statt korrelierter
+   * Unterabfrage) vervielfacht Zeilen je Aufenthalt. Ohne DISTINCT bei den
+   * Ankuenften zaehlte ein fuenfnaechtiger Aufenthalt als fuenf Ankuenfte.
+   */
+  it('zaehlt mehrere Aufenthalte desselben Landes ohne die Ankuenfte zu vervielfachen', async () => {
+    const g = await owner.query<{ id: number }>(
+      `INSERT INTO guest (account_id, last_name, country) VALUES ($1,'Vandenberg','NL')
+       RETURNING id`, [fx.accountId])
+    const kurz = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-03',
+      departure: '2026-10-06', status: 'CheckedOut' as never, resourceId: rooms[0]!,
+      reserveInventory: false })
+    await owner.query(
+      `UPDATE reservation SET primary_guest_id = $2, status = 'CheckedOut' WHERE id = $1`,
+      [kurz.reservationId, g.rows[0]!.id])
+    const lang = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-10',
+      departure: '2026-10-15', status: 'CheckedOut' as never, resourceId: rooms[1]!,
+      reserveInventory: false })
+    await owner.query(
+      `UPDATE reservation SET primary_guest_id = $2, status = 'CheckedOut' WHERE id = $1`,
+      [lang.reservationId, g.rows[0]!.id])
+
+    const r = await app.inject({
+      method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/accommodation-statistics?month=2026-10`,
+      headers: auth(admin.sessionId) })
+    const s = json(r) as unknown as
+      { byCountry: Array<{ country: string; arrivals: number; nights: number }> }
+    // Zwei Ankuenfte, drei plus fuenf Naechte -- nicht acht Ankuenfte.
+    expect(s.byCountry).toEqual([{ country: 'NL', arrivals: 2, nights: 8 }])
+  })
+
   it('liefert den DATEV-Stapel als CSV mit Kopf- und Spaltenzeile', async () => {
     const r = await app.inject({
       method: 'GET',

@@ -372,16 +372,21 @@ export function reportRoutes(app: FastifyInstance): void {
                 AND r.status IN ('InHouse','CheckedOut')
                 AND r.arrival < z.bis AND r.departure > z.von
            )
-           SELECT country,
-                  count(*) FILTER (
-                    WHERE arrival >= (SELECT von FROM zeitraum)
-                      AND arrival <  (SELECT bis FROM zeitraum))::int AS arrivals,
-                  COALESCE(sum((
-                    SELECT count(*) FROM reservation_night n
-                     WHERE n.reservation_id = gaeste.id
-                       AND n.date >= (SELECT von FROM zeitraum)
-                       AND n.date <  (SELECT bis FROM zeitraum))), 0)::int AS nights
-             FROM gaeste GROUP BY country ORDER BY country`,
+           SELECT gaeste.country,
+                  -- DISTINCT, weil der Join mit den Naechten unten Zeilen
+                  -- vervielfacht -- sonst zaehlte ein dreinaechtiger
+                  -- Aufenthalt als drei Ankuenfte (Performanceaudit: LEFT
+                  -- JOIN statt korrelierter Unterabfrage je Zeile).
+                  count(DISTINCT gaeste.id) FILTER (
+                    WHERE gaeste.arrival >= (SELECT von FROM zeitraum)
+                      AND gaeste.arrival <  (SELECT bis FROM zeitraum))::int AS arrivals,
+                  count(n.date)::int AS nights
+             FROM gaeste
+             LEFT JOIN reservation_night n
+                    ON n.reservation_id = gaeste.id
+                   AND n.date >= (SELECT von FROM zeitraum)
+                   AND n.date <  (SELECT bis FROM zeitraum)
+            GROUP BY gaeste.country ORDER BY gaeste.country`,
           [Number(propertyId), von])
 
         const kapazitaet = await client.query<{ beds: number; rooms: number }>(
@@ -713,42 +718,60 @@ export function reportRoutes(app: FastifyInstance): void {
           country: string | null; arrival: string; departure: string
           levyCode: string; levyName: string; nights: number; persons: number
           amountCent: string; businessTrip: boolean; exemptChildren: number }>(
-          `SELECT r.public_ref                        AS "reservationRef",
-                  g.last_name                         AS "lastName",
-                  g.first_name                        AS "firstName",
-                  g.address_line1                     AS "street",
-                  g.postal_code                       AS "postalCode",
-                  g.city                              AS "city",
-                  g.country                           AS "country",
-                  r.arrival::text                     AS "arrival",
-                  r.departure::text                   AS "departure",
-                  t.code                              AS "levyCode",
-                  t.name                              AS "levyName",
-                  count(DISTINCT c.business_date)::int AS "nights",
-                  COALESCE(max(c.quantity), 0)::int   AS "persons",
-                  sum(c.gross_cent)::text             AS "amountCent",
-                  r.business_trip                     AS "businessTrip",
-                  (SELECT count(*) FROM reservation_occupant o
-                    WHERE o.reservation_id = r.id
-                      AND t.exempt_below_age IS NOT NULL
-                      AND o.age_at_arrival IS NOT NULL
-                      AND o.age_at_arrival < t.exempt_below_age)::int AS "exemptChildren"
-             FROM charge c
-             JOIN tax_rule t    ON t.id = c.tax_rule_id
-             JOIN reservation r ON r.id = c.reservation_id
-             LEFT JOIN guest g  ON g.id = r.primary_guest_id
-            WHERE c.property_id = $1
-              AND t.kind IN ('city_tax','bed_tax')
-              AND c.business_date BETWEEN $2::date AND $3::date
-            GROUP BY r.id, r.public_ref, g.last_name, g.first_name, g.address_line1,
-                     g.postal_code, g.city, g.country, r.arrival, r.departure,
-                     -- Die Regel-id und die Altersgrenze gehoeren mit hinein: die
-                     -- Unterabfrage nach den befreiten Kindern greift auf sie
-                     -- zu, und PostgreSQL erkennt die Abhaengigkeit dort
-                     -- nicht von selbst.
-                     t.id, t.code, t.name, t.exempt_below_age, r.business_trip
-           HAVING sum(c.gross_cent) <> 0
-            ORDER BY r.arrival, r.public_ref, t.code`,
+          /*
+           * Die befreiten Kinder liefen als korrelierte Unterabfrage je
+           * Ausgabezeile (Performanceaudit). `kinder` zaehlt sie stattdessen
+           * einmal je vorkommendem Paar aus Aufenthalt und Altersgrenze und
+           * wird dazugejoint -- ein Beitrag kann zwei Regeln mit derselben
+           * Grenze haben, deshalb ueber die Grenze und nicht ueber die
+           * Regel-id gruppiert.
+           */
+          `WITH grundlage AS (
+             SELECT c.reservation_id, c.tax_rule_id, c.business_date, c.quantity,
+                    c.gross_cent, r.public_ref, r.arrival, r.departure, r.business_trip,
+                    g.last_name, g.first_name, g.address_line1, g.postal_code, g.city,
+                    g.country, t.code AS levy_code, t.name AS levy_name, t.exempt_below_age
+               FROM charge c
+               JOIN tax_rule t    ON t.id = c.tax_rule_id
+               JOIN reservation r ON r.id = c.reservation_id
+               LEFT JOIN guest g  ON g.id = r.primary_guest_id
+              WHERE c.property_id = $1
+                AND t.kind IN ('city_tax','bed_tax')
+                AND c.business_date BETWEEN $2::date AND $3::date
+           ), kinder AS (
+             SELECT p.reservation_id, p.exempt_below_age, count(o.id) AS exempt_children
+               FROM (SELECT DISTINCT reservation_id, exempt_below_age FROM grundlage) p
+               LEFT JOIN reservation_occupant o
+                      ON o.reservation_id = p.reservation_id
+                     AND p.exempt_below_age IS NOT NULL
+                     AND o.age_at_arrival IS NOT NULL
+                     AND o.age_at_arrival < p.exempt_below_age
+              GROUP BY p.reservation_id, p.exempt_below_age
+           )
+           SELECT gr.public_ref                          AS "reservationRef",
+                  gr.last_name                            AS "lastName",
+                  gr.first_name                           AS "firstName",
+                  gr.address_line1                        AS "street",
+                  gr.postal_code                          AS "postalCode",
+                  gr.city                                 AS "city",
+                  gr.country                               AS "country",
+                  gr.arrival::text                        AS "arrival",
+                  gr.departure::text                      AS "departure",
+                  gr.levy_code                            AS "levyCode",
+                  gr.levy_name                             AS "levyName",
+                  count(DISTINCT gr.business_date)::int    AS "nights",
+                  COALESCE(max(gr.quantity), 0)::int       AS "persons",
+                  sum(gr.gross_cent)::text                AS "amountCent",
+                  gr.business_trip                         AS "businessTrip",
+                  COALESCE(max(k.exempt_children), 0)::int AS "exemptChildren"
+             FROM grundlage gr
+             LEFT JOIN kinder k ON k.reservation_id = gr.reservation_id
+                               AND k.exempt_below_age IS NOT DISTINCT FROM gr.exempt_below_age
+            GROUP BY gr.reservation_id, gr.public_ref, gr.last_name, gr.first_name,
+                     gr.address_line1, gr.postal_code, gr.city, gr.country, gr.arrival,
+                     gr.departure, gr.tax_rule_id, gr.levy_code, gr.levy_name, gr.business_trip
+           HAVING sum(gr.gross_cent) <> 0
+            ORDER BY gr.arrival, gr.public_ref, gr.levy_code`,
           [id, q.from, q.to])
 
         const summe = rows.reduce((s, r) => s + Number(r.amountCent), 0)

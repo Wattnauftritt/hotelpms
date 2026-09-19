@@ -76,11 +76,17 @@ const GAST_SPALTEN = ['last_name'] as const
 const RESERVIERUNG_SPALTEN = ['external_reference', 'category_code',
                               'arrival', 'departure'] as const
 
+/** Leerer oder fehlender Wert wird zu `null` -- wie `NULLIF($n,'')` in SQL. */
+function leer(v: string | undefined): string | null {
+  return v === '' || v === undefined ? null : v
+}
+
 async function importCategories(
   client: PoolClient, propertyId: number, records: Array<Record<string, string>>
 ): Promise<{ imported: number; findings: Befund[] }> {
   const findings: Befund[] = []
-  let imported = 0
+  const gueltig: Array<{ row: number; code: string; name: string; belegung: number }> = []
+
   for (const [i, r] of records.entries()) {
     const row = i + 2
     if (r.code === '') { findings.push({ row, level: 'error', message: 'code fehlt' }); continue }
@@ -89,15 +95,42 @@ async function importCategories(
       findings.push({ row, level: 'error', message: 'max_occupancy ist keine ganze Zahl' })
       continue
     }
-    const res = await client.query(
-      `INSERT INTO resource_category (property_id, code, name, max_occupancy)
-       VALUES ($1,$2,$3,$4) ON CONFLICT (property_id, code) DO NOTHING`,
-      [propertyId, r.code, r.name === '' ? r.code : r.name, belegung])
-    if (res.rowCount === 0) {
-      findings.push({ row, level: 'warning', message: 'Kategorie existiert bereits',
-                      reference: r.code })
-    } else imported++
+    gueltig.push({ row, code: r.code!, name: r.name === '' ? r.code! : r.name!, belegung })
   }
+  if (gueltig.length === 0) return { imported: 0, findings }
+
+  /*
+   * Eine Anweisung fuer alle gueltigen Zeilen statt einer je Zeile
+   * (Performanceaudit). `ON CONFLICT DO NOTHING` wirkt auch innerhalb einer
+   * einzigen mengenbasierten Anweisung je Quellzeile: bei einer doppelten
+   * Kennung -- ob schon in der Datenbank oder zweimal in derselben Datei --
+   * gewinnt die erste, wie zuvor in der Schleife.
+   */
+  const eingefuegt = await client.query<{ code: string }>(
+    `INSERT INTO resource_category (property_id, code, name, max_occupancy)
+     SELECT $1, x.code, x.name, x.belegung
+       FROM unnest($2::text[], $3::text[], $4::int[]) AS x(code, name, belegung)
+     ON CONFLICT (property_id, code) DO NOTHING
+     RETURNING code`,
+    [propertyId, gueltig.map(g => g.code), gueltig.map(g => g.name),
+     gueltig.map(g => g.belegung)])
+
+  // Nur je erfolgreich eingefuegtem Code einmal als "importiert" zaehlen --
+  // ein zweites Auftreten derselben Kennung in der Datei ist ein Duplikat,
+  // kein zweiter Treffer.
+  const nochGutzuschreiben = new Set(eingefuegt.rows.map(r => r.code))
+  let imported = 0
+  for (const g of gueltig) {
+    if (nochGutzuschreiben.delete(g.code)) {
+      imported++
+    } else {
+      findings.push({ row: g.row, level: 'warning', message: 'Kategorie existiert bereits',
+                      reference: g.code })
+    }
+  }
+  // Stabil nach Zeile sortiert: die beiden Durchgaenge (Validierung, dann
+  // Dublettenpruefung) liefern Meldungen nicht mehr in Dateireihenfolge.
+  findings.sort((a, b) => a.row - b.row)
   return { imported, findings }
 }
 
@@ -105,7 +138,14 @@ async function importGuests(
   client: PoolClient, accountId: number, records: Array<Record<string, string>>
 ): Promise<{ imported: number; findings: Befund[] }> {
   const findings: Befund[] = []
-  let imported = 0
+
+  interface Kandidat {
+    row: number; lastName: string; firstName: string | null; email: string | null
+    phone: string | null; birthDate: string | null; addressLine1: string | null
+    postalCode: string | null; city: string | null; country: string | null; language: string
+  }
+  const kandidaten: Kandidat[] = []
+
   for (const [i, r] of records.entries()) {
     const row = i + 2
     if (r.last_name === '') {
@@ -116,30 +156,67 @@ async function importGuests(
     if (r.birth_date !== '' && r.birth_date !== undefined && geburt === null) {
       findings.push({ row, level: 'warning', message: 'birth_date unlesbar, wird ignoriert' })
     }
-    // Eine vorhandene E-Mail bedeutet denselben Gast. Ohne E-Mail wird
-    // angelegt: zwei Profile sind reparabel, ein falsch zusammengefuehrtes
-    // Profil verbindet die Aufenthalte zweier Menschen.
-    if (r.email !== '' && r.email !== undefined) {
-      const da = await client.query(
-        `SELECT 1 FROM guest WHERE account_id = $1 AND lower(email) = lower($2) LIMIT 1`,
-        [accountId, r.email])
-      if (da.rowCount && da.rowCount > 0) {
-        findings.push({ row, level: 'warning', message: 'Gast mit dieser E-Mail existiert',
-                        reference: r.email })
+    kandidaten.push({
+      row, lastName: r.last_name!, firstName: r.first_name ?? null, email: leer(r.email),
+      phone: leer(r.phone), birthDate: geburt, addressLine1: leer(r.address_line1),
+      postalCode: leer(r.postal_code), city: leer(r.city),
+      country: leer((r.country ?? '').toUpperCase().slice(0, 2)),
+      language: leer(r.language) ?? 'de'
+    })
+  }
+  if (kandidaten.length === 0) return { imported: 0, findings }
+
+  /*
+   * Eine vorhandene E-Mail bedeutet denselben Gast. Ohne E-Mail wird
+   * angelegt: zwei Profile sind reparabel, ein falsch zusammengefuehrtes
+   * Profil verbindet die Aufenthalte zweier Menschen.
+   *
+   * Eine Anfrage fuer alle E-Mails statt einer je Zeile (Performanceaudit):
+   * erst die bereits vorhandenen abfragen, dann innerhalb der Datei selbst
+   * auf Dubletten pruefen -- eine zweite Zeile mit derselben E-Mail faende
+   * in der alten Schleife den gerade erst eingefuegten Gast der ersten.
+   */
+  const mitEmail = kandidaten.filter((k): k is Kandidat & { email: string } => k.email !== null)
+  const vorhanden = mitEmail.length === 0 ? new Set<string>() : new Set(
+    (await client.query<{ email: string }>(
+      `SELECT lower(email) AS email FROM guest WHERE account_id = $1
+         AND lower(email) = ANY($2::text[])`,
+      [accountId, mitEmail.map(k => k.email.toLowerCase())])).rows.map(r => r.email))
+
+  const gesehen = new Set<string>()
+  const einzufuegen: Kandidat[] = []
+  for (const k of kandidaten) {
+    if (k.email !== null) {
+      const email = k.email.toLowerCase()
+      if (vorhanden.has(email) || gesehen.has(email)) {
+        findings.push({ row: k.row, level: 'warning', message: 'Gast mit dieser E-Mail existiert',
+                        reference: k.email })
         continue
       }
+      gesehen.add(email)
     }
-    await client.query(
-      `INSERT INTO guest (account_id, last_name, first_name, email, phone, birth_date,
-                          address_line1, postal_code, city, country, language)
-       VALUES ($1,$2,$3,NULLIF($4,''),NULLIF($5,''),$6::date,NULLIF($7,''),
-               NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),COALESCE(NULLIF($11,''),'de'))`,
-      [accountId, r.last_name, r.first_name ?? null, r.email ?? '', r.phone ?? '',
-       geburt, r.address_line1 ?? '', r.postal_code ?? '', r.city ?? '',
-       (r.country ?? '').toUpperCase().slice(0, 2), r.language ?? ''])
-    imported++
+    einzufuegen.push(k)
   }
-  return { imported, findings }
+  if (einzufuegen.length === 0) return { imported: 0, findings }
+
+  await client.query(
+    `INSERT INTO guest (account_id, last_name, first_name, email, phone, birth_date,
+                        address_line1, postal_code, city, country, language)
+     SELECT $1, x.last_name, x.first_name, x.email, x.phone, x.birth_date::date,
+            x.address_line1, x.postal_code, x.city, x.country, x.language
+       FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::date[],
+                    $7::text[], $8::text[], $9::text[], $10::text[], $11::text[])
+            AS x(last_name, first_name, email, phone, birth_date,
+                 address_line1, postal_code, city, country, language)`,
+    [accountId, einzufuegen.map(k => k.lastName), einzufuegen.map(k => k.firstName),
+     einzufuegen.map(k => k.email), einzufuegen.map(k => k.phone),
+     einzufuegen.map(k => k.birthDate), einzufuegen.map(k => k.addressLine1),
+     einzufuegen.map(k => k.postalCode), einzufuegen.map(k => k.city),
+     einzufuegen.map(k => k.country), einzufuegen.map(k => k.language)])
+
+  // Stabil nach Zeile sortiert, siehe importCategories.
+  findings.sort((a, b) => a.row - b.row)
+  return { imported: einzufuegen.length, findings }
 }
 
 async function importReservations(
@@ -245,12 +322,13 @@ async function importReservations(
     const naechte = eachNight(arrival, departure)
     const proNacht = Math.floor(preis / naechte.length)
     const rest = preis - proNacht * naechte.length
-    for (const [n, datum] of naechte.entries()) {
-      await client.query(
-        `INSERT INTO reservation_night (reservation_id, property_id, date, price_cent)
-         VALUES ($1,$2,$3::date,$4)`,
-        [reservierung.rows[0]!.id, propertyId, datum, proNacht + (n === 0 ? rest : 0)])
-    }
+    const preiseJeNacht = naechte.map((_, n) => proNacht + (n === 0 ? rest : 0))
+    // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
+    await client.query(
+      `INSERT INTO reservation_night (reservation_id, property_id, date, price_cent)
+       SELECT $1, $2, x.date, x.price
+         FROM unnest($3::date[], $4::bigint[]) AS x(date, price)`,
+      [reservierung.rows[0]!.id, propertyId, naechte, preiseJeNacht])
     await client.query(
       `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
        VALUES ($1,$2,$3,'guest')`,

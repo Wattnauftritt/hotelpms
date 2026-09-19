@@ -351,13 +351,13 @@ export function channelRoutes(app: FastifyInstance): void {
 
         const nights = eachNight(body.arrival, body.departure)
         const prices = await priceNights(client, ratePlanId, nights)
-        for (let i = 0; i < nights.length; i++) {
-          await client.query(
-            `INSERT INTO reservation_night
-               (reservation_id, property_id, date, rate_plan_id, price_cent)
-             VALUES ($1,$2,$3::date,$4,$5)`,
-            [reservationId, principal.propertyId, nights[i], ratePlanId ?? null, prices[i]])
-        }
+        // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
+        await client.query(
+          `INSERT INTO reservation_night
+             (reservation_id, property_id, date, rate_plan_id, price_cent)
+           SELECT $1, $2, x.date, $3, x.price
+             FROM unnest($4::date[], $5::bigint[]) AS x(date, price)`,
+          [reservationId, principal.propertyId, ratePlanId ?? null, nights, prices])
 
         // Der Gast kommt entweder als vorhandene Kennung (bereits ueber die
         // Gaeste-Schnittstelle angelegt und abgeglichen) oder als Rohdaten des
