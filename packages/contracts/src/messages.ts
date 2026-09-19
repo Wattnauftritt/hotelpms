@@ -982,6 +982,43 @@ const M = {
     de: 'Fuer die Property ist kein Tag geoeffnet.',
     en: 'No business day is open for this property.',
     tr: 'Property için açık bir gün yok.' },
+  /*
+   * Selbstverwaltung des Kunden (0040). Die Saetze richten sich an eine
+   * Hausleitung, nicht an uns -- sie sagen, was zu tun ist, nicht was
+   * intern schiefging.
+   */
+  'user.emailTaken': {
+    de: 'Diese Adresse hat schon einen Zugang. Gehört die Person zu Ihrem '
+        + 'Betrieb, ändern Sie ihre Rollen statt sie neu anzulegen.',
+    en: 'That address already has an account. If the person belongs to your '
+        + 'business, change their roles instead of creating them again.',
+    tr: 'Bu adresin zaten bir hesabı var. Kişi işletmenize aitse yeniden '
+        + 'oluşturmak yerine rollerini değiştirin.' },
+  'user.notYourself': {
+    de: 'Den eigenen Zugang können Sie hier nicht sperren oder entfernen.',
+    en: 'You cannot block or remove your own account here.',
+    tr: 'Kendi hesabınızı buradan engelleyemez veya kaldıramazsınız.' },
+  'user.accountRoleNeedsAccountRight': {
+    de: 'Diese Person hat eine Rolle für den ganzen Betrieb. Das darf nur '
+        + 'ändern, wer die Betriebseinstellungen verwaltet.',
+    en: 'This person holds a role for the whole business. Only someone who '
+        + 'manages the business settings may change that.',
+    tr: 'Bu kişinin tüm işletme için bir rolü var. Bunu yalnızca işletme '
+        + 'ayarlarını yöneten biri değiştirebilir.' },
+  'user.lastAccountAdmin': {
+    de: 'Das ist die letzte Person, die den Betrieb verwalten kann. Geben Sie '
+        + 'das Recht zuerst jemand anderem.',
+    en: 'That is the last person who can manage the business. Give that '
+        + 'right to someone else first.',
+    tr: 'Bu, işletmeyi yönetebilen son kişidir. Önce bu yetkiyi başka birine '
+        + 'verin.' },
+  'user.blocked': {
+    de: 'Diese Person ist bei Ihnen gesperrt. Erst entsperren, dann einen '
+        + 'Link schicken.',
+    en: 'This person is blocked at your business. Unblock first, then send a '
+        + 'link.',
+    tr: 'Bu kişi işletmenizde engelli. Önce engeli kaldırın, sonra bağlantı '
+        + 'gönderin.' },
   'user.wouldLockYourselfOut': {
     de: 'Damit naehmen Sie sich selbst das Recht, Rollen zu vergeben. '
       + 'Lassen Sie das jemand anderen tun.',

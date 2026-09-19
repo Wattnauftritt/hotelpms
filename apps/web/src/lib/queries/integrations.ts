@@ -154,3 +154,71 @@ export function useSetUserRoles(propertyId: number) {
     }
   })
 }
+
+/*
+ * Selbstverwaltung des Kunden (0040): einladen, Link, entsperren, Name,
+ * sperren, entfernen, Betriebsrollen. Jede Aenderung macht die Liste und
+ * `me` ungueltig -- wer sich selbst umsortiert, saehe sonst die alte
+ * Navigation.
+ */
+function nachBenutzeraenderung(qc: ReturnType<typeof useQueryClient>, propertyId: number) {
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['propertyUsers', propertyId] })
+    void qc.invalidateQueries({ queryKey: ['me'] })
+  }
+}
+
+export function useInviteUser(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { email: string; displayName: string; roleKeys: string[] }) =>
+      api.post<{ userRef: string }>(`/v1/properties/${propertyId}/users`, body),
+    onSuccess: nachBenutzeraenderung(qc, propertyId)
+  })
+}
+
+export function useUserAction(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userRef, action }: {
+      userRef: string; action: 'access-link' | 'unlock' | 'block' | 'unblock' }) =>
+      api.post<{ kind?: string; sessionsRevoked?: number }>(
+        `/v1/properties/${propertyId}/users/${userRef}/${action}`),
+    onSuccess: nachBenutzeraenderung(qc, propertyId)
+  })
+}
+
+export function useRenameUser(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userRef, displayName }: { userRef: string; displayName: string }) =>
+      api.patch(`/v1/properties/${propertyId}/users/${userRef}`, { displayName }),
+    onSuccess: nachBenutzeraenderung(qc, propertyId)
+  })
+}
+
+export function useRemoveUser(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userRef: string) =>
+      api.delete(`/v1/properties/${propertyId}/users/${userRef}`),
+    onSuccess: nachBenutzeraenderung(qc, propertyId)
+  })
+}
+
+export const useAccountRoles = (propertyId: number, enabled: boolean) =>
+  useQuery<{ roles: PropertyRole[] }>({
+    queryKey: ['accountRoles', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/account-roles`),
+    staleTime: 30 * 60_000,
+    enabled
+  })
+
+export function useSetAccountRoles(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userRef, roleKeys }: { userRef: string; roleKeys: string[] }) =>
+      api.put(`/v1/properties/${propertyId}/users/${userRef}/account-roles`, { roleKeys }),
+    onSuccess: nachBenutzeraenderung(qc, propertyId)
+  })
+}

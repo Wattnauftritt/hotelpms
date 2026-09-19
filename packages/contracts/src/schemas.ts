@@ -824,7 +824,13 @@ export const PropertyUser = Type.Object({
   status: Type.String(),
   lastLoginAt: Type.Union([Type.String(), Type.Null()]),
   roles: Type.Array(Type.Object({ key: Type.String(), name: Type.String() })),
-  permissions: Type.Array(Type.String())
+  permissions: Type.Array(Type.String()),
+  /** Gesperrt bei diesem Betrieb. Rollen stehen noch, wirken nicht (0040). */
+  blocked: Type.Boolean(),
+  lockedUntil: Type.Union([Type.String(), Type.Null()]),
+  /** Rollen fuer den ganzen Betrieb; nur mit settings:account anzufassen. */
+  accountRoles: Type.Array(Type.Object({ key: Type.String(), name: Type.String() })),
+  isSelf: Type.Boolean()
 })
 export type PropertyUser = Static<typeof PropertyUser>
 

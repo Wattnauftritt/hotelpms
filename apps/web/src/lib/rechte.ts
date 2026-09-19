@@ -22,6 +22,8 @@ import { api } from './api.js'
 export interface Konto {
   userId: number
   displayName: string
+  /** Rechte auf Betriebsebene (Inhaber, Buchhaltung ...). Haengen an keinem Haus. */
+  accountPermissions: string[]
   properties: Array<{ id: number; code: string; name: string; isTraining: boolean
                       permissions: string[] }>
 }
@@ -29,6 +31,14 @@ export interface Konto {
 export interface Hausrechte {
   /** Hat der Benutzer dieses Recht in diesem Haus? */
   darf: (permission: string) => boolean
+  /**
+   * Hat der Benutzer dieses Recht auf Betriebsebene? Die Benutzerverwaltung
+   * braucht beides: wer ein Haus fuehrt, vergibt Rollen im Haus; wer den
+   * Betrieb verwaltet, vergibt Rollen fuer den Betrieb (Inhaber,
+   * Buchhaltung) -- und nur der darf jemanden mit einer solchen Rolle
+   * sperren oder entfernen.
+   */
+  darfKonto: (permission: string) => boolean
   /** Ein Uebungshaus exportiert nicht nach draussen (C11, Dokument 13). */
   isTraining: boolean
   geladen: boolean
@@ -45,6 +55,8 @@ export function useHausrechte(propertyId: number): Hausrechte {
     // Solange nichts geladen ist, wird nichts erlaubt. Der umgekehrte Weg
     // zeigte fuer einen Moment Knoepfe, die gleich darauf verschwinden.
     darf: (permission: string) => haus?.permissions.includes(permission) ?? false,
+    darfKonto: (permission: string) =>
+      me.data?.accountPermissions.includes(permission) ?? false,
     isTraining: haus?.isTraining ?? false,
     geladen: me.isSuccess
   }

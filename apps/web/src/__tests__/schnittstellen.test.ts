@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { schnittstellenBereiche } from '../routes/Integrations.tsx'
 import { visibleScreens, resolveScreen } from '../screens.js'
 
@@ -45,5 +46,35 @@ describe('Bildschirm in der Navigation', () => {
    */
   it('faellt still zurueck, wenn das Recht fehlt', () => {
     expect(resolveScreen('integrations', ['reservation:read'])?.key).toBe('tape')
+  })
+})
+
+/**
+ * Der Kunde verwaltet sein Personal selbst (0040) -- was die Oberflaeche
+ * dabei zeigt und was nicht. Die Grenze zieht die API; hier steht, dass die
+ * Oberflaeche sie nachzeichnet, statt Knoepfe zu zeigen, die mit 403 oder
+ * 409 antworten.
+ */
+describe('Selbstverwaltung des Personals', () => {
+  const quelle = readFileSync(
+    new URL('../routes/Integrations.tsx', import.meta.url), 'utf8')
+
+  it('zeigt am eigenen Eintrag weder Sperre noch Entfernen', () => {
+    expect(quelle).toMatch(/\{!istSelbst && \(/)
+  })
+
+  it('fasst einen Inhaber nur an, wer den Betrieb verwaltet', () => {
+    // Sonst sperrt die Direktion eines Hauses den, dem der Betrieb gehoert.
+    expect(quelle).toMatch(/benutzer\.accountRoles\.length === 0 \|\| darfBetrieb/)
+  })
+
+  it('fragt vor Sperren und Entfernen mit dem Satz, der sagt, was passiert', () => {
+    expect(quelle).toContain('user.blockConfirm')
+    expect(quelle).toContain('user.removeConfirm')
+  })
+
+  it('laedt ein, statt ein Kennwort zu vergeben', () => {
+    expect(quelle).toContain('useInviteUser')
+    expect(quelle).not.toMatch(/password/i)
   })
 })
