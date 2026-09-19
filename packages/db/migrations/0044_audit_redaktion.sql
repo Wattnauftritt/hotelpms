@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- Der Audit-Trigger redigiert, statt abzuschreiben (Befund 1, Dokument 24).
+-- Der Audit-Trigger redigiert, statt abzuschreiben (Befund 1, Dokument 26).
 --
 -- Befund. Der Trigger aus Migration 0001 schreibt bei UPDATE beide Werte und
 -- bei DELETE die ganze Zeile. Die Loeschung nach Art. 17 DSGVO ist eine

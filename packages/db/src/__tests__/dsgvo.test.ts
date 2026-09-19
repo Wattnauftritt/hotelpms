@@ -5,7 +5,7 @@ import type { Pool } from '@hotelpms/db'
 
 /**
  * Was das DSGVO-Audit gefunden hat, und was es nicht wieder finden soll
- * (Dokument 24).
+ * (Dokument 26).
  *
  * Diese Tests sind der Grund, warum die Befunde 1 bis 3 nicht
  * zurueckkommen. Sie pruefen kein Schema und keine Funktionssignatur,
@@ -63,7 +63,7 @@ beforeEach(async () => {
 
 describe('Befund 1: die Loeschung schreibt keine Kopie mehr', () => {
   /**
-   * Der Kern. Vor Migration 0043 stand nach der Loeschung im Protokoll, was
+   * Der Kern. Vor Migration 0044 stand nach der Loeschung im Protokoll, was
    * die Loeschung gerade entfernt hatte -- Name, Geburtsdatum, Anschrift --
    * und die Anwendungsrolle konnte es nicht entfernen.
    */

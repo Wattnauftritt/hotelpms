@@ -25,7 +25,7 @@ export async function ensureSchema(): Promise<void> {
  * sondern eine Regel: welche Felder nicht ins Protokoll gehoeren. Geleert
  * schriebe der Trigger wieder alles mit, und jeder Test dazu waere gruen --
  * gegen eine Datenbank, in der die Regel gar nicht mehr existiert
- * (Migration 0043).
+ * (Migration 0044).
  */
 export async function truncateAll(): Promise<void> {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL_OWNER })

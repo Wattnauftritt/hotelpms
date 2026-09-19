@@ -55,11 +55,14 @@ Unveränderlichkeit des Protokolls und Löschpflicht am Profil.
 | 8 | AVV, TOM, Verzeichnis, DSFA und Meldeprozess fehlen | mittel | Art. 28, 30, 32, 33, 35 |
 | 9 | `idempotency_key` hält vollständige Antwortkörper | gering | Art. 5, 32 |
 | 10 | Kennworthashes und Geheimnisse im Protokoll | **schwer** | Art. 32 |
+| 11 | Gastnamen in der Adresszeile des Protokolls | mittel | Art. 5 Abs. 1 lit. c, 17 |
 
-Befund 10 stand beim ersten Durchgang **nicht** in dieser Tabelle. Er kam erst
-beim Beheben von Befund 1 zum Vorschein, als die Redaktionsliste entstand und
-die Frage aufkam, welche Felder der Trigger sonst noch mitschreibt. Er steht
-unten als eigener Abschnitt.
+Befund 10 und 11 standen beim ersten Durchgang **nicht** in dieser Tabelle.
+Befund 10 kam beim Beheben von Befund 1 zum Vorschein, als die
+Redaktionsliste entstand und die Frage aufkam, welche Felder der Trigger
+sonst noch mitschreibt. Befund 11 stammt aus der Sicherheitsprüfung in
+Dokument 24 und betrifft dieselbe Regel; ich hatte die Frage gestellt und
+nicht zu Ende verfolgt. Beide stehen unten als eigene Abschnitte.
 
 ---
 
@@ -140,7 +143,7 @@ Empfohlen ist Weg 1. Er kostet eine Migration und eine Zeile je zu schützendem
 Feld, und er ist die einzige Variante, die nicht die Eigenschaft opfert, wegen
 der das Protokoll existiert.
 
-> **Behoben** — Migration 0043. Weg 1: die Tabelle `audit_redaction` nennt
+> **Behoben** — Migration 0044. Weg 1: die Tabelle `audit_redaction` nennt
 > Feld für Feld, was nicht ins Protokoll gehört, und der Trigger ersetzt den
 > Wert durch `[redigiert]`. Der Schlüssel bleibt stehen.
 >
@@ -183,7 +186,7 @@ denkt.
 unsichtbar, was richtig ist. Der Schreibpfad läuft über `SECURITY DEFINER` und
 ist davon nicht betroffen.
 
-> **Behoben** — Migration 0044. Dazu eine eigene `WITH CHECK`-Richtlinie für
+> **Behoben** — Migration 0045. Dazu eine eigene `WITH CHECK`-Richtlinie für
 > den einen Pfad, der unmittelbar schreibt: den Vermerk über einen
 > Ausweisabruf. Härtegrad 1 bleibt unberührt — ein Test weist nach, dass die
 > Anwendungsrolle weiterhin nichts ändern oder löschen kann.
@@ -205,7 +208,7 @@ handels- und steuerrechtlichen Frist entspricht und damit nicht gesondert
 verteidigt werden muss. Dann ein Gegenstück zu `audit_log_ensure_partitions`,
 das ältere Partitionen abhängt und löscht, im selben Job.
 
-> **Behoben** — Migration 0044 und `dropOldAuditPartitions` im Nachtlauf. Zehn
+> **Behoben** — Migration 0045 und `dropOldAuditPartitions` im Nachtlauf. Zehn
 > Jahre; die Zahl steht in der Datenbankfunktion und nicht im Job, weil sie
 > zur Aufbewahrungsregel gehört und nicht zur Ablaufsteuerung. Die
 > Auffangpartition bleibt unangetastet — sie ist der Alarm und kein Bestand.
@@ -283,7 +286,7 @@ einen Durchlauf.
 `NULL` setzen. Die Zeile selbst bleibt — dass zugestimmt wurde und wann, ist der
 Nachweis, um den es geht; das Bild der Unterschrift ist es nicht.
 
-> **Behoben** — Migration 0045, und zwar an der Wurzel. Der Satz zu löschender
+> **Behoben** — Migration 0046, und zwar an der Wurzel. Der Satz zu löschender
 > Tabellen stand an **drei** Stellen: zweimal in der Route und einmal im
 > Nachtlauf. Genau deshalb hat die Einwilligung gefehlt — wer eine Tabelle
 > ergänzt, muss an drei Orte denken. Jetzt gibt es `guest_erase_one()`, und
@@ -342,7 +345,7 @@ stehen. Die Löschroutine stößt die Redaktion nicht an.
 **Was zu tun ist.** `guest_erasure_complete()` redigiert die Post dieses Gastes
 mit, unabhängig vom Alter. Dieselbe Funktion, anderer Auslöser.
 
-> **Behoben** — Migration 0045, in `guest_erase_one()`, mit demselben Marker
+> **Behoben** — Migration 0046, in `guest_erase_one()`, mit demselben Marker
 > wie `email_redact_old`: beide Wege hinterlassen dasselbe Ergebnis.
 
 ---
@@ -425,7 +428,7 @@ auszuliefern.
 > Der Satz oben stand da, weil ich den Wiedergabepfad nicht gelesen hatte,
 > bevor ich die Abhilfe formulierte.
 >
-> Umgesetzt ist deshalb der erste Weg: Migration 0046 gibt der Tabelle eine
+> Umgesetzt ist deshalb der erste Weg: Migration 0047 gibt der Tabelle eine
 > `account_id` und eine Zeilenrichtlinie. Eine gezielte Löschung je Gast gibt
 > es bewusst nicht — benutzt wird die Idempotenz von den Zahlungs- und
 > Kassenrouten, deren Rückgaben keinen Gast nennen, und ein Durchsuchen von
@@ -459,7 +462,7 @@ Lesezugriff auf das Protokoll bekäme die vollständige Historie aller
 Kennworthashes des Systems — auch die von Konten, deren aktuelles Kennwort
 längst ein anderes ist.
 
-> **Behoben** — dieselbe Redaktionsliste, Migration 0043. Alle drei Felder
+> **Behoben** — dieselbe Redaktionsliste, Migration 0044. Alle drei Felder
 > stehen darauf, der Altbestand ist mitredigiert. Ein Test weist nach, dass
 > weder ein alter noch ein neuer Hash im Protokoll auftaucht.
 >
@@ -467,6 +470,45 @@ längst ein anderes ist.
 > hatte den Trigger gelesen und die **Gast**tabellen geprüft. Welche Tabellen
 > **sonst noch** am Trigger hängen, ist die Frage, die eine Stunde früher
 > hätte kommen müssen.
+
+---
+
+## 9b. Gastnamen in der Adresszeile des Protokolls — *nachgewiesen*
+
+Auch dieser Befund stand nicht im ersten Durchgang. Gefunden hat ihn nicht
+dieses Audit, sondern die Sicherheitsprüfung in Dokument 24, dort als Befund
+B2. Er gehört hierher, weil er dieselbe Regel bricht wie Befund 1 — und weil
+er zeigt, wo meine eigene Prüfung zu früh aufgehört hat.
+
+`pino` ist mit einer Redaktionsliste eingerichtet, und die deckt Kopfzeilen
+und Rümpfe ab. Die **Adresszeile** ist keines von beiden: sie ist ein Feld,
+das Fastify selbst erzeugt, und `redact` erreicht sie nicht.
+
+```
+"url":"/v1/guests?q=Petersen&limit=20"
+```
+
+Damit schreibt jede Gästesuche den gesuchten Nachnamen ins Protokoll — gegen
+die eigene Regel „Keine Gastdaten in Protokollen", und die Anonymisierung
+erreicht ihn dort nicht mehr.
+
+**Ich hatte die Frage gestellt und nicht zu Ende verfolgt.** Beim Prüfen der
+Redaktionsliste stand die Überlegung im Raum, ob die URL mitprotokolliert
+wird; ich bin weitergegangen, ohne sie zu beantworten. Das ist die Lehre
+dieses Befundes, nicht der Befund selbst: eine halb gestellte Frage ist in
+einem Audit dasselbe wie eine nicht gestellte.
+
+> **Behoben** — ein eigener Serialisierer für `req` schneidet die
+> Abfragezeichenfolge auf ihre Parameternamen zurück:
+>
+> ```
+> "url":"/v1/guests?q=[redigiert]&limit=[redigiert]"
+> ```
+>
+> Die Namen bleiben stehen, nur die Werte fallen. An einem Protokoll ist
+> damit ablesbar, **wonach** gesucht wurde, ohne dass dort steht, **wer**
+> gesucht wurde — ein Protokoll ohne Pfad wäre beim Suchen eines Fehlers
+> wertlos.
 
 ---
 
@@ -517,16 +559,17 @@ kommt. Bis auf Befund 2 vollständig.
 
 | Nr. | Befund | Behoben durch |
 |---|---|---|
-| 1 | Die Löschung schreibt ihre eigene Kopie | Migration 0043, `audit_redaction` |
-| 2 | Keine Zeilenrichtlinie auf `audit_log` | Migration 0044 |
-| 3 | Keine Aufbewahrungsgrenze | Migration 0044, `dropOldAuditPartitions` |
+| 1 | Die Löschung schreibt ihre eigene Kopie | Migration 0044, `audit_redaction` |
+| 2 | Keine Zeilenrichtlinie auf `audit_log` | Migration 0045 |
+| 3 | Keine Aufbewahrungsgrenze | Migration 0045, `dropOldAuditPartitions` |
 | 4 | Freitext ohne Art.-9-Schutz | Redaktionsliste, Hinweis an Route und Maske |
-| 5 | Löschung erreicht die Einwilligung nicht | Migration 0045, `guest_erase_one()` |
+| 5 | Löschung erreicht die Einwilligung nicht | Migration 0046, `guest_erase_one()` |
 | 6 | Auskunft nach Art. 15 unvollständig | Gastpost, Einwilligungen, lit. a bis h |
-| 7 | Gastpost überlebt die Löschung | Migration 0045 |
+| 7 | Gastpost überlebt die Löschung | Migration 0046 |
 | 8 | Dokumente fehlen | [`datenschutz/`](datenschutz/) |
-| 9 | `idempotency_key` ohne Grenze | Migration 0046 |
-| 10 | Geheimnisse im Protokoll | Migration 0043 |
+| 9 | `idempotency_key` ohne Grenze | Migration 0047 |
+| 10 | Geheimnisse im Protokoll | Migration 0044 |
+| 11 | Gastnamen in der Adresszeile | Serialisierer in `app.ts` |
 
 Zwölf Regressionstests in `packages/db/src/__tests__/dsgvo.test.ts` halten die
 Befunde 1, 2, 3, 5, 7 und 9 fest — die, die sich als Verhalten prüfen lassen.

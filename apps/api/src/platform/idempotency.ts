@@ -42,7 +42,7 @@ export async function beginIdempotent(
 
   // Der Mandant gehoert mit in die Zeile: ohne ihn greift die
   // Zeilenrichtlinie nicht, und die Antwort laege ausserhalb der Grenze,
-  // die fuer jede andere Tabelle gilt (Befund 9, Dokument 24).
+  // die fuer jede andere Tabelle gilt (Befund 9, Dokument 26).
   await client.query(
     `INSERT INTO idempotency_key (client_key, key, request_hash, account_id)
      VALUES ($1, $2, $3, $4)`,

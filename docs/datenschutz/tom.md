@@ -73,8 +73,8 @@ Anwendung liegt, wird irgendwann an einer Stelle vergessen.
 
 Das Protokoll hält **welches Feld** sich geändert hat, nicht seinen Wert,
 soweit das Feld personenbezogen ist oder ein Geheimnis trägt
-(`audit_redaction`, Migration 0043). Der Grund steht in
-[`../24-dsgvo-audit.md`](../24-dsgvo-audit.md), Befund 1: sonst schriebe die
+(`audit_redaction`, Migration 0044). Der Grund steht in
+[`../26-dsgvo-audit.md`](../26-dsgvo-audit.md), Befund 1: sonst schriebe die
 Löschung ihre eigene, unlöschbare Kopie.
 
 ### 2.2 Weitergabekontrolle

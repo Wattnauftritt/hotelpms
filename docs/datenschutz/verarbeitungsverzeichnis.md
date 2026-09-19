@@ -54,7 +54,7 @@ Rechnungsadresse.
 > Feld dafür. Die Freitextfelder `guest_property_note.note` und
 > `reservation.notes` können sie faktisch aufnehmen; beide tragen einen
 > Hinweis, und beide sind von der Protokollierung ausgenommen
-> (`audit_redaction`, Migration 0043). Dass der Betrieb sie so führt, ist Teil
+> (`audit_redaction`, Migration 0044). Dass der Betrieb sie so führt, ist Teil
 > der Weisung nach Art. 29 und gehört in die Einweisung der Rezeption.
 
 ## 5. Empfänger

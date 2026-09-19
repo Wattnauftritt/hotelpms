@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- `idempotency_key` kommt in den Mandantenbereich (Befund 9, Dokument 24).
+-- `idempotency_key` kommt in den Mandantenbereich (Befund 9, Dokument 26).
 --
 -- Befund. Die Tabelle speichert `response_body` -- die vollstaendige Antwort
 -- der API -- ohne Zeilenrichtlinie, mit dem Client als Schluessel und nicht

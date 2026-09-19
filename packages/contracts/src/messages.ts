@@ -1065,7 +1065,7 @@ const M = {
   //
   // Die Angaben nach Abs. 1 lit. a bis h. Sie gehoeren als fester Kopf an
   // jede Auskunft: Daten allein sind keine Auskunft im Sinne der Norm
-  // (Befund 6, Dokument 24). Sie stehen hier und nicht im Code, weil ein
+  // (Befund 6, Dokument 26). Sie stehen hier und nicht im Code, weil ein
   // Gast sie in seiner Sprache lesen soll.
 
   'zwecke.beherbergung': {

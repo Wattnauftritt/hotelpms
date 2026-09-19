@@ -13,7 +13,7 @@ export async function ensureAuditPartitions(client: PoolClient): Promise<number>
 
 /**
  * Protokollpartitionen jenseits der Aufbewahrungsfrist entfernen
- * (Befund 3, Dokument 24).
+ * (Befund 3, Dokument 26).
  *
  * Das Gegenstueck zu `ensureAuditPartitions`. Ohne es wuchs das Protokoll
  * unbegrenzt -- zwoelf Monate Vorlauf, aber nichts, was je wieder

@@ -87,7 +87,7 @@ async function platformMaintenance(): Promise<void> {
     // Mandanten, das Aufraeumen laeuft deshalb hier und nicht je Haus.
     //
     // **Mit der Eigentuemerrolle**, nicht mehr mit der Anwendungsrolle: seit
-    // Migration 0046 traegt `idempotency_key` eine Zeilenrichtlinie, und der
+    // Migration 0047 traegt `idempotency_key` eine Zeilenrichtlinie, und der
     // leere Systemkontext saehe unter ihr keine einzige Zeile. Der Job haette
     // weiter gemeldet, er habe aufgeraeumt, und nichts getan -- genau die
     // Art Fehler, die CLAUDE.md zweimal als still passiert nennt.

@@ -57,7 +57,7 @@ Die Fragen, die der Verantwortliche stellen wird, und wo die Antwort steht:
 | Welche Maschinenzugänge waren aktiv? | `oauth_access_token`, `last_used_at` |
 
 Das Protokoll hält **welches Feld** angefasst wurde, nicht seinen Wert
-(Migration 0043). Für die Meldung genügt das: gefragt ist die Kategorie der
+(Migration 0044). Für die Meldung genügt das: gefragt ist die Kategorie der
 Daten, nicht ihr Inhalt.
 
 ## Schritt 3 — an den Verantwortlichen melden

@@ -2,7 +2,7 @@
 
 Was hier liegt, ist der organisatorische Teil — der, der sich nicht
 programmieren lässt. Er ist aus dem Audit
-[`../24-dsgvo-audit.md`](../24-dsgvo-audit.md), Befund 8, entstanden.
+[`../26-dsgvo-audit.md`](../26-dsgvo-audit.md), Befund 8, entstanden.
 
 | Dokument | Grundlage | Zustand |
 |---|---|---|

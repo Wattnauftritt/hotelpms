@@ -58,7 +58,7 @@ Zwei oder mehr erfüllte Kriterien sprechen für eine DSFA.
 
 Eine DSFA ist keine Strafe. Sie ist die Gelegenheit, aufzuschreiben, was
 ohnehin gilt — und der größte Teil davon steht bereits in
-[`tom.md`](tom.md) und [`../24-dsgvo-audit.md`](../24-dsgvo-audit.md).
+[`tom.md`](tom.md) und [`../26-dsgvo-audit.md`](../26-dsgvo-audit.md).
 
 ## 5. Was in die DSFA gehört
 

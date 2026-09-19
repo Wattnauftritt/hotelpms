@@ -347,7 +347,7 @@ export function guestRoutes(app: FastifyInstance): void {
              FROM registration WHERE guest_id = $1 ORDER BY arrival DESC`, [id])
 
         // Gastpost. Sie ist unstreitig seine Auskunft: Adresse, Betreff und
-        // Text dessen, was an ihn hinausging (Befund 6, Dokument 24). Redigierte
+        // Text dessen, was an ihn hinausging (Befund 6, Dokument 26). Redigierte
         // Zustellungen sind mit aufgefuehrt, aber ohne Inhalt -- dass etwas
         // geschickt wurde, bleibt Teil der Antwort.
         const mails = await client.query(
@@ -479,7 +479,7 @@ export function guestRoutes(app: FastifyInstance): void {
 
         // Eine Stelle, nicht drei. Welche Tabellen zu einem Gast gehoeren,
         // stand frueher hier, im aufgeschobenen Zweig und im Nachtlauf -- und
-        // genau deshalb hat die Einwilligung gefehlt (Befund 5, Dokument 24).
+        // genau deshalb hat die Einwilligung gefehlt (Befund 5, Dokument 26).
         await client.query(`SELECT guest_erase_one($1)`, [id])
 
         return { guestRef, status: 'anonymized', alreadyDone: false }
@@ -510,7 +510,7 @@ export function guestRoutes(app: FastifyInstance): void {
         // Der Hinweis geht mit der Antwort hinaus und nicht nur in die
         // Beschreibung: eine Hausnotiz hat keine Maske, sie entsteht ueber
         // die Schnittstelle. Wer sie schreibt, liest kein Handbuch
-        // (Befund 4, Dokument 24).
+        // (Befund 4, Dokument 26).
         return {
           guestRef, propertyId,
           hinweis: hinweisText('hint.noteNoHealthData'),

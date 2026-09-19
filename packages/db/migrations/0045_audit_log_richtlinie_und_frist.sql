@@ -1,6 +1,6 @@
 -- ---------------------------------------------------------------------------
 -- `audit_log` bekommt eine Zeilenrichtlinie und eine Frist
--- (Befund 2 und 3, Dokument 24).
+-- (Befund 2 und 3, Dokument 26).
 --
 -- Befund 2. Von den Tabellen mit Mandantenbezug trug `audit_log` als einzige
 -- keine Richtlinie, bei gleichzeitigem SELECT-Recht fuer hotelpms_app. Sie
