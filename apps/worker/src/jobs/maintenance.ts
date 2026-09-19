@@ -180,7 +180,15 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
     `DELETE FROM user_session WHERE absolute_expires_at < now() - interval '7 days'`)
   const i = await client.query(`DELETE FROM idempotency_key WHERE expires_at < now()`)
   const t = await client.query<{ n: number }>(`SELECT auth_token_cleanup() AS n`)
-  return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0)
+  /*
+   * Fehlversuche je Herkunft (H3, Dokument 25). Sieben Tage, nicht die
+   * Sperrdauer: der Zaehler soll einen zweiten Anlauf am naechsten Tag noch
+   * sehen. Ohne dieses Aufraeumen waechst die Tabelle mit jeder Adresse, von
+   * der je ein Tippfehler kam, und das ist im Mobilnetz jede zweite.
+   */
+  const f = await client.query(
+    `DELETE FROM login_failure WHERE last_failure_at < now() - interval '7 days'`)
+  return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
 }
 
 /**

@@ -72,7 +72,16 @@ export function userRoutes(app: FastifyInstance): void {
                   COALESCE(p.rechte, '{}'::text[]) AS permissions,
                   EXISTS (SELECT 1 FROM account_user_block b
                            WHERE b.account_id = $2 AND b.user_id = u.id) AS blocked,
-                  CASE WHEN u.locked_until > now() THEN u.locked_until END AS "lockedUntil",
+                  -- Die Sperre am Konto **und** die an einer Herkunft (H3,
+                  -- Dokument 25). Gesperrt wird seit dem Befund je Paar aus
+                  -- Konto und Herkunft; stuende hier nur die am Konto, sagte
+                  -- die Liste "nicht gesperrt", waehrend die Rezeption vor
+                  -- einem Bildschirm sitzt, der sie nicht hereinlaesst.
+                  GREATEST(
+                    CASE WHEN u.locked_until > now() THEN u.locked_until END,
+                    (SELECT max(f.locked_until) FROM login_failure f
+                      WHERE f.user_id = u.id AND f.locked_until > now())
+                  ) AS "lockedUntil",
                   COALESCE(a.rollen, '[]'::jsonb) AS "accountRoles",
                   u.id = $3 AS "isSelf"
              FROM app_user u

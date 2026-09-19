@@ -159,8 +159,9 @@ async function ratenplanMitBuffet(reservationId: number, preisJeNacht = 1_200): 
      VALUES ($1,$2,'BB','Uebernachtung mit Fruehstueck') RETURNING id`,
     [fx.propertyId, categoryId])
   await owner.query(
-    `INSERT INTO rate_plan_product (rate_plan_id, product_id) VALUES ($1,$2)`,
-    [rp.rows[0]!.id, p.rows[0]!.id])
+    `INSERT INTO rate_plan_product (rate_plan_id, product_id, property_id)
+     VALUES ($1,$2,$3)`,
+    [rp.rows[0]!.id, p.rows[0]!.id, fx.propertyId])
   await owner.query(`UPDATE reservation SET rate_plan_id = $2 WHERE id = $1`,
     [reservationId, rp.rows[0]!.id])
 }

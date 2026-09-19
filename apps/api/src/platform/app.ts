@@ -25,46 +25,63 @@ export interface Server {
   config: Config
 }
 
-export async function buildServer(overrides: { pool?: Pool } = {}): Promise<Server> {
+export async function buildServer(
+  overrides: { pool?: Pool; logStream?: NodeJS.WritableStream } = {}
+): Promise<Server> {
   const config = loadConfig()
   const pool = overrides.pool ?? createPool({ kind: 'app', max: 10, applicationName: 'hotelpms-api' })
 
+  /*
+   * Ein Protokollziel, das der Aufrufer vorgibt. Nur ein Test setzt es, und
+   * er braucht es: dass in der Adresszeile kein Gastname landet, zeigt sich
+   * nur am **geschriebenen** Protokoll. Der Serialisierer allein laesst sich
+   * pruefen, ohne dass bewiesen ist, dass pino ihn auch benutzt -- und genau
+   * dort lag der Befund, denn die Redaktionsliste war vollstaendig und die
+   * Regel trotzdem gebrochen (Befund B2, Dokument 25; Befund 3, Dokument 26).
+   *
+   * Die Stufe steht dabei fest auf `info`: mit `silent` aus der Umgebung
+   * schriebe pino nichts, und der Test pruefte eine leere Senke gegen sich
+   * selbst.
+   */
+  const logOptions = {
+    level: overrides.logStream === undefined ? config.logLevel : 'info',
+    // Gaestedaten gehoeren nicht ins Protokoll (C8, Dokument 13).
+    redact: {
+      paths: ['req.headers.authorization', 'req.headers.cookie',
+              'req.body', 'res.body', '*.password', '*.idDocumentNumber'],
+      remove: true
+    },
+    /*
+     * Die Adresszeile traegt Gastdaten, und `redact` erreicht sie nicht.
+     *
+     * `GET /v1/guests?q=Petersen` schrieb den Nachnamen eines Gastes ins
+     * Protokoll -- gegen die eigene Regel, und die Anonymisierung
+     * erreicht ihn dort nicht mehr. Die Redaktionsliste deckt Kopfzeilen
+     * und Ruempfe ab; die URL ist keines von beiden, sondern ein Feld,
+     * das Fastify selbst erzeugt.
+     *
+     * Die Namen der Parameter bleiben stehen, nur ihre Werte fallen: an
+     * einem Protokoll ist ablesbar, **wonach** gesucht wurde, ohne dass
+     * dort steht, **wer** gesucht wurde. Ein Protokoll ohne Pfad waere
+     * beim Suchen eines Fehlers wertlos.
+     */
+    serializers: {
+      req (req: { method: string; url: string; id: string }) {
+        const schnitt = req.url.indexOf('?')
+        const url = schnitt < 0 ? req.url
+          : req.url.slice(0, schnitt) + '?' + [...new URLSearchParams(
+              req.url.slice(schnitt + 1)).keys()]
+              .map(k => `${k}=[redigiert]`).join('&')
+        return { id: req.id, method: req.method, url }
+      }
+    },
+    ...(overrides.logStream === undefined ? {} : { stream: overrides.logStream })
+  }
+
   const app = Fastify({
-    logger: config.logLevel === 'silent'
+    logger: config.logLevel === 'silent' && overrides.logStream === undefined
       ? false
-      : {
-          level: config.logLevel,
-          // Gaestedaten gehoeren nicht ins Protokoll (C8, Dokument 13).
-          redact: {
-            paths: ['req.headers.authorization', 'req.headers.cookie',
-                    'req.body', 'res.body', '*.password', '*.idDocumentNumber'],
-            remove: true
-          },
-          /*
-           * Die Adresszeile traegt Gastdaten, und `redact` erreicht sie nicht.
-           *
-           * `GET /v1/guests?q=Petersen` schrieb den Nachnamen eines Gastes ins
-           * Protokoll -- gegen die eigene Regel, und die Anonymisierung
-           * erreicht ihn dort nicht mehr. Die Redaktionsliste deckt Kopfzeilen
-           * und Ruempfe ab; die URL ist keines von beiden, sondern ein Feld,
-           * das Fastify selbst erzeugt.
-           *
-           * Die Namen der Parameter bleiben stehen, nur ihre Werte fallen: an
-           * einem Protokoll ist ablesbar, **wonach** gesucht wurde, ohne dass
-           * dort steht, **wer** gesucht wurde. Ein Protokoll ohne Pfad waere
-           * beim Suchen eines Fehlers wertlos.
-           */
-          serializers: {
-            req (req: { method: string; url: string; id: string }) {
-              const schnitt = req.url.indexOf('?')
-              const url = schnitt < 0 ? req.url
-                : req.url.slice(0, schnitt) + '?' + [...new URLSearchParams(
-                    req.url.slice(schnitt + 1)).keys()]
-                    .map(k => `${k}=[redigiert]`).join('&')
-              return { id: req.id, method: req.method, url }
-            }
-          }
-        },
+      : logOptions,
     genReqId: () => crypto.randomUUID(),
     trustProxy: true,
     bodyLimit: 1_048_576

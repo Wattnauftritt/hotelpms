@@ -31,7 +31,22 @@ const SITZUNG_UNTAETIG_STUNDEN = 12
 const SITZUNG_ABSOLUT_STUNDEN = 24
 const COOKIE = 'hp_session'
 
-/** Zehn Fehlversuche, dann fünfzehn Minuten Sperre. */
+/**
+ * Zehn Fehlversuche, dann fünfzehn Minuten Sperre — **je Paar aus Konto und
+ * Herkunft**, nicht je Konto (H3, Dokument 25).
+ *
+ * Vorher galt die Sperre dem Konto, und damit war sie selbst eine Waffe: wer
+ * die Dienstadresse einer Mitarbeiterin kannte, konnte sie von außen
+ * aussperren, ohne je ein Kennwort zu treffen. Die Abwägung dahinter war in
+ * ihrer Richtung richtig (ausgesperrt zu sein ist der größere Schaden), nur
+ * einseitig — bei der PIN-Sperre eine Ebene tiefer war genau diese Falle
+ * gesehen und vermieden worden.
+ *
+ * Je Paar heißt: wer sich am Tresen vertippt, sperrt seinen Arbeitsplatz;
+ * die Kollegin am Nebenplatz und das Mobiltelefon der Leitung kommen weiter
+ * herein. Ein Angreifer bekommt weiter zehn Versuche je Adresse, und dahinter
+ * steht die Ratenbegrenzung je Herkunft, die Anmeldungen ausdrücklich mitzählt.
+ */
 const MAX_FEHLVERSUCHE = 10
 const SPERRE_MINUTEN = 15
 
@@ -92,15 +107,24 @@ export function authRoutes(app: FastifyInstance): void {
         throw Errors.validation({ email: ['field.required'], password: ['field.required'] })
       }
 
+      const herkunft = req.ip
       const { rows } = await req.pool.query<{
         id: number; password_hash: string | null; status: string
-        failed_login_count: number; locked_until: string | null }>(
-        `SELECT id, password_hash, status, failed_login_count, locked_until
-           FROM app_user WHERE lower(email) = lower($1)`, [email])
+        locked_until: string | null; herkunft_gesperrt_bis: string | null }>(
+        `SELECT u.id, u.password_hash, u.status, u.locked_until::text,
+                f.locked_until::text AS herkunft_gesperrt_bis
+           FROM app_user u
+           LEFT JOIN login_failure f ON f.user_id = u.id AND f.origin = $2
+          WHERE lower(u.email) = lower($1)`, [email, herkunft])
       const benutzer = rows[0]
 
-      if (benutzer?.locked_until !== null && benutzer?.locked_until !== undefined
-          && Date.parse(benutzer.locked_until) > Date.now()) {
+      // Zwei Sperren: die eigene Herkunft nach zu vielen Fehlversuchen von
+      // dort, und die am Konto, die nur noch von Hand gesetzt wird. Die
+      // zweite bleibt stehen, weil die Aufsicht ein Konto stilllegen können
+      // muss, ohne auf eine Herkunft zu zeigen.
+      const gesperrtBis = benutzer?.herkunft_gesperrt_bis ?? benutzer?.locked_until
+      if (gesperrtBis !== null && gesperrtBis !== undefined
+          && Date.parse(gesperrtBis) > Date.now()) {
         // Auch hier keine genaue Auskunft: die Sperre selbst ist schon eine.
         throw Errors.unauthorized('auth.tooManyAttempts')
       }
@@ -110,13 +134,23 @@ export function authRoutes(app: FastifyInstance): void {
 
       if (!erlaubt) {
         if (benutzer !== undefined) {
+          /*
+           * Der Zähler am Konto läuft weiter mit, er sperrt nur nicht mehr:
+           * die Aufsicht sieht daran, dass jemand ein Konto durchprobiert,
+           * auch wenn jede einzelne Herkunft unter ihrer Grenze bleibt.
+           */
           await req.pool.query(
-            `UPDATE app_user
-                SET failed_login_count = failed_login_count + 1,
-                    locked_until = CASE WHEN failed_login_count + 1 >= $2
-                                        THEN now() + ($3 || ' minutes')::interval END
-              WHERE id = $1`,
-            [benutzer.id, MAX_FEHLVERSUCHE, SPERRE_MINUTEN])
+            `INSERT INTO login_failure (user_id, origin, failed_count, locked_until)
+             VALUES ($1, $2, 1, NULL)
+             ON CONFLICT (user_id, origin) DO UPDATE
+                SET failed_count = login_failure.failed_count + 1,
+                    last_failure_at = now(),
+                    locked_until = CASE WHEN login_failure.failed_count + 1 >= $3
+                                        THEN now() + ($4 || ' minutes')::interval END`,
+            [benutzer.id, herkunft, MAX_FEHLVERSUCHE, SPERRE_MINUTEN])
+          await req.pool.query(
+            `UPDATE app_user SET failed_login_count = failed_login_count + 1
+              WHERE id = $1`, [benutzer.id])
         }
         // Eine Meldung für alle Fälle: falsche Adresse, falsches Kennwort,
         // gesperrtes Konto. Wer unterscheidet, verrät, welche Adressen es gibt.
@@ -134,10 +168,35 @@ export function authRoutes(app: FastifyInstance): void {
       await req.pool.query(
         `UPDATE app_user SET failed_login_count = 0, locked_until = NULL,
                              last_login_at = now() WHERE id = $1`, [benutzer.id])
+      // Nur diese Herkunft, nicht alle: sonst setzte jede erfolgreiche
+      // Anmeldung den Zaehler des Angreifers an seiner eigenen Adresse
+      // zurueck, und der bekaeme nach jedem Arbeitsbeginn zehn neue Versuche.
+      await req.pool.query(
+        `DELETE FROM login_failure WHERE user_id = $1 AND origin = $2`,
+        [benutzer.id, herkunft])
 
       reply.setCookie(COOKIE, sessionId, {
         httpOnly: true,                       // kein Zugriff aus JavaScript
-        sameSite: 'lax',                      // möglich, weil eine Herkunft
+        /*
+         * `strict`, nicht `lax` (H6, Dokument 25).
+         *
+         * `lax` schickt das Cookie bei einer **Navigation der obersten
+         * Ebene** mit — ein `window.open`, ein Meta-Refresh, ein angeklickter
+         * Link. Damit konnte eine fremde Seite `GET /v1/guests/:ref/
+         * id-document` auslösen, und diese Route schreibt: jeder Abruf eines
+         * Ausweismerkmals wird protokolliert. Lesen konnte die fremde Seite
+         * die Antwort nicht — es war kein Datenabfluss —, aber sie konnte
+         * einen Prüfeintrag erzeugen, der aussagt, das Opfer habe die
+         * Ausweisnummer eines Gastes gelesen. Getroffen hätte das
+         * ausgerechnet die Eigenschaft, für die es diesen Eintrag gibt: seine
+         * Beweiskraft.
+         *
+         * Der Preis ist gering, weil die Anwendung **eine** Herkunft ist und
+         * von außen niemand auf sie verlinkt: es gibt keinen Zugang, bei dem
+         * ein Klick von einer anderen Seite in einer angemeldeten Sitzung
+         * landen soll.
+         */
+        sameSite: 'strict',
         secure: config.nodeEnv === 'production',
         path: '/',
         maxAge: SITZUNG_ABSOLUT_STUNDEN * 3600
@@ -511,6 +570,11 @@ export function authRoutes(app: FastifyInstance): void {
                   locked_until = NULL,
                   updated_at = now()
             WHERE id = $1`, [userId, await hashPassword(password)])
+
+        // Und die Sperren je Herkunft, aus demselben Grund (H3, Dokument 25):
+        // wer sich ausgesperrt hat, sitzt beim Zuruecksetzen an demselben
+        // Rechner, von dem aus er sich vertippt hat.
+        await client.query(`DELETE FROM login_failure WHERE user_id = $1`, [userId])
 
         /*
          * Alle Sitzungen beenden. Wer sein Kennwort zuruecksetzt, tut das oft

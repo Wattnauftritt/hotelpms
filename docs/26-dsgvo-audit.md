@@ -61,7 +61,7 @@ Befund 10 und 11 standen beim ersten Durchgang **nicht** in dieser Tabelle.
 Befund 10 kam beim Beheben von Befund 1 zum Vorschein, als die
 Redaktionsliste entstand und die Frage aufkam, welche Felder der Trigger
 sonst noch mitschreibt. Befund 11 stammt aus der Sicherheitsprüfung in
-Dokument 24 und betrifft dieselbe Regel; ich hatte die Frage gestellt und
+Dokument 25 und betrifft dieselbe Regel; ich hatte die Frage gestellt und
 nicht zu Ende verfolgt. Beide stehen unten als eigene Abschnitte.
 
 ---
@@ -476,7 +476,7 @@ längst ein anderes ist.
 ## 9b. Gastnamen in der Adresszeile des Protokolls — *nachgewiesen*
 
 Auch dieser Befund stand nicht im ersten Durchgang. Gefunden hat ihn nicht
-dieses Audit, sondern die Sicherheitsprüfung in Dokument 24, dort als Befund
+dieses Audit, sondern die Sicherheitsprüfung in Dokument 25, dort als Befund
 B2. Er gehört hierher, weil er dieselbe Regel bricht wie Befund 1 — und weil
 er zeigt, wo meine eigene Prüfung zu früh aufgehört hat.
 
