@@ -187,14 +187,36 @@ END $$;
 -- Bewusst ein UPDATE und kein DELETE: die Zeile bleibt, ihr Wert faellt. Wer
 -- wann welches Feld geaendert hat, bleibt damit nachweisbar. Die
 -- Unveraenderlichkeit gegenueber der Anwendung ist davon unberuehrt.
+--
+-- **Nachgebessert am 19.09.2026, bevor die Migration je auf einer gefuellten
+-- Datenbank lief.** Die erste Fassung endete auf der Produktivmaschine mit
+-- "Tabelle audit_log_2026_09 ist unveraenderlich (GoBD)": trg_append_only
+-- aus 0001 weist jedes UPDATE ab, unabhaengig von der Rolle, und er haengt
+-- als Klon an jeder Partition. In CI und in jedem Test war das Protokoll bei
+-- der Migration leer, das UPDATE traf keine Zeile, und der Trigger feuerte
+-- nie. Der Trigger wird deshalb fuer genau diese Anweisung ausgesetzt --
+-- an der Elterntabelle und an jeder Partition, denn ein UPDATE ueber die
+-- Eltern loest die Klone aus -- und in derselben Transaktion wieder scharf
+-- geschaltet. Schlaegt irgendetwas dazwischen fehl, nimmt der ROLLBACK auch
+-- das Aussetzen zurueck. Ein Test in packages/db/src/__tests__/dsgvo.test.ts
+-- fuehrt diesen Block gegen eine gefuellte Tabelle aus.
 -- ---------------------------------------------------------------------------
 
+-- >>> altbestand
 DO $$
 DECLARE
   r record;
+  p regclass;
   betroffen bigint := 0;
   n bigint;
 BEGIN
+  FOR p IN SELECT 'audit_log'::regclass
+           UNION ALL
+           SELECT inhrelid::regclass FROM pg_inherits
+            WHERE inhparent = 'audit_log'::regclass LOOP
+    EXECUTE format('ALTER TABLE %s DISABLE TRIGGER trg_append_only', p);
+  END LOOP;
+
   FOR r IN SELECT DISTINCT table_name FROM audit_redaction LOOP
     EXECUTE format(
       'UPDATE audit_log SET changed = audit_redact(changed, %L::text[])
@@ -207,7 +229,16 @@ BEGIN
     GET DIAGNOSTICS n = ROW_COUNT;
     betroffen := betroffen + n;
   END LOOP;
+
+  FOR p IN SELECT 'audit_log'::regclass
+           UNION ALL
+           SELECT inhrelid::regclass FROM pg_inherits
+            WHERE inhparent = 'audit_log'::regclass LOOP
+    EXECUTE format('ALTER TABLE %s ENABLE TRIGGER trg_append_only', p);
+  END LOOP;
+
   RAISE NOTICE 'Altbestand redigiert: % Protokollzeilen', betroffen;
 END $$;
+-- <<< altbestand
 
 GRANT SELECT ON audit_redaction TO hotelpms_app;
