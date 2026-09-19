@@ -26,3 +26,5 @@ Eigenes Hotel Property Management System für den deutschen Markt. Backend und R
 - [docs/20-arbeitsteilung.md](docs/20-arbeitsteilung.md): Die Oberflächenarbeit aus Dokument 19 auf drei parallele Bearbeiter aufgeteilt, zugleich die laufende Fortschrittstafel.
 - [docs/21-inbetriebnahme.md](docs/21-inbetriebnahme.md): Die Maschine aufsetzen — von der leeren VM auf dem Proxmox-Host bis zum laufenden Betrieb unter Debian.
 - [docs/22-luks-nachruesten.md](docs/22-luks-nachruesten.md): Verschlüsselung nachrüsten, wenn der Host kein TPM hat — ohne die VM neu aufzusetzen.
+- [docs/23-erstinbetriebnahme-checkliste.md](docs/23-erstinbetriebnahme-checkliste.md): Die einmalige Reihenfolge für den aktuellen Stand der Maschine — Ausrollweg, Mailversand und erster Zugang, mit einem Halt nach jedem Abschnitt.
+- [docs/24-performanceaudit.md](docs/24-performanceaudit.md): Systematische Durchsicht des ganzen Bestands gegen die Leistungsregeln. Vier behobene Befunde mit Vorher/Nachher-Messung, eine geordnete Liste offener Punkte.

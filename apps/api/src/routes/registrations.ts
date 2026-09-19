@@ -2,7 +2,18 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
+
+/**
+ * Wie bei jedem anderen Zeitraumparameter im System (rates.ts, reports.ts,
+ * availability.ts, channel.ts): eine Obergrenze, sonst ist der Endpunkt ein
+ * Selbstangriff. Hier gefunden und behoben, weil sie als einzige unter den
+ * vergleichbaren Endpunkten fehlte (Performanceaudit) -- das `LIMIT 5000`
+ * unten schuetzt nur die Antwortgroesse, nicht die Breite des Bereichs, den
+ * die Abfrage durchsuchen muss.
+ */
+const MAX_REGISTRATION_DAYS = 800
 
 /**
  * Meldeschein nach §§ 29, 30 BMG.
@@ -274,6 +285,12 @@ export function registrationRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { from: string; to: string }
+      if (!q.from || !q.to || !isIsoDate(q.from) || !isIsoDate(q.to)) {
+        throw Errors.validation({ from: ['field.isoDate'] })
+      }
+      const tage = nightsBetween(q.from, q.to)
+      if (tage < 0) throw Errors.validation({ to: ['field.afterFrom'] })
+      if (tage > MAX_REGISTRATION_DAYS) throw Errors.rangeTooLarge(MAX_REGISTRATION_DAYS)
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
           `SELECT reg.id, reg.arrival::text AS arrival,

@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, memo, type JSX } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, daysBetween, addDays } from '../lib/dates.js'
-import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
+import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
   from '../lib/tapeSelection.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 
@@ -41,6 +41,18 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  * API zugestimmt hat und die Daten neu geladen sind. Schlaegt der Aufruf
  * fehl, ist nichts gesprungen, das nun zurueckspringen muesste -- der
  * Schatten verschwindet einfach, und der Fehler steht im Seitenfenster.
+ *
+ * **Warum die Zimmerzeilen gemerkt werden (Performanceaudit).** Ein Zug mit
+ * der Maus loest `pointermove` bei praktisch jedem Pixel aus, und jeder
+ * Aufruf zeichnete bislang alle Zimmerzeilen neu -- bei 250 Zimmern und 60
+ * Tagen mehrere tausend Zellen, obwohl sich waehrend eines Zugs nur die
+ * betroffene Zeile aendert. Dasselbe Muster hat das Preisraster schon
+ * einmal gemessen (328 ms je Zug, `RateGrid.tsx`) und mit `memo` je Zeile
+ * behoben; hier fehlte genau dieser Schritt trotz der groesseren
+ * Zellenzahl. `Zimmerzeile` bekommt deshalb nur einfache, ueber einen Zug
+ * hinweg stabile Werte als Merkmale (eine Zahl, eine Zeichenkette oder
+ * `null`, nie das rohe `drag`-Objekt) -- eine Zeile zeichnet sich nur dann
+ * neu, wenn sich fuer sie selbst etwas aendert.
  */
 
 const SPALTE = 44        // Pixel je Tag
@@ -131,7 +143,13 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   // Der aktuelle Zustand, synchron lesbar in den Fensterereignissen -- die
   // koennen nicht auf den naechsten Render warten wie `drag` selbst.
   const dragRef = useRef<DragState | null>(null)
-  const setDragState = (d: DragState | null): void => { dragRef.current = d; setDrag(d) }
+  // Als `useCallback` mit leeren Abhaengigkeiten: `beginneVerschieben` &
+  // Co. haengen davon ab, und nur mit einer stabilen Kennung bleiben auch
+  // sie stabil -- sonst bekaeme jede Zimmerzeile bei jedem Render einen
+  // neuen Ereignisverweis und `memo` griffe nie.
+  const setDragState = useCallback((d: DragState | null): void => {
+    dragRef.current = d; setDrag(d)
+  }, [])
 
   /** Zimmer und Zimmergruppen zum Nachschlagen. */
   const zimmerNach = useMemo(
@@ -338,27 +356,46 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     return null
   }, [drag, balken, data.from, data.units])
 
-  const beginneErstellen = (resourceId: number, categoryId: number) => (e: React.PointerEvent) => {
-    if (e.target !== e.currentTarget) return
-    e.preventDefault()
-    const startDay = tagUnter(e.clientX)
-    /*
-     * Mit Modifikator wird über Zeilen hinweg aufgezogen, ohne ihn wie
-     * bisher nur in dieser einen. Umschalt steht daneben, weil es auf jeder
-     * Tastatur dieselbe Taste ist -- Strg und ⌘ sind es nicht, und wer am
-     * Mac arbeitet, greift nach beidem.
-     */
-    if (e.ctrlKey || e.metaKey || e.shiftKey) {
-      const index = zeileVonZimmer.get(resourceId)
-      if (index !== undefined) {
-        setDragState({ kind: 'group', startIndex: index, index, startDay, day: startDay })
-        return
-      }
-    }
-    setDragState({ kind: 'create', resourceId, categoryId, startDay, day: startDay })
-  }
+  /**
+   * Welcher Balken waehrend eines Umzugs oder einer Groessenaenderung
+   * ausgeblendet ist -- der Schattenbalken uebernimmt seine Stelle. Als
+   * einzelne Zeichenkette statt als Eigenschaft je Reservierung: nur eine
+   * kann je Zug betroffen sein, und eine einzelne Zeichenkette bleibt ueber
+   * den ganzen Zug hinweg gleich (`memo` unten haelt sich daran).
+   */
+  const versteckterRef = drag === null ? null
+    : drag.kind === 'move' && drag.moved ? drag.reservationRef
+    : drag.kind === 'resize' ? drag.reservationRef
+    : null
 
-  const beginneVerschieben = (r: ReservationRow) => (e: React.PointerEvent) => {
+  /*
+   * Als stabile, parametrisierte Aufrufe statt als Fabrik, die je Zimmer
+   * einen neuen Ereignisverweis zurueckgibt: `Zimmerzeile` ist `memo`, und
+   * ein neuer Verweis bei jedem Render der Elternkomponente wuerde das
+   * Merken wirkungslos machen, egal wie stabil die uebrigen Merkmale sind.
+   */
+  const beginneErstellen = useCallback(
+    (resourceId: number, categoryId: number, e: React.PointerEvent) => {
+      if (e.target !== e.currentTarget) return
+      e.preventDefault()
+      const startDay = tagUnter(e.clientX)
+      /*
+       * Mit Modifikator wird über Zeilen hinweg aufgezogen, ohne ihn wie
+       * bisher nur in dieser einen. Umschalt steht daneben, weil es auf
+       * jeder Tastatur dieselbe Taste ist -- Strg und ⌘ sind es nicht, und
+       * wer am Mac arbeitet, greift nach beidem.
+       */
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        const index = zeileVonZimmer.get(resourceId)
+        if (index !== undefined) {
+          setDragState({ kind: 'group', startIndex: index, index, startDay, day: startDay })
+          return
+        }
+      }
+      setDragState({ kind: 'create', resourceId, categoryId, startDay, day: startDay })
+    }, [tagUnter, zeileVonZimmer, setDragState])
+
+  const beginneVerschieben = useCallback((r: ReservationRow, e: React.PointerEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setDragState({ kind: 'move', reservationRef: r.public_ref,
@@ -367,15 +404,15 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                categoryMaxOccupancy: r.category_max_occupancy,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
                overResourceId: null, moved: false })
-  }
+  }, [setDragState])
 
-  const beginneGroesseAendern = (r: ReservationRow, edge: 'start' | 'end') =>
-    (e: React.PointerEvent) => {
+  const beginneGroesseAendern = useCallback(
+    (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => {
       e.preventDefault()
       e.stopPropagation()
       setDragState({ kind: 'resize', reservationRef: r.public_ref, resourceId: r.resource_id!,
                  edge, arrival: r.arrival, departure: r.departure, day: tagUnter(e.clientX) })
-    }
+    }, [tagUnter, setDragState])
 
   return (
     <div className="overflow-auto border border-neutral-200 rounded" ref={rasterRef}>
@@ -434,7 +471,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                   const gruppe = gruppeNach.get(r.category_id)
                   return (
                     <button key={r.id}
-                            onPointerDown={beginneVerschieben(r)}
+                            onPointerDown={e => beginneVerschieben(r, e)}
                             title={`${r.last_name ?? ''} · ${gruppe?.name ?? ''}`
                                  + ` · ${t('plan.capacityUpTo', {
                                        n: platzbedarf({
@@ -464,7 +501,11 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           </div>
         )}
 
-        {/* Eine Zeile je Zimmer */}
+        {/*
+          * Eine Zeile je Zimmer, gemerkt (`Zimmerzeile` ist `memo`): waehrend
+          * eines Zugs bekommen nur die tatsaechlich betroffenen Zeilen neue
+          * Merkmale, siehe die Erklaerung am Dateikopf.
+          */}
         {data.units.map(u => {
           /*
            * Waehrend eines Umzugs faerbt sich die Zeile nach ihrer
@@ -475,98 +516,32 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
            * Drei Zustaende, und die Mitte ist wichtig: eine andere
            * Zimmergruppe, die gross genug ist, ist ein Upgrade und damit
            * Alltag. Nur zu klein ist ein Fehler.
+           *
+           * Das ist eine reine, billige Funktion je Zimmer -- nicht JSX --
+           * und laeuft deshalb unbedenklich bei jedem Zug erneut. Waehrend
+           * eines einzelnen Zugs aendern sich `categoryId`/`occupants`/
+           * `categoryMaxOccupancy` nicht, nur `moved` kippt einmal von
+           * falsch auf wahr; danach bleibt der Wert je Zeile stehen, und
+           * `memo` unten haelt sich daran.
            */
           const passung = drag?.kind === 'move' && drag.moved
             ? zimmerPassung(u, { categoryId: drag.categoryId,
                                  occupants: drag.occupants,
                                  categoryMaxOccupancy: drag.categoryMaxOccupancy })
             : null
+          const ghostHier = ghost !== null && ghost.resourceIds.has(u.id)
           return (
-          <div key={u.id}
-               className={`flex relative border-b border-neutral-100
-                           ${passung === 'passt' ? 'bg-emerald-50/70' : ''}
-                           ${passung === 'zuKlein' ? 'bg-red-50/70' : ''}`}
-               data-resource-row={u.id}
-               style={{ height: ZEILE }}>
-            <div className="w-40 shrink-0 px-2 py-1 text-xs border-r border-neutral-200
-                            flex items-center gap-2">
-              <span className="font-medium tabular-nums">{u.code}</span>
-              <span className="text-neutral-400 truncate">{u.category_name}</span>
-              {passung === 'zuKlein' && (
-                <span aria-hidden title={t('plan.tooSmall')}
-                      className="text-red-700 shrink-0">!</span>
-              )}
-            </div>
-            <div className="relative grow cursor-crosshair"
-                 onPointerDown={beginneErstellen(u.id, u.category_id)}>
-              {tage.map((d, i) => (
-                <div key={d}
-                     style={{ left: i * SPALTE, width: SPALTE }}
-                     className={`absolute inset-y-0 border-r border-neutral-100
-                                 pointer-events-none
-                                 ${isWeekend(d) ? 'bg-neutral-50' : ''}`} />
-              ))}
-              {(blockeJeZimmer.get(u.id) ?? []).map((b, i) => (
-                <div key={i}
-                     style={{ ...balken(b.from_date, b.to_date), top: 4, height: ZEILE - 8 }}
-                     title={b.reason}
-                     className="absolute rounded bg-status-blocked/60 px-1 text-[11px]
-                                text-white truncate
-                                [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]">
-                  {b.reason}
-                </div>
-              ))}
-              {(jeZimmer.get(u.id) ?? []).map(r => {
-                const b = balken(r.arrival, r.departure)
-                const versteckt = drag !== null
-                  && ((drag.kind === 'move' && drag.reservationRef === r.public_ref && drag.moved)
-                      || (drag.kind === 'resize' && drag.reservationRef === r.public_ref))
-                return (
-                  <button key={r.id}
-                          onPointerDown={beginneVerschieben(r)}
-                          title={`${r.last_name ?? ''} ${r.first_name ?? ''} · `
-                               + `${formatDate(r.arrival, locale)} – `
-                               + `${formatDate(r.departure, locale)} · `
-                               + `${t(`status.${r.status}` as never)}`
-                               + (r.notes ? ` · ${r.notes}` : '')}
-                          style={{ ...b, top: 4, height: ZEILE - 8,
-                                   opacity: versteckt ? 0.35 : 1 }}
-                          /*
-                           * `cursor-move` ist hier keine Kosmetik. Das
-                           * Verschieben gab es lange, und es wurde nicht
-                           * benutzt: der Zeiger blieb ein Pfeil, und nichts
-                           * am Balken sagte, dass er anfassbar ist. Eine
-                           * Funktion, die niemand findet, ist keine.
-                           */
-                          className={`absolute rounded px-1 text-[11px] text-white truncate
-                                      text-left hover:ring-2 ring-black/30 cursor-move
-                                      ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
-                    {/* Die Notiz ist der Grund, warum man den Balken anders
-                        behandelt als jeden anderen -- deshalb ein Merkmal am
-                        Balken selbst, nicht erst im Seitenfenster. */}
-                    {r.notes && <span aria-hidden className="mr-0.5">📌</span>}
-                    {r.last_name ?? r.public_ref}
-                    {/* Griffe an den Raendern: verkuerzen und verlaengern (A4). */}
-                    <span onPointerDown={beginneGroesseAendern(r, 'start')}
-                          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />
-                    <span onPointerDown={beginneGroesseAendern(r, 'end')}
-                          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" />
-                  </button>
-                )
-              })}
-              {ghost !== null && ghost.resourceIds.has(u.id) && (
-                <div style={{ left: ghost.left, width: ghost.width, top: 4, height: ZEILE - 8 }}
-                     className="absolute rounded border-2 border-dashed border-neutral-900
-                                bg-neutral-900/10 pointer-events-none
-                                text-[11px] leading-[18px] px-1 truncate">
-                  {/* Wie viele Zimmer es werden, steht an der obersten Zeile
-                      der Auswahl -- in jeder zu wiederholen waere Laerm. */}
-                  {ghost.zaehlerAn === u.id
-                    && `${ghost.resourceIds.size} ${t('group.rooms')}`}
-                </div>
-              )}
-            </div>
-          </div>
+            <Zimmerzeile key={u.id} unit={u} tage={tage}
+                         reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
+                         balken={balken} passung={passung}
+                         versteckterRef={versteckterRef}
+                         ghostHier={ghostHier}
+                         ghostLinks={ghostHier ? ghost!.left : 0}
+                         ghostBreite={ghostHier ? ghost!.width : 0}
+                         ghostZaehler={ghost?.zaehlerAn === u.id ? ghost.resourceIds.size : null}
+                         onCreatePointerDown={beginneErstellen}
+                         onMovePointerDown={beginneVerschieben}
+                         onResizePointerDown={beginneGroesseAendern} />
           )
         })}
 
@@ -577,3 +552,116 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     </div>
   )
 }
+
+interface ZimmerzeileProps {
+  unit: TapeChartData['units'][number]
+  tage: readonly string[]
+  reservations: ReservationRow[] | undefined
+  blocks: TapeChartData['blocks'] | undefined
+  /** Stabil ueber `useCallback` in der Elternkomponente. */
+  balken: (von: string, bis: string) => { left: number; width: number }
+  passung: Passung | null
+  versteckterRef: string | null
+  ghostHier: boolean
+  ghostLinks: number
+  ghostBreite: number
+  ghostZaehler: number | null
+  onCreatePointerDown: (resourceId: number, categoryId: number, e: React.PointerEvent) => void
+  onMovePointerDown: (r: ReservationRow, e: React.PointerEvent) => void
+  onResizePointerDown: (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => void
+}
+
+/**
+ * Eine Zimmerzeile, gemerkt. Die Begruendung steht am Dateikopf: nur
+ * einfache, ueber einen Zug hinweg stabile Merkmale, nie das rohe
+ * `drag`-Objekt -- sonst zeichnete jede Zeile bei jedem `pointermove` neu,
+ * genau der Fehler, den das Preisraster schon einmal gemessen hat.
+ */
+const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const u = p.unit
+  return (
+    <div className={`flex relative border-b border-neutral-100
+                     ${p.passung === 'passt' ? 'bg-emerald-50/70' : ''}
+                     ${p.passung === 'zuKlein' ? 'bg-red-50/70' : ''}`}
+         data-resource-row={u.id}
+         style={{ height: ZEILE }}>
+      <div className="w-40 shrink-0 px-2 py-1 text-xs border-r border-neutral-200
+                      flex items-center gap-2">
+        <span className="font-medium tabular-nums">{u.code}</span>
+        <span className="text-neutral-400 truncate">{u.category_name}</span>
+        {p.passung === 'zuKlein' && (
+          <span aria-hidden title={t('plan.tooSmall')}
+                className="text-red-700 shrink-0">!</span>
+        )}
+      </div>
+      <div className="relative grow cursor-crosshair"
+           onPointerDown={e => p.onCreatePointerDown(u.id, u.category_id, e)}>
+        {p.tage.map((d, i) => (
+          <div key={d}
+               style={{ left: i * SPALTE, width: SPALTE }}
+               className={`absolute inset-y-0 border-r border-neutral-100
+                           pointer-events-none
+                           ${isWeekend(d) ? 'bg-neutral-50' : ''}`} />
+        ))}
+        {(p.blocks ?? []).map((b, i) => (
+          <div key={i}
+               style={{ ...p.balken(b.from_date, b.to_date), top: 4, height: ZEILE - 8 }}
+               title={b.reason}
+               className="absolute rounded bg-status-blocked/60 px-1 text-[11px]
+                          text-white truncate
+                          [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]">
+            {b.reason}
+          </div>
+        ))}
+        {(p.reservations ?? []).map(r => {
+          const b = p.balken(r.arrival, r.departure)
+          const versteckt = r.public_ref === p.versteckterRef
+          return (
+            <button key={r.id}
+                    onPointerDown={e => p.onMovePointerDown(r, e)}
+                    title={`${r.last_name ?? ''} ${r.first_name ?? ''} · `
+                         + `${formatDate(r.arrival, locale)} – `
+                         + `${formatDate(r.departure, locale)} · `
+                         + `${t(`status.${r.status}` as never)}`
+                         + (r.notes ? ` · ${r.notes}` : '')}
+                    style={{ ...b, top: 4, height: ZEILE - 8,
+                             opacity: versteckt ? 0.35 : 1 }}
+                    /*
+                     * `cursor-move` ist hier keine Kosmetik. Das
+                     * Verschieben gab es lange, und es wurde nicht
+                     * benutzt: der Zeiger blieb ein Pfeil, und nichts
+                     * am Balken sagte, dass er anfassbar ist. Eine
+                     * Funktion, die niemand findet, ist keine.
+                     */
+                    className={`absolute rounded px-1 text-[11px] text-white truncate
+                                text-left hover:ring-2 ring-black/30 cursor-move
+                                ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
+              {/* Die Notiz ist der Grund, warum man den Balken anders
+                  behandelt als jeden anderen -- deshalb ein Merkmal am
+                  Balken selbst, nicht erst im Seitenfenster. */}
+              {r.notes && <span aria-hidden className="mr-0.5">📌</span>}
+              {r.last_name ?? r.public_ref}
+              {/* Griffe an den Raendern: verkuerzen und verlaengern (A4). */}
+              <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
+                    className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />
+              <span onPointerDown={e => p.onResizePointerDown(r, 'end', e)}
+                    className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" />
+            </button>
+          )
+        })}
+        {p.ghostHier && (
+          <div style={{ left: p.ghostLinks, width: p.ghostBreite, top: 4, height: ZEILE - 8 }}
+               className="absolute rounded border-2 border-dashed border-neutral-900
+                          bg-neutral-900/10 pointer-events-none
+                          text-[11px] leading-[18px] px-1 truncate">
+            {/* Wie viele Zimmer es werden, steht an der obersten Zeile
+                der Auswahl -- in jeder zu wiederholen waere Laerm. */}
+            {p.ghostZaehler !== null && `${p.ghostZaehler} ${t('group.rooms')}`}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})

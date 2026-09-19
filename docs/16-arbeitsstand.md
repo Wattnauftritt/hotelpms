@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 926 Tests, 40 Migrationen.
+Stand: 19. September 2026. 926 Tests, 41 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -663,6 +663,18 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 **Die Kassenschnittstelle.** In einer früheren Sichtung stand hier „keine POS-Maske" als offener Punkt. Das war ein Missverständnis: `routes/pos.ts` ist der Vertrag mit einer **externen** Ladenkasse mit TSE, nicht ein Bildschirm, der noch fehlt. Die Kasse holt sich die offenen Folios und bucht ihre Zimmerbons dagegen; sie meldet sich über einen Maschinenzugang mit `folio:read` und `folio:post` an.
 
 Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Dokument 09 ausschließt — mit allen Folgen aus § 146a AO. Wer den Punkt das nächste Mal auf einer Liste offener Arbeiten findet, streicht ihn.
+
+---
+
+### Aufgabe 14 — Performanceaudit — **erledigt**
+
+**Wo es liegt.** [`24-performanceaudit.md`](24-performanceaudit.md), Migration `0041`, `apps/api/src/routes/registrations.ts`, `reservations.ts`, `apps/web/src/components/TapeChart.tsx`.
+
+**Warum.** Systematische Durchsicht des ganzen Bestands gegen die fünf Leistungsregeln aus `CLAUDE.md`, nicht ausgelöst durch eine einzelne Messung wie bei Dokument 15, sondern auf Zuruf.
+
+**Vier Befunde behoben.** Die Kundenliste und der Betriebszustand des Adminpanels liefen über korrelierte Unterabfragen je Kontozeile — dieselbe Form, die Migration 0013 und 0015 schon einmal als Fehler gefunden hatten, jetzt mengenbasiert (128 ms → 6 ms bei 51 Konten). Der Meldeschein-Export hatte keine Obergrenze für den Zeitraum. Ein Aufenthalt hatte keine Höchstdauer, obwohl die Gruppengröße längst eine hat. Der Zimmerplan zeichnete bei jedem Mausschritt während eines Zugs alle Zimmerzeilen neu, statt wie das Preisraster nur die betroffene.
+
+**Noch offen**, nach Dringlichkeit geordnet in Dokument 24: allen voran die Schleife mit zwei bis drei Abfragen je Reservierung im Nachtlauf (`noShows`/`expireOptions`/`releaseBlocks`) und die Schleife mit einem `INSERT` je Nacht beim Buchen — beide bewusst nicht in diesem Durchgang mitgefixt, weil sie den empfindlichsten Pfad im System berühren und eine eigene, sorgfältig getestete Änderung verdienen.
 
 ---
 
