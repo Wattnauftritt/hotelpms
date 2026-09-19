@@ -130,6 +130,14 @@ describe('Die Handgriffe des Supports', () => {
     expect(quelle).toMatch(/<Anfrage accountId=\{accountId\}/)
   })
 
+  it('aendert die Rollen eines Kundenbenutzers je Haus und fuer den Betrieb', () => {
+    // Bis hierher stand die Rolle nur als Text in der Kundenkarte; aendern
+    // konnte sie nur der Kunde selbst.
+    expect(quelle).toContain('useSetCustomerPropertyRoles')
+    expect(quelle).toContain('useSetCustomerAccountRoles')
+    expect(quelle).toMatch(/<RollenEditor accountId=\{accountId\} u=\{u\}/)
+  })
+
   it('zeigt die Aufsicht nur dem Admin', () => {
     expect(quelle).toMatch(/darfAufsicht && <Aufsicht/)
   })

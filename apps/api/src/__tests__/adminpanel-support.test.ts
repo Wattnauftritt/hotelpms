@@ -223,6 +223,82 @@ describe('Benutzer einladen', () => {
   })
 })
 
+describe('Rollen eines Kundenbenutzers', () => {
+  const put = (url: string, session: string, payload: unknown) =>
+    app.inject({ method: 'PUT', url, headers: auth(session), payload })
+  const hausRollen = (userId: number, propertyId: number) =>
+    owner.query<{ key: string }>(
+      `SELECT r.key FROM user_property_role upr JOIN role r ON r.id = upr.role_id
+        WHERE upr.user_id = $1 AND upr.property_id = $2 ORDER BY r.key`, [userId, propertyId])
+
+  it('setzt die Hausrollen ersetzend und zeigt sie strukturiert in der Kundenkarte', async () => {
+    const r = await put(
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/roles`,
+      admin.sessionId, { propertyId: fx.propertyId, roleKeys: ['night_audit', 'hotel_director'] })
+    expect(r.statusCode).toBe(200)
+    expect((await hausRollen(rezeption.userId, fx.propertyId)).rows.map(z => z.key))
+      .toEqual(['hotel_director', 'night_audit'])
+
+    const karte = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as { users: Array<{ id: number; accountRoles: string[]
+                                 propertyRoles: Array<{ propertyId: number; roleKeys: string[] }> }> }
+    const u = karte.users.find(x => x.id === rezeption.userId)!
+    expect(u.accountRoles).toEqual([])
+    expect(u.propertyRoles).toEqual([
+      { propertyId: fx.propertyId, code: expect.any(String), roleKeys: ['hotel_director', 'night_audit'] }])
+  })
+
+  it('nimmt kein Haus eines anderen Kunden und keinen fremden Benutzer', async () => {
+    const fremdHaus = await put(
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/roles`,
+      admin.sessionId, { propertyId: fremd.propertyId, roleKeys: ['reception'] })
+    expect(fremdHaus.statusCode).toBe(422)
+    // Die Rezeption gehoert nicht zum fremden Betrieb -- dort ist sie unbekannt.
+    const fremdBenutzer = await put(
+      `/v1/platform/accounts/${fremd.accountId}/users/${rezeption.userId}/roles`,
+      admin.sessionId, { propertyId: fremd.propertyId, roleKeys: ['reception'] })
+    expect(fremdBenutzer.statusCode).toBe(404)
+    expect((await hausRollen(rezeption.userId, fx.propertyId)).rows.map(z => z.key))
+      .toEqual(['reception'])
+  })
+
+  it('nimmt keine Plattformrolle -- weder im Haus noch fuer den Betrieb', async () => {
+    for (const url of [
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/roles`,
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/account-roles`]) {
+      const r = await put(url, admin.sessionId,
+        { propertyId: fx.propertyId, roleKeys: ['platform_admin'] })
+      expect(r.statusCode, url).toBe(422)
+    }
+  })
+
+  it('setzt die Betriebsrollen und laesst den letzten Verwalter stehen', async () => {
+    const inhaber = await makeUser(owner,
+      { email: 'inhaber@kunde.de', accountId: fx.accountId, roleKey: 'owner' })
+    const url = `/v1/platform/accounts/${fx.accountId}/users/${inhaber.userId}/account-roles`
+    // Der einzige Verwalter: ihm das Recht zu nehmen, liesse den Kunden
+    // ohne jemanden zurueck, der Rollen vergibt oder uns hereinlaesst.
+    const letzter = await put(url, admin.sessionId, { roleKeys: ['read_only'] })
+    expect(letzter.statusCode).toBe(409)
+
+    await makeUser(owner,
+      { email: 'zweiter@kunde.de', accountId: fx.accountId, roleKey: 'account_admin' })
+    const jetzt = await put(url, admin.sessionId, { roleKeys: ['read_only', 'accounting'] })
+    expect(jetzt.statusCode).toBe(200)
+    const rollen = await owner.query<{ key: string }>(
+      `SELECT r.key FROM user_account_role uar JOIN role r ON r.id = uar.role_id
+        WHERE uar.user_id = $1 ORDER BY r.key`, [inhaber.userId])
+    expect(rollen.rows.map(z => z.key)).toEqual(['accounting', 'read_only'])
+  })
+
+  it('bleibt dem Support ohne platform:accounts verschlossen', async () => {
+    const r = await put(
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/roles`,
+      support.sessionId, { propertyId: fx.propertyId, roleKeys: ['reception'] })
+    expect(r.statusCode).toBe(403)
+  })
+})
+
 describe('Weiteres Haus', () => {
   const haus = (payload: Record<string, unknown>) =>
     post(`/v1/platform/accounts/${fx.accountId}/properties`, admin.sessionId, payload)

@@ -7,6 +7,7 @@ import type { Principal } from '../platform/context.js'
 import { supportPermissions, type SupportLevel } from '../platform/support.js'
 import { einmalTokenUndPost } from './auth.js'
 import { kennung } from './platform.js'
+import { nichtDenLetztenVerwalter } from './userAdmin.js'
 
 /**
  * Das Adminpanel, zweiter Teil: die Handgriffe des Supports.
@@ -273,6 +274,113 @@ export function platformSupportRoutes(app: FastifyInstance): void {
       reply.status(201)
       return { id: angelegt.id, ref: angelegt.public_ref, email,
                displayName: name, roleKey, propertyId, status: 'invited' }
+    }
+  })
+
+  /*
+   * Rollen aendern -- im Haus und fuer den ganzen Betrieb.
+   *
+   * Ersetzend, wie beim Kunden selbst (users.ts, userAdmin.ts): die Frage am
+   * Telefon lautet "was darf Frau X", nicht "was kommt dazu". Zugelassen sind
+   * die Rollen der richtigen Ebene, die dem Kunden gehoeren oder System sind
+   * -- eine Plattformrolle hat die Ebene 'platform' und faellt damit heraus,
+   * denn sonst waere diese Route der Weg vom Kunden zur Plattform.
+   *
+   * Der letzte Verwalter des Betriebs bleibt, auch fuer uns: wer ihm das
+   * Recht nimmt, laesst einen Kunden zurueck, der weder Rollen vergeben noch
+   * eine Support-Sitzung freigeben kann. Wer ihn abloesen will, gibt erst
+   * jemand anderem das Recht.
+   */
+  async function rollenDerEbene(
+    client: { query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }> },
+    accountId: number, ebene: 'property' | 'account', keys: unknown
+  ): Promise<Array<{ id: number; key: string }>> {
+    if (!Array.isArray(keys) || keys.some(k => typeof k !== 'string')) {
+      throw Errors.validation({ roleKeys: ['field.roleKeyList'] })
+    }
+    const gewuenscht = [...new Set(keys as string[])]
+    if (gewuenscht.length === 0) return []
+    const r = await client.query<{ id: number; key: string }>(
+      `SELECT id, key FROM role
+        WHERE level = $1 AND key = ANY($2::text[])
+          AND (account_id IS NULL OR account_id = $3)`, [ebene, gewuenscht, accountId])
+    if (r.rows.length !== gewuenscht.length) {
+      const gefunden = new Set(r.rows.map(z => z.key))
+      throw Errors.validation({ roleKeys: ['field.unknownRole'] },
+        { values: gewuenscht.filter(k => !gefunden.has(k)).join(', ') })
+    }
+    return r.rows
+  }
+
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/platform/accounts/:id/users/:userId/roles',
+    permission: 'platform:accounts',
+    summary: 'Rollen eines Kundenbenutzers in einem Haus festlegen',
+    handler: async (req) => {
+      const accountId = kennung(req)
+      const userId = kennung(req, 'userId')
+      const b = (req.body ?? {}) as { propertyId?: unknown; roleKeys?: unknown }
+      const propertyId = Number(b.propertyId)
+      if (!Number.isInteger(propertyId)) {
+        throw Errors.validation({ propertyId: ['field.required'] })
+      }
+      const principal = req.principal as Principal
+
+      return tx(req.pool, req, async client => {
+        const benutzer = await benutzerDesKunden(client, accountId, userId)
+        const haus = await client.query(
+          `SELECT 1 FROM platform_account_properties($1) WHERE id = $2`,
+          [accountId, propertyId])
+        if (haus.rowCount === 0) throw Errors.validation({ propertyId: ['field.invalid'] })
+        const rollen = await rollenDerEbene(client, accountId, 'property', b.roleKeys)
+
+        await client.query(
+          `DELETE FROM user_property_role WHERE user_id = $1 AND property_id = $2`,
+          [benutzer.id, propertyId])
+        if (rollen.length > 0) {
+          await client.query(
+            `INSERT INTO user_property_role (user_id, property_id, role_id, granted_by)
+             SELECT $1, $2, unnest($3::bigint[]), $4`,
+            [benutzer.id, propertyId, rollen.map(r => r.id), principal.userId])
+        }
+        return { id: benutzer.id, propertyId, roleKeys: rollen.map(r => r.key) }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/platform/accounts/:id/users/:userId/account-roles',
+    permission: 'platform:accounts',
+    summary: 'Rollen eines Kundenbenutzers fuer den ganzen Betrieb festlegen',
+    handler: async (req) => {
+      const accountId = kennung(req)
+      const userId = kennung(req, 'userId')
+      const b = (req.body ?? {}) as { roleKeys?: unknown }
+
+      return tx(req.pool, req, async client => {
+        const benutzer = await benutzerDesKunden(client, accountId, userId)
+        const rollen = await rollenDerEbene(client, accountId, 'account', b.roleKeys)
+
+        const behaeltRecht = rollen.length === 0 ? 0
+          : Number((await client.query<{ n: string }>(
+              `SELECT count(*)::text AS n FROM role_permission
+                WHERE role_id = ANY($1::bigint[]) AND permission_key = 'settings:account'`,
+              [rollen.map(r => r.id)])).rows[0]!.n)
+        if (behaeltRecht === 0) await nichtDenLetztenVerwalter(client, accountId, benutzer.id)
+
+        await client.query(
+          `DELETE FROM user_account_role WHERE user_id = $1 AND account_id = $2`,
+          [benutzer.id, accountId])
+        if (rollen.length > 0) {
+          await client.query(
+            `INSERT INTO user_account_role (user_id, account_id, role_id)
+             SELECT $1, $2, unnest($3::bigint[])`,
+            [benutzer.id, accountId, rollen.map(r => r.id)])
+        }
+        return { id: benutzer.id, roleKeys: rollen.map(r => r.key) }
+      })
     }
   })
 

@@ -46,6 +46,8 @@ interface PostZeile {
   last_error: string | null
 }
 
+interface RollenZeile { user_id: number; property_id: number | null; key: string }
+
 interface PersonalZeile {
   id: number; public_ref: string; email: string; display_name: string
   status: string; role_key: string | null; role_name: string | null
@@ -142,6 +144,31 @@ export function platformRoutes(app: FastifyInstance): void {
               [benutzer.rows.map(u => u.id)])
         const letztePost = new Map(post.rows.map(z => [z.user_id, z]))
 
+        /*
+         * Die Rollen strukturiert, nicht nur als Text: das Panel aendert sie
+         * (platformSupport.ts), und ein Auswahlfeld braucht Schluessel, keine
+         * Aufzaehlung. Die Rollentabellen tragen keine Zeilenrichtlinie; die
+         * Grenze ist die Kundenkennung und die Liste seiner Haeuser aus
+         * platform_account_properties() -- nie eine Kennung aus der Anfrage.
+         */
+        const benutzerIds = benutzer.rows.map(u => u.id)
+        const hausIds = haeuser.rows.map(h => h.id)
+        const kontoRollen = benutzerIds.length === 0 ? { rows: [] as RollenZeile[] }
+          : await client.query<RollenZeile>(
+              `SELECT uar.user_id, NULL::bigint AS property_id, r.key
+                 FROM user_account_role uar JOIN role r ON r.id = uar.role_id
+                WHERE uar.account_id = $1 AND uar.user_id = ANY($2::bigint[])
+                ORDER BY r.key`, [id, benutzerIds])
+        const hausRollen = benutzerIds.length === 0 || hausIds.length === 0
+          ? { rows: [] as RollenZeile[] }
+          : await client.query<RollenZeile>(
+              `SELECT upr.user_id, upr.property_id, r.key
+                 FROM user_property_role upr JOIN role r ON r.id = upr.role_id
+                WHERE upr.property_id = ANY($1::bigint[])
+                  AND upr.user_id = ANY($2::bigint[])
+                ORDER BY upr.property_id, r.key`, [hausIds, benutzerIds])
+        const codeVon = new Map(haeuser.rows.map(h => [h.id, h.code]))
+
         const a = konto.rows[0]!
         return {
           account: {
@@ -162,6 +189,15 @@ export function platformRoutes(app: FastifyInstance): void {
               displayName: u.display_name, status: u.status,
               lockedUntil: u.locked_until, lastLoginAt: u.last_login_at,
               roles: u.roles,
+              accountRoles: kontoRollen.rows.filter(z => z.user_id === u.id).map(z => z.key),
+              propertyRoles: [...new Set(hausRollen.rows
+                  .filter(z => z.user_id === u.id).map(z => z.property_id!))]
+                .map(pid => ({
+                  propertyId: pid, code: codeVon.get(pid) ?? '',
+                  roleKeys: hausRollen.rows
+                    .filter(z => z.user_id === u.id && z.property_id === pid)
+                    .map(z => z.key)
+                })),
               lastMail: m === undefined ? null
                 : { kind: m.kind, status: m.status, at: m.created_at,
                     error: m.last_error }

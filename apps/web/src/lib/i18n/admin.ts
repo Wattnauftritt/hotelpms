@@ -409,6 +409,29 @@ export const admin = {
     de: '{n} Sitzungen beendet.',
     en: '{n} sessions ended.',
     tr: '{n} oturum sonlandırıldı.' },
+  'admin.user.roles': {
+    de: 'Rollen ändern',
+    en: 'Change roles',
+    tr: 'Rolleri değiştir' },
+  'admin.user.rolesHint': {
+    de: 'Ersetzend: was hier angehakt ist, gilt danach — nicht mehr, nicht '
+      + 'weniger. Der Kunde kann das auch selbst unter Einstellungen → Benutzer.',
+    en: 'Replacing: what is ticked here applies afterwards — no more, no less. '
+      + 'The customer can do this too under Settings → Users.',
+    tr: 'Yerine geçer: burada işaretli olan geçerli olur — ne fazla, ne eksik. '
+      + 'Müşteri bunu Ayarlar → Kullanıcılar altında kendisi de yapabilir.' },
+  'admin.user.rolesIn': {
+    de: 'Im Haus {code}',
+    en: 'In property {code}',
+    tr: '{code} tesisinde' },
+  'admin.user.rolesAccount': {
+    de: 'Für den ganzen Betrieb',
+    en: 'For the whole business',
+    tr: 'Tüm işletme için' },
+  'admin.user.rolesSaved': {
+    de: 'Rollen gespeichert.',
+    en: 'Roles saved.',
+    tr: 'Roller kaydedildi.' },
   'admin.mail.invite': {
     de: 'Einladung',
     en: 'Invitation',
