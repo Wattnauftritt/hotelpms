@@ -161,6 +161,27 @@ describe('Anmeldung', () => {
     expect((await login('rezeption@test.de', KENNWORT, '203.0.113.9')).statusCode).toBe(200)
   })
 
+  it('laesst nach Ablauf der Herkunftssperre wieder herein', async () => {
+    /*
+     * Die Gegenrichtung zu "haelt eine Sperre am Konto auch neben einer
+     * abgelaufenen Herkunftssperre" weiter oben: dort greift die Sperre, hier
+     * laeuft sie ab. Beides zusammen haelt die Regel fest, dass die spaetere
+     * der beiden gilt -- ein Test allein liesse offen, ob die Sperre
+     * ueberhaupt je endet, und eine Sperre, die nicht endet, waere wieder die
+     * Dienstverweigerung aus Befund H3.
+     */
+    const userId = await benutzerMitKennwort()
+    for (let i = 0; i < 10; i++) await login('rezeption@test.de', 'daneben', '203.0.113.9')
+    expect((await login('rezeption@test.de', KENNWORT, '203.0.113.9')).statusCode).toBe(401)
+
+    // Die Sperre in die Vergangenheit ruecken: das tut sonst die Zeit, und
+    // darauf kann ein Test nicht warten.
+    await owner.query(
+      `UPDATE login_failure SET locked_until = now() - interval '1 hour'
+        WHERE user_id = $1 AND origin = '203.0.113.9'`, [userId])
+    expect((await login('rezeption@test.de', KENNWORT, '203.0.113.9')).statusCode).toBe(200)
+  })
+
   it('setzt den Zaehler nach erfolgreicher Anmeldung zurueck', async () => {
     await benutzerMitKennwort()
     await login('rezeption@test.de', 'daneben')

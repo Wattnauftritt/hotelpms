@@ -264,7 +264,7 @@ Fassung, weil sie in beiden Fällen weiter reicht:
   bleiben die Partitionen, und das ist der Teil, den keine der beiden
   Prüfungen gesehen hatte — siehe unten.
 
-Fünf Dinge sind beim Abarbeiten dazugekommen, und das erste hätte die Prüfung
+Sechs Dinge sind beim Abarbeiten dazugekommen, und das erste hätte die Prüfung
 selbst finden können:
 
 **Die Partitionen des Audit-Logs führen eigene Rechte und erben keine
@@ -292,6 +292,31 @@ an dem sich jemand vertippt hat, weiter zu bleibt — und genau von dort
 versucht er es wieder. Alle drei Wege (Hausleitung, Plattformsupport,
 Kennwort-Zurücksetzung) räumen die Zeilen jetzt mit ab, und die Benutzerliste
 zeigt die stärkere der beiden Sperren.
+
+**Zwei Sperren brauchen beide eine Prüfung, nicht die erste, die dasteht.**
+In der Durchsicht von PR #74 gefunden, und es war ein Loch: die Anmeldung nahm
+die Sperre der Herkunft und die des Kontos mit `??` — also die der Herkunft,
+sobald dort überhaupt eine Zeile stand. Eine **abgelaufene** Herkunftssperre
+ist aber kein `NULL`. Wer von einer Adresse kam, an der einmal eine Sperre
+gestanden und sich erledigt hatte, wurde gegen dieses vergangene Datum
+geprüft, und eine Sperre von Hand am Konto sah niemand mehr an — genau der
+Fall, für den sie da ist. Die Zeile liegt sieben Tage (`purgeExpired`), also
+kein Randfall.
+
+Behoben in `main` mit `e25b1bd` (PR #77): geprüft werden beide, gesperrt ist,
+wer unter einer der beiden noch steht. Ein Test dort legt beides an. Hier
+steht die Gegenrichtung daneben — dass die Herkunftssperre auch wirklich
+**endet**, denn eine, die nicht endet, wäre wieder die Dienstverweigerung aus
+H3.
+
+Ein Fund über den Fund gehört dazu: mein eigener erster Testentwurf war
+**gegen den Fehler grün**. Er meldete sich zwischendurch erfolgreich an, um
+den Ablauf der Herkunftssperre zu zeigen — und eine erfolgreiche Anmeldung
+räumt die Zeile ihrer Herkunft ab. Damit war die Voraussetzung weg, bevor der
+geprüfte Fall eintrat. Aufgefallen ist das nur, weil der Test vor dem Commit
+gegen den **alten** Code lief; er wurde nicht rot. Ein Regressionstest, der
+den Fehler nicht nachstellt, ist keiner, und ob er es tut, sagt nur dieser
+Lauf.
 
 **Der Zähler am Konto bleibt, er sperrt nur nicht mehr.** `failed_login_count`
 läuft weiter mit, damit an einem Konto sichtbar ist, dass jemand es
