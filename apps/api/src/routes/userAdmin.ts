@@ -263,6 +263,11 @@ export function userAdminRoutes(app: FastifyInstance): void {
                   workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL,
                   updated_at = now()
             WHERE id = $1`, [ziel.id])
+        // Auch die Sperren je Herkunft (H3, Dokument 25). Ohne das hiesse
+        // "entsperrt" nur, dass die Sperre am Konto weg ist, waehrend der
+        // Arbeitsplatz, an dem sich jemand vertippt hat, weiter zu bleibt --
+        // und genau von dort versucht er es wieder.
+        await client.query(`DELETE FROM login_failure WHERE user_id = $1`, [ziel.id])
         return { userRef, unlocked: true }
       })
     }

@@ -61,7 +61,22 @@ app.hotelpms.de {
 		X-Frame-Options "DENY"
 		# Kein eval, keine fremden Herkünfte. Die Oberfläche lädt nichts
 		# von außen; ein eingeschleustes Skript hat damit kein Ziel.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		#
+		# Zu den Stilen (H7, Dokument 25). 'unsafe-inline' gilt nur noch für
+		# **Stilattribute**, nicht mehr für eingebettete <style>-Elemente.
+		# Die Attribute sind nicht wegzubekommen: der Zimmerplan setzt die
+		# Balken auf gerechnete Pixel, und ein Wert je Reservierung lässt sich
+		# nicht in ein Stylesheet schreiben. Ein eingeschleustes <style> ist
+		# dagegen die gefährlichere Hälfte -- es kann Inhalte überlagern und
+		# über Selektoren Attributwerte nach außen tragen -- und die
+		# Oberfläche braucht es nirgends: der Bau erzeugt eine verlinkte
+		# CSS-Datei, kein <style> im HTML, und keine Bibliothek schiebt zur
+		# Laufzeit eines nach.
+		#
+		# `style-src` bleibt als Rückfall stehen: ein Browser, der
+		# style-src-elem/-attr nicht kennt, liest ihn statt ihrer, und dann
+		# soll die Oberfläche funktionieren und nicht ohne Stile dastehen.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		-Server
 	}
 

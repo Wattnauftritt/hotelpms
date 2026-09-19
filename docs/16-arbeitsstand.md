@@ -1,6 +1,6 @@
 # Arbeitsstand und offene Aufgaben
 
-Stand: 19. September 2026. 947 Tests, 43 Migrationen.
+Stand: 19. September 2026. 950 Tests, 46 Migrationen.
 
 > **Neu hier?** [`18-einarbeitung.md`](18-einarbeitung.md) erklärt in zwanzig Minuten, was das System tut, wo es das tut und warum. Danach ist dieses Dokument leichter zu lesen.
 
@@ -51,6 +51,8 @@ Diese Eigenschaften sind durch Tests belegt, nicht behauptet:
 - Ein Maschinentoken erreicht genau die Endpunkte seiner Zugriffsbereiche und keinen weiteren — geprüft über die gesamte Routenliste, nicht an Beispielen.
 - Ein Kassenumsatz landet als Position auf dem Gastkonto, folgt dabei den Umleitungsregeln, und derselbe Beleg zweimal zugestellt bucht kein zweites Mal — auch nicht mit neuem Idempotenzschlüssel.
 - Eine Anzahlung erzeugt eine eigene Rechnung aus derselben Nummernfolge; die Schlussrechnung verrechnet sie als eigene Position mit negativem Betrag, und das Folio zeigt den tatsächlich offenen Betrag ohne doppelte Zählung.
+- Eine Gastsuche schreibt den Suchbegriff nicht ins Anfrageprotokoll; der Zeitraum und die Zeilengrenze bleiben darin stehen.
+- Zehn Fehlanmeldungen sperren die Herkunft, nicht das Konto: von einer zweiten Adresse kommt derselbe Nutzer mit richtigem Kennwort herein, und Entsperren hebt beide Sperren auf.
 
 ---
 
@@ -357,7 +359,7 @@ spätere statt der sofortigen Meldung.
 
 **Teilweise erledigt.** Alles, was Code ist, steht; was Betrieb ist, steht als Handbuch in [`17-betrieb.md`](17-betrieb.md) und muss einmal tatsächlich durchgeführt werden.
 
-Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in [`25-sicherheitspruefung.md`](25-sicherheitspruefung.md): zwei Befunde mittleren Grades (ausgehende Anfragen an kundengesteuerte Adressen über Webhook-Abonnements; Gastdaten im Protokoll über die Abfragezeichenfolge) und sieben Härtungspunkte, mit Abarbeitungsreihenfolge.
+Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in [`25-sicherheitspruefung.md`](25-sicherheitspruefung.md): zwei Befunde mittleren Grades (ausgehende Anfragen an kundengesteuerte Adressen über Webhook-Abonnements; Gastdaten im Protokoll über die Abfragezeichenfolge) und sieben Härtungspunkte. **Alle neun sind abgearbeitet**; Abschnitt 8 des Dokuments nennt je Punkt die Stelle und die fünf Dinge, die beim Abarbeiten dazugekommen sind. Was daraus offen bleibt, ist Betrieb und steht in der Tabelle unten.
 
 | Punkt | Stand |
 |---|---|

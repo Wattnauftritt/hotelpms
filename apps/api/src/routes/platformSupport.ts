@@ -106,6 +106,8 @@ export function platformSupportRoutes(app: FastifyInstance): void {
                   workstation_pin_locked_until = NULL,
                   updated_at = now()
             WHERE id = $1`, [userId])
+        // Und die Sperren je Herkunft (H3, Dokument 25).
+        await client.query(`DELETE FROM login_failure WHERE user_id = $1`, [userId])
         return { id: userId, unlocked: true }
       })
     }

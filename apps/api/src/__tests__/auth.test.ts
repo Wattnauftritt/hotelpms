@@ -42,8 +42,11 @@ async function benutzerMitKennwort(email = 'rezeption@test.de'): Promise<number>
   return u.userId
 }
 
-const login = (email: string, password: string) =>
-  app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password } })
+const login = (email: string, password: string, herkunft?: string) =>
+  app.inject({ method: 'POST', url: '/v1/auth/login', payload: { email, password },
+               // trustProxy ist gesetzt, `req.ip` kommt also aus dieser
+               // Kopfzeile -- so laesst sich eine zweite Herkunft pruefen.
+               headers: herkunft === undefined ? {} : { 'x-forwarded-for': herkunft } })
 
 function cookieAus(r: { headers: Record<string, unknown> }): string {
   const raw = r.headers['set-cookie']
@@ -63,7 +66,10 @@ describe('Anmeldung', () => {
     // Nicht aus JavaScript lesbar, und nicht ueber fremde Herkuenfte
     // mitgeschickt. Beides zusammen macht den Diebstahl schwer.
     expect(gesetzt).toContain('HttpOnly')
-    expect(gesetzt.toLowerCase()).toContain('samesite=lax')
+    // `strict`, nicht `lax` (H6, Dokument 25): bei `lax` schickt der Browser
+    // das Cookie bei einer Navigation der obersten Ebene mit, und damit
+    // konnte eine fremde Seite einen Pruefeintrag am Ausweisabruf erzeugen.
+    expect(gesetzt.toLowerCase()).toContain('samesite=strict')
 
     const me = await app.inject({ method: 'GET', url: '/v1/auth/me',
       headers: { cookie: cookieAus(r) } })
@@ -91,18 +97,49 @@ describe('Anmeldung', () => {
     expect((await login('rezeption@test.de', KENNWORT)).statusCode).toBe(401)
   })
 
-  it('sperrt nach zehn Fehlversuchen', async () => {
-    await benutzerMitKennwort()
-    for (let i = 0; i < 10; i++) await login('rezeption@test.de', 'daneben')
+  it('sperrt nach zehn Fehlversuchen -- die Herkunft, nicht das Konto', async () => {
+    const userId = await benutzerMitKennwort()
+    for (let i = 0; i < 10; i++) await login('rezeption@test.de', 'daneben', '203.0.113.9')
 
-    const gesperrt = await login('rezeption@test.de', KENNWORT)
+    const gesperrt = await login('rezeption@test.de', KENNWORT, '203.0.113.9')
     expect(gesperrt.statusCode).toBe(401)
     // Auch mit richtigem Kennwort: die Sperre gilt.
     expect(JSON.parse(gesperrt.body).detail).toContain('Fehlversuche')
 
     const bis = await owner.query<{ locked_until: string | null }>(
-      `SELECT locked_until::text FROM app_user WHERE lower(email) = 'rezeption@test.de'`)
+      `SELECT locked_until::text FROM login_failure
+        WHERE user_id = $1 AND origin = '203.0.113.9'`, [userId])
     expect(bis.rows[0]!.locked_until).not.toBeNull()
+
+    /*
+     * Befund H3, Dokument 25, und der Kern dieses Tests: das Konto selbst ist
+     * **nicht** gesperrt. Vorher genuegte die Kenntnis einer Dienstadresse,
+     * um eine Mitarbeiterin auszusperren, ohne je ein Kennwort zu treffen.
+     */
+    const konto = await owner.query<{ locked_until: string | null }>(
+      `SELECT locked_until::text FROM app_user WHERE id = $1`, [userId])
+    expect(konto.rows[0]!.locked_until).toBeNull()
+    expect((await login('rezeption@test.de', KENNWORT, '198.51.100.4')).statusCode).toBe(200)
+  })
+
+  it('hebt mit dem Entsperren auch die Sperre der Herkunft auf', async () => {
+    const userId = await benutzerMitKennwort()
+    for (let i = 0; i < 10; i++) await login('rezeption@test.de', 'daneben', '203.0.113.9')
+    expect((await login('rezeption@test.de', KENNWORT, '203.0.113.9')).statusCode).toBe(401)
+
+    const leitung = await makeUser(owner,
+      { email: 'leitung@test.de', propertyId: fx.propertyId, roleKey: 'hotel_director' })
+    const nutzer = await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM app_user WHERE id = $1`, [userId])
+    const r = await app.inject({
+      method: 'POST',
+      url: `/v1/properties/${fx.propertyId}/users/${nutzer.rows[0]!.public_ref}/unlock`,
+      headers: { cookie: `hp_session=${leitung.sessionId}` } })
+    expect(r.statusCode).toBe(200)
+
+    // Ohne das Aufraeumen der Herkunftszeile waere "entsperrt" eine
+    // Unwahrheit: derselbe Arbeitsplatz bliebe zu.
+    expect((await login('rezeption@test.de', KENNWORT, '203.0.113.9')).statusCode).toBe(200)
   })
 
   it('setzt den Zaehler nach erfolgreicher Anmeldung zurueck', async () => {

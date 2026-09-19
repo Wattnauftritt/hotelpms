@@ -83,13 +83,18 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 - Die einzige Ausnahme ist `charge.invoice_id` und `settlement.invoice_id`, und nur der Übergang von `NULL` auf einen Wert (Migration 0012).
 - `inventory_day` wird ausschließlich über die SQL-Funktionen verändert. Die Anwendungsrolle darf lesen, nicht schreiben.
 
+### Ratenbegrenzung
+
+- **Die Ratenbegrenzung greift nur bei anonymen Anfragen** (`platform/rateLimit.ts`). Das ist Absicht: eine Rezeption im Andrang zu bremsen ist Schaden ohne Gegenwert, und Missbrauch durch einen Angemeldeten ist ein Rollenproblem.
+- **Deshalb bringt jede empfindliche Handlung hinter einer Sitzung ihren eigenen Zähler mit.** Wer ein Geheimnis prüft — einen PIN, ein Kennwort, ein Token — und die Anfrage trägt schon ein gültiges Sitzungscookie, den erreicht die allgemeine Grenze **nicht**. Genau das ist einmal passiert: `workstation-switch` stand auf der strengen Liste und wurde von ihr nie erreicht, weil die Anfrage angemeldet war — ein vierstelliger PIN ließ sich in Sekunden durchprobieren. Behoben mit einem eigenen Zähler an der Route; die Ausnahme selbst ist strukturell und bleibt (H4, Dokument 25).
+
 ### Datenschutz und deutsches Recht
 
 - **Nie Kartendaten speichern.** Es gibt kein Feld dafür, und es kommt keines dazu. Eine Garantie läuft über Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters.
 - **Nie eine Ausweiskopie speichern.** § 30 BMG erlaubt die Nummer und verbietet die Kopie. Es gibt kein Feld für einen Upload.
 - **Seit dem 1.1.2025 unterschreiben nur noch ausländische Gäste den Meldeschein.** Für inländische wird eine mitgeschickte Unterschrift verworfen, nicht gespeichert.
 - **Löschen heißt anonymisieren.** Buchungsbelege unterliegen der achtjährigen Aufbewahrungsfrist.
-- **Keine Gastdaten in Protokollen.** `pino` ist entsprechend eingerichtet; wer ein Feld hinzufügt, prüft die Redaktionsliste.
+- **Keine Gastdaten in Protokollen.** `pino` ist entsprechend eingerichtet; wer ein Feld hinzufügt, prüft die Redaktionsliste. Die Liste deckt Felder ab, **nicht die Adresse**: ein Suchbegriff in der Abfragezeichenfolge ist ein Gastname und gehört nicht ins Protokoll. Deshalb filtert der `req`-Serialisierer in `platform/app.ts` die Abfrage gegen eine Positivliste; wer einen neuen harmlosen Parameter protokolliert haben will, trägt ihn dort ein (Befund B2, Dokument 25).
 - **Keine Kassenfunktion.** Kein Kassenbestand, keine TSE, kein Bon. Das ist eine Produktentscheidung (Dokument 09), keine Lücke.
 - **Ein Schulungshaus exportiert nicht nach draußen.** `is_training` weist DATEV-, GoBD- und Statistikexport hart ab. Eine Warnung wird geklickt; ein Stapel aus Übungsdaten in der echten Buchhaltung ist schwerer zu entfernen als zu verhindern.
 
