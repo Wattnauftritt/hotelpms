@@ -12,8 +12,17 @@
     ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    // "node" muss hier stehen, obwohl die Oberflaeche im Browser laeuft: eine
+    // ausgeschriebene "types"-Liste schaltet die automatische Aufnahme von
+    // @types/node ab, und die Tests greifen ueber node:fs, node:path und
+    // import.meta.dirname auf den Katalog zu. Unter vitest 2 kam @types/node
+    // mittelbar ueber tinypool ins Programm (dessen .d.ts traegt ein
+    // /// <reference types="node" />); vitest 4 braucht tinypool nicht mehr,
+    // und damit fiel die Aufloesung aus -- in CI, nicht lokal, weil ein
+    // gewachsenes node_modules die alte Kette noch hatte.
     "types": [
-      "vite/client"
+      "vite/client",
+      "node"
     ],
     "allowImportingTsExtensions": true
   },
