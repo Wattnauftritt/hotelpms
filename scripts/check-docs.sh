@@ -17,8 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 verzeichnis="docs"
 
-nummern=$(ls "$verzeichnis" | grep -oE '^[0-9]{2}(?=-)' 2>/dev/null || ls "$verzeichnis" | grep -E '^[0-9]{2}-' | cut -c1-2)
-doppelte=$(echo "$nummern" | sort | uniq -d)
+doppelte=$(ls "$verzeichnis" | grep -E '^[0-9]{2}-' | cut -c1-2 | sort | uniq -d)
 if [ -n "$doppelte" ]; then
   echo "Doppelte Dokumentnummern gefunden:" >&2
   for n in $doppelte; do
