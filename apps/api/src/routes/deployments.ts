@@ -81,31 +81,50 @@ function nachAussen(z: Zeile): Record<string, unknown> {
  * Tabelle leer. Dann gilt die alte Ableitung -- erweitert um den Stand
  * **vor** jedem gegluecken Lauf, denn den hat deploy.sh nicht weggeraeumt.
  */
+type Stand = { commit: string; builtAt: string | null }
+
 async function staende(client: { query: PoolClient['query'] }):
-  Promise<{ laufend: string | null; ziele: string[] }> {
-  const platte = await client.query<{ commit: string; is_current: boolean }>(
-    `SELECT r.commit, r.is_current
+  Promise<{ laufend: Stand | null; ziele: Stand[] }> {
+  /*
+   * Neueste Bauzeit zuerst: wer zurueck will, will meist einen Schritt
+   * zurueck. Ohne Bauzeit (vor 0042 gemeldet) zaehlt die letzte
+   * Anforderung, die den Stand nennt.
+   */
+  const platte = await client.query<{ commit: string; is_current: boolean
+                                      built_at: string | null }>(
+    `SELECT r.commit, r.is_current, r.built_at::text
        FROM release r
       WHERE r.present
-      ORDER BY (SELECT max(d.id) FROM deploy_request d
+      ORDER BY r.built_at DESC NULLS LAST,
+               (SELECT max(d.id) FROM deploy_request d
                  WHERE d.commit_after = r.commit OR d.commit_before = r.commit)
                DESC NULLS LAST, r.commit`)
   if (platte.rowCount !== 0) {
-    const laufend = platte.rows.find(z => z.is_current)?.commit ?? null
-    return { laufend, ziele: platte.rows.map(z => z.commit).filter(c => c !== laufend) }
+    const alle = platte.rows.map(z => ({ commit: z.commit, builtAt: z.built_at }))
+    const laufend = alle[platte.rows.findIndex(z => z.is_current)] ?? null
+    return { laufend, ziele: alle.filter(z => z.commit !== laufend?.commit) }
   }
 
+  // Ohne Zeile vom Agenten kennt nur die Geschichte eine Zeit: das Ende
+  // des Laufs, der den Stand gebaut hat. Der Vorgaenger hat keine.
   const gelaufen = await client.query<{ commit_after: string | null
-                                        commit_before: string | null }>(
-    `SELECT commit_after, commit_before FROM deploy_request
+                                        commit_before: string | null
+                                        finished_at: string | null }>(
+    `SELECT commit_after, commit_before, finished_at::text FROM deploy_request
       WHERE status = 'done' ORDER BY id DESC`)
-  const laufend = gelaufen.rows[0]?.commit_after ?? null
-  const ziele = [...new Set(gelaufen.rows
-    .flatMap(z => [z.commit_after, z.commit_before])
-    .filter((c): c is string => c !== null && c !== 'unbekannt'))]
-    .filter(c => c !== laufend)
-    .slice(0, 4)
-  return { laufend, ziele }
+  const gebaut = new Map<string, string | null>()
+  for (const z of gelaufen.rows) {
+    if (z.commit_after !== null && !gebaut.has(z.commit_after)) {
+      gebaut.set(z.commit_after, z.finished_at)
+    }
+    if (z.commit_before !== null && !gebaut.has(z.commit_before)) {
+      gebaut.set(z.commit_before, null)
+    }
+  }
+  gebaut.delete('unbekannt')
+  const alle = [...gebaut].map(([commit, builtAt]) => ({ commit, builtAt }))
+  const laufend = alle.find(z => z.commit === gelaufen.rows[0]?.commit_after) ?? null
+  return { laufend, ziele: alle.filter(z => z.commit !== laufend?.commit).slice(0, 4) }
 }
 
 export function deploymentRoutes(app: FastifyInstance): void {
@@ -178,8 +197,8 @@ export function deploymentRoutes(app: FastifyInstance): void {
         const { laufend, ziele } = await staende(client)
         // Der laufende Stand zuerst: er ist kein Ziel, aber auch kein
         // unbekannter -- "laeuft schon" ist die richtige Antwort.
-        if (commit === laufend) throw Errors.conflict('deploy.alreadyCurrent')
-        if (!ziele.includes(commit)) {
+        if (commit === laufend?.commit) throw Errors.conflict('deploy.alreadyCurrent')
+        if (!ziele.some(z => z.commit === commit)) {
           throw Errors.validation({ commit: ['deploy.unknownRelease'] })
         }
 
@@ -208,7 +227,10 @@ export function deploymentRoutes(app: FastifyInstance): void {
       const liste = rows.rows.map(nachAussen)
 
       const { laufend, ziele } = await tx(req.pool, req, staende)
-      return { deployments: liste, currentCommit: laufend, rollbackTargets: ziele }
+      return { deployments: liste,
+               currentCommit: laufend?.commit ?? null,
+               currentBuiltAt: laufend?.builtAt ?? null,
+               rollbackTargets: ziele }
     }
   })
 }

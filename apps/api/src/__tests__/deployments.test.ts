@@ -181,9 +181,9 @@ describe('Zurueckrollen', () => {
     await gelaufen('aaaaaaa1')
     await gelaufen('bbbbbbb2')
     const d = (await liste()).json() as {
-      currentCommit: string; rollbackTargets: string[] }
+      currentCommit: string; rollbackTargets: { commit: string }[] }
     expect(d.currentCommit).toBe('bbbbbbb2')
-    expect(d.rollbackTargets).toEqual(['aaaaaaa1'])
+    expect(d.rollbackTargets.map(z => z.commit)).toEqual(['aaaaaaa1'])
   })
 
   it('nennt denselben Stand nicht zweimal', async () => {
@@ -193,8 +193,8 @@ describe('Zurueckrollen', () => {
     await gelaufen('bbbbbbb2')
     await gelaufen('aaaaaaa1')
     await gelaufen('ccccccc3')
-    const d = (await liste()).json() as { rollbackTargets: string[] }
-    expect(d.rollbackTargets).toEqual(['aaaaaaa1', 'bbbbbbb2'])
+    const d = (await liste()).json() as { rollbackTargets: { commit: string }[] }
+    expect(d.rollbackTargets.map(z => z.commit)).toEqual(['aaaaaaa1', 'bbbbbbb2'])
   })
 })
 
@@ -262,9 +262,10 @@ describe('Zurueckrollen auf das, was auf der Platte liegt', () => {
     await owner.query(
       `INSERT INTO deploy_request (target_ref, status, finished_at, commit_after)
        VALUES ('produktion','failed', now(), 'bb000002')`)
-    const d = (await liste()).json() as { currentCommit: string; rollbackTargets: string[] }
+    const d = (await liste()).json() as { currentCommit: string
+      rollbackTargets: { commit: string }[] }
     expect(d.currentCommit).toBe('cc000003')
-    expect(d.rollbackTargets.sort()).toEqual(['aa000001', 'bb000002'])
+    expect(d.rollbackTargets.map(z => z.commit).sort()).toEqual(['aa000001', 'bb000002'])
     expect((await rollback('aa000001')).statusCode).toBe(202)
   })
 
@@ -272,9 +273,34 @@ describe('Zurueckrollen auf das, was auf der Platte liegt', () => {
     await aufPlatte('cc000003', true)
     await owner.query(
       `INSERT INTO release (commit, present) VALUES ('dd000004', false)`)
-    const d = (await liste()).json() as { rollbackTargets: string[] }
+    const d = (await liste()).json() as { rollbackTargets: unknown[] }
     expect(d.rollbackTargets).toEqual([])
     expect((await rollback('dd000004')).statusCode).toBe(422)
+  })
+
+  /*
+   * Vier Hashes ohne Zeit sagten nicht, welcher der von gestern Mittag war
+   * (Migration 0042). Der Agent meldet die Aenderungszeit von .fertig mit;
+   * das Panel zeigt sie und ordnet danach -- den juengsten zuerst.
+   */
+  it('nennt zu jedem Stand die Bauzeit und ordnet danach', async () => {
+    await owner.query(
+      `INSERT INTO release (commit, present, is_current, built_at) VALUES
+         ('aa000001', true, false, '2026-09-01T10:00:00Z'),
+         ('bb000002', true, false, '2026-09-18T12:00:00Z'),
+         ('cc000003', true, true,  '2026-09-19T12:02:00Z'),
+         ('dd000004', true, false, NULL)`)
+    const d = (await liste()).json() as {
+      currentCommit: string; currentBuiltAt: string | null
+      rollbackTargets: { commit: string; builtAt: string | null }[] }
+    expect(d.currentCommit).toBe('cc000003')
+    expect(new Date(d.currentBuiltAt!).toISOString()).toBe('2026-09-19T12:02:00.000Z')
+    // Juengster Bau zuerst, der ohne gemeldete Zeit zuletzt -- der Agent
+    // von vor 0042 hat ihn eingetragen, und er liegt trotzdem da.
+    expect(d.rollbackTargets.map(z => z.commit)).toEqual(['bb000002', 'aa000001', 'dd000004'])
+    expect(new Date(d.rollbackTargets[0]!.builtAt!).toISOString())
+      .toBe('2026-09-18T12:00:00.000Z')
+    expect(d.rollbackTargets[2]!.builtAt).toBeNull()
   })
 
   it('nimmt, solange der Agent nichts eingetragen hat, die Geschichte -- samt Vorgaenger', async () => {
@@ -283,8 +309,12 @@ describe('Zurueckrollen auf das, was auf der Platte liegt', () => {
     await owner.query(
       `INSERT INTO deploy_request (target_ref, status, finished_at, commit_before, commit_after)
        VALUES ('produktion','done', now(), 'ee000005', 'ff000006')`)
-    const d = (await liste()).json() as { currentCommit: string; rollbackTargets: string[] }
+    const d = (await liste()).json() as { currentCommit: string; currentBuiltAt: string | null
+      rollbackTargets: { commit: string; builtAt: string | null }[] }
     expect(d.currentCommit).toBe('ff000006')
-    expect(d.rollbackTargets).toEqual(['ee000005'])
+    // Die Geschichte kennt nur das Ende des Laufs, der den Stand gebaut
+    // hat; der Vorgaenger bekommt keine Zeit, statt einer falschen.
+    expect(d.currentBuiltAt).not.toBeNull()
+    expect(d.rollbackTargets).toEqual([{ commit: 'ee000005', builtAt: null }])
   })
 })

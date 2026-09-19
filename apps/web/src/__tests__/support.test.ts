@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { einstellungsBereiche } from '../routes/Settings.tsx'
 
 /**
@@ -27,5 +28,31 @@ describe('Reiter der Einstellungen', () => {
 
   it('zeigt gar nichts ohne jedes Recht', () => {
     expect(nur()).toEqual([])
+  })
+})
+
+/**
+ * Die Bauzeit neben jedem Stand.
+ *
+ * Vier Hashes ohne Zeit sagten nicht, welcher der von gestern Mittag war;
+ * wer zurueck wollte, musste raten. Der Agent meldet die Aenderungszeit von
+ * .fertig (Migration 0042), und der Knopf zeigt sie -- als Bauzeit
+ * benannt, nicht als nackte Uhrzeit, denn "ausgerollt am" waere die
+ * naheliegende falsche Lesart.
+ */
+describe('Zurueckrollen mit Bauzeit', () => {
+  const quelle = readFileSync(
+    new URL('../routes/SupportKonsole.tsx', import.meta.url), 'utf8')
+
+  it('zeigt neben jedem Ziel und neben dem laufenden Stand die Bauzeit', () => {
+    expect(quelle).toMatch(/zurueck\.mutate\(z\.commit\)/)
+    expect(quelle).toMatch(/t\('deploy\.builtAt', \{ when: zeit\(z\.builtAt\) \}\)/)
+    expect(quelle).toMatch(/t\('deploy\.builtAt', \{ when: zeit\(q\.data\.currentBuiltAt\) \}\)/)
+  })
+
+  it('laesst die Zeit weg, statt eine falsche zu zeigen', () => {
+    // Ein Stand, den der Agent von vor 0042 eingetragen hat, hat keine.
+    expect(quelle).toMatch(/z\.builtAt !== null &&/)
+    expect(quelle).toMatch(/currentBuiltAt != null &&/)
   })
 })

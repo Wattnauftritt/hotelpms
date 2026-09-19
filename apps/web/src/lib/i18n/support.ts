@@ -46,6 +46,15 @@ export const support = {
     de: 'Läuft gerade',
     en: 'Currently running',
     tr: 'Şu anda çalışıyor' },
+  /*
+   * Die Zeit neben einem Stand ist die seines Baus auf der Maschine, nicht
+   * die des Commits und nicht die des Ausrollens: vier Hashes ohne Zeit
+   * sagten nicht, welcher der von gestern Mittag war.
+   */
+  'deploy.builtAt': {
+    de: 'gebaut {when}',
+    en: 'built {when}',
+    tr: '{when} derlendi' },
   'deploy.currentUnknown': {
     de: 'Noch kein Lauf verzeichnet',
     en: 'No run recorded yet',
