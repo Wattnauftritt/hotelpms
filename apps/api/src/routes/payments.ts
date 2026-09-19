@@ -38,7 +38,8 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
       }
 
       return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(client, principal.clientKey, key, body)
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
         const f = await client.query<{ id: number; property_id: number; status: string }>(

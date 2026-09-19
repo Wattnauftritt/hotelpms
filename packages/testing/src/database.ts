@@ -18,14 +18,22 @@ export async function ensureSchema(): Promise<void> {
   if (!migrated) await resetSchema()
 }
 
-/** Leert alle Fachtabellen, behaelt Katalog und Systemrollen. */
+/**
+ * Leert alle Fachtabellen, behaelt Katalog und Systemrollen.
+ *
+ * `audit_redaction` steht bei den Ausnahmen, weil sie kein Fachbestand ist,
+ * sondern eine Regel: welche Felder nicht ins Protokoll gehoeren. Geleert
+ * schriebe der Trigger wieder alles mit, und jeder Test dazu waere gruen --
+ * gegen eine Datenbank, in der die Regel gar nicht mehr existiert
+ * (Migration 0043).
+ */
 export async function truncateAll(): Promise<void> {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL_OWNER })
   await client.connect()
   const { rows } = await client.query<{ tablename: string }>(`
     SELECT tablename FROM pg_tables
      WHERE schemaname = 'public'
-       AND tablename NOT IN ('schema_migration','inventory_error')
+       AND tablename NOT IN ('schema_migration','inventory_error','audit_redaction')
        AND tablename NOT LIKE 'audit_log%'`)
   /*
    * Berechtigungskatalog und Systemrollen werden vom TRUNCATE mit geleert --

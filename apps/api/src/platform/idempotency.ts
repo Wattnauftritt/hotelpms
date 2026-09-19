@@ -23,7 +23,8 @@ export function hashRequest(body: unknown): string {
  * Idempotenz eines anderen stoeren.
  */
 export async function beginIdempotent(
-  client: PoolClient, clientKey: string, key: string, body: unknown
+  client: PoolClient, clientKey: string, key: string, body: unknown,
+  accountId: number
 ): Promise<StoredResponse | null> {
   const hash = hashRequest(body)
   const existing = await client.query<{
@@ -39,9 +40,13 @@ export async function beginIdempotent(
     return { status: row.response_status ?? 200, body: row.response_body }
   }
 
+  // Der Mandant gehoert mit in die Zeile: ohne ihn greift die
+  // Zeilenrichtlinie nicht, und die Antwort laege ausserhalb der Grenze,
+  // die fuer jede andere Tabelle gilt (Befund 9, Dokument 24).
   await client.query(
-    `INSERT INTO idempotency_key (client_key, key, request_hash) VALUES ($1, $2, $3)`,
-    [clientKey, key, hash])
+    `INSERT INTO idempotency_key (client_key, key, request_hash, account_id)
+     VALUES ($1, $2, $3, $4)`,
+    [clientKey, key, hash, accountId])
   return null
 }
 

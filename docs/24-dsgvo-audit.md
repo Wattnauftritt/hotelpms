@@ -1,6 +1,13 @@
 # DSGVO-Audit des Gesamtsystems
 
-Stand 19. September 2026, Schemastand 42 Migrationen.
+Stand 19. September 2026. Geprüft bei Schemastand 42, **behoben bei
+Schemastand 46**.
+
+> **Alle Befunde sind behoben.** Die Beschreibung bleibt im Präsens stehen,
+> weil sie sonst unlesbar würde; was jeweils geschehen ist, steht unter
+> „Behoben" am Ende des Abschnitts. Die Regressionstests liegen in
+> `packages/db/src/__tests__/dsgvo.test.ts`, die organisatorischen Dokumente
+> in [`datenschutz/`](datenschutz/).
 
 Geprüft wurde gegen die **Quelle**, nicht gegen diese Dokumentation: Migrationen,
 Routen, Nachtlauf und Oberfläche. Wo ein Befund es zuließ, ist er an einer
@@ -47,6 +54,12 @@ Unveränderlichkeit des Protokolls und Löschpflicht am Profil.
 | 7 | Gastpost überlebt die Löschung bis zu 90 Tage | mittel | Art. 17 |
 | 8 | AVV, TOM, Verzeichnis, DSFA und Meldeprozess fehlen | mittel | Art. 28, 30, 32, 33, 35 |
 | 9 | `idempotency_key` hält vollständige Antwortkörper | gering | Art. 5, 32 |
+| 10 | Kennworthashes und Geheimnisse im Protokoll | **schwer** | Art. 32 |
+
+Befund 10 stand beim ersten Durchgang **nicht** in dieser Tabelle. Er kam erst
+beim Beheben von Befund 1 zum Vorschein, als die Redaktionsliste entstand und
+die Frage aufkam, welche Felder der Trigger sonst noch mitschreibt. Er steht
+unten als eigener Abschnitt.
 
 ---
 
@@ -127,6 +140,19 @@ Empfohlen ist Weg 1. Er kostet eine Migration und eine Zeile je zu schützendem
 Feld, und er ist die einzige Variante, die nicht die Eigenschaft opfert, wegen
 der das Protokoll existiert.
 
+> **Behoben** — Migration 0043. Weg 1: die Tabelle `audit_redaction` nennt
+> Feld für Feld, was nicht ins Protokoll gehört, und der Trigger ersetzt den
+> Wert durch `[redigiert]`. Der Schlüssel bleibt stehen.
+>
+> Dieselbe Prüfung wie oben, nach der Behebung: 13 Felder nachweisbar
+> geändert, 10 davon redigiert, im Klartext nur `status`, `anonymized_at` und
+> `updated_at` — genau das, was ein Protokoll behalten soll.
+>
+> Der **Altbestand** ist mitredigiert: die Migration läuft als Eigentümerin
+> und überschreibt die bereits geschriebenen Kopien, per `UPDATE` und nicht
+> per `DELETE`. Die Zeile bleibt, ihr Wert fällt; die Unveränderlichkeit
+> gegenüber der Anwendung ist unberührt.
+
 Die verschlüsselte Ausweisnummer ist ein Sonderfall: sie steht als Geheimtext
 im Protokoll und ist ohne den Schlüssel wertlos. Sobald die alte
 Schlüsselversion aus dem Umlauf ist, ist sie unwiederbringlich — das wirkt hier
@@ -157,6 +183,11 @@ denkt.
 unsichtbar, was richtig ist. Der Schreibpfad läuft über `SECURITY DEFINER` und
 ist davon nicht betroffen.
 
+> **Behoben** — Migration 0044. Dazu eine eigene `WITH CHECK`-Richtlinie für
+> den einen Pfad, der unmittelbar schreibt: den Vermerk über einen
+> Ausweisabruf. Härtegrad 1 bleibt unberührt — ein Test weist nach, dass die
+> Anwendungsrolle weiterhin nichts ändern oder löschen kann.
+
 ---
 
 ## 3. `audit_log` hat keine Aufbewahrungsgrenze
@@ -173,6 +204,17 @@ Buchungsprotokoll sind zehn Jahre die naheliegende Wahl, weil sie der längsten
 handels- und steuerrechtlichen Frist entspricht und damit nicht gesondert
 verteidigt werden muss. Dann ein Gegenstück zu `audit_log_ensure_partitions`,
 das ältere Partitionen abhängt und löscht, im selben Job.
+
+> **Behoben** — Migration 0044 und `dropOldAuditPartitions` im Nachtlauf. Zehn
+> Jahre; die Zahl steht in der Datenbankfunktion und nicht im Job, weil sie
+> zur Aufbewahrungsregel gehört und nicht zur Ablaufsteuerung. Die
+> Auffangpartition bleibt unangetastet — sie ist der Alarm und kein Bestand.
+>
+> Mitgefunden: der Aufräumjob für Sitzungen und Idempotenzschlüssel lief mit
+> der Anwendungsrolle. Unter der neuen Richtlinie auf `idempotency_key`
+> (Befund 9) hätte er im leeren Systemkontext **keine einzige Zeile** gesehen,
+> weiter gemeldet, er habe aufgeräumt, und nichts getan. Er läuft jetzt mit
+> der Eigentümerrolle.
 
 ---
 
@@ -202,6 +244,13 @@ werden; drittens die Handreichung für die Rezeption um den Satz ergänzen, dass
 eine Anforderung notiert wird (*barrierefreies Zimmer*) und nicht ihr Grund
 (*Sauerstoffgerät*). Der erste Teil ist die Information, die der Betrieb
 braucht; der zweite ist der, der die Kategorie wechselt.
+
+> **Behoben** — beide Freitextfelder stehen auf der Redaktionsliste und werden
+> damit nicht mehr unlöschbar. Der Hinweis erscheint jetzt an beiden Stellen,
+> an denen ein Mensch mit einer Hausnotiz zu tun hat: in der Auskunftsansicht,
+> wo sie gelesen wird, und in der Antwort der Route, über die sie entsteht —
+> eine Maske dafür gibt es nicht, sie wird über die Schnittstelle geschrieben,
+> und wer das tut, liest kein Handbuch.
 
 ---
 
@@ -234,6 +283,13 @@ einen Durchlauf.
 `NULL` setzen. Die Zeile selbst bleibt — dass zugestimmt wurde und wann, ist der
 Nachweis, um den es geht; das Bild der Unterschrift ist es nicht.
 
+> **Behoben** — Migration 0045, und zwar an der Wurzel. Der Satz zu löschender
+> Tabellen stand an **drei** Stellen: zweimal in der Route und einmal im
+> Nachtlauf. Genau deshalb hat die Einwilligung gefehlt — wer eine Tabelle
+> ergänzt, muss an drei Orte denken. Jetzt gibt es `guest_erase_one()`, und
+> Route wie Nachtlauf rufen sie. Der Unterschied zwischen sofort und
+> aufgeschoben liegt in der Frist, die davor geprüft wird, nicht im Umfang.
+
 ---
 
 ## 6. Die Auskunft nach Art. 15 ist unvollständig
@@ -260,6 +316,17 @@ auszugeben. Die Angaben nach lit. a bis h gehören als fester Kopf an den Export
 — sie ändern sich je Betrieb kaum und lassen sich aus den Stammdaten des Hauses
 und einem Textbaustein erzeugen.
 
+> **Behoben** — Gastpost und Einwilligungen sind ergänzt, die Angaben nach
+> lit. a bis h stehen als fester Kopf an der Auskunft und liegen im
+> Meldungskatalog, in allen drei Sprachen: ein Gast soll seine Auskunft lesen
+> können.
+>
+> Das Bild der Unterschrift geht bewusst **nicht** mit hinaus. Es gehört ihm,
+> aber eine Auskunft ist kein Anlass, es ein zweites Mal in Umlauf zu bringen;
+> die Antwort sagt, dass unterschrieben wurde. Die Historie aus `audit_log`
+> bleibt draußen, weil sie nach Befund 1 keine personenbezogenen Werte mehr
+> enthält — die Auskunft wäre eine Liste von Feldnamen.
+
 ---
 
 ## 7. Gastpost überlebt die Löschung bis zu 90 Tage
@@ -274,6 +341,9 @@ stehen. Die Löschroutine stößt die Redaktion nicht an.
 
 **Was zu tun ist.** `guest_erasure_complete()` redigiert die Post dieses Gastes
 mit, unabhängig vom Alter. Dieselbe Funktion, anderer Auslöser.
+
+> **Behoben** — Migration 0045, in `guest_erase_one()`, mit demselben Marker
+> wie `email_redact_old`: beide Wege hinterlassen dasselbe Ergebnis.
 
 ---
 
@@ -313,6 +383,21 @@ Drei weitere fehlen und sind bisher nirgends benannt:
 | Statistisches Landesamt | Beherbergungsstatistik | aggregiert nach Wohnsitzland — das System **erzeugt** den Satz, übermittelt wird er außerhalb über eSTATISTIK.core |
 | GitHub | Ausrollen | keine Gastdaten |
 
+> **Behoben, soweit es sich schreiben lässt** — [`datenschutz/`](datenschutz/)
+> enthält jetzt das Verarbeitungsverzeichnis nach Art. 30 Abs. 2, die TOM nach
+> Art. 32, einen AVV-Entwurf nach Art. 28 Abs. 3, den Meldeprozess nach
+> Art. 33/34 und die Schwellenwertprüfung nach Art. 35.
+>
+> Zwei Dinge bleiben ausdrücklich offen, und beide sind nicht technisch:
+> **der AVV gehört einem Anwalt vorgelegt**, bevor ihn ein Kunde
+> unterschreibt, und die **Schwellenwertprüfung endet mit „DSFA
+> durchzuführen"** — drei Kriterien der WP 248 treffen zu, die Schwelle liegt
+> bei zwei. Ihr Ergebnis steht damit fest, ihr Text noch nicht.
+>
+> Die Felder in `⟨spitzen Klammern⟩` kennt nur der Betreiber und sind bewusst
+> nicht geraten: ein TOM-Papier, das mehr verspricht als die Software hält,
+> ist schlimmer als keines — es wird beim ersten Vorfall gelesen.
+
 ---
 
 ## 9. `idempotency_key` hält vollständige Antwortkörper
@@ -331,6 +416,57 @@ schützt — und sie überlebt eine Löschung, die in diese 24 Stunden fällt.
 einfacher und wirksamer — nur speichern, was die Idempotenz wirklich braucht:
 Status und die erzeugte Kennung reichen, um dieselbe Antwort ein zweites Mal
 auszuliefern.
+
+> **Behoben — und der zweite Vorschlag war falsch.** Beim Umsetzen stellte
+> sich heraus: der Rumpf ist nicht entbehrlich. Idempotenz heißt gerade, dass
+> ein wiederholter Aufruf **dieselbe** Antwort bekommt statt einer zweiten
+> Buchung — und wer wiederholt, hat die erste Antwort ja nicht erhalten. Die
+> Spalte zu leeren hätte den Zweck der Tabelle beseitigt, nicht ihr Risiko.
+> Der Satz oben stand da, weil ich den Wiedergabepfad nicht gelesen hatte,
+> bevor ich die Abhilfe formulierte.
+>
+> Umgesetzt ist deshalb der erste Weg: Migration 0046 gibt der Tabelle eine
+> `account_id` und eine Zeilenrichtlinie. Eine gezielte Löschung je Gast gibt
+> es bewusst nicht — benutzt wird die Idempotenz von den Zahlungs- und
+> Kassenrouten, deren Rückgaben keinen Gast nennen, und ein Durchsuchen von
+> JSON nach Kennungen wäre mehr Angriffsfläche als Schutz.
+
+---
+
+## 9a. Kennworthashes und Geheimnisse im Protokoll — *nachgewiesen*
+
+Dieser Befund stand nicht im ersten Durchgang. Er kam beim Beheben von
+Befund 1 zum Vorschein: als die Redaktionsliste entstand, war die Frage
+unvermeidlich, welche Felder der Trigger sonst noch mitschreibt.
+
+`app_user` trägt den Audit-Trigger. Die Tabelle führt `password_hash`,
+`totp_secret_enc` und `workstation_pin_hash`. Eine Kennwortänderung ist eine
+Änderung — nachgestellt:
+
+```
+               neuer Hash im audit_log
+-----------------------------------------------------
+ $argon2id$v=19$m=65536,t=3,p=4$NEUESKENNWORT$abcdef
+```
+
+**Jede Kennwortänderung archivierte damit den alten und den neuen Hash**,
+unbefristet (Befund 3), in einer Tabelle ohne Zeilenrichtlinie (Befund 2). Für
+`totp_secret_enc` und `workstation_pin_hash` dasselbe. Drei Befunde, die
+einzeln schon schwer wiegen, greifen hier ineinander.
+
+Das ist kein Datenschutz-, sondern ein Sicherheitsbefund: ein Angreifer mit
+Lesezugriff auf das Protokoll bekäme die vollständige Historie aller
+Kennworthashes des Systems — auch die von Konten, deren aktuelles Kennwort
+längst ein anderes ist.
+
+> **Behoben** — dieselbe Redaktionsliste, Migration 0043. Alle drei Felder
+> stehen darauf, der Altbestand ist mitredigiert. Ein Test weist nach, dass
+> weder ein alter noch ein neuer Hash im Protokoll auftaucht.
+>
+> Dass das Audit diesen Befund übersehen hat, ist die eigentliche Lehre: es
+> hatte den Trigger gelesen und die **Gast**tabellen geprüft. Welche Tabellen
+> **sonst noch** am Trigger hängen, ist die Frage, die eine Stunde früher
+> hätte kommen müssen.
 
 ---
 
@@ -377,17 +513,34 @@ kommt. Bis auf Befund 2 vollständig.
 
 ---
 
-## 11. Reihenfolge
+## 11. Stand der Behebung
 
-1. **Befund 1** — Redaktionsliste für den Audit-Trigger. Alles andere ist
-   kleiner, und Befund 4, 6 und teilweise 3 hängen daran.
-2. **Befund 2 und 3** — Richtlinie und Aufbewahrung für `audit_log`. Eine
-   Migration, zusammen zu machen.
-3. **Befund 5 und 7** — zwei Ergänzungen in `guest_erasure_complete()`.
-4. **Befund 6** — zwei Tabellen in den Export, Kopf nach lit. a bis h.
-5. **Befund 8** — AVV und TOM vor dem ersten Kunden, Verzeichnis und
-   Meldeprozess davor oder gleichzeitig.
-6. **Befund 9** — wenn Befund 2 ohnehin angefasst wird.
+| Nr. | Befund | Behoben durch |
+|---|---|---|
+| 1 | Die Löschung schreibt ihre eigene Kopie | Migration 0043, `audit_redaction` |
+| 2 | Keine Zeilenrichtlinie auf `audit_log` | Migration 0044 |
+| 3 | Keine Aufbewahrungsgrenze | Migration 0044, `dropOldAuditPartitions` |
+| 4 | Freitext ohne Art.-9-Schutz | Redaktionsliste, Hinweis an Route und Maske |
+| 5 | Löschung erreicht die Einwilligung nicht | Migration 0045, `guest_erase_one()` |
+| 6 | Auskunft nach Art. 15 unvollständig | Gastpost, Einwilligungen, lit. a bis h |
+| 7 | Gastpost überlebt die Löschung | Migration 0045 |
+| 8 | Dokumente fehlen | [`datenschutz/`](datenschutz/) |
+| 9 | `idempotency_key` ohne Grenze | Migration 0046 |
+| 10 | Geheimnisse im Protokoll | Migration 0043 |
 
-Befund 4 läuft nebenher: der Hinweis an der Hausnotiz ist eine Zeile, der Rest
-ist Schulung.
+Zwölf Regressionstests in `packages/db/src/__tests__/dsgvo.test.ts` halten die
+Befunde 1, 2, 3, 5, 7 und 9 fest — die, die sich als Verhalten prüfen lassen.
+Sie prüfen nicht das Schema, sondern was nach einer Löschung noch dasteht und
+wer es lesen kann.
+
+**Was nicht durch Code erledigt ist und es auch nie sein wird:**
+
+1. Der **AVV** ist ein Entwurf und gehört vor dem ersten Kunden einem Anwalt
+   vorgelegt.
+2. Die **DSFA** ist fällig — die Schwellenwertprüfung sagt es begründet. Ihr
+   Text ist zu schreiben.
+3. Die Felder in `⟨spitzen Klammern⟩` in den Datenschutzdokumenten kennt nur
+   der Betreiber.
+4. Befund 4 bleibt zur Hälfte eine Frage der **Einweisung**: dass eine
+   Hausnotiz die Anforderung festhält und nicht ihren Grund, kann ein
+   Hinweistext sagen, aber nicht erzwingen.

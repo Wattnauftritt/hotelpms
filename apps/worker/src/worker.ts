@@ -2,7 +2,8 @@ import { createPool, withTransaction, SYSTEM_CONTEXT, type DbContext, type Pool 
   from '@hotelpms/db'
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
-import { ensureAuditPartitions, auditDefaultPartitionRows, materializeInventory,
+import { ensureAuditPartitions, dropOldAuditPartitions,
+         auditDefaultPartitionRows, materializeInventory,
          reconcileInventory, purgeRegistrations, purgeGuestDocuments,
          completeGuestErasures, purgeExpired, redactOldEmails,
          overdueNightAudits } from './jobs/maintenance.js'
@@ -61,12 +62,19 @@ async function platformMaintenance(): Promise<void> {
   await withTransaction(admin, SYSTEM_CONTEXT, async client => {
     const created = await ensureAuditPartitions(client)
     if (created > 0) log.info({ created }, 'Audit-Partitionen angelegt')
+    const dropped = await dropOldAuditPartitions(client)
+    if (dropped > 0) log.info({ dropped }, 'Protokollpartitionen jenseits der Frist entfernt')
     const stray = await auditDefaultPartitionRows(client)
     if (stray > 0) log.error({ stray }, 'ALARM: Zeilen in der Default-Partition des Audit-Logs')
-  })
-  // Sitzungen und Idempotenzschluessel haben keine Zeilenrichtlinie und
-  // gehoeren keinem Mandanten. Die Anwendungsrolle genuegt.
-  await withTransaction(pool, SYSTEM_CONTEXT, async client => {
+
+    // Sitzungen, Einmaltoken und Idempotenzschluessel gehoeren keinem
+    // Mandanten, das Aufraeumen laeuft deshalb hier und nicht je Haus.
+    //
+    // **Mit der Eigentuemerrolle**, nicht mehr mit der Anwendungsrolle: seit
+    // Migration 0046 traegt `idempotency_key` eine Zeilenrichtlinie, und der
+    // leere Systemkontext saehe unter ihr keine einzige Zeile. Der Job haette
+    // weiter gemeldet, er habe aufgeraeumt, und nichts getan -- genau die
+    // Art Fehler, die CLAUDE.md zweimal als still passiert nennt.
     const purged = await purgeExpired(client)
     if (purged > 0) log.info({ purged }, 'Abgelaufene Sitzungen und Schluessel entfernt')
   })

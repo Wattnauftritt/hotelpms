@@ -6,7 +6,12 @@ Hotel-Property-Management-System. Deutsches Recht ist Kern, nicht Lokalisierung.
 
 **Wer die Produktivmaschine aufsetzt:** [`docs/23-erstinbetriebnahme-checkliste.md`](docs/23-erstinbetriebnahme-checkliste.md) gibt die Reihenfolge fürs erste Mal, [`docs/21-inbetriebnahme.md`](docs/21-inbetriebnahme.md) die Begründungen dahinter.
 
-**Datenschutz:** [`docs/24-dsgvo-audit.md`](docs/24-dsgvo-audit.md) ist die Prüfung gegen die Quelle, mit den offenen Befunden und ihrer Reihenfolge. Wer am Audit-Trigger, an einer Löschroutine oder an `audit_log` arbeitet, liest zuerst Befund 1 bis 3 — sie hängen zusammen.
+**Datenschutz:** [`docs/24-dsgvo-audit.md`](docs/24-dsgvo-audit.md) ist die Prüfung gegen die Quelle; alle zehn Befunde sind behoben, die Vermerke stehen im Dokument. [`docs/datenschutz/`](docs/datenschutz/) hält den organisatorischen Teil — Verarbeitungsverzeichnis, TOM, AVV-Entwurf, Meldeprozess, DSFA-Schwellenwert.
+
+Zwei Regeln sind daraus entstanden und nicht verhandelbar:
+
+- **Der Audit-Trigger schreibt keinen personenbezogenen Wert und kein Geheimnis mit.** Wer eine Spalte hinzufügt, die einen Menschen bezeichnet oder ein Geheimnis trägt, trägt sie in `audit_redaction` ein. Sonst erzeugt die nächste Löschung wieder eine Kopie, die niemand entfernen kann (Migration 0043).
+- **Was zu einem Gast gehört, wird an einer Stelle gelöscht:** `guest_erase_one()` und `guest_erase_partial()`. Nicht in der Route, nicht im Nachtlauf, nicht in beidem. Genau diese Verdreifachung hat die Einwilligungsunterschrift überleben lassen.
 
 **Vor jeder Änderung:** [`docs/16-arbeitsstand.md`](docs/16-arbeitsstand.md) sagt, was fertig ist und welche Aufgaben offen und abgegrenzt sind. Die Begründungen hinter dem Entwurf stehen in `docs/01` bis `docs/15`; sie sind keine Ziererei, sondern der Grund, warum Dinge so und nicht anders gebaut sind.
 

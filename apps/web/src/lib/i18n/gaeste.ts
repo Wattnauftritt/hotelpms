@@ -213,6 +213,13 @@ export const gaeste = {
     de: 'Hausnotizen',
     en: 'Property notes',
     tr: 'Tesis notları' },
+  'dsgvo.notesHint': {
+    de: 'Eine Hausnotiz haelt eine Anforderung fest, nicht ihren Grund — '
+      + '„barrierefreies Zimmer" gehört hierher, die Diagnose dahinter nicht.',
+    en: 'A property note records a requirement, not its reason — "step-free room" '
+      + 'belongs here, the diagnosis behind it does not.',
+    tr: 'Tesis notu bir gereksinimi kaydeder, nedenini değil — „engelsiz oda" '
+      + 'buraya aittir, arkasındaki teşhis ait değildir.' },
   'dsgvo.registrations': {
     de: 'Meldescheine',
     en: 'Registration forms',

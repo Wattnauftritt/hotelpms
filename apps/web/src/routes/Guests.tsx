@@ -519,6 +519,7 @@ function Auskunft({ daten }: { daten: GuestDataExport }): JSX.Element {
         a => `${a.arrival} – ${a.departure} · ${a.property} · ${a.status}`)} />
       <Abschnitt titel={t('dsgvo.invoices')} zeilen={daten.invoices.map(
         r => `${r.number} · ${r.issuedOn} · ${(r.grossCent / 100).toFixed(2)}`)} />
+      <p className="text-xs text-neutral-600 mt-4">{t('dsgvo.notesHint')}</p>
       <Abschnitt titel={t('dsgvo.notes')} zeilen={daten.notes.map(
         n => `${n.createdAt.slice(0, 10)} · ${n.property} · ${n.note}`)} />
       <Abschnitt titel={t('dsgvo.registrations')} zeilen={daten.registrations.map(
