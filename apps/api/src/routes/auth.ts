@@ -118,13 +118,20 @@ export function authRoutes(app: FastifyInstance): void {
           WHERE lower(u.email) = lower($1)`, [email, herkunft])
       const benutzer = rows[0]
 
-      // Zwei Sperren: die eigene Herkunft nach zu vielen Fehlversuchen von
-      // dort, und die am Konto, die nur noch von Hand gesetzt wird. Die
-      // zweite bleibt stehen, weil die Aufsicht ein Konto stilllegen können
-      // muss, ohne auf eine Herkunft zu zeigen.
-      const gesperrtBis = benutzer?.herkunft_gesperrt_bis ?? benutzer?.locked_until
-      if (gesperrtBis !== null && gesperrtBis !== undefined
-          && Date.parse(gesperrtBis) > Date.now()) {
+      /*
+       * Zwei Sperren: die eigene Herkunft nach zu vielen Fehlversuchen von
+       * dort, und die am Konto, die nur noch von Hand gesetzt wird. Die
+       * zweite bleibt stehen, weil die Aufsicht ein Konto stilllegen können
+       * muss, ohne auf eine Herkunft zu zeigen.
+       *
+       * Beide werden geprüft, nicht die erste vorhandene: `??` nahm die
+       * Herkunftssperre auch dann, wenn sie längst abgelaufen war, und
+       * übersah dann die Sperre am Konto -- eine abgelaufene Zeile in
+       * `login_failure` hätte eine Stilllegung von Hand ausgehebelt.
+       */
+      const sperren = [benutzer?.herkunft_gesperrt_bis, benutzer?.locked_until]
+        .filter((s): s is string => s !== null && s !== undefined)
+      if (sperren.some(s => Date.parse(s) > Date.now())) {
         // Auch hier keine genaue Auskunft: die Sperre selbst ist schon eine.
         throw Errors.unauthorized('auth.tooManyAttempts')
       }
