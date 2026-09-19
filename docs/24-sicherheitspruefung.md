@@ -4,13 +4,15 @@ Stand: 19.09.2026, gegen `main` bei `62694b8`. Geprüft wurden 261 Quelldateien,
 
 Diese Prüfung ist eine **Lesung mit Gegenproben**, kein Penetrationstest. Wo ein Befund nachweisbar war, steht der Nachweis dabei; wo er es nicht war, steht das auch.
 
+Der Stand ist ein Datum, kein Dauerzustand: nach `62694b8` sind die Migrationen 0041 und 0042 und die Änderungen am Ausrollpanel dazugekommen, und sie sind hier **nicht** geprüft. Eine Gegenprobe an ihnen hat nichts gefunden, was einen Befund aufwirft — die drei Routen liegen hinter `platform:operations` und laufen in `tx(...)`, `release` trägt keine Mandantendaten. Wer den Bericht später liest, rechnet ab dieser Stelle selbst weiter.
+
 ---
 
 ## 1. Das Ergebnis in einem Absatz
 
 Das System ist in den Bereichen, in denen ein Hotel-PMS üblicherweise scheitert, **auffallend solide**: keine SQL-Einschleusung, keine Rechteausweitung über Rollen, saubere Mandantentrennung, Argon2id mit Blindhash, zeitgleiche Vergleiche an jeder Signaturprüfung, ein enger Content-Security-Policy-Kopf. Mehrere Stellen tragen Kommentare über Löcher, die schon einmal offen waren und geschlossen wurden — das ist ein gutes Zeichen, kein schlechtes.
 
-Gefunden wurden **zwei Befunde mittleren Grades** und sechs Härtungspunkte. Einer der beiden verletzt eine Regel, die `CLAUDE.md` selbst als nicht verhandelbar führt.
+Gefunden wurden **zwei Befunde mittleren Grades** und sieben Härtungspunkte. Einer der beiden verletzt eine Regel, die `CLAUDE.md` selbst als nicht verhandelbar führt.
 
 | | Befund | Grad |
 |---|---|---|
@@ -175,7 +177,7 @@ Diese Liste ist nicht Höflichkeit. Wer die Befunde oben liest, soll sehen, woge
 
 **Sitzungen.** 32 Byte aus `randomBytes`, `httpOnly`, `sameSite: lax`, `secure` in Produktion. Untätigkeits- **und** absolute Frist, beide bei jedem Nachschlag geprüft, dazu `revoked_at`. Bei einer Rollenänderung werden alle Sitzungen des Betroffenen ungültig.
 
-**CSRF.** Kein CORS konfiguriert — es gibt nur eine Herkunft, und eine fremde Seite kann keine Antwort lesen. Alle fachlichen Änderungen laufen über POST, PATCH, PUT oder DELETE; bei `SameSite=Lax` schickt der Browser das Cookie dorthin nicht mit. **Eine Ausnahme gibt es**, und sie steht als H6 unten.
+**CSRF.** Kein CORS konfiguriert — es gibt nur eine Herkunft, und eine fremde Seite kann keine Antwort lesen. Alle fachlichen Änderungen laufen über POST, PATCH, PUT oder DELETE; bei `SameSite=Lax` schickt der Browser das Cookie dorthin nicht mit. **Eine Ausnahme gibt es**, und sie steht als H6 oben.
 
 **Kryptografie.** AES-256-GCM für die Ausweisnummer, Zufalls-IV je Datensatz, Schlüsselversion **am Datensatz** statt global — Rotation ohne Stillstand. Der Zwischenspeicher der abgeleiteten Schlüssel ist nach Version **und Abdruck des Geheimnisses** benannt; der Kommentar beschreibt den Fehler, der entstünde, wenn er es nicht wäre, und ein Test hält ihn fest. Zeitgleiche Vergleiche an allen drei Signaturprüfungen (Stripe, Webhook, Auth-Token).
 
