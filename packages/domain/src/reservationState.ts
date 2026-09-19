@@ -36,10 +36,6 @@ export function nextState(
   return TRANSITIONS[from][action] ?? null
 }
 
-export function allowedActions(from: ReservationStatus): ReservationAction[] {
-  return Object.keys(TRANSITIONS[from]) as ReservationAction[]
-}
-
 export class InvalidTransitionError extends Error {
   constructor(
     readonly from: ReservationStatus,

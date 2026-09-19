@@ -12,10 +12,6 @@ import { formatCent } from './money.js'
 export const EMAIL_KINDS = ['invoice', 'reservation_confirmation'] as const
 export type EmailKind = (typeof EMAIL_KINDS)[number]
 
-export function isEmailKind(v: string): v is EmailKind {
-  return (EMAIL_KINDS as readonly string[]).includes(v)
-}
-
 /**
  * Die Sprachliste und die Abbildung stehen im Vertrag, nicht hier.
  *
@@ -80,11 +76,6 @@ export function emailShouldRetry(statusCode: number | null): boolean {
   if (statusCode === null) return true
   if (statusCode === 429) return true          // Drosselung, also warten
   return statusCode >= 500                     // Anbieter kaputt, nicht wir
-}
-
-/** Hat der Anbieter die Nachricht angenommen? */
-export function emailAccepted(statusCode: number): boolean {
-  return statusCode >= 200 && statusCode < 300
 }
 
 // ---------------------------------------------------------------------------
