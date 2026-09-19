@@ -369,6 +369,8 @@ Damit ist diese Unit die empfindlichste auf der Maschine. Was sie trägt, ist ni
 
 **Ein Lauf von Hand bleibt möglich** und wird gesehen: `deploy.sh` direkt aufzurufen ist der Weg für den ersten Start und für den Fall, dass die Konsole selbst nicht läuft.
 
+**Was zurückgerollt werden kann**, entscheidet die Platte: der Agent trägt bei jedem Tick ein, welche Stände mit `.fertig` unter `releases/` liegen und worauf `current` zeigt (Tabelle `release`, Migration 0041). Das Panel bietet genau diese an, ohne den laufenden. Ein Stand, der von Hand ausgerollt wurde oder dessen Lauf nach dem Umschalten scheiterte, ist damit genauso ein Ziel wie ein geglückter — er liegt ja da.
+
 **Wenn der Knopf nicht mehr geht**, steht meist eine Anforderung auf `running` fest — ein abgebrochener Lauf. Der eindeutige Teilindex lässt dann keine weitere zu, und das ist so gewollt: zwei gleichzeitige Läufe zögen sich im selben Verzeichnis die Dateien weg. Nachsehen und freigeben:
 
 ```sql
