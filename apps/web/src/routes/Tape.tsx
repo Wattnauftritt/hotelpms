@@ -17,6 +17,8 @@ const BINDEND = new Set(['Optional', 'Confirmed', 'InHouse'])
 
 interface Auswahl {
   resourceId: number; categoryId: number; categoryName: string; roomCode: string
+  /** Plaetze der Zimmergruppe. Entscheidet, ob bei Ueberbelegung gefragt wird. */
+  maxOccupancy?: number
   arrival: string; departure: string
 }
 
@@ -93,7 +95,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onCreate={sel => {
                         const u = q.data!.units.find(x => x.id === sel.resourceId)
                         setAuswahl({ ...sel, roomCode: u?.code ?? '',
-                                      categoryName: u?.category_name ?? '' })
+                                      categoryName: u?.category_name ?? '',
+                                      maxOccupancy: u?.max_occupancy })
                       }}
                       onCreateGroup={sel => {
                         const zimmer = new Map(q.data!.units.map(u => [u.id, u]))
@@ -144,6 +147,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         <BookingDialog propertyId={propertyId}
                         categoryId={auswahl.categoryId} categoryName={auswahl.categoryName}
                         resourceId={auswahl.resourceId} roomCode={auswahl.roomCode}
+                        maxOccupancy={auswahl.maxOccupancy}
                         arrival={auswahl.arrival} departure={auswahl.departure}
                         onClose={() => setAuswahl(null)} />
       )}

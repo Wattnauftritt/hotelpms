@@ -6,8 +6,13 @@ import { GuestPicker } from './GuestPicker.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
- * Buchungsdialog: im Plan aufgezogen (A2) oder aus einer Zelle des
+ * Neue Reservierung: im Plan aufgezogen (A2) oder aus einer Zelle des
  * Verfügbarkeitsrasters heraus (A8).
+ *
+ * **Reservierung, nicht Buchung.** Das Datenmodell trennt beides: eine
+ * `booking` hält mehrere `reservation`, und hier entsteht ein Aufenthalt in
+ * einem Zimmer. Die Rezeption trägt eine Buchung ein, sie erstellt keine --
+ * gebucht hat der Gast.
  *
  * Zimmer, falls eines mitkommt, und Zeitraum stehen als Vorschlag fest --
  * aufgezogen oder angeklickt wurde genau das. Die Buchung entsteht mit
@@ -15,10 +20,21 @@ import { Fehler } from './Shell.tsx'
  * Zimmer, nicht in irgendeinem der Gruppe; ohne Zimmer bindet sie nur die
  * Gruppe, wie jede andere freie Buchung auch.
  */
+/** Der Tag davor, als Kalenderdatum. Nie ueber `new Date(iso)` -- das
+ *  verschiebt je nach Zeitzone um einen Tag (CLAUDE.md, "Geld und Datum"). */
+function vortag(iso: string): string {
+  const [j, m, t] = iso.split('-').map(Number)
+  const d = new Date(Date.UTC(j!, m! - 1, t! - 1))
+  return d.toISOString().slice(0, 10)
+}
+
 export function BookingDialog({ propertyId, categoryId, categoryName, resourceId, roomCode,
+                                maxOccupancy,
                                 arrival: anfangsAnreise, departure: anfangsAbreise, onClose }: {
   propertyId: number; categoryId: number; categoryName: string
   resourceId?: number; roomCode?: string
+  /** Plaetze der Zimmergruppe. Ohne Angabe wird nicht nachgefragt. */
+  maxOccupancy?: number
   arrival: string; departure: string
   onClose: () => void
 }): JSX.Element {
@@ -27,6 +43,17 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   const [notes, setNotes] = useState('')
   const [arrival, setArrival] = useState(anfangsAnreise)
   const [departure, setDeparture] = useState(anfangsAbreise)
+  const [unverbindlich, setUnverbindlich] = useState(false)
+  /*
+   * Die Option hält bis zum Vortag der Anreise, als Vorschlag. Kein fester
+   * Abstand in Tagen: bei einer Anreise übermorgen wären sieben Tage eine
+   * Frist nach der Anreise, und die Option verfiele nie.
+   */
+  const [optionBis, setOptionBis] = useState(() => vortag(anfangsAnreise))
+  // Als Text, nicht als Zahl: ein leeres Feld ist etwas anderes als eine
+  // Null, und `useState<number>` kann das leere Feld nicht halten.
+  const [preis, setPreis] = useState('')
+  const [personen, setPersonen] = useState('')
   const buchen = useCreateBooking(propertyId)
 
   /*
@@ -41,6 +68,35 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * „Meier".
    */
   const gueltig = departure > arrival && guest !== null
+    && (!unverbindlich || optionBis !== '')
+
+  /*
+   * Überbelegung ist erlaubt und braucht eine Rückfrage. Ein Kleinkind im
+   * Doppelzimmer ist der Normalfall, kein Fehler -- es zu verbieten hieße,
+   * die Rezeption zum Ausweichen auf eine falsche Zahl zu zwingen, und
+   * dann stimmt die Kurtaxe nicht mehr.
+   */
+  const anzahl = personen.trim() === '' ? null : Number(personen)
+  const zuViele = anzahl !== null && maxOccupancy !== undefined
+    && Number.isFinite(anzahl) && anzahl > maxOccupancy
+
+  const absenden = (): void => {
+    if (zuViele && !confirm(
+      t('booking.overCapacity', { max: maxOccupancy!, n: anzahl! }))) return
+    buchen.mutate({
+      propertyId, categoryId, arrival, departure, resourceId,
+      guestRef: guest?.guestRef,
+      notes: notes.trim() === '' ? undefined : notes.trim(),
+      status: unverbindlich ? 'Optional' : undefined,
+      optionExpiresAt: unverbindlich ? optionBis : undefined,
+      // Euro im Feld, Cent auf der Leitung. Geld ist immer eine ganze Zahl
+      // in Cent (CLAUDE.md); `Math.round` faengt die 0,1-Ungenauigkeit der
+      // Fliesskommazahl ab, die aus "19,90" sonst 1989 macht.
+      priceCent: preis.trim() === '' ? undefined
+        : Math.round(Number(preis.replace(',', '.')) * 100),
+      guestCount: anzahl ?? undefined
+    })
+  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
@@ -91,6 +147,49 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
           <div className="text-xs text-neutral-500">{t('booking.guestRequired')}</div>
         )}
 
+        <div className="flex flex-wrap gap-3">
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('booking.status')}</span>
+            <select value={unverbindlich ? 'optional' : 'confirmed'}
+                    onChange={e => setUnverbindlich(e.target.value === 'optional')}
+                    className="border border-neutral-300 rounded px-2 py-1 text-sm">
+              <option value="confirmed">{t('booking.statusConfirmed')}</option>
+              <option value="optional">{t('booking.statusOptional')}</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('booking.price')}</span>
+            <input value={preis} onChange={e => setPreis(e.target.value)}
+                   inputMode="decimal" placeholder="—"
+                   className="border border-neutral-300 rounded px-2 py-1 text-sm w-28" />
+          </label>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('booking.guests')}</span>
+            <input value={personen} onChange={e => setPersonen(e.target.value)}
+                   inputMode="numeric" placeholder="—"
+                   className="border border-neutral-300 rounded px-2 py-1 text-sm w-20" />
+          </label>
+        </div>
+
+        {/* Die Frist erscheint nur, wenn sie gebraucht wird. Ein Feld, das
+            bei einer verbindlichen Buchung leer danebensteht, wird
+            irgendwann versehentlich gefuellt. */}
+        {unverbindlich && (
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">
+              {t('booking.optionUntil')}
+            </span>
+            <input type="date" value={optionBis}
+                   onChange={e => setOptionBis(e.target.value)}
+                   className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+            <div className="text-xs text-neutral-500 mt-0.5">{t('booking.optionHint')}</div>
+          </label>
+        )}
+
+        <div className="text-xs text-neutral-500">
+          {t('booking.priceHint')} {t('booking.guestsHint')}
+        </div>
+
         <label className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('booking.notes')}</span>
           <input value={notes} onChange={e => setNotes(e.target.value)}
@@ -111,11 +210,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
         ) : (
           <div className="flex gap-2">
             <button type="button" disabled={buchen.isPending || !gueltig}
-                    onClick={() => buchen.mutate({
-                      propertyId, categoryId, arrival, departure, resourceId,
-                      guestRef: guest?.guestRef,
-                      notes: notes.trim() === '' ? undefined : notes.trim()
-                    })}
+                    onClick={absenden}
                     className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
                                disabled:bg-neutral-300">
               {t('booking.submit')}

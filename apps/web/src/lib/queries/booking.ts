@@ -77,6 +77,14 @@ export interface CreateBookingBody {
   source?: string
   notes?: string
   resourceId?: number
+  /** Verbindlich oder unverbindlich. Ohne Angabe verbindlich. */
+  status?: 'Confirmed' | 'Optional'
+  /** Pflicht bei `Optional`: ohne Frist verfaellt die Option nie. */
+  optionExpiresAt?: string
+  /** Preis je Nacht in Cent, statt des Preises aus dem Ratenplan. */
+  priceCent?: number
+  /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
+  guestCount?: number
 }
 
 /**

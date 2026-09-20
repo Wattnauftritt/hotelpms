@@ -310,3 +310,96 @@ describe('Notiz', () => {
     expect(nachher.rows[0]!.sold).toBe(vorher.rows[0]!.sold)
   })
 })
+
+describe('Art, Preis und Personen einer neuen Reservierung', () => {
+  /*
+   * Aus der Durchsicht des Belegungsplans: die Maske hatte kein Preisfeld,
+   * keine Statusauswahl und kein Feld fuer Personen. Alle drei entscheiden
+   * ueber Geld -- der Preis unmittelbar, der Status ueber den Bestand, die
+   * Personenzahl ueber die Kurtaxe.
+   */
+
+  it('legt verbindlich an, wenn nichts gesagt wird', async () => {
+    // Das bisherige Verhalten bleibt das voreingestellte.
+    const r = await buchen({ resourceId: zimmer[0] })
+    expect(r.statusCode, r.body).toBe(201)
+    const z = await owner.query<{ status: string; option_expires_at: string | null }>(
+      `SELECT status, option_expires_at FROM reservation ORDER BY id DESC LIMIT 1`)
+    expect(z.rows[0]!.status).toBe('Confirmed')
+    expect(z.rows[0]!.option_expires_at).toBeNull()
+  })
+
+  it('legt unverbindlich mit Frist an', async () => {
+    const r = await buchen({ resourceId: zimmer[0], status: 'Optional',
+                             optionExpiresAt: '2026-10-05T12:00:00Z' })
+    expect(r.statusCode, r.body).toBe(201)
+    const z = await owner.query<{ status: string; option_expires_at: string | null }>(
+      `SELECT status, option_expires_at FROM reservation ORDER BY id DESC LIMIT 1`)
+    expect(z.rows[0]!.status).toBe('Optional')
+    expect(z.rows[0]!.option_expires_at).not.toBeNull()
+  })
+
+  it('weist eine Option ohne Frist ab', async () => {
+    /*
+     * Der eigentliche Punkt. Der Nachtlauf sucht `status = 'Optional' AND
+     * option_expires_at < ...`. Eine Option ohne Frist faellt durch diese
+     * Bedingung und haelt ihren Platz fuer immer -- ohne Fehlermeldung, und
+     * in einem vollen Haus ist das genau der Bestand, der fehlt.
+     */
+    const r = await buchen({ resourceId: zimmer[0], status: 'Optional' })
+    expect(r.statusCode).toBe(422)
+    // Die Antwort traegt den uebersetzten Satz, nicht den Schluessel --
+    // ein Protokoll soll ohne Katalog lesbar bleiben (CLAUDE.md). Geprueft
+    // wird deshalb das Feld und der Kern der Aussage.
+    const fehler = JSON.parse(r.body).errors.optionExpiresAt as string[]
+    expect(fehler.join(' ')).toMatch(/Frist/)
+  })
+
+  it('weist eine Frist ohne Option ab', async () => {
+    // Sonst stuende an einer verbindlichen Buchung eine Angabe, die niemand
+    // liest und die beim naechsten Statuswechsel ploetzlich wirkt.
+    const r = await buchen({ resourceId: zimmer[0],
+                             optionExpiresAt: '2026-10-05T12:00:00Z' })
+    expect(r.statusCode).toBe(422)
+  })
+
+  it('setzt den vereinbarten Preis auf jede Nacht', async () => {
+    const r = await buchen({ resourceId: zimmer[0], priceCent: 8900 })
+    expect(r.statusCode, r.body).toBe(201)
+    const n = await owner.query<{ price_cent: string }>(
+      `SELECT DISTINCT price_cent FROM reservation_night
+        WHERE reservation_id = (SELECT max(id) FROM reservation)`)
+    expect(n.rows).toHaveLength(1)
+    expect(Number(n.rows[0]!.price_cent)).toBe(8900)
+  })
+
+  it('haelt die Personenzahl fest und laesst sie leer, wenn nichts gesagt wird', async () => {
+    /*
+     * Leer heisst "nicht gesagt", und dann gilt weiter, was verkauft wurde.
+     * Eine Vorgabe haette den Unterschied zwischen "zwei Personen" und
+     * "keine Angabe" fuer immer eingeebnet.
+     */
+    await buchen({ resourceId: zimmer[0], guestCount: 3 })
+    const mit = await owner.query<{ guest_count: number | null }>(
+      `SELECT guest_count FROM reservation ORDER BY id DESC LIMIT 1`)
+    expect(mit.rows[0]!.guest_count).toBe(3)
+
+    await buchen({ resourceId: zimmer[1] })
+    const ohne = await owner.query<{ guest_count: number | null }>(
+      `SELECT guest_count FROM reservation ORDER BY id DESC LIMIT 1`)
+    expect(ohne.rows[0]!.guest_count).toBeNull()
+  })
+
+  it('laesst eine Ueberbelegung zu', async () => {
+    /*
+     * Ein Kleinkind im Doppelzimmer ist der Normalfall, kein Fehler. Die
+     * Rueckfrage sitzt in der Oberflaeche; die Schnittstelle weist nur
+     * Unsinn ab, damit ein verrutschter Finger nicht 300 Personen anlegt.
+     */
+    const ok = await buchen({ resourceId: zimmer[0], guestCount: 9 })
+    expect(ok.statusCode, ok.body).toBe(201)
+
+    const unsinn = await buchen({ resourceId: zimmer[1], guestCount: 0 })
+    expect(unsinn.statusCode).toBe(422)
+  })
+})

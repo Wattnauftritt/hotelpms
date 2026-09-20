@@ -364,6 +364,32 @@ export const CreateBooking = Type.Object({
   source: Type.Optional(Type.String()),
   externalReference: Type.Optional(Type.String()),
   notes: Type.Optional(Type.String()),
+  /**
+   * Verbindlich oder unverbindlich. Ohne Angabe verbindlich, wie bisher.
+   *
+   * `Optional` verlangt `optionExpiresAt`: der Nachtlauf laesst eine Option
+   * am Fristende verfallen und gibt den Platz frei. Ohne Frist verfaellt
+   * sie nie und haelt Bestand, den niemand mehr abruft -- still, und in
+   * einem vollen Haus teuer.
+   */
+  status: Type.Optional(Type.Union([
+    Type.Literal('Confirmed'), Type.Literal('Optional')])),
+  optionExpiresAt: Type.Optional(Type.String()),
+  /**
+   * Preis **je Nacht** in Cent, statt des Preises aus dem Ratenplan.
+   *
+   * Je Nacht und nicht als Summe: `reservation_night.price_cent` ist je
+   * Nacht, und eine Summe muesste hier durch die Naechte geteilt werden.
+   * Bei drei Naechten und 100,00 EUR gaebe das dreimal 33,33 und einen Cent,
+   * der irgendwo landen muss. Wer eine Summe vereinbart hat, rechnet sie
+   * einmal im Kopf; das System soll nicht so tun, als ginge es auf.
+   */
+  priceCent: Type.Optional(Type.Integer({ minimum: 0 })),
+  /**
+   * Wie viele Personen anreisen. Ohne Angabe gilt, was verkauft wurde --
+   * die Belegung der Zimmergruppe (Migration 0054).
+   */
+  guestCount: Type.Optional(Type.Integer({ minimum: 1, maximum: 99 })),
   /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
   blockRef: Type.Optional(Type.String())
   // Es gibt bewusst kein Feld fuer Kartendaten. Eine Garantie laeuft ueber
