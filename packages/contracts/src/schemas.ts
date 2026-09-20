@@ -168,6 +168,9 @@ export const TapeChart = Type.Object({
     occupants: Type.Integer(),
     /** Plaetze der **gebuchten** Zimmergruppe, nicht des zugewiesenen Zimmers. */
     category_max_occupancy: Type.Integer(),
+    /** Merkmal fuer den Balken: "Balkon", "1. Stock", "Spaetanreise". */
+    short_note: Type.Union([Type.String(), Type.Null()]),
+    /** Der Vorgang. Nur im Titel und im Seitenfenster, nie auf dem Balken. */
     notes: Type.Union([Type.String(), Type.Null()])
   })),
   blocks: Type.Array(Type.Object({
@@ -390,6 +393,12 @@ export const CreateBooking = Type.Object({
    * die Belegung der Zimmergruppe (Migration 0054).
    */
   guestCount: Type.Optional(Type.Integer({ minimum: 1, maximum: 99 })),
+  /**
+   * Merkmal fuer den Balken im Belegungsplan. Vierzig Zeichen, und die
+   * Grenze ist der Zweck: ein Merkmal, kein Satz. Der Vorgang gehoert in
+   * `notes`.
+   */
+  shortNote: Type.Optional(Type.String({ maxLength: 40 })),
   /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
   blockRef: Type.Optional(Type.String())
   // Es gibt bewusst kein Feld fuer Kartendaten. Eine Garantie laeuft ueber

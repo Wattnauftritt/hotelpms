@@ -18,6 +18,14 @@ import type { PoolClient } from '@hotelpms/db'
  * und der jede Antwort aufblaeht, in der die Reservierung vorkommt.
  */
 const NOTES_MAX_LENGTH = 2000
+/*
+ * Die Kurznotiz steht auf dem Balken im Belegungsplan. Vierzig Zeichen, und
+ * die Grenze ist der Zweck: auf den Balken passt weniger -- bei einer Nacht
+ * praktisch nichts --, aber eine Grenze, die exakt der Anzeige folgt, waere
+ * bei jeder Schriftgroessenaenderung falsch. Vierzig sagt: ein Merkmal,
+ * kein Satz. Dieselbe Zahl steht in der Bedingung der Tabelle (0055).
+ */
+const SHORT_NOTE_MAX_LENGTH = 40
 
 /**
  * Obergrenze einer Gruppenbuchung.
@@ -75,6 +83,8 @@ interface CreateBooking {
   priceCent?: number
   /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
   guestCount?: number
+  /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
+  shortNote?: string
   source?: string
   externalReference?: string
   notes?: string
@@ -317,6 +327,11 @@ export function reservationRoutes(app: FastifyInstance): void {
           && (!Number.isInteger(body.priceCent) || body.priceCent < 0)) {
         throw Errors.validation({ priceCent: ['field.positiveInteger'] })
       }
+      if (body.shortNote !== undefined
+          && body.shortNote.length > SHORT_NOTE_MAX_LENGTH) {
+        throw Errors.validation({ shortNote: ['field.maxLength'] },
+          { max: SHORT_NOTE_MAX_LENGTH })
+      }
 
       /*
        * Ein Weg fuer beide Faelle.
@@ -513,14 +528,15 @@ export function reservationRoutes(app: FastifyInstance): void {
           const res = await client.query<{ id: number; public_ref: string }>(
             `INSERT INTO reservation
                (property_id, booking_id, category_id, arrival, departure, status,
-                option_expires_at, rate_plan_id, primary_guest_id, notes, block_id,
-                resource_id, guest_count, created_by)
+                option_expires_at, rate_plan_id, primary_guest_id, notes, short_note,
+                block_id, resource_id, guest_count, created_by)
              VALUES ($1,$2,$3,$4::date,$5::date,$6::reservation_status,$7,
-                     $8,$9,$10,$11,$12,$13,$14)
+                     $8,$9,$10,$11,$12,$13,$14,$15)
              RETURNING id, public_ref`,
             [body.propertyId, booking.rows[0]!.id, z.categoryId, body.arrival, body.departure,
              body.status ?? 'Confirmed', body.optionExpiresAt ?? null,
              ratePlanId ?? null, guestId ?? null, body.notes ?? null,
+             body.shortNote?.trim() || null,
              block?.id ?? null, z.resourceId ?? null, body.guestCount ?? null,
              principal.userId])
           const reservationId = res.rows[0]!.id
@@ -638,6 +654,8 @@ export function reservationRoutes(app: FastifyInstance): void {
                   b.public_ref            AS "bookingRef",
                   r.status, r.arrival::text, r.departure::text,
                   r.notes,
+                  r.short_note            AS "shortNote",
+                  r.guest_count           AS "guestCount",
                   r.category_id           AS "categoryId",
                   c.code                  AS "categoryCode",
                   c.name                  AS "categoryName",
@@ -721,11 +739,17 @@ export function reservationRoutes(app: FastifyInstance): void {
     summary: 'Notiz oder Hauptgast einer Reservierung aendern',
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
-      const body = req.body as { notes?: string | null; guestRef?: string }
+      const body = req.body as { notes?: string | null; shortNote?: string | null
+                                 guestRef?: string }
       if (body.notes !== undefined && body.notes !== null
           && body.notes.length > NOTES_MAX_LENGTH) {
         throw Errors.validation({ notes: ['field.maxLength'] },
           { max: NOTES_MAX_LENGTH })
+      }
+      if (body.shortNote !== undefined && body.shortNote !== null
+          && body.shortNote.length > SHORT_NOTE_MAX_LENGTH) {
+        throw Errors.validation({ shortNote: ['field.maxLength'] },
+          { max: SHORT_NOTE_MAX_LENGTH })
       }
 
       return tx(req.pool, req, async client => {
@@ -741,6 +765,12 @@ export function reservationRoutes(app: FastifyInstance): void {
             `UPDATE reservation SET notes = NULLIF($2, ''), updated_at = now()
               WHERE id = $1`, [res.id, body.notes ?? ''])
         }
+        if (body.shortNote !== undefined) {
+          await client.query(
+            `UPDATE reservation SET short_note = NULLIF(btrim($2), ''),
+                                    updated_at = now()
+              WHERE id = $1`, [res.id, body.shortNote ?? ''])
+        }
 
         let gastRef: string | null | undefined
         if (body.guestRef !== undefined) {
@@ -750,6 +780,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         return {
           reservationRef,
           notes: body.notes ?? null,
+          ...(body.shortNote === undefined ? {} : { shortNote: body.shortNote }),
           ...(gastRef === undefined ? {} : { guestRef: gastRef })
         }
       })

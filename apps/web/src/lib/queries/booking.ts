@@ -85,6 +85,8 @@ export interface CreateBookingBody {
   priceCent?: number
   /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
   guestCount?: number
+  /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
+  shortNote?: string
 }
 
 /**

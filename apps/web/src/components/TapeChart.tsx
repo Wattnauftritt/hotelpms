@@ -512,7 +512,9 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                                          occupants: r.occupants,
                                          categoryMaxOccupancy: r.category_max_occupancy })
                                      })}`
-                                 + ` · ${r.public_ref}`}
+                                 + ` · ${r.public_ref}`
+                                 // Die lange Notiz nur hier, nie auf dem Balken.
+                                 + (r.notes ? `\n${r.notes}` : '')}
                             style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
                             className={`absolute rounded px-1 text-[11px] text-white
                                         truncate text-left cursor-move
@@ -532,8 +534,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                           Plan zaehlt -- "Balkon", "1. Stock", "Spaetanreise".
                           Die Schnittstelle liefert sie seit jeher mit, nur
                           angezeigt wurde sie nie. */}
-                      {r.notes && (
-                        <span className="ml-1 opacity-75">· {r.notes}</span>
+                      {r.short_note && (
+                        <span className="ml-1 opacity-75">· {r.short_note}</span>
                       )}
                     </button>
                   )
@@ -667,7 +669,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                          + `${formatDate(r.arrival, locale)} – `
                          + `${formatDate(r.departure, locale)} · `
                          + `${t(`status.${r.status}` as never)}`
-                         + (r.notes ? ` · ${r.notes}` : '')}
+                         + (r.short_note ? ` · ${r.short_note}` : '')
+                         + (r.notes ? `\n${r.notes}` : '')}
                     style={{ ...b, top: 4, height: ZEILE - 8,
                              opacity: versteckt ? 0.35 : 1 }}
                     /*
@@ -682,17 +685,21 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
               {r.last_name ?? t('tape.noGuest')}
               {/*
-                * Die Notiz im Klartext, nicht als Merkmal.
+                * Die **Kurznotiz** im Klartext, nicht die lange.
                 *
-                * Hier stand eine Stecknadel: sie sagte, dass es eine Notiz
-                * gibt, und verschwieg welche -- also genau das, was man
-                * wissen will. Wer "Balkon" oder "Spaetanreise" erst nach
-                * zwei Klicks sieht, schreibt es beim naechsten Mal nicht
-                * mehr auf. Der Balken schneidet ohnehin ab (`truncate`), im
-                * Titel steht alles.
+                * Hier stand zuerst eine Stecknadel: sie sagte, dass es eine
+                * Notiz gibt, und verschwieg welche -- also genau das, was
+                * man wissen will. Dann stand hier `notes`, und das war die
+                * andere Haelfte des Fehlers: der Balken ist bei einer Nacht
+                * 44 Pixel breit, und die ersten Zeichen eines Absatzes sind
+                * "Gast hat angerufen weg...", also auch nichts.
+                *
+                * `short_note` ist fuer genau diese Stelle da und auf vierzig
+                * Zeichen begrenzt. Der Vorgang steht im Titel und im
+                * Seitenfenster.
                 */}
-              {r.notes && (
-                <span className="ml-1 opacity-75">· {r.notes}</span>
+              {r.short_note && (
+                <span className="ml-1 opacity-75">· {r.short_note}</span>
               )}
               {/* Griffe an den Raendern: verkuerzen und verlaengern (A4). */}
               <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
