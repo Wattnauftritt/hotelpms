@@ -8,9 +8,16 @@ on:
 # Ein neuer Push auf denselben Zweig macht den laufenden Durchgang wertlos.
 # Ihn zu Ende laufen zu lassen kostet einen Laeufer und verzoegert den
 # Durchgang, auf den tatsaechlich gewartet wird.
+#
+# **Ausser auf main.** Dort ist jeder Commit ein moeglicher Freigabestand,
+# und die Freigabe verlangt einen gruenen CI-Lauf fuer genau diesen Stand
+# (`freigeben.yml`). Werden zwei Pull Requests kurz hintereinander
+# gemergt, bricht der zweite Push den Lauf des ersten ab -- und der erste
+# Commit liesse sich nie mehr freigeben, obwohl an ihm nichts falsch ist.
+# Ein Laeufer ist billiger als ein Stand, den niemand ausrollen kann.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # --------------------------------------------------------------------
