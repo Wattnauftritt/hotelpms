@@ -738,3 +738,162 @@ describe('Das Kontextmenue des Browsers bleibt zu', () => {
     expect(shell).toContain('input, textarea, [contenteditable="true"]')
   })
 })
+
+/**
+ * Das eigene Kontextmenue im Plan.
+ *
+ * Das Browsermenue ist gesperrt, und ein gesperrter Knopf ohne Ersatz waere
+ * nur Verlust. Hinein gehoert, was man entscheidet, **waehrend** man auf
+ * den Plan sieht, und was heute Navigation kostet -- nicht alles, was es
+ * gibt.
+ */
+describe('Der rechte Knopf im Belegungsplan', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const menue = readFileSync(
+    new URL('../components/Kontextmenue.tsx', import.meta.url), 'utf8')
+  const eintraege = readFileSync(
+    new URL('../components/PlanKontextmenue.tsx', import.meta.url), 'utf8')
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+
+  it('laesst nur den linken Knopf ziehen', () => {
+    /*
+     * Der rechte loest `pointerdown` genauso aus. Ohne die Pruefung begann
+     * ein Rechtsklick auf einem Balken zugleich ein Verschieben: das Menue
+     * ging auf, und dahinter haftete der Balken am Zeiger -- der naechste
+     * Klick, der einen Menueeintrag treffen sollte, liess ihn irgendwo
+     * fallen.
+     */
+    expect(plan).toContain('function nurLinks(e: React.PointerEvent): boolean')
+    expect(plan).toContain('return e.buttons !== 1')
+    // Alle drei Gesten, nicht nur das Verschieben.
+    expect(plan.match(/if \(nurLinks\(e\)\) return/g)).toHaveLength(3)
+  })
+
+  it('meldet Balken und freie Flaeche getrennt', () => {
+    expect(plan).toContain("art: 'reservierung'")
+    expect(plan).toContain("art: 'frei'")
+  })
+
+  it('haelt den Klick am Balken vom Untergrund fern', () => {
+    // Der Balken liegt in der freien Flaeche der Zeile. Ohne
+    // `stopPropagation` oeffnete sich danach das Menue fuer "hier ist
+    // nichts" -- ueber einem Balken, auf den man gerade gezielt hat.
+    expect(plan).toContain('const balkenKontext = useCallback')
+    expect(plan).toMatch(/balkenKontext[\s\S]{0,200}e\.stopPropagation\(\)/)
+  })
+
+  it('schlaegt auf freier Flaeche eine Nacht vor, nicht den ganzen Zeitraum', () => {
+    expect(plan).toContain('arrival: anreise, departure: addDays(anreise, 1)')
+  })
+
+  it('schliesst das Menue bei Esc, Klick daneben und Scrollen', () => {
+    /*
+     * Das Scrollen deshalb, weil das Menue an Fensterkoordinaten haengt:
+     * bliebe es offen, zeigte es auf eine Zeile, die inzwischen woanders
+     * liegt, und der naechste Klick traefe die falsche Buchung.
+     */
+    expect(menue).toContain("window.addEventListener('pointerdown', zu, true)")
+    expect(menue).toContain("window.addEventListener('scroll', zu, true)")
+    expect(menue).toContain("if (e.key === 'Escape') onClose()")
+  })
+
+  it('klappt am Fensterrand um, statt hinauszulaufen', () => {
+    // `useLayoutEffect`, weil die Groesse erst nach dem Einhaengen
+    // feststeht: mit `useEffect` sieht man das Menue fuer ein Bild an der
+    // falschen Stelle und dann springen -- genau am Rand, wo es eng ist.
+    expect(menue).toContain('useLayoutEffect')
+    expect(menue).toContain('punkt.x + width > window.innerWidth')
+  })
+
+  it('blendet aus, was nicht geht, statt es auszugrauen', () => {
+    /*
+     * Ein ausgegrauter Eintrag stellt eine Frage ("warum nicht?"), die ein
+     * Menue nicht beantworten kann -- und fehlende Rechte sind keine
+     * Einladung zum Ausprobieren.
+     */
+    expect(eintraege).not.toContain('disabled')
+    expect(eintraege).toContain("rechte.darf('reservation:checkin')")
+    expect(eintraege).toContain("rechte.darf('maintenance:write')")
+  })
+
+  it('bietet Check-in nur an, wenn er gehen kann', () => {
+    // Eine Option kann nicht anreisen, und ohne Zimmer weiss niemand wohin.
+    expect(eintraege).toContain("ziel.status === 'Confirmed' && ziel.resourceId !== null")
+  })
+
+  it('bietet das Abnehmen nicht bei angereistem Gast an', () => {
+    // Die API weist es ohnehin ab; den Eintrag trotzdem anzuzeigen hiesse,
+    // eine Fehlermeldung anzubieten.
+    expect(eintraege).toContain("ziel.resourceId !== null && ziel.status !== 'InHouse'")
+  })
+
+  it('setzt den Storno ab und fragt', () => {
+    expect(eintraege).toContain('abgesetzt: true, gefaehrlich: true')
+    expect(eintraege).toContain("t('kontext.cancelConfirm')")
+  })
+
+  it('laesst Folio und Check-out bewusst weg', () => {
+    /*
+     * Das Folio, weil der Plan die Folio-Referenz nicht kennt und ein
+     * Eintrag dafuer eine eigene Runde zum Server braeuchte. Check-out,
+     * weil er neben den offenen Betrag gehoert: wer auscheckt, ohne die
+     * Rechnung gesehen zu haben, laesst Geld stehen.
+     */
+    expect(eintraege).not.toContain('folioRef')
+    expect(eintraege).not.toContain("'check_out'")
+  })
+
+  it('haengt das Menue in den Bildschirm, nicht in den Plan', () => {
+    // Welche Eintraege es gibt, haengt an den Rechten des Benutzers und an
+    // Bildschirmen, zu denen ein Eintrag fuehrt. Beides geht den Plan
+    // nichts an.
+    expect(plan).toContain('onKontext?: (ziel: KontextZiel) => void')
+    expect(bildschirm).toContain('onKontext={setKontext}')
+  })
+})
+
+/**
+ * Ein Zimmer sperren, aus dem Plan heraus.
+ *
+ * "Der Handwerker kommt Dienstag an die Dusche in 204" faellt jemandem ein,
+ * waehrend er auf den Plan sieht. Bisher hiess das: Bildschirm wechseln,
+ * Zimmer suchen, Datum eintippen, zurueck -- ein Weg, der so lang ist, dass
+ * die Sperrung haeufig gar nicht entsteht. Dann verkauft das Haus ein
+ * Zimmer ohne Dusche.
+ */
+describe('Zimmer sperren', () => {
+  const dialog = readFileSync(
+    new URL('../components/ZimmerSperren.tsx', import.meta.url), 'utf8')
+
+  it('legt immer auch eine Wartungsmeldung an, nicht nur einen Riegel', () => {
+    // Eine Sperrung ohne Grund und ohne Zustaendigen bleibt stehen, bis
+    // jemand darueber stolpert; die Meldung hat einen Zustand und taucht in
+    // der Liste auf, die jemand abarbeitet.
+    expect(dialog).toContain('useCreateMaintenanceTicket')
+    expect(dialog).toContain('title: titel.trim()')
+  })
+
+  it('verlangt einen Grund', () => {
+    expect(dialog).toContain("titel.trim() !== ''")
+  })
+
+  it('laesst zwischen Out of Order und Out of Service waehlen', () => {
+    /*
+     * Out of Order senkt die Kapazitaet, Out of Service nicht. Ein Zimmer
+     * ohne Fernseher ist verkaeuflich, eines ohne Wasser nicht -- wer
+     * beides gleich behandelt, verkauft entweder zu wenig oder das Falsche.
+     */
+    expect(dialog).toContain("'out_of_order' | 'out_of_service'")
+    expect(dialog).toContain("t('sperre.outOfOrderHint')")
+    expect(dialog).toContain("t('sperre.outOfServiceHint')")
+  })
+
+  it('heisst sperre und nicht block', () => {
+    // `block.*` gehoert schon den Kontingenten, und das ist etwas voellig
+    // anderes: ein Kontingent haelt Zimmer frei, eine Sperre nimmt eines
+    // aus dem Verkauf.
+    expect(dialog).not.toMatch(/t\('block\./)
+  })
+})

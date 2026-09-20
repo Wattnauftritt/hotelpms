@@ -395,6 +395,97 @@ export const plan = {
     de: '{n} Zimmer unter einer Buchung',
     en: '{n} rooms under one booking',
     tr: 'tek rezervasyon altında {n} oda' },
+  /*
+   * Zimmersperre. Der Vorsatz heisst `sperre.` und nicht `block.`, weil
+   * `block.` schon den Kontingenten gehoert (`i18n/gruppen.ts`) -- und das
+   * ist etwas voellig anderes: ein Kontingent haelt Zimmer fuer eine
+   * Gruppe frei, eine Sperre nimmt eines aus dem Verkauf. Zwei Begriffe
+   * unter einem Vorsatz laufen beim naechsten Schluessel ineinander.
+   */
+  'kontext.open': {
+    de: 'Reservierung öffnen',
+    en: 'Open the reservation',
+    tr: 'Rezervasyonu aç' },
+  'kontext.checkIn': {
+    de: 'Check-in …',
+    en: 'Check in …',
+    tr: 'Giriş yap …' },
+  'kontext.group': {
+    de: 'Gruppe öffnen ({n} Zimmer)',
+    en: 'Open the group ({n} rooms)',
+    tr: 'Grubu aç ({n} oda)' },
+  'kontext.unassign': {
+    de: 'Zimmer abnehmen',
+    en: 'Take the room away',
+    tr: 'Odayı geri al' },
+  'kontext.cancel': {
+    de: 'Stornieren',
+    en: 'Cancel',
+    tr: 'İptal et' },
+  'kontext.cancelConfirm': {
+    de: 'Diese Reservierung stornieren?',
+    en: 'Cancel this reservation?',
+    tr: 'Bu rezervasyon iptal edilsin mi?' },
+  'kontext.newReservation': {
+    de: 'Reservierung hier anlegen',
+    en: 'Create a reservation here',
+    tr: 'Burada rezervasyon oluştur' },
+  'kontext.blockRoom': {
+    de: 'Zimmer sperren …',
+    en: 'Block the room …',
+    tr: 'Odayı kapat …' },
+
+  'sperre.title': {
+    de: 'Zimmer sperren',
+    en: 'Block a room',
+    tr: 'Odayı kapat' },
+  'sperre.kind': {
+    de: 'Art der Sperrung',
+    en: 'Kind of block',
+    tr: 'Kapatma türü' },
+  'sperre.outOfOrder': {
+    de: 'Out of Order — nicht verkäuflich',
+    en: 'Out of order — not sellable',
+    tr: 'Out of Order — satılamaz' },
+  'sperre.outOfOrderHint': {
+    de: 'Das Zimmer fällt aus der Kapazität. Für Schäden, die eine Übernachtung '
+      + 'unmöglich machen.',
+    en: 'The room leaves the capacity. For damage that makes a stay impossible.',
+    tr: 'Oda kapasiteden düşer. Konaklamayı imkânsız kılan hasarlar için.' },
+  'sperre.outOfService': {
+    de: 'Out of Service — verkäuflich',
+    en: 'Out of service — still sellable',
+    tr: 'Out of Service — satılabilir' },
+  'sperre.outOfServiceHint': {
+    de: 'Das Zimmer bleibt in der Kapazität und ist im Plan als eingeschränkt '
+      + 'markiert. Für alles, womit ein Gast übernachten kann.',
+    en: 'The room stays in the capacity and is marked as restricted in the plan. '
+      + 'For anything a guest can still sleep with.',
+    tr: 'Oda kapasitede kalır ve planda kısıtlı olarak işaretlenir. Misafirin yine '
+      + 'de kalabileceği her şey için.' },
+  'sperre.reason': {
+    de: 'Grund',
+    en: 'Reason',
+    tr: 'Sebep' },
+  'sperre.reasonPlaceholder': {
+    de: 'z. B. Dusche undicht',
+    en: 'e.g. shower leaking',
+    tr: 'ör. duş sızdırıyor' },
+  'sperre.reasonHint': {
+    de: 'Steht am Riegel im Plan und ist der Titel der Wartungsmeldung, die dabei '
+      + 'entsteht.',
+    en: 'Shown on the bar in the plan, and the title of the maintenance ticket '
+      + 'this creates.',
+    tr: 'Planda çubukta görünür ve oluşan bakım kaydının başlığıdır.' },
+  'sperre.submit': {
+    de: 'Sperren',
+    en: 'Block',
+    tr: 'Kapat' },
+  'sperre.created': {
+    de: 'Zimmer gesperrt, Wartungsmeldung angelegt.',
+    en: 'Room blocked, maintenance ticket created.',
+    tr: 'Oda kapatıldı, bakım kaydı oluşturuldu.' },
+
   'group.panelTitle': {
     de: 'Gruppenbuchung',
     en: 'Group booking',
