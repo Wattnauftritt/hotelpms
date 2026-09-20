@@ -214,13 +214,20 @@ describe('Die Maske fuer eine neue Reservierung', () => {
     expect(block).toContain('Neue Reservierung')
   })
 
-  it('rechnet Euro in ganze Cent um', () => {
-    // Geld ist immer eine ganze Zahl in Cent (CLAUDE.md). Ohne `Math.round`
-    // macht die Fliesskommazahl aus "19,90" eine 1989.
-    expect(dialog).toContain('Math.round')
-    // Das Komma der deutschen Eingabe muss zum Punkt werden, sonst ist
-    // Number('19,90') schlicht NaN.
-    expect(dialog).toContain("replace(',', '.')")
+  it('rechnet Euro in ganze Cent um, ohne ueber Fliesskomma zu gehen', () => {
+    /*
+     * Geld ist immer eine ganze Zahl in Cent (CLAUDE.md).
+     *
+     * Hier stand `Math.round(Number(text.replace(',', '.')) * 100)`. Das
+     * fing die Fliesskommaungenauigkeit ab, die aus "19,90" sonst 1989
+     * macht -- und scheiterte an "1.234,50", weil `Number('1.234.50')`
+     * `NaN` ist. An einer deutschen Rezeption wird der Tausenderpunkt
+     * getippt. `centAusEingabe` rechnet auf den Ziffern und kennt beide
+     * Trennzeichen.
+     */
+    expect(dialog).toContain('preisFelder(preis)')
+    expect(dialog).not.toContain('Math.round')
+    expect(dialog).not.toContain("replace(',', '.')")
   })
 
   it('verlangt bei einer Option eine Frist', () => {
@@ -446,5 +453,181 @@ describe('Das Band scrollt, statt abzuschneiden', () => {
     // `overscroll-contain`: sonst rutscht der ganze Plan weg, sobald das
     // Band unten ankommt.
     expect(quelle).toContain('overscroll-contain')
+  })
+})
+
+/**
+ * Die Mehrfachauswahl, umgebaut.
+ *
+ * Vorher war sie ein Gummiband ueber einen zusammenhaengenden Bereich:
+ * Zimmer 1 bis 8 ging, Zimmer 1 und 20 nicht. Ein Haus, das eine Gruppe auf
+ * verstreute Zimmer legt -- weil die dazwischen belegt sind, der Normalfall
+ * bei einer Gruppe, die kurzfristig kommt --, konnte sie gar nicht als eine
+ * Buchung anlegen.
+ *
+ * Geprueft wird die Mechanik an der Quelle, nicht das Aussehen: ob ein
+ * Kasten blau ist, faengt keinen Fehler und bricht bei jeder Gestaltung.
+ */
+describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('haelt die Auswahl ueber den einzelnen Zug hinaus', () => {
+    expect(plan).toMatch(/const \[auswahl, setAuswahl\] = useState</)
+  })
+
+  it('legt jeder Zug dazu, statt zu ersetzen', () => {
+    // Das `Set` ist der Punkt: dieselbe Zeile zweimal zu ziehen darf sie
+    // nicht zweimal in die Buchung legen.
+    expect(plan).toContain("...new Set([...(vorher?.resourceIds ?? [])")
+  })
+
+  it('bucht nicht schon beim Loslassen', () => {
+    /*
+     * Vorher oeffnete das Loslassen sofort den Gruppendialog. Damit war die
+     * Auswahl genau einen Zug lang -- und ein Zug ist ein
+     * zusammenhaengender Bereich. Gebucht wird jetzt ueber die Leiste.
+     */
+    expect(plan).not.toMatch(/onCreateGroup\?\.\(gruppenAuswahl\(/)
+    expect(plan).toContain("t('plan.bookSelection')")
+  })
+
+  it('nimmt den zuletzt gezogenen Zeitraum fuer alle Zeilen', () => {
+    // Eine Gruppenbuchung kennt genau eine Anreise und eine Abreise.
+    // Zwoelf Zeilen mit zwoelf Zeitraeumen waeren zwoelf Buchungen.
+    expect(plan).toContain('arrival: neu.arrival, departure: neu.departure')
+  })
+
+  it('zeigt waehrend des Zugs die ganze Auswahl, nicht nur den letzten Streifen', () => {
+    expect(plan).toContain(
+      "const ids = new Set([...(auswahl?.resourceIds ?? []), ...zeilen.map(u => u.id)])")
+  })
+
+  it('hebt die Auswahl mit Esc auf', () => {
+    expect(plan).toContain("if (e.key === 'Escape') setAuswahl(null)")
+    // Am Fenster und nicht am Plan: der Plan haelt keinen Fokus, nach einem
+    // Zug liegt der auf dem zuletzt beruehrten Balken oder nirgends.
+    expect(plan).toContain("window.addEventListener('keydown', aufTaste)")
+    expect(plan).toContain("window.removeEventListener('keydown', aufTaste)")
+  })
+
+  it('hebt sie auch auf, wenn man ohne Modifikator woanders hinklickt', () => {
+    // Der Weg zurueck, den man ohne Anleitung findet. Er steht **vor** dem
+    // Beginn des naechsten Zugs, sonst loeschte er die Auswahl, die dieser
+    // Zug gerade aufbaut.
+    expect(plan).toMatch(
+      /setAuswahl\(null\)\n\s*setDragState\(\{ kind: 'create'/)
+  })
+
+  it('leert die Auswahl, wenn daraus eine Buchung wird', () => {
+    // Sonst liegt nach dem Anlegen ein Schatten ueber den frischen Balken,
+    // der aussieht wie eine zweite, ungebuchte Gruppe.
+    expect(plan).toMatch(/onCreateGroup\?\.\(\{[\s\S]*?\}\)\n\s*setAuswahl\(null\)/)
+  })
+
+  it('haelt die Leiste sichtbar, ohne die Kopfzeile zu verdecken', () => {
+    // Oben klebt die Kopfzeile mit den Tagen, und die wird beim Auswaehlen
+    // eines Zeitraums gebraucht. Beide Achsen, weil eine Auswahl ueber
+    // Zimmer 3 und Zimmer 200 liegen kann.
+    expect(plan).toContain('sticky bottom-0 left-0 z-30')
+  })
+})
+
+/**
+ * Die Gruppe als Vorgang, auch in der Oberflaeche.
+ *
+ * An der Rezeption ist eine Reisegruppe **eine** Sache: "die Gruppe
+ * Petersen kommt einen Tag spaeter". Acht Balken einzeln zu ziehen sind
+ * acht Gelegenheiten, einen zu vergessen -- und der vergessene faellt erst
+ * am Anreisetag auf, wenn ein Zimmer belegt ist, das frei sein sollte.
+ */
+describe('Eine Gruppenbuchung wandert als Gruppe', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+
+  it('verschiebt beim seitlichen Ziehen die ganze Gruppe', () => {
+    expect(plan).toContain('if (d.bookingRooms > 1 && !d.einzeln)')
+    expect(plan).toContain('onShiftGroup?.(d.bookingRef, versatz)')
+  })
+
+  it('laesst mit Alt doch nur das eine Zimmer wandern', () => {
+    // Beim **Greifen** abgelesen, nicht beim Loslassen: waehrend des Zugs
+    // liest niemand mehr die Tastatur, und ein `altKey` am Ende waere eine
+    // andere Frage als die, die der Mensch beim Aufsetzen beantwortet hat.
+    expect(plan).toContain('einzeln: e.altKey')
+  })
+
+  it('schickt einen Versatz in Tagen, keinen neuen Zeitraum', () => {
+    /*
+     * Nach einzelnen Aenderungen liegen die Zimmer einer Gruppe nicht mehr
+     * deckungsgleich. Ein gemeinsamer neuer Zeitraum machte daraus wieder
+     * einen Block und loeschte genau die Abweichungen, die jemand von Hand
+     * eingetragen hat.
+     */
+    expect(plan).toContain('onShiftGroup?: (bookingRef: string, shiftDays: number) => void')
+    expect(bildschirm).toContain('gruppeVerschieben.mutate({ bookingRef, shiftDays })')
+  })
+
+  it('zeichnet keinen Schatten je Zimmer der Gruppe, sondern die Zahl', () => {
+    /*
+     * Die Zimmer einer Gruppe liegen nicht deckungsgleich, und ein Schatten
+     * hat genau eine Breite. Acht gleich breite Rechtecke zeigten eine
+     * Deckungsgleichheit, die nach dem Loslassen nicht eintritt -- eine
+     * Vorschau, die luegt, ist schlechter als keine.
+     */
+    expect(plan).toContain('gruppenZahl: versatz !== 0 && drag.bookingRooms > 1')
+  })
+})
+
+describe('Die Gruppenmaske', () => {
+  const maske = readFileSync(
+    new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8')
+  const seitenfenster = readFileSync(
+    new URL('../components/ReservationPanel.tsx', import.meta.url), 'utf8')
+
+  it('holt alle Zimmer in einem Aufruf', () => {
+    // Eine Gruppe darf fuenfzig Zimmer haben, und fuenfzig Runden machen
+    // aus dem Oeffnen einer Maske eine Wartezeit (CLAUDE.md, "Leistung").
+    expect(maske).toContain('useBooking(bookingRef)')
+  })
+
+  it('trennt Verschieben der Gruppe vom Aendern eines Zimmers', () => {
+    /*
+     * Der Alltag gibt die Trennung vor: der Bus kommt einen Tag spaeter
+     * (Gruppe), aber die Eltern des Brautpaars bleiben eine Nacht laenger
+     * (ein Zimmer). Ein gemeinsamer Knopf machte einen der beiden Faelle
+     * kaputt.
+     */
+    expect(maske).toContain('verschieben.mutate({ bookingRef, shiftDays: n })')
+    expect(maske).toContain('umbuchen.mutate(')
+  })
+
+  it('nimmt ein Zimmer heraus, indem es storniert -- nicht loescht', () => {
+    // Geloescht waere die Reservierung aus der Statistik verschwunden, und
+    // der Abend haette einen Storno weniger als das Haus.
+    expect(maske).toContain("aktion.mutate('cancel')")
+    expect(maske).toContain("t('group.removeConfirm')")
+  })
+
+  it('fragt vor dem Herausnehmen', () => {
+    expect(maske).toContain('confirm(')
+  })
+
+  it('bekommt die Zimmergruppen als Eigenschaft, nicht als zweite Abfrage', () => {
+    // Die Maske wird aus dem Plan geoeffnet, und der hat sie laengst
+    // geladen.
+    expect(maske).toContain('categories: ReadonlyArray<')
+    expect(maske).not.toContain('useCategories')
+  })
+
+  it('wird aus dem Seitenfenster geoeffnet, nicht vom Balken', () => {
+    /*
+     * Am Balken sieht man einer Reservierung nicht an, dass sie zu sieben
+     * weiteren gehoert, und ein zusaetzlicher Klickbereich auf einem
+     * 44 Pixel breiten Kasten waere ein Fehlklick in Serie.
+     */
+    expect(seitenfenster).toContain('onOpenGroup(r.bookingRef)')
   })
 })

@@ -5,9 +5,68 @@ on:
   push: { branches: [main] }
   pull_request:
 
+# Ein neuer Push auf denselben Zweig macht den laufenden Durchgang wertlos.
+# Ihn zu Ende laufen zu lassen kostet einen Laeufer und verzoegert den
+# Durchgang, auf den tatsaechlich gewartet wird.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  # --------------------------------------------------------------------
+  # Was sich ohne Datenbank pruefen laesst. Laeuft parallel zu den Tests
+  # und ist in zwei bis drei Minuten fertig -- lange bevor die Tests
+  # durch sind, und damit die Rueckmeldung, die man in 90 Prozent der
+  # Faelle braucht.
+  # --------------------------------------------------------------------
+  pruefen:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # Keine version-Angabe: package.json nennt pnpm unter "packageManager",
+      # und die Aktion bricht ab, wenn die Version an zwei Stellen steht.
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high || true
+      # Vor allem anderen: doppelte Migrationsnummern. Sie entstehen, wenn
+      # zwei Bearbeiter gleichzeitig von main abzweigen, und fallen beim
+      # Mergen nicht auf, weil es verschiedene Dateien ohne Konflikt sind.
+      - run: ./scripts/check-migrations.sh
+      - run: ./scripts/check-docs.sh
+      - run: ./scripts/check-caddyfile.sh
+      - run: ./scripts/check-sudoers.sh
+      - run: pnpm lint
+      - run: pnpm typecheck
+      # `build` ist strenger als `typecheck` und hat schon Fehler gefunden,
+      # die `tsc -b` durchliess. Deshalb beides, nicht eines davon.
+      - run: pnpm build
+
+  # --------------------------------------------------------------------
+  # Die Tests, auf vier Laeufer verteilt.
+  #
+  # **Warum das geht, obwohl die Tests eine gemeinsame Datenbank haben.**
+  # Die Regel lautet: ein Prozess, eine Datenbank (`fileParallelism:
+  # false`). Sie gilt **innerhalb** eines Laeufers. Vier Laeufer sind vier
+  # Maschinen mit vier eigenen PostgreSQL-Diensten -- sie wissen
+  # voneinander nichts und koennen sich die Tabellen gar nicht
+  # wegraeumen. Geteilt wird nach Dateien, und eine Datei raeumt ohnehin
+  # ueber `truncateAll()` hinter sich auf.
+  #
+  # Aus zehn Minuten am Stueck werden damit knapp drei, ohne dass ein
+  # einziger Test entfaellt. Die Alternative -- weniger testen -- spart
+  # dieselbe Zeit und kostet die Abdeckung.
+  # --------------------------------------------------------------------
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      # Ein roter Anteil beantwortet die Frage noch nicht: liegt es an der
+      # Aenderung oder an einer Datei, die zufaellig in dieser Gruppe
+      # steckt? Deshalb laufen die uebrigen zu Ende.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: postgres:17
@@ -30,8 +89,6 @@ jobs:
       ID_DOCUMENT_KEY: ci-key-mindestens-zweiunddreissig-zeichen!!
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # Keine version-Angabe: package.json nennt pnpm unter "packageManager",
-      # und die Aktion bricht ab, wenn die Version an zwei Stellen steht.
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with: { node-version: 22, cache: pnpm }
@@ -43,15 +100,4 @@ jobs:
           psql -c "CREATE DATABASE hotelpms_test OWNER hotelpms_owner;"
           psql -d hotelpms_test -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION pgcrypto;"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level high || true
-      # Vor allem anderen: doppelte Migrationsnummern. Sie entstehen, wenn
-      # zwei Bearbeiter gleichzeitig von main abzweigen, und fallen beim
-      # Mergen nicht auf, weil es verschiedene Dateien ohne Konflikt sind.
-      - run: ./scripts/check-migrations.sh
-      - run: ./scripts/check-docs.sh
-      - run: ./scripts/check-caddyfile.sh
-      - run: ./scripts/check-sudoers.sh
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
+      - run: pnpm vitest run --shard=${{ matrix.shard }}/4

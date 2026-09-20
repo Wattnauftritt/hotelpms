@@ -162,6 +162,22 @@ export const TapeChart = Type.Object({
     status: ReservationStatus,
     last_name: Type.Union([Type.String(), Type.Null()]),
     first_name: Type.Union([Type.String(), Type.Null()]),
+    /**
+     * Die Buchung, zu der dieser Aufenthalt gehoert.
+     *
+     * Traegt die Gruppe in den Plan. Ohne sie sieht die Oberflaeche acht
+     * einzelne Balken und kann nicht anbieten, sie gemeinsam zu
+     * verschieben -- genau das, was die Rezeption meint, wenn sie sagt,
+     * die Gruppe komme einen Tag spaeter.
+     */
+    booking_ref: Type.String(),
+    /**
+     * Wie viele Zimmer in derselben Buchung liegen. Eins heisst: keine
+     * Gruppe. Eine Zahl statt einer Liste, weil die Oberflaeche nur
+     * unterscheiden muss -- welche Zimmer es sind, steht in denselben
+     * Daten.
+     */
+    booking_rooms: Type.Integer(),
     source: Type.String(),
     external_reference: Type.Union([Type.String(), Type.Null()]),
     rate_code: Type.Union([Type.String(), Type.Null()]),
@@ -333,7 +349,20 @@ export type PaymentMethod = Static<typeof PaymentMethod>
  */
 export const CreateBookingRoom = Type.Object({
   categoryId: Type.Integer(),
-  resourceId: Type.Optional(Type.Integer())
+  resourceId: Type.Optional(Type.Integer()),
+  /**
+   * Der Preis dieses Zimmers fuer den **ganzen** Aufenthalt, in Cent.
+   *
+   * Eine Gruppe wird je Zimmer verhandelt, nicht je Nacht: "die beiden
+   * Suiten zu 600, die sechs Doppelzimmer zu 400". Gespeichert wird
+   * trotzdem je Nacht -- `reservation_night.price_cent` ist die Wahrheit,
+   * aus der Rechnung, Storno und Statistik rechnen --, und die Aufteilung
+   * macht der Server (`preisJeNacht`), damit der Rest-Cent an genau einer
+   * Stelle entsteht und nicht an drei.
+   *
+   * Schlaegt `totalCent` und `priceCent` der Buchung.
+   */
+  totalCent: Type.Optional(Type.Integer({ minimum: 0 }))
 })
 export type CreateBookingRoom = Static<typeof CreateBookingRoom>
 
@@ -388,6 +417,25 @@ export const CreateBooking = Type.Object({
    * einmal im Kopf; das System soll nicht so tun, als ginge es auf.
    */
   priceCent: Type.Optional(Type.Integer({ minimum: 0 })),
+  /**
+   * Der Preis der **ganzen** Buchung fuer den ganzen Aufenthalt, in Cent.
+   *
+   * Die andere Haelfte derselben Eingabe: wer einen Gesamtpreis vereinbart
+   * hat -- der Normalfall bei einer Gruppe --, soll ihn eintragen und nicht
+   * im Kopf durch Zimmer und Naechte teilen muessen. Das Teilen ist genau
+   * die Stelle, an der ein Cent verschwindet.
+   *
+   * Aufgeteilt wird **nach Personenzahl je Zimmergruppe**
+   * (`gruppeAufteilen`): ein Einzelzimmer gleich teuer wie ein
+   * Doppelzimmer faellt spaetestens auf, wenn einer der Gaeste doch selbst
+   * zahlt. Genau ist das nicht -- ein Gruppenpreis ist eine Verhandlung,
+   * kein Summand --, aber es geht auf: die Summe der Zimmerpreise ist der
+   * eingegebene Betrag, auf den Cent.
+   *
+   * Schliesst `priceCent` aus: zwei Preise fuer dieselbe Buchung sind keine
+   * Angabe, sondern eine Frage.
+   */
+  totalCent: Type.Optional(Type.Integer({ minimum: 0 })),
   /**
    * Wie viele Personen anreisen. Ohne Angabe gilt, was verkauft wurde --
    * die Belegung der Zimmergruppe (Migration 0054).

@@ -1,6 +1,7 @@
 export * from './money.js'
 export * from './reservationState.js'
 export * from './cancellation.js'
+export * from './groupPrice.js'
 export * from './rates.js'
 export * from './dates.js'
 export * from './invoiceRequirements.js'

@@ -470,3 +470,107 @@ describe('Hauptgast je Zimmer setzen', () => {
     expect(r.statusCode).toBe(409)
   })
 })
+
+/**
+ * Der Preis einer Gruppe: eingegeben wird, was verhandelt wurde.
+ *
+ * Eine Gruppe wird nicht je Nacht und Zimmer verhandelt, sondern als
+ * Betrag: "die Gruppe kostet 2.400". Gespeichert wird trotzdem je Nacht --
+ * `reservation_night.price_cent` ist die Wahrheit, aus der Rechnung, Storno
+ * und Statistik rechnen. Zwischen beidem liegt eine Division, und genau
+ * dort verschwindet ein Cent, wenn man nicht aufpasst.
+ *
+ * Die Probe ist deshalb immer dieselbe: **die Summe der gespeicherten
+ * Naechte ist der eingegebene Betrag.** Nicht ungefaehr, sondern auf den
+ * Cent -- in der Buchhaltung ist eine Differenz ohne Ursache teurer als
+ * eine ungerechte Aufteilung.
+ */
+describe('Gesamtpreis statt Preis je Nacht', () => {
+  /** Alle Naechte einer Reservierung, in der Reihenfolge des Aufenthalts. */
+  async function naechte(ref: string): Promise<number[]> {
+    const r = await owner.query<{ price_cent: string }>(
+      `SELECT n.price_cent FROM reservation_night n
+         JOIN reservation r ON r.id = n.reservation_id
+        WHERE r.public_ref = $1 ORDER BY n.date`, [ref])
+    return r.rows.map(x => Number(x.price_cent))
+  }
+
+  it('teilt einen Gesamtpreis auf die Naechte und laesst keinen Cent liegen', async () => {
+    // Drei Naechte, 100,00 EUR. Dreimal 33,33 waeren 99,99.
+    const r = await buchen({ categoryId: dz, resourceId: dzZimmer[0], totalCent: 10_000 })
+    expect(r.statusCode).toBe(201)
+    const body = JSON.parse(r.body) as { reservationRef: string; totalCent: number }
+    expect(await naechte(body.reservationRef)).toEqual([3334, 3333, 3333])
+    expect(body.totalCent).toBe(10_000)
+  })
+
+  it('teilt einen Gruppenpreis nach Personen auf die Zimmer', async () => {
+    // Die Suite fasst vier, das Doppelzimmer zwei: Gewichte 2, 2, 4.
+    await owner.query(`UPDATE resource_category SET max_occupancy = 4 WHERE id = $1`, [suite])
+    const r = await buchen({
+      rooms: [...zimmerListe(dzZimmer.slice(0, 2), dz),
+              ...zimmerListe(suiteZimmer.slice(0, 1), suite)],
+      totalCent: 80_000
+    })
+    expect(r.statusCode).toBe(201)
+    const body = JSON.parse(r.body) as
+      { reservations: Array<{ totalCent: number }>; totalCent: number }
+    expect(body.reservations.map(x => x.totalCent)).toEqual([20_000, 20_000, 40_000])
+    expect(body.totalCent).toBe(80_000)
+  })
+
+  it('geht auch dann auf, wenn die Aufteilung krumm ist', async () => {
+    /*
+     * 1.000,01 EUR auf drei gleiche Zimmer und drei Naechte -- neun Posten,
+     * zwei Reste. Jeder liegt genau einmal, und die Summe stimmt.
+     */
+    const r = await buchen({
+      rooms: zimmerListe(dzZimmer.slice(0, 3), dz), totalCent: 100_001
+    })
+    expect(r.statusCode).toBe(201)
+    const body = JSON.parse(r.body) as
+      { reservations: Array<{ reservationRef: string; totalCent: number }>
+        totalCent: number }
+    expect(body.totalCent).toBe(100_001)
+    let summe = 0
+    for (const res of body.reservations) {
+      const n = await naechte(res.reservationRef)
+      expect(n.reduce((s, x) => s + x, 0)).toBe(res.totalCent)
+      summe += n.reduce((s, x) => s + x, 0)
+    }
+    expect(summe).toBe(100_001)
+  })
+
+  it('nimmt einen Preis je Zimmer, wenn einer dabeisteht', async () => {
+    const r = await buchen({
+      rooms: [{ categoryId: dz, resourceId: dzZimmer[0], totalCent: 30_000 },
+              { categoryId: suite, resourceId: suiteZimmer[0], totalCent: 90_000 }]
+    })
+    expect(r.statusCode).toBe(201)
+    const body = JSON.parse(r.body) as
+      { reservations: Array<{ totalCent: number }>; totalCent: number }
+    expect(body.reservations.map(x => x.totalCent)).toEqual([30_000, 90_000])
+    expect(body.totalCent).toBe(120_000)
+  })
+
+  it('weist zwei Preise fuer dieselbe Sache ab, statt einen zu waehlen', async () => {
+    /*
+     * Stillschweigend einen gewinnen zu lassen waere bequem und faellt erst
+     * an der Rechnung auf: der Anrufer glaubt, den anderen gesetzt zu haben.
+     */
+    expect((await buchen({ categoryId: dz, priceCent: 5000, totalCent: 10_000 })).statusCode)
+      .toBe(422)
+    expect((await buchen({
+      rooms: [{ categoryId: dz, totalCent: 30_000 }], totalCent: 30_000
+    })).statusCode).toBe(422)
+    expect((await buchen({
+      rooms: [{ categoryId: dz, totalCent: 30_000 }], priceCent: 5000
+    })).statusCode).toBe(422)
+  })
+
+  it('weist einen negativen Betrag ab', async () => {
+    expect((await buchen({ categoryId: dz, totalCent: -1 })).statusCode).toBe(422)
+    expect((await buchen({ rooms: [{ categoryId: dz, totalCent: -1 }] })).statusCode)
+      .toBe(422)
+  })
+})

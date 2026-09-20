@@ -323,3 +323,98 @@ export function useCreateTerms(propertyId: number) {
     }
   })
 }
+
+/**
+ * Eine Buchung mit allen ihren Zimmern -- die Gruppenmaske.
+ *
+ * Ein Aufruf, nicht einer je Zimmer: eine Gruppe darf fuenfzig Zimmer
+ * haben, und fuenfzig Runden machen aus dem Oeffnen einer Maske eine
+ * Wartezeit.
+ */
+export interface BookingRooms {
+  bookingRef: string
+  guestRef: string | null
+  guestName: string | null
+  companyRef: string | null
+  companyName: string | null
+  source: string
+  externalReference: string | null
+  totalCent: number
+  rooms: Array<{
+    reservationRef: string
+    status: string
+    arrival: string
+    departure: string
+    categoryId: number
+    categoryCode: string
+    categoryName: string
+    resourceId: number | null
+    roomCode: string | null
+    guestCount: number | null
+    shortNote: string | null
+    guestName: string | null
+    nights: number
+    totalCent: number
+  }>
+}
+
+export const useBooking = (bookingRef: string | null) =>
+  useQuery<BookingRooms>({
+    queryKey: ['booking', bookingRef],
+    queryFn: () => api.get(`/v1/bookings/${bookingRef!}`),
+    enabled: bookingRef !== null
+  })
+
+/**
+ * Die ganze Gruppe in der Zeit verschieben.
+ *
+ * **Ein Versatz, kein Zeitraum.** Liegen die Zimmer nach einzelnen
+ * Aenderungen nicht mehr deckungsgleich, erhaelt der Versatz das; ein
+ * gemeinsamer neuer Zeitraum machte daraus wieder einen Block und loeschte
+ * genau die Abweichungen, die jemand von Hand eingetragen hat.
+ *
+ * Alles in einem Aufruf, weil es in einer Transaktion laufen muss: stoesst
+ * das fuenfte Zimmer an, darf nicht die halbe Gruppe eine Woche weiter
+ * liegen als die andere.
+ */
+export function useShiftBooking() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bookingRef, shiftDays }: { bookingRef: string; shiftDays: number }) =>
+      api.post(`/v1/bookings/${bookingRef}/change-stay`, { shiftDays },
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: (_r, { bookingRef }) => {
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+      void qc.invalidateQueries({ queryKey: ['booking', bookingRef] })
+      // Jede Reservierung der Gruppe hat sich geaendert, und welche im
+      // Seitenfenster offen ist, weiss dieser Hook nicht.
+      void qc.invalidateQueries({ queryKey: ['reservation'] })
+    }
+  })
+}
+
+export interface AddRoomBody {
+  bookingRef: string
+  categoryId: number
+  resourceId?: number
+  arrival?: string
+  departure?: string
+  totalCent?: number
+  guestCount?: number
+  shortNote?: string
+}
+
+/** Ein Zimmer zu einer bestehenden Gruppe, nicht als zweite Buchung. */
+export function useAddBookingRoom(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bookingRef, ...body }: AddRoomBody) =>
+      api.post(`/v1/bookings/${bookingRef}/rooms`, body,
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: (_r, { bookingRef }) => {
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+      void qc.invalidateQueries({ queryKey: ['booking', bookingRef] })
+      void qc.invalidateQueries({ queryKey: ['availability', propertyId] })
+    }
+  })
+}

@@ -86,6 +86,18 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   -- einem Template-Literal, und ein Backtick beendet es.
                   r.short_note,
                   r.notes,
+                  -- Die Buchungsreferenz traegt die Gruppe in den Plan.
+                  -- Ohne sie sieht die Oberflaeche acht einzelne Balken und
+                  -- kann nicht anbieten, sie gemeinsam zu verschieben --
+                  -- genau das, was die Rezeption meint, wenn sie sagt, die
+                  -- Gruppe komme einen Tag spaeter.
+                  b.public_ref AS booking_ref,
+                  -- Wie viele Zimmer in derselben Buchung liegen. Eine
+                  -- Zahl statt einer Liste: die Oberflaeche braucht nur zu
+                  -- wissen, ob es eine Gruppe ist -- welche Zimmer, steht
+                  -- in denselben Daten, und die Maske holt den Rest.
+                  (SELECT count(*) FROM reservation gr
+                    WHERE gr.booking_id = r.booking_id) AS booking_rooms,
                   b.source, b.external_reference,
                   rp.code AS rate_code,
                   (SELECT count(*) FROM reservation_occupant o
