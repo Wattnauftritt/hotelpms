@@ -11,7 +11,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
  * erfahrungsgemaess schlechter aus.
  */
 
-export type AuthTokenKind = 'invite' | 'password_reset'
+export type AuthTokenKind = 'invite' | 'password_reset' | 'email_change'
 
 /**
  * Wie lange ein Token gilt.
@@ -24,7 +24,15 @@ export type AuthTokenKind = 'invite' | 'password_reset'
  */
 export const TOKEN_GUELTIGKEIT: Record<AuthTokenKind, number> = {
   invite: 7 * 24 * 60 * 60 * 1000,
-  password_reset: 60 * 60 * 1000
+  password_reset: 60 * 60 * 1000,
+  /*
+   * Die Adressaenderung liegt dazwischen, und zwar naeher an der
+   * Einladung: sie geht an eine Adresse, in die der Benutzer sich gerade
+   * erst eingetragen hat, und die ruft er vielleicht nicht auf demselben
+   * Geraet ab. Eine Stunde waere hier die Frist, an der ein Firmenpostfach
+   * scheitert, das Mail alle fuenf Minuten abholt und Links erst scannt.
+   */
+  email_change: 24 * 60 * 60 * 1000
 }
 
 /**

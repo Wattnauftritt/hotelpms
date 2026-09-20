@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { KENNWORT_MIN } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useT } from '../lib/i18n/index.js'
 
 /**
- * Zugang: Einladung annehmen, Kennwort vergessen, Kennwort setzen.
+ * Zugang: Einladung annehmen, Kennwort vergessen, Kennwort setzen,
+ * neue Mailadresse bestaetigen.
  *
  * **Warum vor der Anmeldung und ohne den Rest der Oberflaeche.** Wer hier
  * landet, ist nicht angemeldet und kann es auch nicht sein -- im Gegenteil,
@@ -17,7 +18,7 @@ import { useT } from '../lib/i18n/index.js'
  * (`try_files`), die Anwendung liest ihn hier.
  */
 
-export type ZugangArt = 'invite' | 'reset'
+export type ZugangArt = 'invite' | 'reset' | 'emailChange'
 
 /**
  * Welche Seite steht in der Adresse?
@@ -38,7 +39,10 @@ export function zugangAusAdresse(
   // Mailprogramm haeufiger vor, als man denkt.
   const pfad = pathname.replace(/\/+$/, '')
   const art: ZugangArt | null =
-    pfad === '/einladung' ? 'invite' : pfad === '/kennwort' ? 'reset' : null
+    pfad === '/einladung' ? 'invite'
+    : pfad === '/kennwort' ? 'reset'
+    : pfad === '/mailadresse' ? 'emailChange'
+    : null
   if (art === null) return null
   // Ein leerer Parameter ist kein Token. Sonst liefe der Benutzer in ein
   // Formular, das beim Absenden sicher scheitert.
@@ -206,6 +210,56 @@ function Setzen({ art, token }: { art: ZugangArt; token: string }): JSX.Element 
   )
 }
 
+/**
+ * Die neue Mailadresse bestätigen.
+ *
+ * Ein Bildschirm ohne Eingabe: beim Öffnen wird der Link eingelöst, und
+ * danach steht dort, was geschehen ist. Ein Knopf „Jetzt bestätigen" wäre
+ * ein Klick, der nichts hinzufügt — geklickt hat der Benutzer schon, im
+ * Postfach.
+ */
+function MailBestaetigen({ token }: { token: string }): JSX.Element {
+  const t = useT()
+  const [stand, setStand] = useState<'laeuft' | 'ok' | 'fehler'>('laeuft')
+  const [meldung, setMeldung] = useState<string | null>(null)
+
+  useEffect(() => {
+    let abgebrochen = false
+    void api.post('/v1/auth/email/confirm', { token })
+      .then(() => { if (!abgebrochen) setStand('ok') })
+      .catch((e: unknown) => {
+        if (abgebrochen) return
+        setMeldung(e instanceof ApiError ? e.message : String(e))
+        setStand('fehler')
+      })
+    return () => { abgebrochen = true }
+  }, [token])
+
+  return (
+    <Rahmen titel={t('zugang.mail.title')}>
+      {stand === 'laeuft' && (
+        <p className="text-sm text-neutral-600">{t('common.loading')}</p>
+      )}
+      {stand === 'ok' && (
+        <>
+          <p className="text-sm text-neutral-700">{t('zugang.mail.done')}</p>
+          <button type="button" className={KNOPF} onClick={zurAnmeldung}>
+            {t('zugang.toLogin')}
+          </button>
+        </>
+      )}
+      {stand === 'fehler' && (
+        <>
+          {meldung !== null && <Fehler text={meldung} />}
+          <button type="button" className={KNOPF} onClick={zurAnmeldung}>
+            {t('zugang.toLogin')}
+          </button>
+        </>
+      )}
+    </Rahmen>
+  )
+}
+
 export function Zugang({ art, token }: {
   art: ZugangArt; token: string | null
 }): JSX.Element {
@@ -218,6 +272,26 @@ export function Zugang({ art, token }: {
    * Aufruf ohne Token der Normalfall: so kommt man ueber "Kennwort
    * vergessen" hierher.
    */
+  /*
+   * Die Bestaetigung einer neuen Mailadresse braucht kein Formular: der
+   * Link traegt alles, was noetig ist. Ein Feld "neue Adresse" hier waere
+   * die Stelle, an der sich die bestaetigte Adresse noch einmal austauschen
+   * liesse -- und damit der ganze Zwischenschritt wertlos.
+   */
+  if (art === 'emailChange') {
+    if (token === null) {
+      return (
+        <Rahmen titel={t('zugang.mail.title')}>
+          <p className="text-sm text-neutral-700">{t('zugang.noToken')}</p>
+          <button type="button" className={KNOPF} onClick={zurAnmeldung}>
+            {t('zugang.toLogin')}
+          </button>
+        </Rahmen>
+      )
+    }
+    return <MailBestaetigen token={token} />
+  }
+
   if (token === null) {
     if (art === 'reset') return <Anfordern />
     return (

@@ -565,6 +565,18 @@ const M = {
     de: 'Der Link ist ungueltig oder abgelaufen. Fordern Sie einen neuen an.',
     en: 'The link is invalid or has expired. Please request a new one.',
     tr: 'Bağlantı geçersiz veya süresi dolmuş. Yeni bir tane isteyin.' },
+  'auth.passwordUnchanged': {
+    de: 'Das ist Ihr bisheriges Kennwort. Es hat sich nichts geaendert.',
+    en: 'That is your current password. Nothing has changed.',
+    tr: 'Bu, mevcut parolanız. Hiçbir şey değişmedi.' },
+  'auth.emailUnchanged': {
+    de: 'Das ist bereits Ihre Adresse.',
+    en: 'That is already your address.',
+    tr: 'Bu zaten sizin adresiniz.' },
+  'auth.emailTaken': {
+    de: 'Diese Adresse gehoert bereits zu einem anderen Zugang.',
+    en: 'This address already belongs to another account.',
+    tr: 'Bu adres zaten başka bir hesaba ait.' },
   'auth.passwordTooShort': {
     de: 'Das Kennwort muss mindestens {min} Zeichen haben.',
     en: 'The password must be at least {min} characters long.',

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
+import { KENNWORT_MIN } from '@hotelpms/contracts'
 import { useT } from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
 
@@ -22,29 +23,73 @@ import { Fehler } from './Shell.tsx'
  * Nach einem Wechsel wird der Zwischenspeicher geleert, nicht nur neu
  * geladen. Sonst bliebe der Stand des Vorgängers stehen, und die neue
  * Person sähe für einen Wimpernschlag dessen Haus.
+ *
+ * **Hier steht auch das eigene Konto.** Kennwort und Mailadresse ändern
+ * gehören hinter denselben Knopf wie der eigene PIN: es ist derselbe
+ * Gedanke — „das bin ich, und das ändere ich an mir". Ein zweiter
+ * Bildschirm „Mein Profil" wäre ein weiterer Reiter, den Plattformpersonal
+ * wieder nicht erreicht, weil es keine Hausbildschirme hat.
+ *
+ * **Der Arbeitsplatzteil ist deshalb bedingt.** Wer kein Haus hat — genau
+ * das ist der Normalzustand von Plattformpersonal — kann keine Person
+ * wechseln, es gibt niemanden zu wechseln. Die beiden Abschnitte darüber
+ * gelten für alle.
  */
-export function Arbeitsplatz({ benutzer, pinGesetzt, gewechselt, onClose }: {
+export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
+                               mitArbeitsplatz, onClose }: {
   benutzer: string
+  /** Die eigene Anmeldeadresse. Steht als Ausgangswert im Feld. */
+  email: string
   pinGesetzt: boolean
   gewechselt: boolean
+  /** Hat dieser Benutzer überhaupt ein Haus? Sonst kein Personenwechsel. */
+  mitArbeitsplatz: boolean
   onClose: () => void
 }): JSX.Element {
   const t = useT()
   const qc = useQueryClient()
 
-  const [email, setEmail] = useState('')
+  // Die Adresse der **anderen** Person, auf die gewechselt wird -- nicht
+  // die eigene. Die kommt als Prop herein.
+  const [wechselEmail, setWechselEmail] = useState('')
   const [pin, setPin] = useState('')
   const [kennwort, setKennwort] = useState('')
   const [eigenerPin, setEigenerPin] = useState('')
 
+  // Je Abschnitt ein eigenes Kennwortfeld. Eines für alle wäre kürzer und
+  // gefährlicher: wer es für den PIN eingetippt hat, hätte es beim
+  // versehentlichen Klick auf „Kennwort ändern" schon dabei.
+  const [altesKennwort, setAltesKennwort] = useState('')
+  const [neuesKennwort, setNeuesKennwort] = useState('')
+  const [mailKennwort, setMailKennwort] = useState('')
+  const [neueMail, setNeueMail] = useState(email)
+
   const wechseln = useMutation({
     mutationFn: () => api.post<{ ok: boolean }>('/v1/auth/workstation-switch',
-      { email, pin }),
+      { email: wechselEmail, pin }),
     onSuccess: async () => {
       qc.clear()
       await qc.invalidateQueries({ queryKey: ['me'] })
       onClose()
     }
+  })
+
+  const kennwortAendern = useMutation({
+    mutationFn: () => api.post<{ status: string }>('/v1/auth/password',
+      { currentPassword: altesKennwort, newPassword: neuesKennwort }),
+    onSuccess: () => {
+      // Die Felder leeren, nicht das Fenster schließen: die Bestätigung
+      // stünde sonst nirgends, und der Benutzer wüsste nicht, ob es geklappt
+      // hat. Die eigene Sitzung bleibt bestehen, ein Neuanmelden entfällt.
+      setAltesKennwort('')
+      setNeuesKennwort('')
+    }
+  })
+
+  const mailAendern = useMutation({
+    mutationFn: () => api.post<{ status: string }>('/v1/auth/email',
+      { currentPassword: mailKennwort, newEmail: neueMail.trim() }),
+    onSuccess: () => { setMailKennwort('') }
   })
 
   const pinSetzen = useMutation({
@@ -75,6 +120,81 @@ export function Arbeitsplatz({ benutzer, pinGesetzt, gewechselt, onClose }: {
         </div>
 
         <section className="space-y-2 border-t border-neutral-200 pt-3">
+          <h3 className="text-sm font-medium">{t('konto.password')}</h3>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">
+              {t('konto.currentPassword')}
+            </span>
+            <input type="password" value={altesKennwort}
+                   onChange={e => setAltesKennwort(e.target.value)}
+                   autoComplete="current-password"
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">
+              {t('konto.newPassword')}
+            </span>
+            <input type="password" value={neuesKennwort}
+                   onChange={e => setNeuesKennwort(e.target.value)}
+                   autoComplete="new-password"
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          </label>
+          <p className="text-xs text-neutral-500">
+            {t('zugang.minLength', { min: KENNWORT_MIN })}
+          </p>
+          {kennwortAendern.isError && <Fehler error={kennwortAendern.error} />}
+          {kennwortAendern.isSuccess && (
+            <p className="text-sm text-emerald-800">✓ {t('konto.passwordSaved')}</p>
+          )}
+          <button type="button"
+                  disabled={kennwortAendern.isPending || altesKennwort === ''
+                            || neuesKennwort.length < KENNWORT_MIN}
+                  onClick={() => kennwortAendern.mutate()}
+                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                             disabled:bg-neutral-300">
+            {t('konto.passwordSave')}
+          </button>
+        </section>
+
+        <section className="space-y-2 border-t border-neutral-200 pt-3">
+          <h3 className="text-sm font-medium">{t('konto.email')}</h3>
+          {/* Der Hinweis steht über dem Feld, nicht darunter: dass die
+              Änderung erst nach einem Klick im neuen Postfach gilt, will
+              man wissen, bevor man tippt. */}
+          <p className="text-xs text-neutral-500">{t('konto.emailHint')}</p>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">
+              {t('konto.newEmail')}
+            </span>
+            <input type="email" value={neueMail}
+                   onChange={e => setNeueMail(e.target.value)} autoComplete="off"
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          </label>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">
+              {t('konto.currentPassword')}
+            </span>
+            <input type="password" value={mailKennwort}
+                   onChange={e => setMailKennwort(e.target.value)}
+                   autoComplete="current-password"
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          </label>
+          {mailAendern.isError && <Fehler error={mailAendern.error} />}
+          {mailAendern.isSuccess && (
+            <p className="text-sm text-emerald-800">✓ {t('konto.emailSent')}</p>
+          )}
+          <button type="button"
+                  disabled={mailAendern.isPending || mailKennwort === ''
+                            || neueMail.trim() === '' || neueMail.trim() === email}
+                  onClick={() => mailAendern.mutate()}
+                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                             disabled:bg-neutral-300">
+            {t('konto.emailSave')}
+          </button>
+        </section>
+
+        {mitArbeitsplatz && <>
+        <section className="space-y-2 border-t border-neutral-200 pt-3">
           <h3 className="text-sm font-medium">{t('workstation.switch')}</h3>
           <p className="text-xs text-neutral-500">{t('workstation.switchHint')}</p>
           {!pinGesetzt && (
@@ -82,8 +202,8 @@ export function Arbeitsplatz({ benutzer, pinGesetzt, gewechselt, onClose }: {
           )}
           <label className="block text-sm">
             <span className="block text-xs text-neutral-600 mb-1">{t('login.email')}</span>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                   autoComplete="off"
+            <input type="email" value={wechselEmail}
+                   onChange={e => setWechselEmail(e.target.value)} autoComplete="off"
                    className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
           </label>
           <label className="block text-sm">
@@ -98,7 +218,7 @@ export function Arbeitsplatz({ benutzer, pinGesetzt, gewechselt, onClose }: {
           </label>
           {wechseln.isError && <Fehler error={wechseln.error} />}
           <button type="button"
-                  disabled={wechseln.isPending || email === '' || pin === ''}
+                  disabled={wechseln.isPending || wechselEmail === '' || pin === ''}
                   onClick={() => wechseln.mutate()}
                   className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
                              disabled:bg-neutral-300">
@@ -157,6 +277,7 @@ export function Arbeitsplatz({ benutzer, pinGesetzt, gewechselt, onClose }: {
             )}
           </div>
         </section>
+        </>}
 
         <div className="border-t border-neutral-200 pt-3">
           <button type="button" onClick={onClose}

@@ -114,6 +114,24 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
   GMX-Domain lässt sich nicht anmelden, und wer es könnte, könnte im Namen
   jedes GMX-Kunden schreiben.
 
+### Das eigene Konto
+
+- **Kennwort und Mailadresse ändern verlangen das aktuelle Kennwort.** Eine
+  Sitzung genügt nicht: an einer Rezeption steht ein Rechner, an dem jemand
+  kurz aufsteht. Beide Routen zählen ihre Fehlversuche außerdem selbst, auf
+  denselben Zähler wie die Anmeldung — die allgemeine Ratenbegrenzung erreicht
+  eine angemeldete Anfrage nicht.
+- **Die Mailadresse wird bestätigt, nicht gesetzt.** Sie ist die Anmeldung;
+  ein Tippfehler darin sperrt den Benutzer aus, auch aus der Rücksetzung. Die
+  gewünschte Adresse hängt am Token (`auth_token.new_email`) und wird erst
+  beim Einlösen geschrieben. An die alte Adresse geht ein Hinweis **ohne
+  Link** — eine Nachricht über eine Änderung, die man nicht veranlasst hat,
+  mit einem Knopf darin, ist die Bauform jeder Phishing-Mail.
+- **Jeder Bildschirm sitzt in der `Shell`.** Sie trägt Abmelden, Sprachwahl
+  und den Weg zum eigenen Konto. Das Adminpanel stand einmal daneben, und
+  Plattformpersonal kam dadurch aus seiner Sitzung nur heraus, indem es das
+  Cookie von Hand löschte.
+
 ### Datenschutz und deutsches Recht
 
 - **Nie Kartendaten speichern.** Es gibt kein Feld dafür, und es kommt keines dazu. Eine Garantie läuft über Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters.
