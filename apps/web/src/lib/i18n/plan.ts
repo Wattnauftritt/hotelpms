@@ -199,6 +199,25 @@ export const plan = {
     de: 'Preis je Nacht',
     en: 'Price per night',
     tr: 'Gecelik fiyat' },
+  'booking.pricePerNight': {
+    de: 'Preis je Nacht',
+    en: 'Price per night',
+    tr: 'Gecelik fiyat' },
+  'booking.priceTotal': {
+    de: 'Gesamtpreis',
+    en: 'Total price',
+    tr: 'Toplam fiyat' },
+  'booking.remainder': {
+    de: '+{n} ct auf der 1. Nacht',
+    en: '+{n} ct on the 1st night',
+    tr: '1. geceye +{n} kuruş' },
+  'booking.remainderHint': {
+    de: 'Der Gesamtpreis geht nicht glatt durch die Nächte. Der Rest liegt '
+      + 'auf der ersten Nacht, damit die Summe genau stimmt.',
+    en: 'The total does not divide evenly across the nights. The remainder '
+      + 'sits on the first night so the sum matches exactly.',
+    tr: 'Toplam fiyat gecelere tam bölünmüyor. Kalan, toplam tam tutsun diye '
+      + 'ilk geceye yazılır.' },
   'booking.priceHint': {
     de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
     en: 'Leave empty to use the price from the rate plan.',
@@ -360,6 +379,31 @@ export const plan = {
     de: '{n} Zimmer unter einer Buchung',
     en: '{n} rooms under one booking',
     tr: 'tek rezervasyon altında {n} oda' },
+  'group.priceLevel': {
+    de: 'Preis gilt',
+    en: 'Price applies',
+    tr: 'Fiyat geçerli' },
+  'group.priceWhole': {
+    de: 'für die ganze Gruppe',
+    en: 'to the whole group',
+    tr: 'tüm grup için' },
+  'group.pricePerRoom': {
+    de: 'je Zimmer',
+    en: 'per room',
+    tr: 'oda başına' },
+  'group.priceSplitHint': {
+    de: 'Wird nach Personenzahl je Zimmergruppe auf die Zimmer aufgeteilt. '
+      + 'Der Rest-Cent liegt auf dem ersten Zimmer, damit die Summe genau '
+      + 'dem eingegebenen Betrag entspricht.',
+    en: 'Split across the rooms by the occupancy of each room category. The '
+      + 'remaining cent goes to the first room so the sum matches the amount '
+      + 'entered exactly.',
+    tr: 'Oda tipinin kişi sayısına göre odalara bölünür. Toplam girilen tutara '
+      + 'tam eşit olsun diye kalan kuruş ilk odaya yazılır.' },
+  'group.pricePerRoomHint': {
+    de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
+    en: 'Leave empty to use the price from the rate plan.',
+    tr: 'Boş bırakırsanız fiyat planındaki fiyat geçerli olur.' },
   'group.guestHint': {
     de: 'Der Gast ist der Besteller der Gruppe, nicht der Bewohner jedes Zimmers. '
       + 'Er wird nur im ersten Zimmer als Mitreisender geführt — sonst zählte die '

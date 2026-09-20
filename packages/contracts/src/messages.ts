@@ -451,6 +451,10 @@ const M = {
     de: 'Dasselbe Zimmer steht zweimal in der Auswahl',
     en: 'The same room appears twice in the selection',
     tr: 'Aynı oda seçimde iki kez var' },
+  'field.eitherPriceOrTotal': {
+    de: 'Entweder Preis je Nacht oder Gesamtpreis, nicht beides',
+    en: 'Either a price per night or a total, not both',
+    tr: 'Ya gecelik fiyat ya da toplam fiyat, ikisi birden değil' },
   'field.eitherCategoryOrRooms': {
     de: 'Entweder eine Zimmergruppe oder eine Zimmerliste',
     en: 'Either a room category or a list of rooms',

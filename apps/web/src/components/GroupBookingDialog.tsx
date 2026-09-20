@@ -2,7 +2,11 @@ import { useState } from 'react'
 import type { Guest } from '@hotelpms/contracts'
 import { useCreateBooking } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
+import { daysBetween } from '../lib/dates.js'
+import { preisFelder, alsGesamt, LEERER_PREIS, type Preiseingabe }
+  from '../lib/preisEingabe.js'
 import { GuestPicker } from './GuestPicker.tsx'
+import { PreisFelder } from './PreisFelder.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -41,8 +45,27 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
   const [arrival, setArrival] = useState(selection.arrival)
   const [departure, setDeparture] = useState(selection.departure)
   const [zimmer, setZimmer] = useState(selection.rooms)
+  /*
+   * Zwei Wege zum Preis, und sie schliessen einander aus.
+   *
+   * **Fuer die ganze Gruppe** ist der Normalfall: verhandelt wird ein
+   * Betrag, und wer ihn zahlt, zahlt ihn fuer alle. Das System teilt ihn
+   * nach Personenzahl je Zimmergruppe auf -- genau ist das nicht, aber es
+   * geht auf, und mit irgendeiner Aufteilung muss die Buchhaltung arbeiten.
+   *
+   * **Je Zimmer** ist der Fall, in dem die Gruppe getrennt zahlt oder die
+   * Suite eben anders kostet als das Doppelzimmer.
+   *
+   * Ein Umschalter und nicht beides zugleich: zwei Betraege fuer dieselbe
+   * Sache weist die Schnittstelle ab, und das aus gutem Grund -- welcher
+   * gilt, gehoert nicht geraten.
+   */
+  const [jeZimmer, setJeZimmer] = useState(false)
+  const [gruppenPreis, setGruppenPreis] = useState<Preiseingabe>(LEERER_PREIS)
+  const [zimmerPreis, setZimmerPreis] = useState<Record<number, Preiseingabe>>({})
   const buchen = useCreateBooking(propertyId)
 
+  const naechte = daysBetween(arrival, departure)
   const gueltig = departure > arrival && zimmer.length > 0
 
   return (
@@ -61,6 +84,12 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
             <div key={z.resourceId} className="flex items-center gap-2">
               <span className="tabular-nums font-medium">{z.roomCode}</span>
               <span className="text-neutral-500 truncate grow">{z.categoryName}</span>
+              {jeZimmer && (
+                <PreisFelder klein naechte={naechte}
+                             wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
+                             onChange={w => setZimmerPreis(
+                               { ...zimmerPreis, [z.resourceId]: w })} />
+              )}
               <button type="button"
                       onClick={() => setZimmer(zimmer.filter(x => x.resourceId !== z.resourceId))}
                       title={t('group.remove')}
@@ -85,6 +114,37 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
             <input type="date" value={departure} onChange={e => setDeparture(e.target.value)}
                    className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
           </label>
+        </div>
+
+        {/*
+          * Der Preis, und darueber die Frage, auf welcher Ebene er gilt.
+          *
+          * Die Vorgabe ist der Gruppenpreis, weil das der Normalfall ist:
+          * verhandelt wird ein Betrag fuer alles. Je Zimmer ist der
+          * Sonderfall -- getrennte Zahler, oder die Suite kostet eben
+          * anders als das Doppelzimmer.
+          */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-neutral-600">{t('group.priceLevel')}</span>
+            <label className="flex items-center gap-1">
+              <input type="radio" checked={!jeZimmer} onChange={() => setJeZimmer(false)} />
+              {t('group.priceWhole')}
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="radio" checked={jeZimmer} onChange={() => setJeZimmer(true)} />
+              {t('group.pricePerRoom')}
+            </label>
+          </div>
+          {jeZimmer
+            ? <p className="text-xs text-neutral-500">{t('group.pricePerRoomHint')}</p>
+            : (
+              <>
+                <PreisFelder wert={gruppenPreis} naechte={naechte}
+                             onChange={setGruppenPreis} />
+                <p className="text-xs text-neutral-500">{t('group.priceSplitHint')}</p>
+              </>
+            )}
         </div>
 
         {/*
@@ -130,8 +190,26 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
             <button type="button" disabled={buchen.isPending || !gueltig}
                     onClick={() => buchen.mutate({
                       propertyId, arrival, departure,
-                      rooms: zimmer.map(z => ({ categoryId: z.categoryId,
-                                                resourceId: z.resourceId })),
+                      /*
+                       * Der Preis haengt entweder an der Buchung oder an
+                       * den Zimmern, nie an beidem -- der Umschalter oben
+                       * ist genau diese Entscheidung, und die
+                       * Schnittstelle weist die Doppelangabe ab.
+                       *
+                       * Aufgeteilt wird auf dem Server: sowohl der
+                       * Gruppenpreis auf die Zimmer als auch jeder
+                       * Zimmerpreis auf die Naechte. Hier zu teilen hiesse,
+                       * die Rechnung an zwei Stellen zu fuehren, und
+                       * spaetestens der Rest-Cent laesst sie auseinander
+                       * laufen.
+                       */
+                      rooms: zimmer.map(z => ({
+                        categoryId: z.categoryId, resourceId: z.resourceId,
+                        totalCent: jeZimmer
+                          ? alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS, naechte)
+                          : undefined
+                      })),
+                      ...(jeZimmer ? {} : preisFelder(gruppenPreis)),
                       guestRef: guest?.guestRef,
                       notes: notes.trim() === '' ? undefined : notes.trim()
                     })}

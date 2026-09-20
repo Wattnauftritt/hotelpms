@@ -2,7 +2,10 @@ import { useState } from 'react'
 import type { Guest } from '@hotelpms/contracts'
 import { useCreateBooking } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
+import { daysBetween } from '../lib/dates.js'
+import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingabe.js'
 import { GuestPicker } from './GuestPicker.tsx'
+import { PreisFelder } from './PreisFelder.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -50,9 +53,15 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * Frist nach der Anreise, und die Option verfiele nie.
    */
   const [optionBis, setOptionBis] = useState(() => vortag(anfangsAnreise))
-  // Als Text, nicht als Zahl: ein leeres Feld ist etwas anderes als eine
-  // Null, und `useState<number>` kann das leere Feld nicht halten.
-  const [preis, setPreis] = useState('')
+  /*
+   * Als Text, nicht als Zahl: ein leeres Feld ist etwas anderes als eine
+   * Null, und `useState<number>` kann das leere Feld nicht halten.
+   *
+   * Dazu die Seite, auf der getippt wurde -- je Nacht oder insgesamt. Sie
+   * entscheidet, welcher der beiden Betraege die Vereinbarung ist und
+   * welcher nur mitgerechnet wird.
+   */
+  const [preis, setPreis] = useState<Preiseingabe>(LEERER_PREIS)
   /*
    * **Vorbelegt mit der Belegung der Zimmergruppe.** Ein Doppelzimmer wird
    * als Doppelzimmer verkauft, und in den allermeisten Faellen reisen auch
@@ -80,6 +89,9 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * von Hand anlegt, weiß dagegen immer einen Namen -- und sei es nur
    * „Meier".
    */
+  // Die Naechte des Aufenthalts -- das Band zwischen den beiden Preisfeldern.
+  // Aendert sich das Datum, rechnet das abgeleitete Feld mit.
+  const naechte = daysBetween(arrival, departure)
   const gueltig = departure > arrival && guest !== null
     && (!unverbindlich || optionBis !== '')
 
@@ -102,11 +114,18 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
       notes: notes.trim() === '' ? undefined : notes.trim(),
       status: unverbindlich ? 'Optional' : undefined,
       optionExpiresAt: unverbindlich ? optionBis : undefined,
-      // Euro im Feld, Cent auf der Leitung. Geld ist immer eine ganze Zahl
-      // in Cent (CLAUDE.md); `Math.round` faengt die 0,1-Ungenauigkeit der
-      // Fliesskommazahl ab, die aus "19,90" sonst 1989 macht.
-      priceCent: preis.trim() === '' ? undefined
-        : Math.round(Number(preis.replace(',', '.')) * 100),
+      /*
+       * Euro im Feld, Cent auf der Leitung -- und genau **ein** Feld geht
+       * hinaus, `priceCent` oder `totalCent`. Beide zugleich weist die
+       * Schnittstelle ab: zwei Preise fuer dieselbe Buchung sind keine
+       * Angabe, sondern eine Frage.
+       *
+       * Gerechnet wird ueber `centAusEingabe` und nicht mehr ueber
+       * `Number(...) * 100`. Das war bei "19,90" noch harmlos, bei
+       * "1.234,50" aber nicht: `Number('1.234.50')` ist `NaN`, und an einer
+       * deutschen Rezeption wird der Tausenderpunkt getippt.
+       */
+      ...preisFelder(preis),
       guestCount: anzahl ?? undefined,
       shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim()
     })
@@ -171,12 +190,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
               <option value="optional">{t('booking.statusOptional')}</option>
             </select>
           </label>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.price')}</span>
-            <input value={preis} onChange={e => setPreis(e.target.value)}
-                   inputMode="decimal" placeholder="—"
-                   className="border border-neutral-300 rounded px-2 py-1 text-sm w-28" />
-          </label>
+          <PreisFelder wert={preis} naechte={naechte} onChange={setPreis} />
           <label className="block text-sm">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.guests')}</span>
             <input value={personen} onChange={e => setPersonen(e.target.value)}

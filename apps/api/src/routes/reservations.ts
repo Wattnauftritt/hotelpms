@@ -6,7 +6,7 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { loadBlock } from './blocks.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
-         isIsoDate, occupiesInventory,
+         isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen,
          type ReservationStatus, type ReservationAction,
          type WebhookEventType } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
@@ -53,6 +53,8 @@ const MAX_STAY_NIGHTS = 400
 interface CreateBookingRoom {
   categoryId: number
   resourceId?: number
+  /** Preis dieses Zimmers fuer den ganzen Aufenthalt. Siehe Vertrag. */
+  totalCent?: number
 }
 
 interface CreateBooking {
@@ -81,6 +83,8 @@ interface CreateBooking {
   optionExpiresAt?: string
   /** Preis je Nacht in Cent, statt des Preises aus dem Ratenplan. */
   priceCent?: number
+  /** Preis der ganzen Buchung fuer den ganzen Aufenthalt. Siehe Vertrag. */
+  totalCent?: number
   /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
   guestCount?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
@@ -259,6 +263,35 @@ export async function priceNights(
 }
 
 /**
+ * Wie viele Personen je Zimmer der Gruppe -- das Gewicht der Aufteilung.
+ *
+ * **Die Belegung der Zimmergruppe, nicht die erfasste Personenzahl.** Die
+ * steht beim Anlegen einer Gruppe noch gar nicht fest: die Namensliste
+ * kommt spaeter, oft erst am Anreisetag. Was feststeht, ist das verkaufte
+ * Produkt -- ein Doppelzimmer ist fuer zwei verkauft, auch wenn nur ein
+ * Name vorliegt.
+ *
+ * Eine Abfrage fuer alle Zimmer, und nur dann, wenn ein Gruppenpreis
+ * aufzuteilen ist. Je Zimmer eine waere bei fuenfzig Zimmern fuenfzigmal
+ * dieselbe Antwort.
+ *
+ * Eine unbekannte Gruppe zaehlt als eine Person statt zu scheitern: ob sie
+ * zum Haus gehoert, prueft `inventory_reserve` gleich danach und mit der
+ * besseren Fehlermeldung. Hier waere es eine zweite Pruefung derselben
+ * Sache, die beim naechsten Umbau auseinanderlaeuft.
+ */
+async function personenJeZimmer(
+  client: PoolClient, zimmer: ReadonlyArray<{ categoryId: number }>
+): Promise<Array<{ personen: number }>> {
+  const ids = [...new Set(zimmer.map(z => z.categoryId))]
+  const { rows } = await client.query<{ id: number; max_occupancy: number }>(
+    `SELECT id, max_occupancy FROM resource_category WHERE id = ANY($1::bigint[])`,
+    [ids])
+  const belegung = new Map(rows.map(r => [r.id, r.max_occupancy]))
+  return zimmer.map(z => ({ personen: belegung.get(z.categoryId) ?? 1 }))
+}
+
+/**
  * Jede Zustandsaktion hat genau eine Ereignisart. Vollstaendig ueber alle
  * Aktionen des Automaten, nicht nur ueber die heute als Route angebotenen:
  * so entscheidet der Typ die Frage mit, sobald eine weitere hinzukommt,
@@ -327,6 +360,23 @@ export function reservationRoutes(app: FastifyInstance): void {
           && (!Number.isInteger(body.priceCent) || body.priceCent < 0)) {
         throw Errors.validation({ priceCent: ['field.positiveInteger'] })
       }
+      if (body.totalCent !== undefined
+          && (!Number.isInteger(body.totalCent) || body.totalCent < 0)) {
+        throw Errors.validation({ totalCent: ['field.positiveInteger'] })
+      }
+      /*
+       * Beides zugleich ist keine Angabe, sondern eine Frage.
+       *
+       * Einen der beiden stillschweigend gewinnen zu lassen waere die
+       * bequeme Loesung und die schlechtere: der Anrufer glaubt dann, den
+       * anderen gesetzt zu haben, und merkt es erst an der Rechnung. Das
+       * gilt fuer die Oberflaeche wie fuer die Schnittstelle -- in der
+       * Maske rechnet das eine Feld das andere aus, und gesendet wird
+       * genau eines.
+       */
+      if (body.priceCent !== undefined && body.totalCent !== undefined) {
+        throw Errors.validation({ totalCent: ['field.eitherPriceOrTotal'] })
+      }
       if (body.shortNote !== undefined
           && body.shortNote.length > SHORT_NOTE_MAX_LENGTH) {
         throw Errors.validation({ shortNote: ['field.maxLength'] },
@@ -367,6 +417,16 @@ export function reservationRoutes(app: FastifyInstance): void {
       const belegt = zimmer.map(z => z.resourceId).filter(r => r !== undefined)
       if (new Set(belegt).size !== belegt.length) {
         throw Errors.validation({ rooms: ['field.duplicateRoom'] })
+      }
+      if (zimmer.some(z => z.totalCent !== undefined
+                        && (!Number.isInteger(z.totalCent) || z.totalCent < 0))) {
+        throw Errors.validation({ rooms: ['field.positiveInteger'] })
+      }
+      // Preise je Zimmer **und** ein Preis fuer die Buchung waeren zwei
+      // Betraege fuer dieselbe Sache. Welcher gilt, gehoert nicht geraten.
+      if (zimmer.some(z => z.totalCent !== undefined)
+          && (body.priceCent !== undefined || body.totalCent !== undefined)) {
+        throw Errors.validation({ rooms: ['field.eitherPriceOrTotal'] })
       }
 
       return tx(req.pool, req, async client => {
@@ -503,10 +563,32 @@ export function reservationRoutes(app: FastifyInstance): void {
          * Verpflegung, Mindestaufenthalt --, und das gilt weiter, auch wenn
          * am Preis gehandelt wurde.
          */
-        const prices = body.priceCent !== undefined
+        const standardPreise = body.priceCent !== undefined
           ? nights.map(() => body.priceCent!)
           : await priceNights(client, ratePlanId, nights)
-        const preisSumme = prices.reduce((s, p) => s + p, 0)
+
+        /*
+         * Der Preis je Zimmer, und erst daraus der Preis je Nacht.
+         *
+         * Drei Wege fuehren hierher, und sie schliessen einander aus (oben
+         * geprueft): ein Betrag je Zimmer, ein Betrag fuer die ganze
+         * Gruppe, oder gar keiner -- dann gilt der Ratenplan.
+         *
+         * Gespeichert wird immer je Nacht. Deshalb faellt jeder Gesamtpreis
+         * genau einmal in Naechte auseinander, hier, mit dem Rest-Cent auf
+         * der ersten Nacht. Wer stattdessen durch die Naechte teilte und
+         * rundete, haette bei drei Naechten und 100,00 EUR dreimal 33,33
+         * gespeichert und eine Rechnung ueber 99,99 gedruckt.
+         */
+        const gruppenTeile = body.totalCent === undefined
+          ? null
+          : gruppeAufteilen(body.totalCent, await personenJeZimmer(client, zimmer))
+        const preiseJeZimmer = zimmer.map((z, i) => {
+          if (z.totalCent !== undefined) return preisJeNacht(z.totalCent, nights.length)
+          if (gruppenTeile !== null) return preisJeNacht(gruppenTeile[i]!, nights.length)
+          return standardPreise
+        })
+        const summeJeZimmer = preiseJeZimmer.map(p => p.reduce((s, x) => s + x, 0))
 
         const angelegt: Array<{ reservationRef: string; categoryId: number
                                 resourceId: number | null; totalCent: number }> = []
@@ -548,7 +630,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                (reservation_id, property_id, date, rate_plan_id, price_cent)
              SELECT $1, $2, x.date, $3, x.price
                FROM unnest($4::date[], $5::bigint[]) AS x(date, price)`,
-            [reservationId, body.propertyId, ratePlanId ?? null, nights, prices])
+            [reservationId, body.propertyId, ratePlanId ?? null, nights, preiseJeZimmer[i]!])
 
           /*
            * Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein --
@@ -582,7 +664,7 @@ export function reservationRoutes(app: FastifyInstance): void {
             reservationRef: res.rows[0]!.public_ref,
             categoryId: z.categoryId,
             resourceId: z.resourceId ?? null,
-            totalCent: preisSumme
+            totalCent: summeJeZimmer[i]!
           })
         }
 
@@ -593,7 +675,10 @@ export function reservationRoutes(app: FastifyInstance): void {
           arrival: body.arrival,
           departure: body.departure,
           nights: nights.length,
-          totalCent: preisSumme * zimmer.length
+          // Summiert statt hochgerechnet: seit die Zimmer verschiedene
+          // Preise tragen koennen, ist "einmal mal Anzahl" falsch -- und
+          // zwar um genau den Betrag, um den verhandelt wurde.
+          totalCent: summeJeZimmer.reduce((s, x) => s + x, 0)
         }
 
         /*
