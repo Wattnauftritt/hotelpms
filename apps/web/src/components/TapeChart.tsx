@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useCallback, memo, type JSX } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
-import { eachDay, isWeekend, daysBetween, addDays } from '../lib/dates.js'
+import { eachDay, isWeekend, daysBetween, addDays, today } from '../lib/dates.js'
 import type { KontextZiel } from './Kontextmenue.tsx'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
   from '../lib/tapeSelection.js'
@@ -268,15 +268,72 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
    * einer Suite, und wer zwanzig davon abarbeitet, greift irgendwann daneben.
    * Beieinander ist es eine Liste, die man Gruppe für Gruppe abräumt.
    */
+  /**
+   * Die Buchungen ohne Zimmer -- **nach Anreise**, nicht nach Zimmergruppe.
+   *
+   * Hier stand die Zimmergruppe zuerst, und das war der Fehler hinter
+   * "die gehen unter". Das Band zeigt vier Zeilen auf einmal; welche vier,
+   * entschied damit eine Eigenschaft, die mit Dringlichkeit nichts zu tun
+   * hat. Eine Buchung, die morgen anreist, stand auf Platz neun, weil sie
+   * eine Suite ist -- und Platz neun sieht niemand.
+   *
+   * Nach Anreise sortiert ist die Reihenfolge dieselbe wie die Frage, die
+   * man hat: was kommt als naechstes und hat noch kein Zimmer. Die
+   * Zimmergruppe geht dabei nicht verloren, ihr Kuerzel steht am Balken.
+   */
   const nichtZugewiesen = useMemo(
     () => data.reservations
       .filter(r => r.resource_id === null)
       .sort((a, b) =>
-        (gruppeNach.get(a.category_id)?.reihe ?? 0)
-          - (gruppeNach.get(b.category_id)?.reihe ?? 0)
-        || a.category_id - b.category_id
-        || a.arrival.localeCompare(b.arrival)),
+        a.arrival.localeCompare(b.arrival)
+        || (gruppeNach.get(a.category_id)?.reihe ?? 0)
+             - (gruppeNach.get(b.category_id)?.reihe ?? 0)
+        || a.category_id - b.category_id),
     [data.reservations, gruppeNach])
+
+  /**
+   * Wie dringend ist eine Buchung ohne Zimmer?
+   *
+   * Gemessen an **heute**, nicht am linken Rand des Plans: wer im November
+   * blaettert, hat dort keine Dringlichkeit, und ein Balken, der sich nach
+   * der Blaetterstellung faerbt, sagt nichts ueber das Haus.
+   *
+   * Zwei Tage, weil der Abstand zur Anreise der Handlungsspielraum ist:
+   * heute und morgen laesst sich noch umstellen, danach steht der Gast am
+   * Tresen.
+   */
+  const heute = today()
+  const dringlich = useCallback(
+    (arrival: string) => daysBetween(heute, arrival) <= 2, [heute])
+
+  /**
+   * Das Band offen oder zusammengeklappt.
+   *
+   * **Warum ueberhaupt ein Innenscroll und nicht einfach alle Zeilen.** Bei
+   * einem Kanalmanager, der jede Buchung ohne Zimmer anlegt, stehen hier
+   * zwanzig; zwanzig Zeilen schoeben den Plan vom Bildschirm, und der Plan
+   * ist das, worauf die Rezeption den ganzen Tag sieht.
+   *
+   * **Warum er trotzdem nicht genuegt.** Was unterhalb des vierten Eintrags
+   * liegt, ist unsichtbar, und unsichtbar heisst vergessen. Deshalb ist das
+   * Zusammenklappen jetzt eine Entscheidung und kein Zustand, den man nicht
+   * bemerkt: die Kopfzeile ist ein Knopf, und im zugeklappten Zustand steht
+   * dort, was fehlt -- mit der naechsten Anreise, nicht nur mit einer Zahl.
+   */
+  const [bandOffen, setBandOffen] = useState(false)
+
+  /**
+   * Was das zugeklappte Band verschweigt: wie viele, und ab wann es eilt.
+   *
+   * Die naechste Anreise **unter den verdeckten**, nicht die naechste
+   * ueberhaupt -- sichtbare Zeilen sind kein Grund aufzuklappen. Weil nach
+   * Anreise sortiert ist, ist das schlicht die erste verdeckte Zeile.
+   */
+  const verdeckt = useMemo(() => {
+    const rest = nichtZugewiesen.slice(BAND_ZEILEN)
+    if (rest.length === 0) return null
+    return { anzahl: rest.length, naechste: rest[0]!.arrival }
+  }, [nichtZugewiesen])
 
   const jeZimmer = useMemo(() => {
     const m = new Map<number, typeof data.reservations>()
@@ -758,9 +815,23 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                            ${drag?.kind === 'move' && drag.ueberBand
                              ? 'bg-amber-200 border-amber-500'
                              : 'bg-amber-50 border-amber-200'}`}>
-            <div className="w-40 shrink-0 px-2 py-1 text-xs text-amber-800
-                            border-r border-amber-200">
-              <div>{t('today.needsRoom')} ({nichtZugewiesen.length})</div>
+            {/*
+              * Die Kopfzeile ist ein Knopf, kein Etikett.
+              *
+              * Zugeklappt sagt sie, **was** fehlt und nicht nur wie viele:
+              * die naechste Anreise unter den verdeckten. Eine Zahl allein
+              * laesst offen, ob es eilt -- und wer das nicht weiss, klappt
+              * nicht auf.
+              */}
+            <button type="button"
+                    onClick={() => setBandOffen(o => !o)}
+                    disabled={nichtZugewiesen.length <= BAND_ZEILEN}
+                    className="w-40 shrink-0 px-2 py-1 text-xs text-amber-800 text-left
+                               border-r border-amber-200 disabled:cursor-default">
+              <div className="font-medium">
+                {nichtZugewiesen.length > BAND_ZEILEN && (bandOffen ? '▾ ' : '▸ ')}
+                {t('today.needsRoom')} ({nichtZugewiesen.length})
+              </div>
               {/* Der Satz steht nur waehrend des Zugs da: eine Anleitung,
                   die immer danebensteht, liest nach der dritten Woche
                   niemand mehr, und Platz nimmt sie jeden Tag weg. */}
@@ -769,12 +840,15 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                   {t('plan.dropToUnassign')}
                 </div>
               )}
-              {!bandAlsZiel && nichtZugewiesen.length > BAND_ZEILEN && (
-                <div className="text-[10px] text-amber-700 mt-0.5">
-                  {t('plan.bandScroll')}
+              {!bandAlsZiel && !bandOffen && verdeckt !== null && (
+                <div className={`text-[10px] mt-0.5
+                                 ${dringlich(verdeckt.naechste)
+                                   ? 'text-red-700 font-medium' : 'text-amber-700'}`}>
+                  {t('plan.bandHidden', { n: verdeckt.anzahl,
+                                          datum: formatDate(verdeckt.naechste, locale) })}
                 </div>
               )}
-            </div>
+            </button>
             {/*
               * `overscroll-contain`: ein Rad im Band scrollt das Band und
               * springt am Ende **nicht** weiter auf die Seite. Ohne das
@@ -783,7 +857,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
               * wollte.
               */}
             <div className="relative grow overflow-y-auto overscroll-contain"
-                 style={{ maxHeight: ZEILE * BAND_ZEILEN }}>
+                 style={{ maxHeight: ZEILE * (bandOffen ? nichtZugewiesen.length
+                                                        : BAND_ZEILEN) }}>
               <div className="relative"
                    style={{ height: ZEILE * nichtZugewiesen.length }}>
                 {nichtZugewiesen.map((r, i) => {
@@ -802,9 +877,27 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                                  // Die lange Notiz nur hier, nie auf dem Balken.
                                  + (r.notes ? `\n${r.notes}` : '')}
                             style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
+                            /*
+                             * Ein roter Ring, wenn die Anreise binnen zwei
+                             * Tagen ist.
+                             *
+                             * Eine Buchung ohne Zimmer ist nicht per se ein
+                             * Problem -- im November ist sie normal, morgen
+                             * ist sie eine Lage. Ohne diesen Unterschied
+                             * sieht das Band an einem ruhigen Tag genauso
+                             * aus wie an dem, an dem gleich jemand am
+                             * Tresen steht.
+                             *
+                             * Ein Ring und keine andere Fuellfarbe: die
+                             * Fuellung sagt den Zustand (Option,
+                             * bestaetigt), und den zu ueberschreiben
+                             * tauschte eine Information gegen eine andere.
+                             */
                             className={`absolute rounded px-1 text-[11px] text-white
                                         truncate text-left cursor-move
-                                        ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                                        ${FARBE[r.status] ?? 'bg-neutral-400'}
+                                        ${dringlich(r.arrival)
+                                          ? 'ring-2 ring-red-600' : ''}`}>
                       {/* Die Zimmergruppe steht am Balken, nicht nur im
                           Hinweis: hier liegen Doppelzimmer, Einzelzimmer und
                           Suiten nebeneinander, und beim Ziehen entscheidet

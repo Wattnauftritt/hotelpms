@@ -301,6 +301,10 @@ export const plan = {
     en: 'Clear selection (Esc)',
     tr: 'Seçimi temizle (Esc)' },
 
+  'plan.bandHidden': {
+    de: '{n} weitere verdeckt · nächste Anreise {datum}',
+    en: '{n} more hidden · next arrival {datum}',
+    tr: '{n} tanesi daha gizli · sonraki giriş {datum}' },
   'plan.bandScroll': {
     de: 'Liste scrollt',
     en: 'list scrolls',
@@ -607,6 +611,10 @@ export const plan = {
     de: 'Keine Warnungen im sichtbaren Zeitraum',
     en: 'No warnings in the visible range',
     tr: 'Görünen dönemde uyarı yok' },
+  'warnings.nextArrival': {
+    de: 'nächste Anreise',
+    en: 'next arrival',
+    tr: 'sonraki giriş' },
   'warnings.unassigned': {
     de: 'ohne Zimmer',
     en: 'without a room',
