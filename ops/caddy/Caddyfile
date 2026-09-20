@@ -1,5 +1,21 @@
 # Caddy holt und erneuert die Zertifikate selbst. Kein certbot, kein Cron-Job.
+#
+# **Diese Datei ist die laufende Fassung der Maschine, nicht ihr Entwurf.**
+# Sie ist einmal auseinandergelaufen: im Repository stand eine Fassung, die
+# dort nie lief, und auf der Maschine lief eine, die hier nie stand. Gemerkt
+# hat es niemand, weil beide fuer sich stimmig aussahen -- genau der Schaden,
+# den die Regel zu Betriebsdateien beschreibt. Wer hier etwas aendert, gleicht
+# es mit `/etc/caddy/Caddyfile` ab, bevor er es einckeckt.
 {
+	# **Bleibt stehen, auch wenn neuere Fassungen des Moduls sich selbst
+	# einordnen.** Auf dieser Maschine parst die Zeile nachweislich; sie
+	# wegzulassen haenge davon ab, welche Version des Moduls dort gerade
+	# installiert ist, und das ist keine Frage, deren Antwort man beim
+	# Neustart des Webservers herausfinden moechte.
+	order rate_limit before basicauth
+
+	# Ohne Adresse kommt keine Warnung, wenn eine Erneuerung ausbleibt. Das
+	# faellt dann am Tag des Ablaufs auf, und zwar allen gleichzeitig.
 	email admin@staygrid.cloud
 }
 
@@ -15,8 +31,15 @@
 # es gibt keinen Vorabflug, keine erlaubte Herkunftsliste und keinen
 # Cross-Site-Pfad, den jemand ausnutzen könnte. Der Preis ist eine
 # Pfadregel in Caddy.
+#
+# **Zwei Namen, und der zweite ist der Umzug.** `pms.wattnauftritt.de` ist
+# der Name, unter dem die Rezeption heute arbeitet. Ihn beim Umstieg auf
+# StayGrid einfach zu ersetzen hiesse: wer gerade einen Check-in offen hat,
+# sieht mitten darin einen Zertifikatsfehler. Beide Namen liefern dasselbe
+# aus, bis niemand mehr den alten benutzt; dann faellt er weg. Das Cookie
+# haengt am Namen, ein Wechsel kostet also eine Neuanmeldung -- mehr nicht.
 # ---------------------------------------------------------------------------
-app.staygrid.cloud {
+app.staygrid.cloud, pms.wattnauftritt.de {
 	encode zstd gzip
 
 	# Erste Linie vor der Anwendung. Sie kennt selbst RATE_LIMIT_LOGIN und
@@ -33,7 +56,7 @@ app.staygrid.cloud {
 	# 30 je 5 Minuten -- dasselbe Fenster, die halbe Grenze. Damit haette
 	# Caddy immer zuerst zugeschlagen und genau das Verhalten durchgesetzt,
 	# das C7 vermeiden wollte, ohne dass die Grenze der Anwendung je zum
-	# Tragen gekommen waere.
+	# Tragen gekommen waere. Auf der Maschine stand die 30 bis zuletzt.
 	#
 	# 300 fangen den Massenangriff ab, bevor er einen Node-Prozess
 	# beschaeftigt, und lassen die fachliche Entscheidung bei der Anwendung.
@@ -114,6 +137,10 @@ app.staygrid.cloud {
 
 # Eigener Name für Maschinen: Channel Manager, Buchungsstrecke, Kassensysteme.
 # Sie brauchen keine Oberfläche und sollen sie auch nicht sehen.
+#
+# Kein Gegenstueck zur Ratenbegrenzung oben: hier meldet sich kein Mensch an,
+# sondern ein Client mit Client Credentials, und der holt sein Token einmal
+# je Stunde. Die Anwendung begrenzt /oauth/token ohnehin selbst.
 api.staygrid.cloud {
 	reverse_proxy unix//run/hotelpms/api.sock
 	encode zstd gzip
