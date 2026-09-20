@@ -84,6 +84,10 @@ type DragState =
       /** Die gebuchte Zimmergruppe. Faerbt die passenden Zeilen ein und
           entscheidet, ob beim Loslassen gefragt wird. */
       categoryId: number; occupants: number; categoryMaxOccupancy: number
+      /** Die Zeile, in der der Balken losgezogen wurde. Null im Band oben. */
+      quelleResourceId: number | null
+      /** Tagesspalte beim Aufsetzen und jetzt -- daraus der Zeitversatz. */
+      startDay: number; day: number
       pointerDownX: number; pointerDownY: number; overResourceId: number | null
       moved: boolean }
   | { kind: 'resize'; reservationRef: string; resourceId: number; edge: 'start' | 'end'
@@ -257,7 +261,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       const bewegt = d.moved
         || Math.abs(e.clientX - d.pointerDownX) > KLICK_SCHWELLE
         || Math.abs(e.clientY - d.pointerDownY) > KLICK_SCHWELLE
-      setDragState({ ...d, overResourceId: ueber, moved: bewegt })
+      setDragState({ ...d, overResourceId: ueber, moved: bewegt,
+                     day: tagUnter(e.clientX) })
     }
     // Die Aufrufe an `onCreate`/`onMove`/`onSelect`/`onChangeStay` loesen bei
     // den Elternkomponenten selbst wieder `setState` aus. Das darf nicht
@@ -277,7 +282,17 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       } else if (d.kind === 'group') {
         onCreateGroup?.(gruppenAuswahl(data.units, tage, d))
       } else if (d.kind === 'move') {
-        if (d.moved && d.overResourceId !== null) {
+        const versatz = d.overResourceId === d.quelleResourceId
+          ? d.day - d.startDay
+          : 0
+        if (d.moved && versatz !== 0) {
+          // In derselben Zeile waagerecht gezogen: der ganze Aufenthalt
+          // wandert, seine Laenge bleibt. Das Zimmer bleibt ebenfalls --
+          // die Zeile hat sich ja nicht geaendert.
+          onChangeStay?.(d.reservationRef,
+            addDays(d.arrival, versatz), addDays(d.departure, versatz))
+        } else if (d.moved && d.overResourceId !== null
+                   && d.overResourceId !== d.quelleResourceId) {
           const ziel = zimmerNach.get(d.overResourceId)
           const anders = ziel !== undefined && ziel.category_id !== d.categoryId
           onMove?.({
@@ -350,7 +365,23 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                left: von * SPALTE, width: (bis - von) * SPALTE - 4 }
     }
     if (drag.moved && drag.overResourceId !== null) {
-      const b = balken(drag.arrival, drag.departure)
+      /*
+       * **Eine Geste tut eine Sache.** Liegt der Zeiger in einer anderen
+       * Zeile, ist es ein Zimmerwechsel und der Zeitraum bleibt; liegt er
+       * in derselben, ist es eine Verschiebung in der Zeit und das Zimmer
+       * bleibt.
+       *
+       * Beides zugleich waere zwei Aufrufe -- `assign-unit` und
+       * `change-stay` --, und dazwischen liegt ein Zustand, den niemand
+       * gewollt hat: entweder das neue Zimmer an den alten Tagen oder das
+       * alte Zimmer an den neuen. Schlaegt der zweite Aufruf fehl, bleibt
+       * genau der stehen. Der Schattenbalken zeigt waehrend des Zugs, was
+       * passieren wird, also ist die Regel sichtbar und nicht geraten.
+       */
+      const versatz = drag.overResourceId === drag.quelleResourceId
+        ? drag.day - drag.startDay
+        : 0
+      const b = balken(addDays(drag.arrival, versatz), addDays(drag.departure, versatz))
       return { resourceIds: new Set([drag.overResourceId]), ...b }
     }
     return null
@@ -398,13 +429,16 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   const beginneVerschieben = useCallback((r: ReservationRow, e: React.PointerEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    const tag = tagUnter(e.clientX)
     setDragState({ kind: 'move', reservationRef: r.public_ref,
                arrival: r.arrival, departure: r.departure,
                categoryId: r.category_id, occupants: r.occupants,
                categoryMaxOccupancy: r.category_max_occupancy,
+               quelleResourceId: r.resource_id,
+               startDay: tag, day: tag,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
                overResourceId: null, moved: false })
-  }, [setDragState])
+  }, [tagUnter, setDragState])
 
   const beginneGroesseAendern = useCallback(
     (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => {

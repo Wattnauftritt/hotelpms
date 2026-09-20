@@ -36,3 +36,25 @@ export function isWeekend(date: IsoDate): boolean {
   const wd = new Date(`${date}T00:00:00Z`).getUTCDay()
   return wd === 0 || wd === 6
 }
+
+/**
+ * Monate addieren, ohne über das Monatsende zu rutschen.
+ *
+ * `setUTCMonth` allein reicht nicht: der 31. Januar plus ein Monat ergibt
+ * dort den 3. März, weil der Februar keinen 31. hat und JavaScript
+ * stillschweigend weiterzählt. Wer im Belegungsplan vom 31. Januar einen
+ * Monat vorblättert, will den 28. Februar sehen und nicht den März.
+ *
+ * Dieselbe Funktion trägt auch den Jahressprung (`months: 12`): ein Jahr
+ * ist zwölf Monate, und der 29. Februar eines Schaltjahres wird so zum
+ * 28. Februar statt zum 1. März.
+ */
+export function addMonths(date: IsoDate, months: number): IsoDate {
+  const [j, m, t] = date.split('-').map(Number)
+  const ziel = new Date(Date.UTC(j!, m! - 1 + months, 1))
+  // Letzter Tag des Zielmonats: Tag 0 des Folgemonats.
+  const letzter = new Date(Date.UTC(
+    ziel.getUTCFullYear(), ziel.getUTCMonth() + 1, 0)).getUTCDate()
+  ziel.setUTCDate(Math.min(t!, letzter))
+  return ziel.toISOString().slice(0, 10)
+}

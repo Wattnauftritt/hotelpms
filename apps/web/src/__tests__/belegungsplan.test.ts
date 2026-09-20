@@ -260,6 +260,59 @@ describe('Die Maske fuer eine neue Reservierung', () => {
   })
 })
 
+describe('Der Kalender selbst', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+
+  it('verschiebt einen Aufenthalt in der Zeit, nicht nur zwischen Zimmern', () => {
+    /*
+     * Vorher aenderte ein Zug nur die Zeile. Anreise und Abreise blieben
+     * stehen, wo sie waren -- die Kanten liessen sich einzeln ziehen, der
+     * ganze Aufenthalt nicht.
+     */
+    expect(plan).toContain('d.day - d.startDay')
+    expect(plan).toContain('addDays(d.arrival, versatz)')
+    expect(plan).toContain('addDays(d.departure, versatz)')
+  })
+
+  it('macht aus einer Geste nicht zwei Aenderungen', () => {
+    /*
+     * Zimmer **und** Zeit zugleich waeren zwei Aufrufe, und dazwischen
+     * liegt ein Zustand, den niemand gewollt hat. Schlaegt der zweite
+     * fehl, bleibt genau der stehen.
+     */
+    expect(plan).toContain('drag.overResourceId === drag.quelleResourceId')
+    expect(plan).toContain("d.overResourceId !== d.quelleResourceId")
+  })
+
+  it('blaettert Monate und Jahre mit Pfeilen', () => {
+    expect(bildschirm).toContain('addMonths(von, -12)')
+    expect(bildschirm).toContain('addMonths(von, -1)')
+    expect(bildschirm).toContain('addMonths(von, 1)')
+    expect(bildschirm).toContain('addMonths(von, 12)')
+  })
+
+  it('laesst die Gruppierung abschalten', () => {
+    // Nach Gruppe fuer den Verkauf, nach Zimmernummer fuer alles, was am
+    // Gebaeude haengt.
+    expect(bildschirm).toContain('plan.groupByCategory')
+    // `numeric`, sonst steht 110 vor 2.
+    expect(bildschirm).toContain('{ numeric: true }')
+  })
+
+  it('setzt die Warnungen in eine Zeile', () => {
+    /*
+     * Gestapelt schoben drei Hinweise den Plan um drei Zeilen nach unten --
+     * und der Plan ist der Bildschirm, auf den die Rezeption den ganzen Tag
+     * sieht.
+     */
+    expect(bildschirm).toContain("warnungen.join(' · ')")
+    expect(bildschirm).not.toMatch(/warnungen\.map\(\(w, i\)/)
+  })
+})
+
 /**
  * Wohin eine Buchung ohne Zimmer darf.
  *
