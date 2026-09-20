@@ -10,6 +10,9 @@ import { BookingDialog } from '../components/BookingDialog.tsx'
 import { GroupBookingDialog, type GroupSelection }
   from '../components/GroupBookingDialog.tsx'
 import { GroupPanel } from '../components/GroupPanel.tsx'
+import type { KontextZiel } from '../components/Kontextmenue.tsx'
+import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
+import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
@@ -63,6 +66,10 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    * wieder suchen zu muessen.
    */
   const [gruppenBuchung, setGruppenBuchung] = useState<string | null>(null)
+  /** Was unter dem rechten Knopf lag. Null heisst: kein Menue offen. */
+  const [kontext, setKontext] = useState<KontextZiel | null>(null)
+  const [sperren, setSperren] = useState<
+    { resourceId: number; roomCode: string; ab: string } | null>(null)
   const t = useT()
   const bis = addDays(von, tage)
   const q = useTapeChart(propertyId, von, bis)
@@ -186,7 +193,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onShiftGroup={(bookingRef, shiftDays) =>
                         gruppeVerschieben.mutate({ bookingRef, shiftDays })}
                       onUnassign={reservationRef =>
-                        zuweisen.mutate({ reservationRef, resourceId: null })} />}
+                        zuweisen.mutate({ reservationRef, resourceId: null })}
+                      onKontext={setKontext} />}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
           Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden. */}
@@ -213,6 +221,30 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       {gruppe !== null && (
         <GroupBookingDialog propertyId={propertyId} selection={gruppe}
                             onClose={() => setGruppe(null)} />
+      )}
+
+      {kontext !== null && (
+        <PlanKontextmenue propertyId={propertyId} ziel={kontext}
+                          onClose={() => setKontext(null)}
+                          onOeffnen={setAusgewaehlt}
+                          onCheckIn={onCheckIn}
+                          onGruppe={setGruppenBuchung}
+                          onAnlegen={z => {
+                            const u = daten?.units.find(x => x.id === z.resourceId)
+                            setAuswahl({
+                              resourceId: z.resourceId, categoryId: z.categoryId,
+                              arrival: z.arrival, departure: z.departure,
+                              roomCode: u?.code ?? '',
+                              categoryName: u?.category_name ?? '',
+                              maxOccupancy: u?.max_occupancy })
+                          }}
+                          onSperren={setSperren} />
+      )}
+
+      {sperren !== null && (
+        <ZimmerSperren propertyId={propertyId} resourceId={sperren.resourceId}
+                       roomCode={sperren.roomCode} ab={sperren.ab}
+                       onClose={() => setSperren(null)} />
       )}
 
       {gruppenBuchung !== null && (

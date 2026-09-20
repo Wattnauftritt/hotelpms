@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback, memo, type JSX } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, daysBetween, addDays } from '../lib/dates.js'
+import type { KontextZiel } from './Kontextmenue.tsx'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
   from '../lib/tapeSelection.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
@@ -179,10 +180,39 @@ interface Props {
    * beidem steht der Platz im freien Verkauf.
    */
   onUnassign?: (reservationRef: string) => void
+  /**
+   * Rechter Knopf auf einem Balken oder auf freier Flaeche.
+   *
+   * Der Plan meldet nur, **was** dort lag; welche Eintraege das Menue
+   * bekommt, entscheidet der Bildschirm. Er kennt die Rechte des
+   * Benutzers und die Bildschirme, zu denen ein Eintrag fuehrt -- beides
+   * geht den Plan nichts an, und beides hier zu wissen hiesse, ihm die
+   * halbe Anwendung mitzugeben.
+   */
+  onKontext?: (ziel: KontextZiel) => void
+}
+
+/**
+ * Nur der linke Knopf zieht.
+ *
+ * **Der rechte loest `pointerdown` genauso aus.** Ohne diese Pruefung
+ * begann ein Rechtsklick auf einem Balken zugleich ein Verschieben --
+ * das Menue ging auf, und dahinter haftete der Balken am Zeiger. Der
+ * naechste Klick, der eigentlich einen Menueeintrag treffen sollte, liess
+ * ihn irgendwo fallen.
+ *
+ * `buttons` und nicht `button`: bei `pointerdown` ist `button` zwar
+ * gesetzt, aber bei einem Stift oder einer Beruehrung ist es 0 und
+ * `buttons` 1 -- die Pruefung auf `buttons === 1` laesst Maus, Stift und
+ * Finger durch und haelt nur den rechten und mittleren Knopf auf.
+ */
+function nurLinks(e: React.PointerEvent): boolean {
+  return e.buttons !== 1
 }
 
 export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
-                            onChangeStay, onShiftGroup, onUnassign }: Props): JSX.Element {
+                            onChangeStay, onShiftGroup, onUnassign,
+                            onKontext }: Props): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
@@ -594,6 +624,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   const beginneErstellen = useCallback(
     (resourceId: number, categoryId: number, e: React.PointerEvent) => {
       if (e.target !== e.currentTarget) return
+      if (nurLinks(e)) return
       e.preventDefault()
       const startDay = tagUnter(e.clientX)
       /*
@@ -617,6 +648,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     }, [tagUnter, zeileVonZimmer, setDragState])
 
   const beginneVerschieben = useCallback((r: ReservationRow, e: React.PointerEvent) => {
+    if (nurLinks(e)) return
     e.preventDefault()
     e.stopPropagation()
     const tag = tagUnter(e.clientX)
@@ -636,8 +668,45 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                overResourceId: null, ueberBand: false, moved: false })
   }, [tagUnter, setDragState])
 
+  /*
+   * Der rechte Knopf, zweimal: auf einem Balken und auf freier Flaeche.
+   *
+   * `preventDefault` hier und nicht nur in der `Shell`: die Sperre dort
+   * haelt das Browsermenue zu, aber das eigene Menue muss den Klick auch
+   * bekommen, bevor irgendetwas anderes damit passiert.
+   *
+   * `stopPropagation` am Balken, weil er in der freien Flaeche der Zeile
+   * liegt: ohne das oeffnete sich anschliessend das Menue fuer "hier ist
+   * nichts" -- ueber einem Balken, auf den man gerade gezielt hat.
+   */
+  const balkenKontext = useCallback((r: ReservationRow, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onKontext?.({
+      art: 'reservierung', punkt: { x: e.clientX, y: e.clientY },
+      reservationRef: r.public_ref, bookingRef: r.booking_ref,
+      bookingRooms: r.booking_rooms, status: r.status, resourceId: r.resource_id })
+  }, [onKontext])
+
+  const freiKontext = useCallback(
+    (resourceId: number, categoryId: number, e: React.MouseEvent) => {
+      e.preventDefault()
+      const tag = tagUnter(e.clientX)
+      const anreise = tage[Math.max(0, Math.min(tage.length - 1, tag))]
+      if (anreise === undefined) return
+      onKontext?.({
+        art: 'frei', punkt: { x: e.clientX, y: e.clientY },
+        resourceId, categoryId,
+        roomCode: zimmerNach.get(resourceId)?.code ?? '',
+        // **Eine Nacht**, nicht der sichtbare Zeitraum. Wer im Plan rechts
+        // klickt, meint diesen Tag; ein Vorschlag ueber sechzig Tage waere
+        // eine Buchung, die niemand wollte.
+        arrival: anreise, departure: addDays(anreise, 1) })
+    }, [onKontext, tagUnter, tage, zimmerNach])
+
   const beginneGroesseAendern = useCallback(
     (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => {
+      if (nurLinks(e)) return
       e.preventDefault()
       e.stopPropagation()
       setDragState({ kind: 'resize', reservationRef: r.public_ref, resourceId: r.resource_id!,
@@ -804,7 +873,9 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                            ghost?.zaehlerAn === u.id ? ghost.resourceIds.size : null)}
                          onCreatePointerDown={beginneErstellen}
                          onMovePointerDown={beginneVerschieben}
-                         onResizePointerDown={beginneGroesseAendern} />
+                         onResizePointerDown={beginneGroesseAendern}
+                         onBalkenKontext={balkenKontext}
+                         onFreiKontext={freiKontext} />
           )
         })}
 
@@ -893,6 +964,10 @@ interface ZimmerzeileProps {
   onCreatePointerDown: (resourceId: number, categoryId: number, e: React.PointerEvent) => void
   onMovePointerDown: (r: ReservationRow, e: React.PointerEvent) => void
   onResizePointerDown: (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => void
+  /** Rechter Knopf auf einem Balken dieser Zeile. */
+  onBalkenKontext: (r: ReservationRow, e: React.MouseEvent) => void
+  /** Rechter Knopf auf freier Flaeche dieser Zeile. */
+  onFreiKontext: (resourceId: number, categoryId: number, e: React.MouseEvent) => void
 }
 
 /**
@@ -921,7 +996,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         )}
       </div>
       <div className="relative grow cursor-crosshair"
-           onPointerDown={e => p.onCreatePointerDown(u.id, u.category_id, e)}>
+           onPointerDown={e => p.onCreatePointerDown(u.id, u.category_id, e)}
+           onContextMenu={e => p.onFreiKontext(u.id, u.category_id, e)}>
         {p.tage.map((d, i) => (
           <div key={d}
                style={{ left: i * SPALTE, width: SPALTE }}
@@ -952,6 +1028,11 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           return (
             <button key={r.id}
                     onPointerDown={e => p.onMovePointerDown(r, e)}
+                    // `stopPropagation` in der Behandlung: sonst liefe das
+                    // Ereignis weiter an die freie Flaeche darunter und
+                    // oeffnete das Menue fuer "hier ist nichts" -- ueber
+                    // einem Balken, auf den man gerade gezielt hat.
+                    onContextMenu={e => p.onBalkenKontext(r, e)}
                     title={`${r.last_name ?? ''} ${r.first_name ?? ''} · `
                          + `${formatDate(r.arrival, locale)} – `
                          + `${formatDate(r.departure, locale)} · `

@@ -38,6 +38,11 @@ export function useCreateMaintenanceTicket(propertyId: number) {
       // Eine Sperrung als Out of Order nimmt dem Verkauf ein Zimmer.
       void qc.invalidateQueries({ queryKey: ['tape'] })
       void qc.invalidateQueries({ queryKey: ['rooms', propertyId] })
+      // Und damit auch das Verfuegbarkeitsraster: es rechnet aus
+      // `inventory_day`, und der Trigger auf `maintenance_block` hat die
+      // Kapazitaet gerade gesenkt. Ohne das zeigt der eine Bildschirm ein
+      // gesperrtes Zimmer und der andere es weiterhin als verkaeuflich.
+      void qc.invalidateQueries({ queryKey: ['availability', propertyId] })
     }
   })
 }
