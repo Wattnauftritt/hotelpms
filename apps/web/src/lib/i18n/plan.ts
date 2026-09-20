@@ -133,10 +133,16 @@ export const plan = {
     en: 'Confirmation queued',
     tr: 'Onay kuyruğa alındı' },
 
+  /*
+   * „Reservierung", nicht „Buchung". Das Datenmodell trennt beides: eine
+   * `booking` haelt mehrere `reservation`, und dieser Dialog legt einen
+   * Aufenthalt in einem Zimmer an. Die Rezeption traegt eine Buchung ein,
+   * sie erstellt keine -- gebucht hat der Gast.
+   */
   'booking.title': {
-    de: 'Buchen',
-    en: 'Book',
-    tr: 'Rezerve et' },
+    de: 'Neue Reservierung',
+    en: 'New reservation',
+    tr: 'Yeni rezervasyon' },
   'booking.room': {
     de: 'Zimmer',
     en: 'Room',
@@ -166,22 +172,65 @@ export const plan = {
     de: 'Gast',
     en: 'Guest',
     tr: 'Misafir' },
+  'booking.status': {
+    de: 'Art',
+    en: 'Kind',
+    tr: 'Tür' },
+  'booking.statusConfirmed': {
+    de: 'verbindlich',
+    en: 'confirmed',
+    tr: 'kesin' },
+  'booking.statusOptional': {
+    de: 'unverbindlich',
+    en: 'provisional',
+    tr: 'opsiyonlu' },
+  'booking.optionUntil': {
+    de: 'Option gilt bis',
+    en: 'Option held until',
+    tr: 'Opsiyon geçerlilik tarihi' },
+  'booking.optionHint': {
+    de: 'Danach verfällt sie im Nachtlauf und das Zimmer wird wieder frei. '
+      + 'Ohne Frist bliebe es dauerhaft besetzt.',
+    en: 'After that it lapses in the night audit and the room becomes free '
+      + 'again. Without an expiry it would stay blocked indefinitely.',
+    tr: 'Sonrasında gece işleminde düşer ve oda yeniden boşalır. Son tarih '
+      + 'olmadan oda süresiz dolu kalır.' },
+  'booking.price': {
+    de: 'Preis je Nacht',
+    en: 'Price per night',
+    tr: 'Gecelik fiyat' },
+  'booking.priceHint': {
+    de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
+    en: 'Leave empty to use the price from the rate plan.',
+    tr: 'Boş bırakırsanız fiyat planındaki fiyat geçerli olur.' },
+  'booking.guests': {
+    de: 'Personen',
+    en: 'Guests',
+    tr: 'Kişi' },
+  'booking.guestsHint': {
+    de: 'Leer lassen heißt: so viele, wie die Zimmergruppe hergibt.',
+    en: 'Leave empty for as many as the room category allows.',
+    tr: 'Boş bırakırsanız oda tipinin izin verdiği kadar olur.' },
+  'booking.overCapacity': {
+    de: 'Die Zimmergruppe ist für {max} Personen. Sie tragen {n} ein. Sicher?',
+    en: 'The room category holds {max} guests. You entered {n}. Are you sure?',
+    tr: 'Oda tipi {max} kişiliktir. {n} girdiniz. Emin misiniz?' },
   'booking.notes': {
     de: 'Notiz',
     en: 'Note',
     tr: 'Not' },
   'booking.submit': {
-    de: 'Buchen',
-    en: 'Book',
-    tr: 'Rezerve et' },
+    de: 'Reservierung anlegen',
+    en: 'Create reservation',
+    tr: 'Rezervasyon oluştur' },
   'booking.close': {
     de: 'Abbrechen',
     en: 'Cancel',
     tr: 'Vazgeç' },
   'booking.created': {
-    de: 'Gebucht',
-    en: 'Booked',
-    tr: 'Rezerve edildi' },
+    de: 'Reservierung angelegt',
+    en: 'Reservation created',
+    tr: 'Rezervasyon oluşturuldu' },
   'booking.needsGuest': {
     de: 'Ohne Gast lässt sich nicht buchen. Suchen oder neu anlegen.',
     en: 'Booking needs a guest. Search or create one.',

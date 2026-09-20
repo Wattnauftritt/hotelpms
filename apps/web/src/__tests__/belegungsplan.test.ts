@@ -195,6 +195,71 @@ describe('Der eingetippte Name geht nicht verloren', () => {
   })
 })
 
+describe('Die Maske fuer eine neue Reservierung', () => {
+  const dialog = readFileSync(
+    new URL('../components/BookingDialog.tsx', import.meta.url), 'utf8')
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const texte = readFileSync(
+    new URL('../lib/i18n/plan.ts', import.meta.url), 'utf8')
+
+  it('heisst Reservierung, nicht Buchung', () => {
+    /*
+     * Das Datenmodell trennt beides: eine `booking` haelt mehrere
+     * `reservation`, und dieser Dialog legt einen Aufenthalt in einem
+     * Zimmer an. Die Rezeption traegt eine Buchung ein, sie erstellt keine.
+     */
+    const block = texte.slice(texte.indexOf("'booking.title'"),
+                              texte.indexOf("'booking.room'"))
+    expect(block).toContain('Neue Reservierung')
+  })
+
+  it('rechnet Euro in ganze Cent um', () => {
+    // Geld ist immer eine ganze Zahl in Cent (CLAUDE.md). Ohne `Math.round`
+    // macht die Fliesskommazahl aus "19,90" eine 1989.
+    expect(dialog).toContain('Math.round')
+    // Das Komma der deutschen Eingabe muss zum Punkt werden, sonst ist
+    // Number('19,90') schlicht NaN.
+    expect(dialog).toContain("replace(',', '.')")
+  })
+
+  it('verlangt bei einer Option eine Frist', () => {
+    // Ohne Frist verfaellt sie nie und haelt das Zimmer dauerhaft besetzt.
+    expect(dialog).toContain("!unverbindlich || optionBis !== ''")
+  })
+
+  it('schlaegt als Frist den Vortag der Anreise vor', () => {
+    /*
+     * Kein fester Abstand in Tagen: bei einer Anreise uebermorgen waeren
+     * sieben Tage eine Frist **nach** der Anreise, und die Option verfiele
+     * nie -- genau der Fall, den die Pflichtangabe verhindern soll.
+     */
+    expect(dialog).toContain('vortag(anfangsAnreise)')
+  })
+
+  it('rechnet den Vortag ohne new Date(iso)', () => {
+    // Das verschiebt je nach Zeitzone um einen Tag (CLAUDE.md).
+    const fn = dialog.slice(dialog.indexOf('function vortag'),
+                            dialog.indexOf('export function BookingDialog'))
+    expect(fn).toContain('Date.UTC')
+    expect(fn).not.toMatch(/new Date\(iso\)/)
+  })
+
+  it('fragt bei Ueberbelegung, statt sie zu verbieten', () => {
+    // Ein Kleinkind im Doppelzimmer ist der Normalfall. Ein Verbot zwaenge
+    // die Rezeption zu einer falschen Zahl, und dann stimmt die Kurtaxe nicht.
+    expect(dialog).toContain('booking.overCapacity')
+    expect(dialog).toContain('zuViele')
+  })
+
+  it('zeigt die Notiz im Plan als Text, nicht als Merkmal', () => {
+    // Eine Stecknadel sagt, dass es eine Notiz gibt, und verschweigt
+    // welche -- also genau das, was man wissen will.
+    expect(plan).toContain('· {r.notes}')
+    expect(plan).not.toContain('📌')
+  })
+})
+
 /**
  * Wohin eine Buchung ohne Zimmer darf.
  *

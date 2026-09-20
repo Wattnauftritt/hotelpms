@@ -493,6 +493,14 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                         </span>
                       )}
                       {r.last_name ?? t('tape.noGuest')}
+                      {/* Die Notiz gehoert auf den Balken, nicht zwei Klicks
+                          tiefer: hier steht, was beim naechsten Blick auf den
+                          Plan zaehlt -- "Balkon", "1. Stock", "Spaetanreise".
+                          Die Schnittstelle liefert sie seit jeher mit, nur
+                          angezeigt wurde sie nie. */}
+                      {r.notes && (
+                        <span className="ml-1 opacity-75">· {r.notes}</span>
+                      )}
                     </button>
                   )
                 })}
@@ -638,11 +646,20 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                     className={`absolute rounded px-1 text-[11px] text-white truncate
                                 text-left hover:ring-2 ring-black/30 cursor-move
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
-              {/* Die Notiz ist der Grund, warum man den Balken anders
-                  behandelt als jeden anderen -- deshalb ein Merkmal am
-                  Balken selbst, nicht erst im Seitenfenster. */}
-              {r.notes && <span aria-hidden className="mr-0.5">📌</span>}
               {r.last_name ?? t('tape.noGuest')}
+              {/*
+                * Die Notiz im Klartext, nicht als Merkmal.
+                *
+                * Hier stand eine Stecknadel: sie sagte, dass es eine Notiz
+                * gibt, und verschwieg welche -- also genau das, was man
+                * wissen will. Wer "Balkon" oder "Spaetanreise" erst nach
+                * zwei Klicks sieht, schreibt es beim naechsten Mal nicht
+                * mehr auf. Der Balken schneidet ohnehin ab (`truncate`), im
+                * Titel steht alles.
+                */}
+              {r.notes && (
+                <span className="ml-1 opacity-75">· {r.notes}</span>
+              )}
               {/* Griffe an den Raendern: verkuerzen und verlaengern (A4). */}
               <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
                     className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />

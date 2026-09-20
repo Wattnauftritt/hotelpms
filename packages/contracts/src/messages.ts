@@ -387,6 +387,17 @@ const M = {
     de: 'Hoechstens {max} Zeichen',
     en: 'At most {max} characters',
     tr: 'En fazla {max} karakter' },
+  'field.requiredForOption': {
+    de: 'Eine unverbindliche Reservierung braucht eine Frist. Ohne sie '
+      + 'verfaellt sie nie und haelt das Zimmer dauerhaft besetzt.',
+    en: 'A provisional reservation needs an expiry. Without one it never '
+      + 'lapses and holds the room indefinitely.',
+    tr: 'Opsiyonlu bir rezervasyon için son tarih gerekir. Onsuz asla düşmez ve '
+      + 'odayı süresiz tutar.' },
+  'field.onlyForOption': {
+    de: 'Eine Frist gibt es nur bei einer unverbindlichen Reservierung.',
+    en: 'An expiry only applies to a provisional reservation.',
+    tr: 'Son tarih yalnızca opsiyonlu rezervasyonda geçerlidir.' },
   'field.afterArrival': {
     de: 'Muss nach arrival liegen',
     en: 'Must be after arrival',

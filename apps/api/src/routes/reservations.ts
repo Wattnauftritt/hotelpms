@@ -68,6 +68,13 @@ interface CreateBooking {
    */
   guestRef?: string
   occupants?: Array<{ guestId?: number; ageAtArrival?: number; isPrimary?: boolean }>
+  /** Verbindlich oder unverbindlich. Ohne Angabe verbindlich, wie bisher. */
+  status?: 'Confirmed' | 'Optional'
+  optionExpiresAt?: string
+  /** Preis je Nacht in Cent, statt des Preises aus dem Ratenplan. */
+  priceCent?: number
+  /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
+  guestCount?: number
   source?: string
   externalReference?: string
   notes?: string
@@ -281,6 +288,37 @@ export function reservationRoutes(app: FastifyInstance): void {
       }
 
       /*
+       * Eine Option ohne Frist verfaellt nie.
+       *
+       * Der Nachtlauf sucht `status = 'Optional' AND option_expires_at <
+       * ...` (nightAudit.ts). Eine Option ohne Frist faellt durch diese
+       * Bedingung und haelt ihren Platz fuer immer -- ohne Fehlermeldung,
+       * und in einem vollen Haus ist das genau der Bestand, der fehlt.
+       * Deshalb hier Pflicht und nicht mit einer stillen Vorgabe gefuellt:
+       * wie lange ein Haus eine Option haelt, weiss das Haus, nicht wir.
+       */
+      if (body.status === 'Optional') {
+        if (body.optionExpiresAt === undefined
+            || Number.isNaN(Date.parse(body.optionExpiresAt))) {
+          throw Errors.validation({ optionExpiresAt: ['field.requiredForOption'] })
+        }
+      } else if (body.optionExpiresAt !== undefined) {
+        // Eine Frist an einer verbindlichen Buchung waere eine Angabe, die
+        // niemand liest und die beim naechsten Statuswechsel plötzlich wirkt.
+        throw Errors.validation({ optionExpiresAt: ['field.onlyForOption'] })
+      }
+
+      if (body.guestCount !== undefined
+          && (!Number.isInteger(body.guestCount)
+              || body.guestCount < 1 || body.guestCount > 99)) {
+        throw Errors.validation({ guestCount: ['field.positiveInteger'] })
+      }
+      if (body.priceCent !== undefined
+          && (!Number.isInteger(body.priceCent) || body.priceCent < 0)) {
+        throw Errors.validation({ priceCent: ['field.positiveInteger'] })
+      }
+
+      /*
        * Ein Weg fuer beide Faelle.
        *
        * Die Einzelbuchung ist von hier an die Gruppenbuchung mit einem
@@ -443,7 +481,16 @@ export function reservationRoutes(app: FastifyInstance): void {
          * geben.
          */
         const nights = eachNight(body.arrival, body.departure)
-        const prices = await priceNights(client, ratePlanId, nights)
+        /*
+         * Ein vereinbarter Preis schlaegt den Ratenplan, und zwar fuer jede
+         * Nacht derselbe. Der Ratenplan bleibt trotzdem an der Reservierung
+         * stehen: er sagt, unter welcher Bedingung gebucht wurde -- Storno,
+         * Verpflegung, Mindestaufenthalt --, und das gilt weiter, auch wenn
+         * am Preis gehandelt wurde.
+         */
+        const prices = body.priceCent !== undefined
+          ? nights.map(() => body.priceCent!)
+          : await priceNights(client, ratePlanId, nights)
         const preisSumme = prices.reduce((s, p) => s + p, 0)
 
         const angelegt: Array<{ reservationRef: string; categoryId: number
@@ -466,12 +513,16 @@ export function reservationRoutes(app: FastifyInstance): void {
           const res = await client.query<{ id: number; public_ref: string }>(
             `INSERT INTO reservation
                (property_id, booking_id, category_id, arrival, departure, status,
-                rate_plan_id, primary_guest_id, notes, block_id, resource_id, created_by)
-             VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
+                option_expires_at, rate_plan_id, primary_guest_id, notes, block_id,
+                resource_id, guest_count, created_by)
+             VALUES ($1,$2,$3,$4::date,$5::date,$6::reservation_status,$7,
+                     $8,$9,$10,$11,$12,$13,$14)
              RETURNING id, public_ref`,
             [body.propertyId, booking.rows[0]!.id, z.categoryId, body.arrival, body.departure,
+             body.status ?? 'Confirmed', body.optionExpiresAt ?? null,
              ratePlanId ?? null, guestId ?? null, body.notes ?? null,
-             block?.id ?? null, z.resourceId ?? null, principal.userId])
+             block?.id ?? null, z.resourceId ?? null, body.guestCount ?? null,
+             principal.userId])
           const reservationId = res.rows[0]!.id
 
           // Eine Anweisung fuer alle Naechte der Reservierung statt einer je
