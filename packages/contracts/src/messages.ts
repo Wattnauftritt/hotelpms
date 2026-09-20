@@ -212,6 +212,10 @@ const M = {
     de: 'Reservierung',
     en: 'Reservation',
     tr: 'Rezervasyon' },
+  'res.booking': {
+    de: 'Buchung',
+    en: 'Booking',
+    tr: 'Rezervasyon kaydı' },
   'res.folio': {
     de: 'Folio',
     en: 'Folio',
@@ -367,6 +371,10 @@ const M = {
     de: 'Ganze Zahl erwartet',
     en: 'Whole number expected',
     tr: 'Tam sayı bekleniyor' },
+  'field.nonZeroInteger': {
+    de: 'Ganze Zahl ungleich null erwartet',
+    en: 'A non-zero whole number is expected',
+    tr: 'Sıfırdan farklı bir tam sayı bekleniyor' },
   'field.positiveInteger': {
     de: 'Ganze Zahl groesser als null erwartet',
     en: 'Whole number greater than zero expected',
@@ -383,6 +391,10 @@ const M = {
     de: 'Mindestens zwei Zeichen',
     en: 'At least two characters',
     tr: 'En az iki karakter' },
+  'field.maxValue': {
+    de: 'Hoechstens {max}',
+    en: 'At most {max}',
+    tr: 'En fazla {max}' },
   'field.maxLength': {
     de: 'Hoechstens {max} Zeichen',
     en: 'At most {max} characters',
@@ -864,6 +876,10 @@ const M = {
     de: 'Die Anreise eines Gastes im Haus laesst sich nicht verlegen.',
     en: 'The arrival of a guest in house cannot be moved.',
     tr: 'Tesiste bulunan bir misafirin giriş tarihi değiştirilemez.' },
+  'stay.groupNothingToMove': {
+    de: 'In dieser Buchung liegt kein Aufenthalt, der sich verschieben laesst',
+    en: 'This booking has no stay that can be moved',
+    tr: 'Bu kayıtta taşınabilecek bir konaklama yok' },
   'stay.checkinNeedsRoom': {
     de: 'Check-in erfordert ein zugewiesenes Zimmer.',
     en: 'Check-in requires an assigned room.',

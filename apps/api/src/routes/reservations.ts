@@ -6,7 +6,7 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { loadBlock } from './blocks.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
-         isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen,
+         isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen, addDays,
          type ReservationStatus, type ReservationAction,
          type WebhookEventType } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
@@ -305,6 +305,174 @@ const EVENT_FOR_ACTION: Record<ReservationAction, WebhookEventType> = {
   cancel:    'reservation.canceled',
   no_show:   'reservation.changed',
   reinstate: 'reservation.changed'
+}
+
+/**
+ * Einen Aufenthalt verlegen: die Rechnung hinter `change-stay`.
+ *
+ * **Herausgezogen, weil eine Gruppe sie mehrfach braucht.** Wer eine
+ * Gruppenbuchung in der Zeit verschiebt, verschiebt acht Aufenthalte, und
+ * die muessen zusammen gelingen oder zusammen scheitern -- stoesst das
+ * fuenfte Zimmer an eine fremde Reservierung, darf nicht die Haelfte der
+ * Gruppe eine Woche weiter liegen als die andere. Deshalb nimmt die
+ * Funktion den `client` entgegen und oeffnet keine eigene Transaktion: die
+ * Klammer setzt der Aufrufer.
+ *
+ * Die Route daneben ist nur noch die Huelle darum. Zwei Fassungen derselben
+ * Rechnung -- eine fuer einzeln, eine fuer die Gruppe -- waeren die
+ * zuverlaessigste Art, den Bestandszaehler auseinanderlaufen zu lassen.
+ */
+export async function aufenthaltVerlegen(
+  client: PoolClient, ref: string,
+  body: { arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number }
+): Promise<{
+  reservationRef: string; arrival: string; departure: string; categoryId: number
+  roomAssignmentCleared: boolean; nights: number; removedNights: number
+  totalCent: number
+}> {
+    const cur = await client.query<{
+      id: number; property_id: number; category_id: number; status: ReservationStatus
+      arrival: string; departure: string; resource_id: number | null
+      rate_plan_id: number | null; block_id: number | null }>(
+      `SELECT id, property_id, category_id, status, arrival::text, departure::text,
+              resource_id, rate_plan_id, block_id
+         FROM reservation WHERE public_ref = $1 FOR UPDATE`, [ref])
+    if (cur.rowCount === 0) throw Errors.notFound('res.reservation')
+    const r = cur.rows[0]!
+
+    /*
+     * Ein Abruf laeuft ueber den Zeitraum seines Kontingents. Waere er
+     * verschiebbar, stimmte die Rechnung beim Freigeben des Rests nicht
+     * mehr: sie geht ueber den Zeitraum des Kontingents, nicht den der
+     * einzelnen Reservierung. Wer anders buchen will, storniert den Abruf
+     * und legt eine freie Reservierung an.
+     */
+    if (r.block_id !== null) {
+      throw Errors.conflict(
+        'stay.pickupNotMovable')
+    }
+
+    if (!occupiesInventory(r.status)) {
+      throw Errors.conflict(
+        'stay.statusHoldsNoInventory', { status: r.status })
+    }
+
+    const neuAnkunft = body.arrival ?? r.arrival
+    const neuAbreise = body.departure ?? r.departure
+    const neuKategorie = body.categoryId ?? r.category_id
+    if (!isIsoDate(neuAnkunft) || !isIsoDate(neuAbreise)) {
+      throw Errors.validation({ arrival: ['field.isoDate'] })
+    }
+    const neueNaechte = nightsBetween(neuAnkunft, neuAbreise)
+    if (neueNaechte <= 0) {
+      throw Errors.validation({ departure: ['field.afterArrival'] })
+    }
+    if (neueNaechte > MAX_STAY_NIGHTS) {
+      throw Errors.validation({ departure: ['field.stayTooLong'] }, { max: MAX_STAY_NIGHTS })
+    }
+    // Bei InHouse ist die Anreise geschehen und nicht mehr verschiebbar.
+    if (r.status === 'InHouse' && neuAnkunft !== r.arrival) {
+      throw Errors.conflict('stay.inHouseArrivalFixed')
+    }
+    const zeitraumAnders = neuAnkunft !== r.arrival || neuAbreise !== r.departure
+    if (neuKategorie !== r.category_id) {
+      const k = await client.query(
+        `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
+        [neuKategorie, r.property_id])
+      if (k.rowCount === 0) throw Errors.notFound('res.category')
+    }
+
+    /*
+     * **Das zugewiesene Zimmer muss im neuen Zeitraum auch frei sein.**
+     *
+     * Das fehlte hier, und es fiel nicht auf, weil der Bestandszaehler je
+     * Zimmergruppe rechnet und nicht je Zimmer: eine Verlaengerung um drei
+     * Naechte war rechnerisch in Ordnung, solange die Gruppe noch Platz
+     * hatte -- auch wenn in genau diesem Zimmer laengst jemand anders lag.
+     * Bemerkt haette es die Rezeption am Anreisetag.
+     *
+     * Beim Verschieben einer ganzen Gruppe waere das der Normalfall
+     * geworden, nicht der Sonderfall: acht Balken wandern ueber den Plan
+     * und landen auf dem, was dort schon liegt.
+     *
+     * Nur wenn sich der Zeitraum aendert -- eine Umbuchung in eine andere
+     * Zimmergruppe nimmt das Zimmer ohnehin weg.
+     */
+    if (r.resource_id !== null && zeitraumAnders) {
+      await assertUnitAssignable(client, {
+        resourceId: r.resource_id, propertyId: r.property_id,
+        arrival: neuAnkunft, departure: neuAbreise, exceptReservationId: r.id })
+    }
+
+    const inv = await client.query<{ e: string | null }>(
+      `SELECT inventory_move($1,$2,$3::date,$4::date,$5,$6::date,$7::date) AS e`,
+      [r.property_id, r.category_id, r.arrival, r.departure,
+       neuKategorie, neuAnkunft, neuAbreise])
+    inventoryError(inv.rows[0]!.e)
+
+    // Bei Kategoriewechsel passt das zugewiesene Zimmer nicht mehr. Es
+    // stehen zu lassen waere schlimmer als es zu entfernen: die
+    // Hausliste zeigte dann ein Zimmer der falschen Gruppe.
+    const zimmerBleibt = neuKategorie === r.category_id
+    await client.query(
+      `UPDATE reservation
+          SET arrival = $2::date, departure = $3::date, category_id = $4,
+              rate_plan_id = COALESCE($5, rate_plan_id),
+              resource_id = CASE WHEN $6 THEN resource_id ELSE NULL END,
+              updated_at = now()
+        WHERE id = $1`,
+      [r.id, neuAnkunft, neuAbreise, neuKategorie, body.ratePlanId ?? null, zimmerBleibt])
+
+    /*
+     * Naechte fortschreiben. Bereits gebuchte Naechte bleiben unberuehrt:
+     * an ihnen haengen Belege, und `posted` sagt, dass die Logis schon
+     * auf dem Folio steht. Entfernt werden nur ungebuchte Naechte
+     * ausserhalb des neuen Zeitraums.
+     */
+    const entfernt = await client.query(
+      `DELETE FROM reservation_night
+        WHERE reservation_id = $1 AND NOT posted
+          AND (date < $2::date OR date >= $3::date)`,
+      [r.id, neuAnkunft, neuAbreise])
+
+    const nights = eachNight(neuAnkunft, neuAbreise)
+    const planId = body.ratePlanId ?? r.rate_plan_id ?? undefined
+    const prices = await priceNights(client, planId, nights)
+    // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
+    await client.query(
+      `INSERT INTO reservation_night
+         (reservation_id, property_id, date, rate_plan_id, price_cent)
+       SELECT $1, $2, x.date, $3, x.price
+         FROM unnest($4::date[], $5::bigint[]) AS x(date, price)
+       ON CONFLICT (reservation_id, date) DO NOTHING`,
+      [r.id, r.property_id, planId ?? null, nights, prices])
+
+    const summe = await client.query<{ n: number; total: number }>(
+      `SELECT count(*)::int AS n, COALESCE(sum(price_cent),0)::bigint AS total
+         FROM reservation_night WHERE reservation_id = $1`, [r.id])
+
+    await emitEvent(client, r.property_id, 'reservation.changed', {
+      reservationRef: ref, status: r.status,
+      arrival: neuAnkunft, departure: neuAbreise,
+      categoryId: neuKategorie,
+      previousArrival: r.arrival, previousDeparture: r.departure,
+      previousCategoryId: r.category_id,
+      nights: summe.rows[0]!.n,
+      totalCent: Number(summe.rows[0]!.total)
+    })
+
+    return {
+      reservationRef: ref,
+      arrival: neuAnkunft,
+      departure: neuAbreise,
+      categoryId: neuKategorie,
+      // Beim Kategoriewechsel faellt die Zimmerzuweisung weg und muss
+      // neu erfolgen. Das gehoert in die Antwort, nicht in eine Fussnote.
+      roomAssignmentCleared: !zimmerBleibt && r.resource_id !== null,
+      nights: summe.rows[0]!.n,
+      removedNights: entfernt.rowCount ?? 0,
+      totalCent: Number(summe.rows[0]!.total)
+    }
 }
 
 export function reservationRoutes(app: FastifyInstance): void {
@@ -872,6 +1040,294 @@ export function reservationRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Die Gruppe als Vorgang: alle Zimmer einer Buchung auf einmal.
+   *
+   * **Warum ein eigener Endpunkt und nicht acht Aufrufe.** Eine
+   * Reisegruppe ist genau das, was das Datenmodell vorsieht -- eine
+   * `booking` mit mehreren `reservation` --, und an der Rezeption wird sie
+   * auch als eine behandelt: "die Gruppe Petersen kommt einen Tag spaeter".
+   * Wer dafuer acht Aufrufe machen muss, hat nach dem fuenften einen
+   * Zustand, den niemand gewollt hat, falls der sechste scheitert.
+   *
+   * Ein Aufruf je Bildschirm, nicht je Zeile (CLAUDE.md, "Leistung"): die
+   * Maske zeigt Zimmer, Zeitraum, Gast und Summe, und das kommt zusammen.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/bookings/:bookingRef',
+    permission: 'reservation:read',
+    summary: 'Eine Buchung mit allen ihren Zimmern',
+    handler: async (req) => {
+      const { bookingRef } = req.params as { bookingRef: string }
+      return tx(req.pool, req, async client => {
+        const b = await client.query<{ id: number }>(
+          `SELECT b.id,
+                  b.public_ref          AS "bookingRef",
+                  b.source, b.external_reference AS "externalReference",
+                  b.created_at          AS "createdAt",
+                  g.public_ref          AS "guestRef",
+                  nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
+                  co.public_ref         AS "companyRef",
+                  co.name               AS "companyName"
+             FROM booking b
+             LEFT JOIN guest g   ON g.id = b.booker_guest_id
+             LEFT JOIN company co ON co.id = b.booker_company_id
+            WHERE b.public_ref = $1`, [bookingRef])
+        if (b.rowCount === 0) throw Errors.notFound('res.booking')
+        const kopf = b.rows[0]! as Record<string, unknown>
+
+        /*
+         * Die Summe je Zimmer kommt als Unterabfrage im Verbund, nicht in
+         * einer Schleife ueber die Zimmer. Eine Gruppe darf fuenfzig Zimmer
+         * haben, und fuenfzig Abfragen sind der Fehler, den der Endpunkt
+         * gerade vermeiden soll.
+         */
+        const zimmer = await client.query(
+          `SELECT r.public_ref      AS "reservationRef",
+                  r.status, r.arrival::text, r.departure::text,
+                  r.category_id     AS "categoryId",
+                  c.code            AS "categoryCode",
+                  c.name            AS "categoryName",
+                  r.resource_id     AS "resourceId",
+                  u.code            AS "roomCode",
+                  r.guest_count     AS "guestCount",
+                  r.short_note      AS "shortNote",
+                  nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
+                  n.nights, n.total AS "totalCent"
+             FROM reservation r
+             JOIN resource_category c ON c.id = r.category_id
+             LEFT JOIN resource u     ON u.id = r.resource_id
+             LEFT JOIN guest g        ON g.id = r.primary_guest_id
+             LEFT JOIN LATERAL (
+               SELECT count(*)::int AS nights,
+                      COALESCE(sum(price_cent),0)::bigint AS total
+                 FROM reservation_night WHERE reservation_id = r.id) n ON true
+            WHERE r.booking_id = $1
+            ORDER BY u.code NULLS LAST, r.id`, [kopf.id])
+
+        // Die laufende id bleibt drinnen (C1, Dokument 13).
+        delete kopf.id
+        return {
+          ...kopf,
+          rooms: zimmer.rows.map(z => ({
+            ...z, totalCent: Number((z as { totalCent: string }).totalCent) })),
+          totalCent: zimmer.rows.reduce(
+            (s, z) => s + Number((z as { totalCent: string }).totalCent), 0)
+        }
+      })
+    }
+  })
+
+  /**
+   * Die ganze Gruppe in der Zeit verschieben.
+   *
+   * **Ein Versatz in Tagen, kein neuer Zeitraum.** Nach einzelnen
+   * Aenderungen liegen die Zimmer einer Gruppe nicht mehr deckungsgleich --
+   * zwei reisen einen Tag frueher an, eines bleibt laenger. Ein gemeinsamer
+   * neuer Zeitraum machte daraus wieder einen Block und loeschte genau die
+   * Abweichungen, die jemand von Hand eingetragen hat. Der Versatz erhaelt
+   * sie: jeder Aufenthalt behaelt seine Laenge und seine Lage zu den
+   * anderen.
+   *
+   * **Alle oder keiner.** Stoesst das fuenfte Zimmer an eine fremde
+   * Reservierung, darf nicht die Haelfte der Gruppe eine Woche weiter
+   * liegen als die andere. Eine Transaktion, und `aufenthaltVerlegen` wirft
+   * -- der Rest rollt zurueck.
+   *
+   * Angefasst werden nur Aufenthalte, die Bestand halten. Ein storniertes
+   * Zimmer der Gruppe mitzuschieben waere sinnlos und faende beim
+   * Bestandszaehler keine Entsprechung.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/bookings/:bookingRef/change-stay',
+    permission: 'reservation:write',
+    summary: 'Alle Aufenthalte einer Buchung um dieselbe Zahl Tage verschieben',
+    handler: async (req) => {
+      const { bookingRef } = req.params as { bookingRef: string }
+      const body = req.body as { shiftDays?: number }
+      if (!Number.isInteger(body.shiftDays) || body.shiftDays === 0) {
+        throw Errors.validation({ shiftDays: ['field.nonZeroInteger'] })
+      }
+      const versatz = body.shiftDays!
+      if (Math.abs(versatz) > MAX_STAY_NIGHTS) {
+        throw Errors.validation({ shiftDays: ['field.maxValue'] }, { max: MAX_STAY_NIGHTS })
+      }
+
+      return tx(req.pool, req, async client => {
+        /*
+         * `FOR UPDATE OF r` sperrt die Reservierungen, nicht die
+         * mitverbundene Buchung: ein `FOR UPDATE` ueber den ganzen Verbund
+         * sperrte auch `booking`, und zwei Gruppen desselben Hauses haetten
+         * sich gegenseitig blockiert, obwohl sie nichts gemeinsam haben.
+         */
+        const rows = await client.query<{ public_ref: string; arrival: string
+                                          departure: string; status: ReservationStatus }>(
+          `SELECT r.public_ref, r.arrival::text, r.departure::text, r.status
+             FROM reservation r
+             JOIN booking b ON b.id = r.booking_id
+            WHERE b.public_ref = $1
+            ORDER BY r.id
+              FOR UPDATE OF r`, [bookingRef])
+        if (rows.rowCount === 0) throw Errors.notFound('res.booking')
+
+        const beweglich = rows.rows.filter(r => occupiesInventory(r.status))
+        if (beweglich.length === 0) throw Errors.conflict('stay.groupNothingToMove')
+
+        const ergebnis = []
+        for (const r of beweglich) {
+          ergebnis.push(await aufenthaltVerlegen(client, r.public_ref, {
+            arrival: addDays(r.arrival, versatz),
+            departure: addDays(r.departure, versatz)
+          }))
+        }
+        return { bookingRef, shiftDays: versatz, rooms: ergebnis }
+      })
+    }
+  })
+
+  /**
+   * Ein Zimmer zu einer bestehenden Gruppe.
+   *
+   * **Warum nicht eine zweite Buchung.** Genau das ist der Fall, fuer den
+   * es die Gruppe gibt: die Reisegruppe wird groesser, und das neunte
+   * Zimmer gehoert zum selben Vorgang wie die ersten acht -- ein
+   * Besteller, eine Rechnung, ein Storno. Als eigene Buchung angelegt
+   * verbindet die beiden nichts mehr, und beim Abreisen faellt eines durch.
+   *
+   * **Zeitraum aus der Gruppe, nicht aus dem Aufruf.** Ohne Angabe gilt,
+   * was die Gruppe schon hat -- die frueheste Anreise und die spaeteste
+   * Abreise. Wer fuer dieses eine Zimmer andere Tage braucht, nennt sie;
+   * dafuer ist die Maske da.
+   *
+   * Preis, Gast und Notiz kommen aus dem Aufruf, nicht aus der Gruppe. Den
+   * Preis des ersten Zimmers zu uebernehmen waere die naheliegende
+   * Bequemlichkeit und die falsche: das neunte Zimmer ist oft das teure,
+   * das noch frei war.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/bookings/:bookingRef/rooms',
+    permission: 'reservation:write',
+    summary: 'Ein Zimmer zu einer bestehenden Buchung',
+    handler: async (req, reply) => {
+      const { bookingRef } = req.params as { bookingRef: string }
+      const body = req.body as {
+        categoryId?: number; resourceId?: number
+        arrival?: string; departure?: string
+        totalCent?: number; guestCount?: number; shortNote?: string
+      }
+      if (!Number.isInteger(body.categoryId)) {
+        throw Errors.validation({ categoryId: ['field.required'] })
+      }
+      if (body.totalCent !== undefined
+          && (!Number.isInteger(body.totalCent) || body.totalCent < 0)) {
+        throw Errors.validation({ totalCent: ['field.positiveInteger'] })
+      }
+      if (body.shortNote !== undefined
+          && body.shortNote.length > SHORT_NOTE_MAX_LENGTH) {
+        throw Errors.validation({ shortNote: ['field.maxLength'] },
+          { max: SHORT_NOTE_MAX_LENGTH })
+      }
+      const principal = req.principal as Principal
+
+      return tx(req.pool, req, async client => {
+        const b = await client.query<{
+          id: number; property_id: number; booker_guest_id: number | null
+          arrival: string; departure: string; rate_plan_id: number | null }>(
+          `SELECT b.id, b.property_id, b.booker_guest_id,
+                  min(r.arrival)::text AS arrival,
+                  max(r.departure)::text AS departure,
+                  min(r.rate_plan_id) AS rate_plan_id
+             FROM booking b
+             LEFT JOIN reservation r ON r.booking_id = b.id
+            WHERE b.public_ref = $1
+            GROUP BY b.id, b.property_id, b.booker_guest_id`, [bookingRef])
+        if (b.rowCount === 0) throw Errors.notFound('res.booking')
+        const buchung = b.rows[0]!
+
+        const arrival = body.arrival ?? buchung.arrival
+        const departure = body.departure ?? buchung.departure
+        if (arrival === null || departure === null
+            || !isIsoDate(arrival) || !isIsoDate(departure)) {
+          throw Errors.validation({ arrival: ['field.isoDate'] })
+        }
+        const naechte = nightsBetween(arrival, departure)
+        if (naechte <= 0) throw Errors.validation({ departure: ['field.afterArrival'] })
+        if (naechte > MAX_STAY_NIGHTS) {
+          throw Errors.validation({ departure: ['field.stayTooLong'] },
+            { max: MAX_STAY_NIGHTS })
+        }
+
+        const k = await client.query(
+          `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
+          [body.categoryId, buchung.property_id])
+        if (k.rowCount === 0) throw Errors.notFound('res.category')
+
+        /*
+         * Zuerst den Bestand binden, dann das Zimmer pruefen, dann
+         * schreiben -- dieselbe Reihenfolge wie beim Anlegen einer Buchung.
+         * Andersherum stuende zwischen Pruefung und Bindung ein Fenster, in
+         * dem ein zweiter Vorgang denselben Platz nimmt.
+         */
+        const inv = await client.query<{ e: string | null }>(
+          `SELECT inventory_reserve($1,$2,$3::date,$4::date,1) AS e`,
+          [buchung.property_id, body.categoryId, arrival, departure])
+        inventoryError(inv.rows[0]!.e)
+
+        if (body.resourceId !== undefined) {
+          await assertUnitAssignable(client, {
+            resourceId: body.resourceId, propertyId: buchung.property_id,
+            arrival, departure })
+        }
+
+        const res = await client.query<{ id: number; public_ref: string }>(
+          `INSERT INTO reservation
+             (property_id, booking_id, category_id, arrival, departure, status,
+              rate_plan_id, primary_guest_id, short_note, resource_id, guest_count,
+              created_by)
+           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
+           RETURNING id, public_ref`,
+          [buchung.property_id, buchung.id, body.categoryId, arrival, departure,
+           buchung.rate_plan_id, buchung.booker_guest_id,
+           body.shortNote?.trim() || null, body.resourceId ?? null,
+           body.guestCount ?? null, principal.userId])
+        const reservationId = res.rows[0]!.id
+
+        const nights = eachNight(arrival, departure)
+        const prices = body.totalCent !== undefined
+          ? preisJeNacht(body.totalCent, nights.length)
+          : await priceNights(client, buchung.rate_plan_id ?? undefined, nights)
+        await client.query(
+          `INSERT INTO reservation_night
+             (reservation_id, property_id, date, rate_plan_id, price_cent)
+           SELECT $1, $2, x.date, $3, x.price
+             FROM unnest($4::date[], $5::bigint[]) AS x(date, price)`,
+          [reservationId, buchung.property_id, buchung.rate_plan_id, nights, prices])
+
+        await client.query(
+          `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
+           VALUES ($1,$2,$3,'guest')`,
+          [buchung.property_id, reservationId, buchung.booker_guest_id])
+
+        const summe = prices.reduce((s, x) => s + x, 0)
+        await emitEvent(client, buchung.property_id, 'reservation.created', {
+          bookingRef, reservationRef: res.rows[0]!.public_ref,
+          categoryId: body.categoryId, resourceId: body.resourceId ?? null,
+          arrival, departure, nights: nights.length, totalCent: summe
+        })
+
+        reply.status(201)
+        return {
+          bookingRef, reservationRef: res.rows[0]!.public_ref,
+          categoryId: body.categoryId!, resourceId: body.resourceId ?? null,
+          arrival, departure, nights: nights.length, totalCent: summe
+        }
+      })
+    }
+  })
+
   const action = (
     url: string, act: ReservationAction, permission: Parameters<typeof registerRoute>[1]['permission'],
     summary: string
@@ -1053,129 +1509,7 @@ export function reservationRoutes(app: FastifyInstance): void {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = req.body as {
         arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number }
-
-      return tx(req.pool, req, async client => {
-        const cur = await client.query<{
-          id: number; property_id: number; category_id: number; status: ReservationStatus
-          arrival: string; departure: string; resource_id: number | null
-          rate_plan_id: number | null; block_id: number | null }>(
-          `SELECT id, property_id, category_id, status, arrival::text, departure::text,
-                  resource_id, rate_plan_id, block_id
-             FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
-        if (cur.rowCount === 0) throw Errors.notFound('res.reservation')
-        const r = cur.rows[0]!
-
-        /*
-         * Ein Abruf laeuft ueber den Zeitraum seines Kontingents. Waere er
-         * verschiebbar, stimmte die Rechnung beim Freigeben des Rests nicht
-         * mehr: sie geht ueber den Zeitraum des Kontingents, nicht den der
-         * einzelnen Reservierung. Wer anders buchen will, storniert den Abruf
-         * und legt eine freie Reservierung an.
-         */
-        if (r.block_id !== null) {
-          throw Errors.conflict(
-            'stay.pickupNotMovable')
-        }
-
-        if (!occupiesInventory(r.status)) {
-          throw Errors.conflict(
-            'stay.statusHoldsNoInventory', { status: r.status })
-        }
-
-        const neuAnkunft = body.arrival ?? r.arrival
-        const neuAbreise = body.departure ?? r.departure
-        const neuKategorie = body.categoryId ?? r.category_id
-        if (!isIsoDate(neuAnkunft) || !isIsoDate(neuAbreise)) {
-          throw Errors.validation({ arrival: ['field.isoDate'] })
-        }
-        const neueNaechte = nightsBetween(neuAnkunft, neuAbreise)
-        if (neueNaechte <= 0) {
-          throw Errors.validation({ departure: ['field.afterArrival'] })
-        }
-        if (neueNaechte > MAX_STAY_NIGHTS) {
-          throw Errors.validation({ departure: ['field.stayTooLong'] }, { max: MAX_STAY_NIGHTS })
-        }
-        // Bei InHouse ist die Anreise geschehen und nicht mehr verschiebbar.
-        if (r.status === 'InHouse' && neuAnkunft !== r.arrival) {
-          throw Errors.conflict('stay.inHouseArrivalFixed')
-        }
-        if (neuKategorie !== r.category_id) {
-          const k = await client.query(
-            `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
-            [neuKategorie, r.property_id])
-          if (k.rowCount === 0) throw Errors.notFound('res.category')
-        }
-
-        const inv = await client.query<{ e: string | null }>(
-          `SELECT inventory_move($1,$2,$3::date,$4::date,$5,$6::date,$7::date) AS e`,
-          [r.property_id, r.category_id, r.arrival, r.departure,
-           neuKategorie, neuAnkunft, neuAbreise])
-        inventoryError(inv.rows[0]!.e)
-
-        // Bei Kategoriewechsel passt das zugewiesene Zimmer nicht mehr. Es
-        // stehen zu lassen waere schlimmer als es zu entfernen: die
-        // Hausliste zeigte dann ein Zimmer der falschen Gruppe.
-        const zimmerBleibt = neuKategorie === r.category_id
-        await client.query(
-          `UPDATE reservation
-              SET arrival = $2::date, departure = $3::date, category_id = $4,
-                  rate_plan_id = COALESCE($5, rate_plan_id),
-                  resource_id = CASE WHEN $6 THEN resource_id ELSE NULL END,
-                  updated_at = now()
-            WHERE id = $1`,
-          [r.id, neuAnkunft, neuAbreise, neuKategorie, body.ratePlanId ?? null, zimmerBleibt])
-
-        /*
-         * Naechte fortschreiben. Bereits gebuchte Naechte bleiben unberuehrt:
-         * an ihnen haengen Belege, und `posted` sagt, dass die Logis schon
-         * auf dem Folio steht. Entfernt werden nur ungebuchte Naechte
-         * ausserhalb des neuen Zeitraums.
-         */
-        const entfernt = await client.query(
-          `DELETE FROM reservation_night
-            WHERE reservation_id = $1 AND NOT posted
-              AND (date < $2::date OR date >= $3::date)`,
-          [r.id, neuAnkunft, neuAbreise])
-
-        const nights = eachNight(neuAnkunft, neuAbreise)
-        const planId = body.ratePlanId ?? r.rate_plan_id ?? undefined
-        const prices = await priceNights(client, planId, nights)
-        // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
-        await client.query(
-          `INSERT INTO reservation_night
-             (reservation_id, property_id, date, rate_plan_id, price_cent)
-           SELECT $1, $2, x.date, $3, x.price
-             FROM unnest($4::date[], $5::bigint[]) AS x(date, price)
-           ON CONFLICT (reservation_id, date) DO NOTHING`,
-          [r.id, r.property_id, planId ?? null, nights, prices])
-
-        const summe = await client.query<{ n: number; total: number }>(
-          `SELECT count(*)::int AS n, COALESCE(sum(price_cent),0)::bigint AS total
-             FROM reservation_night WHERE reservation_id = $1`, [r.id])
-
-        await emitEvent(client, r.property_id, 'reservation.changed', {
-          reservationRef, status: r.status,
-          arrival: neuAnkunft, departure: neuAbreise,
-          categoryId: neuKategorie,
-          previousArrival: r.arrival, previousDeparture: r.departure,
-          previousCategoryId: r.category_id,
-          nights: summe.rows[0]!.n,
-          totalCent: Number(summe.rows[0]!.total)
-        })
-
-        return {
-          reservationRef,
-          arrival: neuAnkunft,
-          departure: neuAbreise,
-          categoryId: neuKategorie,
-          // Beim Kategoriewechsel faellt die Zimmerzuweisung weg und muss
-          // neu erfolgen. Das gehoert in die Antwort, nicht in eine Fussnote.
-          roomAssignmentCleared: !zimmerBleibt && r.resource_id !== null,
-          nights: summe.rows[0]!.n,
-          removedNights: entfernt.rowCount ?? 0,
-          totalCent: Number(summe.rows[0]!.total)
-        }
-      })
+      return tx(req.pool, req, client => aufenthaltVerlegen(client, reservationRef, body))
     }
   })
 }
