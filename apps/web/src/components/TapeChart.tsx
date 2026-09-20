@@ -87,13 +87,27 @@ type DragState =
       /** Die Zeile, in der der Balken losgezogen wurde. Null im Band oben. */
       quelleResourceId: number | null
       /** Die Buchung dieses Aufenthalts und wie viele Zimmer darin liegen.
-          Mehr als eines heisst: waagerechtes Ziehen bewegt die ganze
-          Gruppe, nicht nur diesen Balken. */
+          Mehr als eines heisst: mit Alt bewegt der Zug die ganze Gruppe. */
       bookingRef: string; bookingRooms: number
-      /** Alt gedrueckt: nur dieses eine Zimmer, auch in einer Gruppe. */
-      einzeln: boolean
+      /**
+       * Alt gedrueckt: die **ganze** Gruppe wandert mit.
+       *
+       * Die Vorgabe ist das einzelne Zimmer, und das ist die vorsichtige
+       * Richtung: wer daneben greift, verschiebt eine Reservierung und
+       * nicht acht. Acht zurueckzuholen ist Arbeit, eine ist ein Zug.
+       */
+      alleDerGruppe: boolean
       /** Tagesspalte beim Aufsetzen und jetzt -- daraus der Zeitversatz. */
       startDay: number; day: number
+      /**
+       * Der Zeiger liegt ueber dem Band der Buchungen ohne Zimmer.
+       *
+       * Eigener Zustand und nicht `overResourceId === null`: "ueber keiner
+       * Zeile" heisst auch "ueber der Kopfzeile" oder "neben dem Plan", und
+       * daraus ein Abnehmen des Zimmers zu machen waere ein verlorenes
+       * Zimmer bei jedem Zug, der danebengeht.
+       */
+      ueberBand: boolean
       pointerDownX: number; pointerDownY: number; overResourceId: number | null
       moved: boolean }
   | { kind: 'resize'; reservationRef: string; resourceId: number; edge: 'start' | 'end'
@@ -154,10 +168,21 @@ interface Props {
    * kommt `onChangeStay` wie bei einer Einzelbuchung.
    */
   onShiftGroup?: (bookingRef: string, shiftDays: number) => void
+  /**
+   * Ein Balken ins Band der Buchungen ohne Zimmer gezogen: das Zimmer wird
+   * wieder abgenommen.
+   *
+   * Der Zwischenablageplatz beim Umsortieren. In einem vollen Haus lassen
+   * sich zwei Buchungen nicht tauschen, ohne dass eine von beiden kurz
+   * nirgends liegt -- und sie dafuer zu stornieren und neu zu buchen ist
+   * zweimal falsch: der Vorgang verliert seine Geschichte, und zwischen
+   * beidem steht der Platz im freien Verkauf.
+   */
+  onUnassign?: (reservationRef: string) => void
 }
 
 export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
-                            onChangeStay, onShiftGroup }: Props): JSX.Element {
+                            onChangeStay, onShiftGroup, onUnassign }: Props): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
@@ -293,10 +318,12 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       const el = document.elementFromPoint(e.clientX, e.clientY)
       const zeile = el?.closest<HTMLElement>('[data-resource-row]')
       const ueber = zeile ? Number(zeile.dataset.resourceRow) : null
+      const imBand = el?.closest('[data-unassigned-band]') !== null
+                  && el?.closest('[data-unassigned-band]') !== undefined
       const bewegt = d.moved
         || Math.abs(e.clientX - d.pointerDownX) > KLICK_SCHWELLE
         || Math.abs(e.clientY - d.pointerDownY) > KLICK_SCHWELLE
-      setDragState({ ...d, overResourceId: ueber, moved: bewegt,
+      setDragState({ ...d, overResourceId: ueber, ueberBand: imBand, moved: bewegt,
                      day: tagUnter(e.clientX) })
     }
     // Die Aufrufe an `onCreate`/`onMove`/`onSelect`/`onChangeStay` loesen bei
@@ -336,18 +363,37 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
         const versatz = d.overResourceId === d.quelleResourceId
           ? d.day - d.startDay
           : 0
-        if (d.moved && versatz !== 0) {
+        if (d.moved && d.ueberBand) {
+          /*
+           * Ins Band gezogen heisst: das Zimmer wieder abnehmen.
+           *
+           * **Vor** allen anderen Faellen geprueft, auch vor dem
+           * Zeitversatz: wer den Balken nach oben ins Band zieht, hat ihn
+           * dabei fast immer auch seitlich bewegt, und eine Umbuchung auf
+           * ein anderes Datum waere dann ein zweiter, ungewollter Effekt
+           * derselben Geste.
+           *
+           * Wozu ueberhaupt. Im vollen Haus geht Umsortieren nicht in
+           * einem Zug: das Zimmer, das frei werden soll, ist erst frei,
+           * wenn sein Gast woanders liegt -- und der passt nur dorthin, wo
+           * der erste noch liegt. Das Band ist der Zwischenablageplatz.
+           * Der Bestand bleibt dabei unberuehrt; nur die Zeile im Plan
+           * wechselt.
+           */
+          if (d.quelleResourceId !== null) onUnassign?.(d.reservationRef)
+        } else if (d.moved && versatz !== 0) {
           /*
            * In derselben Zeile waagerecht gezogen: der ganze Aufenthalt
            * wandert, seine Laenge bleibt. Das Zimmer bleibt ebenfalls --
            * die Zeile hat sich ja nicht geaendert.
            *
-           * Liegt der Balken in einer Gruppe, wandert die **ganze**
-           * Gruppe. Das ist, was die Rezeption meint; die acht Balken
-           * einzeln zu ziehen waere acht Gelegenheiten, einen zu
-           * vergessen. Alt beim Greifen sagt "nur dieses Zimmer".
+           * Mit **Alt** wandert die ganze Gruppe statt nur dieses
+           * Balkens. Die Vorgabe ist das einzelne Zimmer, weil das die
+           * vorsichtige Richtung ist: wer daneben greift, verschiebt eine
+           * Reservierung und nicht acht -- acht zurueckzuholen ist Arbeit,
+           * eine ist ein Zug.
            */
-          if (d.bookingRooms > 1 && !d.einzeln) {
+          if (d.bookingRooms > 1 && d.alleDerGruppe) {
             onShiftGroup?.(d.bookingRef, versatz)
           } else {
             onChangeStay?.(d.reservationRef,
@@ -475,7 +521,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
        */
       return {
         resourceIds: new Set([drag.overResourceId]),
-        gruppenZahl: versatz !== 0 && drag.bookingRooms > 1 && !drag.einzeln
+        gruppenZahl: versatz !== 0 && drag.bookingRooms > 1 && drag.alleDerGruppe
           ? drag.bookingRooms : undefined,
         ...b }
     }
@@ -510,6 +556,34 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     : drag.kind === 'move' && drag.moved ? drag.reservationRef
     : drag.kind === 'resize' ? drag.reservationRef
     : null
+
+  /**
+   * Die Buchung, deren Balken gerade festgehalten wird -- **sobald** er
+   * festgehalten wird, nicht erst beim Ziehen.
+   *
+   * Wozu. Einem Balken sieht man nicht an, dass sieben weitere dazugehoeren;
+   * in einem Plan mit hundert Zeilen liegen sie ausserdem verstreut. Wer
+   * einen anfasst, soll in derselben Sekunde sehen, was mit Alt mitwandern
+   * wuerde -- und, ebenso wichtig, was **nicht**.
+   *
+   * Eine einzelne Zeichenkette und keine Menge von Referenzen: welche
+   * Balken zur Buchung gehoeren, steht ohnehin in jeder Zeile
+   * (`booking_ref`), und eine Zeichenkette bleibt ueber den ganzen Zug
+   * gleich -- `memo` unten haelt sich daran, eine frisch gebaute Menge
+   * haette es bei jeder Bewegung ausgehebelt.
+   */
+  const gehaltenerGruppenRef = drag !== null && drag.kind === 'move'
+    && drag.bookingRooms > 1 ? drag.bookingRef : null
+
+  /**
+   * Das Band taugt gerade als Ablage: ein Balken **mit** Zimmer wird
+   * gehalten.
+   *
+   * Ohne Zimmer liegt er schon dort, und ein Ziel anzubieten, das nichts
+   * aendert, ist eine Zusage, die ins Leere geht.
+   */
+  const bandAlsZiel = drag !== null && drag.kind === 'move'
+    && drag.quelleResourceId !== null
 
   /*
    * Als stabile, parametrisierte Aufrufe statt als Fabrik, die je Zimmer
@@ -556,10 +630,10 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                // Zugs liest niemand mehr die Tastatur, und ein `altKey`
                // beim Loslassen waere eine andere Frage als die, die der
                // Mensch beim Greifen beantwortet hat.
-               einzeln: e.altKey,
+               alleDerGruppe: e.altKey,
                startDay: tag, day: tag,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
-               overResourceId: null, moved: false })
+               overResourceId: null, ueberBand: false, moved: false })
   }, [tagUnter, setDragState])
 
   const beginneGroesseAendern = useCallback(
@@ -600,12 +674,33 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           * zwanzig daneben; die uebrigen sechzehn waren im Plan unsichtbar
           * und nicht erreichbar. Jetzt scrollt es fuer sich.
           */}
-        {nichtZugewiesen.length > 0 && (
-          <div className="flex relative bg-amber-50 border-b border-amber-200">
+        {/*
+          * Das Band ist auch dann da, wenn es leer ist -- sobald ein Balken
+          * mit Zimmer gehalten wird.
+          *
+          * Sonst fehlte das Ablageziel genau dann, wenn man es zum ersten
+          * Mal braucht: in einem vollen, sauber zugewiesenen Haus steht
+          * hier nichts, und gerade dort ist Umsortieren noetig. Ein Ziel,
+          * das erst erscheint, wenn schon etwas darin liegt, ist keines.
+          */}
+        {(nichtZugewiesen.length > 0 || bandAlsZiel) && (
+          <div data-unassigned-band
+               className={`flex relative border-b transition-colors
+                           ${drag?.kind === 'move' && drag.ueberBand
+                             ? 'bg-amber-200 border-amber-500'
+                             : 'bg-amber-50 border-amber-200'}`}>
             <div className="w-40 shrink-0 px-2 py-1 text-xs text-amber-800
                             border-r border-amber-200">
               <div>{t('today.needsRoom')} ({nichtZugewiesen.length})</div>
-              {nichtZugewiesen.length > BAND_ZEILEN && (
+              {/* Der Satz steht nur waehrend des Zugs da: eine Anleitung,
+                  die immer danebensteht, liest nach der dritten Woche
+                  niemand mehr, und Platz nimmt sie jeden Tag weg. */}
+              {bandAlsZiel && (
+                <div className="text-[10px] text-amber-700 mt-0.5">
+                  {t('plan.dropToUnassign')}
+                </div>
+              )}
+              {!bandAlsZiel && nichtZugewiesen.length > BAND_ZEILEN && (
                 <div className="text-[10px] text-amber-700 mt-0.5">
                   {t('plan.bandScroll')}
                 </div>
@@ -701,6 +796,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
                          balken={balken} passung={passung}
                          versteckterRef={versteckterRef}
+                         gruppenRef={gehaltenerGruppenRef}
                          ghostHier={ghostHier}
                          ghostLinks={ghostHier ? ghost!.left : 0}
                          ghostBreite={ghostHier ? ghost!.width : 0}
@@ -788,6 +884,8 @@ interface ZimmerzeileProps {
   balken: (von: string, bis: string) => { left: number; width: number }
   passung: Passung | null
   versteckterRef: string | null
+  /** Buchung, deren Balken gerade festgehalten wird. Hebt ihre Geschwister hervor. */
+  gruppenRef: string | null
   ghostHier: boolean
   ghostLinks: number
   ghostBreite: number
@@ -844,6 +942,13 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         {(p.reservations ?? []).map(r => {
           const b = p.balken(r.arrival, r.departure)
           const versteckt = r.public_ref === p.versteckterRef
+          // Geschwister derselben Buchung, solange einer davon gehalten
+          // wird. Ein Ring und keine andere Farbe: die Farbe sagt den
+          // Zustand (Option, bestaetigt, angereist), und den zu
+          // ueberschreiben hiesse, eine Information gegen eine andere zu
+          // tauschen.
+          const inGehaltenerGruppe = p.gruppenRef !== null
+            && r.booking_ref === p.gruppenRef
           return (
             <button key={r.id}
                     onPointerDown={e => p.onMovePointerDown(r, e)}
@@ -864,7 +969,9 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      */
                     className={`absolute rounded px-1 text-[11px] text-white truncate
                                 text-left hover:ring-2 ring-black/30 cursor-move
-                                ${FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                                ${FARBE[r.status] ?? 'bg-neutral-400'}
+                                ${inGehaltenerGruppe
+                                  ? 'ring-2 ring-offset-1 ring-sky-500 z-10' : ''}`}>
               {r.last_name ?? t('tape.noGuest')}
               {/*
                 * Die **Kurznotiz** im Klartext, nicht die lange.

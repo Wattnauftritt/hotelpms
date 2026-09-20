@@ -111,12 +111,19 @@ export function useCreateBooking(propertyId: number) {
 /**
  * Verschieben (A3). Schlaegt fehl, wenn das Zielzimmer belegt oder ausser
  * Betrieb ist -- und zwar **bevor** der Balken im Plan optisch springt.
+ *
+ * `resourceId: null` nimmt das Zimmer wieder ab und legt die Buchung
+ * zurueck ins Band der Unzugewiesenen. Im vollen Haus ist das der einzige
+ * Weg, umzusortieren: das Zimmer, das frei werden soll, ist erst frei, wenn
+ * sein Gast woanders liegt -- und der passt nur dorthin, wo der erste noch
+ * liegt. Das Band ist der Zwischenablageplatz dafuer.
  */
 export function useAssignUnit() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ reservationRef, resourceId }: { reservationRef: string; resourceId: number }) =>
-      api.post<{ reservationRef: string; resourceId: number }>(
+    mutationFn: ({ reservationRef, resourceId }:
+                 { reservationRef: string; resourceId: number | null }) =>
+      api.post<{ reservationRef: string; resourceId: number | null }>(
         `/v1/reservations/${reservationRef}/assign-unit`, { resourceId }),
     onSuccess: (_r, { reservationRef }) => {
       void qc.invalidateQueries({ queryKey: ['tape'] })

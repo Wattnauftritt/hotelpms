@@ -184,7 +184,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onChangeStay={(reservationRef, arrival, departure) =>
                         umbuchen.mutate({ reservationRef, arrival, departure })}
                       onShiftGroup={(bookingRef, shiftDays) =>
-                        gruppeVerschieben.mutate({ bookingRef, shiftDays })} />}
+                        gruppeVerschieben.mutate({ bookingRef, shiftDays })}
+                      onUnassign={reservationRef =>
+                        zuweisen.mutate({ reservationRef, resourceId: null })} />}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
           Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden. */}

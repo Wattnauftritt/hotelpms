@@ -880,6 +880,10 @@ const M = {
     de: 'In dieser Buchung liegt kein Aufenthalt, der sich verschieben laesst',
     en: 'This booking has no stay that can be moved',
     tr: 'Bu kayıtta taşınabilecek bir konaklama yok' },
+  'stay.inHouseKeepsRoom': {
+    de: 'Ein angereister Gast behaelt sein Zimmer',
+    en: 'A checked-in guest keeps their room',
+    tr: 'Giriş yapmış bir misafir odasını korur' },
   'stay.checkinNeedsRoom': {
     de: 'Check-in erfordert ein zugewiesenes Zimmer.',
     en: 'Check-in requires an assigned room.',

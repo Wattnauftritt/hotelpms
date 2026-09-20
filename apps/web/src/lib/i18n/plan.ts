@@ -350,13 +350,22 @@ export const plan = {
       + 'across free space to create a booking — hold Ctrl, ⌘ or Shift and drag '
       + 'across several rooms for a group booking.',
     tr: 'Çubuğu sürüklemek rezervasyonu taşır, kenarları uzatır. Boş alanda sürükleyerek açmak yeni bir rezervasyon oluşturur — Strg, ⌘ veya Shift tuşu basılıyken birden çok oda üzerinde grup rezervasyonu.' },
+  'plan.dropToUnassign': {
+    de: 'Hier ablegen nimmt das Zimmer ab',
+    en: 'Drop here to take the room away',
+    tr: 'Buraya bırakmak odayı geri alır' },
   'plan.dragHintGroup': {
-    de: 'Ein Balken einer Gruppenbuchung nimmt beim seitlichen Ziehen die ganze '
-      + 'Gruppe mit. Mit gedrückter Alt-Taste wandert nur dieses eine Zimmer.',
-    en: 'Dragging a bar of a group booking sideways moves the whole group. Hold '
-      + 'Alt to move only that one room.',
-    tr: 'Grup rezervasyonunun bir çubuğunu yana sürüklemek tüm grubu taşır. Yalnızca '
-      + 'o odayı taşımak için Alt tuşunu basılı tutun.' },
+    de: 'Einen Balken festzuhalten hebt alle Zimmer derselben Buchung hervor. Mit '
+      + 'gedrückter Alt-Taste wandert beim seitlichen Ziehen die ganze Gruppe statt '
+      + 'nur dieses Zimmers. Ins gelbe Band gezogen nimmt das Zimmer wieder ab — der '
+      + 'Zwischenablageplatz zum Umsortieren.',
+    en: 'Holding a bar highlights every room of the same booking. Hold Alt while '
+      + 'dragging sideways to move the whole group instead of just this room. Drag '
+      + 'into the amber band to take the room away — the place to park a booking '
+      + 'while rearranging.',
+    tr: 'Bir çubuğu basılı tutmak aynı rezervasyonun tüm odalarını vurgular. Yana '
+      + 'sürüklerken Alt tuşunu basılı tutmak yalnızca bu odayı değil tüm grubu taşır. '
+      + 'Sarı şeride sürüklemek odayı geri alır — yeniden düzenlerken ara park yeri.' },
 
   'group.title': {
     de: 'Gruppenbuchung',

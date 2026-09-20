@@ -141,3 +141,75 @@ describe('Bestand bei Zustandswechseln', () => {
     expect(await verkauft()).toBe(5)
   })
 })
+
+/**
+ * Das Zimmer wieder abnehmen -- der Zwischenablageplatz beim Umsortieren.
+ *
+ * In einem vollen Haus lassen sich zwei Buchungen nicht tauschen, ohne dass
+ * eine von beiden kurz nirgends liegt: das Zimmer, das frei werden soll,
+ * ist erst frei, wenn sein Gast woanders liegt -- und der passt nur dorthin,
+ * wo der erste noch liegt. Ohne diesen Weg bliebe nur stornieren und neu
+ * buchen, und das ist zweimal falsch: der Vorgang verliert seine Geschichte,
+ * und zwischen beidem steht der Platz im freien Verkauf.
+ */
+describe('Das Zimmer wieder abnehmen', () => {
+  async function mitZimmer(): Promise<{ ref: string; zimmerId: number }> {
+    const ref = await buchung()
+    const zimmer = await owner.query<{ id: number }>(
+      `SELECT id FROM resource WHERE property_id=$1 ORDER BY id LIMIT 1`, [fx.propertyId])
+    const z = await post(`/v1/reservations/${ref}/assign-unit`,
+      { resourceId: zimmer.rows[0]!.id })
+    expect(z.statusCode, z.body).toBe(200)
+    return { ref, zimmerId: zimmer.rows[0]!.id }
+  }
+
+  async function zimmerVon(ref: string): Promise<number | null> {
+    const r = await owner.query<{ resource_id: number | null }>(
+      `SELECT resource_id FROM reservation WHERE public_ref = $1`, [ref])
+    return r.rows[0]!.resource_id
+  }
+
+  it('nimmt das Zimmer ab, wenn null kommt', async () => {
+    const { ref } = await mitZimmer()
+    const r = await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: null })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await zimmerVon(ref)).toBeNull()
+  })
+
+  it('laesst den Bestand dabei unberuehrt', async () => {
+    /*
+     * Gezaehlt wird je Zimmergruppe, nicht je Zimmer. Die Buchung haelt
+     * ihren Platz weiter -- nur die Zeile im Plan wechselt. Wuerde hier
+     * freigegeben, kaufte das Portal in der Zwischenzeit genau diesen Platz.
+     */
+    const { ref } = await mitZimmer()
+    expect(await verkauft()).toBe(1)
+    await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: null })
+    expect(await verkauft()).toBe(1)
+  })
+
+  it('gibt das Zimmer damit fuer eine andere Buchung frei', async () => {
+    const { ref, zimmerId } = await mitZimmer()
+    const zweite = await buchung()
+    // Solange das erste Zimmer belegt ist, geht es nicht.
+    expect((await post(`/v1/reservations/${zweite}/assign-unit`,
+      { resourceId: zimmerId })).statusCode).toBe(409)
+
+    await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: null })
+    const r = await post(`/v1/reservations/${zweite}/assign-unit`, { resourceId: zimmerId })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await zimmerVon(zweite)).toBe(zimmerId)
+  })
+
+  it('nimmt einem angereisten Gast das Zimmer nicht weg', async () => {
+    /*
+     * Der liegt darin. Die Zeile im Plan zu leeren hiesse, Hausliste und
+     * Reinigung auf ein leeres Zimmer zu schicken, in dem jemand schlaeft.
+     */
+    const { ref } = await mitZimmer()
+    expect((await post(`/v1/reservations/${ref}/check-in`)).statusCode).toBe(200)
+    const r = await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: null })
+    expect(r.statusCode).toBe(409)
+    expect(await zimmerVon(ref)).not.toBeNull()
+  })
+})
