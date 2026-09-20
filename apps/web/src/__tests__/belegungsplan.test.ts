@@ -214,13 +214,20 @@ describe('Die Maske fuer eine neue Reservierung', () => {
     expect(block).toContain('Neue Reservierung')
   })
 
-  it('rechnet Euro in ganze Cent um', () => {
-    // Geld ist immer eine ganze Zahl in Cent (CLAUDE.md). Ohne `Math.round`
-    // macht die Fliesskommazahl aus "19,90" eine 1989.
-    expect(dialog).toContain('Math.round')
-    // Das Komma der deutschen Eingabe muss zum Punkt werden, sonst ist
-    // Number('19,90') schlicht NaN.
-    expect(dialog).toContain("replace(',', '.')")
+  it('rechnet Euro in ganze Cent um, ohne ueber Fliesskomma zu gehen', () => {
+    /*
+     * Geld ist immer eine ganze Zahl in Cent (CLAUDE.md).
+     *
+     * Hier stand `Math.round(Number(text.replace(',', '.')) * 100)`. Das
+     * fing die Fliesskommaungenauigkeit ab, die aus "19,90" sonst 1989
+     * macht -- und scheiterte an "1.234,50", weil `Number('1.234.50')`
+     * `NaN` ist. An einer deutschen Rezeption wird der Tausenderpunkt
+     * getippt. `centAusEingabe` rechnet auf den Ziffern und kennt beide
+     * Trennzeichen.
+     */
+    expect(dialog).toContain('preisFelder(preis)')
+    expect(dialog).not.toContain('Math.round')
+    expect(dialog).not.toContain("replace(',', '.')")
   })
 
   it('verlangt bei einer Option eine Frist', () => {
