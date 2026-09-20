@@ -547,21 +547,9 @@ Ohne Plesk übernimmt die VM selbst, was vorher Plesk erledigt hat:
 | Firewall | Plesk | **nftables** plus Proxmox-Firewall |
 | Sicherung | Plesk | **Proxmox-Sicherung plus eigene PostgreSQL-Sicherung**, siehe unten |
 
-**Reverse Proxy: Caddy.** Entschieden. Caddy holt und erneuert die Let's-Encrypt-Zertifikate selbst, ohne certbot, Cron-Job oder Neuladen-Hook. Genau die Aufgabe, die vorher Plesk übernommen hat. Die vollständige Konfiguration für unseren Fall:
+**Reverse Proxy: Caddy.** Entschieden. Caddy holt und erneuert die Let's-Encrypt-Zertifikate selbst, ohne certbot, Cron-Job oder Neuladen-Hook. Genau die Aufgabe, die vorher Plesk übernommen hat.
 
-```
-api.hotelpms.de {
-    reverse_proxy unix//run/hotelpms/api.sock
-    encode zstd gzip
-}
-
-app.hotelpms.de {
-    root * /opt/hotelpms/current/web
-    try_files {path} /index.html
-    file_server
-    encode zstd gzip
-}
-```
+Die laufende Konfiguration steht in [`ops/caddy/Caddyfile`](../ops/caddy/Caddyfile) und wird hier **verwiesen, nicht abgeschrieben**. An dieser Stelle stand einmal eine zweite Fassung mit zwei getrennten Namen; sie ist seither an der Entscheidung für **eine** Herkunft vorbeigelaufen, hat die Ratenbegrenzung und die Sicherheitskopfzeilen nie mitbekommen und trug nach der Umbenennung auf `staygrid.cloud` noch die alten Namen. Genau der Schaden, den die Regel zu Betriebsdateien in `CLAUDE.md` beschreibt: zwei Fassungen derselben Datei laufen auseinander, und beide sehen für sich stimmig aus.
 
 HTTPS ist darin enthalten. Nginx wäre fachlich gleichwertig, braucht aber Zertifikatspfade, Protokolleinstellungen, einen zweiten Block für die Umleitung von Port 80 und certbot als eigenes Paket. Der Austausch bliebe jederzeit möglich, der Rest der Architektur merkt davon nichts.
 

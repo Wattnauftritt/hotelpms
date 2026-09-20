@@ -6,8 +6,8 @@
 # ---------------------------------------------------------------------------
 # Eine Herkunft für Oberfläche und Schnittstelle.
 #
-# Vorher lagen sie auf app.staygrid.cloud und api.staygrid.cloud getrennt. Das erzwingt CORS
-# mit Anmeldedaten, `SameSite=None` am Sitzungscookie und eine gepflegte
+# Getrennte Namen fuer Oberfläche und Schnittstelle erzwingen CORS mit
+# Anmeldedaten, `SameSite=None` am Sitzungscookie und eine gepflegte
 # Liste erlaubter Herkünfte. Jede dieser drei Stellen ist eine Gelegenheit,
 # sich zu vertun, und ein Fehler darin ist eine Sitzungsübernahme.
 #
