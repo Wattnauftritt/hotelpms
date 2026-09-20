@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
-import { useAssignUnit, useChangeStay } from '../lib/queries/booking.js'
+import { useAssignUnit, useChangeStay, useShiftBooking } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
 import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
 import { TapeChart, type Umzug } from '../components/TapeChart.tsx'
@@ -9,6 +9,7 @@ import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
 import { GroupBookingDialog, type GroupSelection }
   from '../components/GroupBookingDialog.tsx'
+import { GroupPanel } from '../components/GroupPanel.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
@@ -53,12 +54,22 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    * Weg.
    */
   const [umzug, setUmzug] = useState<Umzug | null>(null)
+  /*
+   * Die Gruppenmaske: alle Zimmer einer Buchung nebeneinander.
+   *
+   * Ein eigener Zustand neben `ausgewaehlt`, weil beides nebeneinander
+   * Sinn ergibt -- aus der Gruppe heraus ein einzelnes Zimmer oeffnen ist
+   * der Weg zum Detail, und die Gruppe dabei zu schliessen hiesse, danach
+   * wieder suchen zu muessen.
+   */
+  const [gruppenBuchung, setGruppenBuchung] = useState<string | null>(null)
   const t = useT()
   const bis = addDays(von, tage)
   const q = useTapeChart(propertyId, von, bis)
   const kategorien = useCategories(propertyId)
   const zuweisen = useAssignUnit()
   const umbuchen = useChangeStay()
+  const gruppeVerschieben = useShiftBooking()
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
 
@@ -139,8 +150,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         </div>
       )}
 
-      {(zuweisen.isError || umbuchen.isError) && (
-        <Fehler error={zuweisen.error ?? umbuchen.error} />
+      {(zuweisen.isError || umbuchen.isError || gruppeVerschieben.isError) && (
+        <Fehler error={zuweisen.error ?? umbuchen.error ?? gruppeVerschieben.error} />
       )}
 
       {q.isError && daten === undefined ? <Fehler error={q.error} />
@@ -171,17 +182,21 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                         } else setUmzug(u)
                       }}
                       onChangeStay={(reservationRef, arrival, departure) =>
-                        umbuchen.mutate({ reservationRef, arrival, departure })} />}
+                        umbuchen.mutate({ reservationRef, arrival, departure })}
+                      onShiftGroup={(bookingRef, shiftDays) =>
+                        gruppeVerschieben.mutate({ bookingRef, shiftDays })} />}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
           Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden. */}
       <p className="text-xs text-neutral-500">{t('plan.dragHint')}</p>
+      <p className="text-xs text-neutral-500">{t('plan.dragHintGroup')}</p>
 
       {ausgewaehlt !== null && (
         <ReservationPanel reservationRef={ausgewaehlt}
                           onClose={() => setAusgewaehlt(null)}
                           onOpenFolio={onFolio}
-                          onOpenCheckIn={onCheckIn} />
+                          onOpenCheckIn={onCheckIn}
+                          onOpenGroup={setGruppenBuchung} />
       )}
 
       {umzug !== null && umzug.wechsel !== null && (
@@ -196,6 +211,13 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       {gruppe !== null && (
         <GroupBookingDialog propertyId={propertyId} selection={gruppe}
                             onClose={() => setGruppe(null)} />
+      )}
+
+      {gruppenBuchung !== null && (
+        <GroupPanel propertyId={propertyId} bookingRef={gruppenBuchung}
+                    categories={kategorien.data?.categories ?? []}
+                    onClose={() => setGruppenBuchung(null)}
+                    onSelect={setAusgewaehlt} />
       )}
 
       {auswahl !== null && (

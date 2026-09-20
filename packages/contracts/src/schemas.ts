@@ -162,6 +162,22 @@ export const TapeChart = Type.Object({
     status: ReservationStatus,
     last_name: Type.Union([Type.String(), Type.Null()]),
     first_name: Type.Union([Type.String(), Type.Null()]),
+    /**
+     * Die Buchung, zu der dieser Aufenthalt gehoert.
+     *
+     * Traegt die Gruppe in den Plan. Ohne sie sieht die Oberflaeche acht
+     * einzelne Balken und kann nicht anbieten, sie gemeinsam zu
+     * verschieben -- genau das, was die Rezeption meint, wenn sie sagt,
+     * die Gruppe komme einen Tag spaeter.
+     */
+    booking_ref: Type.String(),
+    /**
+     * Wie viele Zimmer in derselben Buchung liegen. Eins heisst: keine
+     * Gruppe. Eine Zahl statt einer Liste, weil die Oberflaeche nur
+     * unterscheiden muss -- welche Zimmer es sind, steht in denselben
+     * Daten.
+     */
+    booking_rooms: Type.Integer(),
     source: Type.String(),
     external_reference: Type.Union([Type.String(), Type.Null()]),
     rate_code: Type.Union([Type.String(), Type.Null()]),

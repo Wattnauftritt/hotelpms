@@ -350,6 +350,13 @@ export const plan = {
       + 'across free space to create a booking — hold Ctrl, ⌘ or Shift and drag '
       + 'across several rooms for a group booking.',
     tr: 'Çubuğu sürüklemek rezervasyonu taşır, kenarları uzatır. Boş alanda sürükleyerek açmak yeni bir rezervasyon oluşturur — Strg, ⌘ veya Shift tuşu basılıyken birden çok oda üzerinde grup rezervasyonu.' },
+  'plan.dragHintGroup': {
+    de: 'Ein Balken einer Gruppenbuchung nimmt beim seitlichen Ziehen die ganze '
+      + 'Gruppe mit. Mit gedrückter Alt-Taste wandert nur dieses eine Zimmer.',
+    en: 'Dragging a bar of a group booking sideways moves the whole group. Hold '
+      + 'Alt to move only that one room.',
+    tr: 'Grup rezervasyonunun bir çubuğunu yana sürüklemek tüm grubu taşır. Yalnızca '
+      + 'o odayı taşımak için Alt tuşunu basılı tutun.' },
 
   'group.title': {
     de: 'Gruppenbuchung',
@@ -379,6 +386,50 @@ export const plan = {
     de: '{n} Zimmer unter einer Buchung',
     en: '{n} rooms under one booking',
     tr: 'tek rezervasyon altında {n} oda' },
+  'group.panelTitle': {
+    de: 'Gruppenbuchung',
+    en: 'Group booking',
+    tr: 'Grup rezervasyonu' },
+  'group.total': {
+    de: 'Gesamt',
+    en: 'Total',
+    tr: 'Toplam' },
+  'group.unassigned': {
+    de: 'ohne Zimmer',
+    en: 'no room',
+    tr: 'odasız' },
+  'group.shift': {
+    de: 'Ganze Gruppe verschieben:',
+    en: 'Move the whole group:',
+    tr: 'Tüm grubu taşı:' },
+  'group.shiftHint': {
+    de: 'Tage. Abweichende Aufenthalte bleiben abweichend.',
+    en: 'days. Stays that differ stay different.',
+    tr: 'gün. Farklı olan konaklamalar farklı kalır.' },
+  'group.changeDates': {
+    de: 'Tage ändern',
+    en: 'Change dates',
+    tr: 'Tarihleri değiştir' },
+  'group.removeConfirm': {
+    de: 'Dieses Zimmer aus der Gruppe nehmen? Die Reservierung wird storniert.',
+    en: 'Remove this room from the group? The reservation will be canceled.',
+    tr: 'Bu oda gruptan çıkarılsın mı? Rezervasyon iptal edilir.' },
+  'group.addRoom': {
+    de: 'Zimmer hinzufügen',
+    en: 'Add a room',
+    tr: 'Oda ekle' },
+  'group.pickCategory': {
+    de: 'Zimmergruppe wählen',
+    en: 'Pick a room category',
+    tr: 'Oda tipi seç' },
+  'group.add': {
+    de: 'Hinzufügen',
+    en: 'Add',
+    tr: 'Ekle' },
+  'group.addHint': {
+    de: 'Zeitraum wie die Gruppe. Das Zimmer wird im Plan zugewiesen.',
+    en: 'Same dates as the group. Assign the room in the plan.',
+    tr: 'Grupla aynı tarihler. Oda plandan atanır.' },
   'group.priceLevel': {
     de: 'Preis gilt',
     en: 'Price applies',

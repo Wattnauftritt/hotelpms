@@ -86,6 +86,12 @@ type DragState =
       categoryId: number; occupants: number; categoryMaxOccupancy: number
       /** Die Zeile, in der der Balken losgezogen wurde. Null im Band oben. */
       quelleResourceId: number | null
+      /** Die Buchung dieses Aufenthalts und wie viele Zimmer darin liegen.
+          Mehr als eines heisst: waagerechtes Ziehen bewegt die ganze
+          Gruppe, nicht nur diesen Balken. */
+      bookingRef: string; bookingRooms: number
+      /** Alt gedrueckt: nur dieses eine Zimmer, auch in einer Gruppe. */
+      einzeln: boolean
       /** Tagesspalte beim Aufsetzen und jetzt -- daraus der Zeitversatz. */
       startDay: number; day: number
       pointerDownX: number; pointerDownY: number; overResourceId: number | null
@@ -135,10 +141,23 @@ interface Props {
   onMove?: (umzug: Umzug) => void
   /** Balkenrand gezogen (A4). */
   onChangeStay?: (reservationRef: string, arrival: string, departure: string) => void
+  /**
+   * Ein Balken einer Gruppenbuchung waagerecht gezogen: die **ganze**
+   * Gruppe wandert.
+   *
+   * Das ist, was die Rezeption meint, wenn sie sagt, die Gruppe komme
+   * einen Tag spaeter -- nicht "eines der acht Zimmer". Der Versatz und
+   * nicht ein neuer Zeitraum, damit Zimmer, die nach einer einzelnen
+   * Aenderung abweichend liegen, abweichend bleiben.
+   *
+   * Wer doch nur dieses eine Zimmer meint, haelt Alt gedrueckt; dann
+   * kommt `onChangeStay` wie bei einer Einzelbuchung.
+   */
+  onShiftGroup?: (bookingRef: string, shiftDays: number) => void
 }
 
 export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
-                            onChangeStay }: Props): JSX.Element {
+                            onChangeStay, onShiftGroup }: Props): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
@@ -318,11 +337,22 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           ? d.day - d.startDay
           : 0
         if (d.moved && versatz !== 0) {
-          // In derselben Zeile waagerecht gezogen: der ganze Aufenthalt
-          // wandert, seine Laenge bleibt. Das Zimmer bleibt ebenfalls --
-          // die Zeile hat sich ja nicht geaendert.
-          onChangeStay?.(d.reservationRef,
-            addDays(d.arrival, versatz), addDays(d.departure, versatz))
+          /*
+           * In derselben Zeile waagerecht gezogen: der ganze Aufenthalt
+           * wandert, seine Laenge bleibt. Das Zimmer bleibt ebenfalls --
+           * die Zeile hat sich ja nicht geaendert.
+           *
+           * Liegt der Balken in einer Gruppe, wandert die **ganze**
+           * Gruppe. Das ist, was die Rezeption meint; die acht Balken
+           * einzeln zu ziehen waere acht Gelegenheiten, einen zu
+           * vergessen. Alt beim Greifen sagt "nur dieses Zimmer".
+           */
+          if (d.bookingRooms > 1 && !d.einzeln) {
+            onShiftGroup?.(d.bookingRef, versatz)
+          } else {
+            onChangeStay?.(d.reservationRef,
+              addDays(d.arrival, versatz), addDays(d.departure, versatz))
+          }
         } else if (d.moved && d.overResourceId !== null
                    && d.overResourceId !== d.quelleResourceId) {
           const ziel = zimmerNach.get(d.overResourceId)
@@ -369,6 +399,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     resourceIds: Set<number>; left: number; width: number
     /** Zeile, an der die Anzahl steht. Nur bei der Mehrfachauswahl gesetzt. */
     zaehlerAn?: number
+    /** Zimmer der Gruppe, die beim Loslassen mitwandern. */
+    gruppenZahl?: number
   } | null => {
     if (drag === null) {
       // Kein Zug, aber eine stehende Auswahl: die Schattenbalken bleiben
@@ -429,7 +461,23 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
         ? drag.day - drag.startDay
         : 0
       const b = balken(addDays(drag.arrival, versatz), addDays(drag.departure, versatz))
-      return { resourceIds: new Set([drag.overResourceId]), ...b }
+      /*
+       * Bei einer Gruppe steht die Zahl der Zimmer am Schattenbalken.
+       *
+       * **Und nicht ein Schatten je Zimmer der Gruppe**, so naheliegend
+       * das waere: die Zimmer einer Gruppe liegen nach einzelnen
+       * Aenderungen nicht mehr deckungsgleich, und ein Schatten hat genau
+       * eine Breite. Acht gleich breite Rechtecke zu zeichnen hiesse, eine
+       * Deckungsgleichheit zu zeigen, die nach dem Loslassen nicht
+       * eintritt -- eine Vorschau, die luegt, ist schlechter als keine.
+       *
+       * Die Zahl sagt, was zaehlt: es wandert nicht dieser eine Balken.
+       */
+      return {
+        resourceIds: new Set([drag.overResourceId]),
+        gruppenZahl: versatz !== 0 && drag.bookingRooms > 1 && !drag.einzeln
+          ? drag.bookingRooms : undefined,
+        ...b }
     }
     return null
   }, [drag, auswahl, balken, data.from, data.units])
@@ -503,6 +551,12 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                categoryId: r.category_id, occupants: r.occupants,
                categoryMaxOccupancy: r.category_max_occupancy,
                quelleResourceId: r.resource_id,
+               bookingRef: r.booking_ref, bookingRooms: r.booking_rooms,
+               // Beim Aufsetzen abgelesen und festgehalten: waehrend des
+               // Zugs liest niemand mehr die Tastatur, und ein `altKey`
+               // beim Loslassen waere eine andere Frage als die, die der
+               // Mensch beim Greifen beantwortet hat.
+               einzeln: e.altKey,
                startDay: tag, day: tag,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
                overResourceId: null, moved: false })
@@ -650,7 +704,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                          ghostHier={ghostHier}
                          ghostLinks={ghostHier ? ghost!.left : 0}
                          ghostBreite={ghostHier ? ghost!.width : 0}
-                         ghostZaehler={ghost?.zaehlerAn === u.id ? ghost.resourceIds.size : null}
+                         ghostZaehler={ghost?.gruppenZahl ?? (
+                           ghost?.zaehlerAn === u.id ? ghost.resourceIds.size : null)}
                          onCreatePointerDown={beginneErstellen}
                          onMovePointerDown={beginneVerschieben}
                          onResizePointerDown={beginneGroesseAendern} />

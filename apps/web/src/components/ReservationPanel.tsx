@@ -21,9 +21,20 @@ const WIEDERHERSTELLBAR = new Set(['Canceled', 'NoShow'])
  * während er die Reservierung liest — nicht ihn hinter einem Dialog
  * verlieren.
  */
-export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenCheckIn }: {
+export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenCheckIn,
+                                   onOpenGroup }: {
   reservationRef: string; onClose: () => void; onOpenFolio: (folioRef: string) => void
   onOpenCheckIn: (reservationRef: string) => void
+  /**
+   * Der Weg zur Gruppenmaske.
+   *
+   * Er steht hier und nicht am Balken im Plan: am Balken sieht man einer
+   * Reservierung nicht an, dass sie zu sieben weiteren gehoert, und ein
+   * zusaetzlicher Klickbereich auf einem 44 Pixel breiten Kasten waere ein
+   * Fehlklick in Serie. Hier steht die Buchungsnummer ohnehin -- und wer
+   * sie liest, sucht genau das, was dahinter liegt.
+   */
+  onOpenGroup?: (bookingRef: string) => void
 }): JSX.Element {
   const t = useT()
   const q = useReservation(reservationRef)
@@ -43,7 +54,8 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
         {q.isError && <Fehler error={q.error} />}
         {q.data === undefined && !q.isError && <Laedt />}
         {q.data !== undefined && (
-          <Inhalt reservation={q.data} onOpenFolio={onOpenFolio} onOpenCheckIn={onOpenCheckIn} />
+          <Inhalt reservation={q.data} onOpenFolio={onOpenFolio}
+                  onOpenCheckIn={onOpenCheckIn} onOpenGroup={onOpenGroup} />
         )}
       </div>
     </div>
@@ -60,10 +72,11 @@ function Feld({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn }: {
+function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
   reservation: ReservationDetail
   onOpenFolio: (folioRef: string) => void
   onOpenCheckIn: (reservationRef: string) => void
+  onOpenGroup?: (bookingRef: string) => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -78,6 +91,17 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn }: {
           <span className="text-xs text-neutral-500">
             {t('plan.block')}: {r.blockName}
           </span>
+        )}
+        {/* Die Buchung, zu der dieser Aufenthalt gehoert. Liegen mehrere
+            Zimmer darin, fuehrt der Weg von hier in die Gruppenmaske --
+            und liegt nur eines darin, zeigt sie genau dieses eine, was
+            keinen Schaden anrichtet und den Knopf nicht erklaerungs-
+            beduerftig macht. */}
+        {onOpenGroup !== undefined && (
+          <button onClick={() => onOpenGroup(r.bookingRef)}
+                  className="text-xs text-neutral-600 underline decoration-dotted">
+            {t('group.panelTitle')}: {r.bookingRef}
+          </button>
         )}
         <div className="grow" />
         {r.checkedInAt === null && r.canceledAt === null && (
