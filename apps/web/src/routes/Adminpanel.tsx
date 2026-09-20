@@ -1185,11 +1185,14 @@ export function AdminpanelSeite({ userId, platformPermissions }: {
 }): JSX.Element {
   const t = useT()
   return (
-    <div className="min-h-screen bg-neutral-50 p-6">
-      <div className="max-w-4xl mx-auto space-y-4">
-        <h1 className="text-lg font-semibold">{t('admin.title')}</h1>
-        <Adminpanel userId={userId} platformPermissions={platformPermissions} />
-      </div>
+    /*
+     * Kein eigener Vollbildrahmen mehr: diese Seite sitzt seit der Behebung
+     * des Abmeldefehlers **in** der Shell, und die bringt Hintergrund und
+     * Abstand mit. Beides doppelt ergaebe einen Rand um einen Rand.
+     */
+    <div className="max-w-4xl mx-auto space-y-4">
+      <h1 className="text-lg font-semibold">{t('admin.title')}</h1>
+      <Adminpanel userId={userId} platformPermissions={platformPermissions} />
     </div>
   )
 }

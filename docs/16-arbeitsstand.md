@@ -445,6 +445,24 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 ---
 
+### Aufgabe 13b — Das eigene Konto verwalten — **erledigt**
+
+**Warum.** Zwei Hälften desselben Lochs, beide aus dem Betrieb gemeldet. Plattformpersonal kam im Adminpanel nirgends zum Abmelden. Und niemand — weder Plattformpersonal noch ein Hotelbenutzer — konnte sein eigenes Kennwort oder seine Mailadresse ändern; es gab nur „Kennwort vergessen", also einen Link an die Adresse, die man gerade loswerden wollte.
+
+**Wo es liegt.** Migration `0053`, `apps/api/src/routes/auth.ts` (drei neue Routen), `apps/web/src/components/Arbeitsplatz.tsx` (die Maske), `apps/web/src/main.tsx` (die Einbettung), `apps/web/src/routes/Zugang.tsx` (die Bestätigungsseite).
+
+**Was daraus entschieden wurde.**
+
+- **Der Abmeldefehler war kein fehlender Knopf, sondern ein fehlender Rahmen.** Das Adminpanel wurde **neben** der Kopfleiste gerendert statt darin, und die Kopfleiste trägt Abmelden, Sprachwahl und den Weg zum eigenen Konto. Behoben durch Einbetten, nicht durch eine zweite Schaltfläche — zwei Kopfleisten laufen auseinander.
+- **Das eigene Konto sitzt hinter dem eigenen Namen**, dort wo schon der eigene Arbeitsplatz-PIN steht. Derselbe Gedanke: „das bin ich, und das ändere ich an mir". Ein eigener Bildschirm „Mein Profil" wäre ein weiterer Reiter, den Plattformpersonal wieder nicht erreicht, weil es keine Hausbildschirme hat.
+- **Beide Änderungen verlangen das aktuelle Kennwort.** Eine Sitzung genügt nicht: an einer Rezeption steht ein Rechner, an dem jemand kurz aufsteht, und wer die Sitzung vorfindet, könnte sonst in zwei Klicks das Konto übernehmen.
+- **Und beide zählen ihre Fehlversuche selbst.** Die allgemeine Ratenbegrenzung greift nur bei anonymen Anfragen und erreicht eine angemeldete Sitzung nicht — genau der Fehler, an dem `workstation-switch` schon einmal gescheitert ist (H4, Dokument 25). Geprüft wird hier dasselbe Geheimnis wie bei der Anmeldung, also zählt es auf denselben Zähler. Eine bereits gesperrte Sitzung kommt gar nicht erst durch, sonst ließe sich die Sperre der Anmeldung von innen umgehen.
+- **Die Mailadresse wird bestätigt, nicht gesetzt.** Sie **ist** die Anmeldung: wer sie auf einen Tippfehler ändert, kommt nicht mehr herein und auch nicht mehr an eine Rücksetzung — der Link ginge an die falsche Adresse. Ein stiller, endgültiger Verlust. Die gewünschte Adresse hängt deshalb am Token und wird erst beim Einlösen geschrieben; ein Tippfehler wird einfach nie bestätigt.
+- **Ein Hinweis an die alte Adresse, ohne Link.** Wer eine geliehene Sitzung übernimmt, würde das Konto sonst lautlos an sich ziehen. Der Link fehlt mit Absicht: eine Nachricht über eine Änderung, die man nicht veranlasst hat, mit einem Knopf darin, ist die Bauform jeder Phishing-Mail. Die neue Adresse steht nur angedeutet — hätte ein Fremder die Änderung angestoßen, stünde sonst dessen Adresse im Postfach des Opfers.
+- **Das Kennwort beendet die anderen Sitzungen, die Adresse nicht.** Beim Kennwort ist der häufige Anlass, dass jemand anderes es kennt; dann nützt das neue nichts, solange die fremde Sitzung läuft. Die eigene bleibt stehen — anders als bei der Rücksetzung sitzt hier der Benutzer davor und will weiterarbeiten. Bei der Adresse ist nichts kompromittiert, und jemanden mitten im Check-in hinauszuwerfen wäre Schaden ohne Gegenwert.
+
+---
+
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**
 
 **Warum.** Die Steuer wird je Satzgruppe aus der **Nettosumme** gerechnet — so steht es in `CLAUDE.md`, und die Norm verlangt es ebenso (BR-CO-14 in EN 16931). Netto und Steuer sind beide auf den Cent gerundet, und daraus folgt etwas, das leicht zu übersehen ist: **nicht jeder Bruttobetrag ist darstellbar.** Zu 7 Prozent gibt es kein Netto, dessen aufgeschlagene Steuer 250,00 Euro ergibt — 233,64 plus 16,35 sind 249,99, 233,65 plus 16,36 sind 250,01. **Nachgemessen über die ersten 100 000 Centbeträge:** zu 7 Prozent sind **6,5 Prozent** der Bruttobeträge nicht darstellbar, zu 19 Prozent **16,0 Prozent** — also etwa jeder fünfzehnte und etwa jeder sechste. (Hier stand zuvor „zu 19 Prozent etwa jeder dritte"; das war geschätzt und zu hoch.)

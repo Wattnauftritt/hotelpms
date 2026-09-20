@@ -142,3 +142,77 @@ describe('Die Handgriffe des Supports', () => {
     expect(quelle).toMatch(/darfAufsicht && <Aufsicht/)
   })
 })
+
+describe('Plattformpersonal kommt an seine eigene Sitzung', () => {
+  /*
+   * Der Befund aus dem Betrieb: "der Admin kann sich im Adminpanel nirgendwo
+   * ausloggen". Ursache war keine fehlende Schaltflaeche, sondern ein
+   * fehlender Rahmen -- das Panel wurde **neben** der Kopfleiste gerendert
+   * statt darin, und die Kopfleiste traegt Abmelden, Sprachwahl und den Weg
+   * zum eigenen Konto.
+   *
+   * Geprueft wird deshalb die Einbettung und nicht der Knopf: den gab es die
+   * ganze Zeit.
+   */
+  const main = readFileSync(new URL('../main.tsx', import.meta.url), 'utf8')
+  const panel = readFileSync(
+    new URL('../routes/Adminpanel.tsx', import.meta.url), 'utf8')
+
+  /** Der Zweig fuer Plattformpersonal ohne Haus. */
+  const zweig = main.slice(main.indexOf('if (me.data.isPlatformStaff)'),
+                           main.indexOf('accountSuspended ?'))
+
+  it('rendert das Panel in der Shell, nicht daneben', () => {
+    expect(zweig).toContain('<Shell')
+    expect(zweig).toContain('onAbmelden')
+    expect(zweig).toContain('<AdminpanelSeite')
+  })
+
+  it('bietet dort auch das eigene Konto an', () => {
+    expect(zweig).toContain('<Arbeitsplatz')
+  })
+
+  it('bietet dort keinen Personenwechsel an', () => {
+    // Ohne Haus gibt es niemanden, auf den zu wechseln waere. Kennwort und
+    // Mailadresse haengen dagegen an der Person und bleiben.
+    expect(zweig).toContain('mitArbeitsplatz={false}')
+  })
+
+  it('baut keinen zweiten Vollbildrahmen um die Seite', () => {
+    // Shell bringt Hintergrund und Abstand mit; beides doppelt ergaebe
+    // einen Rand um einen Rand.
+    const seite = panel.slice(panel.indexOf('export function AdminpanelSeite'))
+    expect(seite).not.toContain('min-h-screen')
+  })
+})
+
+describe('Das eigene Konto', () => {
+  const quelle = readFileSync(
+    new URL('../components/Arbeitsplatz.tsx', import.meta.url), 'utf8')
+
+  it('verlangt fuer beide Aenderungen das aktuelle Kennwort', () => {
+    /*
+     * Eine Sitzung genuegt nicht. An einer Rezeption steht ein Rechner, an
+     * dem jemand kurz aufsteht; wer die Sitzung vorfindet, koennte sonst in
+     * zwei Klicks das Konto uebernehmen.
+     */
+    expect(quelle).toContain('currentPassword: altesKennwort')
+    expect(quelle).toContain('currentPassword: mailKennwort')
+  })
+
+  it('haelt die Kennwortfelder der Abschnitte auseinander', () => {
+    // Ein gemeinsames Feld waere kuerzer und gefaehrlicher: wer es fuer den
+    // PIN eingetippt hat, haette es beim naechsten Klick schon dabei.
+    for (const feld of ['altesKennwort', 'mailKennwort', 'kennwort']) {
+      expect(quelle).toContain(`const [${feld},`)
+    }
+  })
+
+  it('sagt vor dem Tippen, dass die Adresse erst nach dem Klick gilt', () => {
+    // Die Adresse ist die Anmeldung. Wer das erst hinterher erfaehrt, hat
+    // schon abgeschickt.
+    const block = quelle.slice(quelle.indexOf("t('konto.email')"),
+                               quelle.indexOf("t('konto.newEmail')"))
+    expect(block).toContain('konto.emailHint')
+  })
+})

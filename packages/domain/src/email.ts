@@ -594,3 +594,112 @@ export function renderDomainRequestNotice(d: DomainRequestNoticeData): RenderedE
              : `${d.offen} Antraege auf eine Absenderdomain`,
            text: lines.join('\n\n'), html: htmlBody(lines) }
 }
+
+/**
+ * Bestaetigung einer neuen Mailadresse, an die **neue** Adresse.
+ *
+ * **Warum die Aenderung nicht sofort gilt.** Die Adresse ist die Anmeldung.
+ * Wer sich vertippt, kommt ohne diesen Zwischenschritt weder herein noch an
+ * eine Ruecksetzung -- der Link ginge an die falsche Adresse. Ein
+ * Tippfehler wird so einfach nie bestaetigt, und es geht nichts verloren.
+ *
+ * Deshalb steht auch die neue Adresse im Text: der Empfaenger soll sie
+ * lesen koennen, bevor er klickt. Ein Buchstabendreher faellt auf dem
+ * Papier auf, im Adressfeld eines Formulars nicht.
+ */
+export interface EmailChangeData {
+  userName: string | null
+  newEmail: string
+  link: string
+  gueltigStunden: number
+}
+
+export function renderEmailChangeEmail(
+  d: EmailChangeData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      `you asked to use ${d.newEmail} as your sign-in address. Confirm it here:`,
+      d.link,
+      `The link is valid for ${d.gueltigStunden} hours and can be used once. `
+        + 'Until then, your previous address stays in force.',
+      'If this was not you, do nothing. Without the link nothing changes.'
+    ]
+    return { subject: 'Confirm your new email address', text: lines.join('\n\n'),
+             html: htmlBody(lines) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    `Sie moechten kuenftig ${d.newEmail} als Anmeldeadresse verwenden. `
+      + 'Bestaetigen Sie sie hier:',
+    d.link,
+    `Der Link gilt ${d.gueltigStunden} Stunden und laesst sich einmal `
+      + 'verwenden. Bis dahin gilt Ihre bisherige Adresse weiter.',
+    'Waren Sie das nicht, tun Sie nichts. Ohne den Link aendert sich nichts.'
+  ]
+  return { subject: 'Neue Mailadresse bestaetigen', text: lines.join('\n\n'),
+           html: htmlBody(lines) }
+}
+
+/**
+ * Hinweis an die **alte** Adresse, dass eine Aenderung angefordert wurde.
+ *
+ * **Ohne Link, und das ist der Punkt.** Eine Nachricht ueber eine Aenderung,
+ * die man nicht veranlasst hat, mit einem Knopf "war ich nicht" darin, ist
+ * die Bauform jeder Phishing-Mail -- und sie erzieht den Empfaenger dazu,
+ * genau so etwas anzuklicken. Diese Mail meldet, sie fordert nicht auf.
+ *
+ * **Warum sie ueberhaupt hinausgeht.** Wer eine geliehene Sitzung
+ * uebernimmt, wuerde das Konto sonst lautlos an sich ziehen. So faellt es
+ * dem Betroffenen in dem Moment auf, in dem es passiert, und nicht beim
+ * naechsten Anmeldeversuch.
+ */
+export interface EmailChangeNoticeData {
+  userName: string | null
+  /** Gekuerzt, nicht vollstaendig: siehe unten. */
+  maskedNewEmail: string
+}
+
+/**
+ * Die neue Adresse nur angedeutet.
+ *
+ * Sie vollstaendig zu nennen waere bequemer und in genau dem Fall falsch,
+ * fuer den diese Mail gebaut ist: hat ein Fremder die Aenderung angestossen,
+ * stuende seine Adresse im Postfach des Opfers -- und umgekehrt verraet ein
+ * versehentlich falsch eingetippter Empfaenger nichts ueber sich. Zum
+ * Wiedererkennen der eigenen Eingabe genuegt der Anfang.
+ */
+export function maskEmail(value: string): string {
+  const at = value.lastIndexOf('@')
+  if (at < 1) return '***'
+  return `${value[0]}***@${value.slice(at + 1)}`
+}
+
+export function renderEmailChangeNotice(
+  d: EmailChangeNoticeData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      `a change of your sign-in address to ${d.maskedNewEmail} was requested.`,
+      'Nothing has changed yet. The new address has to be confirmed first, and '
+        + 'until then you sign in with this one.',
+      'If this was not you, change your password now and tell your '
+        + 'administrator. This message contains no link on purpose.'
+    ]
+    return { subject: 'Change of your email address requested',
+             text: lines.join('\n\n'), html: htmlBody(lines) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    `fuer Ihren Zugang wurde eine Aenderung der Anmeldeadresse auf `
+      + `${d.maskedNewEmail} angefordert.`,
+    'Geaendert hat sich noch nichts. Die neue Adresse muss erst bestaetigt '
+      + 'werden; bis dahin melden Sie sich mit dieser an.',
+    'Waren Sie das nicht, aendern Sie jetzt Ihr Kennwort und sagen Sie Ihrer '
+      + 'Verwaltung Bescheid. Diese Nachricht enthaelt bewusst keinen Link.'
+  ]
+  return { subject: 'Aenderung Ihrer Mailadresse angefordert',
+           text: lines.join('\n\n'), html: htmlBody(lines) }
+}

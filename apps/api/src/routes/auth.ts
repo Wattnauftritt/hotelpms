@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
@@ -10,6 +10,8 @@ import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
          renderPasswordResetEmail, renderInviteEmail,
          type AuthTokenKind } from '@hotelpms/domain'
 import { kennwortZuKurz, KENNWORT_MIN } from '@hotelpms/contracts'
+import { isSendableAddress, renderEmailChangeEmail,
+         renderEmailChangeNotice, maskEmail } from '@hotelpms/domain'
 
 const config = loadConfig()
 
@@ -602,6 +604,285 @@ export function authRoutes(app: FastifyInstance): void {
       })
     }
   })
+
+  // -------------------------------------------------------- Das eigene Konto
+  /*
+   * Kennwort und Mailadresse selbst aendern.
+   *
+   * **Warum es das bisher nicht gab.** Es gab nur "Kennwort vergessen" --
+   * also einen Link an die eigene Adresse. Fuer ein Kennwort ist das
+   * umstaendlich, fuer eine Adressaenderung unbrauchbar: der Link ginge an
+   * die Adresse, die man gerade loswerden will. Plattformpersonal kam
+   * ausserdem gar nicht an diese Masken, weil das Adminpanel neben der
+   * Kopfleiste stand statt darin.
+   *
+   * **Beide Handlungen verlangen das aktuelle Kennwort.** Eine Sitzung
+   * genuegt nicht: an einer Rezeption steht ein Rechner, an dem jemand
+   * kurz aufsteht. Wer die Sitzung vorfindet, koennte sonst in zwei Klicks
+   * das Konto uebernehmen -- Adresse aendern, Kennwort aendern, fertig. Das
+   * Kennwort ist die Stelle, an der sich beweisen laesst, dass wirklich der
+   * Betroffene davorsitzt (dieselbe Begruendung wie beim Arbeitsplatz-PIN).
+   *
+   * **Und beide zaehlen ihre Fehlversuche selbst.** Die allgemeine
+   * Ratenbegrenzung greift nur bei anonymen Anfragen und erreicht eine
+   * angemeldete Sitzung nicht -- genau der Fehler, der bei
+   * `workstation-switch` schon einmal passiert ist (H4, Dokument 25). Hier
+   * wird dasselbe Geheimnis geprueft wie bei der Anmeldung, also zaehlt es
+   * auf denselben Zaehler.
+   */
+
+  /** Einen Fehlversuch am eigenen Kennwort zaehlen, wie bei der Anmeldung. */
+  async function zaehleFehlversuch(
+    pool: FastifyRequest['pool'], userId: number, ip: string
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO login_failure (user_id, origin, failed_count, locked_until)
+       VALUES ($1, $2, 1, NULL)
+       ON CONFLICT (user_id, origin) DO UPDATE
+          SET failed_count = login_failure.failed_count + 1,
+              last_failure_at = now(),
+              locked_until = CASE WHEN login_failure.failed_count + 1 >= $3
+                                  THEN now() + ($4 || ' minutes')::interval END`,
+      [userId, ip, MAX_FEHLVERSUCHE, SPERRE_MINUTEN])
+    await pool.query(
+      `UPDATE app_user SET failed_login_count = failed_login_count + 1
+        WHERE id = $1`, [userId])
+  }
+
+  /**
+   * Das eigene Kennwort und den Stand der Sperre lesen.
+   *
+   * Eine gesperrte Sitzung darf hier nicht weiterarbeiten: waere das
+   * erlaubt, liesse sich die Sperre der Anmeldung einfach umgehen, indem
+   * man in einer noch offenen Sitzung weiterprobiert.
+   */
+  async function eigenesKennwort(
+    req: FastifyRequest, userId: number
+  ): Promise<{ hash: string | null; name: string | null; email: string }> {
+    const { rows } = await req.pool.query<{
+      password_hash: string | null; display_name: string | null; email: string
+      locked_until: string | null; herkunft_gesperrt_bis: string | null }>(
+      `SELECT u.password_hash, u.display_name, u.email, u.locked_until::text,
+              f.locked_until::text AS herkunft_gesperrt_bis
+         FROM app_user u
+         LEFT JOIN login_failure f ON f.user_id = u.id AND f.origin = $2
+        WHERE u.id = $1`, [userId, req.ip])
+    const u = rows[0]
+    if (u === undefined) throw Errors.unauthorized()
+    const sperren = [u.herkunft_gesperrt_bis, u.locked_until]
+      .filter((s): s is string => s !== null && s !== undefined)
+    if (sperren.some(s => Date.parse(s) > Date.now())) {
+      throw Errors.unauthorized('auth.tooManyAttempts')
+    }
+    return { hash: u.password_hash, name: u.display_name, email: u.email }
+  }
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/password',
+    permission: null,
+    summary: 'Eigenes Kennwort aendern',
+    handler: async (req) => {
+      const p = req.principal as Principal
+      if (p.userId === null) throw Errors.unauthorized()
+      const b = req.body as { currentPassword?: string; newPassword?: string }
+      if (!b.currentPassword || !b.newPassword) {
+        throw Errors.validation({ currentPassword: ['field.required'],
+                                  newPassword: ['field.required'] })
+      }
+      if (kennwortZuKurz(b.newPassword)) {
+        throw Errors.validation({ newPassword: ['auth.passwordTooShort'] },
+          { min: KENNWORT_MIN })
+      }
+      /*
+       * Dasselbe Kennwort noch einmal zu setzen ist kein Fehler, aber es
+       * sieht wie einer aus: der Benutzer glaubt, er habe es geaendert, und
+       * alle seine anderen Sitzungen fliegen dabei heraus. Lieber sagen,
+       * dass nichts passiert ist.
+       */
+      if (b.currentPassword === b.newPassword) {
+        throw Errors.validation({ newPassword: ['auth.passwordUnchanged'] })
+      }
+
+      const eigen = await eigenesKennwort(req, p.userId)
+      if (!await pruefeKennwort(eigen.hash, b.currentPassword)) {
+        await zaehleFehlversuch(req.pool, p.userId, req.ip)
+        throw Errors.unauthorized('auth.badCredentials')
+      }
+
+      const neu = await hashPassword(b.newPassword)
+      const eigeneSitzung = req.cookies[COOKIE] ?? null
+
+      return tx(req.pool, req, async client => {
+        await client.query(
+          `UPDATE app_user
+              SET password_hash = $2, failed_login_count = 0, locked_until = NULL,
+                  updated_at = now()
+            WHERE id = $1`, [p.userId, neu])
+        await client.query(`DELETE FROM login_failure WHERE user_id = $1`, [p.userId])
+
+        /*
+         * Alle **anderen** Sitzungen beenden, die eigene nicht. Wer sein
+         * Kennwort aendert, tut das oft genug, weil jemand anderes es kennt;
+         * dann nuetzt das neue nichts, solange die fremde Sitzung
+         * weiterlaeuft. Die eigene stehen zu lassen ist der Unterschied zur
+         * Ruecksetzung: hier sitzt der Benutzer davor und will weiterarbeiten,
+         * nicht sich neu anmelden.
+         */
+        await client.query(
+          `UPDATE user_session SET revoked_at = now()
+            WHERE user_id = $1 AND revoked_at IS NULL AND id <> COALESCE($2,'')`,
+          [p.userId, eigeneSitzung])
+
+        // Offene Einmaltoken verfallen mit: nach einer Aenderung soll kein
+        // aelterer Ruecksetzlink mehr im Postfach gelten.
+        await client.query(
+          `UPDATE auth_token SET used_at = now()
+            WHERE user_id = $1 AND used_at IS NULL`, [p.userId])
+
+        return { status: 'ok' }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/email',
+    permission: null,
+    summary: 'Eigene Mailadresse aendern',
+    handler: async (req, reply) => {
+      const p = req.principal as Principal
+      if (p.userId === null) throw Errors.unauthorized()
+      // Festgehalten, weil die Verengung im Closure der Transaktion sonst
+      // verloren geht.
+      const userId = p.userId
+      const b = req.body as { currentPassword?: string; newEmail?: string }
+      if (!b.currentPassword || !b.newEmail) {
+        throw Errors.validation({ currentPassword: ['field.required'],
+                                  newEmail: ['field.required'] })
+      }
+      const neueAdresse = b.newEmail.trim()
+      if (!isSendableAddress(neueAdresse)) {
+        throw Errors.validation({ newEmail: ['field.email'] })
+      }
+
+      const eigen = await eigenesKennwort(req, userId)
+      if (!await pruefeKennwort(eigen.hash, b.currentPassword)) {
+        await zaehleFehlversuch(req.pool, userId, req.ip)
+        throw Errors.unauthorized('auth.badCredentials')
+      }
+      if (neueAdresse.toLowerCase() === eigen.email.toLowerCase()) {
+        throw Errors.validation({ newEmail: ['auth.emailUnchanged'] })
+      }
+
+      return tx(req.pool, req, async client => {
+        /*
+         * Belegt? Dann hier abweisen und nicht erst beim Bestaetigen. Sonst
+         * klickt jemand einen Link, der nie funktionieren konnte, und die
+         * Meldung erreicht ihn in einem Browserfenster ohne Zusammenhang.
+         *
+         * Das verraet, dass es diese Adresse gibt -- anders als bei der
+         * Anmeldung ist das hier hinnehmbar: der Aufrufer hat sich gerade
+         * mit seinem Kennwort ausgewiesen, und eine eindeutige Spalte laesst
+         * sich ohnehin durch Ausprobieren abtasten.
+         */
+        const belegt = await client.query(
+          `SELECT 1 FROM app_user WHERE lower(email) = lower($1) AND id <> $2`,
+          [neueAdresse, userId])
+        if (belegt.rows.length > 0) {
+          throw Errors.conflict('auth.emailTaken')
+        }
+
+        /*
+         * Aeltere offene Aenderungen verfallen. Sonst laegen nach drei
+         * Versuchen drei gueltige Links im Postfach, jeder auf eine andere
+         * Adresse -- und welcher zuletzt geklickt wird, entscheidet der
+         * Zufall.
+         */
+        await client.query(
+          `UPDATE auth_token SET used_at = now()
+            WHERE user_id = $1 AND kind = 'email_change' AND used_at IS NULL`,
+          [userId])
+
+        await einmalTokenUndPost(client, {
+          userId: userId, name: eigen.name, email: neueAdresse,
+          kind: 'email_change', newEmail: neueAdresse
+        })
+
+        /*
+         * Der Hinweis an die alte Adresse. Ohne Link, und das ist Absicht:
+         * eine Nachricht ueber eine Aenderung, die man nicht veranlasst hat,
+         * mit einem Knopf darin, ist die Bauform jeder Phishing-Mail.
+         */
+        const hinweis = renderEmailChangeNotice({
+          userName: eigen.name, maskedNewEmail: maskEmail(neueAdresse) })
+        await client.query(
+          `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
+                                       body_text, body_html)
+           VALUES ($1,'email_change_notice',$2,$3,$4,$5,$6)`,
+          [userId, eigen.email, eigen.name,
+           hinweis.subject, hinweis.text, hinweis.html])
+
+        reply.status(202)
+        // Die neue Adresse geht nicht zurueck: sie stuende sonst in jeder
+        // Antwort, und Antworten landen in Protokollen.
+        return { status: 'pending' }
+      })
+    }
+  })
+
+  /*
+   * Die neue Adresse bestaetigen. Oeffentlich wie die Ruecksetzung: der Link
+   * wird oft in einem anderen Browser geoeffnet als dem, in dem die Sitzung
+   * laeuft -- im Postfach auf dem Telefon etwa. Eine Sitzung zu verlangen
+   * hiesse, genau den Weg zu sperren, den die meisten nehmen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/email/confirm',
+    permission: null,
+    summary: 'Neue Mailadresse bestaetigen',
+    handler: async (req) => {
+      const { token } = req.body as { token?: string }
+      if (!token) throw Errors.validation({ token: ['field.required'] })
+
+      return tx(req.pool, req, async client => {
+        // Suchen und entwerten in einer Anweisung, wie bei der Ruecksetzung:
+        // zwei Anweisungen liessen zwei gleichzeitige Aufrufe beide durch.
+        const t = await client.query<{ user_id: number; new_email: string }>(
+          `UPDATE auth_token SET used_at = now()
+            WHERE token_hash = $1 AND kind = 'email_change'
+              AND used_at IS NULL AND expires_at > now()
+            RETURNING user_id, new_email`, [hashToken(token)])
+        if (t.rows.length === 0) throw Errors.validation({ token: ['auth.tokenInvalid'] })
+        const { user_id: userId, new_email: neueAdresse } = t.rows[0]!
+
+        /*
+         * Noch einmal pruefen, ob die Adresse inzwischen belegt ist. Zwischen
+         * Anforderung und Klick liegt bis zu ein Tag, und in der Zeit kann
+         * jemand anderes sie bekommen haben. Ohne diese Pruefung schluege
+         * stattdessen der eindeutige Index zu, und der Benutzer saehe einen
+         * Datenbankfehler.
+         */
+        const belegt = await client.query(
+          `SELECT 1 FROM app_user WHERE lower(email) = lower($1) AND id <> $2`,
+          [neueAdresse, userId])
+        if (belegt.rows.length > 0) throw Errors.conflict('auth.emailTaken')
+
+        await client.query(
+          `UPDATE app_user SET email = $2, updated_at = now() WHERE id = $1`,
+          [userId, neueAdresse])
+
+        /*
+         * Sitzungen bleiben. Anders als beim Kennwort ist hier nichts
+         * kompromittiert -- wer bestaetigt hat, sass an beiden Enden --, und
+         * jemanden an der Rezeption mitten im Check-in hinauszuwerfen, waere
+         * Schaden ohne Gegenwert.
+         */
+        return { status: 'ok' }
+      })
+    }
+  })
 }
 
 /**
@@ -622,22 +903,32 @@ export async function einmalTokenUndPost(
     userId: number; name: string | null; email: string; kind: AuthTokenKind
     /** Wer eingeladen hat. Bei einer Ruecksetzung durch den Benutzer selbst leer. */
     createdBy?: number | null
+    /** Nur bei `email_change`: die gewuenschte Adresse, die am Token haengt. */
+    newEmail?: string
   }
 ): Promise<void> {
   const { token, hash } = neuesToken()
   const gueltigMs = TOKEN_GUELTIGKEIT[opts.kind]
 
   await client.query(
-    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, created_by)
-     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5)`,
-    [opts.userId, opts.kind, hash, String(gueltigMs), opts.createdBy ?? null])
+    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, created_by,
+                             new_email)
+     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5, $6)`,
+    [opts.userId, opts.kind, hash, String(gueltigMs), opts.createdBy ?? null,
+     opts.newEmail ?? null])
 
-  const pfad = opts.kind === 'invite' ? 'einladung' : 'kennwort'
-  const link = `${config.publicAppUrl}/${pfad}?token=${token}`
+  const PFAD: Record<AuthTokenKind, string> = {
+    invite: 'einladung', password_reset: 'kennwort', email_change: 'mailadresse'
+  }
+  const link = `${config.publicAppUrl}/${PFAD[opts.kind]}?token=${token}`
   const stunden = Math.round(gueltigMs / 3_600_000)
   const text = opts.kind === 'invite'
     ? renderInviteEmail({ userName: opts.name, link, gueltigStunden: stunden })
-    : renderPasswordResetEmail({ userName: opts.name, link, gueltigStunden: stunden })
+    : opts.kind === 'email_change'
+      ? renderEmailChangeEmail({ userName: opts.name, newEmail: opts.email, link,
+                                 gueltigStunden: stunden })
+      : renderPasswordResetEmail({ userName: opts.name, link,
+                                   gueltigStunden: stunden })
 
   await client.query(
     `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,

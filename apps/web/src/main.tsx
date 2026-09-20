@@ -36,6 +36,8 @@ const queryClient = new QueryClient({
 interface Me {
   userId: number
   displayName: string
+  /** Die eigene Anmeldeadresse. Steht in der Kontomaske als Ausgangswert. */
+  email: string
   isPlatformStaff: boolean
   /** Der Account ist gesperrt oder archiviert -- nicht: kein Haus. */
   accountSuspended: boolean
@@ -167,10 +169,41 @@ function App(): JSX.Element {
      * des Kunden.
      */
     if (me.data.isPlatformStaff) {
-      return <I18nContext.Provider value={locale}>
+      /*
+       * **In der Shell und nicht daneben.** Vorher stand das Adminpanel
+       * fuer sich, ohne Kopfleiste -- und damit ohne Abmelden, ohne
+       * Sprachwahl und ohne den Weg zum eigenen Konto. Wer hier arbeitete,
+       * kam aus seiner Sitzung nur heraus, indem er das Cookie von Hand
+       * loeschte.
+       *
+       * Ohne Haus bleiben Hauswahl und Bildschirmleiste leer; beide
+       * vertragen das (Hauswahl zeigt sich erst ab zwei Haeusern).
+       */
+      return <Shell screen="adminpanel" onScreen={() => { /* nur ein Bildschirm */ }}
+                    screens={[]}
+                    locale={locale} onLocale={setLocale}
+                    benutzer={me.data.displayName}
+                    onAbmelden={() => { void abmelden() }}
+                    onArbeitsplatz={() => setArbeitsplatz(true)}
+                    gewechselt={me.data.workstationSwitched}
+                    haeuser={[]} haus={undefined}
+                    onHaus={() => { /* kein Haus zu waehlen */ }}>
+        {arbeitsplatz && (
+          <Arbeitsplatz benutzer={me.data.displayName} email={me.data.email}
+                        pinGesetzt={me.data.workstationPinSet}
+                        gewechselt={me.data.workstationSwitched}
+                        /*
+                         * Kein Personenwechsel ohne Haus: es gibt niemanden,
+                         * auf den zu wechseln waere. Kennwort und Mailadresse
+                         * stehen trotzdem da -- sie haengen an der Person,
+                         * nicht am Haus.
+                         */
+                        mitArbeitsplatz={false}
+                        onClose={() => setArbeitsplatz(false)} />
+        )}
         <AdminpanelSeite userId={me.data.userId}
                          platformPermissions={me.data.platformPermissions} />
-      </I18nContext.Provider>
+      </Shell>
     }
     /*
      * Zwei Gruende, kein Haus zu sehen, und sie brauchen verschiedene Saetze.
@@ -205,9 +238,10 @@ function App(): JSX.Element {
            haeuser={haeuser} haus={haus}
            onHaus={id => { setAdresse({ property: id, screen: null }) }}>
       {arbeitsplatz && (
-        <Arbeitsplatz benutzer={me.data.displayName}
+        <Arbeitsplatz benutzer={me.data.displayName} email={me.data.email}
                       pinGesetzt={me.data.workstationPinSet}
                       gewechselt={me.data.workstationSwitched}
+                      mitArbeitsplatz
                       onClose={() => setArbeitsplatz(false)} />
       )}
       {folioRef !== null
