@@ -269,6 +269,19 @@ export const plan = {
     en: 'by room category',
     tr: 'oda tipine göre' },
 
+  'plan.selectedRooms': {
+    de: '{n} Zimmer ausgewählt',
+    en: '{n} rooms selected',
+    tr: '{n} oda seçildi' },
+  'plan.bookSelection': {
+    de: 'Als Gruppe buchen',
+    en: 'Book as a group',
+    tr: 'Grup olarak rezerve et' },
+  'plan.clearSelection': {
+    de: 'Auswahl aufheben (Esc)',
+    en: 'Clear selection (Esc)',
+    tr: 'Seçimi temizle (Esc)' },
+
   'plan.bandScroll': {
     de: 'Liste scrollt',
     en: 'list scrolls',

@@ -448,3 +448,80 @@ describe('Das Band scrollt, statt abzuschneiden', () => {
     expect(quelle).toContain('overscroll-contain')
   })
 })
+
+/**
+ * Die Mehrfachauswahl, umgebaut.
+ *
+ * Vorher war sie ein Gummiband ueber einen zusammenhaengenden Bereich:
+ * Zimmer 1 bis 8 ging, Zimmer 1 und 20 nicht. Ein Haus, das eine Gruppe auf
+ * verstreute Zimmer legt -- weil die dazwischen belegt sind, der Normalfall
+ * bei einer Gruppe, die kurzfristig kommt --, konnte sie gar nicht als eine
+ * Buchung anlegen.
+ *
+ * Geprueft wird die Mechanik an der Quelle, nicht das Aussehen: ob ein
+ * Kasten blau ist, faengt keinen Fehler und bricht bei jeder Gestaltung.
+ */
+describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('haelt die Auswahl ueber den einzelnen Zug hinaus', () => {
+    expect(plan).toMatch(/const \[auswahl, setAuswahl\] = useState</)
+  })
+
+  it('legt jeder Zug dazu, statt zu ersetzen', () => {
+    // Das `Set` ist der Punkt: dieselbe Zeile zweimal zu ziehen darf sie
+    // nicht zweimal in die Buchung legen.
+    expect(plan).toContain("...new Set([...(vorher?.resourceIds ?? [])")
+  })
+
+  it('bucht nicht schon beim Loslassen', () => {
+    /*
+     * Vorher oeffnete das Loslassen sofort den Gruppendialog. Damit war die
+     * Auswahl genau einen Zug lang -- und ein Zug ist ein
+     * zusammenhaengender Bereich. Gebucht wird jetzt ueber die Leiste.
+     */
+    expect(plan).not.toMatch(/onCreateGroup\?\.\(gruppenAuswahl\(/)
+    expect(plan).toContain("t('plan.bookSelection')")
+  })
+
+  it('nimmt den zuletzt gezogenen Zeitraum fuer alle Zeilen', () => {
+    // Eine Gruppenbuchung kennt genau eine Anreise und eine Abreise.
+    // Zwoelf Zeilen mit zwoelf Zeitraeumen waeren zwoelf Buchungen.
+    expect(plan).toContain('arrival: neu.arrival, departure: neu.departure')
+  })
+
+  it('zeigt waehrend des Zugs die ganze Auswahl, nicht nur den letzten Streifen', () => {
+    expect(plan).toContain(
+      "const ids = new Set([...(auswahl?.resourceIds ?? []), ...zeilen.map(u => u.id)])")
+  })
+
+  it('hebt die Auswahl mit Esc auf', () => {
+    expect(plan).toContain("if (e.key === 'Escape') setAuswahl(null)")
+    // Am Fenster und nicht am Plan: der Plan haelt keinen Fokus, nach einem
+    // Zug liegt der auf dem zuletzt beruehrten Balken oder nirgends.
+    expect(plan).toContain("window.addEventListener('keydown', aufTaste)")
+    expect(plan).toContain("window.removeEventListener('keydown', aufTaste)")
+  })
+
+  it('hebt sie auch auf, wenn man ohne Modifikator woanders hinklickt', () => {
+    // Der Weg zurueck, den man ohne Anleitung findet. Er steht **vor** dem
+    // Beginn des naechsten Zugs, sonst loeschte er die Auswahl, die dieser
+    // Zug gerade aufbaut.
+    expect(plan).toMatch(
+      /setAuswahl\(null\)\n\s*setDragState\(\{ kind: 'create'/)
+  })
+
+  it('leert die Auswahl, wenn daraus eine Buchung wird', () => {
+    // Sonst liegt nach dem Anlegen ein Schatten ueber den frischen Balken,
+    // der aussieht wie eine zweite, ungebuchte Gruppe.
+    expect(plan).toMatch(/onCreateGroup\?\.\(\{[\s\S]*?\}\)\n\s*setAuswahl\(null\)/)
+  })
+
+  it('haelt die Leiste sichtbar, ohne die Kopfzeile zu verdecken', () => {
+    // Oben klebt die Kopfzeile mit den Tagen, und die wird beim Auswaehlen
+    // eines Zeitraums gebraucht. Beide Achsen, weil eine Auswahl ueber
+    // Zimmer 3 und Zimmer 200 liegen kann.
+    expect(plan).toContain('sticky bottom-0 left-0 z-30')
+  })
+})

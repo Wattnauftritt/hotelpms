@@ -144,6 +144,22 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
   const rasterRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<DragState | null>(null)
+  /**
+   * Die stehende Mehrfachauswahl.
+   *
+   * **Warum sie ueber den einzelnen Zug hinaus bestehen bleibt.** Vorher war
+   * die Auswahl ein Gummiband ueber einen Bereich von Zeile bis Zeile --
+   * Zimmer 1 bis 8 ging, Zimmer 1 und 20 nicht. Ein Haus, das eine Gruppe
+   * auf verstreute Zimmer legt, weil die dazwischen belegt sind, konnte sie
+   * gar nicht als eine Buchung anlegen.
+   *
+   * Jetzt sammelt jeder Zug mit Modifikator dazu. Der Zeitraum ist dabei
+   * einer fuer alle: die Gruppenbuchung kennt genau eine Anreise und eine
+   * Abreise (`CreateBooking.rooms`), und der zuletzt gezogene gilt fuer die
+   * ganze Auswahl -- sichtbar, weil alle Schattenbalken mitwandern.
+   */
+  const [auswahl, setAuswahl] = useState<
+    { resourceIds: number[]; arrival: string; departure: string } | null>(null)
   // Der aktuelle Zustand, synchron lesbar in den Fensterereignissen -- die
   // koennen nicht auf den naechsten Render warten wie `drag` selbst.
   const dragRef = useRef<DragState | null>(null)
@@ -280,7 +296,23 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           ...auswahlZeitraum(tage, d.startDay, d.day)
         })
       } else if (d.kind === 'group') {
-        onCreateGroup?.(gruppenAuswahl(data.units, tage, d))
+        /*
+         * Sammeln, nicht sofort buchen.
+         *
+         * Vorher oeffnete das Loslassen den Gruppendialog. Damit war die
+         * Auswahl genau ein Zug lang -- und ein Zug ist ein
+         * zusammenhaengender Bereich. Jetzt legt jeder Zug seine Zeilen
+         * dazu, und gebucht wird ueber die Leiste oben, wenn die Auswahl
+         * steht.
+         */
+        const neu = gruppenAuswahl(data.units, tage, d)
+        setAuswahl(vorher => ({
+          resourceIds: [...new Set([...(vorher?.resourceIds ?? []),
+                                    ...neu.rooms.map(r => r.resourceId)])],
+          // Der zuletzt gezogene Zeitraum gilt fuer die ganze Auswahl: die
+          // Gruppenbuchung kennt genau eine Anreise und eine Abreise.
+          arrival: neu.arrival, departure: neu.departure
+        }))
       } else if (d.kind === 'move') {
         const versatz = d.overResourceId === d.quelleResourceId
           ? d.day - d.startDay
@@ -338,7 +370,14 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     /** Zeile, an der die Anzahl steht. Nur bei der Mehrfachauswahl gesetzt. */
     zaehlerAn?: number
   } | null => {
-    if (drag === null) return null
+    if (drag === null) {
+      // Kein Zug, aber eine stehende Auswahl: die Schattenbalken bleiben
+      // sichtbar, sonst waere nicht zu sehen, was ausgewaehlt ist.
+      if (auswahl === null) return null
+      const ids = new Set(auswahl.resourceIds)
+      return { resourceIds: ids, zaehlerAn: auswahl.resourceIds[0],
+               ...balken(auswahl.arrival, auswahl.departure) }
+    }
     if (drag.kind === 'create') {
       const von = Math.min(drag.startDay, drag.day)
       const bis = Math.max(drag.startDay, drag.day)
@@ -351,9 +390,17 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       const vonZeile = Math.min(drag.startIndex, drag.index)
       const bisZeile = Math.max(drag.startIndex, drag.index)
       const zeilen = data.units.slice(vonZeile, bisZeile + 1)
+      /*
+       * Das laufende Gummiband **und** was schon steht. So sieht man
+       * waehrend des Zugs die ganze Auswahl und nicht nur den letzten
+       * Streifen -- und weil der Zeitraum einer fuer alle ist, wandern die
+       * bereits gewaehlten Zeilen sichtbar mit.
+       */
+      const ids = new Set([...(auswahl?.resourceIds ?? []), ...zeilen.map(u => u.id)])
+      const erste = data.units.find(u => ids.has(u.id))
       return {
-        resourceIds: new Set(zeilen.map(u => u.id)),
-        zaehlerAn: zeilen[0]?.id,
+        resourceIds: ids,
+        zaehlerAn: erste?.id,
         left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
     }
     if (drag.kind === 'resize') {
@@ -385,7 +432,24 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       return { resourceIds: new Set([drag.overResourceId]), ...b }
     }
     return null
-  }, [drag, balken, data.from, data.units])
+  }, [drag, auswahl, balken, data.from, data.units])
+
+  /*
+   * Esc hebt die Auswahl auf.
+   *
+   * Der zweite Weg zurueck neben dem Klick ohne Modifikator, und der
+   * gewohnte: wer etwas ausgewaehlt hat und es doch nicht will, drueckt
+   * Esc. Am Fenster und nicht am Plan, weil der Plan keinen Fokus haelt --
+   * nach einem Zug liegt er auf dem zuletzt beruehrten Balken oder nirgends.
+   */
+  useEffect(() => {
+    if (auswahl === null) return
+    const aufTaste = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setAuswahl(null)
+    }
+    window.addEventListener('keydown', aufTaste)
+    return () => { window.removeEventListener('keydown', aufTaste) }
+  }, [auswahl !== null])
 
   /**
    * Welcher Balken waehrend eines Umzugs oder einer Groessenaenderung
@@ -423,6 +487,10 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           return
         }
       }
+      // Ohne Modifikator irgendwo hinklicken hebt die Auswahl auf. Das ist
+      // der Weg zurueck, den man ohne Anleitung findet -- Esc ist der
+      // andere, und beide sind gewollt.
+      setAuswahl(null)
       setDragState({ kind: 'create', resourceId, categoryId, startDay, day: startDay })
     }, [tagUnter, zeileVonZimmer, setDragState])
 
@@ -593,6 +661,65 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           <div className="p-6 text-sm text-neutral-500">{t('common.none')}</div>
         )}
       </div>
+      {/*
+        * Die Leiste der stehenden Auswahl.
+        *
+        * Sie ist der Grund, warum die Auswahl ueberhaupt stehen bleiben
+        * kann: ohne einen sichtbaren Weg zum Buchen waere ein Satz
+        * markierter Zeilen eine Sackgasse. Sie nennt die Zahl, weil man
+        * verstreute Zeilen nicht mit einem Blick zaehlt, und den Zeitraum,
+        * weil der zuletzt gezogene fuer alle gilt.
+        *
+        * `sticky` an beiden Achsen, damit sie auch dann sichtbar bleibt,
+        * wenn die Auswahl ueber Zimmer 3 und Zimmer 200 liegt und dazwischen
+        * gescrollt wird. **Unten** und nicht oben: oben klebt die Kopfzeile
+        * mit den Tagen, und die wird beim Auswaehlen eines Zeitraums
+        * gebraucht -- eine Leiste davor haette genau die Angabe verdeckt,
+        * die man gerade liest.
+        */}
+      {auswahl !== null && auswahl.resourceIds.length > 0 && (
+        <div className="sticky bottom-0 left-0 z-30 flex flex-wrap items-center gap-2
+                        bg-neutral-900 text-white px-3 py-1.5 text-sm">
+          <span className="font-medium">
+            {t('plan.selectedRooms', { n: auswahl.resourceIds.length })}
+          </span>
+          <span className="opacity-75 text-xs">
+            {formatDate(auswahl.arrival, locale)} – {formatDate(auswahl.departure, locale)}
+          </span>
+          <div className="grow" />
+          {/*
+            * Buchen leert die Auswahl.
+            *
+            * Sie ist ab hier in der Maske aufgehoben -- dort stehen
+            * dieselben Zimmer und lassen sich einzeln entfernen. Stehen zu
+            * bleiben hiesse, nach dem Anlegen einen Schatten ueber den
+            * frischen Balken zu haben, der aussieht wie eine zweite,
+            * ungebuchte Gruppe.
+            */}
+          <button type="button"
+                  onClick={() => {
+                    onCreateGroup?.({
+                      rooms: auswahl.resourceIds.flatMap(id => {
+                        const u = zimmerNach.get(id)
+                        return u === undefined
+                          ? []
+                          : [{ resourceId: id, categoryId: u.category_id }]
+                      }),
+                      arrival: auswahl.arrival, departure: auswahl.departure
+                    })
+                    setAuswahl(null)
+                  }}
+                  className="px-3 py-1 rounded bg-white text-neutral-900 text-sm">
+            {t('plan.bookSelection')}
+          </button>
+          {/* Esc tut dasselbe; der Knopf ist der Weg fuer den, der das
+              nicht weiss. */}
+          <button type="button" onClick={() => setAuswahl(null)}
+                  className="px-2 py-1 rounded border border-white/40 text-sm">
+            {t('plan.clearSelection')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
