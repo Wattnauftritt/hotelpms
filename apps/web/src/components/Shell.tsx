@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { I18nContext, useT, useLocale, LOCALES, type Locale }
   from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
@@ -127,8 +127,43 @@ function Abmelden(
   )
 }
 
+/**
+ * Das Kontextmenue des Browsers bleibt zu.
+ *
+ * **Warum.** An der Rezeption steht ein Arbeitsprogramm, kein Dokument.
+ * Ein Menue mit "Zurueck", "Seite neu laden", "Bild speichern",
+ * "Untersuchen" beantwortet keine Frage, die hier jemand hat -- und zwei
+ * seiner Eintraege ("Zurueck", "Neu laden") werfen mitten im Vorgang eine
+ * halb ausgefuellte Maske weg. Der rechte Knopf gehoert spaeter uns.
+ *
+ * **Ausgenommen sind Eingabefelder.** Dort ist Ausschneiden, Einfuegen und
+ * die Rechtschreibpruefung genau das, was das Menue kann und was hier
+ * gebraucht wird; es dort zu sperren waere Schaden ohne Gegenwert. Wer
+ * angezeigten Text kopieren will, markiert ihn und nimmt Strg+C -- das
+ * bleibt unberuehrt.
+ *
+ * Am `document` und nicht am aeusseren `div`: ein Dialog haengt am
+ * Dokumentkoerper und nicht unter der Shell, und dort waere das Menue
+ * sonst wieder offen.
+ */
+function useKeinKontextmenue(): void {
+  useEffect(() => {
+    const auf = (e: MouseEvent): void => {
+      const ziel = e.target
+      if (ziel instanceof HTMLElement
+          && (ziel.closest('input, textarea, [contenteditable="true"]') !== null)) {
+        return
+      }
+      e.preventDefault()
+    }
+    document.addEventListener('contextmenu', auf)
+    return () => { document.removeEventListener('contextmenu', auf) }
+  }, [])
+}
+
 export function Shell(props: Props): JSX.Element {
   const online = useOnline()
+  useKeinKontextmenue()
   return (
     <I18nContext.Provider value={props.locale}>
       <div className="min-h-screen bg-neutral-50 text-neutral-900">

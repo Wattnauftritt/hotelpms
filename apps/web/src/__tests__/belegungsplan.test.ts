@@ -547,16 +547,37 @@ describe('Eine Gruppenbuchung wandert als Gruppe', () => {
   const bildschirm = readFileSync(
     new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
 
-  it('verschiebt beim seitlichen Ziehen die ganze Gruppe', () => {
-    expect(plan).toContain('if (d.bookingRooms > 1 && !d.einzeln)')
+  it('verschiebt einzeln, solange nichts gedrueckt ist', () => {
+    /*
+     * Die vorsichtige Richtung als Vorgabe: wer daneben greift, verschiebt
+     * eine Reservierung und nicht acht. Acht zurueckzuholen ist Arbeit,
+     * eine ist ein Zug.
+     */
+    expect(plan).toContain('if (d.bookingRooms > 1 && d.alleDerGruppe)')
     expect(plan).toContain('onShiftGroup?.(d.bookingRef, versatz)')
   })
 
-  it('laesst mit Alt doch nur das eine Zimmer wandern', () => {
+  it('nimmt mit Alt die ganze Gruppe mit', () => {
     // Beim **Greifen** abgelesen, nicht beim Loslassen: waehrend des Zugs
     // liest niemand mehr die Tastatur, und ein `altKey` am Ende waere eine
     // andere Frage als die, die der Mensch beim Aufsetzen beantwortet hat.
-    expect(plan).toContain('einzeln: e.altKey')
+    expect(plan).toContain('alleDerGruppe: e.altKey')
+  })
+
+  it('hebt beim Festhalten alle Zimmer derselben Buchung hervor', () => {
+    /*
+     * Einem Balken sieht man nicht an, dass sieben weitere dazugehoeren,
+     * und in einem Plan mit hundert Zeilen liegen sie verstreut. Wer einen
+     * anfasst, soll sofort sehen, was mit Alt mitwandern wuerde -- und was
+     * nicht.
+     *
+     * Ein Ring und keine andere Farbe: die Farbe sagt den Zustand
+     * (Option, bestaetigt, angereist), und den zu ueberschreiben hiesse,
+     * eine Information gegen eine andere zu tauschen.
+     */
+    expect(plan).toContain('const gehaltenerGruppenRef = drag !== null')
+    expect(plan).toContain("r.booking_ref === p.gruppenRef")
+    expect(plan).toContain('ring-sky-500')
   })
 
   it('schickt einen Versatz in Tagen, keinen neuen Zeitraum', () => {
@@ -629,5 +650,91 @@ describe('Die Gruppenmaske', () => {
      * 44 Pixel breiten Kasten waere ein Fehlklick in Serie.
      */
     expect(seitenfenster).toContain('onOpenGroup(r.bookingRef)')
+  })
+})
+
+/**
+ * Das Band der Buchungen ohne Zimmer ist auch ein **Ziel**, nicht nur eine
+ * Liste.
+ *
+ * In einem vollen Haus lassen sich zwei Buchungen nicht tauschen, ohne dass
+ * eine von beiden kurz nirgends liegt: das Zimmer, das frei werden soll,
+ * ist erst frei, wenn sein Gast woanders liegt -- und der passt nur dorthin,
+ * wo der erste noch liegt. Ohne Zwischenablage bliebe nur stornieren und
+ * neu buchen.
+ */
+describe('Eine Buchung laesst sich ins Band zuruecklegen', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+
+  it('nimmt beim Ablegen im Band das Zimmer ab', () => {
+    expect(plan).toContain('onUnassign?.(d.reservationRef)')
+    expect(bildschirm).toContain("zuweisen.mutate({ reservationRef, resourceId: null })")
+  })
+
+  it('prueft das Band vor dem Zeitversatz', () => {
+    /*
+     * Wer den Balken nach oben ins Band zieht, hat ihn dabei fast immer
+     * auch seitlich bewegt. Stuende der Zeitversatz zuerst, waere eine
+     * Umbuchung auf ein anderes Datum ein zweiter, ungewollter Effekt
+     * derselben Geste.
+     */
+    const bandZuerst = plan.indexOf('if (d.moved && d.ueberBand)')
+    const versatzDanach = plan.indexOf('} else if (d.moved && versatz !== 0) {')
+    expect(bandZuerst).toBeGreaterThan(0)
+    expect(versatzDanach).toBeGreaterThan(bandZuerst)
+  })
+
+  it('unterscheidet das Band von "ueber gar keiner Zeile"', () => {
+    // "Ueber keiner Zeile" heisst auch "ueber der Kopfzeile" oder "neben
+    // dem Plan". Daraus ein Abnehmen zu machen waere ein verlorenes Zimmer
+    // bei jedem Zug, der danebengeht.
+    expect(plan).toContain('data-unassigned-band')
+    expect(plan).toContain('ueberBand: imBand')
+  })
+
+  it('zeigt das Band auch dann, wenn es leer ist und ein Balken gehalten wird', () => {
+    /*
+     * Sonst fehlt das Ziel genau dann, wenn man es zum ersten Mal braucht:
+     * in einem vollen, sauber zugewiesenen Haus steht dort nichts, und
+     * gerade dort ist Umsortieren noetig.
+     */
+    expect(plan).toContain('(nichtZugewiesen.length > 0 || bandAlsZiel)')
+  })
+
+  it('bietet das Ziel nicht an, wenn die Buchung schon dort liegt', () => {
+    // Ein Ziel, das nichts aendert, ist eine Zusage, die ins Leere geht.
+    expect(plan).toContain('&& drag.quelleResourceId !== null')
+  })
+})
+
+/**
+ * Der rechte Mausknopf gehoert uns, nicht dem Browser.
+ *
+ * An der Rezeption steht ein Arbeitsprogramm, kein Dokument. "Zurueck",
+ * "Seite neu laden", "Untersuchen" beantworten keine Frage, die hier jemand
+ * hat -- und zwei davon werfen mitten im Vorgang eine halb ausgefuellte
+ * Maske weg.
+ */
+describe('Das Kontextmenue des Browsers bleibt zu', () => {
+  const shell = readFileSync(
+    new URL('../components/Shell.tsx', import.meta.url), 'utf8')
+
+  it('faengt das Kontextmenue am Dokument ab', () => {
+    // Am `document` und nicht am aeusseren `div`: ein Dialog haengt am
+    // Dokumentkoerper und nicht unter der Shell.
+    expect(shell).toContain("document.addEventListener('contextmenu', auf)")
+    expect(shell).toContain("document.removeEventListener('contextmenu', auf)")
+  })
+
+  it('laesst es in Eingabefeldern stehen', () => {
+    /*
+     * Dort ist Ausschneiden, Einfuegen und die Rechtschreibpruefung genau
+     * das, was das Menue kann und was gebraucht wird. Es auch dort zu
+     * sperren waere Schaden ohne Gegenwert.
+     */
+    expect(shell).toContain('input, textarea, [contenteditable="true"]')
   })
 })

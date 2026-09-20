@@ -1455,21 +1455,46 @@ export function reservationRoutes(app: FastifyInstance): void {
     method: 'POST',
     url: '/v1/reservations/:reservationRef/assign-unit',
     permission: 'reservation:write',
-    summary: 'Zimmer zuweisen',
+    summary: 'Zimmer zuweisen oder wieder abnehmen',
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
-      const { resourceId } = req.body as { resourceId: number }
+      const { resourceId } = req.body as { resourceId: number | null }
       return tx(req.pool, req, async client => {
         const r = await client.query<{ id: number; property_id: number; category_id: number
-                                       arrival: string; departure: string }>(
-          `SELECT id, property_id, category_id, arrival::text, departure::text
+                                       arrival: string; departure: string
+                                       status: ReservationStatus }>(
+          `SELECT id, property_id, category_id, arrival::text, departure::text, status
              FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
 
-        await assertUnitAssignable(client, {
-          resourceId, propertyId: res.property_id,
-          arrival: res.arrival, departure: res.departure, exceptReservationId: res.id })
+        /*
+         * `null` nimmt das Zimmer wieder ab und legt die Buchung zurueck
+         * ins Band der Unzugewiesenen.
+         *
+         * **Warum das gebraucht wird.** Im vollen Haus geht Umsortieren
+         * nicht in einem Zug: das Zimmer, das man freimachen will, ist erst
+         * frei, wenn sein Gast woanders liegt -- und der passt nur dorthin,
+         * wo der erste noch liegt. Ohne einen Zwischenablageplatz muesste
+         * die Rezeption stornieren und neu buchen, und das ist zweimal
+         * falsch: der Vorgang verliert seine Geschichte, und zwischen
+         * beidem ist der Platz im freien Verkauf.
+         *
+         * Der **Bestand bleibt unberuehrt**: gezaehlt wird je Zimmergruppe,
+         * und die Buchung haelt ihren Platz weiter. Nur die Zeile im Plan
+         * wechselt.
+         *
+         * **Nicht bei angereistem Gast.** Der liegt im Zimmer; die Zeile im
+         * Plan zu leeren hiesse, die Hausliste und die Reinigung auf ein
+         * leeres Zimmer zu schicken, in dem jemand schlaeft.
+         */
+        if (resourceId === null) {
+          if (res.status === 'InHouse') throw Errors.conflict('stay.inHouseKeepsRoom')
+        } else {
+          await assertUnitAssignable(client, {
+            resourceId, propertyId: res.property_id,
+            arrival: res.arrival, departure: res.departure, exceptReservationId: res.id })
+        }
 
         await client.query(
           `UPDATE reservation SET resource_id = $2, updated_at = now() WHERE id = $1`,
