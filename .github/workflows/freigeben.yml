@@ -77,15 +77,38 @@ jobs:
         run: |
           set -euo pipefail
           sha="${{ steps.stand.outputs.sha }}"
-          # Drei Faelle auseinanderhalten, nicht zwei: ein Lauf, der noch
-          # laeuft, hat conclusion == null und ist KEIN fehlender Lauf. Wer
-          # dort "es gibt keinen CI-Lauf" liest, sucht an der falschen
-          # Stelle -- er muss nur eine Minute warten.
-          ergebnis="$(gh api "repos/${{ github.repository }}/commits/$sha/check-runs" \
-            --jq '[.check_runs[] | select(.name == "build")] | first
-                  | if . == null then "fehlt"
-                    elif .conclusion == null then "laeuft"
-                    else .conclusion end')"
+          # Gefragt wird der **Workflow-Lauf**, nicht ein einzelner Job.
+          #
+          # Hier stand `select(.name == "build")`, und das war der eine Job,
+          # den CI damals hatte. Als CI in `pruefen` und vier Testanteile
+          # zerfiel, gab es diesen Namen nicht mehr -- und die Freigabe
+          # meldete "es gibt keinen CI-Lauf" fuer einen Stand, der
+          # tatsaechlich gruen war. Ein Jobname ist eine Zusage, die kein
+          # Mensch nachtraegt, wenn er sie bricht.
+          #
+          # Der Lauf ist die richtige Ebene: er ist genau dann `success`,
+          # wenn **alle** seine Jobs es sind. Wer stattdessen eine Liste von
+          # Jobnamen pflegte, haette beim naechsten Anteil wieder eine
+          # Freigabe, die einen halb gepruefen Stand durchlaesst.
+          ergebnis="$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" \
+            --jq '.workflow_runs
+                  | if length == 0 then "fehlt"
+                    elif any(.[]; .conclusion == "success") then "success"
+                    elif any(.[]; .status != "completed") then "laeuft"
+                    else ([.[] | .conclusion] | unique | join(", "))
+                    end')"
+          # Vier Faelle, nicht zwei.
+          #
+          # `laeuft` ist kein fehlender Lauf: wer dort "es gibt keinen
+          # CI-Lauf" liest, sucht an der falschen Stelle -- er muss nur eine
+          # Minute warten.
+          #
+          # **Ein gruener Lauf genuegt, auch wenn daneben ein abgebrochener
+          # steht.** Seit `cancel-in-progress` ist das der Normalfall: zwei
+          # Pushes kurz hintereinander, und der erste Lauf endet als
+          # `cancelled`. Zu verlangen, dass *alle* Laeufe gruen sind, hiesse,
+          # jeden Stand zu sperren, auf den schnell ein zweiter folgte.
           case "$ergebnis" in
             success) echo "CI ist gruen." ;;
             fehlt)
