@@ -492,7 +492,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                           {gruppe.code}
                         </span>
                       )}
-                      {r.last_name ?? r.public_ref}
+                      {r.last_name ?? t('tape.noGuest')}
                     </button>
                   )
                 })}
@@ -642,7 +642,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                   behandelt als jeden anderen -- deshalb ein Merkmal am
                   Balken selbst, nicht erst im Seitenfenster. */}
               {r.notes && <span aria-hidden className="mr-0.5">📌</span>}
-              {r.last_name ?? r.public_ref}
+              {r.last_name ?? t('tape.noGuest')}
               {/* Griffe an den Raendern: verkuerzen und verlaengern (A4). */}
               <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
                     className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />

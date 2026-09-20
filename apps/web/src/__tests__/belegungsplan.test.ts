@@ -149,6 +149,52 @@ describe('Gastauswahl', () => {
   }
 })
 
+describe('Der eingetippte Name geht nicht verloren', () => {
+  /*
+   * Der Befund aus dem Betrieb: "das System generiert Namen wie
+   * HQNQHPXMDTFA". Es generierte keine. Die Reservierung hatte gar keinen
+   * Gast, und der Plan zeigte an der Stelle des Namens ihre eigene Kennung
+   * -- zwoelf Zeichen aus generate_public_ref, die wie ein erfundener Name
+   * aussehen.
+   *
+   * Zwei Ursachen, beide hier festgehalten: das Suchfeld gab den
+   * eingetippten Namen nicht weiter, und der Dialog liess sich ohne Gast
+   * abschicken.
+   */
+  const picker = readFileSync(
+    new URL('../components/GuestPicker.tsx', import.meta.url), 'utf8')
+  const dialog = readFileSync(
+    new URL('../components/BookingDialog.tsx', import.meta.url), 'utf8')
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('bietet den eingetippten Namen an, statt auf ein leeres Formular zu verweisen', () => {
+    expect(picker).toContain('guestPicker.createNamed')
+  })
+
+  it('fuellt das Formular mit dem Suchbegriff vor', () => {
+    // Sonst muss der Name ein zweites Mal getippt werden, und genau das
+    // tut niemand.
+    expect(picker).toContain('vorgabe={begriff.trim()}')
+    expect(picker).toContain('useState(vorgabe)')
+  })
+
+  it('laesst den Dialog ohne Gast nicht abschicken', () => {
+    expect(dialog).toContain('guest !== null')
+  })
+
+  it('zeigt im Plan keine Kennung an der Stelle eines Namens', () => {
+    /*
+     * Die Kennung bleibt im Titel des Balkens stehen, wo sie hingehoert --
+     * nur nicht als Beschriftung. Eine Reservierung ohne Gast gibt es
+     * weiterhin, sie kommt so aus einem Kanal; sie soll nur sagen, dass
+     * ihr einer fehlt.
+     */
+    expect(plan).not.toMatch(/\{r\.last_name \?\? r\.public_ref\}/)
+    expect(plan).toContain("t('tape.noGuest')")
+  })
+})
+
 /**
  * Wohin eine Buchung ohne Zimmer darf.
  *

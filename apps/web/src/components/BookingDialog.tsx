@@ -29,7 +29,18 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   const [departure, setDeparture] = useState(anfangsAbreise)
   const buchen = useCreateBooking(propertyId)
 
-  const gueltig = departure > arrival
+  /*
+   * **Ohne Gast geht nichts hinaus.** Vorher war der Knopf auch dann aktiv,
+   * wenn niemand ausgewählt war: `guestRef` blieb `undefined`, die
+   * Reservierung entstand ohne Gast, und im Plan stand danach ihre Kennung
+   * an der Stelle des Namens. Das sah aus, als erfinde das System Namen.
+   *
+   * Die Datenbank lässt eine Reservierung ohne Gast weiterhin zu, und das
+   * bleibt richtig: aus einem Kanal kommt sie manchmal so an. Wer sie hier
+   * von Hand anlegt, weiß dagegen immer einen Namen -- und sei es nur
+   * „Meier".
+   */
+  const gueltig = departure > arrival && guest !== null
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
@@ -73,6 +84,12 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
           <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
           <GuestPicker value={guest} onChange={setGuest} />
         </div>
+
+        {/* Der Grund steht an der gesperrten Stelle, nicht am Knopf: wer
+            dort sucht, warum nichts geht, sucht bei sich. */}
+        {guest === null && (
+          <div className="text-xs text-neutral-500">{t('booking.guestRequired')}</div>
+        )}
 
         <label className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('booking.notes')}</span>

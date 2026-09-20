@@ -153,6 +153,15 @@ export const plan = {
     de: 'Abreise',
     en: 'Departure',
     tr: 'Çıkış' },
+  'booking.guestRequired': {
+    de: 'Ohne Gast lässt sich die Reservierung nicht anlegen. Ein Nachname '
+      + 'genügt.',
+    en: 'The reservation cannot be created without a guest. A surname is enough.',
+    tr: 'Misafir olmadan rezervasyon oluşturulamaz. Bir soyadı yeterlidir.' },
+  'tape.noGuest': {
+    de: 'ohne Gast',
+    en: 'no guest',
+    tr: 'misafir yok' },
   'booking.guest': {
     de: 'Gast',
     en: 'Guest',
@@ -283,6 +292,10 @@ export const plan = {
     de: 'Keine Treffer',
     en: 'No matches',
     tr: 'Sonuç yok' },
+  'guestPicker.createNamed': {
+    de: '„{name}" als neuen Gast anlegen',
+    en: 'Create “{name}” as a new guest',
+    tr: '„{name}" adını yeni misafir olarak oluştur' },
   'guestPicker.createNew': {
     de: 'Neuen Gast anlegen',
     en: 'Create new guest',
