@@ -236,6 +236,27 @@ export const plan = {
     en: 'Booking needs a guest. Search or create one.',
     tr: 'Misafir olmadan rezervasyon yapılamaz. Arayın veya yeni kayıt oluşturun.' },
 
+  'plan.monthBack': {
+    de: 'Einen Monat zurück',
+    en: 'One month back',
+    tr: 'Bir ay geri' },
+  'plan.monthForward': {
+    de: 'Einen Monat vor',
+    en: 'One month forward',
+    tr: 'Bir ay ileri' },
+  'plan.yearBack': {
+    de: 'Ein Jahr zurück',
+    en: 'One year back',
+    tr: 'Bir yıl geri' },
+  'plan.yearForward': {
+    de: 'Ein Jahr vor',
+    en: 'One year forward',
+    tr: 'Bir yıl ileri' },
+  'plan.groupByCategory': {
+    de: 'nach Zimmergruppe',
+    en: 'by room category',
+    tr: 'oda tipine göre' },
+
   'plan.bandScroll': {
     de: 'Liste scrollt',
     en: 'list scrolls',

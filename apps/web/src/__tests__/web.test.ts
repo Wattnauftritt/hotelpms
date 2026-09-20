@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { today, addDays, daysBetween, eachDay, isWeekend } from '../lib/dates.js'
+import { today, addDays, addMonths, daysBetween, eachDay, isWeekend }
+  from '../lib/dates.js'
 import { formatMoney, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { SCREENS, visibleScreens, resolveScreen } from '../screens.js'
 
@@ -13,6 +14,27 @@ import { SCREENS, visibleScreens, resolveScreen } from '../screens.js'
  */
 
 describe('Kalenderdaten', () => {
+  it('blaettert Monate, ohne ueber das Monatsende zu rutschen', () => {
+    /*
+     * `setUTCMonth` allein ergibt fuer den 31. Januar plus einen Monat den
+     * 3. Maerz: der Februar hat keinen 31., und JavaScript zaehlt still
+     * weiter. Wer im Plan vom 31. Januar vorblaettert, will den Februar
+     * sehen.
+     */
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-28')
+    expect(addMonths('2026-03-31', -1)).toBe('2026-02-28')
+    expect(addMonths('2026-10-15', 1)).toBe('2026-11-15')
+    expect(addMonths('2026-12-15', 1)).toBe('2027-01-15')
+    expect(addMonths('2026-01-15', -1)).toBe('2025-12-15')
+  })
+
+  it('trifft den Schalttag beim Jahressprung', () => {
+    // Ein Jahr sind zwoelf Monate. Der 29. Februar wird zum 28., nicht zum
+    // 1. Maerz.
+    expect(addMonths('2028-02-29', 12)).toBe('2029-02-28')
+    expect(addMonths('2026-06-30', 12)).toBe('2027-06-30')
+  })
+
   it('rechnet ueber Monats- und Jahresgrenzen', () => {
     expect(addDays('2026-10-31', 1)).toBe('2026-11-01')
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01')

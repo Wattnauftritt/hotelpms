@@ -3,7 +3,7 @@ import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
 import { useAssignUnit, useChangeStay } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
-import { today, addDays, eachDay } from '../lib/dates.js'
+import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
 import { TapeChart, type Umzug } from '../components/TapeChart.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
@@ -28,6 +28,15 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 }): JSX.Element {
   const [von, setVon] = useState(today())
   const [tage, setTage] = useState<number>(30)
+  /*
+   * Zimmer nach Gruppe oder nach Nummer.
+   *
+   * Nach Gruppe ist die Vorgabe und fuer den Verkauf richtig: wer ein
+   * Doppelzimmer sucht, sieht alle nebeneinander. Fuer alles, was am
+   * Gebaeude haengt -- Handwerker im dritten Stock, Reinigung einer Etage --
+   * ist die Zimmernummer die Reihenfolge, in der ein Mensch laeuft.
+   */
+  const [gruppiert, setGruppiert] = useState(true)
   // Balken anklicken zeigt die Reservierung im Seitenfenster (A1); der Plan
   // bleibt dahinter sichtbar.
   const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
@@ -53,10 +62,42 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
 
+  /*
+   * Die Sortierung liegt hier und nicht in der Schnittstelle: sie ist eine
+   * Frage der Ansicht, und ein zweiter Aufruf nur zum Umsortieren waere
+   * eine Runde fuer etwas, das schon im Speicher liegt.
+   *
+   * `numeric` im Vergleich, sonst steht 110 vor 2 -- die Zimmernummer ist
+   * eine Zeichenkette, aber gelesen wird sie als Zahl.
+   */
+  const daten = useMemo(() => {
+    if (q.data === undefined || gruppiert) return q.data
+    return { ...q.data, units: [...q.data.units].sort(
+      (a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })) }
+  }, [q.data, gruppiert])
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <DatumsWahl value={von} onChange={setVon} step={7} />
+        {/* Monat und Jahr zum Durchklicken. Die Wochenpfeile daneben bleiben:
+            im Alltag blaettert die Rezeption wochenweise, im Jahresgeschaeft
+            monatsweise, und beides an einem Regler unterzubringen hiesse,
+            das haeufigere umstaendlicher zu machen. */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => setVon(addMonths(von, -12))}
+                  title={t('plan.yearBack')} aria-label={t('plan.yearBack')}
+                  className="px-2 py-1 border border-neutral-300 rounded text-sm">«</button>
+          <button onClick={() => setVon(addMonths(von, -1))}
+                  title={t('plan.monthBack')} aria-label={t('plan.monthBack')}
+                  className="px-2 py-1 border border-neutral-300 rounded text-sm">‹</button>
+          <button onClick={() => setVon(addMonths(von, 1))}
+                  title={t('plan.monthForward')} aria-label={t('plan.monthForward')}
+                  className="px-2 py-1 border border-neutral-300 rounded text-sm">›</button>
+          <button onClick={() => setVon(addMonths(von, 12))}
+                  title={t('plan.yearForward')} aria-label={t('plan.yearForward')}
+                  className="px-2 py-1 border border-neutral-300 rounded text-sm">»</button>
+        </div>
         <button onClick={() => setVon(today())}
                 className="text-sm px-2 py-1 border border-neutral-300 rounded">
           {t('common.today')}
@@ -72,15 +113,29 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
             </button>
           ))}
         </div>
+        <label className="text-sm flex items-center gap-1.5 text-neutral-700">
+          <input type="checkbox" checked={gruppiert}
+                 onChange={e => setGruppiert(e.target.checked)} />
+          {t('plan.groupByCategory')}
+        </label>
         <div className="grow" />
         <Legende />
       </div>
 
+      {/*
+        * Eine Zeile, nicht eine je Warnung.
+        *
+        * Gestapelt schoben drei Hinweise den Plan um drei Zeilen nach
+        * unten -- und der Plan ist der Bildschirm, auf den die Rezeption
+        * den ganzen Tag sieht. Der volle Text steht weiterhin im Titel,
+        * falls die Zeile abschneidet.
+        */}
       {warnungen.length > 0 && (
-        <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs
-                        text-amber-900 space-y-0.5">
-          <div className="font-medium">{t('warnings.title')}</div>
-          {warnungen.map((w, i) => <div key={i}>{w}</div>)}
+        <div title={warnungen.join('\n')}
+             className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs
+                        text-amber-900 truncate">
+          <span className="font-medium">{t('warnings.title')}:</span>{' '}
+          {warnungen.join(' · ')}
         </div>
       )}
 
@@ -88,18 +143,18 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         <Fehler error={zuweisen.error ?? umbuchen.error} />
       )}
 
-      {q.isError && q.data === undefined ? <Fehler error={q.error} />
-        : q.data === undefined ? <Laedt />
-        : <TapeChart data={q.data}
+      {q.isError && daten === undefined ? <Fehler error={q.error} />
+        : daten === undefined ? <Laedt />
+        : <TapeChart data={daten}
                       onSelect={setAusgewaehlt}
                       onCreate={sel => {
-                        const u = q.data!.units.find(x => x.id === sel.resourceId)
+                        const u = daten.units.find(x => x.id === sel.resourceId)
                         setAuswahl({ ...sel, roomCode: u?.code ?? '',
                                       categoryName: u?.category_name ?? '',
                                       maxOccupancy: u?.max_occupancy })
                       }}
                       onCreateGroup={sel => {
-                        const zimmer = new Map(q.data!.units.map(u => [u.id, u]))
+                        const zimmer = new Map(daten.units.map(u => [u.id, u]))
                         setGruppe({
                           arrival: sel.arrival, departure: sel.departure,
                           rooms: sel.rooms.map(r => ({
