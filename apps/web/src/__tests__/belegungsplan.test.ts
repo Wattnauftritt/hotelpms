@@ -254,9 +254,51 @@ describe('Die Maske fuer eine neue Reservierung', () => {
 
   it('zeigt die Notiz im Plan als Text, nicht als Merkmal', () => {
     // Eine Stecknadel sagt, dass es eine Notiz gibt, und verschweigt
-    // welche -- also genau das, was man wissen will.
-    expect(plan).toContain('· {r.notes}')
+    // welche -- also genau das, was man wissen will. Seit der Aufteilung
+    // steht dort die Kurznotiz; die lange bleibt im Titel.
+    expect(plan).toContain('· {r.short_note}')
     expect(plan).not.toContain('📌')
+  })
+})
+
+describe('Kurznotiz und lange Notiz', () => {
+  const dialog = readFileSync(
+    new URL('../components/BookingDialog.tsx', import.meta.url), 'utf8')
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('zeigt auf dem Balken die Kurznotiz, nicht die lange', () => {
+    /*
+     * Der Balken ist bei einer Nacht 44 Pixel breit. Die ersten Zeichen
+     * eines Absatzes sind "Gast hat angerufen weg...", also nichts.
+     */
+    expect(plan).toContain('· {r.short_note}')
+    expect(plan).not.toContain('· {r.notes}')
+  })
+
+  it('haelt die lange Notiz im Titel bereit', () => {
+    expect(plan).toContain('r.notes ?')
+  })
+
+  it('bietet in der Maske beide Felder an', () => {
+    expect(dialog).toContain('booking.shortNote')
+    expect(dialog).toContain('booking.notes')
+    // Vierzig Zeichen, dieselbe Zahl wie in der Bedingung der Tabelle.
+    expect(dialog).toContain('maxLength={40}')
+  })
+})
+
+describe('Personenzahl ist vorbelegt', () => {
+  const dialog = readFileSync(
+    new URL('../components/BookingDialog.tsx', import.meta.url), 'utf8')
+
+  it('nimmt die Belegung der Zimmergruppe als Vorgabe', () => {
+    /*
+     * Ein Doppelzimmer wird als Doppelzimmer verkauft, und meist reisen
+     * auch zwei an. Das Feld leer zu lassen hiesse, dieselbe Zahl bei jeder
+     * Buchung eintippen zu lassen -- und dann tippt irgendwann niemand mehr.
+     */
+    expect(dialog).toContain("maxOccupancy === undefined ? '' : String(maxOccupancy)")
   })
 })
 

@@ -215,6 +215,18 @@ export const plan = {
     de: 'Die Zimmergruppe ist für {max} Personen. Sie tragen {n} ein. Sicher?',
     en: 'The room category holds {max} guests. You entered {n}. Are you sure?',
     tr: 'Oda tipi {max} kişiliktir. {n} girdiniz. Emin misiniz?' },
+  'booking.shortNote': {
+    de: 'Kurznotiz',
+    en: 'Short note',
+    tr: 'Kısa not' },
+  'booking.shortNotePlaceholder': {
+    de: 'Balkon, 1. Stock, Spätanreise',
+    en: 'Balcony, 1st floor, late arrival',
+    tr: 'Balkon, 1. kat, geç giriş' },
+  'booking.shortNoteHint': {
+    de: 'Steht im Plan auf dem Balken. Für den Vorgang das Feld darunter.',
+    en: 'Shown on the bar in the plan. Use the field below for the details.',
+    tr: 'Planda çubuğun üzerinde görünür. Ayrıntılar için aşağıdaki alanı kullanın.' },
   'booking.notes': {
     de: 'Notiz',
     en: 'Note',

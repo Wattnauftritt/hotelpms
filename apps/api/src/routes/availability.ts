@@ -71,11 +71,20 @@ export function availabilityRoutes(app: FastifyInstance): void {
           `SELECT r.id, r.public_ref, r.resource_id, r.category_id,
                   r.arrival::text, r.departure::text, r.status,
                   g.last_name, g.first_name,
-                  -- Die Notiz gehoert auf den Balken, wenigstens als
-                  -- Merkmal: die Rezeption haelt hier fest, was beim
-                  -- naechsten Blick auf den Plan zaehlt ("Spaetanreise",
-                  -- "Hochzeitstag"). Eine Notiz, die man erst nach zwei
-                  -- Klicks sieht, wird nicht geschrieben.
+                  -- Zwei Notizen, zwei Aufgaben. short_note ist das Merkmal
+                  -- fuer den Balken (Balkon, 1. Stock, Spaetanreise) und
+                  -- steht dort im Klartext: eine Notiz, die man erst nach
+                  -- zwei Klicks sieht, wird nicht geschrieben.
+                  --
+                  -- notes ist der Vorgang. Der Balken ist bei einer Nacht
+                  -- 44 Pixel breit; dort die ersten Zeichen eines Absatzes
+                  -- zu zeigen hiesse, "Gast hat angerufen weg..." zu zeigen
+                  -- und damit nichts. Deshalb nur im Titel und im
+                  -- Seitenfenster.
+                  --
+                  -- Keine Backticks in diesem Kommentar: er steht **in**
+                  -- einem Template-Literal, und ein Backtick beendet es.
+                  r.short_note,
                   r.notes,
                   b.source, b.external_reference,
                   rp.code AS rate_code,

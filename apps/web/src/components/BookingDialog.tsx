@@ -53,7 +53,20 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   // Als Text, nicht als Zahl: ein leeres Feld ist etwas anderes als eine
   // Null, und `useState<number>` kann das leere Feld nicht halten.
   const [preis, setPreis] = useState('')
-  const [personen, setPersonen] = useState('')
+  /*
+   * **Vorbelegt mit der Belegung der Zimmergruppe.** Ein Doppelzimmer wird
+   * als Doppelzimmer verkauft, und in den allermeisten Faellen reisen auch
+   * zwei an -- das Feld leer zu lassen hiesse, die Rezeption bei jeder
+   * Buchung dieselbe Zahl eintippen zu lassen, und dann tippt sie irgendwann
+   * gar nichts mehr.
+   *
+   * Kommt keine Belegung mit (das Verfuegbarkeitsraster kennt nur die
+   * Gruppe, nicht das Zimmer), bleibt das Feld leer, und leer heisst
+   * weiterhin "nicht gesagt" -- dann gilt, was verkauft wurde.
+   */
+  const [personen, setPersonen] = useState(
+    maxOccupancy === undefined ? '' : String(maxOccupancy))
+  const [kurznotiz, setKurznotiz] = useState('')
   const buchen = useCreateBooking(propertyId)
 
   /*
@@ -94,7 +107,8 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
       // Fliesskommazahl ab, die aus "19,90" sonst 1989 macht.
       priceCent: preis.trim() === '' ? undefined
         : Math.round(Number(preis.replace(',', '.')) * 100),
-      guestCount: anzahl ?? undefined
+      guestCount: anzahl ?? undefined,
+      shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim()
     })
   }
 
@@ -189,6 +203,20 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
         <div className="text-xs text-neutral-500">
           {t('booking.priceHint')} {t('booking.guestsHint')}
         </div>
+
+        {/* Erst das Merkmal, dann der Vorgang. In dieser Reihenfolge, weil
+            die Kurznotiz die ist, die jeder Blick auf den Plan liest. */}
+        <label className="block text-sm">
+          <span className="block text-xs text-neutral-600 mb-1">
+            {t('booking.shortNote')}
+          </span>
+          <input value={kurznotiz} onChange={e => setKurznotiz(e.target.value)}
+                 maxLength={40} placeholder={t('booking.shortNotePlaceholder')}
+                 className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          <div className="text-xs text-neutral-500 mt-0.5">
+            {t('booking.shortNoteHint')}
+          </div>
+        </label>
 
         <label className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('booking.notes')}</span>

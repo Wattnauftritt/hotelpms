@@ -403,3 +403,48 @@ describe('Art, Preis und Personen einer neuen Reservierung', () => {
     expect(unsinn.statusCode).toBe(422)
   })
 })
+
+describe('Kurznotiz und lange Notiz', () => {
+  /*
+   * Zwei Texte, zwei Aufgaben. Der Balken im Plan ist bei einer Nacht 44
+   * Pixel breit; die ersten Zeichen eines Absatzes sind "Gast hat angerufen
+   * weg..." und damit nichts. Die Kurznotiz ist das Merkmal, das man im
+   * Vorbeigehen liest, `notes` ist der Vorgang.
+   */
+
+  it('legt beide an und liefert beide zurueck', async () => {
+    const r = await buchen({ resourceId: zimmer[0], shortNote: 'Balkon',
+                             notes: 'Gast hat angerufen, kommt spaeter.' })
+    expect(r.statusCode, r.body).toBe(201)
+    const z = await owner.query<{ short_note: string | null; notes: string | null }>(
+      `SELECT short_note, notes FROM reservation ORDER BY id DESC LIMIT 1`)
+    expect(z.rows[0]!.short_note).toBe('Balkon')
+    expect(z.rows[0]!.notes).toContain('spaeter')
+  })
+
+  it('weist eine zu lange Kurznotiz ab', async () => {
+    // Vierzig Zeichen, und die Grenze ist der Zweck: ein Merkmal, kein Satz.
+    const r = await buchen({ resourceId: zimmer[0], shortNote: 'x'.repeat(41) })
+    expect(r.statusCode).toBe(422)
+  })
+
+  it('laesst die Kurznotiz nachtraeglich aendern', async () => {
+    const r = await buchen({ resourceId: zimmer[0], shortNote: 'Balkon' })
+    const ref = JSON.parse(r.body).reservationRef as string
+    const p = await patch(`/v1/reservations/${ref}`, { shortNote: '1. Stock' })
+    expect(p.statusCode, p.body).toBe(200)
+    const z = await owner.query<{ short_note: string }>(
+      `SELECT short_note FROM reservation WHERE public_ref = $1`, [ref])
+    expect(z.rows[0]!.short_note).toBe('1. Stock')
+  })
+
+  it('leert sie mit einer leeren Zeichenkette', async () => {
+    // Sonst bliebe ein Merkmal stehen, das niemand mehr wegbekommt.
+    const r = await buchen({ resourceId: zimmer[0], shortNote: 'Balkon' })
+    const ref = JSON.parse(r.body).reservationRef as string
+    await patch(`/v1/reservations/${ref}`, { shortNote: '   ' })
+    const z = await owner.query<{ short_note: string | null }>(
+      `SELECT short_note FROM reservation WHERE public_ref = $1`, [ref])
+    expect(z.rows[0]!.short_note).toBeNull()
+  })
+})
