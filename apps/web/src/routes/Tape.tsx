@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
 import { useAssignUnit, useChangeStay, useShiftBooking } from '../lib/queries/booking.js'
-import { useT } from '../lib/i18n/index.js'
+import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
 import { TapeChart, type Umzug } from '../components/TapeChart.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
@@ -276,13 +276,27 @@ function useWarnungen(
   kategorien: Array<{ id: number; name: string }>
 ): string[] {
   const t = useT()
+  const locale = useLocale()
   return useMemo(() => {
     if (data === undefined) return []
     const out: string[] = []
 
-    const ohneZimmer = data.reservations.filter(
-      r => r.resource_id === null && BINDEND.has(r.status)).length
-    if (ohneZimmer > 0) out.push(`${ohneZimmer} ${t('warnings.unassigned')}`)
+    /*
+     * Die Zahl allein sagt nicht, ob es eilt.
+     *
+     * "3 Buchungen ohne Zimmer" liest sich im November wie im Anreisetag;
+     * dabei ist das eine normal und das andere eine Lage. Deshalb steht die
+     * frueheste Anreise daneben -- und nur die von Buchungen, die Bestand
+     * halten: ein Storno ohne Zimmer ist kein offener Punkt.
+     */
+    const ohne = data.reservations
+      .filter(r => r.resource_id === null && BINDEND.has(r.status))
+      .map(r => r.arrival)
+      .sort()
+    if (ohne.length > 0) {
+      out.push(`${ohne.length} ${t('warnings.unassigned')}`
+        + ` (${t('warnings.nextArrival')} ${formatDate(ohne[0]!, locale)})`)
+    }
 
     const kapazitaet = new Map<number, number>()
     for (const u of data.units) {
@@ -305,7 +319,7 @@ function useWarnungen(
       }
     }
     return out
-  }, [data, kategorien, t])
+  }, [data, kategorien, t, locale])
 }
 
 function Legende(): JSX.Element {

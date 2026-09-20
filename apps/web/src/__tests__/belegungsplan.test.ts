@@ -446,7 +446,9 @@ describe('Das Band scrollt, statt abzuschneiden', () => {
     new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
 
   it('zeichnet alle Buchungen ohne Zimmer, nicht die ersten vier', () => {
-    expect(quelle).not.toMatch(/nichtZugewiesen\.slice\(/)
+    // Gezeichnet werden alle; `slice` kommt nur noch vor, um zu **nennen**,
+    // was das zugeklappte Band verdeckt.
+    expect(quelle).not.toMatch(/nichtZugewiesen\.slice\(0, /)
   })
 
   it('scrollt im Band und nimmt die Seite nicht mit', () => {
@@ -895,5 +897,74 @@ describe('Zimmer sperren', () => {
     // anderes: ein Kontingent haelt Zimmer frei, eine Sperre nimmt eines
     // aus dem Verkauf.
     expect(dialog).not.toMatch(/t\('block\./)
+  })
+})
+
+/**
+ * Was im Band verdeckt liegt, geht nicht unter.
+ *
+ * Das Band zeigt vier Zeilen auf einmal. Welche vier, entschied bisher die
+ * **Zimmergruppe** -- eine Eigenschaft, die mit Dringlichkeit nichts zu tun
+ * hat. Eine Buchung, die morgen anreist, stand auf Platz neun, weil sie
+ * eine Suite ist, und Platz neun sieht niemand. Die Zahl oben ("3 ohne
+ * Zimmer") half nicht: sie sagt nicht, ob es eilt.
+ */
+describe('Das Band der Buchungen ohne Zimmer', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+
+  it('sortiert nach Anreise, nicht nach Zimmergruppe', () => {
+    // Die Reihenfolge ist dieselbe wie die Frage, die man hat: was kommt
+    // als naechstes und hat noch kein Zimmer.
+    expect(plan).toMatch(
+      /\.sort\(\(a, b\) =>\s*\n\s*a\.arrival\.localeCompare\(b\.arrival\)/)
+  })
+
+  it('misst Dringlichkeit an heute, nicht am Rand des Plans', () => {
+    /*
+     * Wer im November blaettert, hat dort keine Dringlichkeit -- ein
+     * Balken, der sich nach der Blaetterstellung faerbt, sagt nichts ueber
+     * das Haus.
+     */
+    expect(plan).toContain('const heute = today()')
+    expect(plan).toContain('daysBetween(heute, arrival) <= 2')
+  })
+
+  it('markiert eine Anreise binnen zwei Tagen am Balken', () => {
+    // Ein Ring und keine andere Fuellfarbe: die Fuellung sagt den Zustand.
+    expect(plan).toContain("dringlich(r.arrival)")
+    expect(plan).toContain("'ring-2 ring-red-600'")
+  })
+
+  it('macht die Kopfzeile zum Knopf, statt still zu scrollen', () => {
+    // Was unterhalb des vierten Eintrags liegt, ist unsichtbar, und
+    // unsichtbar heisst vergessen. Zusammengeklappt ist jetzt eine
+    // Entscheidung, kein Zustand, den man nicht bemerkt.
+    expect(plan).toContain('onClick={() => setBandOffen(o => !o)}')
+    expect(plan).toContain('bandOffen ? nichtZugewiesen.length')
+  })
+
+  it('nennt zugeklappt die naechste verdeckte Anreise, nicht nur eine Zahl', () => {
+    /*
+     * Eine Zahl allein laesst offen, ob es eilt -- und wer das nicht weiss,
+     * klappt nicht auf. Genommen wird die erste **verdeckte** Zeile:
+     * sichtbare sind kein Grund aufzuklappen.
+     */
+    expect(plan).toContain('nichtZugewiesen.slice(BAND_ZEILEN)')
+    expect(plan).toContain("t('plan.bandHidden'")
+  })
+
+  it('nennt auch in der Warnzeile die naechste Anreise', () => {
+    // "3 Buchungen ohne Zimmer" liest sich im November wie am Anreisetag.
+    expect(bildschirm).toContain("t('warnings.nextArrival')")
+    // Und zwar als Datum in der Sprache des Benutzers, nicht als ISO-Form.
+    expect(bildschirm).toContain('formatDate(ohne[0]!, locale)')
+  })
+
+  it('zaehlt fuer die Warnung nur, was Bestand haelt', () => {
+    // Ein Storno ohne Zimmer ist kein offener Punkt.
+    expect(bildschirm).toContain('r.resource_id === null && BINDEND.has(r.status)')
   })
 })
