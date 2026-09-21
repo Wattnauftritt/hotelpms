@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { zugangAusAdresse } from '../routes/Zugang.tsx'
 import { kennwortZuKurz, KENNWORT_MIN } from '@hotelpms/contracts'
 
@@ -67,5 +68,76 @@ describe('Kennwortregel', () => {
     // verfehlt, ist schlimmer.
     expect(kennwortZuKurz('🔑'.repeat(KENNWORT_MIN - 1))).toBe(true)
     expect(kennwortZuKurz('🔑'.repeat(KENNWORT_MIN))).toBe(false)
+  })
+})
+
+/**
+ * Abmelden muss den Bildschirm leeren, nicht nur die Sitzung.
+ *
+ * An einer Rezeption steht ein Rechner, an dem jemand aufsteht und weggeht.
+ * Die Sitzung wurde schon immer zurueckgezogen (`revoked_at`, Cookie
+ * geloescht) -- aber die Oberflaeche blieb stehen, mit Gastdaten darauf,
+ * bis jemand von Hand neu lud. Handeln konnte der Naechste nicht mehr,
+ * lesen schon.
+ */
+describe('Abmelden', () => {
+  const einstieg = readFileSync(
+    new URL('../main.tsx', import.meta.url), 'utf8')
+  const caddy = readFileSync(
+    new URL('../../../../ops/caddy/Caddyfile', import.meta.url), 'utf8')
+
+  it('baut die Seite neu auf, statt im Zwischenspeicher aufzuraeumen', () => {
+    /*
+     * Hier stand `qc.clear()` und danach `invalidateQueries` auf `me` --
+     * genau verkehrt herum: `clear()` wirft die Abfrage aus dem Speicher,
+     * und `invalidateQueries` findet danach nichts mehr. Der Abruf, der 401
+     * ergaebe, blieb aus.
+     *
+     * Der Neuaufbau ist ausserdem die bessere Bauform: er ist das Einzige,
+     * was garantiert nichts stehen laesst -- React-Zustand, offene
+     * Komponenten, abgeloestes DOM.
+     */
+    expect(einstieg).toContain('location.replace(location.pathname)')
+    /*
+     * Geprueft wird der **Rumpf** von `abmelden`, nicht das Vorkommen der
+     * Zeichenkette: `qc.clear()` steht noch im Kommentar darueber, und zwar
+     * absichtlich -- er erklaert, was dort stand und warum es falsch war.
+     * Eine Zusicherung, die den eigenen Kommentar trifft, prueft nichts.
+     */
+    const rumpf = einstieg.slice(einstieg.indexOf('const abmelden ='),
+                                 einstieg.indexOf('if (zugang !== null)'))
+    expect(rumpf).not.toContain('qc.clear()')
+    expect(rumpf).not.toContain('invalidateQueries')
+  })
+
+  it('legt den abgemeldeten Stand nicht in die Geschichte', () => {
+    // `replace` und nicht `assign`: sonst holt ein Druck auf Zurueck ihn
+    // wieder hervor.
+    expect(einstieg).not.toContain('location.assign(')
+    expect(einstieg).not.toMatch(/location\.href\s*=/)
+  })
+
+  it('baut auch dann neu auf, wenn der Aufruf scheitert', () => {
+    // Der Bildschirm muss leer sein, auch wenn die Sitzung noch steht. Ist
+    // die API nicht erreichbar, scheitert danach auch `me`.
+    expect(einstieg).toMatch(/finally \{\s*\n\s*location\.replace/)
+  })
+
+  it('nimmt die Seite ueber no-store aus dem Vor-Zurueck-Speicher', () => {
+    /*
+     * Der Neuaufbau allein genuegt nicht. `no-cache` heisst "vor dem
+     * Benutzen nachfragen" und laesst die Seite im Vor-Zurueck-Speicher des
+     * Browsers zulaessig; ein Druck auf Zurueck holte sie vollstaendig
+     * gezeichnet zurueck -- mit denselben Gastdaten und ohne eine einzige
+     * Anfrage. Die Anwendung blaettert ueber `history.pushState`, es gibt
+     * also Eintraege, auf die das zutraefe.
+     */
+    expect(caddy).toContain('header /index.html Cache-Control "no-store"')
+    expect(caddy).not.toContain('header /index.html Cache-Control "no-cache"')
+  })
+
+  it('laesst die gehashten Dateien lange zwischengespeichert', () => {
+    // Nur das eine Kilobyte index.html kostet den erneuten Abruf.
+    expect(caddy).toContain('Cache-Control "public, max-age=31536000, immutable"')
   })
 })

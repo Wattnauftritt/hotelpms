@@ -104,24 +104,46 @@ function App(): JSX.Element {
   const qc = useQueryClient()
 
   /*
-   * Abmelden: Sitzung zurueckziehen und den geladenen Stand wegwerfen.
+   * Abmelden: Sitzung zurueckziehen und die Seite neu aufbauen.
    *
-   * Das Leeren des Zwischenspeichers ist der Punkt, nicht die Hoeflichkeit.
-   * Ohne es bliebe an einem geteilten Rezeptionsrechner der Hausstand des
-   * Vorgaengers im Speicher stehen und waere fuer den Naechsten noch einen
-   * Wimpernschlag lang zu sehen -- und die abgemeldete Sitzung liefe in
-   * jeder offenen Abfrage weiter gegen eine API, die sie nicht mehr kennt.
+   * **Warum ein Neuaufbau und nicht das Leeren des Zwischenspeichers.**
+   * Hier stand `qc.clear()` und danach ein `invalidateQueries` auf `me` --
+   * und das war genau verkehrt herum: `clear()` wirft die Abfrage aus dem
+   * Speicher, und `invalidateQueries` findet danach nichts mehr, was es
+   * ungueltig machen koennte. Der Abruf, der 401 ergaebe und auf die
+   * Anmeldemaske schaltete, blieb aus; die Oberflaeche stand weiter da, mit
+   * Gastdaten darauf, bis jemand von Hand neu lud.
    *
-   * Scheitert der Aufruf -- kein Netz --, wird trotzdem geleert: lokal
-   * abgemeldet zu sein ist besser als am Bildschirm angemeldet zu bleiben.
-   * Die Sitzung laeuft dann serverseitig ab.
+   * Der Neuaufbau ist aber nicht nur die Reparatur, sondern die bessere
+   * Bauform: er ist das Einzige, was **garantiert** nichts stehen laesst --
+   * React-Zustand, offene Komponenten, abgeloestes DOM, der
+   * Zwischenspeicher. Jede Loesung innerhalb der Anwendung laesst die Frage
+   * offen, ob irgendeine Komponente noch etwas haelt, und an einer
+   * Rezeption sieht der Naechste, was stehenblieb.
+   *
+   * `replace` und nicht `assign`: der abgemeldete Stand soll nicht als
+   * Eintrag in der Geschichte liegen bleiben, den ein Druck auf Zurueck
+   * wiederholt. Ohne Abfragezeichenfolge, damit nicht Haus und Bildschirm
+   * des Vorgaengers in der Adresse stehen.
+   *
+   * **Dazu gehoert `Cache-Control: no-store` auf `index.html`**
+   * (`ops/caddy/Caddyfile`). Der Neuaufbau allein genuegt nicht: mit
+   * `no-cache` bleibt die Seite fuer den Vor-Zurueck-Speicher des Browsers
+   * zulaessig, und ein Druck auf Zurueck holt sie vollstaendig gezeichnet
+   * zurueck -- mit denselben Gastdaten und ohne eine einzige Anfrage. Die
+   * Anwendung blaettert ueber `history.pushState` (`lib/adresse.ts`), es
+   * gibt also Eintraege, auf die das zutraefe.
+   *
+   * Scheitert der Aufruf -- kein Netz --, wird trotzdem neu aufgebaut: der
+   * Bildschirm muss leer sein, auch wenn die Sitzung noch steht. Ist die
+   * API nicht erreichbar, scheitert danach auch `me`, und es erscheint die
+   * Anmeldemaske.
    */
   const abmelden = async (): Promise<void> => {
     try {
       await api.post('/v1/auth/logout')
     } finally {
-      qc.clear()
-      await qc.invalidateQueries({ queryKey: ['me'] })
+      location.replace(location.pathname)
     }
   }
 
