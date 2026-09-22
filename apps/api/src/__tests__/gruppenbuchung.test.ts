@@ -574,3 +574,131 @@ describe('Gesamtpreis statt Preis je Nacht', () => {
       .toBe(422)
   })
 })
+
+/**
+ * Verschiedene Reisedaten in **einer** Gruppenbuchung.
+ *
+ * Eine Reisegruppe reist selten geschlossen an: das Brautpaar bleibt drei
+ * Naechte, die Eltern zwei, ein Onkel kommt einen Tag frueher. Bisher hiess
+ * das: erst alle gleich buchen, dann einzeln umbuchen -- drei Handgriffe
+ * fuer etwas, das beim Aufziehen im Plan schon feststand, und dazwischen
+ * ein Zustand, den niemand wollte.
+ */
+describe('Zimmer mit eigenen Tagen', () => {
+  async function aufenthalt(ref: string): Promise<{ arrival: string; departure: string }> {
+    const r = await owner.query<{ arrival: string; departure: string }>(
+      `SELECT arrival::text, departure::text FROM reservation WHERE public_ref = $1`, [ref])
+    return r.rows[0]!
+  }
+
+  async function naechte(ref: string): Promise<string[]> {
+    const r = await owner.query<{ date: string }>(
+      `SELECT n.date::text FROM reservation_night n
+         JOIN reservation r ON r.id = n.reservation_id
+        WHERE r.public_ref = $1 ORDER BY n.date`, [ref])
+    return r.rows.map(x => x.date)
+  }
+
+  it('legt je Zimmer den eigenen Zeitraum an', async () => {
+    const r = await buchen({
+      rooms: [
+        { categoryId: dz, resourceId: dzZimmer[0] },
+        { categoryId: dz, resourceId: dzZimmer[1],
+          arrival: '2026-10-02', departure: '2026-10-06' }
+      ]
+    })
+    expect(r.statusCode, r.body).toBe(201)
+    const body = JSON.parse(r.body) as
+      { reservations: Array<{ reservationRef: string; arrival: string
+                              departure: string; nights: number }> }
+    // Ohne Angabe erbt das Zimmer den Zeitraum der Buchung.
+    expect(body.reservations[0]).toMatchObject({ arrival: VON, departure: BIS, nights: 3 })
+    expect(body.reservations[1]).toMatchObject(
+      { arrival: '2026-10-02', departure: '2026-10-06', nights: 4 })
+    expect(await aufenthalt(body.reservations[1]!.reservationRef))
+      .toEqual({ arrival: '2026-10-02', departure: '2026-10-06' })
+  })
+
+  it('legt die Naechte je Zimmer an, nicht die der Buchung', async () => {
+    const r = await buchen({
+      rooms: [{ categoryId: dz, resourceId: dzZimmer[0],
+                arrival: '2026-10-05', departure: '2026-10-07' }]
+    })
+    const ref = (JSON.parse(r.body) as { reservationRef: string }).reservationRef
+    expect(await naechte(ref)).toEqual(['2026-10-05', '2026-10-06'])
+  })
+
+  it('bindet den Bestand je Zeitraum, nicht je Zimmergruppe', async () => {
+    /*
+     * Der eigentliche Umbau. Vorher wurde je Zimmergruppe **einmal** mit
+     * der Anzahl gebucht -- "acht Doppelzimmer vom 10. bis 12." --, und das
+     * ist schlicht falsch, wenn zwei davon bis zum 14. bleiben.
+     */
+    const r = await buchen({
+      rooms: [
+        { categoryId: dz, resourceId: dzZimmer[0] },
+        { categoryId: dz, resourceId: dzZimmer[1],
+          arrival: BIS, departure: '2026-10-06' }
+      ]
+    })
+    expect(r.statusCode, r.body).toBe(201)
+    // Am 1.10. liegt nur das erste Zimmer, am 4.10. nur das zweite.
+    expect(await bestand(dz, VON)).toBe(1)
+    expect(await bestand(dz, BIS)).toBe(1)
+  })
+
+  it('weist einen Zeitraum ohne Nacht ab', async () => {
+    expect((await buchen({
+      rooms: [{ categoryId: dz, arrival: VON, departure: VON }]
+    })).statusCode).toBe(422)
+  })
+
+  it('nennt oben die Klammer, nicht die Vorgabe aus dem Aufruf', async () => {
+    /*
+     * Weichen Zimmer ab, ist die Vorgabe fuer kein einziges von ihnen die
+     * Wahrheit. Die frueheste Anreise und die spaeteste Abreise sind es
+     * fuer alle.
+     */
+    const r = await buchen({
+      rooms: [
+        { categoryId: dz, resourceId: dzZimmer[0],
+          arrival: '2026-09-30', departure: '2026-10-02' },
+        { categoryId: dz, resourceId: dzZimmer[1],
+          arrival: '2026-10-02', departure: '2026-10-08' }
+      ]
+    })
+    expect(JSON.parse(r.body)).toMatchObject({
+      arrival: '2026-09-30', departure: '2026-10-08',
+      // Die Naechte des laengsten Zimmers, keine Summe: eine Summe zaehlte
+      // Zimmernaechte, nicht Aufenthalt.
+      nights: 6
+    })
+  })
+
+  it('prueft das zugewiesene Zimmer gegen seinen eigenen Zeitraum', async () => {
+    // Erst ein fremder Gast vom 5. bis 7. in D101.
+    expect((await buchen({
+      categoryId: dz, resourceId: dzZimmer[0],
+      arrival: '2026-10-05', departure: '2026-10-07'
+    })).statusCode).toBe(201)
+
+    // Eine Gruppe vom 1. bis 4., aber dieses Zimmer abweichend vom 5. bis 6.
+    // -- das stoesst an, obwohl der Zeitraum der Buchung frei waere.
+    expect((await buchen({
+      rooms: [{ categoryId: dz, resourceId: dzZimmer[0],
+                arrival: '2026-10-05', departure: '2026-10-06' }]
+    })).statusCode).toBe(409)
+  })
+
+  it('rechnet den Preis je Zimmer ueber dessen eigene Naechte', async () => {
+    const r = await buchen({
+      rooms: [{ categoryId: dz, resourceId: dzZimmer[0], totalCent: 30_000,
+                arrival: VON, departure: '2026-10-07' }]
+    })
+    const body = JSON.parse(r.body) as { reservations: Array<{ totalCent: number }> }
+    expect(body.reservations[0]!.totalCent).toBe(30_000)
+    // Sechs Naechte, nicht die drei der Buchungsvorgabe.
+    expect(await naechte(
+      (JSON.parse(r.body) as { reservationRef: string }).reservationRef)).toHaveLength(6)
+  })
+})

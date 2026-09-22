@@ -292,6 +292,10 @@ export const plan = {
     de: '{n} Zimmer ausgewählt',
     en: '{n} rooms selected',
     tr: '{n} oda seçildi' },
+  'plan.mixedDates': {
+    de: 'verschiedene Tage',
+    en: 'dates differ',
+    tr: 'tarihler farklı' },
   'plan.bookSelection': {
     de: 'Als Gruppe buchen',
     en: 'Book as a group',
@@ -534,6 +538,18 @@ export const plan = {
     de: 'Zeitraum wie die Gruppe. Das Zimmer wird im Plan zugewiesen.',
     en: 'Same dates as the group. Assign the room in the plan.',
     tr: 'Grupla aynı tarihler. Oda plandan atanır.' },
+  'group.ownDates': {
+    de: 'eigene Tage',
+    en: 'own dates',
+    tr: 'kendi tarihleri' },
+  'group.sameDates': {
+    de: 'Tage der Gruppe',
+    en: "the group's dates",
+    tr: 'grubun tarihleri' },
+  'group.nights': {
+    de: '{n} Nächte',
+    en: '{n} nights',
+    tr: '{n} gece' },
   'group.priceLevel': {
     de: 'Preis gilt',
     en: 'Price applies',

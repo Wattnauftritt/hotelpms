@@ -362,7 +362,28 @@ export const CreateBookingRoom = Type.Object({
    *
    * Schlaegt `totalCent` und `priceCent` der Buchung.
    */
-  totalCent: Type.Optional(Type.Integer({ minimum: 0 }))
+  totalCent: Type.Optional(Type.Integer({ minimum: 0 })),
+  /**
+   * Abweichende Tage **fuer dieses eine Zimmer**. Ohne Angabe gilt der
+   * Zeitraum der Buchung.
+   *
+   * **Warum das noetig ist.** Eine Reisegruppe reist selten geschlossen an:
+   * das Brautpaar bleibt drei Naechte, die Eltern zwei, ein Onkel kommt
+   * einen Tag frueher. Bisher hiess das: erst alle gleich buchen, dann
+   * einzeln umbuchen -- drei Handgriffe fuer etwas, das beim Aufziehen im
+   * Plan schon feststand, und dazwischen ein Zustand, den niemand wollte.
+   *
+   * **Nicht bei einem Abruf aus einem Kontingent.** Dort muss der Zeitraum
+   * dem des Kontingents genau entsprechen, und zwar je Zimmer: `picked_up`
+   * ist eine Zahl ohne Datum, und die Freigabe des Rests rechnet ueber den
+   * ganzen Zeitraum des Kontingents. Ein Abruf ueber nur einen Teil liesse
+   * an den uebrigen Tagen dauerhaft Kapazitaet gebunden, die niemandem mehr
+   * gehoert und die niemand sieht. Dieselbe Regel gilt schon fuer den
+   * Zeitraum der Buchung (`block.pickupWholePeriod`); hier ist sie nur eine
+   * Ebene tiefer.
+   */
+  arrival: Type.Optional(IsoDate),
+  departure: Type.Optional(IsoDate)
 })
 export type CreateBookingRoom = Static<typeof CreateBookingRoom>
 
@@ -383,10 +404,11 @@ export const CreateBooking = Type.Object({
    * als acht einzelne Buchungen anlegt, hat acht Vorgaenge, die nichts mehr
    * verbindet.
    *
-   * Der Zeitraum gilt fuer alle Zimmer gemeinsam. Wer fuer ein Zimmer
-   * abweichende Tage braucht, aendert danach dessen Aufenthalt; ein Feld je
-   * Zimmer haette den Abruf aus einem Kontingent unentscheidbar gemacht,
-   * das immer ueber den ganzen Zeitraum laeuft.
+   * Der Zeitraum der Buchung ist die **Vorgabe** fuer ihre Zimmer, nicht
+   * ihr Zwang: ein Zimmer darf ueber `arrival`/`departure` eigene Tage
+   * nennen (siehe `CreateBookingRoom`). Beim Abruf aus einem Kontingent
+   * gilt er dagegen fuer alle, weil der Abruf den ganzen Zeitraum des
+   * Kontingents verbraucht.
    */
   rooms: Type.Optional(Type.Array(CreateBookingRoom)),
   arrival: IsoDate,
@@ -459,6 +481,14 @@ export const BookingCreatedRoom = Type.Object({
   reservationRef: Type.String(),
   categoryId: Type.Integer(),
   resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  /**
+   * Der Zeitraum **dieses** Zimmers. Seit er von dem der Buchung abweichen
+   * darf, waere der obere fuer ein einzelnes Zimmer nur manchmal richtig --
+   * und "manchmal richtig" ist die Sorte Angabe, die niemand prueft.
+   */
+  arrival: IsoDate,
+  departure: IsoDate,
+  nights: Type.Integer(),
   totalCent: Cent
 })
 export type BookingCreatedRoom = Static<typeof BookingCreatedRoom>
@@ -474,8 +504,15 @@ export const BookingCreated = Type.Object({
    */
   reservationRef: Type.String(),
   reservations: Type.Array(BookingCreatedRoom),
+  /**
+   * Die **Klammer** um die Buchung: die frueheste Anreise und die
+   * spaeteste Abreise ihrer Zimmer. Weichen Zimmer ab, ist die Vorgabe aus
+   * dem Aufruf fuer kein einziges von ihnen die Wahrheit -- die Klammer ist
+   * fuer alle richtig.
+   */
   arrival: IsoDate,
   departure: IsoDate,
+  /** Die Naechte des laengsten Zimmers, keine Summe ueber alle. */
   nights: Type.Integer(),
   /** Ueber alle Zimmer der Buchung, nicht nur ueber das erste. */
   totalCent: Cent

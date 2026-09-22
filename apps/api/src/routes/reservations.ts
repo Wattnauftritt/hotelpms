@@ -55,6 +55,9 @@ interface CreateBookingRoom {
   resourceId?: number
   /** Preis dieses Zimmers fuer den ganzen Aufenthalt. Siehe Vertrag. */
   totalCent?: number
+  /** Abweichende Tage fuer dieses Zimmer. Ohne Angabe die der Buchung. */
+  arrival?: string
+  departure?: string
 }
 
 interface CreateBooking {
@@ -590,6 +593,29 @@ export function reservationRoutes(app: FastifyInstance): void {
                         && (!Number.isInteger(z.totalCent) || z.totalCent < 0))) {
         throw Errors.validation({ rooms: ['field.positiveInteger'] })
       }
+      /*
+       * Der Zeitraum je Zimmer: was nicht dabeisteht, erbt den der Buchung.
+       *
+       * **Einmal ausgerechnet und danach nur noch benutzt.** Die Anreise
+       * eines Zimmers wird an sechs Stellen gebraucht -- Bestand,
+       * Zimmerpruefung, Reservierungszeile, Naechte, Preis, Antwort -- und
+       * jedes `?? body.arrival` an einer davon zu vergessen ergaebe eine
+       * Buchung, deren Zeile und deren Bestand verschiedene Tage meinen.
+       */
+      const zeitraeume = zimmer.map(z => ({
+        arrival: z.arrival ?? body.arrival,
+        departure: z.departure ?? body.departure
+      }))
+      for (const [i, zr] of zeitraeume.entries()) {
+        if (!isIsoDate(zr.arrival) || !isIsoDate(zr.departure)) {
+          throw Errors.validation({ rooms: ['field.isoDate'] }, { index: i })
+        }
+        const n = nightsBetween(zr.arrival, zr.departure)
+        if (n <= 0) throw Errors.validation({ rooms: ['field.afterArrival'] }, { index: i })
+        if (n > MAX_STAY_NIGHTS) {
+          throw Errors.validation({ rooms: ['field.stayTooLong'] }, { max: MAX_STAY_NIGHTS })
+        }
+      }
       // Preise je Zimmer **und** ein Preis fuer die Buchung waeren zwei
       // Betraege fuer dieselbe Sache. Welcher gilt, gehoert nicht geraten.
       if (zimmer.some(z => z.totalCent !== undefined)
@@ -644,7 +670,23 @@ export function reservationRoutes(app: FastifyInstance): void {
             throw Errors.validation({
               categoryId: ['field.mustMatchBlockCategory'] })
           }
-          if (body.arrival !== block.from_date || body.departure !== block.to_date) {
+          /*
+           * Der Zeitraum muss passen -- und zwar **jeder**, auch der eines
+           * einzelnen Zimmers.
+           *
+           * `picked_up` ist eine Zahl ohne Datum, und die Freigabe des
+           * Rests rechnet `quantity - picked_up` ueber den ganzen Zeitraum
+           * des Kontingents. Ein Abruf ueber nur einen Teil zaehlte dort
+           * voll mit, haette den Platz aber nur an seinen eigenen Tagen
+           * verbraucht: an allen uebrigen bliebe dauerhaft Kapazitaet
+           * gebunden, die niemandem mehr gehoert und die niemand sieht.
+           *
+           * Wer fuer ein Zimmer andere Tage braucht, bucht es **frei**.
+           * Dieselbe Regel wie beim Verschieben, wo ein Abruf gar nicht
+           * beweglich ist (`stay.pickupNotMovable`).
+           */
+          if (zeitraeume.some(zr => zr.arrival !== block.from_date
+                                 || zr.departure !== block.to_date)) {
             throw Errors.unprocessable(
               'block.pickupWholePeriod',
               { from: block.from_date, to: block.to_date })
@@ -684,19 +726,30 @@ export function reservationRoutes(app: FastifyInstance): void {
          * Kontingent zuerst binden. Schlaegt das fehl, wird alles
          * zurueckgerollt.
          *
-         * Je Zimmergruppe **ein** Aufruf mit der Anzahl, nicht einer je
-         * Zimmer: `inventory_reserve` sperrt die Bestandszeilen des
-         * Zeitraums, und acht Aufrufe nacheinander sperrten sie achtmal.
-         * Fuer eine Gruppe aus acht Doppelzimmern ist das derselbe Vorgang.
+         * Zusammengefasst wird je **(Zimmergruppe, Zeitraum)**, nicht mehr
+         * je Zimmergruppe allein: seit ein Zimmer eigene Tage haben darf,
+         * waere "acht Doppelzimmer vom 10. bis 12." schlicht falsch, wenn
+         * zwei davon bis zum 14. bleiben.
+         *
+         * Zusammengefasst wird trotzdem, und das ist der Punkt:
+         * `inventory_reserve` sperrt die Bestandszeilen des Zeitraums, und
+         * acht Aufrufe nacheinander sperrten sie achtmal. Bei einer Gruppe,
+         * die geschlossen anreist -- der Normalfall --, bleibt es bei einem
+         * Aufruf je Gruppe wie bisher.
          */
-        const jeGruppe = new Map<number, number>()
-        for (const z of zimmer) {
-          jeGruppe.set(z.categoryId, (jeGruppe.get(z.categoryId) ?? 0) + 1)
+        const jeGruppe = new Map<string, { categoryId: number; arrival: string
+                                           departure: string; anzahl: number }>()
+        for (const [i, z] of zimmer.entries()) {
+          const zr = zeitraeume[i]!
+          const schluessel = `${z.categoryId}|${zr.arrival}|${zr.departure}`
+          const vorhanden = jeGruppe.get(schluessel)
+          if (vorhanden) vorhanden.anzahl += 1
+          else jeGruppe.set(schluessel, { categoryId: z.categoryId, ...zr, anzahl: 1 })
         }
-        for (const [categoryId, anzahl] of jeGruppe) {
+        for (const g of jeGruppe.values()) {
           const inv = await client.query<{ e: string | null }>(
             `SELECT inventory_reserve($1,$2,$3::date,$4::date,$5) AS e`,
-            [body.propertyId, categoryId, body.arrival, body.departure, anzahl])
+            [body.propertyId, g.categoryId, g.arrival, g.departure, g.anzahl])
           inventoryError(inv.rows[0]!.e)
         }
 
@@ -718,12 +771,18 @@ export function reservationRoutes(app: FastifyInstance): void {
         const ratePlanId = body.ratePlanId ?? block?.rate_plan_id ?? undefined
 
         /*
-         * Der Preis haengt am Ratenplan und am Tag, nicht am Zimmer. Einmal
-         * ermittelt und fuer alle Zimmer der Gruppe benutzt: acht Zimmer
-         * derselben Nacht kosten acht Abfragen, die achtmal dieselbe Antwort
-         * geben.
+         * Der Preis haengt am Ratenplan und am Tag, nicht am Zimmer.
+         *
+         * Gefragt wird deshalb **einmal fuer alle vorkommenden Naechte**
+         * und nicht einmal je Zimmer: acht Zimmer derselben Nacht kosten
+         * sonst acht Abfragen, die achtmal dieselbe Antwort geben. Seit die
+         * Zimmer verschiedene Zeitraeume haben duerfen, ist "alle Naechte"
+         * die Vereinigung -- der Ratenplan liefert sie in einem Zug, und
+         * jedes Zimmer greift sich daraus seine eigenen heraus.
          */
-        const nights = eachNight(body.arrival, body.departure)
+        const alleNaechte = [...new Set(
+          zeitraeume.flatMap(zr => eachNight(zr.arrival, zr.departure)))].sort()
+        const naechteJeZimmer = zeitraeume.map(zr => eachNight(zr.arrival, zr.departure))
         /*
          * Ein vereinbarter Preis schlaegt den Ratenplan, und zwar fuer jede
          * Nacht derselbe. Der Ratenplan bleibt trotzdem an der Reservierung
@@ -731,9 +790,13 @@ export function reservationRoutes(app: FastifyInstance): void {
          * Verpflegung, Mindestaufenthalt --, und das gilt weiter, auch wenn
          * am Preis gehandelt wurde.
          */
-        const standardPreise = body.priceCent !== undefined
-          ? nights.map(() => body.priceCent!)
-          : await priceNights(client, ratePlanId, nights)
+        const preisJeTag = new Map<string, number>()
+        if (body.priceCent !== undefined) {
+          for (const n of alleNaechte) preisJeTag.set(n, body.priceCent)
+        } else {
+          const p = await priceNights(client, ratePlanId, alleNaechte)
+          alleNaechte.forEach((n, i) => preisJeTag.set(n, p[i] ?? 0))
+        }
 
         /*
          * Der Preis je Zimmer, und erst daraus der Preis je Nacht.
@@ -752,14 +815,17 @@ export function reservationRoutes(app: FastifyInstance): void {
           ? null
           : gruppeAufteilen(body.totalCent, await personenJeZimmer(client, zimmer))
         const preiseJeZimmer = zimmer.map((z, i) => {
-          if (z.totalCent !== undefined) return preisJeNacht(z.totalCent, nights.length)
-          if (gruppenTeile !== null) return preisJeNacht(gruppenTeile[i]!, nights.length)
-          return standardPreise
+          const n = naechteJeZimmer[i]!
+          if (z.totalCent !== undefined) return preisJeNacht(z.totalCent, n.length)
+          if (gruppenTeile !== null) return preisJeNacht(gruppenTeile[i]!, n.length)
+          return n.map(tag => preisJeTag.get(tag) ?? 0)
         })
         const summeJeZimmer = preiseJeZimmer.map(p => p.reduce((s, x) => s + x, 0))
 
         const angelegt: Array<{ reservationRef: string; categoryId: number
-                                resourceId: number | null; totalCent: number }> = []
+                                resourceId: number | null; arrival: string
+                                departure: string; nights: number
+                                totalCent: number }> = []
 
         for (const [i, z] of zimmer.entries()) {
           /*
@@ -772,7 +838,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           if (z.resourceId !== undefined) {
             await assertUnitAssignable(client, {
               resourceId: z.resourceId, propertyId: body.propertyId,
-              arrival: body.arrival, departure: body.departure })
+              arrival: zeitraeume[i]!.arrival, departure: zeitraeume[i]!.departure })
           }
 
           const res = await client.query<{ id: number; public_ref: string }>(
@@ -783,7 +849,8 @@ export function reservationRoutes(app: FastifyInstance): void {
              VALUES ($1,$2,$3,$4::date,$5::date,$6::reservation_status,$7,
                      $8,$9,$10,$11,$12,$13,$14,$15)
              RETURNING id, public_ref`,
-            [body.propertyId, booking.rows[0]!.id, z.categoryId, body.arrival, body.departure,
+            [body.propertyId, booking.rows[0]!.id, z.categoryId,
+             zeitraeume[i]!.arrival, zeitraeume[i]!.departure,
              body.status ?? 'Confirmed', body.optionExpiresAt ?? null,
              ratePlanId ?? null, guestId ?? null, body.notes ?? null,
              body.shortNote?.trim() || null,
@@ -798,7 +865,8 @@ export function reservationRoutes(app: FastifyInstance): void {
                (reservation_id, property_id, date, rate_plan_id, price_cent)
              SELECT $1, $2, x.date, $3, x.price
                FROM unnest($4::date[], $5::bigint[]) AS x(date, price)`,
-            [reservationId, body.propertyId, ratePlanId ?? null, nights, preiseJeZimmer[i]!])
+            [reservationId, body.propertyId, ratePlanId ?? null,
+             naechteJeZimmer[i]!, preiseJeZimmer[i]!])
 
           /*
            * Personen statt Zaehler: noetig fuer Kurtaxe und Meldeschein --
@@ -832,6 +900,13 @@ export function reservationRoutes(app: FastifyInstance): void {
             reservationRef: res.rows[0]!.public_ref,
             categoryId: z.categoryId,
             resourceId: z.resourceId ?? null,
+            // Der Zeitraum steht **je Zimmer** in der Antwort, nicht nur
+            // oben: seit er abweichen darf, waere der der Buchung fuer
+            // dieses Zimmer nur manchmal richtig, und "manchmal richtig"
+            // ist die Sorte Angabe, die niemand prueft.
+            arrival: zeitraeume[i]!.arrival,
+            departure: zeitraeume[i]!.departure,
+            nights: naechteJeZimmer[i]!.length,
             totalCent: summeJeZimmer[i]!
           })
         }
@@ -840,9 +915,18 @@ export function reservationRoutes(app: FastifyInstance): void {
           bookingRef: booking.rows[0]!.public_ref,
           reservationRef: angelegt[0]!.reservationRef,
           reservations: angelegt,
-          arrival: body.arrival,
-          departure: body.departure,
-          nights: nights.length,
+          /*
+           * Oben steht die **Klammer** um die Buchung: die frueheste
+           * Anreise und die spaeteste Abreise ihrer Zimmer, nicht die
+           * Vorgabe aus dem Aufruf. Weichen Zimmer ab, ist die Vorgabe fuer
+           * kein einziges von ihnen die Wahrheit; die Klammer ist fuer alle
+           * richtig.
+           */
+          arrival: zeitraeume.map(zr => zr.arrival).sort()[0]!,
+          departure: zeitraeume.map(zr => zr.departure).sort().at(-1)!,
+          // Die Naechte des laengsten Zimmers. Eine Summe waere hier
+          // irrefuehrend -- sie zaehlte Zimmernaechte, nicht Aufenthalt.
+          nights: Math.max(...naechteJeZimmer.map(n => n.length)),
           // Summiert statt hochgerechnet: seit die Zimmer verschiedene
           // Preise tragen koennen, ist "einmal mal Anzahl" falsch -- und
           // zwar um genau den Betrag, um den verhandelt wurde.

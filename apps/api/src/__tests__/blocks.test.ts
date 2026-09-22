@@ -329,3 +329,41 @@ describe('Liste', () => {
     expect((json(r) as unknown as { blocks: unknown[] }).blocks).toHaveLength(0)
   })
 })
+
+/**
+ * Ein Abruf verbraucht den **ganzen** Zeitraum des Kontingents -- auch je
+ * Zimmer.
+ *
+ * `picked_up` ist eine Zahl ohne Datum, und die Freigabe des Rests rechnet
+ * `quantity - picked_up` ueber den ganzen Zeitraum. Ein Abruf ueber nur
+ * einen Teil zaehlte dort voll mit, haette den Platz aber nur an seinen
+ * eigenen Tagen verbraucht: an allen uebrigen bliebe dauerhaft Kapazitaet
+ * gebunden, die niemandem mehr gehoert und die niemand sieht.
+ *
+ * Die Regel gab es fuer den Zeitraum der Buchung schon. Seit ein Zimmer
+ * eigene Tage nennen darf, braucht sie dieselbe Pruefung eine Ebene tiefer
+ * -- sonst gaebe es einen Weg daran vorbei.
+ */
+describe('Abruf und abweichende Zimmertage', () => {
+  it('weist ein Zimmer mit eigenen Tagen ab', async () => {
+    const ref = await kontingent()
+    const r = await abruf(ref, {
+      categoryId: undefined,
+      rooms: [{ categoryId: catId, arrival: VON, departure: '2026-11-03' }]
+    })
+    expect(r.statusCode, r.body).toBe(422)
+    // Und zwar ohne den Zaehler anzufassen.
+    expect((await blockStand()).picked_up).toBe(0)
+  })
+
+  it('laesst Zimmer durch, die den Zeitraum des Kontingents nennen', async () => {
+    // Ausdruecklich genannt statt geerbt -- dasselbe Ergebnis.
+    const ref = await kontingent()
+    const r = await abruf(ref, {
+      categoryId: undefined,
+      rooms: [{ categoryId: catId, arrival: VON, departure: BIS }]
+    })
+    expect(r.statusCode, r.body).toBe(201)
+    expect((await blockStand()).picked_up).toBe(1)
+  })
+})

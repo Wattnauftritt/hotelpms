@@ -125,11 +125,24 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	# Namen und dürfen deshalb lange zwischengespeichert werden; index.html
 	# nicht, sonst sieht die Rezeption nach einer Auslieferung noch die alte
 	# Fassung und meldet Fehler, die längst behoben sind.
+	#
+	# `no-store` und nicht `no-cache`, und der Unterschied ist hier kein
+	# Feinschliff. `no-cache` heißt "vor dem Benutzen nachfragen" und lässt
+	# die Seite im Vor-Zurück-Speicher des Browsers zulässig. Nach dem
+	# Abmelden baut die Anwendung die Seite neu auf (`main.tsx`), aber ein
+	# Druck auf Zurück holte die alte vollständig gezeichnet wieder hervor —
+	# mit denselben Gastdaten und ohne eine einzige Anfrage. Die Anwendung
+	# blättert über `history.pushState`, es gibt also Einträge, auf die das
+	# zuträfe. `no-store` nimmt die Seite aus diesem Speicher heraus.
+	#
+	# Der Preis ist ein erneuter Abruf von index.html bei jedem Zurück —
+	# rund ein Kilobyte, während die gehashten Dateien daneben unberührt
+	# zwischengespeichert bleiben.
 	handle {
 		root * /opt/hotelpms/current/web
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
-		header /index.html Cache-Control "no-cache"
+		header /index.html Cache-Control "no-store"
 		try_files {path} /index.html
 		file_server
 	}

@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import type { Guest } from '@hotelpms/contracts'
+import type { Guest, Block } from '@hotelpms/contracts'
 import { useCreateBooking } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { preisFelder, alsGesamt, LEERER_PREIS, type Preiseingabe }
   from '../lib/preisEingabe.js'
 import { GuestPicker } from './GuestPicker.tsx'
+import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
 import { Fehler } from './Shell.tsx'
 
@@ -29,7 +30,10 @@ import { Fehler } from './Shell.tsx'
  */
 export interface GroupSelection {
   rooms: Array<{ resourceId: number; categoryId: number
-                 roomCode: string; categoryName: string }>
+                 roomCode: string; categoryName: string
+                 /** Eigene Tage dieses Zimmers, falls beim Aufziehen abweichend. */
+                 arrival?: string; departure?: string }>
+  /** Die Klammer um die Auswahl -- Vorgabe fuer alles, was nicht abweicht. */
   arrival: string
   departure: string
 }
@@ -60,13 +64,51 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
    * Sache weist die Schnittstelle ab, und das aus gutem Grund -- welcher
    * gilt, gehoert nicht geraten.
    */
+  /*
+   * Eigene Tage je Zimmer.
+   *
+   * **Warum als Abweichung und nicht als Pflichtfeld je Zeile.** Der
+   * Normalfall ist die geschlossene Anreise; acht Zeilen mit je zwei
+   * Datumsfeldern waeren sechzehn Felder fuer etwas, das in den meisten
+   * Faellen ueberall gleich ist. Was nicht abweicht, steht deshalb nicht im
+   * Zustand -- und geht als `undefined` hinaus, womit die Schnittstelle den
+   * Zeitraum der Buchung erbt.
+   */
+  const [eigeneTage, setEigeneTage] = useState<
+    Record<number, { arrival: string; departure: string }>>(
+    // Was schon beim Aufziehen abwich, steht hier drin: die Maske soll
+    // zeigen, was der Plan gezeigt hat, und nicht stillschweigend
+    // gleichziehen.
+    () => Object.fromEntries(selection.rooms
+      .filter(r => r.arrival !== undefined && r.departure !== undefined
+                && (r.arrival !== selection.arrival || r.departure !== selection.departure))
+      .map(r => [r.resourceId, { arrival: r.arrival!, departure: r.departure! }])))
+
+  /*
+   * Abruf aus einem Kontingent.
+   *
+   * Schliesst eigene Tage aus, und das ist keine Bequemlichkeit: ein Abruf
+   * verbraucht den ganzen Zeitraum des Kontingents. `picked_up` ist eine
+   * Zahl ohne Datum, und die Freigabe des Rests rechnet ueber den ganzen
+   * Zeitraum -- ein Abruf ueber nur einen Teil liesse an den uebrigen Tagen
+   * dauerhaft Kapazitaet gebunden, die niemandem mehr gehoert.
+   */
+  const [abruf, setAbruf] = useState<Block | null>(null)
+
   const [jeZimmer, setJeZimmer] = useState(false)
   const [gruppenPreis, setGruppenPreis] = useState<Preiseingabe>(LEERER_PREIS)
   const [zimmerPreis, setZimmerPreis] = useState<Record<number, Preiseingabe>>({})
   const buchen = useCreateBooking(propertyId)
 
   const naechte = daysBetween(arrival, departure)
+  /*
+   * Gueltig heisst: der Zeitraum der Buchung **und** jeder abweichende
+   * haben mindestens eine Nacht. Ein Zimmer mit Anreise gleich Abreise
+   * liefe sonst bis zur Schnittstelle und kaeme als Fehler zurueck, bei
+   * dem niemand sieht, welche Zeile gemeint ist.
+   */
   const gueltig = departure > arrival && zimmer.length > 0
+    && Object.values(eigeneTage).every(e => e.departure > e.arrival)
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
@@ -80,39 +122,109 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
 
         <div className="text-sm bg-neutral-50 rounded p-2 space-y-1">
           <div className="text-xs text-neutral-500">{t('group.selection')}</div>
-          {zimmer.map(z => (
-            <div key={z.resourceId} className="flex items-center gap-2">
-              <span className="tabular-nums font-medium">{z.roomCode}</span>
-              <span className="text-neutral-500 truncate grow">{z.categoryName}</span>
-              {jeZimmer && (
-                <PreisFelder klein naechte={naechte}
-                             wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
-                             onChange={w => setZimmerPreis(
-                               { ...zimmerPreis, [z.resourceId]: w })} />
-              )}
-              <button type="button"
-                      onClick={() => setZimmer(zimmer.filter(x => x.resourceId !== z.resourceId))}
-                      title={t('group.remove')}
-                      className="text-xs text-neutral-500 hover:text-red-700 px-1">
-                ×
-              </button>
-            </div>
-          ))}
+          {zimmer.map(z => {
+            const eigen = eigeneTage[z.resourceId]
+            const von = eigen?.arrival ?? arrival
+            const bis = eigen?.departure ?? departure
+            return (
+              <div key={z.resourceId} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="tabular-nums font-medium">{z.roomCode}</span>
+                  <span className="text-neutral-500 truncate grow">{z.categoryName}</span>
+                  {/*
+                    * Eigene Tage je Zimmer -- beim Abruf aus einem
+                    * Kontingent gar nicht erst angeboten: dort gilt dessen
+                    * Zeitraum fuer alle, und ein Knopf, der eine
+                    * Fehlermeldung erzeugt, laesst die Rezeption den Fehler
+                    * bei sich suchen.
+                    */}
+                  {abruf === null && (
+                    <button type="button"
+                            onClick={() => setEigeneTage(v => {
+                              if (eigen !== undefined) {
+                                // Den Eintrag entfernen, nicht auf die
+                                // Gruppentage setzen: nur "nicht da" heisst
+                                // "erbt", und ein gesetzter Wert bliebe
+                                // stehen, wenn die Gruppentage sich aendern.
+                                const rest = { ...v }
+                                delete rest[z.resourceId]
+                                return rest
+                              }
+                              return { ...v, [z.resourceId]: { arrival, departure } }
+                            })}
+                            className={`text-xs px-1 underline decoration-dotted
+                                        ${eigen ? 'text-neutral-900' : 'text-neutral-500'}`}>
+                      {eigen ? t('group.sameDates') : t('group.ownDates')}
+                    </button>
+                  )}
+                  {jeZimmer && (
+                    <PreisFelder klein naechte={daysBetween(von, bis)}
+                                 wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
+                                 onChange={w => setZimmerPreis(
+                                   { ...zimmerPreis, [z.resourceId]: w })} />
+                  )}
+                  <button type="button"
+                          onClick={() => setZimmer(
+                            zimmer.filter(x => x.resourceId !== z.resourceId))}
+                          title={t('group.remove')}
+                          className="text-xs text-neutral-500 hover:text-red-700 px-1">
+                    ×
+                  </button>
+                </div>
+                {eigen !== undefined && (
+                  <div className="flex items-center gap-2 pl-4">
+                    <input type="date" value={eigen.arrival}
+                           onChange={e => setEigeneTage(v => ({ ...v,
+                             [z.resourceId]: { ...eigen, arrival: e.target.value } }))}
+                           className="border border-neutral-300 rounded px-2 py-1 text-xs" />
+                    <span className="text-xs text-neutral-400">–</span>
+                    <input type="date" value={eigen.departure}
+                           onChange={e => setEigeneTage(v => ({ ...v,
+                             [z.resourceId]: { ...eigen, departure: e.target.value } }))}
+                           className="border border-neutral-300 rounded px-2 py-1 text-xs" />
+                    <span className="text-xs text-neutral-500">
+                      {t('group.nights', { n: daysBetween(eigen.arrival, eigen.departure) })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
           {zimmer.length === 0 && (
             <div className="text-xs text-amber-800">{t('group.empty')}</div>
           )}
         </div>
 
+        <KontingentWahl propertyId={propertyId}
+                        categoryId={[...new Set(zimmer.map(z => z.categoryId))].length === 1
+                          ? zimmer[0]?.categoryId : undefined}
+                        gewaehlt={abruf} benoetigt={zimmer.length}
+                        onChange={b => {
+                          setAbruf(b)
+                          if (b !== null) {
+                            setArrival(b.fromDate)
+                            setDeparture(b.toDate)
+                            // Abweichungen fallen weg: sie sind beim Abruf
+                            // gar nicht erlaubt, und stehenzulassen hiesse,
+                            // sie beim Absenden stillschweigend zu verwerfen.
+                            setEigeneTage({})
+                          }
+                        }} />
+
         <div className="flex gap-2">
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.arrival')}</span>
             <input type="date" value={arrival} onChange={e => setArrival(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   disabled={abruf !== null}
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
+                              disabled:bg-neutral-100 disabled:text-neutral-500" />
           </label>
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.departure')}</span>
             <input type="date" value={departure} onChange={e => setDeparture(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   disabled={abruf !== null}
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
+                              disabled:bg-neutral-100 disabled:text-neutral-500" />
           </label>
         </div>
 
@@ -203,13 +315,24 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                        * spaetestens der Rest-Cent laesst sie auseinander
                        * laufen.
                        */
-                      rooms: zimmer.map(z => ({
-                        categoryId: z.categoryId, resourceId: z.resourceId,
-                        totalCent: jeZimmer
-                          ? alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS, naechte)
-                          : undefined
-                      })),
+                      rooms: zimmer.map(z => {
+                        const eigen = eigeneTage[z.resourceId]
+                        return {
+                          categoryId: z.categoryId, resourceId: z.resourceId,
+                          // Was nicht abweicht, geht als `undefined` hinaus:
+                          // die Schnittstelle erbt dann den Zeitraum der
+                          // Buchung, und die Absicht steht nicht doppelt da.
+                          arrival: eigen?.arrival,
+                          departure: eigen?.departure,
+                          totalCent: jeZimmer
+                            ? alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS,
+                                        daysBetween(eigen?.arrival ?? arrival,
+                                                    eigen?.departure ?? departure))
+                            : undefined
+                        }
+                      }),
                       ...(jeZimmer ? {} : preisFelder(gruppenPreis)),
+                      blockRef: abruf?.blockRef,
                       guestRef: guest?.guestRef,
                       notes: notes.trim() === '' ? undefined : notes.trim()
                     })}

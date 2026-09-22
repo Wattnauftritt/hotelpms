@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import type { Guest } from '@hotelpms/contracts'
+import type { Guest, Block } from '@hotelpms/contracts'
 import { useCreateBooking } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingabe.js'
 import { GuestPicker } from './GuestPicker.tsx'
+import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
 import { Fehler } from './Shell.tsx'
 
@@ -62,6 +63,14 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * welcher nur mitgerechnet wird.
    */
   const [preis, setPreis] = useState<Preiseingabe>(LEERER_PREIS)
+  /*
+   * Abruf aus einem Kontingent statt aus dem freien Verkauf.
+   *
+   * Setzt den Zeitraum und sperrt ihn: ein Abruf verbraucht das Kontingent
+   * ganz, und ein abweichender liesse an den uebrigen Tagen dauerhaft
+   * Kapazitaet gebunden, die niemandem mehr gehoert.
+   */
+  const [abruf, setAbruf] = useState<Block | null>(null)
   /*
    * **Vorbelegt mit der Belegung der Zimmergruppe.** Ein Doppelzimmer wird
    * als Doppelzimmer verkauft, und in den allermeisten Faellen reisen auch
@@ -126,6 +135,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
        * deutschen Rezeption wird der Tausenderpunkt getippt.
        */
       ...preisFelder(preis),
+      blockRef: abruf?.blockRef,
       guestCount: anzahl ?? undefined,
       shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim()
     })
@@ -143,16 +153,29 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
           <div>{roomCode !== undefined ? `${roomCode} · ` : ''}{categoryName}</div>
         </div>
 
+        <KontingentWahl propertyId={propertyId} categoryId={categoryId}
+                        gewaehlt={abruf} benoetigt={1}
+                        onChange={b => {
+                          setAbruf(b)
+                          // Die Tage kommen mit dem Kontingent, sie werden
+                          // nicht vorgeschlagen: ein Abruf verbraucht es ganz.
+                          if (b !== null) { setArrival(b.fromDate); setDeparture(b.toDate) }
+                        }} />
+
         <div className="flex gap-2">
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.arrival')}</span>
             <input type="date" value={arrival} onChange={e => setArrival(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   disabled={abruf !== null}
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
+                              disabled:bg-neutral-100 disabled:text-neutral-500" />
           </label>
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.departure')}</span>
             <input type="date" value={departure} onChange={e => setDeparture(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   disabled={abruf !== null}
+                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
+                              disabled:bg-neutral-100 disabled:text-neutral-500" />
           </label>
         </div>
 

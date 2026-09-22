@@ -68,7 +68,20 @@ export interface CreateBookingBody {
    * Mehrere Zimmer in **einer** Buchung. Kommt aus der Mehrfachauswahl im
    * Belegungsplan; die Reihenfolge ist die des Plans.
    */
-  rooms?: Array<{ categoryId: number; resourceId?: number }>
+  rooms?: Array<{
+    categoryId: number; resourceId?: number
+    /** Preis dieses Zimmers fuer seinen ganzen Aufenthalt. */
+    totalCent?: number
+    /**
+     * Eigene Tage fuer dieses Zimmer. Ohne Angabe die der Buchung.
+     *
+     * Eine Reisegruppe reist selten geschlossen an -- das Brautpaar bleibt
+     * drei Naechte, die Eltern zwei. Beim Abruf aus einem Kontingent
+     * ausgeschlossen: dort gilt dessen Zeitraum fuer alle.
+     */
+    arrival?: string
+    departure?: string
+  }>
   arrival: string
   departure: string
   ratePlanId?: number
@@ -83,6 +96,8 @@ export interface CreateBookingBody {
   optionExpiresAt?: string
   /** Preis je Nacht in Cent, statt des Preises aus dem Ratenplan. */
   priceCent?: number
+  /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
+  blockRef?: string
   /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
   guestCount?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */

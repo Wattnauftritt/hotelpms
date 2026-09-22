@@ -6,6 +6,29 @@ export const gruppen = {
     de: 'Gruppen und Kontingente',
     en: 'Groups and blocks',
     tr: 'Gruplar ve kontenjanlar' },
+  'pickup.label': {
+    de: 'Abruf aus Kontingent',
+    en: 'Pick up from a block',
+    tr: 'Kontenjandan çekim' },
+  'pickup.freeSale': {
+    de: '— freier Verkauf —',
+    en: '— free sale —',
+    tr: '— serbest satış —' },
+  'pickup.remaining': {
+    de: 'noch {n} frei',
+    en: '{n} left',
+    tr: '{n} kaldı' },
+  'pickup.periodFixed': {
+    de: 'Der Zeitraum steht fest: {from} – {to}. Ein Abruf verbraucht das '
+      + 'Kontingent ganz; wer andere Tage braucht, bucht frei.',
+    en: 'The period is fixed: {from} – {to}. A pickup consumes the whole block; '
+      + 'for different dates, book from free sale.',
+    tr: 'Tarih aralığı sabit: {from} – {to}. Çekim kontenjanı tümüyle tüketir; '
+      + 'farklı tarihler için serbest satıştan rezerve edin.' },
+  'pickup.roomDatesBlocked': {
+    de: 'Beim Abruf aus einem Kontingent gilt dessen Zeitraum für alle Zimmer.',
+    en: 'When picking up from a block, its period applies to every room.',
+    tr: 'Kontenjandan çekimde kontenjanın tarih aralığı tüm odalar için geçerlidir.' },
   'block.new': {
     de: 'Kontingent anlegen',
     en: 'Create a block',

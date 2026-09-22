@@ -114,6 +114,16 @@ type DragState =
   | { kind: 'resize'; reservationRef: string; resourceId: number; edge: 'start' | 'end'
       arrival: string; departure: string; day: number }
 
+/**
+ * Eine Zeile der stehenden Mehrfachauswahl.
+ *
+ * Der Zeitraum steht **je Zeile** und nicht einmal oben: seit die
+ * Schnittstelle abweichende Tage je Zimmer annimmt (`CreateBookingRoom`),
+ * waere ein gemeinsamer Zeitraum eine Einschraenkung, die nur noch die
+ * Oberflaeche macht.
+ */
+interface AuswahlZeile { resourceId: number; arrival: string; departure: string }
+
 export interface Umzug {
   reservationRef: string
   resourceId: number
@@ -140,7 +150,12 @@ interface Props {
    * Zimmern. Die Zimmer kommen in der Reihenfolge des Plans.
    */
   onCreateGroup?: (sel: {
-    rooms: Array<{ resourceId: number; categoryId: number }>
+    /**
+     * Jedes Zimmer mit **seinem** Zeitraum. Der oben ist die Klammer und
+     * die Vorgabe der Maske; abweichende Tage stehen hier.
+     */
+    rooms: Array<{ resourceId: number; categoryId: number
+                   arrival: string; departure: string }>
     arrival: string; departure: string
   }) => void
   /**
@@ -227,13 +242,14 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
    * auf verstreute Zimmer legt, weil die dazwischen belegt sind, konnte sie
    * gar nicht als eine Buchung anlegen.
    *
-   * Jetzt sammelt jeder Zug mit Modifikator dazu. Der Zeitraum ist dabei
-   * einer fuer alle: die Gruppenbuchung kennt genau eine Anreise und eine
-   * Abreise (`CreateBooking.rooms`), und der zuletzt gezogene gilt fuer die
-   * ganze Auswahl -- sichtbar, weil alle Schattenbalken mitwandern.
+   * Jetzt sammelt jeder Zug mit Modifikator dazu, und **jeder bringt seinen
+   * eigenen Zeitraum mit**. Vorher galt der zuletzt gezogene fuer alle; das
+   * war die naheliegende Vereinfachung und die falsche, denn eine
+   * Reisegruppe reist selten geschlossen an -- das Brautpaar bleibt drei
+   * Naechte, die Eltern zwei. Wer dieselbe Zeile noch einmal zieht, aendert
+   * ihren Zeitraum; wer eine neue zieht, legt sie mit ihrem eigenen dazu.
    */
-  const [auswahl, setAuswahl] = useState<
-    { resourceIds: number[]; arrival: string; departure: string } | null>(null)
+  const [auswahl, setAuswahl] = useState<AuswahlZeile[] | null>(null)
   // Der aktuelle Zustand, synchron lesbar in den Fensterereignissen -- die
   // koennen nicht auf den naechsten Render warten wie `drag` selbst.
   const dragRef = useRef<DragState | null>(null)
@@ -439,13 +455,26 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
          * steht.
          */
         const neu = gruppenAuswahl(data.units, tage, d)
-        setAuswahl(vorher => ({
-          resourceIds: [...new Set([...(vorher?.resourceIds ?? []),
-                                    ...neu.rooms.map(r => r.resourceId)])],
-          // Der zuletzt gezogene Zeitraum gilt fuer die ganze Auswahl: die
-          // Gruppenbuchung kennt genau eine Anreise und eine Abreise.
-          arrival: neu.arrival, departure: neu.departure
-        }))
+        setAuswahl(vorher => {
+          /*
+           * Jeder Zug bringt seinen eigenen Zeitraum mit.
+           *
+           * Wer dieselbe Zeile noch einmal zieht, meint einen anderen
+           * Zeitraum fuer sie -- deshalb ersetzt der neue Zug die Zeile,
+           * statt sie ein zweites Mal aufzunehmen. Ein `Set` ueber die
+           * Zimmer reichte dafuer nicht mehr: es haette den alten Zeitraum
+           * behalten.
+           */
+          const dazu = new Set(neu.rooms.map(r => r.resourceId))
+          return [
+            ...(vorher ?? []).filter(z => !dazu.has(z.resourceId)),
+            ...neu.rooms.map(r => ({ resourceId: r.resourceId,
+                                     arrival: neu.arrival, departure: neu.departure }))
+          // In der Reihenfolge des Plans, nicht in der des Ziehens: die
+          // Leiste und die Maske lesen sich sonst von unten nach oben.
+          ].sort((a, b) => (zeileVonZimmer.get(a.resourceId) ?? 0)
+                         - (zeileVonZimmer.get(b.resourceId) ?? 0))
+        })
       } else if (d.kind === 'move') {
         const versatz = d.overResourceId === d.quelleResourceId
           ? d.day - d.startDay
@@ -529,25 +558,38 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
    * Mehrfachauswahl liegt in jeder markierten Zeile einer.
    */
   const ghost = useMemo((): {
-    resourceIds: Set<number>; left: number; width: number
+    /**
+     * Je Zeile ein eigenes Rechteck.
+     *
+     * Vorher stand hier **ein** Rechteck fuer alle markierten Zeilen, weil
+     * der Zeitraum einer fuer alle war. Seit jede Zeile ihren eigenen
+     * haben darf, waere das eine Vorschau, die luegt: acht gleich breite
+     * Kaesten fuer acht verschieden lange Aufenthalte.
+     */
+    kaesten: Map<number, { left: number; width: number }>
     /** Zeile, an der die Anzahl steht. Nur bei der Mehrfachauswahl gesetzt. */
     zaehlerAn?: number
     /** Zimmer der Gruppe, die beim Loslassen mitwandern. */
     gruppenZahl?: number
   } | null => {
+    /** Ein Rechteck fuer eine einzelne Zeile -- der haeufigste Fall. */
+    const eins = (resourceId: number, left: number, width: number) =>
+      ({ kaesten: new Map([[resourceId, { left, width }]]) })
+
     if (drag === null) {
       // Kein Zug, aber eine stehende Auswahl: die Schattenbalken bleiben
       // sichtbar, sonst waere nicht zu sehen, was ausgewaehlt ist.
-      if (auswahl === null) return null
-      const ids = new Set(auswahl.resourceIds)
-      return { resourceIds: ids, zaehlerAn: auswahl.resourceIds[0],
-               ...balken(auswahl.arrival, auswahl.departure) }
+      if (auswahl === null || auswahl.length === 0) return null
+      return {
+        kaesten: new Map(auswahl.map(z =>
+          [z.resourceId, balken(z.arrival, z.departure)])),
+        zaehlerAn: auswahl[0]!.resourceId
+      }
     }
     if (drag.kind === 'create') {
       const von = Math.min(drag.startDay, drag.day)
       const bis = Math.max(drag.startDay, drag.day)
-      return { resourceIds: new Set([drag.resourceId]),
-               left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
+      return eins(drag.resourceId, von * SPALTE, (bis - von + 1) * SPALTE - 4)
     }
     if (drag.kind === 'group') {
       const von = Math.min(drag.startDay, drag.day)
@@ -558,23 +600,25 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       /*
        * Das laufende Gummiband **und** was schon steht. So sieht man
        * waehrend des Zugs die ganze Auswahl und nicht nur den letzten
-       * Streifen -- und weil der Zeitraum einer fuer alle ist, wandern die
-       * bereits gewaehlten Zeilen sichtbar mit.
+       * Streifen.
+       *
+       * Die bereits gewaehlten Zeilen behalten dabei ihre eigene Breite:
+       * sie wandern **nicht** mit, weil der neue Zug nur die Zeilen meint,
+       * ueber die er laeuft.
        */
-      const ids = new Set([...(auswahl?.resourceIds ?? []), ...zeilen.map(u => u.id)])
-      const erste = data.units.find(u => ids.has(u.id))
-      return {
-        resourceIds: ids,
-        zaehlerAn: erste?.id,
-        left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
+      const laufend = { left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
+      const kaesten = new Map((auswahl ?? []).map(z =>
+        [z.resourceId, balken(z.arrival, z.departure)]))
+      for (const u of zeilen) kaesten.set(u.id, laufend)
+      const erste = data.units.find(u => kaesten.has(u.id))
+      return { kaesten, zaehlerAn: erste?.id }
     }
     if (drag.kind === 'resize') {
       const startTag = drag.edge === 'start' ? drag.day : daysBetween(data.from, drag.arrival)
       const endTag = drag.edge === 'end' ? drag.day + 1 : daysBetween(data.from, drag.departure)
       const von = Math.max(0, Math.min(startTag, endTag - 1))
       const bis = Math.max(von + 1, endTag)
-      return { resourceIds: new Set([drag.resourceId]),
-               left: von * SPALTE, width: (bis - von) * SPALTE - 4 }
+      return eins(drag.resourceId, von * SPALTE, (bis - von) * SPALTE - 4)
     }
     if (drag.moved && drag.overResourceId !== null) {
       /*
@@ -607,13 +651,30 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
        * Die Zahl sagt, was zaehlt: es wandert nicht dieser eine Balken.
        */
       return {
-        resourceIds: new Set([drag.overResourceId]),
+        kaesten: new Map([[drag.overResourceId, b]]),
         gruppenZahl: versatz !== 0 && drag.bookingRooms > 1 && drag.alleDerGruppe
-          ? drag.bookingRooms : undefined,
-        ...b }
+          ? drag.bookingRooms : undefined }
     }
     return null
   }, [drag, auswahl, balken, data.from, data.units])
+
+  /**
+   * Die Klammer um die Auswahl: frueheste Anreise, spaeteste Abreise -- und
+   * ob die Zimmer ueberhaupt dieselben Tage haben.
+   *
+   * Sie ist die Vorgabe fuer die Maske und fuer jedes Zimmer richtig, das
+   * nicht abweicht. `gemischt` sagt, ob daneben noch etwas zu sagen ist.
+   */
+  const klammer = useMemo(() => {
+    const zeilen = auswahl ?? []
+    if (zeilen.length === 0) return { arrival: '', departure: '', gemischt: false }
+    const an = zeilen.map(z => z.arrival).sort()
+    const ab = zeilen.map(z => z.departure).sort()
+    return {
+      arrival: an[0]!, departure: ab.at(-1)!,
+      gemischt: an[0] !== an.at(-1) || ab[0] !== ab.at(-1)
+    }
+  }, [auswahl])
 
   /*
    * Esc hebt die Auswahl auf.
@@ -952,18 +1013,18 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                                  occupants: drag.occupants,
                                  categoryMaxOccupancy: drag.categoryMaxOccupancy })
             : null
-          const ghostHier = ghost !== null && ghost.resourceIds.has(u.id)
+          const kasten = ghost?.kaesten.get(u.id)
           return (
             <Zimmerzeile key={u.id} unit={u} tage={tage}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
                          balken={balken} passung={passung}
                          versteckterRef={versteckterRef}
                          gruppenRef={gehaltenerGruppenRef}
-                         ghostHier={ghostHier}
-                         ghostLinks={ghostHier ? ghost!.left : 0}
-                         ghostBreite={ghostHier ? ghost!.width : 0}
+                         ghostHier={kasten !== undefined}
+                         ghostLinks={kasten?.left ?? 0}
+                         ghostBreite={kasten?.width ?? 0}
                          ghostZaehler={ghost?.gruppenZahl ?? (
-                           ghost?.zaehlerAn === u.id ? ghost.resourceIds.size : null)}
+                           ghost?.zaehlerAn === u.id ? ghost.kaesten.size : null)}
                          onCreatePointerDown={beginneErstellen}
                          onMovePointerDown={beginneVerschieben}
                          onResizePointerDown={beginneGroesseAendern}
@@ -992,14 +1053,22 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
         * gebraucht -- eine Leiste davor haette genau die Angabe verdeckt,
         * die man gerade liest.
         */}
-      {auswahl !== null && auswahl.resourceIds.length > 0 && (
+      {auswahl !== null && auswahl.length > 0 && (
         <div className="sticky bottom-0 left-0 z-30 flex flex-wrap items-center gap-2
                         bg-neutral-900 text-white px-3 py-1.5 text-sm">
           <span className="font-medium">
-            {t('plan.selectedRooms', { n: auswahl.resourceIds.length })}
+            {t('plan.selectedRooms', { n: auswahl.length })}
           </span>
+          {/*
+            * Der Zeitraum, und wenn die Zimmer verschiedene haben, die
+            * Klammer darum plus ein Hinweis. Nur die Klammer zu zeigen
+            * hiesse, eine Deckungsgleichheit zu behaupten, die es nicht
+            * gibt; sie wegzulassen hiesse, gar nichts ueber die Tage zu
+            * sagen. Welches Zimmer welche hat, steht in der Maske.
+            */}
           <span className="opacity-75 text-xs">
-            {formatDate(auswahl.arrival, locale)} – {formatDate(auswahl.departure, locale)}
+            {formatDate(klammer.arrival, locale)} – {formatDate(klammer.departure, locale)}
+            {klammer.gemischt && ` · ${t('plan.mixedDates')}`}
           </span>
           <div className="grow" />
           {/*
@@ -1014,13 +1083,15 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           <button type="button"
                   onClick={() => {
                     onCreateGroup?.({
-                      rooms: auswahl.resourceIds.flatMap(id => {
-                        const u = zimmerNach.get(id)
-                        return u === undefined
-                          ? []
-                          : [{ resourceId: id, categoryId: u.category_id }]
+                      rooms: auswahl.flatMap(z => {
+                        const u = zimmerNach.get(z.resourceId)
+                        return u === undefined ? [] : [{
+                          resourceId: z.resourceId, categoryId: u.category_id,
+                          arrival: z.arrival, departure: z.departure }]
                       }),
-                      arrival: auswahl.arrival, departure: auswahl.departure
+                      // Oben die Klammer: sie ist die Vorgabe der Maske und
+                      // fuer jedes Zimmer richtig, das nicht abweicht.
+                      arrival: klammer.arrival, departure: klammer.departure
                     })
                     setAuswahl(null)
                   }}
