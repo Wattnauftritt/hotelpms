@@ -66,16 +66,38 @@ export function Kontextmenue({ punkt, eintraege, onClose }: {
    * falsche Buchung.
    */
   useEffect(() => {
-    const zu = (): void => onClose()
+    /*
+     * **Der eigene Zeigerdruck darf nicht schliessen** -- und genau das
+     * hat hier kein einziger Menueeintrag ueberlebt.
+     *
+     * `capture` laesst den Horcher am Fenster laufen, **bevor** das
+     * Ereignis den Eintrag erreicht: das Menue verschwand beim
+     * `pointerdown`, und das `click` danach traf nichts mehr. Geklickt,
+     * nichts passiert -- bei jedem Eintrag, immer.
+     *
+     * Ein `stopPropagation` am Menue kann das nicht verhindern: es laeuft
+     * in der Blasenphase, also danach. Es sah nur so aus, als taete es
+     * etwas, und hat den Fehler dadurch verdeckt.
+     *
+     * Geprueft wird deshalb hier, ob der Druck **im** Menue liegt. Auf
+     * `capture` zu verzichten waere die andere Moeglichkeit und die
+     * schlechtere: dann landete der Druck zuerst auf dem Balken darunter
+     * und begaenne dort ein Ziehen.
+     */
+    const zu = (e: Event): void => {
+      if (e.target instanceof Node && ref.current?.contains(e.target)) return
+      onClose()
+    }
+    // Beim Scrollen dagegen immer: das Menue haengt an Fensterkoordinaten
+    // und zeigte sonst auf eine Zeile, die inzwischen woanders liegt.
+    const beimScrollen = (): void => onClose()
     const aufTaste = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
-    // `capture`, damit der Klick nicht erst an einem Balken landet und dort
-    // ein Ziehen beginnt, bevor das Menue etwas davon merkt.
     window.addEventListener('pointerdown', zu, true)
-    window.addEventListener('scroll', zu, true)
+    window.addEventListener('scroll', beimScrollen, true)
     window.addEventListener('keydown', aufTaste)
     return () => {
       window.removeEventListener('pointerdown', zu, true)
-      window.removeEventListener('scroll', zu, true)
+      window.removeEventListener('scroll', beimScrollen, true)
       window.removeEventListener('keydown', aufTaste)
     }
   }, [onClose])
@@ -85,10 +107,14 @@ export function Kontextmenue({ punkt, eintraege, onClose }: {
   return (
     <div ref={ref} role="menu"
          style={{ left: pos.x, top: pos.y }}
-         // Der eigene Zeigerdruck darf das Menue nicht sofort wieder
-         // schliessen -- der Schliesser oben haengt am Fenster und sieht
-         // auch Klicks im Menue.
-         onPointerDown={e => e.stopPropagation()}
+         /*
+          * Hier stand ein `stopPropagation`, das den Schliesser oben
+          * abhalten sollte. Es konnte das nie: der Horcht laeuft in der
+          * Fangphase am Fenster, dieses Feld in der Blasenphase danach.
+          * Weggelassen statt stehengelassen -- abwehrender Code, der
+          * nichts abwehrt, verdeckt genau den Fehler, den er zu
+          * verhindern scheint.
+          */
          className="fixed z-50 min-w-48 py-1 bg-white rounded shadow-xl
                     border border-neutral-200 text-sm">
       {eintraege.map(e => (

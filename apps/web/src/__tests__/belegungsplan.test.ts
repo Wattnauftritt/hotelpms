@@ -832,8 +832,34 @@ describe('Der rechte Knopf im Belegungsplan', () => {
      * liegt, und der naechste Klick traefe die falsche Buchung.
      */
     expect(menue).toContain("window.addEventListener('pointerdown', zu, true)")
-    expect(menue).toContain("window.addEventListener('scroll', zu, true)")
+    expect(menue).toContain("window.addEventListener('scroll', beimScrollen, true)")
     expect(menue).toContain("if (e.key === 'Escape') onClose()")
+  })
+
+  it('schliesst **nicht** beim Druck auf einen Eintrag', () => {
+    /*
+     * Der Fehler, an dem jeder Eintrag scheiterte: `capture` laesst den
+     * Horcher am Fenster laufen, **bevor** das Ereignis den Eintrag
+     * erreicht. Das Menue verschwand beim `pointerdown`, und das `click`
+     * danach traf nichts mehr -- geklickt, nichts passiert, bei jedem
+     * Eintrag, immer.
+     */
+    expect(menue).toContain('if (e.target instanceof Node && ref.current?.contains(e.target)) return')
+  })
+
+  it('verlaesst sich dafuer nicht auf stopPropagation', () => {
+    /*
+     * Das kann es nicht leisten: es laeuft in der Blasenphase, also nach
+     * dem Horcher in der Fangphase. Es sah nur so aus, als taete es etwas,
+     * und hat den Fehler dadurch verdeckt.
+     */
+    expect(menue).not.toContain('onPointerDown={e => e.stopPropagation()}')
+  })
+
+  it('behaelt capture, statt es wegzunehmen', () => {
+    // Ohne `capture` landete der Druck zuerst auf dem Balken darunter und
+    // begaenne dort ein Ziehen.
+    expect(menue).toContain("'pointerdown', zu, true)")
   })
 
   it('klappt am Fensterrand um, statt hinauszulaufen', () => {
