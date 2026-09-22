@@ -40,9 +40,12 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
   const q = useReservation(reservationRef)
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md bg-white border-l
+    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-xl bg-white border-l
                     border-neutral-200 shadow-xl overflow-y-auto">
-      <div className="p-4 space-y-4">
+      {/* Breiter als der Plan dahinter vertraegt? Nein: 576 statt 448 Pixel
+          lassen die Felder nebeneinander stehen und verdecken vom Plan die
+          Spalten, die ohnehin in der Zukunft liegen. */}
+      <div className="p-5 space-y-4">
         <div className="flex items-center gap-3">
           <button onClick={onClose}
                   className="text-sm px-2 py-1 border border-neutral-300 rounded">

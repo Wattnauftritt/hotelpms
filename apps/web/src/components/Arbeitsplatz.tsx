@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.js'
 import { KENNWORT_MIN } from '@hotelpms/contracts'
 import { useT } from '../lib/i18n/index.js'
+import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -104,44 +105,39 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
   })
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         onClick={onClose}>
-      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-4
-                      max-h-[90vh] overflow-auto"
-           onClick={e => e.stopPropagation()}>
-        <div>
-          <h2 className="text-sm font-medium">{t('workstation.title')}</h2>
-          <p className="text-sm text-neutral-600 mt-1">{benutzer}</p>
-          {gewechselt && (
-            <p role="status" className="text-xs text-amber-800 mt-1">
-              {t('workstation.acting')}
-            </p>
-          )}
-        </div>
+    <Dialog breite="breit" onClose={onClose}
+            titel={t('workstation.title')} unterzeile={benutzer}
+            fuss={
+              <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                {t('common.back')}
+              </button>
+            }>
+      {gewechselt && (
+        <p role="status" className="text-sm text-amber-800 bg-amber-50 rounded
+                                    px-3 py-2 mb-4">
+          {t('workstation.acting')}
+        </p>
+      )}
 
-        <section className="space-y-2 border-t border-neutral-200 pt-3">
-          <h3 className="text-sm font-medium">{t('konto.password')}</h3>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('konto.currentPassword')}
-            </span>
+      {/*
+        * Vier Abschnitte, die nichts miteinander zu tun haben, ausser dass
+        * sie alle "an mir" aendern. Untereinander war das eine Rolle von
+        * zwoelf Feldern, in der der Personenwechsel -- der einzige, den
+        * jemand mehrmals am Tag braucht -- ganz unten stand.
+        */}
+      <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+        <Abschnitt titel={t('konto.password')}>
+          <Feld label={t('konto.currentPassword')}>
             <input type="password" value={altesKennwort}
                    onChange={e => setAltesKennwort(e.target.value)}
-                   autoComplete="current-password"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('konto.newPassword')}
-            </span>
+                   autoComplete="current-password" className={FELD} />
+          </Feld>
+          <Feld label={t('konto.newPassword')}
+                hinweis={t('zugang.minLength', { min: KENNWORT_MIN })}>
             <input type="password" value={neuesKennwort}
                    onChange={e => setNeuesKennwort(e.target.value)}
-                   autoComplete="new-password"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
-          <p className="text-xs text-neutral-500">
-            {t('zugang.minLength', { min: KENNWORT_MIN })}
-          </p>
+                   autoComplete="new-password" className={FELD} />
+          </Feld>
           {kennwortAendern.isError && <Fehler error={kennwortAendern.error} />}
           {kennwortAendern.isSuccess && (
             <p className="text-sm text-emerald-800">✓ {t('konto.passwordSaved')}</p>
@@ -150,35 +146,25 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
                   disabled={kennwortAendern.isPending || altesKennwort === ''
                             || neuesKennwort.length < KENNWORT_MIN}
                   onClick={() => kennwortAendern.mutate()}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                             disabled:bg-neutral-300">
+                  className={KNOPF}>
             {t('konto.passwordSave')}
           </button>
-        </section>
+        </Abschnitt>
 
-        <section className="space-y-2 border-t border-neutral-200 pt-3">
-          <h3 className="text-sm font-medium">{t('konto.email')}</h3>
-          {/* Der Hinweis steht über dem Feld, nicht darunter: dass die
-              Änderung erst nach einem Klick im neuen Postfach gilt, will
-              man wissen, bevor man tippt. */}
-          <p className="text-xs text-neutral-500">{t('konto.emailHint')}</p>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('konto.newEmail')}
-            </span>
+        {/* Der Hinweis steht über dem Feld, nicht darunter: dass die
+            Änderung erst nach einem Klick im neuen Postfach gilt, will
+            man wissen, bevor man tippt. */}
+        <Abschnitt titel={t('konto.email')} hinweis={t('konto.emailHint')}>
+          <Feld label={t('konto.newEmail')}>
             <input type="email" value={neueMail}
                    onChange={e => setNeueMail(e.target.value)} autoComplete="off"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('konto.currentPassword')}
-            </span>
+                   className={FELD} />
+          </Feld>
+          <Feld label={t('konto.currentPassword')}>
             <input type="password" value={mailKennwort}
                    onChange={e => setMailKennwort(e.target.value)}
-                   autoComplete="current-password"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
+                   autoComplete="current-password" className={FELD} />
+          </Feld>
           {mailAendern.isError && <Fehler error={mailAendern.error} />}
           {mailAendern.isSuccess && (
             <p className="text-sm text-emerald-800">✓ {t('konto.emailSent')}</p>
@@ -187,73 +173,58 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
                   disabled={mailAendern.isPending || mailKennwort === ''
                             || neueMail.trim() === '' || neueMail.trim() === email}
                   onClick={() => mailAendern.mutate()}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                             disabled:bg-neutral-300">
+                  className={KNOPF}>
             {t('konto.emailSave')}
           </button>
-        </section>
+        </Abschnitt>
 
         {mitArbeitsplatz && <>
-        <section className="space-y-2 border-t border-neutral-200 pt-3">
-          <h3 className="text-sm font-medium">{t('workstation.switch')}</h3>
-          <p className="text-xs text-neutral-500">{t('workstation.switchHint')}</p>
+        <Abschnitt titel={t('workstation.switch')} hinweis={t('workstation.switchHint')}>
           {!pinGesetzt && (
             <p className="text-xs text-amber-800">{t('workstation.needOwnPin')}</p>
           )}
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">{t('login.email')}</span>
+          <Feld label={t('login.email')}>
             <input type="email" value={wechselEmail}
                    onChange={e => setWechselEmail(e.target.value)} autoComplete="off"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('workstation.pin')}
-            </span>
+                   className={FELD} />
+          </Feld>
+          <Feld label={t('workstation.pin')}>
             {/* `inputMode` statt `type="number"`: eine PIN ist eine Ziffernfolge
                 und keine Zahl -- fuehrende Nullen muessen stehen bleiben. */}
             <input type="password" inputMode="numeric" value={pin}
                    onChange={e => setPin(e.target.value)} autoComplete="off"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
+                   className={FELD} />
+          </Feld>
           {wechseln.isError && <Fehler error={wechseln.error} />}
           <button type="button"
                   disabled={wechseln.isPending || wechselEmail === '' || pin === ''}
                   onClick={() => wechseln.mutate()}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                             disabled:bg-neutral-300">
+                  className={KNOPF}>
             {t('workstation.switchSubmit')}
           </button>
-        </section>
+        </Abschnitt>
 
-        <section className="space-y-2 border-t border-neutral-200 pt-3">
-          <h3 className="text-sm font-medium">
-            {t('workstation.ownPin')}
-            {' — '}
-            <span className={pinGesetzt ? 'text-emerald-700' : 'text-neutral-500'}>
-              {pinGesetzt ? t('workstation.pinSet') : t('workstation.pinNotSet')}
-            </span>
-          </h3>
-          <p className="text-xs text-neutral-500">{t('workstation.ownPinHint')}</p>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('login.password')}
-            </span>
+        <Abschnitt hinweis={t('workstation.ownPinHint')}
+                   titel={<>
+                     {t('workstation.ownPin')}
+                     {' — '}
+                     <span className={pinGesetzt ? 'text-emerald-700' : 'text-neutral-400'}>
+                       {pinGesetzt ? t('workstation.pinSet') : t('workstation.pinNotSet')}
+                     </span>
+                   </>}>
+          <Feld label={t('login.password')}>
             {/* Das eigene Kennwort ist die Stelle, an der sich beweisen laesst,
                 dass wirklich der Betroffene davorsitzt -- an einem Tresen
                 steht die Sitzung offen, waehrend die Person Kaffee holt. */}
             <input type="password" value={kennwort}
-                   onChange={e => setKennwort(e.target.value)} autoComplete="current-password"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('workstation.pin')}
-            </span>
+                   onChange={e => setKennwort(e.target.value)}
+                   autoComplete="current-password" className={FELD} />
+          </Feld>
+          <Feld label={t('workstation.pin')}>
             <input type="password" inputMode="numeric" value={eigenerPin}
                    onChange={e => setEigenerPin(e.target.value)} autoComplete="off"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
+                   className={FELD} />
+          </Feld>
           {pinSetzen.isError && <Fehler error={pinSetzen.error} />}
           {pinSetzen.isSuccess && (
             <p className="text-sm text-emerald-800">✓ {t('workstation.pinSaved')}</p>
@@ -262,30 +233,21 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
             <button type="button"
                     disabled={pinSetzen.isPending || kennwort === '' || eigenerPin === ''}
                     onClick={() => pinSetzen.mutate(eigenerPin)}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                               disabled:bg-neutral-300">
+                    className={KNOPF}>
               {t('workstation.pinSave')}
             </button>
             {pinGesetzt && (
               <button type="button"
                       disabled={pinSetzen.isPending || kennwort === ''}
                       onClick={() => pinSetzen.mutate(null)}
-                      className="px-3 py-1.5 text-sm rounded border border-neutral-300
-                                 disabled:text-neutral-400">
+                      className={`${KNOPF_LEISE} disabled:text-neutral-400`}>
                 {t('workstation.pinRemove')}
               </button>
             )}
           </div>
-        </section>
+        </Abschnitt>
         </>}
-
-        <div className="border-t border-neutral-200 pt-3">
-          <button type="button" onClick={onClose}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-            {t('common.back')}
-          </button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   )
 }

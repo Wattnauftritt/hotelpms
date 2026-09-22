@@ -3,6 +3,7 @@ import { useBooking, useShiftBooking, useAddBookingRoom, useChangeStay,
          useReservationStatusAction } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
+import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 
 /**
@@ -57,67 +58,68 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
   const daten = q.data
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         onClick={onClose}>
-      <div className="w-full max-w-2xl bg-white rounded shadow-xl p-4 space-y-3
-                      max-h-[90vh] overflow-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium grow">
-            {t('group.panelTitle')} · {bookingRef}
-          </h2>
-          <button type="button" onClick={onClose}
-                  className="text-sm text-neutral-500 px-2">×</button>
-        </div>
+    <Dialog breite="weit" onClose={onClose}
+            titel={t('group.panelTitle')} unterzeile={bookingRef}
+            fuss={
+              <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                {t('booking.close')}
+              </button>
+            }>
+      {q.isError ? <Fehler error={q.error} />
+        : daten === undefined ? <Laedt />
+        : (
+          <div className="space-y-6">
+            {/*
+              * Die Eckdaten als Kacheln statt als Zeile: in einer breiten
+              * Maske ist eine Zeile aus drei Angaben ein Streifen, in dem
+              * keine der drei auffaellt.
+              */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                { k: t('booking.guest'), v: daten.companyName ?? daten.guestName ?? '—' },
+                { k: t('group.rooms'), v: String(daten.rooms.length) },
+                { k: t('group.total'), v: formatMoney(daten.totalCent, locale) }
+              ].map(f => (
+                <div key={f.k} className="bg-neutral-50 rounded px-3 py-2">
+                  <div className="text-xs text-neutral-500">{f.k}</div>
+                  <div className="text-base tabular-nums truncate">{f.v}</div>
+                </div>
+              ))}
+            </div>
 
-        {q.isError ? <Fehler error={q.error} />
-          : daten === undefined ? <Laedt />
-          : (
-            <>
-              <div className="text-sm bg-neutral-50 rounded p-2 flex flex-wrap gap-x-6 gap-y-1">
-                <span>
-                  <span className="text-xs text-neutral-500">{t('booking.guest')}: </span>
-                  {daten.companyName ?? daten.guestName ?? '—'}
-                </span>
-                <span>
-                  <span className="text-xs text-neutral-500">{t('group.rooms')}: </span>
-                  {daten.rooms.length}
-                </span>
-                <span>
-                  <span className="text-xs text-neutral-500">{t('group.total')}: </span>
-                  <span className="tabular-nums">{formatMoney(daten.totalCent, locale)}</span>
-                </span>
-              </div>
-
-              {/*
-                * Verschieben der ganzen Gruppe.
-                *
-                * Ein Versatz in Tagen, kein neuer Zeitraum: liegen die
-                * Zimmer nach einzelnen Aenderungen nicht mehr
-                * deckungsgleich, erhaelt der Versatz das. Ein gemeinsamer
-                * Zeitraum machte daraus wieder einen Block und loeschte
-                * genau die Abweichungen, die jemand eingetragen hat.
-                */}
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-xs text-neutral-600">{t('group.shift')}</span>
+            {/*
+              * Verschieben der ganzen Gruppe.
+              *
+              * Ein Versatz in Tagen, kein neuer Zeitraum: liegen die
+              * Zimmer nach einzelnen Aenderungen nicht mehr
+              * deckungsgleich, erhaelt der Versatz das. Ein gemeinsamer
+              * Zeitraum machte daraus wieder einen Block und loeschte
+              * genau die Abweichungen, die jemand eingetragen hat.
+              */}
+            <Abschnitt titel={t('group.shift')} hinweis={t('group.shiftHint')}>
+              <div className="flex flex-wrap items-center gap-2">
                 {[-7, -1, 1, 7].map(n => (
                   <button key={n} type="button" disabled={verschieben.isPending}
                           onClick={() => verschieben.mutate({ bookingRef, shiftDays: n })}
-                          className="px-2 py-1 rounded border border-neutral-300 text-sm
-                                     tabular-nums disabled:opacity-50">
+                          className="px-3 py-2 rounded border border-neutral-300 text-sm
+                                     tabular-nums bg-white hover:bg-neutral-50
+                                     disabled:opacity-50">
                     {n > 0 ? `+${n}` : n}
                   </button>
                 ))}
-                <span className="text-xs text-neutral-500">{t('group.shiftHint')}</span>
               </div>
               {verschieben.isError && <Fehler error={verschieben.error} />}
+            </Abschnitt>
 
+            <Abschnitt titel={t('group.selection')}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-neutral-500 text-left">
                     <th className="font-medium py-1">{t('common.room')}</th>
+                    <th className="font-medium">{t('common.status')}</th>
                     <th className="font-medium">{t('booking.arrival')}</th>
                     <th className="font-medium">{t('booking.departure')}</th>
+                    <th className="font-medium text-right">{t('group.nightsHead')}</th>
                     <th className="font-medium text-right">{t('group.total')}</th>
                     <th />
                   </tr>
@@ -125,11 +127,19 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                 <tbody>
                   {daten.rooms.map(z => {
                     const storniert = z.status === 'Canceled' || z.status === 'NoShow'
+                    /*
+                     * Geaendert wird **in** der Zeile und nicht in einem
+                     * Formular darunter: bei zwoelf Zimmern stand dort
+                     * zuletzt ein Paar Datumsfelder, dem man nicht mehr
+                     * ansah, zu welcher Zeile es gehoert.
+                     */
+                    const offen = aendert === z.reservationRef
                     return (
                       <tr key={z.reservationRef}
-                          className={`border-t border-neutral-100
+                          className={`border-t border-neutral-100 align-middle
+                                      ${offen ? 'bg-neutral-50' : ''}
                                       ${storniert ? 'text-neutral-400 line-through' : ''}`}>
-                        <td className="py-1">
+                        <td className="py-1.5">
                           <button type="button" onClick={() => onSelect?.(z.reservationRef)}
                                   className="tabular-nums font-medium underline
                                              decoration-dotted">
@@ -139,105 +149,113 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                             {z.categoryCode}
                           </span>
                         </td>
-                        <td className="tabular-nums">{formatDate(z.arrival, locale)}</td>
-                        <td className="tabular-nums">{formatDate(z.departure, locale)}</td>
-                        <td className="tabular-nums text-right">{formatMoney(z.totalCent, locale)}</td>
-                        <td className="text-right whitespace-nowrap">
-                          {!storniert && (
-                            <>
+                        <td className="text-neutral-600">{t(`status.${z.status}` as never)}</td>
+                        {offen ? (
+                          <>
+                            <td className="pr-2">
+                              <input type="date" value={von}
+                                     onChange={e => setVon(e.target.value)}
+                                     className="border border-neutral-300 rounded
+                                                px-2 py-1 text-sm" />
+                            </td>
+                            <td className="pr-2">
+                              <input type="date" value={bis}
+                                     onChange={e => setBis(e.target.value)}
+                                     className="border border-neutral-300 rounded
+                                                px-2 py-1 text-sm" />
+                            </td>
+                            <td className="tabular-nums text-right pr-2">
+                              {daysBetween(von, bis)}
+                            </td>
+                            <td />
+                            <td className="text-right whitespace-nowrap">
                               <button type="button"
-                                      onClick={() => {
-                                        setAendert(z.reservationRef)
-                                        setVon(z.arrival)
-                                        setBis(z.departure)
-                                      }}
-                                      className="text-xs text-neutral-600 px-1 underline">
-                                {t('group.changeDates')}
+                                      disabled={umbuchen.isPending || daysBetween(von, bis) <= 0}
+                                      onClick={() => umbuchen.mutate(
+                                        { reservationRef: aendert, arrival: von, departure: bis },
+                                        { onSuccess: () => { setAendert(null); void q.refetch() } })}
+                                      className="px-2 py-1 text-xs rounded bg-neutral-900
+                                                 text-white disabled:bg-neutral-300">
+                                {t('common.save')}
                               </button>
-                              <ZimmerRaus reservationRef={z.reservationRef} />
-                            </>
-                          )}
-                        </td>
+                              <button type="button" onClick={() => setAendert(null)}
+                                      className="px-2 py-1 text-xs rounded border
+                                                 border-neutral-300 ml-1">
+                                {t('common.cancel')}
+                              </button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="tabular-nums">{formatDate(z.arrival, locale)}</td>
+                            <td className="tabular-nums">{formatDate(z.departure, locale)}</td>
+                            <td className="tabular-nums text-right pr-2">
+                              {daysBetween(z.arrival, z.departure)}
+                            </td>
+                            <td className="tabular-nums text-right">
+                              {formatMoney(z.totalCent, locale)}
+                            </td>
+                            <td className="text-right whitespace-nowrap">
+                              {!storniert && (
+                                <>
+                                  <button type="button"
+                                          onClick={() => {
+                                            setAendert(z.reservationRef)
+                                            setVon(z.arrival)
+                                            setBis(z.departure)
+                                          }}
+                                          className="text-xs text-neutral-600 px-1 underline
+                                                     decoration-dotted">
+                                    {t('group.changeDates')}
+                                  </button>
+                                  <ZimmerRaus reservationRef={z.reservationRef} />
+                                </>
+                              )}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
+              {umbuchen.isError && <Fehler error={umbuchen.error} />}
+            </Abschnitt>
 
-              {/* Die Tage eines einzelnen Zimmers. Erscheint nur, wenn eines
-                  gewaehlt ist -- ein Formular, das immer danebensteht, wird
-                  irgendwann versehentlich abgeschickt. */}
-              {aendert !== null && (
-                <div className="flex flex-wrap items-end gap-2 bg-neutral-50 rounded p-2">
-                  <label className="block text-sm">
-                    <span className="block text-xs text-neutral-600 mb-1">
-                      {t('booking.arrival')}
-                    </span>
-                    <input type="date" value={von} onChange={e => setVon(e.target.value)}
-                           className="border border-neutral-300 rounded px-2 py-1 text-sm" />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="block text-xs text-neutral-600 mb-1">
-                      {t('booking.departure')}
-                    </span>
-                    <input type="date" value={bis} onChange={e => setBis(e.target.value)}
-                           className="border border-neutral-300 rounded px-2 py-1 text-sm" />
-                  </label>
-                  <button type="button"
-                          disabled={umbuchen.isPending || daysBetween(von, bis) <= 0}
-                          onClick={() => umbuchen.mutate(
-                            { reservationRef: aendert, arrival: von, departure: bis },
-                            { onSuccess: () => { setAendert(null); void q.refetch() } })}
-                          className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                                     disabled:bg-neutral-300">
-                    {t('common.save')}
-                  </button>
-                  <button type="button" onClick={() => setAendert(null)}
-                          className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-                    {t('common.cancel')}
-                  </button>
-                  {umbuchen.isError && <Fehler error={umbuchen.error} />}
-                </div>
-              )}
-
-              {/*
-                * Ein Zimmer dazu.
-                *
-                * Ohne Zimmernummer: welches es wird, entscheidet die
-                * Zuweisung im Plan. Hier geht es um den Platz in der
-                * Zimmergruppe -- das ist die Frage, die der Bestand
-                * beantwortet.
-                */}
-              <div className="flex flex-wrap items-end gap-2 border-t border-neutral-200 pt-3">
-                <label className="block text-sm">
-                  <span className="block text-xs text-neutral-600 mb-1">
-                    {t('group.addRoom')}
-                  </span>
+            {/*
+              * Ein Zimmer dazu.
+              *
+              * Ohne Zimmernummer: welches es wird, entscheidet die
+              * Zuweisung im Plan. Hier geht es um den Platz in der
+              * Zimmergruppe -- das ist die Frage, die der Bestand
+              * beantwortet.
+              */}
+            <Abschnitt titel={t('group.addRoom')} hinweis={t('group.addHint')}>
+              <div className="flex flex-wrap items-end gap-3">
+                <Feld label={t('common.category')} className="grow max-w-sm">
                   <select value={neueGruppe}
                           onChange={e => setNeueGruppe(
                             e.target.value === '' ? '' : Number(e.target.value))}
-                          className="border border-neutral-300 rounded px-2 py-1 text-sm">
+                          className={FELD}>
                     <option value="">{t('group.pickCategory')}</option>
                     {categories.map(k => (
                       <option key={k.id} value={k.id}>{k.code} · {k.name}</option>
                     ))}
                   </select>
-                </label>
+                </Feld>
                 <button type="button" disabled={neueGruppe === '' || dazu.isPending}
                         onClick={() => dazu.mutate(
                           { bookingRef, categoryId: neueGruppe as number },
                           { onSuccess: () => setNeueGruppe('') })}
-                        className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                                   disabled:bg-neutral-300">
+                        className={KNOPF}>
                   {t('group.add')}
                 </button>
-                <span className="text-xs text-neutral-500">{t('group.addHint')}</span>
               </div>
               {dazu.isError && <Fehler error={dazu.error} />}
-            </>
-          )}
-      </div>
-    </div>
+            </Abschnitt>
+          </div>
+        )}
+    </Dialog>
   )
 }
 

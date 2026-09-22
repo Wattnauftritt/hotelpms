@@ -7,6 +7,7 @@ import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingab
 import { GuestPicker } from './GuestPicker.tsx'
 import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
+import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -158,160 +159,162 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         onClick={onClose}>
-      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-3"
-           onClick={e => e.stopPropagation()}>
-        <h2 className="text-sm font-medium">{t('booking.title')}</h2>
-
-        <div className="text-sm bg-neutral-50 rounded p-2">
-          <div className="text-xs text-neutral-500">{t('booking.category')}</div>
-          <div>{roomCode !== undefined ? `${roomCode} · ` : ''}{categoryName}</div>
-        </div>
-
-        <KontingentWahl propertyId={propertyId} categoryId={categoryId}
-                        gewaehlt={abruf} benoetigt={1}
-                        onChange={b => {
-                          setAbruf(b)
-                          // Die Tage kommen mit dem Kontingent, sie werden
-                          // nicht vorgeschlagen: ein Abruf verbraucht es ganz.
-                          if (b !== null) { setArrival(b.fromDate); setDeparture(b.toDate) }
-                        }} />
-
-        <div className="flex gap-2">
-          <label className="block text-sm grow">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.arrival')}</span>
-            <input type="date" value={arrival} onChange={e => setArrival(e.target.value)}
-                   disabled={abruf !== null}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
-                              disabled:bg-neutral-100 disabled:text-neutral-500" />
-          </label>
-          <label className="block text-sm grow">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.departure')}</span>
-            <input type="date" value={departure} onChange={e => setDeparture(e.target.value)}
-                   disabled={abruf !== null}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
-                              disabled:bg-neutral-100 disabled:text-neutral-500" />
-          </label>
-        </div>
-
-        {/*
-          * Kein <label> um die Gastauswahl, und das ist kein Stilfrage.
-          *
-          * Ein Klick auf einen Treffer der Liege loeste die Auswahl aus --
-          * und nahm sie im selben Wimpernschlag wieder zurueck. Der Grund
-          * liegt im <label>: es leitet einen Klick an sein erstes
-          * bedienbares Kind weiter. Vor der Auswahl ist das das Suchfeld,
-          * danach steht dort der Knopf "Aendern" -- und der ruft
-          * `onChange(null)`. Das Ergebnis war eine Buchungsmaske, in der
-          * sich schlicht kein Gast setzen liess; der Aufruf ging ohne
-          * `guestRef` hinaus, und niemandem fiel es auf, weil die Buchung
-          * ja gelang.
-          */}
-        <div className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
-          <GuestPicker value={guest} onChange={setGuest} />
-        </div>
-
-        {/* Der Grund steht an der gesperrten Stelle, nicht am Knopf: wer
-            dort sucht, warum nichts geht, sucht bei sich. */}
-        {guest === null && (
-          <div className="text-xs text-neutral-500">{t('booking.guestRequired')}</div>
-        )}
-
-        <div className="flex flex-wrap gap-3">
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.status')}</span>
-            <select value={unverbindlich ? 'optional' : 'confirmed'}
-                    onChange={e => setUnverbindlich(e.target.value === 'optional')}
-                    className="border border-neutral-300 rounded px-2 py-1 text-sm">
-              <option value="confirmed">{t('booking.statusConfirmed')}</option>
-              <option value="optional">{t('booking.statusOptional')}</option>
-            </select>
-          </label>
-          <PreisFelder wert={preis} naechte={naechte} onChange={setPreis} />
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.guests')}</span>
-            <input value={personen} onChange={e => setPersonen(e.target.value)}
-                   inputMode="numeric" placeholder="—"
-                   className="border border-neutral-300 rounded px-2 py-1 text-sm w-20" />
-          </label>
-        </div>
-
-        {/* Die Frist erscheint nur, wenn sie gebraucht wird. Ein Feld, das
-            bei einer verbindlichen Buchung leer danebensteht, wird
-            irgendwann versehentlich gefuellt. */}
-        {unverbindlich && (
-          <label className="block text-sm">
-            <span className="block text-xs text-neutral-600 mb-1">
-              {t('booking.optionUntil')}
-            </span>
-            <input type="date" value={optionBis}
-                   onChange={e => setOptionBis(e.target.value)}
-                   className="border border-neutral-300 rounded px-2 py-1 text-sm" />
-            <div className="text-xs text-neutral-500 mt-0.5">{t('booking.optionHint')}</div>
-          </label>
-        )}
-
-        <div className="text-xs text-neutral-500">
-          {t('booking.priceHint')} {t('booking.guestsHint')}
-        </div>
-
-        {/* Erst das Merkmal, dann der Vorgang. In dieser Reihenfolge, weil
-            die Kurznotiz die ist, die jeder Blick auf den Plan liest. */}
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">
-            {t('booking.shortNote')}
-          </span>
-          <input value={kurznotiz} onChange={e => setKurznotiz(e.target.value)}
-                 maxLength={40} placeholder={t('booking.shortNotePlaceholder')}
-                 className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          <div className="text-xs text-neutral-500 mt-0.5">
-            {t('booking.shortNoteHint')}
+    <Dialog breite="breit" onClose={onClose}
+            titel={t('booking.title')}
+            unterzeile={`${roomCode !== undefined ? `${roomCode} · ` : ''}${categoryName}`}
+            fuss={buchen.isSuccess ? (
+              <>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('common.back')}
+                </button>
+                <span className="text-sm text-emerald-800">
+                  ✓ {t('booking.created')} — {buchen.data.reservationRef}
+                </span>
+              </>
+            ) : (
+              <>
+                <button type="button" disabled={buchen.isPending || !gueltig}
+                        onClick={absenden} className={KNOPF}>
+                  {t('booking.submit')}
+                </button>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('booking.close')}
+                </button>
+                {/*
+                  * Der Grund steht **daneben**, nicht im `title`. Ein
+                  * gesperrter Knopf nimmt keine Zeigerereignisse an; sein
+                  * Tooltip erscheint in den meisten Browsern gar nicht -- er
+                  * waere also genau dort unsichtbar, wo er gebraucht wird.
+                  */}
+                {grund !== null && (
+                  <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+                )}
+              </>
+            )}>
+      {/*
+        * Zwei Spalten: links der Aufenthalt, rechts der Gast.
+        *
+        * Das ist die Reihenfolge, in der an der Rezeption gefragt wird --
+        * "wann" steht fest, bevor "wer" getippt ist. Untereinander waren es
+        * elf Felder in einer Rolle, und der Gast stand so weit unten, dass
+        * die Maske darueber fertig aussah.
+        */}
+      <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+        <Abschnitt titel={t('booking.sectionStay')}>
+          <div className="text-sm bg-neutral-50 rounded px-3 py-2">
+            <div className="text-xs text-neutral-500">{t('booking.category')}</div>
+            <div>{roomCode !== undefined ? `${roomCode} · ` : ''}{categoryName}</div>
           </div>
-        </label>
 
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('booking.notes')}</span>
-          <input value={notes} onChange={e => setNotes(e.target.value)}
-                 className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-        </label>
+          <KontingentWahl propertyId={propertyId} categoryId={categoryId}
+                          gewaehlt={abruf} benoetigt={1}
+                          onChange={b => {
+                            setAbruf(b)
+                            // Die Tage kommen mit dem Kontingent, sie werden
+                            // nicht vorgeschlagen: ein Abruf verbraucht es ganz.
+                            if (b !== null) { setArrival(b.fromDate); setDeparture(b.toDate) }
+                          }} />
 
-        {buchen.isError && <Fehler error={buchen.error} />}
-        {buchen.isSuccess ? (
-          <>
-            <p className="text-sm text-emerald-800">
-              ✓ {t('booking.created')} — {buchen.data.reservationRef}
-            </p>
-            <button type="button" onClick={onClose}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-              {t('common.back')}
-            </button>
-          </>
-        ) : (
-          <div className="flex gap-2">
-            <button type="button" disabled={buchen.isPending || !gueltig}
-                    onClick={absenden}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                               disabled:bg-neutral-300">
-              {t('booking.submit')}
-            </button>
-            <button type="button" onClick={onClose}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-              {t('booking.close')}
-            </button>
-            {/*
-              * Der Grund steht **daneben**, nicht im `title`. Ein gesperrter
-              * Knopf nimmt keine Zeigerereignisse an; sein Tooltip erscheint
-              * in den meisten Browsern gar nicht -- er waere also genau dort
-              * unsichtbar, wo er gebraucht wird.
-              */}
-            {grund !== null && (
-              <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+          <div className="grid grid-cols-2 gap-3">
+            <Feld label={t('booking.arrival')}>
+              <input type="date" value={arrival} onChange={e => setArrival(e.target.value)}
+                     disabled={abruf !== null} className={FELD} />
+            </Feld>
+            <Feld label={t('booking.departure')}>
+              <input type="date" value={departure}
+                     onChange={e => setDeparture(e.target.value)}
+                     disabled={abruf !== null} className={FELD} />
+            </Feld>
+          </div>
+          {/* Die Naechte als Zahl daneben: der Unterschied zwischen dem 3.
+              und dem 10. ist sieben, und niemand rechnet ihn im Kopf, wenn
+              der Monat dazwischen wechselt. */}
+          {naechte > 0 && (
+            <div className="text-xs text-neutral-500 tabular-nums">
+              {t('group.nights', { n: naechte })}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Feld label={t('booking.status')}>
+              <select value={unverbindlich ? 'optional' : 'confirmed'}
+                      onChange={e => setUnverbindlich(e.target.value === 'optional')}
+                      className={FELD}>
+                <option value="confirmed">{t('booking.statusConfirmed')}</option>
+                <option value="optional">{t('booking.statusOptional')}</option>
+              </select>
+            </Feld>
+            {/* Die Frist erscheint nur, wenn sie gebraucht wird. Ein Feld,
+                das bei einer verbindlichen Buchung leer danebensteht, wird
+                irgendwann versehentlich gefuellt. */}
+            {unverbindlich && (
+              <Feld label={t('booking.optionUntil')} hinweis={t('booking.optionHint')}>
+                <input type="date" value={optionBis}
+                       onChange={e => setOptionBis(e.target.value)}
+                       className={FELD} />
+              </Feld>
             )}
           </div>
+        </Abschnitt>
+
+        <Abschnitt titel={t('booking.sectionGuest')}>
+          {/*
+            * Kein <label> um die Gastauswahl, und das ist keine Stilfrage.
+            *
+            * Ein Klick auf einen Treffer der Liste loeste die Auswahl aus --
+            * und nahm sie im selben Wimpernschlag wieder zurueck. Der Grund
+            * liegt im <label>: es leitet einen Klick an sein erstes
+            * bedienbares Kind weiter. Vor der Auswahl ist das das Suchfeld,
+            * danach steht dort der Knopf "Aendern" -- und der ruft
+            * `onChange(null)`. Das Ergebnis war eine Buchungsmaske, in der
+            * sich schlicht kein Gast setzen liess; der Aufruf ging ohne
+            * `guestRef` hinaus, und niemandem fiel es auf, weil die Buchung
+            * ja gelang.
+            *
+            * Auch `Feld` faellt darunter: es rendert ein <label>.
+            */}
+          <div className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
+            <GuestPicker value={guest} onChange={setGuest} />
+          </div>
+
+          {/* Der Grund steht an der gesperrten Stelle, nicht am Knopf: wer
+              dort sucht, warum nichts geht, sucht bei sich. */}
+          {guest === null && (
+            <div className="text-xs text-neutral-500">{t('booking.guestRequired')}</div>
+          )}
+
+          {/* Erst das Merkmal, dann der Vorgang. In dieser Reihenfolge, weil
+              die Kurznotiz die ist, die jeder Blick auf den Plan liest. */}
+          <Feld label={t('booking.shortNote')} hinweis={t('booking.shortNoteHint')}>
+            <input value={kurznotiz} onChange={e => setKurznotiz(e.target.value)}
+                   maxLength={40} placeholder={t('booking.shortNotePlaceholder')}
+                   className={FELD} />
+          </Feld>
+
+          <Feld label={t('booking.notes')}>
+            <input value={notes} onChange={e => setNotes(e.target.value)}
+                   className={FELD} />
+          </Feld>
+        </Abschnitt>
+
+        <Abschnitt titel={t('booking.sectionPrice')}
+                   hinweis={`${t('booking.priceHint')} ${t('booking.guestsHint')}`}
+                   className="md:col-span-2">
+          <div className="flex flex-wrap items-end gap-4">
+            <PreisFelder wert={preis} naechte={naechte} onChange={setPreis} />
+            <Feld label={t('booking.guests')}>
+              <input value={personen} onChange={e => setPersonen(e.target.value)}
+                     inputMode="numeric" placeholder="—"
+                     className="border border-neutral-300 rounded px-3 py-2 text-sm w-24" />
+            </Feld>
+          </div>
+        </Abschnitt>
+
+        {buchen.isError && (
+          <div className="md:col-span-2"><Fehler error={buchen.error} /></div>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }

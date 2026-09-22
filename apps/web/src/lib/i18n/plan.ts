@@ -151,6 +151,23 @@ export const plan = {
     de: 'Zimmergruppe',
     en: 'Room category',
     tr: 'Oda tipi' },
+  /*
+   * Die Ueberschriften der Abschnitte. Sie tragen die breite Maske: zwei
+   * Spalten ohne Ueberschrift sind zwei Reihen Felder, die zufaellig
+   * nebeneinander liegen.
+   */
+  'booking.sectionStay': {
+    de: 'Aufenthalt',
+    en: 'Stay',
+    tr: 'Konaklama' },
+  'booking.sectionGuest': {
+    de: 'Gast und Notizen',
+    en: 'Guest and notes',
+    tr: 'Misafir ve notlar' },
+  'booking.sectionPrice': {
+    de: 'Preis und Belegung',
+    en: 'Price and occupancy',
+    tr: 'Fiyat ve doluluk' },
   'booking.arrival': {
     de: 'Anreise',
     en: 'Arrival',
@@ -419,6 +436,26 @@ export const plan = {
     de: 'Ausgewählte Zimmer',
     en: 'Selected rooms',
     tr: 'Seçilen odalar' },
+  'group.sectionPeriod': {
+    de: 'Zeitraum der Gruppe',
+    en: 'Dates for the group',
+    tr: 'Grubun tarihleri' },
+  'group.sectionPrice': {
+    de: 'Preis',
+    en: 'Price',
+    tr: 'Fiyat' },
+  'group.sectionGuest': {
+    de: 'Besteller und Notiz',
+    en: 'Booker and note',
+    tr: 'Sipariş veren ve not' },
+  'group.nightsHead': {
+    de: 'Nächte',
+    en: 'Nights',
+    tr: 'Gece' },
+  'group.periodHint': {
+    de: 'Gilt für jedes Zimmer, das in der Tabelle nichts Eigenes stehen hat.',
+    en: 'Applies to every room that has no dates of its own in the table.',
+    tr: 'Tabloda kendi tarihi olmayan her oda için geçerlidir.' },
   'group.remove': {
     de: 'Entfernen',
     en: 'Remove',

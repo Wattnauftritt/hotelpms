@@ -94,6 +94,10 @@ export const common = {
     de: 'Zurück',
     en: 'Back',
     tr: 'Geri' },
+  'common.close': {
+    de: 'Schließen',
+    en: 'Close',
+    tr: 'Kapat' },
   'common.forward': {
     de: 'Weiter',
     en: 'Forward',
