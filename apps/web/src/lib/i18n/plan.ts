@@ -218,6 +218,38 @@ export const plan = {
       + 'sits on the first night so the sum matches exactly.',
     tr: 'Toplam fiyat gecelere tam bölünmüyor. Kalan, toplam tam tutsun diye '
       + 'ilk geceye yazılır.' },
+  /*
+   * Warum ein Knopf gesperrt ist.
+   *
+   * Ein gesperrter Knopf ohne Grund ist ein Knopf, der nicht funktioniert:
+   * geklickt, nichts passiert, und nichts auf dem Bildschirm sagt, was
+   * fehlt. Die Saetze sind deshalb keine Vorwuerfe, sondern Wegweiser --
+   * sie nennen das Feld, nicht den Fehler.
+   */
+  'booking.needNights': {
+    de: 'Die Abreise muss nach der Anreise liegen',
+    en: 'The departure has to be after the arrival',
+    tr: 'Çıkış tarihi giriş tarihinden sonra olmalı' },
+  'booking.needGuest': {
+    de: 'Es fehlt noch der Gast',
+    en: 'The guest is still missing',
+    tr: 'Misafir hâlâ eksik' },
+  'booking.needOptionUntil': {
+    de: 'Eine Option braucht eine Frist',
+    en: 'An option needs an expiry',
+    tr: 'Opsiyon için bir son tarih gerekli' },
+  'group.needRooms': {
+    de: 'Es ist kein Zimmer mehr in der Gruppe',
+    en: 'No room is left in the group',
+    tr: 'Grupta hiç oda kalmadı' },
+  'group.needRoomNights': {
+    de: 'Ein Zimmer hat keine Nacht: Abreise nach Anreise',
+    en: 'One room has no night: departure must follow arrival',
+    tr: 'Bir odanın gecesi yok: çıkış girişten sonra olmalı' },
+  'sperre.needReason': {
+    de: 'Es fehlt noch der Grund',
+    en: 'The reason is still missing',
+    tr: 'Sebep hâlâ eksik' },
   'booking.priceHint': {
     de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
     en: 'Leave empty to use the price from the rate plan.',
