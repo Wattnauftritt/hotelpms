@@ -5,6 +5,7 @@ import { useReservation, useRegistrationForm, useSubmitRegistration, useCheckIn,
          type Hausbedingung } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { GuestPicker } from '../components/GuestPicker.tsx'
+import { Dialog, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
 /**
@@ -67,18 +68,39 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   // Ohne zugewiesenes Zimmer lehnt die API den Check-in ab -- das sagt die
   // Maske vorher, statt den Knopf drueckbar zu machen und dann zu scheitern.
   const ohneZimmer = reservierung.data !== undefined && reservierung.data.resourceId === null
+  /*
+   * Der Meldeschein selbst -- vorgezogen, weil der Knopf "Einchecken" im
+   * Fuss der Maske steht und wissen muss, ob schon angemeldet wurde. Im
+   * Rumpf steht er nicht mehr: bei einer Gruppe mit Bedingungen rollte er
+   * unter den Rand, und dann sah die Maske aus, als habe sie keinen.
+   */
+  const f = form.data
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <button onClick={onClose}
-                  className="text-sm px-2 py-1 border border-neutral-300 rounded">
-            ← {t('common.back')}
-          </button>
-          <h2 className="text-sm font-medium">{t('checkin.title')} {reservationRef}</h2>
-        </div>
-
+    /*
+     * `nebenbeiSchliessen={false}`: im Kasten steht eine gezeichnete
+     * Unterschrift, die nirgends gespeichert ist. Ein Klick neben den Rand
+     * waere sie los, und der Gast unterschriebe ein zweites Mal.
+     */
+    <Dialog breite="breit" nebenbeiSchliessen={false} onClose={onClose}
+            titel={t('checkin.title')} unterzeile={reservationRef}
+            fuss={
+              <>
+                <button type="button"
+                        disabled={ohneZimmer || einchecken.isPending
+                          || f === undefined
+                          || (!f.alreadyRegistered && !anmelden.isSuccess)}
+                        onClick={() => void einchecken_und_schliessen()}
+                        className={KNOPF}>
+                  {t('checkin.submit')}
+                </button>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('common.back')}
+                </button>
+                {einchecken.isError && <Fehler error={einchecken.error} />}
+              </>
+            }>
+      <div className="space-y-3">
         {ohneZimmer && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200
                         rounded p-2">
@@ -87,9 +109,8 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
         )}
 
         {form.isError && <Fehler error={form.error} />}
-        {form.data === undefined && !form.isError && <Laedt />}
-        {form.data !== undefined && (() => {
-          const f = form.data
+        {f === undefined && !form.isError && <Laedt />}
+        {f !== undefined && (() => {
           if (f.guest === null || gastWechseln) {
             /*
              * Ohne Gast war das hier eine Sackgasse: die Maske sagte "kein
@@ -219,20 +240,11 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                 </>
               )}
 
-              {einchecken.isError && <Fehler error={einchecken.error} />}
-              <button type="button"
-                      disabled={ohneZimmer || einchecken.isPending
-                        || (!f.alreadyRegistered && !anmelden.isSuccess)}
-                      onClick={() => void einchecken_und_schliessen()}
-                      className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                                 disabled:bg-neutral-300">
-                {t('checkin.submit')}
-              </button>
             </div>
           )
         })()}
       </div>
-    </div>
+    </Dialog>
   )
 }
 

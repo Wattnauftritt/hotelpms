@@ -1085,7 +1085,19 @@ describe('Abruf aus Kontingent', () => {
     // Stehenzulassen hiesse, sie beim Absenden stillschweigend zu
     // verwerfen -- die Maske zeigte dann etwas anderes als das Ergebnis.
     expect(gruppe).toContain('setEigeneTage({})')
-    expect(gruppe).toContain('{abruf === null && (')
+  })
+
+  it('sperrt beim Abruf auch die Datumsfelder der einzelnen Zimmer', () => {
+    /*
+     * Die Felder stehen seit der breiten Maske in jeder Zeile, also muss
+     * die Sperre dort stehen und nicht mehr an einem Knopf, der sie
+     * aufklappt. Ein Feld, das sich tippen laesst und dessen Wert die
+     * Schnittstelle gleich darauf abweist, laesst die Rezeption den Fehler
+     * bei sich suchen.
+     */
+    const zeile = gruppe.slice(gruppe.indexOf("tagSetzen(z.resourceId, 'arrival'"),
+                               gruppe.indexOf("tagSetzen(z.resourceId, 'departure'"))
+    expect(zeile).toContain('disabled={abruf !== null}')
   })
 })
 

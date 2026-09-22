@@ -13,6 +13,7 @@ import { GroupPanel } from '../components/GroupPanel.tsx'
 import type { KontextZiel } from '../components/Kontextmenue.tsx'
 import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
+import { Dialog, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
@@ -359,12 +360,23 @@ function UmzugBestaetigen({ umzug, onClose, onConfirm }: {
   const zuKlein = w.platz < w.bedarf
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         onClick={onClose}>
-      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-3"
-           onClick={e => e.stopPropagation()}>
-        <h2 className="text-sm font-medium">{t('plan.moveOtherCategory')}</h2>
-
+    /* `mittel` und nicht breiter: das hier ist eine Frage, kein Formular.
+       Eine Maske, die den halben Bildschirm fuellt, um "ja" zu holen,
+       wird nicht gelesen, sondern weggeklickt. */
+    <Dialog breite="mittel" onClose={onClose} titel={t('plan.moveOtherCategory')}
+            fuss={
+              <>
+                <button type="button" onClick={onConfirm}
+                        className={`px-4 py-2 text-sm rounded text-white
+                                    ${zuKlein ? 'bg-red-700' : 'bg-neutral-900'}`}>
+                  {t('plan.moveConfirm')}
+                </button>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('booking.close')}
+                </button>
+              </>
+            }>
+      <div className="space-y-3">
         <p className="text-sm text-neutral-700">
           {t('plan.moveUpgrade', { ref: umzug.reservationRef, von: w.von,
                                    nach: w.nach, raum: umzug.roomCode })}
@@ -377,19 +389,7 @@ function UmzugBestaetigen({ umzug, onClose, onConfirm }: {
                                       bedarf: w.bedarf })}
           </p>
         )}
-
-        <div className="flex gap-2">
-          <button type="button" onClick={onConfirm}
-                  className={`px-3 py-1.5 text-sm rounded text-white
-                              ${zuKlein ? 'bg-red-700' : 'bg-neutral-900'}`}>
-            {t('plan.moveConfirm')}
-          </button>
-          <button type="button" onClick={onClose}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-            {t('booking.close')}
-          </button>
-        </div>
       </div>
-    </div>
+    </Dialog>
   )
 }

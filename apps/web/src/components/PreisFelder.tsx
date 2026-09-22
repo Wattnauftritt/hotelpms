@@ -25,6 +25,8 @@ export function PreisFelder({ wert, naechte, onChange, klein = false }: {
   const t = useT()
   const ab = abgeleitet(wert, naechte)
   const breite = klein ? 'w-24' : 'w-28'
+  // In einer Zimmerzeile bleibt es eng, sonst so hoch wie jedes andere Feld.
+  const polster = klein ? 'px-2 py-1' : 'px-3 py-2'
 
   const feld = (modus: Preiseingabe['modus'], beschriftung: string): JSX.Element => {
     const aktiv = wert.modus === modus
@@ -44,7 +46,7 @@ export function PreisFelder({ wert, naechte, onChange, klein = false }: {
                 * es `readOnly`, muesste dafuer ein Schalter daneben, und
                 * den findet niemand.
                 */
-               className={`border border-neutral-300 rounded px-2 py-1 text-sm ${breite}
+               className={`border border-neutral-300 rounded text-sm ${polster} ${breite}
                            ${aktiv ? '' : 'text-neutral-500 bg-neutral-50'}`} />
       </label>
     )

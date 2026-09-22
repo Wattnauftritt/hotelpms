@@ -1,7 +1,8 @@
 import { useState, type JSX } from 'react'
 import { useCreateMaintenanceTicket } from '../lib/queries/settings.js'
 import { useT } from '../lib/i18n/index.js'
-import { addDays } from '../lib/dates.js'
+import { addDays, daysBetween } from '../lib/dates.js'
+import { Dialog, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -53,84 +54,83 @@ export function ZimmerSperren({ propertyId, resourceId, roomCode, ab, onClose }:
   const gueltig = grund === null
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         onClick={onClose}>
-      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-3"
-           onClick={e => e.stopPropagation()}>
-        <h2 className="text-sm font-medium">
-          {t('sperre.title')} — {roomCode}
-        </h2>
-
-        <div className="flex gap-2">
-          <label className="block text-sm grow">
-            <span className="block text-xs text-neutral-600 mb-1">{t('common.from')}</span>
+    <Dialog breite="mittel" onClose={onClose}
+            titel={t('sperre.title')} unterzeile={roomCode}
+            fuss={anlegen.isSuccess ? (
+              <>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('common.back')}
+                </button>
+                <span className="text-sm text-emerald-800">✓ {t('sperre.created')}</span>
+              </>
+            ) : (
+              <>
+                <button type="button" disabled={!gueltig || anlegen.isPending}
+                        onClick={() => anlegen.mutate({
+                          propertyId, resourceId, title: titel.trim(),
+                          block: { from: von, to: bis, kind: art }
+                        })}
+                        className={KNOPF}>
+                  {t('sperre.submit')}
+                </button>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('booking.close')}
+                </button>
+                {/* Daneben und nicht im `title`: ein gesperrter Knopf nimmt keine
+                    Zeigerereignisse an, sein Tooltip erscheint in den meisten
+                    Browsern gar nicht. */}
+                {grund !== null && (
+                  <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+                )}
+              </>
+            )}>
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Feld label={t('common.from')}>
             <input type="date" value={von} onChange={e => setVon(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
-          <label className="block text-sm grow">
-            <span className="block text-xs text-neutral-600 mb-1">{t('common.to')}</span>
+                   className={FELD} />
+          </Feld>
+          <Feld label={t('common.to')}>
             <input type="date" value={bis} onChange={e => setBis(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-          </label>
+                   className={FELD} />
+          </Feld>
+          {/* Die Naechte als Zahl daneben: "bis" ist der Abreisetag und
+              nicht die letzte Nacht, und wer das verwechselt, sperrt einen
+              Tag zu viel. */}
+          <div className="self-end text-sm text-neutral-600 tabular-nums pb-2">
+            {t('group.nights', { n: daysBetween(von, bis) })}
+          </div>
         </div>
 
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('sperre.kind')}</span>
-          <select value={art}
-                  onChange={e => setArt(e.target.value as 'out_of_order' | 'out_of_service')}
-                  className="w-full border border-neutral-300 rounded px-2 py-1 text-sm">
-            <option value="out_of_order">{t('sperre.outOfOrder')}</option>
-            <option value="out_of_service">{t('sperre.outOfService')}</option>
-          </select>
-          <span className="block text-xs text-neutral-500 mt-1">
-            {art === 'out_of_order' ? t('sperre.outOfOrderHint') : t('sperre.outOfServiceHint')}
-          </span>
-        </label>
+        {/*
+          * Art und Grund nebeneinander: beides ist Pflicht, und untereinander
+          * stand der Grund so weit unten, dass die Maske darueber fertig
+          * aussah.
+          */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Feld label={t('sperre.kind')}
+                hinweis={art === 'out_of_order'
+                  ? t('sperre.outOfOrderHint') : t('sperre.outOfServiceHint')}>
+            <select value={art}
+                    onChange={e => setArt(e.target.value as 'out_of_order' | 'out_of_service')}
+                    className={FELD}>
+              <option value="out_of_order">{t('sperre.outOfOrder')}</option>
+              <option value="out_of_service">{t('sperre.outOfService')}</option>
+            </select>
+          </Feld>
 
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('sperre.reason')}</span>
-          <input value={titel} onChange={e => setTitel(e.target.value)}
-                 placeholder={t('sperre.reasonPlaceholder')}
-                 className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
           {/* Der Grund steht am Riegel im Plan und ist der Titel der
               Wartungsmeldung. Eine Sperrung, deren Grund niemand kennt,
               bleibt stehen, bis jemand darueber stolpert. */}
-          <span className="block text-xs text-neutral-500 mt-1">{t('sperre.reasonHint')}</span>
-        </label>
+          <Feld label={t('sperre.reason')} hinweis={t('sperre.reasonHint')}>
+            <input value={titel} onChange={e => setTitel(e.target.value)}
+                   placeholder={t('sperre.reasonPlaceholder')}
+                   className={FELD} />
+          </Feld>
+        </div>
 
         {anlegen.isError && <Fehler error={anlegen.error} />}
-        {anlegen.isSuccess ? (
-          <>
-            <p className="text-sm text-emerald-800">✓ {t('sperre.created')}</p>
-            <button type="button" onClick={onClose}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-              {t('common.back')}
-            </button>
-          </>
-        ) : (
-          <div className="flex gap-2">
-            <button type="button" disabled={!gueltig || anlegen.isPending}
-                    onClick={() => anlegen.mutate({
-                      propertyId, resourceId, title: titel.trim(),
-                      block: { from: von, to: bis, kind: art }
-                    })}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                               disabled:bg-neutral-300">
-              {t('sperre.submit')}
-            </button>
-            <button type="button" onClick={onClose}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-              {t('booking.close')}
-            </button>
-            {/* Daneben und nicht im `title`: ein gesperrter Knopf nimmt keine
-                Zeigerereignisse an, sein Tooltip erscheint in den meisten
-                Browsern gar nicht. */}
-            {grund !== null && (
-              <span className="self-center text-xs text-amber-800">{t(grund)}</span>
-            )}
-          </div>
-        )}
       </div>
-    </div>
+    </Dialog>
   )
 }

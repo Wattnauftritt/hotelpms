@@ -8,6 +8,7 @@ import { preisFelder, alsGesamt, LEERER_PREIS, type Preiseingabe }
 import { GuestPicker } from './GuestPicker.tsx'
 import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
+import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -19,10 +20,12 @@ import { Fehler } from './Shell.tsx'
  * nichts mehr verbindet -- man sieht ihnen nicht an, dass sie
  * zusammengehören, und beim Storno fällt eine davon durch.
  *
- * **Der Zeitraum gilt für alle Zimmer.** Aufgezogen wurde ein Rechteck, und
- * ein Rechteck hat eine Breite. Wer für ein Zimmer andere Tage braucht,
- * zieht dessen Balken danach; das ist ein Handgriff und kostet keinen
- * zweiten Eingabeweg hier.
+ * **Der Zeitraum der Gruppe ist die Vorgabe, nicht das Gesetz.** Aufgezogen
+ * wurde ein Rechteck, und ein Rechteck hat eine Breite -- aber das
+ * Brautpaar bleibt drei Nächte und die Eltern zwei. Jede Zeile der Tabelle
+ * trägt deshalb ihre eigenen Datumsfelder; wer sie nicht anfasst, erbt den
+ * Zeitraum der Gruppe, und nur was wirklich abweicht, geht auch als
+ * Abweichung hinaus.
  *
  * **Zimmer lassen sich vor dem Buchen wieder herausnehmen.** Beim Aufziehen
  * über zwölf Zeilen sind selten alle zwölf gemeint; die Alternative wäre,
@@ -65,14 +68,16 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
    * gilt, gehoert nicht geraten.
    */
   /*
-   * Eigene Tage je Zimmer.
+   * Eigene Tage je Zimmer. **Nur die Abweichungen.**
    *
-   * **Warum als Abweichung und nicht als Pflichtfeld je Zeile.** Der
-   * Normalfall ist die geschlossene Anreise; acht Zeilen mit je zwei
-   * Datumsfeldern waeren sechzehn Felder fuer etwas, das in den meisten
-   * Faellen ueberall gleich ist. Was nicht abweicht, steht deshalb nicht im
-   * Zustand -- und geht als `undefined` hinaus, womit die Schnittstelle den
-   * Zeitraum der Buchung erbt.
+   * Die Felder stehen inzwischen in jeder Zeile der Tabelle, der Zustand
+   * aber nicht: eine Zeile, die niemand angefasst hat, hat hier keinen
+   * Eintrag und zeigt die Tage der Gruppe. Das ist der Unterschied zwischen
+   * "erbt" und "ist zufaellig gleich" -- wer oben den Zeitraum der Gruppe
+   * verschiebt, nimmt die erbenden Zimmer mit und laesst die abweichenden
+   * stehen. Waere jede Zeile im Zustand, ginge das Verschieben verloren,
+   * und nach aussen stuende die Absicht doppelt da: `undefined` heisst an
+   * der Schnittstelle genau "Zeitraum der Buchung".
    */
   const [eigeneTage, setEigeneTage] = useState<
     Record<number, { arrival: string; departure: string }>>(
@@ -115,249 +120,307 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
     : null
   const gueltig = grund === null
 
+  /**
+   * Ein Datum einer einzelnen Zeile setzen.
+   *
+   * Der Eintrag entsteht mit **beiden** Tagen, auch wenn nur einer getippt
+   * wurde: ein halber Eintrag waere ein Zimmer mit eigener Anreise und
+   * geerbter Abreise, und welche von beiden gemeint war, liesse sich
+   * hinterher nicht mehr sagen.
+   */
+  const tagSetzen = (resourceId: number, feld: 'arrival' | 'departure',
+                     wert: string): void =>
+    setEigeneTage(v => {
+      const jetzt = v[resourceId] ?? { arrival, departure }
+      return { ...v, [resourceId]: { ...jetzt, [feld]: wert } }
+    })
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-         onClick={onClose}>
-      <div className="w-full max-w-md bg-white rounded shadow-xl p-4 space-y-3
-                      max-h-[90vh] overflow-auto"
-           onClick={e => e.stopPropagation()}>
-        <h2 className="text-sm font-medium">
-          {t('group.title')} — {zimmer.length} {t('group.rooms')}
-        </h2>
-
-        <div className="text-sm bg-neutral-50 rounded p-2 space-y-1">
-          <div className="text-xs text-neutral-500">{t('group.selection')}</div>
-          {zimmer.map(z => {
-            const eigen = eigeneTage[z.resourceId]
-            const von = eigen?.arrival ?? arrival
-            const bis = eigen?.departure ?? departure
-            return (
-              <div key={z.resourceId} className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="tabular-nums font-medium">{z.roomCode}</span>
-                  <span className="text-neutral-500 truncate grow">{z.categoryName}</span>
-                  {/*
-                    * Eigene Tage je Zimmer -- beim Abruf aus einem
-                    * Kontingent gar nicht erst angeboten: dort gilt dessen
-                    * Zeitraum fuer alle, und ein Knopf, der eine
-                    * Fehlermeldung erzeugt, laesst die Rezeption den Fehler
-                    * bei sich suchen.
-                    */}
-                  {abruf === null && (
-                    <button type="button"
-                            onClick={() => setEigeneTage(v => {
-                              if (eigen !== undefined) {
-                                // Den Eintrag entfernen, nicht auf die
-                                // Gruppentage setzen: nur "nicht da" heisst
-                                // "erbt", und ein gesetzter Wert bliebe
-                                // stehen, wenn die Gruppentage sich aendern.
-                                const rest = { ...v }
-                                delete rest[z.resourceId]
-                                return rest
-                              }
-                              return { ...v, [z.resourceId]: { arrival, departure } }
-                            })}
-                            className={`text-xs px-1 underline decoration-dotted
-                                        ${eigen ? 'text-neutral-900' : 'text-neutral-500'}`}>
-                      {eigen ? t('group.sameDates') : t('group.ownDates')}
-                    </button>
-                  )}
-                  {jeZimmer && (
-                    <PreisFelder klein naechte={daysBetween(von, bis)}
-                                 wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
-                                 onChange={w => setZimmerPreis(
-                                   { ...zimmerPreis, [z.resourceId]: w })} />
-                  )}
-                  <button type="button"
-                          onClick={() => setZimmer(
-                            zimmer.filter(x => x.resourceId !== z.resourceId))}
-                          title={t('group.remove')}
-                          className="text-xs text-neutral-500 hover:text-red-700 px-1">
-                    ×
-                  </button>
-                </div>
-                {eigen !== undefined && (
-                  <div className="flex items-center gap-2 pl-4">
-                    <input type="date" value={eigen.arrival}
-                           onChange={e => setEigeneTage(v => ({ ...v,
-                             [z.resourceId]: { ...eigen, arrival: e.target.value } }))}
-                           className="border border-neutral-300 rounded px-2 py-1 text-xs" />
-                    <span className="text-xs text-neutral-400">–</span>
-                    <input type="date" value={eigen.departure}
-                           onChange={e => setEigeneTage(v => ({ ...v,
-                             [z.resourceId]: { ...eigen, departure: e.target.value } }))}
-                           className="border border-neutral-300 rounded px-2 py-1 text-xs" />
-                    <span className="text-xs text-neutral-500">
-                      {t('group.nights', { n: daysBetween(eigen.arrival, eigen.departure) })}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          {zimmer.length === 0 && (
-            <div className="text-xs text-amber-800">{t('group.empty')}</div>
-          )}
-        </div>
-
-        <KontingentWahl propertyId={propertyId}
-                        categoryId={[...new Set(zimmer.map(z => z.categoryId))].length === 1
-                          ? zimmer[0]?.categoryId : undefined}
-                        gewaehlt={abruf} benoetigt={zimmer.length}
-                        onChange={b => {
-                          setAbruf(b)
-                          if (b !== null) {
-                            setArrival(b.fromDate)
-                            setDeparture(b.toDate)
-                            // Abweichungen fallen weg: sie sind beim Abruf
-                            // gar nicht erlaubt, und stehenzulassen hiesse,
-                            // sie beim Absenden stillschweigend zu verwerfen.
-                            setEigeneTage({})
-                          }
-                        }} />
-
-        <div className="flex gap-2">
-          <label className="block text-sm grow">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.arrival')}</span>
-            <input type="date" value={arrival} onChange={e => setArrival(e.target.value)}
-                   disabled={abruf !== null}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
-                              disabled:bg-neutral-100 disabled:text-neutral-500" />
-          </label>
-          <label className="block text-sm grow">
-            <span className="block text-xs text-neutral-600 mb-1">{t('booking.departure')}</span>
-            <input type="date" value={departure} onChange={e => setDeparture(e.target.value)}
-                   disabled={abruf !== null}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm
-                              disabled:bg-neutral-100 disabled:text-neutral-500" />
-          </label>
-        </div>
-
-        {/*
-          * Der Preis, und darueber die Frage, auf welcher Ebene er gilt.
-          *
-          * Die Vorgabe ist der Gruppenpreis, weil das der Normalfall ist:
-          * verhandelt wird ein Betrag fuer alles. Je Zimmer ist der
-          * Sonderfall -- getrennte Zahler, oder die Suite kostet eben
-          * anders als das Doppelzimmer.
-          */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-neutral-600">{t('group.priceLevel')}</span>
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={!jeZimmer} onChange={() => setJeZimmer(false)} />
-              {t('group.priceWhole')}
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="radio" checked={jeZimmer} onChange={() => setJeZimmer(true)} />
-              {t('group.pricePerRoom')}
-            </label>
-          </div>
-          {jeZimmer
-            ? <p className="text-xs text-neutral-500">{t('group.pricePerRoomHint')}</p>
-            : (
+    <Dialog breite="weit" onClose={onClose}
+            titel={t('group.title')}
+            unterzeile={`${zimmer.length} ${t('group.rooms')}`}
+            fuss={buchen.isSuccess ? (
               <>
-                <PreisFelder wert={gruppenPreis} naechte={naechte}
-                             onChange={setGruppenPreis} />
-                <p className="text-xs text-neutral-500">{t('group.priceSplitHint')}</p>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('common.back')}
+                </button>
+                <span className="text-sm text-emerald-800">
+                  ✓ {t('group.created')} — {buchen.data.bookingRef}
+                  {' · '}
+                  {t('group.createdDetail', { n: buchen.data.reservations.length })}
+                </span>
               </>
+            ) : (
+              <>
+                <button type="button" disabled={buchen.isPending || !gueltig}
+                        onClick={() => buchen.mutate({
+                          propertyId, arrival, departure,
+                          /*
+                           * Der Preis haengt entweder an der Buchung oder an
+                           * den Zimmern, nie an beidem -- der Umschalter oben
+                           * ist genau diese Entscheidung, und die
+                           * Schnittstelle weist die Doppelangabe ab.
+                           *
+                           * Aufgeteilt wird auf dem Server: sowohl der
+                           * Gruppenpreis auf die Zimmer als auch jeder
+                           * Zimmerpreis auf die Naechte. Hier zu teilen hiesse,
+                           * die Rechnung an zwei Stellen zu fuehren, und
+                           * spaetestens der Rest-Cent laesst sie auseinander
+                           * laufen.
+                           */
+                          rooms: zimmer.map(z => {
+                            const eigen = eigeneTage[z.resourceId]
+                            return {
+                              categoryId: z.categoryId, resourceId: z.resourceId,
+                              // Was nicht abweicht, geht als `undefined` hinaus:
+                              // die Schnittstelle erbt dann den Zeitraum der
+                              // Buchung, und die Absicht steht nicht doppelt da.
+                              arrival: eigen?.arrival,
+                              departure: eigen?.departure,
+                              totalCent: jeZimmer
+                                ? alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS,
+                                            daysBetween(eigen?.arrival ?? arrival,
+                                                        eigen?.departure ?? departure))
+                                : undefined
+                            }
+                          }),
+                          ...(jeZimmer ? {} : preisFelder(gruppenPreis)),
+                          blockRef: abruf?.blockRef,
+                          guestRef: guest?.guestRef,
+                          notes: notes.trim() === '' ? undefined : notes.trim()
+                        })}
+                        className={KNOPF}>
+                  {t('group.submit')}
+                </button>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('booking.close')}
+                </button>
+                {/* Daneben und nicht im `title`: ein gesperrter Knopf nimmt keine
+                    Zeigerereignisse an, sein Tooltip erscheint in den meisten
+                    Browsern gar nicht. */}
+                {grund !== null && (
+                  <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+                )}
+              </>
+            )}>
+      {/*
+        * Oben die drei Entscheidungen, die fuer die ganze Gruppe gelten --
+        * Zeitraum, Preisebene, Besteller --, darunter die Zimmer als
+        * Tabelle. Vorher standen alle drei unter der Zimmerliste, und wer
+        * acht Zimmer ausgewaehlt hatte, fand den Gast erst nach dem Rollen.
+        */}
+      <div className="space-y-6">
+        <div className="grid gap-x-8 gap-y-6 lg:grid-cols-3">
+          <Abschnitt titel={t('group.sectionPeriod')} hinweis={t('group.periodHint')}>
+            <KontingentWahl propertyId={propertyId}
+                            categoryId={[...new Set(zimmer.map(z => z.categoryId))].length === 1
+                              ? zimmer[0]?.categoryId : undefined}
+                            gewaehlt={abruf} benoetigt={zimmer.length}
+                            onChange={b => {
+                              setAbruf(b)
+                              if (b !== null) {
+                                setArrival(b.fromDate)
+                                setDeparture(b.toDate)
+                                // Abweichungen fallen weg: sie sind beim Abruf
+                                // gar nicht erlaubt, und stehenzulassen hiesse,
+                                // sie beim Absenden stillschweigend zu verwerfen.
+                                setEigeneTage({})
+                              }
+                            }} />
+            <div className="grid grid-cols-2 gap-3">
+              <Feld label={t('booking.arrival')}>
+                <input type="date" value={arrival}
+                       onChange={e => setArrival(e.target.value)}
+                       disabled={abruf !== null} className={FELD} />
+              </Feld>
+              <Feld label={t('booking.departure')}>
+                <input type="date" value={departure}
+                       onChange={e => setDeparture(e.target.value)}
+                       disabled={abruf !== null} className={FELD} />
+              </Feld>
+            </div>
+            {naechte > 0 && (
+              <div className="text-xs text-neutral-500 tabular-nums">
+                {t('group.nights', { n: naechte })}
+              </div>
             )}
+          </Abschnitt>
+
+          {/*
+            * Der Preis, und darueber die Frage, auf welcher Ebene er gilt.
+            *
+            * Die Vorgabe ist der Gruppenpreis, weil das der Normalfall ist:
+            * verhandelt wird ein Betrag fuer alles. Je Zimmer ist der
+            * Sonderfall -- getrennte Zahler, oder die Suite kostet eben
+            * anders als das Doppelzimmer.
+            */}
+          <Abschnitt titel={t('group.sectionPrice')}>
+            <div className="space-y-1 text-sm">
+              <span className="block text-xs text-neutral-600">{t('group.priceLevel')}</span>
+              <label className="flex items-center gap-2">
+                <input type="radio" checked={!jeZimmer} onChange={() => setJeZimmer(false)} />
+                {t('group.priceWhole')}
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" checked={jeZimmer} onChange={() => setJeZimmer(true)} />
+                {t('group.pricePerRoom')}
+              </label>
+            </div>
+            {jeZimmer
+              ? <p className="text-xs text-neutral-500">{t('group.pricePerRoomHint')}</p>
+              : (
+                <>
+                  <PreisFelder wert={gruppenPreis} naechte={naechte}
+                               onChange={setGruppenPreis} />
+                  <p className="text-xs text-neutral-500">{t('group.priceSplitHint')}</p>
+                </>
+              )}
+          </Abschnitt>
+
+          <Abschnitt titel={t('group.sectionGuest')}>
+            {/*
+              * Kein <label> um die Gastauswahl, und das ist keine Stilfrage.
+              *
+              * Ein Klick auf einen Treffer der Liste loeste die Auswahl aus --
+              * und nahm sie im selben Wimpernschlag wieder zurueck. Der Grund
+              * liegt im <label>: es leitet einen Klick an sein erstes
+              * bedienbares Kind weiter. Vor der Auswahl ist das das Suchfeld,
+              * danach steht dort der Knopf "Aendern" -- und der ruft
+              * `onChange(null)`. Das Ergebnis war eine Buchungsmaske, in der
+              * sich schlicht kein Gast setzen liess; der Aufruf ging ohne
+              * `guestRef` hinaus, und niemandem fiel es auf, weil die Buchung
+              * ja gelang.
+              *
+              * Auch `Feld` faellt darunter: es rendert ein <label>.
+              */}
+            <div className="block text-sm">
+              <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
+              <GuestPicker value={guest} onChange={setGuest} />
+              <span className="block text-xs text-neutral-500 mt-1">{t('group.guestHint')}</span>
+            </div>
+            <Feld label={t('booking.notes')}>
+              <input value={notes} onChange={e => setNotes(e.target.value)}
+                     className={FELD} />
+            </Feld>
+          </Abschnitt>
         </div>
 
         {/*
-          * Kein <label> um die Gastauswahl, und das ist kein Stilfrage.
+          * Die Zimmer als Tabelle, mit den Datumsfeldern **in** der Zeile.
           *
-          * Ein Klick auf einen Treffer der Liege loeste die Auswahl aus --
-          * und nahm sie im selben Wimpernschlag wieder zurueck. Der Grund
-          * liegt im <label>: es leitet einen Klick an sein erstes
-          * bedienbares Kind weiter. Vor der Auswahl ist das das Suchfeld,
-          * danach steht dort der Knopf "Aendern" -- und der ruft
-          * `onChange(null)`. Das Ergebnis war eine Buchungsmaske, in der
-          * sich schlicht kein Gast setzen liess; der Aufruf ging ohne
-          * `guestRef` hinaus, und niemandem fiel es auf, weil die Buchung
-          * ja gelang.
+          * Vorher standen sie hinter einem Knopf "eigene Tage" und klappten
+          * darunter auf. Der Grund dafuer war die Breite der Maske: acht
+          * Zeilen mit je zwei Datumsfeldern passten nicht in 448 Pixel. In
+          * einer breiten Tabelle passen sie, und dann ist das Aufklappen nur
+          * ein Klick, der verbirgt, was ohnehin jeder sehen will.
+          *
+          * Der Zustand bleibt derselbe: gespeichert wird nur, was abweicht.
+          * Eine Zeile, die niemand angefasst hat, zeigt die Tage der Gruppe
+          * und schickt keine eigenen -- sie geht mit, wenn die Gruppe oben
+          * verschoben wird.
           */}
-        <div className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
-          <GuestPicker value={guest} onChange={setGuest} />
-          <span className="block text-xs text-neutral-500 mt-1">{t('group.guestHint')}</span>
-        </div>
-
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('booking.notes')}</span>
-          <input value={notes} onChange={e => setNotes(e.target.value)}
-                 className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
-        </label>
+        <Abschnitt titel={t('group.selection')}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-neutral-500 text-left">
+                <th className="font-medium py-1">{t('common.room')}</th>
+                <th className="font-medium">{t('common.category')}</th>
+                <th className="font-medium">{t('booking.arrival')}</th>
+                <th className="font-medium">{t('booking.departure')}</th>
+                <th className="font-medium text-right">{t('group.nightsHead')}</th>
+                {jeZimmer && <th className="font-medium">{t('group.sectionPrice')}</th>}
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {zimmer.map(z => {
+                const eigen = eigeneTage[z.resourceId]
+                const von = eigen?.arrival ?? arrival
+                const bis = eigen?.departure ?? departure
+                const zeileNaechte = daysBetween(von, bis)
+                return (
+                  <tr key={z.resourceId}
+                      className={`border-t border-neutral-100 align-middle
+                                  ${eigen !== undefined ? 'bg-amber-50/60' : ''}`}>
+                    <td className="py-1.5 tabular-nums font-medium whitespace-nowrap">
+                      {z.roomCode}
+                      {/* Die Abweichung wird benannt, nicht nur eingefaerbt:
+                          eine Farbe allein sagt nicht, was sie bedeutet. */}
+                      {eigen !== undefined && (
+                        <span className="ml-2 text-xs font-normal text-amber-800">
+                          {t('group.ownDates')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-neutral-500 truncate max-w-48">{z.categoryName}</td>
+                    <td className="pr-2">
+                      <input type="date" value={von} disabled={abruf !== null}
+                             onChange={e => tagSetzen(z.resourceId, 'arrival', e.target.value)}
+                             className="border border-neutral-300 rounded px-2 py-1 text-sm
+                                        disabled:bg-neutral-100 disabled:text-neutral-500" />
+                    </td>
+                    <td className="pr-2">
+                      <input type="date" value={bis} disabled={abruf !== null}
+                             onChange={e => tagSetzen(z.resourceId, 'departure', e.target.value)}
+                             className="border border-neutral-300 rounded px-2 py-1 text-sm
+                                        disabled:bg-neutral-100 disabled:text-neutral-500" />
+                    </td>
+                    <td className={`tabular-nums text-right pr-2
+                                    ${zeileNaechte <= 0 ? 'text-red-700 font-medium' : ''}`}>
+                      {zeileNaechte}
+                    </td>
+                    {jeZimmer && (
+                      <td className="pr-2">
+                        <PreisFelder klein naechte={zeileNaechte}
+                                     wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
+                                     onChange={w => setZimmerPreis(
+                                       { ...zimmerPreis, [z.resourceId]: w })} />
+                      </td>
+                    )}
+                    <td className="text-right whitespace-nowrap">
+                      {/*
+                        * Zurueck auf die Tage der Gruppe -- beim Abruf aus
+                        * einem Kontingent gar nicht erst angeboten: dort
+                        * gilt dessen Zeitraum fuer alle, und ein Knopf, der
+                        * eine Fehlermeldung erzeugt, laesst die Rezeption
+                        * den Fehler bei sich suchen.
+                        */}
+                      {abruf === null && eigen !== undefined && (
+                        <button type="button"
+                                onClick={() => setEigeneTage(v => {
+                                  // Den Eintrag entfernen, nicht auf die
+                                  // Gruppentage setzen: nur "nicht da" heisst
+                                  // "erbt", und ein gesetzter Wert bliebe
+                                  // stehen, wenn die Gruppentage sich aendern.
+                                  const rest = { ...v }
+                                  delete rest[z.resourceId]
+                                  return rest
+                                })}
+                                className="text-xs text-neutral-600 px-1 underline
+                                           decoration-dotted">
+                          {t('group.sameDates')}
+                        </button>
+                      )}
+                      <button type="button"
+                              onClick={() => setZimmer(
+                                zimmer.filter(x => x.resourceId !== z.resourceId))}
+                              title={t('group.remove')}
+                              className="text-neutral-400 hover:text-red-700 px-2">
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {zimmer.length === 0 && (
+            <div className="text-sm text-amber-800">{t('group.empty')}</div>
+          )}
+        </Abschnitt>
 
         {buchen.isError && <Fehler error={buchen.error} />}
-        {buchen.isSuccess ? (
-          <>
-            <p className="text-sm text-emerald-800">
-              ✓ {t('group.created')} — {buchen.data.bookingRef}
-              {' · '}
-              {t('group.createdDetail', { n: buchen.data.reservations.length })}
-            </p>
-            <button type="button" onClick={onClose}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-              {t('common.back')}
-            </button>
-          </>
-        ) : (
-          <div className="flex gap-2">
-            <button type="button" disabled={buchen.isPending || !gueltig}
-                    onClick={() => buchen.mutate({
-                      propertyId, arrival, departure,
-                      /*
-                       * Der Preis haengt entweder an der Buchung oder an
-                       * den Zimmern, nie an beidem -- der Umschalter oben
-                       * ist genau diese Entscheidung, und die
-                       * Schnittstelle weist die Doppelangabe ab.
-                       *
-                       * Aufgeteilt wird auf dem Server: sowohl der
-                       * Gruppenpreis auf die Zimmer als auch jeder
-                       * Zimmerpreis auf die Naechte. Hier zu teilen hiesse,
-                       * die Rechnung an zwei Stellen zu fuehren, und
-                       * spaetestens der Rest-Cent laesst sie auseinander
-                       * laufen.
-                       */
-                      rooms: zimmer.map(z => {
-                        const eigen = eigeneTage[z.resourceId]
-                        return {
-                          categoryId: z.categoryId, resourceId: z.resourceId,
-                          // Was nicht abweicht, geht als `undefined` hinaus:
-                          // die Schnittstelle erbt dann den Zeitraum der
-                          // Buchung, und die Absicht steht nicht doppelt da.
-                          arrival: eigen?.arrival,
-                          departure: eigen?.departure,
-                          totalCent: jeZimmer
-                            ? alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS,
-                                        daysBetween(eigen?.arrival ?? arrival,
-                                                    eigen?.departure ?? departure))
-                            : undefined
-                        }
-                      }),
-                      ...(jeZimmer ? {} : preisFelder(gruppenPreis)),
-                      blockRef: abruf?.blockRef,
-                      guestRef: guest?.guestRef,
-                      notes: notes.trim() === '' ? undefined : notes.trim()
-                    })}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                               disabled:bg-neutral-300">
-              {t('group.submit')}
-            </button>
-            <button type="button" onClick={onClose}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
-              {t('booking.close')}
-            </button>
-            {/* Daneben und nicht im `title`: ein gesperrter Knopf nimmt keine
-                Zeigerereignisse an, sein Tooltip erscheint in den meisten
-                Browsern gar nicht. */}
-            {grund !== null && (
-              <span className="self-center text-xs text-amber-800">{t(grund)}</span>
-            )}
-          </div>
-        )}
       </div>
-    </div>
+    </Dialog>
   )
 }
