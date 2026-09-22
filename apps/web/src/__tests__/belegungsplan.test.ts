@@ -180,7 +180,7 @@ describe('Der eingetippte Name geht nicht verloren', () => {
   })
 
   it('laesst den Dialog ohne Gast nicht abschicken', () => {
-    expect(dialog).toContain('guest !== null')
+    expect(dialog).toContain("guest === null ? 'booking.needGuest'")
   })
 
   it('zeigt im Plan keine Kennung an der Stelle eines Namens', () => {
@@ -232,7 +232,7 @@ describe('Die Maske fuer eine neue Reservierung', () => {
 
   it('verlangt bei einer Option eine Frist', () => {
     // Ohne Frist verfaellt sie nie und haelt das Zimmer dauerhaft besetzt.
-    expect(dialog).toContain("!unverbindlich || optionBis !== ''")
+    expect(dialog).toContain("unverbindlich && optionBis === ''")
   })
 
   it('schlaegt als Frist den Vortag der Anreise vor', () => {
@@ -913,7 +913,7 @@ describe('Zimmer sperren', () => {
   })
 
   it('verlangt einen Grund', () => {
-    expect(dialog).toContain("titel.trim() !== ''")
+    expect(dialog).toContain("titel.trim() === '' ? 'sperre.needReason'")
   })
 
   it('laesst zwischen Out of Order und Out of Service waehlen', () => {
@@ -1104,6 +1104,62 @@ describe('Eigene Tage je Zimmer in der Gruppenmaske', () => {
   it('laesst ein Zimmer ohne Nacht nicht abschicken', () => {
     // Sonst liefe es bis zur Schnittstelle und kaeme als Fehler zurueck,
     // bei dem niemand sieht, welche Zeile gemeint ist.
-    expect(gruppe).toContain('Object.values(eigeneTage).every(e => e.departure > e.arrival)')
+    expect(gruppe).toContain('Object.values(eigeneTage).some(e => e.departure <= e.arrival)')
+  })
+})
+
+/**
+ * Ein gesperrter Knopf sagt, warum.
+ *
+ * Gemeldet als "ich klicke auf Reservierung anlegen und es passiert
+ * nichts" -- und genau so ist es: der Knopf war gesperrt, weil der Gast
+ * fehlte, und nichts auf dem Bildschirm sagte das. Ein gesperrter Knopf
+ * ohne Grund ist von einem kaputten nicht zu unterscheiden.
+ */
+describe('Gesperrte Knoepfe nennen ihren Grund', () => {
+  const einzeln = readFileSync(
+    new URL('../components/BookingDialog.tsx', import.meta.url), 'utf8')
+  const gruppe = readFileSync(
+    new URL('../components/GroupBookingDialog.tsx', import.meta.url), 'utf8')
+  const sperre = readFileSync(
+    new URL('../components/ZimmerSperren.tsx', import.meta.url), 'utf8')
+
+  it('leitet die Gueltigkeit aus dem Grund ab, nicht umgekehrt', () => {
+    /*
+     * `gueltig = grund === null` und nicht zwei getrennte Ausdruecke: sonst
+     * laufen sie auseinander, und der Knopf ist gesperrt, waehrend daneben
+     * steht, dass alles stimmt.
+     */
+    for (const quelle of [einzeln, gruppe, sperre]) {
+      expect(quelle).toContain('const gueltig = grund === null')
+    }
+  })
+
+  it('zeigt den Grund neben dem Knopf, nicht im title', () => {
+    /*
+     * Ein gesperrter Knopf nimmt keine Zeigerereignisse an; sein Tooltip
+     * erscheint in den meisten Browsern gar nicht -- er waere also genau
+     * dort unsichtbar, wo er gebraucht wird.
+     */
+    for (const quelle of [einzeln, gruppe, sperre]) {
+      expect(quelle).toContain('{grund !== null && (')
+      expect(quelle).toContain('{t(grund)}</span>')
+      expect(quelle).not.toMatch(/title=\{grund/)
+    }
+  })
+
+  it('nennt in der Reservierungsmaske den fehlenden Gast', () => {
+    // Der haeufigste Fall: der Gast steht weiter unten in der Maske, und
+    // wer oben Datum und Zimmer ausgefuellt hat, haelt sie fuer fertig.
+    expect(einzeln).toContain("guest === null ? 'booking.needGuest'")
+  })
+
+  it('nennt beim Sperren den fehlenden Grund', () => {
+    // Er steht als letztes Feld, hinter Zeitraum und Art.
+    expect(sperre).toContain("titel.trim() === '' ? 'sperre.needReason'")
+  })
+
+  it('nennt in der Gruppenmaske das Zimmer ohne Nacht', () => {
+    expect(gruppe).toContain("? 'group.needRoomNights'")
   })
 })

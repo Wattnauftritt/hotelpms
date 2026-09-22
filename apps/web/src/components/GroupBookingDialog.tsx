@@ -107,8 +107,13 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
    * liefe sonst bis zur Schnittstelle und kaeme als Fehler zurueck, bei
    * dem niemand sieht, welche Zeile gemeint ist.
    */
-  const gueltig = departure > arrival && zimmer.length > 0
-    && Object.values(eigeneTage).every(e => e.departure > e.arrival)
+  const grund =
+    zimmer.length === 0 ? 'group.needRooms'
+    : departure <= arrival ? 'booking.needNights'
+    : Object.values(eigeneTage).some(e => e.departure <= e.arrival)
+      ? 'group.needRoomNights'
+    : null
+  const gueltig = grund === null
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
@@ -344,6 +349,12 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                     className="px-3 py-1.5 text-sm rounded border border-neutral-300">
               {t('booking.close')}
             </button>
+            {/* Daneben und nicht im `title`: ein gesperrter Knopf nimmt keine
+                Zeigerereignisse an, sein Tooltip erscheint in den meisten
+                Browsern gar nicht. */}
+            {grund !== null && (
+              <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+            )}
           </div>
         )}
       </div>

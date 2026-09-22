@@ -101,8 +101,24 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   // Die Naechte des Aufenthalts -- das Band zwischen den beiden Preisfeldern.
   // Aendert sich das Datum, rechnet das abgeleitete Feld mit.
   const naechte = daysBetween(arrival, departure)
-  const gueltig = departure > arrival && guest !== null
-    && (!unverbindlich || optionBis !== '')
+  /**
+   * Warum der Knopf gesperrt ist -- `null`, wenn er es nicht ist.
+   *
+   * **Ein gesperrter Knopf ohne Grund ist ein Knopf, der nicht
+   * funktioniert.** Genau so kam es an: geklickt, nichts passiert, und
+   * nichts auf dem Bildschirm sagte, was fehlt. Der haeufigste Fall ist der
+   * Gast -- er steht weiter unten in der Maske, und wer oben Datum und
+   * Zimmer ausgefuellt hat, haelt sie fuer fertig.
+   *
+   * Die Reihenfolge ist die der Maske von oben nach unten: genannt wird,
+   * was man zuerst findet, nicht was zuerst geprueft wird.
+   */
+  const grund =
+    departure <= arrival ? 'booking.needNights'
+    : guest === null ? 'booking.needGuest'
+    : unverbindlich && optionBis === '' ? 'booking.needOptionUntil'
+    : null
+  const gueltig = grund === null
 
   /*
    * Überbelegung ist erlaubt und braucht eine Rückfrage. Ein Kleinkind im
@@ -284,6 +300,15 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
                     className="px-3 py-1.5 text-sm rounded border border-neutral-300">
               {t('booking.close')}
             </button>
+            {/*
+              * Der Grund steht **daneben**, nicht im `title`. Ein gesperrter
+              * Knopf nimmt keine Zeigerereignisse an; sein Tooltip erscheint
+              * in den meisten Browsern gar nicht -- er waere also genau dort
+              * unsichtbar, wo er gebraucht wird.
+              */}
+            {grund !== null && (
+              <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+            )}
           </div>
         )}
       </div>

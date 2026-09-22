@@ -39,7 +39,18 @@ export function ZimmerSperren({ propertyId, resourceId, roomCode, ab, onClose }:
   const [titel, setTitel] = useState('')
   const anlegen = useCreateMaintenanceTicket(propertyId)
 
-  const gueltig = bis > von && titel.trim() !== ''
+  /**
+   * Warum der Knopf gesperrt ist -- `null`, wenn er es nicht ist.
+   *
+   * Der Grund ist Pflicht, und das ist leicht zu uebersehen: er steht als
+   * letztes Feld, hinter Zeitraum und Art. Wer die oberen ausgefuellt hat,
+   * haelt die Maske fuer fertig, klickt -- und nichts passiert.
+   */
+  const grund =
+    bis <= von ? 'booking.needNights'
+    : titel.trim() === '' ? 'sperre.needReason'
+    : null
+  const gueltig = grund === null
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
@@ -111,6 +122,12 @@ export function ZimmerSperren({ propertyId, resourceId, roomCode, ab, onClose }:
                     className="px-3 py-1.5 text-sm rounded border border-neutral-300">
               {t('booking.close')}
             </button>
+            {/* Daneben und nicht im `title`: ein gesperrter Knopf nimmt keine
+                Zeigerereignisse an, sein Tooltip erscheint in den meisten
+                Browsern gar nicht. */}
+            {grund !== null && (
+              <span className="self-center text-xs text-amber-800">{t(grund)}</span>
+            )}
           </div>
         )}
       </div>
