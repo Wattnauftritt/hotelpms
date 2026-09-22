@@ -479,9 +479,25 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
   })
 
   it('legt jeder Zug dazu, statt zu ersetzen', () => {
-    // Das `Set` ist der Punkt: dieselbe Zeile zweimal zu ziehen darf sie
-    // nicht zweimal in die Buchung legen.
-    expect(plan).toContain("...new Set([...(vorher?.resourceIds ?? [])")
+    /*
+     * Dieselbe Zeile zweimal zu ziehen darf sie nicht zweimal in die
+     * Buchung legen -- und der zweite Zug **ersetzt** sie, statt sie zu
+     * ueberspringen: wer eine markierte Zeile noch einmal zieht, meint
+     * einen anderen Zeitraum fuer sie.
+     */
+    expect(plan).toContain('const dazu = new Set(neu.rooms.map(r => r.resourceId))')
+    expect(plan).toContain('.filter(z => !dazu.has(z.resourceId))')
+  })
+
+  it('haelt je Zeile einen eigenen Zeitraum', () => {
+    /*
+     * Vorher galt der zuletzt gezogene fuer alle. Das war die naheliegende
+     * Vereinfachung und die falsche: eine Reisegruppe reist selten
+     * geschlossen an -- das Brautpaar bleibt drei Naechte, die Eltern zwei.
+     */
+    expect(plan).toContain(
+      'interface AuswahlZeile { resourceId: number; arrival: string; departure: string }')
+    expect(plan).toContain('arrival: neu.arrival, departure: neu.departure }))')
   })
 
   it('bucht nicht schon beim Loslassen', () => {
@@ -501,8 +517,27 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
   })
 
   it('zeigt waehrend des Zugs die ganze Auswahl, nicht nur den letzten Streifen', () => {
+    /*
+     * Und jede schon gewaehlte Zeile behaelt dabei **ihre** Breite: sie
+     * wandert nicht mit, weil der laufende Zug nur die Zeilen meint, ueber
+     * die er gerade laeuft.
+     */
     expect(plan).toContain(
-      "const ids = new Set([...(auswahl?.resourceIds ?? []), ...zeilen.map(u => u.id)])")
+      'const kaesten = new Map((auswahl ?? []).map(z =>')
+    expect(plan).toContain('for (const u of zeilen) kaesten.set(u.id, laufend)')
+  })
+
+  it('zeichnet ein Rechteck je Zeile, nicht eines fuer alle', () => {
+    // Acht gleich breite Kaesten fuer acht verschieden lange Aufenthalte
+    // waeren eine Vorschau, die luegt.
+    expect(plan).toContain('kaesten: Map<number, { left: number; width: number }>')
+    expect(plan).toContain('ghostLinks={kasten?.left ?? 0}')
+  })
+
+  it('sagt in der Leiste, wenn die Tage auseinandergehen', () => {
+    // Nur die Klammer zu zeigen hiesse, eine Deckungsgleichheit zu
+    // behaupten, die es nicht gibt.
+    expect(plan).toContain("klammer.gemischt && ` · ${t('plan.mixedDates')}`")
   })
 
   it('hebt die Auswahl mit Esc auf', () => {
@@ -966,5 +1001,109 @@ describe('Das Band der Buchungen ohne Zimmer', () => {
   it('zaehlt fuer die Warnung nur, was Bestand haelt', () => {
     // Ein Storno ohne Zimmer ist kein offener Punkt.
     expect(bildschirm).toContain('r.resource_id === null && BINDEND.has(r.status)')
+  })
+})
+
+/**
+ * Abruf aus einem Kontingent -- der Weg, den es bisher gar nicht gab.
+ *
+ * Ein Kontingent hielt Kapazitaet zurueck, und am Freigabedatum fiel sie
+ * vollstaendig wieder frei: `picked_up` stand immer auf null, weil **kein
+ * einziger Weg durch die Oberflaeche** `blockRef` gesetzt hat. Es wirkte
+ * damit als Sperre, nicht als Kontingent -- rief der Reiseveranstalter an
+ * und die Rezeption buchte frei, war das Zimmer doppelt weg.
+ */
+describe('Abruf aus Kontingent', () => {
+  const wahl = readFileSync(
+    new URL('../components/KontingentWahl.tsx', import.meta.url), 'utf8')
+  const einzeln = readFileSync(
+    new URL('../components/BookingDialog.tsx', import.meta.url), 'utf8')
+  const gruppe = readFileSync(
+    new URL('../components/GroupBookingDialog.tsx', import.meta.url), 'utf8')
+
+  it('schickt blockRef aus beiden Masken', () => {
+    expect(einzeln).toContain('blockRef: abruf?.blockRef')
+    expect(gruppe).toContain('blockRef: abruf?.blockRef')
+  })
+
+  it('bietet nur an, was wirklich abrufbar ist', () => {
+    /*
+     * Aktiv, passende Zimmergruppe, genug Rest. Eines anzubieten, das die
+     * Schnittstelle gleich darauf abweist, waere eine Auswahl, die eine
+     * Fehlermeldung erzeugt -- und die Rezeption sucht den Fehler dann bei
+     * sich.
+     */
+    expect(wahl).toContain("b.status === 'active' && b.remaining > 0")
+    expect(wahl).toContain('b.remaining >= benoetigt')
+  })
+
+  it('zeigt gar nichts, wenn es nichts abzurufen gibt', () => {
+    // Die weitaus meisten Buchungen kommen aus dem freien Verkauf; ein
+    // leeres Auswahlfeld in jeder Maske waere eine Frage, die keine ist.
+    expect(wahl).toContain('if (passende.length === 0 && gewaehlt === null) return null')
+  })
+
+  it('setzt den Zeitraum und sperrt ihn', () => {
+    /*
+     * Ein Abruf verbraucht das Kontingent ganz. `picked_up` ist eine Zahl
+     * ohne Datum, und die Freigabe des Rests rechnet ueber den ganzen
+     * Zeitraum -- ein Abruf ueber nur einen Teil liesse an den uebrigen
+     * Tagen dauerhaft Kapazitaet gebunden, die niemandem mehr gehoert.
+     */
+    expect(einzeln).toContain('setArrival(b.fromDate); setDeparture(b.toDate)')
+    expect(einzeln).toContain('disabled={abruf !== null}')
+    expect(gruppe).toContain('disabled={abruf !== null}')
+  })
+
+  it('nimmt beim Abruf die abweichenden Zimmertage weg', () => {
+    // Stehenzulassen hiesse, sie beim Absenden stillschweigend zu
+    // verwerfen -- die Maske zeigte dann etwas anderes als das Ergebnis.
+    expect(gruppe).toContain('setEigeneTage({})')
+    expect(gruppe).toContain('{abruf === null && (')
+  })
+})
+
+/**
+ * Verschiedene Reisedaten je Zimmer in der Gruppenmaske.
+ *
+ * Das Brautpaar bleibt drei Naechte, die Eltern zwei, ein Onkel kommt einen
+ * Tag frueher. Bisher hiess das: erst alle gleich buchen, dann einzeln
+ * umbuchen.
+ */
+describe('Eigene Tage je Zimmer in der Gruppenmaske', () => {
+  const gruppe = readFileSync(
+    new URL('../components/GroupBookingDialog.tsx', import.meta.url), 'utf8')
+
+  it('schickt nur, was wirklich abweicht', () => {
+    /*
+     * Was nicht abweicht, geht als `undefined` hinaus -- die Schnittstelle
+     * erbt dann den Zeitraum der Buchung, und die Absicht steht nicht
+     * doppelt da.
+     */
+    expect(gruppe).toContain('arrival: eigen?.arrival')
+    expect(gruppe).toContain('departure: eigen?.departure')
+  })
+
+  it('entfernt den Eintrag, statt ihn auf die Gruppentage zu setzen', () => {
+    // Nur "nicht da" heisst "erbt". Ein gesetzter Wert bliebe stehen, wenn
+    // die Gruppentage sich danach aendern.
+    expect(gruppe).toContain('delete rest[z.resourceId]')
+  })
+
+  it('rechnet den Zimmerpreis ueber dessen eigene Naechte', () => {
+    expect(gruppe).toContain(
+      'daysBetween(eigen?.arrival ?? arrival,')
+  })
+
+  it('uebernimmt, was schon beim Aufziehen abwich', () => {
+    // Die Maske soll zeigen, was der Plan gezeigt hat, und nicht
+    // stillschweigend gleichziehen.
+    expect(gruppe).toContain('r.arrival !== selection.arrival')
+  })
+
+  it('laesst ein Zimmer ohne Nacht nicht abschicken', () => {
+    // Sonst liefe es bis zur Schnittstelle und kaeme als Fehler zurueck,
+    // bei dem niemand sieht, welche Zeile gemeint ist.
+    expect(gruppe).toContain('Object.values(eigeneTage).every(e => e.departure > e.arrival)')
   })
 })
