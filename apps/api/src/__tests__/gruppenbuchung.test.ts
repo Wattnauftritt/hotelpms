@@ -519,6 +519,30 @@ describe('Gesamtpreis statt Preis je Nacht', () => {
     expect(body.totalCent).toBe(80_000)
   })
 
+  it('legt einen Preis je Nacht auf jede Nacht jedes Zimmers', async () => {
+    /*
+     * Ein Preis je Nacht ist **nicht** ein Gesamtpreis geteilt durch die
+     * Naechte der Buchung. Er gilt fuer jedes Zimmer einzeln, und bei drei
+     * Zimmern ueber drei Naechte sind 100,00 deshalb 900,00, nicht 300,00.
+     *
+     * Die Maske hat genau das eine Weile verwechselt: sie rechnete den
+     * Gesamtpreis aus den Naechten des Zeitraums statt aus allen
+     * Zimmernaechten, und der Unterschied fiel erst auf der Rechnung auf.
+     * Deshalb steht die Regel hier und nicht nur im Frontend.
+     */
+    const r = await buchen({
+      rooms: zimmerListe(dzZimmer.slice(0, 3), dz), priceCent: 10_000
+    })
+    expect(r.statusCode).toBe(201)
+    const body = JSON.parse(r.body) as
+      { reservations: Array<{ reservationRef: string; totalCent: number }>
+        totalCent: number }
+    expect(body.reservations.map(x => x.totalCent)).toEqual([30_000, 30_000, 30_000])
+    expect(body.totalCent).toBe(90_000)
+    expect(await naechte(body.reservations[0]!.reservationRef))
+      .toEqual([10_000, 10_000, 10_000])
+  })
+
   it('geht auch dann auf, wenn die Aufteilung krumm ist', async () => {
     /*
      * 1.000,01 EUR auf drei gleiche Zimmer und drei Naechte -- neun Posten,

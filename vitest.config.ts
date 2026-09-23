@@ -7,6 +7,19 @@ export default defineConfig({
   resolve: {
     // Tests laufen gegen die Quellen, nicht gegen dist. Kein Build noetig.
     alias: {
+      /*
+       * Der Unterpfad steht **vor** dem Paket: die Liste wird der Reihe
+       * nach abgearbeitet, und `@hotelpms/domain` passt auch auf
+       * `@hotelpms/domain/groupPrice`. Stuende er hinten, landete der
+       * Import bei `packages/domain/src/index.ts/groupPrice`.
+       *
+       * Den Unterpfad gibt es, weil die Oberflaeche die Aufteilung eines
+       * Gruppenpreises zeigt und dafuer dieselbe Funktion benutzt wie die
+       * Route. Ueber `index.ts` ginge das nicht: der Sammelpunkt zieht
+       * `node:crypto` und `node:net` mit, und die gibt es im Browser nicht.
+       */
+      '@hotelpms/domain/groupPrice': fileURLToPath(
+        new URL('./packages/domain/src/groupPrice.ts', import.meta.url)),
       '@hotelpms/db': src('db'),
       '@hotelpms/testing': src('testing'),
       '@hotelpms/domain': src('domain'),

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { Guest, Block } from '@hotelpms/contracts'
 import { useCreateBooking } from '../lib/queries/booking.js'
-import { useT } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { preisFelder, alsGesamt, LEERER_PREIS, type Preiseingabe }
   from '../lib/preisEingabe.js'
+import { eingabeAusCent } from '../lib/preisraster.js'
+import { gruppenpreisJeZimmer, zimmernaechte } from '../lib/gruppenPreis.js'
 import { GuestPicker } from './GuestPicker.tsx'
 import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
@@ -34,6 +36,13 @@ import { Fehler } from './Shell.tsx'
 export interface GroupSelection {
   rooms: Array<{ resourceId: number; categoryId: number
                  roomCode: string; categoryName: string
+                 /**
+                  * Plaetze der Zimmergruppe -- das Gewicht, mit dem ein
+                  * Gruppenpreis auf die Zimmer faellt. Sechs Doppelzimmer und
+                  * zwei Einzelzimmer zu gleichen Teilen aufzuteilen hiesse,
+                  * das Einzelzimmer so teuer zu machen wie das Doppelzimmer.
+                  */
+                 maxOccupancy: number
                  /** Eigene Tage dieses Zimmers, falls beim Aufziehen abweichend. */
                  arrival?: string; departure?: string }>
   /** Die Klammer um die Auswahl -- Vorgabe fuer alles, was nicht abweicht. */
@@ -47,6 +56,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
   onClose: () => void
 }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const [guest, setGuest] = useState<Guest | null>(null)
   const [notes, setNotes] = useState('')
   const [arrival, setArrival] = useState(selection.arrival)
@@ -134,6 +144,67 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
       const jetzt = v[resourceId] ?? { arrival, departure }
       return { ...v, [resourceId]: { ...jetzt, [feld]: wert } }
     })
+
+  /*
+   * Die Zeitraeume und die Naechte je Zimmer -- einmal gerechnet, nicht in
+   * jeder Zelle wieder. Die Preisvorschau braucht sie genauso wie die
+   * Tabelle, und zwei Fassungen liefen beim naechsten Feld auseinander.
+   */
+  const zeitraeume = zimmer.map(z => {
+    const eigen = eigeneTage[z.resourceId]
+    return { von: eigen?.arrival ?? arrival, bis: eigen?.departure ?? departure }
+  })
+  const zeilen = zimmer.map((z, i) => ({
+    naechte: daysBetween(zeitraeume[i]!.von, zeitraeume[i]!.bis),
+    personen: z.maxOccupancy
+  }))
+  const naechteGesamt = zimmernaechte(zeilen)
+
+  /*
+   * Was der Gruppenpreis je Zimmer bedeutet. `null`, solange nichts
+   * Brauchbares dasteht -- eine Spalte voller Nullen waere eine Aussage,
+   * die niemand gemacht hat.
+   */
+  const vorschau = gruppenpreisJeZimmer(gruppenPreis, zeilen)
+
+  /*
+   * Der Weg zurueck: was bei "je Zimmer" in den Feldern steht, und was das
+   * fuer die Gruppe zusammen ergibt.
+   *
+   * `undefined` in einer Zeile heisst nicht null Euro, sondern "kein Preis
+   * vereinbart" -- dort gilt der Ratenplan. Deshalb wird die Summe aus den
+   * gefuellten Zeilen gebildet und daneben gesagt, wie viele fehlen; eine
+   * Summe, die leere Zeilen als Null mitzaehlt, sieht vollstaendig aus und
+   * ist es nicht.
+   */
+  const zimmerGesamt = zimmer.map((z, i) =>
+    alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS, zeilen[i]!.naechte))
+  const ohnePreis = zimmerGesamt.filter(g => g === undefined).length
+  const summeJeZimmer = zimmerGesamt.reduce<number>((sum, g) => sum + (g ?? 0), 0)
+
+  /**
+   * Auf "je Zimmer" umschalten und die Aufteilung als Eingabe uebernehmen.
+   *
+   * **Warum uebernehmen und nicht leeren.** Der Weg dorthin ist immer
+   * derselbe: erst den verhandelten Betrag eintragen, die Aufteilung
+   * ansehen, und dann stimmt eine Zeile nicht -- die Suite kostet eben
+   * anders. Acht leere Felder hiessen, die Zahlen von Hand abzuschreiben,
+   * die gerade danebenstanden.
+   */
+  const aufJeZimmer = (): void => {
+    if (vorschau !== null) {
+      setZimmerPreis(v => Object.fromEntries(zimmer.map((z, i) => [
+        z.resourceId,
+        // Was schon dasteht, bleibt stehen -- auch ein leergeraeumtes Feld:
+        // der Umschalter fuellt, er ueberschreibt nicht. Sonst holte ein
+        // zweiter Klick auf denselben Knopf die von Hand geaenderte Suite
+        // wieder auf den Durchschnitt zurueck.
+        v[z.resourceId]
+          ?? { modus: 'gesamt' as const, text: eingabeAusCent(vorschau[i]!.gesamtCent) }
+      ])))
+    }
+    setJeZimmer(true)
+  }
 
   return (
     <Dialog breite="weit" onClose={onClose}
@@ -262,19 +333,36 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                 {t('group.priceWhole')}
               </label>
               <label className="flex items-center gap-2">
-                <input type="radio" checked={jeZimmer} onChange={() => setJeZimmer(true)} />
+                {/* Der Umschalter nimmt die Aufteilung mit, statt acht leere
+                    Felder hinzustellen -- siehe `aufJeZimmer`. */}
+                <input type="radio" checked={jeZimmer} onChange={aufJeZimmer} />
                 {t('group.pricePerRoom')}
               </label>
             </div>
-            {jeZimmer
-              ? <p className="text-xs text-neutral-500">{t('group.pricePerRoomHint')}</p>
-              : (
-                <>
-                  <PreisFelder wert={gruppenPreis} naechte={naechte}
-                               onChange={setGruppenPreis} />
-                  <p className="text-xs text-neutral-500">{t('group.priceSplitHint')}</p>
-                </>
-              )}
+            {jeZimmer ? (
+              <>
+                <p className="text-xs text-neutral-500">{t('group.pricePerRoomHint')}</p>
+                {vorschau !== null && (
+                  <p className="text-xs text-neutral-500">{t('group.priceCarriedOver')}</p>
+                )}
+              </>
+            ) : (
+              <>
+                {/*
+                  * `naechteGesamt` und nicht die Naechte der Buchung: die
+                  * Schnittstelle legt einen Preis je Nacht auf **jede** Nacht
+                  * **jedes** Zimmers. Vorher stand neben "100,00 je Nacht" bei
+                  * drei Zimmern ueber zwei Naechte ein Gesamtpreis von 200,00,
+                  * und gebucht wurden 600,00.
+                  */}
+                <PreisFelder wert={gruppenPreis} naechte={naechteGesamt}
+                             onChange={setGruppenPreis} />
+                <p className="text-xs text-neutral-500">
+                  {t('group.priceRoomNightHint', { n: naechteGesamt })}
+                </p>
+                <p className="text-xs text-neutral-500">{t('group.priceSplitHint')}</p>
+              </>
+            )}
           </Abschnitt>
 
           <Abschnitt titel={t('group.sectionGuest')}>
@@ -319,7 +407,8 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
           * und schickt keine eigenen -- sie geht mit, wenn die Gruppe oben
           * verschoben wird.
           */}
-        <Abschnitt titel={t('group.selection')}>
+        <Abschnitt titel={t('group.selection')}
+                   hinweis={jeZimmer ? undefined : t('group.pricePreviewHint')}>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-neutral-500 text-left">
@@ -327,17 +416,24 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                 <th className="font-medium">{t('common.category')}</th>
                 <th className="font-medium">{t('booking.arrival')}</th>
                 <th className="font-medium">{t('booking.departure')}</th>
-                <th className="font-medium text-right">{t('group.nightsHead')}</th>
-                {jeZimmer && <th className="font-medium">{t('group.sectionPrice')}</th>}
+                <th className="font-medium text-right pr-2">{t('group.nightsHead')}</th>
+                {/*
+                  * Beide Preisspalten stehen immer da, auch wenn der Preis
+                  * fuer die ganze Gruppe gilt -- dann zeigen sie, was daraus
+                  * je Zimmer wird. Vorher war die Aufteilung erst **nach**
+                  * dem Buchen zu sehen, und der Reiseleiter fragt vorher.
+                  */}
+                <th className="font-medium text-right pr-2">{t('group.priceNight')}</th>
+                <th className="font-medium text-right">{t('group.total')}</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {zimmer.map(z => {
+              {zimmer.map((z, i) => {
                 const eigen = eigeneTage[z.resourceId]
-                const von = eigen?.arrival ?? arrival
-                const bis = eigen?.departure ?? departure
-                const zeileNaechte = daysBetween(von, bis)
+                const { von, bis } = zeitraeume[i]!
+                const zeileNaechte = zeilen[i]!.naechte
+                const anteil = vorschau?.[i]
                 return (
                   <tr key={z.resourceId}
                       className={`border-t border-neutral-100 align-middle
@@ -369,13 +465,36 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                                     ${zeileNaechte <= 0 ? 'text-red-700 font-medium' : ''}`}>
                       {zeileNaechte}
                     </td>
-                    {jeZimmer && (
-                      <td className="pr-2">
-                        <PreisFelder klein naechte={zeileNaechte}
-                                     wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
-                                     onChange={w => setZimmerPreis(
-                                       { ...zimmerPreis, [z.resourceId]: w })} />
+                    {jeZimmer ? (
+                      /*
+                       * Getippt wird hier, und die beiden Felder haengen
+                       * ueber die Naechte **dieses** Zimmers zusammen. Sie
+                       * stehen unter beiden Ueberschriften, weil sie
+                       * dasselbe Paar sind wie in den Spalten daneben --
+                       * nur eben als Eingabe statt als Anzeige.
+                       */
+                      <td colSpan={2} className="text-right">
+                        <div className="flex justify-end">
+                          <PreisFelder klein naechte={zeileNaechte}
+                                       wert={zimmerPreis[z.resourceId] ?? LEERER_PREIS}
+                                       onChange={w => setZimmerPreis(
+                                         { ...zimmerPreis, [z.resourceId]: w })} />
+                        </div>
                       </td>
+                    ) : (
+                      <>
+                        {/* Grau, weil hier nichts zu tippen ist: der Betrag
+                            folgt aus dem Gruppenpreis. Ein Feld, das aussieht
+                            wie eines und keines ist, ist schlimmer als Text. */}
+                        <td className="tabular-nums text-right pr-2 text-neutral-500">
+                          {anteil === undefined ? '—'
+                            : formatMoney(anteil.jeNachtCent, locale)}
+                        </td>
+                        <td className="tabular-nums text-right text-neutral-500">
+                          {anteil === undefined ? '—'
+                            : formatMoney(anteil.gesamtCent, locale)}
+                        </td>
+                      </>
                     )}
                     <td className="text-right whitespace-nowrap">
                       {/*
@@ -413,6 +532,40 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                 )
               })}
             </tbody>
+            {/*
+              * Die Summe steht unter der Tabelle und nicht nur oben im
+              * Preisfeld: bei "je Zimmer" gibt es oben gar keinen
+              * Gruppenbetrag, und was die Gruppe zusammen kostet, ist die
+              * Zahl, die der Reiseleiter hoeren will.
+              */}
+            {zimmer.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-neutral-200 text-sm">
+                  <td className="py-1.5 text-neutral-500" colSpan={4}>
+                    {t('group.priceSum')}
+                  </td>
+                  <td className="tabular-nums text-right pr-2">{naechteGesamt}</td>
+                  <td />
+                  <td className="tabular-nums text-right font-medium">
+                    {jeZimmer
+                      ? formatMoney(summeJeZimmer, locale)
+                      : vorschau === null ? '—'
+                        : formatMoney(
+                          vorschau.reduce((sum, a) => sum + a.gesamtCent, 0), locale)}
+                  </td>
+                  <td />
+                </tr>
+                {/* Leere Zeilen sind nicht null Euro. Eine Summe, die sie
+                    mitzaehlt, sieht vollstaendig aus und ist es nicht. */}
+                {jeZimmer && ohnePreis > 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-xs text-neutral-500 pt-1">
+                      {t('group.priceFromRatePlan', { n: ohnePreis })}
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
+            )}
           </table>
           {zimmer.length === 0 && (
             <div className="text-sm text-amber-800">{t('group.empty')}</div>

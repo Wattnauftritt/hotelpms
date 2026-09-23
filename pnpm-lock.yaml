@@ -63,6 +63,9 @@ importers:
       '@hotelpms/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@hotelpms/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@tanstack/react-query':
         specifier: ^5.62.7
         version: 5.102.8(react@18.3.1)
