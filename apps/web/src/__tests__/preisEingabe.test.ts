@@ -93,11 +93,26 @@ describe('Die Masken schicken einen Preis, nicht zwei', () => {
     expect(gruppe).toContain('totalCent: jeZimmer')
   })
 
-  it('teilt nicht selbst, sondern laesst den Server teilen', () => {
-    // Zwei Fassungen derselben Aufteilung laufen auseinander, und der
-    // Unterschied faellt erst auf, wenn Vorschau und Rechnung
-    // nebeneinanderliegen.
+  it('schickt die Aufteilung nicht mit, sondern nur den Gruppenpreis', () => {
+    /*
+     * Die Maske **zeigt** seit der Preisvorschau, was aus einem
+     * Gruppenpreis je Zimmer wird -- geschickt wird er trotzdem als
+     * Gruppenpreis. Geteilt wird auf dem Server, ein einziges Mal; sonst
+     * gaebe es zwei Stellen, an denen der Rest-Cent liegen kann, und der
+     * Unterschied fiele erst auf, wenn Vorschau und Rechnung
+     * nebeneinanderliegen.
+     */
+    expect(gruppe).toContain('totalCent: jeZimmer')
     expect(gruppe).not.toContain('gruppeAufteilen')
     expect(einzeln).not.toContain('preisJeNacht')
+  })
+
+  it('rechnet die Vorschau mit der Funktion des Servers', () => {
+    // Eine eigene Fassung hier waere die naheliegende und die teure
+    // Loesung: sie laege bei jedem Betrag, der nicht glatt aufgeht, einen
+    // Cent neben dem Ergebnis.
+    const vorschau = readFileSync(
+      new URL('../lib/gruppenPreis.ts', import.meta.url), 'utf8')
+    expect(vorschau).toContain("from '@hotelpms/domain/groupPrice'")
   })
 })

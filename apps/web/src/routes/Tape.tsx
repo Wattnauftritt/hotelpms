@@ -179,7 +179,16 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           rooms: sel.rooms.map(r => ({
                             ...r,
                             roomCode: zimmer.get(r.resourceId)?.code ?? '',
-                            categoryName: zimmer.get(r.resourceId)?.category_name ?? ''
+                            categoryName: zimmer.get(r.resourceId)?.category_name ?? '',
+                            /*
+                             * Die Plaetze der Zimmergruppe, damit die Maske
+                             * einen Gruppenpreis so aufteilen kann, wie es
+                             * die Route tut. Ohne sie waere die Vorschau
+                             * gleichmaessig verteilt und das Einzelzimmer so
+                             * teuer wie das Doppelzimmer -- also falsch, und
+                             * zwar auffaellig erst auf der Rechnung.
+                             */
+                            maxOccupancy: zimmer.get(r.resourceId)?.max_occupancy ?? 1
                           }))
                         })
                       }}

@@ -644,6 +644,41 @@ export const plan = {
     de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
     en: 'Leave empty to use the price from the rate plan.',
     tr: 'Boş bırakırsanız fiyat planındaki fiyat geçerli olur.' },
+  /*
+   * Die Preisspalten der Tabelle. Sie stehen immer da -- auch wenn der
+   * Preis fuer die ganze Gruppe gilt; dann zeigen sie die Aufteilung.
+   */
+  'group.priceNight': {
+    de: 'Preis/Nacht',
+    en: 'Price/night',
+    tr: 'Fiyat/gece' },
+  'group.priceRoomNightHint': {
+    de: '„Preis je Nacht" gilt je Zimmer und Nacht. {n} Zimmernächte ergeben '
+      + 'den Gesamtpreis.',
+    en: '"Price per night" applies per room and night. {n} room nights make up '
+      + 'the total.',
+    tr: '„Gecelik fiyat" oda ve gece başınadır. {n} oda gecesi toplamı verir.' },
+  'group.priceSum': {
+    de: 'Summe',
+    en: 'Sum',
+    tr: 'Toplam' },
+  'group.pricePreviewHint': {
+    de: 'Die Aufteilung ist eine Vorschau — nach Plätzen der Zimmergruppe, der '
+      + 'Rest-Cent auf dem ersten Zimmer. Gebucht wird der Gruppenpreis; geteilt '
+      + 'wird beim Anlegen.',
+    en: 'The split is a preview — by the occupancy of each room category, the '
+      + 'remaining cent on the first room. What is booked is the group price; it '
+      + 'is split when the booking is created.',
+    tr: 'Dağılım bir önizlemedir — oda tipinin kişi sayısına göre, kalan kuruş ilk '
+      + 'odaya. Rezerve edilen grup fiyatıdır; bölme kayıt sırasında yapılır.' },
+  'group.priceFromRatePlan': {
+    de: '{n} ohne eigenen Preis — dort gilt der Ratenplan.',
+    en: '{n} without a price of their own — the rate plan applies there.',
+    tr: '{n} kendi fiyatı olmayan — orada fiyat planı geçerli.' },
+  'group.priceCarriedOver': {
+    de: 'Die Beträge stehen aus der Aufteilung darin und lassen sich einzeln ändern.',
+    en: 'The amounts are carried over from the split and can be changed one by one.',
+    tr: 'Tutarlar dağılımdan alınmıştır ve tek tek değiştirilebilir.' },
   'group.guestHint': {
     de: 'Der Gast ist der Besteller der Gruppe, nicht der Bewohner jedes Zimmers. '
       + 'Er wird nur im ersten Zimmer als Mitreisender geführt — sonst zählte die '
