@@ -3,14 +3,10 @@ import { I18nContext, useT, useLocale, LOCALES, type Locale }
   from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
+import { Hauswahl, type Haus } from './Hauswahl.tsx'
 import type { ScreenDefinition } from '../screens.js'
 
-export interface Haus {
-  id: number
-  code: string
-  name: string
-  isTraining: boolean
-}
+export type { Haus }
 
 interface Props {
   screen: string
@@ -61,25 +57,12 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
  * Zeile in einer Einstellungsmaske.
  */
 function Uebungshinweis({ haus }: { haus: Haus }): JSX.Element {
+  const t = useT()
   return (
     <div role="status"
          className="bg-violet-700 text-white text-sm px-4 py-1 font-medium">
-      Uebungsbetrieb — {haus.name}. Nichts hiervon geht in Buchhaltung,
-      Statistik oder Gastpost.
+      {t('app.training', { haus: haus.name })}
     </div>
-  )
-}
-
-/** Haus wechseln. Nur sichtbar, wer mehr als eines hat. */
-function Hauswahl({ haeuser, haus, onHaus }: Pick<Props, 'haeuser' | 'haus' | 'onHaus'>
-): JSX.Element | null {
-  if (haeuser.length < 2) return null
-  return (
-    <select value={haus?.id ?? ''} onChange={e => onHaus(Number(e.target.value))}
-            aria-label="Haus"
-            className="text-sm border border-neutral-300 rounded px-2 py-1">
-      {haeuser.map(h => <option key={h.id} value={h.id}>{h.code} — {h.name}</option>)}
-    </select>
   )
 }
 
@@ -173,12 +156,7 @@ export function Shell(props: Props): JSX.Element {
             <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
             <div className="grow" />
             <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
-            <select value={props.locale}
-                    onChange={e => props.onLocale(e.target.value as Locale)}
-                    aria-label="Sprache"
-                    className="text-sm border border-neutral-300 rounded px-2 py-1">
-              {LOCALES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
-            </select>
+            <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
             <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
                       onArbeitsplatz={props.onArbeitsplatz}
                       gewechselt={props.gewechselt} />
@@ -189,6 +167,24 @@ export function Shell(props: Props): JSX.Element {
         <main className="p-4">{props.children}</main>
       </div>
     </I18nContext.Provider>
+  )
+}
+
+/**
+ * Die Sprachwahl.
+ *
+ * Eine eigene kleine Komponente, weil `useT` einen Haken braucht und die
+ * `Shell` selbst ausserhalb des Anbieters steht, den sie aufspannt --
+ * `aria-label` stand deshalb als deutsches Wort im Code.
+ */
+function Sprachwahl({ locale, onLocale }: Pick<Props, 'locale' | 'onLocale'>): JSX.Element {
+  const t = useT()
+  return (
+    <select value={locale} onChange={e => onLocale(e.target.value as Locale)}
+            aria-label={t('common.language')}
+            className="text-sm border border-neutral-300 rounded px-2 py-1">
+      {LOCALES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+    </select>
   )
 }
 

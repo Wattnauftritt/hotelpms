@@ -242,4 +242,39 @@ export const common = {
       + 'öffnen.',
     en: 'This account has no rights in {haus} that open a screen.',
     tr: 'Bu hesabın {haus} tesisinde ekran açacak bir yetkisi yok.' },
+  /*
+   * Die Kopfleiste. Sie stand bis hierher zum Teil als deutscher Text im
+   * Code -- die Beschriftungen der beiden Auswahlfelder und der ganze
+   * Uebungshinweis. Wer die Oberflaeche auf Englisch stellte, bekam sie
+   * trotzdem auf Deutsch.
+   */
+  'haus.label': {
+    de: 'Haus',
+    en: 'Property',
+    tr: 'Tesis' },
+  'haus.search': {
+    de: 'Haus suchen',
+    en: 'Find a property',
+    tr: 'Tesis ara' },
+  'haus.training': {
+    de: 'Übungshaus',
+    en: 'Training property',
+    tr: 'Eğitim tesisi' },
+  'common.language': {
+    de: 'Sprache',
+    en: 'Language',
+    tr: 'Dil' },
+  /*
+   * Der Uebungshinweis. Dokument 13 verlangt ihn ausdruecklich (C11): wer
+   * nicht sieht, dass er uebt, uebt irgendwann versehentlich am echten
+   * Haus. Der Satz nennt, was nicht passiert -- "Testmodus" allein sagt
+   * niemandem, ob die Rechnung nun in der Buchhaltung landet.
+   */
+  'app.training': {
+    de: 'Übungsbetrieb — {haus}. Nichts hiervon geht in Buchhaltung, '
+      + 'Statistik oder Gastpost.',
+    en: 'Training mode — {haus}. None of this reaches accounting, '
+      + 'statistics or guest mail.',
+    tr: 'Eğitim modu — {haus}. Buradakilerin hiçbiri muhasebeye, '
+      + 'istatistiklere veya misafir postasına gitmez.' },
 } as const satisfies Record<string, LocalizedText>

@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { Fragment, StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient }
   from '@tanstack/react-query'
@@ -258,7 +258,24 @@ function App(): JSX.Element {
            onArbeitsplatz={() => setArbeitsplatz(true)}
            gewechselt={me.data.workstationSwitched}
            haeuser={haeuser} haus={haus}
-           onHaus={id => { setAdresse({ property: id, screen: null }) }}>
+           onHaus={id => {
+             /*
+              * Beim Wechsel faellt weg, was zum alten Haus gehoert.
+              *
+              * Ein offener Beleg und ein offener Check-in haengen an einer
+              * Kennung aus dem **vorigen** Haus; stehen sie noch da, sieht
+              * die Rezeption nach dem Wechsel einen Vorgang, den es hier
+              * nicht gibt, und die Schnittstelle antwortet 404 auf einen
+              * Bildschirm, den niemand mehr zuordnen kann.
+              *
+              * `screen: null` setzt auf den ersten Bildschirm zurueck, auf
+              * den die Rechte **im neuen Haus** reichen -- sie koennen dort
+              * andere sein.
+              */
+             setFolioRef(null)
+             setCheckInRef(null)
+             setAdresse({ property: id, screen: null })
+           }}>
       {arbeitsplatz && (
         <Arbeitsplatz benutzer={me.data.displayName} email={me.data.email}
                       pinGesetzt={me.data.workstationPinSet}
@@ -272,11 +289,20 @@ function App(): JSX.Element {
         : checkInRef !== null
           ? <CheckIn reservationRef={checkInRef} propertyId={haus.id}
                      onClose={() => setCheckInRef(null)} />
-          : screen.render({ propertyId: haus.id, permissions: rechte,
-                            userId: me.data.userId,
-                            platformPermissions: me.data.platformPermissions,
-                            openFolio: setFolioRef,
-                            openCheckIn: setCheckInRef })}
+          /*
+           * `key` am Haus: ein Bildschirmwechsel beim Hauswechsel ist nicht
+           * garantiert -- haben beide Haeuser denselben Startbildschirm,
+           * bleibt die Komponente eingehaengt und behaelt ihren Zustand.
+           * Im Zimmerplan waere das die markierte Reservierung des alten
+           * Hauses, und das Seitenfenster fragte danach im neuen.
+           */
+          : <Fragment key={haus.id}>
+              {screen.render({ propertyId: haus.id, permissions: rechte,
+                               userId: me.data.userId,
+                               platformPermissions: me.data.platformPermissions,
+                               openFolio: setFolioRef,
+                               openCheckIn: setCheckInRef })}
+            </Fragment>}
     </Shell>
   )
 }
