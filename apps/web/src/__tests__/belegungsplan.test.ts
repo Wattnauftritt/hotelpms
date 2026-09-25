@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
   from '../lib/tapeSelection.js'
+import { spanne, SPALTE, LUECKE } from '../lib/tapeGeometrie.js'
 
 /**
  * Was eine aufgezogene Auswahl im Belegungsplan bedeutet.
@@ -124,6 +125,75 @@ describe('Die Gesten sind zu sehen', () => {
  * Geprueft wird an der Quelle, nicht im Browser: die Oberflaeche hat hier
  * keine DOM-Umgebung, und die Regel ist ohnehin eine ueber den Aufbau.
  */
+/**
+ * Der Balken laeuft von Tagesmitte zu Tagesmitte.
+ *
+ * Das ist der Tag, wie er an der Rezeption ablaeuft: vormittags raeumt der
+ * eine, nachmittags bezieht der andere. An der Spaltenkante gezeichnet sah
+ * der Wechseltag aus, als gehoere er ganz dem neuen Gast.
+ */
+describe('Wo ein Balken im Raster liegt', () => {
+  /** Dreissig sichtbare Tage -- mehr als jeder Fall hier braucht. */
+  const SICHT = 30
+
+  it('beginnt in der Mitte des Anreisetages', () => {
+    expect(spanne(0, 1, SICHT).left).toBe(0.5 * SPALTE)
+    expect(spanne(3, 5, SICHT).left).toBe(3.5 * SPALTE)
+  })
+
+  it('ist so breit wie der Aufenthalt Naechte hat', () => {
+    // Eine Nacht ist eine Spalte breit -- nur eben um eine halbe versetzt.
+    expect(spanne(3, 4, SICHT).width).toBe(SPALTE - LUECKE)
+    expect(spanne(3, 6, SICHT).width).toBe(3 * SPALTE - LUECKE)
+  })
+
+  it('setzt die Abreise des einen und die Anreise des naechsten aneinander', () => {
+    /*
+     * Genau das ist der Punkt: Zimmer frei am 5., neuer Gast kommt am 5.
+     * Der eine endet in der Mitte des 5., der andere beginnt dort. Die
+     * Luecke dazwischen ist die Breite, die sie als zwei lesbar macht --
+     * ohne sie sehen sie aus wie ein Aufenthalt.
+     */
+    const geht = spanne(2, 5, SICHT)
+    const kommt = spanne(5, 8, SICHT)
+    expect(geht.left + geht.width + LUECKE).toBe(kommt.left)
+  })
+
+  it('schneidet am linken Rand ab, ohne den Versatz mitzunehmen', () => {
+    // Ein Aufenthalt, der vor dem Ausschnitt begann, laeuft bis an die
+    // Kante -- und dass es weitergeht, sieht man genau daran.
+    expect(spanne(-4, 2, SICHT).left).toBe(0)
+    expect(spanne(-4, 2, SICHT).width).toBe(2.5 * SPALTE - LUECKE)
+  })
+
+  it('schneidet am rechten Rand ab', () => {
+    expect(spanne(28, 40, SICHT).width).toBe(1.5 * SPALTE - LUECKE)
+  })
+
+  it('rechnet der Plan nirgends mehr selbst mit Spaltenkanten', () => {
+    /*
+     * Der halbe Versatz nuetzt nichts, solange irgendeine Stelle ihren
+     * Kasten weiter selbst aus `tag * SPALTE` baut -- der Schattenbalken
+     * laege dann eine halbe Spalte neben dem echten, und beim Loslassen
+     * spraenge die Buchung sichtbar. Genau diese Rechnung stand hier
+     * dreimal.
+     */
+    const plan = readFileSync(
+      new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+    expect(plan).toContain("from '../lib/tapeGeometrie.js'")
+    expect(plan).not.toMatch(/\* SPALTE - 4/)
+  })
+
+  it('wird nie negativ breit', () => {
+    /*
+     * Ein Aufenthalt ganz hinter dem Ausschnitt ergab vorher -4 Pixel. Was
+     * ein Browser daraus macht, ist nirgends verabredet; hier ist es null.
+     */
+    expect(spanne(40, 45, SICHT).width).toBe(0)
+    expect(spanne(-9, -4, SICHT).width).toBe(0)
+  })
+})
+
 describe('Gastauswahl', () => {
   const dateien = [
     'BookingDialog.tsx', 'GroupBookingDialog.tsx', 'Rechnungsempfaenger.tsx'
