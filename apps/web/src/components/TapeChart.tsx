@@ -4,6 +4,7 @@ import { eachDay, isWeekend, daysBetween, addDays, today } from '../lib/dates.js
 import type { KontextZiel } from './Kontextmenue.tsx'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
   from '../lib/tapeSelection.js'
+import { SPALTE, spanne } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 
 /**
@@ -16,10 +17,15 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  * - **Ein Balken je Reservierung, nicht eine Zelle je Nacht.** Ein Aufenthalt
  *   ist eine Sache und wird als eine gelesen. Zellen zu färben sieht aus wie
  *   fünf einzelne Nächte.
- * - **Der Balken endet am Abreisetag, beginnt aber am Anreisetag.** Die
- *   Abreisenacht gibt es nicht; das Zimmer ist an dem Tag ab mittags wieder
- *   frei. Ein Balken, der bis in den Abreisetag hineinreicht, lässt ein
- *   verkäufliches Zimmer belegt aussehen.
+ * - **Der Balken läuft von Tagesmitte zu Tagesmitte.** Am Anreisetag beginnt
+ *   er in der Mitte der Spalte, am Abreisetag endet er dort. Das ist der
+ *   Tag, wie er an der Rezeption abläuft: vormittags räumt der eine,
+ *   nachmittags bezieht der andere — am Wechseltag gehört das Zimmer
+ *   beiden. An der Spaltenkante gezeichnet stießen zwei Aufenthalte
+ *   zwischen dem 24. und dem 25. aneinander, und der 25. sah aus, als
+ *   gehöre er ganz dem neuen Gast; dass am selben Morgen noch jemand drin
+ *   lag, musste man sich denken. Gerechnet wird das in
+ *   [`lib/tapeGeometrie.ts`](../lib/tapeGeometrie.ts).
  * - **Nicht zugewiesene Reservierungen stehen oben**, nicht unsichtbar unten.
  *   Sie sind die Arbeit des Tages.
  *
@@ -56,7 +62,6 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  * neu, wenn sich fuer sie selbst etwas aendert.
  */
 
-const SPALTE = 44        // Pixel je Tag
 const ZEILE = 34
 const LABEL_BREITE = 160
 /**
@@ -379,12 +384,14 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     return m
   }, [data.blocks])
 
-  /** Wo im Raster liegt ein Zeitraum, auf den sichtbaren Ausschnitt beschnitten. */
-  const balken = useCallback((von: string, bis: string) => {
-    const start = Math.max(0, daysBetween(data.from, von))
-    const ende = Math.min(tage.length, daysBetween(data.from, bis))
-    return { left: start * SPALTE, width: Math.max(ende - start, 0) * SPALTE - 4 }
-  }, [data.from, tage.length])
+  /**
+   * Wo im Raster liegt ein Zeitraum, auf den sichtbaren Ausschnitt
+   * beschnitten. Von Tagesmitte zu Tagesmitte -- die Begruendung steht in
+   * `lib/tapeGeometrie.ts`.
+   */
+  const balken = useCallback((von: string, bis: string) => spanne(
+    daysBetween(data.from, von), daysBetween(data.from, bis), tage.length),
+  [data.from, tage.length])
 
   /** Tagesindex unter dem Zeiger, auf den sichtbaren Ausschnitt begrenzt. */
   const tagUnter = useCallback((clientX: number): number => {
@@ -589,7 +596,9 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
     if (drag.kind === 'create') {
       const von = Math.min(drag.startDay, drag.day)
       const bis = Math.max(drag.startDay, drag.day)
-      return eins(drag.resourceId, von * SPALTE, (bis - von + 1) * SPALTE - 4)
+      // `bis` ist der letzte **Nacht**-Tag, die Abreise liegt einen dahinter.
+      const k = spanne(von, bis + 1, tage.length)
+      return eins(drag.resourceId, k.left, k.width)
     }
     if (drag.kind === 'group') {
       const von = Math.min(drag.startDay, drag.day)
@@ -606,7 +615,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
        * sie wandern **nicht** mit, weil der neue Zug nur die Zeilen meint,
        * ueber die er laeuft.
        */
-      const laufend = { left: von * SPALTE, width: (bis - von + 1) * SPALTE - 4 }
+      const laufend = spanne(von, bis + 1, tage.length)
       const kaesten = new Map((auswahl ?? []).map(z =>
         [z.resourceId, balken(z.arrival, z.departure)]))
       for (const u of zeilen) kaesten.set(u.id, laufend)
@@ -618,7 +627,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       const endTag = drag.edge === 'end' ? drag.day + 1 : daysBetween(data.from, drag.departure)
       const von = Math.max(0, Math.min(startTag, endTag - 1))
       const bis = Math.max(von + 1, endTag)
-      return eins(drag.resourceId, von * SPALTE, (bis - von) * SPALTE - 4)
+      const k = spanne(von, bis, tage.length)
+      return eins(drag.resourceId, k.left, k.width)
     }
     if (drag.moved && drag.overResourceId !== null) {
       /*
@@ -656,7 +666,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           ? drag.bookingRooms : undefined }
     }
     return null
-  }, [drag, auswahl, balken, data.from, data.units])
+  }, [drag, auswahl, balken, data.from, data.units, tage.length])
 
   /**
    * Die Klammer um die Auswahl: frueheste Anreise, spaeteste Abreise -- und
