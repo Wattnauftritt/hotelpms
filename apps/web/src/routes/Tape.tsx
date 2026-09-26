@@ -164,7 +164,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 
       {q.isError && daten === undefined ? <Fehler error={q.error} />
         : daten === undefined ? <Laedt />
-        : <TapeChart data={daten}
+        : <TapeChart data={daten} nachGruppe={gruppiert}
                       onSelect={setAusgewaehlt}
                       onCreate={sel => {
                         const u = daten.units.find(x => x.id === sel.resourceId)

@@ -38,6 +38,21 @@ export function isWeekend(date: IsoDate): boolean {
 }
 
 /**
+ * Der letzte Tag einer Woche -- Sonntag.
+ *
+ * Fuer die Wochentrennung im Zimmerplan. Ueber dreissig oder sechzig
+ * Spalten zaehlt niemand Tage; gesucht wird "die Woche danach", und dafuer
+ * braucht das Auge eine Kante alle sieben Spalten.
+ *
+ * Sonntag und nicht Montag, weil die Linie **rechts** an der Spalte sitzt:
+ * die Kante liegt damit zwischen Sonntag und Montag, wo die Woche auch
+ * endet.
+ */
+export function isWeekEnd(date: IsoDate): boolean {
+  return new Date(`${date}T00:00:00Z`).getUTCDay() === 0
+}
+
+/**
  * Monate addieren, ohne über das Monatsende zu rutschen.
  *
  * `setUTCMonth` allein reicht nicht: der 31. Januar plus ein Monat ergibt

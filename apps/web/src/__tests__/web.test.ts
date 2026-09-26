@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { today, addDays, addMonths, daysBetween, eachDay, isWeekend }
+import { today, addDays, addMonths, daysBetween, eachDay, isWeekend, isWeekEnd }
   from '../lib/dates.js'
 import { formatMoney, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { SCREENS, visibleScreens, resolveScreen } from '../screens.js'
@@ -66,6 +66,19 @@ describe('Kalenderdaten', () => {
     expect(isWeekend('2026-10-03')).toBe(true)   // Samstag
     expect(isWeekend('2026-10-04')).toBe(true)   // Sonntag
     expect(isWeekend('2026-10-05')).toBe(false)  // Montag
+  })
+
+  it('legt die Wochengrenze auf den Sonntag, nicht auf den Montag', () => {
+    /*
+     * Die Linie im Zimmerplan sitzt **rechts** an der Spalte. Am Montag
+     * gezogen laege sie zwischen Montag und Dienstag -- mitten in der
+     * Woche, also genau dort, wo sie nichts trennt. Ueber sechzig Spalten
+     * faellt so ein Versatz nicht auf, er macht das Abzaehlen nur still
+     * falsch.
+     */
+    expect(isWeekEnd('2026-10-04')).toBe(true)   // Sonntag
+    expect(isWeekEnd('2026-10-05')).toBe(false)  // Montag
+    expect(isWeekEnd('2026-10-03')).toBe(false)  // Samstag
   })
 
   it('liefert heute im selben Format', () => {

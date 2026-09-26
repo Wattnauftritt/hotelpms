@@ -198,6 +198,50 @@ describe('Wo ein Balken im Raster liegt', () => {
 })
 
 /**
+ * Was die Tage im Plan voneinander trennt.
+ *
+ * Gemeldet als "die farbliche Unterscheidung im Kalender ist schlecht":
+ * ueber dreissig oder sechzig Spalten war der Plan eine Flaeche, und an
+ * welchem Tag ein Balken endet, liess sich nur durch Abzaehlen an der
+ * Kopfzeile feststellen. Geprueft wird die Regel dahinter, nicht die
+ * Farbe -- ein Test, der eine Graustufe festhaelt, bricht bei jeder
+ * Gestaltungsaenderung und faengt nie einen Fehler.
+ */
+describe('Die Tagesgrenzen im Plan', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('zieht die kraeftige Linie am Ende der Woche', () => {
+    // Nicht an jeder Spalte dieselbe: gesucht wird im Alltag "die Woche
+    // danach", und dafuer braucht das Auge alle sieben Spalten einen Halt.
+    expect(plan).toContain('isWeekEnd(d)')
+  })
+
+  it('hebt den heutigen Tag hervor, gemessen an today()', () => {
+    /*
+     * Und nicht am linken Rand des Plans: wer im November blaettert, sieht
+     * sonst den ersten sichtbaren Tag markiert und haelt ihn fuer heute.
+     */
+    expect(plan).toContain('const heute = today()')
+    expect(plan).toContain('d === heute')
+    expect(plan).toContain('d === p.heute')
+  })
+
+  it('trennt Zimmergruppen nur, wenn auch nach Gruppe sortiert ist', () => {
+    /*
+     * Nach Zimmernummer sortiert wechselt die Gruppe fast in jeder Zeile,
+     * und ein Strich, der ueberall steht, trennt nichts. Der Plan kann das
+     * nicht selbst erkennen -- die Sortierung entscheidet der Bildschirm.
+     */
+    expect(plan).toContain('nachGruppe === true && i > 0')
+    expect(plan).toContain("data.units[i - 1]?.category_id !== u.category_id")
+    const bildschirm = readFileSync(
+      new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+    expect(bildschirm).toContain('nachGruppe={gruppiert}')
+  })
+})
+
+/**
  * Der Plan nimmt die Breite, die da ist.
  *
  * Bei fester Spaltenbreite blieben auf einem gewoehnlichen Bildschirm
