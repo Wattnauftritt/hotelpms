@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect, useCallback, memo, type JSX } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
-import { eachDay, isWeekend, daysBetween, addDays, today } from '../lib/dates.js'
+import { eachDay, isWeekend, isWeekEnd, daysBetween, addDays, today }
+  from '../lib/dates.js'
 import type { KontextZiel } from './Kontextmenue.tsx'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
   from '../lib/tapeSelection.js'
@@ -75,6 +76,25 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  */
 const ZEILE = 38
 const LABEL_BREITE = 176
+
+/**
+ * Die rechte Kante einer Tagesspalte.
+ *
+ * **Drei Staerken, nicht eine.** Vorher trennte jede Spalte dieselbe
+ * hauchduenne Linie, und ueber dreissig oder sechzig Spalten war der Plan
+ * eine Flaeche: welcher Balken an welchem Tag endet, liess sich nur durch
+ * Abzaehlen an der Kopfzeile feststellen. Die Woche bekommt deshalb eine
+ * kraeftigere Kante -- gesucht wird im Alltag "die Woche danach", und
+ * dafuer braucht das Auge alle sieben Spalten einen Halt. Die Linie sitzt
+ * am Sonntag und damit zwischen Sonntag und Montag, wo die Woche endet.
+ */
+const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
+  ton === 'bernstein'
+    // Im bernsteinfarbenen Band braucht die Linie denselben Ton wie der
+    // Grund. Eine graue Linie auf Bernstein ergibt einen dritten Ton, den
+    // niemand gemeint hat, und verschwindet dabei trotzdem fast.
+    ? (isWeekEnd(d) ? 'border-r-2 border-r-amber-400' : 'border-r border-r-amber-200')
+    : (isWeekEnd(d) ? 'border-r-2 border-r-neutral-400' : 'border-r border-r-neutral-200')
 /**
  * So hoch ist das Band der Buchungen ohne Zimmer, in Zeilen. Vier, weil der
  * Plan darunter der eigentliche Bildschirm ist; darüber hinaus wird
@@ -156,6 +176,15 @@ export interface Umzug {
 
 interface Props {
   data: TapeChartData
+  /**
+   * Sind die Zimmer nach Zimmergruppe sortiert?
+   *
+   * Der Plan zieht dann einen Trennstrich, wo die Gruppe wechselt. Er
+   * kann das nicht selbst erkennen: nach Zimmernummer sortiert wechselt
+   * die Gruppe fast in jeder Zeile, und ein Strich, der ueberall steht,
+   * trennt nichts.
+   */
+  nachGruppe?: boolean
   onSelect?: (reservationRef: string) => void
   /** Im leeren Bereich aufgezogen: Vorschlag fuer eine neue Buchung (A2). */
   onCreate?: (sel: {
@@ -241,7 +270,7 @@ function nurLinks(e: React.PointerEvent): boolean {
   return e.buttons !== 1
 }
 
-export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
+export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup, onMove,
                             onChangeStay, onShiftGroup, onUnassign,
                             onKontext }: Props): JSX.Element {
   const t = useT()
@@ -886,10 +915,16 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
             <div key={d}
                  style={{ width: spalte }}
                  className={`shrink-0 text-center text-xs leading-tight py-1.5
-                             border-r border-neutral-100
-                             ${isWeekend(d) ? 'bg-neutral-50' : ''}`}>
-              <div className="text-neutral-400">{weekdayShort(d, locale)}</div>
-              <div className="tabular-nums font-medium">{d.slice(8)}</div>
+                             ${TAGESRAND(d)}
+                             ${d === heute ? 'bg-sky-200 text-sky-950'
+                               : isWeekend(d) ? 'bg-neutral-100 text-neutral-600'
+                               : ''}`}>
+              <div className={d === heute ? 'font-medium' : 'text-neutral-400'}>
+                {weekdayShort(d, locale)}
+              </div>
+              <div className={`tabular-nums ${d === heute ? 'font-bold' : 'font-medium'}`}>
+                {d.slice(8)}
+              </div>
             </div>
           ))}
         </div>
@@ -965,6 +1000,21 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                                                         : BAND_ZEILEN) }}>
               <div className="relative"
                    style={{ height: ZEILE * nichtZugewiesen.length }}>
+                {/*
+                  * Dieselben Tagesgrenzen wie unten im Plan, nur in
+                  * Bernstein und ohne Flaechenfarbe: das Band hat seinen
+                  * eigenen Grund, und eine Wochenendfaerbung darueber ergibt
+                  * einen dritten Ton, den niemand gemeint hat. Ohne die
+                  * Linien liess sich hier nicht ablesen, an welchem Tag eine
+                  * Buchung anreist -- und genau danach wird in diesem Band
+                  * gesucht.
+                  */}
+                {tage.map((d, i) => (
+                  <div key={d}
+                       style={{ left: i * spalte, width: spalte }}
+                       className={`absolute inset-y-0 pointer-events-none
+                                   ${TAGESRAND(d, 'bernstein')}`} />
+                ))}
                 {nichtZugewiesen.map((r, i) => {
                   const b = balken(r.arrival, r.departure)
                   const gruppe = gruppeNach.get(r.category_id)
@@ -1033,7 +1083,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           * eines Zugs bekommen nur die tatsaechlich betroffenen Zeilen neue
           * Merkmale, siehe die Erklaerung am Dateikopf.
           */}
-        {data.units.map(u => {
+        {data.units.map((u, i) => {
           /*
            * Waehrend eines Umzugs faerbt sich die Zeile nach ihrer
            * Eignung. Das ist die eigentliche Sicherung gegen "Doppelzimmer
@@ -1060,7 +1110,10 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           return (
             <Zimmerzeile key={u.id} unit={u} tage={tage}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
-                         balken={balken} spalte={spalte} passung={passung}
+                         balken={balken} spalte={spalte} heute={heute}
+                         gruppenAnfang={nachGruppe === true && i > 0
+                           && data.units[i - 1]?.category_id !== u.category_id}
+                         passung={passung}
                          versteckterRef={versteckterRef}
                          gruppenRef={gehaltenerGruppenRef}
                          ghostHier={kasten !== undefined}
@@ -1162,6 +1215,16 @@ interface ZimmerzeileProps {
   balken: (von: string, bis: string) => { left: number; width: number }
   /** Breite einer Tagesspalte. Eine Zahl, also vertraegt `memo` sie. */
   spalte: number
+  /** Der heutige Tag, fuer die hervorgehobene Spalte. */
+  heute: string
+  /**
+   * Erste Zeile einer Zimmergruppe -- setzt den Trennstrich darueber.
+   *
+   * Nur beim Sortieren nach Gruppe gesetzt: nach Zimmernummer sortiert
+   * wechselt die Gruppe fast in jeder Zeile, und ein Strich, der ueberall
+   * steht, trennt nichts.
+   */
+  gruppenAnfang: boolean
   passung: Passung | null
   versteckterRef: string | null
   /** Buchung, deren Balken gerade festgehalten wird. Hebt ihre Geschwister hervor. */
@@ -1191,6 +1254,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
   const u = p.unit
   return (
     <div className={`flex relative border-b border-neutral-100
+                     ${p.gruppenAnfang ? 'border-t-2 border-t-neutral-400' : ''}
                      ${p.passung === 'passt' ? 'bg-emerald-50/70' : ''}
                      ${p.passung === 'zuKlein' ? 'bg-red-50/70' : ''}`}
          data-resource-row={u.id}
@@ -1211,9 +1275,9 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         {p.tage.map((d, i) => (
           <div key={d}
                style={{ left: i * p.spalte, width: p.spalte }}
-               className={`absolute inset-y-0 border-r border-neutral-100
-                           pointer-events-none
-                           ${isWeekend(d) ? 'bg-neutral-50' : ''}`} />
+               className={`absolute inset-y-0 pointer-events-none ${TAGESRAND(d)}
+                           ${d === p.heute ? 'bg-sky-100/70'
+                             : isWeekend(d) ? 'bg-neutral-100' : ''}`} />
         ))}
         {(p.blocks ?? []).map((b, i) => (
           <div key={i}
