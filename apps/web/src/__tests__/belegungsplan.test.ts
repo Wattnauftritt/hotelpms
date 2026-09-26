@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
   from '../lib/tapeSelection.js'
-import { spanne, SPALTE, LUECKE } from '../lib/tapeGeometrie.js'
+import { spanne, spaltenBreite, SPALTE_MIN, LUECKE }
+  from '../lib/tapeGeometrie.js'
 
 /**
  * Was eine aufgezogene Auswahl im Belegungsplan bedeutet.
@@ -135,16 +136,18 @@ describe('Die Gesten sind zu sehen', () => {
 describe('Wo ein Balken im Raster liegt', () => {
   /** Dreissig sichtbare Tage -- mehr als jeder Fall hier braucht. */
   const SICHT = 30
+  /** Eine glatte Spaltenbreite -- die Rechnung ist von ihr unabhaengig. */
+  const SPALTE = 60
 
   it('beginnt in der Mitte des Anreisetages', () => {
-    expect(spanne(0, 1, SICHT).left).toBe(0.5 * SPALTE)
-    expect(spanne(3, 5, SICHT).left).toBe(3.5 * SPALTE)
+    expect(spanne(0, 1, SICHT, SPALTE).left).toBe(0.5 * SPALTE)
+    expect(spanne(3, 5, SICHT, SPALTE).left).toBe(3.5 * SPALTE)
   })
 
   it('ist so breit wie der Aufenthalt Naechte hat', () => {
     // Eine Nacht ist eine Spalte breit -- nur eben um eine halbe versetzt.
-    expect(spanne(3, 4, SICHT).width).toBe(SPALTE - LUECKE)
-    expect(spanne(3, 6, SICHT).width).toBe(3 * SPALTE - LUECKE)
+    expect(spanne(3, 4, SICHT, SPALTE).width).toBe(SPALTE - LUECKE)
+    expect(spanne(3, 6, SICHT, SPALTE).width).toBe(3 * SPALTE - LUECKE)
   })
 
   it('setzt die Abreise des einen und die Anreise des naechsten aneinander', () => {
@@ -154,20 +157,20 @@ describe('Wo ein Balken im Raster liegt', () => {
      * Luecke dazwischen ist die Breite, die sie als zwei lesbar macht --
      * ohne sie sehen sie aus wie ein Aufenthalt.
      */
-    const geht = spanne(2, 5, SICHT)
-    const kommt = spanne(5, 8, SICHT)
+    const geht = spanne(2, 5, SICHT, SPALTE)
+    const kommt = spanne(5, 8, SICHT, SPALTE)
     expect(geht.left + geht.width + LUECKE).toBe(kommt.left)
   })
 
   it('schneidet am linken Rand ab, ohne den Versatz mitzunehmen', () => {
     // Ein Aufenthalt, der vor dem Ausschnitt begann, laeuft bis an die
     // Kante -- und dass es weitergeht, sieht man genau daran.
-    expect(spanne(-4, 2, SICHT).left).toBe(0)
-    expect(spanne(-4, 2, SICHT).width).toBe(2.5 * SPALTE - LUECKE)
+    expect(spanne(-4, 2, SICHT, SPALTE).left).toBe(0)
+    expect(spanne(-4, 2, SICHT, SPALTE).width).toBe(2.5 * SPALTE - LUECKE)
   })
 
   it('schneidet am rechten Rand ab', () => {
-    expect(spanne(28, 40, SICHT).width).toBe(1.5 * SPALTE - LUECKE)
+    expect(spanne(28, 40, SICHT, SPALTE).width).toBe(1.5 * SPALTE - LUECKE)
   })
 
   it('rechnet der Plan nirgends mehr selbst mit Spaltenkanten', () => {
@@ -189,8 +192,45 @@ describe('Wo ein Balken im Raster liegt', () => {
      * Ein Aufenthalt ganz hinter dem Ausschnitt ergab vorher -4 Pixel. Was
      * ein Browser daraus macht, ist nirgends verabredet; hier ist es null.
      */
-    expect(spanne(40, 45, SICHT).width).toBe(0)
-    expect(spanne(-9, -4, SICHT).width).toBe(0)
+    expect(spanne(40, 45, SICHT, SPALTE).width).toBe(0)
+    expect(spanne(-9, -4, SICHT, SPALTE).width).toBe(0)
+  })
+})
+
+/**
+ * Der Plan nimmt die Breite, die da ist.
+ *
+ * Bei fester Spaltenbreite blieben auf einem gewoehnlichen Bildschirm
+ * neben dreissig Tagen vierhundert Pixel leer, und ein Balken ueber zwei
+ * Naechte war 88 Pixel breit -- zu wenig fuer einen Namen.
+ */
+describe('Wie breit eine Tagesspalte wird', () => {
+  it('teilt den vorhandenen Platz auf die Tage auf', () => {
+    // 1740 Pixel neben der Zimmerspalte, dreissig Tage: 58 je Tag statt 44.
+    expect(spaltenBreite(1740, 30)).toBe(58)
+  })
+
+  it('wird nie schmaler als die Untergrenze', () => {
+    // Sechzig Tage auf einem schmalen Bildschirm: dann wird gescrollt,
+    // nicht unleserlich gestaucht.
+    expect(spaltenBreite(1740, 60)).toBe(SPALTE_MIN)
+    expect(spaltenBreite(400, 30)).toBe(SPALTE_MIN)
+  })
+
+  it('haelt auch vor der ersten Messung eine brauchbare Breite bereit', () => {
+    /*
+     * Beim ersten Bild ist noch nichts gemessen, und `verfuegbar` ist dann
+     * negativ. Eine Spalte von -6 Pixeln waere ein Plan, der gar nicht
+     * erst erscheint.
+     */
+    expect(spaltenBreite(-176, 30)).toBe(SPALTE_MIN)
+    expect(spaltenBreite(1740, 0)).toBe(SPALTE_MIN)
+  })
+
+  it('deckelt nicht nach oben', () => {
+    // Wer vierzehn Tage waehlt, will vierzehn Tage gross sehen. Eine
+    // Obergrenze liesse rechts genau die Luecke stehen, um die es geht.
+    expect(spaltenBreite(1740, 14)).toBe(124)
   })
 })
 

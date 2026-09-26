@@ -4,7 +4,7 @@ import { eachDay, isWeekend, daysBetween, addDays, today } from '../lib/dates.js
 import type { KontextZiel } from './Kontextmenue.tsx'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
   from '../lib/tapeSelection.js'
-import { SPALTE, spanne } from '../lib/tapeGeometrie.js'
+import { spaltenBreite, spanne } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 
 /**
@@ -62,8 +62,19 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
  * neu, wenn sich fuer sie selbst etwas aendert.
  */
 
-const ZEILE = 34
-const LABEL_BREITE = 160
+/**
+ * Zeilenhoehe und Breite der Zimmerspalte.
+ *
+ * Beide waren enger, und beides zusammen machte den Plan schwer lesbar:
+ * ein Balken von 26 Pixeln mit 11-Pixel-Schrift ist aus einem Meter
+ * Entfernung ein farbiger Strich. Die Zimmerspalte steht als Zahl hier und
+ * nicht als Tailwind-Klasse an drei Stellen -- sie muss mit `LABEL_BREITE`
+ * uebereinstimmen, weil `tagUnter` daraus den Tag unter dem Zeiger
+ * rechnet, und zwei Zahlen, die uebereinstimmen muessen, tun es
+ * irgendwann nicht mehr.
+ */
+const ZEILE = 38
+const LABEL_BREITE = 176
 /**
  * So hoch ist das Band der Buchungen ohne Zimmer, in Zeilen. Vier, weil der
  * Plan darunter der eigentliche Bildschirm ist; darüber hinaus wird
@@ -237,6 +248,26 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
   const locale = useLocale()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
   const rasterRef = useRef<HTMLDivElement>(null)
+  /*
+   * Die Breite des Rasters, gemessen statt geraten.
+   *
+   * Vor der ersten Messung steht hier 0, und `spaltenBreite` liefert dann
+   * die Untergrenze -- der Plan ist also schon beim ersten Bild richtig
+   * gezeichnet, nur schmaler, und rueckt eine Bildfolge spaeter auf. Ein
+   * Ladezustand dafuer waere ein Flackern fuer nichts.
+   */
+  const [rasterBreite, setRasterBreite] = useState(0)
+  useEffect(() => {
+    const el = rasterRef.current
+    if (el === null) return
+    const beobachter = new ResizeObserver(eintraege => {
+      setRasterBreite(eintraege[0]?.contentRect.width ?? 0)
+    })
+    beobachter.observe(el)
+    return () => { beobachter.disconnect() }
+  }, [])
+  /** Die Breite einer Tagesspalte auf diesem Bildschirm. */
+  const spalte = spaltenBreite(rasterBreite - LABEL_BREITE, tage.length)
   const [drag, setDrag] = useState<DragState | null>(null)
   /**
    * Die stehende Mehrfachauswahl.
@@ -390,16 +421,16 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
    * `lib/tapeGeometrie.ts`.
    */
   const balken = useCallback((von: string, bis: string) => spanne(
-    daysBetween(data.from, von), daysBetween(data.from, bis), tage.length),
-  [data.from, tage.length])
+    daysBetween(data.from, von), daysBetween(data.from, bis), tage.length, spalte),
+  [data.from, tage.length, spalte])
 
   /** Tagesindex unter dem Zeiger, auf den sichtbaren Ausschnitt begrenzt. */
   const tagUnter = useCallback((clientX: number): number => {
     const rect = rasterRef.current?.getBoundingClientRect()
     if (!rect) return 0
     const x = clientX - rect.left - LABEL_BREITE
-    return Math.max(0, Math.min(tage.length - 1, Math.floor(x / SPALTE)))
-  }, [tage.length])
+    return Math.max(0, Math.min(tage.length - 1, Math.floor(x / spalte)))
+  }, [tage.length, spalte])
 
   useEffect(() => {
     if (drag === null) return
@@ -597,7 +628,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       const von = Math.min(drag.startDay, drag.day)
       const bis = Math.max(drag.startDay, drag.day)
       // `bis` ist der letzte **Nacht**-Tag, die Abreise liegt einen dahinter.
-      const k = spanne(von, bis + 1, tage.length)
+      const k = spanne(von, bis + 1, tage.length, spalte)
       return eins(drag.resourceId, k.left, k.width)
     }
     if (drag.kind === 'group') {
@@ -615,7 +646,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
        * sie wandern **nicht** mit, weil der neue Zug nur die Zeilen meint,
        * ueber die er laeuft.
        */
-      const laufend = spanne(von, bis + 1, tage.length)
+      const laufend = spanne(von, bis + 1, tage.length, spalte)
       const kaesten = new Map((auswahl ?? []).map(z =>
         [z.resourceId, balken(z.arrival, z.departure)]))
       for (const u of zeilen) kaesten.set(u.id, laufend)
@@ -627,7 +658,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
       const endTag = drag.edge === 'end' ? drag.day + 1 : daysBetween(data.from, drag.departure)
       const von = Math.max(0, Math.min(startTag, endTag - 1))
       const bis = Math.max(von + 1, endTag)
-      const k = spanne(von, bis, tage.length)
+      const k = spanne(von, bis, tage.length, spalte)
       return eins(drag.resourceId, k.left, k.width)
     }
     if (drag.moved && drag.overResourceId !== null) {
@@ -666,7 +697,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           ? drag.bookingRooms : undefined }
     }
     return null
-  }, [drag, auswahl, balken, data.from, data.units, tage.length])
+  }, [drag, auswahl, balken, data.from, data.units, tage.length, spalte])
 
   /**
    * Die Klammer um die Auswahl: frueheste Anreise, spaeteste Abreise -- und
@@ -843,21 +874,22 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
 
   return (
     <div className="overflow-auto border border-neutral-200 rounded" ref={rasterRef}>
-      <div style={{ minWidth: LABEL_BREITE + tage.length * SPALTE }}>
+      <div style={{ minWidth: LABEL_BREITE + tage.length * spalte }}>
         {/* Kopfzeile mit Tagen */}
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
-          <div className="w-40 shrink-0 px-2 py-1 text-xs font-medium text-neutral-500
+          <div style={{ width: LABEL_BREITE }}
+               className="shrink-0 px-2 py-1.5 text-xs font-medium text-neutral-500
                           border-r border-neutral-200">
             {t('common.room')}
           </div>
           {tage.map(d => (
             <div key={d}
-                 style={{ width: SPALTE }}
-                 className={`shrink-0 text-center text-[11px] leading-tight py-1
+                 style={{ width: spalte }}
+                 className={`shrink-0 text-center text-xs leading-tight py-1.5
                              border-r border-neutral-100
                              ${isWeekend(d) ? 'bg-neutral-50' : ''}`}>
               <div className="text-neutral-400">{weekdayShort(d, locale)}</div>
-              <div className="tabular-nums">{d.slice(8)}</div>
+              <div className="tabular-nums font-medium">{d.slice(8)}</div>
             </div>
           ))}
         </div>
@@ -897,7 +929,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
             <button type="button"
                     onClick={() => setBandOffen(o => !o)}
                     disabled={nichtZugewiesen.length <= BAND_ZEILEN}
-                    className="w-40 shrink-0 px-2 py-1 text-xs text-amber-800 text-left
+                    style={{ width: LABEL_BREITE }}
+                    className="shrink-0 px-2 py-1 text-xs text-amber-800 text-left
                                border-r border-amber-200 disabled:cursor-default">
               <div className="font-medium">
                 {nichtZugewiesen.length > BAND_ZEILEN && (bandOffen ? '▾ ' : '▸ ')}
@@ -964,8 +997,8 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
                              * bestaetigt), und den zu ueberschreiben
                              * tauschte eine Information gegen eine andere.
                              */
-                            className={`absolute rounded px-1 text-[11px] text-white
-                                        truncate text-left cursor-move
+                            className={`absolute rounded px-1.5 text-xs leading-[30px]
+                                        text-white truncate text-left cursor-move
                                         ${FARBE[r.status] ?? 'bg-neutral-400'}
                                         ${dringlich(r.arrival)
                                           ? 'ring-2 ring-red-600' : ''}`}>
@@ -1027,7 +1060,7 @@ export function TapeChart({ data, onSelect, onCreate, onCreateGroup, onMove,
           return (
             <Zimmerzeile key={u.id} unit={u} tage={tage}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
-                         balken={balken} passung={passung}
+                         balken={balken} spalte={spalte} passung={passung}
                          versteckterRef={versteckterRef}
                          gruppenRef={gehaltenerGruppenRef}
                          ghostHier={kasten !== undefined}
@@ -1127,6 +1160,8 @@ interface ZimmerzeileProps {
   blocks: TapeChartData['blocks'] | undefined
   /** Stabil ueber `useCallback` in der Elternkomponente. */
   balken: (von: string, bis: string) => { left: number; width: number }
+  /** Breite einer Tagesspalte. Eine Zahl, also vertraegt `memo` sie. */
+  spalte: number
   passung: Passung | null
   versteckterRef: string | null
   /** Buchung, deren Balken gerade festgehalten wird. Hebt ihre Geschwister hervor. */
@@ -1160,9 +1195,10 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      ${p.passung === 'zuKlein' ? 'bg-red-50/70' : ''}`}
          data-resource-row={u.id}
          style={{ height: ZEILE }}>
-      <div className="w-40 shrink-0 px-2 py-1 text-xs border-r border-neutral-200
+      <div style={{ width: LABEL_BREITE }}
+           className="shrink-0 px-2 py-1 text-xs border-r border-neutral-200
                       flex items-center gap-2">
-        <span className="font-medium tabular-nums">{u.code}</span>
+        <span className="text-sm font-medium tabular-nums">{u.code}</span>
         <span className="text-neutral-400 truncate">{u.category_name}</span>
         {p.passung === 'zuKlein' && (
           <span aria-hidden title={t('plan.tooSmall')}
@@ -1174,7 +1210,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
            onContextMenu={e => p.onFreiKontext(u.id, u.category_id, e)}>
         {p.tage.map((d, i) => (
           <div key={d}
-               style={{ left: i * SPALTE, width: SPALTE }}
+               style={{ left: i * p.spalte, width: p.spalte }}
                className={`absolute inset-y-0 border-r border-neutral-100
                            pointer-events-none
                            ${isWeekend(d) ? 'bg-neutral-50' : ''}`} />
@@ -1183,8 +1219,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           <div key={i}
                style={{ ...p.balken(b.from_date, b.to_date), top: 4, height: ZEILE - 8 }}
                title={b.reason}
-               className="absolute rounded bg-status-blocked/60 px-1 text-[11px]
-                          text-white truncate
+               className="absolute rounded bg-status-blocked/60 px-1.5 text-xs
+                          leading-[30px] text-white truncate
                           [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]">
             {b.reason}
           </div>
@@ -1222,8 +1258,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * am Balken sagte, dass er anfassbar ist. Eine
                      * Funktion, die niemand findet, ist keine.
                      */
-                    className={`absolute rounded px-1 text-[11px] text-white truncate
-                                text-left hover:ring-2 ring-black/30 cursor-move
+                    className={`absolute rounded px-1.5 text-xs leading-[30px] text-white
+                                truncate text-left hover:ring-2 ring-black/30 cursor-move
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
                                   ? 'ring-2 ring-offset-1 ring-sky-500 z-10' : ''}`}>
@@ -1257,7 +1293,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           <div style={{ left: p.ghostLinks, width: p.ghostBreite, top: 4, height: ZEILE - 8 }}
                className="absolute rounded border-2 border-dashed border-neutral-900
                           bg-neutral-900/10 pointer-events-none
-                          text-[11px] leading-[18px] px-1 truncate">
+                          text-xs leading-[26px] px-1.5 truncate">
             {/* Wie viele Zimmer es werden, steht an der obersten Zeile
                 der Auswahl -- in jeder zu wiederholen waere Laerm. */}
             {p.ghostZaehler !== null && `${p.ghostZaehler} ${t('group.rooms')}`}
