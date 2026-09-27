@@ -15,12 +15,22 @@ import { abgeleitet, type Preiseingabe } from '../lib/preisEingabe.js'
  * Fassungen derselben Umrechnung waeren drei Gelegenheiten, sie
  * auseinanderlaufen zu lassen.
  */
-export function PreisFelder({ wert, naechte, onChange, klein = false }: {
+export function PreisFelder({ wert, naechte, onChange, klein = false,
+                              fehlt = false }: {
   wert: Preiseingabe
   naechte: number
   onChange: (w: Preiseingabe) => void
   /** Schmale Fassung fuer eine Zimmerzeile in der Gruppenmaske. */
   klein?: boolean
+  /**
+   * Hier fehlt ein Betrag, den es braucht.
+   *
+   * Nicht dasselbe wie "leer": leer heisst sonst "es gilt der Ratenplan"
+   * und ist in Ordnung. Gemeint ist die halb gefuellte Gruppe -- drei von
+   * vier Zimmern mit Betrag --, und dann muss zu sehen sein, **welche**
+   * Zeile fehlt. Eine Meldung am Knopf sagt nur, dass etwas fehlt.
+   */
+  fehlt?: boolean
 }): JSX.Element {
   const t = useT()
   const ab = abgeleitet(wert, naechte)
@@ -46,7 +56,8 @@ export function PreisFelder({ wert, naechte, onChange, klein = false }: {
                 * es `readOnly`, muesste dafuer ein Schalter daneben, und
                 * den findet niemand.
                 */
-               className={`border border-neutral-300 rounded text-sm ${polster} ${breite}
+               className={`border rounded text-sm ${polster} ${breite}
+                           ${fehlt ? 'border-red-500 bg-red-50' : 'border-neutral-300'}
                            ${aktiv ? '' : 'text-neutral-500 bg-neutral-50'}`} />
       </label>
     )
