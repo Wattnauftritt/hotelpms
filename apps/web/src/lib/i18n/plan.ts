@@ -619,18 +619,6 @@ export const plan = {
     de: '{n} Nächte',
     en: '{n} nights',
     tr: '{n} gece' },
-  'group.priceLevel': {
-    de: 'Preis gilt',
-    en: 'Price applies',
-    tr: 'Fiyat geçerli' },
-  'group.priceWhole': {
-    de: 'für die ganze Gruppe',
-    en: 'to the whole group',
-    tr: 'tüm grup için' },
-  'group.pricePerRoom': {
-    de: 'je Zimmer',
-    en: 'per room',
-    tr: 'oda başına' },
   'group.priceSplitHint': {
     de: 'Wird nach Personenzahl je Zimmergruppe auf die Zimmer aufgeteilt. '
       + 'Der Rest-Cent liegt auf dem ersten Zimmer, damit die Summe genau '
@@ -644,6 +632,17 @@ export const plan = {
     de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
     en: 'Leave empty to use the price from the rate plan.',
     tr: 'Boş bırakırsanız fiyat planındaki fiyat geçerli olur.' },
+  'group.priceFromRooms': {
+    de: 'Summe der Zimmerpreise. Wird hier ein Betrag eingetragen, gilt wieder '
+      + 'er und wird neu aufgeteilt.',
+    en: 'The sum of the room prices. Enter an amount here and that amount '
+      + 'applies again and is split anew.',
+    tr: 'Oda fiyatlarının toplamı. Buraya bir tutar girilirse yine o geçerli olur '
+      + 've yeniden bölünür.' },
+  'group.needAllRoomPrices': {
+    de: 'Es fehlen Zimmerpreise. Entweder alle Zimmer oder keines.',
+    en: 'Room prices are missing. Either every room or none.',
+    tr: 'Oda fiyatları eksik. Ya tüm odalar ya da hiçbiri.' },
   /*
    * Die Preisspalten der Tabelle. Sie stehen immer da -- auch wenn der
    * Preis fuer die ganze Gruppe gilt; dann zeigen sie die Aufteilung.
@@ -671,14 +670,19 @@ export const plan = {
       + 'is split when the booking is created.',
     tr: 'Dağılım bir önizlemedir — oda tipinin kişi sayısına göre, kalan kuruş ilk '
       + 'odaya. Rezerve edilen grup fiyatıdır; bölme kayıt sırasında yapılır.' },
+  /*
+   * Die Zahl steht **hinter** dem Wort, nicht davor: "{n} Zimmer" wird im
+   * Englischen bei eins zu "1 rooms", und eine Mehrzahlbehandlung gibt es
+   * im Katalog nicht. Ein Satz, der fuer jede Zahl stimmt, ist billiger
+   * als die Maschinerie dafuer.
+   */
   'group.priceFromRatePlan': {
-    de: '{n} ohne eigenen Preis — dort gilt der Ratenplan.',
-    en: '{n} without a price of their own — the rate plan applies there.',
-    tr: '{n} kendi fiyatı olmayan — orada fiyat planı geçerli.' },
-  'group.priceCarriedOver': {
-    de: 'Die Beträge stehen aus der Aufteilung darin und lassen sich einzeln ändern.',
-    en: 'The amounts are carried over from the split and can be changed one by one.',
-    tr: 'Tutarlar dağılımdan alınmıştır ve tek tek değiştirilebilir.' },
+    de: 'Zimmer ohne Preis: {n}. Entweder alle oder keines — sonst gilt für '
+      + 'diese still der Ratenplan.',
+    en: 'Rooms without a price: {n}. Either all of them or none — otherwise '
+      + 'the rate plan quietly applies to those.',
+    tr: 'Fiyatsız oda: {n}. Ya hepsi ya hiçbiri — yoksa bunlara sessizce fiyat '
+      + 'planı uygulanır.' },
   'group.guestHint': {
     de: 'Der Gast ist der Besteller der Gruppe, nicht der Bewohner jedes Zimmers. '
       + 'Er wird nur im ersten Zimmer als Mitreisender geführt — sonst zählte die '

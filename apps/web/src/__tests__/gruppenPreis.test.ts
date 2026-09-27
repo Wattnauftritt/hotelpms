@@ -119,13 +119,16 @@ describe('Die Maske zeigt die Aufteilung, bevor gebucht wird', () => {
   const gruppe = readFileSync(
     new URL('../components/GroupBookingDialog.tsx', import.meta.url), 'utf8')
 
-  it('zeigt beide Preisspalten in jeder Zeile, nicht nur bei "je Zimmer"', () => {
-    // Verhandelt wird ein Betrag fuer alles, und genau dann will die
-    // Rezeption sehen, was daraus je Zimmer wird -- der Reiseleiter fragt
-    // vor dem Buchen, nicht danach.
+  it('zeigt die Aufteilung in jeder Zeile, als tippbares Feld', () => {
+    /*
+     * Verhandelt wird ein Betrag fuer alles, und genau dann will die
+     * Rezeption sehen, was daraus je Zimmer wird -- der Reiseleiter fragt
+     * vor dem Buchen, nicht danach. Und wenn eine Zeile nicht passt, wird
+     * sie **dort** geaendert und nicht ueber einen Umschalter weiter oben.
+     */
     expect(gruppe).toContain("t('group.priceNight')")
-    expect(gruppe).toContain('anteil.jeNachtCent')
-    expect(gruppe).toContain('anteil.gesamtCent')
+    expect(gruppe).toContain('wert={zimmerFeld(i)}')
+    expect(gruppe).toContain('zimmerpreisSetzen(z.resourceId, w)')
   })
 
   it('verbindet die beiden Gruppenfelder ueber alle Zimmernaechte', () => {
@@ -134,10 +137,32 @@ describe('Die Maske zeigt die Aufteilung, bevor gebucht wird', () => {
     expect(gruppe).toContain('naechte={naechteGesamt}')
   })
 
-  it('uebernimmt die Aufteilung, wenn auf "je Zimmer" umgeschaltet wird', () => {
-    // Sonst stehen acht leere Felder da, obwohl die Zahlen gerade
-    // danebenstanden.
-    expect(gruppe).toContain('onChange={aufJeZimmer}')
+  it('schreibt die uebrigen Zeilen fest, sobald eine getippt wird', () => {
+    // Sonst stuenden nach dem Aendern der Suite sieben leere Zeilen da,
+    // obwohl die Zahlen gerade danebenstanden -- und aus der Luecke wuerde
+    // stillschweigend der Ratenplan.
     expect(gruppe).toContain('eingabeAusCent(vorschau[i]!.gesamtCent)')
+    expect(gruppe).toContain("setQuelle('zimmer')")
+  })
+
+  it('rechnet das Gruppenfeld aus den Zimmern zurueck', () => {
+    // Die andere Richtung: wer eine Zeile aendert, will wissen, was die
+    // Gruppe jetzt kostet.
+    expect(gruppe).toContain('const gruppenFeld: Preiseingabe')
+    expect(gruppe).toContain('eingabeAusCent(summeJeZimmer)')
+  })
+
+  it('laesst eine halb gefuellte Gruppe nicht buchen', () => {
+    /*
+     * Gar kein Preis heisst "es gilt der Ratenplan" und ist in Ordnung.
+     * Drei von vier Zimmern mit Betrag heisst: fuer das vierte greift er
+     * stillschweigend, und die Summe unter der Tabelle stimmt trotzdem --
+     * sie zaehlt ja nur, was dasteht. Das faellt erst auf der Rechnung auf.
+     */
+    expect(gruppe).toContain("luecken.length > 0 ? 'group.needAllRoomPrices'")
+    expect(gruppe).toContain("zimmerGesamt.every(g => g === undefined)")
+    // Und es steht an der Zeile, nicht nur am Knopf: eine Meldung am Knopf
+    // sagt, dass etwas fehlt, aber nicht welche Zeile.
+    expect(gruppe).toContain('fehlt={luecken.includes(z)}')
   })
 })

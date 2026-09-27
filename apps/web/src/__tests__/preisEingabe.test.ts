@@ -88,9 +88,15 @@ describe('Die Masken schicken einen Preis, nicht zwei', () => {
     expect(einzeln).not.toContain("Number(preis.replace(',', '.'))")
   })
 
-  it('laesst in der Gruppenmaske zwischen Gruppen- und Zimmerpreis waehlen', () => {
-    expect(gruppe).toContain('...(jeZimmer ? {} : preisFelder(gruppenPreis))')
-    expect(gruppe).toContain('totalCent: jeZimmer')
+  it('schickt aus der Gruppenmaske die zuletzt angefasste Seite', () => {
+    /*
+     * Beide Felder sind immer tippbar -- das Gespraech am Tresen geht hin
+     * und her ("2.400 fuer alles" ... "nur die Suite kostet mehr" ... "was
+     * ist es jetzt?"). Hinaus geht trotzdem genau eine Seite: `quelle`
+     * haelt fest, welche zuletzt gegolten hat.
+     */
+    expect(gruppe).toContain("...(quelle === 'zimmer' ? {} : preisFelder(gruppenPreis))")
+    expect(gruppe).toContain("totalCent: quelle === 'zimmer'")
   })
 
   it('schickt die Aufteilung nicht mit, sondern nur den Gruppenpreis', () => {
@@ -102,7 +108,7 @@ describe('Die Masken schicken einen Preis, nicht zwei', () => {
      * Unterschied fiele erst auf, wenn Vorschau und Rechnung
      * nebeneinanderliegen.
      */
-    expect(gruppe).toContain('totalCent: jeZimmer')
+    expect(gruppe).toContain("totalCent: quelle === 'zimmer'")
     expect(gruppe).not.toContain('gruppeAufteilen')
     expect(einzeln).not.toContain('preisJeNacht')
   })
