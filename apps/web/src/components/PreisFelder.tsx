@@ -63,22 +63,47 @@ export function PreisFelder({ wert, naechte, onChange, klein = false,
     )
   }
 
+  /*
+   * Der Rest-Cent wird genannt, nicht verschwiegen. Drei Naechte zu 100,00
+   * EUR stehen auf der Rechnung als 33,34 / 33,33 / 33,33, und wer das
+   * nicht erwartet, sucht den Fehler bei sich.
+   */
+  const rest = ab.restCent > 0 && (
+    <span className="pb-1.5 text-xs text-neutral-500 whitespace-nowrap"
+          title={t('booking.remainderHint')}>
+      {t('booking.remainder', { n: ab.restCent })}
+    </span>
+  )
+
   return (
-    <div className="flex items-end gap-2">
+    /*
+     * `flex-wrap` nur in der grossen Fassung: dort steht der Block in einer
+     * Spalte des Rasters, und der Rest-Hinweis dahinter passt nicht immer
+     * daneben -- ohne Umbruch legt er sich ueber die Nachbarspalte. In der
+     * schmalen Fassung darf nichts umbrechen: die Zeile waere dann hoeher
+     * als die uebrigen, und der Unterschied stuende wieder da, nur in der
+     * anderen Richtung.
+     */
+    <div className={`flex items-end gap-2 ${klein ? '' : 'flex-wrap'}`}>
+      {/*
+        * In der schmalen Fassung steht der Hinweis **links** von den
+        * Feldern.
+        *
+        * Die Zimmerzeilen der Gruppenmaske richten ihre Preisfelder rechts
+        * aus. Stand der Hinweis dahinter, schob er die beiden Felder genau
+        * um seine Breite nach links -- und zwar nur in der einen Zeile, die
+        * gerade einen Rest hat. Vier Zimmer untereinander, und eines davon
+        * steht aus der Reihe; man sucht dann nach einem Unterschied in den
+        * Betraegen, wo nur ein Hinweis breiter war.
+        */}
+      {klein && rest}
       {feld('nacht', t('booking.pricePerNight'))}
       <span className="pb-1.5 text-xs text-neutral-400">=</span>
       {feld('gesamt', t('booking.priceTotal'))}
-      {/*
-        * Der Rest-Cent wird genannt, nicht verschwiegen. Drei Naechte zu
-        * 100,00 EUR stehen auf der Rechnung als 33,34 / 33,33 / 33,33, und
-        * wer das nicht erwartet, sucht den Fehler bei sich.
-        */}
-      {ab.restCent > 0 && (
-        <span className="pb-1.5 text-xs text-neutral-500"
-              title={t('booking.remainderHint')}>
-          {t('booking.remainder', { n: ab.restCent })}
-        </span>
-      )}
+      {/* In der grossen Fassung dahinter: dort ist nichts ausgerichtet,
+          was er verschieben koennte, und gelesen wird von links nach
+          rechts -- erst der Betrag, dann die Fussnote dazu. */}
+      {!klein && rest}
     </div>
   )
 }

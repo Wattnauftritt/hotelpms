@@ -1142,16 +1142,22 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         * verstreute Zeilen nicht mit einem Blick zaehlt, und den Zeitraum,
         * weil der zuletzt gezogene fuer alle gilt.
         *
-        * `sticky` an beiden Achsen, damit sie auch dann sichtbar bleibt,
-        * wenn die Auswahl ueber Zimmer 3 und Zimmer 200 liegt und dazwischen
-        * gescrollt wird. **Unten** und nicht oben: oben klebt die Kopfzeile
-        * mit den Tagen, und die wird beim Auswaehlen eines Zeitraums
-        * gebraucht -- eine Leiste davor haette genau die Angabe verdeckt,
-        * die man gerade liest.
+        * **Am Fenster und nicht am Raster.** Hier stand `sticky bottom-0`,
+        * und das klang richtig: unten kleben, oben die Kopfzeile mit den
+        * Tagen freilassen, die man beim Auswaehlen eines Zeitraums liest.
+        * Nur klebt `sticky` am naechsten scrollenden Vorfahren, und das ist
+        * der Rahmen des Plans -- der hat keine feste Hoehe, waechst also
+        * mit dem Haus und endet bei vierzig Zimmern weit unterhalb des
+        * Bildschirms. Die Leiste sass damit am Fuss eines Kastens, den man
+        * erst suchen musste: markiert, und dann nichts zu sehen.
+        *
+        * `fixed` haelt sie am unteren Fensterrand, wo sie bei jedem
+        * Scrollstand steht. Der Dialog liegt mit `z-50` darueber, die
+        * Leiste verdeckt ihn also nicht.
         */}
       {auswahl !== null && auswahl.length > 0 && (
-        <div className="sticky bottom-0 left-0 z-30 flex flex-wrap items-center gap-2
-                        bg-neutral-900 text-white px-3 py-1.5 text-sm">
+        <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center gap-2
+                        bg-neutral-900 text-white px-3 py-1.5 text-sm shadow-lg">
           <span className="font-medium">
             {t('plan.selectedRooms', { n: auswahl.length })}
           </span>

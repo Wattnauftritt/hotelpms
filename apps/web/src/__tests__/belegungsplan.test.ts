@@ -242,6 +242,42 @@ describe('Die Tagesgrenzen im Plan', () => {
 })
 
 /**
+ * Der Hinweis auf den Rest-Cent verschiebt keine Felder.
+ *
+ * Die Zimmerzeilen der Gruppenmaske richten ihre Preisfelder rechts aus.
+ * Stand der Hinweis dahinter, schob er die beiden Felder genau um seine
+ * Breite nach links -- und zwar nur in der Zeile, die gerade einen Rest
+ * hat. Vier Zimmer untereinander, eines aus der Reihe, und man sucht nach
+ * einem Unterschied in den Betraegen, wo nur ein Hinweis breiter war.
+ */
+describe('Der Rest-Cent-Hinweis in der schmalen Fassung', () => {
+  const felder = readFileSync(
+    new URL('../components/PreisFelder.tsx', import.meta.url), 'utf8')
+
+  it('steht links von den Feldern, wenn die Fassung schmal ist', () => {
+    expect(felder).toContain('{klein && rest}')
+    expect(felder).toContain('{!klein && rest}')
+    // Zwischen den beiden Stellen liegen die Felder selbst.
+    expect(felder.indexOf('{klein && rest}'))
+      .toBeLessThan(felder.indexOf("feld('nacht'"))
+    expect(felder.indexOf('{!klein && rest}'))
+      .toBeGreaterThan(felder.indexOf("feld('gesamt'"))
+  })
+
+  it('bricht in der Zeile nicht um, in der grossen Fassung schon', () => {
+    /*
+     * In der Zimmerzeile waere ein Umbruch eine Zeile, die hoeher ist als
+     * die uebrigen -- der Unterschied stuende wieder da, nur in der
+     * anderen Richtung. In der grossen Fassung steht der Block dagegen in
+     * einer Rasterspalte, und der Hinweis passt nicht immer daneben; ohne
+     * Umbruch legt er sich ueber die Nachbarspalte.
+     */
+    expect(felder).toContain('whitespace-nowrap')
+    expect(felder).toContain("${klein ? '' : 'flex-wrap'}")
+  })
+})
+
+/**
  * Der Plan nimmt die Breite, die da ist.
  *
  * Bei fester Spaltenbreite blieben auf einem gewoehnlichen Bildschirm
@@ -716,11 +752,25 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
     expect(plan).toMatch(/onCreateGroup\?\.\(\{[\s\S]*?\}\)\n\s*setAuswahl\(null\)/)
   })
 
-  it('haelt die Leiste sichtbar, ohne die Kopfzeile zu verdecken', () => {
-    // Oben klebt die Kopfzeile mit den Tagen, und die wird beim Auswaehlen
-    // eines Zeitraums gebraucht. Beide Achsen, weil eine Auswahl ueber
-    // Zimmer 3 und Zimmer 200 liegen kann.
-    expect(plan).toContain('sticky bottom-0 left-0 z-30')
+  it('haelt die Leiste am Fenster, nicht am Raster', () => {
+    /*
+     * Hier stand `sticky bottom-0`, und das klang richtig. Nur klebt
+     * `sticky` am naechsten scrollenden Vorfahren, und das ist der Rahmen
+     * des Plans -- der hat keine feste Hoehe, waechst mit dem Haus und
+     * endet bei vierzig Zimmern weit unterhalb des Bildschirms. Die Leiste
+     * sass damit am Fuss eines Kastens, den man erst suchen musste:
+     * markiert, und dann nichts zu sehen.
+     */
+    expect(plan).toContain('fixed inset-x-0 bottom-0 z-30')
+    // Am `className`, nicht am ganzen Text: der Kommentar daneben nennt
+    // den alten Weg und soll ihn auch weiter nennen duerfen.
+    expect(plan).not.toContain('className="sticky bottom-0')
+  })
+
+  it('laesst die Kopfzeile mit den Tagen frei', () => {
+    // Unten und nicht oben: oben klebt die Kopfzeile, und die wird beim
+    // Auswaehlen eines Zeitraums gerade gelesen.
+    expect(plan).toContain('sticky top-0 z-20')
   })
 })
 
