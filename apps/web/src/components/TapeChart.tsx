@@ -162,8 +162,24 @@ interface AuswahlZeile { resourceId: number; arrival: string; departure: string 
 
 export interface Umzug {
   reservationRef: string
-  resourceId: number
+  /**
+   * Das Zielzimmer, oder `null`, wenn der Balken in seiner Zeile geblieben
+   * ist und nur die Tage gewandert sind.
+   */
+  resourceId: number | null
   roomCode: string
+  /**
+   * Die neuen Tage, oder `null`, wenn nur die Zeile gewechselt hat.
+   *
+   * Beides zugleich ist der Fall, den es lange nicht gab: schraeg gezogen,
+   * anderes Zimmer **und** andere Tage. Die Geste tat bis hierher genau
+   * eines von beidem -- der Zeitversatz zaehlte nur in derselben Zeile.
+   * Das war als Vorsicht gedacht und war eine Sackgasse: liegt die freie
+   * Luecke schraeg, laesst sie sich auch nicht in zwei Schritten
+   * erreichen. Das Zielzimmer ist an den alten Tagen belegt, die alte
+   * Zeile an den neuen; beide Haelften werden einzeln abgewiesen.
+   */
+  zeitraum: { arrival: string; departure: string } | null
   wechsel: {
     von: string
     nach: string
@@ -543,9 +559,11 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                          - (zeileVonZimmer.get(b.resourceId) ?? 0))
         })
       } else if (d.kind === 'move') {
-        const versatz = d.overResourceId === d.quelleResourceId
-          ? d.day - d.startDay
-          : 0
+        // Der Zeitversatz zaehlt jetzt auch dann, wenn die Zeile gewechselt
+        // hat -- siehe `Umzug.zeitraum`.
+        const versatz = d.day - d.startDay
+        const zeileAnders = d.overResourceId !== null
+          && d.overResourceId !== d.quelleResourceId
         if (d.moved && d.ueberBand) {
           /*
            * Ins Band gezogen heisst: das Zimmer wieder abnehmen.
@@ -564,32 +582,36 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
            * wechselt.
            */
           if (d.quelleResourceId !== null) onUnassign?.(d.reservationRef)
-        } else if (d.moved && versatz !== 0) {
+        } else if (d.moved && !zeileAnders && versatz !== 0
+                   && d.bookingRooms > 1 && d.alleDerGruppe) {
           /*
-           * In derselben Zeile waagerecht gezogen: der ganze Aufenthalt
-           * wandert, seine Laenge bleibt. Das Zimmer bleibt ebenfalls --
-           * die Zeile hat sich ja nicht geaendert.
+           * Mit **Alt** waagerecht gezogen: die ganze Gruppe wandert.
            *
-           * Mit **Alt** wandert die ganze Gruppe statt nur dieses
-           * Balkens. Die Vorgabe ist das einzelne Zimmer, weil das die
-           * vorsichtige Richtung ist: wer daneben greift, verschiebt eine
-           * Reservierung und nicht acht -- acht zurueckzuholen ist Arbeit,
-           * eine ist ein Zug.
+           * Nur in derselben Zeile. Eine Gruppe in eine andere Zeile zu
+           * ziehen hiesse, acht Zimmer in eines zu legen; gemeint ist
+           * dann dieses eine, und das faellt in den Fall darunter.
+           *
+           * Die Vorgabe ist das einzelne Zimmer, weil das die vorsichtige
+           * Richtung ist: wer daneben greift, verschiebt eine Reservierung
+           * und nicht acht -- acht zurueckzuholen ist Arbeit, eine ist ein
+           * Zug.
            */
-          if (d.bookingRooms > 1 && d.alleDerGruppe) {
-            onShiftGroup?.(d.bookingRef, versatz)
-          } else {
-            onChangeStay?.(d.reservationRef,
-              addDays(d.arrival, versatz), addDays(d.departure, versatz))
-          }
-        } else if (d.moved && d.overResourceId !== null
-                   && d.overResourceId !== d.quelleResourceId) {
-          const ziel = zimmerNach.get(d.overResourceId)
+          onShiftGroup?.(d.bookingRef, versatz)
+        } else if (d.moved && (zeileAnders || versatz !== 0)) {
+          /*
+           * **Eine Geste, beide Achsen.** Zeile, Tage oder beides -- was
+           * sich geaendert hat, geht mit; der Bildschirm entscheidet
+           * daraus, welcher Aufruf es wird.
+           */
+          const ziel = zeileAnders ? zimmerNach.get(d.overResourceId!) : undefined
           const anders = ziel !== undefined && ziel.category_id !== d.categoryId
           onMove?.({
             reservationRef: d.reservationRef,
-            resourceId: d.overResourceId,
+            resourceId: zeileAnders ? d.overResourceId : null,
             roomCode: ziel?.code ?? '',
+            zeitraum: versatz === 0 ? null : {
+              arrival: addDays(d.arrival, versatz),
+              departure: addDays(d.departure, versatz) },
             wechsel: anders
               ? { von: gruppeNach.get(d.categoryId)?.name ?? '',
                   nach: ziel.category_name,
@@ -692,21 +714,19 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     }
     if (drag.moved && drag.overResourceId !== null) {
       /*
-       * **Eine Geste tut eine Sache.** Liegt der Zeiger in einer anderen
-       * Zeile, ist es ein Zimmerwechsel und der Zeitraum bleibt; liegt er
-       * in derselben, ist es eine Verschiebung in der Zeit und das Zimmer
-       * bleibt.
+       * **Der Schatten liegt, wo der Balken landet -- auf beiden Achsen.**
        *
-       * Beides zugleich waere zwei Aufrufe -- `assign-unit` und
-       * `change-stay` --, und dazwischen liegt ein Zustand, den niemand
-       * gewollt hat: entweder das neue Zimmer an den alten Tagen oder das
-       * alte Zimmer an den neuen. Schlaegt der zweite Aufruf fehl, bleibt
-       * genau der stehen. Der Schattenbalken zeigt waehrend des Zugs, was
-       * passieren wird, also ist die Regel sichtbar und nicht geraten.
+       * Hier stand: liegt der Zeiger in einer anderen Zeile, bleibt der
+       * Zeitraum; liegt er in derselben, bleibt das Zimmer. Beides zugleich
+       * waeren zwei Aufrufe gewesen, und dazwischen ein Zustand, den
+       * niemand gewollt hat.
+       *
+       * Die Route kann es inzwischen in einem: `change-stay` nimmt das
+       * Zielzimmer mit. Der Schatten darf deshalb zeigen, was wirklich
+       * passiert -- und muss es, denn ein Schatten, der nur die halbe
+       * Bewegung vorwegnimmt, ist eine Vorschau, die luegt.
        */
-      const versatz = drag.overResourceId === drag.quelleResourceId
-        ? drag.day - drag.startDay
-        : 0
+      const versatz = drag.day - drag.startDay
       const b = balken(addDays(drag.arrival, versatz), addDays(drag.departure, versatz))
       /*
        * Bei einer Gruppe steht die Zahl der Zimmer am Schattenbalken.
@@ -722,7 +742,10 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
        */
       return {
         kaesten: new Map([[drag.overResourceId, b]]),
-        gruppenZahl: versatz !== 0 && drag.bookingRooms > 1 && drag.alleDerGruppe
+        // Die Gruppe wandert nur in derselben Zeile mit; quer gezogen ist
+        // dieses eine Zimmer gemeint.
+        gruppenZahl: versatz !== 0 && drag.overResourceId === drag.quelleResourceId
+          && drag.bookingRooms > 1 && drag.alleDerGruppe
           ? drag.bookingRooms : undefined }
     }
     return null

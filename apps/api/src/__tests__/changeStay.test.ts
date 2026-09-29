@@ -194,6 +194,141 @@ describe('Aufenthalt aendern', () => {
     expect((await aendern(ref, { categoryId: fremd })).statusCode).toBe(404)
   })
 
+  /**
+   * Schraeg verlegen: anderes Zimmer **und** andere Tage in einem Aufruf.
+   *
+   * Gemeldet aus dem Plan: "ich kann hoch, runter, links und rechts
+   * ziehen, aber nicht schraeg nach rechts unten -- und wenn nur dort eine
+   * Luecke ist, komme ich auch nicht in zwei Schritten hin".
+   */
+  describe('Zimmer und Tage zusammen', () => {
+    /** Zwei Doppelzimmer, das erste belegt die Reservierung. */
+    async function zimmerIds(): Promise<number[]> {
+      const r = await owner.query<{ id: number }>(
+        `SELECT id FROM resource WHERE category_id = $1 ORDER BY code`, [dz])
+      return r.rows.map(x => x.id)
+    }
+
+    it('verlegt Zimmer und Zeitraum in einem Aufruf', async () => {
+      const [z1, z2] = await zimmerIds()
+      const ref = await reservierung()
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE public_ref = $1`,
+        [ref, z1])
+
+      const r = await aendern(ref, {
+        arrival: '2026-10-05', departure: '2026-10-08', resourceId: z2 })
+      expect(r.statusCode).toBe(200)
+
+      const nach = await owner.query<{ resource_id: number; arrival: string }>(
+        `SELECT resource_id, arrival::text FROM reservation WHERE public_ref = $1`, [ref])
+      expect(nach.rows[0]!.resource_id).toBe(z2)
+      expect(nach.rows[0]!.arrival).toBe('2026-10-05')
+    })
+
+    it('kommt an die Luecke heran, an die zwei Schritte nicht kommen', async () => {
+      /*
+       * Der gemeldete Fall, als Besetzung: Zimmer 1 hat den Gast vom 1.
+       * bis zum 4. und ist ab dem 5. weiterbelegt; Zimmer 2 ist bis zum
+       * 5. belegt und danach frei. Die Luecke liegt diagonal.
+       *
+       * Einzeln geht keiner der beiden Schritte -- und das ist der Grund,
+       * warum der Zug beides zugleich koennen muss.
+       */
+      const [z1, z2] = await zimmerIds()
+      const ref = await reservierung()
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE public_ref = $1`,
+        [ref, z1])
+      // Zimmer 1 ab dem 5. weiterbelegt -> nur nach rechts geht nicht.
+      const sperre1 = await makeReservation(owner, {
+        propertyId: fx.propertyId, categoryId: dz,
+        arrival: '2026-10-05', departure: '2026-10-09', priceCent: 9_000 })
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE id = $1`,
+        [sperre1.reservationId, z1])
+      // Zimmer 2 bis zum 5. belegt -> nur nach unten geht auch nicht.
+      const sperre2 = await makeReservation(owner, {
+        propertyId: fx.propertyId, categoryId: dz,
+        arrival: '2026-09-28', departure: '2026-10-05', priceCent: 9_000 })
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE id = $1`,
+        [sperre2.reservationId, z2])
+
+      // Erst die Tage: das eigene Zimmer ist ab dem 5. belegt.
+      expect((await aendern(ref, { arrival: '2026-10-05', departure: '2026-10-08' }))
+        .statusCode).toBe(409)
+      // Erst das Zimmer: dort liegt an den alten Tagen jemand.
+      expect((await app.inject({
+        method: 'POST', url: `/v1/reservations/${ref}/assign-unit`,
+        headers: auth, payload: { resourceId: z2 } })).statusCode).toBe(409)
+
+      // Zusammen geht es.
+      const r = await aendern(ref, {
+        arrival: '2026-10-05', departure: '2026-10-08', resourceId: z2 })
+      expect(r.statusCode).toBe(200)
+      const nach = await owner.query<{ resource_id: number; arrival: string }>(
+        `SELECT resource_id, arrival::text FROM reservation WHERE public_ref = $1`, [ref])
+      expect(nach.rows[0]!.resource_id).toBe(z2)
+      expect(nach.rows[0]!.arrival).toBe('2026-10-05')
+    })
+
+    it('weist ein belegtes Zielzimmer ab', async () => {
+      const [z1, z2] = await zimmerIds()
+      const ref = await reservierung()
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE public_ref = $1`,
+        [ref, z1])
+      const fremd = await makeReservation(owner, {
+        propertyId: fx.propertyId, categoryId: dz,
+        arrival: '2026-10-05', departure: '2026-10-09', priceCent: 9_000 })
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE id = $1`,
+        [fremd.reservationId, z2])
+
+      const r = await aendern(ref, {
+        arrival: '2026-10-05', departure: '2026-10-08', resourceId: z2 })
+      expect(r.statusCode).toBe(409)
+      // Und nichts ist halb geschehen: die Tage stehen noch wie vorher.
+      const nach = await owner.query<{ resource_id: number; arrival: string }>(
+        `SELECT resource_id, arrival::text FROM reservation WHERE public_ref = $1`, [ref])
+      expect(nach.rows[0]!.resource_id).toBe(z1)
+      expect(nach.rows[0]!.arrival).toBe('2026-10-01')
+    })
+
+    it('nimmt ein Zimmer aus einem fremden Haus nicht an', async () => {
+      // Die Zeilenrichtlinie filtert nach Mandant, nicht nach Haus
+      // (CLAUDE.md). Bei einem Benutzer mit zwei Haeusern faengt sie es
+      // nicht ab.
+      const andere = await makeProperty(owner)
+      const fremdeKat = await makeCategory(owner, andere.propertyId, { code: 'X' })
+      await makeResources(owner, andere.propertyId, fremdeKat, 1, 'F')
+      const f = await owner.query<{ id: number }>(
+        `SELECT id FROM resource WHERE category_id = $1`, [fremdeKat])
+      const ref = await reservierung()
+      expect((await aendern(ref, {
+        arrival: '2026-10-05', departure: '2026-10-08',
+        resourceId: f.rows[0]!.id })).statusCode).toBe(404)
+    })
+
+    it('behaelt das Zimmer, wenn keines genannt ist', async () => {
+      const [z1] = await zimmerIds()
+      const ref = await reservierung()
+      await owner.query(`UPDATE reservation SET resource_id = $2 WHERE public_ref = $1`,
+        [ref, z1])
+      await aendern(ref, { arrival: '2026-10-02', departure: '2026-10-05' })
+      const nach = await owner.query<{ resource_id: number }>(
+        `SELECT resource_id FROM reservation WHERE public_ref = $1`, [ref])
+      expect(nach.rows[0]!.resource_id).toBe(z1)
+    })
+
+    it('nimmt das Zimmer bei einem angereisten Gast nicht ab', async () => {
+      // Er liegt darin. Die Zeile im Plan zu leeren hiesse, Hausliste und
+      // Reinigung auf ein leeres Zimmer zu schicken, in dem jemand schlaeft.
+      const [z1] = await zimmerIds()
+      const ref = await reservierung()
+      await owner.query(
+        `UPDATE reservation SET status = 'InHouse', resource_id = $2 WHERE public_ref = $1`,
+        [ref, z1])
+      expect((await aendern(ref, { departure: '2026-10-06', resourceId: null }))
+        .statusCode).toBe(409)
+    })
+  })
+
   it('behaelt bereits gebuchte Naechte beim Verkuerzen', async () => {
     const ref = await reservierung()
     await owner.query(

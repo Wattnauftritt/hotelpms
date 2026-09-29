@@ -81,6 +81,34 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
 
+  /**
+   * Einen gezogenen Balken dorthin legen, wo er losgelassen wurde.
+   *
+   * **Zwei Routen, eine Geste.** Wandern nur die Tage oder beides, ist es
+   * `change-stay`: die Route verlegt einen Aufenthalt und nimmt das
+   * Zielzimmer mit, damit ein schraeger Zug in einem Aufruf durchgeht.
+   * Wandert nur die Zeile, bleibt es bei `assign-unit` -- die schmalere
+   * Route, und die einzige, die auch fuer einen Abruf aus einem Kontingent
+   * gilt: dessen Tage gehoeren dem Kontingent und sind nicht verschiebbar,
+   * ein Zimmer bekommt er trotzdem.
+   */
+  const verlegen = (u: Umzug): void => {
+    if (u.zeitraum === null) {
+      if (u.resourceId !== null) {
+        zuweisen.mutate({ reservationRef: u.reservationRef, resourceId: u.resourceId })
+      }
+      return
+    }
+    umbuchen.mutate({
+      reservationRef: u.reservationRef,
+      arrival: u.zeitraum.arrival,
+      departure: u.zeitraum.departure,
+      // `undefined` heisst "Zimmer bleibt". `null` waere "abnehmen", und
+      // das ist hier nie gemeint -- dafuer gibt es das Band.
+      resourceId: u.resourceId ?? undefined
+    })
+  }
+
   /*
    * Die Sortierung liegt hier und nicht in der Schnittstelle: sie ist eine
    * Frage der Ansicht, und ein zweiter Aufruf nur zum Umsortieren waere
@@ -193,10 +221,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                         })
                       }}
                       onMove={u => {
-                        if (u.wechsel === null) {
-                          zuweisen.mutate({ reservationRef: u.reservationRef,
-                                            resourceId: u.resourceId })
-                        } else setUmzug(u)
+                        if (u.wechsel === null) verlegen(u)
+                        else setUmzug(u)
                       }}
                       onChangeStay={(reservationRef, arrival, departure) =>
                         umbuchen.mutate({ reservationRef, arrival, departure })}
@@ -222,8 +248,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       {umzug !== null && umzug.wechsel !== null && (
         <UmzugBestaetigen umzug={umzug} onClose={() => setUmzug(null)}
                           onConfirm={() => {
-                            zuweisen.mutate({ reservationRef: umzug.reservationRef,
-                                              resourceId: umzug.resourceId })
+                            verlegen(umzug)
                             setUmzug(null)
                           }} />
       )}

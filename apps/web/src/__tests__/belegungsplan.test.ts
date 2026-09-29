@@ -794,8 +794,11 @@ describe('Eine Gruppenbuchung wandert als Gruppe', () => {
      * eine Reservierung und nicht acht. Acht zurueckzuholen ist Arbeit,
      * eine ist ein Zug.
      */
-    expect(plan).toContain('if (d.bookingRooms > 1 && d.alleDerGruppe)')
+    expect(plan).toContain('d.bookingRooms > 1 && d.alleDerGruppe')
     expect(plan).toContain('onShiftGroup?.(d.bookingRef, versatz)')
+    // Und nur in derselben Zeile: quer gezogen ist dieses eine Zimmer
+    // gemeint, nicht acht in eines gelegt.
+    expect(plan).toContain('d.moved && !zeileAnders && versatz !== 0')
   })
 
   it('nimmt mit Alt die ganze Gruppe mit', () => {
@@ -839,7 +842,8 @@ describe('Eine Gruppenbuchung wandert als Gruppe', () => {
      * Deckungsgleichheit, die nach dem Loslassen nicht eintritt -- eine
      * Vorschau, die luegt, ist schlechter als keine.
      */
-    expect(plan).toContain('gruppenZahl: versatz !== 0 && drag.bookingRooms > 1')
+    expect(plan).toContain('gruppenZahl: versatz !== 0 && drag.overResourceId === drag.quelleResourceId')
+    expect(plan).toContain('drag.bookingRooms > 1 && drag.alleDerGruppe')
   })
 })
 
@@ -923,7 +927,7 @@ describe('Eine Buchung laesst sich ins Band zuruecklegen', () => {
      * derselben Geste.
      */
     const bandZuerst = plan.indexOf('if (d.moved && d.ueberBand)')
-    const versatzDanach = plan.indexOf('} else if (d.moved && versatz !== 0) {')
+    const versatzDanach = plan.indexOf('} else if (d.moved && (zeileAnders || versatz !== 0)) {')
     expect(bandZuerst).toBeGreaterThan(0)
     expect(versatzDanach).toBeGreaterThan(bandZuerst)
   })

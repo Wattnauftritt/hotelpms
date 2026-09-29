@@ -327,7 +327,28 @@ const EVENT_FOR_ACTION: Record<ReservationAction, WebhookEventType> = {
  */
 export async function aufenthaltVerlegen(
   client: PoolClient, ref: string,
-  body: { arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number }
+  body: {
+    arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number
+    /**
+     * Das Zimmer, in dem der Aufenthalt danach liegt.
+     *
+     * Nicht angegeben heisst "bleibt, wo es ist"; `null` nimmt es ab.
+     *
+     * **Warum es hier steht und nicht in `assign-unit`.** Ein Balken im
+     * Plan laesst sich schraeg ziehen -- anderes Zimmer **und** andere
+     * Tage --, und genau dann geht es nicht in zwei Schritten: das
+     * Zielzimmer ist an den alten Tagen belegt, die alte Zeile an den
+     * neuen. Wer zuerst das eine tut, wird abgewiesen, und wer zuerst das
+     * andere tut, auch. Die Luecke, in die der Gast soll, ist nur
+     * diagonal erreichbar.
+     *
+     * Beides in einem Aufruf ist ausserdem das Richtige, nicht nur das
+     * Bequeme: zwischen zwei Aufrufen laege ein Zustand, den niemand
+     * gewollt hat -- das neue Zimmer an den alten Tagen oder das alte an
+     * den neuen --, und schlaegt der zweite fehl, bleibt er stehen.
+     */
+    resourceId?: number | null
+  }
 ): Promise<{
   reservationRef: string; arrival: string; departure: string; categoryId: number
   roomAssignmentCleared: boolean; nights: number; removedNights: number
@@ -378,6 +399,23 @@ export async function aufenthaltVerlegen(
       throw Errors.conflict('stay.inHouseArrivalFixed')
     }
     const zeitraumAnders = neuAnkunft !== r.arrival || neuAbreise !== r.departure
+    /*
+     * Das Zimmer danach. Bei einem Kategoriewechsel **ohne** ausdrueckliche
+     * Angabe faellt es weg: es gehoerte zur alten Gruppe, und die
+     * Hausliste zeigte sonst ein Zimmer der falschen. Wer beim Wechsel ein
+     * Zimmer nennt, bekommt es -- das ist der Fall "Gast bleibt laenger,
+     * seine Gruppe ist ausgebucht, eine andere hat noch ein Zimmer".
+     */
+    const zielZimmer = body.resourceId !== undefined
+      ? body.resourceId
+      : (neuKategorie === r.category_id ? r.resource_id : null)
+
+    // Der angereiste Gast liegt im Zimmer. Die Zeile im Plan zu leeren
+    // hiesse, Hausliste und Reinigung auf ein leeres Zimmer zu schicken,
+    // in dem jemand schlaeft (dieselbe Regel wie in `assign-unit`).
+    if (zielZimmer === null && r.resource_id !== null && r.status === 'InHouse') {
+      throw Errors.conflict('stay.inHouseKeepsRoom')
+    }
     if (neuKategorie !== r.category_id) {
       const k = await client.query(
         `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
@@ -398,12 +436,13 @@ export async function aufenthaltVerlegen(
      * geworden, nicht der Sonderfall: acht Balken wandern ueber den Plan
      * und landen auf dem, was dort schon liegt.
      *
-     * Nur wenn sich der Zeitraum aendert -- eine Umbuchung in eine andere
-     * Zimmergruppe nimmt das Zimmer ohnehin weg.
+     * Geprueft wird das Zimmer, in dem der Aufenthalt **danach** liegt,
+     * und nur dann, wenn sich daran etwas aendert: dieselbe Zeile an
+     * denselben Tagen braucht keine Frage.
      */
-    if (r.resource_id !== null && zeitraumAnders) {
+    if (zielZimmer !== null && (zeitraumAnders || zielZimmer !== r.resource_id)) {
       await assertUnitAssignable(client, {
-        resourceId: r.resource_id, propertyId: r.property_id,
+        resourceId: zielZimmer, propertyId: r.property_id,
         arrival: neuAnkunft, departure: neuAbreise, exceptReservationId: r.id })
     }
 
@@ -413,18 +452,14 @@ export async function aufenthaltVerlegen(
        neuKategorie, neuAnkunft, neuAbreise])
     inventoryError(inv.rows[0]!.e)
 
-    // Bei Kategoriewechsel passt das zugewiesene Zimmer nicht mehr. Es
-    // stehen zu lassen waere schlimmer als es zu entfernen: die
-    // Hausliste zeigte dann ein Zimmer der falschen Gruppe.
-    const zimmerBleibt = neuKategorie === r.category_id
     await client.query(
       `UPDATE reservation
           SET arrival = $2::date, departure = $3::date, category_id = $4,
               rate_plan_id = COALESCE($5, rate_plan_id),
-              resource_id = CASE WHEN $6 THEN resource_id ELSE NULL END,
+              resource_id = $6,
               updated_at = now()
         WHERE id = $1`,
-      [r.id, neuAnkunft, neuAbreise, neuKategorie, body.ratePlanId ?? null, zimmerBleibt])
+      [r.id, neuAnkunft, neuAbreise, neuKategorie, body.ratePlanId ?? null, zielZimmer])
 
     /*
      * Naechte fortschreiben. Bereits gebuchte Naechte bleiben unberuehrt:
@@ -458,6 +493,10 @@ export async function aufenthaltVerlegen(
       reservationRef: ref, status: r.status,
       arrival: neuAnkunft, departure: neuAbreise,
       categoryId: neuKategorie,
+      // Das Zimmer gehoert in das Ereignis, seit diese Route es aendern
+      // kann: ein Empfaenger, der nur `assign-unit` beachtet, saehe den
+      // Umzug sonst nicht.
+      resourceId: zielZimmer,
       previousArrival: r.arrival, previousDeparture: r.departure,
       previousCategoryId: r.category_id,
       nights: summe.rows[0]!.n,
@@ -471,7 +510,7 @@ export async function aufenthaltVerlegen(
       categoryId: neuKategorie,
       // Beim Kategoriewechsel faellt die Zimmerzuweisung weg und muss
       // neu erfolgen. Das gehoert in die Antwort, nicht in eine Fussnote.
-      roomAssignmentCleared: !zimmerBleibt && r.resource_id !== null,
+      roomAssignmentCleared: zielZimmer === null && r.resource_id !== null,
       nights: summe.rows[0]!.n,
       removedNights: entfernt.rowCount ?? 0,
       totalCent: Number(summe.rows[0]!.total)
@@ -1596,8 +1635,8 @@ export function reservationRoutes(app: FastifyInstance): void {
   })
 
   /**
-   * Aufenthalt ändern: Verlängerung, Verkürzung, Kategoriewechsel, einzeln
-   * oder zusammen (E11, Dokument 13).
+   * Aufenthalt ändern: Verlängerung, Verkürzung, Kategoriewechsel,
+   * Zimmerwechsel — einzeln oder zusammen (E11, Dokument 13).
    *
    * Der Fall, der diese Route nötig macht: der Gast bleibt länger, seine
    * Kategorie ist aber ausgebucht, eine andere frei. Das ist eine
@@ -1608,6 +1647,18 @@ export function reservationRoutes(app: FastifyInstance): void {
    * Freigeben und Neubelegen ist das Kontingent frei, und genau dann kauft
    * es das Portal. Der Gast verlöre sein Zimmer, obwohl er es schon hatte.
    * `inventory_move` bindet deshalb zuerst und gibt erst danach frei.
+   *
+   * **`resourceId` kam später dazu, aus demselben Grund.** Ein Balken im
+   * Plan lässt sich schräg ziehen — anderes Zimmer und andere Tage —, und
+   * genau dann geht es nicht in zwei Schritten: das Zielzimmer ist an den
+   * alten Tagen belegt, die alte Zeile an den neuen. Wer zuerst das eine
+   * tut, wird abgewiesen, und wer zuerst das andere tut, auch. Die Lücke,
+   * in die der Gast soll, ist nur diagonal erreichbar.
+   *
+   * Wer **nur** das Zimmer wechselt, nimmt weiterhin `assign-unit`: die
+   * Route hier verlegt einen Aufenthalt und weist deshalb einen Abruf aus
+   * einem Kontingent ab — dessen Tage gehören dem Kontingent. Ein Zimmer
+   * bekommt auch der Abruf.
    */
   registerRoute(app, {
     method: 'POST',
@@ -1617,7 +1668,12 @@ export function reservationRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = req.body as {
-        arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number }
+        arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number
+        resourceId?: number | null }
+      if (body.resourceId !== undefined && body.resourceId !== null
+          && !Number.isInteger(body.resourceId)) {
+        throw Errors.validation({ resourceId: ['field.positiveInteger'] })
+      }
       return tx(req.pool, req, client => aufenthaltVerlegen(client, reservationRef, body))
     }
   })
