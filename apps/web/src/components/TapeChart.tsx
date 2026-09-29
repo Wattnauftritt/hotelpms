@@ -523,10 +523,24 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       setDragState(null)
       if (d === null) return
       if (d.kind === 'create') {
-        onCreate?.({
-          resourceId: d.resourceId, categoryId: d.categoryId,
-          ...auswahlZeitraum(tage, d.startDay, d.day)
-        })
+        /*
+         * **Auch ein einzelnes Zimmer wird erst markiert, nicht gebucht.**
+         *
+         * Hier oeffnete das Loslassen sofort die Buchungsmaske. Das war
+         * der schnelle Weg fuer den haeufigsten Fall und zugleich eine
+         * Sackgasse: solange die Maske aufgeht, bevor man die Maustaste
+         * losgelassen hat, kommt niemand dazu, mit dem rechten Knopf etwas
+         * anderes mit der Markierung zu tun -- ein Zimmer sperren zum
+         * Beispiel. Eine Geste, ein Ergebnis, und kein zweiter Gedanke
+         * moeglich.
+         *
+         * Jetzt gilt fuer eine Zeile dasselbe wie fuer acht: der Zug
+         * markiert, und **danach** wird entschieden -- mit der Leiste
+         * unten, mit Enter oder mit dem rechten Knopf. Esc raeumt die
+         * Markierung weg, ein neuer Zug ohne Modifikator ersetzt sie.
+         */
+        const z = auswahlZeitraum(tage, d.startDay, d.day)
+        setAuswahl([{ resourceId: d.resourceId, arrival: z.arrival, departure: z.departure }])
       } else if (d.kind === 'group') {
         /*
          * Sammeln, nicht sofort buchen.
@@ -781,10 +795,76 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     if (auswahl === null) return
     const aufTaste = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setAuswahl(null)
+      /*
+       * Enter bucht, was markiert ist -- derselbe Weg wie der Knopf in der
+       * Leiste. Der Knopf ist der Weg fuer den, der die Taste nicht kennt;
+       * die Taste der fuer den, der die Hand nicht von der Tastatur nehmen
+       * will.
+       *
+       * Nicht, waehrend jemand in einem Feld tippt: ein Enter im Suchfeld
+       * ueber dem Plan meint das Feld, nicht die Markierung.
+       */
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)
+          && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault()
+        auswahlBuchen()
+      }
     }
     window.addEventListener('keydown', aufTaste)
     return () => { window.removeEventListener('keydown', aufTaste) }
-  }, [auswahl !== null])
+    /*
+     * Ohne Abhaengigkeitsliste, also bei jedem Bild neu eingehaengt.
+     *
+     * Der Horcher ruft `auswahlBuchen`, und das liest die Markierung, die
+     * Zimmer und die Rueckrufe von aussen. Mit einer Liste haette er eine
+     * Fassung davon festgehalten -- und Enter buchte, was beim letzten
+     * Wechsel der Markierung dastand, nicht was jetzt dasteht. Ein
+     * `addEventListener` je Bild ist dagegen nichts.
+     */
+  })
+
+  /**
+   * Was aus der Markierung wird, wenn sie gebucht wird.
+   *
+   * **Ein Zimmer ist keine Gruppe.** Eine Gruppenbuchung mit einem Zimmer
+   * waere eine Buchung mit einem Besteller, einer Namensliste und einer
+   * Aufteilung -- fuer einen Gast, der ein Zimmer nimmt. Die
+   * Reservierungsmaske ist dafuer die richtige, und sie war es schon
+   * immer; nur fuehrte der Weg dorthin bisher ueber das Loslassen der
+   * Maustaste statt ueber eine Entscheidung.
+   */
+  const auswahlBuchen = (): void => {
+    if (auswahl === null || auswahl.length === 0) return
+    if (auswahl.length === 1) {
+      const z = auswahl[0]!
+      const u = zimmerNach.get(z.resourceId)
+      if (u !== undefined) {
+        onCreate?.({ resourceId: z.resourceId, categoryId: u.category_id,
+                     arrival: z.arrival, departure: z.departure })
+      }
+    } else {
+      onCreateGroup?.({
+        rooms: auswahl.flatMap(z => {
+          const u = zimmerNach.get(z.resourceId)
+          return u === undefined ? [] : [{
+            resourceId: z.resourceId, categoryId: u.category_id,
+            arrival: z.arrival, departure: z.departure }]
+        }),
+        // Oben die Klammer: sie ist die Vorgabe der Maske und fuer jedes
+        // Zimmer richtig, das nicht abweicht.
+        arrival: klammer.arrival, departure: klammer.departure
+      })
+    }
+    /*
+     * Buchen leert die Auswahl.
+     *
+     * Sie ist ab hier in der Maske aufgehoben -- dort stehen dieselben
+     * Zimmer und lassen sich einzeln entfernen. Stehen zu bleiben hiesse,
+     * nach dem Anlegen einen Schatten ueber den frischen Balken zu haben,
+     * der aussieht wie eine zweite, ungebuchte Gruppe.
+     */
+    setAuswahl(null)
+  }
 
   /**
    * Welcher Balken waehrend eines Umzugs oder einer Groessenaenderung
@@ -905,6 +985,17 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       const tag = tagUnter(e.clientX)
       const anreise = tage[Math.max(0, Math.min(tage.length - 1, tag))]
       if (anreise === undefined) return
+      /*
+       * Liegt der Klick **in** der stehenden Markierung, meint er sie --
+       * und zwar ganz. Vorher erwischte man nach einer Mehrfachmarkierung
+       * genau eines der Zimmer, ohne dass irgendwo stand, welches.
+       *
+       * Geprueft wird die Zelle und nicht nur die Zeile: wer seine
+       * markierten Zimmer am 20. anklickt, waehrend die Markierung auf dem
+       * 5. liegt, zeigt auf den 20.
+       */
+      const inAuswahl = (auswahl ?? []).some(
+        z => z.resourceId === resourceId && anreise >= z.arrival && anreise < z.departure)
       onKontext?.({
         art: 'frei', punkt: { x: e.clientX, y: e.clientY },
         resourceId, categoryId,
@@ -912,8 +1003,15 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         // **Eine Nacht**, nicht der sichtbare Zeitraum. Wer im Plan rechts
         // klickt, meint diesen Tag; ein Vorschlag ueber sechzig Tage waere
         // eine Buchung, die niemand wollte.
-        arrival: anreise, departure: addDays(anreise, 1) })
-    }, [onKontext, tagUnter, tage, zimmerNach])
+        arrival: anreise, departure: addDays(anreise, 1),
+        leeren: () => setAuswahl(null),
+        auswahl: !inAuswahl || auswahl === null ? null : auswahl.flatMap(z => {
+          const u = zimmerNach.get(z.resourceId)
+          return u === undefined ? [] : [{
+            resourceId: z.resourceId, categoryId: u.category_id, roomCode: u.code,
+            arrival: z.arrival, departure: z.departure }]
+        }) })
+    }, [onKontext, tagUnter, tage, zimmerNach, auswahl])
 
   const beginneGroesseAendern = useCallback(
     (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => {
@@ -1142,8 +1240,13 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                          ghostHier={kasten !== undefined}
                          ghostLinks={kasten?.left ?? 0}
                          ghostBreite={kasten?.width ?? 0}
+                         /* Erst ab zwei Zeilen: "1 rooms" stand sonst im
+                            Schatten, sobald jemand ein einzelnes Zimmer
+                            aufzieht -- und die Zahl beantwortet dort keine
+                            Frage, die Zeile steht ja daneben. */
                          ghostZaehler={ghost?.gruppenZahl ?? (
-                           ghost?.zaehlerAn === u.id ? ghost.kaesten.size : null)}
+                           ghost?.zaehlerAn === u.id && ghost.kaesten.size > 1
+                             ? ghost.kaesten.size : null)}
                          onCreatePointerDown={beginneErstellen}
                          onMovePointerDown={beginneVerschieben}
                          onResizePointerDown={beginneGroesseAendern}
@@ -1182,7 +1285,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center gap-2
                         bg-neutral-900 text-white px-3 py-1.5 text-sm shadow-lg">
           <span className="font-medium">
-            {t('plan.selectedRooms', { n: auswahl.length })}
+            {auswahl.length === 1 ? t('plan.selectedRoom')
+              : t('plan.selectedRooms', { n: auswahl.length })}
           </span>
           {/*
             * Der Zeitraum, und wenn die Zimmer verschiedene haben, die
@@ -1196,32 +1300,11 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             {klammer.gemischt && ` · ${t('plan.mixedDates')}`}
           </span>
           <div className="grow" />
-          {/*
-            * Buchen leert die Auswahl.
-            *
-            * Sie ist ab hier in der Maske aufgehoben -- dort stehen
-            * dieselben Zimmer und lassen sich einzeln entfernen. Stehen zu
-            * bleiben hiesse, nach dem Anlegen einen Schatten ueber den
-            * frischen Balken zu haben, der aussieht wie eine zweite,
-            * ungebuchte Gruppe.
-            */}
-          <button type="button"
-                  onClick={() => {
-                    onCreateGroup?.({
-                      rooms: auswahl.flatMap(z => {
-                        const u = zimmerNach.get(z.resourceId)
-                        return u === undefined ? [] : [{
-                          resourceId: z.resourceId, categoryId: u.category_id,
-                          arrival: z.arrival, departure: z.departure }]
-                      }),
-                      // Oben die Klammer: sie ist die Vorgabe der Maske und
-                      // fuer jedes Zimmer richtig, das nicht abweicht.
-                      arrival: klammer.arrival, departure: klammer.departure
-                    })
-                    setAuswahl(null)
-                  }}
+          {/* Enter tut dasselbe; der Knopf ist der Weg fuer den, der das
+              nicht weiss. Die Begruendung steht an `auswahlBuchen`. */}
+          <button type="button" onClick={auswahlBuchen}
                   className="px-3 py-1 rounded bg-white text-neutral-900 text-sm">
-            {t('plan.bookSelection')}
+            {auswahl.length === 1 ? t('booking.title') : t('plan.bookSelection')}
           </button>
           {/* Esc tut dasselbe; der Knopf ist der Weg fuer den, der das
               nicht weiss. */}

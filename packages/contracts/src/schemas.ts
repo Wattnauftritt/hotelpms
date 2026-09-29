@@ -742,6 +742,19 @@ export const CreateMaintenanceTicket = Type.Object({
   title: Type.String({ minLength: 1 }),
   description: Type.Optional(Type.String()),
   resourceId: Type.Optional(Type.Integer()),
+  /**
+   * Mehrere Zimmer in einem Aufruf -- eine Meldung je Zimmer, in einer
+   * Transaktion.
+   *
+   * Der Handwerker sperrt eine Etage, nicht ein Zimmer. Je Zimmer einen
+   * eigenen Aufruf zu schicken hiesse: die Haelfte gesperrt, die andere
+   * nicht, wenn der dritte scheitert -- und niemand sieht, welche.
+   *
+   * Warum trotzdem eine Meldung **je** Zimmer und nicht eine mit Liste:
+   * eine Meldung wird einzeln erledigt. "Dusche in 204 repariert" schliesst
+   * nicht 205 mit.
+   */
+  resourceIds: Type.Optional(Type.Array(Type.Integer(), { minItems: 1 })),
   priority: Type.Optional(Type.Union([
     Type.Literal('low'), Type.Literal('normal'), Type.Literal('high')])),
   block: Type.Optional(Type.Object({

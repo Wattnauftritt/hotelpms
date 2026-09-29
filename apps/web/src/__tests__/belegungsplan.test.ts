@@ -748,8 +748,51 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
 
   it('leert die Auswahl, wenn daraus eine Buchung wird', () => {
     // Sonst liegt nach dem Anlegen ein Schatten ueber den frischen Balken,
-    // der aussieht wie eine zweite, ungebuchte Gruppe.
-    expect(plan).toMatch(/onCreateGroup\?\.\(\{[\s\S]*?\}\)\n\s*setAuswahl\(null\)/)
+    // der aussieht wie eine zweite, ungebuchte Gruppe. Gebucht wird an
+    // **einer** Stelle -- Knopf, Enter und Kontextmenue laufen alle
+    // dorthin, und die Stelle raeumt auf.
+    expect(plan).toMatch(
+      /const auswahlBuchen = \(\): void => \{[\s\S]*?setAuswahl\(null\)\n  \}/)
+  })
+
+  it('markiert auch ein einzelnes Zimmer, statt sofort die Maske zu oeffnen', () => {
+    /*
+     * Vorher oeffnete das Loslassen ueber einer Zeile die Buchungsmaske.
+     * Das war der schnelle Weg fuer den haeufigsten Fall und zugleich eine
+     * Sackgasse: wer mit dem rechten Knopf etwas anderes mit der Markierung
+     * vorhatte -- das Zimmer sperren --, kam nie dazu, weil die Maske schon
+     * offen war, bevor er die Taste losgelassen hatte.
+     */
+    expect(plan).not.toMatch(/if \(d\.kind === 'create'\) \{\n\s*onCreate\?\./)
+    expect(plan).toContain(
+      "setAuswahl([{ resourceId: d.resourceId, arrival: z.arrival, departure: z.departure }])")
+  })
+
+  it('bucht auf Enter dasselbe wie ueber den Knopf', () => {
+    // Ein Weg fuer die Hand an der Maus, einer fuer die an der Tastatur --
+    // und beide durch dieselbe Funktion, sonst laufen sie auseinander.
+    expect(plan).toMatch(/e\.key === 'Enter'[\s\S]*?auswahlBuchen\(\)/)
+    expect(plan).toContain('onClick={auswahlBuchen}')
+  })
+
+  it('schickt ein einzelnes Zimmer nicht in die Gruppenmaske', () => {
+    /*
+     * Eine Gruppenbuchung mit einem Zimmer waere eine Maske mit Besteller,
+     * Namensliste und Aufteilung -- fuer einen Gast, der ein Zimmer nimmt.
+     */
+    expect(plan).toMatch(/if \(auswahl\.length === 1\) \{[\s\S]*?onCreate\?\.\(/)
+  })
+
+  it('gibt dem Kontextmenue die ganze Markierung mit, nicht die Zelle darunter', () => {
+    /*
+     * Alle oder keines: wer acht Zimmer markiert hat und rechtsklickt, hat
+     * vorher genau eines davon erwischt -- ohne dass irgendwo stand,
+     * welches.
+     */
+    expect(plan).toContain('const inAuswahl = (auswahl ?? []).some(')
+    expect(plan).toContain(
+      'z => z.resourceId === resourceId && anreise >= z.arrival && anreise < z.departure)')
+    expect(plan).toContain('leeren: () => setAuswahl(null)')
   })
 
   it('haelt die Leiste am Fenster, nicht am Raster', () => {
@@ -1105,6 +1148,49 @@ describe('Der rechte Knopf im Belegungsplan', () => {
     expect(eintraege).toContain("t('kontext.cancelConfirm')")
   })
 
+  it('meint die ganze Markierung, nicht das Zimmer unter dem Zeiger', () => {
+    /*
+     * Alle oder keines. Vorher sperrte "Zimmer sperren" nach einer
+     * Mehrfachmarkierung genau eines der markierten Zimmer -- und welches,
+     * stand nirgends: acht markiert, eines gesperrt, sieben offen, und
+     * gemerkt hat es niemand bis zum Anreisetag.
+     */
+    expect(eintraege).toContain('const zimmer = ziel.auswahl ?? [ziel]')
+    expect(eintraege).toContain('zimmer: zimmer.map(z => ({ resourceId: z.resourceId,')
+  })
+
+  it('sagt vor dem Klick, wie viele Zimmer er trifft', () => {
+    // Die Zahl steht nur da, wo sie eine Frage beantwortet: bei einem
+    // Zimmer waere ein "(1 Zimmer)" fuer immer im haeufigsten Eintrag.
+    expect(eintraege).toContain("t('kontext.newReservationN', { n: zimmer.length })")
+    expect(eintraege).toContain("t('kontext.blockRoomN', { n: zimmer.length })")
+  })
+
+  it('nimmt den markierten Zeitraum als Vorgabe der Sperrung', () => {
+    /*
+     * Wer eine Etage vom 3. bis zum 6. markiert und am 5. rechtsklickt,
+     * meint den 3. bis 6. Eine Maske, die auf eine Nacht voreingestellt
+     * ist, wird als eine Nacht gespeichert -- und der Handwerker steht am
+     * 4. vor einem verkauften Zimmer.
+     */
+    expect(eintraege).toMatch(/ab: zimmer\.reduce\(\n\s*\(fr, z\) => z\.arrival < fr/)
+    expect(eintraege).toMatch(/bis: zimmer\.reduce\(\n\s*\(sp, z\) => z\.departure > sp/)
+  })
+
+  it('raeumt die Markierung weg, sobald etwas aus ihr geworden ist', () => {
+    // Sonst liegt ueber dem frischen Balken oder dem frischen Riegel ein
+    // Schatten, der aussieht wie eine zweite, ungebuchte Gruppe.
+    expect(eintraege).toContain('ziel.leeren(); onAnlegen(ziel)')
+    expect(eintraege).toContain('ziel.leeren(); onSperren({')
+  })
+
+  it('macht aus mehreren markierten Zimmern eine Gruppenbuchung', () => {
+    // Nicht acht einzelne Reservierungen: eine Gruppe hat einen Besteller
+    // und eine Rechnung, und acht Masken nacheinander fuellt niemand aus.
+    expect(bildschirm).toContain('const markiert = z.auswahl ?? [z]')
+    expect(bildschirm).toMatch(/if \(markiert\.length > 1\) \{[\s\S]*?setGruppe\(\{/)
+  })
+
   it('laesst Folio und Check-out bewusst weg', () => {
     /*
      * Das Folio, weil der Plan die Folio-Referenz nicht kennt und ein
@@ -1148,6 +1234,24 @@ describe('Zimmer sperren', () => {
 
   it('verlangt einen Grund', () => {
     expect(dialog).toContain("titel.trim() === '' ? 'sperre.needReason'")
+  })
+
+  it('sperrt mehrere Zimmer in einem Aufruf', () => {
+    /*
+     * Der Handwerker kommt an die Steigleitung und nimmt eine Etage mit.
+     * Je Zimmer einen eigenen Aufruf zu schicken hiesse: scheitert der
+     * dritte, ist die Haelfte gesperrt und die andere nicht -- und an der
+     * Oberflaeche steht eine Meldung, aus der nicht hervorgeht, welche.
+     */
+    expect(dialog).toContain('resourceIds: zimmer.map(z => z.resourceId)')
+    expect(dialog).toContain('zimmer: Array<{ resourceId: number; roomCode: string }>')
+  })
+
+  it('zeigt vor dem Sperren, welche Zimmer es trifft', () => {
+    // Wer eine Etage markiert hat, prueft hier ein letztes Mal, ob das
+    // Zimmer daneben mitgegangen ist.
+    expect(dialog).toContain('zimmer.map(z => z.roomCode).join(\', \')')
+    expect(dialog).toContain("t('sperre.manyHint', { n: zimmer.length })")
   })
 
   it('laesst zwischen Out of Order und Out of Service waehlen', () => {

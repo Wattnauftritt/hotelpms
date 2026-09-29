@@ -95,6 +95,79 @@ describe('Wartungsmeldungen', () => {
     expect(k.rows[0]!.kind).toBe('out_of_order')
   })
 
+  /**
+   * Mehrere Zimmer in einem Aufruf.
+   *
+   * Der Handwerker kommt an die Steigleitung und nimmt eine Etage mit. Je
+   * Zimmer einen eigenen Aufruf zu schicken hiesse: scheitert der dritte,
+   * ist die Haelfte gesperrt und die andere nicht -- und an der Oberflaeche
+   * steht eine Meldung, aus der nicht hervorgeht, welche.
+   */
+  it('sperrt mehrere Zimmer in einer Transaktion, je Zimmer eine Meldung', async () => {
+    const r = await app.inject({ method: 'POST', url: '/v1/maintenance-tickets',
+      headers: auth,
+      payload: { propertyId: fx.propertyId, resourceIds: rooms, title: 'Steigleitung',
+                 block: { from: '2026-10-01', to: '2026-10-03', kind: 'out_of_order' } } })
+    expect(r.statusCode).toBe(201)
+    expect(r.json().ticketIds).toHaveLength(2)
+    // `ticketId` bleibt daneben: die Aufrufer von frueher lesen es.
+    expect(r.json().ticketId).toBe(r.json().ticketIds[0])
+
+    const sperren = await owner.query<{ resource_id: number }>(
+      `SELECT resource_id FROM maintenance_block WHERE property_id = $1
+        ORDER BY resource_id`, [fx.propertyId])
+    expect(sperren.rows.map(x => x.resource_id)).toEqual([...rooms].sort((a, b) => a - b))
+
+    // Eine Meldung je Zimmer, nicht eine mit Liste: erledigt wird einzeln,
+    // und "Dusche in 204 repariert" schliesst 205 nicht mit.
+    const meldungen = await owner.query<{ resource_id: number }>(
+      `SELECT resource_id FROM maintenance_ticket WHERE property_id = $1
+        ORDER BY resource_id`, [fx.propertyId])
+    expect(meldungen.rows.map(x => x.resource_id)).toEqual([...rooms].sort((a, b) => a - b))
+  })
+
+  it('zaehlt ein doppelt genanntes Zimmer einmal', async () => {
+    const r = await app.inject({ method: 'POST', url: '/v1/maintenance-tickets',
+      headers: auth,
+      payload: { propertyId: fx.propertyId, resourceIds: [rooms[0]!, rooms[0]!],
+                 title: 'Dusche',
+                 block: { from: '2026-10-01', to: '2026-10-03' } } })
+    expect(r.statusCode).toBe(201)
+    expect(r.json().ticketIds).toHaveLength(1)
+    const n = await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM maintenance_block WHERE property_id = $1`,
+      [fx.propertyId])
+    expect(n.rows[0]!.n).toBe(1)
+  })
+
+  /**
+   * Die Zeilenrichtlinie filtert nach Mandant, nicht nach Haus, und der
+   * Fremdschluessel sieht sie ohnehin nicht: eine fremde Zimmer-Id ginge
+   * sonst durch und erzeugte eine Meldung, die im eigenen Haus niemand
+   * findet -- und einen Riegel an einem Zimmer, das dem anderen Haus
+   * gehoert.
+   */
+  it('weist ein Zimmer aus einem anderen Haus ab und legt gar nichts an', async () => {
+    const p2 = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code,
+                             city, country, tax_number)
+       VALUES ($1,'ZWEI','Zweites Haus','Hafenstr. 2','25813','Husum','DE','21/815/00124')
+       RETURNING id`, [fx.accountId])
+    const k2 = await makeCategory(owner, p2.rows[0]!.id)
+    const fremd = await makeResources(owner, p2.rows[0]!.id, k2, 1)
+
+    const r = await app.inject({ method: 'POST', url: '/v1/maintenance-tickets',
+      headers: auth,
+      payload: { propertyId: fx.propertyId, resourceIds: [rooms[0]!, fremd[0]!],
+                 title: 'Etage', block: { from: '2026-10-01', to: '2026-10-03' } } })
+    expect(r.statusCode).toBe(404)
+
+    // Alle oder keines: auch das eigene Zimmer bleibt ungesperrt.
+    const n = await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM maintenance_ticket`)
+    expect(n.rows[0]!.n).toBe(0)
+  })
+
   it('nimmt eine Meldung in Arbeit und erledigt sie', async () => {
     const angelegt = await app.inject({ method: 'POST', url: '/v1/maintenance-tickets',
       headers: auth,

@@ -1,7 +1,7 @@
 import { useState, type JSX } from 'react'
 import { useCreateMaintenanceTicket } from '../lib/queries/settings.js'
 import { useT } from '../lib/i18n/index.js'
-import { addDays, daysBetween } from '../lib/dates.js'
+import { daysBetween } from '../lib/dates.js'
 import { Dialog, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
@@ -24,18 +24,27 @@ import { Fehler } from './Shell.tsx'
  * ganze Unterschied und der Grund, warum hier gewaehlt werden muss: ein
  * Zimmer ohne Fernseher ist verkaeuflich, eines ohne Wasser nicht. Wer
  * beides gleich behandelt, verkauft entweder zu wenig oder das Falsche.
+ *
+ * **Mehrere Zimmer auf einmal.** Der Handwerker kommt an die Steigleitung
+ * und nimmt eine Etage mit. Was im Plan markiert ist, wird zusammen
+ * gesperrt -- in **einem** Aufruf, damit nicht die Haelfte gesperrt ist,
+ * wenn das dritte Zimmer scheitert. Jedes Zimmer bekommt trotzdem seine
+ * eigene Wartungsmeldung: erledigt wird einzeln, und "Dusche in 204
+ * repariert" schliesst 205 nicht mit.
  */
-export function ZimmerSperren({ propertyId, resourceId, roomCode, ab, onClose }: {
+export function ZimmerSperren({ propertyId, zimmer, ab, bis: bisVorgabe, onClose }: {
   propertyId: number
-  resourceId: number
-  roomCode: string
-  /** Der angeklickte Tag. Vorbelegung, kein Zwang. */
+  /** Ein Zimmer oder mehrere. Leer kommt nicht vor -- der Plan ruft mit dem
+      an, worauf gezeigt wurde. */
+  zimmer: Array<{ resourceId: number; roomCode: string }>
+  /** Der markierte Zeitraum. Vorbelegung, kein Zwang. */
   ab: string
+  bis: string
   onClose: () => void
 }): JSX.Element {
   const t = useT()
   const [von, setVon] = useState(ab)
-  const [bis, setBis] = useState(() => addDays(ab, 1))
+  const [bis, setBis] = useState(bisVorgabe)
   const [art, setArt] = useState<'out_of_order' | 'out_of_service'>('out_of_order')
   const [titel, setTitel] = useState('')
   const anlegen = useCreateMaintenanceTicket(propertyId)
@@ -53,21 +62,36 @@ export function ZimmerSperren({ propertyId, resourceId, roomCode, ab, onClose }:
     : null
   const gueltig = grund === null
 
+  /*
+   * Die Zimmernummern in der Unterzeile, nicht nur ihre Zahl: wer eine
+   * Etage markiert hat, prueft hier ein letztes Mal, ob das markierte
+   * Zimmer daneben mitgegangen ist. Ab einem Dutzend wird daraus eine
+   * Zeile, die niemand liest -- dann die Zahl.
+   */
+  const unterzeile = zimmer.length <= 12
+    ? zimmer.map(z => z.roomCode).join(', ')
+    : t('sperre.roomCount', { n: zimmer.length })
+
   return (
     <Dialog breite="mittel" onClose={onClose}
-            titel={t('sperre.title')} unterzeile={roomCode}
+            titel={zimmer.length === 1 ? t('sperre.title') : t('sperre.titleMany')}
+            unterzeile={unterzeile}
             fuss={anlegen.isSuccess ? (
               <>
                 <button type="button" onClick={onClose} className={KNOPF_LEISE}>
                   {t('common.back')}
                 </button>
-                <span className="text-sm text-emerald-800">✓ {t('sperre.created')}</span>
+                <span className="text-sm text-emerald-800">✓ {
+                  zimmer.length === 1 ? t('sperre.created')
+                    : t('sperre.createdMany', { n: zimmer.length })
+                }</span>
               </>
             ) : (
               <>
                 <button type="button" disabled={!gueltig || anlegen.isPending}
                         onClick={() => anlegen.mutate({
-                          propertyId, resourceId, title: titel.trim(),
+                          propertyId, resourceIds: zimmer.map(z => z.resourceId),
+                          title: titel.trim(),
                           block: { from: von, to: bis, kind: art }
                         })}
                         className={KNOPF}>
@@ -85,6 +109,14 @@ export function ZimmerSperren({ propertyId, resourceId, roomCode, ab, onClose }:
               </>
             )}>
       <div className="space-y-4">
+        {/* Der Satz steht nur da, wenn er etwas sagt: bei einem Zimmer
+            erklaert er das Offensichtliche. */}
+        {zimmer.length > 1 && (
+          <p className="text-sm text-neutral-600">
+            {t('sperre.manyHint', { n: zimmer.length })}
+          </p>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-3">
           <Feld label={t('common.from')}>
             <input type="date" value={von} onChange={e => setVon(e.target.value)}

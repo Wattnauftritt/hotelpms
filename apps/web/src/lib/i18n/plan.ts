@@ -341,6 +341,13 @@ export const plan = {
     de: '{n} Zimmer ausgewählt',
     en: '{n} rooms selected',
     tr: '{n} oda seçildi' },
+  /* Eigener Schluessel statt "{n}" mit einer 1 darin: "1 rooms selected"
+     steht sonst in der Leiste, sobald jemand ein einzelnes Zimmer
+     markiert -- und das ist jetzt der haeufigste Fall. */
+  'plan.selectedRoom': {
+    de: 'Ein Zimmer ausgewählt',
+    en: 'One room selected',
+    tr: 'Bir oda seçildi' },
   'plan.mixedDates': {
     de: 'verschiedene Tage',
     en: 'dates differ',
@@ -511,11 +518,32 @@ export const plan = {
     de: 'Zimmer sperren …',
     en: 'Block the room …',
     tr: 'Odayı kapat …' },
+  /*
+   * Zwei eigene Schluessel statt eines mit Zahl: "Reservierung hier
+   * anlegen" ist der haeufige Fall und soll nicht fuer immer ein "(1
+   * Zimmer)" hinter sich herziehen. Die Zahl steht nur da, wo sie eine
+   * Frage beantwortet -- naemlich welche Zimmer gemeint sind, wenn mehrere
+   * markiert sind.
+   */
+  'kontext.newReservationN': {
+    de: 'Reservierung für {n} Zimmer anlegen',
+    en: 'Create a reservation for {n} rooms',
+    tr: '{n} oda için rezervasyon oluştur' },
+  'kontext.blockRoomN': {
+    de: '{n} Zimmer sperren …',
+    en: 'Block {n} rooms …',
+    tr: '{n} odayı kapat …' },
 
   'sperre.title': {
     de: 'Zimmer sperren',
     en: 'Block a room',
     tr: 'Odayı kapat' },
+  /* Im Deutschen dasselbe Wort, im Englischen nicht: "Block a room" ueber
+     einer Liste von drei Zimmern liest sich wie ein Fehler. */
+  'sperre.titleMany': {
+    de: 'Zimmer sperren',
+    en: 'Block rooms',
+    tr: 'Odaları kapat' },
   'sperre.kind': {
     de: 'Art der Sperrung',
     en: 'Kind of block',
@@ -562,6 +590,23 @@ export const plan = {
     de: 'Zimmer gesperrt, Wartungsmeldung angelegt.',
     en: 'Room blocked, maintenance ticket created.',
     tr: 'Oda kapatıldı, bakım kaydı oluşturuldu.' },
+  'sperre.createdMany': {
+    de: '{n} Zimmer gesperrt, je eine Wartungsmeldung angelegt.',
+    en: '{n} rooms blocked, one maintenance ticket each.',
+    tr: '{n} oda kapatıldı, her biri için bir bakım kaydı oluşturuldu.' },
+  'sperre.roomCount': {
+    de: '{n} Zimmer',
+    en: '{n} rooms',
+    tr: '{n} oda' },
+  /* Warum je Zimmer eine Meldung: sie wird einzeln erledigt. "Dusche in 204
+     repariert" schliesst 205 nicht mit. */
+  'sperre.manyHint': {
+    de: 'Zeitraum, Art und Grund gelten für alle {n} Zimmer. Jedes bekommt eine '
+      + 'eigene Wartungsmeldung, weil jede einzeln erledigt wird.',
+    en: 'Period, kind and reason apply to all {n} rooms. Each one gets its own '
+      + 'maintenance ticket, because each is closed on its own.',
+    tr: 'Tarih aralığı, tür ve sebep {n} odanın tümü için geçerlidir. Her biri ayrı '
+      + 'kapatıldığı için kendi bakım kaydını alır.' },
 
   'group.panelTitle': {
     de: 'Gruppenbuchung',
