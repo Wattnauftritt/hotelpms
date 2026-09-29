@@ -70,7 +70,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   /** Was unter dem rechten Knopf lag. Null heisst: kein Menue offen. */
   const [kontext, setKontext] = useState<KontextZiel | null>(null)
   const [sperren, setSperren] = useState<
-    { resourceId: number; roomCode: string; ab: string } | null>(null)
+    { zimmer: Array<{ resourceId: number; roomCode: string }>
+      ab: string; bis: string } | null>(null)
   const t = useT()
   const bis = addDays(von, tage)
   const q = useTapeChart(propertyId, von, bis)
@@ -80,6 +81,34 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const gruppeVerschieben = useShiftBooking()
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
+
+  /**
+   * Einen gezogenen Balken dorthin legen, wo er losgelassen wurde.
+   *
+   * **Zwei Routen, eine Geste.** Wandern nur die Tage oder beides, ist es
+   * `change-stay`: die Route verlegt einen Aufenthalt und nimmt das
+   * Zielzimmer mit, damit ein schraeger Zug in einem Aufruf durchgeht.
+   * Wandert nur die Zeile, bleibt es bei `assign-unit` -- die schmalere
+   * Route, und die einzige, die auch fuer einen Abruf aus einem Kontingent
+   * gilt: dessen Tage gehoeren dem Kontingent und sind nicht verschiebbar,
+   * ein Zimmer bekommt er trotzdem.
+   */
+  const verlegen = (u: Umzug): void => {
+    if (u.zeitraum === null) {
+      if (u.resourceId !== null) {
+        zuweisen.mutate({ reservationRef: u.reservationRef, resourceId: u.resourceId })
+      }
+      return
+    }
+    umbuchen.mutate({
+      reservationRef: u.reservationRef,
+      arrival: u.zeitraum.arrival,
+      departure: u.zeitraum.departure,
+      // `undefined` heisst "Zimmer bleibt". `null` waere "abnehmen", und
+      // das ist hier nie gemeint -- dafuer gibt es das Band.
+      resourceId: u.resourceId ?? undefined
+    })
+  }
 
   /*
    * Die Sortierung liegt hier und nicht in der Schnittstelle: sie ist eine
@@ -193,10 +222,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                         })
                       }}
                       onMove={u => {
-                        if (u.wechsel === null) {
-                          zuweisen.mutate({ reservationRef: u.reservationRef,
-                                            resourceId: u.resourceId })
-                        } else setUmzug(u)
+                        if (u.wechsel === null) verlegen(u)
+                        else setUmzug(u)
                       }}
                       onChangeStay={(reservationRef, arrival, departure) =>
                         umbuchen.mutate({ reservationRef, arrival, departure })}
@@ -222,8 +249,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       {umzug !== null && umzug.wechsel !== null && (
         <UmzugBestaetigen umzug={umzug} onClose={() => setUmzug(null)}
                           onConfirm={() => {
-                            zuweisen.mutate({ reservationRef: umzug.reservationRef,
-                                              resourceId: umzug.resourceId })
+                            verlegen(umzug)
                             setUmzug(null)
                           }} />
       )}
@@ -240,7 +266,39 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           onCheckIn={onCheckIn}
                           onGruppe={setGruppenBuchung}
                           onAnlegen={z => {
-                            const u = daten?.units.find(x => x.id === z.resourceId)
+                            /*
+                             * Alle oder keines: liegt der Klick in einer
+                             * Markierung ueber mehreren Zimmern, entsteht
+                             * **eine** Buchung mit diesen Zimmern und nicht
+                             * eine fuer das Zimmer unter dem Zeiger.
+                             */
+                            const markiert = z.auswahl ?? [z]
+                            const zimmer = new Map(
+                              (daten?.units ?? []).map(u => [u.id, u]))
+                            if (markiert.length > 1) {
+                              setGruppe({
+                                // Die Klammer ueber alles Markierte: die
+                                // Maske zeigt sie oben und uebernimmt sie
+                                // fuer jedes Zimmer, das nicht abweicht.
+                                arrival: markiert.reduce(
+                                  (fr, x) => x.arrival < fr ? x.arrival : fr,
+                                  markiert[0]!.arrival),
+                                departure: markiert.reduce(
+                                  (sp, x) => x.departure > sp ? x.departure : sp,
+                                  markiert[0]!.departure),
+                                rooms: markiert.map(x => ({
+                                  resourceId: x.resourceId, categoryId: x.categoryId,
+                                  arrival: x.arrival, departure: x.departure,
+                                  roomCode: zimmer.get(x.resourceId)?.code ?? '',
+                                  categoryName:
+                                    zimmer.get(x.resourceId)?.category_name ?? '',
+                                  maxOccupancy:
+                                    zimmer.get(x.resourceId)?.max_occupancy ?? 1
+                                }))
+                              })
+                              return
+                            }
+                            const u = zimmer.get(z.resourceId)
                             setAuswahl({
                               resourceId: z.resourceId, categoryId: z.categoryId,
                               arrival: z.arrival, departure: z.departure,
@@ -252,8 +310,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       )}
 
       {sperren !== null && (
-        <ZimmerSperren propertyId={propertyId} resourceId={sperren.resourceId}
-                       roomCode={sperren.roomCode} ab={sperren.ab}
+        <ZimmerSperren propertyId={propertyId} zimmer={sperren.zimmer}
+                       ab={sperren.ab} bis={sperren.bis}
                        onClose={() => setSperren(null)} />
       )}
 

@@ -37,7 +37,8 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
   onCheckIn: (reservationRef: string) => void
   onGruppe: (bookingRef: string) => void
   onAnlegen: (ziel: Extract<KontextZiel, { art: 'frei' }>) => void
-  onSperren: (z: { resourceId: number; roomCode: string; ab: string }) => void
+  onSperren: (z: { zimmer: Array<{ resourceId: number; roomCode: string }>
+                   ab: string; bis: string }) => void
 }): JSX.Element {
   const t = useT()
   const rechte = useHausrechte(propertyId)
@@ -98,15 +99,52 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                        } })
     }
   } else {
+    /*
+     * **Alle oder keines.**
+     *
+     * Liegt der Klick in einer stehenden Markierung, meinen beide Eintraege
+     * sie ganz -- und die Zahl steht dabei, damit das vor dem Klick zu
+     * sehen ist. Vorher erwischte man nach einer Mehrfachmarkierung genau
+     * eines der markierten Zimmer, ohne dass irgendwo stand, welches: acht
+     * Zimmer markiert, eines gesperrt, sieben offen und niemand merkt es
+     * bis zum Anreisetag.
+     *
+     * `ziel.auswahl` ist `null`, wenn daneben geklickt wurde. Dann gilt die
+     * Stelle unter dem Zeiger -- wer neben seine Markierung klickt, meint
+     * nicht sie.
+     */
+    const zimmer = ziel.auswahl ?? [ziel]
+
     if (rechte.darf('reservation:write')) {
-      eintraege.push({ schluessel: 'neu', text: t('kontext.newReservation'),
-                       onClick: () => onAnlegen(ziel) })
+      eintraege.push({ schluessel: 'neu',
+                       text: zimmer.length === 1 ? t('kontext.newReservation')
+                         : t('kontext.newReservationN', { n: zimmer.length }),
+                       onClick: () => { ziel.leeren(); onAnlegen(ziel) } })
     }
     if (rechte.darf('maintenance:write')) {
-      eintraege.push({ schluessel: 'sperren', text: t('kontext.blockRoom'),
-                       onClick: () => onSperren({ resourceId: ziel.resourceId,
-                                                  roomCode: ziel.roomCode,
-                                                  ab: ziel.arrival }) })
+      eintraege.push({ schluessel: 'sperren',
+                       text: zimmer.length === 1 ? t('kontext.blockRoom')
+                         : t('kontext.blockRoomN', { n: zimmer.length }),
+                       onClick: () => { ziel.leeren(); onSperren({
+                         zimmer: zimmer.map(z => ({ resourceId: z.resourceId,
+                                                    roomCode: z.roomCode })),
+                         /*
+                          * Der markierte Zeitraum, nicht der angeklickte
+                          * Tag: wer eine Etage vom 3. bis zum 6. markiert
+                          * und am 5. rechtsklickt, meint den 3. bis 6. --
+                          * und eine Sperrung, die auf eine Nacht
+                          * voreingestellt ist, wird als eine Nacht
+                          * gespeichert.
+                          *
+                          * Ohne Markierung ist beides die eine Nacht unter
+                          * dem Zeiger, also unveraendert.
+                          */
+                         ab: zimmer.reduce(
+                           (fr, z) => z.arrival < fr ? z.arrival : fr,
+                           zimmer[0]!.arrival),
+                         bis: zimmer.reduce(
+                           (sp, z) => z.departure > sp ? z.departure : sp,
+                           zimmer[0]!.departure) }) } })
     }
   }
 

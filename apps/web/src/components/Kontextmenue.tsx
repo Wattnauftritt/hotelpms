@@ -138,4 +138,27 @@ export type KontextZiel =
   | { art: 'frei'; punkt: MenuePunkt
       resourceId: number; categoryId: number; roomCode: string
       /** Der Tag unter dem Zeiger. Eine Nacht, nicht der ganze Zeitraum. */
-      arrival: string; departure: string }
+      arrival: string; departure: string
+      /**
+       * Die stehende Markierung, wenn der Klick **in** ihr liegt.
+       *
+       * Dann meinen "Reservierung anlegen" und "Zimmer sperren" alle
+       * markierten Zimmer und nicht das eine unter dem Zeiger. Vorher
+       * erwischte man nach einer Mehrfachmarkierung genau eines davon --
+       * ohne dass irgendwo stand, welches. Alle oder keines.
+       *
+       * `null` heisst: der Klick liegt woanders. Dann gilt die Stelle, auf
+       * die gezeigt wurde -- wer neben seine Markierung klickt, meint
+       * nicht sie.
+       */
+      auswahl: Array<{ resourceId: number; categoryId: number; roomCode: string
+                       arrival: string; departure: string }> | null
+      /**
+       * Die Markierung wegraeumen, nachdem aus ihr etwas geworden ist.
+       *
+       * Sie liegt im Plan und ist von aussen sonst nicht zu erreichen.
+       * Stehen zu bleiben hiesse, nach dem Anlegen einen Schatten ueber den
+       * frischen Balken zu haben, der aussieht wie eine zweite, ungebuchte
+       * Gruppe -- und nach einer Sperrung ueber dem Riegel dasselbe.
+       */
+      leeren: () => void }

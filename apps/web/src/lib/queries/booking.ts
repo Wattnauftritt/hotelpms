@@ -152,6 +152,14 @@ export interface ChangeStayBody {
   arrival?: string
   departure?: string
   categoryId?: number
+  /**
+   * Das Zimmer danach. Nicht angegeben heisst "bleibt", `null` nimmt es ab.
+   *
+   * Zusammen mit den Tagen, weil ein schraeg gezogener Balken in zwei
+   * Schritten nicht ankommt: das Zielzimmer ist an den alten Tagen belegt,
+   * die alte Zeile an den neuen.
+   */
+  resourceId?: number | null
 }
 
 /** Verkuerzen, verlaengern oder umkategorisieren (A4). Nie Storno plus Neubuchung. */

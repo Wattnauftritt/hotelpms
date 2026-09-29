@@ -8,6 +8,16 @@ import type { Principal } from '../platform/context.js'
 const STATES = ['dirty', 'clean', 'inspected', 'occupied'] as const
 type HousekeepingState = (typeof STATES)[number]
 
+/**
+ * Wie viele Zimmer eine Sperrung auf einmal treffen darf.
+ *
+ * Eine Etage sind zwanzig, ein Haus selten mehr als 250. Die Grenze steht
+ * nicht gegen den Handwerker, sondern gegen die versehentliche Auswahl
+ * "alles" -- und eine Sperrung ueber das ganze Haus ist eine Schliessung
+ * und keine Wartungsmeldung.
+ */
+const SPERRE_MAX_ZIMMER = 100
+
 export function housekeepingRoutes(app: FastifyInstance): void {
   /**
    * Der Zimmerplan des Tages in **einer** Abfrage.
@@ -191,7 +201,8 @@ export function housekeepingRoutes(app: FastifyInstance): void {
     summary: 'Wartungsmeldung anlegen',
     handler: async (req, reply) => {
       const body = req.body as {
-        propertyId: number; resourceId?: number; title: string; description?: string
+        propertyId: number; resourceId?: number; resourceIds?: number[]
+        title: string; description?: string
         priority?: 'low' | 'normal' | 'high'
         outOfOrder?: { from: string; to: string }
         /**
@@ -206,34 +217,86 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       }
       const sperre = body.block ?? (body.outOfOrder === undefined ? undefined
         : { ...body.outOfOrder, kind: 'out_of_order' as const })
-      if (sperre !== undefined && body.resourceId === undefined) {
-        // Eine Sperrung ohne Zimmer waere eine Sperrung von nichts. Still zu
-        // uebergehen hiesse: der Melder glaubt, das Zimmer sei gesperrt.
-        throw Errors.validation({ resourceId: ['field.blockNeedsRoom'] })
+
+      /*
+       * Ein Zimmer oder zwanzig -- derselbe Aufruf und dieselbe Transaktion.
+       *
+       * Der Handwerker sperrt eine Etage, und wer im Plan mehrere Zeilen
+       * markiert hat, meint alle. Je Zimmer einen eigenen Aufruf zu
+       * schicken hiesse: scheitert der dritte, ist die Haelfte gesperrt und
+       * die andere nicht -- und an der Oberflaeche steht eine Fehlermeldung,
+       * aus der nicht hervorgeht, welche.
+       *
+       * Doppelt genannte Zimmer fallen weg, statt zwei Meldungen und zwei
+       * Riegel fuer dasselbe Zimmer anzulegen.
+       */
+      const genannt = body.resourceIds
+        ?? (body.resourceId === undefined ? [] : [body.resourceId])
+      if (genannt.some(z => !Number.isInteger(z))) {
+        throw Errors.validation({ resourceIds: ['field.integer'] })
+      }
+      const zimmer = [...new Set(genannt)]
+      if (zimmer.length > SPERRE_MAX_ZIMMER) {
+        throw Errors.validation({ resourceIds: ['field.tooManyBlockedRooms'] },
+          { max: SPERRE_MAX_ZIMMER })
+      }
+      if (sperre !== undefined) {
+        if (zimmer.length === 0) {
+          // Eine Sperrung ohne Zimmer waere eine Sperrung von nichts. Still zu
+          // uebergehen hiesse: der Melder glaubt, das Zimmer sei gesperrt.
+          throw Errors.validation({ resourceId: ['field.blockNeedsRoom'] })
+        }
+        if (!isIsoDate(sperre.from) || !isIsoDate(sperre.to)) {
+          throw Errors.validation({ block: ['field.isoDate'] })
+        }
       }
       return tx(req.pool, req, async client => {
+        /*
+         * Jedes Zimmer gegen **dieses** Haus pruefen.
+         *
+         * Die Zeilenrichtlinie filtert nach Mandant, nicht nach Haus, und
+         * der Fremdschluessel sieht sie ohnehin nicht: eine fremde
+         * Zimmer-Id ginge sonst durch und erzeugte eine Meldung, die im
+         * eigenen Haus niemand findet.
+         */
+        if (zimmer.length > 0) {
+          const { rowCount } = await client.query(
+            `SELECT 1 FROM resource WHERE property_id = $1 AND id = ANY($2::int[])`,
+            [body.propertyId, zimmer])
+          if (rowCount !== zimmer.length) throw Errors.notFound('res.room')
+        }
+
+        /*
+         * Ein Einfuegen fuer alle Zimmer, nicht eines je Zimmer. `unnest`
+         * mit `[null]` deckt den Fall ohne Zimmer mit ab -- eine Meldung am
+         * Haus, etwa fuer den Aufzug.
+         */
+        const zeilen = zimmer.length === 0 ? [null] : zimmer
         const t = await client.query<{ id: number }>(
           `INSERT INTO maintenance_ticket (property_id, resource_id, title, description,
                                            priority, created_by)
-           VALUES ($1,$2,$3,$4,COALESCE($5,'normal'),$6) RETURNING id`,
-          [body.propertyId, body.resourceId ?? null, body.title.trim(),
+           SELECT $1, z.id, $3, $4, COALESCE($5,'normal'), $6
+             FROM unnest($2::int[]) WITH ORDINALITY AS z(id, nr)
+            ORDER BY z.nr
+           RETURNING id`,
+          [body.propertyId, zeilen, body.title.trim(),
            body.description ?? null, body.priority ?? null, principal.userId])
 
         // Out of Order senkt die Kapazitaet, Out of Service nicht. Der
         // Trigger auf maintenance_block rechnet inventory_day nach.
-        if (sperre !== undefined && body.resourceId !== undefined) {
-          if (!isIsoDate(sperre.from) || !isIsoDate(sperre.to)) {
-            throw Errors.validation({ block: ['field.isoDate'] })
-          }
+        if (sperre !== undefined) {
           await client.query(
             `INSERT INTO maintenance_block (property_id, resource_id, from_date, to_date,
                                             kind, reason)
-             VALUES ($1,$2,$3::date,$4::date,COALESCE($5,'out_of_order'),$6)`,
-            [body.propertyId, body.resourceId, sperre.from, sperre.to,
+             SELECT $1, z.id, $3::date, $4::date, COALESCE($5,'out_of_order'), $6
+               FROM unnest($2::int[]) AS z(id)`,
+            [body.propertyId, zimmer, sperre.from, sperre.to,
              sperre.kind ?? null, body.title.trim()])
         }
         reply.status(201)
-        return { ticketId: t.rows[0]!.id }
+        // `ticketId` bleibt: die Aufrufer von frueher lesen es, und bei
+        // einem Zimmer ist es dasselbe wie der einzige Eintrag der Liste.
+        return { ticketId: t.rows[0]!.id, ticketIds: t.rows.map(r => r.id) }
       })
     }
   })

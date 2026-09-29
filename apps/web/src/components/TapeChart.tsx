@@ -162,8 +162,24 @@ interface AuswahlZeile { resourceId: number; arrival: string; departure: string 
 
 export interface Umzug {
   reservationRef: string
-  resourceId: number
+  /**
+   * Das Zielzimmer, oder `null`, wenn der Balken in seiner Zeile geblieben
+   * ist und nur die Tage gewandert sind.
+   */
+  resourceId: number | null
   roomCode: string
+  /**
+   * Die neuen Tage, oder `null`, wenn nur die Zeile gewechselt hat.
+   *
+   * Beides zugleich ist der Fall, den es lange nicht gab: schraeg gezogen,
+   * anderes Zimmer **und** andere Tage. Die Geste tat bis hierher genau
+   * eines von beidem -- der Zeitversatz zaehlte nur in derselben Zeile.
+   * Das war als Vorsicht gedacht und war eine Sackgasse: liegt die freie
+   * Luecke schraeg, laesst sie sich auch nicht in zwei Schritten
+   * erreichen. Das Zielzimmer ist an den alten Tagen belegt, die alte
+   * Zeile an den neuen; beide Haelften werden einzeln abgewiesen.
+   */
+  zeitraum: { arrival: string; departure: string } | null
   wechsel: {
     von: string
     nach: string
@@ -507,10 +523,24 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       setDragState(null)
       if (d === null) return
       if (d.kind === 'create') {
-        onCreate?.({
-          resourceId: d.resourceId, categoryId: d.categoryId,
-          ...auswahlZeitraum(tage, d.startDay, d.day)
-        })
+        /*
+         * **Auch ein einzelnes Zimmer wird erst markiert, nicht gebucht.**
+         *
+         * Hier oeffnete das Loslassen sofort die Buchungsmaske. Das war
+         * der schnelle Weg fuer den haeufigsten Fall und zugleich eine
+         * Sackgasse: solange die Maske aufgeht, bevor man die Maustaste
+         * losgelassen hat, kommt niemand dazu, mit dem rechten Knopf etwas
+         * anderes mit der Markierung zu tun -- ein Zimmer sperren zum
+         * Beispiel. Eine Geste, ein Ergebnis, und kein zweiter Gedanke
+         * moeglich.
+         *
+         * Jetzt gilt fuer eine Zeile dasselbe wie fuer acht: der Zug
+         * markiert, und **danach** wird entschieden -- mit der Leiste
+         * unten, mit Enter oder mit dem rechten Knopf. Esc raeumt die
+         * Markierung weg, ein neuer Zug ohne Modifikator ersetzt sie.
+         */
+        const z = auswahlZeitraum(tage, d.startDay, d.day)
+        setAuswahl([{ resourceId: d.resourceId, arrival: z.arrival, departure: z.departure }])
       } else if (d.kind === 'group') {
         /*
          * Sammeln, nicht sofort buchen.
@@ -543,9 +573,11 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                          - (zeileVonZimmer.get(b.resourceId) ?? 0))
         })
       } else if (d.kind === 'move') {
-        const versatz = d.overResourceId === d.quelleResourceId
-          ? d.day - d.startDay
-          : 0
+        // Der Zeitversatz zaehlt jetzt auch dann, wenn die Zeile gewechselt
+        // hat -- siehe `Umzug.zeitraum`.
+        const versatz = d.day - d.startDay
+        const zeileAnders = d.overResourceId !== null
+          && d.overResourceId !== d.quelleResourceId
         if (d.moved && d.ueberBand) {
           /*
            * Ins Band gezogen heisst: das Zimmer wieder abnehmen.
@@ -564,32 +596,36 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
            * wechselt.
            */
           if (d.quelleResourceId !== null) onUnassign?.(d.reservationRef)
-        } else if (d.moved && versatz !== 0) {
+        } else if (d.moved && !zeileAnders && versatz !== 0
+                   && d.bookingRooms > 1 && d.alleDerGruppe) {
           /*
-           * In derselben Zeile waagerecht gezogen: der ganze Aufenthalt
-           * wandert, seine Laenge bleibt. Das Zimmer bleibt ebenfalls --
-           * die Zeile hat sich ja nicht geaendert.
+           * Mit **Alt** waagerecht gezogen: die ganze Gruppe wandert.
            *
-           * Mit **Alt** wandert die ganze Gruppe statt nur dieses
-           * Balkens. Die Vorgabe ist das einzelne Zimmer, weil das die
-           * vorsichtige Richtung ist: wer daneben greift, verschiebt eine
-           * Reservierung und nicht acht -- acht zurueckzuholen ist Arbeit,
-           * eine ist ein Zug.
+           * Nur in derselben Zeile. Eine Gruppe in eine andere Zeile zu
+           * ziehen hiesse, acht Zimmer in eines zu legen; gemeint ist
+           * dann dieses eine, und das faellt in den Fall darunter.
+           *
+           * Die Vorgabe ist das einzelne Zimmer, weil das die vorsichtige
+           * Richtung ist: wer daneben greift, verschiebt eine Reservierung
+           * und nicht acht -- acht zurueckzuholen ist Arbeit, eine ist ein
+           * Zug.
            */
-          if (d.bookingRooms > 1 && d.alleDerGruppe) {
-            onShiftGroup?.(d.bookingRef, versatz)
-          } else {
-            onChangeStay?.(d.reservationRef,
-              addDays(d.arrival, versatz), addDays(d.departure, versatz))
-          }
-        } else if (d.moved && d.overResourceId !== null
-                   && d.overResourceId !== d.quelleResourceId) {
-          const ziel = zimmerNach.get(d.overResourceId)
+          onShiftGroup?.(d.bookingRef, versatz)
+        } else if (d.moved && (zeileAnders || versatz !== 0)) {
+          /*
+           * **Eine Geste, beide Achsen.** Zeile, Tage oder beides -- was
+           * sich geaendert hat, geht mit; der Bildschirm entscheidet
+           * daraus, welcher Aufruf es wird.
+           */
+          const ziel = zeileAnders ? zimmerNach.get(d.overResourceId!) : undefined
           const anders = ziel !== undefined && ziel.category_id !== d.categoryId
           onMove?.({
             reservationRef: d.reservationRef,
-            resourceId: d.overResourceId,
+            resourceId: zeileAnders ? d.overResourceId : null,
             roomCode: ziel?.code ?? '',
+            zeitraum: versatz === 0 ? null : {
+              arrival: addDays(d.arrival, versatz),
+              departure: addDays(d.departure, versatz) },
             wechsel: anders
               ? { von: gruppeNach.get(d.categoryId)?.name ?? '',
                   nach: ziel.category_name,
@@ -692,21 +728,19 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     }
     if (drag.moved && drag.overResourceId !== null) {
       /*
-       * **Eine Geste tut eine Sache.** Liegt der Zeiger in einer anderen
-       * Zeile, ist es ein Zimmerwechsel und der Zeitraum bleibt; liegt er
-       * in derselben, ist es eine Verschiebung in der Zeit und das Zimmer
-       * bleibt.
+       * **Der Schatten liegt, wo der Balken landet -- auf beiden Achsen.**
        *
-       * Beides zugleich waere zwei Aufrufe -- `assign-unit` und
-       * `change-stay` --, und dazwischen liegt ein Zustand, den niemand
-       * gewollt hat: entweder das neue Zimmer an den alten Tagen oder das
-       * alte Zimmer an den neuen. Schlaegt der zweite Aufruf fehl, bleibt
-       * genau der stehen. Der Schattenbalken zeigt waehrend des Zugs, was
-       * passieren wird, also ist die Regel sichtbar und nicht geraten.
+       * Hier stand: liegt der Zeiger in einer anderen Zeile, bleibt der
+       * Zeitraum; liegt er in derselben, bleibt das Zimmer. Beides zugleich
+       * waeren zwei Aufrufe gewesen, und dazwischen ein Zustand, den
+       * niemand gewollt hat.
+       *
+       * Die Route kann es inzwischen in einem: `change-stay` nimmt das
+       * Zielzimmer mit. Der Schatten darf deshalb zeigen, was wirklich
+       * passiert -- und muss es, denn ein Schatten, der nur die halbe
+       * Bewegung vorwegnimmt, ist eine Vorschau, die luegt.
        */
-      const versatz = drag.overResourceId === drag.quelleResourceId
-        ? drag.day - drag.startDay
-        : 0
+      const versatz = drag.day - drag.startDay
       const b = balken(addDays(drag.arrival, versatz), addDays(drag.departure, versatz))
       /*
        * Bei einer Gruppe steht die Zahl der Zimmer am Schattenbalken.
@@ -722,7 +756,10 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
        */
       return {
         kaesten: new Map([[drag.overResourceId, b]]),
-        gruppenZahl: versatz !== 0 && drag.bookingRooms > 1 && drag.alleDerGruppe
+        // Die Gruppe wandert nur in derselben Zeile mit; quer gezogen ist
+        // dieses eine Zimmer gemeint.
+        gruppenZahl: versatz !== 0 && drag.overResourceId === drag.quelleResourceId
+          && drag.bookingRooms > 1 && drag.alleDerGruppe
           ? drag.bookingRooms : undefined }
     }
     return null
@@ -758,10 +795,76 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     if (auswahl === null) return
     const aufTaste = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') setAuswahl(null)
+      /*
+       * Enter bucht, was markiert ist -- derselbe Weg wie der Knopf in der
+       * Leiste. Der Knopf ist der Weg fuer den, der die Taste nicht kennt;
+       * die Taste der fuer den, der die Hand nicht von der Tastatur nehmen
+       * will.
+       *
+       * Nicht, waehrend jemand in einem Feld tippt: ein Enter im Suchfeld
+       * ueber dem Plan meint das Feld, nicht die Markierung.
+       */
+      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)
+          && !(e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault()
+        auswahlBuchen()
+      }
     }
     window.addEventListener('keydown', aufTaste)
     return () => { window.removeEventListener('keydown', aufTaste) }
-  }, [auswahl !== null])
+    /*
+     * Ohne Abhaengigkeitsliste, also bei jedem Bild neu eingehaengt.
+     *
+     * Der Horcher ruft `auswahlBuchen`, und das liest die Markierung, die
+     * Zimmer und die Rueckrufe von aussen. Mit einer Liste haette er eine
+     * Fassung davon festgehalten -- und Enter buchte, was beim letzten
+     * Wechsel der Markierung dastand, nicht was jetzt dasteht. Ein
+     * `addEventListener` je Bild ist dagegen nichts.
+     */
+  })
+
+  /**
+   * Was aus der Markierung wird, wenn sie gebucht wird.
+   *
+   * **Ein Zimmer ist keine Gruppe.** Eine Gruppenbuchung mit einem Zimmer
+   * waere eine Buchung mit einem Besteller, einer Namensliste und einer
+   * Aufteilung -- fuer einen Gast, der ein Zimmer nimmt. Die
+   * Reservierungsmaske ist dafuer die richtige, und sie war es schon
+   * immer; nur fuehrte der Weg dorthin bisher ueber das Loslassen der
+   * Maustaste statt ueber eine Entscheidung.
+   */
+  const auswahlBuchen = (): void => {
+    if (auswahl === null || auswahl.length === 0) return
+    if (auswahl.length === 1) {
+      const z = auswahl[0]!
+      const u = zimmerNach.get(z.resourceId)
+      if (u !== undefined) {
+        onCreate?.({ resourceId: z.resourceId, categoryId: u.category_id,
+                     arrival: z.arrival, departure: z.departure })
+      }
+    } else {
+      onCreateGroup?.({
+        rooms: auswahl.flatMap(z => {
+          const u = zimmerNach.get(z.resourceId)
+          return u === undefined ? [] : [{
+            resourceId: z.resourceId, categoryId: u.category_id,
+            arrival: z.arrival, departure: z.departure }]
+        }),
+        // Oben die Klammer: sie ist die Vorgabe der Maske und fuer jedes
+        // Zimmer richtig, das nicht abweicht.
+        arrival: klammer.arrival, departure: klammer.departure
+      })
+    }
+    /*
+     * Buchen leert die Auswahl.
+     *
+     * Sie ist ab hier in der Maske aufgehoben -- dort stehen dieselben
+     * Zimmer und lassen sich einzeln entfernen. Stehen zu bleiben hiesse,
+     * nach dem Anlegen einen Schatten ueber den frischen Balken zu haben,
+     * der aussieht wie eine zweite, ungebuchte Gruppe.
+     */
+    setAuswahl(null)
+  }
 
   /**
    * Welcher Balken waehrend eines Umzugs oder einer Groessenaenderung
@@ -882,6 +985,17 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       const tag = tagUnter(e.clientX)
       const anreise = tage[Math.max(0, Math.min(tage.length - 1, tag))]
       if (anreise === undefined) return
+      /*
+       * Liegt der Klick **in** der stehenden Markierung, meint er sie --
+       * und zwar ganz. Vorher erwischte man nach einer Mehrfachmarkierung
+       * genau eines der Zimmer, ohne dass irgendwo stand, welches.
+       *
+       * Geprueft wird die Zelle und nicht nur die Zeile: wer seine
+       * markierten Zimmer am 20. anklickt, waehrend die Markierung auf dem
+       * 5. liegt, zeigt auf den 20.
+       */
+      const inAuswahl = (auswahl ?? []).some(
+        z => z.resourceId === resourceId && anreise >= z.arrival && anreise < z.departure)
       onKontext?.({
         art: 'frei', punkt: { x: e.clientX, y: e.clientY },
         resourceId, categoryId,
@@ -889,8 +1003,15 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         // **Eine Nacht**, nicht der sichtbare Zeitraum. Wer im Plan rechts
         // klickt, meint diesen Tag; ein Vorschlag ueber sechzig Tage waere
         // eine Buchung, die niemand wollte.
-        arrival: anreise, departure: addDays(anreise, 1) })
-    }, [onKontext, tagUnter, tage, zimmerNach])
+        arrival: anreise, departure: addDays(anreise, 1),
+        leeren: () => setAuswahl(null),
+        auswahl: !inAuswahl || auswahl === null ? null : auswahl.flatMap(z => {
+          const u = zimmerNach.get(z.resourceId)
+          return u === undefined ? [] : [{
+            resourceId: z.resourceId, categoryId: u.category_id, roomCode: u.code,
+            arrival: z.arrival, departure: z.departure }]
+        }) })
+    }, [onKontext, tagUnter, tage, zimmerNach, auswahl])
 
   const beginneGroesseAendern = useCallback(
     (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => {
@@ -1119,8 +1240,13 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                          ghostHier={kasten !== undefined}
                          ghostLinks={kasten?.left ?? 0}
                          ghostBreite={kasten?.width ?? 0}
+                         /* Erst ab zwei Zeilen: "1 rooms" stand sonst im
+                            Schatten, sobald jemand ein einzelnes Zimmer
+                            aufzieht -- und die Zahl beantwortet dort keine
+                            Frage, die Zeile steht ja daneben. */
                          ghostZaehler={ghost?.gruppenZahl ?? (
-                           ghost?.zaehlerAn === u.id ? ghost.kaesten.size : null)}
+                           ghost?.zaehlerAn === u.id && ghost.kaesten.size > 1
+                             ? ghost.kaesten.size : null)}
                          onCreatePointerDown={beginneErstellen}
                          onMovePointerDown={beginneVerschieben}
                          onResizePointerDown={beginneGroesseAendern}
@@ -1159,7 +1285,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         <div className="fixed inset-x-0 bottom-0 z-30 flex flex-wrap items-center gap-2
                         bg-neutral-900 text-white px-3 py-1.5 text-sm shadow-lg">
           <span className="font-medium">
-            {t('plan.selectedRooms', { n: auswahl.length })}
+            {auswahl.length === 1 ? t('plan.selectedRoom')
+              : t('plan.selectedRooms', { n: auswahl.length })}
           </span>
           {/*
             * Der Zeitraum, und wenn die Zimmer verschiedene haben, die
@@ -1173,32 +1300,11 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             {klammer.gemischt && ` · ${t('plan.mixedDates')}`}
           </span>
           <div className="grow" />
-          {/*
-            * Buchen leert die Auswahl.
-            *
-            * Sie ist ab hier in der Maske aufgehoben -- dort stehen
-            * dieselben Zimmer und lassen sich einzeln entfernen. Stehen zu
-            * bleiben hiesse, nach dem Anlegen einen Schatten ueber den
-            * frischen Balken zu haben, der aussieht wie eine zweite,
-            * ungebuchte Gruppe.
-            */}
-          <button type="button"
-                  onClick={() => {
-                    onCreateGroup?.({
-                      rooms: auswahl.flatMap(z => {
-                        const u = zimmerNach.get(z.resourceId)
-                        return u === undefined ? [] : [{
-                          resourceId: z.resourceId, categoryId: u.category_id,
-                          arrival: z.arrival, departure: z.departure }]
-                      }),
-                      // Oben die Klammer: sie ist die Vorgabe der Maske und
-                      // fuer jedes Zimmer richtig, das nicht abweicht.
-                      arrival: klammer.arrival, departure: klammer.departure
-                    })
-                    setAuswahl(null)
-                  }}
+          {/* Enter tut dasselbe; der Knopf ist der Weg fuer den, der das
+              nicht weiss. Die Begruendung steht an `auswahlBuchen`. */}
+          <button type="button" onClick={auswahlBuchen}
                   className="px-3 py-1 rounded bg-white text-neutral-900 text-sm">
-            {t('plan.bookSelection')}
+            {auswahl.length === 1 ? t('booking.title') : t('plan.bookSelection')}
           </button>
           {/* Esc tut dasselbe; der Knopf ist der Weg fuer den, der das
               nicht weiss. */}
