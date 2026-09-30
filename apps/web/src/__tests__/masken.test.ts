@@ -53,7 +53,21 @@ describe('Der Rahmen einer Maske', () => {
   it('schliesst mit Escape', () => {
     // Den Weg mit der Maus gab es, den mit der Tastatur nicht. An einer
     // Rezeption liegt die Hand auf der Tastatur.
-    expect(dialog).toContain("e.key === 'Escape'")
+    expect(dialog).toContain('useEscape(onClose)')
+  })
+
+  it('haengt Escape nicht daran, ob ein Klick daneben schliesst', () => {
+    /*
+     * Beides hing einmal an demselben Schalter, und damit war der
+     * Check-in die eine Maske, die auf Escape nicht hoerte. Ein Griff, der
+     * ueberall hilft und an einer Stelle nicht, ist schlechter als keiner:
+     * wer nicht mehr weiss, wo er ist, drueckt genau dort weiter.
+     *
+     * Der Klick daneben bleibt gesperrt -- er ist ein Ausrutscher, Escape
+     * ist eine Entscheidung.
+     */
+    expect(dialog).not.toMatch(/if \(!nebenbeiSchliessen\) return/)
+    expect(dialog).toContain('onClick={nebenbeiSchliessen ? onClose : undefined}')
   })
 
   it('laesst den Check-in nicht nebenbei zuklappen', () => {
@@ -91,5 +105,77 @@ describe('Die Gruppenmaske zeigt die Tage jedes Zimmers', () => {
      */
     expect(gruppe).toContain('const jetzt = v[resourceId] ?? { arrival, departure }')
     expect(gruppe).toContain('delete rest[z.resourceId]')
+  })
+})
+
+/**
+ * Escape ist ueberall der Weg hinaus -- und nimmt genau eine Lage.
+ *
+ * Gemeldet wurde das als "ich habe drei Zimmer markiert, das Menue
+ * aufgemacht, Escape gedrueckt, und jetzt ist alles weg". Jede Lage horchte
+ * fuer sich am Fenster; solange nur eine offen war, ging das gut, und
+ * sobald zwei uebereinanderlagen, schlossen beide.
+ */
+describe('Escape nimmt die oberste Lage', () => {
+  const escape = readFileSync(join(SRC, 'lib', 'tasten.ts'), 'utf8')
+
+  it('haelt einen Stapel und gibt den Druck nur nach oben', () => {
+    expect(escape).toContain('const stapel: Array<() => void> = []')
+    expect(escape).toContain('const oben = stapel[stapel.length - 1]')
+  })
+
+  it('haengt genau einen Horcher ans Fenster', () => {
+    // Nicht die Ersparnis ist der Punkt: das ist die einzige Stelle, an
+    // der die Reihenfolge entschieden wird. Zwanzig Horcher entscheiden
+    // sie gar nicht.
+    expect(escape.match(/addEventListener/g)).toHaveLength(1)
+    expect(escape).toContain('if (!horcht) {')
+  })
+
+  it('meldet sich nicht bei jedem Bild neu an', () => {
+    /*
+     * Sonst legte sich die Lage jedes Mal **ueber** eine Maske, die
+     * laengst darueber liegt -- und Escape schloesse den Plan darunter
+     * statt der Maske davor. Der Rueckruf liegt deshalb im `ref` und die
+     * Anmeldung haengt nur an `aktiv`.
+     */
+    expect(escape).toContain('halter.current = onEscape')
+    expect(escape).toContain('}, [aktiv])')
+  })
+
+  it('raeumt sich beim Abhaengen aus dem Stapel', () => {
+    // `lastIndexOf` und nicht `indexOf`: zwei Lagen koennen denselben
+    // Rueckruf tragen, und wer geht, ist die obere.
+    expect(escape).toContain('stapel.lastIndexOf(eintrag)')
+  })
+
+  it('haelt ein Ankreuzfeld nicht fuer eine Texteingabe', () => {
+    /*
+     * Enter und Strg+Z gehoeren dem Feld, in dem jemand tippt -- aber nur
+     * dort. Mit einer Pruefung auf `HTMLInputElement` allein war Strg+Z
+     * tot, sobald jemand den Planungsmodus angeklickt hatte: das
+     * Ankreuzfeld behaelt den Fokus, und gebraucht wird die Taste genau
+     * dann.
+     */
+    expect(escape).toContain("const OHNE_TEXT = new Set(['checkbox'")
+    expect(escape).toContain('return !OHNE_TEXT.has(ziel.type)')
+    expect(escape).toContain('ziel.isContentEditable')
+  })
+
+  it('benutzen alle Lagen, die sich schliessen lassen', () => {
+    /*
+     * Die vollstaendige Liste ist der Punkt: eine Lage mit eigenem Horcher
+     * ist genau der Fehler, um den es hier geht, und faellt an ihr selbst
+     * nicht auf -- sondern an der Lage darunter.
+     */
+    for (const [datei, ordner] of [['Dialog.tsx', 'components'],
+                                   ['Kontextmenue.tsx', 'components'],
+                                   ['Hauswahl.tsx', 'components'],
+                                   ['ReservationPanel.tsx', 'components'],
+                                   ['TapeChart.tsx', 'components']] as const) {
+      const quelle = readFileSync(join(SRC, ordner, datei), 'utf8')
+      expect(quelle, datei).toContain('useEscape(')
+      expect(quelle, datei).not.toContain("e.key === 'Escape'")
+    }
   })
 })

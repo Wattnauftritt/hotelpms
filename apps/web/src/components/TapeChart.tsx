@@ -7,6 +7,7 @@ import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passu
   from '../lib/tapeSelection.js'
 import { spaltenBreite, spanne } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
+import { useEscape, istTextEingabe } from '../lib/tasten.js'
 
 /**
  * Der Zimmerplan.
@@ -180,14 +181,6 @@ export interface Umzug {
    * Zeile an den neuen; beide Haelften werden einzeln abgewiesen.
    */
   zeitraum: { arrival: string; departure: string } | null
-  wechsel: {
-    von: string
-    nach: string
-    /** Plaetze im Zielzimmer. Weniger als `bedarf` heisst: zu klein. */
-    platz: number
-    /** Plaetze, die die **gebuchte** Zimmergruppe zusagt (`platzbedarf`). */
-    bedarf: number
-  } | null
 }
 
 interface Props {
@@ -222,12 +215,14 @@ interface Props {
   /**
    * Balken auf eine andere Zimmerzeile gezogen (A3).
    *
-   * `wechsel` ist gesetzt, wenn das Zielzimmer zu einer **anderen**
-   * Zimmergruppe gehört. Die API laesst das bewusst zu -- ein Upgrade ist
-   * Alltag --, aber versehentlich passiert dabei auch das Gegenteil: eine
-   * Buchung fuer zwei Personen landet in einem Einzelzimmer. Der Plan sagt
-   * deshalb, was der Wechsel bedeutet, und der Bildschirm entscheidet, ob
-   * er fragt.
+   * Der Plan meldet nur, **was** gezogen wurde -- was daraus wird,
+   * entscheidet der Bildschirm. Er zeigt es in der Maske an, und erst dort
+   * wird gespeichert: ein Zug ist eine Geste von zwei Zehntelsekunden, und
+   * danebengegriffen sieht genauso aus wie richtig gezogen.
+   *
+   * Die Warnung vor der kleineren Zimmergruppe steht deshalb auch dort und
+   * nicht hier: in der Maske laesst sich das Zimmer noch aendern, und die
+   * Warnung gilt dann fuer das gewaehlte.
    */
   onMove?: (umzug: Umzug) => void
   /** Balkenrand gezogen (A4). */
@@ -618,20 +613,13 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
            * daraus, welcher Aufruf es wird.
            */
           const ziel = zeileAnders ? zimmerNach.get(d.overResourceId!) : undefined
-          const anders = ziel !== undefined && ziel.category_id !== d.categoryId
           onMove?.({
             reservationRef: d.reservationRef,
             resourceId: zeileAnders ? d.overResourceId : null,
             roomCode: ziel?.code ?? '',
             zeitraum: versatz === 0 ? null : {
               arrival: addDays(d.arrival, versatz),
-              departure: addDays(d.departure, versatz) },
-            wechsel: anders
-              ? { von: gruppeNach.get(d.categoryId)?.name ?? '',
-                  nach: ziel.category_name,
-                  platz: ziel.max_occupancy,
-                  bedarf: platzbedarf(d) }
-              : null
+              departure: addDays(d.departure, versatz) }
           })
         } else if (!d.moved) onSelect?.(d.reservationRef)
       } else if (d.kind === 'resize') {
@@ -788,27 +776,30 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
    *
    * Der zweite Weg zurueck neben dem Klick ohne Modifikator, und der
    * gewohnte: wer etwas ausgewaehlt hat und es doch nicht will, drueckt
-   * Esc. Am Fenster und nicht am Plan, weil der Plan keinen Fokus haelt --
-   * nach einem Zug liegt er auf dem zuletzt beruehrten Balken oder nirgends.
+   * Esc. Ueber `useEscape` und nicht mit eigenem Horcher am Fenster: liegt
+   * ein Kontextmenue oder eine Maske darueber, meint der Druck **die** und
+   * nicht die Markierung darunter -- sonst war mit dem Menue auch das weg,
+   * worauf es sich bezog.
+   */
+  useEscape(() => setAuswahl(null), auswahl !== null)
+
+  /*
+   * Enter bucht, was markiert ist -- derselbe Weg wie der Knopf in der
+   * Leiste. Der Knopf ist der Weg fuer den, der die Taste nicht kennt; die
+   * Taste der fuer den, der die Hand nicht von der Tastatur nehmen will.
+   *
+   * Nicht, waehrend jemand in einem Feld tippt: ein Enter im Suchfeld ueber
+   * dem Plan meint das Feld, nicht die Markierung. Und nicht, solange eine
+   * Maske offen ist: dort ist Enter das Abschicken **dieser** Maske.
    */
   useEffect(() => {
     if (auswahl === null) return
     const aufTaste = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setAuswahl(null)
-      /*
-       * Enter bucht, was markiert ist -- derselbe Weg wie der Knopf in der
-       * Leiste. Der Knopf ist der Weg fuer den, der die Taste nicht kennt;
-       * die Taste der fuer den, der die Hand nicht von der Tastatur nehmen
-       * will.
-       *
-       * Nicht, waehrend jemand in einem Feld tippt: ein Enter im Suchfeld
-       * ueber dem Plan meint das Feld, nicht die Markierung.
-       */
-      if (e.key === 'Enter' && !(e.target instanceof HTMLInputElement)
-          && !(e.target instanceof HTMLTextAreaElement)) {
-        e.preventDefault()
-        auswahlBuchen()
-      }
+      if (e.key !== 'Enter') return
+      if (istTextEingabe(e.target)) return
+      if (document.querySelector('[role="dialog"]') !== null) return
+      e.preventDefault()
+      auswahlBuchen()
     }
     window.addEventListener('keydown', aufTaste)
     return () => { window.removeEventListener('keydown', aufTaste) }
@@ -996,6 +987,31 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
        */
       const inAuswahl = (auswahl ?? []).some(
         z => z.resourceId === resourceId && anreise >= z.arrival && anreise < z.departure)
+
+      /*
+       * **Neben einer Mehrfachmarkierung passiert nichts.**
+       *
+       * Wer acht Zimmer zusammengesucht hat und daneben klickt, meint
+       * nicht, sie wegzuwerfen. Vorher tat der Klick genau das -- lautlos
+       * und fuer ein Menue, das sich dann auf ein einzelnes Zimmer bezog.
+       * Die Grenze liegt bei zwei, weil eine Mehrfachmarkierung Arbeit
+       * ist: bei einer einzelnen Zelle ist der Klick daneben offensichtlich
+       * der Wunsch, woanders hinzuzeigen.
+       */
+      if (!inAuswahl && auswahl !== null && auswahl.length > 1) return
+
+      /*
+       * Der rechte Knopf markiert, was er trifft -- wie der linke.
+       *
+       * Ein Menue, das "hier anlegen" anbietet, ohne dass zu sehen ist,
+       * **wo** hier ist, laesst die Wahl des Tages dem Gedaechtnis. Die
+       * Markierung ist die optische Kontrolle davor, und sie bleibt
+       * stehen, waehrend das Menue offen ist.
+       */
+      if (!inAuswahl) {
+        setAuswahl([{ resourceId, arrival: anreise, departure: addDays(anreise, 1) }])
+      }
+
       onKontext?.({
         art: 'frei', punkt: { x: e.clientX, y: e.clientY },
         resourceId, categoryId,

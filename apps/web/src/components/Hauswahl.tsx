@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
+import { useEscape } from '../lib/tasten.js'
 import { useT } from '../lib/i18n/index.js'
 
 /**
@@ -69,14 +70,13 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
       if (e.target instanceof Node && ref.current?.contains(e.target)) return
       setOffen(false)
     }
-    const aufTaste = (e: KeyboardEvent): void => { if (e.key === 'Escape') setOffen(false) }
     window.addEventListener('pointerdown', zu, true)
-    window.addEventListener('keydown', aufTaste)
-    return () => {
-      window.removeEventListener('pointerdown', zu, true)
-      window.removeEventListener('keydown', aufTaste)
-    }
+    return () => { window.removeEventListener('pointerdown', zu, true) }
   }, [offen])
+
+  // Esc ueber die gemeinsame Lage: die Klappliste liegt in der Kopfzeile,
+  // und darueber kann eine Maske stehen, die den Druck zuerst meint.
+  useEscape(() => setOffen(false), offen)
 
   // Der Suchbegriff haelt nicht ueber das Schliessen hinaus: beim naechsten
   // Oeffnen stuende sonst eine gefilterte Liste da, und dass sie gefiltert

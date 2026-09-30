@@ -406,6 +406,93 @@ export const plan = {
     de: 'Trotzdem verschieben',
     en: 'Move anyway',
     tr: 'Yine de taşı' },
+  /*
+   * Das Verlegen (A3/A4) bekommt eigene Schluessel und nicht `plan.move*`:
+   * dort steht die Warnung vor der Zimmergruppe, hier die Maske drumherum.
+   * Ein Vorsatz fuer beides liesse beim naechsten Schluessel niemanden
+   * mehr erkennen, wohin er gehoert.
+   */
+  'verlegen.title': {
+    de: 'Buchung bearbeiten',
+    en: 'Edit the booking',
+    tr: 'Rezervasyonu düzenle' },
+  'verlegen.before': {
+    de: 'Bisher: {raum}, {von} bis {bis}',
+    en: 'Currently: {raum}, {von} to {bis}',
+    tr: 'Şu an: {raum}, {von} – {bis}' },
+  'verlegen.state': {
+    de: '{raum}, {von} bis {bis}',
+    en: '{raum}, {von} to {bis}',
+    tr: '{raum}, {von} – {bis}' },
+  'verlegen.room': {
+    de: 'Zimmer',
+    en: 'Room',
+    tr: 'Oda' },
+  'verlegen.noRoom': {
+    de: 'ohne Zimmer',
+    en: 'no room',
+    tr: 'odasız' },
+  'verlegen.unassignHint': {
+    de: 'Das Zimmer wird abgenommen. Die Buchung steht danach im Band über dem '
+      + 'Plan und behält ihre Tage.',
+    en: 'The room is taken away. The booking then sits in the band above the '
+      + 'plan and keeps its dates.',
+    tr: 'Oda geri alınır. Rezervasyon planın üstündeki şeritte kalır ve '
+      + 'tarihlerini korur.' },
+  'verlegen.nothingChanged': {
+    de: 'Nichts geändert',
+    en: 'Nothing changed',
+    tr: 'Değişiklik yok' },
+  'verlegen.inHouseKeepsRoom': {
+    de: 'Ein angereister Gast behält sein Zimmer',
+    en: 'A guest who has checked in keeps their room',
+    tr: 'Giriş yapmış misafir odasını korur' },
+  'verlegen.groupShift': {
+    de: 'Die ganze Buchung {ref} wandert um {tage} Tage — alle {n} Zimmer.',
+    en: 'The whole booking {ref} moves by {tage} days — all {n} rooms.',
+    tr: '{ref} rezervasyonunun tamamı {tage} gün kayar — {n} odanın hepsi.' },
+  'verlegen.planningMode': {
+    de: 'Planungsmodus',
+    en: 'Planning mode',
+    tr: 'Planlama modu' },
+  'verlegen.planningModeHint': {
+    de: 'Verschiebungen werden sofort gespeichert, ohne Nachfrage. Strg+Z nimmt '
+      + 'die letzte zurück.',
+    en: 'Moves are saved immediately, without asking. Ctrl+Z takes the last one '
+      + 'back.',
+    tr: 'Taşımalar sorulmadan hemen kaydedilir. Son işlemi Ctrl+Z geri alır.' },
+  'verlegen.planningModeOn': {
+    de: 'Planungsmodus: Verschiebungen werden sofort gespeichert',
+    en: 'Planning mode: moves are saved immediately',
+    tr: 'Planlama modu: taşımalar hemen kaydedilir' },
+  'verlegen.undoTitle': {
+    de: 'Änderung zurücknehmen',
+    en: 'Take the change back',
+    tr: 'Değişikliği geri al' },
+  'verlegen.undoQuestion': {
+    de: 'Buchung {gast} zurücksetzen von {von} zu {zu}?',
+    en: 'Reset booking {gast} from {von} to {zu}?',
+    tr: '{gast} rezervasyonu {von} durumundan {zu} durumuna alınsın mı?' },
+  'verlegen.undoGroup': {
+    de: 'Buchung {ref} wieder um {tage} Tage zurückschieben — alle {n} Zimmer?',
+    en: 'Move booking {ref} back by {tage} days — all {n} rooms?',
+    tr: '{ref} rezervasyonu {tage} gün geri alınsın mı — {n} odanın hepsi?' },
+  'verlegen.undoConfirm': {
+    de: 'Zurücksetzen',
+    en: 'Reset',
+    tr: 'Geri al' },
+  'verlegen.undoHint': {
+    de: 'Zurückgenommen wird nur diese eine Änderung. Ist das Zimmer inzwischen '
+      + 'belegt, schlägt sie fehl und bleibt, wie sie ist.',
+    en: 'Only this one change is taken back. If the room is occupied by now, it '
+      + 'fails and stays as it is.',
+    tr: 'Yalnızca bu değişiklik geri alınır. Oda bu arada doluysa işlem başarısız '
+      + 'olur ve her şey olduğu gibi kalır.' },
+  'verlegen.nothingToUndo': {
+    de: 'Nichts zurückzunehmen',
+    en: 'Nothing to take back',
+    tr: 'Geri alınacak bir şey yok' },
+
   'plan.dragHint': {
     de: 'Balken ziehen verschiebt die Reservierung, die Ränder verlängern sie. Auf '
       + 'freier Fläche aufziehen legt eine Buchung an — mit gedrückter Strg-, ⌘- '
