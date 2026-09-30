@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
 import { useAssignUnit, useChangeStay, useShiftBooking } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
-import { TapeChart, type Umzug } from '../components/TapeChart.tsx'
+import { platzbedarf } from '../lib/tapeSelection.js'
+import { istTextEingabe } from '../lib/tasten.js'
+import { TapeChart } from '../components/TapeChart.tsx'
+import { BuchungVerlegen, AenderungZurueck, type Verlegung, type Ziel,
+         type Aenderung } from '../components/BuchungVerlegen.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
 import { GroupBookingDialog, type GroupSelection }
@@ -13,10 +17,12 @@ import { GroupPanel } from '../components/GroupPanel.tsx'
 import type { KontextZiel } from '../components/Kontextmenue.tsx'
 import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
-import { Dialog, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
+/** Wie viele Schritte Strg+Z zurueckreicht. */
+const RUECKGAENGIG_MAX = 20
+const PLANUNG_SCHLUESSEL = 'plan.planungsmodus'
 /** Zustaende, die ein Zimmer wirklich belegen. Storniert und No-Show nicht. */
 const BINDEND = new Set(['Optional', 'Confirmed', 'InHouse'])
 
@@ -50,14 +56,43 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   // mit mehreren Zimmern, nicht eine Buchung je Zimmer.
   const [gruppe, setGruppe] = useState<GroupSelection | null>(null)
   /*
-   * Ein Umzug in eine andere Zimmergruppe wird nicht stillschweigend
-   * ausgefuehrt. Die API laesst ihn zu -- ein Upgrade ist Alltag --, aber
-   * versehentlich passiert dabei auch das Gegenteil: eine Buchung fuer zwei
-   * Personen landet in einem Einzelzimmer. Gefragt wird erst beim
-   * Loslassen, nicht beim Ziehen; eine Frage mitten in der Geste waere im
-   * Weg.
+   * **Kein Zug schreibt unmittelbar.** Was gezogen wurde, landet hier und
+   * wird erst gespeichert, wenn jemand in der Maske darauf klickt.
+   *
+   * Ein Zug dauert zwei Zehntelsekunden, und danebengegriffen sieht
+   * genauso aus wie richtig: der Balken liegt, wo man ihn losgelassen hat.
+   * Aufgefallen ist das bisher erst, wenn der Gast vor dem Tresen stand --
+   * ein Zimmer doppelt belegt, eine Anreise einen Tag zu frueh. Beides
+   * kostet Geld, als Ausfall oder als Ersatzunterkunft.
+   *
+   * Die Maske ist dabei ein Formular und keine Rueckfrage: wer danebenzieht,
+   * will nicht abbrechen und noch einmal zielen, sondern einen Tag
+   * korrigieren.
    */
-  const [umzug, setUmzug] = useState<Umzug | null>(null)
+  const [verlegung, setVerlegung] = useState<Verlegung | null>(null)
+  /*
+   * Der Planungsmodus haengt an der Sitzung, nicht am Bildschirm.
+   *
+   * Wer eine Woche umsortiert, wechselt zwischendurch in die Anreiseliste
+   * und zurueck; waere der Modus an dieser Komponente, waere er dann
+   * wieder aus, ohne dass jemand ihn ausgeschaltet hat. `sessionStorage`
+   * und nicht `localStorage`: eine ausgeschaltete Sicherung soll den
+   * Feierabend nicht ueberleben.
+   */
+  const [planung, setPlanung] = useState(() => {
+    try { return sessionStorage.getItem(PLANUNG_SCHLUESSEL) === 'an' }
+    catch { return false }
+  })
+  /*
+   * Was zuletzt geschrieben wurde -- fuer Strg+Z.
+   *
+   * Nur im Speicher und nur fuer diesen Bildschirm: ein Stapel, der einen
+   * Neuladen ueberlebt, verspricht ein Zuruecknehmen von Aenderungen, die
+   * inzwischen jemand anders ueberschrieben hat. Zwanzig Schritte sind
+   * mehr, als jemand ohne Blick in den Plan zurueckdenkt.
+   */
+  const [rueckgaengig, setRueckgaengig] = useState<Aenderung[]>([])
+  const [zurueck, setZurueck] = useState<Aenderung | null>(null)
   /*
    * Die Gruppenmaske: alle Zimmer einer Buchung nebeneinander.
    *
@@ -82,32 +117,160 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
 
+  const zimmerCode = (id: number | null): string =>
+    id === null ? '' : (daten?.units.find(u => u.id === id)?.code ?? '')
+
   /**
-   * Einen gezogenen Balken dorthin legen, wo er losgelassen wurde.
+   * Aus einem gezogenen Balken den Vorschlag bauen, ueber den die Maske
+   * entscheidet.
    *
-   * **Zwei Routen, eine Geste.** Wandern nur die Tage oder beides, ist es
-   * `change-stay`: die Route verlegt einen Aufenthalt und nimmt das
-   * Zielzimmer mit, damit ein schraeger Zug in einem Aufruf durchgeht.
-   * Wandert nur die Zeile, bleibt es bei `assign-unit` -- die schmalere
-   * Route, und die einzige, die auch fuer einen Abruf aus einem Kontingent
-   * gilt: dessen Tage gehoeren dem Kontingent und sind nicht verschiebbar,
-   * ein Zimmer bekommt er trotzdem.
+   * Die Reservierung wird hier nachgeschlagen und nicht im Plan
+   * mitgegeben: Gast, Zustand und Personenzahl stehen ohnehin schon in den
+   * Daten des Bildschirms, und sie durch die Geste zu reichen hiesse, den
+   * Plan um Felder zu erweitern, die er selbst nicht braucht.
    */
-  const verlegen = (u: Umzug): void => {
-    if (u.zeitraum === null) {
-      if (u.resourceId !== null) {
-        zuweisen.mutate({ reservationRef: u.reservationRef, resourceId: u.resourceId })
+  const vorschlag = (reservationRef: string,
+                     ziel: (r: TapeChartData['reservations'][number]) => Ziel,
+                     gruppe?: Verlegung['gruppe']): Verlegung | null => {
+    const r = daten?.reservations.find(x => x.public_ref === reservationRef)
+    if (r === undefined) return null
+    return {
+      reservationRef, status: r.status, categoryId: r.category_id,
+      gast: [r.first_name, r.last_name].filter(x => x !== null && x !== '').join(' '),
+      bedarf: platzbedarf({ occupants: r.occupants,
+                            categoryMaxOccupancy: r.category_max_occupancy }),
+      alt: { resourceId: r.resource_id, arrival: r.arrival, departure: r.departure },
+      neu: ziel(r), gruppe
+    }
+  }
+
+  /**
+   * Schreiben, und den Schritt fuer Strg+Z merken.
+   *
+   * **Drei Routen, eine Entscheidung.** Wandern die Tage, ist es
+   * `change-stay`: die Route verlegt den Aufenthalt und nimmt das
+   * Zielzimmer mit, damit ein schraeger Zug in einem Aufruf durchgeht.
+   * Bleiben sie, reicht `assign-unit` -- die schmalere Route, und die
+   * einzige, die auch fuer einen Abruf aus einem Kontingent gilt: dessen
+   * Tage gehoeren dem Kontingent und sind nicht verschiebbar, ein Zimmer
+   * bekommt er trotzdem. Die ganze Gruppe wandert ueber ihren eigenen
+   * Aufruf mit dem Versatz.
+   *
+   * Gemerkt wird erst nach dem Erfolg. Ein Stapel, in dem ein
+   * fehlgeschlagener Schritt steht, bietet an, etwas zurueckzunehmen, das
+   * nie passiert ist.
+   */
+  const anwenden = (was: {
+    reservationRef: string; gast: string; alt: Ziel; ziel: Ziel
+    gruppe?: Verlegung['gruppe']
+    /**
+     * Auf den Stapel fuer Strg+Z? Nur der Weg hin, nicht der zurueck: sonst
+     * ist der naechste Tastendruck ein Wiederherstellen, und zweimal Strg+Z
+     * stuende wieder am Anfang, statt zwei Schritte zurueckzugehen.
+     */
+    merken: boolean
+  }, danach: () => void): void => {
+    const { reservationRef, alt, ziel, gruppe } = was
+    const fertig = (): void => {
+      if (was.merken) {
+        setRueckgaengig(st => [...st.slice(-(RUECKGAENGIG_MAX - 1)), {
+          reservationRef, gast: was.gast,
+          vorher: { ...alt, roomCode: zimmerCode(alt.resourceId) },
+          nachher: { ...ziel, roomCode: zimmerCode(ziel.resourceId) },
+          gruppe
+        }])
       }
+      danach()
+    }
+    if (gruppe !== undefined) {
+      gruppeVerschieben.mutate(
+        { bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays },
+        { onSuccess: fertig })
+      return
+    }
+    if (ziel.arrival === alt.arrival && ziel.departure === alt.departure) {
+      zuweisen.mutate({ reservationRef, resourceId: ziel.resourceId },
+        { onSuccess: fertig })
       return
     }
     umbuchen.mutate({
-      reservationRef: u.reservationRef,
-      arrival: u.zeitraum.arrival,
-      departure: u.zeitraum.departure,
-      // `undefined` heisst "Zimmer bleibt". `null` waere "abnehmen", und
-      // das ist hier nie gemeint -- dafuer gibt es das Band.
-      resourceId: u.resourceId ?? undefined
+      reservationRef, arrival: ziel.arrival, departure: ziel.departure,
+      // Hier ausdruecklich auch `null`: wer in der Maske "ohne Zimmer"
+      // waehlt und dabei die Tage aendert, meint beides.
+      resourceId: ziel.resourceId
+    }, { onSuccess: fertig })
+  }
+
+  /** Die Maske und der Zug im Planungsmodus reichen dasselbe weiter. */
+  const speichern = (v: Verlegung, ziel: Ziel, danach: () => void): void =>
+    anwenden({ reservationRef: v.reservationRef, gast: v.gast, alt: v.alt, ziel,
+               gruppe: v.gruppe, merken: true }, danach)
+
+  const schreibt = zuweisen.isPending || umbuchen.isPending || gruppeVerschieben.isPending
+  const schreibfehler = zuweisen.error ?? umbuchen.error ?? gruppeVerschieben.error
+
+  /**
+   * Den obersten Schritt zurueckholen.
+   *
+   * Zurueck ist derselbe Weg wie hin, nur mit vertauschten Enden -- und
+   * bei einer Gruppe der umgekehrte Versatz. Aus dem Stapel faellt der
+   * Schritt erst, wenn der Aufruf durch ist: scheitert er, weil das alte
+   * Zimmer inzwischen belegt ist, soll er noch einmal versucht werden
+   * koennen.
+   */
+  const zuruecknehmen = (a: Aenderung): void => {
+    anwenden({
+      reservationRef: a.reservationRef, gast: a.gast,
+      alt: a.nachher, ziel: a.vorher,
+      gruppe: a.gruppe === undefined ? undefined
+        : { ...a.gruppe, shiftDays: -a.gruppe.shiftDays },
+      merken: false
+    }, () => {
+      setRueckgaengig(st => st.filter(x => x !== a))
+      setZurueck(null)
     })
+  }
+
+  /*
+   * Strg+Z holt den letzten Schritt zurueck -- und fragt dabei.
+   *
+   * Die Taste sitzt aus dem Textverarbeitungsprogramm in den Fingern, und
+   * sie bedeutet hier etwas anderes: einen Gast noch einmal umlegen.
+   * Deshalb die Frage mit Zimmer und Datum auf beiden Seiten.
+   *
+   * Nicht in einem Feld und nicht ueber einer Maske: dort meint die Taste
+   * die Eingabe, und die Maske liegt oben.
+   */
+  useEffect(() => {
+    const aufTaste = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
+      // Im Textfeld gehoert die Taste dem Feld -- im Ankreuzfeld des
+      // Planungsmodus aber nicht, und genau dort steht der Fokus, wenn
+      // jemand ihn gerade eingeschaltet hat.
+      if (istTextEingabe(e.target)) return
+      if (document.querySelector('[role="dialog"]') !== null) return
+      const letzte = rueckgaengig.at(-1)
+      if (letzte === undefined) return
+      e.preventDefault()
+      setZurueck(letzte)
+    }
+    window.addEventListener('keydown', aufTaste)
+    return () => { window.removeEventListener('keydown', aufTaste) }
+  }, [rueckgaengig])
+
+  /**
+   * Was ein Zug ausloest: die Maske -- oder, im Planungsmodus, den Aufruf.
+   *
+   * Der Modus ist keine Abkuerzung um die Vorsicht herum, sondern die
+   * Stelle, an der sie stoert: wer eine Woche umsortiert, zieht zwanzigmal
+   * und bestaetigt zwanzigmal dasselbe. Sichtbar bleibt er trotzdem -- er
+   * steht in der Leiste und faerbt sie --, und Strg+Z ist dann der Weg
+   * zurueck.
+   */
+  const gezogen = (v: Verlegung | null): void => {
+    if (v === null) return
+    if (planung) speichern(v, v.neu, () => {})
+    else setVerlegung(v)
   }
 
   /*
@@ -166,6 +329,26 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                  onChange={e => setGruppiert(e.target.checked)} />
           {t('plan.groupByCategory')}
         </label>
+        {/*
+          * Der Planungsmodus steht neben der Sortierung und nicht in einem
+          * Menue: eine ausgeschaltete Sicherung gehoert dorthin, wo man sie
+          * im Vorbeigehen sieht. Eingeschaltet faerbt sich die Beschriftung,
+          * und unter dem Plan steht, was er bedeutet.
+          */}
+        <label title={t('verlegen.planningModeHint')}
+               className={`text-sm flex items-center gap-1.5 rounded px-1.5 py-0.5
+                           ${planung ? 'bg-amber-100 text-amber-900 font-medium'
+                                     : 'text-neutral-700'}`}>
+          <input type="checkbox" checked={planung}
+                 onChange={e => {
+                   setPlanung(e.target.checked)
+                   try {
+                     sessionStorage.setItem(PLANUNG_SCHLUESSEL,
+                       e.target.checked ? 'an' : 'aus')
+                   } catch { /* Privater Modus: dann gilt er nur hier. */ }
+                 }} />
+          {t('verlegen.planningMode')}
+        </label>
         <div className="grow" />
         <Legende />
       </div>
@@ -187,8 +370,19 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         </div>
       )}
 
-      {(zuweisen.isError || umbuchen.isError || gruppeVerschieben.isError) && (
-        <Fehler error={zuweisen.error ?? umbuchen.error ?? gruppeVerschieben.error} />
+      {/* Nur, wenn keine Maske offen ist: dort steht derselbe Fehler, und
+          zweimal derselbe Satz liest sich wie zwei Fehler. */}
+      {schreibfehler !== null && verlegung === null && zurueck === null && (
+        <Fehler error={schreibfehler} />
+      )}
+
+      {/* Der Modus faellt sonst nicht auf, und er nimmt die Rueckfrage vor
+          jeder Verschiebung weg. Unter der Leiste und nicht als Kasten:
+          er soll erinnern, nicht den Plan nach unten schieben. */}
+      {planung && (
+        <p className="text-xs text-amber-900">
+          {t('verlegen.planningModeOn')} · {t('verlegen.planningModeHint')}
+        </p>
       )}
 
       {q.isError && daten === undefined ? <Fehler error={q.error} />
@@ -221,16 +415,41 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           }))
                         })
                       }}
-                      onMove={u => {
-                        if (u.wechsel === null) verlegen(u)
-                        else setUmzug(u)
-                      }}
+                      /*
+                       * Alle vier Gesten laufen durch dieselbe Stelle:
+                       * Zeile wechseln, Rand ziehen, Gruppe schieben,
+                       * ins Band legen. Jede aendert, wo ein Gast liegt
+                       * oder wann er kommt -- und keine davon soll das
+                       * unbemerkt tun.
+                       */
+                      onMove={u => gezogen(vorschlag(u.reservationRef, r => ({
+                        // Was der Zug nicht angefasst hat, bleibt: `null`
+                        // heisst bei der Zeile "dieselbe", nicht "keine".
+                        resourceId: u.resourceId ?? r.resource_id,
+                        arrival: u.zeitraum?.arrival ?? r.arrival,
+                        departure: u.zeitraum?.departure ?? r.departure
+                      })))}
                       onChangeStay={(reservationRef, arrival, departure) =>
-                        umbuchen.mutate({ reservationRef, arrival, departure })}
-                      onShiftGroup={(bookingRef, shiftDays) =>
-                        gruppeVerschieben.mutate({ bookingRef, shiftDays })}
+                        gezogen(vorschlag(reservationRef,
+                          r => ({ resourceId: r.resource_id, arrival, departure })))}
+                      onShiftGroup={(bookingRef, shiftDays) => {
+                        // Irgendeine Reservierung der Buchung: gezeigt wird
+                        // der Versatz, nicht ihre Tage.
+                        const erste = daten.reservations.find(
+                          x => x.booking_ref === bookingRef)
+                        if (erste === undefined) return
+                        const zimmer = daten.reservations.filter(
+                          x => x.booking_ref === bookingRef).length
+                        gezogen(vorschlag(erste.public_ref, r => ({
+                          resourceId: r.resource_id,
+                          arrival: addDays(r.arrival, shiftDays),
+                          departure: addDays(r.departure, shiftDays)
+                        }), { bookingRef, shiftDays, zimmer }))
+                      }}
                       onUnassign={reservationRef =>
-                        zuweisen.mutate({ reservationRef, resourceId: null })}
+                        gezogen(vorschlag(reservationRef, r => ({
+                          resourceId: null,
+                          arrival: r.arrival, departure: r.departure })))}
                       onKontext={setKontext} />}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
@@ -246,12 +465,18 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           onOpenGroup={setGruppenBuchung} />
       )}
 
-      {umzug !== null && umzug.wechsel !== null && (
-        <UmzugBestaetigen umzug={umzug} onClose={() => setUmzug(null)}
-                          onConfirm={() => {
-                            verlegen(umzug)
-                            setUmzug(null)
-                          }} />
+      {verlegung !== null && daten !== undefined && (
+        <BuchungVerlegen verlegung={verlegung} zimmer={daten.units}
+                         laeuft={schreibt} fehler={schreibfehler}
+                         onClose={() => setVerlegung(null)}
+                         onSpeichern={ziel => speichern(verlegung, ziel,
+                           () => setVerlegung(null))} />
+      )}
+
+      {zurueck !== null && (
+        <AenderungZurueck aenderung={zurueck} laeuft={schreibt} fehler={schreibfehler}
+                          onClose={() => setZurueck(null)}
+                          onConfirm={() => zuruecknehmen(zurueck)} />
       )}
 
       {gruppe !== null && (
@@ -409,54 +634,3 @@ function Legende(): JSX.Element {
   )
 }
 
-/**
- * Nachfrage vor einem Umzug in eine andere Zimmergruppe.
- *
- * **Warum gefragt und nicht verboten.** Ein Upgrade ist Alltag: der Gast hat
- * ein Doppelzimmer gebucht und bekommt die Juniorsuite; abgerechnet wird,
- * was gebucht wurde. Die API laesst das deshalb bewusst zu. Versehentlich
- * passiert im Plan aber auch das Gegenteil, und **das** ist der Fall, für
- * den diese Maske da ist: zwei Personen in einem Einzelzimmer merkt sonst
- * erst der Gast.
- */
-function UmzugBestaetigen({ umzug, onClose, onConfirm }: {
-  umzug: Umzug; onClose: () => void; onConfirm: () => void
-}): JSX.Element {
-  const t = useT()
-  const w = umzug.wechsel!
-  const zuKlein = w.platz < w.bedarf
-
-  return (
-    /* `mittel` und nicht breiter: das hier ist eine Frage, kein Formular.
-       Eine Maske, die den halben Bildschirm fuellt, um "ja" zu holen,
-       wird nicht gelesen, sondern weggeklickt. */
-    <Dialog breite="mittel" onClose={onClose} titel={t('plan.moveOtherCategory')}
-            fuss={
-              <>
-                <button type="button" onClick={onConfirm}
-                        className={`px-4 py-2 text-sm rounded text-white
-                                    ${zuKlein ? 'bg-red-700' : 'bg-neutral-900'}`}>
-                  {t('plan.moveConfirm')}
-                </button>
-                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
-                  {t('booking.close')}
-                </button>
-              </>
-            }>
-      <div className="space-y-3">
-        <p className="text-sm text-neutral-700">
-          {t('plan.moveUpgrade', { ref: umzug.reservationRef, von: w.von,
-                                   nach: w.nach, raum: umzug.roomCode })}
-        </p>
-
-        {zuKlein && (
-          <p role="alert" className="text-sm text-red-800 bg-red-50 border
-                                     border-red-200 rounded p-2">
-            {t('plan.moveTooSmall', { raum: umzug.roomCode, platz: w.platz,
-                                      bedarf: w.bedarf })}
-          </p>
-        )}
-      </div>
-    </Dialog>
-  )
-}

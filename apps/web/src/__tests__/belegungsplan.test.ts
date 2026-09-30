@@ -731,11 +731,12 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
   })
 
   it('hebt die Auswahl mit Esc auf', () => {
-    expect(plan).toContain("if (e.key === 'Escape') setAuswahl(null)")
-    // Am Fenster und nicht am Plan: der Plan haelt keinen Fokus, nach einem
-    // Zug liegt der auf dem zuletzt beruehrten Balken oder nirgends.
-    expect(plan).toContain("window.addEventListener('keydown', aufTaste)")
-    expect(plan).toContain("window.removeEventListener('keydown', aufTaste)")
+    /*
+     * Ueber die gemeinsame Lage und nicht mit eigenem Horcher: liegt ein
+     * Menue oder eine Maske darueber, meint der Druck die -- sonst war mit
+     * dem Menue auch das weg, worauf es sich bezog.
+     */
+    expect(plan).toContain('useEscape(() => setAuswahl(null), auswahl !== null)')
   })
 
   it('hebt sie auch auf, wenn man ohne Modifikator woanders hinklickt', () => {
@@ -771,8 +772,11 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
   it('bucht auf Enter dasselbe wie ueber den Knopf', () => {
     // Ein Weg fuer die Hand an der Maus, einer fuer die an der Tastatur --
     // und beide durch dieselbe Funktion, sonst laufen sie auseinander.
-    expect(plan).toMatch(/e\.key === 'Enter'[\s\S]*?auswahlBuchen\(\)/)
+    expect(plan).toMatch(/e\.key !== 'Enter'[\s\S]*?auswahlBuchen\(\)/)
     expect(plan).toContain('onClick={auswahlBuchen}')
+    // Nicht ueber einer Maske: dort ist Enter das Abschicken **dieser**
+    // Maske, nicht das Buchen der Markierung dahinter.
+    expect(plan).toContain('document.querySelector(\'[role="dialog"]\') !== null')
   })
 
   it('schickt ein einzelnes Zimmer nicht in die Gruppenmaske', () => {
@@ -875,7 +879,8 @@ describe('Eine Gruppenbuchung wandert als Gruppe', () => {
      * eingetragen hat.
      */
     expect(plan).toContain('onShiftGroup?: (bookingRef: string, shiftDays: number) => void')
-    expect(bildschirm).toContain('gruppeVerschieben.mutate({ bookingRef, shiftDays })')
+    expect(bildschirm).toContain(
+      '{ bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays }')
   })
 
   it('zeichnet keinen Schatten je Zimmer der Gruppe, sondern die Zahl', () => {
@@ -959,7 +964,11 @@ describe('Eine Buchung laesst sich ins Band zuruecklegen', () => {
 
   it('nimmt beim Ablegen im Band das Zimmer ab', () => {
     expect(plan).toContain('onUnassign?.(d.reservationRef)')
-    expect(bildschirm).toContain("zuweisen.mutate({ reservationRef, resourceId: null })")
+    // Ueber die Maske wie jeder andere Zug: das Zimmer steht dort als
+    // "ohne Zimmer" im Feld und laesst sich vor dem Speichern noch
+    // aendern.
+    expect(bildschirm).toContain(
+      'resourceId: null,\n                          arrival: r.arrival, departure: r.departure })))')
   })
 
   it('prueft das Band vor dem Zeitversatz', () => {
@@ -1084,7 +1093,7 @@ describe('Der rechte Knopf im Belegungsplan', () => {
      */
     expect(menue).toContain("window.addEventListener('pointerdown', zu, true)")
     expect(menue).toContain("window.addEventListener('scroll', beimScrollen, true)")
-    expect(menue).toContain("if (e.key === 'Escape') onClose()")
+    expect(menue).toContain('useEscape(onClose)')
   })
 
   it('schliesst **nicht** beim Druck auf einen Eintrag', () => {
@@ -1511,5 +1520,172 @@ describe('Gesperrte Knoepfe nennen ihren Grund', () => {
 
   it('nennt in der Gruppenmaske das Zimmer ohne Nacht', () => {
     expect(gruppe).toContain("? 'group.needRoomNights'")
+  })
+})
+
+/**
+ * Der rechte Knopf markiert, was er trifft.
+ *
+ * Ein Menue, das "hier anlegen" anbietet, ohne dass zu sehen ist, **wo**
+ * hier ist, laesst die Wahl des Tages dem Gedaechtnis -- und der Tag unter
+ * dem Zeiger ist im Plan eine Spalte von 44 Pixeln.
+ */
+describe('Der rechte Knopf markiert wie der linke', () => {
+  const plan = readFileSync(
+    new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('setzt die Markierung auf die angeklickte Zelle', () => {
+    expect(plan).toContain(
+      'setAuswahl([{ resourceId, arrival: anreise, departure: addDays(anreise, 1) }])')
+  })
+
+  it('laesst eine bestehende Mehrfachmarkierung in Ruhe', () => {
+    /*
+     * Wer acht Zimmer zusammengesucht hat und daneben klickt, meint nicht,
+     * sie wegzuwerfen -- vorher tat der Klick genau das, lautlos, und das
+     * Menue bezog sich danach auf ein einzelnes Zimmer.
+     *
+     * Die Grenze liegt bei zwei: eine Mehrfachmarkierung ist Arbeit, eine
+     * einzelne Zelle nicht.
+     */
+    expect(plan).toContain('if (!inAuswahl && auswahl !== null && auswahl.length > 1) return')
+  })
+
+  it('markiert nicht neu, wenn der Klick in der Markierung liegt', () => {
+    // Sonst bliebe von acht markierten Zimmern das eine uebrig, auf das
+    // gezeigt wurde -- und das Menue meinte wieder nur dieses.
+    expect(plan).toMatch(/if \(!inAuswahl\) \{\n\s*setAuswahl\(\[\{ resourceId/)
+  })
+})
+
+/**
+ * Kein Zug im Plan schreibt unmittelbar.
+ *
+ * Ein Zug dauert zwei Zehntelsekunden, und danebengegriffen sieht genauso
+ * aus wie richtig gezogen: der Balken liegt, wo man ihn losgelassen hat.
+ * Aufgefallen ist das bisher erst, wenn der Gast vor dem Tresen stand --
+ * ein Zimmer doppelt belegt, eine Anreise einen Tag zu frueh. Beides kostet
+ * Geld, als Ausfall oder als Ersatzunterkunft.
+ */
+describe('Verschieben wird bestaetigt, nicht ausgefuehrt', () => {
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+  const maske = readFileSync(
+    new URL('../components/BuchungVerlegen.tsx', import.meta.url), 'utf8')
+
+  it('schickt jede der vier Gesten durch dieselbe Stelle', () => {
+    /*
+     * Zeile wechseln, Rand ziehen, Gruppe schieben, ins Band legen. Jede
+     * aendert, wo ein Gast liegt oder wann er kommt; eine davon
+     * auszunehmen hiesse, die Vorsicht vom Zufall abhaengig zu machen,
+     * welche Geste jemand benutzt.
+     */
+    expect(bildschirm).toContain('onMove={u => gezogen(')
+    expect(bildschirm).toContain('onChangeStay={(reservationRef, arrival, departure) =>\n')
+    expect(bildschirm.match(/gezogen\(vorschlag\(/g)?.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('oeffnet die Maske, statt zu schreiben', () => {
+    expect(bildschirm).toMatch(/if \(planung\) speichern\(v, v\.neu[\s\S]*?else setVerlegung\(v\)/)
+  })
+
+  it('gibt Felder und nicht Ja und Nein', () => {
+    /*
+     * Wer danebenzieht, will nicht abbrechen und noch einmal zielen,
+     * sondern einen Tag korrigieren. Der Zug ist die Vorgabe, nicht das
+     * Ergebnis.
+     */
+    expect(maske).toContain('useState<number | null>(verlegung.neu.resourceId)')
+    expect(maske).toContain("useState(verlegung.neu.arrival)")
+    expect(maske).toContain("useState(verlegung.neu.departure)")
+  })
+
+  it('warnt vor dem gewaehlten Zimmer, nicht vor dem gezogenen', () => {
+    // In der Maske laesst sich das Zimmer noch aendern; eine Warnung, die
+    // am gezogenen haengt, waere danach falsch.
+    expect(maske).toContain(
+      'const wechsel = gewaehlt !== undefined && gewaehlt.category_id !== verlegung.categoryId')
+    expect(maske).toContain('gewaehlt.max_occupancy < verlegung.bedarf')
+  })
+
+  it('haelt den angereisten Gast in seinem Zimmer', () => {
+    // Die Route weist es ohnehin ab; eine Fehlermeldung nach dem Klick
+    // waere die schlechtere Antwort als ein Satz davor.
+    expect(maske).toContain(
+      ": raum === null && verlegung.status === 'InHouse' ? 'verlegen.inHouseKeepsRoom'")
+  })
+
+  it('schliesst die Maske erst nach dem Erfolg', () => {
+    // Sonst verschwindet mit ihr die Eingabe, und der Grund steht
+    // nirgends mehr.
+    expect(bildschirm).toContain('{ onSuccess: fertig })')
+  })
+})
+
+/**
+ * Der Planungsmodus und der Weg zurueck.
+ *
+ * Wer eine Woche umsortiert, zieht zwanzigmal und bestaetigt zwanzigmal
+ * dasselbe. Die Rueckfrage ist dann kein Schutz mehr, sondern ein Reflex --
+ * und ein Reflex schuetzt vor nichts.
+ */
+describe('Planungsmodus und Strg+Z', () => {
+  const bildschirm = readFileSync(
+    new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+  const maske = readFileSync(
+    new URL('../components/BuchungVerlegen.tsx', import.meta.url), 'utf8')
+
+  it('haengt an der Sitzung, nicht am Bildschirm', () => {
+    /*
+     * Wer plant, wechselt zwischendurch in die Anreiseliste und zurueck.
+     * `sessionStorage` und nicht `localStorage`: eine ausgeschaltete
+     * Sicherung soll den Feierabend nicht ueberleben.
+     */
+    expect(bildschirm).toContain('sessionStorage.getItem(PLANUNG_SCHLUESSEL)')
+    expect(bildschirm).not.toContain('localStorage.getItem(PLANUNG_SCHLUESSEL)')
+  })
+
+  it('bleibt sichtbar, solange er an ist', () => {
+    // Eine ausgeschaltete Sicherung, die man nicht sieht, ist die
+    // gefaehrlichere von beiden.
+    expect(bildschirm).toContain("t('verlegen.planningModeOn')")
+    expect(bildschirm).toContain("'bg-amber-100 text-amber-900 font-medium'")
+  })
+
+  it('merkt sich einen Schritt erst, wenn er durch ist', () => {
+    // Ein Stapel, in dem ein fehlgeschlagener Schritt steht, bietet an,
+    // etwas zurueckzunehmen, das nie passiert ist.
+    expect(bildschirm).toMatch(
+      /const fertig = \(\): void => \{\n\s*if \(was\.merken\) \{\n\s*setRueckgaengig/)
+  })
+
+  it('fragt vor dem Zuruecknehmen mit Zimmer und Datum', () => {
+    /*
+     * "Letzte Aenderung rueckgaengig?" waere dieselbe Frage ohne die
+     * einzige Angabe, die sie beantwortbar macht. Zwischen der Aenderung
+     * und dem Tastendruck kann eine zweite liegen.
+     */
+    expect(maske).toContain("t('verlegen.undoQuestion'")
+    expect(maske).toContain('von: beschreibung(a.nachher), zu: beschreibung(a.vorher)')
+  })
+
+  it('legt das Zuruecknehmen nicht selbst auf den Stapel', () => {
+    /*
+     * Sonst waere der naechste Tastendruck ein Wiederherstellen, und
+     * zweimal Strg+Z stuende wieder am Anfang -- statt zwei Schritte
+     * zurueckzugehen, was jeder erwartet, der die Taste kennt.
+     */
+    expect(bildschirm).toContain('merken: false')
+    expect(bildschirm).toContain('merken: true')
+  })
+
+  it('dreht bei einer Gruppe den Versatz um', () => {
+    expect(bildschirm).toContain('shiftDays: -a.gruppe.shiftDays')
+  })
+
+  it('laesst Strg+Z im Eingabefeld und ueber einer Maske in Ruhe', () => {
+    // Dort meint die Taste die Eingabe, und die Maske liegt oben.
+    expect(bildschirm).toMatch(/e\.ctrlKey \|\| e\.metaKey[\s\S]*?istTextEingabe\(e\.target\)/)
+    expect(bildschirm).toContain('document.querySelector(\'[role="dialog"]\') !== null')
   })
 })

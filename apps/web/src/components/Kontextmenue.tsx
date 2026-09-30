@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useEscape } from '../lib/tasten.js'
 
 /**
  * Das eigene Kontextmenue.
@@ -91,16 +92,20 @@ export function Kontextmenue({ punkt, eintraege, onClose }: {
     // Beim Scrollen dagegen immer: das Menue haengt an Fensterkoordinaten
     // und zeigte sonst auf eine Zeile, die inzwischen woanders liegt.
     const beimScrollen = (): void => onClose()
-    const aufTaste = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
     window.addEventListener('pointerdown', zu, true)
     window.addEventListener('scroll', beimScrollen, true)
-    window.addEventListener('keydown', aufTaste)
     return () => {
       window.removeEventListener('pointerdown', zu, true)
       window.removeEventListener('scroll', beimScrollen, true)
-      window.removeEventListener('keydown', aufTaste)
     }
   }, [onClose])
+
+  /*
+   * Escape ueber die gemeinsame Lage und nicht mit eigenem Horcher: der
+   * Plan darunter horcht auch, und beide zugleich hiessen, mit dem Menue
+   * auch die Markierung zu verlieren, auf die es sich bezieht.
+   */
+  useEscape(onClose)
 
   if (eintraege.length === 0) return null
 

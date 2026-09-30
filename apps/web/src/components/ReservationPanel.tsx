@@ -4,6 +4,7 @@ import { useReservation, usePatchReservationNotes, useReservationStatusAction,
          useSendConfirmation } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
+import { useEscape } from '../lib/tasten.js'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
@@ -38,6 +39,13 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
 }): JSX.Element {
   const t = useT()
   const q = useReservation(reservationRef)
+
+  /*
+   * Escape schliesst auch das Seitenfenster. Es ist kein Dialog, aber es
+   * liegt ueber dem Plan und nimmt ein Drittel des Bildschirms -- wer es
+   * wegdruecken will, greift zu derselben Taste wie ueberall sonst.
+   */
+  useEscape(onClose)
 
   return (
     <div className="fixed inset-y-0 right-0 z-40 w-full max-w-xl bg-white border-l

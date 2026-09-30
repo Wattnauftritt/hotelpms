@@ -1,5 +1,6 @@
-import { useEffect, type JSX, type ReactNode } from 'react'
+import { type JSX, type ReactNode } from 'react'
 import { useT } from '../lib/i18n/index.js'
+import { useEscape } from '../lib/tasten.js'
 
 /**
  * Der Rahmen jeder Maske: Kopf, Rumpf, Fuss.
@@ -17,9 +18,12 @@ import { useT } from '../lib/i18n/index.js'
  * fertig haelt, sucht keinen Knopf, den er nicht sieht -- gemeldet wurde
  * das als "ich klicke und es passiert nichts".
  *
- * **Escape schliesst.** Den Weg mit der Maus gab es (das Kreuz, der Klick
- * daneben), den mit der Tastatur nicht. An einer Rezeption liegt die Hand
- * auf der Tastatur.
+ * **Escape schliesst -- jede Maske, auch die mit der Unterschrift.** Den
+ * Weg mit der Maus gab es (das Kreuz, der Klick daneben), den mit der
+ * Tastatur nicht. An einer Rezeption liegt die Hand auf der Tastatur, und
+ * wer nicht mehr weiss, wo er ist, drueckt Escape. Eine Maske, die als
+ * einzige nicht darauf hoert, macht aus dem Griff, der immer hilft, einen,
+ * der manchmal hilft -- und das ist schlimmer als keiner.
  */
 export type Dialogbreite = 'schmal' | 'mittel' | 'breit' | 'weit'
 
@@ -68,12 +72,17 @@ export function Dialog({ titel, unterzeile, breite = 'breit', fuss, onClose,
   fuss?: ReactNode
   onClose: () => void
   /**
-   * Schliesst ein Klick daneben oder Escape die Maske?
+   * Schliesst ein Klick **daneben** die Maske?
    *
    * Fast ueberall ja -- es ist der schnellste Weg hinaus. Nicht beim
    * Check-in: dort steht eine gezeichnete Unterschrift im Kasten, die
    * nirgends gespeichert ist, und ein Klick neben den Rand waere sie los.
    * Der Gast unterschreibt dann ein zweites Mal.
+   *
+   * Escape haengt **nicht** daran und schliesst immer. Der Klick daneben
+   * ist ein Ausrutscher, Escape ist eine Entscheidung: die Taste liegt
+   * allein in der Ecke, und niemand trifft sie beim Zielen auf etwas
+   * anderes.
    */
   nebenbeiSchliessen?: boolean
   children: ReactNode
@@ -83,16 +92,11 @@ export function Dialog({ titel, unterzeile, breite = 'breit', fuss, onClose,
   /*
    * Escape am `window` und nicht am Kasten: der Kasten hat den Fokus nur,
    * solange niemand in ein Feld geklickt hat -- und das ist die halbe
-   * Sekunde, in der ohnehin keiner Escape drueckt.
+   * Sekunde, in der ohnehin keiner Escape drueckt. Ueber `useEscape`, weil
+   * eine Maske ueber einem Menue liegen kann und ein Druck genau eine Lage
+   * schliessen soll, die oberste.
    */
-  useEffect(() => {
-    if (!nebenbeiSchliessen) return
-    const beiTaste = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', beiTaste)
-    return () => window.removeEventListener('keydown', beiTaste)
-  }, [onClose, nebenbeiSchliessen])
+  useEscape(onClose)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto
