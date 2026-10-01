@@ -150,7 +150,9 @@ In einer Sitzung von Claude Code im Web passiert das automatisch. Von Hand:
 
 ```bash
 pnpm install
-./scripts/setup-db.sh         # PostgreSQL, drei Rollen, zwei Datenbanken
+# Der Schalter ist Absicht: ohne ihn verlangt das Skript eigene Kennwörter,
+# damit niemand versehentlich mit devapp auf einer Maschine am Netz landet.
+HOTELPMS_ALLOW_DEV_PASSWORDS=1 ./scripts/setup-db.sh
 cp .env.example .env
 pnpm db:reset                 # Schema neu aufbauen
 pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre Daten

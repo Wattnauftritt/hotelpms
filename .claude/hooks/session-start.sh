@@ -17,7 +17,10 @@ echo "Abhaengigkeiten installieren..."
 pnpm install --frozen-lockfile 2>&1 | tail -5
 
 echo "PostgreSQL bereitstellen..."
-./scripts/setup-db.sh
+# Ausdruecklich mit den Entwicklungsvorgaben: das Skript laeuft ohne diesen
+# Schalter nicht mehr mit devowner/devapp durch (Befund S1). Genau so ist es
+# gemeint -- hier ist es richtig, auf einer Maschine am Netz nicht.
+HOTELPMS_ALLOW_DEV_PASSWORDS=1 ./scripts/setup-db.sh
 
 # Die Tests lesen ihre Verbindungen aus .env. In CI stehen sie in der
 # Umgebung, hier gibt es die Datei noch nicht.

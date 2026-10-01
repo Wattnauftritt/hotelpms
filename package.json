@@ -6,6 +6,13 @@
   "engines": {
     "node": ">=22"
   },
+  "_pnpm_overrides": "Geflickte Fassungen erzwingen, wo die Abhaengigkeit sie nicht selbst mitbringt (Befund S3). brace-expansion steckt unter eslint und eslint-plugin-import-x in minimatch, zwei Ebenen tief; ohne diese beiden Zeilen faellt `pnpm audit --audit-level high` in CI. Beide bleiben innerhalb ihrer Hauptversion, damit minimatch 3 und minimatch 10 ihre jeweilige Schnittstelle behalten.",
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@<1.1.20": "^1.1.20",
+      "brace-expansion@>=4.0.0 <5.0.10": "^5.0.10"
+    }
+  },
   "scripts": {
     "build": "pnpm -r --filter './packages/**' build && pnpm -r --filter './apps/**' build",
     "typecheck": "tsc -b --pretty",

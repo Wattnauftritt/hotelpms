@@ -83,7 +83,29 @@ export async function buildServer(
       ? false
       : logOptions,
     genReqId: () => crypto.randomUUID(),
-    trustProxy: true,
+    /*
+     * **Genau ein Proxy, nicht alle** (Befund S4).
+     *
+     * Hier stand `true`, und das heisst in `proxy-addr`: jede Adresse in
+     * `X-Forwarded-For` ist vertrauenswuerdig, also gilt die **erste** --
+     * und die erste ist die, die der Aufrufer selbst mitgeschickt hat.
+     * Caddy haengt seine an, es ersetzt sie nicht. Eine Anmeldung mit
+     * `X-Forwarded-For: 203.0.113.<zufall>` kam damit bei jedem Versuch
+     * aus einer anderen Herkunft, und die Begrenzung je Herkunft war ein
+     * Zaehler, der nie zweimal dieselbe Zahl sah. Das brauchte keinen
+     * Zugang zum Rechner und keine falsche Konfiguration -- es ging durch
+     * den regulaeren Weg ueber Caddy.
+     *
+     * Vertraut wird jetzt genau ein Sprung: nur der unmittelbare Nachbar
+     * (Sprung 0, also Caddy selbst), und `proxy-addr` nimmt damit den
+     * Eintrag, den Caddy gesetzt hat. Als Funktion und nicht als `1`, weil
+     * Fastifys Typen die Zahl nicht annehmen -- gemeint ist dasselbe.
+     *
+     * Die zweite Haelfte steht im Caddyfile: es ueberschreibt die Kopfzeile
+     * jetzt, statt sie zu ergaenzen. Zusammen bleibt von einer
+     * mitgeschickten Kette nichts uebrig.
+     */
+    trustProxy: (_adresse: string, sprung: number) => sprung === 0,
     bodyLimit: 1_048_576
   })
 
