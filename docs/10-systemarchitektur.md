@@ -605,6 +605,8 @@ Plesk installiert viel, was wir nicht brauchen und was Angriffsfläche ist. **Au
 
 Direkt installiert. Verbindungen ausschließlich über den Unix-Socket in `/run/hotelpms`, kein TCP. Zwei Verbindungswege: die API über PgBouncer, der Worker direkt. Grundeinstellungen bei einer VM mit 32 GB RAM und 8 vCPU (3 API-Prozesse, 1 Worker, Rest für die Datenbank):
 
+> **Das ist die Zieldimensionierung, nicht der heutige Betrieb.** `ops/systemd/hotelpms-api.service` startet **einen** Node-Prozess, und einen PgBouncer gibt es in `ops/` nicht. Der Unterschied ist kein Versehen — ein Haus braucht die drei Prozesse nicht —, aber er ist beim Lesen nicht zu sehen, und ein Performance-Audit hat diese Tabelle prompt für die laufende Anlage gehalten (Befunde P2 und P3, [Dokument 29](29-performanceaudit-antwort.md)). Was sich mit dem zweiten Prozess ändert, steht dort: die Ratenbegrenzung im Arbeitsspeicher wird dann zur Vielfachen ihrer selbst und braucht einen gemeinsamen Zähler.
+
 | Parameter | Wert |
 |---|---|
 | `shared_buffers` | 8 GB |

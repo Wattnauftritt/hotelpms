@@ -147,6 +147,7 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 - **Ein Aufruf je Bildschirm, nicht je Zeile.** Die Endpunkte sind Aggregate. Wer sie im Frontend wieder auflöst und je Zeile nachlädt, macht aus einer Runde vierhundert.
 - **Keine korrelierte Unterabfrage je Zeile.** Ein `SELECT ... OFFSET (i % n) LIMIT 1` in einer Schleife über 200 000 Zeilen läuft nicht zu Ende. Verbund statt Schleife.
 - **Jeder Zeitraumparameter hat eine Obergrenze.** Ohne sie ist jeder Endpunkt ein Selbstangriff.
+- **Jede Anfrage zählt ihre Datenbankanweisungen mit.** Über fünfzig (`DB_QUERY_WARN`) steht eine Warnung mit Anzahl und Datenbankzeit in der Protokollzeile. Der Abfragezähler im Test fängt ein N+1 nur dort, wo ein Test hinsieht; im Betrieb sah eine Antwort in 300 ms gleich aus, ob sie aus einer Abfrage kam oder aus vierhundert (Befund P9, Dokument 29). Wer die Schwelle anhebt, begründet den Stapelendpunkt, der das nötig macht.
 - **Trigger auf Anweisungsebene, wo eine Massenänderung vorkommt.** Ein Trigger je Zeile, der die ganze Property neu rechnet, ist quadratisch (Migration 0013).
 - **Zähler und Aufzeichnung nicht verwechseln.** `inventory_day.sold` sagt, was gerade gebunden ist; `business_day_stat` sagt, wie es war. Wer das eine für das andere nimmt, bekommt keine Fehlermeldung, sondern eine plausibel aussehende falsche Zahl (Migration 0014).
 
