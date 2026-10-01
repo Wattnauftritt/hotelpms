@@ -47,12 +47,56 @@ describe('Zurueckrollen mit Bauzeit', () => {
   it('zeigt neben jedem Ziel und neben dem laufenden Stand die Bauzeit', () => {
     expect(quelle).toMatch(/zurueck\.mutate\(z\.commit\)/)
     expect(quelle).toMatch(/t\('deploy\.builtAt', \{ when: zeit\(z\.builtAt\) \}\)/)
-    expect(quelle).toMatch(/t\('deploy\.builtAt', \{ when: zeit\(q\.data\.currentBuiltAt\) \}\)/)
+    expect(quelle).toMatch(/t\('deploy\.builtAt', \{ when: zeit\(d\.currentBuiltAt\) \}\)/)
   })
 
   it('laesst die Zeit weg, statt eine falsche zu zeigen', () => {
     // Ein Stand, den der Agent von vor 0042 eingetragen hat, hat keine.
     expect(quelle).toMatch(/z\.builtAt !== null &&/)
     expect(quelle).toMatch(/currentBuiltAt != null &&/)
+  })
+})
+
+/**
+ * Welcher Stand laeuft -- ohne einen Reiter zu oeffnen.
+ *
+ * Ein Hash und eine Bauzeit beantworten "welches Verzeichnis laeuft", nicht
+ * die Frage, die gestellt wird: *welcher Stand ist das, und von wann?*
+ * Zwoelf Zeichen sagen niemandem etwas, und zwischen Commit und Ausrollen
+ * koennen Tage liegen (Migration 0057).
+ */
+describe('Der laufende Stand im Adminpanel', () => {
+  const konsole = readFileSync(
+    new URL('../routes/SupportKonsole.tsx', import.meta.url), 'utf8')
+  const panel = readFileSync(
+    new URL('../routes/Adminpanel.tsx', import.meta.url), 'utf8')
+
+  it('zeigt Betreff und Commit-Zeit neben dem Hash', () => {
+    expect(konsole).toMatch(/d\.currentSubject != null &&/)
+    expect(konsole).toMatch(
+      /t\('deploy\.committedAt', \{ when: zeit\(d\.currentCommittedAt\) \}\)/)
+  })
+
+  it('laesst beides weg, wo es niemand gemeldet hat', () => {
+    // Alles, was vor 0057 gebaut wurde, hat keine Herkunft. Dann bleiben
+    // Hash und Bauzeit -- eine geratene Zeit waere schlimmer als keine.
+    expect(konsole).toMatch(/d\.currentCommittedAt != null &&/)
+  })
+
+  it('steht oben im Panel und nicht erst im Reiter Betrieb', () => {
+    // Gefragt wird das, wenn etwas unerwartet aussieht. Drei Klicks dahin
+    // sind drei zu viel.
+    const zeile = panel.indexOf('<LaufenderStand rahmen />')
+    const reiterleiste = panel.indexOf('{reiters.map(')
+    expect(zeile).toBeGreaterThan(-1)
+    expect(zeile).toBeLessThan(reiterleiste)
+  })
+
+  it('nur fuer wen die Route offen ist', () => {
+    // Ohne `platform:operations` antwortet die Route mit 403, und das waere
+    // eine Fehlermeldung ueber dem ganzen Panel.
+    const abschnitt = panel.slice(panel.indexOf('<LaufenderStand rahmen />') - 200,
+                                  panel.indexOf('<LaufenderStand rahmen />'))
+    expect(abschnitt).toContain("platformPermissions.includes('platform:operations')")
   })
 })

@@ -315,6 +315,46 @@ describe('Zurueckrollen auf das, was auf der Platte liegt', () => {
     // Die Geschichte kennt nur das Ende des Laufs, der den Stand gebaut
     // hat; der Vorgaenger bekommt keine Zeit, statt einer falschen.
     expect(d.currentBuiltAt).not.toBeNull()
-    expect(d.rollbackTargets).toEqual([{ commit: 'ee000005', builtAt: null }])
+    expect(d.rollbackTargets).toEqual([
+      { commit: 'ee000005', builtAt: null, committedAt: null, subject: null }])
+  })
+
+  /*
+   * Woher der Stand kommt (Migration 0057).
+   *
+   * Ein Hash und eine Bauzeit beantworten "welches Verzeichnis laeuft",
+   * nicht "welcher Stand ist das, und von wann". deploy.sh legt beim Bau
+   * Zeit und Betreff des Commits ab, der Agent meldet sie fuer den
+   * laufenden Stand mit.
+   */
+  it('nennt Zeitpunkt und Betreff des laufenden Commits', async () => {
+    await owner.query(
+      `INSERT INTO release (commit, present, is_current, built_at,
+                            committed_at, subject) VALUES
+         ('aa000001', true, false, '2026-09-01T10:00:00Z',
+          '2026-08-31T08:15:00Z', 'Erster Stand'),
+         ('cc000003', true, true,  '2026-09-19T12:02:00Z',
+          '2026-09-17T16:40:00Z', 'Drei Befunde behoben')`)
+    const d = (await liste()).json() as {
+      currentCommittedAt: string | null; currentSubject: string | null
+      rollbackTargets: { commit: string; committedAt: string | null
+                         subject: string | null }[] }
+    expect(new Date(d.currentCommittedAt!).toISOString()).toBe('2026-09-17T16:40:00.000Z')
+    expect(d.currentSubject).toBe('Drei Befunde behoben')
+    // Auch am Ziel des Zurueckrollens: gewaehlt wird ein Stand, keine
+    // Zeichenfolge.
+    expect(d.rollbackTargets[0]!.subject).toBe('Erster Stand')
+    expect(new Date(d.rollbackTargets[0]!.committedAt!).toISOString())
+      .toBe('2026-08-31T08:15:00.000Z')
+  })
+
+  it('laesst die Herkunft leer, wo sie niemand gemeldet hat', async () => {
+    // Alles, was vor 0057 gebaut wurde: das Panel zeigt dann Hash und
+    // Bauzeit wie bisher. Eine geratene Zeit waere schlimmer als keine.
+    await aufPlatte('cc000003', true)
+    const d = (await liste()).json() as {
+      currentCommittedAt: string | null; currentSubject: string | null }
+    expect(d.currentCommittedAt).toBeNull()
+    expect(d.currentSubject).toBeNull()
   })
 })

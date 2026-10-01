@@ -103,10 +103,24 @@ export interface Deployment {
   log: string | null
 }
 
+/** Ein gebauter Stand auf der Platte, mit allem, was von ihm bekannt ist. */
+export interface Stand {
+  commit: string
+  builtAt: string | null
+  /*
+   * Zeitpunkt und Betreff des Commits. Null fuer alles, was vor Migration
+   * 0057 gebaut wurde -- dann bleiben Hash und Bauzeit.
+   */
+  committedAt: string | null
+  subject: string | null
+}
+
 export const useDeployments = () =>
   useQuery<{ deployments: Deployment[]; currentCommit: string | null
              currentBuiltAt: string | null
-             rollbackTargets: { commit: string; builtAt: string | null }[] }>({
+             currentCommittedAt: string | null
+             currentSubject: string | null
+             rollbackTargets: Stand[] }>({
     queryKey: ['deployments'],
     queryFn: () => api.get('/v1/platform/deployments'),
     /*

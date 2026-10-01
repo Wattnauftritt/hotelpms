@@ -602,6 +602,10 @@ Ein Timer, der einfach zieht, wäre die falsche Antwort gewesen — er rollte mi
 
 Ein eindeutiger Teilindex lässt höchstens eine offene Anforderung zu: zwei gleichzeitige Läufe zögen sich im selben Verzeichnis die Dateien weg, und heraus käme ein halber Stand, den niemand als solchen erkennt. Einzelheiten in [`21-inbetriebnahme.md`](21-inbetriebnahme.md) §8.
 
+**Welcher Stand läuft, steht über den Reitern** — nicht erst im Reiter *Betrieb*. Gefragt wird das in dem Moment, in dem etwas unerwartet aussieht („ist der Fehler von gestern eigentlich drauf?“), und drei Klicks dahin sind drei zu viel. In der Zeile stehen Hash, **Betreff des Commits**, **Zeit des Commits** und **Bauzeit**; die beiden Zeiten sind nicht dieselbe, und beide gehören hin — die Bauzeit ist die der Maschine, die Commit-Zeit die der Änderung, und zwischen Freigabe und Ausrollen können Tage liegen.
+
+Dass das bis dahin nicht ging, lag an der Ablage: `releases/<sha>` ist ein `git archive` ohne Geschichte, und die Commit-Zeit kennt dort niemand mehr. `deploy.sh` legt sie jetzt im Moment des Baus neben `.fertig` als `.stand` ab, der Agent meldet sie für den laufenden Stand (Migration `0057`). Was vorher gebaut wurde, hat die Datei nicht; dann bleiben Hash und Bauzeit — eine geratene Zeit wäre schlimmer als keine.
+
 ---
 
 ### Meldeschein: zwei Befunde beim Bauen der Namensliste

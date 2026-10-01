@@ -55,6 +55,16 @@ export const support = {
     de: 'gebaut {when}',
     en: 'built {when}',
     tr: '{when} derlendi' },
+  /*
+   * Und daneben die Zeit des Commits. Sie ist die Zeit der Aenderung; die
+   * Bauzeit ist die der Maschine, und zwischen beiden koennen Tage liegen.
+   * Beide zu zeigen ist kein Luxus: "laeuft seit heute morgen" und "ist
+   * der Stand von letzter Woche" sind zusammen die Antwort.
+   */
+  'deploy.committedAt': {
+    de: 'Commit {when}',
+    en: 'committed {when}',
+    tr: '{when} commit edildi' },
   'deploy.currentUnknown': {
     de: 'Noch kein Lauf verzeichnet',
     en: 'No run recorded yet',

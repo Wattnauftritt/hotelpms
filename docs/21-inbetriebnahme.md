@@ -292,6 +292,16 @@ Jetzt entsteht je Stand ein eigenes Verzeichnis, und erst wenn es vollständig i
 
 Ein gescheiterter Bau lässt den laufenden Stand damit völlig unberührt.
 
+### Was im Panel steht: welcher Stand läuft
+
+Das Adminpanel zeigt den laufenden Stand **über den Reitern**, also ohne dass jemand „Betrieb" öffnen muss — gefragt wird das in dem Moment, in dem etwas unerwartet aussieht, und drei Klicks dahin sind drei zu viel. In der Zeile stehen vier Angaben: der Hash (zwölf Zeichen), der **Betreff des Commits**, die **Zeit des Commits** und die **Bauzeit**.
+
+Die beiden Zeiten sind nicht dieselbe und beide nötig: die Bauzeit ist die der Maschine, die Commit-Zeit die der Änderung, und zwischen Freigabe und Ausrollen können Tage liegen. „Läuft seit heute morgen" und „ist der Stand von letzter Woche" sind zusammen die Antwort.
+
+Woher die Angaben kommen: `releases/<sha>` ist ein `git archive` ohne Geschichte — mit Absicht. Die Commit-Zeit kennt dort niemand mehr. Deshalb legt `deploy.sh` im Moment des Baus neben `.fertig` eine Datei `.stand` ab, zwei Zeilen, Zeit zuerst und Betreff danach (Zeit zuerst, weil der Betreff alles enthalten darf und die Zeit nicht). Der Agent liest sie beim Tick für den laufenden Stand und schreibt sie nach `release.committed_at` und `release.subject` (Migration 0057).
+
+Ein Verzeichnis ohne `.stand` — alles, was vor dieser Änderung gebaut wurde — bleibt leer, und das Panel zeigt dann Hash und Bauzeit wie vorher. Eine geratene Zeit wäre schlimmer als keine.
+
 ### Zurückrollen
 
 Fällt nebenbei ab: Symlink auf einen älteren Stand, Dienste neu starten. Kein Bau, in Sekunden durch — in der Konsole ein Knopf je verfügbarem Stand, auf der Maschine:

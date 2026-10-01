@@ -139,6 +139,21 @@ pnpm build
 # Erstinbetriebnahme auf, weil beide Seiten fuer sich richtig waren.
 cp -a "$ZIEL/apps/web/dist" "$ZIEL/web"
 
+# Woher dieser Stand kommt -- Zeitpunkt und Betreff des Commits.
+#
+# Hier und nicht im Agenten, weil es nur hier geht: `releases/<sha>` ist ein
+# `git archive` ohne Geschichte, und der Klon unter shared/repo steht dem
+# Agenten beim Tick nicht zur Verfuegung. Im Moment des Baus liegt beides
+# vor. Ohne diese Datei zeigt das Panel einen Hash und eine Bauzeit, und
+# welcher Stand das ist, weiss dann niemand (Migration 0057).
+#
+# Zwei Zeilen, Zeit zuerst: der Betreff darf alles enthalten, die Zeit
+# nicht. Waere es umgekehrt, zerliese ein Doppelpunkt im Betreff das Format.
+{
+  git -C "$REPO" show -s --format=%cI "$SHA"
+  git -C "$REPO" show -s --format=%s "$SHA"
+} > "$ZIEL/.stand"
+
 # Erst jetzt gilt der Stand als vollstaendig. Bricht irgendetwas davor ab,
 # fehlt diese Marke, und der naechste Lauf baut neu statt umzuschalten.
 touch "$ZIEL/.fertig"

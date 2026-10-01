@@ -81,7 +81,8 @@ function nachAussen(z: Zeile): Record<string, unknown> {
  * Tabelle leer. Dann gilt die alte Ableitung -- erweitert um den Stand
  * **vor** jedem gegluecken Lauf, denn den hat deploy.sh nicht weggeraeumt.
  */
-type Stand = { commit: string; builtAt: string | null }
+type Stand = { commit: string; builtAt: string | null
+               committedAt: string | null; subject: string | null }
 
 async function staende(client: { query: PoolClient['query'] }):
   Promise<{ laufend: Stand | null; ziele: Stand[] }> {
@@ -91,8 +92,11 @@ async function staende(client: { query: PoolClient['query'] }):
    * Anforderung, die den Stand nennt.
    */
   const platte = await client.query<{ commit: string; is_current: boolean
-                                      built_at: string | null }>(
-    `SELECT r.commit, r.is_current, r.built_at::text
+                                      built_at: string | null
+                                      committed_at: string | null
+                                      subject: string | null }>(
+    `SELECT r.commit, r.is_current, r.built_at::text,
+            r.committed_at::text, r.subject
        FROM release r
       WHERE r.present
       ORDER BY r.built_at DESC NULLS LAST,
@@ -100,7 +104,9 @@ async function staende(client: { query: PoolClient['query'] }):
                  WHERE d.commit_after = r.commit OR d.commit_before = r.commit)
                DESC NULLS LAST, r.commit`)
   if (platte.rowCount !== 0) {
-    const alle = platte.rows.map(z => ({ commit: z.commit, builtAt: z.built_at }))
+    const alle = platte.rows.map(z => ({ commit: z.commit, builtAt: z.built_at,
+                                         committedAt: z.committed_at,
+                                         subject: z.subject }))
     const laufend = alle[platte.rows.findIndex(z => z.is_current)] ?? null
     return { laufend, ziele: alle.filter(z => z.commit !== laufend?.commit) }
   }
@@ -122,7 +128,14 @@ async function staende(client: { query: PoolClient['query'] }):
     }
   }
   gebaut.delete('unbekannt')
-  const alle = [...gebaut].map(([commit, builtAt]) => ({ commit, builtAt }))
+  /*
+   * Zeitpunkt und Betreff des Commits (0057) kennt nur der Agent, und der
+   * hat hier noch nicht getickt. Null ist die richtige Antwort: das Panel
+   * zeigt dann Hash und Bauzeit wie vorher -- eine geratene Zeit waere
+   * schlimmer als keine.
+   */
+  const alle = [...gebaut].map(([commit, builtAt]) =>
+    ({ commit, builtAt, committedAt: null, subject: null }))
   const laufend = alle.find(z => z.commit === gelaufen.rows[0]?.commit_after) ?? null
   return { laufend, ziele: alle.filter(z => z.commit !== laufend?.commit).slice(0, 4) }
 }
@@ -230,6 +243,13 @@ export function deploymentRoutes(app: FastifyInstance): void {
       return { deployments: liste,
                currentCommit: laufend?.commit ?? null,
                currentBuiltAt: laufend?.builtAt ?? null,
+               /*
+                * Die Commit-Zeit und nicht nur die Bauzeit: zwischen beiden
+                * koennen Tage liegen, und gefragt wird nach dem Stand, nicht
+                * nach dem Moment des Baus (0057).
+                */
+               currentCommittedAt: laufend?.committedAt ?? null,
+               currentSubject: laufend?.subject ?? null,
                rollbackTargets: ziele }
     }
   })
