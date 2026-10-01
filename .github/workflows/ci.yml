@@ -36,7 +36,19 @@ jobs:
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level high || true
+      # **Ohne `|| true`** (Befund S3). Mit war der Schritt eine Anzeige
+      # ohne Folgen: der Lauf blieb gruen, auch wenn eine hohe oder
+      # kritische Luecke in einer Abhaengigkeit stand, und genau dann soll
+      # er rot sein.
+      #
+      # Was zu tun ist, wenn er faellt: die betroffene Abhaengigkeit
+      # anheben. Steckt sie zwei Ebenen tiefer und laesst sich nicht
+      # anheben, erzwingt `pnpm.overrides` in der package.json die
+      # geflickte Fassung -- dort stehen zwei davon, beide fuer
+      # brace-expansion unter eslint, mit der Begruendung daneben.
+      # Stillegen ist keine Loesung: ein Schritt, der nicht faellt, prueft
+      # nichts.
+      - run: pnpm audit --audit-level high
       # Vor allem anderen: doppelte Migrationsnummern. Sie entstehen, wenn
       # zwei Bearbeiter gleichzeitig von main abzweigen, und fallen beim
       # Mergen nicht auf, weil es verschiedene Dateien ohne Konflikt sind.

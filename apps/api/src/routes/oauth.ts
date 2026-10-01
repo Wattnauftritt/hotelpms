@@ -65,10 +65,24 @@ function zugangsdaten(
     const roh = Buffer.from(authorization.slice(6), 'base64').toString('utf8')
     const trenner = roh.indexOf(':')
     if (trenner < 0) return null
-    // Nach RFC 6749 sind beide Teile prozentkodiert.
-    return {
-      id: decodeURIComponent(roh.slice(0, trenner)),
-      secret: decodeURIComponent(roh.slice(trenner + 1))
+    /*
+     * Nach RFC 6749 sind beide Teile prozentkodiert -- und `%zz` ist keine
+     * gueltige Prozentkodierung. `decodeURIComponent` wirft darauf, und die
+     * Ausnahme lief bis hierher ungefangen durch: aus falschen
+     * Zugangsdaten wurde ein 500 statt eines 401 (Befund S7).
+     *
+     * Das ist kein Zugriff, aber zwei Dinge zugleich falsch: ein
+     * Serverfehler, den ein Aufrufer mit einer Kopfzeile ausloesen kann,
+     * und eine Antwort, die "bei uns ist etwas kaputt" sagt, wo "deine
+     * Zugangsdaten stimmen nicht" richtig waere.
+     */
+    try {
+      return {
+        id: decodeURIComponent(roh.slice(0, trenner)),
+        secret: decodeURIComponent(roh.slice(trenner + 1))
+      }
+    } catch {
+      return null
     }
   }
   const id = body.client_id

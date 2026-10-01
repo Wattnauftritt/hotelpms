@@ -811,7 +811,7 @@ Ansonsten schneiden sich die Aufgaben kaum: sie liegen in verschiedenen Routenmo
 
 ## 5. Umgebung
 
-`.claude/hooks/session-start.sh` richtet eine frische Sitzung vollständig ein: Abhängigkeiten, PostgreSQL, Rollen, Datenbanken, Schema. Von Hand tut `scripts/setup-db.sh` den Datenbankteil.
+`.claude/hooks/session-start.sh` richtet eine frische Sitzung vollständig ein: Abhängigkeiten, PostgreSQL, Rollen, Datenbanken, Schema. Von Hand tut `scripts/setup-db.sh` den Datenbankteil — mit `HOTELPMS_ALLOW_DEV_PASSWORDS=1`, sonst verlangt es eigene Kennwörter (Befund S1, Dokument 28).
 
 Scheitern die Tests mit `ECONNREFUSED` auf Port 5432, liegt es nicht an den Tests, sondern daran, dass die Datenbank nicht läuft.
 

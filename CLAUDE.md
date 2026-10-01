@@ -25,7 +25,7 @@ In einer Sitzung von Claude Code im Web geschieht das automatisch: `.claude/hook
 
 ```bash
 pnpm install
-./scripts/setup-db.sh         # PostgreSQL, drei Rollen, zwei Datenbanken
+HOTELPMS_ALLOW_DEV_PASSWORDS=1 ./scripts/setup-db.sh   # PostgreSQL, drei Rollen, zwei Datenbanken
 cp .env.example .env
 pnpm db:reset                 # Schema neu aufbauen
 pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre — zum **Messen**
@@ -211,7 +211,8 @@ Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zu
 
 | Symptom | Ursache |
 |---|---|
-| Tests: `connect ECONNREFUSED 127.0.0.1:5432` | PostgreSQL läuft nicht, `scripts/setup-db.sh` |
+| Tests: `connect ECONNREFUSED 127.0.0.1:5432` | PostgreSQL läuft nicht, `HOTELPMS_ALLOW_DEV_PASSWORDS=1 scripts/setup-db.sh` |
+| `setup-db.sh`: „HOTELPMS_DB_OWNER_PASSWORD fehlt" | Richtig so. Ohne eigene Kennwörter läuft es nur mit `HOTELPMS_ALLOW_DEV_PASSWORDS=1` (Befund S1) |
 | `permission denied for table charge` | Richtig so. Härtegrad 1, Korrektur als Gegenbuchung |
 | Abfrage liefert nichts, obwohl Daten da sind | Kein Mandantenkontext. Läuft die Abfrage in `tx(...)`? |
 | `not_materialized` bei einer Buchung | `inventory_day` fehlt für den Zeitraum, `inventory_materialize` |

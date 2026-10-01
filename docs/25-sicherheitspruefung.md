@@ -1,5 +1,11 @@
 # Sicherheitsprüfung des gesamten Systems
 
+> **Historisch.** Dieser Bericht beschreibt den Stand vom 19.09.2026 und ist
+> kein Nachweis für den heutigen Code. Die jüngere Prüfung ist
+> [`docs/28-sicherheitsaudit-copilot.md`](28-sicherheitsaudit-copilot.md)
+> samt der Gegenprüfung in `securityaudit-copilot.md` im Wurzelverzeichnis.
+> Wer hier etwas als erledigt liest, prüft es dort nach (Befund S8).
+
 Stand: 19.09.2026, gegen `main` bei `62694b8`. Geprüft wurden 261 Quelldateien, 40 Migrationen und 150 Routen, dazu die Betriebsdateien in `ops/`.
 
 Diese Prüfung ist eine **Lesung mit Gegenproben**, kein Penetrationstest. Wo ein Befund nachweisbar war, steht der Nachweis dabei; wo er es nicht war, steht das auch.

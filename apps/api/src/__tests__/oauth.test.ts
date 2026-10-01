@@ -105,6 +105,22 @@ describe('Tokenausgabe', () => {
     expect(r.statusCode).toBe(200)
   })
 
+  /**
+   * Befund S7: `%zz` ist keine gueltige Prozentkodierung.
+   *
+   * `decodeURIComponent` wirft darauf, und die Ausnahme lief ungefangen
+   * durch -- aus falschen Zugangsdaten wurde ein 500. Kein Zugriff, aber
+   * ein Serverfehler, den jeder mit einer Kopfzeile ausloesen kann, und
+   * eine Antwort, die den Fehler auf der falschen Seite verortet.
+   */
+  it('weist eine kaputte Prozentkodierung als invalid_client ab, nicht als 500', async () => {
+    const basic = Buffer.from('%zz:%e0%a4%a').toString('base64')
+    const r = await tokenAnfrage({ grant_type: 'client_credentials' },
+      { authorization: `Basic ${basic}` })
+    expect(r.statusCode).toBe(401)
+    expect((json(r) as unknown as { error: string }).error).toBe('invalid_client')
+  })
+
   it('antwortet auf ein falsches Geheimnis nach RFC 6749, nicht als Problem', async () => {
     const z = await zugang()
     const r = await tokenAnfrage({

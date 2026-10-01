@@ -4,6 +4,7 @@ import { useBooking, useShiftBooking, useAddBookingRoom, useChangeStay,
 import { useT, useLocale, formatDate, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
+import { VerlaufDialog } from './Verlauf.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 
 /**
@@ -56,14 +57,25 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
   const [neueGruppe, setNeueGruppe] = useState<number | ''>('')
 
   const daten = q.data
+  const [verlauf, setVerlauf] = useState(false)
 
   return (
+    <>
     <Dialog breite="weit" onClose={onClose}
             titel={t('group.panelTitle')} unterzeile={bookingRef}
             fuss={
-              <button type="button" onClick={onClose} className={KNOPF_LEISE}>
-                {t('booking.close')}
-              </button>
+              <>
+                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                  {t('booking.close')}
+                </button>
+                {/* Bei einer Gruppe ist der Verlauf der haeufigere Fall:
+                    acht Zimmer, drei Umbuchungen, und niemand weiss mehr,
+                    welche davon zusammengehoerten. */}
+                <button type="button" onClick={() => setVerlauf(true)}
+                        className={KNOPF_LEISE}>
+                  {t('verlauf.title')}
+                </button>
+              </>
             }>
       {q.isError ? <Fehler error={q.error} />
         : daten === undefined ? <Laedt />
@@ -256,6 +268,16 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
           </div>
         )}
     </Dialog>
+
+    {/* Neben der Gruppenmaske und nicht in ihr: der Verlauf gehoert zur
+        Buchung, nicht zu einem ihrer Abschnitte, und Escape schliesst
+        dank der gemeinsamen Lage erst ihn und dann sie. */}
+    {verlauf && (
+      <VerlaufDialog was={{ art: 'buchung', ref: bookingRef }}
+                     titel={t('verlauf.title')} unterzeile={bookingRef}
+                     onClose={() => setVerlauf(false)} />
+    )}
+    </>
   )
 }
 

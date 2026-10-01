@@ -122,6 +122,40 @@ describe('Anmeldung', () => {
     expect((await login('rezeption@test.de', KENNWORT, '198.51.100.4')).statusCode).toBe(200)
   })
 
+  /**
+   * Befund S4: die Herkunft darf nicht die sein, die der Aufrufer sich
+   * aussucht.
+   *
+   * `trustProxy: true` liess `proxy-addr` den **ersten** Eintrag der
+   * Kopfzeile nehmen -- und den schickt der Aufrufer selbst mit, weil Caddy
+   * seinen eigenen anhaengt statt zu ersetzen. Zehn Versuche mit zehn
+   * erfundenen Adressen davor waren damit zehn verschiedene Herkuenfte, und
+   * die Sperre nach zehn Fehlversuchen griff nie.
+   *
+   * Geprueft wird hier die Haelfte, die in der Anwendung liegt: von einer
+   * Kette zaehlt der **letzte** Eintrag, also der, den der Nachbar gesetzt
+   * hat. Die andere Haelfte steht im Caddyfile und laesst von der Kette
+   * ohnehin nichts uebrig.
+   */
+  it('laesst sich die Herkunft nicht durch eine mitgeschickte Kette waehlen', async () => {
+    const userId = await benutzerMitKennwort()
+    for (let i = 0; i < 10; i++) {
+      await login('rezeption@test.de', 'daneben', `203.0.113.${i}, 198.51.100.7`)
+    }
+
+    // Gezaehlt wurde zehnmal dieselbe Herkunft -- die hinterste.
+    const zeilen = await owner.query<{ origin: string; failed_count: number }>(
+      `SELECT origin, failed_count FROM login_failure WHERE user_id = $1`, [userId])
+    expect(zeilen.rows).toHaveLength(1)
+    expect(zeilen.rows[0]!.origin).toBe('198.51.100.7')
+
+    // Und die Sperre greift, auch mit einer elften erfundenen Adresse davor.
+    const gesperrt = await login('rezeption@test.de', KENNWORT,
+      '203.0.113.99, 198.51.100.7')
+    expect(gesperrt.statusCode).toBe(401)
+    expect(JSON.parse(gesperrt.body).detail).toContain('Fehlversuche')
+  })
+
   it('haelt eine Sperre am Konto auch neben einer abgelaufenen Herkunftssperre', async () => {
     /*
      * Die Pruefung nahm mit `??` die Herkunftssperre, sobald es eine Zeile

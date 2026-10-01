@@ -135,7 +135,9 @@ sudo -u hotelpms git clone git@github.com:Wattnauftritt/hotelpms.git /opt/hotelp
 
 ## 6. Datenbank einrichten
 
-Die drei Rollen legt `scripts/setup-db.sh` an — dasselbe Skript wie in der Entwicklung, damit Entwicklung und Betrieb nicht auseinanderlaufen. **Kennwörter und Datenbanknamen kommen aus der Umgebung**; die Vorgabewerte sind die der Entwicklung und gehören nicht auf eine Maschine, die aus dem Netz erreichbar ist.
+Die drei Rollen legt `scripts/setup-db.sh` an — dasselbe Skript wie in der Entwicklung, damit Entwicklung und Betrieb nicht auseinanderlaufen. **Kennwörter und Datenbanknamen kommen aus der Umgebung.**
+
+Fehlt eines der drei Kennwörter, bricht das Skript ab. Das ist seit Befund S1 so und war vorher anders: dann traten die Entwicklungsvorgaben in Kraft, der Lauf meldete Erfolg, und auf der Maschine am Netz standen `devowner` und `devapp`. Ein vergessenes Geheimnis endete also nicht in einem Fehler, sondern in einem Erfolg mit öffentlich bekannten Zugangsdaten — die schlimmste Bauform eines Fehlers, weil sie wie das Gelingen aussieht. Wer die Vorgaben wirklich will (Entwicklung, CI), setzt `HOTELPMS_ALLOW_DEV_PASSWORDS=1`; dieselben drei Wörter werden ohne diesen Schalter auch dann abgewiesen, wenn sie von Hand gesetzt sind.
 
 ```bash
 HOTELPMS_DB_OWNER_PASSWORD="$(openssl rand -base64 33)" \

@@ -33,6 +33,40 @@ ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
+# ---------------------------------------------------------------------------
+# Befund S6: die Haertung war die halbe Liste.
+#
+# Was hier dazukommt, ist das, was ein Node-Dienst nachweislich nicht
+# braucht -- kein Geraet ausser den virtuellen, keine Kernelmodule, kein
+# Kernelprotokoll, keine fremden Namensraeume, keine Echtzeitprioritaet,
+# keine Faehigkeiten. Jede einzelne Zeile verkleinert nicht die
+# Wahrscheinlichkeit eines Einbruchs, sondern das, was danach moeglich ist.
+#
+# `RestrictAddressFamilies` mit AF_NETLINK, nicht ohne: `os.networkInterfaces()`
+# in libuv fragt die Schnittstellenliste ueber Netlink ab, und ein Dienst,
+# der daran stirbt, stirbt an einer Zeile, die niemand mit der Haertung in
+# Verbindung bringt.
+#
+# **SystemCallFilter steht hier bewusst (noch) NICHT.** Es ist die Option mit
+# dem groessten Gewinn und dem groessten Risiko: ein fehlender Aufruf endet
+# als SIGSYS beim Start oder, schlimmer, Stunden spaeter unter Last. Diese
+# Datei traegt mit `MemoryDenyWriteExecute` schon einen Fall, in dem genau
+# das passiert ist. Sie gehoert an der Maschine mit `@system-service`
+# ausprobiert und erst dann eingecheckt.
+#
+# Geprueft wurde hier `systemd-analyze verify` (Schreibweise, unbekannte
+# Optionen). Der Startversuch auf der Maschine steht aus und gehoert zur
+# naechsten Auslieferung -- so steht es auch in Dokument 21.
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectHostname=true
+ProtectClock=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
 # MemoryDenyWriteExecute steht hier bewusst NICHT. Die Option verbietet
 # Speicherseiten, die zugleich beschreibbar und ausfuehrbar sind -- genau
 # die braucht jeder JIT-Compiler, und V8 ist einer. Der Dienst stirbt beim

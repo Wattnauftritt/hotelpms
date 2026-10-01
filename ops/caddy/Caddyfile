@@ -20,6 +20,26 @@
 }
 
 # ---------------------------------------------------------------------------
+# Die Herkunft einer Anfrage -- einmal, fuer jeden Weg zur Anwendung.
+#
+# Caddy **ergaenzt** X-Forwarded-For normalerweise und ersetzt die Kopfzeile
+# nicht: wer selbst eine mitschickt, steht danach als erster Eintrag darin.
+# Zusammen mit `trustProxy: true` in der Anwendung war die Adresse, auf die
+# sich die Ratenbegrenzung stuetzt, damit vom Aufrufer frei waehlbar -- eine
+# Anmeldung mit einer zufaelligen Kopfzeile je Versuch kam aus einer Herkunft,
+# die der Zaehler nie zweimal sah (Befund S4). Das ging ueber den regulaeren
+# Weg und brauchte keinen Zugang zum Rechner.
+#
+# `header_up` ueberschreibt sie mit der tatsaechlichen Gegenstelle. Damit
+# steht genau ein Eintrag darin, und die Anwendung vertraut genau einen Sprung
+# weit. Beide Haelften gehoeren zusammen: faellt eine weg, ist die Begrenzung
+# wieder zu umgehen.
+# ---------------------------------------------------------------------------
+(echte_herkunft) {
+	header_up X-Forwarded-For {remote_host}
+}
+
+# ---------------------------------------------------------------------------
 # Eine Herkunft für Oberfläche und Schnittstelle.
 #
 # Getrennte Namen fuer Oberfläche und Schnittstelle erzwingen CORS mit
@@ -107,10 +127,14 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	# PostgreSQL und die Anwendung sprechen nie über TCP, und der Dienst
 	# lauscht auf keinem Netzwerkport.
 	handle /v1/* {
-		reverse_proxy unix//run/hotelpms/api.sock
+		reverse_proxy unix//run/hotelpms/api.sock {
+			import echte_herkunft
+		}
 	}
 	handle /openapi.json {
-		reverse_proxy unix//run/hotelpms/api.sock
+		reverse_proxy unix//run/hotelpms/api.sock {
+			import echte_herkunft
+		}
 	}
 	# /health, nicht /healthz: so heisst die Route in routes/health.ts. Stand
 	# hier einmal falsch, und der Fehler war nicht "keine Antwort", sondern
@@ -118,7 +142,9 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	# index.html mit Status 200. Wer auf den Statuscode schaut, bekam von
 	# einem toten Dienst ein "gesund".
 	handle /health {
-		reverse_proxy unix//run/hotelpms/api.sock
+		reverse_proxy unix//run/hotelpms/api.sock {
+			import echte_herkunft
+		}
 	}
 
 	# Alles andere ist die Oberfläche. Gebaute Dateien tragen einen Hash im
@@ -155,7 +181,9 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 # sondern ein Client mit Client Credentials, und der holt sein Token einmal
 # je Stunde. Die Anwendung begrenzt /oauth/token ohnehin selbst.
 api.staygrid.cloud {
-	reverse_proxy unix//run/hotelpms/api.sock
+	reverse_proxy unix//run/hotelpms/api.sock {
+		import echte_herkunft
+	}
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
