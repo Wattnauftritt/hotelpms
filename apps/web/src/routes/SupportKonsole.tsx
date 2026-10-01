@@ -181,6 +181,71 @@ const DEPLOY_ZUSTAND: Record<Deployment['status'], TextKey> = {
 }
 
 /**
+ * Welcher Stand laeuft -- in einer Zeile.
+ *
+ * **Warum ein Hash allein nicht reicht.** Bis hierher stand im Panel der
+ * Hash und daneben die Bauzeit. Das beantwortet "welches Verzeichnis
+ * laeuft", nicht die Frage, die tatsaechlich gestellt wird: *welcher Stand
+ * ist das, und von wann?* Zwoelf Zeichen sagen niemandem etwas, und die
+ * Bauzeit ist die Zeit der Maschine, nicht die der Aenderung -- zwischen
+ * Commit und Ausrollen koennen Tage liegen. Deshalb Betreff und
+ * Commit-Zeit daneben (Migration 0057).
+ *
+ * **Eine Fassung, zwei Stellen.** Dieselbe Zeile steht oben im Adminpanel,
+ * ueber den Reitern, und im Ausrollkasten. Zwei getrennte Darstellungen
+ * desselben Standes liefen auseinander, und beide saehen fuer sich
+ * stimmig aus. Dass sie im Reiter Betrieb zweimal untereinander steht, ist
+ * der Preis dafuer und kein hoher: unmittelbar ueber einem Knopf, der den
+ * laufenden Stand aendert, ist "das laeuft gerade" keine Wiederholung,
+ * sondern die Frage davor.
+ *
+ * Ohne Daten gar nichts: wer das Recht nicht hat, bekommt 403, und eine
+ * Fehlermeldung ueber den Reitern waere Laerm fuer eine Angabe, die
+ * niemand angefordert hat.
+ */
+export function LaufenderStand({ rahmen = false }: {
+  /** Mit eigenem Kasten -- fuer die Zeile ueber den Reitern, die sonst als
+    * leerer Rahmen stehenblieb, solange nichts geladen ist. */
+  rahmen?: boolean
+} = {}): JSX.Element | null {
+  const t = useT()
+  const locale = useLocale()
+  const q = useDeployments()
+  const zeit = (iso: string) =>
+    new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
+
+  if (q.data === undefined) return null
+  const d = q.data
+  return (
+    <p className={`text-sm flex flex-wrap items-baseline gap-x-2${rahmen
+      ? ' border border-neutral-200 rounded bg-white px-3 py-1.5' : ''}`}>
+      <span className="text-neutral-600">{t('deploy.current')}:</span>
+      {d.currentCommit != null
+        ? <code className="font-mono">{d.currentCommit.slice(0, 12)}</code>
+        : <span className="text-neutral-500">{t('deploy.currentUnknown')}</span>}
+      {/*
+        * Der Betreff ist die eigentliche Antwort und steht deshalb
+        * hervorgehoben: "Drei Befunde aus dem Performance-Audit behoben"
+        * erkennt man wieder, 3938076 nicht.
+        */}
+      {d.currentSubject != null && (
+        <span className="font-medium">{`„${d.currentSubject}“`}</span>
+      )}
+      {d.currentCommittedAt != null && (
+        <span className="text-neutral-600">
+          {t('deploy.committedAt', { when: zeit(d.currentCommittedAt) })}
+        </span>
+      )}
+      {d.currentBuiltAt != null && (
+        <span className="text-neutral-500">
+          {t('deploy.builtAt', { when: zeit(d.currentBuiltAt) })}
+        </span>
+      )}
+    </p>
+  )
+}
+
+/**
  * Ausrollen.
  *
  * **Der Knopf bestimmt den Zeitpunkt, nicht den Inhalt.** Was auf die
@@ -212,17 +277,7 @@ export function Ausrollen(): JSX.Element {
       <h2 className="text-sm font-medium">{t('deploy.title')}</h2>
       <p className="text-sm text-neutral-600">{t('deploy.hint')}</p>
 
-      <p className="text-sm">
-        <span className="text-neutral-600">{t('deploy.current')}: </span>
-        {q.data?.currentCommit != null
-          ? <code className="font-mono">{q.data.currentCommit.slice(0, 12)}</code>
-          : <span className="text-neutral-500">{t('deploy.currentUnknown')}</span>}
-        {q.data?.currentBuiltAt != null && (
-          <span className="text-neutral-500">
-            {' · '}{t('deploy.builtAt', { when: zeit(q.data.currentBuiltAt) })}
-          </span>
-        )}
-      </p>
+      <LaufenderStand />
 
       {anfordern.isError && <Fehler error={anfordern.error} />}
       {anfordern.isSuccess && (
@@ -256,6 +311,15 @@ export function Ausrollen(): JSX.Element {
                       className="text-xs px-2 py-1 border border-neutral-300
                                  rounded hover:bg-neutral-50 disabled:text-neutral-400">
                 <span className="font-mono">{z.commit.slice(0, 12)}</span>
+                {/* Auch hier der Betreff: zurueckgerollt wird auf einen
+                  * Stand, nicht auf eine Zeichenfolge. Abgeschnitten, weil
+                  * eine Reihe von Knoepfen mit ganzen Betreffzeilen keine
+                  * Reihe mehr ist -- der volle Satz steht im Titel. */}
+                {z.subject !== null && (
+                  <span title={z.subject}
+                        className="ml-1.5 inline-block align-bottom max-w-[16rem]
+                                   truncate">{`„${z.subject}“`}</span>
+                )}
                 {z.builtAt !== null && (
                   <span className="ml-1.5 text-neutral-500">
                     {t('deploy.builtAt', { when: zeit(z.builtAt) })}

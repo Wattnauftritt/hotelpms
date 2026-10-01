@@ -12,7 +12,7 @@ import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
-import { Anfrage, Liste, Ausrollen } from './SupportKonsole.tsx'
+import { Anfrage, Liste, Ausrollen, LaufenderStand } from './SupportKonsole.tsx'
 
 /**
  * Das Adminpanel.
@@ -1126,6 +1126,22 @@ function AbsenderdomainFreigaben(): JSX.Element {
 
   return (
     <div className="space-y-4">
+      {/*
+        * Welcher Stand laeuft, steht oben und nicht im Reiter Betrieb.
+        *
+        * Gefragt wird das in dem Moment, in dem etwas unerwartet aussieht --
+        * "ist der Fehler von gestern eigentlich drauf?". Drei Klicks dahin
+        * sind drei zu viel, und wer den Reiter oeffnen muss, sieht die
+        * Angabe gerade dann nicht, wenn er sie braucht.
+        *
+        * Nur fuer wen das Recht hat: die Route verlangt
+        * `platform:operations`, und ohne das Recht waere hier eine
+        * Fehlermeldung ueber dem ganzen Panel.
+        */}
+      {platformPermissions.includes('platform:operations') && (
+        <LaufenderStand rahmen />
+      )}
+
       <div className="flex flex-wrap gap-1 border-b border-neutral-200">
         {reiters.map(([k, label]) => (
           <button key={k} type="button" onClick={() => setReiter(k)}

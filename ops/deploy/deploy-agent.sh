@@ -41,8 +41,28 @@ STAENDE="$(for d in "$WURZEL"/releases/*/; do
   [ -e "$d/.fertig" ] && printf '%s:%s\n' "$(basename "$d")" "$(stat -c %Y "$d/.fertig")"
 done | paste -sd, -)"
 LAEUFT="$(basename "$(readlink -f "$CURRENT" 2>/dev/null || echo unbekannt)")"
+
+# Woher der laufende Stand kommt: deploy.sh legt beim Bau zwei Zeilen ab --
+# Zeitpunkt und Betreff des Commits (Migration 0057). Nur fuer den
+# laufenden, nicht fuer jeden: die Frage lautet "was laeuft gerade", und ein
+# Aufruf je Verzeichnis waere eine Runde je Tick fuer eine Angabe, die
+# niemand sieht.
+#
+# Leer bleibt, was vor dieser Aenderung gebaut wurde -- das Panel zeigt dann
+# Hash und Bauzeit wie bisher. `sed -n 1p` statt `head -1`, weil head bei
+# einer Pipe das Lesen abbricht und der Schreiber ein SIGPIPE bekommt; hier
+# ist es eine Datei, aber die Gewohnheit kostet nichts.
+STAND_DATEI="$WURZEL/releases/$LAEUFT/.stand"
+COMMIT_ZEIT=""
+COMMIT_BETREFF=""
+if [ -r "$STAND_DATEI" ]; then
+  COMMIT_ZEIT="$(sed -n 1p "$STAND_DATEI")"
+  COMMIT_BETREFF="$(sed -n 2p "$STAND_DATEI")"
+fi
+
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq \
-     -v staende="$STAENDE" -v laeuft="$LAEUFT" <<'SQL' >/dev/null 2>&1 \
+     -v staende="$STAENDE" -v laeuft="$LAEUFT" \
+     -v cjetzt="$COMMIT_ZEIT" -v cbetreff="$COMMIT_BETREFF" <<'SQL' >/dev/null 2>&1 \
   || echo "WARNUNG: Staende auf der Platte konnten nicht vermerkt werden." >&2
 -- Erst alle auf "nicht laufend", dann eintragen: der eindeutige Teilindex
 -- laesst nur eine laufende Zeile zu, und innerhalb EINER Anweisung stuenden
@@ -59,6 +79,13 @@ SELECT split_part(x, ':', 1), now(), true, split_part(x, ':', 1) = :'laeuft',
 UPDATE release SET present = false, is_current = false
  WHERE commit <> ALL (SELECT split_part(x, ':', 1)
                         FROM unnest(string_to_array(:'staende', ',')) AS x);
+-- Herkunft nur dort, wo sie bekannt ist: ein leerer Wert ueberschreibt
+-- nichts, sonst loeschte der erste Tick nach einem Zurueckrollen auf einen
+-- alten Stand die Angabe des neuen gleich mit.
+UPDATE release
+   SET committed_at = NULLIF(:'cjetzt', '')::timestamptz,
+       subject      = NULLIF(:'cbetreff', '')
+ WHERE commit = :'laeuft' AND NULLIF(:'cjetzt', '') IS NOT NULL;
 SQL
 
 # Beanspruchen: aelteste offene Anforderung, unter Sperre und ohne Warten.
