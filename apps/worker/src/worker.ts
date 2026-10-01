@@ -1,4 +1,5 @@
-import { createPool, withTransaction, SYSTEM_CONTEXT, type DbContext, type Pool }
+import { createPool, withTransaction, SYSTEM_CONTEXT, STAPEL_TIMEOUT_MS,
+         type DbContext, type Pool }
   from '@hotelpms/db'
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
@@ -33,7 +34,18 @@ if (allowedWebhookCidrs.length > 0) {
 
 // Der Worker verbindet DIREKT mit PostgreSQL, nicht ueber PgBouncer:
 // LISTEN/NOTIFY kommt im Transaction Mode nie an (D1, Dokument 13).
-const pool = createPool({ kind: 'direct', max: 4, applicationName: 'hotelpms-worker' })
+/*
+ * Stapelarbeit bekommt mehr Zeit je Anweisung als eine Anfrage aus der
+ * Oberflaeche (Befund P8, Dokument 29).
+ *
+ * Dreissig Sekunden sind fuer eine Rezeption richtig -- was laenger
+ * braucht, ist kaputt. Fuer den Nachtlauf eines Hauses mit 250 Zimmern
+ * oder einen Jahresexport sind sie es nicht: eine einzelne Anweisung darf
+ * dort laenger rechnen, und sie stuerbe sonst mitten im Lauf, der
+ * daraufhin beim naechsten Tick wieder von vorn beginnt.
+ */
+const pool = createPool({ kind: 'direct', max: 4, applicationName: 'hotelpms-worker',
+                          statementTimeoutMs: STAPEL_TIMEOUT_MS })
 
 // Zwei Verbindungen, zwei Rollen, und das mit Absicht:
 //
@@ -48,7 +60,8 @@ const pool = createPool({ kind: 'direct', max: 4, applicationName: 'hotelpms-wor
 //                           mandantenuebergreifend und laesst sich in keiner
 //                           Zeilenrichtlinie ausdruecken. Bewusst klein
 //                           gehalten und nie fuer Fachdaten benutzt.
-const admin = createPool({ kind: 'owner', max: 2, applicationName: 'hotelpms-worker-admin' })
+const admin = createPool({ kind: 'owner', max: 2, applicationName: 'hotelpms-worker-admin',
+                           statementTimeoutMs: STAPEL_TIMEOUT_MS })
 
 /**
  * Streuung der Nachtlauf-Startzeit ueber ein Fenster, abgeleitet aus der

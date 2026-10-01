@@ -16,8 +16,28 @@ declare module 'fastify' {
      *  Bytes fuer die Signaturpruefung; ein neu serialisiertes JSON waere
      *  nicht mehr dieselbe Zeichenkette. */
     rawBody: Buffer
+    /**
+     * Was diese Anfrage die Datenbank gekostet hat.
+     *
+     * Steht am Ende in der Protokollzeile. Eine Antwort in 300 ms sah
+     * vorher gleich aus, ob sie aus einer Abfrage kam oder aus
+     * vierhundert -- und ein N+1 faellt im Betrieb an nichts anderem auf
+     * (Befund P9, Dokument 29).
+     */
+    dbKosten: { anweisungen: number; dauerMs: number }
   }
 }
+
+/**
+ * Ab wann eine Anfrage als auffaellig gilt.
+ *
+ * Fuenfzig, weil die Endpunkte Aggregate sind: ein Bildschirm ist ein
+ * Aufruf, und der kommt mit einer Handvoll Anweisungen aus. Wer fuenfzig
+ * ueberschreitet, laedt je Zeile nach -- oder hat einen Grund, den er
+ * aufschreiben sollte. Die Zahl ist einstellbar, damit sie beim naechsten
+ * Stapelendpunkt nicht zu einer Zeile Rauschen je Aufruf wird.
+ */
+const ANWEISUNGEN_WARNUNG = Number(process.env.DB_QUERY_WARN ?? 50)
 
 export interface Server {
   app: FastifyInstance
@@ -29,7 +49,21 @@ export async function buildServer(
   overrides: { pool?: Pool; logStream?: NodeJS.WritableStream } = {}
 ): Promise<Server> {
   const config = loadConfig()
-  const pool = overrides.pool ?? createPool({ kind: 'app', max: 10, applicationName: 'hotelpms-api' })
+  /*
+   * Die Poolgroesse aus der Umgebung, mit zehn als Vorgabe (Befund P5,
+   * Dokument 29).
+   *
+   * Zehn ist nicht gegriffen und auch keine Obergrenze des Systems: Node
+   * arbeitet in einem Faden, und mehr gleichzeitige Verbindungen als
+   * PostgreSQL Kerne hat, machen eine Datenbank langsamer, nicht
+   * schneller. Die Zahl gehoert trotzdem an die Maschine und nicht in den
+   * Quelltext -- ein Haus mit 250 Zimmern und drei Arbeitsplaetzen hat
+   * eine andere Gleichzeitigkeit als eine Pension mit zwoelf.
+   */
+  const pool = overrides.pool ?? createPool({
+    kind: 'app', max: Number(process.env.DB_POOL_MAX ?? 10),
+    applicationName: 'hotelpms-api'
+  })
 
   /*
    * Ein Protokollziel, das der Aufrufer vorgibt. Nur ein Test setzt es, und
@@ -151,6 +185,24 @@ export async function buildServer(
   app.addHook('onRequest', async (req) => {
     req.pool = pool
     req.principal = ANONYMOUS
+    req.dbKosten = { anweisungen: 0, dauerMs: 0 }
+  })
+
+  /*
+   * Was die Anfrage die Datenbank gekostet hat, in **ihre** Protokollzeile.
+   *
+   * Nicht als eigene Zeile: zwei Zeilen je Anfrage verdoppeln das Protokoll
+   * und muessen beim Lesen wieder zusammengesucht werden. Ueber der
+   * Schwelle eine Warnung, darunter nichts -- im Normalfall ist die Zahl
+   * uninteressant, und ein Protokoll, in dem alles steht, liest niemand.
+   */
+  app.addHook('onResponse', async (req, reply) => {
+    const k = req.dbKosten
+    if (k.anweisungen < ANWEISUNGEN_WARNUNG) return
+    req.log.warn({
+      anweisungen: k.anweisungen, dbMs: Math.round(k.dauerMs),
+      antwortMs: Math.round(reply.elapsedTime)
+    }, 'Viele Datenbankanweisungen in einer Anfrage')
   })
 
   // Aufrufer bestimmen. Der Mandantenkontext kommt ausschliesslich von hier.

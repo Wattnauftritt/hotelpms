@@ -763,6 +763,15 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 **Nachtrag.** Die Nachtlauf-Schleife (`noShows`/`expireOptions`/`releaseBlocks`, Migration 0051), die `INSERT`-je-Nacht-Schleife beim Buchen/Verlängern/Kanalübernahme/Import, die einfachen CSV-Import-Upserts, die korrelierten Unterabfragen in `reports.ts` und der `INSERT`-je-Empfänger in `support.ts` sind seither ebenfalls behoben (Dokument 24, Befund 5–9). Offen bleibt aus Dokument 24 nur die Mittel-Stufe des CSV-Imports (Bestandsabruf und `inventory_reserve()` je Zeile, Fachlogik) sowie die als „bewusst so" markierten Punkte der Gering-Stufe.
 
+**Zweiter Nachtrag, 01.10.2026: Gegenprüfung von außen.** `performanceaudit.md` im Wurzelverzeichnis ist ein Audit des Stands `61616f3`; die Antwort darauf steht in [`29-performanceaudit-antwort.md`](29-performanceaudit-antwort.md). Behoben sind daraus: die Poolgröße als Umgebungsvariable (`DB_POOL_MAX`), eine eigene Zeitgrenze je Anweisung für Stapelarbeit (fünf Minuten statt dreißig Sekunden, sonst stirbt ein Jahresexport mittendrin) und ein Zähler für Datenbankanweisungen je Anfrage, der über einer Schwelle warnt — der Abfragezähler im Test sieht nur, wohin ein Test blickt.
+
+**Offen aus diesem Audit**, und keines davon durch Lesen zu schließen:
+
+1. **Lasttest auf der Zielmaschine.** Dokument 15 nennt Einzelmessungen mit warmem Cache; Perzentile unter Gleichzeitigkeit und Durchsatz fehlen. Gehört mit `k6` oder `autocannon` gegen das Saatlaufhaus gemessen und als Zusage aufgeschrieben.
+2. **Überwachung, dass der Worker überhaupt tickt.** `overdueNightAudits` meldet überfällige Nachtläufe; dass der Tick seit einer Stunde steht, meldet nichts.
+3. **Speicher- und CPU-Bedarf des Workers messen**, statt `MemoryMax=4G` und `CPUQuota=150%` zu schätzen.
+4. **Gemeinsamer Zähler für die Ratenbegrenzung**, sobald mehr als ein API-Prozess läuft — dieselbe Aufgabe wie Befund S5 in Dokument 28, einmal aus der Leistungs-, einmal aus der Sicherheitssicht.
+
 ---
 
 ## 3. Fallstricke, die schon einmal zugeschlagen haben

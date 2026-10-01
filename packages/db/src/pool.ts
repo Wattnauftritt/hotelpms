@@ -28,14 +28,37 @@ export interface PoolOptions {
   kind?: 'app' | 'direct' | 'owner'
   max?: number
   applicationName?: string
+  /**
+   * Obergrenze je **Anweisung**, nicht je Transaktion.
+   *
+   * 30 Sekunden sind fuer eine Anfrage aus der Oberflaeche richtig: was
+   * laenger braucht, ist kaputt, und eine haengende Anweisung haelt eine
+   * Verbindung des Pools fest. Fuer Stapelarbeit ist dieselbe Zahl falsch
+   * -- ein DATEV-Export ueber ein Jahr oder der Nachtlauf eines Hauses mit
+   * 250 Zimmern kann an einer einzelnen Anweisung laenger rechnen, und er
+   * stuerbe dann mitten im Lauf. Deshalb setzt der Worker eine eigene
+   * Grenze (Befund P8, Dokument 29).
+   */
+  statementTimeoutMs?: number
 }
+
+/** Was eine Anfrage aus der Oberflaeche hoechstens darf. */
+export const ANFRAGE_TIMEOUT_MS = 30_000
+/** Was Stapelarbeit darf: Nachtlauf, Export, Pflegejob. */
+export const STAPEL_TIMEOUT_MS = 5 * 60_000
 
 export function createPool(opts: PoolOptions = {}): Pool {
   return new pg.Pool({
     connectionString: dbUrl(opts.kind ?? 'app'),
     max: opts.max ?? 10,
     application_name: opts.applicationName ?? 'hotelpms',
-    statement_timeout: 30_000,
+    statement_timeout: opts.statementTimeoutMs ?? ANFRAGE_TIMEOUT_MS,
+    /*
+     * Eine offene Transaktion ohne Arbeit ist schlimmer als eine lange
+     * Anweisung: sie haelt Sperren und blockiert `VACUUM`. Zehn Sekunden
+     * sind grosszuegig fuer alles, was dieses System in einer Transaktion
+     * tut -- es rechnet darin nicht, es schreibt.
+     */
     idle_in_transaction_session_timeout: 10_000
   })
 }
