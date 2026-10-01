@@ -969,4 +969,187 @@ export const plan = {
     de: 'Meldeschein erfassen und einchecken',
     en: 'Register and check in',
     tr: 'Meldeschein doldur ve check-in yap' },
+
+  /*
+   * Der Aenderungsverlauf.
+   *
+   * Die Feldnamen sind die Spalten der Datenbank, und sie heissen hier, wie
+   * sie auf dem Bildschirm heissen -- nicht wie in der Tabelle. "Zimmer" und
+   * nicht "resource_id": wer den Verlauf liest, sucht die Buchung, nicht das
+   * Schema.
+   */
+  'verlauf.title': {
+    de: 'Verlauf',
+    en: 'History',
+    tr: 'Geçmiş' },
+  'verlauf.hausTitle': {
+    de: 'Zuletzt geändert',
+    en: 'Changed recently',
+    tr: 'Son değişiklikler' },
+  'verlauf.leer': {
+    de: 'Noch keine Änderungen aufgezeichnet.',
+    en: 'No changes recorded yet.',
+    tr: 'Henüz kayıtlı değişiklik yok.' },
+  'verlauf.system': {
+    de: 'System',
+    en: 'System',
+    tr: 'Sistem' },
+  'verlauf.redigiert': {
+    de: 'geändert',
+    en: 'changed',
+    tr: 'değişti' },
+  'verlauf.ja': {
+    de: 'ja',
+    en: 'yes',
+    tr: 'evet' },
+  'verlauf.nein': {
+    de: 'nein',
+    en: 'no',
+    tr: 'hayır' },
+  'verlauf.angelegt': {
+    de: '{was} angelegt',
+    en: '{was} created',
+    tr: '{was} oluşturuldu' },
+  'verlauf.geaendert': {
+    de: '{was} geändert',
+    en: '{was} changed',
+    tr: '{was} değişti' },
+  'verlauf.entfernt': {
+    de: '{was} entfernt',
+    en: '{was} removed',
+    tr: '{was} kaldırıldı' },
+
+  'verlauf.tabelle.reservation': {
+    de: 'Reservierung',
+    en: 'Reservation',
+    tr: 'Rezervasyon' },
+  'verlauf.tabelle.booking': {
+    de: 'Buchung',
+    en: 'Booking',
+    tr: 'Rezervasyon kaydı' },
+  'verlauf.tabelle.night': {
+    de: 'Nacht',
+    en: 'Night',
+    tr: 'Gece' },
+  'verlauf.tabelle.charge': {
+    de: 'Position',
+    en: 'Charge',
+    tr: 'Kalem' },
+  'verlauf.tabelle.block': {
+    de: 'Sperrung',
+    en: 'Block',
+    tr: 'Kapatma' },
+
+  'verlauf.feld.room': {
+    de: 'Zimmer',
+    en: 'Room',
+    tr: 'Oda' },
+  'verlauf.feld.category': {
+    de: 'Zimmergruppe',
+    en: 'Room type',
+    tr: 'Oda tipi' },
+  'verlauf.feld.status': {
+    de: 'Zustand',
+    en: 'Status',
+    tr: 'Durum' },
+  'verlauf.feld.ratePlan': {
+    de: 'Ratenplan',
+    en: 'Rate plan',
+    tr: 'Fiyat planı' },
+  'verlauf.feld.guest': {
+    de: 'Hauptgast',
+    en: 'Main guest',
+    tr: 'Ana misafir' },
+  'verlauf.feld.guaranteed': {
+    de: 'Garantiert',
+    en: 'Guaranteed',
+    tr: 'Garantili' },
+  'verlauf.feld.optionExpires': {
+    de: 'Option bis',
+    en: 'Option until',
+    tr: 'Opsiyon bitişi' },
+  'verlauf.feld.cancellationFee': {
+    de: 'Stornogebühr',
+    en: 'Cancellation fee',
+    tr: 'İptal ücreti' },
+  'verlauf.feld.notes': {
+    de: 'Notiz',
+    en: 'Note',
+    tr: 'Not' },
+  'verlauf.feld.shortNote': {
+    de: 'Kurznotiz',
+    en: 'Short note',
+    tr: 'Kısa not' },
+  'verlauf.feld.price': {
+    de: 'Preis',
+    en: 'Price',
+    tr: 'Fiyat' },
+  'verlauf.feld.description': {
+    de: 'Bezeichnung',
+    en: 'Description',
+    tr: 'Açıklama' },
+  'verlauf.feld.quantity': {
+    de: 'Menge',
+    en: 'Quantity',
+    tr: 'Miktar' },
+  'verlauf.feld.net': {
+    de: 'Netto',
+    en: 'Net',
+    tr: 'Net' },
+  'verlauf.feld.tax': {
+    de: 'Steuer',
+    en: 'Tax',
+    tr: 'Vergi' },
+  'verlauf.feld.gross': {
+    de: 'Brutto',
+    en: 'Gross',
+    tr: 'Brüt' },
+  'verlauf.feld.businessDate': {
+    de: 'Geschäftstag',
+    en: 'Business day',
+    tr: 'İş günü' },
+  'verlauf.feld.invoice': {
+    de: 'Rechnung',
+    en: 'Invoice',
+    tr: 'Fatura' },
+  'verlauf.feld.reverses': {
+    de: 'Gegenbuchung zu',
+    en: 'Reverses',
+    tr: 'Ters kayıt' },
+  'verlauf.feld.kind': {
+    de: 'Art',
+    en: 'Kind',
+    tr: 'Tür' },
+  'verlauf.feld.reason': {
+    de: 'Grund',
+    en: 'Reason',
+    tr: 'Sebep' },
+  'verlauf.feld.source': {
+    de: 'Herkunft',
+    en: 'Source',
+    tr: 'Kaynak' },
+  'verlauf.feld.channel': {
+    de: 'Kanal',
+    en: 'Channel',
+    tr: 'Kanal' },
+  'verlauf.feld.externalRef': {
+    de: 'Fremdnummer',
+    en: 'External reference',
+    tr: 'Harici referans' },
+  'verlauf.feld.segment': {
+    de: 'Marktsegment',
+    en: 'Market segment',
+    tr: 'Pazar segmenti' },
+  'verlauf.feld.commission': {
+    de: 'Provision',
+    en: 'Commission',
+    tr: 'Komisyon' },
+  'verlauf.feld.booker': {
+    de: 'Besteller',
+    en: 'Booker',
+    tr: 'Rezervasyonu yapan' },
+  'verlauf.feld.bookerCompany': {
+    de: 'Firma des Bestellers',
+    en: "Booker's company",
+    tr: 'Rezervasyonu yapan firma' },
 } as const satisfies Record<string, LocalizedText>

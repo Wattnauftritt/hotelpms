@@ -7,6 +7,51 @@ import { api, newIdempotencyKey } from '../api.js'
  * Preisen, Mitreisende, Folio und Notiz. Das ist die Antwort auf einen
  * angeklickten Balken im Belegungsplan (Aufgabe A1).
  */
+/**
+ * Der Aenderungsverlauf -- einer Buchung, einer Reservierung, eines Hauses.
+ *
+ * Drei Abfragen, ein Format: die Oberflaeche zeigt dieselbe Liste, egal
+ * wonach gefragt wurde. `staleTime: 0`, weil die Frage immer "was ist
+ * **gerade** passiert" lautet -- ein gemerkter Verlauf beantwortet die
+ * falsche.
+ */
+export interface Aenderung {
+  id: string
+  occurredAt: string
+  table: string
+  action: string
+  user: string | null
+  reservationRef: string | null
+  bookingRef: string | null
+  guest: string | null
+  roomCode: string | null
+  rowKey: Record<string, unknown>
+  fields: Record<string, { von: unknown; nach: unknown }>
+}
+
+export interface Verlauf {
+  changes: Aenderung[]
+  /** Kennung → Zimmernummer. Im Protokoll steht die Kennung. */
+  rooms: Record<string, string>
+  categories: Record<string, string>
+}
+
+export const useVerlauf = (was:
+  | { art: 'haus'; propertyId: number }
+  | { art: 'buchung'; ref: string }
+  | { art: 'reservierung'; ref: string }
+  | null) =>
+  useQuery<Verlauf>({
+    queryKey: ['verlauf', was?.art ?? '-',
+               was === null ? '-' : was.art === 'haus' ? was.propertyId : was.ref],
+    queryFn: () => api.get(
+      was!.art === 'haus' ? `/v1/properties/${was!.propertyId}/changes`
+      : was!.art === 'buchung' ? `/v1/bookings/${was!.ref}/history`
+      : `/v1/reservations/${was!.ref}/history`),
+    enabled: was !== null,
+    staleTime: 0
+  })
+
 export const useReservation = (reservationRef: string | null) =>
   useQuery<ReservationDetail>({
     queryKey: ['reservation', reservationRef],

@@ -5,6 +5,7 @@ import { useReservation, usePatchReservationNotes, useReservationStatusAction,
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
+import { VerlaufDialog } from './Verlauf.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
@@ -91,6 +92,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
+  const [verlauf, setVerlauf] = useState(false)
 
   return (
     <div className="space-y-3">
@@ -115,6 +117,21 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
           </button>
         )}
         <div className="grow" />
+        {/* Der Verlauf steht neben den Handlungen und nicht in einem
+            Untermenue: die Frage "wer hat das geaendert" kommt genau dann
+            auf, wenn man ohnehin auf diese Buchung sieht. */}
+        <button onClick={() => setVerlauf(true)}
+                className="text-xs px-2 py-1 rounded border border-neutral-300
+                           hover:bg-neutral-50">
+          {t('verlauf.title')}
+        </button>
+        {verlauf && (
+          <VerlaufDialog was={{ art: 'reservierung', ref: r.reservationRef }}
+                         titel={t('verlauf.title')}
+                         unterzeile={`${r.reservationRef}${
+                           r.guestName === null ? '' : ` · ${r.guestName}`}`}
+                         onClose={() => setVerlauf(false)} />
+        )}
         {r.checkedInAt === null && r.canceledAt === null && (
           <button onClick={() => onOpenCheckIn(r.reservationRef)}
                   className="text-xs px-2 py-1 rounded border border-neutral-300

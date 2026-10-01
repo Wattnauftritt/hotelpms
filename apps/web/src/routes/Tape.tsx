@@ -17,6 +17,7 @@ import { GroupPanel } from '../components/GroupPanel.tsx'
 import type { KontextZiel } from '../components/Kontextmenue.tsx'
 import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
+import { VerlaufDialog } from '../components/Verlauf.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [14, 30, 60] as const
@@ -93,6 +94,12 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    */
   const [rueckgaengig, setRueckgaengig] = useState<Aenderung[]>([])
   const [zurueck, setZurueck] = useState<Aenderung | null>(null)
+  /*
+   * Der hausweite Verlauf: was zuletzt am Plan geaendert wurde, ueber alle
+   * Benutzer. Die Frage stellt sich am Plan und nirgends sonst -- deshalb
+   * der Knopf in der Leiste und kein eigener Bildschirm.
+   */
+  const [verlauf, setVerlauf] = useState(false)
   /*
    * Die Gruppenmaske: alle Zimmer einer Buchung nebeneinander.
    *
@@ -350,6 +357,10 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
           {t('verlegen.planningMode')}
         </label>
         <div className="grow" />
+        <button onClick={() => setVerlauf(true)}
+                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+          {t('verlauf.title')}
+        </button>
         <Legende />
       </div>
 
@@ -471,6 +482,12 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                          onClose={() => setVerlegung(null)}
                          onSpeichern={ziel => speichern(verlegung, ziel,
                            () => setVerlegung(null))} />
+      )}
+
+      {verlauf && (
+        <VerlaufDialog was={{ art: 'haus', propertyId }}
+                       titel={t('verlauf.hausTitle')}
+                       onClose={() => setVerlauf(false)} />
       )}
 
       {zurueck !== null && (
