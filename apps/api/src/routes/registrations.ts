@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { can, type Principal } from '../platform/context.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import { requiresRegistrationSignature } from '@hotelpms/domain'
 import { erfasseMeldeschein, unterschreibeMeldeschein, AUFBEWAHRUNG_MONATE }
@@ -32,6 +33,14 @@ interface RegistrationBody {
   /** Weitere Mitreisende. Bei Gruppen entsteht daraus ein Sammelmeldeschein. */
   occupantGuestRefs?: string[]
   signatureSvg?: string
+  /**
+   * Der auslaendische Gast unterschreibt gleich, aber nicht hier: am
+   * Gaesteterminal oder spaeter am Tresen (Dokument 31). Ohne diese Angabe
+   * bleibt es bei der Regel, dass ein auslaendischer Gast ohne Unterschrift
+   * abgewiesen wird -- wer sie vergisst, soll es merken, statt einen
+   * unvollstaendigen Schein anzulegen.
+   */
+  signatureLater?: boolean
 }
 
 async function loadReservation(
@@ -157,8 +166,15 @@ export function registrationRoutes(app: FastifyInstance): void {
           propertyId: body.propertyId, reservationId: res.id,
           arrival: res.arrival, departure: res.departure,
           primaryGuestId: res.primary_guest_id, mitreisende,
-          // Am Tresen steht der Gast davor: jetzt oder gar nicht.
-          unterschrift: { art: 'jetzt', svg: body.signatureSvg },
+          /*
+           * Am Tresen steht der Gast davor: jetzt oder gar nicht -- es sei
+           * denn, er unterschreibt gleich am Gaesteterminal (Dokument 31).
+           * Dann entsteht der Schein ohne Unterschrift, und sie folgt noch
+           * am Anreisetag, ueber denselben Weg wie nach dem Link.
+           */
+          unterschrift: body.signatureLater === true && !body.signatureSvg
+            ? { art: 'amAnreisetag' }
+            : { art: 'jetzt', svg: body.signatureSvg },
           quelle: 'desk'
         })
 
@@ -168,6 +184,9 @@ export function registrationRoutes(app: FastifyInstance): void {
           reservationRef: body.reservationRef,
           isForeign: ergebnis.isForeign,
           signatureStored: ergebnis.signatureStored,
+          // Der Schein steht, die Unterschrift fehlt noch: am Terminal oder
+          // am Tresen nachholen (`/sign`).
+          signaturePending: ergebnis.signaturePending,
           groupMembers: ergebnis.groupMembers,
           destroyAfterMonths: AUFBEWAHRUNG_MONATE
         }
@@ -187,10 +206,18 @@ export function registrationRoutes(app: FastifyInstance): void {
     summary: 'Meldeschein unterschreiben',
     handler: async (req) => {
       const { registrationId } = req.params as { registrationId: string }
-      const { signatureSvg } = req.body as { signatureSvg: string }
-      if (!signatureSvg) throw Errors.validation({ signatureSvg: ['field.required'] })
+      const { signatureSvg } = (req.body ?? {}) as { signatureSvg?: unknown }
+      const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
-        await unterschreibeMeldeschein(client, Number(registrationId), signatureSvg)
+        /*
+         * Mitbehoben: hier fehlte die Pruefung des Hauses. Die Route nimmt
+         * keine Property entgegen, `registerRoute` prueft das Recht deshalb
+         * nur "in irgendeinem Haus" -- wer in Haus A einchecken durfte, konnte
+         * einen Meldeschein in Haus B unterschreiben lassen, solange beide
+         * im selben Account liegen.
+         */
+        await unterschreibeMeldeschein(client, Number(registrationId), signatureSvg,
+          haus => can(principal, 'reservation:checkin', haus))
         return { registrationId: Number(registrationId), signed: true }
       })
     }

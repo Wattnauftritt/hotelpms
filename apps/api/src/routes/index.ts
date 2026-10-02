@@ -31,6 +31,8 @@ import { platformSupportRoutes } from './platformSupport.js'
 import { platformDomainRoutes } from './platformDomains.js'
 import { userAdminRoutes } from './userAdmin.js'
 import { historyRoutes } from './history.js'
+import { terminalRoutes } from './terminal.js'
+import { terminalInhaltRoutes } from './terminalInhalte.js'
 import { searchRoutes } from './search.js'
 import { checkinRoutes } from './checkin.js'
 import { openApiRoutes } from './openapi.js'
@@ -81,6 +83,8 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   platformSupportRoutes(app)
   platformDomainRoutes(app, { domains: overrides.domains })
   userAdminRoutes(app)
+  terminalRoutes(app)
+  terminalInhaltRoutes(app)
   checkinRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)

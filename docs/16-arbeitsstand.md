@@ -863,7 +863,18 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 | Fehlt | Route | Was das bedeutet |
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
-| Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
+
+---
+
+Erledigt und aus der Liste genommen: **Notiz am Gastprofil anlegen** (das Profil zeigt die Hausnotizen jetzt im selben Aufruf, mit Eingabefeld) und **Meldeschein nachträglich unterschreiben** (am Tresen in der Check-in-Maske oder am Gästeterminal) — beides in [`31-gaesteterminal.md`](31-gaesteterminal.md).
+
+---
+
+### Gästeterminal — **erledigt**
+
+**Wo es liegt.** [`31-gaesteterminal.md`](31-gaesteterminal.md), Migrationen `0070`, `0071`, `0072` und `0073`, `routes/terminal.ts`, `routes/terminalInhalte.ts`, `platform/terminalArten.ts`, `apps/web/src/routes/Terminal.tsx`, `apps/web/src/routes/TerminalPult.tsx`.
+
+Ein Touchscreen an der Rezeption als allgemeiner Anzeige-Client: Meldeformular ausfüllen (das Formular des Online-Check-ins im Terminalmodus, mit einem Link, der nur an das Gerät geht und mit dem Auftrag fällt), Meldeschein unterschreiben, Hausbedingung zustimmen, eine Seite des Hauses oder eine freigegebene Adresse zeigen; ohne Auftrag eine Diashow. Das Terminal ist ein **Gerät**, keine Sitzung: einmal mit einem Code gekoppelt, danach ein eigenes Principal mit genau einem Recht in genau einem Haus, im Prüfprotokoll als Gerät erkennbar. Die Rezeption schickt Aufträge (höchstens einer offen je Gerät) und sieht ihren Stand live; die Seite am Touchscreen hält keine Gastdaten über den Auftrag hinaus und baut sich danach neu auf. Seiten und Adressen schickt die Rezeption auch ohne Reservierung, über das Bedienfeld „Terminal". Eine weitere Art ist ein Eintrag in `ARTEN`, ein Wert in der Prüfbedingung und eine Ansicht. Offen: ein `frame-src` in der CSP des Caddyfile, ohne den freigegebene Adressen im Betrieb leer bleiben (Dokument 31, §12).
 
 ---
 

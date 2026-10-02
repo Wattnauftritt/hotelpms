@@ -87,6 +87,20 @@ export class RateLimiter {
     }
   }
 
+  /**
+   * Ist die Grenze fuer diesen Schluessel gerade erreicht -- ohne zu zaehlen?
+   *
+   * Fuer Zaehler, die nur **Fehlversuche** zaehlen (die Kopplung eines
+   * Gaesteterminals): vor dem Versuch wird gefragt, gezaehlt wird erst,
+   * wenn er scheitert. Ein `check` vorweg zaehlte jeden Versuch mit, auch
+   * den richtigen.
+   */
+  erschoepft(key: string, now = Date.now()): boolean {
+    const f = this.fenster.get(key)
+    if (f === undefined || now - f.begonnen >= this.opts.windowMs) return false
+    return f.anzahl >= this.opts.limit
+  }
+
   /** Nur für Tests. */
   reset(): void { this.fenster.clear() }
   get size(): number { return this.fenster.size }
@@ -118,6 +132,27 @@ export const ANON_LIMIT: RateLimitOptions = {
 }
 
 /**
+ * Fehlversuche beim Koppeln eines Gaesteterminals, je Herkunft.
+ *
+ * **Warum ein eigener Zaehler.** Die allgemeine Grenze greift nur bei
+ * anonymen Anfragen. Wer koppelt, ist es meistens -- aber nicht immer: steht
+ * im selben Browser noch eine Mitarbeitersitzung, ist die Anfrage
+ * angemeldet und an der Grenze vorbei. Genau das ist bei
+ * `workstation-switch` passiert (H4, Dokument 25). Gezaehlt werden deshalb
+ * die **Fehlversuche** an der Route selbst, gleich wer fragt.
+ *
+ * **Warum zehn je Viertelstunde genuegen.** Der Code hat acht Zeichen aus
+ * einem Alphabet von 30, also rund 6,5 * 10^11 Moeglichkeiten, und lebt zehn
+ * Minuten. Wer zehn Versuche je Viertelstunde hat, braucht im Mittel
+ * Jahrtausende -- auch mit tausend Adressen noch Jahrzehnte. Im Speicher wie
+ * die anderen Zaehler hier: ein Neustart setzt ihn zurueck, und das aendert
+ * an dieser Rechnung nichts.
+ */
+export const KOPPLUNG_FEHLVERSUCHE: RateLimitOptions = {
+  limit: Number(process.env.RATE_LIMIT_PAIRING ?? 10), windowMs: 15 * 60_000
+}
+
+/**
  * Pfade, die die enge Grenze bekommen.
  *
  * `/oauth/token` gehoert dazu, und zwar aus demselben Grund wie die
@@ -129,8 +164,12 @@ export const ANON_LIMIT: RateLimitOptions = {
 // verschickt eine Mail an eine frei waehlbare Adresse. Unter der lockeren
 // Grenze waere sie ein Werkzeug, um ein fremdes Postfach zu fluten -- und
 // die Absenderreputation dieses Systems gleich mit.
+// Die Kopplung eines Gaesteterminals ebenso: dort wird ein Code geprueft.
+// Sie zaehlt ihre Fehlversuche zusaetzlich selbst (`limiters.kopplung`),
+// weil eine Anfrage mit gueltiger Sitzung diese Grenze nie erreicht.
 const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch',
-                     '/v1/auth/password-reset', '/oauth/token']
+                     '/v1/auth/password-reset', '/oauth/token',
+                     '/v1/terminal/pair']
 
 /**
  * Die aktiven Zaehler. Nach aussen gegeben, damit ein Test sie zuruecksetzen
@@ -140,12 +179,22 @@ const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch',
 export const limiters = {
   anmeldung: new RateLimiter(LOGIN_LIMIT),
   allgemein: new RateLimiter(ANON_LIMIT),
-  reset(): void { this.anmeldung.reset(); this.allgemein.reset() }
+  kopplung: new RateLimiter(KOPPLUNG_FEHLVERSUCHE),
+  reset(): void { this.anmeldung.reset(); this.allgemein.reset(); this.kopplung.reset() }
 }
 
 /** Wurden ueberhaupt Zugangsdaten vorgelegt? Sagt nichts ueber ihre Gueltigkeit. */
 function zeigtZugangsdaten(req: FastifyRequest): boolean {
   return req.cookies['hp_session'] !== undefined
+      // Ein gekoppeltes Gaesteterminal fragt alle zwei Sekunden, dreissig
+      // Mal je Minute, ohne Pause. Als anonym gezaehlt teilte es sich die
+      // Grenze mit allem, was aus derselben Herkunft unangemeldet kommt --
+      // an einer Rezeption hinter einem Anschluss sind das die
+      // Anmeldemasken aller Arbeitsplaetze und jedes weitere Terminal --,
+      // und ob es durchkommt, hinge an `RATE_LIMIT_ANON`, einer Zahl, die
+      // jemand fuer etwas anderes einstellt. Gezaehlt wird es weiter unten,
+      // falls sein Cookie nicht traegt.
+      || req.cookies['hp_terminal'] !== undefined
       || req.headers.authorization?.startsWith('Bearer ') === true
 }
 

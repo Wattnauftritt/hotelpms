@@ -5,7 +5,8 @@ import { loadConfig, type Config } from './config.js'
 import { renderMessage } from '@hotelpms/contracts'
 import { AppError, Errors } from './errors.js'
 import { ANONYMOUS, type Principal } from './context.js'
-import { loadPrincipal, applySupportSession, loadPrincipalFromToken } from './auth.js'
+import { loadPrincipal, applySupportSession, loadPrincipalFromToken,
+         loadPrincipalFromDevice, DEVICE_COOKIE } from './auth.js'
 import { registerRateLimit } from './rateLimit.js'
 
 declare module 'fastify' {
@@ -218,6 +219,23 @@ export async function buildServer(
     if (bearer?.startsWith('Bearer ')) {
       req.principal = await loadPrincipalFromToken(pool, bearer.slice(7))
       return
+    }
+
+    /*
+     * Ein Gaesteterminal vor der Sitzung (Dokument 31). Der Browser schickt
+     * sein Cookie nur an `/v1/terminal/*`; liegt dort zugleich noch eine
+     * Mitarbeitersitzung im selben Browser, soll das Terminal trotzdem als
+     * Terminal antworten und nicht mit den Rechten des Personals. Ein
+     * ungueltiges Geraetecookie faellt durch -- es ist dann, als laege es
+     * nicht da.
+     */
+    const geraet = req.cookies[DEVICE_COOKIE]
+    if (geraet) {
+      const p = await loadPrincipalFromDevice(pool, geraet)
+      if (p.terminalDeviceId !== null) {
+        req.principal = p
+        return
+      }
     }
 
     const sessionId = req.cookies['hp_session']

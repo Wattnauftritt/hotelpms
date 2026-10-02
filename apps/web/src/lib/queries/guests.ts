@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Guest, GuestCreated, CreateGuest, Company, CreateCompany } from '@hotelpms/contracts'
+import type { Guest, GuestCreated, GuestProfile, CreateGuest, Company, CreateCompany }
+  from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /**
@@ -14,11 +15,24 @@ export const useSearchGuests = (term: string) =>
   })
 
 export const useGuest = (guestRef: string | null) =>
-  useQuery<Guest>({
+  useQuery<GuestProfile>({
     queryKey: ['guest', guestRef],
     queryFn: () => api.get(`/v1/guests/${guestRef!}`),
     enabled: guestRef !== null
   })
+
+/**
+ * Hausnotiz anlegen. Danach wird das Profil neu geladen, weil die Notizen
+ * mit ihm kommen -- im selben Aufruf, nicht in einem zweiten.
+ */
+export function useAddGuestNote(guestRef: string, propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (note: string) =>
+      api.post<{ hinweis: string }>(`/v1/guests/${guestRef}/notes`, { propertyId, note }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['guest', guestRef] }) }
+  })
+}
 
 export function useCreateGuest() {
   const qc = useQueryClient()

@@ -102,6 +102,15 @@ async function findDuplicates(
   return rows.map(r => ({ guestRef: r.public_ref, score: Number(r.score), reason: r.reason }))
 }
 
+/** Wie viele Hausnotizen das Profil zeigt, die neuesten zuerst. */
+const NOTIZEN_IM_PROFIL = 50
+/**
+ * Wie lang eine Hausnotiz sein darf. Sie haelt eine Anforderung fest, nicht
+ * ihre Begruendung (Befund 4, Dokument 26); wer mehr schreiben will als
+ * hier Platz hat, schreibt vermutlich gerade die Begruendung.
+ */
+const NOTIZ_MAX = 500
+
 export function guestRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -229,7 +238,29 @@ export function guestRoutes(app: FastifyInstance): void {
         const { rows, rowCount } = await client.query<GuestRow>(
           `SELECT ${FIELDS} FROM guest WHERE public_ref = $1`, [guestRef])
         if (rowCount === 0) throw Errors.notFound('res.guest')
-        return present(rows[0]!)
+        /*
+         * Die Hausnotizen gehoeren ins Profil, nicht erst in die Auskunft
+         * nach Art. 15: sie sind eine Anforderung des Gastes ("ebenerdiges
+         * Zimmer"), und die Rezeption soll sie sehen, wenn sie ihn aufruft.
+         * Im selben Aufruf, nicht in einem zweiten.
+         *
+         * Nur die Haeuser, die dieser Aufrufer sieht -- das erledigt die
+         * Zeilenrichtlinie (Migration 0008: was ein Haus notiert, bleibt bei
+         * diesem Haus). Eine Obergrenze, weil ein Stammgast in zwanzig
+         * Jahren mehr ansammelt, als ein Profil zeigen sollte.
+         */
+        const notes = await client.query(
+          `SELECT n.note, to_char(n.created_at AT TIME ZONE 'UTC',
+                                  'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt",
+                  n.property_id AS "propertyId", p.name AS property,
+                  u.display_name AS "createdBy"
+             FROM guest_property_note n
+             JOIN property p ON p.id = n.property_id
+             LEFT JOIN app_user u ON u.id = n.created_by
+            WHERE n.guest_id = $1
+            ORDER BY n.created_at DESC, n.id DESC
+            LIMIT $2`, [rows[0]!.id, NOTIZEN_IM_PROFIL])
+        return { ...present(rows[0]!), notes: notes.rows }
       })
     }
   })
@@ -494,13 +525,24 @@ export function guestRoutes(app: FastifyInstance): void {
     summary: 'Hausnotiz zum Gast anlegen (Anforderung, nicht ihr Grund)',
     handler: async (req, reply) => {
       const { guestRef } = req.params as { guestRef: string }
-      const { propertyId, note } = req.body as { propertyId: number; note: string }
+      const { propertyId, note } = (req.body ?? {}) as { propertyId: number; note: unknown }
       const principal = req.principal as Principal
-      if (!note || note.trim() === '') throw Errors.validation({ note: ['field.required'] })
+      if (typeof note !== 'string' || note.trim() === '') {
+        throw Errors.validation({ note: ['field.required'] })
+      }
+      if (note.trim().length > NOTIZ_MAX) {
+        throw Errors.validation({ note: ['field.maxLength'] }, { max: NOTIZ_MAX })
+      }
       return tx(req.pool, req, async client => {
-        const g = await client.query<{ id: number }>(
-          `SELECT id FROM guest WHERE public_ref = $1`, [guestRef])
+        const g = await client.query<{ id: number; status: string }>(
+          `SELECT id, status FROM guest WHERE public_ref = $1`, [guestRef])
         if (g.rowCount === 0) throw Errors.notFound('res.guest')
+        // Mitbehoben: an ein anonymisiertes Profil liess sich eine neue Notiz
+        // haengen -- und damit genau das wieder anlegen, was die Loeschung
+        // nach Art. 17 entfernt hatte (`guest_erase_one` loescht die Notizen).
+        if (g.rows[0]!.status === 'anonymized') {
+          throw Errors.conflict('guest.anonymizedNotRevived')
+        }
         await client.query(
           `INSERT INTO guest_property_note (property_id, guest_id, note, created_by)
            VALUES ($1,$2,$3,$4)`,

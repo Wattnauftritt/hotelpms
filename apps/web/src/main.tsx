@@ -6,6 +6,7 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
+import { TerminalSeite, istTerminalAdresse } from './routes/Terminal.tsx'
 import { GastCheckinSeite, checkinAusAdresse } from './routes/GastCheckin.tsx'
 import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
@@ -95,6 +96,13 @@ function App(): JSX.Element {
    */
   const [zugang] = useState(zugangAusAdresse)
   /*
+   * Das Gaesteterminal ebenso vor allem anderen (Dokument 31): davor steht
+   * ein Gast, und eine Anmeldemaske waere dort die falsche Einladung. Es
+   * weist sich mit seinem eigenen Geraetecookie aus, nicht mit einer
+   * Sitzung.
+   */
+  const [terminal] = useState(() => istTerminalAdresse())
+  /*
    * Der Online-Check-in des Gastes (Dokument 30) steht aus demselben Grund
    * hier vorn: wer den Link aus seiner Buchungsmail oeffnet, ist Gast und
    * hat keinen Zugang -- er braucht auch keinen. Der Link ist der Ausweis.
@@ -173,6 +181,7 @@ function App(): JSX.Element {
     }
   }
 
+  if (terminal) return <TerminalSeite />
   if (gastCheckin !== null) {
     return <GastCheckinSeite token={gastCheckin.token} />
   }

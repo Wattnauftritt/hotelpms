@@ -638,6 +638,27 @@ export const Guest = Type.Object({
 })
 export type Guest = Static<typeof Guest>
 
+/**
+ * Eine Hausnotiz am Gast. Sie haelt eine Anforderung fest, nicht ihren
+ * Grund ("ebenerdiges Zimmer", nicht die Diagnose dahinter; Befund 4,
+ * Dokument 26).
+ */
+export const GuestNote = Type.Object({
+  note: Type.String(),
+  createdAt: Type.String(),
+  propertyId: Type.Integer(),
+  property: Type.String(),
+  createdBy: Type.Union([Type.String(), Type.Null()])
+})
+export type GuestNote = Static<typeof GuestNote>
+
+/** Das Profil, wie `GET /v1/guests/:guestRef` es liefert: mit den Hausnotizen. */
+export const GuestProfile = Type.Composite([
+  Guest,
+  Type.Object({ notes: Type.Array(GuestNote) })
+])
+export type GuestProfile = Static<typeof GuestProfile>
+
 export const CreateGuest = Type.Object({
   accountId: Type.Optional(Type.Integer()),
   lastName: Type.String({ minLength: 1 }),

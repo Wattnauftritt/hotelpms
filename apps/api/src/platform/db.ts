@@ -12,7 +12,8 @@ export function contextFor(principal: Principal): DbContext {
     accountIds: principal.accountIds,
     propertyIds: propertyIds(principal),
     userId: principal.userId,
-    supportSessionId: principal.supportSessionId
+    supportSessionId: principal.supportSessionId,
+    terminalDeviceId: principal.terminalDeviceId
   }
 }
 

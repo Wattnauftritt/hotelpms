@@ -8,6 +8,7 @@ import { GuestPicker } from '../components/GuestPicker.tsx'
 import { Dialog, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
+import { AmTerminal } from '../components/AmTerminal.tsx'
 
 /**
  * Check-in mit Meldeschein (A9), erreichbar aus dem Plan.
@@ -185,6 +186,9 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               {f.alreadyRegistered ? (
                 <>
                   <p className="text-sm text-emerald-800">✓ {t('checkin.alreadyRegistered')}</p>
+                  {f.signatureRequired && f.signedAt !== null && (
+                    <p className="text-sm text-emerald-800">✓ {t('terminal.checkin.signed')}</p>
+                  )}
                   {unterschriftOffen && f.registrationId !== null && (
                     <div className="space-y-2 border border-amber-200 bg-amber-50 rounded p-2">
                       <p className="text-xs text-amber-900">{t('onlineCheckin.signaturePending')}</p>
@@ -201,6 +205,10 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                       </button>
                     </div>
                   )}
+                  {/* Der Weg ueber das Gaesteterminal (Dokument 31). Auch nach
+                      der Unterschrift: dort steht dann "erledigt am Terminal",
+                      und die Rezeption sieht, woher sie kam. */}
+                  {f.signatureRequired && <AmTerminal reservationRef={reservationRef} />}
                   {/* Die Bedingungen bleiben sichtbar: der Meldeschein kann
                       vorliegen und die Unterschrift darunter noch fehlen. */}
                   {(bedingungen.data?.terms ?? []).map(b => (
@@ -257,18 +265,36 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                                reservationRef={reservationRef} />
                   ))}
                   {anmelden.isError && <Fehler error={anmelden.error} />}
-                  <button type="button"
-                          disabled={anmelden.isPending
-                            || (unterschriftNoetig && signatur === null)}
-                          onClick={() => anmelden.mutate({
-                            reservationRef,
-                            signatureSvg: signatur ?? undefined,
-                            occupantGuestRefs: mitreisende.length === 0
-                              ? undefined : mitreisende.map(m => m.guestRef) })}
-                          className="px-3 py-1.5 text-sm rounded border border-neutral-300
-                                     disabled:opacity-40">
-                    {t('checkin.register')}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button"
+                            disabled={anmelden.isPending
+                              || (unterschriftNoetig && signatur === null)}
+                            onClick={() => anmelden.mutate({
+                              reservationRef,
+                              signatureSvg: signatur ?? undefined,
+                              occupantGuestRefs: mitreisende.length === 0
+                                ? undefined : mitreisende.map(m => m.guestRef) })}
+                            className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                                       disabled:opacity-40">
+                      {t('checkin.register')}
+                    </button>
+                    {/* Der Gast unterschreibt am Touchscreen, nicht auf dem
+                        Rezeptionsbildschirm: der Schein entsteht hier ohne
+                        Unterschrift, und der Auftrag ans Terminal folgt
+                        gleich darunter. */}
+                    {unterschriftNoetig && signatur === null && (
+                      <button type="button" disabled={anmelden.isPending}
+                              title={t('terminal.checkin.signLaterHint')}
+                              onClick={() => anmelden.mutate({
+                                reservationRef, signatureLater: true,
+                                occupantGuestRefs: mitreisende.length === 0
+                                  ? undefined : mitreisende.map(m => m.guestRef) })}
+                              className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                                         disabled:opacity-40">
+                        {t('terminal.checkin.signLater')}
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
 
