@@ -3,6 +3,9 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
+import { istAuslaendisch } from '@hotelpms/contracts'
+import { erfasseMeldeschein, unterschreibeMeldeschein, AUFBEWAHRUNG_MONATE }
+  from '../platform/meldeschein.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -15,35 +18,13 @@ import type { PoolClient } from '@hotelpms/db'
  */
 const MAX_REGISTRATION_DAYS = 800
 
-/**
- * Meldeschein nach §§ 29, 30 BMG.
- *
- * Drei Regeln bestimmen alles Weitere:
- *
- * 1. **Seit dem 1.1.2025 unterschreiben nur noch auslaendische Gaeste.** Fuer
- *    deutsche Gaeste entfaellt die Unterschrift ersatzlos; ein System, das
- *    sie trotzdem verlangt, haelt die Rezeption ohne Rechtsgrund auf.
- * 2. **Keine Ausweiskopie.** § 30 erlaubt es, Angaben zu erheben und die
- *    Ausweisnummer zu notieren. Eine Kopie oder ein Scan ist unzulaessig.
- *    Es gibt in diesem System deshalb kein Feld dafuer.
- * 3. **Ein Jahr Aufbewahrung, danach Vernichtung.** Die Frist laeuft
- *    "vom Tag der Abreise der beherbergten Person an" (§ 30 Abs. 4 BMG),
- *    nicht ab Anreise -- hier stand das Gegenteil, und bei einem Aufenthalt
- *    von drei Naechten wurde der Schein drei Tage zu frueh vernichtet, bei
- *    einem Langzeitgast Wochen. Das Vernichten ist Pflicht, nicht Ermessen,
- *    und laeuft deshalb automatisch im Worker, nicht auf Zuruf.
- *
- * **Was nicht hierher gehoert.** Kommunale Gaestebeitragssatzungen verlangen
- * laengere Aufbewahrung -- die Stadt Cuxhaven etwa sechs Jahre fuer das
- * Gaesteverzeichnis (§ 9 Abs. 5 ihrer Satzung). Das ist ein **anderer**
- * Nachweis: Name, Anschrift, Zeitraum, Naechte, Satz, Betrag, also das, was
- * in Beleg und Rechnung steht. Der Meldeschein traegt darueber hinaus
- * Ausweisnummer und Staatsangehoerigkeit, und fuer die gibt es nach einem
- * Jahr keinen Rechtsgrund mehr. Die laengere Frist haengt deshalb am Haus
- * (`property.guest_levy_retention_years`) und bremst die Anonymisierung,
- * nicht diese Tabelle.
+/*
+ * Meldeschein nach §§ 29, 30 BMG. Die Regeln -- wer unterschreibt, wie
+ * lange aufbewahrt wird, was mit Mitreisenden geschieht -- stehen in
+ * `platform/meldeschein.ts`, weil seit dem Online-Check-in drei Wege einen
+ * Schein erfassen (Tresen, Link, Station) und es eine Fassung der Regeln
+ * geben soll, nicht drei (Dokument 30).
  */
-const AUFBEWAHRUNG_MONATE = 12
 
 interface RegistrationBody {
   propertyId: number
@@ -87,14 +68,16 @@ export function registrationRoutes(app: FastifyInstance): void {
           address_line1: string | null; postal_code: string | null
           city: string | null; country: string | null
           guest_ref: string | null; occupants: number
-          existing_id: number | null; signed_at: string | null }>(
+          existing_id: number | null; signed_at: string | null
+          signature_required: boolean | null; source: string | null }>(
           `SELECT r.arrival::text, r.departure::text, p.name AS property_name,
                   g.last_name, g.first_name, g.birth_date::text, g.nationality,
                   g.address_line1, g.postal_code, g.city, g.country,
                   g.public_ref AS guest_ref,
                   (SELECT count(*) FROM reservation_occupant o
                     WHERE o.reservation_id = r.id)::int AS occupants,
-                  reg.id AS existing_id, reg.signed_at::text AS signed_at
+                  reg.id AS existing_id, reg.signed_at::text AS signed_at,
+                  reg.signature_required, reg.source
              FROM reservation r
              JOIN property p ON p.id = r.property_id
              LEFT JOIN guest g ON g.id = r.primary_guest_id
@@ -103,7 +86,12 @@ export function registrationRoutes(app: FastifyInstance): void {
             WHERE r.public_ref = $1`, [reservationRef])
         if (rowCount === 0) throw Errors.notFound('res.reservation')
         const r = rows[0]!
-        const auslaendisch = r.country !== null && r.country !== 'DE'
+        // Nach Staatsangehoerigkeit, hilfsweise Wohnsitz (istAuslaendisch).
+        const auslaendisch = istAuslaendisch(r)
+        // Liegt schon ein Schein vor, entscheidet, was dort steht -- ein
+        // auslaendischer Mitreisender kann die Unterschrift verlangt haben,
+        // obwohl der Hauptgast deutsch ist.
+        const noetig = r.signature_required ?? auslaendisch
 
         return {
           reservationRef,
@@ -120,9 +108,17 @@ export function registrationRoutes(app: FastifyInstance): void {
           isForeign: auslaendisch,
           // Der entscheidende Hinweis fuer die Oberflaeche: nur hier darf
           // ueberhaupt ein Unterschriftenfeld erscheinen.
-          signatureRequired: auslaendisch,
+          signatureRequired: noetig,
           alreadyRegistered: r.existing_id !== null,
-          signedAt: r.signed_at
+          registrationId: r.existing_id === null ? null : Number(r.existing_id),
+          signedAt: r.signed_at,
+          /*
+           * Vorab ueber den Link erfasst, unterschrieben wird am Anreisetag
+           * (§ 29 Abs. 2 BMG). Die Maske zeigt dann das Unterschriftsfeld,
+           * obwohl der Schein schon vorliegt.
+           */
+          signaturePending: r.existing_id !== null && noetig && r.signed_at === null,
+          source: r.source
         }
       })
     }
@@ -146,92 +142,33 @@ export function registrationRoutes(app: FastifyInstance): void {
           throw Errors.unprocessable(
             'registration.noPrimaryGuest')
         }
-        const vorhanden = await client.query(
-          `SELECT 1 FROM registration WHERE reservation_id = $1 LIMIT 1`, [res.id])
-        if (vorhanden.rowCount && vorhanden.rowCount > 0) {
-          throw Errors.conflict('registration.alreadyExists')
-        }
+        // Mitreisende in einer Abfrage, in der Reihenfolge der Eingabe.
+        const refs = body.occupantGuestRefs ?? []
+        const m = await client.query<{ id: number; public_ref: string }>(
+          `SELECT id, public_ref FROM guest WHERE public_ref = ANY($1::text[])`, [refs])
+        const idNachRef = new Map(m.rows.map(r => [r.public_ref, Number(r.id)]))
+        const mitreisende = refs.map(ref => {
+          const id = idNachRef.get(ref)
+          if (id === undefined) throw Errors.notFound('res.guest')
+          return id
+        })
 
-        const g = await client.query<{ country: string | null }>(
-          `SELECT country FROM guest WHERE id = $1`, [res.primary_guest_id])
-        const auslaendisch = g.rows[0]?.country != null && g.rows[0].country !== 'DE'
-
-        // Die Unterschrift ist nur fuer auslaendische Gaeste Pflicht, und
-        // nur dort wird sie ueberhaupt gespeichert. Eine Unterschrift ohne
-        // Rechtsgrund waere eine Datenerhebung ohne Rechtsgrund.
-        if (auslaendisch && !body.signatureSvg) {
-          throw Errors.unprocessable(
-            'registration.signatureRequired')
-        }
-        const signatur = auslaendisch ? body.signatureSvg ?? null : null
-
-        const mitreisende = body.occupantGuestRefs ?? []
-        const haupt = await client.query<{ id: number }>(
-          `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
-                                     planned_departure, occupant_count, is_foreign,
-                                     signature_svg, signed_at, destroy_after)
-           VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,$8::text,
-                   CASE WHEN $8::text IS NULL THEN NULL ELSE now() END,
-                   -- Ab Abreise, nicht ab Anreise: § 30 Abs. 4 BMG.
-                   ($5::date + ($9 || ' months')::interval)::date)
-           RETURNING id`,
-          [body.propertyId, res.id, res.primary_guest_id, res.arrival, res.departure,
-           mitreisende.length + 1, auslaendisch, signatur, AUFBEWAHRUNG_MONATE])
-        const hauptId = haupt.rows[0]!.id
-
-        /**
-         * Sammelmeldeschein fuer Reisegruppen (E6, Dokument 13). Jeder
-         * Mitreisende bekommt einen eigenen Datensatz, der auf den Haupt-
-         * schein zeigt: die Meldepflicht gilt je Person, die Unterschrift
-         * leistet bei Gruppen der Reiseleiter.
-         */
-        let angelegt = 0
-        for (const ref of mitreisende) {
-          const m = await client.query<{ id: number; country: string | null }>(
-            `SELECT id, country FROM guest WHERE public_ref = $1`, [ref])
-          if (m.rowCount === 0) throw Errors.notFound('res.guest')
-          await client.query(
-            `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
-                                       planned_departure, occupant_count, is_foreign,
-                                       group_registration_id, destroy_after)
-             VALUES ($1,$2,$3,$4::date,$5::date,1,$6,$7,
-                     ($5::date + ($8 || ' months')::interval)::date)`,
-            [body.propertyId, res.id, m.rows[0]!.id, res.arrival, res.departure,
-             m.rows[0]!.country != null && m.rows[0]!.country !== 'DE',
-             hauptId, AUFBEWAHRUNG_MONATE])
-
-          /*
-           * Wer gemeldet ist, wohnt auch im Zimmer.
-           *
-           * Bisher entstand hier **nur** der Meldeschein. Die Kurtaxe rechnet
-           * aber aus `reservation_occupant`, und so meldete das Haus zwei
-           * Personen und berechnete eine -- ohne Fehlermeldung, mit einer
-           * Rechnung, die plausibel aussieht. Aufgefallen ist es erst, als
-           * die Maske ueberhaupt anfing, Mitreisende zu schicken.
-           *
-           * Nur, wenn diese Person nicht schon in der Liste steht: bei einer
-           * Buchung koennen Mitreisende bereits angegeben sein, und ein
-           * zweiter Eintrag zaehlte denselben Menschen doppelt. Verglichen
-           * wird ueber den Gast; ein Eintrag, der nur ein Alter traegt und
-           * keinen Gast, bleibt deshalb unberuehrt.
-           */
-          await client.query(
-            `INSERT INTO reservation_occupant
-               (property_id, reservation_id, guest_id, is_primary)
-             SELECT $1,$2,$3,false
-              WHERE NOT EXISTS (SELECT 1 FROM reservation_occupant o
-                                 WHERE o.reservation_id = $2 AND o.guest_id = $3)`,
-            [body.propertyId, res.id, m.rows[0]!.id])
-          angelegt++
-        }
+        const ergebnis = await erfasseMeldeschein(client, {
+          propertyId: body.propertyId, reservationId: res.id,
+          arrival: res.arrival, departure: res.departure,
+          primaryGuestId: res.primary_guest_id, mitreisende,
+          // Am Tresen steht der Gast davor: jetzt oder gar nicht.
+          unterschrift: { art: 'jetzt', svg: body.signatureSvg },
+          quelle: 'desk'
+        })
 
         reply.status(201)
         return {
-          registrationId: hauptId,
+          registrationId: ergebnis.registrationId,
           reservationRef: body.reservationRef,
-          isForeign: auslaendisch,
-          signatureStored: signatur !== null,
-          groupMembers: angelegt,
+          isForeign: ergebnis.isForeign,
+          signatureStored: ergebnis.signatureStored,
+          groupMembers: ergebnis.groupMembers,
           destroyAfterMonths: AUFBEWAHRUNG_MONATE
         }
       })
@@ -253,20 +190,7 @@ export function registrationRoutes(app: FastifyInstance): void {
       const { signatureSvg } = req.body as { signatureSvg: string }
       if (!signatureSvg) throw Errors.validation({ signatureSvg: ['field.required'] })
       return tx(req.pool, req, async client => {
-        const cur = await client.query<{ is_foreign: boolean; signed_at: string | null }>(
-          `SELECT is_foreign, signed_at::text FROM registration WHERE id = $1 FOR UPDATE`,
-          [Number(registrationId)])
-        if (cur.rowCount === 0) throw Errors.notFound('res.registration')
-        if (!cur.rows[0]!.is_foreign) {
-          throw Errors.unprocessable(
-            'registration.signatureNotForeseen')
-        }
-        if (cur.rows[0]!.signed_at !== null) {
-          throw Errors.conflict('registration.alreadySigned')
-        }
-        await client.query(
-          `UPDATE registration SET signature_svg = $2, signed_at = now() WHERE id = $1`,
-          [Number(registrationId), signatureSvg])
+        await unterschreibeMeldeschein(client, Number(registrationId), signatureSvg)
         return { registrationId: Number(registrationId), signed: true }
       })
     }

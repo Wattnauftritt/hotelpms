@@ -1,0 +1,533 @@
+import type { FastifyInstance, FastifyReply } from 'fastify'
+import type { PoolClient } from '@hotelpms/db'
+import { createCheckinToken, renderCheckinInvitationEmail, emailLanguage,
+         isSendableAddress, isIsoDate } from '@hotelpms/domain'
+import { checkinLink, istAuslaendisch, istLand, istUnterschriftSvg,
+         MAX_MITREISENDE, type CheckinFormView, type CheckinSubmitted,
+         type CheckinSettings, type CheckinLink } from '@hotelpms/contracts'
+import { registerRoute } from '../platform/routes.js'
+import { tx } from '../platform/db.js'
+import { Errors, type Meldung } from '../platform/errors.js'
+import { loadConfig } from '../platform/config.js'
+import { checkinTx, type CheckinKontext } from '../platform/checkin.js'
+import { erfasseMeldeschein, unterschreibeMeldeschein } from '../platform/meldeschein.js'
+import { gastAendern, gastAnlegen } from '../platform/gast.js'
+import type { Principal } from '../platform/context.js'
+
+/**
+ * Online-Check-in (Dokument 30).
+ *
+ * Zwei Seiten:
+ *
+ * **Die Gastseite** (`/v1/checkin/*`, oeffentlich). Sie kennt keinen
+ * Benutzer, nur einen Link. Der Link reist in der Kopfzeile
+ * `x-staygrid-checkin-token`, nie im Pfad: der Serialisierer des
+ * Anfrageprotokolls ersetzt Werte der Abfragezeichenfolge, nicht den Pfad,
+ * und ein Token als Pfadsegment stuende im Protokoll. Der Kontext kommt aus
+ * dem Link (`checkinTx`), die Regeln des Meldescheins aus
+ * `platform/meldeschein.ts` -- dieselben wie am Tresen.
+ *
+ * **Die Rezeption** (`/v1/reservations/:ref/online-checkin/*`). Link
+ * kopieren, per Mail erneut senden, zurueckziehen; die Einstellung je Haus.
+ *
+ * **Ratenbegrenzung.** Die Gastseite ist anonym und faellt damit unter die
+ * allgemeine Grenze je Herkunft (300 je Minute, `platform/rateLimit.ts`).
+ * Ein Gast braucht drei bis fuenf Anfragen; auch eine Familie im
+ * Hotel-WLAN hinter einer Adresse erreicht die Grenze nicht. Einen eigenen
+ * Zaehler wie beim Arbeitsplatz-PIN braucht es nicht: dort war das Geheimnis
+ * vier Ziffern lang, hier sind es 256 Bit -- Durchprobieren lohnt sich nie.
+ */
+
+const config = loadConfig()
+
+/** Zustaende, in denen ein Meldeschein noch erfasst werden kann. */
+const OFFEN = new Set(['Optional', 'Confirmed', 'InHouse'])
+
+/*
+ * Antworten der Gastseite nicht zwischenspeichern. Darin stehen Name und
+ * Zeitraum eines Gastes, und am Terminal steht nach ihm der Naechste vor
+ * demselben Browser.
+ */
+function nichtSpeichern(reply: FastifyReply): void {
+  reply.header('cache-control', 'no-store')
+}
+
+interface ReservierungZumLink {
+  id: number; property_id: number; account_id: number
+  arrival: string; departure: string; primary_guest_id: number
+  property_name: string; first_name: string | null; last_name: string
+  language: string
+  reg_id: number | null; signature_required: boolean | null
+  signed_at: string | null
+}
+
+/** Genau die Reservierung des Links. Mehr laedt die Gastseite nicht. */
+async function reservierungZumLink(
+  client: PoolClient, k: CheckinKontext
+): Promise<ReservierungZumLink> {
+  const { rows } = await client.query<ReservierungZumLink>(
+    `SELECT r.id, r.property_id, p.account_id, r.arrival::text, r.departure::text,
+            r.primary_guest_id, p.name AS property_name,
+            g.first_name, g.last_name, g.language,
+            reg.id AS reg_id, reg.signature_required, reg.signed_at::text
+       FROM reservation r
+       JOIN property p ON p.id = r.property_id
+       JOIN guest g    ON g.id = r.primary_guest_id
+       LEFT JOIN registration reg
+              ON reg.reservation_id = r.id AND reg.group_registration_id IS NULL
+      WHERE r.id = $1`, [k.reservationId])
+  // Kann nur fehlen, wenn der Link zwischen Ausgabe und Einloesen seinen Gast
+  // verloren hat; checkin_token_open hat das schon abgefangen.
+  if (rows.length === 0) throw Errors.gone('checkin.reservationClosed')
+  return rows[0]!
+}
+
+function zustand(r: ReservierungZumLink): CheckinFormView['state'] {
+  if (r.reg_id === null) return 'open'
+  return r.signature_required === true && r.signed_at === null ? 'signatureOnly' : 'done'
+}
+
+/**
+ * Darf hier unterschrieben werden?
+ *
+ * § 29 Abs. 2 BMG: "am Tag der Ankunft handschriftlich". Am Terminal im Haus
+ * und ab dem Anreisetag ja. Ueber den Mail-Link nie: drei Tage vorher ist
+ * nicht der Tag der Ankunft, und eine Linie mit dem Finger auf dem eigenen
+ * Telefon ist keines der Verfahren aus Absatz 5, die die Unterschrift
+ * ersetzen duerfen. Gegen den Geschaeftstag, nicht gegen now().
+ */
+function unterschriftHier(k: CheckinKontext, arrival: string): boolean {
+  return k.channel === 'terminal' && k.businessDate >= arrival
+}
+
+// ------------------------------------------------------------------ Eingabe
+
+interface Person {
+  lastName: string; firstName: string; birthDate: string; nationality: string
+}
+interface Einreichung {
+  guest: Person & {
+    address: { line1: string; postalCode: string; city: string; country: string }
+    idDocumentType?: 'passport' | 'id_card' | 'other'
+    idDocumentNumber?: string
+  }
+  companions: Person[]
+  signatureSvg?: string
+}
+
+const GAST_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality',
+                             'address', 'idDocumentType', 'idDocumentNumber'])
+const PERSON_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality'])
+const ANSCHRIFT_FELDER = new Set(['line1', 'postalCode', 'city', 'country'])
+const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed'])
+
+function istObjekt(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * Die Eingabe pruefen, von Hand und vollstaendig.
+ *
+ * **Unbekannte Felder werden abgewiesen, nicht still entfernt.** Fastifys
+ * Pruefung entfernt sie in der Grundeinstellung stillschweigend; wer eine
+ * Ausweiskopie mitschickt, bekaeme dann 201 und glaubte, sie liege jetzt
+ * vor. Es gibt kein Feld dafuer (§ 30 BMG erlaubt die Nummer, verbietet die
+ * Kopie), und das soll die Antwort sagen.
+ */
+function pruefe(body: unknown, heute: string): Einreichung {
+  const f: Record<string, Meldung[]> = {}
+  const fehlt = (k: string, m: Meldung = 'field.required'): void => {
+    (f[k] ??= []).push(m)
+  }
+  if (!istObjekt(body)) throw Errors.validation({ body: ['field.bodyMissing'] })
+  for (const k of Object.keys(body)) if (!WURZEL_FELDER.has(k)) fehlt(k, 'field.unknown')
+  if (body.confirmed !== true) fehlt('confirmed', 'field.mustConfirm')
+
+  const text = (v: unknown, max: number): string | null =>
+    typeof v === 'string' && v.trim() !== '' && v.length <= max ? v.trim() : null
+
+  const person = (v: unknown, pfad: string, felder: Set<string>): Person | null => {
+    if (!istObjekt(v)) { fehlt(pfad); return null }
+    for (const k of Object.keys(v)) if (!felder.has(k)) fehlt(`${pfad}.${k}`, 'field.unknown')
+    const p = {
+      lastName: text(v.lastName, 100), firstName: text(v.firstName, 100),
+      birthDate: typeof v.birthDate === 'string' ? v.birthDate : null,
+      nationality: typeof v.nationality === 'string' ? v.nationality.toUpperCase() : null
+    }
+    if (p.lastName === null) fehlt(`${pfad}.lastName`)
+    if (p.firstName === null) fehlt(`${pfad}.firstName`)
+    if (p.birthDate === null || !isIsoDate(p.birthDate)) fehlt(`${pfad}.birthDate`, 'field.isoDate')
+    else if (p.birthDate > heute) fehlt(`${pfad}.birthDate`, 'checkin.birthDateFuture')
+    if (!istLand(p.nationality)) fehlt(`${pfad}.nationality`, 'field.country')
+    return p.lastName && p.firstName && p.birthDate && p.nationality
+      ? p as Person : null
+  }
+
+  const g = person(body.guest, 'guest', GAST_FELDER)
+  const roh = istObjekt(body.guest) ? body.guest : {}
+  const a = roh.address
+  let anschrift: Einreichung['guest']['address'] | null = null
+  if (!istObjekt(a)) fehlt('guest.address')
+  else {
+    for (const k of Object.keys(a)) if (!ANSCHRIFT_FELDER.has(k)) fehlt(`guest.address.${k}`, 'field.unknown')
+    const land = typeof a.country === 'string' ? a.country.toUpperCase() : null
+    anschrift = { line1: text(a.line1, 200) ?? '', postalCode: text(a.postalCode, 20) ?? '',
+                  city: text(a.city, 100) ?? '', country: land ?? '' }
+    if (anschrift.line1 === '') fehlt('guest.address.line1')
+    if (anschrift.postalCode === '') fehlt('guest.address.postalCode')
+    if (anschrift.city === '') fehlt('guest.address.city')
+    if (!istLand(land)) fehlt('guest.address.country', 'field.country')
+  }
+
+  /*
+   * Die Ausweisnummer nur, wo das Gesetz sie verlangt: § 30 Abs. 2 BMG
+   * nennt sie fuer auslaendische Personen. Fuer inlaendische wird sie
+   * verworfen -- eine Nummer ohne Rechtsgrund ist eine Erhebung ohne
+   * Rechtsgrund, auch wenn sie verschluesselt abgelegt wuerde.
+   */
+  let ausweisTyp: 'passport' | 'id_card' | 'other' | undefined
+  let ausweisNr: string | undefined
+  if (g !== null && istAuslaendisch({ nationality: g.nationality })) {
+    const nr = text(roh.idDocumentNumber, 40)
+    if (nr === null) fehlt('guest.idDocumentNumber', 'checkin.idDocumentRequired')
+    else ausweisNr = nr
+    const typ = roh.idDocumentType ?? 'passport'
+    if (typ !== 'passport' && typ !== 'id_card' && typ !== 'other') {
+      fehlt('guest.idDocumentType', 'field.invalid')
+    } else ausweisTyp = typ
+  }
+
+  const begleiter: Person[] = []
+  if (body.companions !== undefined) {
+    if (!Array.isArray(body.companions)) fehlt('companions', 'field.invalid')
+    else if (body.companions.length > MAX_MITREISENDE) {
+      fehlt('companions', 'checkin.tooManyCompanions')
+    } else {
+      body.companions.forEach((c, i) => {
+        const p = person(c, `companions.${i}`, PERSON_FELDER)
+        if (p !== null) begleiter.push(p)
+      })
+    }
+  }
+
+  let svg: string | undefined
+  if (body.signatureSvg !== undefined) {
+    if (typeof body.signatureSvg !== 'string') fehlt('signatureSvg', 'field.invalid')
+    else svg = body.signatureSvg
+  }
+
+  if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
+  return {
+    guest: { ...g!, address: anschrift!, idDocumentType: ausweisTyp,
+             idDocumentNumber: ausweisNr },
+    companions: begleiter,
+    signatureSvg: svg
+  }
+}
+
+// ------------------------------------------------------------------ Rezeption
+
+interface ReservierungAmTresen {
+  id: number; property_id: number; status: string; arrival: string; departure: string
+  primary_guest_id: number | null; guest_status: string | null
+  email: string | null; language: string | null; name: string | null
+  property_name: string; is_training: boolean
+  reg_id: number | null
+}
+
+async function reservierungAmTresen(
+  client: PoolClient, reservationRef: string
+): Promise<ReservierungAmTresen> {
+  const { rows } = await client.query<ReservierungAmTresen>(
+    `SELECT r.id, r.property_id, r.status::text, r.arrival::text, r.departure::text,
+            r.primary_guest_id, g.status AS guest_status, g.email, g.language,
+            nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name,
+            p.name AS property_name, p.is_training,
+            reg.id AS reg_id
+       FROM reservation r
+       JOIN property p ON p.id = r.property_id
+       LEFT JOIN guest g ON g.id = r.primary_guest_id
+       LEFT JOIN registration reg
+              ON reg.reservation_id = r.id AND reg.group_registration_id IS NULL
+      WHERE r.public_ref = $1`, [reservationRef])
+  if (rows.length === 0) throw Errors.notFound('res.reservation')
+  const r = rows[0]!
+  if (!OFFEN.has(r.status) || r.primary_guest_id === null || r.guest_status !== 'active') {
+    throw Errors.unprocessable('checkin.reservationNotOpen')
+  }
+  // Ein Schein liegt vor: ein Link waere eine Einladung, ihn ein zweites
+  // Mal auszufuellen. Steht nur die Unterschrift aus, geschieht das am
+  // Anreisetag vor Ort, und dafuer gibt die Station ihren eigenen Link aus.
+  if (r.reg_id !== null) {
+    throw Errors.conflict('registration.alreadyExists')
+  }
+  return r
+}
+
+// ------------------------------------------------------------------- Routen
+
+export function checkinRoutes(app: FastifyInstance): void {
+  /**
+   * Was die Gastseite zeigt. Oeffentlich, weil der Gast keinen Zugang hat
+   * und keinen braucht: der Link ist der Zugang, und er reicht genau fuer
+   * diese eine Reservierung.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/checkin/form',
+    // Oeffentlich: der Link in der Kopfzeile ist der Ausweis (Dokument 30).
+    permission: null,
+    summary: 'Online-Check-in: was die Gastseite zeigt',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      return checkinTx(req, async (client, k): Promise<CheckinFormView> => {
+        const r = await reservierungZumLink(client, k)
+        return {
+          propertyName: r.property_name,
+          arrival: r.arrival,
+          departure: r.departure,
+          firstName: r.first_name,
+          lastName: r.last_name,
+          channel: k.channel,
+          state: zustand(r),
+          signatureAllowed: unterschriftHier(k, r.arrival),
+          language: r.language,
+          maxCompanions: MAX_MITREISENDE
+        }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/checkin/form',
+    // Oeffentlich: der Link in der Kopfzeile ist der Ausweis (Dokument 30).
+    permission: null,
+    summary: 'Online-Check-in: Meldeschein einreichen',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      return checkinTx(req, async (client, k): Promise<CheckinSubmitted> => {
+        const e = pruefe(req.body, k.businessDate)
+        const r = await reservierungZumLink(client, k)
+        if (r.reg_id !== null) throw Errors.conflict('checkin.alreadyDone')
+
+        const hier = unterschriftHier(k, r.arrival)
+        if (hier && e.signatureSvg !== undefined && !istUnterschriftSvg(e.signatureSvg)) {
+          throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
+        }
+
+        /*
+         * Ins Profil des Gastes, auf demselben Weg wie die Rezeption. E-Mail
+         * und Telefon bleiben unberuehrt: an die Adresse ging der Link, und
+         * ueber eine Seite ohne Anmeldung soll sie niemand umbiegen koennen.
+         */
+        await gastAendern(client, r.primary_guest_id, {
+          lastName: e.guest.lastName, firstName: e.guest.firstName,
+          birthDate: e.guest.birthDate, nationality: e.guest.nationality,
+          addressLine1: e.guest.address.line1, postalCode: e.guest.address.postalCode,
+          city: e.guest.address.city, country: e.guest.address.country,
+          idDocumentType: e.guest.idDocumentType,
+          idDocumentNumber: e.guest.idDocumentNumber
+        })
+
+        // Mitreisende als eigene Profile: die Meldepflicht gilt je Person.
+        const mitreisende: number[] = []
+        for (const c of e.companions) {
+          const neu = await gastAnlegen(client, r.account_id, {
+            lastName: c.lastName, firstName: c.firstName,
+            birthDate: c.birthDate, nationality: c.nationality,
+            language: r.language })
+          mitreisende.push(neu.id)
+        }
+
+        const ergebnis = await erfasseMeldeschein(client, {
+          propertyId: r.property_id, reservationId: r.id,
+          arrival: r.arrival, departure: r.departure,
+          primaryGuestId: r.primary_guest_id, mitreisende,
+          unterschrift: hier
+            ? { art: 'jetzt', svg: e.signatureSvg }
+            : { art: 'amAnreisetag' },
+          quelle: k.channel === 'terminal' ? 'terminal' : 'online'
+        })
+
+        await client.query(
+          `UPDATE checkin_token SET completed_at = now() WHERE id = $1`, [k.tokenId])
+
+        reply.status(201)
+        return { state: ergebnis.signaturePending ? 'signatureOnly' : 'done' }
+      })
+    }
+  })
+
+  /**
+   * Die Unterschrift nachreichen, am Terminal am Anreisetag -- fuer den Gast,
+   * der vorab per Link ausgefuellt hat.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/checkin/signature',
+    // Oeffentlich: der Link in der Kopfzeile ist der Ausweis (Dokument 30).
+    permission: null,
+    summary: 'Online-Check-in: Unterschrift am Anreisetag',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      const b = req.body as { signatureSvg?: unknown } | undefined
+      return checkinTx(req, async (client, k): Promise<CheckinSubmitted> => {
+        const r = await reservierungZumLink(client, k)
+        if (!unterschriftHier(k, r.arrival)) {
+          throw Errors.unprocessable('checkin.signatureOnArrival')
+        }
+        if (zustand(r) !== 'signatureOnly') throw Errors.conflict('checkin.nothingToSign')
+        if (typeof b?.signatureSvg !== 'string' || !istUnterschriftSvg(b.signatureSvg)) {
+          throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
+        }
+        await unterschreibeMeldeschein(client, r.reg_id!, b.signatureSvg)
+        await client.query(
+          `UPDATE checkin_token SET completed_at = now() WHERE id = $1`, [k.tokenId])
+        return { state: 'done' }
+      })
+    }
+  })
+
+  /**
+   * Den Link fuer die Rezeption -- zum Kopieren, etwa wenn der Gast keine
+   * Mailadresse hinterlassen hat oder ihn per Telefon will.
+   *
+   * Unter `reservation:checkin`: wer den Meldeschein am Tresen erfassen darf,
+   * darf dem Gast auch den Weg geben, es selbst zu tun.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/online-checkin/link',
+    permission: 'reservation:checkin',
+    summary: 'Online-Check-in-Link erzeugen',
+    handler: async (req, reply) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const principal = req.principal as Principal
+      nichtSpeichern(reply)
+      return tx(req.pool, req, async (client): Promise<CheckinLink> => {
+        const r = await reservierungAmTresen(client, reservationRef)
+        const t = await createCheckinToken(client, {
+          reservationId: r.id, channel: 'mail', createdBy: principal.userId })
+        reply.status(201)
+        return { link: checkinLink(config.publicAppUrl, t!.token), expiresOn: t!.expiresOn }
+      })
+    }
+  })
+
+  /**
+   * Den Link per Mail an den Gast, auf Knopfdruck.
+   *
+   * **Nur an die Adresse am Gastprofil.** Anders als bei der Rechnung gibt
+   * es hier keine abweichende Adresse: der Link oeffnet den Meldeschein
+   * dieses Gastes, und eine Route, die ihn an eine frei waehlbare Adresse
+   * schickt, waere ein Weg, ihn jemand anderem zu geben.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/online-checkin/send',
+    permission: 'email:send',
+    summary: 'Online-Check-in-Link per Mail senden',
+    handler: async (req, reply) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const r = await reservierungAmTresen(client, reservationRef)
+        if (!isSendableAddress(r.email)) {
+          throw Errors.unprocessable('mail.noReservationAddress')
+        }
+        if (r.is_training) throw Errors.unprocessable('training.noEmail')
+        /*
+         * Vorher fragen, was email_enqueue sonst mit einer Ausnahme
+         * beantwortete: die Rezeption soll lesen, dass der Versand aus ist,
+         * und nicht "interner Fehler".
+         */
+        const bereit = await client.query<{ ok: boolean }>(
+          `SELECT COALESCE(bool_and(s.enabled AND email_sender_allowed(s.property_id, s.from_email)),
+                           false) AS ok
+             FROM property_email_setting s WHERE s.property_id = $1`, [r.property_id])
+        if (bereit.rows[0]?.ok !== true) throw Errors.unprocessable('checkin.mailNotReady')
+
+        const t = await createCheckinToken(client, {
+          reservationId: r.id, channel: 'mail', createdBy: principal.userId })
+        const text = renderCheckinInvitationEmail({
+          propertyName: r.property_name, guestName: r.name,
+          reservationRef, arrival: r.arrival, validUntil: t!.expiresOn,
+          link: checkinLink(config.publicAppUrl, t!.token)
+        }, emailLanguage(r.language))
+        const q = await client.query<{ ref: string }>(
+          `SELECT email_enqueue($1,'checkin_invitation',$2,$3,$4,$5,$6,NULL,$7,$8) AS ref`,
+          [r.property_id, r.email, r.name, text.subject, text.text, text.html,
+           r.id, principal.userId])
+        reply.status(202)
+        return { messageRef: q.rows[0]!.ref, reservationRef, status: 'pending' }
+      })
+    }
+  })
+
+  /** Alle gueltigen Links dieser Reservierung zurueckziehen. */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/online-checkin/revoke',
+    permission: 'reservation:checkin',
+    summary: 'Online-Check-in-Links zurueckziehen',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ id: number }>(
+          `SELECT id FROM reservation WHERE public_ref = $1`, [reservationRef])
+        if (r.rowCount === 0) throw Errors.notFound('res.reservation')
+        const u = await client.query(
+          `UPDATE checkin_token SET revoked_at = now()
+            WHERE reservation_id = $1 AND revoked_at IS NULL`, [r.rows[0]!.id])
+        return { reservationRef, revoked: u.rowCount ?? 0 }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/online-checkin-settings',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Online-Check-in: Einstellung des Hauses',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async (client): Promise<CheckinSettings> => {
+        const { rows } = await client.query<{ enabled: boolean; days_before: number }>(
+          `SELECT enabled, days_before FROM property_checkin_setting WHERE property_id = $1`,
+          [Number(propertyId)])
+        // Kein 404: "noch nie eingestellt" ist der Ausgangszustand jedes Hauses.
+        return { enabled: rows[0]?.enabled ?? false, daysBefore: rows[0]?.days_before ?? 3 }
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/online-checkin-settings',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Online-Check-in: Einstellung festlegen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const b = (req.body ?? {}) as { enabled?: unknown; daysBefore?: unknown }
+      const principal = req.principal as Principal
+      if (typeof b.enabled !== 'boolean') throw Errors.validation({ enabled: ['field.required'] })
+      const tage = b.daysBefore ?? 3
+      if (typeof tage !== 'number' || !Number.isInteger(tage) || tage < 1 || tage > 14) {
+        throw Errors.validation({ daysBefore: ['field.maxValue'] }, { max: 14 })
+      }
+      return tx(req.pool, req, async (client): Promise<CheckinSettings> => {
+        await client.query(
+          `INSERT INTO property_checkin_setting (property_id, enabled, days_before, updated_by)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (property_id) DO UPDATE
+             SET enabled = EXCLUDED.enabled, days_before = EXCLUDED.days_before,
+                 updated_by = EXCLUDED.updated_by, updated_at = now()`,
+          [Number(propertyId), b.enabled, tage, principal.userId])
+        return { enabled: b.enabled as boolean, daysBefore: tage }
+      })
+    }
+  })
+}

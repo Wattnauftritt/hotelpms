@@ -6,6 +6,7 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
+import { GastCheckinSeite, checkinAusAdresse } from './routes/GastCheckin.tsx'
 import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
@@ -91,6 +92,12 @@ function App(): JSX.Element {
    * beim Aufruf, und die aendert sich waehrend dieser beiden Seiten nicht.
    */
   const [zugang] = useState(zugangAusAdresse)
+  /*
+   * Der Online-Check-in des Gastes (Dokument 30) steht aus demselben Grund
+   * hier vorn: wer den Link aus seiner Buchungsmail oeffnet, ist Gast und
+   * hat keinen Zugang -- er braucht auch keinen. Der Link ist der Ausweis.
+   */
+  const [gastCheckin] = useState(checkinAusAdresse)
   const [adresse, setAdresse] = useAdresse()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
@@ -145,6 +152,10 @@ function App(): JSX.Element {
     } finally {
       location.replace(location.pathname)
     }
+  }
+
+  if (gastCheckin !== null) {
+    return <GastCheckinSeite token={gastCheckin.token} />
   }
 
   if (zugang !== null) {

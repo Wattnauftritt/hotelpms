@@ -4,7 +4,8 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { loadConfig } from '../platform/config.js'
-import { encryptIdDocument, decryptIdDocument, maskIdDocument } from '../platform/crypto.js'
+import { decryptIdDocument, maskIdDocument } from '../platform/crypto.js'
+import { gastAnlegen, gastAendern } from '../platform/gast.js'
 import { accountFor, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
@@ -170,25 +171,10 @@ export function guestRoutes(app: FastifyInstance): void {
 
       return tx(req.pool, req, async client => {
         const duplicates = await findDuplicates(client, accountId, body)
-        const enc = body.idDocumentNumber
-          ? encryptIdDocument(body.idDocumentNumber, config.idDocumentKey) : null
-
-        const { rows } = await client.query<GuestRow>(
-          `INSERT INTO guest (account_id, last_name, first_name, email, phone, birth_date,
-                              nationality, language, address_line1, postal_code, city, country,
-                              id_document_type, id_document_number_enc, id_document_key_version,
-                              preferences)
-           VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-           RETURNING ${FIELDS}`,
-          [accountId, body.lastName.trim(), body.firstName ?? null, body.email ?? null,
-           body.phone ?? null, body.birthDate ?? null, body.nationality ?? null,
-           body.language ?? 'de', body.addressLine1 ?? null, body.postalCode ?? null,
-           body.city ?? null, body.country ?? null, body.idDocumentType ?? null,
-           enc?.ciphertext ?? null, enc?.keyVersion ?? null,
-           JSON.stringify(body.preferences ?? {})])
+        const angelegt = await gastAnlegen(client, accountId, body)
 
         reply.status(201)
-        return { ...present(rows[0]!), possibleDuplicates: duplicates }
+        return { ...present(angelegt), possibleDuplicates: duplicates }
       })
     }
   })
@@ -224,35 +210,9 @@ export function guestRoutes(app: FastifyInstance): void {
         if (cur.rows[0]!.status === 'anonymized') {
           throw Errors.conflict('guest.anonymizedNotRevived')
         }
-        const enc = body.idDocumentNumber
-          ? encryptIdDocument(body.idDocumentNumber, config.idDocumentKey) : null
-
-        const { rows } = await client.query<GuestRow>(
-          `UPDATE guest SET
-             last_name     = COALESCE($2, last_name),
-             first_name    = COALESCE($3, first_name),
-             email         = COALESCE($4, email),
-             phone         = COALESCE($5, phone),
-             birth_date    = COALESCE($6::date, birth_date),
-             nationality   = COALESCE($7, nationality),
-             language      = COALESCE($8, language),
-             address_line1 = COALESCE($9, address_line1),
-             postal_code   = COALESCE($10, postal_code),
-             city          = COALESCE($11, city),
-             country       = COALESCE($12, country),
-             id_document_type = COALESCE($13, id_document_type),
-             id_document_number_enc  = COALESCE($14, id_document_number_enc),
-             id_document_key_version = COALESCE($15, id_document_key_version),
-             preferences   = COALESCE($16::jsonb, preferences),
-             updated_at    = now()
-           WHERE id = $1 RETURNING ${FIELDS}`,
-          [cur.rows[0]!.id, body.lastName ?? null, body.firstName ?? null, body.email ?? null,
-           body.phone ?? null, body.birthDate ?? null, body.nationality ?? null,
-           body.language ?? null, body.addressLine1 ?? null, body.postalCode ?? null,
-           body.city ?? null, body.country ?? null, body.idDocumentType ?? null,
-           enc?.ciphertext ?? null, enc?.keyVersion ?? null,
-           body.preferences ? JSON.stringify(body.preferences) : null])
-        return present(rows[0]!)
+        // Dieselbe Anweisung wie auf der Gastseite des Online-Check-ins.
+        const geaendert = await gastAendern(client, cur.rows[0]!.id, body)
+        return present(geaendert)
       })
     }
   })

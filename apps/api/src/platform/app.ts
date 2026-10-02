@@ -81,7 +81,11 @@ export async function buildServer(
     level: overrides.logStream === undefined ? config.logLevel : 'info',
     // Gaestedaten gehoeren nicht ins Protokoll (C8, Dokument 13).
     redact: {
+      // Der Link des Online-Check-ins reist in einer Kopfzeile (Dokument
+      // 30). Der Serialisierer unten schreibt Kopfzeilen gar nicht mit; sie
+      // steht trotzdem hier, falls ihn jemand erweitert.
       paths: ['req.headers.authorization', 'req.headers.cookie',
+              'req.headers["x-staygrid-checkin-token"]',
               'req.body', 'res.body', '*.password', '*.idDocumentNumber'],
       remove: true
     },

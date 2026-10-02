@@ -670,6 +670,34 @@ export const ReservationOccupant = Type.Object({
   name: Type.Union([Type.String(), Type.Null()])
 })
 
+/**
+ * Der Online-Check-in an der Reservierung, fuer die Rezeption (Dokument 30).
+ * Hier und nicht in `checkin.ts`, weil `ReservationDetail` ihn traegt und
+ * `checkin.ts` umgekehrt von hier liest.
+ */
+export const OnlineCheckinStatus = Type.Object({
+  /** Die letzte Einladung per Mail: eingereiht wann, und wie steht sie. */
+  invitedAt: Type.Union([Type.String(), Type.Null()]),
+  invitationStatus: Type.Union([Type.String(), Type.Null()]),
+  /** Meldeschein online oder am Terminal eingereicht, wann. */
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  source: Type.Union([Type.Literal('desk'), Type.Literal('online'),
+                      Type.Literal('terminal'), Type.Null()]),
+  /** Vorab erfasst, Unterschrift steht noch aus. */
+  signaturePending: Type.Boolean(),
+  /** Wie viele Links gerade gelten. */
+  activeLinks: Type.Integer(),
+  /**
+   * Darf der Aufrufer hier einen Link kopieren oder verschicken? Von der
+   * Schnittstelle beantwortet, weil sie das Haus der Reservierung kennt und
+   * das Seitenfenster nicht -- ein Knopf, der 403 antwortet, ist schlechter
+   * als keiner (Dokument 19).
+   */
+  mayLink: Type.Boolean(),
+  maySend: Type.Boolean()
+})
+export type OnlineCheckinStatus = Static<typeof OnlineCheckinStatus>
+
 export const ReservationDetail = Type.Object({
   reservationRef: Type.String(),
   bookingRef: Type.String(),
@@ -701,7 +729,8 @@ export const ReservationDetail = Type.Object({
   folioRef: Type.Union([Type.String(), Type.Null()]),
   nights: Type.Array(ReservationNight),
   occupants: Type.Array(ReservationOccupant),
-  totalCent: Cent
+  totalCent: Cent,
+  onlineCheckin: Type.Optional(OnlineCheckinStatus)
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 
