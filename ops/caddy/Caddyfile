@@ -126,6 +126,18 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	# Die Schnittstelle unter demselben Namen. Der Unix-Socket bedeutet:
 	# PostgreSQL und die Anwendung sprechen nie über TCP, und der Dienst
 	# lauscht auf keinem Netzwerkport.
+	#
+	# Darunter auch die Zahlungsseite für Gäste (/v1/pay?t=<token>, 0059).
+	# Das Token steht in der Abfragezeichenfolge, und die Anwendung ersetzt
+	# deren Werte in ihrem Protokoll. **Dieser Block schreibt bewusst kein
+	# Zugriffsprotokoll** (es gibt keine `log`-Direktive): Caddy schriebe die
+	# volle Adresse mitsamt Token, und jeder mit Lesezugriff auf das Protokoll
+	# könnte den Link bis zu seiner Frist einlösen. Wer hier ein Protokoll
+	# einschaltet, filtert den Parameter t aus `request>uri` heraus (Filter
+	# `query` im Format `filter`) und rechnet das an der Maschine nach --
+	# hier steht bewusst keine ungeprüfte Fassung davon.
+	# Referrer-Policy no-referrer oben hält das Token außerdem aus dem
+	# Referer, wenn der Gast von der Seite zum Zahlungsdienstleister geht.
 	handle /v1/* {
 		reverse_proxy unix//run/hotelpms/api.sock {
 			import echte_herkunft

@@ -6,7 +6,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeGuest,
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
-import type { StripeAdapter } from '../platform/payments/stripe.js'
+import { stripeAttrappe } from './stripeAttrappe.js'
 
 /**
  * Der Webhook laeuft ohne Sitzung. Ein Test dagegen kann Stripe nicht
@@ -39,17 +39,9 @@ let app: FastifyInstance
 let pool: Pool
 let fx: Fixture
 let auth: Record<string, string>
-let sessionCounter = 0
-let lastCheckoutParams: { amountCent: number; reference: string } | null = null
 
-const fakeStripe: StripeAdapter = {
-  async createCheckoutSession(params) {
-    lastCheckoutParams = { amountCent: params.amountCent, reference: params.reference }
-    const providerReference = `cs_test_${++sessionCounter}`
-    return { providerReference, url: `https://checkout.stripe.test/${providerReference}` }
-  },
-  async expireCheckoutSession() { /* hier nicht gebraucht */ }
-}
+/** Der Anbieter ohne Netz, mit Buchfuehrung ueber seine Checkouts. */
+const fakeStripe = stripeAttrappe()
 
 beforeAll(async () => {
   await ensureSchema()
@@ -69,6 +61,7 @@ afterAll(async () => {
 let lauf = 0
 beforeEach(async () => {
   await truncateAll()
+  fakeStripe.zuruecksetzen()
   fx = await makeProperty(owner)
   const u = await makeUser(owner,
     { email: 'rez@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
@@ -89,6 +82,19 @@ const requestLink = (folioRef: string, amountCent: number) => app.inject({
   payload: { amountCent }
 })
 
+/**
+ * Seit 0059 bekommt der Gast einen Link von uns; den Checkout beim Anbieter
+ * legt erst das Oeffnen an. Fuer den Webhook zaehlt dessen Kennung.
+ */
+async function checkoutZu(folioRef: string, amountCent: number): Promise<string> {
+  const link = await requestLink(folioRef, amountCent)
+  expect(link.statusCode).toBe(201)
+  const t = new URL((link.json() as { url: string }).url).searchParams.get('t')!
+  const r = await app.inject({ method: 'GET', url: `/v1/pay/checkout?t=${t}` })
+  expect(r.statusCode).toBe(303)
+  return String(r.headers.location).split('/').pop()!
+}
+
 const webhook = (rawBody: string, signature: string) => app.inject({
   method: 'POST', url: '/v1/payments/stripe/webhook',
   headers: { 'content-type': 'application/json', 'stripe-signature': signature },
@@ -102,17 +108,19 @@ async function settlementsOf(folioId: number) {
 }
 
 describe('Pay-by-Link ueber Stripe', () => {
-  it('fordert einen Zahlungslink an und legt eine Zahlungsanfrage an', async () => {
+  it('legt einen Link an und erst beim Oeffnen eine Zahlungsanfrage beim Anbieter', async () => {
     const folio = await makeFolio()
     const res = await requestLink(folio.ref, 20_000)
     expect(res.statusCode).toBe(201)
     const body = JSON.parse(res.body) as { url: string }
-    expect(body.url).toMatch(/^https:\/\/checkout\.stripe\.test\//)
-    expect(lastCheckoutParams).toEqual({ amountCent: 20_000, reference: folio.ref })
+    expect(body.url).toMatch(/\/v1\/pay\?t=/)
+    expect(fakeStripe.angelegt).toBe(0)
 
+    const ref = await checkoutZu(folio.ref, 20_000)
+    expect(fakeStripe.sitzungen.get(ref)!.amountCent).toBe(20_000)
     const intent = await owner.query(
-      `SELECT status, amount_cent, folio_id FROM payment_intent WHERE folio_id = $1`,
-      [folio.id])
+      `SELECT status, amount_cent, folio_id FROM payment_intent WHERE provider_reference = $1`,
+      [ref])
     expect(intent.rows).toHaveLength(1)
     expect(intent.rows[0]).toMatchObject({ status: 'pending', amount_cent: 20_000 })
   })
@@ -128,9 +136,7 @@ describe('Pay-by-Link ueber Stripe', () => {
 
   it('erfasst genau einen Zahlungsvermerk, auch bei doppelter Zustellung desselben Ereignisses', async () => {
     const folio = await makeFolio()
-    const link = await requestLink(folio.ref, 15_000)
-    const { url } = JSON.parse(link.body) as { url: string }
-    const providerReference = url.split('/').pop()!
+    const providerReference = await checkoutZu(folio.ref, 15_000)
 
     const rawBody = checkoutCompletedEvent('evt_1', providerReference, 15_000)
     const first = await webhook(rawBody, signStripe(rawBody))
@@ -157,9 +163,7 @@ describe('Pay-by-Link ueber Stripe', () => {
     // ID; das Zustellungsprotokoll allein wuerde ein zweites nicht abfangen.
     // Die eigentliche Sperre ist der Statusuebergang von payment_intent.
     const folio = await makeFolio()
-    const link = await requestLink(folio.ref, 8_000)
-    const { url } = JSON.parse(link.body) as { url: string }
-    const providerReference = url.split('/').pop()!
+    const providerReference = await checkoutZu(folio.ref, 8_000)
 
     const first = checkoutCompletedEvent('evt_a', providerReference, 8_000)
     await webhook(first, signStripe(first))
@@ -174,9 +178,7 @@ describe('Pay-by-Link ueber Stripe', () => {
 
   it('lehnt eine Zustellung mit falscher Signatur ab und bucht nichts', async () => {
     const folio = await makeFolio()
-    const link = await requestLink(folio.ref, 5_000)
-    const { url } = JSON.parse(link.body) as { url: string }
-    const providerReference = url.split('/').pop()!
+    const providerReference = await checkoutZu(folio.ref, 5_000)
 
     const rawBody = checkoutCompletedEvent('evt_x', providerReference, 5_000)
     const res = await webhook(rawBody, signStripe(rawBody, 'falscher-schluessel'))
@@ -186,9 +188,7 @@ describe('Pay-by-Link ueber Stripe', () => {
 
   it('bucht nichts, wenn der gemeldete Betrag von der Anfrage abweicht', async () => {
     const folio = await makeFolio()
-    const link = await requestLink(folio.ref, 12_000)
-    const { url } = JSON.parse(link.body) as { url: string }
-    const providerReference = url.split('/').pop()!
+    const providerReference = await checkoutZu(folio.ref, 12_000)
 
     // Falscher Betrag: die Signatur allein sichert die Herkunft, nicht den
     // Inhalt gegen die eigene Erwartung.
@@ -198,7 +198,7 @@ describe('Pay-by-Link ueber Stripe', () => {
     expect(await settlementsOf(folio.id)).toHaveLength(0)
 
     const intent = await owner.query(
-      `SELECT status FROM payment_intent WHERE folio_id = $1`, [folio.id])
+      `SELECT status FROM payment_intent WHERE provider_reference = $1`, [providerReference])
     expect(intent.rows[0]!.status).toBe('pending')
   })
 

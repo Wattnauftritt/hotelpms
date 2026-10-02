@@ -243,17 +243,23 @@ export async function anzahlungssicht(
           WHERE drs.folio_id = $1
           GROUP BY drs.deposit_request_id) e ON e.deposit_request_id = dr.id
        LEFT JOIN (
-         SELECT deposit_request_id, count(*) AS offen
-           FROM payment_intent
-          WHERE folio_id = $1 AND property_id = $2 AND status = 'pending'
-            AND deposit_request_id IS NOT NULL
-            -- Ein abgelaufener Link ist ein Zeitpunkt beim Anbieter, kein
-            -- Kalendertag: hier zaehlt die Uhr, nicht der Geschaeftstag.
-            AND (expires_at IS NULL OR expires_at > now())
-          GROUP BY deposit_request_id) l ON l.deposit_request_id = dr.id
+         SELECT o.deposit_request_id, count(*) AS offen FROM (
+           -- Der dauerhafte Link (0059): gilt bis zu einem Kalendertag,
+           -- gegen den Geschaeftstag geprueft.
+           SELECT deposit_request_id FROM payment_link
+            WHERE folio_id = $1 AND deposit_request_id IS NOT NULL
+              AND revoked_at IS NULL AND valid_until >= $3::date
+           UNION ALL
+           -- Checkouts von vor 0059 ohne eigenen Link. Ihr Ablauf ist ein
+           -- Zeitpunkt beim Anbieter: hier zaehlt die Uhr.
+           SELECT deposit_request_id FROM payment_intent
+            WHERE folio_id = $1 AND property_id = $2 AND status = 'pending'
+              AND deposit_request_id IS NOT NULL AND payment_link_id IS NULL
+              AND (expires_at IS NULL OR expires_at > now())
+         ) o GROUP BY o.deposit_request_id) l ON l.deposit_request_id = dr.id
       WHERE dr.folio_id = $1
       ORDER BY dr.due_date, dr.id`,
-    [folio.id, folio.property_id])
+    [folio.id, folio.property_id, businessDate])
 
   const requests = rows.rows.map(r => {
     const amountCent = Number(r.amount_cent)
@@ -440,11 +446,22 @@ export function depositRequestRoutes(app: FastifyInstance): void {
         if (a.canceled) throw Errors.conflict('deposit.requestCanceled')
         if (a.received_cent >= a.amount_cent) throw Errors.conflict('deposit.requestFulfilled')
 
+        /*
+         * Offen ist ein gueltiger, nicht widerrufener Link -- und jeder
+         * Checkout, der beim Anbieter noch bezahlt werden koennte, auch wenn
+         * sein Link inzwischen abgelaufen ist: ein gestern geoeffneter
+         * Checkout nimmt bis zu 24 Stunden lang Geld an. Widerrufen schliesst
+         * beides.
+         */
+        const heute = await geschaeftstag(client, a.property_id)
         const offen = await client.query(
-          `SELECT 1 FROM payment_intent
+          `SELECT 1 FROM payment_link
+            WHERE deposit_request_id = $1 AND revoked_at IS NULL AND valid_until >= $3::date
+           UNION ALL
+           SELECT 1 FROM payment_intent
             WHERE deposit_request_id = $1 AND property_id = $2 AND status = 'pending'
               AND (expires_at IS NULL OR expires_at > now())
-            LIMIT 1`, [a.id, a.property_id])
+            LIMIT 1`, [a.id, a.property_id, heute])
         if ((offen.rowCount ?? 0) > 0) throw Errors.conflict('deposit.requestHasOpenLink')
 
         await client.query(

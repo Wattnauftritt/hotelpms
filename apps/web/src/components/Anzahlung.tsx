@@ -108,6 +108,9 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
   const aktiv = r.state !== 'canceled' && r.state !== 'received'
   const darfBuchen = rechte.darf('folio:post')
   const links = v.paymentLinks.filter(l => l.depositRequestRef === r.requestRef)
+  // Ein gueltiger Link ist unterwegs: dann keinen zweiten anbieten -- die
+  // API weist ihn ohnehin ab (payments.linkActive).
+  const linkUnterwegs = links.some(l => !l.legacy && l.status === 'pending' && !l.expired)
 
   return (
     <div className="border border-neutral-200 rounded p-2 space-y-1.5">
@@ -156,7 +159,7 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
 
       {darfBuchen && aktiv && offen === null && (
         <div className="flex flex-wrap gap-2 pt-0.5">
-          {!v.isTraining && (
+          {!v.isTraining && !linkUnterwegs && (
             <button type="button" onClick={() => setOffen('link')}
                     className="text-xs px-2 py-1 rounded border border-neutral-300
                                hover:bg-neutral-50">
@@ -177,6 +180,10 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
             {t('anz.withdraw')}
           </button>
         </div>
+      )}
+
+      {darfBuchen && aktiv && linkUnterwegs && (
+        <p className="text-xs text-neutral-500">{t('anz.linkActive')}</p>
       )}
 
       {offen === 'link' && (

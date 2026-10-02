@@ -801,10 +801,31 @@ Neue Routen, alle mit `folio:post` und zusätzlich geprüft im Haus des Folios: 
 
 **Noch offen.**
 
-- Ein Stripe-Checkout gilt höchstens 24 Stunden. Für eine Anzahlung mit zwei Wochen Frist ist das kurz; der Gast bekommt nach Ablauf einen neuen Link. Ein dauerhafter Zahlungslink des Anbieters wäre ein anderer Adapter.
-- Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS (`publicAppUrl/folios/...`), also eine Seite hinter der Anmeldung, die der Gast nicht öffnen kann. Gehört eine eigene Dankeseite her.
+- ~~Ein Stripe-Checkout gilt höchstens 24 Stunden~~ — behoben mit dem dauerhaften Link (unten, `0059`).
+- ~~Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS~~ — sie führen jetzt auf `/v1/pay/done`, eine Seite ohne Anmeldung und ohne Token.
 - Das Testhotel (`db:testhotel`) legt zu keiner Reservierung ein Folio an; ohne Folio gibt es nichts, worauf angezahlt wird. Beim Nachfahren im Browser wurde eines von Hand angelegt.
 - Eine Liste aller überfälligen Anzahlungen eines Hauses (etwa im Tagesgeschäft) fehlt; der Index `deposit_request_due` ist dafür angelegt.
+
+### Der Zahlungslink hält bis zur Frist (`0059`) — **erledigt**
+
+**Warum.** Auf ausdrücklichen Wunsch des Nutzers. Der Gast bekam die Adresse eines Stripe-Checkouts, und ein Checkout gilt beim Anbieter höchstens 24 Stunden. Für eine Anzahlung mit zwei Wochen Frist war der Link in der Mail damit am zweiten Tag tot — und der Gast merkte es beim Bezahlen.
+
+**Wo es liegt.** Migration `0059`, `apps/api/src/routes/paymentLinks.ts` (Anlegen, Widerrufen, die drei öffentlichen Seiten), `packages/domain/src/payPage.ts` (die Seite in den vier Sprachen der Gastpost), `paymentLinkValidUntil` in `packages/domain/src/depositRequest.ts`. Neue öffentliche Routen: `GET /v1/pay?t=`, `GET /v1/pay/checkout?t=`, `GET /v1/pay/done`. `POST .../payment-links` legt keinen Checkout mehr an, sondern einen Link; `POST /v1/payment-links/:id/cancel` widerruft ihn.
+
+**Was daraus entschieden wurde.**
+
+- **Der Gast bekommt einen Link von uns**, `https://<host>/v1/pay?t=<token>`: 256 Bit Zufall, in der Datenbank nur als SHA-256 (`payment_link.token_hash`, auf der Redaktionsliste des Audits), gebunden an die Anforderung oder einen festen Betrag. Erst beim Öffnen entsteht ein Checkout, über den Betrag, der **dann** offen ist — wer zwischendurch einen Teil überwiesen hat, zahlt nur den Rest.
+- **Gültig bis eine Woche nach der Fälligkeit, nie über die Abreise hinaus**, als Kalendertag gegen den Geschäftstag. Die Woche fängt die Überweisung am Fristtag und den zweiten Kartenversuch am nächsten Morgen ab; sie ist kein Zahlungsaufschub — überfällig ist die Anforderung trotzdem ab dem Tag nach der Frist, und das Haus kann jederzeit widerrufen. Wird ein Link für eine schon überfällige Anforderung angelegt, zählt die Woche ab dem Geschäftstag. Ohne Anforderung (freier Betrag) zwei Wochen.
+- **Eine Seite vor der Weiterleitung.** Mailprogramme und Scanner rufen Links vorab auf; leitete schon das weiter, entstünde bei jedem Scan ein Checkout. Die Seite nennt Haus, Zeitraum, Betrag und Frist — nicht den Gastnamen —, und erst ihr Knopf öffnet den Checkout. Der Knopf ist ein Link und kein Formular: `form-action 'self'` im Caddyfile verbietet einem Formular die Weiterleitung zum Anbieter. Kein `<style>`, kein Skript (Inhaltsrichtlinie, H7).
+- **Doppelzahlung.** Je Link höchstens ein offener Checkout, als eindeutiger Index (`payment_intent_one_open_per_link`) und mit einer Zeilensperre auf dem Link, damit gleichzeitig geöffnete Tabs denselben bekommen. Ein neuer entsteht erst, wenn der Anbieter den alten für abgelaufen erklärt oder ihn auf unsere Bitte beendet hat; meldet er ihn als abgeschlossen, sieht der Gast „wird verarbeitet" und bekommt keinen zweiten. Je Anforderung höchstens ein gültiger Link (`payments.linkActive`). **Der Webhook sichert das nicht ab und soll es nicht**: er nimmt seitdem jede echte Zahlung an, auch auf einen Checkout, den wir schon ersetzt haben — Geld, das der Anbieter meldet, ist da, und es zu verwerfen hieße einen Eingang zu verschweigen, den der Kontoauszug zeigt. Bisher ging er nur aus `pending` nach `succeeded`.
+- **Das Token steht nirgends im Klartext.** Abfragezeichenfolge statt Pfad (der Protokoll-Serialisierer ersetzt ihre Werte, ein Test hält es fest); Caddy schreibt kein Zugriffsprotokoll (Kommentar im Caddyfile, falls das jemand ändert); der Idempotenzspeicher bekommt die Antwort ohne Adresse; der Anbieter bekommt es nicht (Rückkehr auf `/v1/pay/done` ohne Token); `Referrer-Policy: no-referrer`. In der Gastpost muss es stehen — ein Trigger ersetzt es im Rumpf, sobald die Nachricht nicht mehr wartet (zugestellt, aufgegeben, zurückgezogen).
+- **Löschung.** `guest_erase_one()` und `guest_erase_partial()` widerrufen die Links des Gastes und entfernen den Hash; beide Funktionen sind dafür in `0059` vollständig neu gefasst.
+- **Öffentlich, `permission: null`.** Der Gast hat kein Konto; das Token ist sein Ausweis. Die anonyme Ratenbegrenzung gilt. Der Mandantenkontext entsteht über `payment_link_scope()`, eine enge `SECURITY DEFINER`-Funktion nach dem Muster von `0018`: ein Hash hinein, Kennungen heraus.
+- **Ein Übungshaus legt nie einen Checkout an**, auch nicht über einen Link, der vor dem Umschalten angelegt wurde.
+
+**Zur Nummer.** `0059` liegt vor `0060`, wurde aber danach geschrieben. Auf einer frischen Datenbank läuft sie vorher, auf einer bestehenden danach; sie darf deshalb nichts aus `0060` voraussetzen. Der Verweis auf `deposit_request` ist darum kein Fremdschlüssel, sondern ein Trigger, dessen Rumpf erst beim Einfügen aufgelöst wird. Eine spätere Migration kann ihn durch eine echte Bedingung ersetzen.
+
+**Noch offen.** Wird eine Anforderung per Überweisung vollständig bezahlt, während der Gast einen Checkout offen hat, kann er dort trotzdem noch zahlen — das Zuordnen der Überweisung beendet keinen Checkout beim Anbieter. Die Seite zeigt beim nächsten Öffnen „bezahlt", aber der offene Tab bleibt bis zu 24 Stunden bezahlbar.
 
 ### Was der Oberfläche noch fehlt
 

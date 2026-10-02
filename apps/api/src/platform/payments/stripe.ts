@@ -21,6 +21,22 @@ export interface StripeAdapter {
    * sich nichts geaendert hat, im zweiten nicht.
    */
   expireCheckoutSession(providerReference: string): Promise<void>
+  /**
+   * Wo ein Checkout beim Anbieter steht. Die einzige verlaessliche Auskunft
+   * darueber, ob ein alter Checkout noch bezahlt werden kann, bevor ein neuer
+   * entsteht (Migration 0059): unsere Zeile sagt nur, was wir zuletzt
+   * gehoert haben, und eine Benachrichtigung kann noch unterwegs sein.
+   */
+  getCheckoutSession(providerReference: string): Promise<CheckoutState>
+}
+
+export interface CheckoutState {
+  /** `complete` heisst bezahlt oder in Bearbeitung -- in beiden Faellen kein zweiter. */
+  status: 'open' | 'complete' | 'expired'
+  /** Nur bei `open`: die Adresse, unter der der Gast weiterzahlen kann. */
+  url: string | null
+  amountCent: number | null
+  expiresAt?: Date
 }
 
 /** Der Anbieter hat die Anfrage verstanden und abgelehnt (4xx). */
@@ -77,6 +93,25 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
       const json = await res.json() as { id: string; url: string; expires_at?: number }
       return {
         providerReference: json.id, url: json.url,
+        ...(typeof json.expires_at === 'number'
+          ? { expiresAt: new Date(json.expires_at * 1000) } : {})
+      }
+    },
+
+    async getCheckoutSession(providerReference: string): Promise<CheckoutState> {
+      const res = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}`,
+        { headers: { Authorization: `Bearer ${secretKey}` } })
+      if (!res.ok) {
+        throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
+      }
+      const json = await res.json() as { status?: string; url?: string | null
+                                         amount_total?: number; expires_at?: number }
+      const status = json.status === 'open' || json.status === 'complete'
+        ? json.status : 'expired'
+      return {
+        status, url: status === 'open' ? json.url ?? null : null,
+        amountCent: typeof json.amount_total === 'number' ? json.amount_total : null,
         ...(typeof json.expires_at === 'number'
           ? { expiresAt: new Date(json.expires_at * 1000) } : {})
       }
