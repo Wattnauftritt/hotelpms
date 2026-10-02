@@ -99,8 +99,9 @@ describe('Rechte', () => {
     expect(vorauszahlung).toContain("rechte.darf('invoice:issue')")
   })
 
-  it('zeigt das Ungueltigmachen nur dem, der buchen darf', () => {
-    expect(zahlungslink).toMatch(/darfBuchen && zustand === 'pending'/)
+  it('zeigt das Widerrufen nur dem, der buchen darf, und nur fuer eigene Links', () => {
+    // Alte Checkouts von vor 0068 laufen beim Anbieter von selbst ab.
+    expect(zahlungslink).toMatch(/darfBuchen && !l\.legacy && l\.status === 'pending'/)
   })
 })
 
@@ -109,7 +110,8 @@ describe('Uebungshaus und Gastpost', () => {
     expect(zahlungslink).toMatch(/if \(v\.isTraining\) \{\s*return <p[^>]*>\{t\('vz\.link\.training'\)\}/)
     expect(anzahlung).toContain("t('anz.trainingHint')")
     // Der Knopf "Zahlungslink" an der Anforderung fehlt dort ganz.
-    expect(anzahlung).toMatch(/\{!v\.isTraining && \(\s*<button[^>]*onClick=\{\(\) => setOffen\('link'\)\}/)
+    expect(anzahlung).toMatch(
+      /\{!v\.isTraining && !linkUnterwegs && \(\s*<button[^>]*onClick=\{\(\) => setOffen\('link'\)\}/)
   })
 
   it('sagt vorher, warum nicht verschickt werden kann', () => {
@@ -126,6 +128,20 @@ describe('Uebungshaus und Gastpost', () => {
     const queries = lies('lib/queries/billing.ts')
     expect(queries).not.toMatch(/payment-links\/\$\{[^}]+\}\/send/)
     expect(queries).toContain("sendEmail: true")
+  })
+})
+
+describe('Der dauerhafte Link (0068)', () => {
+  it('zeigt die Frist als Kalendertag und bietet keinen zweiten Link an', () => {
+    expect(zahlungslink).toContain("t('vz.link.validUntilDay', { date: formatDate(")
+    expect(anzahlung).toContain("t('anz.linkActive')")
+  })
+
+  it('kommt mit einer Wiederholung ohne Adresse zurecht', () => {
+    // Der Idempotenzspeicher haelt das Token nicht; eine Wiederholung
+    // bekommt url: null und erklaert das, statt ein leeres Feld zu zeigen.
+    expect(zahlungslink).toContain('erzeugen.data.url === null')
+    expect(zahlungslink).toContain("t('vz.link.replayed')")
   })
 })
 

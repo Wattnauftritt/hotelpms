@@ -55,7 +55,9 @@ pnpm test           # vitest, gegen echtes PostgreSQL
 pnpm build          # alle Pakete und beide Apps
 ```
 
-Alle vier müssen grün sein, bevor etwas gepusht wird. `pnpm test` läuft in **einem** Prozess gegen **eine** Datenbank; Tests dürfen deshalb nicht davon ausgehen, dass sie allein sind, und räumen über `truncateAll()` auf.
+**Grün in CI, bevor gemergt wird — nicht lokal vor jedem Push.** CI (`.github/workflows/ci.yml`) fährt alles: Prüfskripte, `pnpm audit`, Lint, Typecheck, Build und die Tests auf vier parallelen Läufern in zwei bis drei Minuten. Lokal dauert die volle Suite ein Vielfaches, und auf einer Maschine mit mehreren Arbeitsständen eine halbe Stunde — Zeit, die nichts prüft, was CI nicht ohnehin prüft. Vor dem Push genügen deshalb `pnpm typecheck`, `pnpm lint` und die Tests der berührten Dateien (`pnpm vitest run <pfade>`); gemergt wird erst, wenn CI auf dem letzten Commit grün ist. Nach `main` kommt damit weiterhin nichts Ungeprüftes. Was wir GitHub aufladen können, laden wir GitHub auf.
+
+`pnpm test` läuft in **einem** Prozess gegen **eine** Datenbank; Tests dürfen deshalb nicht davon ausgehen, dass sie allein sind, und räumen über `truncateAll()` auf.
 
 ---
 

@@ -455,6 +455,7 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 **Was daraus entschieden wurde.**
 
 - **Der Abmeldefehler war kein fehlender Knopf, sondern ein fehlender Rahmen.** Das Adminpanel wurde **neben** der Kopfleiste gerendert statt darin, und die Kopfleiste trägt Abmelden, Sprachwahl und den Weg zum eigenen Konto. Behoben durch Einbetten, nicht durch eine zweite Schaltfläche — zwei Kopfleisten laufen auseinander.
+- **Dieselbe Lücke kam später durch die Breite zurück.** Mit dreizehn Bildschirmen war die Leiste rund 2 100 Pixel breit, und Sprachwahl und Abmelden lagen bei 1 920 rechts außerhalb des Bildschirms — ohne dass jemand etwas entfernt hatte. Die Navigation zeigt jetzt vorne, was passt, und legt den Rest in ein „Mehr“-Menü (`Shell.tsx`, `navPasst`); steht der aktive Bildschirm darin, trägt der Knopf seinen Namen. Die rechte Seite hängt nicht an dieser Rechnung: sie schrumpft nicht (`shrink-0`), die Leiste schon (`min-w-0`). Geprüft bei 1 280, 1 500 und 1 920 Pixeln, deutsch, englisch und türkisch.
 - **Das eigene Konto sitzt hinter dem eigenen Namen**, dort wo schon der eigene Arbeitsplatz-PIN steht. Derselbe Gedanke: „das bin ich, und das ändere ich an mir". Ein eigener Bildschirm „Mein Profil" wäre ein weiterer Reiter, den Plattformpersonal wieder nicht erreicht, weil es keine Hausbildschirme hat.
 - **Beide Änderungen verlangen das aktuelle Kennwort.** Eine Sitzung genügt nicht: an einer Rezeption steht ein Rechner, an dem jemand kurz aufsteht, und wer die Sitzung vorfindet, könnte sonst in zwei Klicks das Konto übernehmen.
 - **Und beide zählen ihre Fehlversuche selbst.** Die allgemeine Ratenbegrenzung greift nur bei anonymen Anfragen und erreicht eine angemeldete Sitzung nicht — genau der Fehler, an dem `workstation-switch` schon einmal gescheitert ist (H4, Dokument 25). Geprüft wird hier dasselbe Geheimnis wie bei der Anmeldung, also zählt es auf denselben Zähler. Eine bereits gesperrte Sitzung kommt gar nicht erst durch, sonst ließe sich die Sperre der Anmeldung von innen umgehen.
@@ -802,8 +803,8 @@ Neue Routen, alle mit `folio:post` und zusätzlich geprüft im Haus des Folios: 
 
 **Noch offen.**
 
-- Ein Stripe-Checkout gilt höchstens 24 Stunden. Für eine Anzahlung mit zwei Wochen Frist ist das kurz; der Gast bekommt nach Ablauf einen neuen Link. Ein dauerhafter Zahlungslink des Anbieters wäre ein anderer Adapter.
-- Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS (`publicAppUrl/folios/...`), also eine Seite hinter der Anmeldung, die der Gast nicht öffnen kann. Gehört eine eigene Dankeseite her.
+- ~~Ein Stripe-Checkout gilt höchstens 24 Stunden~~ — behoben mit dem dauerhaften Link (unten, `0068`).
+- ~~Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS~~ — sie führen jetzt auf `/v1/pay/done`, eine Seite ohne Anmeldung und ohne Token.
 - Das Testhotel (`db:testhotel`) legt zu keiner Reservierung ein Folio an; ohne Folio gibt es nichts, worauf angezahlt wird. Beim Nachfahren im Browser wurde eines von Hand angelegt.
 - Eine Liste aller überfälligen Anzahlungen eines Hauses (etwa im Tagesgeschäft) fehlt; der Index `deposit_request_due` ist dafür angelegt.
 ### Suche: Schnellsuche im Plan und Detailsuche mit Strg+K — **erledigt**
@@ -831,6 +832,29 @@ Drei Tastenentscheidungen: **Strg+K wirkt auch aus einem Textfeld**, weil die La
 1. **`GET /v1/guests` hat denselben Vollscan.** Die Gastsuche in den Buchungsmasken benutzt `last_name % $1 ORDER BY last_name <-> $1 LIMIT 20` und läuft bei einem Begriff ohne Treffer ebenfalls über alle Gäste. Dieselbe Abhilfe wie hier; nicht mitgemacht, weil die Route nicht zu dieser Aufgabe gehört und ihre Reihenfolge Tests trägt.
 2. **Mehrere Accounts teilen sich einen GiST-Index.** Die hundert nächsten Nachbarn werden über alle Mandanten gesucht und erst danach auf den Account begrenzt. Bei einem kleinen Haus neben großen findet ein seltener Name dann weniger, als es gibt. Ein zusammengesetzter Index (`account_id`, `last_name`) bräuchte `btree_gist` — eine weitere Erweiterung auf der Maschine, deshalb nicht nebenbei.
 3. **Die Kopfleiste ist breiter als der Bildschirm.** Mit allen Bildschirmen misst sie gut 2 100 Pixel; bei 1 920 liegen Sprachwahl und Abmelden außerhalb. Der Suchknopf steht deshalb vorn neben dem Namen.
+
+### Der Zahlungslink hält bis zur Frist (`0068`) — **erledigt**
+
+**Warum.** Auf ausdrücklichen Wunsch des Nutzers. Der Gast bekam die Adresse eines Stripe-Checkouts, und ein Checkout gilt beim Anbieter höchstens 24 Stunden. Für eine Anzahlung mit zwei Wochen Frist war der Link in der Mail damit am zweiten Tag tot — und der Gast merkte es beim Bezahlen.
+
+**Wo es liegt.** Migration `0068`, `apps/api/src/routes/paymentLinks.ts` (Anlegen, Widerrufen, die drei öffentlichen Seiten), `packages/domain/src/payPage.ts` (die Seite in den vier Sprachen der Gastpost), `paymentLinkValidUntil` in `packages/domain/src/depositRequest.ts`. Neue öffentliche Routen: `GET /v1/pay?t=`, `GET /v1/pay/checkout?t=`, `GET /v1/pay/done`. `POST .../payment-links` legt keinen Checkout mehr an, sondern einen Link; `POST /v1/payment-links/:id/cancel` widerruft ihn.
+
+**Was daraus entschieden wurde.**
+
+- **Der Gast bekommt einen Link von uns**, `https://<host>/v1/pay?t=<token>`: 256 Bit Zufall, in der Datenbank nur als SHA-256 (`payment_link.token_hash`, auf der Redaktionsliste des Audits), gebunden an die Anforderung oder einen festen Betrag. Erst beim Öffnen entsteht ein Checkout, über den Betrag, der **dann** offen ist — wer zwischendurch einen Teil überwiesen hat, zahlt nur den Rest.
+- **Gültig bis eine Woche nach der Fälligkeit, nie über die Abreise hinaus**, als Kalendertag gegen den Geschäftstag. Die Woche fängt die Überweisung am Fristtag und den zweiten Kartenversuch am nächsten Morgen ab; sie ist kein Zahlungsaufschub — überfällig ist die Anforderung trotzdem ab dem Tag nach der Frist, und das Haus kann jederzeit widerrufen. Wird ein Link für eine schon überfällige Anforderung angelegt, zählt die Woche ab dem Geschäftstag. Ohne Anforderung (freier Betrag) zwei Wochen.
+- **Eine Seite vor der Weiterleitung.** Mailprogramme und Scanner rufen Links vorab auf; leitete schon das weiter, entstünde bei jedem Scan ein Checkout. Die Seite nennt Haus, Zeitraum, Betrag und Frist — nicht den Gastnamen —, und erst ihr Knopf öffnet den Checkout. Der Knopf ist ein Link und kein Formular: `form-action 'self'` im Caddyfile verbietet einem Formular die Weiterleitung zum Anbieter. Kein `<style>`, kein Skript (Inhaltsrichtlinie, H7).
+- **Doppelzahlung.** Je Link höchstens ein offener Checkout, als eindeutiger Index (`payment_intent_one_open_per_link`) und mit einer Zeilensperre auf dem Link, damit gleichzeitig geöffnete Tabs denselben bekommen. Ein neuer entsteht erst, wenn der Anbieter den alten für abgelaufen erklärt oder ihn auf unsere Bitte beendet hat; meldet er ihn als abgeschlossen, sieht der Gast „wird verarbeitet" und bekommt keinen zweiten. Je Anforderung höchstens ein gültiger Link (`payments.linkActive`). **Der Webhook sichert das nicht ab und soll es nicht**: er nimmt seitdem jede echte Zahlung an, auch auf einen Checkout, den wir schon ersetzt haben — Geld, das der Anbieter meldet, ist da, und es zu verwerfen hieße einen Eingang zu verschweigen, den der Kontoauszug zeigt. Bisher ging er nur aus `pending` nach `succeeded`.
+- **Das Token steht nirgends im Klartext.** Abfragezeichenfolge statt Pfad (der Protokoll-Serialisierer ersetzt ihre Werte, ein Test hält es fest); Caddy schreibt kein Zugriffsprotokoll (Kommentar im Caddyfile, falls das jemand ändert); der Idempotenzspeicher bekommt die Antwort ohne Adresse; der Anbieter bekommt es nicht (Rückkehr auf `/v1/pay/done` ohne Token); `Referrer-Policy: no-referrer`. In der Gastpost muss es stehen — ein Trigger ersetzt es im Rumpf, sobald die Nachricht nicht mehr wartet (zugestellt, aufgegeben, zurückgezogen).
+- **Löschung.** `guest_erase_one()` und `guest_erase_partial()` widerrufen die Links des Gastes und entfernen den Hash; beide Funktionen sind dafür in `0068` vollständig neu gefasst, auf dem Stand von `0061`.
+- **Öffentlich, `permission: null`.** Der Gast hat kein Konto; das Token ist sein Ausweis. Die anonyme Ratenbegrenzung gilt. Der Mandantenkontext entsteht über `payment_link_scope()`, eine enge `SECURITY DEFINER`-Funktion nach dem Muster von `0018`: ein Hash hinein, Kennungen heraus.
+- **Ein Übungshaus legt nie einen Checkout an**, auch nicht über einen Link, der vor dem Umschalten angelegt wurde.
+
+**Zur Nummer.** Geschrieben als `0059`, eingecheckt als `0068`. Der Migrator wendet die Dateien in Namensreihenfolge an und holt nach, was fehlt — eine `0059` liefe auf einem frischen Schema vor `0060` und `0061`, auf einer bestehenden Datenbank danach. Weil sowohl diese Migration als auch `0061` (Online-Check-in) `guest_erase_one()` und `guest_erase_partial()` neu fassen, hätte je nach Reihenfolge die eine Fassung die andere still überschrieben. Als `0068` läuft sie überall nach beiden und trägt beide Ergänzungen; der Verweis auf `deposit_request` ist damit auch ein echter Fremdschlüssel.
+
+**Zwei Wege, das Token aus der Gastpost zu nehmen.** Der Online-Check-in leert im Worker den ganzen Rumpf seiner Einladung, sobald sie zugestellt oder aufgegeben ist; der Zahlungslink ersetzt per Trigger nur das Token, auch beim Zurückziehen über die Route. Beides hält; zusammengelegt gehört es trotzdem, am besten auf den Trigger, weil er jeden Weg zum Endzustand fängt.
+
+**Noch offen.** Wird eine Anforderung per Überweisung vollständig bezahlt, während der Gast einen Checkout offen hat, kann er dort trotzdem noch zahlen — das Zuordnen der Überweisung beendet keinen Checkout beim Anbieter. Die Seite zeigt beim nächsten Öffnen „bezahlt", aber der offene Tab bleibt bis zu 24 Stunden bezahlbar.
 
 ### Was der Oberfläche noch fehlt
 
@@ -970,7 +994,7 @@ Scheitern die Tests mit `ECONNREFUSED` auf Port 5432, liegt es nicht an den Test
 ## 6. Vor dem Pushen
 
 ```bash
-./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm test && pnpm build
+./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm vitest run <berührte Testdateien>
 ```
 
-Alle vier grün. Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.
+Die volle Suite und der Build laufen in CI, auf vier Läufern in zwei bis drei Minuten; gemergt wird erst, wenn CI auf dem letzten Commit grün ist (siehe `CLAUDE.md`). Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.
