@@ -32,7 +32,7 @@ PUBLIC_APP_URL=https://<der-echte-name>
 
 Die Absenderadresse muss **bei Brevo verifiziert** sein. Ist sie es nicht, weist der Anbieter jede Nachricht mit 400 ab — dauerhaft, ohne Wiederholung. Das ist der häufigste Fehler bei der Inbetriebnahme.
 
-`PUBLIC_APP_URL` ist die Wurzel der Links in Einladung, Kennwortrücksetzung und Zahlungslink (`/v1/pay?t=…`, Migration 0059). Steht sie falsch, zeigen die Links ins Leere: der eingeladene Kunde meldet sich bei euch statt sich anzumelden, und der Gast kann seine Anzahlung nicht bezahlen.
+`PUBLIC_APP_URL` ist die Wurzel der Links in Einladung, Kennwortrücksetzung und Zahlungslink (`/v1/pay?t=…`, Migration 0068). Steht sie falsch, zeigen die Links ins Leere: der eingeladene Kunde meldet sich bei euch statt sich anzumelden, und der Gast kann seine Anzahlung nicht bezahlen.
 
 **Fertig, wenn:** `grep -c PLATFORM_EMAIL_FROM /opt/hotelpms/shared/env` → `1`, und die Adresse im Brevo-Konto als verifiziert erscheint.
 

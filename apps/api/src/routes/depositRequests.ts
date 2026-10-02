@@ -244,13 +244,13 @@ export async function anzahlungssicht(
           GROUP BY drs.deposit_request_id) e ON e.deposit_request_id = dr.id
        LEFT JOIN (
          SELECT o.deposit_request_id, count(*) AS offen FROM (
-           -- Der dauerhafte Link (0059): gilt bis zu einem Kalendertag,
+           -- Der dauerhafte Link (0068): gilt bis zu einem Kalendertag,
            -- gegen den Geschaeftstag geprueft.
            SELECT deposit_request_id FROM payment_link
             WHERE folio_id = $1 AND deposit_request_id IS NOT NULL
               AND revoked_at IS NULL AND valid_until >= $3::date
            UNION ALL
-           -- Checkouts von vor 0059 ohne eigenen Link. Ihr Ablauf ist ein
+           -- Checkouts von vor 0068 ohne eigenen Link. Ihr Ablauf ist ein
            -- Zeitpunkt beim Anbieter: hier zaehlt die Uhr.
            SELECT deposit_request_id FROM payment_intent
             WHERE folio_id = $1 AND property_id = $2 AND status = 'pending'

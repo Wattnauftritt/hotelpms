@@ -96,7 +96,7 @@ export function depositRequestOpenCent(amountCent: number, receivedCent: number)
 }
 
 // ---------------------------------------------------------------------------
-// Der dauerhafte Zahlungslink (Migration 0059)
+// Der dauerhafte Zahlungslink (Migration 0068)
 // ---------------------------------------------------------------------------
 
 /** Wie lange ein Link nach der Faelligkeit noch annimmt. */

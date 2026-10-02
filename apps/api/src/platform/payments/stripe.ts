@@ -24,7 +24,7 @@ export interface StripeAdapter {
   /**
    * Wo ein Checkout beim Anbieter steht. Die einzige verlaessliche Auskunft
    * darueber, ob ein alter Checkout noch bezahlt werden kann, bevor ein neuer
-   * entsteht (Migration 0059): unsere Zeile sagt nur, was wir zuletzt
+   * entsteht (Migration 0068): unsere Zeile sagt nur, was wir zuletzt
    * gehoert haben, und eine Benachrichtigung kann noch unterwegs sein.
    */
   getCheckoutSession(providerReference: string): Promise<CheckoutState>

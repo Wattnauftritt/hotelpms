@@ -7,7 +7,7 @@ import { ProviderRefused, type StripeAdapter, type CheckoutState }
  *
  * Er fuehrt Buch ueber seine Checkouts wie der echte: offen, abgeschlossen,
  * abgelaufen. Ohne diese Buchfuehrung liesse sich nicht pruefen, worum es
- * beim dauerhaften Link (0059) geht -- dass ein neuer Checkout erst entsteht,
+ * beim dauerhaften Link (0068) geht -- dass ein neuer Checkout erst entsteht,
  * wenn der alte beim Anbieter erledigt ist.
  */
 export interface Attrappe extends StripeAdapter {

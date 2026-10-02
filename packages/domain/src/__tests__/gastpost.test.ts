@@ -130,7 +130,7 @@ describe('Zahlungslink an den Gast', () => {
       // die anderen den Tag zuerst.
       expect(m.text, lang).toContain(lang === 'en' ? '2026-09-20'
         : lang === 'nl' ? '20-09-2026' : '20.09.2026')
-      // Bis wann der Link gilt -- seit 0059 Tage, nicht Stunden.
+      // Bis wann der Link gilt -- seit 0068 Tage, nicht Stunden.
       expect(m.text, lang).toContain(lang === 'en' ? '2026-09-27'
         : lang === 'nl' ? '27-09-2026' : '27.09.2026')
     }

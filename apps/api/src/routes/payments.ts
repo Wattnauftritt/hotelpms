@@ -19,7 +19,7 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
     ?? (config.stripeSecretKey ? createStripeAdapter(config.stripeSecretKey) : null)
 
   // Zahlungslinks: anlegen, widerrufen, und die Seite, die der Gast oeffnet
-  // (Migration 0059). Eigene Datei, derselbe Adapter.
+  // (Migration 0068). Eigene Datei, derselbe Adapter.
   paymentLinkRoutes(app, stripe, config)
 
   registerRoute(app, {
@@ -89,7 +89,7 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
         // sendet oft mehrere) hat eine andere Ereignis-ID und kaeme am
         // Protokoll vorbei, nicht aber an diesem Uebergang nach 'succeeded'.
         //
-        // **Aus jedem Zustand ausser 'succeeded'** (seit 0059), nicht nur
+        // **Aus jedem Zustand ausser 'succeeded'** (seit 0068), nicht nur
         // aus 'pending'. Ein Checkout, den wir fuer abgelaufen halten und
         // durch einen neuen ersetzt haben, kann beim Anbieter im letzten
         // Augenblick noch bezahlt worden sein; seine Meldung kommt dann

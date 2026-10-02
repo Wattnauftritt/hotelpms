@@ -95,7 +95,7 @@ async function planPayments(
         GROUP BY k.reservation_id
      ), angefordert AS (
        SELECT a.reservation_id, sum(a.cent)::bigint AS cent FROM (
-         -- Seit 0059 bekommt der Gast einen Link von uns, der bis zur Frist
+         -- Seit 0068 bekommt der Gast einen Link von uns, der bis zur Frist
          -- gilt; der Checkout beim Anbieter entsteht erst beim Oeffnen.
          -- Angefordert ist also, was ein gueltiger, nicht widerrufener und
          -- noch nicht bezahlter Link verlangt -- gegen den Geschaeftstag,
@@ -113,7 +113,7 @@ async function planPayments(
                   (SELECT max(d.date) FROM business_day d
                     WHERE d.property_id = $1 AND d.status = 'open'), current_date)
          UNION ALL
-         -- Checkouts von vor 0059, ohne Link von uns. payment_intent traegt
+         -- Checkouts von vor 0068, ohne Link von uns. payment_intent traegt
          -- keine Zeilenrichtlinie (0021); die Property wird deshalb von Hand
          -- mitgefiltert. Ein abgelaufener fordert nichts mehr an: Stripe
          -- haelt einen Checkout hoechstens 24 Stunden.

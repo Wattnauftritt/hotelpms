@@ -83,7 +83,7 @@ const requestLink = (folioRef: string, amountCent: number) => app.inject({
 })
 
 /**
- * Seit 0059 bekommt der Gast einen Link von uns; den Checkout beim Anbieter
+ * Seit 0068 bekommt der Gast einen Link von uns; den Checkout beim Anbieter
  * legt erst das Oeffnen an. Fuer den Webhook zaehlt dessen Kennung.
  */
 async function checkoutZu(folioRef: string, amountCent: number): Promise<string> {

@@ -198,7 +198,7 @@ describe('Zahlungsstand am Balken', () => {
   })
 
   it('nennt einen gueltigen dauerhaften Link angefordert, bis zu seinem letzten Tag', async () => {
-    // Seit 0059 bekommt der Gast einen Link von uns, der bis zur Frist
+    // Seit 0068 bekommt der Gast einen Link von uns, der bis zur Frist
     // gilt; einen Checkout beim Anbieter gibt es erst, wenn er ihn oeffnet.
     // Angefordert ist trotzdem schon ab dem Verschicken.
     const a = await aufenthalt()

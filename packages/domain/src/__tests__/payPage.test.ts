@@ -4,7 +4,7 @@ import { renderPayPage, payPageTexts, type PayPageKind } from '../payPage.js'
 import { paymentLinkValidUntil, paymentLinkValid } from '../depositRequest.js'
 
 /**
- * Die Seite hinter dem Zahlungslink und seine Frist (Migration 0059).
+ * Die Seite hinter dem Zahlungslink und seine Frist (Migration 0068).
  */
 
 const ARTEN: PayPageKind[] = ['open', 'paid', 'processing', 'revoked', 'expired',

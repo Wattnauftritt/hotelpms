@@ -1249,9 +1249,9 @@ export type DepositInvoice = Static<typeof DepositInvoice>
 /**
  * Ein Zahlungslink.
  *
- * Seit 0059 ist das der **dauerhafte** Link von uns (`legacy: false`): er
+ * Seit 0068 ist das der **dauerhafte** Link von uns (`legacy: false`): er
  * gilt bis `validUntil`, und erst beim Oeffnen entsteht ein Checkout beim
- * Anbieter. Daneben stehen Checkouts von vor 0059 ohne eigenen Link
+ * Anbieter. Daneben stehen Checkouts von vor 0068 ohne eigenen Link
  * (`legacy: true`), mit ihrem Ablauf als Zeitpunkt in `expiresAt`. Die
  * Kennung `id` ist nur zusammen mit `legacy` eindeutig.
  *

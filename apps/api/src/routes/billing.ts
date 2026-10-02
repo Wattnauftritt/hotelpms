@@ -1356,8 +1356,8 @@ export function billingRoutes(app: FastifyInstance): void {
         const anzahlung = await anzahlungssicht(client, folio)
 
         /*
-         * Die Links des Folios: die dauerhaften von uns (0059) und, darunter
-         * gemischt, Checkouts von vor 0059, die keinen eigenen Link haben.
+         * Die Links des Folios: die dauerhaften von uns (0068) und, darunter
+         * gemischt, Checkouts von vor 0068, die keinen eigenen Link haben.
          * Die Checkouts eines dauerhaften Links erscheinen nicht einzeln --
          * fuer die Rezeption ist der Link der Vorgang, der Checkout ein
          * Versuch des Gastes, ihn einzuloesen. Was sie davon wissen will,

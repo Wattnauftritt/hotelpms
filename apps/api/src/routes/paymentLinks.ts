@@ -16,7 +16,7 @@ import { rechtImHaus, anforderungSperren, postBereitschaft,
          geschaeftstag } from './depositRequests.js'
 
 /**
- * Der dauerhafte Zahlungslink (Migration 0059).
+ * Der dauerhafte Zahlungslink (Migration 0068).
  *
  * **Warum ein Link von uns und nicht der des Anbieters.** Ein Stripe-
  * Checkout gilt hoechstens 24 Stunden. Fuer eine Anzahlung mit zwei Wochen
@@ -401,7 +401,7 @@ export function paymentLinkRoutes(
             WHERE id = $1`, [link.id, principal.userId])
         // Wartet die Mail mit diesem Link noch auf den Versand, geht sie
         // nicht mehr hinaus: sie truege einen Link, der ins Leere fuehrt.
-        // Zurueckgezogen wird sie, nicht geloescht; der Trigger aus 0059
+        // Zurueckgezogen wird sie, nicht geloescht; der Trigger aus 0068
         // nimmt das Token dabei aus dem Rumpf.
         await client.query(
           `UPDATE outbound_email SET status = 'canceled'

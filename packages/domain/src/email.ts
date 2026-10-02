@@ -166,13 +166,13 @@ export interface ReservationEmailData {
 }
 
 /**
- * Ein Zahlungslink an den Gast (Migrationen 0060, 0059).
+ * Ein Zahlungslink an den Gast (Migrationen 0060, 0068).
  *
  * `url` ist der dauerhafte Link von uns (`/v1/pay?t=...`), nicht die Adresse
  * eines Checkouts beim Anbieter: der gilt hoechstens 24 Stunden, der Link
  * bis zur Frist. Das Token steht nirgends im Klartext ausser im Rumpf dieser
  * Nachricht, und dort nur, bis sie zugestellt ist -- danach ersetzt ein
- * Trigger es (0059).
+ * Trigger es (0068).
  */
 export interface PaymentLinkEmailData {
   propertyName: string
@@ -187,7 +187,7 @@ export interface PaymentLinkEmailData {
   dueDate: string | null
   /** Zahlt der Link auf eine Anzahlungsanforderung? Sonst ist es eine Zahlung. */
   deposit: boolean
-  /** Bis wann der Link annimmt, Kalendertag (0059). */
+  /** Bis wann der Link annimmt, Kalendertag (0068). */
   validUntil: string
   url: string
 }

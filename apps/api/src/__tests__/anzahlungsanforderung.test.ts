@@ -9,7 +9,7 @@ import { registerAllRoutes } from '../routes/index.js'
 import { stripeAttrappe, signiert, bezahltEreignis } from './stripeAttrappe.js'
 
 /**
- * Anzahlung anfordern, Zahlungslink, Eingang (Migrationen 0060, 0059).
+ * Anzahlung anfordern, Zahlungslink, Eingang (Migrationen 0060, 0068).
  *
  * Geprueft wird, was an der Oberflaeche nicht zu sehen ist und trotzdem
  * stimmen muss:
@@ -18,7 +18,7 @@ import { stripeAttrappe, signiert, bezahltEreignis } from './stripeAttrappe.js'
  *    Prozent. Die Maske zeigt ihn vorher mit derselben Funktion an.
  * 2. **Ueberfaellig wird gegen den Geschaeftstag geprueft**, nicht gegen die
  *    Uhr. Am Faelligkeitstag selbst ist nichts ueberfaellig.
- * 3. **Der Link in der Mail haelt bis zur Frist** (0059): er ist von uns, und
+ * 3. **Der Link in der Mail haelt bis zur Frist** (0068): er ist von uns, und
  *    erst beim Oeffnen entsteht ein Checkout beim Anbieter -- je Link
  *    hoechstens ein offener, und ein neuer erst, wenn der alte erledigt ist.
  * 4. **Ein Uebungshaus legt nie einen Checkout an.**

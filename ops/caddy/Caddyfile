@@ -127,7 +127,7 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	# PostgreSQL und die Anwendung sprechen nie über TCP, und der Dienst
 	# lauscht auf keinem Netzwerkport.
 	#
-	# Darunter auch die Zahlungsseite für Gäste (/v1/pay?t=<token>, 0059).
+	# Darunter auch die Zahlungsseite für Gäste (/v1/pay?t=<token>, 0068).
 	# Das Token steht in der Abfragezeichenfolge, und die Anwendung ersetzt
 	# deren Werte in ihrem Protokoll. **Dieser Block schreibt bewusst kein
 	# Zugriffsprotokoll** (es gibt keine `log`-Direktive): Caddy schriebe die

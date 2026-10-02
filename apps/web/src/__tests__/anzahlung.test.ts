@@ -100,7 +100,7 @@ describe('Rechte', () => {
   })
 
   it('zeigt das Widerrufen nur dem, der buchen darf, und nur fuer eigene Links', () => {
-    // Alte Checkouts von vor 0059 laufen beim Anbieter von selbst ab.
+    // Alte Checkouts von vor 0068 laufen beim Anbieter von selbst ab.
     expect(zahlungslink).toMatch(/darfBuchen && !l\.legacy && l\.status === 'pending'/)
   })
 })
@@ -131,7 +131,7 @@ describe('Uebungshaus und Gastpost', () => {
   })
 })
 
-describe('Der dauerhafte Link (0059)', () => {
+describe('Der dauerhafte Link (0068)', () => {
   it('zeigt die Frist als Kalendertag und bietet keinen zweiten Link an', () => {
     expect(zahlungslink).toContain("t('vz.link.validUntilDay', { date: formatDate(")
     expect(anzahlung).toContain("t('anz.linkActive')")

@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0059 -- Ein Zahlungslink, der bis zur Frist haelt.
+-- 0068 -- Ein Zahlungslink, der bis zur Frist haelt.
 --
 -- Anforderung des Nutzers: ein Zahlungslink darf nicht nach 24 Stunden tot
 -- sein. Bisher bekam der Gast die Adresse eines Stripe-Checkouts, und ein
@@ -11,15 +11,15 @@
 -- gilt bis zur Frist und laesst sich widerrufen. Erst beim Oeffnen entsteht
 -- ein Checkout beim Anbieter, ueber den Betrag, der dann noch offen ist.
 --
--- **Zur Nummer.** Diese Migration liegt vor 0060 (Anzahlungsanforderung),
--- wurde aber danach geschrieben. Auf einer frischen Datenbank laeuft sie
--- deshalb **vor** 0060, auf einer bestehenden danach. Sie darf von 0060
--- nichts voraussetzen, was beim Anlegen geprueft wird: `deposit_request`
--- gibt es bei einem frischen Aufbau zu diesem Zeitpunkt noch nicht. Der
--- Verweis darauf ist deshalb keine Fremdschluesselbedingung, sondern wird
--- von einem Trigger geprueft, dessen Rumpf erst beim Einfuegen aufgeloest
--- wird (siehe unten). Wer eine spaetere Migration schreibt, kann ihn durch
--- eine echte Bedingung ersetzen.
+-- **Zur Nummer.** Geschrieben als 0059, umbenannt in 0068. Der Migrator
+-- wendet die Dateien in der Reihenfolge ihrer Namen an und uebernimmt, was
+-- noch fehlt -- eine 0059 liefe also auf einem frischen Schema **vor** 0060
+-- und 0061, auf einer bestehenden Datenbank **danach**. Das waere hier nicht
+-- harmlos gewesen: diese Migration fasst `guest_erase_one()` und
+-- `guest_erase_partial()` neu, und 0061 (Online-Check-in) tut dasselbe. Je
+-- nach Reihenfolge haette die eine Fassung die andere still ueberschrieben,
+-- und entweder die Check-in-Links oder die Zahlungslinks haetten eine
+-- Loeschung ueberlebt. Als 0068 laeuft sie ueberall nach beiden.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE payment_link (
@@ -44,9 +44,11 @@ CREATE TABLE payment_link (
    * der Betrag beim Oeffnen, was von ihr noch offen ist -- oder ein fester
    * Betrag, etwa der offene Saldo vor der Abreise.
    *
-   * Ohne Fremdschluessel, siehe Kopf; `payment_link_check_request` prueft.
+   * Dass die Anforderung zum selben Folio gehoert, prueft die Route unter
+   * der Zeilensperre der Anforderung; die Bedingung hier haelt fest, dass
+   * es sie gibt.
    */
-  deposit_request_id bigint,
+  deposit_request_id bigint REFERENCES deposit_request(id),
   -- Der Betrag beim Anlegen. Bei einer Anforderung nur zur Anzeige: der
   -- Gast zahlt beim Oeffnen den Rest, der dann offen ist.
   amount_cent        bigint NOT NULL CHECK (amount_cent > 0),
@@ -83,34 +85,6 @@ SELECT attach_audit('payment_link');
 INSERT INTO audit_redaction (table_name, column_name, grund) VALUES
   ('payment_link', 'token_hash', 'Hash eines Zahlungslinks, Geheimnis')
 ON CONFLICT DO NOTHING;
-
-/*
- * Der Verweis auf die Anforderung, zur Laufzeit geprueft.
- *
- * Der Rumpf einer plpgsql-Funktion wird erst beim Aufruf aufgeloest; dass
- * `deposit_request` beim Anlegen dieser Funktion auf einer frischen
- * Datenbank noch nicht existiert, stoert deshalb nicht. Geprueft wird unter
- * der Zeilenrichtlinie des Aufrufers: eine fremde Anforderung ist damit
- * genauso wenig zu finden wie eine erfundene.
- */
-CREATE OR REPLACE FUNCTION payment_link_check_request() RETURNS trigger
-LANGUAGE plpgsql AS $$
-BEGIN
-  IF NEW.deposit_request_id IS NOT NULL AND NOT EXISTS (
-       SELECT 1 FROM deposit_request d
-        WHERE d.id = NEW.deposit_request_id
-          AND d.folio_id = NEW.folio_id
-          AND d.property_id = NEW.property_id) THEN
-    RAISE EXCEPTION 'Anzahlungsanforderung % gehoert nicht zu Folio %',
-      NEW.deposit_request_id, NEW.folio_id
-      USING ERRCODE = 'foreign_key_violation';
-  END IF;
-  RETURN NEW;
-END $$;
-
-CREATE TRIGGER payment_link_check_request
-  BEFORE INSERT OR UPDATE OF deposit_request_id ON payment_link
-  FOR EACH ROW EXECUTE FUNCTION payment_link_check_request();
 
 /*
  * Der einzige Weg von einem Token zu seinem Haus.
@@ -189,8 +163,10 @@ CREATE UNIQUE INDEX payment_intent_one_open_per_link
 -- Fassungen der Loeschung, denn auch die aufgeschobene haelt den Link nicht
 -- fuer eine Aufbewahrungsfrist vor.
 --
--- Beide Funktionen werden vollstaendig neu gefasst (Stand 0046), ergaenzt
--- allein um den Block zu payment_link. Eine Stelle, nicht drei (CLAUDE.md).
+-- Beide Funktionen werden vollstaendig neu gefasst -- Stand 0061, also mit
+-- den Check-in-Links --, ergaenzt allein um den Aufruf fuer payment_link.
+-- Eine Stelle, nicht drei (CLAUDE.md). Wer sie das naechste Mal neu fasst,
+-- geht von dieser Fassung aus, nicht von 0046 oder 0061.
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION payment_link_revoke_for_guest(p_guest bigint)
@@ -218,6 +194,10 @@ BEGIN
 
   DELETE FROM guest_property_note WHERE guest_id = p_guest;
   DELETE FROM registration        WHERE guest_id = p_guest;
+  -- Seit 0061: die Links zum Online-Check-in.
+  DELETE FROM checkin_token t
+   USING reservation r
+   WHERE r.id = t.reservation_id AND r.primary_guest_id = p_guest;
 
   -- Die Zeile bleibt: **dass** zugestimmt wurde und wann, ist der Nachweis,
   -- um den es geht. Das Bild der Unterschrift ist es nicht.
@@ -237,7 +217,7 @@ BEGIN
                        JOIN reservation r2 ON r2.id = f.reservation_id
                       WHERE i.id = e.invoice_id AND r2.primary_guest_id = p_guest));
 
-  -- Zahlungslinks fuehren danach ins Leere (0059).
+  -- Zahlungslinks fuehren danach ins Leere (0068).
   PERFORM payment_link_revoke_for_guest(p_guest);
 
   UPDATE guest
@@ -260,10 +240,15 @@ BEGIN
 
   DELETE FROM guest_property_note WHERE guest_id = p_guest;
   DELETE FROM registration        WHERE guest_id = p_guest;
+  -- Seit 0061: auch hier und nicht erst im Nachtlauf -- der Link fuehrt zu
+  -- einer Maske, die genau das wieder abfragt, was gerade entfernt wurde.
+  DELETE FROM checkin_token t
+   USING reservation r
+   WHERE r.id = t.reservation_id AND r.primary_guest_id = p_guest;
   UPDATE guest_agreement SET signature_svg = NULL
    WHERE guest_id = p_guest AND signature_svg IS NOT NULL;
 
-  -- Ein Zahlungslink ist kein Nachweis, den eine Frist haelt (0059).
+  -- Ein Zahlungslink ist kein Nachweis, den eine Frist haelt (0068).
   PERFORM payment_link_revoke_for_guest(p_guest);
 
   UPDATE guest

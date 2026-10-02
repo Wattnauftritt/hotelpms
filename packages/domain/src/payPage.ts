@@ -2,7 +2,7 @@ import type { EmailLanguage } from '@hotelpms/contracts'
 import { formatCent } from './money.js'
 
 /**
- * Die Seite, die der Gast hinter seinem Zahlungslink sieht (Migration 0059).
+ * Die Seite, die der Gast hinter seinem Zahlungslink sieht (Migration 0068).
  *
  * **Warum eine Seite und keine sofortige Weiterleitung.** Erstens: Mail-
  * programme und Virenscanner rufen Links in einer Mail vorab auf. Leitete
