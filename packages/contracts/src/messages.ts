@@ -1168,6 +1168,84 @@ const M = {
     en: 'The registration form is already signed.',
     tr: 'Meldeschein zaten imzalanmış.' },
 
+  // ------------------------------------------------ Online-Check-in (Dok. 30)
+  'error.gone': {
+    de: 'Nicht mehr gueltig',
+    en: 'No longer valid',
+    tr: 'Artık geçerli değil' },
+  'res.checkinLink': {
+    de: 'Check-in-Link',
+    en: 'Check-in link',
+    tr: 'Check-in bağlantısı' },
+  'checkin.linkExpired': {
+    de: 'Dieser Link ist abgelaufen. Bitte wenden Sie sich an die Rezeption.',
+    en: 'This link has expired. Please contact the front desk.',
+    tr: 'Bu bağlantının süresi doldu. Lütfen resepsiyona başvurun.' },
+  'checkin.linkRevoked': {
+    de: 'Dieser Link wurde zurueckgezogen. Bitte wenden Sie sich an die Rezeption.',
+    en: 'This link has been withdrawn. Please contact the front desk.',
+    tr: 'Bu bağlantı geri çekildi. Lütfen resepsiyona başvurun.' },
+  'checkin.reservationClosed': {
+    de: 'Zu dieser Buchung ist kein Online-Check-in mehr moeglich.',
+    en: 'Online check-in is no longer possible for this booking.',
+    tr: 'Bu rezervasyon için artık online check-in yapılamaz.' },
+  'checkin.alreadyDone': {
+    de: 'Der Meldeschein zu dieser Buchung liegt bereits vor.',
+    en: 'The registration form for this booking has already been submitted.',
+    tr: 'Bu rezervasyonun Meldeschein formu zaten gönderildi.' },
+  // § 29 Abs. 2 BMG: "am Tag der Ankunft". Der Satz nennt den Grund, damit
+  // niemand einen Fehler bei sich sucht.
+  'checkin.signatureOnArrival': {
+    de: 'Die Unterschrift wird am Anreisetag vor Ort geleistet (§ 29 Abs. 2 BMG).',
+    en: 'The signature is given on site on the day of arrival (§ 29 Abs. 2 BMG).',
+    tr: 'İmza, varış günü tesiste atılır (§ 29 Abs. 2 BMG).' },
+  'checkin.nothingToSign': {
+    de: 'Fuer diese Buchung steht keine Unterschrift aus.',
+    en: 'No signature is outstanding for this booking.',
+    tr: 'Bu rezervasyon için bekleyen bir imza yok.' },
+  'checkin.signatureInvalid': {
+    de: 'Die Unterschrift wurde nicht erkannt. Bitte erneut unterschreiben.',
+    en: 'The signature was not recognised. Please sign again.',
+    tr: 'İmza tanınmadı. Lütfen tekrar imzalayın.' },
+  'checkin.idDocumentRequired': {
+    de: 'Fuer auslaendische Gaeste nach § 30 Abs. 2 BMG erforderlich',
+    en: 'Required for foreign guests under § 30 Abs. 2 BMG',
+    tr: 'Yabancı misafirler için § 30 Abs. 2 BMG uyarınca zorunlu' },
+  'checkin.birthDateFuture': {
+    de: 'Das Geburtsdatum liegt in der Zukunft',
+    en: 'The date of birth lies in the future',
+    tr: 'Doğum tarihi gelecekte' },
+  'checkin.tooManyCompanions': {
+    de: 'Hoechstens {max} Mitreisende. Fuer groessere Gruppen bitte an die Rezeption.',
+    en: 'At most {max} companions. For larger groups please contact the front desk.',
+    tr: 'En fazla {max} refakatçi. Daha büyük gruplar için lütfen resepsiyona başvurun.' },
+  'checkin.reservationNotOpen': {
+    de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
+      + 'abgereist oder ohne Hauptgast.',
+    en: 'Online check-in is not possible for this reservation: it is canceled, '
+      + 'checked out or has no primary guest.',
+    tr: 'Bu rezervasyon için online check-in yapılamaz: iptal edilmiş, çıkış yapılmış '
+      + 'ya da ana misafiri yok.' },
+  'checkin.mailNotReady': {
+    de: 'Der Gastversand ist fuer dieses Haus nicht eingeschaltet oder die '
+      + 'Absenderdomain nicht freigeschaltet. Der Link laesst sich kopieren.',
+    en: 'Guest mail is not switched on for this property or the sender domain is '
+      + 'not approved. The link can be copied instead.',
+    tr: 'Bu tesis için misafir e-postası açık değil ya da gönderici alan adı '
+      + 'onaylanmamış. Bağlantı kopyalanabilir.' },
+  'field.country': {
+    de: 'kein gueltiger Laendercode',
+    en: 'not a valid country code',
+    tr: 'geçerli bir ülke kodu değil' },
+  'field.unknown': {
+    de: 'Dieses Feld gibt es nicht',
+    en: 'This field does not exist',
+    tr: 'Böyle bir alan yok' },
+  'field.mustConfirm': {
+    de: 'Bitte bestaetigen',
+    en: 'Please confirm',
+    tr: 'Lütfen onaylayın' },
+
   // -------------------------------------------------------- Kasse und Kanal
 
   'pos.roomUnknown': {

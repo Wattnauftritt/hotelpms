@@ -30,6 +30,7 @@ import { platformSupportRoutes } from './platformSupport.js'
 import { platformDomainRoutes } from './platformDomains.js'
 import { userAdminRoutes } from './userAdmin.js'
 import { historyRoutes } from './history.js'
+import { checkinRoutes } from './checkin.js'
 import { openApiRoutes } from './openapi.js'
 import type { DomainVerwaltung } from '../platform/brevoDomains.js'
 
@@ -76,6 +77,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   platformSupportRoutes(app)
   platformDomainRoutes(app, { domains: overrides.domains })
   userAdminRoutes(app)
+  checkinRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }
