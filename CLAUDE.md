@@ -134,6 +134,23 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
   Plattformpersonal kam dadurch aus seiner Sitzung nur heraus, indem es das
   Cookie von Hand löschte.
 
+### Gästeterminal
+
+- **Ein Gerät ist kein Benutzer.** Das Terminal an der Rezeption trägt genau
+  ein Recht (`terminal:device`) in genau einem Haus; das Recht steht in keiner
+  Rolle und ist kein Zugriffsbereich eines Maschinenzugangs. Eine Geräteroute
+  prüft zusätzlich, dass das Principal ein Gerät ist — das Recht allein genügt
+  nie. Ein Test über die ganze Routenliste hält fest, dass ein Terminal nichts
+  anderes erreicht (Dokument 31).
+- **Die Seite am Touchscreen hält keine Gastdaten über den Auftrag hinaus.**
+  Kein Zwischenspeicher, kein `localStorage`, nach jedem Auftrag ein
+  Neuaufbau. Davor steht der nächste Gast.
+- **Das Terminal zeigt nur, was das Haus vorher angelegt hat.** Eine Seite,
+  eine freigegebene Adresse, einen Meldeschein, eine Hausbedingung — nie Text
+  oder eine Adresse aus dem Auftrag selbst. Seitentext ist kein HTML, ein Bild
+  kein SVG. Ein Rezeptionsrechner, der Beliebiges auf einen Gastbildschirm
+  schicken kann, ist ein Werkzeug für Phishing.
+
 ### Datenschutz und deutsches Recht
 
 - **Nie Kartendaten speichern.** Es gibt kein Feld dafür, und es kommt keines dazu. Eine Garantie läuft über Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters.

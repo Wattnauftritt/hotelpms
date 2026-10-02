@@ -125,7 +125,8 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
       supportSessionId: null,
       // Wer die Sitzung eroeffnet hat, weiss nur der Aufrufer dieser
       // Funktion; hier steht bewusst die handelnde Person selbst.
-      sessionUserId: userId
+      sessionUserId: userId,
+      terminalDeviceId: null
     }
   })
 }
@@ -201,7 +202,57 @@ export async function loadPrincipalFromToken(pool: Pool, token: string): Promise
       accountPermissions: new Set(),
       platformPermissions: new Set(),
       supportSessionId: null,
-      sessionUserId: null
+      sessionUserId: null,
+      terminalDeviceId: null
+    }
+  })
+}
+
+/**
+ * Name des Geraetecookies am Gaesteterminal (Dokument 31).
+ *
+ * Ein Cookie und kein Token im JavaScript, aus demselben Grund wie bei der
+ * Sitzung (lib/api.ts): `httpOnly` haelt es von jedem eingeschleusten
+ * Skript fern, und ein Geheimnis, das am Touchscreen eines Gastes ein Jahr
+ * lang liegt, ist genau das, wonach ein solches Skript suchte. Gesetzt wird
+ * es auf den Pfad `/v1/terminal` -- der Browser schickt es damit an keine
+ * andere Route, auch nicht versehentlich.
+ */
+export const DEVICE_COOKIE = 'hp_terminal'
+
+/**
+ * Principal eines gekoppelten Gaesteterminals.
+ *
+ * Gebaut wie der Maschinenzugang: dasselbe Principal, derselbe
+ * Berechtigungskatalog, dieselbe Pruefung in `registerRoute`. Nur schmaler
+ * -- **ein** Haus, **ein** Recht (`terminal:device`), kein Benutzer, keine
+ * Account-Rechte. Was es darueber hinaus erreicht, entscheiden die
+ * Geraeterouten, und die lesen nur den eigenen Auftrag.
+ */
+export async function loadPrincipalFromDevice(pool: Pool, secret: string): Promise<Principal> {
+  return withTransaction(pool, SYSTEM_CONTEXT, async client => {
+    const r = await client.query<{
+      device_id: string; device_ref: string; property_id: string; account_id: string }>(
+      `SELECT * FROM terminal_device_principal($1)`, [hashToken(secret)])
+    if (r.rowCount === 0) return ANONYMOUS
+    const row = r.rows[0]!
+    const haus = Number(row.property_id)
+    return {
+      userId: null,
+      // Eigener Schluessel: zaehlt als ausgewiesen, nicht als anonym -- ein
+      // Terminal fragt alle zwei Sekunden, ohne Pause (rateLimit.ts).
+      // Und eigener Schluessel fuer die Idempotenz, wie beim Client.
+      clientKey: `device:${row.device_ref}`,
+      isPlatformStaff: false,
+      accountIds: [Number(row.account_id)],
+      permissionsByProperty: new Map([[haus, new Set<Permission>(['terminal:device'])]]),
+      // Bewusst leer, aus demselben Grund wie beim Maschinentoken: was hier
+      // stuende, wirkte auf alle Haeuser des Accounts.
+      accountPermissions: new Set(),
+      platformPermissions: new Set(),
+      supportSessionId: null,
+      sessionUserId: null,
+      terminalDeviceId: Number(row.device_id)
     }
   })
 }

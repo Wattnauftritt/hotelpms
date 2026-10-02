@@ -28,7 +28,11 @@ export const PERMISSIONS = [
   // Plattformbenutzer anlegen und Rollen vergeben (0038): eigenes Recht,
   // weil das die eine Handlung ist, mit der sich der Kreis der Berechtigten
   // selbst erweitert.
-  'platform:staff'
+  'platform:staff',
+  // Gaesteterminal (0071): keiner Rolle zugeordnet und als Zugriffsbereich
+  // eines Maschinenzugangs ausgeschlossen. Die einzige Quelle ist ein
+  // gekoppeltes Geraet (`loadPrincipalFromDevice`).
+  'terminal:device'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

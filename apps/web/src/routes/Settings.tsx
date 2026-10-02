@@ -13,6 +13,7 @@ import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { SupportZugriff } from '../components/SupportZugriff.tsx'
+import { Gaesteterminals } from '../components/Gaesteterminals.tsx'
 import { OnlineCheckinEinstellung } from '../components/OnlineCheckinEinstellung.tsx'
 
 /**
@@ -24,7 +25,7 @@ import { OnlineCheckinEinstellung } from '../components/OnlineCheckinEinstellung
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'terms', 'checkin', 'support'] as const
+const REITER = ['mail', 'pay', 'terms', 'checkin', 'terminal', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -38,6 +39,11 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   // bekommt, ist eine Entscheidung des Hauses, keine der Schnittstellen.
   if (darf('settings:property')) {
     bereiche.push({ key: 'checkin', label: 'onlineCheckin.settings.title' })
+  }
+  // Gaesteterminals (Dokument 31) haengen am Haus: ein Terminal gehoert
+  // genau einem, und wer es koppelt, richtet dieses Haus ein.
+  if (darf('settings:property')) {
+    bereiche.push({ key: 'terminal', label: 'terminal.settings.title' })
   }
   /*
    * Support-Zugriff an settings:account, nicht an settings:property: die
@@ -652,6 +658,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
       {aktiv.key === 'checkin' && (
         <OnlineCheckinEinstellung propertyId={propertyId} isTraining={isTraining} />
       )}
+      {aktiv.key === 'terminal' && <Gaesteterminals propertyId={propertyId} />}
       {aktiv.key === 'support' && <SupportZugriff />}
     </div>
   )

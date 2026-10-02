@@ -1,5 +1,6 @@
 import type { PoolClient } from '@hotelpms/db'
 import { requiresRegistrationSignature } from '@hotelpms/domain'
+import { UNTERSCHRIFT_MAX_ZEICHEN } from '@hotelpms/contracts'
 import { Errors } from './errors.js'
 
 /**
@@ -50,6 +51,27 @@ import { Errors } from './errors.js'
 export const AUFBEWAHRUNG_MONATE = 12
 
 export type MeldescheinQuelle = 'desk' | 'online' | 'terminal'
+
+/**
+ * Eine mitgeschickte Unterschrift pruefen: vorhanden, Text, nicht zu gross.
+ *
+ * Die Grenze ist die des Vertrags (`UNTERSCHRIFT_MAX_ZEICHEN`), eine Zahl
+ * fuer alle Wege. Sie steht hier und nicht nur im allgemeinen Rumpflimit,
+ * weil inzwischen Wege ohne Mitarbeiter unterschreiben -- die Gastseite
+ * und das Gaesteterminal (Dokument 31) --, und ein Megabyte je Schein in
+ * einer Tabelle, die ein Jahr haelt, waere ein Weg, sie zu fuellen. Die
+ * genaue Form (`istUnterschriftSvg`) pruefen die Wege, an denen kein
+ * Mitarbeiter steht, an ihrer Route.
+ */
+export function pruefeUnterschrift(svg: unknown): string {
+  if (typeof svg !== 'string' || svg.trim() === '') {
+    throw Errors.validation({ signatureSvg: ['field.required'] })
+  }
+  if (svg.length > UNTERSCHRIFT_MAX_ZEICHEN) {
+    throw Errors.validation({ signatureSvg: ['registration.signatureTooLarge'] })
+  }
+  return svg
+}
 
 export type Unterschrift =
   /** Am Tresen und an der Station: jetzt oder gar nicht. */
@@ -118,8 +140,9 @@ export async function erfasseMeldeschein(
     if (noetig && !e.unterschrift.svg) {
       throw Errors.unprocessable('registration.signatureRequired')
     }
-    // Ohne Rechtsgrund keine Unterschrift: verworfen, nicht gespeichert.
-    signatur = noetig ? e.unterschrift.svg ?? null : null
+    // Ohne Rechtsgrund keine Unterschrift: verworfen, nicht gespeichert --
+    // und deshalb auch nicht geprueft.
+    signatur = noetig ? pruefeUnterschrift(e.unterschrift.svg) : null
   }
 
   const h = await client.query<{ id: number }>(
@@ -182,18 +205,34 @@ export async function erfasseMeldeschein(
 }
 
 /**
- * Die Unterschrift nachreichen -- am Tresen oder an der Station.
+ * Die Unterschrift nachreichen -- am Tresen, ueber die Gastseite am
+ * Anreisetag oder am Gaesteterminal (Dokument 31).
+ *
+ * **Die eine Stelle fuer diese Regel.** Drei Wege rufen sie auf; zwei
+ * Fassungen derselben Pruefung liefen auseinander, und dann unterschriebe
+ * am Terminal, wer am Tresen abgewiesen worden waere.
  *
  * Nur, wo der Schein eine braucht und noch keine hat. Fuer einen Schein
  * ohne auslaendische Person gibt es keine, die geleistet werden koennte.
+ *
+ * `darfImHaus`: die Zeilenrichtlinie laesst jedes Haus des Aufrufers durch,
+ * ein Recht gilt aber je Haus -- wer in Haus A einchecken darf, darf in
+ * Haus B noch lange nicht unterschreiben lassen. Ein fremdes Haus sieht
+ * aus wie kein Schein.
  */
 export async function unterschreibeMeldeschein(
-  client: PoolClient, registrationId: number, svg: string
+  client: PoolClient, registrationId: number, svg: unknown,
+  darfImHaus: (propertyId: number) => boolean = () => true
 ): Promise<void> {
-  const cur = await client.query<{ signature_required: boolean; signed_at: string | null }>(
-    `SELECT signature_required, signed_at::text FROM registration
+  const unterschrift = pruefeUnterschrift(svg)
+  if (!Number.isSafeInteger(registrationId)) throw Errors.notFound('res.registration')
+  const cur = await client.query<{ signature_required: boolean; signed_at: string | null
+                                   property_id: string }>(
+    `SELECT signature_required, signed_at::text, property_id FROM registration
       WHERE id = $1 AND group_registration_id IS NULL FOR UPDATE`, [registrationId])
-  if (cur.rowCount === 0) throw Errors.notFound('res.registration')
+  if (cur.rowCount === 0 || !darfImHaus(Number(cur.rows[0]!.property_id))) {
+    throw Errors.notFound('res.registration')
+  }
   if (!cur.rows[0]!.signature_required) {
     throw Errors.unprocessable('registration.signatureNotForeseen')
   }
@@ -202,5 +241,5 @@ export async function unterschreibeMeldeschein(
   }
   await client.query(
     `UPDATE registration SET signature_svg = $2, signed_at = now() WHERE id = $1`,
-    [registrationId, svg])
+    [registrationId, unterschrift])
 }

@@ -6,6 +6,7 @@ import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
 import { VerlaufDialog } from './Verlauf.tsx'
+import { AmTerminal } from './AmTerminal.tsx'
 import { Anzahlung } from './Anzahlung.tsx'
 import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
@@ -152,6 +153,8 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
       </div>
 
       <BestaetigungSchicken reservationRef={r.reservationRef} />
+      {/* Gaesteterminal (Dokument 31). Zeigt sich nur, wenn es eines gibt. */}
+      <AmTerminal reservationRef={r.reservationRef} />
 
       {/* Online-Check-in (Dokument 30): verschickt, ausgefuellt, Unterschrift
           offen. Nicht bei einer stornierten Buchung -- dort gibt es nichts

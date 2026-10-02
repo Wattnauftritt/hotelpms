@@ -17,6 +17,8 @@ import { rechnung } from './rechnung.js'
 import { zugang } from './zugang.js'
 import { support } from './support.js'
 import { admin } from './admin.js'
+import { terminal } from './terminal.js'
+import { hausnotiz } from './hausnotiz.js'
 import { planstatus } from './planstatus.js'
 import { suche } from './suche.js'
 import { onlineCheckin } from './onlineCheckin.js'
@@ -126,6 +128,8 @@ const texts = {
   ...zugang,
   ...support,
   ...admin,
+  ...terminal,
+  ...hausnotiz,
   ...planstatus,
   ...suche,
   ...onlineCheckin

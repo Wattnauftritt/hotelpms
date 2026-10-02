@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import type { Principal } from '../platform/context.js'
+import { can, type Principal } from '../platform/context.js'
+import { geltendeBedingungen, stimmeBedingungZu } from '../platform/hausbedingungen.js'
 
 /**
  * Hausbedingungen: was ein Haus ueber den Meldeschein hinaus unterschreiben
@@ -87,30 +88,10 @@ export function termsRoutes(app: FastifyInstance): void {
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
 
-        /*
-         * Je `code` die Fassung, die am Anreisetag gilt -- nicht die
-         * neueste. Wer heute bucht und in drei Monaten anreist, unterschreibt
-         * den Text, der dann haengt; ein zwischenzeitlich geaenderter Preis
-         * gilt fuer ihn, weil er ihn bei der Ankunft vor sich hat.
-         *
-         * Ein Aufruf mit einem Verbund, nicht einer je Bedingung: es sind
-         * wenige Zeilen, aber der Bildschirm soll nicht je Zeile nachladen.
-         */
-        const { rows } = await client.query(
-          `SELECT DISTINCT ON (t.code)
-                  t.public_ref AS "termsRef", t.code, t.version, t.title, t.body,
-                  t.requires_signature AS "requiresSignature",
-                  a.agreed_at IS NOT NULL AS "agreed",
-                  a.agreed_at::text AS "agreedAt",
-                  a.signature_svg IS NOT NULL AS "signed"
-             FROM property_terms t
-             LEFT JOIN guest_agreement a
-                    ON a.terms_id = t.id AND a.reservation_id = $2
-            WHERE t.property_id = $1
-              AND t.active_from <= $3::date
-              AND (t.active_to IS NULL OR t.active_to > $3::date)
-            ORDER BY t.code, t.version DESC`,
-          [res.property_id, res.id, res.arrival])
+        // Welche Fassung gilt, steht in platform/hausbedingungen.ts -- das
+        // Gaesteterminal legt dieselbe vor.
+        const rows = await geltendeBedingungen(client,
+          { id: res.id, propertyId: res.property_id, arrival: res.arrival })
         return { reservationRef, terms: rows }
       })
     }
@@ -192,7 +173,7 @@ export function termsRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { reservationRef, termsRef } = req.params as
         { reservationRef: string; termsRef: string }
-      const { signatureSvg } = req.body as { signatureSvg?: string }
+      const { signatureSvg } = (req.body ?? {}) as { signatureSvg?: unknown }
       const principal = req.principal as Principal
 
       return tx(req.pool, req, async client => {
@@ -202,35 +183,29 @@ export function termsRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
-
-        const t = await client.query<{ id: number; property_id: number
-                                       requires_signature: boolean }>(
-          `SELECT id, property_id, requires_signature FROM property_terms
-            WHERE public_ref = $1`, [termsRef])
-        if (t.rowCount === 0) throw Errors.notFound('res.terms')
-        // Die Zeilenrichtlinie filtert nach Mandant, nicht nach Haus.
-        if (t.rows[0]!.property_id !== res.property_id) throw Errors.notFound('res.terms')
-
-        if (t.rows[0]!.requires_signature && !signatureSvg) {
-          throw Errors.unprocessable('terms.signatureRequired')
+        /*
+         * Mitbehoben: das Recht im Haus der Reservierung, nicht in
+         * irgendeinem. Die Route nimmt keine Property, und `registerRoute`
+         * prueft dann nur "irgendwo im Account".
+         */
+        if (!can(principal, 'reservation:checkin', Number(res.property_id))) {
+          throw Errors.forbidden('access.missingPermission',
+            { permission: 'reservation:checkin' })
         }
-        const unterschrift = t.rows[0]!.requires_signature ? signatureSvg ?? null : null
 
-        const a = await client.query<{ id: number; agreed_at: string }>(
-          `INSERT INTO guest_agreement
-             (property_id, reservation_id, terms_id, guest_id, signature_svg, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6)
-           ON CONFLICT (reservation_id, terms_id) DO NOTHING
-           RETURNING id, agreed_at::text`,
-          [res.property_id, res.id, t.rows[0]!.id, res.primary_guest_id,
-           unterschrift, principal.userId])
-        // Zweimal zugestimmt ist keine Fehlbedienung, sondern ein zweiter
-        // Klick. Die erste Zustimmung bleibt stehen -- sie ist der Nachweis.
-        if (a.rowCount === 0) throw Errors.conflict('terms.alreadyAgreed')
+        const t = await client.query<{ id: number }>(
+          `SELECT id FROM property_terms WHERE public_ref = $1`, [termsRef])
+        if (t.rowCount === 0) throw Errors.notFound('res.terms')
+
+        // Die Regel selbst: platform/hausbedingungen.ts, dieselbe wie am
+        // Gaesteterminal.
+        const z = await stimmeBedingungZu(client, {
+          reservationId: Number(res.id), propertyId: Number(res.property_id),
+          primaryGuestId: res.primary_guest_id, termsId: Number(t.rows[0]!.id),
+          signatureSvg, createdBy: principal.userId })
 
         reply.status(201)
-        return { reservationRef, termsRef, signed: unterschrift !== null,
-                 agreedAt: a.rows[0]!.agreed_at }
+        return { reservationRef, termsRef, signed: z.signed, agreedAt: z.agreedAt }
       })
     }
   })
