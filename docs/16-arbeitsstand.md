@@ -25,7 +25,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
-| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Belegungsplan mit Ziehen (buchen, verschieben in Zimmer **und** Zeit, verlängern), nicht zusammenhängende Mehrfachauswahl mit eigenem Zeitraum je Zimmer, eigenes Kontextmenü, Gruppenmaske, Abruf aus Kontingent, Preis je Nacht oder gesamt, Gäste, Firmen, Verfügbarkeitsraster, Check-in, Storno; Preisraster und Rechnungen ebenfalls fertig. Offen: Anzahlung, Pay-by-Link, Channel-Manager-Ansicht — [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5 |
+| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Belegungsplan mit Ziehen (buchen, verschieben in Zimmer **und** Zeit, verlängern), nicht zusammenhängende Mehrfachauswahl mit eigenem Zeitraum je Zimmer, eigenes Kontextmenü, Gruppenmaske, Abruf aus Kontingent, Preis je Nacht oder gesamt, Gäste, Firmen, Verfügbarkeitsraster, Check-in, Storno; Preisraster und Rechnungen ebenfalls fertig; Anzahlung anfordern und Pay-by-Link mit Versand per Gastpost (`0060`, Abschnitt „Anzahlung und Pay-by-Link in der Oberfläche"). Offen: Channel-Manager-Ansicht — [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5 |
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
@@ -736,6 +736,33 @@ Eine vergebene Adresse wird beim Einladen abgewiesen — auch wenn sie zum eigen
 ---
 
 **Rollen ändern, auf beiden Seiten.** Der Kunde konnte seit der Selbstverwaltung Haus- und Betriebsrollen unter Einstellungen → Benutzer ersetzend setzen; das Adminpanel zeigte sie nur als Text. Jetzt trägt jede Benutzerzeile der Kundenkarte einen Editor: je Haus des Kunden ein Satz Hausrollen, dazu die Rollen für den ganzen Betrieb (`PUT /v1/platform/accounts/:id/users/:userId/roles` und `…/account-roles`, `platform:accounts`). Dieselben Grenzen wie beim Kunden: nur Rollen der richtigen Ebene, die dem Kunden gehören oder System sind, also nie eine Plattformrolle; und der letzte Verwalter des Betriebs bleibt, auch für uns. Die Kundenkarte liefert die Rollen dafür strukturiert (`accountRoles`, `propertyRoles`) neben dem bisherigen Text.
+
+### Anzahlung und Pay-by-Link in der Oberfläche — **erledigt**
+
+**Warum.** Die Schnittstelle konnte einen Zahlungslink erzeugen (Aufgabe 6) und aus einem Eingang eine Anzahlungsrechnung machen (Aufgabe 3). Was fehlte, war der Vorgang davor: dass ein Haus von einem Gast **bis zu einem Tag** einen **Betrag** verlangt. Ohne diesen Datensatz gibt es kein „überfällig", und ein Eingang weiß nicht, wofür er kam.
+
+**Wo es liegt.** Migration `0060`, `apps/api/src/routes/depositRequests.ts` (Anfordern, Zurückziehen, Eingang zuordnen, Sicht), `routes/payments.ts` (Link zur Anforderung, Versand, Ungültigmachen, Zuordnung im Webhook), `packages/domain/src/depositRequest.ts` (Betrag und Zustand, auch unter `@hotelpms/domain/depositRequest` für die Oberfläche), `renderPaymentLinkEmail` in `packages/domain/src/email.ts`. Oberfläche: `components/Anzahlung.tsx` im Reservierungsfenster und in der Vorauszahlung des Folios, `components/Zahlungslink.tsx` für beide.
+
+Neue Routen, alle mit `folio:post` und zusätzlich geprüft im Haus des Folios: `POST /v1/folios/:ref/deposit-requests`, `POST /v1/deposit-requests/:ref/cancel`, `POST /v1/deposit-requests/:ref/settlements`, `POST /v1/payment-links/:id/cancel`. `POST .../payment-links` nimmt `depositRequestRef` und `sendEmail` an (Versand verlangt zusätzlich `email:send`). `GET .../prepayments` bringt Anforderungen, Geschäftstag, Übungskennzeichen und Postbereitschaft in derselben Antwort. Kein neues Recht.
+
+**Was daraus entschieden wurde.**
+
+- **Prozent wird abgerundet, auf den ganzen Cent, ganzzahlig in Basispunkten.** Die Forderung liegt damit nie über dem vereinbarten Anteil (30 % von 333,33 € sind 99,99 €, nicht 100,00 €), und bei 100 % ist sie genau der Aufenthalt. Der Betrag wird bei der Anlage festgeschrieben: ändert sich danach der Aufenthalt, ändert sich nicht still die Forderung, die der Gast schon hat.
+- **Der Zustand wird abgeleitet, nie gespeichert**, gegen den Geschäftstag: am Fälligkeitstag ist nichts überfällig, am Geschäftstag danach schon. Überfällig geht vor teilweise.
+- **Ein Eingang wird ausdrücklich zugeordnet** — vom Webhook in derselben Transaktion, von der Rezeption für Überweisung und Barzahlung. Alle Eingänge eines Folios der Reihe nach zu verteilen hätte nach der Anreise jedes bezahlte Minibar-Wasser als Anzahlung gezählt.
+- **Die Anzahlungsrechnung entsteht nicht im Webhook.** Sie zieht eine Nummer aus der lückenlosen Folge und braucht Pflichtangaben, die ein Mensch prüft; sie entsteht weiter nur über `POST .../deposit-invoice`. Die Maske meldet jeden Eingang ohne Rechnung und bietet den Weg an.
+- **Der Link geht nur beim Erzeugen per Gastpost hinaus.** Seine Adresse wird weiterhin nicht gespeichert; ein späteres „noch einmal schicken" müsste sie sich vom Aufrufer geben lassen, und dann bestimmte der Aufrufer den Inhalt der Gastpost. Die Post wird **vor** dem Anbieter geprüft, damit kein Checkout ohne Gegenstück entsteht; `email_enqueue` bleibt der Zaun. Die Mail hat Reservierungsbezug, damit `guest_erase_one()` sie findet.
+- **Ein Übungshaus bekommt keinen Link**, abgewiesen bevor der Anbieter gefragt wird; die Oberfläche erklärt es, statt den Knopf zu zeigen. Anforderungen lassen sich dort üben.
+- **Ungültig machen heißt beim Anbieter** (Stripe `expire`), erst dort, dann bei uns. Eine Anforderung mit offenem Link lässt sich nicht zurückziehen.
+
+**Mitbehoben.** Die bestehenden Folio-Routen prüfen das Recht nur „irgendwo im Account" — bei mehreren Häusern kommt, wer im einen Haus buchen darf, im anderen an dieselben Knöpfe. Die neuen Routen prüfen es zusätzlich im Haus des Folios (`rechtImHaus`); die alten sind unverändert und gehören nachgezogen.
+
+**Noch offen.**
+
+- Ein Stripe-Checkout gilt höchstens 24 Stunden. Für eine Anzahlung mit zwei Wochen Frist ist das kurz; der Gast bekommt nach Ablauf einen neuen Link. Ein dauerhafter Zahlungslink des Anbieters wäre ein anderer Adapter.
+- Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS (`publicAppUrl/folios/...`), also eine Seite hinter der Anmeldung, die der Gast nicht öffnen kann. Gehört eine eigene Dankeseite her.
+- Das Testhotel (`db:testhotel`) legt zu keiner Reservierung ein Folio an; ohne Folio gibt es nichts, worauf angezahlt wird. Beim Nachfahren im Browser wurde eines von Hand angelegt.
+- Eine Liste aller überfälligen Anzahlungen eines Hauses (etwa im Tagesgeschäft) fehlt; der Index `deposit_request_due` ist dafür angelegt.
 
 ### Was der Oberfläche noch fehlt
 
