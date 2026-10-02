@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
+import { onlineCheckinStand } from '../platform/checkin.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
@@ -1081,6 +1082,11 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE o.reservation_id = $1
             ORDER BY o.is_primary DESC, o.id`, [kopf.id])
 
+        // Online-Check-in: verschickt, ausgefuellt, Unterschrift offen
+        // (Dokument 30). Im selben Aufruf, nicht als zweiter vom Fenster.
+        const onlineCheckin = await onlineCheckinStand(client, kopf.id as number,
+          req.principal as Principal)
+
         // Die laufende id bleibt drinnen; nach aussen geht die oeffentliche
         // Referenz (C1, Dokument 13).
         delete kopf.id
@@ -1088,6 +1094,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           ...kopf,
           nights: naechte.rows,
           occupants: mitreisende.rows,
+          onlineCheckin,
           totalCent: naechte.rows.reduce(
             (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
         }

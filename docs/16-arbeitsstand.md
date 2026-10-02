@@ -30,6 +30,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
 | AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
+| AP 16 Preissteuerung (RMS) | fertig | `0065`, `0066`, `routes/rateSteering.ts`, `jobs/rateSteering.ts`, `components/Preissteuerung.tsx` — [`32-preissteuerung.md`](32-preissteuerung.md) |
 
 **104 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
@@ -805,6 +806,31 @@ Neue Routen, alle mit `folio:post` und zusätzlich geprüft im Haus des Folios: 
 - ~~Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS~~ — sie führen jetzt auf `/v1/pay/done`, eine Seite ohne Anmeldung und ohne Token.
 - Das Testhotel (`db:testhotel`) legt zu keiner Reservierung ein Folio an; ohne Folio gibt es nichts, worauf angezahlt wird. Beim Nachfahren im Browser wurde eines von Hand angelegt.
 - Eine Liste aller überfälligen Anzahlungen eines Hauses (etwa im Tagesgeschäft) fehlt; der Index `deposit_request_due` ist dafür angelegt.
+### Suche: Schnellsuche im Plan und Detailsuche mit Strg+K — **erledigt**
+
+**Wo es liegt.** `apps/api/src/routes/search.ts`, Migration `0058`, `packages/contracts/src/suche.ts`; in der Oberfläche `components/PlanSuche.tsx`, `components/Detailsuche.tsx`, `components/Suchtreffer.tsx`, `lib/suche.ts`, `lib/queries/suche.ts`, `lib/i18n/suche.ts`. Tests: `apps/api/src/__tests__/suche.test.ts`, `apps/web/src/__tests__/suche.test.ts`.
+
+**Warum.** Aus dem Betrieb, nach dem Vorbild von Mews: „ein Suchfeld im Kalender, um mal schnell etwas zu suchen, und Strg+K als Detailsuche". Bis dahin gab es nur die Namenssuche für Gäste und Firmen in den Buchungsmasken — keine Suche nach Reservierungsnummer, keine gemeinsame Suche, kein Kürzel.
+
+**Ein Endpunkt für beide.** `GET /v1/properties/:propertyId/search?q=&scope=all|reservation|customer&limit=` liefert Reservierungen (über Hauptgast, Begleitperson, Reservierungs-, Buchungs- und Kanalnummer) und Kunden (Gäste und Firmen) in höchstens zwei Anweisungen, unabhängig von der Trefferzahl — ein Test zählt das. Jede Zeile trägt, was die Liste zeigt: Zeitraum, Zimmer, Zustand, Begleitpersonen, Zahl der Aufenthalte, „im Haus". Recht ist `reservation:read`; die Kunden mit Mail und Telefon verlangen zusätzlich `guest:read` (die Rolle `revenue` findet Reservierungen, aber keine Kontaktdaten). Mindestens zwei Zeichen, höchstens hundert, höchstens 25 Treffer je Gruppe. Der Suchbegriff steht in der Adresse und damit nie im Protokoll — der `req`-Serialisierer ersetzt den Wert, ein Test hält es für diese Route fest.
+
+**Was ein Gast aus dem Account zeigen darf.** Gäste gehören dem Account, Reservierungen dem Haus. Gefunden wird der Gast accountweit — dieselben Felder wie in `GET /v1/guests` —, aber die Zahl seiner Aufenthalte und „im Haus" kommen nur aus **diesem** Haus. Sonst erführe eine Rezeption mit Rolle in Haus A über die Suche, dass jemand gerade in Haus B wohnt. Reservierungen tragen an jeder Tabelle `property_id = $1`, Gäste werden auf den Account des Hauses begrenzt. Anonymisierte Gäste findet die Suche nicht, auch nicht als Begleitperson; ihre Reservierungen bleiben über die Nummer auffindbar, weil der Beleg aufbewahrt wird.
+
+**Schnellsuche im Plan.** Ein Feld vorn in der Leiste. Die Auswahl einer Reservierung springt: der Plan blättert zur Anreise (zwei Tage Umfeld), rollt zur Zimmerzeile oder ins Band der Buchungen ohne Zimmer, hebt den Balken kurz hervor und setzt den Fokus darauf; Enter oder ein Klick öffnet ihn wie gewohnt. Abgereiste, stornierte und No-Show-Aufenthalte haben keinen Balken und öffnen sich gleich im Seitenfenster. Gefunden wird der Balken über `data-reservation-ref` — der Plan selbst bekam nur dieses eine Merkmal und keine Hervorhebung als Eigenschaft, sonst zeichnete jeder Sprung alle gemerkten Zimmerzeilen neu.
+
+**Detailsuche.** Strg+K (auf dem Mac Cmd+K) öffnet von überall ein Fenster mit Feld, den Filtern *Alle / Reservierung / Kunde* (Tab wechselt) und den Gruppen *Reservierung*, *Kunde*, *Befehl*. Eine Reservierung öffnet ihr Seitenfenster über dem aktuellen Bildschirm, ein Gast oder eine Firma das Profil. Die Befehle *Neue Reservierung* (Alt+N), *Neuer Gast* (Alt+G) und *Neue Firma* (Alt+C) öffnen die vorhandenen Masken; neue gibt es nicht. Die Buchungsmaske braucht eine Zimmergruppe und einen Tag, deshalb führt *Neue Reservierung* ins Verfügbarkeitsraster, mit einem Hinweis, was dort anzuklicken ist — eine dritte Maske, die beides abfragt, wäre eine zweite Fassung derselben Buchung.
+
+Drei Tastenentscheidungen: **Strg+K wirkt auch aus einem Textfeld**, weil die Lage an der Rezeption fast immer ein Feld ist und die Taste dort unter Windows und Linux nichts bedeutet; auf dem Mac ist Strg+K im Feld „löschen bis Zeilenende" und bleibt dem Feld, die Suche liegt dort auf Cmd+K. **Nicht über einer offenen Maske**: dort steht eine halb ausgefüllte Buchung, und die Suche führt von ihr weg. **Die Alt-Befehle nie im Textfeld** und nur mit Alt allein — auf dem Mac schreibt Alt+C ein „ç", und Strg+Alt ist auf einer deutschen Tastatur AltGr.
+
+**Befund beim Messen: Trigramm und `LIKE` unter der Zeilenrichtlinie.** Gemessen gegen das Saatlaufhaus, ergänzt um 300 000 Belegte und 800 Firmen, die der Saatlauf nicht anlegt. Eine Bedingung des Aufrufers darf nur dann als Indexbedingung **vor** einer erzwungenen Zeilenrichtlinie laufen, wenn ihr Operator `LEAKPROOF` ist. `%` (pg_trgm), `LIKE` und `lower()` sind es nicht. Der GiST-Index liefert dann zwar die nächsten Nachbarn der Reihe nach, geprüft wird `last_name % $1` aber erst danach — und ein Begriff ohne Treffer (ein Tippfehler, eine Nummer im Namensfeld) läuft so alle 60 000 Gäste ab, ohne dass das `LIMIT` je greift: 240 ms je Tastendruck. Ebenso blieb der eindeutige Index auf `public_ref` bei `LIKE 'ABC%'` ungenutzt. Behoben: die Namenszweige nehmen erst die hundert nächsten Nachbarn (`<->` für Tippfehler und ganze Namen, `<<->` für Anfänge und Teile eines Doppelnamens) und filtern danach; die Nummern laufen über `^@` (`starts_with`, LEAKPROOF) auf neuen `text_pattern_ops`-Indizes; die Begleitperson bekam einen Index auf `reservation_occupant.guest_id`. Vorher 120 bis 370 ms je Anfrage, danach 20 bis 50 ms. Die Mailsuche liest weiterhin alle Gäste des Accounts (85 ms) und läuft deshalb nur, wenn ein @ im Begriff steht.
+
+**Mitbehoben.** `countQueries` aus `@hotelpms/testing` kannte nur die Versprechensform von `connect` und brach ab, sobald eine ganze Anfrage über `app.inject` gezählt wurde — die Anmeldung holt ihre Verbindung über `pool.query`, also mit Rückruf. Außerdem blieb eine einmal gezählte Verbindung markiert und schrieb beim nächsten Zählen in die Liste des ersten Aufrufs; ein Test, der zweimal zählt und vergleicht, verglich dann 0 mit 0.
+
+**Noch offen.**
+
+1. **`GET /v1/guests` hat denselben Vollscan.** Die Gastsuche in den Buchungsmasken benutzt `last_name % $1 ORDER BY last_name <-> $1 LIMIT 20` und läuft bei einem Begriff ohne Treffer ebenfalls über alle Gäste. Dieselbe Abhilfe wie hier; nicht mitgemacht, weil die Route nicht zu dieser Aufgabe gehört und ihre Reihenfolge Tests trägt.
+2. **Mehrere Accounts teilen sich einen GiST-Index.** Die hundert nächsten Nachbarn werden über alle Mandanten gesucht und erst danach auf den Account begrenzt. Bei einem kleinen Haus neben großen findet ein seltener Name dann weniger, als es gibt. Ein zusammengesetzter Index (`account_id`, `last_name`) bräuchte `btree_gist` — eine weitere Erweiterung auf der Maschine, deshalb nicht nebenbei.
+3. **Die Kopfleiste ist breiter als der Bildschirm.** Mit allen Bildschirmen misst sie gut 2 100 Pixel; bei 1 920 liegen Sprachwahl und Abmelden außerhalb. Der Suchknopf steht deshalb vorn neben dem Namen.
 
 ### Der Zahlungslink hält bis zur Frist (`0059`) — **erledigt**
 
@@ -835,7 +861,6 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
-| Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
 
 ---
 
@@ -844,6 +869,25 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 **Die Kassenschnittstelle.** In einer früheren Sichtung stand hier „keine POS-Maske" als offener Punkt. Das war ein Missverständnis: `routes/pos.ts` ist der Vertrag mit einer **externen** Ladenkasse mit TSE, nicht ein Bildschirm, der noch fehlt. Die Kasse holt sich die offenen Folios und bucht ihre Zimmerbons dagegen; sie meldet sich über einen Maschinenzugang mit `folio:read` und `folio:post` an.
 
 Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Dokument 09 ausschließt — mit allen Folgen aus § 146a AO. Wer den Punkt das nächste Mal auf einer Liste offener Arbeiten findet, streicht ihn.
+
+---
+
+### Online-Check-in mit digitalem Meldeschein — **erledigt**
+
+**Wo es liegt.** Migration `0061`, `apps/api/src/routes/checkin.ts`, `apps/api/src/platform/{checkin,meldeschein,gast}.ts`, `apps/worker/src/jobs/onlineCheckin.ts`, `packages/domain/src/checkinToken.ts`, `packages/contracts/src/checkin.ts`, `apps/web/src/routes/GastCheckin.tsx`. Begründungen und Rechtslage in [`30-online-checkin.md`](30-online-checkin.md).
+
+**Was es tut.** Der Gast bekommt *x* Tage vor Anreise (Einstellung je Haus, Vorgabe aus, drei Tage) einen Link per Mail und füllt den Meldeschein auf einer öffentlichen Seite aus; die Rezeption sieht am Seitenfenster „verschickt / ausgefüllt am" und kann den Link kopieren, erneut senden oder zurückziehen. Die Station im Haus bettet dieselbe Seite im Terminalmodus ein.
+
+**Was daraus entschieden wurde.**
+
+- **Über den Mail-Link wird nicht unterschrieben.** § 29 Abs. 2 BMG verlangt die Unterschrift „am Tag der Ankunft", und eine Zeichnung auf dem eigenen Telefon ist keines der Ersatzverfahren aus Absatz 5. Vorab erfasst wird alles außer ihr; sie folgt am Anreisetag an der Station oder am Tresen, und beide zeigen, dass sie aussteht.
+- **Der Kontext kommt aus dem Link**, über eine schmale `SECURITY DEFINER`-Funktion nach dem Muster von `account_provision`, die nur mit leerem Kontext aufrufbar ist und ihn auf genau ein Haus setzt. Keine Eigentümerverbindung in der API.
+- **Der Link reist in einer Kopfzeile und steht in der Mail im Fragment**, nie im Pfad: der Serialisierer des Protokolls ersetzt die Abfragezeichenfolge, nicht den Pfad, und ein Fragment erreicht keinen Server. Im Postausgang fällt der Rumpf nach dem Versand.
+- **Die Regeln des Meldescheins stehen einmal** (`platform/meldeschein.ts`) und gelten für Tresen, Link und Station.
+
+**Beim Bauen gefunden und mitbehoben.** Der Meldeschein entschied „ausländisch" nach dem Land der Anschrift statt nach der Staatsangehörigkeit, und ein ausländischer Mitreisender verlangte keine Unterschrift, solange der Hauptgast deutsch war. Das Zeichenfeld traf den Finger nicht, sobald es breiter angezeigt wurde als seine Auflösung. Und „Meldeschein nachträglich unterschreiben" hat jetzt eine Maske.
+
+**Offen**, alle in Dokument 30 §2.3 und §10: ob deutsche Gäste nach der Reform überhaupt noch einen Schein brauchen (Rechtsfrage je Land und Gemeinde), Familienangehörige nur der Zahl nach, § 29 Abs. 5 als Ersatz der Unterschrift.
 
 ---
 
@@ -865,6 +909,18 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 2. **Überwachung, dass der Worker überhaupt tickt.** `overdueNightAudits` meldet überfällige Nachtläufe; dass der Tick seit einer Stunde steht, meldet nichts.
 3. **Speicher- und CPU-Bedarf des Workers messen**, statt `MemoryMax=4G` und `CPUQuota=150%` zu schätzen.
 4. **Gemeinsamer Zähler für die Ratenbegrenzung**, sobald mehr als ein API-Prozess läuft — dieselbe Aufgabe wie Befund S5 in Dokument 28, einmal aus der Leistungs-, einmal aus der Sicherheitssicht.
+
+---
+
+### Aufgabe 15 — Preissteuerung (Revenue Management) — **erledigt**
+
+**Wo es liegt.** [`32-preissteuerung.md`](32-preissteuerung.md), Migrationen `0065` und `0066`, `apps/api/src/routes/rateSteering.ts`, `apps/worker/src/jobs/rateSteering.ts`, Oberfläche unter Preise → Preissteuerung.
+
+**Was es tut.** Regeln nach Belegung, Vorlauf, Wochentag und Zeitraum setzen Verkaufspreise aus dem **Grundpreis**, nie aus dem zuletzt gesteuerten Preis — `rate_steer_state` merkt sich beides, und das schließt das Aufschaukeln durch Bauart aus. Leitplanken je Plan (Mindest-, Höchstpreis, Rundung, Schrittgrenze), Vorschlagsmodus mit Vorschau und Fingerabdruck, automatischer Modus einmal je Geschäftstag. Quelle je Ratenplan (von Hand, Regeln, externes RMS) trennt interne Regeln von einem RMS über die Schnittstelle. Neues Recht `rate:steer`.
+
+**Mitbehoben.** Die ARI-Änderungsmeldung sah geänderte Preise an schon gepflegten Tagen nie (`updated_at` nur beim Einfügen); abgeleitete Raten folgten erst nach „neu rechnen"; ein Übungshaus gab über ARI Preise hinaus. Preispflege, Neurechnen und Steuerung gehen jetzt über einen Schreibweg (`rate_prices_write`) mit dem neuen Ereignis `rate.changed`.
+
+**Offen.** Restriktionen aus Regeln (etwa Mindestaufenthalt bei hoher Belegung), Leitplanken je Belegungsstufe, ein häufigerer automatischer Lauf. Ob Webhooks eines Übungshauses zugestellt werden sollen (Dokument 32, Abschnitt 13).
 
 ---
 
@@ -894,6 +950,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | Netto aus dem Brutto herausgerechnet und die Steuer wieder daraufgeschlagen | Eine Anzahlung ueber 250,00 Euro stand als 249,99 Euro auf dem Beleg, waehrend das Journal 250,00 fuehrte (Aufgabe 12) |
 | Rundungsdifferenz als Position zu 0 Prozent gebucht | Faellt nach § 14 Abs. 4 Nr. 8 UStG durch die eigene Pflichtangabenpruefung: ohne Befreiungsgrund geht keine Position ohne Steuer. Im Satz der Gruppe wiederum verschiebt eine Position die Steuer der ganzen Gruppe mit und muesste vierzehn Cent gross sein, um einen zu bewegen. Richtig ist BT-114 auf Belegebene (Aufgabe 12) |
 | `sum()` über eine `bigint`-Spalte ohne Cast zurückgegeben | `sum()` liefert `numeric`, und `numeric` kommt als **Zeichenkette** an — mit Absicht, damit nichts still gerundet wird. Eine Centsumme sieht dann richtig aus und rechnet sich falsch, sobald jemand sie addiert: `"100" + 50` ist `"10050"`. Wer eine Summe zurückgibt, castet sie (`::bigint`); `count()` ist die Ausnahme, das ist schon `bigint`. Ein Test in `packages/db` hält beides fest und sieht die Routen durch |
+| Trigramm oder `LIKE` unter einer erzwungenen Zeilenrichtlinie | Nur `LEAKPROOF`-Operatoren dürfen vor der Richtlinie als Indexbedingung laufen; `%`, `LIKE` und `lower()` sind es nicht. Der Index sortiert dann nur noch, gefiltert wird danach — ein Suchbegriff ohne Treffer las alle 60 000 Gäste (240 ms), und der Index auf `public_ref` blieb bei `LIKE 'ABC%'` ungenutzt. Erst begrenzen, dann filtern; Anfänge über `^@` (Migration 0058) |
 | Suchbegriff in der Adresse statt im Rumpf | Die Redaktionsliste von `pino` deckt Kopfzeilen und Rumpf ab, nicht die Adresse — und Fastify protokolliert sie samt Abfragezeichenfolge. `GET /v1/guests?q=Petersen` schreibt damit den Nachnamen eines Gastes ins Protokoll, gegen die eigene Regel, und die Anonymisierung erreicht ihn dort nicht mehr (Befund B2 in Dokument 25) |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).

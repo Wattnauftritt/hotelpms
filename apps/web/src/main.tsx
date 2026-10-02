@@ -6,11 +6,14 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
+import { GastCheckinSeite, checkinAusAdresse } from './routes/GastCheckin.tsx'
 import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
+import { ReservationPanel } from './components/ReservationPanel.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
+import { SprungContext, type Sprungziel } from './lib/suche.js'
 import { LOCALES, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
 import { api } from './lib/api.js'
@@ -91,6 +94,12 @@ function App(): JSX.Element {
    * beim Aufruf, und die aendert sich waehrend dieser beiden Seiten nicht.
    */
   const [zugang] = useState(zugangAusAdresse)
+  /*
+   * Der Online-Check-in des Gastes (Dokument 30) steht aus demselben Grund
+   * hier vorn: wer den Link aus seiner Buchungsmail oeffnet, ist Gast und
+   * hat keinen Zugang -- er braucht auch keinen. Der Link ist der Ausweis.
+   */
+  const [gastCheckin] = useState(checkinAusAdresse)
   const [adresse, setAdresse] = useAdresse()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
@@ -101,6 +110,23 @@ function App(): JSX.Element {
   // Der Arbeitsplatz liegt ueber allem: der Personenwechsel betrifft nicht
   // einen Bildschirm, sondern wer gerade handelt.
   const [arbeitsplatz, setArbeitsplatz] = useState(false)
+  /*
+   * Was die Suche (Strg+K, Schnellsuche im Plan) gewaehlt hat.
+   *
+   * Eine Reservierung oeffnet ihr Seitenfenster **ueber** dem Bildschirm,
+   * auf dem man gerade steht -- dasselbe wie im Plan, nur ohne den Umweg
+   * dorthin. Ein Gast, eine Firma oder ein Befehl fuehrt dagegen auf einen
+   * Bildschirm, und der holt sich beim Aufbau den `auftrag` ab: welches
+   * Profil er oeffnet, ob er mit einer leeren Maske beginnt.
+   *
+   * `sprung` zaehlt die Spruenge mit und steht im inneren `key` des
+   * Bildschirms (der aeussere gehoert dem Haus): wer schon in der
+   * Gaesteliste steht und dort per Strg+K einen anderen Gast waehlt,
+   * bekaeme sonst denselben, eingehaengten Bildschirm mit dem alten Profil.
+   */
+  const [suchReservierung, setSuchReservierung] = useState<string | null>(null)
+  const [auftrag, setAuftrag] = useState<Sprungziel | null>(null)
+  const [sprung, setSprung] = useState(0)
   const qc = useQueryClient()
 
   /*
@@ -145,6 +171,10 @@ function App(): JSX.Element {
     } finally {
       location.replace(location.pathname)
     }
+  }
+
+  if (gastCheckin !== null) {
+    return <GastCheckinSeite token={gastCheckin.token} />
   }
 
   if (zugang !== null) {
@@ -243,6 +273,28 @@ function App(): JSX.Element {
   const erlaubte = visibleScreens(rechte, me.data.isPlatformStaff)
   const screen = resolveScreen(adresse.screen, rechte, me.data.isPlatformStaff)
 
+  const springen = (ziel: Sprungziel): void => {
+    if (ziel.art === 'reservierung') {
+      setSuchReservierung(ziel.ref)
+      return
+    }
+    /*
+     * "Neue Reservierung" fuehrt ins Verfuegbarkeitsraster und nicht in eine
+     * eigene Maske. Die Buchungsmaske braucht eine Zimmergruppe und einen
+     * Tag -- im Plan zieht man sie auf, im Raster klickt man sie an. Eine
+     * dritte Maske, die beides abfragt, waere eine zweite Fassung derselben
+     * Buchung und liefe mit der Zeit auseinander.
+     */
+    const zielBildschirm = ziel.art === 'befehl' && ziel.befehl === 'neueReservierung'
+      ? 'availability' : 'guests'
+    setFolioRef(null)
+    setCheckInRef(null)
+    setSuchReservierung(null)
+    setAuftrag(ziel)
+    setSprung(n => n + 1)
+    setAdresse({ screen: zielBildschirm })
+  }
+
   if (screen === undefined) {
     return <I18nContext.Provider value={locale}>
       <Hinweis><Text k="app.noScreen" params={{ haus: haus.name }} /></Hinweis>
@@ -250,7 +302,8 @@ function App(): JSX.Element {
   }
 
   return (
-    <Shell screen={screen.key} onScreen={k => { setAdresse({ screen: k }) }}
+    <SprungContext.Provider value={{ springen, auftrag }}>
+    <Shell screen={screen.key} onScreen={k => { setAuftrag(null); setAdresse({ screen: k }) }}
            screens={erlaubte}
            locale={locale} onLocale={setLocale}
            benutzer={me.data.displayName}
@@ -274,6 +327,8 @@ function App(): JSX.Element {
               */
              setFolioRef(null)
              setCheckInRef(null)
+             setSuchReservierung(null)
+             setAuftrag(null)
              setAdresse({ property: id, screen: null })
            }}>
       {arbeitsplatz && (
@@ -297,13 +352,30 @@ function App(): JSX.Element {
            * Hauses, und das Seitenfenster fragte danach im neuen.
            */
           : <Fragment key={haus.id}>
-              {screen.render({ propertyId: haus.id, permissions: rechte,
-                               userId: me.data.userId,
-                               platformPermissions: me.data.platformPermissions,
-                               openFolio: setFolioRef,
-                               openCheckIn: setCheckInRef })}
+              <Fragment key={sprung}>
+                {screen.render({ propertyId: haus.id, permissions: rechte,
+                                 userId: me.data.userId,
+                                 platformPermissions: me.data.platformPermissions,
+                                 openFolio: setFolioRef,
+                                 openCheckIn: setCheckInRef })}
+              </Fragment>
             </Fragment>}
+      {/*
+        * Das Seitenfenster einer gesuchten Reservierung. Folio und Check-in
+        * ersetzen den Bildschirm; das Fenster schliesst dabei, sonst laege
+        * es ueber dem Folio, das es gerade geoeffnet hat.
+        */}
+      {suchReservierung !== null && (
+        <ReservationPanel reservationRef={suchReservierung}
+                          onClose={() => setSuchReservierung(null)}
+                          onOpenFolio={ref => { setSuchReservierung(null); setFolioRef(ref) }}
+                          onOpenCheckIn={ref => {
+                            setSuchReservierung(null)
+                            setCheckInRef(ref)
+                          }} />
+      )}
     </Shell>
+    </SprungContext.Provider>
   )
 }
 
