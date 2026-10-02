@@ -5,6 +5,7 @@ import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { useEscape } from '../lib/tasten.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
+import { Detailsuche } from './Detailsuche.tsx'
 import type { ScreenDefinition } from '../screens.js'
 
 export type { Haus }
@@ -315,6 +316,18 @@ export function Shell(props: Props): JSX.Element {
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
           <div className="flex items-center gap-4 px-4 py-2">
             <span className="shrink-0 font-semibold">StayGrid</span>
+            {/*
+              * Die Detailsuche (Strg+K) vorn neben dem Namen und nicht rechts
+              * bei Sprache und Abmelden: sie gehoert zur Arbeit, nicht zum
+              * Konto. Sie schrumpft nicht; die Bildschirmleiste dahinter
+              * rechnet mit dem Platz, der uebrig bleibt. Ohne Haus -- das
+              * Adminpanel ohne Support-Sitzung -- gibt es nichts zu finden.
+              */}
+            {props.haus !== undefined && (
+              <div className="shrink-0">
+                <Detailsuche propertyId={props.haus.id} />
+              </div>
+            )}
             <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
             {/*
               * Die rechte Seite schrumpft nicht und liegt obenauf: was hier

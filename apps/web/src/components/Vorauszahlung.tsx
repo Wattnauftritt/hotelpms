@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import type { DepositInvoice, PaymentLink, PrepaymentSettlement } from '@hotelpms/contracts'
-import { usePrepayments, useIssueDepositInvoice, useCreatePaymentLink,
-         istNichtEingerichtet } from '../lib/queries/billing.js'
-import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
+import type { DepositInvoice, PrepaymentSettlement, PrepaymentView } from '@hotelpms/contracts'
+import { usePrepayments, useIssueDepositInvoice } from '../lib/queries/billing.js'
 import { anzahlungBereit, anzahlungsNutzlast, summeTeile,
          type Steuerart, type Teil } from '../lib/vorauszahlung.js'
 import { newIdempotencyKey } from '../lib/api.js'
-import { useT, useLocale, formatMoney, formatDate, intlTag }
-  from '../lib/i18n/index.js'
+import { useHausrechte } from '../lib/rechte.js'
+import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
+import { Anforderungen } from './Anzahlung.tsx'
+import { ZahlungslinkErzeugen, ZahlungslinkListe } from './Zahlungslink.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -60,6 +60,7 @@ function Inhalt({ folioRef, saldoCent, stand, geschlossen }: {
 }): JSX.Element {
   const t = useT()
   const q = usePrepayments(folioRef, stand)
+  const rechte = useHausrechte(q.data?.propertyId ?? 0)
 
   if (q.isError) return <div className="p-3"><Fehler error={q.error} /></div>
   if (q.data === undefined) {
@@ -69,11 +70,20 @@ function Inhalt({ folioRef, saldoCent, stand, geschlossen }: {
 
   return (
     <div className="border-t border-neutral-200 divide-y divide-neutral-200">
+      {/* Die Anforderung steht oben: sie ist der Grund, aus dem ein Link
+          entsteht und ein Eingang zur Anzahlungsrechnung wird. */}
+      <div className="px-3 py-2">
+        <h4 className="text-xs font-medium text-neutral-600 mb-1">{t('anz.title')}</h4>
+        <Anforderungen folioRef={folioRef} v={v} />
+      </div>
       <Anzahlungen deposits={v.deposits} />
-      {v.canIssueDeposit
-        ? <NeueAnzahlung folioRef={folioRef} settlements={v.settlements} />
-        : <p className="px-3 py-2 text-xs text-neutral-500">{t('vz.dep.blocked')}</p>}
-      <Zahlungslinks folioRef={folioRef} links={v.paymentLinks}
+      {/* Die Anzahlungsrechnung haengt an invoice:issue, nicht an
+          folio:post: wer eine Minibar bucht, stellt noch keine Rechnung aus. */}
+      {!v.canIssueDeposit
+        ? <p className="px-3 py-2 text-xs text-neutral-500">{t('vz.dep.blocked')}</p>
+        : rechte.darf('invoice:issue')
+          && <NeueAnzahlung folioRef={folioRef} settlements={v.settlements} />}
+      <Zahlungslinks folioRef={folioRef} v={v}
                      saldoCent={saldoCent} geschlossen={geschlossen} />
     </div>
   )
@@ -259,101 +269,34 @@ function NeueAnzahlung({ folioRef, settlements }: {
 
 // ---------------------------------------------------------- Zahlungslinks
 
-function Zahlungslinks({ folioRef, links, saldoCent, geschlossen }: {
-  folioRef: string; links: readonly PaymentLink[]; saldoCent: number; geschlossen: boolean
+/**
+ * Alle Links des Folios, und einer ueber einen freien Betrag.
+ *
+ * Ein Link zu einer Anzahlungsanforderung entsteht an der Anforderung; hier
+ * steht der Weg fuer den Rest -- etwa den offenen Saldo vor der Abreise.
+ * Liste und Formular sind dieselben wie an der Anforderung
+ * (`Zahlungslink.tsx`).
+ */
+function Zahlungslinks({ folioRef, v, saldoCent, geschlossen }: {
+  folioRef: string; v: PrepaymentView; saldoCent: number; geschlossen: boolean
 }): JSX.Element {
   const t = useT()
-  const locale = useLocale()
-  const [betrag, setBetrag] = useState(() => saldoCent > 0 ? eingabeAusCent(saldoCent) : '')
-  const [schluessel, setSchluessel] = useState(newIdempotencyKey)
-  const [kopiert, setKopiert] = useState(false)
-  const erzeugen = useCreatePaymentLink(folioRef)
-
-  const cent = centAusEingabe(betrag)
-  const nichtEingerichtet = istNichtEingerichtet(erzeugen.error)
+  const rechte = useHausrechte(v.propertyId)
+  const darfBuchen = rechte.darf('folio:post')
 
   return (
-    <div className="px-3 py-2">
+    <div className="px-3 py-2 space-y-2">
       <h4 className="text-xs font-medium text-neutral-600">{t('vz.link.title')}</h4>
-
-      {links.length === 0
-        ? <p className="mt-1 text-sm text-neutral-400">{t('vz.link.none')}</p>
-        : (
-          <ul className="mt-1 space-y-0.5 text-sm">
-            {links.map(l => (
-              <li key={l.id} className="flex items-baseline gap-2">
-                <span className="text-xs text-neutral-500 tabular-nums">
-                  {new Date(l.createdAt).toLocaleDateString(intlTag(locale))}
-                </span>
-                <span className="tabular-nums">{formatMoney(l.amountCent, locale)}</span>
-                <span className={`text-xs px-1.5 rounded ${
-                  l.status === 'succeeded' ? 'bg-emerald-100 text-emerald-800'
-                  : l.status === 'failed' ? 'bg-red-100 text-red-800'
-                  : 'bg-amber-100 text-amber-800'}`}>
-                  {t(`vz.link.status.${l.status}`)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-      {!geschlossen && (
-        <form className="mt-2 flex items-end gap-2"
-              onSubmit={e => {
-                e.preventDefault()
-                if (cent === null || cent <= 0) return
-                setKopiert(false)
-                erzeugen.mutate({ amountCent: cent, key: schluessel },
-                  { onSuccess: () => { setSchluessel(newIdempotencyKey()) } })
-              }}>
-          <label className="block w-32">
-            <span className="block text-xs text-neutral-600">{t('vz.link.amount')}</span>
-            <input required inputMode="decimal" value={betrag} className={eingabe}
-                   onChange={e => setBetrag(e.target.value)} />
-          </label>
-          <button type="submit" disabled={cent === null || cent <= 0 || erzeugen.isPending}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
-                             disabled:bg-neutral-300">
-            {t('vz.link.create')}
-          </button>
-        </form>
+      <ZahlungslinkListe folioRef={folioRef} links={v.paymentLinks} darfBuchen={darfBuchen} />
+      {!geschlossen && darfBuchen && (
+        <ZahlungslinkErzeugen folioRef={folioRef} v={v} vorschlagCent={saldoCent}
+                              darfPost={rechte.darf('email:send')} />
       )}
-
       {/* Der Hinweis steht immer da, nicht erst nach dem Erzeugen: er ist
           der Grund, warum der Saldo nach dem Verschicken unveraendert
           bleibt. */}
-      <p className="mt-2 text-xs text-neutral-500">{t('vz.link.hint')}</p>
-      <p className="mt-1 text-xs text-neutral-500">{t('vz.link.noCard')}</p>
-
-      {/* Eine fehlende Einrichtung ist kein Fehler der Rezeption. Sie
-          bekommt den Satz, der sagt, was fehlt, statt eine 503. */}
-      {nichtEingerichtet && (
-        <p className="mt-2 text-xs text-amber-800">{t('vz.link.notConfigured')}</p>
-      )}
-      {erzeugen.isError && !nichtEingerichtet && (
-        <div className="mt-2"><Fehler error={erzeugen.error} /></div>
-      )}
-
-      {erzeugen.isSuccess && (
-        <div className="mt-2 p-2 bg-neutral-50 border border-neutral-200 rounded">
-          <span className="block text-xs text-neutral-600">{t('vz.link.address')}</span>
-          <div className="flex items-center gap-2">
-            <input readOnly value={erzeugen.data.url}
-                   onFocus={e => e.currentTarget.select()}
-                   className="grow border border-neutral-300 rounded px-2 py-1 text-xs" />
-            <button type="button"
-                    className="px-2 py-1 text-xs border border-neutral-300 rounded
-                               whitespace-nowrap"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(erzeugen.data.url)
-                        .then(() => setKopiert(true))
-                    }}>
-              {kopiert ? t('vz.link.copied') : t('vz.link.copy')}
-            </button>
-          </div>
-          <p className="mt-1 text-xs text-neutral-500">{t('vz.link.once')}</p>
-        </div>
-      )}
+      <p className="text-xs text-neutral-500">{t('vz.link.hint')}</p>
+      <p className="text-xs text-neutral-500">{t('vz.link.noCard')}</p>
     </div>
   )
 }

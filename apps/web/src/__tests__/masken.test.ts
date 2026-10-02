@@ -35,7 +35,15 @@ describe('Der Rahmen einer Maske', () => {
     const eigene = quellen(SRC)
       .filter(p => readFileSync(p, 'utf8').includes('fixed inset-0'))
       .map(p => p.slice(SRC.length + 1))
-    expect(eigene).toEqual(['components/Dialog.tsx'])
+      .sort()
+    /*
+     * Die eine Ausnahme ist die Detailsuche (Strg+K), und sie ist keine
+     * Maske: kein Titel, keine Knopfleiste, nur ein Feld und eine Liste. Sie
+     * steht oben und nicht in der Mitte, weil die Liste mit jedem Anschlag
+     * waechst und schrumpft -- mittig ausgerichtet sprang das Feld dabei auf
+     * und ab, unter dem Cursor weg.
+     */
+    expect(eigene).toEqual(['components/Detailsuche.tsx', 'components/Dialog.tsx'])
   })
 
   it('haelt die Knopfleiste ausserhalb des rollenden Teils', () => {

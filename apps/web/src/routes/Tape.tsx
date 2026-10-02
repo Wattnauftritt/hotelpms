@@ -19,6 +19,10 @@ import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
 import { VerlaufDialog } from '../components/Verlauf.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
+import { PlanStatusLegende, ZahlungsStand } from '../components/PlanZeichen.tsx'
+import { usePlanReinigung } from '../lib/queries/housekeeping.js'
+import { useHausrechte } from '../lib/rechte.js'
+import { PlanSuche } from '../components/PlanSuche.tsx'
 
 const SPANNEN = [14, 30, 60] as const
 /** Wie viele Schritte Strg+Z zurueckreicht. */
@@ -121,6 +125,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const zuweisen = useAssignUnit()
   const umbuchen = useChangeStay()
   const gruppeVerschieben = useShiftBooking()
+  const reinigung = usePlanReinigung(propertyId)
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
 
@@ -297,6 +302,10 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
+        {/* Die Schnellsuche vorn: sie ist der kuerzeste Weg zu einem Balken,
+            kuerzer als jedes Blaettern daneben. */}
+        <PlanSuche propertyId={propertyId} von={von} bis={bis} onVon={setVon}
+                   onOeffnen={setAusgewaehlt} />
         <DatumsWahl value={von} onChange={setVon} step={7} />
         {/* Monat und Jahr zum Durchklicken. Die Wochenpfeile daneben bleiben:
             im Alltag blaettert die Rezeption wochenweise, im Jahresgeschaeft
@@ -361,7 +370,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                 className="text-sm px-2 py-1 border border-neutral-300 rounded">
           {t('verlauf.title')}
         </button>
-        <Legende />
+        <Legende propertyId={propertyId} />
       </div>
 
       {/*
@@ -386,6 +395,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       {schreibfehler !== null && verlegung === null && zurueck === null && (
         <Fehler error={schreibfehler} />
       )}
+      {/* Der Reinigungsstand fuer sich: `schreibfehler` geht auch in die
+          Maske des Verschiebens, und dort waere er ein fremder Fehler. */}
+      {reinigung.error !== null && <Fehler error={reinigung.error} />}
 
       {/* Der Modus faellt sonst nicht auf, und er nimmt die Rueckfrage vor
           jeder Verschiebung weg. Unter der Leiste und nicht als Kasten:
@@ -473,7 +485,10 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           onClose={() => setAusgewaehlt(null)}
                           onOpenFolio={onFolio}
                           onOpenCheckIn={onCheckIn}
-                          onOpenGroup={setGruppenBuchung} />
+                          onOpenGroup={setGruppenBuchung}>
+          <ZahlungsStand zahlung={daten?.reservations
+            .find(r => r.public_ref === ausgewaehlt)?.payment} />
+        </ReservationPanel>
       )}
 
       {verlegung !== null && daten !== undefined && (
@@ -548,7 +563,11 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                               categoryName: u?.category_name ?? '',
                               maxOccupancy: u?.max_occupancy })
                           }}
-                          onSperren={setSperren} />
+                          onSperren={setSperren}
+                          reinigungsstand={id =>
+                            daten?.units.find(u => u.id === id)?.housekeeping}
+                          onReinigung={(resourceIds, status) =>
+                            reinigung.mutate({ resourceIds, status })} />
       )}
 
       {sperren !== null && (
@@ -632,8 +651,9 @@ function useWarnungen(
   }, [data, kategorien, t, locale])
 }
 
-function Legende(): JSX.Element {
+function Legende({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
+  const rechte = useHausrechte(propertyId)
   const punkte: Array<[string, 'status.Optional' | 'status.Confirmed' | 'status.InHouse']> = [
     ['bg-status-optional', 'status.Optional'],
     ['bg-status-confirmed', 'status.Confirmed'],
@@ -647,6 +667,10 @@ function Legende(): JSX.Element {
           {t(key)}
         </span>
       ))}
+      {/* Nur, was der Benutzer zu sehen bekommt: dieselben Rechte, an
+          denen die Felder im Plan haengen. */}
+      <PlanStatusLegende reinigung={rechte.darf('housekeeping:read')}
+                         zahlung={rechte.darf('folio:read')} />
     </div>
   )
 }

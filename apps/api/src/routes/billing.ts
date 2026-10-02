@@ -12,6 +12,7 @@ import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
   from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
+import { anzahlungssicht } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
@@ -1303,7 +1304,8 @@ export function billingRoutes(app: FastifyInstance): void {
           `SELECT s.id, s.business_date::text AS "businessDate",
                   s.amount_cent AS "amountCent", s.external_reference AS "externalReference",
                   pm.name AS method,
-                  di.public_ref AS "depositInvoiceRef", di.number AS "depositInvoiceNumber"
+                  di.public_ref AS "depositInvoiceRef", di.number AS "depositInvoiceNumber",
+                  dr.public_ref AS "depositRequestRef"
              FROM settlement s
              JOIN payment_method pm ON pm.id = s.payment_method_id
              LEFT JOIN (SELECT settlement_id, min(deposit_invoice_id) AS deposit_invoice_id
@@ -1311,6 +1313,8 @@ export function billingRoutes(app: FastifyInstance): void {
                          WHERE folio_id = $1 AND settlement_id IS NOT NULL
                          GROUP BY settlement_id) d ON d.settlement_id = s.id
              LEFT JOIN invoice di ON di.id = d.deposit_invoice_id
+             LEFT JOIN deposit_request_settlement drs ON drs.settlement_id = s.id
+             LEFT JOIN deposit_request dr ON dr.id = drs.deposit_request_id
             WHERE s.folio_id = $1
             ORDER BY s.id`,
           [folio.id])
@@ -1358,19 +1362,34 @@ export function billingRoutes(app: FastifyInstance): void {
         const links = await client.query(
           `SELECT pi.id, pi.created_at AS "createdAt", pi.amount_cent AS "amountCent",
                   pi.status, pi.settled_at AS "settledAt",
-                  pi.settlement_id IS NOT NULL AS "hasSettlement"
+                  pi.settlement_id IS NOT NULL AS "hasSettlement",
+                  pi.expires_at AS "expiresAt",
+                  -- Die Uhr und nicht der Geschaeftstag: der Anbieter nimmt
+                  -- den Link bis zu einem Zeitpunkt an, nicht bis zu einem Tag.
+                  (pi.status = 'pending' AND pi.expires_at IS NOT NULL
+                   AND pi.expires_at <= now()) AS expired,
+                  dr.public_ref AS "depositRequestRef",
+                  e.status AS "mailStatus"
              FROM payment_intent pi
+             LEFT JOIN deposit_request dr ON dr.id = pi.deposit_request_id
+             LEFT JOIN outbound_email e ON e.id = pi.email_id
             WHERE pi.folio_id = $1 AND pi.property_id = $2
             ORDER BY pi.id DESC
             LIMIT 20`,
           [folio.id, folio.property_id])
 
+        // Anforderungen, Geschaeftstag und Postbereitschaft: eine feste
+        // Zahl weiterer Abfragen, keine je Anforderung.
+        const anzahlung = await anzahlungssicht(client, folio)
+
         return {
           folioRef,
+          propertyId: folio.property_id,
           // Ohne Reservierung fehlt der Leistungszeitraum nach
           // Paragraph 14 Abs. 4 Nr. 6 UStG, und die Anzahlungsrechnung wird
           // abgewiesen. Die Maske sagt das vorher statt hinterher.
           canIssueDeposit: folio.reservation_id !== null && folio.status === 'open',
+          ...anzahlung,
           settlements: settlements.rows,
           deposits: deposits.rows,
           paymentLinks: links.rows

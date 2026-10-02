@@ -14,7 +14,11 @@ export const WEBHOOK_EVENT_TYPES = [
   'reservation.canceled',
   'reservation.checked_in',
   'reservation.checked_out',
-  'invoice.finalized'
+  'invoice.finalized',
+  // Verkaufspreise geaendert, von Hand, durch die Preissteuerung oder durch
+  // Neurechnen abgeleiteter Raten (Migration 0066). Ein Ereignis je
+  // Schreibvorgang, nicht je Tag; die Werte holt der Empfaenger ueber ARI.
+  'rate.changed'
 ] as const
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number]

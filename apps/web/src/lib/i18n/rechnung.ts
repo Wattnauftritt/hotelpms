@@ -344,6 +344,269 @@ export const rechnung = {
     de: 'fehlgeschlagen',
     en: 'failed',
     tr: 'başarısız' },
+  'vz.link.status.canceled': {
+    de: 'ungültig gemacht',
+    en: 'invalidated',
+    tr: 'geçersiz kılındı' },
+  'vz.link.status.expired': {
+    de: 'abgelaufen',
+    en: 'expired',
+    tr: 'süresi doldu' },
+  'vz.link.validUntil': {
+    de: 'gültig bis {time}',
+    en: 'valid until {time}',
+    tr: '{time} tarihine kadar geçerli' },
+  'vz.link.cancel': {
+    de: 'Ungültig machen',
+    en: 'Invalidate',
+    tr: 'Geçersiz kıl' },
+  'vz.link.cancelConfirm': {
+    de: 'Diesen Zahlungslink beim Zahlungsdienstleister ungültig machen? '
+      + 'Der Gast kann ihn danach nicht mehr bezahlen.',
+    en: 'Invalidate this payment link at the payment provider? The guest can '
+      + 'no longer pay with it afterwards.',
+    tr: 'Bu ödeme bağlantısı ödeme sağlayıcısında geçersiz kılınsın mı? Misafir '
+      + 'bundan sonra onunla ödeme yapamaz.' },
+  'vz.link.send': {
+    de: 'per E-Mail an den Gast schicken',
+    en: 'email it to the guest',
+    tr: 'misafire e-postayla gönder' },
+  'vz.link.sendHint': {
+    de: 'Verschicken geht nur jetzt, beim Erzeugen: die Adresse des Links wird '
+      + 'nicht gespeichert und lässt sich später nicht noch einmal schicken. Die '
+      + 'Mail geht an den Gast der Reservierung, in seiner Sprache.',
+    en: 'Sending is only possible now, while creating: the link address is not '
+      + 'stored and cannot be sent again later. The email goes to the guest of '
+      + 'the reservation, in their language.',
+    tr: 'Gönderim yalnızca şimdi, oluştururken mümkündür: bağlantı adresi '
+      + 'saklanmaz ve daha sonra yeniden gönderilemez. E-posta, rezervasyonun '
+      + 'misafirine kendi dilinde gider.' },
+  'vz.link.mailed': {
+    de: 'Die Mail an den Gast ist eingereiht.',
+    en: 'The email to the guest has been queued.',
+    tr: 'Misafire e-posta kuyruğa alındı.' },
+  'vz.link.mail.training': {
+    de: 'Ein Übungshaus verschickt keine Gastpost.',
+    en: 'A training property sends no guest mail.',
+    tr: 'Eğitim tesisi misafir postası göndermez.' },
+  'vz.link.mail.noRight': {
+    de: 'Zum Verschicken fehlt das Recht auf Gastpost. Der Link lässt sich '
+      + 'trotzdem erzeugen und kopieren.',
+    en: 'You lack the right to send guest mail. The link can still be created '
+      + 'and copied.',
+    tr: 'Göndermek için misafir postası yetkiniz yok. Bağlantı yine de '
+      + 'oluşturulup kopyalanabilir.' },
+  'vz.link.mail.disabled': {
+    de: 'Gastpost ist für dieses Haus nicht eingeschaltet (Einstellungen, '
+      + 'Gastpost). Den Link kopieren und selbst weitergeben.',
+    en: 'Guest mail is not switched on for this property (Settings, guest '
+      + 'mail). Copy the link and pass it on yourself.',
+    tr: 'Bu tesis için misafir postası açık değil (Ayarlar, misafir postası). '
+      + 'Bağlantıyı kopyalayıp kendiniz iletin.' },
+  'vz.link.mail.sender': {
+    de: 'Die Absenderdomain ist noch nicht freigeschaltet. Ohne sie landete '
+      + 'die Mail beim Gast im Werbeordner, ohne dass es jemand merkt.',
+    en: 'The sender domain is not activated yet. Without it the email would '
+      + 'land in the guest’s spam folder unnoticed.',
+    tr: 'Gönderen alan adı henüz etkinleştirilmedi. O olmadan e-posta '
+      + 'misafirin istenmeyen klasörüne düşer ve kimse fark etmez.' },
+  'vz.link.mail.noAddress': {
+    de: 'Der Gast der Reservierung hat keine brauchbare E-Mail-Adresse.',
+    en: 'The guest of the reservation has no usable email address.',
+    tr: 'Rezervasyonun misafirinin kullanılabilir bir e-posta adresi yok.' },
+  'vz.link.mail.pending': {
+    de: 'Mail eingereiht',
+    en: 'email queued',
+    tr: 'e-posta kuyrukta' },
+  'vz.link.mail.sent': {
+    de: 'Mail verschickt',
+    en: 'email sent',
+    tr: 'e-posta gönderildi' },
+  'vz.link.mail.failed': {
+    de: 'Mail fehlgeschlagen',
+    en: 'email failed',
+    tr: 'e-posta başarısız' },
+  'vz.link.mail.canceled': {
+    de: 'Mail zurückgezogen',
+    en: 'email withdrawn',
+    tr: 'e-posta geri çekildi' },
+  'vz.link.training': {
+    de: 'Ein Übungshaus erzeugt keinen Zahlungslink: er führte zu einem echten '
+      + 'Zahlungsdienstleister, und ein Gast könnte echtes Geld auf eine '
+      + 'Übungsbuchung zahlen.',
+    en: 'A training property creates no payment link: it would lead to a real '
+      + 'payment provider, and a guest could pay real money for a practice '
+      + 'booking.',
+    tr: 'Eğitim tesisi ödeme bağlantısı oluşturmaz: bağlantı gerçek bir ödeme '
+      + 'sağlayıcısına gider ve bir misafir alıştırma rezervasyonu için gerçek '
+      + 'para ödeyebilir.' },
+  'vz.reload': {
+    de: 'Stand nachladen',
+    en: 'Reload status',
+    tr: 'Durumu yenile' },
+
+  // Anzahlung anfordern (Migration 0060)
+  'anz.title': {
+    de: 'Anzahlung',
+    en: 'Deposit',
+    tr: 'Ön ödeme' },
+  'anz.none': {
+    de: 'Keine Anzahlung angefordert.',
+    en: 'No deposit requested.',
+    tr: 'Ön ödeme talep edilmedi.' },
+  'anz.new': {
+    de: 'Anzahlung anfordern',
+    en: 'Request a deposit',
+    tr: 'Ön ödeme talep et' },
+  'anz.mode.percent': {
+    de: 'Prozent des Aufenthalts',
+    en: 'percentage of the stay',
+    tr: 'konaklamanın yüzdesi' },
+  'anz.mode.amount': {
+    de: 'fester Betrag',
+    en: 'fixed amount',
+    tr: 'sabit tutar' },
+  'anz.percent': {
+    de: 'Prozent',
+    en: 'Percent',
+    tr: 'Yüzde' },
+  'anz.amount': {
+    de: 'Betrag',
+    en: 'Amount',
+    tr: 'Tutar' },
+  'anz.due': {
+    de: 'Fällig am',
+    en: 'Due on',
+    tr: 'Vade tarihi' },
+  'anz.create': {
+    de: 'Anfordern',
+    en: 'Request',
+    tr: 'Talep et' },
+  'anz.preview': {
+    de: '{percent} % von {stay} = {amount}',
+    en: '{percent} % of {stay} = {amount}',
+    tr: '{stay} tutarının %{percent} kadarı = {amount}' },
+  'anz.roundingHint': {
+    de: 'Abgerundet auf den Cent: die Forderung liegt nie über dem vereinbarten '
+      + 'Anteil, und bei 100 % ist sie genau der Aufenthalt.',
+    en: 'Rounded down to the cent: the request never exceeds the agreed share, '
+      + 'and at 100 % it is exactly the stay.',
+    tr: 'Kuruşa aşağı yuvarlanır: talep hiçbir zaman kararlaştırılan payı '
+      + 'aşmaz ve %100 olduğunda tam olarak konaklama tutarıdır.' },
+  'anz.dueHint': {
+    de: 'Überfällig wird die Anforderung am Geschäftstag nach diesem Datum — '
+      + 'mit dem Nachtlauf, nicht um Mitternacht.',
+    en: 'The request becomes overdue on the business day after this date — with '
+      + 'the night audit, not at midnight.',
+    tr: 'Talep, bu tarihten sonraki iş gününde gecikmiş olur — gece kapanışıyla, '
+      + 'gece yarısı değil.' },
+  'anz.blocked': {
+    de: 'Eine Anzahlung braucht eine Reservierung, die weder storniert noch '
+      + 'abgereist ist, und ein offenes Folio.',
+    en: 'A deposit needs a reservation that is neither cancelled nor checked '
+      + 'out, and an open folio.',
+    tr: 'Ön ödeme, iptal edilmemiş ve ayrılmamış bir rezervasyon ile açık bir '
+      + 'folio gerektirir.' },
+  'anz.trainingHint': {
+    de: 'Übungshaus: Anforderungen lassen sich üben, aber es entsteht kein '
+      + 'Zahlungslink und es geht keine Gastpost hinaus. Ein Link führte zu einem '
+      + 'echten Zahlungsdienstleister.',
+    en: 'Training property: requests can be practised, but no payment link is '
+      + 'created and no guest mail goes out. A link would lead to a real payment '
+      + 'provider.',
+    tr: 'Eğitim tesisi: talepler denenebilir, ancak ödeme bağlantısı oluşmaz ve '
+      + 'misafir postası gönderilmez. Bağlantı gerçek bir ödeme sağlayıcısına '
+      + 'giderdi.' },
+  'anz.state.requested': {
+    de: 'angefordert',
+    en: 'requested',
+    tr: 'talep edildi' },
+  'anz.state.link_sent': {
+    de: 'Link verschickt',
+    en: 'link sent',
+    tr: 'bağlantı gönderildi' },
+  'anz.state.partial': {
+    de: 'teilweise bezahlt',
+    en: 'partly paid',
+    tr: 'kısmen ödendi' },
+  'anz.state.received': {
+    de: 'eingegangen',
+    en: 'received',
+    tr: 'tahsil edildi' },
+  'anz.state.overdue': {
+    de: 'überfällig',
+    en: 'overdue',
+    tr: 'gecikmiş' },
+  'anz.state.canceled': {
+    de: 'zurückgezogen',
+    en: 'withdrawn',
+    tr: 'geri çekildi' },
+  'anz.percentOf': {
+    de: '{percent} % von {stay}',
+    en: '{percent} % of {stay}',
+    tr: '{stay} tutarının %{percent} kadarı' },
+  'anz.dueOn': {
+    de: 'fällig {date}',
+    en: 'due {date}',
+    tr: 'vade {date}' },
+  'anz.receivedOf': {
+    de: 'eingegangen {received} von {amount}',
+    en: 'received {received} of {amount}',
+    tr: '{amount} tutarının {received} kadarı tahsil edildi' },
+  'anz.invoiceMissing': {
+    de: 'Eingegangen, aber noch ohne Anzahlungsrechnung. Die Steuer ist mit dem '
+      + 'Zahlungseingang entstanden (§ 13 Abs. 1 Nr. 1a UStG); ohne die Rechnung '
+      + 'steht sie in keinem Buchungsstapel.',
+    en: 'Received, but without a deposit invoice yet. The tax arose with the '
+      + 'payment (§ 13 (1) no. 1a UStG); without the invoice it is in no '
+      + 'booking batch.',
+    tr: 'Tahsil edildi, ancak henüz ön ödeme faturası yok. Vergi, ödemenin '
+      + 'alınmasıyla doğdu (§ 13 Abs. 1 Nr. 1a UStG); fatura olmadan hiçbir '
+      + 'muhasebe aktarımında yer almaz.' },
+  'anz.issueInvoice': {
+    de: 'Anzahlungsrechnung ausstellen',
+    en: 'Issue deposit invoice',
+    tr: 'Ön ödeme faturası düzenle' },
+  'anz.issueHint': {
+    de: 'Die Steuersätze werden aus dem Aufenthalt abgeleitet. Wer selbst '
+      + 'aufteilen will, nimmt die Vorauszahlung im Folio.',
+    en: 'The tax rates are derived from the stay. To split them yourself, use '
+      + 'the prepayment section of the folio.',
+    tr: 'Vergi oranları konaklamadan türetilir. Kendiniz bölmek isterseniz '
+      + 'folionun ön ödeme bölümünü kullanın.' },
+  'anz.link': {
+    de: 'Zahlungslink',
+    en: 'Payment link',
+    tr: 'Ödeme bağlantısı' },
+  'anz.assign': {
+    de: 'Zahlungseingang zuordnen',
+    en: 'Assign payment',
+    tr: 'Tahsilatı ata' },
+  'anz.assignDo': {
+    de: 'Zuordnen',
+    en: 'Assign',
+    tr: 'Ata' },
+  'anz.assignNone': {
+    de: 'Auf diesem Folio gibt es keinen freien Zahlungseingang.',
+    en: 'There is no unassigned payment on this folio.',
+    tr: 'Bu folioda atanmamış tahsilat yok.' },
+  'anz.assignHint': {
+    de: 'Für Überweisung oder Barzahlung: erst im Folio vermerken, dann hier '
+      + 'zuordnen. Ein Eingang über den Zahlungslink ordnet sich selbst zu.',
+    en: 'For a bank transfer or cash: record it on the folio first, then assign '
+      + 'it here. A payment through the link assigns itself.',
+    tr: 'Havale veya nakit için: önce folioya kaydedin, sonra burada atayın. '
+      + 'Ödeme bağlantısıyla gelen tahsilat kendiliğinden atanır.' },
+  'anz.withdraw': {
+    de: 'Zurückziehen',
+    en: 'Withdraw',
+    tr: 'Geri çek' },
+  'anz.withdrawConfirm': {
+    de: 'Anzahlungsanforderung zurückziehen? Bereits Eingegangenes bleibt auf '
+      + 'dem Folio.',
+    en: 'Withdraw the deposit request? Anything already received stays on the '
+      + 'folio.',
+    tr: 'Ön ödeme talebi geri çekilsin mi? Tahsil edilmiş olan folioda kalır.' },
   'vz.link.notConfigured': {
     de: 'Es ist kein Zahlungsdienstleister eingerichtet. '
       + 'Ohne ihn gibt es keinen Zahlungslink; eine Garantie läuft '
