@@ -256,6 +256,14 @@ const M = {
     de: 'Zahlungsvermerk',
     en: 'Settlement',
     tr: 'Ödeme kaydı' },
+  'res.depositRequest': {
+    de: 'Anzahlungsanforderung',
+    en: 'Deposit request',
+    tr: 'Ön ödeme talebi' },
+  'res.paymentLink': {
+    de: 'Zahlungslink',
+    en: 'Payment link',
+    tr: 'Ödeme bağlantısı' },
   'res.paymentMethod': {
     de: 'Zahlungsart',
     en: 'Payment method',
@@ -539,6 +547,14 @@ const M = {
     de: 'Der Zahlungsvermerk ist kein Zahlungseingang.',
     en: 'That settlement is not an incoming payment.',
     tr: 'Ödeme kaydı bir tahsilat değil.' },
+  'field.amountOrPercent': {
+    de: 'Entweder einen Betrag oder einen Prozentsatz angeben, nicht beides.',
+    en: 'Give either an amount or a percentage, not both.',
+    tr: 'Ya bir tutar ya da bir yüzde verin, ikisini birden değil.' },
+  'field.percentBp': {
+    de: 'Muss ein Satz in Basispunkten zwischen 1 und 10000 sein (3000 = 30 %).',
+    en: 'Must be a rate in basis points between 1 and 10000 (3000 = 30 %).',
+    tr: '1 ile 10000 arasında baz puan cinsinden bir oran olmalı (3000 = %30).' },
   'field.originalDocumentNumber': {
     de: 'Belegnummer des Originals',
     en: 'Document number of the original',
@@ -764,6 +780,16 @@ const M = {
     de: 'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.',
     en: 'A training property sends no email. Sending stays switched off.',
     tr: 'Eğitim tesisi e-posta göndermez. Gönderim kapalı kalır.' },
+  'training.noPaymentLink': {
+    de: 'Ein Uebungshaus erzeugt keinen Zahlungslink. Der Link fuehrte zu einem '
+      + 'echten Zahlungsdienstleister, und ein Gast koennte echtes Geld auf eine '
+      + 'Uebungsbuchung zahlen.',
+    en: 'A training property creates no payment link. The link would lead to a '
+      + 'real payment provider, and a guest could pay real money for a practice '
+      + 'booking.',
+    tr: 'Eğitim tesisi ödeme bağlantısı oluşturmaz. Bağlantı gerçek bir ödeme '
+      + 'sağlayıcısına gider ve bir misafir alıştırma rezervasyonu için gerçek '
+      + 'para ödeyebilir.' },
 
   // ------------------------------------------------- Folio, Rechnung, Geld
 
@@ -822,6 +848,71 @@ const M = {
     de: 'Die Anzahlungsrechnung erfüllt die Pflichtangaben nicht: {maengel}',
     en: 'The deposit invoice does not meet the mandatory particulars: {maengel}',
     tr: 'Ön ödeme faturası zorunlu bilgileri karşılamıyor: {maengel}' },
+  'deposit.reservationNotOpen': {
+    de: 'Fuer eine stornierte, nicht angereiste oder abgereiste Reservierung '
+      + 'wird keine Anzahlung mehr angefordert.',
+    en: 'No deposit is requested for a cancelled, no-show or checked-out '
+      + 'reservation.',
+    tr: 'İptal edilmiş, gelmemiş veya ayrılmış bir rezervasyon için artık ön '
+      + 'ödeme talep edilmez.' },
+  'deposit.noStayPrice': {
+    de: 'Der Aufenthalt hat keinen Preis, aus dem sich ein Prozentsatz rechnen '
+      + 'liesse. Bitte einen Betrag angeben.',
+    en: 'The stay has no price to calculate a percentage from. Please give an '
+      + 'amount.',
+    tr: 'Konaklamanın yüzde hesaplanabilecek bir fiyatı yok. Lütfen bir tutar '
+      + 'verin.' },
+  'deposit.requestExceedsStay': {
+    de: 'Zusammen mit den offenen Anforderungen waeren {requested} Cent '
+      + 'gefordert, der Aufenthalt kostet {stay} Cent. Mehr als den Aufenthalt '
+      + 'anzufordern ist fast immer ein Tippfehler.',
+    en: 'Together with the open requests, {requested} cents would be '
+      + 'requested; the stay costs {stay} cents. Requesting more than the stay '
+      + 'is almost always a typo.',
+    tr: 'Açık taleplerle birlikte {requested} kuruş talep edilmiş olur, '
+      + 'konaklama {stay} kuruş tutuyor. Konaklamadan fazlasını talep etmek '
+      + 'neredeyse her zaman bir yazım hatasıdır.' },
+  'deposit.dueBeforeBusinessDay': {
+    de: 'Die Faelligkeit liegt vor dem Geschaeftstag {businessDate}. Eine '
+      + 'Anforderung waere damit schon bei der Anlage ueberfaellig.',
+    en: 'The due date is before the business day {businessDate}. The request '
+      + 'would be overdue the moment it is created.',
+    tr: 'Vade tarihi {businessDate} iş gününden önce. Talep oluşturulduğu anda '
+      + 'gecikmiş olurdu.' },
+  'deposit.dueAfterDeparture': {
+    de: 'Die Faelligkeit liegt nach der Abreise am {departure}. Was nach der '
+      + 'Abreise faellig wird, ist keine Anzahlung, sondern die Rechnung.',
+    en: 'The due date is after departure on {departure}. What falls due after '
+      + 'departure is not a deposit but the invoice.',
+    tr: 'Vade tarihi {departure} tarihindeki ayrılıştan sonra. Ayrılıştan sonra '
+      + 'vadesi gelen şey ön ödeme değil, faturadır.' },
+  'deposit.requestCanceled': {
+    de: 'Diese Anforderung ist zurueckgezogen.',
+    en: 'This request has been withdrawn.',
+    tr: 'Bu talep geri çekilmiş.' },
+  'deposit.requestFulfilled': {
+    de: 'Diese Anforderung ist bereits vollstaendig bezahlt.',
+    en: 'This request has already been paid in full.',
+    tr: 'Bu talep zaten tamamen ödenmiş.' },
+  'deposit.requestHasOpenLink': {
+    de: 'Zu dieser Anforderung ist noch ein Zahlungslink offen. Erst den Link '
+      + 'ungueltig machen -- sonst kann der Gast eine zurueckgezogene Forderung '
+      + 'noch bezahlen.',
+    en: 'A payment link for this request is still open. Invalidate the link '
+      + 'first -- otherwise the guest can still pay a withdrawn request.',
+    tr: 'Bu talep için hâlâ açık bir ödeme bağlantısı var. Önce bağlantıyı '
+      + 'geçersiz kılın -- aksi halde misafir geri çekilmiş bir talebi yine de '
+      + 'ödeyebilir.' },
+  'deposit.settlementAlreadyAssigned': {
+    de: 'Dieser Zahlungseingang ist bereits einer anderen Anforderung zugeordnet.',
+    en: 'This payment is already assigned to another request.',
+    tr: 'Bu tahsilat zaten başka bir talebe atanmış.' },
+  'deposit.linkExceedsOpen': {
+    de: 'Der Link ueber {amount} Cent uebersteigt den offenen Rest der '
+      + 'Anforderung von {open} Cent.',
+    en: 'The link for {amount} cents exceeds the open remainder of the request, '
+      + '{open} cents.',
+    tr: '{amount} kuruşluk bağlantı, talebin {open} kuruşluk açık kalanını aşıyor.' },
 
   // ------------------------------------------------------------ Kontingent
 
@@ -919,6 +1010,20 @@ const M = {
     de: 'Nur eine noch nicht abgeschickte Nachricht laesst sich zurueckziehen.',
     en: 'Only a message that has not gone out yet can be withdrawn.',
     tr: 'Yalnızca henüz gönderilmemiş bir mesaj geri çekilebilir.' },
+  'mail.sendingDisabled': {
+    de: 'Der E-Mail-Versand ist fuer dieses Haus nicht eingeschaltet '
+      + '(Einstellungen, Gastpost).',
+    en: 'Email sending is not switched on for this property (Settings, guest '
+      + 'mail).',
+    tr: 'Bu tesis için e-posta gönderimi açık değil (Ayarlar, misafir postası).' },
+  'mail.senderNotActive': {
+    de: 'Die Absenderadresse ist durch keine freigeschaltete Domain gedeckt. '
+      + 'Ohne sie landete die Post beim Gast im Werbeordner, ohne dass es '
+      + 'jemand merkt.',
+    en: 'The sender address is not covered by an activated domain. Without one '
+      + 'the mail would land in the guest\u2019s spam folder unnoticed.',
+    tr: 'Gönderen adresi etkinleştirilmiş bir alan adıyla karşılanmıyor. O '
+      + 'olmadan posta misafirin istenmeyen klasörüne düşer ve kimse fark etmez.' },
 
   // -------------------------------------------- Absenderdomain der Gastpost
 
@@ -1181,6 +1286,25 @@ const M = {
     de: 'STRIPE_WEBHOOK_SECRET ist nicht gesetzt.',
     en: 'STRIPE_WEBHOOK_SECRET is not set.',
     tr: 'STRIPE_WEBHOOK_SECRET tanımlı değil.' },
+  'payments.linkNotOpen': {
+    de: 'Dieser Zahlungslink ist nicht mehr offen.',
+    en: 'This payment link is no longer open.',
+    tr: 'Bu ödeme bağlantısı artık açık değil.' },
+  'payments.linkNotCancelable': {
+    de: 'Der Zahlungsdienstleister nimmt den Link nicht mehr zurueck. Meist ist '
+      + 'er gerade bezahlt worden oder schon abgelaufen; bitte den Stand '
+      + 'nachladen.',
+    en: 'The payment provider no longer withdraws the link. Usually it has just '
+      + 'been paid or has already expired; please reload the status.',
+    tr: 'Ödeme sağlayıcısı bağlantıyı artık geri almıyor. Genellikle az önce '
+      + 'ödenmiş veya süresi dolmuştur; lütfen durumu yeniden yükleyin.' },
+  'payments.providerUnavailable': {
+    de: 'Der Zahlungsdienstleister ist gerade nicht erreichbar. Nichts wurde '
+      + 'geaendert; bitte spaeter erneut versuchen.',
+    en: 'The payment provider cannot be reached right now. Nothing was changed; '
+      + 'please try again later.',
+    tr: 'Ödeme sağlayıcısına şu anda ulaşılamıyor. Hiçbir şey değiştirilmedi; '
+      + 'lütfen daha sonra tekrar deneyin.' },
 
   // ------------------------------------------------ Hinweise in Antworten
   //
