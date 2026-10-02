@@ -131,7 +131,48 @@ describe('Inlaendische Gaeste', () => {
    */
   it('bietet nur an, was die Schnittstelle anbietet', () => {
     const am = code('../components/AmTerminal.tsx')
-    expect(am).toMatch(/offers\.map\(kind =>/)
-    expect(am).not.toMatch(/isForeign|country/)
+    expect(am).toMatch(/offers\.filter\(/)
+    expect(am).not.toMatch(/isForeign|country|nationality/)
+  })
+})
+
+describe('Ein allgemeiner Anzeige-Client, kein Scheunentor', () => {
+  it('hat fuer jede Art der Schnittstelle eine Ansicht', () => {
+    for (const art of ['registration_fill', 'registration_sign', 'terms_sign', 'content', 'url']) {
+      expect(terminal, art).toMatch(new RegExp(`\\b${art}: [A-Z]\\w+`))
+    }
+  })
+
+  it('setzt den Text einer Seite nie als HTML', () => {
+    for (const datei of ['../components/Inhaltstext.tsx', '../routes/Terminal.tsx',
+                         '../components/TerminalInhalte.tsx']) {
+      expect(code(datei), datei).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
+    }
+  })
+
+  it('laesst eine fremde Seite das Terminal nicht verlassen', () => {
+    const funde = [...terminal.matchAll(/<iframe[^>]*sandbox="([^"]*)"/g)].map(m => m[1]!)
+    expect(funde).toHaveLength(1)
+    for (const f of funde) {
+      expect(f).not.toMatch(/allow-top-navigation|allow-popups|allow-downloads|allow-modals/)
+    }
+    // Die Adresse kommt aus der Antwort auf den Auftrag, nie aus einer Eingabe.
+    expect(terminal).toMatch(/src=\{d\.url\}/)
+  })
+
+  it('bettet das Meldeformular des Online-Check-ins ein, statt ein zweites zu bauen', () => {
+    expect(terminal).toContain("from './GastCheckin.tsx'")
+    expect(terminal).toMatch(/<GastCheckin token=\{token\} modus="terminal"/)
+  })
+
+  it('holt die Diashow, aber nie in der Frage nach dem Auftrag', () => {
+    expect(terminal).toContain("'/v1/terminal/idle'")
+    const runde = terminal.slice(terminal.indexOf('const runde = async'))
+    expect(runde.slice(0, runde.indexOf('void runde()'))).not.toContain('/v1/terminal/idle')
+  })
+
+  it('zeigt das Bedienfeld nur mit dem Recht zum Einchecken', () => {
+    expect(code('../screens.tsx')).toMatch(
+      /key: 'terminal', nav: 'nav\.terminal', permission: 'reservation:checkin'/)
   })
 })

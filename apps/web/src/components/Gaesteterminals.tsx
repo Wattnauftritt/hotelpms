@@ -4,6 +4,7 @@ import { useT, useLocale, intlTag, type Locale } from '../lib/i18n/index.js'
 import { useTerminals, useCreateTerminal, useRepairTerminal, useRevokeTerminal,
          type Kopplungscode } from '../lib/queries/terminal.js'
 import { Fehler, Laedt } from './Shell.tsx'
+import { TerminalInhalte } from './TerminalInhalte.tsx'
 
 /**
  * Einstellungen → Gaesteterminals (Dokument 31).
@@ -129,6 +130,9 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
               </li>
             ))}
           </ul>}
+
+      {/* Was die Terminals zeigen duerfen: Seiten, Diashow, Adressen. */}
+      <TerminalInhalte propertyId={propertyId} />
     </div>
   )
 }

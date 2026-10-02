@@ -124,6 +124,9 @@ async function auftrag(deviceRef: string, reservationRef: string,
     payload: { deviceRef, reservationRef, kind } })
 }
 
+const arten = (offers: unknown): string[] =>
+  (offers as Array<{ kind: string }>).map(o => o.kind)
+
 const abfragen = (secret: string) =>
   app.inject({ method: 'GET', url: '/v1/terminal/job', headers: geraet(secret) })
 
@@ -343,7 +346,7 @@ describe('Auftraege', () => {
     const stand = await app.inject({ method: 'GET',
       url: `/v1/reservations/${ref}/terminal`, headers: chef })
     expect(stand.statusCode).toBe(200)
-    expect(json(stand).offers).toEqual([])
+    expect(arten(json(stand).offers)).not.toContain('registration_sign')
 
     const r = await auftrag(t.deviceRef, ref)
     expect(r.statusCode).toBe(422)
@@ -358,12 +361,13 @@ describe('Auftraege', () => {
     expect(json(r).code).toBe('terminal.noRegistration')
   })
 
-  it('haelt das Meldeformular zurueck, bis es angebunden ist', async () => {
+  it('nimmt das Meldeformular nur ohne vorhandenen Schein an', async () => {
     const t = await terminal()
     const ref = await reservierung(await gast('Jansen'))
+    await melden(ref)
     const r = await auftrag(t.deviceRef, ref, 'registration_fill')
-    expect(r.statusCode).toBe(422)
-    expect(json(r).code).toBe('terminal.kindUnavailable')
+    expect(r.statusCode).toBe(409)
+    expect(json(r).code).toBe('registration.alreadyExists')
   })
 })
 
@@ -375,7 +379,8 @@ describe('Unterschrift am Terminal', () => {
 
     const stand0 = await app.inject({ method: 'GET',
       url: `/v1/reservations/${ref}/terminal`, headers: chef })
-    expect(json(stand0).offers).toEqual(['registration_sign'])
+    expect(json(stand0).offers).toContainEqual({ kind: 'registration_sign' })
+    expect(json(stand0).offers).not.toContainEqual({ kind: 'registration_fill' })
     expect((json(stand0).terminals as unknown[]).length).toBe(1)
 
     const a = await auftrag(t.deviceRef, ref)
@@ -418,7 +423,7 @@ describe('Unterschrift am Terminal', () => {
     const stand2 = await app.inject({ method: 'GET',
       url: `/v1/reservations/${ref}/terminal`, headers: chef })
     expect((json(stand2).job as { state: string }).state).toBe('done')
-    expect(json(stand2).offers).toEqual([])
+    expect(arten(json(stand2).offers)).not.toContain('registration_sign')
     expect(json(await abfragen(t.secret)).job).toBeNull()
 
     // Im Protokoll steht das Geraet als Handelnder, kein Benutzer -- und

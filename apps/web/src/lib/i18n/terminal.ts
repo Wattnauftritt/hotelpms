@@ -102,6 +102,34 @@ export const terminal = {
     de: 'Meldeformular am Terminal ausfüllen',
     en: 'Fill in registration form at the terminal',
     tr: 'Kayıt formunu terminalde doldurt' },
+  'terminal.send.terms_sign': {
+    de: 'Hausbedingung „{titel}“ am Terminal',
+    en: 'House terms "{titel}" at the terminal',
+    tr: '„{titel}“ tesis koşulları terminalde' },
+  'terminal.showContent': {
+    de: 'Am Terminal zeigen',
+    en: 'Show at the terminal',
+    tr: 'Terminalde göster' },
+  'terminal.kind.registration_fill': {
+    de: 'Meldeformular',
+    en: 'Registration form',
+    tr: 'Kayıt formu' },
+  'terminal.kind.registration_sign': {
+    de: 'Unterschrift Meldeschein',
+    en: 'Meldeschein signature',
+    tr: 'Meldeschein imzası' },
+  'terminal.kind.terms_sign': {
+    de: 'Hausbedingung',
+    en: 'House terms',
+    tr: 'Tesis koşulları' },
+  'terminal.kind.content': {
+    de: 'Seite',
+    en: 'Page',
+    tr: 'Sayfa' },
+  'terminal.kind.url': {
+    de: 'Externe Seite',
+    en: 'External page',
+    tr: 'Harici sayfa' },
   'terminal.chooseDevice': {
     de: 'An welches Terminal?',
     en: 'To which terminal?',
@@ -292,6 +320,175 @@ export const terminal = {
     de: 'Die Rezeption kümmert sich um alles Weitere.',
     en: 'The front desk will take care of the rest.',
     tr: 'Gerisini resepsiyon halledecek.' },
+  'kiosk.done': {
+    de: 'Fertig',
+    en: 'Done',
+    tr: 'Tamam' },
+  'kiosk.terms.accept': {
+    de: 'Zustimmen',
+    en: 'Agree',
+    tr: 'Kabul et' },
+  'kiosk.terms.sign': {
+    de: 'Unterschreiben und zustimmen',
+    en: 'Sign and agree',
+    tr: 'İmzala ve kabul et' },
+  'kiosk.url.hint': {
+    de: 'Bleibt die Seite leer, erlaubt sie keine Anzeige hier. Bitte fragen Sie an der Rezeption.',
+    en: 'If the page stays empty, it cannot be shown here. Please ask at the front desk.',
+    tr: 'Sayfa boş kalırsa burada gösterilemiyor demektir. Lütfen resepsiyona sorun.' },
+
+  // ------------------------------------------- Bedienfeld der Rezeption
+  'nav.terminal': {
+    de: 'Terminal',
+    en: 'Terminal',
+    tr: 'Terminal' },
+  'pult.title': {
+    de: 'Gästeterminals',
+    en: 'Guest terminals',
+    tr: 'Misafir terminalleri' },
+  'pult.hint': {
+    de: 'Seiten und freigegebene Adressen lassen sich hier ohne Reservierung zeigen. '
+      + 'Meldeschein und Hausbedingungen schickt die Reservierung.',
+    en: 'Pages and approved addresses can be shown here without a reservation. '
+      + 'Registration and house terms are sent from the reservation.',
+    tr: 'Sayfalar ve onaylı adresler burada rezervasyonsuz gösterilebilir. '
+      + 'Meldeschein ve tesis koşulları rezervasyondan gönderilir.' },
+  'pult.none': {
+    de: 'Noch kein Terminal gekoppelt. Gekoppelt wird in den Einstellungen.',
+    en: 'No terminal paired yet. Pairing happens in the settings.',
+    tr: 'Henüz eşleştirilmiş terminal yok. Eşleştirme ayarlarda yapılır.' },
+  'pult.noContent': {
+    de: 'Noch keine Seiten oder Adressen angelegt (Einstellungen → Gästeterminals).',
+    en: 'No pages or addresses yet (Settings → Guest terminals).',
+    tr: 'Henüz sayfa veya adres yok (Ayarlar → Misafir terminalleri).' },
+  'pult.idle': {
+    de: 'Ruhezustand',
+    en: 'Idle',
+    tr: 'Beklemede' },
+
+  // ------------------------------------------- Inhalte (Einstellungen)
+  'inhalte.title': {
+    de: 'Seiten',
+    en: 'Pages',
+    tr: 'Sayfalar' },
+  'inhalte.hint': {
+    de: 'Was das Terminal zeigen kann: Hausordnung, WLAN, Frühstückszeiten, Angebote. '
+      + 'Text ohne HTML — Leerzeile für einen neuen Absatz, „- “ am Zeilenanfang für eine '
+      + 'Aufzählung, **so** für fett.',
+    en: 'What the terminal can show: house rules, Wi-Fi, breakfast times, offers. '
+      + 'Text without HTML — blank line for a new paragraph, "- " at the start of a line '
+      + 'for a list, **like this** for bold.',
+    tr: 'Terminalin gösterebilecekleri: ev kuralları, Wi-Fi, kahvaltı saatleri, teklifler. '
+      + 'HTML olmadan metin — yeni paragraf için boş satır, liste için satır başında „- “, '
+      + 'kalın için **böyle**.' },
+  'inhalte.titel': {
+    de: 'Titel',
+    en: 'Title',
+    tr: 'Başlık' },
+  'inhalte.text': {
+    de: 'Text',
+    en: 'Text',
+    tr: 'Metin' },
+  'inhalte.neu': {
+    de: 'Seite anlegen',
+    en: 'Create page',
+    tr: 'Sayfa oluştur' },
+  'inhalte.speichern': {
+    de: 'Speichern',
+    en: 'Save',
+    tr: 'Kaydet' },
+  'inhalte.bearbeiten': {
+    de: 'Bearbeiten',
+    en: 'Edit',
+    tr: 'Düzenle' },
+  'inhalte.archivieren': {
+    de: 'Archivieren',
+    en: 'Archive',
+    tr: 'Arşivle' },
+  'inhalte.archivierenConfirm': {
+    de: 'Seite „{titel}“ archivieren? Sie verschwindet aus der Diashow und lässt sich nicht mehr schicken.',
+    en: 'Archive page "{titel}"? It leaves the slideshow and can no longer be sent.',
+    tr: '„{titel}“ sayfası arşivlensin mi? Slayt gösterisinden çıkar ve artık gönderilemez.' },
+  'inhalte.bild': {
+    de: 'Bild wählen',
+    en: 'Choose image',
+    tr: 'Görsel seç' },
+  'inhalte.bildEntfernen': {
+    de: 'Bild entfernen',
+    en: 'Remove image',
+    tr: 'Görseli kaldır' },
+  'inhalte.bildHint': {
+    de: 'PNG, JPEG oder WebP, höchstens 1 MB. SVG wird nicht angenommen.',
+    en: 'PNG, JPEG or WebP, at most 1 MB. SVG is not accepted.',
+    tr: 'PNG, JPEG veya WebP, en fazla 1 MB. SVG kabul edilmez.' },
+  'inhalte.keine': {
+    de: 'Noch keine Seite angelegt.',
+    en: 'No page yet.',
+    tr: 'Henüz sayfa yok.' },
+  'diashow.title': {
+    de: 'Diashow im Ruhezustand',
+    en: 'Idle slideshow',
+    tr: 'Bekleme slayt gösterisi' },
+  'diashow.hint': {
+    de: 'Ohne Seiten zeigt das Terminal nur die Begrüßung. Ein Auftrag der Rezeption unterbricht die Diashow.',
+    en: 'Without pages the terminal only shows the greeting. A job from the front desk interrupts the slideshow.',
+    tr: 'Sayfa olmadan terminal yalnızca karşılama gösterir. Resepsiyondan gelen bir görev slayt gösterisini keser.' },
+  'diashow.sekunden': {
+    de: 'Sekunden',
+    en: 'seconds',
+    tr: 'saniye' },
+  'diashow.aufnehmen': {
+    de: 'In die Diashow',
+    en: 'Add to slideshow',
+    tr: 'Slayta ekle' },
+  'diashow.entfernen': {
+    de: 'Aus der Diashow',
+    en: 'Remove from slideshow',
+    tr: 'Slayttan çıkar' },
+  'diashow.hoch': {
+    de: 'Nach oben',
+    en: 'Move up',
+    tr: 'Yukarı taşı' },
+  'diashow.speichern': {
+    de: 'Diashow speichern',
+    en: 'Save slideshow',
+    tr: 'Slaytı kaydet' },
+  'adressen.title': {
+    de: 'Freigegebene externe Seiten',
+    en: 'Approved external pages',
+    tr: 'Onaylı harici sayfalar' },
+  'adressen.hint': {
+    de: 'Nur diese Adressen kann die Rezeption auf das Terminal schicken — keine beliebige. '
+      + 'Nur https. Viele Seiten verbieten die Anzeige in einem fremden Rahmen; ob eine Seite '
+      + 'erscheint, zeigt die Vorschau.',
+    en: 'Only these addresses can be sent to the terminal — no arbitrary ones. Only https. '
+      + 'Many sites forbid being shown inside another page; the preview shows whether a page appears.',
+    tr: 'Resepsiyon terminale yalnızca bu adresleri gönderebilir — rastgele adres değil. '
+      + 'Yalnızca https. Birçok site başka bir sayfa içinde gösterilmeyi yasaklar; önizleme bunu gösterir.' },
+  'adressen.label': {
+    de: 'Bezeichnung',
+    en: 'Label',
+    tr: 'Ad' },
+  'adressen.url': {
+    de: 'Adresse (https://…)',
+    en: 'Address (https://…)',
+    tr: 'Adres (https://…)' },
+  'adressen.freigeben': {
+    de: 'Freigeben',
+    en: 'Approve',
+    tr: 'Onayla' },
+  'adressen.entfernen': {
+    de: 'Freigabe zurückziehen',
+    en: 'Withdraw approval',
+    tr: 'Onayı geri çek' },
+  'adressen.vorschau': {
+    de: 'Vorschau',
+    en: 'Preview',
+    tr: 'Önizleme' },
+  'adressen.keine': {
+    de: 'Keine Adresse freigegeben.',
+    en: 'No address approved.',
+    tr: 'Onaylı adres yok.' },
   'kiosk.language': {
     de: 'Sprache',
     en: 'Language',

@@ -8,7 +8,26 @@ import { api } from '../api.js'
  * (`routes/Terminal.tsx`).
  */
 
-export type TerminalKind = 'registration_sign' | 'registration_fill'
+export type TerminalKind =
+  'registration_fill' | 'registration_sign' | 'terms_sign' | 'content' | 'url'
+
+/** Ein Angebot: eine Art, und wo noetig, was genau (Bedingung, Seite, Adresse). */
+export interface Angebot {
+  kind: TerminalKind
+  ref?: string
+  label?: string
+}
+
+export interface Auftragsstand {
+  jobRef: string
+  kind: TerminalKind
+  state: JobState
+  canceledBy: 'reception' | 'terminal' | 'timeout' | 'revoked' | null
+  deviceName: string
+  /** Titel der Bedingung, der Seite oder der Adresse; sonst leer. */
+  label: string | null
+  createdAt: string
+}
 export type JobState = 'pending' | 'opened' | 'done' | 'canceled' | 'expired'
 
 export interface TerminalGeraet {
@@ -31,11 +50,46 @@ export interface Kopplungscode {
 export interface TerminalStand {
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean }>
   /** Was die Rezeption fuer diese Reservierung anstossen kann. */
-  offers: TerminalKind[]
+  offers: Angebot[]
   registration: { registrationId: number; signatureRequired: boolean; signed: boolean } | null
-  job: { jobRef: string; kind: TerminalKind; state: JobState
-         canceledBy: 'reception' | 'terminal' | 'timeout' | 'revoked' | null
-         deviceName: string; createdAt: string } | null
+  job: Auftragsstand | null
+}
+
+export interface Pult {
+  terminals: Array<{ deviceRef: string; name: string; online: boolean
+                     job: Auftragsstand | null }>
+  offers: Angebot[]
+}
+
+export interface Seite {
+  contentRef: string
+  title: string
+  body: string
+  imageRef: string | null
+  idlePosition: number | null
+  idleSeconds: number | null
+}
+
+export interface Adresse { urlRef: string; label: string; url: string }
+
+/** Der Rumpf eines Auftrags: die Art und die Kennung dessen, was gezeigt wird. */
+export interface AuftragsWunsch {
+  deviceRef: string
+  kind: TerminalKind
+  reservationRef?: string
+  propertyId?: number
+  termsRef?: string
+  contentRef?: string
+  urlRef?: string
+}
+
+/** Der Teil eines Angebots, der in den Auftrag gehoert. */
+export function wunschAus(a: Angebot): Pick<AuftragsWunsch, 'termsRef' | 'contentRef' | 'urlRef'> {
+  if (a.ref === undefined) return {}
+  if (a.kind === 'terms_sign') return { termsRef: a.ref }
+  if (a.kind === 'content') return { contentRef: a.ref }
+  if (a.kind === 'url') return { urlRef: a.ref }
+  return {}
 }
 
 export const istOffen = (s: JobState | undefined): boolean =>
@@ -99,23 +153,91 @@ export const useReservationTerminal = (reservationRef: string) =>
     refetchInterval: q => istOffen(q.state.data?.job?.state) ? 2_000 : false
   })
 
-export function useSendTerminalJob(reservationRef: string) {
+/**
+ * Einen Auftrag schicken. `nachher` ist der Schluessel der Abfrage, die den
+ * Stand zeigt -- die Reservierung oder das Bedienfeld.
+ */
+export function useSendTerminalJob(nachher: readonly unknown[]) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { deviceRef: string; kind: TerminalKind }) =>
-      api.post<{ jobRef: string }>('/v1/terminal-jobs', { ...body, reservationRef }),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['reservation-terminal', reservationRef] })
+    mutationFn: (body: AuftragsWunsch) =>
+      api.post<{ jobRef: string }>('/v1/terminal-jobs', body),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: nachher }) }
+  })
+}
+
+export function useCancelTerminalJob(nachher: readonly unknown[]) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (jobRef: string) => api.post(`/v1/terminal-jobs/${jobRef}/cancel`),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: nachher }) }
+  })
+}
+
+// ------------------------------------------------- Bedienfeld
+
+/**
+ * Alle Terminals des Hauses mit ihrem Auftrag, dazu was sich ohne
+ * Reservierung zeigen laesst. Solange irgendwo ein Auftrag offen ist, alle
+ * zwei Sekunden, sonst alle zehn -- ein Terminal, das gerade erst
+ * eingeschaltet wurde, soll nicht minutenlang als "nicht erreichbar" stehen.
+ */
+export const useTerminalPult = (propertyId: number) =>
+  useQuery<Pult>({
+    queryKey: ['terminal-desk', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/terminal-desk`),
+    staleTime: 0,
+    refetchInterval: q =>
+      q.state.data?.terminals.some(t => istOffen(t.job?.state)) === true ? 2_000 : 10_000
+  })
+
+// ------------------------------------------------- Inhalte (Einstellungen)
+
+export const useTerminalInhalte = (propertyId: number) =>
+  useQuery<{ contents: Seite[]; urls: Adresse[] }>({
+    queryKey: ['terminal-content', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/terminal-content`)
+  })
+
+function useInhaltAenderung<T>(propertyId: number, fn: (v: T) => Promise<unknown>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['terminal-content', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['terminal-desk', propertyId] })
     }
   })
 }
 
-export function useCancelTerminalJob(reservationRef: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (jobRef: string) => api.post(`/v1/terminal-jobs/${jobRef}/cancel`),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['reservation-terminal', reservationRef] })
-    }
-  })
-}
+export const useCreateSeite = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (b: { title: string; body: string }) =>
+    api.post<{ contentRef: string }>(`/v1/properties/${propertyId}/terminal-content`, b))
+
+export const useAendereSeite = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (b: { contentRef: string; title: string; body: string }) =>
+    api.patch(`/v1/properties/${propertyId}/terminal-content/${b.contentRef}`,
+      { title: b.title, body: b.body }))
+
+export const useArchiviereSeite = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (contentRef: string) =>
+    api.delete(`/v1/properties/${propertyId}/terminal-content/${contentRef}`))
+
+export const useSeitenbild = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (b: { contentRef: string; data: string | null }) =>
+    b.data === null
+      ? api.delete(`/v1/properties/${propertyId}/terminal-content/${b.contentRef}/image`)
+      : api.put(`/v1/properties/${propertyId}/terminal-content/${b.contentRef}/image`,
+          { data: b.data }))
+
+export const useDiashow = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (slides: Array<{ contentRef: string; seconds: number }>) =>
+    api.put(`/v1/properties/${propertyId}/terminal-slideshow`, { slides }))
+
+export const useCreateAdresse = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (b: { label: string; url: string }) =>
+    api.post(`/v1/properties/${propertyId}/terminal-urls`, b))
+
+export const useEntferneAdresse = (propertyId: number) =>
+  useInhaltAenderung(propertyId, (urlRef: string) =>
+    api.delete(`/v1/properties/${propertyId}/terminal-urls/${urlRef}`))

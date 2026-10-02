@@ -14,6 +14,7 @@ import { Guests } from './routes/Guests.tsx'
 import { Availability } from './routes/Availability.tsx'
 import { Invoices } from './routes/Invoices.tsx'
 import { Adminpanel } from './routes/Adminpanel.tsx'
+import { TerminalPult } from './routes/TerminalPult.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -134,6 +135,9 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'invoices', nav: 'nav.invoices', permission: 'folio:read',
     render: c => <Invoices propertyId={c.propertyId} onFolio={c.openFolio}
                            permissions={c.permissions} /> },
+  // Gaesteterminals: Seiten und Adressen ohne Reservierung zeigen (Dokument 31).
+  { key: 'terminal', nav: 'nav.terminal', permission: 'reservation:checkin',
+    render: c => <TerminalPult propertyId={c.propertyId} /> },
   /*
    * Das Adminpanel steht am Ende und nicht am Anfang: es ist der einzige
    * Bildschirm, der nicht zum Haus gehoert, und es soll nie der

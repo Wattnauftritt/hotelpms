@@ -3,7 +3,9 @@ import { LOCALES, I18nContext, useT, useLocale, formatDate, type Locale }
   from '../lib/i18n/index.js'
 import { api, ApiError } from '../lib/api.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
+import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { Fehler } from '../components/Shell.tsx'
+import { GastCheckin } from './GastCheckin.tsx'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -47,7 +49,12 @@ const STILLE_MS = 90_000
 /** Wie lange der Dank stehen bleibt. */
 const DANKE_MS = 4_000
 
-type Art = 'registration_sign' | 'registration_fill'
+/** Wie oft die Diashow neu geholt wird. Seiten aendern sich selten. */
+const DIASHOW_NEU_MS = 5 * 60_000
+
+type Art = 'registration_fill' | 'registration_sign' | 'terms_sign' | 'content' | 'url'
+
+interface Folie { title: string; body: string; seconds: number; imageRef: string | null }
 
 interface Frage {
   property: string
@@ -187,6 +194,18 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
     return () => window.clearTimeout(z)
   }, [phase.art])
 
+  /**
+   * Den Auftrag abschliessen. Danach der Dank -- oder, wo die Ansicht selbst
+   * dankt oder nichts zu danken ist (eine Seite, eine Adresse), gleich der
+   * Ruhezustand. Ein Fehler geht an die Ansicht zurueck, die ihn zeigt.
+   */
+  const abschliessen = async (jobRef: string, body: Record<string, unknown>,
+                              mitDank: boolean): Promise<void> => {
+    await api.post(`/v1/terminal/job/${jobRef}/complete`, body)
+    if (mitDank) setPhase({ art: 'danke' })
+    else abraeumen()
+  }
+
   const abbrechen = (jobRef: string): void => {
     void api.post(`/v1/terminal/job/${jobRef}/abort`, { reason: 'guest' })
       .catch(() => { /* abgeraeumt wird trotzdem */ })
@@ -202,23 +221,22 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
             {t('kiosk.training')}
           </span>
         )}
-        <Sprachwahl onLocale={onLocale} />
+        {/* Das Meldeformular fuehrt seine eigene Sprachwahl (GastCheckin). */}
+        {!(phase.art === 'auftrag' && phase.kind === 'registration_fill') && (
+          <Sprachwahl onLocale={onLocale} />
+        )}
       </header>
 
       <main className="grow grid place-items-center px-6 pb-8">
         {phase.art === 'start' && <div className="text-neutral-400">…</div>}
         {phase.art === 'koppeln' && <Koppeln onGekoppelt={() => setPhase({ art: 'start' })} />}
-        {phase.art === 'ruhe' && (
-          <div className="text-center space-y-3">
-            <div className="text-4xl font-light">{t('kiosk.welcome')}</div>
-            <p className="text-neutral-500">{t('kiosk.idleHint')}</p>
-          </div>
-        )}
+        {phase.art === 'ruhe' && <Ruhe />}
         {phase.art === 'auftrag' && (() => {
           const Ansicht = ANSICHTEN[phase.kind]
-          return <Ansicht jobRef={phase.jobRef} daten={phase.daten}
-                          onFertig={() => setPhase({ art: 'danke' })}
-                          onAbbrechen={() => abbrechen(phase.jobRef)} />
+          const jobRef = phase.jobRef
+          return <Ansicht jobRef={jobRef} daten={phase.daten}
+                          abschliessen={(body, mitDank) => abschliessen(jobRef, body, mitDank)}
+                          onAbbrechen={() => abbrechen(jobRef)} />
         })()}
         {phase.art === 'danke' && (
           <div className="text-center space-y-3">
@@ -234,6 +252,65 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
         </footer>
       )}
     </div>
+  )
+}
+
+/**
+ * Der Ruhezustand: die Diashow des Hauses, sonst die Begruessung.
+ *
+ * Die Folien sind Seiten des Hauses -- Fruehstueckszeiten, Sauna, Werbung
+ * --, keine Gastdaten; sie duerfen deshalb im Zustand der Seite liegen.
+ * Ein Auftrag der Rezeption unterbricht die Diashow, und nach dem Auftrag
+ * baut sich die Seite neu auf und beginnt sie von vorn.
+ */
+function Ruhe(): JSX.Element {
+  const t = useT()
+  const [folien, setFolien] = useState<Folie[]>([])
+  const [nr, setNr] = useState(0)
+
+  useEffect(() => {
+    let aus = false
+    const holen = (): void => {
+      api.get<{ slides: Folie[] }>('/v1/terminal/idle')
+        .then(r => { if (!aus) setFolien(r.slides) })
+        .catch(() => { /* ohne Diashow bleibt die Begruessung */ })
+    }
+    holen()
+    const z = window.setInterval(holen, DIASHOW_NEU_MS)
+    return () => { aus = true; window.clearInterval(z) }
+  }, [])
+
+  const folie = folien.length === 0 ? undefined : folien[nr % folien.length]
+  useEffect(() => {
+    if (folie === undefined) return
+    const z = window.setTimeout(() => setNr(n => n + 1), folie.seconds * 1000)
+    return () => window.clearTimeout(z)
+  }, [folie, nr])
+
+  if (folie === undefined) {
+    return (
+      <div className="text-center space-y-3">
+        <div className="text-4xl font-light">{t('kiosk.welcome')}</div>
+        <p className="text-neutral-500">{t('kiosk.idleHint')}</p>
+      </div>
+    )
+  }
+  return <Inhaltsseite title={folie.title} body={folie.body} imageRef={folie.imageRef} />
+}
+
+/** Eine Seite des Hauses, wie das Terminal sie zeigt. */
+function Inhaltsseite({ title, body, imageRef }: {
+  title: string; body: string; imageRef: string | null
+}): JSX.Element {
+  return (
+    <article className="w-full max-w-4xl space-y-5">
+      <h1 className="text-4xl font-semibold">{title}</h1>
+      {imageRef !== null && (
+        <img src={`/v1/terminal/images/${imageRef}`} alt=""
+             className="w-full max-h-[50vh] object-contain rounded" />
+      )}
+      <Inhaltstext text={body} gross />
+    </article>
   )
 }
 
@@ -297,34 +374,146 @@ function Koppeln({ onGekoppelt }: { onGekoppelt: () => void }): JSX.Element {
 interface AnsichtProps {
   jobRef: string
   daten: unknown
-  onFertig: () => void
+  /** Den Auftrag abschliessen; danach Dank oder gleich Ruhe. */
+  abschliessen: (body: Record<string, unknown>, mitDank: boolean) => Promise<void>
   onAbbrechen: () => void
 }
 
 /**
  * Eine Ansicht je Art. Eine neue Art ist ein Eintrag hier, einer in
- * `ARTEN` der Schnittstelle (`apps/api/src/routes/terminal.ts`) und ein Wert
- * in der Pruefbedingung von `terminal_job.kind`.
+ * `ARTEN` der Schnittstelle (`apps/api/src/platform/terminalArten.ts`) und
+ * ein Wert in der Pruefbedingung von `terminal_job.kind`.
  */
 const ANSICHTEN: Record<Art, (p: AnsichtProps) => JSX.Element> = {
+  registration_fill: MeldeformularAusfuellen,
   registration_sign: MeldescheinUnterschreiben,
-  /*
-   * TODO(checkin): Meldeformular ausfuellen. Die Schnittstelle legt diese
-   * Art noch nicht an (`verfuegbar: false`), die Ansicht wird also nie
-   * erreicht. Sobald der Online-Check-in gemergt ist, steht hier
-   * `<GastCheckin token={daten.token} modus="terminal" onFertig={onFertig} />`
-   * -- der Token kommt mit dem Oeffnen, nicht mit der Frage.
-   */
-  registration_fill: ({ onAbbrechen }) => <NichtVerfuegbar onAbbrechen={onAbbrechen} />
+  terms_sign: BedingungZustimmen,
+  content: SeiteZeigen,
+  url: AdresseZeigen
 }
 
-function NichtVerfuegbar({ onAbbrechen }: { onAbbrechen: () => void }): JSX.Element {
-  const t = useT()
+/**
+ * Meldeformular ausfuellen: das Formular des Online-Check-ins im Modus des
+ * Terminals (Dokument 30). Der Link dazu kam mit dem Oeffnen und steht nur
+ * im Zustand dieser Ansicht; mit dem Neuaufbau danach ist er weg, und die
+ * Schnittstelle zieht ihn mit dem Auftrag zurueck.
+ *
+ * Das Formular dankt selbst und meldet sich danach, nach Stille oder auf
+ * "Fertig" (`onFertig`). Ob wirklich eingereicht wurde, entscheidet die
+ * Schnittstelle, nicht diese Seite.
+ */
+function MeldeformularAusfuellen({ daten, abschliessen }: AnsichtProps): JSX.Element {
+  const { token } = daten as { token: string }
+  const gemeldet = useRef(false)
+  const fertig = (): void => {
+    if (gemeldet.current) return
+    gemeldet.current = true
+    abschliessen({}, false).catch(abraeumen)
+  }
   return (
-    <button type="button" onClick={onAbbrechen}
-            className="px-6 py-3 rounded border border-neutral-300">
-      {t('kiosk.abort')}
-    </button>
+    <div className="w-full">
+      <GastCheckin token={token} modus="terminal" onFertig={fertig} />
+    </div>
+  )
+}
+
+/**
+ * Eine Hausbedingung: Text, und je nach Fassung Zustimmung oder
+ * Unterschrift. Dieselbe Regel wie am Tresen; die Schnittstelle weist eine
+ * fehlende Unterschrift ab, wo die Fassung eine verlangt.
+ */
+function BedingungZustimmen({ daten, abschliessen, onAbbrechen }: AnsichtProps): JSX.Element {
+  const t = useT()
+  const d = daten as { title: string; body: string; requiresSignature: boolean }
+  const [signatur, setSignatur] = useState<string | null>(null)
+  const [fehler, setFehler] = useState<unknown>(null)
+  const [laeuft, setLaeuft] = useState(false)
+  return (
+    <div className="w-full max-w-3xl bg-white border border-neutral-200 rounded-lg p-6 space-y-4">
+      <h1 className="text-2xl font-semibold">{d.title}</h1>
+      <p className="text-lg whitespace-pre-line">{d.body}</p>
+      {d.requiresSignature && (
+        <div className="space-y-2">
+          <div className="text-sm text-neutral-600">{t('kiosk.sign.here')}</div>
+          <Unterschriftsfeld onChange={setSignatur} breite={900} hoehe={260} gross
+                             beschriftungLoeschen={t('kiosk.sign.clear')} />
+        </div>
+      )}
+      {fehler !== null && <Fehler error={fehler} />}
+      <div className="flex gap-3">
+        <button type="button" disabled={laeuft || (d.requiresSignature && signatur === null)}
+                onClick={() => {
+                  setLaeuft(true)
+                  setFehler(null)
+                  abschliessen(d.requiresSignature ? { signatureSvg: signatur } : {}, true)
+                    .catch((e: unknown) => { setFehler(e); setLaeuft(false) })
+                }}
+                className="grow py-4 text-lg rounded bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t(d.requiresSignature ? 'kiosk.terms.sign' : 'kiosk.terms.accept')}
+        </button>
+        <button type="button" onClick={onAbbrechen} disabled={laeuft}
+                className="px-6 py-4 text-lg rounded border border-neutral-300">
+          {t('kiosk.abort')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Eine Seite des Hauses, mit "Fertig". Nichts daran ist Gastdatum. */
+function SeiteZeigen({ daten, abschliessen }: AnsichtProps): JSX.Element {
+  const t = useT()
+  const d = daten as { title: string; body: string; imageRef: string | null }
+  return (
+    <div className="w-full max-w-4xl space-y-6">
+      <Inhaltsseite title={d.title} body={d.body} imageRef={d.imageRef} />
+      <button type="button" onClick={() => { abschliessen({}, false).catch(abraeumen) }}
+              className="w-full py-4 text-lg rounded bg-neutral-900 text-white">
+        {t('kiosk.done')}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Eine freigegebene externe Seite in einem abgeschotteten Rahmen.
+ *
+ * **Der Rahmen darf wenig.** Skript und Formulare der fremden Seite laufen
+ * (sonst geht keine Speisekarte), aber sie darf das Terminal nicht
+ * verlassen (keine Navigation der obersten Ebene), keine Fenster oeffnen
+ * und nicht herunterladen. Mit ihrer eigenen Herkunft (`allow-same-origin`)
+ * kommt sie an die Seite des Terminals nicht heran -- das ist eine andere.
+ *
+ * **Die Grenze:** viele Seiten verbieten, in einem Rahmen gezeigt zu werden
+ * (`X-Frame-Options`, `frame-ancestors`). Der Browser zeigt dann eine leere
+ * oder eine Fehlerflaeche, und von hier aus laesst sich das nicht sicher
+ * erkennen -- der Inhalt einer fremden Herkunft ist fuer diese Seite
+ * unsichtbar. Darum steht ueber dem Rahmen immer ein Satz, der es erklaert,
+ * und "Fertig" ist nie verdeckt. Ob eine Adresse eingebettet werden kann,
+ * sieht das Haus beim Freigeben in der Vorschau (Einstellungen).
+ */
+function AdresseZeigen({ daten, abschliessen }: AnsichtProps): JSX.Element {
+  const t = useT()
+  const d = daten as { label: string; url: string }
+  return (
+    // Ueber die ganze Flaeche, aber keine Maske: das Terminal hat nichts
+    // darunter, zu dem man zurueckklickt. "Fertig" ist der einzige Weg.
+    <div className="fixed left-0 top-0 h-screen w-screen flex flex-col bg-white">
+      <div className="flex items-center gap-4 px-6 py-3 border-b border-neutral-200 bg-neutral-50">
+        <div className="grow">
+          <div className="text-lg font-medium">{d.label}</div>
+          <div className="text-sm text-neutral-500">{t('kiosk.url.hint')}</div>
+        </div>
+        <button type="button" onClick={() => { abschliessen({}, false).catch(abraeumen) }}
+                className="px-8 py-3 text-lg rounded bg-neutral-900 text-white">
+          {t('kiosk.done')}
+        </button>
+      </div>
+      <iframe src={d.url} title={d.label} referrerPolicy="no-referrer"
+              sandbox="allow-scripts allow-same-origin allow-forms"
+              className="grow w-full border-0" />
+    </div>
   )
 }
 
@@ -346,7 +535,7 @@ interface MeldescheinDaten {
  * nicht erst). Stimmt etwas nicht, korrigiert die Rezeption: ein Formular
  * zum Aendern am Touchscreen waere eine zweite Fassung der Gastmaske.
  */
-function MeldescheinUnterschreiben({ jobRef, daten, onFertig, onAbbrechen }: AnsichtProps
+function MeldescheinUnterschreiben({ daten, abschliessen, onAbbrechen }: AnsichtProps
 ): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -404,8 +593,7 @@ function MeldescheinUnterschreiben({ jobRef, daten, onFertig, onAbbrechen }: Ans
                   if (signatur === null) return
                   setLaeuft(true)
                   setFehler(null)
-                  api.post(`/v1/terminal/job/${jobRef}/complete`, { signatureSvg: signatur })
-                    .then(onFertig)
+                  abschliessen({ signatureSvg: signatur }, true)
                     .catch((e: unknown) => { setFehler(e); setLaeuft(false) })
                 }}
                 className="grow py-4 text-lg rounded bg-neutral-900 text-white

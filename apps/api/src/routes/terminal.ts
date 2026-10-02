@@ -7,13 +7,19 @@ import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { hashToken, DEVICE_COOKIE } from '../platform/auth.js'
 import { limiters, tooManyRequests, KOPPLUNG_FEHLVERSUCHE } from '../platform/rateLimit.js'
-import { can, type Principal } from '../platform/context.js'
-import { istUnterschriftSvg } from '@hotelpms/contracts'
-import { unterschreibeMeldeschein } from '../platform/meldeschein.js'
+import { hasProperty, type Principal } from '../platform/context.js'
+import { geraetVon, pruefeHaus } from '../platform/terminal.js'
+import { bildLesen, bildSenden } from '../platform/terminalBild.js'
+import { ARTEN, TERMINAL_KINDS, istArt, angebote, inhalteDesHauses, zieheLinksZurueck,
+         AUFTRAG_LABEL_JOINS, AUFTRAG_LABEL_SQL,
+         type Auftrag, type Lage, type TerminalKind, type Wunsch }
+  from '../platform/terminalArten.js'
 
 /**
  * Gaesteterminal: ein Touchscreen an der Rezeption, an dem ein Gast den
- * Meldeschein unterschreibt (Dokument 31, Migrationen 0063 und 0064).
+ * Meldeschein ausfuellt und unterschreibt, Hausbedingungen zustimmt und
+ * Seiten des Hauses sieht (Dokument 31, Migrationen 0062, 0063, 0064, 0067).
+ * Was es zeigen kann, steht in `platform/terminalArten.ts`.
  *
  * **Geraet statt Sitzung.** Am Touchscreen steht ein Gast. Eine
  * Mitarbeitersitzung dort oeffnete ihm das Haus, sobald er die Adresszeile
@@ -52,6 +58,8 @@ const ONLINE_SEKUNDEN = 60
 /** Obergrenze je Haus, damit die Kopplung kein Weg wird, Zeilen zu erzeugen. */
 const GERAETE_JE_HAUS = 10
 const NAME_MAX = 60
+/** Hoechstzahl der Seiten in der Diashow des Ruhezustands. */
+const DIASHOW_MAX = 20
 
 /**
  * Das Alphabet der Kopplungscodes: dasselbe wie bei den oeffentlichen
@@ -81,152 +89,6 @@ function codeAnzeigen(code: string): string {
   return `${code.slice(0, 4)}-${code.slice(4)}`
 }
 
-// ------------------------------------------------------------- Arten
-
-export const TERMINAL_KINDS = ['registration_sign', 'registration_fill'] as const
-export type TerminalKind = (typeof TERMINAL_KINDS)[number]
-
-function istArt(v: unknown): v is TerminalKind {
-  return typeof v === 'string' && (TERMINAL_KINDS as readonly string[]).includes(v)
-}
-
-/** Der Meldeschein einer Reservierung, wie ihn die Arten brauchen. */
-interface Lage {
-  registrationId: number | null
-  signatureRequired: boolean
-  signed: boolean
-}
-
-interface Auftrag {
-  id: number
-  propertyId: number
-  registrationId: number | null
-  reservationId: number | null
-}
-
-/**
- * Eine Art von Auftrag.
- *
- * **Erweiterbar gebaut.** Eine neue Art ist ein Eintrag hier, ein Wert in
- * der Pruefbedingung von `terminal_job.kind` und eine Ansicht am Terminal
- * (`apps/web/src/routes/Terminal.tsx`). Abfrage, Oeffnen, Abbrechen und
- * Ablauf sind fuer alle Arten dieselben und stehen deshalb nicht hier.
- */
-interface ArtDefinition {
-  /** Kann die Rezeption sie heute anlegen? */
-  verfuegbar: boolean
-  /** Wird sie fuer diese Reservierung angeboten? Ein Knopf, der 422 antwortet, ist schlechter als keiner. */
-  angeboten: (lage: Lage) => boolean
-  /** Prueft beim Anlegen und liefert den Bezug. Wirft, wenn es nicht passt. */
-  vorbereiten: (lage: Lage) => { registrationId: number | null }
-  /** Was das Terminal zeigen muss -- und nichts darueber hinaus. */
-  nutzlast: (client: PoolClient, auftrag: Auftrag) => Promise<Record<string, unknown>>
-  /** Was der Gast am Terminal abschliesst. */
-  abschliessen: (client: PoolClient, auftrag: Auftrag, body: Record<string, unknown>)
-    => Promise<void>
-}
-
-const ARTEN: Record<TerminalKind, ArtDefinition> = {
-  /**
-   * Meldeschein unterschreiben, fuer einen bereits angelegten Schein.
-   *
-   * Seit dem 1.1.2025 unterschreiben nur auslaendische Gaeste. Fuer einen
-   * inlaendischen wird die Art gar nicht angeboten, und die Schnittstelle
-   * weist sie ab -- mit derselben Meldung wie der Weg am Tresen, denn es ist
-   * dieselbe Regel (`unterschreibeMeldeschein`).
-   */
-  registration_sign: {
-    verfuegbar: true,
-    angeboten: lage => lage.registrationId !== null && lage.signatureRequired && !lage.signed,
-    vorbereiten: lage => {
-      if (lage.registrationId === null) throw Errors.unprocessable('terminal.noRegistration')
-      if (!lage.signatureRequired) throw Errors.unprocessable('registration.signatureNotForeseen')
-      if (lage.signed) throw Errors.conflict('registration.alreadySigned')
-      return { registrationId: lage.registrationId }
-    },
-    nutzlast: async (client, auftrag) => {
-      if (auftrag.registrationId === null) throw Errors.notFound('res.registration')
-      /*
-       * Datenminimierung: was auf dem Meldeschein steht und was der Gast
-       * mit seiner Unterschrift bestaetigt -- nicht Mailadresse, Telefon,
-       * Preis oder Buchungsnummer. Die Ausweisnummer ebenfalls nicht: sie
-       * liegt verschluesselt am Profil, und ein Touchscreen im Foyer ist
-       * nicht der Ort, sie zu entschluesseln.
-       */
-      const { rows, rowCount } = await client.query<{
-        arrival: string; planned_departure: string; occupant_count: number
-        last_name: string; first_name: string | null; birth_date: string | null
-        nationality: string | null; address_line1: string | null
-        postal_code: string | null; city: string | null; country: string | null }>(
-        `SELECT reg.arrival::text, reg.planned_departure::text, reg.occupant_count,
-                g.last_name, g.first_name, g.birth_date::text, g.nationality,
-                g.address_line1, g.postal_code, g.city, g.country
-           FROM registration reg
-           JOIN guest g ON g.id = reg.guest_id
-          WHERE reg.id = $1 AND reg.property_id = $2`,
-        [auftrag.registrationId, auftrag.propertyId])
-      if (rowCount === 0) throw Errors.notFound('res.registration')
-      /*
-       * Mitreisende eines Sammelmeldescheins stehen mit Namen da: wer
-       * unterschreibt, unterschreibt fuer sie mit (E6, Dokument 13), und
-       * soll sehen, fuer wen.
-       */
-      const mit = await client.query<{ last_name: string; first_name: string | null }>(
-        `SELECT g.last_name, g.first_name
-           FROM registration reg JOIN guest g ON g.id = reg.guest_id
-          WHERE reg.group_registration_id = $1 AND reg.property_id = $2
-          ORDER BY reg.id`, [auftrag.registrationId, auftrag.propertyId])
-      const r = rows[0]!
-      return {
-        arrival: r.arrival,
-        plannedDeparture: r.planned_departure,
-        occupantCount: r.occupant_count,
-        guest: {
-          lastName: r.last_name, firstName: r.first_name, birthDate: r.birth_date,
-          nationality: r.nationality,
-          address: { line1: r.address_line1, postalCode: r.postal_code,
-                     city: r.city, country: r.country }
-        },
-        companions: mit.rows.map(m => ({ lastName: m.last_name, firstName: m.first_name }))
-      }
-    },
-    abschliessen: async (client, auftrag, body) => {
-      if (auftrag.registrationId === null) throw Errors.notFound('res.registration')
-      /*
-       * Vor dem Terminal steht kein Mitarbeiter: angenommen wird genau die
-       * Form, die das Zeichenfeld erzeugt, wie auf der Gastseite
-       * (`istUnterschriftSvg`, Dokument 30). Dann derselbe Weg wie am
-       * Tresen, mit dem Haus des Auftrags als einzigem erlaubten.
-       */
-      if (typeof body.signatureSvg !== 'string' || !istUnterschriftSvg(body.signatureSvg)) {
-        throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
-      }
-      await unterschreibeMeldeschein(client, auftrag.registrationId, body.signatureSvg,
-        haus => haus === auftrag.propertyId)
-    }
-  },
-
-  /**
-   * Meldeformular ausfuellen -- **noch nicht verfuegbar**.
-   *
-   * TODO(checkin): Das Formular baut die parallele Arbeit am Online-Check-in.
-   * Vertrag: sie liefert eine Funktion, die fuer eine Reservierung einen
-   * Check-in-Token mit dem Kanal `terminal` erzeugt, und eine einbettbare
-   * Komponente `<GastCheckin token=… modus="terminal" onFertig=… />`. Sobald
-   * sie gemergt ist: `verfuegbar` auf true, `angeboten` nach dem Stand des
-   * Scheins, `nutzlast` liefert den Token (und nur ihn), `abschliessen`
-   * bleibt leer, weil das Formular selbst ueber seinen Token schreibt, und
-   * die Ansicht am Terminal bettet die Komponente ein.
-   */
-  registration_fill: {
-    verfuegbar: false,
-    angeboten: () => false,
-    vorbereiten: () => { throw Errors.unprocessable('terminal.kindUnavailable') },
-    nutzlast: async () => { throw Errors.unprocessable('terminal.kindUnavailable') },
-    abschliessen: async () => { throw Errors.unprocessable('terminal.kindUnavailable') }
-  }
-}
-
 // ------------------------------------------------------------- Hilfen
 
 /**
@@ -237,60 +99,61 @@ const ARTEN: Record<TerminalKind, ArtDefinition> = {
 const ZUSTAND_SQL = `CASE WHEN j.state IN ('pending','opened') AND j.expires_at <= now()
                           THEN 'expired' ELSE j.state END`
 
-async function lageDerReservierung(
-  client: PoolClient, reservationId: number
-): Promise<Lage> {
-  // Nur der Hauptschein: bei einer Gruppe unterschreibt die Reiseleitung,
-  // nicht jeder Mitreisende einzeln (E6, Dokument 13).
-  // `signature_required` und nicht `is_foreign`: ein auslaendischer
-  // Mitreisender verlangt die Unterschrift auch, wenn der Hauptgast deutsch
-  // ist (platform/meldeschein.ts).
-  const { rows } = await client.query<{ id: string; noetig: boolean; signed: boolean }>(
-    `SELECT id, signature_required AS noetig, signed_at IS NOT NULL AS signed
-       FROM registration
-      WHERE reservation_id = $1 AND group_registration_id IS NULL
-      ORDER BY id LIMIT 1`, [reservationId])
-  const r = rows[0]
-  return r === undefined
-    ? { registrationId: null, signatureRequired: false, signed: false }
-    : { registrationId: Number(r.id), signatureRequired: r.noetig, signed: r.signed }
-}
-
 /**
- * Das Recht im Haus des Vorgangs, nicht in irgendeinem.
+ * Die Reservierung samt Hauptschein, wie die Arten sie brauchen, in einer
+ * Abfrage -- und gegen das Recht im Haus der Reservierung geprueft.
  *
- * Die Routen der Rezeption nehmen eine Reservierung oder einen Auftrag
- * entgegen und keine Property -- das Seitenfenster der Reservierung kennt
- * sein Haus nicht, und es dafuer umzubauen hiesse, den Plan anzufassen.
- * `registerRoute` prueft das Recht dann nur "in irgendeinem Haus"; bei zwei
- * Haeusern im Account genuegte das Recht in Haus A fuer einen Vorgang in
- * Haus B. Deshalb hier noch einmal, am Haus der gefundenen Zeile.
+ * Nur der Hauptschein: bei einer Gruppe unterschreibt die Reiseleitung,
+ * nicht jeder Mitreisende einzeln (E6, Dokument 13). `signature_required`
+ * und nicht `is_foreign`: ein auslaendischer Mitreisender verlangt die
+ * Unterschrift auch, wenn der Hauptgast deutsch ist (platform/meldeschein.ts).
  */
-function pruefeHaus(req: FastifyRequest, propertyId: number): void {
-  if (!can(req.principal as Principal, 'reservation:checkin', propertyId)) {
-    throw Errors.forbidden('access.missingPermission',
-      { permission: 'reservation:checkin' })
+async function lageZurReservierung(
+  req: FastifyRequest, client: PoolClient, reservationRef: string
+): Promise<Lage> {
+  const { rows } = await client.query<{
+    id: string; property_id: string; arrival: string; primary_guest_id: string | null
+    reg_id: string | null; noetig: boolean | null; signed: boolean | null }>(
+    `SELECT r.id, r.property_id, r.arrival::text, r.primary_guest_id,
+            reg.id AS reg_id, reg.signature_required AS noetig,
+            reg.signed_at IS NOT NULL AS signed
+       FROM reservation r
+       LEFT JOIN LATERAL (
+              SELECT id, signature_required, signed_at FROM registration
+               WHERE reservation_id = r.id AND group_registration_id IS NULL
+               ORDER BY id LIMIT 1) reg ON true
+      WHERE r.public_ref = $1`, [reservationRef])
+  const r = rows[0]
+  if (r === undefined) throw Errors.notFound('res.reservation')
+  pruefeHaus(req, Number(r.property_id))
+  return {
+    reservationId: Number(r.id), propertyId: Number(r.property_id), arrival: r.arrival,
+    primaryGuestId: r.primary_guest_id === null ? null : Number(r.primary_guest_id),
+    registrationId: r.reg_id === null ? null : Number(r.reg_id),
+    signatureRequired: r.noetig === true, signed: r.signed === true
   }
 }
 
-async function reservierungPerRef(
-  req: FastifyRequest, client: PoolClient, reservationRef: string
-): Promise<{ id: number; propertyId: number }> {
-  const r = await client.query<{ id: string; property_id: string }>(
-    `SELECT id, property_id FROM reservation WHERE public_ref = $1`, [reservationRef])
-  if (r.rowCount === 0) throw Errors.notFound('res.reservation')
-  const propertyId = Number(r.rows[0]!.property_id)
-  pruefeHaus(req, propertyId)
-  return { id: Number(r.rows[0]!.id), propertyId }
+const AUFTRAG_SPALTEN = `j.id, j.property_id, j.kind, ${ZUSTAND_SQL} AS state,
+  j.reservation_id, j.registration_id, j.terms_id, j.content_id, j.url_id,
+  j.checkin_token_id, j.created_by`
+
+interface AuftragZeile {
+  id: string; property_id: string; kind: TerminalKind; state: string
+  reservation_id: string | null; registration_id: string | null; terms_id: string | null
+  content_id: string | null; url_id: string | null; checkin_token_id: string | null
+  created_by: string | null
 }
 
-/** Nur ein gekoppeltes Geraet. Das Recht allein genuegt nie. */
-function geraetVon(req: FastifyRequest): { deviceId: number; propertyId: number } {
-  const p = req.principal as Principal
-  if (p.terminalDeviceId === null) throw Errors.forbidden('terminal.deviceOnly')
-  const haus = [...p.permissionsByProperty.keys()][0]
-  if (haus === undefined) throw Errors.forbidden('terminal.deviceOnly')
-  return { deviceId: p.terminalDeviceId, propertyId: haus }
+const zahl = (v: string | null): number | null => v === null ? null : Number(v)
+
+function alsAuftrag(z: AuftragZeile): Auftrag {
+  return {
+    id: Number(z.id), propertyId: Number(z.property_id), kind: z.kind, state: z.state,
+    reservationId: zahl(z.reservation_id), registrationId: zahl(z.registration_id),
+    termsId: zahl(z.terms_id), contentId: zahl(z.content_id), urlId: zahl(z.url_id),
+    checkinTokenId: zahl(z.checkin_token_id), createdBy: zahl(z.created_by)
+  }
 }
 
 /**
@@ -299,24 +162,25 @@ function geraetVon(req: FastifyRequest): { deviceId: number; propertyId: number 
  */
 async function eigenerAuftrag(
   client: PoolClient, deviceId: number, jobRef: string
-): Promise<Auftrag & { kind: TerminalKind; state: string }> {
-  const r = await client.query<{
-    id: string; property_id: string; registration_id: string | null
-    reservation_id: string | null; kind: TerminalKind; state: string }>(
-    `SELECT j.id, j.property_id, j.registration_id, j.reservation_id, j.kind,
-            ${ZUSTAND_SQL} AS state
-       FROM terminal_job j
+): Promise<Auftrag> {
+  const r = await client.query<AuftragZeile>(
+    `SELECT ${AUFTRAG_SPALTEN} FROM terminal_job j
       WHERE j.public_ref = $1 AND j.device_id = $2
       FOR UPDATE`, [jobRef, deviceId])
   // Ein fremder Auftrag sieht aus wie keiner.
   if (r.rowCount === 0) throw Errors.notFound('res.terminalJob')
-  const j = r.rows[0]!
-  return {
-    id: Number(j.id), propertyId: Number(j.property_id),
-    registrationId: j.registration_id === null ? null : Number(j.registration_id),
-    reservationId: j.reservation_id === null ? null : Number(j.reservation_id),
-    kind: j.kind, state: j.state
-  }
+  return alsAuftrag(r.rows[0]!)
+}
+
+/** Einen Auftrag beenden: Zustand setzen und den Online-Check-in-Link zurueckziehen. */
+async function beenden(
+  client: PoolClient, jobId: number, state: 'done' | 'canceled' | 'expired',
+  canceledBy: 'reception' | 'terminal' | 'timeout' | 'revoked' | null
+): Promise<void> {
+  await client.query(
+    `UPDATE terminal_job SET state = $2, canceled_by = $3, finished_at = now()
+      WHERE id = $1`, [jobId, state, state === 'canceled' ? canceledBy : null])
+  await zieheLinksZurueck(client, [jobId])
 }
 
 function nameAusRumpf(body: unknown): string {
@@ -329,6 +193,11 @@ function nameAusRumpf(body: unknown): string {
   }
   return name.trim()
 }
+
+/** Ein Auftrag fuer die Rezeption: Art, Stand, was gezeigt wird, wo. */
+const AUFTRAG_FUER_REZEPTION = `j.public_ref AS "jobRef", j.kind, ${ZUSTAND_SQL} AS state,
+  j.canceled_by AS "canceledBy", d.name AS "deviceName", ${AUFTRAG_LABEL_SQL} AS label,
+  to_char(j.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"`
 
 // ------------------------------------------------------------- Routen
 
@@ -462,10 +331,12 @@ export function terminalRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL
            RETURNING id`, [deviceRef, Number(propertyId), principal.userId])
         if (rowCount === 0) throw Errors.notFound('res.terminal')
-        await client.query(
+        const offen = await client.query<{ id: string }>(
           `UPDATE terminal_job
               SET state = 'canceled', canceled_by = 'revoked', finished_at = now()
-            WHERE device_id = $1 AND state IN ('pending','opened')`, [rows[0]!.id])
+            WHERE device_id = $1 AND state IN ('pending','opened')
+           RETURNING id`, [rows[0]!.id])
+        await zieheLinksZurueck(client, offen.rows.map(r => Number(r.id)))
         return { deviceRef, revoked: true }
       })
     }
@@ -475,9 +346,10 @@ export function terminalRoutes(app: FastifyInstance): void {
 
   /**
    * Was an der Reservierung zum Terminal gehoert, in einem Aufruf: welche
-   * Terminals es gibt, welche Auftraege sich anbieten und wie es um den
-   * letzten steht. Die Rezeption fragt das alle zwei Sekunden, solange ein
-   * Auftrag offen ist -- derselbe Aufruf, kein zweiter fuer den Zustand.
+   * Terminals es gibt, was sich anbietet (Meldeschein, Hausbedingungen,
+   * Seiten, Adressen) und wie es um den letzten Auftrag steht. Die
+   * Rezeption fragt das alle zwei Sekunden, solange ein Auftrag offen ist --
+   * derselbe Aufruf, kein zweiter fuer den Zustand.
    */
   registerRoute(app, {
     method: 'GET',
@@ -487,9 +359,7 @@ export function terminalRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       return tx(req.pool, req, async client => {
-        const { id: reservierung, propertyId: haus } =
-          await reservierungPerRef(req, client, reservationRef)
-        const lage = await lageDerReservierung(client, reservierung)
+        const lage = await lageZurReservierung(req, client, reservationRef)
         const geraete = await client.query(
           `SELECT d.public_ref AS "deviceRef", d.name,
                   coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
@@ -500,38 +370,90 @@ export function terminalRoutes(app: FastifyInstance): void {
              FROM terminal_device d
              LEFT JOIN terminal_device_seen s ON s.device_id = d.id
             WHERE d.property_id = $1 AND d.revoked_at IS NULL AND d.paired_at IS NOT NULL
-            ORDER BY d.name, d.id`, [haus, ONLINE_SEKUNDEN])
+            ORDER BY d.name, d.id`, [lage.propertyId, ONLINE_SEKUNDEN])
         const auftrag = await client.query(
-          `SELECT j.public_ref AS "jobRef", j.kind, ${ZUSTAND_SQL} AS state,
-                  j.canceled_by AS "canceledBy", d.name AS "deviceName",
-                  to_char(j.created_at AT TIME ZONE 'UTC',
-                          'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"
+          `SELECT ${AUFTRAG_FUER_REZEPTION}
              FROM terminal_job j
              JOIN terminal_device d ON d.id = j.device_id
+             ${AUFTRAG_LABEL_JOINS}
             WHERE j.reservation_id = $1 AND j.property_id = $2
               AND (j.finished_at > now() - make_interval(mins => $3)
                    OR (j.finished_at IS NULL
                        AND j.expires_at > now() - make_interval(mins => $3)))
             ORDER BY j.created_at DESC, j.id DESC
-            LIMIT 1`, [reservierung, haus, AUFTRAG_SICHTBAR_MINUTEN])
+            LIMIT 1`, [lage.reservationId, lage.propertyId, AUFTRAG_SICHTBAR_MINUTEN])
         return {
           terminals: geraete.rows,
-          offers: TERMINAL_KINDS.filter(k => ARTEN[k].verfuegbar && ARTEN[k].angeboten(lage)),
-          registration: lage.registrationId === null ? null : lage,
+          offers: await angebote(client, lage),
+          registration: lage.registrationId === null ? null : {
+            registrationId: lage.registrationId,
+            signatureRequired: lage.signatureRequired, signed: lage.signed },
           job: auftrag.rows[0] ?? null
         }
       })
     }
   })
 
+  /**
+   * Das Bedienfeld der Rezeption: alle Terminals des Hauses mit ihrem
+   * laufenden oder eben beendeten Auftrag, dazu die Seiten und Adressen,
+   * die sich ohne Reservierung zeigen lassen. Ein Aufruf fuer den
+   * Bildschirm.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/terminal-desk',
+    permission: 'reservation:checkin',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteterminal: Bedienfeld der Rezeption',
+    handler: async (req) => {
+      const haus = Number((req.params as { propertyId: string }).propertyId)
+      return tx(req.pool, req, async client => {
+        /*
+         * Je Terminal der juengste Auftrag, der noch zaehlt -- als Verbund
+         * mit LATERAL ueber den Index, nicht als Unterabfrage je Zeile ohne
+         * Grenze. Es sind hoechstens zehn Terminals je Haus.
+         */
+        const geraete = await client.query(
+          `SELECT d.public_ref AS "deviceRef", d.name,
+                  coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
+                    AS online,
+                  CASE WHEN a."jobRef" IS NULL THEN NULL ELSE to_jsonb(a) END AS job
+             FROM terminal_device d
+             LEFT JOIN terminal_device_seen s ON s.device_id = d.id
+             LEFT JOIN LATERAL (
+                    SELECT ${AUFTRAG_FUER_REZEPTION}
+                      FROM terminal_job j
+                      ${AUFTRAG_LABEL_JOINS}
+                     WHERE j.device_id = d.id
+                       AND (j.finished_at > now() - make_interval(mins => $3)
+                            OR (j.finished_at IS NULL
+                                AND j.expires_at > now() - make_interval(mins => $3)))
+                     ORDER BY j.created_at DESC, j.id DESC
+                     LIMIT 1) a ON true
+            WHERE d.property_id = $1 AND d.revoked_at IS NULL AND d.paired_at IS NOT NULL
+            ORDER BY d.name, d.id`, [haus, ONLINE_SEKUNDEN, AUFTRAG_SICHTBAR_MINUTEN])
+        return { terminals: geraete.rows, offers: await inhalteDesHauses(client, haus) }
+      })
+    }
+  })
+
+  /**
+   * Einen Auftrag schicken.
+   *
+   * Mit Reservierung fuer die Arten, die einen Gast betreffen; Seiten und
+   * Adressen gehen auch ohne -- dann nennt der Rumpf das Haus. Was gezeigt
+   * wird, steht nie im Auftrag selbst, sondern ist eine Kennung aus dem,
+   * was das Haus angelegt hat (`termsRef`, `contentRef`, `urlRef`).
+   */
   registerRoute(app, {
     method: 'POST',
     url: '/v1/terminal-jobs',
     permission: 'reservation:checkin',
     summary: 'Auftrag an ein Gaesteterminal schicken',
     handler: async (req, reply) => {
-      const body = (req.body ?? {}) as { deviceRef?: unknown; kind?: unknown
-                                         reservationRef?: unknown }
+      const body = (req.body ?? {}) as Wunsch & { deviceRef?: unknown; kind?: unknown
+                                                  reservationRef?: unknown; propertyId?: unknown }
       if (!istArt(body.kind)) {
         throw Errors.validation({ kind: ['field.allowedValues'] },
           { values: TERMINAL_KINDS.join(', ') })
@@ -539,22 +461,32 @@ export function terminalRoutes(app: FastifyInstance): void {
       if (typeof body.deviceRef !== 'string' || body.deviceRef === '') {
         throw Errors.validation({ deviceRef: ['field.required'] })
       }
-      if (typeof body.reservationRef !== 'string' || body.reservationRef === '') {
+      const art = ARTEN[body.kind]
+      const mitRes = typeof body.reservationRef === 'string' && body.reservationRef !== ''
+      if (art.mitReservierung && !mitRes) {
         throw Errors.validation({ reservationRef: ['field.required'] })
       }
-      const art = ARTEN[body.kind]
-      if (!art.verfuegbar) throw Errors.unprocessable('terminal.kindUnavailable')
       const principal = req.principal as Principal
       const deviceRef = body.deviceRef
-      const reservationRef = body.reservationRef
       const kind = body.kind
 
       return tx(req.pool, req, async client => {
-        const { id: reservierung, propertyId: haus } =
-          await reservierungPerRef(req, client, reservationRef)
-        // Das Geraet muss zum Haus **der Reservierung** gehoeren: die
-        // Zeilenrichtlinie filtert nach Mandant, und bei zwei Haeusern im
-        // Account saehe sie das Terminal des anderen.
+        let lage: Lage | null = null
+        let haus: number
+        if (mitRes) {
+          lage = await lageZurReservierung(req, client, body.reservationRef as string)
+          haus = lage.propertyId
+        } else {
+          haus = Number(body.propertyId)
+          if (!Number.isSafeInteger(haus)) {
+            throw Errors.validation({ propertyId: ['field.required'] })
+          }
+          if (!hasProperty(principal, haus)) throw Errors.forbidden('access.propertyOutOfScope')
+          pruefeHaus(req, haus)
+        }
+
+        // Das Geraet muss zum Haus **des Vorgangs** gehoeren: die
+        // Zeilenrichtlinie laesst jedes Haus des Aufrufers durch.
         const geraet = await client.query<{ id: string; paired: boolean }>(
           `SELECT id, paired_at IS NOT NULL AS paired FROM terminal_device
             WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL`,
@@ -563,23 +495,28 @@ export function terminalRoutes(app: FastifyInstance): void {
         if (!geraet.rows[0]!.paired) throw Errors.unprocessable('terminal.notPaired')
         const deviceId = Number(geraet.rows[0]!.id)
 
-        const bezug = art.vorbereiten(await lageDerReservierung(client, reservierung))
+        const bezug = await art.vorbereiten(client, haus, lage, body)
 
-        // Was abgelaufen ist, steht dem naechsten Auftrag nicht im Weg.
-        await client.query(
+        // Was abgelaufen ist, steht dem naechsten Auftrag nicht im Weg -- und
+        // sein Online-Check-in-Link faellt mit.
+        const alt = await client.query<{ id: string }>(
           `UPDATE terminal_job SET state = 'expired', finished_at = now()
-            WHERE device_id = $1 AND state IN ('pending','opened') AND expires_at <= now()`,
-          [deviceId])
+            WHERE device_id = $1 AND state IN ('pending','opened') AND expires_at <= now()
+           RETURNING id`, [deviceId])
+        await zieheLinksZurueck(client, alt.rows.map(r => Number(r.id)))
+
         const neu = await client.query<{ public_ref: string; ablauf: string }>(
           `INSERT INTO terminal_job (property_id, device_id, kind, reservation_id,
-                                     registration_id, created_by, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(mins => $7))
+                                     registration_id, terms_id, content_id, url_id,
+                                     created_by, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(mins => $10))
            ON CONFLICT (device_id) WHERE state IN ('pending','opened') DO NOTHING
            RETURNING public_ref,
                      to_char(expires_at AT TIME ZONE 'UTC',
                              'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ablauf`,
-          [haus, deviceId, kind, reservierung, bezug.registrationId,
-           principal.userId, AUFTRAG_WARTET_MINUTEN])
+          [haus, deviceId, kind, lage?.reservationId ?? null, bezug.registrationId,
+           bezug.termsId, bezug.contentId, bezug.urlId, principal.userId,
+           AUFTRAG_WARTET_MINUTEN])
         if (neu.rowCount === 0) throw Errors.conflict('terminal.deviceBusy')
         reply.status(201)
         return { jobRef: neu.rows[0]!.public_ref, kind, state: 'pending',
@@ -604,10 +541,7 @@ export function terminalRoutes(app: FastifyInstance): void {
         if (j.rows[0]!.state !== 'pending' && j.rows[0]!.state !== 'opened') {
           throw Errors.conflict('terminal.jobNotOpen')
         }
-        await client.query(
-          `UPDATE terminal_job
-              SET state = 'canceled', canceled_by = 'reception', finished_at = now()
-            WHERE id = $1`, [j.rows[0]!.id])
+        await beenden(client, Number(j.rows[0]!.id), 'canceled', 'reception')
         return { jobRef, state: 'canceled' }
       })
     }
@@ -718,9 +652,12 @@ export function terminalRoutes(app: FastifyInstance): void {
     url: '/v1/terminal/job/:jobRef/open',
     permission: 'terminal:device',
     summary: 'Gaesteterminal: Auftrag oeffnen und seine Daten holen',
-    handler: async (req) => {
+    handler: async (req, reply) => {
       const { deviceId } = geraetVon(req)
       const { jobRef } = req.params as { jobRef: string }
+      // Die Antwort kann einen Online-Check-in-Link tragen. Sie bleibt in
+      // keinem Zwischenspeicher liegen (dieselbe Kopfzeile wie die Gastseite).
+      void reply.header('cache-control', 'no-store')
       return tx(req.pool, req, async client => {
         const auftrag = await eigenerAuftrag(client, deviceId, jobRef)
         if (auftrag.state !== 'pending' && auftrag.state !== 'opened') {
@@ -734,8 +671,8 @@ export function terminalRoutes(app: FastifyInstance): void {
               WHERE id = $1`, [auftrag.id, AUFTRAG_OFFEN_MINUTEN])
         }
         // Ein zweites Oeffnen -- das Terminal wurde neu geladen -- liefert
-        // dieselben Daten wieder, statt den Gast vor einem leeren
-        // Bildschirm stehen zu lassen.
+        // die Daten wieder, statt den Gast vor einem leeren Bildschirm stehen
+        // zu lassen.
         return { jobRef, kind: auftrag.kind,
                  data: await ARTEN[auftrag.kind].nutzlast(client, auftrag) }
       })
@@ -756,11 +693,9 @@ export function terminalRoutes(app: FastifyInstance): void {
         // Erst oeffnen, dann abschliessen: ein Auftrag, den das Terminal nie
         // gezeigt hat, hat auch niemand unterschrieben.
         if (auftrag.state !== 'opened') throw Errors.conflict('terminal.jobNotOpen')
-        await ARTEN[auftrag.kind].abschliessen(client, auftrag, body)
-        await client.query(
-          `UPDATE terminal_job SET state = 'done', finished_at = now() WHERE id = $1`,
-          [auftrag.id])
-        return { jobRef, state: 'done' }
+        const ende = await ARTEN[auftrag.kind].abschliessen(client, auftrag, body)
+        await beenden(client, auftrag.id, ende, ende === 'canceled' ? 'terminal' : null)
+        return { jobRef, state: ende }
       })
     }
   })
@@ -780,7 +715,6 @@ export function terminalRoutes(app: FastifyInstance): void {
       const { deviceId } = geraetVon(req)
       const { jobRef } = req.params as { jobRef: string }
       const grund = (req.body as { reason?: unknown } | undefined)?.reason
-      const canceledBy = grund === 'timeout' ? 'timeout' : 'terminal'
       return tx(req.pool, req, async client => {
         const auftrag = await eigenerAuftrag(client, deviceId, jobRef)
         if (auftrag.state !== 'pending' && auftrag.state !== 'opened') {
@@ -789,12 +723,54 @@ export function terminalRoutes(app: FastifyInstance): void {
           // abgebrochen.
           return { jobRef, state: auftrag.state }
         }
-        await client.query(
-          `UPDATE terminal_job
-              SET state = 'canceled', canceled_by = $2, finished_at = now()
-            WHERE id = $1`, [auftrag.id, canceledBy])
+        await beenden(client, auftrag.id, 'canceled',
+          grund === 'timeout' ? 'timeout' : 'terminal')
         return { jobRef, state: 'canceled' }
       })
+    }
+  })
+
+  /**
+   * Der Ruhezustand: die Diashow, die das Haus festgelegt hat. Seiten des
+   * Hauses, keine Gastdaten. Das Terminal holt sie beim Eintritt in den
+   * Ruhezustand und danach alle paar Minuten, nicht bei jeder Frage.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/terminal/idle',
+    permission: 'terminal:device',
+    summary: 'Gaesteterminal: Diashow des Ruhezustands',
+    handler: async (req) => {
+      const { propertyId } = geraetVon(req)
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query(
+          `SELECT c.title, c.body, c.idle_seconds AS seconds, i.public_ref AS "imageRef"
+             FROM terminal_content c
+             LEFT JOIN terminal_content_image i ON i.content_id = c.id
+            WHERE c.property_id = $1 AND c.archived_at IS NULL
+              AND c.idle_position IS NOT NULL
+            ORDER BY c.idle_position
+            LIMIT $2`, [propertyId, DIASHOW_MAX])
+        return { slides: rows }
+      })
+    }
+  })
+
+  /**
+   * Ein Bild einer Seite -- nur eines aus dem eigenen Haus. Ausgeliefert mit
+   * der Art, die beim Hochladen an den ersten Bytes erkannt wurde, und so,
+   * dass ein Browser es nicht als etwas anderes deutet.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/terminal/images/:imageRef',
+    permission: 'terminal:device',
+    summary: 'Gaesteterminal: Bild einer Seite',
+    handler: async (req, reply) => {
+      const { propertyId } = geraetVon(req)
+      const { imageRef } = req.params as { imageRef: string }
+      const bild = await tx(req.pool, req, client => bildLesen(client, imageRef, propertyId))
+      return bildSenden(reply, bild)
     }
   })
 }

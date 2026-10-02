@@ -292,6 +292,14 @@ const M = {
     de: 'Terminalauftrag',
     en: 'Terminal job',
     tr: 'Terminal görevi' },
+  'res.terminalContent': {
+    de: 'Terminalseite',
+    en: 'Terminal page',
+    tr: 'Terminal sayfası' },
+  'res.terminalUrl': {
+    de: 'Freigegebene Adresse',
+    en: 'Approved address',
+    tr: 'Onaylı adres' },
   'res.oauthClient': {
     de: 'Maschinenzugang',
     en: 'Machine access',
@@ -1214,6 +1222,18 @@ const M = {
     de: 'Fuer diese Reservierung liegt noch kein Meldeschein vor.',
     en: 'There is no registration form for this reservation yet.',
     tr: 'Bu rezervasyon için henüz bir Meldeschein yok.' },
+  'terminal.imageType': {
+    de: 'Nur Bilder im Format PNG, JPEG oder WebP. SVG ist nicht erlaubt.',
+    en: 'Only PNG, JPEG or WebP images. SVG is not allowed.',
+    tr: 'Yalnızca PNG, JPEG veya WebP görselleri. SVG\'ye izin verilmez.' },
+  'terminal.imageTooLarge': {
+    de: 'Das Bild ist zu gross, hoechstens {max} KB.',
+    en: 'The image is too large, at most {max} KB.',
+    tr: 'Görsel çok büyük, en fazla {max} KB.' },
+  'terminal.urlInvalid': {
+    de: 'Nur https-Adressen ohne Zugangsdaten und ohne Adressen im eigenen Netz.',
+    en: 'Only https addresses without credentials and without internal network addresses.',
+    tr: 'Yalnızca kimlik bilgisi içermeyen ve iç ağ adresi olmayan https adresleri.' },
   'terminal.jobNotOpen': {
     de: 'Der Auftrag ist nicht mehr offen.',
     en: 'The job is no longer open.',
