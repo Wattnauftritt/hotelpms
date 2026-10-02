@@ -913,6 +913,36 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 3. **Speicher- und CPU-Bedarf des Workers messen**, statt `MemoryMax=4G` und `CPUQuota=150%` zu schätzen.
 4. **Gemeinsamer Zähler für die Ratenbegrenzung**, sobald mehr als ein API-Prozess läuft — dieselbe Aufgabe wie Befund S5 in Dokument 28, einmal aus der Leistungs-, einmal aus der Sicherheitssicht.
 
+### Suche: die Schwelle hinter der Zeilenrichtlinie — **erledigt**
+
+**Wo es liegt.** `apps/api/src/routes/guests.ts`, `GET /v1/guests` und `GET /v1/companies`. Keine Migration: die Indizes aus `0015` bleiben, nur die Abfragen ändern sich.
+
+**Befund.** `guest` und `company` stehen unter erzwungener Zeilenrichtlinie. PostgreSQL lässt eine Bedingung des Aufrufers nur dann **vor** der Richtlinie laufen — und damit als Indexbedingung —, wenn ihr Operator `LEAKPROOF` ist; sonst könnte sie über eine Fehlermeldung Zeilen fremder Mandanten verraten. `%` (`similarity_op`), `LIKE` (`textlike`) und `lower()` sind es nicht. Der GiST-Index `guest_last_name_gist` sortierte deshalb nur noch (`Order By: last_name <-> …`), `last_name % $1` stand als `Filter` dahinter. Solange es Treffer gab, griff das `LIMIT` nach zwanzig Zeilen; bei einem Begriff **ohne** Treffer — Tippfehler, Ziffern — nie, und der Scan las jeden Gast des Accounts. Der E-Mail-Zweig (`lower(email) LIKE …`) konnte `guest_email_prefix` gar nicht benutzen und lief bei **jeder** Suche über alle Gäste, auch bei „Matthiesen", wo keine Adresse gemeint war. Die Messung aus Dokument 15 hatte das nicht gezeigt, weil sie einen Namen mit Treffern suchte.
+
+**Änderung.**
+
+- **Die Schwelle steht außen.** Innen `ORDER BY last_name <-> $1 LIMIT n` ohne `%`, außen `WHERE abstand <= 0.7` — das ist `similarity >= 0.3`, der Standard von `%`. Das Ergebnis ist dasselbe: die Zeilen kommen nach Abstand sortiert, also fällt die erste über der Schwelle mit allen folgenden heraus. Bedingungen auf einfachen Spalten (`status <> 'anonymized'`, `active`) dürfen innen bleiben; sie filtern vor dem `LIMIT`, das dann zählt, was sie durchlassen.
+- **Ein zweiter Zweig für Anfänge.** `$1 <<-> last_name` (Wortähnlichkeit, Schwelle 0,4, also Abstand `<= 0.6`), derselbe Index sortiert danach. „Sonn" findet „Sonnenschein", das `<->` als zu kurz verwirft. Seine Treffer tragen denselben Abstand `<->` wie der erste Zweig und stehen deshalb hinten: die Reihenfolge der bisherigen Treffer bleibt.
+- **Die Mail nur, wenn ein `@` im Begriff steht.** Der Zweig wird über einen booleschen Parameter abgeschaltet (`One-Time Filter: false`, `never executed`).
+- **Firmen genauso**, ohne Mailzweig.
+
+**Gemessen** gegen den Saatlauf (60 000 Gäste; dazu 20 000 Messfirmen aus den Gastnamen mit Rechtsformzusatz, weil der Saatlauf keine Firmen anlegt), als `hotelpms_app` in einer Transaktion mit `set_config('app.account_ids', '1', true)`, `EXPLAIN (ANALYZE, BUFFERS)`, warmer Cache, Median aus drei Läufen, Grenze 20 (Gäste) bzw. 50 (Firmen):
+
+| Abfrage | Begriff | vorher | gelesene Zeilen vorher | nachher | gelesene Zeilen nachher |
+|---|---|---|---|---|---|
+| Gäste | `Matthiesen` (Treffer) | 92 ms, 60 821 Puffer | 20 + 60 000 (Mailzweig) | 61 ms, 3 246 Puffer | 20 + 20 |
+| Gäste | `Xqzvyk` (kein Treffer) | 365 ms, 111 779 Puffer | 60 000 + 60 000 | 26 ms, 1 434 Puffer | 20 + 20 |
+| Gäste | `4711` (Ziffern) | 333 ms, 111 811 Puffer | 60 000 + 60 000 | 29 ms, 1 428 Puffer | 20 + 20 |
+| Gäste | `Sonn` (Anfang) | 297 ms | 60 000 + 60 000 | 41 ms | 20 + 20 |
+| Firmen | `Matthiesen` (Treffer) | 11 ms, 351 Puffer | 50 | 24 ms, 1 450 Puffer | 50 + 50 |
+| Firmen | `Xqzvyk` (kein Treffer) | 89 ms, 16 785 Puffer | 20 000 | 12 ms, 669 Puffer | 50 + 50 |
+| Firmen | `4711` (Ziffern) | 85 ms, 16 727 Puffer | 20 000 | 12 ms, 671 Puffer | 50 + 50 |
+| Firmen | `Sonn` (Anfang) | 111 ms | 20 000 | 12 ms | 50 + 50 |
+
+„Gelesene Zeilen" sind die Zeilen, die der Indexscan liefert, bevor ein Filter sie verwirft (`rows` plus `Rows Removed by Filter`). „Sonn" kommt im Saatlauf nicht vor und ist dort ebenfalls ein Begriff ohne Treffer. Dass der Namenszweig dasselbe liefert wie `%`, ist für zwölf Begriffe nachgerechnet (`Matthiesen`, `Mathiesen`, `Petersen`, `Broderer`, `Wagn`, `Xqzvyk`, `4711`, `Hanske`, `Iversohn-Erich`, `Mü`, `Sonn`, `Bahn`): dieselben Zeilen in derselben Reihenfolge. Eine Firmensuche mit Treffern wird etwas teurer (11 → 24 ms), weil der Anfangszweig hinzukommt; das ist der Preis dafür, dass ein Fehlgriff nicht mehr die ganze Tabelle liest.
+
+**Offen.** Ein Begriff **mit** `@` liest weiterhin alle Gäste, wenn keine Adresse passt (`zz@nix.invalid`: 116 ms, `Rows Removed by Filter: 60000`) — `lower(email)` ist als Funktion über der Spalte nicht `LEAKPROOF`, und daran ändert keine Umformulierung der Abfrage etwas. Abhilfe wäre eine gespeicherte, kleingeschriebene Spalte mit `text_pattern_ops`-Index und einer Bereichsbedingung über `~>=~`/`~<~`, die beide `LEAKPROOF` sind. Das ist eine neue Spalte mit personenbezogenem Inhalt und gehört damit in `audit_redaction`; deshalb hier nicht nebenbei gebaut. Ebenso offen: bei vielen Accounts in einer Datenbank liest der Scan, bis `n` Zeilen **des eigenen** Accounts beisammen sind; die Zeilenrichtlinie selbst ist keine Indexbedingung des GiST-Index, weil GiST `= ANY(...)` nicht kann.
+
 ---
 
 ### Aufgabe 15 — Preissteuerung (Revenue Management) — **erledigt**
@@ -943,6 +973,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | Trigger je Zeile bei Massenänderung | 250 Zimmer anzulegen dauerte 28 Sekunden statt 59 Millisekunden |
 | Zähler als Aufzeichnung benutzt | Die Auslastung der Vergangenheit wurde mit 0,3 Prozent statt 63 Prozent gemeldet |
 | `ORDER BY similarity(...)` statt Abstandsoperator | Die Namenssuche las die ganze Tabelle, 147 statt 14 Millisekunden |
+| Nicht-`LEAKPROOF`-Operator unter erzwungener Zeilenrichtlinie | `last_name % $1` lief als Filter hinter dem Index; ein Begriff ohne Treffer las alle 60 000 Gäste, 365 statt 26 Millisekunden. Die Schwelle gehört außen um ein `ORDER BY … LIMIT` |
 | Korrelierte Unterabfrage je Zeile | Der Saatlauf kam nicht über den Schritt hinaus und musste abgebrochen werden |
 | snake_case gelesen, camelCase geprüft | Die Anschrift verschwand lautlos, die Rechnung wurde grundlos abgewiesen |
 | Frist gegen `now()` statt gegen den Geschäftstag | Ein Wiederholungslauf hätte andere Zeilen gefunden als der erste |
