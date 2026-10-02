@@ -137,6 +137,42 @@ export const AvailabilityDay = Type.Object({
 })
 export type AvailabilityDay = Static<typeof AvailabilityDay>
 
+/** Zustaende des Zahlungsstands; die Regel steht in `@hotelpms/domain`. */
+export const PlanPaymentState = Type.Union([
+  Type.Literal('none'), Type.Literal('requested'), Type.Literal('open'),
+  Type.Literal('partial'), Type.Literal('deposit'), Type.Literal('paid')])
+export type PlanPaymentState = Static<typeof PlanPaymentState>
+
+/** Geld immer in ganzen Cent. */
+export const PlanPayment = Type.Object({
+  state: PlanPaymentState,
+  /** Summe der Positionen auf dem eigenen Folio, Gegenbuchungen eingerechnet. */
+  charged_cent: Type.Integer(),
+  /** Summe der Zahlungsvermerke, Erstattungen eingerechnet. */
+  settled_cent: Type.Integer(),
+  /** Saldo jetzt: gebucht minus gezahlt. */
+  balance_cent: Type.Integer(),
+  /** Gebucht plus noch nicht gebuchte Naechte: der Aufenthalt, soweit bekannt. */
+  expected_cent: Type.Integer(),
+  /** Naechte, die der Nachtlauf noch buchen wird. */
+  unposted_nights: Type.Integer(),
+  /** Davon ueber eine Anzahlungsrechnung vereinnahmt. */
+  deposit_cent: Type.Integer(),
+  /** Offene Zahlungslinks. */
+  requested_cent: Type.Integer(),
+  /** Die Logis geht per Regel auf ein anderes Konto. */
+  routed: Type.Boolean(),
+  /** Bei mehreren Zimmern in einer Buchung: dieselbe Rechnung ueber alle. */
+  group: Type.Union([Type.Object({
+    state: PlanPaymentState,
+    rooms: Type.Integer(),
+    expected_cent: Type.Integer(),
+    settled_cent: Type.Integer(),
+    balance_cent: Type.Integer()
+  }), Type.Null()])
+})
+export type PlanPayment = Static<typeof PlanPayment>
+
 export const TapeChart = Type.Object({
   from: IsoDate,
   to: IsoDate,
@@ -150,7 +186,12 @@ export const TapeChart = Type.Object({
     category_code: Type.String(),
     /** Traegt die Warnung beim Verschieben in eine kleinere Zimmergruppe. */
     max_occupancy: Type.Integer(),
-    sort_order: Type.Integer()
+    sort_order: Type.Integer(),
+    /**
+     * Reinigungsstand des Zimmers, wie auf dem Housekeeping-Bildschirm.
+     * Fehlt ohne `housekeeping:read` -- das Feld fehlt, der Plan bleibt.
+     */
+    housekeeping: Type.Optional(HousekeepingState)
   })),
   reservations: Type.Array(Type.Object({
     id: Type.Integer(),
@@ -187,7 +228,13 @@ export const TapeChart = Type.Object({
     /** Merkmal fuer den Balken: "Balkon", "1. Stock", "Spaetanreise". */
     short_note: Type.Union([Type.String(), Type.Null()]),
     /** Der Vorgang. Nur im Titel und im Seitenfenster, nie auf dem Balken. */
-    notes: Type.Union([Type.String(), Type.Null()])
+    notes: Type.Union([Type.String(), Type.Null()]),
+    /**
+     * Zahlungsstand, abgeleitet und nie gespeichert (`paymentState` in
+     * `@hotelpms/domain`). Fehlt ohne `folio:read`: wer Belegung sieht,
+     * sieht damit noch keine Betraege.
+     */
+    payment: Type.Optional(Type.Union([PlanPayment, Type.Null()]))
   })),
   blocks: Type.Array(Type.Object({
     resource_id: Type.Integer(),
