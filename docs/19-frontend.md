@@ -2,7 +2,7 @@
 
 Dieses Dokument misst die Rezeptions-Oberfläche (`apps/web`) an drei Dingen: an dem, was ein PMS im Kern können muss ([`01-marktanalyse-pms.md`](01-marktanalyse-pms.md)), an dem, was der Wettbewerb tatsächlich macht, und an dem, was unsere eigene API bereits hergibt. Die Aufteilung der Arbeit steht daneben in [`20-arbeitsteilung.md`](20-arbeitsteilung.md).
 
-> **Stand.** Die Lückenanalyse und der Plan unten sind der Befund, der zu [`20-arbeitsteilung.md`](20-arbeitsteilung.md) geführt hat — Zahlen und Tabellen zeigen den Zustand **vor** dieser Arbeit. Inzwischen sind Spur A (Belegungsplan, Gäste, Firmen, Verfügbarkeit, Check-in) und Spur C (Berichte, Einstellungen, Schnittstellen) vollständig, Spur B (Preise, Rechnung, Geld) bis auf Anzahlung, Pay-by-Link und die Channel-Manager-Ansicht. Was tatsächlich steht, sagt [`16-arbeitsstand.md`](16-arbeitsstand.md) §1, was noch offen ist, [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5. Die Analyse hier bleibt trotzdem lesenswert: sie ist die Begründung, warum die Oberfläche so gebaut wurde und nicht anders.
+> **Stand.** Die Lückenanalyse und der Plan unten sind der Befund, der zu [`20-arbeitsteilung.md`](20-arbeitsteilung.md) geführt hat — Zahlen und Tabellen zeigen den Zustand **vor** dieser Arbeit. Inzwischen sind Spur A (Belegungsplan, Gäste, Firmen, Verfügbarkeit, Check-in) und Spur C (Berichte, Einstellungen, Schnittstellen) vollständig, Spur B (Preise, Rechnung, Geld) bis auf die Channel-Manager-Ansicht; Anzahlung anfordern und Pay-by-Link stehen im Reservierungsfenster und in der Vorauszahlung des Folios (`components/Anzahlung.tsx`, `components/Zahlungslink.tsx`, Dokument 16). Was tatsächlich steht, sagt [`16-arbeitsstand.md`](16-arbeitsstand.md) §1, was noch offen ist, [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5. Die Analyse hier bleibt trotzdem lesenswert: sie ist die Begründung, warum die Oberfläche so gebaut wurde und nicht anders.
 
 ---
 
@@ -164,6 +164,10 @@ Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen 
 **Offline sichtbar machen, nicht verschweigen.** Lesen ja, schreiben nein. Eine Buchung, die im Browser wartet, bindet Kontingent, das inzwischen verkauft ist.
 
 **Unveränderlichkeit zeigen.** Die Oberfläche bildet die Regeln ab, statt den Benutzer auflaufen zu lassen.
+
+**Ein Zustand ist nie nur eine Farbe.** Rot und Grün sind für jeden zwölften Mann dieselbe Farbe, und „schmutzig“ und „sauber“, „offen“ und „bezahlt“ wären es dann auch. Jedes Zustandszeichen hat eine eigene Form und den Zustand in Worten im Titel und als Name für Bildschirmleser — im Plan ▲ ✓ ★ für die Reinigung und ein Euro mit zweitem Zeichen für die Zahlung (`lib/planStatus.ts`, [`16-arbeitsstand.md`](16-arbeitsstand.md), „Reinigungs- und Zahlungsstand“).
+
+**Abgeleitetes wird angezeigt, nicht gespeichert.** „Bezahlt“ ist keine Spalte, sondern eine Rechnung über Positionen, Zahlungen und noch nicht gebuchte Nächte. Ein gespeicherter Zustand liefe auseinander, sobald nach der Zahlung eine Minibar gebucht wird — und sähe dabei weiter richtig aus.
 
 **Die Tastatur ist das Eingabegerät.** Was drei Klicks braucht, wird an einer Rezeption nicht benutzt.
 

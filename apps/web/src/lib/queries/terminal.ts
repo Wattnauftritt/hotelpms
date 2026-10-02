@@ -32,7 +32,7 @@ export interface TerminalStand {
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean }>
   /** Was die Rezeption fuer diese Reservierung anstossen kann. */
   offers: TerminalKind[]
-  registration: { registrationId: number; isForeign: boolean; signed: boolean } | null
+  registration: { registrationId: number; signatureRequired: boolean; signed: boolean } | null
   job: { jobRef: string; kind: TerminalKind; state: JobState
          canceledBy: 'reception' | 'terminal' | 'timeout' | 'revoked' | null
          deviceName: string; createdAt: string } | null
@@ -115,22 +115,6 @@ export function useCancelTerminalJob(reservationRef: string) {
   return useMutation({
     mutationFn: (jobRef: string) => api.post(`/v1/terminal-jobs/${jobRef}/cancel`),
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['reservation-terminal', reservationRef] })
-    }
-  })
-}
-
-/**
- * Meldeschein nachtraeglich am Tresen unterschreiben (Dokument 16, "Was der
- * Oberflaeche noch fehlt"). Derselbe Weg, den das Terminal nimmt.
- */
-export function useSignRegistration(reservationRef: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (b: { registrationId: number; signatureSvg: string }) =>
-      api.post(`/v1/registrations/${b.registrationId}/sign`, { signatureSvg: b.signatureSvg }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
       void qc.invalidateQueries({ queryKey: ['reservation-terminal', reservationRef] })
     }
   })

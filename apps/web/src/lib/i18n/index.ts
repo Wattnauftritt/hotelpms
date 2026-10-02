@@ -18,6 +18,8 @@ import { support } from './support.js'
 import { admin } from './admin.js'
 import { terminal } from './terminal.js'
 import { hausnotiz } from './hausnotiz.js'
+import { planstatus } from './planstatus.js'
+import { onlineCheckin } from './onlineCheckin.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -124,7 +126,9 @@ const texts = {
   ...support,
   ...admin,
   ...terminal,
-  ...hausnotiz
+  ...hausnotiz,
+  ...planstatus,
+  ...onlineCheckin
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts

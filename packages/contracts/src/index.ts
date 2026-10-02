@@ -3,3 +3,4 @@ export { buildOpenApi, toOpenApiPath, pathParameters, operationId,
 export * from './schemas.js'
 export * from './messages.js'
 export * from './kennwort.js'
+export * from './checkin.js'

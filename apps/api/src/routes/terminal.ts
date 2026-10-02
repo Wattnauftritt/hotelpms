@@ -8,7 +8,8 @@ import { loadConfig } from '../platform/config.js'
 import { hashToken, DEVICE_COOKIE } from '../platform/auth.js'
 import { limiters, tooManyRequests, KOPPLUNG_FEHLVERSUCHE } from '../platform/rateLimit.js'
 import { can, type Principal } from '../platform/context.js'
-import { signRegistration } from './registrations.js'
+import { istUnterschriftSvg } from '@hotelpms/contracts'
+import { unterschreibeMeldeschein } from '../platform/meldeschein.js'
 
 /**
  * Gaesteterminal: ein Touchscreen an der Rezeption, an dem ein Gast den
@@ -92,7 +93,7 @@ function istArt(v: unknown): v is TerminalKind {
 /** Der Meldeschein einer Reservierung, wie ihn die Arten brauchen. */
 interface Lage {
   registrationId: number | null
-  isForeign: boolean
+  signatureRequired: boolean
   signed: boolean
 }
 
@@ -132,14 +133,14 @@ const ARTEN: Record<TerminalKind, ArtDefinition> = {
    * Seit dem 1.1.2025 unterschreiben nur auslaendische Gaeste. Fuer einen
    * inlaendischen wird die Art gar nicht angeboten, und die Schnittstelle
    * weist sie ab -- mit derselben Meldung wie der Weg am Tresen, denn es ist
-   * dieselbe Regel (`signRegistration`).
+   * dieselbe Regel (`unterschreibeMeldeschein`).
    */
   registration_sign: {
     verfuegbar: true,
-    angeboten: lage => lage.registrationId !== null && lage.isForeign && !lage.signed,
+    angeboten: lage => lage.registrationId !== null && lage.signatureRequired && !lage.signed,
     vorbereiten: lage => {
       if (lage.registrationId === null) throw Errors.unprocessable('terminal.noRegistration')
-      if (!lage.isForeign) throw Errors.unprocessable('registration.signatureNotForeseen')
+      if (!lage.signatureRequired) throw Errors.unprocessable('registration.signatureNotForeseen')
       if (lage.signed) throw Errors.conflict('registration.alreadySigned')
       return { registrationId: lage.registrationId }
     },
@@ -191,10 +192,16 @@ const ARTEN: Record<TerminalKind, ArtDefinition> = {
     },
     abschliessen: async (client, auftrag, body) => {
       if (auftrag.registrationId === null) throw Errors.notFound('res.registration')
-      // Derselbe Weg wie am Tresen, mit dem Haus des Auftrags als einzigem
-      // erlaubten -- nicht mit allen Haeusern des Geraets, auch wenn es nur
-      // eines hat: die Regel soll nicht an dieser Zufaelligkeit haengen.
-      await signRegistration(client, auftrag.registrationId, body.signatureSvg,
+      /*
+       * Vor dem Terminal steht kein Mitarbeiter: angenommen wird genau die
+       * Form, die das Zeichenfeld erzeugt, wie auf der Gastseite
+       * (`istUnterschriftSvg`, Dokument 30). Dann derselbe Weg wie am
+       * Tresen, mit dem Haus des Auftrags als einzigem erlaubten.
+       */
+      if (typeof body.signatureSvg !== 'string' || !istUnterschriftSvg(body.signatureSvg)) {
+        throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
+      }
+      await unterschreibeMeldeschein(client, auftrag.registrationId, body.signatureSvg,
         haus => haus === auftrag.propertyId)
     }
   },
@@ -235,15 +242,18 @@ async function lageDerReservierung(
 ): Promise<Lage> {
   // Nur der Hauptschein: bei einer Gruppe unterschreibt die Reiseleitung,
   // nicht jeder Mitreisende einzeln (E6, Dokument 13).
-  const { rows } = await client.query<{ id: string; is_foreign: boolean; signed: boolean }>(
-    `SELECT id, is_foreign, signed_at IS NOT NULL AS signed
+  // `signature_required` und nicht `is_foreign`: ein auslaendischer
+  // Mitreisender verlangt die Unterschrift auch, wenn der Hauptgast deutsch
+  // ist (platform/meldeschein.ts).
+  const { rows } = await client.query<{ id: string; noetig: boolean; signed: boolean }>(
+    `SELECT id, signature_required AS noetig, signed_at IS NOT NULL AS signed
        FROM registration
       WHERE reservation_id = $1 AND group_registration_id IS NULL
       ORDER BY id LIMIT 1`, [reservationId])
   const r = rows[0]
   return r === undefined
-    ? { registrationId: null, isForeign: false, signed: false }
-    : { registrationId: Number(r.id), isForeign: r.is_foreign, signed: r.signed }
+    ? { registrationId: null, signatureRequired: false, signed: false }
+    : { registrationId: Number(r.id), signatureRequired: r.noetig, signed: r.signed }
 }
 
 /**

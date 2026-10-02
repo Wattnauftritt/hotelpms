@@ -7,6 +7,7 @@ import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
 import { TerminalSeite, istTerminalAdresse } from './routes/Terminal.tsx'
+import { GastCheckinSeite, checkinAusAdresse } from './routes/GastCheckin.tsx'
 import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
@@ -99,6 +100,12 @@ function App(): JSX.Element {
    * Sitzung.
    */
   const [terminal] = useState(() => istTerminalAdresse())
+  /*
+   * Der Online-Check-in des Gastes (Dokument 30) steht aus demselben Grund
+   * hier vorn: wer den Link aus seiner Buchungsmail oeffnet, ist Gast und
+   * hat keinen Zugang -- er braucht auch keinen. Der Link ist der Ausweis.
+   */
+  const [gastCheckin] = useState(checkinAusAdresse)
   const [adresse, setAdresse] = useAdresse()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
@@ -156,6 +163,9 @@ function App(): JSX.Element {
   }
 
   if (terminal) return <TerminalSeite />
+  if (gastCheckin !== null) {
+    return <GastCheckinSeite token={gastCheckin.token} />
+  }
 
   if (zugang !== null) {
     return <I18nContext.Provider value={locale}>

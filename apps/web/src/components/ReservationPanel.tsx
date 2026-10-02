@@ -7,6 +7,8 @@ import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
 import { useEscape } from '../lib/tasten.js'
 import { VerlaufDialog } from './Verlauf.tsx'
 import { AmTerminal } from './AmTerminal.tsx'
+import { Anzahlung } from './Anzahlung.tsx'
+import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
@@ -25,7 +27,7 @@ const WIEDERHERSTELLBAR = new Set(['Canceled', 'NoShow'])
  * verlieren.
  */
 export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenCheckIn,
-                                   onOpenGroup }: {
+                                   onOpenGroup, children }: {
   reservationRef: string; onClose: () => void; onOpenFolio: (folioRef: string) => void
   onOpenCheckIn: (reservationRef: string) => void
   /**
@@ -38,6 +40,12 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
    * sie liest, sucht genau das, was dahinter liegt.
    */
   onOpenGroup?: (bookingRef: string) => void
+  /**
+   * Was der Aufrufer schon weiss und unter dem Kopf zeigen will -- der
+   * Belegungsplan etwa den Zahlungsstand aus seinem eigenen Aufruf, statt
+   * dass das Fenster ihn ein zweites Mal holt.
+   */
+  children?: React.ReactNode
 }): JSX.Element {
   const t = useT()
   const q = useReservation(reservationRef)
@@ -63,6 +71,7 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
           </button>
           <h2 className="text-sm font-medium">{t('plan.reservation')} {reservationRef}</h2>
         </div>
+        {children}
 
         {q.isError && <Fehler error={q.error} />}
         {q.data === undefined && !q.isError && <Laedt />}
@@ -147,6 +156,13 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
       {/* Gaesteterminal (Dokument 31). Zeigt sich nur, wenn es eines gibt. */}
       <AmTerminal reservationRef={r.reservationRef} />
 
+      {/* Online-Check-in (Dokument 30): verschickt, ausgefuellt, Unterschrift
+          offen. Nicht bei einer stornierten Buchung -- dort gibt es nichts
+          mehr auszufuellen. */}
+      {r.onlineCheckin !== undefined && r.canceledAt === null && (
+        <OnlineCheckinStand reservationRef={r.reservationRef} stand={r.onlineCheckin} />
+      )}
+
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded p-3">
         <Feld label={t('plan.guest')}>
           {r.guestName ?? <span className="text-neutral-400">{t('plan.noGuest')}</span>}
@@ -230,6 +246,11 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
             </button>
           : <span className="text-sm text-neutral-400">{t('plan.noFolio')}</span>}
       </section>
+
+      {/* Anzahlung und Zahlungslink am Aufenthalt: vereinbart wird sie bei
+          der Buchung, und wer die Reservierung offen hat, soll sehen, ob
+          sie gesichert ist. Ohne Folio gibt es nichts, worauf gezahlt wird. */}
+      {r.folioRef !== null && <Anzahlung folioRef={r.folioRef} />}
 
       <NotizFeld reservationRef={r.reservationRef} notes={r.notes} />
     </div>

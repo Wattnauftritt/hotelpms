@@ -30,7 +30,9 @@ let chefSitzung: string
 
 const VON = '2026-10-01'
 const BIS = '2026-10-04'
-const UNTERSCHRIFT = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 10"/></svg>'
+/** Genau die Form, die das Zeichenfeld erzeugt (`istUnterschriftSvg`). */
+const UNTERSCHRIFT = '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240">'
+  + '<image href="data:image/png;base64,iVBORw0KGgoUNTERSCHRIFT" width="720" height="240"/></svg>'
 
 beforeAll(async () => {
   await ensureSchema()
@@ -430,7 +432,7 @@ describe('Unterschrift am Terminal', () => {
     expect(prot.rowCount).toBe(1)
     expect(prot.rows[0]!.user_id).toBeNull()
     expect(prot.rows[0]!.terminal_device_id).toBe(geraetId)
-    expect(JSON.stringify(prot.rows[0]!.changed)).not.toContain('M0 0L10 10')
+    expect(JSON.stringify(prot.rows[0]!.changed)).not.toContain('UNTERSCHRIFT')
   })
 
   it('weist eine zweite Unterschrift ab, am Terminal wie am Tresen', async () => {

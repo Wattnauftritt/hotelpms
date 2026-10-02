@@ -15,13 +15,15 @@ describe('Bereiche der Einstellungen', () => {
       .toEqual(['mail'])
     // Zahlungsarten und Hausbedingungen haengen beide an settings:property:
     // beides ist, wie das Haus nach aussen abrechnet und auftritt.
-    // Gaesteterminals ebenso (Dokument 31): ein Terminal gehoert einem Haus.
+    // Der Online-Check-in ebenso (Dokument 30): wann ein Gast vorab Post
+    // bekommt, entscheidet das Haus. Und die Gaesteterminals (Dokument 31):
+    // ein Terminal gehoert einem Haus.
     expect(einstellungsBereiche(p => p === 'settings:property').map(b => b.key))
-      .toEqual(['pay', 'terms', 'terminal'])
+      .toEqual(['pay', 'terms', 'checkin', 'terminal'])
     // Support-Zugriff kam mit Aufgabe 13c dazu und haengt an
     // settings:account -- siehe support.test.ts.
     expect(einstellungsBereiche(() => true).map(b => b.key))
-      .toEqual(['mail', 'pay', 'terms', 'terminal', 'support'])
+      .toEqual(['mail', 'pay', 'terms', 'checkin', 'terminal', 'support'])
     expect(einstellungsBereiche(() => false)).toEqual([])
   })
 })

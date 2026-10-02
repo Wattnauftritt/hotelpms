@@ -393,7 +393,7 @@ function MeldescheinUnterschreiben({ jobRef, daten, onFertig, onAbbrechen }: Ans
       <div className="space-y-2">
         <div className="text-sm text-neutral-600">{t('kiosk.sign.here')}</div>
         <Unterschriftsfeld onChange={setSignatur} breite={900} hoehe={260} gross
-                           leeren="kiosk.sign.clear" />
+                           beschriftungLoeschen={t('kiosk.sign.clear')} />
         <p className="text-xs text-neutral-500">{t('kiosk.sign.legal')}</p>
       </div>
 

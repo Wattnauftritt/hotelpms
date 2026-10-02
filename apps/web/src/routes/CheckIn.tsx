@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { Guest } from '@hotelpms/contracts'
+import { istAuslaendisch, type Guest } from '@hotelpms/contracts'
 import { useReservation, useRegistrationForm, useSubmitRegistration, useCheckIn,
-         useSetReservationGuest, useTerms, useAgreeTerms,
+         useSetReservationGuest, useTerms, useAgreeTerms, useSignRegistration,
          type Hausbedingung } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { GuestPicker } from '../components/GuestPicker.tsx'
@@ -9,7 +9,6 @@ import { Dialog, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { AmTerminal } from '../components/AmTerminal.tsx'
-import { useSignRegistration } from '../lib/queries/terminal.js'
 
 /**
  * Check-in mit Meldeschein (A9), erreichbar aus dem Plan.
@@ -57,6 +56,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   const einchecken = useCheckIn(reservationRef)
   const gastSetzen = useSetReservationGuest(reservationRef)
   const bedingungen = useTerms(reservationRef)
+  const unterschreiben = useSignRegistration(reservationRef)
 
   const uebernehmen = (g: Guest | null): void => {
     if (g === null) return
@@ -79,16 +79,17 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
    */
   const f = form.data
   /*
-   * Ein auslaendischer Gast, dessen Schein schon steht, dessen Unterschrift
-   * aber noch fehlt -- weil sie am Gaesteterminal folgt (Dokument 31).
-   * Eingecheckt wird erst danach: das Meldegesetz verlangt sie am Tag der
-   * Ankunft, und ein Weg, der sie ueberspringt, wird an einem vollen Abend
-   * genau einmal zu oft genommen. Die vorsichtigere Lesart; die
-   * Schnittstelle selbst prueft beim Check-in den Meldeschein nicht und tat
-   * es nie.
+   * Eine auslaendische Person auf dem Schein verlangt die Unterschrift, auch
+   * wenn der Hauptgast deutsch ist -- dieselbe Regel wie in der Schnittstelle
+   * (`istAuslaendisch`, Dokument 30). Die Maske fragt sie vorher ab, statt
+   * den Knopf drueckbar zu machen und dann mit 422 zu scheitern.
    */
-  const unterschriftFehlt = f !== undefined && f.alreadyRegistered
-    && f.signatureRequired && f.signedAt === null
+  const unterschriftNoetig = f !== undefined && (f.signatureRequired
+    || mitreisende.some(m => istAuslaendisch({ nationality: m.nationality,
+                                                country: m.address.country })))
+  // Vorab per Link erfasst, Unterschrift steht aus: erst unterschreiben,
+  // dann einchecken. Sie gehoert an den Anreisetag, und der ist jetzt.
+  const unterschriftOffen = f?.signaturePending === true && !unterschreiben.isSuccess
 
   return (
     /*
@@ -102,8 +103,9 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               <>
                 <button type="button"
                         disabled={ohneZimmer || einchecken.isPending
-                          || f === undefined || unterschriftFehlt
-                          || (!f.alreadyRegistered && !anmelden.isSuccess)}
+                          || f === undefined
+                          || (!f.alreadyRegistered && !anmelden.isSuccess)
+                          || unterschriftOffen}
                         onClick={() => void einchecken_und_schliessen()}
                         className={KNOPF}>
                   {t('checkin.submit')}
@@ -187,12 +189,25 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                   {f.signatureRequired && f.signedAt !== null && (
                     <p className="text-sm text-emerald-800">✓ {t('terminal.checkin.signed')}</p>
                   )}
-                  {unterschriftFehlt && f.registrationId !== null && (
-                    <NachtraeglichUnterschreiben reservationRef={reservationRef}
-                                                 registrationId={f.registrationId} />
+                  {unterschriftOffen && f.registrationId !== null && (
+                    <div className="space-y-2 border border-amber-200 bg-amber-50 rounded p-2">
+                      <p className="text-xs text-amber-900">{t('onlineCheckin.signaturePending')}</p>
+                      <Unterschriftsfeld onChange={setSignatur}
+                                         beschriftungLoeschen={t('checkin.clear')} />
+                      {unterschreiben.isError && <Fehler error={unterschreiben.error} />}
+                      <button type="button"
+                              disabled={signatur === null || unterschreiben.isPending}
+                              onClick={() => unterschreiben.mutate({
+                                registrationId: f.registrationId!, signatureSvg: signatur! })}
+                              className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                                         disabled:opacity-40">
+                        {t('gastCheckin.submitSignature')}
+                      </button>
+                    </div>
                   )}
-                  {/* Auch nach der Unterschrift: dort steht dann "erledigt am
-                      Terminal", und die Rezeption sieht, woher sie kam. */}
+                  {/* Der Weg ueber das Gaesteterminal (Dokument 31). Auch nach
+                      der Unterschrift: dort steht dann "erledigt am Terminal",
+                      und die Rezeption sieht, woher sie kam. */}
                   {f.signatureRequired && <AmTerminal reservationRef={reservationRef} />}
                   {/* Die Bedingungen bleiben sichtbar: der Meldeschein kann
                       vorliegen und die Unterschrift darunter noch fehlen. */}
@@ -204,7 +219,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               ) : (
                 <>
                   <p className="text-xs text-neutral-600">
-                    {f.signatureRequired
+                    {unterschriftNoetig
                       ? t('checkin.signatureRequired')
                       : t('checkin.noSignatureNeeded')}
                   </p>
@@ -241,8 +256,9 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                                    setNeuerMitreisender(null)
                                  }} />
                   </div>
-                  {f.signatureRequired && (
-                    <Unterschriftsfeld onChange={setSignatur} />
+                  {unterschriftNoetig && (
+                    <Unterschriftsfeld onChange={setSignatur}
+                                       beschriftungLoeschen={t('checkin.clear')} />
                   )}
                   {(bedingungen.data?.terms ?? []).map(b => (
                     <Bedingung key={b.termsRef} bedingung={b}
@@ -252,7 +268,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button"
                             disabled={anmelden.isPending
-                              || (f.signatureRequired && signatur === null)}
+                              || (unterschriftNoetig && signatur === null)}
                             onClick={() => anmelden.mutate({
                               reservationRef,
                               signatureSvg: signatur ?? undefined,
@@ -266,7 +282,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                         Rezeptionsbildschirm: der Schein entsteht hier ohne
                         Unterschrift, und der Auftrag ans Terminal folgt
                         gleich darunter. */}
-                    {f.signatureRequired && signatur === null && (
+                    {unterschriftNoetig && signatur === null && (
                       <button type="button" disabled={anmelden.isPending}
                               title={t('terminal.checkin.signLaterHint')}
                               onClick={() => anmelden.mutate({
@@ -287,48 +303,6 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
         })()}
       </div>
     </Dialog>
-  )
-}
-
-/**
- * Die Unterschrift, die beim Anlegen nicht geleistet wurde: hier, falls der
- * Gast doch am Tresen steht oder das Terminal aus ist. Der Weg ueber das
- * Terminal steht direkt darunter (`AmTerminal`); beide gehen ueber
- * dieselbe Regel (`signRegistration` in der Schnittstelle).
- */
-function NachtraeglichUnterschreiben({ reservationRef, registrationId }: {
-  reservationRef: string; registrationId: number
-}): JSX.Element {
-  const t = useT()
-  const [hier, setHier] = useState(false)
-  const [signatur, setSignatur] = useState<string | null>(null)
-  const unterschreiben = useSignRegistration(reservationRef)
-
-  return (
-    <div className="space-y-2 border border-amber-200 bg-amber-50 rounded p-2">
-      <p className="text-sm text-amber-900">{t('terminal.checkin.signaturePending')}</p>
-      {hier ? (
-        <div className="space-y-2 bg-white rounded p-2">
-          <Unterschriftsfeld onChange={setSignatur} />
-          {unterschreiben.isError && <Fehler error={unterschreiben.error} />}
-          <button type="button" disabled={signatur === null || unterschreiben.isPending}
-                  onClick={() => {
-                    if (signatur !== null) {
-                      unterschreiben.mutate({ registrationId, signatureSvg: signatur })
-                    }
-                  }}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
-                             disabled:opacity-40">
-            {t('terminal.checkin.signSubmit')}
-          </button>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setHier(true)}
-                className="text-xs text-neutral-600 underline">
-          {t('terminal.checkin.signHere')}
-        </button>
-      )}
-    </div>
   )
 }
 
@@ -358,7 +332,10 @@ function Bedingung({ bedingung, reservationRef }: {
         </p>
       ) : (
         <>
-          {bedingung.requiresSignature && <Unterschriftsfeld onChange={setSignatur} />}
+          {bedingung.requiresSignature && (
+            <Unterschriftsfeld onChange={setSignatur}
+                               beschriftungLoeschen={t('checkin.clear')} />
+          )}
           {zustimmen.isError && <Fehler error={zustimmen.error} />}
           <button type="button"
                   disabled={zustimmen.isPending

@@ -270,9 +270,16 @@ export interface RegistrationForm {
   isForeign: boolean
   signatureRequired: boolean
   alreadyRegistered: boolean
-  /** Fuer die nachtraegliche Unterschrift, am Tresen oder am Gaesteterminal. */
+  /** Id des vorliegenden Scheins, zum Nachreichen der Unterschrift -- am Tresen
+   *  oder am Gaesteterminal. */
   registrationId: number | null
   signedAt: string | null
+  /**
+   * Vorab ueber den Online-Check-in erfasst, die Unterschrift fehlt noch.
+   * Sie gehoert an den Anreisetag (§ 29 Abs. 2 BMG) -- also hierher.
+   */
+  signaturePending: boolean
+  source: 'desk' | 'online' | 'terminal' | null
 }
 
 /** Vorbefuellter Meldeschein (A9): alles, was das Haus schon weiss, in einem Aufruf. */
@@ -300,6 +307,24 @@ export function useSubmitRegistration(propertyId: number) {
       api.post<{ registrationId: number }>('/v1/registrations', { propertyId, ...body }),
     onSuccess: (_r, { reservationRef }) => {
       void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
+    }
+  })
+}
+
+/**
+ * Die Unterschrift nachreichen, etwa nach einem Online-Check-in vor Anreise.
+ * Die Route gab es seit jeher; eine Maske dafuer fehlte (Dokument 16, "Was
+ * der Oberflaeche noch fehlt").
+ */
+export function useSignRegistration(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { registrationId: number; signatureSvg: string }) =>
+      api.post<{ signed: boolean }>(`/v1/registrations/${body.registrationId}/sign`,
+        { signatureSvg: body.signatureSvg }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
     }
   })
 }

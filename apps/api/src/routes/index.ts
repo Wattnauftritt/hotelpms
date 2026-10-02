@@ -16,6 +16,7 @@ import { setupRoutes } from './setup.js'
 import { blockRoutes } from './blocks.js'
 import { oauthRoutes } from './oauth.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
+import { depositRequestRoutes } from './depositRequests.js'
 import { webhookRoutes } from './webhooks.js'
 import { channelRoutes } from './channel.js'
 import { posRoutes } from './pos.js'
@@ -30,6 +31,7 @@ import { platformDomainRoutes } from './platformDomains.js'
 import { userAdminRoutes } from './userAdmin.js'
 import { historyRoutes } from './history.js'
 import { terminalRoutes } from './terminal.js'
+import { checkinRoutes } from './checkin.js'
 import { openApiRoutes } from './openapi.js'
 import type { DomainVerwaltung } from '../platform/brevoDomains.js'
 
@@ -63,6 +65,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   historyRoutes(app)
   oauthRoutes(app)
   paymentsRoutes(app, overrides.payments)
+  depositRequestRoutes(app)
   webhookRoutes(app)
   channelRoutes(app)
   posRoutes(app)
@@ -76,6 +79,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   platformDomainRoutes(app, { domains: overrides.domains })
   userAdminRoutes(app)
   terminalRoutes(app)
+  checkinRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }
