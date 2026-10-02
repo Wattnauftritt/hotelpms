@@ -158,13 +158,15 @@ pnpm db:reset                 # Schema neu aufbauen
 pnpm db:seed                  # optional: 4 Häuser, 1000 Zimmer, 3 Jahre Daten
 ```
 
-Die vier Tore, die **alle** grün sein müssen, bevor etwas gepusht wird:
+Die vier Tore, die **alle** grün sein müssen, bevor etwas nach `main` kommt:
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
 Dazu `./scripts/check-migrations.sh`, das doppelte Migrationsnummern abfängt.
+
+**Wo sie laufen: in CI, nicht lokal vor jedem Push.** CI fährt alle vier samt Prüfskripten, die Tests auf vier Läufern in zwei bis drei Minuten; lokal braucht die volle Suite ein Vielfaches. Vor dem Push genügen Typecheck, Lint und die Tests der berührten Dateien — gemergt wird erst, wenn CI auf dem letzten Commit grün ist.
 
 **Die Tests brauchen ein echtes PostgreSQL.** Keine Mocks — eine gemockte Datenbank prüft weder Zeilenrichtlinien noch Trigger noch Sperren, und genau dort liegt die Fachlichkeit. Sie laufen in **einem** Prozess gegen **eine** Datenbank; ein Test darf deshalb nicht annehmen, allein zu sein, und räumt über `truncateAll()` auf.
 

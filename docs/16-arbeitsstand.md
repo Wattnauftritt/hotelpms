@@ -959,7 +959,7 @@ Scheitern die Tests mit `ECONNREFUSED` auf Port 5432, liegt es nicht an den Test
 ## 6. Vor dem Pushen
 
 ```bash
-./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm test && pnpm build
+./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm vitest run <berührte Testdateien>
 ```
 
-Alle vier grün. Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.
+Die volle Suite und der Build laufen in CI, auf vier Läufern in zwei bis drei Minuten; gemergt wird erst, wenn CI auf dem letzten Commit grün ist (siehe `CLAUDE.md`). Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.
