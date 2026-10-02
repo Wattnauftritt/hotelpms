@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0058 -- Die Mailsuche wird unter der Zeilenrichtlinie wieder ein Indexscan.
+-- 0069 -- Die Mailsuche wird unter der Zeilenrichtlinie wieder ein Indexscan.
 --
 -- Befund (Dokument 16, "Suche: die Schwelle hinter der Zeilenrichtlinie",
 -- Punkt "Offen"). `guest` steht unter FORCE ROW LEVEL SECURITY. PostgreSQL
@@ -46,7 +46,7 @@ ALTER TABLE guest
 
 COMMENT ON COLUMN guest.email_lower IS
   'lower(email), gespeichert, damit die Suche unter der Zeilenrichtlinie '
-  'ohne Funktion ueber der Spalte auskommt (Migration 0058).';
+  'ohne Funktion ueber der Spalte auskommt (Migration 0069).';
 
 -- `text_pattern_ops`, weil der Bereich bytweise verglichen werden muss:
 -- nur dann ist [p, p mit erhoehtem letzten Zeichen) genau die Menge der

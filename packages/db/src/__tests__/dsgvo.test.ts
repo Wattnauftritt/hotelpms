@@ -338,12 +338,12 @@ describe('Befund 5 und 7: die Loeschung erreicht alles', () => {
 })
 
 /**
- * Migration 0058 legt die Adresse ein zweites Mal ab, kleingeschrieben, damit
+ * Migration 0069 legt die Adresse ein zweites Mal ab, kleingeschrieben, damit
  * die Suche unter der Zeilenrichtlinie einen Index benutzen kann. Eine Kopie
  * einer Adresse ist eine Adresse: sie gehoert nicht ins Protokoll und muss
  * mit der Loeschung fallen, ohne dass jemand daran denkt.
  */
-describe('Migration 0058: die kleingeschriebene Mailadresse', () => {
+describe('Migration 0069: die kleingeschriebene Mailadresse', () => {
   it('steht nicht im Protokoll, wenn sich die Adresse aendert', async () => {
     await owner.query(`UPDATE guest SET email='Neu.Adresse@Example.de' WHERE id=$1`, [gastId])
     const r = await owner.query<{ changed: Record<string, unknown> }>(

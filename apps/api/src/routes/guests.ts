@@ -154,7 +154,7 @@ export function guestRoutes(app: FastifyInstance): void {
          * nicht LEAKPROOF, liefen deshalb als Filter hinter der Richtlinie,
          * und ein Begriff ohne Treffer las jeden Gast des Accounts.
          * `~>=~` und `~<~` sind LEAKPROOF und werden Indexbedingung
-         * (Migration 0058). Nebenbei sind `_` und `%` im Begriff damit
+         * (Migration 0069). Nebenbei sind `_` und `%` im Begriff damit
          * Zeichen und keine Platzhalter mehr.
          */
         const { rows } = await client.query<GuestRow & { dist: number }>(

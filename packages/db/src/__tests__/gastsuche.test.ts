@@ -4,7 +4,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool,
 import type { Pool } from '@hotelpms/db'
 
 /**
- * Die Mailsuche unter der Zeilenrichtlinie (Migration 0058).
+ * Die Mailsuche unter der Zeilenrichtlinie (Migration 0069).
  *
  * Was hier festgehalten wird, ist kein Ergebnis, sondern die Bedingung,
  * unter der es schnell bleibt: die Bedingung des Aufrufers muss **vor** der
