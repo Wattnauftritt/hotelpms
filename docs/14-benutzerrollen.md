@@ -92,7 +92,7 @@ Von uns definiert, unveränderlich, für alle Kunden gleich. Ein kleines Haus nu
 | **Hoteldirektion** | Property | Alles in der Property inklusive Stornos, Rabatte ohne Grenze, Einstellungen, Nutzer, alle Berichte | Accountweite Einstellungen | Direktor, Betriebsleitung |
 | **Empfangsleitung** | Property | Wie Rezeption, zusätzlich Stornos fremder Buchungen, Rabatte ohne Grenze, Gutschriften, Restriktionen übergehen, Nachtlauf, Umsatzberichte | Einstellungen, Nutzerverwaltung, Ratenpläne | Front Office Manager |
 | **Rezeption** | Property | Reservierungen, Check-in und Check-out, Gäste inklusive Ausweisdaten, Buchen, eigene Stornos in der Frist, Rabatt bis Grenze, Rechnung stellen, operative Listen | Fremde Stornos, Gutschriften, Raten, Umsatzberichte, Einstellungen | Rezeptionist |
-| **Reservierung** | Property | Reservierungen und Gäste, Verfügbarkeit, Angebote | Check-in, Folio, Ausweisdaten, Berichte | Reservierungsabteilung größerer Häuser |
+| **Reservierung** | Property | Reservierungen und Gäste, Verfügbarkeit, Angebote, Reinigungsstand lesen (`0074`) | Check-in, Folio, Ausweisdaten, Berichte | Reservierungsabteilung größerer Häuser |
 | **Nachtdienst** | Property | Wie Rezeption, zusätzlich Nachtlauf und Prüfliste | Wie Rezeption | Nachtportier, Night Auditor |
 | **Buchhaltung** | Property oder Account | Folios und Rechnungen lesen, Gutschriften, Umsatzberichte, alle Exporte, Offene Posten | Reservierungen ändern, buchen, Ausweisdaten | Interne Buchhaltung |
 | **Steuerberatung** | Property oder Account | Rechnungen lesen, DATEV- und GoBD-Export | Alles andere, keine Gästedaten außer Rechnungsempfänger | Externer Steuerberater |
