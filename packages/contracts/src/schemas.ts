@@ -1249,14 +1249,20 @@ export type DepositInvoice = Static<typeof DepositInvoice>
 /**
  * Ein Zahlungslink.
  *
+ * Seit 0068 ist das der **dauerhafte** Link von uns (`legacy: false`): er
+ * gilt bis `validUntil`, und erst beim Oeffnen entsteht ein Checkout beim
+ * Anbieter. Daneben stehen Checkouts von vor 0068 ohne eigenen Link
+ * (`legacy: true`), mit ihrem Ablauf als Zeitpunkt in `expiresAt`. Die
+ * Kennung `id` ist nur zusammen mit `legacy` eindeutig.
+ *
  * **Die Adresse steht hier nicht.** Sie wird bei der Anlage einmal
- * ausgegeben und nicht gespeichert -- ein Link, der in der Datenbank liegt,
- * ist ein Link, den jeder mit Lesezugriff einloesen kann. Wer ihn noch
- * einmal braucht, erzeugt einen neuen. Aus demselben Grund geht ein Link
- * nur **beim Erzeugen** per Gastpost hinaus.
+ * ausgegeben; in der Datenbank liegt nur der Hash des Tokens. Wer sie
+ * noch einmal braucht, widerruft und legt einen neuen an. Aus demselben
+ * Grund geht ein Link nur **beim Erzeugen** per Gastpost hinaus.
  */
 export const PaymentLink = Type.Object({
   id: Type.Integer(),
+  legacy: Type.Boolean(),
   createdAt: Type.String(),
   amountCent: Cent,
   status: Type.Union([
@@ -1265,27 +1271,32 @@ export const PaymentLink = Type.Object({
   settledAt: Type.Union([Type.String(), Type.Null()]),
   /** Erst mit dem Zahlungsvermerk ist aus dem Link Geld geworden. */
   hasSettlement: Type.Boolean(),
-  /** Bis wann der Anbieter den Link annimmt. Null bei Links von vor 0060. */
+  /** Nur bei `legacy`: bis wann der Anbieter den Checkout annimmt. */
   expiresAt: Type.Union([Type.String(), Type.Null()]),
-  /**
-   * Offen, aber beim Anbieter abgelaufen. Steht neben `status`, weil die
-   * Ablaufmeldung des Anbieters ausbleiben kann; der Zeitpunkt nicht.
-   */
+  /** Bis zu welchem Geschaeftstag der Link annimmt (Kalendertag). */
+  validUntil: Type.Union([IsoDate, Type.Null()]),
+  /** Offen, aber abgelaufen -- der Gast kann ihn nicht mehr einloesen. */
   expired: Type.Boolean(),
   /** Die Anforderung, auf die der Link zahlt, falls es eine gibt. */
   depositRequestRef: Type.Union([Type.String(), Type.Null()]),
   /** Zustand der Gastpost mit diesem Link; null, wenn er nicht verschickt wurde. */
   mailStatus: Type.Union([
     Type.Literal('pending'), Type.Literal('sent'), Type.Literal('failed'),
-    Type.Literal('canceled'), Type.Null()])
+    Type.Literal('canceled'), Type.Null()]),
+  /** Wann der Gast den Link zum ersten Mal bis zum Anbieter geoeffnet hat. */
+  openedAt: Type.Union([Type.String(), Type.Null()])
 })
 export type PaymentLink = Static<typeof PaymentLink>
 
 /** Die Antwort auf das Erzeugen: das einzige Mal, dass die Adresse zu sehen ist. */
 export const PaymentLinkCreated = Type.Object({
-  url: Type.String(),
+  /**
+   * Die Adresse fuer den Gast. Null bei der Wiederholung einer Anfrage:
+   * der Idempotenzspeicher haelt das Token nicht.
+   */
+  url: Type.Union([Type.String(), Type.Null()]),
   linkId: Type.Integer(),
-  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  validUntil: IsoDate,
   /** Gesetzt, wenn der Link in derselben Anfrage per Gastpost eingereiht wurde. */
   messageRef: Type.Union([Type.String(), Type.Null()])
 })

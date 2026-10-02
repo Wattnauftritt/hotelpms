@@ -321,13 +321,35 @@ export const rechnung = {
     en: 'Copied',
     tr: 'Kopyalandı' },
   'vz.link.once': {
-    de: 'Diese Adresse wird nur jetzt gezeigt. Sie wird nicht gespeichert — '
-      + 'ein gespeicherter Link ist ein Link, den jeder mit Lesezugriff '
-      + 'einlösen kann. Wer ihn noch einmal braucht, erzeugt einen neuen.',
-    en: 'This address is shown now and never again. It is not stored — a '
-      + 'stored link is a link anyone with read access can redeem. Create a '
-      + 'new one if you need it again.',
-    tr: 'Bu adres yalnızca şimdi gösterilir. Saklanmaz — saklanan bir bağlantı, okuma yetkisi olan herkesin kullanabileceği bir bağlantıdır. Yeniden ihtiyaç duyan yenisini oluşturur.' },
+    de: 'Diese Adresse wird nur jetzt gezeigt. Gespeichert wird nur ein Hash — '
+      + 'ein gespeicherter Link wäre ein Link, den jeder mit Lesezugriff '
+      + 'einlösen kann. Wer ihn noch einmal braucht, widerruft ihn und legt '
+      + 'einen neuen an.',
+    en: 'This address is shown now and never again. Only a hash is stored — a '
+      + 'stored link would be a link anyone with read access can redeem. If you '
+      + 'need it again, revoke it and create a new one.',
+    tr: 'Bu adres yalnızca şimdi gösterilir. Yalnızca bir özet saklanır — '
+      + 'saklanan bir bağlantı, okuma yetkisi olan herkesin kullanabileceği bir '
+      + 'bağlantı olurdu. Yeniden gerekirse iptal edip yenisini oluşturun.' },
+  'vz.link.replayed': {
+    de: 'Der Link war schon angelegt; seine Adresse wird kein zweites Mal '
+      + 'gezeigt. Wurde er nicht verschickt, ihn widerrufen und neu anlegen.',
+    en: 'The link had already been created; its address is not shown a second '
+      + 'time. If it was not sent, revoke it and create a new one.',
+    tr: 'Bağlantı zaten oluşturulmuştu; adresi ikinci kez gösterilmez. '
+      + 'Gönderilmediyse iptal edip yeniden oluşturun.' },
+  'vz.link.validUntilDay': {
+    de: 'gültig bis einschließlich {date}',
+    en: 'valid up to and including {date}',
+    tr: '{date} dahil geçerli' },
+  'vz.link.another': {
+    de: 'Weiteren Link anlegen',
+    en: 'Create another link',
+    tr: 'Başka bağlantı oluştur' },
+  'vz.link.opened': {
+    de: 'vom Gast geöffnet',
+    en: 'opened by the guest',
+    tr: 'misafir tarafından açıldı' },
   'vz.link.none': {
     de: 'Kein Zahlungslink.',
     en: 'No payment link.',
@@ -345,9 +367,9 @@ export const rechnung = {
     en: 'failed',
     tr: 'başarısız' },
   'vz.link.status.canceled': {
-    de: 'ungültig gemacht',
-    en: 'invalidated',
-    tr: 'geçersiz kılındı' },
+    de: 'widerrufen',
+    en: 'revoked',
+    tr: 'iptal edildi' },
   'vz.link.status.expired': {
     de: 'abgelaufen',
     en: 'expired',
@@ -357,16 +379,17 @@ export const rechnung = {
     en: 'valid until {time}',
     tr: '{time} tarihine kadar geçerli' },
   'vz.link.cancel': {
-    de: 'Ungültig machen',
-    en: 'Invalidate',
-    tr: 'Geçersiz kıl' },
+    de: 'Widerrufen',
+    en: 'Revoke',
+    tr: 'İptal et' },
   'vz.link.cancelConfirm': {
-    de: 'Diesen Zahlungslink beim Zahlungsdienstleister ungültig machen? '
-      + 'Der Gast kann ihn danach nicht mehr bezahlen.',
-    en: 'Invalidate this payment link at the payment provider? The guest can '
-      + 'no longer pay with it afterwards.',
-    tr: 'Bu ödeme bağlantısı ödeme sağlayıcısında geçersiz kılınsın mı? Misafir '
-      + 'bundan sonra onunla ödeme yapamaz.' },
+    de: 'Diesen Zahlungslink widerrufen? Der Gast kann ihn danach nicht mehr '
+      + 'bezahlen; ein schon geöffneter Checkout wird beim Zahlungsdienstleister '
+      + 'beendet.',
+    en: 'Revoke this payment link? The guest can no longer pay with it; a '
+      + 'checkout already opened is ended at the payment provider.',
+    tr: 'Bu ödeme bağlantısı iptal edilsin mi? Misafir artık onunla ödeme '
+      + 'yapamaz; açılmış bir ödeme sayfası ödeme sağlayıcısında kapatılır.' },
   'vz.link.send': {
     de: 'per E-Mail an den Gast schicken',
     en: 'email it to the guest',
@@ -574,6 +597,14 @@ export const rechnung = {
       + 'the prepayment section of the folio.',
     tr: 'Vergi oranları konaklamadan türetilir. Kendiniz bölmek isterseniz '
       + 'folionun ön ödeme bölümünü kullanın.' },
+  'anz.linkActive': {
+    de: 'Ein gültiger Zahlungslink ist unterwegs. Für einen neuen erst diesen '
+      + 'widerrufen — zwei gültige Links wären zwei Wege, dieselbe Anzahlung zu '
+      + 'bezahlen.',
+    en: 'A valid payment link is out. To send a new one, revoke this one first — '
+      + 'two valid links would be two ways to pay the same deposit.',
+    tr: 'Geçerli bir ödeme bağlantısı gönderildi. Yenisi için önce bunu iptal '
+      + 'edin — iki geçerli bağlantı, aynı ön ödemeyi ödemenin iki yolu olurdu.' },
   'anz.link': {
     de: 'Zahlungslink',
     en: 'Payment link',

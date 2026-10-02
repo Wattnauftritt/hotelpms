@@ -31,7 +31,8 @@ const zahlung = {
   propertyName: 'Hotel Nordsee', guestName: 'Anna Beispiel',
   reservationRef: 'ABC123', arrival: '2026-10-01', departure: '2026-10-04',
   amountCent: 10_470, currency: 'EUR', dueDate: '2026-09-20', deposit: true,
-  url: 'https://checkout.stripe.test/cs_test_1'
+  validUntil: '2026-09-27',
+  url: 'https://app.staygrid.test/v1/pay?t=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde'
 }
 
 /** Alles, was ein Gast zu sehen bekommt, in einer Zeichenkette. */
@@ -129,6 +130,9 @@ describe('Zahlungslink an den Gast', () => {
       // die anderen den Tag zuerst.
       expect(m.text, lang).toContain(lang === 'en' ? '2026-09-20'
         : lang === 'nl' ? '20-09-2026' : '20.09.2026')
+      // Bis wann der Link gilt -- seit 0068 Tage, nicht Stunden.
+      expect(m.text, lang).toContain(lang === 'en' ? '2026-09-27'
+        : lang === 'nl' ? '27-09-2026' : '27.09.2026')
     }
   })
 

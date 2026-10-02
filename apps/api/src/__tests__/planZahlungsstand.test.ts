@@ -197,6 +197,30 @@ describe('Zahlungsstand am Balken', () => {
       .toMatchObject({ state: 'none', requested_cent: 0 })
   })
 
+  it('nennt einen gueltigen dauerhaften Link angefordert, bis zu seinem letzten Tag', async () => {
+    // Seit 0068 bekommt der Gast einen Link von uns, der bis zur Frist
+    // gilt; einen Checkout beim Anbieter gibt es erst, wenn er ihn oeffnet.
+    // Angefordert ist trotzdem schon ab dem Verschicken.
+    const a = await aufenthalt()
+    const link = async (bis: string, widerrufen: boolean) => owner.query(
+      `INSERT INTO payment_link (property_id, folio_id, token_hash, amount_cent,
+                                 valid_until, revoked_at)
+       VALUES ($1,$2,$3,$4,$5::date, CASE WHEN $6 THEN now() END)`,
+      [fx.propertyId, a.folioId, widerrufen ? null : `${bis}${Math.random()}`,
+       3 * PREIS, bis, widerrufen])
+
+    // Abgelaufen (gegen den Geschaeftstag VON) und widerrufen: nichts.
+    await link('2026-09-30', false)
+    await link('2026-10-20', true)
+    expect((await balken(a.reservationId)).payment)
+      .toMatchObject({ state: 'none', requested_cent: 0 })
+
+    // Am letzten Tag gilt er noch.
+    await link(VON, false)
+    expect((await balken(a.reservationId)).payment)
+      .toMatchObject({ state: 'requested', requested_cent: 3 * PREIS })
+  })
+
   it('nimmt umgeleitete Logis aus der Erwartung', async () => {
     const a = await aufenthalt()
     const firma = await owner.query<{ id: number }>(
