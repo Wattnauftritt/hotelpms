@@ -10,6 +10,7 @@ import { ensureAuditPartitions, dropOldAuditPartitions,
          overdueNightAudits } from './jobs/maintenance.js'
 import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
+import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { createBrevoAdapter } from './email/brevo.js'
@@ -189,6 +190,25 @@ async function nightAudit(p: PropertyRow): Promise<void> {
     'Nachtlauf abgeschlossen')
 }
 
+/**
+ * Automatische Preissteuerung (Dokument 32). Nach dem Nachtlauf, weil der
+ * den Geschaeftstag weiterschaltet und der Lauf je Geschaeftstag einmal
+ * faellig wird; vor den Webhooks, damit `rate.changed` im selben Tick
+ * hinausgeht.
+ */
+async function rateSteering(p: PropertyRow): Promise<void> {
+  // Ein Fehler hier haelt Webhooks und Gastpost des Hauses nicht auf: die
+  // Preise bleiben dann, wie sie sind, und das ist der harmlose Ausfall.
+  try {
+    const r = await runRateSteering(pool, propertyContext(p.account_id, p.id), p.id)
+    if (r.runId === null) return
+    log.info({ property: p.id, businessDate: r.businessDate, run: r.runId, changed: r.changed },
+      'Preissteuerung gelaufen')
+  } catch (e) {
+    log.error({ property: p.id, err: e }, 'ALARM: Preissteuerung fehlgeschlagen')
+  }
+}
+
 /** Faellige ausgehende Ereignisse zustellen (Aufgabe 4, Dokument 16). */
 async function webhooks(p: PropertyRow): Promise<void> {
   const r = await deliverWebhooks(pool, propertyContext(p.account_id, p.id), p.id,
@@ -283,6 +303,7 @@ async function tick(): Promise<void> {
     try {
       await propertyMaintenance(p)
       await nightAudit(p)
+      await rateSteering(p)
       await webhooks(p)
       await emails(p)
     } catch (e) {
