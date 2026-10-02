@@ -99,6 +99,11 @@ async function planPayments(
        SELECT k.reservation_id, sum(p.amount_cent)::bigint AS cent
          FROM payment_intent p JOIN konto k ON k.folio_id = p.folio_id
         WHERE p.status = 'pending' AND p.property_id = $1
+          -- Ein abgelaufener Link fordert nichts mehr an: der Gast kann
+          -- ihn nicht mehr einloesen (Stripe haelt einen Checkout hoechstens
+          -- 24 Stunden). Ohne diese Bedingung stuende "angefordert" am
+          -- Balken, bis jemand einen neuen Link schickt.
+          AND (p.expires_at IS NULL OR p.expires_at > now())
         GROUP BY k.reservation_id
      ), umgeleitet AS (
        SELECT DISTINCT x.reservation_id

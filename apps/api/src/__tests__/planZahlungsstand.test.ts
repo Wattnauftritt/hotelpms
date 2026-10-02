@@ -184,6 +184,19 @@ describe('Zahlungsstand am Balken', () => {
     expect((await balken(a.reservationId)).payment?.state).toBe('paid')
   })
 
+  it('nennt einen abgelaufenen Zahlungslink nicht mehr angefordert', async () => {
+    // Ein Link, den der Gast nicht mehr einloesen kann, fordert nichts an.
+    // Seit Migration 0060 tragen Links ihren Ablauf.
+    const a = await aufenthalt()
+    await owner.query(
+      `INSERT INTO payment_intent (property_id, folio_id, provider, provider_reference,
+                                   amount_cent, expires_at)
+       VALUES ($1,$2,'stripe','cs_plan_abgelaufen',$3, now() - interval '1 hour')`,
+      [fx.propertyId, a.folioId, 3 * PREIS])
+    expect((await balken(a.reservationId)).payment)
+      .toMatchObject({ state: 'none', requested_cent: 0 })
+  })
+
   it('nimmt umgeleitete Logis aus der Erwartung', async () => {
     const a = await aufenthalt()
     const firma = await owner.query<{ id: number }>(
