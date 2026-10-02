@@ -2,7 +2,9 @@ import type { JSX } from 'react'
 import { Kontextmenue, type KontextZiel, type MenueEintrag } from './Kontextmenue.tsx'
 import { useReservationStatusAction, useAssignUnit } from '../lib/queries/booking.js'
 import { useHausrechte } from '../lib/rechte.js'
-import { useT } from '../lib/i18n/index.js'
+import { useT, type TextKey } from '../lib/i18n/index.js'
+import type { HousekeepingState } from '@hotelpms/contracts'
+import { angeboteneStaende, reinigungsZiele, type SetzbarerStand } from '../lib/planStatus.js'
 
 /**
  * Welche Eintraege der rechte Knopf im Belegungsplan bekommt.
@@ -29,9 +31,21 @@ import { useT } from '../lib/i18n/index.js'
  * fehlende Rechte sind keine Einladung zum Ausprobieren.
  */
 export function PlanKontextmenue({ propertyId, ziel, onClose,
-                                   onOeffnen, onCheckIn, onGruppe, onAnlegen, onSperren }: {
+                                   onOeffnen, onCheckIn, onGruppe, onAnlegen, onSperren,
+                                   reinigungsstand, onReinigung }: {
   propertyId: number
   ziel: KontextZiel
+  /**
+   * Der Reinigungsstand je Zimmer, wie der Plan ihn kennt. Entscheidet nur,
+   * welche Eintraege etwas aendern wuerden -- nicht, ob sie erlaubt sind.
+   */
+  reinigungsstand: (resourceId: number) => HousekeepingState | undefined
+  /**
+   * Den Stand setzen. Der Aufruf liegt im Bildschirm und nicht hier: das
+   * Menue schliesst mit dem Klick, und ein Fehler, der in einer
+   * geschlossenen Komponente auflaeuft, liest niemand.
+   */
+  onReinigung: (resourceIds: number[], status: SetzbarerStand) => void
   onClose: () => void
   onOeffnen: (reservationRef: string) => void
   onCheckIn: (reservationRef: string) => void
@@ -98,7 +112,7 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                          if (confirm(t('kontext.cancelConfirm'))) status.mutate('cancel')
                        } })
     }
-  } else {
+  } else if (ziel.art === 'frei') {
     /*
      * **Alle oder keines.**
      *
@@ -146,6 +160,42 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                            (sp, z) => z.departure > sp ? z.departure : sp,
                            zimmer[0]!.departure) }) } })
     }
+  }
+
+  /*
+   * Reinigungsstand, auf freier Flaeche und auf der Zimmernummer.
+   *
+   * **Alle oder keines, wie beim Anlegen und Sperren:** liegt der Klick in
+   * der Markierung, meinen die Eintraege alle markierten Zimmer, und die
+   * Zahl steht dabei. Geschickt wird **ein** Aufruf mit allen Zimmern; die
+   * Route setzt sie in einer Transaktion und weist alles ab, sobald eines
+   * nicht zum Haus gehoert. Acht Aufrufe nacheinander koennten nach dem
+   * fuenften scheitern und drei Zimmer im alten Stand lassen.
+   *
+   * Die Markierung bleibt stehen. Aus ihr ist nichts im Plan geworden --
+   * keine Buchung, keine Sperre --, und wer acht Zimmer zum Buchen
+   * zusammengesucht hat und nebenbei eines als sauber meldet, will sie
+   * danach noch haben.
+   */
+  if (ziel.art !== 'reservierung' && rechte.darf('housekeeping:write')) {
+    const ziele = reinigungsZiele(ziel.art === 'zimmer' ? ziel.zimmer
+      : (ziel.auswahl ?? [ziel]))
+    const ids = ziele.map(z => z.resourceId)
+    const text: Record<SetzbarerStand, [TextKey, TextKey]> = {
+      clean: ['ps.hk.markClean', 'ps.hk.markCleanN'],
+      dirty: ['ps.hk.markDirty', 'ps.hk.markDirtyN'],
+      inspected: ['ps.hk.markInspected', 'ps.hk.markInspectedN']
+    }
+    angeboteneStaende(ids.map(reinigungsstand)).forEach((stand, i) => {
+      const [einzeln, mehrere] = text[stand]
+      eintraege.push({ schluessel: `reinigung-${stand}`,
+                       text: ids.length === 1 ? t(einzeln) : t(mehrere, { n: ids.length }),
+                       // Abgesetzt vom Anlegen und Sperren: ein anderer
+                       // Vorgang, und ein Klick daneben soll nicht
+                       // zwischen beiden landen.
+                       abgesetzt: i === 0 && eintraege.length > 0,
+                       onClick: () => onReinigung(ids, stand) })
+    })
   }
 
   return <Kontextmenue punkt={ziel.punkt} eintraege={eintraege} onClose={onClose} />

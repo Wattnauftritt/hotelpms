@@ -9,7 +9,7 @@ import { formatCent } from './money.js'
  * Darstellungsdetail -- in ihnen stehen Pflichtangaben.
  */
 
-export const EMAIL_KINDS = ['invoice', 'reservation_confirmation'] as const
+export const EMAIL_KINDS = ['invoice', 'reservation_confirmation', 'payment_link'] as const
 export type EmailKind = (typeof EMAIL_KINDS)[number]
 
 /**
@@ -164,6 +164,30 @@ export interface ReservationEmailData {
   checkoutTime: string
 }
 
+/**
+ * Ein Zahlungslink an den Gast (Migration 0060).
+ *
+ * `url` kommt vom Zahlungsdienstleister und wird nirgends gespeichert ausser
+ * im Rumpf dieser Nachricht -- und dort nur, solange der Anbieter den Link
+ * ohnehin annimmt (hoechstens 24 Stunden), lange bevor die Gastpost nach 90
+ * Tagen geschwaerzt wird.
+ */
+export interface PaymentLinkEmailData {
+  propertyName: string
+  guestName: string | null
+  reservationRef: string
+  /** Kalendertage `YYYY-MM-DD`. */
+  arrival: string
+  departure: string
+  amountCent: number
+  currency: string
+  /** Faelligkeit einer Anzahlungsanforderung; null bei einem freien Betrag. */
+  dueDate: string | null
+  /** Zahlt der Link auf eine Anzahlungsanforderung? Sonst ist es eine Zahlung. */
+  deposit: boolean
+  url: string
+}
+
 /** HTML-Sonderzeichen entschaerfen. Ein Gastname kann alles enthalten. */
 function esc(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -219,6 +243,14 @@ interface Gastposttexte {
   buchungZimmer: string
   buchungGesamt: string
   buchungHinweis: string
+
+  zahlungBetreff: string
+  zahlungAnzahlungMitFrist: string
+  zahlungAnzahlungOhneFrist: string
+  zahlungAllgemein: string
+  zahlungLink: string
+  zahlungKarte: string
+  zahlungHinweis: string
 }
 
 const TEXTE: Record<EmailLanguage, Gastposttexte> = {
@@ -246,7 +278,22 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     buchungZimmer: 'Zimmer: {zimmer}',
     buchungGesamt: 'Gesamtbetrag: {betrag}',
     buchungHinweis: 'Bitte geben Sie die Buchungsnummer bei Rueckfragen an. '
-      + 'Sie koennen auf diese E-Mail antworten, wenn sich etwas aendern soll.'
+      + 'Sie koennen auf diese E-Mail antworten, wenn sich etwas aendern soll.',
+
+    zahlungBetreff: 'Zahlung fuer Ihren Aufenthalt {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'fuer Ihren Aufenthalt vom {anreise} bis {abreise} '
+      + 'bitten wir um eine Anzahlung von {betrag} bis zum {frist}.',
+    zahlungAnzahlungOhneFrist: 'fuer Ihren Aufenthalt vom {anreise} bis {abreise} '
+      + 'bitten wir um eine Anzahlung von {betrag}.',
+    zahlungAllgemein: 'fuer Ihren Aufenthalt vom {anreise} bis {abreise} '
+      + 'bitten wir um eine Zahlung von {betrag}.',
+    zahlungLink: 'Ueber den folgenden Link bezahlen Sie sicher beim '
+      + 'Zahlungsdienstleister des Hauses:',
+    zahlungKarte: 'Ihre Kartendaten geben Sie nur dort ein; das Haus erhaelt sie '
+      + 'nicht. Der Link gilt nur fuer kurze Zeit. Ist er abgelaufen, schicken wir '
+      + 'Ihnen gern einen neuen.',
+    zahlungHinweis: 'Bei Fragen antworten Sie einfach auf diese E-Mail und nennen '
+      + 'Sie die Buchungsnummer {ref}.'
   },
 
   en: {
@@ -271,7 +318,22 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     buchungZimmer: 'Room: {zimmer}',
     buchungGesamt: 'Total: {betrag}',
     buchungHinweis: 'Please quote the booking reference in any correspondence. '
-      + 'You can reply to this email if anything needs changing.'
+      + 'You can reply to this email if anything needs changing.',
+
+    zahlungBetreff: 'Payment for your stay {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'for your stay from {anreise} to {abreise} we kindly '
+      + 'ask for a deposit of {betrag} by {frist}.',
+    zahlungAnzahlungOhneFrist: 'for your stay from {anreise} to {abreise} we kindly '
+      + 'ask for a deposit of {betrag}.',
+    zahlungAllgemein: 'for your stay from {anreise} to {abreise} we kindly ask for '
+      + 'a payment of {betrag}.',
+    zahlungLink: 'You can pay securely with the property’s payment provider '
+      + 'using the following link:',
+    zahlungKarte: 'You enter your card details only there; the property never '
+      + 'receives them. The link is valid for a short time only. If it has '
+      + 'expired, we will gladly send you a new one.',
+    zahlungHinweis: 'If you have any questions, simply reply to this email and '
+      + 'quote the booking reference {ref}.'
   },
 
   nl: {
@@ -296,7 +358,22 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     buchungZimmer: 'Kamer: {zimmer}',
     buchungGesamt: 'Totaalbedrag: {betrag}',
     buchungHinweis: 'Vermeld het boekingsnummer bij vragen. '
-      + 'U kunt op deze e-mail antwoorden als er iets gewijzigd moet worden.'
+      + 'U kunt op deze e-mail antwoorden als er iets gewijzigd moet worden.',
+
+    zahlungBetreff: 'Betaling voor uw verblijf {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'voor uw verblijf van {anreise} tot {abreise} vragen '
+      + 'wij u een aanbetaling van {betrag} te voldoen uiterlijk {frist}.',
+    zahlungAnzahlungOhneFrist: 'voor uw verblijf van {anreise} tot {abreise} vragen '
+      + 'wij u een aanbetaling van {betrag}.',
+    zahlungAllgemein: 'voor uw verblijf van {anreise} tot {abreise} vragen wij u '
+      + 'een betaling van {betrag}.',
+    zahlungLink: 'Via de volgende link betaalt u veilig bij de betaaldienst van '
+      + 'het hotel:',
+    zahlungKarte: 'Uw kaartgegevens voert u alleen daar in; het hotel ontvangt ze '
+      + 'niet. De link is slechts korte tijd geldig. Is hij verlopen, dan sturen '
+      + 'wij u graag een nieuwe.',
+    zahlungHinweis: 'Heeft u vragen, antwoord dan gewoon op deze e-mail en vermeld '
+      + 'het boekingsnummer {ref}.'
   },
 
   pl: {
@@ -333,7 +410,24 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     buchungZimmer: 'Pokój: {zimmer}',
     buchungGesamt: 'Kwota łączna: {betrag}',
     buchungHinweis: 'Prosimy o podanie numeru rezerwacji w korespondencji. '
-      + 'Na tę wiadomość można odpowiedzieć, jeśli coś wymaga zmiany.'
+      + 'Na tę wiadomość można odpowiedzieć, jeśli coś wymaga zmiany.',
+
+    zahlungBetreff: 'Płatność za pobyt {ref} — {haus}',
+    // Wie bei der Rechnung: nach "Dzień dobry," ein eigener Hauptsatz,
+    // deshalb gross.
+    zahlungAnzahlungMitFrist: 'Za pobyt w terminie {anreise} – {abreise} prosimy '
+      + 'o wpłatę zaliczki w wysokości {betrag} do dnia {frist}.',
+    zahlungAnzahlungOhneFrist: 'Za pobyt w terminie {anreise} – {abreise} prosimy '
+      + 'o wpłatę zaliczki w wysokości {betrag}.',
+    zahlungAllgemein: 'Za pobyt w terminie {anreise} – {abreise} prosimy o '
+      + 'płatność w wysokości {betrag}.',
+    zahlungLink: 'Bezpiecznej płatności u operatora płatności obiektu można '
+      + 'dokonać, korzystając z poniższego linku:',
+    zahlungKarte: 'Dane karty podają Państwo wyłącznie tam; obiekt ich nie '
+      + 'otrzymuje. Link jest ważny tylko przez krótki czas. Jeśli wygasł, '
+      + 'chętnie prześlemy nowy.',
+    zahlungHinweis: 'W razie pytań wystarczy odpowiedzieć na tę wiadomość, '
+      + 'podając numer rezerwacji {ref}.'
   }
 }
 
@@ -409,6 +503,65 @@ export function renderReservationEmail(
   ]
   return {
     subject: einsetzen(t.buchungBetreff, werte),
+    text: lines.join('\n\n'),
+    html: htmlBody(lines)
+  }
+}
+
+/**
+ * Ein Kalendertag in der Schreibweise der Sprache.
+ *
+ * Auf Zeichenketten und nicht ueber `Date`: ein Aufenthaltsdatum ist ein
+ * Kalendertag, und `new Date('2026-03-29')` ist in Europa/Berlin der Abend
+ * davor. Englisch bleibt beim ISO-Format, weil "03/04" diesseits und
+ * jenseits des Atlantiks zwei verschiedene Tage sind.
+ */
+function kalendertag(iso: string, lang: EmailLanguage): string {
+  const [jahr, monat, tag] = iso.split('-')
+  if (jahr === undefined || monat === undefined || tag === undefined) return iso
+  if (lang === 'en') return iso
+  if (lang === 'nl') return `${tag}-${monat}-${jahr}`
+  return `${tag}.${monat}.${jahr}`
+}
+
+/**
+ * Zahlungslink an den Gast.
+ *
+ * **Der Link steht als eigener Absatz**, wie bei der Einladung: in einen Satz
+ * eingebettet bricht ihn mancher Leser an einem Satzzeichen um, und der Gast
+ * landet auf einer Fehlerseite statt beim Anbieter.
+ *
+ * **Der Satz ueber die Kartendaten ist kein Beiwerk.** Eine Mail mit einem
+ * Zahlungslink sieht aus wie jede Phishing-Mail; der Gast soll lesen, dass
+ * das Haus seine Karte nie sieht -- und dass er auf diese Nachricht
+ * antworten kann, statt dem Link blind vertrauen zu muessen.
+ */
+export function renderPaymentLinkEmail(
+  d: PaymentLinkEmailData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  const t = TEXTE[lang]
+  const werte = {
+    ref: d.reservationRef,
+    haus: d.propertyName,
+    anreise: kalendertag(d.arrival, lang),
+    abreise: kalendertag(d.departure, lang),
+    betrag: `${formatCent(d.amountCent)} ${d.currency}`,
+    frist: d.dueDate === null ? '' : kalendertag(d.dueDate, lang)
+  }
+  const bitte = !d.deposit ? t.zahlungAllgemein
+    : d.dueDate === null ? t.zahlungAnzahlungOhneFrist : t.zahlungAnzahlungMitFrist
+
+  const lines = [
+    anrede(d.guestName, lang),
+    einsetzen(bitte, werte),
+    t.zahlungLink,
+    d.url,
+    t.zahlungKarte,
+    einsetzen(t.zahlungHinweis, werte),
+    d.propertyName
+  ]
+  return {
+    subject: einsetzen(t.zahlungBetreff, werte),
     text: lines.join('\n\n'),
     html: htmlBody(lines)
   }
