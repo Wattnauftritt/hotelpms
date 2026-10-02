@@ -370,6 +370,10 @@ export const preissteuerung = {
     de: 'Auswahl aufheben',
     en: 'Clear selection',
     tr: 'Seçimi kaldır' },
+  'steer.applied.one': {
+    de: 'Ein Tag übernommen.',
+    en: 'One day applied.',
+    tr: 'Bir gün uygulandı.' },
   'steer.applied': {
     de: '{n} Tage übernommen.',
     en: '{n} days applied.',
@@ -390,6 +394,10 @@ export const preissteuerung = {
     de: 'Belegung Kategorie {kat} % · Haus {haus} %',
     en: 'Occupancy category {kat} % · property {haus} %',
     tr: 'Doluluk kategori %{kat} · tesis %{haus}' },
+  'steer.detail.lead.one': {
+    de: 'Vorlauf ein Tag',
+    en: 'Lead time one day',
+    tr: 'Öncelik bir gün' },
   'steer.detail.lead': {
     de: 'Vorlauf {n} Tage',
     en: 'Lead time {n} days',
@@ -420,6 +428,10 @@ export const preissteuerung = {
     de: 'übernommen von {name}',
     en: 'applied by {name}',
     tr: '{name} tarafından uygulandı' },
+  'steer.run.changed.one': {
+    de: 'ein Tag geändert',
+    en: 'one day changed',
+    tr: 'bir gün değişti' },
   'steer.run.changed': {
     de: '{n} Tage geändert',
     en: '{n} days changed',

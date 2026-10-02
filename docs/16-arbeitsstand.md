@@ -30,6 +30,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
 | AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
+| AP 16 Preissteuerung (RMS) | fertig | `0065`, `0066`, `routes/rateSteering.ts`, `jobs/rateSteering.ts`, `components/Preissteuerung.tsx` — [`32-preissteuerung.md`](32-preissteuerung.md) |
 
 **104 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
@@ -775,6 +776,18 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 2. **Überwachung, dass der Worker überhaupt tickt.** `overdueNightAudits` meldet überfällige Nachtläufe; dass der Tick seit einer Stunde steht, meldet nichts.
 3. **Speicher- und CPU-Bedarf des Workers messen**, statt `MemoryMax=4G` und `CPUQuota=150%` zu schätzen.
 4. **Gemeinsamer Zähler für die Ratenbegrenzung**, sobald mehr als ein API-Prozess läuft — dieselbe Aufgabe wie Befund S5 in Dokument 28, einmal aus der Leistungs-, einmal aus der Sicherheitssicht.
+
+---
+
+### Aufgabe 15 — Preissteuerung (Revenue Management) — **erledigt**
+
+**Wo es liegt.** [`32-preissteuerung.md`](32-preissteuerung.md), Migrationen `0065` und `0066`, `apps/api/src/routes/rateSteering.ts`, `apps/worker/src/jobs/rateSteering.ts`, Oberfläche unter Preise → Preissteuerung.
+
+**Was es tut.** Regeln nach Belegung, Vorlauf, Wochentag und Zeitraum setzen Verkaufspreise aus dem **Grundpreis**, nie aus dem zuletzt gesteuerten Preis — `rate_steer_state` merkt sich beides, und das schließt das Aufschaukeln durch Bauart aus. Leitplanken je Plan (Mindest-, Höchstpreis, Rundung, Schrittgrenze), Vorschlagsmodus mit Vorschau und Fingerabdruck, automatischer Modus einmal je Geschäftstag. Quelle je Ratenplan (von Hand, Regeln, externes RMS) trennt interne Regeln von einem RMS über die Schnittstelle. Neues Recht `rate:steer`.
+
+**Mitbehoben.** Die ARI-Änderungsmeldung sah geänderte Preise an schon gepflegten Tagen nie (`updated_at` nur beim Einfügen); abgeleitete Raten folgten erst nach „neu rechnen"; ein Übungshaus gab über ARI Preise hinaus. Preispflege, Neurechnen und Steuerung gehen jetzt über einen Schreibweg (`rate_prices_write`) mit dem neuen Ereignis `rate.changed`.
+
+**Offen.** Restriktionen aus Regeln (etwa Mindestaufenthalt bei hoher Belegung), Leitplanken je Belegungsstufe, ein häufigerer automatischer Lauf. Ob Webhooks eines Übungshauses zugestellt werden sollen (Dokument 32, Abschnitt 13).
 
 ---
 

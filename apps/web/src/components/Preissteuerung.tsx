@@ -524,7 +524,8 @@ function Zellendetail({ zelle, regeln, belegung }: {
       <div className="font-medium">
         {weekdayShort(zelle.date, locale)} {formatDate(zelle.date, locale)}
         <span className="text-neutral-500 font-normal">
-          {' · '}{t('steer.detail.lead', { n: zelle.leadDays })}
+          {' · '}{zelle.leadDays === 1 ? t('steer.detail.lead.one')
+            : t('steer.detail.lead', { n: zelle.leadDays })}
           {' · '}{t('steer.detail.occupancy',
             { kat: prozent(zelle.occupancyBp), haus: prozent(zelle.houseOccupancyBp) })}
         </span>
@@ -741,7 +742,8 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
                     )}
                     {uebernehmen.isSuccess && (
                       <span role="status" className="text-sm text-emerald-800">
-                        {t('steer.applied', { n: uebernehmen.data.changed })}
+                        {uebernehmen.data.changed === 1 ? t('steer.applied.one')
+                          : t('steer.applied', { n: uebernehmen.data.changed })}
                       </span>
                     )}
                   </div>
@@ -812,7 +814,8 @@ function Verlauf({ propertyId, daten }: {
                     : t('steer.run.apply', { name: r.userName ?? '—' })}
                   {' · '}{t('steer.businessDate', { datum: formatDate(r.businessDate, locale) })}
                   {' · '}<span className="font-medium">
-                    {t('steer.run.changed', { n: r.changedDays })}</span>
+                    {r.changedDays === 1 ? t('steer.run.changed.one')
+                      : t('steer.run.changed', { n: r.changedDays })}</span>
                 </button>
                 {offen === r.runId && r.changedDays > 0 && (
                   <LaufDetail propertyId={propertyId} runId={r.runId} plaene={daten.plans} />
