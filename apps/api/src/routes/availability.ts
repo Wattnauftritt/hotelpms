@@ -94,17 +94,36 @@ async function planPayments(
         WHERE d.kind = 'received'
         GROUP BY k.reservation_id
      ), angefordert AS (
-       -- payment_intent traegt keine Zeilenrichtlinie (0021); die Property
-       -- wird deshalb von Hand mitgefiltert, wie in der Vorauszahlung.
-       SELECT k.reservation_id, sum(p.amount_cent)::bigint AS cent
-         FROM payment_intent p JOIN konto k ON k.folio_id = p.folio_id
-        WHERE p.status = 'pending' AND p.property_id = $1
-          -- Ein abgelaufener Link fordert nichts mehr an: der Gast kann
-          -- ihn nicht mehr einloesen (Stripe haelt einen Checkout hoechstens
-          -- 24 Stunden). Ohne diese Bedingung stuende "angefordert" am
-          -- Balken, bis jemand einen neuen Link schickt.
-          AND (p.expires_at IS NULL OR p.expires_at > now())
-        GROUP BY k.reservation_id
+       SELECT a.reservation_id, sum(a.cent)::bigint AS cent FROM (
+         -- Seit 0068 bekommt der Gast einen Link von uns, der bis zur Frist
+         -- gilt; der Checkout beim Anbieter entsteht erst beim Oeffnen.
+         -- Angefordert ist also, was ein gueltiger, nicht widerrufener und
+         -- noch nicht bezahlter Link verlangt -- gegen den Geschaeftstag,
+         -- wie die Frist des Links selbst.
+         SELECT k.reservation_id, l.amount_cent AS cent
+           FROM payment_link l JOIN konto k ON k.folio_id = l.folio_id
+           -- Bezahlte Links als Verbund gegen eine gruppierte Menge, nicht
+           -- als Unterabfrage je Link.
+           LEFT JOIN (SELECT DISTINCT payment_link_id FROM payment_intent
+                       WHERE property_id = $1 AND status = 'succeeded'
+                         AND payment_link_id IS NOT NULL) bz
+                  ON bz.payment_link_id = l.id
+          WHERE l.revoked_at IS NULL AND bz.payment_link_id IS NULL
+            AND l.valid_until >= COALESCE(
+                  (SELECT max(d.date) FROM business_day d
+                    WHERE d.property_id = $1 AND d.status = 'open'), current_date)
+         UNION ALL
+         -- Checkouts von vor 0068, ohne Link von uns. payment_intent traegt
+         -- keine Zeilenrichtlinie (0021); die Property wird deshalb von Hand
+         -- mitgefiltert. Ein abgelaufener fordert nichts mehr an: Stripe
+         -- haelt einen Checkout hoechstens 24 Stunden.
+         SELECT k.reservation_id, p.amount_cent
+           FROM payment_intent p JOIN konto k ON k.folio_id = p.folio_id
+          WHERE p.status = 'pending' AND p.property_id = $1
+            AND p.payment_link_id IS NULL
+            AND (p.expires_at IS NULL OR p.expires_at > now())
+       ) a
+        GROUP BY a.reservation_id
      ), umgeleitet AS (
        SELECT DISTINCT x.reservation_id
          FROM routing_rule x JOIN buchung b ON b.id = x.reservation_id

@@ -5,7 +5,8 @@ import { useCreatePaymentLink, useCancelPaymentLink,
 import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
 import { newIdempotencyKey } from '../lib/api.js'
 import { useEscape } from '../lib/tasten.js'
-import { useT, useLocale, formatMoney, intlTag, type TextKey } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate, intlTag,
+         type TextKey } from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -49,6 +50,7 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
   onSchliessen?: () => void
 }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const [betrag, setBetrag] = useState(() => vorschlagCent > 0 ? eingabeAusCent(vorschlagCent) : '')
   const hindernis = versandHindernis(v, darfPost)
   // Vorausgewaehlt, wenn es geht: wer an einer Anforderung einen Link
@@ -76,6 +78,10 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
 
   return (
     <div className="space-y-2">
+      {/* Nach dem Anlegen verschwindet das Formular: ein zweiter Druck
+          legte einen zweiten Link an (oder wuerde bei einer Anforderung
+          abgewiesen), und die Adresse darunter ist das, worum es jetzt geht. */}
+      {!erzeugen.isSuccess && <>
       <form className="flex flex-wrap items-end gap-2"
             onSubmit={e => {
               e.preventDefault()
@@ -115,6 +121,7 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
       {hindernis !== null
         ? <p className="text-xs text-neutral-500">{t(hindernis)}</p>
         : <p className="text-xs text-neutral-500">{t('vz.link.sendHint')}</p>}
+      </>}
 
       {/* Eine fehlende Einrichtung ist kein Fehler der Rezeption. Sie
           bekommt den Satz, der sagt, was fehlt, statt einer 503. */}
@@ -126,24 +133,41 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
       {erzeugen.isSuccess && (
         <div className="p-2 bg-neutral-50 border border-neutral-200 rounded">
           <span className="block text-xs text-neutral-600">{t('vz.link.address')}</span>
-          <div className="flex items-center gap-2">
-            <input readOnly value={erzeugen.data.url}
-                   onFocus={e => e.currentTarget.select()}
-                   className="grow border border-neutral-300 rounded px-2 py-1 text-xs" />
-            <button type="button"
-                    className="px-2 py-1 text-xs border border-neutral-300 rounded
-                               whitespace-nowrap"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(erzeugen.data.url)
-                        .then(() => setKopiert(true))
-                    }}>
-              {kopiert ? t('vz.link.copied') : t('vz.link.copy')}
-            </button>
-          </div>
+          {/* Null nur bei einer Wiederholung: der Idempotenzspeicher haelt
+              das Token nicht, also gibt es die Adresse kein zweites Mal. */}
+          {erzeugen.data.url === null
+            ? <p className="text-xs text-amber-800">{t('vz.link.replayed')}</p>
+            : (
+              <div className="flex items-center gap-2">
+                <input readOnly value={erzeugen.data.url}
+                       onFocus={e => e.currentTarget.select()}
+                       className="grow border border-neutral-300 rounded px-2 py-1 text-xs" />
+                <button type="button"
+                        className="px-2 py-1 text-xs border border-neutral-300 rounded
+                                   whitespace-nowrap"
+                        onClick={() => {
+                          const url = erzeugen.data.url
+                          if (url === null) return
+                          void navigator.clipboard.writeText(url)
+                            .then(() => setKopiert(true))
+                        }}>
+                  {kopiert ? t('vz.link.copied') : t('vz.link.copy')}
+                </button>
+              </div>
+            )}
+          <p className="mt-1 text-xs text-neutral-600">
+            {t('vz.link.validUntilDay', { date: formatDate(erzeugen.data.validUntil, locale) })}
+          </p>
           {erzeugen.data.messageRef !== null && (
             <p className="mt-1 text-xs text-emerald-800">✓ {t('vz.link.mailed')}</p>
           )}
           <p className="mt-1 text-xs text-neutral-500">{t('vz.link.once')}</p>
+          <button type="button"
+                  onClick={() => { if (onSchliessen !== undefined) onSchliessen()
+                                   else { setKopiert(false); erzeugen.reset() } }}
+                  className="mt-1 px-2 py-1 text-xs border border-neutral-300 rounded">
+            {onSchliessen !== undefined ? t('vz.close') : t('vz.link.another')}
+          </button>
         </div>
       )}
     </div>
@@ -153,9 +177,9 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
 /** Der Zustand eines Links, wie ihn die Rezeption lesen soll. */
 function linkZustand(l: PaymentLink): 'pending' | 'succeeded' | 'failed' | 'canceled'
                                        | 'expired' {
-  // Ein offener Link, dessen Zeit beim Anbieter um ist, ist nicht mehr
-  // "offen": bezahlen kann ihn niemand mehr, auch wenn die Ablaufmeldung
-  // des Anbieters noch nicht da ist.
+  // Ein offener Link, dessen Frist um ist, ist nicht mehr "offen":
+  // bezahlen kann ihn niemand mehr. Beim dauerhaften Link ist die Frist ein
+  // Geschaeftstag, bei einem alten Checkout ein Zeitpunkt beim Anbieter.
   return l.expired ? 'expired' : l.status
 }
 
@@ -184,7 +208,8 @@ export function ZahlungslinkListe({ folioRef, links, darfBuchen }: {
         {links.map(l => {
           const zustand = linkZustand(l)
           return (
-            <li key={l.id} className="flex flex-wrap items-baseline gap-2">
+            <li key={`${l.legacy ? 'c' : 'l'}${l.id}`}
+                className="flex flex-wrap items-baseline gap-2">
               <span className="text-xs text-neutral-500 tabular-nums">
                 {zeit.format(new Date(l.createdAt))}
               </span>
@@ -197,13 +222,27 @@ export function ZahlungslinkListe({ folioRef, links, darfBuchen }: {
                   {t(`vz.link.mail.${l.mailStatus}`)}
                 </span>
               )}
-              {zustand === 'pending' && l.expiresAt !== null && (
+              {zustand === 'pending' && l.validUntil !== null && (
+                <span className="text-xs text-neutral-500">
+                  {t('vz.link.validUntilDay', { date: formatDate(l.validUntil, locale) })}
+                </span>
+              )}
+              {zustand === 'pending' && l.legacy && l.expiresAt !== null && (
                 <span className="text-xs text-neutral-500">
                   {t('vz.link.validUntil', { time: zeit.format(new Date(l.expiresAt)) })}
                 </span>
               )}
+              {/* Ob der Gast den Link schon bis zum Anbieter geoeffnet hat:
+                  die Frage, die vor einer Erinnerung kommt. */}
+              {!l.legacy && l.openedAt !== null && l.status === 'pending' && (
+                <span className="text-xs text-neutral-500">{t('vz.link.opened')}</span>
+              )}
               <div className="grow" />
-              {darfBuchen && zustand === 'pending' && (
+              {/* Widerrufen auch nach Ablauf der Frist: ein schon geoeffneter
+                  Checkout nimmt beim Anbieter noch bis zu 24 Stunden Geld an,
+                  und erst der Widerruf beendet ihn. Alte Checkouts ohne
+                  eigenen Link laufen von selbst ab. */}
+              {darfBuchen && !l.legacy && l.status === 'pending' && (
                 <button type="button" disabled={ungueltig.isPending}
                         onClick={() => {
                           if (confirm(t('vz.link.cancelConfirm'))) ungueltig.mutate(l.id)

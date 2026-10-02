@@ -166,12 +166,13 @@ export interface ReservationEmailData {
 }
 
 /**
- * Ein Zahlungslink an den Gast (Migration 0060).
+ * Ein Zahlungslink an den Gast (Migrationen 0060, 0068).
  *
- * `url` kommt vom Zahlungsdienstleister und wird nirgends gespeichert ausser
- * im Rumpf dieser Nachricht -- und dort nur, solange der Anbieter den Link
- * ohnehin annimmt (hoechstens 24 Stunden), lange bevor die Gastpost nach 90
- * Tagen geschwaerzt wird.
+ * `url` ist der dauerhafte Link von uns (`/v1/pay?t=...`), nicht die Adresse
+ * eines Checkouts beim Anbieter: der gilt hoechstens 24 Stunden, der Link
+ * bis zur Frist. Das Token steht nirgends im Klartext ausser im Rumpf dieser
+ * Nachricht, und dort nur, bis sie zugestellt ist -- danach ersetzt ein
+ * Trigger es (0068).
  */
 export interface PaymentLinkEmailData {
   propertyName: string
@@ -186,6 +187,8 @@ export interface PaymentLinkEmailData {
   dueDate: string | null
   /** Zahlt der Link auf eine Anzahlungsanforderung? Sonst ist es eine Zahlung. */
   deposit: boolean
+  /** Bis wann der Link annimmt, Kalendertag (0068). */
+  validUntil: string
   url: string
 }
 
@@ -251,6 +254,7 @@ interface Gastposttexte {
   zahlungAllgemein: string
   zahlungLink: string
   zahlungKarte: string
+  zahlungGueltig: string
   zahlungHinweis: string
   // Online-Check-in (Dokument 30)
   checkinBetreff: string
@@ -298,8 +302,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Ueber den folgenden Link bezahlen Sie sicher beim '
       + 'Zahlungsdienstleister des Hauses:',
     zahlungKarte: 'Ihre Kartendaten geben Sie nur dort ein; das Haus erhaelt sie '
-      + 'nicht. Der Link gilt nur fuer kurze Zeit. Ist er abgelaufen, schicken wir '
-      + 'Ihnen gern einen neuen.',
+      + 'nicht.',
+    zahlungGueltig: 'Der Link gilt bis einschliesslich {gueltig}. Ist er abgelaufen, '
+      + 'schicken wir Ihnen gern einen neuen.',
     zahlungHinweis: 'Bei Fragen antworten Sie einfach auf diese E-Mail und nennen '
       + 'Sie die Buchungsnummer {ref}.',
     checkinBetreff: 'Online-Check-in fuer Ihren Aufenthalt — {haus}',
@@ -350,7 +355,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'You can pay securely with the property’s payment provider '
       + 'using the following link:',
     zahlungKarte: 'You enter your card details only there; the property never '
-      + 'receives them. The link is valid for a short time only. If it has '
+      + 'receives them.',
+    zahlungGueltig: 'The link is valid up to and including {gueltig}. If it has '
       + 'expired, we will gladly send you a new one.',
     zahlungHinweis: 'If you have any questions, simply reply to this email and '
       + 'quote the booking reference {ref}.',
@@ -402,8 +408,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Via de volgende link betaalt u veilig bij de betaaldienst van '
       + 'het hotel:',
     zahlungKarte: 'Uw kaartgegevens voert u alleen daar in; het hotel ontvangt ze '
-      + 'niet. De link is slechts korte tijd geldig. Is hij verlopen, dan sturen '
-      + 'wij u graag een nieuwe.',
+      + 'niet.',
+    zahlungGueltig: 'De link is geldig tot en met {gueltig}. Is hij verlopen, dan '
+      + 'sturen wij u graag een nieuwe.',
     zahlungHinweis: 'Heeft u vragen, antwoord dan gewoon op deze e-mail en vermeld '
       + 'het boekingsnummer {ref}.',
     checkinBetreff: 'Online inchecken voor uw verblijf — {haus}',
@@ -468,7 +475,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Bezpiecznej płatności u operatora płatności obiektu można '
       + 'dokonać, korzystając z poniższego linku:',
     zahlungKarte: 'Dane karty podają Państwo wyłącznie tam; obiekt ich nie '
-      + 'otrzymuje. Link jest ważny tylko przez krótki czas. Jeśli wygasł, '
+      + 'otrzymuje.',
+    zahlungGueltig: 'Link jest ważny do dnia {gueltig} włącznie. Jeśli wygaśnie, '
       + 'chętnie prześlemy nowy.',
     zahlungHinweis: 'W razie pytań wystarczy odpowiedzieć na tę wiadomość, '
       + 'podając numer rezerwacji {ref}.',
@@ -602,7 +610,8 @@ export function renderPaymentLinkEmail(
     anreise: kalendertag(d.arrival, lang),
     abreise: kalendertag(d.departure, lang),
     betrag: `${formatCent(d.amountCent)} ${d.currency}`,
-    frist: d.dueDate === null ? '' : kalendertag(d.dueDate, lang)
+    frist: d.dueDate === null ? '' : kalendertag(d.dueDate, lang),
+    gueltig: kalendertag(d.validUntil, lang)
   }
   const bitte = !d.deposit ? t.zahlungAllgemein
     : d.dueDate === null ? t.zahlungAnzahlungOhneFrist : t.zahlungAnzahlungMitFrist
@@ -613,6 +622,7 @@ export function renderPaymentLinkEmail(
     t.zahlungLink,
     d.url,
     t.zahlungKarte,
+    einsetzen(t.zahlungGueltig, werte),
     einsetzen(t.zahlungHinweis, werte),
     d.propertyName
   ]

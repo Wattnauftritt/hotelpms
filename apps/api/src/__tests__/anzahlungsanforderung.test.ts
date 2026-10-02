@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
@@ -7,10 +6,10 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
-import { ProviderRefused, type StripeAdapter } from '../platform/payments/stripe.js'
+import { stripeAttrappe, signiert, bezahltEreignis } from './stripeAttrappe.js'
 
 /**
- * Anzahlung anfordern, Zahlungslink, Eingang (Migration 0060).
+ * Anzahlung anfordern, Zahlungslink, Eingang (Migrationen 0060, 0068).
  *
  * Geprueft wird, was an der Oberflaeche nicht zu sehen ist und trotzdem
  * stimmen muss:
@@ -19,27 +18,19 @@ import { ProviderRefused, type StripeAdapter } from '../platform/payments/stripe
  *    Prozent. Die Maske zeigt ihn vorher mit derselben Funktion an.
  * 2. **Ueberfaellig wird gegen den Geschaeftstag geprueft**, nicht gegen die
  *    Uhr. Am Faelligkeitstag selbst ist nichts ueberfaellig.
- * 3. **Ein Uebungshaus bekommt keinen Link** -- und der Anbieter wird gar
- *    nicht erst gefragt.
- * 4. **Der Eingang ueber den Webhook wird genau einmal verbucht und genau
+ * 3. **Der Link in der Mail haelt bis zur Frist** (0068): er ist von uns, und
+ *    erst beim Oeffnen entsteht ein Checkout beim Anbieter -- je Link
+ *    hoechstens ein offener, und ein neuer erst, wenn der alte erledigt ist.
+ * 4. **Ein Uebungshaus legt nie einen Checkout an.**
+ * 5. **Der Eingang ueber den Webhook wird genau einmal verbucht und genau
  *    einmal zugeordnet**, auch bei doppelter oder andersartiger Zustellung.
- * 5. **Rechte gelten im Haus des Folios**, nicht in irgendeinem.
+ * 6. **Das Token steht nirgends im Klartext**: nicht in der Datenbank, nicht
+ *    im Idempotenzspeicher, nicht im Protokoll, nach dem Versand nicht in der
+ *    Gastpost, und nach einer Loeschung fuehrt es ins Leere.
+ * 7. **Rechte gelten im Haus des Folios**, nicht in irgendeinem.
  */
 
 const WEBHOOK_SECRET = 'whsec_test_anzahlung'
-
-function signStripe(rawBody: string): string {
-  const t = Math.floor(Date.now() / 1000)
-  const sig = createHmac('sha256', WEBHOOK_SECRET).update(`${t}.${rawBody}`).digest('hex')
-  return `t=${t},v1=${sig}`
-}
-
-function bezahlt(eventId: string, sessionId: string, amountTotal: number): string {
-  return JSON.stringify({
-    id: eventId, type: 'checkout.session.completed',
-    data: { object: { id: sessionId, amount_total: amountTotal, payment_status: 'paid' } }
-  })
-}
 
 let owner: Pool
 let app: FastifyInstance
@@ -48,21 +39,8 @@ let fx: Fixture
 let auth: Record<string, string>
 let categoryId: number
 
-/** Der Anbieter als Attrappe: kein Netz, aber jeder Aufruf wird gezaehlt. */
-let erzeugt = 0
-let beendet: string[] = []
-let beendenVerweigern = false
-const fakeStripe: StripeAdapter = {
-  async createCheckoutSession() {
-    const providerReference = `cs_test_anz_${++erzeugt}`
-    return { providerReference, url: `https://checkout.stripe.test/${providerReference}`,
-             expiresAt: new Date(Date.now() + 24 * 3600 * 1000) }
-  },
-  async expireCheckoutSession(ref) {
-    if (beendenVerweigern) throw new ProviderRefused(400, 'session is not open')
-    beendet.push(ref)
-  }
-}
+/** Der Anbieter als Attrappe: kein Netz, aber mit Buchfuehrung ueber Checkouts. */
+const stripe = stripeAttrappe()
 
 beforeAll(async () => {
   await ensureSchema()
@@ -71,7 +49,7 @@ beforeAll(async () => {
   const built = await buildServer({ pool: appPool(10) })
   app = built.app
   pool = built.pool
-  registerAllRoutes(app, { payments: { stripe: fakeStripe } })
+  registerAllRoutes(app, { payments: { stripe } })
   await app.ready()
 })
 afterAll(async () => {
@@ -84,9 +62,7 @@ const key = (): string => `anz-${++lauf}-${Date.now()}`
 
 beforeEach(async () => {
   await truncateAll()
-  erzeugt = 0
-  beendet = []
-  beendenVerweigern = false
+  stripe.zuruecksetzen()
   fx = await makeProperty(owner)
   await openBusinessDay(owner, fx.propertyId, '2026-10-01')
   await makePaymentMethod(owner, fx.propertyId, 'TRANSFER')
@@ -127,7 +103,8 @@ const link = (folioRef: string, payload: unknown, wer = auth) => app.inject({
 
 const webhook = (raw: string) => app.inject({
   method: 'POST', url: '/v1/payments/stripe/webhook',
-  headers: { 'content-type': 'application/json', 'stripe-signature': signStripe(raw) },
+  headers: { 'content-type': 'application/json',
+             'stripe-signature': signiert(raw, WEBHOOK_SECRET) },
   payload: raw })
 
 interface Anforderung {
@@ -143,7 +120,8 @@ interface Sicht {
   settlements: Array<{ id: number; amountCent: number; depositRequestRef: string | null }>
   paymentLinks: Array<{ id: number; status: string; expired: boolean
                         depositRequestRef: string | null; mailStatus: string | null
-                        expiresAt: string | null }>
+                        expiresAt: string | null; legacy: boolean
+                        validUntil: string | null; openedAt: string | null }>
 }
 
 async function sicht(folioRef: string, wer = auth): Promise<Sicht> {
@@ -304,126 +282,371 @@ describe('Zuordnung von Zahlungseingaengen', () => {
   })
 })
 
-describe('Zahlungslink zur Anforderung', () => {
-  it('erzeugt keinen Link im Uebungshaus und fragt den Anbieter gar nicht erst', async () => {
-    const { folioRef } = await aufenthalt()
-    await owner.query(`UPDATE property SET is_training = true WHERE id = $1`, [fx.propertyId])
-    const a = (await anfordern(folioRef, { amountCent: 5_000, dueDate: '2026-10-10' }))
-      .json() as { requestRef: string }
+/** Das Token aus der Adresse, die die Rezeption bekommt. */
+function tokenAus(url: string): string {
+  return new URL(url).searchParams.get('t')!
+}
 
-    const r = await link(folioRef, { amountCent: 5_000, depositRequestRef: a.requestRef })
-    expect(r.statusCode).toBe(422)
-    expect(r.json().code).toBe('training.noPaymentLink')
-    expect(erzeugt).toBe(0)
+const seite = (token: string, wer: Record<string, string> = {}) => app.inject({
+  method: 'GET', url: `/v1/pay?t=${encodeURIComponent(token)}`, headers: wer })
 
-    const v = await sicht(folioRef)
-    expect(v.isTraining).toBe(true)
-    expect(v.mail).toMatchObject({ ready: false, reason: 'training' })
-    // Die Anforderung selbst ist Uebung genug: sie verlaesst das Haus nicht.
-    expect(v.requests[0]!.state).toBe('requested')
+const zurKasse = (token: string) => app.inject({
+  method: 'GET', url: `/v1/pay/checkout?t=${encodeURIComponent(token)}` })
+
+/** Oeffnet den Link bis zum Anbieter und liefert die Kennung des Checkouts. */
+async function oeffnen(token: string): Promise<string> {
+  const r = await zurKasse(token)
+  expect(r.statusCode, r.body).toBe(303)
+  return String(r.headers.location).split('/').pop()!
+}
+
+async function anforderungMitLink(betrag = 9_000, payload: Record<string, unknown> = {}) {
+  const auf = await aufenthalt()
+  const a = (await anfordern(auf.folioRef, { amountCent: betrag, dueDate: '2026-10-10' }))
+    .json() as { requestRef: string }
+  const l = await link(auf.folioRef,
+    { amountCent: betrag, depositRequestRef: a.requestRef, ...payload })
+  expect(l.statusCode, l.body).toBe(201)
+  const body = l.json() as { url: string; linkId: number; validUntil: string
+                             messageRef: string | null }
+  return { ...auf, requestRef: a.requestRef, ...body, token: tokenAus(body.url) }
+}
+
+describe('Der dauerhafte Zahlungslink', () => {
+  it('ist ein Link von uns, gilt eine Woche ueber die Frist und fragt beim Anlegen niemanden',
+    async () => {
+      const x = await anforderungMitLink()
+      // Nicht die Adresse eines Checkouts, sondern unsere, mit dem Token in
+      // der Abfrage und nicht im Pfad.
+      expect(x.url).toMatch(/\/v1\/pay\?t=[A-Za-z0-9_-]{43}$/)
+      // Faellig am 10., eine Woche Kulanz, vor der Abreise am 23.
+      expect(x.validUntil).toBe('2026-10-17')
+      expect(stripe.angelegt).toBe(0)
+
+      // In der Datenbank nur der Hash.
+      const roh = await owner.query<{ token_hash: string }>(
+        `SELECT token_hash FROM payment_link WHERE id = $1`, [x.linkId])
+      expect(roh.rows[0]!.token_hash).not.toContain(x.token)
+      expect(roh.rows[0]!.token_hash).toMatch(/^[0-9a-f]{64}$/)
+
+      const v = await sicht(x.folioRef)
+      expect(v.requests[0]!.state).toBe('link_sent')
+      expect(v.paymentLinks[0]).toMatchObject({ id: x.linkId, legacy: false,
+        status: 'pending', validUntil: '2026-10-17', expired: false, openedAt: null })
+    })
+
+  it('zeigt dem Gast eine Seite und legt erst auf den Knopf einen Checkout an', async () => {
+    const x = await anforderungMitLink()
+    const s = await seite(x.token)
+    expect(s.statusCode).toBe(200)
+    expect(s.headers['content-type']).toContain('text/html')
+    expect(s.headers['cache-control']).toBe('no-store')
+    // Englisch, weil das Gastprofil englisch ist; Betrag und Haus stehen da,
+    // der Name des Gastes nicht.
+    expect(s.body).toContain('Continue to payment')
+    expect(s.body).toContain('90,00 EUR')
+    expect(s.body).toContain('Testhotel')
+    expect(s.body).not.toContain('Petersen')
+    expect(s.body).not.toContain('<style')
+    expect(s.body).not.toContain('<script')
+    // Ein Vorabaufruf durch ein Mailprogramm legt nichts an.
+    expect(stripe.angelegt).toBe(0)
+
+    const ref = await oeffnen(x.token)
+    expect(stripe.angelegt).toBe(1)
+    // Der Anbieter bekommt das Token nicht, auch nicht in der Rueckkehr.
+    expect(stripe.sitzungen.get(ref)!.successUrl).not.toContain(x.token)
+    expect((await sicht(x.folioRef)).paymentLinks[0]!.openedAt).not.toBeNull()
   })
 
-  it('verbucht den Eingang genau einmal und ordnet ihn genau einmal zu', async () => {
-    const { folioRef, folioId } = await aufenthalt()
-    const a = (await anfordern(folioRef, { amountCent: 9_000, dueDate: '2026-10-10' }))
-      .json() as { requestRef: string }
+  it('verwendet einen offenen Checkout wieder, auch bei gleichzeitigem Oeffnen', async () => {
+    const x = await anforderungMitLink()
+    const [a, b, c] = await Promise.all([zurKasse(x.token), zurKasse(x.token),
+                                         zurKasse(x.token)])
+    expect([a.statusCode, b.statusCode, c.statusCode]).toEqual([303, 303, 303])
+    expect(new Set([a.headers.location, b.headers.location, c.headers.location]).size).toBe(1)
+    expect(stripe.angelegt).toBe(1)
+    expect(await oeffnen(x.token)).toBe('cs_test_1')
+    expect(stripe.angelegt).toBe(1)
+  })
 
-    const l = await link(folioRef, { amountCent: 9_000, depositRequestRef: a.requestRef })
-    expect(l.statusCode).toBe(201)
-    const { url, linkId, expiresAt } = l.json() as { url: string; linkId: number
-                                                     expiresAt: string | null }
-    expect(expiresAt).not.toBeNull()
-    const sessionId = url.split('/').pop()!
+  it('legt nach Ablauf beim Anbieter einen neuen an, und nur einen', async () => {
+    const x = await anforderungMitLink()
+    const erst = await oeffnen(x.token)
+    stripe.sitzungen.get(erst)!.status = 'expired'
 
-    let v = await sicht(folioRef)
-    expect(v.requests[0]!.state).toBe('link_sent')
-    expect(v.paymentLinks[0]).toMatchObject({ id: linkId, status: 'pending',
-      depositRequestRef: a.requestRef, mailStatus: null, expired: false })
+    const zweit = await oeffnen(x.token)
+    expect(zweit).not.toBe(erst)
+    const offen = await owner.query(
+      `SELECT provider_reference, status FROM payment_intent
+        WHERE payment_link_id = $1 ORDER BY id`, [x.linkId])
+    expect(offen.rows).toEqual([
+      { provider_reference: erst, status: 'failed' },
+      { provider_reference: zweit, status: 'pending' }])
+  })
 
-    // Dieselbe Zustellung zweimal, dann ein andersartiges Ereignis derselben
-    // Zahlung -- Stripe tut beides.
-    const erst = bezahlt('evt_anz_1', sessionId, 9_000)
-    expect((await webhook(erst)).statusCode).toBe(200)
-    expect((await webhook(erst)).statusCode).toBe(200)
-    expect((await webhook(bezahlt('evt_anz_2', sessionId, 9_000))).statusCode).toBe(200)
+  it('schliesst den alten Checkout beim Anbieter, wenn sich der offene Betrag aendert',
+    async () => {
+      const x = await anforderungMitLink()
+      const erst = await oeffnen(x.token)
+      // Der Gast ueberweist einen Teil; die Rezeption ordnet ihn zu.
+      const s = await eingang(x.folioId, 4_000)
+      await app.inject({ method: 'POST',
+        url: `/v1/deposit-requests/${x.requestRef}/settlements`,
+        headers: auth, payload: { settlementId: s } })
 
+      const zweit = await oeffnen(x.token)
+      expect(stripe.beendet).toEqual([erst])
+      expect(stripe.sitzungen.get(zweit)!.amountCent).toBe(5_000)
+      expect((await seite(x.token)).body).toContain('50,00 EUR')
+    })
+
+  /*
+   * Die Doppelzahlung. Der Webhook nimmt jede echte Zahlung an -- Geld, das
+   * der Anbieter meldet, ist da. Die Sperre liegt davor: ein neuer Checkout
+   * entsteht nur, wenn der Anbieter den alten fuer erledigt erklaert, und
+   * die Datenbank laesst je Link hoechstens einen offenen zu.
+   */
+  it('legt keinen zweiten Checkout an, solange der erste beim Anbieter bezahlt wird',
+    async () => {
+      const x = await anforderungMitLink()
+      const erst = await oeffnen(x.token)
+      stripe.bezahlen(erst)  // bezahlt, die Meldung ist noch unterwegs
+
+      const nochmal = await zurKasse(x.token)
+      expect(nochmal.statusCode).toBe(200)
+      expect(nochmal.body).toContain('being processed')
+      expect(stripe.angelegt).toBe(1)
+
+      // Die Meldung kommt -- zweimal und als zweites Ereignis --, ein Vermerk.
+      const raw = bezahltEreignis('evt_1', erst, 9_000)
+      await webhook(raw); await webhook(raw)
+      await webhook(bezahltEreignis('evt_2', erst, 9_000))
+      const vermerke = await owner.query(
+        `SELECT id FROM settlement WHERE folio_id = $1`, [x.folioId])
+      expect(vermerke.rows).toHaveLength(1)
+      const zuordnung = await owner.query(
+        `SELECT count(*)::int AS n FROM deposit_request_settlement WHERE folio_id = $1`,
+        [x.folioId])
+      expect(zuordnung.rows[0].n).toBe(1)
+
+      const v = await sicht(x.folioRef)
+      expect(v.requests[0]).toMatchObject({ state: 'received', depositInvoiceMissing: true })
+      expect(v.paymentLinks[0]!.status).toBe('succeeded')
+      expect((await seite(x.token)).body).toContain('has been received')
+      expect((await zurKasse(x.token)).statusCode).toBe(200)
+      expect(stripe.angelegt).toBe(1)
+    })
+
+  it('haelt je Link hoechstens einen offenen Checkout in der Datenbank fest', async () => {
+    const x = await anforderungMitLink()
+    await oeffnen(x.token)
+    // Wer an der Route vorbei einen zweiten offenen anlegen will, scheitert
+    // am Index -- nicht an einer Pruefung, die man vergessen kann.
+    await expect(owner.query(
+      `INSERT INTO payment_intent (property_id, folio_id, provider, provider_reference,
+                                   amount_cent, payment_link_id)
+       VALUES ($1,$2,'stripe','cs_daneben',9000,$3)`,
+      [fx.propertyId, x.folioId, x.linkId])).rejects.toThrow(/payment_intent_one_open_per_link/)
+  })
+
+  it('nimmt eine spaete Zahlung auf einen ersetzten Checkout trotzdem an', async () => {
+    // Abgelaufen markiert, aber beim Anbieter im letzten Augenblick bezahlt:
+    // das Geld ist da und muss im Folio stehen, nicht verschwinden.
+    const x = await anforderungMitLink()
+    const erst = await oeffnen(x.token)
+    stripe.sitzungen.get(erst)!.status = 'expired'
+    await oeffnen(x.token)
+    await webhook(bezahltEreignis('evt_spaet', erst, 9_000))
     const vermerke = await owner.query(
-      `SELECT id FROM settlement WHERE folio_id = $1`, [folioId])
-    expect(vermerke.rows).toHaveLength(1)
-    const zuordnungen = await owner.query(
-      `SELECT settlement_id FROM deposit_request_settlement WHERE folio_id = $1`, [folioId])
-    expect(zuordnungen.rows).toHaveLength(1)
-
-    v = await sicht(folioRef)
-    expect(v.requests[0]).toMatchObject({ state: 'received', receivedCent: 9_000,
-                                          openCent: 0, depositInvoiceMissing: true })
-
-    // Die Anzahlungsrechnung entsteht nicht im Webhook, sondern ueber den
-    // vorhandenen Weg -- und danach fehlt sie nicht mehr.
-    const rechnung = await app.inject({
-      method: 'POST', url: `/v1/folios/${folioRef}/deposit-invoice`,
-      headers: { ...auth, 'idempotency-key': key() },
-      payload: { settlementId: vermerke.rows[0]!.id, taxRateBp: 700 } })
-    expect(rechnung.statusCode).toBe(201)
-    expect((await sicht(folioRef)).requests[0]!.depositInvoiceMissing).toBe(false)
+      `SELECT amount_cent FROM settlement WHERE folio_id = $1`, [x.folioId])
+    expect(vermerke.rows).toEqual([{ amount_cent: 9_000 }])
   })
 
-  it('verlangt per Link nicht mehr als den offenen Rest', async () => {
-    const { folioRef, folioId } = await aufenthalt()
-    const a = (await anfordern(folioRef, { amountCent: 9_000, dueDate: '2026-10-10' }))
+  it('verlangt per Link nicht mehr als den offenen Rest, und je Anforderung einen', async () => {
+    const auf = await aufenthalt()
+    const a = (await anfordern(auf.folioRef, { amountCent: 9_000, dueDate: '2026-10-10' }))
       .json() as { requestRef: string }
-    const s = await eingang(folioId, 4_000)
+    const s = await eingang(auf.folioId, 4_000)
     await app.inject({ method: 'POST', url: `/v1/deposit-requests/${a.requestRef}/settlements`,
                        headers: auth, payload: { settlementId: s } })
 
-    const r = await link(folioRef, { amountCent: 9_000, depositRequestRef: a.requestRef })
-    expect(r.statusCode).toBe(422)
-    expect(r.json().code).toBe('deposit.linkExceedsOpen')
-    expect((await link(folioRef,
+    const zuviel = await link(auf.folioRef, { amountCent: 9_000, depositRequestRef: a.requestRef })
+    expect(zuviel.json().code).toBe('deposit.linkExceedsOpen')
+    expect((await link(auf.folioRef,
       { amountCent: 5_000, depositRequestRef: a.requestRef })).statusCode).toBe(201)
+    const zweiter = await link(auf.folioRef,
+      { amountCent: 5_000, depositRequestRef: a.requestRef })
+    expect(zweiter.statusCode).toBe(409)
+    expect(zweiter.json().code).toBe('payments.linkActive')
+  })
+
+  it('gibt die Adresse bei einer Wiederholung nicht noch einmal heraus', async () => {
+    const auf = await aufenthalt()
+    const k = key()
+    const erst = await app.inject({ method: 'POST',
+      url: `/v1/folios/${auf.folioRef}/payment-links`,
+      headers: { ...auth, 'idempotency-key': k }, payload: { amountCent: 1_000 } })
+    const zweit = await app.inject({ method: 'POST',
+      url: `/v1/folios/${auf.folioRef}/payment-links`,
+      headers: { ...auth, 'idempotency-key': k }, payload: { amountCent: 1_000 } })
+    expect((erst.json() as { url: string }).url).toMatch(/t=/)
+    expect(zweit.json()).toMatchObject({ url: null,
+      linkId: (erst.json() as { linkId: number }).linkId })
+    // Auch im Idempotenzspeicher steht das Token nicht.
+    const gespeichert = await owner.query(`SELECT response_body::text AS b FROM idempotency_key`)
+    const token = tokenAus((erst.json() as { url: string }).url)
+    expect(gespeichert.rows.map(r => r.b).join()).not.toContain(token)
+  })
+})
+
+describe('Was der Gast sieht, wenn nicht gezahlt werden kann', () => {
+  it('sagt bei einem unbekannten Token nur, dass es ungueltig ist', async () => {
+    const r = await seite('A'.repeat(43), { 'accept-language': 'nl-NL,nl;q=0.9' })
+    expect(r.statusCode).toBe(404)
+    expect(r.body).toContain('Deze link is ongeldig')
+    expect(r.body).not.toContain('Testhotel')
+    expect((await seite('kurz')).statusCode).toBe(404)
+  })
+
+  it('nimmt einen widerrufenen Link nicht mehr an und schliesst den Checkout', async () => {
+    const x = await anforderungMitLink()
+    const ref = await oeffnen(x.token)
+
+    // Mit gueltigem Link laesst sich die Anforderung nicht zurueckziehen.
+    const zu = await app.inject({ method: 'POST',
+      url: `/v1/deposit-requests/${x.requestRef}/cancel`, headers: auth })
+    expect(zu.json().code).toBe('deposit.requestHasOpenLink')
+
+    // Lehnt der Anbieter das Beenden ab, bleibt alles, wie es ist.
+    stripe.verweigern = true
+    const abgelehnt = await app.inject({ method: 'POST',
+      url: `/v1/payment-links/${x.linkId}/cancel`, headers: auth })
+    expect(abgelehnt.statusCode).toBe(409)
+    expect((await seite(x.token)).body).toContain('Continue to payment')
+
+    stripe.verweigern = false
+    const ok = await app.inject({ method: 'POST',
+      url: `/v1/payment-links/${x.linkId}/cancel`, headers: auth })
+    expect(ok.statusCode).toBe(200)
+    expect(stripe.beendet).toEqual([ref])
+    // Der Hash ist weg: das Token aus der Mail fuehrt ins Leere.
+    expect((await seite(x.token)).statusCode).toBe(404)
+    expect((await sicht(x.folioRef)).paymentLinks[0]!.status).toBe('canceled')
+    expect((await app.inject({ method: 'POST',
+      url: `/v1/payment-links/${x.linkId}/cancel`, headers: auth })).json().code)
+      .toBe('payments.linkNotOpen')
+
+    // Jetzt geht das Zurueckziehen, und danach gibt es keinen neuen Link.
+    expect((await app.inject({ method: 'POST',
+      url: `/v1/deposit-requests/${x.requestRef}/cancel`, headers: auth })).statusCode).toBe(200)
+    expect((await link(x.folioRef, { amountCent: 9_000, depositRequestRef: x.requestRef }))
+      .json().code).toBe('deposit.requestCanceled')
+  })
+
+  it('laeuft gegen den Geschaeftstag ab, nicht gegen die Uhr', async () => {
+    const x = await anforderungMitLink()
+    await geschaeftstagWechseln('2026-10-17')
+    expect((await seite(x.token)).body).toContain('Continue to payment')
+    await geschaeftstagWechseln('2026-10-18')
+    const r = await seite(x.token)
+    expect(r.body).toContain('has expired')
+    expect((await zurKasse(x.token)).statusCode).toBe(200)
+    expect(stripe.angelegt).toBe(0)
+    expect((await sicht(x.folioRef)).paymentLinks[0]!.expired).toBe(true)
+  })
+
+  it('legt im Uebungshaus nie einen Checkout an, auch nicht fuer einen alten Link', async () => {
+    const x = await anforderungMitLink()
+    await owner.query(`UPDATE property SET is_training = true WHERE id = $1`, [fx.propertyId])
+    const r = await zurKasse(x.token)
+    expect(r.statusCode).toBe(200)
+    expect(r.body).toContain('training property')
+    expect(stripe.angelegt).toBe(0)
+    // Und neu anlegen geht dort gar nicht erst.
+    const neu = await link(x.folioRef, { amountCent: 1_000 })
+    expect(neu.json().code).toBe('training.noPaymentLink')
+  })
+
+  it('zeigt nach der Rueckkehr vom Anbieter eine Seite ohne Token', async () => {
+    const r = await app.inject({ method: 'GET', url: '/v1/pay/done?lang=pl&ergebnis=abgebrochen' })
+    expect(r.statusCode).toBe(200)
+    expect(r.body).toContain('nie została zakończona')
+  })
+
+  it('schreibt das Token nicht ins Protokoll', async () => {
+    const x = await anforderungMitLink()
+    const zeilen: string[] = []
+    const { Writable } = await import('node:stream')
+    const strom = new Writable({ write(chunk, _enc, fertig) {
+      zeilen.push(String(chunk)); fertig() } })
+    const mitProtokoll = await buildServer({ pool: appPool(2), logStream: strom })
+    registerAllRoutes(mitProtokoll.app, { payments: { stripe } })
+    await mitProtokoll.app.ready()
+    try {
+      await mitProtokoll.app.inject({ method: 'GET', url: `/v1/pay?t=${x.token}` })
+      await mitProtokoll.app.inject({ method: 'GET', url: `/v1/pay/checkout?t=${x.token}` })
+    } finally {
+      await mitProtokoll.app.close(); await mitProtokoll.pool.end()
+    }
+    const alles = zeilen.join('\n')
+    expect(alles).toContain('/v1/pay?t=[redigiert]')
+    expect(alles).not.toContain(x.token)
   })
 })
 
 describe('Zahlungslink per Gastpost', () => {
-  it('reiht die Mail in derselben Anfrage ein, mit Bezug auf die Reservierung', async () => {
+  it('schickt den dauerhaften Link und entfernt das Token nach dem Versand', async () => {
     await postEinschalten()
-    const { folioRef, reservationId } = await aufenthalt()
-    const a = (await anfordern(folioRef, { amountCent: 9_000, dueDate: '2026-10-10' }))
-      .json() as { requestRef: string }
-
-    const r = await link(folioRef,
-      { amountCent: 9_000, depositRequestRef: a.requestRef, sendEmail: true })
-    expect(r.statusCode).toBe(201)
-    const { url, messageRef } = r.json() as { url: string; messageRef: string | null }
-    expect(messageRef).not.toBeNull()
+    const x = await anforderungMitLink(9_000, { sendEmail: true })
+    expect(x.messageRef).not.toBeNull()
 
     const mail = await owner.query<{ kind: string; reservation_id: number; to_email: string
-                                     subject: string; body_text: string }>(
-      `SELECT kind, reservation_id, to_email, subject, body_text FROM outbound_email
-        WHERE public_ref = $1`, [messageRef])
-    expect(mail.rows[0]).toMatchObject({ kind: 'payment_link', reservation_id: reservationId,
-                                         to_email: 'gast@example.org' })
-    // In der Sprache des Gastes, mit Link, Betrag und Frist.
+                                     subject: string; body_text: string; body_html: string }>(
+      `SELECT kind, reservation_id, to_email, subject, body_text, body_html
+         FROM outbound_email WHERE public_ref = $1`, [x.messageRef])
+    expect(mail.rows[0]).toMatchObject({ kind: 'payment_link',
+      reservation_id: x.reservationId, to_email: 'gast@example.org' })
     expect(mail.rows[0]!.subject).toContain('Payment for your stay')
-    expect(mail.rows[0]!.body_text).toContain(url)
+    // Unser Link, nicht der eines Checkouts; dazu Betrag, Frist, Gueltigkeit.
+    expect(mail.rows[0]!.body_text).toContain(x.url)
+    expect(mail.rows[0]!.body_text).not.toContain('checkout.stripe')
     expect(mail.rows[0]!.body_text).toContain('90,00 EUR')
     expect(mail.rows[0]!.body_text).toContain('2026-10-10')
+    expect(mail.rows[0]!.body_text).toContain('2026-10-17')
+    expect((await sicht(x.folioRef)).paymentLinks[0]!.mailStatus).toBe('pending')
 
-    const v = await sicht(folioRef)
-    expect(v.mail).toMatchObject({ ready: true, reason: null, guestAddress: true })
-    expect(v.paymentLinks[0]!.mailStatus).toBe('pending')
+    // Zugestellt: danach steht das Token nicht mehr im Rumpf.
+    await owner.query(`UPDATE outbound_email SET status = 'sent', sent_at = now()
+                        WHERE public_ref = $1`, [x.messageRef])
+    const danach = await owner.query<{ body_text: string; body_html: string }>(
+      `SELECT body_text, body_html FROM outbound_email WHERE public_ref = $1`, [x.messageRef])
+    expect(danach.rows[0]!.body_text).not.toContain(x.token)
+    expect(danach.rows[0]!.body_html).not.toContain(x.token)
+    expect(danach.rows[0]!.body_text).toContain('t=[entfernt]')
+    // Der Link selbst gilt weiter -- er steht ja in der Mail beim Gast.
+    expect((await seite(x.token)).statusCode).toBe(200)
   })
 
-  it('prueft die Post, bevor der Anbieter gefragt wird', async () => {
+  it('zieht eine noch wartende Mail zurueck, wenn ihr Link widerrufen wird', async () => {
+    await postEinschalten()
+    const x = await anforderungMitLink(9_000, { sendEmail: true })
+    const r = await app.inject({ method: 'POST',
+      url: `/v1/payment-links/${x.linkId}/cancel`, headers: auth })
+    expect(r.statusCode).toBe(200)
+    const mail = await owner.query<{ status: string; body_text: string }>(
+      `SELECT status, body_text FROM outbound_email WHERE public_ref = $1`, [x.messageRef])
+    expect(mail.rows[0]!.status).toBe('canceled')
+    expect(mail.rows[0]!.body_text).not.toContain(x.token)
+  })
+
+  it('prueft die Post, bevor etwas angelegt wird', async () => {
     const { folioRef } = await aufenthalt()
     const r = await link(folioRef, { amountCent: 5_000, sendEmail: true })
     expect(r.statusCode).toBe(422)
     expect(r.json().code).toBe('mail.sendingDisabled')
-    // Kein Checkout beim Anbieter, zu dem es bei uns nichts gaebe.
-    expect(erzeugt).toBe(0)
-    const n = await owner.query(`SELECT count(*)::int AS n FROM payment_intent`)
+    const n = await owner.query(`SELECT count(*)::int AS n FROM payment_link`)
     expect(n.rows[0].n).toBe(0)
-
     expect((await sicht(folioRef)).mail).toMatchObject({ ready: false, reason: 'disabled' })
   })
 
@@ -436,51 +659,41 @@ describe('Zahlungslink per Gastpost', () => {
       [reservationId])
     const r = await link(folioRef, { amountCent: 5_000, sendEmail: true })
     expect(r.json().code).toBe('mail.guestAnonymized')
-    expect(erzeugt).toBe(0)
   })
 })
 
-describe('Link ungueltig machen und Anforderung zurueckziehen', () => {
-  it('beendet den Link beim Anbieter, bevor er als ungueltig gilt', async () => {
-    const { folioRef } = await aufenthalt()
-    const a = (await anfordern(folioRef, { amountCent: 5_000, dueDate: '2026-10-10' }))
-      .json() as { requestRef: string }
-    const l = (await link(folioRef, { amountCent: 5_000, depositRequestRef: a.requestRef }))
-      .json() as { url: string; linkId: number }
+describe('Loeschung des Gastes', () => {
+  it('widerruft seine Links und entfernt den Hash, in beiden Fassungen der Loeschung',
+    async () => {
+      for (const fassung of ['guest_erase_one', 'guest_erase_partial']) {
+        const x = await anforderungMitLink()
+        expect((await seite(x.token)).statusCode).toBe(200)
+        const g = await owner.query<{ id: number; account_id: number }>(
+          `SELECT g.id, g.account_id FROM reservation r JOIN guest g ON g.id = r.primary_guest_id
+            WHERE r.id = $1`, [x.reservationId])
+        const c = await pool.connect()
+        try {
+          await c.query('BEGIN')
+          await c.query(`SELECT set_config('app.account_ids', $1, true),
+                                set_config('app.property_ids', $2, true)`,
+            [String(g.rows[0]!.account_id), String(fx.propertyId)])
+          await c.query(`SELECT ${fassung}($1)`, [g.rows[0]!.id])
+          await c.query('COMMIT')
+        } finally { c.release() }
 
-    // Mit offenem Link laesst sich die Anforderung nicht zurueckziehen.
-    const zu = await app.inject({
-      method: 'POST', url: `/v1/deposit-requests/${a.requestRef}/cancel`, headers: auth })
-    expect(zu.statusCode).toBe(409)
-    expect(zu.json().code).toBe('deposit.requestHasOpenLink')
+        const l = await owner.query<{ token_hash: string | null; revoked: boolean }>(
+          `SELECT token_hash, revoked_at IS NOT NULL AS revoked FROM payment_link WHERE id = $1`,
+          [x.linkId])
+        expect(l.rows[0], fassung).toEqual({ token_hash: null, revoked: true })
+        expect((await seite(x.token)).statusCode, fassung).toBe(404)
+      }
+    })
 
-    // Lehnt der Anbieter ab, bleibt der Link offen.
-    beendenVerweigern = true
-    const abgelehnt = await app.inject({
-      method: 'POST', url: `/v1/payment-links/${l.linkId}/cancel`, headers: auth })
-    expect(abgelehnt.statusCode).toBe(409)
-    expect((await sicht(folioRef)).paymentLinks[0]!.status).toBe('pending')
-
-    beendenVerweigern = false
-    const ok = await app.inject({
-      method: 'POST', url: `/v1/payment-links/${l.linkId}/cancel`, headers: auth })
-    expect(ok.statusCode).toBe(200)
-    expect(beendet).toEqual([l.url.split('/').pop()])
-    expect((await sicht(folioRef)).paymentLinks[0]!.status).toBe('canceled')
-
-    const nochmal = await app.inject({
-      method: 'POST', url: `/v1/payment-links/${l.linkId}/cancel`, headers: auth })
-    expect(nochmal.json().code).toBe('payments.linkNotOpen')
-
-    const jetzt = await app.inject({
-      method: 'POST', url: `/v1/deposit-requests/${a.requestRef}/cancel`, headers: auth })
-    expect(jetzt.statusCode).toBe(200)
-    const v = await sicht(folioRef)
-    expect(v.requests[0]).toMatchObject({ state: 'canceled', openCent: 0 })
-
-    // Auf eine zurueckgezogene Forderung gibt es keinen neuen Link.
-    const danach = await link(folioRef, { amountCent: 5_000, depositRequestRef: a.requestRef })
-    expect(danach.json().code).toBe('deposit.requestCanceled')
+  it('fuehrt den Hash auf der Redaktionsliste des Audits', async () => {
+    const r = await owner.query(
+      `SELECT 1 FROM audit_redaction WHERE table_name = 'payment_link'
+          AND column_name = 'token_hash'`)
+    expect(r.rowCount).toBe(1)
   })
 })
 
@@ -532,7 +745,7 @@ describe('Rechte', () => {
     const r = await anfordern(folioRef, { amountCent: 1_000, dueDate: '2026-10-10' }, wer)
     expect(r.statusCode).toBe(403)
     expect((await link(folioRef, { amountCent: 1_000 }, wer)).statusCode).toBe(403)
-    expect(erzeugt).toBe(0)
+    expect(stripe.angelegt).toBe(0)
   })
 
   it('verlangt fuer das Verschicken zusaetzlich das Recht auf Gastpost', async () => {

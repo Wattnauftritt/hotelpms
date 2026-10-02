@@ -94,3 +94,68 @@ export function depositRequestState(f: DepositRequestFacts): DepositRequestState
 export function depositRequestOpenCent(amountCent: number, receivedCent: number): number {
   return Math.max(amountCent - receivedCent, 0)
 }
+
+// ---------------------------------------------------------------------------
+// Der dauerhafte Zahlungslink (Migration 0068)
+// ---------------------------------------------------------------------------
+
+/** Wie lange ein Link nach der Faelligkeit noch annimmt. */
+export const LINK_KULANZ_TAGE = 7
+
+/** Wie lange ein Link ueber einen festen Betrag gilt, ohne Anforderung dahinter. */
+export const LINK_FREI_TAGE = 14
+
+/**
+ * Bis zu welchem Geschaeftstag ein Zahlungslink annimmt.
+ *
+ * **Eine Woche ueber die Faelligkeit hinaus.** Eine Ueberweisung, die am
+ * Faelligkeitstag veranlasst wird, ist dort noch nicht da; eine Karte, die
+ * am Abend des Fristtags abgelehnt wird, braucht einen zweiten Versuch am
+ * naechsten Morgen. Ein Link, der genau mit der Frist stirbt, verwandelte
+ * einen Gast, der zahlen will, in einen Anruf an der Rezeption. Die Woche
+ * ist kein Zahlungsaufschub: die Anforderung steht ab dem Tag nach der
+ * Faelligkeit als ueberfaellig da, und das Haus kann den Link jederzeit
+ * widerrufen.
+ *
+ * **Nie ueber die Abreise hinaus.** Danach ist eine Anzahlung keine mehr;
+ * was dann offen ist, gehoert auf die Rechnung.
+ *
+ * **Ist die Frist schon verstrichen**, wenn der Link entsteht -- das Haus
+ * schickt einer ueberfaelligen Anforderung einen neuen hinterher --, zaehlt
+ * die Woche ab dem Geschaeftstag. Sonst waere der neue Link tot, bevor der
+ * Gast ihn liest.
+ *
+ * Ohne Anforderung (ein fester Betrag, etwa der Saldo nach der Abreise)
+ * gilt der Link zwei Wochen ab dem Geschaeftstag; dort gibt es keine Frist,
+ * an der er sich ausrichten koennte, und keine Abreise, die ihn begrenzt.
+ *
+ * Alles als Kalendertag `YYYY-MM-DD`, gegen den Geschaeftstag geprueft.
+ */
+export function paymentLinkValidUntil(p: {
+  businessDate: string
+  dueDate: string | null
+  departure: string | null
+}): string {
+  if (p.dueDate === null) return tagPlus(p.businessDate, LINK_FREI_TAGE)
+  const ab = p.dueDate > p.businessDate ? p.dueDate : p.businessDate
+  const bis = tagPlus(ab, LINK_KULANZ_TAGE)
+  if (p.departure !== null && p.departure < bis) {
+    return p.departure > p.businessDate ? p.departure : p.businessDate
+  }
+  return bis
+}
+
+/** Nimmt der Link heute noch an? Am letzten Tag ja, am Tag danach nicht. */
+export function paymentLinkValid(validUntil: string, businessDate: string): boolean {
+  return businessDate <= validUntil
+}
+
+/**
+ * Tage auf einen Kalendertag, auf UTC-Mitternacht gerechnet: dort gibt es
+ * keine Zeitumstellung, die einen Tag verschluckt.
+ */
+function tagPlus(iso: string, tage: number): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + tage)
+  return d.toISOString().slice(0, 10)
+}

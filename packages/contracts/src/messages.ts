@@ -1417,6 +1417,15 @@ const M = {
     de: 'STRIPE_WEBHOOK_SECRET ist nicht gesetzt.',
     en: 'STRIPE_WEBHOOK_SECRET is not set.',
     tr: 'STRIPE_WEBHOOK_SECRET tanımlı değil.' },
+  'payments.linkActive': {
+    de: 'Zu dieser Anforderung gibt es schon einen gueltigen Zahlungslink. Zwei '
+      + 'gueltige Links waeren zwei Wege, sie zu bezahlen. Den alten erst '
+      + 'widerrufen, dann einen neuen anlegen.',
+    en: 'This request already has a valid payment link. Two valid links would '
+      + 'be two ways to pay it. Revoke the old one first, then create a new one.',
+    tr: 'Bu talep için zaten geçerli bir ödeme bağlantısı var. İki geçerli '
+      + 'bağlantı, onu ödemenin iki yolu olurdu. Önce eskisini iptal edin, sonra '
+      + 'yenisini oluşturun.' },
   'payments.linkNotOpen': {
     de: 'Dieser Zahlungslink ist nicht mehr offen.',
     en: 'This payment link is no longer open.',
