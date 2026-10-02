@@ -239,9 +239,9 @@ export async function loadPrincipalFromDevice(pool: Pool, secret: string): Promi
     const haus = Number(row.property_id)
     return {
       userId: null,
-      // Eigener Schluessel: zaehlt als ausgewiesen, nicht als anonym. Ein
-      // Terminal fragt alle zwei Sekunden; als anonym gezaehlt, sperrte es
-      // sich nach wenigen Minuten an der allgemeinen Grenze selbst aus.
+      // Eigener Schluessel: zaehlt als ausgewiesen, nicht als anonym -- ein
+      // Terminal fragt alle zwei Sekunden, ohne Pause (rateLimit.ts).
+      // Und eigener Schluessel fuer die Idempotenz, wie beim Client.
       clientKey: `device:${row.device_ref}`,
       isPlatformStaff: false,
       accountIds: [Number(row.account_id)],

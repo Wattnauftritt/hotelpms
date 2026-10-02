@@ -283,7 +283,10 @@ function geraetVon(req: FastifyRequest): { deviceId: number; propertyId: number 
   return { deviceId: p.terminalDeviceId, propertyId: haus }
 }
 
-/** Den eigenen, offenen, nicht abgelaufenen Auftrag holen -- und sperren. */
+/**
+ * Den eigenen Auftrag holen, mit dem Zustand, wie er gilt -- und sperren.
+ * Ob er noch offen ist, entscheidet die aufrufende Route.
+ */
 async function eigenerAuftrag(
   client: PoolClient, deviceId: number, jobRef: string
 ): Promise<Auftrag & { kind: TerminalKind; state: string }> {

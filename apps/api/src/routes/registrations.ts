@@ -84,9 +84,9 @@ export const SIGNATURE_MAX_LENGTH = 400_000
  * was am Tresen abgewiesen worden waere.
  *
  * Nur auslaendische Gaeste (seit 1.1.2025), nur einmal, und nur in einem
- * der Haeuser, die `haeuser` nennt -- die Zeilenrichtlinie filtert nach
- * Mandant, nicht nach Haus, und wer in Haus A einchecken darf, darf in
- * Haus B noch lange nicht unterschreiben lassen.
+ * Haus, fuer das `darfImHaus` ja sagt -- die Zeilenrichtlinie laesst jedes
+ * Haus des Aufrufers durch, das Recht gilt aber je Haus: wer in Haus A
+ * einchecken darf, darf in Haus B noch lange nicht unterschreiben lassen.
  */
 export async function signRegistration(
   client: PoolClient, registrationId: number, signatureSvg: unknown,
