@@ -3,7 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { Errors } from './errors.js'
 
 /**
- * Bilder fuer die Seiten des Gaesteterminals (Migration 0062).
+ * Bilder fuer die Seiten des Gaesteterminals (Migration 0070).
  *
  * **Die Art entscheiden die Bytes, nicht die Angabe.** Wer hochlaedt, sagt
  * vielleicht "image/png" und schickt ein SVG -- und ein SVG ist ein

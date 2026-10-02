@@ -31,7 +31,7 @@ export interface Principal {
    */
   sessionUserId: number | null
   /**
-   * Ein gekoppeltes Gaesteterminal (Migration 0063), sonst null.
+   * Ein gekoppeltes Gaesteterminal (Migration 0071), sonst null.
    *
    * Ein Geraet ist kein Benutzer und kein Maschinenzugang: es steht an der
    * Rezeption, und davor steht ein Gast. Es traegt genau ein Recht,

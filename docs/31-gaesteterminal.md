@@ -2,7 +2,7 @@
 
 Ein Touchscreen an der Rezeption, an dem ein Gast den Meldeschein ausfüllt oder unterschreibt, einer Hausbedingung zustimmt oder eine Seite des Hauses liest. Die Rezeption klickt am Rezeptionsrechner, und am Touchscreen öffnet sich, was zu tun ist; ohne Auftrag läuft eine Diashow. Dazu die kleine Lücke, die beim Bauen mitgefallen ist: die Hausnotiz am Gastprofil.
 
-Stand: 2. Oktober 2026. Migrationen `0062`, `0063`, `0064`, `0067`. Code: `apps/api/src/routes/terminal.ts`, `apps/api/src/routes/terminalInhalte.ts`, `apps/api/src/platform/terminalArten.ts`, `apps/web/src/routes/Terminal.tsx`, `apps/web/src/routes/TerminalPult.tsx`, `apps/web/src/components/AmTerminal.tsx`, `apps/web/src/components/Gaesteterminals.tsx`, `apps/web/src/components/TerminalInhalte.tsx`.
+Stand: 2. Oktober 2026. Migrationen `0070`, `0071`, `0072`, `0073` — geschrieben als `0062` bis `0067` und umbenannt, weil `0068` (dauerhafter Zahlungslink) zuerst auf `main` kam: der Migrator wendet nach Namen an und übernimmt, was fehlt, und als `0064` hätte die Fassung von `audit_trigger()` auf einer frischen Datenbank vor `0068` gelegen, auf einer bestehenden danach. Geprüft beides: frischer Aufbau und Einspielen auf einen Stand bis `0068` ergeben dasselbe Schema. Code: `apps/api/src/routes/terminal.ts`, `apps/api/src/routes/terminalInhalte.ts`, `apps/api/src/platform/terminalArten.ts`, `apps/web/src/routes/Terminal.tsx`, `apps/web/src/routes/TerminalPult.tsx`, `apps/web/src/components/AmTerminal.tsx`, `apps/web/src/components/Gaesteterminals.tsx`, `apps/web/src/components/TerminalInhalte.tsx`.
 
 ---
 
@@ -41,7 +41,7 @@ Am Touchscreen steht ein **Gast**. Eine Mitarbeitersitzung dort öffnete ihm das
 | `clientKey` | `user:…` | `client:…` | `device:…` |
 | im Protokoll | `user_id` | — | `terminal_device_id` |
 
-`terminal:device` steht im Katalog, weil `registerRoute` nur Rechte aus dem Katalog kennt — es gibt keinen zweiten Rechteweg, und die Geräterouten fallen damit unter denselben Test über die ganze Routenliste wie jede andere. Das Recht ist **keiner Rolle** zugeordnet (Migration 0063) und als Zugriffsbereich eines Maschinenzugangs **ausgeschlossen** (`routes/oauth.ts`). Die Geräterouten prüfen zusätzlich, dass das Principal wirklich ein Gerät ist (`geraetVon`): das Recht allein genügt nie.
+`terminal:device` steht im Katalog, weil `registerRoute` nur Rechte aus dem Katalog kennt — es gibt keinen zweiten Rechteweg, und die Geräterouten fallen damit unter denselben Test über die ganze Routenliste wie jede andere. Das Recht ist **keiner Rolle** zugeordnet (Migration 0071) und als Zugriffsbereich eines Maschinenzugangs **ausgeschlossen** (`routes/oauth.ts`). Die Geräterouten prüfen zusätzlich, dass das Principal wirklich ein Gerät ist (`geraetVon`): das Recht allein genügt nie.
 
 Abgenommen durch `terminal.test.ts`: ein gekoppeltes Terminal bekommt auf **jeder** registrierten Route außer seinen eigenen 401 oder 403 — mit dem eigenen Haus als Pfadparameter, also abgewiesen am Recht und nicht am fremden Haus.
 
@@ -58,7 +58,7 @@ Zwei Richtungen, beide aus CLAUDE.md:
 
 ## 3. Aufträge
 
-`terminal_job`: Haus, Gerät, Art, Bezug, Zustand, angelegt von, Zeiten. Der Bezug hängt an der Art — Reservierung und Meldeschein, Hausbedingung (`terms_id`), Seite (`content_id`), Adresse (`url_id`), beim Meldeformular der Check-in-Link (`checkin_token_id`) —, und eine Prüfbedingung je Art verlangt genau den, den sie braucht (`terminal_job_bezug`, Migration 0067). Ein Auftrag „Seite zeigen" ohne Seite ist damit keine Zeile, die erst das Terminal entdeckt.
+`terminal_job`: Haus, Gerät, Art, Bezug, Zustand, angelegt von, Zeiten. Der Bezug hängt an der Art — Reservierung und Meldeschein, Hausbedingung (`terms_id`), Seite (`content_id`), Adresse (`url_id`), beim Meldeformular der Check-in-Link (`checkin_token_id`) —, und eine Prüfbedingung je Art verlangt genau den, den sie braucht (`terminal_job_bezug`, Migration 0073). Ein Auftrag „Seite zeigen" ohne Seite ist damit keine Zeile, die erst das Terminal entdeckt.
 
 ```
 pending ──öffnen──▶ opened ──abschließen──▶ done
@@ -119,13 +119,13 @@ Ein Quelltexttest hält jede dieser Zusagen fest (`apps/web/src/__tests__/termin
 
 **Das Haus.** `unterschreibeMeldeschein` nimmt, in welchen Häusern der Aufrufer unterschreiben darf: am Tresen jedes Haus mit `reservation:checkin`, am Terminal genau das Haus des Auftrags. Ein Schein in einem anderen Haus ist dann nicht gefunden, nicht verboten — die Antwort verrät nicht, dass es ihn gibt.
 
-**Im Prüfprotokoll** steht das Gerät als Handelnder: `audit_log.terminal_device_id` (Migration 0064), gesetzt wie der Benutzer aus dem transaktionslokalen Kontext (`app.terminal_device_id`). Vorher stand eine Unterschrift am Terminal mit leerem Handelnden da — genau wie die Handlung eines Maschinenzugangs, und im Streitfall nicht zu unterscheiden von einer über die Schnittstelle. Bewusst eine eigene Spalte und nicht `user_id`: eine Kennung aus einer anderen Tabelle in derselben Spalte ließe jede Auswertung „wer hat was getan" still falsche Namen zuordnen. Die Unterschrift selbst steht nicht im Protokoll (`audit_redaction` seit 0044).
+**Im Prüfprotokoll** steht das Gerät als Handelnder: `audit_log.terminal_device_id` (Migration 0072), gesetzt wie der Benutzer aus dem transaktionslokalen Kontext (`app.terminal_device_id`). Vorher stand eine Unterschrift am Terminal mit leerem Handelnden da — genau wie die Handlung eines Maschinenzugangs, und im Streitfall nicht zu unterscheiden von einer über die Schnittstelle. Bewusst eine eigene Spalte und nicht `user_id`: eine Kennung aus einer anderen Tabelle in derselben Spalte ließe jede Auswertung „wer hat was getan" still falsche Namen zuordnen. Die Unterschrift selbst steht nicht im Protokoll (`audit_redaction` seit 0044).
 
 ---
 
 ## 6. Die Arten
 
-Eine Art ist **ein Eintrag** in `ARTEN` (`platform/terminalArten.ts`), ein Wert in der Prüfbedingung von `terminal_job.kind` (Migration 0067) und **eine Ansicht** in `ANSICHTEN` (`routes/Terminal.tsx`). Frage, Öffnen, Abbrechen, Ablauf und Aufräumen sind für alle dieselben und stehen in `routes/terminal.ts`. Jeder Eintrag sagt vier Dinge, manche ein fünftes:
+Eine Art ist **ein Eintrag** in `ARTEN` (`platform/terminalArten.ts`), ein Wert in der Prüfbedingung von `terminal_job.kind` (Migration 0073) und **eine Ansicht** in `ANSICHTEN` (`routes/Terminal.tsx`). Frage, Öffnen, Abbrechen, Ablauf und Aufräumen sind für alle dieselben und stehen in `routes/terminal.ts`. Jeder Eintrag sagt vier Dinge, manche ein fünftes:
 
 | | |
 |---|---|
@@ -165,7 +165,7 @@ Einstellungen → Gästeterminals → Seiten: Titel (bis 120 Zeichen), Text (bis
 
 **Der Text ist kein HTML.** Ein kleines Format — Absätze, Zeilen mit `- ` als Liste, `**fett**` — wird als React-Elemente gesetzt (`components/Inhaltstext.tsx`), nie über `innerHTML`; ein Quelltexttest hält das fest. Wer mehr Gestaltung braucht, legt eine Adresse frei.
 
-**Bilder nur als PNG, JPEG oder WebP, höchstens 1 MB.** Erkannt wird die Art an den ersten Bytes, nicht an der Angabe des Browsers oder der Dateiendung (`platform/terminalBild.ts`). **Kein SVG**: ein SVG ist ein Dokument mit Skript und Verweisen, kein Bild, und die Schnittstelle weist es ab — ein Test schickt eines mit `image/png` als Angabe. Ausgeliefert wird mit `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` und privatem Cache. Die Bytes liegen in der Datenbank (`terminal_content_image`) wie die Belege: Sicherung und Zeilenrichtlinie gelten ohne zweiten Speicher, und im Prüfprotokoll stehen sie nicht (`audit_redaction`, Migration 0062). Eine Seite hat höchstens ein Bild.
+**Bilder nur als PNG, JPEG oder WebP, höchstens 1 MB.** Erkannt wird die Art an den ersten Bytes, nicht an der Angabe des Browsers oder der Dateiendung (`platform/terminalBild.ts`). **Kein SVG**: ein SVG ist ein Dokument mit Skript und Verweisen, kein Bild, und die Schnittstelle weist es ab — ein Test schickt eines mit `image/png` als Angabe. Ausgeliefert wird mit `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` und privatem Cache. Die Bytes liegen in der Datenbank (`terminal_content_image`) wie die Belege: Sicherung und Zeilenrichtlinie gelten ohne zweiten Speicher, und im Prüfprotokoll stehen sie nicht (`audit_redaction`, Migration 0070). Eine Seite hat höchstens ein Bild.
 
 Archivieren statt löschen: eine archivierte Seite wird nicht mehr angeboten und fällt aus der Diashow, ein alter Auftrag verweist weiter auf sie.
 

@@ -18,7 +18,7 @@ import { ARTEN, TERMINAL_KINDS, istArt, angebote, inhalteDesHauses, zieheLinksZu
 /**
  * Gaesteterminal: ein Touchscreen an der Rezeption, an dem ein Gast den
  * Meldeschein ausfuellt und unterschreibt, Hausbedingungen zustimmt und
- * Seiten des Hauses sieht (Dokument 31, Migrationen 0062, 0063, 0064, 0067).
+ * Seiten des Hauses sieht (Dokument 31, Migrationen 0070, 0071, 0072, 0073).
  * Was es zeigen kann, steht in `platform/terminalArten.ts`.
  *
  * **Geraet statt Sitzung.** Am Touchscreen steht ein Gast. Eine
@@ -30,7 +30,7 @@ import { ARTEN, TERMINAL_KINDS, istArt, angebote, inhalteDesHauses, zieheLinksZu
  * **Ein Auftrag zur Zeit.** Die Rezeption schickt einen Auftrag, das
  * Terminal fragt alle zwei Sekunden danach, oeffnet ihn, der Gast handelt,
  * und das Terminal kehrt in den Ruhezustand zurueck. Hoechstens ein offener
- * Auftrag je Geraet (Teilindex in 0063): zwei hiessen, dass der zweite Gast
+ * Auftrag je Geraet (Teilindex in 0071): zwei hiessen, dass der zweite Gast
  * die Daten des ersten sieht.
  */
 
@@ -94,7 +94,7 @@ function codeAnzeigen(code: string): string {
 /**
  * Der Zustand, wie er gilt -- nicht wie er zuletzt geschrieben wurde.
  * Ein offener Auftrag nach Fristablauf ist abgelaufen, auch wenn ihn noch
- * niemand umgeschrieben hat (Migration 0063).
+ * niemand umgeschrieben hat (Migration 0071).
  */
 const ZUSTAND_SQL = `CASE WHEN j.state IN ('pending','opened') AND j.expires_at <= now()
                           THEN 'expired' ELSE j.state END`

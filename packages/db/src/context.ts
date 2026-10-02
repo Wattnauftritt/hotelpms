@@ -12,10 +12,10 @@ export interface DbContext {
   userId: number | null
   supportSessionId?: number | null
   /**
-   * Ein gekoppeltes Gaesteterminal (Migration 0063). Steht im Kontext, damit
+   * Ein gekoppeltes Gaesteterminal (Migration 0071). Steht im Kontext, damit
    * der Audit-Trigger es als Handelnden eintraegt: eine Unterschrift am
    * Terminal soll im Protokoll nicht aussehen wie eine Aenderung ohne
-   * Urheber (Migration 0064).
+   * Urheber (Migration 0072).
    */
   terminalDeviceId?: number | null
 }

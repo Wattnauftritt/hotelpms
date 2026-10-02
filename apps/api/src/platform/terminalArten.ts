@@ -9,7 +9,7 @@ import { geltendeBedingungen, stimmeBedingungZu } from './hausbedingungen.js'
  * Die Arten von Auftraegen an das Gaesteterminal (Dokument 31).
  *
  * **Eine Art ist ein Eintrag hier**, ein Wert in der Pruefbedingung von
- * `terminal_job.kind` (Migration 0067) und eine Ansicht am Terminal
+ * `terminal_job.kind` (Migration 0073) und eine Ansicht am Terminal
  * (`ANSICHTEN` in `apps/web/src/routes/Terminal.tsx`). Abfrage, Oeffnen,
  * Abbrechen, Ablauf und Aufraeumen sind fuer alle Arten dieselben und
  * stehen in `routes/terminal.ts`.
@@ -292,7 +292,7 @@ export const ARTEN: Record<TerminalKind, ArtDefinition> = {
         primaryGuestId: r.rows[0]!.primary_guest_id === null
           ? null : Number(r.rows[0]!.primary_guest_id),
         termsId: a.termsId, signatureSvg: svg,
-        // Kein Benutzer: im Protokoll steht das Geraet (Migration 0064).
+        // Kein Benutzer: im Protokoll steht das Geraet (Migration 0072).
         createdBy: null })
       return 'done'
     }

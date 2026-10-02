@@ -9,7 +9,7 @@ import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 
 /**
- * Das Gaesteterminal als allgemeiner Anzeige-Client (Dokument 31, §11):
+ * Das Gaesteterminal als allgemeiner Anzeige-Client (Dokument 31, §6 bis §8):
  * Meldeformular ausfuellen, Hausbedingung zustimmen, Seiten des Hauses,
  * freigegebene externe Adressen, Diashow, Bedienfeld.
  *

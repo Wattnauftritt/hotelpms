@@ -1,6 +1,6 @@
 -- ---------------------------------------------------------------------------
 -- Inhalte fuer das Gaesteterminal: Seiten des Hauses, Bilder dazu und eine
--- Freigabeliste externer Adressen (Dokument 31, Abschnitt 11).
+-- Freigabeliste externer Adressen (Dokument 31, Abschnitte 6 und 7).
 --
 -- Anforderung des Nutzers: "Die Pollingseite auf dem Touchscreen-PC sollte
 -- so allgemein gehalten sein, dass sie jede Seite und jedes Formular, das
@@ -33,9 +33,15 @@
 -- Eine Seite hat hoechstens ein Bild von hoechstens einem Megabyte, und ein
 -- Haus hat wenige Seiten; das ist eine Groesse, die die Datenbank traegt.
 --
--- Diese Migration steht **vor** 0063 und haengt nicht von ihr ab: auf einer
+-- Diese Migration steht **vor** 0071 und haengt nicht von ihr ab: auf einer
 -- frischen Datenbank laeuft sie zuerst. Die Verknuepfung mit den Auftraegen
--- folgt in 0067.
+-- folgt in 0073.
+--
+-- **Zur Nummer.** Geschrieben als 0062, umbenannt, weil 0068 (dauerhafter
+-- Zahlungslink) zuerst auf main kam. Der Migrator wendet die Dateien in der
+-- Reihenfolge ihrer Namen an und uebernimmt, was fehlt: als 0062 liefe sie
+-- auf einer frischen Datenbank vor 0068, auf einer bestehenden danach. Jetzt
+-- laeuft sie ueberall vor 0071 und 0073, die auf ihren Tabellen aufbauen.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE terminal_content (

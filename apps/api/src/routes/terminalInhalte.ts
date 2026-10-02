@@ -7,8 +7,8 @@ import type { Principal } from '../platform/context.js'
 import { bildAusRumpf, bildLesen, bildSenden } from '../platform/terminalBild.js'
 
 /**
- * Was das Gaesteterminal zeigen darf, gepflegt vom Haus (Dokument 31, §11,
- * Migration 0062): Seiten, ihre Bilder, die Diashow des Ruhezustands und
+ * Was das Gaesteterminal zeigen darf, gepflegt vom Haus (Dokument 31, §6 und §7,
+ * Migration 0070): Seiten, ihre Bilder, die Diashow des Ruhezustands und
  * die Freigabeliste externer Adressen.
  *
  * Alles unter `settings:property`: das Haus entscheidet vorher, was auf

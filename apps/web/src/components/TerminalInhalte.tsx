@@ -9,7 +9,7 @@ import { Fehler, Laedt } from './Shell.tsx'
 
 /**
  * Was das Gaesteterminal zeigen darf: Seiten, die Diashow des Ruhezustands
- * und die freigegebenen externen Adressen (Dokument 31, §11).
+ * und die freigegebenen externen Adressen (Dokument 31, §6).
  *
  * Das Haus legt hier vorher fest, was auf einem Gastbildschirm erscheinen
  * kann; die Rezeption waehlt danach nur noch aus. Kein freies HTML, keine

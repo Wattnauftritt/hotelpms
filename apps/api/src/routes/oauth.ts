@@ -197,7 +197,7 @@ export function oauthRoutes(app: FastifyInstance): void {
           { values: plattform.join(', ') })
       }
       /*
-       * Das Recht eines Gaesteterminals ebenso nicht (Migration 0063). Es
+       * Das Recht eines Gaesteterminals ebenso nicht (Migration 0071). Es
        * gehoert einem gekoppelten Geraet, und dessen Routen verlangen
        * ohnehin das Geraet selbst -- ein Client damit bekaeme nichts als
        * 403. Ihn trotzdem anlegen zu lassen hiesse, einen Zugriffsbereich

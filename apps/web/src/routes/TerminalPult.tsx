@@ -5,7 +5,7 @@ import { AuftragZeile } from '../components/AmTerminal.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
 /**
- * Das Bedienfeld der Gaesteterminals (Dokument 31, §11).
+ * Das Bedienfeld der Gaesteterminals (Dokument 31, §8).
  *
  * Fuer das, was keine Reservierung braucht: eine Seite des Hauses oder eine
  * freigegebene Adresse auf ein Terminal schicken -- die Speisekarte, das

@@ -29,7 +29,7 @@ export const PERMISSIONS = [
   // weil das die eine Handlung ist, mit der sich der Kreis der Berechtigten
   // selbst erweitert.
   'platform:staff',
-  // Gaesteterminal (0063): keiner Rolle zugeordnet und als Zugriffsbereich
+  // Gaesteterminal (0071): keiner Rolle zugeordnet und als Zugriffsbereich
   // eines Maschinenzugangs ausgeschlossen. Die einzige Quelle ist ein
   // gekoppeltes Geraet (`loadPrincipalFromDevice`).
   'terminal:device'

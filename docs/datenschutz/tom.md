@@ -77,7 +77,7 @@ die Richtlinie filtert nach Mandant, nicht nach Haus.
 Ein Audit-Trigger in der Datenbank protokolliert jede Änderung an den
 fachlich tragenden Tabellen: wer, wann, welche Tabelle, welche Zeile, welche
 Felder. „Wer" ist ein Benutzer oder, am Gästeterminal, das Gerät
-(`terminal_device_id`, Migration 0064). **In der Datenbank und nicht in der Anwendung** — was in der
+(`terminal_device_id`, Migration 0072). **In der Datenbank und nicht in der Anwendung** — was in der
 Anwendung liegt, wird irgendwann an einer Stelle vergessen.
 
 Das Protokoll hält **welches Feld** sich geändert hat, nicht seinen Wert,

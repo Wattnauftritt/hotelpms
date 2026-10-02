@@ -17,6 +17,13 @@
 -- ADD COLUMN ohne Vorgabewert ist an einer partitionierten Tabelle eine
 -- reine Katalogaenderung: keine Partition wird umgeschrieben, und
 -- `trg_append_only` feuert nicht, weil keine Zeile beruehrt wird.
+--
+-- **Zur Nummer.** Geschrieben als 0064, umbenannt, weil 0068 (dauerhafter
+-- Zahlungslink) zuerst auf main kam. Der Migrator wendet die Dateien in der
+-- Reihenfolge ihrer Namen an und uebernimmt, was fehlt: als 0064 liefe sie
+-- auf einer frischen Datenbank vor 0068, auf einer bestehenden danach. Jetzt
+-- laeuft sie ueberall nach 0071; sie ersetzt audit_trigger() und geht vom
+-- Stand aus 0044 aus, den bis 0068 keine Migration mehr angefasst hat.
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE audit_log ADD COLUMN terminal_device_id bigint;

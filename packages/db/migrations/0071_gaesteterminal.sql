@@ -20,6 +20,12 @@
 -- erfasst wie jede andere. Es ist **keiner Rolle** zugeordnet und als
 -- Zugriffsbereich eines Maschinenzugangs ausgeschlossen (routes/oauth.ts):
 -- die einzige Quelle ist ein gekoppeltes Geraet.
+--
+-- **Zur Nummer.** Geschrieben als 0063, umbenannt, weil 0068 (dauerhafter
+-- Zahlungslink) zuerst auf main kam. Der Migrator wendet die Dateien in der
+-- Reihenfolge ihrer Namen an und uebernimmt, was fehlt: als 0063 liefe sie
+-- auf einer frischen Datenbank vor 0068, auf einer bestehenden danach. Jetzt
+-- laeuft sie ueberall nach 0070 und vor 0072 und 0073.
 -- ---------------------------------------------------------------------------
 
 INSERT INTO permission (key, grp, description) VALUES
@@ -81,9 +87,9 @@ CREATE TABLE terminal_device_seen (
 -- Der Auftrag an ein Geraet.
 --
 -- Eine Art ist ein Eintrag hier und einer in der Tabelle der Arten im Code
--- (routes/terminal.ts) -- dazu eine Ansicht am Terminal. `registration_fill`
--- steht schon da, ist aber noch nicht anlegbar: das Formular entsteht in
--- einer parallelen Arbeit (Online-Check-in) und wird danach angebunden.
+-- (platform/terminalArten.ts) -- dazu eine Ansicht am Terminal. Hier stehen
+-- die beiden des Meldescheins; 0073 fuegt Hausbedingung, Seite und Adresse
+-- hinzu und bindet `registration_fill` an den Online-Check-in an.
 --
 -- Kein Gastbezug ausser ueber Reservierung und Meldeschein. Ein Auftrag
 -- traegt keinen personenbezogenen Wert und muss deshalb in der Loeschung
