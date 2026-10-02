@@ -294,7 +294,21 @@ describe('Rechte', () => {
     expect(p.reservations[0]).not.toHaveProperty('payment')
     // Und kein Betrag irgendwo im Rumpf, auch nicht unter anderem Namen.
     expect(r.body).not.toContain('_cent')
-    // Housekeeping-Leserecht hat die Rolle ebenfalls nicht.
+    // Den Reinigungsstand sieht sie (0074): wer Zimmer zuteilt, muss
+    // wissen, ob sie sauber sind.
+    expect(p.units[0]?.housekeeping).toBe('clean')
+  })
+
+  it('liefert den Plan ohne Housekeeping-Recht, aber ohne Reinigungsstand', async () => {
+    // Revenue sieht den Plan fuer die Auslastung, nicht fuer die Zimmer.
+    const u = await makeUser(owner,
+      { email: 'rev@test.de', propertyId: fx.propertyId, roleKey: 'revenue' })
+    const r = await app.inject({
+      method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/tape-chart?from=${VON}&to=${BIS}`,
+      headers: { cookie: `hp_session=${u.sessionId}` } })
+    expect(r.statusCode).toBe(200)
+    const p = r.json() as TapeChart
     expect(p.units[0]).not.toHaveProperty('housekeeping')
   })
 
