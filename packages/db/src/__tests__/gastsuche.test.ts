@@ -15,7 +15,9 @@ import type { Pool } from '@hotelpms/db'
  * der Plan geprueft und nicht die Zeit.
  *
  * Die Bedingung ist dieselbe wie im Zweig `nach_email` von `GET /v1/guests`
- * (`apps/api/src/routes/guests.ts`). Wer sie dort aendert, aendert sie hier.
+ * (`apps/api/src/routes/guests.ts`) und im Zweig `nach_mail` der
+ * Detailsuche (`apps/api/src/routes/search.ts`, dort mit schon
+ * kleingeschriebenem Begriff). Wer sie dort aendert, aendert sie hier.
  */
 
 let owner: Pool
