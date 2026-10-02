@@ -7,6 +7,7 @@ import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
 import { useEscape } from '../lib/tasten.js'
 import { VerlaufDialog } from './Verlauf.tsx'
 import { Anzahlung } from './Anzahlung.tsx'
+import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
@@ -151,6 +152,13 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
       </div>
 
       <BestaetigungSchicken reservationRef={r.reservationRef} />
+
+      {/* Online-Check-in (Dokument 30): verschickt, ausgefuellt, Unterschrift
+          offen. Nicht bei einer stornierten Buchung -- dort gibt es nichts
+          mehr auszufuellen. */}
+      {r.onlineCheckin !== undefined && r.canceledAt === null && (
+        <OnlineCheckinStand reservationRef={r.reservationRef} stand={r.onlineCheckin} />
+      )}
 
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded p-3">
         <Feld label={t('plan.guest')}>

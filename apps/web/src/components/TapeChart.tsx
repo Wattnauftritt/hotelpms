@@ -1176,7 +1176,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                   const b = balken(r.arrival, r.departure)
                   const gruppe = gruppeNach.get(r.category_id)
                   return (
-                    <button key={r.id}
+                    <button key={r.id} data-reservation-ref={r.public_ref}
                             onPointerDown={e => beginneVerschieben(r, e)}
                             title={`${r.last_name ?? ''} · ${gruppe?.name ?? ''}`
                                  + ` · ${t('plan.capacityUpTo', {
@@ -1459,7 +1459,9 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           const inGehaltenerGruppe = p.gruppenRef !== null
             && r.booking_ref === p.gruppenRef
           return (
-            <button key={r.id}
+            <button key={r.id} data-reservation-ref={r.public_ref}
+                    // Daran findet die Schnellsuche (`PlanSuche`) den Balken,
+                    // zu dem sie springt -- im Band oben wie in der Zeile.
                     onPointerDown={e => p.onMovePointerDown(r, e)}
                     // `stopPropagation` in der Behandlung: sonst liefe das
                     // Ereignis weiter an die freie Flaeche darunter und

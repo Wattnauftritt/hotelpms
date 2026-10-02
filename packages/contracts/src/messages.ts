@@ -776,6 +776,13 @@ const M = {
     de: 'Das Gaesteverzeichnis',
     en: 'The guest levy register',
     tr: 'Konaklama katkısı kaydı' },
+  'training.noChannel': {
+    de: 'Ein Übungshaus gibt nichts an einen Channel Manager aus: Übungspreise '
+      + 'und -verfügbarkeiten würden sonst auf Buchungsportalen verkauft.',
+    en: 'A training property sends nothing to a channel manager: practice prices '
+      + 'and availability would otherwise be sold on booking portals.',
+    tr: 'Eğitim tesisi kanal yöneticisine hiçbir şey aktarmaz: aksi halde alıştırma '
+      + 'fiyatları ve müsaitlikleri rezervasyon portallarında satılır.' },
   'training.noEmail': {
     de: 'Ein Uebungshaus verschickt keine E-Mail. Der Versand bleibt ausgeschaltet.',
     en: 'A training property sends no email. Sending stays switched off.',
@@ -1168,6 +1175,84 @@ const M = {
     en: 'The registration form is already signed.',
     tr: 'Meldeschein zaten imzalanmış.' },
 
+  // ------------------------------------------------ Online-Check-in (Dok. 30)
+  'error.gone': {
+    de: 'Nicht mehr gueltig',
+    en: 'No longer valid',
+    tr: 'Artık geçerli değil' },
+  'res.checkinLink': {
+    de: 'Check-in-Link',
+    en: 'Check-in link',
+    tr: 'Check-in bağlantısı' },
+  'checkin.linkExpired': {
+    de: 'Dieser Link ist abgelaufen. Bitte wenden Sie sich an die Rezeption.',
+    en: 'This link has expired. Please contact the front desk.',
+    tr: 'Bu bağlantının süresi doldu. Lütfen resepsiyona başvurun.' },
+  'checkin.linkRevoked': {
+    de: 'Dieser Link wurde zurueckgezogen. Bitte wenden Sie sich an die Rezeption.',
+    en: 'This link has been withdrawn. Please contact the front desk.',
+    tr: 'Bu bağlantı geri çekildi. Lütfen resepsiyona başvurun.' },
+  'checkin.reservationClosed': {
+    de: 'Zu dieser Buchung ist kein Online-Check-in mehr moeglich.',
+    en: 'Online check-in is no longer possible for this booking.',
+    tr: 'Bu rezervasyon için artık online check-in yapılamaz.' },
+  'checkin.alreadyDone': {
+    de: 'Der Meldeschein zu dieser Buchung liegt bereits vor.',
+    en: 'The registration form for this booking has already been submitted.',
+    tr: 'Bu rezervasyonun Meldeschein formu zaten gönderildi.' },
+  // § 29 Abs. 2 BMG: "am Tag der Ankunft". Der Satz nennt den Grund, damit
+  // niemand einen Fehler bei sich sucht.
+  'checkin.signatureOnArrival': {
+    de: 'Die Unterschrift wird am Anreisetag vor Ort geleistet (§ 29 Abs. 2 BMG).',
+    en: 'The signature is given on site on the day of arrival (§ 29 Abs. 2 BMG).',
+    tr: 'İmza, varış günü tesiste atılır (§ 29 Abs. 2 BMG).' },
+  'checkin.nothingToSign': {
+    de: 'Fuer diese Buchung steht keine Unterschrift aus.',
+    en: 'No signature is outstanding for this booking.',
+    tr: 'Bu rezervasyon için bekleyen bir imza yok.' },
+  'checkin.signatureInvalid': {
+    de: 'Die Unterschrift wurde nicht erkannt. Bitte erneut unterschreiben.',
+    en: 'The signature was not recognised. Please sign again.',
+    tr: 'İmza tanınmadı. Lütfen tekrar imzalayın.' },
+  'checkin.idDocumentRequired': {
+    de: 'Fuer auslaendische Gaeste nach § 30 Abs. 2 BMG erforderlich',
+    en: 'Required for foreign guests under § 30 Abs. 2 BMG',
+    tr: 'Yabancı misafirler için § 30 Abs. 2 BMG uyarınca zorunlu' },
+  'checkin.birthDateFuture': {
+    de: 'Das Geburtsdatum liegt in der Zukunft',
+    en: 'The date of birth lies in the future',
+    tr: 'Doğum tarihi gelecekte' },
+  'checkin.tooManyCompanions': {
+    de: 'Hoechstens {max} Mitreisende. Fuer groessere Gruppen bitte an die Rezeption.',
+    en: 'At most {max} companions. For larger groups please contact the front desk.',
+    tr: 'En fazla {max} refakatçi. Daha büyük gruplar için lütfen resepsiyona başvurun.' },
+  'checkin.reservationNotOpen': {
+    de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
+      + 'abgereist oder ohne Hauptgast.',
+    en: 'Online check-in is not possible for this reservation: it is canceled, '
+      + 'checked out or has no primary guest.',
+    tr: 'Bu rezervasyon için online check-in yapılamaz: iptal edilmiş, çıkış yapılmış '
+      + 'ya da ana misafiri yok.' },
+  'checkin.mailNotReady': {
+    de: 'Der Gastversand ist fuer dieses Haus nicht eingeschaltet oder die '
+      + 'Absenderdomain nicht freigeschaltet. Der Link laesst sich kopieren.',
+    en: 'Guest mail is not switched on for this property or the sender domain is '
+      + 'not approved. The link can be copied instead.',
+    tr: 'Bu tesis için misafir e-postası açık değil ya da gönderici alan adı '
+      + 'onaylanmamış. Bağlantı kopyalanabilir.' },
+  'field.country': {
+    de: 'kein gueltiger Laendercode',
+    en: 'not a valid country code',
+    tr: 'geçerli bir ülke kodu değil' },
+  'field.unknown': {
+    de: 'Dieses Feld gibt es nicht',
+    en: 'This field does not exist',
+    tr: 'Böyle bir alan yok' },
+  'field.mustConfirm': {
+    de: 'Bitte bestaetigen',
+    en: 'Please confirm',
+    tr: 'Lütfen onaylayın' },
+
   // -------------------------------------------------------- Kasse und Kanal
 
   'pos.roomUnknown': {
@@ -1207,6 +1292,52 @@ const M = {
     de: 'Die Ableitungskette enthaelt einen Zyklus.',
     en: 'The derivation chain contains a cycle.',
     tr: 'Türetme zinciri bir döngü içeriyor.' },
+
+  // Preissteuerung (Dokument 32). Beieinander und nicht am Ende der Datei:
+  // dort haengen parallele Bearbeiter an, und jeder Merge wird Handarbeit.
+  'rateSteer.sourceRules': {
+    de: 'Dieser Ratenplan wird von den Regeln der Preissteuerung geführt. Eine '
+      + 'Schnittstelle darf ihn nicht beschreiben; soll ein externes RMS ihn führen, '
+      + 'die Quelle auf „extern" stellen.',
+    en: 'This rate plan is managed by the pricing rules. An interface may not write '
+      + 'to it; if an external RMS is to manage it, set the source to "external".',
+    tr: 'Bu fiyat planı fiyat yönetimi kurallarıyla yönetiliyor. Bir arayüz ona '
+      + 'yazamaz; harici bir RMS yönetecekse kaynağı "harici" olarak ayarlayın.' },
+  'rateSteer.previewStale': {
+    de: 'Die Vorschau ist veraltet: seither hat sich eine Belegung oder ein Preis '
+      + 'geändert. Bitte neu laden und erneut prüfen.',
+    en: 'The preview is out of date: an occupancy or a price has changed since. '
+      + 'Please reload and check again.',
+    tr: 'Önizleme güncel değil: o zamandan beri bir doluluk veya fiyat değişti. '
+      + 'Lütfen yeniden yükleyip tekrar kontrol edin.' },
+  'res.steerRule': {
+    de: 'Regel der Preissteuerung',
+    en: 'Pricing rule',
+    tr: 'Fiyat yönetimi kuralı' },
+  'res.steerRun': {
+    de: 'Lauf der Preissteuerung',
+    en: 'Pricing run',
+    tr: 'Fiyat yönetimi çalışması' },
+  'field.range': {
+    de: 'Zwischen {min} und {max}',
+    en: 'Between {min} and {max}',
+    tr: '{min} ile {max} arasında' },
+  'field.notForDerivedPlan': {
+    de: 'Eine abgeleitete Rate folgt ihrer Basis und wird nicht selbst gesteuert',
+    en: 'A derived rate follows its base and is not steered itself',
+    tr: 'Türetilmiş bir fiyat tabanını izler, kendisi yönetilmez' },
+  'field.eitherPlanOrCategory': {
+    de: 'Entweder ein Ratenplan oder eine Kategorie, nicht beides',
+    en: 'Either a rate plan or a category, not both',
+    tr: 'Ya bir fiyat planı ya da bir kategori, ikisi birden değil' },
+  'field.conditionForKind': {
+    de: 'Dieser Auslöser braucht seine Bedingung',
+    en: 'This trigger needs its condition',
+    tr: 'Bu tetikleyici kendi koşuluna ihtiyaç duyar' },
+  'field.minNotAboveMax': {
+    de: 'Der untere Wert muss unter dem oberen liegen',
+    en: 'The lower value must be below the upper one',
+    tr: 'Alt değer üst değerin altında olmalıdır' },
   'setup.onlyNightUnit': {
     de: 'Andere Zeiteinheiten als die Nacht sind noch nicht freigeschaltet.',
     en: 'Time units other than the night are not enabled yet.',

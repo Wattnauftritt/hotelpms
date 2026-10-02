@@ -385,8 +385,12 @@ export function emailRoutes(
         // Nur was noch nicht heraus ist. Eine zugestellte Nachricht
         // zurueckzuziehen ist nicht moeglich, und so zu tun als ob waere
         // schlimmer als die Absage.
+        // Eine zurueckgezogene Einladung zum Online-Check-in verliert ihren
+        // Rumpf: darin steht der Link im Klartext (Dokument 30).
         const r = await client.query(
-          `UPDATE outbound_email SET status = 'canceled'
+          `UPDATE outbound_email SET status = 'canceled',
+                  body_text = CASE WHEN kind = 'checkin_invitation' THEN '' ELSE body_text END,
+                  body_html = CASE WHEN kind = 'checkin_invitation' THEN NULL ELSE body_html END
             WHERE public_ref = $1 AND status = 'pending'`, [messageRef])
         if (r.rowCount === 0) {
           throw Errors.conflict(
