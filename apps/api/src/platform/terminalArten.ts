@@ -97,6 +97,15 @@ export interface ArtDefinition {
    */
   abschliessen: (client: PoolClient, a: Auftrag, body: Record<string, unknown>)
     => Promise<'done' | 'canceled'>
+  /**
+   * Ist der Auftrag schon erledigt, ohne dass das Terminal es gemeldet hat?
+   * Nur fuer Arten, bei denen der Gast an einer anderen Stelle schreibt --
+   * das Meldeformular reicht ueber die Gastseite ein, nicht ueber den
+   * Auftrag. Ein Abbruch danach (der Gast tippt auf dem Dank auf
+   * "Abbrechen", die Rezeption bricht ab, waehrend er noch liest) ist dann
+   * kein Abbruch: der Meldeschein steht, und die Rezeption soll das sehen.
+   */
+  bereitsErledigt?: (client: PoolClient, a: Auftrag) => Promise<boolean>
 }
 
 function referenz(v: unknown, feld: string): string {
@@ -113,6 +122,15 @@ function unterschriftVomTerminal(v: unknown): string {
     throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
   }
   return v
+}
+
+/** Hat die Gastseite das Meldeformular dieses Auftrags eingereicht? */
+async function eingereicht(client: PoolClient, a: Auftrag): Promise<boolean> {
+  if (a.checkinTokenId === null) return false
+  const t = await client.query<{ fertig: boolean }>(
+    `SELECT completed_at IS NOT NULL AS fertig FROM checkin_token WHERE id = $1`,
+    [a.checkinTokenId])
+  return t.rows[0]?.fertig === true
 }
 
 export const ARTEN: Record<TerminalKind, ArtDefinition> = {
@@ -155,15 +173,10 @@ export const ARTEN: Record<TerminalKind, ArtDefinition> = {
         `UPDATE terminal_job SET checkin_token_id = $2 WHERE id = $1`, [a.id, t.tokenId])
       return { token: t.token }
     },
-    abschliessen: async (client, a) => {
-      // Eingereicht ist, was die Gastseite als eingereicht vermerkt hat --
-      // nicht, was das Terminal behauptet.
-      if (a.checkinTokenId === null) return 'canceled'
-      const t = await client.query<{ fertig: boolean }>(
-        `SELECT completed_at IS NOT NULL AS fertig FROM checkin_token WHERE id = $1`,
-        [a.checkinTokenId])
-      return t.rows[0]?.fertig === true ? 'done' : 'canceled'
-    }
+    // Eingereicht ist, was die Gastseite als eingereicht vermerkt hat --
+    // nicht, was das Terminal behauptet.
+    abschliessen: async (client, a) => await eingereicht(client, a) ? 'done' : 'canceled',
+    bereitsErledigt: eingereicht
   },
 
   /**

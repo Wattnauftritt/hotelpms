@@ -402,7 +402,8 @@ const ANSICHTEN: Record<Art, (p: AnsichtProps) => JSX.Element> = {
  * "Fertig" (`onFertig`). Ob wirklich eingereicht wurde, entscheidet die
  * Schnittstelle, nicht diese Seite.
  */
-function MeldeformularAusfuellen({ daten, abschliessen }: AnsichtProps): JSX.Element {
+function MeldeformularAusfuellen({ daten, abschliessen, onAbbrechen }: AnsichtProps): JSX.Element {
+  const t = useT()
   const { token } = daten as { token: string }
   const gemeldet = useRef(false)
   const fertig = (): void => {
@@ -410,9 +411,21 @@ function MeldeformularAusfuellen({ daten, abschliessen }: AnsichtProps): JSX.Ele
     gemeldet.current = true
     abschliessen({}, false).catch(abraeumen)
   }
+  /*
+   * Abbrechen wie in jeder anderen Ansicht. Das Formular selbst kennt am
+   * Terminal nur "absenden"; ohne diesen Knopf bliebe einem Gast, der es
+   * sich anders ueberlegt, nur das Warten auf die Stille -- neunzig
+   * Sekunden, in denen seine Angaben fuer den naechsten lesbar dastehen.
+   */
   return (
-    <div className="w-full">
+    <div className="w-full space-y-4">
       <GastCheckin token={token} modus="terminal" onFertig={fertig} />
+      <div className="max-w-3xl mx-auto">
+        <button type="button" onClick={onAbbrechen}
+                className="w-full py-4 text-lg rounded border border-neutral-300 bg-white">
+          {t('kiosk.abort')}
+        </button>
+      </div>
     </div>
   )
 }

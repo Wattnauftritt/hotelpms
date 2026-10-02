@@ -31,7 +31,9 @@ nach **Art. 32 DSGVO**. Anlage zum Auftragsverarbeitungsvertrag.
   gekoppelt; danach ein eigenes Gerätegeheimnis im `httpOnly`-Cookie, nur
   als Hash gespeichert, widerrufbar. Ein Terminal erreicht nur seinen eigenen
   Auftrag in seinem Haus, und es hält keine Gastdaten über den Auftrag hinaus
-  ([`../31-gaesteterminal.md`](../31-gaesteterminal.md)).
+  ([`../31-gaesteterminal.md`](../31-gaesteterminal.md)). Der Link zum
+  Meldeformular, den es dafür bekommt, geht nur an das Gerät, liegt in der
+  Datenbank als Hash und fällt mit dem Auftrag.
 
 ### 1.3 Zugriffskontrolle
 

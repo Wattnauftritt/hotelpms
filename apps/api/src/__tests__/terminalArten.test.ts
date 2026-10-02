@@ -217,6 +217,54 @@ describe('Meldeformular ausfuellen (Online-Check-in am Terminal)', () => {
       `SELECT revoked_at IS NOT NULL AS widerrufen FROM checkin_token`)
     expect(l.rows[0]!.widerrufen).toBe(true)
   })
+
+  /*
+   * Unter dem Dank der Gastseite steht am Terminal weiter "Abbrechen". Wer
+   * eingereicht hat und dann darauf tippt -- oder die Rezeption bricht ab,
+   * waehrend der Dank noch steht --, hat trotzdem einen Meldeschein
+   * abgegeben. "Abgebrochen" an der Reservierung hiesse fuer die Rezeption:
+   * nochmal schicken, und das scheiterte dann am vorhandenen Schein.
+   */
+  it('vermerkt einen Abbruch nach dem Einreichen als erledigt', async () => {
+    for (const wer of ['terminal', 'rezeption'] as const) {
+      await truncateAll()
+      fx = await makeProperty(owner)
+      catId = await makeCategory(owner, fx.propertyId, { code: 'DZ' })
+      zimmer = await makeResources(owner, fx.propertyId, catId, 4)
+      await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
+        [fx.propertyId])
+      const u = await makeUser(owner,
+        { email: 'chef@test.de', propertyId: fx.propertyId, roleKey: 'hotel_director' })
+      chef = { cookie: `hp_session=${u.sessionId}` }
+
+      const t = await terminal()
+      const ref = await reservierung(await gast('Petersen'))
+      const a = await auftrag({ deviceRef: t.deviceRef, kind: 'registration_fill',
+                                reservationRef: ref })
+      const token = (json(await oeffnen(t.secret, json(a).jobRef)).data as { token: string }).token
+      const ein = await app.inject({ method: 'POST', url: '/v1/checkin/form',
+        headers: { [CHECKIN_TOKEN_HEADER]: token },
+        payload: { guest: { lastName: 'Petersen', firstName: 'Anna', birthDate: '1980-05-17',
+                            nationality: 'DE',
+                            address: { line1: 'Deichweg 4', postalCode: '24937',
+                                       city: 'Flensburg', country: 'DE' } },
+                   confirmed: true } })
+      expect(ein.statusCode, ein.body).toBe(201)
+
+      const ab = wer === 'terminal'
+        ? await app.inject({ method: 'POST', url: `/v1/terminal/job/${json(a).jobRef}/abort`,
+            headers: geraet(t.secret), payload: { reason: 'guest' } })
+        : await app.inject({ method: 'POST',
+            url: `/v1/terminal-jobs/${json(a).jobRef}/cancel`, headers: chef })
+      expect(ab.statusCode, ab.body).toBe(200)
+      expect(json(ab).state, wer).toBe('done')
+      const j = await owner.query(`SELECT state, canceled_by FROM terminal_job`)
+      expect(j.rows[0], wer).toEqual({ state: 'done', canceled_by: null })
+      const l = await owner.query<{ widerrufen: boolean }>(
+        `SELECT revoked_at IS NOT NULL AS widerrufen FROM checkin_token`)
+      expect(l.rows[0]!.widerrufen, wer).toBe(true)
+    }
+  })
 })
 
 describe('Hausbedingung am Terminal', () => {

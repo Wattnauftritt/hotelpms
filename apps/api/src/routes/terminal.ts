@@ -172,6 +172,19 @@ async function eigenerAuftrag(
   return alsAuftrag(r.rows[0]!)
 }
 
+/**
+ * Einen offenen Auftrag abbrechen -- es sei denn, der Gast hat schon
+ * erledigt, was er sollte (`bereitsErledigt`). Dann steht er als erledigt
+ * da, wer immer danach auf "Abbrechen" gedrueckt hat.
+ */
+async function abbrechen(
+  client: PoolClient, a: Auftrag, canceledBy: 'reception' | 'terminal' | 'timeout'
+): Promise<'done' | 'canceled'> {
+  const erledigt = await ARTEN[a.kind].bereitsErledigt?.(client, a) ?? false
+  await beenden(client, a.id, erledigt ? 'done' : 'canceled', erledigt ? null : canceledBy)
+  return erledigt ? 'done' : 'canceled'
+}
+
 /** Einen Auftrag beenden: Zustand setzen und den Online-Check-in-Link zurueckziehen. */
 async function beenden(
   client: PoolClient, jobId: number, state: 'done' | 'canceled' | 'expired',
@@ -533,16 +546,16 @@ export function terminalRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { jobRef } = req.params as { jobRef: string }
       return tx(req.pool, req, async client => {
-        const j = await client.query<{ id: string; property_id: string; state: string }>(
-          `SELECT j.id, j.property_id, ${ZUSTAND_SQL} AS state
+        const j = await client.query<AuftragZeile>(
+          `SELECT ${AUFTRAG_SPALTEN}
              FROM terminal_job j WHERE j.public_ref = $1 FOR UPDATE`, [jobRef])
         if (j.rowCount === 0) throw Errors.notFound('res.terminalJob')
-        pruefeHaus(req, Number(j.rows[0]!.property_id))
-        if (j.rows[0]!.state !== 'pending' && j.rows[0]!.state !== 'opened') {
+        const auftrag = alsAuftrag(j.rows[0]!)
+        pruefeHaus(req, auftrag.propertyId)
+        if (auftrag.state !== 'pending' && auftrag.state !== 'opened') {
           throw Errors.conflict('terminal.jobNotOpen')
         }
-        await beenden(client, Number(j.rows[0]!.id), 'canceled', 'reception')
-        return { jobRef, state: 'canceled' }
+        return { jobRef, state: await abbrechen(client, auftrag, 'reception') }
       })
     }
   })
@@ -723,9 +736,9 @@ export function terminalRoutes(app: FastifyInstance): void {
           // abgebrochen.
           return { jobRef, state: auftrag.state }
         }
-        await beenden(client, auftrag.id, 'canceled',
-          grund === 'timeout' ? 'timeout' : 'terminal')
-        return { jobRef, state: 'canceled' }
+        return { jobRef,
+                 state: await abbrechen(client, auftrag,
+                                        grund === 'timeout' ? 'timeout' : 'terminal') }
       })
     }
   })

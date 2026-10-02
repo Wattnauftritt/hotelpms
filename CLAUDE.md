@@ -143,6 +143,11 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 - **Die Seite am Touchscreen hält keine Gastdaten über den Auftrag hinaus.**
   Kein Zwischenspeicher, kein `localStorage`, nach jedem Auftrag ein
   Neuaufbau. Davor steht der nächste Gast.
+- **Das Terminal zeigt nur, was das Haus vorher angelegt hat.** Eine Seite,
+  eine freigegebene Adresse, einen Meldeschein, eine Hausbedingung — nie Text
+  oder eine Adresse aus dem Auftrag selbst. Seitentext ist kein HTML, ein Bild
+  kein SVG. Ein Rezeptionsrechner, der Beliebiges auf einen Gastbildschirm
+  schicken kann, ist ein Werkzeug für Phishing.
 
 ### Datenschutz und deutsches Recht
 

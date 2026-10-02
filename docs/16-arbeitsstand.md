@@ -848,9 +848,9 @@ Erledigt und aus der Liste genommen: **Notiz am Gastprofil anlegen** (das Profil
 
 ### Gästeterminal — **erledigt**
 
-**Wo es liegt.** [`31-gaesteterminal.md`](31-gaesteterminal.md), Migrationen `0063` und `0064`, `routes/terminal.ts`, `apps/web/src/routes/Terminal.tsx`.
+**Wo es liegt.** [`31-gaesteterminal.md`](31-gaesteterminal.md), Migrationen `0062`, `0063`, `0064` und `0067`, `routes/terminal.ts`, `routes/terminalInhalte.ts`, `platform/terminalArten.ts`, `apps/web/src/routes/Terminal.tsx`, `apps/web/src/routes/TerminalPult.tsx`.
 
-Ein Touchscreen an der Rezeption, an dem der Gast den Meldeschein unterschreibt. Das Terminal ist ein **Gerät**, keine Sitzung: einmal mit einem Code gekoppelt, danach ein eigenes Principal mit genau einem Recht in genau einem Haus, im Prüfprotokoll als Gerät erkennbar. Die Rezeption schickt Aufträge (höchstens einer offen je Gerät) und sieht ihren Stand live; die Seite am Touchscreen hält keine Gastdaten über den Auftrag hinaus und baut sich danach neu auf. „Meldeformular ausfüllen" ist als Art vorbereitet und wird angebunden, sobald der Online-Check-in gemergt ist.
+Ein Touchscreen an der Rezeption als allgemeiner Anzeige-Client: Meldeformular ausfüllen (das Formular des Online-Check-ins im Terminalmodus, mit einem Link, der nur an das Gerät geht und mit dem Auftrag fällt), Meldeschein unterschreiben, Hausbedingung zustimmen, eine Seite des Hauses oder eine freigegebene Adresse zeigen; ohne Auftrag eine Diashow. Das Terminal ist ein **Gerät**, keine Sitzung: einmal mit einem Code gekoppelt, danach ein eigenes Principal mit genau einem Recht in genau einem Haus, im Prüfprotokoll als Gerät erkennbar. Die Rezeption schickt Aufträge (höchstens einer offen je Gerät) und sieht ihren Stand live; die Seite am Touchscreen hält keine Gastdaten über den Auftrag hinaus und baut sich danach neu auf. Seiten und Adressen schickt die Rezeption auch ohne Reservierung, über das Bedienfeld „Terminal". Eine weitere Art ist ein Eintrag in `ARTEN`, ein Wert in der Prüfbedingung und eine Ansicht. Offen: ein `frame-src` in der CSP des Caddyfile, ohne den freigegebene Adressen im Betrieb leer bleiben (Dokument 31, §12).
 
 ---
 
