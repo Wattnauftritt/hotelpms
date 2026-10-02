@@ -180,13 +180,27 @@ async function record(
      VALUES ($1,$2,$3,$4,$5,$6)`,
     [e.id, propertyId, e.attempt, r.statusCode, r.error, r.durationMs])
 
+  /*
+   * Der Rumpf einer Einladung zum Online-Check-in traegt den Link im
+   * Klartext -- und der Link ist der Zugang zum Meldeschein des Gastes. In
+   * `checkin_token` steht bewusst nur sein Hash; bliebe der Rumpf hier
+   * stehen, waere diese Vorsicht fuer die volle Frist des Links wertlos.
+   * Er faellt deshalb, sobald die Nachricht hinaus ist oder endgueltig
+   * aufgegeben wird, wie bei der Zugangspost (platformEmail.ts). Betreff,
+   * Empfaenger und Zeitpunkt bleiben: "ist die Einladung rausgegangen" soll
+   * sich weiter beantworten lassen.
+   */
+  const rumpfLeeren = e.kind === 'checkin_invitation'
+
   if (r.error === null) {
     await client.query(
       `UPDATE outbound_email
           SET status = 'sent', sent_at = now(), provider_message_id = $2,
-              attachment_sha256 = $3, last_error = NULL
+              attachment_sha256 = $3, last_error = NULL,
+              body_text = CASE WHEN $4 THEN '' ELSE body_text END,
+              body_html = CASE WHEN $4 THEN NULL ELSE body_html END
         WHERE id = $1`,
-      [e.id, r.providerMessageId, e.attachment_sha256])
+      [e.id, r.providerMessageId, e.attachment_sha256, rumpfLeeren])
     return 'sent'
   }
 
@@ -202,9 +216,12 @@ async function record(
         SET status = CASE WHEN $3 THEN 'failed' ELSE 'pending' END,
             next_attempt_at = CASE WHEN $3 THEN now()
                                    ELSE now() + make_interval(secs => $4) END,
-            last_error = $2
+            last_error = $2,
+            body_text = CASE WHEN $3 AND $5 THEN '' ELSE body_text END,
+            body_html = CASE WHEN $3 AND $5 THEN NULL ELSE body_html END
       WHERE id = $1`,
-    [e.id, r.error, aufgeben, emailRetryDelaySeconds(e.attempt, baseDelaySeconds)])
+    [e.id, r.error, aufgeben, emailRetryDelaySeconds(e.attempt, baseDelaySeconds),
+     rumpfLeeren])
 
   return aufgeben ? 'failed' : 'retrying'
 }

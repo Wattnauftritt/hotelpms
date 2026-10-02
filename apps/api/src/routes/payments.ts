@@ -2,13 +2,11 @@ import type { FastifyInstance } from 'fastify'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
 import { paymentSucceeded } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
-import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { loadConfig } from '../platform/config.js'
-import type { Principal } from '../platform/context.js'
 import { createStripeAdapter, verifyStripeSignature, parseStripeEvent,
          type StripeAdapter } from '../platform/payments/stripe.js'
+import { paymentLinkRoutes } from './paymentLinks.js'
 
 export interface PaymentRouteOverrides {
   /** Fuer Tests: ein Adapter ohne echten Netzwerkzugriff auf Stripe. */
@@ -20,55 +18,9 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
   const stripe = overrides.stripe
     ?? (config.stripeSecretKey ? createStripeAdapter(config.stripeSecretKey) : null)
 
-  registerRoute(app, {
-    method: 'POST',
-    url: '/v1/folios/:folioRef/payment-links',
-    permission: 'folio:post',
-    summary: 'Pay-by-Link ueber Stripe anfordern',
-    handler: async (req, reply) => {
-      if (!stripe) throw Errors.notConfigured('payments.stripeKeyMissing')
-
-      const { folioRef } = req.params as { folioRef: string }
-      const body = req.body as { amountCent: number }
-      const principal = req.principal as Principal
-      const key = req.headers['idempotency-key'] as string | undefined
-      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
-      if (!Number.isInteger(body.amountCent) || body.amountCent <= 0) {
-        throw Errors.validation({ amountCent: ['field.positiveCent'] })
-      }
-
-      return tx(req.pool, req, async client => {
-        const stored = await beginIdempotent(
-          client, principal.clientKey, key, body, principal.accountIds[0]!)
-        if (stored) { reply.status(stored.status); return stored.body }
-
-        const f = await client.query<{ id: number; property_id: number; status: string }>(
-          `SELECT id, property_id, status FROM folio WHERE public_ref = $1`, [folioRef])
-        if (f.rowCount === 0) throw Errors.notFound('res.folio')
-        const folio = f.rows[0]!
-        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
-
-        const session = await stripe.createCheckoutSession({
-          amountCent: body.amountCent,
-          reference: folioRef,
-          successUrl: `${config.publicAppUrl}/folios/${folioRef}?zahlung=erfolgreich`,
-          cancelUrl: `${config.publicAppUrl}/folios/${folioRef}?zahlung=abgebrochen`
-        })
-
-        await client.query(
-          `INSERT INTO payment_intent (property_id, folio_id, provider, provider_reference,
-                                        amount_cent, created_by)
-           VALUES ($1,$2,'stripe',$3,$4,$5)`,
-          [folio.property_id, folio.id, session.providerReference, body.amountCent,
-           principal.userId])
-
-        const result = { url: session.url }
-        await completeIdempotent(client, principal.clientKey, key, 201, result)
-        reply.status(201)
-        return result
-      })
-    }
-  })
+  // Zahlungslinks: anlegen, widerrufen, und die Seite, die der Gast oeffnet
+  // (Migration 0068). Eigene Datei, derselbe Adapter.
+  paymentLinkRoutes(app, stripe, config)
 
   registerRoute(app, {
     method: 'POST',
@@ -102,9 +54,10 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
       await withTransaction(req.pool, SYSTEM_CONTEXT, async client => {
         const intent = await client.query<{
           id: number; property_id: number; folio_id: number
-          amount_cent: number; status: string
+          amount_cent: number; status: string; deposit_request_id: number | null
         }>(
-          `SELECT id, property_id, folio_id, amount_cent, status FROM payment_intent
+          `SELECT id, property_id, folio_id, amount_cent, status, deposit_request_id
+             FROM payment_intent
             WHERE provider = 'stripe' AND provider_reference = $1 FOR UPDATE`,
           [event.providerReference])
         if (intent.rowCount === 0) {
@@ -134,12 +87,27 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
         // eigentliche Sperre gegen einen doppelten Zahlungsvermerk: ein
         // zweites, andersartiges Ereignis fuer dieselbe Zahlung (Stripe
         // sendet oft mehrere) hat eine andere Ereignis-ID und kaeme am
-        // Protokoll vorbei, nicht aber an diesem WHERE status = 'pending'.
+        // Protokoll vorbei, nicht aber an diesem Uebergang nach 'succeeded'.
+        //
+        // **Aus jedem Zustand ausser 'succeeded'** (seit 0068), nicht nur
+        // aus 'pending'. Ein Checkout, den wir fuer abgelaufen halten und
+        // durch einen neuen ersetzt haben, kann beim Anbieter im letzten
+        // Augenblick noch bezahlt worden sein; seine Meldung kommt dann
+        // nach unserer Markierung. Meldet der Anbieter Geld, ist das Geld
+        // da -- es zu verwerfen, hiesse einen Zahlungseingang zu
+        // verschweigen, den der Kontoauszug zeigt. Doppelzahlungen
+        // verhindert die Route, die Checkouts anlegt (ein offener je Link,
+        // ein neuer erst, wenn der Anbieter den alten fuer erledigt
+        // erklaert), nicht dieser Empfang.
         const cas = await client.query(
           `UPDATE payment_intent SET status = 'succeeded', settled_at = now()
-            WHERE id = $1 AND status = 'pending' RETURNING id`,
+            WHERE id = $1 AND status <> 'succeeded' RETURNING id`,
           [row.id])
         if (cas.rowCount === 0) return
+        if (row.status !== 'pending') {
+          req.log.warn({ paymentIntentId: row.id, vorher: row.status },
+            'Zahlung auf einen nicht mehr offenen Checkout eingegangen')
+        }
 
         const pm = await client.query<{ id: number }>(
           `INSERT INTO payment_method (property_id, code, name)
@@ -163,6 +131,27 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
 
         await client.query(`UPDATE payment_intent SET settlement_id = $2 WHERE id = $1`,
           [row.id, settlement.rows[0]!.id])
+
+        /*
+         * Zahlt der Link auf eine Anzahlungsanforderung, gehoert der Eingang
+         * zu ihr -- in derselben Transaktion, aus demselben Grund wie oben:
+         * dazwischen sterben darf der Prozess nicht, sonst stuende das Geld
+         * auf dem Folio und die Anforderung als ueberfaellig da.
+         *
+         * Genau einmal, weil der Statusuebergang davor genau einmal gelingt;
+         * der eindeutige Index auf settlement_id waere die zweite Sperre.
+         * Eine Anzahlungsrechnung entsteht hier **nicht**: sie traegt eine
+         * Nummer aus der lueckenlosen Folge und Pflichtangaben, die ein
+         * Mensch pruefen soll (Dokument 16, Aufgabe 3). Die Maske zeigt den
+         * Eingang ohne Rechnung an, bis jemand sie ausstellt.
+         */
+        if (row.deposit_request_id !== null) {
+          await client.query(
+            `INSERT INTO deposit_request_settlement
+               (property_id, folio_id, deposit_request_id, settlement_id)
+             VALUES ($1,$2,$3,$4) ON CONFLICT (settlement_id) DO NOTHING`,
+            [row.property_id, row.folio_id, row.deposit_request_id, settlement.rows[0]!.id])
+        }
       })
 
       reply.status(200)

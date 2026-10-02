@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { InvoiceList, InvoiceRecipient,
+import type { InvoiceList, InvoiceRecipient, PaymentLinkCreated,
               PrepaymentView } from '@hotelpms/contracts'
 import { api, ApiError } from '../api.js'
 import { addDays } from '../dates.js'
@@ -184,12 +184,90 @@ export function istNichtEingerichtet(fehler: unknown): boolean {
     && fehler.problem.type === 'urn:staygrid:not_configured'
 }
 
+/**
+ * Einen Zahlungslink erzeugen -- auf Wunsch zu einer Anzahlungsanforderung
+ * und in derselben Anfrage per Gastpost an den Gast.
+ *
+ * Senden geht **nur** hier: die Adresse des Links wird nicht gespeichert,
+ * und eine spätere Route "diesen Link schicken" müsste sie sich vom
+ * Aufrufer geben lassen. Dann bestimmte der Aufrufer den Inhalt der
+ * Gastpost, nicht nur den Empfänger.
+ */
 export function useCreatePaymentLink(folioRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ amountCent, key }: { amountCent: number; key: string }) =>
-      api.post<{ url: string }>(`/v1/folios/${folioRef}/payment-links`,
-        { amountCent }, { 'idempotency-key': key }),
+    mutationFn: ({ amountCent, depositRequestRef, sendEmail, key }: {
+      amountCent: number; depositRequestRef?: string; sendEmail?: boolean; key: string
+    }) =>
+      api.post<PaymentLinkCreated>(`/v1/folios/${folioRef}/payment-links`,
+        { amountCent,
+          ...(depositRequestRef === undefined ? {} : { depositRequestRef }),
+          ...(sendEmail === true ? { sendEmail: true } : {}) },
+        { 'idempotency-key': key }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
+    }
+  })
+}
+
+/**
+ * Einen offenen Link beim Zahlungsdienstleister ungültig machen. Erst dort,
+ * dann bei uns -- ein Link, den nur unsere Datenbank für ungültig hält,
+ * kann der Gast weiterhin bezahlen.
+ */
+export function useCancelPaymentLink(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (linkId: number) =>
+      api.post<{ linkId: number; status: string }>(`/v1/payment-links/${linkId}/cancel`),
+    // Auch nach einem Fehler neu fragen: lehnt der Anbieter ab, ist meist
+    // gerade bezahlt worden, und der Stand hat sich geändert.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
+    }
+  })
+}
+
+/**
+ * Anzahlung anfordern. Der Betrag, den die API festschreibt, ist der
+ * maßgebliche -- auch bei Prozent, wo die Maske ihn vorher nur anzeigt.
+ */
+export function useCreateDepositRequest(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ amountCent, percentBp, dueDate, key }: {
+      amountCent?: number; percentBp?: number; dueDate: string; key: string
+    }) =>
+      api.post<{ requestRef: string; amountCent: number }>(
+        `/v1/folios/${folioRef}/deposit-requests`,
+        { dueDate,
+          ...(amountCent === undefined ? {} : { amountCent }),
+          ...(percentBp === undefined ? {} : { percentBp }) },
+        { 'idempotency-key': key }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
+    }
+  })
+}
+
+export function useCancelDepositRequest(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (requestRef: string) =>
+      api.post<{ requestRef: string }>(`/v1/deposit-requests/${requestRef}/cancel`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
+    }
+  })
+}
+
+/** Eine Überweisung oder Barzahlung, die schon vermerkt ist, einer Anforderung zuordnen. */
+export function useAssignDepositSettlement(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ requestRef, settlementId }: { requestRef: string; settlementId: number }) =>
+      api.post<{ requestRef: string; settlementId: number }>(
+        `/v1/deposit-requests/${requestRef}/settlements`, { settlementId }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
     }

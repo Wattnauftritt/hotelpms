@@ -30,6 +30,10 @@ export const common = {
     de: 'Gruppen',
     en: 'Groups',
     tr: 'Gruplar' },
+  'nav.more': {
+    de: 'Mehr',
+    en: 'More',
+    tr: 'Daha fazla' },
   'common.from': {
     de: 'Von',
     en: 'From',

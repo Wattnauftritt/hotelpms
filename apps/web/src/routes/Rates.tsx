@@ -13,6 +13,8 @@ import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today, addDays } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { Preissteuerung } from '../components/Preissteuerung.tsx'
+import { useReiter } from '../lib/reiter.js'
 
 /**
  * Preise und Restriktionen (B1 bis B3 aus Dokument 20).
@@ -447,7 +449,42 @@ function Ratenplaene(
   )
 }
 
+/*
+ * Zwei Reiter unter "Preise": das Raster, in dem Preise gepflegt werden, und
+ * die Steuerung, die sie aus Regeln setzt (Dokument 32). Beides beantwortet
+ * dieselbe Frage -- was kostet dieser Tag -- und gehoert deshalb unter
+ * denselben Eintrag, nicht in einen eigenen Bildschirm daneben.
+ */
+const REITER = ['raster', 'steuerung'] as const
+type Reiter = (typeof REITER)[number]
+
 export function Rates(
+  { propertyId, permissions }: { propertyId: number; permissions: readonly string[] }
+): JSX.Element {
+  const t = useT()
+  const [reiter, setReiter] = useReiter<Reiter>('preise', REITER, 'raster')
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1 border-b border-neutral-200">
+        {REITER.map(r => (
+          <button key={r} type="button" onClick={() => setReiter(r)}
+                  aria-current={r === reiter ? 'page' : undefined}
+                  className={`text-sm px-3 py-1.5 -mb-px border-b-2 ${
+                    r === reiter
+                      ? 'border-neutral-900 font-medium'
+                      : 'border-transparent text-neutral-600 hover:text-neutral-900'}`}>
+            {t(r === 'raster' ? 'steer.tab.grid' : 'steer.tab.steering')}
+          </button>
+        ))}
+      </div>
+      {reiter === 'raster'
+        ? <Preisraster propertyId={propertyId} permissions={permissions} />
+        : <Preissteuerung propertyId={propertyId} permissions={permissions} />}
+    </div>
+  )
+}
+
+function Preisraster(
   { propertyId, permissions }: { propertyId: number; permissions: readonly string[] }
 ): JSX.Element {
   const t = useT()

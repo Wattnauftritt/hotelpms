@@ -6,6 +6,7 @@ import { reservationRoutes } from './reservations.js'
 import { billingRoutes } from './billing.js'
 import { guestRoutes } from './guests.js'
 import { rateRoutes } from './rates.js'
+import { rateSteeringRoutes } from './rateSteering.js'
 import { housekeepingRoutes } from './housekeeping.js'
 import { registrationRoutes } from './registrations.js'
 import { termsRoutes } from './terms.js'
@@ -16,6 +17,7 @@ import { setupRoutes } from './setup.js'
 import { blockRoutes } from './blocks.js'
 import { oauthRoutes } from './oauth.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
+import { depositRequestRoutes } from './depositRequests.js'
 import { webhookRoutes } from './webhooks.js'
 import { channelRoutes } from './channel.js'
 import { posRoutes } from './pos.js'
@@ -29,6 +31,8 @@ import { platformSupportRoutes } from './platformSupport.js'
 import { platformDomainRoutes } from './platformDomains.js'
 import { userAdminRoutes } from './userAdmin.js'
 import { historyRoutes } from './history.js'
+import { searchRoutes } from './search.js'
+import { checkinRoutes } from './checkin.js'
 import { openApiRoutes } from './openapi.js'
 import type { DomainVerwaltung } from '../platform/brevoDomains.js'
 
@@ -51,6 +55,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   billingRoutes(app)
   guestRoutes(app)
   rateRoutes(app)
+  rateSteeringRoutes(app)
   housekeepingRoutes(app)
   registrationRoutes(app)
   termsRoutes(app)
@@ -60,8 +65,10 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   setupRoutes(app)
   blockRoutes(app)
   historyRoutes(app)
+  searchRoutes(app)
   oauthRoutes(app)
   paymentsRoutes(app, overrides.payments)
+  depositRequestRoutes(app)
   webhookRoutes(app)
   channelRoutes(app)
   posRoutes(app)
@@ -74,6 +81,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   platformSupportRoutes(app)
   platformDomainRoutes(app, { domains: overrides.domains })
   userAdminRoutes(app)
+  checkinRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)
 }

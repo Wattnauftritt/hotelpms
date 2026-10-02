@@ -1,4 +1,6 @@
+import { depositFromPercent } from '@hotelpms/domain/depositRequest'
 import { centAusEingabe } from './preisraster.js'
+import { addDays } from './dates.js'
 
 /**
  * Die Rechenteile der Vorauszahlungsmaske, ohne React.
@@ -64,4 +66,55 @@ export function anzahlungsNutzlast(
   if (art === 'single') return { taxRateBp: satz }
   if (art === 'split') return { lines: anzahlungsteile(teile) }
   return {}
+}
+
+// ------------------------------------------------- Anzahlung anfordern
+
+/**
+ * Ein Prozentsatz aus der Eingabe, in Basispunkten (30 % = 3000).
+ *
+ * Auf der Zeichenkette und nicht über `Number(...) * 100`: `12,35 * 100` ist
+ * in Fließkomma 1234,9999999999998, und abgeschnitten wäre das ein
+ * Basispunkt zu wenig. Höchstens zwei Nachkommastellen, Komma oder Punkt;
+ * mehr ist kein Satz, den jemand meint, sondern ein Tippfehler. Null und mehr
+ * als hundert Prozent sind keine Anzahlung.
+ */
+export function prozentAusEingabe(eingabe: string): number | null {
+  const m = /^\s*(\d{1,3})(?:[.,](\d{1,2}))?\s*%?\s*$/.exec(eingabe)
+  if (m === null) return null
+  const ganz = Number(m[1])
+  const nachkomma = Number((m[2] ?? '').padEnd(2, '0'))
+  const bp = ganz * 100 + nachkomma
+  return bp > 0 && bp <= 10_000 ? bp : null
+}
+
+/**
+ * Was eine Anforderung kosten wird -- in Prozent mit **derselben** Funktion,
+ * die die API beim Festschreiben benutzt (`@hotelpms/domain/depositRequest`).
+ * Eine eigene Rundung hier liefe auseinander, und die Rezeption sähe einen
+ * Cent, den der Gast nicht bekommt.
+ */
+export function anforderungsBetrag(
+  art: 'amount' | 'percent', eingabe: string, stayCent: number | null
+): number | null {
+  if (art === 'amount') {
+    const cent = centAusEingabe(eingabe)
+    return cent !== null && cent > 0 ? cent : null
+  }
+  const bp = prozentAusEingabe(eingabe)
+  if (bp === null || stayCent === null || stayCent <= 0) return null
+  const betrag = depositFromPercent(stayCent, bp)
+  return betrag > 0 ? betrag : null
+}
+
+/**
+ * Ein Vorschlag für die Fälligkeit: eine Woche nach dem Geschäftstag, aber
+ * nicht nach der Anreise -- und nie vor dem Geschäftstag, sonst wäre die
+ * Anforderung schon bei der Anlage überfällig und die API wiese sie ab.
+ * Gerechnet auf Kalendertagen, nicht über `Date` in Ortszeit.
+ */
+export function faelligkeitVorschlag(businessDate: string, arrival: string | null): string {
+  const inEinerWoche = addDays(businessDate, 7)
+  if (arrival === null || arrival >= inEinerWoche) return inEinerWoche
+  return arrival > businessDate ? arrival : businessDate
 }
