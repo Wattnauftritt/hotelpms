@@ -149,15 +149,26 @@ UPDATE registration SET signature_required = true
  WHERE is_foreign AND group_registration_id IS NULL;
 
 -- ------------------------------------------------------------- Gastpost
+--
+-- Die Einladung haengt an der Reservierung, wie die Bestaetigung: nur so
+-- findet guest_erase_one() sie ueber outbound_email.reservation_id.
+--
+-- `payment_link` steht mit in der Liste, und zwar mit derselben Bezugsregel.
+-- Migration 0060 (Anzahlungsanforderung, parallel entstanden) fuehrt diese
+-- Art ein und ersetzt dieselben beiden Bedingungen. Liefe diese Migration
+-- danach und kennte die Art nicht, fiele jede Zahlungsmail beim Einreihen
+-- durch -- und bestehende Zeilen liessen schon das ADD CONSTRAINT
+-- scheitern. Ohne 0060 ist der Eintrag folgenlos.
 
 ALTER TABLE outbound_email DROP CONSTRAINT outbound_email_kind_check;
 ALTER TABLE outbound_email ADD CONSTRAINT outbound_email_kind_check
-  CHECK (kind IN ('invoice','reservation_confirmation','checkin_invitation'));
+  CHECK (kind IN ('invoice','reservation_confirmation','payment_link',
+                  'checkin_invitation'));
 
 ALTER TABLE outbound_email DROP CONSTRAINT outbound_email_bezug;
 ALTER TABLE outbound_email ADD CONSTRAINT outbound_email_bezug CHECK (
   (kind = 'invoice' AND invoice_id IS NOT NULL) OR
-  (kind IN ('reservation_confirmation','checkin_invitation')
+  (kind IN ('reservation_confirmation','payment_link','checkin_invitation')
      AND reservation_id IS NOT NULL));
 
 -- ------------------------------------------------------- Ausgeben
