@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { can, type Principal } from '../platform/context.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 
@@ -51,6 +52,71 @@ interface RegistrationBody {
   /** Weitere Mitreisende. Bei Gruppen entsteht daraus ein Sammelmeldeschein. */
   occupantGuestRefs?: string[]
   signatureSvg?: string
+  /**
+   * Der auslaendische Gast unterschreibt gleich, aber nicht hier: am
+   * Gaesteterminal oder spaeter am Tresen (Dokument 31). Ohne diese Angabe
+   * bleibt es bei der Regel, dass ein auslaendischer Gast ohne Unterschrift
+   * abgewiesen wird -- wer sie vergisst, soll es merken, statt einen
+   * unvollstaendigen Schein anzulegen.
+   */
+  signatureLater?: boolean
+}
+
+/**
+ * Wie gross eine Unterschrift hoechstens sein darf.
+ *
+ * Gespeichert wird ein SVG mit eingebettetem PNG der gezeichneten Linie
+ * (CheckIn.tsx, Unterschriftsfeld.tsx); auch auf einem grossen Touchscreen
+ * sind das einige zehn Kilobyte. Die Grenze steht hier und nicht nur im
+ * allgemeinen Rumpflimit, weil seit dem Gaesteterminal ein Geraet
+ * unterschreibt, vor dem ein Gast steht -- und ein Megabyte je Schein in
+ * einer Tabelle, die ein Jahr lang haelt, waere ein Weg, sie zu fuellen.
+ */
+export const SIGNATURE_MAX_LENGTH = 400_000
+
+/**
+ * Eine Unterschrift unter einen vorhandenen Meldeschein setzen.
+ *
+ * **Die eine Stelle fuer diese Regel.** Am Tresen (`POST
+ * /v1/registrations/:id/sign`) und am Gaesteterminal (routes/terminal.ts)
+ * laeuft dieselbe Funktion; zwei Fassungen derselben Pruefung laufen
+ * auseinander, und dann unterschreibt am Terminal ein inlaendischer Gast,
+ * was am Tresen abgewiesen worden waere.
+ *
+ * Nur auslaendische Gaeste (seit 1.1.2025), nur einmal, und nur in einem
+ * der Haeuser, die `haeuser` nennt -- die Zeilenrichtlinie filtert nach
+ * Mandant, nicht nach Haus, und wer in Haus A einchecken darf, darf in
+ * Haus B noch lange nicht unterschreiben lassen.
+ */
+export async function signRegistration(
+  client: PoolClient, registrationId: number, signatureSvg: unknown,
+  darfImHaus: (propertyId: number) => boolean
+): Promise<{ registrationId: number; signed: true }> {
+  if (typeof signatureSvg !== 'string' || signatureSvg.trim() === '') {
+    throw Errors.validation({ signatureSvg: ['field.required'] })
+  }
+  if (signatureSvg.length > SIGNATURE_MAX_LENGTH) {
+    throw Errors.validation({ signatureSvg: ['registration.signatureTooLarge'] })
+  }
+  if (!Number.isSafeInteger(registrationId)) throw Errors.notFound('res.registration')
+  const cur = await client.query<{ is_foreign: boolean; signed_at: string | null
+                                   property_id: number }>(
+    `SELECT is_foreign, signed_at::text, property_id
+       FROM registration WHERE id = $1 FOR UPDATE`, [registrationId])
+  if (cur.rowCount === 0 || !darfImHaus(Number(cur.rows[0]!.property_id))) {
+    // Wie ein fremdes Haus anderswo: nicht verraten, dass es den Schein gibt.
+    throw Errors.notFound('res.registration')
+  }
+  if (!cur.rows[0]!.is_foreign) {
+    throw Errors.unprocessable('registration.signatureNotForeseen')
+  }
+  if (cur.rows[0]!.signed_at !== null) {
+    throw Errors.conflict('registration.alreadySigned')
+  }
+  await client.query(
+    `UPDATE registration SET signature_svg = $2, signed_at = now() WHERE id = $1`,
+    [registrationId, signatureSvg])
+  return { registrationId, signed: true }
 }
 
 async function loadReservation(
@@ -122,6 +188,9 @@ export function registrationRoutes(app: FastifyInstance): void {
           // ueberhaupt ein Unterschriftenfeld erscheinen.
           signatureRequired: auslaendisch,
           alreadyRegistered: r.existing_id !== null,
+          // Fuer die nachtraegliche Unterschrift, am Tresen oder am
+          // Gaesteterminal. Ohne die Kennung kam niemand an `/sign` heran.
+          registrationId: r.existing_id === null ? null : Number(r.existing_id),
           signedAt: r.signed_at
         }
       })
@@ -159,9 +228,13 @@ export function registrationRoutes(app: FastifyInstance): void {
         // Die Unterschrift ist nur fuer auslaendische Gaeste Pflicht, und
         // nur dort wird sie ueberhaupt gespeichert. Eine Unterschrift ohne
         // Rechtsgrund waere eine Datenerhebung ohne Rechtsgrund.
-        if (auslaendisch && !body.signatureSvg) {
+        if (auslaendisch && !body.signatureSvg && body.signatureLater !== true) {
           throw Errors.unprocessable(
             'registration.signatureRequired')
+        }
+        if (auslaendisch && body.signatureSvg
+            && body.signatureSvg.length > SIGNATURE_MAX_LENGTH) {
+          throw Errors.validation({ signatureSvg: ['registration.signatureTooLarge'] })
         }
         const signatur = auslaendisch ? body.signatureSvg ?? null : null
 
@@ -231,6 +304,9 @@ export function registrationRoutes(app: FastifyInstance): void {
           reservationRef: body.reservationRef,
           isForeign: auslaendisch,
           signatureStored: signatur !== null,
+          // Der Schein steht, die Unterschrift fehlt noch: am Terminal oder
+          // am Tresen nachholen (`/sign`).
+          signaturePending: auslaendisch && signatur === null,
           groupMembers: angelegt,
           destroyAfterMonths: AUFBEWAHRUNG_MONATE
         }
@@ -250,25 +326,18 @@ export function registrationRoutes(app: FastifyInstance): void {
     summary: 'Meldeschein unterschreiben',
     handler: async (req) => {
       const { registrationId } = req.params as { registrationId: string }
-      const { signatureSvg } = req.body as { signatureSvg: string }
-      if (!signatureSvg) throw Errors.validation({ signatureSvg: ['field.required'] })
-      return tx(req.pool, req, async client => {
-        const cur = await client.query<{ is_foreign: boolean; signed_at: string | null }>(
-          `SELECT is_foreign, signed_at::text FROM registration WHERE id = $1 FOR UPDATE`,
-          [Number(registrationId)])
-        if (cur.rowCount === 0) throw Errors.notFound('res.registration')
-        if (!cur.rows[0]!.is_foreign) {
-          throw Errors.unprocessable(
-            'registration.signatureNotForeseen')
-        }
-        if (cur.rows[0]!.signed_at !== null) {
-          throw Errors.conflict('registration.alreadySigned')
-        }
-        await client.query(
-          `UPDATE registration SET signature_svg = $2, signed_at = now() WHERE id = $1`,
-          [Number(registrationId), signatureSvg])
-        return { registrationId: Number(registrationId), signed: true }
-      })
+      const { signatureSvg } = (req.body ?? {}) as { signatureSvg?: unknown }
+      const principal = req.principal as Principal
+      return tx(req.pool, req, client =>
+        /*
+         * Mitbehoben: hier fehlte die Pruefung des Hauses. Die Route nimmt
+         * keine Property entgegen, `registerRoute` prueft das Recht deshalb
+         * nur "in irgendeinem Haus" -- wer in Haus A einchecken durfte, konnte
+         * einen Meldeschein in Haus B unterschreiben lassen, solange beide
+         * im selben Account liegen.
+         */
+        signRegistration(client, Number(registrationId), signatureSvg,
+          haus => can(principal, 'reservation:checkin', haus)))
     }
   })
 

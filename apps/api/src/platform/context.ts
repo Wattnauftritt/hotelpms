@@ -30,6 +30,16 @@ export interface Principal {
    * weil er den Wechsel vergessen hat.
    */
   sessionUserId: number | null
+  /**
+   * Ein gekoppeltes Gaesteterminal (Migration 0063), sonst null.
+   *
+   * Ein Geraet ist kein Benutzer und kein Maschinenzugang: es steht an der
+   * Rezeption, und davor steht ein Gast. Es traegt genau ein Recht,
+   * `terminal:device`, in genau einem Haus -- und seine Routen pruefen
+   * zusaetzlich, dass dieses Feld gesetzt ist, damit das Recht allein nie
+   * genuegt.
+   */
+  terminalDeviceId: number | null
 }
 
 export const ANONYMOUS: Principal = {
@@ -41,7 +51,8 @@ export const ANONYMOUS: Principal = {
   accountPermissions: new Set(),
   platformPermissions: new Set(),
   supportSessionId: null,
-  sessionUserId: null
+  sessionUserId: null,
+  terminalDeviceId: null
 }
 
 export function propertyIds(p: Principal): number[] {

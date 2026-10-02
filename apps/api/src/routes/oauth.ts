@@ -196,6 +196,18 @@ export function oauthRoutes(app: FastifyInstance): void {
         throw Errors.validation({ scopes: ['field.noPlatformScopes'] },
           { values: plattform.join(', ') })
       }
+      /*
+       * Das Recht eines Gaesteterminals ebenso nicht (Migration 0063). Es
+       * gehoert einem gekoppelten Geraet, und dessen Routen verlangen
+       * ohnehin das Geraet selbst -- ein Client damit bekaeme nichts als
+       * 403. Ihn trotzdem anlegen zu lassen hiesse, einen Zugriffsbereich
+       * anzubieten, der nie wirkt, und das sieht aus wie ein Fehler.
+       */
+      const geraet = body.scopes.filter(s => s.startsWith('terminal:'))
+      if (geraet.length > 0) {
+        throw Errors.validation({ scopes: ['field.noDeviceScopes'] },
+          { values: geraet.join(', ') })
+      }
 
       // Das Geheimnis entsteht hier und wird genau einmal herausgegeben.
       const secret = randomBytes(32).toString('base64url')
@@ -246,7 +258,8 @@ export function oauthRoutes(app: FastifyInstance): void {
            LEFT JOIN oauth_access_token t ON t.client_id = c.id
           GROUP BY c.id
           ORDER BY c.id`)
-      return { clients: rows, availableScopes: PERMISSIONS.filter(p => !p.startsWith('platform:')) }
+      return { clients: rows, availableScopes: PERMISSIONS.filter(p =>
+        !p.startsWith('platform:') && !p.startsWith('terminal:')) }
     })
   })
 

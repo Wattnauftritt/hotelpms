@@ -11,6 +11,13 @@ export interface DbContext {
   propertyIds: readonly number[]
   userId: number | null
   supportSessionId?: number | null
+  /**
+   * Ein gekoppeltes Gaesteterminal (Migration 0063). Steht im Kontext, damit
+   * der Audit-Trigger es als Handelnden eintraegt: eine Unterschrift am
+   * Terminal soll im Protokoll nicht aussehen wie eine Aenderung ohne
+   * Urheber (Migration 0064).
+   */
+  terminalDeviceId?: number | null
 }
 
 export const SYSTEM_CONTEXT: DbContext = {
@@ -24,12 +31,14 @@ async function applyContext(client: PoolClient, ctx: DbContext): Promise<void> {
     `SELECT set_config('app.account_ids',  $1, true),
             set_config('app.property_ids', $2, true),
             set_config('app.user_id',      $3, true),
-            set_config('app.support_session_id', $4, true)`,
+            set_config('app.support_session_id', $4, true),
+            set_config('app.terminal_device_id', $5, true)`,
     [
       ctx.accountIds.join(','),
       ctx.propertyIds.join(','),
       ctx.userId === null ? '' : String(ctx.userId),
-      ctx.supportSessionId == null ? '' : String(ctx.supportSessionId)
+      ctx.supportSessionId == null ? '' : String(ctx.supportSessionId),
+      ctx.terminalDeviceId == null ? '' : String(ctx.terminalDeviceId)
     ]
   )
 }

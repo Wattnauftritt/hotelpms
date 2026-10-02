@@ -276,6 +276,14 @@ const M = {
     de: 'Meldeschein',
     en: 'Registration form',
     tr: 'Meldeschein' },
+  'res.terminal': {
+    de: 'Gaesteterminal',
+    en: 'Guest terminal',
+    tr: 'Misafir terminali' },
+  'res.terminalJob': {
+    de: 'Terminalauftrag',
+    en: 'Terminal job',
+    tr: 'Terminal görevi' },
   'res.oauthClient': {
     de: 'Maschinenzugang',
     en: 'Machine access',
@@ -551,6 +559,10 @@ const M = {
     de: 'Plattformrechte sind keine Zugriffsbereiche: {values}',
     en: 'Platform permissions are not scopes: {values}',
     tr: 'Platform yetkileri erişim alanı değildir: {values}' },
+  'field.noDeviceScopes': {
+    de: 'Das Recht eines Gaesteterminals ist kein Zugriffsbereich: {values}',
+    en: 'The permission of a guest terminal is not a scope: {values}',
+    tr: 'Misafir terminalinin yetkisi bir erişim alanı değildir: {values}' },
   // ------------------------------------------------- Zugriff und Anmeldung
 
   'access.accountOutOfScope': {
@@ -1062,6 +1074,45 @@ const M = {
     de: 'Der Meldeschein ist bereits unterschrieben.',
     en: 'The registration form is already signed.',
     tr: 'Meldeschein zaten imzalanmış.' },
+  'registration.signatureTooLarge': {
+    de: 'Die Unterschrift ist zu gross. Bitte neu zeichnen.',
+    en: 'The signature is too large. Please draw it again.',
+    tr: 'İmza çok büyük. Lütfen yeniden çizin.' },
+
+  // ------------------------------------------- Gaesteterminal (Dokument 31)
+
+  'terminal.pairingInvalid': {
+    de: 'Der Kopplungscode ist ungueltig oder abgelaufen.',
+    en: 'The pairing code is invalid or has expired.',
+    tr: 'Eşleştirme kodu geçersiz veya süresi dolmuş.' },
+  'terminal.deviceOnly': {
+    de: 'Diese Anfrage ist einem gekoppelten Gaesteterminal vorbehalten.',
+    en: 'This request is reserved for a paired guest terminal.',
+    tr: 'Bu istek eşleştirilmiş bir misafir terminaline ayrılmıştır.' },
+  'terminal.deviceLimit': {
+    de: 'Hoechstens {max} Terminals je Haus.',
+    en: 'At most {max} terminals per property.',
+    tr: 'Tesis başına en fazla {max} terminal.' },
+  'terminal.notPaired': {
+    de: 'Das Terminal ist noch nicht gekoppelt.',
+    en: 'The terminal has not been paired yet.',
+    tr: 'Terminal henüz eşleştirilmedi.' },
+  'terminal.deviceBusy': {
+    de: 'An diesem Terminal ist gerade ein anderer Auftrag offen.',
+    en: 'Another job is currently open on this terminal.',
+    tr: 'Bu terminalde şu anda açık başka bir görev var.' },
+  'terminal.kindUnavailable': {
+    de: 'Diese Art von Auftrag ist noch nicht verfuegbar.',
+    en: 'This kind of job is not available yet.',
+    tr: 'Bu görev türü henüz kullanılamıyor.' },
+  'terminal.noRegistration': {
+    de: 'Fuer diese Reservierung liegt noch kein Meldeschein vor.',
+    en: 'There is no registration form for this reservation yet.',
+    tr: 'Bu rezervasyon için henüz bir Meldeschein yok.' },
+  'terminal.jobNotOpen': {
+    de: 'Der Auftrag ist nicht mehr offen.',
+    en: 'The job is no longer open.',
+    tr: 'Görev artık açık değil.' },
 
   // -------------------------------------------------------- Kasse und Kanal
 
