@@ -66,6 +66,25 @@ describe('Gaeste', () => {
     expect(treffer.map(t => t.guestRef)).toContain(g.guestRef)
   })
 
+  it('findet einen Namensanfang und sucht die Mail nur mit @', async () => {
+    const r = await anlegen({ lastName: 'Sonnenschein', firstName: 'Anke',
+                              email: 'anke@example.de', country: 'DE' })
+    const ref = (json(r) as unknown as { guestRef: string }).guestRef
+    const suche = async (q: string) => {
+      const a = await app.inject({ method: 'GET', url: `/v1/guests?q=${encodeURIComponent(q)}`,
+                                   headers: auth(admin.sessionId) })
+      expect(a.statusCode).toBe(200)
+      return (json(a) as unknown as { guests: Array<{ guestRef: string }> }).guests
+        .map(g => g.guestRef)
+    }
+    // Zu kurz fuer die Trigrammaehnlichkeit, aber ein Wortanfang.
+    expect(await suche('Sonn')).toContain(ref)
+    // Ohne @ ist es ein Name, keine Adresse: der Mailzweig laeuft nicht.
+    expect(await suche('anke')).not.toContain(ref)
+    expect(await suche('anke@')).toContain(ref)
+    expect(await suche('Xqzvyk')).toEqual([])
+  })
+
   it('warnt vor einer Dublette, blockiert aber nicht', async () => {
     await anlegen({ lastName: 'Petersen', firstName: 'Jan', email: 'jan@example.de' })
     const zweiter = await anlegen({ lastName: 'Petersen', firstName: 'Jan',

@@ -126,30 +126,63 @@ export function guestRoutes(app: FastifyInstance): void {
          * einem haeufigen Namen Tausende Zeilen fuer zwanzig Ausgaben, und
          * ausgerechnet bei "Mueller" am langsamsten (Migration 0015).
          *
-         * Die E-Mail wird nicht unscharf gesucht, sondern von vorn getippt,
-         * und laeuft deshalb ueber einen eigenen, eigenstaendig begrenzten
-         * Zweig statt ueber ein ODER, das beide Indizes ausschliessen wuerde.
+         * Die Schwelle steht **aussen**, nicht als `last_name % $1` im Scan.
+         * `guest` steht unter erzwungener Zeilenrichtlinie, und PostgreSQL
+         * laesst eine Bedingung des Aufrufers nur vor der Richtlinie laufen,
+         * wenn ihr Operator LEAKPROOF ist; `%` ist es nicht. Innen stand sie
+         * deshalb als Filter hinter dem Index, und bei einem Begriff ohne
+         * Treffer griff das LIMIT nie: der Scan lief ueber jeden Gast des
+         * Accounts. Aussen liest er hoechstens `limit` Zeilen. Das Ergebnis
+         * ist dasselbe: die Zeilen kommen nach Abstand sortiert, also faellt
+         * die erste ueber der Schwelle mit allen folgenden heraus.
+         * `<= 0.7` ist `similarity >= 0.3`, der Standard von `%`.
+         *
+         * Der zweite Zweig findet Anfaenge ("Sonn" fuer "Sonnenschein"),
+         * die `<->` als zu kurz verwirft: Wortaehnlichkeit, Schwelle 0,4.
+         * Seine Treffer tragen denselben Abstand wie der erste Zweig und
+         * stehen deshalb hinten; die Reihenfolge der Namenstreffer bleibt.
+         *
+         * Die E-Mail wird von vorn getippt, nicht unscharf gesucht, und
+         * laeuft ueber einen eigenen, eigenstaendig begrenzten Zweig statt
+         * ueber ein ODER, das beide Indizes ausschliessen wuerde. Sie laeuft
+         * nur, wenn ein `@` im Begriff steht: `lower()` und `LIKE` sind
+         * nicht LEAKPROOF, der Index `guest_email_prefix` greift unter der
+         * Richtlinie nicht, und ohne Treffer las der Zweig jeden Gast --
+         * auch bei jeder Namenssuche, in der nie eine Adresse gemeint war.
+         * Mit `@` tut er das weiterhin (Dokument 16, Abschnitt "Suche").
          */
         const { rows } = await client.query<GuestRow & { dist: number }>(
           `WITH nach_name AS (
-             SELECT ${FIELDS}, (last_name <-> $1) AS dist
-               FROM guest
-              WHERE status <> 'anonymized' AND last_name % $1
-              ORDER BY last_name <-> $1
-              LIMIT $2
+             SELECT * FROM (
+               SELECT ${FIELDS}, (last_name <-> $1) AS dist
+                 FROM guest
+                WHERE status <> 'anonymized'
+                ORDER BY last_name <-> $1
+                LIMIT $2
+             ) k WHERE dist <= 0.7
+           ), nach_anfang AS (
+             SELECT ${FIELDS}, (last_name <-> $1) AS dist FROM (
+               SELECT ${FIELDS}, ($1 <<-> last_name) AS wort
+                 FROM guest
+                WHERE status <> 'anonymized'
+                ORDER BY $1 <<-> last_name
+                LIMIT $2
+             ) k WHERE wort <= 0.6
            ), nach_email AS (
-             SELECT ${FIELDS}, 0.0 AS dist
+             SELECT ${FIELDS}, 0.0::real AS dist
                FROM guest
-              WHERE status <> 'anonymized' AND email IS NOT NULL
+              WHERE $3 AND status <> 'anonymized' AND email IS NOT NULL
                 AND lower(email) LIKE lower($1) || '%'
               LIMIT $2
            ), zusammen AS (
              SELECT DISTINCT ON (id) *
-               FROM (SELECT * FROM nach_name UNION ALL SELECT * FROM nach_email) k
+               FROM (SELECT * FROM nach_name
+                     UNION ALL SELECT * FROM nach_anfang
+                     UNION ALL SELECT * FROM nach_email) k
               ORDER BY id, dist
            )
            SELECT * FROM zusammen ORDER BY dist, last_name LIMIT $2`,
-          [term, limit])
+          [term, limit, term.includes('@')])
         return { guests: rows.map(present) }
       })
     }
@@ -560,11 +593,34 @@ export function guestRoutes(app: FastifyInstance): void {
       const term = (q.q ?? '').trim()
       if (term.length < 2) throw Errors.validation({ q: ['field.minTwoChars'] })
       return tx(req.pool, req, async client => {
+        /*
+         * Wie die Gastsuche: die Schwelle steht aussen, weil `%` nicht
+         * LEAKPROOF ist und unter der Zeilenrichtlinie von `company` sonst
+         * hinter dem Index filtert -- ein Begriff ohne Treffer las jede
+         * Firma des Accounts. Begruendung bei `GET /v1/guests`.
+         */
         const { rows } = await client.query(
-          `SELECT public_ref AS "companyRef", name, vat_id AS "vatId", city,
-                  payment_terms_days AS "paymentTermsDays"
-             FROM company WHERE active AND name % $1
-            ORDER BY name <-> $1 LIMIT 50`, [term])
+          `WITH nach_name AS (
+             SELECT * FROM (
+               SELECT id, (name <-> $1) AS abstand
+                 FROM company WHERE active
+                ORDER BY name <-> $1 LIMIT 50
+             ) k WHERE abstand <= 0.7
+           ), nach_anfang AS (
+             SELECT id, abstand FROM (
+               SELECT id, (name <-> $1) AS abstand, ($1 <<-> name) AS wort
+                 FROM company WHERE active
+                ORDER BY $1 <<-> name LIMIT 50
+             ) k WHERE wort <= 0.6
+           ), treffer AS (
+             SELECT id, min(abstand) AS abstand
+               FROM (SELECT * FROM nach_name UNION ALL SELECT * FROM nach_anfang) k
+              GROUP BY id
+           )
+           SELECT c.public_ref AS "companyRef", c.name, c.vat_id AS "vatId", c.city,
+                  c.payment_terms_days AS "paymentTermsDays"
+             FROM treffer t JOIN company c ON c.id = t.id
+            ORDER BY t.abstand, c.name LIMIT 50`, [term])
         return { companies: rows }
       })
     }

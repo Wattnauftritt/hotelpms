@@ -77,6 +77,20 @@ describe('Firmen', () => {
     expect(body.vatId).toBe('DE123456789')
   })
 
+  it('findet eine Firma ueber den Namensanfang, aber nicht ueber Fremdes', async () => {
+    const ref = await firmaAnlegen()
+    const suche = async (q: string) => {
+      const r = await app.inject({
+        method: 'GET', url: `/v1/companies?q=${encodeURIComponent(q)}`, headers: auth })
+      expect(r.statusCode, r.body).toBe(200)
+      return (JSON.parse(r.body) as { companies: Array<{ companyRef: string }> }).companies
+        .map(c => c.companyRef)
+    }
+    expect(await suche('Nordwind')).toContain(ref)
+    expect(await suche('Nordw')).toContain(ref)
+    expect(await suche('Xqzvyk')).toEqual([])
+  })
+
   it('legt eine Firma still, statt sie zu loeschen', async () => {
     const ref = await firmaAnlegen()
     const r = await app.inject({
