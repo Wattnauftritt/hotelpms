@@ -1,5 +1,5 @@
 import type { PoolClient } from '@hotelpms/db'
-import { istAuslaendisch } from '@hotelpms/contracts'
+import { requiresRegistrationSignature } from '@hotelpms/domain'
 import { Errors } from './errors.js'
 
 /**
@@ -17,8 +17,8 @@ import { Errors } from './errors.js'
  *
  * 1. **Seit dem 1.1.2025 unterschreiben nur noch auslaendische Personen**
  *    (§ 29 Abs. 2 BMG), und zwar nach Staatsangehoerigkeit, nicht nach
- *    Wohnsitz (`istAuslaendisch`). Fuer alle anderen entfaellt die
- *    Unterschrift ersatzlos; eine mitgeschickte wird verworfen, nicht
+ *    Wohnsitz (`requiresRegistrationSignature`, packages/domain). Fuer
+ *    alle anderen entfaellt die Unterschrift ersatzlos; eine mitgeschickte wird verworfen, nicht
  *    gespeichert -- eine Unterschrift ohne Rechtsgrund waere eine
  *    Datenerhebung ohne Rechtsgrund.
  * 2. **Keine Ausweiskopie.** Es gibt kein Feld dafuer und kommt keines dazu.
@@ -110,8 +110,8 @@ export async function erfasseMeldeschein(
     return m
   })
 
-  const hauptAuslaendisch = istAuslaendisch(haupt)
-  const noetig = hauptAuslaendisch || begleiter.some(m => istAuslaendisch(m))
+  const hauptAuslaendisch = requiresRegistrationSignature(haupt)
+  const noetig = hauptAuslaendisch || begleiter.some(m => requiresRegistrationSignature(m))
 
   let signatur: string | null = null
   if (e.unterschrift.art === 'jetzt') {
@@ -151,7 +151,7 @@ export async function erfasseMeldeschein(
        VALUES ($1,$2,$3,$4::date,$5::date,1,$6,$7,
                ($5::date + ($8 || ' months')::interval)::date, $9)`,
       [e.propertyId, e.reservationId, m.id, e.arrival, e.departure,
-       istAuslaendisch(m), hauptId, AUFBEWAHRUNG_MONATE, e.quelle])
+       requiresRegistrationSignature(m), hauptId, AUFBEWAHRUNG_MONATE, e.quelle])
 
     /*
      * Wer gemeldet ist, wohnt auch im Zimmer.

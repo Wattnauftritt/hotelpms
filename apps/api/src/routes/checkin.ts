@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { createCheckinToken, renderCheckinInvitationEmail, emailLanguage,
-         isSendableAddress, isIsoDate } from '@hotelpms/domain'
-import { checkinLink, istAuslaendisch, istLand, istUnterschriftSvg,
+         isSendableAddress, isIsoDate, requiresRegistrationSignature } from '@hotelpms/domain'
+import { checkinLink, istLand, istUnterschriftSvg,
          MAX_MITREISENDE, type CheckinFormView, type CheckinSubmitted,
          type CheckinSettings, type CheckinLink } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
@@ -187,7 +187,7 @@ function pruefe(body: unknown, heute: string): Einreichung {
    */
   let ausweisTyp: 'passport' | 'id_card' | 'other' | undefined
   let ausweisNr: string | undefined
-  if (g !== null && istAuslaendisch({ nationality: g.nationality })) {
+  if (g !== null && requiresRegistrationSignature({ nationality: g.nationality })) {
     const nr = text(roh.idDocumentNumber, 40)
     if (nr === null) fehlt('guest.idDocumentNumber', 'checkin.idDocumentRequired')
     else ausweisNr = nr

@@ -3,7 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
-import { istAuslaendisch } from '@hotelpms/contracts'
+import { requiresRegistrationSignature } from '@hotelpms/domain'
 import { erfasseMeldeschein, unterschreibeMeldeschein, AUFBEWAHRUNG_MONATE }
   from '../platform/meldeschein.js'
 import type { PoolClient } from '@hotelpms/db'
@@ -86,8 +86,8 @@ export function registrationRoutes(app: FastifyInstance): void {
             WHERE r.public_ref = $1`, [reservationRef])
         if (rowCount === 0) throw Errors.notFound('res.reservation')
         const r = rows[0]!
-        // Nach Staatsangehoerigkeit, hilfsweise Wohnsitz (istAuslaendisch).
-        const auslaendisch = istAuslaendisch(r)
+        // Nach Staatsangehoerigkeit, hilfsweise Wohnsitz (requiresRegistrationSignature).
+        const auslaendisch = requiresRegistrationSignature(r)
         // Liegt schon ein Schein vor, entscheidet, was dort steht -- ein
         // auslaendischer Mitreisender kann die Unterschrift verlangt haben,
         // obwohl der Hauptgast deutsch ist.
