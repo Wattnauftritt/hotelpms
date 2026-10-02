@@ -342,12 +342,22 @@ CREATE OR REPLACE FUNCTION rate_steer_preview(
   occupancy_bp integer, house_occupancy_bp integer,
   current_cent bigint[], base_cent bigint[], new_cent bigint[],
   rule_ids bigint[], changed boolean, token text
-) LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$
+) LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = public AS $$
+BEGIN
+  /*
+   * Als dynamische Anweisung mit den tatsaechlichen Werten, nicht als
+   * SQL-Funktion. Eine SQL-Funktion mit SET-Klausel wird nicht in die
+   * aufrufende Anfrage eingebettet und mit einem allgemeinen Plan
+   * ausgefuehrt, der die Werte nicht kennt: am Saatlauf (ein Jahr, fuenfzehn
+   * Plaene) brauchte die Vorschau so 66 Sekunden, dieselbe Anfrage mit
+   * Werten 0,19 (Dokument 32). EXECUTE plant jedes Mal mit den Werten.
+   */
+  RETURN QUERY EXECUTE $q$
   WITH plaene AS (
     SELECT rp.id, rp.category_id, s.min_cent, s.max_cent, s.rounding, s.max_step_bp
       FROM rate_plan rp
       JOIN rate_plan_steering s ON s.rate_plan_id = rp.id
-     WHERE rp.property_id = p_property AND rp.active AND s.source = 'rules'
+     WHERE rp.property_id = $1 AND rp.active AND s.source = 'rules'
        -- Eine abgeleitete Rate folgt ihrer Basis, sie wird nicht selbst
        -- gesteuert: sonst wirkten die Regeln zweimal.
        AND rp.base_rate_plan_id IS NULL
@@ -359,19 +369,19 @@ CREATE OR REPLACE FUNCTION rate_steer_preview(
            -- stehende Preis der neue Grundpreis.
            CASE WHEN st.applied_cent = rd.price_cent THEN st.base_cent
                 ELSE rd.price_cent END AS base_cent,
-           (rd.date - p_business_date) AS lead_days,
+           (rd.date - $4) AS lead_days,
            (EXTRACT(isodow FROM rd.date)::integer - 1)::smallint AS weekday
       FROM plaene p
       JOIN rate_day rd ON rd.rate_plan_id = p.id
-                      AND rd.date BETWEEN greatest(p_from, p_business_date) AND p_to
+                      AND rd.date BETWEEN greatest($2, $4) AND $3
       LEFT JOIN rate_steer_state st ON st.rate_plan_id = rd.rate_plan_id AND st.date = rd.date
   ), belegung AS (
     SELECT i.category_id, i.date,
            CASE WHEN i.capacity > 0
                 THEN ((i.sold + i.blocked) * 10000 / i.capacity)::integer END AS bp
       FROM inventory_day i
-     WHERE i.property_id = p_property
-       AND i.date BETWEEN greatest(p_from, p_business_date) AND p_to
+     WHERE i.property_id = $1
+       AND i.date BETWEEN greatest($2, $4) AND $3
   ), mit_belegung AS (
     SELECT t.*, bk.bp AS occ_cat, bh.bp AS occ_house
       FROM tage t
@@ -385,7 +395,7 @@ CREATE OR REPLACE FUNCTION rate_steer_preview(
            m.id AS plan_id, m.date, r.id AS rule_id, r.effect_kind, r.effect_value
       FROM mit_belegung m
       JOIN rate_steer_rule r
-        ON r.property_id = p_property AND r.active AND r.archived_at IS NULL
+        ON r.property_id = $1 AND r.active AND r.archived_at IS NULL
        AND (r.rate_plan_id IS NULL OR r.rate_plan_id = m.id)
        AND (r.category_id IS NULL OR r.category_id = m.category_id)
      WHERE (r.occupancy_min_bp IS NULL OR
@@ -419,20 +429,28 @@ CREATE OR REPLACE FUNCTION rate_steer_preview(
            coalesce(s.rule_ids, '{}'::bigint[]) AS rule_ids
       FROM mit_belegung m
       LEFT JOIN summe s ON s.plan_id = m.id AND s.date = m.date
+  ), fingerabdruck AS (
+    -- Ein Aggregat ueber alles, einmal. Als Fensterfunktion ueber den ganzen
+    -- Rahmen rechnete PostgreSQL die Zeichenkette fuer **jede** Zeile neu:
+    -- ein Jahr mal fuenfzehn Plaene brauchte damit acht Sekunden statt einer
+    -- halben (gemessen am Saatlauf, Dokument 32).
+    SELECT md5(coalesce(string_agg(
+             e.rate_plan_id::text || ':' || e.date::text || ':'
+             || coalesce(e.current_cent::text, '-') || '>' || e.new_cent::text, ';'
+             ORDER BY e.rate_plan_id, e.date)
+           FILTER (WHERE e.new_cent IS DISTINCT FROM e.current_cent), '')) AS token
+      FROM ergebnis e
   )
   SELECT e.rate_plan_id, e.category_id, e.date, e.lead_days,
          e.occupancy_bp, e.house_occupancy_bp,
          e.current_cent, e.base_cent, e.new_cent, e.rule_ids,
          e.new_cent IS DISTINCT FROM e.current_cent AS changed,
-         md5(coalesce(string_agg(
-               e.rate_plan_id::text || ':' || e.date::text || ':'
-               || coalesce(e.current_cent::text, '-') || '>' || e.new_cent::text, ';')
-             FILTER (WHERE e.new_cent IS DISTINCT FROM e.current_cent)
-             OVER (ORDER BY e.rate_plan_id, e.date
-                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING), '')) AS token
-    FROM ergebnis e
+         f.token
+    FROM ergebnis e CROSS JOIN fingerabdruck f
    ORDER BY e.rate_plan_id, e.date
-$$;
+$q$
+  USING p_property, p_from, p_to, p_business_date;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Uebernehmen. Ein Aufruf, eine Momentaufnahme: Vorschau, Pruefung des
