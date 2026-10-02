@@ -47,7 +47,8 @@ const fakeStripe: StripeAdapter = {
     lastCheckoutParams = { amountCent: params.amountCent, reference: params.reference }
     const providerReference = `cs_test_${++sessionCounter}`
     return { providerReference, url: `https://checkout.stripe.test/${providerReference}` }
-  }
+  },
+  async expireCheckoutSession() { /* hier nicht gebraucht */ }
 }
 
 beforeAll(async () => {

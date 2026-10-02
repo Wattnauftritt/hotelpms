@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { EMAIL_LANGUAGES, emailLanguage, renderInvoiceEmail, renderReservationEmail,
-         type EmailLanguage } from '../email.js'
+         renderPaymentLinkEmail, type EmailLanguage } from '../email.js'
 
 /**
  * Die Gastpost in allen Sprachen, in denen wir sie anbieten.
@@ -27,6 +27,13 @@ const buchung = {
   checkinTime: '15:00', checkoutTime: '11:00'
 }
 
+const zahlung = {
+  propertyName: 'Hotel Nordsee', guestName: 'Anna Beispiel',
+  reservationRef: 'ABC123', arrival: '2026-10-01', departure: '2026-10-04',
+  amountCent: 10_470, currency: 'EUR', dueDate: '2026-09-20', deposit: true,
+  url: 'https://checkout.stripe.test/cs_test_1'
+}
+
 /** Alles, was ein Gast zu sehen bekommt, in einer Zeichenkette. */
 function alles(lang: EmailLanguage): string[] {
   return [
@@ -35,7 +42,11 @@ function alles(lang: EmailLanguage): string[] {
     renderInvoiceEmail({ ...rechnung, openCent: 0, dueDate: null }, lang),
     renderInvoiceEmail({ ...rechnung, guestName: null }, lang),
     renderReservationEmail(buchung, lang),
-    renderReservationEmail({ ...buchung, guestName: null }, lang)
+    renderReservationEmail({ ...buchung, guestName: null }, lang),
+    renderPaymentLinkEmail(zahlung, lang),
+    renderPaymentLinkEmail({ ...zahlung, dueDate: null }, lang),
+    renderPaymentLinkEmail({ ...zahlung, deposit: false, dueDate: null }, lang),
+    renderPaymentLinkEmail({ ...zahlung, guestName: null }, lang)
   ].flatMap(m => [m.subject, m.text, m.html])
 }
 
@@ -103,6 +114,47 @@ describe('Gastpost in jeder angebotenen Sprache', () => {
       const ohneFrist = renderInvoiceEmail({ ...rechnung, dueDate: null }, lang).text
       expect(ohneFrist, lang).not.toContain('2026-10-15')
     }
+  })
+})
+
+describe('Zahlungslink an den Gast', () => {
+  it('traegt Link, Betrag, Aufenthalt und Frist in jeder Sprache', () => {
+    for (const lang of EMAIL_LANGUAGES) {
+      const m = renderPaymentLinkEmail(zahlung, lang)
+      expect(m.text, lang).toContain(zahlung.url)
+      expect(m.html, lang).toContain(zahlung.url)
+      expect(m.text, lang).toContain('104,70 EUR')
+      expect(m.subject, lang).toContain('ABC123')
+      // Englisch schreibt ISO, damit "03/04" niemand falsch herum liest;
+      // die anderen den Tag zuerst.
+      expect(m.text, lang).toContain(lang === 'en' ? '2026-09-20'
+        : lang === 'nl' ? '20-09-2026' : '20.09.2026')
+    }
+  })
+
+  /**
+   * Der Link steht allein in seinem Absatz. In einen Satz eingebettet bricht
+   * ihn mancher Leser am Punkt danach um, und der Gast landet auf einer
+   * Fehlerseite statt beim Anbieter.
+   */
+  it('setzt den Link als eigenen Absatz', () => {
+    for (const lang of EMAIL_LANGUAGES) {
+      const absaetze = renderPaymentLinkEmail(zahlung, lang).text.split('\n\n')
+      expect(absaetze, lang).toContain(zahlung.url)
+    }
+  })
+
+  it('nennt ohne Anforderung weder Anzahlung noch Frist', () => {
+    const frei = renderPaymentLinkEmail({ ...zahlung, deposit: false, dueDate: null }, 'de')
+    expect(frei.text).not.toContain('Anzahlung')
+    expect(frei.text).not.toContain('20.09.2026')
+    expect(renderPaymentLinkEmail(zahlung, 'de').text).toContain('Anzahlung')
+  })
+
+  it('entschaerft einen Gastnamen im HTML-Teil', () => {
+    const m = renderPaymentLinkEmail({ ...zahlung, guestName: '<b>Eva</b>' }, 'de')
+    expect(m.html).not.toContain('<b>Eva</b>')
+    expect(m.html).toContain('&lt;b&gt;Eva&lt;/b&gt;')
   })
 })
 

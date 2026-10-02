@@ -1223,19 +1223,44 @@ export type DepositInvoice = Static<typeof DepositInvoice>
  * **Die Adresse steht hier nicht.** Sie wird bei der Anlage einmal
  * ausgegeben und nicht gespeichert -- ein Link, der in der Datenbank liegt,
  * ist ein Link, den jeder mit Lesezugriff einloesen kann. Wer ihn noch
- * einmal braucht, erzeugt einen neuen.
+ * einmal braucht, erzeugt einen neuen. Aus demselben Grund geht ein Link
+ * nur **beim Erzeugen** per Gastpost hinaus.
  */
 export const PaymentLink = Type.Object({
   id: Type.Integer(),
   createdAt: Type.String(),
   amountCent: Cent,
   status: Type.Union([
-    Type.Literal('pending'), Type.Literal('succeeded'), Type.Literal('failed')]),
+    Type.Literal('pending'), Type.Literal('succeeded'), Type.Literal('failed'),
+    Type.Literal('canceled')]),
   settledAt: Type.Union([Type.String(), Type.Null()]),
   /** Erst mit dem Zahlungsvermerk ist aus dem Link Geld geworden. */
-  hasSettlement: Type.Boolean()
+  hasSettlement: Type.Boolean(),
+  /** Bis wann der Anbieter den Link annimmt. Null bei Links von vor 0060. */
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Offen, aber beim Anbieter abgelaufen. Steht neben `status`, weil die
+   * Ablaufmeldung des Anbieters ausbleiben kann; der Zeitpunkt nicht.
+   */
+  expired: Type.Boolean(),
+  /** Die Anforderung, auf die der Link zahlt, falls es eine gibt. */
+  depositRequestRef: Type.Union([Type.String(), Type.Null()]),
+  /** Zustand der Gastpost mit diesem Link; null, wenn er nicht verschickt wurde. */
+  mailStatus: Type.Union([
+    Type.Literal('pending'), Type.Literal('sent'), Type.Literal('failed'),
+    Type.Literal('canceled'), Type.Null()])
 })
 export type PaymentLink = Static<typeof PaymentLink>
+
+/** Die Antwort auf das Erzeugen: das einzige Mal, dass die Adresse zu sehen ist. */
+export const PaymentLinkCreated = Type.Object({
+  url: Type.String(),
+  linkId: Type.Integer(),
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  /** Gesetzt, wenn der Link in derselben Anfrage per Gastpost eingereiht wurde. */
+  messageRef: Type.Union([Type.String(), Type.Null()])
+})
+export type PaymentLinkCreated = Static<typeof PaymentLinkCreated>
 
 /** Ein Zahlungsvermerk in der Sicht der Vorauszahlung. */
 export const PrepaymentSettlement = Type.Object({
@@ -1246,17 +1271,82 @@ export const PrepaymentSettlement = Type.Object({
   externalReference: Type.Union([Type.String(), Type.Null()]),
   /** Gesetzt heisst: zu diesem Vermerk gibt es schon eine Anzahlungsrechnung. */
   depositInvoiceRef: Type.Union([Type.String(), Type.Null()]),
-  depositInvoiceNumber: Type.Union([Type.String(), Type.Null()])
+  depositInvoiceNumber: Type.Union([Type.String(), Type.Null()]),
+  /** Gesetzt heisst: dieser Eingang ist einer Anzahlungsanforderung zugeordnet. */
+  depositRequestRef: Type.Union([Type.String(), Type.Null()])
 })
 export type PrepaymentSettlement = Static<typeof PrepaymentSettlement>
 
+/** Wo eine Anzahlungsanforderung steht. Abgeleitet, nie gespeichert. */
+export const DepositRequestState = Type.Union([
+  Type.Literal('requested'), Type.Literal('link_sent'), Type.Literal('partial'),
+  Type.Literal('received'), Type.Literal('overdue'), Type.Literal('canceled')])
+export type DepositRequestState = Static<typeof DepositRequestState>
+
+/**
+ * Eine Anzahlungsanforderung: welcher Betrag bis wann verlangt ist und was
+ * davon eingegangen ist.
+ */
+export const DepositRequest = Type.Object({
+  requestRef: Type.String(),
+  amountCent: Cent,
+  /** Nur bei einer Anforderung in Prozent, mit dem Preis, aus dem gerechnet wurde. */
+  percentBp: Type.Union([Type.Integer(), Type.Null()]),
+  basisCent: Type.Union([Cent, Type.Null()]),
+  dueDate: IsoDate,
+  createdAt: Type.String(),
+  canceledAt: Type.Union([Type.String(), Type.Null()]),
+  receivedCent: Cent,
+  openCent: Cent,
+  /** Die zugeordneten Zahlungsvermerke. */
+  settlementIds: Type.Array(Type.Integer()),
+  state: DepositRequestState,
+  /**
+   * Ein zugeordneter Eingang hat noch keine Anzahlungsrechnung. Die Steuer
+   * ist mit dem Zufluss entstanden (Paragraph 13 Abs. 1 Nr. 1a UStG); ohne
+   * die Rechnung steht sie in keinem Buchungsstapel.
+   */
+  depositInvoiceMissing: Type.Boolean()
+})
+export type DepositRequest = Static<typeof DepositRequest>
+
+/**
+ * Kann von hier aus Gastpost hinausgehen?
+ *
+ * Steht in der Antwort, damit die Maske **vorher** erklaert, warum nicht,
+ * statt einen Knopf zu zeigen, der mit einem Fehler antwortet.
+ */
+export const PrepaymentMail = Type.Object({
+  ready: Type.Boolean(),
+  reason: Type.Union([
+    Type.Literal('training'), Type.Literal('disabled'), Type.Literal('sender'),
+    Type.Null()]),
+  /** Hat der Gast der Reservierung eine brauchbare Adresse? Die Adresse selbst nicht. */
+  guestAddress: Type.Boolean()
+})
+export type PrepaymentMail = Static<typeof PrepaymentMail>
+
 export const PrepaymentView = Type.Object({
   folioRef: Type.String(),
+  /** Das Haus des Folios: die Maske fragt damit die Rechte ab. */
+  propertyId: Type.Integer(),
+  /** Der offene Geschaeftstag. Gegen ihn ist eine Anforderung ueberfaellig. */
+  businessDate: IsoDate,
+  /** Ein Uebungshaus erzeugt keinen Zahlungslink und verschickt keine Post. */
+  isTraining: Type.Boolean(),
   /**
    * Ohne Reservierung fehlt der Leistungszeitraum (Paragraph 14 Abs. 4
    * Nr. 6 UStG), und ein geschlossenes Folio nimmt nichts mehr an.
    */
   canIssueDeposit: Type.Boolean(),
+  /** Darf hier eine Anzahlung angefordert werden? Dieselben Gruende, dazu der Zustand. */
+  canRequestDeposit: Type.Boolean(),
+  /** Der Preis des Aufenthalts, Grundlage einer Anforderung in Prozent. */
+  stayCent: Type.Union([Cent, Type.Null()]),
+  arrival: Type.Union([IsoDate, Type.Null()]),
+  departure: Type.Union([IsoDate, Type.Null()]),
+  mail: PrepaymentMail,
+  requests: Type.Array(DepositRequest),
   settlements: Type.Array(PrepaymentSettlement),
   deposits: Type.Array(DepositInvoice),
   paymentLinks: Type.Array(PaymentLink)
