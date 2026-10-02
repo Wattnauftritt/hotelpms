@@ -12,6 +12,7 @@ import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
   from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
+import { anzahlungssicht } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
@@ -1303,7 +1304,8 @@ export function billingRoutes(app: FastifyInstance): void {
           `SELECT s.id, s.business_date::text AS "businessDate",
                   s.amount_cent AS "amountCent", s.external_reference AS "externalReference",
                   pm.name AS method,
-                  di.public_ref AS "depositInvoiceRef", di.number AS "depositInvoiceNumber"
+                  di.public_ref AS "depositInvoiceRef", di.number AS "depositInvoiceNumber",
+                  dr.public_ref AS "depositRequestRef"
              FROM settlement s
              JOIN payment_method pm ON pm.id = s.payment_method_id
              LEFT JOIN (SELECT settlement_id, min(deposit_invoice_id) AS deposit_invoice_id
@@ -1311,6 +1313,8 @@ export function billingRoutes(app: FastifyInstance): void {
                          WHERE folio_id = $1 AND settlement_id IS NOT NULL
                          GROUP BY settlement_id) d ON d.settlement_id = s.id
              LEFT JOIN invoice di ON di.id = d.deposit_invoice_id
+             LEFT JOIN deposit_request_settlement drs ON drs.settlement_id = s.id
+             LEFT JOIN deposit_request dr ON dr.id = drs.deposit_request_id
             WHERE s.folio_id = $1
             ORDER BY s.id`,
           [folio.id])
@@ -1347,30 +1351,71 @@ export function billingRoutes(app: FastifyInstance): void {
             ORDER BY di.number`,
           [folio.id])
 
+        // Anforderungen, Geschaeftstag und Postbereitschaft: eine feste
+        // Zahl weiterer Abfragen, keine je Anforderung.
+        const anzahlung = await anzahlungssicht(client, folio)
+
         /*
-         * payment_intent traegt **keine** Zeilenrichtlinie (0021): sie ist
-         * vor Herstellung des Mandantenkontexts nachschlagbar, weil die
-         * Benachrichtigung des Zahlungsdienstleisters ohne Sitzung kommt.
-         * Hier muss die Property deshalb von Hand mitgefiltert werden --
-         * folio_id allein stammt zwar aus einem Fund unter Zeilenrichtlinie,
-         * aber darauf verlaesst sich diese Abfrage nicht.
+         * Die Links des Folios: die dauerhaften von uns (0068) und, darunter
+         * gemischt, Checkouts von vor 0068, die keinen eigenen Link haben.
+         * Die Checkouts eines dauerhaften Links erscheinen nicht einzeln --
+         * fuer die Rezeption ist der Link der Vorgang, der Checkout ein
+         * Versuch des Gastes, ihn einzuloesen. Was sie davon wissen will,
+         * steht am Link: geoeffnet und bezahlt.
+         *
+         * payment_intent traegt **keine** Zeilenrichtlinie (0021): die
+         * Property wird dort von Hand mitgefiltert. Die Versuche je Link
+         * kommen als gruppierte Menge im Verbund, nicht je Link nachgefragt.
          */
         const links = await client.query(
-          `SELECT pi.id, pi.created_at AS "createdAt", pi.amount_cent AS "amountCent",
-                  pi.status, pi.settled_at AS "settledAt",
-                  pi.settlement_id IS NOT NULL AS "hasSettlement"
-             FROM payment_intent pi
-            WHERE pi.folio_id = $1 AND pi.property_id = $2
-            ORDER BY pi.id DESC
-            LIMIT 20`,
-          [folio.id, folio.property_id])
+          `SELECT * FROM (
+             SELECT l.id, false AS legacy, l.created_at AS "createdAt",
+                    l.amount_cent AS "amountCent",
+                    CASE WHEN v.bezahlt_am IS NOT NULL THEN 'succeeded'
+                         WHEN l.revoked_at IS NOT NULL THEN 'canceled'
+                         ELSE 'pending' END AS status,
+                    v.bezahlt_am AS "settledAt", v.bezahlt_am IS NOT NULL AS "hasSettlement",
+                    NULL::timestamptz AS "expiresAt", l.valid_until::text AS "validUntil",
+                    -- Gegen den Geschaeftstag: der Link gilt bis zu einem Tag.
+                    (l.revoked_at IS NULL AND v.bezahlt_am IS NULL
+                     AND l.valid_until < $3::date) AS expired,
+                    dr.public_ref AS "depositRequestRef", e.status AS "mailStatus",
+                    v.geoeffnet AS "openedAt"
+               FROM payment_link l
+               LEFT JOIN (SELECT payment_link_id, min(created_at) AS geoeffnet,
+                                 max(settled_at) FILTER (WHERE status = 'succeeded')
+                                   AS bezahlt_am
+                            FROM payment_intent
+                           WHERE folio_id = $1 AND property_id = $2
+                             AND payment_link_id IS NOT NULL
+                           GROUP BY payment_link_id) v ON v.payment_link_id = l.id
+               LEFT JOIN deposit_request dr ON dr.id = l.deposit_request_id
+               LEFT JOIN outbound_email e ON e.id = l.email_id
+              WHERE l.folio_id = $1
+             UNION ALL
+             SELECT pi.id, true, pi.created_at, pi.amount_cent, pi.status, pi.settled_at,
+                    pi.settlement_id IS NOT NULL, pi.expires_at, NULL,
+                    -- Die Uhr: ein Checkout gilt bis zu einem Zeitpunkt.
+                    (pi.status = 'pending' AND pi.expires_at IS NOT NULL
+                     AND pi.expires_at <= now()),
+                    dr.public_ref, e.status, pi.created_at
+               FROM payment_intent pi
+               LEFT JOIN deposit_request dr ON dr.id = pi.deposit_request_id
+               LEFT JOIN outbound_email e ON e.id = pi.email_id
+              WHERE pi.folio_id = $1 AND pi.property_id = $2 AND pi.payment_link_id IS NULL
+           ) alle
+           ORDER BY "createdAt" DESC
+           LIMIT 20`,
+          [folio.id, folio.property_id, anzahlung.businessDate])
 
         return {
           folioRef,
+          propertyId: folio.property_id,
           // Ohne Reservierung fehlt der Leistungszeitraum nach
           // Paragraph 14 Abs. 4 Nr. 6 UStG, und die Anzahlungsrechnung wird
           // abgewiesen. Die Maske sagt das vorher statt hinterher.
           canIssueDeposit: folio.reservation_id !== null && folio.status === 'open',
+          ...anzahlung,
           settlements: settlements.rows,
           deposits: deposits.rows,
           paymentLinks: links.rows

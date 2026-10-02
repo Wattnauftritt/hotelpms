@@ -46,7 +46,7 @@ Dann `http://localhost:5173` öffnen und mit `test@staygrid.local` und dem geset
 
 Ohne `TESTHOTEL_PASSWORD` erzeugt das Skript eines und gibt es **einmal** aus — fest im Skript wäre es in jedem Klon dasselbe, und dieses Haus steht am Ende auf einer Maschine, die aus dem Netz erreichbar ist.
 
-Die Tests brauchen ein **echtes PostgreSQL** (17 in CI, 16 genügt lokal) mit den Erweiterungen `pg_trgm` und `pgcrypto` sowie drei Rollen. `.github/workflows/ci.yml` zeigt dasselbe für CI.
+Die Tests brauchen ein **echtes PostgreSQL** (17 in CI, 16 genügt lokal) mit den Erweiterungen `pg_trgm` und `pgcrypto` sowie drei Rollen. Sie laufen gegen `hotelpms_test` aus `TEST_DATABASE_URL`, nie gegen `DATABASE_URL`: sie bauen das Schema neu auf, und `packages/testing/src/setup.ts` weist einen Lauf ab, dessen Testdatenbank dieselbe ist wie die der Entwicklung. `.github/workflows/ci.yml` zeigt dasselbe für CI.
 
 ```bash
 pnpm typecheck      # tsc -b über alle Pakete
@@ -55,7 +55,9 @@ pnpm test           # vitest, gegen echtes PostgreSQL
 pnpm build          # alle Pakete und beide Apps
 ```
 
-Alle vier müssen grün sein, bevor etwas gepusht wird. `pnpm test` läuft in **einem** Prozess gegen **eine** Datenbank; Tests dürfen deshalb nicht davon ausgehen, dass sie allein sind, und räumen über `truncateAll()` auf.
+**Grün in CI, bevor gemergt wird — nicht lokal vor jedem Push.** CI (`.github/workflows/ci.yml`) fährt alles: Prüfskripte, `pnpm audit`, Lint, Typecheck, Build und die Tests auf vier parallelen Läufern in zwei bis drei Minuten. Lokal dauert die volle Suite ein Vielfaches, und auf einer Maschine mit mehreren Arbeitsständen eine halbe Stunde — Zeit, die nichts prüft, was CI nicht ohnehin prüft. Vor dem Push genügen deshalb `pnpm typecheck`, `pnpm lint` und die Tests der berührten Dateien (`pnpm vitest run <pfade>`); gemergt wird erst, wenn CI auf dem letzten Commit grün ist. Nach `main` kommt damit weiterhin nichts Ungeprüftes. Was wir GitHub aufladen können, laden wir GitHub auf.
+
+`pnpm test` läuft in **einem** Prozess gegen **eine** Datenbank; Tests dürfen deshalb nicht davon ausgehen, dass sie allein sind, und räumen über `truncateAll()` auf.
 
 ---
 
@@ -213,6 +215,7 @@ Arbeiten mehrere parallel, ist die Nummer die einzige Stelle, an der sie sich zu
 | Symptom | Ursache |
 |---|---|
 | Tests: `connect ECONNREFUSED 127.0.0.1:5432` | PostgreSQL läuft nicht, `HOTELPMS_ALLOW_DEV_PASSWORDS=1 scripts/setup-db.sh` |
+| Tests: „TEST_DATABASE_URL und TEST_DATABASE_URL_OWNER müssen gesetzt sein“ | Richtig so. Die `.env` stammt von vor den Testvariablen; die zwei Zeilen aus `.env.example` übernehmen. Ohne sie liefe der Test gegen `hotelpms_dev` und leerte Saatlauf und Testhotel |
 | `setup-db.sh`: „HOTELPMS_DB_OWNER_PASSWORD fehlt" | Richtig so. Ohne eigene Kennwörter läuft es nur mit `HOTELPMS_ALLOW_DEV_PASSWORDS=1` (Befund S1) |
 | `permission denied for table charge` | Richtig so. Härtegrad 1, Korrektur als Gegenbuchung |
 | Abfrage liefert nichts, obwohl Daten da sind | Kein Mandantenkontext. Läuft die Abfrage in `tx(...)`? |

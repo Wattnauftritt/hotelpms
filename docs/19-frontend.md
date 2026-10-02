@@ -2,7 +2,7 @@
 
 Dieses Dokument misst die Rezeptions-Oberfläche (`apps/web`) an drei Dingen: an dem, was ein PMS im Kern können muss ([`01-marktanalyse-pms.md`](01-marktanalyse-pms.md)), an dem, was der Wettbewerb tatsächlich macht, und an dem, was unsere eigene API bereits hergibt. Die Aufteilung der Arbeit steht daneben in [`20-arbeitsteilung.md`](20-arbeitsteilung.md).
 
-> **Stand.** Die Lückenanalyse und der Plan unten sind der Befund, der zu [`20-arbeitsteilung.md`](20-arbeitsteilung.md) geführt hat — Zahlen und Tabellen zeigen den Zustand **vor** dieser Arbeit. Inzwischen sind Spur A (Belegungsplan, Gäste, Firmen, Verfügbarkeit, Check-in) und Spur C (Berichte, Einstellungen, Schnittstellen) vollständig, Spur B (Preise, Rechnung, Geld) bis auf Anzahlung, Pay-by-Link und die Channel-Manager-Ansicht. Was tatsächlich steht, sagt [`16-arbeitsstand.md`](16-arbeitsstand.md) §1, was noch offen ist, [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5. Die Analyse hier bleibt trotzdem lesenswert: sie ist die Begründung, warum die Oberfläche so gebaut wurde und nicht anders.
+> **Stand.** Die Lückenanalyse und der Plan unten sind der Befund, der zu [`20-arbeitsteilung.md`](20-arbeitsteilung.md) geführt hat — Zahlen und Tabellen zeigen den Zustand **vor** dieser Arbeit. Inzwischen sind Spur A (Belegungsplan, Gäste, Firmen, Verfügbarkeit, Check-in) und Spur C (Berichte, Einstellungen, Schnittstellen) vollständig, Spur B (Preise, Rechnung, Geld) bis auf die Channel-Manager-Ansicht; Anzahlung anfordern und Pay-by-Link stehen im Reservierungsfenster und in der Vorauszahlung des Folios (`components/Anzahlung.tsx`, `components/Zahlungslink.tsx`, Dokument 16). Was tatsächlich steht, sagt [`16-arbeitsstand.md`](16-arbeitsstand.md) §1, was noch offen ist, [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5. Die Analyse hier bleibt trotzdem lesenswert: sie ist die Begründung, warum die Oberfläche so gebaut wurde und nicht anders.
 
 ---
 
@@ -165,7 +165,13 @@ Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen 
 
 **Unveränderlichkeit zeigen.** Die Oberfläche bildet die Regeln ab, statt den Benutzer auflaufen zu lassen.
 
+**Ein Zustand ist nie nur eine Farbe.** Rot und Grün sind für jeden zwölften Mann dieselbe Farbe, und „schmutzig“ und „sauber“, „offen“ und „bezahlt“ wären es dann auch. Jedes Zustandszeichen hat eine eigene Form und den Zustand in Worten im Titel und als Name für Bildschirmleser — im Plan ▲ ✓ ★ für die Reinigung und ein Euro mit zweitem Zeichen für die Zahlung (`lib/planStatus.ts`, [`16-arbeitsstand.md`](16-arbeitsstand.md), „Reinigungs- und Zahlungsstand“).
+
+**Abgeleitetes wird angezeigt, nicht gespeichert.** „Bezahlt“ ist keine Spalte, sondern eine Rechnung über Positionen, Zahlungen und noch nicht gebuchte Nächte. Ein gespeicherter Zustand liefe auseinander, sobald nach der Zahlung eine Minibar gebucht wird — und sähe dabei weiter richtig aus.
+
 **Die Tastatur ist das Eingabegerät.** Was drei Klicks braucht, wird an einer Rezeption nicht benutzt.
+
+Die Kürzel, die überall gelten, stehen an zwei Stellen und sonst nirgends: Escape in `lib/tasten.ts` (ein Stapel, ein Druck schließt die oberste Lage), Strg+K und die Befehle Alt+N, Alt+G, Alt+C in `lib/suche.ts`. Wer ein weiteres anlegt, hält sich an deren drei Regeln: **nicht über einer offenen Maske** (dort gehört die Taste der halb ausgefüllten Buchung), **keine Alt-Taste in einem Textfeld** (auf dem Mac schreibt sie dort ein Zeichen, und Strg+Alt ist auf einer deutschen Tastatur AltGr), und **`code` statt `key`**, weil `key` auf dem Mac mit Alt das Zeichen liefert und nicht den Buchstaben. Strg+K selbst wirkt auch aus einem Textfeld — außer auf dem Mac, wo Strg+K im Feld „löschen bis Zeilenende" ist; dort liegt die Suche auf Cmd+K. Die Begründung steht in [`16-arbeitsstand.md`](16-arbeitsstand.md), Abschnitt „Suche".
 
 ---
 

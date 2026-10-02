@@ -102,8 +102,9 @@ jobs:
       PGPASSWORD: postgres
       TEST_DATABASE_URL: postgres://hotelpms_app:devapp@127.0.0.1:5432/hotelpms_test
       TEST_DATABASE_URL_OWNER: postgres://hotelpms_owner:devowner@127.0.0.1:5432/hotelpms_test
-      DATABASE_URL: postgres://hotelpms_app:devapp@127.0.0.1:5432/hotelpms_test
-      DATABASE_URL_OWNER: postgres://hotelpms_owner:devowner@127.0.0.1:5432/hotelpms_test
+      # Kein DATABASE_URL hier: `packages/testing/src/setup.ts` setzt es aus
+      # TEST_DATABASE_URL und weist einen Lauf ab, in dem beide dieselbe
+      # Datenbank nennen -- lokal ist DATABASE_URL die Entwicklungsdatenbank.
       SESSION_SECRET: ci-secret-mindestens-zweiunddreissig-zeichen
       ID_DOCUMENT_KEY: ci-key-mindestens-zweiunddreissig-zeichen!!
     steps:

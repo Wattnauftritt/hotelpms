@@ -29,6 +29,16 @@ if [ ! -f .env ]; then
   echo ".env aus .env.example angelegt."
 fi
 
+# Eine .env von vor den Testvariablen hat sie nicht. Dann brach dieses Skript
+# unten an `set -u` ab, das Schema blieb leer, und `pnpm test` lief gegen
+# hotelpms_dev. Nachgetragen wird nur, was fehlt; der Rest der Datei bleibt.
+for var in TEST_DATABASE_URL TEST_DATABASE_URL_OWNER; do
+  if ! grep -q "^${var}=" .env; then
+    grep "^${var}=" .env.example >> .env
+    echo "${var} in .env nachgetragen."
+  fi
+done
+
 echo "Schema aufbauen..."
 set -a; . ./.env; set +a
 export DATABASE_URL_OWNER="${TEST_DATABASE_URL_OWNER}"

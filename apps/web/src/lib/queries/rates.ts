@@ -54,16 +54,20 @@ export const useRateGrid = (
  * Preise setzen.
  *
  * Danach ist das Raster ungültig, und die abgeleiteten Raten sind es auch --
- * sie hängen an dieser Basis und werden erst durch `rebuild-derived` neu
- * gerechnet. Deshalb wird das ganze Raster verworfen und nicht nur die
- * geänderte Zeile.
+ * sie hängen an dieser Basis und werden seit Migration 0066 im selben
+ * Schreibvorgang mitgerechnet. Deshalb wird das ganze Raster verworfen und
+ * nicht nur die geänderte Zeile; ebenso die Vorschau der Preissteuerung,
+ * deren Grundpreis sich gerade geändert hat.
  */
 export function useSetRates(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: SetRates) =>
       api.put<{ ratePlanId: number; days: number }>('/v1/rates/bulk', body),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] }) }
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
+    }
   })
 }
 

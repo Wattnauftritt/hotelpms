@@ -11,11 +11,15 @@ import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
 import { preise } from './preise.js'
+import { preissteuerung } from './preissteuerung.js'
 import { gaeste } from './gaeste.js'
 import { rechnung } from './rechnung.js'
 import { zugang } from './zugang.js'
 import { support } from './support.js'
 import { admin } from './admin.js'
+import { planstatus } from './planstatus.js'
+import { suche } from './suche.js'
+import { onlineCheckin } from './onlineCheckin.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -116,11 +120,15 @@ const texts = {
   ...einstellungen,
   ...schnittstellen,
   ...preise,
+  ...preissteuerung,
   ...gaeste,
   ...rechnung,
   ...zugang,
   ...support,
-  ...admin
+  ...admin,
+  ...planstatus,
+  ...suche,
+  ...onlineCheckin
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts

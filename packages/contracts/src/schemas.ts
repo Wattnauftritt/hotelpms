@@ -137,6 +137,42 @@ export const AvailabilityDay = Type.Object({
 })
 export type AvailabilityDay = Static<typeof AvailabilityDay>
 
+/** Zustaende des Zahlungsstands; die Regel steht in `@hotelpms/domain`. */
+export const PlanPaymentState = Type.Union([
+  Type.Literal('none'), Type.Literal('requested'), Type.Literal('open'),
+  Type.Literal('partial'), Type.Literal('deposit'), Type.Literal('paid')])
+export type PlanPaymentState = Static<typeof PlanPaymentState>
+
+/** Geld immer in ganzen Cent. */
+export const PlanPayment = Type.Object({
+  state: PlanPaymentState,
+  /** Summe der Positionen auf dem eigenen Folio, Gegenbuchungen eingerechnet. */
+  charged_cent: Type.Integer(),
+  /** Summe der Zahlungsvermerke, Erstattungen eingerechnet. */
+  settled_cent: Type.Integer(),
+  /** Saldo jetzt: gebucht minus gezahlt. */
+  balance_cent: Type.Integer(),
+  /** Gebucht plus noch nicht gebuchte Naechte: der Aufenthalt, soweit bekannt. */
+  expected_cent: Type.Integer(),
+  /** Naechte, die der Nachtlauf noch buchen wird. */
+  unposted_nights: Type.Integer(),
+  /** Davon ueber eine Anzahlungsrechnung vereinnahmt. */
+  deposit_cent: Type.Integer(),
+  /** Offene Zahlungslinks. */
+  requested_cent: Type.Integer(),
+  /** Die Logis geht per Regel auf ein anderes Konto. */
+  routed: Type.Boolean(),
+  /** Bei mehreren Zimmern in einer Buchung: dieselbe Rechnung ueber alle. */
+  group: Type.Union([Type.Object({
+    state: PlanPaymentState,
+    rooms: Type.Integer(),
+    expected_cent: Type.Integer(),
+    settled_cent: Type.Integer(),
+    balance_cent: Type.Integer()
+  }), Type.Null()])
+})
+export type PlanPayment = Static<typeof PlanPayment>
+
 export const TapeChart = Type.Object({
   from: IsoDate,
   to: IsoDate,
@@ -150,7 +186,12 @@ export const TapeChart = Type.Object({
     category_code: Type.String(),
     /** Traegt die Warnung beim Verschieben in eine kleinere Zimmergruppe. */
     max_occupancy: Type.Integer(),
-    sort_order: Type.Integer()
+    sort_order: Type.Integer(),
+    /**
+     * Reinigungsstand des Zimmers, wie auf dem Housekeeping-Bildschirm.
+     * Fehlt ohne `housekeeping:read` -- das Feld fehlt, der Plan bleibt.
+     */
+    housekeeping: Type.Optional(HousekeepingState)
   })),
   reservations: Type.Array(Type.Object({
     id: Type.Integer(),
@@ -187,7 +228,13 @@ export const TapeChart = Type.Object({
     /** Merkmal fuer den Balken: "Balkon", "1. Stock", "Spaetanreise". */
     short_note: Type.Union([Type.String(), Type.Null()]),
     /** Der Vorgang. Nur im Titel und im Seitenfenster, nie auf dem Balken. */
-    notes: Type.Union([Type.String(), Type.Null()])
+    notes: Type.Union([Type.String(), Type.Null()]),
+    /**
+     * Zahlungsstand, abgeleitet und nie gespeichert (`paymentState` in
+     * `@hotelpms/domain`). Fehlt ohne `folio:read`: wer Belegung sieht,
+     * sieht damit noch keine Betraege.
+     */
+    payment: Type.Optional(Type.Union([PlanPayment, Type.Null()]))
   })),
   blocks: Type.Array(Type.Object({
     resource_id: Type.Integer(),
@@ -670,6 +717,34 @@ export const ReservationOccupant = Type.Object({
   name: Type.Union([Type.String(), Type.Null()])
 })
 
+/**
+ * Der Online-Check-in an der Reservierung, fuer die Rezeption (Dokument 30).
+ * Hier und nicht in `checkin.ts`, weil `ReservationDetail` ihn traegt und
+ * `checkin.ts` umgekehrt von hier liest.
+ */
+export const OnlineCheckinStatus = Type.Object({
+  /** Die letzte Einladung per Mail: eingereiht wann, und wie steht sie. */
+  invitedAt: Type.Union([Type.String(), Type.Null()]),
+  invitationStatus: Type.Union([Type.String(), Type.Null()]),
+  /** Meldeschein online oder am Terminal eingereicht, wann. */
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  source: Type.Union([Type.Literal('desk'), Type.Literal('online'),
+                      Type.Literal('terminal'), Type.Null()]),
+  /** Vorab erfasst, Unterschrift steht noch aus. */
+  signaturePending: Type.Boolean(),
+  /** Wie viele Links gerade gelten. */
+  activeLinks: Type.Integer(),
+  /**
+   * Darf der Aufrufer hier einen Link kopieren oder verschicken? Von der
+   * Schnittstelle beantwortet, weil sie das Haus der Reservierung kennt und
+   * das Seitenfenster nicht -- ein Knopf, der 403 antwortet, ist schlechter
+   * als keiner (Dokument 19).
+   */
+  mayLink: Type.Boolean(),
+  maySend: Type.Boolean()
+})
+export type OnlineCheckinStatus = Static<typeof OnlineCheckinStatus>
+
 export const ReservationDetail = Type.Object({
   reservationRef: Type.String(),
   bookingRef: Type.String(),
@@ -701,7 +776,8 @@ export const ReservationDetail = Type.Object({
   folioRef: Type.Union([Type.String(), Type.Null()]),
   nights: Type.Array(ReservationNight),
   occupants: Type.Array(ReservationOccupant),
-  totalCent: Cent
+  totalCent: Cent,
+  onlineCheckin: Type.Optional(OnlineCheckinStatus)
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 
@@ -1173,22 +1249,58 @@ export type DepositInvoice = Static<typeof DepositInvoice>
 /**
  * Ein Zahlungslink.
  *
+ * Seit 0068 ist das der **dauerhafte** Link von uns (`legacy: false`): er
+ * gilt bis `validUntil`, und erst beim Oeffnen entsteht ein Checkout beim
+ * Anbieter. Daneben stehen Checkouts von vor 0068 ohne eigenen Link
+ * (`legacy: true`), mit ihrem Ablauf als Zeitpunkt in `expiresAt`. Die
+ * Kennung `id` ist nur zusammen mit `legacy` eindeutig.
+ *
  * **Die Adresse steht hier nicht.** Sie wird bei der Anlage einmal
- * ausgegeben und nicht gespeichert -- ein Link, der in der Datenbank liegt,
- * ist ein Link, den jeder mit Lesezugriff einloesen kann. Wer ihn noch
- * einmal braucht, erzeugt einen neuen.
+ * ausgegeben; in der Datenbank liegt nur der Hash des Tokens. Wer sie
+ * noch einmal braucht, widerruft und legt einen neuen an. Aus demselben
+ * Grund geht ein Link nur **beim Erzeugen** per Gastpost hinaus.
  */
 export const PaymentLink = Type.Object({
   id: Type.Integer(),
+  legacy: Type.Boolean(),
   createdAt: Type.String(),
   amountCent: Cent,
   status: Type.Union([
-    Type.Literal('pending'), Type.Literal('succeeded'), Type.Literal('failed')]),
+    Type.Literal('pending'), Type.Literal('succeeded'), Type.Literal('failed'),
+    Type.Literal('canceled')]),
   settledAt: Type.Union([Type.String(), Type.Null()]),
   /** Erst mit dem Zahlungsvermerk ist aus dem Link Geld geworden. */
-  hasSettlement: Type.Boolean()
+  hasSettlement: Type.Boolean(),
+  /** Nur bei `legacy`: bis wann der Anbieter den Checkout annimmt. */
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  /** Bis zu welchem Geschaeftstag der Link annimmt (Kalendertag). */
+  validUntil: Type.Union([IsoDate, Type.Null()]),
+  /** Offen, aber abgelaufen -- der Gast kann ihn nicht mehr einloesen. */
+  expired: Type.Boolean(),
+  /** Die Anforderung, auf die der Link zahlt, falls es eine gibt. */
+  depositRequestRef: Type.Union([Type.String(), Type.Null()]),
+  /** Zustand der Gastpost mit diesem Link; null, wenn er nicht verschickt wurde. */
+  mailStatus: Type.Union([
+    Type.Literal('pending'), Type.Literal('sent'), Type.Literal('failed'),
+    Type.Literal('canceled'), Type.Null()]),
+  /** Wann der Gast den Link zum ersten Mal bis zum Anbieter geoeffnet hat. */
+  openedAt: Type.Union([Type.String(), Type.Null()])
 })
 export type PaymentLink = Static<typeof PaymentLink>
+
+/** Die Antwort auf das Erzeugen: das einzige Mal, dass die Adresse zu sehen ist. */
+export const PaymentLinkCreated = Type.Object({
+  /**
+   * Die Adresse fuer den Gast. Null bei der Wiederholung einer Anfrage:
+   * der Idempotenzspeicher haelt das Token nicht.
+   */
+  url: Type.Union([Type.String(), Type.Null()]),
+  linkId: Type.Integer(),
+  validUntil: IsoDate,
+  /** Gesetzt, wenn der Link in derselben Anfrage per Gastpost eingereiht wurde. */
+  messageRef: Type.Union([Type.String(), Type.Null()])
+})
+export type PaymentLinkCreated = Static<typeof PaymentLinkCreated>
 
 /** Ein Zahlungsvermerk in der Sicht der Vorauszahlung. */
 export const PrepaymentSettlement = Type.Object({
@@ -1199,17 +1311,82 @@ export const PrepaymentSettlement = Type.Object({
   externalReference: Type.Union([Type.String(), Type.Null()]),
   /** Gesetzt heisst: zu diesem Vermerk gibt es schon eine Anzahlungsrechnung. */
   depositInvoiceRef: Type.Union([Type.String(), Type.Null()]),
-  depositInvoiceNumber: Type.Union([Type.String(), Type.Null()])
+  depositInvoiceNumber: Type.Union([Type.String(), Type.Null()]),
+  /** Gesetzt heisst: dieser Eingang ist einer Anzahlungsanforderung zugeordnet. */
+  depositRequestRef: Type.Union([Type.String(), Type.Null()])
 })
 export type PrepaymentSettlement = Static<typeof PrepaymentSettlement>
 
+/** Wo eine Anzahlungsanforderung steht. Abgeleitet, nie gespeichert. */
+export const DepositRequestState = Type.Union([
+  Type.Literal('requested'), Type.Literal('link_sent'), Type.Literal('partial'),
+  Type.Literal('received'), Type.Literal('overdue'), Type.Literal('canceled')])
+export type DepositRequestState = Static<typeof DepositRequestState>
+
+/**
+ * Eine Anzahlungsanforderung: welcher Betrag bis wann verlangt ist und was
+ * davon eingegangen ist.
+ */
+export const DepositRequest = Type.Object({
+  requestRef: Type.String(),
+  amountCent: Cent,
+  /** Nur bei einer Anforderung in Prozent, mit dem Preis, aus dem gerechnet wurde. */
+  percentBp: Type.Union([Type.Integer(), Type.Null()]),
+  basisCent: Type.Union([Cent, Type.Null()]),
+  dueDate: IsoDate,
+  createdAt: Type.String(),
+  canceledAt: Type.Union([Type.String(), Type.Null()]),
+  receivedCent: Cent,
+  openCent: Cent,
+  /** Die zugeordneten Zahlungsvermerke. */
+  settlementIds: Type.Array(Type.Integer()),
+  state: DepositRequestState,
+  /**
+   * Ein zugeordneter Eingang hat noch keine Anzahlungsrechnung. Die Steuer
+   * ist mit dem Zufluss entstanden (Paragraph 13 Abs. 1 Nr. 1a UStG); ohne
+   * die Rechnung steht sie in keinem Buchungsstapel.
+   */
+  depositInvoiceMissing: Type.Boolean()
+})
+export type DepositRequest = Static<typeof DepositRequest>
+
+/**
+ * Kann von hier aus Gastpost hinausgehen?
+ *
+ * Steht in der Antwort, damit die Maske **vorher** erklaert, warum nicht,
+ * statt einen Knopf zu zeigen, der mit einem Fehler antwortet.
+ */
+export const PrepaymentMail = Type.Object({
+  ready: Type.Boolean(),
+  reason: Type.Union([
+    Type.Literal('training'), Type.Literal('disabled'), Type.Literal('sender'),
+    Type.Null()]),
+  /** Hat der Gast der Reservierung eine brauchbare Adresse? Die Adresse selbst nicht. */
+  guestAddress: Type.Boolean()
+})
+export type PrepaymentMail = Static<typeof PrepaymentMail>
+
 export const PrepaymentView = Type.Object({
   folioRef: Type.String(),
+  /** Das Haus des Folios: die Maske fragt damit die Rechte ab. */
+  propertyId: Type.Integer(),
+  /** Der offene Geschaeftstag. Gegen ihn ist eine Anforderung ueberfaellig. */
+  businessDate: IsoDate,
+  /** Ein Uebungshaus erzeugt keinen Zahlungslink und verschickt keine Post. */
+  isTraining: Type.Boolean(),
   /**
    * Ohne Reservierung fehlt der Leistungszeitraum (Paragraph 14 Abs. 4
    * Nr. 6 UStG), und ein geschlossenes Folio nimmt nichts mehr an.
    */
   canIssueDeposit: Type.Boolean(),
+  /** Darf hier eine Anzahlung angefordert werden? Dieselben Gruende, dazu der Zustand. */
+  canRequestDeposit: Type.Boolean(),
+  /** Der Preis des Aufenthalts, Grundlage einer Anforderung in Prozent. */
+  stayCent: Type.Union([Cent, Type.Null()]),
+  arrival: Type.Union([IsoDate, Type.Null()]),
+  departure: Type.Union([IsoDate, Type.Null()]),
+  mail: PrepaymentMail,
+  requests: Type.Array(DepositRequest),
   settlements: Type.Array(PrepaymentSettlement),
   deposits: Type.Array(DepositInvoice),
   paymentLinks: Type.Array(PaymentLink)

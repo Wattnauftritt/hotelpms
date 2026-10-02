@@ -59,7 +59,10 @@ function isProblem(v: unknown): v is Problem {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
+  // Kopfzeilen nur fuer die Gastseite des Online-Check-ins: dort ist der
+  // Link der Ausweis, nicht das Cookie (Dokument 30).
+  get: <T>(path: string, headers?: Record<string, string>) =>
+    request<T>('GET', path, undefined, headers),
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>('POST', path, body ?? {}, headers),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
