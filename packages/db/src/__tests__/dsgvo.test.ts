@@ -166,7 +166,8 @@ describe('Befund 1: die Loeschung schreibt keine Kopie mehr', () => {
     const r = await owner.query<{ table_name: string; column_name: string }>(
       `SELECT table_name, column_name FROM audit_redaction`)
     const paare = new Set(r.rows.map(x => `${x.table_name}.${x.column_name}`))
-    for (const feld of ['guest.last_name', 'guest.email', 'guest.birth_date',
+    for (const feld of ['guest.last_name', 'guest.email', 'guest.email_lower',
+                        'guest.birth_date',
                         'guest.id_document_number_enc', 'guest_property_note.note',
                         'reservation.notes', 'registration.signature_svg',
                         'guest_agreement.signature_svg', 'app_user.password_hash',
@@ -332,6 +333,44 @@ describe('Befund 5 und 7: die Loeschung erreicht alles', () => {
       q(`SELECT guest_erase_one($1)`, [gastId]))
     const r = await owner.query<{ last_name: string }>(
       `SELECT last_name FROM guest WHERE id=$1`, [gastId])
+    expect(r.rows[0]!.last_name).toBe('Musterfrau')
+  })
+})
+
+/**
+ * Migration 0058 legt die Adresse ein zweites Mal ab, kleingeschrieben, damit
+ * die Suche unter der Zeilenrichtlinie einen Index benutzen kann. Eine Kopie
+ * einer Adresse ist eine Adresse: sie gehoert nicht ins Protokoll und muss
+ * mit der Loeschung fallen, ohne dass jemand daran denkt.
+ */
+describe('Migration 0058: die kleingeschriebene Mailadresse', () => {
+  it('steht nicht im Protokoll, wenn sich die Adresse aendert', async () => {
+    await owner.query(`UPDATE guest SET email='Neu.Adresse@Example.de' WHERE id=$1`, [gastId])
+    const r = await owner.query<{ changed: Record<string, unknown> }>(
+      `SELECT changed FROM audit_log WHERE table_name='guest' AND action='UPDATE'
+        ORDER BY occurred_at DESC LIMIT 1`)
+    const changed = r.rows[0]!.changed
+    expect(Object.keys(changed)).toContain('email_lower')
+    const alsText = JSON.stringify(changed).toLowerCase()
+    expect(alsText).not.toContain('neu.adresse@example.de')
+    expect(alsText).not.toContain('h.musterfrau@example.de')
+  })
+
+  it('faellt mit der vollstaendigen Loeschung', async () => {
+    await alsMandant(owner, fx.accountId, fx.propertyId, q =>
+      q(`SELECT guest_erase_one($1)`, [gastId]))
+    const r = await owner.query<{ email_lower: string | null }>(
+      `SELECT email_lower FROM guest WHERE id=$1`, [gastId])
+    expect(r.rows[0]!.email_lower).toBeNull()
+  })
+
+  it('faellt mit der aufgeschobenen Loeschung', async () => {
+    await alsMandant(owner, fx.accountId, fx.propertyId, q =>
+      q(`SELECT guest_erase_partial($1)`, [gastId]))
+    const r = await owner.query<{ email_lower: string | null; last_name: string }>(
+      `SELECT email_lower, last_name FROM guest WHERE id=$1`, [gastId])
+    expect(r.rows[0]!.email_lower).toBeNull()
+    // Der Name bleibt fuer den Nachweis; nur die Adresse faellt.
     expect(r.rows[0]!.last_name).toBe('Musterfrau')
   })
 })

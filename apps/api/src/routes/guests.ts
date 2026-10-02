@@ -71,7 +71,7 @@ async function findDuplicates(
     `SELECT public_ref, score::text, reason FROM (
        SELECT public_ref,
               CASE
-                WHEN $3 <> '' AND lower(email) = lower($3) THEN 1.0
+                WHEN $3 <> '' AND email_lower = lower($3) THEN 1.0
                 WHEN $4 <> '' AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g')
                      = regexp_replace($4, '[^0-9]', '', 'g') THEN 0.9
                 ELSE similarity(last_name, $2)
@@ -80,7 +80,7 @@ async function findDuplicates(
                             ELSE 0.6 END
               END AS score,
               CASE
-                WHEN $3 <> '' AND lower(email) = lower($3) THEN 'gleiche E-Mail'
+                WHEN $3 <> '' AND email_lower = lower($3) THEN 'gleiche E-Mail'
                 WHEN $4 <> '' AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g')
                      = regexp_replace($4, '[^0-9]', '', 'g') THEN 'gleiche Telefonnummer'
                 WHEN $5::date IS NOT NULL AND birth_date = $5::date
@@ -91,7 +91,7 @@ async function findDuplicates(
         WHERE account_id = $1 AND status = 'active'
           AND ($7::bigint IS NULL OR id <> $7)
           AND (last_name % $2
-               OR ($3 <> '' AND lower(email) = lower($3))
+               OR ($3 <> '' AND email_lower = lower($3))
                OR ($4 <> '' AND regexp_replace(coalesce(phone,''), '[^0-9]', '', 'g')
                    = regexp_replace($4, '[^0-9]', '', 'g')))
      ) k
@@ -145,11 +145,16 @@ export function guestRoutes(app: FastifyInstance): void {
          * Die E-Mail wird von vorn getippt, nicht unscharf gesucht, und
          * laeuft ueber einen eigenen, eigenstaendig begrenzten Zweig statt
          * ueber ein ODER, das beide Indizes ausschliessen wuerde. Sie laeuft
-         * nur, wenn ein `@` im Begriff steht: `lower()` und `LIKE` sind
-         * nicht LEAKPROOF, der Index `guest_email_prefix` greift unter der
-         * Richtlinie nicht, und ohne Treffer las der Zweig jeden Gast --
-         * auch bei jeder Namenssuche, in der nie eine Adresse gemeint war.
-         * Mit `@` tut er das weiterhin (Dokument 16, Abschnitt "Suche").
+         * nur, wenn ein `@` im Begriff steht; ohne ist er ein Name, und
+         * "anke" soll nicht jede Anke finden, deren Adresse so beginnt.
+         *
+         * Der Anfang ist ein **Bereich** auf der gespeicherten Spalte
+         * `email_lower`, kein `lower(email) LIKE`: `lower()` und `LIKE` sind
+         * nicht LEAKPROOF, liefen deshalb als Filter hinter der Richtlinie,
+         * und ein Begriff ohne Treffer las jeden Gast des Accounts.
+         * `~>=~` und `~<~` sind LEAKPROOF und werden Indexbedingung
+         * (Migration 0058). Nebenbei sind `_` und `%` im Begriff damit
+         * Zeichen und keine Platzhalter mehr.
          */
         const { rows } = await client.query<GuestRow & { dist: number }>(
           `WITH nach_name AS (
@@ -171,8 +176,9 @@ export function guestRoutes(app: FastifyInstance): void {
            ), nach_email AS (
              SELECT ${FIELDS}, 0.0::real AS dist
                FROM guest
-              WHERE $3 AND status <> 'anonymized' AND email IS NOT NULL
-                AND lower(email) LIKE lower($1) || '%'
+              WHERE $3 AND status <> 'anonymized'
+                AND email_lower ~>=~ lower($1)
+                AND email_lower ~<~ text_prefix_end(lower($1))
               LIMIT $2
            ), zusammen AS (
              SELECT DISTINCT ON (id) *

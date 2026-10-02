@@ -179,8 +179,8 @@ async function importGuests(
   const mitEmail = kandidaten.filter((k): k is Kandidat & { email: string } => k.email !== null)
   const vorhanden = mitEmail.length === 0 ? new Set<string>() : new Set(
     (await client.query<{ email: string }>(
-      `SELECT lower(email) AS email FROM guest WHERE account_id = $1
-         AND lower(email) = ANY($2::text[])`,
+      `SELECT email_lower AS email FROM guest WHERE account_id = $1
+         AND email_lower = ANY($2::text[])`,
       [accountId, mitEmail.map(k => k.email.toLowerCase())])).rows.map(r => r.email))
 
   const gesehen = new Set<string>()
@@ -287,7 +287,7 @@ async function importReservations(
     let guestId: number | null = null
     if (r.guest_email !== '' && r.guest_email !== undefined) {
       const g = await client.query<{ id: number }>(
-        `SELECT id FROM guest WHERE account_id = $1 AND lower(email) = lower($2) LIMIT 1`,
+        `SELECT id FROM guest WHERE account_id = $1 AND email_lower = lower($2) LIMIT 1`,
         [accountId, r.guest_email])
       guestId = g.rows[0]?.id ?? null
       if (guestId === null) {
