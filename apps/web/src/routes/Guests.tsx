@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
 import type { Guest, GuestCreated, GuestNote, Company } from '@hotelpms/contracts'
 import { useSearchGuests, useGuest, useCreateGuest, usePatchGuest, useIdDocument,
@@ -9,10 +9,29 @@ import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
 import { useEscape } from '../lib/tasten.js'
 import { useT, useLocale, intlTag } from '../lib/i18n/index.js'
+import { useSprung, type Sprungziel } from '../lib/suche.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
 const BEREICHE = ['guests', 'companies'] as const
 type Bereich = (typeof BEREICHE)[number]
+
+/**
+ * Was die Suche (Strg+K) diesem Bildschirm mitgibt: welcher Reiter, und ob
+ * darin ein Profil oder eine leere Maske steht. Der Rahmen haengt den
+ * Bildschirm bei jedem Sprung neu ein, deshalb genuegt es, den Auftrag beim
+ * Aufbau zu lesen.
+ */
+function ausAuftrag(auftrag: Sprungziel | null, bereich: Bereich): string | 'new' | null {
+  if (auftrag === null) return null
+  if (bereich === 'guests') {
+    if (auftrag.art === 'gast') return auftrag.ref
+    if (auftrag.art === 'befehl' && auftrag.befehl === 'neuerGast') return 'new'
+    return null
+  }
+  if (auftrag.art === 'firma') return auftrag.ref
+  if (auftrag.art === 'befehl' && auftrag.befehl === 'neueFirma') return 'new'
+  return null
+}
 
 function orUndef(s: string): string | undefined {
   const w = s.trim()
@@ -34,6 +53,14 @@ export function Guests({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const { darf, geladen } = useHausrechte(propertyId)
   const [reiter, setReiter] = useReiter<Bereich>('gaestereiter', BEREICHE, 'guests')
+  const { auftrag } = useSprung()
+  // Ein Sprung aus der Suche bestimmt den Reiter, nicht die Adresse von gestern.
+  const zielReiter: Bereich | null = ausAuftrag(auftrag, 'companies') !== null ? 'companies'
+    : ausAuftrag(auftrag, 'guests') !== null ? 'guests' : null
+  useEffect(() => {
+    if (zielReiter !== null && zielReiter !== reiter) setReiter(zielReiter)
+    // Nur beim Aufbau: danach entscheidet wieder, wer auf den Reiter klickt.
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -68,7 +95,9 @@ function GaesteReiter({ propertyId, darfSchreiben, darfIdentitaet, darfExport }:
 }): JSX.Element {
   const t = useT()
   const [begriff, setBegriff] = useState('')
-  const [ausgewaehlt, setAusgewaehlt] = useState<string | 'new' | null>(null)
+  const { auftrag } = useSprung()
+  const [ausgewaehlt, setAusgewaehlt] = useState<string | 'new' | null>(
+    () => ausAuftrag(auftrag, 'guests'))
   const suche = useSearchGuests(begriff)
 
   return (
@@ -409,7 +438,9 @@ function AusweisFeld({ guestRef, hasIdDocumentNumber, idDocumentType, darfLesen 
 function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Element {
   const t = useT()
   const [begriff, setBegriff] = useState('')
-  const [ausgewaehlt, setAusgewaehlt] = useState<string | 'new' | null>(null)
+  const { auftrag } = useSprung()
+  const [ausgewaehlt, setAusgewaehlt] = useState<string | 'new' | null>(
+    () => ausAuftrag(auftrag, 'companies'))
   const suche = useSearchCompanies(begriff)
 
   return (

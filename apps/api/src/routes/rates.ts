@@ -4,6 +4,8 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
+import { emitEvent } from '../platform/events.js'
+import type { Principal } from '../platform/context.js'
 
 /** Ein Jahr je Anfrage. Mehr braucht niemand, und es begrenzt die Sperrzeit. */
 const MAX_DAYS = 400
@@ -43,12 +45,27 @@ function checkWindow(w: BulkWindow): void {
  */
 async function assertPlan(
   client: PoolClient, propertyId: number, ratePlanId: number
-): Promise<{ categoryId: number }> {
-  const { rows, rowCount } = await client.query<{ category_id: number }>(
-    `SELECT category_id FROM rate_plan WHERE id = $1 AND property_id = $2`,
+): Promise<{ categoryId: number; source: string }> {
+  const { rows, rowCount } = await client.query<{ category_id: number; source: string }>(
+    `SELECT rp.category_id, coalesce(s.source, 'manual') AS source
+       FROM rate_plan rp LEFT JOIN rate_plan_steering s ON s.rate_plan_id = rp.id
+      WHERE rp.id = $1 AND rp.property_id = $2`,
     [ratePlanId, propertyId])
   if (rowCount === 0) throw Errors.notFound('res.ratePlan')
-  return { categoryId: rows[0]!.category_id }
+  return { categoryId: rows[0]!.category_id, source: rows[0]!.source }
+}
+
+/**
+ * Wer schreibt: ein Mensch oder eine Schnittstelle.
+ *
+ * Ein Maschinentoken hat keinen Benutzer (`loadPrincipalFromToken`). Die
+ * Unterscheidung braucht die Preissteuerung: ein externes RMS soll einen von
+ * den Regeln gesteuerten Plan nicht beschreiben, ein Mensch schon -- er setzt
+ * damit den Grundpreis (Dokument 32).
+ */
+function writeOrigin(principal: Principal): 'manual' | 'external' {
+  return principal.userId === null && principal.clientKey.startsWith('client:')
+    ? 'external' : 'manual'
 }
 
 export function rateRoutes(app: FastifyInstance): void {
@@ -118,6 +135,12 @@ export function rateRoutes(app: FastifyInstance): void {
    * geschrieben waeren das 365 Runden zu je 0,1 bis 50 Millisekunden. Die
    * Tage werden in der Datenbank erzeugt und in einem Zug eingefuegt
    * (P-Gesetz, Dokument 04).
+   *
+   * **Ueber `rate_prices_write`** (Migration 0066), denselben Weg, den die
+   * Preissteuerung nimmt: abgeleitete Raten folgen sofort, die
+   * Aenderungsmeldung an den Channel Manager sieht auch eine Aenderung an
+   * einem schon gepflegten Tag, und `rate.changed` geht hinaus. Vorher tat
+   * die Route nichts davon.
    */
   registerRoute(app, {
     method: 'PUT',
@@ -136,16 +159,26 @@ export function rateRoutes(app: FastifyInstance): void {
       }
       const weekdays = body.weekdays ?? ALL_WEEKDAYS
 
+      const origin = writeOrigin(req.principal as Principal)
+
       return tx(req.pool, req, async client => {
-        await assertPlan(client, body.propertyId, body.ratePlanId)
-        const { rowCount } = await client.query(
-          `INSERT INTO rate_day (property_id, rate_plan_id, date, price_cent)
-           SELECT $1, $2, d::date, $5::bigint[]
+        const plan = await assertPlan(client, body.propertyId, body.ratePlanId)
+        // Interne Regeln und ein externes RMS ueberschreiben sich sonst
+        // gegenseitig, jedes mit gutem Gewissen und im Wechsel.
+        if (origin === 'external' && plan.source === 'rules') {
+          throw Errors.conflict('rateSteer.sourceRules')
+        }
+        // `days` sind die angesprochenen Tage, nicht die geaenderten: so hat
+        // die Route es immer gemeldet, und die Oberflaeche zeigt es so an.
+        const { rows } = await client.query<{ days: number }>(
+          `SELECT count(*)::int AS days,
+                  rate_prices_write($1, array_agg($2::bigint), array_agg(d::date),
+                                    array_agg($5::text), $7) AS changed
              FROM generate_series($3::date, $4::date, interval '1 day') d
-            WHERE (EXTRACT(isodow FROM d)::int - 1) = ANY($6::int[])
-           ON CONFLICT (rate_plan_id, date) DO UPDATE SET price_cent = EXCLUDED.price_cent`,
-          [body.propertyId, body.ratePlanId, body.from, body.to, body.priceCent, weekdays])
-        return { ratePlanId: body.ratePlanId, days: rowCount ?? 0 }
+            WHERE (EXTRACT(isodow FROM d)::int - 1) = ANY($6::int[])`,
+          [body.propertyId, body.ratePlanId, body.from, body.to,
+           `{${body.priceCent.join(',')}}`, weekdays, origin])
+        return { ratePlanId: body.ratePlanId, days: rows[0]!.days }
       })
     }
   })
@@ -169,51 +202,19 @@ export function rateRoutes(app: FastifyInstance): void {
       checkWindow({ ...body, ratePlanId: 0 })
 
       return tx(req.pool, req, async client => {
-        const plans = await client.query<{ id: number; base_rate_plan_id: number
-                                           derive_kind: 'amount' | 'percent'
-                                           derive_value: number }>(
-          `SELECT id, base_rate_plan_id, derive_kind, derive_value FROM rate_plan
-            WHERE property_id = $1 AND base_rate_plan_id IS NOT NULL AND active
-            ORDER BY id`, [body.propertyId])
-
-        let geschrieben = 0
-        // Mehrstufige Ketten in Reihenfolge der Basis aufloesen, damit eine
-        // Rate, die auf einer abgeleiteten Rate sitzt, deren neuen Wert sieht.
-        const offen = [...plans.rows]
-        const fertig = new Set<number>()
-        let runde = 0
-        while (offen.length > 0 && runde++ <= plans.rows.length) {
-          for (let i = offen.length - 1; i >= 0; i--) {
-            const p = offen[i]!
-            const basisAbgeleitet = plans.rows.some(q => q.id === p.base_rate_plan_id)
-            if (basisAbgeleitet && !fertig.has(p.base_rate_plan_id)) continue
-
-            // Ein Jahr abgeleitete Preise in einer Anweisung. Die Ableitung
-            // wird je Belegungsstufe angewandt; die Rundung entspricht
-            // derivePrice aus dem Domaenenkern, ein Test haelt beide zusammen.
-            const r = await client.query(
-              `INSERT INTO rate_day (property_id, rate_plan_id, date, price_cent)
-               SELECT $1, $2, b.date,
-                      ARRAY(SELECT greatest(
-                              CASE WHEN $5 = 'amount' THEN e + $6
-                                   ELSE round(e * (10000 + $6 * 100) / 10000.0)::bigint END,
-                              0)
-                              FROM unnest(b.price_cent) AS e)
-                 FROM rate_day b
-                WHERE b.rate_plan_id = $3 AND b.date BETWEEN $4::date AND $7::date
-               ON CONFLICT (rate_plan_id, date)
-               DO UPDATE SET price_cent = EXCLUDED.price_cent`,
-              [body.propertyId, p.id, p.base_rate_plan_id, body.from,
-               p.derive_kind, p.derive_value, body.to])
-            geschrieben += r.rowCount ?? 0
-            fertig.add(p.id)
-            offen.splice(i, 1)
-          }
+        // Ebene fuer Ebene in der Datenbank (Migration 0066): eine Anweisung
+        // je Ableitungsstufe statt einer je Plan, und derselbe Weg, den die
+        // Preispflege und die Steuerung nach jedem Schreiben gehen.
+        const { rows } = await client.query<{ plans: number; days: number; cycle: boolean }>(
+          `SELECT plans, days, cycle FROM rate_derived_rebuild($1, $2::date, $3::date)`,
+          [body.propertyId, body.from, body.to])
+        const r = rows[0]!
+        if (r.cycle) throw Errors.conflict('rate.derivationCycle')
+        if (r.days > 0) {
+          await emitEvent(client, body.propertyId, 'rate.changed', {
+            origin: 'derived', from: body.from, to: body.to, days: 0, derivedDays: r.days })
         }
-        if (offen.length > 0) {
-          throw Errors.conflict('rate.derivationCycle')
-        }
-        return { plans: plans.rowCount, days: geschrieben }
+        return { plans: r.plans, days: r.days }
       })
     }
   })
@@ -251,7 +252,10 @@ export function rateRoutes(app: FastifyInstance): void {
              min_los = EXCLUDED.min_los, max_los = EXCLUDED.max_los,
              closed = EXCLUDED.closed,
              closed_to_arrival = EXCLUDED.closed_to_arrival,
-             closed_to_departure = EXCLUDED.closed_to_departure`,
+             closed_to_departure = EXCLUDED.closed_to_departure,
+             -- Ohne den Zeitstempel sah die Aenderungsmeldung eine Sperre an
+             -- einem schon gepflegten Tag nie (Migration 0066, Befund 2).
+             updated_at = now()`,
           [body.propertyId, body.ratePlanId, body.from, body.to,
            body.minLos ?? null, body.maxLos ?? null, body.closed ?? null,
            body.closedToArrival ?? null, body.closedToDeparture ?? null, weekdays])
