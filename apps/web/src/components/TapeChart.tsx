@@ -8,6 +8,7 @@ import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passu
 import { spaltenBreite, spanne } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { useEscape, istTextEingabe } from '../lib/tasten.js'
+import { ReinigungsZeichen, ZahlungsZeichen, useZahlungsTitel } from './PlanZeichen.tsx'
 
 /**
  * Der Zimmerplan.
@@ -286,6 +287,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                             onKontext }: Props): JSX.Element {
   const t = useT()
   const locale = useLocale()
+  const zahlungsTitel = useZahlungsTitel()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
   const rasterRef = useRef<HTMLDivElement>(null)
   /*
@@ -1029,6 +1031,24 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         }) })
     }, [onKontext, tagUnter, tage, zimmerNach, auswahl])
 
+  /*
+   * Der rechte Knopf auf der Zimmernummer.
+   *
+   * Gehoert die Zeile zur stehenden Markierung, meint er alle markierten
+   * Zimmer -- alle oder keines, wie auf der freien Flaeche. Sonst das eine
+   * Zimmer, und die Markierung bleibt unangetastet: anders als auf der
+   * Flaeche gibt es hier keinen Tag, auf den man zeigen koennte, also auch
+   * nichts neu zu markieren.
+   */
+  const zimmerKontext = useCallback((resourceId: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    const inAuswahl = (auswahl ?? []).some(z => z.resourceId === resourceId)
+    const ids = inAuswahl && auswahl !== null ? auswahl.map(z => z.resourceId) : [resourceId]
+    onKontext?.({
+      art: 'zimmer', punkt: { x: e.clientX, y: e.clientY },
+      zimmer: ids.map(id => ({ resourceId: id, roomCode: zimmerNach.get(id)?.code ?? '' })) })
+  }, [onKontext, auswahl, zimmerNach])
+
   const beginneGroesseAendern = useCallback(
     (r: ReservationRow, edge: 'start' | 'end', e: React.PointerEvent) => {
       if (nurLinks(e)) return
@@ -1166,7 +1186,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                                      })}`
                                  + ` · ${r.public_ref}`
                                  // Die lange Notiz nur hier, nie auf dem Balken.
-                                 + (r.notes ? `\n${r.notes}` : '')}
+                                 + (r.notes ? `\n${r.notes}` : '')
+                                 + zahlungsTitel(r.payment)}
                             style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
                             /*
                              * Ein roter Ring, wenn die Anreise binnen zwei
@@ -1198,6 +1219,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                           {gruppe.code}
                         </span>
                       )}
+                      <ZahlungsZeichen zahlung={r.payment} />
                       {r.last_name ?? t('tape.noGuest')}
                       {/* Die Notiz gehoert auf den Balken, nicht zwei Klicks
                           tiefer: hier steht, was beim naechsten Blick auf den
@@ -1267,7 +1289,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                          onMovePointerDown={beginneVerschieben}
                          onResizePointerDown={beginneGroesseAendern}
                          onBalkenKontext={balkenKontext}
-                         onFreiKontext={freiKontext} />
+                         onFreiKontext={freiKontext}
+                         onZimmerKontext={zimmerKontext} />
           )
         })}
 
@@ -1368,6 +1391,8 @@ interface ZimmerzeileProps {
   onBalkenKontext: (r: ReservationRow, e: React.MouseEvent) => void
   /** Rechter Knopf auf freier Flaeche dieser Zeile. */
   onFreiKontext: (resourceId: number, categoryId: number, e: React.MouseEvent) => void
+  /** Rechter Knopf auf der Zimmernummer. */
+  onZimmerKontext: (resourceId: number, e: React.MouseEvent) => void
 }
 
 /**
@@ -1379,6 +1404,7 @@ interface ZimmerzeileProps {
 const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element {
   const t = useT()
   const locale = useLocale()
+  const zahlungsTitel = useZahlungsTitel()
   const u = p.unit
   return (
     <div className={`flex relative border-b border-neutral-100
@@ -1388,9 +1414,14 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
          data-resource-row={u.id}
          style={{ height: ZEILE }}>
       <div style={{ width: LABEL_BREITE }}
+           onContextMenu={e => p.onZimmerKontext(u.id, e)}
            className="shrink-0 px-2 py-1 text-xs border-r border-neutral-200
                       flex items-center gap-2">
         <span className="text-sm font-medium tabular-nums">{u.code}</span>
+        {/* Direkt hinter der Nummer und nicht am Zeilenende: die Nummer
+            ist, was das Auge sucht, und die Gruppe daneben wird bei
+            schmaler Spalte abgeschnitten -- das Zeichen soll es nicht. */}
+        <ReinigungsZeichen stand={u.housekeeping} />
         <span className="text-neutral-400 truncate">{u.category_name}</span>
         {p.passung === 'zuKlein' && (
           <span aria-hidden title={t('plan.tooSmall')}
@@ -1440,7 +1471,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                          + `${formatDate(r.departure, locale)} · `
                          + `${t(`status.${r.status}` as never)}`
                          + (r.short_note ? ` · ${r.short_note}` : '')
-                         + (r.notes ? `\n${r.notes}` : '')}
+                         + (r.notes ? `\n${r.notes}` : '')
+                         + zahlungsTitel(r.payment)}
                     style={{ ...b, top: 4, height: ZEILE - 8,
                              opacity: versteckt ? 0.35 : 1 }}
                     /*
@@ -1455,6 +1487,9 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
                                   ? 'ring-2 ring-offset-1 ring-sky-500 z-10' : ''}`}>
+              {/* Vor dem Namen: am schmalen Balken schneidet `truncate`
+                  hinten ab, und der Zahlungsstand soll stehen bleiben. */}
+              <ZahlungsZeichen zahlung={r.payment} />
               {r.last_name ?? t('tape.noGuest')}
               {/*
                 * Die **Kurznotiz** im Klartext, nicht die lange.

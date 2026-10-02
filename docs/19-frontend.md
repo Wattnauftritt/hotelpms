@@ -165,6 +165,10 @@ Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen 
 
 **Unveränderlichkeit zeigen.** Die Oberfläche bildet die Regeln ab, statt den Benutzer auflaufen zu lassen.
 
+**Ein Zustand ist nie nur eine Farbe.** Rot und Grün sind für jeden zwölften Mann dieselbe Farbe, und „schmutzig“ und „sauber“, „offen“ und „bezahlt“ wären es dann auch. Jedes Zustandszeichen hat eine eigene Form und den Zustand in Worten im Titel und als Name für Bildschirmleser — im Plan ▲ ✓ ★ für die Reinigung und ein Euro mit zweitem Zeichen für die Zahlung (`lib/planStatus.ts`, [`16-arbeitsstand.md`](16-arbeitsstand.md), „Reinigungs- und Zahlungsstand“).
+
+**Abgeleitetes wird angezeigt, nicht gespeichert.** „Bezahlt“ ist keine Spalte, sondern eine Rechnung über Positionen, Zahlungen und noch nicht gebuchte Nächte. Ein gespeicherter Zustand liefe auseinander, sobald nach der Zahlung eine Minibar gebucht wird — und sähe dabei weiter richtig aus.
+
 **Die Tastatur ist das Eingabegerät.** Was drei Klicks braucht, wird an einer Rezeption nicht benutzt.
 
 ---

@@ -25,7 +25,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
-| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Belegungsplan mit Ziehen (buchen, verschieben in Zimmer **und** Zeit, verlängern), nicht zusammenhängende Mehrfachauswahl mit eigenem Zeitraum je Zimmer, eigenes Kontextmenü, Gruppenmaske, Abruf aus Kontingent, Preis je Nacht oder gesamt, Gäste, Firmen, Verfügbarkeitsraster, Check-in, Storno; Preisraster und Rechnungen ebenfalls fertig. Offen: Anzahlung, Pay-by-Link, Channel-Manager-Ansicht — [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5 |
+| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Belegungsplan mit Ziehen (buchen, verschieben in Zimmer **und** Zeit, verlängern), nicht zusammenhängende Mehrfachauswahl mit eigenem Zeitraum je Zimmer, eigenes Kontextmenü, Gruppenmaske, Abruf aus Kontingent, Reinigungs- und Zahlungsstand im Plan, Preis je Nacht oder gesamt, Gäste, Firmen, Verfügbarkeitsraster, Check-in, Storno; Preisraster und Rechnungen ebenfalls fertig. Offen: Anzahlung, Pay-by-Link, Channel-Manager-Ansicht — [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5 |
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
@@ -681,6 +681,48 @@ Drei Festlegungen: **eine Zeile je Aufenthalt und Abgabenart** — zwei Abgaben 
 Gerechnet wird jetzt mit dem **verkauften Produkt**: ein Doppelzimmer ist für zwei verkauft, ob der zweite Name bekannt ist oder nicht (`category_max_occupancy` im Belegungsplan, `platzbedarf()` in `tapeSelection.ts`). Sind mehr Personen erfasst, als die Gruppe fasst — vier in einem Doppelzimmer mit Aufbettung —, zählt die größere Zahl.
 
 Beim Ziehen färben sich die Zeilen danach: grün die gebuchte Gruppe, rot die zu kleinen, neutral der Rest. Neutral ist die wichtige Mitte — eine andere Gruppe, die groß genug ist, ist ein Upgrade und Alltag; abgerechnet wird, was gebucht wurde. Die API prüft die Gruppe deshalb bewusst nicht. Gefragt wird beim Loslassen, nicht beim Ziehen: eine Rückfrage mitten in der Geste steht im Weg.
+
+---
+
+### Belegungsplan: Reinigungs- und Zahlungsstand — **erledigt**
+
+**Warum.** Die Rezeption sah im Plan, wer wo liegt, aber nicht, ob das Zimmer fertig ist und ob der Gast bezahlt hat. Beides stand auf eigenen Bildschirmen — Housekeeping und Folio —, und wer vor dem Plan sitzt, wechselt dafür nicht den Bildschirm.
+
+**Wo es liegt.** `GET /v1/properties/:id/tape-chart` (`routes/availability.ts`) liefert beides im selben Aufruf; die Regel für den Zahlungsstand steht in `packages/domain/src/paymentState.ts`. Oberfläche: `components/PlanZeichen.tsx`, `lib/planStatus.ts`, `lib/queries/housekeeping.ts`, Einträge im Kontextmenü in `PlanKontextmenue.tsx`, Texte in `lib/i18n/planstatus.ts`. Keine Migration, kein neues Recht, keine neue Route.
+
+**Reinigungsstand an der Zimmernummer.** ▲ schmutzig, ✓ sauber, ★ kontrolliert — Form **und** Farbe, der Zustand in Worten im Titel und als Name für Bildschirmleser. Rot und Grün allein wären für jeden zwölften Mann dasselbe. **„Belegt“ bekommt kein Zeichen:** der Zustand entsteht beim Check-in (Trigger aus `0011`) und fällt beim Check-out auf „schmutzig“, sagt also nichts, was der Balken des angereisten Gastes in derselben Zeile nicht schon sagt. Gesetzt wird über das eigene Kontextmenü — auf der Zimmernummer und auf freier Fläche — und über die **bestehende** Route `PUT /v1/housekeeping/status` mit ihrem Recht `housekeeping:write`; ohne das Recht stehen die Einträge nicht da. Bei einer Mehrfachmarkierung gilt alle oder keines wie beim Anlegen und Sperren: die Zahl steht im Eintrag, und es geht **ein** Aufruf mit allen Zimmern hinaus, den die Route in einer Transaktion setzt oder ganz abweist. Was nichts ändern würde, steht nicht im Menü; „belegt“ setzt der Check-in, nie ein Mensch.
+
+**Zahlungsstand am Balken: abgeleitet, nie gespeichert.** Ein gespeichertes „bezahlt“ liefe auseinander, sobald nach der Zahlung eine Minibar gebucht wird. Gerechnet wird bei jedem Aufruf aus Positionen, Zahlungsvermerken, Anzahlungsjournal, offenen Zahlungslinks und den noch nicht gebuchten Nächten.
+
+Der Maßstab ist der **ganze Aufenthalt**, nicht der Saldo von heute. Für eine frische Buchung gibt es noch keine Position — die Logis bucht erst der Nachtlauf —, ihr Saldo ist null, und „Saldo ≤ 0 heißt bezahlt“ hätte jede künftige Reservierung im Plan als bezahlt gezeigt: die plausibel aussehende falsche Zahl aus Migration 0014, diesmal am Geld. Erwartet wird deshalb Gebuchtes plus die eingefrorenen Preise der noch offenen Nächte (`reservation_night.price_cent`); nach der letzten Nacht ist beides dasselbe. Kurtaxe kommt erst mit dem Nachtlauf hinzu und steht vorher nicht in der Erwartung.
+
+| Zustand | Zeichen | Bedeutung |
+|---|---|---|
+| — | keines | nichts gebucht, nichts gezahlt, nichts angefordert. **Vor dem ersten Nachtlauf schuldet niemand etwas**, gezahlt wird hierzulande meist bei der Abreise; ein rotes „offen“ an jeder künftigen Buchung wäre Lärm. Der erwartete Betrag steht im Titel |
+| offen | €! | Positionen gebucht, nichts gezahlt |
+| Zahlung angefordert | €? | ein Zahlungslink ist offen und noch nicht eingelöst |
+| Anzahlung eingegangen | €↓ | Geld da, bevor die erste Position gebucht ist, aber weniger als erwartet |
+| teilweise bezahlt | €½ | gezahlt, aber weniger als erwartet, und es ist schon etwas gebucht |
+| bezahlt | €✓ | mindestens der erwartete Betrag ist eingegangen |
+
+**Bewusst nicht dabei: „Anzahlung überfällig“.** Das Datenmodell weiß nicht, ob eine Anzahlung verlangt ist — es gibt keine Anzahlungsregel am Ratenplan oder an der Stornoregel und keine Frist an einer Zahlungsanforderung. Ein Zustand „überfällig gegen den Geschäftstag“ wäre ohne diese Frist erfunden. Kommt sie, ist es eine Zeile in `paymentState` und ein Feld im Verbund.
+
+**Je Reservierung, über ihr eigenes Folio — auch in der Gruppe.** Jedes Zimmer bekommt beim Buchen sein Folio, ein Sammelkonto für die Gruppe gibt es nicht (`folio.kind = 'group'` legt keine Route an). Abgerechnet und ausgecheckt wird je Folio, also muss „bezahlt“ am Balken heißen, dass **dieses** Folio gedeckt ist. Zahlt der Bucher für alle auf sein Zimmer, steht sein Balken auf bezahlt und die übrigen nicht — genau das stünde auch auf ihren Rechnungen. Damit das nicht wie ein Versäumnis aussieht, steht im Titel die Rechnung über alle Zimmer der Buchung, und zwar über **alle**, auch die außerhalb des sichtbaren Zeitraums: aus den sichtbaren Balken summiert wäre die Gruppensumme falsch und sähe richtig aus. Eine Umleitungsregel für die Logis (`routing_rule`, wie der Nachtlauf sie liest) nimmt die noch offenen Nächte aus der Erwartung; der Titel sagt es dazu.
+
+**Recht: das Feld fehlt, der Plan bleibt.** Der Zahlungsstand kommt nur mit `folio:read` — die Rolle „Reservierung“ und Revenue sehen den Plan, aber keine Beträge, und bekommen keinen 403 für den ganzen Bildschirm. Der Reinigungsstand hängt aus demselben Grund an `housekeeping:read`. Die Legende zeigt nur, was der Benutzer zu sehen bekommt.
+
+**Eine Anweisung mehr, nicht eine je Balken.** Der Plan braucht mit Folio-Recht vier Anweisungen statt drei, unabhängig von der Zahl der Reservierungen; ein Test zählt sie bei einer und bei vier Reservierungen mit Positionen und Zahlungen. Gemessen am Saatlaufhaus (Haus 1, 250 Zimmer, mit Zahlungsvermerken für alle abgereisten und die Hälfte der angereisten Aufenthalte nachgetragen), Median aus elf Läufen auf einer geteilten Maschine:
+
+| Zeitraum | Reservierungen | Zimmer | Reservierungen (Abfrage) | Zahlungsstand (neu) |
+|---|---|---|---|---|
+| 92 Tage (Obergrenze) | 3 792 | 0,4 → 0,5 ms | 48–64 ms, unverändert | 71–93 ms |
+| 30 Tage (Vorgabe) | 1 538 | 0,4 → 0,5 ms | 19–27 ms, unverändert | 29–36 ms |
+
+Jeder Zweig läuft über einen vorhandenen Index (`reservation_booking`, `folio_reservation`, `charge_folio`, `settlement_folio`, `payment_intent_folio`, Primärschlüssel von `reservation_night`); eine Migration war nicht nötig. Die erste Fassung schlug die Buchungen über die Reservierungen ein zweites Mal nach und brauchte 102 statt 66 ms — jetzt reicht die Reservierungsabfrage ihre `booking_id` durch. Was bleibt, ist im Wesentlichen die Zeilenrichtlinie: ihr Filter wird je gelesener Zeile ausgewertet, in jeder der fünf Tabellen.
+
+**Beim Bauen gefunden und mitbehoben: der Abfragezähler zählte die zweite Zählung nicht.** `countQueries` umwickelte jeden Client einmal und ließ ihn danach für immer in die Liste der **ersten** Zählung schreiben; der Pool gibt dieselben Clients wieder aus. Ein Vergleich „vorher gleich nachher“ im selben Test sah dann null Anweisungen und wäre bei 0 = 0 still durchgegangen. Außerdem kannte er nur `await pool.connect()` und brach bei `pool.query()` ab, das sich seinen Client über einen Rückruf holt. Beides ist behoben (`packages/testing/src/queryCounter.ts`); der neue Test prüft zusätzlich, dass überhaupt gezählt wurde.
+
+**Gesehen, nicht behoben:** `db:testhotel` legt für seine Reservierungen **keine Folios** an. Im Übungshaus steht deshalb an jedem Balken „kein Folio“, und der Zahlungsstand bleibt dort leer, bis jemand über die Buchungsmaske bucht.
 
 ---
 
