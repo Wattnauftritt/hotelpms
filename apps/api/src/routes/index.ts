@@ -29,6 +29,7 @@ import { platformSupportRoutes } from './platformSupport.js'
 import { platformDomainRoutes } from './platformDomains.js'
 import { userAdminRoutes } from './userAdmin.js'
 import { historyRoutes } from './history.js'
+import { searchRoutes } from './search.js'
 import { openApiRoutes } from './openapi.js'
 import type { DomainVerwaltung } from '../platform/brevoDomains.js'
 
@@ -60,6 +61,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   setupRoutes(app)
   blockRoutes(app)
   historyRoutes(app)
+  searchRoutes(app)
   oauthRoutes(app)
   paymentsRoutes(app, overrides.payments)
   webhookRoutes(app)

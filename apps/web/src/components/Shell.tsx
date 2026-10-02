@@ -4,6 +4,7 @@ import { I18nContext, useT, useLocale, LOCALES, type Locale }
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
+import { Detailsuche } from './Detailsuche.tsx'
 import type { ScreenDefinition } from '../screens.js'
 
 export type { Haus }
@@ -153,6 +154,14 @@ export function Shell(props: Props): JSX.Element {
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
           <div className="flex items-center gap-4 px-4 py-2">
             <span className="font-semibold">StayGrid</span>
+            {/*
+              * Die Detailsuche (Strg+K) vorn neben dem Namen und nicht rechts
+              * bei Sprache und Abmelden: die Leiste ist mit allen Bildschirmen
+              * breiter als ein Rezeptionsmonitor, und was rechts steht, liegt
+              * dann ausserhalb. Ohne Haus -- das Adminpanel ohne
+              * Support-Sitzung -- gibt es nichts zu finden.
+              */}
+            {props.haus !== undefined && <Detailsuche propertyId={props.haus.id} />}
             <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
             <div className="grow" />
             <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />

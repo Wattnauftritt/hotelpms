@@ -23,22 +23,52 @@ export async function countQueries<T>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyPool = pool as any
   const originalConnect = anyPool.connect.bind(pool)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const umwickelt: any[] = []
 
-  anyPool.connect = async (...args: unknown[]) => {
-    const client = await originalConnect(...args)
-    if (!client.__counted) {
-      client.__counted = true
-      const originalQuery = client.query.bind(client)
-      client.query = (...qargs: unknown[]) => {
-        const first = qargs[0]
-        const text = typeof first === 'string'
-          ? first
-          : (first as { text?: string })?.text ?? ''
-        if (!NOISE.test(text.trim())) statements.push(text.trim().replace(/\s+/g, ' '))
-        return originalQuery(...qargs)
-      }
+  /*
+   * Je Aufruf neu umwickeln und danach zuruecksetzen.
+   *
+   * Vorher blieb ein Verbindungsobjekt nach dem ersten Zaehlen markiert und
+   * schrieb beim naechsten `countQueries` in die Liste des **ersten**
+   * Aufrufs: der zweite Bericht war leer, und ein Test, der zweimal zaehlt
+   * und vergleicht, verglich 0 mit 0.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const zaehlen = (client: any): void => {
+    if (client === undefined || client === null || client.__zaehler === statements) return
+    if (client.__originalQuery === undefined) client.__originalQuery = client.query
+    const originalQuery = client.__originalQuery.bind(client)
+    client.__zaehler = statements
+    client.query = (...qargs: unknown[]) => {
+      const first = qargs[0]
+      const text = typeof first === 'string'
+        ? first
+        : (first as { text?: string })?.text ?? ''
+      if (!NOISE.test(text.trim())) statements.push(text.trim().replace(/\s+/g, ' '))
+      return originalQuery(...qargs)
     }
-    return client
+    umwickelt.push(client)
+  }
+
+  /*
+   * Beide Formen von `connect`. `pool.query` -- die Anmeldung benutzt es --
+   * holt sich seine Verbindung mit einem Rueckruf und nicht ueber das
+   * Versprechen; die erste Fassung kannte nur das Versprechen und brach
+   * mit "client is undefined" ab, sobald eine ganze Anfrage durch
+   * `app.inject` gezaehlt wurde.
+   */
+  anyPool.connect = (...args: unknown[]) => {
+    const rueckruf = args.find(a => typeof a === 'function') as
+      ((err: unknown, client: unknown, release: unknown) => void) | undefined
+    if (rueckruf !== undefined) {
+      return originalConnect((err: unknown, client: unknown, release: unknown) => {
+        if (!err) zaehlen(client)
+        rueckruf(err, client, release)
+      })
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return originalConnect().then((client: any) => { zaehlen(client); return client })
   }
 
   try {
@@ -46,5 +76,9 @@ export async function countQueries<T>(
     return { result, report: { count: statements.length, statements } }
   } finally {
     anyPool.connect = originalConnect
+    for (const client of umwickelt) {
+      client.query = client.__originalQuery
+      delete client.__zaehler
+    }
   }
 }

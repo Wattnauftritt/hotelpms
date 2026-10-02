@@ -19,6 +19,7 @@ import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
 import { VerlaufDialog } from '../components/Verlauf.tsx'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
+import { PlanSuche } from '../components/PlanSuche.tsx'
 
 const SPANNEN = [14, 30, 60] as const
 /** Wie viele Schritte Strg+Z zurueckreicht. */
@@ -297,6 +298,10 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
+        {/* Die Schnellsuche vorn: sie ist der kuerzeste Weg zu einem Balken,
+            kuerzer als jedes Blaettern daneben. */}
+        <PlanSuche propertyId={propertyId} von={von} bis={bis} onVon={setVon}
+                   onOeffnen={setAusgewaehlt} />
         <DatumsWahl value={von} onChange={setVon} step={7} />
         {/* Monat und Jahr zum Durchklicken. Die Wochenpfeile daneben bleiben:
             im Alltag blaettert die Rezeption wochenweise, im Jahresgeschaeft

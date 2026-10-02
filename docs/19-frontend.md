@@ -167,6 +167,8 @@ Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen 
 
 **Die Tastatur ist das Eingabegerät.** Was drei Klicks braucht, wird an einer Rezeption nicht benutzt.
 
+Die Kürzel, die überall gelten, stehen an zwei Stellen und sonst nirgends: Escape in `lib/tasten.ts` (ein Stapel, ein Druck schließt die oberste Lage), Strg+K und die Befehle Alt+N, Alt+G, Alt+C in `lib/suche.ts`. Wer ein weiteres anlegt, hält sich an deren drei Regeln: **nicht über einer offenen Maske** (dort gehört die Taste der halb ausgefüllten Buchung), **keine Alt-Taste in einem Textfeld** (auf dem Mac schreibt sie dort ein Zeichen, und Strg+Alt ist auf einer deutschen Tastatur AltGr), und **`code` statt `key`**, weil `key` auf dem Mac mit Alt das Zeichen liefert und nicht den Buchstaben. Strg+K selbst wirkt auch aus einem Textfeld — außer auf dem Mac, wo Strg+K im Feld „löschen bis Zeilenende" ist; dort liegt die Suche auf Cmd+K. Die Begründung steht in [`16-arbeitsstand.md`](16-arbeitsstand.md), Abschnitt „Suche".
+
 ---
 
 ## 8. Was gebaut werden muss
