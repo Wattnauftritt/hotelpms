@@ -25,11 +25,12 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 10 Meldeschein | fertig | `routes/registrations.ts` |
 | AP 11 Berichte und Exporte | fertig | `routes/reports.ts` |
 | AP 11b CSV-Import | fertig | `routes/import.ts`, `platform/csv.ts` |
-| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Belegungsplan mit Ziehen (buchen, verschieben in Zimmer **und** Zeit, verlängern), nicht zusammenhängende Mehrfachauswahl mit eigenem Zeitraum je Zimmer, eigenes Kontextmenü, Gruppenmaske, Abruf aus Kontingent, Preis je Nacht oder gesamt, Gäste, Firmen, Verfügbarkeitsraster, Check-in, Storno; Preisraster und Rechnungen ebenfalls fertig. Offen: Anzahlung, Pay-by-Link, Channel-Manager-Ansicht — [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5 |
+| AP 12 Rezeptions-Oberfläche | **teilweise** | `apps/web`. Belegungsplan mit Ziehen (buchen, verschieben in Zimmer **und** Zeit, verlängern), nicht zusammenhängende Mehrfachauswahl mit eigenem Zeitraum je Zimmer, eigenes Kontextmenü, Gruppenmaske, Abruf aus Kontingent, Reinigungs- und Zahlungsstand im Plan, Preis je Nacht oder gesamt, Gäste, Firmen, Verfügbarkeitsraster, Check-in, Storno; Preisraster und Rechnungen ebenfalls fertig; Anzahlung anfordern und Pay-by-Link mit Versand per Gastpost (`0060`, Abschnitt „Anzahlung und Pay-by-Link in der Oberfläche"). Offen: Channel-Manager-Ansicht — [`20-arbeitsteilung.md`](20-arbeitsteilung.md) §5 |
 | AP 13 Integrationen | fertig | Webhooks (`0020`), Payments (`0021`, `routes/payments.ts`), ARI (`0023`, `routes/channel.ts`), Kasse (`0026`, `routes/pos.ts`) |
 | AP 14 Import aus Altsystemen | fertig | `routes/import.ts`, `platform/legacyImport/` |
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
 | AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
+| AP 16 Preissteuerung (RMS) | fertig | `0065`, `0066`, `routes/rateSteering.ts`, `jobs/rateSteering.ts`, `components/Preissteuerung.tsx` — [`32-preissteuerung.md`](32-preissteuerung.md) |
 
 **104 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 
@@ -454,6 +455,7 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 **Was daraus entschieden wurde.**
 
 - **Der Abmeldefehler war kein fehlender Knopf, sondern ein fehlender Rahmen.** Das Adminpanel wurde **neben** der Kopfleiste gerendert statt darin, und die Kopfleiste trägt Abmelden, Sprachwahl und den Weg zum eigenen Konto. Behoben durch Einbetten, nicht durch eine zweite Schaltfläche — zwei Kopfleisten laufen auseinander.
+- **Dieselbe Lücke kam später durch die Breite zurück.** Mit dreizehn Bildschirmen war die Leiste rund 2 100 Pixel breit, und Sprachwahl und Abmelden lagen bei 1 920 rechts außerhalb des Bildschirms — ohne dass jemand etwas entfernt hatte. Die Navigation zeigt jetzt vorne, was passt, und legt den Rest in ein „Mehr“-Menü (`Shell.tsx`, `navPasst`); steht der aktive Bildschirm darin, trägt der Knopf seinen Namen. Die rechte Seite hängt nicht an dieser Rechnung: sie schrumpft nicht (`shrink-0`), die Leiste schon (`min-w-0`). Geprüft bei 1 280, 1 500 und 1 920 Pixeln, deutsch, englisch und türkisch.
 - **Das eigene Konto sitzt hinter dem eigenen Namen**, dort wo schon der eigene Arbeitsplatz-PIN steht. Derselbe Gedanke: „das bin ich, und das ändere ich an mir". Ein eigener Bildschirm „Mein Profil" wäre ein weiterer Reiter, den Plattformpersonal wieder nicht erreicht, weil es keine Hausbildschirme hat.
 - **Beide Änderungen verlangen das aktuelle Kennwort.** Eine Sitzung genügt nicht: an einer Rezeption steht ein Rechner, an dem jemand kurz aufsteht, und wer die Sitzung vorfindet, könnte sonst in zwei Klicks das Konto übernehmen.
 - **Und beide zählen ihre Fehlversuche selbst.** Die allgemeine Ratenbegrenzung greift nur bei anonymen Anfragen und erreicht eine angemeldete Sitzung nicht — genau der Fehler, an dem `workstation-switch` schon einmal gescheitert ist (H4, Dokument 25). Geprüft wird hier dasselbe Geheimnis wie bei der Anmeldung, also zählt es auf denselben Zähler. Eine bereits gesperrte Sitzung kommt gar nicht erst durch, sonst ließe sich die Sperre der Anmeldung von innen umgehen.
@@ -684,6 +686,48 @@ Beim Ziehen färben sich die Zeilen danach: grün die gebuchte Gruppe, rot die z
 
 ---
 
+### Belegungsplan: Reinigungs- und Zahlungsstand — **erledigt**
+
+**Warum.** Die Rezeption sah im Plan, wer wo liegt, aber nicht, ob das Zimmer fertig ist und ob der Gast bezahlt hat. Beides stand auf eigenen Bildschirmen — Housekeeping und Folio —, und wer vor dem Plan sitzt, wechselt dafür nicht den Bildschirm.
+
+**Wo es liegt.** `GET /v1/properties/:id/tape-chart` (`routes/availability.ts`) liefert beides im selben Aufruf; die Regel für den Zahlungsstand steht in `packages/domain/src/paymentState.ts`. Oberfläche: `components/PlanZeichen.tsx`, `lib/planStatus.ts`, `lib/queries/housekeeping.ts`, Einträge im Kontextmenü in `PlanKontextmenue.tsx`, Texte in `lib/i18n/planstatus.ts`. Keine Migration, kein neues Recht, keine neue Route.
+
+**Reinigungsstand an der Zimmernummer.** ▲ schmutzig, ✓ sauber, ★ kontrolliert — Form **und** Farbe, der Zustand in Worten im Titel und als Name für Bildschirmleser. Rot und Grün allein wären für jeden zwölften Mann dasselbe. **„Belegt“ bekommt kein Zeichen:** der Zustand entsteht beim Check-in (Trigger aus `0011`) und fällt beim Check-out auf „schmutzig“, sagt also nichts, was der Balken des angereisten Gastes in derselben Zeile nicht schon sagt. Gesetzt wird über das eigene Kontextmenü — auf der Zimmernummer und auf freier Fläche — und über die **bestehende** Route `PUT /v1/housekeeping/status` mit ihrem Recht `housekeeping:write`; ohne das Recht stehen die Einträge nicht da. Bei einer Mehrfachmarkierung gilt alle oder keines wie beim Anlegen und Sperren: die Zahl steht im Eintrag, und es geht **ein** Aufruf mit allen Zimmern hinaus, den die Route in einer Transaktion setzt oder ganz abweist. Was nichts ändern würde, steht nicht im Menü; „belegt“ setzt der Check-in, nie ein Mensch.
+
+**Zahlungsstand am Balken: abgeleitet, nie gespeichert.** Ein gespeichertes „bezahlt“ liefe auseinander, sobald nach der Zahlung eine Minibar gebucht wird. Gerechnet wird bei jedem Aufruf aus Positionen, Zahlungsvermerken, Anzahlungsjournal, offenen Zahlungslinks und den noch nicht gebuchten Nächten.
+
+Der Maßstab ist der **ganze Aufenthalt**, nicht der Saldo von heute. Für eine frische Buchung gibt es noch keine Position — die Logis bucht erst der Nachtlauf —, ihr Saldo ist null, und „Saldo ≤ 0 heißt bezahlt“ hätte jede künftige Reservierung im Plan als bezahlt gezeigt: die plausibel aussehende falsche Zahl aus Migration 0014, diesmal am Geld. Erwartet wird deshalb Gebuchtes plus die eingefrorenen Preise der noch offenen Nächte (`reservation_night.price_cent`); nach der letzten Nacht ist beides dasselbe. Kurtaxe kommt erst mit dem Nachtlauf hinzu und steht vorher nicht in der Erwartung.
+
+| Zustand | Zeichen | Bedeutung |
+|---|---|---|
+| — | keines | nichts gebucht, nichts gezahlt, nichts angefordert. **Vor dem ersten Nachtlauf schuldet niemand etwas**, gezahlt wird hierzulande meist bei der Abreise; ein rotes „offen“ an jeder künftigen Buchung wäre Lärm. Der erwartete Betrag steht im Titel |
+| offen | €! | Positionen gebucht, nichts gezahlt |
+| Zahlung angefordert | €? | ein Zahlungslink ist offen und noch nicht eingelöst |
+| Anzahlung eingegangen | €↓ | Geld da, bevor die erste Position gebucht ist, aber weniger als erwartet |
+| teilweise bezahlt | €½ | gezahlt, aber weniger als erwartet, und es ist schon etwas gebucht |
+| bezahlt | €✓ | mindestens der erwartete Betrag ist eingegangen |
+
+**Bewusst nicht dabei: „Anzahlung überfällig“.** Das Datenmodell weiß nicht, ob eine Anzahlung verlangt ist — es gibt keine Anzahlungsregel am Ratenplan oder an der Stornoregel und keine Frist an einer Zahlungsanforderung. Ein Zustand „überfällig gegen den Geschäftstag“ wäre ohne diese Frist erfunden. Kommt sie, ist es eine Zeile in `paymentState` und ein Feld im Verbund.
+
+**Je Reservierung, über ihr eigenes Folio — auch in der Gruppe.** Jedes Zimmer bekommt beim Buchen sein Folio, ein Sammelkonto für die Gruppe gibt es nicht (`folio.kind = 'group'` legt keine Route an). Abgerechnet und ausgecheckt wird je Folio, also muss „bezahlt“ am Balken heißen, dass **dieses** Folio gedeckt ist. Zahlt der Bucher für alle auf sein Zimmer, steht sein Balken auf bezahlt und die übrigen nicht — genau das stünde auch auf ihren Rechnungen. Damit das nicht wie ein Versäumnis aussieht, steht im Titel die Rechnung über alle Zimmer der Buchung, und zwar über **alle**, auch die außerhalb des sichtbaren Zeitraums: aus den sichtbaren Balken summiert wäre die Gruppensumme falsch und sähe richtig aus. Eine Umleitungsregel für die Logis (`routing_rule`, wie der Nachtlauf sie liest) nimmt die noch offenen Nächte aus der Erwartung; der Titel sagt es dazu.
+
+**Recht: das Feld fehlt, der Plan bleibt.** Der Zahlungsstand kommt nur mit `folio:read` — die Rolle „Reservierung“ und Revenue sehen den Plan, aber keine Beträge, und bekommen keinen 403 für den ganzen Bildschirm. Der Reinigungsstand hängt aus demselben Grund an `housekeeping:read`. Die Legende zeigt nur, was der Benutzer zu sehen bekommt.
+
+**Eine Anweisung mehr, nicht eine je Balken.** Der Plan braucht mit Folio-Recht vier Anweisungen statt drei, unabhängig von der Zahl der Reservierungen; ein Test zählt sie bei einer und bei vier Reservierungen mit Positionen und Zahlungen. Gemessen am Saatlaufhaus (Haus 1, 250 Zimmer, mit Zahlungsvermerken für alle abgereisten und die Hälfte der angereisten Aufenthalte nachgetragen), Median aus elf Läufen auf einer geteilten Maschine:
+
+| Zeitraum | Reservierungen | Zimmer | Reservierungen (Abfrage) | Zahlungsstand (neu) |
+|---|---|---|---|---|
+| 92 Tage (Obergrenze) | 3 792 | 0,4 → 0,5 ms | 48–64 ms, unverändert | 71–93 ms |
+| 30 Tage (Vorgabe) | 1 538 | 0,4 → 0,5 ms | 19–27 ms, unverändert | 29–36 ms |
+
+Jeder Zweig läuft über einen vorhandenen Index (`reservation_booking`, `folio_reservation`, `charge_folio`, `settlement_folio`, `payment_intent_folio`, Primärschlüssel von `reservation_night`); eine Migration war nicht nötig. Die erste Fassung schlug die Buchungen über die Reservierungen ein zweites Mal nach und brauchte 102 statt 66 ms — jetzt reicht die Reservierungsabfrage ihre `booking_id` durch. Was bleibt, ist im Wesentlichen die Zeilenrichtlinie: ihr Filter wird je gelesener Zeile ausgewertet, in jeder der fünf Tabellen.
+
+**Beim Bauen gefunden und mitbehoben: der Abfragezähler zählte die zweite Zählung nicht.** `countQueries` umwickelte jeden Client einmal und ließ ihn danach für immer in die Liste der **ersten** Zählung schreiben; der Pool gibt dieselben Clients wieder aus. Ein Vergleich „vorher gleich nachher“ im selben Test sah dann null Anweisungen und wäre bei 0 = 0 still durchgegangen. Außerdem kannte er nur `await pool.connect()` und brach bei `pool.query()` ab, das sich seinen Client über einen Rückruf holt. Beides ist behoben (`packages/testing/src/queryCounter.ts`); der neue Test prüft zusätzlich, dass überhaupt gezählt wurde.
+
+**Gesehen, nicht behoben:** `db:testhotel` legt für seine Reservierungen **keine Folios** an. Im Übungshaus steht deshalb an jedem Balken „kein Folio“, und der Zahlungsstand bleibt dort leer, bis jemand über die Buchungsmaske bucht.
+
+---
+
 ### Das Adminpanel
 
 **Was es vorher gab.** Eine Seite mit drei Abschnitten — Support-Sitzung anfragen, eigene Sitzungen, Ausrollen —, erreichbar in genau einem Zustand: angemeldet als Plattformpersonal **ohne** laufende Support-Sitzung. Dann hat der Benutzer kein Haus, und statt einer Fehlermeldung erschien die Konsole. Das war als Normalzustand gedacht und hieß zugleich: sobald eine Sitzung lief, war der Bildschirm weg, samt Ausrollknopf. Erreichbar sein und zufällig sichtbar sein ist nicht dasselbe.
@@ -737,6 +781,81 @@ Eine vergebene Adresse wird beim Einladen abgewiesen — auch wenn sie zum eigen
 
 **Rollen ändern, auf beiden Seiten.** Der Kunde konnte seit der Selbstverwaltung Haus- und Betriebsrollen unter Einstellungen → Benutzer ersetzend setzen; das Adminpanel zeigte sie nur als Text. Jetzt trägt jede Benutzerzeile der Kundenkarte einen Editor: je Haus des Kunden ein Satz Hausrollen, dazu die Rollen für den ganzen Betrieb (`PUT /v1/platform/accounts/:id/users/:userId/roles` und `…/account-roles`, `platform:accounts`). Dieselben Grenzen wie beim Kunden: nur Rollen der richtigen Ebene, die dem Kunden gehören oder System sind, also nie eine Plattformrolle; und der letzte Verwalter des Betriebs bleibt, auch für uns. Die Kundenkarte liefert die Rollen dafür strukturiert (`accountRoles`, `propertyRoles`) neben dem bisherigen Text.
 
+### Anzahlung und Pay-by-Link in der Oberfläche — **erledigt**
+
+**Warum.** Die Schnittstelle konnte einen Zahlungslink erzeugen (Aufgabe 6) und aus einem Eingang eine Anzahlungsrechnung machen (Aufgabe 3). Was fehlte, war der Vorgang davor: dass ein Haus von einem Gast **bis zu einem Tag** einen **Betrag** verlangt. Ohne diesen Datensatz gibt es kein „überfällig", und ein Eingang weiß nicht, wofür er kam.
+
+**Wo es liegt.** Migration `0060`, `apps/api/src/routes/depositRequests.ts` (Anfordern, Zurückziehen, Eingang zuordnen, Sicht), `routes/payments.ts` (Link zur Anforderung, Versand, Ungültigmachen, Zuordnung im Webhook), `packages/domain/src/depositRequest.ts` (Betrag und Zustand, auch unter `@hotelpms/domain/depositRequest` für die Oberfläche), `renderPaymentLinkEmail` in `packages/domain/src/email.ts`. Oberfläche: `components/Anzahlung.tsx` im Reservierungsfenster und in der Vorauszahlung des Folios, `components/Zahlungslink.tsx` für beide.
+
+Neue Routen, alle mit `folio:post` und zusätzlich geprüft im Haus des Folios: `POST /v1/folios/:ref/deposit-requests`, `POST /v1/deposit-requests/:ref/cancel`, `POST /v1/deposit-requests/:ref/settlements`, `POST /v1/payment-links/:id/cancel`. `POST .../payment-links` nimmt `depositRequestRef` und `sendEmail` an (Versand verlangt zusätzlich `email:send`). `GET .../prepayments` bringt Anforderungen, Geschäftstag, Übungskennzeichen und Postbereitschaft in derselben Antwort. Kein neues Recht.
+
+**Was daraus entschieden wurde.**
+
+- **Prozent wird abgerundet, auf den ganzen Cent, ganzzahlig in Basispunkten.** Die Forderung liegt damit nie über dem vereinbarten Anteil (30 % von 333,33 € sind 99,99 €, nicht 100,00 €), und bei 100 % ist sie genau der Aufenthalt. Der Betrag wird bei der Anlage festgeschrieben: ändert sich danach der Aufenthalt, ändert sich nicht still die Forderung, die der Gast schon hat.
+- **Der Zustand wird abgeleitet, nie gespeichert**, gegen den Geschäftstag: am Fälligkeitstag ist nichts überfällig, am Geschäftstag danach schon. Überfällig geht vor teilweise.
+- **Ein Eingang wird ausdrücklich zugeordnet** — vom Webhook in derselben Transaktion, von der Rezeption für Überweisung und Barzahlung. Alle Eingänge eines Folios der Reihe nach zu verteilen hätte nach der Anreise jedes bezahlte Minibar-Wasser als Anzahlung gezählt.
+- **Die Anzahlungsrechnung entsteht nicht im Webhook.** Sie zieht eine Nummer aus der lückenlosen Folge und braucht Pflichtangaben, die ein Mensch prüft; sie entsteht weiter nur über `POST .../deposit-invoice`. Die Maske meldet jeden Eingang ohne Rechnung und bietet den Weg an.
+- **Der Link geht nur beim Erzeugen per Gastpost hinaus.** Seine Adresse wird weiterhin nicht gespeichert; ein späteres „noch einmal schicken" müsste sie sich vom Aufrufer geben lassen, und dann bestimmte der Aufrufer den Inhalt der Gastpost. Die Post wird **vor** dem Anbieter geprüft, damit kein Checkout ohne Gegenstück entsteht; `email_enqueue` bleibt der Zaun. Die Mail hat Reservierungsbezug, damit `guest_erase_one()` sie findet.
+- **Ein Übungshaus bekommt keinen Link**, abgewiesen bevor der Anbieter gefragt wird; die Oberfläche erklärt es, statt den Knopf zu zeigen. Anforderungen lassen sich dort üben.
+- **Ungültig machen heißt beim Anbieter** (Stripe `expire`), erst dort, dann bei uns. Eine Anforderung mit offenem Link lässt sich nicht zurückziehen.
+
+**Mitbehoben.** Die bestehenden Folio-Routen prüfen das Recht nur „irgendwo im Account" — bei mehreren Häusern kommt, wer im einen Haus buchen darf, im anderen an dieselben Knöpfe. Die neuen Routen prüfen es zusätzlich im Haus des Folios (`rechtImHaus`); die alten sind unverändert und gehören nachgezogen.
+
+**Noch offen.**
+
+- ~~Ein Stripe-Checkout gilt höchstens 24 Stunden~~ — behoben mit dem dauerhaften Link (unten, `0068`).
+- ~~Die Rückkehradressen des Checkouts zeigen auf das Folio im PMS~~ — sie führen jetzt auf `/v1/pay/done`, eine Seite ohne Anmeldung und ohne Token.
+- Das Testhotel (`db:testhotel`) legt zu keiner Reservierung ein Folio an; ohne Folio gibt es nichts, worauf angezahlt wird. Beim Nachfahren im Browser wurde eines von Hand angelegt.
+- Eine Liste aller überfälligen Anzahlungen eines Hauses (etwa im Tagesgeschäft) fehlt; der Index `deposit_request_due` ist dafür angelegt.
+### Suche: Schnellsuche im Plan und Detailsuche mit Strg+K — **erledigt**
+
+**Wo es liegt.** `apps/api/src/routes/search.ts`, Migration `0058`, `packages/contracts/src/suche.ts`; in der Oberfläche `components/PlanSuche.tsx`, `components/Detailsuche.tsx`, `components/Suchtreffer.tsx`, `lib/suche.ts`, `lib/queries/suche.ts`, `lib/i18n/suche.ts`. Tests: `apps/api/src/__tests__/suche.test.ts`, `apps/web/src/__tests__/suche.test.ts`.
+
+**Warum.** Aus dem Betrieb, nach dem Vorbild von Mews: „ein Suchfeld im Kalender, um mal schnell etwas zu suchen, und Strg+K als Detailsuche". Bis dahin gab es nur die Namenssuche für Gäste und Firmen in den Buchungsmasken — keine Suche nach Reservierungsnummer, keine gemeinsame Suche, kein Kürzel.
+
+**Ein Endpunkt für beide.** `GET /v1/properties/:propertyId/search?q=&scope=all|reservation|customer&limit=` liefert Reservierungen (über Hauptgast, Begleitperson, Reservierungs-, Buchungs- und Kanalnummer) und Kunden (Gäste und Firmen) in höchstens zwei Anweisungen, unabhängig von der Trefferzahl — ein Test zählt das. Jede Zeile trägt, was die Liste zeigt: Zeitraum, Zimmer, Zustand, Begleitpersonen, Zahl der Aufenthalte, „im Haus". Recht ist `reservation:read`; die Kunden mit Mail und Telefon verlangen zusätzlich `guest:read` (die Rolle `revenue` findet Reservierungen, aber keine Kontaktdaten). Mindestens zwei Zeichen, höchstens hundert, höchstens 25 Treffer je Gruppe. Der Suchbegriff steht in der Adresse und damit nie im Protokoll — der `req`-Serialisierer ersetzt den Wert, ein Test hält es für diese Route fest.
+
+**Was ein Gast aus dem Account zeigen darf.** Gäste gehören dem Account, Reservierungen dem Haus. Gefunden wird der Gast accountweit — dieselben Felder wie in `GET /v1/guests` —, aber die Zahl seiner Aufenthalte und „im Haus" kommen nur aus **diesem** Haus. Sonst erführe eine Rezeption mit Rolle in Haus A über die Suche, dass jemand gerade in Haus B wohnt. Reservierungen tragen an jeder Tabelle `property_id = $1`, Gäste werden auf den Account des Hauses begrenzt. Anonymisierte Gäste findet die Suche nicht, auch nicht als Begleitperson; ihre Reservierungen bleiben über die Nummer auffindbar, weil der Beleg aufbewahrt wird.
+
+**Schnellsuche im Plan.** Ein Feld vorn in der Leiste. Die Auswahl einer Reservierung springt: der Plan blättert zur Anreise (zwei Tage Umfeld), rollt zur Zimmerzeile oder ins Band der Buchungen ohne Zimmer, hebt den Balken kurz hervor und setzt den Fokus darauf; Enter oder ein Klick öffnet ihn wie gewohnt. Abgereiste, stornierte und No-Show-Aufenthalte haben keinen Balken und öffnen sich gleich im Seitenfenster. Gefunden wird der Balken über `data-reservation-ref` — der Plan selbst bekam nur dieses eine Merkmal und keine Hervorhebung als Eigenschaft, sonst zeichnete jeder Sprung alle gemerkten Zimmerzeilen neu.
+
+**Detailsuche.** Strg+K (auf dem Mac Cmd+K) öffnet von überall ein Fenster mit Feld, den Filtern *Alle / Reservierung / Kunde* (Tab wechselt) und den Gruppen *Reservierung*, *Kunde*, *Befehl*. Eine Reservierung öffnet ihr Seitenfenster über dem aktuellen Bildschirm, ein Gast oder eine Firma das Profil. Die Befehle *Neue Reservierung* (Alt+N), *Neuer Gast* (Alt+G) und *Neue Firma* (Alt+C) öffnen die vorhandenen Masken; neue gibt es nicht. Die Buchungsmaske braucht eine Zimmergruppe und einen Tag, deshalb führt *Neue Reservierung* ins Verfügbarkeitsraster, mit einem Hinweis, was dort anzuklicken ist — eine dritte Maske, die beides abfragt, wäre eine zweite Fassung derselben Buchung.
+
+Drei Tastenentscheidungen: **Strg+K wirkt auch aus einem Textfeld**, weil die Lage an der Rezeption fast immer ein Feld ist und die Taste dort unter Windows und Linux nichts bedeutet; auf dem Mac ist Strg+K im Feld „löschen bis Zeilenende" und bleibt dem Feld, die Suche liegt dort auf Cmd+K. **Nicht über einer offenen Maske**: dort steht eine halb ausgefüllte Buchung, und die Suche führt von ihr weg. **Die Alt-Befehle nie im Textfeld** und nur mit Alt allein — auf dem Mac schreibt Alt+C ein „ç", und Strg+Alt ist auf einer deutschen Tastatur AltGr.
+
+**Befund beim Messen: Trigramm und `LIKE` unter der Zeilenrichtlinie.** Gemessen gegen das Saatlaufhaus, ergänzt um 300 000 Belegte und 800 Firmen, die der Saatlauf nicht anlegt. Eine Bedingung des Aufrufers darf nur dann als Indexbedingung **vor** einer erzwungenen Zeilenrichtlinie laufen, wenn ihr Operator `LEAKPROOF` ist. `%` (pg_trgm), `LIKE` und `lower()` sind es nicht. Der GiST-Index liefert dann zwar die nächsten Nachbarn der Reihe nach, geprüft wird `last_name % $1` aber erst danach — und ein Begriff ohne Treffer (ein Tippfehler, eine Nummer im Namensfeld) läuft so alle 60 000 Gäste ab, ohne dass das `LIMIT` je greift: 240 ms je Tastendruck. Ebenso blieb der eindeutige Index auf `public_ref` bei `LIKE 'ABC%'` ungenutzt. Behoben: die Namenszweige nehmen erst die hundert nächsten Nachbarn (`<->` für Tippfehler und ganze Namen, `<<->` für Anfänge und Teile eines Doppelnamens) und filtern danach; die Nummern laufen über `^@` (`starts_with`, LEAKPROOF) auf neuen `text_pattern_ops`-Indizes; die Begleitperson bekam einen Index auf `reservation_occupant.guest_id`. Vorher 120 bis 370 ms je Anfrage, danach 20 bis 50 ms. Die Mailsuche liest weiterhin alle Gäste des Accounts (85 ms) und läuft deshalb nur, wenn ein @ im Begriff steht.
+
+**Mitbehoben.** `countQueries` aus `@hotelpms/testing` kannte nur die Versprechensform von `connect` und brach ab, sobald eine ganze Anfrage über `app.inject` gezählt wurde — die Anmeldung holt ihre Verbindung über `pool.query`, also mit Rückruf. Außerdem blieb eine einmal gezählte Verbindung markiert und schrieb beim nächsten Zählen in die Liste des ersten Aufrufs; ein Test, der zweimal zählt und vergleicht, verglich dann 0 mit 0.
+
+**Noch offen.**
+
+1. **`GET /v1/guests` hat denselben Vollscan.** Die Gastsuche in den Buchungsmasken benutzt `last_name % $1 ORDER BY last_name <-> $1 LIMIT 20` und läuft bei einem Begriff ohne Treffer ebenfalls über alle Gäste. Dieselbe Abhilfe wie hier; nicht mitgemacht, weil die Route nicht zu dieser Aufgabe gehört und ihre Reihenfolge Tests trägt.
+2. **Mehrere Accounts teilen sich einen GiST-Index.** Die hundert nächsten Nachbarn werden über alle Mandanten gesucht und erst danach auf den Account begrenzt. Bei einem kleinen Haus neben großen findet ein seltener Name dann weniger, als es gibt. Ein zusammengesetzter Index (`account_id`, `last_name`) bräuchte `btree_gist` — eine weitere Erweiterung auf der Maschine, deshalb nicht nebenbei.
+3. **Die Kopfleiste ist breiter als der Bildschirm.** Mit allen Bildschirmen misst sie gut 2 100 Pixel; bei 1 920 liegen Sprachwahl und Abmelden außerhalb. Der Suchknopf steht deshalb vorn neben dem Namen.
+
+### Der Zahlungslink hält bis zur Frist (`0068`) — **erledigt**
+
+**Warum.** Auf ausdrücklichen Wunsch des Nutzers. Der Gast bekam die Adresse eines Stripe-Checkouts, und ein Checkout gilt beim Anbieter höchstens 24 Stunden. Für eine Anzahlung mit zwei Wochen Frist war der Link in der Mail damit am zweiten Tag tot — und der Gast merkte es beim Bezahlen.
+
+**Wo es liegt.** Migration `0068`, `apps/api/src/routes/paymentLinks.ts` (Anlegen, Widerrufen, die drei öffentlichen Seiten), `packages/domain/src/payPage.ts` (die Seite in den vier Sprachen der Gastpost), `paymentLinkValidUntil` in `packages/domain/src/depositRequest.ts`. Neue öffentliche Routen: `GET /v1/pay?t=`, `GET /v1/pay/checkout?t=`, `GET /v1/pay/done`. `POST .../payment-links` legt keinen Checkout mehr an, sondern einen Link; `POST /v1/payment-links/:id/cancel` widerruft ihn.
+
+**Was daraus entschieden wurde.**
+
+- **Der Gast bekommt einen Link von uns**, `https://<host>/v1/pay?t=<token>`: 256 Bit Zufall, in der Datenbank nur als SHA-256 (`payment_link.token_hash`, auf der Redaktionsliste des Audits), gebunden an die Anforderung oder einen festen Betrag. Erst beim Öffnen entsteht ein Checkout, über den Betrag, der **dann** offen ist — wer zwischendurch einen Teil überwiesen hat, zahlt nur den Rest.
+- **Gültig bis eine Woche nach der Fälligkeit, nie über die Abreise hinaus**, als Kalendertag gegen den Geschäftstag. Die Woche fängt die Überweisung am Fristtag und den zweiten Kartenversuch am nächsten Morgen ab; sie ist kein Zahlungsaufschub — überfällig ist die Anforderung trotzdem ab dem Tag nach der Frist, und das Haus kann jederzeit widerrufen. Wird ein Link für eine schon überfällige Anforderung angelegt, zählt die Woche ab dem Geschäftstag. Ohne Anforderung (freier Betrag) zwei Wochen.
+- **Eine Seite vor der Weiterleitung.** Mailprogramme und Scanner rufen Links vorab auf; leitete schon das weiter, entstünde bei jedem Scan ein Checkout. Die Seite nennt Haus, Zeitraum, Betrag und Frist — nicht den Gastnamen —, und erst ihr Knopf öffnet den Checkout. Der Knopf ist ein Link und kein Formular: `form-action 'self'` im Caddyfile verbietet einem Formular die Weiterleitung zum Anbieter. Kein `<style>`, kein Skript (Inhaltsrichtlinie, H7).
+- **Doppelzahlung.** Je Link höchstens ein offener Checkout, als eindeutiger Index (`payment_intent_one_open_per_link`) und mit einer Zeilensperre auf dem Link, damit gleichzeitig geöffnete Tabs denselben bekommen. Ein neuer entsteht erst, wenn der Anbieter den alten für abgelaufen erklärt oder ihn auf unsere Bitte beendet hat; meldet er ihn als abgeschlossen, sieht der Gast „wird verarbeitet" und bekommt keinen zweiten. Je Anforderung höchstens ein gültiger Link (`payments.linkActive`). **Der Webhook sichert das nicht ab und soll es nicht**: er nimmt seitdem jede echte Zahlung an, auch auf einen Checkout, den wir schon ersetzt haben — Geld, das der Anbieter meldet, ist da, und es zu verwerfen hieße einen Eingang zu verschweigen, den der Kontoauszug zeigt. Bisher ging er nur aus `pending` nach `succeeded`.
+- **Das Token steht nirgends im Klartext.** Abfragezeichenfolge statt Pfad (der Protokoll-Serialisierer ersetzt ihre Werte, ein Test hält es fest); Caddy schreibt kein Zugriffsprotokoll (Kommentar im Caddyfile, falls das jemand ändert); der Idempotenzspeicher bekommt die Antwort ohne Adresse; der Anbieter bekommt es nicht (Rückkehr auf `/v1/pay/done` ohne Token); `Referrer-Policy: no-referrer`. In der Gastpost muss es stehen — ein Trigger ersetzt es im Rumpf, sobald die Nachricht nicht mehr wartet (zugestellt, aufgegeben, zurückgezogen).
+- **Löschung.** `guest_erase_one()` und `guest_erase_partial()` widerrufen die Links des Gastes und entfernen den Hash; beide Funktionen sind dafür in `0068` vollständig neu gefasst, auf dem Stand von `0061`.
+- **Öffentlich, `permission: null`.** Der Gast hat kein Konto; das Token ist sein Ausweis. Die anonyme Ratenbegrenzung gilt. Der Mandantenkontext entsteht über `payment_link_scope()`, eine enge `SECURITY DEFINER`-Funktion nach dem Muster von `0018`: ein Hash hinein, Kennungen heraus.
+- **Ein Übungshaus legt nie einen Checkout an**, auch nicht über einen Link, der vor dem Umschalten angelegt wurde.
+
+**Zur Nummer.** Geschrieben als `0059`, eingecheckt als `0068`. Der Migrator wendet die Dateien in Namensreihenfolge an und holt nach, was fehlt — eine `0059` liefe auf einem frischen Schema vor `0060` und `0061`, auf einer bestehenden Datenbank danach. Weil sowohl diese Migration als auch `0061` (Online-Check-in) `guest_erase_one()` und `guest_erase_partial()` neu fassen, hätte je nach Reihenfolge die eine Fassung die andere still überschrieben. Als `0068` läuft sie überall nach beiden und trägt beide Ergänzungen; der Verweis auf `deposit_request` ist damit auch ein echter Fremdschlüssel.
+
+**Zwei Wege, das Token aus der Gastpost zu nehmen.** Der Online-Check-in leert im Worker den ganzen Rumpf seiner Einladung, sobald sie zugestellt oder aufgegeben ist; der Zahlungslink ersetzt per Trigger nur das Token, auch beim Zurückziehen über die Route. Beides hält; zusammengelegt gehört es trotzdem, am besten auf den Trigger, weil er jeden Weg zum Endzustand fängt.
+
+**Noch offen.** Wird eine Anforderung per Überweisung vollständig bezahlt, während der Gast einen Checkout offen hat, kann er dort trotzdem noch zahlen — das Zuordnen der Überweisung beendet keinen Checkout beim Anbieter. Die Seite zeigt beim nächsten Öffnen „bezahlt", aber der offene Tab bleibt bis zu 24 Stunden bezahlbar.
+
 ### Was der Oberfläche noch fehlt
 
 Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen. Alles hier ist gebaut, geprüft und über die Schnittstelle erreichbar — nur über keinen Bildschirm. Das ist kein Entwurf, sondern eine Liste; der Abschnitt darunter sagt, was ausdrücklich **nicht** dazugehört.
@@ -745,7 +864,6 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
-| Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
 
 ---
 
@@ -754,6 +872,25 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 **Die Kassenschnittstelle.** In einer früheren Sichtung stand hier „keine POS-Maske" als offener Punkt. Das war ein Missverständnis: `routes/pos.ts` ist der Vertrag mit einer **externen** Ladenkasse mit TSE, nicht ein Bildschirm, der noch fehlt. Die Kasse holt sich die offenen Folios und bucht ihre Zimmerbons dagegen; sie meldet sich über einen Maschinenzugang mit `folio:read` und `folio:post` an.
 
 Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Dokument 09 ausschließt — mit allen Folgen aus § 146a AO. Wer den Punkt das nächste Mal auf einer Liste offener Arbeiten findet, streicht ihn.
+
+---
+
+### Online-Check-in mit digitalem Meldeschein — **erledigt**
+
+**Wo es liegt.** Migration `0061`, `apps/api/src/routes/checkin.ts`, `apps/api/src/platform/{checkin,meldeschein,gast}.ts`, `apps/worker/src/jobs/onlineCheckin.ts`, `packages/domain/src/checkinToken.ts`, `packages/contracts/src/checkin.ts`, `apps/web/src/routes/GastCheckin.tsx`. Begründungen und Rechtslage in [`30-online-checkin.md`](30-online-checkin.md).
+
+**Was es tut.** Der Gast bekommt *x* Tage vor Anreise (Einstellung je Haus, Vorgabe aus, drei Tage) einen Link per Mail und füllt den Meldeschein auf einer öffentlichen Seite aus; die Rezeption sieht am Seitenfenster „verschickt / ausgefüllt am" und kann den Link kopieren, erneut senden oder zurückziehen. Die Station im Haus bettet dieselbe Seite im Terminalmodus ein.
+
+**Was daraus entschieden wurde.**
+
+- **Über den Mail-Link wird nicht unterschrieben.** § 29 Abs. 2 BMG verlangt die Unterschrift „am Tag der Ankunft", und eine Zeichnung auf dem eigenen Telefon ist keines der Ersatzverfahren aus Absatz 5. Vorab erfasst wird alles außer ihr; sie folgt am Anreisetag an der Station oder am Tresen, und beide zeigen, dass sie aussteht.
+- **Der Kontext kommt aus dem Link**, über eine schmale `SECURITY DEFINER`-Funktion nach dem Muster von `account_provision`, die nur mit leerem Kontext aufrufbar ist und ihn auf genau ein Haus setzt. Keine Eigentümerverbindung in der API.
+- **Der Link reist in einer Kopfzeile und steht in der Mail im Fragment**, nie im Pfad: der Serialisierer des Protokolls ersetzt die Abfragezeichenfolge, nicht den Pfad, und ein Fragment erreicht keinen Server. Im Postausgang fällt der Rumpf nach dem Versand.
+- **Die Regeln des Meldescheins stehen einmal** (`platform/meldeschein.ts`) und gelten für Tresen, Link und Station.
+
+**Beim Bauen gefunden und mitbehoben.** Der Meldeschein entschied „ausländisch" nach dem Land der Anschrift statt nach der Staatsangehörigkeit, und ein ausländischer Mitreisender verlangte keine Unterschrift, solange der Hauptgast deutsch war. Das Zeichenfeld traf den Finger nicht, sobald es breiter angezeigt wurde als seine Auflösung. Und „Meldeschein nachträglich unterschreiben" hat jetzt eine Maske.
+
+**Offen**, alle in Dokument 30 §2.3 und §10: ob deutsche Gäste nach der Reform überhaupt noch einen Schein brauchen (Rechtsfrage je Land und Gemeinde), Familienangehörige nur der Zahl nach, § 29 Abs. 5 als Ersatz der Unterschrift.
 
 ---
 
@@ -808,6 +945,18 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 ---
 
+### Aufgabe 15 — Preissteuerung (Revenue Management) — **erledigt**
+
+**Wo es liegt.** [`32-preissteuerung.md`](32-preissteuerung.md), Migrationen `0065` und `0066`, `apps/api/src/routes/rateSteering.ts`, `apps/worker/src/jobs/rateSteering.ts`, Oberfläche unter Preise → Preissteuerung.
+
+**Was es tut.** Regeln nach Belegung, Vorlauf, Wochentag und Zeitraum setzen Verkaufspreise aus dem **Grundpreis**, nie aus dem zuletzt gesteuerten Preis — `rate_steer_state` merkt sich beides, und das schließt das Aufschaukeln durch Bauart aus. Leitplanken je Plan (Mindest-, Höchstpreis, Rundung, Schrittgrenze), Vorschlagsmodus mit Vorschau und Fingerabdruck, automatischer Modus einmal je Geschäftstag. Quelle je Ratenplan (von Hand, Regeln, externes RMS) trennt interne Regeln von einem RMS über die Schnittstelle. Neues Recht `rate:steer`.
+
+**Mitbehoben.** Die ARI-Änderungsmeldung sah geänderte Preise an schon gepflegten Tagen nie (`updated_at` nur beim Einfügen); abgeleitete Raten folgten erst nach „neu rechnen"; ein Übungshaus gab über ARI Preise hinaus. Preispflege, Neurechnen und Steuerung gehen jetzt über einen Schreibweg (`rate_prices_write`) mit dem neuen Ereignis `rate.changed`.
+
+**Offen.** Restriktionen aus Regeln (etwa Mindestaufenthalt bei hoher Belegung), Leitplanken je Belegungsstufe, ein häufigerer automatischer Lauf. Ob Webhooks eines Übungshauses zugestellt werden sollen (Dokument 32, Abschnitt 13).
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
@@ -835,6 +984,7 @@ Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
 | Netto aus dem Brutto herausgerechnet und die Steuer wieder daraufgeschlagen | Eine Anzahlung ueber 250,00 Euro stand als 249,99 Euro auf dem Beleg, waehrend das Journal 250,00 fuehrte (Aufgabe 12) |
 | Rundungsdifferenz als Position zu 0 Prozent gebucht | Faellt nach § 14 Abs. 4 Nr. 8 UStG durch die eigene Pflichtangabenpruefung: ohne Befreiungsgrund geht keine Position ohne Steuer. Im Satz der Gruppe wiederum verschiebt eine Position die Steuer der ganzen Gruppe mit und muesste vierzehn Cent gross sein, um einen zu bewegen. Richtig ist BT-114 auf Belegebene (Aufgabe 12) |
 | `sum()` über eine `bigint`-Spalte ohne Cast zurückgegeben | `sum()` liefert `numeric`, und `numeric` kommt als **Zeichenkette** an — mit Absicht, damit nichts still gerundet wird. Eine Centsumme sieht dann richtig aus und rechnet sich falsch, sobald jemand sie addiert: `"100" + 50` ist `"10050"`. Wer eine Summe zurückgibt, castet sie (`::bigint`); `count()` ist die Ausnahme, das ist schon `bigint`. Ein Test in `packages/db` hält beides fest und sieht die Routen durch |
+| Trigramm oder `LIKE` unter einer erzwungenen Zeilenrichtlinie | Nur `LEAKPROOF`-Operatoren dürfen vor der Richtlinie als Indexbedingung laufen; `%`, `LIKE` und `lower()` sind es nicht. Der Index sortiert dann nur noch, gefiltert wird danach — ein Suchbegriff ohne Treffer las alle 60 000 Gäste (240 ms), und der Index auf `public_ref` blieb bei `LIKE 'ABC%'` ungenutzt. Erst begrenzen, dann filtern; Anfänge über `^@` (Migration 0058) |
 | Suchbegriff in der Adresse statt im Rumpf | Die Redaktionsliste von `pino` deckt Kopfzeilen und Rumpf ab, nicht die Adresse — und Fastify protokolliert sie samt Abfragezeichenfolge. `GET /v1/guests?q=Petersen` schreibt damit den Nachnamen eines Gastes ins Protokoll, gegen die eigene Regel, und die Anonymisierung erreicht ihn dort nicht mehr (Befund B2 in Dokument 25) |
 
 Die drei Leistungsbefunde stehen ausführlich in [`15-messungen-aus-dem-saatlauf.md`](15-messungen-aus-dem-saatlauf.md).
@@ -864,7 +1014,7 @@ Scheitern die Tests mit `ECONNREFUSED` auf Port 5432, liegt es nicht an den Test
 ## 6. Vor dem Pushen
 
 ```bash
-./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm test && pnpm build
+./scripts/check-migrations.sh && pnpm typecheck && pnpm lint && pnpm vitest run <berührte Testdateien>
 ```
 
-Alle vier grün. Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.
+Die volle Suite und der Build laufen in CI, auf vier Läufern in zwei bis drei Minuten; gemergt wird erst, wenn CI auf dem letzten Commit grün ist (siehe `CLAUDE.md`). Der Saatlauf (`pnpm db:seed`) ist kein Teil der Prüfung, aber wer an Abfragen arbeitet, sollte einmal dagegen messen: kleine Datenmengen verbergen genau die Fehler, die im Betrieb zählen.

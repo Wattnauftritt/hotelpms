@@ -87,6 +87,15 @@ export const Errors = {
   conflict: (detail: Meldung, params?: MessageParams) =>
     new AppError(409, 'urn:staygrid:conflict', 'error.conflict',
       detail, undefined, params),
+  /*
+   * Gab es, gilt nicht mehr: ein abgelaufener oder zurueckgezogener Link
+   * (Online-Check-in, Dokument 30). Nicht 404 -- wer den Link hat, soll
+   * erfahren, dass er an die Rezeption muss, und nicht, dass er sich
+   * vertippt habe.
+   */
+  gone: (detail: Meldung, params?: MessageParams) =>
+    new AppError(410, 'urn:staygrid:gone', 'error.gone',
+      detail, undefined, params),
   validation: (errors: Record<string, Meldung[]>, params?: MessageParams) =>
     new AppError(422, 'urn:staygrid:validation', 'error.validation', undefined,
       errors as Record<string, string[]>, params),

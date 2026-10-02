@@ -167,3 +167,14 @@ export type KontextZiel =
        * Gruppe -- und nach einer Sperrung ueber dem Riegel dasselbe.
        */
       leeren: () => void }
+  /**
+   * Rechter Knopf auf der Zimmernummer. Kein Tag, also nichts, was an
+   * einem Tag haengt -- nur, was das Zimmer selbst betrifft, wie sein
+   * Reinigungsstand.
+   *
+   * `zimmer` ist schon aufgeloest: alle markierten Zimmer, wenn die Zeile
+   * zur Markierung gehoert, sonst das eine. Alle oder keines, wie auf der
+   * freien Flaeche.
+   */
+  | { art: 'zimmer'; punkt: MenuePunkt
+      zimmer: Array<{ resourceId: number; roomCode: string }> }

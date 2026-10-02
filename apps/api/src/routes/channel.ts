@@ -10,6 +10,7 @@ import { emitEvent } from '../platform/events.js'
 import { authenticateChannel, channelContext } from '../platform/channelAuth.js'
 import type { Principal } from '../platform/context.js'
 import { inventoryError, priceNights } from './reservations.js'
+import { isTrainingProperty } from '../platform/training.js'
 
 /** Ein Jahr je Anfrage, wie bei der Verfuegbarkeit fuer die Oberflaeche. */
 const MAX_ARI_DAYS = 400
@@ -80,6 +81,25 @@ async function ariRates(
   return rows
 }
 
+/**
+ * Ein Uebungshaus gibt nichts an einen Channel Manager aus (C11, Dokument 13).
+ *
+ * Gefunden beim Bau der Preissteuerung, deren Schulungsbetrieb erlaubt sein
+ * soll, ohne dass ein Uebungspreis hinausgeht: die Ausfuhrsperre des
+ * Uebungshauses galt fuer DATEV, GoBD und Statistik, nicht aber fuer ARI.
+ * Ein Zugang liess sich anlegen, und von da an holte der Channel Manager
+ * Uebungspreise und -verfuegbarkeit und verkaufte sie auf Buchungsportalen.
+ * Gesperrt an beiden Enden: beim Anlegen des Zugangs und bei jedem Abruf --
+ * ein Zugang aus der Zeit vor der Sperre soll nicht weiter liefern.
+ */
+async function assertNoChannelForTraining(
+  client: PoolClient, propertyId: number
+): Promise<void> {
+  if (await isTrainingProperty(client, propertyId)) {
+    throw Errors.unprocessable('training.noChannel')
+  }
+}
+
 interface InboundBooking {
   externalReference: string
   categoryCode: string
@@ -120,6 +140,7 @@ export function channelRoutes(app: FastifyInstance): void {
         const prop = await client.query<{ account_id: number }>(
           `SELECT account_id FROM property WHERE id = $1`, [Number(propertyId)])
         if (prop.rowCount === 0) throw Errors.notFound('res.property')
+        await assertNoChannelForTraining(client, Number(propertyId))
 
         const r = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO channel_connection
@@ -232,8 +253,10 @@ export function channelRoutes(app: FastifyInstance): void {
       const principal = await authenticateChannel(req.pool, req.headers.authorization)
       const { from, to, since } = ariRange(req)
 
-      const rows = await withTransaction(req.pool, channelContext(principal), client =>
-        ariAvailability(client, principal.propertyId, from, to, since))
+      const rows = await withTransaction(req.pool, channelContext(principal), async client => {
+        await assertNoChannelForTraining(client, principal.propertyId)
+        return ariAvailability(client, principal.propertyId, from, to, since)
+      })
       return { from, to, generatedAt: new Date().toISOString(), days: rows }
     }
   })
@@ -247,8 +270,10 @@ export function channelRoutes(app: FastifyInstance): void {
       const principal = await authenticateChannel(req.pool, req.headers.authorization)
       const { from, to, since } = ariRange(req)
 
-      const rows = await withTransaction(req.pool, channelContext(principal), client =>
-        ariRates(client, principal.propertyId, from, to, since))
+      const rows = await withTransaction(req.pool, channelContext(principal), async client => {
+        await assertNoChannelForTraining(client, principal.propertyId)
+        return ariRates(client, principal.propertyId, from, to, since)
+      })
       return { from, to, generatedAt: new Date().toISOString(), cells: rows }
     }
   })
@@ -274,6 +299,7 @@ export function channelRoutes(app: FastifyInstance): void {
       }
 
       const result = await withTransaction(req.pool, channelContext(principal), async client => {
+        await assertNoChannelForTraining(client, principal.propertyId)
         const cat = await client.query<{ id: number }>(
           `SELECT id FROM resource_category WHERE property_id = $1 AND code = $2 AND active`,
           [principal.propertyId, body.categoryCode])

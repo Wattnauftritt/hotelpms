@@ -5,6 +5,7 @@ import { useT } from '../lib/i18n/index.js'
 import { today, addDays } from '../lib/dates.js'
 import { AvailabilityGrid } from '../components/AvailabilityGrid.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
+import { useSprung } from '../lib/suche.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 
 const SPANNEN = [30, 90, 180, 365] as const
@@ -24,6 +25,13 @@ export function Availability({ propertyId }: { propertyId: number }): JSX.Elemen
   const bis = addDays(von, tage)
   const kategorien = useCategories(propertyId)
   const q = useAvailability(propertyId, von, bis)
+  /*
+   * Ueber "Neue Reservierung" (Strg+K, Alt+N) hierher gekommen: dann steht
+   * da, was als Naechstes zu tun ist. Ohne den Satz landet man auf einem
+   * Raster voller Zahlen und weiss nicht, dass ein Klick darauf bucht.
+   */
+  const { auftrag } = useSprung()
+  const neueReservierung = auftrag?.art === 'befehl' && auftrag.befehl === 'neueReservierung'
 
   return (
     <div className="space-y-3">
@@ -47,6 +55,13 @@ export function Availability({ propertyId }: { propertyId: number }): JSX.Elemen
           ))}
         </div>
       </div>
+
+      {neueReservierung && auswahl === null && (
+        <p role="status"
+           className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          {t('suche.newReservationHint')}
+        </p>
+      )}
 
       {q.isError && q.data === undefined ? <Fehler error={q.error} />
         : q.data === undefined || kategorien.data === undefined ? <Laedt />

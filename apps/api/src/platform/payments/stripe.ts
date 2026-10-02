@@ -9,6 +9,42 @@ import type { PaymentWebhookEvent } from '@hotelpms/domain'
  */
 export interface StripeAdapter {
   createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSession>
+  /**
+   * Einen offenen Checkout beim Anbieter beenden. Danach nimmt Stripe keine
+   * Zahlung mehr darauf an -- das ist der eigentliche Zweck: ein Link, den
+   * nur unsere Datenbank fuer ungueltig haelt, kann der Gast weiterhin
+   * bezahlen.
+   *
+   * Wirft `ProviderRefused`, wenn der Anbieter ablehnt (schon bezahlt, schon
+   * abgelaufen), und einen anderen Fehler, wenn er nicht erreichbar ist.
+   * Der Aufrufer muss beides unterscheiden: im ersten Fall weiss er, dass
+   * sich nichts geaendert hat, im zweiten nicht.
+   */
+  expireCheckoutSession(providerReference: string): Promise<void>
+  /**
+   * Wo ein Checkout beim Anbieter steht. Die einzige verlaessliche Auskunft
+   * darueber, ob ein alter Checkout noch bezahlt werden kann, bevor ein neuer
+   * entsteht (Migration 0068): unsere Zeile sagt nur, was wir zuletzt
+   * gehoert haben, und eine Benachrichtigung kann noch unterwegs sein.
+   */
+  getCheckoutSession(providerReference: string): Promise<CheckoutState>
+}
+
+export interface CheckoutState {
+  /** `complete` heisst bezahlt oder in Bearbeitung -- in beiden Faellen kein zweiter. */
+  status: 'open' | 'complete' | 'expired'
+  /** Nur bei `open`: die Adresse, unter der der Gast weiterzahlen kann. */
+  url: string | null
+  amountCent: number | null
+  expiresAt?: Date
+}
+
+/** Der Anbieter hat die Anfrage verstanden und abgelehnt (4xx). */
+export class ProviderRefused extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = 'ProviderRefused'
+  }
 }
 
 export interface CheckoutSessionParams {
@@ -22,6 +58,12 @@ export interface CheckoutSessionParams {
 export interface CheckoutSession {
   providerReference: string
   url: string
+  /**
+   * Bis wann der Anbieter den Link annimmt. Ein Stripe-Checkout gilt
+   * hoechstens 24 Stunden; ohne diese Angabe stuende ein toter Link als
+   * "offen" da, solange die Ablaufmeldung ausbleibt.
+   */
+  expiresAt?: Date
 }
 
 export function createStripeAdapter(secretKey: string): StripeAdapter {
@@ -48,8 +90,41 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
       if (!res.ok) {
         throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
       }
-      const json = await res.json() as { id: string; url: string }
-      return { providerReference: json.id, url: json.url }
+      const json = await res.json() as { id: string; url: string; expires_at?: number }
+      return {
+        providerReference: json.id, url: json.url,
+        ...(typeof json.expires_at === 'number'
+          ? { expiresAt: new Date(json.expires_at * 1000) } : {})
+      }
+    },
+
+    async getCheckoutSession(providerReference: string): Promise<CheckoutState> {
+      const res = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}`,
+        { headers: { Authorization: `Bearer ${secretKey}` } })
+      if (!res.ok) {
+        throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
+      }
+      const json = await res.json() as { status?: string; url?: string | null
+                                         amount_total?: number; expires_at?: number }
+      const status = json.status === 'open' || json.status === 'complete'
+        ? json.status : 'expired'
+      return {
+        status, url: status === 'open' ? json.url ?? null : null,
+        amountCent: typeof json.amount_total === 'number' ? json.amount_total : null,
+        ...(typeof json.expires_at === 'number'
+          ? { expiresAt: new Date(json.expires_at * 1000) } : {})
+      }
+    },
+
+    async expireCheckoutSession(providerReference: string): Promise<void> {
+      const res = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}/expire`,
+        { method: 'POST', headers: { Authorization: `Bearer ${secretKey}` } })
+      if (res.ok) return
+      const text = await res.text()
+      if (res.status >= 400 && res.status < 500) throw new ProviderRefused(res.status, text)
+      throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${text}`)
     }
   }
 }

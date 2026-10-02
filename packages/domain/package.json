@@ -13,6 +13,10 @@
     "./groupPrice": {
       "types": "./dist/groupPrice.d.ts",
       "default": "./dist/groupPrice.js"
+    },
+    "./depositRequest": {
+      "types": "./dist/depositRequest.d.ts",
+      "default": "./dist/depositRequest.js"
     }
   },
   "scripts": {

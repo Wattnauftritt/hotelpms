@@ -20,6 +20,11 @@ export default defineConfig({
        */
       '@hotelpms/domain/groupPrice': fileURLToPath(
         new URL('./packages/domain/src/groupPrice.ts', import.meta.url)),
+      // Aus demselben Grund: die Anzahlungsmaske zeigt den Betrag einer
+      // Anforderung in Prozent mit derselben Rundung, die die Route
+      // festschreibt.
+      '@hotelpms/domain/depositRequest': fileURLToPath(
+        new URL('./packages/domain/src/depositRequest.ts', import.meta.url)),
       '@hotelpms/db': src('db'),
       '@hotelpms/testing': src('testing'),
       '@hotelpms/domain': src('domain'),
