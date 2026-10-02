@@ -226,6 +226,15 @@ describe('Suche: was gefunden wird', () => {
     const nachMail = await suchen(rezeption.sessionId, hausA.propertyId,
       'carstensen@exa', '&scope=customer')
     expect(nachMail.body.customers.map(c => c.ref)).toEqual([g.publicRef])
+
+    // Gross- und Kleinschreibung zaehlen nicht, `_` ist ein Zeichen und kein
+    // Platzhalter (Bereich ueber `email_lower`, Migration 0069).
+    const gross = await suchen(rezeption.sessionId, hausA.propertyId,
+      'CARSTENSEN@Example.DE', '&scope=customer')
+    expect(gross.body.customers.map(c => c.ref)).toEqual([g.publicRef])
+    const platzhalter = await suchen(rezeption.sessionId, hausA.propertyId,
+      'carstens_n@', '&scope=customer')
+    expect(platzhalter.body.customers).toEqual([])
   })
 })
 

@@ -214,12 +214,11 @@ export function searchRoutes(app: FastifyInstance): void {
       const nummer = NUMMER.test(begriff) ? begriff.toUpperCase() : null
       const extern = NUMMER.test(begriff) ? begriff : null
       /*
-       * Die Mail nur, wenn ein @ darin steht. Der Zweig kann keinen Index
-       * benutzen (`lower()` ist nicht LEAKPROOF, siehe oben) und liest alle
-       * Gaeste des Accounts -- 70 ms im Saatlaufhaus. Bei jedem Buchstaben
-       * eines Namens waere das der teuerste Teil der Anfrage fuer einen
-       * Treffer, den die Namenssuche ohnehin liefert. Wer nach der Mail
-       * sucht, kennt den Namen nicht und fuegt die Adresse ein -- mit @.
+       * Die Mail nur, wenn ein @ darin steht. Der Zweig ist ueber
+       * `email_lower` ein Indexbereich (unten), aber bei jedem Buchstaben
+       * eines Namens bliebe er eine zweite Abfrage fuer einen Treffer, den
+       * die Namenssuche ohnehin liefert. Wer nach der Mail sucht, kennt den
+       * Namen nicht und fuegt die Adresse ein -- mit @.
        */
       const mail = begriff.includes('@') ? begriff.toLowerCase() : null
 
@@ -366,6 +365,16 @@ export function searchRoutes(app: FastifyInstance): void {
            * (siehe oben) und als Verbund ueber die Kandidaten, nicht je
            * Zeile. Bei der Firma zaehlt, was sie gebucht hat
            * (`booking.booker_company_id`, Migration 0058).
+           *
+           * Die Mail wird als Bereich ueber `email_lower` gesucht, nicht mit
+           * `starts_with(lower(email), ...)`: `lower()` ueber der Spalte ist
+           * nicht LEAKPROOF und laeuft deshalb erst hinter der
+           * Zeilenrichtlinie, ein Begriff ohne Treffer las so jeden Gast des
+           * Accounts. `starts_with(email_lower, ...)` allein genuegt auch
+           * nicht: im generischen Plan leitet PostgreSQL daraus keinen
+           * Indexbereich ab. Die beiden Vergleiche tun es in beiden Plaenen
+           * (Migration 0069, wie `GET /v1/guests`). `$3` ist schon
+           * kleingeschrieben; `email_lower` ist NULL, wo `email` es ist.
            */
           const { rows } = await client.query<KundeZeile>(
             `WITH haus AS (
@@ -375,13 +384,14 @@ export function searchRoutes(app: FastifyInstance): void {
                SELECT g.id, 0::real AS abstand FROM guest g
                 WHERE $3::text IS NOT NULL
                   AND g.account_id = (SELECT account_id FROM haus)
-                  AND g.status <> 'anonymized' AND g.email IS NOT NULL
-                  AND starts_with(lower(g.email), $3)
+                  AND g.status <> 'anonymized'
+                  AND g.email_lower ~>=~ $3
+                  AND g.email_lower ~<~ text_prefix_end($3)
                 LIMIT $4 + 1
              ), gaeste AS (
                SELECT g.id, g.public_ref, g.last_name, g.first_name, g.email, g.phone,
                       g.city, min(n.abstand) AS abstand,
-                      CASE WHEN lower(g.email) = $3 THEN 0
+                      CASE WHEN g.email_lower = $3 THEN 0
                            WHEN $2::text IS NULL THEN 1
                            ELSE ${GUETE} END AS guete
                  FROM (SELECT * FROM nach_name UNION ALL SELECT * FROM nach_mail) n
