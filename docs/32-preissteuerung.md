@@ -46,7 +46,7 @@ Eine Steuerung, die ihren eigenen Ausgabewert beim nächsten Lauf als Eingabe ni
 | genau der Preis, den die Steuerung geschrieben hat | der gemerkte Grundpreis |
 | etwas anderes (Mensch, Import, RMS hat gesetzt) | der stehende Preis |
 
-Der Lauf sieht seinen eigenen Ausgabewert damit nie als Eingabe. Eine Preispflege über `rate_prices_write` mit anderer Herkunft als `rules` löscht den Gedächtnisstand der berührten Tage ausdrücklich — sonst hielte eine Preisänderung, die zufällig den gesteuerten Betrag trifft, den alten Grundpreis fest. Andere Schreiber (Import, Testhaus) müssen von der Steuerung nichts wissen: was dort steht, ist schlicht der neue Grundpreis.
+Der Lauf sieht seinen eigenen Ausgabewert damit nie als Eingabe. Setzt ein Mensch im Preisraster einen Preis auf einem gesteuerten Plan, ist das der neue Grundpreis; bis zur nächsten Übernahme — aus der Vorschau oder beim nächsten automatischen Lauf — gilt er auch als Verkaufspreis. Eine Preispflege über `rate_prices_write` mit anderer Herkunft als `rules` löscht den Gedächtnisstand der berührten Tage ausdrücklich — sonst hielte eine Preisänderung, die zufällig den gesteuerten Betrag trifft, den alten Grundpreis fest. Andere Schreiber (Import, Testhaus) müssen von der Steuerung nichts wissen: was dort steht, ist schlicht der neue Grundpreis.
 
 **Verworfen: eine zweite Preisspalte in `rate_day`.** Jeder Leser dort — ARI, Preisraster, Buchung, abgeleitete Raten — müsste dann entscheiden, welche er meint, und der erste, der es vergisst, verkauft zum Grundpreis. `rate_day.price_cent` bleibt der Verkaufspreis und sonst nichts.
 

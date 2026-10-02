@@ -38,8 +38,14 @@ export const STEER_MAX_HORIZON_DAYS = 365
 const Nullable = <T extends ReturnType<typeof Type.Integer>>(t: T) =>
   Type.Union([t, Type.Null()])
 
+/*
+ * Eine Auswahl aus einer Liste fester Werte. Ueber `Type.Unsafe`, weil
+ * `werte.map(...)` den statischen Typ zu `string` aufweitet -- in der
+ * gebauten Fassung (`dist`) stand dann `source: string`, und die
+ * Oberflaeche brach erst beim Bauen, nicht bei der Typpruefung der Quellen.
+ */
 const literals = <T extends readonly string[]>(werte: T) =>
-  Type.Union(werte.map(w => Type.Literal(w)))
+  Type.Unsafe<T[number]>(Type.Union(werte.map(w => Type.Literal(w))))
 
 /**
  * Eine Regel, so wie sie gepflegt und angezeigt wird.
