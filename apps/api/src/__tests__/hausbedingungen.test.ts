@@ -30,8 +30,36 @@ let catId: number
 let zimmer: number[]
 let auth: Record<string, string>
 
-const VON = '2026-10-01'
-const BIS = '2026-10-04'
+/*
+ * Anreise ist **heute**, nicht ein festes Datum.
+ *
+ * Hier stand einmal `VON = '2026-10-01'`. Am Tag danach waren zwei Tests
+ * rot, ohne dass sich am Code etwas geaendert hatte: eine Hausbedingung
+ * ohne `activeFrom` gilt ab heute, und eine Anreise von gestern liegt davor
+ * -- fuer sie gilt die Bedingung zu Recht nicht. Der Test sagte also nicht
+ * mehr, was er pruefen sollte, sondern welcher Tag war. Heute als Anreise
+ * ist der Fall, fuer den die Datei geschrieben ist: der Gast steht am
+ * Tresen.
+ *
+ * Das Datum kommt aus der Datenbank (`current_date`), nicht aus `new Date()`:
+ * dieselbe Uhr, gegen die die Route den Vorgabewert setzt.
+ */
+let VON = ''
+let BIS = ''
+
+/** Kalenderrechnung in UTC, damit keine Ortszeit einen Tag verschiebt. */
+function plusTage(iso: string, n: number): string {
+  const [j, m, t] = iso.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(j, m - 1, t + n)).toISOString().slice(0, 10)
+}
+
+/** Ein Jahr spaeter, wie `date + interval '1 year'` es rechnet. */
+function plusJahr(iso: string): string {
+  const [j, m, t] = iso.split('-') as [string, string, string]
+  // Der 29. Februar wird in PostgreSQL zum 28.; ohne das schluege der Test
+  // alle vier Jahre an einem einzigen Tag fehl.
+  return m === '02' && t === '29' ? `${Number(j) + 1}-02-28` : `${Number(j) + 1}-${m}-${t}`
+}
 
 beforeAll(async () => {
   await ensureSchema()
@@ -41,6 +69,9 @@ beforeAll(async () => {
   pool = built.pool
   registerAllRoutes(app)
   await app.ready()
+  const heute = await owner.query<{ heute: string }>(`SELECT current_date::text AS heute`)
+  VON = heute.rows[0]!.heute
+  BIS = plusTage(VON, 3)
 })
 afterAll(async () => { await app.close(); await owner.end(); await pool.end() })
 
@@ -50,7 +81,8 @@ beforeEach(async () => {
   fx = await makeProperty(owner)
   catId = await makeCategory(owner, fx.propertyId, { code: 'DZ' })
   zimmer = await makeResources(owner, fx.propertyId, catId, 4)
-  await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
+  await owner.query(
+    `SELECT inventory_materialize($1, current_date - 30, current_date + 120)`,
     [fx.propertyId])
   const u = await makeUser(owner,
     { email: 'chef@test.de', propertyId: fx.propertyId, roleKey: 'hotel_director' })
@@ -131,11 +163,11 @@ describe('Fassungen einer Hausbedingung', () => {
    * neueste: der Gast hat bei der Ankunft den Text vor sich, der dann haengt.
    */
   it('legt die am Anreisetag geltende Fassung vor, nicht die neueste', async () => {
-    await anlegen({ ...SCHLUESSEL, activeFrom: '2026-01-01' })
+    await anlegen({ ...SCHLUESSEL, activeFrom: plusTage(VON, -30) })
     await anlegen({ ...SCHLUESSEL, body: 'Neue Fassung, 60,00 EUR',
-                    activeFrom: '2026-12-01' })
+                    activeFrom: plusTage(VON, 60) })
 
-    const ref = await reservierung(await gast('Petersen'))  // Anreise 1.10.
+    const ref = await reservierung(await gast('Petersen'))  // Anreise heute
     const g = JSON.parse((await geltend(ref)).body) as {
       terms: Array<{ version: number; body: string }> }
     expect(g.terms).toHaveLength(1)
@@ -259,16 +291,16 @@ describe('Die Meldescheinfrist folgt dem tatsaechlichen Aufenthalt', () => {
     const ref = await reservierung(await gast('Petersen'))
     await app.inject({ method: 'POST', url: '/v1/registrations', headers: auth,
       payload: { propertyId: fx.propertyId, reservationRef: ref } })
-    expect(await frist()).toBe('2027-10-04')
+    expect(await frist()).toBe(plusJahr(BIS))
 
     const v = await app.inject({ method: 'POST', headers: auth,
       url: `/v1/reservations/${ref}/change-stay`,
-      payload: { departure: '2026-10-08' } })
+      payload: { departure: plusTage(VON, 7) } })
     expect(v.statusCode, v.body).toBe(200)
 
     // Sonst bliebe die Frist auf dem Wert vom Erfassungstag stehen, und der
     // Schein waere vier Tage zu frueh vernichtet.
-    expect(await frist()).toBe('2027-10-08')
+    expect(await frist()).toBe(plusJahr(plusTage(VON, 7)))
   })
 
   it('richtet sich nach dem tatsaechlichen Abreisetag, wenn es einen gibt', async () => {
@@ -282,10 +314,10 @@ describe('Die Meldescheinfrist folgt dem tatsaechlichen Aufenthalt', () => {
       `SELECT id FROM reservation WHERE public_ref = $1`, [ref])
     // Frueher abgereist als geplant.
     await owner.query(
-      `UPDATE reservation SET checked_out_at = '2026-10-02T09:00:00Z', status = 'CheckedOut'
-        WHERE id = $1`, [res.rows[0]!.id])
+      `UPDATE reservation SET checked_out_at = $2::timestamptz, status = 'CheckedOut'
+        WHERE id = $1`, [res.rows[0]!.id, `${plusTage(VON, 1)}T09:00:00Z`])
 
-    expect(await frist()).toBe('2027-10-02')
+    expect(await frist()).toBe(plusJahr(plusTage(VON, 1)))
   })
 })
 
@@ -341,8 +373,10 @@ describe('Gaestebeitragsnachweis vor Anonymisierung', () => {
     expect(r.statusCode, r.body).toBe(200)
     const body = JSON.parse(r.body) as { status: string; completesAfter: string }
     expect(body.status).toBe('partial')
-    // Sechs Jahre ab Beginn des Folgejahres: Aufenthalt 2026, also bis 2033.
-    expect(body.completesAfter).toBe('2033-01-01')
+    // Sechs Jahre ab Beginn des Jahres nach der Abreise: Abreise 2026,
+    // also bis 2033. Aus dem Abreisejahr gerechnet statt fest, sonst kippt
+    // der Test am 1. Januar.
+    expect(body.completesAfter).toBe(`${Number(BIS.slice(0, 4)) + 7}-01-01`)
 
     const g = await owner.query<{ last_name: string; email: string | null
                                   phone: string | null; birth_date: string | null
