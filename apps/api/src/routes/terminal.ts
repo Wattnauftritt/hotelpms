@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from 'node:crypto'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
@@ -212,6 +212,46 @@ const AUFTRAG_FUER_REZEPTION = `j.public_ref AS "jobRef", j.kind, ${ZUSTAND_SQL}
   j.canceled_by AS "canceledBy", d.name AS "deviceName", ${AUFTRAG_LABEL_SQL} AS label,
   to_char(j.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "createdAt"`
 
+/**
+ * Das Geraetecookie setzen -- nach der Kopplung per Code wie nach dem
+ * Einloesen der Kiosk-Adresse.
+ *
+ * **Keine Mitarbeitersitzung am Terminal.** Liegt in diesem Browser noch
+ * eine, wird sie hier beendet und ihr Cookie geloescht. Am Touchscreen
+ * steht danach ein Gast, und die Anwendung unter `/` liegt eine
+ * Adresszeile entfernt.
+ */
+async function geraetAnmelden(req: FastifyRequest, reply: FastifyReply,
+                              geheimnis: string): Promise<void> {
+  const sitzung = req.cookies['hp_session']
+  if (sitzung !== undefined) {
+    await req.pool.query(
+      `UPDATE user_session SET revoked_at = now()
+        WHERE id = $1 AND revoked_at IS NULL`, [sitzung])
+    reply.clearCookie('hp_session', { path: '/' })
+  }
+  reply.setCookie(DEVICE_COOKIE, geheimnis, {
+    httpOnly: true,
+    // `strict` wie bei der Sitzung (H6, Dokument 25): niemand verlinkt
+    // von aussen auf das Terminal.
+    sameSite: 'strict',
+    secure: config.nodeEnv === 'production',
+    // Nur an die Routen des Terminals. Die Anwendung unter `/v1/*`
+    // bekommt es nie zu sehen, auch nicht versehentlich.
+    path: '/v1/terminal',
+    // Ein Jahr. Das Terminal steht fest an seinem Platz; erneuert wird
+    // es durch Neukoppeln, beendet durch Widerruf. Ein Kiosk, der es bei
+    // jedem Neustart verliert, holt es sich ueber die Kiosk-Adresse wieder.
+    maxAge: 365 * 24 * 3600
+  })
+}
+
+/**
+ * Die Form eines Geraetegeheimnisses: 32 Byte in base64url. Was anders
+ * aussieht, braucht keinen Weg in die Datenbank.
+ */
+const GEHEIMNIS_FORM = /^[A-Za-z0-9_-]{43}$/
+
 // ------------------------------------------------------------- Routen
 
 export function terminalRoutes(app: FastifyInstance): void {
@@ -317,6 +357,43 @@ export function terminalRoutes(app: FastifyInstance): void {
         if (rowCount === 0) throw Errors.notFound('res.terminal')
         return { deviceRef, name: rows[0]!.name,
                  pairingCode: codeAnzeigen(code), pairingExpiresAt: rows[0]!.ablauf }
+      })
+    }
+  })
+
+  /**
+   * Kiosk-Adresse: das Geraet direkt mit einem neuen Geheimnis koppeln und
+   * dieses Geheimnis einmal zurueckgeben.
+   *
+   * Fuer einen Kiosk, der seine Cookies verwirft -- Edge im Kioskmodus von
+   * Windows laeuft immer InPrivate. Die Rezeption traegt die Adresse
+   * `/terminal#k=<geheimnis>` als Startseite des Kiosks ein, und das
+   * Terminal meldet sich bei jedem Start damit an (`/v1/terminal/resume`).
+   *
+   * Wie beim Neukoppeln faellt das bisherige Geheimnis sofort, und ein
+   * offener Kopplungscode mit ihm: ein Terminal soll nicht zweimal stehen.
+   * Die Adresse steht genau einmal in der Antwort; danach liegt auch hier
+   * nur der Hash. Wer sie verliert, erzeugt eine neue.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/terminals/:deviceRef/kiosk-key',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Kiosk-Adresse fuer ein Gaesteterminal erzeugen',
+    handler: async (req) => {
+      const { propertyId, deviceRef } = req.params as { propertyId: string; deviceRef: string }
+      const geheimnis = randomBytes(32).toString('base64url')
+      return tx(req.pool, req, async client => {
+        const { rows, rowCount } = await client.query<{ name: string }>(
+          `UPDATE terminal_device
+              SET secret_hash = $3, paired_at = now(),
+                  pairing_code_hash = NULL, pairing_expires_at = NULL
+            WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL
+           RETURNING name`,
+          [deviceRef, Number(propertyId), hashToken(geheimnis)])
+        if (rowCount === 0) throw Errors.notFound('res.terminal')
+        return { deviceRef, name: rows[0]!.name, kioskKey: geheimnis }
       })
     }
   })
@@ -565,11 +642,7 @@ export function terminalRoutes(app: FastifyInstance): void {
   /**
    * Koppeln. Oeffentlich, denn das Terminal hat noch nichts, womit es sich
    * ausweisen koennte -- und deshalb mit eigenem Fehlversuchszaehler.
-   *
-   * **Keine Mitarbeitersitzung am Terminal.** Liegt in diesem Browser noch
-   * eine, wird sie hier beendet und ihr Cookie geloescht. Am Touchscreen
-   * steht danach ein Gast, und die Anwendung unter `/` liegt eine
-   * Adresszeile entfernt.
+   * Eine Mitarbeitersitzung im selben Browser endet dabei (`geraetAnmelden`).
    */
   registerRoute(app, {
     method: 'POST',
@@ -597,28 +670,54 @@ export function terminalRoutes(app: FastifyInstance): void {
         throw Errors.unprocessable('terminal.pairingInvalid')
       }
 
-      const sitzung = req.cookies['hp_session']
-      if (sitzung !== undefined) {
-        await req.pool.query(
-          `UPDATE user_session SET revoked_at = now()
-            WHERE id = $1 AND revoked_at IS NULL`, [sitzung])
-        reply.clearCookie('hp_session', { path: '/' })
-      }
-      reply.setCookie(DEVICE_COOKIE, geheimnis, {
-        httpOnly: true,
-        // `strict` wie bei der Sitzung (H6, Dokument 25): niemand verlinkt
-        // von aussen auf das Terminal.
-        sameSite: 'strict',
-        secure: config.nodeEnv === 'production',
-        // Nur an die Routen des Terminals. Die Anwendung unter `/v1/*`
-        // bekommt es nie zu sehen, auch nicht versehentlich.
-        path: '/v1/terminal',
-        // Ein Jahr. Das Terminal steht fest an seinem Platz; erneuert wird
-        // es durch Neukoppeln, beendet durch Widerruf.
-        maxAge: 365 * 24 * 3600
-      })
+      await geraetAnmelden(req, reply, geheimnis)
       const g = gekoppelt.rows[0]!
       return { deviceRef: g.device_ref, name: g.device_name, property: g.property_name }
+    }
+  })
+
+  /**
+   * Die Kiosk-Adresse einloesen: das Geheimnis aus `/terminal#k=...` gegen
+   * das Geraetecookie.
+   *
+   * Fuer einen Kiosk, der seine Cookies nicht behaelt. Edge im Kioskmodus
+   * von Windows laeuft immer InPrivate und verwirft das Cookie bei jedem
+   * Neustart und jedem Leerlauf-Reset; danach stuende wieder die
+   * Codeeingabe da. Die hinterlegte Adresse traegt das Geheimnis deshalb
+   * selbst, und die Seite tauscht es bei jedem Start hier ein. Es steht
+   * hinter dem `#` und erreicht damit nie eine Protokollzeile -- nur diesen
+   * Rumpf.
+   *
+   * Oeffentlich wie die Kopplung und mit demselben Fehlversuchszaehler.
+   * Ein Geheimnis aus 32 Byte raet niemand; gezaehlt wird trotzdem, damit
+   * keine oeffentliche Route ein Geheimnis unbegrenzt pruefen laesst.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/terminal/resume',
+    permission: null,
+    summary: 'Gaesteterminal ueber seine Kiosk-Adresse anmelden',
+    handler: async (req, reply) => {
+      const herkunft = req.ip
+      if (limiters.kopplung.erschoepft(herkunft)) {
+        throw tooManyRequests(Math.ceil(KOPPLUNG_FEHLVERSUCHE.windowMs / 1000))
+      }
+      const eingabe = (req.body as { key?: unknown } | undefined)?.key
+      if (typeof eingabe !== 'string' || !GEHEIMNIS_FORM.test(eingabe)) {
+        limiters.kopplung.check(herkunft)
+        throw Errors.unprocessable('terminal.kioskKeyInvalid')
+      }
+      // Ueber dieselbe Aufloesung wie jede Anfrage des Terminals: was hier
+      // traegt, traegt dort, und ein widerrufenes Geraet traegt nirgends.
+      const gefunden = await tx(req.pool, req, client =>
+        client.query<{ device_ref: string }>(
+          `SELECT device_ref FROM terminal_device_principal($1)`, [hashToken(eingabe)]))
+      if (gefunden.rowCount === 0) {
+        limiters.kopplung.check(herkunft)
+        throw Errors.unprocessable('terminal.kioskKeyInvalid')
+      }
+      await geraetAnmelden(req, reply, eingabe)
+      return { deviceRef: gefunden.rows[0]!.device_ref }
     }
   })
 

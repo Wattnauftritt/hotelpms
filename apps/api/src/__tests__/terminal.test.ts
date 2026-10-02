@@ -226,6 +226,108 @@ describe('Kopplung', () => {
   })
 })
 
+describe('Kiosk-Adresse', () => {
+  /**
+   * Fuer einen Kiosk, der seine Cookies verwirft (Edge im Kioskmodus von
+   * Windows, immer InPrivate): die Adresse traegt das Geheimnis, und jeder
+   * Start loest es wieder ein.
+   */
+  const adresse = (deviceRef: string, headers = chef) => app.inject({ method: 'POST',
+    url: `/v1/properties/${fx.propertyId}/terminals/${deviceRef}/kiosk-key`, headers })
+  const einloesen = (key: unknown, extra: Record<string, string> = {}) =>
+    app.inject({ method: 'POST', url: '/v1/terminal/resume', headers: extra,
+                 payload: { key } })
+
+  it('koppelt ueber die Adresse, so oft der Kiosk neu startet', async () => {
+    const t = await anlegen()
+    const a = await adresse(t.deviceRef)
+    expect(a.statusCode, a.body).toBe(200)
+    const key = json(a).kioskKey as string
+    expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/)
+
+    // Der offene Code faellt mit: ein Terminal soll nicht zweimal stehen.
+    expect((await koppeln(t.pairingCode)).statusCode).toBe(422)
+
+    for (let start = 0; start < 3; start++) {
+      const r = await einloesen(key)
+      expect(r.statusCode, r.body).toBe(200)
+      const c = r.cookies.find(k => k.name === 'hp_terminal')!
+      expect(c.httpOnly).toBe(true)
+      expect(c.path).toBe('/v1/terminal')
+      expect((await abfragen(c.value)).statusCode).toBe(200)
+    }
+
+    const liste = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/terminals`, headers: chef })
+    expect((json(liste).terminals as Array<{ state: string }>)[0]!.state).toBe('paired')
+  })
+
+  it('macht das bisherige Geheimnis wertlos, und Neukoppeln die Adresse', async () => {
+    const t = await terminal()
+    const key = json(await adresse(t.deviceRef)).kioskKey as string
+    expect((await abfragen(t.secret)).statusCode).toBe(401)
+
+    const neu = await app.inject({ method: 'POST',
+      url: `/v1/properties/${fx.propertyId}/terminals/${t.deviceRef}/pairing-code`,
+      headers: chef })
+    expect(neu.statusCode).toBe(200)
+    expect((await einloesen(key)).statusCode).toBe(422)
+  })
+
+  it('traegt nach dem Widerruf nicht mehr', async () => {
+    const t = await anlegen()
+    const key = json(await adresse(t.deviceRef)).kioskKey as string
+    const w = await app.inject({ method: 'DELETE',
+      url: `/v1/properties/${fx.propertyId}/terminals/${t.deviceRef}`, headers: chef })
+    expect(w.statusCode).toBe(200)
+    expect((await einloesen(key)).statusCode).toBe(422)
+    expect((await adresse(t.deviceRef)).statusCode).toBe(404)
+  })
+
+  it('beendet eine Mitarbeitersitzung im selben Browser', async () => {
+    const t = await anlegen()
+    const key = json(await adresse(t.deviceRef)).kioskKey as string
+    const r = await einloesen(key, chef)
+    expect(r.statusCode).toBe(200)
+    expect(r.cookies.find(k => k.name === 'hp_session')?.value ?? '').toBe('')
+    const s = await owner.query<{ revoked_at: string | null }>(
+      `SELECT revoked_at FROM user_session WHERE id = $1`, [chefSitzung])
+    expect(s.rows[0]!.revoked_at).not.toBeNull()
+  })
+
+  it('zaehlt Fehlversuche selbst, auch bei angemeldeter Anfrage', async () => {
+    const t = await anlegen()
+    const key = json(await adresse(t.deviceRef)).kioskKey as string
+    expect((await einloesen('kurz', chef)).statusCode).toBe(422)
+    for (let i = 0; i < 9; i++) {
+      expect((await einloesen('B'.repeat(43), chef)).statusCode).toBe(422)
+    }
+    expect((await einloesen(key)).statusCode).toBe(429)
+  })
+
+  it('bleibt in einem fremden Haus unerreichbar', async () => {
+    const t = await anlegen()
+    const fremd = await makeProperty(owner)
+    const u = await makeUser(owner,
+      { email: 'fremd@test.de', propertyId: fremd.propertyId, roleKey: 'hotel_director' })
+    const r = await app.inject({ method: 'POST',
+      url: `/v1/properties/${fremd.propertyId}/terminals/${t.deviceRef}/kiosk-key`,
+      headers: { cookie: `hp_session=${u.sessionId}` } })
+    expect(r.statusCode).toBe(404)
+  })
+
+  it('legt nur den Hash ab und laesst das Geheimnis aus dem Protokoll', async () => {
+    const t = await anlegen()
+    const key = json(await adresse(t.deviceRef)).kioskKey as string
+    const prot = await owner.query<{ changed: unknown; action: string }>(
+      `SELECT changed, action FROM audit_log WHERE table_name = 'terminal_device'`)
+    for (const z of prot.rows) expect(JSON.stringify(z.changed)).not.toContain(key)
+    const kopplung = prot.rows.find(z => z.action === 'UPDATE')
+      ?.changed as Record<string, unknown> | undefined
+    expect(kopplung?.secret_hash).toEqual({ von: '[redigiert]', nach: '[redigiert]' })
+  })
+})
+
 describe('Ein Geraet erreicht nur seine eigenen Routen', () => {
   /**
    * Die Abnahme: dieselbe Pruefung wie beim Maschinentoken, ueber **alle**

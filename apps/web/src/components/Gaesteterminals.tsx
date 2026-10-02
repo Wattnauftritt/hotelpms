@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useEscape } from '../lib/tasten.js'
 import { useT, useLocale, intlTag, type Locale } from '../lib/i18n/index.js'
 import { useTerminals, useCreateTerminal, useRepairTerminal, useRevokeTerminal,
-         type Kopplungscode } from '../lib/queries/terminal.js'
+         useKioskKey, type Kopplungscode, type Kioskschluessel }
+  from '../lib/queries/terminal.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { TerminalInhalte } from './TerminalInhalte.tsx'
 
@@ -12,7 +13,9 @@ import { TerminalInhalte } from './TerminalInhalte.tsx'
  * Koppeln, sehen, widerrufen. Der Code steht genau einmal da: die
  * Schnittstelle legt nur seinen Hash ab und kann ihn nicht noch einmal
  * zeigen. Wer ihn verpasst, koppelt neu -- das kostet einen Klick und
- * macht einen alten Code wertlos.
+ * macht einen alten Code wertlos. Dasselbe gilt fuer die Kiosk-Adresse:
+ * sie traegt das Geheimnis des Geraets und steht nur in der Antwort, die
+ * sie erzeugt hat.
  */
 export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
@@ -22,11 +25,29 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
   const anlegen = useCreateTerminal(propertyId)
   const neu = useRepairTerminal(propertyId)
   const widerrufen = useRevokeTerminal(propertyId)
+  const kiosk = useKioskKey(propertyId)
+  const [adresse, setAdresse] = useState<Kioskschluessel | null>(null)
+  const [kopiert, setKopiert] = useState(false)
   const liste = useTerminals(propertyId, code !== null)
 
-  // Escape schliesst den angezeigten Code -- er ist eine Lage ueber der
-  // Liste, und danach braucht ihn niemand mehr.
-  useEscape(() => setCode(null), code !== null)
+  // Escape schliesst den angezeigten Code oder die Adresse -- beide sind
+  // eine Lage ueber der Liste, und danach braucht sie niemand mehr.
+  useEscape(() => { setCode(null); setAdresse(null) }, code !== null || adresse !== null)
+
+  // Code und Adresse schliessen einander aus: beide machen das bisherige
+  // Geheimnis des Geraets wertlos, und nur das zuletzt erzeugte gilt.
+  const zeigeCode = (c: Kopplungscode): void => { setAdresse(null); setCode(c) }
+  const zeigeAdresse = (k: Kioskschluessel): void => {
+    setCode(null); setKopiert(false); setAdresse(k)
+  }
+  /*
+   * Das Geheimnis hinter dem `#`: der Browser schickt den Teil nach dem
+   * Zeichen nie an einen Server, er landet also in keiner Protokollzeile
+   * -- weder hier noch bei einem Proxy dazwischen. Die Seite am Terminal
+   * liest ihn und tauscht ihn gegen das Geraetecookie.
+   */
+  const kioskUrl = adresse === null ? ''
+    : `${location.origin}/terminal#k=${adresse.kioskKey}`
 
   /*
    * Sobald der Code eingeloest ist, faellt er von selbst weg: das Terminal
@@ -72,11 +93,38 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
         </div>
       )}
 
+      {adresse !== null && (
+        <div className="rounded border border-neutral-300 bg-white p-4 space-y-2" role="status">
+          <div className="text-sm font-medium">
+            {t('terminal.settings.kioskTitle', { name: adresse.name })}
+          </div>
+          <div className="flex items-center gap-2">
+            <input readOnly value={kioskUrl} onFocus={e => e.currentTarget.select()}
+                   className="grow border border-neutral-300 rounded px-2 py-1 text-xs
+                              font-mono" />
+            <button type="button"
+                    className="px-2 py-1 text-xs border border-neutral-300 rounded
+                               whitespace-nowrap"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(kioskUrl)
+                        .then(() => setKopiert(true))
+                    }}>
+              {kopiert ? t('terminal.settings.copied') : t('terminal.settings.copy')}
+            </button>
+          </div>
+          <p className="text-xs text-neutral-600">{t('terminal.settings.kioskHint')}</p>
+          <button type="button" onClick={() => setAdresse(null)}
+                  className="text-xs text-neutral-600 underline">
+            {t('common.close')}
+          </button>
+        </div>
+      )}
+
       <form className="flex flex-wrap items-end gap-2"
             onSubmit={e => {
               e.preventDefault()
               if (name.trim() === '') return
-              anlegen.mutate(name.trim(), { onSuccess: c => { setCode(c); setName('') } })
+              anlegen.mutate(name.trim(), { onSuccess: c => { zeigeCode(c); setName('') } })
             }}>
         <label className="text-sm">
           <div className="text-neutral-600">{t('terminal.settings.name')}</div>
@@ -92,6 +140,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
       </form>
       {anlegen.isError && <Fehler error={anlegen.error} />}
       {neu.isError && <Fehler error={neu.error} />}
+      {kiosk.isError && <Fehler error={kiosk.error} />}
       {widerrufen.isError && <Fehler error={widerrufen.error} />}
 
       {liste.data.terminals.length === 0
@@ -112,10 +161,16 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
                   </span>
                 )}
                 <button type="button" disabled={neu.isPending}
-                        onClick={() => neu.mutate(d.deviceRef, { onSuccess: setCode })}
+                        onClick={() => neu.mutate(d.deviceRef, { onSuccess: zeigeCode })}
                         className="text-xs px-2 py-1 rounded border border-neutral-300
                                    hover:bg-neutral-50">
                   {t('terminal.settings.repair')}
+                </button>
+                <button type="button" disabled={kiosk.isPending}
+                        onClick={() => kiosk.mutate(d.deviceRef, { onSuccess: zeigeAdresse })}
+                        className="text-xs px-2 py-1 rounded border border-neutral-300
+                                   hover:bg-neutral-50">
+                  {t('terminal.settings.kiosk')}
                 </button>
                 <button type="button" disabled={widerrufen.isPending}
                         onClick={() => {

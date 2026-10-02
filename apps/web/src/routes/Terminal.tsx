@@ -31,6 +31,11 @@ import { GastCheckin } from './GastCheckin.tsx'
  *   als anonyme Anfrage gezaehlt; im Sekundentakt gefragt, sperrte es die
  *   Herkunft der ganzen Rezeption an der allgemeinen Grenze. Erst nach der
  *   Kopplung beginnt die Abfrage, und eine 401 beendet sie wieder.
+ * - **Ein Kiosk, der alles vergisst, meldet sich ueber seine Adresse an.**
+ *   Edge im Kioskmodus von Windows laeuft immer InPrivate und verwirft das
+ *   Geraetecookie bei jedem Neustart und Leerlauf-Reset. Steht in der
+ *   Adresse `#k=...`, tauscht die Seite das Geheimnis zuerst gegen das
+ *   Cookie und nimmt es sofort aus der Adresse.
  */
 
 export const TERMINAL_PFAD = '/terminal'
@@ -38,6 +43,18 @@ export const TERMINAL_PFAD = '/terminal'
 /** Steht die Terminalseite in der Adresse? Wie `zugangAusAdresse`, zum Pruefen ohne Browser. */
 export function istTerminalAdresse(pathname: string = location.pathname): boolean {
   return pathname.replace(/\/+$/, '') === TERMINAL_PFAD
+}
+
+/**
+ * Das Geheimnis der Kiosk-Adresse (`/terminal#k=...`), sonst `null`.
+ *
+ * Hinter dem `#`, weil der Browser diesen Teil nie an einen Server
+ * schickt: das Geheimnis erreicht keine Protokollzeile, nur den Rumpf von
+ * `/v1/terminal/resume`.
+ */
+export function kioskSchluesselAusAdresse(hash: string = location.hash): string | null {
+  const k = new URLSearchParams(hash.replace(/^#/, '')).get('k')
+  return k !== null && /^[A-Za-z0-9_-]{43}$/.test(k) ? k : null
 }
 
 /** Wie oft das Terminal fragt. Zwei Sekunden: der Gast steht schon davor. */
@@ -64,7 +81,8 @@ interface Frage {
 
 type Phase =
   | { art: 'start' }
-  | { art: 'koppeln' }
+  | { art: 'kiosk'; key: string }
+  | { art: 'koppeln'; fehler?: unknown }
   | { art: 'ruhe' }
   | { art: 'auftrag'; jobRef: string; kind: Art; daten: unknown }
   | { art: 'danke' }
@@ -100,7 +118,12 @@ export function TerminalSeite(): JSX.Element {
 
 function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element {
   const t = useT()
-  const [phase, setPhase] = useState<Phase>({ art: 'start' })
+  // Nur lesen, nicht aendern: im Entwicklungsmodus laeuft diese Funktion
+  // zweimal. Aus der Adresse genommen wird das Geheimnis im Effekt unten.
+  const [phase, setPhase] = useState<Phase>(() => {
+    const key = kioskSchluesselAusAdresse()
+    return key === null ? { art: 'start' } : { art: 'kiosk', key }
+  })
   const [haus, setHaus] = useState<{ name: string; uebung: boolean } | null>(null)
   const [ohneNetz, setOhneNetz] = useState(false)
   const phaseRef = useRef(phase)
@@ -116,6 +139,37 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
     window.addEventListener('pageshow', zurueck)
     return () => window.removeEventListener('pageshow', zurueck)
   }, [])
+
+  // ------------------------------------------------------ Kiosk-Adresse
+  /*
+   * Erst das Geheimnis aus der Adresse nehmen, dann einloesen. Es bleibt
+   * nur im Zustand dieser Seite; ohne Netz wird weiter versucht, denn nach
+   * einem Neustart ist der Browser oft schneller da als das Netz -- und
+   * ohne die Adresse kaeme das Geheimnis bis zum naechsten Start nicht
+   * wieder. Gilt es nicht mehr, steht die Codeeingabe da, mit dem Grund.
+   */
+  const kioskKey = phase.art === 'kiosk' ? phase.key : null
+  useEffect(() => {
+    if (kioskKey === null) return
+    history.replaceState(null, '', TERMINAL_PFAD)
+    let aus = false
+    let zeitgeber: number | undefined
+    const einloesen = (): void => {
+      api.post('/v1/terminal/resume', { key: kioskKey })
+        .then(() => { if (!aus) setPhase({ art: 'start' }) })
+        .catch((e: unknown) => {
+          if (aus) return
+          if (e instanceof ApiError && e.status < 500 && e.status !== 429) {
+            setPhase({ art: 'koppeln', fehler: e })
+            return
+          }
+          setOhneNetz(true)
+          zeitgeber = window.setTimeout(einloesen, FRAGE_OHNE_NETZ_MS)
+        })
+    }
+    einloesen()
+    return () => { aus = true; window.clearTimeout(zeitgeber) }
+  }, [kioskKey])
 
   // ------------------------------------------------------------ Abfrage
   const fragt = phase.art === 'start' || phase.art === 'ruhe' || phase.art === 'auftrag'
@@ -228,8 +282,10 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
       </header>
 
       <main className="grow grid place-items-center px-6 pb-8">
-        {phase.art === 'start' && <div className="text-neutral-400">…</div>}
-        {phase.art === 'koppeln' && <Koppeln onGekoppelt={() => setPhase({ art: 'start' })} />}
+        {(phase.art === 'start' || phase.art === 'kiosk') &&
+          <div className="text-neutral-400">…</div>}
+        {phase.art === 'koppeln' && <Koppeln anfangsFehler={phase.fehler}
+                                             onGekoppelt={() => setPhase({ art: 'start' })} />}
         {phase.art === 'ruhe' && <Ruhe />}
         {phase.art === 'auftrag' && (() => {
           const Ansicht = ANSICHTEN[phase.kind]
@@ -334,10 +390,12 @@ function Sprachwahl({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Elemen
 
 // ---------------------------------------------------------------- Koppeln
 
-function Koppeln({ onGekoppelt }: { onGekoppelt: () => void }): JSX.Element {
+function Koppeln({ onGekoppelt, anfangsFehler }: {
+  onGekoppelt: () => void; anfangsFehler?: unknown
+}): JSX.Element {
   const t = useT()
   const [code, setCode] = useState('')
-  const [fehler, setFehler] = useState<unknown>(null)
+  const [fehler, setFehler] = useState<unknown>(anfangsFehler ?? null)
   const [laeuft, setLaeuft] = useState(false)
 
   return (

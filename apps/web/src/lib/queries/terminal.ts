@@ -47,6 +47,13 @@ export interface Kopplungscode {
   pairingExpiresAt: string
 }
 
+/** Die Kiosk-Adresse eines Terminals; das Geheimnis steht genau einmal hier. */
+export interface Kioskschluessel {
+  deviceRef: string
+  name: string
+  kioskKey: string
+}
+
 export interface TerminalStand {
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean }>
   /** Was die Rezeption fuer diese Reservierung anstossen kann. */
@@ -121,6 +128,15 @@ export function useRepairTerminal(propertyId: number) {
   return useMutation({
     mutationFn: (deviceRef: string) => api.post<Kopplungscode>(
       `/v1/properties/${propertyId}/terminals/${deviceRef}/pairing-code`),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminals', propertyId] }) }
+  })
+}
+
+export function useKioskKey(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceRef: string) => api.post<Kioskschluessel>(
+      `/v1/properties/${propertyId}/terminals/${deviceRef}/kiosk-key`),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminals', propertyId] }) }
   })
 }

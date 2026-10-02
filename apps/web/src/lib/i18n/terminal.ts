@@ -76,6 +76,38 @@ export const terminal = {
     de: 'Neu koppeln',
     en: 'Pair again',
     tr: 'Yeniden eşleştir' },
+  'terminal.settings.kiosk': {
+    de: 'Kiosk-Adresse',
+    en: 'Kiosk address',
+    tr: 'Kiosk adresi' },
+  'terminal.settings.kioskTitle': {
+    de: 'Kiosk-Adresse für „{name}“',
+    en: 'Kiosk address for "{name}"',
+    tr: '„{name}“ için kiosk adresi' },
+  'terminal.settings.kioskHint': {
+    de: 'Für einen Kiosk, der beim Neustart alles vergisst, etwa Edge im Kioskmodus '
+      + 'von Windows: diese Adresse dort als Startseite eintragen. Das Terminal meldet '
+      + 'sich damit bei jedem Start selbst an. Sie steht nur jetzt hier; wer sie '
+      + 'verliert, erzeugt eine neue, und die alte gilt dann nicht mehr. Wer die '
+      + 'Adresse hat, kann sich als dieses Terminal ausgeben — nicht weitergeben.',
+    en: 'For a kiosk that forgets everything on restart, such as Edge in Windows kiosk '
+      + 'mode: enter this address there as the start page. The terminal then signs '
+      + 'itself in on every start. It is shown only now; if it is lost, create a new '
+      + 'one and the old one stops working. Anyone with the address can act as this '
+      + 'terminal — do not pass it on.',
+    tr: 'Yeniden başlatıldığında her şeyi unutan bir kiosk için, örneğin Windows kiosk '
+      + 'modundaki Edge: bu adresi orada başlangıç sayfası olarak girin. Terminal her '
+      + 'açılışta kendini bununla oturum açar. Yalnızca şimdi gösterilir; kaybolursa '
+      + 'yenisini oluşturun, eskisi o zaman geçersiz olur. Adrese sahip olan herkes bu '
+      + 'terminal gibi davranabilir — başkasına vermeyin.' },
+  'terminal.settings.copy': {
+    de: 'Kopieren',
+    en: 'Copy',
+    tr: 'Kopyala' },
+  'terminal.settings.copied': {
+    de: 'Kopiert',
+    en: 'Copied',
+    tr: 'Kopyalandı' },
   'terminal.settings.revoke': {
     de: 'Widerrufen',
     en: 'Revoke',

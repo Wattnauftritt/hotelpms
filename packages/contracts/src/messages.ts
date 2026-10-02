@@ -1205,6 +1205,10 @@ const M = {
     de: 'Der Kopplungscode ist ungueltig oder abgelaufen.',
     en: 'The pairing code is invalid or has expired.',
     tr: 'Eşleştirme kodu geçersiz veya süresi dolmuş.' },
+  'terminal.kioskKeyInvalid': {
+    de: 'Diese Kiosk-Adresse gilt nicht mehr. Bitte in den Einstellungen eine neue erzeugen.',
+    en: 'This kiosk address is no longer valid. Please create a new one in the settings.',
+    tr: 'Bu kiosk adresi artık geçerli değil. Lütfen ayarlardan yeni bir adres oluşturun.' },
   'terminal.deviceOnly': {
     de: 'Diese Anfrage ist einem gekoppelten Gaesteterminal vorbehalten.',
     en: 'This request is reserved for a paired guest terminal.',
