@@ -9,7 +9,8 @@ import { formatCent } from './money.js'
  * Darstellungsdetail -- in ihnen stehen Pflichtangaben.
  */
 
-export const EMAIL_KINDS = ['invoice', 'reservation_confirmation', 'payment_link'] as const
+export const EMAIL_KINDS = ['invoice', 'reservation_confirmation', 'payment_link',
+                            'checkin_invitation'] as const
 export type EmailKind = (typeof EMAIL_KINDS)[number]
 
 /**
@@ -251,6 +252,13 @@ interface Gastposttexte {
   zahlungLink: string
   zahlungKarte: string
   zahlungHinweis: string
+  // Online-Check-in (Dokument 30)
+  checkinBetreff: string
+  checkinEinladung: string
+  checkinFrist: string
+  checkinUnterschrift: string
+  checkinFreiwillig: string
+  checkinWeitergabe: string
 }
 
 const TEXTE: Record<EmailLanguage, Gastposttexte> = {
@@ -293,7 +301,19 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'nicht. Der Link gilt nur fuer kurze Zeit. Ist er abgelaufen, schicken wir '
       + 'Ihnen gern einen neuen.',
     zahlungHinweis: 'Bei Fragen antworten Sie einfach auf diese E-Mail und nennen '
-      + 'Sie die Buchungsnummer {ref}.'
+      + 'Sie die Buchungsnummer {ref}.',
+    checkinBetreff: 'Online-Check-in fuer Ihren Aufenthalt — {haus}',
+    checkinEinladung: 'am {anreise} erwarten wir Sie im Hause {haus}. Damit es bei '
+      + 'der Ankunft schneller geht, koennen Sie den Meldeschein schon jetzt '
+      + 'ausfuellen:',
+    checkinFrist: 'Der Link gilt bis zum {bis} und nur fuer Ihre Buchung {ref}.',
+    checkinUnterschrift: 'Gaeste ohne deutsche Staatsangehoerigkeit unterschreiben '
+      + 'den Meldeschein am Anreisetag vor Ort und zeigen dort ihren Reisepass oder '
+      + 'Personalausweis vor.',
+    checkinFreiwillig: 'Das Ausfuellen vorab ist freiwillig. Sie koennen den '
+      + 'Meldeschein ebenso bei der Ankunft ausfuellen.',
+    checkinWeitergabe: 'Bitte geben Sie den Link nicht weiter: wer ihn hat, kann '
+      + 'Angaben zu Ihrem Aufenthalt machen.'
   },
 
   en: {
@@ -333,7 +353,19 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'receives them. The link is valid for a short time only. If it has '
       + 'expired, we will gladly send you a new one.',
     zahlungHinweis: 'If you have any questions, simply reply to this email and '
-      + 'quote the booking reference {ref}.'
+      + 'quote the booking reference {ref}.',
+    checkinBetreff: 'Online check-in for your stay — {haus}',
+    checkinEinladung: 'we look forward to welcoming you at {haus} on {anreise}. '
+      + 'To make your arrival quicker, you can fill in the registration form '
+      + '(Meldeschein) now:',
+    checkinFrist: 'The link is valid until {bis} and only for your booking {ref}.',
+    checkinUnterschrift: 'Guests without German citizenship sign the registration '
+      + 'form on site on the day of arrival and show their passport or identity '
+      + 'card there.',
+    checkinFreiwillig: 'Filling it in beforehand is optional. You can just as well '
+      + 'complete the form on arrival.',
+    checkinWeitergabe: 'Please do not pass the link on: whoever has it can enter '
+      + 'details about your stay.'
   },
 
   nl: {
@@ -373,7 +405,19 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'niet. De link is slechts korte tijd geldig. Is hij verlopen, dan sturen '
       + 'wij u graag een nieuwe.',
     zahlungHinweis: 'Heeft u vragen, antwoord dan gewoon op deze e-mail en vermeld '
-      + 'het boekingsnummer {ref}.'
+      + 'het boekingsnummer {ref}.',
+    checkinBetreff: 'Online inchecken voor uw verblijf — {haus}',
+    checkinEinladung: 'op {anreise} verwelkomen wij u graag bij {haus}. Om uw '
+      + 'aankomst te versnellen, kunt u het inschrijvingsformulier (Meldeschein) '
+      + 'nu al invullen:',
+    checkinFrist: 'De link is geldig tot {bis} en alleen voor uw boeking {ref}.',
+    checkinUnterschrift: 'Gasten zonder Duitse nationaliteit ondertekenen het '
+      + 'formulier op de dag van aankomst ter plaatse en tonen daar hun paspoort '
+      + 'of identiteitskaart.',
+    checkinFreiwillig: 'Vooraf invullen is vrijwillig. U kunt het formulier ook '
+      + 'bij aankomst invullen.',
+    checkinWeitergabe: 'Geef de link niet door: wie hem heeft, kan gegevens over '
+      + 'uw verblijf invullen.'
   },
 
   pl: {
@@ -427,7 +471,19 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'otrzymuje. Link jest ważny tylko przez krótki czas. Jeśli wygasł, '
       + 'chętnie prześlemy nowy.',
     zahlungHinweis: 'W razie pytań wystarczy odpowiedzieć na tę wiadomość, '
-      + 'podając numer rezerwacji {ref}.'
+      + 'podając numer rezerwacji {ref}.',
+    checkinBetreff: 'Odprawa online przed pobytem — {haus}',
+    checkinEinladung: 'Oczekujemy Państwa w obiekcie {haus} w dniu {anreise}. '
+      + 'Aby przyspieszyć przyjazd, można już teraz wypełnić kartę meldunkową '
+      + '(Meldeschein):',
+    checkinFrist: 'Link jest ważny do {bis} i wyłącznie dla rezerwacji {ref}.',
+    checkinUnterschrift: 'Goście bez obywatelstwa niemieckiego podpisują kartę '
+      + 'meldunkową w dniu przyjazdu na miejscu i okazują tam paszport lub dowód '
+      + 'osobisty.',
+    checkinFreiwillig: 'Wypełnienie karty z wyprzedzeniem jest dobrowolne. Można ją '
+      + 'również wypełnić po przyjeździe.',
+    checkinWeitergabe: 'Prosimy nie przekazywać linku dalej: kto go posiada, może '
+      + 'wprowadzać dane dotyczące Państwa pobytu.'
   }
 }
 
@@ -564,6 +620,65 @@ export function renderPaymentLinkEmail(
     subject: einsetzen(t.zahlungBetreff, werte),
     text: lines.join('\n\n'),
     html: htmlBody(lines)
+  }
+}
+
+export interface CheckinInvitationData {
+  propertyName: string
+  guestName: string | null
+  reservationRef: string
+  arrival: string
+  /** Bis wann der Link gilt, Kalendertag. */
+  validUntil: string
+  /** Der fertige Link samt Token. Die Domaene weiss nichts von URLs. */
+  link: string
+}
+
+/**
+ * Einladung zum Online-Check-in (Dokument 30).
+ *
+ * **Rechtsgrundlage ist der Beherbergungsvertrag**, nicht eine Einwilligung:
+ * der Meldeschein ist Teil der Beherbergung (§ 29 BMG, Art. 6 Abs. 1 lit. b
+ * und c DSGVO), und die Mail bietet nur einen zweiten Weg dorthin an. Sie
+ * wirbt fuer nichts und sagt ausdruecklich, dass der Weg freiwillig ist.
+ *
+ * **Der Link steht im Text, nicht hinter einem Knopf.** Wer ihn nicht
+ * anklicken mag, soll ihn lesen koennen; und ein Gast, der stutzt, sieht so,
+ * wohin er fuehrt.
+ *
+ * Der Satz zur Unterschrift steht fuer jeden da, nicht nur fuer
+ * auslaendische Gaeste: die Staatsangehoerigkeit kennt das Haus vor dem
+ * Ausfuellen oft gar nicht, und eine Mail, die sie erraet, raet falsch.
+ */
+export function renderCheckinInvitationEmail(
+  d: CheckinInvitationData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  const t = TEXTE[lang]
+  const werte = {
+    haus: d.propertyName,
+    anreise: kalendertag(d.arrival, lang),
+    bis: kalendertag(d.validUntil, lang),
+    ref: d.reservationRef
+  }
+  const lines = [
+    anrede(d.guestName, lang),
+    einsetzen(t.checkinEinladung, werte),
+    d.link,
+    einsetzen(t.checkinFrist, werte),
+    t.checkinUnterschrift,
+    t.checkinFreiwillig,
+    t.checkinWeitergabe,
+    d.propertyName
+  ]
+  // Im HTML-Teil wird der Link anklickbar. Ersetzt wird der bereits
+  // entschaerfte Absatz, damit nichts aus dem Link selbst als Markup gilt.
+  const html = htmlBody(lines).replace(
+    `>${esc(d.link)}</p>`,
+    `><a href="${esc(d.link)}">${esc(d.link)}</a></p>`)
+  return {
+    subject: einsetzen(t.checkinBetreff, werte),
+    text: lines.join('\n\n'),
+    html
   }
 }
 

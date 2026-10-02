@@ -13,6 +13,7 @@ import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
+import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { createBrevoAdapter } from './email/brevo.js'
 import { parseCidrList } from '@hotelpms/domain'
 
@@ -274,6 +275,25 @@ async function platformEmails(): Promise<void> {
   }
 }
 
+/*
+ * Basis der Oberflaeche fuer den Link im Online-Check-in. Dieselbe Variable
+ * wie in der API, aus derselben Umgebungsdatei (ops/systemd). Ohne sie
+ * bleibt der Versand aus, statt Links auf localhost zu verschicken.
+ */
+const appUrl = process.env.PUBLIC_APP_URL ?? null
+if (appUrl === null) {
+  log.warn('PUBLIC_APP_URL ist nicht gesetzt: kein Online-Check-in-Link vor Anreise.')
+}
+
+/** Online-Check-in-Links vor Anreise einreihen (Dokument 30). */
+async function onlineCheckins(p: PropertyRow): Promise<void> {
+  if (appUrl === null) return
+  const r = await inviteOnlineCheckins(pool, propertyContext(p.account_id, p.id), p.id,
+    { appUrl })
+  // Eine Zahl, kein Gast: wer eingeladen wurde, steht im Postausgang.
+  if (r.invited > 0) log.info({ property: p.id, ...r }, 'Online-Check-in-Links eingereiht')
+}
+
 /** Faellige Gastpost zustellen. */
 async function emails(p: PropertyRow): Promise<void> {
   if (mailer === null) return
@@ -305,6 +325,8 @@ async function tick(): Promise<void> {
       await nightAudit(p)
       await rateSteering(p)
       await webhooks(p)
+      // Vor der Zustellung: was hier eingereiht wird, geht im selben Tick hinaus.
+      await onlineCheckins(p)
       await emails(p)
     } catch (e) {
       log.error({ property: p.id, err: e }, 'Arbeit fuer Property fehlgeschlagen')

@@ -840,7 +840,6 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
 | Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
-| Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
 
 ---
 
@@ -849,6 +848,25 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 **Die Kassenschnittstelle.** In einer früheren Sichtung stand hier „keine POS-Maske" als offener Punkt. Das war ein Missverständnis: `routes/pos.ts` ist der Vertrag mit einer **externen** Ladenkasse mit TSE, nicht ein Bildschirm, der noch fehlt. Die Kasse holt sich die offenen Folios und bucht ihre Zimmerbons dagegen; sie meldet sich über einen Maschinenzugang mit `folio:read` und `folio:post` an.
 
 Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Dokument 09 ausschließt — mit allen Folgen aus § 146a AO. Wer den Punkt das nächste Mal auf einer Liste offener Arbeiten findet, streicht ihn.
+
+---
+
+### Online-Check-in mit digitalem Meldeschein — **erledigt**
+
+**Wo es liegt.** Migration `0061`, `apps/api/src/routes/checkin.ts`, `apps/api/src/platform/{checkin,meldeschein,gast}.ts`, `apps/worker/src/jobs/onlineCheckin.ts`, `packages/domain/src/checkinToken.ts`, `packages/contracts/src/checkin.ts`, `apps/web/src/routes/GastCheckin.tsx`. Begründungen und Rechtslage in [`30-online-checkin.md`](30-online-checkin.md).
+
+**Was es tut.** Der Gast bekommt *x* Tage vor Anreise (Einstellung je Haus, Vorgabe aus, drei Tage) einen Link per Mail und füllt den Meldeschein auf einer öffentlichen Seite aus; die Rezeption sieht am Seitenfenster „verschickt / ausgefüllt am" und kann den Link kopieren, erneut senden oder zurückziehen. Die Station im Haus bettet dieselbe Seite im Terminalmodus ein.
+
+**Was daraus entschieden wurde.**
+
+- **Über den Mail-Link wird nicht unterschrieben.** § 29 Abs. 2 BMG verlangt die Unterschrift „am Tag der Ankunft", und eine Zeichnung auf dem eigenen Telefon ist keines der Ersatzverfahren aus Absatz 5. Vorab erfasst wird alles außer ihr; sie folgt am Anreisetag an der Station oder am Tresen, und beide zeigen, dass sie aussteht.
+- **Der Kontext kommt aus dem Link**, über eine schmale `SECURITY DEFINER`-Funktion nach dem Muster von `account_provision`, die nur mit leerem Kontext aufrufbar ist und ihn auf genau ein Haus setzt. Keine Eigentümerverbindung in der API.
+- **Der Link reist in einer Kopfzeile und steht in der Mail im Fragment**, nie im Pfad: der Serialisierer des Protokolls ersetzt die Abfragezeichenfolge, nicht den Pfad, und ein Fragment erreicht keinen Server. Im Postausgang fällt der Rumpf nach dem Versand.
+- **Die Regeln des Meldescheins stehen einmal** (`platform/meldeschein.ts`) und gelten für Tresen, Link und Station.
+
+**Beim Bauen gefunden und mitbehoben.** Der Meldeschein entschied „ausländisch" nach dem Land der Anschrift statt nach der Staatsangehörigkeit, und ein ausländischer Mitreisender verlangte keine Unterschrift, solange der Hauptgast deutsch war. Das Zeichenfeld traf den Finger nicht, sobald es breiter angezeigt wurde als seine Auflösung. Und „Meldeschein nachträglich unterschreiben" hat jetzt eine Maske.
+
+**Offen**, alle in Dokument 30 §2.3 und §10: ob deutsche Gäste nach der Reform überhaupt noch einen Schein brauchen (Rechtsfrage je Land und Gemeinde), Familienangehörige nur der Zahl nach, § 29 Abs. 5 als Ersatz der Unterschrift.
 
 ---
 
