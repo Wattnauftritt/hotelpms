@@ -11,6 +11,7 @@ import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
 import { preise } from './preise.js'
+import { preissteuerung } from './preissteuerung.js'
 import { gaeste } from './gaeste.js'
 import { rechnung } from './rechnung.js'
 import { zugang } from './zugang.js'
@@ -118,6 +119,7 @@ const texts = {
   ...einstellungen,
   ...schnittstellen,
   ...preise,
+  ...preissteuerung,
   ...gaeste,
   ...rechnung,
   ...zugang,

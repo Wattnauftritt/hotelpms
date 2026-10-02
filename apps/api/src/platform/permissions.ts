@@ -10,6 +10,10 @@ export const PERMISSIONS = [
   'folio:discount', 'folio:discount_unlimited', 'folio:route',
   'invoice:issue', 'invoice:credit',
   'rate:read', 'rate:write',
+  // Preissteuerung (0065): Regeln setzen, nach denen sich Preise ohne
+  // weiteres Zutun bewegen, und auf automatisch schalten. Eigenes Recht,
+  // weil ein Fehler darin ein Jahr lang falsch verkauft.
+  'rate:steer',
   'inventory:read', 'inventory:write',
   'housekeeping:read', 'housekeeping:write', 'maintenance:write',
   'report:operational', 'report:revenue', 'report:export',
