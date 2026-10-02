@@ -744,8 +744,18 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 | Fehlt | Route | Was das bedeutet |
 |---|---|---|
 | CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
-| Notiz am Gastprofil anlegen | `POST /v1/guests/:ref/notes` | Die Notizen werden angezeigt, aber es gibt keinen Weg, eine zu schreiben. |
-| Meldeschein nachträglich unterschreiben | `POST /v1/registrations/:id/sign` | Beim Check-in geht es; wer später unterschreibt, kommt nicht mehr hin. |
+
+---
+
+Erledigt und aus der Liste genommen: **Notiz am Gastprofil anlegen** (das Profil zeigt die Hausnotizen jetzt im selben Aufruf, mit Eingabefeld) und **Meldeschein nachträglich unterschreiben** (am Tresen in der Check-in-Maske oder am Gästeterminal) — beides in [`31-gaesteterminal.md`](31-gaesteterminal.md).
+
+---
+
+### Gästeterminal — **erledigt**
+
+**Wo es liegt.** [`31-gaesteterminal.md`](31-gaesteterminal.md), Migrationen `0063` und `0064`, `routes/terminal.ts`, `apps/web/src/routes/Terminal.tsx`.
+
+Ein Touchscreen an der Rezeption, an dem der Gast den Meldeschein unterschreibt. Das Terminal ist ein **Gerät**, keine Sitzung: einmal mit einem Code gekoppelt, danach ein eigenes Principal mit genau einem Recht in genau einem Haus, im Prüfprotokoll als Gerät erkennbar. Die Rezeption schickt Aufträge (höchstens einer offen je Gerät) und sieht ihren Stand live; die Seite am Touchscreen hält keine Gastdaten über den Auftrag hinaus und baut sich danach neu auf. „Meldeformular ausfüllen" ist als Art vorbereitet und wird angebunden, sobald der Online-Check-in gemergt ist.
 
 ---
 

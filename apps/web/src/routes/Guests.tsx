@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
-import type { Guest, GuestCreated, Company } from '@hotelpms/contracts'
+import type { Guest, GuestCreated, GuestNote, Company } from '@hotelpms/contracts'
 import { useSearchGuests, useGuest, useCreateGuest, usePatchGuest, useIdDocument,
          useSearchCompanies, useCompany, useCreateCompany, usePatchCompany,
-         useGuestDataExport, useAnonymizeGuest, type GuestDataExport }
+         useGuestDataExport, useAnonymizeGuest, useAddGuestNote, type GuestDataExport }
   from '../lib/queries/guests.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
-import { useT } from '../lib/i18n/index.js'
+import { useEscape } from '../lib/tasten.js'
+import { useT, useLocale, intlTag } from '../lib/i18n/index.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
 const BEREICHE = ['guests', 'companies'] as const
@@ -53,7 +54,7 @@ export function Guests({ propertyId }: { propertyId: number }): JSX.Element {
 
       {!geladen ? <Laedt />
         : reiter === 'guests'
-          ? <GaesteReiter darfSchreiben={darf('guest:write')}
+          ? <GaesteReiter propertyId={propertyId} darfSchreiben={darf('guest:write')}
                           darfIdentitaet={darf('guest:read_identity')}
                           darfExport={darf('guest:export')} />
           : <FirmenReiter darfSchreiben={darf('guest:write')} />}
@@ -61,7 +62,8 @@ export function Guests({ propertyId }: { propertyId: number }): JSX.Element {
   )
 }
 
-function GaesteReiter({ darfSchreiben, darfIdentitaet, darfExport }: {
+function GaesteReiter({ propertyId, darfSchreiben, darfIdentitaet, darfExport }: {
+  propertyId: number
   darfSchreiben: boolean; darfIdentitaet: boolean; darfExport: boolean
 }): JSX.Element {
   const t = useT()
@@ -110,7 +112,8 @@ function GaesteReiter({ darfSchreiben, darfIdentitaet, darfExport }: {
                         onSaved={g => setAusgewaehlt(g.guestRef)} />
         )}
         {ausgewaehlt !== null && ausgewaehlt !== 'new' && (
-          <GastProfil guestRef={ausgewaehlt} darfSchreiben={darfSchreiben}
+          <GastProfil guestRef={ausgewaehlt} propertyId={propertyId}
+                      darfSchreiben={darfSchreiben}
                       darfIdentitaet={darfIdentitaet} darfExport={darfExport} />
         )}
       </div>
@@ -118,8 +121,8 @@ function GaesteReiter({ darfSchreiben, darfIdentitaet, darfExport }: {
   )
 }
 
-function GastProfil({ guestRef, darfSchreiben, darfIdentitaet, darfExport }: {
-  guestRef: string; darfSchreiben: boolean; darfIdentitaet: boolean
+function GastProfil({ guestRef, propertyId, darfSchreiben, darfIdentitaet, darfExport }: {
+  guestRef: string; propertyId: number; darfSchreiben: boolean; darfIdentitaet: boolean
   darfExport: boolean
 }): JSX.Element {
   const t = useT()
@@ -142,6 +145,8 @@ function GastProfil({ guestRef, darfSchreiben, darfIdentitaet, darfExport }: {
   return (
     <div className="space-y-3">
       <GastFormular initial={q.data} darfSchreiben={darfSchreiben} onSaved={() => {}} />
+      <Hausnotizen key={guestRef} guestRef={guestRef} propertyId={propertyId}
+                   notes={q.data.notes} darfSchreiben={darfSchreiben} />
       <AusweisFeld guestRef={guestRef} hasIdDocumentNumber={q.data.hasIdDocumentNumber}
                     idDocumentType={q.data.idDocumentType} darfLesen={darfIdentitaet} />
       {darfExport && <Betroffenenrechte guestRef={guestRef} />}
@@ -262,6 +267,107 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
         </div>
       )}
     </div>
+  )
+}
+
+/** Wie lang eine Hausnotiz sein darf. Dieselbe Grenze wie in der API (guests.ts). */
+const NOTIZ_MAX = 500
+
+/**
+ * Hausnotizen am Profil: lesen und anlegen.
+ *
+ * Die Route gab es, eine Maske nicht, und die Notizen standen nur in der
+ * Auskunft nach Art. 15 -- also nirgends, wo die Rezeption sie beim Aufruf
+ * eines Gastes saehe. Eine Notiz haelt eine Anforderung fest, nicht ihren
+ * Grund; der Hinweis dazu steht **am Eingabefeld**, nicht in einem
+ * Handbuch, weil man ihn dort liest, wo man gerade tippt (Befund 4,
+ * Dokument 26).
+ *
+ * Das Feld ist eingeklappt, bis jemand eine Notiz anlegen will, und Escape
+ * klappt es wieder ein -- mit verworfenem Text: Escape ist hier wie
+ * ueberall der Weg hinaus, nicht "spaeter weiterschreiben".
+ *
+ * Kein Loeschen und kein Aendern. Die Schnittstelle kennt beides nicht;
+ * was falsch ist, korrigiert eine zweite Notiz, und weg faellt alles mit
+ * der Anonymisierung.
+ */
+function Hausnotizen({ guestRef, propertyId, notes, darfSchreiben }: {
+  guestRef: string; propertyId: number; notes: GuestNote[]; darfSchreiben: boolean
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const [offen, setOffen] = useState(false)
+  const [text, setText] = useState('')
+  const anlegen = useAddGuestNote(guestRef, propertyId)
+
+  const schliessen = (): void => { setOffen(false); setText(''); anlegen.reset() }
+  useEscape(schliessen, offen)
+
+  // Mehrere Haeuser im Blick: dann gehoert das Haus an jede Zeile.
+  const mehrereHaeuser = new Set(notes.map(n => n.propertyId)).size > 1
+
+  return (
+    <section className="border border-neutral-200 rounded p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-medium grow">{t('dsgvo.notes')}</h2>
+        {darfSchreiben && !offen && (
+          <button type="button" onClick={() => setOffen(true)}
+                  className="text-xs px-2 py-1 rounded border border-neutral-300
+                             hover:bg-neutral-50">
+            + {t('note.add')}
+          </button>
+        )}
+      </div>
+
+      {offen && (
+        <form className="space-y-2"
+              onSubmit={e => {
+                e.preventDefault()
+                if (text.trim() === '') return
+                anlegen.mutate(text.trim(), { onSuccess: () => { setOffen(false); setText('') } })
+              }}>
+          <textarea value={text} onChange={e => setText(e.target.value)} autoFocus
+                    maxLength={NOTIZ_MAX} rows={2} placeholder={t('note.placeholder')}
+                    aria-label={t('dsgvo.notes')}
+                    className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+          <p className="text-xs text-neutral-500">{t('dsgvo.notesHint')}</p>
+          {anlegen.isError && <Fehler error={anlegen.error} />}
+          <div className="flex items-center gap-2">
+            <button type="submit" disabled={text.trim() === '' || anlegen.isPending}
+                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                               disabled:bg-neutral-300">
+              {t('note.save')}
+            </button>
+            <button type="button" onClick={schliessen}
+                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
+              {t('common.cancel')}
+            </button>
+            <span className="text-xs text-neutral-400 ml-auto">
+              {t('note.remaining', { n: NOTIZ_MAX - text.length })}
+            </span>
+          </div>
+        </form>
+      )}
+
+      {notes.length === 0
+        ? <p className="text-xs text-neutral-500">{t('note.none')}</p>
+        : <ul className="divide-y divide-neutral-100 text-sm">
+            {notes.map((n, i) => (
+              <li key={`${n.createdAt}-${i}`} className="py-1.5">
+                <div className="whitespace-pre-line">{n.note}</div>
+                <div className="text-xs text-neutral-500">
+                  {/* Ein Zeitpunkt, kein Kalendertag: in Ortszeit gezeigt.
+                      Abgeschnitten nach UTC stuende eine Notiz von
+                      halb eins nachts am Vortag. */}
+                  {new Intl.DateTimeFormat(intlTag(locale), { dateStyle: 'short' })
+                    .format(new Date(n.createdAt))}
+                  {mehrereHaeuser && ` · ${n.property}`}
+                  {n.createdBy !== null && ` · ${t('note.by', { name: n.createdBy })}`}
+                </div>
+              </li>
+            ))}
+          </ul>}
+    </section>
   )
 }
 

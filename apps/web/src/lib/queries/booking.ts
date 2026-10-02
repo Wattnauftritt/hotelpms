@@ -270,6 +270,8 @@ export interface RegistrationForm {
   isForeign: boolean
   signatureRequired: boolean
   alreadyRegistered: boolean
+  /** Fuer die nachtraegliche Unterschrift, am Tresen oder am Gaesteterminal. */
+  registrationId: number | null
   signedAt: string | null
 }
 
@@ -292,7 +294,9 @@ export function useSubmitRegistration(propertyId: number) {
      * Meldepflicht nicht bedienbar: gemeldet wurde nur, wer gebucht hatte.
      */
     mutationFn: (body: { reservationRef: string; signatureSvg?: string
-                         occupantGuestRefs?: string[] }) =>
+                         occupantGuestRefs?: string[]
+                         /** Unterschrift folgt am Gaesteterminal oder spaeter hier. */
+                         signatureLater?: boolean }) =>
       api.post<{ registrationId: number }>('/v1/registrations', { propertyId, ...body }),
     onSuccess: (_r, { reservationRef }) => {
       void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })

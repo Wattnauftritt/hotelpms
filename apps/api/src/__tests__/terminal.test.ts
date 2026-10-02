@@ -461,6 +461,29 @@ describe('Unterschrift am Terminal', () => {
   })
 })
 
+describe('Vernichtung des Meldescheins', () => {
+  /**
+   * § 30 Abs. 4 BMG: ein Jahr nach Abreise wird der Schein vernichtet,
+   * und zwar von der Anwendungsrolle im Pflegejob. Ein Auftrag, der auf
+   * ihn zeigt, darf das nicht aufhalten -- der Verweis faellt auf NULL.
+   */
+  it('haelt die Loeschung nicht auf', async () => {
+    const t = await terminal()
+    const ref = await reservierung(await gast('Jansen'))
+    const regId = await melden(ref)
+    expect((await auftrag(t.deviceRef, ref)).statusCode).toBe(201)
+
+    const { withTransaction } = await import('@hotelpms/db')
+    await withTransaction(pool, { accountIds: [fx.accountId], propertyIds: [fx.propertyId],
+                                  userId: null },
+      client => client.query(`DELETE FROM registration WHERE id = $1`, [regId]))
+
+    const j = await owner.query<{ registration_id: string | null }>(
+      `SELECT registration_id FROM terminal_job`)
+    expect(j.rows[0]!.registration_id).toBeNull()
+  })
+})
+
 describe('Fremdes Geraet, fremdes Haus, fremder Mandant', () => {
   it('sieht und oeffnet den Auftrag eines anderen Terminals nicht', async () => {
     const eins = await terminal('Links')

@@ -6,6 +6,7 @@ import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
 import { VerlaufDialog } from './Verlauf.tsx'
+import { AmTerminal } from './AmTerminal.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 
 const NOTES_MAX_LENGTH = 2000
@@ -143,6 +144,8 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
       </div>
 
       <BestaetigungSchicken reservationRef={r.reservationRef} />
+      {/* Gaesteterminal (Dokument 31). Zeigt sich nur, wenn es eines gibt. */}
+      <AmTerminal reservationRef={r.reservationRef} />
 
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded p-3">
         <Feld label={t('plan.guest')}>

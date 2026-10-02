@@ -26,6 +26,12 @@ nach **Art. 32 DSGVO**. Anlage zum Auftragsverarbeitungsvertrag.
   im Protokoll steht, wer tatsächlich gehandelt hat.
 - Maschinenzugänge über OAuth 2.0 Client Credentials mit begrenzten
   Zugriffsbereichen; das Geheimnis wird genau einmal ausgegeben.
+- Gästeterminals (Touchscreen an der Rezeption) melden sich nicht mit einem
+  Benutzer an, sondern werden einmal mit einem zehn Minuten gültigen Code
+  gekoppelt; danach ein eigenes Gerätegeheimnis im `httpOnly`-Cookie, nur
+  als Hash gespeichert, widerrufbar. Ein Terminal erreicht nur seinen eigenen
+  Auftrag in seinem Haus, und es hält keine Gastdaten über den Auftrag hinaus
+  ([`../31-gaesteterminal.md`](../31-gaesteterminal.md)).
 
 ### 1.3 Zugriffskontrolle
 
@@ -68,7 +74,8 @@ die Richtlinie filtert nach Mandant, nicht nach Haus.
 
 Ein Audit-Trigger in der Datenbank protokolliert jede Änderung an den
 fachlich tragenden Tabellen: wer, wann, welche Tabelle, welche Zeile, welche
-Felder. **In der Datenbank und nicht in der Anwendung** — was in der
+Felder. „Wer" ist ein Benutzer oder, am Gästeterminal, das Gerät
+(`terminal_device_id`, Migration 0064). **In der Datenbank und nicht in der Anwendung** — was in der
 Anwendung liegt, wird irgendwann an einer Stelle vergessen.
 
 Das Protokoll hält **welches Feld** sich geändert hat, nicht seinen Wert,

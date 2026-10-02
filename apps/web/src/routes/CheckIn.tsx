@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { Guest } from '@hotelpms/contracts'
 import { useReservation, useRegistrationForm, useSubmitRegistration, useCheckIn,
          useSetReservationGuest, useTerms, useAgreeTerms,
@@ -7,6 +7,9 @@ import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { GuestPicker } from '../components/GuestPicker.tsx'
 import { Dialog, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
+import { AmTerminal } from '../components/AmTerminal.tsx'
+import { useSignRegistration } from '../lib/queries/terminal.js'
 
 /**
  * Check-in mit Meldeschein (A9), erreichbar aus dem Plan.
@@ -75,6 +78,17 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
    * unter den Rand, und dann sah die Maske aus, als habe sie keinen.
    */
   const f = form.data
+  /*
+   * Ein auslaendischer Gast, dessen Schein schon steht, dessen Unterschrift
+   * aber noch fehlt -- weil sie am Gaesteterminal folgt (Dokument 31).
+   * Eingecheckt wird erst danach: das Meldegesetz verlangt sie am Tag der
+   * Ankunft, und ein Weg, der sie ueberspringt, wird an einem vollen Abend
+   * genau einmal zu oft genommen. Die vorsichtigere Lesart; die
+   * Schnittstelle selbst prueft beim Check-in den Meldeschein nicht und tat
+   * es nie.
+   */
+  const unterschriftFehlt = f !== undefined && f.alreadyRegistered
+    && f.signatureRequired && f.signedAt === null
 
   return (
     /*
@@ -88,7 +102,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               <>
                 <button type="button"
                         disabled={ohneZimmer || einchecken.isPending
-                          || f === undefined
+                          || f === undefined || unterschriftFehlt
                           || (!f.alreadyRegistered && !anmelden.isSuccess)}
                         onClick={() => void einchecken_und_schliessen()}
                         className={KNOPF}>
@@ -170,6 +184,16 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               {f.alreadyRegistered ? (
                 <>
                   <p className="text-sm text-emerald-800">✓ {t('checkin.alreadyRegistered')}</p>
+                  {f.signatureRequired && f.signedAt !== null && (
+                    <p className="text-sm text-emerald-800">✓ {t('terminal.checkin.signed')}</p>
+                  )}
+                  {unterschriftFehlt && f.registrationId !== null && (
+                    <NachtraeglichUnterschreiben reservationRef={reservationRef}
+                                                 registrationId={f.registrationId} />
+                  )}
+                  {/* Auch nach der Unterschrift: dort steht dann "erledigt am
+                      Terminal", und die Rezeption sieht, woher sie kam. */}
+                  {f.signatureRequired && <AmTerminal reservationRef={reservationRef} />}
                   {/* Die Bedingungen bleiben sichtbar: der Meldeschein kann
                       vorliegen und die Unterschrift darunter noch fehlen. */}
                   {(bedingungen.data?.terms ?? []).map(b => (
@@ -225,18 +249,36 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                                reservationRef={reservationRef} />
                   ))}
                   {anmelden.isError && <Fehler error={anmelden.error} />}
-                  <button type="button"
-                          disabled={anmelden.isPending
-                            || (f.signatureRequired && signatur === null)}
-                          onClick={() => anmelden.mutate({
-                            reservationRef,
-                            signatureSvg: signatur ?? undefined,
-                            occupantGuestRefs: mitreisende.length === 0
-                              ? undefined : mitreisende.map(m => m.guestRef) })}
-                          className="px-3 py-1.5 text-sm rounded border border-neutral-300
-                                     disabled:opacity-40">
-                    {t('checkin.register')}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button"
+                            disabled={anmelden.isPending
+                              || (f.signatureRequired && signatur === null)}
+                            onClick={() => anmelden.mutate({
+                              reservationRef,
+                              signatureSvg: signatur ?? undefined,
+                              occupantGuestRefs: mitreisende.length === 0
+                                ? undefined : mitreisende.map(m => m.guestRef) })}
+                            className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                                       disabled:opacity-40">
+                      {t('checkin.register')}
+                    </button>
+                    {/* Der Gast unterschreibt am Touchscreen, nicht auf dem
+                        Rezeptionsbildschirm: der Schein entsteht hier ohne
+                        Unterschrift, und der Auftrag ans Terminal folgt
+                        gleich darunter. */}
+                    {f.signatureRequired && signatur === null && (
+                      <button type="button" disabled={anmelden.isPending}
+                              title={t('terminal.checkin.signLaterHint')}
+                              onClick={() => anmelden.mutate({
+                                reservationRef, signatureLater: true,
+                                occupantGuestRefs: mitreisende.length === 0
+                                  ? undefined : mitreisende.map(m => m.guestRef) })}
+                              className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                                         disabled:opacity-40">
+                        {t('terminal.checkin.signLater')}
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -248,53 +290,44 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   )
 }
 
-/** Minimales Unterschriftsfeld: Zeichnen per Maus oder Finger, als Bild exportiert. */
-function Unterschriftsfeld({ onChange }: { onChange: (svg: string | null) => void }): JSX.Element {
+/**
+ * Die Unterschrift, die beim Anlegen nicht geleistet wurde: hier, falls der
+ * Gast doch am Tresen steht oder das Terminal aus ist. Der Weg ueber das
+ * Terminal steht direkt darunter (`AmTerminal`); beide gehen ueber
+ * dieselbe Regel (`signRegistration` in der Schnittstelle).
+ */
+function NachtraeglichUnterschreiben({ reservationRef, registrationId }: {
+  reservationRef: string; registrationId: number
+}): JSX.Element {
   const t = useT()
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [zeichnet, setZeichnet] = useState(false)
-
-  const punkt = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  }
-
-  const exportieren = (): void => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const png = canvas.toDataURL('image/png')
-    onChange(`<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" `
-      + `height="${canvas.height}"><image href="${png}" width="${canvas.width}" `
-      + `height="${canvas.height}"/></svg>`)
-  }
+  const [hier, setHier] = useState(false)
+  const [signatur, setSignatur] = useState<string | null>(null)
+  const unterschreiben = useSignRegistration(reservationRef)
 
   return (
-    <div className="space-y-1">
-      <canvas ref={canvasRef} width={360} height={120}
-              className="w-full border border-neutral-300 rounded touch-none bg-white"
-              onPointerDown={e => {
-                setZeichnet(true)
-                const ctx = e.currentTarget.getContext('2d')
-                const { x, y } = punkt(e)
-                ctx?.beginPath(); ctx?.moveTo(x, y)
-              }}
-              onPointerMove={e => {
-                if (!zeichnet) return
-                const ctx = e.currentTarget.getContext('2d')
-                const { x, y } = punkt(e)
-                if (!ctx) return
-                ctx.lineTo(x, y); ctx.stroke()
-              }}
-              onPointerUp={() => { setZeichnet(false); exportieren() }} />
-      <button type="button"
-              onClick={() => {
-                const canvas = canvasRef.current
-                canvas?.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
-                onChange(null)
-              }}
-              className="text-xs text-neutral-500 underline">
-        {t('checkin.clear')}
-      </button>
+    <div className="space-y-2 border border-amber-200 bg-amber-50 rounded p-2">
+      <p className="text-sm text-amber-900">{t('terminal.checkin.signaturePending')}</p>
+      {hier ? (
+        <div className="space-y-2 bg-white rounded p-2">
+          <Unterschriftsfeld onChange={setSignatur} />
+          {unterschreiben.isError && <Fehler error={unterschreiben.error} />}
+          <button type="button" disabled={signatur === null || unterschreiben.isPending}
+                  onClick={() => {
+                    if (signatur !== null) {
+                      unterschreiben.mutate({ registrationId, signatureSvg: signatur })
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                             disabled:opacity-40">
+            {t('terminal.checkin.signSubmit')}
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setHier(true)}
+                className="text-xs text-neutral-600 underline">
+          {t('terminal.checkin.signHere')}
+        </button>
+      )}
     </div>
   )
 }

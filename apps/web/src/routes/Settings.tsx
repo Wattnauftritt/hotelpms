@@ -13,6 +13,7 @@ import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { SupportZugriff } from '../components/SupportZugriff.tsx'
+import { Gaesteterminals } from '../components/Gaesteterminals.tsx'
 
 /**
  * Einstellungen des Hauses, die nicht Einrichtung sind.
@@ -23,7 +24,7 @@ import { SupportZugriff } from '../components/SupportZugriff.tsx'
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'terms', 'support'] as const
+const REITER = ['mail', 'pay', 'terms', 'terminal', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -33,6 +34,11 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   if (darf('integration:manage')) bereiche.push({ key: 'mail', label: 'mail.title' })
   if (darf('settings:property')) bereiche.push({ key: 'pay', label: 'pay.title' })
   if (darf('settings:property')) bereiche.push({ key: 'terms', label: 'terms.title' })
+  // Gaesteterminals (Dokument 31) haengen am Haus: ein Terminal gehoert
+  // genau einem, und wer es koppelt, richtet dieses Haus ein.
+  if (darf('settings:property')) {
+    bereiche.push({ key: 'terminal', label: 'terminal.settings.title' })
+  }
   /*
    * Support-Zugriff an settings:account, nicht an settings:property: die
    * Freigabe gilt fuer den ganzen Account, nicht fuer ein Haus. Wer nur ein
@@ -643,6 +649,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
       )}
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
       {aktiv.key === 'terms' && <Hausbedingungen propertyId={propertyId} />}
+      {aktiv.key === 'terminal' && <Gaesteterminals propertyId={propertyId} />}
       {aktiv.key === 'support' && <SupportZugriff />}
     </div>
   )

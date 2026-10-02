@@ -6,6 +6,7 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
+import { TerminalSeite, istTerminalAdresse } from './routes/Terminal.tsx'
 import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
@@ -91,6 +92,13 @@ function App(): JSX.Element {
    * beim Aufruf, und die aendert sich waehrend dieser beiden Seiten nicht.
    */
   const [zugang] = useState(zugangAusAdresse)
+  /*
+   * Das Gaesteterminal ebenso vor allem anderen (Dokument 31): davor steht
+   * ein Gast, und eine Anmeldemaske waere dort die falsche Einladung. Es
+   * weist sich mit seinem eigenen Geraetecookie aus, nicht mit einer
+   * Sitzung.
+   */
+  const [terminal] = useState(() => istTerminalAdresse())
   const [adresse, setAdresse] = useAdresse()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
@@ -146,6 +154,8 @@ function App(): JSX.Element {
       location.replace(location.pathname)
     }
   }
+
+  if (terminal) return <TerminalSeite />
 
   if (zugang !== null) {
     return <I18nContext.Provider value={locale}>
