@@ -82,6 +82,10 @@ describe('Gaeste', () => {
     // Ohne @ ist es ein Name, keine Adresse: der Mailzweig laeuft nicht.
     expect(await suche('anke')).not.toContain(ref)
     expect(await suche('anke@')).toContain(ref)
+    // Gespeichert wird kleingeschrieben, gesucht auch (Migration 0069).
+    expect(await suche('ANKE@Example')).toContain(ref)
+    // Ein Bereich, kein LIKE: der Unterstrich ist ein Zeichen.
+    expect(await suche('ank_@')).not.toContain(ref)
     expect(await suche('Xqzvyk')).toEqual([])
   })
 

@@ -915,7 +915,7 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 ### Suche: die Schwelle hinter der Zeilenrichtlinie — **erledigt**
 
-**Wo es liegt.** `apps/api/src/routes/guests.ts`, `GET /v1/guests` und `GET /v1/companies`. Keine Migration: die Indizes aus `0015` bleiben, nur die Abfragen ändern sich.
+**Wo es liegt.** `apps/api/src/routes/guests.ts`, `GET /v1/guests` und `GET /v1/companies`. Für die Namen keine Migration: die Trigramm-Indizes aus `0015` bleiben, nur die Abfragen ändern sich. Für die Mail Migration `0069` (unten, „Mailzweig").
 
 **Befund.** `guest` und `company` stehen unter erzwungener Zeilenrichtlinie. PostgreSQL lässt eine Bedingung des Aufrufers nur dann **vor** der Richtlinie laufen — und damit als Indexbedingung —, wenn ihr Operator `LEAKPROOF` ist; sonst könnte sie über eine Fehlermeldung Zeilen fremder Mandanten verraten. `%` (`similarity_op`), `LIKE` (`textlike`) und `lower()` sind es nicht. Der GiST-Index `guest_last_name_gist` sortierte deshalb nur noch (`Order By: last_name <-> …`), `last_name % $1` stand als `Filter` dahinter. Solange es Treffer gab, griff das `LIMIT` nach zwanzig Zeilen; bei einem Begriff **ohne** Treffer — Tippfehler, Ziffern — nie, und der Scan las jeden Gast des Accounts. Der E-Mail-Zweig (`lower(email) LIKE …`) konnte `guest_email_prefix` gar nicht benutzen und lief bei **jeder** Suche über alle Gäste, auch bei „Matthiesen", wo keine Adresse gemeint war. Die Messung aus Dokument 15 hatte das nicht gezeigt, weil sie einen Namen mit Treffern suchte.
 
@@ -941,7 +941,24 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 
 „Gelesene Zeilen" sind die Zeilen, die der Indexscan liefert, bevor ein Filter sie verwirft (`rows` plus `Rows Removed by Filter`). „Sonn" kommt im Saatlauf nicht vor und ist dort ebenfalls ein Begriff ohne Treffer. Dass der Namenszweig dasselbe liefert wie `%`, ist für zwölf Begriffe nachgerechnet (`Matthiesen`, `Mathiesen`, `Petersen`, `Broderer`, `Wagn`, `Xqzvyk`, `4711`, `Hanske`, `Iversohn-Erich`, `Mü`, `Sonn`, `Bahn`): dieselben Zeilen in derselben Reihenfolge. Eine Firmensuche mit Treffern wird etwas teurer (11 → 24 ms), weil der Anfangszweig hinzukommt; das ist der Preis dafür, dass ein Fehlgriff nicht mehr die ganze Tabelle liest.
 
-**Offen.** Ein Begriff **mit** `@` liest weiterhin alle Gäste, wenn keine Adresse passt (`zz@nix.invalid`: 116 ms, `Rows Removed by Filter: 60000`) — `lower(email)` ist als Funktion über der Spalte nicht `LEAKPROOF`, und daran ändert keine Umformulierung der Abfrage etwas. Abhilfe wäre eine gespeicherte, kleingeschriebene Spalte mit `text_pattern_ops`-Index und einer Bereichsbedingung über `~>=~`/`~<~`, die beide `LEAKPROOF` sind. Das ist eine neue Spalte mit personenbezogenem Inhalt und gehört damit in `audit_redaction`; deshalb hier nicht nebenbei gebaut. Ebenso offen: bei vielen Accounts in einer Datenbank liest der Scan, bis `n` Zeilen **des eigenen** Accounts beisammen sind; die Zeilenrichtlinie selbst ist keine Indexbedingung des GiST-Index, weil GiST `= ANY(...)` nicht kann.
+**Mailzweig — nachgezogen mit Migration 0069.** Ein Begriff **mit** `@` las weiterhin alle Gäste, wenn keine Adresse passte (`zz@nix.invalid`: 116 ms, `Rows Removed by Filter: 60000`) — `lower(email)` ist als Funktion über der Spalte nicht `LEAKPROOF`, und daran ändert keine Umformulierung der Abfrage etwas. `0069` legt `email_lower text GENERATED ALWAYS AS (lower(email)) STORED` an, dazu den Index `guest_email_lower (email_lower text_pattern_ops)`, und entfernt `guest_email_prefix`, den die Anwendungsrolle nie benutzen konnte. Die Route sucht über einen Bereich: `email_lower ~>=~ lower($1) AND email_lower ~<~ text_prefix_end(lower($1))`. Beide Operatoren sind `LEAKPROOF`; `lower($1)` und `text_prefix_end(...)` berühren keine Spalte, nur den Suchbegriff, und dürfen es deshalb sein, ohne es zu sein. `text_prefix_end` erhöht das letzte Zeichen um eins und ist eine Funktion statt eines Ausdrucks, weil `chr(n + 1)` hinter U+D7FF und U+10FFFF einen Fehler wirft statt einer Grenze.
+
+- **Datenschutz.** `guest.email_lower` steht in `audit_redaction`; die Löschung zieht sie über die Generierung mit, weil `guest_erase_one()` und `guest_erase_partial()` `email` auf `NULL` setzen. Beides steht im Test (`packages/db/src/__tests__/dsgvo.test.ts`, „Migration 0069").
+- **Nebenwirkung.** `_` und `%` im Begriff sind jetzt Zeichen und keine Platzhalter mehr: `gast_1@` fand vorher neun Adressen (`gast11@` … `gast91@`), jetzt keine.
+- **Mitgenommen.** Der Import vergleicht jetzt über `email_lower` — der Gastimport einmal für die ganze Datei (`= ANY(...)`), der Reservierungsimport je Zeile (`= lower($2)`); `=` ist `LEAKPROOF`, der Vergleich kann Indexbedingung werden. Die Dublettenprüfung liest dieselbe Spalte, steht dort aber in einem ODER mit `%` und bleibt ein Filter.
+- **Festgehalten** in `packages/db/src/__tests__/gastsuche.test.ts`: der Plan, nicht die Zeit — mit wenigen Testzeilen ist ein Filter über alle Gäste genauso schnell wie ein Indexscan. Mit `lower(email) LIKE` zurückgesetzt, schlägt der Test fehl.
+
+Gemessen wie oben (60 000 Gäste, `hotelpms_app`, `set_config('app.account_ids', '1', true)`, `EXPLAIN (ANALYZE, BUFFERS)`, warmer Cache, Grenze 20; Gesamtzeit als Median aus drei Läufen). „Mailzweig" ist der Knoten `nach_email` allein; die Gesamtzeit enthält die beiden Namenszweige, die bei jedem Begriff laufen, auch mit `@`:
+
+| Begriff | Mailzweig vorher | Mailzweig nachher | gesamt vorher | gesamt nachher |
+|---|---|---|---|---|
+| `zz@nix.invalid` (kein Treffer) | 65 ms, `Rows Removed by Filter: 60000` | 0,03 ms, `Index Cond`, 3 Puffer | 103 ms, 61 678 Puffer | 36 ms, 1 593 Puffer |
+| `gast4711@` (ein Treffer) | 61 ms, 59 999 verworfen | 0,03 ms | 90 ms, 61 510 Puffer | 28 ms, 1 426 Puffer |
+| `GAST12@example` (Großschreibung) | 63 ms, 59 999 verworfen | 0,05 ms | 100 ms, 61 513 Puffer | 38 ms, 1 429 Puffer |
+
+Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Bereich eine `Index Cond` — er hängt nicht davon ab, dass der Planer den Suchbegriff kennt. `starts_with(email_lower, …)`, ebenfalls `LEAKPROOF`, ergäbe unter PostgreSQL 16 dieselbe `Index Cond`, aber nur, wenn der Begriff beim Planen als Konstante vorliegt; deshalb der ausgeschriebene Bereich.
+
+**Offen.** Bei vielen Accounts in einer Datenbank liest der Scan, bis `n` Zeilen **des eigenen** Accounts beisammen sind; die Zeilenrichtlinie selbst ist keine Indexbedingung des GiST-Index, weil GiST `= ANY(...)` nicht kann. Für den Mailzweig gilt das nicht in derselben Schärfe: er liest nur Adressen mit dem getippten Anfang, gleich aus welchem Account. Und die Namenszweige laufen auch bei einem Begriff mit `@` (zusammen rund 30 ms bei 60 000 Gästen); ob sie dann ausfallen dürfen, ist nicht Teil dieser Änderung.
 
 ---
 
