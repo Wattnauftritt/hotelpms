@@ -1,8 +1,9 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { I18nContext, useT, useLocale, LOCALES, type Locale }
   from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
+import { useEscape } from '../lib/tasten.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
 import type { ScreenDefinition } from '../screens.js'
 
@@ -28,22 +29,183 @@ interface Props {
   children: ReactNode
 }
 
+/** Abstand zwischen zwei Eintraegen der Leiste, `gap-1`. */
+const NAV_ABSTAND = 4
+
+/**
+ * Wie viele Eintraege vorne in die Leiste passen; der Rest geht ins Menue.
+ *
+ * Gerechnet wird mit dem **Mehr-Knopf, wie er dann aussieht**: steht der
+ * aktive Bildschirm im Menue, traegt der Knopf dessen Namen und ist breiter
+ * als "Mehr". Mit der schmalen Breite gerechnet, ragte er genau in dem Fall
+ * ueber den Rand, in dem man ihn am meisten braucht.
+ */
+export function navPasst(
+  breiten: readonly number[], mehrBreiten: readonly number[], mehrLeer: number,
+  aktiv: number, verfuegbar: number
+): number {
+  const summe = (bis: number): number =>
+    breiten.slice(0, bis).reduce((a, b) => a + b + NAV_ABSTAND, 0)
+  if (summe(breiten.length) - NAV_ABSTAND <= verfuegbar) return breiten.length
+  for (let k = breiten.length - 1; k > 0; k--) {
+    const mehr = aktiv >= k ? (mehrBreiten[aktiv] ?? mehrLeer) : mehrLeer
+    if (summe(k) + mehr <= verfuegbar) return k
+  }
+  return 0
+}
+
+function navKnopf(aktiv: boolean): string {
+  return `shrink-0 whitespace-nowrap px-3 py-1.5 text-sm rounded
+          ${aktiv ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'}`
+}
+
+/**
+ * Die Bildschirmleiste: vorne, was passt, dahinter "Mehr".
+ *
+ * **Warum sie einklappt.** Die Leiste stand als eine Zeile ohne Umbruch,
+ * und mit dreizehn Bildschirmen war sie rund 2 100 Pixel breit -- bei 1 920
+ * lagen Sprachwahl und Abmelden rechts ausserhalb des Bildschirms. An einem
+ * geteilten Rechner ist Abmelden kein Komfort (CLAUDE.md, "Das eigene
+ * Konto"), und dass es nur verschwand, weil ein Bildschirm dazukam, merkt
+ * niemand, der ihn hinzufuegt.
+ *
+ * **Weggelassen wird nichts**, nur verschoben, und die Reihenfolge bleibt:
+ * was vorne steht, steht in `SCREENS` vorne. Den aktiven Bildschirm nach
+ * vorn zu holen waere bequemer zu rechnen und liesse die Leiste bei jedem
+ * Wechsel umspringen.
+ *
+ * **Umbrechen statt Einklappen** waere ohne Messung gegangen, hob aber die
+ * Kopfleiste auf zwei Zeilen, und sie steht klebend ueber jedem Bildschirm
+ * -- im Zimmerplan ist das eine Zimmerzeile weniger.
+ *
+ * Gemessen wird an einer unsichtbaren Abschrift der Leiste, weil die Breite
+ * von Sprache und Schrift abhaengt und ein fester Schaetzwert in Tuerkisch
+ * nicht stimmt. Dass die rechte Seite bleibt, haengt aber nicht an der
+ * Messung: der Rahmen darf schrumpfen (`min-w-0`), die rechte Seite nicht
+ * (`shrink-0`). Stimmte die Rechnung einmal nicht, laege die Leiste unter
+ * dem Abmelden-Knopf, statt ihn hinauszuschieben.
+ */
 function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 'screens'>
 ): JSX.Element {
   const t = useT()
+  const rahmen = useRef<HTMLDivElement>(null)
+  const muster = useRef<HTMLDivElement>(null)
+  const menue = useRef<HTMLDivElement>(null)
+  const [sichtbar, setSichtbar] = useState(screens.length)
+  const [offen, setOffen] = useState(false)
+
+  const aktiv = screens.findIndex(s => s.key === screen)
+
+  useLayoutEffect(() => {
+    const r = rahmen.current
+    const m = muster.current
+    if (r === null || m === null) return
+    const rechne = (): void => {
+      const breite = (sel: string): number[] =>
+        Array.from(m.querySelectorAll<HTMLElement>(sel))
+          .map(el => el.getBoundingClientRect().width)
+      const mehrLeer = breite('[data-mehr-leer]')[0] ?? 0
+      setSichtbar(navPasst(breite('[data-eintrag]'), breite('[data-mehr]'),
+                           mehrLeer, aktiv, r.clientWidth))
+    }
+    rechne()
+    // Beide beobachten: den Rahmen fuer die Fensterbreite, das Muster fuer
+    // Sprachwechsel und nachgeladene Schrift.
+    const beobachter = new ResizeObserver(rechne)
+    beobachter.observe(r)
+    beobachter.observe(m)
+    return () => { beobachter.disconnect() }
+  }, [aktiv, screens])
+
+  // Zu wie die Hauswahl: Druck daneben in der Fangphase, Esc ueber die
+  // gemeinsame Lage.
+  useEffect(() => {
+    if (!offen) return
+    const zu = (e: Event): void => {
+      if (e.target instanceof Node && menue.current?.contains(e.target)) return
+      setOffen(false)
+    }
+    window.addEventListener('pointerdown', zu, true)
+    return () => { window.removeEventListener('pointerdown', zu, true) }
+  }, [offen])
+  useEscape(() => setOffen(false), offen)
+
+  const vorne = screens.slice(0, sichtbar)
+  const hinten = screens.slice(sichtbar)
+  // Liegt der aktive Bildschirm im Menue, traegt der Knopf seinen Namen:
+  // sonst stuende nirgends, wo man gerade ist.
+  const aktivHinten = aktiv >= sichtbar ? screens[aktiv] : undefined
+
+  // Ein offenes Menue, das beim Breiterziehen leer wird, schliesst sich.
+  useEffect(() => { if (hinten.length === 0) setOffen(false) }, [hinten.length])
+
+  const waehlen = (key: string): void => {
+    setOffen(false)
+    onScreen(key)
+  }
+
   return (
-    <nav className="flex gap-1">
-      {screens.map(s => (
-        <button key={s.key} onClick={() => onScreen(s.key)}
-                aria-current={screen === s.key ? 'page' : undefined}
-                className={`px-3 py-1.5 text-sm rounded
-                            ${screen === s.key
-                              ? 'bg-neutral-900 text-white'
-                              : 'text-neutral-700 hover:bg-neutral-100'}`}>
-          {t(s.nav)}
-        </button>
-      ))}
-    </nav>
+    <div ref={rahmen} className="relative min-w-0 grow">
+      {/*
+        * Die Abschrift ist breiter als der Bildschirm. Ihr eigener
+        * abschneidender Kasten haelt sie aus der Seitenbreite heraus --
+        * sonst bekaeme die ganze Seite einen waagrechten Rollbalken.
+        */}
+      <div aria-hidden className="invisible pointer-events-none absolute inset-0 overflow-hidden">
+        <div ref={muster} className="flex w-max gap-1">
+          {screens.map(s => (
+            <span key={s.key} data-eintrag className={navKnopf(false)}>{t(s.nav)}</span>
+          ))}
+          {screens.map(s => (
+            <span key={s.key} data-mehr className={navKnopf(false)}>
+              {t(s.nav)} <span className="text-xs">▾</span>
+            </span>
+          ))}
+          <span data-mehr-leer className={navKnopf(false)}>
+            {t('nav.more')} <span className="text-xs">▾</span>
+          </span>
+        </div>
+      </div>
+
+      <nav className="flex gap-1">
+        {vorne.map(s => (
+          <button key={s.key} type="button" onClick={() => onScreen(s.key)}
+                  aria-current={screen === s.key ? 'page' : undefined}
+                  className={navKnopf(screen === s.key)}>
+            {t(s.nav)}
+          </button>
+        ))}
+        {hinten.length > 0 && (
+          <div ref={menue} className="relative shrink-0">
+            <button type="button" onClick={() => setOffen(o => !o)}
+                    title={t('nav.more')} aria-haspopup="menu" aria-expanded={offen}
+                    aria-current={aktivHinten !== undefined ? 'page' : undefined}
+                    className={navKnopf(aktivHinten !== undefined)}>
+              {aktivHinten !== undefined ? t(aktivHinten.nav) : t('nav.more')}
+              {' '}<span aria-hidden className="text-xs">▾</span>
+            </button>
+            {offen && (
+              <div role="menu"
+                   className="absolute left-0 z-40 mt-1 w-56 rounded border border-neutral-200
+                              bg-white py-1 shadow-xl">
+                {hinten.map(s => (
+                  <button key={s.key} type="button" role="menuitem"
+                          onClick={() => waehlen(s.key)}
+                          aria-current={screen === s.key ? 'page' : undefined}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left
+                                      text-sm hover:bg-neutral-100
+                                      ${screen === s.key ? 'bg-neutral-50 font-medium' : ''}`}>
+                    {/* Der Haken in fester Spalte, wie in der Hauswahl. */}
+                    <span aria-hidden className="w-3">{screen === s.key ? '✓' : ''}</span>
+                    <span className="grow truncate">{t(s.nav)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </nav>
+    </div>
   )
 }
 
@@ -152,14 +314,20 @@ export function Shell(props: Props): JSX.Element {
       <div className="min-h-screen bg-neutral-50 text-neutral-900">
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
           <div className="flex items-center gap-4 px-4 py-2">
-            <span className="font-semibold">StayGrid</span>
+            <span className="shrink-0 font-semibold">StayGrid</span>
             <Nav screen={props.screen} onScreen={props.onScreen} screens={props.screens} />
-            <div className="grow" />
-            <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
-            <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
-            <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
-                      onArbeitsplatz={props.onArbeitsplatz}
-                      gewechselt={props.gewechselt} />
+            {/*
+              * Die rechte Seite schrumpft nicht und liegt obenauf: was hier
+              * steht, muss an einem geteilten Rechner immer erreichbar sein,
+              * egal wie viele Bildschirme die Leiste links noch bekommt.
+              */}
+            <div className="relative z-10 flex shrink-0 items-center gap-4 bg-white">
+              <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
+              <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
+              <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
+                        onArbeitsplatz={props.onArbeitsplatz}
+                        gewechselt={props.gewechselt} />
+            </div>
           </div>
           {props.haus?.isTraining === true && <Uebungshinweis haus={props.haus} />}
           {!online && <OfflineHinweis />}
