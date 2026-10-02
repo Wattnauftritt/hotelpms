@@ -166,10 +166,12 @@ export const KOPPLUNG_FEHLVERSUCHE: RateLimitOptions = {
 // die Absenderreputation dieses Systems gleich mit.
 // Die Kopplung eines Gaesteterminals ebenso: dort wird ein Code geprueft.
 // Sie zaehlt ihre Fehlversuche zusaetzlich selbst (`limiters.kopplung`),
-// weil eine Anfrage mit gueltiger Sitzung diese Grenze nie erreicht.
+// weil eine Anfrage mit gueltiger Sitzung diese Grenze nie erreicht. Das
+// Einloesen der Kiosk-Adresse prueft ein Geheimnis und gehoert deshalb dazu;
+// ein Kiosk tut es einmal je Start, nicht je Frage.
 const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch',
                      '/v1/auth/password-reset', '/oauth/token',
-                     '/v1/terminal/pair']
+                     '/v1/terminal/pair', '/v1/terminal/resume']
 
 /**
  * Die aktiven Zaehler. Nach aussen gegeben, damit ein Test sie zuruecksetzen

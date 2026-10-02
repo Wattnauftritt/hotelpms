@@ -26,6 +26,20 @@ Am Touchscreen steht ein **Gast**. Eine Mitarbeitersitzung dort öffnete ihm das
 
 **Eine Mitarbeitersitzung im selben Browser wird beim Koppeln beendet** und ihr Cookie gelöscht. Wer an diesem Rechner danach wieder die Rezeptionsoberfläche öffnet, muss sich neu anmelden — und sollte es dort nicht tun. Der Hinweis steht neben dem Code.
 
+### Kiosk-Adresse: für einen Browser, der alles vergisst
+
+Edge im Kioskmodus von Windows (Assigned Access, „Digitale/interaktive Beschilderung" wie „Öffentliches Browsen") läuft laut Microsoft **immer** als InPrivate-Sitzung ([Configure Microsoft Edge kiosk mode](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-configure-kiosk-mode)). Das Cookie `hp_terminal` verschwindet damit bei jedem Neustart des Rechners und bei jedem Leerlauf-Reset, den die Windows-Einrichtung mit fünf Minuten vorschlägt. Danach stünde wieder die Codeeingabe da, und die Rezeption müsste mehrmals am Tag neu koppeln.
+
+Deshalb gibt es neben dem Code die **Kiosk-Adresse**: Einstellungen → Gästeterminals → „Kiosk-Adresse". `POST /v1/properties/:id/terminals/:ref/kiosk-key` koppelt das Gerät sofort mit einem neuen Geheimnis und gibt es **einmal** zurück; die Oberfläche zeigt es als `https://<haus>.staygrid.cloud/terminal#k=<geheimnis>`. Diese Adresse wird im Kiosk als Startseite hinterlegt. Bei jedem Start nimmt die Seite das Geheimnis aus der Adresse (`history.replaceState`) und tauscht es über `POST /v1/terminal/resume` gegen das Cookie; ohne Netz versucht sie es weiter, weil der Browser nach einem Neustart oft vor dem Netz da ist.
+
+- **Hinter dem `#`**, weil der Browser diesen Teil nie an einen Server schickt. Das Geheimnis steht in keiner Protokollzeile, weder bei Caddy noch in der API — nur im Rumpf der Einlöseanfrage.
+- **Dasselbe Geheimnis wie im Cookie**, kein zweites. Widerruf und Neukoppeln wirken damit auf beides, und es gibt keinen zweiten Hash, der nachzutragen wäre.
+- **Der Preis:** das Geheimnis liegt in der Kioskeinstellung des Windows-Rechners und für einen Augenblick im JavaScript der Seite. Wer die Adresse hat, kann sich als dieses Terminal ausgeben — also genau den eigenen Auftrag lesen, nicht mehr. Das ist dieselbe Reichweite wie das Cookie selbst, und der Hinweis neben der Adresse sagt, dass sie nicht weitergegeben wird.
+- `/v1/terminal/resume` ist öffentlich wie die Kopplung, steht auf der strengen Liste und zählt seine Fehlversuche auf denselben Zähler (`limiters.kopplung`). Ein Geheimnis aus 32 Byte rät niemand; gezählt wird, damit keine öffentliche Route ein Geheimnis unbegrenzt prüfen lässt.
+- Eine Mitarbeitersitzung im selben Browser endet auch hier (`geraetAnmelden`).
+
+Ein Kiosk, der seine Cookies behält (Chrome mit festem Profil, `--kiosk`), braucht die Adresse nicht; der Code genügt.
+
 **Ein Terminal gehört genau einem Haus**, ist benannt („Touchscreen Rezeption"), steht in den Einstellungen mit „erreichbar / nicht erreichbar" (letzte Frage jünger als eine Minute) und lässt sich **neu koppeln** (neuer Code, das alte Geheimnis fällt sofort) und **widerrufen** (Geheimnis gelöscht, ein offener Auftrag fällt mit). Höchstens zehn je Haus.
 
 ### Das Principal des Geräts
@@ -103,7 +117,7 @@ Die letzte Frage wird höchstens alle zwanzig Sekunden fortgeschrieben, in einer
 
 Ein Quelltexttest hält jede dieser Zusagen fest (`apps/web/src/__tests__/terminal.test.ts`).
 
-**Betrieb.** Der Touchscreen läuft im Kioskmodus des Browsers (`chromium --kiosk https://…/terminal` o. ä.), damit der Gast weder Adresszeile noch Tabs erreicht. Das ist Einrichtung des Rechners, nicht Teil dieses Systems; Dokument 23 sagt, wer die Maschine aufsetzt, nicht den Rechner an der Rezeption.
+**Betrieb.** Der Touchscreen läuft im Kioskmodus des Browsers (`chromium --kiosk https://…/terminal` o. ä., unter Windows Edge über Assigned Access mit der Kiosk-Adresse aus Abschnitt 2), damit der Gast weder Adresszeile noch Tabs erreicht. Das ist Einrichtung des Rechners, nicht Teil dieses Systems; Dokument 23 sagt, wer die Maschine aufsetzt, nicht den Rechner an der Rezeption.
 
 ---
 

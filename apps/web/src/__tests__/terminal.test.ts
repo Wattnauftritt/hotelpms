@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { istTerminalAdresse } from '../routes/Terminal.tsx'
+import { istTerminalAdresse, kioskSchluesselAusAdresse } from '../routes/Terminal.tsx'
 
 /**
  * Das Gaesteterminal und die Hausnotiz, an der Quelle geprueft.
@@ -37,6 +37,24 @@ describe('Terminalseite aus der Adresse', () => {
       .toBeGreaterThan(-1)
     expect(main.indexOf('if (terminal) return <TerminalSeite />'))
       .toBeLessThan(main.indexOf("queryKey: ['me']"))
+  })
+})
+
+describe('Kiosk-Adresse', () => {
+  const k = 'A'.repeat(40) + '_-9'
+
+  it('liest das Geheimnis nur aus dem Teil hinter dem #', () => {
+    expect(kioskSchluesselAusAdresse(`#k=${k}`)).toBe(k)
+    expect(kioskSchluesselAusAdresse('')).toBeNull()
+    // Keine andere Form: was nicht wie ein Geheimnis aussieht, geht nicht raus.
+    expect(kioskSchluesselAusAdresse('#k=kurz')).toBeNull()
+  })
+
+  it('nimmt das Geheimnis aus der Adresse, bevor es eingeloest wird', () => {
+    const effekt = terminal.slice(terminal.indexOf('if (kioskKey === null) return'))
+    expect(effekt.indexOf('history.replaceState(null, \'\', TERMINAL_PFAD)'))
+      .toBeLessThan(effekt.indexOf("'/v1/terminal/resume'"))
+    expect(effekt.indexOf("'/v1/terminal/resume'")).toBeGreaterThan(-1)
   })
 })
 
@@ -97,9 +115,9 @@ describe('Escape am Rezeptionsrechner', () => {
       .toMatch(/useEscape\(\(\) => setWaehlt\(null\), waehlt !== null\)/)
   })
 
-  it('schliesst den angezeigten Kopplungscode', () => {
+  it('schliesst den angezeigten Kopplungscode und die Kiosk-Adresse', () => {
     expect(code('../components/Gaesteterminals.tsx'))
-      .toMatch(/useEscape\(\(\) => setCode\(null\), code !== null\)/)
+      .toMatch(/useEscape\(\(\) => \{ setCode\(null\); setAdresse\(null\) \},\s*code !== null \|\| adresse !== null\)/)
   })
 
   it('klappt das Feld der Hausnotiz wieder ein', () => {
