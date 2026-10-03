@@ -356,6 +356,17 @@ export const admin = {
       + 'here, no invitation reaches the customer.',
     tr: 'Davetler, parola bağlantıları, destek talepleri. Burada bir şey '
       + 'takılırsa müşteriye davet ulaşmaz.' },
+  'admin.health.noBrevoKey': {
+    de: 'BREVO_API_KEY fehlt in /opt/hotelpms/shared/env — es geht keine Post hinaus.',
+    en: 'BREVO_API_KEY is missing from /opt/hotelpms/shared/env — no mail goes out.',
+    tr: "BREVO_API_KEY /opt/hotelpms/shared/env içinde yok — hiçbir posta gönderilmiyor." },
+  'admin.health.noPlatformFrom': {
+    de: 'PLATFORM_EMAIL_FROM fehlt in /opt/hotelpms/shared/env — Einladungen und '
+      + 'Kennwort-Links bleiben liegen.',
+    en: 'PLATFORM_EMAIL_FROM is missing from /opt/hotelpms/shared/env — invitations '
+      + 'and password links stay queued.',
+    tr: 'PLATFORM_EMAIL_FROM /opt/hotelpms/shared/env içinde yok — davetler ve '
+      + 'parola bağlantıları kuyrukta kalır.' },
   'admin.health.lastError': {
     de: 'Letzter Fehler',
     en: 'Last error',
@@ -385,10 +396,14 @@ export const admin = {
     de: 'Kennwort-Link schicken',
     en: 'Send password link',
     tr: 'Parola bağlantısı gönder' },
+  /*
+   * "Unterwegs" versprach mehr, als die Route weiss: sie reiht ein, der
+   * Worker verschickt. Ob das geschah, steht daneben im Zustand der Post.
+   */
   'admin.user.linkSent': {
-    de: 'Link ist unterwegs.',
-    en: 'Link is on its way.',
-    tr: 'Bağlantı yolda.' },
+    de: 'Link ist eingereiht.',
+    en: 'Link is queued.',
+    tr: 'Bağlantı kuyruğa alındı.' },
   'admin.user.revokeSessions': {
     de: 'Alle Sitzungen beenden',
     en: 'End all sessions',
@@ -452,6 +467,17 @@ export const admin = {
     de: 'gescheitert',
     en: 'failed',
     tr: 'başarısız' },
+  /*
+   * Fuer das Plattformpersonal, nicht fuer den Kunden: was zu tun ist, steht
+   * auf dem Server, und genau das soll der Satz sagen.
+   */
+  'admin.mail.stuck': {
+    de: 'Der Worker versendet nicht — läuft er, und sind BREVO_API_KEY und '
+      + 'PLATFORM_EMAIL_FROM gesetzt?',
+    en: 'The worker is not sending — is it running, and are BREVO_API_KEY and '
+      + 'PLATFORM_EMAIL_FROM set?',
+    tr: 'Worker gönderim yapmıyor — çalışıyor mu, BREVO_API_KEY ve '
+      + 'PLATFORM_EMAIL_FROM ayarlı mı?' },
 
   // ------------------------------------------------- Benutzer einladen
   'admin.invite.title': {

@@ -1810,7 +1810,106 @@ const M = {
   'webhookError.other': {
     de: 'Die Zustellung ist gescheitert',
     en: 'The delivery failed',
-    tr: 'İletim başarısız oldu' }
+    tr: 'İletim başarısız oldu' },
+
+  // ------------------------------------------------ Uebernahme aus KWHotel
+
+  'import.kwhotel.notADump': {
+    de: 'Die Datei ist kein KWHotel-Datenbankabzug: es fehlt die Tabelle '
+      + 'der Reservierungen (Rezerwacje)',
+    en: 'The file is not a KWHotel database dump: the reservations table '
+      + '(Rezerwacje) is missing',
+    tr: 'Dosya bir KWHotel veritabanı dökümü değil: rezervasyon tablosu '
+      + '(Rezerwacje) eksik' },
+  'import.kwhotel.unreadableRow': {
+    de: 'Reservierung {reference}: Datum oder Preis unlesbar',
+    en: 'Reservation {reference}: date or price unreadable',
+    tr: 'Rezervasyon {reference}: tarih veya fiyat okunamıyor' },
+  'import.dump.tableMissing': {
+    de: 'Im Abzug fehlt die Tabelle {table}',
+    en: 'The dump lacks the table {table}',
+    tr: 'Dökümde {table} tablosu eksik' },
+  'import.dump.columnMissing': {
+    de: 'In der Tabelle {table} fehlen Spalten: {columns}',
+    en: 'The table {table} lacks columns: {columns}',
+    tr: '{table} tablosunda sütunlar eksik: {columns}' },
+  'import.dump.columnsDiffer': {
+    de: 'Die Tabelle {table} steht mit verschiedenen Spaltenlisten im Abzug',
+    en: 'The table {table} appears in the dump with different column lists',
+    tr: '{table} tablosu dökümde farklı sütun listeleriyle yer alıyor' },
+  'import.dump.insertBeforeCreate': {
+    de: 'Daten der Tabelle {table} stehen vor ihrer Beschreibung',
+    en: 'Data of the table {table} appears before its definition',
+    tr: '{table} tablosunun verileri tanımından önce geliyor' },
+  'import.dump.unreadableInsert': {
+    de: 'Eine Datenzeile der Tabelle {table} ist unlesbar. Ist die Datei '
+      + 'vollstaendig?',
+    en: 'A data line of the table {table} is unreadable. Is the file complete?',
+    tr: '{table} tablosunun bir veri satırı okunamıyor. Dosya eksiksiz mi?' },
+  'import.dump.columnCount': {
+    de: 'Eine Zeile der Tabelle {table} hat eine andere Spaltenzahl als die '
+      + 'Tabelle',
+    en: 'A row of the table {table} has a different column count than the table',
+    tr: '{table} tablosunun bir satırının sütun sayısı tablodan farklı' },
+  'import.kwhotel.unknownStatus': {
+    de: 'Statuscode {code} ist weder als gueltig noch als storniert '
+      + 'eingeordnet ({count} Reservierungen, etwa {references})',
+    en: 'Status code {code} is classified neither as valid nor as canceled '
+      + '({count} reservations, e.g. {references})',
+    tr: 'Durum kodu {code} ne geçerli ne de iptal olarak sınıflandırılmış '
+      + '({count} rezervasyon, örn. {references})' },
+  'import.kwhotel.statusInBothGroups': {
+    de: 'Statuscode {code} steht bei gueltig und bei storniert',
+    en: 'Status code {code} is listed as both valid and canceled',
+    tr: 'Durum kodu {code} hem geçerli hem iptal olarak listelenmiş' },
+  'import.kwhotel.roomUnmapped': {
+    de: 'KWHotel-Zimmer „{name}“ hat kein Zimmer in StayGrid ({count} '
+      + 'Reservierungen). Zuordnen oder auslassen',
+    en: 'KWHotel room "{name}" has no room in StayGrid ({count} '
+      + 'reservations). Assign it or leave it out',
+    tr: 'KWHotel odası „{name}“ için StayGrid\'de oda yok ({count} '
+      + 'rezervasyon). Eşleştirin veya dışarıda bırakın' },
+  'import.kwhotel.roomUnknown': {
+    de: 'Reservierung {reference} liegt auf einem Zimmer, das der Abzug '
+      + 'nicht kennt',
+    en: 'Reservation {reference} is on a room the dump does not know',
+    tr: 'Rezervasyon {reference} dökümün tanımadığı bir odada' },
+  'import.kwhotel.invalidStay': {
+    de: 'Reservierung {reference}: die letzte Nacht liegt vor der Anreise',
+    en: 'Reservation {reference}: the last night is before arrival',
+    tr: 'Rezervasyon {reference}: son gece varıştan önce' },
+  'import.kwhotel.negativePrice': {
+    de: 'Reservierung {reference}: negativer Preis',
+    en: 'Reservation {reference}: negative price',
+    tr: 'Rezervasyon {reference}: negatif fiyat' },
+  'import.kwhotel.soldOut': {
+    de: 'Reservierung {reference}: kein Kontingent frei vom {from} bis {to}. '
+      + 'Der Altbestand ist ueberbucht, oder in der Zimmergruppe fehlen Zimmer',
+    en: 'Reservation {reference}: no availability from {from} to {to}. '
+      + 'The legacy data is overbooked, or the room type lacks rooms',
+    tr: 'Rezervasyon {reference}: {from} - {to} arası müsaitlik yok. Eski '
+      + 'veriler fazla rezerve edilmiş veya oda tipinde oda eksik' },
+  'import.kwhotel.notMaterialized': {
+    de: 'Reservierung {reference}: der Zeitraum bis {to} ist noch nicht '
+      + 'buchbar vorbereitet',
+    en: 'Reservation {reference}: the period until {to} is not yet prepared '
+      + 'for booking',
+    tr: 'Rezervasyon {reference}: {to} tarihine kadarki dönem henüz '
+      + 'rezervasyona hazırlanmadı' },
+  'import.kwhotel.alreadyImported': {
+    de: '{count} Reservierungen sind schon uebernommen und werden '
+      + 'uebersprungen. Aenderungen daran seit dem ersten Lauf kommen nicht mit',
+    en: '{count} reservations were already imported and are skipped. Changes '
+      + 'to them since the first run are not carried over',
+    tr: '{count} rezervasyon zaten aktarılmış ve atlanıyor. İlk çalıştırmadan '
+      + 'bu yana yapılan değişiklikler aktarılmaz' },
+  'import.kwhotel.inHouse': {
+    de: '{count} Gaeste sind gerade im Haus. Ihre Naechte vor dem {date} '
+      + 'stehen nicht auf dem Folio; abgerechnet wird ab dem Stichtag',
+    en: '{count} guests are currently in house. Their nights before {date} '
+      + 'are not on the folio; billing starts at the cutover date',
+    tr: 'Şu anda {count} misafir otelde. {date} öncesindeki geceleri folyoda '
+      + 'yer almaz; faturalama geçiş tarihinden itibaren başlar' }
 } as const satisfies Record<string, LocalizedText>
 
 export type MessageKey = keyof typeof M

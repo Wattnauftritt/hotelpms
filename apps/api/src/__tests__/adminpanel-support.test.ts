@@ -144,6 +144,32 @@ describe('Zugangslink', () => {
     expect(d.users[0]!.lastMail?.status).toBe('failed')
     expect(d.users[0]!.lastMail?.error).toBe('SMTP 550')
   })
+
+  it('meldet Post, die der Worker seit Minuten nicht anfasst', async () => {
+    await post(
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/access-link`,
+      admin.sessionId)
+    type Karte = { users: Array<{ lastMail: { status: string; stuck: boolean } | null }> }
+    const frisch = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as Karte
+    // Gerade eingereiht: noch kein Grund zur Sorge.
+    expect(frisch.users[0]!.lastMail).toMatchObject({ status: 'pending', stuck: false })
+
+    await owner.query(
+      `UPDATE platform_email SET next_attempt_at = now() - interval '10 minutes'
+        WHERE user_id = $1`, [rezeption.userId])
+    const alt = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as Karte
+    expect(alt.users[0]!.lastMail).toMatchObject({ status: 'pending', stuck: true })
+
+    // Versucht und wieder eingeplant ist kein Stillstand, sondern ein Fehler
+    // mit eigenem Text -- der steht in last_error.
+    await owner.query(
+      `UPDATE platform_email SET attempts = 1 WHERE user_id = $1`, [rezeption.userId])
+    const versucht = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as Karte
+    expect(versucht.users[0]!.lastMail?.stuck).toBe(false)
+  })
 })
 
 describe('Sitzungen beenden', () => {
@@ -462,6 +488,30 @@ describe('Betriebszustand der Plattform', () => {
       { platform: { emailsFailed: number; emailsLastError: string | null } }
     expect(d.platform.emailsFailed).toBe(1)
     expect(d.platform.emailsLastError).toBe('Brevo: 401')
+  })
+
+  it('sagt, ob der Versand auf dem Server eingerichtet ist', async () => {
+    const vorher = { key: process.env.BREVO_API_KEY, from: process.env.PLATFORM_EMAIL_FROM }
+    type Zustand = { platform: { mailSetup: { brevoKey: boolean; platformFrom: string | null } } }
+    try {
+      delete process.env.BREVO_API_KEY
+      delete process.env.PLATFORM_EMAIL_FROM
+      const ohne = (await get('/v1/platform/health', admin.sessionId)).json() as Zustand
+      expect(ohne.platform.mailSetup).toEqual({ brevoKey: false, platformFrom: null })
+
+      process.env.BREVO_API_KEY = 'xkeysib-geheim'
+      process.env.PLATFORM_EMAIL_FROM = 'mail@staygrid.cloud'
+      const r = await get('/v1/platform/health', admin.sessionId)
+      expect((r.json() as Zustand).platform.mailSetup)
+        .toEqual({ brevoKey: true, platformFrom: 'mail@staygrid.cloud' })
+      // Der Schluessel selbst verlaesst die Maschine nie.
+      expect(r.body).not.toContain('xkeysib')
+    } finally {
+      if (vorher.key === undefined) delete process.env.BREVO_API_KEY
+      else process.env.BREVO_API_KEY = vorher.key
+      if (vorher.from === undefined) delete process.env.PLATFORM_EMAIL_FROM
+      else process.env.PLATFORM_EMAIL_FROM = vorher.from
+    }
   })
 
   it('erkennt eine haengende Ausrollung', async () => {

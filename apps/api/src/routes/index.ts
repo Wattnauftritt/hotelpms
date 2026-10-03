@@ -15,6 +15,7 @@ import { termsRoutes } from './terms.js'
 import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
 import { legacyImportRoutes } from './legacyImport.js'
+import { kwhotelImportRoutes } from './kwhotelImport.js'
 import { setupRoutes } from './setup.js'
 import { firstSetupRoutes } from './firstSetup.js'
 import { blockRoutes } from './blocks.js'
@@ -69,6 +70,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   reportRoutes(app)
   importRoutes(app)
   legacyImportRoutes(app)
+  kwhotelImportRoutes(app)
   setupRoutes(app)
   firstSetupRoutes(app)
   blockRoutes(app)

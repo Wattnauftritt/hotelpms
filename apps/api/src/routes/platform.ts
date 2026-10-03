@@ -43,7 +43,7 @@ interface BenutzerZeile {
 /** Die letzte Einladung oder Ruecksetzung je Benutzer -- ob sie ankam. */
 interface PostZeile {
   user_id: number; kind: string; status: string; created_at: string
-  last_error: string | null
+  last_error: string | null; stuck: boolean
 }
 
 interface RollenZeile { user_id: number; property_id: number | null; key: string }
@@ -131,12 +131,23 @@ export function platformRoutes(app: FastifyInstance): void {
          * Fehler des Anbieters), oder gesendet -- dann liegt es im Spam.
          * platform_email traegt keine Zeilenrichtlinie und keine Gastdaten;
          * `last_error` ist die Meldung des Mailanbieters, sonst nichts.
+         *
+         * `stuck` ist der vierte Zustand, und der stille: nie versucht, aber
+         * seit Minuten faellig. Der Worker greift Zugangspost alle paar
+         * Sekunden; liegt eine Nachricht laenger unberuehrt, versendet er
+         * nicht -- er laeuft nicht, oder ihm fehlt BREVO_API_KEY oder
+         * PLATFORM_EMAIL_FROM. Ohne diesen Hinweis sagt das Panel "noch nicht
+         * versendet" und meint dasselbe wie eine Sekunde nach dem Klick.
+         * Gerechnet in der Datenbank, nicht im Browser: dessen Uhr ist nicht
+         * die des Servers.
          */
         const post = benutzer.rows.length === 0
           ? { rows: [] as PostZeile[] }
           : await client.query<PostZeile>(
               `SELECT DISTINCT ON (user_id) user_id, kind, status,
-                      created_at::text, last_error
+                      created_at::text, last_error,
+                      (status = 'pending' AND attempts = 0
+                       AND next_attempt_at < now() - interval '5 minutes') AS stuck
                  FROM platform_email
                 WHERE user_id = ANY($1::bigint[])
                   AND kind IN ('invite', 'password_reset')
@@ -200,7 +211,7 @@ export function platformRoutes(app: FastifyInstance): void {
                 })),
               lastMail: m === undefined ? null
                 : { kind: m.kind, status: m.status, at: m.created_at,
-                    error: m.last_error }
+                    error: m.last_error, stuck: m.stuck }
             }
           })
         }
@@ -456,7 +467,19 @@ export function platformRoutes(app: FastifyInstance): void {
           emailsOldest: post.rows[0]!.oldest,
           emailsLastError: post.rows[0]!.last_error,
           deployment: offen === undefined ? null
-            : { id: offen.id, status: offen.status, stuck: haengt }
+            : { id: offen.id, status: offen.status, stuck: haengt },
+          /*
+           * Ob der Versand eingerichtet ist. API und Worker lesen dieselbe
+           * Umgebungsdatei (ops/systemd), also sagt die Umgebung der API,
+           * was der Worker beim letzten Start gesehen hat. Ohne das hiess
+           * "Einladung kommt nicht an" bisher: auf die Maschine, Datei lesen.
+           * Vom Schluessel nur, ob er da ist; die Absenderadresse ist
+           * oeffentlich, sie steht in jeder Einladung.
+           */
+          mailSetup: {
+            brevoKey: (process.env.BREVO_API_KEY ?? '') !== '',
+            platformFrom: process.env.PLATFORM_EMAIL_FROM || null
+          }
         },
         accounts: rows.rows.map(z => ({
           accountId: z.account_id,

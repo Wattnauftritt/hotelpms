@@ -15,6 +15,7 @@ import { Availability } from './routes/Availability.tsx'
 import { Invoices } from './routes/Invoices.tsx'
 import { Adminpanel } from './routes/Adminpanel.tsx'
 import { TerminalPult } from './routes/TerminalPult.tsx'
+import { Datenuebernahme } from './routes/Datenuebernahme.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -145,7 +146,10 @@ export const SCREENS: readonly ScreenDefinition[] = [
    */
   { key: 'admin', nav: 'nav.admin', permission: null, platformStaff: true,
     render: c => <Adminpanel userId={c.userId}
-                             platformPermissions={c.platformPermissions} /> }
+                             platformPermissions={c.platformPermissions} /> },
+  // Uebernahme aus Altsystemen, zuerst KWHotel. Einrichtung, kein Tagesgeschaeft.
+  { key: 'import', nav: 'nav.import', permission: 'settings:property',
+    render: c => <Datenuebernahme propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

@@ -356,6 +356,14 @@ spätere statt der sofortigen Meldung.
 
 **Was daraus entschieden wurde.** Die Adapter übersetzen nur die Rohform und rufen dann dieselbe `runImport()` wie der generische Import — die korrektursensible Logik gibt es einmal, nicht viermal. Die drei Spaltenformen in `platform/legacyImport/` sind **begründete, aber unbestätigte Annahmen**: für keines der drei Systeme gibt es eine veröffentlichte Formatbeschreibung, und das steht auch in der Antwort von `GET /v1/imports/legacy/templates`. Vor dem ersten echten Kunden gehören sie gegen eine tatsächliche Exportdatei geprüft. Protels amerikanisches Datum ist der Grund, warum ein Adapter das Datum selbst umrechnet: `07/01/2026` wäre sonst der 7. Januar statt des 1. Juli.
 
+**Nachtrag KWHotel (03.10.2026, Baustein 6 aus dem API-Entwurf fürs Adminpanel).** Das erste Altsystem mit einer echten Datei. KWHotel sichert seine MariaDB als Textabzug und nennt ihn `.bak`; `platform/legacyImport/mysqlDump.ts` liest daraus `CREATE TABLE` und `INSERT` der benötigten Tabellen, **ohne** das SQL auszuführen, und `routes/kwhotelImport.ts` übernimmt. Es läuft bewusst **nicht** über `runImport()`: KWHotel liefert Zimmer statt Kategorien, Gruppen über mehrere Zeilen, Statuscodes, Platzhalter und drei Jahre Vergangenheit — das in den generischen Import zu pressen hieße, dort eine Fachlogik für ein einziges System einzubauen. Gleich geblieben sind Trockenlauf, ganz oder gar nicht und die Bindung über `inventory_reserve`.
+
+- **Vergangenheit bindet nichts.** Abgereiste Aufenthalte kommen als `CheckedOut` ohne Folio, wer im Haus ist als `InHouse` mit den Nächten ab heute; als `Confirmed` hätte der Nachtlauf jede Altbuchung zum No-Show gemacht.
+- **Die KWHotel-Nummer hängt an der Reservierung** (`legacy_system`, `legacy_reference`, Migration 0078), nicht mehr in `booking.external_reference` — dort steht die Kanalnummer. Ein zweiter Lauf erkennt daran, was schon da ist; die Reservierungsliste liefert sie als `legacyReference`.
+- **Was das Haus entscheidet, kommt aus der Anfrage:** Statuscodes (Vorgabe aktiv 0, 1, 2, 4; storniert 10–14, 19, 22), Platzhalternamen, Zimmerzuordnung (Vorgabe über die Nummer), Zeitraum. Ein unbekannter Code oder ein Zimmer ohne Gegenstück hält die ganze Übernahme an.
+- **Gemessen am echten Abzug** (12 660 Zeilen, 35 Zimmer): 11 752 Reservierungen in einem Lauf von rund zehn Sekunden, 908 Platzhalter ausgelassen, kein Abweichen im Kontingentabgleich. Die Datei selbst liegt nicht im Repository; die Tests bauen einen Abzug derselben Form mit erfundenen Namen.
+- **Bildschirm „Datenübernahme“** (`routes/Datenuebernahme.tsx`): Datei wählen, prüfen, Bericht lesen, Zimmer zuordnen, übernehmen. Der Browser schickt nur die sechs gelesenen Tabellen; Kasse, Rechnungen und Protokolle aus der `.bak` verlassen den Rechner nicht.
+
 ---
 
 ### Aufgabe 9 — Betriebsvoraussetzungen für Fremdkunden
@@ -865,7 +873,7 @@ Aus demselben Abgleich, Routenliste gegen die im Frontend vorkommenden Adressen.
 
 | Fehlt | Route | Was das bedeutet |
 |---|---|---|
-| CSV-Import und Import aus Altsystemen | `/v1/imports/*` | Der ganze Bildschirm fehlt, nicht nur ein Knopf: Datei wählen, Trockenlauf, Bericht lesen, festschreiben. Für einen Migrationskandidaten ist das der erste Tag. |
+| CSV-Import und Import aus hotline, HS/3, protel | `/v1/imports/*` | Der Bildschirm „Datenübernahme“ kann bisher nur KWHotel (`/v1/imports/legacy/kwhotel`). Die übrigen Formate sind unbestätigte Annahmen (Aufgabe 8) und kommen dazu, sobald eine echte Exportdatei vorliegt. |
 
 ---
 

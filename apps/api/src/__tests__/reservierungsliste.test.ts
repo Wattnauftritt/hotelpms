@@ -97,7 +97,7 @@ describe('Vollabzug', () => {
       statusGroup: 'active', arrival: VON, departure: BIS, lastNight: '2026-10-03',
       categoryCode: 'DZ', guestName: 'Jan Petersen', guestAnonymized: false,
       adults: 2, children: 1, guestCount: 3, totalCent: 27000, currency: 'EUR',
-      notes: 'spaet', canceledAt: null })
+      notes: 'spaet', canceledAt: null, legacySystem: null, legacyReference: null })
     expect(typeof z.bookingRef).toBe('string')
     expect(z.roomCode).not.toBeNull()
     // Die Mailadresse nur auf ausdrueckliche Anforderung.
