@@ -16,6 +16,7 @@ import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
 import { legacyImportRoutes } from './legacyImport.js'
 import { setupRoutes } from './setup.js'
+import { firstSetupRoutes } from './firstSetup.js'
 import { blockRoutes } from './blocks.js'
 import { oauthRoutes } from './oauth.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
@@ -69,6 +70,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   importRoutes(app)
   legacyImportRoutes(app)
   setupRoutes(app)
+  firstSetupRoutes(app)
   blockRoutes(app)
   historyRoutes(app)
   searchRoutes(app)

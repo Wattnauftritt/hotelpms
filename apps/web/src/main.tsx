@@ -12,6 +12,7 @@ import { AdminpanelSeite } from './routes/Adminpanel.tsx'
 import { Folio } from './routes/Folio.tsx'
 import { CheckIn } from './routes/CheckIn.tsx'
 import { ReservationPanel } from './components/ReservationPanel.tsx'
+import { ErsteSchritteRahmen } from './components/ErsteSchritte.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
 import { SprungContext, type Sprungziel } from './lib/suche.js'
@@ -347,6 +348,19 @@ function App(): JSX.Element {
                       mitArbeitsplatz
                       onClose={() => setArbeitsplatz(false)} />
       )}
+      {/*
+        * Erste Schritte (Assistent fuer ein leeres Haus) um alle Bildschirme,
+        * am Haus geschluesselt: im naechsten Haus entscheidet dessen Stand.
+        */}
+      <ErsteSchritteRahmen key={haus.id} propertyId={haus.id} rechte={rechte}
+                           bildschirme={erlaubte.map(s => s.key)}
+                           onScreen={k => {
+                             setFolioRef(null)
+                             setCheckInRef(null)
+                             setSuchReservierung(null)
+                             setAuftrag(null)
+                             setAdresse({ screen: k })
+                           }}>
       {folioRef !== null
         ? <Folio folioRef={folioRef} propertyId={haus.id}
                  onClose={() => setFolioRef(null)} />
@@ -383,6 +397,7 @@ function App(): JSX.Element {
                             setCheckInRef(ref)
                           }} />
       )}
+      </ErsteSchritteRahmen>
     </Shell>
     </SprungContext.Provider>
   )
