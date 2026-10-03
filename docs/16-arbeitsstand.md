@@ -31,6 +31,7 @@ Dieses Dokument ist die Übergabe. Es sagt, was steht, und zerlegt das Offene in
 | AP 15 Gastpost | fertig | `0028`, `routes/email.ts`, `jobs/emailDelivery.ts`, `email/brevo.ts` |
 | AP 12b Oberflaeche: Verzeichnis, Rechte, Adresse | fertig | `screens.tsx`, `lib/adresse.ts`, `lib/i18n/` |
 | AP 16 Preissteuerung (RMS) | fertig | `0065`, `0066`, `routes/rateSteering.ts`, `jobs/rateSteering.ts`, `components/Preissteuerung.tsx` — [`32-preissteuerung.md`](32-preissteuerung.md) |
+| AP 17 Erste Schritte | fertig | `routes/firstSetup.ts`, `components/ErsteSchritte.tsx`, `lib/ersteSchritte.ts`. Assistent beim ersten Login in ein leeres Haus: Zimmerarten mit Nummern, je Art eine Standardrate mit einem Jahr Grundpreis, Bestand für 24 Monate, alles in einer Transaktion; am Ende der Weg ins Preisraster |
 
 **104 Routen**, alle mit deklarierter Berechtigung, davon elf ausdrücklich öffentlich. Ein Vertragstest prüft, dass jede in der OpenAPI-Beschreibung steht. Die Zahl ist aus der Routenregistrierung gezählt, nicht fortgeschrieben.
 

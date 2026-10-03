@@ -321,7 +321,18 @@ export function authRoutes(app: FastifyInstance): void {
         properties: properties.rows.map(r => ({
           id: r.id, code: r.code, name: r.name, timezone: r.timezone,
           isTraining: r.is_training,
-          permissions: [...(p.permissionsByProperty.get(r.id) ?? [])].sort()
+          /*
+           * Die wirksamen Rechte in diesem Haus, wie `can()` sie prueft:
+           * die Rolle im Haus **und** die Rolle im Betrieb. Hier standen nur
+           * die ersten, und die Oberflaeche richtet ihre Bildschirme danach.
+           * Der erste Benutzer eines neuen Kunden ist aber Inhaber auf
+           * Betriebsebene (`account_provision`) und hat im Haus keine
+           * eigene Rolle -- er meldete sich zum ersten Mal an und las
+           * "Dieses Konto hat in ... keine Rechte", obwohl die API ihm alles
+           * erlaubt haette.
+           */
+          permissions: [...new Set([...p.accountPermissions,
+                                    ...(p.permissionsByProperty.get(r.id) ?? [])])].sort()
         }))
       }
     }

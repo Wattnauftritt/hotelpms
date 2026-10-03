@@ -1449,6 +1449,32 @@ const M = {
     de: 'Die Nummer {code} ist im Haus schon vergeben.',
     en: 'The number {code} is already taken in this property.',
     tr: '{code} numarası tesiste zaten kullanılıyor.' },
+  // Erste Einrichtung (routes/firstSetup.ts). Die Felder tragen den Index der
+  // Zimmerart, der Satz sagt deshalb nicht noch einmal, welche gemeint ist.
+  'firstSetup.codeTwice': {
+    de: 'Dieses Kürzel steht schon bei einer anderen Zimmerart.',
+    en: 'This code is already used by another room type.',
+    tr: 'Bu kod başka bir oda tipinde zaten kullanılıyor.' },
+  'firstSetup.codeTooLong': {
+    de: 'Das Kürzel darf höchstens 20 Zeichen lang sein.',
+    en: 'The code may be at most 20 characters long.',
+    tr: 'Kod en fazla 20 karakter olabilir.' },
+  'firstSetup.roomTwice': {
+    de: 'Die Zimmernummern überschneiden sich mit einer anderen Zimmerart.',
+    en: 'The room numbers overlap with another room type.',
+    tr: 'Oda numaraları başka bir oda tipiyle çakışıyor.' },
+  'firstSetup.categoryExists': {
+    de: 'Eine Zimmergruppe mit diesem Kürzel gibt es im Haus schon.',
+    en: 'A room type with this code already exists in this property.',
+    tr: 'Bu koda sahip bir oda tipi tesiste zaten var.' },
+  'firstSetup.roomExists': {
+    de: 'Mindestens eine dieser Zimmernummern ist im Haus schon vergeben.',
+    en: 'At least one of these room numbers is already taken in this property.',
+    tr: 'Bu oda numaralarından en az biri tesiste zaten kullanılıyor.' },
+  'firstSetup.rateExists': {
+    de: 'Für diese Zimmerart gibt es schon eine Standardrate.',
+    en: 'This room type already has a standard rate.',
+    tr: 'Bu oda tipinin zaten bir standart fiyatı var.' },
   'setup.categoryHasFutureReservations': {
     de: 'Die Gruppe hat noch {count} künftige Reservierungen. '
       + 'Erst umbuchen, dann stilllegen.',

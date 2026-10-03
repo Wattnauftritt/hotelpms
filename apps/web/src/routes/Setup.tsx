@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import type { RoomSeriesReport } from '@hotelpms/contracts'
 import { useCategories, useSetupStatus, useCreateCategory, useRoomSeries }
   from '../lib/queries.js'
@@ -6,14 +6,19 @@ import { useT, useLocale } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Stammdaten } from '../components/Stammdaten.tsx'
+import { ErsteSchritteContext } from '../lib/ersteSchritte.js'
 
 /**
  * Einrichtung eines Hauses.
  *
  * Jedes Hotel hat einen anderen Zuschnitt, und es gibt keine Vorlage, die
- * mehr als die Hälfte davon trifft. Deshalb keine Assistenten mit festen
+ * mehr als die Hälfte davon trifft. Deshalb hier kein Assistent mit festen
  * Schritten, sondern eine Liste dessen, was noch fehlt, und zwei Formulare:
  * Zimmergruppe anlegen und Zimmer in Serie anlegen.
+ *
+ * Den Assistenten gibt es trotzdem, aber für genau einen Fall: das leere
+ * Haus beim ersten Login (`components/ErsteSchritte.tsx`). Er legt das
+ * Gerüst an, gepflegt wird hier.
  *
  * Die Serie zeigt **immer erst eine Vorschau**. 180 Zimmer mit einem
  * Zahlendreher im Muster sind mühsam zurückzunehmen.
@@ -23,6 +28,7 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
   const locale = useLocale()
   const status = useSetupStatus(propertyId)
   const kategorien = useCategories(propertyId)
+  const ersteSchritte = useContext(ErsteSchritteContext)
 
   if (status.isError) return <Fehler error={status.error} />
   if (status.data === undefined || kategorien.data === undefined) return <Laedt />
@@ -42,6 +48,15 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
             <span className="text-xs text-neutral-500">
               {t('setup.nextStep')}: {status.data.nextStep}
             </span>
+          )}
+          {/* Solange nichts buchbar ist, fuehrt der Assistent schneller hin
+              als die Formulare darunter. Danach ist er nur noch im Weg. */}
+          {!status.data.bookable && ersteSchritte !== null && (
+            <button type="button" onClick={ersteSchritte.oeffnen}
+                    className="ml-auto px-3 py-1.5 text-sm rounded-sm bg-neutral-900
+                               text-white">
+              {t('first.open')}
+            </button>
           )}
         </div>
         <ol className="mt-3 space-y-1">

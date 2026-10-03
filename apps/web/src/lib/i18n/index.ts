@@ -22,6 +22,7 @@ import { hausnotiz } from './hausnotiz.js'
 import { planstatus } from './planstatus.js'
 import { suche } from './suche.js'
 import { onlineCheckin } from './onlineCheckin.js'
+import { ersteSchritte } from './ersteSchritte.js'
 import { altsystem } from './altsystem.js'
 
 /**
@@ -134,6 +135,7 @@ const texts = {
   ...planstatus,
   ...suche,
   ...onlineCheckin,
+  ...ersteSchritte,
   ...altsystem
 } as const satisfies Record<string, LocalizedText>
 

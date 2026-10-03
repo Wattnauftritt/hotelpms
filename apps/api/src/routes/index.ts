@@ -17,6 +17,7 @@ import { importRoutes } from './import.js'
 import { legacyImportRoutes } from './legacyImport.js'
 import { kwhotelImportRoutes } from './kwhotelImport.js'
 import { setupRoutes } from './setup.js'
+import { firstSetupRoutes } from './firstSetup.js'
 import { blockRoutes } from './blocks.js'
 import { oauthRoutes } from './oauth.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
@@ -71,6 +72,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   legacyImportRoutes(app)
   kwhotelImportRoutes(app)
   setupRoutes(app)
+  firstSetupRoutes(app)
   blockRoutes(app)
   historyRoutes(app)
   searchRoutes(app)
