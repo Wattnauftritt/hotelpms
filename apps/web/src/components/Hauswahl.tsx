@@ -38,7 +38,7 @@ const AB_HIER_SUCHEN = 8
 /** Das Kuerzel als Plakette -- an ihm erkennt man das Haus schneller als am Namen. */
 function Kuerzel({ haus }: { haus: Haus }): JSX.Element {
   return (
-    <span className={`rounded px-1.5 py-0.5 text-xs font-medium tabular-nums
+    <span className={`rounded-sm px-1.5 py-0.5 text-xs font-medium tabular-nums
                       ${haus.isTraining
                         ? 'bg-violet-100 text-violet-900'
                         : 'bg-neutral-100 text-neutral-700'}`}>
@@ -116,7 +116,7 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOffen(o => !o)}
               aria-label={t('haus.label')} aria-haspopup="menu" aria-expanded={offen}
-              className={`flex items-center gap-2 rounded border px-2 py-1 text-sm
+              className={`flex items-center gap-2 rounded-sm border px-2 py-1 text-sm
                           ${offen
                             ? 'border-neutral-400 bg-neutral-50'
                             : 'border-neutral-300 hover:bg-neutral-50'}`}>
@@ -127,13 +127,13 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
 
       {offen && (
         <div role="menu"
-             className="absolute right-0 z-40 mt-1 w-80 rounded border border-neutral-200
+             className="absolute right-0 z-40 mt-1 w-80 rounded-sm border border-neutral-200
                         bg-white py-1 shadow-xl">
           {suchen && (
             <div className="px-2 pb-1">
               <input autoFocus value={begriff} onChange={e => setBegriff(e.target.value)}
                      placeholder={t('haus.search')} aria-label={t('haus.search')}
-                     className="w-full rounded border border-neutral-300 px-2 py-1 text-sm" />
+                     className="w-full rounded-sm border border-neutral-300 px-2 py-1 text-sm" />
             </div>
           )}
           <div className="max-h-80 overflow-y-auto">

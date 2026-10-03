@@ -29,8 +29,8 @@ export function TerminalInhalte({ propertyId }: { propertyId: number }): JSX.Ele
   )
 }
 
-const FELD = 'w-full border border-neutral-300 rounded px-2 py-1 text-sm'
-const KNOPF_KLEIN = 'text-xs px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50'
+const FELD = 'w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
+const KNOPF_KLEIN = 'text-xs px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50'
 
 /** Datei als data-URL lesen. Die Schnittstelle prueft die Art an den Bytes. */
 function alsDataUrl(datei: File): Promise<string> {
@@ -50,7 +50,7 @@ function Seiten({ propertyId, seiten }: { propertyId: number; seiten: Seite[] })
   const [bearbeitet, setBearbeitet] = useState<string | null>(null)
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <h2 className="text-sm font-medium">{t('inhalte.title')}</h2>
       <p className="text-xs text-neutral-600">{t('inhalte.hint')}</p>
 
@@ -76,7 +76,7 @@ function Seiten({ propertyId, seiten }: { propertyId: number; seiten: Seite[] })
                   placeholder={t('inhalte.text')} aria-label={t('inhalte.text')} className={FELD} />
         {anlegen.isError && <Fehler error={anlegen.error} />}
         <button type="submit" disabled={titel.trim() === '' || anlegen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white disabled:bg-neutral-300">
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300">
           {t('inhalte.neu')}
         </button>
       </form>
@@ -91,11 +91,11 @@ function SeiteKarte({ propertyId, seite, onBearbeiten }: {
   const bild = useSeitenbild(propertyId)
   const archivieren = useArchiviereSeite(propertyId)
   return (
-    <li className="border border-neutral-200 rounded p-2 space-y-2">
+    <li className="border border-neutral-200 rounded-sm p-2 space-y-2">
       <div className="flex items-start gap-3">
         {seite.imageRef !== null && (
           <img src={`/v1/properties/${propertyId}/terminal-images/${seite.imageRef}`} alt=""
-               className="w-20 h-14 object-cover rounded border border-neutral-200" />
+               className="w-20 h-14 object-cover rounded-sm border border-neutral-200" />
         )}
         <div className="grow min-w-0">
           <div className="text-sm font-medium">{seite.title}</div>
@@ -149,7 +149,7 @@ function SeiteBearbeiten({ propertyId, seite, onFertig }: {
   const [text, setText] = useState(seite.body)
   useEscape(onFertig)
   return (
-    <li className="border border-neutral-300 rounded p-2 space-y-2">
+    <li className="border border-neutral-300 rounded-sm p-2 space-y-2">
       <input value={titel} onChange={e => setTitel(e.target.value)} maxLength={120}
              aria-label={t('inhalte.titel')} className={FELD} autoFocus />
       <textarea value={text} onChange={e => setText(e.target.value)} maxLength={5000} rows={6}
@@ -160,11 +160,11 @@ function SeiteBearbeiten({ propertyId, seite, onFertig }: {
                 onClick={() => aendern.mutate(
                   { contentRef: seite.contentRef, title: titel.trim(), body: text },
                   { onSuccess: onFertig })}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white disabled:bg-neutral-300">
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300">
           {t('inhalte.speichern')}
         </button>
         <button type="button" onClick={onFertig}
-                className="px-3 py-1.5 text-sm rounded border border-neutral-300">
+                className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300">
           {t('common.cancel')}
         </button>
       </div>
@@ -194,7 +194,7 @@ function Diashow({ propertyId, seiten }: { propertyId: number; seiten: Seite[] }
   const frei = seiten.filter(s => !folge.some(f => f.contentRef === s.contentRef))
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <h2 className="text-sm font-medium">{t('diashow.title')}</h2>
       <p className="text-xs text-neutral-600">{t('diashow.hint')}</p>
       <ol className="space-y-1">
@@ -206,7 +206,7 @@ function Diashow({ propertyId, seiten }: { propertyId: number; seiten: Seite[] }
                    aria-label={t('diashow.sekunden')}
                    onChange={e => setFolge(folge.map(x => x.contentRef === f.contentRef
                      ? { ...x, seconds: Number(e.target.value) } : x))}
-                   className="w-20 border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   className="w-20 border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
             <span className="text-xs text-neutral-500">{t('diashow.sekunden')}</span>
             {i > 0 && (
               <button type="button" className={KNOPF_KLEIN} aria-label={t('diashow.hoch')}
@@ -234,7 +234,7 @@ function Diashow({ propertyId, seiten }: { propertyId: number; seiten: Seite[] }
       {speichern.isError && <Fehler error={speichern.error} />}
       <button type="button" disabled={speichern.isPending || JSON.stringify(folge) === stand}
               onClick={() => speichern.mutate(folge)}
-              className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white disabled:bg-neutral-300">
+              className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300">
         {t('diashow.speichern')}
       </button>
     </section>
@@ -259,7 +259,7 @@ function Adressen({ propertyId, adressen }: {
   useEscape(() => setVorschau(null), vorschau !== null)
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <h2 className="text-sm font-medium">{t('adressen.title')}</h2>
       <p className="text-xs text-neutral-600">{t('adressen.hint')}</p>
       {adressen.length === 0 && <p className="text-sm text-neutral-500">{t('adressen.keine')}</p>}
@@ -282,7 +282,7 @@ function Adressen({ propertyId, adressen }: {
       {vorschau !== null && (
         <iframe src={vorschau} title={t('adressen.vorschau')} referrerPolicy="no-referrer"
                 sandbox="allow-scripts allow-same-origin allow-forms"
-                className="w-full h-80 border border-neutral-300 rounded" />
+                className="w-full h-80 border border-neutral-300 rounded-sm" />
       )}
       <form className="flex flex-wrap gap-2 items-end"
             onSubmit={e => {
@@ -292,12 +292,12 @@ function Adressen({ propertyId, adressen }: {
             }}>
         <input value={label} onChange={e => setLabel(e.target.value)} maxLength={80}
                placeholder={t('adressen.label')} aria-label={t('adressen.label')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm w-48" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm w-48" />
         <input value={url} onChange={e => setUrl(e.target.value)} maxLength={2000} type="url"
                placeholder={t('adressen.url')} aria-label={t('adressen.url')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm grow" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm grow" />
         <button type="submit" disabled={label.trim() === '' || url.trim() === '' || anlegen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white disabled:bg-neutral-300">
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300">
           {t('adressen.freigeben')}
         </button>
       </form>

@@ -41,7 +41,7 @@ export function Vorauszahlung({ folioRef, saldoCent, stand, geschlossen }: {
   const [auf, setAuf] = useState(false)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded">
+    <section className="bg-white border border-neutral-200 rounded-sm">
       <button onClick={() => setAuf(v => !v)}
               className="w-full flex items-center gap-2 px-3 py-2 text-left">
         <span className="text-sm font-medium">{t('vz.title')}</span>
@@ -135,7 +135,7 @@ function Anzahlungen({ deposits }: { deposits: readonly DepositInvoice[] }): JSX
   )
 }
 
-const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 function NeueAnzahlung({ folioRef, settlements }: {
   folioRef: string; settlements: readonly PrepaymentSettlement[]
@@ -252,7 +252,7 @@ function NeueAnzahlung({ folioRef, settlements }: {
         )}
 
         <button type="submit" disabled={!bereit || erstellen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('vz.dep.issue')}
         </button>

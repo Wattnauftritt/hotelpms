@@ -48,7 +48,7 @@ export function ZahlungsZeichen({ zahlung }: { zahlung: PlanPayment | null | und
   if (z === null) return null
   return (
     <span role="img" aria-label={t(ZAHLUNG_TEXT[zahlung.state])}
-          className={`inline-block align-middle mr-1 px-0.5 rounded-sm bg-white ring-1
+          className={`inline-block align-middle mr-1 px-0.5 rounded-xs bg-white ring-1
                       text-[10px] leading-[14px] font-semibold tabular-nums ${z.farbe}`}>
       {z.symbol}
     </span>
@@ -95,7 +95,7 @@ export function PlanStatusLegende({ reinigung, zahlung }: {
           {pay.map(s => (
             <span key={s} className="flex items-center gap-1">
               <span aria-hidden
-                    className={`px-0.5 rounded-sm bg-white ring-1 text-[10px] leading-[14px]
+                    className={`px-0.5 rounded-xs bg-white ring-1 text-[10px] leading-[14px]
                                 font-semibold ${ZAHLUNG[s]?.farbe ?? ''}`}>
                 {ZAHLUNG[s]?.symbol}
               </span>
@@ -124,7 +124,7 @@ export function ZahlungsStand({ zahlung }: { zahlung: PlanPayment | null | undef
   if (zahlung === null || zahlung === undefined) return null
   const zeilen = zahlungsTitel(zahlung, t, cent => formatMoney(cent, locale)).split('\n')
   return (
-    <section className="bg-neutral-50 rounded p-3 text-sm" data-zahlungsstand>
+    <section className="bg-neutral-50 rounded-sm p-3 text-sm" data-zahlungsstand>
       <div className="flex items-center gap-2 font-medium">
         <ZahlungsZeichen zahlung={zahlung} />
         {zeilen[0]}

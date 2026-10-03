@@ -1,6 +1,45 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  /* Ein Zustand, eine Farbe, ueberall dieselbe. An der Rezeption wird
+     der Zimmerplan aus drei Metern Entfernung gelesen. */
+  --color-status-optional: #a78bfa;
+  --color-status-confirmed: #60a5fa;
+  --color-status-inhouse: #34d399;
+  --color-status-departure: #fbbf24;
+  --color-status-blocked: #9ca3af;
+
+  /* Die Schriftliste von Tailwind 3. Tailwind 4 nennt Roboto und Arial vor
+     der Systemschrift; auf einem Linux-Rechner an der Rezeption saehe die
+     Oberflaeche nach dem Umstieg sonst anders aus, ohne dass jemand das
+     wollte. */
+  --font-sans: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/*
+  Zwei Vorgaben von Tailwind 3, die Tailwind 4 nicht mehr setzt. Ohne sie
+  saehe nach dem Umstieg jeder Rahmen ohne Farbangabe schwarz aus statt
+  hellgrau, und kein Knopf zeigte mehr die Hand -- an der Rezeption ist der
+  Zeiger der Hinweis, dass etwas anklickbar ist.
+
+  Wer sie entfernt, gibt jedem betroffenen Element seine Rahmenfarbe und
+  jedem Knopf `cursor-pointer` selbst.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 /* Zahlen im Zimmerplan und in Salden stehen untereinander. */
 .tabular-nums { font-variant-numeric: tabular-nums; }

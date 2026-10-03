@@ -29,10 +29,10 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <section className="bg-white border border-neutral-200 rounded p-4">
+      <section className="bg-white border border-neutral-200 rounded-sm p-4">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium">{t('setup.title')}</h2>
-          <span className={`text-xs px-2 py-0.5 rounded
+          <span className={`text-xs px-2 py-0.5 rounded-sm
                             ${status.data.bookable
                               ? 'bg-emerald-100 text-emerald-900'
                               : 'bg-amber-100 text-amber-900'}`}>
@@ -86,7 +86,7 @@ function Feld({ label, hint, children }: {
   )
 }
 
-const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 function NeueGruppe({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
@@ -96,7 +96,7 @@ function NeueGruppe({ propertyId }: { propertyId: number }): JSX.Element {
   const anlegen = useCreateCategory(propertyId)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-4">
+    <section className="bg-white border border-neutral-200 rounded-sm p-4">
       <h2 className="text-sm font-medium">{t('setup.newCategory')}</h2>
       <form className="mt-3 flex flex-wrap items-end gap-3"
             onSubmit={e => {
@@ -123,7 +123,7 @@ function NeueGruppe({ propertyId }: { propertyId: number }): JSX.Element {
           </Feld>
         </div>
         <button type="submit" disabled={anlegen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('common.save')}
         </button>
@@ -163,7 +163,7 @@ function Serie({ propertyId, kategorien }: {
   const belegte = vorschau?.rooms.filter(r => r.exists) ?? []
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-4">
+    <section className="bg-white border border-neutral-200 rounded-sm p-4">
       <h2 className="text-sm font-medium">{t('setup.series')}</h2>
       <form className="mt-3 grid gap-3 sm:grid-cols-4"
             onSubmit={e => {
@@ -212,14 +212,14 @@ function Serie({ propertyId, kategorien }: {
         </div>
         <div className="sm:col-span-2 flex items-end gap-2">
           <button type="submit" disabled={kategorie === '' || serie.isPending}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                  className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                              disabled:opacity-40">
             {t('common.preview')}
           </button>
           <button type="button"
                   disabled={vorschau === null || neue.length === 0 || serie.isPending}
                   onClick={() => serie.mutate(rumpf(true), { onSuccess: setVorschau })}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                  className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
             {t('common.apply')}
           </button>
@@ -246,7 +246,7 @@ function Serie({ propertyId, kategorien }: {
               <div className="mt-1 flex flex-wrap gap-1">
                 {neue.map(r => (
                   <span key={r.code}
-                        className="px-1.5 py-0.5 rounded bg-emerald-50 border
+                        className="px-1.5 py-0.5 rounded-sm bg-emerald-50 border
                                    border-emerald-200 text-xs tabular-nums">
                     {r.code}
                   </span>
@@ -262,7 +262,7 @@ function Serie({ propertyId, kategorien }: {
               <div className="mt-1 flex flex-wrap gap-1">
                 {belegte.map(r => (
                   <span key={r.code} title={r.reason}
-                        className="px-1.5 py-0.5 rounded bg-neutral-100 border
+                        className="px-1.5 py-0.5 rounded-sm bg-neutral-100 border
                                    border-neutral-200 text-xs tabular-nums text-neutral-500">
                     {r.code}
                   </span>

@@ -23,7 +23,7 @@ import { Fehler } from './Shell.tsx'
  * nur, ob bezahlt ist.
  */
 
-const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 /** Warum ein Link nicht verschickt werden kann -- als Satz, nicht als 422. */
 function versandHindernis(
@@ -106,13 +106,13 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
           {t('vz.link.send')}
         </label>
         <button type="submit" disabled={cent === null || cent <= 0 || erzeugen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('vz.link.create')}
         </button>
         {onSchliessen !== undefined && (
           <button type="button" onClick={onSchliessen}
-                  className="px-2 py-1.5 text-xs border border-neutral-300 rounded">
+                  className="px-2 py-1.5 text-xs border border-neutral-300 rounded-sm">
             {t('vz.close')}
           </button>
         )}
@@ -131,7 +131,7 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
       {erzeugen.isError && !nichtEingerichtet && <Fehler error={erzeugen.error} />}
 
       {erzeugen.isSuccess && (
-        <div className="p-2 bg-neutral-50 border border-neutral-200 rounded">
+        <div className="p-2 bg-neutral-50 border border-neutral-200 rounded-sm">
           <span className="block text-xs text-neutral-600">{t('vz.link.address')}</span>
           {/* Null nur bei einer Wiederholung: der Idempotenzspeicher haelt
               das Token nicht, also gibt es die Adresse kein zweites Mal. */}
@@ -141,9 +141,9 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
               <div className="flex items-center gap-2">
                 <input readOnly value={erzeugen.data.url}
                        onFocus={e => e.currentTarget.select()}
-                       className="grow border border-neutral-300 rounded px-2 py-1 text-xs" />
+                       className="grow border border-neutral-300 rounded-sm px-2 py-1 text-xs" />
                 <button type="button"
-                        className="px-2 py-1 text-xs border border-neutral-300 rounded
+                        className="px-2 py-1 text-xs border border-neutral-300 rounded-sm
                                    whitespace-nowrap"
                         onClick={() => {
                           const url = erzeugen.data.url
@@ -165,7 +165,7 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
           <button type="button"
                   onClick={() => { if (onSchliessen !== undefined) onSchliessen()
                                    else { setKopiert(false); erzeugen.reset() } }}
-                  className="mt-1 px-2 py-1 text-xs border border-neutral-300 rounded">
+                  className="mt-1 px-2 py-1 text-xs border border-neutral-300 rounded-sm">
             {onSchliessen !== undefined ? t('vz.close') : t('vz.link.another')}
           </button>
         </div>
@@ -214,7 +214,7 @@ export function ZahlungslinkListe({ folioRef, links, darfBuchen }: {
                 {zeit.format(new Date(l.createdAt))}
               </span>
               <span className="tabular-nums">{formatMoney(l.amountCent, locale)}</span>
-              <span className={`text-xs px-1.5 rounded ${ZUSTANDSFARBE[zustand]}`}>
+              <span className={`text-xs px-1.5 rounded-sm ${ZUSTANDSFARBE[zustand]}`}>
                 {t(`vz.link.status.${zustand}`)}
               </span>
               {l.mailStatus !== null && (
@@ -247,7 +247,7 @@ export function ZahlungslinkListe({ folioRef, links, darfBuchen }: {
                         onClick={() => {
                           if (confirm(t('vz.link.cancelConfirm'))) ungueltig.mutate(l.id)
                         }}
-                        className="text-xs px-2 py-0.5 rounded border border-neutral-300
+                        className="text-xs px-2 py-0.5 rounded-sm border border-neutral-300
                                    hover:bg-neutral-50 disabled:opacity-40">
                   {t('vz.link.cancel')}
                 </button>

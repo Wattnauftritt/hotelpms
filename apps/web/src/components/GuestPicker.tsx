@@ -36,7 +36,7 @@ export function GuestPicker({ value, onChange }: {
 
   if (value !== null) {
     return (
-      <div className="flex items-center gap-2 text-sm border border-neutral-300 rounded px-2 py-1.5">
+      <div className="flex items-center gap-2 text-sm border border-neutral-300 rounded-sm px-2 py-1.5">
         <span className="grow">
           {value.lastName}{value.firstName ? `, ${value.firstName}` : ''}
           {value.status === 'anonymized' && (
@@ -65,7 +65,7 @@ export function GuestPicker({ value, onChange }: {
     <div className="space-y-1">
       <input value={begriff} onChange={e => setBegriff(e.target.value)}
              placeholder={t('guestPicker.placeholder')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       {begriff.trim().length > 0 && begriff.trim().length < 2 && (
         <div className="text-xs text-neutral-500">{t('guestPicker.hint')}</div>
       )}
@@ -81,7 +81,7 @@ export function GuestPicker({ value, onChange }: {
                 {t('guestPicker.createNamed', { name: begriff.trim() })}
               </button>
             </div>
-          : <ul className="border border-neutral-200 rounded divide-y divide-neutral-100 max-h-40
+          : <ul className="border border-neutral-200 rounded-sm divide-y divide-neutral-100 max-h-40
                             overflow-auto">
               {suche.data.guests.map(g => (
                 <li key={g.guestRef}>
@@ -114,18 +114,18 @@ function NeuerGast({ vorgabe, onCreated, onCancel }: {
   const anlegen = useCreateGuest()
 
   return (
-    <div className="space-y-2 border border-neutral-200 rounded p-2">
+    <div className="space-y-2 border border-neutral-200 rounded-sm p-2">
       <div className="flex gap-2">
         <input value={lastName} onChange={e => setLastName(e.target.value)} required
                placeholder={t('guests.lastName')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm w-1/2" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm w-1/2" />
         <input value={firstName} onChange={e => setFirstName(e.target.value)}
                placeholder={t('guests.firstName')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm w-1/2" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm w-1/2" />
       </div>
       <input value={email} onChange={e => setEmail(e.target.value)} type="email"
              placeholder={t('guests.email')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       {anlegen.isError && <Fehler error={anlegen.error} />}
       <div className="flex gap-2">
         <button type="button" disabled={lastName.trim() === '' || anlegen.isPending}
@@ -133,12 +133,12 @@ function NeuerGast({ vorgabe, onCreated, onCancel }: {
                   { lastName: lastName.trim(), firstName: firstName.trim() || undefined,
                     email: email.trim() || undefined },
                   { onSuccess: onCreated })}
-                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('guests.new')}
         </button>
         <button type="button" onClick={onCancel}
-                className="text-sm px-3 py-1.5 rounded border border-neutral-300">
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300">
           {t('booking.close')}
         </button>
       </div>

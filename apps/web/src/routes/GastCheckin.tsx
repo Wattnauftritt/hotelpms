@@ -164,7 +164,7 @@ export function GastCheckinSeite({ token }: { token: string | null }): JSX.Eleme
 function OhneLink(): JSX.Element {
   const t = useT()
   return (
-    <div className="mx-auto max-w-xl rounded border border-neutral-200 bg-white p-6 space-y-2">
+    <div className="mx-auto max-w-xl rounded-sm border border-neutral-200 bg-white p-6 space-y-2">
       <h1 className="font-semibold">{t('gastCheckin.title')}</h1>
       <p role="alert" className="text-sm text-neutral-700">{t('gastCheckin.noLink')}</p>
     </div>
@@ -188,7 +188,7 @@ function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => vo
         {LOCALES.map(l => (
           <button key={l} type="button" onClick={() => onLocale(l)}
                   aria-pressed={l === locale}
-                  className={`${gross ? 'px-4 py-2' : 'px-2 py-0.5'} rounded border uppercase
+                  className={`${gross ? 'px-4 py-2' : 'px-2 py-0.5'} rounded-sm border uppercase
                     ${l === locale ? 'border-neutral-900 bg-neutral-900 text-white'
                                    : 'border-neutral-300 bg-white'}`}>
             {l}
@@ -208,7 +208,7 @@ function Meldung({ fehler, gross }: { fehler: unknown; gross: boolean }): JSX.El
   const locale = useLocale()
   const { text } = fehlerMeldung(fehler, locale)
   return (
-    <p role="alert" className={`rounded border border-red-200 bg-red-50 text-red-900
+    <p role="alert" className={`rounded-sm border border-red-200 bg-red-50 text-red-900
                                 ${gross ? 'p-4' : 'p-3'}`}>{text}</p>
   )
 }
@@ -219,7 +219,7 @@ function Dank({ zustand, gross, modus, onFertig }: {
 }): JSX.Element {
   const t = useT()
   return (
-    <div className={`rounded border border-emerald-200 bg-emerald-50 space-y-3
+    <div className={`rounded-sm border border-emerald-200 bg-emerald-50 space-y-3
                      ${gross ? 'p-8' : 'p-6'}`}>
       <h2 className={`${gross ? 'text-2xl' : 'text-lg'} font-semibold text-emerald-900`}>
         {t('gastCheckin.done.title')}
@@ -229,7 +229,7 @@ function Dank({ zustand, gross, modus, onFertig }: {
       </p>
       {modus === 'terminal' && onFertig !== undefined && (
         <button type="button" onClick={onFertig}
-                className="px-8 py-4 text-xl rounded bg-neutral-900 text-white">
+                className="px-8 py-4 text-xl rounded-sm bg-neutral-900 text-white">
           {t('gastCheckin.done.close')}
         </button>
       )}
@@ -304,11 +304,11 @@ function Formular({ token, view, gross, onErledigt }: {
   const mitUnterschrift = jemandAuslaendisch && view.signatureAllowed
   const felder = feldFehler(fehler, locale)
 
-  const eingabe = `mt-0.5 w-full border rounded bg-white
+  const eingabe = `mt-0.5 w-full border rounded-sm bg-white
     ${gross ? 'px-3 py-3 text-lg' : 'px-2 py-1.5 text-sm'}`
   const rahmen = (pfad: string): string =>
     felder.has(pfad) ? 'border-red-400' : 'border-neutral-300'
-  const abschnitt = `rounded border border-neutral-200 bg-white space-y-3 ${gross ? 'p-6' : 'p-4'}`
+  const abschnitt = `rounded-sm border border-neutral-200 bg-white space-y-3 ${gross ? 'p-6' : 'p-4'}`
 
   const absenden = async (): Promise<void> => {
     setFehler(null)
@@ -483,7 +483,7 @@ function Formular({ token, view, gross, onErledigt }: {
             })}
             {begleiter.length < view.maxCompanions && (
               <button type="button" onClick={() => setBegleiter([...begleiter, LEER])}
-                      className={`${gross ? 'px-5 py-3' : 'px-3 py-1.5'} rounded border
+                      className={`${gross ? 'px-5 py-3' : 'px-3 py-1.5'} rounded-sm border
                                   border-neutral-300 bg-white`}>
                 + {t('gastCheckin.companions.add')}
               </button>
@@ -519,14 +519,14 @@ function Formular({ token, view, gross, onErledigt }: {
               <span>{t('gastCheckin.confirm')}</span>
             </label>
             {fehler !== null && (
-              <div role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-900">
+              <div role="alert" className="rounded-sm border border-red-200 bg-red-50 p-3 text-red-900">
                 {felder.size > 0 ? t('gastCheckin.fixFields')
                                  : fehlerMeldung(fehler, locale).text}
               </div>
             )}
             <button type="submit"
                     disabled={!bestaetigt || laeuft || (mitUnterschrift && signatur === null)}
-                    className={`${gross ? 'w-full py-4 text-xl' : 'px-4 py-2'} rounded
+                    className={`${gross ? 'w-full py-4 text-xl' : 'px-4 py-2'} rounded-sm
                                 bg-neutral-900 text-white disabled:bg-neutral-300`}>
               {t('gastCheckin.submit')}
             </button>
@@ -548,7 +548,7 @@ function NurUnterschrift({ token, view, gross, onErledigt }: {
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<unknown>(null)
   return (
-    <div className={`rounded border border-neutral-200 bg-white space-y-3 ${gross ? 'p-6' : 'p-4'}`}>
+    <div className={`rounded-sm border border-neutral-200 bg-white space-y-3 ${gross ? 'p-6' : 'p-4'}`}>
       <p className="font-medium">{t('gastCheckin.welcome', { name: view.firstName ?? view.lastName })}</p>
       <p>{t('gastCheckin.stay', { haus: view.propertyName,
                                    von: formatDate(view.arrival, locale),
@@ -569,7 +569,7 @@ function NurUnterschrift({ token, view, gross, onErledigt }: {
                   .catch((e: unknown) => setFehler(e))
                   .finally(() => setLaeuft(false))
               }}
-              className={`${gross ? 'w-full py-4 text-xl' : 'px-4 py-2'} rounded
+              className={`${gross ? 'w-full py-4 text-xl' : 'px-4 py-2'} rounded-sm
                           bg-neutral-900 text-white disabled:bg-neutral-300`}>
         {t('gastCheckin.submitSignature')}
       </button>

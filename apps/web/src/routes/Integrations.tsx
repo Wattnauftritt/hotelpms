@@ -46,11 +46,11 @@ export function schnittstellenBereiche(darf: (p: string) => boolean): Bereich[] 
   return bereiche
 }
 
-const knopf = 'text-sm px-3 py-1.5 rounded border border-neutral-300 ' +
+const knopf = 'text-sm px-3 py-1.5 rounded-sm border border-neutral-300 ' +
               'hover:bg-neutral-50 disabled:opacity-40'
-const knopfStark = 'text-sm px-3 py-1.5 rounded bg-neutral-900 text-white ' +
+const knopfStark = 'text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white ' +
                    'disabled:opacity-40'
-const feld = 'border border-neutral-300 rounded px-2 py-1'
+const feld = 'border border-neutral-300 rounded-sm px-2 py-1'
 
 /**
  * Ein Geheimnis, das genau jetzt zu sehen ist.
@@ -64,10 +64,10 @@ function Geheimnis(
 ): JSX.Element {
   const t = useT()
   return (
-    <div className="rounded border border-amber-300 bg-amber-50 p-3 space-y-2"
+    <div className="rounded-sm border border-amber-300 bg-amber-50 p-3 space-y-2"
          role="alert">
       <div className="font-medium text-amber-900">{t('secret.title')}</div>
-      <code className="block break-all bg-white border border-amber-200 rounded
+      <code className="block break-all bg-white border border-amber-200 rounded-sm
                        px-2 py-1 text-xs">{wert}</code>
       <div className="text-xs text-amber-900">{t('secret.hint')}</div>
       {hinweis !== undefined && (
@@ -136,11 +136,11 @@ function Abonnement({ hook }: { hook: WebhookSubscription }): JSX.Element {
   const aktiv = hook.status === 'active'
 
   return (
-    <li className={`rounded border border-neutral-200 bg-white p-3
+    <li className={`rounded-sm border border-neutral-200 bg-white p-3
                     ${aktiv ? '' : 'opacity-70'}`}>
       <div className="flex flex-wrap items-center gap-3">
         <code className="text-sm break-all grow">{hook.url}</code>
-        <span className={`text-xs px-1.5 py-0.5 rounded border ${
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${
           aktiv ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
                 : 'border-red-300 bg-red-50 text-red-900'}`}>
           {t(aktiv ? 'hook.status.active' : 'hook.status.disabled')}
@@ -193,7 +193,7 @@ function Webhooks(): JSX.Element {
                    onDone={() => setGeheimnis(null)} />
       )}
 
-      <form className="rounded border border-neutral-200 bg-white p-3 space-y-3"
+      <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3"
             onSubmit={e => {
               e.preventDefault()
               anlegen.mutate(
@@ -258,11 +258,11 @@ function Zugang({ client }: { client: OAuthClient }): JSX.Element {
   const aktiv = client.status === 'active'
 
   return (
-    <li className={`rounded border border-neutral-200 bg-white p-3
+    <li className={`rounded-sm border border-neutral-200 bg-white p-3
                     ${aktiv ? '' : 'opacity-70'}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-medium grow">{client.name}</span>
-        <span className={`text-xs px-1.5 py-0.5 rounded border ${
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${
           aktiv ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
                 : 'border-neutral-300 bg-neutral-100 text-neutral-600'}`}>
           {t(aktiv ? 'client.status.active' : 'client.status.disabled')}
@@ -290,7 +290,7 @@ function Zugang({ client }: { client: OAuthClient }): JSX.Element {
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
         {client.scopes.map(s => (
-          <code key={s} className="text-xs px-1.5 py-0.5 rounded bg-neutral-100
+          <code key={s} className="text-xs px-1.5 py-0.5 rounded-sm bg-neutral-100
                                    border border-neutral-200">{s}</code>
         ))}
       </div>
@@ -320,7 +320,7 @@ function Maschinenzugaenge(): JSX.Element {
                    onDone={() => setGeheimnis(null)} />
       )}
 
-      <form className="rounded border border-neutral-200 bg-white p-3 space-y-3"
+      <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3"
             onSubmit={e => {
               e.preventDefault()
               if (name.trim() === '' || scopes.length === 0) return
@@ -384,12 +384,12 @@ function Verbindung(
   const aktiv = conn.status === 'active'
 
   return (
-    <li className={`rounded border border-neutral-200 bg-white p-3
+    <li className={`rounded-sm border border-neutral-200 bg-white p-3
                     ${aktiv ? '' : 'opacity-70'}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-medium grow">{conn.name}</span>
         <span className="text-xs text-neutral-500">{conn.provider}</span>
-        <span className={`text-xs px-1.5 py-0.5 rounded border ${
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${
           aktiv ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
                 : 'border-neutral-300 bg-neutral-100 text-neutral-600'}`}>
           {t(aktiv ? 'chan.status.active' : 'chan.status.disabled')}
@@ -423,7 +423,7 @@ function ChannelManager({ propertyId }: { propertyId: number }): JSX.Element {
         <Geheimnis wert={geheimnis} onDone={() => setGeheimnis(null)} />
       )}
 
-      <form className="rounded border border-neutral-200 bg-white p-3 space-y-3"
+      <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3"
             onSubmit={e => {
               e.preventDefault()
               if (name.trim() === '') return
@@ -526,14 +526,14 @@ function BenutzerZeile(
   const fehler = [setzen, betriebSetzen, aktion, umbenennen, entfernen].find(m => m.isError)
 
   return (
-    <li className={`rounded border bg-white p-3 ${benutzer.blocked
+    <li className={`rounded-sm border bg-white p-3 ${benutzer.blocked
       ? 'border-red-200' : 'border-neutral-200'}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-medium">{benutzer.displayName}</span>
         {istSelbst && <span className="text-xs text-neutral-400">{t('user.you')}</span>}
         <span className="text-sm text-neutral-500 grow">{benutzer.email}</span>
         {benutzer.blocked ? (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-900
+          <span className="text-xs px-1.5 py-0.5 rounded-sm bg-red-50 text-red-900
                            border border-red-200">{t('user.blocked')}</span>
         ) : (
           <span className="text-xs text-neutral-500">
@@ -548,7 +548,7 @@ function BenutzerZeile(
 
       <div className="mt-1 flex flex-wrap gap-1">
         {benutzer.accountRoles.map(r => (
-          <span key={r.key} className="text-xs px-1.5 py-0.5 rounded
+          <span key={r.key} className="text-xs px-1.5 py-0.5 rounded-sm
                                        bg-amber-50 border border-amber-200">
             {r.name}
           </span>
@@ -556,7 +556,7 @@ function BenutzerZeile(
         {benutzer.roles.length === 0 && benutzer.accountRoles.length === 0
           ? <span className="text-xs text-neutral-500">{t('user.noRoles')}</span>
           : benutzer.roles.map(r => (
-              <span key={r.key} className="text-xs px-1.5 py-0.5 rounded
+              <span key={r.key} className="text-xs px-1.5 py-0.5 rounded-sm
                                            bg-neutral-100 border border-neutral-200">
                 {r.name}
               </span>
@@ -576,7 +576,7 @@ function BenutzerZeile(
         </summary>
         <div className="mt-1 flex flex-wrap gap-1">
           {benutzer.permissions.map(p => (
-            <code key={p} className="text-xs px-1.5 py-0.5 rounded bg-neutral-50
+            <code key={p} className="text-xs px-1.5 py-0.5 rounded-sm bg-neutral-50
                                      border border-neutral-200">{p}</code>
           ))}
         </div>
@@ -705,7 +705,7 @@ function BenutzerEinladen({ propertyId, rollen }: {
   const [gewaehlt, setGewaehlt] = useState<string[]>(['reception'])
 
   return (
-    <form className="rounded border border-neutral-200 bg-white p-3 space-y-2"
+    <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2"
           onSubmit={e => {
             e.preventDefault()
             einladen.mutate({ email: email.trim(), displayName: name.trim(),
@@ -730,7 +730,7 @@ function BenutzerEinladen({ propertyId, rollen }: {
       {einladen.isError && <Fehler error={einladen.error} />}
       {einladen.isSuccess && (
         <p className="text-sm text-green-900 bg-green-50 border border-green-200
-                      rounded px-2 py-1">{t('user.invited')}</p>
+                      rounded-sm px-2 py-1">{t('user.invited')}</p>
       )}
       <button type="submit" disabled={!online || einladen.isPending || gewaehlt.length === 0}
               className={knopfStark}>{t('user.invite')}</button>

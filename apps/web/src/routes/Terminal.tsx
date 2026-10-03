@@ -271,7 +271,7 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
       <header className="flex items-center gap-3 px-6 py-4">
         <span className="text-lg font-semibold grow">{haus?.name ?? ''}</span>
         {haus?.uebung === true && (
-          <span className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-900">
+          <span className="text-xs px-2 py-1 rounded-sm bg-amber-100 text-amber-900">
             {t('kiosk.training')}
           </span>
         )}
@@ -363,7 +363,7 @@ function Inhaltsseite({ title, body, imageRef }: {
       <h1 className="text-4xl font-semibold">{title}</h1>
       {imageRef !== null && (
         <img src={`/v1/terminal/images/${imageRef}`} alt=""
-             className="w-full max-h-[50vh] object-contain rounded" />
+             className="w-full max-h-[50vh] object-contain rounded-sm" />
       )}
       <Inhaltstext text={body} gross />
     </article>
@@ -378,7 +378,7 @@ function Sprachwahl({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Elemen
       {LOCALES.map(l => (
         <button key={l} type="button" onClick={() => onLocale(l)}
                 aria-pressed={l === locale}
-                className={`px-3 py-2 text-sm rounded border ${l === locale
+                className={`px-3 py-2 text-sm rounded-sm border ${l === locale
                   ? 'border-neutral-900 bg-white font-medium'
                   : 'border-neutral-300 text-neutral-600'}`}>
           {l.toUpperCase()}
@@ -415,12 +415,12 @@ function Koppeln({ onGekoppelt, anfangsFehler }: {
         <span className="text-neutral-600">{t('kiosk.pairCode')}</span>
         <input value={code} onChange={e => setCode(e.target.value)} autoFocus
                autoComplete="off" autoCapitalize="characters" spellCheck={false}
-               className="mt-1 w-full border border-neutral-300 rounded px-3 py-3 text-2xl
+               className="mt-1 w-full border border-neutral-300 rounded-sm px-3 py-3 text-2xl
                           font-mono tracking-widest uppercase" />
       </label>
       {fehler !== null && <Fehler error={fehler} />}
       <button type="submit" disabled={laeuft || code.trim().length < 8}
-              className="w-full py-3 rounded bg-neutral-900 text-white disabled:bg-neutral-300">
+              className="w-full py-3 rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300">
         {t('kiosk.pair')}
       </button>
     </form>
@@ -480,7 +480,7 @@ function MeldeformularAusfuellen({ daten, abschliessen, onAbbrechen }: AnsichtPr
       <GastCheckin token={token} modus="terminal" onFertig={fertig} />
       <div className="max-w-3xl mx-auto">
         <button type="button" onClick={onAbbrechen}
-                className="w-full py-4 text-lg rounded border border-neutral-300 bg-white">
+                className="w-full py-4 text-lg rounded-sm border border-neutral-300 bg-white">
           {t('kiosk.abort')}
         </button>
       </div>
@@ -519,12 +519,12 @@ function BedingungZustimmen({ daten, abschliessen, onAbbrechen }: AnsichtProps):
                   abschliessen(d.requiresSignature ? { signatureSvg: signatur } : {}, true)
                     .catch((e: unknown) => { setFehler(e); setLaeuft(false) })
                 }}
-                className="grow py-4 text-lg rounded bg-neutral-900 text-white
+                className="grow py-4 text-lg rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t(d.requiresSignature ? 'kiosk.terms.sign' : 'kiosk.terms.accept')}
         </button>
         <button type="button" onClick={onAbbrechen} disabled={laeuft}
-                className="px-6 py-4 text-lg rounded border border-neutral-300">
+                className="px-6 py-4 text-lg rounded-sm border border-neutral-300">
           {t('kiosk.abort')}
         </button>
       </div>
@@ -540,7 +540,7 @@ function SeiteZeigen({ daten, abschliessen }: AnsichtProps): JSX.Element {
     <div className="w-full max-w-4xl space-y-6">
       <Inhaltsseite title={d.title} body={d.body} imageRef={d.imageRef} />
       <button type="button" onClick={() => { abschliessen({}, false).catch(abraeumen) }}
-              className="w-full py-4 text-lg rounded bg-neutral-900 text-white">
+              className="w-full py-4 text-lg rounded-sm bg-neutral-900 text-white">
         {t('kiosk.done')}
       </button>
     </div>
@@ -577,7 +577,7 @@ function AdresseZeigen({ daten, abschliessen }: AnsichtProps): JSX.Element {
           <div className="text-sm text-neutral-500">{t('kiosk.url.hint')}</div>
         </div>
         <button type="button" onClick={() => { abschliessen({}, false).catch(abraeumen) }}
-                className="px-8 py-3 text-lg rounded bg-neutral-900 text-white">
+                className="px-8 py-3 text-lg rounded-sm bg-neutral-900 text-white">
           {t('kiosk.done')}
         </button>
       </div>
@@ -667,12 +667,12 @@ function MeldescheinUnterschreiben({ daten, abschliessen, onAbbrechen }: Ansicht
                   abschliessen({ signatureSvg: signatur }, true)
                     .catch((e: unknown) => { setFehler(e); setLaeuft(false) })
                 }}
-                className="grow py-4 text-lg rounded bg-neutral-900 text-white
+                className="grow py-4 text-lg rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('kiosk.sign.submit')}
         </button>
         <button type="button" onClick={onAbbrechen} disabled={laeuft}
-                className="px-6 py-4 text-lg rounded border border-neutral-300">
+                className="px-6 py-4 text-lg rounded-sm border border-neutral-300">
           {t('kiosk.abort')}
         </button>
       </div>

@@ -53,7 +53,7 @@ function Beleg({ invoiceRef }: { invoiceRef: string }): JSX.Element {
   if (q.isPending) return <Laedt />
   if (q.isError) {
     return istBelegInArbeit(q.error)
-      ? <div role="status" className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+      ? <div role="status" className="rounded-sm border border-amber-200 bg-amber-50 p-3 text-sm">
           {t('inv.document.pending')}
         </div>
       : <Fehler error={q.error} />
@@ -63,9 +63,9 @@ function Beleg({ invoiceRef }: { invoiceRef: string }): JSX.Element {
   return (
     <div className="space-y-2">
       <iframe src={url} title={`${t('inv.document')} ${invoiceRef}`}
-              className="w-full h-[70vh] border border-neutral-200 rounded bg-white" />
+              className="w-full h-[70vh] border border-neutral-200 rounded-sm bg-white" />
       <a href={url} download={`Rechnung-${invoiceRef}.pdf`}
-         className="inline-block text-sm px-3 py-1.5 rounded border border-neutral-300
+         className="inline-block text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                     hover:bg-neutral-50">
         {t('inv.download')}
       </a>
@@ -93,21 +93,21 @@ function Versand(
         <div className="text-neutral-600">{t('inv.send.to')}</div>
         <input type="email" value={to} onChange={e => setTo(e.target.value)}
                placeholder="—"
-               className="border border-neutral-300 rounded px-2 py-1 w-72" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 w-72" />
         <div className="text-xs text-neutral-500 mt-0.5">{t('inv.send.toHint')}</div>
       </label>
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={!online || senden.isPending}
                 onClick={() => senden.mutate({ invoiceRef, to })}
-                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('inv.send')}
         </button>
         {schonVerschickt && (
           <button type="button" disabled={!online || senden.isPending}
                   onClick={() => senden.mutate({ invoiceRef, to, resend: true })}
-                  className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                  className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                              hover:bg-neutral-50 disabled:opacity-40">
             {t('inv.send.again')}
           </button>
@@ -121,7 +121,7 @@ function Versand(
 
       {schonVerschickt
         ? <div role="status"
-               className="rounded border border-amber-200 bg-amber-50 p-2 text-sm">
+               className="rounded-sm border border-amber-200 bg-amber-50 p-2 text-sm">
             {t('inv.send.alreadyHint')}
           </div>
         : senden.isError && <Fehler error={senden.error} />}
@@ -141,12 +141,12 @@ function Zeile(
   const locale = useLocale()
 
   return (
-    <li className="rounded border border-neutral-200 bg-white p-3">
+    <li className="rounded-sm border border-neutral-200 bg-white p-3">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="font-mono text-sm">{r.number}</span>
         <span className="text-sm text-neutral-600">{formatDate(r.issuedOn, locale)}</span>
         <span className="text-sm">{r.recipient === '' ? '—' : r.recipient}</span>
-        <span className="text-xs px-1.5 py-0.5 rounded border border-neutral-300
+        <span className="text-xs px-1.5 py-0.5 rounded-sm border border-neutral-300
                          bg-neutral-50 text-neutral-700">
           {t(`inv.kind.${r.kind}` as 'inv.kind.final')}
         </span>
@@ -192,17 +192,17 @@ function Zeile(
         )}
         <div className="grow" />
         <button onClick={() => onOffen(offen === 'beleg' ? null : 'beleg')}
-                className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50">
+                className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
           {offen === 'beleg' ? t('inv.hide') : t('inv.show')}
         </button>
         {darfSenden && (
           <button onClick={() => onOffen(offen === 'versand' ? null : 'versand')}
-                  className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50">
+                  className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
             {t('inv.send')}
           </button>
         )}
         <button onClick={() => onFolio(r.folioRef)}
-                className="px-2 py-1 rounded border border-neutral-300 hover:bg-neutral-50">
+                className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
           {t('inv.folio')}
         </button>
       </div>
@@ -228,7 +228,7 @@ function Postausgang({ propertyId }: { propertyId: number }): JSX.Element {
   return (
     <details open={offen}
              onToggle={e => setOffen((e.currentTarget as HTMLDetailsElement).open)}
-             className="rounded border border-neutral-200 bg-white p-3">
+             className="rounded-sm border border-neutral-200 bg-white p-3">
       <summary className="text-sm font-medium cursor-pointer">{t('inv.outbox')}</summary>
       {!offen ? null : q.isError ? <Fehler error={q.error} />
         : q.data === undefined ? <Laedt />
@@ -253,7 +253,7 @@ function Postausgang({ propertyId }: { propertyId: number }): JSX.Element {
                   {e.status === 'pending' && (
                     <button onClick={() => zuruecknehmen.mutate(e.messageRef)}
                             disabled={!online || zuruecknehmen.isPending}
-                            className="text-xs px-2 py-0.5 rounded border border-neutral-300
+                            className="text-xs px-2 py-0.5 rounded-sm border border-neutral-300
                                        hover:bg-neutral-50 disabled:opacity-40">
                       {t('inv.outbox.cancel')}
                     </button>
@@ -292,12 +292,12 @@ export function Invoices(
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.to')}</div>
           <input type="date" value={bis} onChange={e => setBis(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('rate.days')}</div>
           <select value={laenge} onChange={e => setLaenge(Number(e.target.value))}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {ZEITRAEUME.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
@@ -305,7 +305,7 @@ export function Invoices(
           <div className="text-neutral-600">{t('inv.kind')}</div>
           <select value={kind ?? ''}
                   onChange={e => setKind(e.target.value === '' ? null : e.target.value)}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             <option value="">{t('inv.kind.all')}</option>
             {ARTEN.map(a => (
               <option key={a} value={a}>{t(`inv.kind.${a}` as 'inv.kind.final')}</option>

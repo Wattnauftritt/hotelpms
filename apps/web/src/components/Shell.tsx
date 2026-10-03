@@ -56,7 +56,7 @@ export function navPasst(
 }
 
 function navKnopf(aktiv: boolean): string {
-  return `shrink-0 whitespace-nowrap px-3 py-1.5 text-sm rounded
+  return `shrink-0 whitespace-nowrap px-3 py-1.5 text-sm rounded-sm
           ${aktiv ? 'bg-neutral-900 text-white' : 'text-neutral-700 hover:bg-neutral-100'}`
 }
 
@@ -187,7 +187,7 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
             </button>
             {offen && (
               <div role="menu"
-                   className="absolute left-0 z-40 mt-1 w-56 rounded border border-neutral-200
+                   className="absolute left-0 z-40 mt-1 w-56 rounded-sm border border-neutral-200
                               bg-white py-1 shadow-xl">
                 {hinten.map(s => (
                   <button key={s.key} type="button" role="menuitem"
@@ -257,7 +257,7 @@ function Abmelden(
         * mehr in einer Kopfleiste, die ohnehin voll ist.
         */}
       <button type="button" onClick={onArbeitsplatz} title={t('workstation.title')}
-              className={`text-sm max-w-40 truncate px-2 py-1 rounded border
+              className={`text-sm max-w-40 truncate px-2 py-1 rounded-sm border
                           ${gewechselt
                             ? 'border-amber-300 bg-amber-50 text-amber-900'
                             : 'border-transparent text-neutral-600 hover:bg-neutral-100'}`}>
@@ -265,7 +265,7 @@ function Abmelden(
         {benutzer}
       </button>
       <button type="button" onClick={onAbmelden}
-              className="text-sm px-2 py-1 border border-neutral-300 rounded
+              className="text-sm px-2 py-1 border border-neutral-300 rounded-sm
                          hover:bg-neutral-50">
         {t('auth.logout')}
       </button>
@@ -363,7 +363,7 @@ function Sprachwahl({ locale, onLocale }: Pick<Props, 'locale' | 'onLocale'>): J
   return (
     <select value={locale} onChange={e => onLocale(e.target.value as Locale)}
             aria-label={t('common.language')}
-            className="text-sm border border-neutral-300 rounded px-2 py-1">
+            className="text-sm border border-neutral-300 rounded-sm px-2 py-1">
       {LOCALES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
     </select>
   )
@@ -395,7 +395,7 @@ export function Fehler({ error }: { error: unknown }): JSX.Element {
   const locale = useLocale()
   const { text, felder } = fehlerMeldung(error, locale)
   return (
-    <div role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm">
+    <div role="alert" className="rounded-sm border border-red-200 bg-red-50 p-3 text-sm">
       <div className="font-medium text-red-900">{t('error.title')}</div>
       <div className="text-red-800">{text}</div>
       {felder.length > 0 && (
@@ -431,11 +431,11 @@ export function DatumsWahl(
   return (
     <div className="flex items-center gap-1">
       <button onClick={() => schiebe(-step)} aria-label={t('common.back')}
-              className="px-2 py-1 border border-neutral-300 rounded text-sm">←</button>
+              className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">←</button>
       <input type="date" value={value} onChange={e => onChange(e.target.value)}
-             className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <button onClick={() => schiebe(step)} aria-label={t('common.forward')}
-              className="px-2 py-1 border border-neutral-300 rounded text-sm">→</button>
+              className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">→</button>
     </div>
   )
 }

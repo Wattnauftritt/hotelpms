@@ -75,7 +75,7 @@ export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.
   }
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3 space-y-2">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3 space-y-2">
       <h3 className="text-sm font-medium">{t('terminal.title')}</h3>
 
       {!offen && terminals.length > 0 && (
@@ -83,7 +83,7 @@ export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.
           {fuerGast.map(a => (
             <button key={`${a.kind}-${a.ref ?? ''}`} type="button" disabled={senden.isPending}
                     onClick={() => waehle(a)}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                    className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                                hover:bg-neutral-50 disabled:opacity-40">
               {a.kind === 'terms_sign'
                 ? t('terminal.send.terms_sign', { titel: a.label ?? '' })
@@ -98,7 +98,7 @@ export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.
                         const a = inhalte.find(x => `${x.kind}:${x.ref}` === e.target.value)
                         if (a !== undefined) waehle(a)
                       }}
-                      className="border border-neutral-300 rounded px-2 py-1.5 text-sm">
+                      className="border border-neutral-300 rounded-sm px-2 py-1.5 text-sm">
                 <option value="">{t('terminal.showContent')} …</option>
                 {inhalte.map(a => (
                   <option key={`${a.kind}:${a.ref}`} value={`${a.kind}:${a.ref}`}>
@@ -135,12 +135,12 @@ export function GeraetWahl({ terminals, onWahl, onAbbruch }: {
 }): JSX.Element {
   const t = useT()
   return (
-    <div className="border border-neutral-200 rounded p-2 space-y-1">
+    <div className="border border-neutral-200 rounded-sm p-2 space-y-1">
       <div className="text-xs text-neutral-600">{t('terminal.chooseDevice')}</div>
       {terminals.map(d => (
         <button key={d.deviceRef} type="button" disabled={d.busy === true}
                 onClick={() => onWahl(d.deviceRef)}
-                className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-neutral-50
+                className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-neutral-50
                            disabled:text-neutral-400">
           {d.name}
           {!d.online && <span className="text-xs text-amber-700">
@@ -175,7 +175,7 @@ export function AuftragZeile({ job, onAbbrechen, wirdAbgebrochen }: {
       </span>
       {offen && (
         <button type="button" disabled={wirdAbgebrochen} onClick={onAbbrechen}
-                className="px-2 py-1 text-xs rounded border border-neutral-300
+                className="px-2 py-1 text-xs rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t('terminal.cancel')}
         </button>

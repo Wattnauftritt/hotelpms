@@ -88,7 +88,7 @@ function Zahl(
   const t = useT()
   const locale = useLocale()
   return (
-    <div className="rounded border border-neutral-200 bg-white p-3 min-w-44">
+    <div className="rounded-sm border border-neutral-200 bg-white p-3 min-w-44">
       <div className="text-sm text-neutral-600">{t(label)}</div>
       <div className="text-2xl font-semibold tabular-nums">{wert}</div>
       {vorjahr !== undefined && (
@@ -132,12 +132,12 @@ function Kennzahlen({ propertyId }: { propertyId: number }): JSX.Element {
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.from')}</div>
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.to')}</div>
           <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm flex items-center gap-1.5 text-neutral-600">
           <input type="checkbox" checked={vergleich}
@@ -226,13 +226,13 @@ function Tag(
   const locale = useLocale()
   const vollstaendig = tag.steps.length >= erwartet.length
   return (
-    <li className="rounded border border-neutral-200 bg-white p-2">
+    <li className="rounded-sm border border-neutral-200 bg-white p-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">{formatDate(tag.date, locale)}</span>
         <span className="text-neutral-500">
           {t(tag.status === 'closed' ? 'audit.closed' : 'audit.open')}
         </span>
-        <span className={`text-xs px-1.5 py-0.5 rounded border ${
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${
           vollstaendig
             ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
             : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
@@ -252,7 +252,7 @@ function Tag(
           const gelaufen = tag.steps.some(x => x.step === s)
           return (
             <span key={s}
-                  className={`px-1.5 py-0.5 rounded border ${
+                  className={`px-1.5 py-0.5 rounded-sm border ${
                     gelaufen ? 'border-neutral-300 bg-neutral-100 text-neutral-700'
                              : 'border-neutral-200 text-neutral-400'}`}>
               <Schritt step={s} />
@@ -275,7 +275,7 @@ function Nachtlauf({ propertyId }: { propertyId: number }): JSX.Element {
 
   return (
     <div className="space-y-3">
-      <div className={`rounded border p-3 text-sm ${
+      <div className={`rounded-sm border p-3 text-sm ${
         s.overdue ? 'border-red-200 bg-red-50 text-red-900'
                   : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}
            role={s.overdue ? 'alert' : 'status'}>
@@ -314,7 +314,7 @@ function Beherbergung({ propertyId }: { propertyId: number }): JSX.Element {
         <label className="text-sm">
           <div className="text-neutral-600">{t('stat.month')}</div>
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
       </div>
 
@@ -368,7 +368,7 @@ function Beherbergung({ propertyId }: { propertyId: number }): JSX.Element {
                       + `?month=${month}`,
                   dateiname: `beherbergung-${month}.json` })}
                 disabled={ausgabe.isPending}
-                className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
                 {t(ausgabe.isPending ? 'export.running' : 'export.start')}
               </button>
@@ -410,61 +410,61 @@ function Ausgaben(
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.from')}</div>
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.to')}</div>
           <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
       </div>
 
       {ausgabe.isError && <Fehler error={ausgabe.error} />}
 
       {darf('report:export') && <>
-        <div className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+        <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
           <div className="font-medium">{t('export.datev')}</div>
           <div className="text-xs text-neutral-500">{t('export.datevHint')}</div>
           <div className="flex flex-wrap gap-3">
             <label className="text-sm">
               <div className="text-neutral-600">{t('export.consultantNumber')}</div>
               <input value={berater} onChange={e => setBerater(e.target.value)}
-                     className="border border-neutral-300 rounded px-2 py-1 w-40" />
+                     className="border border-neutral-300 rounded-sm px-2 py-1 w-40" />
             </label>
             <label className="text-sm">
               <div className="text-neutral-600">{t('export.clientNumber')}</div>
               <input value={mandant} onChange={e => setMandant(e.target.value)}
-                     className="border border-neutral-300 rounded px-2 py-1 w-40" />
+                     className="border border-neutral-300 rounded-sm px-2 py-1 w-40" />
             </label>
           </div>
           <button
             onClick={() => starten(datevPfad, `datev-${from}-${to}.csv`)}
             disabled={ausgabe.isPending}
-            className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+            className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                        disabled:opacity-40">
             {t(laeuft(datevPfad) ? 'export.running' : 'export.start')}
           </button>
         </div>
 
-        <div className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+        <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
           <div className="font-medium">{t('export.guestLevy')}</div>
           <div className="text-xs text-neutral-500">{t('export.guestLevyHint')}</div>
           <button
             onClick={() => starten(abgabePfad, `gaesteverzeichnis-${from}-${to}.csv`)}
             disabled={ausgabe.isPending}
-            className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+            className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                        disabled:opacity-40">
             {t(laeuft(abgabePfad) ? 'export.running' : 'export.start')}
           </button>
         </div>
 
-        <div className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+        <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
           <div className="font-medium">{t('export.gobd')}</div>
           <div className="text-xs text-neutral-500">{t('export.gobdHint')}</div>
           <button
             onClick={() => starten(gobdPfad, `gobd-${from}-${to}.json`)}
             disabled={ausgabe.isPending}
-            className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+            className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                        disabled:opacity-40">
             {t(laeuft(gobdPfad) ? 'export.running' : 'export.start')}
           </button>
@@ -475,14 +475,14 @@ function Ausgaben(
           Das ist keine Entscheidung der Rezeption und hängt deshalb an der
           Einstellungsberechtigung des Accounts. */}
       {darf('settings:account') && (
-        <div className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+        <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
           <div className="font-medium">{t('export.tenant')}</div>
           <div className="text-xs text-neutral-500">{t('export.tenantHint')}</div>
           <button
             onClick={() => starten(mandantPfad,
               `mandantenexport-${propertyId}-${today()}.json`)}
             disabled={ausgabe.isPending}
-            className="text-sm px-3 py-1.5 rounded border border-neutral-300
+            className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                        hover:bg-neutral-50 disabled:opacity-40">
             {t(laeuft(mandantPfad) ? 'export.running' : 'export.start')}
           </button>
@@ -525,7 +525,7 @@ export function Reports({ propertyId }: { propertyId: number }): JSX.Element {
 
       {isTraining && (
         <div className="text-xs text-amber-900 bg-amber-50 border border-amber-200
-                        rounded p-2">
+                        rounded-sm p-2">
           {t('export.training')}
         </div>
       )}

@@ -154,7 +154,7 @@ function Preismaske(p: MaskenProps): JSX.Element {
   }
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="font-medium">{t('rate.setPrice')}</div>
 
       <Wochentagswahl gewaehlt={wochentage} onChange={w => { setWochentage(w) }} />
@@ -175,7 +175,7 @@ function Preismaske(p: MaskenProps): JSX.Element {
                      }}
                      placeholder="0,00"
                      aria-label={`${t('rate.price.perOccupancy')} ${i + 1}`}
-                     className="border border-neutral-300 rounded px-2 py-1 w-24
+                     className="border border-neutral-300 rounded-sm px-2 py-1 w-24
                                 text-right tabular-nums" />
             </label>
           ))}
@@ -186,7 +186,7 @@ function Preismaske(p: MaskenProps): JSX.Element {
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={ansehen} disabled={!vollstaendig}
-                className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {geprueft === null ? t('rate.preview') : t('rate.preview.again')}
         </button>
@@ -194,7 +194,7 @@ function Preismaske(p: MaskenProps): JSX.Element {
                 disabled={!online || !p.darfSchreiben || !vollstaendig
                           || geprueft === null || geprueft.signatur !== signatur
                           || setzen.isPending}
-                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('rate.apply')}
         </button>
@@ -250,7 +250,7 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
   }
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="font-medium">{t('rate.restrictions')}</div>
 
       <Wochentagswahl gewaehlt={wochentage} onChange={w => { setWochentage(w) }} />
@@ -261,14 +261,14 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
           <input type="number" min={1} value={minLos}
                  onChange={e => setMinLos(e.target.value)}
                  placeholder={t('rate.unchangedField')}
-                 className="border border-neutral-300 rounded px-2 py-1 w-28" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-28" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('rate.maxLos')}</div>
           <input type="number" min={1} value={maxLos}
                  onChange={e => setMaxLos(e.target.value)}
                  placeholder={t('rate.unchangedField')}
-                 className="border border-neutral-300 rounded px-2 py-1 w-28" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-28" />
         </label>
         <label className="text-sm flex items-center gap-1.5">
           <input type="checkbox" checked={closed}
@@ -287,14 +287,14 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={ansehen}
-                className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                            hover:bg-neutral-50">
           {geprueft === null ? t('rate.preview') : t('rate.preview.again')}
         </button>
         <button type="button" onClick={uebernehmen}
                 disabled={!online || !p.darfSchreiben || geprueft === null
                           || geprueft.signatur !== signatur || setzen.isPending}
-                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('rate.apply')}
         </button>
@@ -355,14 +355,14 @@ function Ratenplaene(
   }
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <div className="font-medium">{t('rate.plans')}</div>
         <div className="grow" />
         <button type="button"
                 onClick={() => neuRechnen.mutate({ from: von, to: bis })}
                 disabled={!online || !darfSchreiben || neuRechnen.isPending}
-                className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t('rate.rebuild')}
         </button>
@@ -385,25 +385,25 @@ function Ratenplaene(
             <label className="text-sm">
               <div className="text-neutral-600">{t('rate.plan.code')}</div>
               <input value={code} onChange={e => setCode(e.target.value)} required
-                     className="border border-neutral-300 rounded px-2 py-1 w-28" />
+                     className="border border-neutral-300 rounded-sm px-2 py-1 w-28" />
             </label>
             <label className="text-sm">
               <div className="text-neutral-600">{t('rate.plan.name')}</div>
               <input value={name} onChange={e => setName(e.target.value)} required
-                     className="border border-neutral-300 rounded px-2 py-1 w-56" />
+                     className="border border-neutral-300 rounded-sm px-2 py-1 w-56" />
             </label>
             <label className="text-sm">
               <div className="text-neutral-600">{t('common.category')}</div>
               <select value={gewaehlteKategorie}
                       onChange={e => setCategoryId(Number(e.target.value))}
-                      className="border border-neutral-300 rounded px-2 py-1">
+                      className="border border-neutral-300 rounded-sm px-2 py-1">
                 {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
               </select>
             </label>
             <label className="text-sm">
               <div className="text-neutral-600">{t('rate.plan.base')}</div>
               <select value={baseId} onChange={e => setBaseId(Number(e.target.value))}
-                      className="border border-neutral-300 rounded px-2 py-1">
+                      className="border border-neutral-300 rounded-sm px-2 py-1">
                 <option value={0}>{t('rate.plan.base.none')}</option>
                 {plaene.filter(p => p.baseRatePlanId === null)
                   .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -415,7 +415,7 @@ function Ratenplaene(
                   <div className="text-neutral-600">{t('rate.plan.deriveKind')}</div>
                   <select value={deriveKind}
                           onChange={e => setDeriveKind(e.target.value as 'percent')}
-                          className="border border-neutral-300 rounded px-2 py-1">
+                          className="border border-neutral-300 rounded-sm px-2 py-1">
                     <option value="percent">{t('rate.plan.derive.percent')}</option>
                     <option value="amount">{t('rate.plan.derive.amount')}</option>
                   </select>
@@ -424,7 +424,7 @@ function Ratenplaene(
                   <div className="text-neutral-600">{t('rate.plan.deriveValue')}</div>
                   <input type="number" value={deriveValue}
                          onChange={e => setDeriveValue(e.target.value)}
-                         className="border border-neutral-300 rounded px-2 py-1 w-24
+                         className="border border-neutral-300 rounded-sm px-2 py-1 w-24
                                     text-right tabular-nums" />
                 </label>
               </>
@@ -439,7 +439,7 @@ function Ratenplaene(
           {anlegen.isError && <Fehler error={anlegen.error} />}
 
           <button type="submit" disabled={!online || !bereit || anlegen.isPending}
-                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('common.save')}
           </button>
@@ -521,12 +521,12 @@ function Preisraster(
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.from')}</div>
           <input type="date" value={von} onChange={e => setVon(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('rate.days')}</div>
           <select value={laenge} onChange={e => setLaenge(Number(e.target.value))}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {ZEITRAEUME.map(n => (
               <option key={n} value={n}>{t(`rate.days.${n}` as 'rate.days.30')}</option>
             ))}
@@ -539,7 +539,7 @@ function Preisraster(
                     setCategoryId(e.target.value === '' ? null : Number(e.target.value))
                     setAuswahl(null)
                   }}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             <option value="">—</option>
             {(kategorien.data?.categories ?? []).map(k => (
               <option key={k.id} value={k.id}>{k.name}</option>
@@ -549,7 +549,7 @@ function Preisraster(
         <label className="text-sm">
           <div className="text-neutral-600">{t('rate.occupancy')}</div>
           <select value={belegung} onChange={e => setBelegung(Number(e.target.value))}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {[1, 2, 3, 4].map(n => (
               <option key={n} value={n}>{n} {t('rate.occupancy.n')}</option>
             ))}
@@ -585,7 +585,7 @@ function Preisraster(
                       {t('rate.selection.none')}
                     </div>
                   : <>
-                      <div className="flex flex-wrap items-end gap-3 rounded border
+                      <div className="flex flex-wrap items-end gap-3 rounded-sm border
                                       border-neutral-200 bg-white p-3">
                         <div>
                           <div className="text-sm text-neutral-600">
@@ -602,7 +602,7 @@ function Preisraster(
                                  max={auswahl.to}
                                  onChange={e => setAuswahl(
                                    { ...auswahl, from: e.target.value })}
-                                 className="border border-neutral-300 rounded px-2 py-1" />
+                                 className="border border-neutral-300 rounded-sm px-2 py-1" />
                         </label>
                         <label className="text-sm">
                           <div className="text-neutral-600">{t('common.to')}</div>
@@ -610,7 +610,7 @@ function Preisraster(
                                  min={auswahl.from}
                                  onChange={e => setAuswahl(
                                    { ...auswahl, to: e.target.value })}
-                                 className="border border-neutral-300 rounded px-2 py-1" />
+                                 className="border border-neutral-300 rounded-sm px-2 py-1" />
                         </label>
                         <div className="text-sm text-neutral-600">
                           {formatDate(auswahl.from, locale)} –{' '}

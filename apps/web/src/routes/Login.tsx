@@ -21,7 +21,7 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
   return (
     <div className="min-h-screen grid place-items-center bg-neutral-50">
       <form
-        className="w-80 bg-white border border-neutral-200 rounded p-6 space-y-3"
+        className="w-80 bg-white border border-neutral-200 rounded-sm p-6 space-y-3"
         onSubmit={async e => {
           e.preventDefault()
           setFehler(null)
@@ -40,24 +40,24 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
           <span className="block text-xs text-neutral-600">{t('login.email')}</span>
           <input type="email" required autoComplete="username" value={email}
                  onChange={e => setEmail(e.target.value)}
-                 className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1
+                 className="mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1
                             text-sm" />
         </label>
         <label className="block">
           <span className="block text-xs text-neutral-600">{t('login.password')}</span>
           <input type="password" required autoComplete="current-password" value={kennwort}
                  onChange={e => setKennwort(e.target.value)}
-                 className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1
+                 className="mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1
                             text-sm" />
         </label>
         {fehler !== null && (
           <p role="alert" className="text-sm text-red-800 bg-red-50 border border-red-200
-                                     rounded px-2 py-1">
+                                     rounded-sm px-2 py-1">
             {fehler}
           </p>
         )}
         <button type="submit" disabled={laeuft}
-                className="w-full py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="w-full py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t(laeuft ? 'common.loading' : 'login.submit')}
         </button>
