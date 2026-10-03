@@ -512,6 +512,13 @@ export const CreateBooking = Type.Object({
    */
   guestCount: Type.Optional(Type.Integer({ minimum: 1, maximum: 99 })),
   /**
+   * Erwachsene und Kinder getrennt (Migration 0076). `guestCount` wird dann
+   * ihre Summe; wer beides schickt, muss dasselbe meinen. Kinder nur
+   * zusammen mit Erwachsenen.
+   */
+  adults: Type.Optional(Type.Integer({ minimum: 1, maximum: 99 })),
+  children: Type.Optional(Type.Integer({ minimum: 0, maximum: 98 })),
+  /**
    * Merkmal fuer den Balken im Belegungsplan. Vierzig Zeichen, und die
    * Grenze ist der Zweck: ein Merkmal, kein Satz. Der Vorgang gehoert in
    * `notes`.

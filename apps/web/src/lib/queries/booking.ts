@@ -145,6 +145,9 @@ export interface CreateBookingBody {
   blockRef?: string
   /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
   guestCount?: number
+  /** Erwachsene und Kinder getrennt; die Schnittstelle bildet daraus die Summe. */
+  adults?: number
+  children?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
   shortNote?: string
 }
@@ -455,6 +458,8 @@ export interface BookingRooms {
     resourceId: number | null
     roomCode: string | null
     guestCount: number | null
+    adults: number | null
+    children: number | null
     shortNote: string | null
     guestName: string | null
     nights: number

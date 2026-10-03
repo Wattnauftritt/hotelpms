@@ -50,6 +50,56 @@ const GRUPPE_MAX_ZIMMER = 50
  */
 const MAX_STAY_NIGHTS = 400
 
+/** Was an Personen in einer Reservierung steht, so wie es gespeichert wird. */
+export interface Personen {
+  guestCount: number | null
+  adults: number | null
+  children: number | null
+}
+
+/**
+ * Personenzahl aus Gesamtzahl oder aus Erwachsenen und Kindern (0076).
+ *
+ * **Zwei Wege, ein Ergebnis.** Die Rezeption am Telefon kennt oft nur "zu
+ * dritt", ein Kanal liefert Erwachsene und Kinder getrennt. Beides ist
+ * richtig, und gespeichert wird die Gesamtzahl immer: Kurtaxe und Plan lesen
+ * sie und wissen von der Aufteilung nichts. Wer beides schickt, muss
+ * dasselbe meinen -- eine Gesamtzahl, die der Summe widerspricht, ist eine
+ * Frage, und welche Zahl gilt, gehoert nicht geraten.
+ *
+ * Kinder ohne Erwachsene ergeben keine Summe und sind fast immer ein
+ * vergessenes Feld, nicht eine Reservierung nur fuer Kinder.
+ */
+export function personenAngabe(body: {
+  guestCount?: number; adults?: number; children?: number
+}): Personen {
+  if (body.guestCount !== undefined
+      && (!Number.isInteger(body.guestCount)
+          || body.guestCount < 1 || body.guestCount > 99)) {
+    throw Errors.validation({ guestCount: ['field.positiveInteger'] })
+  }
+  if (body.adults !== undefined
+      && (!Number.isInteger(body.adults) || body.adults < 1 || body.adults > 99)) {
+    throw Errors.validation({ adults: ['field.positiveInteger'] })
+  }
+  if (body.children !== undefined
+      && (!Number.isInteger(body.children) || body.children < 0 || body.children > 98)) {
+    throw Errors.validation({ children: ['field.nonNegativeInteger'] })
+  }
+  if (body.children !== undefined && body.adults === undefined) {
+    throw Errors.validation({ children: ['field.childrenNeedAdults'] })
+  }
+  if (body.adults === undefined) {
+    return { guestCount: body.guestCount ?? null, adults: null, children: null }
+  }
+  const summe = body.adults + (body.children ?? 0)
+  if (summe > 99) throw Errors.validation({ children: ['field.maxValue'] }, { max: 99 })
+  if (body.guestCount !== undefined && body.guestCount !== summe) {
+    throw Errors.validation({ guestCount: ['field.guestCountMismatch'] }, { sum: summe })
+  }
+  return { guestCount: summe, adults: body.adults, children: body.children ?? null }
+}
+
 /** Ein Zimmer einer Gruppenbuchung. */
 interface CreateBookingRoom {
   categoryId: number
@@ -91,6 +141,9 @@ interface CreateBooking {
   totalCent?: number
   /** Wie viele Personen anreisen. Ohne Angabe gilt die Belegung der Gruppe. */
   guestCount?: number
+  /** Erwachsene und Kinder getrennt; `guestCount` ist dann ihre Summe (0076). */
+  adults?: number
+  children?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
   shortNote?: string
   source?: string
@@ -562,11 +615,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         throw Errors.validation({ optionExpiresAt: ['field.onlyForOption'] })
       }
 
-      if (body.guestCount !== undefined
-          && (!Number.isInteger(body.guestCount)
-              || body.guestCount < 1 || body.guestCount > 99)) {
-        throw Errors.validation({ guestCount: ['field.positiveInteger'] })
-      }
+      const personen = personenAngabe(body)
       if (body.priceCent !== undefined
           && (!Number.isInteger(body.priceCent) || body.priceCent < 0)) {
         throw Errors.validation({ priceCent: ['field.positiveInteger'] })
@@ -885,17 +934,17 @@ export function reservationRoutes(app: FastifyInstance): void {
             `INSERT INTO reservation
                (property_id, booking_id, category_id, arrival, departure, status,
                 option_expires_at, rate_plan_id, primary_guest_id, notes, short_note,
-                block_id, resource_id, guest_count, created_by)
+                block_id, resource_id, guest_count, adults, children, created_by)
              VALUES ($1,$2,$3,$4::date,$5::date,$6::reservation_status,$7,
-                     $8,$9,$10,$11,$12,$13,$14,$15)
+                     $8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
              RETURNING id, public_ref`,
             [body.propertyId, booking.rows[0]!.id, z.categoryId,
              zeitraeume[i]!.arrival, zeitraeume[i]!.departure,
              body.status ?? 'Confirmed', body.optionExpiresAt ?? null,
              ratePlanId ?? null, guestId ?? null, body.notes ?? null,
              body.shortNote?.trim() || null,
-             block?.id ?? null, z.resourceId ?? null, body.guestCount ?? null,
-             principal.userId])
+             block?.id ?? null, z.resourceId ?? null, personen.guestCount,
+             personen.adults, personen.children, principal.userId])
           const reservationId = res.rows[0]!.id
 
           // Eine Anweisung fuer alle Naechte der Reservierung statt einer je
@@ -1033,6 +1082,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   r.notes,
                   r.short_note            AS "shortNote",
                   r.guest_count           AS "guestCount",
+                  r.adults, r.children,
                   r.category_id           AS "categoryId",
                   c.code                  AS "categoryCode",
                   c.name                  AS "categoryName",
@@ -1222,6 +1272,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   r.resource_id     AS "resourceId",
                   u.code            AS "roomCode",
                   r.guest_count     AS "guestCount",
+                  r.adults, r.children,
                   r.short_note      AS "shortNote",
                   nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
                   n.nights, n.total AS "totalCent"
@@ -1347,7 +1398,9 @@ export function reservationRoutes(app: FastifyInstance): void {
         categoryId?: number; resourceId?: number
         arrival?: string; departure?: string
         totalCent?: number; guestCount?: number; shortNote?: string
+        adults?: number; children?: number
       }
+      const personen = personenAngabe(body)
       if (!Number.isInteger(body.categoryId)) {
         throw Errors.validation({ categoryId: ['field.required'] })
       }
@@ -1416,13 +1469,13 @@ export function reservationRoutes(app: FastifyInstance): void {
           `INSERT INTO reservation
              (property_id, booking_id, category_id, arrival, departure, status,
               rate_plan_id, primary_guest_id, short_note, resource_id, guest_count,
-              created_by)
-           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
+              adults, children, created_by)
+           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11,$12,$13)
            RETURNING id, public_ref`,
           [buchung.property_id, buchung.id, body.categoryId, arrival, departure,
            buchung.rate_plan_id, buchung.booker_guest_id,
            body.shortNote?.trim() || null, body.resourceId ?? null,
-           body.guestCount ?? null, principal.userId])
+           personen.guestCount, personen.adults, personen.children, principal.userId])
         const reservationId = res.rows[0]!.id
 
         const nights = eachNight(arrival, departure)

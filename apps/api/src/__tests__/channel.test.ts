@@ -291,6 +291,24 @@ describe('ARI eingehend: Reservierungen', () => {
     expect(guest.rows[0]).toMatchObject({ last_name: 'Petersen', first_name: 'Jan' })
   })
 
+  it('uebernimmt Erwachsene und Kinder, wie der Kanal sie meldet', async () => {
+    // Die Summe entsteht hier, nicht beim Leser: Kurtaxe und Plan kennen nur
+    // die Gesamtzahl (0076).
+    const token = await makeConnection()
+    const res = await book(token, {
+      externalReference: 'RC-PERS', categoryCode: 'DZ', arrival: FROM, departure: TO,
+      adults: 2, children: 1 })
+    expect(res.statusCode, res.body).toBe(201)
+    const r = await owner.query(
+      `SELECT guest_count, adults, children FROM reservation ORDER BY id DESC LIMIT 1`)
+    expect(r.rows[0]).toEqual({ guest_count: 3, adults: 2, children: 1 })
+
+    const nurKinder = await book(token, {
+      externalReference: 'RC-KIND', categoryCode: 'DZ', arrival: FROM, departure: TO,
+      children: 2 })
+    expect(nurKinder.statusCode).toBe(422)
+  })
+
   it('lehnt eine Buchung ohne gueltigen Token ab', async () => {
     const res = await app.inject({
       method: 'POST', url: '/v1/channel/ari/bookings',

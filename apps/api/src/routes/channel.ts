@@ -9,7 +9,7 @@ import { Errors } from '../platform/errors.js'
 import { emitEvent } from '../platform/events.js'
 import { authenticateChannel, channelContext } from '../platform/channelAuth.js'
 import type { Principal } from '../platform/context.js'
-import { inventoryError, priceNights } from './reservations.js'
+import { inventoryError, priceNights, personenAngabe } from './reservations.js'
 import { isTrainingProperty } from '../platform/training.js'
 
 /** Ein Jahr je Anfrage, wie bei der Verfuegbarkeit fuer die Oberflaeche. */
@@ -109,6 +109,14 @@ interface InboundBooking {
   guestId?: number
   guest?: { firstName?: string; lastName: string; email?: string; phone?: string }
   notes?: string
+  /**
+   * Personen, wie der Kanal sie meldet. RoomCloud und die meisten anderen
+   * liefern Erwachsene und Kinder getrennt; wer nur eine Summe kennt,
+   * schickt `guestCount`. Dieselbe Pruefung wie an der Maske (0076).
+   */
+  adults?: number
+  children?: number
+  guestCount?: number
 }
 
 export function channelRoutes(app: FastifyInstance): void {
@@ -297,6 +305,7 @@ export function channelRoutes(app: FastifyInstance): void {
       if (nightsBetween(body.arrival, body.departure) <= 0) {
         throw Errors.validation({ departure: ['field.afterArrival'] })
       }
+      const personen = personenAngabe(body)
 
       const result = await withTransaction(req.pool, channelContext(principal), async client => {
         await assertNoChannelForTraining(client, principal.propertyId)
@@ -368,11 +377,12 @@ export function channelRoutes(app: FastifyInstance): void {
         const res = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO reservation
              (property_id, booking_id, category_id, arrival, departure, status,
-              rate_plan_id, primary_guest_id, notes)
-           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8)
+              rate_plan_id, primary_guest_id, notes, guest_count, adults, children)
+           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
            RETURNING id, public_ref`,
           [principal.propertyId, inserted.rows[0]!.id, categoryId, body.arrival, body.departure,
-           ratePlanId ?? null, body.guestId ?? null, body.notes ?? null])
+           ratePlanId ?? null, body.guestId ?? null, body.notes ?? null,
+           personen.guestCount, personen.adults, personen.children])
         const reservationId = res.rows[0]!.id
 
         const nights = eachNight(body.arrival, body.departure)

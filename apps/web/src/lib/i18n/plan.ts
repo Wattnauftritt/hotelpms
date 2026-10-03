@@ -271,14 +271,18 @@ export const plan = {
     de: 'Leer lassen heißt: der Preis aus dem Ratenplan gilt.',
     en: 'Leave empty to use the price from the rate plan.',
     tr: 'Boş bırakırsanız fiyat planındaki fiyat geçerli olur.' },
-  'booking.guests': {
-    de: 'Personen',
-    en: 'Guests',
-    tr: 'Kişi' },
+  'booking.adults': {
+    de: 'Erwachsene',
+    en: 'Adults',
+    tr: 'Yetişkin' },
+  'booking.children': {
+    de: 'Kinder',
+    en: 'Children',
+    tr: 'Çocuk' },
   'booking.guestsHint': {
-    de: 'Leer lassen heißt: so viele, wie die Zimmergruppe hergibt.',
-    en: 'Leave empty for as many as the room category allows.',
-    tr: 'Boş bırakırsanız oda tipinin izin verdiği kadar olur.' },
+    de: 'Erwachsene leer lassen heißt: so viele, wie die Zimmergruppe hergibt.',
+    en: 'Leave adults empty for as many as the room category allows.',
+    tr: 'Yetişkin alanını boş bırakırsanız oda tipinin izin verdiği kadar olur.' },
   'booking.overCapacity': {
     de: 'Die Zimmergruppe ist für {max} Personen. Sie tragen {n} ein. Sicher?',
     en: 'The room category holds {max} guests. You entered {n}. Are you sure?',
