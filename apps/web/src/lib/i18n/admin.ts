@@ -385,10 +385,14 @@ export const admin = {
     de: 'Kennwort-Link schicken',
     en: 'Send password link',
     tr: 'Parola bağlantısı gönder' },
+  /*
+   * "Unterwegs" versprach mehr, als die Route weiss: sie reiht ein, der
+   * Worker verschickt. Ob das geschah, steht daneben im Zustand der Post.
+   */
   'admin.user.linkSent': {
-    de: 'Link ist unterwegs.',
-    en: 'Link is on its way.',
-    tr: 'Bağlantı yolda.' },
+    de: 'Link ist eingereiht.',
+    en: 'Link is queued.',
+    tr: 'Bağlantı kuyruğa alındı.' },
   'admin.user.revokeSessions': {
     de: 'Alle Sitzungen beenden',
     en: 'End all sessions',
@@ -452,6 +456,17 @@ export const admin = {
     de: 'gescheitert',
     en: 'failed',
     tr: 'başarısız' },
+  /*
+   * Fuer das Plattformpersonal, nicht fuer den Kunden: was zu tun ist, steht
+   * auf dem Server, und genau das soll der Satz sagen.
+   */
+  'admin.mail.stuck': {
+    de: 'Der Worker versendet nicht — läuft er, und sind BREVO_API_KEY und '
+      + 'PLATFORM_EMAIL_FROM gesetzt?',
+    en: 'The worker is not sending — is it running, and are BREVO_API_KEY and '
+      + 'PLATFORM_EMAIL_FROM set?',
+    tr: 'Worker gönderim yapmıyor — çalışıyor mu, BREVO_API_KEY ve '
+      + 'PLATFORM_EMAIL_FROM ayarlı mı?' },
 
   // ------------------------------------------------- Benutzer einladen
   'admin.invite.title': {

@@ -144,6 +144,32 @@ describe('Zugangslink', () => {
     expect(d.users[0]!.lastMail?.status).toBe('failed')
     expect(d.users[0]!.lastMail?.error).toBe('SMTP 550')
   })
+
+  it('meldet Post, die der Worker seit Minuten nicht anfasst', async () => {
+    await post(
+      `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/access-link`,
+      admin.sessionId)
+    type Karte = { users: Array<{ lastMail: { status: string; stuck: boolean } | null }> }
+    const frisch = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as Karte
+    // Gerade eingereiht: noch kein Grund zur Sorge.
+    expect(frisch.users[0]!.lastMail).toMatchObject({ status: 'pending', stuck: false })
+
+    await owner.query(
+      `UPDATE platform_email SET next_attempt_at = now() - interval '10 minutes'
+        WHERE user_id = $1`, [rezeption.userId])
+    const alt = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as Karte
+    expect(alt.users[0]!.lastMail).toMatchObject({ status: 'pending', stuck: true })
+
+    // Versucht und wieder eingeplant ist kein Stillstand, sondern ein Fehler
+    // mit eigenem Text -- der steht in last_error.
+    await owner.query(
+      `UPDATE platform_email SET attempts = 1 WHERE user_id = $1`, [rezeption.userId])
+    const versucht = (await get(`/v1/platform/accounts/${fx.accountId}`, admin.sessionId))
+      .json() as Karte
+    expect(versucht.users[0]!.lastMail?.stuck).toBe(false)
+  })
 })
 
 describe('Sitzungen beenden', () => {

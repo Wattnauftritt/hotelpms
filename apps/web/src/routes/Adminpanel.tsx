@@ -235,6 +235,9 @@ function KundenBenutzer({ accountId, u, properties }: {
             {' · '}{zeit(u.lastMail.at)}
           </span>
         )}
+        {u.lastMail?.stuck === true && (
+          <span className="text-xs text-red-800">{t('admin.mail.stuck')}</span>
+        )}
       </div>
       {u.status !== 'disabled' && (
         <div className="flex flex-wrap items-center gap-2">
