@@ -1874,6 +1874,16 @@ const M = {
       + 'nicht kennt',
     en: 'Reservation {reference} is on a room the dump does not know',
     tr: 'Rezervasyon {reference} dökümün tanımadığı bir odada' },
+  'import.kwhotel.roomCodeTaken': {
+    de: 'Die Zimmernummer {code} gibt es schon oder sie soll zweimal angelegt werden',
+    en: 'Room number {code} already exists or is to be created twice',
+    tr: '{code} oda numarası zaten var veya iki kez oluşturulmak isteniyor' },
+  'import.kwhotel.categoryCodeTaken': {
+    de: 'Die Zimmergruppe {code} gibt es schon. Die vorhandene waehlen oder ein '
+      + 'anderes Kuerzel geben',
+    en: 'Room type {code} already exists. Choose the existing one or give a '
+      + 'different code',
+    tr: '{code} oda tipi zaten var. Mevcut olanı seçin veya farklı bir kısaltma verin' },
   'import.kwhotel.invalidStay': {
     de: 'Reservierung {reference}: die letzte Nacht liegt vor der Anreise',
     en: 'Reservation {reference}: the last night is before arrival',

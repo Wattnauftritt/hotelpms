@@ -363,6 +363,8 @@ spätere statt der sofortigen Meldung.
 - **Was das Haus entscheidet, kommt aus der Anfrage:** Statuscodes (Vorgabe aktiv 0, 1, 2, 4; storniert 10–14, 19, 22), Platzhalternamen, Zimmerzuordnung (Vorgabe über die Nummer), Zeitraum. Ein unbekannter Code oder ein Zimmer ohne Gegenstück hält die ganze Übernahme an.
 - **Gemessen am echten Abzug** (12 660 Zeilen, 35 Zimmer): 11 752 Reservierungen in einem Lauf von rund zehn Sekunden, 908 Platzhalter ausgelassen, kein Abweichen im Kontingentabgleich. Die Datei selbst liegt nicht im Repository; die Tests bauen einen Abzug derselben Form mit erfundenen Namen.
 - **Bildschirm „Datenübernahme“** (`routes/Datenuebernahme.tsx`): Datei wählen, prüfen, Bericht lesen, Zimmer zuordnen, übernehmen. Der Browser schickt nur die sechs gelesenen Tabellen; Kasse, Rechnungen und Protokolle aus der `.bak` verlassen den Rechner nicht.
+- **Fehlende Zimmer werden gefragt, nicht still angelegt.** Je Zimmer ohne Gegenstück wählt das Haus „zuordnen“, „nicht übernehmen“ oder „neu anlegen“, mit eigener Nummer und einer vorhandenen oder neuen Zimmergruppe; vorbelegt ist der Vorschlag aus KWHotel (Nummer, Kürzel, Beschreibung, größte gesehene Belegung). Angelegt wird in derselben Transaktion wie die Übernahme samt Bestand für 24 Monate, im Trockenlauf also mit zurückgerollt. Eine vergebene Nummer oder ein vorhandenes Gruppenkürzel ist ein Befund, kein stilles Zusammenlegen. Ratenpläne braucht die Übernahme nicht: KWHotel führt den Preis je Zeile, und der kommt je Nacht mit.
+- **Die KWHotel-Nummer ist in der Suche auffindbar**, genau getroffen statt als Anfang (Migration 0079): „359“ soll nicht jede Nummer von 35900 bis 35999 liefern.
 
 ---
 

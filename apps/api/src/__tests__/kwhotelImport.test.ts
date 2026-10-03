@@ -403,4 +403,116 @@ describe('Uebernahme', () => {
     expect(z).toMatchObject({ legacySystem: 'kwhotel', externalReference: null,
                               lastNight: addDays(heute, 11) })
   })
+
+  it('findet eine Reservierung ueber ihre KWHotel-Nummer in der Suche', async () => {
+    const zeilen: Zeile[] = [
+      { id: 4711, room: 4, von: addDays(heute, 3), letzte: addDays(heute, 4), cena: '160.0000',
+        status: 1, gast: 100 },
+      { id: 47110, room: 3, von: addDays(heute, 3), letzte: addDays(heute, 4), cena: '90.0000',
+        status: 1, gast: 103 }]
+    await uebernehmen(abzug(zeilen, GAESTE), { commit: true })
+    const r = await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/search?q=4711`,
+      headers: auth(admin.sessionId) })
+    expect(r.statusCode).toBe(200)
+    const ref = await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM reservation WHERE legacy_reference = '4711'`)
+    // Genau getroffen: 47110 beginnt mit 4711 und ist trotzdem kein Treffer.
+    const treffer = (JSON.parse(r.body) as { reservations: Array<{ reservationRef: string }> })
+      .reservations.map(x => x.reservationRef)
+    expect(treffer).toEqual([ref.rows[0]!.public_ref])
+  })
+})
+
+describe('Fehlende Zimmer', () => {
+  const NEU: Array<[number, string]> = [...ZIMMER, [11, '12 Apt'], [12, '014 DZ']]
+  const zeilen = (): Zeile[] => [
+    { id: 1, room: 11, von: addDays(heute, 5), letzte: addDays(heute, 6), cena: '300.0000',
+      osob: 3, kinder: [1, 0, 0], status: 1, gast: 100 },
+    { id: 2, room: 12, von: addDays(heute, 5), letzte: addDays(heute, 5), cena: '90.0000',
+      status: 1, gast: 103 }]
+  const auftrag = [
+    { kwRoomId: '11', code: '12',
+      newCategory: { code: 'APT', name: 'Apartment', maxOccupancy: 4 } },
+    { kwRoomId: '12', code: '14', categoryId: 0 }]
+  const mitDz = () => auftrag.map(a => a.kwRoomId === '12' ? { ...a, categoryId: kat.dz } : a)
+
+  it('schlaegt Nummer, Gruppe und Belegung aus KWHotel vor und legt nichts still an',
+    async () => {
+      const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU))
+      expect(bericht.rooms.find(r => r.kwRoomId === '11')).toMatchObject({
+        match: 'none',
+        suggestion: { code: '12', categoryCode: 'APT', categoryName: 'Doppelzimmer',
+                      maxOccupancy: 4 } })
+      expect(bericht.rooms.find(r => r.kwRoomId === '12')!.suggestion)
+        .toMatchObject({ code: '14', categoryCode: 'DZ' })
+      expect(bericht.findings.map(f => f.messageKey)).toContain('import.kwhotel.roomUnmapped')
+      const n = await owner.query(`SELECT 1 FROM resource WHERE property_id = $1 AND code = '12'`,
+        [fx.propertyId])
+      expect(n.rowCount).toBe(0)
+    })
+
+  it('rollt im Trockenlauf auch die angelegten Zimmer zurueck', async () => {
+    const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU),
+      { createRooms: mitDz() })
+    expect(bericht.dryRun).toBe(true)
+    expect(bericht.findings.filter(f => f.level === 'error')).toEqual([])
+    expect(bericht.imported).toBe(2)
+    expect(bericht.rooms.find(r => r.kwRoomId === '11'))
+      .toMatchObject({ match: 'created', roomCode: '12' })
+    const z = await owner.query(`SELECT 1 FROM resource WHERE property_id = $1
+                                    AND code IN ('12', '14')`, [fx.propertyId])
+    expect(z.rowCount).toBe(0)
+    const k = await owner.query(`SELECT 1 FROM resource_category WHERE code = 'APT'`)
+    expect(k.rowCount).toBe(0)
+  })
+
+  it('legt Zimmer in neuer und vorhandener Gruppe an und bindet ihre Reservierungen',
+    async () => {
+      const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU),
+        { commit: true, createRooms: mitDz() })
+      expect(bericht.dryRun).toBe(false)
+      expect(bericht.imported).toBe(2)
+      const z = await owner.query<{ code: string; kat: string; occ: number }>(
+        `SELECT u.code, k.code AS kat, k.max_occupancy AS occ
+           FROM resource u JOIN resource_category k ON k.id = u.category_id
+          WHERE u.property_id = $1 AND u.code IN ('12', '14') ORDER BY u.code`, [fx.propertyId])
+      expect(z.rows).toEqual([{ code: '12', kat: 'APT', occ: 4 },
+                              { code: '14', kat: 'DZ', occ: z.rows[1]!.occ }])
+      const r = await owner.query<{ code: string }>(
+        `SELECT u.code FROM reservation r JOIN resource u ON u.id = r.resource_id
+          WHERE r.legacy_reference = '1'`)
+      expect(r.rows[0]!.code).toBe('12')
+      // Die neue Gruppe hat Bestand bekommen, und die Reservierung haelt ihn.
+      const sold = await owner.query<{ n: number }>(
+        `SELECT coalesce(sum(d.sold), 0)::int AS n FROM inventory_day d
+           JOIN resource_category k ON k.id = d.category_id
+          WHERE k.code = 'APT' AND d.property_id = $1`, [fx.propertyId])
+      expect(sold.rows[0]!.n).toBe(2)
+    })
+
+  it('meldet eine vergebene Nummer und ein vorhandenes Gruppenkuerzel und schreibt nichts',
+    async () => {
+      const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
+        commit: true,
+        createRooms: [
+          { kwRoomId: '11', code: '2',
+            newCategory: { code: 'dz', name: 'Noch ein DZ', maxOccupancy: 2 } },
+          { kwRoomId: '12', code: '14', categoryId: kat.dz }] })
+      expect(bericht.dryRun).toBe(true)
+      const keys = bericht.findings.filter(f => f.level === 'error').map(f => f.messageKey)
+      expect(keys).toContain('import.kwhotel.roomCodeTaken')
+      expect(keys).toContain('import.kwhotel.categoryCodeTaken')
+      const z = await owner.query(`SELECT 1 FROM resource WHERE property_id = $1 AND code = '14'`,
+        [fx.propertyId])
+      expect(z.rowCount).toBe(0)
+    })
+
+  it('nimmt keine Zimmergruppe eines anderen Hauses an', async () => {
+    const fremd = await makeProperty(owner, { code: 'FREMD' })
+    const k = await makeCategory(owner, fremd.propertyId)
+    const { status } = await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
+      createRooms: auftrag.map(a => a.kwRoomId === '12' ? { ...a, categoryId: k } : a) })
+    expect(status).toBe(422)
+  })
 })

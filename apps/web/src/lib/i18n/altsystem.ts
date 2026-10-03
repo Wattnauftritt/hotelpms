@@ -136,11 +136,14 @@ export const altsystem = {
     tr: 'Odalar' },
   'import.rooms.hint': {
     de: 'Zugeordnet über die Zimmernummer. Jede Zuordnung lässt sich ändern; '
-      + '„nicht übernehmen“ lässt die Reservierungen dieses Zimmers weg.',
+      + '„nicht übernehmen“ lässt die Reservierungen dieses Zimmers weg, „neu '
+      + 'anlegen“ legt das Zimmer mit der Übernahme an.',
     en: 'Matched by room number. Every match can be changed; "do not import" '
-      + 'leaves out the reservations of that room.',
+      + 'leaves out the reservations of that room, "create new" creates the '
+      + 'room along with the import.',
     tr: 'Oda numarasıyla eşleştirildi. Her eşleştirme değiştirilebilir; '
-      + '„aktarma“ o odanın rezervasyonlarını dışarıda bırakır.' },
+      + '„aktarma“ o odanın rezervasyonlarını dışarıda bırakır, „yeni oluştur“ '
+      + 'odayı aktarımla birlikte oluşturur.' },
   'import.rooms.kw': {
     de: 'KWHotel',
     en: 'KWHotel',
@@ -161,6 +164,42 @@ export const altsystem = {
     de: 'nicht übernehmen',
     en: 'do not import',
     tr: 'aktarma' },
+  'import.rooms.create': {
+    de: 'neu anlegen',
+    en: 'create new',
+    tr: 'yeni oluştur' },
+  'import.rooms.missing': {
+    de: '{n} Zimmer aus KWHotel gibt es hier nicht.',
+    en: '{n} rooms from KWHotel do not exist here.',
+    tr: 'KWHotel\'deki {n} oda burada yok.' },
+  'import.rooms.createAll': {
+    de: 'alle fehlenden neu anlegen',
+    en: 'create all missing',
+    tr: 'eksiklerin hepsini oluştur' },
+  'import.rooms.newCode': {
+    de: 'Zimmernummer',
+    en: 'Room number',
+    tr: 'Oda numarası' },
+  'import.rooms.category': {
+    de: 'Zimmergruppe',
+    en: 'Room type',
+    tr: 'Oda tipi' },
+  'import.rooms.newCategory': {
+    de: 'neue Gruppe',
+    en: 'new room type',
+    tr: 'yeni oda tipi' },
+  'import.rooms.categoryCode': {
+    de: 'Kürzel',
+    en: 'Code',
+    tr: 'Kısaltma' },
+  'import.rooms.categoryName': {
+    de: 'Name',
+    en: 'Name',
+    tr: 'Ad' },
+  'import.rooms.maxOccupancy': {
+    de: 'Personen höchstens',
+    en: 'Max. guests',
+    tr: 'En fazla kişi' },
   'import.statusCodes': {
     de: 'Statuscodes im Abzug',
     en: 'Status codes in the dump',

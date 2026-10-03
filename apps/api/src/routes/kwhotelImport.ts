@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { eachNight, isIsoDate } from '@hotelpms/domain'
 import { renderMessage, type KwhotelFinding, type KwhotelImportReport,
-         type KwhotelRoomMatch, type MessageKey, type MessageParams } from '@hotelpms/contracts'
+         type KwhotelRoomMatch, type RoomSuggestion, type MessageKey, type MessageParams } from '@hotelpms/contracts'
 import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
-import { readKwhotelDump, type KwhotelBestand, type KwReservation }
+import { readKwhotelDump, type KwhotelBestand, type KwReservation, type KwRoom }
   from '../platform/legacyImport/kwhotel.js'
 import { DumpFormatError } from '../platform/legacyImport/mysqlDump.js'
 
@@ -53,6 +53,7 @@ interface Body {
   activeStatus?: unknown
   canceledStatus?: unknown
   roomMap?: unknown
+  createRooms?: unknown
   fromDate?: unknown
 }
 
@@ -92,6 +93,162 @@ class Befunde {
   get fehler(): number { return this.liste.filter(f => f.level === 'error').length }
 }
 
+/**
+ * Was die Maske fuer ein fehlendes Zimmer vorschlaegt: die Nummer aus dem
+ * KWHotel-Namen, die Zimmergruppe aus dessen Kuerzel ("01 EZ Balkon" -> EZ)
+ * und Beschreibung, die Belegung aus den Reservierungen, die tatsaechlich auf
+ * dem Zimmer lagen. Nur ein Vorschlag -- angelegt wird, was die Anfrage sagt.
+ */
+export function vorschlag(r: KwRoom, bestand: KwhotelBestand): RoomSuggestion {
+  const m = /^\s*0*(\d+)\s*(.*)$/.exec(r.name)
+  const code = m !== null ? (m[1] === '' ? '0' : m[1]!) : r.name.trim().slice(0, 20)
+  const rest = m !== null ? m[2]! : r.name
+  const kuerzel = (/^([A-Za-zÄÖÜäöü]+)/.exec(rest.trim())?.[1] ?? '').toUpperCase().slice(0, 10)
+  const name = (r.description ?? '').trim() || rest.trim() || r.name
+  let personen = 1
+  for (const x of bestand.reservations) {
+    if (x.roomId === r.id) personen = Math.max(personen, x.adults + x.children)
+  }
+  return {
+    code,
+    categoryCode: kuerzel !== '' ? kuerzel : name.slice(0, 3).toUpperCase(),
+    categoryName: name.slice(0, 80),
+    maxOccupancy: Math.min(personen, 20)
+  }
+}
+
+/**
+ * Legt die Zimmer an, die das Haus im Dialog bestaetigt hat, samt neuer
+ * Zimmergruppen, und bereitet den Bestand dafuer vor.
+ *
+ * In derselben Transaktion wie die Uebernahme: im Trockenlauf wird
+ * mitgeprueft und zurueckgerollt, und beim Festschreiben gibt es kein Haus
+ * mit neuen Zimmern, aber ohne die Buchungen, fuer die sie angelegt wurden.
+ *
+ * Eine schon vergebene Nummer oder ein schon vorhandenes Gruppenkuerzel ist
+ * ein Befund, kein stilles Zusammenlegen: wer "DZ" neu anlegen will und es
+ * gibt "DZ" schon, meint vielleicht eine andere Gruppe.
+ */
+async function zimmerAnlegen(
+  client: PoolClient, propertyId: number, bestand: KwhotelBestand,
+  roh: unknown, befunde: Befunde
+): Promise<Map<string, number>> {
+  const ergebnis = new Map<string, number>()
+  if (roh === undefined) return ergebnis
+  const ungueltig = () =>
+    Errors.validation({ createRooms: ['field.allowedValues'] }, { values: 'object[]' })
+  if (!Array.isArray(roh) || roh.length > 500) throw ungueltig()
+
+  interface Auftrag { kwRoomId: string; code: string; categoryId: number | null
+                      neu: { code: string; name: string; maxOccupancy: number } | null }
+  const auftraege: Auftrag[] = []
+  const text = (v: unknown, max: number): string | null =>
+    typeof v === 'string' && v.trim() !== '' && v.trim().length <= max ? v.trim() : null
+  for (const e of roh as unknown[]) {
+    if (typeof e !== 'object' || e === null) throw ungueltig()
+    const o = e as Record<string, unknown>
+    const kw = typeof o.kwRoomId === 'string' ? o.kwRoomId : null
+    const code = text(o.code, 20)
+    const nk = o.newCategory as Record<string, unknown> | undefined
+    const neu = nk === undefined || nk === null ? null : {
+      code: text(nk.code, 10), name: text(nk.name, 80), maxOccupancy: nk.maxOccupancy }
+    const katId = Number.isInteger(o.categoryId) ? o.categoryId as number : null
+    if (kw === null || code === null || !bestand.rooms.some(r => r.id === kw)
+        || (katId === null) === (neu === null)
+        || (neu !== null && (neu.code === null || neu.name === null
+            || !Number.isInteger(neu.maxOccupancy) || (neu.maxOccupancy as number) < 1
+            || (neu.maxOccupancy as number) > 99))) {
+      throw ungueltig()
+    }
+    auftraege.push({ kwRoomId: kw, code, categoryId: katId,
+      neu: neu === null ? null : { code: neu.code!, name: neu.name!,
+                                   maxOccupancy: neu.maxOccupancy as number } })
+  }
+  if (auftraege.length === 0) return ergebnis
+
+  const vorhanden = await client.query<{ code: string }>(
+    `SELECT code FROM resource WHERE property_id = $1`, [propertyId])
+  const belegt = new Set(vorhanden.rows.map(r => r.code.toLowerCase()))
+  const gruppen = await client.query<{ id: number; code: string }>(
+    `SELECT id, code FROM resource_category WHERE property_id = $1`, [propertyId])
+  const gruppeById = new Set(gruppen.rows.map(g => Number(g.id)))
+  const gruppeByCode = new Set(gruppen.rows.map(g => g.code.toLowerCase()))
+
+  const neueGruppen = new Map<string, { code: string; name: string; maxOccupancy: number }>()
+  const gesehen = new Set<string>()
+  const kwGesehen = new Set<string>()
+  let fehler = false
+  for (const a of auftraege) {
+    const k = a.code.toLowerCase()
+    if (belegt.has(k) || gesehen.has(k)) {
+      befunde.add('error', 'import.kwhotel.roomCodeTaken', { code: a.code })
+      fehler = true
+    }
+    gesehen.add(k)
+    if (kwGesehen.has(a.kwRoomId)) throw ungueltig()
+    kwGesehen.add(a.kwRoomId)
+    // Eine Gruppe eines anderen Hauses ist hier dasselbe wie keine.
+    if (a.categoryId !== null && !gruppeById.has(a.categoryId)) {
+      throw Errors.validation({ createRooms: ['field.unknownValues'] },
+        { values: String(a.categoryId) })
+    }
+    if (a.neu !== null) {
+      const g = a.neu.code.toLowerCase()
+      if (gruppeByCode.has(g)) {
+        befunde.add('error', 'import.kwhotel.categoryCodeTaken', { code: a.neu.code })
+        fehler = true
+      } else if (!neueGruppen.has(g)) {
+        neueGruppen.set(g, a.neu)
+      } else {
+        // Mehrere Zimmer derselben neuen Gruppe: die groesste Belegung zaehlt.
+        const x = neueGruppen.get(g)!
+        x.maxOccupancy = Math.max(x.maxOccupancy, a.neu.maxOccupancy)
+      }
+    }
+  }
+  if (fehler) return ergebnis
+
+  const katNr = new Map<string, number>()
+  if (neueGruppen.size > 0) {
+    const g = [...neueGruppen.values()]
+    const r = await client.query<{ id: number; code: string }>(
+      `INSERT INTO resource_category (property_id, code, name, max_occupancy, sort_order)
+       SELECT $1, a.code, a.name, a.occ, b.base + a.ord * 10
+         FROM unnest($2::text[], $3::text[], $4::int[]) WITH ORDINALITY AS a(code, name, occ, ord),
+              (SELECT COALESCE(max(sort_order), 0) AS base
+                 FROM resource_category WHERE property_id = $1) b
+       RETURNING id, code`,
+      [propertyId, g.map(x => x.code), g.map(x => x.name), g.map(x => x.maxOccupancy)])
+    for (const x of r.rows) katNr.set(x.code.toLowerCase(), Number(x.id))
+  }
+
+  // Eine Anweisung fuer alle Zimmer: der Kapazitaetstrigger auf
+  // Anweisungsebene rechnet einmal nach (Migration 0013).
+  const z = await client.query<{ id: number; code: string }>(
+    `INSERT INTO resource (property_id, category_id, code)
+     SELECT $1, x.cat, x.code FROM unnest($2::bigint[], $3::text[]) AS x(cat, code)
+     RETURNING id, code`,
+    [propertyId,
+     auftraege.map(a => a.categoryId ?? katNr.get(a.neu!.code.toLowerCase())!),
+     auftraege.map(a => a.code)])
+  const nachCode = new Map(z.rows.map(x => [x.code, Number(x.id)]))
+  for (const a of auftraege) ergebnis.set(a.kwRoomId, nachCode.get(a.code)!)
+
+  /*
+   * Den Bestand gleich mit, wie bei der ersten Einrichtung (firstSetup.ts):
+   * eine neue Gruppe hat sonst keine Tage in `inventory_day`, und jede
+   * kuenftige Reservierung darauf scheiterte mit `not_materialized`.
+   */
+  await client.query(
+    `SELECT inventory_materialize($1, LEAST(current_date, $2::date),
+              (current_date + interval '24 months')::date)`,
+    [propertyId, (await client.query<{ d: string }>(
+      `SELECT COALESCE((SELECT min(date) FROM business_day
+                         WHERE property_id = $1 AND status = 'open'), current_date)::text AS d`,
+      [propertyId])).rows[0]!.d])
+  return ergebnis
+}
+
 async function uebernehmen(
   client: PoolClient, propertyId: number, userId: number | null,
   bestand: KwhotelBestand, body: Body
@@ -128,6 +285,7 @@ async function uebernehmen(
   const { account_id: accountId, timezone, bd } = haus.rows[0]!
 
   // ------------------------------------------------------------- Zimmer
+  const angelegt = await zimmerAnlegen(client, propertyId, bestand, body.createRooms, befunde)
   const zimmer = await client.query<{ id: number; code: string; category_id: number }>(
     `SELECT id, code, category_id FROM resource WHERE property_id = $1`, [propertyId])
   const zimmerById = new Map(zimmer.rows.map(z => [Number(z.id), z]))
@@ -163,7 +321,10 @@ async function uebernehmen(
   for (const r of bestand.rooms) {
     let resourceId: number | null = null
     let match: KwhotelRoomMatch['match'] = 'none'
-    if (karte.has(r.id)) {
+    if (angelegt.has(r.id)) {
+      resourceId = angelegt.get(r.id)!
+      match = 'created'
+    } else if (karte.has(r.id)) {
       resourceId = karte.get(r.id)!
       match = resourceId === null ? 'skipped' : 'manual'
     } else {
@@ -172,7 +333,8 @@ async function uebernehmen(
     }
     zuordnung.set(r.id, {
       kwRoomId: r.id, name: r.name, reservations: 0, resourceId,
-      roomCode: resourceId === null ? null : zimmerById.get(resourceId)!.code, match
+      roomCode: resourceId === null ? null : zimmerById.get(resourceId)!.code, match,
+      suggestion: vorschlag(r, bestand)
     })
   }
 
