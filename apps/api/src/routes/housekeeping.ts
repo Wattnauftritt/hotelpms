@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -17,6 +17,72 @@ type HousekeepingState = (typeof STATES)[number]
  * und keine Wartungsmeldung.
  */
 const SPERRE_MAX_ZIMMER = 100
+
+/**
+ * Wie viele Zimmer ein Aufruf zum Reinigungsstand setzen darf. Ein ganzes
+ * Haus passt hinein, denn der naechtliche Abgleich schickt genau das.
+ */
+const STATUS_MAX_ZIMMER = 500
+
+/**
+ * Gemischte Staende, adressiert ueber die Zimmernummer.
+ *
+ * Eine unbekannte Nummer weist den ganzen Aufruf ab und nennt die Nummern.
+ * Still uebersprungen hiesse: das andere System haelt ein Zimmer fuer
+ * sauber, das hier nie angekommen ist, und merkt es nicht. Die Nummer wird
+ * nur im Haus des Aufrufs gesucht -- dieselbe Nummer gibt es im
+ * Nachbarhaus desselben Accounts, und die Zeilenrichtlinie trennt die
+ * Haeuser nicht.
+ *
+ * `assigned_to` bleibt unberuehrt: ein fremdes System kennt unsere
+ * Benutzer nicht und soll eine Zuteilung am Bildschirm nicht loeschen.
+ */
+async function setzeJeZimmernummer(
+  req: FastifyRequest, propertyId: number,
+  items: Array<{ roomCode: string; status: HousekeepingState }>, principal: Principal
+): Promise<{ updated: number }> {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw Errors.validation({ items: ['field.atLeastOneRoom'] })
+  }
+  if (items.length > STATUS_MAX_ZIMMER) throw Errors.rangeTooLarge(STATUS_MAX_ZIMMER)
+  for (const i of items) {
+    if (typeof i !== 'object' || i === null
+        || typeof i.roomCode !== 'string' || i.roomCode.trim() === '') {
+      throw Errors.validation({ roomCode: ['field.required'] })
+    }
+    if (!STATES.includes(i.status)) {
+      throw Errors.validation({ status: ['field.allowedValues'] },
+        { values: STATES.join(', ') })
+    }
+  }
+  const codes = items.map(i => i.roomCode.trim())
+  // Zweimal dasselbe Zimmer mit zwei Staenden: welcher gilt, waere Zufall.
+  if (new Set(codes).size !== codes.length) {
+    throw Errors.validation({ items: ['field.duplicateRoom'] })
+  }
+
+  return tx(req.pool, req, async client => {
+    const { rows } = await client.query<{ code: string }>(
+      `SELECT code FROM resource WHERE property_id = $1 AND code = ANY($2::text[])`,
+      [propertyId, codes])
+    if (rows.length !== codes.length) {
+      const bekannt = new Set(rows.map(r => r.code))
+      throw Errors.validation({ roomCode: ['field.unknownValues'] },
+        { values: codes.filter(c => !bekannt.has(c)).join(', ') })
+    }
+    const { rowCount } = await client.query(
+      `INSERT INTO housekeeping_status (property_id, resource_id, status, updated_by)
+       SELECT $1, r.id, i.status, $4
+         FROM unnest($2::text[], $3::text[]) AS i(code, status)
+         JOIN resource r ON r.property_id = $1 AND r.code = i.code
+       ON CONFLICT (resource_id) DO UPDATE SET
+         status = EXCLUDED.status,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = now()`,
+      [propertyId, codes, items.map(i => i.status), principal.userId])
+    return { updated: rowCount ?? 0 }
+  })
+}
 
 export function housekeepingRoutes(app: FastifyInstance): void {
   /**
@@ -78,25 +144,47 @@ export function housekeepingRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Reinigungsstand setzen, in zwei Formen.
+   *
+   * `resourceIds` mit **einem** Stand ist die Mehrfachmarkierung am
+   * Bildschirm. `items` traegt je Zimmer einen eigenen Stand und nennt das
+   * Zimmer bei seiner Nummer: so kommt der naechtliche Abgleich eines
+   * externen Reinigungssystems mit gemischten Staenden in **einem** Aufruf
+   * an, und das andere System muss unsere internen IDs nicht kennen
+   * (Adminpanel, Abschnitt 3.5 des API-Entwurfs). Beide Formen gelten alle
+   * oder keines.
+   */
   registerRoute(app, {
     method: 'PUT',
     url: '/v1/housekeeping/status',
     permission: 'housekeeping:write',
     propertyParam: 'propertyId',
-    summary: 'Zimmerstatus setzen, auch fuer mehrere Zimmer',
+    summary: 'Zimmerstatus setzen, auch fuer mehrere Zimmer und gemischt',
     handler: async (req) => {
       const body = req.body as {
-        propertyId: number; resourceIds: number[]; status: HousekeepingState
-        assignedTo?: number | null }
+        propertyId: number; resourceIds?: number[]; status?: HousekeepingState
+        assignedTo?: number | null
+        items?: Array<{ roomCode: string; status: HousekeepingState }> }
       const principal = req.principal as Principal
-      if (!STATES.includes(body.status)) {
+      if (body.items !== undefined) {
+        if (body.resourceIds !== undefined || body.status !== undefined) {
+          throw Errors.validation({ items: ['field.eitherRoomIdsOrItems'] })
+        }
+        return setzeJeZimmernummer(req, body.propertyId, body.items, principal)
+      }
+      if (body.status === undefined || !STATES.includes(body.status)) {
         throw Errors.validation({ status: ['field.allowedValues'] },
           { values: STATES.join(', ') })
       }
       if (!Array.isArray(body.resourceIds) || body.resourceIds.length === 0) {
         throw Errors.validation({ resourceIds: ['field.atLeastOneRoom'] })
       }
-      if (body.resourceIds.length > 500) throw Errors.rangeTooLarge(500)
+      if (body.resourceIds.length > STATUS_MAX_ZIMMER) {
+        throw Errors.rangeTooLarge(STATUS_MAX_ZIMMER)
+      }
+      const resourceIds = body.resourceIds
+      const status = body.status
 
       return tx(req.pool, req, async client => {
         // Die Zimmer muessen zur Property gehoeren. Die Zeilenrichtlinie
@@ -104,8 +192,8 @@ export function housekeepingRoutes(app: FastifyInstance): void {
         // Account kaeme ein fremdes Zimmer sonst durch.
         const gueltig = await client.query<{ id: number }>(
           `SELECT id FROM resource WHERE property_id = $1 AND id = ANY($2::bigint[])`,
-          [body.propertyId, body.resourceIds])
-        if (gueltig.rowCount !== body.resourceIds.length) {
+          [body.propertyId, resourceIds])
+        if (gueltig.rowCount !== resourceIds.length) {
           throw Errors.notFound('res.room')
         }
         const { rowCount } = await client.query(
@@ -117,9 +205,9 @@ export function housekeepingRoutes(app: FastifyInstance): void {
              assigned_to = EXCLUDED.assigned_to,
              updated_by = EXCLUDED.updated_by,
              updated_at = now()`,
-          [body.propertyId, body.resourceIds, body.status,
+          [body.propertyId, resourceIds, status,
            body.assignedTo ?? null, principal.userId])
-        return { updated: rowCount ?? 0, status: body.status }
+        return { updated: rowCount ?? 0, status }
       })
     }
   })

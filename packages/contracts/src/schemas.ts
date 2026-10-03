@@ -128,6 +128,7 @@ export type SetupStatus = Static<typeof SetupStatus>
 
 export const AvailabilityDay = Type.Object({
   category_id: Type.Integer(),
+  category_code: Type.String(),
   date: Type.String(),
   capacity: Type.Integer(),
   sold: Type.Integer(),
