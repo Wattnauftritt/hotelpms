@@ -356,6 +356,17 @@ export const admin = {
       + 'here, no invitation reaches the customer.',
     tr: 'Davetler, parola bağlantıları, destek talepleri. Burada bir şey '
       + 'takılırsa müşteriye davet ulaşmaz.' },
+  'admin.health.noBrevoKey': {
+    de: 'BREVO_API_KEY fehlt in /opt/hotelpms/shared/env — es geht keine Post hinaus.',
+    en: 'BREVO_API_KEY is missing from /opt/hotelpms/shared/env — no mail goes out.',
+    tr: "BREVO_API_KEY /opt/hotelpms/shared/env içinde yok — hiçbir posta gönderilmiyor." },
+  'admin.health.noPlatformFrom': {
+    de: 'PLATFORM_EMAIL_FROM fehlt in /opt/hotelpms/shared/env — Einladungen und '
+      + 'Kennwort-Links bleiben liegen.',
+    en: 'PLATFORM_EMAIL_FROM is missing from /opt/hotelpms/shared/env — invitations '
+      + 'and password links stay queued.',
+    tr: 'PLATFORM_EMAIL_FROM /opt/hotelpms/shared/env içinde yok — davetler ve '
+      + 'parola bağlantıları kuyrukta kalır.' },
   'admin.health.lastError': {
     de: 'Letzter Fehler',
     en: 'Last error',

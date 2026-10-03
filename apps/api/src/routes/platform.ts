@@ -467,7 +467,19 @@ export function platformRoutes(app: FastifyInstance): void {
           emailsOldest: post.rows[0]!.oldest,
           emailsLastError: post.rows[0]!.last_error,
           deployment: offen === undefined ? null
-            : { id: offen.id, status: offen.status, stuck: haengt }
+            : { id: offen.id, status: offen.status, stuck: haengt },
+          /*
+           * Ob der Versand eingerichtet ist. API und Worker lesen dieselbe
+           * Umgebungsdatei (ops/systemd), also sagt die Umgebung der API,
+           * was der Worker beim letzten Start gesehen hat. Ohne das hiess
+           * "Einladung kommt nicht an" bisher: auf die Maschine, Datei lesen.
+           * Vom Schluessel nur, ob er da ist; die Absenderadresse ist
+           * oeffentlich, sie steht in jeder Einladung.
+           */
+          mailSetup: {
+            brevoKey: (process.env.BREVO_API_KEY ?? '') !== '',
+            platformFrom: process.env.PLATFORM_EMAIL_FROM || null
+          }
         },
         accounts: rows.rows.map(z => ({
           accountId: z.account_id,
