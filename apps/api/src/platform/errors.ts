@@ -110,6 +110,9 @@ export const Errors = {
   rangeTooLarge: (max: number) =>
     new AppError(422, 'urn:staygrid:range_too_large', 'error.rangeTooLarge',
       'error.rangeTooLarge.detail', undefined, { max }),
+  rangeTooLargeMonths: (max: number) =>
+    new AppError(422, 'urn:staygrid:range_too_large', 'error.rangeTooLarge',
+      'error.rangeTooLarge.months', undefined, { max }),
   idempotencyMismatch: () =>
     new AppError(422, 'urn:staygrid:idempotency_mismatch', 'error.idempotencyMismatch',
       'error.idempotencyMismatch.detail'),
