@@ -871,7 +871,8 @@ function Zustand(): JSX.Element {
   }
 
   const pf = q.data.platform
-  const plattformHaengt = pf.emailsPending > 0 || pf.emailsFailed > 0
+  const versandFehlt = !pf.mailSetup.brevoKey || pf.mailSetup.platformFrom === null
+  const plattformHaengt = pf.emailsPending > 0 || pf.emailsFailed > 0 || versandFehlt
     || (pf.deployment !== null && pf.deployment.stuck)
 
   const auffaellig = q.data.accounts.filter(a =>
@@ -889,6 +890,14 @@ function Zustand(): JSX.Element {
         <div className="text-sm border-t border-neutral-100 pt-2 space-y-1">
           <div className="font-medium">{t('admin.health.platformMail')}</div>
           <p className="text-xs text-neutral-600">{t('admin.health.platformMailHint')}</p>
+          {/* Ohne Terminal auf der Maschine die erste Frage: ist der Versand
+              ueberhaupt eingerichtet? */}
+          {!pf.mailSetup.brevoKey && (
+            <p className="text-xs text-red-800">{t('admin.health.noBrevoKey')}</p>
+          )}
+          {pf.mailSetup.platformFrom === null && (
+            <p className="text-xs text-red-800">{t('admin.health.noPlatformFrom')}</p>
+          )}
           <div className="text-xs text-neutral-700 flex flex-wrap gap-x-3">
             {pf.emailsPending > 0 && <span>{t('admin.health.emails')}: {pf.emailsPending}</span>}
             {pf.emailsFailed > 0 && (

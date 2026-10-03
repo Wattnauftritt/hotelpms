@@ -152,6 +152,8 @@ export interface PlatformHealthGlobal {
   /** Die Meldung des Mailanbieters zum letzten Fehlschlag. */
   emailsLastError: string | null
   deployment: { id: number; status: string; stuck: boolean } | null
+  /** Was der Server fuer den Versand eingetragen hat; der Schluessel nur als Ja/Nein. */
+  mailSetup: { brevoKey: boolean; platformFrom: string | null }
 }
 
 export interface SupportAuditRow {

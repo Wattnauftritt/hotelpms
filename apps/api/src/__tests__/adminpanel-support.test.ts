@@ -490,6 +490,30 @@ describe('Betriebszustand der Plattform', () => {
     expect(d.platform.emailsLastError).toBe('Brevo: 401')
   })
 
+  it('sagt, ob der Versand auf dem Server eingerichtet ist', async () => {
+    const vorher = { key: process.env.BREVO_API_KEY, from: process.env.PLATFORM_EMAIL_FROM }
+    type Zustand = { platform: { mailSetup: { brevoKey: boolean; platformFrom: string | null } } }
+    try {
+      delete process.env.BREVO_API_KEY
+      delete process.env.PLATFORM_EMAIL_FROM
+      const ohne = (await get('/v1/platform/health', admin.sessionId)).json() as Zustand
+      expect(ohne.platform.mailSetup).toEqual({ brevoKey: false, platformFrom: null })
+
+      process.env.BREVO_API_KEY = 'xkeysib-geheim'
+      process.env.PLATFORM_EMAIL_FROM = 'mail@staygrid.cloud'
+      const r = await get('/v1/platform/health', admin.sessionId)
+      expect((r.json() as Zustand).platform.mailSetup)
+        .toEqual({ brevoKey: true, platformFrom: 'mail@staygrid.cloud' })
+      // Der Schluessel selbst verlaesst die Maschine nie.
+      expect(r.body).not.toContain('xkeysib')
+    } finally {
+      if (vorher.key === undefined) delete process.env.BREVO_API_KEY
+      else process.env.BREVO_API_KEY = vorher.key
+      if (vorher.from === undefined) delete process.env.PLATFORM_EMAIL_FROM
+      else process.env.PLATFORM_EMAIL_FROM = vorher.from
+    }
+  })
+
   it('erkennt eine haengende Ausrollung', async () => {
     await owner.query(
       `INSERT INTO deploy_request (requested_by, target_ref, status, started_at)
