@@ -141,6 +141,10 @@ const M = {
     de: 'Hoechstens {max} Tage je Anfrage.',
     en: 'At most {max} days per request.',
     tr: 'Sorgu başına en fazla {max} gün.' },
+  'error.rangeTooLarge.months': {
+    de: 'Hoechstens {max} Monate je Anfrage.',
+    en: 'At most {max} months per request.',
+    tr: 'Sorgu başına en fazla {max} ay.' },
   'error.idempotencyMismatch': {
     de: 'Idempotenzschluessel wiederverwendet',
     en: 'Idempotency key reused',
