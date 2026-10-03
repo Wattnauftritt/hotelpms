@@ -48,8 +48,13 @@ export interface PlatformAccountUser {
   /** Dieselben Rollen strukturiert, fuer den Editor. */
   accountRoles: string[]
   propertyRoles: Array<{ propertyId: number; code: string; roleKeys: string[] }>
-  /** Die letzte Einladung oder Ruecksetzung -- ob sie ankam. */
-  lastMail: { kind: string; status: string; at: string; error: string | null } | null
+  /**
+   * Die letzte Einladung oder Ruecksetzung -- ob sie ankam. `stuck`: nie
+   * versucht und seit Minuten faellig, der Worker versendet nicht.
+   */
+  lastMail: {
+    kind: string; status: string; at: string; error: string | null; stuck: boolean
+  } | null
 }
 
 export interface PlatformStaff {

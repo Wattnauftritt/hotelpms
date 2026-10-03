@@ -334,16 +334,41 @@ async function tick(): Promise<void> {
   }
 }
 
+/*
+ * Zugangspost hat ihren eigenen, kurzen Takt. Im Fuenf-Minuten-Tick wartete
+ * eine Einladung bis zu fuenf Minuten, und wer am Telefon "ist unterwegs"
+ * hoert und nach einer Minute nachsieht, findet nichts und klickt erneut.
+ * Doppelt beansprucht wird nichts: claim() sperrt mit SKIP LOCKED und setzt
+ * eine Frist, der Tick und dieser Takt duerfen sich ueberschneiden. Der
+ * Merker verhindert nur, dass ein langsamer Anbieter Laeufe aufstaut.
+ */
+const PLATFORM_EMAIL_INTERVAL_MS = 15_000
+let platformEmailsLaeuft = false
+async function platformEmailsTakt(): Promise<void> {
+  if (platformEmailsLaeuft) return
+  platformEmailsLaeuft = true
+  try {
+    await platformEmails()
+  } catch (e) {
+    log.error({ err: e }, 'Zustellung der Zugangspost fehlgeschlagen')
+  } finally {
+    platformEmailsLaeuft = false
+  }
+}
+
 async function main(): Promise<void> {
   log.info('hotelpms Worker gestartet')
   await tick()
   const interval = setInterval(
     () => { void tick().catch(e => log.error({ err: e }, 'Tick fehlgeschlagen')) },
     5 * 60_000)
+  const mailInterval = setInterval(() => { void platformEmailsTakt() },
+    PLATFORM_EMAIL_INTERVAL_MS)
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       log.info('Sanftes Herunterfahren')
       clearInterval(interval)
+      clearInterval(mailInterval)
       void Promise.all([pool.end(), admin.end()]).then(() => process.exit(0))
     })
   }
