@@ -26,7 +26,7 @@ import { Fehler, Laedt } from './Shell.tsx'
  * und `attributes` am Zimmer ist das, woran später die Zimmerzuweisung hängt.
  */
 
-const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 function Feld(
   { label, hint, children }:
@@ -104,12 +104,12 @@ function GruppeAendern(
       </Feld>
       <div className="flex items-start gap-2">
         <button type="submit" disabled={!online || aendern.isPending}
-                className="mt-4 px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="mt-4 px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('common.save')}
         </button>
         <button type="button" onClick={onClose}
-                className="mt-4 px-3 py-1.5 text-sm rounded border border-neutral-300">
+                className="mt-4 px-3 py-1.5 text-sm rounded-sm border border-neutral-300">
           {t('common.cancel')}
         </button>
       </div>
@@ -142,19 +142,19 @@ function Gruppe(
           )}
         </span>
         {!gruppe.active && (
-          <span className="text-xs px-1.5 py-0.5 rounded border border-neutral-300
+          <span className="text-xs px-1.5 py-0.5 rounded-sm border border-neutral-300
                            bg-neutral-100 text-neutral-600">
             {t('master.inactive')}
           </span>
         )}
         <button onClick={() => setOffen(o => !o)}
-                className="px-3 py-1 text-sm rounded border border-neutral-300
+                className="px-3 py-1 text-sm rounded-sm border border-neutral-300
                            hover:bg-neutral-50">
           {t(offen ? 'master.close' : 'master.edit')}
         </button>
         <button onClick={() => stilllegen.mutate({ id: gruppe.id, active: !gruppe.active })}
                 disabled={!online || stilllegen.isPending}
-                className="px-3 py-1 text-sm rounded border border-neutral-300
+                className="px-3 py-1 text-sm rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t(gruppe.active ? 'master.deactivate' : 'master.activate')}
         </button>
@@ -219,12 +219,12 @@ function ZimmerAendern(
       </div>
       <div className="sm:col-span-4 flex gap-2">
         <button type="submit" disabled={!online || aendern.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('common.save')}
         </button>
         <button type="button" onClick={onClose}
-                className="px-3 py-1.5 text-sm rounded border border-neutral-300">
+                className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300">
           {t('common.cancel')}
         </button>
       </div>
@@ -253,25 +253,25 @@ function Zimmer(
         <span className="w-16 text-neutral-500">{zimmer.floor ?? ''}</span>
         <span className="grow text-neutral-500">{zimmer.attributes.join(', ')}</span>
         {zimmer.outOfOrderBlocks > 0 && (
-          <span className="text-xs px-1.5 py-0.5 rounded border border-amber-300
+          <span className="text-xs px-1.5 py-0.5 rounded-sm border border-amber-300
                            bg-amber-50 text-amber-900">
             {t('maint.blocked')}
           </span>
         )}
         {!zimmer.active && (
-          <span className="text-xs px-1.5 py-0.5 rounded border border-neutral-300
+          <span className="text-xs px-1.5 py-0.5 rounded-sm border border-neutral-300
                            bg-neutral-100 text-neutral-600">
             {t('master.inactive')}
           </span>
         )}
         <button onClick={() => setOffen(o => !o)}
-                className="px-3 py-1 text-sm rounded border border-neutral-300
+                className="px-3 py-1 text-sm rounded-sm border border-neutral-300
                            hover:bg-neutral-50">
           {t(offen ? 'master.close' : 'master.edit')}
         </button>
         <button onClick={() => stilllegen.mutate({ id: zimmer.id, active: !zimmer.active })}
                 disabled={!online || stilllegen.isPending}
-                className="px-3 py-1 text-sm rounded border border-neutral-300
+                className="px-3 py-1 text-sm rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t(zimmer.active ? 'master.deactivate' : 'master.activate')}
         </button>
@@ -318,7 +318,7 @@ export function Stammdaten({ propertyId }: { propertyId: number }): JSX.Element 
     || r.attributes.some(a => a.includes(suchbegriff)))
 
   return (
-    <section className="bg-white border border-neutral-200 rounded">
+    <section className="bg-white border border-neutral-200 rounded-sm">
       <div className="px-4 py-2 border-b border-neutral-200 flex flex-wrap
                       items-center gap-3">
         <h2 className="text-sm font-medium">{t('master.title')}</h2>
@@ -350,7 +350,7 @@ export function Stammdaten({ propertyId }: { propertyId: number }): JSX.Element 
         <span className="text-xs font-medium text-neutral-600">{t('master.rooms')}</span>
         <input value={suche} onChange={e => setSuche(e.target.value)}
                placeholder={t('master.filter')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm w-48" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm w-48" />
       </div>
       <ul>
         {gefundeneZimmer.slice(0, ZIMMER_MAX).map(r => (

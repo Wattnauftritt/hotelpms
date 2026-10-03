@@ -508,13 +508,13 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                     <td className="pr-2">
                       <input type="date" value={von} disabled={abruf !== null}
                              onChange={e => tagSetzen(z.resourceId, 'arrival', e.target.value)}
-                             className="border border-neutral-300 rounded px-2 py-1 text-sm
+                             className="border border-neutral-300 rounded-sm px-2 py-1 text-sm
                                         disabled:bg-neutral-100 disabled:text-neutral-500" />
                     </td>
                     <td className="pr-2">
                       <input type="date" value={bis} disabled={abruf !== null}
                              onChange={e => tagSetzen(z.resourceId, 'departure', e.target.value)}
-                             className="border border-neutral-300 rounded px-2 py-1 text-sm
+                             className="border border-neutral-300 rounded-sm px-2 py-1 text-sm
                                         disabled:bg-neutral-100 disabled:text-neutral-500" />
                     </td>
                     <td className={`tabular-nums text-right pr-2

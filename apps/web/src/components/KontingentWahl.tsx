@@ -66,7 +66,7 @@ export function KontingentWahl({ propertyId, categoryId, gewaehlt, benoetigt, on
       <select value={gewaehlt?.blockRef ?? ''}
               onChange={e => onChange(
                 passende.find(b => b.blockRef === e.target.value) ?? null)}
-              className="w-full border border-neutral-300 rounded px-2 py-1 text-sm">
+              className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm">
         <option value="">{t('pickup.freeSale')}</option>
         {passende.map(b => (
           <option key={b.blockRef} value={b.blockRef}>

@@ -33,14 +33,14 @@ export function Rechnungsempfaenger({ folioRef, recipient, geschlossen }: {
   const [auf, setAuf] = useState(false)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded">
+    <section className="bg-white border border-neutral-200 rounded-sm">
       <div className="flex flex-wrap items-baseline gap-2 px-3 py-2">
         <span className="text-sm font-medium">{t('emp.title')}</span>
         {recipient.kind === 'none'
           ? <span className="text-sm text-amber-800">{t('emp.none')}</span>
           : <>
               <span className="text-sm">{recipient.name}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+              <span className="text-xs px-1.5 py-0.5 rounded-sm bg-neutral-100 text-neutral-600">
                 {t(recipient.kind === 'company' ? 'emp.company' : 'emp.guest')}
               </span>
             </>}
@@ -50,7 +50,7 @@ export function Rechnungsempfaenger({ folioRef, recipient, geschlossen }: {
         <div className="grow" />
         {!geschlossen && (
           <button onClick={() => setAuf(v => !v)}
-                  className="text-xs px-2 py-1 border border-neutral-300 rounded">
+                  className="text-xs px-2 py-1 border border-neutral-300 rounded-sm">
             {auf ? t('emp.close') : t('emp.change')}
           </button>
         )}
@@ -121,7 +121,7 @@ function Firma({ folioRef, recipient }: {
         <span className="block text-xs text-neutral-600">{t('emp.companyPick')}</span>
         <input value={begriff} onChange={e => setBegriff(e.target.value)}
                placeholder={t('emp.companySearch')}
-               className="mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </label>
       {treffer.data !== undefined && begriff.trim().length >= 2 && (
         <ul className="mt-1 max-h-40 overflow-y-auto text-sm divide-y divide-neutral-100">

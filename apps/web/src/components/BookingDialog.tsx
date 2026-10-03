@@ -214,7 +214,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
         */}
       <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
         <Abschnitt titel={t('booking.sectionStay')}>
-          <div className="text-sm bg-neutral-50 rounded px-3 py-2">
+          <div className="text-sm bg-neutral-50 rounded-sm px-3 py-2">
             <div className="text-xs text-neutral-500">{t('booking.category')}</div>
             <div>{roomCode !== undefined ? `${roomCode} · ` : ''}{categoryName}</div>
           </div>
@@ -319,12 +319,12 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
             <Feld label={t('booking.adults')}>
               <input value={erwachsene} onChange={e => setErwachsene(e.target.value)}
                      inputMode="numeric" placeholder="—"
-                     className="border border-neutral-300 rounded px-3 py-2 text-sm w-24" />
+                     className="border border-neutral-300 rounded-sm px-3 py-2 text-sm w-24" />
             </Feld>
             <Feld label={t('booking.children')}>
               <input value={kinder} onChange={e => setKinder(e.target.value)}
                      inputMode="numeric" placeholder="0"
-                     className="border border-neutral-300 rounded px-3 py-2 text-sm w-24" />
+                     className="border border-neutral-300 rounded-sm px-3 py-2 text-sm w-24" />
             </Feld>
           </div>
         </Abschnitt>

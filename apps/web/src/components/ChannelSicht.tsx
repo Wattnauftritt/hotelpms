@@ -32,7 +32,7 @@ export function ChannelSicht({ propertyId, von, bis, belegung }: {
   const [auf, setAuf] = useState(false)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded">
+    <section className="bg-white border border-neutral-200 rounded-sm">
       <button onClick={() => setAuf(v => !v)}
               className="w-full flex items-center gap-2 px-3 py-2 text-left">
         <span className="text-sm font-medium">{t('cv.title')}</span>
@@ -138,7 +138,7 @@ function Inhalt({ propertyId, von, bis, belegung }: {
                   {/* Das Datum ist der Knopf zu den Rohdaten: derselbe Tag,
                       wie er über die Leitung geht. */}
                   <button onClick={() => setTag(vorher => vorher === d ? null : d)}
-                          className={`px-1 rounded ${tag === d ? 'bg-neutral-900 text-white'
+                          className={`px-1 rounded-sm ${tag === d ? 'bg-neutral-900 text-white'
                                                                : 'hover:bg-neutral-100'}`}>
                     {formatDate(d, locale).slice(0, 5)}
                   </button>
@@ -210,14 +210,14 @@ function Inhalt({ propertyId, von, bis, belegung }: {
       <p className="text-xs text-neutral-500">{t('cv.raw.hint')}</p>
 
       {tag !== null && (
-        <div className="rounded border border-neutral-200 bg-neutral-50 p-2">
+        <div className="rounded-sm border border-neutral-200 bg-neutral-50 p-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium">
               {t('cv.raw')}: {formatDate(tag, locale)}
             </span>
             <div className="grow" />
             <button onClick={() => setTag(null)}
-                    className="text-xs px-2 py-0.5 border border-neutral-300 rounded">
+                    className="text-xs px-2 py-0.5 border border-neutral-300 rounded-sm">
               {t('cv.raw.close')}
             </button>
           </div>

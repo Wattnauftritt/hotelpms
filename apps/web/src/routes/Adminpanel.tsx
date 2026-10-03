@@ -105,9 +105,9 @@ const MAIL_ZUSTAND: Record<string, TextKey> = {
   failed: 'admin.mail.failed'
 }
 
-const FELD = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
-const KNOPF = 'text-sm px-3 py-1.5 rounded bg-neutral-900 text-white disabled:bg-neutral-300'
-const KNOPF_KLEIN = 'text-xs px-2 py-1 border border-neutral-300 rounded disabled:text-neutral-400'
+const FELD = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
+const KNOPF = 'text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300'
+const KNOPF_KLEIN = 'text-xs px-2 py-1 border border-neutral-300 rounded-sm disabled:text-neutral-400'
 const UEBERSCHRIFT = 'text-xs font-medium text-neutral-600 uppercase tracking-wide'
 
 function Abzeichen({ k, ton }: { k: TextKey; ton: 'gut' | 'warn' | 'still' }): JSX.Element {
@@ -115,14 +115,14 @@ function Abzeichen({ k, ton }: { k: TextKey; ton: 'gut' | 'warn' | 'still' }): J
   const farbe = ton === 'gut' ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
     : ton === 'warn' ? 'bg-red-50 text-red-900 border-red-200'
       : 'bg-neutral-100 text-neutral-700 border-neutral-200'
-  return <span className={`text-xs px-1.5 py-0.5 rounded border ${farbe}`}>{t(k)}</span>
+  return <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${farbe}`}>{t(k)}</span>
 }
 
 function Erfolg({ k, params }: { k: TextKey; params?: Record<string, string | number> }): JSX.Element {
   const t = useT()
   return (
     <p className="text-sm text-green-900 bg-green-50 border border-green-200
-                  rounded px-2 py-1">{t(k, params)}</p>
+                  rounded-sm px-2 py-1">{t(k, params)}</p>
   )
 }
 
@@ -165,7 +165,7 @@ function KundenListe({ onOpen }: { onOpen: (id: number) => void }): JSX.Element 
     <div className="space-y-2">
       <input value={filter} onChange={e => setFilter(e.target.value)}
              placeholder={t('admin.accounts.filter')} className={FELD} />
-      <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded bg-white">
+      <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-sm bg-white">
         {treffer.map(a => (
           <li key={a.id}>
             <button type="button" onClick={() => onOpen(a.id)}
@@ -583,7 +583,7 @@ function KundeDetail({ id, onClose, darfSupport }: {
   }
 
   return (
-    <section className="space-y-3 border border-neutral-200 rounded p-4 bg-white">
+    <section className="space-y-3 border border-neutral-200 rounded-sm p-4 bg-white">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="text-sm font-medium">{account.name}</h2>
@@ -592,7 +592,7 @@ function KundeDetail({ id, onClose, darfSupport }: {
           )}
         </div>
         <button type="button" onClick={onClose}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           {t('booking.close')}
         </button>
       </div>
@@ -608,7 +608,7 @@ function KundeDetail({ id, onClose, darfSupport }: {
         {account.status === 'active' ? (
           <button type="button" disabled={setzen.isPending}
                   onClick={() => wechseln('suspended', 'admin.accounts.suspendConfirm')}
-                  className="text-sm px-3 py-1.5 rounded border border-red-300
+                  className="text-sm px-3 py-1.5 rounded-sm border border-red-300
                              text-red-800 disabled:text-neutral-400">
             {t('admin.accounts.suspend')}
           </button>
@@ -621,7 +621,7 @@ function KundeDetail({ id, onClose, darfSupport }: {
         {account.status !== 'archived' && (
           <button type="button" disabled={setzen.isPending}
                   onClick={() => wechseln('archived', 'admin.accounts.archiveConfirm')}
-                  className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                  className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                              disabled:text-neutral-400">
             {t('admin.accounts.archive')}
           </button>
@@ -693,7 +693,7 @@ function KundeAnlegen(): JSX.Element {
   ]
 
   return (
-    <form className="space-y-3 border border-neutral-200 rounded p-4 bg-white"
+    <form className="space-y-3 border border-neutral-200 rounded-sm p-4 bg-white"
           onSubmit={e => {
             e.preventDefault()
             anlegen.mutate({ ...f, isTraining: uebung },
@@ -744,7 +744,7 @@ function Personal({ eigeneId }: { eigeneId: number | null }): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <form className="space-y-3 border border-neutral-200 rounded p-4 bg-white"
+      <form className="space-y-3 border border-neutral-200 rounded-sm p-4 bg-white"
             onSubmit={e => {
               e.preventDefault()
               anlegen.mutate({ email: email.trim(), displayName: name.trim(),
@@ -790,7 +790,7 @@ function Personal({ eigeneId }: { eigeneId: number | null }): JSX.Element {
       {q.isError && <Fehler error={q.error} />}
       {q.data === undefined ? <Laedt /> : (
         <ul className="divide-y divide-neutral-100 border border-neutral-200
-                       rounded bg-white">
+                       rounded-sm bg-white">
           {q.data.staff.map(p => (
             <li key={p.id} className="px-3 py-2 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-sm font-medium">{p.displayName}</span>
@@ -807,7 +807,7 @@ function Personal({ eigeneId }: { eigeneId: number | null }): JSX.Element {
               ) : (
                 <select value={p.roleKey ?? ''} disabled={rolleSetzen.isPending}
                         onChange={e => rolleSetzen.mutate({ id: p.id, roleKey: e.target.value })}
-                        className="text-xs border border-neutral-300 rounded px-1 py-0.5">
+                        className="text-xs border border-neutral-300 rounded-sm px-1 py-0.5">
                   {(q.data?.roles ?? []).map(r => (
                     <option key={r} value={r}>
                       {ROLLE_KURZ[r] !== undefined ? t(ROLLE_KURZ[r]!) : r}
@@ -876,7 +876,7 @@ function Zustand(): JSX.Element {
     || alt(a.nightAuditLast))
 
   return (
-    <section className="space-y-3 border border-neutral-200 rounded p-4 bg-white">
+    <section className="space-y-3 border border-neutral-200 rounded-sm p-4 bg-white">
       <h2 className="text-sm font-medium">{t('admin.health.title')}</h2>
       <p className="text-xs text-neutral-600">{t('admin.health.hint')}</p>
 
@@ -955,7 +955,7 @@ function Aufsicht(): JSX.Element {
   const t = useT()
   const q = useSupportAudit(true)
   return (
-    <section className="space-y-2 border border-neutral-200 rounded p-4 bg-white">
+    <section className="space-y-2 border border-neutral-200 rounded-sm p-4 bg-white">
       <h2 className="text-sm font-medium">{t('admin.audit.title')}</h2>
       <p className="text-xs text-neutral-600">{t('admin.audit.hint')}</p>
       {q.isError && <Fehler error={q.error} />}
@@ -1021,7 +1021,7 @@ function AbsenderdomainFreigaben(): JSX.Element {
       <ul className="space-y-2">
         {zeigen.map(r => (
           <li key={r.propertyId}
-              className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+              className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="font-mono text-sm">
                 {r.mode === 'relay' ? `${r.localPart}@${r.domain}` : r.domain}
@@ -1029,7 +1029,7 @@ function AbsenderdomainFreigaben(): JSX.Element {
               <span className="text-sm text-neutral-700">{r.propertyName}</span>
               <span className="text-xs text-neutral-500">{r.accountName}</span>
               {r.status !== 'requested' && (
-                <span className="text-xs rounded bg-neutral-100 px-1.5 py-0.5">
+                <span className="text-xs rounded-sm bg-neutral-100 px-1.5 py-0.5">
                   {r.status}
                 </span>
               )}
@@ -1051,7 +1051,7 @@ function AbsenderdomainFreigaben(): JSX.Element {
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" disabled={!online || freigeben.isPending}
                         onClick={() => freigeben.mutate(r.propertyId)}
-                        className="text-sm px-3 py-1.5 rounded bg-neutral-900
+                        className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900
                                    text-white disabled:opacity-40">
                   {t('admin.domain.approve')}
                 </button>
@@ -1059,7 +1059,7 @@ function AbsenderdomainFreigaben(): JSX.Element {
                        placeholder={t('admin.domain.rejectReason')}
                        onChange={e => setGruende(
                          g => ({ ...g, [r.propertyId]: e.target.value }))}
-                       className="border border-neutral-300 rounded px-2 py-1
+                       className="border border-neutral-300 rounded-sm px-2 py-1
                                   text-sm grow min-w-64" />
                 {/* Ablehnen erst mit Grund. Der Knopf bleibt sichtbar und
                     gesperrt, statt zu erscheinen, wenn jemand tippt: ein
@@ -1071,7 +1071,7 @@ function AbsenderdomainFreigaben(): JSX.Element {
                           propertyId: r.propertyId,
                           note: (gruende[r.propertyId] ?? '').trim()
                         })}
-                        className="text-sm px-3 py-1.5 rounded border
+                        className="text-sm px-3 py-1.5 rounded-sm border
                                    border-neutral-300 disabled:opacity-40">
                   {t('admin.domain.reject')}
                 </button>

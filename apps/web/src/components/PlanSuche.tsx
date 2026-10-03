@@ -48,7 +48,7 @@ const WARTEN_MS = 6000
  * beim Ueberfahren traegt und sonst die Reihenfolge im Stylesheet entschiede,
  * welcher gewinnt.
  */
-const HERVORHEBUNG = ['!ring-4', '!ring-amber-400', 'ring-offset-2', 'z-30', 'animate-pulse']
+const HERVORHEBUNG = ['ring-4!', 'ring-amber-400!', 'ring-offset-2', 'z-30', 'animate-pulse']
 
 type Eintrag =
   | { art: 'reservierung'; hit: SearchReservationHit }
@@ -216,10 +216,10 @@ export function PlanSuche({ propertyId, von, bis, onVon, onOeffnen }: {
              aria-activedescendant={zeigen && eintraege[aktiv] !== undefined
                ? optionId(aktiv) : undefined}
              data-plansuche
-             className="w-56 border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-56 border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       {zeigen && (
-        <div className="absolute left-0 top-full mt-1 z-40 w-[28rem] max-w-[90vw]
-                        bg-white border border-neutral-200 rounded shadow-lg">
+        <div className="absolute left-0 top-full mt-1 z-40 w-md max-w-[90vw]
+                        bg-white border border-neutral-200 rounded-sm shadow-lg">
           {q.isError && (
             <div className="px-3 py-2 text-xs text-red-800">{t('error.title')}</div>
           )}

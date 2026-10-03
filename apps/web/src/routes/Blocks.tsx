@@ -34,8 +34,8 @@ function Fortschritt({ block }: { block: Block }): JSX.Element {
         <span className="text-2xl font-semibold tabular-nums">{block.remaining}</span>
         <span className="text-sm text-neutral-500">{t('block.remaining')}</span>
       </div>
-      <div className="mt-1 h-1.5 w-full rounded bg-neutral-200" role="presentation">
-        <div className="h-1.5 rounded bg-neutral-900" style={{ width: `${anteil}%` }} />
+      <div className="mt-1 h-1.5 w-full rounded-sm bg-neutral-200" role="presentation">
+        <div className="h-1.5 rounded-sm bg-neutral-900" style={{ width: `${anteil}%` }} />
       </div>
       <div className="mt-1 text-xs text-neutral-500 tabular-nums">
         {block.pickedUp} / {block.quantity} {t('block.pickedUp')}
@@ -53,12 +53,12 @@ function Karte(
   const freigeben = useReleaseBlock(propertyId)
 
   return (
-    <li className="rounded border border-neutral-200 bg-white p-3">
+    <li className="rounded-sm border border-neutral-200 bg-white p-3">
       <div className="flex flex-wrap items-start gap-4">
         <div className="grow">
           <div className="flex items-center gap-2">
             <span className="font-medium">{block.name}</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded border ${
+            <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${
               block.status === 'active'
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
                 : 'border-neutral-300 bg-neutral-100 text-neutral-600'}`}>
@@ -85,7 +85,7 @@ function Karte(
               if (confirm(t('block.releaseConfirm'))) freigeben.mutate(block.blockRef)
             }}
             disabled={!online || freigeben.isPending}
-            className="text-sm px-3 py-1.5 rounded border border-neutral-300
+            className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                        hover:bg-neutral-50 disabled:opacity-40">
             {t('block.release')}
           </button>
@@ -146,41 +146,41 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
 
   return (
     <form onSubmit={absenden}
-          className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+          className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="font-medium">{t('block.new')}</div>
       <div className="flex flex-wrap gap-3">
         <label className="text-sm">
           <div className="text-neutral-600">{t('block.name')}</div>
           <input value={name} onChange={e => setName(e.target.value)} required
-                 className="border border-neutral-300 rounded px-2 py-1 w-56" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-56" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.category')}</div>
           <select value={gewaehlt} onChange={e => setCategoryId(Number(e.target.value))}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {kats.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
           </select>
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.from')}</div>
           <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.to')}</div>
           <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('block.quantity')}</div>
           <input type="number" min={1} value={quantity}
                  onChange={e => setQuantity(Number(e.target.value))}
-                 className="border border-neutral-300 rounded px-2 py-1 w-24" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-24" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('block.releaseDate')}</div>
           <input type="date" value={releaseDate} onChange={e => setReleaseDate(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
       </div>
 
@@ -193,7 +193,7 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
       {anlegen.isError && <Fehler error={anlegen.error} />}
 
       <button type="submit" disabled={!online || !bereit || anlegen.isPending}
-              className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                          disabled:opacity-40">
         {t('common.save')}
       </button>

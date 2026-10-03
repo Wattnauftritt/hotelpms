@@ -31,7 +31,7 @@ export function Today({ propertyId, onFolio }: {
       <div className="flex items-center gap-3">
         <DatumsWahl value={datum} onChange={setDatum} />
         <button onClick={() => setDatum(today())}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           {t('common.today')}
         </button>
         {aktion.isError && <Fehler error={aktion.error} />}
@@ -45,7 +45,7 @@ export function Today({ propertyId, onFolio }: {
               <div className="flex items-center gap-2">
                 {!r.registered && (
                   <span title={t('today.registered')}
-                        className="text-[11px] px-1 rounded bg-amber-100 text-amber-800">
+                        className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-800">
                     ⚠ {t('today.registered')}
                   </span>
                 )}
@@ -54,7 +54,7 @@ export function Today({ propertyId, onFolio }: {
                             || r.status === 'InHouse'}
                   onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-in' })}
                   title={r.roomCode === null ? t('today.needsRoom') : undefined}
-                  className="text-xs px-2 py-1 rounded bg-neutral-900 text-white
+                  className="text-xs px-2 py-1 rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
                   {t('today.checkin')}
                 </button>
@@ -70,7 +70,7 @@ export function Today({ propertyId, onFolio }: {
                    onFolio={r.folioRef === null ? undefined : () => onFolio(r.folioRef!)}>
               <div className="flex items-center gap-2">
                 {r.balanceCent !== null && r.balanceCent !== 0 && (
-                  <span className={`text-[11px] px-1 rounded tabular-nums
+                  <span className={`text-[11px] px-1 rounded-sm tabular-nums
                                     ${r.balanceCent > 0
                                       ? 'bg-red-100 text-red-800'
                                       : 'bg-emerald-100 text-emerald-800'}`}
@@ -81,7 +81,7 @@ export function Today({ propertyId, onFolio }: {
                 <button
                   disabled={!online || aktion.isPending || r.status === 'CheckedOut'}
                   onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-out' })}
-                  className="text-xs px-2 py-1 rounded bg-neutral-900 text-white
+                  className="text-xs px-2 py-1 rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
                   {t('today.checkout')}
                 </button>
@@ -116,7 +116,7 @@ function Spalte({ titel, children }: { titel: string; children: React.ReactNode 
   const t = useT()
   const leer = Array.isArray(children) && children.length === 0
   return (
-    <section className="bg-white border border-neutral-200 rounded">
+    <section className="bg-white border border-neutral-200 rounded-sm">
       <h2 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">{titel}</h2>
       <div className="divide-y divide-neutral-100">
         {leer ? <p className="px-3 py-4 text-sm text-neutral-400">{t('common.none')}</p>

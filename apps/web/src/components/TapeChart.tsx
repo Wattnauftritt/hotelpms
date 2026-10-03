@@ -1059,7 +1059,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     }, [tagUnter, setDragState])
 
   return (
-    <div className="overflow-auto border border-neutral-200 rounded" ref={rasterRef}>
+    <div className="overflow-auto border border-neutral-200 rounded-sm" ref={rasterRef}>
       <div style={{ minWidth: LABEL_BREITE + tage.length * spalte }}>
         {/* Kopfzeile mit Tagen */}
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
@@ -1205,7 +1205,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                              * bestaetigt), und den zu ueberschreiben
                              * tauschte eine Information gegen eine andere.
                              */
-                            className={`absolute rounded px-1.5 text-xs leading-[30px]
+                            className={`absolute rounded-sm px-1.5 text-xs leading-[30px]
                                         text-white truncate text-left cursor-move
                                         ${FARBE[r.status] ?? 'bg-neutral-400'}
                                         ${dringlich(r.arrival)
@@ -1215,7 +1215,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                           Suiten nebeneinander, und beim Ziehen entscheidet
                           sich in einer Sekunde, wohin. */}
                       {gruppe !== undefined && (
-                        <span className="mr-1 px-1 rounded bg-black/25 tabular-nums">
+                        <span className="mr-1 px-1 rounded-sm bg-black/25 tabular-nums">
                           {gruppe.code}
                         </span>
                       )}
@@ -1342,13 +1342,13 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
           {/* Enter tut dasselbe; der Knopf ist der Weg fuer den, der das
               nicht weiss. Die Begruendung steht an `auswahlBuchen`. */}
           <button type="button" onClick={auswahlBuchen}
-                  className="px-3 py-1 rounded bg-white text-neutral-900 text-sm">
+                  className="px-3 py-1 rounded-sm bg-white text-neutral-900 text-sm">
             {auswahl.length === 1 ? t('booking.title') : t('plan.bookSelection')}
           </button>
           {/* Esc tut dasselbe; der Knopf ist der Weg fuer den, der das
               nicht weiss. */}
           <button type="button" onClick={() => setAuswahl(null)}
-                  className="px-2 py-1 rounded border border-white/40 text-sm">
+                  className="px-2 py-1 rounded-sm border border-white/40 text-sm">
             {t('plan.clearSelection')}
           </button>
         </div>
@@ -1442,9 +1442,9 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           <div key={i}
                style={{ ...p.balken(b.from_date, b.to_date), top: 4, height: ZEILE - 8 }}
                title={b.reason}
-               className="absolute rounded bg-status-blocked/60 px-1.5 text-xs
+               className="absolute rounded-sm bg-status-blocked/60 px-1.5 text-xs
                           leading-[30px] text-white truncate
-                          [background-image:repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]">
+                          bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]">
             {b.reason}
           </div>
         ))}
@@ -1484,7 +1484,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * am Balken sagte, dass er anfassbar ist. Eine
                      * Funktion, die niemand findet, ist keine.
                      */
-                    className={`absolute rounded px-1.5 text-xs leading-[30px] text-white
+                    className={`absolute rounded-sm px-1.5 text-xs leading-[30px] text-white
                                 truncate text-left hover:ring-2 ring-black/30 cursor-move
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
@@ -1520,7 +1520,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         })}
         {p.ghostHier && (
           <div style={{ left: p.ghostLinks, width: p.ghostBreite, top: 4, height: ZEILE - 8 }}
-               className="absolute rounded border-2 border-dashed border-neutral-900
+               className="absolute rounded-sm border-2 border-dashed border-neutral-900
                           bg-neutral-900/10 pointer-events-none
                           text-xs leading-[26px] px-1.5 truncate">
             {/* Wie viele Zimmer es werden, steht an der obersten Zeile

@@ -33,7 +33,7 @@ export function Anzahlung({ folioRef }: { folioRef: string }): JSX.Element {
   const q = usePrepayments(folioRef, 0)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3 space-y-2">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3 space-y-2">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-medium">{t('anz.title')}</h3>
         <div className="grow" />
@@ -41,7 +41,7 @@ export function Anzahlung({ folioRef }: { folioRef: string }): JSX.Element {
             Maske. Wer auf ihn wartet, braucht einen Weg, neu zu fragen,
             ohne das Fenster zu schliessen. */}
         <button type="button" onClick={() => void q.refetch()} disabled={q.isFetching}
-                className="text-xs px-2 py-0.5 rounded border border-neutral-300
+                className="text-xs px-2 py-0.5 rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t('vz.reload')}
         </button>
@@ -73,7 +73,7 @@ export function Anforderungen({ folioRef, v }: {
   return (
     <div className="space-y-2">
       {v.isTraining && (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-sm p-2">
           {t('anz.trainingHint')}
         </p>
       )}
@@ -113,7 +113,7 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
   const linkUnterwegs = links.some(l => !l.legacy && l.status === 'pending' && !l.expired)
 
   return (
-    <div className="border border-neutral-200 rounded p-2 space-y-1.5">
+    <div className="border border-neutral-200 rounded-sm p-2 space-y-1.5">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-medium tabular-nums">{formatMoney(r.amountCent, locale)}</span>
         {r.percentBp !== null && r.basisCent !== null && (
@@ -126,7 +126,7 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
           {t('anz.dueOn', { date: formatDate(r.dueDate, locale) })}
         </span>
         <div className="grow" />
-        <span className={`text-xs px-1.5 py-0.5 rounded ${ZUSTANDSFARBE[r.state]}`}>
+        <span className={`text-xs px-1.5 py-0.5 rounded-sm ${ZUSTANDSFARBE[r.state]}`}>
           {t(`anz.state.${r.state}`)}
         </span>
       </div>
@@ -161,13 +161,13 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
         <div className="flex flex-wrap gap-2 pt-0.5">
           {!v.isTraining && !linkUnterwegs && (
             <button type="button" onClick={() => setOffen('link')}
-                    className="text-xs px-2 py-1 rounded border border-neutral-300
+                    className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                                hover:bg-neutral-50">
               {t('anz.link')}
             </button>
           )}
           <button type="button" onClick={() => setOffen('zuordnen')}
-                  className="text-xs px-2 py-1 rounded border border-neutral-300
+                  className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                              hover:bg-neutral-50">
             {t('anz.assign')}
           </button>
@@ -175,7 +175,7 @@ function AnforderungZeile({ folioRef, v, r, rechte }: {
                   onClick={() => {
                     if (confirm(t('anz.withdrawConfirm'))) zurueckziehen.mutate(r.requestRef)
                   }}
-                  className="text-xs px-2 py-1 rounded border border-red-300 text-red-800
+                  className="text-xs px-2 py-1 rounded-sm border border-red-300 text-red-800
                              hover:bg-red-50 disabled:opacity-40">
             {t('anz.withdraw')}
           </button>
@@ -220,7 +220,7 @@ function RechnungFehlt({ folioRef, v, r, darf }: {
     s => r.settlementIds.includes(s.id) && s.depositInvoiceRef === null)
 
   return (
-    <div className="text-xs bg-amber-50 border border-amber-200 rounded p-2 space-y-1">
+    <div className="text-xs bg-amber-50 border border-amber-200 rounded-sm p-2 space-y-1">
       <p className="text-amber-900">{t('anz.invoiceMissing')}</p>
       {darf && v.canIssueDeposit && ohne.map(s => (
         <div key={s.id} className="flex items-center gap-2">
@@ -230,7 +230,7 @@ function RechnungFehlt({ folioRef, v, r, darf }: {
           <button type="button" disabled={ausstellen.isPending}
                   onClick={() => ausstellen.mutate({ settlementId: s.id, key: schluessel },
                     { onSuccess: () => setSchluessel(newIdempotencyKey()) })}
-                  className="px-2 py-0.5 rounded bg-neutral-900 text-white
+                  className="px-2 py-0.5 rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
             {t('anz.issueInvoice')}
           </button>
@@ -270,7 +270,7 @@ function EingangZuordnen({ folioRef, v, r, onSchliessen }: {
             <select required value={gewaehlt ?? ''}
                     onChange={e => setGewaehlt(e.target.value === '' ? null
                                                                     : Number(e.target.value))}
-                    className="border border-neutral-300 rounded px-2 py-1 text-sm">
+                    className="border border-neutral-300 rounded-sm px-2 py-1 text-sm">
               <option value="">—</option>
               {frei.map(s => (
                 <option key={s.id} value={s.id}>
@@ -280,7 +280,7 @@ function EingangZuordnen({ folioRef, v, r, onSchliessen }: {
               ))}
             </select>
             <button type="submit" disabled={gewaehlt === null || zuordnen.isPending}
-                    className="px-3 py-1 text-sm rounded bg-neutral-900 text-white
+                    className="px-3 py-1 text-sm rounded-sm bg-neutral-900 text-white
                                disabled:bg-neutral-300">
               {t('anz.assignDo')}
             </button>
@@ -289,7 +289,7 @@ function EingangZuordnen({ folioRef, v, r, onSchliessen }: {
       <div className="flex items-center gap-2">
         <p className="text-xs text-neutral-500 grow">{t('anz.assignHint')}</p>
         <button type="button" onClick={onSchliessen}
-                className="px-2 py-1 text-xs border border-neutral-300 rounded">
+                className="px-2 py-1 text-xs border border-neutral-300 rounded-sm">
           {t('vz.close')}
         </button>
       </div>
@@ -298,7 +298,7 @@ function EingangZuordnen({ folioRef, v, r, onSchliessen }: {
   )
 }
 
-const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 function NeueAnforderung({ folioRef, v }: { folioRef: string; v: PrepaymentView }
 ): JSX.Element {
@@ -358,7 +358,7 @@ function NeueAnforderung({ folioRef, v }: { folioRef: string; v: PrepaymentView 
                    onChange={e => setFaellig(e.target.value)} />
           </label>
           <button type="submit" disabled={betrag === null || anlegen.isPending}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                  className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
             {t('anz.create')}
           </button>

@@ -29,7 +29,7 @@ const ZUSTAND: Record<SupportSession['state'], TextKey> = {
   revoked: 'support.state.revoked'
 }
 
-const FELD = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const FELD = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 /**
  * Vorbelegt aus der Kundenkarte, oder leer aus dem Support-Reiter.
@@ -50,7 +50,7 @@ export function Anfrage({ accountId: vorgabe, accountName, onDone }: {
   const [hours, setHours] = useState('2')
 
   return (
-    <form className="space-y-3 max-w-md border border-neutral-200 rounded p-4"
+    <form className="space-y-3 max-w-md border border-neutral-200 rounded-sm p-4"
       onSubmit={e => {
         e.preventDefault()
         anfragen.mutate({
@@ -113,20 +113,20 @@ export function Anfrage({ accountId: vorgabe, accountName, onDone }: {
         const saetze = m.felder.length > 0 ? m.felder.map(([, satz]) => satz) : [m.text]
         return (
           <p role="alert" className="text-sm text-red-800 bg-red-50 border
-                                     border-red-200 rounded px-2 py-1">
+                                     border-red-200 rounded-sm px-2 py-1">
             {saetze.join(' ')}
           </p>
         )
       })()}
       {anfragen.isSuccess && (
         <p className="text-sm text-green-900 bg-green-50 border border-green-200
-                      rounded px-2 py-1">
+                      rounded-sm px-2 py-1">
           {t('support.requested')}
         </p>
       )}
 
       <button type="submit" disabled={anfragen.isPending}
-              className="w-full py-1.5 text-sm rounded bg-neutral-900 text-white
+              className="w-full py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                          disabled:bg-neutral-300">
         {t(anfragen.isPending ? 'common.loading' : 'support.request')}
       </button>
@@ -151,7 +151,7 @@ export function Liste(): JSX.Element {
   return (
     <ul className="space-y-2 max-w-2xl">
       {q.data.sessions.map(s => (
-        <li key={s.id} className="border border-neutral-200 rounded p-3 text-sm
+        <li key={s.id} className="border border-neutral-200 rounded-sm p-3 text-sm
                                   space-y-1">
           <div className="flex items-start justify-between gap-2">
             <span className="font-medium">{s.accountName}</span>
@@ -218,7 +218,7 @@ export function LaufenderStand({ rahmen = false }: {
   const d = q.data
   return (
     <p className={`text-sm flex flex-wrap items-baseline gap-x-2${rahmen
-      ? ' border border-neutral-200 rounded bg-white px-3 py-1.5' : ''}`}>
+      ? ' border border-neutral-200 rounded-sm bg-white px-3 py-1.5' : ''}`}>
       <span className="text-neutral-600">{t('deploy.current')}:</span>
       {d.currentCommit != null
         ? <code className="font-mono">{d.currentCommit.slice(0, 12)}</code>
@@ -273,7 +273,7 @@ export function Ausrollen(): JSX.Element {
     d => d.status === 'pending' || d.status === 'running') === true
 
   return (
-    <section className="space-y-3 border border-neutral-200 rounded p-4 bg-white">
+    <section className="space-y-3 border border-neutral-200 rounded-sm p-4 bg-white">
       <h2 className="text-sm font-medium">{t('deploy.title')}</h2>
       <p className="text-sm text-neutral-600">{t('deploy.hint')}</p>
 
@@ -282,12 +282,12 @@ export function Ausrollen(): JSX.Element {
       {anfordern.isError && <Fehler error={anfordern.error} />}
       {anfordern.isSuccess && (
         <p className="text-sm text-green-900 bg-green-50 border border-green-200
-                      rounded px-2 py-1">{t('deploy.requested')}</p>
+                      rounded-sm px-2 py-1">{t('deploy.requested')}</p>
       )}
 
       <button type="button" disabled={anfordern.isPending || laeuft}
               onClick={() => anfordern.mutate()}
-              className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                          disabled:bg-neutral-300">
         {t(anfordern.isPending ? 'common.loading' : 'deploy.request')}
       </button>
@@ -309,7 +309,7 @@ export function Ausrollen(): JSX.Element {
               <button key={z.commit} type="button" disabled={zurueck.isPending || laeuft}
                       onClick={() => zurueck.mutate(z.commit)}
                       className="text-xs px-2 py-1 border border-neutral-300
-                                 rounded hover:bg-neutral-50 disabled:text-neutral-400">
+                                 rounded-sm hover:bg-neutral-50 disabled:text-neutral-400">
                 <span className="font-mono">{z.commit.slice(0, 12)}</span>
                 {/* Auch hier der Betreff: zurueckgerollt wird auf einen
                   * Stand, nicht auf eine Zeichenfolge. Abgeschnitten, weil
@@ -366,7 +366,7 @@ export function Ausrollen(): JSX.Element {
                 // Vorformatiert und scrollbar: eine Bauausgabe hat lange
                 // Zeilen, und umgebrochen ist sie nicht mehr zu lesen.
                 <pre className="mt-1 p-2 bg-neutral-50 border border-neutral-200
-                                rounded overflow-x-auto whitespace-pre">
+                                rounded-sm overflow-x-auto whitespace-pre">
                   {d.log}
                 </pre>
               )}

@@ -66,7 +66,7 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
       <div className="p-5 space-y-4">
         <div className="flex items-center gap-3">
           <button onClick={onClose}
-                  className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                  className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
             ← {t('common.back')}
           </button>
           <h2 className="text-sm font-medium">{t('plan.reservation')} {reservationRef}</h2>
@@ -107,7 +107,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className={`text-xs px-2 py-0.5 rounded bg-neutral-100`}>
+        <span className={`text-xs px-2 py-0.5 rounded-sm bg-neutral-100`}>
           {t(`status.${r.status}` as never)}
         </span>
         {r.blockRef !== null && (
@@ -131,7 +131,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
             Untermenue: die Frage "wer hat das geaendert" kommt genau dann
             auf, wenn man ohnehin auf diese Buchung sieht. */}
         <button onClick={() => setVerlauf(true)}
-                className="text-xs px-2 py-1 rounded border border-neutral-300
+                className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                            hover:bg-neutral-50">
           {t('verlauf.title')}
         </button>
@@ -144,7 +144,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
         )}
         {r.checkedInAt === null && r.canceledAt === null && (
           <button onClick={() => onOpenCheckIn(r.reservationRef)}
-                  className="text-xs px-2 py-1 rounded border border-neutral-300
+                  className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                              hover:bg-neutral-50">
             {t('checkin.title')}
           </button>
@@ -163,7 +163,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
         <OnlineCheckinStand reservationRef={r.reservationRef} stand={r.onlineCheckin} />
       )}
 
-      <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded p-3">
+      <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded-sm p-3">
         <Feld label={t('plan.guest')}>
           {r.guestName ?? <span className="text-neutral-400">{t('plan.noGuest')}</span>}
           {r.companyName !== null && (
@@ -194,7 +194,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
         </section>
       )}
 
-      <section className="bg-white border border-neutral-200 rounded overflow-hidden">
+      <section className="bg-white border border-neutral-200 rounded-sm overflow-hidden">
         <h3 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">
           {t('plan.nights')}
         </h3>
@@ -217,7 +217,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
         </table>
       </section>
 
-      <section className="bg-white border border-neutral-200 rounded overflow-hidden">
+      <section className="bg-white border border-neutral-200 rounded-sm overflow-hidden">
         <h3 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">
           {t('plan.occupants')}
         </h3>
@@ -237,11 +237,11 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
         </ul>
       </section>
 
-      <section className="bg-white border border-neutral-200 rounded p-3">
+      <section className="bg-white border border-neutral-200 rounded-sm p-3">
         <h3 className="text-sm font-medium mb-2">{t('plan.folio')}</h3>
         {r.folioRef !== null
           ? <button onClick={() => onOpenFolio(r.folioRef!)}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white">
+                    className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white">
               {t('plan.openFolio')}
             </button>
           : <span className="text-sm text-neutral-400">{t('plan.noFolio')}</span>}
@@ -276,16 +276,16 @@ function NotizFeld({ reservationRef, notes }: {
   const geaendert = text !== (notes ?? '')
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3">
       <h3 className="text-sm font-medium">{t('plan.notes')}</h3>
       <textarea value={text} onChange={e => setText(e.target.value)}
                 maxLength={NOTES_MAX_LENGTH} rows={3}
-                className="mt-2 w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                className="mt-2 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <p className="mt-1 text-xs text-neutral-500">{t('plan.notesHint')}</p>
       <div className="mt-2 flex items-center gap-3">
         <button disabled={!geaendert || speichern.isPending}
                 onClick={() => speichern.mutate(text === '' ? null : text)}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('plan.notesSave')}
         </button>
@@ -313,7 +313,7 @@ function StornoAktionen({ reservationRef, status }: {
     return (
       <button onClick={() => { if (confirm(t('plan.cancelConfirm'))) aktion.mutate('cancel') }}
               disabled={aktion.isPending}
-              className="text-xs px-2 py-1 rounded border border-red-300 text-red-800
+              className="text-xs px-2 py-1 rounded-sm border border-red-300 text-red-800
                          hover:bg-red-50 disabled:opacity-40">
         {t('plan.cancel')}
       </button>
@@ -323,7 +323,7 @@ function StornoAktionen({ reservationRef, status }: {
     return (
       <button onClick={() => aktion.mutate('reinstate')}
               disabled={aktion.isPending}
-              className="text-xs px-2 py-1 rounded border border-neutral-300
+              className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                          hover:bg-neutral-50 disabled:opacity-40">
         {t('plan.reinstate')}
       </button>
@@ -342,10 +342,10 @@ function BestaetigungSchicken({ reservationRef }: { reservationRef: string }): J
   const schicken = useSendConfirmation(reservationRef)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3">
       <div className="flex items-center gap-3">
         <button onClick={() => schicken.mutate()} disabled={schicken.isPending}
-                className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t('plan.sendConfirmation')}
         </button>

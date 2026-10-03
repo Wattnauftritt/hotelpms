@@ -92,7 +92,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                 { k: t('group.rooms'), v: String(daten.rooms.length) },
                 { k: t('group.total'), v: formatMoney(daten.totalCent, locale) }
               ].map(f => (
-                <div key={f.k} className="bg-neutral-50 rounded px-3 py-2">
+                <div key={f.k} className="bg-neutral-50 rounded-sm px-3 py-2">
                   <div className="text-xs text-neutral-500">{f.k}</div>
                   <div className="text-base tabular-nums truncate">{f.v}</div>
                 </div>
@@ -113,7 +113,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                 {[-7, -1, 1, 7].map(n => (
                   <button key={n} type="button" disabled={verschieben.isPending}
                           onClick={() => verschieben.mutate({ bookingRef, shiftDays: n })}
-                          className="px-3 py-2 rounded border border-neutral-300 text-sm
+                          className="px-3 py-2 rounded-sm border border-neutral-300 text-sm
                                      tabular-nums bg-white hover:bg-neutral-50
                                      disabled:opacity-50">
                     {n > 0 ? `+${n}` : n}
@@ -167,13 +167,13 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                             <td className="pr-2">
                               <input type="date" value={von}
                                      onChange={e => setVon(e.target.value)}
-                                     className="border border-neutral-300 rounded
+                                     className="border border-neutral-300 rounded-sm
                                                 px-2 py-1 text-sm" />
                             </td>
                             <td className="pr-2">
                               <input type="date" value={bis}
                                      onChange={e => setBis(e.target.value)}
-                                     className="border border-neutral-300 rounded
+                                     className="border border-neutral-300 rounded-sm
                                                 px-2 py-1 text-sm" />
                             </td>
                             <td className="tabular-nums text-right pr-2">
@@ -186,12 +186,12 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                                       onClick={() => umbuchen.mutate(
                                         { reservationRef: aendert, arrival: von, departure: bis },
                                         { onSuccess: () => { setAendert(null); void q.refetch() } })}
-                                      className="px-2 py-1 text-xs rounded bg-neutral-900
+                                      className="px-2 py-1 text-xs rounded-sm bg-neutral-900
                                                  text-white disabled:bg-neutral-300">
                                 {t('common.save')}
                               </button>
                               <button type="button" onClick={() => setAendert(null)}
-                                      className="px-2 py-1 text-xs rounded border
+                                      className="px-2 py-1 text-xs rounded-sm border
                                                  border-neutral-300 ml-1">
                                 {t('common.cancel')}
                               </button>

@@ -41,7 +41,7 @@ export function TerminalPult({ propertyId }: { propertyId: number }): JSX.Elemen
       {terminals.length === 0 && <p className="text-sm text-neutral-500">{t('pult.none')}</p>}
       {terminals.map(d => (
         <section key={d.deviceRef}
-                 className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+                 className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-medium grow">{d.name}</h2>
             <span className={`text-xs ${d.online ? 'text-emerald-700' : 'text-amber-700'}`}>
@@ -60,7 +60,7 @@ export function TerminalPult({ propertyId }: { propertyId: number }): JSX.Elemen
                     <button key={`${a.kind}:${a.ref}`} type="button"
                             disabled={senden.isPending}
                             onClick={() => schicken(d.deviceRef, a)}
-                            className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                            className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                                        hover:bg-neutral-50 disabled:opacity-40">
                       {a.kind === 'url' ? '↗ ' : ''}{a.label}
                     </button>

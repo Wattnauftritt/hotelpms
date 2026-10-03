@@ -94,7 +94,7 @@ function Gastpost(
   const domainFrei = domain.data?.status === 'active'
 
   return (
-    <form className="rounded border border-neutral-200 bg-white p-3 space-y-3 max-w-2xl"
+    <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3 max-w-2xl"
           onSubmit={e => {
             e.preventDefault()
             if (!bereit) return
@@ -109,22 +109,22 @@ function Gastpost(
         <label className="text-sm">
           <div className="text-neutral-600">{t('mail.fromName')}</div>
           <input value={fromName} onChange={e => setFromName(e.target.value)} required
-                 className="border border-neutral-300 rounded px-2 py-1 w-64" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-64" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('mail.fromEmail')}</div>
           <input type="email" value={fromEmail} onChange={e => setFromEmail(e.target.value)}
-                 required className="border border-neutral-300 rounded px-2 py-1 w-64" />
+                 required className="border border-neutral-300 rounded-sm px-2 py-1 w-64" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('mail.replyTo')}</div>
           <input type="email" value={replyTo} onChange={e => setReplyTo(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1 w-64" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-64" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('mail.bcc')}</div>
           <input type="email" value={bccEmail} onChange={e => setBccEmail(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1 w-64" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-64" />
         </label>
       </div>
 
@@ -152,7 +152,7 @@ function Gastpost(
       {speichern.isError && <Fehler error={speichern.error} />}
 
       <button type="submit" disabled={!online || !bereit || speichern.isPending}
-              className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                          disabled:opacity-40">
         {t('common.save')}
       </button>
@@ -194,7 +194,7 @@ function Absenderdomain(
   if (d.status === null || d.status === 'rejected') {
     const bereit = modus === 'own' ? domain.trim() !== '' : localPart.trim() !== ''
     return (
-      <form className="rounded border border-neutral-200 bg-white p-3 space-y-3
+      <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3
                        max-w-2xl"
             onSubmit={e => {
               e.preventDefault()
@@ -210,7 +210,7 @@ function Absenderdomain(
             gerade abgelehnt wurde, soll den Grund lesen, bevor er dasselbe
             noch einmal einträgt. */}
         {d.status === 'rejected' && (
-          <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+          <div className="rounded-sm border border-amber-300 bg-amber-50 p-2 text-sm">
             <div className="font-medium">{t('mailDomain.statusRejected')}</div>
             <div className="text-neutral-700">{d.decisionNote}</div>
           </div>
@@ -234,7 +234,7 @@ function Absenderdomain(
             <div className="text-neutral-600">{t('mailDomain.domainLabel')}</div>
             <input value={domain} onChange={e => setDomain(e.target.value)}
                    placeholder="hotel-wattenblick.de"
-                   className="border border-neutral-300 rounded px-2 py-1 w-72" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1 w-72" />
             <div className="text-xs text-neutral-500 mt-0.5">
               {t('mailDomain.domainHint')}
             </div>
@@ -245,7 +245,7 @@ function Absenderdomain(
             <div className="flex items-center gap-1">
               <input value={localPart} onChange={e => setLocalPart(e.target.value)}
                      placeholder="wattenblick"
-                     className="border border-neutral-300 rounded px-2 py-1 w-48" />
+                     className="border border-neutral-300 rounded-sm px-2 py-1 w-48" />
               <span className="text-neutral-600">@{relay}</span>
             </div>
             <div className="text-xs text-neutral-500 mt-0.5">
@@ -259,7 +259,7 @@ function Absenderdomain(
 
         <button type="submit"
                 disabled={!online || !bereit || isTraining || beantragen.isPending}
-                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('mailDomain.request')}
         </button>
@@ -276,7 +276,7 @@ function Absenderdomain(
     : 'mailDomain.statusActive'
 
   return (
-    <div className="rounded border border-neutral-200 bg-white p-3 space-y-3
+    <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3
                     max-w-3xl">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-medium">{t('mailDomain.title')}</span>
@@ -331,7 +331,7 @@ function Absenderdomain(
 
           <button type="button" disabled={!online || nachsehen.isPending}
                   onClick={() => nachsehen.mutate()}
-                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('mailDomain.check')}
           </button>
@@ -342,7 +342,7 @@ function Absenderdomain(
       <div>
         <button type="button" disabled={!online || zuruecknehmen.isPending}
                 onClick={() => zuruecknehmen.mutate()}
-                className="text-sm px-2 py-1 rounded border border-neutral-300
+                className="text-sm px-2 py-1 rounded-sm border border-neutral-300
                            text-neutral-700 disabled:opacity-40">
           {t('mailDomain.withdraw')}
         </button>
@@ -365,7 +365,7 @@ function Zahlart(
   const [isExternal, setIsExternal] = useState(art.isExternal)
 
   return (
-    <li className={`rounded border border-neutral-200 bg-white p-3
+    <li className={`rounded-sm border border-neutral-200 bg-white p-3
                     ${art.active ? '' : 'opacity-60'}`}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-mono text-xs text-neutral-500 w-24">{art.code}</span>
@@ -374,20 +374,20 @@ function Zahlart(
           <span className="text-xs text-neutral-500">{t('pay.external')}</span>
         )}
         {!art.active && (
-          <span className="text-xs px-1.5 py-0.5 rounded border border-neutral-300
+          <span className="text-xs px-1.5 py-0.5 rounded-sm border border-neutral-300
                            bg-neutral-100 text-neutral-600">
             {t('master.inactive')}
           </span>
         )}
         <button onClick={() => setOffen(o => !o)}
-                className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                            hover:bg-neutral-50">
           {t(offen ? 'master.close' : 'master.edit')}
         </button>
         <button
           onClick={() => aendern.mutate({ id: art.id, active: !art.active })}
           disabled={!online || aendern.isPending}
-          className="text-sm px-3 py-1.5 rounded border border-neutral-300
+          className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                      hover:bg-neutral-50 disabled:opacity-40">
           {t(art.active ? 'pay.deactivate' : 'pay.activate')}
         </button>
@@ -403,13 +403,13 @@ function Zahlart(
           <label className="text-sm">
             <div className="text-neutral-600">{t('pay.name')}</div>
             <input value={name} onChange={e => setName(e.target.value)} required
-                   className="border border-neutral-300 rounded px-2 py-1 w-64" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1 w-64" />
           </label>
           <label className="text-sm">
             <div className="text-neutral-600">{t('pay.sortOrder')}</div>
             <input type="number" value={sortOrder}
                    onChange={e => setSortOrder(Number(e.target.value))}
-                   className="border border-neutral-300 rounded px-2 py-1 w-24" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1 w-24" />
           </label>
           <label className="text-sm flex items-center gap-1.5 text-neutral-700">
             <input type="checkbox" checked={isExternal}
@@ -417,7 +417,7 @@ function Zahlart(
             {t('pay.external')}
           </label>
           <button type="submit" disabled={!online || aendern.isPending}
-                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('common.save')}
           </button>
@@ -453,7 +453,7 @@ function Zahlungsarten({ propertyId }: { propertyId: number }): JSX.Element {
         </label>
       </div>
 
-      <form className="rounded border border-neutral-200 bg-white p-3 space-y-3"
+      <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3"
             onSubmit={e => {
               e.preventDefault()
               if (code.trim() === '' || name.trim() === '') return
@@ -465,12 +465,12 @@ function Zahlungsarten({ propertyId }: { propertyId: number }): JSX.Element {
           <label className="text-sm">
             <div className="text-neutral-600">{t('pay.code')}</div>
             <input value={code} onChange={e => setCode(e.target.value)} required
-                   className="border border-neutral-300 rounded px-2 py-1 w-32" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1 w-32" />
           </label>
           <label className="text-sm">
             <div className="text-neutral-600">{t('pay.name')}</div>
             <input value={name} onChange={e => setName(e.target.value)} required
-                   className="border border-neutral-300 rounded px-2 py-1 w-64" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1 w-64" />
           </label>
           <label className="text-sm flex items-center gap-1.5 text-neutral-700">
             <input type="checkbox" checked={isExternal}
@@ -478,7 +478,7 @@ function Zahlungsarten({ propertyId }: { propertyId: number }): JSX.Element {
             {t('pay.external')}
           </label>
           <button type="submit" disabled={!online || anlegen.isPending}
-                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('common.save')}
           </button>
@@ -544,7 +544,7 @@ function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
         <ul className="space-y-2">
           {(q.data?.terms ?? []).map(b => (
             <li key={b.termsRef}
-                className={`border rounded p-2 text-sm
+                className={`border rounded-sm p-2 text-sm
                             ${b.activeTo === null
                               ? 'border-neutral-300'
                               : 'border-neutral-200 bg-neutral-50 text-neutral-500'}`}>
@@ -581,18 +581,18 @@ function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
             <span className="block text-xs text-neutral-600 mb-1">{t('terms.code')}</span>
             <input value={code} onChange={e => setCode(e.target.value)}
                    placeholder="key_deposit"
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
           </label>
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('terms.heading')}</span>
             <input value={titel} onChange={e => setTitel(e.target.value)}
-                   className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                   className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
           </label>
         </div>
         <label className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('terms.text')}</span>
           <textarea value={text} onChange={e => setText(e.target.value)} rows={4}
-                    className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                    className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={unterschrift}
@@ -606,7 +606,7 @@ function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
                   { code: code.trim(), title: titel.trim(), body: text.trim(),
                     requiresSignature: unterschrift },
                   { onSuccess: () => { setCode(''); setTitel(''); setText('') } })}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('common.save')}
         </button>

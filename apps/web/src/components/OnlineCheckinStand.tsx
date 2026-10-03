@@ -50,7 +50,7 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
   const erledigt = stand.completedAt !== null || stand.source === 'desk'
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3 space-y-2">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3 space-y-2">
       <h3 className="text-sm font-medium">{t('onlineCheckin.title')}</h3>
       <ul className="text-sm space-y-0.5">
         <li className={stand.invitationStatus === 'failed' ? 'text-red-800' : 'text-neutral-700'}>
@@ -75,21 +75,21 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
         <div className="flex flex-wrap items-center gap-2">
           {stand.maySend && (
             <button onClick={() => senden.mutate()} disabled={senden.isPending}
-                    className="text-xs px-2 py-1 rounded border border-neutral-300
+                    className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                                hover:bg-neutral-50 disabled:opacity-40">
               {t('onlineCheckin.send')}
             </button>
           )}
           {stand.mayLink && (
             <button onClick={() => { void kopieren() }} disabled={link.isPending}
-                    className="text-xs px-2 py-1 rounded border border-neutral-300
+                    className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                                hover:bg-neutral-50 disabled:opacity-40">
               {t('onlineCheckin.copy')}
             </button>
           )}
           {stand.mayLink && stand.activeLinks > 0 && (
             <button onClick={() => zurueck.mutate()} disabled={zurueck.isPending}
-                    className="text-xs px-2 py-1 rounded border border-red-300 text-red-800
+                    className="text-xs px-2 py-1 rounded-sm border border-red-300 text-red-800
                                hover:bg-red-50 disabled:opacity-40">
               {t('onlineCheckin.revoke')}
             </button>
@@ -112,7 +112,7 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
                { datum: formatDate(link.data.expiresOn, locale) })}
           </p>
           <input readOnly value={link.data.link} onFocus={e => e.currentTarget.select()}
-                 className="w-full border border-neutral-300 rounded px-2 py-1 text-xs font-mono" />
+                 className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-xs font-mono" />
           <p className="text-xs text-amber-800">{t('onlineCheckin.copyWarning')}</p>
         </div>
       )}

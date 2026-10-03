@@ -60,7 +60,7 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
         {(['dirty', 'clean', 'inspected'] as const).map(s => (
           <button key={s} onClick={() => anwenden(s)}
                   disabled={!online || gewaehlt.size === 0 || setzen.isPending}
-                  className={`text-sm px-3 py-1 rounded border ${FARBE[s]}
+                  className={`text-sm px-3 py-1 rounded-sm border ${FARBE[s]}
                               disabled:opacity-40`}>
             {t(LABEL[s])}
           </button>
@@ -72,7 +72,7 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
           */}
         <button onClick={() => erzeugen.mutate()}
                 disabled={!online || erzeugen.isPending}
-                className="text-sm px-3 py-1 rounded border border-neutral-300
+                className="text-sm px-3 py-1 rounded-sm border border-neutral-300
                            disabled:opacity-40">
           {t(erzeugen.isPending ? 'common.loading' : 'hk.generateTasks')}
         </button>
@@ -91,7 +91,7 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
           <button key={r.resourceId}
                   onClick={() => umschalten(r.resourceId)}
                   aria-pressed={gewaehlt.has(r.resourceId)}
-                  className={`text-left border rounded p-2 ${FARBE[r.status]}
+                  className={`text-left border rounded-sm p-2 ${FARBE[r.status]}
                               ${gewaehlt.has(r.resourceId)
                                 ? 'ring-2 ring-neutral-900' : ''}`}>
             <div className="flex items-baseline justify-between">
@@ -132,7 +132,7 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
                      erledigen.mutate(r.taskId!)
                    }}
                    className="mt-1 text-[11px] text-center border border-current/40
-                              rounded py-0.5 hover:bg-white/50 cursor-pointer">
+                              rounded-sm py-0.5 hover:bg-white/50 cursor-pointer">
                 {t('hk.finishTask')}
               </div>
             )}

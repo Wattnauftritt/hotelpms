@@ -19,7 +19,7 @@ export function Statusmarke({ hit }: { hit: Pick<SearchReservationHit, 'status' 
   const t = useT()
   const m = MARKEN[marke(hit)]
   return (
-    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${m.farbe}`}>
+    <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[11px] font-medium ${m.farbe}`}>
       {t(m.text)}
     </span>
   )
@@ -85,13 +85,13 @@ export function KundenTreffer({ hit }: { hit: SearchCustomerHit }): JSX.Element 
           {hit.kind === 'guest' ? name(hit.name, hit.firstName) : hit.name}
         </span>
         {hit.kind === 'company' && (
-          <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] bg-neutral-100
+          <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[11px] bg-neutral-100
                            text-neutral-700">
             {t('suche.company')}
           </span>
         )}
         {hit.inHouse && (
-          <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium
+          <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[11px] font-medium
                            bg-emerald-100 text-emerald-900">
             {t('suche.inHouse')}
           </span>

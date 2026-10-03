@@ -132,7 +132,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
                                                      departure: abreise })}
                         /* Rot, wenn das Zimmer zu klein ist: der Knopf sagt
                            dann nicht "weiter", sondern "trotzdem". */
-                        className={`px-4 py-2 text-sm rounded text-white
+                        className={`px-4 py-2 text-sm rounded-sm text-white
                                     disabled:bg-neutral-300
                                     ${zuKlein ? 'bg-red-700' : 'bg-neutral-900'}`}>
                   {t('common.save')}
@@ -164,7 +164,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
            * genau das, was gemeint war.
            */
           <p className="text-sm text-neutral-800 bg-neutral-50 border
-                        border-neutral-200 rounded p-3">
+                        border-neutral-200 rounded-sm p-3">
             {t('verlegen.groupShift', { n: gruppe.zimmer,
                                         tage: gruppe.shiftDays,
                                         ref: gruppe.bookingRef })}
@@ -205,14 +205,14 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
 
         {raum === null && gruppe === undefined && (
           <p className="text-sm text-neutral-700 bg-neutral-50 border
-                        border-neutral-200 rounded p-2">
+                        border-neutral-200 rounded-sm p-2">
             {t('verlegen.unassignHint')}
           </p>
         )}
 
         {wechsel && (
           <p className="text-sm text-neutral-700 bg-amber-50 border
-                        border-amber-200 rounded p-2">
+                        border-amber-200 rounded-sm p-2">
             {t('plan.moveUpgrade', {
               ref: verlegung.reservationRef,
               von: zimmer.find(z => z.category_id === verlegung.categoryId)
@@ -223,7 +223,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
 
         {zuKlein && (
           <p role="alert" className="text-sm text-red-800 bg-red-50 border
-                                     border-red-200 rounded p-2">
+                                     border-red-200 rounded-sm p-2">
             {t('plan.moveTooSmall', { raum: gewaehlt.code,
                                       platz: gewaehlt.max_occupancy,
                                       bedarf: verlegung.bedarf })}
@@ -293,7 +293,7 @@ export function AenderungZurueck({ aenderung, laeuft, fehler, onClose, onConfirm
             fuss={
               <>
                 <button type="button" disabled={laeuft} onClick={onConfirm}
-                        className="px-4 py-2 text-sm rounded bg-neutral-900 text-white
+                        className="px-4 py-2 text-sm rounded-sm bg-neutral-900 text-white
                                    disabled:bg-neutral-300">
                   {t('verlegen.undoConfirm')}
                 </button>

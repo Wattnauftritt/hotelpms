@@ -113,7 +113,7 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
               </button>
             }>
       {gewechselt && (
-        <p role="status" className="text-sm text-amber-800 bg-amber-50 rounded
+        <p role="status" className="text-sm text-amber-800 bg-amber-50 rounded-sm
                                     px-3 py-2 mb-4">
           {t('workstation.acting')}
         </p>

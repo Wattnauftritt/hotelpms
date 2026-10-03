@@ -47,13 +47,13 @@ function Zeile(
       : 'border-neutral-200 text-neutral-500'
 
   return (
-    <li className={`rounded border border-neutral-200 bg-white p-3
+    <li className={`rounded-sm border border-neutral-200 bg-white p-3
                     ${ticket.status === 'done' ? 'opacity-60' : ''}`}>
       <div className="flex flex-wrap items-start gap-3">
         <div className="grow">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{ticket.title}</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded border ${farbe}`}>
+            <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${farbe}`}>
               {t(`maint.priority.${ticket.priority}`)}
             </span>
             <span className="text-xs text-neutral-500">
@@ -75,7 +75,7 @@ function Zeile(
             <div className="mt-1 flex flex-wrap gap-1">
               {ticket.blocks.map((b, i) => (
                 <span key={i}
-                      className={`text-xs px-1.5 py-0.5 rounded border ${
+                      className={`text-xs px-1.5 py-0.5 rounded-sm border ${
                         b.kind === 'out_of_order'
                           ? 'border-amber-300 bg-amber-50 text-amber-900'
                           : 'border-neutral-300 bg-neutral-50 text-neutral-600'}`}>
@@ -93,7 +93,7 @@ function Zeile(
               <button onClick={() => aendern.mutate({ id: ticket.id,
                                                       status: 'in_progress' })}
                       disabled={!online || aendern.isPending}
-                      className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                      className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                                  hover:bg-neutral-50 disabled:opacity-40">
                 {t('maint.take')}
               </button>
@@ -101,13 +101,13 @@ function Zeile(
             {ticket.status !== 'done'
               ? <button onClick={() => aendern.mutate({ id: ticket.id, status: 'done' })}
                         disabled={!online || aendern.isPending}
-                        className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                        className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                                    disabled:opacity-40">
                   {t('maint.done')}
                 </button>
               : <button onClick={() => aendern.mutate({ id: ticket.id, status: 'open' })}
                         disabled={!online || aendern.isPending}
-                        className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                        className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                                    hover:bg-neutral-50 disabled:opacity-40">
                   {t('maint.reopen')}
                 </button>}
@@ -149,19 +149,19 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
 
   return (
     <form onSubmit={absenden}
-          className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+          className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="font-medium">{t('maint.new')}</div>
       <div className="flex flex-wrap gap-3">
         <label className="text-sm grow">
           <div className="text-neutral-600">{t('maint.subject')}</div>
           <input value={title} onChange={e => setTitle(e.target.value)} required
-                 className="border border-neutral-300 rounded px-2 py-1 w-full" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-full" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('maint.priority')}</div>
           <select value={priority}
                   onChange={e => setPriority(e.target.value as typeof priority)}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {DRINGLICHKEIT.map(p => (
               <option key={p} value={p}>{t(`maint.priority.${p}`)}</option>
             ))}
@@ -170,7 +170,7 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
         <label className="text-sm">
           <div className="text-neutral-600">{t('maint.room')}</div>
           <select value={resourceId} onChange={e => setResourceId(Number(e.target.value))}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             <option value={0}>{t('maint.noRoom')}</option>
             {(zimmer.data?.rooms ?? []).map(r => (
               <option key={r.id} value={r.id}>{r.code}</option>
@@ -183,7 +183,7 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
         <div className="text-neutral-600">{t('maint.description')}</div>
         <textarea value={description} onChange={e => setDescription(e.target.value)}
                   rows={2}
-                  className="border border-neutral-300 rounded px-2 py-1 w-full" />
+                  className="border border-neutral-300 rounded-sm px-2 py-1 w-full" />
       </label>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -191,7 +191,7 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
           <div className="text-neutral-600">{t('maint.block')}</div>
           <select value={sperre}
                   onChange={e => setSperre(e.target.value as typeof sperre)}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             <option value="none">{t('maint.block.none')}</option>
             <option value="out_of_order">{t('maint.block.out_of_order')}</option>
             <option value="out_of_service">{t('maint.block.out_of_service')}</option>
@@ -201,12 +201,12 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
           <label className="text-sm">
             <div className="text-neutral-600">{t('common.from')}</div>
             <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                   className="border border-neutral-300 rounded px-2 py-1" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1" />
           </label>
           <label className="text-sm">
             <div className="text-neutral-600">{t('common.to')}</div>
             <input type="date" value={to} onChange={e => setTo(e.target.value)}
-                   className="border border-neutral-300 rounded px-2 py-1" />
+                   className="border border-neutral-300 rounded-sm px-2 py-1" />
           </label>
         </>}
       </div>
@@ -223,7 +223,7 @@ function Formular({ propertyId }: { propertyId: number }): JSX.Element {
       {anlegen.isError && <Fehler error={anlegen.error} />}
 
       <button type="submit" disabled={!online || !bereit || anlegen.isPending}
-              className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                          disabled:opacity-40">
         {t('common.save')}
       </button>

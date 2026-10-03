@@ -40,13 +40,13 @@ export function Availability({ propertyId }: { propertyId: number }): JSX.Elemen
         <div className="grow" />
         <DatumsWahl value={von} onChange={setVon} step={30} />
         <button onClick={() => setVon(today())}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           {t('common.today')}
         </button>
         <div className="flex gap-1">
           {SPANNEN.map(n => (
             <button key={n} onClick={() => setTage(n)}
-                    className={`text-sm px-2 py-1 rounded border
+                    className={`text-sm px-2 py-1 rounded-sm border
                                 ${tage === n
                                   ? 'bg-neutral-900 text-white border-neutral-900'
                                   : 'border-neutral-300'}`}>
@@ -58,7 +58,7 @@ export function Availability({ propertyId }: { propertyId: number }): JSX.Elemen
 
       {neueReservierung && auswahl === null && (
         <p role="status"
-           className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+           className="rounded-sm border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
           {t('suche.newReservationHint')}
         </p>
       )}

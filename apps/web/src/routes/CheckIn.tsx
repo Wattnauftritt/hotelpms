@@ -119,7 +119,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
       <div className="space-y-3">
         {ohneZimmer && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200
-                        rounded p-2">
+                        rounded-sm p-2">
             {t('checkin.needsRoom')}
           </p>
         )}
@@ -150,7 +150,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
           }
           return (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-sm bg-neutral-50 rounded p-2">
+              <div className="grid grid-cols-2 gap-2 text-sm bg-neutral-50 rounded-sm p-2">
                 <div>
                   <div className="text-xs text-neutral-500">{t('plan.guest')}</div>
                   <div className="flex items-center gap-2">
@@ -190,7 +190,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                     <p className="text-sm text-emerald-800">✓ {t('terminal.checkin.signed')}</p>
                   )}
                   {unterschriftOffen && f.registrationId !== null && (
-                    <div className="space-y-2 border border-amber-200 bg-amber-50 rounded p-2">
+                    <div className="space-y-2 border border-amber-200 bg-amber-50 rounded-sm p-2">
                       <p className="text-xs text-amber-900">{t('onlineCheckin.signaturePending')}</p>
                       <Unterschriftsfeld onChange={setSignatur}
                                          beschriftungLoeschen={t('checkin.clear')} />
@@ -199,7 +199,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                               disabled={signatur === null || unterschreiben.isPending}
                               onClick={() => unterschreiben.mutate({
                                 registrationId: f.registrationId!, signatureSvg: signatur! })}
-                              className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                              className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                                          disabled:opacity-40">
                         {t('gastCheckin.submitSignature')}
                       </button>
@@ -229,7 +229,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                     {mitreisende.map(m => (
                       <div key={m.guestRef}
                            className="flex items-center gap-2 text-sm border
-                                      border-neutral-200 rounded px-2 py-1">
+                                      border-neutral-200 rounded-sm px-2 py-1">
                         <span className="grow truncate">
                           {m.lastName}{m.firstName ? `, ${m.firstName}` : ''}
                         </span>
@@ -274,7 +274,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                               signatureSvg: signatur ?? undefined,
                               occupantGuestRefs: mitreisende.length === 0
                                 ? undefined : mitreisende.map(m => m.guestRef) })}
-                            className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                            className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                                        disabled:opacity-40">
                       {t('checkin.register')}
                     </button>
@@ -289,7 +289,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                                 reservationRef, signatureLater: true,
                                 occupantGuestRefs: mitreisende.length === 0
                                   ? undefined : mitreisende.map(m => m.guestRef) })}
-                              className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                              className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                                          disabled:opacity-40">
                         {t('terminal.checkin.signLater')}
                       </button>
@@ -322,7 +322,7 @@ function Bedingung({ bedingung, reservationRef }: {
   const zustimmen = useAgreeTerms(reservationRef)
 
   return (
-    <div className="border border-neutral-200 rounded p-2 space-y-2">
+    <div className="border border-neutral-200 rounded-sm p-2 space-y-2">
       <div className="text-sm font-medium">{bedingung.title}</div>
       <p className="text-xs text-neutral-600 whitespace-pre-line">{bedingung.body}</p>
 
@@ -343,7 +343,7 @@ function Bedingung({ bedingung, reservationRef }: {
                   onClick={() => zustimmen.mutate({
                     termsRef: bedingung.termsRef,
                     signatureSvg: signatur ?? undefined })}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                  className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                              disabled:opacity-40">
             {bedingung.requiresSignature ? t('terms.sign') : t('terms.accept')}
           </button>

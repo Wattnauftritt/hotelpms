@@ -71,7 +71,7 @@ export function Unterschriftsfeld({ onChange, beschriftungLoeschen, gross = fals
   return (
     <div className="space-y-1">
       <canvas ref={canvasRef} width={b} height={h}
-              className="w-full border border-neutral-300 rounded touch-none bg-white"
+              className="w-full border border-neutral-300 rounded-sm touch-none bg-white"
               onPointerDown={e => {
                 zeichnet.current = true
                 e.currentTarget.setPointerCapture?.(e.pointerId)
@@ -98,7 +98,7 @@ export function Unterschriftsfeld({ onChange, beschriftungLoeschen, gross = fals
               onPointerCancel={() => { zeichnet.current = false }} />
       <button type="button" onClick={loeschen}
               className={gross
-                ? 'px-4 py-2 text-base rounded border border-neutral-300'
+                ? 'px-4 py-2 text-base rounded-sm border border-neutral-300'
                 : 'text-xs text-neutral-500 underline'}>
         {beschriftungLoeschen}
       </button>

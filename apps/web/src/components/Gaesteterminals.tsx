@@ -76,7 +76,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
       <p className="text-sm text-neutral-600">{t('terminal.settings.hint')}</p>
 
       {code !== null && (
-        <div className="rounded border border-neutral-300 bg-white p-4 space-y-2" role="status">
+        <div className="rounded-sm border border-neutral-300 bg-white p-4 space-y-2" role="status">
           <div className="text-sm font-medium">
             {t('terminal.settings.codeTitle', { name: code.name })}
           </div>
@@ -94,16 +94,16 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
       )}
 
       {adresse !== null && (
-        <div className="rounded border border-neutral-300 bg-white p-4 space-y-2" role="status">
+        <div className="rounded-sm border border-neutral-300 bg-white p-4 space-y-2" role="status">
           <div className="text-sm font-medium">
             {t('terminal.settings.kioskTitle', { name: adresse.name })}
           </div>
           <div className="flex items-center gap-2">
             <input readOnly value={kioskUrl} onFocus={e => e.currentTarget.select()}
-                   className="grow border border-neutral-300 rounded px-2 py-1 text-xs
+                   className="grow border border-neutral-300 rounded-sm px-2 py-1 text-xs
                               font-mono" />
             <button type="button"
-                    className="px-2 py-1 text-xs border border-neutral-300 rounded
+                    className="px-2 py-1 text-xs border border-neutral-300 rounded-sm
                                whitespace-nowrap"
                     onClick={() => {
                       void navigator.clipboard?.writeText(kioskUrl)
@@ -130,10 +130,10 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
           <div className="text-neutral-600">{t('terminal.settings.name')}</div>
           <input value={name} onChange={e => setName(e.target.value)} maxLength={60}
                  placeholder={t('terminal.settings.namePlaceholder')}
-                 className="border border-neutral-300 rounded px-2 py-1 w-72" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-72" />
         </label>
         <button type="submit" disabled={name.trim() === '' || anlegen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('terminal.settings.pair')}
         </button>
@@ -145,7 +145,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
 
       {liste.data.terminals.length === 0
         ? <p className="text-sm text-neutral-500">{t('terminal.settings.none')}</p>
-        : <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded bg-white">
+        : <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-sm bg-white">
             {liste.data.terminals.map(d => (
               <li key={d.deviceRef} className="px-3 py-2 flex flex-wrap items-center gap-3">
                 <span className="font-medium text-sm grow">{d.name}</span>
@@ -162,13 +162,13 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
                 )}
                 <button type="button" disabled={neu.isPending}
                         onClick={() => neu.mutate(d.deviceRef, { onSuccess: zeigeCode })}
-                        className="text-xs px-2 py-1 rounded border border-neutral-300
+                        className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                                    hover:bg-neutral-50">
                   {t('terminal.settings.repair')}
                 </button>
                 <button type="button" disabled={kiosk.isPending}
                         onClick={() => kiosk.mutate(d.deviceRef, { onSuccess: zeigeAdresse })}
-                        className="text-xs px-2 py-1 rounded border border-neutral-300
+                        className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                                    hover:bg-neutral-50">
                   {t('terminal.settings.kiosk')}
                 </button>
@@ -178,7 +178,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
                             widerrufen.mutate(d.deviceRef)
                           }
                         }}
-                        className="text-xs px-2 py-1 rounded border border-red-300 text-red-800
+                        className="text-xs px-2 py-1 rounded-sm border border-red-300 text-red-800
                                    hover:bg-red-50">
                   {t('terminal.settings.revoke')}
                 </button>

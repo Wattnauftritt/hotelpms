@@ -105,7 +105,7 @@ function GaesteReiter({ propertyId, darfSchreiben, darfIdentitaet, darfExport }:
       <div className="space-y-2">
         <input value={begriff} onChange={e => setBegriff(e.target.value)}
                placeholder={t('guests.searchPlaceholder')}
-               className="w-full border border-neutral-300 rounded px-2 py-1.5 text-sm" />
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1.5 text-sm" />
         {begriff.trim().length > 0 && begriff.trim().length < 2 && (
           <div className="text-xs text-neutral-500">{t('guests.searchHint')}</div>
         )}
@@ -113,7 +113,7 @@ function GaesteReiter({ propertyId, darfSchreiben, darfIdentitaet, darfExport }:
         {suche.data !== undefined && (
           suche.data.guests.length === 0
             ? <div className="text-xs text-neutral-500">{t('guests.noResults')}</div>
-            : <ul className="border border-neutral-200 rounded divide-y divide-neutral-100">
+            : <ul className="border border-neutral-200 rounded-sm divide-y divide-neutral-100">
                 {suche.data.guests.map(g => (
                   <li key={g.guestRef}>
                     <button type="button" onClick={() => setAusgewaehlt(g.guestRef)}
@@ -164,7 +164,7 @@ function GastProfil({ guestRef, propertyId, darfSchreiben, darfIdentitaet, darfE
   // API lehnt eine Aenderung ab, das Formular zeigt es deshalb gar nicht erst.
   if (q.data.status === 'anonymized') {
     return (
-      <div className="border border-neutral-200 rounded p-3 space-y-1">
+      <div className="border border-neutral-200 rounded-sm p-3 space-y-1">
         <h2 className="text-sm font-medium">{q.data.lastName}</h2>
         <p className="text-sm text-neutral-500">{t('guests.anonymized')}</p>
       </div>
@@ -220,38 +220,38 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
   }
 
   return (
-    <div className="space-y-2 border border-neutral-200 rounded p-3">
+    <div className="space-y-2 border border-neutral-200 rounded-sm p-3">
       <h2 className="text-sm font-medium">{t('guests.profile')}</h2>
       <div className="grid grid-cols-2 gap-2">
         <input value={lastName} onChange={e => setLastName(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.lastName')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         <input value={firstName} onChange={e => setFirstName(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.firstName')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </div>
       <input value={email} onChange={e => setEmail(e.target.value)} type="email"
              disabled={!darfSchreiben} placeholder={t('guests.email')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <div className="grid grid-cols-2 gap-2">
         <input value={phone} onChange={e => setPhone(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.phone')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         <input value={birthDate} onChange={e => setBirthDate(e.target.value)} type="date"
                disabled={!darfSchreiben}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <input value={nationality} onChange={e => setNationality(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.nationality')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         {/* Nur die Sprachen, in denen wir tatsaechlich schreiben. Franzoesisch
             anzubieten waere ein Versprechen, das die Post nicht haelt: sie
             ginge auf Deutsch hinaus, und niemand saehe warum. */}
         <label className="text-sm">
           <select value={language} onChange={e => setLanguage(e.target.value)}
                   disabled={!darfSchreiben} aria-label={t('guests.language')}
-                  className="w-full border border-neutral-300 rounded px-2 py-1 text-sm">
+                  className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm">
             {EMAIL_LANGUAGES.map(l => (
               <option key={l} value={l}>{t(`guests.language.${l}`)}</option>
             ))}
@@ -261,21 +261,21 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
       <div className="text-[11px] text-neutral-500">{t('guests.languageHint')}</div>
       <input value={addressLine1} onChange={e => setAddressLine1(e.target.value)}
              disabled={!darfSchreiben} placeholder={t('guests.address')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <div className="grid grid-cols-2 gap-2">
         <input value={postalCode} onChange={e => setPostalCode(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.postalCode')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         <input value={city} onChange={e => setCity(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.city')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </div>
       <input value={country} onChange={e => setCountry(e.target.value)}
              disabled={!darfSchreiben} placeholder={t('guests.country')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
 
       {duplikate.length > 0 && (
-        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-sm p-2">
           <div className="font-medium">{t('guests.duplicateWarning')}</div>
           {duplikate.map(d => <div key={d.guestRef}>{d.reason} ({d.guestRef})</div>)}
         </div>
@@ -286,7 +286,7 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
         <div className="flex items-center gap-3">
           <button type="button" disabled={lastName.trim() === '' || speichern.isPending}
                   onClick={absenden}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                  className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
             {t('guests.save')}
           </button>
@@ -336,12 +336,12 @@ function Hausnotizen({ guestRef, propertyId, notes, darfSchreiben }: {
   const mehrereHaeuser = new Set(notes.map(n => n.propertyId)).size > 1
 
   return (
-    <section className="border border-neutral-200 rounded p-3 space-y-2">
+    <section className="border border-neutral-200 rounded-sm p-3 space-y-2">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-medium grow">{t('dsgvo.notes')}</h2>
         {darfSchreiben && !offen && (
           <button type="button" onClick={() => setOffen(true)}
-                  className="text-xs px-2 py-1 rounded border border-neutral-300
+                  className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                              hover:bg-neutral-50">
             + {t('note.add')}
           </button>
@@ -358,17 +358,17 @@ function Hausnotizen({ guestRef, propertyId, notes, darfSchreiben }: {
           <textarea value={text} onChange={e => setText(e.target.value)} autoFocus
                     maxLength={NOTIZ_MAX} rows={2} placeholder={t('note.placeholder')}
                     aria-label={t('dsgvo.notes')}
-                    className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+                    className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
           <p className="text-xs text-neutral-500">{t('dsgvo.notesHint')}</p>
           {anlegen.isError && <Fehler error={anlegen.error} />}
           <div className="flex items-center gap-2">
             <button type="submit" disabled={text.trim() === '' || anlegen.isPending}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                    className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                                disabled:bg-neutral-300">
               {t('note.save')}
             </button>
             <button type="button" onClick={schliessen}
-                    className="px-3 py-1.5 text-sm rounded border border-neutral-300">
+                    className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300">
               {t('common.cancel')}
             </button>
             <span className="text-xs text-neutral-400 ml-auto">
@@ -413,7 +413,7 @@ function AusweisFeld({ guestRef, hasIdDocumentNumber, idDocumentType, darfLesen 
   const dok = useIdDocument(zeigen ? guestRef : null, true)
 
   return (
-    <div className="border border-neutral-200 rounded p-3">
+    <div className="border border-neutral-200 rounded-sm p-3">
       <div className="text-xs text-neutral-500">{t('guests.idDocument')}</div>
       {!hasIdDocumentNumber
         ? <div className="text-sm text-neutral-400">{t('guests.idDocumentNone')}</div>
@@ -448,7 +448,7 @@ function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Elemen
       <div className="space-y-2">
         <input value={begriff} onChange={e => setBegriff(e.target.value)}
                placeholder={t('companies.searchPlaceholder')}
-               className="w-full border border-neutral-300 rounded px-2 py-1.5 text-sm" />
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1.5 text-sm" />
         {begriff.trim().length > 0 && begriff.trim().length < 2 && (
           <div className="text-xs text-neutral-500">{t('guests.searchHint')}</div>
         )}
@@ -456,7 +456,7 @@ function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Elemen
         {suche.data !== undefined && (
           suche.data.companies.length === 0
             ? <div className="text-xs text-neutral-500">{t('guests.noResults')}</div>
-            : <ul className="border border-neutral-200 rounded divide-y divide-neutral-100">
+            : <ul className="border border-neutral-200 rounded-sm divide-y divide-neutral-100">
                 {suche.data.companies.map(f => (
                   <li key={f.companyRef}>
                     <button type="button" onClick={() => setAusgewaehlt(f.companyRef)}
@@ -533,37 +533,37 @@ function FirmaFormular({ initial, darfSchreiben, onSaved }: {
   }
 
   return (
-    <div className="space-y-2 border border-neutral-200 rounded p-3">
+    <div className="space-y-2 border border-neutral-200 rounded-sm p-3">
       <h2 className="text-sm font-medium">{t('companies.title')}</h2>
       <input value={name} onChange={e => setName(e.target.value)} disabled={!darfSchreiben}
              placeholder={t('companies.name')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <input value={vatId} onChange={e => setVatId(e.target.value)} disabled={!darfSchreiben}
              placeholder={t('companies.vatId')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <input value={addressLine1} onChange={e => setAddressLine1(e.target.value)}
              disabled={!darfSchreiben} placeholder={t('companies.address')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <div className="grid grid-cols-2 gap-2">
         <input value={postalCode} onChange={e => setPostalCode(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('companies.postalCode')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         <input value={city} onChange={e => setCity(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('companies.city')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <input value={country} onChange={e => setCountry(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('companies.country')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         <input type="number" min={0} value={paymentTermsDays}
                onChange={e => setPaymentTermsDays(Number(e.target.value))}
                disabled={!darfSchreiben} placeholder={t('companies.paymentTerms')}
-               className="border border-neutral-300 rounded px-2 py-1 text-sm" />
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </div>
       <input value={invoiceEmail} onChange={e => setInvoiceEmail(e.target.value)} type="email"
              disabled={!darfSchreiben} placeholder={t('companies.invoiceEmail')}
-             className="w-full border border-neutral-300 rounded px-2 py-1 text-sm" />
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       {initial !== undefined && darfSchreiben && (
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />
@@ -576,7 +576,7 @@ function FirmaFormular({ initial, darfSchreiben, onSaved }: {
         <div className="flex items-center gap-3">
           <button type="button" disabled={name.trim() === '' || speichern.isPending}
                   onClick={absenden}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                  className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
             {t('companies.save')}
           </button>
@@ -608,14 +608,14 @@ function Betroffenenrechte({ guestRef }: { guestRef: string }): JSX.Element {
   const q = useGuestDataExport(guestRef, auskunft)
 
   return (
-    <section className="border border-neutral-200 rounded p-3 space-y-3">
+    <section className="border border-neutral-200 rounded-sm p-3 space-y-3">
       <h2 className="text-sm font-medium">{t('dsgvo.title')}</h2>
 
       <div className="space-y-1">
         <p className="text-xs text-neutral-600">{t('dsgvo.exportHint')}</p>
         <button type="button" onClick={() => setAuskunft(true)}
                 disabled={auskunft && q.isPending}
-                className="text-sm px-3 py-1.5 border border-neutral-300 rounded
+                className="text-sm px-3 py-1.5 border border-neutral-300 rounded-sm
                            hover:bg-neutral-50 disabled:text-neutral-400">
           {t(auskunft && q.isPending ? 'common.loading' : 'dsgvo.export')}
         </button>
@@ -670,7 +670,7 @@ function Auskunft({ daten }: { daten: GuestDataExport }): JSX.Element {
       <p className="text-xs text-neutral-500">{daten.hinweis}</p>
 
       <button type="button" onClick={() => window.print()}
-              className="text-sm px-3 py-1.5 border border-neutral-300 rounded
+              className="text-sm px-3 py-1.5 border border-neutral-300 rounded-sm
                          hover:bg-neutral-50">
         {t('dsgvo.print')}
       </button>
@@ -710,12 +710,12 @@ function Loeschen({ guestRef }: { guestRef: string }): JSX.Element {
           <div className="flex gap-2">
             <button type="button" disabled={anonymisieren.isPending}
                     onClick={() => anonymisieren.mutate()}
-                    className="text-sm px-3 py-1.5 rounded bg-red-700 text-white
+                    className="text-sm px-3 py-1.5 rounded-sm bg-red-700 text-white
                                disabled:bg-neutral-300">
               {t(anonymisieren.isPending ? 'common.loading' : 'dsgvo.anonymize')}
             </button>
             <button type="button" onClick={() => setGefragt(false)}
-                    className="text-sm px-3 py-1.5 border border-neutral-300 rounded">
+                    className="text-sm px-3 py-1.5 border border-neutral-300 rounded-sm">
               {t('common.cancel')}
             </button>
           </div>
@@ -723,7 +723,7 @@ function Loeschen({ guestRef }: { guestRef: string }): JSX.Element {
       ) : (
         <button type="button" onClick={() => setGefragt(true)}
                 className="text-sm px-3 py-1.5 border border-red-300 text-red-800
-                           rounded hover:bg-red-50">
+                           rounded-sm hover:bg-red-50">
           {t('dsgvo.anonymize')}
         </button>
       )}

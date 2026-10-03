@@ -120,7 +120,7 @@ export function Kontextmenue({ punkt, eintraege, onClose }: {
           * nichts abwehrt, verdeckt genau den Fehler, den er zu
           * verhindern scheint.
           */
-         className="fixed z-50 min-w-48 py-1 bg-white rounded shadow-xl
+         className="fixed z-50 min-w-48 py-1 bg-white rounded-sm shadow-xl
                     border border-neutral-200 text-sm">
       {eintraege.map(e => (
         <button key={e.schluessel} type="button" role="menuitem"

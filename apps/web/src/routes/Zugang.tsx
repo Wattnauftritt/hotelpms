@@ -60,7 +60,7 @@ function Rahmen({ titel, children }: {
 }): JSX.Element {
   return (
     <div className="min-h-screen grid place-items-center bg-neutral-50 p-4">
-      <div className="w-full max-w-sm bg-white border border-neutral-200 rounded
+      <div className="w-full max-w-sm bg-white border border-neutral-200 rounded-sm
                       p-6 space-y-3">
         <h1 className="font-semibold">{titel}</h1>
         {children}
@@ -72,12 +72,12 @@ function Rahmen({ titel, children }: {
 function Fehler({ text }: { text: string }): JSX.Element {
   return (
     <p role="alert" className="text-sm text-red-800 bg-red-50 border border-red-200
-                               rounded px-2 py-1">{text}</p>
+                               rounded-sm px-2 py-1">{text}</p>
   )
 }
 
-const FELD = `mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm`
-const KNOPF = `w-full py-1.5 text-sm rounded bg-neutral-900 text-white
+const FELD = `mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm`
+const KNOPF = `w-full py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                disabled:bg-neutral-300`
 
 /** Einen Link anfordern. Ohne Token in der Adresse ist das der Fall. */
