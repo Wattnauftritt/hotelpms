@@ -32,7 +32,7 @@ export function OnlineCheckinEinstellung({ propertyId, isTraining }: {
   if (q.data === undefined) return <Laedt />
 
   return (
-    <form className="rounded border border-neutral-200 bg-white p-3 space-y-3 max-w-2xl"
+    <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3 max-w-2xl"
           onSubmit={e => {
             e.preventDefault()
             speichern.mutate({ enabled, daysBefore: tage })
@@ -47,7 +47,7 @@ export function OnlineCheckinEinstellung({ propertyId, isTraining }: {
         <span className="text-neutral-600">{t('onlineCheckin.settings.days')}</span>
         <input type="number" min={1} max={14} value={tage}
                onChange={e => setTage(Math.min(14, Math.max(1, Number(e.target.value) || 1)))}
-               className="ml-2 border border-neutral-300 rounded px-2 py-1 w-20" />
+               className="ml-2 border border-neutral-300 rounded-sm px-2 py-1 w-20" />
       </label>
       <p className="text-xs text-neutral-500">
         {isTraining ? t('mail.training') : t('onlineCheckin.settings.hint')}
@@ -55,7 +55,7 @@ export function OnlineCheckinEinstellung({ propertyId, isTraining }: {
       {speichern.isError && <Fehler error={speichern.error} />}
       <div className="flex items-center gap-3">
         <button type="submit" disabled={!online || speichern.isPending}
-                className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('common.save')}
         </button>

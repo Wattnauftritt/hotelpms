@@ -34,7 +34,7 @@ function Marke({ state }: { state: SupportSession['state'] }): JSX.Element {
       ? 'bg-blue-50 text-blue-900 border-blue-300'
       : 'bg-neutral-100 text-neutral-600 border-neutral-300'
   return (
-    <span className={`text-xs px-1.5 py-0.5 rounded border ${farbe}`}>
+    <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${farbe}`}>
       {t(ZUSTAND[state])}
     </span>
   )
@@ -54,7 +54,7 @@ function Rechte({ s }: { s: SupportSession }): JSX.Element {
         <div className="mt-1 space-y-1">
           <ul className="flex flex-wrap gap-1">
             {s.permissions.map(p => (
-              <li key={p} className="px-1.5 py-0.5 bg-neutral-100 rounded font-mono">
+              <li key={p} className="px-1.5 py-0.5 bg-neutral-100 rounded-sm font-mono">
                 {p}
               </li>
             ))}
@@ -77,7 +77,7 @@ function Karte({ s }: { s: SupportSession }): JSX.Element {
     new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
 
   return (
-    <li className="border border-neutral-200 rounded p-3 space-y-2">
+    <li className="border border-neutral-200 rounded-sm p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="text-sm">
           <span className="text-neutral-600">{t('support.who')}: </span>
@@ -110,14 +110,14 @@ function Karte({ s }: { s: SupportSession }): JSX.Element {
         <div className="flex gap-2 pt-1">
           <button type="button" disabled={laeuft}
                   onClick={() => freigeben.mutate(s.id)}
-                  className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                  className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                              disabled:bg-neutral-300">
             {t('support.grant')}
           </button>
           {/* Gleichwertig daneben, nicht kleiner: sonst ist die Frage keine. */}
           <button type="button" disabled={laeuft}
                   onClick={() => beenden.mutate(s.id)}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                  className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                              disabled:text-neutral-400">
             {t('support.deny')}
           </button>
@@ -130,7 +130,7 @@ function Karte({ s }: { s: SupportSession }): JSX.Element {
               (Art. 7 Abs. 3 DSGVO) -- also ein Knopf an derselben Stelle. */}
           <button type="button" disabled={laeuft}
                   onClick={() => beenden.mutate(s.id)}
-                  className="px-3 py-1.5 text-sm rounded border border-neutral-300
+                  className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
                              disabled:text-neutral-400">
             {t('support.revoke')}
           </button>

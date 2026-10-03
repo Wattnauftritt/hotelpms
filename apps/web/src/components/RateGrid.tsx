@@ -171,7 +171,7 @@ export function RateGrid(props: Props): JSX.Element {
   const geld = useMemo(() => geldFormatierer(locale), [locale])
 
   return (
-    <div className="overflow-x-auto border border-neutral-200 rounded bg-white"
+    <div className="overflow-x-auto border border-neutral-200 rounded-sm bg-white"
          onMouseLeave={() => { ziehtAb.current = null }}
          onMouseUp={() => { ziehtAb.current = null }}>
       <table className="border-collapse text-sm">

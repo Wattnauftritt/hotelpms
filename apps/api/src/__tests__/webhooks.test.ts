@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, openBusinessDay, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, makeGuest, openBusinessDay, type Fixture } from '@hotelpms/testing'
 import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -352,5 +352,87 @@ describe('Zustellprotokoll', () => {
     expect(zustellungen[0]!.eventType).toBe('reservation.created')
     expect(zustellungen[0]!.attemptLog).toEqual([
       expect.objectContaining({ attempt: 1, statusCode: 500 })])
+  })
+})
+
+describe('Schlanker Rumpf und fehlende Ausloeser (API-Entwurf 3.2)', () => {
+  /*
+   * Das Ereignis heisst "jetzt nachfragen": es nennt Reservierung, Buchung
+   * und Cursorstand, und der Empfaenger holt die Zeile ueber die Liste.
+   */
+  const mitGast = async (): Promise<{ ref: string; gast: { id: number; publicRef: string } }> => {
+    const gast = await makeGuest(owner, fx.accountId, { lastName: 'Petersen' })
+    const r = await app.inject({
+      method: 'POST', url: '/v1/bookings',
+      headers: { ...auth(admin.sessionId), 'idempotency-key': `g-${Math.random()}` },
+      payload: { propertyId: fx.propertyId, categoryId: catId, guestRef: gast.publicRef,
+                 arrival: '2026-10-10', departure: '2026-10-12' } })
+    expect(r.statusCode, r.body).toBe(201)
+    return { ref: (json(r) as unknown as { reservationRef: string }).reservationRef, gast }
+  }
+
+  it('gibt jedem Reservierungsereignis Buchung und Cursorstand mit', async () => {
+    await anlegen()
+    const ref = await buchen()
+    const r = await app.inject({
+      method: 'POST', url: `/v1/reservations/${ref}/cancel`, headers: auth(admin.sessionId),
+      payload: { propertyId: fx.propertyId } })
+    expect(r.statusCode).toBe(200)
+
+    for (const z of await eingereiht()) {
+      expect(z.payload.data.reservationRef).toBe(ref)
+      expect(typeof z.payload.data.bookingRef).toBe('string')
+      expect(z.payload.data.cursor).toMatch(/^\d+\.0$/)
+    }
+  })
+
+  it('meldet eine Notizaenderung, ohne den Text zu verschicken', async () => {
+    await anlegen()
+    const ref = await buchen()
+    const r = await app.inject({ method: 'PATCH', url: `/v1/reservations/${ref}`,
+      headers: auth(admin.sessionId), payload: { notes: 'Allergie: Nuesse' } })
+    expect(r.statusCode).toBe(200)
+
+    const zeilen = await eingereiht()
+    expect(zeilen.map(z => z.event_type)).toEqual(['reservation.created', 'reservation.changed'])
+    expect(zeilen[1]!.payload.data).toMatchObject({ reservationRef: ref, changed: ['notes'] })
+    expect(JSON.stringify(zeilen[1]!.payload)).not.toContain('Nuesse')
+  })
+
+  it('meldet eine Gastkorrektur, ohne den Namen zu verschicken', async () => {
+    await anlegen()
+    const { ref, gast } = await mitGast()
+    const r = await app.inject({ method: 'PATCH', url: `/v1/guests/${gast.publicRef}`,
+      headers: auth(admin.sessionId), payload: { lastName: 'Petersson' } })
+    expect(r.statusCode, r.body).toBe(200)
+
+    const zeilen = await eingereiht()
+    expect(zeilen.map(z => z.event_type)).toEqual(['reservation.created', 'reservation.changed'])
+    expect(zeilen[1]!.payload.data).toMatchObject({ reservationRef: ref, changed: ['guest'] })
+    expect(JSON.stringify(zeilen[1]!.payload)).not.toContain('Peters')
+  })
+
+  it('meldet die Anonymisierung als eigene Art der Aenderung', async () => {
+    await anlegen()
+    const { ref, gast } = await mitGast()
+    const s = await app.inject({
+      method: 'POST', url: `/v1/reservations/${ref}/cancel`, headers: auth(admin.sessionId),
+      payload: { propertyId: fx.propertyId } })
+    expect(s.statusCode).toBe(200)
+    const a = await app.inject({ method: 'POST', url: `/v1/guests/${gast.publicRef}/anonymize`,
+      headers: auth(admin.sessionId) })
+    expect(a.statusCode, a.body).toBe(200)
+
+    const letzte = (await eingereiht()).at(-1)!
+    expect(letzte.event_type).toBe('reservation.changed')
+    expect(letzte.payload.data).toMatchObject({ reservationRef: ref, status: 'Canceled',
+                                                changed: ['guestAnonymized'] })
+  })
+
+  it('meldet eine Telefonnummer nicht -- sie steht nicht in der Liste', async () => {
+    await anlegen()
+    const { gast } = await mitGast()
+    await owner.query(`UPDATE guest SET phone = '04721 1' WHERE id = $1`, [gast.id])
+    expect((await eingereiht()).map(z => z.event_type)).toEqual(['reservation.created'])
   })
 })

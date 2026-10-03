@@ -48,15 +48,15 @@ const BREITEN: Record<Dialogbreite, string> = {
  * `py-2` statt `py-1`: in einer breiten Maske sieht ein Feld von 26 Pixel
  * Hoehe aus wie ein Versehen, und getroffen wird es auch schlechter.
  */
-export const FELD = 'w-full border border-neutral-300 rounded px-3 py-2 text-sm '
+export const FELD = 'w-full border border-neutral-300 rounded-sm px-3 py-2 text-sm '
   + 'disabled:bg-neutral-100 disabled:text-neutral-500'
 
 /** Der Knopf, der die Maske abschickt. */
-export const KNOPF = 'px-4 py-2 text-sm rounded bg-neutral-900 text-white '
+export const KNOPF = 'px-4 py-2 text-sm rounded-sm bg-neutral-900 text-white '
   + 'disabled:bg-neutral-300'
 
 /** Der Knopf daneben -- Schliessen, Abbrechen, Zurueck. */
-export const KNOPF_LEISE = 'px-4 py-2 text-sm rounded border border-neutral-300 '
+export const KNOPF_LEISE = 'px-4 py-2 text-sm rounded-sm border border-neutral-300 '
   + 'bg-white hover:bg-neutral-50'
 
 export function Dialog({ titel, unterzeile, breite = 'breit', fuss, onClose,

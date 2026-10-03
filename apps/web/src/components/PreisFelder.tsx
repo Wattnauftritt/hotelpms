@@ -56,7 +56,7 @@ export function PreisFelder({ wert, naechte, onChange, klein = false,
                 * es `readOnly`, muesste dafuer ein Schalter daneben, und
                 * den findet niemand.
                 */
-               className={`border rounded text-sm ${polster} ${breite}
+               className={`border rounded-sm text-sm ${polster} ${breite}
                            ${fehlt ? 'border-red-500 bg-red-50' : 'border-neutral-300'}
                            ${aktiv ? '' : 'text-neutral-500 bg-neutral-50'}`} />
       </label>

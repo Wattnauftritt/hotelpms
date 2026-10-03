@@ -58,7 +58,7 @@ function Einstellung({ propertyId, daten, darfSteuern }: {
   const gueltig = Number.isInteger(hZahl) && hZahl >= 1 && hZahl <= STEER_MAX_HORIZON_DAYS
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="text-sm text-neutral-600">{t('steer.intro')}</div>
       <div className="flex flex-wrap items-end gap-4">
         <fieldset className="text-sm space-y-1">
@@ -77,14 +77,14 @@ function Einstellung({ propertyId, daten, darfSteuern }: {
           <input type="number" min={1} max={STEER_MAX_HORIZON_DAYS} value={h}
                  disabled={!darfSteuern}
                  onChange={e => setHorizont(e.target.value)}
-                 className="border border-neutral-300 rounded px-2 py-1 w-24 tabular-nums" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-24 tabular-nums" />
         </label>
         {darfSteuern && (
           <button type="button"
                   disabled={!online || !gueltig || setzen.isPending}
                   onClick={() => setzen.mutate({ mode: m, horizonDays: hZahl },
                     { onSuccess: () => { setModus(null); setHorizont(null) } })}
-                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('common.save')}
           </button>
@@ -126,7 +126,7 @@ function PlanZeile({ propertyId, plan, darfSteuern }: {
     && (minCent === null || maxCent === null || minCent <= maxCent)
   const gesperrt = !darfSteuern || plan.derived
 
-  const feld = 'border border-neutral-300 rounded px-2 py-1 w-24 text-right tabular-nums '
+  const feld = 'border border-neutral-300 rounded-sm px-2 py-1 w-24 text-right tabular-nums '
     + 'disabled:bg-neutral-100'
 
   return (
@@ -142,7 +142,7 @@ function PlanZeile({ propertyId, plan, darfSteuern }: {
               <select value={source} disabled={gesperrt}
                       aria-label={t('steer.source')}
                       onChange={e => setSource(e.target.value as PriceSource)}
-                      className="border border-neutral-300 rounded px-2 py-1 disabled:bg-neutral-100">
+                      className="border border-neutral-300 rounded-sm px-2 py-1 disabled:bg-neutral-100">
                 {PRICE_SOURCES.map(s => (
                   <option key={s} value={s}>{t(`steer.source.${s}` as TextKey)}</option>
                 ))}
@@ -161,7 +161,7 @@ function PlanZeile({ propertyId, plan, darfSteuern }: {
             <td className="py-1.5 pr-2">
               <select value={rounding} disabled={gesperrt} aria-label={t('steer.rounding')}
                       onChange={e => setRounding(e.target.value as SteerRounding)}
-                      className="border border-neutral-300 rounded px-2 py-1 disabled:bg-neutral-100">
+                      className="border border-neutral-300 rounded-sm px-2 py-1 disabled:bg-neutral-100">
                 {STEER_ROUNDINGS.map(r => (
                   <option key={r} value={r}>{t(`steer.rounding.${r}` as TextKey)}</option>
                 ))}
@@ -179,7 +179,7 @@ function PlanZeile({ propertyId, plan, darfSteuern }: {
                         onClick={() => setzen.mutate({
                           ratePlanId: plan.ratePlanId, source, minCent, maxCent,
                           rounding, maxStepBp: stepBp })}
-                        className="text-sm px-3 py-1 rounded border border-neutral-300
+                        className="text-sm px-3 py-1 rounded-sm border border-neutral-300
                                    hover:bg-neutral-50 disabled:opacity-40">
                   {t('common.save')}
                 </button>
@@ -201,7 +201,7 @@ function Plaene({ propertyId, plaene, darfSteuern }: {
 }): JSX.Element {
   const t = useT()
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
       <div className="font-medium">{t('steer.plans')}</div>
       <div className="text-xs text-neutral-500">{t('steer.plans.hint')}</div>
       <div className="overflow-x-auto">
@@ -369,7 +369,7 @@ function RegelMaske({ propertyId, regel, plaene, kategorien, onClose }: {
 
         {gruppe(e.kind)}
 
-        <details className="rounded border border-neutral-200 p-3">
+        <details className="rounded-sm border border-neutral-200 p-3">
           <summary className="text-sm text-neutral-600 cursor-pointer">
             {t('steer.rule.moreConditions')}
           </summary>
@@ -426,7 +426,7 @@ function RegelMaske({ propertyId, regel, plaene, kategorien, onClose }: {
           </select>
         </label>
 
-        <div className="rounded bg-neutral-50 border border-neutral-200 p-3 text-sm">
+        <div className="rounded-sm bg-neutral-50 border border-neutral-200 p-3 text-sm">
           <div className="text-xs text-neutral-500">{t('steer.rule.reads')}</div>
           {nutzlast === null
             ? <div className="text-neutral-500">{t('steer.rule.incomplete')}</div>
@@ -450,13 +450,13 @@ function Regeln({ propertyId, daten, kategorien, darfSteuern }: {
   const [offen, setOffen] = useState<SteerRuleRow | null | undefined>(undefined)
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-3">
         <div className="font-medium">{t('steer.rules')}</div>
         <div className="grow" />
         {darfSteuern && (
           <button type="button" disabled={!online} onClick={() => setOffen(null)}
-                  className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('steer.rule.new')}
           </button>
@@ -480,13 +480,13 @@ function Regeln({ propertyId, daten, kategorien, darfSteuern }: {
                 {darfSteuern && (
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setOffen(r)} disabled={!online}
-                            className="text-sm px-2 py-1 rounded border border-neutral-300
+                            className="text-sm px-2 py-1 rounded-sm border border-neutral-300
                                        hover:bg-neutral-50 disabled:opacity-40">
                       {t('steer.rule.edit')}
                     </button>
                     <button type="button" onClick={() => entfernen.mutate(r.id)}
                             disabled={!online || entfernen.isPending}
-                            className="text-sm px-2 py-1 rounded border border-neutral-300
+                            className="text-sm px-2 py-1 rounded-sm border border-neutral-300
                                        hover:bg-neutral-50 disabled:opacity-40">
                       {t('steer.rule.delete')}
                     </button>
@@ -607,7 +607,7 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
   const gesteuert = daten.plans.filter(p => p.source === 'rules' && !p.derived)
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-3">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <div className="font-medium">{t('steer.preview')}</div>
         <div className="grow" />
@@ -615,20 +615,20 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
           <div className="text-neutral-600">{t('common.from')}</div>
           <input type="date" value={von} min={daten.businessDate ?? undefined}
                  onChange={e => { setVon(e.target.value); setGewaehlt(new Set()) }}
-                 className="border border-neutral-300 rounded px-2 py-1" />
+                 className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('rate.days')}</div>
           <select value={laenge} onChange={e => { setLaenge(Number(e.target.value))
                                                   setGewaehlt(new Set()) }}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {ZEITRAEUME.map(n => <option key={n} value={n}>{t('steer.days', { n })}</option>)}
           </select>
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('rate.occupancy')}</div>
           <select value={belegung} onChange={e => setBelegung(Number(e.target.value))}
-                  className="border border-neutral-300 rounded px-2 py-1">
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
             {[1, 2, 3, 4].map(n => (
               <option key={n} value={n}>{n} {t('rate.occupancy.n')}</option>
             ))}
@@ -647,7 +647,7 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
           : vorschau.data === undefined
             ? <Laedt />
             : <>
-                <div className="overflow-x-auto border border-neutral-200 rounded">
+                <div className="overflow-x-auto border border-neutral-200 rounded-sm">
                   <table className="text-xs border-collapse" data-vorschau>
                     <thead>
                       <tr>
@@ -695,7 +695,7 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
                                   className={`border-t border-neutral-100 px-1 py-1 text-right
                                               tabular-nums cursor-pointer select-none ${farbe}
                                               ${gewaehlt.has(k) ? 'ring-2 ring-inset ring-neutral-900' : ''}
-                                              ${fokus === k ? 'outline outline-1 outline-neutral-400' : ''}`}>
+                                              ${fokus === k ? 'outline-solid outline-1 outline-neutral-400' : ''}`}>
                                 <div className="font-medium">
                                   {neu === null ? '—'
                                     : geldF.format(neu / 100).replace(/\s?€/, '')}
@@ -724,13 +724,13 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => anwenden(false)}
                             disabled={!online || geaendert === 0 || uebernehmen.isPending}
-                            className="text-sm px-3 py-1.5 rounded bg-neutral-900 text-white
+                            className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                                        disabled:opacity-40">
                       {t('steer.apply.all', { n: geaendert })}
                     </button>
                     <button type="button" onClick={() => anwenden(true)}
                             disabled={!online || auswahl.length === 0 || uebernehmen.isPending}
-                            className="text-sm px-3 py-1.5 rounded border border-neutral-300
+                            className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                                        hover:bg-neutral-50 disabled:opacity-40">
                       {t('steer.apply.selected', { n: auswahl.length })}
                     </button>
@@ -798,7 +798,7 @@ function Verlauf({ propertyId, daten }: {
   const zeit = new Intl.DateTimeFormat(intlTag(locale),
     { dateStyle: 'short', timeStyle: 'short' })
   return (
-    <section className="rounded border border-neutral-200 bg-white p-3 space-y-2">
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
       <div className="font-medium">{t('steer.runs')}</div>
       {daten.runs.length === 0
         ? <div className="text-sm text-neutral-500">{t('steer.runs.none')}</div>

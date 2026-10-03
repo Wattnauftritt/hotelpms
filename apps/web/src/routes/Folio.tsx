@@ -45,7 +45,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
     <div className="space-y-4 max-w-4xl">
       <div className="flex items-center gap-3">
         <button onClick={onClose}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           ← {t('common.back')}
         </button>
         <h2 className="text-sm font-medium">
@@ -53,7 +53,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
           {f.folio.label !== null && <span className="text-neutral-500"> · {f.folio.label}</span>}
         </h2>
         {f.folio.status === 'closed' && (
-          <span className="text-xs px-2 py-0.5 rounded bg-neutral-200">{t('folio.closed')}</span>
+          <span className="text-xs px-2 py-0.5 rounded-sm bg-neutral-200">{t('folio.closed')}</span>
         )}
         <div className="grow" />
         <span className={`text-lg tabular-nums font-medium
@@ -63,7 +63,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
         </span>
       </div>
 
-      <section className="bg-white border border-neutral-200 rounded overflow-hidden">
+      <section className="bg-white border border-neutral-200 rounded-sm overflow-hidden">
         <h3 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">
           {t('folio.charges')}
         </h3>
@@ -103,7 +103,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
         </table>
       </section>
 
-      <section className="bg-white border border-neutral-200 rounded overflow-hidden">
+      <section className="bg-white border border-neutral-200 rounded-sm overflow-hidden">
         <h3 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">
           {t('folio.settlements')}
         </h3>
@@ -156,11 +156,11 @@ export function Folio({ folioRef, propertyId, onClose }: {
       )}
 
       {offen.length > 0 && online && (
-        <section className="bg-white border border-neutral-200 rounded p-3">
+        <section className="bg-white border border-neutral-200 rounded-sm p-3">
           <div className="flex items-center gap-3">
             <button onClick={() => fakturieren.mutate()}
                     disabled={fakturieren.isPending}
-                    className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                    className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                                disabled:bg-neutral-300">
               {t('folio.issueInvoice')} ({offen.length})
             </button>
@@ -178,7 +178,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
   )
 }
 
-const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded px-2 py-1 text-sm'
+const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 function NeuePosition({ folioRef }: { folioRef: string }): JSX.Element {
   const t = useT()
@@ -188,7 +188,7 @@ function NeuePosition({ folioRef }: { folioRef: string }): JSX.Element {
   const buchen = usePostCharge(folioRef)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3">
       <h3 className="text-sm font-medium">{t('folio.newCharge')}</h3>
       <form className="mt-2 space-y-2"
             onSubmit={e => {
@@ -222,7 +222,7 @@ function NeuePosition({ folioRef }: { folioRef: string }): JSX.Element {
           </label>
         </div>
         <button type="submit" disabled={buchen.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('folio.post')}
         </button>
@@ -244,7 +244,7 @@ function NeueZahlung({ folioRef, offenCent, methoden, hinweis }: {
   const vermerken = usePostSettlement(folioRef)
 
   return (
-    <section className="bg-white border border-neutral-200 rounded p-3">
+    <section className="bg-white border border-neutral-200 rounded-sm p-3">
       <h3 className="text-sm font-medium">{t('folio.newSettlement')}</h3>
       <form className="mt-2 space-y-2"
             onSubmit={e => {
@@ -264,7 +264,7 @@ function NeueZahlung({ folioRef, offenCent, methoden, hinweis }: {
           </label>
           <button type="button"
                   onClick={() => setBetrag((offenCent / 100).toFixed(2).replace('.', ','))}
-                  className="self-end px-2 py-1 text-xs border border-neutral-300 rounded
+                  className="self-end px-2 py-1 text-xs border border-neutral-300 rounded-sm
                              whitespace-nowrap">
             {t('folio.fullBalance')} {formatMoney(offenCent, locale)}
           </button>
@@ -283,7 +283,7 @@ function NeueZahlung({ folioRef, offenCent, methoden, hinweis }: {
                  className={eingabe} placeholder="Bon 4711" />
         </label>
         <button type="submit" disabled={vermerken.isPending}
-                className="px-3 py-1.5 text-sm rounded bg-neutral-900 text-white
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
           {t('folio.note')}
         </button>

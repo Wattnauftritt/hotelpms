@@ -35,7 +35,7 @@ export function AvailabilityGrid({ from, to, days, categories, onSelect }: {
   }, [days])
 
   return (
-    <div className="overflow-auto border border-neutral-200 rounded">
+    <div className="overflow-auto border border-neutral-200 rounded-sm">
       <div style={{ minWidth: LABEL_BREITE + tage.length * SPALTE }}>
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
           <div className="w-40 shrink-0 px-2 py-1 text-xs font-medium text-neutral-500

@@ -314,25 +314,25 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         <div className="flex items-center gap-1">
           <button onClick={() => setVon(addMonths(von, -12))}
                   title={t('plan.yearBack')} aria-label={t('plan.yearBack')}
-                  className="px-2 py-1 border border-neutral-300 rounded text-sm">«</button>
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">«</button>
           <button onClick={() => setVon(addMonths(von, -1))}
                   title={t('plan.monthBack')} aria-label={t('plan.monthBack')}
-                  className="px-2 py-1 border border-neutral-300 rounded text-sm">‹</button>
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">‹</button>
           <button onClick={() => setVon(addMonths(von, 1))}
                   title={t('plan.monthForward')} aria-label={t('plan.monthForward')}
-                  className="px-2 py-1 border border-neutral-300 rounded text-sm">›</button>
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">›</button>
           <button onClick={() => setVon(addMonths(von, 12))}
                   title={t('plan.yearForward')} aria-label={t('plan.yearForward')}
-                  className="px-2 py-1 border border-neutral-300 rounded text-sm">»</button>
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">»</button>
         </div>
         <button onClick={() => setVon(today())}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           {t('common.today')}
         </button>
         <div className="flex gap-1">
           {SPANNEN.map(n => (
             <button key={n} onClick={() => setTage(n)}
-                    className={`text-sm px-2 py-1 rounded border
+                    className={`text-sm px-2 py-1 rounded-sm border
                                 ${tage === n
                                   ? 'bg-neutral-900 text-white border-neutral-900'
                                   : 'border-neutral-300'}`}>
@@ -352,7 +352,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
           * und unter dem Plan steht, was er bedeutet.
           */}
         <label title={t('verlegen.planningModeHint')}
-               className={`text-sm flex items-center gap-1.5 rounded px-1.5 py-0.5
+               className={`text-sm flex items-center gap-1.5 rounded-sm px-1.5 py-0.5
                            ${planung ? 'bg-amber-100 text-amber-900 font-medium'
                                      : 'text-neutral-700'}`}>
           <input type="checkbox" checked={planung}
@@ -367,7 +367,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         </label>
         <div className="grow" />
         <button onClick={() => setVerlauf(true)}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded">
+                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           {t('verlauf.title')}
         </button>
         <Legende propertyId={propertyId} />
@@ -383,7 +383,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         */}
       {warnungen.length > 0 && (
         <div title={warnungen.join('\n')}
-             className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs
+             className="rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-xs
                         text-amber-900 truncate">
           <span className="font-medium">{t('warnings.title')}:</span>{' '}
           {warnungen.join(' · ')}
@@ -663,7 +663,7 @@ function Legende({ propertyId }: { propertyId: number }): JSX.Element {
     <div className="flex items-center gap-3 text-xs text-neutral-600">
       {punkte.map(([farbe, key]) => (
         <span key={key} className="flex items-center gap-1">
-          <span className={`inline-block w-3 h-3 rounded ${farbe}`} />
+          <span className={`inline-block w-3 h-3 rounded-sm ${farbe}`} />
           {t(key)}
         </span>
       ))}

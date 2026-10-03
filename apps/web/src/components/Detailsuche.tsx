@@ -122,9 +122,9 @@ export function Detailsuche({ propertyId }: { propertyId: number }): JSX.Element
       <button type="button" onClick={() => setOffen(true)}
               aria-label={t('suche.button')} title={t('suche.button')}
               className="flex items-center gap-1.5 text-sm px-2 py-1 border border-neutral-300
-                         rounded text-neutral-500 hover:bg-neutral-50 shrink-0">
+                         rounded-sm text-neutral-500 hover:bg-neutral-50 shrink-0">
         <span aria-hidden>⌕</span>
-        <kbd className="text-[10px] px-1 rounded border border-neutral-300 bg-neutral-50
+        <kbd className="text-[10px] px-1 rounded-sm border border-neutral-300 bg-neutral-50
                         font-sans">
           {istMac() ? '⌘K' : t('suche.shortcut')}
         </kbd>
@@ -245,7 +245,7 @@ function Fenster({ propertyId, feldRef, erlaubt, darfKunden, onClose, onWahl }: 
         {e.art === 'befehl' && (
           <>
             <span className="grow">{t(e.text)}</span>
-            <kbd className="text-[11px] px-1.5 rounded border border-neutral-300
+            <kbd className="text-[11px] px-1.5 rounded-sm border border-neutral-300
                             bg-neutral-50 text-neutral-500 font-sans">
               {istMac() ? '⌥' : 'Alt+'}{e.taste}
             </kbd>
@@ -287,8 +287,8 @@ function Fenster({ propertyId, feldRef, erlaubt, darfKunden, onClose, onWahl }: 
                  aria-autocomplete="list"
                  aria-activedescendant={eintraege[aktiv] !== undefined
                    ? `${listId}-${aktiv}` : undefined}
-                 className="grow text-base outline-none" />
-          <kbd className="text-[11px] px-1.5 rounded border border-neutral-300 bg-neutral-50
+                 className="grow text-base outline-hidden" />
+          <kbd className="text-[11px] px-1.5 rounded-sm border border-neutral-300 bg-neutral-50
                           text-neutral-500 font-sans">Esc</kbd>
         </div>
 
@@ -339,7 +339,7 @@ function Fenster({ propertyId, feldRef, erlaubt, darfKunden, onClose, onWahl }: 
 
 function Taste({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <kbd className="mr-0.5 text-[11px] px-1 rounded border border-neutral-300 bg-white
+    <kbd className="mr-0.5 text-[11px] px-1 rounded-sm border border-neutral-300 bg-white
                     font-sans">
       {children}
     </kbd>
