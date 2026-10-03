@@ -39,7 +39,7 @@ const LIMIT_MAX = 1000
 /**
  * Welche Zustaende zu welcher Gruppe gehoeren.
  *
- * Ersetzt die Codelisten des Altsystems (im Adminpanel: aktiv 0, 1, 4;
+ * Ersetzt die Codelisten des Altsystems (im Adminpanel: aktiv 0, 1, 2, 4;
  * storniert 10-14, 19, 22). `Inquired` ist eine Anfrage, noch keine Buchung,
  * und gehoert zu keiner der beiden Gruppen.
  */
@@ -134,6 +134,11 @@ export function reservationListRoutes(app: FastifyInstance): void {
                   r.public_ref            AS "reservationRef",
                   b.public_ref            AS "bookingRef",
                   b.external_reference    AS "externalReference",
+                  -- Die Nummer im Altsystem, getrennt von der Kanalnummer
+                  -- (Migration 0078). Das Adminpanel findet daran jede
+                  -- Zeile wieder, die es unter ihrer KWHotel-Nummer kennt.
+                  r.legacy_system         AS "legacySystem",
+                  r.legacy_reference      AS "legacyReference",
                   b.source,
                   b.channel_code          AS "channelCode",
                   r.status,
