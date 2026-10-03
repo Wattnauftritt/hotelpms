@@ -34,6 +34,22 @@ export const KwhotelImportRequest = Type.Object({
    */
   roomMap: Type.Optional(Type.Record(Type.String(),
     Type.Union([Type.Integer(), Type.Null()]))),
+  /**
+   * Zimmer, die es in StayGrid noch nicht gibt und die mit der Uebernahme
+   * angelegt werden: mit eigener Nummer und entweder einer vorhandenen
+   * Zimmergruppe oder einer neuen. Neue Gruppen mit demselben Kuerzel
+   * werden eine Gruppe.
+   */
+  createRooms: Type.Optional(Type.Array(Type.Object({
+    kwRoomId: Type.String(),
+    code: Type.String({ minLength: 1, maxLength: 20 }),
+    categoryId: Type.Optional(Type.Integer()),
+    newCategory: Type.Optional(Type.Object({
+      code: Type.String({ minLength: 1, maxLength: 10 }),
+      name: Type.String({ minLength: 1, maxLength: 80 }),
+      maxOccupancy: Type.Integer({ minimum: 1, maximum: 99 })
+    }))
+  }), { maxItems: 500 })),
   /** Nur Aufenthalte, die an oder nach diesem Tag noch andauern. */
   fromDate: Type.Optional(IsoDate)
 })
@@ -50,6 +66,15 @@ export const KwhotelFinding = Type.Object({
 })
 export type KwhotelFinding = Static<typeof KwhotelFinding>
 
+/** Vorschlag fuer ein Zimmer, das es in StayGrid noch nicht gibt. */
+export const RoomSuggestion = Type.Object({
+  code: Type.String(),
+  categoryCode: Type.String(),
+  categoryName: Type.String(),
+  maxOccupancy: Type.Integer()
+})
+export type RoomSuggestion = Static<typeof RoomSuggestion>
+
 export const KwhotelRoomMatch = Type.Object({
   kwRoomId: Type.String(),
   name: Type.String(),
@@ -57,9 +82,13 @@ export const KwhotelRoomMatch = Type.Object({
   reservations: Type.Integer(),
   resourceId: Type.Union([Type.Integer(), Type.Null()]),
   roomCode: Type.Union([Type.String(), Type.Null()]),
-  /** `auto` ueber die Nummer, `manual` aus `roomMap`, `skipped` bewusst weggelassen. */
-  match: Type.Union([Type.Literal('auto'), Type.Literal('manual'),
-                     Type.Literal('skipped'), Type.Literal('none')])
+  /**
+   * `auto` ueber die Nummer, `manual` aus `roomMap`, `created` aus
+   * `createRooms`, `skipped` bewusst weggelassen.
+   */
+  match: Type.Union([Type.Literal('auto'), Type.Literal('manual'), Type.Literal('created'),
+                     Type.Literal('skipped'), Type.Literal('none')]),
+  suggestion: RoomSuggestion
 })
 export type KwhotelRoomMatch = Static<typeof KwhotelRoomMatch>
 

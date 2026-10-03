@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import type { KwhotelImportReport } from '@hotelpms/contracts'
-import { useRooms } from '../lib/queries.js'
+import type { KwhotelImportReport, KwhotelImportRequest, KwhotelRoomMatch } from '@hotelpms/contracts'
+import { useCategories, useRooms } from '../lib/queries.js'
 import { useKwhotelImport } from '../lib/queries/altsystem.js'
 import { auszugAusAbzug, KWHOTEL_TABELLEN, namenAus, zahlenAus } from '../lib/altsystem.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
@@ -19,13 +19,21 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
  * **Die Datei bleibt im Speicher dieser Seite.** Kein `localStorage`, kein
  * Zwischenspeicher der Abfragen: sie trägt Gastnamen, und wer die Seite
  * verlässt, soll sie nicht beim nächsten Mal noch vorfinden.
+ *
+ * **Fehlende Zimmer werden gefragt, nicht angelegt.** Ein Zimmer aus dem
+ * Abzug, das es hier nicht gibt, lässt sich zuordnen, auslassen oder neu
+ * anlegen, mit eigener Nummer und Zimmergruppe. Vorbelegt ist, was KWHotel
+ * dazu weiß; angelegt wird erst mit der Übernahme und in derselben
+ * Transaktion, so dass eine abgebrochene Übernahme keine Zimmer hinterlässt.
  */
 export function Datenuebernahme({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const zimmer = useRooms(propertyId, true)
+  const gruppen = useCategories(propertyId)
 
   if (zimmer.isError) return <Fehler error={zimmer.error} />
-  if (zimmer.data === undefined) return <Laedt />
+  if (gruppen.isError) return <Fehler error={gruppen.error} />
+  if (zimmer.data === undefined || gruppen.data === undefined) return <Laedt />
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -41,7 +49,8 @@ export function Datenuebernahme({ propertyId }: { propertyId: number }): JSX.Ele
         </label>
         <KwhotelUebernahme propertyId={propertyId}
           zimmer={zimmer.data.rooms.map(z => ({ id: z.id, code: z.code,
-                                               categoryCode: z.categoryCode }))} />
+                                               categoryCode: z.categoryCode }))}
+          gruppen={gruppen.data.categories.map(g => ({ id: g.id, code: g.code, name: g.name }))} />
       </section>
     </div>
   )
@@ -52,6 +61,17 @@ const KNOPF = 'text-sm px-3 py-1.5 rounded-sm border border-neutral-300 hover:bg
             + 'disabled:opacity-50'
 
 interface Zimmer { id: number; code: string; categoryCode: string }
+interface Gruppe { id: number; code: string; name: string }
+
+/** Ein Zimmer, das mit der Übernahme neu angelegt wird. */
+interface NeuesZimmer {
+  code: string
+  /** Eine vorhandene Zimmergruppe, oder `null` für eine neue. */
+  gruppe: number | null
+  gruppeCode: string
+  gruppeName: string
+  belegung: string
+}
 
 interface Einstellungen {
   ausschluss: string
@@ -59,17 +79,38 @@ interface Einstellungen {
   aktiv: string
   storno: string
   karte: Record<string, number | null>
+  neu: Record<string, NeuesZimmer>
 }
 
-function KwhotelUebernahme({ propertyId, zimmer }: {
-  propertyId: number; zimmer: Zimmer[]
+/**
+ * Der Vorschlag der Schnittstelle als Eingabe. Gibt es das Kürzel schon als
+ * Gruppe, ist sie vorgewählt: "DZ" aus KWHotel ist fast immer das "DZ" hier.
+ */
+function ausVorschlag(r: KwhotelRoomMatch, gruppen: Gruppe[]): NeuesZimmer {
+  const s = r.suggestion
+  const da = gruppen.find(g => g.code.toLowerCase() === s.categoryCode.toLowerCase())
+  return { code: s.code, gruppe: da?.id ?? null, gruppeCode: s.categoryCode,
+           gruppeName: s.categoryName, belegung: String(s.maxOccupancy) }
+}
+
+function neueZimmer(neu: Record<string, NeuesZimmer>): KwhotelImportRequest['createRooms'] {
+  return Object.entries(neu).map(([kwRoomId, n]) => ({
+    kwRoomId, code: n.code.trim(),
+    ...(n.gruppe !== null ? { categoryId: n.gruppe } : {
+      newCategory: { code: n.gruppeCode.trim(), name: n.gruppeName.trim(),
+                     maxOccupancy: Number(n.belegung) } })
+  }))
+}
+
+function KwhotelUebernahme({ propertyId, zimmer, gruppen }: {
+  propertyId: number; zimmer: Zimmer[]; gruppen: Gruppe[]
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const lauf = useKwhotelImport(propertyId)
   const [datei, setDatei] = useState<{ name: string; groesse: number; text: string } | null>(null)
   const [e, setE] = useState<Einstellungen>({
-    ausschluss: '', ab: '', aktiv: '0, 1, 2, 4', storno: '10, 11, 12, 13, 14, 19, 22', karte: {}
+    ausschluss: '', ab: '', aktiv: '0, 1, 2, 4', storno: '10, 11, 12, 13, 14, 19, 22', karte: {}, neu: {}
   })
   const [bericht, setBericht] = useState<KwhotelImportReport | null>(null)
   // Mit welchen Einstellungen der Bericht entstand. Uebernommen wird nur,
@@ -84,6 +125,7 @@ function KwhotelUebernahme({ propertyId, zimmer }: {
     activeStatus: zahlenAus(e.aktiv),
     canceledStatus: zahlenAus(e.storno),
     roomMap: e.karte,
+    ...(Object.keys(e.neu).length > 0 ? { createRooms: neueZimmer(e.neu) } : {}),
     ...(e.ab !== '' ? { fromDate: e.ab } : {})
   })
 
@@ -95,7 +137,12 @@ function KwhotelUebernahme({ propertyId, zimmer }: {
   }
   const uebernehmen = () => {
     lauf.mutate(anfrage(true), {
-      onSuccess: b => { setBericht(b); setGeprueft(null) }
+      onSuccess: b => {
+        setBericht(b)
+        setGeprueft(null)
+        // Die neuen Zimmer gibt es jetzt; sie stehen ab hier in der Auswahl.
+        setE(x => ({ ...x, neu: {} }))
+      }
     })
   }
 
@@ -120,7 +167,7 @@ function KwhotelUebernahme({ propertyId, zimmer }: {
                             text: auszugAusAbzug(voll, KWHOTEL_TABELLEN) })
                  setBericht(null)
                  setGeprueft(null)
-                 setE(x => ({ ...x, karte: {} }))
+                 setE(x => ({ ...x, karte: {}, neu: {} }))
                }} />
       </label>
       {datei !== null && (
@@ -171,14 +218,16 @@ function KwhotelUebernahme({ propertyId, zimmer }: {
       {fehler !== null && <p className="text-sm text-red-700">{fehler.text}</p>}
 
       {bericht !== null && (
-        <Bericht bericht={bericht} zimmer={zimmer} einstellungen={e} setEinstellungen={setE} />
+        <Bericht bericht={bericht} zimmer={zimmer} gruppen={gruppen}
+                 einstellungen={e} setEinstellungen={setE} />
       )}
     </div>
   )
 }
 
-function Bericht({ bericht: b, zimmer, einstellungen: e, setEinstellungen: setE }: {
-  bericht: KwhotelImportReport; zimmer: Zimmer[]
+function Bericht({ bericht: b, zimmer, gruppen, einstellungen: e,
+                   setEinstellungen: setE }: {
+  bericht: KwhotelImportReport; zimmer: Zimmer[]; gruppen: Gruppe[]
   einstellungen: Einstellungen; setEinstellungen: (e: Einstellungen) => void
 }): JSX.Element {
   const t = useT()
@@ -273,51 +322,158 @@ function Bericht({ bericht: b, zimmer, einstellungen: e, setEinstellungen: setE 
         </ul>
       </div>
 
-      <div>
-        <h3 className="text-xs font-medium text-neutral-700">{t('import.rooms')}</h3>
-        <p className="text-[11px] text-neutral-400">{t('import.rooms.hint')}</p>
-        <table className="mt-1 text-sm">
-          <thead>
-            <tr className="text-left text-xs text-neutral-500">
-              <th className="pr-6 font-normal">{t('import.rooms.kw')}</th>
-              <th className="pr-6 font-normal text-right">{t('import.rooms.reservations')}</th>
-              <th className="font-normal">{t('import.rooms.target')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {b.rooms.map(r => {
-              // Die eigene Aenderung gilt, bis neu geprueft ist; sonst
-              // spraenge die Auswahl auf den Stand des letzten Berichts zurueck.
-              const ziel = r.kwRoomId in e.karte ? e.karte[r.kwRoomId]
-                : r.match === 'skipped' ? null : r.resourceId ?? undefined
-              const wert = ziel === null ? 'skip' : ziel === undefined ? '' : String(ziel)
-              return (
-                <tr key={r.kwRoomId}>
-                  <td className="pr-6">{r.name}</td>
-                  <td className="pr-6 text-right tabular-nums">{zahl(r.reservations)}</td>
-                  <td>
-                    <select value={wert}
-                            className={`border rounded-sm px-1 py-0.5 text-sm ${
-                              r.match === 'none' && r.reservations > 0
-                                ? 'border-red-400' : 'border-neutral-300'}`}
-                            onChange={ev => {
-                              const v = ev.target.value
-                              setE({ ...e, karte: { ...e.karte,
-                                [r.kwRoomId]: v === 'skip' ? null : Number(v) } })
-                            }}>
-                      <option value="" disabled>{t('import.rooms.none')}</option>
-                      <option value="skip">{t('import.rooms.skip')}</option>
-                      {zimmer.map(z => (
-                        <option key={z.id} value={z.id}>{z.code} ({z.categoryCode})</option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <Zimmerzuordnung bericht={b} zimmer={zimmer} gruppen={gruppen}
+                       einstellungen={e} setEinstellungen={setE} />
+    </div>
+  )
+}
+
+/**
+ * Zimmer aus KWHotel auf Zimmer hier. Ein Zimmer ohne Gegenstück wird nicht
+ * still angelegt: wer übernimmt, entscheidet je Zimmer, ob es ein neues ist,
+ * ein vorhandenes unter anderer Nummer, oder eines, dessen Reservierungen
+ * nicht mitkommen sollen.
+ */
+function Zimmerzuordnung({ bericht: b, zimmer, gruppen, einstellungen: e,
+                           setEinstellungen: setE }: {
+  bericht: KwhotelImportReport; zimmer: Zimmer[]; gruppen: Gruppe[]
+  einstellungen: Einstellungen; setEinstellungen: (e: Einstellungen) => void
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const zahl = (n: number) => n.toLocaleString(locale)
+
+  // Was im letzten Bericht ohne Gegenstück war und noch nicht entschieden ist.
+  const offen = b.rooms.filter(r => r.match === 'none' && r.reservations > 0
+                                    && !(r.kwRoomId in e.karte) && !(r.kwRoomId in e.neu))
+
+  const setze = (kw: string, wert: string) => {
+    const karte = { ...e.karte }
+    const neu = { ...e.neu }
+    delete karte[kw]
+    delete neu[kw]
+    const r = b.rooms.find(x => x.kwRoomId === kw)!
+    if (wert === 'new') neu[kw] = ausVorschlag(r, gruppen)
+    else karte[kw] = wert === 'skip' ? null : Number(wert)
+    setE({ ...e, karte, neu })
+  }
+  const aendere = (kw: string, n: Partial<NeuesZimmer>) =>
+    setE({ ...e, neu: { ...e.neu, [kw]: { ...e.neu[kw]!, ...n } } })
+
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-neutral-700">{t('import.rooms')}</h3>
+      <p className="text-[11px] text-neutral-400">{t('import.rooms.hint')}</p>
+      {offen.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-red-700">
+          <span>{t('import.rooms.missing', { n: zahl(offen.length) })}</span>
+          <button type="button" className={KNOPF}
+                  onClick={() => {
+                    const neu = { ...e.neu }
+                    for (const r of offen) neu[r.kwRoomId] = ausVorschlag(r, gruppen)
+                    setE({ ...e, neu })
+                  }}>
+            {t('import.rooms.createAll')}
+          </button>
+        </div>
+      )}
+      <table className="mt-1 text-sm">
+        <thead>
+          <tr className="text-left text-xs text-neutral-500">
+            <th className="pr-6 font-normal">{t('import.rooms.kw')}</th>
+            <th className="pr-6 font-normal text-right">{t('import.rooms.reservations')}</th>
+            <th className="font-normal">{t('import.rooms.target')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {b.rooms.map(r => {
+            const n = e.neu[r.kwRoomId]
+            // Die eigene Aenderung gilt, bis neu geprueft ist; sonst
+            // spraenge die Auswahl auf den Stand des letzten Berichts zurueck.
+            // Ein im Trockenlauf angelegtes Zimmer ist zurueckgerollt und
+            // steht nicht in der Liste; es bleibt "neu anlegen".
+            const ziel = r.kwRoomId in e.karte ? e.karte[r.kwRoomId]
+              : r.match === 'skipped' ? null
+              : r.match === 'created' ? undefined : r.resourceId ?? undefined
+            const wert = n !== undefined ? 'new'
+              : ziel === null ? 'skip' : ziel === undefined ? '' : String(ziel)
+            return (
+              <tr key={r.kwRoomId} className="align-top">
+                <td className="pr-6 py-0.5">{r.name}</td>
+                <td className="pr-6 py-0.5 text-right tabular-nums">{zahl(r.reservations)}</td>
+                <td className="py-0.5">
+                  <select value={wert} aria-label={r.name}
+                          className={`border rounded-sm px-1 py-0.5 text-sm ${
+                            wert === '' && r.reservations > 0
+                              ? 'border-red-400' : 'border-neutral-300'}`}
+                          onChange={ev => setze(r.kwRoomId, ev.target.value)}>
+                    <option value="" disabled>{t('import.rooms.none')}</option>
+                    <option value="skip">{t('import.rooms.skip')}</option>
+                    <option value="new">{t('import.rooms.create')}</option>
+                    {zimmer.map(z => (
+                      <option key={z.id} value={z.id}>{z.code} ({z.categoryCode})</option>
+                    ))}
+                  </select>
+                  {n !== undefined && (
+                    <NeuesZimmerFelder wert={n} gruppen={gruppen}
+                                       aendere={x => aendere(r.kwRoomId, x)} />
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function NeuesZimmerFelder({ wert: n, gruppen, aendere }: {
+  wert: NeuesZimmer; gruppen: Gruppe[]; aendere: (n: Partial<NeuesZimmer>) => void
+}): JSX.Element {
+  const t = useT()
+  const klein = 'border border-neutral-300 rounded-sm px-1 py-0.5 text-sm'
+  return (
+    <div className="mt-1 mb-2 flex flex-wrap items-end gap-2">
+      <label className="block">
+        <span className="block text-[11px] text-neutral-500">{t('import.rooms.newCode')}</span>
+        <input className={klein + ' w-20'} value={n.code} maxLength={20}
+               onChange={ev => aendere({ code: ev.target.value })} />
+      </label>
+      <label className="block">
+        <span className="block text-[11px] text-neutral-500">{t('import.rooms.category')}</span>
+        <select className={klein} value={n.gruppe === null ? 'new' : String(n.gruppe)}
+                onChange={ev => aendere({ gruppe: ev.target.value === 'new'
+                                                  ? null : Number(ev.target.value) })}>
+          <option value="new">{t('import.rooms.newCategory')}</option>
+          {gruppen.map(g => <option key={g.id} value={g.id}>{g.code} ({g.name})</option>)}
+        </select>
+      </label>
+      {n.gruppe === null && (
+        <>
+          <label className="block">
+            <span className="block text-[11px] text-neutral-500">
+              {t('import.rooms.categoryCode')}
+            </span>
+            <input className={klein + ' w-20'} value={n.gruppeCode} maxLength={10}
+                   onChange={ev => aendere({ gruppeCode: ev.target.value })} />
+          </label>
+          <label className="block">
+            <span className="block text-[11px] text-neutral-500">
+              {t('import.rooms.categoryName')}
+            </span>
+            <input className={klein + ' w-48'} value={n.gruppeName} maxLength={80}
+                   onChange={ev => aendere({ gruppeName: ev.target.value })} />
+          </label>
+          <label className="block">
+            <span className="block text-[11px] text-neutral-500">
+              {t('import.rooms.maxOccupancy')}
+            </span>
+            <input type="number" min={1} max={99} className={klein + ' w-16'} value={n.belegung}
+                   onChange={ev => aendere({ belegung: ev.target.value })} />
+          </label>
+        </>
+      )}
     </div>
   )
 }

@@ -293,6 +293,13 @@ export function searchRoutes(app: FastifyInstance): void {
                  FROM booking b JOIN reservation r ON r.booking_id = b.id
                 WHERE $4::text IS NOT NULL AND b.external_reference ^@ $4
                   AND b.property_id = $1
+               UNION ALL
+               -- Die Nummer aus dem Altsystem, genau getroffen: "359" soll
+               -- nicht jede KWHotel-Nummer von 35900 bis 35999 liefern
+               -- (Migration 0079).
+               SELECT r.id, 0, 0, 0 FROM reservation r
+                WHERE $4::text IS NOT NULL AND r.legacy_reference = $4
+                  AND r.property_id = $1
              ), beste AS (
                SELECT id, min(rang) AS rang, min(guete) AS guete, min(abstand) AS abstand
                  FROM kandidaten GROUP BY id

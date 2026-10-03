@@ -17,6 +17,9 @@ export function useKwhotelImport(propertyId: number) {
       void qc.invalidateQueries({ queryKey: ['tape'] })
       void qc.invalidateQueries({ queryKey: ['availability', propertyId] })
       void qc.invalidateQueries({ queryKey: ['arrivals'] })
+      // Und vielleicht neue Zimmer und Zimmergruppen aus dem Rueckfragedialog.
+      void qc.invalidateQueries({ queryKey: ['rooms', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['categories', propertyId] })
     }
   })
 }
