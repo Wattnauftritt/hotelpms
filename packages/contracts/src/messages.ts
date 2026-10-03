@@ -403,6 +403,22 @@ const M = {
     de: 'Ganze Zahl groesser als null erwartet',
     en: 'Whole number greater than zero expected',
     tr: 'Sıfırdan büyük tam sayı bekleniyor' },
+  'field.nonNegativeInteger': {
+    de: 'Ganze Zahl, nicht negativ, erwartet',
+    en: 'Whole number, not negative, expected',
+    tr: 'Negatif olmayan tam sayı bekleniyor' },
+  'field.childrenNeedAdults': {
+    de: 'Kinder nur zusammen mit der Zahl der Erwachsenen',
+    en: 'Children only together with the number of adults',
+    tr: 'Çocuk sayısı yalnızca yetişkin sayısıyla birlikte' },
+  'field.guestCountMismatch': {
+    de: 'Personenzahl passt nicht zu Erwachsenen und Kindern ({sum})',
+    en: 'Number of guests does not match adults and children ({sum})',
+    tr: 'Kişi sayısı yetişkin ve çocuk sayısıyla uyuşmuyor ({sum})' },
+  'field.cursor': {
+    de: 'Unbekannter Cursor; den Wert aus nextCursor unveraendert zurueckgeben',
+    en: 'Unknown cursor; pass back the value of nextCursor unchanged',
+    tr: 'Bilinmeyen imleç; nextCursor değerini değiştirmeden geri gönderin' },
   'field.centAmount': {
     de: 'Ganze Cent-Betraege, nicht negativ',
     en: 'Whole amounts in cents, not negative',

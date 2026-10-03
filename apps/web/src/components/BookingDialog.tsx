@@ -83,8 +83,15 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * Gruppe, nicht das Zimmer), bleibt das Feld leer, und leer heisst
    * weiterhin "nicht gesagt" -- dann gilt, was verkauft wurde.
    */
-  const [personen, setPersonen] = useState(
+  const [erwachsene, setErwachsene] = useState(
     maxOccupancy === undefined ? '' : String(maxOccupancy))
+  /*
+   * Kinder getrennt, weil Kanal und Adminpanel sie getrennt fuehren und das
+   * Fruehstueck danach rechnen (0076). Leer heisst null -- "keine Kinder"
+   * und "nicht gefragt" sind an der Rezeption dasselbe, und eine Null, die
+   * niemand getippt hat, waere wieder eine ungepruefte Zahl.
+   */
+  const [kinder, setKinder] = useState('')
   const [kurznotiz, setKurznotiz] = useState('')
   const buchen = useCreateBooking(propertyId)
 
@@ -127,7 +134,12 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * die Rezeption zum Ausweichen auf eine falsche Zahl zu zwingen, und
    * dann stimmt die Kurtaxe nicht mehr.
    */
-  const anzahl = personen.trim() === '' ? null : Number(personen)
+  const anzahlErwachsene = erwachsene.trim() === '' ? null : Number(erwachsene)
+  // Auch ohne Erwachsene hinausgeschickt: die Schnittstelle sagt dann, was
+  // fehlt. Still verworfen saehe es aus, als sei es gespeichert.
+  const anzahlKinder = kinder.trim() === '' ? null : Number(kinder)
+  const anzahl = anzahlErwachsene === null ? null
+    : anzahlErwachsene + (anzahlKinder ?? 0)
   const zuViele = anzahl !== null && maxOccupancy !== undefined
     && Number.isFinite(anzahl) && anzahl > maxOccupancy
 
@@ -153,7 +165,8 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
        */
       ...preisFelder(preis),
       blockRef: abruf?.blockRef,
-      guestCount: anzahl ?? undefined,
+      adults: anzahlErwachsene ?? undefined,
+      children: anzahlKinder ?? undefined,
       shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim()
     })
   }
@@ -303,9 +316,14 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
                    className="md:col-span-2">
           <div className="flex flex-wrap items-end gap-4">
             <PreisFelder wert={preis} naechte={naechte} onChange={setPreis} />
-            <Feld label={t('booking.guests')}>
-              <input value={personen} onChange={e => setPersonen(e.target.value)}
+            <Feld label={t('booking.adults')}>
+              <input value={erwachsene} onChange={e => setErwachsene(e.target.value)}
                      inputMode="numeric" placeholder="—"
+                     className="border border-neutral-300 rounded px-3 py-2 text-sm w-24" />
+            </Feld>
+            <Feld label={t('booking.children')}>
+              <input value={kinder} onChange={e => setKinder(e.target.value)}
+                     inputMode="numeric" placeholder="0"
                      className="border border-neutral-300 rounded px-3 py-2 text-sm w-24" />
             </Feld>
           </div>
