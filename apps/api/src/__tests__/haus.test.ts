@@ -54,12 +54,17 @@ describe('Wartungsmeldungen', () => {
    * eines, das nicht bezogen werden kann.
    */
   it('legt beide Arten von Sperrung an und unterscheidet sie', async () => {
+    // Relativ zu heute: die Liste zeigt nur Sperrungen, die noch nicht
+    // vorbei sind (`to_date > current_date`). Mit festen Daten fiel der
+    // Test am 03.10.2026 um, ohne dass sich am Code etwas geaendert hatte.
+    const tag = (n: number) =>
+      new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
     for (const [kind, room] of [['out_of_order', rooms[0]!],
                                 ['out_of_service', rooms[1]!]] as const) {
       const r = await app.inject({ method: 'POST', url: '/v1/maintenance-tickets',
         headers: auth,
         payload: { propertyId: fx.propertyId, resourceId: room, title: `Schaden ${kind}`,
-                   block: { from: '2026-10-01', to: '2026-10-03', kind } } })
+                   block: { from: tag(0), to: tag(2), kind } } })
       expect(r.statusCode).toBe(201)
     }
 

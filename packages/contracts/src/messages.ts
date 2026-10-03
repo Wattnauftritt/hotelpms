@@ -499,6 +499,10 @@ const M = {
     de: 'Entweder eine Zimmergruppe oder eine Zimmerliste',
     en: 'Either a room category or a list of rooms',
     tr: 'Ya bir oda tipi ya da bir oda listesi' },
+  'field.eitherRoomIdsOrItems': {
+    de: 'Entweder Zimmer-IDs mit einem Stand oder eine Liste je Zimmernummer',
+    en: 'Either room IDs with one status or a list per room number',
+    tr: 'Ya tek bir durumla oda kimlikleri ya da oda numarasına göre bir liste' },
   'field.atLeastOneScope': {
     de: 'Mindestens ein Zugriffsbereich',
     en: 'At least one scope',

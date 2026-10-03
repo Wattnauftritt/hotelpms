@@ -227,12 +227,16 @@ export function availabilityRoutes(app: FastifyInstance): void {
       const { from, to } = range(req, MAX_AVAILABILITY_DAYS)
       // Eine Abfrage, unabhaengig von der Zahl der Reservierungen.
       const rows = await tx(req.pool, req, client => client.query(
-        `SELECT category_id, date::text,
-                capacity, sold, blocked, overbooking,
-                capacity - sold - blocked + overbooking AS available
-           FROM inventory_day
-          WHERE property_id = $1 AND date >= $2::date AND date < $3::date
-          ORDER BY category_id, date`,
+        // `category_code` im selben Verbund: ein fremdes System ordnet nach
+        // dem Kuerzel zu, und eine zweite Runde nur fuer die Zuordnung
+        // braeuchte es sonst bei jedem Abgleich.
+        `SELECT i.category_id, c.code AS category_code, i.date::text,
+                i.capacity, i.sold, i.blocked, i.overbooking,
+                i.capacity - i.sold - i.blocked + i.overbooking AS available
+           FROM inventory_day i
+           JOIN resource_category c ON c.id = i.category_id
+          WHERE i.property_id = $1 AND i.date >= $2::date AND i.date < $3::date
+          ORDER BY i.category_id, i.date`,
         [Number(propertyId), from, to]))
       return { days: rows.rows }
     }
