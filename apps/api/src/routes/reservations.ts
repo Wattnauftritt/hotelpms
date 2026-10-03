@@ -1210,6 +1210,24 @@ export function reservationRoutes(app: FastifyInstance): void {
           gastRef = await setzeHauptgast(client, res, body.guestRef)
         }
 
+        /*
+         * Auch eine Notiz ist eine Aenderung, die ein Fremdsystem sehen
+         * will: sie steht in der Reservierungsliste. Bisher meldete diese
+         * Route nichts, und der Abgleich erfuhr davon erst beim naechsten
+         * Vollabzug. Der Rumpf nennt nur, **welche** Felder -- den Text
+         * holt der Empfaenger ueber die Liste, mit seinem eigenen Recht.
+         */
+        const geaendert = [
+          ...(body.notes !== undefined ? ['notes'] : []),
+          ...(body.shortNote !== undefined ? ['shortNote'] : []),
+          ...(body.guestRef !== undefined ? ['guest'] : [])
+        ]
+        if (geaendert.length > 0) {
+          await emitEvent(client, res.property_id, 'reservation.changed', {
+            reservationRef, status: res.status, changed: geaendert
+          })
+        }
+
         return {
           reservationRef,
           notes: body.notes ?? null,
