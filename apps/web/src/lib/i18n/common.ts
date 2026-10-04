@@ -237,6 +237,22 @@ export const common = {
     de: 'Dieser Zugang ist zurzeit gesperrt. Bitte wenden Sie sich an uns.',
     en: 'This account is currently suspended. Please get in touch with us.',
     tr: 'Bu hesap şu anda askıya alınmıştır. Lütfen bizimle iletişime geçin.' },
+  'app.install': {
+    de: 'Als App installieren',
+    en: 'Install as app',
+    tr: 'Uygulama olarak yükle' },
+  'app.installHint': {
+    de: 'StayGrid in einem eigenen Fenster ohne Browserleiste öffnen, mit Symbol auf dem Desktop und in der Taskleiste.',
+    en: 'Open StayGrid in its own window without the browser bar, with an icon on the desktop and in the taskbar.',
+    tr: 'StayGrid’i tarayıcı çubuğu olmadan kendi penceresinde, masaüstünde ve görev çubuğunda simgeyle açın.' },
+  'app.serverUnreachable': {
+    de: 'Der Server ist gerade nicht erreichbar. StayGrid lädt von selbst neu, sobald die Verbindung wieder steht.',
+    en: 'The server cannot be reached right now. StayGrid reloads by itself as soon as the connection is back.',
+    tr: 'Sunucuya şu anda ulaşılamıyor. Bağlantı geri geldiğinde StayGrid kendiliğinden yeniden yüklenir.' },
+  'app.retry': {
+    de: 'Erneut versuchen',
+    en: 'Try again',
+    tr: 'Tekrar dene' },
   'app.noProperty': {
     de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     en: 'This user is not assigned to any property yet.',

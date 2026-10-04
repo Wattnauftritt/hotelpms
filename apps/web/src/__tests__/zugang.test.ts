@@ -131,9 +131,17 @@ describe('Abmelden', () => {
      * gezeichnet zurueck -- mit denselben Gastdaten und ohne eine einzige
      * Anfrage. Die Anwendung blaettert ueber `history.pushState`, es gibt
      * also Eintraege, auf die das zutraefe.
+     *
+     * Und es muss den Pfad treffen, den der Browser verlangt. Hier stand
+     * `header /index.html ...`, und das traf nie: `header` laeuft vor
+     * `try_files` und sieht `/` oder `/tagesgeschaeft`, nie `/index.html`
+     * (gegen Caddy 2.10 nachgerechnet, Dokument 33). Deshalb gilt
+     * `no-store` jetzt fuer alles ausser den ausdruecklich genannten
+     * statischen Dateien.
      */
-    expect(caddy).toContain('header /index.html Cache-Control "no-store"')
-    expect(caddy).not.toContain('header /index.html Cache-Control "no-cache"')
+    expect(caddy).toContain('@seite not path /assets/* /manifest.webmanifest /icons/* /sw.js')
+    expect(caddy).toContain('header @seite Cache-Control "no-store"')
+    expect(caddy).not.toMatch(/^\s*header \/index\.html Cache-Control/m)
   })
 
   it('laesst die gehashten Dateien lange zwischengespeichert', () => {

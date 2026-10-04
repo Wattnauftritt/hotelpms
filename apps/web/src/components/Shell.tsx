@@ -3,6 +3,7 @@ import { I18nContext, useT, useLocale, LOCALES, type Locale, type TextKey }
   from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
+import { useInstallation } from '../lib/pwa.js'
 import { useEscape } from '../lib/tasten.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
 import { Detailsuche } from './Detailsuche.tsx'
@@ -419,6 +420,7 @@ export function Shell(props: Props): JSX.Element {
               * egal wie viele Bildschirme die Leiste links noch bekommt.
               */}
             <div className="relative z-10 flex shrink-0 items-center gap-4 bg-white">
+              <Installieren />
               <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
               <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
               <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
@@ -432,6 +434,23 @@ export function Shell(props: Props): JSX.Element {
         <main className="p-4">{props.children}</main>
       </div>
     </I18nContext.Provider>
+  )
+}
+
+/**
+ * Der Knopf zum Installieren als App. Steht nur da, solange der Browser es
+ * anbietet (`lib/pwa.ts`); im installierten Fenster und in Safari gar nicht.
+ */
+function Installieren(): JSX.Element | null {
+  const t = useT()
+  const installieren = useInstallation()
+  if (installieren === null) return null
+  return (
+    <button type="button" onClick={installieren} title={t('app.installHint')}
+            className="text-sm px-2 py-1 border border-neutral-300 rounded-sm
+                       hover:bg-neutral-50">
+      {t('app.install')}
+    </button>
   )
 }
 
