@@ -40,7 +40,7 @@ import { DumpFormatError } from '../platform/legacyImport/mysqlDump.js'
  * 03.10.2026 am ersten echten Abzug bestaetigt hat.
  */
 
-const SYSTEM = 'kwhotel'
+export const SYSTEM = 'kwhotel'
 const AKTIV_VORGABE = [0, 1, 2, 4]
 const STORNO_VORGABE = [10, 11, 12, 13, 14, 19, 22]
 const MAX_BEFUNDE = 500
@@ -83,7 +83,7 @@ function zahlenliste(v: unknown, feld: string, vorgabe: number[]): number[] {
   return v as number[]
 }
 
-class Befunde {
+export class Befunde {
   readonly liste: KwhotelFinding[] = []
   add(level: 'error' | 'warning', key: MessageKey, params: MessageParams = {},
       reference?: string): void {
@@ -111,6 +111,10 @@ export function vorschlag(r: KwRoom, bestand: KwhotelBestand): RoomSuggestion {
   }
   return {
     code,
+    // Der Name, unter dem das Haus das Zimmer in KWHotel kennt ("01 EZ
+    // Balkon"). Die Nummer allein sagt der Rezeption weniger als das, was
+    // sie seit Jahren auf dem Bildschirm liest.
+    name: r.name.trim().replace(/\s+/g, ' ').slice(0, 60),
     categoryCode: kuerzel !== '' ? kuerzel : name.slice(0, 3).toUpperCase(),
     categoryName: name.slice(0, 80),
     maxOccupancy: Math.min(personen, 20)
@@ -139,7 +143,8 @@ async function zimmerAnlegen(
     Errors.validation({ createRooms: ['field.allowedValues'] }, { values: 'object[]' })
   if (!Array.isArray(roh) || roh.length > 500) throw ungueltig()
 
-  interface Auftrag { kwRoomId: string; code: string; categoryId: number | null
+  interface Auftrag { kwRoomId: string; code: string; name: string | null
+                      categoryId: number | null
                       neu: { code: string; name: string; maxOccupancy: number } | null }
   const auftraege: Auftrag[] = []
   const text = (v: unknown, max: number): string | null =>
@@ -149,6 +154,10 @@ async function zimmerAnlegen(
     const o = e as Record<string, unknown>
     const kw = typeof o.kwRoomId === 'string' ? o.kwRoomId : null
     const code = text(o.code, 20)
+    // Leer oder fehlend heisst: ohne Namen. Wer ihn loescht, will keinen.
+    const name = o.name === undefined || o.name === null || o.name === '' ? null
+      : text(o.name, 60)
+    if (name === null && typeof o.name === 'string' && o.name.trim() !== '') throw ungueltig()
     const nk = o.newCategory as Record<string, unknown> | undefined
     const neu = nk === undefined || nk === null ? null : {
       code: text(nk.code, 10), name: text(nk.name, 80), maxOccupancy: nk.maxOccupancy }
@@ -160,7 +169,8 @@ async function zimmerAnlegen(
             || (neu.maxOccupancy as number) > 99))) {
       throw ungueltig()
     }
-    auftraege.push({ kwRoomId: kw, code, categoryId: katId,
+    auftraege.push({ kwRoomId: kw, code, name: name?.replace(/\s+/g, ' ') ?? null,
+      categoryId: katId,
       neu: neu === null ? null : { code: neu.code!, name: neu.name!,
                                    maxOccupancy: neu.maxOccupancy as number } })
   }
@@ -225,12 +235,13 @@ async function zimmerAnlegen(
   // Eine Anweisung fuer alle Zimmer: der Kapazitaetstrigger auf
   // Anweisungsebene rechnet einmal nach (Migration 0013).
   const z = await client.query<{ id: number; code: string }>(
-    `INSERT INTO resource (property_id, category_id, code)
-     SELECT $1, x.cat, x.code FROM unnest($2::bigint[], $3::text[]) AS x(cat, code)
+    `INSERT INTO resource (property_id, category_id, code, name)
+     SELECT $1, x.cat, x.code, x.name
+       FROM unnest($2::bigint[], $3::text[], $4::text[]) AS x(cat, code, name)
      RETURNING id, code`,
     [propertyId,
      auftraege.map(a => a.categoryId ?? katNr.get(a.neu!.code.toLowerCase())!),
-     auftraege.map(a => a.code)])
+     auftraege.map(a => a.code), auftraege.map(a => a.name)])
   const nachCode = new Map(z.rows.map(x => [x.code, Number(x.id)]))
   for (const a of auftraege) ergebnis.set(a.kwRoomId, nachCode.get(a.code)!)
 

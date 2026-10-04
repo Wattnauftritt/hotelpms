@@ -3,13 +3,15 @@ import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeUser, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
-import type { KwhotelImportReport } from '@hotelpms/contracts'
+import type { KwhotelImportReport, KwhotelUndoReport } from '@hotelpms/contracts'
 import { addDays } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { readKwhotelDump, decimalToCent } from '../platform/legacyImport/kwhotel.js'
 import { readDumpTables, DumpFormatError } from '../platform/legacyImport/mysqlDump.js'
 import { roomKey } from '../routes/kwhotelImport.js'
+import { FOLGEN_RESERVIERUNG, FOLGEN_FOLIO, TEIL_DER_UEBERNAHME, VERWEISE_GAST,
+         VERWEISE_ZIMMER, ZUSTAND_ZIMMER, VERWEISE_GRUPPE } from '../routes/kwhotelUndo.js'
 
 /**
  * Uebernahme aus KWHotel. Alle Namen hier sind erfunden; der echte Abzug
@@ -495,6 +497,20 @@ describe('Fehlende Zimmer', () => {
       expect(sold.rows[0]!.n).toBe(2)
     })
 
+  it('uebernimmt den Zimmernamen aus KWHotel und laesst einen geleerten weg', async () => {
+    const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU),
+      { commit: true,
+        createRooms: [{ ...auftrag[0]!, name: '  12   Apt ' },
+                      { ...mitDz()[1]!, name: '' }] })
+    // Der Vorschlag traegt den Namen schon, damit die Oberflaeche ihn vorbelegt.
+    expect(bericht.rooms.find(r => r.kwRoomId === '11')!.suggestion)
+      .toMatchObject({ name: '12 Apt' })
+    const z = await owner.query<{ code: string; name: string | null }>(
+      `SELECT code, name FROM resource WHERE property_id = $1 AND code IN ('12', '14')
+        ORDER BY code`, [fx.propertyId])
+    expect(z.rows).toEqual([{ code: '12', name: '12 Apt' }, { code: '14', name: null }])
+  })
+
   it('meldet eine vergebene Nummer und ein vorhandenes Gruppenkuerzel und schreibt nichts',
     async () => {
       const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
@@ -518,5 +534,124 @@ describe('Fehlende Zimmer', () => {
     const { status } = await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
       createRooms: auftrag.map(a => a.kwRoomId === '12' ? { ...a, categoryId: k } : a) })
     expect(status).toBe(422)
+  })
+})
+
+describe('Uebernahme zuruecknehmen', () => {
+  const NEU: Array<[number, string]> = [...ZIMMER, [11, '12 Apt']]
+  const zeilen = (): Zeile[] => [...bestand(),
+    { id: 20, room: 11, von: addDays(heute, 5), letzte: addDays(heute, 6), cena: '300.0000',
+      status: 1, gast: 100 }]
+  const zuruecknehmen = async (commit = false) => {
+    const r = await app.inject({
+      method: 'POST', url: '/v1/imports/legacy/kwhotel/undo',
+      headers: auth(admin.sessionId), payload: { propertyId: fx.propertyId, commit } })
+    expect(r.statusCode, r.body).toBe(200)
+    return JSON.parse(r.body) as KwhotelUndoReport
+  }
+  const stand = async () => (await owner.query<Record<string, number>>(
+    `SELECT (SELECT count(*)::int FROM reservation) AS res,
+            (SELECT count(*)::int FROM booking) AS buchungen,
+            (SELECT count(*)::int FROM guest) AS gaeste,
+            (SELECT count(*)::int FROM folio) AS folios,
+            (SELECT count(*)::int FROM resource WHERE property_id = $1) AS zimmer,
+            (SELECT count(*)::int FROM resource_category WHERE property_id = $1) AS gruppen,
+            (SELECT coalesce(sum(sold), 0)::int FROM inventory_day WHERE property_id = $1) AS sold`,
+    [fx.propertyId])).rows[0]!
+
+  beforeEach(async () => {
+    // Ein Gast und eine Buchung, die schon vorher im Haus waren, bleiben.
+    await owner.query(
+      `INSERT INTO guest (account_id, public_ref, last_name) VALUES ($1, 'VORHER0000001', 'Vorher')`,
+      [fx.accountId])
+  })
+
+  it('nimmt im Trockenlauf nichts zurueck und nennt, was ginge', async () => {
+    const vorher = await stand()
+    const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
+      commit: true, excludeGuestNames: ['ungereinigt'],
+      createRooms: [{ kwRoomId: '11', code: '12',
+                      newCategory: { code: 'APT', name: 'Apartment', maxOccupancy: 4 } }] })
+    expect(bericht.dryRun).toBe(false)
+    const danach = await stand()
+
+    const z = await zuruecknehmen()
+    expect(z.dryRun).toBe(true)
+    expect(z.findings).toEqual([])
+    expect(z.runs).toHaveLength(1)
+    expect(z.counts).toMatchObject({ reservations: 6, rooms: 1, categories: 1,
+                                     roomsKept: 0, categoriesKept: 0, guestsKept: 0 })
+    expect(z.counts.guests).toBe(danach.gaeste! - vorher.gaeste!)
+    expect(await stand()).toEqual(danach)
+  })
+
+  it('stellt den Stand vor der Uebernahme wieder her, und ein Neuimport geht', async () => {
+    const vorher = await stand()
+    await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
+      commit: true, excludeGuestNames: ['ungereinigt'],
+      createRooms: [{ kwRoomId: '11', code: '12',
+                      newCategory: { code: 'APT', name: 'Apartment', maxOccupancy: 4 } }] })
+
+    const z = await zuruecknehmen(true)
+    expect(z.dryRun).toBe(false)
+    expect(await stand()).toEqual(vorher)
+    const vorhanden = await owner.query(`SELECT 1 FROM guest WHERE public_ref = 'VORHER0000001'`)
+    expect(vorhanden.rowCount).toBe(1)
+
+    const neu = await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
+      commit: true, excludeGuestNames: ['ungereinigt'],
+      createRooms: [{ kwRoomId: '11', code: '12',
+                      newCategory: { code: 'APT', name: 'Apartment', maxOccupancy: 4 } }] })
+    expect(neu.bericht.counts.alreadyImported).toBe(0)
+    expect(neu.bericht.imported).toBe(6)
+  })
+
+  it('weigert sich, sobald an der Uebernahme gearbeitet wurde', async () => {
+    await uebernehmen(abzug(zeilen(), GAESTE, NEU), {
+      commit: true, excludeGuestNames: ['ungereinigt'], roomMap: { 11: null } })
+    const vorher = await stand()
+    await owner.query(
+      `INSERT INTO reservation_occupant (property_id, reservation_id)
+       SELECT property_id, id FROM reservation WHERE legacy_reference = '3'`)
+    const z = await zuruecknehmen(true)
+    expect(z.dryRun).toBe(true)
+    expect(z.findings.map(f => [f.messageKey, f.params])).toEqual(
+      [['import.undo.blocked', { table: 'reservation_occupant', count: 1 }]])
+    expect(await stand()).toEqual(vorher)
+  })
+
+  it('sagt, wenn es nichts zurueckzunehmen gibt', async () => {
+    const z = await zuruecknehmen(true)
+    expect(z.findings.map(f => f.messageKey)).toEqual(['import.undo.nothing'])
+  })
+
+  it('kennt jeden Verweis der Datenbank auf das, was sie entfernt', async () => {
+    /*
+     * Kommt eine Tabelle mit einem Verweis auf eine Reservierung, ein
+     * Folio, einen Gast, ein Zimmer oder eine Zimmergruppe dazu, muss die
+     * Ruecknahme sie kennen: als Folgedaten, die sie aufhalten, oder als
+     * Teil dessen, was sie entfernt. Sonst entfernt sie still, was niemand
+     * zuruecknehmen wollte, oder scheitert an einem Fremdschluessel.
+     */
+    const fk = await owner.query<{ ziel: string; von: string; spalte: string }>(
+      `SELECT c.confrelid::regclass::text AS ziel, c.conrelid::regclass::text AS von,
+              a.attname AS spalte
+         FROM pg_constraint c
+         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+        WHERE c.contype = 'f' AND NOT c.conrelid::regclass::text ~ '_[0-9]{4}_[0-9]{2}$'
+          AND c.confrelid::regclass::text IN
+              ('reservation', 'folio', 'guest', 'resource', 'resource_category')`)
+    const bekannt = (ziel: string, von: string, spalte: string): boolean => {
+      switch (ziel) {
+        case 'reservation': return (FOLGEN_RESERVIERUNG as readonly string[]).includes(von)
+          || (TEIL_DER_UEBERNAHME as readonly string[]).includes(von)
+        case 'folio': return (FOLGEN_FOLIO as readonly string[]).includes(von)
+        case 'guest': return VERWEISE_GAST.some(([t, s]) => t === von && s === spalte)
+        case 'resource': return VERWEISE_ZIMMER.some(([t, s]) => t === von && s === spalte)
+          || (ZUSTAND_ZIMMER as readonly string[]).includes(von)
+        default: return VERWEISE_GRUPPE.some(([t, s]) => t === von && s === spalte)
+      }
+    }
+    expect(fk.rows.filter(f => !bekannt(f.ziel, f.von, f.spalte))).toEqual([])
   })
 })

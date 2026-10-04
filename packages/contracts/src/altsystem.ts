@@ -43,6 +43,8 @@ export const KwhotelImportRequest = Type.Object({
   createRooms: Type.Optional(Type.Array(Type.Object({
     kwRoomId: Type.String(),
     code: Type.String({ minLength: 1, maxLength: 20 }),
+    /** Der Zimmername; leer heisst ohne Namen (Migration 0081). */
+    name: Type.Optional(Type.Union([Type.String({ maxLength: 60 }), Type.Null()])),
     categoryId: Type.Optional(Type.Integer()),
     newCategory: Type.Optional(Type.Object({
       code: Type.String({ minLength: 1, maxLength: 10 }),
@@ -69,6 +71,8 @@ export type KwhotelFinding = Static<typeof KwhotelFinding>
 /** Vorschlag fuer ein Zimmer, das es in StayGrid noch nicht gibt. */
 export const RoomSuggestion = Type.Object({
   code: Type.String(),
+  /** Der Zimmername aus KWHotel, Vorgabe fuer den Namen in StayGrid. */
+  name: Type.String(),
   categoryCode: Type.String(),
   categoryName: Type.String(),
   maxOccupancy: Type.Integer()
@@ -132,3 +136,28 @@ export const KwhotelImportReport = Type.Object({
   findings: Type.Array(KwhotelFinding)
 })
 export type KwhotelImportReport = Static<typeof KwhotelImportReport>
+
+/**
+ * Bericht von `POST /v1/imports/legacy/kwhotel/undo`: was die Ruecknahme
+ * einer Uebernahme entfernt oder, im Trockenlauf, entfernen wuerde.
+ */
+export const KwhotelUndoReport = Type.Object({
+  dryRun: Type.Boolean(),
+  /** Die Uebernahmelaeufe, an ihrem Zeitpunkt erkannt, mit ihren Reservierungen. */
+  runs: Type.Array(Type.Object({ at: Type.String(), reservations: Type.Integer() })),
+  counts: Type.Object({
+    reservations: Type.Integer(),
+    bookings: Type.Integer(),
+    nights: Type.Integer(),
+    folios: Type.Integer(),
+    guests: Type.Integer(),
+    /** Gastprofile der Uebernahme, an denen inzwischen etwas anderes haengt. */
+    guestsKept: Type.Integer(),
+    rooms: Type.Integer(),
+    roomsKept: Type.Integer(),
+    categories: Type.Integer(),
+    categoriesKept: Type.Integer()
+  }),
+  findings: Type.Array(KwhotelFinding)
+})
+export type KwhotelUndoReport = Static<typeof KwhotelUndoReport>
