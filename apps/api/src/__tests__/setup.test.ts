@@ -235,6 +235,36 @@ describe('Zimmerserie', () => {
 })
 
 describe('Zimmer aendern', () => {
+  it('setzt, behaelt und entfernt einen Zimmernamen', async () => {
+    const dz = await gruppe('DZ')
+    const angelegt = await post('/v1/rooms',
+      { propertyId: fx.propertyId, categoryId: dz, code: '12', name: '  Duenenblick ' })
+    expect(angelegt.statusCode).toBe(201)
+    const id = (JSON.parse(angelegt.body) as { roomId: number }).roomId
+    const name = async (): Promise<string | null> => {
+      const r = await get(`/v1/properties/${fx.propertyId}/rooms`)
+      return (JSON.parse(r.body) as { rooms: Array<{ id: number; name: string | null }> })
+        .rooms.find(z => z.id === id)!.name
+    }
+    expect(await name()).toBe('Duenenblick')
+
+    // Ein PATCH ohne Namen laesst ihn stehen.
+    expect((await patch(`/v1/rooms/${id}`, { floor: '1' })).statusCode).toBe(200)
+    expect(await name()).toBe('Duenenblick')
+
+    // Er steht auch im Zimmerplan.
+    const plan = await get(
+      `/v1/properties/${fx.propertyId}/tape-chart?from=2026-10-01&to=2026-10-08`)
+    expect((JSON.parse(plan.body) as { units: Array<{ name: string | null }> })
+      .units[0]!.name).toBe('Duenenblick')
+
+    // Ein geleertes Feld entfernt ihn, statt einen leeren zu speichern.
+    expect((await patch(`/v1/rooms/${id}`, { name: '' })).statusCode).toBe(200)
+    expect(await name()).toBeNull()
+
+    expect((await patch(`/v1/rooms/${id}`, { name: 'x'.repeat(61) })).statusCode).toBe(422)
+  })
+
   it('verschiebt Kapazitaet beim Umgruppieren zwischen beiden Gruppen', async () => {
     const dz = await gruppe('DZ')
     const ez = await gruppe('EZ')

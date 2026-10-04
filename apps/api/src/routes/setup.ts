@@ -303,6 +303,20 @@ export function setupRoutes(app: FastifyInstance): void {
 
   // ----------------------------------------------------------------- Zimmer
 
+  /**
+   * Der Zimmername aus dem Rumpf: `undefined` heisst "nicht angefasst",
+   * `null` heisst "kein Name". Leertext wird zu `null`, damit ein geleertes
+   * Feld den Namen entfernt statt einen leeren zu speichern.
+   */
+  const zimmerName = (roh: unknown): string | null | undefined => {
+    if (roh === undefined) return undefined
+    if (roh === null) return null
+    if (typeof roh !== 'string') throw Errors.validation({ name: ['field.invalid'] })
+    const name = roh.trim()
+    if (name.length > 60) throw Errors.validation({ name: ['field.invalid'] })
+    return name === '' ? null : name
+  }
+
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/rooms',
@@ -314,7 +328,7 @@ export function setupRoutes(app: FastifyInstance): void {
       const q = req.query as { categoryId?: string; includeInactive?: string }
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
-          `SELECT r.id, r.code, r.floor, r.attributes, r.active,
+          `SELECT r.id, r.code, r.name, r.floor, r.attributes, r.active,
                   c.id AS "categoryId", c.code AS "categoryCode", c.name AS "categoryName",
                   (SELECT count(*) FROM maintenance_block m
                     WHERE m.resource_id = r.id AND m.kind = 'out_of_order'
@@ -403,7 +417,8 @@ export function setupRoutes(app: FastifyInstance): void {
     summary: 'Einzelnes Zimmer anlegen',
     handler: async (req, reply) => {
       const body = req.body as { propertyId: number; categoryId: number; code: string
-                                 floor?: string; attributes?: string[] }
+                                 name?: string; floor?: string; attributes?: string[] }
+      const name = zimmerName(body.name)
       if (!body.code?.trim()) throw Errors.validation({ code: ['field.required'] })
       return tx(req.pool, req, async client => {
         await assertCategory(client, body.propertyId, body.categoryId)
@@ -414,10 +429,10 @@ export function setupRoutes(app: FastifyInstance): void {
           throw Errors.conflict('setup.duplicateRoomCode', { code: body.code })
         }
         const { rows } = await client.query<{ id: number }>(
-          `INSERT INTO resource (property_id, category_id, code, floor, attributes)
-           VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5::text[],'{}')) RETURNING id`,
+          `INSERT INTO resource (property_id, category_id, code, floor, attributes, name)
+           VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5::text[],'{}'),$6) RETURNING id`,
           [body.propertyId, body.categoryId, body.code.trim(), body.floor ?? '',
-           body.attributes ?? null])
+           body.attributes ?? null, name ?? null])
         reply.status(201)
         return { roomId: rows[0]!.id, code: body.code.trim() }
       })
@@ -431,8 +446,10 @@ export function setupRoutes(app: FastifyInstance): void {
     summary: 'Zimmer ändern, umgruppieren oder stilllegen',
     handler: async (req) => {
       const { roomId } = req.params as { roomId: string }
-      const body = req.body as { code?: string; floor?: string; attributes?: string[]
-                                 categoryId?: number; active?: boolean }
+      const body = req.body as { code?: string; name?: string | null; floor?: string
+                                 attributes?: string[]; categoryId?: number
+                                 active?: boolean }
+      const name = zimmerName(body.name)
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number; property_id: number
                                          category_id: number; active: boolean }>(
@@ -471,11 +488,15 @@ export function setupRoutes(app: FastifyInstance): void {
              attributes = COALESCE($4::text[], attributes),
              category_id = COALESCE($5, category_id),
              active = COALESCE($6, active),
+             -- undefined laesst den Namen stehen, null und Leertext loeschen
+             -- ihn: COALESCE allein koennte einen Namen nie wieder entfernen.
+             name = CASE WHEN $7::boolean THEN $8 ELSE name END,
              updated_at = now()
            WHERE id = $1
-           RETURNING code, floor, attributes, category_id AS "categoryId", active`,
+           RETURNING code, name, floor, attributes, category_id AS "categoryId", active`,
           [Number(roomId), body.code?.trim() ?? null, body.floor ?? null,
-           body.attributes ?? null, body.categoryId ?? null, body.active ?? null])
+           body.attributes ?? null, body.categoryId ?? null, body.active ?? null,
+           name !== undefined, name ?? null])
 
         // Ein Umzug zwischen Gruppen verschiebt Kapazität von der einen zur
         // anderen. Der Trigger rechnet beide Seiten nach (Migration 0013).

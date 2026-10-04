@@ -50,6 +50,8 @@ export type Category = Static<typeof Category>
 export const Room = Type.Object({
   id: Type.Integer(),
   code: Type.String(),
+  /** Beschriftung neben der Nummer ("Duenenblick"); die Nummer bleibt die Kennung. */
+  name: Type.Union([Type.String(), Type.Null()]),
   floor: Type.Union([Type.String(), Type.Null()]),
   attributes: Type.Array(Type.String()),
   active: Type.Boolean(),
@@ -180,6 +182,7 @@ export const TapeChart = Type.Object({
   units: Type.Array(Type.Object({
     id: Type.Integer(),
     code: Type.String(),
+    name: Type.Union([Type.String(), Type.Null()]),
     floor: Type.Union([Type.String(), Type.Null()]),
     category_id: Type.Integer(),
     category_name: Type.String(),
