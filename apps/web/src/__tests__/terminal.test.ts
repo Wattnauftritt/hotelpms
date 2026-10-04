@@ -50,6 +50,12 @@ describe('Kiosk-Adresse', () => {
     expect(kioskSchluesselAusAdresse('#k=kurz')).toBeNull()
   })
 
+  it('loest eine Adresse ein, die in eine offene Terminalseite kommt', () => {
+    // Nur der Teil hinter dem # aendert sich: kein Neuladen, nur hashchange.
+    expect(terminal).toMatch(/addEventListener\('hashchange'/)
+    expect(terminal).toMatch(/if \(key !== null\) setPhase\(\{ art: 'kiosk', key \}\)/)
+  })
+
   it('nimmt das Geheimnis aus der Adresse, bevor es eingeloest wird', () => {
     const effekt = terminal.slice(terminal.indexOf('if (kioskKey === null) return'))
     expect(effekt.indexOf('history.replaceState(null, \'\', TERMINAL_PFAD)'))
@@ -101,6 +107,18 @@ describe('Ein ungekoppeltes Terminal fragt nicht', () => {
     const zweig = terminal.slice(terminal.indexOf('e.status === 401'))
     const bisReturn = zweig.slice(0, zweig.indexOf('return'))
     expect(bisReturn).toContain("setPhase({ art: 'koppeln' })")
+    expect(bisReturn).not.toContain('setTimeout')
+  })
+
+  /**
+   * 403 heisst: angemeldet, aber nicht als Terminal -- eine
+   * Mitarbeitersitzung im Browser am Touchscreen. Das aendert keine weitere
+   * Runde; die Seite fragte einmal endlos alle zwei Sekunden.
+   */
+  it('hoert bei 403 auf und zeigt die Kopplung mit dem Grund', () => {
+    const zweig = terminal.slice(terminal.indexOf('e.status === 403'))
+    const bisReturn = zweig.slice(0, zweig.indexOf('return'))
+    expect(bisReturn).toContain("setPhase({ art: 'koppeln', fehler: e })")
     expect(bisReturn).not.toContain('setTimeout')
   })
 
