@@ -37,11 +37,11 @@ import type { PoolClient } from '@hotelpms/db'
  * Link zu Buchungsdaten, und der Gast bekommt keinen.
  */
 
-type Feld = 'email' | 'phone' | 'language' | 'address'
+type Feld = 'firstName' | 'email' | 'phone' | 'language' | 'address'
 type Ergebnis = 'applied' | 'unchanged' | 'kept_existing' | 'withdrawn'
 type Grund = 'set_otherwise' | 'registration_recorded'
 
-interface Anschrift { line1: string; postalCode: string; city: string; country: string }
+interface Anschrift { line1: string; postalCode: string; city: string; country: string | null }
 
 interface Herkunft {
   client: string
@@ -54,6 +54,7 @@ interface Herkunft {
 
 interface GastZeile {
   id: number; public_ref: string; status: string
+  first_name: string | null
   email: string | null; phone: string | null; language: string
   address_line1: string | null; postal_code: string | null
   city: string | null; country: string | null
@@ -63,6 +64,7 @@ interface GastZeile {
 /** Die Grundeinstellung der Spalte; sie gilt als "nicht gesetzt". */
 const SPRACHE_VORGABE = 'de'
 
+const FIRST_NAME_MAX = 100
 const PHONE_MAX = 50
 const LINE1_MAX = 200
 const POSTAL_MAX = 20
@@ -78,6 +80,7 @@ interface Vermerk {
 }
 
 interface Eingabe {
+  firstName?: string | null
   email?: string | null
   phone?: string | null
   language?: string | null
@@ -125,7 +128,12 @@ function pruefen(body: unknown): Eingabe {
       falsch(feld, 'field.invalid')
     }
   }
-  nichtText('email'); nichtText('phone'); nichtText('language')
+  nichtText('firstName'); nichtText('email'); nichtText('phone'); nichtText('language')
+
+  const firstName = text(b.firstName)
+  if (typeof firstName === 'string' && firstName.length > FIRST_NAME_MAX) {
+    falsch('firstName', 'field.maxLength')
+  }
 
   const email = text(b.email)
   if (typeof email === 'string' && !isSendableAddress(email)) falsch('email', 'field.email')
@@ -146,6 +154,10 @@ function pruefen(body: unknown): Eingabe {
     } else {
       // Eine Anschrift gibt es nur ganz. Eine halbe -- Ort ohne Strasse --
       // ist im Formular schlechter als keine, weil sie richtig aussieht.
+      // Das Land allein darf fehlen: eine Buchung per Mail nennt es fast
+      // nie, und raten soll es niemand. Dann bleibt das Land, das StayGrid
+      // schon kennt (aus dem KWHotel-Import etwa), oder der Gast traegt es
+      // im Meldeschein ein.
       const a = b.address as Record<string, unknown>
       const line1 = text(a.line1)
       const postalCode = text(a.postalCode)
@@ -158,11 +170,15 @@ function pruefen(body: unknown): Eingabe {
       else if (postalCode.length > POSTAL_MAX) falsch('address.postalCode', 'field.maxLength')
       if (typeof city !== 'string') falsch('address.city', 'field.required')
       else if (city.length > CITY_MAX) falsch('address.city', 'field.maxLength')
-      if (typeof country !== 'string') falsch('address.country', 'field.required')
-      else if (!istLand(country)) falsch('address.country', 'field.country')
+      if (a.country !== undefined && a.country !== null && typeof a.country !== 'string') {
+        falsch('address.country', 'field.invalid')
+      } else if (typeof country === 'string' && !istLand(country)) {
+        falsch('address.country', 'field.country')
+      }
       if (typeof line1 === 'string' && typeof postalCode === 'string'
-          && typeof city === 'string' && typeof country === 'string') {
-        address = { line1, postalCode, city, country }
+          && typeof city === 'string') {
+        address = { line1, postalCode, city,
+                    country: typeof country === 'string' ? country : null }
       }
     }
   }
@@ -193,7 +209,7 @@ function pruefen(body: unknown): Eingabe {
     }
   }
 
-  const eingabe = { email, phone, language, address }
+  const eingabe = { firstName, email, phone, language, address }
   const mitKontakt = Object.values(eingabe).some(v => v !== undefined)
 
   const s = (b.source ?? null) as Record<string, unknown> | null
@@ -243,7 +259,7 @@ function anschriftVon(g: GastZeile): Anschrift | null {
   if (g.address_line1 === null && g.postal_code === null
       && g.city === null && g.country === null) return null
   return { line1: g.address_line1 ?? '', postalCode: g.postal_code ?? '',
-           city: g.city ?? '', country: g.country ?? '' }
+           city: g.city ?? '', country: g.country }
 }
 
 function gleich(a: unknown, b: unknown): boolean {
@@ -333,7 +349,7 @@ async function kontaktSchreiben(
 
   const g = await client.query<GastZeile & { loeschantrag: boolean }>(
     `SELECT id, public_ref, status, erasure_requested_at IS NOT NULL AS loeschantrag,
-            email, phone, language,
+            first_name, email, phone, language,
             address_line1, postal_code, city, country, contact_origin
        FROM guest WHERE id = $1 FOR UPDATE`, [res.primary_guest_id])
   const gast = g.rows[0]!
@@ -352,10 +368,10 @@ async function kontaktSchreiben(
   const herkunft: Herkunft = {
     client: principal.clientKey, ...quelle, at: new Date().toISOString() }
   const origin = { ...gast.contact_origin }
-  const neu: { email: string | null; phone: string | null; language: string
-               address: Anschrift | null } = {
-    email: gast.email, phone: gast.phone, language: gast.language,
-    address: anschriftVon(gast) }
+  const neu: { firstName: string | null; email: string | null; phone: string | null
+               language: string; address: Anschrift | null } = {
+    firstName: gast.first_name?.trim() || null, email: gast.email, phone: gast.phone,
+    language: gast.language, address: anschriftVon(gast) }
   const felder: Partial<Record<Feld, { result: Ergebnis; reason?: Grund
                                        checkinLinkRevoked?: boolean }>> = {}
   /*
@@ -404,10 +420,15 @@ async function kontaktSchreiben(
   }
 
   const gesperrt: Grund | null = erfasst ? 'registration_recorded' : null
+  entscheiden('firstName', eingabe.firstName, null, gesperrt)
   entscheiden('email', eingabe.email, null, gesperrt)
   entscheiden('phone', eingabe.phone, null, gesperrt)
   entscheiden('language', eingabe.language, SPRACHE_VORGABE, gesperrt)
-  entscheiden('address', eingabe.address, null, gesperrt)
+  // Ohne Land bleibt das Land, das schon da ist. Ein Umsystem, das keines
+  // kennt, soll das aus dem KWHotel-Import nicht loeschen.
+  const anschrift = eingabe.address && eingabe.address.country === null
+    ? { ...eingabe.address, country: gast.country } : eingabe.address
+  entscheiden('address', anschrift, null, gesperrt)
 
   const mail = felder.email
   if (link && mail && (mail.result === 'applied' || mail.result === 'withdrawn')) {
@@ -426,12 +447,12 @@ async function kontaktSchreiben(
     await client.query(
       `UPDATE guest SET email = $2, phone = $3, language = $4,
               address_line1 = $5, postal_code = $6, city = $7, country = $8,
-              contact_origin = $9::jsonb, updated_at = now()
+              contact_origin = $9::jsonb, first_name = $10, updated_at = now()
         WHERE id = $1`,
       [gast.id, neu.email, neu.phone, neu.language,
        neu.address?.line1 ?? null, neu.address?.postalCode ?? null,
        neu.address?.city ?? null, neu.address?.country ?? null,
-       JSON.stringify(origin)])
+       JSON.stringify(origin), neu.firstName])
   }
 
   return { guestRef: gast.public_ref, felder }

@@ -210,6 +210,50 @@ describe('Nachtragen', () => {
     expect((await gast(r.gastId)).address_line1).toBe('Tresenweg 1')
   })
 
+  it('traegt den Vornamen nach, wenn er fehlt, und laesst einen vorhandenen stehen', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET first_name = NULL WHERE id = $1`, [r.gastId])
+
+    const a = await senden(m, r.ref, { firstName: ' Jan ' })
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json<{ fields: unknown }>().fields).toEqual({ firstName: { result: 'applied' } })
+    const vorname = async () => (await owner.query<{ first_name: string | null }>(
+      `SELECT first_name FROM guest WHERE id = $1`, [r.gastId])).rows[0]!.first_name
+    expect(await vorname()).toBe('Jan')
+
+    // Die Rezeption korrigiert ihn; danach gehoert er ihr.
+    await app.inject({ method: 'PATCH', url: `/v1/guests/${r.gastRef}`,
+      headers: auth(admin.sessionId), payload: { firstName: 'Jens' } })
+    const b = await senden(m, r.ref, { firstName: 'Jan' })
+    expect(b.json<{ fields: unknown }>().fields)
+      .toEqual({ firstName: { result: 'kept_existing', reason: 'set_otherwise' } })
+    expect(await vorname()).toBe('Jens')
+  })
+
+  it('nimmt eine Anschrift ohne Land und behaelt das Land, das schon da ist', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET country = 'AT' WHERE id = $1`, [r.gastId])
+
+    const a = await senden(m, r.ref, {
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven' } })
+    expect(a.json<{ fields: unknown }>().fields).toEqual({ address: { result: 'applied' } })
+    expect(await gast(r.gastId)).toMatchObject({ address_line1: 'Deichweg 4', country: 'AT' })
+
+    // Ohne vorhandenes Land bleibt es leer; der Gast traegt es im Meldeschein ein.
+    const r2 = await reservierung()
+    const b = await senden(m, r2.ref, {
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven', country: null } })
+    expect(b.json<{ fields: unknown }>().fields).toEqual({ address: { result: 'applied' } })
+    expect(await gast(r2.gastId)).toMatchObject({ city: 'Cuxhaven', country: null })
+
+    // Derselbe Aufruf noch einmal schreibt nichts.
+    const c = await senden(m, r.ref, {
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven' } })
+    expect(c.json<{ fields: unknown }>().fields).toEqual({ address: { result: 'unchanged' } })
+  })
+
   it('ein anderes Umsystem gilt als fremd', async () => {
     const erstes = await maschine(['guest:contact_write'], [fx.propertyId])
     const zweites = await maschine(['guest:contact_write'], [fx.propertyId])
