@@ -1,8 +1,8 @@
 import type { JSX } from 'react'
 import type { HousekeepingState, PlanPayment, PlanPaymentState } from '@hotelpms/contracts'
-import { REINIGUNG, REINIGUNG_TEXT, ZAHLUNG, ZAHLUNG_TEXT, zahlungsTitel, preisUndNotizen,
+import { REINIGUNG, REINIGUNG_TEXT, ZAHLUNG, ZAHLUNG_TEXT, zahlungsTitel, balkenTitel,
          personenzahl, type BalkenAngaben } from '../lib/planStatus.js'
-import { useT, useLocale, formatMoney } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 
 /**
  * Die beiden kleinen Zeichen im Belegungsplan und ihre Legende.
@@ -55,22 +55,14 @@ export function ZahlungsZeichen({ zahlung }: { zahlung: PlanPayment | null | und
   )
 }
 
-/** Der Titel des Balkens um den Zahlungsstand verlaengert, oder unveraendert. */
-export function useZahlungsTitel(): (zahlung: PlanPayment | null | undefined) => string {
+/** Der Titel eines Balkens, in der Sprache des Betrachters. */
+export function useBalkenTitel(): (r: BalkenAngaben, zusatz?: string) => string {
   const t = useT()
   const locale = useLocale()
-  return zahlung => zahlung === null || zahlung === undefined ? ''
-    : `\n${zahlungsTitel(zahlung, t, cent => formatMoney(cent, locale))}`
-}
-
-/** Preis und Notizen als weitere Zeilen des Titels, oder nichts. */
-export function usePreisUndNotizen(): (r: BalkenAngaben) => string {
-  const t = useT()
-  const locale = useLocale()
-  return r => {
-    const text = preisUndNotizen(r, t, cent => formatMoney(cent, locale))
-    return text === '' ? '' : `\n${text}`
-  }
+  return (r, zusatz) => balkenTitel(r, t, {
+    geld: cent => formatMoney(cent, locale),
+    datum: iso => formatDate(iso, locale)
+  }, zusatz)
 }
 
 /**
@@ -165,7 +157,7 @@ export function PersonenZeichen({ r }: {
   if (n === null) return null
   const titel = r.adults !== null && r.children !== null && r.children > 0
     ? t('ps.personsSplit', { n, a: r.adults, k: r.children })
-    : t('ps.personsTitle', { n })
+    : n === 1 ? t('ps.personOne') : t('ps.personsTitle', { n })
   return (
     <span title={titel} aria-label={titel}
           className="ml-auto shrink-0 pl-1 font-semibold tabular-nums">

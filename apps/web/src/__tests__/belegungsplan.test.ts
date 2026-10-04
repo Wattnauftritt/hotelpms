@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
   from '../lib/tapeSelection.js'
-import { spanne, spaltenBreite, SPALTE_MIN, LUECKE }
+import { spanne, spaltenBreite, SPALTE_MIN, LUECKE, balkenUmriss, SPITZE }
   from '../lib/tapeGeometrie.js'
 
 /**
@@ -194,6 +194,28 @@ describe('Wo ein Balken im Raster liegt', () => {
      */
     expect(spanne(40, 45, SICHT, SPALTE).width).toBe(0)
     expect(spanne(-9, -4, SICHT, SPALTE).width).toBe(0)
+  })
+})
+
+describe('Umriss eines Balkens', () => {
+  it('ist an Anreise und Abreise spitz', () => {
+    expect(balkenUmriss(true, true)).toBe(
+      `polygon(${SPITZE}px 0, calc(100% - ${SPITZE}px) 0, 100% 50%, `
+      + `calc(100% - ${SPITZE}px) 100%, ${SPITZE}px 100%, 0 50%)`)
+  })
+
+  it('ist flach, wo der Ausschnitt den Aufenthalt abschneidet', () => {
+    // Dort beginnt oder endet nichts, und eine Spitze behauptete das.
+    expect(balkenUmriss(false, false)).toBe(
+      'polygon(0px 0, 100% 0, 100% 50%, 100% 100%, 0px 100%, 0 50%)')
+  })
+
+  it('wird an beiden Balkenarten benutzt, nicht an Sperren', () => {
+    const plan = readFileSync(
+      new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+    expect(plan).toContain('clipPath: umriss(r.arrival, r.departure)')
+    expect(plan).toContain('clipPath: umriss,')
+    expect(plan).toContain('daysBetween(data.from, bis) < tage.length')
   })
 })
 
@@ -474,9 +496,9 @@ describe('Kurznotiz und lange Notiz', () => {
   })
 
   it('haelt die lange Notiz im Titel bereit', () => {
-    // Zusammengesetzt in `preisUndNotizen` (planStatus.test.ts prueft den
+    // Zusammengesetzt in `balkenTitel` (planStatus.test.ts prueft den
     // Text); hier nur, dass beide Balkenarten ihn auch benutzen.
-    expect(plan.match(/\+ preisUndNotizenTitel\(r\)/g)).toHaveLength(2)
+    expect(plan.match(/data-tip=\{balkenTitel\(r[,)]/g)).toHaveLength(2)
   })
 
   it('bietet in der Maske beide Felder an', () => {
@@ -870,7 +892,7 @@ describe('Eine Gruppenbuchung wandert als Gruppe', () => {
      */
     expect(plan).toContain('const gehaltenerGruppenRef = drag !== null')
     expect(plan).toContain("r.booking_ref === p.gruppenRef")
-    expect(plan).toContain('ring-sky-500')
+    expect(plan).toContain("'bg-sky-500 z-10'")
   })
 
   it('schickt einen Versatz in Tagen, keinen neuen Zeitraum', () => {
@@ -1325,9 +1347,10 @@ describe('Das Band der Buchungen ohne Zimmer', () => {
   })
 
   it('markiert eine Anreise binnen zwei Tagen am Balken', () => {
-    // Ein Ring und keine andere Fuellfarbe: die Fuellung sagt den Zustand.
+    // Ein Rand und keine andere Fuellfarbe: die Fuellung sagt den Zustand.
     expect(plan).toContain("dringlich(r.arrival)")
-    expect(plan).toContain("'ring-2 ring-red-600'")
+    expect(plan).toContain("? 'bg-red-600' : FARBE[r.status]")
+    expect(plan.match(/<Fuellung farbe=\{FARBE\[r\.status\]/g)).toHaveLength(2)
   })
 
   it('macht die Kopfzeile zum Knopf, statt still zu scrollen', () => {

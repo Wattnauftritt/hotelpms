@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import type { PlanPayment } from '@hotelpms/contracts'
 import { REINIGUNG, ZAHLUNG, zahlungsTitel, reinigungsZiele, angeboteneStaende,
-         REINIGUNG_SETZBAR, preisUndNotizen, personenzahl } from '../lib/planStatus.js'
+         REINIGUNG_SETZBAR, balkenTitel, personenzahl } from '../lib/planStatus.js'
 import { gruppeVerschieben } from '../components/Stammdaten.tsx'
 import { textFor, type TextKey } from '../lib/i18n/index.js'
 
@@ -92,7 +92,7 @@ describe('Der Titel am Balken', () => {
 
   it('haengt den Zahlungsstand an beide Balkenarten, den im Band und den im Zimmer', () => {
     const plan = lies('components/TapeChart.tsx')
-    expect(plan.match(/\+ zahlungsTitel\(r\.payment\)/g)).toHaveLength(2)
+    expect(plan.match(/data-tip=\{balkenTitel\(r[,)]/g)).toHaveLength(2)
     expect(plan.match(/<ZahlungsZeichen zahlung=\{r\.payment\} \/>/g)).toHaveLength(2)
   })
 
@@ -182,39 +182,82 @@ describe('Legende', () => {
   })
 })
 
-describe('Preis und Notizen im Titel des Balkens', () => {
-  const basis = { nights: 3, stay_price_cent: 26_700, night_price_min_cent: 8_900,
-                  night_price_max_cent: 8_900, short_note: null, notes: null }
+describe('Der Titel des Balkens', () => {
+  const f = { geld, datum: (iso: string) => iso.split('-').reverse().join('.') }
+  const zahlung: PlanPayment = {
+    state: 'none', charged_cent: 0, settled_cent: 0, balance_cent: 0,
+    expected_cent: 22_200, unposted_nights: 3, deposit_cent: 0, requested_cent: 0,
+    routed: false, group: null }
+  const basis = { last_name: 'Thiessen', first_name: 'Anna', public_ref: '35533',
+                  arrival: '2026-10-05', departure: '2026-10-08',
+                  guest_count: 2, occupants: 0,
+                  stay_price_cent: 22_200, night_price_min_cent: 7_400,
+                  night_price_max_cent: 7_400, payment: zahlung,
+                  short_note: null, notes: null }
 
-  it('nennt Preis pro Nacht und Gesamtpreis', () => {
-    const titel = preisUndNotizen(basis, t, geld)
-    expect(titel).toContain('Preis pro Nacht: 89,00 €')
-    expect(titel).toContain('Gesamtpreis (3 Nächte): 267,00 €')
+  it('sagt in vier Zeilen wer, wann, was es kostet und was gezahlt ist', () => {
+    expect(balkenTitel(basis, t, f).split('\n')).toEqual([
+      'Thiessen Anna · Nr. 35533',
+      '05.10.2026 – 08.10.2026 · 3 Nächte · 2 Personen',
+      '74,00 € pro Nacht · gesamt 222,00 €',
+      'Bezahlt: 0,00 € von 222,00 €'
+    ])
+  })
+
+  it('spricht nicht von Kontobuchungen, Saldo oder Zustand', () => {
+    // Ein Gast zahlt ganz oder gar nicht; der Rest verwirrte nur (Sven).
+    const titel = balkenTitel(basis, t, f)
+    for (const wort of ['gebucht', 'Saldo', 'erwartet', 'Zahlung:']) {
+      expect(titel).not.toContain(wort)
+    }
   })
 
   it('nennt die Spanne statt eines Durchschnitts, wenn die Naechte verschieden kosten', () => {
-    const titel = preisUndNotizen(
-      { ...basis, stay_price_cent: 29_700, night_price_max_cent: 11_900 }, t, geld)
-    expect(titel).toContain('Preis pro Nacht: 89,00 € bis 119,00 €')
-    expect(titel).not.toContain('99,00')
+    const titel = balkenTitel({ ...basis, night_price_max_cent: 11_900 }, t, f)
+    expect(titel).toContain('74,00 € bis 119,00 € pro Nacht')
   })
 
-  it('zeigt ohne Naechte keinen Preis -- null Euro waere eine falsche Aussage', () => {
-    expect(preisUndNotizen({ ...basis, nights: 0, stay_price_cent: 0,
-      night_price_min_cent: 0, night_price_max_cent: 0 }, t, geld)).toBe('')
+  it('sagt "1 Nacht" und "1 Person", nicht "1 Naechte" und "1 Personen"', () => {
+    expect(balkenTitel({ ...basis, departure: '2026-10-06', guest_count: 1 }, t, f))
+      .toContain('· 1 Nacht · 1 Person\n')
   })
 
-  it('zeigt ohne Folio-Recht keinen Preis, die Notizen aber schon', () => {
-    const titel = preisUndNotizen({ short_note: 'Balkon', notes: null }, t, geld)
+  it('zeigt ohne Folio-Recht weder Preis noch Gezahltes, die Notizen aber schon', () => {
+    const titel = balkenTitel({ ...basis, stay_price_cent: undefined,
+      night_price_min_cent: undefined, night_price_max_cent: undefined,
+      payment: undefined, short_note: 'Balkon' }, t, f)
     expect(titel).not.toContain('€')
-    expect(titel).toContain('Balkon')
+    expect(titel).toContain('3 Nächte')
+    expect(titel).toContain('Notiz: Balkon')
+  })
+
+  it('zeigt ohne Preis keinen -- null Euro waere eine falsche Aussage', () => {
+    expect(balkenTitel({ ...basis, stay_price_cent: 0 }, t, f)).not.toContain('pro Nacht')
+  })
+
+  it('nennt bei einer Gruppe, was fuer alle Zimmer gezahlt ist', () => {
+    const titel = balkenTitel({ ...basis, payment: { ...zahlung, group: {
+      state: 'paid', rooms: 4, expected_cent: 80_000, settled_cent: 80_000,
+      balance_cent: 0 } } }, t, f)
+    expect(titel).toContain('Gruppe (4 Zimmer): bezahlt 800,00 € von 800,00 €')
+  })
+
+  it('erscheint sofort und nicht mit der Verzoegerung des Browsers', () => {
+    // `title` wartet rund eine Sekunde, und das legt der Browser fest (Sven:
+    // "spaet und traege"). Der eigene Hinweis liest `data-tip`.
+    const plan = lies('components/TapeChart.tsx')
+    expect(plan).not.toMatch(/title=\{balkenTitel/)
+    expect(plan).toContain('<Schwebehinweis bereich={rasterRef} />')
+    const hinweis = lies('components/Schwebehinweis.tsx')
+    const ms = Number(/const VERZOEGERUNG_MS = (\d+)/.exec(hinweis)?.[1])
+    expect(ms).toBeLessThanOrEqual(200)
   })
 
   it('zeigt alle Notizen: Kurznotiz, Vorgang und jede Hausnotiz zum Gast', () => {
-    const titel = preisUndNotizen({ ...basis, short_note: 'Balkon',
-      notes: 'Ruft vor Anreise an', guest_notes: ['ebenerdig', 'Allergie: Nuesse'] }, t, geld)
-    for (const teil of ['Notiz zur Reservierung:', 'Balkon', 'Ruft vor Anreise an',
-                        'Notizen zum Gast:', '• ebenerdig', '• Allergie: Nuesse']) {
+    const titel = balkenTitel({ ...basis, short_note: 'Balkon',
+      notes: 'Ruft vor Anreise an', guest_notes: ['ebenerdig', 'Allergie: Nuesse'] }, t, f)
+    for (const teil of ['Notiz: Balkon', 'Notiz: Ruft vor Anreise an',
+                        'Gast: ebenerdig', 'Gast: Allergie: Nuesse']) {
       expect(titel).toContain(teil)
     }
   })
