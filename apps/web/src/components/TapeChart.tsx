@@ -750,23 +750,29 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
      * haben darf, waere das eine Vorschau, die luegt: acht gleich breite
      * Kaesten fuer acht verschieden lange Aufenthalte.
      */
-    kaesten: Map<number, { left: number; width: number }>
+    kaesten: Map<number, { left: number; width: number; naechte?: number }>
     /** Zeile, an der die Anzahl steht. Nur bei der Mehrfachauswahl gesetzt. */
     zaehlerAn?: number
     /** Zimmer der Gruppe, die beim Loslassen mitwandern. */
     gruppenZahl?: number
   } | null => {
     /** Ein Rechteck fuer eine einzelne Zeile -- der haeufigste Fall. */
-    const eins = (resourceId: number, left: number, width: number) =>
-      ({ kaesten: new Map([[resourceId, { left, width }]]) })
+    const eins = (resourceId: number, left: number, width: number, naechte?: number) =>
+      ({ kaesten: new Map([[resourceId, { left, width, naechte }]]) })
+    /*
+     * Die Naechte stehen in der Markierung (Sven, 04.10.2026: "2 N.").
+     * Gezaehlt wird aus den Tagen, nicht aus der Breite: am Rand des
+     * Ausschnitts ist der Kasten abgeschnitten, der Aufenthalt nicht.
+     */
+    const stehend = (z: AuswahlZeile) =>
+      ({ ...balken(z.arrival, z.departure), naechte: daysBetween(z.arrival, z.departure) })
 
     if (drag === null) {
       // Kein Zug, aber eine stehende Auswahl: die Schattenbalken bleiben
       // sichtbar, sonst waere nicht zu sehen, was ausgewaehlt ist.
       if (auswahl === null || auswahl.length === 0) return null
       return {
-        kaesten: new Map(auswahl.map(z =>
-          [z.resourceId, balken(z.arrival, z.departure)])),
+        kaesten: new Map(auswahl.map(z => [z.resourceId, stehend(z)])),
         zaehlerAn: auswahl[0]!.resourceId
       }
     }
@@ -775,7 +781,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       const bis = Math.max(drag.startDay, drag.day)
       // `bis` ist der letzte **Nacht**-Tag, die Abreise liegt einen dahinter.
       const k = spanne(von, bis + 1, tage.length, spalte)
-      return eins(drag.resourceId, k.left, k.width)
+      return eins(drag.resourceId, k.left, k.width, bis + 1 - von)
     }
     if (drag.kind === 'group') {
       const von = Math.min(drag.startDay, drag.day)
@@ -792,9 +798,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
        * sie wandern **nicht** mit, weil der neue Zug nur die Zeilen meint,
        * ueber die er laeuft.
        */
-      const laufend = spanne(von, bis + 1, tage.length, spalte)
-      const kaesten = new Map((auswahl ?? []).map(z =>
-        [z.resourceId, balken(z.arrival, z.departure)]))
+      const laufend = { ...spanne(von, bis + 1, tage.length, spalte), naechte: bis + 1 - von }
+      const kaesten = new Map((auswahl ?? []).map(z => [z.resourceId, stehend(z)]))
       for (const u of zeilen) kaesten.set(u.id, laufend)
       const erste = data.units.find(u => kaesten.has(u.id))
       return { kaesten, zaehlerAn: erste?.id }
@@ -805,7 +810,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       const von = Math.max(0, Math.min(startTag, endTag - 1))
       const bis = Math.max(von + 1, endTag)
       const k = spanne(von, bis, tage.length, spalte)
-      return eins(drag.resourceId, k.left, k.width)
+      return eins(drag.resourceId, k.left, k.width, bis - von)
     }
     if (drag.moved && drag.overResourceId !== null) {
       /*
@@ -1390,6 +1395,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                          ghostHier={kasten !== undefined}
                          ghostLinks={kasten?.left ?? 0}
                          ghostBreite={kasten?.width ?? 0}
+                         ghostNaechte={kasten?.naechte ?? null}
                          /* Erst ab zwei Zeilen: "1 rooms" stand sonst im
                             Schatten, sobald jemand ein einzelnes Zimmer
                             aufzieht -- und die Zahl beantwortet dort keine
@@ -1448,7 +1454,12 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             */}
           <span className="opacity-75 text-xs">
             {formatDate(klammer.arrival, locale)} – {formatDate(klammer.departure, locale)}
-            {klammer.gemischt && ` · ${t('plan.mixedDates')}`}
+            {/* Die Naechte nur, wenn sie fuer alle gelten: bei gemischten
+                Zeitraeumen stehen sie je Zeile in der Markierung, und eine
+                Zahl fuer die Klammer stimmte fuer kein einzelnes Zimmer. */}
+            {klammer.gemischt
+              ? ` · ${t('plan.mixedDates')}`
+              : ` · ${t('tape.nightsShort', { n: daysBetween(klammer.arrival, klammer.departure) })}`}
           </span>
           <div className="grow" />
           {/* Enter tut dasselbe; der Knopf ist der Weg fuer den, der das
@@ -1499,6 +1510,8 @@ interface ZimmerzeileProps {
   ghostHier: boolean
   ghostLinks: number
   ghostBreite: number
+  /** Naechte der Markierung; nicht beim Verschieben, das aendert sie nicht. */
+  ghostNaechte: number | null
   ghostZaehler: number | null
   onCreatePointerDown: (resourceId: number, categoryId: number, e: React.PointerEvent) => void
   onMovePointerDown: (r: ReservationRow, e: React.PointerEvent) => void
@@ -1657,12 +1670,21 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         {p.ghostHier && (
           <div style={{ left: p.ghostLinks, width: p.ghostBreite, ...balkenHoehe,
                         lineHeight: `${ZEILE - 2 * RAND - 4}px` }}
-               className="absolute rounded-sm border-2 border-dashed border-neutral-900
-                          bg-neutral-900/10 pointer-events-none
-                          text-xs px-1.5 truncate">
+               className="absolute flex items-center gap-1 rounded-sm border-2 border-dashed
+                          border-neutral-900 bg-neutral-900/10 pointer-events-none
+                          text-xs px-1.5 whitespace-nowrap overflow-hidden">
             {/* Wie viele Zimmer es werden, steht an der obersten Zeile
                 der Auswahl -- in jeder zu wiederholen waere Laerm. */}
-            {p.ghostZaehler !== null && `${p.ghostZaehler} ${t('group.rooms')}`}
+            {p.ghostZaehler !== null && (
+              <span className="truncate min-w-0">{`${p.ghostZaehler} ${t('group.rooms')}`}</span>
+            )}
+            {/* Rechts, wie die Personenzahl am Balken, und als Letztes
+                gekuerzt: bei einer Nacht ist der Kasten 44 Pixel breit. */}
+            {p.ghostNaechte !== null && p.ghostNaechte > 0 && (
+              <span className="ml-auto shrink-0 font-semibold tabular-nums">
+                {t('tape.nightsShort', { n: p.ghostNaechte })}
+              </span>
+            )}
           </div>
         )}
       </div>
