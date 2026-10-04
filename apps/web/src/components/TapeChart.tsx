@@ -93,10 +93,15 @@ export const ZEILE_MIN = 18
 export const ZEILE_MAX = 48
 
 /**
- * Abstand des Balkens zum Zeilenrand. Bei einer engen Zeile kleiner, sonst
- * bliebe vom Balken nur ein Strich.
+ * Der Balken fuellt die Zeile; zwischen zwei Zeilen steht nur die
+ * Gitterlinie, ein Pixel.
+ *
+ * Vorher hielt er oben und unten zwei bis vier Pixel Abstand, also bis zu
+ * acht Pixel je Zimmer, die nichts zeigten. Bei vierzig Zimmern sind das
+ * zehn Zeilen Plan. Das Gitter trennt die Zimmer ohnehin, wie in KWHotel,
+ * an das die Rezeption gewoehnt ist (Sven, 04.10.2026).
  */
-const randVon = (zeile: number): number => (zeile < 26 ? 2 : 4)
+const GITTER = 1
 
 /**
  * Die rechte Kante einer Tagesspalte.
@@ -124,8 +129,12 @@ const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
 const BAND_ZEILEN = 4
 /** Darunter scrollt wieder die Seite: ein Plan mit drei sichtbaren Zeilen ist keiner. */
 const RASTER_MIN_HOEHE = 320
-/** Unter dem Plan: die Scrollleiste, die einzeilige Gestenhilfe und der Seitenrand. */
-const RAUM_DARUNTER = 68
+/**
+ * Unter dem Plan: nur noch die Scrollleiste und der Seitenrand. Die
+ * Gestenhilfe stand hier als eigene Zeile und ist in die Legende gezogen,
+ * damit der Plan bis an den Fensterrand reicht.
+ */
+const RAUM_DARUNTER = 36
 /** Ab dieser Bewegung ist es ein Ziehen und kein Klick mehr. */
 const KLICK_SCHWELLE = 5
 
@@ -334,7 +343,6 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                             onKontext, zeile: zeileWunsch }: Props): JSX.Element {
   const t = useT()
   const ZEILE = Math.min(ZEILE_MAX, Math.max(ZEILE_MIN, zeileWunsch ?? ZEILE_STANDARD))
-  const RAND = randVon(ZEILE)
   const locale = useLocale()
   const balkenTitel = useBalkenTitel()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
@@ -378,7 +386,6 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     if (el === null) return
     const messen = (): void => {
       const oben = el.getBoundingClientRect().top + window.scrollY
-      // Darunter steht noch die Hinweiszeile: eine Zeile Text samt Abstand.
       setRasterHoehe(Math.max(RASTER_MIN_HOEHE,
                               Math.floor(window.innerHeight - oben - RAUM_DARUNTER)))
     }
@@ -1267,7 +1274,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
               * und man sucht die Zeile wieder, die man gerade anfassen
               * wollte.
               */}
-            <div className="relative grow overflow-y-auto overscroll-contain"
+            <div className="relative grow overflow-y-auto overflow-x-hidden overscroll-contain"
                  style={{ maxHeight: ZEILE * (bandOffen ? nichtZugewiesen.length
                                                         : BAND_ZEILEN) }}>
               <div className="relative"
@@ -1296,8 +1303,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                             // Die Zimmergruppe nur hier: beim Ziehen aus dem
                             // Band entscheidet sich, in welches Zimmer.
                             data-tip={balkenTitel(r, gruppe?.name)}
-                            style={{ ...b, top: i * ZEILE + RAND, height: ZEILE - 2 * RAND,
-                                     lineHeight: `${ZEILE - 2 * RAND}px`,
+                            style={{ ...b, top: i * ZEILE, height: ZEILE - GITTER,
+                                     lineHeight: `${ZEILE - GITTER}px`,
                                      clipPath: umriss(r.arrival, r.departure) }}
                             /*
                              * Ein roter Rand, wenn die Anreise binnen zwei
@@ -1533,13 +1540,14 @@ interface ZimmerzeileProps {
 const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element {
   const t = useT()
   const ZEILE = p.zeile
-  const RAND = randVon(ZEILE)
-  const balkenHoehe = { top: RAND, height: ZEILE - 2 * RAND,
-                        lineHeight: `${ZEILE - 2 * RAND}px` }
+  // Die Gitterlinie unten und, am Anfang einer Zimmergruppe, die
+  // kraeftigere oben liegen innerhalb der Zeile; der Balken fuellt den Rest.
+  const innen = ZEILE - GITTER - (p.gruppenAnfang ? 2 : 0)
+  const balkenHoehe = { top: 0, height: innen, lineHeight: `${innen}px` }
   const balkenTitel = useBalkenTitel()
   const u = p.unit
   return (
-    <div className={`flex relative border-b border-neutral-100
+    <div className={`flex relative border-b border-neutral-200
                      ${p.gruppenAnfang ? 'border-t-2 border-t-neutral-400' : ''}
                      ${p.passung === 'passt' ? 'bg-emerald-50/70' : ''}
                      ${p.passung === 'zuKlein' ? 'bg-red-50/70' : ''}`}
@@ -1669,7 +1677,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         })}
         {p.ghostHier && (
           <div style={{ left: p.ghostLinks, width: p.ghostBreite, ...balkenHoehe,
-                        lineHeight: `${ZEILE - 2 * RAND - 4}px` }}
+                        lineHeight: `${innen - 4}px` }}
                className="absolute flex items-center gap-1 rounded-sm border-2 border-dashed
                           border-neutral-900 bg-neutral-900/10 pointer-events-none
                           text-xs px-1.5 whitespace-nowrap overflow-hidden">

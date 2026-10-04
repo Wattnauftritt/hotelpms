@@ -5,7 +5,7 @@ import { useAssignUnit, useChangeStay, useShiftBooking } from '../lib/queries/bo
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
 import { platzbedarf } from '../lib/tapeSelection.js'
-import { istTextEingabe } from '../lib/tasten.js'
+import { istTextEingabe, useEscape } from '../lib/tasten.js'
 import { TapeChart, ZEILE_MIN, ZEILE_MAX, ZEILE_STANDARD, LABEL_BREITE }
   from '../components/TapeChart.tsx'
 import { QuerLeiste } from '../components/QuerLeiste.tsx'
@@ -31,6 +31,7 @@ const SPANNEN = [14, 30, 60] as const
 const RUECKGAENGIG_MAX = 20
 const PLANUNG_SCHLUESSEL = 'plan.planungsmodus'
 const ZEILE_SCHLUESSEL = 'plan.zeilenhoehe'
+const TAGE_SCHLUESSEL = 'plan.tage'
 /** Zustaende, die ein Zimmer wirklich belegen. Storniert und No-Show nicht. */
 const BINDEND = new Set(['Optional', 'Confirmed', 'InHouse'])
 
@@ -46,7 +47,21 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   onCheckIn: (reservationRef: string) => void
 }): JSX.Element {
   const [von, setVon] = useState(today())
-  const [tage, setTage] = useState<number>(30)
+  /*
+   * 14, 30 oder 60 Tage, gemerkt wie die Zeilenhoehe und aus demselben
+   * Grund: es haengt am Bildschirm, und wer 60 eingestellt hat, will nicht
+   * jeden Morgen wieder auf 30 stehen (Sven, 04.10.2026).
+   */
+  const [tage, setTageRoh] = useState<number>(() => {
+    try {
+      const n = Number(localStorage.getItem(TAGE_SCHLUESSEL))
+      return (SPANNEN as readonly number[]).includes(n) ? n : 30
+    } catch { return 30 }
+  })
+  const setTage = (n: number): void => {
+    setTageRoh(n)
+    try { localStorage.setItem(TAGE_SCHLUESSEL, String(n)) } catch { /* gesperrt */ }
+  }
   /*
    * Zimmer nach Gruppe oder nach Nummer.
    *
@@ -321,8 +336,12 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   }, [q.data, gruppiert])
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+    /*
+     * Eng gestapelt: jeder Pixel ueber und unter dem Plan fehlt ihm, und
+     * KWHotel zeigt mit mehr Knoepfen mehr Zimmer (Sven, 04.10.2026).
+     */
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Die Schnellsuche vorn: sie ist der kuerzeste Weg zu einem Balken,
             kuerzer als jedes Blaettern daneben. */}
         <PlanSuche propertyId={propertyId} von={von} bis={bis} onVon={setVon}
@@ -525,16 +544,6 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         <QuerLeiste von={von} tage={tage} onVon={setVon} links={LABEL_BREITE} />
       )}
 
-      {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
-          Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden.
-          Eine Zeile, abgeschnitten, der ganze Text im Titel: der Plan reicht
-          bis zum Fensterrand, und zwei umbrechende Absaetze darunter nahmen
-          ihm vier Zeilen weg (Sven, 04.10.2026). */}
-      <p className="text-xs text-neutral-500 truncate"
-         title={`${t('plan.dragHint')}\n${t('plan.dragHintGroup')}`}>
-        {t('plan.dragHint')} {t('plan.dragHintGroup')}
-      </p>
-
       {ausgewaehlt !== null && (
         <ReservationPanel reservationRef={ausgewaehlt}
                           onClose={() => setAusgewaehlt(null)}
@@ -706,9 +715,20 @@ function useWarnungen(
   }, [data, kategorien, t, locale])
 }
 
+/**
+ * Legende und Gesten, aufklappbar hinter einem Knopf in der Steuerzeile.
+ *
+ * Offen stand sie neben den Steuerungen und brach auf jedem gewoehnlichen
+ * Bildschirm in eine zweite Zeile um; darunter stand noch eine Zeile mit
+ * den Gesten. Beides zusammen nahm dem Plan zwei Zimmerzeilen weg, jeden
+ * Tag, fuer etwas, das man nach der ersten Woche kennt (Sven, 04.10.2026).
+ * Aufgeklappt liegt sie ueber dem Plan und schiebt nichts.
+ */
 function Legende({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const rechte = useHausrechte(propertyId)
+  const [offen, setOffen] = useState(false)
+  useEscape(() => setOffen(false), offen)
   const punkte: Array<[string, 'status.Optional' | 'status.Confirmed' | 'status.InHouse'
                                | 'status.CheckedOut']> = [
     ['bg-status-optional', 'status.Optional'],
@@ -717,18 +737,38 @@ function Legende({ propertyId }: { propertyId: number }): JSX.Element {
     ['bg-status-checkedout', 'status.CheckedOut']
   ]
   return (
-    <div className="flex items-center gap-3 text-xs text-neutral-600">
-      {punkte.map(([farbe, key]) => (
-        <span key={key} className="flex items-center gap-1">
-          <span className={`inline-block w-3 h-3 rounded-sm ${farbe}`} />
-          {t(key)}
-        </span>
-      ))}
-      {/* Nur, was der Benutzer zu sehen bekommt: dieselben Rechte, an
-          denen die Felder im Plan haengen. */}
-      <PlanStatusLegende reinigung={rechte.darf('housekeeping:read')}
-                         zahlung={rechte.darf('folio:read')} />
+    <div className="relative">
+      <button type="button" onClick={() => setOffen(o => !o)} aria-expanded={offen}
+              className={`text-sm px-2 py-1 border rounded-sm
+                          ${offen ? 'bg-neutral-900 text-white border-neutral-900'
+                                  : 'border-neutral-300'}`}>
+        {t('plan.legend')} {offen ? '▴' : '▾'}
+      </button>
+      {offen && (
+        <div className="absolute right-0 top-full mt-1 z-40 w-[46rem] max-w-[90vw] space-y-2
+                        rounded-sm border border-neutral-200 bg-white p-3 text-xs
+                        text-neutral-600 shadow-lg">
+          <div className="flex flex-wrap items-center gap-3">
+            {punkte.map(([farbe, key]) => (
+              <span key={key} className="flex items-center gap-1">
+                <span className={`inline-block w-3 h-3 rounded-sm ${farbe}`} />
+                {t(key)}
+              </span>
+            ))}
+          </div>
+          {/* Nur, was der Benutzer zu sehen bekommt: dieselben Rechte, an
+              denen die Felder im Plan haengen. */}
+          <div className="flex flex-col items-start gap-2 whitespace-nowrap">
+            <PlanStatusLegende reinigung={rechte.darf('housekeeping:read')}
+                               zahlung={rechte.darf('folio:read')} />
+          </div>
+          {/* Die Gesten stehen hier und nicht in einer Hilfe: Ziehen und
+              Mehrfachauswahl gab es zum Teil schon, und niemand hat sie
+              gefunden. Unter dem Plan nahmen sie ihm eine Zeile weg. */}
+          <p className="border-t border-neutral-100 pt-2">{t('plan.dragHint')}</p>
+          <p>{t('plan.dragHintGroup')}</p>
+        </div>
+      )}
     </div>
   )
 }
-
