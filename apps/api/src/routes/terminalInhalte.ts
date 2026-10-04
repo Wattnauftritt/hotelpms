@@ -5,6 +5,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
 import { bildAusRumpf, bildLesen, bildSenden } from '../platform/terminalBild.js'
+import { einbettbar } from '../platform/einbetten.js'
 
 /**
  * Was das Gaesteterminal zeigen darf, gepflegt vom Haus (Dokument 31, §6 und §7,
@@ -54,11 +55,13 @@ export function terminalInhaltRoutes(app: FastifyInstance): void {
              LEFT JOIN terminal_content_image i ON i.content_id = c.id
             WHERE c.property_id = $1 AND c.archived_at IS NULL
             ORDER BY c.title, c.id`, [haus])
-        const adressen = await client.query(
+        const adressen = await client.query<{ urlRef: string; label: string; url: string }>(
           `SELECT public_ref AS "urlRef", label, url FROM terminal_url
             WHERE property_id = $1 AND removed_at IS NULL
             ORDER BY label, id`, [haus])
-        return { contents: seiten.rows, urls: adressen.rows }
+        // Wie am Terminal: die Vorschau soll zeigen, was der Gast sieht.
+        return { contents: seiten.rows,
+                 urls: adressen.rows.map(a => ({ ...a, url: einbettbar(a.url) })) }
       })
     }
   })
@@ -282,7 +285,8 @@ export function terminalInhaltRoutes(app: FastifyInstance): void {
       if ('problem' in p || p.target.url.protocol !== 'https:') {
         throw Errors.validation({ url: ['terminal.urlInvalid'] })
       }
-      const url = p.target.url.toString()
+      // Ein YouTube-Link wird zum Player, der sich einbetten laesst.
+      const url = einbettbar(p.target.url.toString())
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const r = await client.query<{ public_ref: string }>(

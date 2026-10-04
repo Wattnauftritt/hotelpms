@@ -3,6 +3,7 @@ import { createCheckinToken } from '@hotelpms/domain'
 import { istUnterschriftSvg } from '@hotelpms/contracts'
 import { Errors } from './errors.js'
 import { unterschreibeMeldeschein } from './meldeschein.js'
+import { einbettbar } from './einbetten.js'
 import { geltendeBedingungen, stimmeBedingungZu } from './hausbedingungen.js'
 
 /**
@@ -332,7 +333,9 @@ export const ARTEN: Record<TerminalKind, ArtDefinition> = {
         `SELECT label, url FROM terminal_url
           WHERE id = $1 AND property_id = $2 AND removed_at IS NULL`, [a.urlId, a.propertyId])
       if (u.rowCount === 0) throw Errors.notFound('res.terminalUrl')
-      return { label: u.rows[0]!.label, url: u.rows[0]!.url }
+      // Auch fuer Adressen, die vor der Umwandlung beim Speichern angelegt
+      // wurden: ein alter YouTube-Link bliebe sonst eine weisse Flaeche.
+      return { label: u.rows[0]!.label, url: einbettbar(u.rows[0]!.url) }
     },
     abschliessen: async () => 'done'
   }

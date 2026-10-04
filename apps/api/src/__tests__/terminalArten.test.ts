@@ -7,6 +7,7 @@ import { CHECKIN_TOKEN_HEADER } from '@hotelpms/contracts'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
+import { einbettbar } from '../platform/einbetten.js'
 
 /**
  * Das Gaesteterminal als allgemeiner Anzeige-Client (Dokument 31, §6 bis §8):
@@ -430,6 +431,43 @@ describe('Freigegebene Adressen', () => {
     const weg = await auftrag({ deviceRef: t.deviceRef, kind: 'url', urlRef: json(frei).urlRef,
       propertyId: fx.propertyId })
     expect(weg.statusCode).toBe(404)
+  })
+
+  /**
+   * YouTube verbietet die Anzeige seiner Seiten in fremden Rahmen; am
+   * Terminal blieb ein Video-Link weiss. Nur der Player laesst sich
+   * einbetten, und unter youtube-nocookie.com setzt er vor dem Abspielen
+   * keine Cookies.
+   */
+  it('macht aus einem YouTube-Link den einbettbaren Player', async () => {
+    const player = 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'
+    expect(einbettbar('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=x')).toBe(player)
+    expect(einbettbar('https://youtu.be/dQw4w9WgXcQ')).toBe(player)
+    expect(einbettbar('https://m.youtube.com/shorts/dQw4w9WgXcQ')).toBe(player)
+    expect(einbettbar('https://www.youtube.com/embed/dQw4w9WgXcQ')).toBe(player)
+    expect(einbettbar('https://youtu.be/dQw4w9WgXcQ?t=1m30s')).toBe(`${player}?start=90`)
+    // Keine Videokennung, kein Umbau: die Startseite bleibt, wie sie ist.
+    expect(einbettbar('https://www.youtube.com/')).toBe('https://www.youtube.com/')
+    expect(einbettbar('https://restaurant.example/karte')).toBe('https://restaurant.example/karte')
+
+    const t = await terminal()
+    const frei = await adresse('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+    expect(frei.statusCode, frei.body).toBe(201)
+    expect(json(frei).url).toBe(player)
+    const a = await auftrag({ deviceRef: t.deviceRef, kind: 'url', urlRef: json(frei).urlRef,
+      propertyId: fx.propertyId })
+    const auf = await oeffnen(t.secret, json(a).jobRef)
+    expect(json(auf).data).toEqual({ label: 'Speisekarte', url: player })
+  })
+
+  it('zeigt auch einen frueher gespeicherten YouTube-Link als Player', async () => {
+    const t = await terminal()
+    const frei = await adresse('https://restaurant.example/karte')
+    await owner.query(`UPDATE terminal_url SET url = 'https://youtu.be/dQw4w9WgXcQ'`)
+    const a = await auftrag({ deviceRef: t.deviceRef, kind: 'url', urlRef: json(frei).urlRef,
+      propertyId: fx.propertyId })
+    const auf = await oeffnen(t.secret, json(a).jobRef)
+    expect(json(auf).data.url).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
   })
 
   it('nimmt keine Adresse eines fremden Hauses', async () => {

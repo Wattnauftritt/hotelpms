@@ -491,12 +491,17 @@ export const terminal = {
     tr: 'Onaylı harici sayfalar' },
   'adressen.hint': {
     de: 'Nur diese Adressen kann die Rezeption auf das Terminal schicken — keine beliebige. '
-      + 'Nur https. Viele Seiten verbieten die Anzeige in einem fremden Rahmen; ob eine Seite '
-      + 'erscheint, zeigt die Vorschau.',
+      + 'Nur https. Viele Seiten verbieten die Anzeige in einem fremden Rahmen und bleiben '
+      + 'am Terminal leer; ob eine Seite erscheint, zeigt die Vorschau. YouTube-Links werden '
+      + 'automatisch zum Videoplayer.',
     en: 'Only these addresses can be sent to the terminal — no arbitrary ones. Only https. '
-      + 'Many sites forbid being shown inside another page; the preview shows whether a page appears.',
+      + 'Many sites forbid being shown inside another page and stay blank on the terminal; '
+      + 'the preview shows whether a page appears. YouTube links become the video player '
+      + 'automatically.',
     tr: 'Resepsiyon terminale yalnızca bu adresleri gönderebilir — rastgele adres değil. '
-      + 'Yalnızca https. Birçok site başka bir sayfa içinde gösterilmeyi yasaklar; önizleme bunu gösterir.' },
+      + 'Yalnızca https. Birçok site başka bir sayfa içinde gösterilmeyi yasaklar ve terminalde '
+      + 'boş kalır; önizleme bunu gösterir. YouTube bağlantıları otomatik olarak video '
+      + 'oynatıcıya dönüşür.' },
   'adressen.label': {
     de: 'Bezeichnung',
     en: 'Label',
