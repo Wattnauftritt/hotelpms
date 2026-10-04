@@ -224,8 +224,9 @@ export function registrationRoutes(app: FastifyInstance): void {
   })
 
   /**
-   * Liste fuer eine Pruefung durch die Meldebehoerde. Enthaelt bewusst
-   * keine Unterschriftsbilder: die werden vorgelegt, nicht exportiert.
+   * Liste fuer eine Pruefung durch die Meldebehoerde, und seit dem
+   * 04.10.2026 der Bildschirm "Meldescheine". Enthaelt bewusst keine
+   * Unterschriftsbilder: die werden vorgelegt, nicht exportiert.
    */
   registerRoute(app, {
     method: 'GET',
@@ -248,6 +249,11 @@ export function registrationRoutes(app: FastifyInstance): void {
                   reg.planned_departure::text AS "plannedDeparture",
                   reg.occupant_count AS "occupantCount", reg.is_foreign AS "isForeign",
                   (reg.signed_at IS NOT NULL) AS signed,
+                  reg.signature_required AS "signatureRequired",
+                  reg.source, reg.external_system AS "externalSystem",
+                  -- Ausgefuellt: beim uebernommenen Schein dort, sonst hier.
+                  COALESCE(reg.completed_at, reg.created_at) AS "completedAt",
+                  reg.avs_reported_at AS "avsReportedAt",
                   reg.destroy_after::text AS "destroyAfter",
                   reg.group_registration_id AS "groupRegistrationId",
                   g.last_name AS "lastName", g.first_name AS "firstName",

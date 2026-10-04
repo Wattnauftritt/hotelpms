@@ -135,6 +135,19 @@ describe('Meldeschein uebernehmen', () => {
       [r.reservationId])
     expect(o.rows[0]!.n).toBeGreaterThanOrEqual(1)
 
+    // Die Liste "Meldescheine": Herkunft, Zeitpunkt, AVS, ohne Unterschriftsbild.
+    const l = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/registrations?from=2026-10-01&to=2026-10-31`,
+      headers: auth(admin.sessionId) })
+    expect(l.statusCode, l.body).toBe(200)
+    const liste = l.json<{ registrations: Array<Record<string, unknown>> }>().registrations
+    expect(liste).toHaveLength(2)
+    expect(liste.find(x => x.groupRegistrationId === null)).toMatchObject({
+      source: 'import', externalSystem: 'adminpanel', signatureRequired: false,
+      completedAt: '2026-10-01T08:15:00.000Z', avsReportedAt: '2026-10-02T06:00:00.000Z' })
+    expect(l.body).not.toContain('signature_svg')
+    expect(l.body).not.toContain('<svg')
+
     // Die Rezeption sieht, wann und woher.
     const d = await app.inject({ method: 'GET', url: `/v1/reservations/${r.ref}`,
                                  headers: auth(admin.sessionId) })
