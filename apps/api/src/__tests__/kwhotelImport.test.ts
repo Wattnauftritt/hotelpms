@@ -137,11 +137,13 @@ const bestand = (): Zeile[] => [
   // gerade im Haus
   { id: 2, room: 3, von: addDays(heute, -2), letzte: addDays(heute, 1), cena: '320.0000',
     osob: 1, gast: 103 },
-  // Gruppe aus zwei Zimmern, kuenftig
+  // Gruppe aus zwei Zimmern, kuenftig. Osob ist die Gesamtzahl: vier Personen,
+  // davon zwei Kinder.
   { id: 3, room: 4, von: addDays(heute, 10), letzte: addDays(heute, 11), cena: '200.0000',
-    gast: 101, gruppe: 77, kinder: [1, 0, 1], weitere: [104] },
+    osob: 4, gast: 101, gruppe: 77, kinder: [1, 0, 1], weitere: [104] },
+  // widerspruechlich: zwei Personen, zwei Kinder -- es bleibt die Gesamtzahl
   { id: 4, room: 10, von: addDays(heute, 10), letzte: addDays(heute, 11), cena: '180.0000',
-    gast: 101, gruppe: 77 },
+    gast: 101, gruppe: 77, kinder: [2, 0, 0] },
   // storniert, mit Grund in Klammern wie in KWHotel
   { id: 5, room: 10, von: addDays(heute, 20), letzte: addDays(heute, 20), cena: '0.0000',
     status: 11, gast: 104, uwagi: '{Aus persoenlichen Gruenden\r\n}' },
@@ -282,6 +284,7 @@ describe('Uebernahme', () => {
       children: 0, guest_count: 1, folio: 1 })
     expect(z['3']).toMatchObject({ status: 'Confirmed', adults: 2, children: 2, guest_count: 4,
       booking_legacy: '77', last_name: 'Wattwurm GmbH' })
+    expect(z['4']).toMatchObject({ adults: null, children: null, guest_count: 2 })
     expect(z['4']!.booking_id).toBe(z['3']!.booking_id)
     expect(z['5']).toMatchObject({ status: 'Canceled', canceled: true, folio: 0,
       notes: 'Aus persoenlichen Gruenden', last_name: 'Möwe' })
@@ -442,8 +445,9 @@ describe('Fehlende Zimmer', () => {
       const { bericht } = await uebernehmen(abzug(zeilen(), GAESTE, NEU))
       expect(bericht.rooms.find(r => r.kwRoomId === '11')).toMatchObject({
         match: 'none',
+        // Osob 3 mit einem Kind sind drei Personen, nicht vier.
         suggestion: { code: '12', categoryCode: 'APT', categoryName: 'Doppelzimmer',
-                      maxOccupancy: 4 } })
+                      maxOccupancy: 3 } })
       expect(bericht.rooms.find(r => r.kwRoomId === '12')!.suggestion)
         .toMatchObject({ code: '14', categoryCode: 'DZ' })
       expect(bericht.findings.map(f => f.messageKey)).toContain('import.kwhotel.roomUnmapped')
