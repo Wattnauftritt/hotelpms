@@ -1825,6 +1825,17 @@ const M = {
     de: 'Reservierung {reference}: Datum oder Preis unlesbar',
     en: 'Reservation {reference}: date or price unreadable',
     tr: 'Rezervasyon {reference}: tarih veya fiyat okunamıyor' },
+  'import.undo.nothing': {
+    de: 'In diesem Haus gibt es keine Uebernahme aus KWHotel',
+    en: 'There is no KWHotel import in this property',
+    tr: 'Bu tesiste KWHotel aktarımı yok' },
+  'import.undo.blocked': {
+    de: 'An {count} uebernommenen Zeilen haengt inzwischen etwas ({table}). '
+      + 'Zuruecknehmen geht nur, solange an der Uebernahme nicht gearbeitet wurde',
+    en: '{count} imported rows now have something attached ({table}). An import '
+      + 'can only be undone as long as nobody has worked on it',
+    tr: '{count} aktarılmış satıra artık bir şey bağlı ({table}). Aktarım yalnızca '
+      + 'üzerinde çalışılmadığı sürece geri alınabilir' },
   'import.dump.tableMissing': {
     de: 'Im Abzug fehlt die Tabelle {table}',
     en: 'The dump lacks the table {table}',

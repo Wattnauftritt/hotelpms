@@ -44,6 +44,27 @@ export interface Hausrechte {
   geladen: boolean
 }
 
+/**
+ * Alle Haeuser, in denen der Benutzer ein bestimmtes Recht hat.
+ *
+ * Fuer Bildschirme, die ein Haus **waehlen** lassen statt das aus der
+ * Kopfzeile zu nehmen -- die Datenuebernahme etwa, bei der ein falsches
+ * Haus drei Jahre Buchungen an die falsche Stelle schreibt. `undefined`,
+ * solange nichts geladen ist.
+ */
+export function useHaeuserMitRecht(
+  permission: string
+): Array<{ id: number; code: string; name: string }> | undefined {
+  const me = useQuery<Konto>({
+    queryKey: ['me'],
+    queryFn: () => api.get<Konto>('/v1/auth/me'),
+    retry: false
+  })
+  return me.data?.properties
+    .filter(p => p.permissions.includes(permission))
+    .map(p => ({ id: p.id, code: p.code, name: p.name }))
+}
+
 export function useHausrechte(propertyId: number): Hausrechte {
   const me = useQuery<Konto>({
     queryKey: ['me'],

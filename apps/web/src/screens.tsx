@@ -160,7 +160,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
                              platformPermissions={c.platformPermissions} /> },
   // Uebernahme aus Altsystemen, zuerst KWHotel. Einrichtung, kein Tagesgeschaeft.
   { key: 'import', group: 'settings', nav: 'nav.import', permission: 'settings:property',
-    render: c => <Datenuebernahme propertyId={c.propertyId} /> }
+    render: () => <Datenuebernahme /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

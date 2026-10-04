@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import type { KwhotelImportReport, KwhotelImportRequest, KwhotelRoomMatch } from '@hotelpms/contracts'
+import type { KwhotelImportReport, KwhotelImportRequest, KwhotelRoomMatch,
+              KwhotelUndoReport } from '@hotelpms/contracts'
 import { useCategories, useRooms } from '../lib/queries.js'
-import { useKwhotelImport } from '../lib/queries/altsystem.js'
+import { useHaeuserMitRecht } from '../lib/rechte.js'
+import { useKwhotelImport, useKwhotelUndo } from '../lib/queries/altsystem.js'
 import { auszugAusAbzug, KWHOTEL_TABELLEN, namenAus, zahlenAus } from '../lib/altsystem.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { apiText, fehlerMeldung } from '../lib/meldungen.js'
@@ -25,34 +27,149 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
  * anlegen, mit eigener Nummer und Zimmergruppe. Vorbelegt ist, was KWHotel
  * dazu weiß; angelegt wird erst mit der Übernahme und in derselben
  * Transaktion, so dass eine abgebrochene Übernahme keine Zimmer hinterlässt.
+ *
+ * **Das Zielhaus wird gewählt, nicht angenommen.** Hier stand stillschweigend
+ * das Haus aus der Hauswahl oben, und genau so landete ein ganzes Hotel mit
+ * drei Jahren Buchungen im Gästehaus daneben: niemand schaut beim Import
+ * auf die Kopfzeile. Die Auswahl hat deshalb keine Vorgabe, auch nicht bei
+ * nur einem Haus, und der Knopf zum Übernehmen nennt das Haus noch einmal.
  */
-export function Datenuebernahme({ propertyId }: { propertyId: number }): JSX.Element {
+export function Datenuebernahme(): JSX.Element {
   const t = useT()
+  // Nur Haeuser, in denen der Benutzer uebernehmen darf; die Schnittstelle
+  // wiese die anderen ohnehin ab.
+  const haeuser = useHaeuserMitRecht('settings:property')
+  const [ziel, setZiel] = useState<number | null>(null)
+
+  if (haeuser === undefined) return <Laedt />
+  const haus = haeuser.find(h => h.id === ziel)
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <section className="bg-white border border-neutral-200 rounded-sm p-4 space-y-3">
+        <h2 className="text-sm font-medium">{t('import.title')}</h2>
+        <div className="flex flex-wrap gap-4">
+          <label className="block w-64">
+            <span className="block text-xs text-neutral-600">{t('import.system')}</span>
+            {/* Eine Auswahl mit einem Eintrag: die naechsten Altsysteme kommen
+                hier dazu, ohne dass sich der Bildschirm aendert. */}
+            <select className={FELD} value="kwhotel" disabled>
+              <option value="kwhotel">KWHotel</option>
+            </select>
+          </label>
+          <label className="block w-80">
+            <span className="block text-xs text-neutral-600">{t('import.target')}</span>
+            <select className={FELD} value={ziel ?? ''}
+                    onChange={ev => setZiel(ev.target.value === '' ? null : Number(ev.target.value))}>
+              <option value="" disabled>{t('import.target.choose')}</option>
+              {haeuser.map(h => (
+                <option key={h.id} value={h.id}>{h.name} ({h.code})</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {haus === undefined
+          ? <p className="text-xs text-neutral-600">{t('import.target.hint')}</p>
+          // `key`: ein anderes Haus ist eine andere Uebernahme. Datei,
+          // Bericht und Zuordnung des vorigen gelten dort nicht.
+          : <ZielBestand key={haus.id} propertyId={haus.id} hausName={haus.name} />}
+      </section>
+      {haus !== undefined && (
+        <Zuruecknehmen key={haus.id} propertyId={haus.id} hausName={haus.name} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Nimmt eine Übernahme im gewählten Haus zurück, für den Fall, dass sie im
+ * falschen gelandet ist. Erst zählen, dann entfernen: der Knopf zum
+ * Entfernen erscheint nur nach einem Trockenlauf ohne Fehler und nennt das
+ * Haus. Die Schnittstelle weigert sich ganz, sobald an einer übernommenen
+ * Reservierung etwas hängt, das nicht zur Übernahme gehört, etwa eine
+ * Buchung auf dem Gastkonto; halb zurückgenommen wäre schlimmer als gar nicht.
+ */
+function Zuruecknehmen({ propertyId, hausName }: {
+  propertyId: number; hausName: string
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const lauf = useKwhotelUndo(propertyId)
+  const [bericht, setBericht] = useState<KwhotelUndoReport | null>(null)
+
+  const zaehlen = () => { lauf.mutate(false, { onSuccess: setBericht }) }
+  const entfernen = () => {
+    if (bericht === null) return
+    if (!confirm(t('import.undo.confirm', { n: bericht.counts.reservations,
+                                            haus: hausName }))) return
+    lauf.mutate(true, { onSuccess: setBericht })
+  }
+  const fehlerfrei = bericht !== null && !bericht.findings.some(f => f.level === 'error')
+  const c = bericht?.counts
+  const fehler = lauf.isError ? fehlerMeldung(lauf.error, locale) : null
+
+  return (
+    <section className="bg-white border border-neutral-200 rounded-sm p-4 space-y-3">
+      <h2 className="text-sm font-medium">{t('import.undo.title')}</h2>
+      <p className="text-xs text-neutral-600">{t('import.undo.hint')}</p>
+      {bericht !== null && c !== undefined && (
+        <div className="text-sm space-y-1">
+          {bericht.dryRun ? (
+            <>
+              <p>{t('import.undo.runs', { haus: hausName, n: bericht.runs.length })}</p>
+              <ul className="text-xs text-neutral-600">
+                {bericht.runs.map(r => (
+                  <li key={r.at}>{t('import.undo.run', {
+                    at: new Date(r.at).toLocaleString(locale), n: r.reservations })}</li>
+                ))}
+              </ul>
+              {bericht.runs.length > 0 && <p>{t('import.undo.counts', c)}</p>}
+              {c.guestsKept + c.roomsKept + c.categoriesKept > 0 && (
+                <p className="text-xs text-amber-800">{t('import.undo.kept', {
+                  guests: c.guestsKept, rooms: c.roomsKept, categories: c.categoriesKept })}</p>
+              )}
+            </>
+          ) : <p className="text-green-800">{t('import.undo.done', { n: c.reservations })}</p>}
+          <ul className="space-y-1">
+            {bericht.findings.map((f, i) => (
+              <li key={i} className={`text-sm ${f.level === 'error'
+                                                ? 'text-red-700' : 'text-amber-800'}`}>
+                {apiText(f.messageKey, f.message, locale, f.params)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {fehler !== null && <p className="text-sm text-red-700">{fehler.text}</p>}
+      <div className="flex gap-2">
+        <button type="button" className={KNOPF} disabled={lauf.isPending} onClick={zaehlen}>
+          {t('import.undo.check')}
+        </button>
+        {bericht?.dryRun === true && fehlerfrei && bericht.runs.length > 0 && (
+          <button type="button" disabled={lauf.isPending} onClick={entfernen}
+                  className={`${KNOPF} border-red-300 text-red-800 hover:bg-red-50`}>
+            {t('import.undo.commit', { haus: hausName })}
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ZielBestand({ propertyId, hausName }: {
+  propertyId: number; hausName: string
+}): JSX.Element {
   const zimmer = useRooms(propertyId, true)
   const gruppen = useCategories(propertyId)
 
   if (zimmer.isError) return <Fehler error={zimmer.error} />
   if (gruppen.isError) return <Fehler error={gruppen.error} />
   if (zimmer.data === undefined || gruppen.data === undefined) return <Laedt />
-
   return (
-    <div className="space-y-6 max-w-5xl">
-      <section className="bg-white border border-neutral-200 rounded-sm p-4 space-y-3">
-        <h2 className="text-sm font-medium">{t('import.title')}</h2>
-        <label className="block w-64">
-          <span className="block text-xs text-neutral-600">{t('import.system')}</span>
-          {/* Eine Auswahl mit einem Eintrag: die naechsten Altsysteme kommen
-              hier dazu, ohne dass sich der Bildschirm aendert. */}
-          <select className={FELD} value="kwhotel" disabled>
-            <option value="kwhotel">KWHotel</option>
-          </select>
-        </label>
-        <KwhotelUebernahme propertyId={propertyId}
-          zimmer={zimmer.data.rooms.map(z => ({ id: z.id, code: z.code,
-                                               categoryCode: z.categoryCode }))}
-          gruppen={gruppen.data.categories.map(g => ({ id: g.id, code: g.code, name: g.name }))} />
-      </section>
-    </div>
+    <KwhotelUebernahme propertyId={propertyId} hausName={hausName}
+      zimmer={zimmer.data.rooms.map(z => ({ id: z.id, code: z.code,
+                                           categoryCode: z.categoryCode }))}
+      gruppen={gruppen.data.categories.map(g => ({ id: g.id, code: g.code, name: g.name }))} />
   )
 }
 
@@ -66,6 +183,8 @@ interface Gruppe { id: number; code: string; name: string }
 /** Ein Zimmer, das mit der Übernahme neu angelegt wird. */
 interface NeuesZimmer {
   code: string
+  /** Vorbelegt mit dem Namen aus KWHotel; leer heisst ohne Namen. */
+  name: string
   /** Eine vorhandene Zimmergruppe, oder `null` für eine neue. */
   gruppe: number | null
   gruppeCode: string
@@ -89,21 +208,21 @@ interface Einstellungen {
 function ausVorschlag(r: KwhotelRoomMatch, gruppen: Gruppe[]): NeuesZimmer {
   const s = r.suggestion
   const da = gruppen.find(g => g.code.toLowerCase() === s.categoryCode.toLowerCase())
-  return { code: s.code, gruppe: da?.id ?? null, gruppeCode: s.categoryCode,
+  return { code: s.code, name: s.name, gruppe: da?.id ?? null, gruppeCode: s.categoryCode,
            gruppeName: s.categoryName, belegung: String(s.maxOccupancy) }
 }
 
 function neueZimmer(neu: Record<string, NeuesZimmer>): KwhotelImportRequest['createRooms'] {
   return Object.entries(neu).map(([kwRoomId, n]) => ({
-    kwRoomId, code: n.code.trim(),
+    kwRoomId, code: n.code.trim(), name: n.name.trim() === '' ? null : n.name.trim(),
     ...(n.gruppe !== null ? { categoryId: n.gruppe } : {
       newCategory: { code: n.gruppeCode.trim(), name: n.gruppeName.trim(),
                      maxOccupancy: Number(n.belegung) } })
   }))
 }
 
-function KwhotelUebernahme({ propertyId, zimmer, gruppen }: {
-  propertyId: number; zimmer: Zimmer[]; gruppen: Gruppe[]
+function KwhotelUebernahme({ propertyId, hausName, zimmer, gruppen }: {
+  propertyId: number; hausName: string; zimmer: Zimmer[]; gruppen: Gruppe[]
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -136,6 +255,10 @@ function KwhotelUebernahme({ propertyId, zimmer, gruppen }: {
     })
   }
   const uebernehmen = () => {
+    // Die letzte Gelegenheit, das Haus zu sehen, bevor Tausende Zeilen darin
+    // stehen. Der Name aus dem Abzug daneben, weil er der Vergleich ist.
+    if (!confirm(t('import.commit.confirm', { n: bericht!.imported, haus: hausName,
+                                              quelle: bericht!.hotelName ?? 'KWHotel' }))) return
     lauf.mutate(anfrage(true), {
       onSuccess: b => {
         setBericht(b)
@@ -201,28 +324,63 @@ function KwhotelUebernahme({ propertyId, zimmer, gruppen }: {
         </label>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className={KNOPF} disabled={datei === null || lauf.isPending}
-                onClick={pruefen}>
-          {lauf.isPending ? t('import.checking') : t('import.check')}
-        </button>
-        {bereit && (
-          <button type="button" disabled={lauf.isPending} onClick={uebernehmen}
-                  className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
-                             disabled:opacity-50">
-            {t('import.commit', { n: bericht.imported })}
-          </button>
-        )}
-      </div>
-      {fehlerfrei && <p className="text-[11px] text-neutral-400">{t('import.commit.hint')}</p>}
+      {bericht === null
+        ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className={KNOPF} disabled={datei === null || lauf.isPending}
+                    onClick={pruefen}>
+              {lauf.isPending ? t('import.checking') : t('import.check')}
+            </button>
+          </div>
+        )
+        : schritt()}
       {fehler !== null && <p className="text-sm text-red-700">{fehler.text}</p>}
 
       {bericht !== null && (
-        <Bericht bericht={bericht} zimmer={zimmer} gruppen={gruppen}
-                 einstellungen={e} setEinstellungen={setE} />
+        <>
+          <Bericht bericht={bericht} zimmer={zimmer} gruppen={gruppen}
+                   einstellungen={e} setEinstellungen={setE} />
+          {/* Derselbe Schritt noch einmal unten: dort wird zugeordnet und
+              angelegt, und wer danach weiter will, soll nicht nach oben
+              scrollen muessen, um "Pruefen" zu finden. */}
+          <div className="border-t border-neutral-200 pt-4">{schritt()}</div>
+        </>
       )}
     </div>
   )
+
+  /**
+   * Der naechste Schritt, je nach Stand: nach einer Aenderung "Weiter"
+   * (prueft mit den neuen Einstellungen), nach einer fehlerfreien Pruefung
+   * das Uebernehmen. Eine Funktion im Rumpf, weil sie oben und unten
+   * dasselbe zeigen muss.
+   */
+  function schritt(): JSX.Element {
+    return (
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-3">
+          {bereit
+            ? (
+              <button type="button" disabled={lauf.isPending} onClick={uebernehmen}
+                      className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                                 disabled:opacity-50">
+                {t('import.commit', { n: bericht!.imported, haus: hausName })}
+              </button>
+            )
+            : (
+              <button type="button" className={KNOPF}
+                      disabled={datei === null || lauf.isPending} onClick={pruefen}>
+                {lauf.isPending ? t('import.checking') : t('import.next')}
+              </button>
+            )}
+        </div>
+        {bereit && <p className="text-[11px] text-neutral-400">{t('import.commit.hint')}</p>}
+        {!bereit && geprueft !== null && geprueft !== stand && (
+          <p className="text-[11px] text-neutral-500">{t('import.next.hint')}</p>
+        )}
+      </div>
+    )
+  }
 }
 
 function Bericht({ bericht: b, zimmer, gruppen, einstellungen: e,
@@ -439,6 +597,11 @@ function NeuesZimmerFelder({ wert: n, gruppen, aendere }: {
         <span className="block text-[11px] text-neutral-500">{t('import.rooms.newCode')}</span>
         <input className={klein + ' w-20'} value={n.code} maxLength={20}
                onChange={ev => aendere({ code: ev.target.value })} />
+      </label>
+      <label className="block">
+        <span className="block text-[11px] text-neutral-500">{t('import.rooms.newName')}</span>
+        <input className={klein + ' w-40'} value={n.name} maxLength={60}
+               onChange={ev => aendere({ name: ev.target.value })} />
       </label>
       <label className="block">
         <span className="block text-[11px] text-neutral-500">{t('import.rooms.category')}</span>
