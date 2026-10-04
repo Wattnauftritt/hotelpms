@@ -47,9 +47,9 @@ export const planstatus = {
     en: 'Payment',
     tr: 'Ödeme' },
   'ps.pay.none': {
-    de: 'Noch nichts gebucht oder gezahlt',
-    en: 'Nothing posted or paid yet',
-    tr: 'Henüz kayıt veya ödeme yok' },
+    de: 'Noch nichts aufs Konto gebucht, nichts gezahlt',
+    en: 'Nothing charged to the account or paid yet',
+    tr: 'Henüz hesaba kayıt veya ödeme yok' },
   'ps.pay.requested': {
     de: 'Zahlung angefordert',
     en: 'Payment requested',
@@ -79,11 +79,11 @@ export const planstatus = {
     en: 'paid {paid} of {expected} expected · balance {balance}',
     tr: 'beklenen {expected} tutarın {paid} kadarı ödendi · bakiye {balance}' },
   'ps.pay.unpostedOne': {
-    de: 'Eine Nacht noch nicht gebucht',
+    de: 'Eine Nacht noch nicht aufs Konto gebucht',
     en: 'One night not yet posted',
     tr: 'Bir gece henüz kaydedilmedi' },
   'ps.pay.unposted': {
-    de: '{n} Nächte noch nicht gebucht',
+    de: '{n} Nächte noch nicht aufs Konto gebucht',
     en: '{n} nights not yet posted',
     tr: '{n} gece henüz kaydedilmedi' },
   'ps.pay.depositPart': {
@@ -102,4 +102,33 @@ export const planstatus = {
     de: 'Gruppe ({n} Zimmer): {state} · gezahlt {paid} von {expected}',
     en: 'Group ({n} rooms): {state} · paid {paid} of {expected}',
     tr: 'Grup ({n} oda): {state} · {expected} tutarın {paid} kadarı ödendi' },
+  /*
+   * Preis und Notizen im Titel des Balkens. "Gesamtpreis" ist die Summe
+   * der Naechte, ohne Extras: was der Gast insgesamt schuldet, sagt der
+   * Zahlungsstand darunter, und der braucht das Folio-Recht.
+   */
+  'ps.price.night': {
+    de: 'Preis pro Nacht: {price}',
+    en: 'Price per night: {price}',
+    tr: 'Gecelik fiyat: {price}' },
+  'ps.price.nightRange': {
+    de: 'Preis pro Nacht: {min} bis {max}',
+    en: 'Price per night: {min} to {max}',
+    tr: 'Gecelik fiyat: {min} ile {max} arası' },
+  'ps.price.stayOne': {
+    de: 'Gesamtpreis (1 Nacht): {total}',
+    en: 'Total price (1 night): {total}',
+    tr: 'Toplam fiyat (1 gece): {total}' },
+  'ps.price.stay': {
+    de: 'Gesamtpreis ({n} Nächte): {total}',
+    en: 'Total price ({n} nights): {total}',
+    tr: 'Toplam fiyat ({n} gece): {total}' },
+  'ps.notes.reservation': {
+    de: 'Notiz zur Reservierung:',
+    en: 'Reservation note:',
+    tr: 'Rezervasyon notu:' },
+  'ps.notes.guest': {
+    de: 'Notizen zum Gast:',
+    en: 'Guest notes:',
+    tr: 'Misafir notları:' },
 } as const satisfies Record<string, LocalizedText>

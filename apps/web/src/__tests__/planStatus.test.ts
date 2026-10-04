@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import type { PlanPayment } from '@hotelpms/contracts'
 import { REINIGUNG, ZAHLUNG, zahlungsTitel, reinigungsZiele, angeboteneStaende,
-         REINIGUNG_SETZBAR } from '../lib/planStatus.js'
+         REINIGUNG_SETZBAR, preisUndNotizen } from '../lib/planStatus.js'
+import { gruppeVerschieben } from '../components/Stammdaten.tsx'
 import { textFor, type TextKey } from '../lib/i18n/index.js'
 
 /**
@@ -62,12 +63,12 @@ describe('Der Titel am Balken', () => {
     const titel = zahlungsTitel(basis, t, geld)
     expect(titel).toContain('Zahlung: Teilweise bezahlt')
     expect(titel).toContain('gezahlt 200,00 € von 500,00 € erwartet · Saldo 0,00 €')
-    expect(titel).toContain('3 Nächte noch nicht gebucht')
+    expect(titel).toContain('3 Nächte noch nicht aufs Konto gebucht')
   })
 
   it('sagt "eine Nacht" und nicht "1 Naechte"', () => {
     const titel = zahlungsTitel({ ...basis, unposted_nights: 1 }, t, geld)
-    expect(titel).toContain('Eine Nacht noch nicht gebucht')
+    expect(titel).toContain('Eine Nacht noch nicht aufs Konto gebucht')
     expect(titel).not.toContain('1 Nächte')
   })
 
@@ -176,5 +177,59 @@ describe('Legende', () => {
     const tape = lies('routes/Tape.tsx')
     expect(tape).toContain("reinigung={rechte.darf('housekeeping:read')}")
     expect(tape).toContain("zahlung={rechte.darf('folio:read')}")
+  })
+})
+
+describe('Preis und Notizen im Titel des Balkens', () => {
+  const basis = { nights: 3, stay_price_cent: 26_700, night_price_min_cent: 8_900,
+                  night_price_max_cent: 8_900, short_note: null, notes: null }
+
+  it('nennt Preis pro Nacht und Gesamtpreis', () => {
+    const titel = preisUndNotizen(basis, t, geld)
+    expect(titel).toContain('Preis pro Nacht: 89,00 €')
+    expect(titel).toContain('Gesamtpreis (3 Nächte): 267,00 €')
+  })
+
+  it('nennt die Spanne statt eines Durchschnitts, wenn die Naechte verschieden kosten', () => {
+    const titel = preisUndNotizen(
+      { ...basis, stay_price_cent: 29_700, night_price_max_cent: 11_900 }, t, geld)
+    expect(titel).toContain('Preis pro Nacht: 89,00 € bis 119,00 €')
+    expect(titel).not.toContain('99,00')
+  })
+
+  it('zeigt ohne Naechte keinen Preis -- null Euro waere eine falsche Aussage', () => {
+    expect(preisUndNotizen({ ...basis, nights: 0, stay_price_cent: 0,
+      night_price_min_cent: 0, night_price_max_cent: 0 }, t, geld)).toBe('')
+  })
+
+  it('zeigt ohne Folio-Recht keinen Preis, die Notizen aber schon', () => {
+    const titel = preisUndNotizen({ short_note: 'Balkon', notes: null }, t, geld)
+    expect(titel).not.toContain('€')
+    expect(titel).toContain('Balkon')
+  })
+
+  it('zeigt alle Notizen: Kurznotiz, Vorgang und jede Hausnotiz zum Gast', () => {
+    const titel = preisUndNotizen({ ...basis, short_note: 'Balkon',
+      notes: 'Ruft vor Anreise an', guest_notes: ['ebenerdig', 'Allergie: Nuesse'] }, t, geld)
+    for (const teil of ['Notiz zur Reservierung:', 'Balkon', 'Ruft vor Anreise an',
+                        'Notizen zum Gast:', '• ebenerdig', '• Allergie: Nuesse']) {
+      expect(titel).toContain(teil)
+    }
+  })
+})
+
+describe('Zimmergruppen sortieren', () => {
+  it('tauscht mit dem Nachbarn', () => {
+    expect(gruppeVerschieben([1, 2, 3], [1, 2, 3], 3, -1)).toEqual([1, 3, 2])
+    expect(gruppeVerschieben([1, 2, 3], [1, 2, 3], 1, 1)).toEqual([2, 1, 3])
+  })
+
+  it('springt ueber eine ausgeblendete Gruppe, die ihren Platz behaelt', () => {
+    expect(gruppeVerschieben([1, 2, 3], [1, 3], 3, -1)).toEqual([3, 2, 1])
+  })
+
+  it('tut am Rand nichts', () => {
+    expect(gruppeVerschieben([1, 2], [1, 2], 1, -1)).toBeNull()
+    expect(gruppeVerschieben([1, 2], [1, 2], 2, 1)).toBeNull()
   })
 })

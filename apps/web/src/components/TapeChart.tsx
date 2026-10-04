@@ -8,7 +8,8 @@ import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passu
 import { spaltenBreite, spanne } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { useEscape, istTextEingabe } from '../lib/tasten.js'
-import { ReinigungsZeichen, ZahlungsZeichen, useZahlungsTitel } from './PlanZeichen.tsx'
+import { ReinigungsZeichen, ZahlungsZeichen, useZahlungsTitel, usePreisUndNotizen }
+  from './PlanZeichen.tsx'
 
 /**
  * Der Zimmerplan.
@@ -103,6 +104,8 @@ const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
  * gescrollt statt abgeschnitten.
  */
 const BAND_ZEILEN = 4
+/** Darunter scrollt wieder die Seite: ein Plan mit drei sichtbaren Zeilen ist keiner. */
+const RASTER_MIN_HOEHE = 320
 /** Ab dieser Bewegung ist es ein Ziehen und kein Klick mehr. */
 const KLICK_SCHWELLE = 5
 
@@ -288,6 +291,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
   const t = useT()
   const locale = useLocale()
   const zahlungsTitel = useZahlungsTitel()
+  const preisUndNotizenTitel = usePreisUndNotizen()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
   const rasterRef = useRef<HTMLDivElement>(null)
   /*
@@ -307,6 +311,41 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     })
     beobachter.observe(el)
     return () => { beobachter.disconnect() }
+  }, [])
+  /*
+   * Die Hoehe des Rasters: bis zum unteren Fensterrand, nicht weiter.
+   *
+   * Ohne Grenze wuchs der Rahmen mit dem Haus, und gescrollt hat die Seite.
+   * Die Kopfzeile mit den Tagen klebt mit `sticky` aber am naechsten
+   * scrollenden Vorfahren -- dem Rahmen, der selbst nie scrollte. Sie lief
+   * also mit nach oben weg, und ab dem zehnten Zimmer stand kein Datum mehr
+   * ueber den Balken. Begrenzt scrollt der Rahmen selbst, und die Kopfzeile
+   * bleibt stehen.
+   *
+   * Gemessen statt als feste Zahl im Stil: was ueber dem Plan steht (Leiste,
+   * Legende), bricht je nach Fensterbreite in eine oder zwei Zeilen um. Die
+   * Untergrenze haelt den Plan auf einem niedrigen Fenster benutzbar; dann
+   * scrollt eben wieder die Seite mit.
+   */
+  const [rasterHoehe, setRasterHoehe] = useState<number | null>(null)
+  useEffect(() => {
+    const el = rasterRef.current
+    if (el === null) return
+    const messen = (): void => {
+      const oben = el.getBoundingClientRect().top + window.scrollY
+      setRasterHoehe(Math.max(RASTER_MIN_HOEHE, Math.floor(window.innerHeight - oben - 16)))
+    }
+    messen()
+    // Der Koerper und nicht nur das Fenster: die Legende erscheint erst mit
+    // den Daten und schiebt den Plan nach unten, ohne dass sich das Fenster
+    // aendert.
+    const beobachter = new ResizeObserver(messen)
+    beobachter.observe(document.body)
+    window.addEventListener('resize', messen)
+    return () => {
+      beobachter.disconnect()
+      window.removeEventListener('resize', messen)
+    }
   }, [])
   /** Die Breite einer Tagesspalte auf diesem Bildschirm. */
   const spalte = spaltenBreite(rasterBreite - LABEL_BREITE, tage.length)
@@ -1059,7 +1098,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     }, [tagUnter, setDragState])
 
   return (
-    <div className="overflow-auto border border-neutral-200 rounded-sm" ref={rasterRef}>
+    <div className="overflow-auto border border-neutral-200 rounded-sm" ref={rasterRef}
+         style={rasterHoehe === null ? undefined : { maxHeight: rasterHoehe }}>
       <div style={{ minWidth: LABEL_BREITE + tage.length * spalte }}>
         {/* Kopfzeile mit Tagen */}
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
@@ -1186,7 +1226,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                                      })}`
                                  + ` · ${r.public_ref}`
                                  // Die lange Notiz nur hier, nie auf dem Balken.
-                                 + (r.notes ? `\n${r.notes}` : '')
+                                 + preisUndNotizenTitel(r)
                                  + zahlungsTitel(r.payment)}
                             style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
                             /*
@@ -1405,6 +1445,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
   const t = useT()
   const locale = useLocale()
   const zahlungsTitel = useZahlungsTitel()
+  const preisUndNotizenTitel = usePreisUndNotizen()
   const u = p.unit
   return (
     <div className={`flex relative border-b border-neutral-100
@@ -1472,8 +1513,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                          + `${formatDate(r.arrival, locale)} – `
                          + `${formatDate(r.departure, locale)} · `
                          + `${t(`status.${r.status}` as never)}`
-                         + (r.short_note ? ` · ${r.short_note}` : '')
-                         + (r.notes ? `\n${r.notes}` : '')
+                         + preisUndNotizenTitel(r)
                          + zahlungsTitel(r.payment)}
                     style={{ ...b, top: 4, height: ZEILE - 8,
                              opacity: versteckt ? 0.35 : 1 }}

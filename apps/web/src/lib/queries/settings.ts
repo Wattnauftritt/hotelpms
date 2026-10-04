@@ -198,6 +198,20 @@ export function useUpdateCategory(propertyId: number) {
   })
 }
 
+/**
+ * Die Reihenfolge der Zimmergruppen, als ganze Liste. Der Server vergibt
+ * die Zahlen neu; einzeln gesetzte Zahlen liefen bei zwei gleichen in eine
+ * Reihenfolge, die keiner gewaehlt hat.
+ */
+export function useCategoryOrder(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (categoryIds: number[]) =>
+      api.put(`/v1/properties/${propertyId}/categories/order`, { categoryIds }),
+    onSuccess: () => { stammdatenNeuLaden(qc, propertyId) }
+  })
+}
+
 export function useUpdateRoom(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
