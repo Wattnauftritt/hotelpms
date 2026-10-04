@@ -227,12 +227,15 @@ export function useChangeStay() {
 export function useReservationStatusAction(reservationRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (action: 'cancel' | 'reinstate') =>
+    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out') =>
       api.post<{ reservationRef: string; status: string }>(
         `/v1/reservations/${reservationRef}/${action}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
       void qc.invalidateQueries({ queryKey: ['tape'] })
+      // Ein Check-out aendert die Tagesliste und den Reinigungsstand.
+      void qc.invalidateQueries({ queryKey: ['daily'] })
+      void qc.invalidateQueries({ queryKey: ['hk'] })
     }
   })
 }

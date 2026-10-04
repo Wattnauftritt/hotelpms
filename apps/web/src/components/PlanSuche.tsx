@@ -24,7 +24,7 @@ import { ReservierungsTreffer, KundenTreffer } from './Suchtreffer.tsx'
  * Seitenfenster verdeckte genau das Drittel des Plans, in dem man nach dem
  * Sprung nachsehen will, was daneben liegt.
  *
- * Stornierte, abgereiste und No-Show-Aufenthalte haben im Plan keinen
+ * Stornierte und No-Show-Aufenthalte haben im Plan keinen
  * Balken (`IM_PLAN`). Sie werden statt eines Sprungs gleich geoeffnet --
  * ein Sprung ins Leere waere eine Suche, die "gefunden" sagt und nichts
  * zeigt.

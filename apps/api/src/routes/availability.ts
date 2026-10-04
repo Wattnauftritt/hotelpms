@@ -378,7 +378,11 @@ export function availabilityRoutes(app: FastifyInstance): void {
              ) gn ON gn.guest_id = r.primary_guest_id` : ''}
             WHERE r.property_id = $1
               AND r.arrival < $3::date AND r.departure > $2::date
-              AND r.status IN ('Optional','Confirmed','InHouse')`, [pid, from, to])
+              -- Abgereiste gehoeren in den Plan: wer zurueckblaettert,
+              -- sucht, wer letzte Woche in Zimmer 12 lag. Nur Storno und
+              -- No-Show fehlen, weil sie nie ein Zimmer belegt haben. Die
+              -- Oberflaeche zeigt Abgereiste fest, ohne Ziehen und Griffe.
+              AND r.status IN ('Optional','Confirmed','InHouse','CheckedOut')`, [pid, from, to])
 
         const blocks = await client.query(
           /*

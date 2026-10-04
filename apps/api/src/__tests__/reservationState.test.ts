@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, openBusinessDay, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -54,11 +54,11 @@ beforeEach(async () => {
 const post = (url: string, payload: unknown = {}) =>
   app.inject({ method: 'POST', url, headers: auth, payload })
 
-async function buchung(): Promise<string> {
+async function buchung(departure = BIS): Promise<string> {
   const r = await app.inject({ method: 'POST', url: '/v1/bookings',
     headers: { ...auth, 'idempotency-key': `k-${Math.random()}` },
     payload: { propertyId: fx.propertyId, categoryId: catId,
-               arrival: VON, departure: BIS } })
+               arrival: VON, departure } })
   expect(r.statusCode, r.body).toBe(201)
   return (JSON.parse(r.body) as { reservationRef: string }).reservationRef
 }
@@ -211,5 +211,50 @@ describe('Das Zimmer wieder abnehmen', () => {
     const r = await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: null })
     expect(r.statusCode).toBe(409)
     expect(await zimmerVon(ref)).not.toBeNull()
+  })
+})
+
+describe('Vorzeitige Abreise', () => {
+  async function eingecheckt(departure: string): Promise<string> {
+    const ref = await buchung(departure)
+    const zimmer = await owner.query<{ id: number }>(
+      `SELECT id FROM resource WHERE property_id=$1 LIMIT 1`, [fx.propertyId])
+    expect((await post(`/v1/reservations/${ref}/assign-unit`,
+      { resourceId: zimmer.rows[0]!.id })).statusCode).toBe(200)
+    expect((await post(`/v1/reservations/${ref}/check-in`)).statusCode).toBe(200)
+    return ref
+  }
+  const aufenthalt = async (ref: string) => (await owner.query<{
+    departure: string; status: string; n: number }>(
+    `SELECT r.departure::text, r.status,
+            (SELECT count(*)::int FROM reservation_night n WHERE n.reservation_id = r.id) AS n
+       FROM reservation r WHERE public_ref = $1`, [ref])).rows[0]!
+
+  it('kuerzt den Aufenthalt beim Check-out auf den Geschaeftstag', async () => {
+    // Gebucht bis zum 5., abgereist am 3.: der Plan soll ab dem 3. ein
+    // freies Zimmer zeigen, und die zwei Naechte gehoeren nicht mehr dazu.
+    const ref = await eingecheckt('2026-10-05')
+    await openBusinessDay(owner, fx.propertyId, '2026-10-03')
+    const c = await post(`/v1/reservations/${ref}/check-out`)
+    expect(c.statusCode, c.body).toBe(200)
+    expect(await aufenthalt(ref)).toEqual(
+      { departure: '2026-10-03', status: 'CheckedOut', n: 2 })
+    expect(await verkauft('2026-10-03')).toBe(0)
+    expect(await verkauft('2026-10-04')).toBe(0)
+  })
+
+  it('laesst die Abreise am gebuchten Tag unveraendert', async () => {
+    const ref = await eingecheckt(BIS)
+    await openBusinessDay(owner, fx.propertyId, BIS)
+    expect((await post(`/v1/reservations/${ref}/check-out`)).statusCode).toBe(200)
+    expect(await aufenthalt(ref)).toEqual({ departure: BIS, status: 'CheckedOut', n: 2 })
+  })
+
+  it('laesst am Anreisetag die eine Nacht stehen', async () => {
+    const ref = await eingecheckt('2026-10-05')
+    await openBusinessDay(owner, fx.propertyId, VON)
+    expect((await post(`/v1/reservations/${ref}/check-out`)).statusCode).toBe(200)
+    expect(await aufenthalt(ref)).toEqual(
+      { departure: '2026-10-02', status: 'CheckedOut', n: 1 })
   })
 })

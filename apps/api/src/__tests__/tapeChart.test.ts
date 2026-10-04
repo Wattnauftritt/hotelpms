@@ -91,6 +91,21 @@ describe('Zimmerplan', () => {
     expect(r.departure).toBe('2026-10-05')
   })
 
+  it('zeigt abgereiste Aufenthalte, aber keine stornierten', async () => {
+    // Eine Uebernahme aus dem Altsystem bringt Jahre davon mit, und wer im
+    // Plan zurueckblaettert, fand bisher ein leeres Haus.
+    await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-01',
+      departure: '2026-10-03', status: 'CheckedOut', resourceId: rooms[0]! })
+    await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-02',
+      departure: '2026-10-04', status: 'Canceled', resourceId: rooms[1]! })
+
+    const plan = await zimmerplan()
+    expect(plan.reservations.map(r => [r.arrival, (r as { status?: string }).status]))
+      .toEqual([['2026-10-01', 'CheckedOut']])
+  })
+
   it('gibt auch die Sperrungen als Kalenderdatum aus', async () => {
     await owner.query(
       `INSERT INTO maintenance_block (property_id, resource_id, from_date, to_date,

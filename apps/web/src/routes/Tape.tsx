@@ -709,10 +709,12 @@ function useWarnungen(
 function Legende({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const rechte = useHausrechte(propertyId)
-  const punkte: Array<[string, 'status.Optional' | 'status.Confirmed' | 'status.InHouse']> = [
+  const punkte: Array<[string, 'status.Optional' | 'status.Confirmed' | 'status.InHouse'
+                               | 'status.CheckedOut']> = [
     ['bg-status-optional', 'status.Optional'],
     ['bg-status-confirmed', 'status.Confirmed'],
-    ['bg-status-inhouse', 'status.InHouse']
+    ['bg-status-inhouse', 'status.InHouse'],
+    ['bg-status-checkedout', 'status.CheckedOut']
   ]
   return (
     <div className="flex items-center gap-3 text-xs text-neutral-600">
