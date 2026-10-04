@@ -50,7 +50,16 @@ import { Errors } from './errors.js'
  */
 export const AUFBEWAHRUNG_MONATE = 12
 
-export type MeldescheinQuelle = 'desk' | 'online' | 'terminal'
+export type MeldescheinQuelle = 'desk' | 'online' | 'terminal' | 'import'
+
+/** Ein Schein, den ein Umsystem schon eingesammelt hat (Migration 0087). */
+export interface MeldescheinHerkunft {
+  system: string
+  reference: string | null
+  /** Wann der Gast ihn dort ausgefuellt hat. */
+  completedAt: string | null
+  avsReportedAt: string | null
+}
 
 /**
  * Eine mitgeschickte Unterschrift pruefen: vorhanden, Text, nicht zu gross.
@@ -75,7 +84,9 @@ export function pruefeUnterschrift(svg: unknown): string {
 
 export type Unterschrift =
   /** Am Tresen und an der Station: jetzt oder gar nicht. */
-  | { art: 'jetzt'; svg: string | null | undefined }
+  | { art: 'jetzt'; svg: string | null | undefined
+      /** Nur bei der Uebernahme: unterschrieben wurde dort, nicht jetzt. */
+      signedAt?: string | null }
   /** Ueber den Link vor Anreise: nie jetzt, sondern am Anreisetag. */
   | { art: 'amAnreisetag' }
 
@@ -89,6 +100,7 @@ export interface MeldescheinEingabe {
   mitreisende: number[]
   unterschrift: Unterschrift
   quelle: MeldescheinQuelle
+  herkunft?: MeldescheinHerkunft
 }
 
 export interface MeldescheinErgebnis {
@@ -145,20 +157,25 @@ export async function erfasseMeldeschein(
     signatur = noetig ? pruefeUnterschrift(e.unterschrift.svg) : null
   }
 
+  const signedAt = e.unterschrift.art === 'jetzt' ? e.unterschrift.signedAt ?? null : null
+  const k = e.herkunft
   const h = await client.query<{ id: number }>(
     `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
                                planned_departure, occupant_count, is_foreign,
                                signature_svg, signed_at, destroy_after,
-                               source, signature_required)
+                               source, signature_required, external_system,
+                               external_reference, completed_at, avs_reported_at)
      VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,$8::text,
-             CASE WHEN $8::text IS NULL THEN NULL ELSE now() END,
+             CASE WHEN $8::text IS NULL THEN NULL
+                  ELSE COALESCE($12::timestamptz, now()) END,
              -- Ab Abreise, nicht ab Anreise: § 30 Abs. 4 BMG.
              ($5::date + ($9 || ' months')::interval)::date,
-             $10, $11)
+             $10, $11, $13, $14, $15::timestamptz, $16::timestamptz)
      RETURNING id`,
     [e.propertyId, e.reservationId, e.primaryGuestId, e.arrival, e.departure,
      e.mitreisende.length + 1, hauptAuslaendisch, signatur, AUFBEWAHRUNG_MONATE,
-     e.quelle, noetig])
+     e.quelle, noetig, signedAt, k?.system ?? null, k?.reference ?? null,
+     k?.completedAt ?? null, k?.avsReportedAt ?? null])
   const hauptId = Number(h.rows[0]!.id)
 
   /**
@@ -170,11 +187,13 @@ export async function erfasseMeldeschein(
     await client.query(
       `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
                                  planned_departure, occupant_count, is_foreign,
-                                 group_registration_id, destroy_after, source)
+                                 group_registration_id, destroy_after, source,
+                                 external_system)
        VALUES ($1,$2,$3,$4::date,$5::date,1,$6,$7,
-               ($5::date + ($8 || ' months')::interval)::date, $9)`,
+               ($5::date + ($8 || ' months')::interval)::date, $9, $10)`,
       [e.propertyId, e.reservationId, m.id, e.arrival, e.departure,
-       requiresRegistrationSignature(m), hauptId, AUFBEWAHRUNG_MONATE, e.quelle])
+       requiresRegistrationSignature(m), hauptId, AUFBEWAHRUNG_MONATE, e.quelle,
+       k?.system ?? null])
 
     /*
      * Wer gemeldet ist, wohnt auch im Zimmer.

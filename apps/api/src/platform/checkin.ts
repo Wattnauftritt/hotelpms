@@ -95,13 +95,17 @@ export async function onlineCheckinStand(
     property_id: number
     invited_at: string | null; invitation_status: string | null
     completed_at: string | null; source: OnlineCheckinStatus['source']
+    external_system: string | null
     signature_pending: boolean | null; active_links: number }>(
     `SELECT r.property_id,
             e.created_at  AS invited_at,
             e.status      AS invitation_status,
-            CASE WHEN reg.source IN ('online','terminal') THEN reg.created_at END
-                          AS completed_at,
-            reg.source,
+            -- Uebernommen: wann der Gast dort ausgefuellt hat, nicht wann
+            -- StayGrid ihn bekam (0087).
+            CASE WHEN reg.source IN ('online','terminal') THEN reg.created_at
+                 WHEN reg.source = 'import' THEN COALESCE(reg.completed_at, reg.created_at)
+             END AS completed_at,
+            reg.source, reg.external_system,
             (reg.signature_required AND reg.signed_at IS NULL) AS signature_pending,
             (SELECT count(*) FROM checkin_token t
               WHERE t.reservation_id = $1 AND t.revoked_at IS NULL
@@ -126,6 +130,7 @@ export async function onlineCheckinStand(
     invitationStatus: z.invitation_status,
     completedAt: z.completed_at === null ? null : new Date(z.completed_at).toISOString(),
     source: z.source,
+    importedFrom: z.external_system,
     signaturePending: z.signature_pending === true,
     activeLinks: z.active_links,
     mayLink: can(principal, 'reservation:checkin', z.property_id),

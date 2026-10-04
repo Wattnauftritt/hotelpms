@@ -9,6 +9,9 @@ export const PERMISSIONS = [
   // Kontaktdaten aus einem Umsystem (0083): schmaler als guest:write, weil
   // ein Abgleich irrt und dann nur nachtragen, nie umbenennen soll.
   'guest:contact_write',
+  // Fertige Meldescheine aus einem Umsystem (0087): setzt Geburtsdatum und
+  // Staatsangehoerigkeit und legt Mitreisende an, also mehr als Kontaktdaten.
+  'registration:import',
   'folio:read', 'folio:post', 'folio:void_own', 'folio:void_any',
   'folio:discount', 'folio:discount_unlimited', 'folio:route',
   'invoice:issue', 'invoice:credit',

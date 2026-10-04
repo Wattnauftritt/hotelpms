@@ -57,9 +57,12 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
           {einladung}
         </li>
         {stand.completedAt !== null && (
-          <li className="text-emerald-800">✓ {t(stand.source === 'terminal'
-            ? 'onlineCheckin.completedTerminal' : 'onlineCheckin.completedOnline',
-            { zeit: zeitpunkt(stand.completedAt, locale) })}</li>
+          <li className="text-emerald-800">✓ {stand.source === 'import'
+            ? t('onlineCheckin.completedImported', { zeit: zeitpunkt(stand.completedAt, locale),
+                                                     system: stand.importedFrom ?? '' })
+            : t(stand.source === 'terminal'
+              ? 'onlineCheckin.completedTerminal' : 'onlineCheckin.completedOnline',
+              { zeit: zeitpunkt(stand.completedAt, locale) })}</li>
         )}
         {stand.signaturePending && (
           <li className="text-amber-800">{t('onlineCheckin.signaturePending')}</li>
