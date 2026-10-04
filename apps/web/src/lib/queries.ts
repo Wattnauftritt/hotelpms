@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient, type UseQueryResult }
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type UseQueryResult }
   from '@tanstack/react-query'
 import type { TapeChart, DailySheet, HousekeepingBoard, Category, Room,
               SetupStatus, RoomSeries, RoomSeriesReport, CreateCategory,
@@ -38,11 +38,23 @@ function useCachedQuery<T>(
   })
 }
 
+/*
+ * Beim Blaettern bleibt der alte Plan stehen, bis der neue da ist.
+ *
+ * Mit der Scrollleiste wandert der Zeitraum Tag fuer Tag; ohne das stuende
+ * bei jedem Tag kurz "Laedt" statt des Plans, und der Plan flackerte. Der
+ * alte Stand rechnet mit seinem eigenen `from`, die Balken stehen also
+ * richtig -- nur einen Augenblick lang am alten Fenster.
+ */
 export const useTapeChart = (propertyId: number, from: string, to: string) =>
-  useCachedQuery<TapeChart>(
-    ['tape', propertyId, from, to],
-    `/v1/properties/${propertyId}/tape-chart?from=${from}&to=${to}`,
-    null)
+  useQuery<TapeChart>({
+    queryKey: ['tape', propertyId, from, to],
+    queryFn: () => api.get<TapeChart>(
+      `/v1/properties/${propertyId}/tape-chart?from=${from}&to=${to}`),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: 1
+  })
 
 export const useDailySheet = (propertyId: number, date: string) =>
   useCachedQuery<DailySheet>(

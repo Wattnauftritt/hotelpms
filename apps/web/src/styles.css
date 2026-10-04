@@ -43,3 +43,19 @@
 
 /* Zahlen im Zimmerplan und in Salden stehen untereinander. */
 .tabular-nums { font-variant-numeric: tabular-nums; }
+
+/*
+ * Die Scrollleiste unter dem Zimmerplan, immer sichtbar.
+ *
+ * macOS und manche Browser blenden Scrollleisten aus, bis man scrollt --
+ * eine Leiste, die man erst sieht, wenn man sie benutzt, findet niemand.
+ * Deshalb hier ausdruecklich gezeichnet.
+ */
+.querleiste {
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-neutral-400) var(--color-neutral-100);
+}
+.querleiste::-webkit-scrollbar { height: 12px; }
+.querleiste::-webkit-scrollbar-track { background: var(--color-neutral-100); border-radius: 6px; }
+.querleiste::-webkit-scrollbar-thumb { background: var(--color-neutral-400); border-radius: 6px; }
+.querleiste::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-500); }

@@ -233,3 +233,19 @@ describe('Zimmergruppen sortieren', () => {
     expect(gruppeVerschieben([1, 2], [1, 2], 2, 1)).toBeNull()
   })
 })
+
+describe('Scrollleiste unter dem Plan', () => {
+  it('reicht ein Jahr zurueck und zwei voraus', async () => {
+    const { leistenBereich } = await import('../lib/tapeGeometrie.js')
+    const b = leistenBereich('2026-10-04', '2026-10-04', 30)
+    expect(b.anfang).toBe('2025-10-04')
+    expect(b.tageGesamt).toBe(365 + 730)
+  })
+
+  it('waechst mit, wenn der Plan ausserhalb steht', async () => {
+    const { leistenBereich } = await import('../lib/tapeGeometrie.js')
+    expect(leistenBereich('2026-10-04', '2024-01-01', 30).anfang).toBe('2024-01-01')
+    const weit = leistenBereich('2026-10-04', '2030-01-01', 60)
+    expect(weit.tageGesamt).toBeGreaterThan(365 + 730)
+  })
+})
