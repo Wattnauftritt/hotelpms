@@ -107,7 +107,7 @@ export function vorschlag(r: KwRoom, bestand: KwhotelBestand): RoomSuggestion {
   const name = (r.description ?? '').trim() || rest.trim() || r.name
   let personen = 1
   for (const x of bestand.reservations) {
-    if (x.roomId === r.id) personen = Math.max(personen, x.adults + x.children)
+    if (x.roomId === r.id) personen = Math.max(personen, x.persons)
   }
   return {
     code,
@@ -590,20 +590,27 @@ async function schreiben(client: PoolClient, a: Schreibauftrag): Promise<void> {
   }
 
   /*
-   * Personen: `Osob` sind die Erwachsenen, die drei Kinderspalten die
-   * Altersgruppen. Eine Zeile ohne Erwachsene laesst beides leer -- "nicht
-   * gesagt" statt einer erfundenen Eins (Migration 0076).
+   * Personen: `Osob` ist die Gesamtzahl, die Kinderspalten sagen, wie viele
+   * davon Kinder sind. Addiert wird nicht -- das hat im Adminpanel jedes
+   * Kind doppelt ins Fruehstueck gezaehlt, wo die Spalten gepflegt waren.
+   *
+   * - Kinder weniger als Personen: aufgeteilt, Erwachsene = Rest.
+   * - Kinder gleich oder mehr: widerspruechlich, es bleibt nur die
+   *   Gesamtzahl ("nicht getrennt angegeben", Migration 0076).
+   * - Keine brauchbare Gesamtzahl: alles leer statt einer erfundenen Eins.
    */
   const rs = a.neu
-  const erw = rs.map(r => r.adults >= 1 && r.adults <= 99 ? r.adults : null)
-  const kinder = rs.map((r, i) => erw[i] === null ? null : Math.min(r.children, 98))
+  const gesamt = rs.map(r => r.persons >= 1 && r.persons <= 99 ? r.persons : null)
+  const getrennt = rs.map((r, i) => gesamt[i] !== null && r.children < gesamt[i]!)
+  const erw = rs.map((r, i) => getrennt[i] ? gesamt[i]! - r.children : null)
+  const kinder = rs.map((r, i) => getrennt[i] ? r.children : null)
   const res = await client.query<{ id: number; ref: string }>(
     `INSERT INTO reservation (property_id, booking_id, category_id, resource_id, arrival,
                               departure, status, primary_guest_id, notes, guest_count,
                               adults, children, legacy_system, legacy_reference,
                               checked_in_at, checked_out_at, canceled_at, created_by)
      SELECT $1, x.booking, x.category, x.resource, x.arrival, x.departure,
-            x.status::reservation_status, x.guest, x.notes, x.adults + x.children,
+            x.status::reservation_status, x.guest, x.notes, x.persons,
             x.adults, x.children, $2, x.legacy,
             -- Den Tag kennt KWHotel, die Uhrzeit nicht.
             CASE WHEN x.status IN ('InHouse','CheckedOut')
@@ -614,9 +621,9 @@ async function schreiben(client: PoolClient, a: Schreibauftrag): Promise<void> {
             $4
        FROM unnest($5::bigint[], $6::bigint[], $7::bigint[], $8::date[], $9::date[],
                    $10::text[], $11::bigint[], $12::text[], $13::int[], $14::int[],
-                   $15::text[], $16::text[])
+                   $15::text[], $16::text[], $17::int[])
             AS x(booking, category, resource, arrival, departure, status, guest, notes,
-                 adults, children, legacy, modified)
+                 adults, children, legacy, modified, persons)
      RETURNING id, legacy_reference AS ref`,
     [a.propertyId, SYSTEM, a.timezone, a.userId,
      rs.map(r => buchungNr.get(a.gruppenSchluessel(r))!),
@@ -624,7 +631,7 @@ async function schreiben(client: PoolClient, a: Schreibauftrag): Promise<void> {
      rs.map(r => a.zuordnung.get(r.roomId!)!.resourceId!),
      rs.map(r => r.arrival), rs.map(r => r.departure),
      rs.map(r => a.zustand.get(r.id)!), rs.map(gast), rs.map(r => r.notes),
-     erw, kinder, rs.map(r => r.id), rs.map(r => r.modifiedAt)])
+     erw, kinder, rs.map(r => r.id), rs.map(r => r.modifiedAt), gesamt])
   const resNr = new Map(res.rows.map(r => [r.ref, Number(r.id)]))
 
   /*

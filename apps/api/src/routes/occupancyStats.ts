@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import { isIsoDate, nightsBetween } from '@hotelpms/domain'
+import { addDays, isIsoDate, nightsBetween } from '@hotelpms/domain'
+import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -8,11 +9,10 @@ import { Errors } from '../platform/errors.js'
  * Belegungsstatistik fuer angebundene Systeme: Reservierungen, Zimmernaechte
  * und Personennaechte je Tag oder je Monat.
  *
- * **Wofuer.** Das Adminpanel (API-Entwurf, Abschnitt 3.4) rechnet daraus sein
- * Fruehstueck und seine Monatsstatistik. Die Fruehstuecksregel steht bewusst
- * nicht hier: sie ist in jedem Haus anders (dort: keins am Anreisetag, eins
- * am Abreisetag, also Fruehstueck an Tag D = Personennaechte der Nacht D-1).
- * StayGrid liefert die Rohgroesse, das Haus rechnet seine Regel selbst.
+ * **Wofuer.** Das Adminpanel (API-Entwurf, Abschnitt 3.4) rechnet daraus
+ * seine Monatsstatistik. Die Fruehstueckszahl liefert der zweite Endpunkt
+ * unten fertig, damit die Reinigungs-App und die Kueche sie nicht selbst
+ * aus dieser Reihe verschieben muessen.
  *
  * **Personennaechte, getrennt nach dem, was man weiss.** Je Nacht zaehlt
  * die Personenzahl der Reservierung. Wie genau sie bekannt ist, ist
@@ -68,6 +68,52 @@ function monate(from: string, to: string): number {
   return (jb * 12 + mb) - (jv * 12 + mv) + 1
 }
 
+/**
+ * Personen je Nacht, gruppiert nach Tag oder Monat.
+ *
+ * Ein Verbund ueber die Naechte des Zeitraums. Fuenf Jahre eines grossen
+ * Hauses sind so ein Scan ueber den Index (property_id, date), keine
+ * Abfrage je Zeitraum.
+ */
+async function personenJeZeitraum(
+  client: PoolClient, propertyId: number, from: string, to: string,
+  granularity: 'day' | 'month'
+): Promise<Zeile[]> {
+  const { rows } = await client.query<Zeile>(
+    `WITH tage AS (
+       SELECT d::date AS tag
+         FROM generate_series($2::date, $3::date, interval '1 day') d
+     ),
+     naechte AS (
+       SELECT n.date, n.reservation_id, r.adults, r.children,
+              r.guest_count, c.max_occupancy
+         FROM reservation_night n
+         JOIN reservation r       ON r.id = n.reservation_id
+         JOIN resource_category c ON c.id = r.category_id
+        WHERE n.property_id = $1
+          AND n.date BETWEEN $2::date AND $3::date
+          AND r.status::text = ANY ($5::text[])
+     )
+     SELECT CASE WHEN $4 = 'month' THEN to_char(t.tag, 'YYYY-MM')
+                 ELSE t.tag::text END                         AS period,
+            count(DISTINCT x.reservation_id)::int              AS reservations,
+            count(x.reservation_id)::int                       AS "roomNights",
+            COALESCE(sum(COALESCE(x.guest_count, x.max_occupancy)), 0)::int
+                                                               AS "personNights",
+            COALESCE(sum(x.adults), 0)::int                    AS "adultNights",
+            COALESCE(sum(x.children), 0)::int                  AS "childNights",
+            COALESCE(sum(x.guest_count) FILTER (WHERE x.adults IS NULL), 0)::int
+                                                               AS "unsplitPersonNights",
+            COALESCE(sum(x.max_occupancy) FILTER (WHERE x.guest_count IS NULL), 0)::int
+                                                               AS "assumedPersonNights"
+       FROM tage t
+       LEFT JOIN naechte x ON x.date = t.tag
+      GROUP BY 1
+      ORDER BY 1`,
+    [propertyId, from, to, granularity, AKTIV])
+  return rows
+}
+
 export function occupancyStatsRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -98,44 +144,9 @@ export function occupancyStatsRoutes(app: FastifyInstance): void {
         throw Errors.rangeTooLargeMonths(MAX_MONATE)
       }
 
+      const { from, to } = q
       return tx(req.pool, req, async client => {
-        /*
-         * Ein Verbund ueber die Naechte des Zeitraums, gruppiert nach Tag
-         * oder Monat. Fuenf Jahre eines grossen Hauses sind so ein Scan ueber
-         * den Index (property_id, date), keine Abfrage je Zeitraum.
-         */
-        const { rows } = await client.query<Zeile>(
-          `WITH tage AS (
-             SELECT d::date AS tag
-               FROM generate_series($2::date, $3::date, interval '1 day') d
-           ),
-           naechte AS (
-             SELECT n.date, n.reservation_id, r.adults, r.children,
-                    r.guest_count, c.max_occupancy
-               FROM reservation_night n
-               JOIN reservation r       ON r.id = n.reservation_id
-               JOIN resource_category c ON c.id = r.category_id
-              WHERE n.property_id = $1
-                AND n.date BETWEEN $2::date AND $3::date
-                AND r.status::text = ANY ($5::text[])
-           )
-           SELECT CASE WHEN $4 = 'month' THEN to_char(t.tag, 'YYYY-MM')
-                       ELSE t.tag::text END                         AS period,
-                  count(DISTINCT x.reservation_id)::int              AS reservations,
-                  count(x.reservation_id)::int                       AS "roomNights",
-                  COALESCE(sum(COALESCE(x.guest_count, x.max_occupancy)), 0)::int
-                                                                     AS "personNights",
-                  COALESCE(sum(x.adults), 0)::int                    AS "adultNights",
-                  COALESCE(sum(x.children), 0)::int                  AS "childNights",
-                  COALESCE(sum(x.guest_count) FILTER (WHERE x.adults IS NULL), 0)::int
-                                                                     AS "unsplitPersonNights",
-                  COALESCE(sum(x.max_occupancy) FILTER (WHERE x.guest_count IS NULL), 0)::int
-                                                                     AS "assumedPersonNights"
-             FROM tage t
-             LEFT JOIN naechte x ON x.date = t.tag
-            GROUP BY 1
-            ORDER BY 1`,
-          [propertyId, q.from, q.to, granularity, AKTIV])
+        const rows = await personenJeZeitraum(client, propertyId, from, to, granularity)
 
         const summe = (f: keyof Omit<Zeile, 'period' | 'reservations'>) =>
           rows.reduce((s, z) => s + z[f], 0)
@@ -157,6 +168,78 @@ export function occupancyStatsRoutes(app: FastifyInstance): void {
             unsplitPersonNights: summe('unsplitPersonNights'),
             assumedPersonNights: summe('assumedPersonNights')
           }
+        }
+      })
+    }
+  })
+
+  /**
+   * Fruehstuecke je Tag.
+   *
+   * **Die Regel: Fruehstueck an Tag D = Personen der Nacht D-1.** Keins am
+   * Anreisetag, eins am Abreisetag, jeder Bleiber jeden Morgen. So rechnet
+   * das Adminpanel heute (`BreakfastCountService`), und an seine Zahl ist
+   * die Reinigungs-App gewoehnt; eine abweichende Zahl an der Kueche waere
+   * beim Umstieg der erste Anruf.
+   *
+   * **Immer inklusive, ohne Blick in den Ratenplan.** Die Haeuser, fuer die
+   * das gebaut ist, schliessen Fruehstueck in jeden Preis ein, und die aus
+   * KWHotel uebernommenen Reservierungen tragen gar keinen Ratenplan -- eine
+   * Regel "laut Rate" zaehlte dort null. Ein Haus mit Fruehstueck nur in
+   * manchen Raten braucht eine Hauseinstellung; die kommt, wenn es eines
+   * gibt, nicht vorher.
+   *
+   * **Kinder zaehlen voll**, aber getrennt ausgewiesen, damit eine Kueche mit
+   * Kinderpreis oder Kinderteller nicht nachrechnen muss. Was ueber die
+   * Personen nicht bekannt ist, steht wie in der Statistik oben fuer sich:
+   * `unsplit` (nur Gesamtzahl) und `assumed` (Hoechstbelegung der
+   * Kategorie). `breakfasts` ist die Summe, und sie ist die Zahl des
+   * Adminpanels.
+   *
+   * **Ein Gaestehaus ausserhalb von StayGrid** (601-605 in RoomCloud) fehlt
+   * hier zwangslaeufig. Wer es mitzaehlen will, zaehlt es dazu.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/breakfast',
+    permission: 'report:operational',
+    propertyParam: 'propertyId',
+    summary: 'Fruehstuecke je Tag, aus den Personen der Vornacht',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const q = req.query as { from?: string; to?: string }
+
+      if (q.from === undefined || !isIsoDate(q.from)) {
+        throw Errors.validation({ from: ['field.isoDate'] })
+      }
+      if (q.to === undefined || !isIsoDate(q.to)) {
+        throw Errors.validation({ to: ['field.isoDate'] })
+      }
+      if (q.to < q.from) throw Errors.validation({ to: ['field.onOrAfterFrom'] })
+      if (nightsBetween(q.from, q.to) + 1 > MAX_TAGE) throw Errors.rangeTooLarge(MAX_TAGE)
+
+      const { from, to } = q
+      return tx(req.pool, req, async client => {
+        // Eine Zeile je Nacht vor dem Fruehstueckstag, dann um einen Tag weiter.
+        const naechte = await personenJeZeitraum(
+          client, propertyId, addDays(from, -1), addDays(to, -1), 'day')
+        const days = naechte.map(n => ({
+          date: addDays(n.period, 1),
+          breakfasts: n.personNights,
+          adults: n.adultNights,
+          children: n.childNights,
+          unsplit: n.unsplitPersonNights,
+          assumed: n.assumedPersonNights
+        }))
+        const summe = (f: 'breakfasts' | 'adults' | 'children' | 'unsplit' | 'assumed') =>
+          days.reduce((s, d) => s + d[f], 0)
+        return {
+          from,
+          to,
+          days,
+          totals: { breakfasts: summe('breakfasts'), adults: summe('adults'),
+                    children: summe('children'), unsplit: summe('unsplit'),
+                    assumed: summe('assumed') }
         }
       })
     }

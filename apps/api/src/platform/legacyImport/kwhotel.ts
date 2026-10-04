@@ -41,7 +41,13 @@ export interface KwReservation {
   departure: string
   /** `Cena`: der Preis der ganzen Zeile, nicht je Nacht. */
   totalCent: number
-  adults: number
+  /**
+   * `Osob`: die **Gesamtzahl** der Personen, Kinder eingeschlossen. So
+   * pflegt die Rezeption es (Sven, 04.10.2026); die Kinderspalten bleiben
+   * meist leer.
+   */
+  persons: number
+  /** `Dzieci1` bis `Dzieci3` zusammen: die Kinder **unter** `persons`, nicht dazu. */
   children: number
   status: number
   groupId: string | null
@@ -164,7 +170,7 @@ export function readKwhotelDump(text: string): KwhotelBestand {
       arrival: von,
       departure: addDays(letzte, 1),
       totalCent: preis,
-      adults: ganz(r.Osob ?? null),
+      persons: ganz(r.Osob ?? null),
       children: ganz(r.Dzieci1 ?? null) + ganz(r.Dzieci2 ?? null) + ganz(r.Dzieci3 ?? null),
       status: Number(r.status_id),
       groupId: gruppe === null || gruppe === '0' ? null : gruppe,

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, makeReservation, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -23,6 +23,7 @@ let pool: Pool
 let fx: Fixture
 let nachbar: number
 let zimmer: number[]
+let katId: number
 let nachbarZimmer: number[]
 let admin: { userId: number; sessionId: string }
 
@@ -42,8 +43,8 @@ afterAll(async () => { await app.close(); await owner.end(); await pool.end() })
 beforeEach(async () => {
   await truncateAll()
   fx = await makeProperty(owner)
-  const kat = await makeCategory(owner, fx.propertyId)
-  zimmer = await makeResources(owner, fx.propertyId, kat, 4)
+  katId = await makeCategory(owner, fx.propertyId)
+  zimmer = await makeResources(owner, fx.propertyId, katId, 4)
   // Zweites Haus im selben Account, mit denselben Zimmernummern 101 bis 104.
   const zweites = await owner.query<{ id: number }>(
     `INSERT INTO property (account_id, code, name, address_line1, postal_code,
@@ -193,5 +194,45 @@ describe('Verfuegbarkeit', () => {
     const { days } = r.json<{ days: Array<{ category_code: string; available: number }> }>()
     expect(days).toHaveLength(2)
     expect(days.every(d => d.category_code === 'DZ' && d.available === 4)).toBe(true)
+  })
+})
+
+describe('Tagesplan fuer ein externes Reinigungssystem', () => {
+  it('sagt je Zimmer Abreise, ob schon ausgecheckt, Bleiber und Anreise', async () => {
+    await owner.query(`SELECT inventory_materialize($1,'2026-09-28'::date,'2026-10-10'::date)`,
+      [fx.propertyId])
+    const tag = '2026-10-02'
+    // 101: Abreise heute, Gast noch im Haus -- warten
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
+      resourceId: zimmer[0], arrival: '2026-09-30', departure: tag, status: 'InHouse' })
+    // 102: Abreise heute, schon ausgecheckt -- frei zum Reinigen
+    const weg = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
+      resourceId: zimmer[1], arrival: '2026-09-30', departure: tag, status: 'InHouse' })
+    await owner.query(
+      `UPDATE reservation SET status = 'CheckedOut', checked_out_at = now() WHERE id = $1`,
+      [weg.reservationId])
+    // 103: Bleiber
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
+      resourceId: zimmer[2], arrival: '2026-09-30', departure: '2026-10-05', status: 'InHouse' })
+    // 104: leer, aber Anreise heute
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
+      resourceId: zimmer[3], arrival: tag, departure: '2026-10-04' })
+
+    const r = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/housekeeping?date=${tag}`,
+      headers: auth(admin.sessionId) })
+    expect(r.statusCode, r.body).toBe(200)
+    const { rooms } = r.json<{ rooms: Array<{ code: string; departureRef: string | null
+      departureCheckedOut: boolean | null; stayoverRef: string | null
+      arrivalRef: string | null }> }>()
+    const plan = Object.fromEntries(rooms.map(z => [z.code, {
+      abreise: z.departureRef !== null, ausgecheckt: z.departureCheckedOut,
+      bleiber: z.stayoverRef !== null, anreise: z.arrivalRef !== null }]))
+    expect(plan).toEqual({
+      '101': { abreise: true, ausgecheckt: false, bleiber: false, anreise: false },
+      '102': { abreise: true, ausgecheckt: true, bleiber: false, anreise: false },
+      '103': { abreise: false, ausgecheckt: null, bleiber: true, anreise: false },
+      '104': { abreise: false, ausgecheckt: null, bleiber: false, anreise: true }
+    })
   })
 })
