@@ -356,6 +356,10 @@ export const plan = {
     de: 'Ein Jahr vor',
     en: 'One year forward',
     tr: 'Bir yıl ileri' },
+  'plan.legend': {
+    de: 'Legende',
+    en: 'Legend',
+    tr: 'Açıklama' },
   'plan.rowHeight': {
     de: 'Zeilenhöhe',
     en: 'Row height',

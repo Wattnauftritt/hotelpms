@@ -1750,3 +1750,28 @@ describe('Planungsmodus und Strg+Z', () => {
     expect(bildschirm).toContain('document.querySelector(\'[role="dialog"]\') !== null')
   })
 })
+
+describe('Platz fuer den Plan', () => {
+  const plan = readFileSync(new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+  const bildschirm = readFileSync(new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+
+  it('fuellt die Zeile mit dem Balken, dazwischen nur die Gitterlinie', () => {
+    // Zwei bis vier Pixel Abstand oben und unten waren bei vierzig Zimmern
+    // zehn Zeilen Plan, die nichts zeigten (Sven).
+    expect(plan).toContain('const GITTER = 1')
+    expect(plan).toContain('const balkenHoehe = { top: 0, height: innen')
+    expect(plan).not.toContain('randVon')
+  })
+
+  it('merkt sich die gewaehlte Tageszahl', () => {
+    expect(bildschirm).toContain("const TAGE_SCHLUESSEL = 'plan.tage'")
+    expect(bildschirm).toContain('localStorage.setItem(TAGE_SCHLUESSEL, String(n))')
+  })
+
+  it('haelt Legende und Gesten hinter einem Knopf statt in eigenen Zeilen', () => {
+    expect(bildschirm).toContain("{t('plan.legend')}")
+    expect(bildschirm).toContain('absolute right-0 top-full')
+    // Die Gestenzeile unter dem Plan ist weg; die Saetze stehen in der Legende.
+    expect(bildschirm.match(/t\('plan\.dragHint'\)/g)).toHaveLength(1)
+  })
+})
