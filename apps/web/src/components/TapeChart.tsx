@@ -1157,10 +1157,34 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       <div style={{ minWidth: LABEL_BREITE + tage.length * spalte }}>
         {/* Kopfzeile mit Tagen */}
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
+          {/*
+            * Waehrend ein Balken mit Zimmer gehalten wird, ist die Ecke oben
+            * links die Ablage "ohne Zimmer".
+            *
+            * Vorher klappte dafuer das Band ueber dem Plan auf, sobald man
+            * einen Balken anfasste, wenn es leer war. Der ganze Plan rueckte
+            * um eine Zeile nach unten, und der Balken rutschte unter dem
+            * Zeiger weg (Sven, 04.10.2026: "super irritierend"). Die Ecke
+            * steht fest und klebt beim Scrollen oben, also verschiebt sich
+            * nichts, und sie ist sichtbar, wo immer man im Plan zieht.
+            *
+            * Die Ecke und nicht die ganze Kopfzeile: ueber den Tagen endet
+            * auch ein Zug, der knapp danebengeht, und daraus ein Abnehmen zu
+            * machen, kostete bei jedem Fehlgriff ein Zimmer.
+            */}
           <div style={{ width: LABEL_BREITE }}
-               className="shrink-0 px-2 py-1.5 text-xs font-medium text-neutral-500
-                          border-r border-neutral-200">
-            {t('common.room')}
+               data-unassigned-band={bandAlsZiel ? '' : undefined}
+               className={`shrink-0 px-2 py-1.5 text-xs border-r transition-colors
+                           ${!bandAlsZiel
+                             ? 'font-medium text-neutral-500 border-neutral-200'
+                             : drag.ueberBand
+                               ? 'bg-amber-200 text-amber-900 border-amber-500 ring-2 ring-inset ring-amber-500'
+                               : 'bg-amber-50 text-amber-800 border-amber-200 ring-2 ring-inset ring-amber-300'}`}>
+            {bandAlsZiel ? (
+              <div className="font-medium leading-tight line-clamp-2">
+                {t('plan.dropToUnassign')}
+              </div>
+            ) : t('common.room')}
           </div>
           {tage.map(d => (
             <div key={d}
@@ -1190,15 +1214,12 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
           * und nicht erreichbar. Jetzt scrollt es fuer sich.
           */}
         {/*
-          * Das Band ist auch dann da, wenn es leer ist -- sobald ein Balken
-          * mit Zimmer gehalten wird.
-          *
-          * Sonst fehlte das Ablageziel genau dann, wenn man es zum ersten
-          * Mal braucht: in einem vollen, sauber zugewiesenen Haus steht
-          * hier nichts, und gerade dort ist Umsortieren noetig. Ein Ziel,
-          * das erst erscheint, wenn schon etwas darin liegt, ist keines.
+          * Leer bleibt das Band weg, auch waehrend eines Zugs: die Ablage
+          * ist dann die Ecke oben links (siehe Kopfzeile). Liegt etwas
+          * darin, ist es selbst auch Ablage -- es steht ja schon da, und
+          * nichts verschiebt sich.
           */}
-        {(nichtZugewiesen.length > 0 || bandAlsZiel) && (
+        {nichtZugewiesen.length > 0 && (
           <div data-unassigned-band
                className={`flex relative border-b transition-colors
                            ${drag?.kind === 'move' && drag.ueberBand
@@ -1222,15 +1243,10 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                 {nichtZugewiesen.length > BAND_ZEILEN && (bandOffen ? '▾ ' : '▸ ')}
                 {t('today.needsRoom')} ({nichtZugewiesen.length})
               </div>
-              {/* Der Satz steht nur waehrend des Zugs da: eine Anleitung,
-                  die immer danebensteht, liest nach der dritten Woche
-                  niemand mehr, und Platz nimmt sie jeden Tag weg. */}
-              {bandAlsZiel && (
-                <div className="text-[10px] text-amber-700 mt-0.5">
-                  {t('plan.dropToUnassign')}
-                </div>
-              )}
-              {!bandAlsZiel && !bandOffen && verdeckt !== null && (
+              {/* Der Satz zur Ablage steht in der Ecke, nicht hier: eine
+                  zusaetzliche Zeile machte das Band beim Anfassen hoeher,
+                  und der Plan darunter rueckte nach. */}
+              {!bandOffen && verdeckt !== null && (
                 <div className={`text-[10px] mt-0.5
                                  ${dringlich(verdeckt.naechste)
                                    ? 'text-red-700 font-medium' : 'text-amber-700'}`}>
