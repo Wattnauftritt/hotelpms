@@ -711,37 +711,94 @@ export interface AuthEmailData {
   gueltigStunden: number
 }
 
+export interface InviteEmailData extends AuthEmailData {
+  /**
+   * Name des Kunden (`account.name`), fuer den der Zugang gilt. Leer bei
+   * Plattformpersonal, das zu keinem Kunden gehoert.
+   */
+  accountName: string | null
+  /** Die Adresse, mit der sich der Eingeladene kuenftig anmeldet. */
+  email: string
+}
+
 /**
  * Einladung eines neuen Benutzers.
  *
  * **Warum der Link und kein Kennwort im Text.** Ein Kennwort in einer Mail
  * bleibt im Postfach stehen, wird weitergeleitet und landet in Sicherungen.
  * Ein Einmaltoken verfaellt.
+ *
+ * **Angeredet wird der Kunde, nicht der Benutzername.** Der Anzeigename ist
+ * beim Onboarding oft ein Kuerzel wie "zurseerobbe" -- als Anrede liest sich
+ * das wie ein Formfehler. Der Kundenname ist der, unter dem der Betrieb uns
+ * kennt; nur wo es keinen gibt (Plattformpersonal), steht der Anzeigename.
+ *
+ * **Der Ton ist der einer Begruessung.** Diese Mail ist der erste Kontakt
+ * mit dem Produkt. Sie sagt, wer schreibt, was zu tun ist, womit man sich
+ * danach anmeldet und was geschieht, wenn der Link abgelaufen ist -- die
+ * Fragen, die sonst als Anruf kommen.
  */
 export function renderInviteEmail(
-  d: AuthEmailData, lang: EmailLanguage = 'de'
+  d: InviteEmailData, lang: EmailLanguage = 'de'
 ): RenderedEmail {
+  const name = d.accountName ?? d.userName
   if (lang === 'en') {
     const lines = [
-      d.userName ? `Dear ${d.userName},` : 'Hello,',
-      'an account has been created for you. Choose your password using the link below:',
+      name ? `Dear ${name},` : 'Hello,',
+      'welcome to StayGrid! '
+        + (d.accountName
+          ? `An account for ${d.accountName} has been set up for you.`
+          : 'An account has been set up for you.')
+        + ' Only one step is left before you can get started: choose your '
+        + 'personal password using the link below.',
       d.link,
-      `The link is valid for ${d.gueltigStunden} hours and can be used once.`,
-      'If you were not expecting this message, you can ignore it — '
-        + 'without the link nothing happens.'
+      `The link is valid for ${d.gueltigStunden} hours and can be used once. `
+        + 'If it has expired, a new invitation can be sent at any time.',
+      `Once your password is set, you sign in with your email address ${d.email}.`,
+      'If you were not expecting this message, you can simply ignore it — '
+        + 'without the link nothing happens.',
+      'Kind regards\nYour StayGrid team'
     ]
-    return { subject: 'Your access', text: lines.join('\n\n'), html: htmlBody(lines) }
+    return {
+      subject: d.accountName
+        ? `Welcome to StayGrid – your access for ${d.accountName}`
+        : 'Welcome to StayGrid – your access is ready',
+      text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines), d.link)
+    }
   }
   const lines = [
-    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
-    'fuer Sie wurde ein Zugang eingerichtet. Ueber den folgenden Link vergeben '
-      + 'Sie Ihr Kennwort:',
+    name ? `Guten Tag ${name},` : 'Guten Tag,',
+    'herzlich willkommen bei StayGrid! '
+      + (d.accountName
+        ? `Für ${d.accountName} wurde ein Zugang für Sie eingerichtet.`
+        : 'Für Sie wurde ein Zugang eingerichtet.')
+      + ' Bis Sie loslegen können, fehlt nur noch ein Schritt: Vergeben Sie über '
+      + 'den folgenden Link Ihr persönliches Kennwort.',
     d.link,
-    `Der Link gilt ${d.gueltigStunden} Stunden und laesst sich einmal verwenden.`,
-    'Haben Sie diese Nachricht nicht erwartet, koennen Sie sie liegen lassen — '
-      + 'ohne den Link geschieht nichts.'
+    `Der Link ist ${d.gueltigStunden} Stunden gültig und lässt sich einmal `
+      + 'verwenden. Ist er abgelaufen, kann Ihnen jederzeit eine neue Einladung '
+      + 'geschickt werden.',
+    `Sobald Ihr Kennwort steht, melden Sie sich mit Ihrer E-Mail-Adresse `
+      + `${d.email} an.`,
+    'Haben Sie diese Nachricht nicht erwartet, können Sie sie einfach '
+      + 'ignorieren — ohne den Link geschieht nichts.',
+    'Wir freuen uns, dass Sie dabei sind.',
+    'Freundliche Grüße\nIhr StayGrid-Team'
   ]
-  return { subject: 'Ihr Zugang', text: lines.join('\n\n'), html: htmlBody(lines) }
+  return {
+    subject: d.accountName
+      ? `Willkommen bei StayGrid – Ihr Zugang für ${d.accountName}`
+      : 'Willkommen bei StayGrid – Ihr Zugang ist bereit',
+    text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines), d.link)
+  }
+}
+
+/**
+ * Macht den Link-Absatz im HTML-Teil anklickbar. Ersetzt wird der bereits
+ * entschaerfte Absatz, damit nichts aus dem Link selbst als Markup gilt.
+ */
+function linkKlickbar(html: string, link: string): string {
+  return html.replace(`>${esc(link)}</p>`, `><a href="${esc(link)}">${esc(link)}</a></p>`)
 }
 
 /**

@@ -71,6 +71,20 @@ async function benutzerDesKunden(
   return r.rows[0]!
 }
 
+/**
+ * Der Name des Kunden fuer Anrede und Betreff der Einladung. Ueber
+ * platform_accounts(), weil das Panel ohne Mandantenkontext des Kunden
+ * arbeitet und `account` unter der Zeilenrichtlinie leer bliebe.
+ */
+async function kundenName(
+  client: { query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }> },
+  accountId: number
+): Promise<string | null> {
+  const r = await client.query<{ name: string }>(
+    `SELECT name FROM platform_accounts() WHERE id = $1`, [accountId])
+  return r.rows[0]?.name ?? null
+}
+
 /** Rollen, die das Panel an einen Kundenbenutzer vergeben darf. */
 const ACCOUNT_ROLLEN = ['owner', 'account_admin', 'accounting', 'revenue',
   'tax_advisor', 'read_only'] as const
@@ -142,7 +156,8 @@ export function platformSupportRoutes(app: FastifyInstance): void {
         const kind = u.status === 'invited' ? 'invite' : 'password_reset'
         await einmalTokenUndPost(client, {
           userId, name: u.display_name, email: u.email, kind,
-          createdBy: principal.userId
+          createdBy: principal.userId,
+          accountName: await kundenName(client, accountId)
         })
         return kind
       })
@@ -266,7 +281,8 @@ export function platformSupportRoutes(app: FastifyInstance): void {
         }
 
         await einmalTokenUndPost(client, {
-          userId, name, email, kind: 'invite', createdBy: principal.userId
+          userId, name, email, kind: 'invite', createdBy: principal.userId,
+          accountName: await kundenName(client, accountId)
         })
         return u.rows[0]!
       })

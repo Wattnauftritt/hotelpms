@@ -123,6 +123,13 @@ describe('Zugangslink', () => {
       `/v1/platform/accounts/${fx.accountId}/users/${rezeption.userId}/access-link`,
       admin.sessionId)
     expect((r.json() as { kind: string }).kind).toBe('invite')
+    // Das Panel arbeitet ohne Kontext des Kunden; der Name kommt trotzdem an.
+    const m = await owner.query<{ subject: string }>(
+      `SELECT subject FROM platform_email WHERE user_id = $1`, [rezeption.userId])
+    const konto = await owner.query<{ name: string }>(
+      `SELECT name FROM account WHERE id = $1`, [fx.accountId])
+    expect(m.rows[0]!.subject)
+      .toBe(`Willkommen bei StayGrid – Ihr Zugang für ${konto.rows[0]!.name}`)
   })
 
   it('gibt das Token nie in der Antwort heraus', async () => {

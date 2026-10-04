@@ -53,6 +53,18 @@ interface Ziel {
   hat_account_rolle: boolean
 }
 
+/**
+ * Der Name des Kunden fuer Anrede und Betreff der Einladung. Ueber das Haus,
+ * weil die Route im Kontext eines Hauses laeuft: die Zeile in `property` ist
+ * damit sichtbar, die in `account` haengt am Kontext des Accounts.
+ */
+async function kundenName(client: PoolClient, propertyId: number): Promise<string | null> {
+  const r = await client.query<{ name: string }>(
+    `SELECT a.name FROM property p JOIN account a ON a.id = p.account_id
+      WHERE p.id = $1`, [propertyId])
+  return r.rows[0]?.name ?? null
+}
+
 async function hausUndAccount(client: PoolClient, propertyId: number): Promise<number> {
   const p = await client.query<{ account_id: number }>(
     `SELECT account_id FROM property WHERE id = $1`, [propertyId])
@@ -195,7 +207,8 @@ export function userAdminRoutes(app: FastifyInstance): void {
 
         await einmalTokenUndPost(client, {
           userId: u.rows[0]!.id, name, email, kind: 'invite',
-          createdBy: principal.userId
+          createdBy: principal.userId,
+          accountName: await kundenName(client, Number(propertyId))
         })
         return u.rows[0]!
       })
@@ -231,7 +244,8 @@ export function userAdminRoutes(app: FastifyInstance): void {
         const art = ziel.status === 'invited' ? 'invite' : 'password_reset'
         await einmalTokenUndPost(client, {
           userId: ziel.id, name: ziel.display_name, email: ziel.email, kind: art,
-          createdBy: principal.userId
+          createdBy: principal.userId,
+          accountName: await kundenName(client, Number(propertyId))
         })
         return art
       })

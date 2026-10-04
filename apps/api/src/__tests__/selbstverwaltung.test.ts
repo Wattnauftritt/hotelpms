@@ -73,6 +73,21 @@ describe('Einladen', () => {
     const t = await owner.query(`SELECT 1 FROM auth_token WHERE user_id = $1 AND kind = 'invite'`,
       [u.rows[0]!.id])
     expect(t.rowCount).toBe(1)
+    /*
+     * Die Mail redet den Kunden an, nicht den Anzeigenamen -- auch wenn
+     * die Direktion nur Rechte im Haus hat und `account` unter der
+     * Zeilenrichtlinie fuer sie nicht ohne Weiteres sichtbar waere.
+     */
+    const m = await owner.query<{ subject: string; body_text: string }>(
+      `SELECT subject, body_text FROM platform_email WHERE user_id = $1`, [u.rows[0]!.id])
+    expect(m.rows[0]!.subject).toBe('Willkommen bei StayGrid – Ihr Zugang für Wattenblick')
+    expect(m.rows[0]!.body_text).toMatch(/^Guten Tag Wattenblick,/)
+    expect(m.rows[0]!.body_text).toContain('48 Stunden')
+    expect(m.rows[0]!.body_text).toContain('neu@kunde.de')
+    const frist = await owner.query<{ stunden: number }>(
+      `SELECT round(extract(epoch FROM expires_at - created_at) / 3600)::int AS stunden
+         FROM auth_token WHERE user_id = $1`, [u.rows[0]!.id])
+    expect(frist.rows[0]!.stunden).toBe(48)
     // Und sie steht in der Liste, mit ihrer Rolle.
     const d = (await liste(direktion.sessionId)).json() as
       { users: Array<{ email: string; roles: Array<{ key: string }> }> }

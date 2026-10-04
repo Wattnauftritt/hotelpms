@@ -17,13 +17,14 @@ export type AuthTokenKind = 'invite' | 'password_reset' | 'email_change'
  * Wie lange ein Token gilt.
  *
  * Die Einladung laenger, weil sie einen Menschen erreicht, der nicht darauf
- * wartet: sie kommt an einem Freitagnachmittag an und wird am Montag
- * bearbeitet. Die Ruecksetzung kurz, weil der Benutzer sie gerade selbst
+ * wartet. Achtundvierzig Stunden, nicht mehr sieben Tage: ein Link mit
+ * Zugang soll nicht eine Woche im Postfach liegen, und eine abgelaufene
+ * Einladung ist mit einem Klick im Panel neu verschickt. Die Ruecksetzung kurz, weil der Benutzer sie gerade selbst
  * angefordert hat und daneben sitzt -- und weil ein Token, das lange gilt,
  * lange in einem Postfach liegt.
  */
 export const TOKEN_GUELTIGKEIT: Record<AuthTokenKind, number> = {
-  invite: 7 * 24 * 60 * 60 * 1000,
+  invite: 48 * 60 * 60 * 1000,
   password_reset: 60 * 60 * 1000,
   /*
    * Die Adressaenderung liegt dazwischen, und zwar naeher an der

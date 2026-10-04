@@ -282,7 +282,7 @@ PLATFORM_EMAIL_FROM_NAME=StayGrid
 | `pending`, Versuche 0, älter als ein paar Minuten | Kein `BREVO_API_KEY` oder kein `PLATFORM_EMAIL_FROM` |
 | `failed` nach **einem** Versuch, Fehler 400 | Absender nicht bei Brevo verifiziert, oder Adresse abgelehnt |
 | `sent`, aber niemand hat einen Link bekommen | SPF/DKIM. Der Empfänger wartet und ruft nicht an |
-| Der Benutzer meldet „Link ungültig" | Token schon benutzt, abgelaufen (Einladung 7 Tage, Rücksetzung 1 Stunde), oder durch eine neuere Anforderung entwertet. Neu anfordern |
+| Der Benutzer meldet „Link ungültig" | Token schon benutzt, abgelaufen (Einladung 48 Stunden, Rücksetzung 1 Stunde), oder durch eine neuere Anforderung entwertet. Neu anfordern |
 
 Die Rücksetzung antwortet **immer** mit 202, auch für eine unbekannte Adresse. Das ist Absicht und keine Nachlässigkeit: ein anderer Statuscode machte den Endpunkt zu einem Verzeichnis, mit dem sich abfragen ließe, welche Häuser diese Software benutzen. Wer prüfen will, ob eine Anforderung angekommen ist, sieht in `platform_email` nach, nicht in der Antwort.
 
