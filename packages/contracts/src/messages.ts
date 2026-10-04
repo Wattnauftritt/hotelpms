@@ -1504,13 +1504,16 @@ const M = {
    * Hausleitung, nicht an uns -- sie sagen, was zu tun ist, nicht was
    * intern schiefging.
    */
+  // Gehoert die Adresse zum eigenen Betrieb, nimmt die Einladung sie an
+  // (Rollen in diesem Haus dazu). Abgewiesen wird nur noch eine Adresse
+  // ausserhalb -- der Rat, die Rollen zu aendern, liefe dort ins Leere.
   'user.emailTaken': {
-    de: 'Diese Adresse hat schon einen Zugang. Gehört die Person zu Ihrem '
-        + 'Betrieb, ändern Sie ihre Rollen statt sie neu anzulegen.',
-    en: 'That address already has an account. If the person belongs to your '
-        + 'business, change their roles instead of creating them again.',
-    tr: 'Bu adresin zaten bir hesabı var. Kişi işletmenize aitse yeniden '
-        + 'oluşturmak yerine rollerini değiştirin.' },
+    de: 'Diese Adresse ist schon außerhalb Ihres Betriebs vergeben. Bitten '
+        + 'Sie die Person um eine andere Adresse.',
+    en: 'That address is already in use outside your business. Ask the '
+        + 'person for a different address.',
+    tr: 'Bu adres işletmenizin dışında zaten kullanılıyor. Kişiden başka bir '
+        + 'adres isteyin.' },
   'user.notYourself': {
     de: 'Den eigenen Zugang können Sie hier nicht sperren oder entfernen.',
     en: 'You cannot block or remove your own account here.',

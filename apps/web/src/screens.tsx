@@ -9,6 +9,7 @@ import { Reports } from './routes/Reports.tsx'
 import { Maintenance } from './routes/Maintenance.tsx'
 import { Settings } from './routes/Settings.tsx'
 import { Integrations } from './routes/Integrations.tsx'
+import { Benutzer } from './routes/Benutzer.tsx'
 import { Rates } from './routes/Rates.tsx'
 import { Guests } from './routes/Guests.tsx'
 import { Availability } from './routes/Availability.tsx'
@@ -135,9 +136,12 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'settings', group: 'settings', nav: 'nav.settingsGeneral',
     permission: ['integration:manage', 'settings:property'],
     render: c => <Settings propertyId={c.propertyId} /> },
-  { key: 'integrations', nav: 'nav.integrations',
-    permission: ['integration:manage', 'user:manage'],
+  { key: 'integrations', nav: 'nav.integrations', permission: 'integration:manage',
     render: c => <Integrations propertyId={c.propertyId} /> },
+  // Personal einladen, Rollen vergeben, sperren. Stand frueher als Reiter
+  // unter „Schnittstellen" und wurde dort nicht gefunden.
+  { key: 'users', group: 'settings', nav: 'nav.users', permission: 'user:manage',
+    render: c => <Benutzer propertyId={c.propertyId} /> },
   { key: 'rates', nav: 'nav.rates', permission: 'rate:read',
     render: c => <Rates propertyId={c.propertyId} permissions={c.permissions} /> },
   { key: 'guests', nav: 'nav.guests', permission: 'guest:read',

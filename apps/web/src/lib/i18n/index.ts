@@ -10,6 +10,7 @@ import { plan } from './plan.js'
 import { berichte } from './berichte.js'
 import { einstellungen } from './einstellungen.js'
 import { schnittstellen } from './schnittstellen.js'
+import { benutzer } from './benutzer.js'
 import { preise } from './preise.js'
 import { preissteuerung } from './preissteuerung.js'
 import { gaeste } from './gaeste.js'
@@ -123,6 +124,7 @@ const texts = {
   ...berichte,
   ...einstellungen,
   ...schnittstellen,
+  ...benutzer,
   ...preise,
   ...preissteuerung,
   ...gaeste,

@@ -152,11 +152,17 @@ export function userAdminRoutes(app: FastifyInstance): void {
    * Einladen.
    *
    * Eine neue Adresse bekommt einen Zugang mit den gewaehlten Hausrollen und
-   * eine Einladung; das Kennwort setzt die Person selbst. Eine vergebene
-   * Adresse wird abgewiesen -- auch wenn sie zum eigenen Betrieb gehoert
-   * (dann ist die Rollenvergabe der Weg), und **gerade** wenn sie zu einem
-   * anderen gehoert: eine Route, die dann anders antwortet, verriete, wer
-   * sonst noch Kunde ist.
+   * eine Einladung; das Kennwort setzt die Person selbst.
+   *
+   * Gehoert die Adresse schon zum eigenen Betrieb, bekommt die Person die
+   * Rollen in **diesem** Haus dazu, ohne neue Einladung. Frueher wurde sie
+   * abgewiesen mit dem Rat, die Rollen zu aendern -- aber die Liste eines
+   * Hauses zeigt nur, wer dort schon eine Rolle hat. Die Rezeptionistin aus
+   * dem ersten Haus war im zweiten damit weder einzuladen noch zu finden.
+   *
+   * Gehoert sie einem anderen Kunden, bleibt es bei der Abweisung, mit
+   * demselben Satz wie fuer jede vergebene Adresse: eine Route, die dann
+   * anders antwortet, verriete, wer sonst noch Kunde ist.
    */
   registerRoute(app, {
     method: 'POST',
@@ -193,9 +199,37 @@ export function userAdminRoutes(app: FastifyInstance): void {
             { values: gewuenscht.filter(k => !gefunden.has(k)).join(', ') })
         }
 
-        const da = await client.query(
-          `SELECT 1 FROM app_user WHERE lower(email) = $1`, [email])
-        if (da.rowCount !== 0) throw Errors.conflict('user.emailTaken')
+        const da = await client.query<Ziel & { public_ref: string; im_betrieb: boolean }>(
+          `SELECT u.id, u.public_ref, u.email, u.display_name, u.status,
+                  EXISTS (SELECT 1 FROM user_account_role uar
+                           WHERE uar.user_id = u.id AND uar.account_id = $2) AS hat_account_rolle,
+                  (EXISTS (SELECT 1 FROM user_account_role uar
+                            WHERE uar.user_id = u.id AND uar.account_id = $2)
+                   OR EXISTS (SELECT 1 FROM user_property_role upr
+                               WHERE upr.user_id = u.id
+                                 AND upr.property_id IN
+                                     (SELECT id FROM account_active_properties($2)))) AS im_betrieb
+             FROM app_user u WHERE lower(u.email) = $1`, [email, accountId])
+        /*
+         * Die anderen Haeuser ueber account_active_properties(), nicht ueber
+         * einen Verbund mit `property`: dessen Zeilenrichtlinie zeigt nur die
+         * Haeuser, in denen der Einladende selbst Rechte hat -- eine
+         * Direktion nur ihr eigenes. Die Aushilfe aus dem Nachbarhaus waere
+         * damit wieder "vergeben" gewesen.
+         */
+        if (da.rowCount !== 0) {
+          const ziel = da.rows[0]!
+          if (!ziel.im_betrieb) throw Errors.conflict('user.emailTaken')
+          verlangtBetriebsrecht(ziel, principal)
+          // Hinzu, nicht ersetzen: wer im Haus schon Rollen hat, verliert
+          // durch eine zweite Einladung keine davon.
+          await client.query(
+            `INSERT INTO user_property_role (user_id, property_id, role_id, granted_by)
+             SELECT $1, $2, unnest($3::bigint[]), $4
+             ON CONFLICT DO NOTHING`,
+            [ziel.id, propertyId, rollen.rows.map(r => r.id), principal.userId])
+          return { ...ziel, hinzugefuegt: true as const }
+        }
 
         const u = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO app_user (email, display_name, status)
@@ -210,12 +244,16 @@ export function userAdminRoutes(app: FastifyInstance): void {
           createdBy: principal.userId,
           accountName: await kundenName(client, Number(propertyId))
         })
-        return u.rows[0]!
+        return { ...u.rows[0]!, hinzugefuegt: false as const }
       })
 
+      if (angelegt.hinzugefuegt) {
+        return { userRef: angelegt.public_ref, email, displayName: angelegt.display_name,
+                 roleKeys: gewuenscht, status: angelegt.status, addedToProperty: true }
+      }
       reply.status(201)
       return { userRef: angelegt.public_ref, email, displayName: name,
-               roleKeys: gewuenscht, status: 'invited' }
+               roleKeys: gewuenscht, status: 'invited', addedToProperty: false }
     }
   })
 

@@ -114,7 +114,7 @@ Verschieben ist `assign-unit`, verkürzen und verlängern ist `change-stay`. Bei
 
 ### Spur C — Haus, Berichte, Einstellungen
 
-**Eigene Dateien:** `routes/Reports.tsx`, `routes/Settings.tsx`, `routes/Integrations.tsx`, `lib/queries/reports.ts`, `lib/queries/settings.ts`, `lib/i18n/berichte.ts`, `lib/i18n/einstellungen.ts`
+**Eigene Dateien:** `routes/Reports.tsx`, `routes/Settings.tsx`, `routes/Integrations.tsx`, `routes/Benutzer.tsx`, `lib/queries/reports.ts`, `lib/queries/settings.ts`, `lib/i18n/berichte.ts`, `lib/i18n/einstellungen.ts`, `lib/i18n/benutzer.ts`
 
 | # | Aufgabe | Fertig, wenn |
 |---|---|---|
