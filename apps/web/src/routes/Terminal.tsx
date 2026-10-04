@@ -30,7 +30,7 @@ import { GastCheckin } from './GastCheckin.tsx'
  * - **Ungekoppelt fragt sie nicht.** Ein Terminal ohne Geraetecookie wird
  *   als anonyme Anfrage gezaehlt; im Sekundentakt gefragt, sperrte es die
  *   Herkunft der ganzen Rezeption an der allgemeinen Grenze. Erst nach der
- *   Kopplung beginnt die Abfrage, und eine 401 beendet sie wieder.
+ *   Kopplung beginnt die Abfrage, und eine 401 oder 403 beendet sie wieder.
  * - **Ein Kiosk, der alles vergisst, meldet sich ueber seine Adresse an.**
  *   Edge im Kioskmodus von Windows laeuft immer InPrivate und verwirft das
  *   Geraetecookie bei jedem Neustart und Leerlauf-Reset. Steht in der
@@ -148,6 +148,22 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
    * ohne die Adresse kaeme das Geheimnis bis zum naechsten Start nicht
    * wieder. Gilt es nicht mehr, steht die Codeeingabe da, mit dem Grund.
    */
+  /*
+   * Eine Kiosk-Adresse, die in eine schon offene Terminalseite kommt.
+   * Aendert sich nur der Teil hinter dem `#`, laedt der Browser die Seite
+   * nicht neu -- der Zustand oben wird nicht neu gelesen, und die Seite
+   * fragte mit dem alten Stand weiter. Genau so sah es aus, als die Adresse
+   * in einen Tab mit offenem `/terminal` eingefuegt wurde.
+   */
+  useEffect(() => {
+    const neu = (): void => {
+      const key = kioskSchluesselAusAdresse()
+      if (key !== null) setPhase({ art: 'kiosk', key })
+    }
+    window.addEventListener('hashchange', neu)
+    return () => window.removeEventListener('hashchange', neu)
+  }, [])
+
   const kioskKey = phase.art === 'kiosk' ? phase.key : null
   useEffect(() => {
     if (kioskKey === null) return
@@ -204,6 +220,14 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
           // Nicht (mehr) gekoppelt -- widerrufen oder nie gekoppelt. Ab
           // hier wird nicht mehr gefragt.
           setPhase({ art: 'koppeln' })
+          return
+        }
+        if (e instanceof ApiError && e.status === 403) {
+          // Kein Geraet, aber eine Mitarbeitersitzung im selben Browser:
+          // die Anfrage ist angemeldet, nur nicht als Terminal. Weiterfragen
+          // aendert daran nichts -- hier stand die Seite einmal und fragte
+          // alle zwei Sekunden ins Leere. Die Kopplung beendet die Sitzung.
+          setPhase({ art: 'koppeln', fehler: e })
           return
         }
         if (!(e instanceof ApiError) || e.status >= 500 || e.status === 429) {
