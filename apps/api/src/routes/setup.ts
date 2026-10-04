@@ -3,6 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { hinweisText, type Meldung } from '../platform/texte.js'
+import { emitEvent } from '../platform/events.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -194,14 +195,29 @@ export function setupRoutes(app: FastifyInstance): void {
         // unter gebuchten Reservierungen wegziehen. Erst umbuchen, dann
         // stilllegen.
         if (body.active === false && cur.rows[0]!.active) {
-          const offen = await client.query<{ n: string }>(
-            `SELECT count(*)::text AS n FROM reservation
-              WHERE category_id = $1 AND status IN ('Optional','Confirmed','InHouse')
-                AND departure > current_date`, [Number(categoryId)])
-          if (Number(offen.rows[0]!.n) > 0) {
+          /*
+           * Die Meldung nennt die Reservierungen, nicht nur ihre Zahl. Eine
+           * Liste je Gruppe gibt es nirgends sonst, und "noch 11" ohne Namen
+           * schickt die Rezeption auf eine Suche durch den ganzen Plan --
+           * erst recht, wenn die Reservierungen in Zimmern einer anderen
+           * Gruppe liegen und im Plan dort erscheinen.
+           */
+          const offen = await client.query<{ n: string; ref: string; arrival: string
+                                             room: string | null }>(
+            `SELECT count(*) OVER ()::text AS n, r.public_ref AS ref,
+                    r.arrival::text AS arrival, z.code AS room
+               FROM reservation r LEFT JOIN resource z ON z.id = r.resource_id
+              WHERE r.category_id = $1 AND r.status IN ('Optional','Confirmed','InHouse')
+                AND r.departure > current_date
+              ORDER BY r.arrival, r.public_ref LIMIT 15`, [Number(categoryId)])
+          if (offen.rowCount && offen.rowCount > 0) {
+            const n = Number(offen.rows[0]!.n)
             throw Errors.conflict(
               'setup.categoryHasFutureReservations',
-              { count: offen.rows[0]!.n })
+              { count: String(n),
+                reservations: offen.rows
+                  .map(o => `${o.ref} ab ${o.arrival}${o.room === null ? '' : ` (${o.room})`}`)
+                  .join(', ') + (n > offen.rows.length ? ', …' : '') })
           }
         }
 
@@ -387,7 +403,7 @@ export function setupRoutes(app: FastifyInstance): void {
         if (body.active === false && zimmer.active) {
           const belegt = await client.query<{ ref: string; arrival: string }>(
             `SELECT public_ref AS ref, arrival::text AS arrival FROM reservation
-              WHERE resource_id = $1 AND status IN ('Confirmed','InHouse')
+              WHERE resource_id = $1 AND status IN ('Optional','Confirmed','InHouse')
                 AND departure > current_date
               ORDER BY arrival LIMIT 5`, [Number(roomId)])
           if (belegt.rowCount && belegt.rowCount > 0) {
@@ -412,6 +428,22 @@ export function setupRoutes(app: FastifyInstance): void {
 
         // Ein Umzug zwischen Gruppen verschiebt Kapazität von der einen zur
         // anderen. Der Trigger rechnet beide Seiten nach (Migration 0013).
+        //
+        // Die Reservierungen auf dem Zimmer ziehen mit. Blieben sie in der
+        // alten Gruppe, zählte die alte Gruppe Gäste ohne Zimmer und die neue
+        // ein Zimmer ohne seine Gäste -- sie verkaufte es ein zweites Mal,
+        // und die alte liesse sich nie mehr stilllegen (Migration 0080).
+        if (body.categoryId !== undefined && body.categoryId !== zimmer.category_id) {
+          const mit = await client.query<{ public_ref: string }>(
+            `SELECT public_ref FROM inventory_carry_room($1, $2, $3, $4)`,
+            [zimmer.property_id, zimmer.id, zimmer.category_id, body.categoryId])
+          for (const m of mit.rows) {
+            await emitEvent(client, zimmer.property_id, 'reservation.changed', {
+              reservationRef: m.public_ref, resourceId: zimmer.id,
+              categoryId: body.categoryId, previousCategoryId: zimmer.category_id })
+          }
+          return { ...rows[0]!, movedReservations: mit.rows.map(m => m.public_ref) }
+        }
         return rows[0]!
       })
     }

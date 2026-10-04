@@ -1476,11 +1476,11 @@ const M = {
     en: 'This room type already has a standard rate.',
     tr: 'Bu oda tipinin zaten bir standart fiyatı var.' },
   'setup.categoryHasFutureReservations': {
-    de: 'Die Gruppe hat noch {count} künftige Reservierungen. '
+    de: 'Die Gruppe hat noch {count} künftige Reservierungen: {reservations}. '
       + 'Erst umbuchen, dann stilllegen.',
-    en: 'The room type still has {count} future reservations. Move them first, '
-      + 'then deactivate.',
-    tr: 'Bu tipte hâlâ {count} gelecek rezervasyon var. Önce aktarın, sonra devre dışı bırakın.' },
+    en: 'The room type still has {count} future reservations: {reservations}. '
+      + 'Move them first, then deactivate.',
+    tr: 'Bu tipte hâlâ {count} gelecek rezervasyon var: {reservations}. Önce aktarın, sonra devre dışı bırakın.' },
   'setup.roomHasFutureReservations': {
     de: 'Auf dem Zimmer liegen noch künftige Reservierungen: {reservations}. '
       + 'Erst umbuchen, dann stilllegen.',
