@@ -172,7 +172,8 @@ export function useInviteUser(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { email: string; displayName: string; roleKeys: string[] }) =>
-      api.post<{ userRef: string }>(`/v1/properties/${propertyId}/users`, body),
+      api.post<{ userRef: string; addedToProperty: boolean }>(
+        `/v1/properties/${propertyId}/users`, body),
     onSuccess: nachBenutzeraenderung(qc, propertyId)
   })
 }

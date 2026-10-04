@@ -19,10 +19,9 @@ describe('Bereiche der Schnittstellen', () => {
   it('trennt Maschinen von Menschen', () => {
     expect(schnittstellenBereiche(p => p === 'integration:manage').map(b => b.key))
       .toEqual(['webhooks', 'clients', 'channel'])
-    expect(schnittstellenBereiche(p => p === 'user:manage').map(b => b.key))
-      .toEqual(['users'])
+    expect(schnittstellenBereiche(p => p === 'user:manage')).toEqual([])
     expect(schnittstellenBereiche(() => true).map(b => b.key))
-      .toEqual(['webhooks', 'clients', 'channel', 'users'])
+      .toEqual(['webhooks', 'clients', 'channel'])
   })
 
   it('sagt nichts zu, solange nichts geladen ist', () => {
@@ -31,12 +30,24 @@ describe('Bereiche der Schnittstellen', () => {
 })
 
 describe('Bildschirm in der Navigation', () => {
-  it('erscheint bei jedem der beiden Rechte', () => {
-    for (const recht of ['integration:manage', 'user:manage']) {
-      expect(visibleScreens([recht]).map(s => s.key)).toContain('integrations')
-    }
+  it('erscheint nur fuer den, der Maschinen anbindet', () => {
+    expect(visibleScreens(['integration:manage']).map(s => s.key)).toContain('integrations')
+    expect(visibleScreens(['user:manage']).map(s => s.key)).not.toContain('integrations')
     expect(visibleScreens(['reservation:read']).map(s => s.key))
       .not.toContain('integrations')
+  })
+
+  /**
+   * Der Befund (Sven, 04.10.2026): ein Kunde fand keine Benutzerverwaltung.
+   * Es gab sie -- als vierten Reiter unter „Schnittstellen", wo niemand
+   * Personal sucht. Sie steht jetzt im Menue „Einstellungen", und zwar fuer
+   * jeden mit `user:manage`, auch ohne ein anderes Einstellungsrecht.
+   */
+  it('fuehrt Benutzer und Rollen im Menue Einstellungen', () => {
+    const benutzer = visibleScreens(['user:manage']).find(s => s.key === 'users')
+    expect(benutzer?.group).toBe('settings')
+    expect(visibleScreens(['integration:manage', 'reservation:read']).map(s => s.key))
+      .not.toContain('users')
   })
 
   /**
@@ -57,7 +68,7 @@ describe('Bildschirm in der Navigation', () => {
  */
 describe('Selbstverwaltung des Personals', () => {
   const quelle = readFileSync(
-    new URL('../routes/Integrations.tsx', import.meta.url), 'utf8')
+    new URL('../routes/Benutzer.tsx', import.meta.url), 'utf8')
 
   it('zeigt am eigenen Eintrag weder Sperre noch Entfernen', () => {
     expect(quelle).toMatch(/\{!istSelbst && \(/)

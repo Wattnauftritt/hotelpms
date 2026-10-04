@@ -95,19 +95,82 @@ describe('Einladen', () => {
       .toEqual(['reception'])
   })
 
-  it('weist eine vergebene Adresse ab, ohne zu verraten, wem sie gehoert', async () => {
-    const fremd = await makeProperty(owner, { name: 'Anderer', code: 'AND' })
-    await makeUser(owner, { email: 'jemand@anderswo.de',
-      propertyId: fremd.propertyId, roleKey: 'reception' })
-    const eigen = await post('/users', direktion.sessionId, { email: 'rezeption@kunde.de',
+  it('weist eine Adresse eines anderen Kunden ab, ohne zu verraten, wem sie gehoert',
+    async () => {
+      const fremd = await makeProperty(owner, { name: 'Anderer', code: 'AND' })
+      await makeUser(owner, { email: 'jemand@anderswo.de',
+        propertyId: fremd.propertyId, roleKey: 'reception' })
+      // Kein Haus, keine Rolle, nirgends Kunde -- aber die Adresse ist vergeben.
+      await owner.query(`INSERT INTO app_user (email, display_name, status)
+                         VALUES ('frei@irgendwo.de', 'Frei', 'active')`)
+      const anders = await post('/users', direktion.sessionId, { email: 'jemand@anderswo.de',
+        displayName: 'X', roleKeys: ['reception'] })
+      const frei = await post('/users', direktion.sessionId, { email: 'frei@irgendwo.de',
+        displayName: 'X', roleKeys: ['reception'] })
+      expect(anders.statusCode).toBe(409)
+      expect(frei.statusCode).toBe(409)
+      // Derselbe Satz fuer beide Faelle. Unterschiede verrieten, wer Kunde ist.
+      expect((anders.json() as { code: string }).code)
+        .toBe((frei.json() as { code: string }).code)
+      const rollen = await owner.query(
+        `SELECT 1 FROM user_property_role upr JOIN app_user u ON u.id = upr.user_id
+          WHERE u.email = 'jemand@anderswo.de' AND upr.property_id = $1`, [fx.propertyId])
+      expect(rollen.rowCount).toBe(0)
+    })
+
+  /**
+   * Die Liste eines Hauses zeigt nur, wer dort eine Rolle hat. Wer aus dem
+   * ersten Haus auch im zweiten arbeiten soll, war dort weder zu finden noch
+   * einzuladen -- die Einladung antwortete "Adresse vergeben".
+   */
+  it('holt jemanden aus einem anderen Haus des Betriebs dazu, ohne neue Einladung',
+    async () => {
+      const zweites = await owner.query<{ id: number }>(
+        `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+         VALUES ($1, 'ZWEI', 'Deichblick', 'Deich 2', '27472', 'Cuxhaven', 'DE')
+         RETURNING id`, [fx.accountId])
+      const aushilfe = await makeUser(owner, { email: 'aushilfe@kunde.de',
+        propertyId: zweites.rows[0]!.id, roleKey: 'reception' })
+
+      const r = await post('/users', direktion.sessionId, { email: 'Aushilfe@kunde.de',
+        displayName: 'Anders geschrieben', roleKeys: ['housekeeping'] })
+      expect(r.statusCode).toBe(200)
+      expect((r.json() as { addedToProperty: boolean }).addedToProperty).toBe(true)
+
+      const rollen = await owner.query<{ property_id: number; key: string }>(
+        `SELECT upr.property_id, ro.key FROM user_property_role upr
+           JOIN role ro ON ro.id = upr.role_id
+          WHERE upr.user_id = $1 ORDER BY upr.property_id`, [aushilfe.userId])
+      expect(rollen.rows).toEqual([
+        { property_id: fx.propertyId, key: 'housekeeping' },
+        { property_id: zweites.rows[0]!.id, key: 'reception' }
+      ].sort((a, b) => a.property_id - b.property_id))
+      // Sie hat schon einen Zugang: keine Einladung, und ihr Name bleibt.
+      const t = await owner.query(`SELECT 1 FROM auth_token WHERE user_id = $1`,
+        [aushilfe.userId])
+      expect(t.rowCount).toBe(0)
+      const d = (await liste(direktion.sessionId)).json() as
+        { users: Array<{ email: string; displayName: string }> }
+      expect(d.users.find(x => x.email === 'aushilfe@kunde.de')?.displayName)
+        .toBe('aushilfe@kunde.de')
+    })
+
+  it('nimmt keine Rolle weg, wenn jemand im Haus schon eine hat', async () => {
+    const r = await post('/users', direktion.sessionId, { email: 'rezeption@kunde.de',
+      displayName: 'X', roleKeys: ['housekeeping'] })
+    expect(r.statusCode).toBe(200)
+    const rollen = await owner.query<{ key: string }>(
+      `SELECT ro.key FROM user_property_role upr JOIN role ro ON ro.id = upr.role_id
+        WHERE upr.user_id = $1 ORDER BY ro.key`, [rezeption.userId])
+    expect(rollen.rows.map(x => x.key)).toEqual(['housekeeping', 'reception'])
+  })
+
+  it('gibt dem Inhaber keine Hausrolle, wenn die Direktion es versucht', async () => {
+    // Dieselbe Grenze wie beim Sperren: einen Inhaber fasst nur an, wer den
+    // Betrieb verwaltet.
+    const r = await post('/users', direktion.sessionId, { email: 'inhaber@kunde.de',
       displayName: 'X', roleKeys: ['reception'] })
-    const anders = await post('/users', direktion.sessionId, { email: 'jemand@anderswo.de',
-      displayName: 'X', roleKeys: ['reception'] })
-    expect(eigen.statusCode).toBe(409)
-    expect(anders.statusCode).toBe(409)
-    // Derselbe Satz fuer beide Faelle. Unterschiede verrieten, wer Kunde ist.
-    expect((eigen.json() as { code: string }).code)
-      .toBe((anders.json() as { code: string }).code)
+    expect(r.statusCode).toBe(403)
   })
 
   it('verlangt mindestens eine Rolle und nur Hausrollen', async () => {
