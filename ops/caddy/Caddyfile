@@ -185,11 +185,30 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	# Der Preis ist ein erneuter Abruf von index.html bei jedem Zurück —
 	# rund ein Kilobyte, während die gehashten Dateien daneben unberührt
 	# zwischengespeichert bleiben.
+	#
+	# **`no-store` hängt am Pfad der Anfrage, nicht an `/index.html`.** Hier
+	# stand `header /index.html ...`, und das traf nie: `header` läuft vor
+	# `try_files`, sieht also den Pfad, den der Browser verlangt hat, und der
+	# heißt `/` oder `/tagesgeschaeft`, nie `/index.html`. Gegen Caddy 2.10
+	# nachgerechnet: `/` kam ohne jede Cache-Control-Zeile zurück. Deshalb
+	# jetzt umgekehrt — `no-store` auf allem, was nicht ausdrücklich lange
+	# gespeichert werden darf.
+	#
+	# Dazu die installierbare App (Dokument 33): `sw.js` wird bei jedem Start
+	# nachgefragt, sonst bliebe ein alter Service Worker bis zu einem Tag
+	# stehen; Manifest und Symbole ändern sich selten, aber ohne Hash im
+	# Namen, und bekommen deshalb einen Tag. Das Manifest braucht seinen Typ
+	# ausdrücklich: die Endung kennt Caddy nicht.
 	handle {
 		root * /opt/hotelpms/current/web
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
-		header /index.html Cache-Control "no-store"
+		@pwa path /manifest.webmanifest /icons/*
+		header @pwa Cache-Control "public, max-age=86400"
+		header /manifest.webmanifest Content-Type "application/manifest+json"
+		header /sw.js Cache-Control "no-cache"
+		@seite not path /assets/* /manifest.webmanifest /icons/* /sw.js
+		header @seite Cache-Control "no-store"
 		try_files {path} /index.html
 		file_server
 	}

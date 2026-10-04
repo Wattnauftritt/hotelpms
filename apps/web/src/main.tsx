@@ -18,7 +18,8 @@ import { useAdresse } from './lib/adresse.js'
 import { SprungContext, type Sprungziel } from './lib/suche.js'
 import { LOCALES, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
-import { api } from './lib/api.js'
+import { api, ApiError } from './lib/api.js'
+import { serviceWorkerAnmelden } from './lib/pwa.js'
 import './styles.css'
 
 function spracheDesBrowsers(): Locale {
@@ -65,6 +66,12 @@ function Text(
   { k, params }: { k: TextKey; params?: Record<string, string | number> }
 ): JSX.Element {
   return <>{useT()(k, params)}</>
+}
+
+/** Keine Antwort der Anwendung -- im Gegensatz zu einer Antwort "nein". */
+function serverWeg(e: unknown): boolean {
+  if (e === null || e === undefined) return false
+  return !(e instanceof ApiError) || e.status >= 500
 }
 
 function Hinweis({ children }: { children: React.ReactNode }): JSX.Element {
@@ -198,9 +205,43 @@ function App(): JSX.Element {
   const me = useQuery<Me>({
     queryKey: ['me'],
     queryFn: () => api.get<Me>('/v1/auth/me'),
-    retry: false
+    retry: false,
+    // Ist der Server weg, aber das Netz da, meldet der Browser kein
+    // "online" -- es gibt also keinen Anlass, von dem aus React Query neu
+    // fragte. Dann fragen wir selbst nach, bis er wieder antwortet.
+    refetchInterval: q => serverWeg(q.state.error) ? 15_000 : false
   })
 
+  /*
+   * Kein Server, keine Anmeldemaske.
+   *
+   * Die Anmeldemaske ist die Antwort auf "nicht angemeldet" -- eine 401.
+   * Ohne Netz kam sie bisher auch, und mit der installierten App wird das
+   * der haeufige Fall: das Fenster startet aus der gespeicherten Huelle
+   * (Dokument 33), und eine Rezeption, die dann nach ihrem Kennwort gefragt
+   * wird, tippt es ein und wundert sich, warum es nicht geht.
+   *
+   * Zwei Gestalten hat das: React Query startet die Abfrage ohne Netz gar
+   * nicht erst (`paused`), und steht das Netz, aber der Server nicht,
+   * scheitert `fetch` ohne Antwort -- dann ist der Fehler kein `ApiError`,
+   * oder Caddy antwortet fuer die stehende API mit 502.
+   */
+  const unerreichbar = (me.isPending && me.fetchStatus === 'paused')
+    || (me.isError && serverWeg(me.error))
+  if (unerreichbar) {
+    return <I18nContext.Provider value={locale}>
+      <Hinweis>
+        <div className="grid gap-3 justify-items-center text-center max-w-md">
+          <Text k="app.serverUnreachable" />
+          <button type="button" onClick={() => { void me.refetch() }}
+                  className="px-3 py-1 border border-neutral-300 rounded-sm bg-white
+                             hover:bg-neutral-50">
+            <Text k="app.retry" />
+          </button>
+        </div>
+      </Hinweis>
+    </I18nContext.Provider>
+  }
   if (me.isPending) {
     return <I18nContext.Provider value={locale}>
       <div className="min-h-screen grid place-items-center text-sm text-neutral-500">…</div>
@@ -402,6 +443,8 @@ function App(): JSX.Element {
     </SprungContext.Provider>
   )
 }
+
+serviceWorkerAnmelden()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
