@@ -8,7 +8,8 @@ import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passu
 import { spaltenBreite, spanne } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { useEscape, istTextEingabe } from '../lib/tasten.js'
-import { ReinigungsZeichen, ZahlungsZeichen, useZahlungsTitel, usePreisUndNotizen }
+import { ReinigungsZeichen, ZahlungsZeichen, PersonenZeichen, useZahlungsTitel,
+         usePreisUndNotizen }
   from './PlanZeichen.tsx'
 
 /**
@@ -1294,6 +1295,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                         </span>
                       )}
                       <ZahlungsZeichen zahlung={r.payment} />
+                      <PersonenZeichen r={r} />
                       {r.last_name ?? t('tape.noGuest')}
                       {/* Die Notiz gehoert auf den Balken, nicht zwei Klicks
                           tiefer: hier steht, was beim naechsten Blick auf den
@@ -1581,6 +1583,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
               {/* Vor dem Namen: am schmalen Balken schneidet `truncate`
                   hinten ab, und der Zahlungsstand soll stehen bleiben. */}
               <ZahlungsZeichen zahlung={r.payment} />
+              <PersonenZeichen r={r} />
               {r.last_name ?? t('tape.noGuest')}
               {/*
                 * Die **Kurznotiz** im Klartext, nicht die lange.

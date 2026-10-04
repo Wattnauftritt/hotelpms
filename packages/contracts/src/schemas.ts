@@ -227,6 +227,11 @@ export const TapeChart = Type.Object({
     external_reference: Type.Union([Type.String(), Type.Null()]),
     rate_code: Type.Union([Type.String(), Type.Null()]),
     occupants: Type.Integer(),
+    /** Gebuchte Personenzahl; leer, wenn nie angegeben. */
+    guest_count: Type.Union([Type.Integer(), Type.Null()]),
+    /** Davon Erwachsene und Kinder, nur wenn getrennt angegeben (0076). */
+    adults: Type.Union([Type.Integer(), Type.Null()]),
+    children: Type.Union([Type.Integer(), Type.Null()]),
     /** Plaetze der **gebuchten** Zimmergruppe, nicht des zugewiesenen Zimmers. */
     category_max_occupancy: Type.Integer(),
     /** Merkmal fuer den Balken: "Balkon", "1. Stock", "Spaetanreise". */

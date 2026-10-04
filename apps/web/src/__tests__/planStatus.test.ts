@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import type { PlanPayment } from '@hotelpms/contracts'
 import { REINIGUNG, ZAHLUNG, zahlungsTitel, reinigungsZiele, angeboteneStaende,
-         REINIGUNG_SETZBAR, preisUndNotizen } from '../lib/planStatus.js'
+         REINIGUNG_SETZBAR, preisUndNotizen, personenzahl } from '../lib/planStatus.js'
 import { gruppeVerschieben } from '../components/Stammdaten.tsx'
 import { textFor, type TextKey } from '../lib/i18n/index.js'
 
@@ -98,7 +98,9 @@ describe('Der Titel am Balken', () => {
 
   it('setzt das Zeichen vor den Namen, damit es nicht abgeschnitten wird', () => {
     const plan = lies('components/TapeChart.tsx')
-    expect(plan).toMatch(/<ZahlungsZeichen zahlung=\{r\.payment\} \/>\n\s*\{r\.last_name/)
+    // Dazwischen nur die Personenzahl, die aus demselben Grund vorn steht.
+    expect(plan).toMatch(
+      /<ZahlungsZeichen zahlung=\{r\.payment\} \/>\n\s*<PersonenZeichen r=\{r\} \/>\n\s*\{r\.last_name/)
   })
 })
 
@@ -247,5 +249,21 @@ describe('Scrollleiste unter dem Plan', () => {
     expect(leistenBereich('2026-10-04', '2024-01-01', 30).anfang).toBe('2024-01-01')
     const weit = leistenBereich('2026-10-04', '2030-01-01', 60)
     expect(weit.tageGesamt).toBeGreaterThan(365 + 730)
+  })
+})
+
+describe('Personenzahl am Balken', () => {
+  it('nimmt die gebuchte Zahl, sonst die erfassten Mitreisenden', () => {
+    expect(personenzahl({ guest_count: 3, occupants: 1 })).toBe(3)
+    expect(personenzahl({ guest_count: null, occupants: 2 })).toBe(2)
+  })
+
+  it('zeigt ohne Angabe keine Null', () => {
+    expect(personenzahl({ guest_count: null, occupants: 0 })).toBeNull()
+  })
+
+  it('steht vor dem Namen, damit truncate sie nicht abschneidet', () => {
+    const plan = lies('components/TapeChart.tsx')
+    expect(plan.match(/<PersonenZeichen r=\{r\} \/>\s*\{r\.last_name/g)).toHaveLength(2)
   })
 })

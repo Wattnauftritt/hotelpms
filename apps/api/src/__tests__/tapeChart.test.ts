@@ -196,4 +196,15 @@ describe('Zimmerplan', () => {
     const units = (JSON.parse(r.body) as { units: Array<{ code: string }> }).units
     expect(units.map(u => u.code)).toEqual(['9', '10', '12', '12a', '601', '1', '2'])
   })
+
+  it('liefert die gebuchte Personenzahl fuer den Balken', async () => {
+    const res = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-02',
+      departure: '2026-10-05', status: 'Confirmed', resourceId: rooms[0]! })
+    await owner.query(
+      `UPDATE reservation SET guest_count = 3, adults = 2, children = 1 WHERE id = $1`,
+      [res.reservationId])
+    const plan = await zimmerplan() as unknown as { reservations: Array<Record<string, unknown>> }
+    expect(plan.reservations[0]).toMatchObject({ guest_count: 3, adults: 2, children: 1 })
+  })
 })
