@@ -16,6 +16,10 @@ import { Invoices } from './routes/Invoices.tsx'
 import { Adminpanel } from './routes/Adminpanel.tsx'
 import { TerminalPult } from './routes/TerminalPult.tsx'
 import { Datenuebernahme } from './routes/Datenuebernahme.tsx'
+import { NachBreite } from './components/mobil/NachBreite.tsx'
+import { MobilHeute } from './components/mobil/MobilHeute.tsx'
+import { MobilPlan } from './components/mobil/MobilPlan.tsx'
+import { MobilZimmer } from './components/mobil/MobilZimmer.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -115,13 +119,19 @@ export interface ScreenDefinition {
 }
 
 export const SCREENS: readonly ScreenDefinition[] = [
+  // Die ersten drei haben am Telefon eine eigene Fassung (`lib/mobil.ts`).
   { key: 'tape', nav: 'nav.tape', permission: 'reservation:read',
-    render: c => <Tape propertyId={c.propertyId} onFolio={c.openFolio}
-                        onCheckIn={c.openCheckIn} /> },
+    render: c => <NachBreite schmal={() => <MobilPlan propertyId={c.propertyId} />}
+                             breit={() => <Tape propertyId={c.propertyId} onFolio={c.openFolio}
+                                                onCheckIn={c.openCheckIn} />} /> },
   { key: 'today', nav: 'nav.today', permission: 'reservation:read',
-    render: c => <Today propertyId={c.propertyId} onFolio={c.openFolio} /> },
+    render: c => <NachBreite schmal={() => <MobilHeute propertyId={c.propertyId}
+                                                       onFolio={c.openFolio} />}
+                             breit={() => <Today propertyId={c.propertyId}
+                                                 onFolio={c.openFolio} />} /> },
   { key: 'housekeeping', nav: 'nav.housekeeping', permission: 'housekeeping:read',
-    render: c => <Housekeeping propertyId={c.propertyId} /> },
+    render: c => <NachBreite schmal={() => <MobilZimmer propertyId={c.propertyId} />}
+                             breit={() => <Housekeeping propertyId={c.propertyId} />} /> },
   { key: 'blocks', nav: 'nav.blocks', permission: 'inventory:read',
     render: c => <Blocks propertyId={c.propertyId} /> },
   { key: 'setup', group: 'settings', nav: 'nav.setup', permission: 'settings:property',
@@ -189,13 +199,19 @@ export function screenByKey(key: string | null): ScreenDefinition | undefined {
  * erlaubte. Bewusst **kein** fester Startbildschirm: ein Housekeeping-Konto
  * hat auf dem Zimmerplan nichts zu suchen und bekaeme dort nur eine 403.
  *
+ * `start` ist ein Wunsch fuer den Fall ohne Adresse: am Telefon beginnt
+ * man mit "Heute" und nicht mit dem Zimmerplan, den der Desktop zuerst
+ * zeigt. Ist er nicht erlaubt, gilt wieder der erste erlaubte.
+ *
  * Ein unbekannter oder verbotener Schluessel in der Adresse fuehrt still
  * zurueck statt in eine Fehlerseite. Ein Lesezeichen ueberlebt damit sowohl
  * eine Umbenennung als auch den Entzug eines Rechts.
  */
 export function resolveScreen(
-  adresse: string | null, permissions: readonly string[], platformStaff = false
+  adresse: string | null, permissions: readonly string[], platformStaff = false,
+  start: string | null = null
 ): ScreenDefinition | undefined {
   const erlaubt = visibleScreens(permissions, platformStaff)
-  return erlaubt.find(s => s.key === adresse) ?? erlaubt[0]
+  return erlaubt.find(s => s.key === adresse)
+    ?? erlaubt.find(s => s.key === start) ?? erlaubt[0]
 }

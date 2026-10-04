@@ -24,6 +24,7 @@ import { suche } from './suche.js'
 import { onlineCheckin } from './onlineCheckin.js'
 import { ersteSchritte } from './ersteSchritte.js'
 import { altsystem } from './altsystem.js'
+import { mobil } from './mobil.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -136,7 +137,8 @@ const texts = {
   ...suche,
   ...onlineCheckin,
   ...ersteSchritte,
-  ...altsystem
+  ...altsystem,
+  ...mobil
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts

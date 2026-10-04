@@ -53,7 +53,15 @@ const TREFFER = 8
  * wer es erklaert bekommen hat -- und an der Rezeption arbeitet jede Saison
  * jemand Neues.
  */
-export function Detailsuche({ propertyId }: { propertyId: number }): JSX.Element {
+export function Detailsuche({ propertyId, ausloeser }: {
+  propertyId: number
+  /**
+   * Ein anderer Einstieg als der Knopf mit dem Kuerzel -- in der
+   * Mobilansicht der Platz "Suche" in der Leiste unten. Ein Telefon hat
+   * kein Strg+K, und ein Knopf, der eines nennt, erklaert dort nichts.
+   */
+  ausloeser?: (oeffnen: () => void) => React.ReactNode
+}): JSX.Element {
   const t = useT()
   const [offen, setOffen] = useState(false)
   const { darf } = useHausrechte(propertyId)
@@ -119,6 +127,7 @@ export function Detailsuche({ propertyId }: { propertyId: number }): JSX.Element
   if (!sichtbar) return <></>
   return (
     <>
+      {ausloeser !== undefined ? ausloeser(() => setOffen(true)) : (
       <button type="button" onClick={() => setOffen(true)}
               aria-label={t('suche.button')} title={t('suche.button')}
               className="flex items-center gap-1.5 text-sm px-2 py-1 border border-neutral-300
@@ -129,6 +138,7 @@ export function Detailsuche({ propertyId }: { propertyId: number }): JSX.Element
           {istMac() ? '⌘K' : t('suche.shortcut')}
         </kbd>
       </button>
+      )}
       {offen && createPortal(
         <Fenster propertyId={propertyId} feldRef={feldRef} erlaubt={erlaubt}
                  darfKunden={darf('guest:read')}

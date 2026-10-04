@@ -20,6 +20,7 @@ import { LOCALES, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
 import { api, ApiError } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
+import { useSchmal } from './lib/mobil.js'
 import './styles.css'
 
 function spracheDesBrowsers(): Locale {
@@ -117,6 +118,7 @@ function App(): JSX.Element {
    */
   const [gastCheckin] = useState(checkinAusAdresse)
   const [adresse, setAdresse] = useAdresse()
+  const schmal = useSchmal()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
   // geoeffnet und danach wieder geschlossen.
   const [folioRef, setFolioRef] = useState<string | null>(null)
@@ -322,7 +324,8 @@ function App(): JSX.Element {
 
   const rechte = me.data.properties.find(p => p.id === haus.id)?.permissions ?? []
   const erlaubte = visibleScreens(rechte, me.data.isPlatformStaff)
-  const screen = resolveScreen(adresse.screen, rechte, me.data.isPlatformStaff)
+  const screen = resolveScreen(adresse.screen, rechte, me.data.isPlatformStaff,
+                               schmal ? 'today' : null)
 
   const springen = (ziel: Sprungziel): void => {
     if (ziel.art === 'reservierung') {
