@@ -255,9 +255,20 @@ function pruefen(body: unknown): Eingabe {
   return { ...eingabe, source, registration }
 }
 
+/**
+ * Leer heisst auch: leerer Text. Im Betrieb trugen 288 Gaeste `''` in
+ * Strasse, PLZ und Ort statt `NULL` (die Gastmaske reicht ein geleertes Feld
+ * so durch), und die Pruefung auf `NULL` hielt das fuer eine Anschrift, die
+ * jemand eingetragen hat. Ein Profil mit `''` darin hat so wenig eine
+ * Anschrift wie eines mit `NULL`.
+ */
+function leerText(v: string | null): boolean {
+  return v === null || v.trim() === ''
+}
+
 function anschriftVon(g: GastZeile): Anschrift | null {
-  if (g.address_line1 === null && g.postal_code === null
-      && g.city === null && g.country === null) return null
+  if (leerText(g.address_line1) && leerText(g.postal_code)
+      && leerText(g.city) && leerText(g.country)) return null
   return { line1: g.address_line1 ?? '', postalCode: g.postal_code ?? '',
            city: g.city ?? '', country: g.country }
 }
@@ -384,8 +395,8 @@ async function kontaktSchreiben(
    * Land eingeschlossen; eine Strasse, die Rezeption oder Gast eingetragen
    * haben, bleibt weiter unangetastet.
    */
-  const nurLand = gast.address_line1 === null && gast.postal_code === null
-    && gast.city === null
+  const nurLand = leerText(gast.address_line1) && leerText(gast.postal_code)
+    && leerText(gast.city)
 
   const entscheiden = <K extends Feld>(
     feld: K, gewuenscht: (typeof neu)[K] | null | undefined,
