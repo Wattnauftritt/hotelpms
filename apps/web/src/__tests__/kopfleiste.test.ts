@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { navPasst } from '../components/Shell.tsx'
+import { navPasst, navEintraege } from '../components/Shell.tsx'
+import { visibleScreens } from '../screens.js'
 
 /**
  * Die Kopfleiste behaelt ihre rechte Seite.
@@ -51,11 +52,49 @@ describe('Die rechte Seite haengt nicht an der Rechnung', () => {
   })
 
   it('laesst keinen Bildschirm weg, sondern legt ihn ins Menue', () => {
-    expect(shell).toContain('const vorne = screens.slice(0, sichtbar)')
-    expect(shell).toContain('const hinten = screens.slice(sichtbar)')
+    expect(shell).toContain('const vorne = eintraege.slice(0, sichtbar)')
+    expect(shell).toContain('const hinten = eintraege.slice(sichtbar)')
   })
 
   it('schliesst das Menue ueber die gemeinsame Escape-Lage', () => {
     expect(shell).toContain('useEscape(() => setOffen(false), offen)')
+  })
+})
+
+describe('Das Menue Einstellungen', () => {
+  /*
+   * Einrichtung, Wartung, Einstellungen, Datenuebernahme und Gaesteterminals
+   * stehen nicht mehr vorn, sondern unter einem Platz (Sven, 04.10.2026).
+   * Die Rechte bleiben die der einzelnen Bildschirme: im Menue steht nur,
+   * was der Benutzer auch vorher gesehen haette.
+   */
+  const plaetze = (rechte: string[], plattform = false) =>
+    navEintraege(visibleScreens(rechte, plattform))
+      .map(e => e.gruppe ? `${e.key}[${e.screens.map(s => s.key).join(',')}]` : e.key)
+
+  it('fasst die fuenf Bildschirme zu einem Platz am Ende zusammen', () => {
+    const alle = ['reservation:read', 'reservation:checkin', 'housekeeping:read',
+                  'inventory:read', 'settings:property', 'integration:manage',
+                  'rate:read', 'guest:read', 'folio:read', 'report:operational']
+    expect(plaetze(alle, true)).toEqual([
+      'tape', 'today', 'housekeeping', 'blocks', 'reports', 'integrations', 'rates',
+      'guests', 'availability', 'invoices', 'admin',
+      'gruppe:settings[setup,maintenance,settings,terminal,import]'])
+  })
+
+  it('zeigt im Menue nur, was das Recht erlaubt', () => {
+    expect(plaetze(['housekeeping:read']))
+      .toEqual(['housekeeping', 'gruppe:settings[maintenance]'])
+    expect(plaetze(['reservation:read', 'reservation:checkin']))
+      .toEqual(['tape', 'today', 'availability', 'gruppe:settings[terminal]'])
+  })
+
+  it('laesst das Menue weg, wenn darin nichts erlaubt ist', () => {
+    expect(plaetze(['reservation:read'])).toEqual(['tape', 'today', 'availability'])
+  })
+
+  it('klappt das Menue nicht ins "Mehr" ein', () => {
+    // Es stuende sonst schon bei 1 920 Pixeln dort: ein Menue im Menue.
+    expect(shell).toContain('const eintraege = useMemo(() => alle.filter(e => !e.gruppe), [alle])')
   })
 })

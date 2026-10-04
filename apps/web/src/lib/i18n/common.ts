@@ -11,9 +11,9 @@ export const common = {
     en: 'Room chart',
     tr: 'Oda planı' },
   'nav.today': {
-    de: 'Tagesgeschäft',
+    de: 'Rezeption',
     en: 'Front desk',
-    tr: 'Günlük işler' },
+    tr: 'Resepsiyon' },
   'nav.housekeeping': {
     de: 'Housekeeping',
     en: 'Housekeeping',
