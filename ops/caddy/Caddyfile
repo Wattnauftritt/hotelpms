@@ -119,7 +119,16 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 		# `style-src` bleibt als Rückfall stehen: ein Browser, der
 		# style-src-elem/-attr nicht kennt, liest ihn statt ihrer, und dann
 		# soll die Oberfläche funktionieren und nicht ohne Stile dastehen.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		#
+		# `frame-src https:` für die freigegebenen Adressen am Gästeterminal
+		# (Dokument 31): ohne den Eintrag gilt `default-src 'self'`, und der
+		# Rahmen bleibt leer. `https:` genügt, weil eine Adresse nur mit https
+		# angelegt werden kann (routes/terminalInhalte.ts). Für die ganze
+		# Seite, nicht nur für /terminal: ein zweiter `header` nur für diesen
+		# Pfad hinge an Caddys Sortierung gleichnamiger Direktiven, und die
+		# Rezeptionsoberfläche bettet selbst nichts ein. Auf der Maschine
+		# so eingetragen am 04.10.2026.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		-Server
 	}
 
