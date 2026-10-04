@@ -1573,7 +1573,9 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (act === 'check_out' && r.status === 'InHouse') {
           const heute = await geschaeftstag(client, r.property_id)
           const ende = heute > r.arrival ? heute : addDays(r.arrival, 1)
-          if (ende < r.departure) {
+          // Vor der Anreise gibt es nichts zu kuerzen: der Geschaeftstag
+          // weiss dann nicht, wann der Gast wirklich da war.
+          if (heute >= r.arrival && ende < r.departure) {
             await aufenthaltVerlegen(client, reservationRef, { departure: ende })
             r.departure = ende
           }
