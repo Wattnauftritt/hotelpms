@@ -196,3 +196,48 @@ describe('Maschinenzugang', () => {
     expect((await abrufen('?from=2026-10-01&to=2026-10-01', ohne)).statusCode).toBe(403)
   })
 })
+
+describe('Fruehstueck', () => {
+  interface Tag { date: string; breakfasts: number; adults: number; children: number
+                  unsplit: number; assumed: number }
+  const fruehstueck = async (query: string, headers = auth) => {
+    const r = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/breakfast${query}`, headers })
+    expect(r.statusCode, r.body).toBe(200)
+    return r.json<{ from: string; to: string; days: Tag[]; totals: Omit<Tag, 'date'> }>()
+  }
+  const nichts = { breakfasts: 0, adults: 0, children: 0, unsplit: 0, assumed: 0 }
+
+  it('keins am Anreisetag, eins am Abreisetag, Kinder voll und getrennt', async () => {
+    // A: 2 Erwachsene, 1 Kind, Naechte 1.-3.10., Fruehstueck 2.-4.10.
+    await buchen('2026-10-01', '2026-10-04', { adults: 2, children: 1 })
+    // B: nur Gesamtzahl, Nacht 2.10., Fruehstueck 3.10.
+    await buchen('2026-10-02', '2026-10-03', { guestCount: 2 })
+    // C: storniert, zaehlt nicht
+    const ref = await buchen('2026-10-01', '2026-10-03', { adults: 4 })
+    await owner.query(`UPDATE reservation SET status = 'Canceled' WHERE public_ref = $1`, [ref])
+
+    const f = await fruehstueck('?from=2026-10-01&to=2026-10-05')
+    expect(f.days).toEqual([
+      { date: '2026-10-01', ...nichts },
+      { date: '2026-10-02', ...nichts, breakfasts: 3, adults: 2, children: 1 },
+      { date: '2026-10-03', ...nichts, breakfasts: 5, adults: 2, children: 1, unsplit: 2 },
+      { date: '2026-10-04', ...nichts, breakfasts: 3, adults: 2, children: 1 },
+      { date: '2026-10-05', ...nichts }
+    ])
+    expect(f.totals).toEqual({ breakfasts: 11, adults: 6, children: 3, unsplit: 2,
+                               assumed: 0 })
+  })
+
+  it('weist zu lange Zeitraeume ab und verlangt report:operational', async () => {
+    const r = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/breakfast?from=2025-01-01&to=2026-01-02`,
+      headers: auth })
+    expect(r.statusCode).toBe(422)
+    expect(r.json<{ type: string }>().type).toBe('urn:staygrid:range_too_large')
+    const ok = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/breakfast?from=2025-01-01&to=2026-01-01`,
+      headers: auth })
+    expect(ok.statusCode, ok.body).toBe(200)
+  })
+})

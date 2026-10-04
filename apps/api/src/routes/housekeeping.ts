@@ -92,6 +92,18 @@ export function housekeepingRoutes(app: FastifyInstance): void {
    * schlechter Verbindung. Die Liste je Zimmer einzeln zu laden waere bei
    * 250 Zimmern 250 Runden. Zustand, Aufgabe, Abreise und Anreise kommen
    * deshalb zusammen (P-Gesetz, Dokument 04).
+   *
+   * **Fuer ein externes Reinigungssystem** stehen zwei Angaben mehr da, die
+   * es heute vom Adminpanel bekommt: `departureCheckedOut` sagt, ob der
+   * abreisende Gast schon ausgecheckt ist -- erst dann ist das Zimmer frei
+   * zum Reinigen, vorher wartet die Reinigungskraft. `stayoverRef` nennt den
+   * Bleiber, dessen Zimmer heute eine Zwischenreinigung bekommt. Mit beiden
+   * zusammen ergibt sich der Tagesplan (Abreise, Bleiber, leer, frei) aus
+   * diesem einen Aufruf.
+   *
+   * Der Bleiber kommt ueber `LATERAL ... LIMIT 1`: zwei Reservierungen auf
+   * demselben Zimmer in derselben Nacht sind ein Datenfehler, und er soll
+   * die Zimmerzeile nicht verdoppeln.
    */
   registerRoute(app, {
     method: 'GET',
@@ -121,6 +133,8 @@ export function housekeepingRoutes(app: FastifyInstance): void {
                   t.kind AS "taskKind", t.status AS "taskStatus", t.id AS "taskId",
                   ab.public_ref AS "departureRef",
                   ab.departure::text AS "departureDate",
+                  (ab.status = 'CheckedOut') AS "departureCheckedOut",
+                  bl.public_ref AS "stayoverRef",
                   an.public_ref AS "arrivalRef",
                   (SELECT count(*) FROM maintenance_ticket m
                     WHERE m.resource_id = r.id AND m.status <> 'done')::int AS "openTickets"
@@ -136,6 +150,12 @@ export function housekeepingRoutes(app: FastifyInstance): void {
              LEFT JOIN reservation an
                     ON an.resource_id = r.id AND an.arrival = tag.d
                    AND an.status IN ('Confirmed','InHouse')
+             LEFT JOIN LATERAL (
+                    SELECT b.public_ref FROM reservation b
+                     WHERE b.resource_id = r.id
+                       AND b.arrival < tag.d AND b.departure > tag.d
+                       AND b.status IN ('Confirmed','InHouse')
+                     LIMIT 1) bl ON true
             WHERE r.property_id = $1 AND r.active
             ORDER BY r.code`,
           [Number(propertyId), date])
