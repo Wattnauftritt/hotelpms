@@ -6,6 +6,9 @@ export const PERMISSIONS = [
   'reservation:read', 'reservation:write', 'reservation:checkin',
   'reservation:override_restriction',
   'guest:read', 'guest:write', 'guest:read_identity', 'guest:export',
+  // Kontaktdaten aus einem Umsystem (0083): schmaler als guest:write, weil
+  // ein Abgleich irrt und dann nur nachtragen, nie umbenennen soll.
+  'guest:contact_write',
   'folio:read', 'folio:post', 'folio:void_own', 'folio:void_any',
   'folio:discount', 'folio:discount_unlimited', 'folio:route',
   'invoice:issue', 'invoice:credit',
