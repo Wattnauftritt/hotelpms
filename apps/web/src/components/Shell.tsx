@@ -8,8 +8,11 @@ import { useEscape } from '../lib/tasten.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
 import { Detailsuche } from './Detailsuche.tsx'
 import type { ScreenDefinition } from '../screens.js'
+import { useSchmal } from '../lib/mobil.js'
+import { MobilShell } from './mobil/MobilShell.tsx'
 
 export type { Haus }
+export type { Props as ShellProps }
 
 interface Props {
   screen: string
@@ -304,7 +307,7 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
  * durchgehend und in einer Farbe, die man nicht uebersieht -- nicht als
  * Zeile in einer Einstellungsmaske.
  */
-function Uebungshinweis({ haus }: { haus: Haus }): JSX.Element {
+export function Uebungshinweis({ haus }: { haus: Haus }): JSX.Element {
   const t = useT()
   return (
     <div role="status"
@@ -327,7 +330,7 @@ function Uebungshinweis({ haus }: { haus: Haus }): JSX.Element {
  * Der Name daneben ist kein Schmuck: an einem geteilten Rechner ist die
  * erste Frage "bin ich das ueberhaupt", und sie wird sonst nicht gestellt.
  */
-function Abmelden(
+export function Abmelden(
   { benutzer, onAbmelden, onArbeitsplatz, gewechselt }:
   { benutzer: string; onAbmelden: () => void
     onArbeitsplatz: () => void; gewechselt: boolean }
@@ -394,7 +397,15 @@ function useKeinKontextmenue(): void {
 
 export function Shell(props: Props): JSX.Element {
   const online = useOnline()
+  const schmal = useSchmal()
   useKeinKontextmenue()
+  /*
+   * Am Telefon ein eigener Rahmen: Kopf schmal, die Arbeit in einer Leiste
+   * unten, Konto und Sprache unter "Mehr". Die Kopfleiste hier traegt
+   * Suche, Leiste, Hauswahl, Sprache und Abmelden nebeneinander und braucht
+   * dafuer gut tausend Pixel (`lib/mobil.ts`).
+   */
+  if (schmal) return <MobilShell {...props} />
   return (
     <I18nContext.Provider value={props.locale}>
       <div className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -441,7 +452,7 @@ export function Shell(props: Props): JSX.Element {
  * Der Knopf zum Installieren als App. Steht nur da, solange der Browser es
  * anbietet (`lib/pwa.ts`); im installierten Fenster und in Safari gar nicht.
  */
-function Installieren(): JSX.Element | null {
+export function Installieren(): JSX.Element | null {
   const t = useT()
   const installieren = useInstallation()
   if (installieren === null) return null
@@ -461,7 +472,7 @@ function Installieren(): JSX.Element | null {
  * `Shell` selbst ausserhalb des Anbieters steht, den sie aufspannt --
  * `aria-label` stand deshalb als deutsches Wort im Code.
  */
-function Sprachwahl({ locale, onLocale }: Pick<Props, 'locale' | 'onLocale'>): JSX.Element {
+export function Sprachwahl({ locale, onLocale }: Pick<Props, 'locale' | 'onLocale'>): JSX.Element {
   const t = useT()
   return (
     <select value={locale} onChange={e => onLocale(e.target.value as Locale)}
@@ -476,7 +487,7 @@ function Sprachwahl({ locale, onLocale }: Pick<Props, 'locale' | 'onLocale'>): J
  * Der Offline-Hinweis steht oben und bleibt stehen. Ein Betrieb, der nicht
  * merkt, dass er einen alten Stand ansieht, bucht doppelt.
  */
-function OfflineHinweis(): JSX.Element {
+export function OfflineHinweis(): JSX.Element {
   const t = useT()
   return (
     <div role="status"
