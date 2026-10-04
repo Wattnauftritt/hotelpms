@@ -6,7 +6,7 @@ import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
 import { platzbedarf } from '../lib/tapeSelection.js'
 import { istTextEingabe } from '../lib/tasten.js'
-import { TapeChart } from '../components/TapeChart.tsx'
+import { TapeChart, ZEILE_MIN, ZEILE_MAX, ZEILE_STANDARD } from '../components/TapeChart.tsx'
 import { BuchungVerlegen, AenderungZurueck, type Verlegung, type Ziel,
          type Aenderung } from '../components/BuchungVerlegen.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
@@ -28,6 +28,7 @@ const SPANNEN = [14, 30, 60] as const
 /** Wie viele Schritte Strg+Z zurueckreicht. */
 const RUECKGAENGIG_MAX = 20
 const PLANUNG_SCHLUESSEL = 'plan.planungsmodus'
+const ZEILE_SCHLUESSEL = 'plan.zeilenhoehe'
 /** Zustaende, die ein Zimmer wirklich belegen. Storniert und No-Show nicht. */
 const BINDEND = new Set(['Optional', 'Confirmed', 'InHouse'])
 
@@ -53,6 +54,24 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    * ist die Zimmernummer die Reihenfolge, in der ein Mensch laeuft.
    */
   const [gruppiert, setGruppiert] = useState(true)
+  /*
+   * Die Zeilenhoehe, damit ein ganzes Haus auf einen Bildschirm passt.
+   *
+   * Im `localStorage` und nicht in der Sitzung: sie haengt am Bildschirm,
+   * an dem jemand sitzt, nicht an der Schicht, und wer sie einmal passend
+   * gestellt hat, will das nicht jeden Morgen wieder tun. Eine Zahl, keine
+   * Gastdaten. Gesperrter Speicher heisst einfach: Standardhoehe.
+   */
+  const [zeile, setZeile] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem(ZEILE_SCHLUESSEL))
+      return n >= ZEILE_MIN && n <= ZEILE_MAX ? n : ZEILE_STANDARD
+    } catch { return ZEILE_STANDARD }
+  })
+  const zeileSetzen = (n: number): void => {
+    setZeile(n)
+    try { localStorage.setItem(ZEILE_SCHLUESSEL, String(n)) } catch { /* gesperrt */ }
+  }
   // Balken anklicken zeigt die Reservierung im Seitenfenster (A1); der Plan
   // bleibt dahinter sichtbar.
   const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
@@ -340,6 +359,14 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
             </button>
           ))}
         </div>
+        <label className="text-sm flex items-center gap-1.5 text-neutral-700"
+               title={t('plan.rowHeightHint')}>
+          {t('plan.rowHeight')}
+          <input type="range" min={ZEILE_MIN} max={ZEILE_MAX} step={2} value={zeile}
+                 onChange={e => zeileSetzen(Number(e.target.value))}
+                 onDoubleClick={() => zeileSetzen(ZEILE_STANDARD)}
+                 aria-label={t('plan.rowHeight')} className="w-24 accent-neutral-900" />
+        </label>
         <label className="text-sm flex items-center gap-1.5 text-neutral-700">
           <input type="checkbox" checked={gruppiert}
                  onChange={e => setGruppiert(e.target.checked)} />
@@ -410,7 +437,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 
       {q.isError && daten === undefined ? <Fehler error={q.error} />
         : daten === undefined ? <Laedt />
-        : <TapeChart data={daten} nachGruppe={gruppiert}
+        : <TapeChart data={daten} nachGruppe={gruppiert} zeile={zeile}
                       onSelect={setAusgewaehlt}
                       onCreate={sel => {
                         const u = daten.units.find(x => x.id === sel.resourceId)
@@ -476,9 +503,14 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onKontext={setKontext} />}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
-          Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden. */}
-      <p className="text-xs text-neutral-500">{t('plan.dragHint')}</p>
-      <p className="text-xs text-neutral-500">{t('plan.dragHintGroup')}</p>
+          Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden.
+          Eine Zeile, abgeschnitten, der ganze Text im Titel: der Plan reicht
+          bis zum Fensterrand, und zwei umbrechende Absaetze darunter nahmen
+          ihm vier Zeilen weg (Sven, 04.10.2026). */}
+      <p className="text-xs text-neutral-500 truncate"
+         title={`${t('plan.dragHint')}\n${t('plan.dragHintGroup')}`}>
+        {t('plan.dragHint')} {t('plan.dragHintGroup')}
+      </p>
 
       {ausgewaehlt !== null && (
         <ReservationPanel reservationRef={ausgewaehlt}

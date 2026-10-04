@@ -336,6 +336,14 @@ export const plan = {
     de: 'Ein Jahr vor',
     en: 'One year forward',
     tr: 'Bir yıl ileri' },
+  'plan.rowHeight': {
+    de: 'Zeilenhöhe',
+    en: 'Row height',
+    tr: 'Satır yüksekliği' },
+  'plan.rowHeightHint': {
+    de: 'Kleiner stellen, damit alle Zimmer auf den Bildschirm passen. Doppelklick: Standard.',
+    en: 'Make smaller to fit all rooms on screen. Double-click: default.',
+    tr: 'Tüm odaların ekrana sığması için küçültün. Çift tıklama: varsayılan.' },
   'plan.groupByCategory': {
     de: 'nach Zimmergruppe',
     en: 'by room category',

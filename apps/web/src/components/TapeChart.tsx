@@ -77,8 +77,25 @@ import { ReinigungsZeichen, ZahlungsZeichen, useZahlungsTitel, usePreisUndNotize
  * rechnet, und zwei Zahlen, die uebereinstimmen muessen, tun es
  * irgendwann nicht mehr.
  */
-const ZEILE = 38
+export const ZEILE_STANDARD = 38
 const LABEL_BREITE = 176
+/**
+ * Spanne des Reglers fuer die Zeilenhoehe.
+ *
+ * Nach unten so weit, dass ein Haus mit vierzig Zimmern auf einen
+ * Bildschirm passt -- dafuer ist der Regler da (Sven, 04.10.2026). Unter 18
+ * Pixeln ist die Zimmernummer nicht mehr lesbar, und ein Balken, den man
+ * nicht mehr greifen kann, laesst sich auch nicht verschieben. Nach oben
+ * nur wenig ueber den Standard: groesser hilft niemandem, der etwas sucht.
+ */
+export const ZEILE_MIN = 18
+export const ZEILE_MAX = 48
+
+/**
+ * Abstand des Balkens zum Zeilenrand. Bei einer engen Zeile kleiner, sonst
+ * bliebe vom Balken nur ein Strich.
+ */
+const randVon = (zeile: number): number => (zeile < 26 ? 2 : 4)
 
 /**
  * Die rechte Kante einer Tagesspalte.
@@ -106,6 +123,8 @@ const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
 const BAND_ZEILEN = 4
 /** Darunter scrollt wieder die Seite: ein Plan mit drei sichtbaren Zeilen ist keiner. */
 const RASTER_MIN_HOEHE = 320
+/** Unter dem Plan: die einzeilige Gestenhilfe und der Seitenrand. */
+const RAUM_DARUNTER = 48
 /** Ab dieser Bewegung ist es ein Ziehen und kein Klick mehr. */
 const KLICK_SCHWELLE = 5
 
@@ -189,6 +208,8 @@ export interface Umzug {
 
 interface Props {
   data: TapeChartData
+  /** Zeilenhoehe in Pixeln, vom Regler; begrenzt auf ZEILE_MIN bis ZEILE_MAX. */
+  zeile?: number
   /**
    * Sind die Zimmer nach Zimmergruppe sortiert?
    *
@@ -287,8 +308,10 @@ function nurLinks(e: React.PointerEvent): boolean {
 
 export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup, onMove,
                             onChangeStay, onShiftGroup, onUnassign,
-                            onKontext }: Props): JSX.Element {
+                            onKontext, zeile: zeileWunsch }: Props): JSX.Element {
   const t = useT()
+  const ZEILE = Math.min(ZEILE_MAX, Math.max(ZEILE_MIN, zeileWunsch ?? ZEILE_STANDARD))
+  const RAND = randVon(ZEILE)
   const locale = useLocale()
   const zahlungsTitel = useZahlungsTitel()
   const preisUndNotizenTitel = usePreisUndNotizen()
@@ -333,7 +356,9 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     if (el === null) return
     const messen = (): void => {
       const oben = el.getBoundingClientRect().top + window.scrollY
-      setRasterHoehe(Math.max(RASTER_MIN_HOEHE, Math.floor(window.innerHeight - oben - 16)))
+      // Darunter steht noch die Hinweiszeile: eine Zeile Text samt Abstand.
+      setRasterHoehe(Math.max(RASTER_MIN_HOEHE,
+                              Math.floor(window.innerHeight - oben - RAUM_DARUNTER)))
     }
     messen()
     // Der Koerper und nicht nur das Fenster: die Legende erscheint erst mit
@@ -1228,7 +1253,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                                  // Die lange Notiz nur hier, nie auf dem Balken.
                                  + preisUndNotizenTitel(r)
                                  + zahlungsTitel(r.payment)}
-                            style={{ ...b, top: i * ZEILE + 4, height: ZEILE - 8 }}
+                            style={{ ...b, top: i * ZEILE + RAND, height: ZEILE - 2 * RAND,
+                                     lineHeight: `${ZEILE - 2 * RAND}px` }}
                             /*
                              * Ein roter Ring, wenn die Anreise binnen zwei
                              * Tagen ist.
@@ -1245,7 +1271,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                              * bestaetigt), und den zu ueberschreiben
                              * tauschte eine Information gegen eine andere.
                              */
-                            className={`absolute rounded-sm px-1.5 text-xs leading-[30px]
+                            className={`absolute rounded-sm px-1.5 text-xs
                                         text-white truncate text-left cursor-move
                                         ${FARBE[r.status] ?? 'bg-neutral-400'}
                                         ${dringlich(r.arrival)
@@ -1307,7 +1333,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             : null
           const kasten = ghost?.kaesten.get(u.id)
           return (
-            <Zimmerzeile key={u.id} unit={u} tage={tage}
+            <Zimmerzeile key={u.id} unit={u} tage={tage} zeile={ZEILE}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
                          balken={balken} spalte={spalte} heute={heute}
                          gruppenAnfang={nachGruppe === true && i > 0
@@ -1399,6 +1425,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
 
 interface ZimmerzeileProps {
   unit: TapeChartData['units'][number]
+  /** Zeilenhoehe in Pixeln, vom Regler. */
+  zeile: number
   tage: readonly string[]
   reservations: ReservationRow[] | undefined
   blocks: TapeChartData['blocks'] | undefined
@@ -1443,6 +1471,10 @@ interface ZimmerzeileProps {
  */
 const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element {
   const t = useT()
+  const ZEILE = p.zeile
+  const RAND = randVon(ZEILE)
+  const balkenHoehe = { top: RAND, height: ZEILE - 2 * RAND,
+                        lineHeight: `${ZEILE - 2 * RAND}px` }
   const locale = useLocale()
   const zahlungsTitel = useZahlungsTitel()
   const preisUndNotizenTitel = usePreisUndNotizen()
@@ -1456,9 +1488,10 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
          style={{ height: ZEILE }}>
       <div style={{ width: LABEL_BREITE }}
            onContextMenu={e => p.onZimmerKontext(u.id, e)}
-           className="shrink-0 px-2 py-1 text-xs border-r border-neutral-200
-                      flex items-center gap-2">
-        <span className="text-sm font-medium tabular-nums">{u.code}</span>
+           className="shrink-0 px-2 text-xs border-r border-neutral-200
+                      flex items-center gap-2 overflow-hidden">
+        <span className={`${ZEILE < 26 ? 'text-xs' : 'text-sm'} font-medium tabular-nums`}
+        >{u.code}</span>
         {/* Direkt hinter der Nummer und nicht am Zeilenende: die Nummer
             ist, was das Auge sucht, und die Gruppe daneben wird bei
             schmaler Spalte abgeschnitten -- das Zeichen soll es nicht. */}
@@ -1487,10 +1520,10 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         ))}
         {(p.blocks ?? []).map((b, i) => (
           <div key={i}
-               style={{ ...p.balken(b.from_date, b.to_date), top: 4, height: ZEILE - 8 }}
+               style={{ ...p.balken(b.from_date, b.to_date), ...balkenHoehe }}
                title={b.reason}
                className="absolute rounded-sm bg-status-blocked/60 px-1.5 text-xs
-                          leading-[30px] text-white truncate
+                          text-white truncate
                           bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,.35)_4px,rgba(255,255,255,.35)_8px)]">
             {b.reason}
           </div>
@@ -1521,7 +1554,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                          + `${t(`status.${r.status}` as never)}`
                          + preisUndNotizenTitel(r)
                          + zahlungsTitel(r.payment)}
-                    style={{ ...b, top: 4, height: ZEILE - 8,
+                    style={{ ...b, ...balkenHoehe,
                              opacity: versteckt ? 0.35 : 1 }}
                     /*
                      * `cursor-move` ist hier keine Kosmetik. Das
@@ -1530,7 +1563,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * am Balken sagte, dass er anfassbar ist. Eine
                      * Funktion, die niemand findet, ist keine.
                      */
-                    className={`absolute rounded-sm px-1.5 text-xs leading-[30px] text-white
+                    className={`absolute rounded-sm px-1.5 text-xs text-white
                                 truncate text-left hover:ring-2 ring-black/30 cursor-move
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
@@ -1565,10 +1598,11 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           )
         })}
         {p.ghostHier && (
-          <div style={{ left: p.ghostLinks, width: p.ghostBreite, top: 4, height: ZEILE - 8 }}
+          <div style={{ left: p.ghostLinks, width: p.ghostBreite, ...balkenHoehe,
+                        lineHeight: `${ZEILE - 2 * RAND - 4}px` }}
                className="absolute rounded-sm border-2 border-dashed border-neutral-900
                           bg-neutral-900/10 pointer-events-none
-                          text-xs leading-[26px] px-1.5 truncate">
+                          text-xs px-1.5 truncate">
             {/* Wie viele Zimmer es werden, steht an der obersten Zeile
                 der Auswahl -- in jeder zu wiederholen waere Laerm. */}
             {p.ghostZaehler !== null && `${p.ghostZaehler} ${t('group.rooms')}`}
