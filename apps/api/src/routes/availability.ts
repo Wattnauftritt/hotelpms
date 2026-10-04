@@ -335,6 +335,10 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   rp.code AS rate_code,
                   (SELECT count(*) FROM reservation_occupant o
                     WHERE o.reservation_id = r.id) AS occupants,
+                  -- Die gebuchte Personenzahl fuer "2 P." am Balken. Nicht
+                  -- occupants: eine Kanalbuchung traegt einen Belegten,
+                  -- den Bucher, auch wenn zwei anreisen.
+                  r.guest_count, r.adults, r.children,
                   -- Die Personenzahl allein taugt als Mass nicht: eine
                   -- Buchung aus dem Channel traegt genau einen Belegten,
                   -- den Bucher, auch wenn zwei anreisen. Was feststeht, ist

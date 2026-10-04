@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import type { HousekeepingState, PlanPayment, PlanPaymentState } from '@hotelpms/contracts'
 import { REINIGUNG, REINIGUNG_TEXT, ZAHLUNG, ZAHLUNG_TEXT, zahlungsTitel, preisUndNotizen,
-         type BalkenAngaben } from '../lib/planStatus.js'
+         personenzahl, type BalkenAngaben } from '../lib/planStatus.js'
 import { useT, useLocale, formatMoney } from '../lib/i18n/index.js'
 
 /**
@@ -143,5 +143,31 @@ export function ZahlungsStand({ zahlung }: { zahlung: PlanPayment | null | undef
         {zeilen.slice(1).map(z => <li key={z}>{z}</li>)}
       </ul>
     </section>
+  )
+}
+
+/**
+ * Die Personenzahl am Balken, "2 P.".
+ *
+ * Vor dem Namen und nicht dahinter: `truncate` schneidet am kurzen Balken
+ * hinten ab, und die Zahl soll stehen bleiben, auch wenn vom Namen nur
+ * drei Buchstaben uebrig sind (Sven, 04.10.2026). Fett, damit das Auge sie
+ * beim Ueberfliegen einer Spalte vom Namen trennt.
+ */
+export function PersonenZeichen({ r }: {
+  r: { guest_count: number | null; occupants: number
+       adults: number | null; children: number | null }
+}): JSX.Element | null {
+  const t = useT()
+  const n = personenzahl(r)
+  if (n === null) return null
+  const titel = r.adults !== null && r.children !== null && r.children > 0
+    ? t('ps.personsSplit', { n, a: r.adults, k: r.children })
+    : t('ps.personsTitle', { n })
+  return (
+    <span title={titel} aria-label={titel}
+          className="mr-1 font-semibold tabular-nums">
+      {t('ps.persons', { n })}
+    </span>
   )
 }

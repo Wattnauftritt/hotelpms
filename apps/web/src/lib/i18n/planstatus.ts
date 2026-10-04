@@ -107,6 +107,18 @@ export const planstatus = {
    * der Naechte, ohne Extras: was der Gast insgesamt schuldet, sagt der
    * Zahlungsstand darunter, und der braucht das Folio-Recht.
    */
+  'ps.persons': {
+    de: '{n} P.',
+    en: '{n} p.',
+    tr: '{n} k.' },
+  'ps.personsTitle': {
+    de: '{n} Personen',
+    en: '{n} guests',
+    tr: '{n} kişi' },
+  'ps.personsSplit': {
+    de: '{n} Personen ({a} Erw., {k} Ki.)',
+    en: '{n} guests ({a} adults, {k} children)',
+    tr: '{n} kişi ({a} yetişkin, {k} çocuk)' },
   'ps.price.night': {
     de: 'Preis pro Nacht: {price}',
     en: 'Price per night: {price}',

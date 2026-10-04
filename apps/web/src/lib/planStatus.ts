@@ -114,6 +114,20 @@ export function zahlungsTitel(p: PlanPayment, t: Uebersetzer,
   return zeilen.join('\n')
 }
 
+/**
+ * Wie viele Personen eine Buchung hat, fuer "2 P." am Balken.
+ *
+ * Die gebuchte Zahl zuerst. Fehlt sie (eine Buchung von Hand ohne Angabe,
+ * ein Altbestand), die erfassten Mitreisenden -- aber nur, wenn es welche
+ * gibt: eine Null waere eine Aussage ("niemand"), und eine falsche.
+ */
+export function personenzahl(
+  r: { guest_count: number | null; occupants: number }
+): number | null {
+  if (r.guest_count !== null) return r.guest_count
+  return r.occupants > 0 ? r.occupants : null
+}
+
 /** Was der Titel eines Balkens ueber Preis und Notizen braucht. */
 export interface BalkenAngaben {
   /** Fehlen ohne Folio-Recht; dann steht kein Preis im Titel. */
