@@ -10,6 +10,7 @@ import { AmTerminal } from './AmTerminal.tsx'
 import { Anzahlung } from './Anzahlung.tsx'
 import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
+import { useSprung } from '../lib/suche.js'
 
 const NOTES_MAX_LENGTH = 2000
 /** Storno ist aus diesen Zustaenden erlaubt (reservationState.ts). */
@@ -102,6 +103,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
+  const { springen } = useSprung()
   const [verlauf, setVerlauf] = useState(false)
 
   return (
@@ -115,12 +117,11 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
             {t('plan.block')}: {r.blockName}
           </span>
         )}
-        {/* Die Buchung, zu der dieser Aufenthalt gehoert. Liegen mehrere
-            Zimmer darin, fuehrt der Weg von hier in die Gruppenmaske --
-            und liegt nur eines darin, zeigt sie genau dieses eine, was
-            keinen Schaden anrichtet und den Knopf nicht erklaerungs-
-            beduerftig macht. */}
-        {onOpenGroup !== undefined && (
+        {/* Der Weg in die Gruppenmaske, nur wenn an der Buchung mehr als
+            ein Zimmer haengt. Stand er an jeder Reservierung, las sich
+            jede Einzelbuchung als "Gruppenbuchung" -- nach dem
+            KWHotel-Import hielt man das fuer einen Importfehler. */}
+        {onOpenGroup !== undefined && r.bookingRooms > 1 && (
           <button onClick={() => onOpenGroup(r.bookingRef)}
                   className="text-xs text-neutral-600 underline decoration-dotted">
             {t('group.panelTitle')}: {r.bookingRef}
@@ -165,7 +166,21 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
 
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded-sm p-3">
         <Feld label={t('plan.guest')}>
-          {r.guestName ?? <span className="text-neutral-400">{t('plan.noGuest')}</span>}
+          {/* Der Name fuehrt ins Gastprofil. Mail und Telefon stehen
+              darunter, weil die Rezeption sie am Telefon braucht und das
+              Profil dafuer nicht oeffnen will. */}
+          {r.guestRef !== null
+            ? <button onClick={() => springen({ art: 'gast', ref: r.guestRef! })}
+                      className="text-left underline decoration-dotted">
+                {r.guestName ?? t('plan.openGuest')}
+              </button>
+            : <span className="text-neutral-400">{t('plan.noGuest')}</span>}
+          {r.guestEmail !== null && (
+            <div className="text-xs text-neutral-500 break-all">{r.guestEmail}</div>
+          )}
+          {r.guestPhone !== null && (
+            <div className="text-xs text-neutral-500">{r.guestPhone}</div>
+          )}
           {r.companyName !== null && (
             <div className="text-xs text-neutral-500">{r.companyName}</div>
           )}

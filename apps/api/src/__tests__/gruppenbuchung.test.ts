@@ -104,6 +104,11 @@ describe('Mehrere Zimmer in einer Buchung', () => {
       `SELECT count(DISTINCT booking_id)::int AS n FROM reservation WHERE property_id = $1`,
       [fx.propertyId])
     expect(gemeinsam.rows[0]!.n).toBe(1)
+
+    // Das Seitenfenster erfaehrt, dass es eine Gruppe ist.
+    const d = await app.inject({ method: 'GET', headers: auth,
+      url: `/v1/reservations/${body.reservationRef}` })
+    expect(JSON.parse(d.body).bookingRooms).toBe(3)
   })
 
   it('bindet so viel Bestand, wie Zimmer gebucht wurden', async () => {
@@ -257,6 +262,11 @@ describe('Einzelbuchung bleibt, wie sie war', () => {
     expect(body.reservations).toHaveLength(1)
     expect(body.reservations[0]!.reservationRef).toBe(body.reservationRef)
     expect(body.reservations[0]!.resourceId).toBe(dzZimmer[0])
+
+    // Und das Seitenfenster zeigt keinen Weg in die Gruppenmaske.
+    const d = await app.inject({ method: 'GET', headers: auth,
+      url: `/v1/reservations/${body.reservationRef}` })
+    expect(JSON.parse(d.body).bookingRooms).toBe(1)
   })
 
   it('bucht weiterhin ohne Zimmer, nur gegen die Zimmergruppe', async () => {

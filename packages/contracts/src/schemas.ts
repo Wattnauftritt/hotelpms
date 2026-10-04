@@ -800,6 +800,8 @@ export type OnlineCheckinStatus = Static<typeof OnlineCheckinStatus>
 export const ReservationDetail = Type.Object({
   reservationRef: Type.String(),
   bookingRef: Type.String(),
+  /** Aufenthalte an derselben Buchung; ab zwei ist es eine Gruppe. */
+  bookingRooms: Type.Integer(),
   status: ReservationStatus,
   arrival: Type.String(),
   departure: Type.String(),
@@ -815,6 +817,7 @@ export const ReservationDetail = Type.Object({
   guestRef: Type.Union([Type.String(), Type.Null()]),
   guestName: Type.Union([Type.String(), Type.Null()]),
   guestEmail: Type.Union([Type.String(), Type.Null()]),
+  guestPhone: Type.Union([Type.String(), Type.Null()]),
   guestLanguage: Type.Union([Type.String(), Type.Null()]),
   companyRef: Type.Union([Type.String(), Type.Null()]),
   companyName: Type.Union([Type.String(), Type.Null()]),

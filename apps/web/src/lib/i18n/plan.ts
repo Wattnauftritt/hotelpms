@@ -14,6 +14,10 @@ export const plan = {
     de: 'Gast',
     en: 'Guest',
     tr: 'Misafir' },
+  'plan.openGuest': {
+    de: 'Gastprofil öffnen',
+    en: 'Open guest profile',
+    tr: 'Misafir profilini aç' },
   'plan.noGuest': {
     de: 'Kein Gast hinterlegt',
     en: 'No guest on file',
