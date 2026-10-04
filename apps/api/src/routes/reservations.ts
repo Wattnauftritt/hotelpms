@@ -6,6 +6,7 @@ import { Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { loadBlock } from './blocks.js'
+import { geschaeftstag } from './depositRequests.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen, addDays,
          type ReservationStatus, type ReservationAction,
@@ -1553,6 +1554,29 @@ export function reservationRoutes(app: FastifyInstance): void {
         catch (e) {
           if (e instanceof InvalidTransitionError) throw Errors.conflict(e.message)
           throw e
+        }
+
+        /*
+         * **Wer vorzeitig abreist, dessen Aufenthalt endet heute.**
+         *
+         * Ohne das stand der abgereiste Gast im Plan bis zur gebuchten
+         * Abreise im Zimmer, obwohl der Bestand frei war, und die Naechte,
+         * die er nie geschlafen hat, standen in seinem Aufenthalt. Danach
+         * laesst sich nichts mehr verkuerzen: ein abgereister Aufenthalt
+         * bindet keinen Bestand, und `aufenthaltVerlegen` weist ihn ab.
+         *
+         * Gemessen am Geschaeftstag, nicht an der Uhr: wer nach Mitternacht
+         * vor dem Tagesabschluss auscheckt, reist am alten Tag ab. Gebuchte
+         * Naechte bleiben, an ihnen haengen Belege. Am Anreisetag selbst
+         * bleibt die eine Nacht stehen; ein Aufenthalt ohne Nacht ist keiner.
+         */
+        if (act === 'check_out' && r.status === 'InHouse') {
+          const heute = await geschaeftstag(client, r.property_id)
+          const ende = heute > r.arrival ? heute : addDays(r.arrival, 1)
+          if (ende < r.departure) {
+            await aufenthaltVerlegen(client, reservationRef, { departure: ende })
+            r.departure = ende
+          }
         }
 
         if (act === 'check_in' && r.resource_id === null) {
