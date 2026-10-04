@@ -166,6 +166,21 @@ describe('Meldeschein uebernehmen', () => {
     expect(a.json()).toMatchObject({ signatureStored: false, signaturePending: true })
   })
 
+  it('nimmt einen Schein ohne brauchbare Staatsangehoerigkeit und ohne Anschrift an', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET nationality = 'DK' WHERE id = $1`, [r.gastId])
+    const a = await senden(m, r.ref, schein({ nationality: null, address: null }, {
+      companions: [{ lastName: 'Petersen', firstName: 'Ole', birthDate: '2015-03-02',
+                     nationality: null }] }))
+    expect(a.statusCode, a.body).toBe(201)
+    // Was im Profil stand, bleibt; ein unbrauchbarer Wert ueberschreibt nichts.
+    const g = await owner.query(`SELECT nationality FROM guest WHERE id = $1`, [r.gastId])
+    expect(g.rows[0]!.nationality).toBe('DK')
+    const b = await senden(m, (await reservierung()).ref, schein({ nationality: 'XX' }))
+    expect(b.statusCode, b.body).toBe(422)
+  })
+
   it('ueberschreibt nie einen vorhandenen Schein', async () => {
     const m = await maschine(['registration:import'])
     const r = await reservierung()

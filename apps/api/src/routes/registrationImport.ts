@@ -47,7 +47,14 @@ const REFERENCE_MAX = 100
 /** Die Seitenlaengen, die `istUnterschriftSvg` zulaesst. */
 const KANTE_MAX = 9999
 
-interface Person { lastName: string; firstName: string; birthDate: string; nationality: string }
+/**
+ * `nationality` darf `null` sein: das Formular im Adminpanel nahm Freitext,
+ * und "XX" oder "deutsch" ist keine Angabe, die StayGrid uebernehmen kann.
+ * Dann bleibt im Profil, was dort steht. Den ganzen Schein abzuweisen hiesse,
+ * dass der Gast an der Rezeption ein zweites Mal ausfuellt -- fuer ein Feld.
+ */
+interface Person { lastName: string; firstName: string; birthDate: string
+                   nationality: string | null }
 
 interface Eingabe {
   source: { system: string; reference: string | null }
@@ -119,11 +126,12 @@ function pruefe(body: unknown): Eingabe {
       birthDate: typeof v.birthDate === 'string' ? v.birthDate : null,
       nationality: typeof v.nationality === 'string' ? v.nationality.toUpperCase() : null
     }
+    const ohneLand = v.nationality === null || v.nationality === undefined
     if (p.lastName === null) fehlt(`${pfad}.lastName`)
     if (p.firstName === null) fehlt(`${pfad}.firstName`)
     if (p.birthDate === null || !isIsoDate(p.birthDate)) fehlt(`${pfad}.birthDate`, 'field.isoDate')
-    if (!istLand(p.nationality)) fehlt(`${pfad}.nationality`, 'field.country')
-    return p.lastName && p.firstName && p.birthDate && p.nationality ? p as Person : null
+    if (!ohneLand && !istLand(p.nationality)) fehlt(`${pfad}.nationality`, 'field.country')
+    return p.lastName && p.firstName && p.birthDate ? p as Person : null
   }
 
   let source: Eingabe['source'] | null = null
@@ -274,7 +282,7 @@ export function registrationImportRoutes(app: FastifyInstance): void {
 
         await gastAendern(client, res.primary_guest_id, {
           lastName: e.guest.lastName, firstName: e.guest.firstName,
-          birthDate: e.guest.birthDate, nationality: e.guest.nationality,
+          birthDate: e.guest.birthDate, nationality: e.guest.nationality ?? undefined,
           ...(e.guest.address === null ? {} : {
             addressLine1: e.guest.address.line1, postalCode: e.guest.address.postalCode,
             city: e.guest.address.city, country: e.guest.address.country ?? undefined })
@@ -285,7 +293,8 @@ export function registrationImportRoutes(app: FastifyInstance): void {
         for (const c of e.companions) {
           const neu = await gastAnlegen(client, Number(res.account_id), {
             lastName: c.lastName, firstName: c.firstName,
-            birthDate: c.birthDate, nationality: c.nationality, language: res.language })
+            birthDate: c.birthDate, nationality: c.nationality ?? undefined,
+            language: res.language })
           mitreisende.push(neu.id)
         }
 
