@@ -191,6 +191,6 @@ describe('Ein allgemeiner Anzeige-Client, kein Scheunentor', () => {
 
   it('zeigt das Bedienfeld nur mit dem Recht zum Einchecken', () => {
     expect(code('../screens.tsx')).toMatch(
-      /key: 'terminal', nav: 'nav\.terminal', permission: 'reservation:checkin'/)
+      /key: 'terminal', group: 'settings', nav: 'nav\.terminal', permission: 'reservation:checkin'/)
   })
 })

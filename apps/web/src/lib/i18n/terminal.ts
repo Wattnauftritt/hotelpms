@@ -371,9 +371,9 @@ export const terminal = {
 
   // ------------------------------------------- Bedienfeld der Rezeption
   'nav.terminal': {
-    de: 'Terminal',
-    en: 'Terminal',
-    tr: 'Terminal' },
+    de: 'Gästeterminals',
+    en: 'Guest terminals',
+    tr: 'Misafir terminalleri' },
   'pult.title': {
     de: 'Gästeterminals',
     en: 'Guest terminals',

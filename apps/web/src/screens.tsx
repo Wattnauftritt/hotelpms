@@ -100,6 +100,17 @@ export interface ScreenDefinition {
    * entweder fuer jeden sichtbar oder fuer niemanden.
    */
   platformStaff?: boolean
+  /**
+   * Steht nicht vorn in der Leiste, sondern im Menue „Einstellungen".
+   *
+   * Einrichtung, Wartung, Einstellungen, Datenuebernahme und die
+   * Gaesteterminals braucht man selten, und vorn nahmen sie fuenf Plaetze
+   * neben dem Tagesgeschaeft weg (Sven, 04.10.2026). Das Menue aendert
+   * weder Schluessel noch Rechte: die Liste hier bleibt flach, damit
+   * Lesezeichen und `resolveScreen` gleich bleiben; nur die Leiste fasst
+   * zusammen.
+   */
+  group?: 'settings'
   render: (ctx: ScreenContext) => JSX.Element
 }
 
@@ -113,15 +124,15 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Housekeeping propertyId={c.propertyId} /> },
   { key: 'blocks', nav: 'nav.blocks', permission: 'inventory:read',
     render: c => <Blocks propertyId={c.propertyId} /> },
-  { key: 'setup', nav: 'nav.setup', permission: 'settings:property',
+  { key: 'setup', group: 'settings', nav: 'nav.setup', permission: 'settings:property',
     render: c => <Setup propertyId={c.propertyId} /> },
   { key: 'reports', nav: 'nav.reports',
     permission: ['report:operational', 'report:revenue', 'report:export'],
     render: c => <Reports propertyId={c.propertyId} /> },
-  { key: 'maintenance', nav: 'nav.maintenance',
+  { key: 'maintenance', group: 'settings', nav: 'nav.maintenance',
     permission: ['housekeeping:read', 'maintenance:write'],
     render: c => <Maintenance propertyId={c.propertyId} /> },
-  { key: 'settings', nav: 'nav.settings',
+  { key: 'settings', group: 'settings', nav: 'nav.settingsGeneral',
     permission: ['integration:manage', 'settings:property'],
     render: c => <Settings propertyId={c.propertyId} /> },
   { key: 'integrations', nav: 'nav.integrations',
@@ -137,7 +148,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Invoices propertyId={c.propertyId} onFolio={c.openFolio}
                            permissions={c.permissions} /> },
   // Gaesteterminals: Seiten und Adressen ohne Reservierung zeigen (Dokument 31).
-  { key: 'terminal', nav: 'nav.terminal', permission: 'reservation:checkin',
+  { key: 'terminal', group: 'settings', nav: 'nav.terminal', permission: 'reservation:checkin',
     render: c => <TerminalPult propertyId={c.propertyId} /> },
   /*
    * Das Adminpanel steht am Ende und nicht am Anfang: es ist der einzige
@@ -148,7 +159,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Adminpanel userId={c.userId}
                              platformPermissions={c.platformPermissions} /> },
   // Uebernahme aus Altsystemen, zuerst KWHotel. Einrichtung, kein Tagesgeschaeft.
-  { key: 'import', nav: 'nav.import', permission: 'settings:property',
+  { key: 'import', group: 'settings', nav: 'nav.import', permission: 'settings:property',
     render: c => <Datenuebernahme propertyId={c.propertyId} /> }
 ]
 
