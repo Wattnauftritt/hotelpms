@@ -1,5 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
-import { I18nContext, useT, useLocale, LOCALES, type Locale }
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { I18nContext, useT, useLocale, LOCALES, type Locale, type TextKey }
   from '../lib/i18n/index.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
@@ -61,6 +61,109 @@ function navKnopf(aktiv: boolean): string {
 }
 
 /**
+ * Ein Platz in der Leiste: ein Bildschirm oder ein Menue aus mehreren.
+ *
+ * Die Leiste rechnet mit Plaetzen, nicht mit Bildschirmen. Sonst nahmen
+ * Einrichtung, Wartung, Einstellungen, Datenuebernahme und Gaesteterminals
+ * fuenf Plaetze vorn ein, die man an der Rezeption fast nie braucht.
+ */
+export interface NavEintrag {
+  key: string
+  nav: TextKey
+  screens: readonly ScreenDefinition[]
+  gruppe: boolean
+}
+
+const GRUPPEN: Record<NonNullable<ScreenDefinition['group']>, TextKey> = {
+  settings: 'nav.settings'
+}
+
+/**
+ * Fasst die erlaubten Bildschirme zu Plaetzen zusammen.
+ *
+ * Die Bildschirme behalten ihre Reihenfolge aus `SCREENS`, das Adminpanel
+ * bleibt hinten, weil es nicht zum Haus gehoert; die Menues stehen am
+ * Schluss. Eine Gruppe ohne erlaubten Bildschirm erscheint nicht -- ein
+ * leeres Menue ist ein Knopf ohne Wirkung.
+ */
+export function navEintraege(screens: readonly ScreenDefinition[]): NavEintrag[] {
+  const einzeln = (s: ScreenDefinition): NavEintrag =>
+    ({ key: s.key, nav: s.nav, screens: [s], gruppe: false })
+  const haus = screens.filter(s => s.group === undefined && s.platformStaff !== true)
+  const plattform = screens.filter(s => s.group === undefined && s.platformStaff === true)
+  const gruppen = Object.entries(GRUPPEN).flatMap(([key, nav]) => {
+    const darin = screens.filter(s => s.group === key)
+    return darin.length === 0 ? [] : [{ key: `gruppe:${key}`, nav, screens: darin, gruppe: true }]
+  })
+  return [...haus.map(einzeln), ...plattform.map(einzeln), ...gruppen]
+}
+
+/**
+ * Ein aufklappendes Menue der Leiste, fuer "Mehr" und fuer jede Gruppe.
+ *
+ * Zu wie die Hauswahl: Druck daneben in der Fangphase, Esc ueber die
+ * gemeinsame Lage. Jedes Menue fuehrt sein eigenes `offen`; zwei zugleich
+ * gibt es nicht, weil der Druck auf das zweite das erste schliesst.
+ */
+function Aufklapp(
+  { beschriftung, titel, aktiv, children }:
+  { beschriftung: string; titel: string; aktiv: boolean
+    children: (zu: () => void) => ReactNode }
+): JSX.Element {
+  const menue = useRef<HTMLDivElement>(null)
+  const [offen, setOffen] = useState(false)
+
+  useEffect(() => {
+    if (!offen) return
+    const zu = (e: Event): void => {
+      if (e.target instanceof Node && menue.current?.contains(e.target)) return
+      setOffen(false)
+    }
+    window.addEventListener('pointerdown', zu, true)
+    return () => { window.removeEventListener('pointerdown', zu, true) }
+  }, [offen])
+  useEscape(() => setOffen(false), offen)
+
+  return (
+    <div ref={menue} className="relative shrink-0">
+      <button type="button" onClick={() => setOffen(o => !o)}
+              title={titel} aria-haspopup="menu" aria-expanded={offen}
+              aria-current={aktiv ? 'page' : undefined}
+              className={navKnopf(aktiv)}>
+        {beschriftung}
+        {' '}<span aria-hidden className="text-xs">▾</span>
+      </button>
+      {offen && (
+        <div role="menu"
+             className="absolute left-0 z-40 mt-1 w-56 rounded-sm border border-neutral-200
+                        bg-white py-1 shadow-xl">
+          {children(() => setOffen(false))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Ein Bildschirm als Zeile in einem Menue. */
+function MenueZeile(
+  { s, screen, onWahl }:
+  { s: ScreenDefinition; screen: string; onWahl: (key: string) => void }
+): JSX.Element {
+  const t = useT()
+  return (
+    <button type="button" role="menuitem" onClick={() => onWahl(s.key)}
+            aria-current={screen === s.key ? 'page' : undefined}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm
+                        hover:bg-neutral-100
+                        ${screen === s.key ? 'bg-neutral-50 font-medium' : ''}`}>
+      {/* Der Haken in fester Spalte, wie in der Hauswahl. */}
+      <span aria-hidden className="w-3">{screen === s.key ? '✓' : ''}</span>
+      <span className="grow truncate">{t(s.nav)}</span>
+    </button>
+  )
+}
+
+/**
  * Die Bildschirmleiste: vorne, was passt, dahinter "Mehr".
  *
  * **Warum sie einklappt.** Die Leiste stand als eine Zeile ohne Umbruch,
@@ -71,9 +174,14 @@ function navKnopf(aktiv: boolean): string {
  * niemand, der ihn hinzufuegt.
  *
  * **Weggelassen wird nichts**, nur verschoben, und die Reihenfolge bleibt:
- * was vorne steht, steht in `SCREENS` vorne. Den aktiven Bildschirm nach
+ * was vorne steht, steht in `navEintraege` vorne. Den aktiven Platz nach
  * vorn zu holen waere bequemer zu rechnen und liesse die Leiste bei jedem
  * Wechsel umspringen.
+ *
+ * **Die Menues klappen nicht ein.** "Einstellungen" steht immer sichtbar
+ * am rechten Ende der Leiste, ausserhalb der Rechnung. Rechnete es mit,
+ * laege es schon bei 1 920 Pixeln im "Mehr" -- ein Menue in einem Menue,
+ * und gerade das, was man selten braucht und dann suchen muss.
  *
  * **Umbrechen statt Einklappen** waere ohne Messung gegangen, hob aber die
  * Kopfleiste auf zwei Zeilen, und sie steht klebend ueber jedem Bildschirm
@@ -91,11 +199,12 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
   const t = useT()
   const rahmen = useRef<HTMLDivElement>(null)
   const muster = useRef<HTMLDivElement>(null)
-  const menue = useRef<HTMLDivElement>(null)
-  const [sichtbar, setSichtbar] = useState(screens.length)
-  const [offen, setOffen] = useState(false)
+  const alle = useMemo(() => navEintraege(screens), [screens])
+  const eintraege = useMemo(() => alle.filter(e => !e.gruppe), [alle])
+  const gruppen = alle.filter(e => e.gruppe)
+  const [sichtbar, setSichtbar] = useState(eintraege.length)
 
-  const aktiv = screens.findIndex(s => s.key === screen)
+  const aktiv = eintraege.findIndex(e => e.screens.some(s => s.key === screen))
 
   useLayoutEffect(() => {
     const r = rahmen.current
@@ -116,96 +225,71 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
     beobachter.observe(r)
     beobachter.observe(m)
     return () => { beobachter.disconnect() }
-  }, [aktiv, screens])
+  }, [aktiv, eintraege])
 
-  // Zu wie die Hauswahl: Druck daneben in der Fangphase, Esc ueber die
-  // gemeinsame Lage.
-  useEffect(() => {
-    if (!offen) return
-    const zu = (e: Event): void => {
-      if (e.target instanceof Node && menue.current?.contains(e.target)) return
-      setOffen(false)
-    }
-    window.addEventListener('pointerdown', zu, true)
-    return () => { window.removeEventListener('pointerdown', zu, true) }
-  }, [offen])
-  useEscape(() => setOffen(false), offen)
-
-  const vorne = screens.slice(0, sichtbar)
-  const hinten = screens.slice(sichtbar)
-  // Liegt der aktive Bildschirm im Menue, traegt der Knopf seinen Namen:
+  const vorne = eintraege.slice(0, sichtbar)
+  const hinten = eintraege.slice(sichtbar)
+  // Liegt der aktive Platz im Menue, traegt der Knopf seinen Namen:
   // sonst stuende nirgends, wo man gerade ist.
-  const aktivHinten = aktiv >= sichtbar ? screens[aktiv] : undefined
+  const aktivHinten = aktiv >= sichtbar ? eintraege[aktiv] : undefined
 
-  // Ein offenes Menue, das beim Breiterziehen leer wird, schliesst sich.
-  useEffect(() => { if (hinten.length === 0) setOffen(false) }, [hinten.length])
-
-  const waehlen = (key: string): void => {
-    setOffen(false)
+  const waehlen = (zu: () => void) => (key: string): void => {
+    zu()
     onScreen(key)
   }
 
   return (
-    <div ref={rahmen} className="relative min-w-0 grow">
-      {/*
-        * Die Abschrift ist breiter als der Bildschirm. Ihr eigener
-        * abschneidender Kasten haelt sie aus der Seitenbreite heraus --
-        * sonst bekaeme die ganze Seite einen waagrechten Rollbalken.
-        */}
-      <div aria-hidden className="invisible pointer-events-none absolute inset-0 overflow-hidden">
-        <div ref={muster} className="flex w-max gap-1">
-          {screens.map(s => (
-            <span key={s.key} data-eintrag className={navKnopf(false)}>{t(s.nav)}</span>
-          ))}
-          {screens.map(s => (
-            <span key={s.key} data-mehr className={navKnopf(false)}>
-              {t(s.nav)} <span className="text-xs">▾</span>
+    <div className="flex min-w-0 grow items-center gap-1">
+      <div ref={rahmen} className="relative min-w-0 grow">
+        {/*
+          * Die Abschrift ist breiter als der Bildschirm. Ihr eigener
+          * abschneidender Kasten haelt sie aus der Seitenbreite heraus --
+          * sonst bekaeme die ganze Seite einen waagrechten Rollbalken.
+          */}
+        <div aria-hidden className="invisible pointer-events-none absolute inset-0 overflow-hidden">
+          <div ref={muster} className="flex w-max gap-1">
+            {eintraege.map(e => (
+              <span key={e.key} data-eintrag className={navKnopf(false)}>
+                {t(e.nav)}
+              </span>
+            ))}
+            {eintraege.map(e => (
+              <span key={e.key} data-mehr className={navKnopf(false)}>
+                {t(e.nav)} <span className="text-xs">▾</span>
+              </span>
+            ))}
+            <span data-mehr-leer className={navKnopf(false)}>
+              {t('nav.more')} <span className="text-xs">▾</span>
             </span>
-          ))}
-          <span data-mehr-leer className={navKnopf(false)}>
-            {t('nav.more')} <span className="text-xs">▾</span>
-          </span>
-        </div>
-      </div>
-
-      <nav className="flex gap-1">
-        {vorne.map(s => (
-          <button key={s.key} type="button" onClick={() => onScreen(s.key)}
-                  aria-current={screen === s.key ? 'page' : undefined}
-                  className={navKnopf(screen === s.key)}>
-            {t(s.nav)}
-          </button>
-        ))}
-        {hinten.length > 0 && (
-          <div ref={menue} className="relative shrink-0">
-            <button type="button" onClick={() => setOffen(o => !o)}
-                    title={t('nav.more')} aria-haspopup="menu" aria-expanded={offen}
-                    aria-current={aktivHinten !== undefined ? 'page' : undefined}
-                    className={navKnopf(aktivHinten !== undefined)}>
-              {aktivHinten !== undefined ? t(aktivHinten.nav) : t('nav.more')}
-              {' '}<span aria-hidden className="text-xs">▾</span>
-            </button>
-            {offen && (
-              <div role="menu"
-                   className="absolute left-0 z-40 mt-1 w-56 rounded-sm border border-neutral-200
-                              bg-white py-1 shadow-xl">
-                {hinten.map(s => (
-                  <button key={s.key} type="button" role="menuitem"
-                          onClick={() => waehlen(s.key)}
-                          aria-current={screen === s.key ? 'page' : undefined}
-                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left
-                                      text-sm hover:bg-neutral-100
-                                      ${screen === s.key ? 'bg-neutral-50 font-medium' : ''}`}>
-                    {/* Der Haken in fester Spalte, wie in der Hauswahl. */}
-                    <span aria-hidden className="w-3">{screen === s.key ? '✓' : ''}</span>
-                    <span className="grow truncate">{t(s.nav)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-        )}
-      </nav>
+        </div>
+
+        <nav className="flex gap-1">
+          {vorne.map(e => (
+            <button key={e.key} type="button" onClick={() => onScreen(e.key)}
+                    aria-current={screen === e.key ? 'page' : undefined}
+                    className={navKnopf(screen === e.key)}>
+              {t(e.nav)}
+            </button>
+          ))}
+          {hinten.length > 0 && (
+            <Aufklapp beschriftung={aktivHinten !== undefined ? t(aktivHinten.nav) : t('nav.more')}
+                      titel={t('nav.more')} aktiv={aktivHinten !== undefined}>
+              {zu => hinten.map(e => (
+                <MenueZeile key={e.key} s={e.screens[0]!} screen={screen} onWahl={waehlen(zu)} />
+              ))}
+            </Aufklapp>
+          )}
+        </nav>
+      </div>
+      {gruppen.map(g => (
+        <Aufklapp key={g.key} beschriftung={t(g.nav)} titel={t(g.nav)}
+                  aktiv={g.screens.some(s => s.key === screen)}>
+          {zu => g.screens.map(s => (
+            <MenueZeile key={s.key} s={s} screen={screen} onWahl={waehlen(zu)} />
+          ))}
+        </Aufklapp>
+      ))}
     </div>
   )
 }

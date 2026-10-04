@@ -10,6 +10,12 @@ export const einstellungen = {
     de: 'Einstellungen',
     en: 'Settings',
     tr: 'Ayarlar' },
+  // Der Bildschirm im Menue „Einstellungen": dort hiesse er sonst so wie
+  // das Menue selbst.
+  'nav.settingsGeneral': {
+    de: 'Allgemein',
+    en: 'General',
+    tr: 'Genel' },
 
   'maint.title': {
     de: 'Wartungsmeldungen',
