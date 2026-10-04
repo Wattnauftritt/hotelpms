@@ -160,4 +160,25 @@ describe('Zimmerplan', () => {
     expect(r.night_price_max_cent).toBe(11_900)
     expect(r.guest_notes).toEqual(['ebenerdig', 'Allergie: Nuesse'])
   })
+
+  it('sortiert die Zimmer je Gruppe nach Nummer wie ein Mensch, nicht als Text', async () => {
+    // Zwei Gruppen mit derselben Reihenfolgezahl: sie duerfen sich nicht
+    // mischen. Und "10" gehoert hinter "2", nicht davor.
+    const zweite = await makeCategory(owner, fx.propertyId, { code: 'EZ', name: 'Einzel' })
+    await owner.query(`UPDATE resource_category SET sort_order = 0 WHERE property_id = $1`,
+      [fx.propertyId])
+    await owner.query(`DELETE FROM resource WHERE property_id = $1`, [fx.propertyId])
+    for (const [code, cat] of [['10', catId], ['2', zweite], ['601', catId], ['9', catId],
+                               ['1', zweite], ['12a', catId], ['12', catId]] as const) {
+      await owner.query(
+        `INSERT INTO resource (property_id, category_id, code) VALUES ($1,$2,$3)`,
+        [fx.propertyId, cat, code])
+    }
+    const r = await app.inject({
+      method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/tape-chart?from=2026-10-01&to=2026-10-08`,
+      headers: auth(admin.sessionId) })
+    const units = (JSON.parse(r.body) as { units: Array<{ code: string }> }).units
+    expect(units.map(u => u.code)).toEqual(['9', '10', '12', '12a', '601', '1', '2'])
+  })
 })
