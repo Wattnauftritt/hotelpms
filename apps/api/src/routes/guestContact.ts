@@ -26,15 +26,19 @@ import { can, type Principal } from '../platform/context.js'
  * Zuordnung stuende sonst die Adresse eines Fremden im Formular.
  *
  * **Wann gar nichts mehr geht.** Ist der Meldeschein erfasst, hat der Gast
- * seine Daten selbst bestaetigt, und kein Abgleich aendert sie danach. Ist
- * ein Check-in-Link per Mail draussen, bleibt die Mailadresse: still eine
- * andere einzutragen hiesse, dass Link und Profil auseinanderlaufen, ohne
- * dass jemand an der Rezeption es sieht.
+ * seine Daten selbst bestaetigt, und kein Abgleich aendert sie danach.
+ *
+ * **Ein Link an die falsche Adresse** (Migration 0084). Aendert oder zieht
+ * das Umsystem eine Mailadresse zurueck, waehrend ein Check-in-Link per Mail
+ * offen ist, ging dieser Link an die Adresse, die es gerade korrigiert. Er
+ * wird zurueckgezogen, mit Grund, und der naechste Lauf des Workers laedt an
+ * die neue Adresse ein. Stehen zu lassen hiesse: ein Fremder haelt einen
+ * Link zu Buchungsdaten, und der Gast bekommt keinen.
  */
 
 type Feld = 'email' | 'phone' | 'language' | 'address'
 type Ergebnis = 'applied' | 'unchanged' | 'kept_existing' | 'withdrawn'
-type Grund = 'set_otherwise' | 'registration_recorded' | 'checkin_link_sent'
+type Grund = 'set_otherwise' | 'registration_recorded'
 
 interface Anschrift { line1: string; postalCode: string; city: string; country: string }
 
@@ -217,12 +221,16 @@ export function guestContactRoutes(app: FastifyInstance): void {
         }
         if (res.primary_guest_id === null) throw Errors.conflict('reservation.noPrimaryGuest')
 
-        const g = await client.query<GastZeile>(
-          `SELECT id, public_ref, status, email, phone, language,
+        const g = await client.query<GastZeile & { loeschantrag: boolean }>(
+          `SELECT id, public_ref, status, erasure_requested_at IS NOT NULL AS loeschantrag,
+                  email, phone, language,
                   address_line1, postal_code, city, country, contact_origin
              FROM guest WHERE id = $1 FOR UPDATE`, [res.primary_guest_id])
         const gast = g.rows[0]!
         if (gast.status === 'anonymized') throw Errors.conflict('guest.anonymizedNotRevived')
+        // Nach einem Loeschantrag traegt niemand mehr Kontaktdaten nach --
+        // ein Abgleich am wenigsten, der sie aus einer zweiten Quelle hat.
+        if (gast.loeschantrag) throw Errors.conflict('guest.erasureRequested')
 
         const sperre = await client.query<{ erfasst: boolean; link: boolean }>(
           `SELECT EXISTS (SELECT 1 FROM registration WHERE reservation_id = $1) AS erfasst,
@@ -238,7 +246,8 @@ export function guestContactRoutes(app: FastifyInstance): void {
                      address: Anschrift | null } = {
           email: gast.email, phone: gast.phone, language: gast.language,
           address: anschriftVon(gast) }
-        const felder: Partial<Record<Feld, { result: Ergebnis; reason?: Grund }>> = {}
+        const felder: Partial<Record<Feld, { result: Ergebnis; reason?: Grund
+                                             checkinLinkRevoked?: boolean }>> = {}
 
         const entscheiden = <K extends Feld>(
           feld: K, gewuenscht: (typeof neu)[K] | null | undefined,
@@ -272,11 +281,19 @@ export function guestContactRoutes(app: FastifyInstance): void {
         }
 
         const gesperrt: Grund | null = erfasst ? 'registration_recorded' : null
-        entscheiden('email', eingabe.email, null,
-          gesperrt ?? (link ? 'checkin_link_sent' : null))
+        entscheiden('email', eingabe.email, null, gesperrt)
         entscheiden('phone', eingabe.phone, null, gesperrt)
         entscheiden('language', eingabe.language, SPRACHE_VORGABE, gesperrt)
         entscheiden('address', eingabe.address, null, gesperrt)
+
+        const mail = felder.email
+        if (link && mail && (mail.result === 'applied' || mail.result === 'withdrawn')) {
+          await client.query(
+            `UPDATE checkin_token SET revoked_at = now(), revoke_reason = 'contact_changed'
+              WHERE reservation_id = $1 AND channel = 'mail' AND revoked_at IS NULL`,
+            [res.id])
+          mail.checkinLinkRevoked = true
+        }
 
         const geaendert = Object.values(felder)
           .some(f => f.result === 'applied' || f.result === 'withdrawn')

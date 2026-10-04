@@ -1169,6 +1169,10 @@ const M = {
     de: 'Die Reservierung hat keinen Hauptgast.',
     en: 'The reservation has no primary guest.',
     tr: 'Rezervasyonun ana misafiri yok.' },
+  'guest.erasureRequested': {
+    de: 'Fuer diesen Gast liegt ein Loeschantrag vor; es werden keine Daten nachgetragen.',
+    en: 'An erasure request exists for this guest; no data is added.',
+    tr: 'Bu misafir için bir silme talebi var; veri eklenmez.' },
   'guest.hasOpenReservations': {
     de: 'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.',
     en: 'There are still open or current reservations for this guest.',

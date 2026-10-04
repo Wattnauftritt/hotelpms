@@ -25,7 +25,9 @@ import { checkinLink } from '@hotelpms/contracts'
  * **Genau einmal.** Gegen den Geschaeftstag, nicht gegen `now()`: ein
  * Wiederholungslauf findet dieselben Zeilen und keine anderen. Und eine
  * Reservierung, die schon einen Mail-Link hat -- automatisch oder von der
- * Rezeption --, faellt heraus. Haelt zwei gleichzeitige Laeufe das nicht ab,
+ * Rezeption --, faellt heraus. Ausgenommen ein Link, den StayGrid wegen einer
+ * korrigierten Adresse zurueckgezogen hat (Migration 0084): der ging an die
+ * falsche, und der Gast hat noch keinen. Haelt zwei gleichzeitige Laeufe das nicht ab,
  * tut es der eindeutige Index aus Migration 0061: `createCheckinToken` gibt
  * dann `null`, und es wird nichts eingereiht.
  *
@@ -76,7 +78,8 @@ export async function inviteOnlineCheckins(
           AND g.email IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM registration reg WHERE reg.reservation_id = r.id)
           AND NOT EXISTS (SELECT 1 FROM checkin_token t
-                           WHERE t.reservation_id = r.id AND t.channel = 'mail')
+                           WHERE t.reservation_id = r.id AND t.channel = 'mail'
+                             AND t.revoke_reason IS NULL)
         ORDER BY r.arrival, r.id
         LIMIT $2`, [propertyId, opts.batchSize ?? 200])
 

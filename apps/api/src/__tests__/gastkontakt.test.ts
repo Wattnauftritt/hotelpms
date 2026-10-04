@@ -198,24 +198,56 @@ describe('Nachtragen', () => {
 })
 
 describe('Sperren', () => {
-  it('aendert die Mail nicht mehr, wenn ein Check-in-Link draussen ist', async () => {
+  it('zieht einen Link an die korrigierte Adresse zurueck, damit neu eingeladen wird', async () => {
     const m = await maschine(['guest:contact_write'], [fx.propertyId])
     const r = await reservierung()
-    await senden(m, r.ref, { email: 'quelle@example.org' })
+    await senden(m, r.ref, { email: 'falsch@example.org' })
     await owner.query(
       `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
        VALUES ($1,$2,'h-1','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
 
-    const a = await senden(m, r.ref, { email: 'neu@example.org', phone: '0170 1' })
+    const a = await senden(m, r.ref, { email: 'richtig@example.org', phone: '0170 1' })
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'kept_existing', reason: 'checkin_link_sent' },
+      email: { result: 'applied', checkinLinkRevoked: true },
       phone: { result: 'applied' } })
-    expect((await gast(r.gastId)).email).toBe('quelle@example.org')
+    expect((await gast(r.gastId)).email).toBe('richtig@example.org')
+    const t = await owner.query<{ revoked: boolean; revoke_reason: string | null }>(
+      `SELECT revoked_at IS NOT NULL AS revoked, revoke_reason FROM checkin_token
+        WHERE reservation_id = $1`, [r.reservationId])
+    expect(t.rows).toEqual([{ revoked: true, revoke_reason: 'contact_changed' }])
 
-    // Widerrufen die Rezeption den Link, darf das Umsystem wieder.
-    await owner.query(`UPDATE checkin_token SET revoked_at = now()`)
-    const b = await senden(m, r.ref, { email: 'neu@example.org' })
+    // Ohne offenen Link wird nichts zurueckgezogen.
+    const b = await senden(m, r.ref, { email: 'noch-richtiger@example.org' })
     expect(b.json<{ fields: unknown }>().fields).toEqual({ email: { result: 'applied' } })
+  })
+
+  it('zieht den Link auch zurueck, wenn die Adresse ganz zurueckgenommen wird', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { email: 'falsch@example.org' })
+    await owner.query(
+      `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
+       VALUES ($1,$2,'h-2','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
+    const a = await senden(m, r.ref, { email: null })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'withdrawn', checkinLinkRevoked: true } })
+  })
+
+  it('laesst den Link einer fremden Adresse stehen', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await app.inject({ method: 'PATCH', url: `/v1/guests/${r.gastRef}`,
+      headers: auth(admin.sessionId), payload: { email: 'tresen@example.org' } })
+    await owner.query(
+      `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
+       VALUES ($1,$2,'h-3','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
+    const a = await senden(m, r.ref, { email: 'quelle@example.org' })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'kept_existing', reason: 'set_otherwise' } })
+    const t = await owner.query<{ revoked: boolean }>(
+      `SELECT revoked_at IS NOT NULL AS revoked FROM checkin_token WHERE reservation_id = $1`,
+      [r.reservationId])
+    expect(t.rows[0]!.revoked).toBe(false)
   })
 
   it('aendert nichts mehr, wenn der Meldeschein erfasst ist', async () => {
@@ -247,6 +279,25 @@ describe('Sperren', () => {
 
     const a = await senden(m, r.ref, { email: 'quelle@example.org' })
     expect(a.statusCode).toBe(409)
+  })
+})
+
+describe('Loeschantrag', () => {
+  it('nimmt die Herkunft weg und traegt nichts mehr nach', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { email: 'quelle@example.org',
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven', country: 'DE' } })
+    // Wie guest_erase_partial: Mail weg, Anschrift bleibt fuer den Nachweis.
+    await owner.query(
+      `UPDATE guest SET email = NULL, erasure_requested_at = now() WHERE id = $1`, [r.gastId])
+    const g = await gast(r.gastId)
+    expect(g.address_line1).toBe('Deichweg 4')
+    expect(g.contact_origin).toEqual({})
+
+    const a = await senden(m, r.ref, { email: 'quelle@example.org' })
+    expect(a.statusCode).toBe(409)
+    expect((await gast(r.gastId)).email).toBeNull()
   })
 })
 
