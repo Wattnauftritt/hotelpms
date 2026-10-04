@@ -78,6 +78,18 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                        onClick: () => onCheckIn(ziel.reservationRef) })
     }
 
+    /*
+     * Check-out am Balken, nicht nur in der Abreiseliste. Die Liste zeigt
+     * nur, wer heute laut Buchung abreist; wer frueher geht, war dort nie
+     * zu finden. Die Schnittstelle kuerzt den Aufenthalt dabei auf heute.
+     */
+    if (rechte.darf('reservation:checkin') && ziel.status === 'InHouse') {
+      eintraege.push({ schluessel: 'checkout', text: t('kontext.checkOut'),
+                       onClick: () => {
+                         if (confirm(t('kontext.checkOutConfirm'))) status.mutate('check-out')
+                       } })
+    }
+
     if (ziel.bookingRooms > 1) {
       eintraege.push({ schluessel: 'gruppe',
                        text: t('kontext.group', { n: ziel.bookingRooms }),

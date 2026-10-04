@@ -593,6 +593,14 @@ export const plan = {
     de: 'Check-in …',
     en: 'Check in …',
     tr: 'Giriş yap …' },
+  'kontext.checkOut': {
+    de: 'Check-out',
+    en: 'Check out',
+    tr: 'Çıkış yap' },
+  'kontext.checkOutConfirm': {
+    de: 'Gast jetzt auschecken? Reist er vor dem gebuchten Tag ab, endet der Aufenthalt heute.',
+    en: 'Check the guest out now? If they leave before the booked day, the stay ends today.',
+    tr: 'Misafir şimdi çıkış yapsın mı? Rezerve edilen günden önce ayrılırsa konaklama bugün sona erer.' },
   'kontext.group': {
     de: 'Gruppe öffnen ({n} Zimmer)',
     en: 'Open the group ({n} rooms)',

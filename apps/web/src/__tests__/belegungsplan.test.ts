@@ -1155,6 +1155,13 @@ describe('Der rechte Knopf im Belegungsplan', () => {
       "ziel.status !== 'InHouse' && ziel.status !== 'CheckedOut'")
   })
 
+  it('bietet den Check-out am angereisten Gast an und fragt', () => {
+    // Die Abreiseliste zeigt nur, wer heute laut Buchung geht. Wer frueher
+    // abreist, war dort nie zu finden.
+    expect(eintraege).toContain("ziel.status === 'InHouse') {")
+    expect(eintraege).toContain("if (confirm(t('kontext.checkOutConfirm'))) status.mutate('check-out')")
+  })
+
   it('setzt den Storno ab und fragt', () => {
     expect(eintraege).toContain('abgesetzt: true, gefaehrlich: true')
     expect(eintraege).toContain("t('kontext.cancelConfirm')")
