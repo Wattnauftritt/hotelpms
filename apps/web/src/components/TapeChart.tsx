@@ -123,6 +123,8 @@ const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
 const BAND_ZEILEN = 4
 /** Darunter scrollt wieder die Seite: ein Plan mit drei sichtbaren Zeilen ist keiner. */
 const RASTER_MIN_HOEHE = 320
+/** Unter dem Plan: die einzeilige Gestenhilfe und der Seitenrand. */
+const RAUM_DARUNTER = 48
 /** Ab dieser Bewegung ist es ein Ziehen und kein Klick mehr. */
 const KLICK_SCHWELLE = 5
 
@@ -354,7 +356,9 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     if (el === null) return
     const messen = (): void => {
       const oben = el.getBoundingClientRect().top + window.scrollY
-      setRasterHoehe(Math.max(RASTER_MIN_HOEHE, Math.floor(window.innerHeight - oben - 16)))
+      // Darunter steht noch die Hinweiszeile: eine Zeile Text samt Abstand.
+      setRasterHoehe(Math.max(RASTER_MIN_HOEHE,
+                              Math.floor(window.innerHeight - oben - RAUM_DARUNTER)))
     }
     messen()
     // Der Koerper und nicht nur das Fenster: die Legende erscheint erst mit

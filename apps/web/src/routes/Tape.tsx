@@ -503,9 +503,14 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onKontext={setKontext} />}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
-          Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden. */}
-      <p className="text-xs text-neutral-500">{t('plan.dragHint')}</p>
-      <p className="text-xs text-neutral-500">{t('plan.dragHintGroup')}</p>
+          Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden.
+          Eine Zeile, abgeschnitten, der ganze Text im Titel: der Plan reicht
+          bis zum Fensterrand, und zwei umbrechende Absaetze darunter nahmen
+          ihm vier Zeilen weg (Sven, 04.10.2026). */}
+      <p className="text-xs text-neutral-500 truncate"
+         title={`${t('plan.dragHint')}\n${t('plan.dragHintGroup')}`}>
+        {t('plan.dragHint')} {t('plan.dragHintGroup')}
+      </p>
 
       {ausgewaehlt !== null && (
         <ReservationPanel reservationRef={ausgewaehlt}
