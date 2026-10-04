@@ -1079,6 +1079,13 @@ export function reservationRoutes(app: FastifyInstance): void {
           `SELECT r.id,
                   r.public_ref            AS "reservationRef",
                   b.public_ref            AS "bookingRef",
+                  -- Wie viele Aufenthalte an der Buchung haengen. Das Fenster
+                  -- zeigt den Weg zur Gruppenmaske nur, wenn es mehr als
+                  -- einer ist: an jeder Einzelbuchung stand "Gruppenbuchung",
+                  -- und nach dem KWHotel-Import sah es aus, als waeren alle
+                  -- Buchungen zu Gruppen geworden.
+                  (SELECT count(*)::int FROM reservation r2
+                    WHERE r2.booking_id = r.booking_id) AS "bookingRooms",
                   r.status, r.arrival::text, r.departure::text,
                   r.notes,
                   r.short_note            AS "shortNote",
@@ -1095,6 +1102,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   g.public_ref            AS "guestRef",
                   nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
                   g.email                 AS "guestEmail",
+                  g.phone                 AS "guestPhone",
                   g.language              AS "guestLanguage",
                   co.public_ref           AS "companyRef",
                   co.name                 AS "companyName",

@@ -358,6 +358,18 @@ async function kontaktSchreiben(
     address: anschriftVon(gast) }
   const felder: Partial<Record<Feld, { result: Ergebnis; reason?: Grund
                                        checkinLinkRevoked?: boolean }>> = {}
+  /*
+   * Ein Land ohne Strasse, Postleitzahl und Ort ist keine Anschrift, die
+   * jemand eingetragen hat. Der KWHotel-Import bringt genau das mit: in der
+   * Gaestetabelle des Altsystems ist nur das Land belegt. Galt das als
+   * "anderswo gesetzt", kam beim ersten Abgleich keine einzige Anschrift
+   * aus dem Adminpanel an -- und ohne sie ist der Meldeschein unvollstaendig.
+   * Das Umsystem darf eine solche Anschrift deshalb vervollstaendigen, das
+   * Land eingeschlossen; eine Strasse, die Rezeption oder Gast eingetragen
+   * haben, bleibt weiter unangetastet.
+   */
+  const nurLand = gast.address_line1 === null && gast.postal_code === null
+    && gast.city === null
 
   const entscheiden = <K extends Feld>(
     feld: K, gewuenscht: (typeof neu)[K] | null | undefined,
@@ -366,7 +378,8 @@ async function kontaktSchreiben(
     if (gewuenscht === undefined) return
     const aktuell = neu[feld]
     const eigen = origin[feld]?.client === principal.clientKey
-    const istLeer = gleich(aktuell, leer) && origin[feld] === undefined
+    const istLeer = (gleich(aktuell, leer) || (feld === 'address' && nurLand))
+      && origin[feld] === undefined
     if (gewuenscht === null) {
       if (!eigen) {
         felder[feld] = istLeer || gleich(aktuell, leer)

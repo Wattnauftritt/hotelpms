@@ -186,6 +186,30 @@ describe('Nachtragen', () => {
     expect((await gast(r.gastId)).email).toBe('tresen@example.org')
   })
 
+  it('vervollstaendigt eine Anschrift, die nur aus dem Land besteht', async () => {
+    // So kommt ein Gast aus dem KWHotel-Import: Name und Land, sonst nichts.
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET country = 'AT' WHERE id = $1`, [r.gastId])
+
+    const a = await senden(m, r.ref, {
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven', country: 'DE' } })
+    expect(a.json<{ fields: unknown }>().fields).toEqual({ address: { result: 'applied' } })
+    expect(await gast(r.gastId)).toMatchObject({ address_line1: 'Deichweg 4', country: 'DE' })
+  })
+
+  it('laesst eine Strasse ohne Land stehen', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET address_line1 = 'Tresenweg 1' WHERE id = $1`, [r.gastId])
+
+    const a = await senden(m, r.ref, {
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven', country: 'DE' } })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ address: { result: 'kept_existing', reason: 'set_otherwise' } })
+    expect((await gast(r.gastId)).address_line1).toBe('Tresenweg 1')
+  })
+
   it('ein anderes Umsystem gilt als fremd', async () => {
     const erstes = await maschine(['guest:contact_write'], [fx.propertyId])
     const zweites = await maschine(['guest:contact_write'], [fx.propertyId])
