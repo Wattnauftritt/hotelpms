@@ -10,6 +10,7 @@ import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { useEscape, istTextEingabe } from '../lib/tasten.js'
 import { ReinigungsZeichen, ZahlungsZeichen, PersonenZeichen, useBalkenTitel }
   from './PlanZeichen.tsx'
+import { Schwebehinweis } from './Schwebehinweis.tsx'
 
 /**
  * Der Zimmerplan.
@@ -1152,6 +1153,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
   return (
     <div className="overflow-auto border border-neutral-200 rounded-sm" ref={rasterRef}
          style={rasterHoehe === null ? undefined : { maxHeight: rasterHoehe }}>
+      <Schwebehinweis bereich={rasterRef} />
       <div style={{ minWidth: LABEL_BREITE + tage.length * spalte }}>
         {/* Kopfzeile mit Tagen */}
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
@@ -1272,7 +1274,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                             onPointerDown={e => beginneVerschieben(r, e)}
                             // Die Zimmergruppe nur hier: beim Ziehen aus dem
                             // Band entscheidet sich, in welches Zimmer.
-                            title={balkenTitel(r, gruppe?.name)}
+                            data-tip={balkenTitel(r, gruppe?.name)}
                             style={{ ...b, top: i * ZEILE + RAND, height: ZEILE - 2 * RAND,
                                      lineHeight: `${ZEILE - 2 * RAND}px`,
                                      clipPath: umriss(r.arrival, r.departure) }}
@@ -1578,7 +1580,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                     // oeffnete das Menue fuer "hier ist nichts" -- ueber
                     // einem Balken, auf den man gerade gezielt hat.
                     onContextMenu={e => p.onBalkenKontext(r, e)}
-                    title={balkenTitel(r)}
+                    data-tip={balkenTitel(r)}
                     style={{ ...b, ...balkenHoehe, clipPath: umriss,
                              opacity: versteckt ? 0.35 : 1 }}
                     /*

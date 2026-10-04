@@ -92,7 +92,7 @@ describe('Der Titel am Balken', () => {
 
   it('haengt den Zahlungsstand an beide Balkenarten, den im Band und den im Zimmer', () => {
     const plan = lies('components/TapeChart.tsx')
-    expect(plan.match(/title=\{balkenTitel\(r[,)]/g)).toHaveLength(2)
+    expect(plan.match(/data-tip=\{balkenTitel\(r[,)]/g)).toHaveLength(2)
     expect(plan.match(/<ZahlungsZeichen zahlung=\{r\.payment\} \/>/g)).toHaveLength(2)
   })
 
@@ -240,6 +240,17 @@ describe('Der Titel des Balkens', () => {
       state: 'paid', rooms: 4, expected_cent: 80_000, settled_cent: 80_000,
       balance_cent: 0 } } }, t, f)
     expect(titel).toContain('Gruppe (4 Zimmer): bezahlt 800,00 € von 800,00 €')
+  })
+
+  it('erscheint sofort und nicht mit der Verzoegerung des Browsers', () => {
+    // `title` wartet rund eine Sekunde, und das legt der Browser fest (Sven:
+    // "spaet und traege"). Der eigene Hinweis liest `data-tip`.
+    const plan = lies('components/TapeChart.tsx')
+    expect(plan).not.toMatch(/title=\{balkenTitel/)
+    expect(plan).toContain('<Schwebehinweis bereich={rasterRef} />')
+    const hinweis = lies('components/Schwebehinweis.tsx')
+    const ms = Number(/const VERZOEGERUNG_MS = (\d+)/.exec(hinweis)?.[1])
+    expect(ms).toBeLessThanOrEqual(200)
   })
 
   it('zeigt alle Notizen: Kurznotiz, Vorgang und jede Hausnotiz zum Gast', () => {
