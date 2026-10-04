@@ -52,7 +52,8 @@ import { Befunde, SYSTEM } from './kwhotelImport.js'
  */
 export const FOLGEN_RESERVIERUNG = [
   'registration', 'charge', 'outbound_email', 'guest_agreement', 'deposit_request',
-  'checkin_token', 'terminal_job', 'reservation_occupant', 'routing_rule'
+  'checkin_token', 'terminal_job', 'reservation_occupant', 'routing_rule',
+  'reservation_external_registration'
 ] as const
 export const FOLGEN_FOLIO = [
   'invoice', 'charge', 'settlement', 'routing_rule', 'payment_intent', 'deposit_ledger',

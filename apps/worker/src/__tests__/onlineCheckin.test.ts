@@ -104,6 +104,39 @@ describe('Versand vor Anreise', () => {
     expect(await post()).toHaveLength(1)
   })
 
+  it('laedt neu ein, wenn der Link wegen einer korrigierten Adresse zurueckgezogen wurde', async () => {
+    // Migration 0084: das Umsystem hat die Adresse korrigiert, der erste
+    // Link ging an die falsche. Ein Widerruf der Rezeption dagegen bleibt
+    // endgueltig.
+    const korrigiert = await reservierung()
+    const vonHand = await reservierung()
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(2)
+    await owner.query(
+      `UPDATE checkin_token SET revoked_at = now(), revoke_reason = 'contact_changed'
+        WHERE reservation_id = $1`, [korrigiert])
+    await owner.query(
+      `UPDATE checkin_token SET revoked_at = now() WHERE reservation_id = $1`, [vonHand])
+
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(1)
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(0)
+    const p = await post()
+    expect(p.map(x => x.reservation_id)).toEqual([korrigiert, vonHand, korrigiert])
+  })
+
+  it('laedt nicht ein, wofuer ein Umsystem schon eingeladen oder erfasst hat', async () => {
+    const eingeladen = await reservierung()
+    const erfasst = await reservierung()
+    const frei = await reservierung()
+    await owner.query(
+      `INSERT INTO reservation_external_registration
+         (reservation_id, property_id, system, invitation_sent_at, completed_at)
+       VALUES ($1,$3,'adminpanel','2026-09-30T14:00:00Z',NULL),
+              ($2,$3,'adminpanel',NULL,'2026-09-30T18:00:00Z')`,
+      [eingeladen, erfasst, fx.propertyId])
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(1)
+    expect((await post()).map(x => x.reservation_id)).toEqual([frei])
+  })
+
   it('schreibt in der Sprache des Gastes', async () => {
     await reservierung({ sprache: 'nl' })
     await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)

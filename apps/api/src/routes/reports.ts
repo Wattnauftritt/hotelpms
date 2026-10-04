@@ -103,10 +103,14 @@ export function reportRoutes(app: FastifyInstance): void {
                      LEFT JOIN folio fo ON fo.reservation_id = r.id AND fo.kind = 'guest'`
 
         const arrivals = await client.query(
-          `SELECT ${basis}, (reg.id IS NOT NULL) AS "registered"
+          `SELECT ${basis},
+                  -- Auch ein Meldeschein, den ein Umsystem erfasst hat (0085):
+                  -- sonst fragt die Rezeption den Gast ein zweites Mal.
+                  (reg.id IS NOT NULL OR ext.completed_at IS NOT NULL) AS "registered"
              ${von}
              LEFT JOIN registration reg ON reg.reservation_id = r.id
                    AND reg.group_registration_id IS NULL
+             LEFT JOIN reservation_external_registration ext ON ext.reservation_id = r.id
             WHERE r.property_id = $1 AND r.arrival = $2::date
               AND r.status IN ('Confirmed','InHouse')
             ORDER BY g.last_name NULLS LAST, res.code`, [id, d])

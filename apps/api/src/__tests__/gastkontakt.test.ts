@@ -198,24 +198,56 @@ describe('Nachtragen', () => {
 })
 
 describe('Sperren', () => {
-  it('aendert die Mail nicht mehr, wenn ein Check-in-Link draussen ist', async () => {
+  it('zieht einen Link an die korrigierte Adresse zurueck, damit neu eingeladen wird', async () => {
     const m = await maschine(['guest:contact_write'], [fx.propertyId])
     const r = await reservierung()
-    await senden(m, r.ref, { email: 'quelle@example.org' })
+    await senden(m, r.ref, { email: 'falsch@example.org' })
     await owner.query(
       `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
        VALUES ($1,$2,'h-1','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
 
-    const a = await senden(m, r.ref, { email: 'neu@example.org', phone: '0170 1' })
+    const a = await senden(m, r.ref, { email: 'richtig@example.org', phone: '0170 1' })
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'kept_existing', reason: 'checkin_link_sent' },
+      email: { result: 'applied', checkinLinkRevoked: true },
       phone: { result: 'applied' } })
-    expect((await gast(r.gastId)).email).toBe('quelle@example.org')
+    expect((await gast(r.gastId)).email).toBe('richtig@example.org')
+    const t = await owner.query<{ revoked: boolean; revoke_reason: string | null }>(
+      `SELECT revoked_at IS NOT NULL AS revoked, revoke_reason FROM checkin_token
+        WHERE reservation_id = $1`, [r.reservationId])
+    expect(t.rows).toEqual([{ revoked: true, revoke_reason: 'contact_changed' }])
 
-    // Widerrufen die Rezeption den Link, darf das Umsystem wieder.
-    await owner.query(`UPDATE checkin_token SET revoked_at = now()`)
-    const b = await senden(m, r.ref, { email: 'neu@example.org' })
+    // Ohne offenen Link wird nichts zurueckgezogen.
+    const b = await senden(m, r.ref, { email: 'noch-richtiger@example.org' })
     expect(b.json<{ fields: unknown }>().fields).toEqual({ email: { result: 'applied' } })
+  })
+
+  it('zieht den Link auch zurueck, wenn die Adresse ganz zurueckgenommen wird', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { email: 'falsch@example.org' })
+    await owner.query(
+      `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
+       VALUES ($1,$2,'h-2','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
+    const a = await senden(m, r.ref, { email: null })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'withdrawn', checkinLinkRevoked: true } })
+  })
+
+  it('laesst den Link einer fremden Adresse stehen', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await app.inject({ method: 'PATCH', url: `/v1/guests/${r.gastRef}`,
+      headers: auth(admin.sessionId), payload: { email: 'tresen@example.org' } })
+    await owner.query(
+      `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
+       VALUES ($1,$2,'h-3','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
+    const a = await senden(m, r.ref, { email: 'quelle@example.org' })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'kept_existing', reason: 'set_otherwise' } })
+    const t = await owner.query<{ revoked: boolean }>(
+      `SELECT revoked_at IS NOT NULL AS revoked FROM checkin_token WHERE reservation_id = $1`,
+      [r.reservationId])
+    expect(t.rows[0]!.revoked).toBe(false)
   })
 
   it('aendert nichts mehr, wenn der Meldeschein erfasst ist', async () => {
@@ -247,6 +279,90 @@ describe('Sperren', () => {
 
     const a = await senden(m, r.ref, { email: 'quelle@example.org' })
     expect(a.statusCode).toBe(409)
+  })
+})
+
+describe('Loeschantrag', () => {
+  it('nimmt die Herkunft weg und traegt nichts mehr nach', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { email: 'quelle@example.org',
+      address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven', country: 'DE' } })
+    // Wie guest_erase_partial: Mail weg, Anschrift bleibt fuer den Nachweis.
+    await owner.query(
+      `UPDATE guest SET email = NULL, erasure_requested_at = now() WHERE id = $1`, [r.gastId])
+    const g = await gast(r.gastId)
+    expect(g.address_line1).toBe('Deichweg 4')
+    expect(g.contact_origin).toEqual({})
+
+    const a = await senden(m, r.ref, { email: 'quelle@example.org' })
+    expect(a.statusCode).toBe(409)
+    expect((await gast(r.gastId)).email).toBeNull()
+  })
+})
+
+describe('Meldeschein aus dem Umsystem', () => {
+  const VERMERK = { system: 'adminpanel', invitationSentAt: '2026-10-03T16:00:00+02:00',
+                    completedAt: null, submittedVia: null }
+
+  it('nimmt den Vermerk ohne Kontaktfelder und ohne Quelle an', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const put = (payload: Record<string, unknown>) => app.inject({ method: 'PUT',
+      url: `/v1/reservations/${r.ref}/guest-contact`, headers: m, payload })
+
+    const a = await put({ registration: VERMERK })
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json()).toEqual({ reservationRef: r.ref, guestRef: null,
+                               fields: { registration: { result: 'applied' } } })
+    const v = await owner.query<{ invitation_sent_at: Date; completed_at: Date | null }>(
+      `SELECT invitation_sent_at, completed_at FROM reservation_external_registration
+        WHERE reservation_id = $1`, [r.reservationId])
+    expect(v.rows[0]!.invitation_sent_at.toISOString()).toBe('2026-10-03T14:00:00.000Z')
+
+    expect((await put({ registration: VERMERK })).json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'unchanged' } })
+    const erfasst = await put({ registration: { ...VERMERK,
+      completedAt: '2026-10-03T18:12:00Z', submittedVia: 'link' } })
+    expect(erfasst.json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'applied' } })
+    expect((await put({ registration: null })).json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'withdrawn' } })
+    expect((await put({ registration: null })).json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'unchanged' } })
+  })
+
+  it('zeigt einen dort erfassten Meldeschein in der Anreiseliste nicht als fehlend', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE reservation SET arrival = '2026-10-01' WHERE id = $1`,
+      [r.reservationId])
+    const zeile = async () => {
+      const d = await app.inject({ method: 'GET', headers: auth(admin.sessionId),
+        url: `/v1/properties/${fx.propertyId}/daily-sheet?date=2026-10-01` })
+      expect(d.statusCode, d.body).toBe(200)
+      return d.json<{ arrivals: Array<{ reservationRef: string; registered: boolean }> }>()
+        .arrivals.find(x => x.reservationRef === r.ref)!
+    }
+    expect((await zeile()).registered).toBe(false)
+    // Nur eingeladen ist noch nicht erfasst.
+    await senden(m, r.ref, { registration: VERMERK })
+    expect((await zeile()).registered).toBe(false)
+    await senden(m, r.ref, { registration: { ...VERMERK, completedAt: '2026-10-01T09:00:00Z',
+                                             submittedVia: 'reception' } })
+    expect((await zeile()).registered).toBe(true)
+  })
+
+  it('weist einen Zeitpunkt ohne Zone und einen unbekannten Weg ab', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const a = await senden(m, r.ref, { registration: { ...VERMERK,
+      invitationSentAt: '2026-10-03T14:00:00' } })
+    expect(a.statusCode).toBe(422)
+    const b = await senden(m, r.ref, { registration: { ...VERMERK, submittedVia: 'fax' } })
+    expect(b.statusCode).toBe(422)
+    const c = await senden(m, r.ref, { registration: { invitationSentAt: null } })
+    expect(c.statusCode).toBe(422)
   })
 })
 
