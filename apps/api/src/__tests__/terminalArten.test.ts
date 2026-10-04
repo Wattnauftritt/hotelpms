@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, countQueries, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, countQueries, openBusinessDay, type Fixture
+       } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { CHECKIN_TOKEN_HEADER } from '@hotelpms/contracts'
 import { buildServer } from '../platform/app.js'
@@ -56,6 +57,10 @@ beforeEach(async () => {
   zimmer = await makeResources(owner, fx.propertyId, catId, 4)
   await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
     [fx.propertyId])
+  // Der Aufenthalt liegt fest im Oktober 2026. Ohne offenen Geschaeftstag
+  // prueft der Link gegen den Kalendertag, und ab dem 05.10.2026 war er
+  // abgelaufen -- der Test hing an der Uhr, nicht am Verhalten.
+  await openBusinessDay(owner, fx.propertyId, VON)
   const u = await makeUser(owner,
     { email: 'chef@test.de', propertyId: fx.propertyId, roleKey: 'hotel_director' })
   chef = { cookie: `hp_session=${u.sessionId}` }
@@ -234,6 +239,7 @@ describe('Meldeformular ausfuellen (Online-Check-in am Terminal)', () => {
       zimmer = await makeResources(owner, fx.propertyId, catId, 4)
       await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
         [fx.propertyId])
+      await openBusinessDay(owner, fx.propertyId, VON)
       const u = await makeUser(owner,
         { email: 'chef@test.de', propertyId: fx.propertyId, roleKey: 'hotel_director' })
       chef = { cookie: `hp_session=${u.sessionId}` }
