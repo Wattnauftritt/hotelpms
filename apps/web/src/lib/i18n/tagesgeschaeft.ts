@@ -22,10 +22,12 @@ export const tagesgeschaeft = {
     de: 'Check-out',
     en: 'Check out',
     tr: 'Check-out' },
-  'today.registered': {
-    de: 'Meldeschein liegt vor',
-    en: 'Registration form on file',
-    tr: 'Meldeschein mevcut' },
+  // Steht nur an Anreisen **ohne** Meldeschein. Hier stand "liegt vor",
+  // also das Gegenteil dessen, was das Warnzeichen meint.
+  'today.registrationMissing': {
+    de: 'Meldeschein fehlt',
+    en: 'Registration form missing',
+    tr: 'Meldeschein eksik' },
   'today.balance': {
     de: 'Offener Saldo',
     en: 'Open balance',

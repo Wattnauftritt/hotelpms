@@ -44,9 +44,9 @@ export function Today({ propertyId, onFolio }: {
                    kategorie={r.categoryCode}>
               <div className="flex items-center gap-2">
                 {!r.registered && (
-                  <span title={t('today.registered')}
+                  <span title={t('today.registrationMissing')}
                         className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-800">
-                    ⚠ {t('today.registered')}
+                    ⚠ {t('today.registrationMissing')}
                   </span>
                 )}
                 <button
