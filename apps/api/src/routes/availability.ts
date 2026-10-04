@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import { nightsBetween, isIsoDate, paymentState, type PaymentState } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
+import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 
 const MAX_AVAILABILITY_DAYS = 731   // P6, Dokument 12
 const MAX_TAPE_CHART_DAYS = 92
@@ -297,7 +298,7 @@ export function availabilityRoutes(app: FastifyInstance): void {
              JOIN resource_category c ON c.id = r.category_id
              ${mitReinigung ? 'LEFT JOIN housekeeping_status h ON h.resource_id = r.id' : ''}
             WHERE r.property_id = $1 AND r.active
-            ORDER BY c.sort_order, r.code`, [pid])
+            ORDER BY c.sort_order, c.id, ${zimmerNachNummer('r')}`, [pid])
 
         const reservations = await client.query(
           `SELECT r.id, r.booking_id, r.public_ref, r.resource_id, r.category_id,

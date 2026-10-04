@@ -6,7 +6,9 @@ import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
 import { platzbedarf } from '../lib/tapeSelection.js'
 import { istTextEingabe } from '../lib/tasten.js'
-import { TapeChart, ZEILE_MIN, ZEILE_MAX, ZEILE_STANDARD } from '../components/TapeChart.tsx'
+import { TapeChart, ZEILE_MIN, ZEILE_MAX, ZEILE_STANDARD, LABEL_BREITE }
+  from '../components/TapeChart.tsx'
+import { QuerLeiste } from '../components/QuerLeiste.tsx'
 import { BuchungVerlegen, AenderungZurueck, type Verlegung, type Ziel,
          type Aenderung } from '../components/BuchungVerlegen.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
@@ -18,7 +20,7 @@ import type { KontextZiel } from '../components/Kontextmenue.tsx'
 import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
 import { VerlaufDialog } from '../components/Verlauf.tsx'
-import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
+import { Fehler, Laedt } from '../components/Shell.tsx'
 import { PlanStatusLegende, ZahlungsStand } from '../components/PlanZeichen.tsx'
 import { usePlanReinigung } from '../lib/queries/housekeeping.js'
 import { useHausrechte } from '../lib/rechte.js'
@@ -325,7 +327,25 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
             kuerzer als jedes Blaettern daneben. */}
         <PlanSuche propertyId={propertyId} von={von} bis={bis} onVon={setVon}
                    onOeffnen={setAusgewaehlt} />
-        <DatumsWahl value={von} onChange={setVon} step={7} />
+        {/* Tag und Woche um das Datum, Monat und Jahr daneben: vier
+            Schrittweiten, jede mit eigenem Knopf. Ein Regler fuer alles
+            hiesse, die haeufigste umstaendlicher zu machen. */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => setVon(addDays(von, -7))}
+                  title={t('plan.weekBack')} aria-label={t('plan.weekBack')}
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">−7</button>
+          <button onClick={() => setVon(addDays(von, -1))}
+                  title={t('plan.dayBack')} aria-label={t('plan.dayBack')}
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">−1</button>
+          <input type="date" value={von} onChange={e => { if (e.target.value) setVon(e.target.value) }}
+                 className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+          <button onClick={() => setVon(addDays(von, 1))}
+                  title={t('plan.dayForward')} aria-label={t('plan.dayForward')}
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">+1</button>
+          <button onClick={() => setVon(addDays(von, 7))}
+                  title={t('plan.weekForward')} aria-label={t('plan.weekForward')}
+                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">+7</button>
+        </div>
         {/* Monat und Jahr zum Durchklicken. Die Wochenpfeile daneben bleiben:
             im Alltag blaettert die Rezeption wochenweise, im Jahresgeschaeft
             monatsweise, und beides an einem Regler unterzubringen hiesse,
@@ -501,6 +521,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           resourceId: null,
                           arrival: r.arrival, departure: r.departure })))}
                       onKontext={setKontext} />}
+      {daten !== undefined && (
+        <QuerLeiste von={von} tage={tage} onVon={setVon} links={LABEL_BREITE} />
+      )}
 
       {/* Die Gesten stehen unter dem Plan, nicht in einer Hilfe: Ziehen und
           Mehrfachauswahl gab es zum Teil schon, und niemand hat sie gefunden.

@@ -328,6 +328,26 @@ export const plan = {
     de: 'Einen Monat vor',
     en: 'One month forward',
     tr: 'Bir ay ileri' },
+  'plan.dayBack': {
+    de: 'Einen Tag zurück',
+    en: 'One day back',
+    tr: 'Bir gün geri' },
+  'plan.dayForward': {
+    de: 'Einen Tag vor',
+    en: 'One day forward',
+    tr: 'Bir gün ileri' },
+  'plan.weekBack': {
+    de: 'Eine Woche zurück',
+    en: 'One week back',
+    tr: 'Bir hafta geri' },
+  'plan.weekForward': {
+    de: 'Eine Woche vor',
+    en: 'One week forward',
+    tr: 'Bir hafta ileri' },
+  'plan.scrollTime': {
+    de: 'Durch die Zeit scrollen',
+    en: 'Scroll through time',
+    tr: 'Zaman içinde kaydır' },
   'plan.yearBack': {
     de: 'Ein Jahr zurück',
     en: 'One year back',

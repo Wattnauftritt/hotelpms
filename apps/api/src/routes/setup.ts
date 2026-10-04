@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { hinweisText, type Meldung } from '../platform/texte.js'
 import { emitEvent } from '../platform/events.js'
 import type { PoolClient } from '@hotelpms/db'
+import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 
 /**
  * Einrichtung des Hauses: Zimmergruppen und Zimmer.
@@ -338,7 +339,7 @@ export function setupRoutes(app: FastifyInstance): void {
             WHERE r.property_id = $1
               AND ($2::bigint IS NULL OR r.category_id = $2)
               AND (r.active OR $3::boolean)
-            ORDER BY c.sort_order, r.code`,
+            ORDER BY c.sort_order, c.id, ${zimmerNachNummer('r')}`,
           [Number(propertyId),
            q.categoryId === undefined ? null : Number(q.categoryId),
            q.includeInactive === 'true'])

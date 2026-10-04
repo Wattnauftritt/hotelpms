@@ -87,3 +87,22 @@ export function spanne(vonTag: number, bisTag: number, spalten: number,
     width: Math.max(0, (ende - start) * breite - LUECKE)
   }
 }
+
+/**
+ * Wie weit die Scrollleiste unter dem Plan reicht.
+ *
+ * Ein Jahr zurueck und zwei voraus, gemessen an heute: zurueck sucht man
+ * eine alte Buchung, voraus plant man die naechste Saison. Steht der Plan
+ * ausserhalb (weil jemand ueber die Jahrespfeile weiter gesprungen ist),
+ * waechst der Bereich mit, statt den Schieber an den Rand zu klemmen und
+ * damit ein Datum zu zeigen, das nicht stimmt.
+ */
+export function leistenBereich(
+  heute: string, von: string, tage: number
+): { anfang: string; tageGesamt: number } {
+  const tag = (d: string): number => Date.parse(`${d}T00:00:00Z`) / 86_400_000
+  const anfang = Math.min(tag(heute) - 365, tag(von))
+  const ende = Math.max(tag(heute) + 730, tag(von) + tage)
+  return { anfang: new Date(anfang * 86_400_000).toISOString().slice(0, 10),
+           tageGesamt: Math.round(ende - anfang) }
+}

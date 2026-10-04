@@ -4,6 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isIsoDate } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
+import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 
 const STATES = ['dirty', 'clean', 'inspected', 'occupied'] as const
 type HousekeepingState = (typeof STATES)[number]
@@ -157,7 +158,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
                        AND b.status IN ('Confirmed','InHouse')
                      LIMIT 1) bl ON true
             WHERE r.property_id = $1 AND r.active
-            ORDER BY r.code`,
+            ORDER BY ${zimmerNachNummer('r')}`,
           [Number(propertyId), date])
         return { date, rooms: rows }
       })

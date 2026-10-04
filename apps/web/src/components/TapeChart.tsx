@@ -78,7 +78,7 @@ import { ReinigungsZeichen, ZahlungsZeichen, useZahlungsTitel, usePreisUndNotize
  * irgendwann nicht mehr.
  */
 export const ZEILE_STANDARD = 38
-const LABEL_BREITE = 176
+export const LABEL_BREITE = 176
 /**
  * Spanne des Reglers fuer die Zeilenhoehe.
  *
@@ -123,8 +123,8 @@ const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
 const BAND_ZEILEN = 4
 /** Darunter scrollt wieder die Seite: ein Plan mit drei sichtbaren Zeilen ist keiner. */
 const RASTER_MIN_HOEHE = 320
-/** Unter dem Plan: die einzeilige Gestenhilfe und der Seitenrand. */
-const RAUM_DARUNTER = 48
+/** Unter dem Plan: die Scrollleiste, die einzeilige Gestenhilfe und der Seitenrand. */
+const RAUM_DARUNTER = 68
 /** Ab dieser Bewegung ist es ein Ziehen und kein Klick mehr. */
 const KLICK_SCHWELLE = 5
 
