@@ -17,6 +17,7 @@ import { Invoices } from './routes/Invoices.tsx'
 import { Adminpanel } from './routes/Adminpanel.tsx'
 import { TerminalPult } from './routes/TerminalPult.tsx'
 import { Datenuebernahme } from './routes/Datenuebernahme.tsx'
+import { Meldescheine } from './routes/Meldescheine.tsx'
 import { NachBreite } from './components/mobil/NachBreite.tsx'
 import { MobilHeute } from './components/mobil/MobilHeute.tsx'
 import { MobilPlan } from './components/mobil/MobilPlan.tsx'
@@ -161,6 +162,10 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'invoices', nav: 'nav.invoices', permission: 'folio:read',
     render: c => <Invoices propertyId={c.propertyId} onFolio={c.openFolio}
                            permissions={c.permissions} /> },
+  // Alle Meldescheine eines Zeitraums (Sven, 04.10.2026). Dasselbe Recht wie
+  // die Liste der Schnittstelle, die er liest.
+  { key: 'registrations', nav: 'nav.registrations', permission: 'report:operational',
+    render: c => <Meldescheine propertyId={c.propertyId} /> },
   // Gaesteterminals: Seiten und Adressen ohne Reservierung zeigen (Dokument 31).
   { key: 'terminal', group: 'settings', nav: 'nav.terminal', permission: 'reservation:checkin',
     render: c => <TerminalPult propertyId={c.propertyId} /> },

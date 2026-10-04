@@ -78,7 +78,7 @@ describe('Das Menue Einstellungen', () => {
                   'rate:read', 'guest:read', 'folio:read', 'report:operational']
     expect(plaetze(alle, true)).toEqual([
       'tape', 'today', 'housekeeping', 'blocks', 'reports', 'integrations', 'rates',
-      'guests', 'availability', 'invoices', 'admin',
+      'guests', 'availability', 'invoices', 'registrations', 'admin',
       'gruppe:settings[setup,maintenance,settings,terminal,import]'])
   })
 
