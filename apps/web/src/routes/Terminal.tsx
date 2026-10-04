@@ -6,6 +6,7 @@ import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { Fehler } from '../components/Shell.tsx'
 import { GastCheckin } from './GastCheckin.tsx'
+import { referrerFuer } from '../lib/rahmen.js'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -605,7 +606,8 @@ function AdresseZeigen({ daten, abschliessen }: AnsichtProps): JSX.Element {
           {t('kiosk.done')}
         </button>
       </div>
-      <iframe src={d.url} title={d.label} referrerPolicy="no-referrer"
+      <iframe src={d.url} title={d.label} referrerPolicy={referrerFuer(d.url)}
+              allow="encrypted-media; fullscreen; picture-in-picture"
               sandbox="allow-scripts allow-same-origin allow-forms"
               className="grow w-full border-0" />
     </div>

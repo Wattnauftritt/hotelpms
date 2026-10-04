@@ -6,6 +6,7 @@ import { useTerminalInhalte, useCreateSeite, useAendereSeite, useArchiviereSeite
          type Seite } from '../lib/queries/terminal.js'
 import { Inhaltstext } from './Inhaltstext.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
+import { referrerFuer } from '../lib/rahmen.js'
 
 /**
  * Was das Gaesteterminal zeigen darf: Seiten, die Diashow des Ruhezustands
@@ -280,7 +281,9 @@ function Adressen({ propertyId, adressen }: {
         ))}
       </ul>
       {vorschau !== null && (
-        <iframe src={vorschau} title={t('adressen.vorschau')} referrerPolicy="no-referrer"
+        <iframe src={vorschau} title={t('adressen.vorschau')}
+                referrerPolicy={referrerFuer(vorschau)}
+                allow="encrypted-media; fullscreen; picture-in-picture"
                 sandbox="allow-scripts allow-same-origin allow-forms"
                 className="w-full h-80 border border-neutral-300 rounded-sm" />
       )}
