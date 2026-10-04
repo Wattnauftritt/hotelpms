@@ -916,6 +916,11 @@ export async function einmalTokenUndPost(
     createdBy?: number | null
     /** Nur bei `email_change`: die gewuenschte Adresse, die am Token haengt. */
     newEmail?: string
+    /**
+     * Nur bei `invite`: der Kunde, fuer den der Zugang gilt -- er steht in
+     * Anrede und Betreff. Leer bei Plattformpersonal.
+     */
+    accountName?: string | null
   }
 ): Promise<void> {
   const { token, hash } = neuesToken()
@@ -934,7 +939,8 @@ export async function einmalTokenUndPost(
   const link = `${config.publicAppUrl}/${PFAD[opts.kind]}?token=${token}`
   const stunden = Math.round(gueltigMs / 3_600_000)
   const text = opts.kind === 'invite'
-    ? renderInviteEmail({ userName: opts.name, link, gueltigStunden: stunden })
+    ? renderInviteEmail({ userName: opts.name, link, gueltigStunden: stunden,
+                          accountName: opts.accountName ?? null, email: opts.email })
     : opts.kind === 'email_change'
       ? renderEmailChangeEmail({ userName: opts.name, newEmail: opts.email, link,
                                  gueltigStunden: stunden })

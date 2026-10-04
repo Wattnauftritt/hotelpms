@@ -117,7 +117,8 @@ export function onboardingRoutes(app: FastifyInstance): void {
           name: String(b.userName),
           email: String(b.userEmail),
           kind: 'invite',
-          createdBy: (req.principal as Principal).userId
+          createdBy: (req.principal as Principal).userId,
+          accountName: String(b.accountName)
         })
         return neu
       })
