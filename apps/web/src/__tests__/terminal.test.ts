@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { istTerminalAdresse, kioskSchluesselAusAdresse } from '../routes/Terminal.tsx'
+import { referrerFuer } from '../lib/rahmen.js'
 
 /**
  * Das Gaesteterminal und die Hausnotiz, an der Quelle geprueft.
@@ -61,6 +62,16 @@ describe('Kiosk-Adresse', () => {
     expect(effekt.indexOf('history.replaceState(null, \'\', TERMINAL_PFAD)'))
       .toBeLessThan(effekt.indexOf("'/v1/terminal/resume'"))
     expect(effekt.indexOf("'/v1/terminal/resume'")).toBeGreaterThan(-1)
+  })
+})
+
+describe('Referer eines Rahmens', () => {
+  it('schickt keinen, ausser dem YouTube-Player die Herkunft', () => {
+    // Ohne Referer verweigert der Player das Abspielen ("Fehler 153").
+    expect(referrerFuer('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'))
+      .toBe('strict-origin-when-cross-origin')
+    expect(referrerFuer('https://restaurant.example/karte')).toBe('no-referrer')
+    expect(terminal).toContain('referrerPolicy={referrerFuer(d.url)}')
   })
 })
 
