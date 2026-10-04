@@ -194,6 +194,20 @@ describe('Meldeschein uebernehmen', () => {
     expect(b.statusCode, b.body).toBe(422)
   })
 
+  it('nimmt einen Mitreisenden ohne Geburtsdatum an, aber kein Jahr 0022', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const a = await senden(m, r.ref, schein({}, {
+      companions: [{ lastName: 'Petersen', firstName: 'Ole', birthDate: null,
+                     nationality: 'DE' }] }))
+    expect(a.statusCode, a.body).toBe(201)
+    const b = await senden(m, (await reservierung()).ref, schein({}, {
+      companions: [{ lastName: 'Petersen', firstName: 'Ole', birthDate: '0022-05-01',
+                     nationality: 'DE' }] }))
+    expect(b.statusCode, b.body).toBe(422)
+    expect(b.body).toContain('companions.0.birthDate')
+  })
+
   it('ueberschreibt nie einen vorhandenen Schein', async () => {
     const m = await maschine(['registration:import'])
     const r = await reservierung()
