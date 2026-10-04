@@ -210,6 +210,10 @@ describe('Naechte in der Markierung', () => {
     expect(plan).toContain('ghostNaechte={kasten?.naechte ?? null}')
     expect(plan).toContain("t('tape.nightsShort', { n: p.ghostNaechte })")
   })
+
+  it('steht auch in der Leiste unten, wenn alle Zimmer dieselben Tage haben', () => {
+    expect(plan).toContain("t('tape.nightsShort', { n: daysBetween(klammer.arrival, klammer.departure) })")
+  })
 })
 
 describe('Umriss eines Balkens', () => {
@@ -766,7 +770,7 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
   it('sagt in der Leiste, wenn die Tage auseinandergehen', () => {
     // Nur die Klammer zu zeigen hiesse, eine Deckungsgleichheit zu
     // behaupten, die es nicht gibt.
-    expect(plan).toContain("klammer.gemischt && ` · ${t('plan.mixedDates')}`")
+    expect(plan).toContain("? ` · ${t('plan.mixedDates')}`")
   })
 
   it('hebt die Auswahl mit Esc auf', () => {

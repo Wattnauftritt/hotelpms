@@ -1454,7 +1454,12 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             */}
           <span className="opacity-75 text-xs">
             {formatDate(klammer.arrival, locale)} – {formatDate(klammer.departure, locale)}
-            {klammer.gemischt && ` · ${t('plan.mixedDates')}`}
+            {/* Die Naechte nur, wenn sie fuer alle gelten: bei gemischten
+                Zeitraeumen stehen sie je Zeile in der Markierung, und eine
+                Zahl fuer die Klammer stimmte fuer kein einzelnes Zimmer. */}
+            {klammer.gemischt
+              ? ` · ${t('plan.mixedDates')}`
+              : ` · ${t('tape.nightsShort', { n: daysBetween(klammer.arrival, klammer.departure) })}`}
           </span>
           <div className="grow" />
           {/* Enter tut dasselbe; der Knopf ist der Weg fuer den, der das
