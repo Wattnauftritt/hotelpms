@@ -1016,13 +1016,22 @@ describe('Eine Buchung laesst sich ins Band zuruecklegen', () => {
     expect(plan).toContain('ueberBand: imBand')
   })
 
-  it('zeigt das Band auch dann, wenn es leer ist und ein Balken gehalten wird', () => {
+  it('bietet die Ablage auch bei leerem Band an, ohne den Plan zu verschieben', () => {
     /*
-     * Sonst fehlt das Ziel genau dann, wenn man es zum ersten Mal braucht:
-     * in einem vollen, sauber zugewiesenen Haus steht dort nichts, und
-     * gerade dort ist Umsortieren noetig.
+     * Ohne Ablage fehlte das Ziel genau dann, wenn man es zum ersten Mal
+     * braucht: in einem vollen, sauber zugewiesenen Haus. Vorher klappte
+     * dafuer das Band auf, und der Plan rutschte unter dem Zeiger weg
+     * (Sven). Jetzt ist es die feststehende Ecke der Kopfzeile.
      */
-    expect(plan).toContain('(nichtZugewiesen.length > 0 || bandAlsZiel)')
+    expect(plan).toContain("data-unassigned-band={bandAlsZiel ? '' : undefined}")
+    expect(plan).toContain('{nichtZugewiesen.length > 0 && (')
+    expect(plan).not.toContain('(nichtZugewiesen.length > 0 || bandAlsZiel)')
+  })
+
+  it('macht das Band beim Anfassen nicht hoeher', () => {
+    // Eine zusaetzliche Zeile mit dem Ablagesatz schob den Plan nach unten.
+    const band = plan.slice(plan.indexOf('<div data-unassigned-band'))
+    expect(band.slice(0, band.indexOf('</button>'))).not.toContain('dropToUnassign')
   })
 
   it('bietet das Ziel nicht an, wenn die Buchung schon dort liegt', () => {
