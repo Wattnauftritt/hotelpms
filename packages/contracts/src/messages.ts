@@ -1165,6 +1165,10 @@ const M = {
     tr: 'Bu misafir için konaklama katkısı kaydının saklama süresi {until} '
       + 'tarihine kadar devam ediyor. O tarihe kadar saklama yasal bir '
       + 'yükümlülüktür (GDPR Md. 17(3)(b)).' },
+  'reservation.noPrimaryGuest': {
+    de: 'Die Reservierung hat keinen Hauptgast.',
+    en: 'The reservation has no primary guest.',
+    tr: 'Rezervasyonun ana misafiri yok.' },
   'guest.hasOpenReservations': {
     de: 'Es gibt noch offene oder laufende Reservierungen fuer diesen Gast.',
     en: 'There are still open or current reservations for this guest.',
