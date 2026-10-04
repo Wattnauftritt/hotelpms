@@ -219,6 +219,7 @@ function ZimmerAendern(
   const online = useOnline()
   const aendern = useUpdateRoom(propertyId)
   const [code, setCode] = useState(zimmer.code)
+  const [name, setName] = useState(zimmer.name ?? '')
   const [floor, setFloor] = useState(zimmer.floor ?? '')
   const [attributes, setAttributes] = useState(zimmer.attributes.join(', '))
   const [categoryId, setCategoryId] = useState(zimmer.categoryId)
@@ -228,7 +229,7 @@ function ZimmerAendern(
           onSubmit={e => {
             e.preventDefault()
             aendern.mutate(
-              { id: zimmer.id, code: code.trim(), floor,
+              { id: zimmer.id, code: code.trim(), name: name.trim() || null, floor,
                 attributes: merkmaleLesen(attributes), categoryId },
               { onSuccess: onClose })
           }}>
@@ -236,11 +237,17 @@ function ZimmerAendern(
         <input required value={code} onChange={e => setCode(e.target.value)}
                className={eingabe} />
       </Feld>
+      <div className="sm:col-span-2">
+        <Feld label={t('master.roomName')} hint={t('master.roomNameHint')}>
+          <input value={name} maxLength={60} onChange={e => setName(e.target.value)}
+                 className={eingabe} />
+        </Feld>
+      </div>
       <Feld label={t('master.floor')}>
         <input value={floor} onChange={e => setFloor(e.target.value)}
                className={eingabe} />
       </Feld>
-      <div className="sm:col-span-2">
+      <div className="sm:col-span-3">
         <Feld label={t('common.category')}>
           <select value={categoryId} className={eingabe}
                   onChange={e => setCategoryId(Number(e.target.value))}>
@@ -288,6 +295,7 @@ function Zimmer(
       zimmer.active ? '' : 'opacity-60'}`}>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-medium w-16 tabular-nums">{zimmer.code}</span>
+        <span className="w-40 truncate">{zimmer.name ?? ''}</span>
         <span className="w-24 text-neutral-500">{zimmer.categoryCode}</span>
         <span className="w-16 text-neutral-500">{zimmer.floor ?? ''}</span>
         <span className="grow text-neutral-500">{zimmer.attributes.join(', ')}</span>
@@ -353,6 +361,7 @@ export function Stammdaten({ propertyId }: { propertyId: number }): JSX.Element 
   const gefundeneZimmer = (zimmer.data?.rooms ?? []).filter(r =>
     suchbegriff === ''
     || r.code.toLowerCase().includes(suchbegriff)
+    || (r.name ?? '').toLowerCase().includes(suchbegriff)
     || r.categoryCode.toLowerCase().includes(suchbegriff)
     || (r.floor ?? '').toLowerCase().includes(suchbegriff)
     || r.attributes.some(a => a.includes(suchbegriff)))

@@ -304,6 +304,14 @@ export const einstellungen = {
     en: 'Occupancy affects prices and the registration form, not '
       + 'capacity.',
     tr: 'Doluluk sayısı fiyatları ve Meldeschein\'i etkiler, kapasiteyi değil.' },
+  'master.roomName': {
+    de: 'Zimmername',
+    en: 'Room name',
+    tr: 'Oda adı' },
+  'master.roomNameHint': {
+    de: 'Optional, z. B. „Dünenblick“. Steht im Zimmerplan neben der Nummer.',
+    en: 'Optional, e.g. “Dune View”. Shown next to the number in the room chart.',
+    tr: 'İsteğe bağlı, ör. „Kumul Manzarası“. Oda planında numaranın yanında görünür.' },
   'master.floor': {
     de: 'Etage',
     en: 'Floor',

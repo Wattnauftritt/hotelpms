@@ -1463,7 +1463,13 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
             ist, was das Auge sucht, und die Gruppe daneben wird bei
             schmaler Spalte abgeschnitten -- das Zeichen soll es nicht. */}
         <ReinigungsZeichen stand={u.housekeeping} />
-        <span className="text-neutral-400 truncate">{u.category_name}</span>
+        {/* Der Name statt der Gruppe, wenn es einen gibt: die Gruppe zeigt
+            der Plan schon durch die Trennlinie und auf dem Balken, den
+            Namen sonst nirgends. Die Gruppe bleibt im Titel. */}
+        <span className={`truncate ${u.name === null ? 'text-neutral-400' : 'text-neutral-700'}`}
+              title={u.name === null ? u.category_name : `${u.name} · ${u.category_name}`}>
+          {u.name ?? u.category_name}
+        </span>
         {p.passung === 'zuKlein' && (
           <span aria-hidden title={t('plan.tooSmall')}
                 className="text-red-700 shrink-0">!</span>

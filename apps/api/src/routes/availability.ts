@@ -290,7 +290,7 @@ export function availabilityRoutes(app: FastifyInstance): void {
           // eine Zeile je Zimmer, ueber den Primaerschluessel. Fehlt sie,
           // gilt "sauber" -- wie auf dem Housekeeping-Bildschirm, sonst
           // zeigten zwei Bildschirme fuer dasselbe Zimmer zweierlei.
-          `SELECT r.id, r.code, r.floor, r.category_id, c.name AS category_name,
+          `SELECT r.id, r.code, r.name, r.floor, r.category_id, c.name AS category_name,
                   c.code AS category_code, c.max_occupancy, c.sort_order
                   ${mitReinigung ? `, COALESCE(h.status, 'clean') AS housekeeping` : ''}
              FROM resource r
