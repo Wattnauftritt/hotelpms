@@ -262,6 +262,79 @@ describe('Zimmer aendern', () => {
   })
 })
 
+describe('Zimmer umgruppieren mit Reservierungen', () => {
+  const tag = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+  const ref = async (id: number) => (await owner.query<{ public_ref: string }>(
+    `SELECT public_ref FROM reservation WHERE id = $1`, [id])).rows[0]!.public_ref
+  const verkauft = async (cat: number, offset: number) => (await owner.query<{ sold: number }>(
+    `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=$2
+       AND date = current_date + $3::int`, [fx.propertyId, cat, offset])).rows[0]!.sold
+
+  it('nimmt die Reservierungen des Zimmers samt Bestand in die neue Gruppe mit', async () => {
+    const fz = await makeCategory(owner, fx.propertyId, { code: 'FZ' })
+    const ap = await makeCategory(owner, fx.propertyId, { code: 'AP' })
+    const [wohnung] = await makeResources(owner, fx.propertyId, fz, 1)
+    await owner.query(
+      `SELECT inventory_materialize($1, current_date, (current_date + 400)::date)`,
+      [fx.propertyId])
+    const res = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: fz,
+      arrival: tag(3), departure: tag(6), resourceId: wohnung! })
+    expect(await verkauft(fz, 4)).toBe(1)
+
+    const r = await patch(`/v1/rooms/${wohnung!}`, { categoryId: ap })
+    expect(r.statusCode).toBe(200)
+    expect((JSON.parse(r.body) as { movedReservations: string[] }).movedReservations)
+      .toEqual([await ref(res.reservationId)])
+
+    const nachher = await owner.query<{ category_id: number }>(
+      `SELECT category_id FROM reservation WHERE id = $1`, [res.reservationId])
+    expect(nachher.rows[0]!.category_id).toBe(ap)
+    expect(await verkauft(fz, 4)).toBe(0)
+    expect(await verkauft(ap, 4)).toBe(1)
+    expect(await verkauft(0, 4)).toBe(1)    // Die Haussumme bleibt.
+
+    // Die leere Gruppe laesst sich jetzt stilllegen.
+    const still = await patch(`/v1/categories/${fz}`, { active: false })
+    expect(still.statusCode).toBe(200)
+  })
+
+  it('laesst ein Upgrade bei der gebuchten Gruppe', async () => {
+    const dz = await makeCategory(owner, fx.propertyId, { code: 'DZ' })
+    const su = await makeCategory(owner, fx.propertyId, { code: 'SU' })
+    const ap = await makeCategory(owner, fx.propertyId, { code: 'AP' })
+    await makeResources(owner, fx.propertyId, dz, 1)
+    const [suite] = await makeResources(owner, fx.propertyId, su, 1, 'S')
+    await owner.query(
+      `SELECT inventory_materialize($1, current_date, (current_date + 400)::date)`,
+      [fx.propertyId])
+    const res = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      arrival: tag(3), departure: tag(5), resourceId: suite! })
+
+    const r = await patch(`/v1/rooms/${suite!}`, { categoryId: ap })
+    expect(r.statusCode).toBe(200)
+    const nachher = await owner.query<{ category_id: number }>(
+      `SELECT category_id FROM reservation WHERE id = $1`, [res.reservationId])
+    expect(nachher.rows[0]!.category_id).toBe(dz)
+    expect(await verkauft(dz, 3)).toBe(1)
+  })
+
+  it('nennt beim Stilllegen der Gruppe die Reservierungen und ihr Zimmer', async () => {
+    const fz = await makeCategory(owner, fx.propertyId, { code: 'FZ' })
+    const [wohnung] = await makeResources(owner, fx.propertyId, fz, 1)
+    await owner.query(
+      `SELECT inventory_materialize($1, current_date, (current_date + 400)::date)`,
+      [fx.propertyId])
+    const res = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: fz,
+      arrival: tag(3), departure: tag(5), resourceId: wohnung! })
+    const code = (await owner.query<{ code: string }>(
+      `SELECT code FROM resource WHERE id = $1`, [wohnung!])).rows[0]!.code
+
+    const r = await patch(`/v1/categories/${fz}`, { active: false })
+    expect(r.statusCode).toBe(409)
+    expect(JSON.parse(r.body).detail).toContain(`${await ref(res.reservationId)} ab ${tag(3)} (${code})`)
+  })
+})
+
 describe('Einrichtungsstand', () => {
   it('nennt den naechsten fehlenden Schritt', async () => {
     const leer = await get(`/v1/properties/${fx.propertyId}/setup-status`)
