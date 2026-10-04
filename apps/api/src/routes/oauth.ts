@@ -90,6 +90,45 @@ function zugangsdaten(
   return id && secret ? { id, secret } : null
 }
 
+/**
+ * Zugriffsbereiche pruefen -- beim Anlegen und beim Aendern dieselbe Regel.
+ * Zwei Fassungen liefen auseinander, und dann liesse sich ueber das Aendern
+ * ein Plattformrecht vergeben, das das Anlegen abweist.
+ */
+function pruefeScopes(scopes: unknown): asserts scopes is string[] {
+  if (!Array.isArray(scopes) || scopes.length === 0
+    || scopes.some(x => typeof x !== 'string')) {
+    throw Errors.validation({ scopes: ['field.atLeastOneScope'] })
+  }
+  const unbekannt = scopes.filter(s => !isPermission(s))
+  if (unbekannt.length > 0) {
+    throw Errors.validation({ scopes: ['field.unknownValues'] },
+      { values: unbekannt.join(', ') })
+  }
+  /*
+   * Plattformrechte sind keine Scopes. Sie gehoeren unserem eigenen
+   * Personal und wirken ueber Mandanten hinweg; ein Kundenclient mit
+   * `platform:accounts` haette Zugriff auf fremde Betriebe.
+   */
+  const plattform = scopes.filter(s => s.startsWith('platform:'))
+  if (plattform.length > 0) {
+    throw Errors.validation({ scopes: ['field.noPlatformScopes'] },
+      { values: plattform.join(', ') })
+  }
+  /*
+   * Das Recht eines Gaesteterminals ebenso nicht (Migration 0071). Es
+   * gehoert einem gekoppelten Geraet, und dessen Routen verlangen
+   * ohnehin das Geraet selbst -- ein Client damit bekaeme nichts als
+   * 403. Ihn trotzdem anlegen zu lassen hiesse, einen Zugriffsbereich
+   * anzubieten, der nie wirkt, und das sieht aus wie ein Fehler.
+   */
+  const geraet = scopes.filter(s => s.startsWith('terminal:'))
+  if (geraet.length > 0) {
+    throw Errors.validation({ scopes: ['field.noDeviceScopes'] },
+      { values: geraet.join(', ') })
+  }
+}
+
 export function oauthRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'POST',
@@ -178,36 +217,7 @@ export function oauthRoutes(app: FastifyInstance): void {
       if (typeof body.name !== 'string' || body.name.trim() === '') {
         throw Errors.validation({ name: ['field.required'] })
       }
-      if (!Array.isArray(body.scopes) || body.scopes.length === 0) {
-        throw Errors.validation({ scopes: ['field.atLeastOneScope'] })
-      }
-      const unbekannt = body.scopes.filter(s => !isPermission(s))
-      if (unbekannt.length > 0) {
-        throw Errors.validation({ scopes: ['field.unknownValues'] },
-          { values: unbekannt.join(', ') })
-      }
-      /*
-       * Plattformrechte sind keine Scopes. Sie gehoeren unserem eigenen
-       * Personal und wirken ueber Mandanten hinweg; ein Kundenclient mit
-       * `platform:accounts` haette Zugriff auf fremde Betriebe.
-       */
-      const plattform = body.scopes.filter(s => s.startsWith('platform:'))
-      if (plattform.length > 0) {
-        throw Errors.validation({ scopes: ['field.noPlatformScopes'] },
-          { values: plattform.join(', ') })
-      }
-      /*
-       * Das Recht eines Gaesteterminals ebenso nicht (Migration 0071). Es
-       * gehoert einem gekoppelten Geraet, und dessen Routen verlangen
-       * ohnehin das Geraet selbst -- ein Client damit bekaeme nichts als
-       * 403. Ihn trotzdem anlegen zu lassen hiesse, einen Zugriffsbereich
-       * anzubieten, der nie wirkt, und das sieht aus wie ein Fehler.
-       */
-      const geraet = body.scopes.filter(s => s.startsWith('terminal:'))
-      if (geraet.length > 0) {
-        throw Errors.validation({ scopes: ['field.noDeviceScopes'] },
-          { values: geraet.join(', ') })
-      }
+      pruefeScopes(body.scopes)
 
       // Das Geheimnis entsteht hier und wird genau einmal herausgegeben.
       const secret = randomBytes(32).toString('base64url')
@@ -261,6 +271,108 @@ export function oauthRoutes(app: FastifyInstance): void {
       return { clients: rows, availableScopes: PERMISSIONS.filter(p =>
         !p.startsWith('platform:') && !p.startsWith('terminal:')) }
     })
+  })
+
+  /**
+   * Name, Zugriffsbereiche und Haeuser eines bestehenden Zugangs aendern.
+   *
+   * Bis hierhin hiess "ein Recht dazu": neuen Zugang anlegen, das Geheimnis
+   * im Umsystem tauschen, den alten sperren -- drei Schritte an zwei
+   * Maschinen fuer ein Haekchen. Das Geheimnis bleibt beim Aendern, wie es
+   * ist; wer es tauschen will, legt neu an.
+   *
+   * **Was laufende Token davon merken.** Ein Token haelt eine Momentaufnahme
+   * (Migration 0025), und dabei bleibt es fuer alles, was **dazukommt**: das
+   * kommt mit dem naechsten Token, spaetestens nach einer Stunde. Was
+   * **wegfaellt**, wirkt sofort -- die laufenden Token werden auf den Rest
+   * gekuerzt. Wer ein Recht entzieht, weil es zu weit war, soll nicht eine
+   * Stunde lang zusehen, wie es weiter benutzt wird. Bliebe nach dem Kuerzen
+   * nichts uebrig, wird das Token entwertet: ein leeres `property_ids` hiesse
+   * "alle Haeuser", das Gegenteil des Gemeinten.
+   */
+  registerRoute(app, {
+    method: 'PATCH',
+    url: '/v1/oauth-clients/:clientRef',
+    permission: 'integration:manage',
+    summary: 'Maschinenzugang aendern',
+    handler: async (req) => {
+      const { clientRef } = req.params as { clientRef: string }
+      const body = (req.body ?? {}) as {
+        name?: unknown; scopes?: unknown; propertyIds?: unknown }
+      if (body.name !== undefined
+          && (typeof body.name !== 'string' || body.name.trim() === '')) {
+        throw Errors.validation({ name: ['field.required'] })
+      }
+      if (body.scopes !== undefined) pruefeScopes(body.scopes)
+      if (body.propertyIds !== undefined
+          && (!Array.isArray(body.propertyIds)
+              || body.propertyIds.some(x => !Number.isSafeInteger(x)))) {
+        throw Errors.validation({ propertyIds: ['field.invalid'] })
+      }
+      const name = body.name as string | undefined
+      const scopes = body.scopes as string[] | undefined
+      const propertyIds = body.propertyIds as number[] | undefined
+
+      return tx(req.pool, req, async client => {
+        const c = await client.query<{ id: number; account_id: number; status: string }>(
+          `SELECT id, account_id, status FROM oauth_client WHERE public_ref = $1 FOR UPDATE`,
+          [clientRef])
+        if (c.rowCount === 0) throw Errors.notFound('res.oauthClient')
+        const z = c.rows[0]!
+        // Die Zeilenrichtlinie laesst jeden Account des Aufrufers durch; das
+        // Recht gilt aber je Account, wie beim Anlegen (`accountFor`).
+        accountFor(req.principal as Principal, Number(z.account_id))
+        if (z.status !== 'active') throw Errors.conflict('oauthClient.disabled')
+
+        if (propertyIds !== undefined && propertyIds.length > 0) {
+          const eigene = await client.query(
+            `SELECT 1 FROM property WHERE account_id = $1 AND id = ANY($2::bigint[])`,
+            [z.account_id, propertyIds])
+          if (eigene.rowCount !== new Set(propertyIds).size) {
+            throw Errors.notFound('res.property')
+          }
+        }
+
+        const neu = await client.query<{ name: string; scopes: string[]
+                                         property_ids: string[] }>(
+          `UPDATE oauth_client
+              SET name = COALESCE($2, name),
+                  scopes = COALESCE($3::text[], scopes),
+                  property_ids = COALESCE($4::bigint[], property_ids)
+            WHERE id = $1
+           RETURNING name, scopes, property_ids`,
+          [z.id, name?.trim() ?? null, scopes ?? null, propertyIds ?? null])
+        const n = neu.rows[0]!
+        const haeuser = n.property_ids.map(Number)
+
+        /*
+         * Laufende Token kuerzen. Scopes: Schnittmenge. Haeuser: ein leeres
+         * Feld heisst "alle"; ist der Zugang jetzt auf Haeuser beschraenkt,
+         * bekommt ein Token fuer alle genau diese, eines fuer einzelne die
+         * Schnittmenge. Ohne Beschraenkung bleibt das Token, wie es war --
+         * dazu kommt nichts, siehe oben.
+         */
+        await client.query(
+          `UPDATE oauth_access_token t
+              SET scopes = ARRAY(SELECT unnest(t.scopes) INTERSECT SELECT unnest($2::text[])),
+                  property_ids = CASE
+                    WHEN cardinality($3::bigint[]) = 0 THEN t.property_ids
+                    WHEN cardinality(t.property_ids) = 0 THEN $3::bigint[]
+                    ELSE ARRAY(SELECT unnest(t.property_ids)
+                               INTERSECT SELECT unnest($3::bigint[])) END
+            WHERE t.client_id = $1 AND t.revoked_at IS NULL AND t.expires_at > now()`,
+          [z.id, n.scopes, haeuser])
+        await client.query(
+          `UPDATE oauth_access_token SET revoked_at = now()
+            WHERE client_id = $1 AND revoked_at IS NULL
+              AND (cardinality(scopes) = 0
+                   OR (cardinality($2::bigint[]) > 0 AND cardinality(property_ids) = 0))`,
+          [z.id, haeuser])
+
+        return { clientId: clientRef, name: n.name, scopes: n.scopes, propertyIds: haeuser,
+                 allProperties: haeuser.length === 0 }
+      })
+    }
   })
 
   registerRoute(app, {

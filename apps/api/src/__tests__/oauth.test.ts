@@ -370,3 +370,60 @@ describe('Maschinenzugang verwalten', () => {
     expect((json(liste) as unknown as { clients: unknown[] }).clients).toHaveLength(0)
   })
 })
+
+describe('Maschinenzugang aendern', () => {
+  const aendern = (clientId: string, payload: Record<string, unknown>) =>
+    app.inject({ method: 'PATCH', url: `/v1/oauth-clients/${clientId}`,
+                 headers: auth(admin.sessionId), payload })
+  const kueche = (t: string) => app.inject({
+    method: 'GET', url: `/v1/properties/${fx.propertyId}/housekeeping?date=2026-10-01`,
+    headers: bearer(t) })
+
+  it('gibt ein Recht dazu, das Geheimnis bleibt', async () => {
+    const z = await zugang({ scopes: ['reservation:read'] })
+    const r = await aendern(z.clientId, { scopes: ['reservation:read', 'housekeeping:read'] })
+    expect(r.statusCode, r.body).toBe(200)
+    // Dazu Gekommenes erst mit dem naechsten Token -- mit demselben Geheimnis.
+    expect((await kueche(await token(z))).statusCode).toBe(200)
+  })
+
+  it('entzieht ein Recht auch dem laufenden Token sofort', async () => {
+    const z = await zugang({ scopes: ['reservation:read', 'housekeeping:read'] })
+    const t = await token(z)
+    expect((await kueche(t)).statusCode).toBe(200)
+    expect((await aendern(z.clientId, { scopes: ['reservation:read'] })).statusCode).toBe(200)
+    expect((await kueche(t)).statusCode).toBe(403)
+  })
+
+  it('entwertet ein Token, dem kein Recht und kein Haus mehr bleibt', async () => {
+    const zweites = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name) VALUES ($1,'ZWEI','Zweites')
+       RETURNING id`, [fx.accountId])
+    const z = await zugang({ scopes: ['housekeeping:read'], propertyIds: [zweites.rows[0]!.id] })
+    const t = await token(z)
+    // Auf das andere Haus umgestellt: die Schnittmenge waere leer, und ein
+    // leeres Feld hiesse "alle Haeuser".
+    const r = await aendern(z.clientId, { propertyIds: [fx.propertyId] })
+    expect(r.statusCode, r.body).toBe(200)
+    expect((await kueche(t)).statusCode).toBe(401)
+    expect((await kueche(await token(z))).statusCode).toBe(200)
+  })
+
+  it('nimmt dieselben Zugriffsbereiche nicht an wie das Anlegen', async () => {
+    const z = await zugang()
+    const r = await aendern(z.clientId, { scopes: ['housekeeping:read', 'platform:accounts'] })
+    expect(r.statusCode).toBe(422)
+    expect((await aendern(z.clientId, { scopes: [] })).statusCode).toBe(422)
+    const fremd = await makeProperty(owner, { code: 'FREMD' })
+    expect((await aendern(z.clientId, { propertyIds: [fremd.propertyId] })).statusCode)
+      .toBe(404)
+  })
+
+  it('aendert einen gesperrten Zugang nicht mehr', async () => {
+    const z = await zugang()
+    await app.inject({ method: 'POST', url: `/v1/oauth-clients/${z.clientId}/revoke`,
+                       headers: auth(admin.sessionId) })
+    const r = await aendern(z.clientId, { scopes: ['reservation:read'] })
+    expect(r.statusCode).toBe(409)
+  })
+})

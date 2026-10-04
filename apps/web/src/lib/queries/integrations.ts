@@ -87,6 +87,16 @@ export function useCreateOAuthClient() {
   })
 }
 
+export function useUpdateOAuthClient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ clientRef, ...body }: { clientRef: string; name?: string
+                                           scopes?: string[]; propertyIds?: number[] }) =>
+      api.patch(`/v1/oauth-clients/${clientRef}`, body),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['oauthClients'] }) }
+  })
+}
+
 export function useRevokeOAuthClient() {
   const qc = useQueryClient()
   return useMutation({

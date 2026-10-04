@@ -95,7 +95,12 @@ Migration `0025`, `apps/api/src/routes/oauth.ts`, `loadPrincipalFromToken` in
 `POST /oauth/token` gibt gegen Kennung und Geheimnis ein Token auf eine Stunde aus,
 formularkodiert nach RFC 6749. Dazu drei Routen unter `integration:manage`, um
 Maschinenzugänge anzulegen, aufzulisten und zu sperren — ohne sie wäre der Zugang nur
-per SQL erreichbar.
+per SQL erreichbar. Seit dem 04.10.2026 lassen sich Name, Zugriffsbereiche und Häuser
+eines bestehenden Zugangs ändern (`PATCH /v1/oauth-clients/:clientRef`, in der Oberfläche
+„Rechte ändern"); vorher hieß ein Recht dazu: neu anlegen, Geheimnis im Umsystem tauschen,
+alten sperren. Was dazukommt, kommt mit dem nächsten Token; was wegfällt, kürzt die
+laufenden Token sofort, und eines, dem nichts bliebe, wird entwertet. Ein gesperrter Zugang
+bleibt gesperrt.
 
 **Scopes sind Berechtigungsschlüssel**, kein zweiter Rechteweg (Grundsatz 1, Dokument 14).
 `registerRoute` sieht keinen Unterschied zwischen Mensch und Maschine; der generische
