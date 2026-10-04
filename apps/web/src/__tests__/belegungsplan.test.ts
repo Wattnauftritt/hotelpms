@@ -197,6 +197,21 @@ describe('Wo ein Balken im Raster liegt', () => {
   })
 })
 
+describe('Naechte in der Markierung', () => {
+  const plan = readFileSync(new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+
+  it('zaehlt aus den Tagen, nicht aus der Breite', () => {
+    // Am Rand des Ausschnitts ist der Kasten abgeschnitten, der Aufenthalt nicht.
+    expect(plan).toContain('naechte: daysBetween(z.arrival, z.departure)')
+    expect(plan).toContain('return eins(drag.resourceId, k.left, k.width, bis + 1 - von)')
+  })
+
+  it('steht in jeder Markierung, auch der stehenden und der Mehrfachauswahl', () => {
+    expect(plan).toContain('ghostNaechte={kasten?.naechte ?? null}')
+    expect(plan).toContain("t('tape.nightsShort', { n: p.ghostNaechte })")
+  })
+})
+
 describe('Umriss eines Balkens', () => {
   it('ist an Anreise und Abreise spitz', () => {
     expect(balkenUmriss(true, true)).toBe(
@@ -744,7 +759,7 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
   it('zeichnet ein Rechteck je Zeile, nicht eines fuer alle', () => {
     // Acht gleich breite Kaesten fuer acht verschieden lange Aufenthalte
     // waeren eine Vorschau, die luegt.
-    expect(plan).toContain('kaesten: Map<number, { left: number; width: number }>')
+    expect(plan).toContain('kaesten: Map<number, { left: number; width: number; naechte?: number }>')
     expect(plan).toContain('ghostLinks={kasten?.left ?? 0}')
   })
 

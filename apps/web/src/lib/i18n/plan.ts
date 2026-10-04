@@ -554,6 +554,10 @@ export const plan = {
     de: 'Gruppenbuchung',
     en: 'Group booking',
     tr: 'Grup rezervasyonu' },
+  'tape.nightsShort': {
+    de: '{n} N.',
+    en: '{n} n.',
+    tr: '{n} g.' },
   'group.rooms': {
     de: 'Zimmer',
     en: 'rooms',
