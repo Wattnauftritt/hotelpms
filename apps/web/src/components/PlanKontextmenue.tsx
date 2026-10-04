@@ -90,12 +90,14 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
      * arbeitet, hat das Band nicht auf dem Bildschirm, und bis dorthin zu
      * ziehen heisst, den Plan waehrend des Zugs scrollen zu lassen.
      *
-     * Nicht bei angereistem Gast: der liegt im Zimmer. Die API weist es
+     * Nicht bei angereistem Gast: der liegt im Zimmer. Nicht beim
+     * abgereisten: dort ist das Zimmer Geschichte, kein Plan. Die API weist es
      * ohnehin ab; den Eintrag trotzdem anzubieten hiesse, eine Fehlermeldung
      * anzubieten.
      */
     if (rechte.darf('reservation:write')
-        && ziel.resourceId !== null && ziel.status !== 'InHouse') {
+        && ziel.resourceId !== null
+        && ziel.status !== 'InHouse' && ziel.status !== 'CheckedOut') {
       eintraege.push({ schluessel: 'abnehmen', text: t('kontext.unassign'),
                        onClick: () => zuweisen.mutate(
                          { reservationRef: ziel.reservationRef, resourceId: null }) })

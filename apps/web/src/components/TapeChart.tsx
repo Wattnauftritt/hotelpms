@@ -131,7 +131,8 @@ const KLICK_SCHWELLE = 5
 const FARBE: Record<string, string> = {
   Optional: 'bg-status-optional',
   Confirmed: 'bg-status-confirmed',
-  InHouse: 'bg-status-inhouse'
+  InHouse: 'bg-status-inhouse',
+  CheckedOut: 'bg-status-checkedout'
 }
 
 type ReservationRow = TapeChartData['reservations'][number]
@@ -158,6 +159,12 @@ type DragState =
        * nicht acht. Acht zurueckzuholen ist Arbeit, eine ist ein Zug.
        */
       alleDerGruppe: boolean
+      /**
+       * Abgereist: der Balken steht fest. Der Zug bleibt ein Klick, der
+       * die Reservierung oeffnet; verschieben laesst sich Vergangenheit
+       * nicht, und die Schnittstelle wiese es ohnehin ab.
+       */
+      fest: boolean
       /** Tagesspalte beim Aufsetzen und jetzt -- daraus der Zeitversatz. */
       startDay: number; day: number
       /**
@@ -567,9 +574,9 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       const ueber = zeile ? Number(zeile.dataset.resourceRow) : null
       const imBand = el?.closest('[data-unassigned-band]') !== null
                   && el?.closest('[data-unassigned-band]') !== undefined
-      const bewegt = d.moved
+      const bewegt = !d.fest && (d.moved
         || Math.abs(e.clientX - d.pointerDownX) > KLICK_SCHWELLE
-        || Math.abs(e.clientY - d.pointerDownY) > KLICK_SCHWELLE
+        || Math.abs(e.clientY - d.pointerDownY) > KLICK_SCHWELLE)
       setDragState({ ...d, overResourceId: ueber, ueberBand: imBand, moved: bewegt,
                      day: tagUnter(e.clientX) })
     }
@@ -1011,6 +1018,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                // beim Loslassen waere eine andere Frage als die, die der
                // Mensch beim Greifen beantwortet hat.
                alleDerGruppe: e.altKey,
+               fest: r.status === 'CheckedOut',
                startDay: tag, day: tag,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
                overResourceId: null, ueberBand: false, moved: false })
@@ -1538,6 +1546,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           // tauschen.
           const inGehaltenerGruppe = p.gruppenRef !== null
             && r.booking_ref === p.gruppenRef
+          const fest = r.status === 'CheckedOut'
           return (
             <button key={r.id} data-reservation-ref={r.public_ref}
                     // Daran findet die Schnellsuche (`PlanSuche`) den Balken,
@@ -1564,7 +1573,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * Funktion, die niemand findet, ist keine.
                      */
                     className={`absolute rounded-sm px-1.5 text-xs text-white
-                                truncate text-left hover:ring-2 ring-black/30 cursor-move
+                                truncate text-left hover:ring-2 ring-black/30
+                                ${fest ? 'cursor-pointer' : 'cursor-move'}
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
                                   ? 'ring-2 ring-offset-1 ring-sky-500 z-10' : ''}`}>
@@ -1589,11 +1599,16 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
               {r.short_note && (
                 <span className="ml-1 opacity-75">· {r.short_note}</span>
               )}
-              {/* Griffe an den Raendern: verkuerzen und verlaengern (A4). */}
-              <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
-                    className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />
-              <span onPointerDown={e => p.onResizePointerDown(r, 'end', e)}
-                    className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" />
+              {/* Griffe an den Raendern: verkuerzen und verlaengern (A4).
+                  Nicht am abgereisten Aufenthalt: der ist Vergangenheit. */}
+              {!fest && (
+                <>
+                  <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
+                        className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />
+                  <span onPointerDown={e => p.onResizePointerDown(r, 'end', e)}
+                        className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" />
+                </>
+              )}
             </button>
           )
         })}

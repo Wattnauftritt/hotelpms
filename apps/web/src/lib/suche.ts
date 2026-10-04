@@ -27,11 +27,13 @@ export function useEntprellt<T>(wert: T, ms = 200): T {
 
 /**
  * Was der Belegungsplan zeigt. Dieselbe Liste wie in der Abfrage des Plans
- * (`routes/availability.ts`): ein abgereister oder stornierter Aufenthalt
+ * (`routes/availability.ts`): ein stornierter Aufenthalt oder ein No-Show
  * hat dort keinen Balken, zu dem man springen koennte -- er wird statt
- * dessen im Seitenfenster geoeffnet.
+ * dessen im Seitenfenster geoeffnet. Abgereiste stehen im Plan, seit die
+ * Uebernahme aus KWHotel Jahre davon mitbringt.
  */
-export const IM_PLAN: ReadonlySet<string> = new Set(['Optional', 'Confirmed', 'InHouse'])
+export const IM_PLAN: ReadonlySet<string> = new Set(['Optional', 'Confirmed', 'InHouse',
+                                                      'CheckedOut'])
 
 export type Marke = 'inquired' | 'optional' | 'confirmed' | 'inHouse' | 'checkedOut'
   | 'past' | 'canceled' | 'noShow'

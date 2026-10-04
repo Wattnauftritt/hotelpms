@@ -54,8 +54,8 @@ describe('Statusmarke einer Trefferzeile', () => {
   it('springt im Plan nur zu dem, was der Plan zeigt', () => {
     // Dieselbe Liste wie die Abfrage des Plans in routes/availability.ts.
     const plan = lies('../../api/src/routes/availability.ts')
-    expect(plan).toContain(`r.status IN ('Optional','Confirmed','InHouse')`)
-    expect([...IM_PLAN].sort()).toEqual(['Confirmed', 'InHouse', 'Optional'])
+    expect(plan).toContain(`r.status IN ('Optional','Confirmed','InHouse','CheckedOut')`)
+    expect([...IM_PLAN].sort()).toEqual(['CheckedOut', 'Confirmed', 'InHouse', 'Optional'])
   })
 })
 

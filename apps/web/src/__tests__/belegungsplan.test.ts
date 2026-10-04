@@ -1148,10 +1148,11 @@ describe('Der rechte Knopf im Belegungsplan', () => {
     expect(eintraege).toContain("ziel.status === 'Confirmed' && ziel.resourceId !== null")
   })
 
-  it('bietet das Abnehmen nicht bei angereistem Gast an', () => {
+  it('bietet das Abnehmen nicht bei angereistem oder abgereistem Gast an', () => {
     // Die API weist es ohnehin ab; den Eintrag trotzdem anzuzeigen hiesse,
     // eine Fehlermeldung anzubieten.
-    expect(eintraege).toContain("ziel.resourceId !== null && ziel.status !== 'InHouse'")
+    expect(eintraege).toContain(
+      "ziel.status !== 'InHouse' && ziel.status !== 'CheckedOut'")
   })
 
   it('setzt den Storno ab und fragt', () => {
