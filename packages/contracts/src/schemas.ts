@@ -781,7 +781,9 @@ export const OnlineCheckinStatus = Type.Object({
   /** Meldeschein online oder am Terminal eingereicht, wann. */
   completedAt: Type.Union([Type.String(), Type.Null()]),
   source: Type.Union([Type.Literal('desk'), Type.Literal('online'),
-                      Type.Literal('terminal'), Type.Null()]),
+                      Type.Literal('terminal'), Type.Literal('import'), Type.Null()]),
+  /** Bei einem uebernommenen Schein: das Umsystem, aus dem er kam (0087). */
+  importedFrom: Type.Union([Type.String(), Type.Null()]),
   /** Vorab erfasst, Unterschrift steht noch aus. */
   signaturePending: Type.Boolean(),
   /** Wie viele Links gerade gelten. */

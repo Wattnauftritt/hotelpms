@@ -256,6 +256,11 @@ export const onlineCheckin = {
     de: 'Am Terminal ausgefüllt am {zeit}',
     en: 'Filled in at the terminal on {zeit}',
     tr: '{zeit} tarihinde terminalde dolduruldu' },
+  // Aus einem Umsystem uebernommen (0087); {system} ist dessen Name.
+  'onlineCheckin.completedImported': {
+    de: 'Ausgefüllt am {zeit}, übernommen aus {system}',
+    en: 'Filled in on {zeit}, taken over from {system}',
+    tr: '{zeit} tarihinde dolduruldu, {system} sisteminden aktarıldı' },
   'onlineCheckin.signaturePending': {
     de: 'Unterschrift steht aus: am Anreisetag am Terminal oder hier beim '
       + 'Check-in (§ 29 BMG). Reisedokument vorzeigen lassen.',
