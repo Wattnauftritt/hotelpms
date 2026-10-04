@@ -47,9 +47,9 @@ export const planstatus = {
     en: 'Payment',
     tr: 'Ödeme' },
   'ps.pay.none': {
-    de: 'Noch nichts aufs Konto gebucht, nichts gezahlt',
-    en: 'Nothing charged to the account or paid yet',
-    tr: 'Henüz hesaba kayıt veya ödeme yok' },
+    de: 'Noch nichts gezahlt',
+    en: 'Nothing paid yet',
+    tr: 'Henüz ödeme yok' },
   'ps.pay.requested': {
     de: 'Zahlung angefordert',
     en: 'Payment requested',
@@ -102,15 +102,14 @@ export const planstatus = {
     de: 'Gruppe ({n} Zimmer): {state} · gezahlt {paid} von {expected}',
     en: 'Group ({n} rooms): {state} · paid {paid} of {expected}',
     tr: 'Grup ({n} oda): {state} · {expected} tutarın {paid} kadarı ödendi' },
-  /*
-   * Preis und Notizen im Titel des Balkens. "Gesamtpreis" ist die Summe
-   * der Naechte, ohne Extras: was der Gast insgesamt schuldet, sagt der
-   * Zahlungsstand darunter, und der braucht das Folio-Recht.
-   */
   'ps.persons': {
     de: '{n} P.',
     en: '{n} p.',
     tr: '{n} k.' },
+  'ps.personOne': {
+    de: '1 Person',
+    en: '1 guest',
+    tr: '1 kişi' },
   'ps.personsTitle': {
     de: '{n} Personen',
     en: '{n} guests',
@@ -119,28 +118,45 @@ export const planstatus = {
     de: '{n} Personen ({a} Erw., {k} Ki.)',
     en: '{n} guests ({a} adults, {k} children)',
     tr: '{n} kişi ({a} yetişkin, {k} çocuk)' },
-  'ps.price.night': {
-    de: 'Preis pro Nacht: {price}',
-    en: 'Price per night: {price}',
-    tr: 'Gecelik fiyat: {price}' },
-  'ps.price.nightRange': {
-    de: 'Preis pro Nacht: {min} bis {max}',
-    en: 'Price per night: {min} to {max}',
-    tr: 'Gecelik fiyat: {min} ile {max} arası' },
-  'ps.price.stayOne': {
-    de: 'Gesamtpreis (1 Nacht): {total}',
-    en: 'Total price (1 night): {total}',
-    tr: 'Toplam fiyat (1 gece): {total}' },
-  'ps.price.stay': {
-    de: 'Gesamtpreis ({n} Nächte): {total}',
-    en: 'Total price ({n} nights): {total}',
-    tr: 'Toplam fiyat ({n} gece): {total}' },
-  'ps.notes.reservation': {
-    de: 'Notiz zur Reservierung:',
-    en: 'Reservation note:',
-    tr: 'Rezervasyon notu:' },
-  'ps.notes.guest': {
-    de: 'Notizen zum Gast:',
-    en: 'Guest notes:',
-    tr: 'Misafir notları:' },
+  /*
+   * Der Titel am Balken. "Bezahlt: x von y" und nicht Saldo und erwarteter
+   * Betrag: ein Gast zahlt ganz oder gar nicht, und die Rezeption fragt
+   * nur, ob er es schon hat. "Gesamt" beim Preis ist die Summe der Naechte.
+   */
+  'ps.tip.head': {
+    de: '{name} · Nr. {ref}',
+    en: '{name} · No. {ref}',
+    tr: '{name} · No. {ref}' },
+  'ps.tip.nightOne': {
+    de: '1 Nacht',
+    en: '1 night',
+    tr: '1 gece' },
+  'ps.tip.nights': {
+    de: '{n} Nächte',
+    en: '{n} nights',
+    tr: '{n} gece' },
+  'ps.tip.price': {
+    de: '{price} pro Nacht · gesamt {total}',
+    en: '{price} per night · total {total}',
+    tr: 'gecelik {price} · toplam {total}' },
+  'ps.tip.priceRange': {
+    de: '{min} bis {max} pro Nacht · gesamt {total}',
+    en: '{min} to {max} per night · total {total}',
+    tr: 'gecelik {min} ile {max} arası · toplam {total}' },
+  'ps.tip.paid': {
+    de: 'Bezahlt: {paid} von {total}',
+    en: 'Paid: {paid} of {total}',
+    tr: 'Ödenen: {total} tutarın {paid} kadarı' },
+  'ps.tip.group': {
+    de: 'Gruppe ({n} Zimmer): bezahlt {paid} von {total}',
+    en: 'Group ({n} rooms): paid {paid} of {total}',
+    tr: 'Grup ({n} oda): {total} tutarın {paid} kadarı ödendi' },
+  'ps.tip.note': {
+    de: 'Notiz: {text}',
+    en: 'Note: {text}',
+    tr: 'Not: {text}' },
+  'ps.tip.guestNote': {
+    de: 'Gast: {text}',
+    en: 'Guest: {text}',
+    tr: 'Misafir: {text}' },
 } as const satisfies Record<string, LocalizedText>

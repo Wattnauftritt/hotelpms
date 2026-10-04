@@ -3,13 +3,12 @@ import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, isWeekEnd, daysBetween, addDays, today }
   from '../lib/dates.js'
 import type { KontextZiel } from './Kontextmenue.tsx'
-import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf, type Passung }
+import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, type Passung }
   from '../lib/tapeSelection.js'
-import { spaltenBreite, spanne } from '../lib/tapeGeometrie.js'
+import { spaltenBreite, spanne, balkenUmriss } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
 import { useEscape, istTextEingabe } from '../lib/tasten.js'
-import { ReinigungsZeichen, ZahlungsZeichen, PersonenZeichen, useZahlungsTitel,
-         usePreisUndNotizen }
+import { ReinigungsZeichen, ZahlungsZeichen, PersonenZeichen, useBalkenTitel }
   from './PlanZeichen.tsx'
 
 /**
@@ -134,6 +133,21 @@ const FARBE: Record<string, string> = {
   Confirmed: 'bg-status-confirmed',
   InHouse: 'bg-status-inhouse',
   CheckedOut: 'bg-status-checkedout'
+}
+
+/**
+ * Die Fuellung eines hervorgehobenen Balkens, zwei Pixel nach innen
+ * versetzt; der Balken selbst traegt dann die Farbe des Rands.
+ *
+ * Ein Rand von innen und kein Ring von aussen: der Balken ist mit
+ * `clip-path` spitz zugeschnitten (`balkenUmriss`), und der schneidet einen
+ * Ring ausserhalb seiner Kanten mit ab. Die Fuellung bleibt die Farbe des
+ * Zustands -- sie zu ueberschreiben tauschte eine Information gegen eine
+ * andere.
+ */
+function Fuellung({ farbe, umriss }: { farbe: string; umriss: string }): JSX.Element {
+  return <span aria-hidden style={{ clipPath: umriss }}
+               className={`absolute inset-[2px] -z-10 ${farbe}`} />
 }
 
 type ReservationRow = TapeChartData['reservations'][number]
@@ -321,8 +335,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
   const ZEILE = Math.min(ZEILE_MAX, Math.max(ZEILE_MIN, zeileWunsch ?? ZEILE_STANDARD))
   const RAND = randVon(ZEILE)
   const locale = useLocale()
-  const zahlungsTitel = useZahlungsTitel()
-  const preisUndNotizenTitel = usePreisUndNotizen()
+  const balkenTitel = useBalkenTitel()
   const tage = useMemo(() => eachDay(data.from, data.to), [data.from, data.to])
   const rasterRef = useRef<HTMLDivElement>(null)
   /*
@@ -537,6 +550,11 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
   const balken = useCallback((von: string, bis: string) => spanne(
     daysBetween(data.from, von), daysBetween(data.from, bis), tage.length, spalte),
   [data.from, tage.length, spalte])
+
+  /** Spitz, wo der Aufenthalt im Ausschnitt anfaengt oder endet, sonst flach. */
+  const umriss = useCallback((von: string, bis: string) => balkenUmriss(
+    daysBetween(data.from, von) >= 0, daysBetween(data.from, bis) < tage.length),
+  [data.from, tage.length])
 
   /** Tagesindex unter dem Zeiger, auf den sichtbaren Ausschnitt begrenzt. */
   const tagUnter = useCallback((clientX: number): number => {
@@ -1252,20 +1270,14 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                   return (
                     <button key={r.id} data-reservation-ref={r.public_ref}
                             onPointerDown={e => beginneVerschieben(r, e)}
-                            title={`${r.last_name ?? ''} · ${gruppe?.name ?? ''}`
-                                 + ` · ${t('plan.capacityUpTo', {
-                                       n: platzbedarf({
-                                         occupants: r.occupants,
-                                         categoryMaxOccupancy: r.category_max_occupancy })
-                                     })}`
-                                 + ` · ${r.public_ref}`
-                                 // Die lange Notiz nur hier, nie auf dem Balken.
-                                 + preisUndNotizenTitel(r)
-                                 + zahlungsTitel(r.payment)}
+                            // Die Zimmergruppe nur hier: beim Ziehen aus dem
+                            // Band entscheidet sich, in welches Zimmer.
+                            title={balkenTitel(r, gruppe?.name)}
                             style={{ ...b, top: i * ZEILE + RAND, height: ZEILE - 2 * RAND,
-                                     lineHeight: `${ZEILE - 2 * RAND}px` }}
+                                     lineHeight: `${ZEILE - 2 * RAND}px`,
+                                     clipPath: umriss(r.arrival, r.departure) }}
                             /*
-                             * Ein roter Ring, wenn die Anreise binnen zwei
+                             * Ein roter Rand, wenn die Anreise binnen zwei
                              * Tagen ist.
                              *
                              * Eine Buchung ohne Zimmer ist nicht per se ein
@@ -1275,16 +1287,20 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                              * aus wie an dem, an dem gleich jemand am
                              * Tresen steht.
                              *
-                             * Ein Ring und keine andere Fuellfarbe: die
+                             * Ein Rand und keine andere Fuellfarbe: die
                              * Fuellung sagt den Zustand (Option,
                              * bestaetigt), und den zu ueberschreiben
                              * tauschte eine Information gegen eine andere.
                              */
-                            className={`absolute flex items-center rounded-sm px-1.5
+                            className={`absolute isolate flex items-center px-2
                                         text-xs text-white text-left cursor-move
-                                        ${FARBE[r.status] ?? 'bg-neutral-400'}
+                                        hover:brightness-110
                                         ${dringlich(r.arrival)
-                                          ? 'ring-2 ring-red-600' : ''}`}>
+                                          ? 'bg-red-600' : FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                      {dringlich(r.arrival) && (
+                        <Fuellung farbe={FARBE[r.status] ?? 'bg-neutral-400'}
+                                  umriss={umriss(r.arrival, r.departure)} />
+                      )}
                       {/* Die Zimmergruppe steht am Balken, nicht nur im
                           Hinweis: hier liegen Doppelzimmer, Einzelzimmer und
                           Suiten nebeneinander, und beim Ziehen entscheidet
@@ -1347,7 +1363,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
           return (
             <Zimmerzeile key={u.id} unit={u} tage={tage} zeile={ZEILE}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
-                         balken={balken} spalte={spalte} heute={heute}
+                         balken={balken} umriss={umriss} spalte={spalte} heute={heute}
                          gruppenAnfang={nachGruppe === true && i > 0
                            && data.units[i - 1]?.category_id !== u.category_id}
                          passung={passung}
@@ -1444,6 +1460,8 @@ interface ZimmerzeileProps {
   blocks: TapeChartData['blocks'] | undefined
   /** Stabil ueber `useCallback` in der Elternkomponente. */
   balken: (von: string, bis: string) => { left: number; width: number }
+  /** Ebenso stabil; die Umrisslinie als `clip-path`. */
+  umriss: (von: string, bis: string) => string
   /** Breite einer Tagesspalte. Eine Zahl, also vertraegt `memo` sie. */
   spalte: number
   /** Der heutige Tag, fuer die hervorgehobene Spalte. */
@@ -1487,9 +1505,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
   const RAND = randVon(ZEILE)
   const balkenHoehe = { top: RAND, height: ZEILE - 2 * RAND,
                         lineHeight: `${ZEILE - 2 * RAND}px` }
-  const locale = useLocale()
-  const zahlungsTitel = useZahlungsTitel()
-  const preisUndNotizenTitel = usePreisUndNotizen()
+  const balkenTitel = useBalkenTitel()
   const u = p.unit
   return (
     <div className={`flex relative border-b border-neutral-100
@@ -1542,9 +1558,10 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
         ))}
         {(p.reservations ?? []).map(r => {
           const b = p.balken(r.arrival, r.departure)
+          const umriss = p.umriss(r.arrival, r.departure)
           const versteckt = r.public_ref === p.versteckterRef
           // Geschwister derselben Buchung, solange einer davon gehalten
-          // wird. Ein Ring und keine andere Farbe: die Farbe sagt den
+          // wird. Ein Rand und keine andere Farbe: die Farbe sagt den
           // Zustand (Option, bestaetigt, angereist), und den zu
           // ueberschreiben hiesse, eine Information gegen eine andere zu
           // tauschen.
@@ -1561,13 +1578,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                     // oeffnete das Menue fuer "hier ist nichts" -- ueber
                     // einem Balken, auf den man gerade gezielt hat.
                     onContextMenu={e => p.onBalkenKontext(r, e)}
-                    title={`${r.last_name ?? ''} ${r.first_name ?? ''} · `
-                         + `${formatDate(r.arrival, locale)} – `
-                         + `${formatDate(r.departure, locale)} · `
-                         + `${t(`status.${r.status}` as never)}`
-                         + preisUndNotizenTitel(r)
-                         + zahlungsTitel(r.payment)}
-                    style={{ ...b, ...balkenHoehe,
+                    title={balkenTitel(r)}
+                    style={{ ...b, ...balkenHoehe, clipPath: umriss,
                              opacity: versteckt ? 0.35 : 1 }}
                     /*
                      * `cursor-move` ist hier keine Kosmetik. Das
@@ -1576,12 +1588,14 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * am Balken sagte, dass er anfassbar ist. Eine
                      * Funktion, die niemand findet, ist keine.
                      */
-                    className={`absolute flex items-center rounded-sm px-1.5
-                                text-xs text-white text-left hover:ring-2 ring-black/30
+                    className={`absolute isolate flex items-center px-2
+                                text-xs text-white text-left hover:brightness-110
                                 ${fest ? 'cursor-pointer' : 'cursor-move'}
-                                ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
-                                  ? 'ring-2 ring-offset-1 ring-sky-500 z-10' : ''}`}>
+                                  ? 'bg-sky-500 z-10' : FARBE[r.status] ?? 'bg-neutral-400'}`}>
+              {inGehaltenerGruppe && (
+                <Fuellung farbe={FARBE[r.status] ?? 'bg-neutral-400'} umriss={umriss} />
+              )}
               {/* Vor dem Namen: am schmalen Balken schneidet `truncate`
                   hinten ab, und der Zahlungsstand soll stehen bleiben. */}
               <ZahlungsZeichen zahlung={r.payment} />

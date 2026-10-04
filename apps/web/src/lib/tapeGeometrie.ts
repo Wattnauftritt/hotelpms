@@ -106,3 +106,28 @@ export function leistenBereich(
   return { anfang: new Date(anfang * 86_400_000).toISOString().slice(0, 10),
            tageGesamt: Math.round(ende - anfang) }
 }
+
+/**
+ * Wie weit die Spitze an den Enden eines Balkens hineinreicht, in Pixeln.
+ *
+ * Sechs: genug, dass man die Richtung ohne Hinsehen erkennt, und wenig
+ * genug, dass am Balken ueber eine Nacht (44 Pixel) noch "2 P." passt.
+ */
+export const SPITZE = 6
+
+/**
+ * Die Umrisslinie eines Balkens als `clip-path`, spitz an Anreise und
+ * Abreise wie in KWHotel (Sven, 04.10.2026).
+ *
+ * Die Spitze sagt, wo ein Aufenthalt anfaengt und aufhoert, und am
+ * Wechseltag greifen zwei Balken ineinander, statt mit zwei geraden Kanten
+ * wie einer auszusehen. **Flach, wo der Balken am Rand des Ausschnitts
+ * abgeschnitten ist**: dort beginnt oder endet der Aufenthalt nicht, und
+ * eine Spitze behauptete das.
+ */
+export function balkenUmriss(spitzLinks: boolean, spitzRechts: boolean,
+                             spitze = SPITZE): string {
+  const l = spitzLinks ? `${spitze}px` : '0px'
+  const r = spitzRechts ? `calc(100% - ${spitze}px)` : '100%'
+  return `polygon(${l} 0, ${r} 0, 100% 50%, ${r} 100%, ${l} 100%, 0 50%)`
+}

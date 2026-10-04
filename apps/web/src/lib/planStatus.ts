@@ -1,5 +1,6 @@
 import type { HousekeepingState, PlanPayment, PlanPaymentState } from '@hotelpms/contracts'
 import type { TextKey } from './i18n/index.js'
+import { daysBetween } from './dates.js'
 
 /**
  * Wie der Plan Reinigungs- und Zahlungsstand zeichnet, ohne React.
@@ -128,53 +129,102 @@ export function personenzahl(
   return r.occupants > 0 ? r.occupants : null
 }
 
-/** Was der Titel eines Balkens ueber Preis und Notizen braucht. */
+/** Was der Titel eines Balkens braucht. */
 export interface BalkenAngaben {
+  last_name: string | null
+  first_name: string | null
+  public_ref: string
+  arrival: string
+  departure: string
+  guest_count: number | null
+  occupants: number
   /** Fehlen ohne Folio-Recht; dann steht kein Preis im Titel. */
-  nights?: number | undefined
   stay_price_cent?: number | undefined
   night_price_min_cent?: number | undefined
   night_price_max_cent?: number | undefined
+  /** Fehlt ohne Folio-Recht; dann steht nicht im Titel, was gezahlt ist. */
+  payment?: PlanPayment | null | undefined
   short_note: string | null
   notes: string | null
   guest_notes?: string[] | undefined
 }
 
+/** Wie der Titel Betraege und Daten schreibt -- je Sprache verschieden. */
+export interface Formatierer {
+  geld: (cent: number) => string
+  datum: (iso: string) => string
+}
+
 /**
- * Preis und Notizen fuer den Titel eines Balkens, eine Angabe je Zeile.
+ * Der Titel eines Balkens: wer, wann, was es kostet, was gezahlt ist.
+ *
+ * **Vier Zeilen, dann die Notizen.** Hier stand vorher alles, was der Plan
+ * ueber eine Buchung weiss: Zustand, Saldo, erwarteter Betrag, Naechte
+ * "noch nicht aufs Konto gebucht", Anzahlungsrechnung, Zahlungslink,
+ * Umleitung. Das war richtig und unlesbar (Sven, 04.10.2026: "sehr
+ * ueberladen"). Ein Gast zahlt den Aufenthalt ganz oder gar nicht; dass
+ * der Nachtlauf jede Nacht einzeln aufs Konto bucht, ist Buchhaltung und
+ * hat am Plan nichts verloren. Der Zustand steht in der Farbe des Balkens,
+ * das Zahlungszeichen am Balken, die Einzelheiten im Seitenfenster.
  *
  * **Alle Notizen, nicht die erste.** Der Titel ist der einzige Ort am Plan,
  * an dem die lange Notiz und die Hausnotizen zum Gast ueberhaupt stehen;
  * wer dort "ebenerdiges Zimmer" nicht liest, weist das Zimmer im zweiten
- * Stock zu. Die Kurznotiz steht am Balken selbst und im Titel nur der
- * Vollstaendigkeit halber, weil sie am schmalen Balken abgeschnitten wird.
+ * Stock zu.
  *
- * Ohne Naechte (eine Reservierung, die nie eingefroren wurde) kein Preis:
- * "0,00 EUR pro Nacht" waere eine Aussage, und eine falsche. Ohne
- * Folio-Recht fehlen die Felder ganz, und der Titel nennt nur die Notizen.
+ * Die Naechte aus den Daten, nicht aus dem Preis: ohne Folio-Recht fehlt
+ * der Preis, die Dauer des Aufenthalts darf trotzdem jeder sehen.
  */
-export function preisUndNotizen(r: BalkenAngaben, t: Uebersetzer,
-                                geld: (cent: number) => string): string {
-  const zeilen: string[] = []
-  const { nights, stay_price_cent: gesamt, night_price_min_cent: min,
+export function balkenTitel(r: BalkenAngaben, t: Uebersetzer, f: Formatierer,
+                            zusatz?: string): string {
+  const name = [r.last_name, r.first_name].filter(x => x !== null && x !== '').join(' ')
+  const zeilen = [
+    t('ps.tip.head', { name: name === '' ? t('tape.noGuest') : name, ref: r.public_ref })
+  ]
+  const naechte = daysBetween(r.arrival, r.departure)
+  const aufenthalt = [
+    `${f.datum(r.arrival)} – ${f.datum(r.departure)}`,
+    // Eine Nacht eigens: "1 Naechte" liest sich wie ein Fehler, und wer
+    // einmal einen Fehler im Titel gesehen hat, traut der Zahl daneben nicht.
+    naechte === 1 ? t('ps.tip.nightOne') : t('ps.tip.nights', { n: naechte })
+  ]
+  const personen = personenzahl(r)
+  if (personen !== null) {
+    aufenthalt.push(personen === 1 ? t('ps.personOne') : t('ps.personsTitle', { n: personen }))
+  }
+  zeilen.push(aufenthalt.join(' · '))
+  if (zusatz !== undefined && zusatz !== '') zeilen.push(zusatz)
+
+  const { stay_price_cent: gesamt, night_price_min_cent: min,
           night_price_max_cent: max } = r
-  if (nights !== undefined && nights > 0 && gesamt !== undefined
+  // Ohne Naechte kein Preis: "0,00 EUR pro Nacht" waere eine Aussage, und
+  // eine falsche.
+  if (naechte > 0 && gesamt !== undefined && gesamt > 0
       && min !== undefined && max !== undefined) {
     zeilen.push(min === max
-      ? t('ps.price.night', { price: geld(min) })
-      : t('ps.price.nightRange', { min: geld(min), max: geld(max) }))
-    zeilen.push(nights === 1
-      ? t('ps.price.stayOne', { total: geld(gesamt) })
-      : t('ps.price.stay', { n: nights, total: geld(gesamt) }))
+      ? t('ps.tip.price', { price: f.geld(min), total: f.geld(gesamt) })
+      : t('ps.tip.priceRange', { min: f.geld(min), max: f.geld(max), total: f.geld(gesamt) }))
   }
-  const reservierung = [r.short_note, r.notes]
-    .map(x => x?.trim() ?? '').filter(x => x !== '')
-  if (reservierung.length > 0) {
-    zeilen.push(t('ps.notes.reservation'), ...reservierung)
+
+  const p = r.payment
+  if (p !== null && p !== undefined && (p.expected_cent > 0 || p.settled_cent > 0)) {
+    zeilen.push(t('ps.tip.paid', { paid: f.geld(p.settled_cent),
+                                   total: f.geld(p.expected_cent) }))
+    // Eine Gruppe zahlt oft auf ein Zimmer fuer alle; ohne diese Zeile
+    // saehen die uebrigen Zimmer unbezahlt aus.
+    if (p.group !== null) {
+      zeilen.push(t('ps.tip.group', { n: p.group.rooms, paid: f.geld(p.group.settled_cent),
+                                      total: f.geld(p.group.expected_cent) }))
+    }
   }
-  const gast = (r.guest_notes ?? []).map(x => x.trim()).filter(x => x !== '')
-  if (gast.length > 0) {
-    zeilen.push(t('ps.notes.guest'), ...gast.map(x => `• ${x}`))
+
+  for (const notiz of [r.short_note, r.notes]) {
+    const text = notiz?.trim() ?? ''
+    if (text !== '') zeilen.push(t('ps.tip.note', { text }))
+  }
+  for (const notiz of r.guest_notes ?? []) {
+    const text = notiz.trim()
+    if (text !== '') zeilen.push(t('ps.tip.guestNote', { text }))
   }
   return zeilen.join('\n')
 }
