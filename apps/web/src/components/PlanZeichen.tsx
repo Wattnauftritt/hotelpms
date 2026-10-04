@@ -149,10 +149,12 @@ export function ZahlungsStand({ zahlung }: { zahlung: PlanPayment | null | undef
 /**
  * Die Personenzahl am Balken, "2 P.".
  *
- * Vor dem Namen und nicht dahinter: `truncate` schneidet am kurzen Balken
- * hinten ab, und die Zahl soll stehen bleiben, auch wenn vom Namen nur
- * drei Buchstaben uebrig sind (Sven, 04.10.2026). Fett, damit das Auge sie
- * beim Ueberfliegen einer Spalte vom Namen trennt.
+ * Ganz rechts im Balken, ausserhalb des Teils, den `truncate` kuerzt: die
+ * Zahl soll stehen bleiben, auch wenn vom Namen nur drei Buchstaben uebrig
+ * sind. Erst stand sie vor dem Namen und schob ihn aus der Flucht der
+ * Spalte (Sven, 04.10.2026). `ml-auto` haelt sie am Rand, auch wenn der
+ * Name kurz ist, damit die Zahlen untereinander stehen.
+ * Fett, damit das Auge sie beim Ueberfliegen einer Spalte vom Namen trennt.
  */
 export function PersonenZeichen({ r }: {
   r: { guest_count: number | null; occupants: number
@@ -166,7 +168,7 @@ export function PersonenZeichen({ r }: {
     : t('ps.personsTitle', { n })
   return (
     <span title={titel} aria-label={titel}
-          className="mr-1 font-semibold tabular-nums">
+          className="ml-auto shrink-0 pl-1 font-semibold tabular-nums">
       {t('ps.persons', { n })}
     </span>
   )

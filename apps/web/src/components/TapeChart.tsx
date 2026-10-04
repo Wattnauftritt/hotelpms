@@ -1280,8 +1280,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                              * bestaetigt), und den zu ueberschreiben
                              * tauschte eine Information gegen eine andere.
                              */
-                            className={`absolute rounded-sm px-1.5 text-xs
-                                        text-white truncate text-left cursor-move
+                            className={`absolute flex items-center rounded-sm px-1.5
+                                        text-xs text-white text-left cursor-move
                                         ${FARBE[r.status] ?? 'bg-neutral-400'}
                                         ${dringlich(r.arrival)
                                           ? 'ring-2 ring-red-600' : ''}`}>
@@ -1295,16 +1295,18 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                         </span>
                       )}
                       <ZahlungsZeichen zahlung={r.payment} />
+                      <span className="truncate min-w-0">
+                        {r.last_name ?? t('tape.noGuest')}
+                        {/* Die Notiz gehoert auf den Balken, nicht zwei Klicks
+                            tiefer: hier steht, was beim naechsten Blick auf den
+                            Plan zaehlt -- "Balkon", "1. Stock", "Spaetanreise".
+                            Die Schnittstelle liefert sie seit jeher mit, nur
+                            angezeigt wurde sie nie. */}
+                        {r.short_note && (
+                          <span className="ml-1 opacity-75">· {r.short_note}</span>
+                        )}
+                      </span>
                       <PersonenZeichen r={r} />
-                      {r.last_name ?? t('tape.noGuest')}
-                      {/* Die Notiz gehoert auf den Balken, nicht zwei Klicks
-                          tiefer: hier steht, was beim naechsten Blick auf den
-                          Plan zaehlt -- "Balkon", "1. Stock", "Spaetanreise".
-                          Die Schnittstelle liefert sie seit jeher mit, nur
-                          angezeigt wurde sie nie. */}
-                      {r.short_note && (
-                        <span className="ml-1 opacity-75">· {r.short_note}</span>
-                      )}
                     </button>
                   )
                 })}
@@ -1574,8 +1576,8 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * am Balken sagte, dass er anfassbar ist. Eine
                      * Funktion, die niemand findet, ist keine.
                      */
-                    className={`absolute rounded-sm px-1.5 text-xs text-white
-                                truncate text-left hover:ring-2 ring-black/30
+                    className={`absolute flex items-center rounded-sm px-1.5
+                                text-xs text-white text-left hover:ring-2 ring-black/30
                                 ${fest ? 'cursor-pointer' : 'cursor-move'}
                                 ${FARBE[r.status] ?? 'bg-neutral-400'}
                                 ${inGehaltenerGruppe
@@ -1583,25 +1585,30 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
               {/* Vor dem Namen: am schmalen Balken schneidet `truncate`
                   hinten ab, und der Zahlungsstand soll stehen bleiben. */}
               <ZahlungsZeichen zahlung={r.payment} />
+              <span className="truncate min-w-0">
+                {r.last_name ?? t('tape.noGuest')}
+                {/*
+                  * Die **Kurznotiz** im Klartext, nicht die lange.
+                  *
+                  * Hier stand zuerst eine Stecknadel: sie sagte, dass es eine
+                  * Notiz gibt, und verschwieg welche -- also genau das, was
+                  * man wissen will. Dann stand hier `notes`, und das war die
+                  * andere Haelfte des Fehlers: der Balken ist bei einer Nacht
+                  * 44 Pixel breit, und die ersten Zeichen eines Absatzes sind
+                  * "Gast hat angerufen weg...", also auch nichts.
+                  *
+                  * `short_note` ist fuer genau diese Stelle da und auf vierzig
+                  * Zeichen begrenzt. Der Vorgang steht im Titel und im
+                  * Seitenfenster.
+                  */}
+                {r.short_note && (
+                  <span className="ml-1 opacity-75">· {r.short_note}</span>
+                )}
+              </span>
+              {/* Ganz rechts und ausserhalb des gekuerzten Teils: der Balken
+                  ist eine Zeile mit drei Teilen, und nur der mittlere gibt
+                  nach, wenn der Platz knapp wird. */}
               <PersonenZeichen r={r} />
-              {r.last_name ?? t('tape.noGuest')}
-              {/*
-                * Die **Kurznotiz** im Klartext, nicht die lange.
-                *
-                * Hier stand zuerst eine Stecknadel: sie sagte, dass es eine
-                * Notiz gibt, und verschwieg welche -- also genau das, was
-                * man wissen will. Dann stand hier `notes`, und das war die
-                * andere Haelfte des Fehlers: der Balken ist bei einer Nacht
-                * 44 Pixel breit, und die ersten Zeichen eines Absatzes sind
-                * "Gast hat angerufen weg...", also auch nichts.
-                *
-                * `short_note` ist fuer genau diese Stelle da und auf vierzig
-                * Zeichen begrenzt. Der Vorgang steht im Titel und im
-                * Seitenfenster.
-                */}
-              {r.short_note && (
-                <span className="ml-1 opacity-75">· {r.short_note}</span>
-              )}
               {/* Griffe an den Raendern: verkuerzen und verlaengern (A4).
                   Nicht am abgereisten Aufenthalt: der ist Vergangenheit. */}
               {!fest && (

@@ -98,9 +98,9 @@ describe('Der Titel am Balken', () => {
 
   it('setzt das Zeichen vor den Namen, damit es nicht abgeschnitten wird', () => {
     const plan = lies('components/TapeChart.tsx')
-    // Dazwischen nur die Personenzahl, die aus demselben Grund vorn steht.
-    expect(plan).toMatch(
-      /<ZahlungsZeichen zahlung=\{r\.payment\} \/>\n\s*<PersonenZeichen r=\{r\} \/>\n\s*\{r\.last_name/)
+    expect(plan.match(
+      /<ZahlungsZeichen zahlung=\{r\.payment\} \/>\n\s*<span className="truncate min-w-0">\n\s*\{r\.last_name/g))
+      .toHaveLength(2)
   })
 })
 
@@ -262,8 +262,11 @@ describe('Personenzahl am Balken', () => {
     expect(personenzahl({ guest_count: null, occupants: 0 })).toBeNull()
   })
 
-  it('steht vor dem Namen, damit truncate sie nicht abschneidet', () => {
+  it('steht ganz rechts, ausserhalb des Teils, den truncate kuerzt', () => {
     const plan = lies('components/TapeChart.tsx')
-    expect(plan.match(/<PersonenZeichen r=\{r\} \/>\s*\{r\.last_name/g)).toHaveLength(2)
+    // Nach dem Ende der gekuerzten Spanne, nicht in ihr.
+    expect(plan.match(/\{r\.short_note\}<\/span>\n\s*\)\}\n\s*<\/span>[\s\S]{0,300}?<PersonenZeichen r=\{r\} \/>/g))
+      .toHaveLength(2)
+    expect(lies('components/PlanZeichen.tsx')).toContain('ml-auto shrink-0')
   })
 })
