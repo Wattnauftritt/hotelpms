@@ -123,6 +123,20 @@ describe('Versand vor Anreise', () => {
     expect(p.map(x => x.reservation_id)).toEqual([korrigiert, vonHand, korrigiert])
   })
 
+  it('laedt nicht ein, wofuer ein Umsystem schon eingeladen oder erfasst hat', async () => {
+    const eingeladen = await reservierung()
+    const erfasst = await reservierung()
+    const frei = await reservierung()
+    await owner.query(
+      `INSERT INTO reservation_external_registration
+         (reservation_id, property_id, system, invitation_sent_at, completed_at)
+       VALUES ($1,$3,'adminpanel','2026-09-30T14:00:00Z',NULL),
+              ($2,$3,'adminpanel',NULL,'2026-09-30T18:00:00Z')`,
+      [eingeladen, erfasst, fx.propertyId])
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(1)
+    expect((await post()).map(x => x.reservation_id)).toEqual([frei])
+  })
+
   it('schreibt in der Sprache des Gastes', async () => {
     await reservierung({ sprache: 'nl' })
     await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)

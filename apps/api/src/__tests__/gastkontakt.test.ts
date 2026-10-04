@@ -301,6 +301,71 @@ describe('Loeschantrag', () => {
   })
 })
 
+describe('Meldeschein aus dem Umsystem', () => {
+  const VERMERK = { system: 'adminpanel', invitationSentAt: '2026-10-03T16:00:00+02:00',
+                    completedAt: null, submittedVia: null }
+
+  it('nimmt den Vermerk ohne Kontaktfelder und ohne Quelle an', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const put = (payload: Record<string, unknown>) => app.inject({ method: 'PUT',
+      url: `/v1/reservations/${r.ref}/guest-contact`, headers: m, payload })
+
+    const a = await put({ registration: VERMERK })
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json()).toEqual({ reservationRef: r.ref, guestRef: null,
+                               fields: { registration: { result: 'applied' } } })
+    const v = await owner.query<{ invitation_sent_at: Date; completed_at: Date | null }>(
+      `SELECT invitation_sent_at, completed_at FROM reservation_external_registration
+        WHERE reservation_id = $1`, [r.reservationId])
+    expect(v.rows[0]!.invitation_sent_at.toISOString()).toBe('2026-10-03T14:00:00.000Z')
+
+    expect((await put({ registration: VERMERK })).json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'unchanged' } })
+    const erfasst = await put({ registration: { ...VERMERK,
+      completedAt: '2026-10-03T18:12:00Z', submittedVia: 'link' } })
+    expect(erfasst.json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'applied' } })
+    expect((await put({ registration: null })).json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'withdrawn' } })
+    expect((await put({ registration: null })).json<{ fields: unknown }>().fields)
+      .toEqual({ registration: { result: 'unchanged' } })
+  })
+
+  it('zeigt einen dort erfassten Meldeschein in der Anreiseliste nicht als fehlend', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE reservation SET arrival = '2026-10-01' WHERE id = $1`,
+      [r.reservationId])
+    const zeile = async () => {
+      const d = await app.inject({ method: 'GET', headers: auth(admin.sessionId),
+        url: `/v1/properties/${fx.propertyId}/daily-sheet?date=2026-10-01` })
+      expect(d.statusCode, d.body).toBe(200)
+      return d.json<{ arrivals: Array<{ reservationRef: string; registered: boolean }> }>()
+        .arrivals.find(x => x.reservationRef === r.ref)!
+    }
+    expect((await zeile()).registered).toBe(false)
+    // Nur eingeladen ist noch nicht erfasst.
+    await senden(m, r.ref, { registration: VERMERK })
+    expect((await zeile()).registered).toBe(false)
+    await senden(m, r.ref, { registration: { ...VERMERK, completedAt: '2026-10-01T09:00:00Z',
+                                             submittedVia: 'reception' } })
+    expect((await zeile()).registered).toBe(true)
+  })
+
+  it('weist einen Zeitpunkt ohne Zone und einen unbekannten Weg ab', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const a = await senden(m, r.ref, { registration: { ...VERMERK,
+      invitationSentAt: '2026-10-03T14:00:00' } })
+    expect(a.statusCode).toBe(422)
+    const b = await senden(m, r.ref, { registration: { ...VERMERK, submittedVia: 'fax' } })
+    expect(b.statusCode).toBe(422)
+    const c = await senden(m, r.ref, { registration: { invitationSentAt: null } })
+    expect(c.statusCode).toBe(422)
+  })
+})
+
 describe('Zugang', () => {
   it('verlangt das eigene Recht, guest:read genuegt nicht', async () => {
     const m = await maschine(['guest:read', 'reservation:read'], [fx.propertyId])
