@@ -114,6 +114,57 @@ export function zahlungsTitel(p: PlanPayment, t: Uebersetzer,
   return zeilen.join('\n')
 }
 
+/** Was der Titel eines Balkens ueber Preis und Notizen braucht. */
+export interface BalkenAngaben {
+  /** Fehlen ohne Folio-Recht; dann steht kein Preis im Titel. */
+  nights?: number | undefined
+  stay_price_cent?: number | undefined
+  night_price_min_cent?: number | undefined
+  night_price_max_cent?: number | undefined
+  short_note: string | null
+  notes: string | null
+  guest_notes?: string[] | undefined
+}
+
+/**
+ * Preis und Notizen fuer den Titel eines Balkens, eine Angabe je Zeile.
+ *
+ * **Alle Notizen, nicht die erste.** Der Titel ist der einzige Ort am Plan,
+ * an dem die lange Notiz und die Hausnotizen zum Gast ueberhaupt stehen;
+ * wer dort "ebenerdiges Zimmer" nicht liest, weist das Zimmer im zweiten
+ * Stock zu. Die Kurznotiz steht am Balken selbst und im Titel nur der
+ * Vollstaendigkeit halber, weil sie am schmalen Balken abgeschnitten wird.
+ *
+ * Ohne Naechte (eine Reservierung, die nie eingefroren wurde) kein Preis:
+ * "0,00 EUR pro Nacht" waere eine Aussage, und eine falsche. Ohne
+ * Folio-Recht fehlen die Felder ganz, und der Titel nennt nur die Notizen.
+ */
+export function preisUndNotizen(r: BalkenAngaben, t: Uebersetzer,
+                                geld: (cent: number) => string): string {
+  const zeilen: string[] = []
+  const { nights, stay_price_cent: gesamt, night_price_min_cent: min,
+          night_price_max_cent: max } = r
+  if (nights !== undefined && nights > 0 && gesamt !== undefined
+      && min !== undefined && max !== undefined) {
+    zeilen.push(min === max
+      ? t('ps.price.night', { price: geld(min) })
+      : t('ps.price.nightRange', { min: geld(min), max: geld(max) }))
+    zeilen.push(nights === 1
+      ? t('ps.price.stayOne', { total: geld(gesamt) })
+      : t('ps.price.stay', { n: nights, total: geld(gesamt) }))
+  }
+  const reservierung = [r.short_note, r.notes]
+    .map(x => x?.trim() ?? '').filter(x => x !== '')
+  if (reservierung.length > 0) {
+    zeilen.push(t('ps.notes.reservation'), ...reservierung)
+  }
+  const gast = (r.guest_notes ?? []).map(x => x.trim()).filter(x => x !== '')
+  if (gast.length > 0) {
+    zeilen.push(t('ps.notes.guest'), ...gast.map(x => `• ${x}`))
+  }
+  return zeilen.join('\n')
+}
+
 /**
  * Die Zimmer, die ein Eintrag "als sauber markieren" trifft -- alle oder
  * keines.

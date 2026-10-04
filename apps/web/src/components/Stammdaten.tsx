@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import type { Category, Room } from '@hotelpms/contracts'
 import { useCategories, useRooms } from '../lib/queries.js'
-import { useUpdateCategory, useUpdateRoom } from '../lib/queries/settings.js'
+import { useUpdateCategory, useUpdateRoom, useCategoryOrder } from '../lib/queries/settings.js'
 import { useT } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from './Shell.tsx'
@@ -120,8 +120,33 @@ function GruppeAendern(
   )
 }
 
+/**
+ * Eine Gruppe um eine Stelle verschieben, in der ganzen Liste.
+ *
+ * Getauscht wird mit dem naechsten **sichtbaren** Nachbarn: sind
+ * stillgelegte ausgeblendet, sprang ein Pfeil sonst scheinbar ins Leere,
+ * weil er an einer unsichtbaren Gruppe vorbeizog. Die ausgeblendeten
+ * behalten ihren Platz zwischen den anderen.
+ */
+export function gruppeVerschieben(
+  alle: readonly number[], sichtbar: readonly number[], id: number, richtung: -1 | 1
+): number[] | null {
+  const i = sichtbar.indexOf(id)
+  const nachbar = sichtbar[i + richtung]
+  if (i < 0 || nachbar === undefined) return null
+  const neu = [...alle]
+  const a = neu.indexOf(id)
+  const b = neu.indexOf(nachbar)
+  neu[a] = nachbar
+  neu[b] = id
+  return neu
+}
+
 function Gruppe(
-  { gruppe, propertyId }: { gruppe: Category; propertyId: number }
+  { gruppe, propertyId, onHoch, onRunter, sortiertGerade }:
+  { gruppe: Category; propertyId: number
+    onHoch: (() => void) | null; onRunter: (() => void) | null
+    sortiertGerade: boolean }
 ): JSX.Element {
   const t = useT()
   const online = useOnline()
@@ -132,6 +157,20 @@ function Gruppe(
     <li className={`border-b border-neutral-100 px-4 py-2 ${
       gruppe.active ? '' : 'opacity-60'}`}>
       <div className="flex flex-wrap items-center gap-3 text-sm">
+        {/* Pfeile statt Ziehen: an einer Liste mit sechs Gruppen ist ein
+            Klick genauer als ein Zug, und er geht auch mit der Tastatur. */}
+        <span className="flex gap-0.5">
+          <button type="button" onClick={onHoch ?? undefined}
+                  disabled={!online || onHoch === null || sortiertGerade}
+                  aria-label={t('master.moveUp')} title={t('master.moveUp')}
+                  className="px-1.5 rounded-sm border border-neutral-300 hover:bg-neutral-50
+                             disabled:opacity-30">▲</button>
+          <button type="button" onClick={onRunter ?? undefined}
+                  disabled={!online || onRunter === null || sortiertGerade}
+                  aria-label={t('master.moveDown')} title={t('master.moveDown')}
+                  className="px-1.5 rounded-sm border border-neutral-300 hover:bg-neutral-50
+                             disabled:opacity-30">▼</button>
+        </span>
         <span className="font-medium w-16">{gruppe.code}</span>
         <span className="grow">{gruppe.name}</span>
         <span className="text-neutral-500 tabular-nums">{gruppe.maxOccupancy} P.</span>
@@ -302,6 +341,7 @@ export function Stammdaten({ propertyId }: { propertyId: number }): JSX.Element 
   const [suche, setSuche] = useState('')
   const gruppen = useCategories(propertyId)
   const zimmer = useRooms(propertyId, zeigeStillgelegte)
+  const reihenfolge = useCategoryOrder(propertyId)
 
   if (gruppen.isError) return <Fehler error={gruppen.error} />
   if (gruppen.data === undefined) return <Laedt />
@@ -336,11 +376,25 @@ export function Stammdaten({ propertyId }: { propertyId: number }): JSX.Element 
 
       <div className="px-4 py-1 text-xs font-medium text-neutral-600">
         {t('master.categories')}
+        <span className="ml-2 font-normal text-neutral-400">{t('master.orderHint')}</span>
       </div>
+      {reihenfolge.isError && (
+        <div className="px-4 py-1"><Fehler error={reihenfolge.error} /></div>
+      )}
       <ul>
-        {sichtbareGruppen.map(c => (
-          <Gruppe key={c.id} gruppe={c} propertyId={propertyId} />
-        ))}
+        {sichtbareGruppen.map((c, i) => {
+          const verschieben = (richtung: -1 | 1) => () => {
+            const neu = gruppeVerschieben(alleGruppen.map(g => g.id),
+              sichtbareGruppen.map(g => g.id), c.id, richtung)
+            if (neu !== null) reihenfolge.mutate(neu)
+          }
+          return (
+            <Gruppe key={c.id} gruppe={c} propertyId={propertyId}
+                    sortiertGerade={reihenfolge.isPending}
+                    onHoch={i > 0 ? verschieben(-1) : null}
+                    onRunter={i < sichtbareGruppen.length - 1 ? verschieben(1) : null} />
+          )
+        })}
         {sichtbareGruppen.length === 0 && (
           <li className="px-4 py-3 text-sm text-neutral-400">{t('common.none')}</li>
         )}

@@ -110,6 +110,44 @@ describe('Zimmergruppen', () => {
   })
 })
 
+describe('Reihenfolge der Zimmergruppen', () => {
+  const ordnen = (categoryIds: unknown) =>
+    app.inject({ method: 'PUT', url: `/v1/properties/${fx.propertyId}/categories/order`,
+                 headers: auth(admin.sessionId), payload: { categoryIds } })
+  const reihe = async (): Promise<string[]> => {
+    const r = await get(`/v1/properties/${fx.propertyId}/categories`)
+    return (JSON.parse(r.body) as { categories: Array<{ code: string }> })
+      .categories.map(c => c.code)
+  }
+
+  it('setzt die ganze Reihenfolge in einem Zug, auch bei gleichen alten Zahlen', async () => {
+    const ez = await gruppe('EZ', { sortOrder: 10 })
+    const dz = await gruppe('DZ', { sortOrder: 10 })
+    const fw = await gruppe('FW', { sortOrder: 10 })
+    const r = await ordnen([fw, ez, dz])
+    expect(r.statusCode).toBe(200)
+    expect(await reihe()).toEqual(['FW', 'EZ', 'DZ'])
+  })
+
+  it('weist eine unvollstaendige Liste ab, sonst stuende die fehlende irgendwo', async () => {
+    const ez = await gruppe('EZ')
+    await gruppe('DZ')
+    expect((await ordnen([ez])).statusCode).toBe(422)
+    expect((await ordnen([ez, ez])).statusCode).toBe(422)
+    expect((await ordnen('EZ')).statusCode).toBe(422)
+  })
+
+  it('nimmt keine Gruppe eines anderen Hauses im selben Account an', async () => {
+    const ez = await gruppe('EZ')
+    const nachbar = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1,'NACHBAR','Nachbarhaus','Weg 1','25813','Husum','DE') RETURNING id`,
+      [fx.accountId])
+    const fremd = await makeCategory(owner, nachbar.rows[0]!.id, { code: 'X' })
+    expect((await ordnen([ez, fremd])).statusCode).toBe(422)
+  })
+})
+
 describe('Zimmerserie', () => {
   it('zeigt eine Vorschau ohne zu schreiben', async () => {
     const cat = await gruppe('DZ')

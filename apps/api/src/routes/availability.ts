@@ -269,6 +269,13 @@ export function availabilityRoutes(app: FastifyInstance): void {
        */
       const mitZahlung = can(principal, 'folio:read', pid)
       const mitReinigung = can(principal, 'housekeeping:read', pid)
+      /*
+       * Die Hausnotizen zum Gast an `guest:read`, wie im Gastprofil. Sie
+       * stehen im Titel des Balkens, weil dort gefragt wird: wer am Plan
+       * ein Zimmer zuweist, soll "ebenerdig" lesen, bevor er das Zimmer im
+       * zweiten Stock nimmt, nicht erst im Profil.
+       */
+      const mitGastnotiz = can(principal, 'guest:read', pid)
 
       // Drei Abfragen, mit Zahlungsrecht vier -- unabhaengig von Haus- und
       // Belegungsgroesse. Ein Aggregat-Endpunkt statt 400 Einzelaufrufen.
@@ -333,11 +340,41 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   -- das verkaufte Produkt -- ein Doppelzimmer bleibt fuer
                   -- zwei verkauft, auch wenn der zweite Name noch fehlt.
                   rc.max_occupancy AS category_max_occupancy
+                  -- Der Preis der Naechte, wie bei der Buchung eingefroren,
+                  -- am selben Recht wie der Zahlungsstand: wer Belegung
+                  -- sieht, sieht damit noch keine Betraege. Min und Max
+                  -- statt eines Durchschnitts: 89 und 119 am Wochenende
+                  -- gemittelt ergaebe einen Preis, den es nie gab.
+                  ${mitZahlung ? `, COALESCE(nt.nights, 0) AS nights,
+                  COALESCE(nt.stay_cent, 0) AS stay_price_cent,
+                  COALESCE(nt.min_cent, 0) AS night_price_min_cent,
+                  COALESCE(nt.max_cent, 0) AS night_price_max_cent` : ''}
+                  ${mitGastnotiz ? ', COALESCE(gn.notes, ARRAY[]::text[]) AS guest_notes' : ''}
              FROM reservation r
              JOIN booking b ON b.id = r.booking_id
              JOIN resource_category rc ON rc.id = r.category_id
              LEFT JOIN guest g ON g.id = r.primary_guest_id
              LEFT JOIN rate_plan rp ON rp.id = r.rate_plan_id
+             -- Verbund gegen eine gruppierte Menge, nicht je Zeile: nur die
+             -- Naechte der Reservierungen, die im Fenster liegen.
+             ${mitZahlung ? `LEFT JOIN (
+               SELECT n.reservation_id, count(*)::int AS nights,
+                      sum(n.price_cent)::int AS stay_cent,
+                      min(n.price_cent)::int AS min_cent,
+                      max(n.price_cent)::int AS max_cent
+                 FROM reservation_night n
+                 JOIN reservation x ON x.id = n.reservation_id
+                WHERE x.property_id = $1
+                  AND x.arrival < $3::date AND x.departure > $2::date
+                GROUP BY n.reservation_id
+             ) nt ON nt.reservation_id = r.id` : ''}
+             ${mitGastnotiz ? `LEFT JOIN (
+               SELECT gpn.guest_id,
+                      array_agg(gpn.note ORDER BY gpn.created_at, gpn.id) AS notes
+                 FROM guest_property_note gpn
+                WHERE gpn.property_id = $1
+                GROUP BY gpn.guest_id
+             ) gn ON gn.guest_id = r.primary_guest_id` : ''}
             WHERE r.property_id = $1
               AND r.arrival < $3::date AND r.departure > $2::date
               AND r.status IN ('Optional','Confirmed','InHouse')`, [pid, from, to])

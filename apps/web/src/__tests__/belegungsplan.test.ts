@@ -474,7 +474,9 @@ describe('Kurznotiz und lange Notiz', () => {
   })
 
   it('haelt die lange Notiz im Titel bereit', () => {
-    expect(plan).toContain('r.notes ?')
+    // Zusammengesetzt in `preisUndNotizen` (planStatus.test.ts prueft den
+    // Text); hier nur, dass beide Balkenarten ihn auch benutzen.
+    expect(plan.match(/\+ preisUndNotizenTitel\(r\)/g)).toHaveLength(2)
   })
 
   it('bietet in der Maske beide Felder an', () => {

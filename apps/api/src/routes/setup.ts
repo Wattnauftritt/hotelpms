@@ -176,6 +176,57 @@ export function setupRoutes(app: FastifyInstance): void {
     }
   })
 
+  /*
+   * Die Reihenfolge der Zimmergruppen in einem Zug.
+   *
+   * Ueber `PATCH /v1/categories/:id` liess sie sich schon setzen, aber nur
+   * als Zahl je Gruppe: wer die dritte nach oben holen will, muss die
+   * Zahlen der anderen kennen, und zwei Gruppen mit derselben Zahl stehen
+   * in einer Reihenfolge, die keiner gewaehlt hat. Hier kommt die ganze
+   * Liste, und die Zahlen vergibt der Server neu, in Zehnerschritten.
+   *
+   * **Die ganze Liste, nicht ein Ausschnitt.** Fehlt eine Gruppe, haette
+   * sie danach eine alte Zahl zwischen lauter neuen und stuende irgendwo.
+   * Stillgelegte gehoeren dazu: sie kommen zurueck, und dann an ihren
+   * Platz.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/categories/order',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Reihenfolge der Zimmergruppen setzen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const body = req.body as { categoryIds?: unknown }
+      const ids = Array.isArray(body?.categoryIds) ? body.categoryIds : null
+      if (ids === null || !ids.every(i => Number.isInteger(i))
+          || new Set(ids).size !== ids.length) {
+        throw Errors.validation({ categoryIds: ['field.invalid'] })
+      }
+      return tx(req.pool, req, async client => {
+        // Gegen das Haus pruefen, nicht nur gegen den Mandanten: die
+        // Zeilenrichtlinie liesse die Gruppen eines Nachbarhauses im selben
+        // Account durch.
+        const { rows } = await client.query<{ id: number }>(
+          `SELECT id FROM resource_category WHERE property_id = $1 FOR UPDATE`,
+          [Number(propertyId)])
+        const vorhanden = new Set(rows.map(r => Number(r.id)))
+        if (vorhanden.size !== ids.length || !ids.every(i => vorhanden.has(i as number))) {
+          throw Errors.validation({ categoryIds: ['field.invalid'] })
+        }
+        await client.query(
+          `UPDATE resource_category c
+              SET sort_order = o.pos * 10, updated_at = now()
+             FROM unnest($2::bigint[]) WITH ORDINALITY AS o(id, pos)
+            WHERE c.id = o.id AND c.property_id = $1
+              AND c.sort_order IS DISTINCT FROM o.pos * 10`,
+          [Number(propertyId), ids])
+        return { categoryIds: ids }
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'PATCH',
     url: '/v1/categories/:categoryId',

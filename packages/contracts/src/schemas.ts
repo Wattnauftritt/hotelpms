@@ -231,6 +231,21 @@ export const TapeChart = Type.Object({
     /** Der Vorgang. Nur im Titel und im Seitenfenster, nie auf dem Balken. */
     notes: Type.Union([Type.String(), Type.Null()]),
     /**
+     * Naechte mit Preis, wie bei der Buchung eingefroren. Die vier Felder
+     * fehlen ohne `folio:read`, wie der Zahlungsstand.
+     */
+    nights: Type.Optional(Type.Integer()),
+    /** Summe der Naechte: der Preis der Uebernachtungen, ohne Extras. */
+    stay_price_cent: Type.Optional(Type.Integer()),
+    /** Guenstigste und teuerste Nacht; gleich, wenn alle Naechte gleich kosten. */
+    night_price_min_cent: Type.Optional(Type.Integer()),
+    night_price_max_cent: Type.Optional(Type.Integer()),
+    /**
+     * Was das Haus ueber den Hauptgast notiert hat, aelteste zuerst. Fehlt
+     * ohne `guest:read`, wie im Gastprofil.
+     */
+    guest_notes: Type.Optional(Type.Array(Type.String())),
+    /**
      * Zahlungsstand, abgeleitet und nie gespeichert (`paymentState` in
      * `@hotelpms/domain`). Fehlt ohne `folio:read`: wer Belegung sieht,
      * sieht damit noch keine Betraege.

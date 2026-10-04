@@ -258,6 +258,18 @@ export const einstellungen = {
     de: 'Reihenfolge',
     en: 'Order',
     tr: 'Sıra' },
+  'master.moveUp': {
+    de: 'Nach oben',
+    en: 'Move up',
+    tr: 'Yukarı taşı' },
+  'master.moveDown': {
+    de: 'Nach unten',
+    en: 'Move down',
+    tr: 'Aşağı taşı' },
+  'master.orderHint': {
+    de: 'In dieser Reihenfolge stehen sie im Zimmerplan.',
+    en: 'This is their order in the room chart.',
+    tr: 'Oda planında bu sırayla görünürler.' },
   'master.sortOrderHint': {
     de: 'Reihenfolge im Zimmerplan und in Listen.',
     en: 'Order in the room chart and in lists.',

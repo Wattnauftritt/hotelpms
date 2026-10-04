@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import type { HousekeepingState, PlanPayment, PlanPaymentState } from '@hotelpms/contracts'
-import { REINIGUNG, REINIGUNG_TEXT, ZAHLUNG, ZAHLUNG_TEXT, zahlungsTitel }
-  from '../lib/planStatus.js'
+import { REINIGUNG, REINIGUNG_TEXT, ZAHLUNG, ZAHLUNG_TEXT, zahlungsTitel, preisUndNotizen,
+         type BalkenAngaben } from '../lib/planStatus.js'
 import { useT, useLocale, formatMoney } from '../lib/i18n/index.js'
 
 /**
@@ -61,6 +61,16 @@ export function useZahlungsTitel(): (zahlung: PlanPayment | null | undefined) =>
   const locale = useLocale()
   return zahlung => zahlung === null || zahlung === undefined ? ''
     : `\n${zahlungsTitel(zahlung, t, cent => formatMoney(cent, locale))}`
+}
+
+/** Preis und Notizen als weitere Zeilen des Titels, oder nichts. */
+export function usePreisUndNotizen(): (r: BalkenAngaben) => string {
+  const t = useT()
+  const locale = useLocale()
+  return r => {
+    const text = preisUndNotizen(r, t, cent => formatMoney(cent, locale))
+    return text === '' ? '' : `\n${text}`
+  }
 }
 
 /**

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, makeReservation, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, makeReservation, makeGuest,
+         type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -125,5 +126,38 @@ describe('Zimmerplan', () => {
     expect(tage(plan.from, r.arrival)).toBe(1)
     expect(tage(plan.from, r.departure)).toBe(4)
     expect(Number.isNaN(tage(plan.from, r.arrival))).toBe(false)
+  })
+
+  it('nennt Preis pro Nacht, Gesamtpreis und die Hausnotizen zum Gast', async () => {
+    const res = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: '2026-10-02',
+      departure: '2026-10-05', status: 'Confirmed', resourceId: rooms[0]!,
+      priceCent: 8_900 })
+    // Die Samstagnacht teurer: der Plan soll die Spanne nennen.
+    await owner.query(
+      `UPDATE reservation_night SET price_cent = 11_900
+        WHERE reservation_id = $1 AND date = '2026-10-03'`, [res.reservationId])
+    const gast = await makeGuest(owner, fx.accountId)
+    await owner.query(`UPDATE reservation SET primary_guest_id = $2 WHERE id = $1`,
+      [res.reservationId, gast.id])
+    await owner.query(
+      `INSERT INTO guest_property_note (property_id, guest_id, note)
+       VALUES ($1,$2,'ebenerdig'), ($1,$2,'Allergie: Nuesse')`, [fx.propertyId, gast.id])
+    // Eine Notiz aus einem anderen Haus bleibt bei diesem Haus.
+    const nachbar = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1,'NACHBAR','Nachbarhaus','Weg 1','25813','Husum','DE') RETURNING id`,
+      [fx.accountId])
+    await owner.query(
+      `INSERT INTO guest_property_note (property_id, guest_id, note) VALUES ($1,$2,'fremd')`,
+      [nachbar.rows[0]!.id, gast.id])
+
+    const plan = await zimmerplan() as unknown as { reservations: Array<Record<string, unknown>> }
+    const r = plan.reservations[0]!
+    expect(r.nights).toBe(3)
+    expect(r.stay_price_cent).toBe(8_900 + 11_900 + 8_900)
+    expect(r.night_price_min_cent).toBe(8_900)
+    expect(r.night_price_max_cent).toBe(11_900)
+    expect(r.guest_notes).toEqual(['ebenerdig', 'Allergie: Nuesse'])
   })
 })
