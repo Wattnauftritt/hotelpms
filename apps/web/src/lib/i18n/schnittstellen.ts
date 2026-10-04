@@ -145,6 +145,17 @@ export const schnittstellen = {
     de: 'Gesperrt',
     en: 'Revoked',
     tr: 'Engelli' },
+  'client.edit': {
+    de: 'Rechte ändern',
+    en: 'Change scopes',
+    tr: 'Yetkileri değiştir' },
+  'client.editHint': {
+    de: 'Entzogene Rechte wirken sofort. Neue Rechte bekommt das Umsystem mit '
+      + 'seinem nächsten Token, spätestens nach einer Stunde. Das Geheimnis bleibt.',
+    en: 'Removed scopes take effect at once. The connected system gets new '
+      + 'scopes with its next token, within an hour at the latest. The secret stays.',
+    tr: 'Kaldırılan yetkiler hemen geçerli olur. Bağlı sistem yeni yetkileri bir '
+      + 'sonraki token ile, en geç bir saat içinde alır. Gizli anahtar aynı kalır.' },
   'client.revoke': {
     de: 'Sperren',
     en: 'Revoke',

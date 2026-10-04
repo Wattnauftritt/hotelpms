@@ -1209,6 +1209,12 @@ const M = {
     de: 'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',
     en: 'The reservation has no primary guest. No registration form is possible.',
     tr: 'Rezervasyonun ana misafiri yok. Meldeschein düzenlenemez.' },
+  // Gesperrt heisst endgueltig (oauth.ts): die Token sind entwertet, und ein
+  // Zugang, der wieder auflebt, waere einer, den niemand mehr im Blick hat.
+  'oauthClient.disabled': {
+    de: 'Dieser Maschinenzugang ist gesperrt und lässt sich nicht mehr ändern. Bitte einen neuen anlegen.',
+    en: 'This machine access is revoked and can no longer be changed. Please create a new one.',
+    tr: 'Bu makine erişimi engellendi ve artık değiştirilemez. Lütfen yeni bir tane oluşturun.' },
   'registration.alreadyExists': {
     de: 'Fuer diese Reservierung liegt bereits ein Meldeschein vor.',
     en: 'A registration form already exists for this reservation.',

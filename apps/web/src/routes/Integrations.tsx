@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import type { WebhookSubscription, OAuthClient, ChannelConnection } from '@hotelpms/contracts'
 import { useWebhookSubscriptions, useWebhookDeliveries, useCreateWebhook,
          useSetWebhookStatus, useOAuthClients, useCreateOAuthClient,
-         useRevokeOAuthClient, useChannelConnections, useCreateChannelConnection,
+         useRevokeOAuthClient, useUpdateOAuthClient, useChannelConnections, useCreateChannelConnection,
          useDisableChannelConnection }
   from '../lib/queries/integrations.js'
 import { useHausrechte } from '../lib/rechte.js'
@@ -252,11 +252,39 @@ function Webhooks(): JSX.Element {
 
 // ------------------------------------------------------- Maschinenzugaenge
 
-function Zugang({ client }: { client: OAuthClient }): JSX.Element {
+/**
+ * Die Zugriffsbereiche zum Ankreuzen, beim Anlegen und beim Ändern dieselben.
+ * Die Liste kommt von der API, nicht aus einer Aufzählung hier: sonst fehlt
+ * nach dem nächsten neuen Recht genau dieses.
+ */
+function ScopeWahl({ verfuegbar, gewaehlt, onChange }: {
+  verfuegbar: string[]; gewaehlt: string[]; onChange: (s: string[]) => void
+}): JSX.Element {
+  const umschalten = (s: string): void => {
+    onChange(gewaehlt.includes(s) ? gewaehlt.filter(y => y !== s) : [...gewaehlt, s])
+  }
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 max-h-48 overflow-y-auto">
+      {verfuegbar.map(s => (
+        <label key={s} className="flex items-center gap-1.5 text-neutral-700">
+          <input type="checkbox" checked={gewaehlt.includes(s)}
+                 onChange={() => umschalten(s)} />
+          <code className="text-xs">{s}</code>
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function Zugang({ client, verfuegbar }: {
+  client: OAuthClient; verfuegbar: string[]
+}): JSX.Element {
   const t = useT()
   const online = useOnline()
   const sperren = useRevokeOAuthClient()
+  const aendern = useUpdateOAuthClient()
   const aktiv = client.status === 'active'
+  const [entwurf, setEntwurf] = useState<string[] | null>(null)
 
   return (
     <li className={`rounded-sm border border-neutral-200 bg-white p-3
@@ -268,6 +296,12 @@ function Zugang({ client }: { client: OAuthClient }): JSX.Element {
                 : 'border-neutral-300 bg-neutral-100 text-neutral-600'}`}>
           {t(aktiv ? 'client.status.active' : 'client.status.disabled')}
         </span>
+        {aktiv && entwurf === null && (
+          <button onClick={() => setEntwurf(client.scopes)}
+                  disabled={!online} className={knopf}>
+            {t('client.edit')}
+          </button>
+        )}
         {aktiv && (
           <button onClick={() => {
                     if (confirm(t('client.revokeConfirm'))) sperren.mutate(client.clientId)
@@ -289,12 +323,34 @@ function Zugang({ client }: { client: OAuthClient }): JSX.Element {
             : client.propertyIds.join(', ')}
         </span>
       </div>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {client.scopes.map(s => (
-          <code key={s} className="text-xs px-1.5 py-0.5 rounded-sm bg-neutral-100
-                                   border border-neutral-200">{s}</code>
-        ))}
-      </div>
+      {entwurf === null
+        ? <div className="mt-1 flex flex-wrap gap-1">
+            {client.scopes.map(s => (
+              <code key={s} className="text-xs px-1.5 py-0.5 rounded-sm bg-neutral-100
+                                       border border-neutral-200">{s}</code>
+            ))}
+          </div>
+        : <form className="mt-2 text-sm space-y-2"
+                onSubmit={e => {
+                  e.preventDefault()
+                  if (entwurf.length === 0) return
+                  aendern.mutate({ clientRef: client.clientId, scopes: entwurf },
+                    { onSuccess: () => setEntwurf(null) })
+                }}>
+            <ScopeWahl verfuegbar={verfuegbar} gewaehlt={entwurf} onChange={setEntwurf} />
+            <div className="text-xs text-neutral-500">{t('client.editHint')}</div>
+            {aendern.isError && <Fehler error={aendern.error} />}
+            <div className="flex gap-2">
+              <button type="submit" className={knopfStark}
+                      disabled={!online || aendern.isPending || entwurf.length === 0}>
+                {t('common.save')}
+              </button>
+              <button type="button" className={knopf}
+                      onClick={() => { setEntwurf(null); aendern.reset() }}>
+                {t('common.cancel')}
+              </button>
+            </div>
+          </form>}
       {sperren.isError && <div className="mt-2"><Fehler error={sperren.error} /></div>}
     </li>
   )
@@ -309,10 +365,6 @@ function Maschinenzugaenge(): JSX.Element {
   const [name, setName] = useState('')
   const [scopes, setScopes] = useState<string[]>([])
   const [geheimnis, setGeheimnis] = useState<{ wert: string; hinweis: string } | null>(null)
-
-  const umschalten = (s: string): void => {
-    setScopes(x => x.includes(s) ? x.filter(y => y !== s) : [...x, s])
-  }
 
   return (
     <div className="space-y-4">
@@ -341,17 +393,8 @@ function Maschinenzugaenge(): JSX.Element {
         </label>
         <div className="text-sm">
           <div className="text-neutral-600">{t('client.scopes')}</div>
-          {/* Die Liste kommt von der API, nicht aus einer Aufzählung hier:
-              sonst fehlt nach dem nächsten neuen Recht genau dieses. */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 max-h-48 overflow-y-auto">
-            {(q.data?.availableScopes ?? []).map(s => (
-              <label key={s} className="flex items-center gap-1.5 text-neutral-700">
-                <input type="checkbox" checked={scopes.includes(s)}
-                       onChange={() => umschalten(s)} />
-                <code className="text-xs">{s}</code>
-              </label>
-            ))}
-          </div>
+          <ScopeWahl verfuegbar={q.data?.availableScopes ?? []} gewaehlt={scopes}
+                     onChange={setScopes} />
           <div className="text-xs text-neutral-500 mt-1">{t('client.scopesHint')}</div>
         </div>
         {anlegen.isError && <Fehler error={anlegen.error} />}
@@ -368,7 +411,8 @@ function Maschinenzugaenge(): JSX.Element {
           : q.data.clients.length === 0
             ? <div className="text-sm text-neutral-500">{t('common.none')}</div>
             : <ul className="space-y-2">
-                {q.data.clients.map(c => <Zugang key={c.clientId} client={c} />)}
+                {q.data.clients.map(c => <Zugang key={c.clientId} client={c}
+                                                 verfuegbar={q.data.availableScopes} />)}
               </ul>}
     </div>
   )
