@@ -24,13 +24,22 @@ export const onlineCheckin = {
     de: 'Ihr Aufenthalt im {haus}: {von} bis {bis}.',
     en: 'Your stay at {haus}: {von} to {bis}.',
     tr: '{haus} konaklamanız: {von} – {bis}.' },
+  // Die Meldepflicht steht im Bundesmeldegesetz (§§ 29, 30 BMG) und gilt in
+  // jedem Land gleich; ein Bundesland im Satz braeuchte ein Feld am Haus.
   'gastCheckin.intro': {
-    de: 'Füllen Sie hier den Meldeschein aus, den das Gesetz für jeden '
-      + 'Hotelaufenthalt vorsieht. Das spart Ihnen bei der Ankunft Zeit.',
-    en: 'Fill in the registration form (Meldeschein) that German law requires '
-      + 'for every hotel stay. This saves you time on arrival.',
-    tr: 'Alman yasalarının her otel konaklaması için öngördüğü kayıt formunu '
-      + '(Meldeschein) burada doldurun. Bu, varışta size zaman kazandırır.' },
+    de: 'Hier füllen Sie das laut Bundesmeldegesetz geforderte Meldeformular aus.',
+    en: 'Here you fill in the registration form (Meldeschein) required by the '
+      + 'German Federal Registration Act (Bundesmeldegesetz).',
+    tr: 'Burada Federal Kayıt Yasası\'nın (Bundesmeldegesetz) öngördüğü kayıt formunu '
+      + '(Meldeschein) doldurursunuz.' },
+  'gastCheckin.introBeforeArrival': {
+    de: 'Hier füllen Sie vorab das laut Bundesmeldegesetz geforderte Meldeformular aus. '
+      + 'Das spart Ihnen bei der Ankunft Zeit.',
+    en: 'Here you can fill in the registration form (Meldeschein) required by the '
+      + 'German Federal Registration Act (Bundesmeldegesetz) in advance. '
+      + 'This saves you time on arrival.',
+    tr: 'Burada Federal Kayıt Yasası\'nın (Bundesmeldegesetz) öngördüğü kayıt formunu '
+      + '(Meldeschein) önceden doldurabilirsiniz. Bu, varışta size zaman kazandırır.' },
   'gastCheckin.language': {
     de: 'Sprache',
     en: 'Language',
@@ -164,6 +173,13 @@ export const onlineCheckin = {
     tr: 'Alman vatandaşı olmayan biri bulunduğundan, kayıt formunu varış günü '
       + 'tesiste imzalayacak (§ 29 BMG) ve orada pasaport veya kimlik kartınızı '
       + 'göstereceksiniz.' },
+  'gastCheckin.signature.both': {
+    de: 'Mit Ihrer Unterschrift bestätigen Sie die Angaben auf dem Meldeschein '
+      + '(§ 29 BMG) und die Hausbedingungen. Bitte hier mit dem Finger oder der Maus.',
+    en: 'With your signature you confirm the details on the registration form '
+      + '(§ 29 BMG) and the house terms. Please sign here with your finger or the mouse.',
+    tr: 'İmzanızla Meldeschein\'daki bilgileri (§ 29 BMG) ve konaklama koşullarını '
+      + 'onaylarsınız. Lütfen buraya parmağınızla veya fareyle imzalayın.' },
   'gastCheckin.signature.clear': {
     de: 'Neu unterschreiben',
     en: 'Sign again',

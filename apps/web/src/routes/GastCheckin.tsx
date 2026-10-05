@@ -302,6 +302,15 @@ function feldFehler(error: unknown, locale: Locale): Map<string, string> {
   return m
 }
 
+/**
+ * Der volle Name fuer die Begruessung. Eine Anrede ("Herr", "Frau") kennt
+ * StayGrid nicht -- es gibt dafuer kein Feld --, und nur der Vorname klang
+ * wie ein "Hallo" ohne Anrede.
+ */
+function vollerName(view: CheckinFormView): string {
+  return [view.firstName, view.lastName].filter(Boolean).join(' ')
+}
+
 function Formular({ token, view, gross, onErledigt }: {
   token: string; view: CheckinFormView; gross: boolean
   onErledigt: (s: CheckinSubmitted['state']) => void
@@ -321,7 +330,6 @@ function Formular({ token, view, gross, onErledigt }: {
   const [begleiter, setBegleiter] = useState<Person[]>([])
   const [signatur, setSignatur] = useState<string | null>(null)
   const [bedingungenOk, setBedingungenOk] = useState(false)
-  const [bedingungenSignatur, setBedingungenSignatur] = useState<string | null>(null)
   const [bestaetigt, setBestaetigt] = useState(false)
   const [gaestekarte, setGaestekarte] = useState(false)
   const [laeuft, setLaeuft] = useState(false)
@@ -333,8 +341,10 @@ function Formular({ token, view, gross, onErledigt }: {
   const mitUnterschrift = jemandAuslaendisch && view.signatureAllowed
   const mitBedingungen = view.terms.length > 0
   const bedingungenUnterschrift = view.terms.some(b => b.requiresSignature)
-  const bedingungenFertig = !mitBedingungen
-    || (bedingungenOk && (!bedingungenUnterschrift || bedingungenSignatur !== null))
+  // Eine Unterschrift fuer beides (Sven, 05.10.2026): am Ende des Formulars,
+  // unter dem Meldeschein und den Hausbedingungen.
+  const mitFeld = mitUnterschrift || bedingungenUnterschrift
+  const bedingungenFertig = !mitBedingungen || bedingungenOk
   const felder = feldFehler(fehler, locale)
 
   /*
@@ -377,8 +387,8 @@ function Formular({ token, view, gross, onErledigt }: {
       ...(mitUnterschrift && signatur !== null ? { signatureSvg: signatur } : {}),
       ...(mitBedingungen && bedingungenOk
         ? { termsAccepted: view.terms.map(b => b.termsRef) } : {}),
-      ...(bedingungenUnterschrift && bedingungenSignatur !== null
-        ? { termsSignatureSvg: bedingungenSignatur } : {}),
+      ...(bedingungenUnterschrift && signatur !== null
+        ? { termsSignatureSvg: signatur } : {}),
       ...(view.digitalGuestCardOffered && gaestekarte ? { digitalGuestCard: true } : {}),
       confirmed: true
     }
@@ -458,11 +468,16 @@ function Formular({ token, view, gross, onErledigt }: {
     <form ref={formular} className="space-y-4" noValidate
           onSubmit={e => { e.preventDefault(); void absenden() }}>
       <div className={abschnitt}>
-        <p className="font-medium">{t('gastCheckin.welcome', { name: view.firstName ?? view.lastName })}</p>
+        <p className="font-medium">{t('gastCheckin.welcome', { name: vollerName(view) })}</p>
         <p>{t('gastCheckin.stay', { haus: view.propertyName,
                                      von: formatDate(view.arrival, locale),
                                      bis: formatDate(view.departure, locale) })}</p>
-        <p className="text-neutral-600">{t('gastCheckin.intro')}</p>
+        {/* Am Terminal ist der Gast schon da: "spart Zeit bei der Ankunft"
+            stimmt dort nicht mehr (Sven, 05.10.2026). Der Link aus der Mail
+            kommt vor der Anreise und behaelt den Satz. */}
+        <p className="text-neutral-600">
+          {t(view.channel === 'terminal' ? 'gastCheckin.intro' : 'gastCheckin.introBeforeArrival')}
+        </p>
       </div>
 
       <div className={abschnitt}>
@@ -594,29 +609,13 @@ function Formular({ token, view, gross, onErledigt }: {
             )}
           </div>
 
-          {jemandAuslaendisch && (
-            <div className={abschnitt}>
-              <h2 className="font-semibold">{t('gastCheckin.signature.title')}</h2>
-              {mitUnterschrift ? (
-                <>
-                  <p className="text-neutral-600">{t('gastCheckin.signature.hint')}</p>
-                  <Unterschriftsfeld onChange={setSignatur} gross={gross}
-                                     beschriftungLoeschen={t('gastCheckin.signature.clear')} />
-                  {felder.has('signatureSvg') && (
-                    <p className="text-red-700">{felder.get('signatureSvg')}</p>
-                  )}
-                </>
-              ) : (
-                <p className="text-neutral-600">{t('gastCheckin.signature.later')}</p>
-              )}
-            </div>
-          )}
-
           {/*
             * Die Hausbedingungen vollstaendig, nicht als Verweis: was der Gast
-            * unterschreibt, soll er auf derselben Seite lesen. Die Unterschrift
-            * gehoert zu ihnen, nicht zum Meldeschein -- sie gilt fuer jeden
-            * Gast und geht auch von zu Hause (routes/terms.ts).
+            * unterschreibt, soll er auf derselben Seite lesen. Sie stehen am
+            * Ende des Meldeformulars und werden mit derselben Unterschrift
+            * unterschrieben (Sven, 05.10.2026); gespeichert wird sie dennoch
+            * je Nachweis getrennt -- der Meldeschein wird nach einem Jahr
+            * vernichtet, die Vereinbarung muss laenger halten (routes/terms.ts).
             */}
           {mitBedingungen && (
             <div className={abschnitt}>
@@ -637,15 +636,31 @@ function Formular({ token, view, gross, onErledigt }: {
               {felder.has('termsAccepted') && (
                 <p className="text-red-700">{felder.get('termsAccepted')}</p>
               )}
-              {bedingungenUnterschrift && (
+            </div>
+          )}
+
+          {(mitFeld || jemandAuslaendisch) && (
+            <div className={abschnitt}>
+              <h2 className="font-semibold">{t('gastCheckin.signature.title')}</h2>
+              {mitFeld && (
                 <>
-                  <p className="text-neutral-600">{t('gastCheckin.terms.signatureHint')}</p>
-                  <Unterschriftsfeld onChange={setBedingungenSignatur} gross={gross}
+                  <p className="text-neutral-600">
+                    {t(mitUnterschrift && bedingungenUnterschrift ? 'gastCheckin.signature.both'
+                      : mitUnterschrift ? 'gastCheckin.signature.hint'
+                      : 'gastCheckin.terms.signatureHint')}
+                  </p>
+                  <Unterschriftsfeld onChange={setSignatur} gross={gross}
                                      beschriftungLoeschen={t('gastCheckin.signature.clear')} />
+                  {felder.has('signatureSvg') && (
+                    <p className="text-red-700">{felder.get('signatureSvg')}</p>
+                  )}
                   {felder.has('termsSignatureSvg') && (
                     <p className="text-red-700">{felder.get('termsSignatureSvg')}</p>
                   )}
                 </>
+              )}
+              {jemandAuslaendisch && !mitUnterschrift && (
+                <p className="text-neutral-600">{t('gastCheckin.signature.later')}</p>
               )}
             </div>
           )}
@@ -677,7 +692,7 @@ function Formular({ token, view, gross, onErledigt }: {
               </div>
             )}
             <button type="submit"
-                    disabled={!bestaetigt || laeuft || (mitUnterschrift && signatur === null)
+                    disabled={!bestaetigt || laeuft || (mitFeld && signatur === null)
                               || !bedingungenFertig}
                     className={`${gross ? 'w-full py-4 text-xl' : 'px-4 py-2'} rounded-sm
                                 bg-neutral-900 text-white disabled:bg-neutral-300`}>
@@ -702,7 +717,7 @@ function NurUnterschrift({ token, view, gross, onErledigt }: {
   const [fehler, setFehler] = useState<unknown>(null)
   return (
     <div className={`rounded-sm border border-neutral-200 bg-white space-y-3 ${gross ? 'p-6' : 'p-4'}`}>
-      <p className="font-medium">{t('gastCheckin.welcome', { name: view.firstName ?? view.lastName })}</p>
+      <p className="font-medium">{t('gastCheckin.welcome', { name: vollerName(view) })}</p>
       <p>{t('gastCheckin.stay', { haus: view.propertyName,
                                    von: formatDate(view.arrival, locale),
                                    bis: formatDate(view.departure, locale) })}</p>

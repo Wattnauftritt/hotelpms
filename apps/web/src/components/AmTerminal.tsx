@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../lib/api.js'
 import { useEscape } from '../lib/tasten.js'
@@ -28,7 +28,6 @@ import { Fehler } from './Shell.tsx'
  */
 export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.Element | null {
   const t = useT()
-  const qc = useQueryClient()
   const q = useReservationTerminal(reservationRef)
   const schluessel = ['reservation-terminal', reservationRef] as const
   const senden = useSendTerminalJob(schluessel)
@@ -37,20 +36,8 @@ export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.
 
   useEscape(() => setWaehlt(null), waehlt !== null)
 
-  /*
-   * Ist der Auftrag erledigt, hat sich der Meldeschein oder die Bedingung
-   * geaendert: die Check-in-Maske und das Seitenfenster sollen das sehen,
-   * ohne dass jemand neu laedt. Einmal je Auftrag, nicht bei jedem Abruf.
-   */
-  const gemeldet = useRef<string | null>(null)
   const job = q.data?.job ?? null
-  useEffect(() => {
-    if (job === null || job.state !== 'done' || gemeldet.current === job.jobRef) return
-    gemeldet.current = job.jobRef
-    void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
-    void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
-    void qc.invalidateQueries({ queryKey: ['terms', reservationRef] })
-  }, [job, qc, reservationRef])
+  useNachAuftrag(job, reservationRef)
 
   // Ohne das Recht zum Einchecken gibt es hier nichts zu tun; ein roter
   // Kasten im Seitenfenster waere eine Fehlermeldung ohne Fehler.
@@ -124,6 +111,86 @@ export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.
       {senden.isError && <Fehler error={senden.error} />}
       {abbrechen.isError && <Fehler error={abbrechen.error} />}
     </section>
+  )
+}
+
+/**
+ * Ist der Auftrag erledigt, hat sich der Meldeschein oder die Bedingung
+ * geaendert: die Check-in-Maske und das Seitenfenster sollen das sehen,
+ * ohne dass jemand neu laedt. Einmal je Auftrag, nicht bei jedem Abruf.
+ */
+function useNachAuftrag(job: Auftragsstand | null, reservationRef: string): void {
+  const qc = useQueryClient()
+  const gemeldet = useRef<string | null>(null)
+  useEffect(() => {
+    if (job === null || job.state !== 'done' || gemeldet.current === job.jobRef) return
+    gemeldet.current = job.jobRef
+    void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
+    void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+    void qc.invalidateQueries({ queryKey: ['terms', reservationRef] })
+  }, [job, qc, reservationRef])
+}
+
+/**
+ * Ein einziger Auftrag als grosser Knopf -- fuer den Check-in-Dialog (Sven,
+ * 05.10.2026): dort soll nichts zur Wahl stehen, nur "Meldeformular auf
+ * Gaesteterminal oeffnen" oder, wenn nur die Unterschrift fehlt, deren
+ * Anforderung. Ob die Art angeboten wird, entscheidet weiter die
+ * Schnittstelle (`offers`); ohne Angebot und ohne laufenden Auftrag zeigt
+ * die Komponente nichts, ohne Terminal den Ausweich-Inhalt `ohneTerminal`.
+ */
+export function TerminalAuftrag({ reservationRef, kind, beschriftung, ohneTerminal }: {
+  reservationRef: string
+  kind: 'registration_fill' | 'registration_sign'
+  beschriftung: string
+  ohneTerminal?: ReactNode
+}): JSX.Element | null {
+  const q = useReservationTerminal(reservationRef)
+  const schluessel = ['reservation-terminal', reservationRef] as const
+  const senden = useSendTerminalJob(schluessel)
+  const abbrechen = useCancelTerminalJob(schluessel)
+  const [waehlt, setWaehlt] = useState(false)
+  const job = q.data?.job ?? null
+  useNachAuftrag(job, reservationRef)
+  useEscape(() => setWaehlt(false), waehlt)
+
+  if (q.error instanceof ApiError && q.error.status === 403) return null
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return null
+
+  const { terminals, offers } = q.data
+  const angebot = offers.find(o => o.kind === kind)
+  if (terminals.length === 0 && job === null) return <>{ohneTerminal ?? null}</>
+  const offen = istOffen(job?.state)
+
+  const schicken = (deviceRef: string): void => {
+    setWaehlt(false)
+    senden.mutate({ deviceRef, kind, reservationRef })
+  }
+
+  return (
+    <div className="space-y-3">
+      {!offen && angebot !== undefined && (
+        <div className="flex justify-center py-6">
+          <button type="button" disabled={senden.isPending}
+                  onClick={() => terminals.length === 1
+                    ? schicken(terminals[0]!.deviceRef) : setWaehlt(true)}
+                  className="px-8 py-4 text-lg rounded-sm bg-neutral-900 text-white
+                             hover:bg-neutral-800 disabled:opacity-40">
+            {beschriftung}
+          </button>
+        </div>
+      )}
+      {waehlt && (
+        <GeraetWahl terminals={terminals} onWahl={schicken} onAbbruch={() => setWaehlt(false)} />
+      )}
+      {job !== null && (
+        <AuftragZeile job={job} wirdAbgebrochen={abbrechen.isPending}
+                      onAbbrechen={() => abbrechen.mutate(job.jobRef)} />
+      )}
+      {senden.isError && <Fehler error={senden.error} />}
+      {abbrechen.isError && <Fehler error={abbrechen.error} />}
+    </div>
   )
 }
 

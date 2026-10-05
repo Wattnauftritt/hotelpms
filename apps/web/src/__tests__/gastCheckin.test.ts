@@ -93,7 +93,11 @@ describe('Maske und Schnittstelle sind sich einig', () => {
     expect(istAuslaendisch({ nationality: null, country: null })).toBe(false)
   })
 
-  it('fragt am Tresen dieselbe Regel ab', () => {
-    expect(quelle('routes/CheckIn.tsx')).toContain('istAuslaendisch(')
+  it('fragt am Tresen keine zweite Fassung der Regel ab', () => {
+    // Seit Mitreisende am Terminal eingetragen werden (Sven, 05.10.2026),
+    // kennt der Tresen nur noch, was die Schnittstelle entschieden hat.
+    const checkin = quelle('routes/CheckIn.tsx')
+    expect(checkin).not.toContain('istAuslaendisch(')
+    expect(checkin).toContain('f.signatureRequired')
   })
 })

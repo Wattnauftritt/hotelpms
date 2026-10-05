@@ -101,6 +101,19 @@ export function registrationRoutes(app: FastifyInstance): void {
         // auslaendischer Mitreisender kann die Unterschrift verlangt haben,
         // obwohl der Hauptgast deutsch ist.
         const noetig = r.signature_required ?? auslaendisch
+        /*
+         * Die Mitreisenden des Sammelmeldescheins: der Check-in-Dialog zeigt
+         * den ausgefuellten Schein mit Inhalt (Sven, 05.10.2026), und
+         * eingetragen hat sie der Gast am Terminal -- die Rezeption sieht sie
+         * sonst nirgends. Eine Abfrage, nicht eine je Person.
+         */
+        const mit = r.existing_id === null ? [] : (await client.query<{
+          last_name: string; first_name: string | null; birth_date: string | null
+          nationality: string | null }>(
+          `SELECT g.last_name, g.first_name, g.birth_date::text, g.nationality
+             FROM registration reg JOIN guest g ON g.id = reg.guest_id
+            WHERE reg.group_registration_id = $1
+            ORDER BY reg.id`, [r.existing_id])).rows
 
         return {
           reservationRef,
@@ -127,7 +140,9 @@ export function registrationRoutes(app: FastifyInstance): void {
            * obwohl der Schein schon vorliegt.
            */
           signaturePending: r.existing_id !== null && noetig && r.signed_at === null,
-          source: r.source
+          source: r.source,
+          companions: mit.map(m => ({ lastName: m.last_name, firstName: m.first_name,
+                                      birthDate: m.birth_date, nationality: m.nationality }))
         }
       })
     }
