@@ -251,6 +251,13 @@ export const plan = {
     de: 'Die Abreise muss nach der Anreise liegen',
     en: 'The departure has to be after the arrival',
     tr: 'Çıkış tarihi giriş tarihinden sonra olmalı' },
+  'booking.guestWillBeCreated': {
+    de: '„{name}" wird beim Speichern als neuer Gast angelegt. Wer schon '
+      + 'da ist, lässt sich oben aus den Treffern wählen.',
+    en: '“{name}” will be created as a new guest when you save. An existing '
+      + 'guest can be picked from the matches above.',
+    tr: '„{name}" kaydedildiğinde yeni misafir olarak oluşturulacak. Mevcut bir '
+      + 'misafir yukarıdaki sonuçlardan seçilebilir.' },
   'booking.needGuest': {
     de: 'Es fehlt noch der Gast',
     en: 'The guest is still missing',

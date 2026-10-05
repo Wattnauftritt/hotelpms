@@ -410,8 +410,17 @@ describe('Der eingetippte Name geht nicht verloren', () => {
     expect(picker).toContain('useState(vorgabe)')
   })
 
-  it('laesst den Dialog ohne Gast nicht abschicken', () => {
-    expect(dialog).toContain("guest === null ? 'booking.needGuest'")
+  it('laesst den Dialog ohne Gast und ohne Namen nicht abschicken', () => {
+    expect(dialog).toContain("guest === null && gast.neu === null ? 'booking.needGuest'")
+  })
+
+  it('legt einen eingetippten, nicht ausgewaehlten Gast beim Speichern an', () => {
+    // Sven, 05.10.2026: Name tippen und speichern muss genuegen, ohne
+    // vorher "Neuen Gast anlegen" und "anlegen" zu klicken.
+    expect(picker).toContain('onEingabe?.(text)')
+    expect(picker).toContain('anlegen.mutateAsync(neu)')
+    expect(dialog).toContain('onEingabe={gast.setEingabe}')
+    expect(dialog).toContain('guestRef = await gast.guestRef()')
   })
 
   it('zeigt im Plan keine Kennung an der Stelle eines Namens', () => {
@@ -1571,7 +1580,7 @@ describe('Gesperrte Knoepfe nennen ihren Grund', () => {
   it('nennt in der Reservierungsmaske den fehlenden Gast', () => {
     // Der haeufigste Fall: der Gast steht weiter unten in der Maske, und
     // wer oben Datum und Zimmer ausgefuellt hat, haelt sie fuer fertig.
-    expect(einzeln).toContain("guest === null ? 'booking.needGuest'")
+    expect(einzeln).toContain("guest === null && gast.neu === null ? 'booking.needGuest'")
   })
 
   it('nennt beim Sperren den fehlenden Grund', () => {

@@ -7,7 +7,8 @@ import { preisFelder, alsGesamt, LEERER_PREIS, type Preiseingabe }
   from '../lib/preisEingabe.js'
 import { eingabeAusCent } from '../lib/preisraster.js'
 import { gruppenpreisJeZimmer, zimmernaechte } from '../lib/gruppenPreis.js'
-import { GuestPicker } from './GuestPicker.tsx'
+import { GuestPicker, useGastAusEingabe } from './GuestPicker.tsx'
+import { gastNameAnzeige } from '../lib/gastName.js'
 import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
 import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
@@ -130,6 +131,9 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
   const [gruppenPreis, setGruppenPreis] = useState<Preiseingabe>(LEERER_PREIS)
   const [zimmerPreis, setZimmerPreis] = useState<Record<number, Preiseingabe>>({})
   const buchen = useCreateBooking(propertyId)
+  // Ein eingetippter Besteller wird beim Speichern angelegt, wie in der
+  // Einzelbuchung (`useGastAusEingabe`).
+  const gast = useGastAusEingabe(guest, setGuest)
 
   const naechte = daysBetween(arrival, departure)
 
@@ -293,8 +297,9 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
               </>
             ) : (
               <>
-                <button type="button" disabled={buchen.isPending || !gueltig}
-                        onClick={() => buchen.mutate({
+                <button type="button"
+                        disabled={buchen.isPending || gast.anlegen.isPending || !gueltig}
+                        onClick={() => { void gast.guestRef().then(guestRef => buchen.mutate({
                           propertyId, arrival, departure,
                           /*
                            * Der Preis haengt entweder an der Buchung oder an
@@ -327,9 +332,11 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                           }),
                           ...(quelle === 'zimmer' ? {} : preisFelder(gruppenPreis)),
                           blockRef: abruf?.blockRef,
-                          guestRef: guest?.guestRef,
+                          guestRef,
                           notes: notes.trim() === '' ? undefined : notes.trim()
-                        })}
+                        // Schlaegt das Anlegen fehl, steht der Fehler unter der
+                        // Maske, und die Buchung geht nicht ohne Besteller hinaus.
+                        }), () => undefined) }}
                         className={KNOPF}>
                   {t('group.submit')}
                 </button>
@@ -439,7 +446,12 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
               */}
             <div className="block text-sm">
               <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
-              <GuestPicker value={guest} onChange={setGuest} />
+              <GuestPicker value={guest} onChange={setGuest} onEingabe={gast.setEingabe} />
+              {gast.neu !== null && (
+                <span className="block text-xs text-neutral-500 mt-1">
+                  {t('booking.guestWillBeCreated', { name: gastNameAnzeige(gast.neu) })}
+                </span>
+              )}
               <span className="block text-xs text-neutral-500 mt-1">{t('group.guestHint')}</span>
             </div>
             <Feld label={t('booking.notes')}>
@@ -622,6 +634,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
           )}
         </Abschnitt>
 
+        {gast.anlegen.isError && <Fehler error={gast.anlegen.error} />}
         {buchen.isError && <Fehler error={buchen.error} />}
       </div>
     </Dialog>

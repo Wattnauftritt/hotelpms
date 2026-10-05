@@ -4,7 +4,8 @@ import { useCreateBooking } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingabe.js'
-import { GuestPicker } from './GuestPicker.tsx'
+import { GuestPicker, useGastAusEingabe } from './GuestPicker.tsx'
+import { gastNameAnzeige } from '../lib/gastName.js'
 import { KontingentWahl } from './KontingentWahl.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
 import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
@@ -94,6 +95,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   const [kinder, setKinder] = useState('')
   const [kurznotiz, setKurznotiz] = useState('')
   const buchen = useCreateBooking(propertyId)
+  const gast = useGastAusEingabe(guest, setGuest)
 
   /*
    * **Ohne Gast geht nichts hinaus.** Vorher war der Knopf auch dann aktiv,
@@ -105,6 +107,9 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    * bleibt richtig: aus einem Kanal kommt sie manchmal so an. Wer sie hier
    * von Hand anlegt, weiß dagegen immer einen Namen -- und sei es nur
    * „Meier".
+   *
+   * Ein eingetippter Name genügt dafür: findet sich kein Gast, entsteht er
+   * beim Speichern (`useGastAusEingabe`).
    */
   // Die Naechte des Aufenthalts -- das Band zwischen den beiden Preisfeldern.
   // Aendert sich das Datum, rechnet das abgeleitete Feld mit.
@@ -123,7 +128,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
    */
   const grund =
     departure <= arrival ? 'booking.needNights'
-    : guest === null ? 'booking.needGuest'
+    : guest === null && gast.neu === null ? 'booking.needGuest'
     : unverbindlich && optionBis === '' ? 'booking.needOptionUntil'
     : null
   const gueltig = grund === null
@@ -143,12 +148,16 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
   const zuViele = anzahl !== null && maxOccupancy !== undefined
     && Number.isFinite(anzahl) && anzahl > maxOccupancy
 
-  const absenden = (): void => {
+  const absenden = async (): Promise<void> => {
     if (zuViele && !confirm(
       t('booking.overCapacity', { max: maxOccupancy!, n: anzahl! }))) return
+    let guestRef: string | undefined
+    // Der Fehler steht unter der Maske (`gast.anlegen.error`); die Buchung
+    // geht dann nicht hinaus, sonst entstuende sie wieder ohne Gast.
+    try { guestRef = await gast.guestRef() } catch { return }
     buchen.mutate({
       propertyId, categoryId, arrival, departure, resourceId,
-      guestRef: guest?.guestRef,
+      guestRef,
       notes: notes.trim() === '' ? undefined : notes.trim(),
       status: unverbindlich ? 'Optional' : undefined,
       optionExpiresAt: unverbindlich ? optionBis : undefined,
@@ -186,8 +195,9 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
               </>
             ) : (
               <>
-                <button type="button" disabled={buchen.isPending || !gueltig}
-                        onClick={absenden} className={KNOPF}>
+                <button type="button"
+                        disabled={buchen.isPending || gast.anlegen.isPending || !gueltig}
+                        onClick={() => { void absenden() }} className={KNOPF}>
                   {t('booking.submit')}
                 </button>
                 <button type="button" onClick={onClose} className={KNOPF_LEISE}>
@@ -288,13 +298,17 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
             */}
           <div className="block text-sm">
             <span className="block text-xs text-neutral-600 mb-1">{t('booking.guest')}</span>
-            <GuestPicker value={guest} onChange={setGuest} />
+            <GuestPicker value={guest} onChange={setGuest} onEingabe={gast.setEingabe} />
           </div>
 
           {/* Der Grund steht an der gesperrten Stelle, nicht am Knopf: wer
               dort sucht, warum nichts geht, sucht bei sich. */}
           {guest === null && (
-            <div className="text-xs text-neutral-500">{t('booking.guestRequired')}</div>
+            <div className="text-xs text-neutral-500">
+              {gast.neu === null
+                ? t('booking.guestRequired')
+                : t('booking.guestWillBeCreated', { name: gastNameAnzeige(gast.neu) })}
+            </div>
           )}
 
           {/* Erst das Merkmal, dann der Vorgang. In dieser Reihenfolge, weil
@@ -329,6 +343,9 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
           </div>
         </Abschnitt>
 
+        {gast.anlegen.isError && (
+          <div className="md:col-span-2"><Fehler error={gast.anlegen.error} /></div>
+        )}
         {buchen.isError && (
           <div className="md:col-span-2"><Fehler error={buchen.error} /></div>
         )}
