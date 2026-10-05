@@ -9,8 +9,9 @@
  * Reihe, Umschalten fuer genau einen Buchstaben, "Weiter" springt ins
  * naechste Feld.
  *
- * Was sie dazu kann, weil es hier gebraucht wird: ein `@` (Kurtaxe-Nachweise
- * und spaeter Mailadressen), eine Ebene mit Akzentbuchstaben -- der Gast,
+ * Was sie dazu kann, weil es hier gebraucht wird: ein `@` und ein `+`
+ * (Mailadressen und Telefonnummern, sobald ein Formular danach fragt --
+ * der Tastatur des Adminpanels fehlen beide), eine Ebene mit Akzentbuchstaben -- der Gast,
  * der den Meldeschein unterschreibt, ist per Gesetz auslaendisch, und
  * "Müller" schreibt sich mit der Tastatur des Adminpanels, "Søren Ødegård"
  * oder "Şükrü Yılmaz" nicht -- und einen Ziffernblock fuer Datumsfelder.
@@ -48,7 +49,7 @@ export const EBENEN: Record<Ebene, Taste[][]> = {
     [...reihe('asdfghjklöä'), WEITER],
     [UMSCHALTEN, ...reihe('yxcvbnm,.-'), UMSCHALTEN],
     [{ zeichen: 'àé', art: 'ebene', ziel: 'akzente', breite: 1.5 }, t('@'),
-     { zeichen: ' ', art: 'text', breite: 6 }, t("'"), t('/')]
+     { zeichen: ' ', art: 'text', breite: 6 }, t("'"), t('/'), t('+')]
   ],
   akzente: [
     [...reihe('áàâãåæçćč'), LOESCHEN],

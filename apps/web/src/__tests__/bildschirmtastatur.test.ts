@@ -17,8 +17,8 @@ describe('Tasten', () => {
   const alle = (e: keyof typeof EBENEN): string =>
     EBENEN[e].flat().filter(t => t.art === 'text').map(t => t.zeichen).join('')
 
-  it('hat Umlaute, ß, @ und die Ziffern', () => {
-    for (const z of 'äöüß@1234567890') expect(alle('buchstaben')).toContain(z)
+  it('hat Umlaute, ß, @, + und die Ziffern', () => {
+    for (const z of 'äöüß@+1234567890') expect(alle('buchstaben')).toContain(z)
   })
 
   it('schreibt Namen auslaendischer Gaeste', () => {
