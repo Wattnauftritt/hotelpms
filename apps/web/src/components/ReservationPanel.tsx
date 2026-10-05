@@ -15,6 +15,8 @@ import { useSprung } from '../lib/suche.js'
 const NOTES_MAX_LENGTH = 2000
 /** Storno ist aus diesen Zustaenden erlaubt (reservationState.ts). */
 const STORNIERBAR = new Set(['Optional', 'Confirmed'])
+/** Aendern bindet Bestand und geht nur, wo er gebunden ist (`occupiesInventory`). */
+const AENDERBAR = new Set(['Optional', 'Confirmed', 'InHouse'])
 /** Wiederherstellen ist aus diesen Zustaenden erlaubt. */
 const WIEDERHERSTELLBAR = new Set(['Canceled', 'NoShow'])
 
@@ -28,7 +30,7 @@ const WIEDERHERSTELLBAR = new Set(['Canceled', 'NoShow'])
  * verlieren.
  */
 export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenCheckIn,
-                                   onOpenGroup, children }: {
+                                   onOpenGroup, onAendern, children }: {
   reservationRef: string; onClose: () => void; onOpenFolio: (folioRef: string) => void
   onOpenCheckIn: (reservationRef: string) => void
   /**
@@ -41,6 +43,15 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
    * sie liest, sucht genau das, was dahinter liegt.
    */
   onOpenGroup?: (bookingRef: string) => void
+  /**
+   * Die Buchungsmaske: Gast, Zimmer, Zeitraum und Preis aendern.
+   *
+   * Der Aufrufer oeffnet sie, weil er die Zimmer des Hauses schon kennt und
+   * dieselbe Maske auch fuer einen Zug im Plan benutzt -- eine Aenderung
+   * aus dem Fenster und eine aus dem Plan sollen nicht zwei verschiedene
+   * Formulare sein. Ohne Angabe gibt es den Knopf nicht.
+   */
+  onAendern?: (reservation: ReservationDetail) => void
   /**
    * Was der Aufrufer schon weiss und unter dem Kopf zeigen will -- der
    * Belegungsplan etwa den Zahlungsstand aus seinem eigenen Aufruf, statt
@@ -78,7 +89,8 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
         {q.data === undefined && !q.isError && <Laedt />}
         {q.data !== undefined && (
           <Inhalt reservation={q.data} onOpenFolio={onOpenFolio}
-                  onOpenCheckIn={onOpenCheckIn} onOpenGroup={onOpenGroup} />
+                  onOpenCheckIn={onOpenCheckIn} onOpenGroup={onOpenGroup}
+                  onAendern={onAendern} />
         )}
       </div>
     </div>
@@ -95,11 +107,12 @@ function Feld({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
+function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAendern }: {
   reservation: ReservationDetail
   onOpenFolio: (folioRef: string) => void
   onOpenCheckIn: (reservationRef: string) => void
   onOpenGroup?: (bookingRef: string) => void
+  onAendern?: (reservation: ReservationDetail) => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -128,6 +141,17 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup }: {
           </button>
         )}
         <div className="grow" />
+        {/* Vorn, weil es die haeufigste Handlung an einer Buchung ist: ein
+            Name falsch geschrieben, ein Tag mehr, ein anderer Preis. Nicht
+            an einer stornierten oder abgereisten -- die bindet nichts mehr,
+            und die Schnittstelle wiese die Aenderung ab. */}
+        {onAendern !== undefined && AENDERBAR.has(r.status) && (
+          <button onClick={() => onAendern(r)}
+                  className="text-xs px-2 py-1 rounded-sm border border-neutral-900
+                             bg-neutral-900 text-white hover:bg-neutral-700">
+            {t('plan.edit')}
+          </button>
+        )}
         {/* Der Verlauf steht neben den Handlungen und nicht in einem
             Untermenue: die Frage "wer hat das geaendert" kommt genau dann
             auf, wenn man ohnehin auf diese Buchung sieht. */}

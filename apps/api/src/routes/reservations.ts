@@ -350,6 +350,52 @@ async function personenJeZimmer(
 }
 
 /**
+ * Den vereinbarten Preis auf die offenen Naechte schreiben.
+ *
+ * Offen heisst: noch nicht auf dem Folio (`posted`). Eine gebuchte Nacht
+ * hat einen Beleg, und der wird gegengebucht, nicht umgeschrieben -- ihr
+ * Preis bleibt. Ein Gesamtpreis ist der des ganzen Aufenthalts, und auf
+ * die offenen Naechte verteilt wird, was nach den gebuchten uebrig bleibt,
+ * mit dem Rest-Cent auf der ersten (`preisJeNacht`, wie beim Anlegen).
+ *
+ * Eine Anweisung fuer alle Naechte, nicht eine je Nacht.
+ */
+async function preisVereinbaren(
+  client: PoolClient, reservationId: number,
+  preis: { priceCent?: number; totalCent?: number }
+): Promise<void> {
+  const { rows } = await client.query<{ date: string; price_cent: string; posted: boolean }>(
+    `SELECT date::text, price_cent, posted FROM reservation_night
+      WHERE reservation_id = $1 ORDER BY date`, [reservationId])
+  const offen = rows.filter(n => !n.posted).map(n => n.date)
+  const gebucht = rows.filter(n => n.posted)
+    .reduce((s, n) => s + Number(n.price_cent), 0)
+
+  let neu: number[]
+  if (preis.priceCent !== undefined) {
+    neu = offen.map(() => preis.priceCent!)
+  } else {
+    const rest = preis.totalCent! - gebucht
+    /*
+     * Weniger als das schon Gebuchte laesst sich nicht vereinbaren, ohne
+     * einen Beleg zu aendern. Ohne offene Nacht laesst sich auch kein
+     * anderer Betrag als der gebuchte verteilen. Beides still zu
+     * schlucken hiesse, einen Preis anzuzeigen, der nicht gilt.
+     */
+    if (rest < 0 || (offen.length === 0 && rest !== 0)) {
+      throw Errors.unprocessable('stay.totalBelowPosted')
+    }
+    neu = offen.length === 0 ? [] : preisJeNacht(rest, offen.length)
+  }
+  if (offen.length === 0) return
+  await client.query(
+    `UPDATE reservation_night n SET price_cent = x.price
+       FROM unnest($2::date[], $3::bigint[]) AS x(date, price)
+      WHERE n.reservation_id = $1 AND n.date = x.date AND NOT n.posted`,
+    [reservationId, offen, neu])
+}
+
+/**
  * Jede Zustandsaktion hat genau eine Ereignisart. Vollstaendig ueber alle
  * Aktionen des Automaten, nicht nur ueber die heute als Route angebotenen:
  * so entscheidet der Typ die Frage mit, sobald eine weitere hinzukommt,
@@ -403,6 +449,18 @@ export async function aufenthaltVerlegen(
      * den neuen --, und schlaegt der zweite fehl, bleibt er stehen.
      */
     resourceId?: number | null
+    /**
+     * Ein vereinbarter Preis statt des gerechneten: je Nacht **oder** fuer
+     * den ganzen Aufenthalt, wie beim Anlegen (`CreateBooking`).
+     *
+     * Er gilt nur fuer die Naechte, die noch nicht auf dem Folio stehen.
+     * Eine gebuchte Nacht hat einen Beleg, und der wird gegengebucht, nicht
+     * umgeschrieben. Ein Gesamtpreis meint deshalb den ganzen Aufenthalt
+     * **einschliesslich** der gebuchten Naechte -- so steht er auch in der
+     * Reservierung --, und aufgeteilt wird nur, was nach ihnen uebrig ist.
+     */
+    priceCent?: number
+    totalCent?: number
   }
 ): Promise<{
   reservationRef: string; arrival: string; departure: string; categoryId: number
@@ -418,18 +476,6 @@ export async function aufenthaltVerlegen(
          FROM reservation WHERE public_ref = $1 FOR UPDATE`, [ref])
     if (cur.rowCount === 0) throw Errors.notFound('res.reservation')
     const r = cur.rows[0]!
-
-    /*
-     * Ein Abruf laeuft ueber den Zeitraum seines Kontingents. Waere er
-     * verschiebbar, stimmte die Rechnung beim Freigeben des Rests nicht
-     * mehr: sie geht ueber den Zeitraum des Kontingents, nicht den der
-     * einzelnen Reservierung. Wer anders buchen will, storniert den Abruf
-     * und legt eine freie Reservierung an.
-     */
-    if (r.block_id !== null) {
-      throw Errors.conflict(
-        'stay.pickupNotMovable')
-    }
 
     if (!occupiesInventory(r.status)) {
       throw Errors.conflict(
@@ -454,6 +500,24 @@ export async function aufenthaltVerlegen(
       throw Errors.conflict('stay.inHouseArrivalFixed')
     }
     const zeitraumAnders = neuAnkunft !== r.arrival || neuAbreise !== r.departure
+    /*
+     * Bestand bewegt sich nur, wenn Tage oder Zimmergruppe wandern. Wer in
+     * der Maske nur den Preis oder das Zimmer aendert, laesst ihn liegen --
+     * und dann ist auch ein Abruf aus einem Kontingent kein Hindernis.
+     */
+    const bestandAnders = zeitraumAnders || neuKategorie !== r.category_id
+
+    /*
+     * Ein Abruf laeuft ueber den Zeitraum seines Kontingents. Waere er
+     * verschiebbar, stimmte die Rechnung beim Freigeben des Rests nicht
+     * mehr: sie geht ueber den Zeitraum des Kontingents, nicht den der
+     * einzelnen Reservierung. Wer anders buchen will, storniert den Abruf
+     * und legt eine freie Reservierung an.
+     */
+    if (r.block_id !== null && bestandAnders) {
+      throw Errors.conflict(
+        'stay.pickupNotMovable')
+    }
     /*
      * Das Zimmer danach. Bei einem Kategoriewechsel **ohne** ausdrueckliche
      * Angabe faellt es weg: es gehoerte zur alten Gruppe, und die
@@ -501,11 +565,36 @@ export async function aufenthaltVerlegen(
         arrival: neuAnkunft, departure: neuAbreise, exceptReservationId: r.id })
     }
 
-    const inv = await client.query<{ e: string | null }>(
-      `SELECT inventory_move($1,$2,$3::date,$4::date,$5,$6::date,$7::date) AS e`,
-      [r.property_id, r.category_id, r.arrival, r.departure,
-       neuKategorie, neuAnkunft, neuAbreise])
-    inventoryError(inv.rows[0]!.e)
+    if (bestandAnders) {
+      const inv = await client.query<{ e: string | null }>(
+        `SELECT inventory_move($1,$2,$3::date,$4::date,$5,$6::date,$7::date) AS e`,
+        [r.property_id, r.category_id, r.arrival, r.departure,
+         neuKategorie, neuAnkunft, neuAbreise])
+      inventoryError(inv.rows[0]!.e)
+    }
+
+    /*
+     * Was eine neue Nacht kostet, wenn kein Ratenplan es sagt.
+     *
+     * Ohne Plan rechnete `priceNights` jede neue Nacht mit null Euro. Das
+     * traf genau die Buchungen aus dem Altsystem: sie tragen keinen Plan,
+     * nur ihre Preise je Nacht -- und eine Verlaengerung um zwei Naechte war
+     * danach zwei Naechte umsonst, ohne dass es irgendwo auffiel. Gemeint
+     * ist der Preis, zu dem der Gast gebucht hat; der steht in den
+     * Naechten, die er schon hat. Bei gleichen Naechten ist der Schnitt
+     * genau dieser Preis.
+     *
+     * Vor dem Loeschen gerechnet: wer den Aufenthalt ganz verschiebt,
+     * behaelt danach keine seiner alten Naechte, und der Preis waere weg.
+     */
+    const planIdVorher = body.ratePlanId ?? r.rate_plan_id ?? undefined
+    let bisherJeNacht = 0
+    if (planIdVorher === undefined) {
+      const schnitt = await client.query<{ p: string | null }>(
+        `SELECT round(avg(price_cent))::bigint AS p
+           FROM reservation_night WHERE reservation_id = $1`, [r.id])
+      bisherJeNacht = Number(schnitt.rows[0]!.p ?? 0)
+    }
 
     await client.query(
       `UPDATE reservation
@@ -529,8 +618,10 @@ export async function aufenthaltVerlegen(
       [r.id, neuAnkunft, neuAbreise])
 
     const nights = eachNight(neuAnkunft, neuAbreise)
-    const planId = body.ratePlanId ?? r.rate_plan_id ?? undefined
-    const prices = await priceNights(client, planId, nights)
+    const planId = planIdVorher
+    const prices = planId === undefined
+      ? nights.map(() => bisherJeNacht)
+      : await priceNights(client, planId, nights)
     // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
     await client.query(
       `INSERT INTO reservation_night
@@ -539,6 +630,11 @@ export async function aufenthaltVerlegen(
          FROM unnest($4::date[], $5::bigint[]) AS x(date, price)
        ON CONFLICT (reservation_id, date) DO NOTHING`,
       [r.id, r.property_id, planId ?? null, nights, prices])
+
+    if (body.priceCent !== undefined || body.totalCent !== undefined) {
+      await preisVereinbaren(client, r.id,
+        { priceCent: body.priceCent, totalCent: body.totalCent })
+    }
 
     const summe = await client.query<{ n: number; total: number }>(
       `SELECT count(*)::int AS n, COALESCE(sum(price_cent),0)::bigint AS total
@@ -1779,14 +1875,89 @@ export function reservationRoutes(app: FastifyInstance): void {
     summary: 'Aufenthalt verlaengern, verkuerzen oder umbuchen',
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
-      const body = req.body as {
-        arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number
-        resourceId?: number | null }
-      if (body.resourceId !== undefined && body.resourceId !== null
-          && !Number.isInteger(body.resourceId)) {
-        throw Errors.validation({ resourceId: ['field.positiveInteger'] })
-      }
+      const body = aenderungLesen(req.body)
       return tx(req.pool, req, client => aufenthaltVerlegen(client, reservationRef, body))
     }
   })
+
+  /**
+   * Was `change-stay` mit diesem Rumpf ergaebe -- ohne es zu speichern.
+   *
+   * Die Maske vor einem Zug im Plan zeigt den neuen Preis, bevor jemand
+   * bestaetigt (Sven, 05.10.2026: "da aendert sich der Preis, und das muss
+   * geprueft werden"). Gerechnet wird **dieselbe** Aenderung in einem
+   * Sicherungspunkt, der danach zurueckgenommen wird. Eine zweite
+   * Rechnung fuer die Vorschau waere bequemer und liefe beim naechsten
+   * Umbau auseinander -- dann zeigte die Maske einen Preis, und gespeichert
+   * wuerde ein anderer. So scheitert die Vorschau auch an genau dem, woran
+   * das Speichern scheitern wuerde: ein belegtes Zimmer, ein ausgebuchter
+   * Tag.
+   *
+   * POST und `reservation:write`, obwohl nichts bleibt: die Rechnung sperrt
+   * die Reservierung und bewegt kurz Bestand, und wer nicht aendern darf,
+   * hat an der Vorschau einer Aenderung nichts zu suchen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/change-stay/preview',
+    permission: 'reservation:write',
+    summary: 'Aufenthalt aendern: Vorschau mit neuem Preis, ohne zu speichern',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const body = aenderungLesen(req.body)
+      return tx(req.pool, req, async client => {
+        const vorher = await client.query<{ total: string }>(
+          `SELECT COALESCE(sum(n.price_cent), 0)::bigint AS total
+             FROM reservation r
+             LEFT JOIN reservation_night n ON n.reservation_id = r.id
+            WHERE r.public_ref = $1`, [reservationRef])
+        await client.query('SAVEPOINT vorschau')
+        try {
+          const ergebnis = await aufenthaltVerlegen(client, reservationRef, body)
+          const naechte = await client.query<{ date: string; priceCent: string
+                                                posted: boolean }>(
+            `SELECT n.date::text, n.price_cent AS "priceCent", n.posted
+               FROM reservation_night n
+               JOIN reservation r ON r.id = n.reservation_id
+              WHERE r.public_ref = $1 ORDER BY n.date`, [reservationRef])
+          return {
+            reservationRef,
+            arrival: ergebnis.arrival,
+            departure: ergebnis.departure,
+            previousTotalCent: Number(vorher.rows[0]?.total ?? 0),
+            totalCent: ergebnis.totalCent,
+            nights: naechte.rows.map(n => ({
+              date: n.date, priceCent: Number(n.priceCent), posted: n.posted }))
+          }
+        } finally {
+          await client.query('ROLLBACK TO SAVEPOINT vorschau')
+        }
+      })
+    }
+  })
+}
+
+/**
+ * Der Rumpf von `change-stay`, geprueft -- fuer die Route und ihre Vorschau,
+ * damit beide dasselbe annehmen.
+ */
+function aenderungLesen(raw: unknown): Parameters<typeof aufenthaltVerlegen>[2] {
+  const body = (raw ?? {}) as {
+    arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number
+    resourceId?: number | null; priceCent?: number; totalCent?: number }
+  if (body.resourceId !== undefined && body.resourceId !== null
+      && !Number.isInteger(body.resourceId)) {
+    throw Errors.validation({ resourceId: ['field.positiveInteger'] })
+  }
+  for (const feld of ['priceCent', 'totalCent'] as const) {
+    const wert = body[feld]
+    if (wert !== undefined && (!Number.isInteger(wert) || wert < 0)) {
+      throw Errors.validation({ [feld]: ['field.positiveInteger'] })
+    }
+  }
+  // Beides zugleich ist keine Angabe, sondern eine Frage -- wie beim Anlegen.
+  if (body.priceCent !== undefined && body.totalCent !== undefined) {
+    throw Errors.validation({ totalCent: ['field.eitherPriceOrTotal'] })
+  }
+  return body
 }

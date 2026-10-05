@@ -105,6 +105,24 @@ export function useSetReservationGuest(reservationRef: string) {
   })
 }
 
+/**
+ * Dasselbe fuer eine beliebige Reservierung -- die Buchungsmaske im Plan
+ * kennt sie erst beim Speichern, nicht beim Aufbau des Bildschirms.
+ */
+export function useSetGuestOf() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ reservationRef, guestRef }: { reservationRef: string; guestRef: string }) =>
+      api.patch<{ reservationRef: string; guestRef: string }>(
+        `/v1/reservations/${reservationRef}`, { guestRef }),
+    onSuccess: (_r, { reservationRef }) => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['registration-form', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
 export interface CreateBookingBody {
   propertyId: number
   /** Entfaellt bei der Gruppenbuchung -- dann steht die Gruppe je Zimmer. */
@@ -208,7 +226,50 @@ export interface ChangeStayBody {
    * die alte Zeile an den neuen.
    */
   resourceId?: number | null
+  /**
+   * Ein vereinbarter Preis statt des gerechneten -- je Nacht **oder**
+   * insgesamt, nie beides (`preisFelder`). Gilt fuer die Naechte, die noch
+   * nicht auf dem Folio stehen.
+   */
+  priceCent?: number
+  totalCent?: number
 }
+
+/** Was `change-stay` ergaebe, ohne es zu speichern. */
+export interface StayPreview {
+  reservationRef: string
+  arrival: string
+  departure: string
+  previousTotalCent: number
+  totalCent: number
+  nights: Array<{ date: string; priceCent: number; posted: boolean }>
+}
+
+/**
+ * Der neue Preis, bevor gespeichert wird.
+ *
+ * Die Schnittstelle rechnet dieselbe Aenderung und nimmt sie zurueck -- so
+ * zeigt die Maske genau den Preis, der beim Speichern entsteht, und
+ * scheitert an genau dem, woran das Speichern scheitern wuerde. `null`
+ * heisst: nichts zu rechnen (Felder unvollstaendig).
+ *
+ * Ein Abfrageschluessel je Feldstand, damit ein Zurueckstellen eines
+ * Datums die schon gerechnete Antwort wiederfindet statt neu zu fragen.
+ */
+export const useStayPreview = (body: ChangeStayBody | null) =>
+  useQuery<StayPreview>({
+    queryKey: ['stay-preview', body?.reservationRef ?? '-', body?.arrival ?? '-',
+               body?.departure ?? '-',
+               body?.resourceId === undefined ? '-' : String(body.resourceId)],
+    queryFn: () => {
+      const { reservationRef, ...rest } = body!
+      return api.post(`/v1/reservations/${reservationRef}/change-stay/preview`, rest)
+    },
+    enabled: body !== null,
+    // Ein abgelehnter Zug (Zimmer belegt) ist eine Antwort, kein Ausfall.
+    retry: false,
+    staleTime: 0
+  })
 
 /** Verkuerzen, verlaengern oder umkategorisieren (A4). Nie Storno plus Neubuchung. */
 export function useChangeStay() {
@@ -219,6 +280,8 @@ export function useChangeStay() {
     onSuccess: (_r, { reservationRef }) => {
       void qc.invalidateQueries({ queryKey: ['tape'] })
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      // Eine gemerkte Vorschau rechnete vom alten Stand aus.
+      qc.removeQueries({ queryKey: ['stay-preview', reservationRef] })
     }
   })
 }

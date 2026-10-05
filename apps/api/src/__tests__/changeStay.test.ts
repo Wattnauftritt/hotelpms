@@ -345,3 +345,101 @@ describe('Aufenthalt aendern', () => {
     expect(n.rows[0]!.posted).toBe(true)
   })
 })
+
+/**
+ * Preis beim Aendern (Sven, 05.10.2026): eine Verlaengerung aendert den
+ * Preis, und die Maske zeigt ihn, bevor gespeichert wird.
+ */
+describe('Preis beim Aendern des Aufenthalts', () => {
+  const preise = async (ref: string): Promise<number[]> => {
+    const r = await owner.query<{ price_cent: string }>(
+      `SELECT n.price_cent FROM reservation_night n
+         JOIN reservation r ON r.id = n.reservation_id
+        WHERE r.public_ref = $1 ORDER BY n.date`, [ref])
+    return r.rows.map(x => Number(x.price_cent))
+  }
+  const vorschau = (ref: string, body: Record<string, unknown>) => app.inject({
+    method: 'POST', url: `/v1/reservations/${ref}/change-stay/preview`,
+    headers: auth, payload: body })
+
+  it('rechnet neue Naechte ohne Ratenplan zum bisherigen Preis, nicht zu null', async () => {
+    // Wie eine Buchung aus dem Altsystem: kein Plan, nur Preise je Nacht.
+    const ref = await reservierung()
+    const r = await aendern(ref, { departure: '2026-10-06' })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await preise(ref)).toEqual([9_000, 9_000, 9_000, 9_000, 9_000])
+    expect((JSON.parse(r.body) as { totalCent: number }).totalCent).toBe(45_000)
+  })
+
+  it('verteilt einen vereinbarten Gesamtpreis auf die Naechte', async () => {
+    const ref = await reservierung()
+    const r = await aendern(ref, { departure: '2026-10-05', totalCent: 40_001 })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await preise(ref)).toEqual([10_001, 10_000, 10_000, 10_000])
+  })
+
+  it('aendert nur den Preis, ohne Bestand zu bewegen', async () => {
+    const ref = await reservierung()
+    const r = await aendern(ref, { priceCent: 7_500 })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await preise(ref)).toEqual([7_500, 7_500, 7_500])
+    // Kein Bestand bewegt: dieselben Tage bleiben einmal gebunden.
+    expect(await sold(dz, '2026-10-01')).toBe(1)
+  })
+
+  it('laesst gebuchte Naechte stehen und verteilt nur den Rest', async () => {
+    const ref = await reservierung()
+    await owner.query(
+      `UPDATE reservation_night SET posted = true
+        WHERE date = '2026-10-01' AND reservation_id =
+              (SELECT id FROM reservation WHERE public_ref = $1)`, [ref])
+    const r = await aendern(ref, { totalCent: 25_000 })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await preise(ref)).toEqual([9_000, 8_000, 8_000])
+
+    // Weniger als gebucht geht nicht, ohne einen Beleg zu aendern.
+    const z = await aendern(ref, { totalCent: 5_000 })
+    expect(z.statusCode).toBe(422)
+    expect(await preise(ref)).toEqual([9_000, 8_000, 8_000])
+  })
+
+  it('weist Preis je Nacht und Gesamtpreis zugleich ab', async () => {
+    const ref = await reservierung()
+    expect((await aendern(ref, { priceCent: 1, totalCent: 3 })).statusCode).toBe(422)
+  })
+
+  it('zeigt in der Vorschau den neuen Preis und speichert nichts', async () => {
+    const ref = await reservierung()
+    const r = await vorschau(ref, { departure: '2026-10-06' })
+    expect(r.statusCode, r.body).toBe(200)
+    const body = JSON.parse(r.body) as {
+      previousTotalCent: number; totalCent: number; nights: Array<{ date: string }> }
+    expect(body.previousTotalCent).toBe(27_000)
+    expect(body.totalCent).toBe(45_000)
+    expect(body.nights.map(n => n.date)).toEqual(
+      ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05'])
+
+    // Nichts davon ist geblieben: Naechte, Abreise, Bestand.
+    expect(await preise(ref)).toEqual([9_000, 9_000, 9_000])
+    const res = await owner.query<{ departure: string }>(
+      `SELECT departure::text FROM reservation WHERE public_ref = $1`, [ref])
+    expect(res.rows[0]!.departure).toBe('2026-10-04')
+    expect(await sold(dz, '2026-10-04')).toBe(0)
+  })
+
+  it('scheitert in der Vorschau, woran auch das Speichern scheitert', async () => {
+    const [z1] = await zimmerIdsPreis()
+    const ref = await reservierung()
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      resourceId: z1, arrival: '2026-10-04', departure: '2026-10-06', priceCent: 9_000 })
+    const r = await vorschau(ref, { resourceId: z1, departure: '2026-10-06' })
+    expect(r.statusCode).toBe(409)
+  })
+
+  async function zimmerIdsPreis(): Promise<number[]> {
+    const r = await owner.query<{ id: number }>(
+      `SELECT id FROM resource WHERE property_id = $1 AND category_id = $2 ORDER BY code`,
+      [fx.propertyId, dz])
+    return r.rows.map(x => Number(x.id))
+  }
+})

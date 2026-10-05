@@ -284,18 +284,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
     <Dialog breite="weit" onClose={onClose}
             titel={t('group.title')}
             unterzeile={`${zimmer.length} ${t('group.rooms')}`}
-            fuss={buchen.isSuccess ? (
-              <>
-                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
-                  {t('common.back')}
-                </button>
-                <span className="text-sm text-emerald-800">
-                  ✓ {t('group.created')} — {buchen.data.bookingRef}
-                  {' · '}
-                  {t('group.createdDetail', { n: buchen.data.reservations.length })}
-                </span>
-              </>
-            ) : (
+            fuss={
               <>
                 <button type="button"
                         disabled={buchen.isPending || gast.anlegen.isPending || !gueltig}
@@ -334,9 +323,12 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                           blockRef: abruf?.blockRef,
                           guestRef,
                           notes: notes.trim() === '' ? undefined : notes.trim()
+                        // Gespeichert ist alles getan: die Maske geht zu, und
+                        // die Balken stehen im Plan (Sven, 05.10.2026).
+                        }, { onSuccess: onClose }),
                         // Schlaegt das Anlegen fehl, steht der Fehler unter der
                         // Maske, und die Buchung geht nicht ohne Besteller hinaus.
-                        }), () => undefined) }}
+                        () => undefined) }}
                         className={KNOPF}>
                   {t('group.submit')}
                 </button>
@@ -350,7 +342,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                   <span className="self-center text-xs text-amber-800">{t(grund)}</span>
                 )}
               </>
-            )}>
+            }>
       {/*
         * Oben die drei Entscheidungen, die fuer die ganze Gruppe gelten --
         * Zeitraum, Preisebene, Besteller --, darunter die Zimmer als

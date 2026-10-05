@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
+import type { TapeChart as TapeChartData, ReservationDetail } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
-import { useAssignUnit, useChangeStay, useShiftBooking } from '../lib/queries/booking.js'
+import { useAssignUnit, useChangeStay, useShiftBooking, useSetGuestOf }
+  from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, eachDay } from '../lib/dates.js'
 import { platzbedarf } from '../lib/tapeSelection.js'
@@ -10,7 +11,7 @@ import { TapeChart, ZEILE_MIN, ZEILE_MAX, ZEILE_STANDARD, LABEL_BREITE }
   from '../components/TapeChart.tsx'
 import { QuerLeiste } from '../components/QuerLeiste.tsx'
 import { BuchungVerlegen, AenderungZurueck, type Verlegung, type Ziel,
-         type Aenderung } from '../components/BuchungVerlegen.tsx'
+         type Aenderung, type Zusatz } from '../components/BuchungVerlegen.tsx'
 import { ReservationPanel } from '../components/ReservationPanel.tsx'
 import { BookingDialog } from '../components/BookingDialog.tsx'
 import { GroupBookingDialog, type GroupSelection }
@@ -169,6 +170,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const zuweisen = useAssignUnit()
   const umbuchen = useChangeStay()
   const gruppeVerschieben = useShiftBooking()
+  const gastSetzen = useSetGuestOf()
   const reinigung = usePlanReinigung(propertyId)
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
@@ -225,10 +227,19 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
      * stuende wieder am Anfang, statt zwei Schritte zurueckzugehen.
      */
     merken: boolean
+    /** Preis und Gast aus der Maske. Ein Zug im Planungsmodus hat keine. */
+    zusatz?: Zusatz
   }, danach: () => void): void => {
     const { reservationRef, alt, ziel, gruppe } = was
-    const fertig = (): void => {
-      if (was.merken) {
+    const tageGleich = ziel.arrival === alt.arrival && ziel.departure === alt.departure
+    const zimmerGleich = ziel.resourceId === alt.resourceId
+    const preis = was.zusatz?.preis ?? null
+    const guestRef = was.zusatz?.guestRef
+    const gemerkt = (): void => {
+      // Nur, was Zimmer oder Tage bewegt hat: ein Strg+Z, das einen Preis
+      // oder einen Namen "zuruecknimmt", indem es nichts tut, waere eine
+      // Zusage, die nicht stimmt.
+      if (was.merken && (gruppe !== undefined || !tageGleich || !zimmerGleich)) {
         setRueckgaengig(st => [...st.slice(-(RUECKGAENGIG_MAX - 1)), {
           reservationRef, gast: was.gast,
           vorher: { ...alt, roomCode: zimmerCode(alt.resourceId) },
@@ -238,13 +249,24 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       }
       danach()
     }
+    /*
+     * Der Gast kommt nach dem Aufenthalt: scheitert der (Zimmer belegt),
+     * bleibt alles beim Alten, und die Maske steht noch mit allen Feldern
+     * da. Umgekehrt haette die Buchung schon den neuen Namen und noch die
+     * alten Tage.
+     */
+    const fertig = guestRef === undefined ? gemerkt
+      : (): void => gastSetzen.mutate({ reservationRef, guestRef },
+                                      { onSuccess: gemerkt })
     if (gruppe !== undefined) {
       gruppeVerschieben.mutate(
         { bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays },
         { onSuccess: fertig })
       return
     }
-    if (ziel.arrival === alt.arrival && ziel.departure === alt.departure) {
+    if (tageGleich && preis === null) {
+      // Nur der Gast: kein Aufruf fuer Zimmer und Tage, die bleiben.
+      if (zimmerGleich) { fertig(); return }
       zuweisen.mutate({ reservationRef, resourceId: ziel.resourceId },
         { onSuccess: fertig })
       return
@@ -253,17 +275,54 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       reservationRef, arrival: ziel.arrival, departure: ziel.departure,
       // Hier ausdruecklich auch `null`: wer in der Maske "ohne Zimmer"
       // waehlt und dabei die Tage aendert, meint beides.
-      resourceId: ziel.resourceId
+      resourceId: ziel.resourceId,
+      // Ein vereinbarter Preis geht mit derselben Aenderung hinaus, nicht
+      // als zweiter Aufruf -- sonst stuende zwischen beiden der gerechnete.
+      ...(preis ?? {})
     }, { onSuccess: fertig })
   }
 
   /** Die Maske und der Zug im Planungsmodus reichen dasselbe weiter. */
-  const speichern = (v: Verlegung, ziel: Ziel, danach: () => void): void =>
+  const speichern = (v: Verlegung, ziel: Ziel, danach: () => void, zusatz?: Zusatz): void =>
     anwenden({ reservationRef: v.reservationRef, gast: v.gast, alt: v.alt, ziel,
-               gruppe: v.gruppe, merken: true }, danach)
+               gruppe: v.gruppe, merken: true, zusatz }, danach)
 
   const schreibt = zuweisen.isPending || umbuchen.isPending || gruppeVerschieben.isPending
+    || gastSetzen.isPending
   const schreibfehler = zuweisen.error ?? umbuchen.error ?? gruppeVerschieben.error
+    ?? gastSetzen.error
+
+  /**
+   * Die Maske oeffnen -- mit leerem Fehlerstand.
+   *
+   * Die Mutationen leben laenger als eine Maske. Ohne das Zuruecksetzen
+   * stuende der Fehler eines abgebrochenen Versuchs in der naechsten
+   * Maske, an einer Buchung, die damit nichts zu tun hat.
+   */
+  const maskeOeffnen = (v: Verlegung): void => {
+    zuweisen.reset(); umbuchen.reset(); gruppeVerschieben.reset(); gastSetzen.reset()
+    setVerlegung(v)
+  }
+
+  /**
+   * "Aendern" im Seitenfenster: dieselbe Maske wie nach einem Zug, nur
+   * ohne Vorschlag -- Zimmer und Tage stehen, wie sie sind.
+   *
+   * Aus den Daten des Plans, wenn der Balken darin liegt; sonst aus der
+   * Reservierung selbst. Die Platzfrage stellt sich dann nur, wenn jemand
+   * die Zimmergruppe wechselt, und die Plaetze stehen im Plan.
+   */
+  const aendern = (r: ReservationDetail): void => {
+    const gleich = (x: TapeChartData['reservations'][number]): Ziel =>
+      ({ resourceId: x.resource_id, arrival: x.arrival, departure: x.departure })
+    const ausPlan = vorschlag(r.reservationRef, gleich)
+    if (ausPlan !== null) { maskeOeffnen(ausPlan); return }
+    const ziel: Ziel = { resourceId: r.resourceId, arrival: r.arrival,
+                         departure: r.departure }
+    maskeOeffnen({ reservationRef: r.reservationRef, status: r.status,
+                   categoryId: r.categoryId, gast: r.guestName ?? '',
+                   bedarf: 0, alt: ziel, neu: ziel })
+  }
 
   /**
    * Den obersten Schritt zurueckholen.
@@ -326,7 +385,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const gezogen = (v: Verlegung | null): void => {
     if (v === null) return
     if (planung) speichern(v, v.neu, () => {})
-    else setVerlegung(v)
+    else maskeOeffnen(v)
   }
 
   /*
@@ -569,7 +628,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                           onClose={() => setAusgewaehlt(null)}
                           onOpenFolio={onFolio}
                           onOpenCheckIn={onCheckIn}
-                          onOpenGroup={setGruppenBuchung}>
+                          onOpenGroup={setGruppenBuchung}
+                          onAendern={aendern}>
           <ZahlungsStand zahlung={daten?.reservations
             .find(r => r.public_ref === ausgewaehlt)?.payment} />
         </ReservationPanel>
@@ -579,8 +639,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         <BuchungVerlegen verlegung={verlegung} zimmer={daten.units}
                          laeuft={schreibt} fehler={schreibfehler}
                          onClose={() => setVerlegung(null)}
-                         onSpeichern={ziel => speichern(verlegung, ziel,
-                           () => setVerlegung(null))} />
+                         onSpeichern={(ziel, zusatz) => speichern(verlegung, ziel,
+                           () => setVerlegung(null), zusatz)} />
       )}
 
       {verlauf && (
