@@ -3,7 +3,7 @@ import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
 import { useAssignUnit, useChangeStay, useShiftBooking } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
-import { today, addDays, addMonths, eachDay } from '../lib/dates.js'
+import { today, addDays, eachDay } from '../lib/dates.js'
 import { platzbedarf } from '../lib/tapeSelection.js'
 import { istTextEingabe, useEscape } from '../lib/tasten.js'
 import { TapeChart, ZEILE_MIN, ZEILE_MAX, ZEILE_STANDARD, LABEL_BREITE }
@@ -42,11 +42,19 @@ interface Auswahl {
   arrival: string; departure: string
 }
 
+/*
+ * Der Plan beginnt mit dem Vortag, nicht mit heute. Heute ist der Tag mit
+ * Anreisen *und* Abreisen; steht er ganz links, sieht man von den Gaesten,
+ * die heute abreisen, nur noch das Ende, und der Tag klebt am Rand
+ * (Sven, 05.10.2026). Eine Spalte davor macht ihn zur zweiten.
+ */
+function startHeute(): string { return addDays(today(), -1) }
+
 export function Tape({ propertyId, onFolio, onCheckIn }: {
   propertyId: number; onFolio: (folioRef: string) => void
   onCheckIn: (reservationRef: string) => void
 }): JSX.Element {
-  const [von, setVon] = useState(today())
+  const [von, setVon] = useState(startHeute)
   /*
    * 14, 30 oder 60 Tage, gemerkt wie die Zeilenhoehe und aus demselben
    * Grund: es haengt am Bildschirm, und wer 60 eingestellt hat, will nicht
@@ -346,54 +354,47 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
             kuerzer als jedes Blaettern daneben. */}
         <PlanSuche propertyId={propertyId} von={von} bis={bis} onVon={setVon}
                    onOeffnen={setAusgewaehlt} />
-        {/* Tag und Woche um das Datum, Monat und Jahr daneben: vier
-            Schrittweiten, jede mit eigenem Knopf. Ein Regler fuer alles
-            hiesse, die haeufigste umstaendlicher zu machen. */}
-        <div className="flex items-center gap-1">
+        {/*
+          * Eine Leiste statt drei Gruppen: aussen die Woche, innen der Tag,
+          * in der Mitte der Rueckweg nach heute. Vorher standen -7 -1 +1 +7,
+          * << < > >> und Heute nebeneinander, und welcher Pfeil wie weit
+          * springt, musste man sich merken (Sven, 05.10.2026: "verwirrend
+          * und chaotisch"). Monat und Jahr sind weg: dorthin fuehrt das
+          * Datumsfeld daneben in zwei Klicks, und wer so weit springt, will
+          * meist ein bestimmtes Datum, nicht "einen Monat weiter".
+          */}
+        <div className="inline-flex items-stretch rounded-sm border border-neutral-300
+                        divide-x divide-neutral-300 text-sm">
           <button onClick={() => setVon(addDays(von, -7))}
                   title={t('plan.weekBack')} aria-label={t('plan.weekBack')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">−7</button>
+                  className="px-2 py-1 hover:bg-neutral-100">«</button>
           <button onClick={() => setVon(addDays(von, -1))}
                   title={t('plan.dayBack')} aria-label={t('plan.dayBack')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">−1</button>
-          <input type="date" value={von} onChange={e => { if (e.target.value) setVon(e.target.value) }}
-                 className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+                  className="px-2.5 py-1 hover:bg-neutral-100">‹</button>
+          <button onClick={() => setVon(startHeute())} title={t('plan.todayHint')}
+                  className="px-3 py-1 font-medium hover:bg-neutral-100">
+            {t('common.today')}
+          </button>
           <button onClick={() => setVon(addDays(von, 1))}
                   title={t('plan.dayForward')} aria-label={t('plan.dayForward')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">+1</button>
+                  className="px-2.5 py-1 hover:bg-neutral-100">›</button>
           <button onClick={() => setVon(addDays(von, 7))}
                   title={t('plan.weekForward')} aria-label={t('plan.weekForward')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">+7</button>
+                  className="px-2 py-1 hover:bg-neutral-100">»</button>
         </div>
-        {/* Monat und Jahr zum Durchklicken. Die Wochenpfeile daneben bleiben:
-            im Alltag blaettert die Rezeption wochenweise, im Jahresgeschaeft
-            monatsweise, und beides an einem Regler unterzubringen hiesse,
-            das haeufigere umstaendlicher zu machen. */}
-        <div className="flex items-center gap-1">
-          <button onClick={() => setVon(addMonths(von, -12))}
-                  title={t('plan.yearBack')} aria-label={t('plan.yearBack')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">«</button>
-          <button onClick={() => setVon(addMonths(von, -1))}
-                  title={t('plan.monthBack')} aria-label={t('plan.monthBack')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">‹</button>
-          <button onClick={() => setVon(addMonths(von, 1))}
-                  title={t('plan.monthForward')} aria-label={t('plan.monthForward')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">›</button>
-          <button onClick={() => setVon(addMonths(von, 12))}
-                  title={t('plan.yearForward')} aria-label={t('plan.yearForward')}
-                  className="px-2 py-1 border border-neutral-300 rounded-sm text-sm">»</button>
-        </div>
-        <button onClick={() => setVon(today())}
-                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
-          {t('common.today')}
-        </button>
-        <div className="flex gap-1">
+        <input type="date" value={von} onChange={e => { if (e.target.value) setVon(e.target.value) }}
+               title={t('plan.jumpToDate')} aria-label={t('plan.jumpToDate')}
+               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        {/* Die Spanne als eine Leiste wie das Blaettern daneben: drei
+            Werte einer Einstellung, nicht drei Knoepfe. */}
+        <div className="inline-flex items-stretch rounded-sm border border-neutral-300
+                        divide-x divide-neutral-300 text-sm">
           {SPANNEN.map(n => (
-            <button key={n} onClick={() => setTage(n)}
-                    className={`text-sm px-2 py-1 rounded-sm border
+            <button key={n} onClick={() => setTage(n)} aria-pressed={tage === n}
+                    className={`px-2.5 py-1
                                 ${tage === n
-                                  ? 'bg-neutral-900 text-white border-neutral-900'
-                                  : 'border-neutral-300'}`}>
+                                  ? 'bg-neutral-900 text-white'
+                                  : 'hover:bg-neutral-100'}`}>
               {n}
             </button>
           ))}

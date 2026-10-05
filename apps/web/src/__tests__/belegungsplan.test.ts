@@ -569,11 +569,18 @@ describe('Der Kalender selbst', () => {
     expect(plan).toContain("d.overResourceId !== d.quelleResourceId")
   })
 
-  it('blaettert Monate und Jahre mit Pfeilen', () => {
-    expect(bildschirm).toContain('addMonths(von, -12)')
-    expect(bildschirm).toContain('addMonths(von, -1)')
-    expect(bildschirm).toContain('addMonths(von, 1)')
-    expect(bildschirm).toContain('addMonths(von, 12)')
+  it('blaettert in einer Leiste nach Tag und Woche', () => {
+    // Eine Leiste, zwei Schrittweiten; Monat und Jahr ueber das Datumsfeld.
+    for (const schritt of ['-7', '-1', '1', '7'])
+      expect(bildschirm).toContain(`addDays(von, ${schritt})`)
+    expect(bildschirm).not.toContain('addMonths(')
+  })
+
+  it('setzt "Heute" mit dem Vortag als erster Spalte', () => {
+    // Heute steht als zweite Spalte, damit die Abreisen davor sichtbar sind.
+    expect(bildschirm).toContain('addDays(today(), -1)')
+    expect(bildschirm).toContain('setVon(startHeute())')
+    expect(bildschirm).toContain('useState(startHeute)')
   })
 
   it('laesst die Gruppierung abschalten', () => {
