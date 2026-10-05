@@ -35,7 +35,7 @@ const config = loadConfig()
 
 interface Einstellung {
   hotel_id: string; origin: string; user_name: string
-  min_age: number; default_category: number
+  min_age: number; default_category: number; breakfast_cent: number
 }
 
 interface Zeile {
@@ -76,7 +76,7 @@ async function aufenthalt(client: PoolClient, ref: string, principal: Principal
 
 async function einstellung(client: PoolClient, propertyId: number): Promise<Einstellung | null> {
   const s = await client.query<Einstellung>(
-    `SELECT hotel_id, origin, user_name, min_age, default_category
+    `SELECT hotel_id, origin, user_name, min_age, default_category, breakfast_cent
        FROM avs_setting WHERE property_id = $1`, [propertyId])
   return s.rows[0] ?? null
 }
@@ -114,7 +114,9 @@ async function scheine(client: PoolClient, reservationId: number): Promise<Zeile
  *
  * Das Uebernachtungsentgelt ist das dieser Reservierung, also eines
  * Zimmers. Das Adminpanel meldet bei einer Gruppe den Gesamtpreis auf jedem
- * Schein und hat das selbst als Fehler benannt.
+ * Schein und hat das selbst als Fehler benannt. Abgezogen wird der
+ * Fruehstuecksanteil des Hauses je gemeldeter Person und Nacht, wie im
+ * Adminpanel: Juengere zahlen keinen Kurbeitrag und zaehlen auch hier nicht.
  */
 function inhalt(z: Zeile[], s: Einstellung, a: Aufenthalt, mitNummer: boolean
 ): { schein: AvsMeldeschein; personen: number } {
@@ -142,12 +144,21 @@ function inhalt(z: Zeile[], s: Einstellung, a: Aufenthalt, mitNummer: boolean
         ...person(erster, email),
         addressLine1: haupt.address_line1, postalCode: haupt.postal_code,
         city: haupt.city, country: haupt.country,
-        lodgingCent: a.lodging_cent > 0 ? a.lodging_cent : null
+        lodgingCent: a.lodging_cent > 0
+          ? Math.max(0, a.lodging_cent
+              - s.breakfast_cent * naechte(haupt.arrival, haupt.departure) * gemeldet.length)
+          : null
       },
       companions: gemeldet.slice(1).map(x => person(x, null))
     },
     personen: gemeldet.length
   }
+}
+
+/** Naechte zwischen zwei Kalenderdaten, mindestens eine. */
+function naechte(von: string, bis: string): number {
+  return Math.max(1, Math.round((Date.parse(`${bis}T00:00:00Z`)
+    - Date.parse(`${von}T00:00:00Z`)) / 86_400_000))
 }
 
 function hauptschein(z: Zeile[]): Zeile {
@@ -172,7 +183,8 @@ export function avsRoutes(app: FastifyInstance): void {
         const s = await einstellung(client, Number(propertyId))
         return s === null ? { configured: false } : {
           configured: true, hotelId: s.hotel_id, origin: s.origin, userName: s.user_name,
-          minAge: s.min_age, defaultCategory: s.default_category }
+          minAge: s.min_age, defaultCategory: s.default_category,
+          breakfastCent: s.breakfast_cent }
       })
     }
   })
@@ -203,18 +215,25 @@ export function avsRoutes(app: FastifyInstance): void {
       if (!Number.isInteger(kat) || (kat as number) < 1 || (kat as number) > 99) {
         f.defaultCategory = ['field.invalid']
       }
+      const fruehstueck = b.breakfastCent === undefined ? 0 : b.breakfastCent
+      if (!Number.isInteger(fruehstueck) || (fruehstueck as number) < 0
+          || (fruehstueck as number) > 100_000) {
+        f.breakfastCent = ['field.invalid']
+      }
       if (Object.keys(f).length > 0) throw Errors.validation(f)
       return tx(req.pool, req, async client => {
         await client.query(
           `INSERT INTO avs_setting (property_id, hotel_id, origin, user_name, min_age,
-                                    default_category)
-           VALUES ($1,$2,$3,$4,$5,$6)
+                                    default_category, breakfast_cent)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
            ON CONFLICT (property_id) DO UPDATE
               SET hotel_id = EXCLUDED.hotel_id, origin = EXCLUDED.origin,
                   user_name = EXCLUDED.user_name, min_age = EXCLUDED.min_age,
-                  default_category = EXCLUDED.default_category, updated_at = now()`,
-          [Number(propertyId), hotelId, origin, userName, minAge, kat])
-        return { configured: true, hotelId, origin, userName, minAge, defaultCategory: kat }
+                  default_category = EXCLUDED.default_category,
+                  breakfast_cent = EXCLUDED.breakfast_cent, updated_at = now()`,
+          [Number(propertyId), hotelId, origin, userName, minAge, kat, fruehstueck])
+        return { configured: true, hotelId, origin, userName, minAge, defaultCategory: kat,
+                 breakfastCent: fruehstueck }
       })
     }
   })

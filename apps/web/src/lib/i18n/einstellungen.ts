@@ -554,6 +554,10 @@ export const einstellungen = {
     de: 'Gemeldet ab Alter',
     en: 'Reported from age',
     tr: 'Bildirim yaşı' },
+  'avsSettings.breakfast': {
+    de: 'Frühstück im Preis, je Person und Nacht (€)',
+    en: 'Breakfast included, per person and night (€)',
+    tr: 'Fiyata dahil kahvaltı, kişi ve gece başına (€)' },
   'avsSettings.origin': {
     de: 'Herkunfts-ID',
     en: 'Origin ID',

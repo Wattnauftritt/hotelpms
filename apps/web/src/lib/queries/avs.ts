@@ -26,6 +26,7 @@ export interface AvsEinstellung {
   userName?: string
   minAge?: number
   defaultCategory?: number
+  breakfastCent?: number
 }
 
 /**
@@ -82,7 +83,8 @@ export function useAvsEinstellungSpeichern(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { hotelId: string; origin: string; userName: string
-                         minAge: number; defaultCategory: number }) =>
+                         minAge: number; defaultCategory: number
+                         breakfastCent: number }) =>
       api.put<AvsEinstellung>(`/v1/properties/${propertyId}/avs-settings`, body),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['avs-settings', propertyId] }) }
   })

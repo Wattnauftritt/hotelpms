@@ -25,6 +25,8 @@ export function AvsEinstellung({ propertyId }: { propertyId: number }): JSX.Elem
   const [userName, setUserName] = useState('StayGrid')
   const [minAge, setMinAge] = useState('16')
   const [kategorie, setKategorie] = useState('1')
+  // In Euro mit Komma, wie die Rezeption es auf dem Preisblatt liest.
+  const [fruehstueck, setFruehstueck] = useState('0')
 
   useEffect(() => {
     if (q.data?.configured !== true) return
@@ -33,15 +35,19 @@ export function AvsEinstellung({ propertyId }: { propertyId: number }): JSX.Elem
     setUserName(q.data.userName ?? 'StayGrid')
     setMinAge(String(q.data.minAge ?? 16))
     setKategorie(String(q.data.defaultCategory ?? 1))
+    setFruehstueck(((q.data.breakfastCent ?? 0) / 100).toFixed(2).replace('.', ','))
   }, [q.data])
 
   const alter = Number(minAge)
   const kat = Number(kategorie)
+  const fruehstueckCent = /^\d{1,4}([.,]\d{1,2})?$/.test(fruehstueck.trim())
+    ? Math.round(Number(fruehstueck.trim().replace(',', '.')) * 100) : NaN
   const gueltig = /^[0-9]{1,10}$/.test(hotelId.trim())
     && /^[A-Za-z0-9_-]{1,10}$/.test(userName.trim())
     && origin.trim() !== '' && origin.trim().length <= 40
     && Number.isInteger(alter) && alter >= 0 && alter <= 30
     && Number.isInteger(kat) && kat >= 1 && kat <= 99
+    && Number.isInteger(fruehstueckCent) && fruehstueckCent <= 100_000
   const eingabe = 'w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
   if (q.isError) return <Fehler error={q.error} />
@@ -71,7 +77,13 @@ export function AvsEinstellung({ propertyId }: { propertyId: number }): JSX.Elem
           <input value={minAge} inputMode="numeric"
                  onChange={e => setMinAge(e.target.value)} className={eingabe} />
         </label>
-        <div />
+        <label className="block text-sm">
+          <span className="block text-xs text-neutral-600 mb-1">
+            {t('avsSettings.breakfast')}
+          </span>
+          <input value={fruehstueck} inputMode="decimal"
+                 onChange={e => setFruehstueck(e.target.value)} className={eingabe} />
+        </label>
         <label className="block text-sm">
           <span className="block text-xs text-neutral-600 mb-1">{t('avsSettings.origin')}</span>
           <input value={origin} onChange={e => setOrigin(e.target.value)} className={eingabe} />
@@ -88,7 +100,7 @@ export function AvsEinstellung({ propertyId }: { propertyId: number }): JSX.Elem
         <button type="button" disabled={!online || !gueltig || speichern.isPending}
                 onClick={() => speichern.mutate({
                   hotelId: hotelId.trim(), origin: origin.trim(), userName: userName.trim(),
-                  minAge: alter, defaultCategory: kat })}
+                  minAge: alter, defaultCategory: kat, breakfastCent: fruehstueckCent })}
                 className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('common.save')}

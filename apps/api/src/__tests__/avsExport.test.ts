@@ -275,6 +275,27 @@ describe('Melden', () => {
   })
 })
 
+describe('Uebernachtungsentgelt', () => {
+  it('zieht den Fruehstuecksanteil je gemeldeter Person und Nacht ab', async () => {
+    await einrichten({ hotelId: '4711', breakfastCent: 1000 })
+    const { ref } = await aufenthalt({
+      mit: [{ nachname: 'Petersen', vorname: 'Jan' },
+            { nachname: 'Petersen', vorname: 'Kind', geburt: '2018-01-01' }] })
+    await owner.query(
+      `UPDATE reservation_night SET price_cent = 10000
+        WHERE reservation_id = (SELECT id FROM reservation WHERE public_ref = $1)`, [ref])
+    const n = (await owner.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM reservation_night
+        WHERE reservation_id = (SELECT id FROM reservation WHERE public_ref = $1)`, [ref]))
+      .rows[0]!.n
+    expect(n).toBe(3)
+    // 3 Naechte zu 100 EUR, abzueglich 3 x 2 Erwachsene x 10 EUR; das Kind
+    // zaehlt nicht.
+    const d = JSON.parse((await melden(ref)).body) as Datei
+    expect(d.xml).toContain('<ue-e-gelt>240.00</ue-e-gelt>')
+  })
+})
+
 describe('Erneut herunterladen', () => {
   it('gibt dieselbe Datei noch einmal, ohne neue Meldung', async () => {
     await einrichten()

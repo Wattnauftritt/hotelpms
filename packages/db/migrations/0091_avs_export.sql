@@ -40,6 +40,11 @@ CREATE TABLE avs_setting (
   min_age          smallint NOT NULL DEFAULT 16 CHECK (min_age BETWEEN 0 AND 30),
   -- Kategorie ohne Befreiung. Die Befreiung bringt ihre eigene mit (0089).
   default_category smallint NOT NULL DEFAULT 1 CHECK (default_category BETWEEN 1 AND 99),
+  -- Fruehstuecksanteil je gemeldeter Person und Nacht in Cent. AVS will das
+  -- reine Uebernachtungsentgelt; wo das Fruehstueck im Preis steckt, zieht
+  -- die Datei es ab. Das Adminpanel hatte 10 EUR fest im Code -- hier ist es
+  -- eine Angabe des Hauses, 0 fuer ein Haus ohne Fruehstueck im Preis.
+  breakfast_cent   integer NOT NULL DEFAULT 0 CHECK (breakfast_cent BETWEEN 0 AND 100000),
   updated_at       timestamptz NOT NULL DEFAULT now()
 );
 
