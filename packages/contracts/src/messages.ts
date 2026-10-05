@@ -252,6 +252,10 @@ const M = {
     de: 'Hausbedingung',
     en: 'House terms',
     tr: 'Konaklama koşulları' },
+  'res.exemption': {
+    de: 'Befreiungsgrund',
+    en: 'Exemption reason',
+    tr: 'Muafiyet gerekçesi' },
   'res.subscription': {
     de: 'Abonnement',
     en: 'Subscription',
@@ -1346,6 +1350,22 @@ const M = {
     de: 'Hoechstens {max} Mitreisende. Fuer groessere Gruppen bitte an die Rezeption.',
     en: 'At most {max} companions. For larger groups please contact the front desk.',
     tr: 'En fazla {max} refakatçi. Daha büyük gruplar için lütfen resepsiyona başvurun.' },
+  'checkin.termsRequired': {
+    de: 'Bitte den Hausbedingungen zustimmen',
+    en: 'Please agree to the house terms',
+    tr: 'Lütfen konaklama koşullarını kabul edin' },
+  'checkin.termsSignatureRequired': {
+    de: 'Die Hausbedingungen verlangen eine Unterschrift',
+    en: 'The house terms require a signature',
+    tr: 'Konaklama koşulları imza gerektirir' },
+  'checkin.unknownExemption': {
+    de: 'Diesen Befreiungsgrund bietet das Haus nicht an',
+    en: 'The property does not offer this exemption reason',
+    tr: 'Tesis bu muafiyet gerekçesini sunmuyor' },
+  'exemption.codeTaken': {
+    de: 'Dieses Kuerzel gibt es in diesem Haus schon.',
+    en: 'This code already exists for this property.',
+    tr: 'Bu kod bu tesiste zaten var.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

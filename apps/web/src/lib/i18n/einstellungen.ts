@@ -346,17 +346,20 @@ export const einstellungen = {
     en: 'Time units other than the night are not enabled yet.',
     tr: 'Gece dışındaki zaman birimleri henüz açılmadı.' },
   'terms.hint': {
-    de: 'Was das Haus am Tresen unterschreiben lässt — etwa eine Pauschale bei '
+    de: 'Was das Haus unterschreiben lässt — am Tresen, am Gästeterminal und im '
+      + 'Online-Check-in, etwa eine Pauschale bei '
       + 'Verlust der Zimmerkarte. Das ist nicht der Meldeschein: der ist '
       + 'öffentlich-rechtlich und wird nach einem Jahr vernichtet. Diese '
       + 'Bedingungen gelten für jeden Gast, auch für den inländischen, der '
       + 'seit dem 1.1.2025 keinen Meldeschein mehr unterschreibt.',
-    en: 'What the house has guests sign at the desk — a flat fee for a lost key '
+    en: 'What the house has guests sign — at the desk, at the guest terminal and in '
+      + 'online check-in — a flat fee for a lost key '
       + 'card, for instance. This is not the Meldeschein: that one is public law '
       + 'and is destroyed after a year. These terms apply to every guest, '
       + 'including the domestic one who has not signed a Meldeschein since '
       + '1 January 2025.',
-    tr: 'Otelin resepsiyonda imzalattığı koşullar — örneğin oda kartının '
+    tr: 'Otelin resepsiyonda, misafir terminalinde ve online check-in’de imzalattığı '
+      + 'koşullar — örneğin oda kartının '
       + 'kaybında uygulanan sabit ücret. Bu, Meldeschein değildir: o kamu '
       + 'hukukuna tabidir ve bir yıl sonra imha edilir. Bu koşullar her misafir '
       + 'için geçerlidir; 1 Ocak 2025’ten beri Meldeschein imzalamayan yurt içi '
@@ -517,5 +520,59 @@ export const einstellungen = {
       + 'freigeschaltet ist.',
     en: 'Sending can only be switched on once the sender domain is active.',
     tr: 'Gönderim ancak gönderen alan adı etkinleştirildikten sonra açılabilir.' },
+
+  'exemption.title': {
+    de: 'Kurtaxe-Befreiung',
+    en: 'Tourist tax exemption',
+    tr: 'Turist vergisi muafiyeti' },
+  'exemption.hint': {
+    de: 'Die Gründe, die das Meldeformular zur Befreiung von der Kurtaxe anbietet, '
+      + 'je Person. Was befreit, regelt die Satzung der Gemeinde. Eine erklärte '
+      + 'Befreiung nimmt die Person aus der Kurtaxe-Buchung, nicht aus der '
+      + 'Übernachtungsteuer. Die AVS-Kategorie gilt für den Meldeschein-Export.',
+    en: 'The reasons the registration form offers for exemption from tourist tax, '
+      + 'per person. What exempts is set by the municipality’s statute. A declared '
+      + 'exemption removes the person from the tourist tax charge, not from the '
+      + 'bed tax. The AVS category is used for the registration export.',
+    tr: 'Kayıt formunun turist vergisinden muafiyet için kişi başına sunduğu '
+      + 'gerekçeler. Neyin muaf tuttuğunu belediyenin yönetmeliği belirler. Beyan '
+      + 'edilen muafiyet kişiyi turist vergisi kaydından çıkarır, konaklama '
+      + 'vergisinden değil. AVS kategorisi kayıt aktarımı için kullanılır.' },
+  'exemption.none': {
+    de: 'Noch keine Gründe. Ohne Gründe fragt das Meldeformular nicht nach einer Befreiung.',
+    en: 'No reasons yet. Without reasons the form does not ask about exemption.',
+    tr: 'Henüz gerekçe yok. Gerekçe olmadan form muafiyet sormaz.' },
+  'exemption.new': {
+    de: 'Neuer Grund',
+    en: 'New reason',
+    tr: 'Yeni gerekçe' },
+  'exemption.code': {
+    de: 'Kürzel',
+    en: 'Code',
+    tr: 'Kod' },
+  'exemption.label': {
+    de: 'Bezeichnung, wie der Gast sie sieht',
+    en: 'Label as the guest sees it',
+    tr: 'Misafirin gördüğü ad' },
+  'exemption.avsCategory': {
+    de: 'AVS-Kategorie',
+    en: 'AVS category',
+    tr: 'AVS kategorisi' },
+  'exemption.needsProof': {
+    de: 'Nach Ausweis- oder Kartennummer fragen (freiwillig für den Gast)',
+    en: 'Ask for ID or card number (optional for the guest)',
+    tr: 'Kimlik veya kart numarası sor (misafir için isteğe bağlı)' },
+  'exemption.withProof': {
+    de: 'mit Nummernfeld',
+    en: 'with number field',
+    tr: 'numara alanıyla' },
+  'exemption.deactivate': {
+    de: 'Abschalten',
+    en: 'Deactivate',
+    tr: 'Devre dışı bırak' },
+  'exemption.activate': {
+    de: 'Wieder anbieten',
+    en: 'Offer again',
+    tr: 'Yeniden sun' },
 
 } as const satisfies Record<string, LocalizedText>

@@ -221,3 +221,45 @@ export function useUpdateRoom(propertyId: number) {
     onSuccess: () => { stammdatenNeuLaden(qc, propertyId) }
   })
 }
+
+/** Befreiungsgrund fuer die Kurtaxe (Migration 0089), wie die Schnittstelle ihn liefert. */
+export interface Befreiungsgrund {
+  reasonRef: string
+  code: string
+  label: string
+  needsProof: boolean
+  avsCategory: number | null
+  active: boolean
+  sort: number
+}
+
+export const useBefreiungsgruende = (propertyId: number) =>
+  useQuery<{ reasons: Befreiungsgrund[] }>({
+    queryKey: ['city-tax-exemptions', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/city-tax-exemptions`)
+  })
+
+export function useCreateBefreiungsgrund(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { code: string; label: string; needsProof: boolean
+                         avsCategory: number | null; sort: number }) =>
+      api.post<Befreiungsgrund>(`/v1/properties/${propertyId}/city-tax-exemptions`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['city-tax-exemptions', propertyId] })
+    }
+  })
+}
+
+export function useUpdateBefreiungsgrund(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ reasonRef, ...body }: { reasonRef: string } & Partial<
+      Pick<Befreiungsgrund, 'label' | 'needsProof' | 'avsCategory' | 'active' | 'sort'>>) =>
+      api.patch<Befreiungsgrund>(
+        `/v1/properties/${propertyId}/city-tax-exemptions/${reasonRef}`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['city-tax-exemptions', propertyId] })
+    }
+  })
+}

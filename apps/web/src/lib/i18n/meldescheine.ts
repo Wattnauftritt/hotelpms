@@ -77,6 +77,10 @@ export const meldescheine = {
     de: 'wird vernichtet ab {datum} (§ 30 BMG)',
     en: 'destroyed from {datum} (§ 30 BMG)',
     tr: '{datum} tarihinden itibaren imha edilir (§ 30 BMG)' },
+  'reg.taxExemption': {
+    de: 'Kurtaxe befreit: {grund}',
+    en: 'Exempt from tourist tax: {grund}',
+    tr: 'Turist vergisinden muaf: {grund}' },
   'reg.companions': {
     de: 'Mitreisende',
     en: 'Companions',

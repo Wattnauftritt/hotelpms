@@ -117,6 +117,24 @@ export async function testhotelAnlegen(): Promise<void> {
       `INSERT INTO tax_rule (property_id, code, name, kind, rate_bp, basis)
        VALUES ($1,'UST7','Beherbergung','vat',700,'percent'),
               ($1,'UST19','Sonstige Leistungen','vat',1900,'percent')`, [propertyId])
+    /*
+     * Kurtaxe-Befreiung wie in Cuxhaven (AVS-Konfiguration), damit das
+     * Meldeformular die Frage zeigt. Die Kategorien gelten nur dort.
+     */
+    await client.query(
+      `INSERT INTO city_tax_exemption_reason
+         (property_id, code, label, needs_proof, avs_category, sort)
+       VALUES ($1,'behinderung','100 % Behinderung',true,2,10),
+              ($1,'begleitperson','Begleitperson (Merkzeichen B)',true,4,20),
+              ($1,'beruflich','Beruflich',false,6,30),
+              ($1,'jahreskurkarte','Jahreskurkarte',true,7,40)`, [propertyId])
+    await client.query(
+      `INSERT INTO property_terms (property_id, code, title, body, requires_signature,
+                                   active_from)
+       VALUES ($1,'schluesselkarte','Schlüsselkarte',
+               'Bei Verlust oder Beschädigung einer Schlüsselkarte werden 50 € '
+               || 'Schadensersatz je Karte fällig.', true, current_date - 30)`,
+      [propertyId])
     await client.query(
       `INSERT INTO payment_method (property_id, code, name, sort_order)
        VALUES ($1,'CASH','Barzahlung vor Ort',1),

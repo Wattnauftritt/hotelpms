@@ -162,7 +162,24 @@ export const CheckinFormView = Type.Object({
   signatureAllowed: Type.Boolean(),
   /** Sprache am Gastprofil, als Vorschlag fuer die Seite. */
   language: Type.String(),
-  maxCompanions: Type.Integer()
+  maxCompanions: Type.Integer(),
+  /**
+   * Die Hausbedingungen, denen dieser Aufenthalt noch nicht zugestimmt hat,
+   * in der Fassung des Anreisetags. Vollstaendig, nicht als Verweis: was
+   * der Gast unterschreibt, soll er auf derselben Seite lesen.
+   */
+  terms: Type.Array(Type.Object({
+    termsRef: Type.String(),
+    title: Type.String(),
+    body: Type.String(),
+    requiresSignature: Type.Boolean()
+  })),
+  /** Die Befreiungsgruende fuer die Kurtaxe, die das Haus anbietet. */
+  exemptionReasons: Type.Array(Type.Object({
+    code: Type.String(),
+    label: Type.String(),
+    needsProof: Type.Boolean()
+  }))
 })
 export type CheckinFormView = Static<typeof CheckinFormView>
 
@@ -173,11 +190,23 @@ export const CheckinAddress = Type.Object({
   country: Type.String({ minLength: 2, maxLength: 2 })
 }, { additionalProperties: false })
 
+/**
+ * Befreiung von der Kurtaxe, je Person. `reason` ist das Kuerzel eines
+ * Grundes des Hauses; `proof` die Ausweis- oder Kartennummer, freiwillig und
+ * nur, wo der Grund danach fragt -- sonst verworfen.
+ */
+export const CheckinTaxExemption = Type.Object({
+  reason: Type.String({ minLength: 1, maxLength: 40 }),
+  proof: Type.Optional(Type.String({ maxLength: 100 }))
+}, { additionalProperties: false })
+export type CheckinTaxExemption = Static<typeof CheckinTaxExemption>
+
 export const CheckinPerson = Type.Object({
   lastName: Type.String({ minLength: 1, maxLength: 100 }),
   firstName: Type.String({ minLength: 1, maxLength: 100 }),
   birthDate: IsoDate,
-  nationality: Type.String({ minLength: 2, maxLength: 2 })
+  nationality: Type.String({ minLength: 2, maxLength: 2 }),
+  taxExemption: Type.Optional(CheckinTaxExemption)
 }, { additionalProperties: false })
 export type CheckinPerson = Static<typeof CheckinPerson>
 
@@ -200,11 +229,23 @@ export const CheckinSubmit = Type.Object({
     /** Nur bei auslaendischen Gaesten; bei inlaendischen verworfen. */
     idDocumentType: Type.Optional(Type.Union([
       Type.Literal('passport'), Type.Literal('id_card'), Type.Literal('other')])),
-    idDocumentNumber: Type.Optional(Type.String({ maxLength: 40 }))
+    idDocumentNumber: Type.Optional(Type.String({ maxLength: 40 })),
+    taxExemption: Type.Optional(CheckinTaxExemption)
   }, { additionalProperties: false }),
   companions: Type.Optional(Type.Array(CheckinPerson, { maxItems: MAX_MITREISENDE })),
   /** Nur am Terminal am Anreisetag angenommen, sonst verworfen. */
   signatureSvg: Type.Optional(Type.String({ maxLength: UNTERSCHRIFT_MAX_ZEICHEN })),
+  /**
+   * Die Hausbedingungen, denen der Gast zustimmt -- genau die Fassungen, die
+   * ihm `terms` gezeigt hat. Jede offene muss dabei sein.
+   */
+  termsAccepted: Type.Optional(Type.Array(Type.String(), { maxItems: 20 })),
+  /**
+   * Die Unterschrift unter die Hausbedingungen. Anders als beim Meldeschein
+   * auch von zu Hause und von jedem Gast: die Hausbedingung ist
+   * privatrechtlich, § 29 Abs. 2 BMG gilt fuer sie nicht.
+   */
+  termsSignatureSvg: Type.Optional(Type.String({ maxLength: UNTERSCHRIFT_MAX_ZEICHEN })),
   /** "Meine Angaben sind richtig und vollstaendig." */
   confirmed: Type.Literal(true)
 }, { additionalProperties: false })

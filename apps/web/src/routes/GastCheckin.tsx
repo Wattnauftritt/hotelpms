@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CHECKIN_PATH, CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
          istAuslaendisch, type CheckinFormView, type CheckinSubmit,
-         type CheckinSubmitted } from '@hotelpms/contracts'
+         type CheckinSubmitted, type CheckinTaxExemption } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { LOCALES, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
@@ -263,8 +263,33 @@ function Feld({ label, fehler, gross, children }: {
   )
 }
 
-interface Person { lastName: string; firstName: string; birthDate: string; nationality: string }
-const LEER: Person = { lastName: '', firstName: '', birthDate: '', nationality: '' }
+interface Person {
+  lastName: string; firstName: string; birthDate: string; nationality: string
+  /** Kuerzel des Befreiungsgrunds, leer = kurtaxepflichtig. */
+  befreiung: string
+  nachweis: string
+}
+const LEER: Person = { lastName: '', firstName: '', birthDate: '', nationality: '',
+                       befreiung: '', nachweis: '' }
+
+/**
+ * Die Befreiung, wie die Schnittstelle sie erwartet. Die Nummer nur, wo der
+ * Grund danach fragt: ein Feld, das der Gast nicht mehr sieht, soll nichts
+ * mitschicken, was er vorher hineingetippt hat.
+ */
+function befreiungFuer(p: Person, gruende: CheckinFormView['exemptionReasons']
+): { taxExemption?: CheckinTaxExemption } {
+  const g = gruende.find(x => x.code === p.befreiung)
+  if (g === undefined) return {}
+  const nr = p.nachweis.trim()
+  return { taxExemption: { reason: g.code, ...(g.needsProof && nr !== '' ? { proof: nr } : {}) } }
+}
+
+/** Mitreisende ohne die Felder, die nur die Maske braucht. */
+function person(p: Person, gruende: CheckinFormView['exemptionReasons']) {
+  return { lastName: p.lastName, firstName: p.firstName, birthDate: p.birthDate,
+           nationality: p.nationality, ...befreiungFuer(p, gruende) }
+}
 
 /** Feldname der Schnittstelle -> Beschriftung, fuer Meldungen an der Stelle. */
 function feldFehler(error: unknown, locale: Locale): Map<string, string> {
@@ -294,6 +319,8 @@ function Formular({ token, view, gross, onErledigt }: {
   const [dokNr, setDokNr] = useState('')
   const [begleiter, setBegleiter] = useState<Person[]>([])
   const [signatur, setSignatur] = useState<string | null>(null)
+  const [bedingungenOk, setBedingungenOk] = useState(false)
+  const [bedingungenSignatur, setBedingungenSignatur] = useState<string | null>(null)
   const [bestaetigt, setBestaetigt] = useState(false)
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<unknown>(null)
@@ -302,6 +329,10 @@ function Formular({ token, view, gross, onErledigt }: {
   const jemandAuslaendisch = auslaendisch
     || begleiter.some(b => b.nationality !== '' && istAuslaendisch({ nationality: b.nationality }))
   const mitUnterschrift = jemandAuslaendisch && view.signatureAllowed
+  const mitBedingungen = view.terms.length > 0
+  const bedingungenUnterschrift = view.terms.some(b => b.requiresSignature)
+  const bedingungenFertig = !mitBedingungen
+    || (bedingungenOk && (!bedingungenUnterschrift || bedingungenSignatur !== null))
   const felder = feldFehler(fehler, locale)
 
   const eingabe = `mt-0.5 w-full border rounded-sm bg-white
@@ -318,10 +349,16 @@ function Formular({ token, view, gross, onErledigt }: {
         lastName: ich.lastName, firstName: ich.firstName, birthDate: ich.birthDate,
         nationality: ich.nationality,
         address: { line1: strasse, postalCode: plz, city: ort, country: land },
-        ...(auslaendisch ? { idDocumentType: dokTyp, idDocumentNumber: dokNr } : {})
+        ...(auslaendisch ? { idDocumentType: dokTyp, idDocumentNumber: dokNr } : {}),
+        ...befreiungFuer(ich, view.exemptionReasons)
       },
-      ...(begleiter.length > 0 ? { companions: begleiter } : {}),
+      ...(begleiter.length > 0
+        ? { companions: begleiter.map(b => person(b, view.exemptionReasons)) } : {}),
       ...(mitUnterschrift && signatur !== null ? { signatureSvg: signatur } : {}),
+      ...(mitBedingungen && bedingungenOk
+        ? { termsAccepted: view.terms.map(b => b.termsRef) } : {}),
+      ...(bedingungenUnterschrift && bedingungenSignatur !== null
+        ? { termsSignatureSvg: bedingungenSignatur } : {}),
       confirmed: true
     }
     try {
@@ -350,6 +387,39 @@ function Formular({ token, view, gross, onErledigt }: {
       </select>
     </Feld>
   )
+
+  /*
+   * Je Person, wie im Adminpanel: Mitreisende koennen befreit sein, auch wenn
+   * der Hauptgast es nicht ist. Ohne Gruende des Hauses gibt es die Frage
+   * nicht -- eine Auswahl mit nur "keine" waere eine Frage ohne Antwort.
+   */
+  const befreiungAuswahl = (p: Person, setzen: (neu: Partial<Person>) => void,
+                            pfad: string): JSX.Element | null => {
+    if (view.exemptionReasons.length === 0) return null
+    const grund = view.exemptionReasons.find(g => g.code === p.befreiung)
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Feld label={t('gastCheckin.exemption.title')}
+              fehler={felder.get(`${pfad}.taxExemption.reason`)} gross={gross}>
+          <select value={p.befreiung} onChange={e => setzen({ befreiung: e.target.value })}
+                  className={`${eingabe} ${rahmen(`${pfad}.taxExemption.reason`)}`}>
+            <option value="">{t('gastCheckin.exemption.none')}</option>
+            {view.exemptionReasons.map(g => (
+              <option key={g.code} value={g.code}>{g.label}</option>
+            ))}
+          </select>
+        </Feld>
+        {grund?.needsProof === true && (
+          <Feld label={t('gastCheckin.exemption.proof')}
+                fehler={felder.get(`${pfad}.taxExemption.proof`)} gross={gross}>
+            <input value={p.nachweis} autoComplete="off" spellCheck={false} maxLength={100}
+                   onChange={e => setzen({ nachweis: e.target.value })}
+                   className={`${eingabe} ${rahmen(`${pfad}.taxExemption.proof`)}`} />
+          </Feld>
+        )}
+      </div>
+    )
+  }
 
   return (
     <form className="space-y-4" noValidate
@@ -411,6 +481,10 @@ function Formular({ token, view, gross, onErledigt }: {
               </Feld>
               {laenderAuswahl(land, setLand, 'guest.address.country', 'gastCheckin.country')}
             </div>
+            {befreiungAuswahl(ich, neu => setIch({ ...ich, ...neu }), 'guest')}
+            {view.exemptionReasons.length > 0 && (
+              <p className="text-neutral-500">{t('gastCheckin.exemption.hint')}</p>
+            )}
           </div>
 
           {auslaendisch && (
@@ -478,6 +552,7 @@ function Formular({ token, view, gross, onErledigt }: {
                     {laenderAuswahl(b.nationality, v => setzen({ nationality: v }),
                       pfad('nationality'), 'gastCheckin.nationality.title')}
                   </div>
+                  {befreiungAuswahl(b, setzen, `companions.${i}`)}
                 </fieldset>
               )
             })}
@@ -508,6 +583,44 @@ function Formular({ token, view, gross, onErledigt }: {
             </div>
           )}
 
+          {/*
+            * Die Hausbedingungen vollstaendig, nicht als Verweis: was der Gast
+            * unterschreibt, soll er auf derselben Seite lesen. Die Unterschrift
+            * gehoert zu ihnen, nicht zum Meldeschein -- sie gilt fuer jeden
+            * Gast und geht auch von zu Hause (routes/terms.ts).
+            */}
+          {mitBedingungen && (
+            <div className={abschnitt}>
+              <h2 className="font-semibold">{t('gastCheckin.terms.title')}</h2>
+              {view.terms.map(b => (
+                <section key={b.termsRef} className="space-y-1">
+                  <h3 className="font-medium">{b.title}</h3>
+                  {/* Text, kein HTML: was das Haus anlegt, wird nie als Markup gezeigt. */}
+                  <p className="whitespace-pre-line text-neutral-700">{b.body}</p>
+                </section>
+              ))}
+              <label className="flex items-start gap-2">
+                <input type="checkbox" checked={bedingungenOk}
+                       onChange={e => setBedingungenOk(e.target.checked)}
+                       className={gross ? 'mt-1 h-6 w-6' : 'mt-0.5'} />
+                <span>{t('gastCheckin.terms.accept')}</span>
+              </label>
+              {felder.has('termsAccepted') && (
+                <p className="text-red-700">{felder.get('termsAccepted')}</p>
+              )}
+              {bedingungenUnterschrift && (
+                <>
+                  <p className="text-neutral-600">{t('gastCheckin.terms.signatureHint')}</p>
+                  <Unterschriftsfeld onChange={setBedingungenSignatur} gross={gross}
+                                     beschriftungLoeschen={t('gastCheckin.signature.clear')} />
+                  {felder.has('termsSignatureSvg') && (
+                    <p className="text-red-700">{felder.get('termsSignatureSvg')}</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <div className={abschnitt}>
             <p className="text-neutral-600">
               {t('gastCheckin.privacy', { haus: view.propertyName })}
@@ -525,7 +638,8 @@ function Formular({ token, view, gross, onErledigt }: {
               </div>
             )}
             <button type="submit"
-                    disabled={!bestaetigt || laeuft || (mitUnterschrift && signatur === null)}
+                    disabled={!bestaetigt || laeuft || (mitUnterschrift && signatur === null)
+                              || !bedingungenFertig}
                     className={`${gross ? 'w-full py-4 text-xl' : 'px-4 py-2'} rounded-sm
                                 bg-neutral-900 text-white disabled:bg-neutral-300`}>
               {t('gastCheckin.submit')}

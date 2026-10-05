@@ -10,7 +10,10 @@ import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { checkinTx, type CheckinKontext } from '../platform/checkin.js'
-import { erfasseMeldeschein, unterschreibeMeldeschein } from '../platform/meldeschein.js'
+import { erfasseMeldeschein, unterschreibeMeldeschein,
+         type Befreiung } from '../platform/meldeschein.js'
+import { geltendeBedingungen, stimmeBedingungZu,
+         type GeltendeBedingung } from '../platform/hausbedingungen.js'
 import { gastAendern, gastAnlegen } from '../platform/gast.js'
 import type { Principal } from '../platform/context.js'
 
@@ -104,6 +107,8 @@ function unterschriftHier(k: CheckinKontext, arrival: string): boolean {
 
 interface Person {
   lastName: string; firstName: string; birthDate: string; nationality: string
+  /** Nur der Form nach geprueft; ob das Haus den Grund anbietet, im Handler. */
+  taxExemption?: { reason: string; proof: string | null }
 }
 interface Einreichung {
   guest: Person & {
@@ -113,13 +118,19 @@ interface Einreichung {
   }
   companions: Person[]
   signatureSvg?: string
+  termsAccepted: string[]
+  termsSignatureSvg?: string
 }
 
 const GAST_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality',
-                             'address', 'idDocumentType', 'idDocumentNumber'])
-const PERSON_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality'])
+                             'address', 'idDocumentType', 'idDocumentNumber',
+                             'taxExemption'])
+const PERSON_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality',
+                               'taxExemption'])
+const BEFREIUNG_FELDER = new Set(['reason', 'proof'])
 const ANSCHRIFT_FELDER = new Set(['line1', 'postalCode', 'city', 'country'])
-const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed'])
+const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed',
+                               'termsAccepted', 'termsSignatureSvg'])
 
 function istObjekt(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -159,8 +170,26 @@ function pruefe(body: unknown, heute: string): Einreichung {
     if (p.birthDate === null || !isIsoDate(p.birthDate)) fehlt(`${pfad}.birthDate`, 'field.isoDate')
     else if (p.birthDate > heute) fehlt(`${pfad}.birthDate`, 'checkin.birthDateFuture')
     if (!istLand(p.nationality)) fehlt(`${pfad}.nationality`, 'field.country')
+    let befreiung: Person['taxExemption']
+    const b = v.taxExemption
+    if (b !== undefined && b !== null) {
+      if (!istObjekt(b)) fehlt(`${pfad}.taxExemption`, 'field.invalid')
+      else {
+        for (const k of Object.keys(b)) {
+          if (!BEFREIUNG_FELDER.has(k)) fehlt(`${pfad}.taxExemption.${k}`, 'field.unknown')
+        }
+        const grund = text(b.reason, 40)
+        if (grund === null) fehlt(`${pfad}.taxExemption.reason`)
+        if (b.proof !== undefined && b.proof !== null && typeof b.proof !== 'string') {
+          fehlt(`${pfad}.taxExemption.proof`, 'field.invalid')
+        } else if (typeof b.proof === 'string' && b.proof.length > 100) {
+          fehlt(`${pfad}.taxExemption.proof`, 'field.invalid')
+        }
+        if (grund !== null) befreiung = { reason: grund, proof: text(b.proof, 100) }
+      }
+    }
     return p.lastName && p.firstName && p.birthDate && p.nationality
-      ? p as Person : null
+      ? { ...p, ...(befreiung ? { taxExemption: befreiung } : {}) } as Person : null
   }
 
   const g = person(body.guest, 'guest', GAST_FELDER)
@@ -216,12 +245,90 @@ function pruefe(body: unknown, heute: string): Einreichung {
     else svg = body.signatureSvg
   }
 
+  const akzeptiert: string[] = []
+  if (body.termsAccepted !== undefined) {
+    if (!Array.isArray(body.termsAccepted) || body.termsAccepted.length > 20
+        || !body.termsAccepted.every(r => typeof r === 'string' && r.length <= 64)) {
+      fehlt('termsAccepted', 'field.invalid')
+    } else akzeptiert.push(...body.termsAccepted as string[])
+  }
+  let termsSvg: string | undefined
+  if (body.termsSignatureSvg !== undefined) {
+    if (typeof body.termsSignatureSvg !== 'string') fehlt('termsSignatureSvg', 'field.invalid')
+    else termsSvg = body.termsSignatureSvg
+  }
+
   if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
   return {
     guest: { ...g!, address: anschrift!, idDocumentType: ausweisTyp,
              idDocumentNumber: ausweisNr },
     companions: begleiter,
-    signatureSvg: svg
+    signatureSvg: svg,
+    termsAccepted: akzeptiert,
+    termsSignatureSvg: termsSvg
+  }
+}
+
+interface GrundImHaus { id: number; code: string; label: string; needs_proof: boolean }
+
+/** Die Gruende, die das Haus gerade anbietet. Ein Aufruf, nicht einer je Person. */
+async function befreiungsgruende(client: PoolClient, propertyId: number): Promise<GrundImHaus[]> {
+  const { rows } = await client.query<GrundImHaus>(
+    `SELECT id, code, label, needs_proof FROM city_tax_exemption_reason
+      WHERE property_id = $1 AND active ORDER BY sort, label`, [propertyId])
+  return rows
+}
+
+/** Die interne Kennung einer Fassung; die Gastseite kennt nur die oeffentliche. */
+async function termsId(client: PoolClient, termsRef: string): Promise<number> {
+  const { rows } = await client.query<{ id: string }>(
+    `SELECT id FROM property_terms WHERE public_ref = $1`, [termsRef])
+  return Number(rows[0]!.id)
+}
+
+/** Die Hausbedingungen, denen dieser Aufenthalt noch zustimmen muss. */
+async function offeneBedingungen(
+  client: PoolClient, r: ReservierungZumLink
+): Promise<GeltendeBedingung[]> {
+  const alle = await geltendeBedingungen(client,
+    { id: r.id, propertyId: r.property_id, arrival: r.arrival })
+  return alle.filter(b => !b.agreed)
+}
+
+/**
+ * Befreiungen und Hausbedingungen gegen das Haus pruefen -- vor dem ersten
+ * Schreiben, damit ein abgewiesenes Formular keinen halben Meldeschein
+ * hinterlaesst.
+ *
+ * Eine Nummer zu einem Grund, der keine verlangt, wird verworfen, nicht
+ * gespeichert: eine Erhebung ohne Anlass, wie bei der Ausweisnummer
+ * inlaendischer Gaeste.
+ */
+function pruefeGegenHaus(
+  e: Einreichung, gruende: GrundImHaus[], offen: GeltendeBedingung[]
+): { befreiung: (p: Person) => Befreiung | null } {
+  const f: Record<string, Meldung[]> = {}
+  const nachCode = new Map(gruende.map(g => [g.code, g]))
+  const personen: Array<[Person, string]> = [
+    [e.guest, 'guest'], ...e.companions.map((c, i): [Person, string] => [c, `companions.${i}`])]
+  for (const [p, pfad] of personen) {
+    if (p.taxExemption && !nachCode.has(p.taxExemption.reason)) {
+      (f[`${pfad}.taxExemption.reason`] ??= []).push('checkin.unknownExemption')
+    }
+  }
+  const akzeptiert = new Set(e.termsAccepted)
+  if (offen.some(b => !akzeptiert.has(b.termsRef))) f.termsAccepted = ['checkin.termsRequired']
+  if (offen.some(b => b.requiresSignature)
+      && (e.termsSignatureSvg === undefined || !istUnterschriftSvg(e.termsSignatureSvg))) {
+    f.termsSignatureSvg = ['checkin.termsSignatureRequired']
+  }
+  if (Object.keys(f).length > 0) throw Errors.validation(f)
+  return {
+    befreiung: p => {
+      if (!p.taxExemption) return null
+      const g = nachCode.get(p.taxExemption.reason)!
+      return { reasonId: Number(g.id), proof: g.needs_proof ? p.taxExemption.proof : null }
+    }
   }
 }
 
@@ -292,7 +399,12 @@ export function checkinRoutes(app: FastifyInstance): void {
           state: zustand(r),
           signatureAllowed: unterschriftHier(k, r.arrival),
           language: r.language,
-          maxCompanions: MAX_MITREISENDE
+          maxCompanions: MAX_MITREISENDE,
+          terms: (await offeneBedingungen(client, r)).map(b => ({
+            termsRef: b.termsRef, title: b.title, body: b.body,
+            requiresSignature: b.requiresSignature })),
+          exemptionReasons: (await befreiungsgruende(client, r.property_id)).map(g => ({
+            code: g.code, label: g.label, needsProof: g.needs_proof }))
         }
       })
     }
@@ -315,6 +427,8 @@ export function checkinRoutes(app: FastifyInstance): void {
         if (hier && e.signatureSvg !== undefined && !istUnterschriftSvg(e.signatureSvg)) {
           throw Errors.validation({ signatureSvg: ['checkin.signatureInvalid'] })
         }
+        const offen = await offeneBedingungen(client, r)
+        const haus = pruefeGegenHaus(e, await befreiungsgruende(client, r.property_id), offen)
 
         /*
          * Ins Profil des Gastes, auf demselben Weg wie die Rezeption. E-Mail
@@ -332,12 +446,17 @@ export function checkinRoutes(app: FastifyInstance): void {
 
         // Mitreisende als eigene Profile: die Meldepflicht gilt je Person.
         const mitreisende: number[] = []
+        const befreiungen = new Map<number, Befreiung>()
+        const hauptBefreiung = haus.befreiung(e.guest)
+        if (hauptBefreiung) befreiungen.set(Number(r.primary_guest_id), hauptBefreiung)
         for (const c of e.companions) {
           const neu = await gastAnlegen(client, r.account_id, {
             lastName: c.lastName, firstName: c.firstName,
             birthDate: c.birthDate, nationality: c.nationality,
             language: r.language })
           mitreisende.push(neu.id)
+          const b = haus.befreiung(c)
+          if (b) befreiungen.set(Number(neu.id), b)
         }
 
         const ergebnis = await erfasseMeldeschein(client, {
@@ -347,8 +466,22 @@ export function checkinRoutes(app: FastifyInstance): void {
           unterschrift: hier
             ? { art: 'jetzt', svg: e.signatureSvg }
             : { art: 'amAnreisetag' },
-          quelle: k.channel === 'terminal' ? 'terminal' : 'online'
+          quelle: k.channel === 'terminal' ? 'terminal' : 'online',
+          befreiungen
         })
+
+        /*
+         * Die Hausbedingungen ueber denselben Weg wie Tresen und Terminal
+         * (`platform/hausbedingungen.ts`): je Fassung eine Zustimmung, die
+         * Unterschrift nur, wo die Fassung sie verlangt. Ohne Benutzer --
+         * zugestimmt hat der Gast selbst.
+         */
+        for (const b of offen) {
+          await stimmeBedingungZu(client, {
+            reservationId: r.id, propertyId: r.property_id,
+            primaryGuestId: r.primary_guest_id, termsId: await termsId(client, b.termsRef),
+            signatureSvg: e.termsSignatureSvg, createdBy: null })
+        }
 
         await client.query(
           `UPDATE checkin_token SET completed_at = now() WHERE id = $1`, [k.tokenId])
