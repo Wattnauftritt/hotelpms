@@ -1226,6 +1226,18 @@ const M = {
     de: 'Dieser Aufenthalt hat der Bedingung bereits zugestimmt.',
     en: 'This stay has already agreed to these terms.',
     tr: 'Bu konaklama için koşullar zaten kabul edilmiş.' },
+  'terms.unknownVersion': {
+    de: 'Diese Fassung der Bedingung gibt es in diesem Haus nicht. Erst anlegen, dann zustimmen.',
+    en: 'This version of the terms does not exist in this property. Create it first.',
+    tr: 'Koşulların bu sürümü bu tesiste yok. Önce oluşturun.' },
+  'terms.activeFromBeforePrevious': {
+    de: 'Eine neue Fassung kann nicht vor ihrer Vorgaengerin beginnen ({date}).',
+    en: 'A new version cannot start before the previous one ({date}).',
+    tr: 'Yeni bir sürüm, öncekinden ({date}) önce başlayamaz.' },
+  'terms.activeToBeforeFrom': {
+    de: 'Das Ende liegt vor dem Beginn.',
+    en: 'The end date is before the start date.',
+    tr: 'Bitiş tarihi başlangıç tarihinden önce.' },
 
   'registration.noPrimaryGuest': {
     de: 'Die Reservierung hat keinen Hauptgast. Meldeschein nicht moeglich.',

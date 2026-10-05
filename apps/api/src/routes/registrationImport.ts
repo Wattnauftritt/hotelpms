@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import type { PoolClient } from '@hotelpms/db'
 import { isIsoDate } from '@hotelpms/domain'
 import { istLand, istUnterschriftSvg, MAX_MITREISENDE,
          UNTERSCHRIFT_MAX_ZEICHEN } from '@hotelpms/contracts'
@@ -8,6 +9,7 @@ import { Errors, type Meldung } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import { AUFBEWAHRUNG_MONATE, erfasseMeldeschein } from '../platform/meldeschein.js'
 import { gastAendern, gastAnlegen } from '../platform/gast.js'
+import { stimmeBedingungZu } from '../platform/hausbedingungen.js'
 
 /**
  * Einen fertigen Meldeschein aus einem Umsystem uebernehmen (Migration 0087).
@@ -32,15 +34,33 @@ import { gastAendern, gastAnlegen } from '../platform/gast.js'
  * **Nie ueberschreiben.** Liegt fuer die Reservierung schon ein Schein vor,
  * hat der Gast hier selbst bestaetigt; die Antwort sagt `kept_existing`, und
  * ein Wiederholungslauf des Umsystems aendert nichts.
+ *
+ * **Die Hausbedingung mit derselben Unterschrift.** Im Adminpanel stehen die
+ * Hausbedingungen auf dem Meldeschein, und jeder Gast hat ihn deshalb
+ * unterschrieben -- auch der deutsche. Fuer den Meldeschein verwirft
+ * StayGrid diese Unterschrift (§ 29 Abs. 2 BMG); fuer die Hausbedingung ist
+ * sie der Nachweis, ohne den die Pauschale fuer die Schluesselkarte nichts
+ * wert ist (Sven, 05.10.2026). `agreement` nennt die Fassung, die der Gast
+ * gesehen hat, und die Zustimmung landet in `guest_agreement` -- getrennt
+ * vom Schein, weil sie laenger halten muss als dessen Jahresfrist
+ * (`routes/terms.ts`). Die Fassung legt das Umsystem vorher an
+ * (`POST /v1/properties/:id/terms`); eine unbekannte wird abgewiesen, nicht
+ * erfunden.
+ *
+ * Auch zu einem schon uebernommenen Schein wird die Zustimmung nachgetragen:
+ * die ersten Laeufe kamen ohne sie, und der Gast hat sie geleistet.
  */
 
 const WURZEL = new Set(['source', 'completedAt', 'guest', 'companions', 'signature',
-                        'avsReportedAt'])
+                        'avsReportedAt', 'agreement'])
 const GAST = new Set(['lastName', 'firstName', 'birthDate', 'nationality', 'address'])
 const PERSON = new Set(['lastName', 'firstName', 'birthDate', 'nationality'])
 const ANSCHRIFT = new Set(['line1', 'postalCode', 'city', 'country'])
 const QUELLE = new Set(['system', 'reference'])
 const UNTERSCHRIFT = new Set(['png', 'signedAt'])
+const ZUSTIMMUNG = new Set(['termsCode', 'termsVersion', 'agreedAt'])
+/** Wie `CODE_MAX` in `routes/terms.ts`. */
+const TERMS_CODE_MAX = 40
 
 const SYSTEM_MAX = 40
 const REFERENCE_MAX = 100
@@ -69,6 +89,7 @@ interface Eingabe {
   companions: Person[]
   signature: { svg: string; signedAt: string | null } | null
   avsReportedAt: string | null
+  agreement: { termsCode: string; termsVersion: number; agreedAt: string | null } | null
 }
 
 function istObjekt(v: unknown): v is Record<string, unknown> {
@@ -215,11 +236,60 @@ function pruefe(body: unknown): Eingabe {
     }
   }
 
+  let agreement: Eingabe['agreement'] = null
+  if (body.agreement !== undefined && body.agreement !== null) {
+    const z = body.agreement
+    if (!istObjekt(z)) fehlt('agreement', 'field.invalid')
+    else {
+      unbekannt(z, ZUSTIMMUNG, 'agreement.')
+      const termsCode = text(z.termsCode, TERMS_CODE_MAX)
+      const termsVersion = z.termsVersion
+      const agreedAt = zeitpunkt(z.agreedAt)
+      if (termsCode === null) fehlt('agreement.termsCode')
+      const versionOk = typeof termsVersion === 'number' && Number.isInteger(termsVersion)
+        && termsVersion > 0
+      if (!versionOk) fehlt('agreement.termsVersion', 'field.invalid')
+      if (agreedAt === undefined) fehlt('agreement.agreedAt', 'field.invalid')
+      if (termsCode !== null && versionOk && agreedAt !== undefined) {
+        agreement = { termsCode, termsVersion, agreedAt }
+      }
+    }
+  }
+
   if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
   return {
     source: source!, completedAt: completedAt!, avsReportedAt: avsReportedAt!,
-    guest: { ...g!, address: anschrift }, companions: begleiter, signature
+    guest: { ...g!, address: anschrift }, companions: begleiter, signature, agreement
   }
+}
+
+/**
+ * Die Zustimmung zur genannten Fassung, mit der Unterschrift des Scheins.
+ * Ob die Unterschrift gespeichert wird, entscheidet die Fassung, nicht die
+ * Staatsangehoerigkeit (`stimmeBedingungZu`). Ohne Zeitpunkt gilt der der
+ * Unterschrift, dann der des Scheins -- der Gast hat beides zugleich
+ * geleistet.
+ */
+async function zustimmungUebernehmen(
+  client: PoolClient, e: Eingabe,
+  r: { id: number; propertyId: number; primaryGuestId: number | null }
+): Promise<'stored' | 'exists'> {
+  const z = e.agreement!
+  const t = await client.query<{ id: string }>(
+    `SELECT id FROM property_terms
+      WHERE property_id = $1 AND code = $2 AND version = $3`,
+    [r.propertyId, z.termsCode, z.termsVersion])
+  if (t.rowCount === 0) {
+    throw Errors.validation({ 'agreement.termsVersion': ['terms.unknownVersion'] })
+  }
+  const ergebnis = await stimmeBedingungZu(client, {
+    reservationId: r.id, propertyId: r.propertyId, primaryGuestId: r.primaryGuestId,
+    termsId: Number(t.rows[0]!.id), signatureSvg: e.signature?.svg,
+    // Ohne Benutzer, wie beim Online-Check-in: zugestimmt hat der Gast.
+    createdBy: null,
+    agreedAt: z.agreedAt ?? e.signature?.signedAt ?? e.completedAt,
+    vorhanden: 'behalten' })
+  return ergebnis.neu ? 'stored' : 'exists'
 }
 
 export function registrationImportRoutes(app: FastifyInstance): void {
@@ -281,9 +351,21 @@ export function registrationImportRoutes(app: FastifyInstance): void {
 
         const vorhanden = await client.query(
           `SELECT 1 FROM registration WHERE reservation_id = $1 LIMIT 1`, [res.id])
+        const gesperrt = gast.status === 'anonymized' || gast.loeschantrag
+        const aufenthalt = { id: Number(res.id), propertyId: Number(res.property_id),
+                             primaryGuestId: res.primary_guest_id }
         if ((vorhanden.rowCount ?? 0) > 0) {
+          /*
+           * Die Zustimmung trotzdem: sie kam bei den ersten Laeufen nicht
+           * mit. Nicht bei einem geloeschten oder zur Loeschung gemeldeten
+           * Gast -- seine Unterschrift jetzt anzulegen hiesse, die Loeschung
+           * rueckgaengig zu machen.
+           */
+          const agreement = e.agreement === null ? {}
+            : { agreement: gesperrt ? 'skipped' as const
+                  : await zustimmungUebernehmen(client, e, aufenthalt) }
           return { reservationRef, guestRef: gast.public_ref,
-                   result: 'kept_existing', reason: 'registration_exists' }
+                   result: 'kept_existing', reason: 'registration_exists', ...agreement }
         }
 
         if (gast.status === 'anonymized') throw Errors.conflict('guest.anonymizedNotRevived')
@@ -325,10 +407,13 @@ export function registrationImportRoutes(app: FastifyInstance): void {
                       completedAt: e.completedAt, avsReportedAt: e.avsReportedAt }
         })
 
+        const agreement = e.agreement === null ? {}
+          : { agreement: await zustimmungUebernehmen(client, e, aufenthalt) }
+
         reply.status(201)
         return { reservationRef, guestRef: gast.public_ref, result: 'imported',
                  signatureStored: ergebnis.signatureStored,
-                 signaturePending: ergebnis.signaturePending }
+                 signaturePending: ergebnis.signaturePending, ...agreement }
       })
     }
   })

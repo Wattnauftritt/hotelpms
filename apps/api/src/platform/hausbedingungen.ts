@@ -61,12 +61,18 @@ export async function geltendeBedingungen(
  *
  * Die Fassung muss zum Haus der Reservierung gehoeren: die Zeilenrichtlinie
  * laesst jedes Haus des Aufrufers durch, nicht nur dieses.
+ *
+ * `agreedAt` und `vorhanden: 'behalten'` braucht die Uebernahme aus einem
+ * Umsystem (`routes/registrationImport.ts`): dort hat der Gast frueher
+ * unterschrieben, als StayGrid davon erfaehrt, und ein Wiederholungslauf
+ * ist kein Fehler, sondern derselbe Nachweis noch einmal.
  */
 export async function stimmeBedingungZu(
   client: PoolClient,
   e: { reservationId: number; propertyId: number; primaryGuestId: number | null
-       termsId: number; signatureSvg: unknown; createdBy: number | null }
-): Promise<{ signed: boolean; agreedAt: string }> {
+       termsId: number; signatureSvg: unknown; createdBy: number | null
+       agreedAt?: string | null; vorhanden?: 'konflikt' | 'behalten' }
+): Promise<{ signed: boolean; agreedAt: string; neu: boolean }> {
   const t = await client.query<{ property_id: string; requires_signature: boolean }>(
     `SELECT property_id, requires_signature FROM property_terms WHERE id = $1`, [e.termsId])
   if (t.rowCount === 0 || Number(t.rows[0]!.property_id) !== e.propertyId) {
@@ -81,11 +87,20 @@ export async function stimmeBedingungZu(
 
   const a = await client.query<{ agreed_at: string }>(
     `INSERT INTO guest_agreement
-       (property_id, reservation_id, terms_id, guest_id, signature_svg, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6)
+       (property_id, reservation_id, terms_id, guest_id, signature_svg, created_by,
+        agreed_at)
+     VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7::timestamptz, now()))
      ON CONFLICT (reservation_id, terms_id) DO NOTHING
      RETURNING agreed_at::text`,
-    [e.propertyId, e.reservationId, e.termsId, e.primaryGuestId, unterschrift, e.createdBy])
-  if (a.rowCount === 0) throw Errors.conflict('terms.alreadyAgreed')
-  return { signed: unterschrift !== null, agreedAt: a.rows[0]!.agreed_at }
+    [e.propertyId, e.reservationId, e.termsId, e.primaryGuestId, unterschrift, e.createdBy,
+     e.agreedAt ?? null])
+  if (a.rowCount === 0) {
+    if (e.vorhanden !== 'behalten') throw Errors.conflict('terms.alreadyAgreed')
+    // Die erste Zustimmung bleibt, auch wenn die zweite anders aussieht.
+    const alt = await client.query<{ agreed_at: string; signed: boolean }>(
+      `SELECT agreed_at::text, signature_svg IS NOT NULL AS signed FROM guest_agreement
+        WHERE reservation_id = $1 AND terms_id = $2`, [e.reservationId, e.termsId])
+    return { signed: alt.rows[0]!.signed, agreedAt: alt.rows[0]!.agreed_at, neu: false }
+  }
+  return { signed: unterschrift !== null, agreedAt: a.rows[0]!.agreed_at, neu: true }
 }

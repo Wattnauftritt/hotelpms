@@ -3,6 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
+import { isIsoDate } from '@hotelpms/domain'
 import { geltendeBedingungen, stimmeBedingungZu } from '../platform/hausbedingungen.js'
 
 /**
@@ -40,6 +41,7 @@ interface TermsBody {
   body?: string
   requiresSignature?: boolean
   activeFrom?: string
+  activeTo?: string | null
 }
 
 const CODE_MAX = 40
@@ -107,11 +109,28 @@ export function termsRoutes(app: FastifyInstance): void {
       const body = req.body as TermsBody
       const principal = req.principal as Principal
       const { propertyId } = req.params as { propertyId: string }
-      const fehler: Record<string, ['field.required' | 'field.maxLength']> = {}
+      const fehler: Record<string, ['field.required' | 'field.maxLength' | 'field.isoDate'
+                                    | 'terms.activeToBeforeFrom']> = {}
       if (!body.code || body.code.length > CODE_MAX) fehler.code = ['field.required']
       if (!body.title || body.title.length > TITEL_MAX) fehler.title = ['field.required']
       if (!body.body) fehler.body = ['field.required']
       if (body.body && body.body.length > TEXT_MAX) fehler.body = ['field.maxLength']
+      /*
+       * Beide Tage duerfen in der Vergangenheit liegen: wer Fassungen aus
+       * einem Umsystem uebernimmt, legt an, was dort ab Februar galt, damit
+       * die alten Zustimmungen auf ihren Text zeigen. `activeTo` beendet
+       * eine Fassung, die nur rueckwirkend gelten soll.
+       */
+      if (body.activeFrom !== undefined && !isIsoDate(body.activeFrom)) {
+        fehler.activeFrom = ['field.isoDate']
+      }
+      if (body.activeTo !== undefined && body.activeTo !== null) {
+        if (!isIsoDate(body.activeTo)) fehler.activeTo = ['field.isoDate']
+        else if (body.activeFrom !== undefined && isIsoDate(body.activeFrom)
+                 && body.activeTo < body.activeFrom) {
+          fehler.activeTo = ['terms.activeToBeforeFrom']
+        }
+      }
       if (Object.keys(fehler).length > 0) {
         throw Errors.validation(fehler, { max: TEXT_MAX })
       }
@@ -122,35 +141,51 @@ export function termsRoutes(app: FastifyInstance): void {
          * beginnt. Ohne das gaelten zwei Fassungen gleichzeitig, und welche
          * der Gast unterschrieben hat, waere eine Frage der Sortierung.
          */
-        const vorige = await client.query<{ id: number; version: number }>(
-          `SELECT id, version FROM property_terms
-            WHERE property_id = $1 AND code = $2 AND active_to IS NULL
+        // Die Nummer aus allen Fassungen, nicht nur der offenen: eine mit
+        // `activeTo` angelegte ist beendet, ihre Nummer aber vergeben.
+        const vorige = await client.query<{ id: number; version: number
+                                            active_from: string; active_to: string | null }>(
+          `SELECT id, version, active_from::text, active_to::text FROM property_terms
+            WHERE property_id = $1 AND code = $2
             ORDER BY version DESC LIMIT 1 FOR UPDATE`,
           [Number(propertyId), body.code])
-
+        const vor = vorige.rows[0]
         const ab = body.activeFrom ?? null
+        const bis = body.activeTo ?? null
+
+        /*
+         * Fassungen folgen aufeinander. Eine, die vor ihrer Vorgaengerin
+         * beginnt, liesse die Vorgaengerin enden, bevor sie anfaengt; und
+         * fuer die Tage dazwischen gaelten zwei Fassungen.
+         */
+        if (vor !== undefined && (ab ?? new Date().toISOString().slice(0, 10)) < vor.active_from) {
+          throw Errors.validation({ activeFrom: ['terms.activeFromBeforePrevious'] },
+                                  { date: vor.active_from })
+        }
+
         const neu = await client.query<{ public_ref: string; version: number
-                                         active_from: string }>(
+                                         active_from: string; active_to: string | null }>(
           `INSERT INTO property_terms
              (property_id, code, version, title, body, requires_signature,
-              active_from, created_by)
-           VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7::date, current_date), $8)
-           RETURNING public_ref, version, active_from::text`,
-          [Number(propertyId), body.code, (vorige.rows[0]?.version ?? 0) + 1,
-           body.title, body.body, body.requiresSignature ?? true, ab,
+              active_from, active_to, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7::date, current_date), $8::date, $9)
+           RETURNING public_ref, version, active_from::text, active_to::text`,
+          [Number(propertyId), body.code, (vor?.version ?? 0) + 1,
+           body.title, body.body, body.requiresSignature ?? true, ab, bis,
            principal.userId])
 
-        if (vorige.rowCount && vorige.rowCount > 0) {
+        if (vor !== undefined && (vor.active_to === null || vor.active_to > neu.rows[0]!.active_from)) {
           await client.query(
             `UPDATE property_terms SET active_to = $2::date WHERE id = $1`,
-            [vorige.rows[0]!.id, neu.rows[0]!.active_from])
+            [vor.id, neu.rows[0]!.active_from])
         }
 
         reply.status(201)
         return {
           termsRef: neu.rows[0]!.public_ref,
           version: neu.rows[0]!.version,
-          activeFrom: neu.rows[0]!.active_from
+          activeFrom: neu.rows[0]!.active_from,
+          activeTo: neu.rows[0]!.active_to
         }
       })
     }

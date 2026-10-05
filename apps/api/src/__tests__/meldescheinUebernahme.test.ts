@@ -258,6 +258,138 @@ describe('Meldeschein uebernehmen', () => {
   })
 })
 
+/**
+ * Die Hausbedingungen des Adminpanels standen auf dem Meldeschein, und jeder
+ * Gast hat sie unterschrieben. Die Unterschrift ist fuer die Bedingung der
+ * Nachweis -- auch beim deutschen Gast, dessen Meldeschein ohne sie bleibt.
+ */
+describe('Hausbedingung aus dem Umsystem', () => {
+  const fassung = async (version: string, activeFrom: string, extra: Record<string, unknown> = {}) =>
+    app.inject({ method: 'POST', url: `/v1/properties/${fx.propertyId}/terms`,
+                 headers: auth(admin.sessionId),
+                 payload: { code: 'hausregeln', title: `Hausregeln ${version}`,
+                            body: `Schluesselkarte 50 Euro (${version})`, activeFrom, ...extra } })
+
+  const zustimmung = (termsVersion = 3, agreedAt: string | null = '2026-10-01T08:14:00Z') =>
+    ({ termsCode: 'hausregeln', termsVersion, agreedAt })
+
+  beforeEach(async () => {
+    for (const [v, ab] of [['v1', '2026-02-08'], ['v2', '2026-03-04'], ['v3', '2026-05-30']]) {
+      const a = await fassung(v!, ab!)
+      expect(a.statusCode, a.body).toBe(201)
+    }
+  })
+
+  it('legt die Fassungen rueckwirkend an, eine schliesst an die andere an', async () => {
+    const t = await owner.query(
+      `SELECT version, active_from::text AS von, active_to::text AS bis FROM property_terms
+        WHERE property_id = $1 ORDER BY version`, [fx.propertyId])
+    expect(t.rows).toEqual([
+      { version: 1, von: '2026-02-08', bis: '2026-03-04' },
+      { version: 2, von: '2026-03-04', bis: '2026-05-30' },
+      { version: 3, von: '2026-05-30', bis: null }])
+  })
+
+  it('weist eine Fassung ab, die vor ihrer Vorgaengerin beginnt', async () => {
+    const a = await fassung('alt', '2026-01-01')
+    expect(a.statusCode, a.body).toBe(422)
+    expect(a.body).toContain('terms.activeFromBeforePrevious')
+    const b = await fassung('x', 'gestern')
+    expect(b.statusCode, b.body).toBe(422)
+  })
+
+  it('zaehlt nach einer beendeten Fassung weiter', async () => {
+    const a = await fassung('v4', '2026-06-01', { activeTo: '2026-06-02' })
+    expect(a.statusCode, a.body).toBe(201)
+    expect(a.json()).toMatchObject({ version: 4, activeTo: '2026-06-02' })
+    const b = await fassung('v5', '2026-07-01')
+    expect(b.statusCode, b.body).toBe(201)
+    expect(b.json()).toMatchObject({ version: 5 })
+    const c = await fassung('falsch', '2026-08-01', { activeTo: '2026-07-01' })
+    expect(c.statusCode, c.body).toBe(422)
+    expect(c.body).toContain('terms.activeToBeforeFrom')
+  })
+
+  it('speichert die Unterschrift des deutschen Gastes fuer die Bedingung, nicht fuer den Schein', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const a = await senden(m, r.ref, schein({}, {
+      signature: { png: png(), signedAt: '2026-10-01T08:15:00Z' },
+      agreement: zustimmung() }))
+    expect(a.statusCode, a.body).toBe(201)
+    expect(a.json()).toMatchObject({ result: 'imported', signatureStored: false,
+                                     agreement: 'stored' })
+
+    const z = await owner.query(
+      `SELECT t.version, a.guest_id, a.agreed_at = '2026-10-01T08:14:00Z'::timestamptz AS zeit,
+              a.signature_svg AS svg
+         FROM guest_agreement a JOIN property_terms t ON t.id = a.terms_id
+        WHERE a.reservation_id = $1`, [r.reservationId])
+    expect(z.rows).toHaveLength(1)
+    expect(z.rows[0]).toMatchObject({ version: 3, guest_id: r.gastId, zeit: true })
+    expect(istUnterschriftSvg(z.rows[0]!.svg)).toBe(true)
+    const reg = await owner.query(
+      `SELECT signature_svg FROM registration WHERE reservation_id = $1`, [r.reservationId])
+    expect(reg.rows[0]!.signature_svg).toBeNull()
+
+    // Die Rezeption sieht sie als unterschrieben, wenn v3 am Anreisetag gilt.
+    const g = await app.inject({ method: 'GET', url: `/v1/reservations/${r.ref}/terms`,
+                                 headers: auth(admin.sessionId) })
+    expect(g.json()).toMatchObject({ terms: [{ version: 3, agreed: true, signed: true }] })
+  })
+
+  it('traegt sie zu einem schon uebernommenen Schein nach, und nur einmal', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const unterschrift = { png: png(), signedAt: '2026-10-01T08:15:00Z' }
+    expect((await senden(m, r.ref, schein({}, { signature: unterschrift }))).statusCode).toBe(201)
+
+    const a = await senden(m, r.ref, schein({}, { signature: unterschrift,
+                                                  agreement: zustimmung(3, null) }))
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json()).toMatchObject({ result: 'kept_existing', agreement: 'stored' })
+    const b = await senden(m, r.ref, schein({}, { signature: unterschrift,
+                                                  agreement: zustimmung(3, '2026-10-03T10:00:00Z') }))
+    expect(b.json()).toMatchObject({ result: 'kept_existing', agreement: 'exists' })
+
+    // Ohne eigenen Zeitpunkt gilt der der Unterschrift; die erste Zustimmung bleibt.
+    const z = await owner.query(
+      `SELECT agreed_at = '2026-10-01T08:15:00Z'::timestamptz AS zeit FROM guest_agreement
+        WHERE reservation_id = $1`, [r.reservationId])
+    expect(z.rows).toEqual([{ zeit: true }])
+  })
+
+  it('erfindet keine Fassung und nimmt keine Zustimmung ohne Unterschrift', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const a = await senden(m, r.ref, schein({}, { agreement: zustimmung(7) }))
+    expect(a.statusCode, a.body).toBe(422)
+    expect(a.body).toContain('terms.unknownVersion')
+    const b = await senden(m, r.ref, schein({}, { agreement: zustimmung() }))
+    expect(b.statusCode, b.body).toBe(422)
+    expect(b.body).toContain('terms.signatureRequired')
+    const c = await senden(m, r.ref, schein({}, { agreement: { termsCode: 'hausregeln' } }))
+    expect(c.statusCode, c.body).toBe(422)
+    expect(c.body).toContain('agreement.termsVersion')
+    // Alles in einer Transaktion: kein halber Schein.
+    const n = await owner.query(`SELECT count(*)::int AS n FROM registration`)
+    expect(n.rows[0]!.n).toBe(0)
+  })
+
+  it('legt bei einem geloeschten Gast keine Unterschrift an', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const unterschrift = { png: png(), signedAt: '2026-10-01T08:15:00Z' }
+    expect((await senden(m, r.ref, schein({}, { signature: unterschrift }))).statusCode).toBe(201)
+    await owner.query(`UPDATE guest SET erasure_requested_at = now() WHERE id = $1`, [r.gastId])
+    const a = await senden(m, r.ref, schein({}, { signature: unterschrift,
+                                                  agreement: zustimmung() }))
+    expect(a.json()).toMatchObject({ result: 'kept_existing', agreement: 'skipped' })
+    const n = await owner.query(`SELECT count(*)::int AS n FROM guest_agreement`)
+    expect(n.rows[0]!.n).toBe(0)
+  })
+})
+
 describe('Unterschrift aus PNG', () => {
   it('nimmt die Groesse aus dem Kopf des Bildes', () => {
     const svg = unterschriftAusPng(png(720, 240))
