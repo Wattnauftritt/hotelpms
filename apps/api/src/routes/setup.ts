@@ -319,7 +319,7 @@ export function setupRoutes(app: FastifyInstance): void {
   }
 
   /**
-   * Verkaufscode eines Zimmers (Migration 0089): das Etikett, unter dem ein
+   * Verkaufscode eines Zimmers (Migration 0090): das Etikett, unter dem ein
    * Kanal es verkauft, wenn das nicht die Gruppe ist. Gross geschrieben,
    * weil Kanaele ihre Kategorien so fuehren und "fz" und "FZ" sonst zwei
    * Posten waeren. `undefined` laesst ihn stehen, null und Leertext loeschen.

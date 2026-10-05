@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0089 -- Verkaufscode je Zimmer, unabhaengig von der Zimmergruppe.
+-- 0090 -- Verkaufscode je Zimmer, unabhaengig von der Zimmergruppe.
 --
 -- Anforderung: Sven, 05.10.2026, ueber das Adminpanel. Zimmer 8
 -- (Familienzimmer) und 9 (Apartment) bleiben in einer Zimmergruppe "Apart",

@@ -217,7 +217,7 @@ function range(req: FastifyRequest, max: number): { from: string; to: string } {
 }
 
 /**
- * Verfuegbarkeit je Verkaufscode (Migration 0089).
+ * Verfuegbarkeit je Verkaufscode (Migration 0090).
  *
  * Gezaehlt, nicht aus `inventory_day` gelesen: der Bestand wird je Gruppe
  * gebunden, und der Code ist nur das Etikett, unter dem ein Kanal einen Teil

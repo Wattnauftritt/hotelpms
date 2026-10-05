@@ -103,7 +103,7 @@ async function assertNoChannelForTraining(
 interface InboundBooking {
   externalReference: string
   /**
-   * Zimmergruppe -- oder ein Verkaufscode (Migration 0089). RoomCloud kennt
+   * Zimmergruppe -- oder ein Verkaufscode (Migration 0090). RoomCloud kennt
    * nur seine eigenen Kategorien; verkauft das Haus zwei Zimmer einer Gruppe
    * getrennt, kommt hier der Code eines Zimmers, und die Gruppe folgt aus
    * ihm.

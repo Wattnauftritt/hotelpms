@@ -8,7 +8,7 @@ import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 
 /**
- * Verkaufscode je Zimmer (Migration 0089).
+ * Verkaufscode je Zimmer (Migration 0090).
  *
  * Der Fall dahinter: Familienzimmer 8 und Apartment 9 liegen in einer
  * Zimmergruppe "Apart", RoomCloud verkauft sie als FZ und APT. Ohne Code
