@@ -284,6 +284,34 @@ describe('Aenderung an der Rezeption', () => {
     expect(detail.sourceCanceledAt).not.toBeNull()
   })
 
+  it('aendert und storniert nichts mehr, sobald der Gast angereist ist', async () => {
+    const token = await zugang()
+    const a = JSON.parse((await put(token, 'rc-1', ZWEI_ABSCHNITTE)).body) as Antwort
+    const erste = a.reservations![0]!.reservationRef
+    // Wie der Nachtlauf seit 0088: angereist, ohne die Belegung zu aendern.
+    await owner.query(`UPDATE reservation SET status = 'InHouse', checked_in_at = now()
+                        WHERE public_ref = $1`, [erste])
+
+    const r = await put(token, 'rc-1', { ...ZWEI_ABSCHNITTE, totalCent: 1,
+      sourceUpdatedAt: '2026-10-05T14:00:00Z' })
+    const antwort = JSON.parse(r.body) as Antwort
+    expect(antwort.status).toBe('kept_checked_in')
+    expect(antwort.sourceChanged).toBe(true)
+    expect((await reservierungen(a.bookingRef)).reduce((s, x) => s + x.total, 0)).toBe(40_001)
+
+    const c = await cancel(token, 'rc-1')
+    expect((JSON.parse(c.body) as Antwort).status).toBe('kept_checked_in')
+    expect((await reservierungen(a.bookingRef)).map(x => x.status))
+      .toEqual(['InHouse', 'Confirmed'])
+    expect(await verkauft('2026-11-01', '2026-11-07')).toEqual([0, 1, 1, 1, 1, 0])
+
+    const d = await app.inject({ method: 'GET', url: `/v1/reservations/${erste}`,
+      headers: session() })
+    const detail = JSON.parse(d.body) as { channelOwner: string; sourceCanceledAt: string | null }
+    expect(detail.channelOwner).toBe('source')
+    expect(detail.sourceCanceledAt).not.toBeNull()
+  })
+
   it('laesst die Buchung beim Umsystem, wenn sich nur die Notiz aendert', async () => {
     const token = await zugang()
     const a = JSON.parse((await put(token, 'rc-1', ZWEI_ABSCHNITTE)).body) as Antwort

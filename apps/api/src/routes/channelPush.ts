@@ -37,6 +37,9 @@ import { personenAngabe, type Personen } from './reservations.js'
  * er antwortet `kept_local`. Sonst ueberschriebe der naechste Lauf still, was
  * jemand am Tresen bewusst getan hat. Das Umsystem sieht den Wechsel in der
  * Reservierungsliste (`channelOwner`) und haelt die Buchung bei sich fest.
+ * Ebenso geschuetzt ist eine Buchung, an der jemand angereist ist
+ * (`kept_checked_in`): der Gast ist da. Sonst ist die Quelle Herr, auch
+ * ueber Stornos (Sven, 05.10.2026).
  */
 
 /** Wie bei `change-stay`: ein Aufenthalt, kein Dauermietvertrag. */
@@ -343,6 +346,23 @@ async function buchungSperren(
   return b.rows[0] ?? null
 }
 
+/**
+ * Ob an der Buchung schon jemand angereist ist.
+ *
+ * Dann aendert die Quelle sie nicht mehr (Sven, 05.10.2026): der Gast ist
+ * da, und ein Storno oder eine Umbuchung im Portal aendert daran nichts. Das
+ * gilt fuer die ganze Buchung, nicht nur fuer den angereisten Abschnitt --
+ * ein Folgeabschnitt mit Zimmerwechsel gehoert zum selben Gast. Seit 0088
+ * checkt der Nachtlauf eine Anreise mit Zimmer selbst ein; der Schutz greift
+ * damit spaetestens in der ersten Nacht.
+ */
+async function angereist(client: PoolClient, bookingId: number): Promise<boolean> {
+  const r = await client.query(
+    `SELECT 1 FROM reservation
+      WHERE booking_id = $1 AND status IN ('InHouse','CheckedOut') LIMIT 1`, [bookingId])
+  return (r.rowCount ?? 0) > 0
+}
+
 /** Nur der Zugang, der die Buchung gebracht hat, darf sie aendern. */
 function eigeneBuchung(b: BuchungZeile, p: ChannelPrincipal): void {
   if (b.channel_connection_id !== p.connectionId) {
@@ -389,17 +409,19 @@ export function channelPushRoutes(app: FastifyInstance): void {
         }
         eigeneBuchung(buchung, principal)
 
-        if (buchung.channel_owner === 'local') {
-          // Die Rezeption fuehrt die Buchung. Sagt die Quelle jetzt etwas
-          // anderes als beim letzten Push, muss das jemand sehen.
+        // Die Rezeption fuehrt die Buchung, oder der Gast ist schon da. In
+        // beiden Faellen aendert der Push nichts; sagt die Quelle jetzt etwas
+        // anderes als beim letzten Push, muss das jemand sehen.
+        const lokal = buchung.channel_owner === 'local'
+        if (lokal || (!angelegt && await angereist(client, buchung.id))) {
           const anders = buchung.source_hash !== hash
           if (anders) {
             await client.query(
               `UPDATE booking SET source_hash = $2, source_changed_at = now() WHERE id = $1`,
               [buchung.id, hash])
           }
-          return { status: 'kept_local' as const, bookingRef: buchung.public_ref,
-                   sourceChanged: anders }
+          return { status: lokal ? 'kept_local' as const : 'kept_checked_in' as const,
+                   bookingRef: buchung.public_ref, sourceChanged: anders }
         }
 
         if (!angelegt && body.quelle !== null && buchung.source_updated_at !== null
@@ -551,14 +573,16 @@ export function channelPushRoutes(app: FastifyInstance): void {
         if (buchung === null) throw Errors.notFound('res.booking')
         eigeneBuchung(buchung, principal)
 
-        if (buchung.channel_owner === 'local') {
-          // Wie beim Adminpanel eine angepasste Zeile: wer in StayGrid
-          // umgebucht hat, hat einen Gast im Kopf. Die Absage der Quelle
-          // wird vermerkt, nicht vollzogen.
+        // Wie beim Adminpanel eine angepasste Zeile: wer in StayGrid
+        // umgebucht hat, hat einen Gast im Kopf, und ein angereister Gast ist
+        // da. Die Absage der Quelle wird vermerkt, nicht vollzogen.
+        const lokal = buchung.channel_owner === 'local'
+        if (lokal || await angereist(client, buchung.id)) {
           await client.query(
             `UPDATE booking SET source_canceled_at = COALESCE(source_canceled_at, now())
               WHERE id = $1`, [buchung.id])
-          return { status: 'kept_local' as const, bookingRef: buchung.public_ref }
+          return { status: lokal ? 'kept_local' as const : 'kept_checked_in' as const,
+                   bookingRef: buchung.public_ref }
         }
         if (quelle !== null && buchung.source_updated_at !== null
             && Date.parse(quelle) < Date.parse(buchung.source_updated_at)) {
@@ -583,7 +607,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
         // Der Hash gehoert zum letzten Stand; ein spaeterer PUT derselben
         // Abschnitte soll die Buchung wiederbeleben, nicht "unchanged" sagen.
         await client.query(
-          `UPDATE booking SET source_hash = NULL, source_canceled_at = now(),
+          `UPDATE booking SET source_hash = NULL,
                   source_updated_at = COALESCE($2::timestamptz, source_updated_at)
             WHERE id = $1`, [buchung.id, quelle])
         for (const r of stornieren) {

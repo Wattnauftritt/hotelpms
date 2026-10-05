@@ -129,10 +129,10 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
           <div>{r.channelOwner === 'source'
             ? t('plan.channel.source', { channel: r.channelCode ?? r.source })
             : t('plan.channel.local')}</div>
-          {r.channelOwner === 'local' && r.sourceChangedAt !== null && (
+          {r.sourceChangedAt !== null && (
             <div className="text-amber-800">{t('plan.channel.sourceChanged')}</div>
           )}
-          {r.channelOwner === 'local' && r.sourceCanceledAt !== null && (
+          {r.sourceCanceledAt !== null && (
             <div className="text-amber-800">{t('plan.channel.sourceCanceled')}</div>
           )}
         </div>
