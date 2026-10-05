@@ -371,6 +371,36 @@ describe('Preis beim Aendern des Aufenthalts', () => {
     expect((JSON.parse(r.body) as { totalCent: number }).totalCent).toBe(45_000)
   })
 
+  it('rechnet neue Naechte auch mit Ratenplan zum bisherigen Schnitt', async () => {
+    // Der Plan kann sich seit der Buchung geaendert haben; gebucht hat der
+    // Gast zu dem Preis, der in seinen Naechten steht (Sven, 05.10.2026).
+    const ref = await reservierung()
+    const plan = await owner.query<{ id: number }>(
+      `INSERT INTO rate_plan (property_id, category_id, code, name)
+       VALUES ($1,$2,'BAR','BAR') RETURNING id`, [fx.propertyId, dz])
+    await owner.query(
+      `INSERT INTO rate_day (property_id, rate_plan_id, date, price_cent)
+       SELECT $1, $2, d::date, ARRAY[15000,15000]::bigint[]
+         FROM generate_series('2026-10-01'::date, '2026-10-10'::date, '1 day') d`,
+      [fx.propertyId, plan.rows[0]!.id])
+    await owner.query(
+      `UPDATE reservation SET rate_plan_id = $2 WHERE public_ref = $1`,
+      [ref, plan.rows[0]!.id])
+    await owner.query(
+      `UPDATE reservation_night SET price_cent = 10_000
+        WHERE date = '2026-10-03' AND reservation_id =
+              (SELECT id FROM reservation WHERE public_ref = $1)`, [ref])
+
+    // 9.000 + 9.000 + 10.000: Schnitt 9.333, nicht 15.000 aus dem Plan.
+    const r = await aendern(ref, { departure: '2026-10-05' })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await preise(ref)).toEqual([9_000, 9_000, 10_000, 9_333])
+
+    // Verkuerzen: die Nacht faellt weg, die uebrigen bleiben, wie sie sind.
+    await aendern(ref, { departure: '2026-10-03' })
+    expect(await preise(ref)).toEqual([9_000, 9_000])
+  })
+
   it('verteilt einen vereinbarten Gesamtpreis auf die Naechte', async () => {
     const ref = await reservierung()
     const r = await aendern(ref, { departure: '2026-10-05', totalCent: 40_001 })

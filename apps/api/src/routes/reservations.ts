@@ -574,27 +574,27 @@ export async function aufenthaltVerlegen(
     }
 
     /*
-     * Was eine neue Nacht kostet, wenn kein Ratenplan es sagt.
+     * Was eine neue Nacht kostet: der Durchschnitt der Naechte, die der
+     * Aufenthalt schon hat (Sven, 05.10.2026).
      *
-     * Ohne Plan rechnete `priceNights` jede neue Nacht mit null Euro. Das
-     * traf genau die Buchungen aus dem Altsystem: sie tragen keinen Plan,
-     * nur ihre Preise je Nacht -- und eine Verlaengerung um zwei Naechte war
-     * danach zwei Naechte umsonst, ohne dass es irgendwo auffiel. Gemeint
-     * ist der Preis, zu dem der Gast gebucht hat; der steht in den
-     * Naechten, die er schon hat. Bei gleichen Naechten ist der Schnitt
-     * genau dieser Preis.
+     * Gemeint ist der Preis, zu dem der Gast gebucht hat -- und der steht in
+     * seinen Naechten, nicht im Ratenplan. Der Plan kann sich seit der
+     * Buchung geaendert haben, ein Preis kann von Hand vereinbart sein, und
+     * eine Buchung aus dem Altsystem hat gar keinen Plan: dort kostete jede
+     * neue Nacht null Euro, ohne dass es irgendwo auffiel. Bei gleichen
+     * Naechten ist der Schnitt genau dieser Preis.
+     *
+     * Der Ratenplan gilt nur noch, wo es keinen bisherigen Preis gibt, oder
+     * wenn der Aufruf ausdruecklich einen anderen Plan nennt -- dann ist ein
+     * neuer Preis gemeint und kein alter.
      *
      * Vor dem Loeschen gerechnet: wer den Aufenthalt ganz verschiebt,
      * behaelt danach keine seiner alten Naechte, und der Preis waere weg.
      */
-    const planIdVorher = body.ratePlanId ?? r.rate_plan_id ?? undefined
-    let bisherJeNacht = 0
-    if (planIdVorher === undefined) {
-      const schnitt = await client.query<{ p: string | null }>(
-        `SELECT round(avg(price_cent))::bigint AS p
-           FROM reservation_night WHERE reservation_id = $1`, [r.id])
-      bisherJeNacht = Number(schnitt.rows[0]!.p ?? 0)
-    }
+    const schnitt = await client.query<{ p: string | null }>(
+      `SELECT round(avg(price_cent))::bigint AS p
+         FROM reservation_night WHERE reservation_id = $1`, [r.id])
+    const bisherJeNacht = schnitt.rows[0]!.p === null ? null : Number(schnitt.rows[0]!.p)
 
     await client.query(
       `UPDATE reservation
@@ -618,8 +618,8 @@ export async function aufenthaltVerlegen(
       [r.id, neuAnkunft, neuAbreise])
 
     const nights = eachNight(neuAnkunft, neuAbreise)
-    const planId = planIdVorher
-    const prices = planId === undefined
+    const planId = body.ratePlanId ?? r.rate_plan_id ?? undefined
+    const prices = body.ratePlanId === undefined && bisherJeNacht !== null
       ? nights.map(() => bisherJeNacht)
       : await priceNights(client, planId, nights)
     // Eine Anweisung fuer alle Naechte statt einer je Nacht (Performanceaudit).
