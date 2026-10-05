@@ -302,6 +302,15 @@ function feldFehler(error: unknown, locale: Locale): Map<string, string> {
   return m
 }
 
+/**
+ * Der volle Name fuer die Begruessung. Eine Anrede ("Herr", "Frau") kennt
+ * StayGrid nicht -- es gibt dafuer kein Feld --, und nur der Vorname klang
+ * wie ein "Hallo" ohne Anrede.
+ */
+function vollerName(view: CheckinFormView): string {
+  return [view.firstName, view.lastName].filter(Boolean).join(' ')
+}
+
 function Formular({ token, view, gross, onErledigt }: {
   token: string; view: CheckinFormView; gross: boolean
   onErledigt: (s: CheckinSubmitted['state']) => void
@@ -441,11 +450,16 @@ function Formular({ token, view, gross, onErledigt }: {
     <form className="space-y-4" noValidate
           onSubmit={e => { e.preventDefault(); void absenden() }}>
       <div className={abschnitt}>
-        <p className="font-medium">{t('gastCheckin.welcome', { name: view.firstName ?? view.lastName })}</p>
+        <p className="font-medium">{t('gastCheckin.welcome', { name: vollerName(view) })}</p>
         <p>{t('gastCheckin.stay', { haus: view.propertyName,
                                      von: formatDate(view.arrival, locale),
                                      bis: formatDate(view.departure, locale) })}</p>
-        <p className="text-neutral-600">{t('gastCheckin.intro')}</p>
+        {/* Am Terminal ist der Gast schon da: "spart Zeit bei der Ankunft"
+            stimmt dort nicht mehr (Sven, 05.10.2026). Der Link aus der Mail
+            kommt vor der Anreise und behaelt den Satz. */}
+        <p className="text-neutral-600">
+          {t(view.channel === 'terminal' ? 'gastCheckin.intro' : 'gastCheckin.introBeforeArrival')}
+        </p>
       </div>
 
       <div className={abschnitt}>
@@ -685,7 +699,7 @@ function NurUnterschrift({ token, view, gross, onErledigt }: {
   const [fehler, setFehler] = useState<unknown>(null)
   return (
     <div className={`rounded-sm border border-neutral-200 bg-white space-y-3 ${gross ? 'p-6' : 'p-4'}`}>
-      <p className="font-medium">{t('gastCheckin.welcome', { name: view.firstName ?? view.lastName })}</p>
+      <p className="font-medium">{t('gastCheckin.welcome', { name: vollerName(view) })}</p>
       <p>{t('gastCheckin.stay', { haus: view.propertyName,
                                    von: formatDate(view.arrival, locale),
                                    bis: formatDate(view.departure, locale) })}</p>
