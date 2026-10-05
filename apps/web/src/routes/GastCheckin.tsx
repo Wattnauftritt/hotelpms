@@ -7,6 +7,7 @@ import { fehlerMeldung } from '../lib/meldungen.js'
 import { LOCALES, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
          type TextKey } from '../lib/i18n/index.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
+import { Datumsfeld } from '../components/Datumsfeld.tsx'
 
 /**
  * Online-Check-in: die Seite des Gastes (Dokument 30).
@@ -374,6 +375,18 @@ function Formular({ token, view, gross, onErledigt }: {
     }
   }
 
+  /*
+   * Am Terminal tippt der Gast das Datum als Ziffern (`Datumsfeld`); per
+   * Mail-Link auf dem eigenen Geraet bleibt das Datumsfeld des Browsers, das
+   * dort Kalender und Tastatur des Telefons mitbringt.
+   */
+  const datum = (wert: string, setzen: (v: string) => void, pfad: string,
+                 vervollstaendigen: string): JSX.Element => gross
+    ? <Datumsfeld value={wert} onChange={setzen} className={`${eingabe} ${rahmen(pfad)}`} />
+    : <input type="date" value={wert} autoComplete={vervollstaendigen}
+             onChange={e => setzen(e.target.value)}
+             className={`${eingabe} ${rahmen(pfad)}`} />
+
   const laenderAuswahl = (wert: string, setzen: (v: string) => void, pfad: string,
                           beschriftung: TextKey): JSX.Element => (
     <Feld label={t(beschriftung)} fehler={felder.get(pfad)} gross={gross}>
@@ -460,9 +473,7 @@ function Formular({ token, view, gross, onErledigt }: {
                        className={`${eingabe} ${rahmen('guest.firstName')}`} />
               </Feld>
               <Feld label={t('gastCheckin.birthDate')} fehler={felder.get('guest.birthDate')} gross={gross}>
-                <input type="date" value={ich.birthDate} autoComplete="bday"
-                       onChange={e => setIch({ ...ich, birthDate: e.target.value })}
-                       className={`${eingabe} ${rahmen('guest.birthDate')}`} />
+                {datum(ich.birthDate, v => setIch({ ...ich, birthDate: v }), 'guest.birthDate', 'bday')}
               </Feld>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -547,9 +558,7 @@ function Formular({ token, view, gross, onErledigt }: {
                              className={`${eingabe} ${rahmen(pfad('firstName'))}`} />
                     </Feld>
                     <Feld label={t('gastCheckin.birthDate')} fehler={felder.get(pfad('birthDate'))} gross={gross}>
-                      <input type="date" value={b.birthDate} autoComplete="off"
-                             onChange={e => setzen({ birthDate: e.target.value })}
-                             className={`${eingabe} ${rahmen(pfad('birthDate'))}`} />
+                      {datum(b.birthDate, v => setzen({ birthDate: v }), pfad('birthDate'), 'off')}
                     </Feld>
                     {laenderAuswahl(b.nationality, v => setzen({ nationality: v }),
                       pfad('nationality'), 'gastCheckin.nationality.title')}

@@ -4,6 +4,7 @@ import { LOCALES, I18nContext, useT, useLocale, formatDate, type Locale }
 import { api, ApiError } from '../lib/api.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
+import { Bildschirmtastatur } from '../components/Bildschirmtastatur.tsx'
 import { Fehler } from '../components/Shell.tsx'
 import { GastCheckin } from './GastCheckin.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
@@ -332,6 +333,9 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
           {t('kiosk.offline')}
         </footer>
       )}
+      {/* Einmal fuer die ganze Seite: jedes Textfeld, das hier den Fokus
+          bekommt, holt sie -- auch in einer Ansicht, die spaeter dazukommt. */}
+      <Bildschirmtastatur />
     </div>
   )
 }

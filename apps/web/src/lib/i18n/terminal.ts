@@ -529,5 +529,42 @@ export const terminal = {
   'kiosk.language': {
     de: 'Sprache',
     en: 'Language',
-    tr: 'Dil' }
+    tr: 'Dil' },
+  // ---------------------------------------------- Bildschirmtastatur
+  'kiosk.keyboard.title': {
+    de: 'Tastatur',
+    en: 'Keyboard',
+    tr: 'Klavye' },
+  'kiosk.keyboard.close': {
+    de: 'Schließen',
+    en: 'Close',
+    tr: 'Kapat' },
+  'kiosk.keyboard.space': {
+    de: 'Leerzeichen',
+    en: 'Space',
+    tr: 'Boşluk' },
+  'kiosk.keyboard.backspace': {
+    de: 'Löschen',
+    en: 'Delete',
+    tr: 'Sil' },
+  'kiosk.keyboard.next': {
+    de: 'Weiter',
+    en: 'Next',
+    tr: 'İleri' },
+  'kiosk.keyboard.shift': {
+    de: 'Großbuchstabe',
+    en: 'Capital letter',
+    tr: 'Büyük harf' },
+  'kiosk.keyboard.accents': {
+    de: 'Buchstaben mit Akzent',
+    en: 'Letters with accents',
+    tr: 'Aksanlı harfler' },
+  'kiosk.keyboard.letters': {
+    de: 'Buchstaben',
+    en: 'Letters',
+    tr: 'Harfler' },
+  'kiosk.date.placeholder': {
+    de: 'TT.MM.JJJJ',
+    en: 'DD.MM.YYYY',
+    tr: 'GG.AA.YYYY' }
 } as const satisfies Record<string, LocalizedText>
