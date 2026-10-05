@@ -1054,6 +1054,10 @@ export const plan = {
     de: 'Zugestimmt',
     en: 'Agreed',
     tr: 'Kabul edildi' },
+  'checkin.persons': {
+    de: 'Personen auf dem Meldeschein ({n})',
+    en: 'People on the Meldeschein ({n})',
+    tr: 'Meldeschein\'daki kişiler ({n})' },
   'checkin.openFormAtTerminal': {
     de: 'Meldeformular auf Gästeterminal öffnen',
     en: 'Open registration form on the guest terminal',

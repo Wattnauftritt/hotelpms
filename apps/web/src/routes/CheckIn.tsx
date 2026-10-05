@@ -250,36 +250,33 @@ function Meldeschein({ f, reservationRef }: {
         ✓ {t('checkin.alreadyRegistered')}
       </div>
       <div className="p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <Angabe titel={t('plan.guest')}>{name(g)}</Angabe>
-          <Angabe titel={t('plan.stay')}>
-            {formatDate(f.arrival, locale)} – {formatDate(f.plannedDeparture, locale)}
-          </Angabe>
-          <Angabe titel={t('guests.birthDate')}>{datum(g.birthDate)}</Angabe>
-          <Angabe titel={t('guests.nationality')}>{g.nationality ?? '—'}</Angabe>
-          <div className="col-span-2">
-            <Angabe titel={t('guests.address')}>
-              {[g.address.line1, [g.address.postalCode, g.address.city].filter(Boolean).join(' '),
-                g.address.country].filter(Boolean).join(', ') || '—'}
-            </Angabe>
+        {/* Wer auf dem Schein steht, zuerst und als Liste (Sven, 05.10.2026):
+            daran sieht die Rezeption, ob alle Personen des Zimmers gemeldet sind. */}
+        <div>
+          <div className="text-xs text-neutral-500">
+            {t('checkin.persons', { n: 1 + f.companions.length })}
           </div>
-        </div>
-
-        {f.companions.length > 0 && (
-          <div>
-            <div className="text-xs text-neutral-500">{t('checkin.occupants')}</div>
-            <ul className="space-y-0.5">
-              {f.companions.map((m, i) => (
+          <ul className="space-y-0.5">
+            {[{ ...g, hauptgast: true }, ...f.companions.map(m => ({ ...m, hauptgast: false }))]
+              .map((p, i) => (
                 <li key={i}>
-                  {name(m)}
+                  <span className={p.hauptgast ? 'font-medium' : ''}>{name(p)}</span>
                   <span className="text-neutral-500">
-                    {' · '}{datum(m.birthDate)}{m.nationality ? ` · ${m.nationality}` : ''}
+                    {' · '}{datum(p.birthDate)}{p.nationality ? ` · ${p.nationality}` : ''}
                   </span>
                 </li>
               ))}
-            </ul>
-          </div>
-        )}
+          </ul>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Angabe titel={t('plan.stay')}>
+            {formatDate(f.arrival, locale)} – {formatDate(f.plannedDeparture, locale)}
+          </Angabe>
+          <Angabe titel={t('guests.address')}>
+            {[g.address.line1, [g.address.postalCode, g.address.city].filter(Boolean).join(' '),
+              g.address.country].filter(Boolean).join(', ') || '—'}
+          </Angabe>
+        </div>
 
         <div className="space-y-1">
           {f.signatureRequired ? (
