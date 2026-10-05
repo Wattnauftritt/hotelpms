@@ -208,6 +208,26 @@ describe('Meldeschein uebernehmen', () => {
     expect(b.body).toContain('companions.0.birthDate')
   })
 
+  it('nimmt einen Gruppenschein mit mehr als neun Mitreisenden, aber nicht beliebig viele', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const person = (i: number) => ({ lastName: 'Gruppe', firstName: `P${i}`,
+                                     birthDate: '1990-01-01', nationality: 'DE' })
+    const a = await senden(m, r.ref, schein({}, {
+      companions: Array.from({ length: 12 }, (_, i) => person(i)) }))
+    expect(a.statusCode, a.body).toBe(201)
+    const n = await owner.query(
+      `SELECT occupant_count FROM registration
+        WHERE reservation_id = $1 AND guest_id = $2`, [r.reservationId, r.gastId])
+    expect(n.rows[0]!.occupant_count).toBe(13)
+
+    const r2 = await reservierung()
+    const b = await senden(m, r2.ref, schein({}, {
+      companions: Array.from({ length: 50 }, (_, i) => person(i)) }))
+    expect(b.statusCode, b.body).toBe(422)
+    expect(b.body).toContain('checkin.tooManyCompanions')
+  })
+
   it('ueberschreibt nie einen vorhandenen Schein', async () => {
     const m = await maschine(['registration:import'])
     const r = await reservierung()
