@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { EBENEN, datumAnzeige, datumAusIso, datumIso, einfuegen, grossSchreiben,
+import { EBENEN, datumAusIso, datumLesen, einfuegen, grossSchreiben, heuteIso,
          loeschen, startEbene } from '../lib/bildschirmtastatur.js'
 
 /**
@@ -69,27 +69,40 @@ describe('Schreiben an der Schreibmarke', () => {
   })
 })
 
-describe('Datum als Ziffern', () => {
-  it('setzt die Punkte selbst und laesst sie zuruecknehmen', () => {
-    expect(datumAnzeige('0')).toBe('0')
-    expect(datumAnzeige('031')).toBe('03.1')
-    expect(datumAnzeige('03.11.19')).toBe('03.11.19')
-    expect(datumAnzeige('031119851')).toBe('03.11.1985')
-    // Loeschen ueber den Punkt hinweg: "03." wird "03", nicht wieder "03.".
-    expect(datumAnzeige('03.')).toBe('03')
+describe('Geburtsdatum, wie Menschen es schreiben', () => {
+  const heute = '2026-10-05'
+  const lesen = (t: string): string => datumLesen(t, heute)
+
+  it('nimmt deutsche Schreibweisen mit jedem Trenner', () => {
+    for (const t of ['03.11.1985', '3.11.1985', '03-11-1985', '03/11/1985', '03 11 1985',
+                     '3.11.85', '03111985', '031185', ' 03.11.1985 ']) {
+      expect(lesen(t), t).toBe('1985-11-03')
+    }
   })
 
-  it('liefert ISO nur fuer ein vollstaendiges, moegliches Datum', () => {
-    expect(datumIso('03.11.1985')).toBe('1985-11-03')
-    expect(datumIso('03.11.198')).toBe('')
-    expect(datumIso('31.02.1985')).toBe('')
-    expect(datumIso('29.02.2000')).toBe('2000-02-29')
-    expect(datumIso('01.01.0985')).toBe('')
+  it('nimmt ISO mit dem Jahr vorn', () => {
+    expect(lesen('1985-11-03')).toBe('1985-11-03')
+  })
+
+  it('legt zwei Ziffern Jahr in die Vergangenheit', () => {
+    expect(lesen('01.01.12')).toBe('2012-01-01')
+    expect(lesen('01.01.26')).toBe('2026-01-01')
+    expect(lesen('01.01.27')).toBe('1927-01-01')
+  })
+
+  it('weist Unmoegliches und Zukuenftiges ab', () => {
+    expect(lesen('31.02.1985')).toBe('')
+    expect(lesen('29.02.2000')).toBe('2000-02-29')
+    expect(lesen('01.01.1899')).toBe('')
+    expect(lesen('06.10.2026')).toBe('')
+    expect(lesen('03.11.198')).toBe('')
+    expect(lesen('')).toBe('')
   })
 
   it('zeigt ISO ohne Umweg ueber die Ortszeit', () => {
     expect(datumAusIso('1985-11-03')).toBe('03.11.1985')
     expect(datumAusIso('')).toBe('')
+    expect(heuteIso(new Date(2026, 9, 5, 23, 59))).toBe('2026-10-05')
   })
 })
 

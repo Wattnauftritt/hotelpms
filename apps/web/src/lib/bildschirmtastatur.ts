@@ -120,40 +120,59 @@ export function startEbene(eingabeModus: string): Ebene {
 // ---------------------------------------------------------------- Datum
 
 /**
- * Ein Datum als Ziffern, wie es der Gast tippt: `TTMMJJJJ`, angezeigt als
- * `TT.MM.JJJJ`.
+ * Ein Geburtsdatum, wie es ein Mensch schreibt, als ISO -- sonst `''`.
  *
  * Am Rechner mit Tastatur ist `<input type="date">` richtig. Am Touchscreen
  * nicht: in seine Teilfelder laesst sich nur mit echten Tastenanschlaegen
  * schreiben, die eine Bildschirmtastatur nicht erzeugen kann, und der
  * Kalender dahinter faengt beim heutigen Monat an -- bis zum Geburtsjahr
- * sind es vierzig Jahre Blaettern. Deshalb tippt der Gast am Terminal
- * Ziffern, und die Punkte setzt das Feld.
+ * sind es vierzig Jahre Blaettern. Deshalb tippt der Gast am Terminal.
+ *
+ * **Was gilt.** Tag zuerst, wie in Deutschland, mit Punkt, Strich,
+ * Schraegstrich oder Leerzeichen dazwischen und ein- oder zweistelligem Tag
+ * und Monat (`3.11.85`, `03-11-1985`); ohne Trenner sechs oder acht Ziffern
+ * (`031185`, `03111985`); und ISO mit dem Jahr vorn (`1985-11-03`). Eine
+ * Vorgabe, nur `TT.MM.JJJJ` anzunehmen, hielte am Tresen den Gast auf, der
+ * schreibt, wie er es gewohnt ist -- und die Meldung danach verstuende er
+ * nicht besser.
+ *
+ * **Zwei Ziffern Jahr** liegen in der Vergangenheit: es ist ein
+ * Geburtsdatum. `85` ist 1985, `12` ist 2012, solange 2012 nicht nach
+ * `heute` liegt. Ein Datum nach `heute` ist keins.
  */
-export function datumAnzeige(eingabe: string): string {
-  const z = eingabe.replace(/\D/g, '').slice(0, 8)
-  return z.slice(0, 2)
-    + (z.length > 2 ? `.${z.slice(2, 4)}` : '')
-    + (z.length > 4 ? `.${z.slice(4)}` : '')
-}
-
-/** `TT.MM.JJJJ` -> ISO, sonst `''`. Ein 31. Februar ist kein Datum. */
-export function datumIso(anzeige: string): string {
-  const z = anzeige.replace(/\D/g, '')
-  if (z.length !== 8) return ''
-  const tag = Number(z.slice(0, 2))
-  const monat = Number(z.slice(2, 4))
-  const jahr = Number(z.slice(4))
-  if (jahr < 1900) return ''
-  const d = new Date(Date.UTC(jahr, monat - 1, tag))
-  if (d.getUTCFullYear() !== jahr || d.getUTCMonth() !== monat - 1 || d.getUTCDate() !== tag) {
+export function datumLesen(text: string, heute: string): string {
+  const t = text.trim()
+  let tag: string, monat: string, jahr: string
+  let m: RegExpExecArray | null
+  if ((m = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/.exec(t)) !== null) {
+    [jahr, monat, tag] = [m[1]!, m[2]!, m[3]!]
+  } else if ((m = /^(\d{1,2})[-./ ](\d{1,2})[-./ ](\d{2}|\d{4})$/.exec(t)) !== null) {
+    [tag, monat, jahr] = [m[1]!, m[2]!, m[3]!]
+  } else if ((m = /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(t)) !== null) {
+    [tag, monat, jahr] = [m[1]!, m[2]!, m[3]!]
+  } else {
     return ''
   }
-  return `${z.slice(4)}-${z.slice(2, 4)}-${z.slice(0, 2)}`
+  const heuteJahr = Number(heute.slice(0, 4))
+  let j = Number(jahr)
+  if (jahr.length === 2) j = 2000 + j <= heuteJahr ? 2000 + j : 1900 + j
+  const mo = Number(monat)
+  const ta = Number(tag)
+  if (j < 1900) return ''
+  const d = new Date(Date.UTC(j, mo - 1, ta))
+  if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== ta) return ''
+  const iso = `${String(j)}-${String(mo).padStart(2, '0')}-${String(ta).padStart(2, '0')}`
+  return iso > heute ? '' : iso
 }
 
 /** ISO -> `TT.MM.JJJJ`. Als Zeichenkette zerlegt, nie ueber `new Date` in Ortszeit. */
 export function datumAusIso(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
   return m === null ? '' : `${m[3]}.${m[2]}.${m[1]}`
+}
+
+/** Heute als Kalenderdatum des Geraets, ohne den Umweg ueber UTC. */
+export function heuteIso(jetzt: Date = new Date()): string {
+  return `${String(jetzt.getFullYear())}-${String(jetzt.getMonth() + 1).padStart(2, '0')}`
+    + `-${String(jetzt.getDate()).padStart(2, '0')}`
 }

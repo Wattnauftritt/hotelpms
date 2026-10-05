@@ -168,7 +168,11 @@ function pruefe(body: unknown, heute: string): Einreichung {
     }
     if (p.lastName === null) fehlt(`${pfad}.lastName`)
     if (p.firstName === null) fehlt(`${pfad}.firstName`)
-    if (p.birthDate === null || !isIsoDate(p.birthDate)) fehlt(`${pfad}.birthDate`, 'field.isoDate')
+    // Leer ist "fehlt", nicht "falsches Format": das Formular schickt ein
+    // Datum, das es nicht lesen konnte, als leer, und der Gast am Terminal
+    // bekam dafuer "Datum im Format YYYY-MM-DD erwartet" zu lesen.
+    if (p.birthDate === null || p.birthDate === '') fehlt(`${pfad}.birthDate`)
+    else if (!isIsoDate(p.birthDate)) fehlt(`${pfad}.birthDate`, 'field.isoDate')
     else if (p.birthDate > heute) fehlt(`${pfad}.birthDate`, 'checkin.birthDateFuture')
     if (!istLand(p.nationality)) fehlt(`${pfad}.nationality`, 'field.country')
     let befreiung: Person['taxExemption']
