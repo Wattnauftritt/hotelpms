@@ -241,10 +241,6 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                       </button>
                     </div>
                   )}
-                  {/* Der Weg ueber das Gaesteterminal (Dokument 31). Auch nach
-                      der Unterschrift: dort steht dann "erledigt am Terminal",
-                      und die Rezeption sieht, woher sie kam. */}
-                  {f.signatureRequired && <AmTerminal reservationRef={reservationRef} />}
                   {/* Die Bedingungen bleiben sichtbar: der Meldeschein kann
                       vorliegen und die Unterschrift darunter noch fehlen. */}
                   {(bedingungen.data?.terms ?? []).map(b => (
@@ -333,6 +329,17 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                   </div>
                 </>
               )}
+
+              {/*
+               * Der Weg ueber das Gaesteterminal (Dokument 31), fuer jeden
+               * Gast und nicht nur fuer den, der den Meldeschein
+               * unterschreibt: die Hausbedingung unterschreibt auch der
+               * inlaendische Gast, und die Rezeption soll das nicht fuer ihn
+               * tun (Sven, 05.10.2026). Die Schnittstelle bietet an, was
+               * offen ist -- Meldeformular, Unterschrift, jede Bedingung --,
+               * und die Komponente bleibt leer, wo es kein Terminal gibt.
+               */}
+              <AmTerminal reservationRef={reservationRef} />
 
               {angemeldet && avs.data !== undefined && avs.data.configured && (
                 <AvsAbschnitt reservationRef={reservationRef} training={avs.data.training}

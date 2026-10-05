@@ -146,7 +146,10 @@ describe('Melden', () => {
     const r = await melden(ref)
     expect(r.statusCode, r.body).toBe(201)
     const d = JSON.parse(r.body) as Datei
-    expect(d.fileName).toMatch(/^StayGrid_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.xml$/)
+    expect(d.fileName).toBe(`${ANREISE}_Petersen_Anna.xml`)
+    // Im Protokoll steht kein Gastname: die Zeile kennt keine Loeschung.
+    const protokoll = await owner.query<{ file_name: string }>(`SELECT file_name FROM avs_export`)
+    expect(protokoll.rows[0]!.file_name).toMatch(/^StayGrid_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}\.xml$/)
     expect(d.persons).toBe(2)
     const x = d.xml
     const reihenfolge = ['<Herkunfts-ID>StayGrid', '<Benutzer>StayGrid', '<hotelid>4711',

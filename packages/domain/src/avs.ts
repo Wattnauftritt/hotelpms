@@ -123,6 +123,25 @@ export function avsDateiname(userName: string, jetzt: Date,
   return `${userName}_${teile.year}-${teile.month}-${teile.day}_${teile.hour}-${teile.minute}.xml`
 }
 
+/**
+ * Name der heruntergeladenen Datei: Anreisetag und Gast, etwa
+ * `2026-10-05_Jaster_Martin.xml` (Sven, 05.10.2026). Die Rezeption sucht die
+ * Datei im Download-Ordner nach dem Gast, der vor ihr steht; AVS liest nur
+ * den Inhalt. Nur Buchstaben, Ziffern und Bindestrich: Umlaute werden
+ * umschrieben, alles andere faellt weg, damit kein Betriebssystem an einem
+ * Namen wie "O'Neill / Smith" scheitert.
+ */
+export function avsDownloadName(arrival: string, lastName: string,
+                                firstName: string | null): string {
+  const teil = (v: string): string => v
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+  const name = [teil(lastName), teil(firstName ?? '')].filter(x => x !== '').join('_')
+  return `${arrival}_${name || 'Gast'}.xml`
+}
+
 function esc(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
