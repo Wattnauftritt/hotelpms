@@ -398,14 +398,33 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
             </button>
           ))}
         </div>
-        <label className="text-sm flex items-center gap-1.5 text-neutral-700"
-               title={t('plan.rowHeightHint')}>
+        {/* Kein <label>: es reichte einen Klick auf das Wort an den ersten
+            Knopf darin weiter, und die Zeilen wuerden niedriger. */}
+        <div role="group" aria-label={t('plan.rowHeight')}
+             className="text-sm flex items-center gap-1.5 text-neutral-700"
+             title={t('plan.rowHeightHint')}>
           {t('plan.rowHeight')}
-          <input type="range" min={ZEILE_MIN} max={ZEILE_MAX} step={2} value={zeile}
+          {/*
+            * Jeder Pixel eine Stufe, und dazu zwei Knoepfe fuer genau einen.
+            * In Zweierschritten auf 96 Pixeln Breite lag eine Stufe bei
+            * sechs Pixeln Mausweg; die passende Hoehe -- die, bei der das
+            * letzte Zimmer gerade noch auf den Bildschirm passt -- wurde
+            * oft uebersprungen (Sven, 05.10.2026).
+            */}
+          <button type="button" onClick={() => zeileSetzen(Math.max(ZEILE_MIN, zeile - 1))}
+                  disabled={zeile <= ZEILE_MIN} aria-label={t('plan.rowHeightSmaller')}
+                  title={t('plan.rowHeightSmaller')}
+                  className="px-1.5 border border-neutral-300 rounded disabled:opacity-40">−</button>
+          <input type="range" min={ZEILE_MIN} max={ZEILE_MAX} step={1} value={zeile}
                  onChange={e => zeileSetzen(Number(e.target.value))}
                  onDoubleClick={() => zeileSetzen(ZEILE_STANDARD)}
-                 aria-label={t('plan.rowHeight')} className="w-24 accent-neutral-900" />
-        </label>
+                 aria-label={t('plan.rowHeight')} className="w-40 accent-neutral-900" />
+          <button type="button" onClick={() => zeileSetzen(Math.min(ZEILE_MAX, zeile + 1))}
+                  disabled={zeile >= ZEILE_MAX} aria-label={t('plan.rowHeightLarger')}
+                  title={t('plan.rowHeightLarger')}
+                  className="px-1.5 border border-neutral-300 rounded disabled:opacity-40">+</button>
+          <span className="tabular-nums w-6 text-right text-neutral-500">{zeile}</span>
+        </div>
         <label className="text-sm flex items-center gap-1.5 text-neutral-700">
           <input type="checkbox" checked={gruppiert}
                  onChange={e => setGruppiert(e.target.checked)} />

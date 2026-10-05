@@ -372,6 +372,14 @@ export const plan = {
     de: 'Kleiner stellen, damit alle Zimmer auf den Bildschirm passen. Doppelklick: Standard.',
     en: 'Make smaller to fit all rooms on screen. Double-click: default.',
     tr: 'Tüm odaların ekrana sığması için küçültün. Çift tıklama: varsayılan.' },
+  'plan.rowHeightSmaller': {
+    de: 'Zeilen einen Pixel niedriger',
+    en: 'Rows one pixel lower',
+    tr: 'Satırları bir piksel alçalt' },
+  'plan.rowHeightLarger': {
+    de: 'Zeilen einen Pixel höher',
+    en: 'Rows one pixel higher',
+    tr: 'Satırları bir piksel yükselt' },
   'plan.groupByCategory': {
     de: 'nach Zimmergruppe',
     en: 'by room category',
