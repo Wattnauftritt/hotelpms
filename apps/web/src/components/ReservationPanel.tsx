@@ -121,6 +121,28 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
 
   return (
     <div className="space-y-3">
+      {/* Buchung aus einem fuehrenden Umsystem (Migration 0092). Wer sie
+          aendert, soll vorher wissen, dass sie danach hier gefuehrt wird --
+          und sehen, wenn die Quelle sich seitdem bewegt hat. */}
+      {r.channelOwner !== null && (
+        <div className="text-xs rounded-sm bg-neutral-100 px-2 py-1 space-y-0.5">
+          <div>{r.channelOwner === 'source'
+            ? t('plan.channel.source', { channel: r.channelCode ?? r.source })
+            : t('plan.channel.local')}</div>
+          {r.channelOwner === 'local' && r.sourceChangedAt !== null && (
+            <div className="text-amber-800">{t('plan.channel.sourceChanged')}</div>
+          )}
+          {r.channelOwner === 'local' && r.sourceCanceledAt !== null && (
+            <div className="text-amber-800">{t('plan.channel.sourceCanceled')}</div>
+          )}
+        </div>
+      )}
+      {r.channelConflict !== null && (
+        <div className="text-xs rounded-sm bg-red-50 text-red-800 px-2 py-1">
+          {t(r.channelConflict === 'room'
+            ? 'plan.channel.conflictRoom' : 'plan.channel.conflictInventory')}
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`text-xs px-2 py-0.5 rounded-sm bg-neutral-100`}>
           {t(`status.${r.status}` as never)}

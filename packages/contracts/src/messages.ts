@@ -555,6 +555,10 @@ const M = {
     de: 'Unbekannte Kategorie',
     en: 'Unknown room type',
     tr: 'Bilinmeyen oda tipi' },
+  'field.unknownRoom': {
+    de: 'Unbekanntes Zimmer',
+    en: 'Unknown room',
+    tr: 'Bilinmeyen oda' },
   'field.unknownRatePlan': {
     de: 'Unbekannter Ratenplan',
     en: 'Unknown rate plan',
@@ -579,10 +583,10 @@ const M = {
     de: 'Eine Sperrung braucht ein Zimmer',
     en: 'A block needs a room',
     tr: 'Bir bloke için oda gerekir' },
-  'field.onlyRoomcloud': {
-    de: 'Nur roomcloud ist bisher angebunden',
-    en: 'Only roomcloud is connected so far',
-    tr: 'Şimdilik yalnızca roomcloud bağlı' },
+  'field.channelProvider': {
+    de: 'Erlaubt sind roomcloud und generic',
+    en: 'Allowed are roomcloud and generic',
+    tr: 'İzin verilenler roomcloud ve generic' },
   'field.onlyPreviousYear': {
     de: 'Erlaubt ist nur previous-year',
     en: 'Only previous-year is allowed',
@@ -1475,6 +1479,10 @@ const M = {
     en: 'Several guests have checked in to room {room}. Please pass folioRef: '
       + '{folios}',
     tr: '{room} numaralı odaya birden çok misafir giriş yapmış. Lütfen folioRef gönderin: {folios}' },
+  'channel.referenceForeign': {
+    de: 'Diese externe Nummer gehoert zu einer Buchung, die dieser Zugang nicht angelegt hat',
+    en: 'This external reference belongs to a booking this connection did not create',
+    tr: 'Bu dış numara, bu bağlantının oluşturmadığı bir rezervasyona ait' },
   'channel.referenceInFlight': {
     de: 'Externe Nummer ist bereits in Bearbeitung. Bitte spaeter erneut zustellen.',
     en: 'That external reference is being processed. Please deliver again later.',

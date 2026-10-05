@@ -829,6 +829,17 @@ export const ReservationDetail = Type.Object({
   blockName: Type.Union([Type.String(), Type.Null()]),
   source: Type.String(),
   externalReference: Type.Union([Type.String(), Type.Null()]),
+  channelCode: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Bei einer Buchung aus einem fuehrenden Umsystem (Migration 0092):
+   * `source`, solange es sie fuehrt, `local`, seit sie hier geaendert wurde.
+   */
+  channelOwner: Type.Union([Type.Literal('source'), Type.Literal('local'), Type.Null()]),
+  /** Die Quelle hat sich bewegt, nachdem die Buchung lokal wurde. */
+  sourceChangedAt: Type.Union([Type.String(), Type.Null()]),
+  sourceCanceledAt: Type.Union([Type.String(), Type.Null()]),
+  /** Beim Push war die Gruppe voll oder das Zimmer belegt. */
+  channelConflict: Type.Union([Type.Literal('inventory'), Type.Literal('room'), Type.Null()]),
   checkedInAt: Type.Union([Type.String(), Type.Null()]),
   checkedOutAt: Type.Union([Type.String(), Type.Null()]),
   canceledAt: Type.Union([Type.String(), Type.Null()]),

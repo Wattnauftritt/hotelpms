@@ -1311,4 +1311,28 @@ export const plan = {
     de: 'Firma des Bestellers',
     en: "Booker's company",
     tr: 'Rezervasyonu yapan firma' },
+  'plan.channel.source': {
+    de: 'Wird von einem Umsystem geführt ({channel}). Wer sie hier ändert, übernimmt sie in StayGrid; das Umsystem hält sie dann fest.',
+    en: 'Managed by a connected system ({channel}). Changing it here takes it over in StayGrid; the connected system then keeps it fixed.',
+    tr: 'Bağlı bir sistem tarafından yönetiliyor ({channel}). Burada değiştiren, rezervasyonu StayGrid\'e alır; bağlı sistem onu sabit tutar.' },
+  'plan.channel.local': {
+    de: 'In StayGrid geändert. Das Umsystem ändert diese Buchung nicht mehr.',
+    en: 'Changed in StayGrid. The connected system no longer changes this booking.',
+    tr: 'StayGrid\'de değiştirildi. Bağlı sistem bu rezervasyonu artık değiştirmiyor.' },
+  'plan.channel.sourceChanged': {
+    de: 'Die Quelle hat diese Buchung seitdem geändert. Bitte von Hand abgleichen.',
+    en: 'The source has changed this booking since. Please reconcile by hand.',
+    tr: 'Kaynak bu rezervasyonu o zamandan beri değiştirdi. Lütfen elle karşılaştırın.' },
+  'plan.channel.sourceCanceled': {
+    de: 'Die Quelle hat diese Buchung storniert. Bitte prüfen.',
+    en: 'The source has canceled this booking. Please check.',
+    tr: 'Kaynak bu rezervasyonu iptal etti. Lütfen kontrol edin.' },
+  'plan.channel.conflictRoom': {
+    de: 'Beim Übernehmen war das Zimmer schon belegt.',
+    en: 'The room was already occupied when this was taken over.',
+    tr: 'Aktarım sırasında oda zaten doluydu.' },
+  'plan.channel.conflictInventory': {
+    de: 'Beim Übernehmen war die Zimmergruppe voll.',
+    en: 'The room type was full when this was taken over.',
+    tr: 'Aktarım sırasında oda tipi doluydu.' },
 } as const satisfies Record<string, LocalizedText>
