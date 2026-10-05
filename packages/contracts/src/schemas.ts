@@ -58,6 +58,8 @@ export const Room = Type.Object({
   categoryId: Type.Integer(),
   categoryCode: Type.String(),
   categoryName: Type.String(),
+  /** Verkaufscode fuer Kanaele, wenn er nicht die Gruppe ist (Migration 0090). */
+  salesCode: Type.Union([Type.String(), Type.Null()]),
   outOfOrderBlocks: Type.Integer()
 })
 export type Room = Static<typeof Room>

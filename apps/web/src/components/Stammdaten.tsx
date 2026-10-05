@@ -223,6 +223,7 @@ function ZimmerAendern(
   const [floor, setFloor] = useState(zimmer.floor ?? '')
   const [attributes, setAttributes] = useState(zimmer.attributes.join(', '))
   const [categoryId, setCategoryId] = useState(zimmer.categoryId)
+  const [salesCode, setSalesCode] = useState(zimmer.salesCode ?? '')
 
   return (
     <form className="mt-3 grid gap-3 sm:grid-cols-4"
@@ -230,7 +231,8 @@ function ZimmerAendern(
             e.preventDefault()
             aendern.mutate(
               { id: zimmer.id, code: code.trim(), name: name.trim() || null, floor,
-                attributes: merkmaleLesen(attributes), categoryId },
+                attributes: merkmaleLesen(attributes), categoryId,
+                salesCode: salesCode.trim() || null },
               { onSuccess: onClose })
           }}>
       <Feld label={t('common.room')}>
@@ -247,7 +249,7 @@ function ZimmerAendern(
         <input value={floor} onChange={e => setFloor(e.target.value)}
                className={eingabe} />
       </Feld>
-      <div className="sm:col-span-3">
+      <div className="sm:col-span-2">
         <Feld label={t('common.category')}>
           <select value={categoryId} className={eingabe}
                   onChange={e => setCategoryId(Number(e.target.value))}>
@@ -255,6 +257,13 @@ function ZimmerAendern(
               <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
             ))}
           </select>
+        </Feld>
+      </div>
+      <div className="sm:col-span-2">
+        <Feld label={t('master.salesCode')} hint={t('master.salesCodeHint')}>
+          <input value={salesCode} maxLength={20}
+                 onChange={e => setSalesCode(e.target.value.toUpperCase())}
+                 className={eingabe} />
         </Feld>
       </div>
       <div className="sm:col-span-4">
@@ -296,7 +305,9 @@ function Zimmer(
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="font-medium w-16 tabular-nums">{zimmer.code}</span>
         <span className="w-40 truncate">{zimmer.name ?? ''}</span>
-        <span className="w-24 text-neutral-500">{zimmer.categoryCode}</span>
+        <span className="w-24 text-neutral-500">
+          {zimmer.categoryCode}{zimmer.salesCode ? ` · ${zimmer.salesCode}` : ''}
+        </span>
         <span className="w-16 text-neutral-500">{zimmer.floor ?? ''}</span>
         <span className="grow text-neutral-500">{zimmer.attributes.join(', ')}</span>
         {zimmer.outOfOrderBlocks > 0 && (

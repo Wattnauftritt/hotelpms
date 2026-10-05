@@ -102,7 +102,15 @@ async function assertNoChannelForTraining(
 
 interface InboundBooking {
   externalReference: string
+  /**
+   * Zimmergruppe -- oder ein Verkaufscode (Migration 0090). RoomCloud kennt
+   * nur seine eigenen Kategorien; verkauft das Haus zwei Zimmer einer Gruppe
+   * getrennt, kommt hier der Code eines Zimmers, und die Gruppe folgt aus
+   * ihm.
+   */
   categoryCode: string
+  /** Verkaufscode ausdruecklich, zusaetzlich zur Gruppe. */
+  salesCode?: string
   arrival: string
   departure: string
   ratePlanCode?: string
@@ -117,6 +125,44 @@ interface InboundBooking {
   adults?: number
   children?: number
   guestCount?: number
+}
+
+/**
+ * Gruppe und Verkaufscode einer Kanalbuchung.
+ *
+ * Erst die Gruppe nach ihrem Code. Gibt es keine, ein Verkaufscode: die
+ * Zimmer, die ihn tragen, muessen in genau einer aktiven Gruppe liegen --
+ * gebunden wird gegen die Gruppe, und zwei Gruppen hiessen, dass dieselbe
+ * Buchung je nach Zufall im einen oder im anderen Bestand laege.
+ */
+async function kanalKategorie(
+  client: PoolClient, propertyId: number, categoryCode: string, salesCode?: string
+): Promise<{ categoryId: number; salesCode: string | null }> {
+  const cat = await client.query<{ id: number }>(
+    `SELECT id FROM resource_category WHERE property_id = $1 AND code = $2 AND active`,
+    [propertyId, categoryCode])
+  const ausCode = async (code: string, feld: string): Promise<number> => {
+    const g = await client.query<{ category_id: number }>(
+      `SELECT DISTINCT r.category_id FROM resource r
+         JOIN resource_category c ON c.id = r.category_id AND c.active
+        WHERE r.property_id = $1 AND r.active AND r.sales_code = $2`,
+      [propertyId, code])
+    if (g.rowCount !== 1) throw Errors.validation({ [feld]: ['field.unknownCategory'] })
+    return g.rows[0]!.category_id
+  }
+
+  if (cat.rowCount === 0) {
+    const code = categoryCode.toUpperCase()
+    return { categoryId: await ausCode(code, 'categoryCode'), salesCode: code }
+  }
+  const categoryId = cat.rows[0]!.id
+  if (salesCode === undefined || salesCode === '') return { categoryId, salesCode: null }
+  if (typeof salesCode !== 'string') throw Errors.validation({ salesCode: ['field.invalid'] })
+  const code = salesCode.toUpperCase()
+  if (await ausCode(code, 'salesCode') !== categoryId) {
+    throw Errors.validation({ salesCode: ['field.unknownCategory'] })
+  }
+  return { categoryId, salesCode: code }
 }
 
 export function channelRoutes(app: FastifyInstance): void {
@@ -309,11 +355,8 @@ export function channelRoutes(app: FastifyInstance): void {
 
       const result = await withTransaction(req.pool, channelContext(principal), async client => {
         await assertNoChannelForTraining(client, principal.propertyId)
-        const cat = await client.query<{ id: number }>(
-          `SELECT id FROM resource_category WHERE property_id = $1 AND code = $2 AND active`,
-          [principal.propertyId, body.categoryCode])
-        if (cat.rowCount === 0) throw Errors.validation({ categoryCode: ['field.unknownCategory'] })
-        const categoryId = cat.rows[0]!.id
+        const { categoryId, salesCode } = await kanalKategorie(
+          client, principal.propertyId, body.categoryCode, body.salesCode)
 
         let ratePlanId: number | undefined
         if (body.ratePlanCode) {
@@ -377,12 +420,13 @@ export function channelRoutes(app: FastifyInstance): void {
         const res = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO reservation
              (property_id, booking_id, category_id, arrival, departure, status,
-              rate_plan_id, primary_guest_id, notes, guest_count, adults, children)
-           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11)
+              rate_plan_id, primary_guest_id, notes, guest_count, adults, children,
+              sales_code)
+           VALUES ($1,$2,$3,$4::date,$5::date,'Confirmed',$6,$7,$8,$9,$10,$11,$12)
            RETURNING id, public_ref`,
           [principal.propertyId, inserted.rows[0]!.id, categoryId, body.arrival, body.departure,
            ratePlanId ?? null, body.guestId ?? null, body.notes ?? null,
-           personen.guestCount, personen.adults, personen.children])
+           personen.guestCount, personen.adults, personen.children, salesCode])
         const reservationId = res.rows[0]!.id
 
         const nights = eachNight(body.arrival, body.departure)

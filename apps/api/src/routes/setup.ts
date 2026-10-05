@@ -318,6 +318,40 @@ export function setupRoutes(app: FastifyInstance): void {
     return name === '' ? null : name
   }
 
+  /**
+   * Verkaufscode eines Zimmers (Migration 0090): das Etikett, unter dem ein
+   * Kanal es verkauft, wenn das nicht die Gruppe ist. Gross geschrieben,
+   * weil Kanaele ihre Kategorien so fuehren und "fz" und "FZ" sonst zwei
+   * Posten waeren. `undefined` laesst ihn stehen, null und Leertext loeschen.
+   */
+  /**
+   * Ein Code gehoert zu genau einer Gruppe. Gebunden wird gegen die Gruppe;
+   * laege derselbe Code in zweien, wuesste eine Kanalbuchung darauf nicht,
+   * welchen Bestand sie bindet.
+   */
+  async function codeFrei(
+    client: PoolClient, propertyId: number, code: string, categoryId: number
+  ): Promise<void> {
+    const r = await client.query(
+      `SELECT 1 FROM resource WHERE property_id = $1 AND active AND sales_code = $2
+          AND category_id <> $3 LIMIT 1`, [propertyId, code, categoryId])
+    if (r.rowCount && r.rowCount > 0) {
+      throw Errors.conflict('setup.salesCodeOtherCategory', { code })
+    }
+  }
+
+  function verkaufscode(roh: unknown): string | null | undefined {
+    if (roh === undefined) return undefined
+    if (roh === null) return null
+    if (typeof roh !== 'string') throw Errors.validation({ salesCode: ['field.invalid'] })
+    const code = roh.trim().toUpperCase()
+    if (code === '') return null
+    if (!/^[A-Z0-9][A-Z0-9_-]{0,19}$/.test(code)) {
+      throw Errors.validation({ salesCode: ['field.invalid'] })
+    }
+    return code
+  }
+
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/rooms',
@@ -330,6 +364,7 @@ export function setupRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
           `SELECT r.id, r.code, r.name, r.floor, r.attributes, r.active,
+                  r.sales_code AS "salesCode",
                   c.id AS "categoryId", c.code AS "categoryCode", c.name AS "categoryName",
                   (SELECT count(*) FROM maintenance_block m
                     WHERE m.resource_id = r.id AND m.kind = 'out_of_order'
@@ -418,8 +453,10 @@ export function setupRoutes(app: FastifyInstance): void {
     summary: 'Einzelnes Zimmer anlegen',
     handler: async (req, reply) => {
       const body = req.body as { propertyId: number; categoryId: number; code: string
-                                 name?: string; floor?: string; attributes?: string[] }
+                                 name?: string; floor?: string; attributes?: string[]
+                                 salesCode?: string | null }
       const name = zimmerName(body.name)
+      const salesCode = verkaufscode(body.salesCode)
       if (!body.code?.trim()) throw Errors.validation({ code: ['field.required'] })
       return tx(req.pool, req, async client => {
         await assertCategory(client, body.propertyId, body.categoryId)
@@ -429,11 +466,13 @@ export function setupRoutes(app: FastifyInstance): void {
         if (da.rowCount && da.rowCount > 0) {
           throw Errors.conflict('setup.duplicateRoomCode', { code: body.code })
         }
+        if (salesCode) await codeFrei(client, body.propertyId, salesCode, body.categoryId)
         const { rows } = await client.query<{ id: number }>(
-          `INSERT INTO resource (property_id, category_id, code, floor, attributes, name)
-           VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5::text[],'{}'),$6) RETURNING id`,
+          `INSERT INTO resource (property_id, category_id, code, floor, attributes, name,
+                                 sales_code)
+           VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5::text[],'{}'),$6,$7) RETURNING id`,
           [body.propertyId, body.categoryId, body.code.trim(), body.floor ?? '',
-           body.attributes ?? null, name ?? null])
+           body.attributes ?? null, name ?? null, salesCode ?? null])
         reply.status(201)
         return { roomId: rows[0]!.id, code: body.code.trim() }
       })
@@ -449,8 +488,9 @@ export function setupRoutes(app: FastifyInstance): void {
       const { roomId } = req.params as { roomId: string }
       const body = req.body as { code?: string; name?: string | null; floor?: string
                                  attributes?: string[]; categoryId?: number
-                                 active?: boolean }
+                                 active?: boolean; salesCode?: string | null }
       const name = zimmerName(body.name)
+      const salesCode = verkaufscode(body.salesCode)
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number; property_id: number
                                          category_id: number; active: boolean }>(
@@ -482,6 +522,16 @@ export function setupRoutes(app: FastifyInstance): void {
           }
         }
 
+        // Neuer Code, neue Gruppe oder beides: der Code, der danach gilt,
+        // muss in der Gruppe liegen, die danach gilt.
+        const codeDanach = salesCode !== undefined ? salesCode
+          : (await client.query<{ sales_code: string | null }>(
+              `SELECT sales_code FROM resource WHERE id = $1`, [zimmer.id])).rows[0]!.sales_code
+        if (codeDanach) {
+          await codeFrei(client, zimmer.property_id, codeDanach,
+            body.categoryId ?? zimmer.category_id)
+        }
+
         const { rows } = await client.query(
           `UPDATE resource SET
              code = COALESCE($2, code),
@@ -492,12 +542,14 @@ export function setupRoutes(app: FastifyInstance): void {
              -- undefined laesst den Namen stehen, null und Leertext loeschen
              -- ihn: COALESCE allein koennte einen Namen nie wieder entfernen.
              name = CASE WHEN $7::boolean THEN $8 ELSE name END,
+             sales_code = CASE WHEN $9::boolean THEN $10 ELSE sales_code END,
              updated_at = now()
            WHERE id = $1
-           RETURNING code, name, floor, attributes, category_id AS "categoryId", active`,
+           RETURNING code, name, floor, attributes, category_id AS "categoryId", active,
+                     sales_code AS "salesCode"`,
           [Number(roomId), body.code?.trim() ?? null, body.floor ?? null,
            body.attributes ?? null, body.categoryId ?? null, body.active ?? null,
-           name !== undefined, name ?? null])
+           name !== undefined, name ?? null, salesCode !== undefined, salesCode ?? null])
 
         // Ein Umzug zwischen Gruppen verschiebt Kapazität von der einen zur
         // anderen. Der Trigger rechnet beide Seiten nach (Migration 0013).
