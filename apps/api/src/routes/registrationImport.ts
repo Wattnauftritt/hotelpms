@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { isIsoDate } from '@hotelpms/domain'
-import { istLand, istUnterschriftSvg, MAX_MITREISENDE,
-         UNTERSCHRIFT_MAX_ZEICHEN } from '@hotelpms/contracts'
+import { istLand, istUnterschriftSvg, UNTERSCHRIFT_MAX_ZEICHEN } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
@@ -62,6 +61,15 @@ const ZUSTIMMUNG = new Set(['termsCode', 'termsVersion', 'agreedAt'])
 /** Wie `CODE_MAX` in `routes/terms.ts`. */
 const TERMS_CODE_MAX = 40
 
+/**
+ * Mehr als beim Link (`MAX_MITREISENDE`, neun). Dort begrenzt die Zahl ein
+ * Formular, das ein Gast ausfuellt; hier kommt ein Schein, der schon
+ * ausgefuellt ist, und im Adminpanel stehen Gruppenscheine mit mehr als
+ * neun Mitreisenden. Wer sie abweist, laesst die Gruppe ohne Schein;
+ * Personen wegzulassen hiesse, sie auf dem Schein zu verschweigen. Eine
+ * Obergrenze bleibt, weil jede Person ein Profil anlegt.
+ */
+const MAX_MITREISENDE_IMPORT = 49
 const SYSTEM_MAX = 40
 const REFERENCE_MAX = 100
 /** Die Seitenlaengen, die `istUnterschriftSvg` zulaesst. */
@@ -207,7 +215,7 @@ function pruefe(body: unknown): Eingabe {
   const begleiter: Person[] = []
   if (body.companions !== undefined && body.companions !== null) {
     if (!Array.isArray(body.companions)) fehlt('companions', 'field.invalid')
-    else if (body.companions.length > MAX_MITREISENDE) {
+    else if (body.companions.length > MAX_MITREISENDE_IMPORT) {
       fehlt('companions', 'checkin.tooManyCompanions')
     } else {
       body.companions.forEach((c, i) => {
@@ -256,7 +264,7 @@ function pruefe(body: unknown): Eingabe {
     }
   }
 
-  if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
+  if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE_IMPORT })
   return {
     source: source!, completedAt: completedAt!, avsReportedAt: avsReportedAt!,
     guest: { ...g!, address: anschrift }, companions: begleiter, signature, agreement
