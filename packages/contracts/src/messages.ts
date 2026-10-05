@@ -1041,6 +1041,13 @@ const M = {
       + 'Posted nights are reversed, not changed.',
     tr: 'Fiyat, hesaba zaten işlenmiş tutarın altında. '
       + 'İşlenmiş geceler değiştirilmez, ters kayıtla düzeltilir.' },
+  'stay.undoCheckinPosted': {
+    de: 'Fuer diesen Aufenthalt ist schon eine Nacht gebucht. Ein Check-in laesst sich '
+      + 'nur bis zum Tagesabschluss des Anreisetags zuruecknehmen.',
+    en: 'A night has already been posted for this stay. A check-in can only be undone '
+      + 'until the end-of-day run of the arrival day.',
+    tr: 'Bu konaklama için bir gece zaten hesaba işlendi. Check-in yalnızca varış '
+      + 'gününün gün sonu işlemine kadar geri alınabilir.' },
   'stay.checkinNeedsRoom': {
     de: 'Check-in erfordert ein zugewiesenes Zimmer.',
     en: 'Check-in requires an assigned room.',

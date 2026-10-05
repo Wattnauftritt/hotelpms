@@ -130,6 +130,65 @@ describe('Bestand bei Zustandswechseln', () => {
       expect(await verkauft()).toBe(1)
     })
 
+  it('nimmt einen falschen Check-in zurueck, ohne Bestand oder Aufenthalt anzufassen',
+    async () => {
+      const ref = await buchung()
+      const zimmer = await owner.query<{ id: number }>(
+        `SELECT id FROM resource WHERE property_id=$1 LIMIT 1`, [fx.propertyId])
+      await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: zimmer.rows[0]!.id })
+      expect((await post(`/v1/reservations/${ref}/check-in`)).statusCode).toBe(200)
+
+      const u = await post(`/v1/reservations/${ref}/undo-check-in`)
+      expect(u.statusCode, u.body).toBe(200)
+      expect(JSON.parse(u.body).status).toBe('Confirmed')
+
+      // Kein Check-out: Zimmer, Zeitraum und Bestand bleiben, nur der
+      // Zeitstempel geht mit dem Zustand zurueck.
+      const r = await owner.query<{ checked_in_at: string | null; checked_out_at: string | null
+                                    departure: string; resource_id: number | null }>(
+        `SELECT checked_in_at, checked_out_at, departure::text, resource_id
+           FROM reservation WHERE public_ref = $1`, [ref])
+      expect(r.rows[0]).toEqual({ checked_in_at: null, checked_out_at: null,
+                                  departure: BIS, resource_id: zimmer.rows[0]!.id })
+      expect(await verkauft()).toBe(1)
+      expect(await verkauft('2026-10-02')).toBe(1)
+
+      // Das Adminpanel erfaehrt es ueber die Aenderungsliste.
+      const l = await app.inject({ method: 'GET', headers: auth,
+        url: `/v1/properties/${fx.propertyId}/reservations` })
+      const zeile = (JSON.parse(l.body) as { reservations: Array<{
+        reservationRef: string; status: string; statusGroup: string }> })
+        .reservations.find(x => x.reservationRef === ref)
+      expect(zeile).toMatchObject({ status: 'Confirmed', statusGroup: 'active' })
+
+      // Danach geht der Check-in wieder.
+      expect((await post(`/v1/reservations/${ref}/check-in`)).statusCode).toBe(200)
+    })
+
+  it('nimmt keinen Check-in zurueck, dessen Nacht schon gebucht ist', async () => {
+    const ref = await buchung()
+    const zimmer = await owner.query<{ id: number }>(
+      `SELECT id FROM resource WHERE property_id=$1 LIMIT 1`, [fx.propertyId])
+    await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: zimmer.rows[0]!.id })
+    await post(`/v1/reservations/${ref}/check-in`)
+    // Die erste Nacht bucht sonst der Nachtlauf; hier genuegt die Marke.
+    await owner.query(
+      `UPDATE reservation_night SET posted = true
+        WHERE date = $2 AND reservation_id = (SELECT id FROM reservation WHERE public_ref = $1)`,
+      [ref, VON])
+
+    const u = await post(`/v1/reservations/${ref}/undo-check-in`)
+    expect(u.statusCode, u.body).toBe(422)
+    const r = await owner.query<{ status: string }>(
+      `SELECT status FROM reservation WHERE public_ref = $1`, [ref])
+    expect(r.rows[0]!.status).toBe('InHouse')
+  })
+
+  it('weist das Zuruecknehmen ohne Check-in ab', async () => {
+    const ref = await buchung()
+    expect((await post(`/v1/reservations/${ref}/undo-check-in`)).statusCode).toBe(409)
+  })
+
   it('weist das Wiederherstellen ab, wenn das Haus inzwischen voll ist', async () => {
     const ref = await buchung()
     await post(`/v1/reservations/${ref}/cancel`)

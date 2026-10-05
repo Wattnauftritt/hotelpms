@@ -408,7 +408,11 @@ const EVENT_FOR_ACTION: Record<ReservationAction, WebhookEventType> = {
   check_out: 'reservation.checked_out',
   cancel:    'reservation.canceled',
   no_show:   'reservation.changed',
-  reinstate: 'reservation.changed'
+  reinstate: 'reservation.changed',
+  // Eine eigene Ereignisart braucht es nicht: das Ereignis ist nur das
+  // Signal zum Nachfragen, und die Liste zeigt danach `Confirmed` ohne
+  // Check-in-Zeit. Ein neuer Typ kaeme bei keinem bestehenden Abonnement an.
+  undo_check_in: 'reservation.changed'
 }
 
 /**
@@ -1685,6 +1689,23 @@ export function reservationRoutes(app: FastifyInstance): void {
           }
         }
 
+        /*
+         * **Zuruecknehmen nur, solange keine Nacht gebucht ist.** Am
+         * Anreisetag vor dem Tagesabschluss ist ein Check-in nur ein
+         * Zustand; danach haengt an ihm eine Logisbuchung, und die ist
+         * Haertegrad 1. Eine bestaetigte Reservierung mit gebuchter Nacht
+         * waere ein Gast, der bezahlt hat und nicht da war -- das ist ein
+         * Storno mit Gegenbuchung oder ein Check-out, kein Versehen mehr.
+         * Dazu gilt nach dem Tagesabschluss Svens Regel (0088): wer im
+         * Kalender steht, ist angereist.
+         */
+        if (act === 'undo_check_in') {
+          const gebucht = await client.query(
+            `SELECT 1 FROM reservation_night WHERE reservation_id = $1 AND posted LIMIT 1`,
+            [r.id])
+          if ((gebucht.rowCount ?? 0) > 0) throw Errors.unprocessable('stay.undoCheckinPosted')
+        }
+
         if (act === 'check_in' && r.resource_id === null) {
           throw Errors.unprocessable('stay.checkinNeedsRoom')
         }
@@ -1756,7 +1777,8 @@ export function reservationRoutes(app: FastifyInstance): void {
         const stamp = act === 'check_in' ? 'checked_in_at = now(),'
           : act === 'check_out' ? 'checked_out_at = now(),'
           : act === 'cancel' ? 'canceled_at = now(),'
-          : act === 'reinstate' ? 'canceled_at = NULL,' : ''
+          : act === 'reinstate' ? 'canceled_at = NULL,'
+          : act === 'undo_check_in' ? 'checked_in_at = NULL,' : ''
         await client.query(
           `UPDATE reservation SET status = $2, ${stamp} updated_at = now() WHERE id = $1`,
           [r.id, target])
@@ -1775,6 +1797,10 @@ export function reservationRoutes(app: FastifyInstance): void {
   action('/v1/reservations/:reservationRef/confirm', 'confirm', 'reservation:write', 'Bestaetigen')
   action('/v1/reservations/:reservationRef/check-in', 'check_in', 'reservation:checkin', 'Check-in')
   action('/v1/reservations/:reservationRef/check-out', 'check_out', 'reservation:checkin', 'Check-out')
+  // Ein versehentlicher Check-in war bisher nur per Check-out loszuwerden,
+  // und der kuerzte den Aufenthalt auf heute und gab das Zimmer frei.
+  action('/v1/reservations/:reservationRef/undo-check-in', 'undo_check_in', 'reservation:checkin',
+    'Check-in zuruecknehmen')
   action('/v1/reservations/:reservationRef/cancel', 'cancel', 'reservation:write', 'Stornieren')
   // Der Zustandsautomat kennt `reinstate` seit jeher, einen Weg dorthin gab
   // es nicht: ein versehentlicher Storno war damit endgueltig, und ein

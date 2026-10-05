@@ -22,6 +22,15 @@ export const tagesgeschaeft = {
     de: 'Check-out',
     en: 'Check out',
     tr: 'Check-out' },
+  // Kein Check-out: der Gast ist nicht abgereist, er war nie da.
+  'today.undoCheckin': {
+    de: 'Check-in zurücknehmen',
+    en: 'Undo check-in',
+    tr: 'Check-in’i geri al' },
+  'today.undoCheckinConfirm': {
+    de: 'Check-in zurücknehmen? Die Reservierung steht danach wieder als erwartete Anreise.',
+    en: 'Undo the check-in? The reservation then shows as an expected arrival again.',
+    tr: 'Check-in geri alınsın mı? Rezervasyon daha sonra yeniden beklenen giriş olarak görünür.' },
   // Steht nur an Anreisen **ohne** Meldeschein. Hier stand "liegt vor",
   // also das Gegenteil dessen, was das Warnzeichen meint.
   'today.registrationMissing': {

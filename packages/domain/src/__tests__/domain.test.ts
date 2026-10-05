@@ -62,6 +62,12 @@ describe('Zustandsautomat', () => {
     expect(s).toBe('CheckedOut')
   })
 
+  it('nimmt einen Check-in zurueck auf bestaetigt', () => {
+    expect(applyAction('InHouse', 'undo_check_in')).toBe('Confirmed')
+    expect(() => applyAction('CheckedOut', 'undo_check_in')).toThrow(InvalidTransitionError)
+    expect(() => applyAction('Confirmed', 'undo_check_in')).toThrow(InvalidTransitionError)
+  })
+
   it('weist jeden unerlaubten Uebergang ab', () => {
     expect(() => applyAction('CheckedOut', 'check_in')).toThrow(InvalidTransitionError)
     expect(() => applyAction('Confirmed', 'check_out')).toThrow(InvalidTransitionError)
