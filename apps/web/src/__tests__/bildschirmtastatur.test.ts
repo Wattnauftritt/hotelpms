@@ -104,6 +104,14 @@ describe('An der Terminalseite', () => {
     expect(k).toContain('onMouseDown={e => e.preventDefault()}')
   })
 
+  it('setzt den Ziffernblock als Raster, nicht als zentrierte Reihen', () => {
+    // Als Reihen mit Flex stand jede Reihe fuer sich zentriert, die Spalten
+    // versetzt -- so sah es am Touchscreen aus.
+    const k = code('../components/Bildschirmtastatur.tsx')
+    expect(k).toContain("ebene === 'ziffern'")
+    expect(k).toContain('grid-cols-4')
+  })
+
   it('haelt keinen Text ausserhalb des Feldes', () => {
     const k = code('../components/Bildschirmtastatur.tsx')
     expect(k).not.toMatch(/localStorage|sessionStorage/)
