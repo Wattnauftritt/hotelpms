@@ -3,6 +3,7 @@ import type { Guest } from '@hotelpms/contracts'
 import { useSearchGuests, useCreateGuest } from '../lib/queries/guests.js'
 import { useT } from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
+import { nameAufteilen, type GastName } from '../lib/gastName.js'
 
 /**
  * Gast suchen oder neu anlegen (A6), aus dem Buchungsdialog heraus.
@@ -25,12 +26,19 @@ import { Fehler } from './Shell.tsx'
  * Moment oft nicht, und mehr zu verlangen hieße, sie zum Erfinden zu
  * bringen.
  */
-export function GuestPicker({ value, onChange }: {
+export function GuestPicker({ value, onChange, onEingabe }: {
   value: Guest | null
   onChange: (guest: Guest | null) => void
+  /**
+   * Was gerade im Suchfeld steht. Die Buchungsmasken legen daraus beim
+   * Speichern selbst einen Gast an, wenn niemand ausgewählt wurde -- siehe
+   * `nameAufteilen`.
+   */
+  onEingabe?: (text: string) => void
 }): JSX.Element {
   const t = useT()
-  const [begriff, setBegriff] = useState('')
+  const [begriff, setBegriffIntern] = useState('')
+  const setBegriff = (text: string): void => { setBegriffIntern(text); onEingabe?.(text) }
   const [formular, setFormular] = useState(false)
   const suche = useSearchGuests(begriff)
 
@@ -100,6 +108,42 @@ export function GuestPicker({ value, onChange }: {
       </button>
     </div>
   )
+}
+
+/**
+ * Der Gast für eine Buchungsmaske: ausgewählt **oder** eingetippt.
+ *
+ * Sven, 05.10.2026: „Wenn ich einen Namen eingebe und die Buchung speichere
+ * und der Gast nicht existiert, einfach automatisch anlegen." Vorher war
+ * der Knopf gesperrt, bis jemand „Neuen Gast anlegen" und dann „anlegen"
+ * geklickt hatte -- zwei Schritte für etwas, das mit dem Namen schon gesagt
+ * war.
+ *
+ * Angelegt wird erst beim Speichern, nicht beim Tippen: wer sich vertippt
+ * und neu ansetzt, hinterlässt sonst eine Spur halber Gäste. Der angelegte
+ * Gast wird danach als Auswahl gesetzt. Schlägt die Buchung anschließend
+ * fehl, nimmt der zweite Versuch denselben Gast, statt einen zweiten
+ * „Meier" zu erzeugen.
+ */
+export function useGastAusEingabe(guest: Guest | null, setGuest: (g: Guest) => void): {
+  setEingabe: (text: string) => void
+  /** Der Name, der beim Speichern angelegt würde -- `null`, wenn keiner. */
+  neu: GastName | null
+  /** Die `guestRef` für die Buchung; legt den Gast dafür nötigenfalls an. */
+  guestRef: () => Promise<string | undefined>
+  anlegen: ReturnType<typeof useCreateGuest>
+} {
+  const [eingabe, setEingabe] = useState('')
+  const anlegen = useCreateGuest()
+  const neu = guest === null ? nameAufteilen(eingabe) : null
+  const guestRef = async (): Promise<string | undefined> => {
+    if (guest !== null) return guest.guestRef
+    if (neu === null) return undefined
+    const angelegt = await anlegen.mutateAsync(neu)
+    setGuest(angelegt)
+    return angelegt.guestRef
+  }
+  return { setEingabe, neu, guestRef, anlegen }
 }
 
 function NeuerGast({ vorgabe, onCreated, onCancel }: {
