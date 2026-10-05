@@ -258,10 +258,15 @@ export function registrationRoutes(app: FastifyInstance): void {
                   reg.group_registration_id AS "groupRegistrationId",
                   g.last_name AS "lastName", g.first_name AS "firstName",
                   g.nationality, g.city, g.country,
-                  r.public_ref AS "reservationRef"
+                  r.public_ref AS "reservationRef",
+                  -- Kurtaxe-Befreiung, wie die Person sie erklaert hat (0089).
+                  -- Der Grund, nicht die Nummer: wie die Ausweisnummer gehoert
+                  -- sie nicht in eine Uebersicht, an der jemand vorbeigeht.
+                  x.label AS "taxExemption"
              FROM registration reg
              JOIN guest g ON g.id = reg.guest_id
              JOIN reservation r ON r.id = reg.reservation_id
+             LEFT JOIN city_tax_exemption_reason x ON x.id = reg.tax_exemption_reason_id
             WHERE reg.property_id = $1
               AND reg.arrival BETWEEN $2::date AND $3::date
             ORDER BY reg.arrival, g.last_name

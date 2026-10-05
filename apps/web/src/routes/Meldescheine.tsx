@@ -125,11 +125,16 @@ export function Meldescheine({ propertyId }: { propertyId: number }): JSX.Elemen
                           )}
                           <span>{t('reg.destroyAfter', {
                             datum: formatDate(r.destroyAfter, locale) })}</span>
+                          {r.taxExemption !== null && (
+                            <span>{t('reg.taxExemption', { grund: r.taxExemption })}</span>
+                          )}
                         </div>
                         {r.mitreisende.length > 0 && (
                           <div className="mt-1 text-xs text-neutral-600">
                             {t('reg.companions')}: {r.mitreisende.map(m =>
-                              `${name(m)}${m.nationality ? ` (${m.nationality})` : ''}`)
+                              `${name(m)}${m.nationality ? ` (${m.nationality})` : ''}`
+                              + (m.taxExemption !== null
+                                ? ` – ${t('reg.taxExemption', { grund: m.taxExemption })}` : ''))
                               .join(' · ')}
                           </div>
                         )}

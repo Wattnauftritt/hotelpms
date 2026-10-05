@@ -198,3 +198,58 @@ describe('Kurtaxe', () => {
     expect(await abgaben()).toHaveLength(0)
   })
 })
+
+/**
+ * Befreiung am Meldeschein (0089): wer sie erklaert hat, zahlt keine
+ * Kurtaxe -- aber weiter die Uebernachtungsteuer, die eine eigene Satzung
+ * mit eigenen Gruenden hat.
+ */
+describe('Kurtaxe-Befreiung am Meldeschein', () => {
+  async function mitBefreiung(): Promise<number> {
+    const r = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-04',
+      status: 'InHouse', resourceId: rooms[0]!, priceCent: 11_000 })
+    const grund = await owner.query<{ id: number }>(
+      `INSERT INTO city_tax_exemption_reason (property_id, code, label)
+       VALUES ($1,'behinderung','100 % Behinderung') RETURNING id`, [fx.propertyId])
+    for (const befreit of [false, true]) {
+      const g = await owner.query<{ id: number }>(
+        `INSERT INTO guest (account_id, last_name) VALUES ($1,'Gast') RETURNING id`,
+        [fx.accountId])
+      await owner.query(
+        `INSERT INTO reservation_occupant (property_id, reservation_id, guest_id, age_at_arrival)
+         VALUES ($1,$2,$3,40)`, [fx.propertyId, r.reservationId, g.rows[0]!.id])
+      await owner.query(
+        `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
+                                   planned_departure, destroy_after, is_foreign,
+                                   tax_exemption_reason_id)
+         VALUES ($1,$2,$3,$4::date,'2026-10-04','2027-10-04',false,$5)`,
+        [fx.propertyId, r.reservationId, g.rows[0]!.id, TAG,
+         befreit ? grund.rows[0]!.id : null])
+    }
+    return r.reservationId
+  }
+
+  it('zaehlt die befreite Person bei der Kurtaxe nicht mit', async () => {
+    await kurtaxe()
+    await mitBefreiung()
+    await lauf()
+
+    const a = await abgaben()
+    expect(a).toHaveLength(1)
+    expect(a[0]!.quantity).toBe(1)
+    expect(a[0]!.gross_cent).toBe(250)
+  })
+
+  it('laesst die Uebernachtungsteuer unberuehrt', async () => {
+    await owner.query(
+      `INSERT INTO tax_rule (property_id, code, name, kind, basis, amount_cent)
+       VALUES ($1,'BETT','Bettensteuer','bed_tax','per_person_night',100)`, [fx.propertyId])
+    await mitBefreiung()
+    await lauf()
+
+    const a = await abgaben()
+    expect(a).toHaveLength(1)
+    expect(a[0]!.quantity).toBe(2)
+  })
+})

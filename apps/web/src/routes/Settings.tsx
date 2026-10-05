@@ -15,6 +15,7 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
 import { SupportZugriff } from '../components/SupportZugriff.tsx'
 import { Gaesteterminals } from '../components/Gaesteterminals.tsx'
 import { OnlineCheckinEinstellung } from '../components/OnlineCheckinEinstellung.tsx'
+import { KurtaxeBefreiung } from '../components/KurtaxeBefreiung.tsx'
 
 /**
  * Einstellungen des Hauses, die nicht Einrichtung sind.
@@ -25,7 +26,7 @@ import { OnlineCheckinEinstellung } from '../components/OnlineCheckinEinstellung
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'terms', 'checkin', 'terminal', 'support'] as const
+const REITER = ['mail', 'pay', 'terms', 'exemptions', 'checkin', 'terminal', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -35,6 +36,10 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   if (darf('integration:manage')) bereiche.push({ key: 'mail', label: 'mail.title' })
   if (darf('settings:property')) bereiche.push({ key: 'pay', label: 'pay.title' })
   if (darf('settings:property')) bereiche.push({ key: 'terms', label: 'terms.title' })
+  // Kurtaxe-Befreiung (0089): was das Meldeformular als Grund anbietet.
+  if (darf('settings:property')) {
+    bereiche.push({ key: 'exemptions', label: 'exemption.title' })
+  }
   // Online-Check-in (Dokument 30): wann der Gast seinen Meldeschein vorab
   // bekommt, ist eine Entscheidung des Hauses, keine der Schnittstellen.
   if (darf('settings:property')) {
@@ -655,6 +660,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
       )}
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
       {aktiv.key === 'terms' && <Hausbedingungen propertyId={propertyId} />}
+      {aktiv.key === 'exemptions' && <KurtaxeBefreiung propertyId={propertyId} />}
       {aktiv.key === 'checkin' && (
         <OnlineCheckinEinstellung propertyId={propertyId} isTraining={isTraining} />
       )}

@@ -169,6 +169,39 @@ export const onlineCheckin = {
     en: 'Sign again',
     tr: 'Yeniden imzala' },
 
+  'gastCheckin.exemption.title': {
+    de: 'Befreiung von der Kurtaxe',
+    en: 'Exemption from tourist tax',
+    tr: 'Turist vergisinden muafiyet' },
+  'gastCheckin.exemption.none': {
+    de: 'Keine – kurtaxepflichtig',
+    en: 'None – tourist tax applies',
+    tr: 'Yok – turist vergisi uygulanır' },
+  'gastCheckin.exemption.proof': {
+    de: 'Ausweis- oder Kartennummer (freiwillig)',
+    en: 'ID or card number (optional)',
+    tr: 'Kimlik veya kart numarası (isteğe bağlı)' },
+  'gastCheckin.exemption.hint': {
+    de: 'Nur wählen, wenn ein Befreiungsgrund vorliegt. Den Nachweis zeigen '
+      + 'Sie bitte bei der Ankunft an der Rezeption vor.',
+    en: 'Only choose if a reason for exemption applies. Please show the proof '
+      + 'at the front desk on arrival.',
+    tr: 'Yalnızca bir muafiyet gerekçesi varsa seçin. Lütfen belgeyi varışta '
+      + 'resepsiyonda gösterin.' },
+
+  'gastCheckin.terms.title': {
+    de: 'Hausbedingungen',
+    en: 'House terms',
+    tr: 'Konaklama koşulları' },
+  'gastCheckin.terms.accept': {
+    de: 'Ich habe die Hausbedingungen gelesen und akzeptiere sie.',
+    en: 'I have read and accept the house terms.',
+    tr: 'Konaklama koşullarını okudum ve kabul ediyorum.' },
+  'gastCheckin.terms.signatureHint': {
+    de: 'Bitte unterschreiben Sie die Hausbedingungen hier mit dem Finger oder der Maus.',
+    en: 'Please sign the house terms here with your finger or the mouse.',
+    tr: 'Lütfen konaklama koşullarını buraya parmağınızla veya fareyle imzalayın.' },
+
   'gastCheckin.confirm': {
     de: 'Meine Angaben sind richtig und vollständig.',
     en: 'My details are correct and complete.',

@@ -28,6 +28,8 @@ export interface Meldeschein {
   city: string | null
   country: string | null
   reservationRef: string
+  /** Befreiungsgrund fuer die Kurtaxe, wie das Haus ihn benennt. */
+  taxExemption: string | null
 }
 
 /** Wie in `routes/registrations.ts`. */

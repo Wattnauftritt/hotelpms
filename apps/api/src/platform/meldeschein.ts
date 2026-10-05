@@ -90,6 +90,13 @@ export type Unterschrift =
   /** Ueber den Link vor Anreise: nie jetzt, sondern am Anreisetag. */
   | { art: 'amAnreisetag' }
 
+/**
+ * Befreiung von der Kurtaxe, wie die Person sie erklaert hat (0089). Der
+ * Aufrufer hat den Grund gegen das Haus geprueft und die Nummer verworfen,
+ * wo der Grund keine verlangt.
+ */
+export interface Befreiung { reasonId: number; proof: string | null }
+
 export interface MeldescheinEingabe {
   propertyId: number
   reservationId: number
@@ -101,6 +108,8 @@ export interface MeldescheinEingabe {
   unterschrift: Unterschrift
   quelle: MeldescheinQuelle
   herkunft?: MeldescheinHerkunft
+  /** Je Gaeste-id; wer fehlt, ist nicht befreit. */
+  befreiungen?: Map<number, Befreiung>
 }
 
 export interface MeldescheinErgebnis {
@@ -144,6 +153,7 @@ export async function erfasseMeldeschein(
     return m
   })
 
+  const befreiung = (id: number): Befreiung | undefined => e.befreiungen?.get(id)
   const hauptAuslaendisch = requiresRegistrationSignature(haupt)
   const noetig = hauptAuslaendisch || begleiter.some(m => requiresRegistrationSignature(m))
 
@@ -164,18 +174,21 @@ export async function erfasseMeldeschein(
                                planned_departure, occupant_count, is_foreign,
                                signature_svg, signed_at, destroy_after,
                                source, signature_required, external_system,
-                               external_reference, completed_at, avs_reported_at)
+                               external_reference, completed_at, avs_reported_at,
+                               tax_exemption_reason_id, tax_exemption_proof)
      VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,$8::text,
              CASE WHEN $8::text IS NULL THEN NULL
                   ELSE COALESCE($12::timestamptz, now()) END,
              -- Ab Abreise, nicht ab Anreise: § 30 Abs. 4 BMG.
              ($5::date + ($9 || ' months')::interval)::date,
-             $10, $11, $13, $14, $15::timestamptz, $16::timestamptz)
+             $10, $11, $13, $14, $15::timestamptz, $16::timestamptz, $17, $18)
      RETURNING id`,
     [e.propertyId, e.reservationId, e.primaryGuestId, e.arrival, e.departure,
      e.mitreisende.length + 1, hauptAuslaendisch, signatur, AUFBEWAHRUNG_MONATE,
      e.quelle, noetig, signedAt, k?.system ?? null, k?.reference ?? null,
-     k?.completedAt ?? null, k?.avsReportedAt ?? null])
+     k?.completedAt ?? null, k?.avsReportedAt ?? null,
+     befreiung(e.primaryGuestId)?.reasonId ?? null,
+     befreiung(e.primaryGuestId)?.proof ?? null])
   const hauptId = Number(h.rows[0]!.id)
 
   /**
@@ -188,12 +201,14 @@ export async function erfasseMeldeschein(
       `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
                                  planned_departure, occupant_count, is_foreign,
                                  group_registration_id, destroy_after, source,
-                                 external_system)
+                                 external_system, tax_exemption_reason_id,
+                                 tax_exemption_proof)
        VALUES ($1,$2,$3,$4::date,$5::date,1,$6,$7,
-               ($5::date + ($8 || ' months')::interval)::date, $9, $10)`,
+               ($5::date + ($8 || ' months')::interval)::date, $9, $10, $11, $12)`,
       [e.propertyId, e.reservationId, m.id, e.arrival, e.departure,
        requiresRegistrationSignature(m), hauptId, AUFBEWAHRUNG_MONATE, e.quelle,
-       k?.system ?? null])
+       k?.system ?? null, befreiung(Number(m.id))?.reasonId ?? null,
+       befreiung(Number(m.id))?.proof ?? null])
 
     /*
      * Wer gemeldet ist, wohnt auch im Zimmer.
