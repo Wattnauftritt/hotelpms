@@ -155,10 +155,11 @@ describe('Escape am Rezeptionsrechner', () => {
 })
 
 describe('Eine Unterschrift, ein Format', () => {
-  it('hat der Check-in kein eigenes Unterschriftsfeld mehr', () => {
+  it('hat der Check-in kein Unterschriftsfeld: der Gast unterschreibt am Terminal', () => {
+    // Sven, 05.10.2026: die Rezeption soll nicht fuer den Gast unterschreiben.
     const checkin = code('../routes/CheckIn.tsx')
     expect(checkin).not.toContain('function Unterschriftsfeld')
-    expect(checkin).toContain("from '../components/Unterschriftsfeld.tsx'")
+    expect(checkin).not.toContain('Unterschriftsfeld')
     expect(terminal).toContain("from '../components/Unterschriftsfeld.tsx'")
   })
 

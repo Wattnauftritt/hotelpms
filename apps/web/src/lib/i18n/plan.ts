@@ -1054,6 +1054,18 @@ export const plan = {
     de: 'Zur Kenntnis genommen',
     en: 'Acknowledged',
     tr: 'Okudum, kabul ediyorum' },
+  'terms.signedByGuest': {
+    de: 'Vom Gast unterschrieben am {datum}',
+    en: 'Signed by the guest on {datum}',
+    tr: 'Misafir tarafından {datum} tarihinde imzalandı' },
+  'terms.signAtTerminal': {
+    de: 'Unterschrift fehlt. Der Gast unterschreibt am Gästeterminal; der Auftrag geht über den Kasten „Gästeterminal“ darüber.',
+    en: 'Signature missing. The guest signs at the guest terminal; send it via the “Guest terminal” box above.',
+    tr: 'İmza eksik. Misafir, misafir terminalinde imzalar; görevi yukarıdaki “Misafir terminali” kutusundan gönderin.' },
+  'checkin.signAtTerminal': {
+    de: 'Die Unterschrift unter dem Meldeschein fehlt noch. Der Gast unterschreibt am Gästeterminal, dann geht der Check-in.',
+    en: 'The registration form still needs the guest’s signature. The guest signs at the guest terminal; then check-in is possible.',
+    tr: 'Meldeschein için misafirin imzası hâlâ eksik. Misafir terminalde imzalar, ardından check-in yapılabilir.' },
   'terms.signed': {
     de: 'Unterschrieben',
     en: 'Signed',

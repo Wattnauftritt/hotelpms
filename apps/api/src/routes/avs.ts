@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
-import { avsXml, avsDateiname, alterAm, type AvsMeldeschein, type AvsPerson }
+import { avsXml, avsDateiname, avsDownloadName, alterAm, type AvsMeldeschein, type AvsPerson }
   from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
@@ -159,6 +159,16 @@ function inhalt(z: Zeile[], s: Einstellung, a: Aufenthalt, mitNummer: boolean
 function naechte(von: string, bis: string): number {
   return Math.max(1, Math.round((Date.parse(`${bis}T00:00:00Z`)
     - Date.parse(`${von}T00:00:00Z`)) / 86_400_000))
+}
+
+/**
+ * Der Name, unter dem die Datei herunterkommt, mit Gastnamen. In
+ * `avs_export.file_name` steht er bewusst nicht: dort bliebe der Name eines
+ * Gastes in einer Zeile, die keine Loeschung kennt. Das Protokoll fuehrt den
+ * namenlosen Namen nach AVS-Regel.
+ */
+function downloadName(schein: AvsMeldeschein): string {
+  return avsDownloadName(schein.arrival, schein.main.lastName, schein.main.firstName)
 }
 
 function hauptschein(z: Zeile[]): Zeile {
@@ -330,7 +340,7 @@ export function avsRoutes(app: FastifyInstance): void {
         await protokolliereNummern(client, z, mitNummer, principal)
 
         reply.status(201)
-        return { fileName: datei, xml: avsXml(
+        return { fileName: downloadName(schein), xml: avsXml(
           { hotelId: s.hotel_id, origin: s.origin, userName: s.user_name }, [schein]),
                  reportedAt: e.rows[0]!.created_at, persons: personen }
       })
@@ -358,12 +368,10 @@ export function avsRoutes(app: FastifyInstance): void {
         const z = await scheine(client, a.id)
         const h = hauptschein(z)
         if (h.avs_export_id === null) throw Errors.unprocessable('avs.notExportedHere')
-        const ex = await client.query<{ file_name: string }>(
-          `SELECT file_name FROM avs_export WHERE id = $1`, [h.avs_export_id])
         const mitNummer = can(principal, 'guest:read_identity', a.property_id)
         const { schein, personen } = inhalt(z, s, a, mitNummer)
         await protokolliereNummern(client, z, mitNummer, principal)
-        return { fileName: ex.rows[0]!.file_name, xml: avsXml(
+        return { fileName: downloadName(schein), xml: avsXml(
           { hotelId: s.hotel_id, origin: s.origin, userName: s.user_name }, [schein]),
                  reportedAt: h.avs_reported_at, persons: personen }
       })

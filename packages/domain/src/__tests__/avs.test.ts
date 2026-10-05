@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { trenneHausnummer, staatsangehoerigkeit, landName, alterAm, avsDateiname, avsXml }
+import { trenneHausnummer, staatsangehoerigkeit, landName, alterAm, avsDateiname, avsXml,
+         avsDownloadName }
   from '../avs.js'
 
 /**
@@ -42,6 +43,16 @@ describe('Ausgeschriebene Werte', () => {
     // 22:30 UTC im Sommer ist 00:30 in Berlin, am naechsten Tag.
     expect(avsDateiname('StayGrid', new Date('2026-07-01T22:30:00Z')))
       .toBe('StayGrid_2026-07-02_00-30.xml')
+  })
+})
+
+describe('Name der heruntergeladenen Datei', () => {
+  it('nennt Anreisetag und Gast, ohne Zeichen, an denen ein Dateisystem scheitert', () => {
+    expect(avsDownloadName('2026-10-05', 'Jaster', 'Martin')).toBe('2026-10-05_Jaster_Martin.xml')
+    expect(avsDownloadName('2026-10-05', 'Müßig', 'Zoë')).toBe('2026-10-05_Muessig_Zoe.xml')
+    expect(avsDownloadName('2026-10-05', "O'Neill / Smith", null))
+      .toBe('2026-10-05_O-Neill-Smith.xml')
+    expect(avsDownloadName('2026-10-05', '***', null)).toBe('2026-10-05_Gast.xml')
   })
 })
 
