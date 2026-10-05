@@ -558,6 +558,14 @@ export const einstellungen = {
     de: 'Frühstück im Preis, je Person und Nacht (€)',
     en: 'Breakfast included, per person and night (€)',
     tr: 'Fiyata dahil kahvaltı, kişi ve gece başına (€)' },
+  'avsSettings.more': {
+    de: 'Weitere Angaben',
+    en: 'More settings',
+    tr: 'Diğer ayarlar' },
+  'avsSettings.moreHint': {
+    de: 'Sagen AVS nur, aus welchem Programm die Datei kommt. Vorbelegt mit „StayGrid“; ändern muss sie niemand.',
+    en: 'Only tell AVS which program the file comes from. Preset to “StayGrid”; nobody needs to change them.',
+    tr: 'Yalnızca dosyanın hangi programdan geldiğini AVS\'ye bildirir. “StayGrid” olarak önceden ayarlıdır; değiştirmek gerekmez.' },
   'avsSettings.origin': {
     de: 'Herkunfts-ID',
     en: 'Origin ID',

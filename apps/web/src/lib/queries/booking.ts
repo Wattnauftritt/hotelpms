@@ -408,6 +408,9 @@ export function useCheckIn(reservationRef: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
       void qc.invalidateQueries({ queryKey: ['tape'] })
+      // Seit der Dialog auch aus "Heute" aufgeht, muss die Anreiseliste den
+      // Gast danach als eingecheckt zeigen.
+      void qc.invalidateQueries({ queryKey: ['daily'] })
     }
   })
 }

@@ -128,9 +128,11 @@ export const SCREENS: readonly ScreenDefinition[] = [
                                                 onCheckIn={c.openCheckIn} />} /> },
   { key: 'today', nav: 'nav.today', permission: 'reservation:read',
     render: c => <NachBreite schmal={() => <MobilHeute propertyId={c.propertyId}
-                                                       onFolio={c.openFolio} />}
+                                                       onFolio={c.openFolio}
+                                                       onCheckIn={c.openCheckIn} />}
                              breit={() => <Today propertyId={c.propertyId}
-                                                 onFolio={c.openFolio} />} /> },
+                                                 onFolio={c.openFolio}
+                                                 onCheckIn={c.openCheckIn} />} /> },
   { key: 'housekeeping', nav: 'nav.housekeeping', permission: 'housekeeping:read',
     render: c => <NachBreite schmal={() => <MobilZimmer propertyId={c.propertyId} />}
                              breit={() => <Housekeeping propertyId={c.propertyId} />} /> },

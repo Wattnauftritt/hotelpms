@@ -25,8 +25,10 @@ type Zeile = DailySheet['inHouse'][number]
  * (`useSprung`), dasselbe wie aus der Suche. Eine zweite Fassung davon fuer
  * das Telefon liefe mit der Zeit auseinander.
  */
-export function MobilHeute({ propertyId, onFolio }: {
+export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
   propertyId: number; onFolio: (folioRef: string) => void
+  /** Derselbe Dialog wie am Tresen: Meldeschein, Unterschrift, AVS-Datei. */
+  onCheckIn: (reservationRef: string) => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -116,8 +118,8 @@ export function MobilHeute({ propertyId, onFolio }: {
               </Handlung>
             )}
             {liste === 'arrivals' && r.status !== 'InHouse' && (
-              <Handlung disabled={!online || r.roomCode === null || aktion.isPending}
-                        onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-in' })}>
+              <Handlung disabled={!online || r.roomCode === null}
+                        onClick={() => onCheckIn(r.reservationRef)}>
                 {t('today.checkin')}
               </Handlung>
             )}

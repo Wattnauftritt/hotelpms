@@ -12,8 +12,9 @@ import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
  * gebraucht und nie einzeln; sie getrennt zu holen kostet drei Runden für
  * denselben Bildschirm.
  */
-export function Today({ propertyId, onFolio }: {
+export function Today({ propertyId, onFolio, onCheckIn }: {
   propertyId: number; onFolio: (folioRef: string) => void
+  onCheckIn: (reservationRef: string) => void
 }): JSX.Element {
   const [datum, setDatum] = useState(today())
   const t = useT()
@@ -65,8 +66,11 @@ export function Today({ propertyId, onFolio }: {
                   </button>
                 ) : (
                   <button
-                    disabled={!online || r.roomCode === null || aktion.isPending}
-                    onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-in' })}
+                    disabled={!online || r.roomCode === null}
+                    // Der Check-in-Dialog, nicht der nackte Check-in: dort
+                    // entstehen Meldeschein, Unterschrift und AVS-Datei. Ein
+                    // Klick, der sofort eincheckte, liess genau das aus.
+                    onClick={() => onCheckIn(r.reservationRef)}
                     title={r.roomCode === null ? t('today.needsRoom') : undefined}
                     className="text-xs px-2 py-1 rounded-sm bg-neutral-900 text-white
                                disabled:bg-neutral-300">
