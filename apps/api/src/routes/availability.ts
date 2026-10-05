@@ -216,6 +216,75 @@ function range(req: FastifyRequest, max: number): { from: string; to: string } {
   return { from: q.from, to: q.to }
 }
 
+/**
+ * Verfuegbarkeit je Verkaufscode (Migration 0089).
+ *
+ * Gezaehlt, nicht aus `inventory_day` gelesen: der Bestand wird je Gruppe
+ * gebunden, und der Code ist nur das Etikett, unter dem ein Kanal einen Teil
+ * der Gruppe verkauft. Kapazitaet sind die aktiven Zimmer mit diesem Code,
+ * ohne die ausser Betrieb; belegt ist, was bindet (Optional, Confirmed,
+ * InHouse) und ueber sein Zimmer oder seine Buchung diesen Code traegt.
+ *
+ * **`unassigned`** zaehlt, was in derselben Gruppe bindet, aber keinem Code
+ * gehoert -- eine Buchung auf die Gruppe ohne Zimmer. Wem sie zufaellt,
+ * weiss niemand, bis sie ein Zimmer hat; wer vorsichtig verkauft, zieht sie
+ * von jedem Code der Gruppe ab. Raten waere schlimmer: eine falsch
+ * zugeordnete Belegung verkauft das andere Zimmer doppelt.
+ *
+ * Eine Anweisung ueber Tage, Zimmer und Naechte, keine je Tag.
+ */
+async function jeVerkaufscode(
+  req: FastifyRequest, propertyId: number, from: string, to: string
+): Promise<unknown[]> {
+  const r = await tx(req.pool, req, client => client.query(
+    `WITH tage AS (
+       SELECT d::date AS date FROM generate_series($2::date, $3::date - 1, interval '1 day') d
+     ), codes AS (
+       SELECT DISTINCT u.sales_code, u.category_id
+         FROM resource u
+        WHERE u.property_id = $1 AND u.active AND u.sales_code IS NOT NULL
+     ), kapazitaet AS (
+       SELECT u.sales_code, t.date, count(*)::int AS capacity
+         FROM resource u CROSS JOIN tage t
+        WHERE u.property_id = $1 AND u.active AND u.sales_code IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM maintenance_block m
+             WHERE m.resource_id = u.id AND m.kind = 'out_of_order'
+               AND t.date >= m.from_date AND t.date < m.to_date)
+        GROUP BY 1, 2
+     ), belegung AS (
+       SELECT COALESCE(u.sales_code, r.sales_code) AS sales_code, r.category_id, n.date
+         FROM reservation_night n
+         JOIN reservation r ON r.id = n.reservation_id
+         LEFT JOIN resource u ON u.id = r.resource_id
+        WHERE n.property_id = $1 AND n.date >= $2::date AND n.date < $3::date
+          AND r.status IN ('Optional','Confirmed','InHouse')
+     ), verkauft AS (
+       SELECT sales_code, date, count(*)::int AS n FROM belegung
+        WHERE sales_code IS NOT NULL GROUP BY 1, 2
+     ), offen AS (
+       SELECT category_id, date, count(*)::int AS n FROM belegung
+        WHERE sales_code IS NULL GROUP BY 1, 2
+     )
+     SELECT c.sales_code AS "salesCode", c.category_id AS "categoryId",
+            k.code AS "categoryCode", t.date::text AS date,
+            COALESCE(kp.capacity, 0) AS capacity,
+            COALESCE(v.n, 0) AS sold,
+            COALESCE(o.n, 0) AS unassigned
+       FROM codes c
+       JOIN resource_category k ON k.id = c.category_id
+       CROSS JOIN tage t
+       LEFT JOIN kapazitaet kp ON kp.sales_code = c.sales_code AND kp.date = t.date
+       LEFT JOIN verkauft v    ON v.sales_code = c.sales_code AND v.date = t.date
+       LEFT JOIN offen o       ON o.category_id = c.category_id AND o.date = t.date
+      ORDER BY c.sales_code, t.date`,
+    [propertyId, from, to]))
+  return r.rows.map(z => {
+    const row = z as { capacity: number; sold: number }
+    return { ...row, available: row.capacity - row.sold }
+  })
+}
+
 export function availabilityRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -226,6 +295,14 @@ export function availabilityRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
       const { from, to } = range(req, MAX_AVAILABILITY_DAYS)
+      const by = (req.query as { by?: string }).by
+      if (by !== undefined && by !== 'category' && by !== 'salesCode') {
+        throw Errors.validation({ by: ['field.allowedValues'] },
+          { values: 'category, salesCode' })
+      }
+      if (by === 'salesCode') {
+        return { salesDays: await jeVerkaufscode(req, Number(propertyId), from, to) }
+      }
       // Eine Abfrage, unabhaengig von der Zahl der Reservierungen.
       const rows = await tx(req.pool, req, client => client.query(
         // `category_code` im selben Verbund: ein fremdes System ordnet nach

@@ -318,6 +318,14 @@ export const einstellungen = {
     de: 'Optional, z. B. „Dünenblick“. Steht im Zimmerplan neben der Nummer.',
     en: 'Optional, e.g. “Dune View”. Shown next to the number in the room chart.',
     tr: 'İsteğe bağlı, ör. „Kumul Manzarası“. Oda planında numaranın yanında görünür.' },
+  'master.salesCode': {
+    de: 'Verkaufscode',
+    en: 'Sales code',
+    tr: 'Satış kodu' },
+  'master.salesCodeHint': {
+    de: 'Nur nötig, wenn ein Kanal dieses Zimmer unter einer eigenen Kategorie verkauft, etwa FZ und APT in derselben Zimmergruppe.',
+    en: 'Only needed if a channel sells this room under its own category, such as FZ and APT in the same room category.',
+    tr: 'Yalnızca bir kanal bu odayı kendi kategorisiyle satıyorsa gerekir, örneğin aynı oda tipinde FZ ve APT.' },
   'master.floor': {
     de: 'Etage',
     en: 'Floor',

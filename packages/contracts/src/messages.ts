@@ -1490,6 +1490,10 @@ const M = {
     de: 'Die Nummer {code} ist im Haus schon vergeben.',
     en: 'The number {code} is already taken in this property.',
     tr: '{code} numarası tesiste zaten kullanılıyor.' },
+  'setup.salesCodeOtherCategory': {
+    de: 'Der Verkaufscode {code} gehört schon zu Zimmern einer anderen Zimmergruppe.',
+    en: 'The sales code {code} already belongs to rooms of another room category.',
+    tr: '{code} satış kodu zaten başka bir oda tipinin odalarına ait.' },
   // Erste Einrichtung (routes/firstSetup.ts). Die Felder tragen den Index der
   // Zimmerart, der Satz sagt deshalb nicht noch einmal, welche gemeint ist.
   'firstSetup.codeTwice': {

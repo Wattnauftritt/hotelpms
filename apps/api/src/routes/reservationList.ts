@@ -148,6 +148,10 @@ export function reservationListRoutes(app: FastifyInstance): void {
                   c.code                  AS "categoryCode",
                   c.name                  AS "categoryName",
                   u.code                  AS "roomCode",
+                  -- Unter welchem Code ein Kanal den Aufenthalt verkauft
+                  -- (Migration 0089): der des Zimmers, ohne Zimmer der
+                  -- gebuchte, sonst keiner -- dann gilt die Gruppe.
+                  COALESCE(u.sales_code, r.sales_code) AS "salesCode",
                   CASE WHEN g.status = 'anonymized' THEN NULL
                        ELSE nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '')
                   END                     AS "guestName",
