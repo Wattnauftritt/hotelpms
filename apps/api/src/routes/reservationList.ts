@@ -141,6 +141,12 @@ export function reservationListRoutes(app: FastifyInstance): void {
                   r.legacy_reference      AS "legacyReference",
                   b.source,
                   b.channel_code          AS "channelCode",
+                  -- Wem eine Kanalbuchung gehoert (Migration 0092): 'source',
+                  -- solange das Umsystem sie fuehrt, 'local', sobald die
+                  -- Rezeption sie in StayGrid geaendert hat. Das Umsystem haelt
+                  -- sie dann bei sich fest, statt sie weiter umzuplanen.
+                  b.channel_owner         AS "channelOwner",
+                  r.channel_conflict      AS "channelConflict",
                   r.status,
                   r.arrival::text,
                   r.departure::text,

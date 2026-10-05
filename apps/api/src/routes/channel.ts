@@ -179,8 +179,11 @@ export function channelRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { propertyId } = req.params as { propertyId: string }
       const body = req.body as { provider: string; name: string }
-      if (body.provider !== 'roomcloud') {
-        throw Errors.validation({ provider: ['field.onlyRoomcloud'] })
+      // `generic`: ein Umsystem, das Buchungen fuehrt und per PUT abgleicht
+      // (channelPush.ts). Die Schnittstelle ist dieselbe; der Name sagt,
+      // wer dahinter steht.
+      if (body.provider !== 'roomcloud' && body.provider !== 'generic') {
+        throw Errors.validation({ provider: ['field.channelProvider'] })
       }
       if (!body.name) throw Errors.validation({ name: ['field.required'] })
       const principal = req.principal as Principal
@@ -376,12 +379,14 @@ export function channelRoutes(app: FastifyInstance): void {
         inventoryError(inv.rows[0]!.e)
 
         const inserted = await client.query<{ id: number; public_ref: string }>(
-          `INSERT INTO booking (property_id, source, channel_code, external_reference)
-           VALUES ($1,'channel',$2,$3)
+          `INSERT INTO booking (property_id, source, channel_code, external_reference,
+                                channel_connection_id)
+           VALUES ($1,'channel',$2,$3,$4)
            ON CONFLICT (property_id, external_reference) WHERE external_reference IS NOT NULL
            DO NOTHING
            RETURNING id, public_ref`,
-          [principal.propertyId, principal.provider, body.externalReference])
+          [principal.propertyId, principal.provider, body.externalReference,
+           principal.connectionId])
 
         if (inserted.rowCount === 0) {
           // Zweiter Eingang derselben externen Nummer: die eben gebundene

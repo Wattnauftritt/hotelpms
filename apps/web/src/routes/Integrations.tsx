@@ -460,6 +460,7 @@ function ChannelManager({ propertyId }: { propertyId: number }): JSX.Element {
   const q = useChannelConnections(propertyId)
   const anlegen = useCreateChannelConnection(propertyId)
   const [name, setName] = useState('')
+  const [anbieter, setAnbieter] = useState<'roomcloud' | 'generic'>('roomcloud')
   const [geheimnis, setGeheimnis] = useState<string | null>(null)
 
   return (
@@ -472,17 +473,20 @@ function ChannelManager({ propertyId }: { propertyId: number }): JSX.Element {
             onSubmit={e => {
               e.preventDefault()
               if (name.trim() === '') return
-              anlegen.mutate({ provider: 'roomcloud', name: name.trim() },
+              anlegen.mutate({ provider: anbieter, name: name.trim() },
                 { onSuccess: r => { setGeheimnis(r.token); setName('') } })
             }}>
         <div className="font-medium">{t('chan.new')}</div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
             <div className="text-neutral-600">{t('chan.provider')}</div>
-            {/* Nur ein Anbieter ist angebunden. Eine Auswahl mit einem
-                Eintrag ist ehrlicher als ein Freitextfeld, das 422 gibt. */}
-            <select className={feld} value="roomcloud" disabled>
+            {/* Eine Auswahl statt Freitext, weil die API nur diese zwei
+                annimmt. `generic` ist ein Umsystem, das seine Buchungen
+                fuehrt und per PUT abgleicht (etwa das Adminpanel). */}
+            <select className={feld} value={anbieter}
+                    onChange={e => setAnbieter(e.target.value as 'roomcloud' | 'generic')}>
               <option value="roomcloud">roomcloud</option>
+              <option value="generic">generic</option>
             </select>
           </label>
           <label className="text-sm">

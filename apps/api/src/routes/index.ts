@@ -29,6 +29,7 @@ import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
 import { depositRequestRoutes } from './depositRequests.js'
 import { webhookRoutes } from './webhooks.js'
 import { channelRoutes } from './channel.js'
+import { channelPushRoutes } from './channelPush.js'
 import { posRoutes } from './pos.js'
 import { emailRoutes } from './email.js'
 import { userRoutes } from './users.js'
@@ -91,6 +92,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   depositRequestRoutes(app)
   webhookRoutes(app)
   channelRoutes(app)
+  channelPushRoutes(app)
   posRoutes(app)
   emailRoutes(app, { domains: overrides.domains })
   userRoutes(app)
