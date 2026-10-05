@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { istTerminalAdresse, kioskSchluesselAusAdresse } from '../routes/Terminal.tsx'
+import { hauptskript, istTerminalAdresse, kioskSchluesselAusAdresse } from '../routes/Terminal.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
 
 /**
@@ -222,5 +222,19 @@ describe('Ein allgemeiner Anzeige-Client, kein Scheunentor', () => {
   it('zeigt das Bedienfeld nur mit dem Recht zum Einchecken', () => {
     expect(code('../screens.tsx')).toMatch(
       /key: 'terminal', group: 'settings', nav: 'nav\.terminal', permission: 'reservation:checkin'/)
+  })
+})
+
+describe('Neuer Stand am ruhenden Terminal', () => {
+  it('erkennt das Hauptskript am Hash des Baus', () => {
+    expect(hauptskript('<script type="module" crossorigin src="/assets/index-y32G3BjI.js"></script>'))
+      .toBe('/assets/index-y32G3BjI.js')
+    // Entwicklungsmodus: kein gebautes Skript, keine Pruefung.
+    expect(hauptskript('<script type="module" src="/src/main.tsx"></script>')).toBeNull()
+  })
+
+  it('laedt nur in Ruhe neu, nie mitten in einem Auftrag', () => {
+    expect(terminal).toContain("const ruht = phase.art === 'ruhe'")
+    expect(terminal).toMatch(/if \(!ruht\) return/)
   })
 })

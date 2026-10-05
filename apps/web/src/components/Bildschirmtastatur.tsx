@@ -120,6 +120,23 @@ export function Bildschirmtastatur(): JSX.Element {
     }
   }
 
+  // Eine Funktion, keine Komponente: als Komponente im Rumpf entstuende sie
+  // bei jedem Zeichnen neu, und React baute jede Taste neu auf.
+  const knopf = (taste: Taste, key: number, stil?: React.CSSProperties,
+                 platz = ''): JSX.Element => {
+    const zeichen = taste.art === 'text' && gross ? grossSchreiben(taste.zeichen) : taste.zeichen
+    const name = beschriftung(taste)
+    return (
+      <button key={key} type="button" tabIndex={-1}
+              aria-label={name === '' ? zeichen : name}
+              aria-pressed={taste.art === 'umschalten' ? gross : undefined}
+              onClick={() => druecken(taste)} style={stil}
+              className={`${tastenKlasse(taste, gross)} ${platz}`}>
+        {taste.zeichen === ' ' ? name : zeichen}
+      </button>
+    )
+  }
+
   return (
     <>
       {/* Platzhalter: so weit laesst sich die Seite unter die Tastatur rollen. */}
@@ -138,28 +155,35 @@ export function Bildschirmtastatur(): JSX.Element {
               ✕ {t('kiosk.keyboard.close')}
             </button>
           </div>
-          <div className="space-y-1.5">
-            {EBENEN[ebene].map((reihe, i) => (
-              <div key={`${ebene}-${i}`} className="flex justify-center gap-1.5">
-                {reihe.map((taste, j) => {
-                  const zeichen = taste.art === 'text' && gross
-                    ? grossSchreiben(taste.zeichen) : taste.zeichen
-                  const name = beschriftung(taste)
-                  return (
-                    <button key={j} type="button" tabIndex={-1}
-                            aria-label={name === '' ? zeichen : name}
-                            aria-pressed={taste.art === 'umschalten' ? gross : undefined}
-                            onClick={() => druecken(taste)}
-                            style={{ flex: taste.breite ?? 1,
-                                     maxWidth: `${(taste.breite ?? 1) * 88}px` }}
-                            className={tastenKlasse(taste, gross)}>
-                      {taste.zeichen === ' ' ? name : zeichen}
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
+          {ebene === 'ziffern' ? (
+            /*
+             * Der Ziffernblock als Raster wie am Telefon: drei Spalten Ziffern,
+             * rechts eine eigene Spalte mit Loeschen und einem hohen "Weiter".
+             * Als Reihen mit Flex gesetzt, war jede Reihe fuer sich zentriert
+             * und die Spalten standen versetzt. Loeschen und Weiter haben
+             * einen festen Platz; die uebrigen Tasten fuellen die freien
+             * Zellen der Reihe nach.
+             */
+            <div className="mx-auto grid max-w-xl grid-cols-4 gap-1.5">
+              {EBENEN.ziffern.flat().map((taste, j) =>
+                // Die Hoehe von "Weiter" inline: `h-16` aus der Grundklasse
+                // und ein `h-auto` daneben entschiede die Reihenfolge im
+                // erzeugten Stylesheet, nicht die im Attribut.
+                taste.art === 'loeschen' ? knopf(taste, j, undefined, 'col-start-4 row-start-1')
+                  : taste.art === 'weiter'
+                    ? knopf(taste, j, { height: 'auto' }, 'col-start-4 row-start-2 row-span-3')
+                    : knopf(taste, j))}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {EBENEN[ebene].map((reihe, i) => (
+                <div key={`${ebene}-${i}`} className="flex justify-center gap-1.5">
+                  {reihe.map((taste, j) => knopf(taste, j,
+                    { flex: taste.breite ?? 1, maxWidth: `${(taste.breite ?? 1) * 88}px` }))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>

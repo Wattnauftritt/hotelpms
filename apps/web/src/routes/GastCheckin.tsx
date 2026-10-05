@@ -337,6 +337,24 @@ function Formular({ token, view, gross, onErledigt }: {
     || (bedingungenOk && (!bedingungenUnterschrift || bedingungenSignatur !== null))
   const felder = feldFehler(fehler, locale)
 
+  /*
+   * Am Terminal geht nach der Wahl der Staatsangehoerigkeit das erste leere
+   * Feld in Fokus, und damit die Bildschirmtastatur auf. Ohne das stand der
+   * Gast vor einer Seite voller Felder ohne Tastatur und wusste nicht, dass
+   * er erst eines antippen muss. Nur beim ersten Mal: wer danach das Land
+   * aendert, steht schon mitten in den Feldern.
+   */
+  const formular = useRef<HTMLFormElement | null>(null)
+  const landGewaehlt = ich.nationality !== ''
+  const schonFokussiert = useRef(false)
+  useEffect(() => {
+    if (!gross || !landGewaehlt || schonFokussiert.current) return
+    schonFokussiert.current = true
+    const felder = [...(formular.current?.querySelectorAll<HTMLInputElement>(
+      'input:not([type]), input[type="text"]') ?? [])]
+    ;(felder.find(f => f.value === '') ?? felder[0])?.focus()
+  }, [gross, landGewaehlt])
+
   const eingabe = `mt-0.5 w-full border rounded-sm bg-white
     ${gross ? 'px-3 py-3 text-lg' : 'px-2 py-1.5 text-sm'}`
   const rahmen = (pfad: string): string =>
@@ -437,7 +455,7 @@ function Formular({ token, view, gross, onErledigt }: {
   }
 
   return (
-    <form className="space-y-4" noValidate
+    <form ref={formular} className="space-y-4" noValidate
           onSubmit={e => { e.preventDefault(); void absenden() }}>
       <div className={abschnitt}>
         <p className="font-medium">{t('gastCheckin.welcome', { name: view.firstName ?? view.lastName })}</p>

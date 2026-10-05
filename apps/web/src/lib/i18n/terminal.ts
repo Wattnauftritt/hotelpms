@@ -566,5 +566,9 @@ export const terminal = {
   'kiosk.date.placeholder': {
     de: 'TT.MM.JJJJ',
     en: 'DD.MM.YYYY',
-    tr: 'GG.AA.YYYY' }
+    tr: 'GG.AA.YYYY' },
+  'kiosk.date.invalid': {
+    de: 'Bitte als Tag, Monat, Jahr eingeben, zum Beispiel 03.11.1985.',
+    en: 'Please enter day, month, year, for example 03.11.1985.',
+    tr: 'Lütfen gün, ay, yıl olarak girin, örneğin 03.11.1985.' }
 } as const satisfies Record<string, LocalizedText>

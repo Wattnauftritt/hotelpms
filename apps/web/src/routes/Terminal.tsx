@@ -70,6 +70,19 @@ const DANKE_MS = 4_000
 
 /** Wie oft die Diashow neu geholt wird. Seiten aendern sich selten. */
 const DIASHOW_NEU_MS = 5 * 60_000
+/** Wie oft die ruhende Seite nachsieht, ob ein neuer Stand ausgeliefert ist. */
+const STAND_MS = 60_000
+
+/**
+ * Das Hauptskript, auf das eine `index.html` verweist, sonst `null`.
+ *
+ * Sein Name traegt den Hash des Baus (`/assets/index-…js`); aendert er sich,
+ * ist ein neuer Stand ausgeliefert. Im Entwicklungsmodus gibt es keinen
+ * solchen Namen, und die Pruefung schweigt.
+ */
+export function hauptskript(html: string): string | null {
+  return /\/assets\/index-[\w-]+\.js/.exec(html)?.[0] ?? null
+}
 
 type Art = 'registration_fill' | 'registration_sign' | 'terms_sign' | 'content' | 'url'
 
@@ -266,6 +279,35 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
       window.clearInterval(pruefen)
     }
   }, [auftrag])
+
+  // ---------------------------------------- neuer Stand, neu laden
+  /*
+   * Eine Auslieferung erreicht eine offene Seite nicht von selbst. Die
+   * Rezeption laedt neu, wenn sie will; das Terminal steht dagegen Tage im
+   * Ruhezustand, und der naechste Auftrag oeffnete sich noch im alten Stand
+   * -- so stand die neue Bildschirmtastatur ausgeliefert auf dem Server und
+   * erschien am Touchscreen trotzdem nicht. Deshalb sieht die ruhende Seite
+   * minuetlich in `index.html` nach und baut sich neu auf, wenn das
+   * Hauptskript ein anderes ist. Nur in Ruhe: ein Gast mitten im Formular
+   * verloere sonst, was er getippt hat.
+   */
+  const ruht = phase.art === 'ruhe'
+  useEffect(() => {
+    if (!ruht) return
+    const jetzt = hauptskript(document.documentElement.outerHTML)
+    if (jetzt === null) return
+    let aus = false
+    const z = window.setInterval(() => {
+      fetch('/', { cache: 'no-store' })
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          const neu = html === null ? null : hauptskript(html)
+          if (!aus && neu !== null && neu !== jetzt) abraeumen()
+        })
+        .catch(() => { /* ohne Netz bleibt der alte Stand */ })
+    }, STAND_MS)
+    return () => { aus = true; window.clearInterval(z) }
+  }, [ruht])
 
   // ---------------------------------------------- Dank, dann Ruhe
   useEffect(() => {

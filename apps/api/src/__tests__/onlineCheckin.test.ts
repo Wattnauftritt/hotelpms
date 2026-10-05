@@ -311,6 +311,18 @@ describe('Die Gastseite', () => {
     expect(JSON.parse((await formular(token)).body).state).toBe('done')
   })
 
+  it('meldet ein leeres Geburtsdatum als fehlend, nicht als falsches Format', async () => {
+    // Das Formular am Terminal schickt ein Datum, das es nicht lesen konnte,
+    // leer. Der Gast las dafuer "Datum im Format YYYY-MM-DD erwartet".
+    const r = await reservierung()
+    const token = await mailLink(r.ref)
+    const leer = await einreichen(token, inlaendisch({ birthDate: '' }))
+    expect(leer.statusCode).toBe(422)
+    expect(JSON.parse(leer.body).errorKeys['guest.birthDate']).toEqual(['field.required'])
+    const falsch = await einreichen(token, inlaendisch({ birthDate: '17.05.1980' }))
+    expect(JSON.parse(falsch.body).errorKeys['guest.birthDate']).toEqual(['field.isoDate'])
+  })
+
   it('verlangt vom auslaendischen Gast die Passnummer und nimmt ueber den Mail-Link keine Unterschrift', async () => {
     const r = await reservierung()
     const token = await mailLink(r.ref)
