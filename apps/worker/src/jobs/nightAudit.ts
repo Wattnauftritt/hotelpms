@@ -225,10 +225,21 @@ async function postCityTax(
  * die Stornoregel das vorsieht; eine ungarantierte verfaellt folgenlos. Wer
  * beide gleich behandelt, stellt entweder zu Unrecht in Rechnung oder
  * verschenkt den Erloes einer verkauften Nacht.
+ *
+ * **Nur, wo das Haus es so will** (Migration 0088). Vorgabe ist das
+ * Gegenteil: eine Anreise, die niemand storniert hat, gilt als angereist,
+ * auch ohne Check-in. Wer nicht jeden Gast eincheckt -- oder noch im
+ * Altsystem --, haette sonst jeden Morgen eine Liste falscher No-Shows.
  */
 async function noShows(
   client: PoolClient, propertyId: number, businessDate: string
 ): Promise<number> {
+  const regel = await client.query<{ unchecked_arrival: string }>(
+    `SELECT unchecked_arrival FROM property WHERE id = $1`, [propertyId])
+  if (regel.rows[0]?.unchecked_arrival !== 'no_show') {
+    return unattendedArrivals(client, propertyId, businessDate)
+  }
+
   const offen = await client.query<{
     id: number; category_id: number; arrival: string; departure: string
     guaranteed: boolean; fee_kind: string | null; fee_value: number | null
@@ -288,6 +299,40 @@ async function noShows(
     [zeilen.map(z => z.id), zeilen.map(z => z.fee > 0 ? z.fee : null)])
 
   return offen.rowCount ?? 0
+}
+
+/**
+ * Was im Kalender steht, ist da: die nicht eingecheckten Anreisen des Tages
+ * werden eingecheckt.
+ *
+ * Das Kontingent bleibt, wie es ist -- bestaetigt und im Haus binden beide.
+ * Die Logis und die Kurtaxe dieser Nacht bucht der Schritt nach: Schritt 2
+ * und 3 sind schon gelaufen, als die Reservierung noch bestaetigt war, und
+ * haetten sie uebergangen. Beide Funktionen buchen nur, was noch fehlt, und
+ * treffen die schon gebuchten Gaeste deshalb nicht ein zweites Mal.
+ */
+async function unattendedArrivals(
+  client: PoolClient, propertyId: number, businessDate: string
+): Promise<number> {
+  const r = await client.query(
+    `UPDATE reservation r
+        SET status = 'InHouse', updated_at = now(),
+            -- Den Tag kennt der Kalender, die Uhrzeit nicht.
+            checked_in_at = r.arrival::timestamp AT TIME ZONE p.timezone
+       FROM property p
+      WHERE p.id = r.property_id
+        AND r.property_id = $1 AND r.arrival = $2::date AND r.status = 'Confirmed'
+        -- Im Haus heisst in einem Zimmer. Eine Anreise ohne Zimmer steht in
+        -- keiner Zeile des Kalenders; sie bleibt bestaetigt, bindet weiter
+        -- und zaehlt weiter mit, bis jemand ihr ein Zimmer gibt.
+        AND r.resource_id IS NOT NULL`,
+    [propertyId, businessDate])
+  const n = r.rowCount ?? 0
+  if (n > 0) {
+    await postAccommodation(client, propertyId, businessDate)
+    await postCityTax(client, propertyId, businessDate)
+  }
+  return n
 }
 
 /**
