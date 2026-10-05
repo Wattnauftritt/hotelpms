@@ -84,16 +84,33 @@ export function AvsEinstellung({ propertyId }: { propertyId: number }): JSX.Elem
           <input value={fruehstueck} inputMode="decimal"
                  onChange={e => setFruehstueck(e.target.value)} className={eingabe} />
         </label>
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('avsSettings.origin')}</span>
-          <input value={origin} onChange={e => setOrigin(e.target.value)} className={eingabe} />
-        </label>
-        <label className="block text-sm">
-          <span className="block text-xs text-neutral-600 mb-1">{t('avsSettings.userName')}</span>
-          <input value={userName} onChange={e => setUserName(e.target.value)}
-                 className={eingabe} />
-        </label>
       </div>
+      {/*
+       * Herkunfts-ID und Benutzer sagen AVS nur, aus welchem Programm die
+       * Datei kommt; das Adminpanel schreibt fest "Adminpanel" und fragt nie
+       * danach. Eingeklappt, damit niemand meint, er muesse dort etwas von
+       * der Kurverwaltung eintragen.
+       */}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-xs text-neutral-600">
+          {t('avsSettings.more')}
+        </summary>
+        <p className="text-xs text-neutral-500 mt-2">{t('avsSettings.moreHint')}</p>
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('avsSettings.origin')}</span>
+            <input value={origin} onChange={e => setOrigin(e.target.value)}
+                   className={eingabe} />
+          </label>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">
+              {t('avsSettings.userName')}
+            </span>
+            <input value={userName} onChange={e => setUserName(e.target.value)}
+                   className={eingabe} />
+          </label>
+        </div>
+      </details>
       <p className="text-xs text-neutral-500">{t('avsSettings.categoryHint')}</p>
       {speichern.isError && <Fehler error={speichern.error} />}
       <div className="flex items-center gap-3">
