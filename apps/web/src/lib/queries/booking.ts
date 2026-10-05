@@ -349,6 +349,9 @@ export interface RegistrationForm {
    */
   signaturePending: boolean
   source: 'desk' | 'online' | 'terminal' | null
+  /** Mitreisende des vorliegenden Scheins; leer, solange keiner vorliegt. */
+  companions: Array<{ lastName: string; firstName: string | null
+                      birthDate: string | null; nationality: string | null }>
 }
 
 /** Vorbefuellter Meldeschein (A9): alles, was das Haus schon weiss, in einem Aufruf. */

@@ -1,45 +1,38 @@
 import { useState } from 'react'
-import { istAuslaendisch, type Guest } from '@hotelpms/contracts'
 import { useReservation, useRegistrationForm, useSubmitRegistration, useCheckIn,
-         useSetReservationGuest, useTerms, useAgreeTerms,
-         type Hausbedingung } from '../lib/queries/booking.js'
+         useSetReservationGuest, useTerms,
+         type RegistrationForm } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { GuestPicker } from '../components/GuestPicker.tsx'
 import { Dialog, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
-import { AmTerminal } from '../components/AmTerminal.tsx'
+import { TerminalAuftrag } from '../components/AmTerminal.tsx'
 import { useAvsStand, useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
+import type { Guest } from '@hotelpms/contracts'
 
 /**
- * Check-in mit Meldeschein (A9), erreichbar aus dem Plan.
+ * Check-in mit Meldeschein (A9), erreichbar aus dem Plan und aus "Heute".
  *
- * Seit dem 1.1.2025 unterschreiben nur noch ausländische Gäste. Für einen
- * inländischen Gast erscheint deshalb **gar kein** Unterschriftsfeld -- es
- * gibt dafür seit dem Stichtag keinen Rechtsgrund mehr, und ein System, das
- * es trotzdem verlangt, hält die Rezeption ohne Grund auf.
+ * **Der Dialog zeigt eins von zwei Dingen** (Sven, 05.10.2026): den schon
+ * ausgefuellten Meldeschein mit Inhalt, oder einen grossen Knopf
+ * "Meldeformular auf Gaesteterminal oeffnen". Alles andere ist dorthin
+ * gewandert, wo der Gast steht:
  *
- * **Hier fällt die Namensliste an.** Ein Bucher nimmt fünf Zimmer, und die
- * übrigen Namen stehen bis zum Anreisetag nicht fest; geplant wird deshalb
- * mit seinem Namen. Jetzt stehen die Leute am Tresen, und jedes Zimmer
- * bekommt seinen eigenen Gast — § 30 BMG verlangt den tatsächlichen, nicht
- * den, der bestellt hat. Bisher ging das hier nicht: die Maske zeigte den
- * Hauptgast an und konnte ihn nicht ändern, und ohne Gast war sie eine
+ * - **Mitreisende** traegt der Gast im Formular selbst ein. Die Gastsuche,
+ *   ueber die die Rezeption sie hier anhaengte, verwirrte mehr, als sie half.
+ * - **Hausbedingungen** stehen am Ende des Meldeformulars und werden dort
+ *   mit derselben Unterschrift unterschrieben -- kein eigener Kasten, kein
+ *   eigener Auftrag.
+ * - **Unterschreiben** tut nur der Gast, am Terminal. Ein Zeichenfeld am
+ *   Rezeptionsbildschirm lud dazu ein, fuer ihn zu unterschreiben.
+ *
+ * Seit dem 1.1.2025 unterschreiben nur noch auslaendische Gaeste den
+ * Meldeschein; fehlt deren Unterschrift nach einer Vorab-Erfassung per Link,
+ * fordert der Knopf sie am Terminal an.
+ *
+ * **Ohne gekoppeltes Terminal** bleibt ein leiser Ausweg: der Schein aus den
+ * vorhandenen Daten. Sonst waere ein Haus ohne Geraet hier in einer
  * Sackgasse.
- *
- * **Hausbedingungen stehen daneben, nicht darin.** Viele Häuser lassen den
- * Gast am selben Tresen mehr unterschreiben als seine Meldedaten — eine
- * Pauschale bei Verlust der Zimmerkarte etwa. Das ist zulässig und hier
- * vorgesehen, aber als **eigener** Nachweis: der Meldeschein ist
- * öffentlich-rechtlich, zweckgebunden und wird nach einem Jahr vernichtet;
- * eine Vereinbarung über 50 Euro ist privatrechtlich und muss länger halten.
- * Deshalb unterschreibt hier auch ein inländischer Gast — die Bedingung,
- * nicht den Meldeschein.
- *
- * **Mitreisende gehören dazu, nicht in eine zweite Maske.** Die Meldepflicht
- * gilt je Person; bei einer Reisegruppe entsteht daraus ein
- * Sammelmeldeschein, bei dem jeder einen eigenen Datensatz bekommt, der auf
- * den Hauptschein zeigt, und bei dem die Reiseleitung unterschreibt. Die API
- * nimmt `occupantGuestRefs` seit jeher an — geschickt hat sie nie jemand.
  *
  * **Die AVS-Datei entsteht im selben Ablauf** (Sven, 05.10.2026): Einchecken
  * klicken, Meldeschein erfassen, falls er fehlt, Datei herunterladen und in
@@ -52,16 +45,12 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   reservationRef: string; propertyId: number; onClose: () => void
 }): JSX.Element {
   const t = useT()
-  const locale = useLocale()
   const reservierung = useReservation(reservationRef)
   const form = useRegistrationForm(reservationRef)
   const [gastWechseln, setGastWechseln] = useState(false)
-  const [mitreisende, setMitreisende] = useState<Guest[]>([])
-  const [neuerMitreisender, setNeuerMitreisender] = useState<Guest | null>(null)
   const anmelden = useSubmitRegistration(propertyId)
   const einchecken = useCheckIn(reservationRef)
   const gastSetzen = useSetReservationGuest(reservationRef)
-  const bedingungen = useTerms(reservationRef)
   const avsMelden = useAvsMelden(reservationRef)
   const [gaestekarte, setGaestekarte] = useState<boolean | null>(null)
 
@@ -78,25 +67,9 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   // Ohne zugewiesenes Zimmer lehnt die API den Check-in ab -- das sagt die
   // Maske vorher, statt den Knopf drueckbar zu machen und dann zu scheitern.
   const ohneZimmer = reservierung.data !== undefined && reservierung.data.resourceId === null
-  /*
-   * Der Meldeschein selbst -- vorgezogen, weil der Knopf "Einchecken" im
-   * Fuss der Maske steht und wissen muss, ob schon angemeldet wurde. Im
-   * Rumpf steht er nicht mehr: bei einer Gruppe mit Bedingungen rollte er
-   * unter den Rand, und dann sah die Maske aus, als habe sie keinen.
-   */
   const f = form.data
-  /*
-   * Eine auslaendische Person auf dem Schein verlangt die Unterschrift, auch
-   * wenn der Hauptgast deutsch ist -- dieselbe Regel wie in der Schnittstelle
-   * (`istAuslaendisch`, Dokument 30). Die Maske fragt sie vorher ab, statt
-   * den Knopf drueckbar zu machen und dann mit 422 zu scheitern.
-   */
-  const unterschriftNoetig = f !== undefined && (f.signatureRequired
-    || mitreisende.some(m => istAuslaendisch({ nationality: m.nationality,
-                                                country: m.address.country })))
   // Vorab per Link erfasst, Unterschrift steht aus: erst unterschreiben,
-  // dann einchecken. Sie gehoert an den Anreisetag, und der ist jetzt; der
-  // Gast leistet sie am Gaesteterminal, die Maske fragt danach neu.
+  // dann einchecken. Sie gehoert an den Anreisetag, und der ist jetzt.
   const unterschriftOffen = f?.signaturePending === true
   const angemeldet = f !== undefined && (f.alreadyRegistered || anmelden.isSuccess)
   // Neu fragen, sobald der Schein hier entsteht oder unterschrieben wird.
@@ -115,9 +88,9 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
 
   return (
     /*
-     * `nebenbeiSchliessen={false}`: im Kasten steht eine gezeichnete
-     * Unterschrift, die nirgends gespeichert ist. Ein Klick neben den Rand
-     * waere sie los, und der Gast unterschriebe ein zweites Mal.
+     * `nebenbeiSchliessen={false}`: waehrend der Gast am Terminal ausfuellt,
+     * zeigt der Dialog den Stand des Auftrags. Ein Klick neben den Rand waere
+     * er los, und die Rezeption saehe nicht, wann der Schein steht.
      */
     <Dialog breite="breit" nebenbeiSchliessen={false} onClose={onClose}
             titel={t('checkin.title')} unterzeile={reservationRef}
@@ -163,10 +136,9 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
         {f !== undefined && (() => {
           if (f.guest === null || gastWechseln) {
             /*
-             * Ohne Gast war das hier eine Sackgasse: die Maske sagte "kein
-             * Gast hinterlegt" und bot nichts an. Genau dieser Fall ist bei
-             * einer Gruppe der Normalfall -- vier von fuenf Zimmern haben
-             * noch keinen Namen.
+             * Ohne Gast gibt es kein Meldeformular: das Terminal fuellt es
+             * fuer den Gast der Reservierung aus. Bei einer Gruppe ist das der
+             * Normalfall -- vier von fuenf Zimmern haben noch keinen Namen.
              */
             return (
               <div className="space-y-2">
@@ -184,124 +156,57 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
           }
           return (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-sm bg-neutral-50 rounded-sm p-2">
-                <div>
-                  <div className="text-xs text-neutral-500">{t('plan.guest')}</div>
-                  <div className="flex items-center gap-2">
-                    <span className="grow truncate">
-                      {f.guest.lastName}{f.guest.firstName ? `, ${f.guest.firstName}` : ''}
-                    </span>
-                    {/* Nach dem Meldeschein nicht mehr: er ist eine Erklaerung
-                        dieser Person ueber sich selbst. */}
-                    {!f.alreadyRegistered && (
-                      <button type="button" onClick={() => setGastWechseln(true)}
-                              className="text-xs text-neutral-500 underline shrink-0">
-                        {t('guestPicker.change')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-neutral-500">{t('plan.stay')}</div>
-                  <div>{formatDate(f.arrival, locale)} – {formatDate(f.plannedDeparture, locale)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-neutral-500">{t('guests.address')}</div>
-                  <div>{[f.guest.address.postalCode, f.guest.address.city]
-                    .filter(Boolean).join(' ') || '—'}
-                    {f.guest.address.country ? ` · ${f.guest.address.country}` : ''}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-neutral-500">{t('guests.nationality')}</div>
-                  <div>{f.guest.nationality ?? '—'}</div>
-                </div>
-              </div>
-
-              {f.alreadyRegistered ? (
+              {angemeldet ? (
                 <>
-                  <p className="text-sm text-emerald-800">✓ {t('checkin.alreadyRegistered')}</p>
-                  {f.signatureRequired && f.signedAt !== null && (
-                    <p className="text-sm text-emerald-800">✓ {t('terminal.checkin.signed')}</p>
-                  )}
+                  <Meldeschein f={f} reservationRef={reservationRef} />
                   {unterschriftOffen && (
-                    <p className="text-xs text-amber-900 border border-amber-200 bg-amber-50
-                                  rounded-sm p-2">
-                      {t('checkin.signAtTerminal')}
-                    </p>
+                    <>
+                      <p className="text-xs text-amber-900 border border-amber-200 bg-amber-50
+                                    rounded-sm p-2">
+                        {t('checkin.signAtTerminal')}
+                      </p>
+                      <TerminalAuftrag reservationRef={reservationRef} kind="registration_sign"
+                                       beschriftung={t('checkin.requestSignature')} />
+                    </>
                   )}
-                  {/* Die Bedingungen bleiben sichtbar: der Meldeschein kann
-                      vorliegen und die Unterschrift darunter noch fehlen. */}
-                  <AmTerminal reservationRef={reservationRef} />
-                  {(bedingungen.data?.terms ?? []).map(b => (
-                    <Bedingung key={b.termsRef} bedingung={b}
-                               reservationRef={reservationRef} />
-                  ))}
                 </>
               ) : (
                 <>
-                  <p className="text-xs text-neutral-600">
-                    {unterschriftNoetig
-                      ? t('checkin.signatureRequired')
-                      : t('checkin.noSignatureNeeded')}
-                  </p>
-                  <div className="space-y-1">
-                    <div className="text-xs text-neutral-600">{t('checkin.occupants')}</div>
-                    <p className="text-xs text-neutral-500">{t('checkin.occupantsHint')}</p>
-                    {mitreisende.map(m => (
-                      <div key={m.guestRef}
-                           className="flex items-center gap-2 text-sm border
-                                      border-neutral-200 rounded-sm px-2 py-1">
-                        <span className="grow truncate">
-                          {m.lastName}{m.firstName ? `, ${m.firstName}` : ''}
-                        </span>
-                        <button type="button" title={t('group.remove')}
-                                onClick={() => setMitreisende(
-                                  mitreisende.filter(x => x.guestRef !== m.guestRef))}
-                                className="text-xs text-neutral-500 hover:text-red-700 px-1">
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <GuestPicker value={neuerMitreisender}
-                                 onChange={g => {
-                                   if (g === null) { setNeuerMitreisender(null); return }
-                                   // Nicht zweimal dieselbe Person, und nicht
-                                   // den Hauptgast noch einmal: beides
-                                   // erhoehte die Personenzahl auf dem
-                                   // Meldeschein um jemanden, der schon
-                                   // daraufsteht.
-                                   if (g.guestRef !== f.guest?.guestRef
-                                       && !mitreisende.some(x => x.guestRef === g.guestRef)) {
-                                     setMitreisende([...mitreisende, g])
-                                   }
-                                   setNeuerMitreisender(null)
-                                 }} />
+                  <div className="flex items-center gap-2 text-sm bg-neutral-50 rounded-sm p-2">
+                    <span className="grow truncate">
+                      {f.guest.lastName}{f.guest.firstName ? `, ${f.guest.firstName}` : ''}
+                    </span>
+                    <button type="button" onClick={() => setGastWechseln(true)}
+                            className="text-xs text-neutral-500 underline shrink-0">
+                      {t('guestPicker.change')}
+                    </button>
                   </div>
-                  <AmTerminal reservationRef={reservationRef} />
-                  {(bedingungen.data?.terms ?? []).map(b => (
-                    <Bedingung key={b.termsRef} bedingung={b}
-                               reservationRef={reservationRef} />
-                  ))}
-                  {anmelden.isError && <Fehler error={anmelden.error} />}
-                  {/*
-                   * Keine Unterschrift am Rezeptionsbildschirm (Sven,
-                   * 05.10.2026): die Rezeption soll nicht fuer den Gast
-                   * unterschreiben. Verlangt der Schein eine, entsteht er
-                   * ohne sie, und der Gast leistet sie am Gaesteterminal --
-                   * derselbe Weg wie nach dem Link (Dokument 31).
-                   */}
-                  <button type="button" disabled={anmelden.isPending}
-                          title={unterschriftNoetig
-                            ? t('terminal.checkin.signLaterHint') : undefined}
-                          onClick={() => anmelden.mutate({
-                            reservationRef,
-                            signatureLater: unterschriftNoetig ? true : undefined,
-                            occupantGuestRefs: mitreisende.length === 0
-                              ? undefined : mitreisende.map(m => m.guestRef) })}
-                          className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
-                                     disabled:opacity-40">
-                    {t('checkin.register')}
-                  </button>
+                  <TerminalAuftrag reservationRef={reservationRef} kind="registration_fill"
+                                   beschriftung={t('checkin.openFormAtTerminal')}
+                                   ohneTerminal={
+                                     <div className="space-y-2 text-center py-4">
+                                       <p className="text-sm text-neutral-600">
+                                         {t('checkin.noTerminal')}
+                                       </p>
+                                       {/* Der Schein aus den vorhandenen Daten.
+                                           Verlangt er eine Unterschrift, entsteht
+                                           er ohne sie; der Gast leistet sie
+                                           spaeter am Terminal. */}
+                                       <button type="button" disabled={anmelden.isPending}
+                                               onClick={() => anmelden.mutate({
+                                                 reservationRef,
+                                                 signatureLater: f.signatureRequired
+                                                   ? true : undefined })}
+                                               className="text-xs text-neutral-600 underline
+                                                          disabled:opacity-40">
+                                         {t('checkin.registerWithoutTerminal')}
+                                       </button>
+                                       {anmelden.isError && <Fehler error={anmelden.error} />}
+                                     </div>
+                                   } />
+                  <p className="text-xs text-neutral-500 text-center">
+                    {t('checkin.openFormHint')}
+                  </p>
                 </>
               )}
 
@@ -321,50 +226,90 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
 }
 
 /**
- * Eine Hausbedingung am Tresen.
- *
- * Der Text steht vollständig da, nicht als Verweis: unterschrieben wird,
- * was man gelesen hat. Verlangt die Fassung keine Unterschrift, genügt ein
- * Klick — eine Unterschrift ohne Anlass wäre eine Erhebung ohne Rechtsgrund,
- * dieselbe Überlegung wie beim Meldeschein des inländischen Gastes.
- *
- * **Unterschreiben tut der Gast, am Gästeterminal** (Sven, 05.10.2026). Ein
- * Zeichenfeld am Rezeptionsbildschirm lud dazu ein, für den Gast zu
- * unterschreiben. Der Auftrag ans Terminal steht im Kasten darüber; hier
- * steht, ob die Unterschrift vorliegt.
+ * Der ausgefuellte Meldeschein, wie er vorliegt: Gast, Anschrift,
+ * Mitreisende, Unterschrift und die Hausbedingungen, die mit ihm
+ * unterschrieben wurden. Nur Anzeige -- geaendert wird er hier nicht mehr,
+ * er ist eine Erklaerung des Gastes ueber sich selbst.
  */
-function Bedingung({ bedingung, reservationRef }: {
-  bedingung: Hausbedingung; reservationRef: string
+function Meldeschein({ f, reservationRef }: {
+  f: RegistrationForm; reservationRef: string
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
-  const zustimmen = useAgreeTerms(reservationRef)
+  const bedingungen = useTerms(reservationRef)
+  const g = f.guest!
+  const datum = (d: string | null): string => d === null ? '—' : formatDate(d.slice(0, 10), locale)
+  const name = (p: { lastName: string; firstName: string | null }): string =>
+    `${p.lastName}${p.firstName ? `, ${p.firstName}` : ''}`
 
   return (
-    <div className="border border-neutral-200 rounded-sm p-2 space-y-2">
-      <div className="text-sm font-medium">{bedingung.title}</div>
-      <p className="text-xs text-neutral-600 whitespace-pre-line">{bedingung.body}</p>
+    <div className="border border-neutral-200 rounded-sm p-3 space-y-3 text-sm">
+      <div className="flex items-baseline gap-2">
+        <span className="font-medium grow">{t('checkin.registration')}</span>
+        <span className="text-emerald-800">✓</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Angabe titel={t('plan.guest')}>{name(g)}</Angabe>
+        <Angabe titel={t('plan.stay')}>
+          {formatDate(f.arrival, locale)} – {formatDate(f.plannedDeparture, locale)}
+        </Angabe>
+        <Angabe titel={t('guests.birthDate')}>{datum(g.birthDate)}</Angabe>
+        <Angabe titel={t('guests.nationality')}>{g.nationality ?? '—'}</Angabe>
+        <div className="col-span-2">
+          <Angabe titel={t('guests.address')}>
+            {[g.address.line1, [g.address.postalCode, g.address.city].filter(Boolean).join(' '),
+              g.address.country].filter(Boolean).join(', ') || '—'}
+          </Angabe>
+        </div>
+      </div>
 
-      {bedingung.agreed ? (
-        <p className="text-sm text-emerald-800">
-          ✓ {bedingung.signed
-            ? t('terms.signedByGuest', { datum: bedingung.agreedAt === null ? ''
-                : formatDate(bedingung.agreedAt.slice(0, 10), locale) })
-            : t('terms.accepted')}
-        </p>
-      ) : bedingung.requiresSignature ? (
-        <p className="text-xs text-amber-900">{t('terms.signAtTerminal')}</p>
-      ) : (
-        <>
-          {zustimmen.isError && <Fehler error={zustimmen.error} />}
-          <button type="button" disabled={zustimmen.isPending}
-                  onClick={() => zustimmen.mutate({ termsRef: bedingung.termsRef })}
-                  className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
-                             disabled:opacity-40">
-            {t('terms.accept')}
-          </button>
-        </>
+      {f.companions.length > 0 && (
+        <div>
+          <div className="text-xs text-neutral-500">{t('checkin.occupants')}</div>
+          <ul className="space-y-0.5">
+            {f.companions.map((m, i) => (
+              <li key={i}>
+                {name(m)}
+                <span className="text-neutral-500">
+                  {' · '}{datum(m.birthDate)}{m.nationality ? ` · ${m.nationality}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
+
+      <div className="space-y-1">
+        {f.signatureRequired ? (
+          f.signedAt !== null && (
+            <p className="text-emerald-800">
+              ✓ {t('terms.signedByGuest', { datum: datum(f.signedAt) })}
+            </p>
+          )
+        ) : (
+          <p className="text-xs text-neutral-600">{t('checkin.noSignatureNeeded')}</p>
+        )}
+        {(bedingungen.data?.terms ?? []).map(b => (
+          <p key={b.termsRef} className={b.agreed ? 'text-emerald-800' : 'text-neutral-600'}>
+            {b.agreed ? '✓ ' : ''}{b.title}
+            {': '}
+            {b.agreed
+              ? b.signed
+                ? t('terms.signedByGuest', { datum: datum(b.agreedAt) })
+                : t('terms.accepted')
+              : t('terms.notSigned')}
+          </p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Angabe({ titel, children }: { titel: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div>
+      <div className="text-xs text-neutral-500">{titel}</div>
+      <div>{children}</div>
     </div>
   )
 }

@@ -1015,10 +1015,6 @@ export const plan = {
     de: 'Für diese Reservierung liegt bereits ein Meldeschein vor.',
     en: 'This reservation already has a registration form.',
     tr: 'Bu rezervasyon için zaten bir Meldeschein var.' },
-  'checkin.signatureRequired': {
-    de: 'Ausländischer Gast: Unterschrift erforderlich.',
-    en: 'Foreign guest: signature required.',
-    tr: 'Yabancı misafir: imza zorunlu.' },
   'checkin.noSignatureNeeded': {
     de: 'Inländischer Gast: seit dem 1.1.2025 keine Unterschrift nötig.',
     en: 'Domestic guest: no signature needed since 1 Jan 2025.',
@@ -1034,14 +1030,6 @@ export const plan = {
     de: 'Mitreisende',
     en: 'Further occupants',
     tr: 'Birlikte kalanlar' },
-  'checkin.occupantsHint': {
-    de: 'Die Meldepflicht gilt je Person. Bei einer Reisegruppe entsteht daraus '
-      + 'ein Sammelmeldeschein: jeder bekommt einen eigenen Datensatz, '
-      + 'unterschrieben wird einmal.',
-    en: 'The duty to register applies per person. For a travel group this becomes '
-      + 'a collective registration: everyone gets their own record, signed once.',
-    tr: 'Bildirim yükümlülüğü kişi başınadır. Bir tur grubunda bundan toplu '
-      + 'Meldeschein oluşur: herkesin kendi kaydı olur, bir kez imzalanır.' },
   'terms.title': {
     de: 'Hausbedingungen',
     en: 'House terms',
@@ -1050,18 +1038,10 @@ export const plan = {
     de: 'Unterschreiben',
     en: 'Sign',
     tr: 'İmzala' },
-  'terms.accept': {
-    de: 'Zur Kenntnis genommen',
-    en: 'Acknowledged',
-    tr: 'Okudum, kabul ediyorum' },
   'terms.signedByGuest': {
     de: 'Vom Gast unterschrieben am {datum}',
     en: 'Signed by the guest on {datum}',
     tr: 'Misafir tarafından {datum} tarihinde imzalandı' },
-  'terms.signAtTerminal': {
-    de: 'Unterschrift fehlt. Der Gast unterschreibt am Gästeterminal; der Auftrag geht über den Kasten „Gästeterminal“ darüber.',
-    en: 'Signature missing. The guest signs at the guest terminal; send it via the “Guest terminal” box above.',
-    tr: 'İmza eksik. Misafir, misafir terminalinde imzalar; görevi yukarıdaki “Misafir terminali” kutusundan gönderin.' },
   'checkin.signAtTerminal': {
     de: 'Die Unterschrift unter dem Meldeschein fehlt noch. Der Gast unterschreibt am Gästeterminal, dann geht der Check-in.',
     en: 'The registration form still needs the guest’s signature. The guest signs at the guest terminal; then check-in is possible.',
@@ -1074,14 +1054,34 @@ export const plan = {
     de: 'Zugestimmt',
     en: 'Agreed',
     tr: 'Kabul edildi' },
-  'checkin.clear': {
-    de: 'Löschen',
-    en: 'Clear',
-    tr: 'Temizle' },
-  'checkin.register': {
-    de: 'Meldeschein speichern',
-    en: 'Save registration form',
-    tr: 'Meldeschein kaydet' },
+  'checkin.registration': {
+    de: 'Meldeschein',
+    en: 'Meldeschein',
+    tr: 'Meldeschein' },
+  'checkin.openFormAtTerminal': {
+    de: 'Meldeformular auf Gästeterminal öffnen',
+    en: 'Open registration form on the guest terminal',
+    tr: 'Kayıt formunu misafir terminalinde aç' },
+  'checkin.openFormHint': {
+    de: 'Der Gast füllt das Formular am Gästeterminal aus, trägt seine Mitreisenden ein und unterschreibt am Ende auch die Hausbedingungen.',
+    en: 'The guest fills in the form at the guest terminal, adds their fellow travellers and signs the house terms at the end.',
+    tr: 'Misafir formu misafir terminalinde doldurur, birlikte kalanları ekler ve sonunda konaklama koşullarını da imzalar.' },
+  'checkin.requestSignature': {
+    de: 'Unterschrift auf Gästeterminal anfordern',
+    en: 'Request signature on the guest terminal',
+    tr: 'İmzayı misafir terminalinde iste' },
+  'checkin.noTerminal': {
+    de: 'Kein Gästeterminal gekoppelt. Unter Einstellungen → Gästeterminal lässt sich eines koppeln.',
+    en: 'No guest terminal paired. You can pair one under Settings → Guest terminal.',
+    tr: 'Eşleştirilmiş misafir terminali yok. Ayarlar → Misafir terminali altında eşleştirilebilir.' },
+  'checkin.registerWithoutTerminal': {
+    de: 'Ohne Terminal: Meldeschein aus den vorhandenen Daten anlegen',
+    en: 'Without a terminal: create the Meldeschein from the existing data',
+    tr: 'Terminal olmadan: Meldeschein\'ı mevcut verilerden oluştur' },
+  'terms.notSigned': {
+    de: 'noch nicht unterschrieben',
+    en: 'not signed yet',
+    tr: 'henüz imzalanmadı' },
   // AVS-Datei im Ablauf des Check-ins (Migration 0091). "AVS" bleibt stehen:
   // es ist der Name des Systems der Kurverwaltung, nicht eine Beschreibung.
   'checkin.submitWithAvs': {

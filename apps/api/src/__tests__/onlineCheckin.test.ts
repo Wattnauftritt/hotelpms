@@ -407,6 +407,14 @@ describe('Die Gastseite', () => {
     const occ = await owner.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM reservation_occupant WHERE reservation_id = $1`, [r.id])
     expect(occ.rows[0]!.n).toBe(3)
+
+    // Der Check-in-Dialog zeigt den Schein mit Inhalt, Mitreisende eingeschlossen.
+    const f = JSON.parse((await app.inject({ method: 'GET',
+      url: `/v1/reservations/${r.ref}/registration-form`, headers: chef })).body) as {
+        companions: Array<{ firstName: string; birthDate: string; nationality: string }> }
+    expect(f.companions).toEqual([
+      { lastName: 'Petersen', firstName: 'Jan', birthDate: '1978-03-03', nationality: 'DE' },
+      { lastName: 'Petersen', firstName: 'Mia', birthDate: '2015-08-08', nationality: 'DE' }])
   })
 
   it('verlangt die Unterschrift auch, wenn nur ein Mitreisender auslaendisch ist', async () => {

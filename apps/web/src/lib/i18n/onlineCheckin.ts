@@ -164,6 +164,13 @@ export const onlineCheckin = {
     tr: 'Alman vatandaşı olmayan biri bulunduğundan, kayıt formunu varış günü '
       + 'tesiste imzalayacak (§ 29 BMG) ve orada pasaport veya kimlik kartınızı '
       + 'göstereceksiniz.' },
+  'gastCheckin.signature.both': {
+    de: 'Mit Ihrer Unterschrift bestätigen Sie die Angaben auf dem Meldeschein '
+      + '(§ 29 BMG) und die Hausbedingungen. Bitte hier mit dem Finger oder der Maus.',
+    en: 'With your signature you confirm the details on the registration form '
+      + '(§ 29 BMG) and the house terms. Please sign here with your finger or the mouse.',
+    tr: 'İmzanızla Meldeschein\'daki bilgileri (§ 29 BMG) ve konaklama koşullarını '
+      + 'onaylarsınız. Lütfen buraya parmağınızla veya fareyle imzalayın.' },
   'gastCheckin.signature.clear': {
     de: 'Neu unterschreiben',
     en: 'Sign again',

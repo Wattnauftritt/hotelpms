@@ -80,9 +80,9 @@ describe('Der Rahmen einer Maske', () => {
 
   it('laesst den Check-in nicht nebenbei zuklappen', () => {
     /*
-     * Im Kasten steht eine gezeichnete Unterschrift, die nirgends
-     * gespeichert ist. Ein Klick neben den Rand waere sie los, und der Gast
-     * unterschriebe ein zweites Mal.
+     * Waehrend der Gast am Terminal das Meldeformular ausfuellt, zeigt der
+     * Dialog den Stand des Auftrags. Ein Klick neben den Rand waere er los,
+     * und die Rezeption saehe nicht, wann der Schein steht.
      */
     const checkin = readFileSync(join(SRC, 'routes', 'CheckIn.tsx'), 'utf8')
     expect(checkin).toContain('nebenbeiSchliessen={false}')
