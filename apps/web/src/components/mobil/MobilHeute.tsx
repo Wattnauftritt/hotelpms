@@ -105,11 +105,20 @@ export function MobilHeute({ propertyId, onFolio }: {
                 </div>
               </div>
             </button>
-            {liste === 'arrivals' && (
-              <Handlung disabled={!online || r.roomCode === null || aktion.isPending
-                                  || r.status === 'InHouse'}
+            {liste === 'arrivals' && r.status === 'InHouse' && (
+              <Handlung leise disabled={!online || aktion.isPending}
+                        onClick={() => {
+                          if (confirm(t('today.undoCheckinConfirm'))) {
+                            aktion.mutate({ ref: r.reservationRef, action: 'undo-check-in' })
+                          }
+                        }}>
+                {t('today.undoCheckin')}
+              </Handlung>
+            )}
+            {liste === 'arrivals' && r.status !== 'InHouse' && (
+              <Handlung disabled={!online || r.roomCode === null || aktion.isPending}
                         onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-in' })}>
-                {r.status === 'InHouse' ? t('today.inhouse') : t('today.checkin')}
+                {t('today.checkin')}
               </Handlung>
             )}
             {liste === 'departures' && (

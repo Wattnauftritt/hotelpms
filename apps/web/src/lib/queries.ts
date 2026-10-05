@@ -119,7 +119,8 @@ export function useRoomSeries(propertyId: number) {
 export function useReservationAction(propertyId: number, date: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ ref, action }: { ref: string; action: 'check-in' | 'check-out' }) =>
+    mutationFn: ({ ref, action }: { ref: string
+                                    action: 'check-in' | 'check-out' | 'undo-check-in' }) =>
       api.post(`/v1/reservations/${ref}/${action}`),
     onSuccess: () => {
       // Nach Check-in oder Check-out ändern sich Tagesliste, Zimmerplan und

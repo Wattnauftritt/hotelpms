@@ -10,12 +10,16 @@ export type ReservationStatus = (typeof RESERVATION_STATES)[number]
 
 export type ReservationAction =
   | 'confirm' | 'hold' | 'check_in' | 'check_out' | 'cancel' | 'no_show' | 'reinstate'
+  | 'undo_check_in'
 
 const TRANSITIONS: Record<ReservationStatus, Partial<Record<ReservationAction, ReservationStatus>>> = {
   Inquired:   { hold: 'Optional', confirm: 'Confirmed', cancel: 'Canceled' },
   Optional:   { confirm: 'Confirmed', cancel: 'Canceled' },
   Confirmed:  { check_in: 'InHouse', cancel: 'Canceled', no_show: 'NoShow' },
-  InHouse:    { check_out: 'CheckedOut' },
+  // Ein Check-in am falschen Gast ist kein Check-out: der Gast ist nie
+  // abgereist, und ein Check-out kuerzte den Aufenthalt auf heute. Zurueck
+  // geht es dorthin, wo er vorher stand -- erwartet.
+  InHouse:    { check_out: 'CheckedOut', undo_check_in: 'Confirmed' },
   CheckedOut: {},
   // Wiederherstellen ist bewusst erlaubt: ein versehentlicher Storno oder ein
   // No-Show, der doch noch anreist, kommt taeglich vor. Beides ist protokolliert.

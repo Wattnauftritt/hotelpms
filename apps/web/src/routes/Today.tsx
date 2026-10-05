@@ -49,15 +49,30 @@ export function Today({ propertyId, onFolio }: {
                     ⚠ {t('today.registrationMissing')}
                   </span>
                 )}
-                <button
-                  disabled={!online || r.roomCode === null || aktion.isPending
-                            || r.status === 'InHouse'}
-                  onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-in' })}
-                  title={r.roomCode === null ? t('today.needsRoom') : undefined}
-                  className="text-xs px-2 py-1 rounded-sm bg-neutral-900 text-white
-                             disabled:bg-neutral-300">
-                  {t('today.checkin')}
-                </button>
+                {r.status === 'InHouse' ? (
+                  // Wer sich am Tresen in der Zeile vertippt, korrigiert es
+                  // in derselben Zeile.
+                  <button
+                    disabled={!online || aktion.isPending}
+                    onClick={() => {
+                      if (confirm(t('today.undoCheckinConfirm'))) {
+                        aktion.mutate({ ref: r.reservationRef, action: 'undo-check-in' })
+                      }
+                    }}
+                    className="text-xs px-2 py-1 rounded-sm border border-neutral-300
+                               hover:bg-neutral-50 disabled:opacity-40">
+                    {t('today.undoCheckin')}
+                  </button>
+                ) : (
+                  <button
+                    disabled={!online || r.roomCode === null || aktion.isPending}
+                    onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-in' })}
+                    title={r.roomCode === null ? t('today.needsRoom') : undefined}
+                    className="text-xs px-2 py-1 rounded-sm bg-neutral-900 text-white
+                               disabled:bg-neutral-300">
+                    {t('today.checkin')}
+                  </button>
+                )}
               </div>
             </Zeile>
           ))}

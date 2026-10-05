@@ -286,11 +286,11 @@ export function useChangeStay() {
   })
 }
 
-/** Storno und Wiederherstellen (A11). Zwei Aktionen, eine Mutation. */
+/** Storno und Wiederherstellen (A11), Check-out und dessen Gegenstueck. */
 export function useReservationStatusAction(reservationRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out') =>
+    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out' | 'undo-check-in') =>
       api.post<{ reservationRef: string; status: string }>(
         `/v1/reservations/${reservationRef}/${action}`),
     onSuccess: () => {

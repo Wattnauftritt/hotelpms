@@ -358,6 +358,26 @@ function StornoAktionen({ reservationRef, status }: {
       </button>
     )
   }
+  /*
+   * Ein falscher Check-in ging bisher nur ueber den Check-out weg, und der
+   * kuerzt den Aufenthalt auf heute. Nach dem Tagesabschluss weist die API
+   * es ab, weil dann eine Nacht gebucht ist -- die Meldung steht hier.
+   */
+  if (status === 'InHouse') {
+    return (
+      <>
+        <button onClick={() => {
+                  if (confirm(t('today.undoCheckinConfirm'))) aktion.mutate('undo-check-in')
+                }}
+                disabled={aktion.isPending}
+                className="text-xs px-2 py-1 rounded-sm border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('today.undoCheckin')}
+        </button>
+        {aktion.isError && <div className="basis-full"><Fehler error={aktion.error} /></div>}
+      </>
+    )
+  }
   if (WIEDERHERSTELLBAR.has(status)) {
     return (
       <button onClick={() => aktion.mutate('reinstate')}
