@@ -1030,6 +1030,13 @@ const M = {
     de: 'Ein angereister Gast behaelt sein Zimmer',
     en: 'A checked-in guest keeps their room',
     tr: 'Giriş yapmış bir misafir odasını korur' },
+  'stay.totalBelowPosted': {
+    de: 'Der Preis liegt unter dem, was schon aufs Konto gebucht ist. '
+      + 'Gebuchte Naechte werden gegengebucht, nicht geaendert.',
+    en: 'The price is below what has already been posted to the folio. '
+      + 'Posted nights are reversed, not changed.',
+    tr: 'Fiyat, hesaba zaten işlenmiş tutarın altında. '
+      + 'İşlenmiş geceler değiştirilmez, ters kayıtla düzeltilir.' },
   'stay.checkinNeedsRoom': {
     de: 'Check-in erfordert ein zugewiesenes Zimmer.',
     en: 'Check-in requires an assigned room.',

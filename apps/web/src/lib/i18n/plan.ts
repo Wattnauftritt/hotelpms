@@ -18,6 +18,10 @@ export const plan = {
     de: 'Gastprofil öffnen',
     en: 'Open guest profile',
     tr: 'Misafir profilini aç' },
+  'plan.edit': {
+    de: 'Ändern',
+    en: 'Edit',
+    tr: 'Düzenle' },
   'plan.noGuest': {
     de: 'Kein Gast hinterlegt',
     en: 'No guest on file',
@@ -486,6 +490,44 @@ export const plan = {
       + 'plan and keeps its dates.',
     tr: 'Oda geri alınır. Rezervasyon planın üstündeki şeritte kalır ve '
       + 'tarihlerini korur.' },
+  'verlegen.otherGuest': {
+    de: 'Anderer Gast',
+    en: 'Other guest',
+    tr: 'Başka misafir' },
+  'verlegen.guestFixed': {
+    de: 'Nach dem Check-in bleibt der Gast. Den Namen korrigiert das Gastprofil.',
+    en: 'After check-in the guest stays. Correct the name in the guest profile.',
+    tr: 'Check-in sonrası misafir değişmez. Adı misafir profilinde düzeltin.' },
+  'verlegen.keepGuest': {
+    de: 'Gast behalten',
+    en: 'Keep guest',
+    tr: 'Misafiri koru' },
+  'verlegen.price': {
+    de: 'Preis',
+    en: 'Price',
+    tr: 'Fiyat' },
+  'verlegen.priceBefore': {
+    de: 'bisher',
+    en: 'before',
+    tr: 'önceki' },
+  'verlegen.priceAfter': {
+    de: 'danach',
+    en: 'after',
+    tr: 'sonraki' },
+  'verlegen.nightPosted': {
+    de: 'gebucht',
+    en: 'posted',
+    tr: 'işlendi' },
+  'verlegen.priceHint': {
+    de: 'Leer lassen: es gilt der berechnete Preis. Neue Nächte kosten den '
+      + 'Preis des Ratenplans, ohne Ratenplan den bisherigen. Schon aufs Konto '
+      + 'gebuchte Nächte behalten ihren Preis.',
+    en: 'Leave empty to use the calculated price. New nights cost the rate '
+      + 'plan price, or the previous price without a rate plan. Nights already '
+      + 'posted to the folio keep their price.',
+    tr: 'Boş bırakın: hesaplanan fiyat geçerlidir. Yeni geceler fiyat planının '
+      + 'fiyatına, fiyat planı yoksa önceki fiyata mal olur. Hesaba işlenmiş '
+      + 'geceler fiyatlarını korur.' },
   'verlegen.nothingChanged': {
     de: 'Nichts geändert',
     en: 'Nothing changed',

@@ -1663,7 +1663,7 @@ describe('Verschieben wird bestaetigt, nicht ausgefuehrt', () => {
   })
 
   it('oeffnet die Maske, statt zu schreiben', () => {
-    expect(bildschirm).toMatch(/if \(planung\) speichern\(v, v\.neu[\s\S]*?else setVerlegung\(v\)/)
+    expect(bildschirm).toMatch(/if \(planung\) speichern\(v, v\.neu[\s\S]*?else maskeOeffnen\(v\)/)
   })
 
   it('gibt Felder und nicht Ja und Nein', () => {
@@ -1690,6 +1690,13 @@ describe('Verschieben wird bestaetigt, nicht ausgefuehrt', () => {
     // waere die schlechtere Antwort als ein Satz davor.
     expect(maske).toContain(
       ": raum === null && verlegung.status === 'InHouse' ? 'verlegen.inHouseKeepsRoom'")
+  })
+
+  it('zeigt vor dem Speichern den neuen Preis', () => {
+    // Ein Zug, der verlaengert, aendert den Preis; geprueft wird er in der
+    // Maske, nicht erst auf der Rechnung (Sven, 05.10.2026).
+    expect(maske).toContain('useStayPreview(')
+    expect(maske).toContain('<PreisFelder wert={preis}')
   })
 
   it('schliesst die Maske erst nach dem Erfolg', () => {
@@ -1733,7 +1740,9 @@ describe('Planungsmodus und Strg+Z', () => {
     // Ein Stapel, in dem ein fehlgeschlagener Schritt steht, bietet an,
     // etwas zurueckzunehmen, das nie passiert ist.
     expect(bildschirm).toMatch(
-      /const fertig = \(\): void => \{\n\s*if \(was\.merken\) \{\n\s*setRueckgaengig/)
+      /const gemerkt = \(\): void => \{[\s\S]*?if \(was\.merken[^\n]*\{\n\s*setRueckgaengig/)
+    // Und `gemerkt` laeuft erst im `onSuccess` -- auch nach dem Gast.
+    expect(bildschirm).toContain('{ onSuccess: gemerkt })')
   })
 
   it('fragt vor dem Zuruecknehmen mit Zimmer und Datum', () => {

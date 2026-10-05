@@ -187,3 +187,20 @@ describe('Escape nimmt die oberste Lage', () => {
     }
   })
 })
+
+/**
+ * Nach dem Anlegen ist alles getan (Sven, 05.10.2026).
+ *
+ * Die Maske blieb offen und zeigte "angelegt" neben einem Knopf "Zurueck"
+ * -- ein Klick, der nichts mehr entschied. Jetzt schliesst sie sich, und
+ * der Balken im Plan ist die Bestaetigung.
+ */
+describe('Buchungsmasken schliessen nach dem Anlegen', () => {
+  for (const datei of ['BookingDialog.tsx', 'GroupBookingDialog.tsx']) {
+    it(datei, () => {
+      const quelle = readFileSync(join(SRC, 'components', datei), 'utf8')
+      expect(quelle).toMatch(/onSuccess: onClose/)
+      expect(quelle).not.toContain('buchen.isSuccess ?')
+    })
+  }
+})

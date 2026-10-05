@@ -1,6 +1,12 @@
 import { useState, type JSX } from 'react'
-import { useT, formatDate, useLocale } from '../lib/i18n/index.js'
+import type { Guest } from '@hotelpms/contracts'
+import { useT, formatDate, formatMoney, useLocale } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
+import { useStayPreview } from '../lib/queries/booking.js'
+import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingabe.js'
+import { gastNameAnzeige } from '../lib/gastName.js'
+import { GuestPicker, useGastAusEingabe } from './GuestPicker.tsx'
+import { PreisFelder } from './PreisFelder.tsx'
 import { Dialog, Feld, FELD, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
@@ -39,6 +45,24 @@ export interface Ziel {
   arrival: string
   departure: string
 }
+
+/**
+ * Was ausser Zimmer und Tagen mit gespeichert wird.
+ *
+ * Der Preis ist `null`, wenn niemand einen getippt hat -- dann gilt der
+ * gerechnete, den die Maske anzeigt. Der Gast ist `undefined`, wenn er
+ * bleibt.
+ */
+export interface Zusatz {
+  preis: { priceCent: number } | { totalCent: number } | null
+  guestRef?: string
+}
+
+/**
+ * Wann der Hauptgast noch wechseln darf -- dieselbe Regel wie in der
+ * Schnittstelle (`setzeHauptgast`): vor dem Check-in.
+ */
+const GAST_WECHSELBAR = new Set(['Inquired', 'Optional', 'Confirmed'])
 
 export interface PlanZimmer {
   id: number
@@ -84,22 +108,52 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
   laeuft: boolean
   fehler: unknown
   onClose: () => void
-  onSpeichern: (ziel: Ziel) => void
+  onSpeichern: (ziel: Ziel, zusatz: Zusatz) => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const [raum, setRaum] = useState<number | null>(verlegung.neu.resourceId)
   const [anreise, setAnreise] = useState(verlegung.neu.arrival)
   const [abreise, setAbreise] = useState(verlegung.neu.departure)
+  /*
+   * Leer heisst: es gilt der gerechnete Preis aus der Vorschau. Ein
+   * getippter Betrag ist eine Vereinbarung und geht als genau **ein** Feld
+   * hinaus, wie beim Anlegen (`preisFelder`).
+   */
+  const [preis, setPreis] = useState<Preiseingabe>(LEERER_PREIS)
+  /*
+   * Ein anderer Gast. Der bisherige steht in der Kopfzeile; erst wer auf
+   * "Anderer Gast" klickt, bekommt die Suche -- sonst stuende ein leeres
+   * Suchfeld da, und die Maske saehe aus, als habe die Buchung keinen.
+   */
+  const [gastWechsel, setGastWechsel] = useState(false)
+  const [neuerGast, setNeuerGast] = useState<Guest | null>(null)
+  const gast = useGastAusEingabe(neuerGast, setNeuerGast)
 
   const gewaehlt = zimmer.find(z => z.id === raum)
   const vorher = zimmer.find(z => z.id === verlegung.alt.resourceId)
   const gruppe = verlegung.gruppe
 
+  const vereinbart = preisFelder(preis)
+  const gastAnders = gastWechsel && (neuerGast !== null || gast.neu !== null)
   const anders = gruppe !== undefined
     || raum !== verlegung.alt.resourceId
     || anreise !== verlegung.alt.arrival
     || abreise !== verlegung.alt.departure
+    || vereinbart !== null
+    || gastAnders
+
+  /*
+   * Der Preis danach, gerechnet von der Schnittstelle -- dieselbe Rechnung
+   * wie beim Speichern, nur zurueckgenommen. Ein Zug, der den Aufenthalt
+   * verlaengert, aendert den Preis; das soll vor dem Speichern zu sehen
+   * sein, nicht erst auf der Rechnung (Sven, 05.10.2026).
+   */
+  const vorschau = useStayPreview(gruppe === undefined && abreise > anreise
+    ? { reservationRef: verlegung.reservationRef, arrival: anreise, departure: abreise,
+        resourceId: raum }
+    : null)
+  const naechte = abreise > anreise ? daysBetween(anreise, abreise) : 0
 
   const wechsel = gewaehlt !== undefined && gewaehlt.category_id !== verlegung.categoryId
   const zuKlein = wechsel && gewaehlt.max_occupancy < verlegung.bedarf
@@ -126,10 +180,22 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
               : `${verlegung.reservationRef} · ${verlegung.gast}`}
             fuss={
               <>
-                <button type="button" disabled={grund !== null || laeuft}
-                        onClick={() => onSpeichern({ resourceId: raum,
-                                                     arrival: anreise,
-                                                     departure: abreise })}
+                <button type="button"
+                        disabled={grund !== null || laeuft || gast.anlegen.isPending}
+                        onClick={() => {
+                          void (async () => {
+                            let guestRef: string | undefined
+                            if (gastAnders) {
+                              // Ein getippter Name wird hier angelegt; scheitert
+                              // das, steht der Fehler in der Maske, und es geht
+                              // nichts hinaus.
+                              try { guestRef = await gast.guestRef() } catch { return }
+                            }
+                            onSpeichern({ resourceId: raum, arrival: anreise,
+                                          departure: abreise },
+                                        { preis: vereinbart, guestRef })
+                          })()
+                        }}
                         /* Rot, wenn das Zimmer zu klein ist: der Knopf sagt
                            dann nicht "weiter", sondern "trotzdem". */
                         className={`px-4 py-2 text-sm rounded-sm text-white
@@ -199,11 +265,114 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
 
         {gruppe === undefined && abreise > anreise && (
           <p className="text-sm text-neutral-600">
-            {t('group.nights', { n: daysBetween(anreise, abreise) })}
+            {t('group.nights', { n: naechte })}
           </p>
         )}
 
-        {raum === null && gruppe === undefined && (
+        {/* Der Gast. Ein Tippfehler im Namen wird im Gastprofil
+            korrigiert; hier wird ein **anderer** Gast an die Buchung
+            gehaengt -- ein eingetippter Name entsteht dabei als neuer Gast,
+            wie in der Buchungsmaske. */}
+        {gruppe === undefined && (
+          <div className="text-sm space-y-1">
+            <span className="block text-xs text-neutral-600">{t('booking.guest')}</span>
+            {!gastWechsel ? (
+              <div className="flex items-center gap-2 border border-neutral-300
+                              rounded-sm px-2 py-1.5">
+                <span className="grow">
+                  {verlegung.gast === ''
+                    ? <span className="text-neutral-400">{t('plan.noGuest')}</span>
+                    : verlegung.gast}
+                </span>
+                {/* Nach dem Check-in liegt der Meldeschein vor, und die
+                    Schnittstelle weist den Wechsel ab. Der Satz steht hier
+                    statt einer Fehlermeldung nach dem Klick. */}
+                {GAST_WECHSELBAR.has(verlegung.status) ? (
+                  <button type="button" onClick={() => setGastWechsel(true)}
+                          className="text-xs text-neutral-500 underline">
+                    {t('verlegen.otherGuest')}
+                  </button>
+                ) : (
+                  <span className="text-xs text-neutral-500">
+                    {t('verlegen.guestFixed')}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <>
+                <GuestPicker value={neuerGast} onChange={setNeuerGast}
+                             onEingabe={gast.setEingabe} />
+                {neuerGast === null && gast.neu !== null && (
+                  <div className="text-xs text-neutral-500">
+                    {t('booking.guestWillBeCreated', { name: gastNameAnzeige(gast.neu) })}
+                  </div>
+                )}
+                <button type="button" className="text-xs text-neutral-500 underline"
+                        onClick={() => { setGastWechsel(false); setNeuerGast(null) }}>
+                  {t('verlegen.keepGuest')}
+                </button>
+              </>
+            )}
+            {gast.anlegen.isError && <Fehler error={gast.anlegen.error} />}
+          </div>
+        )}
+
+        {/*
+          * Der Preis: bisher, nach der Aenderung, und ein Feld fuer einen
+          * vereinbarten. Die Naechte stehen einzeln darunter, weil genau
+          * dort zu sehen ist, was eine Verlaengerung kostet -- die neuen
+          * Naechte zum Plan- oder bisherigen Preis, die alten wie gebucht.
+          */}
+        {gruppe === undefined && abreise > anreise && (
+          <div className="space-y-2 border-t border-neutral-200 pt-3">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+              <span className="text-xs text-neutral-600">{t('verlegen.price')}</span>
+              {vorschau.data !== undefined && (
+                <>
+                  <span className="text-neutral-500 tabular-nums">
+                    {t('verlegen.priceBefore')}{' '}
+                    {formatMoney(vorschau.data.previousTotalCent, locale)}
+                  </span>
+                  <span className={`tabular-nums ${
+                    vorschau.data.totalCent !== vorschau.data.previousTotalCent
+                      ? 'font-medium text-amber-900' : ''}`}>
+                    {t('verlegen.priceAfter')}{' '}
+                    {formatMoney(vorschau.data.totalCent, locale)}
+                  </span>
+                </>
+              )}
+              {vorschau.isFetching && vorschau.data === undefined && (
+                <span className="text-xs text-neutral-400">…</span>
+              )}
+            </div>
+            {vorschau.data !== undefined && (
+              <div className="max-h-40 overflow-y-auto border border-neutral-200 rounded-sm">
+                <table className="w-full text-xs">
+                  <tbody className="divide-y divide-neutral-100">
+                    {vorschau.data.nights.map(n => (
+                      <tr key={n.date}>
+                        <td className="px-2 py-1 text-neutral-500 tabular-nums">
+                          {formatDate(n.date, locale)}
+                          {n.posted && ` · ${t('verlegen.nightPosted')}`}
+                        </td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {formatMoney(n.priceCent, locale)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {vorschau.isError && <Fehler error={vorschau.error} />}
+            <PreisFelder wert={preis} naechte={naechte} onChange={setPreis} />
+            <p className="text-xs text-neutral-500">{t('verlegen.priceHint')}</p>
+          </div>
+        )}
+
+        {/* Nur, wenn es eines abzunehmen gibt: an einer Buchung, die schon
+            im Band liegt, waere der Satz eine Ankuendigung von nichts. */}
+        {raum === null && verlegung.alt.resourceId !== null && gruppe === undefined && (
           <p className="text-sm text-neutral-700 bg-neutral-50 border
                         border-neutral-200 rounded-sm p-2">
             {t('verlegen.unassignHint')}

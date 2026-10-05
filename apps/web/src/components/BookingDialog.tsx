@@ -177,6 +177,14 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
       adults: anzahlErwachsene ?? undefined,
       children: anzahlKinder ?? undefined,
       shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim()
+    }, {
+      /*
+       * Gespeichert ist alles getan: die Maske geht zu. Vorher blieb sie
+       * offen und zeigte "angelegt" neben einem Knopf "Zurueck" -- ein
+       * Klick, der nichts mehr entschied (Sven, 05.10.2026). Was angelegt
+       * wurde, steht danach als Balken im Plan.
+       */
+      onSuccess: onClose
     })
   }
 
@@ -184,16 +192,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
     <Dialog breite="breit" onClose={onClose}
             titel={t('booking.title')}
             unterzeile={`${roomCode !== undefined ? `${roomCode} · ` : ''}${categoryName}`}
-            fuss={buchen.isSuccess ? (
-              <>
-                <button type="button" onClick={onClose} className={KNOPF_LEISE}>
-                  {t('common.back')}
-                </button>
-                <span className="text-sm text-emerald-800">
-                  ✓ {t('booking.created')} — {buchen.data.reservationRef}
-                </span>
-              </>
-            ) : (
+            fuss={
               <>
                 <button type="button"
                         disabled={buchen.isPending || gast.anlegen.isPending || !gueltig}
@@ -213,7 +212,7 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
                   <span className="self-center text-xs text-amber-800">{t(grund)}</span>
                 )}
               </>
-            )}>
+            }>
       {/*
         * Zwei Spalten: links der Aufenthalt, rechts der Gast.
         *
