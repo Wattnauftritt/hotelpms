@@ -474,6 +474,8 @@ export interface TermsFassung {
   requiresSignature: boolean
   activeFrom: string
   activeTo: string | null
+  /** Zustimmungen; mit welchen laesst sich die Fassung nur noch beenden. */
+  agreements: number
 }
 
 /** Alle Fassungen des Hauses, fuer die Einrichtung. */
@@ -496,6 +498,24 @@ export function useCreateTerms(propertyId: number) {
         `/v1/properties/${propertyId}/terms`, { propertyId, ...body }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['property-terms', propertyId] })
+    }
+  })
+}
+
+/**
+ * Eine Fassung loeschen (ohne Zustimmungen) oder ab heute beenden (mit).
+ * Die Schnittstelle prueft beides selbst; der Knopf folgt nur ihrem Stand.
+ */
+export function useEndOrDeleteTerms(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ termsRef, art }: { termsRef: string; art: 'delete' | 'end' }) =>
+      art === 'delete'
+        ? api.delete(`/v1/properties/${propertyId}/terms/${termsRef}`)
+        : api.post(`/v1/properties/${propertyId}/terms/${termsRef}/end`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['property-terms', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['terms'] })
     }
   })
 }

@@ -176,6 +176,65 @@ describe('Fassungen einer Hausbedingung', () => {
   })
 })
 
+describe('Doppelte Fassung loswerden', () => {
+  /**
+   * Sven, 05.10.2026: dieselbe Bedingung stand unter zwei Kuerzeln, und der
+   * Check-in legte sie zweimal vor. Ohne Zustimmung darf die Fassung gehen;
+   * mit Zustimmung nur enden, damit die Unterschrift ihren Text behaelt.
+   */
+  const loeschen = (termsRef: string) =>
+    app.inject({ method: 'DELETE', headers: auth,
+                 url: `/v1/properties/${fx.propertyId}/terms/${termsRef}` })
+  const beenden = (termsRef: string) =>
+    app.inject({ method: 'POST', headers: auth, payload: {},
+                 url: `/v1/properties/${fx.propertyId}/terms/${termsRef}/end` })
+
+  it('loescht eine Fassung ohne Zustimmung, und der Check-in legt sie nicht mehr vor',
+     async () => {
+    const doppelt = JSON.parse((await anlegen({ ...SCHLUESSEL, code: 'deposit' })).body)
+      .termsRef as string
+    await anlegen(SCHLUESSEL)
+    const ref = await reservierung(await gast('Petersen'))
+    expect(JSON.parse((await geltend(ref)).body).terms).toHaveLength(2)
+
+    const r = await loeschen(doppelt)
+    expect(r.statusCode, r.body).toBe(200)
+    expect(JSON.parse((await geltend(ref)).body).terms).toHaveLength(1)
+  })
+
+  it('laesst eine unterschriebene Fassung nur beenden, nicht loeschen', async () => {
+    const termsRef = JSON.parse((await anlegen(SCHLUESSEL)).body).termsRef as string
+    const ref = await reservierung(await gast('Petersen'))
+    expect((await zustimmen(ref, termsRef, { signatureSvg: '<svg>u</svg>' })).statusCode)
+      .toBe(201)
+
+    const liste = await app.inject({ method: 'GET', headers: auth,
+      url: `/v1/properties/${fx.propertyId}/terms` })
+    expect(JSON.parse(liste.body).terms[0].agreements).toBe(1)
+
+    const r = await loeschen(termsRef)
+    expect(r.statusCode).toBe(409)
+    expect(JSON.parse(r.body).code).toBe('terms.inUse')
+
+    const e = await beenden(termsRef)
+    expect(e.statusCode, e.body).toBe(200)
+    expect(JSON.parse(e.body).activeTo).not.toBeNull()
+    // Die Zustimmung bleibt und zeigt weiter auf ihren Text.
+    const n = await owner.query(`SELECT count(*)::int AS n FROM guest_agreement`)
+    expect(n.rows[0].n).toBe(1)
+  })
+
+  it('erreicht keine Fassung eines anderen Hauses', async () => {
+    const termsRef = JSON.parse((await anlegen(SCHLUESSEL)).body).termsRef as string
+    const fremd = await makeProperty(owner, { code: 'FREMD' })
+    const r = await app.inject({ method: 'DELETE', headers: auth,
+      url: `/v1/properties/${fremd.propertyId}/terms/${termsRef}` })
+    expect([403, 404]).toContain(r.statusCode)
+    const n = await owner.query(`SELECT count(*)::int AS n FROM property_terms`)
+    expect(n.rows[0].n).toBe(1)
+  })
+})
+
 describe('Zustimmung des Gastes', () => {
   async function bedingung(extra: Record<string, unknown> = {}): Promise<string> {
     const t = await anlegen({ ...SCHLUESSEL, ...extra })

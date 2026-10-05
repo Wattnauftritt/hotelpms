@@ -5,7 +5,7 @@ import { useEmailSettings, useSaveEmailSettings, useEmailDomain,
          useRequestEmailDomain, useCheckEmailDomain, useWithdrawEmailDomain,
          usePaymentMethodsAll, useCreatePaymentMethod, useUpdatePaymentMethod }
   from '../lib/queries/settings.js'
-import { usePropertyTerms, useCreateTerms } from '../lib/queries/booking.js'
+import { usePropertyTerms, useCreateTerms, useEndOrDeleteTerms } from '../lib/queries/booking.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
 import { useT, useLocale, formatDate, type TextKey } from '../lib/i18n/index.js'
@@ -538,6 +538,7 @@ function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
   const online = useOnline()
   const q = usePropertyTerms(propertyId)
   const anlegen = useCreateTerms(propertyId)
+  const entfernen = useEndOrDeleteTerms(propertyId)
   const [code, setCode] = useState('')
   const [titel, setTitel] = useState('')
   const [text, setText] = useState('')
@@ -550,6 +551,7 @@ function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
       <p className="text-sm text-neutral-600">{t('terms.hint')}</p>
 
       {q.isError && <Fehler error={q.error} />}
+      {entfernen.isError && <Fehler error={entfernen.error} />}
       {q.data === undefined && !q.isError ? <Laedt /> : (
         <ul className="space-y-2">
           {(q.data?.terms ?? []).map(b => (
@@ -574,6 +576,33 @@ function Hausbedingungen({ propertyId }: { propertyId: number }): JSX.Element {
               <p className="text-xs text-neutral-600 mt-1 whitespace-pre-line">{b.body}</p>
               {!b.requiresSignature && (
                 <p className="text-xs text-neutral-500 mt-1">{t('terms.noSignature')}</p>
+              )}
+              {/*
+               * Ohne Zustimmung loeschen, mit Zustimmung nur beenden: auf
+               * eine unterschriebene Fassung zeigt ein Nachweis, und der
+               * muss ihren Text behalten. Eine beendete Fassung mit
+               * Zustimmungen bleibt einfach stehen.
+               */}
+              {(b.agreements === 0 || b.activeTo === null) && (
+                <div className="mt-1 flex items-center gap-3 text-xs">
+                  {b.agreements > 0 && (
+                    <span className="text-neutral-500">
+                      {t('terms.agreements', { n: b.agreements })}
+                    </span>
+                  )}
+                  <button type="button" disabled={!online || entfernen.isPending}
+                          onClick={() => {
+                            const art = b.agreements === 0 ? 'delete' : 'end'
+                            if (confirm(t(art === 'delete' ? 'terms.confirmDelete'
+                                                            : 'terms.confirmEnd'))) {
+                              entfernen.mutate({ termsRef: b.termsRef, art })
+                            }
+                          }}
+                          className="underline text-neutral-600 hover:text-red-700
+                                     disabled:opacity-40">
+                    {b.agreements === 0 ? t('terms.delete') : t('terms.end')}
+                  </button>
+                </div>
               )}
             </li>
           ))}

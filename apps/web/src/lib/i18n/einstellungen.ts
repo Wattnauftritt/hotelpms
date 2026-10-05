@@ -406,6 +406,26 @@ export const einstellungen = {
     de: 'Ohne Unterschrift, Kenntnisnahme genügt',
     en: 'No signature, acknowledgement is enough',
     tr: 'İmzasız, bilgilendirme yeterli' },
+  'terms.delete': {
+    de: 'Löschen',
+    en: 'Delete',
+    tr: 'Sil' },
+  'terms.end': {
+    de: 'Ab heute beenden',
+    en: 'End from today',
+    tr: 'Bugünden itibaren sonlandır' },
+  'terms.agreements': {
+    de: '{n} Zustimmungen',
+    en: '{n} agreements',
+    tr: '{n} onay' },
+  'terms.confirmDelete': {
+    de: 'Diese Fassung löschen? Ihr hat noch niemand zugestimmt.',
+    en: 'Delete this version? Nobody has agreed to it yet.',
+    tr: 'Bu sürüm silinsin mi? Henüz kimse kabul etmedi.' },
+  'terms.confirmEnd': {
+    de: 'Diese Fassung ab heute nicht mehr vorlegen? Die Unterschriften darunter bleiben erhalten.',
+    en: 'Stop presenting this version from today? The signatures under it are kept.',
+    tr: 'Bu sürüm bugünden itibaren sunulmasın mı? Altındaki imzalar korunur.' },
   'terms.version': {
     de: 'Fassung',
     en: 'Version',

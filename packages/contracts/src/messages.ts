@@ -1234,6 +1234,10 @@ const M = {
     de: 'Eine neue Fassung kann nicht vor ihrer Vorgaengerin beginnen ({date}).',
     en: 'A new version cannot start before the previous one ({date}).',
     tr: 'Yeni bir sürüm, öncekinden ({date}) önce başlayamaz.' },
+  'terms.inUse': {
+    de: 'Dieser Fassung haben schon Gäste zugestimmt. Sie lässt sich beenden, aber nicht löschen: die Unterschriften zeigen auf ihren Text.',
+    en: 'Guests have already agreed to this version. It can be ended but not deleted: the signatures refer to its text.',
+    tr: 'Misafirler bu sürümü zaten kabul etti. Sonlandırılabilir ama silinemez: imzalar metnine dayanır.' },
   'terms.activeToBeforeFrom': {
     de: 'Das Ende liegt vor dem Beginn.',
     en: 'The end date is before the start date.',

@@ -59,12 +59,17 @@ export function termsRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
-          `SELECT public_ref AS "termsRef", code, version, title, body,
-                  requires_signature AS "requiresSignature",
-                  active_from::text AS "activeFrom", active_to::text AS "activeTo"
-             FROM property_terms
-            WHERE property_id = $1
-            ORDER BY code, version DESC`, [Number(propertyId)])
+          `SELECT t.public_ref AS "termsRef", t.code, t.version, t.title, t.body,
+                  t.requires_signature AS "requiresSignature",
+                  t.active_from::text AS "activeFrom", t.active_to::text AS "activeTo",
+                  -- Wie oft zugestimmt wurde: davon haengt ab, ob die Fassung
+                  -- geloescht oder nur beendet werden kann.
+                  COALESCE(a.n, 0)::int AS agreements
+             FROM property_terms t
+             LEFT JOIN (SELECT terms_id, count(*) AS n FROM guest_agreement
+                         GROUP BY terms_id) a ON a.terms_id = t.id
+            WHERE t.property_id = $1
+            ORDER BY t.code, t.version DESC`, [Number(propertyId)])
         return { terms: rows }
       })
     }
@@ -192,6 +197,62 @@ export function termsRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Eine Fassung loeschen -- nur, solange niemand ihr zugestimmt hat.
+   *
+   * Anlass (Sven, 05.10.2026): dieselbe Bedingung stand unter zwei Kuerzeln,
+   * und der Check-in legte sie zweimal vor. Eine Fassung ohne Zustimmung ist
+   * ein Entwurf, der nie Nachweis war; sie darf gehen. Eine mit Zustimmung
+   * ist der Text, auf den eine Unterschrift zeigt -- sie wird beendet, nicht
+   * geloescht (`/end`). Ein Auftrag ans Gaesteterminal, der auf sie zeigt,
+   * haelt sie ebenfalls: sein Protokoll nennt ihren Titel.
+   */
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/terms/:termsRef',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Hausbedingung loeschen, solange niemand zugestimmt hat',
+    handler: async (req) => {
+      const { propertyId, termsRef } = req.params as { propertyId: string; termsRef: string }
+      return tx(req.pool, req, async client => {
+        const t = await fassung(client, Number(propertyId), termsRef)
+        const benutzt = await client.query<{ n: number }>(
+          `SELECT (SELECT count(*) FROM guest_agreement WHERE terms_id = $1)
+                + (SELECT count(*) FROM terminal_job WHERE terms_id = $1) AS n`, [t.id])
+        if (Number(benutzt.rows[0]!.n) > 0) throw Errors.conflict('terms.inUse')
+        await client.query(`DELETE FROM property_terms WHERE id = $1`, [t.id])
+        return { termsRef, deleted: true }
+      })
+    }
+  })
+
+  /**
+   * Eine Fassung beenden: ab heute legt sie niemand mehr vor. Die
+   * Zustimmungen bleiben und zeigen weiter auf ihren Text.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/terms/:termsRef/end',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Hausbedingung ab heute beenden',
+    handler: async (req) => {
+      const { propertyId, termsRef } = req.params as { propertyId: string; termsRef: string }
+      return tx(req.pool, req, async client => {
+        const t = await fassung(client, Number(propertyId), termsRef)
+        // Heute, aber nicht vor ihrem Beginn: eine Fassung, die erst
+        // morgen gelten sollte, endet mit Laenge null und gilt nie.
+        const r = await client.query<{ active_to: string }>(
+          `UPDATE property_terms
+              SET active_to = GREATEST(active_from, current_date)
+            WHERE id = $1 AND (active_to IS NULL OR active_to > GREATEST(active_from, current_date))
+            RETURNING active_to::text`, [t.id])
+        return { termsRef, activeTo: r.rows[0]?.active_to ?? t.active_to }
+      })
+    }
+  })
+
+  /**
    * Der Gast stimmt zu, und zwar zu einer **Fassung**.
    *
    * Die Unterschrift wird nur gespeichert, wenn die Fassung sie verlangt --
@@ -244,4 +305,14 @@ export function termsRoutes(app: FastifyInstance): void {
       })
     }
   })
+}
+
+/** Eine Fassung dieses Hauses, gesperrt fuer die Aenderung. */
+async function fassung(client: import('@hotelpms/db').PoolClient, propertyId: number,
+                       termsRef: string): Promise<{ id: number; active_to: string | null }> {
+  const r = await client.query<{ id: number; active_to: string | null }>(
+    `SELECT id, active_to::text FROM property_terms
+      WHERE public_ref = $1 AND property_id = $2 FOR UPDATE`, [termsRef, propertyId])
+  if (r.rowCount === 0) throw Errors.notFound('res.terms')
+  return r.rows[0]!
 }
