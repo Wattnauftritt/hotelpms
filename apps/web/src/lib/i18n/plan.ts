@@ -331,14 +331,6 @@ export const plan = {
     en: 'Booking needs a guest. Search or create one.',
     tr: 'Misafir olmadan rezervasyon yapılamaz. Arayın veya yeni kayıt oluşturun.' },
 
-  'plan.monthBack': {
-    de: 'Einen Monat zurück',
-    en: 'One month back',
-    tr: 'Bir ay geri' },
-  'plan.monthForward': {
-    de: 'Einen Monat vor',
-    en: 'One month forward',
-    tr: 'Bir ay ileri' },
   'plan.dayBack': {
     de: 'Einen Tag zurück',
     en: 'One day back',
@@ -355,18 +347,18 @@ export const plan = {
     de: 'Eine Woche vor',
     en: 'One week forward',
     tr: 'Bir hafta ileri' },
+  'plan.todayHint': {
+    de: 'Zu heute, mit dem Vortag als erster Spalte',
+    en: 'Go to today, with yesterday as the first column',
+    tr: 'Bugüne git, ilk sütunda dünkü gün' },
+  'plan.jumpToDate': {
+    de: 'Zu einem Datum springen',
+    en: 'Jump to a date',
+    tr: 'Bir tarihe git' },
   'plan.scrollTime': {
     de: 'Durch die Zeit scrollen',
     en: 'Scroll through time',
     tr: 'Zaman içinde kaydır' },
-  'plan.yearBack': {
-    de: 'Ein Jahr zurück',
-    en: 'One year back',
-    tr: 'Bir yıl geri' },
-  'plan.yearForward': {
-    de: 'Ein Jahr vor',
-    en: 'One year forward',
-    tr: 'Bir yıl ileri' },
   'plan.legend': {
     de: 'Legende',
     en: 'Legend',
