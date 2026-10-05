@@ -19,11 +19,11 @@ describe('Bereiche der Einstellungen', () => {
     // bekommt, entscheidet das Haus. Und die Gaesteterminals (Dokument 31):
     // ein Terminal gehoert einem Haus.
     expect(einstellungsBereiche(p => p === 'settings:property').map(b => b.key))
-      .toEqual(['pay', 'terms', 'exemptions', 'checkin', 'terminal'])
+      .toEqual(['pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal'])
     // Support-Zugriff kam mit Aufgabe 13c dazu und haengt an
     // settings:account -- siehe support.test.ts.
     expect(einstellungsBereiche(() => true).map(b => b.key))
-      .toEqual(['mail', 'pay', 'terms', 'exemptions', 'checkin', 'terminal', 'support'])
+      .toEqual(['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'support'])
     expect(einstellungsBereiche(() => false)).toEqual([])
   })
 })

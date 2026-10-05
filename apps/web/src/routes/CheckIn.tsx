@@ -9,6 +9,7 @@ import { Dialog, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { AmTerminal } from '../components/AmTerminal.tsx'
+import { useAvsStand, useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
 
 /**
  * Check-in mit Meldeschein (A9), erreichbar aus dem Plan.
@@ -40,6 +41,13 @@ import { AmTerminal } from '../components/AmTerminal.tsx'
  * Sammelmeldeschein, bei dem jeder einen eigenen Datensatz bekommt, der auf
  * den Hauptschein zeigt, und bei dem die Reiseleitung unterschreibt. Die API
  * nimmt `occupantGuestRefs` seit jeher an — geschickt hat sie nie jemand.
+ *
+ * **Die AVS-Datei entsteht im selben Ablauf** (Sven, 05.10.2026): Einchecken
+ * klicken, Meldeschein erfassen, falls er fehlt, Datei herunterladen und in
+ * AVS einlesen -- dort entsteht in diesem Moment die Kurkarte. Ist das Haus
+ * eingerichtet, heisst der Knopf deshalb "Einchecken und AVS-Datei". Erst
+ * die Datei, dann der Check-in: scheitert die Datei, ist noch nichts
+ * geschehen, und "Nur einchecken" bleibt als Ausweg.
  */
 export function CheckIn({ reservationRef, propertyId, onClose }: {
   reservationRef: string; propertyId: number; onClose: () => void
@@ -57,6 +65,8 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   const gastSetzen = useSetReservationGuest(reservationRef)
   const bedingungen = useTerms(reservationRef)
   const unterschreiben = useSignRegistration(reservationRef)
+  const avsMelden = useAvsMelden(reservationRef)
+  const [gaestekarte, setGaestekarte] = useState<boolean | null>(null)
 
   const uebernehmen = (g: Guest | null): void => {
     if (g === null) return
@@ -90,6 +100,20 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   // Vorab per Link erfasst, Unterschrift steht aus: erst unterschreiben,
   // dann einchecken. Sie gehoert an den Anreisetag, und der ist jetzt.
   const unterschriftOffen = f?.signaturePending === true && !unterschreiben.isSuccess
+  const angemeldet = f !== undefined && (f.alreadyRegistered || anmelden.isSuccess)
+  // Neu fragen, sobald der Schein hier entsteht oder unterschrieben wird.
+  const avs = useAvsStand(reservationRef,
+                          [angemeldet, unterschreiben.isSuccess, f?.signedAt ?? null])
+  const avsBereit = avs.data !== undefined && avs.data.configured && !avs.data.training
+    && avs.data.reportedAt === null
+  const mitKarte = gaestekarte ?? avs.data?.digitalGuestCard ?? false
+  const eincheckenGesperrt = ohneZimmer || einchecken.isPending || avsMelden.isPending
+    || f === undefined || !angemeldet || unterschriftOffen
+
+  const melden_einchecken_schliessen = async (): Promise<void> => {
+    await avsMelden.mutateAsync({ digitalGuestCard: mitKarte })
+    await einchecken_und_schliessen()
+  }
 
   return (
     /*
@@ -101,18 +125,30 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
             titel={t('checkin.title')} unterzeile={reservationRef}
             fuss={
               <>
-                <button type="button"
-                        disabled={ohneZimmer || einchecken.isPending
-                          || f === undefined
-                          || (!f.alreadyRegistered && !anmelden.isSuccess)
-                          || unterschriftOffen}
-                        onClick={() => void einchecken_und_schliessen()}
-                        className={KNOPF}>
-                  {t('checkin.submit')}
-                </button>
+                {avsBereit ? (
+                  <>
+                    <button type="button" disabled={eincheckenGesperrt}
+                            onClick={() => void melden_einchecken_schliessen()}
+                            className={KNOPF}>
+                      {t('checkin.submitWithAvs')}
+                    </button>
+                    <button type="button" disabled={eincheckenGesperrt}
+                            onClick={() => void einchecken_und_schliessen()}
+                            className={KNOPF_LEISE}>
+                      {t('checkin.submitWithoutAvs')}
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" disabled={eincheckenGesperrt}
+                          onClick={() => void einchecken_und_schliessen()}
+                          className={KNOPF}>
+                    {t('checkin.submit')}
+                  </button>
+                )}
                 <button type="button" onClick={onClose} className={KNOPF_LEISE}>
                   {t('common.back')}
                 </button>
+                {avsMelden.isError && <Fehler error={avsMelden.error} />}
                 {einchecken.isError && <Fehler error={einchecken.error} />}
               </>
             }>
@@ -298,6 +334,13 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                 </>
               )}
 
+              {angemeldet && avs.data !== undefined && avs.data.configured && (
+                <AvsAbschnitt reservationRef={reservationRef} training={avs.data.training}
+                              reportedAt={avs.data.reportedAt}
+                              exportedHere={avs.data.exportedHere}
+                              hasEmail={avs.data.hasEmail}
+                              mitKarte={mitKarte} setMitKarte={setGaestekarte} />
+              )}
             </div>
           )
         })()}
@@ -347,6 +390,59 @@ function Bedingung({ bedingung, reservationRef }: {
                              disabled:opacity-40">
             {bedingung.requiresSignature ? t('terms.sign') : t('terms.accept')}
           </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Der AVS-Teil des Dialogs: gemeldet oder nicht, und die Einwilligung in die
+ * Gaestekarte per Mail. Gemeldet wird ueber den Knopf im Fuss, nicht hier --
+ * ein zweiter Knopf mit derselben Wirkung waere ein Weg, die Datei ohne
+ * Check-in zu erzeugen und dann den Check-in zu vergessen.
+ */
+function AvsAbschnitt({ reservationRef, training, reportedAt, exportedHere, hasEmail,
+                        mitKarte, setMitKarte }: {
+  reservationRef: string; training: boolean; reportedAt: string | null
+  exportedHere: boolean; hasEmail: boolean
+  mitKarte: boolean; setMitKarte: (v: boolean) => void
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const erneut = useAvsErneut(reservationRef)
+
+  return (
+    <div className="border border-neutral-200 rounded-sm p-2 space-y-1 text-sm">
+      <div className="text-xs text-neutral-500">{t('avs.title')}</div>
+      {training ? (
+        <p className="text-xs text-neutral-600">{t('avs.training')}</p>
+      ) : reportedAt !== null ? (
+        <>
+          <p className="text-emerald-800">
+            ✓ {t('avs.reportedAt', { datum: formatDate(reportedAt.slice(0, 10), locale) })}
+          </p>
+          {exportedHere && (
+            <button type="button" disabled={erneut.isPending}
+                    onClick={() => erneut.mutate()}
+                    className="text-xs text-neutral-600 underline disabled:opacity-40">
+              {t('avs.downloadAgain')}
+            </button>
+          )}
+          {erneut.isError && <Fehler error={erneut.error} />}
+        </>
+      ) : (
+        <>
+          {/* Nur mit Mailadresse: ohne sie gibt es nichts, wohin die Karte
+              ginge, und ein Haekchen ohne Wirkung ist eine Falle. */}
+          {hasEmail && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={mitKarte}
+                     onChange={e => setMitKarte(e.target.checked)} />
+              {t('avs.digitalGuestCard')}
+            </label>
+          )}
+          <p className="text-xs text-neutral-500">{t('avs.finalHint')}</p>
         </>
       )}
     </div>

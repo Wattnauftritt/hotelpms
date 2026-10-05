@@ -120,6 +120,7 @@ interface Einreichung {
   signatureSvg?: string
   termsAccepted: string[]
   termsSignatureSvg?: string
+  digitalGuestCard: boolean
 }
 
 const GAST_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality',
@@ -130,7 +131,7 @@ const PERSON_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationalit
 const BEFREIUNG_FELDER = new Set(['reason', 'proof'])
 const ANSCHRIFT_FELDER = new Set(['line1', 'postalCode', 'city', 'country'])
 const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed',
-                               'termsAccepted', 'termsSignatureSvg'])
+                               'termsAccepted', 'termsSignatureSvg', 'digitalGuestCard'])
 
 function istObjekt(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -258,6 +259,10 @@ function pruefe(body: unknown, heute: string): Einreichung {
     else termsSvg = body.termsSignatureSvg
   }
 
+  if (body.digitalGuestCard !== undefined && typeof body.digitalGuestCard !== 'boolean') {
+    fehlt('digitalGuestCard', 'field.invalid')
+  }
+
   if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
   return {
     guest: { ...g!, address: anschrift!, idDocumentType: ausweisTyp,
@@ -265,7 +270,8 @@ function pruefe(body: unknown, heute: string): Einreichung {
     companions: begleiter,
     signatureSvg: svg,
     termsAccepted: akzeptiert,
-    termsSignatureSvg: termsSvg
+    termsSignatureSvg: termsSvg,
+    digitalGuestCard: body.digitalGuestCard === true
   }
 }
 
@@ -277,6 +283,12 @@ async function befreiungsgruende(client: PoolClient, propertyId: number): Promis
     `SELECT id, code, label, needs_proof FROM city_tax_exemption_reason
       WHERE property_id = $1 AND active ORDER BY sort, label`, [propertyId])
   return rows
+}
+
+/** Meldet das Haus an AVS (Migration 0090)? */
+async function meldetAnAvs(client: PoolClient, propertyId: number): Promise<boolean> {
+  const r = await client.query(`SELECT 1 FROM avs_setting WHERE property_id = $1`, [propertyId])
+  return (r.rowCount ?? 0) > 0
 }
 
 /** Die interne Kennung einer Fassung; die Gastseite kennt nur die oeffentliche. */
@@ -403,6 +415,7 @@ export function checkinRoutes(app: FastifyInstance): void {
           terms: (await offeneBedingungen(client, r)).map(b => ({
             termsRef: b.termsRef, title: b.title, body: b.body,
             requiresSignature: b.requiresSignature })),
+          digitalGuestCardOffered: await meldetAnAvs(client, r.property_id),
           exemptionReasons: (await befreiungsgruende(client, r.property_id)).map(g => ({
             code: g.code, label: g.label, needsProof: g.needs_proof }))
         }
@@ -467,7 +480,9 @@ export function checkinRoutes(app: FastifyInstance): void {
             ? { art: 'jetzt', svg: e.signatureSvg }
             : { art: 'amAnreisetag' },
           quelle: k.channel === 'terminal' ? 'terminal' : 'online',
-          befreiungen
+          befreiungen,
+          // Nur wo das Haus an AVS meldet; sonst ginge die Einwilligung ins Leere.
+          digitalGuestCard: e.digitalGuestCard && await meldetAnAvs(client, r.property_id)
         })
 
         /*

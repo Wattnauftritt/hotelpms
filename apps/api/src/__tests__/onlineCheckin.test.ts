@@ -279,7 +279,7 @@ describe('Die Gastseite', () => {
     // `terms` und `exemptionReasons` legt das Haus an; ueber den Gast sagen
     // sie nichts (Migration 0089).
     expect(Object.keys(v).sort()).toEqual(['arrival', 'channel', 'departure',
-      'exemptionReasons', 'firstName', 'language', 'lastName', 'maxCompanions',
+      'digitalGuestCardOffered', 'exemptionReasons', 'firstName', 'language', 'lastName', 'maxCompanions',
       'propertyName', 'signatureAllowed', 'state', 'terms'])
     expect(v).toMatchObject({ lastName: 'Petersen', arrival: ANREISE, departure: ABREISE,
                               propertyName: 'Testhotel', state: 'open', channel: 'mail',

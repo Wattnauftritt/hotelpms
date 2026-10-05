@@ -20,6 +20,7 @@ export interface Meldeschein {
   externalSystem: string | null
   completedAt: string
   avsReportedAt: string | null
+  avsExportedHere: boolean
   destroyAfter: string
   groupRegistrationId: number | null
   lastName: string
@@ -36,7 +37,7 @@ export interface Meldeschein {
 export const MAX_MELDESCHEIN_TAGE = 800
 
 export const useMeldescheine = (propertyId: number, von: string, bis: string) =>
-  useQuery<{ registrations: Meldeschein[] }>({
+  useQuery<{ registrations: Meldeschein[]; avsReporting: boolean }>({
     queryKey: ['meldescheine', propertyId, von, bis],
     queryFn: () => api.get(
       `/v1/properties/${propertyId}/registrations?from=${von}&to=${bis}`)
