@@ -67,6 +67,9 @@ beforeEach(async () => {
   ctx = { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null }
   catId = await makeCategory(owner, fx.propertyId)
   rooms = await makeResources(owner, fx.propertyId, catId, 5)
+  // Diese Tests pruefen den No-Show-Weg; die Vorgabe checkt ein (Migration 0088).
+  await owner.query(`UPDATE property SET unchecked_arrival = 'no_show' WHERE id = $1`,
+    [fx.propertyId])
   await owner.query(`SELECT inventory_materialize($1,$2::date,$3::date)`,
     [fx.propertyId, '2026-09-01', '2026-12-01'])
   await openBusinessDay(owner, fx.propertyId, TAG)

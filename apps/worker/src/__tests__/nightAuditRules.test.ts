@@ -28,6 +28,9 @@ beforeEach(async () => {
   ctx = { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null }
   catId = await makeCategory(owner, fx.propertyId, { code: 'DZ' })
   rooms = await makeResources(owner, fx.propertyId, catId, 5)
+  // Diese Tests pruefen den No-Show-Weg; die Vorgabe checkt ein (Migration 0088).
+  await owner.query(`UPDATE property SET unchecked_arrival = 'no_show' WHERE id = $1`,
+    [fx.propertyId])
   await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
     [fx.propertyId])
   await openBusinessDay(owner, fx.propertyId, TAG)
@@ -127,6 +130,81 @@ describe('No-Show mit Stornoregel', () => {
       `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=$2 AND date=$3`,
       [fx.propertyId, catId, TAG])
     expect(inv.rows[0]!.sold).toBe(0)
+  })
+})
+
+/**
+ * Svens Regel (Migration 0088): was im Kalender steht und niemand storniert
+ * hat, ist da -- auch ohne Check-in. Sonst zaehlte das Fruehstueck nur die
+ * Gaeste, die jemand von Hand eingecheckt hat.
+ */
+describe('Anreise ohne Check-in', () => {
+  beforeEach(async () => {
+    await owner.query(`UPDATE property SET unchecked_arrival = 'arrived' WHERE id = $1`,
+      [fx.propertyId])
+  })
+
+  async function imZimmer(id: number, zimmer: number): Promise<number> {
+    await owner.query(`UPDATE reservation SET resource_id = $2 WHERE id = $1`, [id, zimmer])
+    return id
+  }
+
+  it('checkt ein, statt einen No-Show zu setzen, und behaelt das Kontingent', async () => {
+    const plan = await ratenplanMitRegel({ guaranteed: true, feeKind: 'first_night' })
+    const id = await imZimmer(await anreiseHeute(plan), rooms[0]!)
+    const r = await lauf()
+    expect(r!.steps.no_shows).toBe(1)
+
+    const res = await owner.query<{ status: string; checked_in_at: Date | null
+                                    cancellation_fee_cent: number | null }>(
+      `SELECT status::text, checked_in_at, cancellation_fee_cent
+         FROM reservation WHERE id = $1`, [id])
+    expect(res.rows[0]!.status).toBe('InHouse')
+    expect(res.rows[0]!.checked_in_at).not.toBeNull()
+    expect(res.rows[0]!.cancellation_fee_cent).toBeNull()
+    expect(await gebuehren()).toHaveLength(0)
+
+    const inv = await owner.query<{ sold: number }>(
+      `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=$2 AND date=$3`,
+      [fx.propertyId, catId, TAG])
+    expect(inv.rows[0]!.sold).toBe(1)
+  })
+
+  it('bucht die Logis der ersten Nacht genau einmal', async () => {
+    const id = await imZimmer(await anreiseHeute(), rooms[0]!)
+    const schon = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-04',
+      status: 'InHouse', resourceId: rooms[3]!, priceCent: 11_000 })
+    await lauf()
+
+    const c = await owner.query<{ reservation_id: number; n: number }>(
+      `SELECT reservation_id::int AS reservation_id, count(*)::int AS n FROM charge
+        WHERE property_id = $1 AND revenue_account = '8300'
+        GROUP BY reservation_id ORDER BY reservation_id`, [fx.propertyId])
+    expect(c.rows).toEqual([
+      { reservation_id: id, n: 1 }, { reservation_id: schon.reservationId, n: 1 }]
+      .sort((a, b) => a.reservation_id - b.reservation_id))
+  })
+
+  it('laesst eine Anreise ohne Zimmer bestaetigt und gebunden', async () => {
+    const id = await anreiseHeute()
+    await lauf()
+    const res = await owner.query<{ status: string }>(
+      `SELECT status::text FROM reservation WHERE id = $1`, [id])
+    expect(res.rows[0]!.status).toBe('Confirmed')
+    const inv = await owner.query<{ sold: number }>(
+      `SELECT sold FROM inventory_day WHERE property_id=$1 AND category_id=$2 AND date=$3`,
+      [fx.propertyId, catId, TAG])
+    expect(inv.rows[0]!.sold).toBe(1)
+  })
+
+  it('laesst eine stornierte Anreise storniert', async () => {
+    const id = await anreiseHeute()
+    await owner.query(`UPDATE reservation SET status = 'Canceled' WHERE id = $1`, [id])
+    await lauf()
+    const res = await owner.query<{ status: string }>(
+      `SELECT status::text FROM reservation WHERE id = $1`, [id])
+    expect(res.rows[0]!.status).toBe('Canceled')
   })
 })
 
