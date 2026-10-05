@@ -1054,10 +1054,6 @@ export const plan = {
     de: 'Zugestimmt',
     en: 'Agreed',
     tr: 'Kabul edildi' },
-  'checkin.registration': {
-    de: 'Meldeschein',
-    en: 'Meldeschein',
-    tr: 'Meldeschein' },
   'checkin.openFormAtTerminal': {
     de: 'Meldeformular auf Gästeterminal öffnen',
     en: 'Open registration form on the guest terminal',

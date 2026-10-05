@@ -243,63 +243,66 @@ function Meldeschein({ f, reservationRef }: {
     `${p.lastName}${p.firstName ? `, ${p.firstName}` : ''}`
 
   return (
-    <div className="border border-neutral-200 rounded-sm p-3 space-y-3 text-sm">
-      <div className="flex items-baseline gap-2">
-        <span className="font-medium grow">{t('checkin.registration')}</span>
-        <span className="text-emerald-800">✓</span>
+    <div className="border border-emerald-200 rounded-sm text-sm">
+      {/* Auf einen Blick (Sven, 05.10.2026): liegt der Schein vor, geht es
+          einfach weiter -- der Kopf sagt das, bevor jemand den Inhalt liest. */}
+      <div className="bg-emerald-50 text-emerald-900 font-medium px-3 py-2 rounded-t-sm">
+        ✓ {t('checkin.alreadyRegistered')}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Angabe titel={t('plan.guest')}>{name(g)}</Angabe>
-        <Angabe titel={t('plan.stay')}>
-          {formatDate(f.arrival, locale)} – {formatDate(f.plannedDeparture, locale)}
-        </Angabe>
-        <Angabe titel={t('guests.birthDate')}>{datum(g.birthDate)}</Angabe>
-        <Angabe titel={t('guests.nationality')}>{g.nationality ?? '—'}</Angabe>
-        <div className="col-span-2">
-          <Angabe titel={t('guests.address')}>
-            {[g.address.line1, [g.address.postalCode, g.address.city].filter(Boolean).join(' '),
-              g.address.country].filter(Boolean).join(', ') || '—'}
+      <div className="p-3 space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <Angabe titel={t('plan.guest')}>{name(g)}</Angabe>
+          <Angabe titel={t('plan.stay')}>
+            {formatDate(f.arrival, locale)} – {formatDate(f.plannedDeparture, locale)}
           </Angabe>
+          <Angabe titel={t('guests.birthDate')}>{datum(g.birthDate)}</Angabe>
+          <Angabe titel={t('guests.nationality')}>{g.nationality ?? '—'}</Angabe>
+          <div className="col-span-2">
+            <Angabe titel={t('guests.address')}>
+              {[g.address.line1, [g.address.postalCode, g.address.city].filter(Boolean).join(' '),
+                g.address.country].filter(Boolean).join(', ') || '—'}
+            </Angabe>
+          </div>
         </div>
-      </div>
 
-      {f.companions.length > 0 && (
-        <div>
-          <div className="text-xs text-neutral-500">{t('checkin.occupants')}</div>
-          <ul className="space-y-0.5">
-            {f.companions.map((m, i) => (
-              <li key={i}>
-                {name(m)}
-                <span className="text-neutral-500">
-                  {' · '}{datum(m.birthDate)}{m.nationality ? ` · ${m.nationality}` : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="space-y-1">
-        {f.signatureRequired ? (
-          f.signedAt !== null && (
-            <p className="text-emerald-800">
-              ✓ {t('terms.signedByGuest', { datum: datum(f.signedAt) })}
-            </p>
-          )
-        ) : (
-          <p className="text-xs text-neutral-600">{t('checkin.noSignatureNeeded')}</p>
+        {f.companions.length > 0 && (
+          <div>
+            <div className="text-xs text-neutral-500">{t('checkin.occupants')}</div>
+            <ul className="space-y-0.5">
+              {f.companions.map((m, i) => (
+                <li key={i}>
+                  {name(m)}
+                  <span className="text-neutral-500">
+                    {' · '}{datum(m.birthDate)}{m.nationality ? ` · ${m.nationality}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
-        {(bedingungen.data?.terms ?? []).map(b => (
-          <p key={b.termsRef} className={b.agreed ? 'text-emerald-800' : 'text-neutral-600'}>
-            {b.agreed ? '✓ ' : ''}{b.title}
-            {': '}
-            {b.agreed
-              ? b.signed
-                ? t('terms.signedByGuest', { datum: datum(b.agreedAt) })
-                : t('terms.accepted')
-              : t('terms.notSigned')}
-          </p>
-        ))}
+
+        <div className="space-y-1">
+          {f.signatureRequired ? (
+            f.signedAt !== null && (
+              <p className="text-emerald-800">
+                ✓ {t('terms.signedByGuest', { datum: datum(f.signedAt) })}
+              </p>
+            )
+          ) : (
+            <p className="text-xs text-neutral-600">{t('checkin.noSignatureNeeded')}</p>
+          )}
+          {(bedingungen.data?.terms ?? []).map(b => (
+            <p key={b.termsRef} className={b.agreed ? 'text-emerald-800' : 'text-neutral-600'}>
+              {b.agreed ? '✓ ' : ''}{b.title}
+              {': '}
+              {b.agreed
+                ? b.signed
+                  ? t('terms.signedByGuest', { datum: datum(b.agreedAt) })
+                  : t('terms.accepted')
+                : t('terms.notSigned')}
+            </p>
+          ))}
+        </div>
       </div>
     </div>
   )
