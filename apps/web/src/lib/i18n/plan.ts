@@ -519,15 +519,19 @@ export const plan = {
     en: 'posted',
     tr: 'işlendi' },
   'verlegen.priceHint': {
-    de: 'Leer lassen: es gilt der berechnete Preis. Neue Nächte kosten den '
-      + 'Preis des Ratenplans, ohne Ratenplan den bisherigen. Schon aufs Konto '
-      + 'gebuchte Nächte behalten ihren Preis.',
-    en: 'Leave empty to use the calculated price. New nights cost the rate '
-      + 'plan price, or the previous price without a rate plan. Nights already '
-      + 'posted to the folio keep their price.',
-    tr: 'Boş bırakın: hesaplanan fiyat geçerlidir. Yeni geceler fiyat planının '
-      + 'fiyatına, fiyat planı yoksa önceki fiyata mal olur. Hesaba işlenmiş '
-      + 'geceler fiyatlarını korur.' },
+    de: 'Vorausgefüllt mit dem berechneten Gesamtpreis und anpassbar. Fallen '
+      + 'Nächte weg, entfällt ihr Preis; neue Nächte kosten den Durchschnitt '
+      + 'der bisherigen. Schon aufs Konto gebuchte Nächte behalten ihren Preis.',
+    en: 'Prefilled with the calculated total and editable. Removed nights drop '
+      + 'their price; new nights cost the average of the existing ones. Nights '
+      + 'already posted to the folio keep their price.',
+    tr: 'Hesaplanan toplam fiyatla önceden doldurulmuştur ve değiştirilebilir. '
+      + 'Çıkan gecelerin fiyatı düşer; yeni geceler mevcut gecelerin ortalamasına '
+      + 'mal olur. Hesaba işlenmiş geceler fiyatlarını korur.' },
+  'verlegen.priceCalculated': {
+    de: 'Berechneten Preis nehmen',
+    en: 'Use calculated price',
+    tr: 'Hesaplanan fiyatı kullan' },
   'verlegen.nothingChanged': {
     de: 'Nichts geändert',
     en: 'Nothing changed',

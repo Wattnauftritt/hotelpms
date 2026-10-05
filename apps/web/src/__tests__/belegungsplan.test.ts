@@ -1696,7 +1696,8 @@ describe('Verschieben wird bestaetigt, nicht ausgefuehrt', () => {
     // Ein Zug, der verlaengert, aendert den Preis; geprueft wird er in der
     // Maske, nicht erst auf der Rechnung (Sven, 05.10.2026).
     expect(maske).toContain('useStayPreview(')
-    expect(maske).toContain('<PreisFelder wert={preis}')
+    // Vorausgefuellt mit dem berechneten Preis, nicht leer (Sven, 05.10.2026).
+    expect(maske).toContain('<PreisFelder wert={preis ?? gerechnet}')
   })
 
   it('schliesst die Maske erst nach dem Erfolg', () => {

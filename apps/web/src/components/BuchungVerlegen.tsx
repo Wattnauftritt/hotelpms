@@ -4,6 +4,7 @@ import { useT, formatDate, formatMoney, useLocale } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { useStayPreview } from '../lib/queries/booking.js'
 import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingabe.js'
+import { eingabeAusCent } from '../lib/preisraster.js'
 import { gastNameAnzeige } from '../lib/gastName.js'
 import { GuestPicker, useGastAusEingabe } from './GuestPicker.tsx'
 import { PreisFelder } from './PreisFelder.tsx'
@@ -116,11 +117,14 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
   const [anreise, setAnreise] = useState(verlegung.neu.arrival)
   const [abreise, setAbreise] = useState(verlegung.neu.departure)
   /*
-   * Leer heisst: es gilt der gerechnete Preis aus der Vorschau. Ein
-   * getippter Betrag ist eine Vereinbarung und geht als genau **ein** Feld
-   * hinaus, wie beim Anlegen (`preisFelder`).
+   * Was jemand ins Preisfeld getippt hat -- `null`, solange niemand es
+   * angefasst hat. Dann steht dort der berechnete Preis aus der Vorschau
+   * und wandert mit, wenn sich die Tage aendern (Sven, 05.10.2026: "nicht
+   * einfach leer, sondern mit dem bisher gespeicherten Preis
+   * vorausgefuellt"). Ein getippter Betrag ist eine Vereinbarung und geht
+   * als genau **ein** Feld hinaus, wie beim Anlegen (`preisFelder`).
    */
-  const [preis, setPreis] = useState<Preiseingabe>(LEERER_PREIS)
+  const [preis, setPreis] = useState<Preiseingabe | null>(null)
   /*
    * Ein anderer Gast. Der bisherige steht in der Kopfzeile; erst wer auf
    * "Anderer Gast" klickt, bekommt die Suche -- sonst stuende ein leeres
@@ -134,15 +138,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
   const vorher = zimmer.find(z => z.id === verlegung.alt.resourceId)
   const gruppe = verlegung.gruppe
 
-  const vereinbart = preisFelder(preis)
   const gastAnders = gastWechsel && (neuerGast !== null || gast.neu !== null)
-  const anders = gruppe !== undefined
-    || raum !== verlegung.alt.resourceId
-    || anreise !== verlegung.alt.arrival
-    || abreise !== verlegung.alt.departure
-    || vereinbart !== null
-    || gastAnders
-
   /*
    * Der Preis danach, gerechnet von der Schnittstelle -- dieselbe Rechnung
    * wie beim Speichern, nur zurueckgenommen. Ein Zug, der den Aufenthalt
@@ -154,6 +150,26 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
         resourceId: raum }
     : null)
   const naechte = abreise > anreise ? daysBetween(anreise, abreise) : 0
+
+  const gerechnet: Preiseingabe = vorschau.data === undefined ? LEERER_PREIS
+    : { modus: 'gesamt', text: eingabeAusCent(vorschau.data.totalCent) }
+  /*
+   * Nur ein **anderer** Betrag ist eine Vereinbarung. Wer ins Feld klickt
+   * und den berechneten stehen laesst, hat nichts vereinbart -- sonst
+   * stuende nach jeder Bearbeitung ein fester Gesamtpreis an der Buchung,
+   * und die naechste Verlaengerung rechnete nicht mehr mit.
+   */
+  const getippt = preis === null ? null : preisFelder(preis)
+  const vereinbart = getippt !== null && 'totalCent' in getippt
+      && getippt.totalCent === vorschau.data?.totalCent
+    ? null : getippt
+
+  const anders = gruppe !== undefined
+    || raum !== verlegung.alt.resourceId
+    || anreise !== verlegung.alt.arrival
+    || abreise !== verlegung.alt.departure
+    || vereinbart !== null
+    || gastAnders
 
   const wechsel = gewaehlt !== undefined && gewaehlt.category_id !== verlegung.categoryId
   const zuKlein = wechsel && gewaehlt.max_occupancy < verlegung.bedarf
@@ -365,7 +381,17 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
               </div>
             )}
             {vorschau.isError && <Fehler error={vorschau.error} />}
-            <PreisFelder wert={preis} naechte={naechte} onChange={setPreis} />
+            <div className="flex flex-wrap items-end gap-3">
+              <PreisFelder wert={preis ?? gerechnet} naechte={naechte} onChange={setPreis} />
+              {/* Der Weg zurueck zur Rechnung, wenn sich nach dem Tippen die
+                  Tage noch einmal aendern. */}
+              {preis !== null && (
+                <button type="button" onClick={() => setPreis(null)}
+                        className="pb-2 text-xs text-neutral-500 underline">
+                  {t('verlegen.priceCalculated')}
+                </button>
+              )}
+            </div>
             <p className="text-xs text-neutral-500">{t('verlegen.priceHint')}</p>
           </div>
         )}
