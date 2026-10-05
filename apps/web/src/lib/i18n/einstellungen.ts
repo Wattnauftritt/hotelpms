@@ -529,6 +529,47 @@ export const einstellungen = {
     en: 'Sending can only be switched on once the sender domain is active.',
     tr: 'Gönderim ancak gönderen alan adı etkinleştirildikten sonra açılabilir.' },
 
+  // AVS-Meldeschein (0091). "AVS" ist der Name des Systems der Kurverwaltung.
+  'avsSettings.title': {
+    de: 'AVS-Meldeschein',
+    en: 'AVS registration',
+    tr: 'AVS Meldeschein' },
+  'avsSettings.hint': {
+    de: 'Beim Check-in entsteht je Aufenthalt eine Datei für AVS, die die Rezeption sofort einliest; dort entsteht die Gästekarte. Die Objektnummer vergibt die Kurverwaltung.',
+    en: 'At check-in, one file per stay is created for AVS, which the front desk imports right away; the guest card is created there. The property number is assigned by the spa administration.',
+    tr: 'Check-in sırasında her konaklama için AVS\'ye bir dosya oluşturulur ve resepsiyon bunu hemen içe aktarır; misafir kartı orada oluşur. Tesis numarasını kur idaresi verir.' },
+  'avsSettings.notConfigured': {
+    de: 'Noch nicht eingerichtet: der Check-in bietet keine AVS-Datei an.',
+    en: 'Not set up yet: check-in does not offer an AVS file.',
+    tr: 'Henüz ayarlanmadı: check-in AVS dosyası sunmuyor.' },
+  'avsSettings.hotelId': {
+    de: 'Objektnummer (hotelid)',
+    en: 'Property number (hotelid)',
+    tr: 'Tesis numarası (hotelid)' },
+  'avsSettings.defaultCategory': {
+    de: 'Kategorie ohne Befreiung',
+    en: 'Category without exemption',
+    tr: 'Muafiyetsiz kategori' },
+  'avsSettings.minAge': {
+    de: 'Gemeldet ab Alter',
+    en: 'Reported from age',
+    tr: 'Bildirim yaşı' },
+  'avsSettings.origin': {
+    de: 'Herkunfts-ID',
+    en: 'Origin ID',
+    tr: 'Kaynak kimliği' },
+  'avsSettings.userName': {
+    de: 'Benutzer (höchstens 10 Zeichen, auch im Dateinamen)',
+    en: 'User (at most 10 characters, also in the file name)',
+    tr: 'Kullanıcı (en fazla 10 karakter, dosya adında da)' },
+  'avsSettings.categoryHint': {
+    de: 'Die Kategorie für befreite Gäste steht beim jeweiligen Grund unter „Kurtaxe-Befreiung“.',
+    en: 'The category for exempt guests is set on each reason under “Tourist tax exemption”.',
+    tr: 'Muaf misafirlerin kategorisi “Turist vergisi muafiyeti” altında her gerekçede ayarlanır.' },
+  'avsSettings.saved': {
+    de: 'Gespeichert',
+    en: 'Saved',
+    tr: 'Kaydedildi' },
   'exemption.title': {
     de: 'Kurtaxe-Befreiung',
     en: 'Tourist tax exemption',

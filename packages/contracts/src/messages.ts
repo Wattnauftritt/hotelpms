@@ -820,6 +820,10 @@ const M = {
     de: 'Der GoBD-Export',
     en: 'The GoBD export',
     tr: 'GoBD aktarımı' },
+  'training.what.avs': {
+    de: 'Die Meldung an AVS',
+    en: 'Reporting to AVS',
+    tr: 'AVS bildirimi' },
   'training.what.guestLevy': {
     de: 'Das Gaesteverzeichnis',
     en: 'The guest levy register',
@@ -1366,6 +1370,33 @@ const M = {
     de: 'Dieses Kuerzel gibt es in diesem Haus schon.',
     en: 'This code already exists for this property.',
     tr: 'Bu kod bu tesiste zaten var.' },
+  'avs.notConfigured': {
+    de: 'Fuer dieses Haus ist keine AVS-Objektnummer eingetragen (Einstellungen, AVS-Meldeschein).',
+    en: 'No AVS property number is set for this property (Settings, AVS registration).',
+    tr: 'Bu tesis için AVS nesne numarası girilmemiş (Ayarlar, AVS kayıt formu).' },
+  'avs.noRegistration': {
+    de: 'Fuer diese Reservierung liegt noch kein Meldeschein vor.',
+    en: 'There is no registration form for this reservation yet.',
+    tr: 'Bu rezervasyon için henüz kayıt formu yok.' },
+  'avs.signaturePending': {
+    de: 'Der Meldeschein ist noch nicht unterschrieben. Erst unterschreiben, dann an AVS melden.',
+    en: 'The registration form is not signed yet. Sign it first, then report it to AVS.',
+    tr: 'Kayıt formu henüz imzalanmadı. Önce imzalayın, sonra AVS’ye bildirin.' },
+  'avs.alreadyReported': {
+    de: 'Dieser Meldeschein ist schon an AVS gemeldet. AVS kennt keine Aenderung; '
+      + 'ein zweiter Import waere ein zweiter Gast.',
+    en: 'This registration form has already been reported to AVS. AVS has no updates; '
+      + 'a second import would be a second guest.',
+    tr: 'Bu kayıt formu AVS’ye zaten bildirildi. AVS güncelleme bilmez; ikinci bir '
+      + 'aktarım ikinci bir misafir olur.' },
+  'avs.notExportedHere': {
+    de: 'Dieser Meldeschein wurde nicht aus StayGrid an AVS gemeldet.',
+    en: 'This registration form was not reported to AVS from StayGrid.',
+    tr: 'Bu kayıt formu AVS’ye StayGrid üzerinden bildirilmedi.' },
+  'avs.nobodyToReport': {
+    de: 'Auf diesem Meldeschein steht niemand im meldepflichtigen Alter; es gibt nichts an AVS zu melden.',
+    en: 'Nobody on this registration form is old enough to be reported; there is nothing to send to AVS.',
+    tr: 'Bu kayıt formunda bildirim yaşında kimse yok; AVS’ye bildirilecek bir şey yok.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

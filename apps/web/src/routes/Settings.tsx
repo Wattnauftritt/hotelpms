@@ -16,6 +16,7 @@ import { SupportZugriff } from '../components/SupportZugriff.tsx'
 import { Gaesteterminals } from '../components/Gaesteterminals.tsx'
 import { OnlineCheckinEinstellung } from '../components/OnlineCheckinEinstellung.tsx'
 import { KurtaxeBefreiung } from '../components/KurtaxeBefreiung.tsx'
+import { AvsEinstellung } from '../components/AvsEinstellung.tsx'
 
 /**
  * Einstellungen des Hauses, die nicht Einrichtung sind.
@@ -26,7 +27,7 @@ import { KurtaxeBefreiung } from '../components/KurtaxeBefreiung.tsx'
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'terms', 'exemptions', 'checkin', 'terminal', 'support'] as const
+const REITER = ['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -39,6 +40,10 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   // Kurtaxe-Befreiung (0089): was das Meldeformular als Grund anbietet.
   if (darf('settings:property')) {
     bereiche.push({ key: 'exemptions', label: 'exemption.title' })
+  }
+  // AVS-Meldeschein (0091): Objektnummer und Kategorie vergibt die Gemeinde.
+  if (darf('settings:property')) {
+    bereiche.push({ key: 'avs', label: 'avsSettings.title' })
   }
   // Online-Check-in (Dokument 30): wann der Gast seinen Meldeschein vorab
   // bekommt, ist eine Entscheidung des Hauses, keine der Schnittstellen.
@@ -661,6 +666,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
       {aktiv.key === 'terms' && <Hausbedingungen propertyId={propertyId} />}
       {aktiv.key === 'exemptions' && <KurtaxeBefreiung propertyId={propertyId} />}
+      {aktiv.key === 'avs' && <AvsEinstellung propertyId={propertyId} />}
       {aktiv.key === 'checkin' && (
         <OnlineCheckinEinstellung propertyId={propertyId} isTraining={isTraining} />
       )}

@@ -5,6 +5,7 @@ import { useT, useLocale, formatDate, type TextKey } from '../lib/i18n/index.js'
 import { useSprung } from '../lib/suche.js'
 import { today, addDays, daysBetween } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
 
 /**
  * Meldescheine: alle Scheine eines Zeitraums nach Anreise (Sven, 04.10.2026).
@@ -123,6 +124,7 @@ export function Meldescheine({ propertyId }: { propertyId: number }): JSX.Elemen
                             <span>{t('reg.avsReported', {
                               datum: formatDate(r.avsReportedAt.slice(0, 10), locale) })}</span>
                           )}
+                          {q.data.avsReporting && <AvsKnopf r={r} />}
                           <span>{t('reg.destroyAfter', {
                             datum: formatDate(r.destroyAfter, locale) })}</span>
                           {r.taxExemption !== null && (
@@ -143,5 +145,35 @@ export function Meldescheine({ propertyId }: { propertyId: number }): JSX.Elemen
                   </ul>
                 </>}
     </div>
+  )
+}
+
+/**
+ * Die AVS-Datei nachtraeglich -- fuer den Gast, der ohne sie eingecheckt
+ * wurde, oder wenn der Download im Dialog schiefging. Der Stand kommt aus
+ * der Liste, nicht je Zeile nachgeladen; gefragt wird erst beim Klick.
+ */
+function AvsKnopf({ r }: { r: Hauptschein }): JSX.Element | null {
+  const t = useT()
+  const melden = useAvsMelden(r.reservationRef)
+  const erneut = useAvsErneut(r.reservationRef)
+  if (r.avsReportedAt !== null && !r.avsExportedHere) return null
+  const fehler = melden.error ?? erneut.error
+  return (
+    <span className="flex items-center gap-2">
+      {r.avsReportedAt === null ? (
+        <button type="button" disabled={melden.isPending}
+                onClick={() => { if (window.confirm(t('avs.confirmReport'))) melden.mutate({}) }}
+                className="underline disabled:opacity-40">
+          {t('avs.download')}
+        </button>
+      ) : (
+        <button type="button" disabled={erneut.isPending} onClick={() => erneut.mutate()}
+                className="underline disabled:opacity-40">
+          {t('avs.downloadAgain')}
+        </button>
+      )}
+      {fehler !== null && <Fehler error={fehler} />}
+    </span>
   )
 }

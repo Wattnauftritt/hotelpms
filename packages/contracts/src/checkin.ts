@@ -174,6 +174,11 @@ export const CheckinFormView = Type.Object({
     body: Type.String(),
     requiresSignature: Type.Boolean()
   })),
+  /**
+   * Bietet das Haus die digitale Gaestekarte an? Nur wenn es an AVS meldet
+   * (Migration 0090); sonst waere das Haekchen eine Zusage ohne Weg.
+   */
+  digitalGuestCardOffered: Type.Boolean(),
   /** Die Befreiungsgruende fuer die Kurtaxe, die das Haus anbietet. */
   exemptionReasons: Type.Array(Type.Object({
     code: Type.String(),
@@ -246,6 +251,11 @@ export const CheckinSubmit = Type.Object({
    * privatrechtlich, § 29 Abs. 2 BMG gilt fuer sie nicht.
    */
   termsSignatureSvg: Type.Optional(Type.String({ maxLength: UNTERSCHRIFT_MAX_ZEICHEN })),
+  /**
+   * Einwilligung, dass AVS die Gaestekarte an die Mailadresse schickt
+   * (`digit_gastkart`). Freiwillig; ohne sie geht die Adresse nicht mit.
+   */
+  digitalGuestCard: Type.Optional(Type.Boolean()),
   /** "Meine Angaben sind richtig und vollstaendig." */
   confirmed: Type.Literal(true)
 }, { additionalProperties: false })

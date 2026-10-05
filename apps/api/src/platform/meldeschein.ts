@@ -110,6 +110,8 @@ export interface MeldescheinEingabe {
   herkunft?: MeldescheinHerkunft
   /** Je Gaeste-id; wer fehlt, ist nicht befreit. */
   befreiungen?: Map<number, Befreiung>
+  /** Einwilligung des Hauptgasts in die digitale Gaestekarte (0090). */
+  digitalGuestCard?: boolean
 }
 
 export interface MeldescheinErgebnis {
@@ -175,20 +177,21 @@ export async function erfasseMeldeschein(
                                signature_svg, signed_at, destroy_after,
                                source, signature_required, external_system,
                                external_reference, completed_at, avs_reported_at,
-                               tax_exemption_reason_id, tax_exemption_proof)
+                               tax_exemption_reason_id, tax_exemption_proof,
+                               digital_guest_card)
      VALUES ($1,$2,$3,$4::date,$5::date,$6,$7,$8::text,
              CASE WHEN $8::text IS NULL THEN NULL
                   ELSE COALESCE($12::timestamptz, now()) END,
              -- Ab Abreise, nicht ab Anreise: § 30 Abs. 4 BMG.
              ($5::date + ($9 || ' months')::interval)::date,
-             $10, $11, $13, $14, $15::timestamptz, $16::timestamptz, $17, $18)
+             $10, $11, $13, $14, $15::timestamptz, $16::timestamptz, $17, $18, $19)
      RETURNING id`,
     [e.propertyId, e.reservationId, e.primaryGuestId, e.arrival, e.departure,
      e.mitreisende.length + 1, hauptAuslaendisch, signatur, AUFBEWAHRUNG_MONATE,
      e.quelle, noetig, signedAt, k?.system ?? null, k?.reference ?? null,
      k?.completedAt ?? null, k?.avsReportedAt ?? null,
      befreiung(e.primaryGuestId)?.reasonId ?? null,
-     befreiung(e.primaryGuestId)?.proof ?? null])
+     befreiung(e.primaryGuestId)?.proof ?? null, e.digitalGuestCard === true])
   const hauptId = Number(h.rows[0]!.id)
 
   /**

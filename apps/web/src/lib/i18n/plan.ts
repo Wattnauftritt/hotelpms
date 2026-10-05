@@ -1070,6 +1070,48 @@ export const plan = {
     de: 'Meldeschein speichern',
     en: 'Save registration form',
     tr: 'Meldeschein kaydet' },
+  // AVS-Datei im Ablauf des Check-ins (Migration 0091). "AVS" bleibt stehen:
+  // es ist der Name des Systems der Kurverwaltung, nicht eine Beschreibung.
+  'checkin.submitWithAvs': {
+    de: 'Einchecken und AVS-Datei',
+    en: 'Check in and AVS file',
+    tr: 'Check-in yap ve AVS dosyası' },
+  'checkin.submitWithoutAvs': {
+    de: 'Nur einchecken',
+    en: 'Check in only',
+    tr: 'Sadece check-in' },
+  'avs.title': {
+    de: 'AVS-Meldeschein',
+    en: 'AVS registration',
+    tr: 'AVS Meldeschein' },
+  'avs.download': {
+    de: 'AVS-Datei',
+    en: 'AVS file',
+    tr: 'AVS dosyası' },
+  'avs.downloadAgain': {
+    de: 'AVS-Datei erneut herunterladen',
+    en: 'Download AVS file again',
+    tr: 'AVS dosyasını tekrar indir' },
+  'avs.reportedAt': {
+    de: 'An AVS gemeldet am {datum}',
+    en: 'Reported to AVS on {datum}',
+    tr: '{datum} tarihinde AVS\'ye bildirildi' },
+  'avs.finalHint': {
+    de: 'Die Datei gibt es je Aufenthalt einmal: AVS nimmt keine Änderungen an, ein zweiter Import wäre ein zweiter Gast.',
+    en: 'There is one file per stay: AVS accepts no changes, and a second import would be a second guest.',
+    tr: 'Her konaklama için bir dosya vardır: AVS değişiklik kabul etmez, ikinci bir içe aktarma ikinci bir misafir olur.' },
+  'avs.digitalGuestCard': {
+    de: 'Gästekarte per E-Mail (der Gast hat zugestimmt)',
+    en: 'Guest card by email (the guest has agreed)',
+    tr: 'Misafir kartı e-posta ile (misafir onayladı)' },
+  'avs.training': {
+    de: 'Übungshaus: es geht keine Datei an AVS.',
+    en: 'Training property: no file is sent to AVS.',
+    tr: 'Eğitim tesisi: AVS\'ye dosya gönderilmez.' },
+  'avs.confirmReport': {
+    de: 'Meldeschein jetzt an AVS melden? Das lässt sich nicht zurücknehmen.',
+    en: 'Report this registration to AVS now? This cannot be undone.',
+    tr: 'Bu kayıt şimdi AVS\'ye bildirilsin mi? Bu geri alınamaz.' },
   'checkin.submit': {
     de: 'Meldeschein erfassen und einchecken',
     en: 'Register and check in',

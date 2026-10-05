@@ -299,6 +299,32 @@ describe('Kurtaxe-Befreiung im Meldeformular', () => {
   })
 })
 
+describe('Digitale Gaestekarte im Meldeformular (0091)', () => {
+  const karte = async (reservationId: number): Promise<boolean> =>
+    (await owner.query<{ digital_guest_card: boolean }>(
+      `SELECT digital_guest_card FROM registration
+        WHERE reservation_id = $1 AND group_registration_id IS NULL`, [reservationId]))
+      .rows[0]!.digital_guest_card
+
+  it('wird nur angeboten und gespeichert, wenn das Haus an AVS meldet', async () => {
+    const ohne = await reservierung()
+    const t1 = await mailLink(ohne.ref)
+    expect(JSON.parse((await formular(t1)).body).digitalGuestCardOffered).toBe(false)
+    expect((await einreichen(t1, inlaendisch({}, { digitalGuestCard: true }))).statusCode)
+      .toBe(201)
+    expect(await karte(ohne.id)).toBe(false)
+
+    await owner.query(`INSERT INTO avs_setting (property_id, hotel_id) VALUES ($1,'4711')`,
+      [fx.propertyId])
+    const mit = await reservierung()
+    const t2 = await mailLink(mit.ref)
+    expect(JSON.parse((await formular(t2)).body).digitalGuestCardOffered).toBe(true)
+    expect((await einreichen(t2, inlaendisch({}, { digitalGuestCard: true }))).statusCode)
+      .toBe(201)
+    expect(await karte(mit.id)).toBe(true)
+  })
+})
+
 describe('Befreiungsgruende in den Einstellungen', () => {
   it('lassen sich anlegen, nicht doppelt, und abschalten statt loeschen', async () => {
     const url = `/v1/properties/${fx.propertyId}/city-tax-exemptions`

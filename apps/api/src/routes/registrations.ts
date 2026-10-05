@@ -254,6 +254,9 @@ export function registrationRoutes(app: FastifyInstance): void {
                   -- Ausgefuellt: beim uebernommenen Schein dort, sonst hier.
                   COALESCE(reg.completed_at, reg.created_at) AS "completedAt",
                   reg.avs_reported_at AS "avsReportedAt",
+                  -- Aus StayGrid gemeldet (0091): nur dann gibt es die Datei
+                  -- noch einmal. Ein im Adminpanel gemeldeter Schein nicht.
+                  (reg.avs_export_id IS NOT NULL) AS "avsExportedHere",
                   reg.destroy_after::text AS "destroyAfter",
                   reg.group_registration_id AS "groupRegistrationId",
                   g.last_name AS "lastName", g.first_name AS "firstName",
@@ -272,7 +275,13 @@ export function registrationRoutes(app: FastifyInstance): void {
             ORDER BY reg.arrival, g.last_name
             LIMIT 5000`,
           [Number(propertyId), q.from, q.to])
-        return { registrations: rows }
+        // Meldet das Haus an AVS (0091)? Dann bietet der Bildschirm je Schein
+        // die Datei an; ein Haus ohne Kurbeitrag sieht davon nichts.
+        const avs = await client.query<{ ok: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM avs_setting WHERE property_id = $1)
+                  AND NOT p.is_training AS ok
+             FROM property p WHERE p.id = $1`, [Number(propertyId)])
+        return { registrations: rows, avsReporting: avs.rows[0]?.ok ?? false }
       })
     }
   })

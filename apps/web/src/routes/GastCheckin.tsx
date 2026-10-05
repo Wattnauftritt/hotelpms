@@ -322,6 +322,7 @@ function Formular({ token, view, gross, onErledigt }: {
   const [bedingungenOk, setBedingungenOk] = useState(false)
   const [bedingungenSignatur, setBedingungenSignatur] = useState<string | null>(null)
   const [bestaetigt, setBestaetigt] = useState(false)
+  const [gaestekarte, setGaestekarte] = useState(false)
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<unknown>(null)
 
@@ -359,6 +360,7 @@ function Formular({ token, view, gross, onErledigt }: {
         ? { termsAccepted: view.terms.map(b => b.termsRef) } : {}),
       ...(bedingungenUnterschrift && bedingungenSignatur !== null
         ? { termsSignatureSvg: bedingungenSignatur } : {}),
+      ...(view.digitalGuestCardOffered && gaestekarte ? { digitalGuestCard: true } : {}),
       confirmed: true
     }
     try {
@@ -625,6 +627,16 @@ function Formular({ token, view, gross, onErledigt }: {
             <p className="text-neutral-600">
               {t('gastCheckin.privacy', { haus: view.propertyName })}
             </p>
+            {/* Freiwillig und ungefragt aus: AVS verlangt fuer die digitale
+                Gaestekarte eine Einwilligung (Migration 0090). */}
+            {view.digitalGuestCardOffered && (
+              <label className="flex items-start gap-2">
+                <input type="checkbox" checked={gaestekarte}
+                       onChange={e => setGaestekarte(e.target.checked)}
+                       className={gross ? 'mt-1 h-6 w-6' : 'mt-0.5'} />
+                <span>{t('gastCheckin.digitalGuestCard')}</span>
+              </label>
+            )}
             <label className="flex items-start gap-2">
               <input type="checkbox" checked={bestaetigt}
                      onChange={e => setBestaetigt(e.target.checked)}
