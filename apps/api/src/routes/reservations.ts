@@ -401,6 +401,56 @@ async function preisVereinbaren(
  * so entscheidet der Typ die Frage mit, sobald eine weitere hinzukommt,
  * statt sie stillschweigend offen zu lassen.
  */
+/**
+ * Die Logis und Kurtaxe gebuchter Naechte per Gegenbuchung zuruecknehmen.
+ *
+ * Erkannt wird, was der Nachtlauf bucht: Logis auf 8300 und Abgaben mit
+ * Steuerregel, je an dieser Reservierung und an einem ihrer gebuchten
+ * Tage. Minibar, Kasse oder eine Gebuehr bleiben stehen; die hat jemand
+ * bewusst gebucht, und ob sie fallen, entscheidet ein Mensch am Folio.
+ *
+ * Steht eine davon schon auf einer Rechnung, wird abgewiesen: dann ist
+ * zuerst die Rechnung zu stornieren, sonst fuehrte die Gegenbuchung ein
+ * Folio, dessen Rechnung etwas anderes sagt.
+ *
+ * Die Naechte verlieren danach ihre Marke `posted`. Kommt der Gast doch
+ * noch und wird eingecheckt, bucht der Nachtlauf wieder, was ab dann faellt.
+ */
+async function gebuchteNaechteGegenbuchen(
+  client: PoolClient, reservationId: number, propertyId: number, heute: string,
+  userId: number | null
+): Promise<void> {
+  const offen = await client.query<{ id: number; invoice_id: number | null }>(
+    `SELECT c.id, c.invoice_id
+       FROM charge c
+      WHERE c.reservation_id = $1 AND c.reverses_id IS NULL
+        AND (c.revenue_account = '8300' OR c.tax_rule_id IS NOT NULL)
+        AND c.business_date IN (SELECT date FROM reservation_night
+                                 WHERE reservation_id = $1 AND posted)
+        AND NOT EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id)
+      ORDER BY c.id`,
+    [reservationId])
+  if (offen.rows.some(c => c.invoice_id !== null)) {
+    throw Errors.unprocessable('stay.noShowInvoiced')
+  }
+  if (offen.rowCount !== 0) {
+    await client.query(
+      `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                           net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                           revenue_account, product_id, reservation_id, reverses_id,
+                           created_by)
+       SELECT $2, c.folio_id, $3::date, 'Storno ' || c.description || ' (nicht angereist)',
+              c.quantity, -c.net_cent, -c.tax_cent, -c.gross_cent, c.tax_rate_bp,
+              c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id, $4
+         FROM charge c WHERE c.id = ANY($1::bigint[])
+        ORDER BY c.id`,
+      [offen.rows.map(c => c.id), propertyId, heute, userId])
+  }
+  await client.query(
+    `UPDATE reservation_night SET posted = false WHERE reservation_id = $1 AND posted`,
+    [reservationId])
+}
+
 const EVENT_FOR_ACTION: Record<ReservationAction, WebhookEventType> = {
   confirm:   'reservation.changed',
   hold:      'reservation.changed',
@@ -1711,6 +1761,28 @@ export function reservationRoutes(app: FastifyInstance): void {
           if ((gebucht.rowCount ?? 0) > 0) throw Errors.unprocessable('stay.undoCheckinPosted')
         }
 
+        /*
+         * **Nicht angereist, auch nach dem Tagesabschluss.** Seit 0088
+         * checkt der Nachtlauf jede Anreise mit Zimmer ein (Svens Regel:
+         * was im Kalender steht, ist da). Kommt der Gast doch nicht, war
+         * er bisher nicht mehr loszuwerden: Zuruecknehmen scheitert an der
+         * gebuchten Nacht, Stornieren am Zustand. Die Ausnahme von der
+         * Regel ist genau diese Handlung der Rezeption, keine Automatik.
+         *
+         * Vor der Anreise ist niemand ein No-Show; das waere ein Storno.
+         * Die Logis und Kurtaxe, die der Nachtlauf gebucht hat, gehen per
+         * Gegenbuchung zurueck (Haertegrad 1), mit dem heutigen
+         * Geschaeftstag -- der gebuchte Tag ist abgeschlossen.
+         */
+        if (act === 'no_show') {
+          const heute = await geschaeftstag(client, r.property_id)
+          if (heute < r.arrival) throw Errors.unprocessable('stay.noShowBeforeArrival')
+          if (r.status === 'InHouse') {
+            await gebuchteNaechteGegenbuchen(client, r.id, r.property_id, heute,
+                                             principal.userId)
+          }
+        }
+
         if (act === 'check_in' && r.resource_id === null) {
           throw Errors.unprocessable('stay.checkinNeedsRoom')
         }
@@ -1783,7 +1855,9 @@ export function reservationRoutes(app: FastifyInstance): void {
           : act === 'check_out' ? 'checked_out_at = now(),'
           : act === 'cancel' ? 'canceled_at = now(),'
           : act === 'reinstate' ? 'canceled_at = NULL,'
-          : act === 'undo_check_in' ? 'checked_in_at = NULL,' : ''
+          : act === 'undo_check_in' ? 'checked_in_at = NULL,'
+          // Der Nachtlauf hat ihn eingecheckt, nicht der Gast.
+          : act === 'no_show' ? 'checked_in_at = NULL,' : ''
         await client.query(
           `UPDATE reservation SET status = $2, ${stamp} updated_at = now() WHERE id = $1`,
           [r.id, target])
@@ -1806,6 +1880,11 @@ export function reservationRoutes(app: FastifyInstance): void {
   // und der kuerzte den Aufenthalt auf heute und gab das Zimmer frei.
   action('/v1/reservations/:reservationRef/undo-check-in', 'undo_check_in', 'reservation:checkin',
     'Check-in zuruecknehmen')
+  // Der Nachtlauf checkt Anreisen ein (0088); wer trotzdem nicht kam, wird
+  // hier No-Show -- vor dem Tagesabschluss aus `Confirmed`, danach aus
+  // `InHouse` samt Gegenbuchung der gebuchten Naechte.
+  action('/v1/reservations/:reservationRef/no-show', 'no_show', 'reservation:checkin',
+    'Als nicht angereist markieren')
   action('/v1/reservations/:reservationRef/cancel', 'cancel', 'reservation:write', 'Stornieren')
   // Der Zustandsautomat kennt `reinstate` seit jeher, einen Weg dorthin gab
   // es nicht: ein versehentlicher Storno war damit endgueltig, und ein

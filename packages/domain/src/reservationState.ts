@@ -19,7 +19,12 @@ const TRANSITIONS: Record<ReservationStatus, Partial<Record<ReservationAction, R
   // Ein Check-in am falschen Gast ist kein Check-out: der Gast ist nie
   // abgereist, und ein Check-out kuerzte den Aufenthalt auf heute. Zurueck
   // geht es dorthin, wo er vorher stand -- erwartet.
-  InHouse:    { check_out: 'CheckedOut', undo_check_in: 'Confirmed' },
+  InHouse:    { check_out: 'CheckedOut', undo_check_in: 'Confirmed',
+                // Nicht gekommen, aber vom Nachtlauf eingecheckt (0088): was im
+                // Kalender steht, gilt als angereist, bis die Rezeption es
+                // anders sagt. Die gebuchten Naechte gehen dabei per
+                // Gegenbuchung zurueck, nicht ueber `undo_check_in`.
+                no_show: 'NoShow' },
   CheckedOut: {},
   // Wiederherstellen ist bewusst erlaubt: ein versehentlicher Storno oder ein
   // No-Show, der doch noch anreist, kommt taeglich vor. Beides ist protokolliert.

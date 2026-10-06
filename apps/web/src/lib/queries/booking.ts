@@ -290,7 +290,7 @@ export function useChangeStay() {
 export function useReservationStatusAction(reservationRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out' | 'undo-check-in') =>
+    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out' | 'undo-check-in' | 'no-show') =>
       api.post<{ reservationRef: string; status: string }>(
         `/v1/reservations/${reservationRef}/${action}`),
     onSuccess: () => {
@@ -299,6 +299,8 @@ export function useReservationStatusAction(reservationRef: string) {
       // Ein Check-out aendert die Tagesliste und den Reinigungsstand.
       void qc.invalidateQueries({ queryKey: ['daily'] })
       void qc.invalidateQueries({ queryKey: ['hk'] })
+      // Ein No-Show bucht Naechte gegen.
+      void qc.invalidateQueries({ queryKey: ['folio'] })
     }
   })
 }
