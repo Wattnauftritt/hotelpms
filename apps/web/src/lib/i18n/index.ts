@@ -27,6 +27,7 @@ import { ersteSchritte } from './ersteSchritte.js'
 import { altsystem } from './altsystem.js'
 import { mobil } from './mobil.js'
 import { meldescheine } from './meldescheine.js'
+import { kassenbuch } from './kassenbuch.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -142,7 +143,8 @@ const texts = {
   ...ersteSchritte,
   ...altsystem,
   ...mobil,
-  ...meldescheine
+  ...meldescheine,
+  ...kassenbuch
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts

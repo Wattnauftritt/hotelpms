@@ -18,6 +18,7 @@ import { Adminpanel } from './routes/Adminpanel.tsx'
 import { TerminalPult } from './routes/TerminalPult.tsx'
 import { Datenuebernahme } from './routes/Datenuebernahme.tsx'
 import { Meldescheine } from './routes/Meldescheine.tsx'
+import { Kassenbuch } from './routes/Kassenbuch.tsx'
 import { NachBreite } from './components/mobil/NachBreite.tsx'
 import { MobilHeute } from './components/mobil/MobilHeute.tsx'
 import { MobilPlan } from './components/mobil/MobilPlan.tsx'
@@ -168,6 +169,10 @@ export const SCREENS: readonly ScreenDefinition[] = [
   // die Liste der Schnittstelle, die er liest.
   { key: 'registrations', nav: 'nav.registrations', permission: 'report:operational',
     render: c => <Meldescheine propertyId={c.propertyId} /> },
+  // Kassenbuch (Dokument 09, 0095). Ob es eingeschaltet ist, zeigt der
+  // Bildschirm selbst; wer es einschalten darf, braucht ihn auch ausgeschaltet.
+  { key: 'cashbook', nav: 'nav.cashbook', permission: 'cashbook:read',
+    render: c => <Kassenbuch propertyId={c.propertyId} permissions={c.permissions} /> },
   // Gaesteterminals: Seiten und Adressen ohne Reservierung zeigen (Dokument 31).
   { key: 'terminal', group: 'settings', nav: 'nav.terminal', permission: 'reservation:checkin',
     render: c => <TerminalPult propertyId={c.propertyId} /> },

@@ -25,6 +25,9 @@ export default defineConfig({
       // festschreibt.
       '@hotelpms/domain/depositRequest': fileURLToPath(
         new URL('./packages/domain/src/depositRequest.ts', import.meta.url)),
+      // Und die Vorschau einer Gastbuchung im Kassenbuch.
+      '@hotelpms/domain/cashbook': fileURLToPath(
+        new URL('./packages/domain/src/cashbook.ts', import.meta.url)),
       '@hotelpms/db': src('db'),
       '@hotelpms/testing': src('testing'),
       '@hotelpms/domain': src('domain'),

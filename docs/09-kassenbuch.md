@@ -1,8 +1,28 @@
 # Keine Kassenfunktion: Entscheidung und Abgrenzung
 
+## Vierte Fassung (06.10.2026): Kassenbuch als Modul
+
+**Entscheidung: StayGrid führt ein Kassenbuch als Modul, je Haus einzuschalten und standardmäßig aus. Eine Kassenfunktion hat es weiterhin nicht: keine Kassenlade, keine Abwicklung einer Zahlung, kein Bon, keine TSE.**
+
+Anlass ist der eigene Betrieb. Die beiden Häuser in Cuxhaven führen ihr Kassenbuch seit April 2026 im Adminpanel, und es zieht wie die übrigen Funktionen nach StayGrid um (Sven: „Wir integrieren das Kassenbuch."). Abschnitt 6 hatte das vorhergesehen: rückholbar, aber nicht billig.
+
+Was sich gegenüber der dritten Fassung ändert, und was nicht:
+
+- **Kassenbestand: ja.** Das Kassenbuch zeichnet Bargeld auf, das an der Rezeption angenommen wurde, und rechnet den Bestand ab einem Anfangsbestand fort. Damit entfällt Merkmal 1 aus Abschnitt 3 für Häuser, die das Modul einschalten.
+- **Abwicklung, Bon, TSE: weiterhin nein** (Merkmale 2 und 3). Das Kassenbuch nimmt kein Geld an, öffnet keine Lade und gibt keinen Beleg aus; es zeichnet nachträglich auf, was geschehen ist, wie ein Kassenbuch auf Papier oder in einer Tabelle. Ein solches elektronisches Kassenbuch ist kein elektronisches Aufzeichnungssystem im Sinne des § 146a AO, solange es keine Einzelumsätze bei Abwicklung erfasst. Diese Abgrenzung gehört zu den Punkten, die der Steuerberater nach Abschnitt 8 bestätigt.
+- **GoBD-fest gebaut** (Migration `0095`): Beträge in Cent, unveränderliche Zeilen, Storno als Gegenbuchung, lückenlose Nummer je Haus, Belege in der Datenbank, Audit. Das Adminpanel erlaubte hartes Löschen und führte Storno als Merker; das übernehmen wir bewusst nicht.
+- **DATEV:** der Export im Format „Kassenbuch online" (Stufe 1 aus Abschnitt 9, kostenfrei) folgt in einem zweiten Schritt. Bis zum Umstieg exportiert nur das Adminpanel.
+- **Nicht gebaut** bleiben Schichten, Zählprotokoll und Kassendifferenz (Abschnitt 2). Der Bestand ist ein rechnerischer Sollbestand.
+
+Für Häuser, die das Modul nicht einschalten, gilt die dritte Fassung unverändert. Sie steht im Folgenden als Begründung, warum das Modul aus ist, bis ein Haus es will.
+
+---
+
+## Dritte Fassung
+
 **Entscheidung: Unser PMS führt kein Kassenbuch, weder verpflichtend noch als Modul. Es hat keine Kassenfunktion und braucht daher keine TSE.**
 
-Das ist die dritte und finale Fassung dieses Dokuments. Die ersten beiden lagen falsch: die erste machte das Kassenbuch zur Pflicht, die zweite zum optionalen Modul. Beides war mehr, als das Produkt braucht.
+Das war die dritte Fassung dieses Dokuments. Die ersten beiden lagen falsch: die erste machte das Kassenbuch zur Pflicht, die zweite zum optionalen Modul. Beides war mehr, als das Produkt braucht.
 
 ---
 
