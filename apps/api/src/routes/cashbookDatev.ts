@@ -8,7 +8,7 @@ import { assertNotTraining } from '../platform/training.js'
 import { einstellungLesen, geschaeftstag, type Einstellung } from '../platform/kassenbuch.js'
 
 /**
- * DATEV-Export des Kassenbuchs (Dokument 09, vierte Fassung; Migration 0096).
+ * DATEV-Export des Kassenbuchs (Dokument 09, vierte Fassung; Migration 0097).
  *
  * **Dasselbe Format wie im Adminpanel**, die Importvorlage „Kassenbuch
  * online": der Steuerberater soll am Stichtag nichts umstellen. Belegnummer

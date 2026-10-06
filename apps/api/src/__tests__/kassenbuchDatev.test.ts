@@ -8,7 +8,7 @@ import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 
 /**
- * DATEV-Export des Kassenbuchs (Migration 0096). Geprueft wird das, was in
+ * DATEV-Export des Kassenbuchs (Migration 0097). Geprueft wird das, was in
  * der Buchhaltung nicht mehr zu reparieren ist: keine Zeile zweimal, kein
  * Export vor dem Stichtag und keiner aus dem Uebungshaus, und ein Storno
  * nach dem Export als Korrektur unter der alten Belegnummer.

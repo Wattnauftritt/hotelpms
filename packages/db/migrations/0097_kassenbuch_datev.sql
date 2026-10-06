@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0096 -- Kassenbuch: Stichtag fuer den DATEV-Export.
+-- 0097 -- Kassenbuch: Stichtag fuer den DATEV-Export.
 --
 -- Anforderung: Teil 3 des Kassenbuchs (Dokument 09, vierte Fassung). Bis zur
 -- Umstellung exportiert das Adminpanel an DATEV, danach StayGrid. Exportieren

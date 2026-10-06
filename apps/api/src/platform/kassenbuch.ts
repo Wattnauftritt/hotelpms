@@ -32,7 +32,7 @@ export interface Einstellung {
   account_cash_in: string
   account_bank_deposit: string
   account_expense: string
-  /** Ab diesem Geschaeftstag exportiert StayGrid an DATEV (Migration 0096). */
+  /** Ab diesem Geschaeftstag exportiert StayGrid an DATEV (Migration 0097). */
   datev_from: string | null
 }
 
