@@ -16,7 +16,7 @@ Der Markt ist Deutschland, und das ist keine Lokalisierung, sondern die Bauart. 
 - **Der Meldeschein** (§§ 29, 30 BMG) verlangt Daten, die seit dem 1.1.2025 nur noch ausländische Gäste unterschreiben, erlaubt die Ausweis**nummer** und verbietet die Ausweis**kopie**. Deshalb gibt es ein verschlüsseltes Nummernfeld und bewusst kein Feld für einen Datei-Upload.
 - **Löschen heißt anonymisieren**, weil Buchungsbelege acht Jahre aufbewahrt werden müssen. Ein `DELETE` auf einen Gast wäre gleichzeitig ein Datenschutzverstoß in die eine und ein Aufbewahrungsverstoß in die andere Richtung.
 
-Was das System bewusst **nicht** tut: kassieren. Keine Kassenlade, keine TSE, kein Bon. Ein Zimmerbon verschiebt die Abrechnung auf den Check-out, er wickelt sie nicht ab. Nähme das PMS Bargeld entgegen, wäre es das kassierende System mit allen Folgen aus § 146a AO. Die Begründung steht in [`09-kassenbuch.md`](09-kassenbuch.md).
+Was das System bewusst **nicht** tut: kassieren. Keine Kassenlade, keine TSE, kein Bon. Ein Zimmerbon verschiebt die Abrechnung auf den Check-out, er wickelt sie nicht ab. Nähme das PMS Bargeld entgegen, wäre es das kassierende System mit allen Folgen aus § 146a AO. Die Begründung steht in [`09-kassenbuch.md`](09-kassenbuch.md). Das Kassenbuch, je Haus einzuschalten, zeichnet Bargeld nur nachträglich auf (Migration `0095`).
 
 ---
 

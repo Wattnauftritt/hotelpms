@@ -1461,6 +1461,55 @@ const M = {
     de: 'Auf diesem Meldeschein steht niemand im meldepflichtigen Alter; es gibt nichts an AVS zu melden.',
     en: 'Nobody on this registration form is old enough to be reported; there is nothing to send to AVS.',
     tr: 'Bu kayıt formunda bildirim yaşında kimse yok; AVS’ye bildirilecek bir şey yok.' },
+  // ------------------------------------------------ Kassenbuch (Dokument 09)
+  'res.cashbookEntry': {
+    de: 'Kassenbuchung',
+    en: 'Cash book entry',
+    tr: 'Kasa defteri kaydı' },
+  'res.cashbookReceipt': {
+    de: 'Beleg',
+    en: 'Receipt',
+    tr: 'Fiş' },
+  'cashbook.disabled': {
+    de: 'Das Kassenbuch ist fuer dieses Haus nicht eingeschaltet.',
+    en: 'The cash book is not switched on for this property.',
+    tr: 'Kasa defteri bu tesis için açık değil.' },
+  'cashbook.alreadyVoided': {
+    de: 'Diese Buchung ist bereits storniert.',
+    en: 'This entry has already been voided.',
+    tr: 'Bu kayıt zaten iptal edildi.' },
+  'cashbook.voidOfVoid': {
+    de: 'Eine Stornobuchung laesst sich nicht stornieren.',
+    en: 'A reversal entry cannot be voided.',
+    tr: 'Bir iptal kaydı iptal edilemez.' },
+  'cashbook.dateInFuture': {
+    de: 'Das Buchungsdatum liegt nach dem heutigen Geschaeftstag ({today}).',
+    en: 'The entry date is after the current business day ({today}).',
+    tr: 'Kayıt tarihi bugünkü iş gününden ({today}) sonra.' },
+  'cashbook.dateBeforeOpening': {
+    de: 'Das Buchungsdatum liegt vor dem Anfangsbestand vom {date}.',
+    en: 'The entry date is before the opening balance of {date}.',
+    tr: 'Kayıt tarihi {date} tarihli açılış bakiyesinden önce.' },
+  'cashbook.receiptType': {
+    de: 'Belege nur als PDF, JPEG oder PNG.',
+    en: 'Receipts only as PDF, JPEG or PNG.',
+    tr: 'Fişler yalnızca PDF, JPEG veya PNG olarak.' },
+  'cashbook.receiptTooLarge': {
+    de: 'Ein Beleg darf hoechstens {max} MB gross sein.',
+    en: 'A receipt may be at most {max} MB.',
+    tr: 'Bir fiş en fazla {max} MB olabilir.' },
+  'cashbook.tooManyReceipts': {
+    de: 'Hoechstens {max} Belege je Buchung.',
+    en: 'At most {max} receipts per entry.',
+    tr: 'Kayıt başına en fazla {max} fiş.' },
+  'cashbook.receiptDuplicate': {
+    de: 'Dieser Beleg haengt schon an der Buchung.',
+    en: 'This receipt is already attached to the entry.',
+    tr: 'Bu fiş zaten kayda ekli.' },
+  'cashbook.emptyGuestBooking': {
+    de: 'Die Gastbuchung ergibt keinen Betrag.',
+    en: 'The guest entry adds up to nothing.',
+    tr: 'Misafir kaydı herhangi bir tutar oluşturmuyor.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

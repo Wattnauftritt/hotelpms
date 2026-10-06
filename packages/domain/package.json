@@ -17,6 +17,10 @@
     "./depositRequest": {
       "types": "./dist/depositRequest.d.ts",
       "default": "./dist/depositRequest.js"
+    },
+    "./cashbook": {
+      "types": "./dist/cashbook.d.ts",
+      "default": "./dist/cashbook.js"
     }
   },
   "scripts": {

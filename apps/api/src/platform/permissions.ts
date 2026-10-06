@@ -27,6 +27,10 @@ export const PERMISSIONS = [
   // Gastpost (0028): eigenes Recht, weil Hinausschicken etwas anderes ist
   // als Festschreiben -- es verlaesst das Haus und kommt nicht zurueck.
   'email:send',
+  // Kassenbuch (0095): Lesen und Buchen getrennt vom Stornieren, der Export
+  // getrennt von beidem; die Uebernahme nur fuer Maschinenzugaenge.
+  'cashbook:read', 'cashbook:write', 'cashbook:void', 'cashbook:export',
+  'cashbook:import',
   'settings:property', 'settings:account', 'user:manage', 'integration:manage',
   'account:contract',
   'platform:accounts', 'platform:support_session', 'platform:billing',
