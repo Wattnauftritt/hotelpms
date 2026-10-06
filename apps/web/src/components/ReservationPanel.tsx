@@ -396,6 +396,15 @@ function StornoAktionen({ reservationRef, status }: {
                            hover:bg-neutral-50 disabled:opacity-40">
           {t('today.undoCheckin')}
         </button>
+        {/* Nach dem Tagesabschluss der einzige Weg fuer den, der nie kam. */}
+        <button onClick={() => {
+                  if (confirm(t('today.noShowConfirm'))) aktion.mutate('no-show')
+                }}
+                disabled={aktion.isPending}
+                className="text-xs px-2 py-1 rounded-sm border border-red-300 text-red-800
+                           hover:bg-red-50 disabled:opacity-40">
+          {t('today.noShow')}
+        </button>
         {aktion.isError && <div className="basis-full"><Fehler error={aktion.error} /></div>}
       </>
     )

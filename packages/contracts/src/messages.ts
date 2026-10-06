@@ -1051,11 +1051,27 @@ const M = {
       + 'İşlenmiş geceler değiştirilmez, ters kayıtla düzeltilir.' },
   'stay.undoCheckinPosted': {
     de: 'Fuer diesen Aufenthalt ist schon eine Nacht gebucht. Ein Check-in laesst sich '
-      + 'nur bis zum Tagesabschluss des Anreisetags zuruecknehmen.',
+      + 'nur bis zum Tagesabschluss des Anreisetags zuruecknehmen. Ist der Gast nicht '
+      + 'gekommen: „Nicht angereist“.',
     en: 'A night has already been posted for this stay. A check-in can only be undone '
-      + 'until the end-of-day run of the arrival day.',
+      + 'until the end-of-day run of the arrival day. If the guest never came: '
+      + '“Did not arrive”.',
     tr: 'Bu konaklama için bir gece zaten hesaba işlendi. Check-in yalnızca varış '
-      + 'gününün gün sonu işlemine kadar geri alınabilir.' },
+      + 'gününün gün sonu işlemine kadar geri alınabilir. Misafir hiç gelmediyse: '
+      + '“Gelmedi”.' },
+  'stay.noShowBeforeArrival': {
+    de: 'Vor dem Anreisetag ist niemand ein No-Show. Sagt der Gast ab, ist das ein Storno.',
+    en: 'Nobody is a no-show before the arrival day. If the guest cancels, that is a '
+      + 'cancellation.',
+    tr: 'Varış gününden önce kimse gelmeyen misafir sayılmaz. Misafir vazgeçerse bu '
+      + 'bir iptaldir.' },
+  'stay.noShowInvoiced': {
+    de: 'Die gebuchten Naechte stehen schon auf einer Rechnung. Erst die Rechnung '
+      + 'stornieren, dann den Gast als nicht angereist markieren.',
+    en: 'The posted nights are already on an invoice. Cancel the invoice first, then '
+      + 'mark the guest as not arrived.',
+    tr: 'İşlenmiş geceler zaten bir faturada. Önce faturayı iptal edin, sonra misafiri '
+      + 'gelmedi olarak işaretleyin.' },
   'stay.checkinNeedsRoom': {
     de: 'Check-in erfordert ein zugewiesenes Zimmer.',
     en: 'Check-in requires an assigned room.',

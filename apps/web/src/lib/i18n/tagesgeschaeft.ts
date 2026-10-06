@@ -27,6 +27,20 @@ export const tagesgeschaeft = {
     de: 'Check-in zurücknehmen',
     en: 'Undo check-in',
     tr: 'Check-in’i geri al' },
+  // Der Nachtlauf checkt jede Anreise mit Zimmer ein (0088). Wer trotzdem
+  // nicht kam, wird hier No-Show; gebuchte Naechte gehen per Gegenbuchung
+  // zurueck, sonstige Posten am Folio bleiben stehen.
+  'today.noShow': {
+    de: 'Nicht angereist',
+    en: 'Did not arrive',
+    tr: 'Gelmedi' },
+  'today.noShowConfirm': {
+    de: 'Gast als nicht angereist markieren? Die Reservierung wird No-Show, das Zimmer '
+      + 'frei, und gebuchte Übernachtungen und Kurtaxe werden gegengebucht.',
+    en: 'Mark the guest as not arrived? The reservation becomes a no-show, the room is '
+      + 'released, and posted nights and city tax are reversed.',
+    tr: 'Misafir gelmedi olarak işaretlensin mi? Rezervasyon gelmeyen misafir olur, oda '
+      + 'serbest kalır, işlenmiş geceler ve konaklama vergisi ters kayıtla düzeltilir.' },
   'today.undoCheckinConfirm': {
     de: 'Check-in zurücknehmen? Die Reservierung steht danach wieder als erwartete Anreise.',
     en: 'Undo the check-in? The reservation then shows as an expected arrival again.',

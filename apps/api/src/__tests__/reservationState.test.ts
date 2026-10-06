@@ -184,6 +184,82 @@ describe('Bestand bei Zustandswechseln', () => {
     expect(r.rows[0]!.status).toBe('InHouse')
   })
 
+  /*
+   * Der Nachtlauf checkt jede Anreise mit Zimmer ein und bucht ihre erste
+   * Nacht (0088). Kam der Gast nicht, ging bisher nichts mehr: Zuruecknehmen
+   * scheiterte an der gebuchten Nacht, Stornieren am Zustand.
+   */
+  it('macht einen eingecheckten Gast, der nie kam, nach dem Tagesabschluss zum No-Show',
+    async () => {
+      const ref = await buchung()
+      const zimmer = await owner.query<{ id: number }>(
+        `SELECT id FROM resource WHERE property_id=$1 LIMIT 1`, [fx.propertyId])
+      await post(`/v1/reservations/${ref}/assign-unit`, { resourceId: zimmer.rows[0]!.id })
+      expect((await post(`/v1/reservations/${ref}/check-in`)).statusCode).toBe(200)
+      await openBusinessDay(owner, fx.propertyId, '2026-10-02')
+
+      // Was der Nachtlauf gebucht haette: die Logis der ersten Nacht. Dazu
+      // ein Getraenk, das jemand von Hand gebucht hat und das stehen bleibt.
+      const f = await owner.query<{ id: number; reservation_id: number }>(
+        `SELECT f.id, f.reservation_id FROM folio f JOIN reservation r ON r.id = f.reservation_id
+          WHERE r.public_ref = $1`, [ref])
+      const { id: folioId, reservation_id: resId } = f.rows[0]!
+      await owner.query(
+        `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                             net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account,
+                             reservation_id)
+         VALUES ($1,$2,$3::date,'Uebernachtung 01.10.2026',1,9346,654,10000,700,'8300',$4),
+                ($1,$2,$3::date,'Wasser',1,420,80,500,1900,'8400',$4)`,
+        [fx.propertyId, folioId, VON, resId])
+      await owner.query(
+        `UPDATE reservation_night SET posted = true WHERE reservation_id = $1 AND date = $2`,
+        [resId, VON])
+
+      // Der alte Weg bleibt zu: Zuruecknehmen ist kein No-Show.
+      expect((await post(`/v1/reservations/${ref}/undo-check-in`)).statusCode).toBe(422)
+
+      const n = await post(`/v1/reservations/${ref}/no-show`)
+      expect(n.statusCode, n.body).toBe(200)
+      expect(JSON.parse(n.body).status).toBe('NoShow')
+
+      const r = await owner.query<{ status: string; checked_in_at: string | null }>(
+        `SELECT status, checked_in_at FROM reservation WHERE id = $1`, [resId])
+      expect(r.rows[0]).toEqual({ status: 'NoShow', checked_in_at: null })
+      expect(await verkauft()).toBe(0)
+      expect(await verkauft('2026-10-02')).toBe(0)
+
+      // Gegenbuchung der Logis mit dem heutigen Geschaeftstag; das Wasser
+      // bleibt, das entscheidet ein Mensch am Folio.
+      const c = await owner.query<{ description: string; gross_cent: string
+                                    business_date: string; reverses: boolean }>(
+        `SELECT description, gross_cent::text, business_date::text,
+                reverses_id IS NOT NULL AS reverses
+           FROM charge WHERE folio_id = $1 ORDER BY id`, [folioId])
+      expect(c.rows).toEqual([
+        { description: 'Uebernachtung 01.10.2026', gross_cent: '10000',
+          business_date: VON, reverses: false },
+        { description: 'Wasser', gross_cent: '500', business_date: VON, reverses: false },
+        { description: 'Storno Uebernachtung 01.10.2026 (nicht angereist)',
+          gross_cent: '-10000', business_date: '2026-10-02', reverses: true }
+      ])
+      const p = await owner.query(
+        `SELECT 1 FROM reservation_night WHERE reservation_id = $1 AND posted`, [resId])
+      expect(p.rowCount).toBe(0)
+
+      // Kommt er doch noch, geht es wie bei jedem No-Show zurueck.
+      const w = await post(`/v1/reservations/${ref}/reinstate`)
+      expect(w.statusCode, w.body).toBe(200)
+      expect(await verkauft('2026-10-02')).toBe(1)
+    })
+
+  it('macht vor dem Anreisetag niemanden zum No-Show', async () => {
+    const ref = await buchung()
+    await openBusinessDay(owner, fx.propertyId, '2026-09-30')
+    const n = await post(`/v1/reservations/${ref}/no-show`)
+    expect(n.statusCode, n.body).toBe(422)
+    expect(await verkauft()).toBe(1)
+  })
+
   it('weist das Zuruecknehmen ohne Check-in ab', async () => {
     const ref = await buchung()
     expect((await post(`/v1/reservations/${ref}/undo-check-in`)).statusCode).toBe(409)
