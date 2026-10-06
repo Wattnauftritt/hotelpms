@@ -102,6 +102,12 @@ export function housekeepingRoutes(app: FastifyInstance): void {
    * zusammen ergibt sich der Tagesplan (Abreise, Bleiber, leer, frei) aus
    * diesem einen Aufruf.
    *
+   * Eine Buchung zaehlt als angereist, auch ohne Check-in von Hand
+   * (Grundregel, 05.10.2026): deshalb ist `Confirmed` bei Abreise und Bleiber
+   * dabei. Fehlte es bei der Abreise, stuende ein nie eingecheckter Gast am
+   * Abreisetag weder als Abreise noch als Bleiber da, und sein Zimmer fiele
+   * aus dem Tagesplan.
+   *
    * Der Bleiber kommt ueber `LATERAL ... LIMIT 1`: zwei Reservierungen auf
    * demselben Zimmer in derselben Nacht sind ein Datenfehler, und er soll
    * die Zimmerzeile nicht verdoppeln.
@@ -147,7 +153,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
                     ON t.resource_id = r.id AND t.business_date = tag.d
              LEFT JOIN reservation ab
                     ON ab.resource_id = r.id AND ab.departure = tag.d
-                   AND ab.status IN ('InHouse','CheckedOut')
+                   AND ab.status IN ('Confirmed','InHouse','CheckedOut')
              LEFT JOIN reservation an
                     ON an.resource_id = r.id AND an.arrival = tag.d
                    AND an.status IN ('Confirmed','InHouse')

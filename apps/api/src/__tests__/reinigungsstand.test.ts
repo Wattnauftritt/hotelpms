@@ -214,7 +214,11 @@ describe('Tagesplan fuer ein externes Reinigungssystem', () => {
     // 103: Bleiber
     await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
       resourceId: zimmer[2], arrival: '2026-09-30', departure: '2026-10-05', status: 'InHouse' })
-    // 104: leer, aber Anreise heute
+    // 104: Wechsel -- der alte Gast wurde nie von Hand eingecheckt und zaehlt
+    // trotzdem als Abreise (Grundregel: jede nicht stornierte Buchung gilt als
+    // angereist), der neue kommt heute
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
+      resourceId: zimmer[3], arrival: '2026-09-30', departure: tag })
     await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
       resourceId: zimmer[3], arrival: tag, departure: '2026-10-04' })
 
@@ -232,7 +236,7 @@ describe('Tagesplan fuer ein externes Reinigungssystem', () => {
       '101': { abreise: true, ausgecheckt: false, bleiber: false, anreise: false },
       '102': { abreise: true, ausgecheckt: true, bleiber: false, anreise: false },
       '103': { abreise: false, ausgecheckt: null, bleiber: true, anreise: false },
-      '104': { abreise: false, ausgecheckt: null, bleiber: false, anreise: true }
+      '104': { abreise: true, ausgecheckt: false, bleiber: false, anreise: true }
     })
   })
 })

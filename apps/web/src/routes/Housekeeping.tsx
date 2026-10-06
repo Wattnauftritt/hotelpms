@@ -101,6 +101,7 @@ export function Housekeeping({ propertyId }: { propertyId: number }): JSX.Elemen
             <div className="text-[11px]">{t(LABEL[r.status])}</div>
             <div className="mt-1 space-y-0.5 text-[11px] opacity-80">
               {r.departureRef !== null && <div>↗ {t('hk.departureToday')}</div>}
+              {r.stayoverRef !== null && <div>● {t('hk.stayover')}</div>}
               {r.arrivalRef !== null && <div>↘ {t('hk.arrivalToday')}</div>}
               {r.openTickets > 0 && (
                 <div className="text-red-800">🔧 {r.openTickets} {t('hk.openTickets')}</div>

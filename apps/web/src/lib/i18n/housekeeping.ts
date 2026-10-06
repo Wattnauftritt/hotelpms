@@ -42,6 +42,10 @@ export const housekeeping = {
     de: 'Abreise heute',
     en: 'Departing today',
     tr: 'Bugün çıkış' },
+  'hk.stayover': {
+    de: 'Bleiber',
+    en: 'Stayover',
+    tr: 'Kalan misafir' },
   'hk.arrivalToday': {
     de: 'Anreise heute',
     en: 'Arriving today',
