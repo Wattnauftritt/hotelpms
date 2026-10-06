@@ -312,6 +312,19 @@ describe('Aenderung an der Rezeption', () => {
     expect(detail.sourceCanceledAt).not.toBeNull()
   })
 
+  it('macht die Buchung lokal, wenn die Rezeption die Personenzahl aendert', async () => {
+    // Sonst ueberschriebe der naechste Push die Zahl still (0093).
+    const token = await zugang()
+    const a = JSON.parse((await put(token, 'rc-1', ZWEI_ABSCHNITTE)).body) as Antwort
+    const p = await app.inject({ method: 'PATCH',
+      url: `/v1/reservations/${a.reservations![0]!.reservationRef}`, headers: session(),
+      payload: { adults: 3 } })
+    expect(p.statusCode, p.body).toBe(200)
+    const b = await owner.query(`SELECT channel_owner FROM booking WHERE public_ref = $1`,
+      [a.bookingRef])
+    expect(b.rows[0]!.channel_owner).toBe('local')
+  })
+
   it('laesst die Buchung beim Umsystem, wenn sich nur die Notiz aendert', async () => {
     const token = await zugang()
     const a = JSON.parse((await put(token, 'rc-1', ZWEI_ABSCHNITTE)).body) as Antwort

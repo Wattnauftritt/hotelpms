@@ -1,6 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ReservationDetail, BookingCreated, AvailabilityDay } from '@hotelpms/contracts'
-import { api, newIdempotencyKey } from '../api.js'
+import { api, ApiError, newIdempotencyKey } from '../api.js'
+
+/**
+ * Die Zimmergruppe ist ausgebucht -- die Antwort, auf die die Rezeption mit
+ * "trotzdem" antworten darf (Migration 0093). Jede Maske, die Bestand
+ * bindet, fragt dann nach und schickt `allowOverbooking` mit, statt die
+ * Buchung abzuweisen (Sven, 06.10.2026).
+ */
+export function istAusgebucht(fehler: unknown): boolean {
+  return fehler instanceof ApiError && fehler.problem.type === 'urn:staygrid:sold_out'
+}
 
 /**
  * Eine Reservierung, vollständig, in einem Aufruf: Gast, Zimmer, Nächte mit
@@ -106,6 +116,24 @@ export function useSetReservationGuest(reservationRef: string) {
 }
 
 /**
+ * Die Personenzahl einer bestehenden Reservierung -- Erwachsene und Kinder,
+ * wie beim Anlegen. Fuer eine beliebige Reservierung, weil die Maske im Plan
+ * sie erst beim Speichern kennt.
+ */
+export function useSetPersons() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ reservationRef, adults, children }:
+                 { reservationRef: string; adults: number; children?: number }) =>
+      api.patch(`/v1/reservations/${reservationRef}`, { adults, children }),
+    onSuccess: (_r, { reservationRef }) => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
+/**
  * Dasselbe fuer eine beliebige Reservierung -- die Buchungsmaske im Plan
  * kennt sie erst beim Speichern, nicht beim Aufbau des Bildschirms.
  */
@@ -168,6 +196,8 @@ export interface CreateBookingBody {
   children?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
   shortNote?: string
+  /** Bestaetigte Ueberbuchung, erst nach der Rueckfrage (`istAusgebucht`). */
+  allowOverbooking?: boolean
 }
 
 /**
@@ -233,6 +263,8 @@ export interface ChangeStayBody {
    */
   priceCent?: number
   totalCent?: number
+  /** Bestaetigte Ueberbuchung (`istAusgebucht`). */
+  allowOverbooking?: boolean
 }
 
 /** Was `change-stay` ergaebe, ohne es zu speichern. */
@@ -242,6 +274,11 @@ export interface StayPreview {
   departure: string
   previousTotalCent: number
   totalCent: number
+  /**
+   * Die Zimmergruppe ist an mindestens einem Tag voll. Gerechnet ist
+   * trotzdem; die Maske warnt und schickt beim Speichern die Bestaetigung.
+   */
+  overbooking: boolean
   nights: Array<{ date: string; priceCent: number; posted: boolean }>
 }
 
@@ -583,8 +620,9 @@ export const useBooking = (bookingRef: string | null) =>
 export function useShiftBooking() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ bookingRef, shiftDays }: { bookingRef: string; shiftDays: number }) =>
-      api.post(`/v1/bookings/${bookingRef}/change-stay`, { shiftDays },
+    mutationFn: ({ bookingRef, shiftDays, allowOverbooking }:
+                 { bookingRef: string; shiftDays: number; allowOverbooking?: boolean }) =>
+      api.post(`/v1/bookings/${bookingRef}/change-stay`, { shiftDays, allowOverbooking },
         { 'idempotency-key': newIdempotencyKey() }),
     onSuccess: (_r, { bookingRef }) => {
       void qc.invalidateQueries({ queryKey: ['tape'] })
@@ -605,6 +643,7 @@ export interface AddRoomBody {
   totalCent?: number
   guestCount?: number
   shortNote?: string
+  allowOverbooking?: boolean
 }
 
 /** Ein Zimmer zu einer bestehenden Gruppe, nicht als zweite Buchung. */

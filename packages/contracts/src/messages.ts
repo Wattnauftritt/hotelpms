@@ -1230,6 +1230,13 @@ const M = {
       + 'The registration form is that person\u2019s own declaration.',
     tr: 'Misafir, check-in sonrasında değiştirilemez (durum: {status}). '
       + 'Meldeschein, o kişinin kendisi hakkında verdiği beyandır.' },
+  'reservation.personsFixed': {
+    de: 'Die Personenzahl laesst sich nur bei einer offenen Reservierung aendern '
+      + '(Zustand {status}).',
+    en: 'The number of guests can only be changed on an open reservation '
+      + '(status {status}).',
+    tr: 'Kişi sayısı yalnızca açık bir rezervasyonda değiştirilebilir '
+      + '(durum: {status}).' },
   'reservation.guestFixedAfterInvoice': {
     de: 'Zu dieser Reservierung ist bereits fakturiert. Der Rechnungsempfaenger '
       + 'steht auf einem Beleg und wird nicht nachtraeglich umgeschrieben.',

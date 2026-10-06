@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { TapeChart as TapeChartData, ReservationDetail } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
-import { useAssignUnit, useChangeStay, useShiftBooking, useSetGuestOf }
+import { useAssignUnit, useChangeStay, useShiftBooking, useSetGuestOf, useSetPersons,
+         istAusgebucht }
   from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, eachDay } from '../lib/dates.js'
@@ -171,6 +172,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const umbuchen = useChangeStay()
   const gruppeVerschieben = useShiftBooking()
   const gastSetzen = useSetGuestOf()
+  const personenSetzen = useSetPersons()
   const reinigung = usePlanReinigung(propertyId)
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
@@ -198,7 +200,10 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       bedarf: platzbedarf({ occupants: r.occupants,
                             categoryMaxOccupancy: r.category_max_occupancy }),
       alt: { resourceId: r.resource_id, arrival: r.arrival, departure: r.departure },
-      neu: ziel(r), gruppe
+      neu: ziel(r), gruppe,
+      personen: gruppe === undefined
+        ? { guestCount: r.guest_count, adults: r.adults, children: r.children }
+        : undefined
     }
   }
 
@@ -235,6 +240,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
     const zimmerGleich = ziel.resourceId === alt.resourceId
     const preis = was.zusatz?.preis ?? null
     const guestRef = was.zusatz?.guestRef
+    const personen = was.zusatz?.personen
     const gemerkt = (): void => {
       // Nur, was Zimmer oder Tage bewegt hat: ein Strg+Z, das einen Preis
       // oder einen Namen "zuruecknimmt", indem es nichts tut, waere eine
@@ -255,13 +261,31 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
      * da. Umgekehrt haette die Buchung schon den neuen Namen und noch die
      * alten Tage.
      */
-    const fertig = guestRef === undefined ? gemerkt
+    // Die Personen zuletzt, aus demselben Grund: sie gehen nur hinaus,
+    // wenn Aufenthalt und Gast durch sind.
+    const nachGast = personen === undefined ? gemerkt
+      : (): void => personenSetzen.mutate({ reservationRef, ...personen },
+                                          { onSuccess: gemerkt })
+    const fertig = guestRef === undefined ? nachGast
       : (): void => gastSetzen.mutate({ reservationRef, guestRef },
-                                      { onSuccess: gemerkt })
+                                      { onSuccess: nachGast })
+    /*
+     * Die volle Zimmergruppe ist eine Rueckfrage, kein Ende (Sven,
+     * 06.10.2026). Die Maske hat schon gewarnt und schickt die Bestaetigung
+     * gleich mit; ein Zug im Planungsmodus und ein Strg+Z haben keine
+     * Maske und fragen hier.
+     */
+    const nachfragen = (nochmal: () => void) => (fehler: unknown): void => {
+      if (istAusgebucht(fehler) && confirm(t('plan.overbookConfirm'))) nochmal()
+    }
+    const ueberbuchen = was.zusatz?.ueberbuchen === true
     if (gruppe !== undefined) {
-      gruppeVerschieben.mutate(
-        { bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays },
-        { onSuccess: fertig })
+      const verschieben = (erlaubt: boolean): void => gruppeVerschieben.mutate(
+        { bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays,
+          allowOverbooking: erlaubt || undefined },
+        { onSuccess: fertig,
+          onError: erlaubt ? undefined : nachfragen(() => verschieben(true)) })
+      verschieben(ueberbuchen)
       return
     }
     if (tageGleich && preis === null) {
@@ -271,15 +295,18 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
         { onSuccess: fertig })
       return
     }
-    umbuchen.mutate({
+    const verlegen = (erlaubt: boolean): void => umbuchen.mutate({
       reservationRef, arrival: ziel.arrival, departure: ziel.departure,
       // Hier ausdruecklich auch `null`: wer in der Maske "ohne Zimmer"
       // waehlt und dabei die Tage aendert, meint beides.
       resourceId: ziel.resourceId,
       // Ein vereinbarter Preis geht mit derselben Aenderung hinaus, nicht
       // als zweiter Aufruf -- sonst stuende zwischen beiden der gerechnete.
-      ...(preis ?? {})
-    }, { onSuccess: fertig })
+      ...(preis ?? {}),
+      allowOverbooking: erlaubt || undefined
+    }, { onSuccess: fertig,
+         onError: erlaubt ? undefined : nachfragen(() => verlegen(true)) })
+    verlegen(ueberbuchen)
   }
 
   /** Die Maske und der Zug im Planungsmodus reichen dasselbe weiter. */
@@ -288,9 +315,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                gruppe: v.gruppe, merken: true, zusatz }, danach)
 
   const schreibt = zuweisen.isPending || umbuchen.isPending || gruppeVerschieben.isPending
-    || gastSetzen.isPending
+    || gastSetzen.isPending || personenSetzen.isPending
   const schreibfehler = zuweisen.error ?? umbuchen.error ?? gruppeVerschieben.error
-    ?? gastSetzen.error
+    ?? gastSetzen.error ?? personenSetzen.error
 
   /**
    * Die Maske oeffnen -- mit leerem Fehlerstand.
@@ -301,6 +328,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    */
   const maskeOeffnen = (v: Verlegung): void => {
     zuweisen.reset(); umbuchen.reset(); gruppeVerschieben.reset(); gastSetzen.reset()
+    personenSetzen.reset()
     setVerlegung(v)
   }
 
@@ -321,7 +349,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                          departure: r.departure }
     maskeOeffnen({ reservationRef: r.reservationRef, status: r.status,
                    categoryId: r.categoryId, gast: r.guestName ?? '',
-                   bedarf: 0, alt: ziel, neu: ziel })
+                   bedarf: 0, alt: ziel, neu: ziel,
+                   personen: { guestCount: r.guestCount, adults: r.adults,
+                               children: r.children } })
   }
 
   /**

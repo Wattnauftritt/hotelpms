@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { onlineCheckinStand } from '../platform/checkin.js'
 import { tx } from '../platform/db.js'
-import { Errors } from '../platform/errors.js'
+import { AppError, Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { loadBlock } from './blocks.js'
@@ -147,6 +147,8 @@ interface CreateBooking {
   children?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
   shortNote?: string
+  /** Bestaetigte Ueberbuchung (`ueberbuchenErlauben`). */
+  allowOverbooking?: boolean
   source?: string
   externalReference?: string
   notes?: string
@@ -302,11 +304,43 @@ async function setzeHauptgast(
   return guestRef
 }
 
+/** Die Art der Antwort, wenn eine Zimmergruppe ausgebucht ist. */
+const SOLD_OUT = 'urn:staygrid:sold_out'
+
+/** Wann die Personenzahl noch geaendert werden darf: vor und waehrend des Aufenthalts. */
+const PERSONEN_AENDERBAR: ReadonlySet<ReservationStatus> =
+  new Set(['Inquired', 'Optional', 'Confirmed', 'InHouse'])
+
 /** Uebersetzt den Fehlercode der Inventarfunktion in eine saubere Antwort. */
 export function inventoryError(code: string | null): never | void {
   if (code === 'sold_out') throw Errors.soldOut()
   if (code === 'not_materialized') throw Errors.notMaterialized()
   if (code !== null) throw Errors.conflict('inventory.unknownError', { code })
+}
+
+/**
+ * Bestaetigte Ueberbuchung: `inventory_reserve` bindet in dieser
+ * Transaktion ohne Obergrenze (Migration 0093).
+ *
+ * **Warum die Rezeption das darf.** Wer im vollen Haus umsortiert, legt eine
+ * Buchung in die Ablage und traegt in die Luecke eine neue ein. Der Zaehler
+ * sieht dann zwei Buchungen in einer Gruppe mit einem Zimmer und sagt nein
+ * -- zu Recht, nur weiss die Rezeption, dass die abgelegte gleich
+ * woandershin kommt (Sven, 06.10.2026: "eine Warnung anzeigen, aber nicht
+ * generell verbieten").
+ *
+ * **Warum nur auf ausdrueckliche Angabe.** Ohne sie antwortet die Route wie
+ * bisher mit `sold_out`, und die Oberflaeche fragt nach. Ein Haus, das
+ * stillschweigend ueberbucht, merkt es erst am Gast vor dem Tresen.
+ */
+export async function ueberbuchenErlauben(
+  client: PoolClient, erlaubt: unknown
+): Promise<void> {
+  if (erlaubt === undefined || erlaubt === false) return
+  if (erlaubt !== true) {
+    throw Errors.validation({ allowOverbooking: ['field.invalid'] })
+  }
+  await client.query(`SELECT set_config('app.allow_overbooking', 'on', true)`)
 }
 
 export async function priceNights(
@@ -986,6 +1020,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           if (vorhanden) vorhanden.anzahl += 1
           else jeGruppe.set(schluessel, { categoryId: z.categoryId, ...zr, anzahl: 1 })
         }
+        await ueberbuchenErlauben(client, body.allowOverbooking)
         for (const g of jeGruppe.values()) {
           const inv = await client.query<{ e: string | null }>(
             `SELECT inventory_reserve($1,$2,$3::date,$4::date,$5) AS e`,
@@ -1333,11 +1368,23 @@ export function reservationRoutes(app: FastifyInstance): void {
     method: 'PATCH',
     url: '/v1/reservations/:reservationRef',
     permission: 'reservation:write',
-    summary: 'Notiz oder Hauptgast einer Reservierung aendern',
+    summary: 'Notiz, Hauptgast oder Personenzahl einer Reservierung aendern',
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = req.body as { notes?: string | null; shortNote?: string | null
-                                 guestRef?: string }
+                                 guestRef?: string
+                                 guestCount?: number; adults?: number; children?: number }
+      /*
+       * Die Personenzahl -- vorher nur beim Anlegen zu setzen (Sven,
+       * 06.10.2026: "man kann bei bestehenden Buchungen die Personenzahl
+       * nicht aendern"). Dieselbe Pruefung wie beim Anlegen, und hier und
+       * nicht in `change-stay`: sie bewegt keinen Bestand. Der Preis bleibt,
+       * wie er ist; wer fuer die dritte Person mehr nimmt, traegt ihn in
+       * derselben Maske ein.
+       */
+      const personenGeaendert = body.guestCount !== undefined
+        || body.adults !== undefined || body.children !== undefined
+      const personen = personenGeaendert ? personenAngabe(body) : null
       if (body.notes !== undefined && body.notes !== null
           && body.notes.length > NOTES_MAX_LENGTH) {
         throw Errors.validation({ notes: ['field.maxLength'] },
@@ -1375,6 +1422,23 @@ export function reservationRoutes(app: FastifyInstance): void {
         }
 
         /*
+         * Nur solange der Aufenthalt offen ist. Nach der Abreise ist die
+         * Kurtaxe gebucht und der Meldeschein abgeschlossen; eine andere
+         * Zahl danach stimmte mit keinem von beiden mehr ueberein. Im Haus
+         * dagegen ja: es kommt jemand nach, oder einer reist frueher ab.
+         */
+        if (personen !== null) {
+          if (!PERSONEN_AENDERBAR.has(res.status)) {
+            throw Errors.conflict('reservation.personsFixed', { status: res.status })
+          }
+          await client.query(
+            `UPDATE reservation SET guest_count = $2, adults = $3, children = $4,
+                                    updated_at = now()
+              WHERE id = $1`,
+            [res.id, personen.guestCount, personen.adults, personen.children])
+        }
+
+        /*
          * Auch eine Notiz ist eine Aenderung, die ein Fremdsystem sehen
          * will: sie steht in der Reservierungsliste. Bisher meldete diese
          * Route nichts, und der Abgleich erfuhr davon erst beim naechsten
@@ -1384,7 +1448,8 @@ export function reservationRoutes(app: FastifyInstance): void {
         const geaendert = [
           ...(body.notes !== undefined ? ['notes'] : []),
           ...(body.shortNote !== undefined ? ['shortNote'] : []),
-          ...(body.guestRef !== undefined ? ['guest'] : [])
+          ...(body.guestRef !== undefined ? ['guest'] : []),
+          ...(personen !== null ? ['persons'] : [])
         ]
         if (geaendert.length > 0) {
           await emitEvent(client, res.property_id, 'reservation.changed', {
@@ -1396,7 +1461,8 @@ export function reservationRoutes(app: FastifyInstance): void {
           reservationRef,
           notes: body.notes ?? null,
           ...(body.shortNote === undefined ? {} : { shortNote: body.shortNote }),
-          ...(gastRef === undefined ? {} : { guestRef: gastRef })
+          ...(gastRef === undefined ? {} : { guestRef: gastRef }),
+          ...(personen === null ? {} : personen)
         }
       })
     }
@@ -1509,7 +1575,7 @@ export function reservationRoutes(app: FastifyInstance): void {
     summary: 'Alle Aufenthalte einer Buchung um dieselbe Zahl Tage verschieben',
     handler: async (req) => {
       const { bookingRef } = req.params as { bookingRef: string }
-      const body = req.body as { shiftDays?: number }
+      const body = req.body as { shiftDays?: number; allowOverbooking?: boolean }
       if (!Number.isInteger(body.shiftDays) || body.shiftDays === 0) {
         throw Errors.validation({ shiftDays: ['field.nonZeroInteger'] })
       }
@@ -1537,6 +1603,7 @@ export function reservationRoutes(app: FastifyInstance): void {
 
         const beweglich = rows.rows.filter(r => occupiesInventory(r.status))
         if (beweglich.length === 0) throw Errors.conflict('stay.groupNothingToMove')
+        await ueberbuchenErlauben(client, body.allowOverbooking)
 
         const ergebnis = []
         for (const r of beweglich) {
@@ -1580,7 +1647,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         categoryId?: number; resourceId?: number
         arrival?: string; departure?: string
         totalCent?: number; guestCount?: number; shortNote?: string
-        adults?: number; children?: number
+        adults?: number; children?: number; allowOverbooking?: boolean
       }
       const personen = personenAngabe(body)
       if (!Number.isInteger(body.categoryId)) {
@@ -1636,6 +1703,7 @@ export function reservationRoutes(app: FastifyInstance): void {
          * Andersherum stuende zwischen Pruefung und Bindung ein Fenster, in
          * dem ein zweiter Vorgang denselben Platz nimmt.
          */
+        await ueberbuchenErlauben(client, body.allowOverbooking)
         const inv = await client.query<{ e: string | null }>(
           `SELECT inventory_reserve($1,$2,$3::date,$4::date,1) AS e`,
           [buchung.property_id, body.categoryId, arrival, departure])
@@ -1986,7 +2054,10 @@ export function reservationRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = aenderungLesen(req.body)
-      return tx(req.pool, req, client => aufenthaltVerlegen(client, reservationRef, body))
+      return tx(req.pool, req, async client => {
+        await ueberbuchenErlauben(client, body.allowOverbooking)
+        return aufenthaltVerlegen(client, reservationRef, body)
+      })
     }
   })
 
@@ -2002,6 +2073,13 @@ export function reservationRoutes(app: FastifyInstance): void {
    * wuerde ein anderer. So scheitert die Vorschau auch an genau dem, woran
    * das Speichern scheitern wuerde: ein belegtes Zimmer, ein ausgebuchter
    * Tag.
+   *
+   * **Eine volle Zimmergruppe ist hier eine Warnung, kein Fehler.** Die
+   * Vorschau rechnet dann ein zweites Mal mit bestaetigter Ueberbuchung und
+   * meldet `overbooking: true`; die Maske zeigt es an und schickt beim
+   * Speichern die Bestaetigung mit (Sven, 06.10.2026). Andernfalls stuende
+   * in der Maske nur "kein Kontingent", und der Preis fehlte genau dort,
+   * wo jemand bewusst umsortiert.
    *
    * POST und `reservation:write`, obwohl nichts bleibt: die Rechnung sperrt
    * die Reservierung und bewegt kurz Bestand, und wer nicht aendern darf,
@@ -2023,7 +2101,18 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE r.public_ref = $1`, [reservationRef])
         await client.query('SAVEPOINT vorschau')
         try {
-          const ergebnis = await aufenthaltVerlegen(client, reservationRef, body)
+          await ueberbuchenErlauben(client, body.allowOverbooking)
+          let overbooking = body.allowOverbooking === true
+          let ergebnis
+          try {
+            ergebnis = await aufenthaltVerlegen(client, reservationRef, body)
+          } catch (e) {
+            if (!(e instanceof AppError) || e.type !== SOLD_OUT || overbooking) throw e
+            await client.query('ROLLBACK TO SAVEPOINT vorschau')
+            await ueberbuchenErlauben(client, true)
+            overbooking = true
+            ergebnis = await aufenthaltVerlegen(client, reservationRef, body)
+          }
           const naechte = await client.query<{ date: string; priceCent: string
                                                 posted: boolean }>(
             `SELECT n.date::text, n.price_cent AS "priceCent", n.posted
@@ -2036,6 +2125,7 @@ export function reservationRoutes(app: FastifyInstance): void {
             departure: ergebnis.departure,
             previousTotalCent: Number(vorher.rows[0]?.total ?? 0),
             totalCent: ergebnis.totalCent,
+            overbooking,
             nights: naechte.rows.map(n => ({
               date: n.date, priceCent: Number(n.priceCent), posted: n.posted }))
           }
@@ -2051,10 +2141,12 @@ export function reservationRoutes(app: FastifyInstance): void {
  * Der Rumpf von `change-stay`, geprueft -- fuer die Route und ihre Vorschau,
  * damit beide dasselbe annehmen.
  */
-function aenderungLesen(raw: unknown): Parameters<typeof aufenthaltVerlegen>[2] {
+function aenderungLesen(raw: unknown):
+  Parameters<typeof aufenthaltVerlegen>[2] & { allowOverbooking?: boolean } {
   const body = (raw ?? {}) as {
     arrival?: string; departure?: string; categoryId?: number; ratePlanId?: number
-    resourceId?: number | null; priceCent?: number; totalCent?: number }
+    resourceId?: number | null; priceCent?: number; totalCent?: number
+    allowOverbooking?: boolean }
   if (body.resourceId !== undefined && body.resourceId !== null
       && !Number.isInteger(body.resourceId)) {
     throw Errors.validation({ resourceId: ['field.positiveInteger'] })

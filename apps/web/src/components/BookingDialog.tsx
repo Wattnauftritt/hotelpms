@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Guest, Block } from '@hotelpms/contracts'
-import { useCreateBooking } from '../lib/queries/booking.js'
+import { useCreateBooking, istAusgebucht } from '../lib/queries/booking.js'
 import { useT } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { preisFelder, LEERER_PREIS, type Preiseingabe } from '../lib/preisEingabe.js'
@@ -155,7 +155,16 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
     // Der Fehler steht unter der Maske (`gast.anlegen.error`); die Buchung
     // geht dann nicht hinaus, sonst entstuende sie wieder ohne Gast.
     try { guestRef = await gast.guestRef() } catch { return }
-    buchen.mutate({
+    /*
+     * Ist die Zimmergruppe voll, wird gefragt und nicht abgewiesen (Sven,
+     * 06.10.2026). Der Fall dahinter: im vollen Haus wird umsortiert, eine
+     * Buchung liegt in der Ablage, und in die Luecke soll eine neue. Der
+     * Zaehler weiss nicht, dass die abgelegte gleich woandershin kommt --
+     * die Rezeption schon. Erst nach dem Ja geht die Bestaetigung hinaus,
+     * mit neuem Idempotenzschluessel: der erste Versuch ist ganz
+     * zurueckgerollt.
+     */
+    const senden = (ueberbuchen: boolean): void => buchen.mutate({
       propertyId, categoryId, arrival, departure, resourceId,
       guestRef,
       notes: notes.trim() === '' ? undefined : notes.trim(),
@@ -176,7 +185,8 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
       blockRef: abruf?.blockRef,
       adults: anzahlErwachsene ?? undefined,
       children: anzahlKinder ?? undefined,
-      shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim()
+      shortNote: kurznotiz.trim() === '' ? undefined : kurznotiz.trim(),
+      allowOverbooking: ueberbuchen || undefined
     }, {
       /*
        * Gespeichert ist alles getan: die Maske geht zu. Vorher blieb sie
@@ -184,8 +194,15 @@ export function BookingDialog({ propertyId, categoryId, categoryName, resourceId
        * Klick, der nichts mehr entschied (Sven, 05.10.2026). Was angelegt
        * wurde, steht danach als Balken im Plan.
        */
-      onSuccess: onClose
+      onSuccess: onClose,
+      onError: fehler => {
+        if (!ueberbuchen && istAusgebucht(fehler)
+            && confirm(t('booking.overbookConfirm', { gruppe: categoryName }))) {
+          senden(true)
+        }
+      }
     })
+    senden(false)
   }
 
   return (
