@@ -566,9 +566,16 @@ export const plan = {
     en: 'Nothing changed',
     tr: 'Değişiklik yok' },
   'verlegen.inHouseKeepsRoom': {
-    de: 'Ein angereister Gast behält sein Zimmer',
-    en: 'A guest who has checked in keeps their room',
-    tr: 'Giriş yapmış misafir odasını korur' },
+    de: 'Ein angereister Gast kommt nicht in die Ablage. Wähle oben direkt das neue '
+      + 'Zimmer; ist es belegt, tauschen beide Gäste.',
+    en: 'A checked-in guest cannot be parked. Choose the new room above; if it is '
+      + 'occupied, both guests swap.',
+    tr: 'Giriş yapmış bir misafir bekleme alanına alınamaz. Yukarıda yeni odayı seçin; '
+      + 'oda doluysa iki misafir yer değiştirir.' },
+  'verlegen.swap': {
+    de: 'Zimmer {raum} ist belegt von {gast}. Beim Speichern tauschen beide die Zimmer.',
+    en: 'Room {raum} is occupied by {gast}. Saving swaps the two rooms.',
+    tr: '{raum} numaralı oda {gast} tarafından dolu. Kaydedince iki misafir odaları değiştirir.' },
   'verlegen.groupShift': {
     de: 'Die ganze Buchung {ref} wandert um {tage} Tage — alle {n} Zimmer.',
     en: 'The whole booking {ref} moves by {tage} days — all {n} rooms.',
@@ -711,6 +718,10 @@ export const plan = {
     de: 'Check-out',
     en: 'Check out',
     tr: 'Çıkış yap' },
+  'kontext.undoCheckOut': {
+    de: 'Check-out zurücknehmen',
+    en: 'Undo check-out',
+    tr: 'Check-out’u geri al' },
   'kontext.checkOutConfirm': {
     de: 'Gast jetzt auschecken? Reist er vor dem gebuchten Tag ab, endet der Aufenthalt heute.',
     en: 'Check the guest out now? If they leave before the booked day, the stay ends today.',

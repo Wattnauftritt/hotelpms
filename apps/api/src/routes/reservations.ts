@@ -199,7 +199,9 @@ interface CreateBooking {
 async function assertUnitAssignable(
   client: PoolClient, opts: {
     resourceId: number; propertyId: number; arrival: string; departure: string
-    exceptReservationId?: number }
+    exceptReservationId?: number
+    /** Beim Tausch: der andere, der gleichzeitig auszieht. */
+    alsoExceptReservationId?: number }
 ): Promise<void> {
   const unit = await client.query<{ property_id: number; active: boolean }>(
     `SELECT property_id, active FROM resource WHERE id = $1`, [opts.resourceId])
@@ -221,10 +223,11 @@ async function assertUnitAssignable(
 
   const taken = await client.query(
     `SELECT 1 FROM reservation
-      WHERE resource_id = $1 AND id <> COALESCE($2, -1)
+      WHERE resource_id = $1 AND id <> COALESCE($2, -1) AND id <> COALESCE($5, -1)
         AND status IN ('Confirmed','InHouse')
         AND arrival < $4::date AND departure > $3::date LIMIT 1`,
-    [opts.resourceId, opts.exceptReservationId ?? null, opts.arrival, opts.departure])
+    [opts.resourceId, opts.exceptReservationId ?? null, opts.arrival, opts.departure,
+     opts.alsoExceptReservationId ?? null])
   if (taken.rowCount && taken.rowCount > 0) {
     throw Errors.conflict('room.occupied')
   }
@@ -496,7 +499,17 @@ const EVENT_FOR_ACTION: Record<ReservationAction, WebhookEventType> = {
   // Eine eigene Ereignisart braucht es nicht: das Ereignis ist nur das
   // Signal zum Nachfragen, und die Liste zeigt danach `Confirmed` ohne
   // Check-in-Zeit. Ein neuer Typ kaeme bei keinem bestehenden Abonnement an.
-  undo_check_in: 'reservation.changed'
+  undo_check_in: 'reservation.changed',
+  // Aus demselben Grund; das Ereignis traegt `status: InHouse` und die
+  // wiederhergestellte Abreise.
+  undo_check_out: 'reservation.changed'
+}
+
+/** Was ein Check-out an der Reservierung festhaelt (0094). */
+interface CheckoutUndo {
+  businessDate: string
+  departure: string
+  nights: Array<{ date: string; priceCent: number; ratePlanId: number | null }>
 }
 
 /**
@@ -1801,14 +1814,73 @@ export function reservationRoutes(app: FastifyInstance): void {
          * Naechte bleiben, an ihnen haengen Belege. Am Anreisetag selbst
          * bleibt die eine Nacht stehen; ein Aufenthalt ohne Nacht ist keiner.
          */
+        let checkoutUndo: CheckoutUndo | null = null
         if (act === 'check_out' && r.status === 'InHouse') {
           const heute = await geschaeftstag(client, r.property_id)
           const ende = heute > r.arrival ? heute : addDays(r.arrival, 1)
+          // Was der Check-out wegnimmt, bleibt an der Reservierung stehen,
+          // bis jemand ihn zuruecknimmt (0094). Die Naechte mit ihrem
+          // Preis, nicht nur die Abreise: ein vereinbarter Preis ginge
+          // beim Neurechnen im Durchschnitt unter.
+          checkoutUndo = { businessDate: heute, departure: r.departure, nights: [] }
           // Vor der Anreise gibt es nichts zu kuerzen: der Geschaeftstag
           // weiss dann nicht, wann der Gast wirklich da war.
           if (heute >= r.arrival && ende < r.departure) {
+            const weg = await client.query<{ date: string; price_cent: string
+                                             rate_plan_id: number | null }>(
+              `SELECT date::text, price_cent, rate_plan_id FROM reservation_night
+                WHERE reservation_id = $1 AND NOT posted AND date >= $2::date
+                ORDER BY date`, [r.id, ende])
+            checkoutUndo.nights = weg.rows.map(n => ({
+              date: n.date, priceCent: Number(n.price_cent), ratePlanId: n.rate_plan_id }))
             await aufenthaltVerlegen(client, reservationRef, { departure: ende })
             r.departure = ende
+          }
+        }
+
+        /*
+         * **Check-out zuruecknehmen, am selben Geschaeftstag.**
+         *
+         * Der Fall, der das braucht (Sven, 06.10.2026): ein eingecheckter
+         * Gast sollte nur das Zimmer wechseln, und der einzige Weg, der
+         * offen aussah, war der Check-out. Danach war der Aufenthalt auf
+         * eine Nacht gekuerzt, abgereist und nicht mehr zu bearbeiten.
+         *
+         * **Warum nur am selben Tag.** Der Nachtlauf bucht die Logis nur
+         * fuer Gaeste im Haus. Stand der Gast beim Tagesabschluss als
+         * abgereist da, fehlt diese Nacht auf dem Konto, und ein
+         * Zuruecknehmen am Tag danach machte daraus eine Nacht, die er
+         * geschlafen und nie bezahlt hat -- ohne dass es irgendwo
+         * auffiele. Ein Check-out von vor dieser Migration hat keinen
+         * festgehaltenen Tag; dort gilt dieselbe Regel ueber die Naechte:
+         * jede Nacht vor heute muss gebucht sein.
+         *
+         * Das Zimmer muss bis zur alten Abreise noch frei sein. Ist es
+         * inzwischen vergeben, bleibt der Gast abgereist; die Meldung
+         * nennt das Zimmer, und die Rezeption entscheidet.
+         */
+        let undo: CheckoutUndo | null = null
+        if (act === 'undo_check_out') {
+          const heute = await geschaeftstag(client, r.property_id)
+          const gespeichert = await client.query<{ u: CheckoutUndo | null }>(
+            `SELECT checkout_undo AS u FROM reservation WHERE id = $1`, [r.id])
+          undo = gespeichert.rows[0]!.u
+          if (undo !== null) {
+            if (undo.businessDate !== heute) throw Errors.unprocessable('stay.undoCheckoutLate')
+          } else {
+            const offen = await client.query(
+              `SELECT 1 FROM reservation_night
+                WHERE reservation_id = $1 AND NOT posted AND date < $2::date LIMIT 1`,
+              [r.id, heute])
+            if ((offen.rowCount ?? 0) > 0 || heute > r.departure) {
+              throw Errors.unprocessable('stay.undoCheckoutLate')
+            }
+          }
+          if (r.resource_id !== null) {
+            const bis = undo !== null && undo.departure > r.departure ? undo.departure : r.departure
+            await assertUnitAssignable(client, {
+              resourceId: r.resource_id, propertyId: r.property_id,
+              arrival: r.arrival, departure: bis, exceptReservationId: r.id })
           }
         }
 
@@ -1924,11 +1996,34 @@ export function reservationRoutes(app: FastifyInstance): void {
           : act === 'cancel' ? 'canceled_at = now(),'
           : act === 'reinstate' ? 'canceled_at = NULL,'
           : act === 'undo_check_in' ? 'checked_in_at = NULL,'
+          : act === 'undo_check_out' ? 'checked_out_at = NULL,'
           // Der Nachtlauf hat ihn eingecheckt, nicht der Gast.
           : act === 'no_show' ? 'checked_in_at = NULL,' : ''
+        // Was ein Check-out festhaelt, gilt nur bis zum naechsten Zustand.
         await client.query(
-          `UPDATE reservation SET status = $2, ${stamp} updated_at = now() WHERE id = $1`,
-          [r.id, target])
+          `UPDATE reservation SET status = $2, ${stamp} checkout_undo = $3::jsonb,
+                  updated_at = now() WHERE id = $1`,
+          [r.id, target, checkoutUndo === null ? null : JSON.stringify(checkoutUndo)])
+
+        /*
+         * Die alte Abreise zurueck, ueber dieselbe Rechnung wie jede
+         * Verlaengerung: Bestand, Zimmer und Naechte in einem Zug. Danach
+         * bekommen die Naechte den Preis, den sie vor dem Check-out hatten,
+         * statt des Durchschnitts, den `aufenthaltVerlegen` vorschlaegt.
+         */
+        if (act === 'undo_check_out' && undo !== null && undo.departure > r.departure) {
+          await aufenthaltVerlegen(client, reservationRef, { departure: undo.departure })
+          r.departure = undo.departure
+          if (undo.nights.length > 0) {
+            await client.query(
+              `UPDATE reservation_night n
+                  SET price_cent = x.price, rate_plan_id = x.plan
+                 FROM unnest($2::date[], $3::bigint[], $4::bigint[]) AS x(date, price, plan)
+                WHERE n.reservation_id = $1 AND n.date = x.date AND NOT n.posted`,
+              [r.id, undo.nights.map(n => n.date), undo.nights.map(n => n.priceCent),
+               undo.nights.map(n => n.ratePlanId)])
+          }
+        }
 
         await emitEvent(client, r.property_id, EVENT_FOR_ACTION[act], {
           reservationRef, status: target,
@@ -1948,6 +2043,10 @@ export function reservationRoutes(app: FastifyInstance): void {
   // und der kuerzte den Aufenthalt auf heute und gab das Zimmer frei.
   action('/v1/reservations/:reservationRef/undo-check-in', 'undo_check_in', 'reservation:checkin',
     'Check-in zuruecknehmen')
+  // Ein Check-out kuerzt den Aufenthalt und gibt das Zimmer frei; ein
+  // Fehlgriff war damit endgueltig (Sven, 06.10.2026).
+  action('/v1/reservations/:reservationRef/undo-check-out', 'undo_check_out',
+    'reservation:checkin', 'Check-out zuruecknehmen')
   // Der Nachtlauf checkt Anreisen ein (0088); wer trotzdem nicht kam, wird
   // hier No-Show -- vor dem Tagesabschluss aus `Confirmed`, danach aus
   // `InHouse` samt Gegenbuchung der gebuchten Naechte.
@@ -2016,6 +2115,85 @@ export function reservationRoutes(app: FastifyInstance): void {
         })
 
         return { reservationRef, resourceId }
+      })
+    }
+  })
+
+  /**
+   * Zwei Aufenthalte tauschen ihre Zimmer, in einem Zug.
+   *
+   * Der Fall (Sven, 06.10.2026): ein Gast ist eingecheckt und soll in ein
+   * anderes Zimmer, in dem schon jemand geplant ist. Umsortieren lief
+   * bisher ueber die Ablage, und ein angereister Gast kommt dort nicht
+   * hin -- er liegt im Zimmer, und Hausliste und Reinigung saehen sonst
+   * ein leeres Zimmer, in dem jemand schlaeft. Der Weg, der dann offen
+   * aussah, war der Check-out, und der kuerzte den Aufenthalt.
+   *
+   * Ein Tausch braucht die Ablage nicht: beide wechseln in derselben
+   * Transaktion, und es gibt keinen Augenblick, in dem einer ohne Zimmer
+   * ist. Geprueft wird jedes Zimmer fuer den Aufenthalt, der hineinzieht,
+   * wobei die beiden Tauschenden einander nicht stoeren. Bestand und Tage
+   * bleiben, wie sie sind -- gezaehlt wird je Zimmergruppe, und beide
+   * halten ihren Platz. Wer dabei die Gruppe wechselt, ist ein Upgrade wie
+   * bei `assign-unit`.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/swap-room',
+    permission: 'reservation:write',
+    summary: 'Zimmer mit einem anderen Aufenthalt tauschen',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const { withReservationRef } = (req.body ?? {}) as { withReservationRef?: unknown }
+      if (typeof withReservationRef !== 'string' || withReservationRef === reservationRef) {
+        throw Errors.validation({ withReservationRef: ['field.required'] })
+      }
+      return tx(req.pool, req, async client => {
+        // Beide in fester Reihenfolge sperren: zwei Tausche ueber Kreuz
+        // liefen sonst in eine Verklemmung.
+        const rs = await client.query<{ id: number; public_ref: string; property_id: number
+                                        category_id: number; status: ReservationStatus
+                                        arrival: string; departure: string
+                                        resource_id: number | null }>(
+          `SELECT id, public_ref, property_id, category_id, status,
+                  arrival::text, departure::text, resource_id
+             FROM reservation WHERE public_ref = ANY($1::text[])
+            ORDER BY id FOR UPDATE`, [[reservationRef, withReservationRef]])
+        const a = rs.rows.find(x => x.public_ref === reservationRef)
+        const b = rs.rows.find(x => x.public_ref === withReservationRef)
+        if (a === undefined || b === undefined) throw Errors.notFound('res.reservation')
+        // Die Zeilenrichtlinie trennt Mandanten, nicht Haeuser.
+        if (a.property_id !== b.property_id) throw Errors.notFound('res.reservation')
+        if (!occupiesInventory(a.status) || !occupiesInventory(b.status)) {
+          throw Errors.conflict('stay.statusHoldsNoInventory',
+            { status: occupiesInventory(a.status) ? b.status : a.status })
+        }
+        if (a.resource_id === null || b.resource_id === null
+            || a.resource_id === b.resource_id) {
+          throw Errors.unprocessable('stay.swapNeedsRooms')
+        }
+        await assertUnitAssignable(client, {
+          resourceId: b.resource_id, propertyId: a.property_id,
+          arrival: a.arrival, departure: a.departure,
+          exceptReservationId: a.id, alsoExceptReservationId: b.id })
+        await assertUnitAssignable(client, {
+          resourceId: a.resource_id, propertyId: a.property_id,
+          arrival: b.arrival, departure: b.departure,
+          exceptReservationId: a.id, alsoExceptReservationId: b.id })
+
+        await client.query(
+          `UPDATE reservation r SET resource_id = x.res, updated_at = now()
+             FROM unnest($1::bigint[], $2::bigint[]) AS x(id, res)
+            WHERE r.id = x.id`,
+          [[a.id, b.id], [b.resource_id, a.resource_id]])
+
+        for (const [x, neu] of [[a, b.resource_id], [b, a.resource_id]] as const) {
+          await emitEvent(client, x.property_id, 'reservation.changed', {
+            reservationRef: x.public_ref, status: x.status, resourceId: neu,
+            arrival: x.arrival, departure: x.departure, categoryId: x.category_id })
+        }
+        return { reservationRef, resourceId: b.resource_id,
+                 withReservationRef, withResourceId: a.resource_id }
       })
     }
   })

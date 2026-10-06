@@ -2,7 +2,8 @@ import type { JSX } from 'react'
 import { Kontextmenue, type KontextZiel, type MenueEintrag } from './Kontextmenue.tsx'
 import { useReservationStatusAction, useAssignUnit } from '../lib/queries/booking.js'
 import { useHausrechte } from '../lib/rechte.js'
-import { useT, type TextKey } from '../lib/i18n/index.js'
+import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
+import { fehlerMeldung } from '../lib/meldungen.js'
 import type { HousekeepingState } from '@hotelpms/contracts'
 import { angeboteneStaende, reinigungsZiele, type SetzbarerStand } from '../lib/planStatus.js'
 
@@ -55,6 +56,7 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                    ab: string; bis: string }) => void
 }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const rechte = useHausrechte(propertyId)
   const zuweisen = useAssignUnit()
   const status = useReservationStatusAction(
@@ -87,6 +89,20 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
       eintraege.push({ schluessel: 'checkout', text: t('kontext.checkOut'),
                        onClick: () => {
                          if (confirm(t('kontext.checkOutConfirm'))) status.mutate('check-out')
+                       } })
+    }
+
+    // Am Balken, weil der abgereiste Gast genau dort liegt, wo der Fehlgriff
+    // passiert ist. Am Tag danach weist die API ab.
+    if (rechte.darf('reservation:checkin') && ziel.status === 'CheckedOut') {
+      eintraege.push({ schluessel: 'checkoutZurueck', text: t('kontext.undoCheckOut'),
+                       onClick: () => {
+                         // Das Menue ist danach zu; die Absage am Tag danach
+                         // soll trotzdem jemand lesen.
+                         if (confirm(t('today.undoCheckoutConfirm'))) {
+                           status.mutate('undo-check-out', {
+                             onError: e => alert(fehlerMeldung(e, locale).text) })
+                         }
                        } })
     }
 

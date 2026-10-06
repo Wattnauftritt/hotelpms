@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { TapeChart as TapeChartData, ReservationDetail } from '@hotelpms/contracts'
 import { useTapeChart, useCategories } from '../lib/queries.js'
 import { useAssignUnit, useChangeStay, useShiftBooking, useSetGuestOf, useSetPersons,
-         istAusgebucht }
+         useSwapRoom, istAusgebucht }
   from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { today, addDays, eachDay } from '../lib/dates.js'
@@ -173,6 +173,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const gruppeVerschieben = useShiftBooking()
   const gastSetzen = useSetGuestOf()
   const personenSetzen = useSetPersons()
+  const tauschen = useSwapRoom()
   const reinigung = usePlanReinigung(propertyId)
 
   const warnungen = useWarnungen(q.data, kategorien.data?.categories ?? [])
@@ -241,11 +242,14 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
     const preis = was.zusatz?.preis ?? null
     const guestRef = was.zusatz?.guestRef
     const personen = was.zusatz?.personen
+    const tauschMit = was.zusatz?.tauschMit
     const gemerkt = (): void => {
       // Nur, was Zimmer oder Tage bewegt hat: ein Strg+Z, das einen Preis
       // oder einen Namen "zuruecknimmt", indem es nichts tut, waere eine
-      // Zusage, die nicht stimmt.
-      if (was.merken && (gruppe !== undefined || !tageGleich || !zimmerGleich)) {
+      // Zusage, die nicht stimmt. Ein Tausch auch nicht: zurueck ginge er
+      // ueber `assign-unit`, und das alte Zimmer ist dann belegt.
+      const bewegt = gruppe !== undefined || !tageGleich || !zimmerGleich
+      if (was.merken && tauschMit === undefined && bewegt) {
         setRueckgaengig(st => [...st.slice(-(RUECKGAENGIG_MAX - 1)), {
           reservationRef, gast: was.gast,
           vorher: { ...alt, roomCode: zimmerCode(alt.resourceId) },
@@ -279,6 +283,20 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
       if (istAusgebucht(fehler) && confirm(t('plan.overbookConfirm'))) nochmal()
     }
     const ueberbuchen = was.zusatz?.ueberbuchen === true
+    /*
+     * Tausch: beide Zimmer in einem Aufruf. Ein vereinbarter Preis geht
+     * danach ueber `change-stay` mit denselben Tagen hinaus -- der Tausch
+     * selbst kennt keinen.
+     */
+    if (tauschMit !== undefined) {
+      const nachTausch = preis === null ? fertig
+        : (): void => umbuchen.mutate({ reservationRef, arrival: ziel.arrival,
+                                        departure: ziel.departure, ...preis },
+                                      { onSuccess: fertig })
+      tauschen.mutate({ reservationRef, withReservationRef: tauschMit },
+                      { onSuccess: nachTausch })
+      return
+    }
     if (gruppe !== undefined) {
       const verschieben = (erlaubt: boolean): void => gruppeVerschieben.mutate(
         { bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays,
@@ -315,9 +333,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                gruppe: v.gruppe, merken: true, zusatz }, danach)
 
   const schreibt = zuweisen.isPending || umbuchen.isPending || gruppeVerschieben.isPending
-    || gastSetzen.isPending || personenSetzen.isPending
+    || gastSetzen.isPending || personenSetzen.isPending || tauschen.isPending
   const schreibfehler = zuweisen.error ?? umbuchen.error ?? gruppeVerschieben.error
-    ?? gastSetzen.error ?? personenSetzen.error
+    ?? gastSetzen.error ?? personenSetzen.error ?? tauschen.error
 
   /**
    * Die Maske oeffnen -- mit leerem Fehlerstand.
@@ -328,7 +346,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    */
   const maskeOeffnen = (v: Verlegung): void => {
     zuweisen.reset(); umbuchen.reset(); gruppeVerschieben.reset(); gastSetzen.reset()
-    personenSetzen.reset()
+    personenSetzen.reset(); tauschen.reset()
     setVerlegung(v)
   }
 
@@ -667,6 +685,16 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
 
       {verlegung !== null && daten !== undefined && (
         <BuchungVerlegen verlegung={verlegung} zimmer={daten.units}
+                         belegtVon={(id, an, ab) => daten.reservations
+                           // Dieselben Zustaende, die `assertUnitAssignable`
+                           // als belegt zaehlt.
+                           .filter(x => x.resource_id === id
+                                        && x.public_ref !== verlegung.reservationRef
+                                        && (x.status === 'Confirmed' || x.status === 'InHouse')
+                                        && x.arrival < ab && x.departure > an)
+                           .map(x => ({ reservationRef: x.public_ref,
+                                        gast: [x.first_name, x.last_name]
+                                          .filter(n => n !== null && n !== '').join(' ') }))}
                          laeuft={schreibt} fehler={schreibfehler}
                          onClose={() => setVerlegung(null)}
                          onSpeichern={(ziel, zusatz) => speichern(verlegung, ziel,

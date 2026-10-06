@@ -417,6 +417,26 @@ function StornoAktionen({ reservationRef, status }: {
       </>
     )
   }
+  /*
+   * Ein Check-out kuerzt den Aufenthalt und gibt das Zimmer frei. War er ein
+   * Fehlgriff, geht er am selben Geschaeftstag zurueck (0094); danach weist
+   * die API ab, die Meldung steht hier.
+   */
+  if (status === 'CheckedOut') {
+    return (
+      <>
+        <button onClick={() => {
+                  if (confirm(t('today.undoCheckoutConfirm'))) aktion.mutate('undo-check-out')
+                }}
+                disabled={aktion.isPending}
+                className="text-xs px-2 py-1 rounded-sm border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('today.undoCheckout')}
+        </button>
+        {aktion.isError && <div className="basis-full"><Fehler error={aktion.error} /></div>}
+      </>
+    )
+  }
   if (WIEDERHERSTELLBAR.has(status)) {
     return (
       <button onClick={() => aktion.mutate('reinstate')}
