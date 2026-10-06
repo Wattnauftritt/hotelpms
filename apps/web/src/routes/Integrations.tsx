@@ -6,7 +6,7 @@ import { useWebhookSubscriptions, useWebhookDeliveries, useCreateWebhook,
          useRevokeOAuthClient, useUpdateOAuthClient, useChannelConnections, useCreateChannelConnection,
          useDisableChannelConnection }
   from '../lib/queries/integrations.js'
-import { useHausrechte } from '../lib/rechte.js'
+import { useHausrechte, useHaeuserMitRecht } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
@@ -276,15 +276,61 @@ function ScopeWahl({ verfuegbar, gewaehlt, onChange }: {
   )
 }
 
-function Zugang({ client, verfuegbar }: {
-  client: OAuthClient; verfuegbar: string[]
+type Haus = { id: number; code: string; name: string }
+
+/**
+ * Die Häuser eines Zugangs zum Ankreuzen, beim Anlegen und beim Ändern.
+ *
+ * Kein Haken heißt „alle Häuser“, auch künftige — das sagt die API so, und
+ * der Hinweis darunter sagt es ausdrücklich, weil es das Gegenteil dessen
+ * ist, was ein leeres Feld sonst bedeutet. Die Property-ID steht neben dem
+ * Namen: das Umsystem braucht sie für jeden Pfad, und hier ist die Stelle,
+ * an der sie jemand für dessen Konfiguration abliest.
+ */
+function HausWahl({ haeuser, gewaehlt, onChange }: {
+  haeuser: Haus[]; gewaehlt: number[]; onChange: (h: number[]) => void
+}): JSX.Element {
+  const t = useT()
+  const umschalten = (id: number): void => {
+    onChange(gewaehlt.includes(id) ? gewaehlt.filter(x => x !== id) : [...gewaehlt, id])
+  }
+  return (
+    <div className="text-sm">
+      <div className="text-neutral-600">{t('client.properties')}</div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+        {haeuser.map(h => (
+          <label key={h.id} className="flex items-center gap-1.5 text-neutral-700">
+            <input type="checkbox" checked={gewaehlt.includes(h.id)}
+                   onChange={() => umschalten(h.id)} />
+            {h.name} <span className="text-xs text-neutral-500">(ID {h.id})</span>
+          </label>
+        ))}
+      </div>
+      <div className={`text-xs mt-1 ${gewaehlt.length === 0
+                                       ? 'text-amber-800' : 'text-neutral-500'}`}>
+        {t(gewaehlt.length === 0 ? 'client.propertiesAll' : 'client.propertiesHint')}
+      </div>
+    </div>
+  )
+}
+
+/** „Gästehaus (ID 3)“ statt einer nackten Zahl; ein fremdes Haus bleibt Zahl. */
+function hausNamen(ids: number[], haeuser: Haus[]): string {
+  return ids.map(id => {
+    const h = haeuser.find(x => x.id === id)
+    return h === undefined ? `ID ${id}` : `${h.name} (ID ${id})`
+  }).join(', ')
+}
+
+function Zugang({ client, verfuegbar, haeuser }: {
+  client: OAuthClient; verfuegbar: string[]; haeuser: Haus[]
 }): JSX.Element {
   const t = useT()
   const online = useOnline()
   const sperren = useRevokeOAuthClient()
   const aendern = useUpdateOAuthClient()
   const aktiv = client.status === 'active'
-  const [entwurf, setEntwurf] = useState<string[] | null>(null)
+  const [entwurf, setEntwurf] = useState<{ scopes: string[]; haeuser: number[] } | null>(null)
 
   return (
     <li className={`rounded-sm border border-neutral-200 bg-white p-3
@@ -297,7 +343,8 @@ function Zugang({ client, verfuegbar }: {
           {t(aktiv ? 'client.status.active' : 'client.status.disabled')}
         </span>
         {aktiv && entwurf === null && (
-          <button onClick={() => setEntwurf(client.scopes)}
+          <button onClick={() => setEntwurf({
+                    scopes: client.scopes, haeuser: client.propertyIds.map(Number) })}
                   disabled={!online} className={knopf}>
             {t('client.edit')}
           </button>
@@ -320,7 +367,7 @@ function Zugang({ client, verfuegbar }: {
         <span>
           {client.propertyIds.length === 0
             ? t('client.allProperties')
-            : client.propertyIds.join(', ')}
+            : hausNamen(client.propertyIds.map(Number), haeuser)}
         </span>
       </div>
       {entwurf === null
@@ -333,16 +380,20 @@ function Zugang({ client, verfuegbar }: {
         : <form className="mt-2 text-sm space-y-2"
                 onSubmit={e => {
                   e.preventDefault()
-                  if (entwurf.length === 0) return
-                  aendern.mutate({ clientRef: client.clientId, scopes: entwurf },
+                  if (entwurf.scopes.length === 0) return
+                  aendern.mutate({ clientRef: client.clientId, scopes: entwurf.scopes,
+                                   propertyIds: entwurf.haeuser },
                     { onSuccess: () => setEntwurf(null) })
                 }}>
-            <ScopeWahl verfuegbar={verfuegbar} gewaehlt={entwurf} onChange={setEntwurf} />
+            <ScopeWahl verfuegbar={verfuegbar} gewaehlt={entwurf.scopes}
+                       onChange={s => setEntwurf({ ...entwurf, scopes: s })} />
+            <HausWahl haeuser={haeuser} gewaehlt={entwurf.haeuser}
+                      onChange={h => setEntwurf({ ...entwurf, haeuser: h })} />
             <div className="text-xs text-neutral-500">{t('client.editHint')}</div>
             {aendern.isError && <Fehler error={aendern.error} />}
             <div className="flex gap-2">
               <button type="submit" className={knopfStark}
-                      disabled={!online || aendern.isPending || entwurf.length === 0}>
+                      disabled={!online || aendern.isPending || entwurf.scopes.length === 0}>
                 {t('common.save')}
               </button>
               <button type="button" className={knopf}
@@ -356,14 +407,20 @@ function Zugang({ client, verfuegbar }: {
   )
 }
 
-function Maschinenzugaenge(): JSX.Element {
+function Maschinenzugaenge({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const online = useOnline()
   const q = useOAuthClients()
   const anlegen = useCreateOAuthClient()
+  // Zur Wahl stehen die Häuser, die der Benutzer überhaupt sieht; die API
+  // prüft ohnehin, dass jedes zum Betrieb des Zugangs gehört.
+  const haeuser = useHaeuserMitRecht('integration:manage') ?? []
   const [name, setName] = useState('')
   const [scopes, setScopes] = useState<string[]>([])
+  // Vorgewählt ist das Haus aus der Kopfzeile, nicht „alle“: ein Zugang für
+  // alle Häuser soll eine Entscheidung sein, kein übersehenes Feld.
+  const [hausIds, setHausIds] = useState<number[]>([propertyId])
   const [geheimnis, setGeheimnis] = useState<{ wert: string; hinweis: string } | null>(null)
 
   return (
@@ -377,12 +434,12 @@ function Maschinenzugaenge(): JSX.Element {
             onSubmit={e => {
               e.preventDefault()
               if (name.trim() === '' || scopes.length === 0) return
-              anlegen.mutate({ name: name.trim(), scopes },
+              anlegen.mutate({ name: name.trim(), scopes, propertyIds: hausIds },
                 { onSuccess: r => {
                     setGeheimnis({
                       wert: `${r.clientId}:${r.clientSecret}`,
                       hinweis: apiText(r.hinweisKey, r.hinweis, locale) })
-                    setName(''); setScopes([])
+                    setName(''); setScopes([]); setHausIds([propertyId])
                   } })
             }}>
         <div className="font-medium">{t('client.new')}</div>
@@ -397,6 +454,7 @@ function Maschinenzugaenge(): JSX.Element {
                      onChange={setScopes} />
           <div className="text-xs text-neutral-500 mt-1">{t('client.scopesHint')}</div>
         </div>
+        <HausWahl haeuser={haeuser} gewaehlt={hausIds} onChange={setHausIds} />
         {anlegen.isError && <Fehler error={anlegen.error} />}
         <button type="submit"
                 disabled={!online || anlegen.isPending || name.trim() === ''
@@ -412,7 +470,8 @@ function Maschinenzugaenge(): JSX.Element {
             ? <div className="text-sm text-neutral-500">{t('common.none')}</div>
             : <ul className="space-y-2">
                 {q.data.clients.map(c => <Zugang key={c.clientId} client={c}
-                                                 verfuegbar={q.data.availableScopes} />)}
+                                                 verfuegbar={q.data.availableScopes}
+                                                 haeuser={haeuser} />)}
               </ul>}
     </div>
   )
@@ -547,7 +606,7 @@ export function Integrations({ propertyId }: { propertyId: number }): JSX.Elemen
       </div>
 
       {aktiv.key === 'webhooks' && <Webhooks />}
-      {aktiv.key === 'clients' && <Maschinenzugaenge />}
+      {aktiv.key === 'clients' && <Maschinenzugaenge propertyId={propertyId} />}
       {aktiv.key === 'channel' && <ChannelManager propertyId={propertyId} />}
     </div>
   )

@@ -137,6 +137,21 @@ export const schnittstellen = {
     en: 'Scopes are the same permissions as in the property. There is '
       + 'no second rights system beside it.',
     tr: 'Erişim alanları, tesisteki yetkilerin aynısıdır. Yanında ikinci bir yetki sistemi yoktur.' },
+  'client.properties': {
+    de: 'Häuser',
+    en: 'Properties',
+    tr: 'Tesisler' },
+  'client.propertiesHint': {
+    de: 'Der Zugang erreicht nur die angekreuzten Häuser.',
+    en: 'The access reaches only the ticked properties.',
+    tr: 'Erişim yalnızca işaretli tesislere ulaşır.' },
+  'client.propertiesAll': {
+    de: 'Kein Haus angekreuzt: Der Zugang gilt für alle Häuser, auch für '
+      + 'künftige.',
+    en: 'No property ticked: the access applies to all properties, '
+      + 'including future ones.',
+    tr: 'Hiçbir tesis işaretlenmedi: erişim, gelecektekiler dahil bütün '
+      + 'tesisler için geçerlidir.' },
   'client.status.active': {
     de: 'Aktiv',
     en: 'Active',
