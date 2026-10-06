@@ -53,6 +53,14 @@ export const kassenbuch = {
     de: 'DATEV-Export aus StayGrid ab',
     en: 'DATEV export from StayGrid as of',
     tr: 'StayGrid üzerinden DATEV dışa aktarımı başlangıcı' },
+  'cash.settings.uploadEmail': {
+    de: 'DATEV-Uploadmail für Belege',
+    en: 'DATEV Upload-Mail for receipts',
+    tr: 'Belgeler için DATEV Upload-Mail' },
+  'cash.settings.uploadEmailHint': {
+    de: 'Die Adresse der Barkasse aus DATEV Upload-Mail (…@uploadmail.datev.de). Beim Markieren eines Exports geht jeder Beleg als eigene Mail dorthin.',
+    en: 'The cash register address from DATEV Upload-Mail (…@uploadmail.datev.de). When an export is marked, each receipt is sent there as its own e-mail.',
+    tr: 'DATEV Upload-Mail\'deki kasa adresi (…@uploadmail.datev.de). Bir dışa aktarım işaretlendiğinde her belge oraya ayrı bir e-posta olarak gönderilir.' },
   'cash.settings.datevFromHint': {
     de: 'Bis zu diesem Tag exportiert das bisherige System. Nur eines darf an DATEV exportieren, sonst steht jede Buchung zweimal in der Buchhaltung.',
     en: 'Until this day the previous system exports. Only one may export to DATEV, otherwise every entry appears twice in accounting.',
@@ -101,6 +109,26 @@ export const kassenbuch = {
     de: '{n} Buchungen als übergeben markiert.',
     en: '{n} entries marked as handed over.',
     tr: '{n} kayıt aktarıldı olarak işaretlendi.' },
+  'cash.datev.receiptsQueued': {
+    de: '{n} Belege gehen an die DATEV-Uploadmail.',
+    en: '{n} receipts are being sent to DATEV Upload-Mail.',
+    tr: '{n} belge DATEV Upload-Mail adresine gönderiliyor.' },
+  'cash.datev.receiptsWaiting': {
+    de: '{n} Belege warten noch auf den Versand an DATEV.',
+    en: '{n} receipts are still waiting to be sent to DATEV.',
+    tr: '{n} belge hâlâ DATEV\'e gönderilmeyi bekliyor.' },
+  'cash.datev.receiptsNoAddress': {
+    de: '{n} Belege warten: in der Einstellung fehlt die DATEV-Uploadmail-Adresse.',
+    en: '{n} receipts are waiting: the DATEV Upload-Mail address is missing in the settings.',
+    tr: '{n} belge bekliyor: ayarlarda DATEV Upload-Mail adresi eksik.' },
+  'cash.datev.receiptsMailNotReady': {
+    de: '{n} Belege warten: der E-Mail-Versand des Hauses ist nicht eingerichtet.',
+    en: '{n} receipts are waiting: e-mail sending is not set up for this property.',
+    tr: '{n} belge bekliyor: bu tesis için e-posta gönderimi kurulmamış.' },
+  'cash.datev.sendReceipts': {
+    de: 'Belege jetzt senden',
+    en: 'Send receipts now',
+    tr: 'Belgeleri şimdi gönder' },
   'cash.new': {
     de: 'Neue Buchung',
     en: 'New entry',

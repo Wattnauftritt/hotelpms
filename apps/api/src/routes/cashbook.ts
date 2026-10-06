@@ -174,6 +174,7 @@ export function cashbookRoutes(app: FastifyInstance): void {
         return {
           enabled: e.enabled, openingBalanceCent: e.opening_balance_cent,
           openingDate: e.opening_date, datevFrom: e.datev_from,
+          datevUploadEmail: e.datev_upload_email,
           breakfastPriceCent: e.breakfast_price_cent,
           breakfastFoodShareBp: e.breakfast_food_share_bp, chartOfAccounts: e.chart_of_accounts,
           accounts: {
@@ -208,6 +209,16 @@ export function cashbookRoutes(app: FastifyInstance): void {
       if (datevAb !== null && (typeof datevAb !== 'string' || !isIsoDate(datevAb))) {
         f.datevFrom = ['field.invalid']
       }
+      // Nur DATEV-Uploadmail, wie die Bedingung in 0098: sonst waere das Feld
+      // ein Weg, die Belege des Hauses an eine beliebige Adresse zu schicken.
+      const upload = typeof b.datevUploadEmail === 'string' && b.datevUploadEmail.trim() !== ''
+        ? b.datevUploadEmail.trim().toLowerCase() : null
+      if (b.datevUploadEmail != null && typeof b.datevUploadEmail !== 'string') {
+        f.datevUploadEmail = ['field.invalid']
+      } else if (upload !== null && (upload.length > 200
+                 || !/^[a-z0-9._+-]+@uploadmail\.datev\.de$/.test(upload))) {
+        f.datevUploadEmail = ['cashbook.uploadAddress']
+      }
       const preis = ganzzahl(b.breakfastPriceCent ?? 550)
       if (preis === null || preis < 0 || preis > 100_000) f.breakfastPriceCent = ['field.invalid']
       const anteil = ganzzahl(b.breakfastFoodShareBp ?? 7000)
@@ -229,8 +240,8 @@ export function cashbookRoutes(app: FastifyInstance): void {
           `INSERT INTO cashbook_setting (property_id, enabled, opening_balance_cent, opening_date,
              breakfast_price_cent, breakfast_food_share_bp, chart_of_accounts, account_lodging,
              account_breakfast_food, account_breakfast_drinks, account_city_tax, account_cash_in,
-             account_bank_deposit, account_expense, datev_from)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             account_bank_deposit, account_expense, datev_from, datev_upload_email)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
            ON CONFLICT (property_id) DO UPDATE SET
              enabled = EXCLUDED.enabled, opening_balance_cent = EXCLUDED.opening_balance_cent,
              opening_date = EXCLUDED.opening_date,
@@ -244,10 +255,11 @@ export function cashbookRoutes(app: FastifyInstance): void {
              account_cash_in = EXCLUDED.account_cash_in,
              account_bank_deposit = EXCLUDED.account_bank_deposit,
              account_expense = EXCLUDED.account_expense, datev_from = EXCLUDED.datev_from,
+             datev_upload_email = EXCLUDED.datev_upload_email,
              updated_at = now()`,
           [haus, b.enabled, anfang, anfangDatum, preis, anteil, rahmen, konten.lodging,
            konten.breakfastFood, konten.breakfastDrinks, konten.cityTax, konten.cashIn,
-           konten.bankDeposit, konten.expense, datevAb])
+           konten.bankDeposit, konten.expense, datevAb, upload])
         return { saved: true }
       })
     }

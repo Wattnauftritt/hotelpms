@@ -1530,6 +1530,10 @@ const M = {
     de: 'Mehr als {max} Buchungen in einem Export. Bitte den Zeitraum teilen.',
     en: 'More than {max} entries in one export. Please split the period.',
     tr: 'Tek bir dışa aktarımda {max} kayıttan fazla. Lütfen dönemi bölün.' },
+  'cashbook.uploadAddress': {
+    de: 'Erwartet wird eine Adresse von DATEV Upload-Mail (…@uploadmail.datev.de).',
+    en: 'Expected a DATEV Upload-Mail address (…@uploadmail.datev.de).',
+    tr: 'Bir DATEV Upload-Mail adresi bekleniyor (…@uploadmail.datev.de).' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

@@ -160,6 +160,34 @@ describe('Einreihen', () => {
 })
 
 describe('Zustellung', () => {
+  it('haengt einen Kassenbeleg unter seinem Namen an, ohne Blindkopie', async () => {
+    await absender(true, 'kopie@seeblick.test')
+    const e = await owner.query<{ id: string }>(
+      `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp)
+       VALUES ($1, '2026-10-06', 'expense', -1290, 1900) RETURNING id`, [fx.propertyId])
+    const datei = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+    const b = await owner.query<{ id: string }>(
+      `INSERT INTO cashbook_receipt (property_id, entry_id, mime, bytes, byte_count, sha256)
+       VALUES ($1, $2, 'image/jpeg', $3, $4, 'beleg-hash') RETURNING id`,
+      [fx.propertyId, e.rows[0]!.id, datei, datei.length])
+    const ref = await withTransaction(app, ctx, async client => {
+      const r = await client.query<{ ref: string }>(
+        `SELECT email_enqueue($1,'cashbook_receipt','x@uploadmail.datev.de',NULL,'Beleg','Beleg',
+                              NULL,NULL,NULL,NULL,$2,'SG-1-2026-10-06.jpg') AS ref`,
+        [fx.propertyId, b.rows[0]!.id])
+      return r.rows[0]!.ref
+    })
+    const a = await anbieter(() => 201)
+    await deliverEmails(app, ctx, fx.propertyId, createBrevoAdapter('k', { baseUrl: a.url }))
+    await a.schliessen()
+
+    const m = a.empfangen[0]!
+    expect(m.body.attachment).toEqual([
+      { name: 'SG-1-2026-10-06.jpg', content: datei.toString('base64') }])
+    expect(m.body.bcc).toBeUndefined()
+    expect((await zeile(ref)).attachment_sha256).toBe('beleg-hash')
+  })
+
   it('schickt Absender, Empfaenger, Antwortadresse und beide Rumpfteile', async () => {
     await absender(true, 'kopie@seeblick.test')
     const id = await rechnung()

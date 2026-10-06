@@ -43,6 +43,7 @@ interface ClaimedEmail {
   invoice_number: string | null
   attachment: Buffer | null
   attachment_sha256: string | null
+  attachment_name: string | null
 }
 
 interface AttemptResult {
@@ -112,18 +113,22 @@ async function claim(
         WHERE e.id IN (SELECT id FROM faellig)
        RETURNING e.id, e.public_ref, e.kind, e.to_email, e.to_name, e.subject,
                  e.body_text, e.body_html, e.attempts AS attempt,
-                 e.property_id, e.invoice_id
+                 e.property_id, e.invoice_id, e.cashbook_receipt_id, e.attachment_name
      )
      SELECT b.id, b.public_ref, b.kind, b.to_email, b.to_name, b.subject,
             b.body_text, b.body_html, b.attempt,
             s.from_name, s.from_email, s.reply_to, s.bcc_email,
             i.number AS invoice_number,
-            d.pdf    AS attachment,
-            d.sha256 AS attachment_sha256
+            COALESCE(d.pdf, k.bytes)     AS attachment,
+            COALESCE(d.sha256, k.sha256) AS attachment_sha256,
+            b.attachment_name
        FROM beansprucht b
        JOIN property_email_setting s ON s.property_id = b.property_id
        LEFT JOIN invoice i          ON i.id = b.invoice_id
        LEFT JOIN invoice_document d ON d.invoice_id = b.invoice_id
+       -- Ein Kassenbeleg an die DATEV-Uploadmail (0098): die Datei selbst,
+       -- unveraenderlich wie das Rechnungs-PDF, nicht eine Kopie davon.
+       LEFT JOIN cashbook_receipt k ON k.id = b.cashbook_receipt_id
       ORDER BY b.id`,
     [propertyId, batchSize, leaseSeconds])
   return rows
@@ -132,6 +137,8 @@ async function claim(
 /** Dateiname im Postfach des Gastes. Die Rechnungsnummer, nicht die id. */
 function attachments(e: ClaimedEmail): EmailAttachment[] {
   if (e.attachment === null) return []
+  // Wer den Namen beim Einreihen festlegt, kennt ihn besser (Kassenbeleg: die Belegnummer).
+  if (e.attachment_name !== null) return [{ name: e.attachment_name, content: e.attachment }]
   const name = e.invoice_number
     ? `Rechnung-${e.invoice_number.replace(/[^\w.-]/g, '-')}.pdf`
     : `Rechnung-${e.public_ref}.pdf`
@@ -145,7 +152,9 @@ async function send(adapter: EmailAdapter, e: ClaimedEmail): Promise<AttemptResu
       from: { email: e.from_email, name: e.from_name },
       to: { email: e.to_email, name: e.to_name },
       replyTo: e.reply_to ? { email: e.reply_to } : null,
-      bcc: e.bcc_email ? { email: e.bcc_email } : null,
+      // Die Blindkopie ist fuer Gastpost gedacht. Jeden Kassenbeleg ein
+      // zweites Mal ins eigene Postfach zu legen, will dort niemand.
+      bcc: e.bcc_email && e.kind !== 'cashbook_receipt' ? { email: e.bcc_email } : null,
       subject: e.subject,
       text: e.body_text,
       html: e.body_html,
