@@ -240,6 +240,14 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
         <Feld label={t('plan.stay')}>
           {formatDate(r.arrival, locale)} – {formatDate(r.departure, locale)}
         </Feld>
+        {/* Die Personen stehen hier, damit nach dem Aendern zu sehen ist,
+            was gespeichert wurde -- geaendert wird ueber "Aendern". */}
+        <Feld label={t('plan.persons')}>
+          {r.guestCount === null ? '—'
+            : r.adults !== null && r.children !== null && r.children > 0
+              ? t('ps.personsSplit', { n: r.guestCount, a: r.adults, k: r.children })
+              : t('ps.personsTitle', { n: r.guestCount })}
+        </Feld>
         <Feld label={t('plan.total')}>{formatMoney(r.totalCent, locale)}</Feld>
         <Feld label={t('plan.source')}>{r.source}</Feld>
       </section>

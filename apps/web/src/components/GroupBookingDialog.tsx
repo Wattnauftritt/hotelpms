@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Guest, Block } from '@hotelpms/contracts'
-import { useCreateBooking } from '../lib/queries/booking.js'
+import { useCreateBooking, istAusgebucht, type CreateBookingBody }
+  from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { preisFelder, alsGesamt, LEERER_PREIS, type Preiseingabe }
@@ -280,6 +281,20 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
     setQuelle('gruppe')
   }
 
+  /*
+   * Gespeichert ist alles getan: die Maske geht zu, und die Balken stehen im
+   * Plan (Sven, 05.10.2026). Ist eine der Zimmergruppen voll, wird gefragt
+   * statt abgewiesen, wie in der Einzelbuchung (Migration 0093).
+   */
+  const gruppeBuchen = (body: CreateBookingBody): void => buchen.mutate(body, {
+    onSuccess: onClose,
+    onError: fehler => {
+      if (istAusgebucht(fehler) && confirm(t('plan.overbookConfirm'))) {
+        buchen.mutate({ ...body, allowOverbooking: true }, { onSuccess: onClose })
+      }
+    }
+  })
+
   return (
     <Dialog breite="weit" onClose={onClose}
             titel={t('group.title')}
@@ -288,7 +303,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
               <>
                 <button type="button"
                         disabled={buchen.isPending || gast.anlegen.isPending || !gueltig}
-                        onClick={() => { void gast.guestRef().then(guestRef => buchen.mutate({
+                        onClick={() => { void gast.guestRef().then(guestRef => gruppeBuchen({
                           propertyId, arrival, departure,
                           /*
                            * Der Preis haengt entweder an der Buchung oder an
@@ -323,9 +338,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                           blockRef: abruf?.blockRef,
                           guestRef,
                           notes: notes.trim() === '' ? undefined : notes.trim()
-                        // Gespeichert ist alles getan: die Maske geht zu, und
-                        // die Balken stehen im Plan (Sven, 05.10.2026).
-                        }, { onSuccess: onClose }),
+                        }),
                         // Schlaegt das Anlegen fehl, steht der Fehler unter der
                         // Maske, und die Buchung geht nicht ohne Besteller hinaus.
                         () => undefined) }}

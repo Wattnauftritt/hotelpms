@@ -46,6 +46,10 @@ export const plan = {
     de: 'Ratenplan',
     en: 'Rate plan',
     tr: 'Fiyat planı' },
+  'plan.persons': {
+    de: 'Personen',
+    en: 'Guests',
+    tr: 'Kişiler' },
   'plan.stay': {
     de: 'Aufenthalt',
     en: 'Stay',
@@ -302,6 +306,31 @@ export const plan = {
     de: 'Die Zimmergruppe ist für {max} Personen. Sie tragen {n} ein. Sicher?',
     en: 'The room category holds {max} guests. You entered {n}. Are you sure?',
     tr: 'Oda tipi {max} kişiliktir. {n} girdiniz. Emin misiniz?' },
+  'booking.overbookConfirm': {
+    de: 'Die Zimmergruppe {gruppe} ist an mindestens einem Tag ausgebucht. '
+      + 'Trotzdem buchen? Sie ist danach überbucht.',
+    en: 'The room category {gruppe} is fully booked on at least one day. '
+      + 'Book anyway? It will be overbooked.',
+    tr: '{gruppe} oda tipi en az bir gün için dolu. Yine de rezervasyon '
+      + 'yapılsın mı? Oda tipi fazla rezerve edilmiş olacak.' },
+  'plan.overbookConfirm': {
+    de: 'Die Zimmergruppe ist an mindestens einem Tag ausgebucht. Trotzdem '
+      + 'speichern? Sie ist danach überbucht.',
+    en: 'The room category is fully booked on at least one day. Save anyway? '
+      + 'It will be overbooked.',
+    tr: 'Oda tipi en az bir gün için dolu. Yine de kaydedilsin mi? Oda tipi '
+      + 'fazla rezerve edilmiş olacak.' },
+  'verlegen.personsInvalid': {
+    de: 'Mindestens ein Erwachsener, Kinder als ganze Zahl.',
+    en: 'At least one adult, children as a whole number.',
+    tr: 'En az bir yetişkin, çocuklar tam sayı olarak.' },
+  'verlegen.overbooking': {
+    de: 'Die Zimmergruppe ist an mindestens einem Tag ausgebucht. Speichern '
+      + 'überbucht sie; der Plan zeigt das danach als Warnung.',
+    en: 'The room category is fully booked on at least one day. Saving '
+      + 'overbooks it; the plan then shows a warning.',
+    tr: 'Oda tipi en az bir gün için dolu. Kaydetmek fazla rezervasyon '
+      + 'oluşturur; plan ardından bir uyarı gösterir.' },
   'booking.shortNote': {
     de: 'Kurznotiz',
     en: 'Short note',

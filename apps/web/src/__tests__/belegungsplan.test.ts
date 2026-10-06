@@ -939,7 +939,7 @@ describe('Eine Gruppenbuchung wandert als Gruppe', () => {
      */
     expect(plan).toContain('onShiftGroup?: (bookingRef: string, shiftDays: number) => void')
     expect(bildschirm).toContain(
-      '{ bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays }')
+      '{ bookingRef: gruppe.bookingRef, shiftDays: gruppe.shiftDays,')
   })
 
   it('zeichnet keinen Schatten je Zimmer der Gruppe, sondern die Zahl', () => {
@@ -973,7 +973,7 @@ describe('Die Gruppenmaske', () => {
      * (ein Zimmer). Ein gemeinsamer Knopf machte einen der beiden Faelle
      * kaputt.
      */
-    expect(maske).toContain('verschieben.mutate({ bookingRef, shiftDays: n })')
+    expect(maske).toContain('verschieben.mutate({ bookingRef, shiftDays: n }')
     expect(maske).toContain('umbuchen.mutate(')
   })
 

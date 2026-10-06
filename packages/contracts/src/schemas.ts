@@ -550,7 +550,13 @@ export const CreateBooking = Type.Object({
    */
   shortNote: Type.Optional(Type.String({ maxLength: 40 })),
   /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
-  blockRef: Type.Optional(Type.String())
+  blockRef: Type.Optional(Type.String()),
+  /**
+   * Bestaetigte Ueberbuchung: bindet auch, wenn die Zimmergruppe an einem
+   * Tag voll ist (Migration 0093). Ohne Angabe antwortet die Route mit
+   * `sold_out`, und die Oberflaeche fragt nach.
+   */
+  allowOverbooking: Type.Optional(Type.Boolean())
   // Es gibt bewusst kein Feld fuer Kartendaten. Eine Garantie laeuft ueber
   // Pay-by-Link oder das virtuelle Terminal des Zahlungsdienstleisters,
   // damit keine Kartendaten durch dieses System laufen (E8, Dokument 13).
@@ -810,6 +816,10 @@ export const ReservationDetail = Type.Object({
   arrival: Type.String(),
   departure: Type.String(),
   notes: Type.Union([Type.String(), Type.Null()]),
+  /** Personen; `adults`/`children` nur, wenn getrennt erfasst (0076). */
+  guestCount: Type.Union([Type.Integer(), Type.Null()]),
+  adults: Type.Union([Type.Integer(), Type.Null()]),
+  children: Type.Union([Type.Integer(), Type.Null()]),
   categoryId: Type.Integer(),
   categoryCode: Type.String(),
   categoryName: Type.String(),

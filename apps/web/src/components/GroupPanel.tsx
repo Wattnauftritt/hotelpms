@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react'
-import { useBooking, useShiftBooking, useAddBookingRoom, useChangeStay,
+import { useBooking, useShiftBooking, useAddBookingRoom, useChangeStay, istAusgebucht,
          useReservationStatusAction } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
@@ -112,7 +112,15 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
               <div className="flex flex-wrap items-center gap-2">
                 {[-7, -1, 1, 7].map(n => (
                   <button key={n} type="button" disabled={verschieben.isPending}
-                          onClick={() => verschieben.mutate({ bookingRef, shiftDays: n })}
+                          onClick={() => verschieben.mutate({ bookingRef, shiftDays: n }, {
+                            // Volle Zimmergruppe: nachfragen statt abweisen (0093).
+                            onError: fehler => {
+                              if (istAusgebucht(fehler) && confirm(t('plan.overbookConfirm'))) {
+                                verschieben.mutate(
+                                  { bookingRef, shiftDays: n, allowOverbooking: true })
+                              }
+                            }
+                          })}
                           className="px-3 py-2 rounded-sm border border-neutral-300 text-sm
                                      tabular-nums bg-white hover:bg-neutral-50
                                      disabled:opacity-50">
@@ -183,9 +191,23 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                             <td className="text-right whitespace-nowrap">
                               <button type="button"
                                       disabled={umbuchen.isPending || daysBetween(von, bis) <= 0}
-                                      onClick={() => umbuchen.mutate(
-                                        { reservationRef: aendert, arrival: von, departure: bis },
-                                        { onSuccess: () => { setAendert(null); void q.refetch() } })}
+                                      onClick={() => {
+                                        const body = { reservationRef: aendert,
+                                                       arrival: von, departure: bis }
+                                        const fertig = (): void => {
+                                          setAendert(null); void q.refetch() }
+                                        umbuchen.mutate(body, {
+                                          onSuccess: fertig,
+                                          onError: fehler => {
+                                            if (istAusgebucht(fehler)
+                                                && confirm(t('plan.overbookConfirm'))) {
+                                              umbuchen.mutate(
+                                                { ...body, allowOverbooking: true },
+                                                { onSuccess: fertig })
+                                            }
+                                          }
+                                        })
+                                      }}
                                       className="px-2 py-1 text-xs rounded-sm bg-neutral-900
                                                  text-white disabled:bg-neutral-300">
                                 {t('common.save')}
@@ -256,9 +278,18 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                   </select>
                 </Feld>
                 <button type="button" disabled={neueGruppe === '' || dazu.isPending}
-                        onClick={() => dazu.mutate(
-                          { bookingRef, categoryId: neueGruppe as number },
-                          { onSuccess: () => setNeueGruppe('') })}
+                        onClick={() => {
+                          const body = { bookingRef, categoryId: neueGruppe as number }
+                          dazu.mutate(body, {
+                            onSuccess: () => setNeueGruppe(''),
+                            onError: fehler => {
+                              if (istAusgebucht(fehler) && confirm(t('plan.overbookConfirm'))) {
+                                dazu.mutate({ ...body, allowOverbooking: true },
+                                            { onSuccess: () => setNeueGruppe('') })
+                              }
+                            }
+                          })
+                        }}
                         className={KNOPF}>
                   {t('group.add')}
                 </button>

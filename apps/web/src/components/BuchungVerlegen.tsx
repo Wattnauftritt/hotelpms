@@ -39,6 +39,11 @@ export interface Verlegung {
    * Gefragt wird trotzdem, und aus demselben Grund.
    */
   gruppe?: { bookingRef: string; shiftDays: number; zimmer: number }
+  /**
+   * Die Personen, wie sie gespeichert sind. Fehlt bei der Gruppe -- acht
+   * Zimmer haben acht verschiedene Zahlen.
+   */
+  personen?: { guestCount: number | null; adults: number | null; children: number | null }
 }
 
 export interface Ziel {
@@ -57,6 +62,10 @@ export interface Ziel {
 export interface Zusatz {
   preis: { priceCent: number } | { totalCent: number } | null
   guestRef?: string
+  /** Andere Personenzahl. `undefined`, wenn sie bleibt. */
+  personen?: { adults: number; children?: number }
+  /** Die Vorschau hat die volle Zimmergruppe gemeldet, die Maske gewarnt. */
+  ueberbuchen?: boolean
 }
 
 /**
@@ -133,6 +142,27 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
   const [gastWechsel, setGastWechsel] = useState(false)
   const [neuerGast, setNeuerGast] = useState<Guest | null>(null)
   const gast = useGastAusEingabe(neuerGast, setNeuerGast)
+  /*
+   * Die Personen, vorbelegt mit dem Gespeicherten (Sven, 06.10.2026: "man
+   * kann bei bestehenden Buchungen die Personenzahl nicht aendern"). Steht
+   * nur eine Gesamtzahl da -- eine Buchung vom Telefon, ein Import --, gilt
+   * sie als Erwachsene: so wird sie auch beim Anlegen gelesen.
+   */
+  const p = verlegung.personen
+  const erwachseneVorher = p?.adults ?? p?.guestCount ?? null
+  const kinderVorher = p?.children ?? 0
+  const [erwachsene, setErwachsene] = useState(
+    erwachseneVorher === null ? '' : String(erwachseneVorher))
+  const [kinder, setKinder] = useState(kinderVorher === 0 ? '' : String(kinderVorher))
+  const anzahlErwachsene = erwachsene.trim() === '' ? null : Number(erwachsene)
+  const anzahlKinder = kinder.trim() === '' ? 0 : Number(kinder)
+  const personenGueltig = anzahlErwachsene !== null
+    && Number.isInteger(anzahlErwachsene) && anzahlErwachsene >= 1
+    && Number.isInteger(anzahlKinder) && anzahlKinder >= 0
+  // Ein geleertes Feld bei einer Buchung ohne Angabe ist keine Aenderung.
+  const personenAnders = p !== undefined
+    && !(erwachsene.trim() === '' && erwachseneVorher === null && anzahlKinder === 0)
+    && (anzahlErwachsene !== erwachseneVorher || anzahlKinder !== kinderVorher)
 
   const gewaehlt = zimmer.find(z => z.id === raum)
   const vorher = zimmer.find(z => z.id === verlegung.alt.resourceId)
@@ -170,7 +200,14 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
     || abreise !== verlegung.alt.departure
     || vereinbart !== null
     || gastAnders
+    || personenAnders
 
+  /*
+   * Die Zimmergruppe ist voll: eine Warnung, kein Hindernis. Die Vorschau
+   * hat trotzdem gerechnet, und gespeichert wird mit der Bestaetigung --
+   * wer umsortiert, legt kurz zwei Buchungen auf einen Platz.
+   */
+  const ueberbucht = gruppe === undefined && vorschau.data?.overbooking === true
   const wechsel = gewaehlt !== undefined && gewaehlt.category_id !== verlegung.categoryId
   const zuKlein = wechsel && gewaehlt.max_occupancy < verlegung.bedarf
 
@@ -185,6 +222,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
     gruppe !== undefined ? null
     : abreise <= anreise ? 'booking.needNights'
     : raum === null && verlegung.status === 'InHouse' ? 'verlegen.inHouseKeepsRoom'
+    : personenAnders && !personenGueltig ? 'verlegen.personsInvalid'
     : !anders ? 'verlegen.nothingChanged'
     : null
 
@@ -209,14 +247,20 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
                             }
                             onSpeichern({ resourceId: raum, arrival: anreise,
                                           departure: abreise },
-                                        { preis: vereinbart, guestRef })
+                                        { preis: vereinbart, guestRef,
+                                          ueberbuchen: ueberbucht,
+                                          personen: personenAnders
+                                            ? { adults: anzahlErwachsene!,
+                                                children: anzahlKinder > 0 || kinderVorher > 0
+                                                  ? anzahlKinder : undefined }
+                                            : undefined })
                           })()
                         }}
                         /* Rot, wenn das Zimmer zu klein ist: der Knopf sagt
                            dann nicht "weiter", sondern "trotzdem". */
                         className={`px-4 py-2 text-sm rounded-sm text-white
                                     disabled:bg-neutral-300
-                                    ${zuKlein ? 'bg-red-700' : 'bg-neutral-900'}`}>
+                                    ${zuKlein || ueberbucht ? 'bg-red-700' : 'bg-neutral-900'}`}>
                   {t('common.save')}
                 </button>
                 <button type="button" onClick={onClose} className={KNOPF_LEISE}>
@@ -283,6 +327,23 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
           <p className="text-sm text-neutral-600">
             {t('group.nights', { n: naechte })}
           </p>
+        )}
+
+        {/* Die Personen. Der Preis rechnet nicht mit: wer fuer die dritte
+            Person mehr nimmt, traegt ihn unten ein. */}
+        {gruppe === undefined && p !== undefined && (
+          <div className="flex flex-wrap items-end gap-4">
+            <Feld label={t('booking.adults')}>
+              <input value={erwachsene} onChange={e => setErwachsene(e.target.value)}
+                     inputMode="numeric" placeholder="—"
+                     className="border border-neutral-300 rounded-sm px-3 py-2 text-sm w-24" />
+            </Feld>
+            <Feld label={t('booking.children')}>
+              <input value={kinder} onChange={e => setKinder(e.target.value)}
+                     inputMode="numeric" placeholder="0"
+                     className="border border-neutral-300 rounded-sm px-3 py-2 text-sm w-24" />
+            </Feld>
+          </div>
         )}
 
         {/* Der Gast. Ein Tippfehler im Namen wird im Gastprofil
@@ -413,6 +474,13 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
               von: zimmer.find(z => z.category_id === verlegung.categoryId)
                      ?.category_name ?? '',
               nach: gewaehlt.category_name, raum: gewaehlt.code })}
+          </p>
+        )}
+
+        {ueberbucht && (
+          <p role="alert" className="text-sm text-amber-900 bg-amber-50 border
+                                     border-amber-300 rounded-sm p-2">
+            {t('verlegen.overbooking')}
           </p>
         )}
 
