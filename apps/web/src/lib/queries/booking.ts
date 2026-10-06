@@ -243,6 +243,25 @@ export function useAssignUnit() {
   })
 }
 
+/**
+ * Zwei Aufenthalte tauschen ihre Zimmer in einem Zug. Der Weg fuer den
+ * Gast im Haus, dessen neues Zimmer schon verplant ist: in die Ablage
+ * darf er nicht, und zwei Zuweisungen hintereinander scheitern beide.
+ */
+export function useSwapRoom() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ reservationRef, withReservationRef }:
+                 { reservationRef: string; withReservationRef: string }) =>
+      api.post(`/v1/reservations/${reservationRef}/swap-room`, { withReservationRef }),
+    onSuccess: (_r, { reservationRef, withReservationRef }) => {
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['reservation', withReservationRef] })
+    }
+  })
+}
+
 export interface ChangeStayBody {
   reservationRef: string
   arrival?: string
@@ -327,7 +346,8 @@ export function useChangeStay() {
 export function useReservationStatusAction(reservationRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out' | 'undo-check-in' | 'no-show') =>
+    mutationFn: (action: 'cancel' | 'reinstate' | 'check-out' | 'undo-check-in' | 'no-show'
+                 | 'undo-check-out') =>
       api.post<{ reservationRef: string; status: string }>(
         `/v1/reservations/${reservationRef}/${action}`),
     onSuccess: () => {

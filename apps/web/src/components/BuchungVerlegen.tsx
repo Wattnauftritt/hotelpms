@@ -66,6 +66,12 @@ export interface Zusatz {
   personen?: { adults: number; children?: number }
   /** Die Vorschau hat die volle Zimmergruppe gemeldet, die Maske gewarnt. */
   ueberbuchen?: boolean
+  /**
+   * Das gewaehlte Zimmer ist von genau dieser Reservierung belegt, und
+   * beide tauschen. Nur bei gleichen Tagen: wer dabei auch die Tage
+   * aendert, meint mehr als einen Tausch.
+   */
+  tauschMit?: string
 }
 
 /**
@@ -110,11 +116,18 @@ export interface PlanZimmer {
  * erlaubt; das Gegenteil -- zwei Personen in ein Einzelzimmer -- merkt sonst
  * erst der Gast.
  */
-export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
+export function BuchungVerlegen({ verlegung, zimmer, belegtVon, laeuft, fehler,
                                   onClose, onSpeichern }: {
   verlegung: Verlegung
   /** Alle Zimmer des Hauses, in der Reihenfolge des Plans. */
   zimmer: PlanZimmer[]
+  /**
+   * Wer im Zeitraum in diesem Zimmer liegt, ausser der Buchung selbst.
+   * Aus den Daten des Plans; die Schnittstelle prueft beim Tausch ohnehin
+   * noch einmal.
+   */
+  belegtVon?: (resourceId: number, arrival: string, departure: string)
+    => Array<{ reservationRef: string; gast: string }>
   laeuft: boolean
   fehler: unknown
   onClose: () => void
@@ -170,6 +183,20 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
 
   const gastAnders = gastWechsel && (neuerGast !== null || gast.neu !== null)
   /*
+   * **Tauschen statt ablegen.** Ein Gast im Haus kommt nicht in die
+   * Ablage, und umsortiert wurde bisher genau dort: erst den einen
+   * ablegen, dann den anderen umziehen. Liegt im gewaehlten Zimmer an
+   * denselben Tagen genau eine andere Buchung, tauschen beide in einem
+   * Zug (Sven, 06.10.2026). Fuer jeden Zustand, nicht nur im Haus -- der
+   * Tausch erspart auch sonst den Umweg ueber die Ablage.
+   */
+  const tageGleich = anreise === verlegung.alt.arrival && abreise === verlegung.alt.departure
+  const belegt = gruppe === undefined && raum !== null && raum !== verlegung.alt.resourceId
+      && verlegung.alt.resourceId !== null && belegtVon !== undefined
+    ? belegtVon(raum, anreise, abreise) : []
+  const tausch = tageGleich && belegt.length === 1 ? belegt[0]! : null
+
+  /*
    * Der Preis danach, gerechnet von der Schnittstelle -- dieselbe Rechnung
    * wie beim Speichern, nur zurueckgenommen. Ein Zug, der den Aufenthalt
    * verlaengert, aendert den Preis; das soll vor dem Speichern zu sehen
@@ -177,7 +204,9 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
    */
   const vorschau = useStayPreview(gruppe === undefined && abreise > anreise
     ? { reservationRef: verlegung.reservationRef, arrival: anreise, departure: abreise,
-        resourceId: raum }
+        // Ein Tausch aendert keinen Preis; das belegte Zimmer liesse die
+        // Vorschau nur an der Belegung scheitern.
+        resourceId: tausch !== null ? verlegung.alt.resourceId : raum }
     : null)
   const naechte = abreise > anreise ? daysBetween(anreise, abreise) : 0
 
@@ -208,6 +237,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
    * wer umsortiert, legt kurz zwei Buchungen auf einen Platz.
    */
   const ueberbucht = gruppe === undefined && vorschau.data?.overbooking === true
+
   const wechsel = gewaehlt !== undefined && gewaehlt.category_id !== verlegung.categoryId
   const zuKlein = wechsel && gewaehlt.max_occupancy < verlegung.bedarf
 
@@ -249,6 +279,7 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
                                           departure: abreise },
                                         { preis: vereinbart, guestRef,
                                           ueberbuchen: ueberbucht,
+                                          tauschMit: tausch?.reservationRef,
                                           personen: personenAnders
                                             ? { adults: anzahlErwachsene!,
                                                 children: anzahlKinder > 0 || kinderVorher > 0
@@ -326,6 +357,15 @@ export function BuchungVerlegen({ verlegung, zimmer, laeuft, fehler,
         {gruppe === undefined && abreise > anreise && (
           <p className="text-sm text-neutral-600">
             {t('group.nights', { n: naechte })}
+          </p>
+        )}
+
+        {tausch !== null && (
+          <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200
+                        rounded-sm p-3">
+            {t('verlegen.swap', { raum: gewaehlt?.code ?? '',
+                                  gast: tausch.gast === '' ? tausch.reservationRef
+                                    : tausch.gast })}
           </p>
         )}
 

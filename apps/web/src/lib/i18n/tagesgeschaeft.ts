@@ -41,6 +41,14 @@ export const tagesgeschaeft = {
       + 'released, and posted nights and city tax are reversed.',
     tr: 'Misafir gelmedi olarak işaretlensin mi? Rezervasyon gelmeyen misafir olur, oda '
       + 'serbest kalır, işlenmiş geceler ve konaklama vergisi ters kayıtla düzeltilir.' },
+  'today.undoCheckout': {
+    de: 'Check-out zurücknehmen',
+    en: 'Undo check-out',
+    tr: 'Check-out’u geri al' },
+  'today.undoCheckoutConfirm': {
+    de: 'Check-out zurücknehmen? Der Gast ist danach wieder im Haus, mit der Abreise von vorher.',
+    en: 'Undo the check-out? The guest is then in house again, with the previous departure.',
+    tr: 'Check-out geri alınsın mı? Misafir daha sonra önceki çıkış tarihiyle yeniden tesiste olur.' },
   'today.undoCheckinConfirm': {
     de: 'Check-in zurücknehmen? Die Reservierung steht danach wieder als erwartete Anreise.',
     en: 'Undo the check-in? The reservation then shows as an expected arrival again.',

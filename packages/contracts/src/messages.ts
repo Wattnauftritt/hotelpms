@@ -1039,9 +1039,12 @@ const M = {
     en: 'This booking has no stay that can be moved',
     tr: 'Bu kayıtta taşınabilecek bir konaklama yok' },
   'stay.inHouseKeepsRoom': {
-    de: 'Ein angereister Gast behaelt sein Zimmer',
-    en: 'A checked-in guest keeps their room',
-    tr: 'Giriş yapmış bir misafir odasını korur' },
+    de: 'Ein angereister Gast kommt nicht in die Ablage. Waehle direkt das neue Zimmer; '
+      + 'ist es belegt, tauschen beide Gaeste die Zimmer.',
+    en: 'A checked-in guest cannot be parked. Choose the new room directly; if it is '
+      + 'occupied, both guests swap rooms.',
+    tr: 'Giriş yapmış bir misafir bekleme alanına alınamaz. Yeni odayı doğrudan seçin; '
+      + 'oda doluysa iki misafir odaları değiştirir.' },
   'stay.totalBelowPosted': {
     de: 'Der Preis liegt unter dem, was schon aufs Konto gebucht ist. '
       + 'Gebuchte Naechte werden gegengebucht, nicht geaendert.',
@@ -1049,6 +1052,17 @@ const M = {
       + 'Posted nights are reversed, not changed.',
     tr: 'Fiyat, hesaba zaten işlenmiş tutarın altında. '
       + 'İşlenmiş geceler değiştirilmez, ters kayıtla düzeltilir.' },
+  'stay.undoCheckoutLate': {
+    de: 'Ein Check-out laesst sich nur am selben Geschaeftstag zuruecknehmen. Danach '
+      + 'fehlt eine Nacht auf dem Konto; der Gast wird neu gebucht.',
+    en: 'A check-out can only be undone on the same business day. After that a night '
+      + 'is missing from the folio; book the guest again.',
+    tr: 'Bir check-out yalnızca aynı iş gününde geri alınabilir. Sonrasında hesapta bir '
+      + 'gece eksik olur; misafir için yeni rezervasyon yapın.' },
+  'stay.swapNeedsRooms': {
+    de: 'Tauschen geht nur zwischen zwei Aufenthalten mit je einem Zimmer.',
+    en: 'A swap needs two stays that each have a room.',
+    tr: 'Değişim yalnızca her birinin bir odası olan iki konaklama arasında mümkündür.' },
   'stay.undoCheckinPosted': {
     de: 'Fuer diesen Aufenthalt ist schon eine Nacht gebucht. Ein Check-in laesst sich '
       + 'nur bis zum Tagesabschluss des Anreisetags zuruecknehmen. Ist der Gast nicht '

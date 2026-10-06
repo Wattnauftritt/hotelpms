@@ -10,7 +10,7 @@ export type ReservationStatus = (typeof RESERVATION_STATES)[number]
 
 export type ReservationAction =
   | 'confirm' | 'hold' | 'check_in' | 'check_out' | 'cancel' | 'no_show' | 'reinstate'
-  | 'undo_check_in'
+  | 'undo_check_in' | 'undo_check_out'
 
 const TRANSITIONS: Record<ReservationStatus, Partial<Record<ReservationAction, ReservationStatus>>> = {
   Inquired:   { hold: 'Optional', confirm: 'Confirmed', cancel: 'Canceled' },
@@ -25,7 +25,10 @@ const TRANSITIONS: Record<ReservationStatus, Partial<Record<ReservationAction, R
                 // anders sagt. Die gebuchten Naechte gehen dabei per
                 // Gegenbuchung zurueck, nicht ueber `undo_check_in`.
                 no_show: 'NoShow' },
-  CheckedOut: {},
+  // Ein Check-out am falschen Gast, oder einer, der nur das Zimmer wechseln
+  // sollte: zurueck ins Haus, am selben Geschaeftstag (0094). Die Route
+  // prueft den Tag und stellt die Abreise von vorher wieder her.
+  CheckedOut: { undo_check_out: 'InHouse' },
   // Wiederherstellen ist bewusst erlaubt: ein versehentlicher Storno oder ein
   // No-Show, der doch noch anreist, kommt taeglich vor. Beides ist protokolliert.
   Canceled:   { reinstate: 'Confirmed' },
