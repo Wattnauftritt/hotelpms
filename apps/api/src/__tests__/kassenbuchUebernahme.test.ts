@@ -76,7 +76,8 @@ function eintraege(): Record<string, unknown>[] {
     createdAt: '2026-09-15T10:00:00+02:00', ...rest })
   return [
     // Eine Gastbuchung: die erste Zeile zeigt im Adminpanel auf sich selbst.
-    z(10, 'uebernachtung', 16_700, { groupId: 10, guestName: 'Petersen', text: 'Zi. 12' }),
+    z(10, 'uebernachtung', 16_700, { groupId: 10, guestName: 'Petersen', text: 'Zi. 12',
+      reportReference: 'RC-4711', bookingReportEntryId: 99, updatedAt: '2026-09-15T08:00:00Z' }),
     z(11, 'fruehstueck_speisen', 1_540, { groupId: 10, guestName: 'Petersen' }),
     z(12, 'fruehstueck_getraenke', 660, { groupId: 10, taxRate: 19, guestName: 'Petersen' }),
     z(13, 'kurtaxe', 840, { groupId: 10, guestName: 'Petersen' }),
@@ -125,6 +126,9 @@ describe('Kassenbuch aus dem Adminpanel uebernehmen', () => {
     expect(nach('KB-10').groupNo).toBeNull()
     expect(nach('KB-18')).toMatchObject({ kind: 'legacy_guest', amountCent: 12_000 })
     expect(nach('KB-10').createdBy).toBe('Sven')
+    const ref = await owner.query(`SELECT external_reference AS id, origin_reservation_ref AS ref
+                                     FROM cashbook_entry WHERE origin_reservation_ref IS NOT NULL`)
+    expect(ref.rows).toEqual([{ id: '10', ref: 'RC-4711' }])
     // Die Altdaten-Zeile geht ueber ihre Aufteilung in die Steuergruppen.
     expect(m.taxGroups.find((g: { rateBp: number }) => g.rateBp === 1900).grossCent).toBe(660 + 330)
   })

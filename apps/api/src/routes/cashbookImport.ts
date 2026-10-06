@@ -75,6 +75,7 @@ interface Eintrag {
   id: number; date: string; type: string; kind: string; deltaCent: number; taxRateBp: number
   text: string | null; guestName: string | null; groupId: number | null; voided: boolean
   datevSent: boolean; datevSentAt: string | null; createdBy: string | null; createdAt: string | null
+  reservationRef: string | null
   guest: Altgast | null
 }
 
@@ -159,6 +160,12 @@ function pruefe(body: unknown): Eingabe {
       const g = text(e.guestName, 100)
       if (g === undefined) fehler(`${p}.guestName`)
       const wer = text(e.createdBy, 100)
+      // Die Reservierungsreferenz aus dem Buchungs-Report des Adminpanels.
+      // `updatedAt` und `bookingReportEntryId` kommen auch, werden aber nicht
+      // gebraucht: die Report-ID ist instabil, und eine Zeile hier aendert
+      // sich nach dem Anlegen nicht mehr.
+      const reservierung = text(e.reportReference, 100)
+      if (reservierung === undefined) fehler(`${p}.reportReference`)
       if (wer === undefined) fehler(`${p}.createdBy`)
       const gruppe = e.groupId === undefined || e.groupId === null ? null : ganzzahl(e.groupId)
       if (gruppe !== null && gruppe <= 0) fehler(`${p}.groupId`)
@@ -196,7 +203,8 @@ function pruefe(body: unknown): Eingabe {
           // `datevSent` ohne Zeitpunkt: die Bulk-Action im Adminpanel setzt
           // den Merker, der Zeitpunkt kann fehlen. Gesendet ist gesendet.
           datevSent: e.datevSent === true || datev !== null, datevSentAt: datev ?? null,
-          createdBy: wer ?? null, createdAt: am ?? null, guest: gast
+          createdBy: wer ?? null, createdAt: am ?? null, guest: gast,
+          reservationRef: reservierung ?? null
         })
       }
     })
@@ -375,15 +383,15 @@ export function cashbookImportRoutes(app: FastifyInstance): void {
           await client.query(
             `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
                 text, guest_name, legacy_split, external_system, external_reference,
-                external_number, created_by_name, origin_created_at, group_id)
-             SELECT $1, z.d, z.k, z.a, z.t, z.tx, z.g, z.ls, $2, z.ref, 'KB-' || z.ref, z.wer, z.am,
+                external_number, created_by_name, origin_created_at, origin_reservation_ref, group_id)
+             SELECT $1, z.d, z.k, z.a, z.t, z.tx, z.g, z.ls, $2, z.ref, 'KB-' || z.ref, z.wer, z.am, z.res,
                     CASE WHEN $3 THEN (SELECT h.id FROM cashbook_entry h
                                         WHERE h.property_id = $1 AND h.external_system = $2
                                           AND h.reverses_id IS NULL
                                           AND h.external_reference = z.grp) END
                FROM unnest($4::text[], $5::date[], $6::text[], $7::bigint[], $8::int[], $9::text[],
-                           $10::text[], $11::jsonb[], $12::text[], $13::timestamptz[], $14::text[])
-                    WITH ORDINALITY AS z(ref, d, k, a, t, tx, g, ls, wer, am, grp, n)
+                           $10::text[], $11::jsonb[], $12::text[], $13::timestamptz[], $14::text[], $15::text[])
+                    WITH ORDINALITY AS z(ref, d, k, a, t, tx, g, ls, wer, am, grp, res, n)
               ORDER BY z.n`,
             [haus, sys, mitGruppe, zeilen.map(z => String(z.id)), zeilen.map(z => z.date),
              zeilen.map(z => z.kind), zeilen.map(z => z.deltaCent), zeilen.map(z => z.taxRateBp),
@@ -393,7 +401,8 @@ export function cashbookImportRoutes(app: FastifyInstance): void {
                breakfastDrinks: z.guest.breakfastDrinksGrossCent,
                totalCent: z.guest.totalCent, breakfasts: z.guest.breakfasts })),
              zeilen.map(z => z.createdBy), zeilen.map(z => z.createdAt),
-             zeilen.map(z => z.groupId === null ? null : String(z.groupId))])
+             zeilen.map(z => z.groupId === null ? null : String(z.groupId)),
+             zeilen.map(z => z.reservationRef)])
         }
         await anlegen(neu.filter(z => !kopfDa(z)), false)
         await anlegen(neu.filter(kopfDa), true)
