@@ -180,6 +180,22 @@ Die Gastseite schreibt ins Gastprofil: Name, Geburtsdatum, Staatsangehörigkeit,
 
 **Sprache** nach dem Gastprofil über `emailLanguage()` — Deutsch, Englisch, Niederländisch, Polnisch, sonst Deutsch. Die Sätze stehen als Tabelle je Sprache in `email.ts`, mit Platzhaltern statt Zusammensetzen. Der Satz zur Unterschrift steht für jeden da: die Staatsangehörigkeit kennt das Haus vor dem Ausfüllen oft gar nicht, und eine Mail, die sie errät, rät falsch.
 
+### 6.1 Vorschau und Testmail
+
+Unter der Einstellung (Einstellungen, Online-Check-in) steht die Einladung so, wie ein Gast sie heute bekäme — Hausname und Anreisedatum echt, Gast, Buchungsnummer und Link erfunden —, in jeder Sprache der Gastpost, mit den Voraussetzungen einzeln abgehakt: kein Übungshaus, Gastversand an, Absenderdomain freigeschaltet, und ob der Vorabversand selbst an ist. Darunter geht dieselbe Einladung als **Testmail an eine Adresse nach Wahl** (Migration `0096`, Art `checkin_invitation_test`).
+
+| Entscheidung | Warum |
+|---|---|
+| Dieselbe Vorlage, davor ein Hinweis, im Betreff `[TEST]` | Geprüft werden soll, was der Gast bekommt; eine eigene Testvorlage wiche irgendwann ab. Der Hinweis verhindert, dass eine weitergeleitete Testmail für eine echte Einladung gehalten wird. |
+| Beispieldaten und ein Link ohne Token | Eine Mail mit dem Link einer echten Buchung an eine frei wählbare Adresse wäre genau der Weg, den „erneut senden" verschließt (nur an die Adresse am Gastprofil). Das Formular selbst prüft man an einer Testbuchung mit „Link kopieren". |
+| Eigene Art ohne Bezug, nicht `checkin_invitation` | Die Einladung hängt an einer Reservierung, damit die Löschung sie findet. Die Prüfbedingung hält fest, dass eine Testmail an **keiner** hängt. |
+| Durch `email_enqueue`, unabhängig vom Schalter für den Vorabversand | Übungshaus, Gastversand und Absenderdomain gelten wie für jede Gastpost — das ist, was der Test zeigen soll. Der Vorabversand bleibt aus, bis jemand ihn bewusst einschaltet. |
+| Höchstens zehn je Stunde und Haus, gezählt im Postausgang | Die allgemeine Ratenbegrenzung erreicht eine angemeldete Anfrage nicht; eine Route, die an beliebige Adressen schreibt, wäre ohne Grenze ein Werkzeug für Spam unter dem Namen des Hauses. |
+
+Nach dem Senden fragt die Maske im Postausgang nach, bis die Nachricht vom Anbieter angenommen oder endgültig gescheitert ist; zugestellt wird im Takt des Workers.
+
+**Nebenbei behoben.** Die deutschen Vorlagen der Gastpost standen in Umschrift („Gäste" als „Gaeste", „für" als „fuer") — gesehen hat das niemand, bis es eine Vorschau gab. Ein Test hält die Umlaute jetzt fest.
+
 ---
 
 ## 7. An der Rezeption

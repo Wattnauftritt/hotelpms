@@ -391,5 +391,79 @@ export const onlineCheckin = {
     tr: 'Yalnızca e-posta adresi olan ve henüz kayıt formu bulunmayan onaylı '
       + 'rezervasyonlar için, rezervasyon başına tam bir kez. Misafir e-postasının '
       + 'onaylı gönderici alan adıyla açık olması gerekir; eğitim tesisi hiçbir '
-      + 'şey göndermez. Yabancı misafirler varış günü tesiste imzalar (§ 29 BMG).' }
+      + 'şey göndermez. Yabancı misafirler varış günü tesiste imzalar (§ 29 BMG).' },
+
+  'onlineCheckin.test.title': {
+    de: 'Vorschau und Testmail',
+    en: 'Preview and test email',
+    tr: 'Önizleme ve test e-postası' },
+  'onlineCheckin.test.intro': {
+    de: 'So sieht die Einladung für die Gäste aus, mit Beispieldaten. Die Testmail '
+      + 'geht nur an die Adresse, die hier steht; der automatische Versand bleibt '
+      + 'dabei, wie er eingestellt ist.',
+    en: 'This is how the invitation looks to guests, with sample data. The test '
+      + 'email goes only to the address entered here; automatic sending stays as '
+      + 'it is set.',
+    tr: 'Davetiye misafirlere böyle görünür, örnek verilerle. Test e-postası yalnızca '
+      + 'buraya yazılan adrese gider; otomatik gönderim ayarlandığı gibi kalır.' },
+  'onlineCheckin.test.language': {
+    de: 'Sprache der Mail',
+    en: 'Email language',
+    tr: 'E-posta dili' },
+  'onlineCheckin.test.subject': {
+    de: 'Betreff',
+    en: 'Subject',
+    tr: 'Konu' },
+  'onlineCheckin.test.to': {
+    de: 'Testmail an',
+    en: 'Send test email to',
+    tr: 'Test e-postasının alıcısı' },
+  'onlineCheckin.test.send': {
+    de: 'Testmail senden',
+    en: 'Send test email',
+    tr: 'Test e-postası gönder' },
+  'onlineCheckin.test.pending': {
+    de: 'Eingereiht. Zugestellt wird beim nächsten Lauf, nach spätestens fünf Minuten.',
+    en: 'Queued. It is delivered on the next run, within five minutes.',
+    tr: 'Kuyruğa alındı. Bir sonraki çalışmada, en geç beş dakika içinde teslim edilir.' },
+  'onlineCheckin.test.sent': {
+    de: 'Vom Anbieter angenommen. Bitte im Postfach nachsehen, auch im Werbeordner.',
+    en: 'Accepted by the provider. Please check the inbox, including the spam folder.',
+    tr: 'Sağlayıcı tarafından kabul edildi. Lütfen gelen kutusunu ve spam klasörünü '
+      + 'kontrol edin.' },
+  'onlineCheckin.test.failed': {
+    de: 'Nicht zustellbar: {error}',
+    en: 'Could not be delivered: {error}',
+    tr: 'Teslim edilemedi: {error}' },
+  'onlineCheckin.test.linkHint': {
+    de: 'Der Link in der Testmail führt zu keinem echten Meldeschein. Das Formular '
+      + 'selbst lässt sich an einer Testbuchung prüfen: dort „Link kopieren“.',
+    en: 'The link in the test email does not lead to a real registration form. To '
+      + 'check the form itself, use a test booking and its “Copy link”.',
+    tr: 'Test e-postasındaki bağlantı gerçek bir kayıt formuna gitmez. Formun kendisi '
+      + 'bir test rezervasyonunda “Bağlantıyı kopyala” ile denenebilir.' },
+  'onlineCheckin.ready.title': {
+    de: 'Voraussetzungen',
+    en: 'Requirements',
+    tr: 'Gereksinimler' },
+  'onlineCheckin.ready.notTraining': {
+    de: 'Kein Übungshaus',
+    en: 'Not a training property',
+    tr: 'Eğitim tesisi değil' },
+  'onlineCheckin.ready.mail': {
+    de: 'Gastversand eingeschaltet (Einstellungen, Gastpost)',
+    en: 'Guest mail switched on (Settings, guest mail)',
+    tr: 'Misafir e-postası açık (Ayarlar, misafir postası)' },
+  'onlineCheckin.ready.sender': {
+    de: 'Absenderdomain freigeschaltet',
+    en: 'Sender domain approved',
+    tr: 'Gönderici alan adı onaylı' },
+  'onlineCheckin.ready.autoOn': {
+    de: 'Automatischer Vorabversand ist eingeschaltet: Gäste bekommen den Link.',
+    en: 'Automatic pre-arrival sending is on: guests receive the link.',
+    tr: 'Varış öncesi otomatik gönderim açık: misafirler bağlantıyı alır.' },
+  'onlineCheckin.ready.autoOff': {
+    de: 'Automatischer Vorabversand ist aus: kein Gast wird angeschrieben.',
+    en: 'Automatic pre-arrival sending is off: no guest is written to.',
+    tr: 'Varış öncesi otomatik gönderim kapalı: hiçbir misafire yazılmaz.' }
 } as const satisfies Record<string, LocalizedText>

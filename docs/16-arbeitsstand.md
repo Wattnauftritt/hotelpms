@@ -931,6 +931,8 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 - **Der Link reist in einer Kopfzeile und steht in der Mail im Fragment**, nie im Pfad: der Serialisierer des Protokolls ersetzt die Abfragezeichenfolge, nicht den Pfad, und ein Fragment erreicht keinen Server. Im Postausgang fällt der Rumpf nach dem Versand.
 - **Die Regeln des Meldescheins stehen einmal** (`platform/meldeschein.ts`) und gelten für Tresen, Link und Station.
 
+**Vorschau und Testmail (Migration `0096`).** Unter der Einstellung steht die Einladung mit Beispieldaten in jeder Sprache der Gastpost, die Voraussetzungen einzeln abgehakt, und eine Testmail an eine Adresse nach Wahl — ohne echten Link, höchstens zehn je Stunde, unabhängig vom Vorabversand, der weiter aus ist, bis jemand ihn einschaltet (Dokument 30, §6.1).
+
 **Beim Bauen gefunden und mitbehoben.** Der Meldeschein entschied „ausländisch" nach dem Land der Anschrift statt nach der Staatsangehörigkeit, und ein ausländischer Mitreisender verlangte keine Unterschrift, solange der Hauptgast deutsch war. Das Zeichenfeld traf den Finger nicht, sobald es breiter angezeigt wurde als seine Auflösung. Und „Meldeschein nachträglich unterschreiben" hat jetzt eine Maske.
 
 **Offen**, alle in Dokument 30 §2.3 und §10: ob deutsche Gäste nach der Reform überhaupt noch einen Schein brauchen (Rechtsfrage je Land und Gemeinde), Familienangehörige nur der Zahl nach, § 29 Abs. 5 als Ersatz der Unterschrift.
@@ -1033,7 +1035,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Anlass.** Sven, 06.10.2026: das Kassenbuch des Adminpanels zieht nach StayGrid um, schrittweise. Dokument 09 ist deshalb in vierter Fassung: das Kassenbuch ist ein Modul, je Haus einzuschalten; Kassenlade, Bon und TSE gibt es weiterhin nicht.
 
-**Wo es liegt.** Migration `0095`, `packages/domain/src/cashbook.ts`, `apps/api/src/platform/kassenbuch.ts`, `apps/api/src/routes/cashbook.ts`, Bildschirm „Kassenbuch". Plan und Abgleich mit dem Adminpanel: Projektordner `kassenbuch/plan.md`.
+**Wo es liegt.** Migration `0096`, `packages/domain/src/cashbook.ts`, `apps/api/src/platform/kassenbuch.ts`, `apps/api/src/routes/cashbook.ts`, Bildschirm „Kassenbuch". Plan und Abgleich mit dem Adminpanel: Projektordner `kassenbuch/plan.md`.
 
 **Was es tut.** Gastbuchung (Übernachtung, Frühstück Speisen und Getränke, Kurtaxe, wie im Adminpanel zerlegt), Kurtaxe, Bareinlage, Bankeinzahlung, Ausgabe, Sonstiges. Cent statt Dezimal, lückenlose Nummer je Haus aus dem Trigger, unveränderlich (Storno als Gegenbuchung, Gastbuchung als Ganzes). Belege als PDF, JPEG oder PNG in der Datenbank, Fotos im Browser auf 1600 px verkleinert. Ein Aufruf je Monat mit laufendem Bestand aus einer Fensterfunktion; der Startsaldo summiert über den Index. Neue Rechte `cashbook:read|write|void|export|import`.
 

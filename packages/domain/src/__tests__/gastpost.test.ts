@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { EMAIL_LANGUAGES, emailLanguage, renderInvoiceEmail, renderReservationEmail,
-         renderPaymentLinkEmail, type EmailLanguage } from '../email.js'
+         renderPaymentLinkEmail, renderCheckinInvitationEmail,
+         renderCheckinInvitationTestEmail, type EmailLanguage } from '../email.js'
 
 /**
  * Die Gastpost in allen Sprachen, in denen wir sie anbieten.
@@ -35,6 +36,12 @@ const zahlung = {
   url: 'https://app.staygrid.test/v1/pay?t=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde'
 }
 
+const einladung = {
+  propertyName: 'Hotel Nordsee', guestName: 'Anna Beispiel',
+  reservationRef: 'ABC123', arrival: '2026-10-01', validUntil: '2026-10-04',
+  link: 'https://app.staygrid.test/checkin#testmail'
+}
+
 /** Alles, was ein Gast zu sehen bekommt, in einer Zeichenkette. */
 function alles(lang: EmailLanguage): string[] {
   return [
@@ -47,7 +54,9 @@ function alles(lang: EmailLanguage): string[] {
     renderPaymentLinkEmail(zahlung, lang),
     renderPaymentLinkEmail({ ...zahlung, dueDate: null }, lang),
     renderPaymentLinkEmail({ ...zahlung, deposit: false, dueDate: null }, lang),
-    renderPaymentLinkEmail({ ...zahlung, guestName: null }, lang)
+    renderPaymentLinkEmail({ ...zahlung, guestName: null }, lang),
+    renderCheckinInvitationEmail(einladung, lang),
+    renderCheckinInvitationTestEmail(einladung, lang)
   ].flatMap(m => [m.subject, m.text, m.html])
 }
 
@@ -182,6 +191,35 @@ describe('Sprachwahl am Gastprofil', () => {
   it('faellt bei einer unbekannten Sprache auf Deutsch zurueck', () => {
     for (const unbekannt of ['fr', 'zz', '', null, undefined]) {
       expect(emailLanguage(unbekannt)).toBe('de')
+    }
+  })
+})
+
+describe('Deutsche Gastpost', () => {
+  /**
+   * Die deutschen Vorlagen standen einmal in Umschrift -- "Gaeste",
+   * "fuer", "Staatsangehoerigkeit" --, wie die Kommentare im Code. Im
+   * Postfach eines Gastes liest sich das wie eine Mail aus einem
+   * Fremdsystem. Aufgefallen ist es erst, als die Einladung zum
+   * Online-Check-in eine Vorschau bekam.
+   */
+  it('schreibt Umlaute, keine Umschrift', () => {
+    for (const stueck of alles('de')) {
+      expect(stueck).not.toMatch(/\b(fuer|ueber|Gaeste|koennen|bestaetigt|vollstaendig)\b/)
+    }
+    expect(renderCheckinInvitationEmail(einladung, 'de').text).toContain('Gäste')
+  })
+})
+
+describe('Testmail der Einladung zum Online-Check-in', () => {
+  it('ist die echte Einladung mit einem Hinweis davor', () => {
+    for (const lang of EMAIL_LANGUAGES) {
+      const echt = renderCheckinInvitationEmail(einladung, lang)
+      const test = renderCheckinInvitationTestEmail(einladung, lang)
+      expect(test.subject, lang).toBe(`[TEST] ${echt.subject}`)
+      expect(test.text.endsWith(echt.text), lang).toBe(true)
+      expect(test.text.length, lang).toBeGreaterThan(echt.text.length + 20)
+      expect(test.html.endsWith(echt.html), lang).toBe(true)
     }
   })
 })

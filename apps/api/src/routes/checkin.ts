@@ -1,14 +1,18 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { createCheckinToken, renderCheckinInvitationEmail, emailLanguage,
-         isSendableAddress, isIsoDate, requiresRegistrationSignature } from '@hotelpms/domain'
+         renderCheckinInvitationTestEmail, isSendableAddress, isIsoDate,
+         requiresRegistrationSignature, type CheckinInvitationData,
+         type EmailLanguage, type RenderedEmail } from '@hotelpms/domain'
 import { checkinLink, istLand, istUnterschriftSvg,
          MAX_MITREISENDE, type CheckinFormView, type CheckinSubmitted,
-         type CheckinSettings, type CheckinLink } from '@hotelpms/contracts'
+         type CheckinSettings, type CheckinLink,
+         type CheckinMailPreview } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
+import { tooManyRequests } from '../platform/rateLimit.js'
 import { checkinTx, type CheckinKontext } from '../platform/checkin.js'
 import { erfasseMeldeschein, unterschreibeMeldeschein,
          type Befreiung } from '../platform/meldeschein.js'
@@ -682,4 +686,136 @@ export function checkinRoutes(app: FastifyInstance): void {
       })
     }
   })
+
+  /**
+   * Vorschau der Einladung, wie der Gast sie bekaeme, mit Beispieldaten.
+   *
+   * Unter `settings:property` wie die Einstellung daneben: wer entscheidet,
+   * ob das Haus vorab schreibt, soll sehen, was es schreibt.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/online-checkin-settings/preview',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Online-Check-in: Vorschau der Einladung',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const { language } = req.query as { language?: string }
+      return tx(req.pool, req, async (client): Promise<CheckinMailPreview> => {
+        const b = await beispielEinladung(client, Number(propertyId), language)
+        return { language: b.lang, ...b.text, ready: b.ready }
+      })
+    }
+  })
+
+  /**
+   * Die Einladung als Testmail an eine Adresse nach Wahl.
+   *
+   * **Beispieldaten, kein echter Link.** Die Adresse ist frei; deshalb traegt
+   * die Mail weder einen Gast noch ein Token. Was sie prueft, ist der Weg:
+   * Gastversand, Absenderdomain, Zustellung beim Anbieter, Darstellung im
+   * Postfach. Den Meldeschein selbst prueft man mit einer Testbuchung und
+   * dem Link, den die Rezeption dort kopiert.
+   *
+   * **Unabhaengig vom Vorabversand.** Der Schalter fuer den automatischen
+   * Versand bleibt, wie er ist; die Testmail ist gerade dafuer da, ihn erst
+   * einzuschalten, wenn sie gut aussieht.
+   *
+   * **Ein eigener Zaehler.** Die allgemeine Ratenbegrenzung erreicht eine
+   * angemeldete Anfrage nicht (CLAUDE.md), und eine Route, die an beliebige
+   * Adressen schreibt, ist ohne Grenze ein Werkzeug fuer Spam unter dem
+   * Namen des Hauses. Gezaehlt wird im Postausgang selbst: der ist ohnehin
+   * da und gilt ueber Neustarts und mehrere Prozesse hinweg.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/online-checkin-settings/test-mail',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Online-Check-in: Testmail an eine Adresse nach Wahl',
+    handler: async (req, reply) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const b = (req.body ?? {}) as { to?: unknown; language?: unknown }
+      const principal = req.principal as Principal
+      const to = typeof b.to === 'string' ? b.to.trim() : ''
+      if (!isSendableAddress(to)) throw Errors.validation({ to: ['field.email'] })
+      const sprache = typeof b.language === 'string' ? b.language : undefined
+      return tx(req.pool, req, async client => {
+        const id = Number(propertyId)
+        const bisher = await client.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM outbound_email
+            WHERE property_id = $1 AND kind = 'checkin_invitation_test'
+              AND created_at > now() - interval '1 hour'`, [id])
+        if (bisher.rows[0]!.n >= TESTMAILS_JE_STUNDE) throw tooManyRequests(3600)
+
+        const e = await beispielEinladung(client, id, sprache)
+        if (e.ready.training) throw Errors.unprocessable('training.noEmail')
+        if (!e.ready.mailEnabled) throw Errors.unprocessable('mail.sendingDisabled')
+        if (!e.ready.senderAllowed) throw Errors.unprocessable('mail.senderNotActive')
+        const text = renderCheckinInvitationTestEmail(e.daten, e.lang)
+        const q = await client.query<{ ref: string }>(
+          `SELECT email_enqueue($1,'checkin_invitation_test',$2,NULL,$3,$4,$5,NULL,NULL,$6) AS ref`,
+          [id, to, text.subject, text.text, text.html, principal.userId])
+        reply.status(202)
+        return { messageRef: q.rows[0]!.ref, status: 'pending' }
+      })
+    }
+  })
+}
+
+/** Genug, um die Darstellung in mehreren Postfaechern zu pruefen; zu wenig fuer Spam. */
+const TESTMAILS_JE_STUNDE = 10
+
+/**
+ * Die Einladung mit Beispieldaten, wie sie heute hinausginge.
+ *
+ * Name des Hauses und Abstand zur Anreise sind echt, damit die Vorschau
+ * zeigt, was der Gast liest; Gast, Buchungsnummer und Link sind erfunden.
+ * Die Anreise liegt so weit nach dem Geschaeftstag, wie das Haus vorab
+ * schreibt -- dasselbe Datum, das ein Gast heute bekaeme.
+ */
+async function beispielEinladung(
+  client: PoolClient, propertyId: number, language: string | undefined
+): Promise<{
+  lang: EmailLanguage; daten: CheckinInvitationData
+  text: RenderedEmail; ready: CheckinMailPreview['ready']
+}> {
+  const { rows } = await client.query<{
+    name: string; is_training: boolean; anreise: string; bis: string
+    mail_enabled: boolean; sender_allowed: boolean; auto_enabled: boolean
+  }>(
+    `WITH heute AS (
+       SELECT COALESCE((SELECT b.date FROM business_day b
+                         WHERE b.property_id = $1 AND b.status = 'open'
+                         ORDER BY b.date DESC LIMIT 1), current_date) AS date
+     )
+     SELECT p.name, p.is_training,
+            (heute.date + COALESCE(cs.days_before, 3))::text AS anreise,
+            -- Gueltig bis zur Abreise; drei Naechte als Beispiel.
+            (heute.date + COALESCE(cs.days_before, 3) + 3)::text AS bis,
+            COALESCE(es.enabled, false) AS mail_enabled,
+            COALESCE(email_sender_allowed(p.id, es.from_email), false) AS sender_allowed,
+            COALESCE(cs.enabled, false) AS auto_enabled
+       FROM property p
+       CROSS JOIN heute
+       LEFT JOIN property_checkin_setting cs ON cs.property_id = p.id
+       LEFT JOIN property_email_setting es   ON es.property_id = p.id
+      WHERE p.id = $1`, [propertyId])
+  const h = rows[0]
+  if (h === undefined) throw Errors.notFound('res.property')
+  const lang = emailLanguage(language ?? 'de')
+  const daten: CheckinInvitationData = {
+    propertyName: h.name, guestName: 'Erika Mustermann',
+    reservationRef: 'MUSTER1', arrival: h.anreise, validUntil: h.bis,
+    // Ein Fragment, das kein Token sein kann (43 Zeichen base64url): die
+    // Gastseite sagt "ungueltig", statt einen Meldeschein zu oeffnen.
+    link: checkinLink(config.publicAppUrl, 'testmail')
+  }
+  return {
+    lang, daten,
+    text: renderCheckinInvitationEmail(daten, lang),
+    ready: { training: h.is_training, mailEnabled: h.mail_enabled,
+             senderAllowed: h.sender_allowed, autoEnabled: h.auto_enabled }
+  }
 }
