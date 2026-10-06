@@ -1039,7 +1039,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Was es tut.** Gastbuchung (Übernachtung, Frühstück Speisen und Getränke, Kurtaxe, wie im Adminpanel zerlegt), Kurtaxe, Bareinlage, Bankeinzahlung, Ausgabe, Sonstiges. Cent statt Dezimal, lückenlose Nummer je Haus aus dem Trigger, unveränderlich (Storno als Gegenbuchung, Gastbuchung als Ganzes). Belege als PDF, JPEG oder PNG in der Datenbank, Fotos im Browser auf 1600 px verkleinert. Ein Aufruf je Monat mit laufendem Bestand aus einer Fensterfunktion; der Startsaldo summiert über den Index. Neue Rechte `cashbook:read|write|void|export|import`.
 
-**Übernahme (Teil 2).** `apps/api/src/routes/cashbookImport.ts`: Stapel bis 500 Zeilen, idempotent über die ID im Adminpanel, Storno und harte Löschung dort als Gegenbuchung hier, DATEV-Merker als `cashbook_datev_mark` mit Quelle `import`, Probelauf und Monatsgegenprobe. Belege einzeln mit SHA-256. Den Befehl `kassenbuch:push-staygrid` baut das Adminpanel.
+**Übernahme (Teil 2).** `apps/api/src/routes/cashbookImport.ts`: Stapel bis 500 Zeilen, idempotent über die ID im Adminpanel, Storno und harte Löschung dort als Gegenbuchung hier, DATEV-Merker als `cashbook_datev_mark` mit Quelle `import`, Probelauf und Monatsgegenprobe, Reservierungsreferenz aus dem Buchungs-Report (`origin_reservation_ref`, Migration `0097`). Belege einzeln mit SHA-256. Den Befehl `kassenbuch:push-staygrid` baut das Adminpanel.
 
 **DATEV (Teil 3).** `apps/api/src/routes/cashbookDatev.ts`, Migration `0097`: CSV „Kassenbuch online" ab Stichtag `datev_from`, Markieren als eigener Schritt bis zur Nummer aus `x-staygrid-cashbook-through`, Übungshaus weist ab. Drucken des Monats aus dem Browser.
 

@@ -94,13 +94,18 @@ describe('DATEV-Export des Kassenbuchs', () => {
     expect(r.headers['content-type']).toContain('text/csv')
     expect(r.body.startsWith('﻿Währung;VorzBetrag;RechNr;BelegDatum;Belegtext;UStSatz;BU;'))
       .toBe(true)
+    // Wie im Adminpanel: UStSatz leer, die Steuer im BU-Schluessel, „;" im Text wird „,".
+    const t = 'Petersen Zi. 12, 2 Naechte'
     expect(zeilen(r.body).map(z => z.slice(0, 8))).toEqual([
-      ['EUR', '+167,00', `SG-${g.entryNo}`, '0610', 'Zi. 12 2 Naechte', '7', '9', '4300'],
-      ['EUR', '+15,40', `SG-${g.entryNo + 1}`, '0610', 'Zi. 12 2 Naechte', '7', '9', '4300'],
-      ['EUR', '+6,60', `SG-${g.entryNo + 2}`, '0610', 'Zi. 12 2 Naechte', '19', '3', '4400'],
-      ['EUR', '+8,40', `SG-${g.entryNo + 3}`, '0610', 'Zi. 12 2 Naechte', '7', '9', '4300'],
-      ['EUR', '-50,00', 'SG-5', '0610', '', '0', '', '1200'],
-      ['EUR', '-12,90', 'SG-6', '0610', 'Blumen', '19', '3', '6980']])
+      ['EUR', '+167,00', `SG-${g.entryNo}`, '0610', `Übernachtung ${t}`, '', '9', '4300'],
+      ['EUR', '+15,40', `SG-${g.entryNo + 1}`, '0610', `Frühstück Speisen ${t}`, '', '9', '4300'],
+      ['EUR', '+6,60', `SG-${g.entryNo + 2}`, '0610', `Frühstück Getränke ${t}`, '', '3', '4400'],
+      ['EUR', '+8,40', `SG-${g.entryNo + 3}`, '0610', `Kurtaxe ${t}`, '', '9', '4300'],
+      ['EUR', '-50,00', 'SG-5', '0610', 'Bankeinzahlung', '', '', '1200'],
+      ['EUR', '-12,90', 'SG-6', '0610', 'Ausgabe Blumen', '', '3', '6980']])
+    expect(zeilen(r.body).every(z => z.length === 13)).toBe(true)
+    expect(r.body.endsWith('\r\n')).toBe(true)
+    expect(r.headers['content-disposition']).toContain('Kassenbuch_20261006.csv')
     expect(r.headers['x-staygrid-cashbook-through']).toBe('6')
   })
 
@@ -114,9 +119,20 @@ describe('DATEV-Export des Kassenbuchs', () => {
       [fx.propertyId])
     const r = await exportieren()
     expect(zeilen(r.body).map(z => [z[1], z[2], z[3], z[4], z[5], z[6], z[7]])).toEqual([
-      ['+109,00', 'KB-18', '2009', 'Jansen', '7', '9', '4300'],
-      ['+7,70', 'KB-18', '2009', 'Jansen', '7', '9', '4300'],
-      ['+3,30', 'KB-18', '2009', 'Jansen', '19', '3', '4400']])
+      ['+109,00', 'KB-18', '2009', 'Gast Jansen (Übernachtung)', '', '9', '4300'],
+      ['+7,70', 'KB-18', '2009', 'Gast Jansen (Frühst. Sp.)', '', '9', '4300'],
+      ['+3,30', 'KB-18', '2009', 'Gast Jansen (Frühst. Gt.)', '', '3', '4400']])
+  })
+
+  it('nimmt bei uebernommenen Zeilen mit Gast nur die Beschreibung, wie das Adminpanel', async () => {
+    await einstellen()
+    await owner.query(
+      `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
+          guest_name, text, external_system, external_reference, external_number)
+       VALUES ($1, '2026-09-05', 'lodging', 16700, 700, 'Muster',
+               'Übernachtung Muster Zi. 12', 'adminpanel', '10', 'KB-10')`, [fx.propertyId])
+    expect(zeilen((await exportieren()).body)[0]!.slice(1, 5))
+      .toEqual(['+167,00', 'KB-10', '0509', 'Übernachtung Muster Zi. 12'])
   })
 
   it('laesst ein Storno vor dem Export weg und schickt eines danach als Korrektur', async () => {
@@ -135,7 +151,7 @@ describe('DATEV-Export des Kassenbuchs', () => {
     await app.inject({ method: 'POST', url: url(`/entries/${b.entryNo}/void`), headers: chef,
       payload: { reason: 'Doppelt' } })
     expect(zeilen((await exportieren()).body).map(z => [z[1], z[2], z[4]]))
-      .toEqual([['-20,00', `SG-${b.entryNo}`, 'Doppelt']])
+      .toEqual([['-20,00', `SG-${b.entryNo}`, 'Bareinlage Doppelt']])
   })
 
   it('markiert nur, was der Export enthielt', async () => {

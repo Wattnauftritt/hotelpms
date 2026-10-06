@@ -41,6 +41,18 @@ function buSchluessel(satzBp: number): string {
   return satzBp === 700 ? '9' : satzBp === 1900 ? '3' : ''
 }
 
+/**
+ * Die Bezeichnungen aus `KassenbuchEintrag::TYPEN` im Adminpanel. Sie stehen
+ * im Belegtext, und der Steuerberater kennt die Zeilen unter diesen Worten;
+ * deshalb deutsch und in keinem Sprachkatalog -- DATEV ist ein deutsches
+ * Papier, kein Bildschirm.
+ */
+const ARTNAME: Record<string, string> = {
+  lodging: 'Übernachtung', breakfast_food: 'Frühstück Speisen',
+  breakfast_drinks: 'Frühstück Getränke', city_tax: 'Kurtaxe', cash_in: 'Bareinlage',
+  bank_deposit: 'Bankeinzahlung', expense: 'Ausgabe', other: 'Manuell', legacy_guest: 'Gast'
+}
+
 export interface DatevKassenzeile {
   entryNo: number; businessDate: string; kind: string; amountCent: number; taxRateBp: number
   text: string | null; guestName: string | null; externalNumber: string | null
@@ -53,44 +65,57 @@ function vorzBetrag(cent: number): string {
   return (cent < 0 ? '-' : '+') + s
 }
 
-/** Belegtext: hoechstens 60 Zeichen, ohne Trenn- und Zeilenzeichen. */
-function belegtext(t: string): string {
-  return t.replace(/[;\r\n"]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)
+/**
+ * Belegtext nach der Regel des Adminpanels. Die Datei kennt kein Maskieren:
+ * aus „;" wird „,", „"" entfaellt, ein Zeilenumbruch wird Leerzeichen.
+ *
+ * Bei einer uebernommenen Zeile mit Gast und Beschreibung steht nur die
+ * Beschreibung -- das Adminpanel hat dort „Art Gast Notiz" schon
+ * hineingeschrieben. Sonst Art, Gast und Text nacheinander; so auch bei
+ * jeder Zeile aus StayGrid, deren Text nur die Notiz ist.
+ */
+function belegtext(z: DatevKassenzeile): string {
+  const teile = z.externalNumber !== null && z.guestName !== null && z.text !== null
+    ? [z.text]
+    : [ARTNAME[z.kind] ?? '', z.guestName ?? '', z.text ?? '']
+  return Array.from(teile.filter(t => t.trim() !== '').join(' ')
+    .replace(/;/g, ',').replace(/"/g, '').replace(/\s+/g, ' ').trim()).slice(0, 60).join('')
 }
 
 /**
- * Die Zeilen der CSV zu einer Buchung. Eine Altdaten-Gastbuchung wird in
- * ihre drei Bruttoteile zerlegt, wie das Adminpanel sie exportiert hat.
+ * Die Zeilen der CSV zu einer Buchung, Feld fuer Feld wie
+ * `DatevXmlService` im Adminpanel: UStSatz bleibt leer, die Steuer traegt
+ * der BU-Schluessel. Eine Altdaten-Gastbuchung wird in ihre drei
+ * Bruttoteile zerlegt, jeder mit eigenem Zusatz im Text.
  */
 export function datevZeilen(z: DatevKassenzeile, e: Einstellung): string[][] {
   const nummer = z.reversesNumber ?? z.externalNumber ?? `SG-${z.entryNo}`
   const datum = z.businessDate.slice(8, 10) + z.businessDate.slice(5, 7)
-  const text = belegtext(z.text ?? z.guestName ?? '')
-  const zeile = (cent: number, satzBp: number, konto: string, bu: boolean): string[] => [
-    'EUR', vorzBetrag(cent), nummer, datum, text, String(satzBp / 100),
-    bu ? buSchluessel(satzBp) : '', konto, '', '', '', '', ''
-  ]
-  // Ein Storno einer Altdaten-Zeile kehrt alle Teile um.
-  const richtung = z.amountCent < 0 ? -1 : 1
+  const text = belegtext(z)
+  const zeile = (cent: number, bu: string, konto: string, t = text): string[] =>
+    ['EUR', vorzBetrag(cent), nummer, datum, t, '', bu, konto, '', '', '', '', '']
   switch (z.kind) {
-    case 'lodging': return [zeile(z.amountCent, z.taxRateBp, e.account_lodging, true)]
-    case 'breakfast_food': return [zeile(z.amountCent, z.taxRateBp, e.account_breakfast_food, true)]
-    case 'breakfast_drinks':
-      return [zeile(z.amountCent, z.taxRateBp, e.account_breakfast_drinks, true)]
-    case 'city_tax': return [zeile(z.amountCent, z.taxRateBp, e.account_city_tax, true)]
-    case 'cash_in': return [zeile(z.amountCent, 0, e.account_cash_in, false)]
-    case 'bank_deposit': return [zeile(z.amountCent, 0, e.account_bank_deposit, false)]
-    case 'expense': return [zeile(z.amountCent, z.taxRateBp, e.account_expense, true)]
-    // Sonstiges hat kein festes Konto; der Steuerberater kontiert es, wie im Adminpanel.
-    case 'other': return [zeile(z.amountCent, z.taxRateBp, '', true)]
+    // Fest je Art, nicht nach dem gespeicherten Satz: so exportiert es das Adminpanel.
+    case 'lodging': return [zeile(z.amountCent, '9', e.account_lodging)]
+    case 'breakfast_food': return [zeile(z.amountCent, '9', e.account_breakfast_food)]
+    case 'breakfast_drinks': return [zeile(z.amountCent, '3', e.account_breakfast_drinks)]
+    case 'city_tax': return [zeile(z.amountCent, '9', e.account_city_tax)]
+    case 'cash_in': return [zeile(z.amountCent, '', e.account_cash_in)]
+    case 'bank_deposit': return [zeile(z.amountCent, '', e.account_bank_deposit)]
+    case 'expense': return [zeile(z.amountCent, buSchluessel(z.taxRateBp), e.account_expense)]
+    // Manuell hat kein festes Konto; der Steuerberater kontiert es, wie im Adminpanel.
+    case 'other': return [zeile(z.amountCent, buSchluessel(z.taxRateBp), '')]
     case 'legacy_guest': {
       const s = z.legacySplit ?? {}
+      // Ein Storno einer Altdaten-Zeile kehrt alle Teile um.
+      const richtung = z.amountCent < 0 ? -1 : 1
+      const kurz = (n: number) => Array.from(text).slice(0, n).join('')
       return ([
-        [s.lodging ?? 0, 700, e.account_lodging],
-        [s.breakfastFood ?? 0, 700, e.account_breakfast_food],
-        [s.breakfastDrinks ?? 0, 1900, e.account_breakfast_drinks]
-      ] as const).filter(([c]) => c !== 0)
-        .map(([c, satz, konto]) => zeile(richtung * Math.abs(c), satz, konto, true))
+        [s.lodging ?? 0, '9', e.account_lodging, `${kurz(50)} (Übernachtung)`],
+        [s.breakfastFood ?? 0, '9', e.account_breakfast_food, `${kurz(48)} (Frühst. Sp.)`],
+        [s.breakfastDrinks ?? 0, '3', e.account_breakfast_drinks, `${kurz(48)} (Frühst. Gt.)`]
+      ] as const).filter(([c]) => c > 0)
+        .map(([c, bu, konto, t]) => zeile(richtung * c, bu, konto, t))
     }
     default: return []
   }
@@ -171,9 +196,9 @@ async function auswahl(
   }))
 }
 
+/** Ohne Anfuehrungszeichen, wie im Adminpanel; die Felder sind vorher bereinigt. */
 function csv(zeilen: string[][]): string {
-  const feld = (s: string) => /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  return '﻿' + zeilen.map(z => z.map(feld).join(';')).join('\r\n') + '\r\n'
+  return '\uFEFF' + zeilen.map(z => z.join(';')).join('\r\n') + '\r\n'
 }
 
 export function cashbookDatevRoutes(app: FastifyInstance): void {
@@ -193,8 +218,10 @@ export function cashbookDatevRoutes(app: FastifyInstance): void {
         const bis = await client.query<{ n: string | null }>(
           `SELECT max(entry_no) AS n FROM cashbook_entry WHERE property_id = $1`, [haus])
         reply.header('content-type', 'text/csv; charset=utf-8')
-        reply.header('content-disposition',
-          `attachment; filename="kassenbuch-datev-${a.from ?? 'offen'}-${a.to}.csv"`)
+        // Der Dateiname des Adminpanels: Kassenbuch_{Ymd}.csv, im Zeitraum mit beiden Tagen.
+        const tag = (d: string) => d.replace(/-/g, '')
+        reply.header('content-disposition', `attachment; filename="Kassenbuch_${
+          a.mode === 'range' && a.from !== null ? `${tag(a.from)}-${tag(a.to)}` : tag(a.to)}.csv"`)
         reply.header('x-staygrid-cashbook-through', String(bis.rows[0]!.n ?? 0))
         reply.header('x-staygrid-cashbook-entries', String(zeilen.length))
         return csv([KOPF, ...zeilen.flatMap(z => datevZeilen(z, e))])
