@@ -182,7 +182,7 @@ Die Gastseite schreibt ins Gastprofil: Name, Geburtsdatum, Staatsangehörigkeit,
 
 ### 6.1 Vorschau und Testmail
 
-Unter der Einstellung (Einstellungen, Online-Check-in) steht die Einladung so, wie ein Gast sie heute bekäme — Hausname und Anreisedatum echt, Gast, Buchungsnummer und Link erfunden —, in jeder Sprache der Gastpost, mit den Voraussetzungen einzeln abgehakt: kein Übungshaus, Gastversand an, Absenderdomain freigeschaltet, und ob der Vorabversand selbst an ist. Darunter geht dieselbe Einladung als **Testmail an eine Adresse nach Wahl** (Migration `0095`, Art `checkin_invitation_test`).
+Unter der Einstellung (Einstellungen, Online-Check-in) steht die Einladung so, wie ein Gast sie heute bekäme — Hausname und Anreisedatum echt, Gast, Buchungsnummer und Link erfunden —, in jeder Sprache der Gastpost, mit den Voraussetzungen einzeln abgehakt: kein Übungshaus, Gastversand an, Absenderdomain freigeschaltet, und ob der Vorabversand selbst an ist. Darunter geht dieselbe Einladung als **Testmail an eine Adresse nach Wahl** (Migration `0096`, Art `checkin_invitation_test`).
 
 | Entscheidung | Warum |
 |---|---|

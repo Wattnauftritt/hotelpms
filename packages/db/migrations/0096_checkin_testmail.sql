@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0095 -- Testmail fuer die Einladung zum Online-Check-in.
+-- 0096 -- Testmail fuer die Einladung zum Online-Check-in.
 --
 -- Anforderung aus dem Betrieb (Sven, 06.10.2026): den Vorabversand des
 -- Meldeformulars vorbereiten und vorher pruefen koennen, ob Versand und
