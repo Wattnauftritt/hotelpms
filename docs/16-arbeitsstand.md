@@ -931,6 +931,8 @@ Eine Kassenmaske in diesem System zu bauen, hieße genau das zu werden, was Doku
 - **Der Link reist in einer Kopfzeile und steht in der Mail im Fragment**, nie im Pfad: der Serialisierer des Protokolls ersetzt die Abfragezeichenfolge, nicht den Pfad, und ein Fragment erreicht keinen Server. Im Postausgang fällt der Rumpf nach dem Versand.
 - **Die Regeln des Meldescheins stehen einmal** (`platform/meldeschein.ts`) und gelten für Tresen, Link und Station.
 
+**Vorschau und Testmail (Migration `0095`).** Unter der Einstellung steht die Einladung mit Beispieldaten in jeder Sprache der Gastpost, die Voraussetzungen einzeln abgehakt, und eine Testmail an eine Adresse nach Wahl — ohne echten Link, höchstens zehn je Stunde, unabhängig vom Vorabversand, der weiter aus ist, bis jemand ihn einschaltet (Dokument 30, §6.1).
+
 **Beim Bauen gefunden und mitbehoben.** Der Meldeschein entschied „ausländisch" nach dem Land der Anschrift statt nach der Staatsangehörigkeit, und ein ausländischer Mitreisender verlangte keine Unterschrift, solange der Hauptgast deutsch war. Das Zeichenfeld traf den Finger nicht, sobald es breiter angezeigt wurde als seine Auflösung. Und „Meldeschein nachträglich unterschreiben" hat jetzt eine Maske.
 
 **Offen**, alle in Dokument 30 §2.3 und §10: ob deutsche Gäste nach der Reform überhaupt noch einen Schein brauchen (Rechtsfrage je Land und Gemeinde), Familienangehörige nur der Zahl nach, § 29 Abs. 5 als Ersatz der Unterschrift.

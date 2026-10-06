@@ -276,6 +276,34 @@ export const CheckinSettings = Type.Object({
 }, { additionalProperties: false })
 export type CheckinSettings = Static<typeof CheckinSettings>
 
+/**
+ * Vorschau der Einladung, mit Beispieldaten, und ob sie hinausginge.
+ *
+ * `ready` beantwortet die Frage, die sonst als "warum kommt nichts an"
+ * zurueckkommt: jede Bedingung einzeln, nicht ein Sammelschalter. Ein Haus
+ * mit ausgeschaltetem Vorabversand ist bereit fuer die Testmail, und genau
+ * so soll es aussehen, solange niemand ihn einschaltet.
+ */
+export const CheckinMailPreview = Type.Object({
+  language: Type.String(),
+  subject: Type.String(),
+  text: Type.String(),
+  html: Type.String(),
+  ready: Type.Object({
+    training: Type.Boolean(),
+    mailEnabled: Type.Boolean(),
+    senderAllowed: Type.Boolean(),
+    autoEnabled: Type.Boolean()
+  })
+})
+export type CheckinMailPreview = Static<typeof CheckinMailPreview>
+
+export const CheckinTestMail = Type.Object({
+  to: Type.String({ maxLength: 320 }),
+  language: Type.Optional(Type.String())
+}, { additionalProperties: false })
+export type CheckinTestMail = Static<typeof CheckinTestMail>
+
 export const CheckinLink = Type.Object({
   link: Type.String(),
   expiresOn: IsoDate

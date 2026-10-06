@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { CheckinLink, CheckinSettings } from '@hotelpms/contracts'
+import type { CheckinLink, CheckinMailPreview, CheckinSettings } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /**
@@ -26,6 +26,46 @@ export function useSaveCheckinSettings(propertyId: number) {
     }
   })
 }
+
+/**
+ * Vorschau der Einladung mit Beispieldaten. Haengt an der Einstellung: wer
+ * die Tage vor Anreise aendert, sieht danach ein anderes Anreisedatum.
+ */
+export const useCheckinMailPreview = (propertyId: number, language: string) =>
+  useQuery<CheckinMailPreview>({
+    queryKey: ['checkinSettings', propertyId, 'preview', language],
+    queryFn: () => api.get(
+      `/v1/properties/${propertyId}/online-checkin-settings/preview?language=${language}`)
+  })
+
+export function useSendCheckinTestMail(propertyId: number) {
+  return useMutation({
+    mutationFn: (body: { to: string; language: string }) =>
+      api.post<{ messageRef: string }>(
+        `/v1/properties/${propertyId}/online-checkin-settings/test-mail`, body)
+  })
+}
+
+/**
+ * Wie es um die Testmail steht, aus dem Postausgang.
+ *
+ * Fragt nach, solange sie wartet: zugestellt wird im Takt des Workers, und
+ * "eingereiht" allein beantwortet nicht, ob der Anbieter sie genommen hat.
+ * Wer den Postausgang nicht lesen darf, sieht weiter "eingereiht".
+ */
+export const useTestMailStatus = (propertyId: number, messageRef: string | null) =>
+  useQuery<{ status: string; lastError: string | null } | null>({
+    queryKey: ['outbox', propertyId, 'test', messageRef],
+    queryFn: async () => {
+      const r = await api.get<{ emails: Array<{ messageRef: string; status: string
+                                                 lastError: string | null }> }>(
+        `/v1/properties/${propertyId}/outbound-emails?limit=50`)
+      return r.emails.find(e => e.messageRef === messageRef) ?? null
+    },
+    enabled: messageRef !== null,
+    retry: false,
+    refetchInterval: q => (q.state.data?.status ?? 'pending') === 'pending' ? 10_000 : false
+  })
 
 /**
  * Den Link fuer die Zwischenablage. **Nicht** im Zwischenspeicher: er ist

@@ -591,6 +591,98 @@ describe('Rezeption', () => {
   })
 })
 
+describe('Vorschau und Testmail', () => {
+  async function versandBereit(): Promise<void> {
+    await makeEmailDomain(owner, fx.propertyId, 'seeblick.test')
+    await owner.query(
+      `INSERT INTO property_email_setting (property_id, from_name, from_email, enabled)
+       VALUES ($1,'Hotel Seeblick','post@seeblick.test',true)`, [fx.propertyId])
+  }
+  const url = (): string => `/v1/properties/${fx.propertyId}/online-checkin-settings`
+
+  it('zeigt die Einladung mit Beispieldaten und was zum Versand fehlt', async () => {
+    const v = await app.inject({ method: 'GET', url: `${url()}/preview?language=de`,
+                                 headers: chef })
+    expect(v.statusCode, v.body).toBe(200)
+    const b = JSON.parse(v.body) as { subject: string; text: string; html: string
+      ready: Record<string, boolean> }
+    expect(b.ready).toEqual({ training: false, mailEnabled: false, senderAllowed: false,
+                              autoEnabled: false })
+    expect(b.text).toContain('Erika Mustermann')
+    // Anreise: Geschaeftstag plus die drei Tage der Vorgabe.
+    expect(b.text).toContain('04.10.2026')
+    expect(b.html).toContain('<a href=')
+
+    await versandBereit()
+    const n = JSON.parse((await app.inject({ method: 'GET', url: `${url()}/preview`,
+                                             headers: chef })).body) as {
+      ready: Record<string, boolean> }
+    expect(n.ready).toMatchObject({ mailEnabled: true, senderAllowed: true })
+  })
+
+  it('sagt, warum nicht, wenn der Gastversand aus ist', async () => {
+    const s = await app.inject({ method: 'POST', url: `${url()}/test-mail`, headers: chef,
+                                 payload: { to: 'sven@example.test' } })
+    expect(s.statusCode).toBe(422)
+    expect(JSON.parse(s.body).code).toBe('mail.sendingDisabled')
+  })
+
+  it('schickt eine gekennzeichnete Testmail an die gewaehlte Adresse und keinem Gast', async () => {
+    await versandBereit()
+    const r = await reservierung({ anreise: '2026-10-03' })
+    const s = await app.inject({ method: 'POST', url: `${url()}/test-mail`, headers: chef,
+                                 payload: { to: 'sven@example.test', language: 'en' } })
+    expect(s.statusCode, s.body).toBe(202)
+    const m = await owner.query<{ kind: string; to_email: string; subject: string
+                                  body_text: string; reservation_id: number | null }>(
+      `SELECT kind, to_email, subject, body_text, reservation_id FROM outbound_email`)
+    expect(m.rows).toHaveLength(1)
+    expect(m.rows[0]).toMatchObject({ kind: 'checkin_invitation_test',
+                                      to_email: 'sven@example.test', reservation_id: null })
+    expect(m.rows[0]!.subject).toMatch(/^\[TEST\] Online check-in/)
+    // Kein Zugang: weder ein Token im Rumpf noch eines in der Datenbank.
+    expect(m.rows[0]!.body_text).not.toMatch(/#[A-Za-z0-9_-]{43}/)
+    const tok = await owner.query(`SELECT 1 FROM checkin_token WHERE reservation_id = $1`, [r.id])
+    expect(tok.rowCount).toBe(0)
+    // Der Vorabversand bleibt aus.
+    const e = JSON.parse((await app.inject({ method: 'GET', url: url(), headers: chef })).body)
+    expect(e.enabled).toBe(false)
+  })
+
+  it('nimmt keine unbrauchbare Adresse und nicht mehr als zehn je Stunde', async () => {
+    await versandBereit()
+    const falsch = await app.inject({ method: 'POST', url: `${url()}/test-mail`, headers: chef,
+                                      payload: { to: 'kein-at-zeichen' } })
+    expect(falsch.statusCode).toBe(422)
+    for (let i = 0; i < 10; i++) {
+      const s = await app.inject({ method: 'POST', url: `${url()}/test-mail`, headers: chef,
+                                   payload: { to: `test${i}@example.test` } })
+      expect(s.statusCode, s.body).toBe(202)
+    }
+    const zuviel = await app.inject({ method: 'POST', url: `${url()}/test-mail`, headers: chef,
+                                      payload: { to: 'noch@example.test' } })
+    expect(zuviel.statusCode).toBe(429)
+  })
+
+  it('haengt eine Testmail an keine Reservierung', async () => {
+    const r = await reservierung()
+    await expect(owner.query(
+      `INSERT INTO outbound_email (property_id, kind, to_email, subject, body_text, reservation_id)
+       VALUES ($1,'checkin_invitation_test','a@example.test','x','x',$2)`,
+      [fx.propertyId, r.id])).rejects.toThrow(/outbound_email_bezug/)
+  })
+
+  it('bleibt der Haushaltsrolle verschlossen', async () => {
+    const hk = await makeUser(owner,
+      { email: 'hk2@test.de', propertyId: fx.propertyId, roleKey: 'housekeeping' })
+    const h = { cookie: `hp_session=${hk.sessionId}` }
+    expect((await app.inject({ method: 'GET', url: `${url()}/preview`, headers: h }))
+      .statusCode).toBe(403)
+    expect((await app.inject({ method: 'POST', url: `${url()}/test-mail`, headers: h,
+                               payload: { to: 'a@example.test' } })).statusCode).toBe(403)
+  })
+})
+
 describe('Loeschung', () => {
   it('nimmt die Links mit, und ein alter Link oeffnet nichts mehr', async () => {
     const r = await reservierung()

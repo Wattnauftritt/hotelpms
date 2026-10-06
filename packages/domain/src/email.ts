@@ -10,7 +10,7 @@ import { formatCent } from './money.js'
  */
 
 export const EMAIL_KINDS = ['invoice', 'reservation_confirmation', 'payment_link',
-                            'checkin_invitation'] as const
+                            'checkin_invitation', 'checkin_invitation_test'] as const
 export type EmailKind = (typeof EMAIL_KINDS)[number]
 
 /**
@@ -263,6 +263,7 @@ interface Gastposttexte {
   checkinUnterschrift: string
   checkinFreiwillig: string
   checkinWeitergabe: string
+  checkinTest: string
 }
 
 const TEXTE: Record<EmailLanguage, Gastposttexte> = {
@@ -274,51 +275,54 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
 
     rechnungBetreff: 'Rechnung {nummer} — {haus}',
     rechnungAnhang: 'anbei erhalten Sie Ihre Rechnung {nummer} des Hauses {haus} '
-      + 'als PDF, ueber insgesamt {betrag}.',
+      + 'als PDF, über insgesamt {betrag}.',
     rechnungOffenMitFrist: 'Offen sind davon {offen}, zahlbar bis zum {frist}.',
     rechnungOffenOhneFrist: 'Offen sind davon {offen}.',
-    rechnungBeglichen: 'Die Rechnung ist vollstaendig beglichen. '
-      + 'Dieses Exemplar ist fuer Ihre Unterlagen.',
-    rechnungDank: 'Vielen Dank fuer Ihren Aufenthalt — wir wuerden uns freuen, '
-      + 'Sie wieder begruessen zu duerfen.',
+    rechnungBeglichen: 'Die Rechnung ist vollständig beglichen. '
+      + 'Dieses Exemplar ist für Ihre Unterlagen.',
+    rechnungDank: 'Vielen Dank für Ihren Aufenthalt — wir würden uns freuen, '
+      + 'Sie wieder begrüßen zu dürfen.',
 
-    buchungBetreff: 'Buchungsbestaetigung {ref} — {haus}',
-    buchungBestaetigt: 'wir haben Ihre Buchung im Hause {haus} bestaetigt.',
+    buchungBetreff: 'Buchungsbestätigung {ref} — {haus}',
+    buchungBestaetigt: 'wir haben Ihre Buchung im Hause {haus} bestätigt.',
     buchungNummer: 'Buchungsnummer: {ref}',
     buchungAnreise: 'Anreise: {datum} ab {zeit} Uhr',
     buchungAbreise: 'Abreise: {datum} bis {zeit} Uhr',
     buchungZimmer: 'Zimmer: {zimmer}',
     buchungGesamt: 'Gesamtbetrag: {betrag}',
-    buchungHinweis: 'Bitte geben Sie die Buchungsnummer bei Rueckfragen an. '
-      + 'Sie koennen auf diese E-Mail antworten, wenn sich etwas aendern soll.',
+    buchungHinweis: 'Bitte geben Sie die Buchungsnummer bei Rückfragen an. '
+      + 'Sie können auf diese E-Mail antworten, wenn sich etwas ändern soll.',
 
-    zahlungBetreff: 'Zahlung fuer Ihren Aufenthalt {ref} — {haus}',
-    zahlungAnzahlungMitFrist: 'fuer Ihren Aufenthalt vom {anreise} bis {abreise} '
+    zahlungBetreff: 'Zahlung für Ihren Aufenthalt {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'für Ihren Aufenthalt vom {anreise} bis {abreise} '
       + 'bitten wir um eine Anzahlung von {betrag} bis zum {frist}.',
-    zahlungAnzahlungOhneFrist: 'fuer Ihren Aufenthalt vom {anreise} bis {abreise} '
+    zahlungAnzahlungOhneFrist: 'für Ihren Aufenthalt vom {anreise} bis {abreise} '
       + 'bitten wir um eine Anzahlung von {betrag}.',
-    zahlungAllgemein: 'fuer Ihren Aufenthalt vom {anreise} bis {abreise} '
+    zahlungAllgemein: 'für Ihren Aufenthalt vom {anreise} bis {abreise} '
       + 'bitten wir um eine Zahlung von {betrag}.',
     zahlungLink: 'Ueber den folgenden Link bezahlen Sie sicher beim '
       + 'Zahlungsdienstleister des Hauses:',
-    zahlungKarte: 'Ihre Kartendaten geben Sie nur dort ein; das Haus erhaelt sie '
+    zahlungKarte: 'Ihre Kartendaten geben Sie nur dort ein; das Haus erhält sie '
       + 'nicht.',
-    zahlungGueltig: 'Der Link gilt bis einschliesslich {gueltig}. Ist er abgelaufen, '
+    zahlungGueltig: 'Der Link gilt bis einschließlich {gueltig}. Ist er abgelaufen, '
       + 'schicken wir Ihnen gern einen neuen.',
     zahlungHinweis: 'Bei Fragen antworten Sie einfach auf diese E-Mail und nennen '
       + 'Sie die Buchungsnummer {ref}.',
-    checkinBetreff: 'Online-Check-in fuer Ihren Aufenthalt — {haus}',
+    checkinBetreff: 'Online-Check-in für Ihren Aufenthalt — {haus}',
     checkinEinladung: 'am {anreise} erwarten wir Sie im Hause {haus}. Damit es bei '
-      + 'der Ankunft schneller geht, koennen Sie den Meldeschein schon jetzt '
-      + 'ausfuellen:',
-    checkinFrist: 'Der Link gilt bis zum {bis} und nur fuer Ihre Buchung {ref}.',
-    checkinUnterschrift: 'Gaeste ohne deutsche Staatsangehoerigkeit unterschreiben '
+      + 'der Ankunft schneller geht, können Sie den Meldeschein schon jetzt '
+      + 'ausfüllen:',
+    checkinFrist: 'Der Link gilt bis zum {bis} und nur für Ihre Buchung {ref}.',
+    checkinUnterschrift: 'Gäste ohne deutsche Staatsangehörigkeit unterschreiben '
       + 'den Meldeschein am Anreisetag vor Ort und zeigen dort ihren Reisepass oder '
       + 'Personalausweis vor.',
-    checkinFreiwillig: 'Das Ausfuellen vorab ist freiwillig. Sie koennen den '
-      + 'Meldeschein ebenso bei der Ankunft ausfuellen.',
+    checkinFreiwillig: 'Das Ausfüllen vorab ist freiwillig. Sie können den '
+      + 'Meldeschein ebenso bei der Ankunft ausfüllen.',
     checkinWeitergabe: 'Bitte geben Sie den Link nicht weiter: wer ihn hat, kann '
-      + 'Angaben zu Ihrem Aufenthalt machen.'
+      + 'Angaben zu Ihrem Aufenthalt machen.',
+    checkinTest: 'TESTMAIL — so sieht die Einladung zum Online-Check-in für Ihre Gäste aus. '
+      + 'Name, Buchung und Daten sind Beispiele; der Link führt zu keinem echten '
+      + 'Meldeschein.'
   },
 
   en: {
@@ -371,7 +375,10 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     checkinFreiwillig: 'Filling it in beforehand is optional. You can just as well '
       + 'complete the form on arrival.',
     checkinWeitergabe: 'Please do not pass the link on: whoever has it can enter '
-      + 'details about your stay.'
+      + 'details about your stay.',
+    checkinTest: 'TEST MESSAGE — this is how the online check-in invitation looks to '
+      + 'your guests. Name, booking and dates are examples; the link does not lead '
+      + 'to a real registration form.'
   },
 
   nl: {
@@ -424,7 +431,10 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     checkinFreiwillig: 'Vooraf invullen is vrijwillig. U kunt het formulier ook '
       + 'bij aankomst invullen.',
     checkinWeitergabe: 'Geef de link niet door: wie hem heeft, kan gegevens over '
-      + 'uw verblijf invullen.'
+      + 'uw verblijf invullen.',
+    checkinTest: 'TESTBERICHT — zo ziet de uitnodiging voor online inchecken eruit voor '
+      + 'uw gasten. Naam, boeking en data zijn voorbeelden; de link leidt niet naar '
+      + 'een echt formulier.'
   },
 
   pl: {
@@ -491,7 +501,10 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     checkinFreiwillig: 'Wypełnienie karty z wyprzedzeniem jest dobrowolne. Można ją '
       + 'również wypełnić po przyjeździe.',
     checkinWeitergabe: 'Prosimy nie przekazywać linku dalej: kto go posiada, może '
-      + 'wprowadzać dane dotyczące Państwa pobytu.'
+      + 'wprowadzać dane dotyczące Państwa pobytu.',
+    checkinTest: 'WIADOMOŚĆ TESTOWA — tak wygląda zaproszenie do odprawy online dla '
+      + 'Państwa gości. Imię, rezerwacja i daty są przykładowe; link nie prowadzi do '
+      + 'prawdziwej karty meldunkowej.'
   }
 }
 
@@ -689,6 +702,38 @@ export function renderCheckinInvitationEmail(
     subject: einsetzen(t.checkinBetreff, werte),
     text: lines.join('\n\n'),
     html
+  }
+}
+
+/**
+ * Dieselbe Einladung als Testmail, an eine frei waehlbare Adresse.
+ *
+ * **Dieselbe Vorlage, nicht eine nachgebaute.** Geprueft werden soll, was
+ * der Gast bekommt; eine eigene Testvorlage saehe gut aus und wiche
+ * irgendwann ab. Davor steht nur ein Absatz, der sie als Test kennzeichnet,
+ * und der Betreff traegt "[TEST]" -- wer sie weiterleitet oder in einem
+ * geteilten Postfach findet, haelt sie nicht fuer eine echte Einladung.
+ *
+ * **Beispieldaten und ein Link ohne Zugang.** Eine Testmail an eine beliebige
+ * Adresse mit dem Link einer echten Buchung waere genau der Weg, den
+ * `/online-checkin/send` verschliesst: den Meldeschein eines Gastes jemand
+ * anderem zu geben. Der Aufrufer reicht deshalb einen Link herein, der zu
+ * keinem Token gehoert.
+ */
+export function renderCheckinInvitationTestEmail(
+  d: CheckinInvitationData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  const echt = renderCheckinInvitationEmail(d, lang)
+  const hinweis = TEXTE[lang].checkinTest
+  return {
+    subject: `[TEST] ${echt.subject}`,
+    text: `${hinweis}\n\n${echt.text}`,
+    // Abgesetzt, damit die Kennzeichnung nicht als Teil der Einladung
+    // gelesen wird -- die Einladung darunter bleibt Zeichen fuer Zeichen
+    // die echte.
+    html: '<p style="margin:0 0 16px 0;padding:8px 12px;background:#fef3c7;'
+      + 'border:1px solid #f59e0b;font-family:system-ui,sans-serif;font-size:14px">'
+      + `${esc(hinweis)}</p>\n${echt.html}`
   }
 }
 
