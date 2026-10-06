@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
-         openBusinessDay, type Fixture } from '@hotelpms/testing'
+         openBusinessDay, makeEmailDomain, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -47,11 +47,39 @@ beforeEach(async () => {
 
 const url = (rest = '') => `/v1/properties/${fx.propertyId}/cashbook${rest}`
 
-async function einstellen(datevFrom: string | null = '2026-10-01'): Promise<void> {
+const UPLOAD = 'abc-123@uploadmail.datev.de'
+
+async function einstellen(datevFrom: string | null = '2026-10-01',
+                          datevUploadEmail: string | null = null): Promise<void> {
   const r = await app.inject({ method: 'PUT', url: `/v1/properties/${fx.propertyId}/cashbook-settings`,
     headers: chef, payload: { enabled: true, openingBalanceCent: 0, openingDate: '2026-09-01',
-                              datevFrom } })
+                              datevFrom, datevUploadEmail } })
   expect(r.statusCode, r.body).toBe(200)
+}
+
+async function postEinschalten(): Promise<void> {
+  await makeEmailDomain(owner, fx.propertyId, 'seeblick.test')
+  await owner.query(
+    `INSERT INTO property_email_setting (property_id, from_name, from_email, enabled)
+     VALUES ($1, 'Hotel Seeblick', 'rezeption@seeblick.test', true)`, [fx.propertyId])
+}
+
+const PDF = Buffer.from('%PDF-1.7 Beleg Blumen').toString('base64')
+
+async function markieren(): Promise<{ marked: number; receipts: Record<string, unknown> }> {
+  const r = await exportieren()
+  const m = await app.inject({ method: 'POST', url: url('/datev/mark'), headers: chef,
+    payload: { through: Number(r.headers['x-staygrid-cashbook-through']) } })
+  expect(m.statusCode, m.body).toBe(200)
+  return json(m)
+}
+
+async function belegmails() {
+  const r = await owner.query<{ to_email: string; subject: string; body_text: string
+                                attachment_name: string; status: string }>(
+    `SELECT to_email, subject, body_text, attachment_name, status FROM outbound_email
+      WHERE kind = 'cashbook_receipt' ORDER BY id`)
+  return r.rows
 }
 
 async function buchen(payload: Record<string, unknown>) {
@@ -145,7 +173,7 @@ describe('DATEV-Export des Kassenbuchs', () => {
 
     const m = await app.inject({ method: 'POST', url: url('/datev/mark'), headers: chef,
       payload: { through: Number(r.headers['x-staygrid-cashbook-through']) } })
-    expect(json(m)).toEqual({ marked: 1 })
+    expect(json(m)).toEqual({ marked: 1, receipts: { queued: 0, waiting: 0, blocked: null } })
     expect(zeilen((await exportieren()).body)).toEqual([])
 
     await app.inject({ method: 'POST', url: url(`/entries/${b.entryNo}/void`), headers: chef,
@@ -186,5 +214,80 @@ describe('DATEV-Export des Kassenbuchs', () => {
     const res = await app.inject({ method: 'GET', url: url('/datev'),
       headers: { cookie: `hp_session=${r.sessionId}` } })
     expect(res.statusCode).toBe(403)
+  })
+})
+
+describe('Belege an die DATEV-Uploadmail', () => {
+  it('schickt beim Markieren jeden Beleg einmal, mit der Belegnummer im Dateinamen', async () => {
+    await einstellen('2026-10-01', UPLOAD)
+    await postEinschalten()
+    const g = await buchen({ kind: 'guest', totalCent: 10_000, breakfasts: 0, cityTaxCent: 0,
+                             guestName: 'Petersen', receipts: [{ data: PDF }] })
+    const a = await buchen({ kind: 'expense', amountCent: 1_290, taxRateBp: 1900, text: 'Blumen',
+                             receipts: [{ data: PDF }, { data: Buffer.from('%PDF-1.7 zwei').toString('base64') }] })
+    expect((await exportieren()).headers['x-staygrid-cashbook-receipts-waiting']).toBe('0')
+
+    expect((await markieren()).receipts).toEqual({ queued: 3, waiting: 0, blocked: null })
+    const mails = await belegmails()
+    expect(mails.map(m => m.attachment_name)).toEqual([
+      `SG-${g.entryNo}-${HEUTE}.pdf`, `SG-${a.entryNo}-${HEUTE}.pdf`, `SG-${a.entryNo}-${HEUTE}-2.pdf`])
+    expect(mails.every(m => m.to_email === UPLOAD && m.status === 'pending')).toBe(true)
+    expect(mails[1]!.subject).toBe('Kassenbuch-Beleg 06.10.2026 – Ausgabe')
+    // Kein Gastname in der Mail: sie bleibt im Postausgang stehen.
+    expect(mails.some(m => `${m.subject} ${m.body_text}`.includes('Petersen'))).toBe(false)
+
+    await buchen({ kind: 'cash_in', amountCent: 500 })
+    expect((await markieren()).receipts).toEqual({ queued: 0, waiting: 0, blocked: null })
+    expect(await belegmails()).toHaveLength(3)
+  })
+
+  it('laesst Belege ohne Adresse oder Versand warten und schickt sie nach', async () => {
+    await einstellen()
+    const a = await buchen({ kind: 'expense', amountCent: 1_290, taxRateBp: 1900,
+                             receipts: [{ data: PDF }] })
+    expect((await markieren()).receipts).toEqual({ queued: 0, waiting: 1, blocked: 'noAddress' })
+    expect((await exportieren()).headers['x-staygrid-cashbook-receipts-waiting']).toBe('1')
+
+    await einstellen('2026-10-01', UPLOAD)
+    const senden = () => app.inject({ method: 'POST', url: url('/datev/receipts'), headers: chef })
+    expect(json(await senden())).toEqual({ queued: 0, waiting: 1, blocked: 'mailNotReady' })
+    await postEinschalten()
+    expect(json(await senden())).toEqual({ queued: 1, waiting: 0, blocked: null })
+    expect(json(await senden())).toEqual({ queued: 0, waiting: 0, blocked: null })
+
+    // Ein endgueltig gescheiterter Versand kommt beim naechsten Mal wieder an die Reihe.
+    await owner.query(`UPDATE outbound_email SET status = 'failed' WHERE kind = 'cashbook_receipt'`)
+    expect(json(await senden())).toEqual({ queued: 1, waiting: 0, blocked: null })
+    expect((await belegmails()).map(m => m.attachment_name))
+      .toEqual([`SG-${a.entryNo}-${HEUTE}.pdf`, `SG-${a.entryNo}-${HEUTE}.pdf`])
+  })
+
+  it('schickt nicht, was das Adminpanel schon an DATEV gegeben hat', async () => {
+    await einstellen('2026-10-01', UPLOAD)
+    await postEinschalten()
+    const r = await owner.query<{ id: string }>(
+      `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
+          external_system, external_reference, external_number)
+       VALUES ($1, '2026-09-20', 'expense', -500, 1900, 'adminpanel', '7', 'KB-7') RETURNING id`,
+      [fx.propertyId])
+    const beleg = Buffer.from('%PDF-1.7 alt')
+    await owner.query(
+      `INSERT INTO cashbook_receipt (property_id, entry_id, mime, bytes, byte_count, sha256)
+       VALUES ($1, $2, 'application/pdf', $3, $4, 'x')`,
+      [fx.propertyId, r.rows[0]!.id, beleg, beleg.length])
+    await owner.query(`INSERT INTO cashbook_datev_mark (entry_id, property_id, source)
+                       VALUES ($1, $2, 'import')`, [r.rows[0]!.id, fx.propertyId])
+    const s = await app.inject({ method: 'POST', url: url('/datev/receipts'), headers: chef })
+    expect(json(s)).toEqual({ queued: 0, waiting: 0, blocked: null })
+  })
+
+  it('nimmt als Adresse nur DATEV-Uploadmail an', async () => {
+    const r = await app.inject({ method: 'PUT', url: `/v1/properties/${fx.propertyId}/cashbook-settings`,
+      headers: chef, payload: { enabled: true, datevUploadEmail: 'buchhaltung@example.com' } })
+    expect(r.statusCode).toBe(422)
+    expect(Object.keys(json(r).errors)).toEqual(['datevUploadEmail'])
+    await expect(owner.query(
+      `INSERT INTO cashbook_setting (property_id, datev_upload_email) VALUES ($1, 'x@uploadmail.datev.de.evil.test')`,
+      [fx.propertyId])).rejects.toThrow()
   })
 })

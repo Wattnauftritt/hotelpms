@@ -7,9 +7,9 @@ import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
 import { addMonths } from '../lib/dates.js'
 import {
   useKasseneinstellung, useKassenmonat, useBuchen, useStornieren, useBelegNachreichen,
-  useKasseneinstellungSpeichern, useDatevExport, useDatevMarkieren, belegAdresse,
+  useKasseneinstellungSpeichern, useDatevExport, useDatevMarkieren, useBelegeSenden, belegAdresse,
   type Kassenart, type Kassenzeile, type Kasseneinstellung, type NeuerBeleg, type Neubuchung,
-  type DatevAuswahl
+  type DatevAuswahl, type Belegversand
 } from '../lib/queries/kassenbuch.js'
 import { belegVorbereiten, BelegZuGross } from '../lib/kassenbeleg.js'
 
@@ -302,6 +302,7 @@ function DatevExport({ propertyId, heute, onClose }: {
   const t = useT()
   const holen = useDatevExport(propertyId)
   const markieren = useDatevMarkieren(propertyId)
+  const senden = useBelegeSenden(propertyId)
   const [a, setA] = useState<DatevAuswahl>({ mode: 'unsent', to: heute })
   const ergebnis = holen.data
   return (
@@ -309,7 +310,7 @@ function DatevExport({ propertyId, heute, onClose }: {
             fuss={<>
               <button className={KNOPF_LEISE} onClick={onClose}>{t('common.close')}</button>
               <button className={KNOPF} disabled={holen.isPending}
-                      onClick={() => { markieren.reset(); holen.mutate(a) }}>
+                      onClick={() => { markieren.reset(); senden.reset(); holen.mutate(a) }}>
                 {t('cash.datev.download')}
               </button>
             </>}>
@@ -344,11 +345,31 @@ function DatevExport({ propertyId, heute, onClose }: {
             </button>
           )}
           {markieren.isSuccess && <p>{t('cash.datev.marked', { n: markieren.data.marked })}</p>}
+          {markieren.isSuccess && <Belegversandhinweis v={markieren.data.receipts} />}
           {markieren.isError && <Fehler error={markieren.error} />}
+          {/* Nichts zu markieren, aber Belege offen: etwa weil die Adresse erst jetzt eingetragen ist. */}
+          {ergebnis.entries === 0 && ergebnis.receiptsWaiting > 0 && !senden.isSuccess && (
+            <>
+              <p>{t('cash.datev.receiptsWaiting', { n: ergebnis.receiptsWaiting })}</p>
+              <button className={KNOPF} disabled={senden.isPending} onClick={() => senden.mutate()}>
+                {t('cash.datev.sendReceipts')}
+              </button>
+            </>
+          )}
+          {senden.isSuccess && <Belegversandhinweis v={senden.data} />}
+          {senden.isError && <Fehler error={senden.error} />}
         </div>
       )}
     </Dialog>
   )
+}
+
+/** Was mit den Belegen geschah, und wenn sie warten, warum. */
+function Belegversandhinweis({ v }: { v: Belegversand }): JSX.Element | null {
+  const t = useT()
+  if (v.blocked === 'noAddress') return <p>{t('cash.datev.receiptsNoAddress', { n: v.waiting })}</p>
+  if (v.blocked === 'mailNotReady') return <p>{t('cash.datev.receiptsMailNotReady', { n: v.waiting })}</p>
+  return v.queued > 0 ? <p>{t('cash.datev.receiptsQueued', { n: v.queued })}</p> : null
 }
 
 function Einstellung({ propertyId, e, onClose }: {
@@ -407,6 +428,14 @@ function Einstellung({ propertyId, e, onClose }: {
                  onChange={ev => setW({ ...w, datevFrom: ev.target.value || null })} />
         </Feld>
         <p className="col-span-2 text-xs text-neutral-500">{t('cash.settings.datevFromHint')}</p>
+        <div className="col-span-2">
+          <Feld label={t('cash.settings.uploadEmail')}>
+            <input type="email" value={w.datevUploadEmail ?? ''} className={FELD}
+                   placeholder="…@uploadmail.datev.de"
+                   onChange={ev => setW({ ...w, datevUploadEmail: ev.target.value.trim() || null })} />
+          </Feld>
+        </div>
+        <p className="col-span-2 text-xs text-neutral-500">{t('cash.settings.uploadEmailHint')}</p>
         {konto('lodging', 'cash.kind.lodging')}
         {konto('breakfastFood', 'cash.kind.breakfastFood')}
         {konto('breakfastDrinks', 'cash.kind.breakfastDrinks')}

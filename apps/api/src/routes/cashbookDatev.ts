@@ -6,6 +6,7 @@ import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
 import { assertNotTraining } from '../platform/training.js'
 import { einstellungLesen, geschaeftstag, type Einstellung } from '../platform/kassenbuch.js'
+import type { Principal } from '../platform/context.js'
 
 /**
  * DATEV-Export des Kassenbuchs (Dokument 09, vierte Fassung; Migration 0097).
@@ -31,6 +32,14 @@ import { einstellungLesen, geschaeftstag, type Einstellung } from '../platform/k
  * **Nur ein System exportiert.** Vor dem Stichtag (`datev_from`) weist
  * StayGrid ab; bis dahin exportiert das Adminpanel, und seine Merker kommen
  * mit der Uebernahme.
+ *
+ * **Die Belege gehen mit** (Migration 0098). Wie im Adminpanel schickt das
+ * Markieren jeden Beleg der markierten Buchungen an die DATEV-Uploadmail,
+ * eine Mail je Datei. Faellig ist dabei jeder Beleg einer von StayGrid
+ * markierten Buchung, der noch nicht unterwegs ist: auch einer, dessen
+ * Versand beim letzten Mal scheiterte, und einer, der erst nach dem Export
+ * an die Buchung kam. Was das Adminpanel markiert hat, hat es auch
+ * verschickt; das schickt StayGrid nicht noch einmal.
  */
 
 const RANGE_MAX_TAGE = 366
@@ -224,6 +233,7 @@ export function cashbookDatevRoutes(app: FastifyInstance): void {
           a.mode === 'range' && a.from !== null ? `${tag(a.from)}-${tag(a.to)}` : tag(a.to)}.csv"`)
         reply.header('x-staygrid-cashbook-through', String(bis.rows[0]!.n ?? 0))
         reply.header('x-staygrid-cashbook-entries', String(zeilen.length))
+        reply.header('x-staygrid-cashbook-receipts-waiting', String(await belegeFaellig(client, haus)))
         return csv([KOPF, ...zeilen.flatMap(z => datevZeilen(z, e))])
       })
     }
@@ -251,8 +261,112 @@ export function cashbookDatevRoutes(app: FastifyInstance): void {
           `INSERT INTO cashbook_datev_mark (entry_id, property_id, source)
            SELECT unnest($2::bigint[]), $1, 'staygrid'
            ON CONFLICT (entry_id) DO NOTHING`, [haus, zeilen.map(z => z.id)])
-        return { marked: r.rowCount ?? 0 }
+        const belege = await belegeEinreihen(client, haus, e, (req.principal as Principal).userId)
+        return { marked: r.rowCount ?? 0, receipts: belege }
       })
     }
   })
+
+  /**
+   * Faellige Belege ohne neuen Export schicken: wenn die Uploadmail-Adresse
+   * erst nach dem Markieren eingetragen wurde, oder ein Versand scheiterte
+   * und nichts Neues zu markieren ist.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/cashbook/datev/receipts',
+    permission: 'cashbook:export',
+    propertyParam: 'propertyId',
+    summary: 'Kassenbuch: faellige Belege an die DATEV-Uploadmail schicken',
+    handler: async (req) => {
+      const haus = Number((req.params as { propertyId: string }).propertyId)
+      return tx(req.pool, req, async client => {
+        const e = await einstellungLesen(client, haus)
+        await stichtagPruefen(client, haus, e)
+        return belegeEinreihen(client, haus, e, (req.principal as Principal).userId)
+      })
+    }
+  })
+}
+
+/** Warum faellige Belege liegen bleiben: keine Adresse, oder das Haus versendet keine Post. */
+export type BelegSperre = 'noAddress' | 'mailNotReady'
+export interface BelegVersand { queued: number; waiting: number; blocked: BelegSperre | null }
+
+const DATEIENDUNG: Record<string, string> = {
+  'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' }
+
+/** Kalenderdatum als TT.MM.JJJJ, ohne Umweg ueber `Date`. */
+function deutschesDatum(iso: string): string {
+  return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`
+}
+
+/** Faellige Belege, ohne sie zu holen: fuer den Hinweis im Export. */
+const FAELLIG = `
+  SELECT r.id, r.mime, e.entry_no, e.external_number, e.business_date::text AS business_date,
+         e.kind, r.lfd
+    FROM (SELECT r.*, row_number() OVER (PARTITION BY r.entry_id ORDER BY r.id) AS lfd
+            FROM cashbook_receipt r WHERE r.property_id = $1) r
+    JOIN cashbook_entry e ON e.id = r.entry_id
+    JOIN cashbook_datev_mark m ON m.entry_id = r.entry_id AND m.source = 'staygrid'
+   WHERE NOT EXISTS (SELECT 1 FROM outbound_email o
+                      WHERE o.cashbook_receipt_id = r.id AND o.status IN ('pending', 'sent'))`
+
+export async function belegeFaellig(client: PoolClient, haus: number): Promise<number> {
+  const r = await client.query<{ n: string }>(`SELECT count(*) AS n FROM (${FAELLIG}) f`, [haus])
+  return Number(r.rows[0]!.n)
+}
+
+/**
+ * Faellige Belege einreihen, eine Mail je Datei. Der Dateiname traegt die
+ * Belegnummer der CSV, wie im Adminpanel (`KB-42-2026-04-15.pdf`): unter ihr
+ * findet der Steuerberater die Zeile zum Bild.
+ *
+ * Betreff und Rumpf nennen Datum, Art und Belegnummer, keinen Gast und
+ * keinen Buchungstext. DATEV liest ohnehin nur den Anhang, und die Mail
+ * bleibt im Postausgang stehen; ein Name darin waere eine Kopie, die die
+ * Loeschung eines Gastes nicht findet.
+ */
+async function belegeEinreihen(
+  client: PoolClient, haus: number, e: Einstellung, userId: number | null
+): Promise<BelegVersand> {
+  // Zwei Markierungen kurz nacheinander sollen nicht beide denselben Beleg
+  // einreihen; der Index in 0098 wuerde die zweite sonst mit einem Fehler
+  // abbrechen, samt ihren Merkern.
+  await client.query(`SELECT 1 FROM cashbook_setting WHERE property_id = $1 FOR UPDATE`, [haus])
+  const r = await client.query<{
+    id: string; mime: string; entry_no: string; external_number: string | null
+    business_date: string; kind: string; lfd: string }>(`${FAELLIG} ORDER BY r.id`, [haus])
+  if (r.rows.length === 0) return { queued: 0, waiting: 0, blocked: null }
+  if (e.datev_upload_email === null) {
+    return { queued: 0, waiting: r.rows.length, blocked: 'noAddress' }
+  }
+  // Vorher fragen, was email_enqueue sonst mit einer Ausnahme beantwortete:
+  // das Markieren soll gelingen, die Belege warten auf den naechsten Versuch.
+  const bereit = await client.query<{ ok: boolean }>(
+    `SELECT COALESCE(bool_and(s.enabled AND email_sender_allowed(s.property_id, s.from_email)),
+                     false) AS ok
+       FROM property_email_setting s WHERE s.property_id = $1`, [haus])
+  if (bereit.rows[0]?.ok !== true) {
+    return { queued: 0, waiting: r.rows.length, blocked: 'mailNotReady' }
+  }
+  const mails = r.rows.map(z => {
+    const nummer = z.external_number ?? `SG-${z.entry_no}`
+    const datum = deutschesDatum(z.business_date)
+    const art = ARTNAME[z.kind] ?? z.kind
+    const lfd = Number(z.lfd) > 1 ? `-${z.lfd}` : ''
+    return {
+      id: z.id,
+      betreff: `Kassenbuch-Beleg ${datum} – ${art}`,
+      text: `Kassenbuch-Beleg vom ${datum}\nArt: ${art}\nBelegnummer: ${nummer}\n`,
+      name: `${nummer}-${z.business_date}${lfd}.${DATEIENDUNG[z.mime] ?? 'bin'}`
+    }
+  })
+  await client.query(
+    `SELECT email_enqueue($1, 'cashbook_receipt', $2, NULL, u.betreff, u.rumpf, NULL,
+                          NULL, NULL, $3, u.id, u.name)
+       FROM unnest($4::bigint[], $5::text[], $6::text[], $7::text[]) AS u(id, betreff, rumpf, name)`,
+    [haus, e.datev_upload_email, userId, mails.map(m => m.id), mails.map(m => m.betreff),
+     mails.map(m => m.text), mails.map(m => m.name)])
+  return { queued: mails.length, waiting: 0, blocked: null }
 }

@@ -1031,7 +1031,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 ---
 
-### Aufgabe 16 — Kassenbuch — **Teil 1 bis 3 erledigt, Uploadmail offen**
+### Aufgabe 16 — Kassenbuch — **erledigt**
 
 **Anlass.** Sven, 06.10.2026: das Kassenbuch des Adminpanels zieht nach StayGrid um, schrittweise. Dokument 09 ist deshalb in vierter Fassung: das Kassenbuch ist ein Modul, je Haus einzuschalten; Kassenlade, Bon und TSE gibt es weiterhin nicht.
 
@@ -1043,7 +1043,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **DATEV (Teil 3).** `apps/api/src/routes/cashbookDatev.ts`, Migration `0097`: CSV „Kassenbuch online" ab Stichtag `datev_from`, Markieren als eigener Schritt bis zur Nummer aus `x-staygrid-cashbook-through`, Übungshaus weist ab. Drucken des Monats aus dem Browser.
 
-**Offen.** Belege an die DATEV-Uploadmail schicken. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
+**Belege an DATEV.** Migration `0098`: beim Markieren geht jeder fällige Beleg als eigene Mail (Art `cashbook_receipt`) an `datev_upload_email`, der Anhang als Verweis auf `cashbook_receipt` wie die Rechnung auf `invoice_document`. Gescheitertes und Nachgereichtes geht beim nächsten Markieren oder über `POST …/cashbook/datev/receipts` raus.
+
+**Offen.** Nichts im Code. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
 
 ---
 

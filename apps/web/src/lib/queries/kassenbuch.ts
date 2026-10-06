@@ -69,6 +69,8 @@ export interface Kasseneinstellung {
   accounts: Kassenkonten
   /** Ab diesem Geschaeftstag exportiert StayGrid an DATEV; vorher das Adminpanel. */
   datevFrom: string | null
+  /** Hierhin gehen die Belege beim Markieren, `…@uploadmail.datev.de`. */
+  datevUploadEmail: string | null
 }
 
 export interface NeuerBeleg { data: string; name?: string }
@@ -153,7 +155,9 @@ export interface DatevAuswahl { mode: 'unsent' | 'range'; from?: string; to?: st
  * sagt `through`, und erst `useDatevMarkieren` traegt es ein -- ein
  * abgebrochener Download laesst so keine Zeile als uebergeben zurueck.
  */
-async function datevHolen(propertyId: number, a: DatevAuswahl): Promise<{ through: number; entries: number }> {
+async function datevHolen(
+  propertyId: number, a: DatevAuswahl
+): Promise<{ through: number; entries: number; receiptsWaiting: number }> {
   const q = new URLSearchParams({ mode: a.mode, ...(a.from ? { from: a.from } : {}),
                                   ...(a.to ? { to: a.to } : {}) })
   const res = await fetch(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`,
@@ -174,17 +178,29 @@ async function datevHolen(propertyId: number, a: DatevAuswahl): Promise<{ throug
   link.click()
   setTimeout(() => { URL.revokeObjectURL(url) }, 0)
   return { through: Number(res.headers.get('x-staygrid-cashbook-through') ?? 0),
-           entries: Number(res.headers.get('x-staygrid-cashbook-entries') ?? 0) }
+           entries: Number(res.headers.get('x-staygrid-cashbook-entries') ?? 0),
+           receiptsWaiting: Number(res.headers.get('x-staygrid-cashbook-receipts-waiting') ?? 0) }
 }
 
 export const useDatevExport = (propertyId: number) =>
   useMutation({ mutationFn: (a: DatevAuswahl) => datevHolen(propertyId, a) })
 
+/** Was mit den faelligen Belegen geschah; `blocked` sagt, warum sie warten. */
+export interface Belegversand {
+  queued: number; waiting: number; blocked: 'noAddress' | 'mailNotReady' | null
+}
+
 export function useDatevMarkieren(propertyId: number) {
   const nachladen = useNachladen(propertyId)
   return useMutation({
     mutationFn: (v: DatevAuswahl & { through: number }) =>
-      api.post<{ marked: number }>(`/v1/properties/${propertyId}/cashbook/datev/mark`, v),
+      api.post<{ marked: number; receipts: Belegversand }>(
+        `/v1/properties/${propertyId}/cashbook/datev/mark`, v),
     onSuccess: nachladen
   })
 }
+
+export const useBelegeSenden = (propertyId: number) =>
+  useMutation({
+    mutationFn: () => api.post<Belegversand>(`/v1/properties/${propertyId}/cashbook/datev/receipts`, {})
+  })

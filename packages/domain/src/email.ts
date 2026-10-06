@@ -10,7 +10,9 @@ import { formatCent } from './money.js'
  */
 
 export const EMAIL_KINDS = ['invoice', 'reservation_confirmation', 'payment_link',
-                            'checkin_invitation', 'checkin_invitation_test'] as const
+                            'checkin_invitation', 'checkin_invitation_test',
+                            // An die DATEV-Uploadmail, nicht an einen Gast (Migration 0098).
+                            'cashbook_receipt'] as const
 export type EmailKind = (typeof EMAIL_KINDS)[number]
 
 /**

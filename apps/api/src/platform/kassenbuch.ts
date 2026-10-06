@@ -34,6 +34,8 @@ export interface Einstellung {
   account_expense: string
   /** Ab diesem Geschaeftstag exportiert StayGrid an DATEV (Migration 0097). */
   datev_from: string | null
+  /** Hierhin gehen die Belege, `…@uploadmail.datev.de` (Migration 0098). */
+  datev_upload_email: string | null
 }
 
 /** Die Werte, mit denen ein Haus ohne gespeicherte Einstellung rechnet (wie 0095). */
@@ -42,7 +44,8 @@ const VORGABE: Einstellung = {
   breakfast_price_cent: 550, breakfast_food_share_bp: 7000, chart_of_accounts: 'SKR04',
   account_lodging: '4300', account_breakfast_food: '4300', account_breakfast_drinks: '4400',
   account_city_tax: '4300', account_cash_in: '1600', account_bank_deposit: '1200',
-  account_expense: '6980', datev_from: null
+  account_expense: '6980', datev_from: null,
+  datev_upload_email: null
 }
 
 export async function einstellungLesen(client: PoolClient, propertyId: number): Promise<Einstellung> {
@@ -50,7 +53,8 @@ export async function einstellungLesen(client: PoolClient, propertyId: number): 
     `SELECT enabled, opening_balance_cent, opening_date::text, breakfast_price_cent,
             breakfast_food_share_bp, chart_of_accounts, account_lodging,
             account_breakfast_food, account_breakfast_drinks, account_city_tax,
-            account_cash_in, account_bank_deposit, account_expense, datev_from::text
+            account_cash_in, account_bank_deposit, account_expense, datev_from::text,
+            datev_upload_email
        FROM cashbook_setting WHERE property_id = $1`, [propertyId])
   const z = r.rows[0]
   return z === undefined ? { ...VORGABE }
