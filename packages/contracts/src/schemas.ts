@@ -310,6 +310,8 @@ export const HousekeepingRoom = Type.Object({
   taskId: Type.Union([Type.Integer(), Type.Null()]),
   departureRef: Type.Union([Type.String(), Type.Null()]),
   departureDate: Type.Union([Type.String(), Type.Null()]),
+  departureCheckedOut: Type.Union([Type.Boolean(), Type.Null()]),
+  stayoverRef: Type.Union([Type.String(), Type.Null()]),
   arrivalRef: Type.Union([Type.String(), Type.Null()]),
   openTickets: Type.Integer()
 })

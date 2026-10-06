@@ -111,6 +111,7 @@ export function MobilZimmer({ propertyId }: { propertyId: number }): JSX.Element
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-neutral-500">
                   {r.departureRef !== null && <span>↗ {t('hk.departureToday')}</span>}
+                  {r.stayoverRef !== null && <span>● {t('hk.stayover')}</span>}
                   {r.arrivalRef !== null && <span>↘ {t('hk.arrivalToday')}</span>}
                   {r.openTickets > 0 && (
                     <span className="text-red-700">🔧 {r.openTickets} {t('hk.openTickets')}</span>
