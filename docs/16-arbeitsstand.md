@@ -1029,6 +1029,18 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 ---
 
+### Aufgabe 16 — Kassenbuch — **Teil 1 erledigt**
+
+**Anlass.** Sven, 06.10.2026: das Kassenbuch des Adminpanels zieht nach StayGrid um, schrittweise. Dokument 09 ist deshalb in vierter Fassung: das Kassenbuch ist ein Modul, je Haus einzuschalten; Kassenlade, Bon und TSE gibt es weiterhin nicht.
+
+**Wo es liegt.** Migration `0095`, `packages/domain/src/cashbook.ts`, `apps/api/src/platform/kassenbuch.ts`, `apps/api/src/routes/cashbook.ts`, Bildschirm „Kassenbuch". Plan und Abgleich mit dem Adminpanel: Projektordner `kassenbuch/plan.md`.
+
+**Was es tut.** Gastbuchung (Übernachtung, Frühstück Speisen und Getränke, Kurtaxe, wie im Adminpanel zerlegt), Kurtaxe, Bareinlage, Bankeinzahlung, Ausgabe, Sonstiges. Cent statt Dezimal, lückenlose Nummer je Haus aus dem Trigger, unveränderlich (Storno als Gegenbuchung, Gastbuchung als Ganzes). Belege als PDF, JPEG oder PNG in der Datenbank, Fotos im Browser auf 1600 px verkleinert. Ein Aufruf je Monat mit laufendem Bestand aus einer Fensterfunktion; der Startsaldo summiert über den Index. Neue Rechte `cashbook:read|write|void|export|import`.
+
+**Offen.** Teil 2: Übernahme aus dem Adminpanel (`cashbook:import`, Spalten liegen schon in `0095`). Teil 3: DATEV-CSV im Format „Kassenbuch online" und PDF-Export, Versand an die DATEV-Uploadmail. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
+
+---
+
 ## 3. Fallstricke, die schon einmal zugeschlagen haben
 
 Wer hier arbeitet, spart sich diese Wege ein zweites Mal.
