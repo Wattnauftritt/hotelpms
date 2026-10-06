@@ -410,7 +410,10 @@ export function Shell(props: Props): JSX.Element {
     <I18nContext.Provider value={props.locale}>
       <div className="min-h-screen bg-neutral-50 text-neutral-900">
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
-          <div className="flex items-center gap-4 px-4 py-2">
+          {/* Nicht auf Papier: gedruckt wird der Bildschirm, nicht die Leiste.
+              Der Uebungshinweis darunter bleibt -- ein Ausdruck aus dem
+              Uebungshaus soll als solcher zu erkennen sein. */}
+          <div className="flex items-center gap-4 px-4 py-2 print:hidden">
             <span className="shrink-0 font-semibold">StayGrid</span>
             {/*
               * Die Detailsuche (Strg+K) vorn neben dem Namen und nicht rechts

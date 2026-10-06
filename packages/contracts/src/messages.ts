@@ -1518,6 +1518,18 @@ const M = {
     de: 'Der Liste aller Kennungen fehlen Eintraege aus diesem Stapel; abgeglichen wird nur mit einer vollstaendigen Liste.',
     en: 'The list of all IDs is missing entries from this batch; reconciliation needs a complete list.',
     tr: 'Tüm kimliklerin listesinde bu partideki kayıtlar eksik; eşleştirme yalnızca tam bir listeyle yapılır.' },
+  'cashbook.datevNotStarted': {
+    de: 'Fuer dieses Haus ist kein Stichtag fuer den DATEV-Export gesetzt. Bis dahin exportiert das bisherige System, damit keine Zeile doppelt in die Buchhaltung kommt.',
+    en: 'No DATEV export start date is set for this property. Until then the previous system exports, so that no line reaches accounting twice.',
+    tr: 'Bu tesis için DATEV dışa aktarımı başlangıç tarihi ayarlanmamış. O zamana kadar hiçbir satırın muhasebeye iki kez gitmemesi için önceki sistem dışa aktarır.' },
+  'cashbook.datevBeforeStart': {
+    de: 'Der DATEV-Export aus StayGrid beginnt am {date}. Bis dahin exportiert das bisherige System.',
+    en: 'DATEV export from StayGrid starts on {date}. Until then the previous system exports.',
+    tr: 'StayGrid üzerinden DATEV dışa aktarımı {date} tarihinde başlar. O zamana kadar önceki sistem dışa aktarır.' },
+  'cashbook.datevTooMany': {
+    de: 'Mehr als {max} Buchungen in einem Export. Bitte den Zeitraum teilen.',
+    en: 'More than {max} entries in one export. Please split the period.',
+    tr: 'Tek bir dışa aktarımda {max} kayıttan fazla. Lütfen dönemi bölün.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

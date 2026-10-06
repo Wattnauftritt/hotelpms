@@ -7,8 +7,9 @@ import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
 import { addMonths } from '../lib/dates.js'
 import {
   useKasseneinstellung, useKassenmonat, useBuchen, useStornieren, useBelegNachreichen,
-  useKasseneinstellungSpeichern, belegAdresse,
-  type Kassenart, type Kassenzeile, type Kasseneinstellung, type NeuerBeleg, type Neubuchung
+  useKasseneinstellungSpeichern, useDatevExport, useDatevMarkieren, belegAdresse,
+  type Kassenart, type Kassenzeile, type Kasseneinstellung, type NeuerBeleg, type Neubuchung,
+  type DatevAuswahl
 } from '../lib/queries/kassenbuch.js'
 import { belegVorbereiten, BelegZuGross } from '../lib/kassenbeleg.js'
 
@@ -243,7 +244,7 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno }: {
              className="mr-1 text-xs underline">{t('cash.receipt.n', { n: i + 1 })}</a>
         ))}
         {darfBuchen && !mitglied && !storno && <>
-          <button className="text-xs text-neutral-600 underline" disabled={nachreichen.isPending}
+          <button className="text-xs text-neutral-600 underline print:hidden" disabled={nachreichen.isPending}
                   onClick={() => datei.current?.click()}>{t('cash.receipt.add')}</button>
           <input ref={datei} type="file" accept="application/pdf,image/*" hidden
                  onChange={async e => {
@@ -256,7 +257,7 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno }: {
       </td>
       <td className="px-2 py-1 text-right">
         {darfStornieren && !aufgehoben && !storno && !mitglied && (
-          <button className="text-xs text-red-700 underline" onClick={() => onStorno(z)}>
+          <button className="text-xs text-red-700 underline print:hidden" onClick={() => onStorno(z)}>
             {t('cash.void')}
           </button>
         )}
@@ -286,6 +287,66 @@ function Stornieren({ propertyId, z, onClose }: {
         <input value={grund} maxLength={255} onChange={e => setGrund(e.target.value)} className={FELD} />
       </Feld>
       {storno.isError && <Fehler error={storno.error} />}
+    </Dialog>
+  )
+}
+
+/**
+ * DATEV-Export: herunterladen, dann markieren. Zwei Schritte, weil ein
+ * abgebrochener Download sonst Zeilen als uebergeben hinterliesse, die nie
+ * ankamen (so war es im Adminpanel).
+ */
+function DatevExport({ propertyId, heute, onClose }: {
+  propertyId: number; heute: string; onClose: () => void
+}): JSX.Element {
+  const t = useT()
+  const holen = useDatevExport(propertyId)
+  const markieren = useDatevMarkieren(propertyId)
+  const [a, setA] = useState<DatevAuswahl>({ mode: 'unsent', to: heute })
+  const ergebnis = holen.data
+  return (
+    <Dialog titel={t('cash.datev.title')} breite="schmal" onClose={onClose}
+            fuss={<>
+              <button className={KNOPF_LEISE} onClick={onClose}>{t('common.close')}</button>
+              <button className={KNOPF} disabled={holen.isPending}
+                      onClick={() => { markieren.reset(); holen.mutate(a) }}>
+                {t('cash.datev.download')}
+              </button>
+            </>}>
+      <div className="grid grid-cols-2 gap-3">
+        <Feld label={t('cash.datev.mode')}>
+          <select value={a.mode} className={FELD}
+                  onChange={ev => { holen.reset(); setA({ ...a, mode: ev.target.value as DatevAuswahl['mode'] }) }}>
+            <option value="unsent">{t('cash.datev.unsent')}</option>
+            <option value="range">{t('cash.datev.range')}</option>
+          </select>
+        </Feld>
+        <div />
+        {a.mode === 'range' && (
+          <Feld label={t('cash.datev.from')}>
+            <input type="date" value={a.from ?? ''} max={heute} className={FELD}
+                   onChange={ev => { holen.reset(); setA({ ...a, from: ev.target.value || undefined }) }} />
+          </Feld>
+        )}
+        <Feld label={t('cash.datev.to')}>
+          <input type="date" value={a.to ?? ''} max={heute} className={FELD}
+                 onChange={ev => { holen.reset(); setA({ ...a, to: ev.target.value || undefined }) }} />
+        </Feld>
+      </div>
+      {holen.isError && <Fehler error={holen.error} />}
+      {ergebnis && (
+        <div className="space-y-2 text-sm">
+          <p>{t('cash.datev.done', { n: ergebnis.entries })}</p>
+          {ergebnis.entries > 0 && !markieren.isSuccess && (
+            <button className={KNOPF} disabled={markieren.isPending}
+                    onClick={() => markieren.mutate({ ...a, through: ergebnis.through })}>
+              {t('cash.datev.mark')}
+            </button>
+          )}
+          {markieren.isSuccess && <p>{t('cash.datev.marked', { n: markieren.data.marked })}</p>}
+          {markieren.isError && <Fehler error={markieren.error} />}
+        </div>
+      )}
     </Dialog>
   )
 }
@@ -341,7 +402,11 @@ function Einstellung({ propertyId, e, onClose }: {
             <option>SKR04</option><option>SKR03</option>
           </select>
         </Feld>
-        <div />
+        <Feld label={t('cash.settings.datevFrom')}>
+          <input type="date" value={w.datevFrom ?? ''} className={FELD}
+                 onChange={ev => setW({ ...w, datevFrom: ev.target.value || null })} />
+        </Feld>
+        <p className="col-span-2 text-xs text-neutral-500">{t('cash.settings.datevFromHint')}</p>
         {konto('lodging', 'cash.kind.lodging')}
         {konto('breakfastFood', 'cash.kind.breakfastFood')}
         {konto('breakfastDrinks', 'cash.kind.breakfastDrinks')}
@@ -365,6 +430,7 @@ export function Kassenbuch({ propertyId, permissions }: {
   const darfStornieren = permissions.includes('cashbook:void')
   const [monat, setMonat] = useState<string | null>(null)
   const [einstellen, setEinstellen] = useState(false)
+  const [datev, setDatev] = useState(false)
   const [storno, setStorno] = useState<Kassenzeile | null>(null)
 
   const e = useKasseneinstellung(propertyId)
@@ -381,16 +447,30 @@ export function Kassenbuch({ propertyId, permissions }: {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold">{t('cash.title')}</h1>
+        {/* Auf Papier steht der Monat statt der Blaetterknoepfe. */}
+        {m && <span className="hidden print:inline text-lg">{m.month}</span>}
         <div className="grow" />
-        {m && <div className="flex items-center gap-1">
+        {m && <div className="flex items-center gap-1 print:hidden">
           <button className={KNOPF_LEISE} onClick={() => blaettern(-1)} aria-label={t('common.back')}>←</button>
           <input type="month" value={m.month} max={m.today.slice(0, 7)}
                  onChange={ev => ev.target.value && setMonat(ev.target.value)}
                  className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
           <button className={KNOPF_LEISE} onClick={() => blaettern(1)} aria-label={t('common.forward')}>→</button>
         </div>}
+        {m && (
+          <button className={`${KNOPF_LEISE} print:hidden`} onClick={() => window.print()}>
+            {t('cash.print')}
+          </button>
+        )}
+        {darfEinstellen && m && (
+          <button className={`${KNOPF_LEISE} print:hidden`} onClick={() => setDatev(true)}>
+            {t('cash.datev.title')}
+          </button>
+        )}
         {darfEinstellen && (
-          <button className={KNOPF_LEISE} onClick={() => setEinstellen(true)}>{t('cash.settings')}</button>
+          <button className={`${KNOPF_LEISE} print:hidden`} onClick={() => setEinstellen(true)}>
+            {t('cash.settings')}
+          </button>
         )}
       </div>
 
@@ -414,9 +494,9 @@ export function Kassenbuch({ propertyId, permissions }: {
                                      datum: formatDate(m.openingDate, locale) })}
               </div>
             )}
-            {darfBuchen && <Erfassen propertyId={propertyId} heute={m.today}
+            {darfBuchen && <div className="print:hidden"><Erfassen propertyId={propertyId} heute={m.today}
                                      fruehstueckCent={m.breakfastPriceCent}
-                                     speisenBp={m.breakfastFoodShareBp} />}
+                                     speisenBp={m.breakfastFoodShareBp} /></div>}
             {m.entries.length === 0
               ? <div className="text-sm text-neutral-500">{t('cash.none')}</div>
               : <div className="overflow-x-auto rounded-sm border border-neutral-200 bg-white">
@@ -461,6 +541,7 @@ export function Kassenbuch({ propertyId, permissions }: {
             )}
           </>}
 
+      {datev && m && <DatevExport propertyId={propertyId} heute={m.today} onClose={() => setDatev(false)} />}
       {einstellen && <Einstellung propertyId={propertyId} e={e.data} onClose={() => setEinstellen(false)} />}
       {storno !== null && <Stornieren propertyId={propertyId} z={storno} onClose={() => setStorno(null)} />}
     </div>

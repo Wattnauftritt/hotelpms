@@ -49,6 +49,58 @@ export const kassenbuch = {
     de: 'Kontenrahmen',
     en: 'Chart of accounts',
     tr: 'Hesap planı' },
+  'cash.settings.datevFrom': {
+    de: 'DATEV-Export aus StayGrid ab',
+    en: 'DATEV export from StayGrid as of',
+    tr: 'StayGrid üzerinden DATEV dışa aktarımı başlangıcı' },
+  'cash.settings.datevFromHint': {
+    de: 'Bis zu diesem Tag exportiert das bisherige System. Nur eines darf an DATEV exportieren, sonst steht jede Buchung zweimal in der Buchhaltung.',
+    en: 'Until this day the previous system exports. Only one may export to DATEV, otherwise every entry appears twice in accounting.',
+    tr: 'Bu güne kadar önceki sistem dışa aktarır. DATEV\'e yalnızca biri aktarabilir, aksi halde her kayıt muhasebede iki kez görünür.' },
+  'cash.print': {
+    de: 'Drucken',
+    en: 'Print',
+    tr: 'Yazdır' },
+  'cash.datev.title': {
+    de: 'DATEV-Export',
+    en: 'DATEV export',
+    tr: 'DATEV dışa aktarımı' },
+  'cash.datev.mode': {
+    de: 'Umfang',
+    en: 'Scope',
+    tr: 'Kapsam' },
+  'cash.datev.unsent': {
+    de: 'Noch nicht übergeben',
+    en: 'Not yet handed over',
+    tr: 'Henüz aktarılmamış' },
+  'cash.datev.range': {
+    de: 'Zeitraum (erneut)',
+    en: 'Period (again)',
+    tr: 'Dönem (yeniden)' },
+  'cash.datev.from': {
+    de: 'Von',
+    en: 'From',
+    tr: 'Başlangıç' },
+  'cash.datev.to': {
+    de: 'Bis',
+    en: 'To',
+    tr: 'Bitiş' },
+  'cash.datev.download': {
+    de: 'Herunterladen',
+    en: 'Download',
+    tr: 'İndir' },
+  'cash.datev.done': {
+    de: '{n} Buchungen in der Datei. Erst wenn sie beim Steuerberater angekommen ist, als übergeben markieren.',
+    en: '{n} entries in the file. Mark them as handed over only once the file has reached the tax advisor.',
+    tr: 'Dosyada {n} kayıt var. Ancak dosya mali müşavire ulaştığında aktarıldı olarak işaretleyin.' },
+  'cash.datev.mark': {
+    de: 'Als an DATEV übergeben markieren',
+    en: 'Mark as handed over to DATEV',
+    tr: 'DATEV\'e aktarıldı olarak işaretle' },
+  'cash.datev.marked': {
+    de: '{n} Buchungen als übergeben markiert.',
+    en: '{n} entries marked as handed over.',
+    tr: '{n} kayıt aktarıldı olarak işaretlendi.' },
   'cash.new': {
     de: 'Neue Buchung',
     en: 'New entry',

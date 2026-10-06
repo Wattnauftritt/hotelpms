@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '../api.js'
+import { api, ApiError } from '../api.js'
 
 /**
  * Kassenbuch (Migration 0095). Ein Aufruf je Monat: Zeilen, laufender
@@ -67,6 +67,8 @@ export interface Kasseneinstellung {
   breakfastFoodShareBp: number
   chartOfAccounts: 'SKR03' | 'SKR04'
   accounts: Kassenkonten
+  /** Ab diesem Geschaeftstag exportiert StayGrid an DATEV; vorher das Adminpanel. */
+  datevFrom: string | null
 }
 
 export interface NeuerBeleg { data: string; name?: string }
@@ -143,3 +145,46 @@ export function useKasseneinstellungSpeichern(propertyId: number) {
 /** Adresse eines Belegs; der Browser zeigt ihn in einem neuen Reiter. */
 export const belegAdresse = (propertyId: number, ref: string): string =>
   `/v1/properties/${propertyId}/cashbook/receipts/${ref}`
+
+export interface DatevAuswahl { mode: 'unsent' | 'range'; from?: string; to?: string }
+
+/**
+ * Die DATEV-Datei herunterladen. Markiert nichts: was der Export enthielt,
+ * sagt `through`, und erst `useDatevMarkieren` traegt es ein -- ein
+ * abgebrochener Download laesst so keine Zeile als uebergeben zurueck.
+ */
+async function datevHolen(propertyId: number, a: DatevAuswahl): Promise<{ through: number; entries: number }> {
+  const q = new URLSearchParams({ mode: a.mode, ...(a.from ? { from: a.from } : {}),
+                                  ...(a.to ? { to: a.to } : {}) })
+  const res = await fetch(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`,
+    { credentials: 'same-origin' })
+  if (!res.ok) {
+    let problem: unknown = null
+    try { problem = JSON.parse(await res.text()) } catch { /* kein RFC-9457-Rumpf */ }
+    throw new ApiError(problem !== null && typeof problem === 'object' && 'title' in problem
+      ? problem as ApiError['problem']
+      : { type: 'urn:staygrid:unknown', title: res.statusText, status: res.status }, res.status)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1]
+    ?? 'kassenbuch-datev.csv'
+  link.click()
+  setTimeout(() => { URL.revokeObjectURL(url) }, 0)
+  return { through: Number(res.headers.get('x-staygrid-cashbook-through') ?? 0),
+           entries: Number(res.headers.get('x-staygrid-cashbook-entries') ?? 0) }
+}
+
+export const useDatevExport = (propertyId: number) =>
+  useMutation({ mutationFn: (a: DatevAuswahl) => datevHolen(propertyId, a) })
+
+export function useDatevMarkieren(propertyId: number) {
+  const nachladen = useNachladen(propertyId)
+  return useMutation({
+    mutationFn: (v: DatevAuswahl & { through: number }) =>
+      api.post<{ marked: number }>(`/v1/properties/${propertyId}/cashbook/datev/mark`, v),
+    onSuccess: nachladen
+  })
+}

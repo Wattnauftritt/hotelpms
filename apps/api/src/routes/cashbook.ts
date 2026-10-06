@@ -173,7 +173,8 @@ export function cashbookRoutes(app: FastifyInstance): void {
         const e = await einstellungLesen(client, haus)
         return {
           enabled: e.enabled, openingBalanceCent: e.opening_balance_cent,
-          openingDate: e.opening_date, breakfastPriceCent: e.breakfast_price_cent,
+          openingDate: e.opening_date, datevFrom: e.datev_from,
+          breakfastPriceCent: e.breakfast_price_cent,
           breakfastFoodShareBp: e.breakfast_food_share_bp, chartOfAccounts: e.chart_of_accounts,
           accounts: {
             lodging: e.account_lodging, breakfastFood: e.account_breakfast_food,
@@ -203,6 +204,10 @@ export function cashbookRoutes(app: FastifyInstance): void {
       if (anfangDatum !== null && (typeof anfangDatum !== 'string' || !isIsoDate(anfangDatum))) {
         f.openingDate = ['field.invalid']
       }
+      const datevAb = b.datevFrom ?? null
+      if (datevAb !== null && (typeof datevAb !== 'string' || !isIsoDate(datevAb))) {
+        f.datevFrom = ['field.invalid']
+      }
       const preis = ganzzahl(b.breakfastPriceCent ?? 550)
       if (preis === null || preis < 0 || preis > 100_000) f.breakfastPriceCent = ['field.invalid']
       const anteil = ganzzahl(b.breakfastFoodShareBp ?? 7000)
@@ -224,8 +229,8 @@ export function cashbookRoutes(app: FastifyInstance): void {
           `INSERT INTO cashbook_setting (property_id, enabled, opening_balance_cent, opening_date,
              breakfast_price_cent, breakfast_food_share_bp, chart_of_accounts, account_lodging,
              account_breakfast_food, account_breakfast_drinks, account_city_tax, account_cash_in,
-             account_bank_deposit, account_expense)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+             account_bank_deposit, account_expense, datev_from)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
            ON CONFLICT (property_id) DO UPDATE SET
              enabled = EXCLUDED.enabled, opening_balance_cent = EXCLUDED.opening_balance_cent,
              opening_date = EXCLUDED.opening_date,
@@ -238,10 +243,11 @@ export function cashbookRoutes(app: FastifyInstance): void {
              account_city_tax = EXCLUDED.account_city_tax,
              account_cash_in = EXCLUDED.account_cash_in,
              account_bank_deposit = EXCLUDED.account_bank_deposit,
-             account_expense = EXCLUDED.account_expense, updated_at = now()`,
+             account_expense = EXCLUDED.account_expense, datev_from = EXCLUDED.datev_from,
+             updated_at = now()`,
           [haus, b.enabled, anfang, anfangDatum, preis, anteil, rahmen, konten.lodging,
            konten.breakfastFood, konten.breakfastDrinks, konten.cityTax, konten.cashIn,
-           konten.bankDeposit, konten.expense])
+           konten.bankDeposit, konten.expense, datevAb])
         return { saved: true }
       })
     }
