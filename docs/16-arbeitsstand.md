@@ -1029,7 +1029,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 ---
 
-### Aufgabe 16 — Kassenbuch — **Teil 1 erledigt**
+### Aufgabe 16 — Kassenbuch — **Teil 1 und 2 erledigt**
 
 **Anlass.** Sven, 06.10.2026: das Kassenbuch des Adminpanels zieht nach StayGrid um, schrittweise. Dokument 09 ist deshalb in vierter Fassung: das Kassenbuch ist ein Modul, je Haus einzuschalten; Kassenlade, Bon und TSE gibt es weiterhin nicht.
 
@@ -1037,7 +1037,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Was es tut.** Gastbuchung (Übernachtung, Frühstück Speisen und Getränke, Kurtaxe, wie im Adminpanel zerlegt), Kurtaxe, Bareinlage, Bankeinzahlung, Ausgabe, Sonstiges. Cent statt Dezimal, lückenlose Nummer je Haus aus dem Trigger, unveränderlich (Storno als Gegenbuchung, Gastbuchung als Ganzes). Belege als PDF, JPEG oder PNG in der Datenbank, Fotos im Browser auf 1600 px verkleinert. Ein Aufruf je Monat mit laufendem Bestand aus einer Fensterfunktion; der Startsaldo summiert über den Index. Neue Rechte `cashbook:read|write|void|export|import`.
 
-**Offen.** Teil 2: Übernahme aus dem Adminpanel (`cashbook:import`, Spalten liegen schon in `0095`). Teil 3: DATEV-CSV im Format „Kassenbuch online" und PDF-Export, Versand an die DATEV-Uploadmail. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
+**Übernahme (Teil 2).** `apps/api/src/routes/cashbookImport.ts`: Stapel bis 500 Zeilen, idempotent über die ID im Adminpanel, Storno und harte Löschung dort als Gegenbuchung hier, DATEV-Merker als `cashbook_datev_mark` mit Quelle `import`, Probelauf und Monatsgegenprobe. Belege einzeln mit SHA-256. Den Befehl `kassenbuch:push-staygrid` baut das Adminpanel.
+
+**Offen.** Teil 3: DATEV-CSV im Format „Kassenbuch online" und PDF-Export, Versand an die DATEV-Uploadmail. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
 
 ---
 

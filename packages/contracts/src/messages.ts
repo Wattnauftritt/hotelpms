@@ -1510,6 +1510,14 @@ const M = {
     de: 'Die Gastbuchung ergibt keinen Betrag.',
     en: 'The guest entry adds up to nothing.',
     tr: 'Misafir kaydı herhangi bir tutar oluşturmuyor.' },
+  'cashbook.receiptHashMismatch': {
+    de: 'Die Pruefsumme passt nicht zur Datei; sie kam unvollstaendig oder veraendert an.',
+    en: 'The checksum does not match the file; it arrived incomplete or altered.',
+    tr: 'Sağlama toplamı dosyayla eşleşmiyor; dosya eksik ya da değişmiş olarak geldi.' },
+  'cashbook.importIdsIncomplete': {
+    de: 'Der Liste aller Kennungen fehlen Eintraege aus diesem Stapel; abgeglichen wird nur mit einer vollstaendigen Liste.',
+    en: 'The list of all IDs is missing entries from this batch; reconciliation needs a complete list.',
+    tr: 'Tüm kimliklerin listesinde bu partideki kayıtlar eksik; eşleştirme yalnızca tam bir listeyle yapılır.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

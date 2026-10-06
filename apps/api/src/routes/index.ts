@@ -17,6 +17,7 @@ import { termsRoutes } from './terms.js'
 import { taxExemptionRoutes } from './taxExemptions.js'
 import { avsRoutes } from './avs.js'
 import { cashbookRoutes } from './cashbook.js'
+import { cashbookImportRoutes } from './cashbookImport.js'
 import { reportRoutes } from './reports.js'
 import { importRoutes } from './import.js'
 import { legacyImportRoutes } from './legacyImport.js'
@@ -79,6 +80,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   taxExemptionRoutes(app)
   avsRoutes(app)
   cashbookRoutes(app)
+  cashbookImportRoutes(app)
   reportRoutes(app)
   importRoutes(app)
   legacyImportRoutes(app)
