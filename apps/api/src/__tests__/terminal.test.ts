@@ -799,3 +799,54 @@ describe('Meldeschein mit Unterschrift danach', () => {
     expect(r.statusCode).toBe(404)
   })
 })
+
+describe('Wachzeit', () => {
+  const setzen = (deviceRef: string, from: unknown, until: unknown, propertyId = fx.propertyId) =>
+    app.inject({ method: 'PUT', url: `/v1/properties/${propertyId}/terminals/${deviceRef}/awake`,
+      headers: chef, payload: { from, until } })
+
+  /** Die Uhrzeit des Hauses plus `stunden`, als `HH:MM`. */
+  async function hausZeit(stunden: number): Promise<string> {
+    const r = await owner.query<{ t: string }>(
+      `SELECT to_char((now() AT TIME ZONE timezone) + make_interval(hours => $2), 'HH24:MI') AS t
+         FROM property WHERE id = $1`, [fx.propertyId, stunden])
+    return r.rows[0]!.t
+  }
+
+  it('sagt dem Geraet in der Frage nach dem Auftrag, ob es wach bleiben soll', async () => {
+    const t = await terminal()
+    expect(json(await abfragen(t.secret)).awake).toBe(false)
+
+    // Jetzt mitten in der Wachzeit -- auch ueber Mitternacht gerechnet,
+    // denn von "vor einer Stunde" bis "in einer Stunde" kann sie kreuzen.
+    expect((await setzen(t.deviceRef, await hausZeit(-1), await hausZeit(1))).statusCode).toBe(200)
+    expect(json(await abfragen(t.secret)).awake).toBe(true)
+
+    // Jetzt ausserhalb: dieselbe Spanne andersherum.
+    expect((await setzen(t.deviceRef, await hausZeit(1), await hausZeit(-1))).statusCode).toBe(200)
+    expect(json(await abfragen(t.secret)).awake).toBe(false)
+
+    const liste = json(await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/terminals`, headers: chef }))
+    const d = (liste.terminals as Array<{ awakeFrom: string; awakeUntil: string }>)[0]!
+    expect(d.awakeFrom).toBe(await hausZeit(1))
+
+    // Leer heisst: Windows entscheidet.
+    expect((await setzen(t.deviceRef, null, null)).statusCode).toBe(200)
+    expect(json(await abfragen(t.secret)).awake).toBe(false)
+  })
+
+  it('weist halbe, gleiche und falsch geschriebene Zeiten ab', async () => {
+    const t = await terminal()
+    expect((await setzen(t.deviceRef, '08:00', null)).statusCode).toBe(422)
+    expect((await setzen(t.deviceRef, '08:00', '08:00')).statusCode).toBe(422)
+    expect((await setzen(t.deviceRef, '8 Uhr', '18:00')).statusCode).toBe(422)
+    expect((await setzen(t.deviceRef, '24:00', '18:00')).statusCode).toBe(422)
+  })
+
+  it('setzt nur Geraete des eigenen Hauses', async () => {
+    const t = await terminal()
+    const b = await makeProperty(owner, { code: 'B' })
+    expect((await setzen(t.deviceRef, '08:00', '18:00', b.propertyId)).statusCode).toBe(403)
+  })
+})

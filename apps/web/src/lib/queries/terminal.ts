@@ -38,6 +38,9 @@ export interface TerminalGeraet {
   pairedAt: string | null
   lastSeenAt: string | null
   online: boolean
+  /** Wachzeit als `HH:MM` in der Zeit des Hauses, oder beide null. */
+  awakeFrom: string | null
+  awakeUntil: string | null
 }
 
 export interface Kopplungscode {
@@ -137,6 +140,16 @@ export function useKioskKey(propertyId: number) {
   return useMutation({
     mutationFn: (deviceRef: string) => api.post<Kioskschluessel>(
       `/v1/properties/${propertyId}/terminals/${deviceRef}/kiosk-key`),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminals', propertyId] }) }
+  })
+}
+
+export function useTerminalWachzeit(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (w: { deviceRef: string; from: string | null; until: string | null }) =>
+      api.put(`/v1/properties/${propertyId}/terminals/${w.deviceRef}/awake`,
+        { from: w.from, until: w.until }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminals', propertyId] }) }
   })
 }

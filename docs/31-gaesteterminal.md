@@ -213,6 +213,10 @@ Ein Auftrag unterbricht die Diashow sofort; danach baut die Seite sich wie immer
 
 Die Fotos lädt das Haus selbst als Seiten hoch, im Repository liegt keines: die Rechte an einem Hotelfoto hat das Hotel, nicht StayGrid, und das Aussehen ist für jedes Haus dasselbe. Die Touchscreens der ersten Häuser stehen hochkant; dort steht die Uhr oben rechts unter der Sprachwahl, damit der Text unten die ganze Breite hat. Am besten wirken Bilder im Format des Bildschirms (hochkant 1080 × 1920); was nicht ins Format passt, wird mittig beschnitten, nicht verzerrt — von einem Querformatfoto bleibt hochkant etwa das mittlere Drittel. Schrift im Foto selbst (ein eingebranntes Logo, ein Werbebanner) steht dann über dem Titel der Seite — ein Bild ohne Aufdruck ist hier das bessere.
 
+**Wachzeit** (Migration `0102`, Sven, 07.10.2026). Je Gerät unter Einstellungen → Gästeterminals: „Bildschirm wach halten von … bis …", in der Zeit des Hauses, über Mitternacht möglich. Die Frage nach dem Auftrag sagt dem Gerät mit, ob es gerade wach bleiben soll (`awake`), in derselben Anweisung wie bisher. In der Zeit hält die Seite eine Bildschirmsperre (Screen Wake Lock, `lib/wachhalten.ts`) und gibt sie danach frei; dann schaltet Windows den Bildschirm ab, wie es eingestellt ist. Ohne Zeiten bleibt alles wie vorher.
+
+Was der Browser **nicht** kann: einen Bildschirm einschalten, der aus ist. Die Sperre hält nur einen Bildschirm an, der läuft. Morgens macht ihn eine Berührung an oder, wer ihn ohne Berührung an haben will, eine Aufgabe in der Windows-Aufgabenplanung um 8 Uhr, die eine Taste sendet oder den Rechner aus dem Energiesparmodus weckt („Computer zum Ausführen der Aufgabe reaktivieren"). Damit Windows abends überhaupt abschaltet, muss in den Energieeinstellungen des Kiosk-Kontos „Bildschirm ausschalten nach" auf einer Zeit stehen, nicht auf „Nie". Die Sperre gilt nur, solange die Seite sichtbar ist; der Kioskmodus von Edge hält sie das.
+
 ---
 
 ## 8. Bedienfeld der Rezeption

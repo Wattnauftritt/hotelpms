@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useEscape } from '../lib/tasten.js'
 import { useT, useLocale, intlTag, type Locale } from '../lib/i18n/index.js'
 import { useTerminals, useCreateTerminal, useRepairTerminal, useRevokeTerminal,
-         useKioskKey, type Kopplungscode, type Kioskschluessel }
+         useKioskKey, useTerminalWachzeit, type Kopplungscode,
+         type TerminalGeraet, type Kioskschluessel }
   from '../lib/queries/terminal.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { TerminalInhalte } from './TerminalInhalte.tsx'
@@ -182,13 +183,54 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
                                    hover:bg-red-50">
                   {t('terminal.settings.revoke')}
                 </button>
+                <Wachzeit propertyId={propertyId} geraet={d} />
               </li>
             ))}
           </ul>}
+      {liste.data.terminals.length > 0 && (
+        <p className="text-xs text-neutral-500">{t('terminal.settings.awakeHint')}</p>
+      )}
 
       {/* Was die Terminals zeigen duerfen: Seiten, Diashow, Adressen. */}
       <TerminalInhalte propertyId={propertyId} />
     </div>
+  )
+}
+
+/**
+ * Von wann bis wann das Terminal den Bildschirm wach haelt (Migration 0102).
+ * Beide Felder leer heisst: wie bisher, Windows entscheidet.
+ */
+function Wachzeit({ propertyId, geraet }: { propertyId: number; geraet: TerminalGeraet }
+): JSX.Element {
+  const t = useT()
+  const setzen = useTerminalWachzeit(propertyId)
+  const [von, setVon] = useState(geraet.awakeFrom ?? '')
+  const [bis, setBis] = useState(geraet.awakeUntil ?? '')
+  const geaendert = von !== (geraet.awakeFrom ?? '') || bis !== (geraet.awakeUntil ?? '')
+  const feld = 'border border-neutral-300 rounded-sm px-1.5 py-0.5 text-xs tabular-nums'
+  return (
+    <form className="basis-full flex flex-wrap items-center gap-2 text-xs text-neutral-600"
+          onSubmit={e => {
+            e.preventDefault()
+            setzen.mutate({ deviceRef: geraet.deviceRef,
+                            from: von === '' ? null : von, until: bis === '' ? null : bis })
+          }}>
+      <label className="flex items-center gap-1.5">
+        {t('terminal.settings.awake')}
+        <input type="time" value={von} onChange={e => setVon(e.target.value)} className={feld} />
+      </label>
+      <label className="flex items-center gap-1.5">
+        {t('terminal.settings.awakeUntil')}
+        <input type="time" value={bis} onChange={e => setBis(e.target.value)} className={feld} />
+      </label>
+      <button type="submit" disabled={!geaendert || setzen.isPending}
+              className="px-2 py-0.5 rounded-sm border border-neutral-300 hover:bg-neutral-50
+                         disabled:text-neutral-400">
+        {t('terminal.settings.awakeSave')}
+      </button>
+      {setzen.isError && <div className="basis-full"><Fehler error={setzen.error} /></div>}
+    </form>
   )
 }
 

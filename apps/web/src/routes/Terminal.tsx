@@ -9,6 +9,7 @@ import { Fehler } from '../components/Shell.tsx'
 import { GastCheckin } from './GastCheckin.tsx'
 import { Ruhebild, type Folie } from '../components/Ruhebild.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
+import { useBildschirmWach } from '../lib/wachhalten.js'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -90,6 +91,8 @@ type Art = 'registration_fill' | 'registration_sign' | 'terms_sign' | 'content' 
 interface Frage {
   property: string
   isTraining: boolean
+  /** In der Wachzeit des Geraets (Migration 0102)? */
+  awake: boolean
   job: { jobRef: string; kind: Art; state: string } | null
 }
 
@@ -140,6 +143,10 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
   })
   const [haus, setHaus] = useState<{ name: string; uebung: boolean } | null>(null)
   const [ohneNetz, setOhneNetz] = useState(false)
+  // Die Wachzeit rechnet die Schnittstelle in der Zeit des Hauses aus und
+  // sagt sie mit jeder Frage; die Uhr des Geraets zaehlt dafuer nicht.
+  const [wach, setWach] = useState(false)
+  useBildschirmWach(wach)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
 
@@ -215,6 +222,7 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
         if (aus) return
         setOhneNetz(false)
         setHaus({ name: f.property, uebung: f.isTraining })
+        setWach(f.awake)
         const p = phaseRef.current
         if (p.art === 'auftrag') {
           // Die Rezeption hat abgebrochen, oder der Auftrag ist abgelaufen:
