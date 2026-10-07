@@ -320,6 +320,13 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
       }
 
       return tx(req.pool, req, async client => {
+        // Ein abgeschlossener Monat ist abgerechnet (Migration 0111); der
+        // Trigger haelt es fest, hier bekommt die Hausdame den Satz dazu.
+        const zu = await client.query<{ zu: boolean }>(
+          `SELECT staff_month_is_closed($1, $2::date) AS zu`, [propertyId, date])
+        if (zu.rows[0]!.zu) {
+          throw Errors.conflict('worktime.monthClosed', { month: date.slice(0, 7) })
+        }
         // Die Zimmer muessen zu **diesem** Haus gehoeren: die
         // Zeilenrichtlinie trennt Mandanten, nicht Haeuser.
         const zimmerIds = liste.map(a => a.resourceId)

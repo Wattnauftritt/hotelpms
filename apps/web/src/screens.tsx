@@ -6,6 +6,7 @@ import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Reinigungsplan } from './routes/Reinigungsplan.tsx'
 import { Kontrolle } from './routes/Kontrolle.tsx'
 import { Fruehstueck } from './routes/Fruehstueck.tsx'
+import { Arbeitszeit } from './routes/Arbeitszeit.tsx'
 import { Blocks } from './routes/Blocks.tsx'
 import { Setup } from './routes/Setup.tsx'
 import { Reports } from './routes/Reports.tsx'
@@ -203,7 +204,9 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'inspection', nav: 'nav.inspection', permission: 'housekeeping:inspect',
     render: c => <Kontrolle propertyId={c.propertyId} /> },
   { key: 'breakfast', nav: 'nav.breakfast', permission: 'kitchen:breakfast',
-    render: c => <Fruehstueck propertyId={c.propertyId} /> }
+    render: c => <Fruehstueck propertyId={c.propertyId} /> },
+  { key: 'worktime', nav: 'nav.worktime', permission: 'worktime:manage',
+    render: c => <Arbeitszeit propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

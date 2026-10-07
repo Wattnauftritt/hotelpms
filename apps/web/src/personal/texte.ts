@@ -345,6 +345,102 @@ const texte = {
     ru: 'Сегодня оценка: {n} гостей без точного числа, посчитаны по полной вместимости номера.',
     uk: 'Сьогодні оцінка: {n} гостей без точної кількості, пораховані за повною місткістю номера.' },
 
+  'tab.time': {
+    de: 'Zeit',
+    en: 'Time',
+    ru: 'Время',
+    uk: 'Час' },
+  'time.prev': {
+    de: 'Vormonat',
+    en: 'Previous month',
+    ru: 'Предыдущий месяц',
+    uk: 'Попередній місяць' },
+  'time.next': {
+    de: 'Folgemonat',
+    en: 'Next month',
+    ru: 'Следующий месяц',
+    uk: 'Наступний місяць' },
+  'time.total': {
+    de: 'Stunden im Monat ({minutes} Min.)',
+    en: 'Hours this month ({minutes} min)',
+    ru: 'Часов за месяц ({minutes} мин.)',
+    uk: 'Годин за місяць ({minutes} хв)' },
+  'time.closed': {
+    de: 'Monat abgeschlossen',
+    en: 'Month closed',
+    ru: 'Месяц закрыт',
+    uk: 'Місяць закрито' },
+  'time.empty': {
+    de: 'In diesem Monat steht noch nichts.',
+    en: 'Nothing recorded this month yet.',
+    ru: 'В этом месяце пока ничего нет.',
+    uk: 'У цьому місяці ще нічого немає.' },
+  'time.rooms': {
+    de: 'Zimmer gereinigt: {n}',
+    en: 'Rooms cleaned: {n}',
+    ru: 'Убрано номеров: {n}',
+    uk: 'Прибрано номерів: {n}' },
+  'time.add': {
+    de: 'Arbeit eintragen',
+    en: 'Add work',
+    ru: 'Добавить работу',
+    uk: 'Додати роботу' },
+  'time.yesterday': {
+    de: 'Gestern',
+    en: 'Yesterday',
+    ru: 'Вчера',
+    uk: 'Вчора' },
+  'time.extra': {
+    de: 'Zusatzarbeit',
+    en: 'Extra work',
+    ru: 'Доп. работа',
+    uk: 'Додаткова робота' },
+  'time.kitchen': {
+    de: 'Küche',
+    en: 'Kitchen',
+    ru: 'Кухня',
+    uk: 'Кухня' },
+  'time.what': {
+    de: 'Was hast du gemacht?',
+    en: 'What did you do?',
+    ru: 'Что вы делали?',
+    uk: 'Що ви робили?' },
+  'time.minutes': {
+    de: 'Minuten',
+    en: 'Minutes',
+    ru: 'Минуты',
+    uk: 'Хвилини' },
+  'time.start': {
+    de: 'Beginn',
+    en: 'Start',
+    ru: 'Начало',
+    uk: 'Початок' },
+  'time.end': {
+    de: 'Ende',
+    en: 'End',
+    ru: 'Конец',
+    uk: 'Кінець' },
+  'time.hint': {
+    de: 'Eintragen geht für heute und gestern. Für ältere Tage sag der Leitung Bescheid.',
+    en: 'You can add today and yesterday. For older days, tell management.',
+    ru: 'Можно добавить за сегодня и вчера. За более ранние дни сообщите руководству.',
+    uk: 'Можна додати за сьогодні й учора. За раніші дні повідомте керівництво.' },
+  'time.save': {
+    de: 'Speichern',
+    en: 'Save',
+    ru: 'Сохранить',
+    uk: 'Зберегти' },
+  'time.correction': {
+    de: 'Korrektur der Leitung',
+    en: 'Correction by management',
+    ru: 'Исправление руководства',
+    uk: 'Виправлення керівництва' },
+  'time.withdraw': {
+    de: 'Zurückziehen',
+    en: 'Withdraw',
+    ru: 'Отозвать',
+    uk: 'Відкликати' },
+
   'problem.report': {
     de: 'Problem melden',
     en: 'Report a problem',
@@ -432,6 +528,21 @@ const texte = {
    * Katalog kennt aber nur die Sprachen der Rezeption. Fuer die wenigen
    * Schluessel dieser App steht der Satz deshalb hier, in allen vier.
    */
+  'error.worktime.ownDays': {
+    de: 'Eintragen geht für heute und gestern. Für ältere Tage sag der Leitung Bescheid.',
+    en: 'You can add today and yesterday. For older days, tell management.',
+    ru: 'Можно добавить за сегодня и вчера. За более ранние дни сообщите руководству.',
+    uk: 'Можна додати за сьогодні й учора. За раніші дні повідомте керівництво.' },
+  'error.worktime.monthClosed': {
+    de: 'Der Monat ist abgeschlossen. Sag der Leitung Bescheid.',
+    en: 'The month is closed. Please tell management.',
+    ru: 'Месяц закрыт. Сообщите руководству.',
+    uk: 'Місяць закрито. Повідомте керівництво.' },
+  'error.worktime.sameTime': {
+    de: 'Beginn und Ende sind gleich.',
+    en: 'Start and end are the same.',
+    ru: 'Начало и конец совпадают.',
+    uk: 'Початок і кінець однакові.' },
   'error.auth.badCredentials': {
     de: 'Benutzername oder Kennwort stimmt nicht.',
     en: 'Username or password is incorrect.',

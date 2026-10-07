@@ -47,7 +47,7 @@ function checkRange(from: string, to: string): number {
 }
 
 /** CSV nach RFC 4180. Semikolon, weil deutsche Tabellenkalkulationen das erwarten. */
-function csv(rows: ReadonlyArray<ReadonlyArray<string | number | null>>): string {
+export function csv(rows: ReadonlyArray<ReadonlyArray<string | number | null>>): string {
   const feld = (v: string | number | null): string => {
     if (v === null) return ''
     const s = String(v)

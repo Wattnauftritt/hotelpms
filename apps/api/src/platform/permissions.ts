@@ -56,7 +56,10 @@ export const PERMISSIONS = [
   'staff:app',
   // Kueche (0110): die Fruehstueckszahl, und nichts sonst. Kueche, Hausdame
   // und Rezeption; report:operational zeigte der Kueche viel zu viel.
-  'kitchen:breakfast'
+  'kitchen:breakfast',
+  // Arbeitszeit (0111): alle Kraefte sehen, korrigieren, abschliessen,
+  // ausgeben. Leitung, nicht die Hausdame -- Arbeitszeit ist Personaldatum.
+  'worktime:manage'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]
