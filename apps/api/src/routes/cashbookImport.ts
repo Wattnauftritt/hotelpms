@@ -383,41 +383,47 @@ export function cashbookImportRoutes(app: FastifyInstance): void {
         }
 
         /*
-         * Zwei Anweisungen: erst die Zeilen ohne Gruppe (und die, deren
-         * erste Zeile es nicht gibt), dann die Mitglieder, die ihre erste
-         * Zeile ueber die ID im Umsystem finden. Eine unveraenderliche Zeile
-         * muss ihre Gruppe beim Anlegen kennen.
+         * Eine Anweisung, in der Reihenfolge des Adminpanels. Die Nummer
+         * vergibt der Trigger beim Anlegen; legte man erst die Zeilen ohne
+         * Gruppe und danach die Mitglieder an, bekaemen Fruehstueck und
+         * Kurtaxe eines Gastes Nummern weit hinter seiner Uebernachtung,
+         * und der Monat zerriss jede Gastbuchung (Sven, 07.10.2026).
+         *
+         * Eine unveraenderliche Zeile muss ihre Gruppe beim Anlegen kennen,
+         * und ein Mitglied sieht seine erste Zeile in derselben Anweisung
+         * nicht. Deshalb holt die Uebernahme die IDs vorher aus der Folge
+         * und setzt sie selbst; der Fremdschluessel wird erst am Ende der
+         * Anweisung geprueft.
          */
-        const kopfDa = (z: Eintrag) => z.groupId !== null
-          && (imStapel.has(z.groupId) || da.has(String(z.groupId)))
-        const anlegen = async (zeilen: Eintrag[], mitGruppe: boolean): Promise<void> => {
-          if (zeilen.length === 0) return
+        if (neu.length > 0) {
+          const vergeben = await client.query<{ id: string }>(
+            `SELECT nextval(pg_get_serial_sequence('cashbook_entry', 'id'))::text AS id
+               FROM generate_series(1, $1)`, [neu.length])
+          const neueId = new Map(neu.map((z, i) => [z.id, vergeben.rows[i]!.id]))
+          const gruppe = (z: Eintrag): string | null => z.groupId === null ? null
+            : neueId.get(z.groupId) ?? da.get(String(z.groupId))?.id ?? null
           await client.query(
-            `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
+            `INSERT INTO cashbook_entry (id, property_id, business_date, kind, amount_cent, tax_rate_bp,
                 text, guest_name, legacy_split, external_system, external_reference,
                 external_number, created_by_name, origin_created_at, origin_reservation_ref, group_id)
-             SELECT $1, z.d, z.k, z.a, z.t, z.tx, z.g, z.ls, $2, z.ref, 'KB-' || z.ref, z.wer, z.am, z.res,
-                    CASE WHEN $3 THEN (SELECT h.id FROM cashbook_entry h
-                                        WHERE h.property_id = $1 AND h.external_system = $2
-                                          AND h.reverses_id IS NULL
-                                          AND h.external_reference = z.grp) END
-               FROM unnest($4::text[], $5::date[], $6::text[], $7::bigint[], $8::int[], $9::text[],
-                           $10::text[], $11::jsonb[], $12::text[], $13::timestamptz[], $14::text[], $15::text[])
-                    WITH ORDINALITY AS z(ref, d, k, a, t, tx, g, ls, wer, am, grp, res, n)
+             OVERRIDING SYSTEM VALUE
+             SELECT z.id, $1, z.d, z.k, z.a, z.t, z.tx, z.g, z.ls, $2, z.ref, 'KB-' || z.ref, z.wer,
+                    z.am, z.res, z.grp
+               FROM unnest($3::bigint[], $4::text[], $5::date[], $6::text[], $7::bigint[], $8::int[],
+                           $9::text[], $10::text[], $11::jsonb[], $12::text[], $13::timestamptz[],
+                           $14::bigint[], $15::text[])
+                    WITH ORDINALITY AS z(id, ref, d, k, a, t, tx, g, ls, wer, am, grp, res, n)
               ORDER BY z.n`,
-            [haus, sys, mitGruppe, zeilen.map(z => String(z.id)), zeilen.map(z => z.date),
-             zeilen.map(z => z.kind), zeilen.map(z => z.deltaCent), zeilen.map(z => z.taxRateBp),
-             zeilen.map(z => z.text), zeilen.map(z => z.guestName),
-             zeilen.map(z => z.guest === null ? null : JSON.stringify({
+            [haus, sys, neu.map(z => neueId.get(z.id)), neu.map(z => String(z.id)),
+             neu.map(z => z.date), neu.map(z => z.kind), neu.map(z => z.deltaCent),
+             neu.map(z => z.taxRateBp), neu.map(z => z.text), neu.map(z => z.guestName),
+             neu.map(z => z.guest === null ? null : JSON.stringify({
                lodging: z.guest.lodgingGrossCent, breakfastFood: z.guest.breakfastFoodGrossCent,
                breakfastDrinks: z.guest.breakfastDrinksGrossCent,
                totalCent: z.guest.totalCent, breakfasts: z.guest.breakfasts })),
-             zeilen.map(z => z.createdBy), zeilen.map(z => z.createdAt),
-             zeilen.map(z => z.groupId === null ? null : String(z.groupId)),
-             zeilen.map(z => z.reservationRef)])
+             neu.map(z => z.createdBy), neu.map(z => z.createdAt), neu.map(gruppe),
+             neu.map(z => z.reservationRef)])
         }
-        await anlegen(neu.filter(z => !kopfDa(z)), false)
-        await anlegen(neu.filter(kopfDa), true)
 
         // Storno im Umsystem: Gegenbuchung je Zeile, wie dort je Zeile
         // markiert -- die Tabelle des Adminpanels storniert einzeln.

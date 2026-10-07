@@ -261,6 +261,26 @@ export const kassenbuch = {
     de: 'Grund',
     en: 'Reason',
     tr: 'Neden' },
+  'cash.group.lines': {
+    de: '+{n} Zeilen',
+    en: '+{n} lines',
+    tr: '+{n} satır' },
+  'cash.group.open': {
+    de: 'Gruppe aufklappen',
+    en: 'Expand group',
+    tr: 'Grubu aç' },
+  'cash.group.close': {
+    de: 'Gruppe zuklappen',
+    en: 'Collapse group',
+    tr: 'Grubu kapat' },
+  'cash.group.openAll': {
+    de: 'Alle aufklappen',
+    en: 'Expand all',
+    tr: 'Tümünü aç' },
+  'cash.group.closeAll': {
+    de: 'Alle zuklappen',
+    en: 'Collapse all',
+    tr: 'Tümünü kapat' },
   'cash.reverses': {
     de: 'Storno zu {n}',
     en: 'Reversal of {n}',
