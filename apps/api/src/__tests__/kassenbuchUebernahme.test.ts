@@ -204,6 +204,18 @@ describe('Kassenbuch aus dem Adminpanel uebernehmen', () => {
     expect(nr.rows[0].n).toBe(1)
   })
 
+  it('nimmt im Probelauf die ganze Kasse in einem Stapel, im echten Lauf nicht', async () => {
+    // Ueber mehrere Stapel behielte der Probelauf nichts, und die Gegenprobe
+    // im letzten saehe weder die frueheren Zeilen noch den Anfangsbestand.
+    const viele = Array.from({ length: 600 }, (_, i) => ({ ...eintraege()[6], id: 1000 + i,
+                                                          groupId: null, amountCent: 100 }))
+    expect((await schieben({ entries: viele })).statusCode).toBe(422)
+    const r = await schieben({ dryRun: true, settings: stand, entries: viele,
+      check: [{ month: '2026-09', count: 600, sumCent: 60_000, closingBalanceCent: 80_000 }] })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(json(r).comparison[0]).toMatchObject({ month: '2026-09', equal: true })
+  })
+
   it('stellt die Monatswerte des Adminpanels neben die eigenen', async () => {
     const summe = 16_700 + 1_540 + 660 + 840 - 5_000 - 1_290 + 3_000 + 12_000
     const r = await schieben({ settings: stand, entries: eintraege(), check: [
