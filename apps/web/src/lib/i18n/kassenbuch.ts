@@ -241,6 +241,14 @@ export const kassenbuch = {
     de: 'Beleg {n}',
     en: 'Receipt {n}',
     tr: 'Fiş {n}' },
+  'cash.receipt.none': {
+    de: 'Kein Beleg.',
+    en: 'No receipt.',
+    tr: 'Fiş yok.' },
+  'cash.entry.title': {
+    de: 'Buchung {n}',
+    en: 'Entry {n}',
+    tr: 'Kayıt {n}' },
   'cash.receipt.add': {
     de: '+ Beleg',
     en: '+ Receipt',

@@ -23,6 +23,7 @@ import { NachBreite } from './components/mobil/NachBreite.tsx'
 import { MobilHeute } from './components/mobil/MobilHeute.tsx'
 import { MobilPlan } from './components/mobil/MobilPlan.tsx'
 import { MobilZimmer } from './components/mobil/MobilZimmer.tsx'
+import { MobilKasse } from './components/mobil/MobilKasse.tsx'
 
 /**
  * Das Verzeichnis der Bildschirme.
@@ -171,8 +172,12 @@ export const SCREENS: readonly ScreenDefinition[] = [
     render: c => <Meldescheine propertyId={c.propertyId} /> },
   // Kassenbuch (Dokument 09, 0095). Ob es eingeschaltet ist, zeigt der
   // Bildschirm selbst; wer es einschalten darf, braucht ihn auch ausgeschaltet.
+  // Am Telefon eine eigene Fassung: dort wird vor allem ein Bon fotografiert.
   { key: 'cashbook', nav: 'nav.cashbook', permission: 'cashbook:read',
-    render: c => <Kassenbuch propertyId={c.propertyId} permissions={c.permissions} /> },
+    render: c => <NachBreite schmal={() => <MobilKasse propertyId={c.propertyId}
+                                                       permissions={c.permissions} />}
+                             breit={() => <Kassenbuch propertyId={c.propertyId}
+                                                      permissions={c.permissions} />} /> },
   // Gaesteterminals: Seiten und Adressen ohne Reservierung zeigen (Dokument 31).
   { key: 'terminal', group: 'settings', nav: 'nav.terminal', permission: 'reservation:checkin',
     render: c => <TerminalPult propertyId={c.propertyId} /> },
