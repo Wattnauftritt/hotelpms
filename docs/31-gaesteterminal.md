@@ -2,7 +2,7 @@
 
 Ein Touchscreen an der Rezeption, an dem ein Gast den Meldeschein ausfüllt oder unterschreibt, einer Hausbedingung zustimmt oder eine Seite des Hauses liest. Die Rezeption klickt am Rezeptionsrechner, und am Touchscreen öffnet sich, was zu tun ist; ohne Auftrag läuft eine Diashow. Dazu die kleine Lücke, die beim Bauen mitgefallen ist: die Hausnotiz am Gastprofil.
 
-Stand: 2. Oktober 2026. Migrationen `0070`, `0071`, `0072`, `0073` — geschrieben als `0062` bis `0067` und umbenannt, weil `0068` (dauerhafter Zahlungslink) zuerst auf `main` kam: der Migrator wendet nach Namen an und übernimmt, was fehlt, und als `0064` hätte die Fassung von `audit_trigger()` auf einer frischen Datenbank vor `0068` gelegen, auf einer bestehenden danach. Geprüft beides: frischer Aufbau und Einspielen auf einen Stand bis `0068` ergeben dasselbe Schema. Code: `apps/api/src/routes/terminal.ts`, `apps/api/src/routes/terminalInhalte.ts`, `apps/api/src/platform/terminalArten.ts`, `apps/web/src/routes/Terminal.tsx`, `apps/web/src/routes/TerminalPult.tsx`, `apps/web/src/components/AmTerminal.tsx`, `apps/web/src/components/Gaesteterminals.tsx`, `apps/web/src/components/TerminalInhalte.tsx`.
+Stand: 2. Oktober 2026, Mitnutzung durch ein zweites Haus 7. Oktober 2026 (§9). Migrationen `0070`, `0071`, `0072`, `0073`, `0102`, `0103` — geschrieben als `0062` bis `0067` und umbenannt, weil `0068` (dauerhafter Zahlungslink) zuerst auf `main` kam: der Migrator wendet nach Namen an und übernimmt, was fehlt, und als `0064` hätte die Fassung von `audit_trigger()` auf einer frischen Datenbank vor `0068` gelegen, auf einer bestehenden danach. Geprüft beides: frischer Aufbau und Einspielen auf einen Stand bis `0068` ergeben dasselbe Schema. Code: `apps/api/src/routes/terminal.ts`, `apps/api/src/routes/terminalInhalte.ts`, `apps/api/src/platform/terminalArten.ts`, `apps/web/src/routes/Terminal.tsx`, `apps/web/src/routes/TerminalPult.tsx`, `apps/web/src/components/AmTerminal.tsx`, `apps/web/src/components/Gaesteterminals.tsx`, `apps/web/src/components/TerminalInhalte.tsx`.
 
 ---
 
@@ -229,13 +229,29 @@ Seiten und Adressen gehören zu keinem Gast. Sie aus dem Seitenfenster einer Res
 
 ---
 
-## 9. Übungshaus
+## 9. Zwei Häuser, eine Rezeption
+
+Sven, 07.10.2026: Hotel und Gästehaus sind zwei Häuser, werden aber an derselben Rezeption mit einem Touchscreen geführt. Ein Terminal gehört genau einem Haus (§2), und das Gästehaus konnte deshalb keinen Meldeschein an das Terminal des Hotels schicken. Migration `0103`.
+
+**Ein Haus ist Master.** Es gibt für ein gekoppeltes Gerät einen **Freigabecode** aus (Einstellungen → Gästeterminals → „Für anderes Haus freigeben", `POST /v1/properties/:id/terminals/:ref/share-code`). Das andere Haus trägt ihn in **seinen** Einstellungen ein („Terminal eines anderen Hauses mitnutzen", `POST /v1/properties/:id/terminal-shares`). Danach steht das Gerät dort an der Reservierung und im Bedienfeld zur Wahl, mit dem Zusatz „mitgenutzt". Seiten, Diashow und Wachzeit kommen weiter nur vom Master; Name, Kopplung, Kiosk-Adresse und Widerruf bleiben seine Sache — die Zeilenrichtlinie lässt das andere Haus das Gerät nur **lesen** (`POLICY shared … FOR SELECT`).
+
+- **Der Code** hat sechzehn Zeichen (`XXXX-XXXX-XXXX-XXXX`), gilt einen Tag und genau einmal, liegt nur als SHA-256 vor (in `audit_redaction`) und fällt beim Einlösen. Ein neuer Code für dasselbe Gerät macht einen noch nicht eingelösten alten wertlos. Das Einlösen prüft ein Geheimnis hinter einer Sitzung und zählt seine Fehlversuche deshalb selbst (`limiters.kopplung`, je Benutzer) — die allgemeine Grenze erreicht eine angemeldete Anfrage nicht.
+- **Nur im selben Account.** Ein Code aus einem anderen Mandanten und einer für das eigene Haus werden abgewiesen (`terminal_share_redeem`). Ein Gerät, das Gastdaten eines fremden Mandanten zeigen könnte, wäre das Gegenteil der Mandantentrennung.
+- **Gastdaten bleiben im Haus.** Ein Auftrag des Gästehauses trägt dessen `property_id`; jede Art liest ihre Nutzlast nur aus dem Haus des Auftrags, unterschrieben wird nur in diesem Haus (§5). Das Gästehaus kann nur schicken, was es selbst angelegt hat — eine Seite des Hotels ist für seinen Auftrag nicht gefunden. Das Bedienfeld jedes Hauses zeigt nur dessen eigene Aufträge; dass das Gerät gerade belegt ist, sieht das andere Haus trotzdem (`terminal_device_busy`, nur ja oder nein).
+- **Das Principal des Geräts** nimmt die Häuser mit gültiger Freigabe in den Kontext, in derselben Anweisung wie bisher (die Frage bleibt bei zwei). Das eigene Haus steht zuerst; `geraetVon` liest es als Master. Am Touchscreen steht, solange ein Auftrag offen ist, der Name des Hauses, das schickt, und bei einem Übungshaus „Übungshaus" — ohne Auftrag wieder der des Masters.
+- **Widerruf von beiden Seiten** (`DELETE /v1/properties/:id/terminal-shares/:ref`). Ein offener Auftrag des mitnutzenden Hauses fällt mit, und sein Online-Check-in-Link auch; das Gerät sieht das Haus ab seiner nächsten Anfrage nicht mehr. Wird das Gerät selbst widerrufen, fallen alle Freigaben und die offenen Aufträge **aller** Häuser.
+
+**Warum Funktionen statt Zeilenrichtlinie.** Ein Gerät trägt Aufträge mehrerer Häuser, die Zeilenrichtlinie zeigt jedem nur die eigenen. Ohne `terminal_device_jobs_end` ließe der Widerruf durch den Master den offenen Auftrag des Gästehauses stehen — samt Link, der den Meldeschein eines Gastes öffnet —, und ein abgelaufener, für das Gästehaus unsichtbarer Auftrag des Hotels sperrte über den Teilindex jeden neuen. Die Funktionen prüfen selbst, dass der Aufrufer das Gerät besitzt oder mitnutzt, und tun nichts darüber hinaus. Tests in `terminal.test.ts` („Mitnutzung durch ein zweites Haus").
+
+---
+
+## 10. Übungshaus
 
 Ein Übungshaus darf Terminals haben — es ist zum Üben da. Nichts davon wirkt nach draußen: das Terminal schreibt nur in die eigene Datenbank (Meldeschein, Zustimmung, Auftrag), es exportiert nichts und verschickt keine Post; auch der Check-in-Link des Meldeformulars geht nicht per Mail, sondern nur an das Gerät. Die Seite zeigt im Übungshaus oben „Übungshaus", damit niemand an einem echten Touchscreen übt, ohne es zu merken.
 
 ---
 
-## 10. Hausnotiz am Gastprofil
+## 11. Hausnotiz am Gastprofil
 
 `POST /v1/guests/:ref/notes` gab es, eine Maske nicht — und das Profil zeigte die Notizen gar nicht, nur die Auskunft nach Art. 15. Jetzt:
 
@@ -247,7 +263,7 @@ Ein Übungshaus darf Terminals haben — es ist zum Üben da. Nichts davon wirkt
 
 ---
 
-## 11. Was mitbehoben wurde
+## 12. Was mitbehoben wurde
 
 | Befund | Wo |
 |---|---|
@@ -262,7 +278,7 @@ Ein Übungshaus darf Terminals haben — es ist zum Üben da. Nichts davon wirkt
 
 ---
 
-## 12. Offen
+## 13. Offen
 
 - **Kioskmodus und Rechner an der Rezeption** sind Einrichtung beim Kunden. Eine kurze Anleitung gehört in die Einweisung, nicht in `ops/`.
 - **Caddy und `/terminal`.** `ops/caddy/Caddyfile` setzt `Cache-Control: no-store` mit `header /index.html …`. Ob das für Pfade greift, die erst `try_files` auf `index.html` umschreibt (`/`, `/terminal`), hängt an der Reihenfolge der Direktiven und ist an einer echten Maschine nicht nachgerechnet. Die Terminalseite verlässt sich darauf nicht (`pageshow`, Neuaufbau); für die Rezeptionsoberfläche gehört es geprüft.

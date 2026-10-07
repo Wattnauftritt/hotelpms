@@ -204,7 +204,7 @@ export function terminalInhaltRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { propertyId, imageRef } = req.params as { propertyId: string; imageRef: string }
       const bild = await tx(req.pool, req, client =>
-        bildLesen(client, imageRef, Number(propertyId)))
+        bildLesen(client, imageRef, [Number(propertyId)]))
       return bildSenden(reply, bild)
     }
   })

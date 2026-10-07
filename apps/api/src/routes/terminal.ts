@@ -60,6 +60,19 @@ const GERAETE_JE_HAUS = 10
 const NAME_MAX = 60
 /** Hoechstzahl der Seiten in der Diashow des Ruhezustands. */
 const DIASHOW_MAX = 20
+/**
+ * Wie lange ein Freigabecode gilt (Migration 0103). Er wird am Rechner des
+ * Masters abgelesen und in den Einstellungen des anderen Hauses
+ * eingetragen, meist von derselben Person an derselben Rezeption -- ein
+ * Tag laesst Zeit dafuer, ohne dass ein vergessener Code liegen bleibt.
+ */
+const FREIGABE_STUNDEN = 24
+/**
+ * Laenger als der Kopplungscode: er oeffnet ein Geraet fuer ein zweites
+ * Haus, und eingetippt wird er an einem Rechner mit Tastatur, nicht am
+ * Touchscreen. Sechzehn Zeichen aus dreissig, rund 4 · 10^23.
+ */
+const FREIGABE_LAENGE = 16
 
 /**
  * Das Alphabet der Kopplungscodes: dasselbe wie bei den oeffentlichen
@@ -70,9 +83,9 @@ const DIASHOW_MAX = 20
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTVWXYZ'
 const CODE_LAENGE = 8
 
-function neuerCode(): string {
+function neuerCode(laenge = CODE_LAENGE): string {
   let c = ''
-  for (let i = 0; i < CODE_LAENGE; i++) c += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]
+  for (let i = 0; i < laenge; i++) c += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]
   return c
 }
 
@@ -85,8 +98,9 @@ export function codeNormalisieren(eingabe: string): string {
   return eingabe.toUpperCase().replace(/[^0-9A-Z]/g, '')
 }
 
+/** In Vierergruppen: `ABCD-EFGH`, beim Freigabecode `ABCD-EFGH-JKLM-NPQR`. */
 function codeAnzeigen(code: string): string {
-  return `${code.slice(0, 4)}-${code.slice(4)}`
+  return code.match(/.{1,4}/g)!.join('-')
 }
 
 // ------------------------------------------------------------- Hilfen
@@ -270,6 +284,16 @@ async function geraetAnmelden(req: FastifyRequest, reply: FastifyReply,
 }
 
 /**
+ * Die Geraete, an die ein Haus schicken kann: die eigenen und die, die es
+ * ueber eine gueltige Freigabe mitnutzt (Migration 0103). `$1` ist das Haus.
+ * Die Zeilenrichtlinie liesse jedes Haus des Aufrufers durch; die
+ * Bedingung nennt deshalb genau dieses.
+ */
+const GERAET_DES_HAUSES = `d.revoked_at IS NULL AND (d.property_id = $1 OR EXISTS (
+    SELECT 1 FROM terminal_share sh
+     WHERE sh.device_id = d.id AND sh.guest_property_id = $1 AND sh.revoked_at IS NULL))`
+
+/**
  * Die Form eines Geraetegeheimnisses: 32 Byte in base64url. Was anders
  * aussieht, braucht keinen Weg in die Datenbank.
  */
@@ -446,12 +470,13 @@ export function terminalRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL
            RETURNING id`, [deviceRef, Number(propertyId), principal.userId])
         if (rowCount === 0) throw Errors.notFound('res.terminal')
-        const offen = await client.query<{ id: string }>(
-          `UPDATE terminal_job
-              SET state = 'canceled', canceled_by = 'revoked', finished_at = now()
-            WHERE device_id = $1 AND state IN ('pending','opened')
-           RETURNING id`, [rows[0]!.id])
-        await zieheLinksZurueck(client, offen.rows.map(r => Number(r.id)))
+        // Auch die offenen Auftraege der Haeuser, die das Geraet mitnutzen,
+        // und deren Links -- die sieht der Master nicht (Migration 0103).
+        await client.query(`SELECT terminal_device_jobs_end($1, NULL, false)`, [rows[0]!.id])
+        await client.query(
+          `UPDATE terminal_share
+              SET revoked_at = now(), revoked_by = $2, token_hash = NULL, token_expires_at = NULL
+            WHERE device_id = $1 AND revoked_at IS NULL`, [rows[0]!.id, principal.userId])
         return { deviceRef, revoked: true }
       })
     }
@@ -487,6 +512,179 @@ export function terminalRoutes(app: FastifyInstance): void {
     }
   })
 
+  // ------------------------------------------------ Mitnutzung (Migration 0103)
+
+  /*
+   * Ein Haus ist Master eines Terminals und gibt fuer das Geraet einen
+   * Freigabecode aus. Wer ihn in den Einstellungen eines anderen Hauses
+   * desselben Accounts eintraegt, schickt von dort Auftraege an dasselbe
+   * Geraet. Seiten, Diashow und Wachzeit bleiben beim Master; das andere
+   * Haus schickt nur, was es selbst angelegt hat, und nur Gastdaten aus
+   * dem eigenen Haus. Widerrufen koennen beide Seiten.
+   */
+
+  /** Die Freigaben eines Hauses: was es verleiht und was es mitnutzt. */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/terminal-shares',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteterminal: Freigaben an andere Haeuser und von anderen Haeusern',
+    handler: async (req) => {
+      const haus = Number((req.params as { propertyId: string }).propertyId)
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query<{
+          share_ref: string; device_ref: string; device_name: string; role: 'owner' | 'guest'
+          owner_property: string; guest_property: string; redeemed_at: string }>(
+          `SELECT share_ref, device_ref, device_name, role, owner_property, guest_property,
+                  to_char(redeemed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                    AS redeemed_at
+             FROM terminal_share_list($1)`, [haus])
+        const zeile = (r: typeof rows[number]) => ({
+          shareRef: r.share_ref, deviceRef: r.device_ref, deviceName: r.device_name,
+          ownerProperty: r.owner_property, guestProperty: r.guest_property,
+          since: r.redeemed_at })
+        return {
+          lent: rows.filter(r => r.role === 'owner').map(zeile),
+          borrowed: rows.filter(r => r.role === 'guest').map(zeile)
+        }
+      })
+    }
+  })
+
+  /**
+   * Freigabecode fuer ein Geraet ausgeben -- nur das Haus, dem es gehoert.
+   *
+   * Der Code steht genau einmal in der Antwort, gilt einen Tag und genau
+   * einmal. Ein neuer Code fuer dasselbe Geraet macht einen noch nicht
+   * eingeloesten alten wertlos: nur der zuletzt ausgegebene gilt, wie beim
+   * Neukoppeln.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/terminals/:deviceRef/share-code',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteterminal: Freigabecode fuer ein anderes Haus ausgeben',
+    handler: async (req, reply) => {
+      const { propertyId, deviceRef } = req.params as { propertyId: string; deviceRef: string }
+      const principal = req.principal as Principal
+      const code = neuerCode(FREIGABE_LAENGE)
+      return tx(req.pool, req, async client => {
+        const g = await client.query<{ id: string; name: string }>(
+          `SELECT id, name FROM terminal_device
+            WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL`,
+          [deviceRef, Number(propertyId)])
+        if (g.rowCount === 0) throw Errors.notFound('res.terminal')
+        const deviceId = Number(g.rows[0]!.id)
+        await client.query(
+          `UPDATE terminal_share
+              SET revoked_at = now(), revoked_by = $2, token_hash = NULL, token_expires_at = NULL
+            WHERE device_id = $1 AND redeemed_at IS NULL AND revoked_at IS NULL`,
+          [deviceId, principal.userId])
+        const { rows } = await client.query<{ ablauf: string }>(
+          `INSERT INTO terminal_share (device_id, property_id, token_hash, token_expires_at,
+                                       created_by)
+           VALUES ($1, $2, $3, now() + make_interval(hours => $4), $5)
+           RETURNING to_char(token_expires_at AT TIME ZONE 'UTC',
+                             'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ablauf`,
+          [deviceId, Number(propertyId), hashToken(code), FREIGABE_STUNDEN, principal.userId])
+        reply.status(201)
+        return { deviceRef, name: g.rows[0]!.name,
+                 shareCode: codeAnzeigen(code), shareCodeExpiresAt: rows[0]!.ablauf }
+      })
+    }
+  })
+
+  /**
+   * Einen Freigabecode einloesen: dieses Haus nutzt das Geraet ab jetzt mit.
+   *
+   * Prueft ein Geheimnis hinter einer Sitzung und zaehlt seine
+   * Fehlversuche deshalb selbst (CLAUDE.md, Ratenbegrenzung): die
+   * allgemeine Grenze erreicht eine angemeldete Anfrage nie. Gezaehlt je
+   * Benutzer auf demselben Zaehler wie die Kopplung.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/terminal-shares',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteterminal eines anderen Hauses mitnutzen (Freigabecode einloesen)',
+    handler: async (req, reply) => {
+      const haus = Number((req.params as { propertyId: string }).propertyId)
+      const principal = req.principal as Principal
+      const zaehler = `freigabe:${principal.userId ?? principal.clientKey}`
+      if (limiters.kopplung.erschoepft(zaehler)) {
+        throw tooManyRequests(Math.ceil(KOPPLUNG_FEHLVERSUCHE.windowMs / 1000))
+      }
+      const eingabe = (req.body as { code?: unknown } | undefined)?.code
+      const code = typeof eingabe === 'string' ? codeNormalisieren(eingabe) : ''
+      if (code.length !== FREIGABE_LAENGE) {
+        limiters.kopplung.check(zaehler)
+        throw Errors.unprocessable('terminal.shareCodeInvalid')
+      }
+      const r = await tx(req.pool, req, async client => {
+        try {
+          return await client.query<{ share_ref: string; device_ref: string
+                                      device_name: string; property_name: string }>(
+            `SELECT * FROM terminal_share_redeem($1, $2, $3)`,
+            [hashToken(code), haus, principal.userId])
+        } catch (e) {
+          // Der Teilindex `terminal_share_once`: dieses Haus nutzt das
+          // Geraet schon.
+          if ((e as { code?: string }).code === '23505') {
+            throw Errors.conflict('terminal.alreadyShared')
+          }
+          throw e
+        }
+      })
+      if (r.rowCount === 0) {
+        limiters.kopplung.check(zaehler)
+        throw Errors.unprocessable('terminal.shareCodeInvalid')
+      }
+      const z = r.rows[0]!
+      reply.status(201)
+      return { shareRef: z.share_ref, deviceRef: z.device_ref, deviceName: z.device_name,
+               ownerProperty: z.property_name }
+    }
+  })
+
+  /**
+   * Eine Freigabe beenden -- vom Master wie vom Haus, das mitnutzt.
+   *
+   * Ein offener Auftrag des mitnutzenden Hauses faellt mit, und sein
+   * Online-Check-in-Link auch. Das Geraet sieht die Daten dieses Hauses ab
+   * seiner naechsten Anfrage nicht mehr: sein Principal wird bei jeder
+   * Anfrage neu aufgeloest, und die Freigabe gehoert dann nicht mehr dazu.
+   */
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/terminal-shares/:shareRef',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteterminal: Freigabe beenden',
+    handler: async (req) => {
+      const { propertyId, shareRef } = req.params as { propertyId: string; shareRef: string }
+      const haus = Number(propertyId)
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const f = await client.query<{ id: string; device_id: string; guest_property_id: string }>(
+          `SELECT id, device_id, guest_property_id FROM terminal_share
+            WHERE public_ref = $1 AND revoked_at IS NULL AND redeemed_at IS NOT NULL
+              AND (property_id = $2 OR guest_property_id = $2)
+            FOR UPDATE`, [shareRef, haus])
+        if (f.rowCount === 0) throw Errors.notFound('res.terminalShare')
+        const z = f.rows[0]!
+        await client.query(`SELECT terminal_device_jobs_end($1, $2, false)`,
+          [Number(z.device_id), Number(z.guest_property_id)])
+        await client.query(
+          `UPDATE terminal_share SET revoked_at = now(), revoked_by = $2 WHERE id = $1`,
+          [Number(z.id), principal.userId])
+        return { shareRef, revoked: true }
+      })
+    }
+  })
+
   // ------------------------------------------------ Rezeption
 
   /**
@@ -505,17 +703,18 @@ export function terminalRoutes(app: FastifyInstance): void {
       const { reservationRef } = req.params as { reservationRef: string }
       return tx(req.pool, req, async client => {
         const lage = await lageZurReservierung(req, client, reservationRef)
+        // Belegt ist ein Geraet auch durch den Auftrag eines anderen Hauses,
+        // das es mitnutzt; den sieht dieses Haus nicht, nur dass es belegt
+        // ist (`terminal_device_busy`).
         const geraete = await client.query(
-          `SELECT d.public_ref AS "deviceRef", d.name,
+          `SELECT d.public_ref AS "deviceRef", d.name, d.property_id <> $1 AS shared,
                   coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
                     AS online,
-                  EXISTS (SELECT 1 FROM terminal_job j
-                           WHERE j.device_id = d.id AND j.state IN ('pending','opened')
-                             AND j.expires_at > now()) AS busy
+                  terminal_device_busy(d.id) AS busy
              FROM terminal_device d
              LEFT JOIN terminal_device_seen s ON s.device_id = d.id
-            WHERE d.property_id = $1 AND d.revoked_at IS NULL AND d.paired_at IS NOT NULL
-            ORDER BY d.name, d.id`, [lage.propertyId, ONLINE_SEKUNDEN])
+            WHERE ${GERAET_DES_HAUSES} AND d.paired_at IS NOT NULL
+            ORDER BY d.property_id <> $1, d.name, d.id`, [lage.propertyId, ONLINE_SEKUNDEN])
         const auftrag = await client.query(
           `SELECT ${AUFTRAG_FUER_REZEPTION}
              FROM terminal_job j
@@ -560,9 +759,10 @@ export function terminalRoutes(app: FastifyInstance): void {
          * Grenze. Es sind hoechstens zehn Terminals je Haus.
          */
         const geraete = await client.query(
-          `SELECT d.public_ref AS "deviceRef", d.name,
+          `SELECT d.public_ref AS "deviceRef", d.name, d.property_id <> $1 AS shared,
                   coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
                     AS online,
+                  terminal_device_busy(d.id) AS busy,
                   CASE WHEN a."jobRef" IS NULL THEN NULL ELSE to_jsonb(a) END AS job
              FROM terminal_device d
              LEFT JOIN terminal_device_seen s ON s.device_id = d.id
@@ -570,14 +770,15 @@ export function terminalRoutes(app: FastifyInstance): void {
                     SELECT ${AUFTRAG_FUER_REZEPTION}
                       FROM terminal_job j
                       ${AUFTRAG_LABEL_JOINS}
-                     WHERE j.device_id = d.id
+                     WHERE j.device_id = d.id AND j.property_id = $1
                        AND (j.finished_at > now() - make_interval(mins => $3)
                             OR (j.finished_at IS NULL
                                 AND j.expires_at > now() - make_interval(mins => $3)))
                      ORDER BY j.created_at DESC, j.id DESC
                      LIMIT 1) a ON true
-            WHERE d.property_id = $1 AND d.revoked_at IS NULL AND d.paired_at IS NOT NULL
-            ORDER BY d.name, d.id`, [haus, ONLINE_SEKUNDEN, AUFTRAG_SICHTBAR_MINUTEN])
+            WHERE ${GERAET_DES_HAUSES} AND d.paired_at IS NOT NULL
+            ORDER BY d.property_id <> $1, d.name, d.id`,
+          [haus, ONLINE_SEKUNDEN, AUFTRAG_SICHTBAR_MINUTEN])
         return { terminals: geraete.rows, offers: await inhalteDesHauses(client, haus) }
       })
     }
@@ -630,12 +831,13 @@ export function terminalRoutes(app: FastifyInstance): void {
           pruefeHaus(req, haus)
         }
 
-        // Das Geraet muss zum Haus **des Vorgangs** gehoeren: die
+        // Das Geraet muss zum Haus **des Vorgangs** gehoeren oder von ihm
+        // ueber eine gueltige Freigabe mitgenutzt werden: die
         // Zeilenrichtlinie laesst jedes Haus des Aufrufers durch.
         const geraet = await client.query<{ id: string; paired: boolean }>(
-          `SELECT id, paired_at IS NOT NULL AS paired FROM terminal_device
-            WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL`,
-          [deviceRef, haus])
+          `SELECT d.id, d.paired_at IS NOT NULL AS paired FROM terminal_device d
+            WHERE ${GERAET_DES_HAUSES} AND d.public_ref = $2`,
+          [haus, deviceRef])
         if (geraet.rowCount === 0) throw Errors.notFound('res.terminal')
         if (!geraet.rows[0]!.paired) throw Errors.unprocessable('terminal.notPaired')
         const deviceId = Number(geraet.rows[0]!.id)
@@ -643,12 +845,10 @@ export function terminalRoutes(app: FastifyInstance): void {
         const bezug = await art.vorbereiten(client, haus, lage, body)
 
         // Was abgelaufen ist, steht dem naechsten Auftrag nicht im Weg -- und
-        // sein Online-Check-in-Link faellt mit.
-        const alt = await client.query<{ id: string }>(
-          `UPDATE terminal_job SET state = 'expired', finished_at = now()
-            WHERE device_id = $1 AND state IN ('pending','opened') AND expires_at <= now()
-           RETURNING id`, [deviceId])
-        await zieheLinksZurueck(client, alt.rows.map(r => Number(r.id)))
+        // sein Online-Check-in-Link faellt mit. Ueber die Funktion, weil der
+        // abgelaufene Auftrag einem anderen Haus gehoeren kann, das dasselbe
+        // Geraet nutzt (Migration 0103): unsichtbar, aber im Teilindex.
+        await client.query(`SELECT terminal_device_jobs_end($1, NULL, true)`, [deviceId])
 
         const neu = await client.query<{ public_ref: string; ablauf: string }>(
           `INSERT INTO terminal_job (property_id, device_id, kind, reservation_id,
@@ -784,6 +984,11 @@ export function terminalRoutes(app: FastifyInstance): void {
    * Sie liefert keinen Gastdatensatz, nur Art und Kennung des Auftrags --
    * die Daten kommen erst mit dem Oeffnen, also erst, wenn sie gezeigt
    * werden.
+   *
+   * Der Hausname ist der des Auftrags, solange einer offen ist: schickt das
+   * Haus, das das Geraet mitnutzt (Migration 0103), soll der Gast dessen
+   * Namen lesen, und ein Uebungshaus soll als solches dastehen. Ohne
+   * Auftrag der des Masters, wie die Diashow.
    */
   registerRoute(app, {
     method: 'GET',
@@ -796,13 +1001,15 @@ export function terminalRoutes(app: FastifyInstance): void {
         const { rows } = await client.query<{
           property: string; is_training: boolean; public_ref: string | null
           kind: string | null; state: string | null; awake: boolean }>(
-          `SELECT p.name AS property, p.is_training,
+          `SELECT coalesce(jp.name, p.name) AS property,
+                  coalesce(jp.is_training, p.is_training) AS is_training,
                   j.public_ref, j.kind, j.state, ${WACH_SQL} AS awake
              FROM property p
              JOIN terminal_device d ON d.id = $1
              LEFT JOIN terminal_job j
                     ON j.device_id = $1 AND j.state IN ('pending','opened')
                    AND j.expires_at > now()
+             LEFT JOIN property jp ON jp.id = j.property_id
             WHERE p.id = $2`, [deviceId, propertyId])
         const r = rows[0]
         return {
@@ -926,7 +1133,8 @@ export function terminalRoutes(app: FastifyInstance): void {
   })
 
   /**
-   * Ein Bild einer Seite -- nur eines aus dem eigenen Haus. Ausgeliefert mit
+   * Ein Bild einer Seite -- nur eines aus dem eigenen Haus oder einem, das
+   * das Geraet mitnutzt. Ausgeliefert mit
    * der Art, die beim Hochladen an den ersten Bytes erkannt wurde, und so,
    * dass ein Browser es nicht als etwas anderes deutet.
    */
@@ -936,9 +1144,11 @@ export function terminalRoutes(app: FastifyInstance): void {
     permission: 'terminal:device',
     summary: 'Gaesteterminal: Bild einer Seite',
     handler: async (req, reply) => {
-      const { propertyId } = geraetVon(req)
+      // Auch Bilder der Haeuser, die das Geraet mitnutzen: eine Seite, die
+      // deren Rezeption schickt, bringt ihr Bild mit (Migration 0103).
+      const { propertyIds } = geraetVon(req)
       const { imageRef } = req.params as { imageRef: string }
-      const bild = await tx(req.pool, req, client => bildLesen(client, imageRef, propertyId))
+      const bild = await tx(req.pool, req, client => bildLesen(client, imageRef, propertyIds))
       return bildSenden(reply, bild)
     }
   })
