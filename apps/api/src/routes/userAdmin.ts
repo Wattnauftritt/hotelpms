@@ -155,6 +155,24 @@ const BENUTZERNAME = /^[a-z0-9][a-z0-9._-]{2,39}$/
  */
 type Zustellung = 'email' | 'link'
 
+/**
+ * Rollen, deren Menschen in der Personal-App arbeiten und nicht in der
+ * Oberflaeche der Rezeption. Wer nur solche Rollen hat, bekommt seinen
+ * Zugangslink in die Personal-App -- dort ist die Seite in seiner Sprache.
+ */
+const PERSONALROLLEN = ['housekeeping_staff', 'kitchen']
+
+async function nurPersonal(client: PoolClient, userId: number): Promise<boolean> {
+  const r = await client.query<{ nur: boolean }>(
+    `SELECT NOT EXISTS (
+       SELECT 1 FROM user_property_role upr JOIN role ro ON ro.id = upr.role_id
+        WHERE upr.user_id = $1 AND ro.key <> ALL($2::text[])
+       UNION ALL
+       SELECT 1 FROM user_account_role uar WHERE uar.user_id = $1) AS nur`,
+    [userId, PERSONALROLLEN])
+  return r.rows[0]!.nur
+}
+
 function zustellung(wert: unknown, hatMail: boolean): Zustellung {
   if (wert === undefined || wert === null) return hatMail ? 'email' : 'link'
   if (wert !== 'email' && wert !== 'link') {
@@ -296,15 +314,17 @@ export function userAdminRoutes(app: FastifyInstance): void {
            SELECT $1, $2, unnest($3::bigint[]), $4`,
           [u.rows[0]!.id, propertyId, rollen.rows.map(r => r.id), principal.userId])
 
+        const personal = gewuenscht.every(k => PERSONALROLLEN.includes(k))
         if (weg === 'link') {
           const l = await einmalLink(client, { userId: u.rows[0]!.id, kind: 'invite',
-                                               createdBy: principal.userId })
+                                               createdBy: principal.userId, personal })
           return { ...u.rows[0]!, hinzugefuegt: false as const, link: l }
         }
         await einmalTokenUndPost(client, {
           userId: u.rows[0]!.id, name, email, kind: 'invite',
           createdBy: principal.userId,
-          accountName: await kundenName(client, Number(propertyId))
+          accountName: await kundenName(client, Number(propertyId)),
+          personal
         })
         return { ...u.rows[0]!, hinzugefuegt: false as const, link: null }
       }).catch((e: unknown) => {
@@ -374,13 +394,15 @@ export function userAdminRoutes(app: FastifyInstance): void {
             throw Errors.conflict('user.linkOnlyWithoutEmail')
           }
           const l = await einmalLink(client, { userId: ziel.id, kind: art,
-                                               createdBy: principal.userId })
+                                               createdBy: principal.userId,
+                                               personal: await nurPersonal(client, ziel.id) })
           return { art, weg, link: l }
         }
         await einmalTokenUndPost(client, {
           userId: ziel.id, name: ziel.display_name, email: ziel.email!, kind: art,
           createdBy: principal.userId,
-          accountName: await kundenName(client, Number(propertyId))
+          accountName: await kundenName(client, Number(propertyId)),
+          personal: await nurPersonal(client, ziel.id)
         })
         return { art, weg, link: null }
       })

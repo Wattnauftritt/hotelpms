@@ -969,7 +969,13 @@ export function authRoutes(app: FastifyInstance): void {
  */
 export async function einmalLink(
   client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  opts: { userId: number; kind: AuthTokenKind; createdBy?: number | null; newEmail?: string }
+  opts: { userId: number; kind: AuthTokenKind; createdBy?: number | null; newEmail?: string
+          /**
+           * Der Link fuehrt in die Personal-App statt in die Oberflaeche der
+           * Rezeption. Fuer Reinigung und Kueche: sie lesen Russisch oder
+           * Ukrainisch, und die Seite der Rezeption kennt das nicht.
+           */
+          personal?: boolean }
 ): Promise<{ token: string; link: string; gueltigMs: number }> {
   const { token, hash } = neuesToken()
   const gueltigMs = TOKEN_GUELTIGKEIT[opts.kind]
@@ -984,7 +990,8 @@ export async function einmalLink(
   const PFAD: Record<AuthTokenKind, string> = {
     invite: 'einladung', password_reset: 'kennwort', email_change: 'mailadresse'
   }
-  return { token, link: `${config.publicAppUrl}/${PFAD[opts.kind]}?token=${token}`, gueltigMs }
+  const basis = opts.personal === true ? `${config.publicAppUrl}/personal` : config.publicAppUrl
+  return { token, link: `${basis}/${PFAD[opts.kind]}?token=${token}`, gueltigMs }
 }
 
 export async function einmalTokenUndPost(
@@ -1000,6 +1007,8 @@ export async function einmalTokenUndPost(
      * Anrede und Betreff. Leer bei Plattformpersonal.
      */
     accountName?: string | null
+    /** Der Link fuehrt in die Personal-App (siehe `einmalLink`). */
+    personal?: boolean
   }
 ): Promise<void> {
   const { link, gueltigMs } = await einmalLink(client, opts)

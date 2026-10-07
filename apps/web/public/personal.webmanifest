@@ -1,0 +1,19 @@
+{
+  "id": "/personal",
+  "name": "StayGrid Personal",
+  "short_name": "Personal",
+  "description": "Zimmer, Küche und Arbeitszeit für das Hauspersonal",
+  "lang": "de",
+  "start_url": "/personal",
+  "scope": "/personal",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fafafa",
+  "theme_color": "#171717",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
