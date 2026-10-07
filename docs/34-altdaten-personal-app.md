@@ -86,6 +86,10 @@ Was in StayGrid selbst geplant oder eingetragen wurde, gewinnt immer: steht für
 
 Putzplanzeilen werden über **(Tag, Zimmernummer, Art)** zugeordnet, nicht über die ID der Alt-App — die ändert sich, wenn eine Zeile umgeteilt wird.
 
+**Eine Datei, mehrere Häuser** (Migration 0116). Die Alt-App führt Hotel und Gästehaus in einem Plan, StayGrid als zwei Häuser. Jede Putzplanzeile geht in das Haus, das die Zimmernummer trägt: zuerst das Haus, in dem hochgeladen wird, sonst ein anderes Haus desselben Betriebs, in dem die Leitung ebenfalls `worktime:manage` hat. Steht die Nummer dort mehrmals, ist sie nicht zuzuordnen und steht im Bericht. Abgeschlossene Monate gelten je Haus. Zusatzarbeiten haben kein Zimmer und bleiben im Haus des Hochladens, ebenso die Zuordnung der Personen.
+
+**„Bad“** ist kein Zimmer, sondern ein Reinigungsbereich des Gästehauses (Svens Entscheidung vom 07.10.2026). Er muss vor dem ersten Hochladen im Reinigungsplan des Gästehauses unter „Reinigungsbereiche“ mit der Kennung `Bad` angelegt sein; sonst stehen seine Zeilen als unbekanntes Zimmer im Bericht. Eine Zeile für einen Bereich wird immer als Abreise übernommen, gleich wie die Alt-App sie führte.
+
 ## 5. Zuordnung der Personen
 
 Die Alt-App kennt nur Benutzernamen. Beim ersten Hochladen schlägt StayGrid je Alt-Benutzer eine Person vor (gleicher Benutzername im Haus) und merkt sich die Zuordnung (`staff_legacy_user`, Migration 0114); jeder spätere Export benutzt sie wieder. Wer keine Zuordnung hat, wird übersprungen und im Bericht genannt — fehlende Kräfte legt man vorher unter „Benutzer“ an. Gelöschte Benutzer der Alt-App fehlen samt ihrer Arbeitszeit; das ist dort nicht wiederherstellbar.

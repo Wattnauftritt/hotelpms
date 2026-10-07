@@ -348,6 +348,10 @@ const M = {
     de: 'Aufgabe',
     en: 'Task',
     tr: 'Görev' },
+  'res.cleaningArea': {
+    de: 'Reinigungsbereich',
+    en: 'Cleaning area',
+    tr: 'Temizlik alanı' },
   'res.message': {
     de: 'Nachricht',
     en: 'Message',
@@ -1393,6 +1397,19 @@ const M = {
     de: 'Jedes Zimmer nur einmal je Tag: Abreise oder Bleiber.',
     en: 'Each room only once per day: departure or stayover.',
     tr: 'Her oda günde yalnızca bir kez: ayrılış veya konaklama devamı.' },
+  // Reinigungsbereiche (0116)
+  'cleaning.areaTwice': {
+    de: 'Dieselbe Kennung steht zweimal in der Liste der Bereiche.',
+    en: 'The same name appears twice in the list of areas.',
+    tr: 'Aynı ad alan listesinde iki kez yer alıyor.' },
+  'cleaning.areaIsRoom': {
+    de: '{code} ist schon ein Zimmer. Ein Bereich braucht eine eigene Kennung.',
+    en: '{code} is already a room. An area needs a name of its own.',
+    tr: '{code} zaten bir oda. Bir alanın kendine ait bir adı olmalı.' },
+  'cleaning.areaTaken': {
+    de: 'Diese Kennung trägt schon ein abgeschalteter Bereich; er lässt sich wieder einschalten.',
+    en: 'A switched-off area already has this name; it can be switched back on.',
+    tr: 'Bu adı devre dışı bırakılmış bir alan zaten taşıyor; yeniden etkinleştirilebilir.' },
   // Kontrolle (0109)
   'inspection.noteRequired': {
     de: 'Nacharbeiten braucht einen Satz, was fehlt.',

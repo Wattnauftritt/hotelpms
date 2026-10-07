@@ -114,6 +114,24 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
       }
     }
 
+    /*
+     * Betrieb mit gemeinsamem Personal (Migration 0116): eine Rolle
+     * Reinigung, Kueche oder Hausdame in einem Haus wirkt in allen Haeusern
+     * des Betriebs. Die Funktion prueft dieselben Sperren wie der
+     * Zugriffsbereich; was sie liefert, ist also offen.
+     */
+    const geteilt = await client.query<{ property_id: number; account_id: number
+                                         permission_key: string }>(
+      `SELECT property_id, account_id, permission_key
+         FROM user_shared_staff_permissions($1)`, [userId])
+    for (const r of geteilt.rows) {
+      if (!isPermission(r.permission_key)) continue
+      accountIds.add(r.account_id)
+      let set = permissionsByProperty.get(r.property_id)
+      if (!set) { set = new Set(); permissionsByProperty.set(r.property_id, set) }
+      set.add(r.permission_key)
+    }
+
     return {
       userId,
       clientKey: `user:${userId}`,

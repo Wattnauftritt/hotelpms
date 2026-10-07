@@ -28,9 +28,11 @@ const NOTIZ_MAX = 500
 
 interface KontrollZimmer {
   taskId: number
-  resourceId: number
+  /** Ein Zimmer oder ein Bereich (0116), nie beides. */
+  resourceId: number | null
+  areaId: number | null
   code: string
-  categoryCode: string
+  categoryCode: string | null
   kind: 'departure' | 'stayover'
   assignedTo: number | null
   staffName: string | null
@@ -53,8 +55,8 @@ async function liesKontrolle(
   client: PoolClient, propertyId: number, date: string
 ): Promise<{ date: string; rooms: KontrollZimmer[] }> {
   const { rows } = await client.query<KontrollZimmer>(
-    `SELECT t.id::int AS "taskId", r.id::int AS "resourceId", r.code,
-            c.code AS "categoryCode", t.kind, t.assigned_to::int AS "assignedTo",
+    `SELECT t.id::int AS "taskId", r.id::int AS "resourceId", ar.id::int AS "areaId",
+            COALESCE(r.code, ar.code) AS code, c.code AS "categoryCode", t.kind, t.assigned_to::int AS "assignedTo",
             u.display_name AS "staffName", t.status, t.outcome, t.inspection,
             t.inspection_note AS "inspectionNote", i.display_name AS "inspectedBy",
             (t.kind <> 'departure' OR NOT EXISTS (
@@ -67,15 +69,18 @@ async function liesKontrolle(
             (SELECT count(*)::int FROM maintenance_ticket m
               WHERE m.resource_id = r.id AND m.status <> 'done') AS "openProblems"
        FROM housekeeping_task t
-       JOIN resource r ON r.id = t.resource_id
-       JOIN resource_category c ON c.id = r.category_id
+       LEFT JOIN resource r ON r.id = t.resource_id
+       LEFT JOIN resource_category c ON c.id = r.category_id
+       LEFT JOIN cleaning_area ar ON ar.id = t.area_id
        LEFT JOIN app_user u ON u.id = t.assigned_to
        LEFT JOIN app_user i ON i.id = t.inspected_by
       WHERE t.property_id = $1 AND t.business_date = $2::date
         AND t.kind IN ('departure','stayover')
-      ORDER BY r.building NULLS LAST,
-               NULLIF(substring(r.floor from '^-?[0-9]+'), '')::numeric NULLS LAST, r.floor,
-               NULLIF(substring(r.code from '^[0-9]+'), '')::numeric NULLS LAST, r.code`,
+      ORDER BY COALESCE(r.building, ar.building) NULLS LAST,
+               NULLIF(substring(r.floor from '^-?[0-9]+'), '')::numeric NULLS LAST,
+               r.floor NULLS LAST,
+               NULLIF(substring(COALESCE(r.code, ar.code) from '^[0-9]+'), '')::numeric NULLS LAST,
+               code`,
     [propertyId, date])
   return { date, rooms: rows }
 }
@@ -132,11 +137,14 @@ export function inspectionRoutes(app: FastifyInstance): void {
       }
       return tx(req.pool, req, async client => {
         const tag = await tagOderOffen(client, propertyId, undefined)
-        const { rows } = await client.query<{ resource_id: number; outcome: string | null
+        const { rows } = await client.query<{ resource_id: number | null; outcome: string | null
                                               code: string; locale: string | null
                                               assigned_to: number | null }>(
-          `SELECT t.resource_id::int, t.outcome, r.code, u.locale, t.assigned_to::int
-             FROM housekeeping_task t JOIN resource r ON r.id = t.resource_id
+          `SELECT t.resource_id::int, t.outcome, COALESCE(r.code, a.code) AS code, u.locale,
+                  t.assigned_to::int
+             FROM housekeeping_task t
+             LEFT JOIN resource r ON r.id = t.resource_id
+             LEFT JOIN cleaning_area a ON a.id = t.area_id
              LEFT JOIN app_user u ON u.id = t.assigned_to
             WHERE t.id = $1 AND t.property_id = $2 AND t.business_date = $3::date
               AND t.kind IN ('departure','stayover')
@@ -174,7 +182,8 @@ export function inspectionRoutes(app: FastifyInstance): void {
          * ist schmutzig, zuruecknehmen ist wieder sauber -- gereinigt war
          * das Zimmer ja, sonst kaeme man hier nicht her.
          */
-        if (aufgabe.outcome === 'cleaned' || aufgabe.outcome === 'was_clean') {
+        if (aufgabe.resource_id !== null
+            && (aufgabe.outcome === 'cleaned' || aufgabe.outcome === 'was_clean')) {
           const stand = ergebnis === 'passed' ? 'inspected' : ergebnis === 'rework' ? 'dirty' : 'clean'
           await client.query(
             `INSERT INTO housekeeping_status (property_id, resource_id, status, updated_by)

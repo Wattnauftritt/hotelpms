@@ -5,7 +5,7 @@ import { addDays, legacyReplaceDays, legacyTaskState, parseLegacyStaffExport,
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import type { Principal } from '../platform/context.js'
+import { can, propertyIds, type Principal } from '../platform/context.js'
 
 /**
  * Altdaten der alten Personal-App uebernehmen (Aufgabe 18, Baustein 9;
@@ -20,6 +20,18 @@ import type { Principal } from '../platform/context.js'
  * mitteilen, dass sie fehlt. Ersetzt wird nur, was aus der Alt-App kam
  * (`source = 'legacy'`); was in StayGrid geplant oder eingetragen wurde,
  * gewinnt, und ein abgeschlossener Monat bleibt unberuehrt.
+ *
+ * **Eine Datei, mehrere Haeuser.** Die alte App fuehrt Hotel und Gaestehaus
+ * in einem Plan (Zimmer 1-35, 601-605, "Bad"), StayGrid als zwei Haeuser.
+ * Jede Putzplanzeile geht deshalb in das Haus, das die Zimmernummer
+ * traegt: zuerst das Haus, in dem hochgeladen wird, sonst ein anderes Haus
+ * desselben Betriebs, in dem die Leitung ebenfalls `worktime:manage` hat.
+ * Gibt es die Nummer dort mehrmals, ist sie nicht zuzuordnen und steht im
+ * Bericht. Zusatzarbeiten haben kein Zimmer und bleiben im Haus des
+ * Hochladens; ebenso die Zuordnung der Benutzernamen.
+ *
+ * Eine Nummer kann auch ein Reinigungsbereich sein (0116) -- das "Bad" ist
+ * keines der Zimmer, sondern ein Bereich des Gaestehauses.
  */
 
 /** Rund fuenf Jahre; die Alt-App laeuft seit 2025. */
@@ -48,13 +60,20 @@ export interface StaffImportReport {
   workEntries: { total: number; imported: number; unmapped: number; closed: number
                  translations: number }
   unknownRooms: string[]
+  /** Wie viele Putzplanzeilen in welches Haus gingen. */
+  houses: Array<{ propertyId: number; name: string; schedules: number }>
 }
+
+/** Ein Ziel einer Putzplanzeile: Zimmer oder Bereich, in einem Haus. */
+interface Ziel { propertyId: number; resourceId: number | null; areaId: number | null }
+const zielSchluessel = (z: { resourceId: number | null; areaId: number | null }): string =>
+  z.areaId !== null ? `a${z.areaId}` : `r${z.resourceId}`
 
 async function personen(client: PoolClient, propertyId: number): Promise<Person[]> {
   const { rows } = await client.query<Person>(
     `SELECT DISTINCT u.id::int AS "userId", u.display_name AS name, u.username
        FROM user_property_role r JOIN app_user u ON u.id = r.user_id
-      WHERE r.property_id = $1
+      WHERE r.property_id = ANY (staff_houses($1))
       ORDER BY u.display_name`, [propertyId])
   return rows
 }
@@ -96,7 +115,8 @@ async function zuordnung(
 }
 
 async function uebernehmen(
-  client: PoolClient, propertyId: number, ich: number | null, e: LegacyStaffExport, body: Body
+  client: PoolClient, propertyId: number, andere: number[], ich: number | null,
+  e: LegacyStaffExport, body: Body
 ): Promise<StaffImportReport> {
   const kandidaten = await personen(client, propertyId)
   const wer = await zuordnung(client, propertyId, e, body.mapping, kandidaten)
@@ -109,24 +129,49 @@ async function uebernehmen(
       if (tage.length > MAX_TAGE) throw Errors.rangeTooLarge(MAX_TAGE)
     }
   }
-  const zu = await client.query<{ month: string }>(
-    `SELECT month::text FROM staff_month_close
-      WHERE property_id = $1 AND reopened_at IS NULL`, [propertyId])
-  const geschlossen = new Set(zu.rows.map(r => r.month.slice(0, 7)))
-  const offen = (d: string): boolean => !geschlossen.has(d.slice(0, 7))
-  const offeneTage = tage.filter(offen)
+  // Die Haeuser, in die Putzplanzeilen gehen koennen: dieses zuerst, dann
+  // die anderen desselben Betriebs (siehe oben).
+  const haeuserQ = await client.query<{ id: number; name: string }>(
+    `SELECT p.id::int, p.name FROM property p
+      WHERE p.id = ANY($2::bigint[])
+        AND p.account_id = (SELECT account_id FROM property WHERE id = $1)
+      ORDER BY p.id = $1 DESC, p.name`, [propertyId, [propertyId, ...andere]])
+  const haeuser = haeuserQ.rows
+  const hausIds = haeuser.map(h => h.id)
 
-  const zimmer = await client.query<{ id: number; code: string }>(
-    `SELECT id::int, code FROM resource WHERE property_id = $1`, [propertyId])
-  const zimmerId = new Map(zimmer.rows.map(z => [z.code, z.id]))
+  const zu = await client.query<{ k: string }>(
+    `SELECT property_id || '|' || to_char(month, 'YYYY-MM') AS k FROM staff_month_close
+      WHERE property_id = ANY($1::bigint[]) AND reopened_at IS NULL`, [hausIds])
+  const geschlossen = new Set(zu.rows.map(r => r.k))
+  const offenIn = (haus: number, d: string): boolean => !geschlossen.has(`${haus}|${d.slice(0, 7)}`)
+  const offen = (d: string): boolean => offenIn(propertyId, d)
+  const offeneTage = tage.filter(offen)
+  const offeneTageJeHaus = new Map(hausIds.map(h => [h, tage.filter(d => offenIn(h, d))]))
+
+  const ziele = await client.query<Ziel & { code: string }>(
+    `SELECT property_id::int AS "propertyId", id::int AS "resourceId", NULL::int AS "areaId", code
+       FROM resource WHERE property_id = ANY($1::bigint[])
+     UNION ALL
+     SELECT property_id::int, NULL, id::int, code
+       FROM cleaning_area WHERE property_id = ANY($1::bigint[])`, [hausIds])
+  const jeNummer = new Map<string, Array<Ziel & { code: string }>>()
+  for (const z of ziele.rows) jeNummer.set(z.code, [...(jeNummer.get(z.code) ?? []), z])
+  const zielVon = (code: string): Ziel | undefined => {
+    const alle = jeNummer.get(code) ?? []
+    const hier = alle.filter(z => z.propertyId === propertyId)
+    if (hier.length === 1) return hier[0]
+    return hier.length === 0 && alle.length === 1 ? alle[0] : undefined
+  }
   // Was in StayGrid selbst steht, gewinnt -- je Zimmer und Tag, gleich
   // welche Art: eine Abreise aus der Alt-App neben einem Bleiber aus
   // StayGrid waere ein Widerspruch, kein Plan.
   const eigene = await client.query<{ k: string }>(
-    `SELECT resource_id || '|' || business_date AS k FROM housekeeping_task
-      WHERE property_id = $1 AND source <> 'legacy'
+    `SELECT CASE WHEN area_id IS NULL THEN 'r' || resource_id ELSE 'a' || area_id END
+              || '|' || business_date AS k
+       FROM housekeeping_task
+      WHERE property_id = ANY($1::bigint[]) AND source <> 'legacy'
         AND business_date = ANY($2::date[]) AND kind IN ('departure','stayover')`,
-    [propertyId, offeneTage])
+    [hausIds, tage])
   const belegt = new Set(eigene.rows.map(r => r.k))
 
   const r: StaffImportReport = {
@@ -138,7 +183,8 @@ async function uebernehmen(
                  staygrid: 0, closed: 0 },
     workEntries: { total: e.workEntries.length, imported: 0, unmapped: 0, closed: 0,
                    translations: 0 },
-    unknownRooms: []
+    unknownRooms: [],
+    houses: haeuser.map(h => ({ propertyId: h.id, name: h.name, schedules: 0 }))
   }
   const unbekannt = new Set<string>()
   const jeName = new Map<string, { schedules: number; workEntries: number }>()
@@ -148,21 +194,23 @@ async function uebernehmen(
     jeName.set(n, z)
   }
 
-  const aufgaben: Array<{ resourceId: number; date: string; kind: string; userId: number | null
-                          status: string; outcome: string | null; minutes: number }> = []
+  const aufgaben: Array<Ziel & { date: string; kind: string; userId: number | null
+                                 status: string; outcome: string | null; minutes: number }> = []
   for (const s of e.schedules) {
     if (s.username !== null) zaehle(s.username, 'schedules')
-    if (!offen(s.date)) { r.schedules.closed++; continue }
-    const id = zimmerId.get(s.room)
-    if (id === undefined) { r.schedules.unknownRoom++; unbekannt.add(s.room); continue }
-    if (belegt.has(`${id}|${s.date}`)) { r.schedules.staygrid++; continue }
+    const z = zielVon(s.room)
+    if (z === undefined) { r.schedules.unknownRoom++; unbekannt.add(s.room); continue }
+    if (!offenIn(z.propertyId, s.date)) { r.schedules.closed++; continue }
+    if (belegt.has(`${zielSchluessel(z)}|${s.date}`)) { r.schedules.staygrid++; continue }
     const userId = s.username === null ? null : wer.get(s.username)?.userId ?? null
     // Eine zugeteilte Zeile ohne Person waere eine Reinigung ohne Kraft --
     // und bei "gereinigt" eine Minute, die niemandem gehoert.
     if (s.username !== null && userId === null) { r.schedules.unmapped++; continue }
-    const z = legacyTaskState(s.status)
-    aufgaben.push({ resourceId: id, date: s.date, kind: s.kind, userId, ...z,
-                    minutes: s.minutes })
+    // Ein Bereich wird wie ein Abreisezimmer gereinigt (0116), gleich wie
+    // die alte App die Zeile fuehrte.
+    aufgaben.push({ ...z, date: s.date, kind: z.areaId !== null ? 'departure' : s.kind, userId,
+                    ...legacyTaskState(s.status), minutes: s.minutes })
+    r.houses.find(h => h.propertyId === z.propertyId)!.schedules++
   }
   const eintraege: Array<{ userId: number; date: string; text: string; minutes: number
                            language: string | null; translationDe: string | null
@@ -190,11 +238,15 @@ async function uebernehmen(
 
   if (body.commit !== true) return r
 
-  // Was aus der Alt-App kam, faellt fuer die offenen Tage weg und kommt neu.
-  await client.query(
-    `DELETE FROM housekeeping_task
-      WHERE property_id = $1 AND source = 'legacy' AND business_date = ANY($2::date[])`,
-    [propertyId, offeneTage])
+  // Was aus der Alt-App kam, faellt fuer die offenen Tage weg und kommt neu
+  // -- in jedem Haus, in das die Datei Zimmer schickt, mit dessen eigenen
+  // abgeschlossenen Monaten.
+  for (const [haus, offenHier] of offeneTageJeHaus) {
+    await client.query(
+      `DELETE FROM housekeeping_task
+        WHERE property_id = $1 AND source = 'legacy' AND business_date = ANY($2::date[])`,
+      [haus, offenHier])
+  }
   await client.query(
     `DELETE FROM staff_text_translation tr USING staff_work_entry w
       WHERE tr.source_kind = 'work_entry' AND tr.source_id = w.id
@@ -212,14 +264,18 @@ async function uebernehmen(
 
   if (aufgaben.length > 0) {
     await client.query(
-      `INSERT INTO housekeeping_task (property_id, resource_id, business_date, kind, assigned_to,
-                                      status, outcome, minutes, source, done_by, done_at)
-       SELECT $1, a.resource_id, a.date, a.kind, a.user_id, a.status, a.outcome, a.minutes,
-              'legacy', CASE WHEN a.outcome = 'cleaned' THEN a.user_id END,
+      `INSERT INTO housekeeping_task (property_id, resource_id, area_id, business_date, kind,
+                                      assigned_to, status, outcome, minutes, source, done_by,
+                                      done_at)
+       SELECT a.property_id, a.resource_id, a.area_id, a.date, a.kind, a.user_id, a.status,
+              a.outcome, a.minutes, 'legacy', CASE WHEN a.outcome = 'cleaned' THEN a.user_id END,
               CASE WHEN a.status = 'done' THEN a.date::timestamptz END
-         FROM unnest($2::bigint[], $3::date[], $4::text[], $5::bigint[], $6::text[], $7::text[],
-                     $8::int[]) AS a(resource_id, date, kind, user_id, status, outcome, minutes)`,
-      [propertyId, aufgaben.map(a => a.resourceId), aufgaben.map(a => a.date),
+         FROM unnest($1::bigint[], $2::bigint[], $3::bigint[], $4::date[], $5::text[],
+                     $6::bigint[], $7::text[], $8::text[], $9::int[])
+              AS a(property_id, resource_id, area_id, date, kind, user_id, status, outcome,
+                   minutes)`,
+      [aufgaben.map(a => a.propertyId), aufgaben.map(a => a.resourceId),
+       aufgaben.map(a => a.areaId), aufgaben.map(a => a.date),
        aufgaben.map(a => a.kind), aufgaben.map(a => a.userId), aufgaben.map(a => a.status),
        aufgaben.map(a => a.outcome), aufgaben.map(a => a.minutes)])
   }
@@ -295,8 +351,10 @@ export function staffImportRoutes(app: FastifyInstance): void {
         throw e
       }
       const principal = req.principal as Principal
+      const andere = propertyIds(principal)
+        .filter(id => id !== propertyId && can(principal, 'worktime:manage', id))
       return tx(req.pool, req, client =>
-        uebernehmen(client, propertyId, principal.userId, e, body))
+        uebernehmen(client, propertyId, andere, principal.userId, e, body))
     }
   })
 }

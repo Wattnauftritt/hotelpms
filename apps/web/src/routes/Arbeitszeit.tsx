@@ -22,7 +22,9 @@ interface Uebersicht {
   month: string
   closed: { closedAt: string; closedBy: string | null } | null
   staff: Array<{ userId: number; name: string; username: string | null
-                 days: Record<string, number>; totals: Summen }>
+                 days: Record<string, number>; totals: Summen
+                 /** Monatssumme in anderen Haeusern, die die Leitung fuehrt (0116). */
+                 elsewhere?: Array<{ propertyId: number; name: string; total: number }> }>
 }
 
 export function Arbeitszeit({ propertyId }: { propertyId: number }): JSX.Element {
@@ -113,6 +115,13 @@ export function Arbeitszeit({ propertyId }: { propertyId: number }): JSX.Element
                             ${kraft === k.userId ? 'bg-neutral-50' : ''}`}>
               <td className="py-2 pr-3">{k.name}
                 {k.username !== null && <span className="ml-2 text-neutral-400">{k.username}</span>}
+                {(k.elsewhere ?? []).length > 0 && <span className="block text-xs text-neutral-500">
+                  {k.elsewhere!.map(h => t('worktime.elsewhere', { house: h.name, time: hm(h.total) }))
+                    .join(' · ')}
+                  {' · '}
+                  {t('worktime.allHouses', { time: hm(k.totals.total
+                    + k.elsewhere!.reduce((s, h) => s + h.total, 0)) })}
+                </span>}
               </td>
               {([k.totals.rooms, k.totals.extra, k.totals.kitchen, k.totals.correction] as const)
                 .map((v, i) => <td key={i} className="py-2 pr-3 text-right tabular-nums">

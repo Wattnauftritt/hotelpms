@@ -3,7 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import type { Principal } from '../platform/context.js'
+import { can, propertyIds, type Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
 import { reiheUebersetzungEin, zielDeutsch } from '../platform/uebersetzung.js'
 
@@ -20,6 +20,15 @@ import { reiheUebersetzungEin, zielDeutsch } from '../platform/uebersetzung.js'
  * nicht "darf Zimmer sehen"; welche Zimmer, entscheidet der Plan. Deshalb
  * braucht es kein eigenes Recht: wer keine Zimmer zugeteilt hat, bekommt
  * eine leere Liste.
+ *
+ * **Mehrere Haeuser.** Dieselben Kraefte reinigen Hotel und Gaestehaus
+ * (Sven, 07.10.2026). `GET /v1/my-rooms` gibt deshalb die Zimmer aller
+ * Haeuser, in denen die Kraft die App benutzen darf, in einer Antwort --
+ * nach Haus gruppiert, jedes mit seinem eigenen Geschaeftstag. Gesetzt
+ * wird weiter am Haus der Aufgabe; der Pfad sagt, in welchem Kontext.
+ *
+ * **Bereiche** (0116) stehen wie Zimmer in der Liste, mit `areaId` statt
+ * `resourceId`. Sie sind immer frei und haben keinen Zimmerstand.
  */
 
 const AUSGAENGE = ['cleaned', 'declined', 'was_clean'] as const
@@ -44,9 +53,11 @@ function personVon(req: FastifyRequest): number {
 
 interface MeinZimmer {
   taskId: number
-  resourceId: number
+  /** Ein Zimmer oder ein Bereich (0116), nie beides. */
+  resourceId: number | null
+  areaId: number | null
   code: string
-  categoryCode: string
+  categoryCode: string | null
   building: string | null
   floor: string | null
   kind: 'departure' | 'stayover'
@@ -87,8 +98,10 @@ async function liesMeineZimmer(
   client: PoolClient, propertyId: number, userId: number, date: string
 ): Promise<{ date: string; rooms: MeinZimmer[]; minutes: number }> {
   const { rows } = await client.query<MeinZimmer>(
-    `SELECT t.id::int AS "taskId", r.id::int AS "resourceId", r.code,
-            c.code AS "categoryCode", r.building, r.floor, t.kind, t.minutes,
+    `SELECT t.id::int AS "taskId", r.id::int AS "resourceId", ar.id::int AS "areaId",
+            COALESCE(r.code, ar.code) AS code,
+            c.code AS "categoryCode", COALESCE(r.building, ar.building) AS building, r.floor,
+            t.kind, t.minutes,
             t.status, t.outcome, t.inspection,
             CASE WHEN t.inspection = 'rework' THEN t.inspection_note END AS "inspectionNote",
             CASE WHEN t.inspection = 'rework' THEN
@@ -111,8 +124,9 @@ async function liesMeineZimmer(
               'water', COALESCE(s.enabled AND s.water_gift, false),
               'delivered', w.water_delivered_at IS NOT NULL) END AS waiver
        FROM housekeeping_task t
-       JOIN resource r ON r.id = t.resource_id
-       JOIN resource_category c ON c.id = r.category_id
+       LEFT JOIN resource r ON r.id = t.resource_id
+       LEFT JOIN resource_category c ON c.id = r.category_id
+       LEFT JOIN cleaning_area ar ON ar.id = t.area_id
        LEFT JOIN property_cleaning_waiver_setting s ON s.property_id = t.property_id
        LEFT JOIN LATERAL (
               SELECT w.id, w.water_delivered_at FROM cleaning_waiver w
@@ -123,9 +137,11 @@ async function liesMeineZimmer(
                LIMIT 1) w ON true
       WHERE t.property_id = $1 AND t.assigned_to = $2 AND t.business_date = $3::date
         AND t.kind IN ('departure','stayover')
-      ORDER BY r.building NULLS LAST,
-               NULLIF(substring(r.floor from '^-?[0-9]+'), '')::numeric NULLS LAST, r.floor,
-               NULLIF(substring(r.code from '^[0-9]+'), '')::numeric NULLS LAST, r.code`,
+      ORDER BY building NULLS LAST,
+               NULLIF(substring(r.floor from '^-?[0-9]+'), '')::numeric NULLS LAST,
+               r.floor NULLS LAST,
+               NULLIF(substring(COALESCE(r.code, ar.code) from '^[0-9]+'), '')::numeric NULLS LAST,
+               code`,
     [propertyId, userId, date])
   // Die Summe des Tages ist, was abgerechnet wird: nur Gereinigtes zaehlt
   // (wie in der alten App). Die Kraft sieht dieselbe Zahl wie die Leitung.
@@ -136,17 +152,18 @@ async function liesMeineZimmer(
 /** Die eigene Aufgabe von heute, gesperrt -- sonst 404. */
 async function eigeneAufgabe(
   client: PoolClient, propertyId: number, userId: number, taskId: number
-): Promise<{ id: number; resource_id: number; outcome: Ausgang | null; date: string
-              inspection: string | null }> {
+): Promise<{ id: number; resource_id: number | null; area_code: string | null
+              outcome: Ausgang | null; date: string; inspection: string | null }> {
   const tag = await tagOderOffen(client, propertyId, undefined)
   const { rows } = await client.query<{
-    id: number; resource_id: number; outcome: Ausgang | null; date: string
-    inspection: string | null }>(
-    `SELECT id::int, resource_id::int, outcome, business_date::text AS date, inspection
-       FROM housekeeping_task
-      WHERE id = $1 AND property_id = $2 AND assigned_to = $3
-        AND business_date = $4::date AND kind IN ('departure','stayover')
-      FOR UPDATE`, [taskId, propertyId, userId, tag])
+    id: number; resource_id: number | null; area_code: string | null; outcome: Ausgang | null
+    date: string; inspection: string | null }>(
+    `SELECT t.id::int, t.resource_id::int, a.code AS area_code, t.outcome,
+            t.business_date::text AS date, t.inspection
+       FROM housekeeping_task t LEFT JOIN cleaning_area a ON a.id = t.area_id
+      WHERE t.id = $1 AND t.property_id = $2 AND t.assigned_to = $3
+        AND t.business_date = $4::date AND t.kind IN ('departure','stayover')
+      FOR UPDATE OF t`, [taskId, propertyId, userId, tag])
   if (rows.length === 0) throw Errors.notFound('res.task')
   return rows[0]!
 }
@@ -158,7 +175,46 @@ function aufgabeAusPfad(req: FastifyRequest): { propertyId: number; taskId: numb
   return { propertyId: Number(p.propertyId), taskId }
 }
 
+/**
+ * Meine Zimmer in allen Haeusern, in denen die Kraft die App benutzen darf.
+ * Je Haus zwei Anweisungen; eine Kraft arbeitet in einer Handvoll Haeuser,
+ * nicht in hundert.
+ */
+async function liesAlleHaeuser(
+  client: PoolClient, principal: Principal, userId: number
+): Promise<{ houses: Array<{ propertyId: number; name: string; date: string
+                             rooms: MeinZimmer[]; minutes: number }> }> {
+  const ids = propertyIds(principal).filter(id => can(principal, 'staff:app', id))
+  const { rows } = await client.query<{ id: number; name: string }>(
+    `SELECT id::int, name FROM property
+      WHERE id = ANY($1::bigint[]) AND status = 'active' ORDER BY name`, [ids])
+  const houses = []
+  for (const p of rows) {
+    const tag = await liesMeineZimmer(client, p.id, userId,
+      await tagOderOffen(client, p.id, undefined))
+    houses.push({ propertyId: p.id, name: p.name, ...tag })
+  }
+  return { houses }
+}
+
 export function myRoomsRoutes(app: FastifyInstance): void {
+  /**
+   * Alle Haeuser auf einmal (siehe oben). Ohne `propertyParam`: das Recht
+   * prueft die Vorpruefung fuer irgendein Haus, welche Haeuser gelesen
+   * werden, entscheidet `can()` je Haus hier.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/my-rooms',
+    permission: 'staff:app',
+    summary: 'Meine Zimmer des Tages in allen meinen Haeusern (Personal-App)',
+    handler: async (req) => {
+      const ich = personVon(req)
+      return tx(req.pool, req, client =>
+        liesAlleHaeuser(client, req.principal as Principal, ich))
+    }
+  })
+
   /**
    * Heute, nicht ein waehlbarer Tag: die Kraft arbeitet den Tag ab, an dem
    * sie im Haus ist. Der Tag ist der offene Geschaeftstag -- derselbe, den
@@ -225,7 +281,10 @@ export function myRoomsRoutes(app: FastifyInstance): void {
                     done_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END,
                     done_by = CASE WHEN $2::text IS NULL THEN NULL ELSE $3::bigint END
               WHERE id = $1`, [taskId, neu, ich])
-          if (neu === 'cleaned' || neu === 'was_clean') {
+          // Ein Bereich hat keinen Zimmerstand (0116).
+          if (aufgabe.resource_id === null) {
+            // nichts weiter
+          } else if (neu === 'cleaned' || neu === 'was_clean') {
             await client.query(
               `INSERT INTO housekeeping_status (property_id, resource_id, status, updated_by)
                VALUES ($1, $2, 'clean', $3)
@@ -266,12 +325,14 @@ export function myRoomsRoutes(app: FastifyInstance): void {
           `UPDATE housekeeping_task
               SET inspection = NULL, inspected_by = NULL, inspected_at = NULL
             WHERE id = $1`, [taskId])
-        await client.query(
-          `INSERT INTO housekeeping_status (property_id, resource_id, status, updated_by)
-           VALUES ($1, $2, 'clean', $3)
-           ON CONFLICT (resource_id) DO UPDATE SET
-             status = 'clean', updated_by = $3, updated_at = now()`,
-          [propertyId, aufgabe.resource_id, ich])
+        if (aufgabe.resource_id !== null) {
+          await client.query(
+            `INSERT INTO housekeeping_status (property_id, resource_id, status, updated_by)
+             VALUES ($1, $2, 'clean', $3)
+             ON CONFLICT (resource_id) DO UPDATE SET
+               status = 'clean', updated_by = $3, updated_at = now()`,
+            [propertyId, aufgabe.resource_id, ich])
+        }
         return liesMeineZimmer(client, propertyId, ich, aufgabe.date)
       })
     }
@@ -343,9 +404,13 @@ export function myRoomsRoutes(app: FastifyInstance): void {
       // Der Titel ist die erste Zeile, gekuerzt -- so steht die Meldung in
       // der Liste lesbar da, und der ganze Text in der Beschreibung.
       const erste = sauber.split('\n')[0]!.trim()
-      const titel = erste.length > 120 ? `${erste.slice(0, 119)}…` : erste
       return tx(req.pool, req, async client => {
         const aufgabe = await eigeneAufgabe(client, propertyId, ich, taskId)
+        // Ein Bereich hat kein Zimmer, an dem die Meldung haengen koennte;
+        // sein Name steht dann vorn im Titel, sonst wuesste die Technik
+        // nicht, wohin.
+        const vorn = aufgabe.area_code === null ? erste : `${aufgabe.area_code}: ${erste}`
+        const titel = vorn.length > 120 ? `${vorn.slice(0, 119)}…` : vorn
         const { rows } = await client.query<{ id: number }>(
           `INSERT INTO maintenance_ticket (property_id, resource_id, title, description,
                                            created_by)

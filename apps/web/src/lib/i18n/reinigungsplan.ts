@@ -178,5 +178,58 @@ export const reinigungsplan = {
   'cleaningPlan.logBy': {
     de: '{zeit} · {wer}',
     en: '{zeit} · {wer}',
-    tr: '{zeit} · {wer}' }
+    tr: '{zeit} · {wer}' },
+  // Reinigungsbereiche und mehrere Haeuser (0116)
+  'cleaningPlan.area': {
+    de: 'Bereich',
+    en: 'Area',
+    tr: 'Alan' },
+  'cleaningPlan.elsewhere': {
+    de: '{house}: {rooms} Zimmer · {minutes} Min.',
+    en: '{house}: {rooms} rooms · {minutes} min',
+    tr: '{house}: {rooms} oda · {minutes} dk' },
+  'cleaningPlan.areas': {
+    de: 'Reinigungsbereiche',
+    en: 'Cleaning areas',
+    tr: 'Temizlik alanları' },
+  'cleaningPlan.areasHint': {
+    de: 'Was gereinigt wird, aber kein Zimmer ist – ein Gemeinschaftsbad, ein Flur. Ein Bereich steht jeden Tag im Plan; wer ihn an einem Tag nicht braucht, teilt ihn niemandem zu. Er zählt nicht zu den Zimmern des Hauses.',
+    en: 'What gets cleaned but is not a room – a shared bathroom, a corridor. An area is on the plan every day; if it is not needed on a day, leave it unassigned. It does not count as a room of the property.',
+    tr: 'Temizlenen ama oda olmayan yerler – ortak banyo, koridor. Bir alan her gün plandadır; bir gün gerekmiyorsa kimseye atamayın. Tesisin odalarına sayılmaz.' },
+  'cleaningPlan.areaCode': {
+    de: 'Name',
+    en: 'Name',
+    tr: 'Ad' },
+  'cleaningPlan.areaBuilding': {
+    de: 'Gebäude',
+    en: 'Building',
+    tr: 'Bina' },
+  'cleaningPlan.areaActive': {
+    de: 'aktiv',
+    en: 'active',
+    tr: 'etkin' },
+  'cleaningPlan.areaAdd': {
+    de: 'Bereich hinzufügen',
+    en: 'Add area',
+    tr: 'Alan ekle' },
+  'cleaningPlan.areaSave': {
+    de: 'Bereiche speichern',
+    en: 'Save areas',
+    tr: 'Alanları kaydet' },
+  'cleaningPlan.shared': {
+    de: 'Reinigung und Frühstück für alle Häuser',
+    en: 'Cleaning and breakfast for all properties',
+    tr: 'Tüm tesisler için temizlik ve kahvaltı' },
+  'cleaningPlan.sharedOn': {
+    de: 'Gemeinsam: das Personal gehört dem Betrieb. Eine Rolle Reinigung, Küche oder Hausdame in einem Haus gilt in allen Häusern; der Plan zeigt alle Häuser, die Küche zählt alle Frühstücke zusammen.',
+    en: 'Shared: staff belong to the business. A Cleaning, Kitchen or Housekeeper role in one property applies in all of them; the plan shows every property and the kitchen counts all breakfasts together.',
+    tr: 'Ortak: personel işletmeye aittir. Bir tesisteki Temizlik, Mutfak veya Kat şefi rolü tüm tesislerde geçerlidir; plan tüm tesisleri gösterir, mutfak tüm kahvaltıları birlikte sayar.' },
+  'cleaningPlan.sharedOff': {
+    de: 'Getrennt: jedes Haus hat sein eigenes Personal, seinen eigenen Plan und seine eigene Frühstückszahl.',
+    en: 'Separate: each property has its own staff, its own plan and its own breakfast count.',
+    tr: 'Ayrı: her tesisin kendi personeli, kendi planı ve kendi kahvaltı sayısı vardır.' },
+  'cleaningPlan.sharedToggle': {
+    de: 'Gemeinsam für alle Häuser des Betriebs',
+    en: 'Shared across all properties of the business',
+    tr: 'İşletmenin tüm tesisleri için ortak' }
 } as const satisfies Record<string, LocalizedText>

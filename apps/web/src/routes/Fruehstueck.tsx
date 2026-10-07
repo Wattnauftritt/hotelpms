@@ -6,11 +6,17 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
 /**
  * Fruehstueck (Aufgabe 18, Baustein 5) -- die Seite der Personal-App am
  * Rechner. Die Hausdame kontrolliert die Zahl (Sven, 07.10.2026), die
- * Rezeption wird morgens danach gefragt.
+ * Rezeption wird morgens danach gefragt. Arbeitet der Betrieb mit
+ * gemeinsamem Personal, ist die Zahl die aller Haeuser, die Aufteilung
+ * steht darunter.
  */
 
 interface Tag { date: string; breakfasts: number; children: number; assumed: number }
-interface Woche { date: string; days: Tag[] }
+/** Bei gemeinsamer Kueche (0116) die Summe in `days`, die Haeuser hier. */
+interface Woche {
+  date: string; days: Tag[]
+  houses?: Array<{ propertyId: number; name: string; days: Tag[] }> | null
+}
 
 export function Fruehstueck({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
@@ -28,6 +34,9 @@ export function Fruehstueck({ propertyId }: { propertyId: number }): JSX.Element
       month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(j, m - 1, d)))
   }
   const [heute, morgen, ...rest] = q.data.days
+  const haeuser = q.data.houses ?? []
+  const aufteilung = (date: string): string => haeuser.map(h =>
+    `${h.name} ${h.days.find(x => x.date === date)?.breakfasts ?? 0}`).join(' · ')
   return <div className="space-y-4 max-w-2xl">
     <div className="grid grid-cols-2 gap-4">
       {([['breakfast.today', heute], ['breakfast.tomorrow', morgen]] as const).map(([k, d]) =>
@@ -38,6 +47,7 @@ export function Fruehstueck({ propertyId }: { propertyId: number }): JSX.Element
           <p className="text-sm text-neutral-600">{name(d.date)}</p>
           {d.children > 0 && <p className="text-sm text-neutral-600">
             {t('breakfast.children', { n: d.children })}</p>}
+          {haeuser.length > 1 && <p className="text-sm text-neutral-600">{aufteilung(d.date)}</p>}
         </section>)}
     </div>
     {rest.length > 0 && <section>
@@ -46,6 +56,8 @@ export function Fruehstueck({ propertyId }: { propertyId: number }): JSX.Element
         <tbody>
           {rest.map(d => <tr key={d.date} className="border-b border-neutral-100">
             <td className="py-1.5">{name(d.date)}</td>
+            {haeuser.length > 1
+              && <td className="py-1.5 text-right text-neutral-500">{aufteilung(d.date)}</td>}
             <td className="py-1.5 text-right font-semibold tabular-nums">{d.breakfasts}</td>
           </tr>)}
         </tbody>

@@ -16,6 +16,12 @@ import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
  * Neu geladen wird jede Minute und beim Zurueckkehren in die App -- so
  * wird eine Abreise frei, ohne dass jemand zieht. Gespeichert wird nichts:
  * die Liste lebt nur im Speicher dieser Seite (Dokument 16, Aufgabe 18).
+ *
+ * **Alle Haeuser in einer Liste** (0116): dieselben Kraefte reinigen Hotel
+ * und Gaestehaus. Ein Abruf bringt die Zimmer aller Haeuser, in denen die
+ * Kraft die App benutzt; arbeitet sie in mehreren, steht jedes Haus mit
+ * Ueberschrift da. Gesetzt wird am Haus der Aufgabe, und dessen Antwort
+ * ersetzt nur seinen Teil der Liste.
  */
 
 type Ausgang = 'cleaned' | 'declined' | 'was_clean'
@@ -23,6 +29,8 @@ type Ausgang = 'cleaned' | 'declined' | 'was_clean'
 export interface MeinZimmer {
   taskId: number
   code: string
+  /** Ein Bereich wie das Gemeinschaftsbad statt eines Zimmers (0116). */
+  areaId?: number | null
   kind: 'departure' | 'stayover'
   minutes: number | null
   status: 'open' | 'done' | 'skipped'
@@ -37,6 +45,9 @@ export interface MeinZimmer {
   waiver?: { water: boolean; delivered: boolean } | null
 }
 interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }
+interface Haus extends Tag { propertyId: number; name: string }
+interface Alle { houses: Haus[] }
+const KEY = ['my-rooms']
 
 /**
  * Nacharbeit ganz oben -- die Hausdame wartet darauf. Dann offene, darin
@@ -53,66 +64,31 @@ export function ordneZimmer(rooms: readonly MeinZimmer[]): MeinZimmer[] {
     .map(x => x.z)
 }
 
-export function MeineZimmer({ propertyId, locale }: {
-  propertyId: number; locale: StaffLocale
-}): JSX.Element {
+export function MeineZimmer({ locale }: { locale: StaffLocale }): JSX.Element {
   const t = usePT()
-  const qc = useQueryClient()
-  const key = ['my-rooms', propertyId]
-  const tag = useQuery<Tag>({
-    queryKey: key,
-    queryFn: () => api.get<Tag>(`/v1/properties/${propertyId}/my-rooms`),
+  const alle = useQuery<Alle>({
+    queryKey: KEY,
+    queryFn: () => api.get<Alle>('/v1/my-rooms'),
     refetchInterval: 60_000,
     refetchOnWindowFocus: true
   })
-  const [offen, setOffen] = useState<number | null>(null)
-  const [hinweis, setHinweis] = useState<string | null>(null)
-
-  const fehler = (e: unknown): void => {
-    if (e instanceof ApiError && e.status === 404) {
-      setHinweis(t('room.gone'))
-      void qc.invalidateQueries({ queryKey: key })
-    } else {
-      setHinweis(fehlerText(e, locale))
-    }
-  }
-  const nachgearbeitet = useMutation({
-    mutationFn: (taskId: number) =>
-      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/reworked`),
-    onSuccess: neu => { qc.setQueryData(key, neu); setOffen(null); setHinweis(null) },
-    onError: fehler
-  })
-  const wasser = useMutation({
-    mutationFn: (taskId: number) =>
-      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/water`),
-    onSuccess: neu => { qc.setQueryData(key, neu); setOffen(null); setHinweis(null) },
-    onError: fehler
-  })
-  const setzen = useMutation({
-    mutationFn: ({ taskId, outcome }: { taskId: number; outcome: Ausgang | null }) =>
-      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}`, { outcome }),
-    onSuccess: neu => { qc.setQueryData(key, neu); setOffen(null); setHinweis(null) },
-    onError: fehler
-  })
-
-  if (tag.isPending) return <Karte><p>{t('app.loading')}</p></Karte>
-  if (tag.isError) {
+  if (alle.isPending) return <Karte><p>{t('app.loading')}</p></Karte>
+  if (alle.isError) {
     return <Karte>
-      <Fehler text={fehlerText(tag.error, locale)} />
-      <button type="button" className={KNOPF_LEISE} onClick={() => { void tag.refetch() }}>
+      <Fehler text={fehlerText(alle.error, locale)} />
+      <button type="button" className={KNOPF_LEISE} onClick={() => { void alle.refetch() }}>
         {t('app.retry')}
       </button>
     </Karte>
   }
-  const { rooms, minutes } = tag.data
-  if (rooms.length === 0) {
+  const mitZimmern = alle.data.houses.filter(h => h.rooms.length > 0)
+  if (mitZimmern.length === 0) {
     return <Karte><p className="text-base text-neutral-700">{t('today.empty')}</p></Karte>
   }
+  const rooms = mitZimmern.flatMap(h => h.rooms)
   const fertig = (z: MeinZimmer): boolean => z.status !== 'open' && z.inspection !== 'rework'
   const erledigt = rooms.filter(fertig).length
-  const geordnet = ordneZimmer(rooms)
-  const ersteErledigte = geordnet.findIndex(fertig)
-
+  const minutes = mitZimmern.reduce((s, h) => s + h.minutes, 0)
   return <div className="space-y-3">
     <div className="flex items-baseline justify-between text-base">
       <span className="font-medium">{t('today.progress', { done: erledigt, total: rooms.length })}</span>
@@ -122,11 +98,65 @@ export function MeineZimmer({ propertyId, locale }: {
       <div className="h-full bg-green-600 transition-all"
            style={{ width: `${Math.round(erledigt / rooms.length * 100)}%` }} />
     </div>
+    {mitZimmern.map(h => <HausListe key={h.propertyId} haus={h} locale={locale}
+                                    ueberschrift={mitZimmern.length > 1} />)}
+  </div>
+}
+
+function HausListe({ haus, locale, ueberschrift }: {
+  haus: Haus; locale: StaffLocale; ueberschrift: boolean
+}): JSX.Element {
+  const t = usePT()
+  const qc = useQueryClient()
+  const propertyId = haus.propertyId
+  const [offen, setOffen] = useState<number | null>(null)
+  const [hinweis, setHinweis] = useState<string | null>(null)
+
+  // Die Antwort eines Hauses ersetzt nur dessen Teil der Liste.
+  const uebernehmen = (neu: Tag): void => {
+    qc.setQueryData<Alle>(KEY, alt => alt === undefined ? alt : {
+      houses: alt.houses.map(h => h.propertyId === propertyId ? { ...h, ...neu } : h)
+    })
+  }
+  const fehler = (e: unknown): void => {
+    if (e instanceof ApiError && e.status === 404) {
+      setHinweis(t('room.gone'))
+      void qc.invalidateQueries({ queryKey: KEY })
+    } else {
+      setHinweis(fehlerText(e, locale))
+    }
+  }
+  const fertigMit = (neu: Tag): void => { uebernehmen(neu); setOffen(null); setHinweis(null) }
+  const nachgearbeitet = useMutation({
+    mutationFn: (taskId: number) =>
+      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/reworked`),
+    onSuccess: fertigMit,
+    onError: fehler
+  })
+  const wasser = useMutation({
+    mutationFn: (taskId: number) =>
+      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/water`),
+    onSuccess: fertigMit,
+    onError: fehler
+  })
+  const setzen = useMutation({
+    mutationFn: ({ taskId, outcome }: { taskId: number; outcome: Ausgang | null }) =>
+      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}`, { outcome }),
+    onSuccess: fertigMit,
+    onError: fehler
+  })
+
+  const fertig = (z: MeinZimmer): boolean => z.status !== 'open' && z.inspection !== 'rework'
+  const geordnet = ordneZimmer(haus.rooms)
+  const ersteErledigte = geordnet.findIndex(fertig)
+
+  return <section className="space-y-2">
+    {ueberschrift && <h2 className="text-base font-semibold pt-2">{haus.name}</h2>}
     {hinweis !== null && <Fehler text={hinweis} />}
     <ul className="space-y-2">
       {geordnet.map((z, i) => <li key={z.taskId}>
-        {i === ersteErledigte && <h2 className="text-sm font-semibold text-neutral-500
-                                                pt-3 pb-1">{t('today.done')}</h2>}
+        {i === ersteErledigte && <h3 className="text-sm font-semibold text-neutral-500
+                                                pt-3 pb-1">{t('today.done')}</h3>}
         <ZimmerKarte z={z} offen={offen === z.taskId}
                      laeuft={setzen.isPending || nachgearbeitet.isPending || wasser.isPending}
                      onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
@@ -134,10 +164,10 @@ export function MeineZimmer({ propertyId, locale }: {
                      onToggle={() => setOffen(offen === z.taskId ? null : z.taskId)}
                      onSetzen={outcome => setzen.mutate({ taskId: z.taskId, outcome })}
                      propertyId={propertyId} locale={locale}
-                     onGemeldet={neu => qc.setQueryData(key, neu)} onFehler={fehler} />
+                     onGemeldet={uebernehmen} onFehler={fehler} />
       </li>)}
     </ul>
-  </div>
+  </section>
 }
 
 function Marke({ farbe, children }: { farbe: string; children: React.ReactNode }): JSX.Element {
@@ -167,11 +197,13 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, o
       <span className={`text-2xl font-semibold tabular-nums min-w-[3.5rem]
                         ${fertig ? 'text-neutral-400 line-through' : ''}`}>{z.code}</span>
       <span className="flex flex-wrap gap-1.5 flex-1">
-        <Marke farbe={z.kind === 'departure' ? 'bg-blue-100 text-blue-900'
-                                             : 'bg-neutral-100 text-neutral-800'}>
-          {t(z.kind === 'departure' ? 'room.departure' : 'room.stayover')}
+        <Marke farbe={z.areaId != null ? 'bg-neutral-100 text-neutral-800'
+                      : z.kind === 'departure' ? 'bg-blue-100 text-blue-900'
+                      : 'bg-neutral-100 text-neutral-800'}>
+          {t(z.areaId != null ? 'room.area'
+             : z.kind === 'departure' ? 'room.departure' : 'room.stayover')}
         </Marke>
-        {!fertig && z.kind === 'departure' && (z.free
+        {!fertig && z.kind === 'departure' && z.areaId == null && (z.free
           ? <Marke farbe="bg-green-100 text-green-900">{t('room.free')}</Marke>
           : <Marke farbe="bg-amber-100 text-amber-900">{t('room.waiting')}</Marke>)}
         {!fertig && z.arrivalToday

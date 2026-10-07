@@ -20,7 +20,11 @@ export interface FruehstuecksTag {
   unsplit: number
   assumed: number
 }
-interface Woche { date: string; days: FruehstuecksTag[] }
+/** Bei gemeinsamer Kueche (0116) die Summe in `days`, die Haeuser hier. */
+interface Woche {
+  date: string; days: FruehstuecksTag[]
+  houses?: Array<{ propertyId: number; name: string; days: FruehstuecksTag[] }> | null
+}
 
 /** Wochentag und Datum in der Sprache des Personals, ohne Zeitzone. */
 export function tagName(iso: string, locale: StaffLocale): string {
@@ -50,6 +54,9 @@ export function Kueche({ propertyId, locale }: {
     </Karte>
   }
   const [heute, morgen, ...rest] = q.data.days
+  const haeuser = q.data.houses ?? []
+  const aufteilung = (date: string): string => haeuser.map(h =>
+    `${h.name} ${h.days.find(x => x.date === date)?.breakfasts ?? 0}`).join(' · ')
   return <div className="space-y-3">
     <div className="grid grid-cols-2 gap-3">
       {[['kitchen.today', heute], ['kitchen.tomorrow', morgen]].map(([k, d]) => {
@@ -62,6 +69,8 @@ export function Kueche({ propertyId, locale }: {
           <p className="text-sm text-neutral-600">{tagName(tag.date, locale)}</p>
           {tag.children > 0 && <p className="text-sm text-neutral-600">
             {t('kitchen.children', { n: tag.children })}</p>}
+          {haeuser.length > 1
+            && <p className="text-sm text-neutral-600">{aufteilung(tag.date)}</p>}
         </section>
       })}
     </div>

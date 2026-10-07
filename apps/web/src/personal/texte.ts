@@ -187,6 +187,11 @@ const texte = {
     en: 'Room {code}',
     ru: 'Номер {code}',
     uk: 'Номер {code}' },
+  'room.area': {
+    de: 'Bereich',
+    en: 'Area',
+    ru: 'Зона',
+    uk: 'Зона' },
   'room.departure': {
     de: 'Abreise',
     en: 'Check-out',
@@ -385,6 +390,11 @@ const texte = {
     en: 'Next month',
     ru: 'Следующий месяц',
     uk: 'Наступний місяць' },
+  'time.allHouses': {
+    de: 'Alle Häuser zusammen',
+    en: 'All properties together',
+    ru: 'Все объекты вместе',
+    uk: 'Усі об’єкти разом' },
   'time.total': {
     de: 'Stunden im Monat ({minutes} Min.)',
     en: 'Hours this month ({minutes} min)',
