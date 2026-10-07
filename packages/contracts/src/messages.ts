@@ -1546,6 +1546,14 @@ const M = {
     de: 'Eine Stornobuchung wird zusammen mit ihrer Buchung geloescht.',
     en: 'A reversal entry is deleted together with its entry.',
     tr: 'Bir iptal kaydı, ait olduğu kayıtla birlikte silinir.' },
+  'cashbook.resetNotACopy': {
+    de: 'Das Kassenbuch dieses Hauses ist keine reine Kopie mehr (Stichtag gesetzt, eigene Buchungen oder eigener DATEV-Export) und wird nicht verworfen.',
+    en: 'This property\'s cash book is no longer a pure copy (cut-over date set, own entries or own DATEV export) and is not discarded.',
+    tr: 'Bu tesisin kasa defteri artık salt bir kopya değil (geçiş tarihi, kendi kayıtları veya kendi DATEV aktarımı) ve silinmez.' },
+  'cashbook.resetCountsDiffer': {
+    de: 'Die Anzahlen stimmen nicht mit der Erwartung ueberein; gefunden: {entries} Buchungen, {receipts} Belege, {datevMarks} DATEV-Merker.',
+    en: 'The counts do not match the expectation; found: {entries} entries, {receipts} receipts, {datevMarks} DATEV marks.',
+    tr: 'Sayılar beklentiyle uyuşmuyor; bulunan: {entries} kayıt, {receipts} belge, {datevMarks} DATEV işareti.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',
