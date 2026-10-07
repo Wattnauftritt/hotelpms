@@ -51,7 +51,7 @@ interface Zimmer {
 
 interface Kraft { userId: number; displayName: string; active: boolean }
 
-async function tagOderOffen(
+export async function tagOderOffen(
   client: PoolClient, propertyId: number, date: string | undefined
 ): Promise<string> {
   if (date !== undefined) return date
@@ -155,9 +155,19 @@ async function liesZimmer(
                NULLIF(substring(r.code from '^[0-9]+'), '')::numeric NULLS LAST, r.code`,
     [propertyId, date])
   return rows.map(({ taskMinutes, ...z }) => {
-    const art = z.kind ?? z.due
+    /*
+     * Null Sollminuten fuer Bleiber heisst: hier gibt es keine
+     * Zwischenreinigung. So stand es fuer das Gaestehaus fest im Code der
+     * alten App; hier ist es eine Einstellung je Kategorie oder Zimmer, und
+     * der Vorschlag laesst diese Zimmer aus. Eine schon geplante Aufgabe
+     * bleibt sichtbar -- die hat jemand bewusst angelegt.
+     */
+    const due = z.due === 'stayover' && z.kind === null
+      && resolveCleaningMinutes(norms, z, 'stayover') === 0 ? null : z.due
+    const art = z.kind ?? due
     return {
       ...z,
+      due,
       minutes: taskMinutes ?? (art === null ? 0 : resolveCleaningMinutes(norms, z, art))
     }
   })

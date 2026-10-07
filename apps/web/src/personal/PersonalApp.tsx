@@ -6,6 +6,8 @@ import { useInstallation } from '../lib/pwa.js'
 import { personalSeite } from './adresse.js'
 import { SpracheContext, SPRACHNAME, fehlerText, startSprache, usePT }
   from './texte.js'
+import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
+import { MeineZimmer } from './MeineZimmer.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -24,27 +26,6 @@ interface Me {
   username: string | null
   locale: string | null
   properties: Array<{ id: number; name: string; permissions: string[] }>
-}
-
-const FELD = `mt-1 w-full border border-neutral-300 rounded-md px-3 py-2.5 text-base
-              bg-white`
-const KNOPF = `w-full py-3 text-base font-medium rounded-md bg-neutral-900 text-white
-               active:bg-neutral-700 disabled:bg-neutral-300`
-const KNOPF_LEISE = `w-full py-3 text-base rounded-md border border-neutral-300 bg-white
-                     active:bg-neutral-100`
-
-function Fehler({ text }: { text: string }): JSX.Element {
-  return <p role="alert" className="text-sm text-red-800 bg-red-50 border border-red-200
-                                    rounded-md px-3 py-2">{text}</p>
-}
-
-function Karte({ titel, children }: {
-  titel?: string; children: React.ReactNode
-}): JSX.Element {
-  return <section className="bg-white border border-neutral-200 rounded-lg p-4 space-y-3">
-    {titel !== undefined && <h2 className="font-semibold">{titel}</h2>}
-    {children}
-  </section>
 }
 
 /** Vor der Anmeldung: eine Spalte mittig, mit Sprachwahl darueber. */
@@ -280,6 +261,10 @@ function Start({ me, locale, onLocale }: {
   const t = usePT()
   const [reiter, setReiter] = useState<'heute' | 'mehr'>('heute')
   const vorname = me.displayName.split(' ')[0] ?? me.displayName
+  // Meist ein Haus. Arbeitet jemand in zweien, waehlt er oben -- die Liste
+  // gilt immer fuer ein Haus, wie der Plan der Hausdame.
+  const haeuser = me.properties.filter(p => p.permissions.includes('staff:app'))
+  const [haus, setHaus] = useState(() => haeuser[0]?.id ?? 0)
 
   return <div className="min-h-dvh bg-neutral-50 flex flex-col">
     <header className="bg-neutral-900 text-white px-4 py-3
@@ -289,7 +274,13 @@ function Start({ me, locale, onLocale }: {
     <main className="flex-1 px-4 py-4 pb-24 space-y-4 max-w-lg w-full mx-auto">
       {reiter === 'heute' && <>
         <p className="text-xl font-semibold">{t('today.hello', { name: vorname })}</p>
-        <Karte><p className="text-base text-neutral-700">{t('today.empty')}</p></Karte>
+        {haeuser.length > 1 && <label className="block">
+          <span className="block text-sm text-neutral-600">{t('today.property')}</span>
+          <select value={haus} onChange={e => setHaus(Number(e.target.value))} className={FELD}>
+            {haeuser.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+        </label>}
+        <MeineZimmer key={haus} propertyId={haus} locale={locale} />
       </>}
       {reiter === 'mehr' && <>
         <Karte titel={t('more.language')}>

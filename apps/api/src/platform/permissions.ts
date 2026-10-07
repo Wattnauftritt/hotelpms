@@ -45,7 +45,11 @@ export const PERMISSIONS = [
   // Gaesteterminal (0071): keiner Rolle zugeordnet und als Zugriffsbereich
   // eines Maschinenzugangs ausgeschlossen. Die einzige Quelle ist ein
   // gekoppeltes Geraet (`loadPrincipalFromDevice`).
-  'terminal:device'
+  'terminal:device',
+  // Personal-App (0105): die App benutzen. Was darin zu sehen ist, sagt der
+  // Plan -- die eigenen Zimmer, nie fremde. Als Zugriffsbereich eines
+  // Maschinenzugangs ausgeschlossen, denn eine Maschine hat keine Zimmer.
+  'staff:app'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

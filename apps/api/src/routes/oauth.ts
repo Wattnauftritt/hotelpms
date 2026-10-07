@@ -127,6 +127,16 @@ function pruefeScopes(scopes: unknown): asserts scopes is string[] {
     throw Errors.validation({ scopes: ['field.noDeviceScopes'] },
       { values: geraet.join(', ') })
   }
+  /*
+   * Die Personal-App ebenso nicht (0105). Ihre Routen zeigen die Zimmer
+   * dessen, der fragt, und eine Maschine hat keine; sie verlangen deshalb
+   * einen Menschen und gaeben einem Client nur 403.
+   */
+  const personal = scopes.filter(s => s.startsWith('staff:'))
+  if (personal.length > 0) {
+    throw Errors.validation({ scopes: ['field.noStaffScopes'] },
+      { values: personal.join(', ') })
+  }
 }
 
 export function oauthRoutes(app: FastifyInstance): void {

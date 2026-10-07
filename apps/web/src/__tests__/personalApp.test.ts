@@ -5,6 +5,7 @@ import { STAFF_LOCALES } from '@hotelpms/contracts'
 import { istPersonalAdresse, personalSeite } from '../personal/adresse.js'
 import { fehlerText, personalKeys, startSprache, text } from '../personal/texte.js'
 import { ApiError } from '../lib/api.js'
+import { ordneZimmer, type MeinZimmer } from '../personal/MeineZimmer.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -113,5 +114,26 @@ describe('Kein Gast- oder Personaldatum auf dem Telefon', () => {
       const q = lies(join('personal', datei))
       expect(q, datei).not.toMatch(/localStorage|sessionStorage|indexedDB/)
     }
+  })
+})
+
+describe('Meine Zimmer', () => {
+  const z = (code: string, teil: Partial<MeinZimmer>): MeinZimmer => ({
+    taskId: Number(code), code, kind: 'departure', minutes: 30, status: 'open',
+    outcome: null, free: true, arrivalToday: false, openProblems: 0, ...teil })
+
+  /*
+   * Ein Zimmer, in das heute jemand einzieht, zuerst; eines, dessen Gast
+   * noch da ist, hinter die freien; Erledigtes ans Ende. Sonst bleibt die
+   * Reihenfolge des Hauses, damit niemand quer ueber die Etagen laeuft.
+   */
+  it('ordnet Anreise, frei, wartend, erledigt -- sonst wie im Haus', () => {
+    const liste = [
+      z('101', { status: 'done', outcome: 'cleaned' }),
+      z('102', { free: false }),
+      z('103', {}),
+      z('104', { arrivalToday: true }),
+      z('105', { kind: 'stayover' })]
+    expect(ordneZimmer(liste).map(x => x.code)).toEqual(['104', '103', '105', '102', '101'])
   })
 })
