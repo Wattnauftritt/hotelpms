@@ -146,9 +146,9 @@ describe('Escape am Rezeptionsrechner', () => {
       .toMatch(/useEscape\(\(\) => setWaehlt\(null\), waehlt !== null\)/)
   })
 
-  it('schliesst den angezeigten Kopplungscode und die Kiosk-Adresse', () => {
+  it('schliesst den angezeigten Kopplungscode, die Kiosk-Adresse und den Freigabecode', () => {
     expect(code('../components/Gaesteterminals.tsx'))
-      .toMatch(/useEscape\(\(\) => \{ setCode\(null\); setAdresse\(null\) \},\s*code !== null \|\| adresse !== null\)/)
+      .toMatch(/useEscape\(\(\) => \{ setCode\(null\); setAdresse\(null\); setFreigabe\(null\) \},\s*code !== null \|\| adresse !== null \|\| freigabe !== null\)/)
   })
 
   it('klappt das Feld der Hausnotiz wieder ein', () => {

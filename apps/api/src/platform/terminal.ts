@@ -13,12 +13,18 @@ import { can, type Principal } from './context.js'
  * nie -- es koennte eines Tages in einer Rolle landen, und dann hielte nur
  * noch diese Zeile.
  */
-export function geraetVon(req: FastifyRequest): { deviceId: number; propertyId: number } {
+export function geraetVon(req: FastifyRequest): {
+  deviceId: number; propertyId: number; propertyIds: number[] } {
   const p = req.principal as Principal
   if (p.terminalDeviceId === null) throw Errors.forbidden('terminal.deviceOnly')
-  const haus = [...p.permissionsByProperty.keys()][0]
+  const haeuser = [...p.permissionsByProperty.keys()]
+  const haus = haeuser[0]
   if (haus === undefined) throw Errors.forbidden('terminal.deviceOnly')
-  return { deviceId: p.terminalDeviceId, propertyId: haus }
+  // `propertyId` ist das Haus des Geraets, der Master: Seiten, Diashow und
+  // Wachzeit kommen nur von dort. `propertyIds` nimmt die Haeuser dazu, die
+  // das Geraet mitnutzen (Migration 0103) -- fuer das, was zu deren
+  // Auftraegen gehoert.
+  return { deviceId: p.terminalDeviceId, propertyId: haus, propertyIds: haeuser }
 }
 
 /**

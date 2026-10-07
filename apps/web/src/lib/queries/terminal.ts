@@ -58,7 +58,9 @@ export interface Kioskschluessel {
 }
 
 export interface TerminalStand {
-  terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean }>
+  /** `shared`: gehoert einem anderen Haus und wird mitgenutzt (Migration 0103). */
+  terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean
+                     shared: boolean }>
   /** Was die Rezeption fuer diese Reservierung anstossen kann. */
   offers: Angebot[]
   registration: { registrationId: number; signatureRequired: boolean; signed: boolean } | null
@@ -66,8 +68,8 @@ export interface TerminalStand {
 }
 
 export interface Pult {
-  terminals: Array<{ deviceRef: string; name: string; online: boolean
-                     job: Auftragsstand | null }>
+  terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean
+                     shared: boolean; job: Auftragsstand | null }>
   offers: Angebot[]
 }
 
@@ -160,6 +162,58 @@ export function useRevokeTerminal(propertyId: number) {
     mutationFn: (deviceRef: string) =>
       api.delete(`/v1/properties/${propertyId}/terminals/${deviceRef}`),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminals', propertyId] }) }
+  })
+}
+
+// ------------------------------------------------- Mitnutzung (Migration 0103)
+
+/** Der Freigabecode eines Geraets; er steht genau einmal hier. */
+export interface Freigabecode {
+  deviceRef: string
+  name: string
+  shareCode: string
+  shareCodeExpiresAt: string
+}
+
+export interface Freigabe {
+  shareRef: string
+  deviceRef: string
+  deviceName: string
+  ownerProperty: string
+  guestProperty: string
+  since: string
+}
+
+/** `lent`: Geraete dieses Hauses, die andere mitnutzen; `borrowed`: umgekehrt. */
+export const useTerminalShares = (propertyId: number) =>
+  useQuery<{ lent: Freigabe[]; borrowed: Freigabe[] }>({
+    queryKey: ['terminal-shares', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/terminal-shares`)
+  })
+
+export function useShareCode(propertyId: number) {
+  return useMutation({
+    mutationFn: (deviceRef: string) => api.post<Freigabecode>(
+      `/v1/properties/${propertyId}/terminals/${deviceRef}/share-code`)
+  })
+}
+
+export function useRedeemShare(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => api.post<{ shareRef: string; deviceName: string
+                                             ownerProperty: string }>(
+      `/v1/properties/${propertyId}/terminal-shares`, { code }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminal-shares', propertyId] }) }
+  })
+}
+
+export function useEndShare(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (shareRef: string) =>
+      api.delete(`/v1/properties/${propertyId}/terminal-shares/${shareRef}`),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminal-shares', propertyId] }) }
   })
 }
 

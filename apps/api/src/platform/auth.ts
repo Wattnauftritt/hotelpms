@@ -226,17 +226,20 @@ export const DEVICE_COOKIE = 'hp_terminal'
  * Gebaut wie der Maschinenzugang: dasselbe Principal, derselbe
  * Berechtigungskatalog, dieselbe Pruefung in `registerRoute`. Nur schmaler
  * -- **ein** Haus, **ein** Recht (`terminal:device`), kein Benutzer, keine
- * Account-Rechte. Was es darueber hinaus erreicht, entscheiden die
+ * Account-Rechte. Dazu die Haeuser desselben Accounts, die das Geraet
+ * ueber eine Freigabe mitnutzen (Migration 0103), mit demselben einen Recht. Was es darueber hinaus erreicht, entscheiden die
  * Geraeterouten, und die lesen nur den eigenen Auftrag.
  */
 export async function loadPrincipalFromDevice(pool: Pool, secret: string): Promise<Principal> {
   return withTransaction(pool, SYSTEM_CONTEXT, async client => {
     const r = await client.query<{
-      device_id: string; device_ref: string; property_id: string; account_id: string }>(
+      device_id: string; device_ref: string; property_id: string; account_id: string
+      shared_property_ids: string[] }>(
       `SELECT * FROM terminal_device_principal($1)`, [hashToken(secret)])
     if (r.rowCount === 0) return ANONYMOUS
     const row = r.rows[0]!
     const haus = Number(row.property_id)
+    const nurGeraet = (): Set<Permission> => new Set<Permission>(['terminal:device'])
     return {
       userId: null,
       // Eigener Schluessel: zaehlt als ausgewiesen, nicht als anonym -- ein
@@ -245,7 +248,13 @@ export async function loadPrincipalFromDevice(pool: Pool, secret: string): Promi
       clientKey: `device:${row.device_ref}`,
       isPlatformStaff: false,
       accountIds: [Number(row.account_id)],
-      permissionsByProperty: new Map([[haus, new Set<Permission>(['terminal:device'])]]),
+      // Das eigene Haus **zuerst**: `geraetVon` liest es als Master, aus dem
+      // Seiten, Diashow und Wachzeit kommen. Dahinter die Haeuser, die das
+      // Geraet ueber eine gueltige Freigabe mitnutzen (Migration 0103) --
+      // nur damit die Zeilenrichtlinie deren Auftraege durchlaesst.
+      permissionsByProperty: new Map([
+        [haus, nurGeraet()],
+        ...row.shared_property_ids.map(id => [Number(id), nurGeraet()] as const)]),
       // Bewusst leer, aus demselben Grund wie beim Maschinentoken: was hier
       // stuende, wirkte auf alle Haeuser des Accounts.
       accountPermissions: new Set(),

@@ -196,7 +196,8 @@ export function TerminalAuftrag({ reservationRef, kind, beschriftung, ohneTermin
 
 /** Die Auswahl des Terminals, wenn es mehr als eines gibt. */
 export function GeraetWahl({ terminals, onWahl, onAbbruch }: {
-  terminals: Array<{ deviceRef: string; name: string; online: boolean; busy?: boolean }>
+  terminals: Array<{ deviceRef: string; name: string; online: boolean; busy?: boolean
+                     shared?: boolean }>
   onWahl: (deviceRef: string) => void
   onAbbruch: () => void
 }): JSX.Element {
@@ -210,6 +211,8 @@ export function GeraetWahl({ terminals, onWahl, onAbbruch }: {
                 className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-neutral-50
                            disabled:text-neutral-400">
           {d.name}
+          {d.shared === true && <span className="text-xs text-neutral-500">
+            {' · '}{t('terminal.shared')}</span>}
           {!d.online && <span className="text-xs text-amber-700">
             {' · '}{t('terminal.deviceOffline')}</span>}
           {d.busy === true && <span className="text-xs">{' · '}{t('terminal.deviceBusy')}</span>}

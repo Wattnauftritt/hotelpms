@@ -308,6 +308,10 @@ const M = {
     de: 'Freigegebene Adresse',
     en: 'Approved address',
     tr: 'Onaylı adres' },
+  'res.terminalShare': {
+    de: 'Freigabe des Gaesteterminals',
+    en: 'Guest terminal share',
+    tr: 'Misafir terminali paylaşımı' },
   'res.oauthClient': {
     de: 'Maschinenzugang',
     en: 'Machine access',
@@ -1338,6 +1342,17 @@ const M = {
     de: 'Das Terminal ist noch nicht gekoppelt.',
     en: 'The terminal has not been paired yet.',
     tr: 'Terminal henüz eşleştirilmedi.' },
+  'terminal.shareCodeInvalid': {
+    de: 'Der Freigabecode ist ungueltig oder abgelaufen. Er gilt nur fuer ein anderes Haus '
+      + 'desselben Kontos.',
+    en: 'The share code is invalid or has expired. It only works for another property of '
+      + 'the same account.',
+    tr: 'Paylaşım kodu geçersiz veya süresi dolmuş. Yalnızca aynı hesabın başka bir tesisi '
+      + 'için geçerlidir.' },
+  'terminal.alreadyShared': {
+    de: 'Dieses Haus nutzt das Terminal bereits mit.',
+    en: 'This property already uses this terminal.',
+    tr: 'Bu tesis bu terminali zaten kullanıyor.' },
   'terminal.deviceBusy': {
     de: 'An diesem Terminal ist gerade ein anderer Auftrag offen.',
     en: 'Another job is currently open on this terminal.',

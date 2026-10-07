@@ -43,7 +43,11 @@ export function TerminalPult({ propertyId }: { propertyId: number }): JSX.Elemen
         <section key={d.deviceRef}
                  className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-medium grow">{d.name}</h2>
+            <h2 className="text-sm font-medium grow">
+              {d.name}
+              {d.shared && <span className="ml-2 text-xs font-normal text-neutral-500">
+                {t('terminal.shared')}</span>}
+            </h2>
             <span className={`text-xs ${d.online ? 'text-emerald-700' : 'text-amber-700'}`}>
               {t(d.online ? 'terminal.settings.online' : 'terminal.settings.offline')}
             </span>
@@ -52,7 +56,12 @@ export function TerminalPult({ propertyId }: { propertyId: number }): JSX.Elemen
             ? <p className="text-sm text-neutral-500">{t('pult.idle')}</p>
             : <AuftragZeile job={d.job} wirdAbgebrochen={abbrechen.isPending}
                             onAbbrechen={() => abbrechen.mutate(d.job!.jobRef)} />}
-          {!istOffen(d.job?.state) && (
+          {/* Belegt durch ein anderes Haus, das dasselbe Geraet nutzt
+              (Migration 0103): dessen Auftrag sieht dieses Haus nicht. */}
+          {!istOffen(d.job?.state) && d.busy && (
+            <p className="text-xs text-neutral-500">{t('terminal.deviceBusy')}</p>
+          )}
+          {!istOffen(d.job?.state) && !d.busy && (
             offers.length === 0
               ? <p className="text-xs text-neutral-500">{t('pult.noContent')}</p>
               : <div className="flex flex-wrap gap-2">
