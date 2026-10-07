@@ -7,7 +7,7 @@ import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import { AUFBEWAHRUNG_MONATE, erfasseMeldeschein } from '../platform/meldeschein.js'
-import { gastAendern, gastAnlegen } from '../platform/gast.js'
+import { eigenesProfil, gastAendern, gastAnlegen, profilGeteilt, type GastFelder } from '../platform/gast.js'
 import { stimmeBedingungZu } from '../platform/hausbedingungen.js'
 
 /**
@@ -315,6 +315,17 @@ async function zustimmungUebernehmen(
   return ergebnis.neu ? 'stored' : 'exists'
 }
 
+/** Was der Schein ueber den Hauptgast sagt, in der Form des Profils. */
+function gastFelder(e: Eingabe): GastFelder {
+  return {
+    lastName: e.guest.lastName, firstName: e.guest.firstName,
+    birthDate: e.guest.birthDate ?? undefined, nationality: e.guest.nationality ?? undefined,
+    ...(e.guest.address === null ? {} : {
+      addressLine1: e.guest.address.line1, postalCode: e.guest.address.postalCode,
+      city: e.guest.address.city, country: e.guest.address.country ?? undefined })
+  }
+}
+
 /** Die Ankunftszeit an einen schon vorhandenen Hauptschein, wenn dort keine steht. */
 async function ankunftNachtragen(
   client: PoolClient, reservationId: number, ankunft: string
@@ -383,8 +394,12 @@ export function registrationImportRoutes(app: FastifyInstance): void {
              FROM guest WHERE id = $1 FOR UPDATE`, [res.primary_guest_id])
         const gast = g.rows[0]!
 
-        const vorhanden = await client.query(
-          `SELECT 1 FROM registration WHERE reservation_id = $1 LIMIT 1`, [res.id])
+        const vorhanden = await client.query<{ source: string; guest_id: string
+                                               ohne_vorname: boolean }>(
+          `SELECT reg.source, reg.guest_id, g.first_name IS NULL AS ohne_vorname
+             FROM registration reg JOIN guest g ON g.id = reg.guest_id
+            WHERE reg.reservation_id = $1
+            ORDER BY reg.group_registration_id NULLS FIRST LIMIT 1`, [res.id])
         const gesperrt = gast.status === 'anonymized' || gast.loeschantrag
         const aufenthalt = { id: Number(res.id), propertyId: Number(res.property_id),
                              primaryGuestId: res.primary_guest_id }
@@ -407,21 +422,35 @@ export function registrationImportRoutes(app: FastifyInstance): void {
           const ankunft = e.expectedArrival === null ? {}
             : { expectedArrivalTime: gesperrt ? 'skipped' as const
                   : await ankunftNachtragen(client, Number(res.id), e.expectedArrival) }
+          /*
+           * Ein uebernommener Schein, dessen Gast keinen Vornamen mehr hat,
+           * ist einer, den die Bereinigung geteilter Profile abgetrennt hat
+           * (0106): sein Name stand am geteilten Profil und war von einem
+           * spaeteren Schein ueberschrieben. Uebernehmen verlangt einen
+           * Vornamen, anders entsteht dieser Zustand nicht. Dann traegt der
+           * erneut geschickte Schein die Angaben des Gastes nach; der Schein
+           * selbst bleibt, wie er ist.
+           */
+          const schein = vorhanden.rows[0]!
+          const wiederherstellen = !gesperrt && schein.source === 'import'
+            && schein.ohne_vorname && Number(schein.guest_id) === Number(res.primary_guest_id)
+            && !(await profilGeteilt(client, Number(res.primary_guest_id), Number(res.id)))
+          if (wiederherstellen) await gastAendern(client, Number(res.primary_guest_id), gastFelder(e))
           return { reservationRef, guestRef: gast.public_ref,
                    result: 'kept_existing', reason: 'registration_exists',
+                   ...(wiederherstellen ? { guest: 'restored' as const } : {}),
                    ...agreement, ...ankunft }
         }
 
         if (gast.status === 'anonymized') throw Errors.conflict('guest.anonymizedNotRevived')
         if (gast.loeschantrag) throw Errors.conflict('guest.erasureRequested')
 
-        await gastAendern(client, res.primary_guest_id, {
-          lastName: e.guest.lastName, firstName: e.guest.firstName,
-          birthDate: e.guest.birthDate ?? undefined, nationality: e.guest.nationality ?? undefined,
-          ...(e.guest.address === null ? {} : {
-            addressLine1: e.guest.address.line1, postalCode: e.guest.address.postalCode,
-            city: e.guest.address.city, country: e.guest.address.country ?? undefined })
-        })
+        // Der Schein gilt diesem Aufenthalt. Ein Profil, an dem noch andere
+        // haengen, bekaeme sonst seinen Namen fuer alle (Migration 0106).
+        const profil = await eigenesProfil(client, Number(res.id), Number(res.primary_guest_id))
+        aufenthalt.primaryGuestId = profil.id
+
+        await gastAendern(client, profil.id, gastFelder(e))
 
         // Mitreisende als eigene Profile: die Meldepflicht gilt je Person.
         const mitreisende: number[] = []
@@ -442,7 +471,7 @@ export function registrationImportRoutes(app: FastifyInstance): void {
         const ergebnis = await erfasseMeldeschein(client, {
           propertyId: Number(res.property_id), reservationId: Number(res.id),
           arrival: res.arrival, departure: res.departure,
-          primaryGuestId: Number(res.primary_guest_id), mitreisende,
+          primaryGuestId: profil.id, mitreisende,
           unterschrift: e.signature === null
             ? { art: 'amAnreisetag' }
             : { art: 'jetzt', svg: e.signature.svg, signedAt: e.signature.signedAt },
@@ -456,7 +485,7 @@ export function registrationImportRoutes(app: FastifyInstance): void {
           : { agreement: await zustimmungUebernehmen(client, e, aufenthalt) }
 
         reply.status(201)
-        return { reservationRef, guestRef: gast.public_ref, result: 'imported',
+        return { reservationRef, guestRef: profil.publicRef, result: 'imported',
                  signatureStored: ergebnis.signatureStored,
                  signaturePending: ergebnis.signaturePending, ...agreement }
       })
