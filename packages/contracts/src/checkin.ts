@@ -256,6 +256,12 @@ export const CheckinSubmit = Type.Object({
    * (`digit_gastkart`). Freiwillig; ohne sie geht die Adresse nicht mit.
    */
   digitalGuestCard: Type.Optional(Type.Boolean()),
+  /**
+   * Voraussichtliche Ankunftszeit, Freitext ("zwischen 16 und 17 Uhr").
+   * Ueber den Mail-Link verlangt, am Terminal weder gefragt noch gespeichert:
+   * dort ist der Gast schon da.
+   */
+  expectedArrival: Type.Optional(Type.String({ maxLength: 50 })),
   /** "Meine Angaben sind richtig und vollstaendig." */
   confirmed: Type.Literal(true)
 }, { additionalProperties: false })

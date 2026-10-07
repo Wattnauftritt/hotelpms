@@ -422,3 +422,45 @@ describe('Unterschrift aus PNG', () => {
     expect(unterschriftAusPng('data:image/jpeg;base64,AAAA')).toBeNull()
   })
 })
+
+describe('Ankunftszeit bei der Uebernahme (0099)', () => {
+  const ankunft = async (reservationId: number): Promise<string | null> =>
+    (await owner.query<{ expected_arrival: string | null }>(
+      `SELECT expected_arrival FROM registration
+        WHERE reservation_id = $1 AND group_registration_id IS NULL`, [reservationId]))
+      .rows[0]!.expected_arrival
+
+  it('nimmt den Freitext mit und traegt ihn an einem schon uebernommenen Schein nach', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+
+    // Erster Lauf ohne Ankunftszeit, wie vor 0099.
+    expect((await senden(m, r.ref, schein())).statusCode).toBe(201)
+    expect(await ankunft(r.reservationId)).toBeNull()
+
+    // Zweiter Lauf mit: nachgetragen, ohne den Schein anzufassen.
+    const zwei = await senden(m, r.ref, schein({}, { expectedArrivalTime: 'ca. 18 Uhr' }))
+    expect(zwei.statusCode, zwei.body).toBe(200)
+    expect(zwei.json()).toMatchObject({ result: 'kept_existing', expectedArrivalTime: 'stored' })
+    expect(await ankunft(r.reservationId)).toBe('ca. 18 Uhr')
+
+    // Ein dritter ueberschreibt nicht.
+    const drei = await senden(m, r.ref, schein({}, { expectedArrivalTime: '20:00' }))
+    expect(drei.json()).toMatchObject({ expectedArrivalTime: 'exists' })
+    expect(await ankunft(r.reservationId)).toBe('ca. 18 Uhr')
+  })
+
+  it('legt einen neuen Schein mit Ankunftszeit an und weist Unsinn ab', async () => {
+    const m = await maschine(['registration:import'])
+    const r = await reservierung()
+    const lang = await senden(m, r.ref, schein({}, { expectedArrivalTime: 'x'.repeat(256) }))
+    expect(lang.statusCode, lang.body).toBe(422)
+    const zahl = await senden(m, r.ref, schein({}, { expectedArrivalTime: 1600 }))
+    expect(zahl.statusCode, zahl.body).toBe(422)
+
+    const a = await senden(m, r.ref,
+      schein({}, { expectedArrivalTime: 'zwischen 14:00 und 15:00' }))
+    expect(a.statusCode, a.body).toBe(201)
+    expect(await ankunft(r.reservationId)).toBe('zwischen 14:00 und 15:00')
+  })
+})

@@ -6,6 +6,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCatego
          type Fixture } from '@hotelpms/testing'
 import { withTransaction, type Pool } from '@hotelpms/db'
 import { CHECKIN_TOKEN_HEADER, checkinTokenAusFragment } from '@hotelpms/contracts'
+import { createCheckinToken } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
@@ -127,6 +128,7 @@ function inlaendisch(gast: Record<string, unknown> = {},
              nationality: 'DE',
              address: { line1: 'Deichweg 4', postalCode: '24937', city: 'Flensburg',
                         country: 'DE' }, ...gast },
+    expectedArrival: 'gegen 16 Uhr',
     confirmed: true,
     ...wurzel
   }
@@ -322,6 +324,54 @@ describe('Digitale Gaestekarte im Meldeformular (0091)', () => {
     expect((await einreichen(t2, inlaendisch({}, { digitalGuestCard: true }))).statusCode)
       .toBe(201)
     expect(await karte(mit.id)).toBe(true)
+  })
+})
+
+describe('Voraussichtliche Ankunftszeit (0099)', () => {
+  const ankunft = async (reservationId: number): Promise<string | null> =>
+    (await owner.query<{ expected_arrival: string | null }>(
+      `SELECT expected_arrival FROM registration
+        WHERE reservation_id = $1 AND group_registration_id IS NULL`, [reservationId]))
+      .rows[0]!.expected_arrival
+
+  it('wird ueber den Mail-Link verlangt und als Freitext gespeichert', async () => {
+    const r = await reservierung()
+    const t1 = await mailLink(r.ref)
+    const ohne = await einreichen(t1, inlaendisch({}, { expectedArrival: '  ' }))
+    expect(ohne.statusCode, ohne.body).toBe(422)
+    expect(ohne.body).toContain('expectedArrival')
+    const zuLang = await einreichen(t1, inlaendisch({}, { expectedArrival: 'x'.repeat(51) }))
+    expect(zuLang.statusCode, zuLang.body).toBe(422)
+
+    const mit = await einreichen(t1,
+      inlaendisch({}, { expectedArrival: ' zwischen 16 und 17 Uhr ' }))
+    expect(mit.statusCode, mit.body).toBe(201)
+    expect(await ankunft(r.id)).toBe('zwischen 16 und 17 Uhr')
+
+    // Die Rezeption sieht sie bei den Anreisen des Tages.
+    const tag = await app.inject({ method: 'GET', headers: chef,
+      url: `/v1/properties/${fx.propertyId}/daily-sheet?date=${ANREISE}` })
+    expect(tag.statusCode, tag.body).toBe(200)
+    const zeile = (JSON.parse(tag.body) as { arrivals: Array<{
+      reservationRef: string; expectedArrival: string | null }> })
+      .arrivals.find(a => a.reservationRef === r.ref)
+    expect(zeile?.expectedArrival).toBe('zwischen 16 und 17 Uhr')
+
+    // Freitext des Gastes: nicht ins Protokoll.
+    const prot = await owner.query<{ changed: string }>(
+      `SELECT changed::text FROM audit_log WHERE table_name = 'registration'`)
+    expect(prot.rows.length).toBeGreaterThan(0)
+    for (const p of prot.rows) expect(p.changed).not.toContain('16 und 17')
+  })
+
+  it('wird am Terminal weder verlangt noch gespeichert', async () => {
+    const r = await reservierung({ anreise: HEUTE, abreise: '2026-10-03' })
+    const t = await withTransaction(pool,
+      { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null },
+      c => createCheckinToken(c, { reservationId: r.id, channel: 'terminal' }))
+    const ohne = await einreichen(t!.token, inlaendisch({}, { expectedArrival: undefined }))
+    expect(ohne.statusCode, ohne.body).toBe(201)
+    expect(await ankunft(r.id)).toBeNull()
   })
 })
 
