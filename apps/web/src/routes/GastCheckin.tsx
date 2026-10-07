@@ -332,6 +332,7 @@ function Formular({ token, view, gross, onErledigt }: {
   const [bedingungenOk, setBedingungenOk] = useState(false)
   const [bestaetigt, setBestaetigt] = useState(false)
   const [gaestekarte, setGaestekarte] = useState(false)
+  const [ankunft, setAnkunft] = useState('')
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<unknown>(null)
 
@@ -345,6 +346,8 @@ function Formular({ token, view, gross, onErledigt }: {
   // unter dem Meldeschein und den Hausbedingungen.
   const mitFeld = mitUnterschrift || bedingungenUnterschrift
   const bedingungenFertig = !mitBedingungen || bedingungenOk
+  // Nur ueber den Mail-Link: am Terminal ist der Gast schon angekommen.
+  const mitAnkunft = view.channel === 'mail'
   const felder = feldFehler(fehler, locale)
 
   /*
@@ -390,6 +393,7 @@ function Formular({ token, view, gross, onErledigt }: {
       ...(bedingungenUnterschrift && signatur !== null
         ? { termsSignatureSvg: signatur } : {}),
       ...(view.digitalGuestCardOffered && gaestekarte ? { digitalGuestCard: true } : {}),
+      ...(mitAnkunft ? { expectedArrival: ankunft } : {}),
       confirmed: true
     }
     try {
@@ -555,6 +559,22 @@ function Formular({ token, view, gross, onErledigt }: {
                          className={`${eingabe} ${rahmen('guest.idDocumentNumber')}`} />
                 </Feld>
               </div>
+            </div>
+          )}
+
+          {/* Wie im Formular des Adminpanels: Freitext, denn "zwischen 16 und
+              17 Uhr" ist eine bessere Antwort als eine erfundene Minute. */}
+          {mitAnkunft && (
+            <div className={abschnitt}>
+              <h2 className="font-semibold">{t('gastCheckin.arrival.title')}</h2>
+              <p className="text-neutral-600">{t('gastCheckin.arrival.hint')}</p>
+              <Feld label={t('gastCheckin.arrival.label')} fehler={felder.get('expectedArrival')}
+                    gross={gross}>
+                <input value={ankunft} maxLength={50} autoComplete="off"
+                       placeholder={t('gastCheckin.arrival.placeholder')}
+                       onChange={e => setAnkunft(e.target.value)}
+                       className={`${eingabe} ${rahmen('expectedArrival')}`} />
+              </Feld>
             </div>
           )}
 

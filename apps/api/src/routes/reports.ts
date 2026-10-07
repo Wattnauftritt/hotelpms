@@ -106,7 +106,10 @@ export function reportRoutes(app: FastifyInstance): void {
           `SELECT ${basis},
                   -- Auch ein Meldeschein, den ein Umsystem erfasst hat (0085):
                   -- sonst fragt die Rezeption den Gast ein zweites Mal.
-                  (reg.id IS NOT NULL OR ext.completed_at IS NOT NULL) AS "registered"
+                  (reg.id IS NOT NULL OR ext.completed_at IS NOT NULL) AS "registered",
+                  -- Was der Gast im Meldeformular angegeben hat (0099), damit
+                  -- die Rezeption den Tag danach plant.
+                  reg.expected_arrival AS "expectedArrival"
              ${von}
              LEFT JOIN registration reg ON reg.reservation_id = r.id
                    AND reg.group_registration_id IS NULL

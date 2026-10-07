@@ -43,7 +43,16 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
           {d.arrivals.map(r => (
             <Zeile key={r.reservationRef} name={namen(r)} raum={r.roomCode}
                    kategorie={r.categoryCode}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Freitext des Gastes aus dem Meldeformular; gekuerzt, der
+                    ganze Wert steht im Tooltip. */}
+                {r.expectedArrival !== null && (
+                  <span title={`${t('today.expectedArrival')}: ${r.expectedArrival}`}
+                        className="max-w-[10rem] truncate text-[11px] px-1 rounded-sm
+                                   bg-sky-50 text-sky-800">
+                    🕒 {r.expectedArrival}
+                  </span>
+                )}
                 {!r.registered && (
                   <span title={t('today.registrationMissing')}
                         className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-800">

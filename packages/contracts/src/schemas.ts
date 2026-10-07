@@ -291,7 +291,11 @@ const DailyRow = Type.Object({
 export const DailySheet = Type.Object({
   date: Type.String(),
   arrivals: Type.Array(Type.Composite([
-    DailyRow, Type.Object({ registered: Type.Boolean() })])),
+    DailyRow, Type.Object({
+      registered: Type.Boolean(),
+      /** Voraussichtliche Ankunftszeit aus dem Meldeformular, Freitext. */
+      expectedArrival: Type.Union([Type.String(), Type.Null()])
+    })])),
   departures: Type.Array(Type.Composite([
     DailyRow, Type.Object({ balanceCent: Type.Union([Cent, Type.Null()]) })])),
   inHouse: Type.Array(Type.Composite([

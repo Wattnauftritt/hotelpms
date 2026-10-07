@@ -10,7 +10,7 @@ import { Fehler, Laedt } from '../Shell.tsx'
 
 type Liste = 'arrivals' | 'departures' | 'inHouse'
 type Zeile = Omit<DailySheet['inHouse'][number], 'registered'>
-  & { registered?: boolean; balanceCent?: number | null }
+  & { registered?: boolean; balanceCent?: number | null; expectedArrival?: string | null }
 
 /**
  * Das Tagesgeschaeft am Telefon: Anreisen, Abreisen, Im Haus.
@@ -93,6 +93,12 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                   {r.occupants > 0 && ` · ${t('mobil.persons', { n: r.occupants })}`}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1">
+                  {r.expectedArrival !== undefined && r.expectedArrival !== null && (
+                    <Marke farbe="bg-sky-50 text-sky-800">
+                      <span className="sr-only">{t('today.expectedArrival')}: </span>
+                      🕒 {r.expectedArrival}
+                    </Marke>
+                  )}
                   {r.registered === false && (
                     <Marke farbe="bg-amber-100 text-amber-900">
                       ⚠ {t('today.registrationMissing')}

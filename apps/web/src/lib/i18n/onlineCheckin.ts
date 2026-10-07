@@ -131,6 +131,25 @@ export const onlineCheckin = {
     en: 'Number',
     tr: 'Numara' },
 
+  'gastCheckin.arrival.title': {
+    de: 'Ihre Ankunft',
+    en: 'Your arrival',
+    tr: 'Varışınız' },
+  'gastCheckin.arrival.hint': {
+    de: 'Bitte geben Sie Ihre ungefähre Ankunftszeit an. Die Angabe hilft uns bei '
+      + 'der Planung, ist aber nicht verbindlich.',
+    en: 'Please tell us roughly when you expect to arrive. It helps us plan your '
+      + 'arrival and is not binding.',
+    tr: 'Lütfen yaklaşık varış saatinizi belirtin. Bu bilgi planlamamıza yardımcı '
+      + 'olur, ancak bağlayıcı değildir.' },
+  'gastCheckin.arrival.label': {
+    de: 'Voraussichtliche Ankunftszeit',
+    en: 'Expected arrival time',
+    tr: 'Tahmini varış saati' },
+  'gastCheckin.arrival.placeholder': {
+    de: 'z. B. zwischen 16 und 17 Uhr',
+    en: 'e.g. between 4 and 5 pm',
+    tr: 'ör. 16:00 ile 17:00 arası' },
   'gastCheckin.companions.title': {
     de: 'Mitreisende',
     en: 'Travelling with you',
