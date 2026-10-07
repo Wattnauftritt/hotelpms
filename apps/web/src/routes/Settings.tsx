@@ -57,7 +57,7 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   if (darf('settings:property')) {
     bereiche.push({ key: 'terminal', label: 'terminal.settings.title' })
   }
-  // Zimmer sortieren (0103): wie die Zimmer selbst an settings:property.
+  // Zimmer sortieren (0104): wie die Zimmer selbst an settings:property.
   if (darf('settings:property')) {
     bereiche.push({ key: 'roomSort', label: 'roomSort.title' })
   }

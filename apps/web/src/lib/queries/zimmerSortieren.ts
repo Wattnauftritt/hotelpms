@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api.js'
 
 /**
- * Zimmer sortieren: die Einstellung des Hauses (Migration 0103).
+ * Zimmer sortieren: die Einstellung des Hauses (Migration 0104).
  *
  * `weights` ist nur die Abweichung des Hauses, `effective` das, womit
  * gerechnet wird. Die Maske zeigt die Vorgabe als Platzhalter; ein leeres

@@ -269,7 +269,7 @@ function ZimmerAendern(
                  className={eingabe} />
         </Feld>
       </div>
-      {/* Fuer den Sortierer (Migration 0103): welches Zimmer die besten
+      {/* Fuer den Sortierer (Migration 0104): welches Zimmer die besten
           Gaeste bekommt, und wo eine Gruppe zusammen liegt. */}
       <Feld label={t('master.quality')} hint={t('master.qualityHint')}>
         <input type="number" min={0} max={100} step={1} required value={quality}

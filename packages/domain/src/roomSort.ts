@@ -1,5 +1,5 @@
 /**
- * Zimmer sortieren: Gewichte und ihre Pruefung (Migration 0103).
+ * Zimmer sortieren: Gewichte und ihre Pruefung (Migration 0104).
  *
  * Die Zahlen stammen aus dem Adminpanel, das Hotel und Gaestehaus bisher
  * selbst sortiert hat (`config/room_sorting.php`, Antwort vom 07.10.2026).

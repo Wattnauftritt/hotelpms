@@ -60,7 +60,7 @@ export const Room = Type.Object({
   categoryName: Type.String(),
   /** Verkaufscode fuer Kanaele, wenn er nicht die Gruppe ist (Migration 0090). */
   salesCode: Type.Union([Type.String(), Type.Null()]),
-  /** Wie gut das Zimmer ist, 0 bis 100; der Sortierer liest es (Migration 0103). */
+  /** Wie gut das Zimmer ist, 0 bis 100; der Sortierer liest es (Migration 0104). */
   quality: Type.Integer({ minimum: 0, maximum: 100 }),
   /** Haupthaus, Nebenhaus: eine Gruppe soll moeglichst in einem liegen. */
   building: Type.Union([Type.String(), Type.Null()]),
@@ -242,7 +242,7 @@ export const TapeChart = Type.Object({
     category_max_occupancy: Type.Integer(),
     /** Merkmal fuer den Balken: "Balkon", "1. Stock", "Spaetanreise". */
     short_note: Type.Union([Type.String(), Type.Null()]),
-    /** "Zimmer fest": der Sortierer laesst den Balken liegen (0103). */
+    /** "Zimmer fest": der Sortierer laesst den Balken liegen (0104). */
     room_fixed: Type.Boolean(),
     /** Der Vorgang. Nur im Titel und im Seitenfenster, nie auf dem Balken. */
     notes: Type.Union([Type.String(), Type.Null()]),
@@ -837,7 +837,7 @@ export const ReservationDetail = Type.Object({
   categoryCode: Type.String(),
   categoryName: Type.String(),
   resourceId: Type.Union([Type.Integer(), Type.Null()]),
-  /** "Zimmer fest": der Sortierer laesst den Aufenthalt liegen (0103). */
+  /** "Zimmer fest": der Sortierer laesst den Aufenthalt liegen (0104). */
   roomFixed: Type.Boolean(),
   roomCode: Type.Union([Type.String(), Type.Null()]),
   floor: Type.Union([Type.String(), Type.Null()]),

@@ -9,7 +9,7 @@ import {
 } from '@hotelpms/domain'
 
 /**
- * Zimmer sortieren: die Einstellung des Hauses (Migration 0103).
+ * Zimmer sortieren: die Einstellung des Hauses (Migration 0104).
  *
  * Die Antwort traegt beides, die Abweichung des Hauses (`weights`) und das,
  * womit gerechnet wird (`effective`): die Maske zeigt neben jedem Feld die

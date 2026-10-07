@@ -90,7 +90,7 @@ export function usePatchReservationNotes(reservationRef: string) {
 }
 
 /**
- * "Zimmer fest" (Migration 0103): der Sortierer laesst den Aufenthalt
+ * "Zimmer fest" (Migration 0104): der Sortierer laesst den Aufenthalt
  * liegen. Wie die Notiz eine kleine Mutation fuer sich -- das Schloss bewegt
  * nichts, und es soll sich setzen lassen, ohne das Zimmer neu zu waehlen.
  */

@@ -487,7 +487,7 @@ function zeitpunkt(iso: string, locale: Locale): string {
 
 /**
  * Das Schloss: der Sortierer laesst diesen Aufenthalt in seinem Zimmer
- * (Migration 0103). Am Zimmer und nicht unter "Aendern", weil es zum Zimmer
+ * (Migration 0104). Am Zimmer und nicht unter "Aendern", weil es zum Zimmer
  * gehoert -- der Stammgast im Wunschzimmer, die Familie, der man das
  * Zimmer am Telefon zugesagt hat.
  */

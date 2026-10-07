@@ -1,7 +1,7 @@
 import type { LocalizedText } from '@hotelpms/contracts'
 
 /**
- * Einstellung „Zimmer sortieren" (Migration 0103). Die Gewichte heissen so,
+ * Einstellung „Zimmer sortieren" (Migration 0104). Die Gewichte heissen so,
  * wie die Rezeption sie meint, nicht wie der Schluessel im Code.
  */
 export const zimmerSortieren = {

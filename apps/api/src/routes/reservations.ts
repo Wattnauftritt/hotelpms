@@ -1435,7 +1435,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         }
 
         /*
-         * "Zimmer fest" (Migration 0103): der Sortierer laesst die
+         * "Zimmer fest" (Migration 0104): der Sortierer laesst die
          * Reservierung, wo sie ist. Hier und nicht in `assign-unit`: das
          * Schloss bewegt nichts, und ein Stammgast im Wunschzimmer soll es
          * auch bekommen, ohne dass jemand das Zimmer neu waehlt. Kein

@@ -60,7 +60,7 @@ interface RoomSeries {
   suffix?: string
   floor?: string
   attributes?: string[]
-  /** Fuer den Sortierer (0103); ohne Angabe 50 und kein Gebaeude. */
+  /** Fuer den Sortierer (0104); ohne Angabe 50 und kein Gebaeude. */
   quality?: number
   building?: string | null
   /** Einzelne Nummern der Serie auslassen, etwa die 13. */
@@ -356,7 +356,7 @@ export function setupRoutes(app: FastifyInstance): void {
   }
 
   /**
-   * Qualitaet und Gebaeude fuer den Sortierer (Migration 0103). `undefined`
+   * Qualitaet und Gebaeude fuer den Sortierer (Migration 0104). `undefined`
    * laesst stehen; beim Gebaeude loeschen `null` und Leertext.
    */
   function qualitaet(roh: unknown): number | undefined {

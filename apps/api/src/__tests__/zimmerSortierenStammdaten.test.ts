@@ -9,7 +9,7 @@ import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 
 /**
- * Zimmer sortieren, Schritt 1 (Migration 0103, Sven 07.10.2026): Qualitaet
+ * Zimmer sortieren, Schritt 1 (Migration 0104, Sven 07.10.2026): Qualitaet
  * und Gebaeude am Zimmer, "Zimmer fest" an der Reservierung, Einstellung je
  * Haus. Der Sortierer selbst kommt danach; hier geht es darum, dass die
  * Angaben ankommen, geprueft werden und nichts nebenher anstossen.

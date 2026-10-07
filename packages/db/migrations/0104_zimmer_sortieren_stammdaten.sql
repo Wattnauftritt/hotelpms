@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0103 -- Zimmer sortieren, Schritt 1: was der Sortierer wissen muss.
+-- 0104 -- Zimmer sortieren, Schritt 1: was der Sortierer wissen muss.
 --
 -- Anforderung: Sven, 07.10.2026, Thread "Zimmer-Sortierung". StayGrid soll
 -- Buchungen auf Zimmer verteilen -- im Gaestehaus automatisch, im Hotel auf

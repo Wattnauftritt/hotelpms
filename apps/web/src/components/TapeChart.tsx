@@ -1703,7 +1703,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
 })
 
 /**
- * "Zimmer fest" am Balken (Migration 0103): wer im Plan umsortiert, soll
+ * "Zimmer fest" am Balken (Migration 0104): wer im Plan umsortiert, soll
  * sehen, welcher Gast sein Zimmer zugesagt bekommen hat, bevor er ihn zieht.
  */
 function SchlossZeichen({ fest }: { fest: boolean }): JSX.Element | null {

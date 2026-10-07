@@ -8,7 +8,7 @@ import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from './Shell.tsx'
 
 /**
- * Zimmer sortieren: ob und womit das Haus sortiert (Migration 0103).
+ * Zimmer sortieren: ob und womit das Haus sortiert (Migration 0104).
  *
  * Die Gewichte sind eingeklappt. Wer nur den Modus waehlt, soll nicht
  * zwoelf Zahlen vor sich sehen und meinen, er muesse sie verstehen: die
