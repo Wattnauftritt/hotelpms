@@ -1340,6 +1340,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                           {gruppe.code}
                         </span>
                       )}
+                      <SchlossZeichen fest={r.room_fixed} />
                       <ZahlungsZeichen zahlung={r.payment} />
                       <span className="truncate min-w-0">
                         {r.last_name ?? t('tape.noGuest')}
@@ -1637,6 +1638,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
               )}
               {/* Vor dem Namen: am schmalen Balken schneidet `truncate`
                   hinten ab, und der Zahlungsstand soll stehen bleiben. */}
+              <SchlossZeichen fest={r.room_fixed} />
               <ZahlungsZeichen zahlung={r.payment} />
               <span className="truncate min-w-0">
                 {r.last_name ?? t('tape.noGuest')}
@@ -1699,3 +1701,16 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
     </div>
   )
 })
+
+/**
+ * "Zimmer fest" am Balken (Migration 0103): wer im Plan umsortiert, soll
+ * sehen, welcher Gast sein Zimmer zugesagt bekommen hat, bevor er ihn zieht.
+ */
+function SchlossZeichen({ fest }: { fest: boolean }): JSX.Element | null {
+  const t = useT()
+  if (!fest) return null
+  return (
+    <span role="img" aria-label={t('plan.roomFixed')} title={t('plan.roomFixedHint')}
+          className="mr-1 shrink-0">🔒</span>
+  )
+}

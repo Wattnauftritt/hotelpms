@@ -60,6 +60,9 @@ interface RoomSeries {
   suffix?: string
   floor?: string
   attributes?: string[]
+  /** Fuer den Sortierer (0103); ohne Angabe 50 und kein Gebaeude. */
+  quality?: number
+  building?: string | null
   /** Einzelne Nummern der Serie auslassen, etwa die 13. */
   skip?: number[]
   commit?: boolean
@@ -352,6 +355,28 @@ export function setupRoutes(app: FastifyInstance): void {
     return code
   }
 
+  /**
+   * Qualitaet und Gebaeude fuer den Sortierer (Migration 0103). `undefined`
+   * laesst stehen; beim Gebaeude loeschen `null` und Leertext.
+   */
+  function qualitaet(roh: unknown): number | undefined {
+    if (roh === undefined) return undefined
+    if (typeof roh !== 'number' || !Number.isInteger(roh) || roh < 0 || roh > 100) {
+      throw Errors.validation({ quality: ['field.invalid'] })
+    }
+    return roh
+  }
+
+  function gebaeude(roh: unknown): string | null | undefined {
+    if (roh === undefined) return undefined
+    if (roh === null) return null
+    if (typeof roh !== 'string') throw Errors.validation({ building: ['field.invalid'] })
+    const b = roh.trim()
+    if (b === '') return null
+    if (b.length > 40) throw Errors.validation({ building: ['field.maxLength'] }, { max: 40 })
+    return b
+  }
+
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/rooms',
@@ -364,7 +389,7 @@ export function setupRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
           `SELECT r.id, r.code, r.name, r.floor, r.attributes, r.active,
-                  r.sales_code AS "salesCode",
+                  r.sales_code AS "salesCode", r.quality, r.building,
                   c.id AS "categoryId", c.code AS "categoryCode", c.name AS "categoryName",
                   (SELECT count(*) FROM maintenance_block m
                     WHERE m.resource_id = r.id AND m.kind = 'out_of_order'
@@ -400,6 +425,8 @@ export function setupRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const body = req.body as RoomSeries
       const codes = buildCodes(body)
+      const quality = qualitaet(body.quality)
+      const building = gebaeude(body.building)
 
       return tx(req.pool, req, async client => {
         await assertCategory(client, body.propertyId, body.categoryId)
@@ -435,11 +462,13 @@ export function setupRoutes(app: FastifyInstance): void {
         // Eine Anweisung für die ganze Serie. Der Trigger auf Anweisungsebene
         // rechnet die Kapazität einmal nach, nicht einmal je Zimmer.
         const r = await client.query(
-          `INSERT INTO resource (property_id, category_id, code, floor, attributes)
-           SELECT $1, $2, code, NULLIF($4,''), COALESCE($5::text[], '{}')
+          `INSERT INTO resource (property_id, category_id, code, floor, attributes,
+                                 quality, building)
+           SELECT $1, $2, code, NULLIF($4,''), COALESCE($5::text[], '{}'),
+                  COALESCE($6::smallint, 50), $7
              FROM unnest($3::text[]) AS code`,
           [body.propertyId, body.categoryId, neu, body.floor ?? '',
-           body.attributes ?? null])
+           body.attributes ?? null, quality ?? null, building ?? null])
         return { ...bericht, created: r.rowCount ?? 0 }
       })
     }
@@ -454,9 +483,12 @@ export function setupRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const body = req.body as { propertyId: number; categoryId: number; code: string
                                  name?: string; floor?: string; attributes?: string[]
-                                 salesCode?: string | null }
+                                 salesCode?: string | null
+                                 quality?: number; building?: string | null }
       const name = zimmerName(body.name)
       const salesCode = verkaufscode(body.salesCode)
+      const quality = qualitaet(body.quality)
+      const building = gebaeude(body.building)
       if (!body.code?.trim()) throw Errors.validation({ code: ['field.required'] })
       return tx(req.pool, req, async client => {
         await assertCategory(client, body.propertyId, body.categoryId)
@@ -469,10 +501,12 @@ export function setupRoutes(app: FastifyInstance): void {
         if (salesCode) await codeFrei(client, body.propertyId, salesCode, body.categoryId)
         const { rows } = await client.query<{ id: number }>(
           `INSERT INTO resource (property_id, category_id, code, floor, attributes, name,
-                                 sales_code)
-           VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5::text[],'{}'),$6,$7) RETURNING id`,
+                                 sales_code, quality, building)
+           VALUES ($1,$2,$3,NULLIF($4,''),COALESCE($5::text[],'{}'),$6,$7,
+                   COALESCE($8::smallint, 50),$9) RETURNING id`,
           [body.propertyId, body.categoryId, body.code.trim(), body.floor ?? '',
-           body.attributes ?? null, name ?? null, salesCode ?? null])
+           body.attributes ?? null, name ?? null, salesCode ?? null,
+           quality ?? null, building ?? null])
         reply.status(201)
         return { roomId: rows[0]!.id, code: body.code.trim() }
       })
@@ -488,9 +522,12 @@ export function setupRoutes(app: FastifyInstance): void {
       const { roomId } = req.params as { roomId: string }
       const body = req.body as { code?: string; name?: string | null; floor?: string
                                  attributes?: string[]; categoryId?: number
-                                 active?: boolean; salesCode?: string | null }
+                                 active?: boolean; salesCode?: string | null
+                                 quality?: number; building?: string | null }
       const name = zimmerName(body.name)
       const salesCode = verkaufscode(body.salesCode)
+      const quality = qualitaet(body.quality)
+      const building = gebaeude(body.building)
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number; property_id: number
                                          category_id: number; active: boolean }>(
@@ -543,13 +580,16 @@ export function setupRoutes(app: FastifyInstance): void {
              -- ihn: COALESCE allein koennte einen Namen nie wieder entfernen.
              name = CASE WHEN $7::boolean THEN $8 ELSE name END,
              sales_code = CASE WHEN $9::boolean THEN $10 ELSE sales_code END,
+             quality = COALESCE($11::smallint, quality),
+             building = CASE WHEN $12::boolean THEN $13 ELSE building END,
              updated_at = now()
            WHERE id = $1
            RETURNING code, name, floor, attributes, category_id AS "categoryId", active,
-                     sales_code AS "salesCode"`,
+                     sales_code AS "salesCode", quality, building`,
           [Number(roomId), body.code?.trim() ?? null, body.floor ?? null,
            body.attributes ?? null, body.categoryId ?? null, body.active ?? null,
-           name !== undefined, name ?? null, salesCode !== undefined, salesCode ?? null])
+           name !== undefined, name ?? null, salesCode !== undefined, salesCode ?? null,
+           quality ?? null, building !== undefined, building ?? null])
 
         // Ein Umzug zwischen Gruppen verschiebt Kapazität von der einen zur
         // anderen. Der Trigger rechnet beide Seiten nach (Migration 0013).

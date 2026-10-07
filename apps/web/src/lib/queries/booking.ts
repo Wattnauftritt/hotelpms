@@ -90,6 +90,24 @@ export function usePatchReservationNotes(reservationRef: string) {
 }
 
 /**
+ * "Zimmer fest" (Migration 0103): der Sortierer laesst den Aufenthalt
+ * liegen. Wie die Notiz eine kleine Mutation fuer sich -- das Schloss bewegt
+ * nichts, und es soll sich setzen lassen, ohne das Zimmer neu zu waehlen.
+ */
+export function useSetRoomFixed(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (roomFixed: boolean) =>
+      api.patch<{ reservationRef: string; roomFixed: boolean }>(
+        `/v1/reservations/${reservationRef}`, { roomFixed }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
+/**
  * Den Hauptgast eines Zimmers setzen -- die Namensliste.
  *
  * Ein Bucher nimmt fuenf Zimmer, und die uebrigen Namen stehen bis zum
