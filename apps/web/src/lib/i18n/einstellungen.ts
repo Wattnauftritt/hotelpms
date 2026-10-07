@@ -627,10 +627,25 @@ export const einstellungen = {
     de: 'Neuer Grund',
     en: 'New reason',
     tr: 'Yeni gerekçe' },
+  'exemption.newHint': {
+    de: 'Jeder Grund wird einzeln angelegt. Nach dem Speichern steht er oben in der '
+      + 'Liste, und die Felder sind frei für den nächsten.',
+    en: 'Each reason is created on its own. Once saved it appears in the list above, '
+      + 'and the fields are free for the next one.',
+    tr: 'Her gerekçe ayrı ayrı oluşturulur. Kaydedildikten sonra yukarıdaki listede '
+      + 'görünür ve alanlar bir sonraki için boşalır.' },
   'exemption.code': {
-    de: 'Kürzel',
-    en: 'Code',
-    tr: 'Kod' },
+    de: 'Kürzel (optional)',
+    en: 'Code (optional)',
+    tr: 'Kod (isteğe bağlı)' },
+  'exemption.codeAs': {
+    de: 'gespeichert als {kuerzel}',
+    en: 'saved as {kuerzel}',
+    tr: '{kuerzel} olarak kaydedilir' },
+  'exemption.avsInvalid': {
+    de: 'Die AVS-Kategorie ist eine ganze Zahl von 1 bis 99, oder leer.',
+    en: 'The AVS category is a whole number from 1 to 99, or empty.',
+    tr: 'AVS kategorisi 1 ile 99 arasında bir tam sayıdır veya boştur.' },
   'exemption.label': {
     de: 'Bezeichnung, wie der Gast sie sieht',
     en: 'Label as the guest sees it',

@@ -3,6 +3,7 @@ import { useBefreiungsgruende, useCreateBefreiungsgrund, useUpdateBefreiungsgrun
   from '../lib/queries/settings.js'
 import { useT } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
+import { avsKategorieAus, kuerzelAus } from '../lib/befreiungsgrund.js'
 import { Fehler, Laedt } from './Shell.tsx'
 
 /**
@@ -28,9 +29,10 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
   const [nachweis, setNachweis] = useState(false)
   const [avs, setAvs] = useState('')
 
-  const avsZahl = avs.trim() === '' ? null : Number(avs)
-  const gueltig = /^[a-z0-9_]{1,40}$/.test(code.trim()) && label.trim() !== ''
-    && (avsZahl === null || (Number.isInteger(avsZahl) && avsZahl >= 1 && avsZahl <= 99))
+  // Leer gelassen, kommt das Kuerzel aus der Bezeichnung (lib/befreiungsgrund.ts).
+  const kuerzel = kuerzelAus(code.trim() !== '' ? code : label)
+  const avsZahl = avsKategorieAus(avs)
+  const gueltig = kuerzel !== '' && label.trim() !== '' && avsZahl !== 'ungueltig'
   const gruende = q.data?.reasons ?? []
   const eingabe = 'w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
@@ -74,11 +76,19 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
 
       <div className="border-t border-neutral-200 pt-3 space-y-2">
         <h2 className="text-sm font-medium">{t('exemption.new')}</h2>
+        <p className="text-xs text-neutral-500">{t('exemption.newHint')}</p>
         <div className="flex flex-wrap gap-2">
           <label className="block text-sm w-40">
             <span className="block text-xs text-neutral-600 mb-1">{t('exemption.code')}</span>
             <input value={code} onChange={e => setCode(e.target.value)}
                    placeholder="behinderung" className={eingabe} />
+            {/* Was gespeichert wird, wenn es vom Getippten abweicht: wer
+                "Behinderung" schreibt, sieht "behinderung". */}
+            {kuerzel !== '' && kuerzel !== code.trim() && (
+              <span className="block text-xs text-neutral-500 mt-0.5">
+                {t('exemption.codeAs', { kuerzel })}
+              </span>
+            )}
           </label>
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('exemption.label')}</span>
@@ -91,6 +101,9 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
                    className={eingabe} />
           </label>
         </div>
+        {avsZahl === 'ungueltig' && (
+          <div className="text-sm text-red-700">{t('exemption.avsInvalid')}</div>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={nachweis} onChange={e => setNachweis(e.target.checked)} />
           {t('exemption.needsProof')}
@@ -99,8 +112,9 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
         {!online && <div className="text-sm text-amber-800">{t('error.offlineWrite')}</div>}
         <button type="button" disabled={!gueltig || anlegen.isPending || !online}
                 onClick={() => anlegen.mutate(
-                  { code: code.trim(), label: label.trim(), needsProof: nachweis,
-                    avsCategory: avsZahl, sort: (gruende.length + 1) * 10 },
+                  { code: kuerzel, label: label.trim(), needsProof: nachweis,
+                    avsCategory: avsZahl === 'ungueltig' ? null : avsZahl,
+                    sort: (gruende.length + 1) * 10 },
                   { onSuccess: () => { setCode(''); setLabel(''); setNachweis(false); setAvs('') } })}
                 className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:bg-neutral-300">
