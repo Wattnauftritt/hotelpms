@@ -53,11 +53,11 @@ export function bildAusRumpf(body: unknown): { art: BildArt; bytes: Buffer } {
 }
 
 export async function bildLesen(
-  client: PoolClient, imageRef: string, propertyId: number
+  client: PoolClient, imageRef: string, propertyIds: number[]
 ): Promise<{ mime: string; bytes: Buffer }> {
   const r = await client.query<{ mime: string; bytes: Buffer }>(
     `SELECT mime, bytes FROM terminal_content_image
-      WHERE public_ref = $1 AND property_id = $2`, [imageRef, propertyId])
+      WHERE public_ref = $1 AND property_id = ANY ($2::bigint[])`, [imageRef, propertyIds])
   if (r.rowCount === 0) throw Errors.notFound('res.terminalContent')
   return r.rows[0]!
 }

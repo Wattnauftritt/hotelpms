@@ -116,6 +116,76 @@ export const terminal = {
     de: 'Terminal „{name}“ widerrufen? Es kann danach nichts mehr öffnen.',
     en: 'Revoke terminal "{name}"? It will no longer be able to open anything.',
     tr: '„{name}“ terminali iptal edilsin mi? Ardından hiçbir şey açamaz.' },
+  'terminal.settings.share': {
+    de: 'Für anderes Haus freigeben',
+    en: 'Share with another property',
+    tr: 'Başka bir tesisle paylaş' },
+  'terminal.settings.shareTitle': {
+    de: 'Freigabecode für „{name}“',
+    en: 'Share code for "{name}"',
+    tr: '„{name}“ için paylaşım kodu' },
+  'terminal.settings.shareHint': {
+    de: 'In den Einstellungen des anderen Hauses unter Gästeterminals → „Terminal eines '
+      + 'anderen Hauses mitnutzen“ eintragen. Gilt einmal und bis {zeit} Uhr, nur für ein '
+      + 'Haus desselben Kontos. Das andere Haus kann danach Aufträge an dieses Terminal '
+      + 'schicken; Seiten, Diashow und Wachzeit bleiben bei diesem Haus.',
+    en: 'Enter it in the other property\'s settings under Guest terminals → "Use another '
+      + 'property\'s terminal". Valid once and until {zeit}, only for a property of the same '
+      + 'account. The other property can then send jobs to this terminal; pages, slideshow '
+      + 'and screen times stay with this property.',
+    tr: 'Diğer tesisin ayarlarında Misafir terminalleri → „Başka bir tesisin terminalini '
+      + 'kullan“ altına girin. Bir kez ve {zeit} saatine kadar, yalnızca aynı hesabın bir '
+      + 'tesisi için geçerlidir. Diğer tesis ardından bu terminale görev gönderebilir; '
+      + 'sayfalar, slayt gösterisi ve uyanık kalma süreleri bu tesiste kalır.' },
+  'terminal.share.title': {
+    de: 'Mitnutzung durch andere Häuser',
+    en: 'Shared with other properties',
+    tr: 'Diğer tesislerle paylaşım' },
+  'terminal.share.hint': {
+    de: 'Zwei Häuser, eine Rezeption: ein Haus ist Master des Terminals und gibt einen '
+      + 'Freigabecode aus, das andere trägt ihn hier ein. Jedes Haus schickt nur seine '
+      + 'eigenen Gäste; was es zeigt, kommt aus seinen eigenen Daten. Beide Seiten können '
+      + 'die Freigabe jederzeit beenden.',
+    en: 'Two properties, one front desk: one property is the terminal\'s master and issues '
+      + 'a share code, the other enters it here. Each property only sends its own guests; '
+      + 'what it shows comes from its own data. Either side can end the share at any time.',
+    tr: 'İki tesis, bir resepsiyon: bir tesis terminalin ana tesisidir ve bir paylaşım kodu '
+      + 'verir, diğeri kodu buraya girer. Her tesis yalnızca kendi misafirlerini gönderir; '
+      + 'gösterdiği şey kendi verilerinden gelir. Her iki taraf da paylaşımı istediği zaman '
+      + 'sonlandırabilir.' },
+  'terminal.share.lent': {
+    de: '„{device}“ wird mitgenutzt von {haus}',
+    en: '"{device}" is also used by {haus}',
+    tr: '„{device}“ {haus} tarafından da kullanılıyor' },
+  'terminal.share.borrowed': {
+    de: '„{device}“ von {haus}',
+    en: '"{device}" from {haus}',
+    tr: '{haus} tesisinden „{device}“' },
+  'terminal.share.end': {
+    de: 'Freigabe beenden',
+    en: 'End share',
+    tr: 'Paylaşımı sonlandır' },
+  'terminal.share.endConfirm': {
+    de: 'Freigabe von „{device}“ beenden? Ein offener Auftrag des mitnutzenden Hauses '
+      + 'wird abgebrochen.',
+    en: 'End the share of "{device}"? An open job of the other property is canceled.',
+    tr: '„{device}“ paylaşımı sonlandırılsın mı? Diğer tesisin açık görevi iptal edilir.' },
+  'terminal.share.redeemLabel': {
+    de: 'Terminal eines anderen Hauses mitnutzen: Freigabecode',
+    en: 'Use another property\'s terminal: share code',
+    tr: 'Başka bir tesisin terminalini kullan: paylaşım kodu' },
+  'terminal.share.redeem': {
+    de: 'Mitnutzen',
+    en: 'Use',
+    tr: 'Kullan' },
+  'terminal.share.redeemed': {
+    de: '„{device}“ von {haus} steht jetzt an der Reservierung und im Bedienfeld zur Wahl.',
+    en: '"{device}" from {haus} is now available on the reservation and in the terminal desk.',
+    tr: '{haus} tesisinden „{device}“ artık rezervasyonda ve terminal panelinde seçilebilir.' },
+  'terminal.shared': {
+    de: 'mitgenutzt',
+    en: 'shared',
+    tr: 'paylaşılan' },
   'terminal.settings.awake': {
     de: 'Bildschirm wach halten von',
     en: 'Keep screen on from',

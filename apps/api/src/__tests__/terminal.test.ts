@@ -850,3 +850,267 @@ describe('Wachzeit', () => {
     expect((await setzen(t.deviceRef, '08:00', '18:00', b.propertyId)).statusCode).toBe(403)
   })
 })
+
+/**
+ * Mitnutzung (Migration 0103): Hotel und Gaestehaus, eine Rezeption, ein
+ * Touchscreen. Das Hotel ist Master und gibt einen Freigabecode aus; das
+ * Gaestehaus traegt ihn ein und schickt danach an dasselbe Geraet.
+ *
+ * Geprueft wird, was still schiefginge: Gastdaten des einen Hauses im
+ * Auftrag des anderen; eine Freigabe, die nach dem Widerruf noch traegt;
+ * ein Online-Check-in-Link, der den Widerruf ueberlebt; ein unsichtbarer
+ * abgelaufener Auftrag, der das Geraet fuer das andere Haus sperrt.
+ */
+describe('Mitnutzung durch ein zweites Haus', () => {
+  let b: number
+  let catB: number
+  let zimmerB: number[]
+  let gh: Record<string, string>
+
+  beforeEach(async () => {
+    const zweites = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name) VALUES ($1,'GH','Gaestehaus')
+       RETURNING id`, [fx.accountId])
+    b = zweites.rows[0]!.id
+    catB = await makeCategory(owner, b, { code: 'FW' })
+    zimmerB = await makeResources(owner, b, catB, 2)
+    await owner.query(`SELECT inventory_materialize($1,'2026-09-01'::date,'2026-12-01'::date)`,
+      [b])
+    // Nur im Gaestehaus berechtigt: sieht das Hotel nicht.
+    const u = await makeUser(owner,
+      { email: 'gaestehaus@test.de', propertyId: b, roleKey: 'hotel_director' })
+    gh = { cookie: `hp_session=${u.sessionId}` }
+  })
+
+  const freigabecode = async (deviceRef: string, headers = chef, propertyId = fx.propertyId) => {
+    const r = await app.inject({ method: 'POST',
+      url: `/v1/properties/${propertyId}/terminals/${deviceRef}/share-code`, headers })
+    expect(r.statusCode, r.body).toBe(201)
+    return json(r).shareCode as string
+  }
+  const einloesen = (code: string, headers = gh, propertyId = b) =>
+    app.inject({ method: 'POST', url: `/v1/properties/${propertyId}/terminal-shares`,
+      headers, payload: { code } })
+  const freigaben = async (headers: Record<string, string>, propertyId: number) =>
+    json(await app.inject({ method: 'GET',
+      url: `/v1/properties/${propertyId}/terminal-shares`, headers })) as unknown as {
+      lent: Array<{ shareRef: string; guestProperty: string }>
+      borrowed: Array<{ shareRef: string; deviceName: string; ownerProperty: string }> }
+
+  /** Hotel-Terminal, vom Gaestehaus mitgenutzt. */
+  async function geteilt(): Promise<{ deviceRef: string; secret: string; shareRef: string }> {
+    const t = await terminal('Touchscreen Rezeption')
+    const r = await einloesen(await freigabecode(t.deviceRef))
+    expect(r.statusCode, r.body).toBe(201)
+    return { ...t, shareRef: json(r).shareRef as string }
+  }
+
+  const reservierungB = async (nachname = 'Jansen') =>
+    reservierung(await gast(nachname), gh, b, catB, zimmerB[0])
+
+  it('schickt vom Gaestehaus an das Terminal des Hotels, mit den Daten des Gaestehauses', async () => {
+    const t = await terminal('Touchscreen Rezeption')
+    const code = await freigabecode(t.deviceRef)
+    expect(code).toMatch(/^([2-9A-Z]{4}-){3}[2-9A-Z]{4}$/)
+
+    const r = await einloesen(code.toLowerCase())
+    expect(r.statusCode, r.body).toBe(201)
+    expect(json(r).ownerProperty).toBe('Testhotel')
+    // Genau einmal.
+    expect((await einloesen(code)).statusCode).toBe(422)
+
+    // Beide Seiten sehen die Freigabe, mit dem Namen des anderen Hauses.
+    expect((await freigaben(chef, fx.propertyId)).lent[0]!.guestProperty).toBe('Gaestehaus')
+    expect((await freigaben(gh, b)).borrowed[0]!.ownerProperty).toBe('Testhotel')
+
+    // Das Hotel hat eine Seite in der Diashow, das Gaestehaus auch.
+    await owner.query(
+      `INSERT INTO terminal_content (property_id, title, idle_position, idle_seconds)
+       VALUES ($1,'Hotel-Fruehstueck',1,10), ($2,'Gaestehaus-WLAN',1,10)`, [fx.propertyId, b])
+
+    const ref = await reservierungB('Gaestehausgast')
+    await melden(ref, gh, b)
+    // Ein Gast des Hotels, dessen Name nirgends auftauchen darf.
+    await melden(await reservierung(await gast('Hotelgast')))
+
+    const stand = json(await app.inject({ method: 'GET',
+      url: `/v1/reservations/${ref}/terminal`, headers: gh }))
+    expect(stand.terminals).toEqual([expect.objectContaining(
+      { deviceRef: t.deviceRef, shared: true, busy: false })])
+
+    const a = await auftrag(t.deviceRef, ref, 'registration_sign', gh)
+    expect(a.statusCode, a.body).toBe(201)
+    const jobRef = json(a).jobRef as string
+
+    // Am Terminal steht der Name des Hauses, das schickt.
+    const frage = json(await abfragen(t.secret))
+    expect(frage.property).toBe('Gaestehaus')
+    expect(frage.job).toEqual({ jobRef, kind: 'registration_sign', state: 'pending' })
+
+    const auf = await app.inject({ method: 'POST', url: `/v1/terminal/job/${jobRef}/open`,
+      headers: geraet(t.secret) })
+    expect(auf.statusCode, auf.body).toBe(200)
+    expect(JSON.stringify(json(auf).data)).toContain('Gaestehausgast')
+    expect(JSON.stringify(json(auf).data)).not.toContain('Hotelgast')
+
+    const fertig = await app.inject({ method: 'POST',
+      url: `/v1/terminal/job/${jobRef}/complete`, headers: geraet(t.secret),
+      payload: { signatureSvg: UNTERSCHRIFT } })
+    expect(fertig.statusCode, fertig.body).toBe(200)
+
+    // Ohne Auftrag wieder das Hotel -- und die Diashow nur vom Master.
+    expect(json(await abfragen(t.secret)).property).toBe('Testhotel')
+    const ruhe = json(await app.inject({ method: 'GET', url: '/v1/terminal/idle',
+      headers: geraet(t.secret) }))
+    expect((ruhe.slides as Array<{ title: string }>).map(s => s.title))
+      .toEqual(['Hotel-Fruehstueck'])
+
+    // Der Auftrag des Gaestehauses steht nicht im Bedienfeld des Hotels.
+    const pult = json(await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/terminal-desk`, headers: chef }))
+    expect((pult.terminals as Array<{ job: unknown }>)[0]!.job).toBeNull()
+    const pultB = json(await app.inject({ method: 'GET',
+      url: `/v1/properties/${b}/terminal-desk`, headers: gh }))
+    expect((pultB.terminals as Array<{ job: { state: string } }>)[0]!.job.state).toBe('done')
+  })
+
+  it('laesst dem Gaestehaus nur das Schicken, nicht die Einstellungen des Geraets', async () => {
+    const t = await geteilt()
+    const liste = json(await app.inject({ method: 'GET',
+      url: `/v1/properties/${b}/terminals`, headers: gh }))
+    expect(liste.terminals).toEqual([])
+    for (const [method, url] of [
+      ['PUT', `/v1/properties/${b}/terminals/${t.deviceRef}/awake`],
+      ['DELETE', `/v1/properties/${b}/terminals/${t.deviceRef}`],
+      ['POST', `/v1/properties/${b}/terminals/${t.deviceRef}/kiosk-key`],
+      ['POST', `/v1/properties/${b}/terminals/${t.deviceRef}/share-code`]] as const) {
+      const r = await app.inject({ method, url, headers: gh,
+        payload: method === 'PUT' ? { from: '08:00', until: '18:00' } : undefined })
+      expect(r.statusCode, `${method} ${url}`).toBe(404)
+    }
+    // Und keine Seite des Hotels: was das Gaestehaus zeigt, legt es selbst an.
+    const seite = await owner.query<{ public_ref: string }>(
+      `INSERT INTO terminal_content (property_id, title) VALUES ($1,'Hotelseite')
+       RETURNING public_ref`, [fx.propertyId])
+    const r = await app.inject({ method: 'POST', url: '/v1/terminal-jobs', headers: gh,
+      payload: { deviceRef: t.deviceRef, propertyId: b, kind: 'content',
+                 contentRef: seite.rows[0]!.public_ref } })
+    expect(r.statusCode).toBe(404)
+  })
+
+  it('weist einen Code aus einem anderen Account und fuer das eigene Haus ab', async () => {
+    const t = await terminal()
+    expect((await einloesen(await freigabecode(t.deviceRef), chef, fx.propertyId)).statusCode)
+      .toBe(422)
+
+    const fremd = await makeProperty(owner, { code: 'FREMD', name: 'Fremd' })
+    const f = await makeUser(owner,
+      { email: 'fremd@test.de', propertyId: fremd.propertyId, roleKey: 'hotel_director' })
+    const r = await einloesen(await freigabecode(t.deviceRef),
+      { cookie: `hp_session=${f.sessionId}` }, fremd.propertyId)
+    expect(r.statusCode).toBe(422)
+    expect(json(r).code).toBe('terminal.shareCodeInvalid')
+
+    // Ein neuer Code macht den alten wertlos.
+    const alt = await freigabecode(t.deviceRef)
+    await freigabecode(t.deviceRef)
+    expect((await einloesen(alt)).statusCode).toBe(422)
+  })
+
+  it('zaehlt falsche Freigabecodes selbst, obwohl die Anfrage angemeldet ist', async () => {
+    const t = await terminal()
+    const code = await freigabecode(t.deviceRef)
+    for (let i = 0; i < 10; i++) {
+      expect((await einloesen('ZZZZ-ZZZZ-ZZZZ-ZZZZ')).statusCode).toBe(422)
+    }
+    expect((await einloesen(code)).statusCode).toBe(429)
+  })
+
+  it('nimmt mit dem Widerruf den offenen Auftrag und seinen Link mit', async () => {
+    const t = await geteilt()
+    const ref = await reservierungB()
+    const jobRef = json(await auftrag(t.deviceRef, ref, 'registration_fill', gh)).jobRef as string
+    const auf = await app.inject({ method: 'POST', url: `/v1/terminal/job/${jobRef}/open`,
+      headers: geraet(t.secret) })
+    expect(auf.statusCode, auf.body).toBe(200)
+
+    // Der Master beendet die Freigabe.
+    const lent = (await freigaben(chef, fx.propertyId)).lent
+    const w = await app.inject({ method: 'DELETE',
+      url: `/v1/properties/${fx.propertyId}/terminal-shares/${lent[0]!.shareRef}`,
+      headers: chef })
+    expect(w.statusCode, w.body).toBe(200)
+
+    const job = await owner.query<{ state: string; canceled_by: string; revoked: boolean }>(
+      `SELECT j.state, j.canceled_by, t.revoked_at IS NOT NULL AS revoked
+         FROM terminal_job j JOIN checkin_token t ON t.id = j.checkin_token_id
+        WHERE j.public_ref = $1`, [jobRef])
+    expect(job.rows[0]).toEqual({ state: 'canceled', canceled_by: 'revoked', revoked: true })
+
+    // Das Geraet erreicht das Gaestehaus nicht mehr, das Gaestehaus das Geraet nicht.
+    expect((await app.inject({ method: 'POST', url: `/v1/terminal/job/${jobRef}/open`,
+      headers: geraet(t.secret) })).statusCode).toBe(404)
+    const stand = json(await app.inject({ method: 'GET',
+      url: `/v1/reservations/${ref}/terminal`, headers: gh }))
+    expect(stand.terminals).toEqual([])
+    expect((await auftrag(t.deviceRef, ref, 'registration_fill', gh)).statusCode).toBe(404)
+  })
+
+  it('laesst auch das Gaestehaus die Freigabe beenden', async () => {
+    const t = await geteilt()
+    const w = await app.inject({ method: 'DELETE',
+      url: `/v1/properties/${b}/terminal-shares/${t.shareRef}`, headers: gh })
+    expect(w.statusCode, w.body).toBe(200)
+    expect((await freigaben(chef, fx.propertyId)).lent).toEqual([])
+  })
+
+  it('nimmt beim Widerruf des Geraets auch den Auftrag des Gaestehauses mit', async () => {
+    const t = await geteilt()
+    const ref = await reservierungB()
+    await melden(ref, gh, b)
+    const jobRef = json(await auftrag(t.deviceRef, ref, 'registration_sign', gh)).jobRef as string
+    const w = await app.inject({ method: 'DELETE',
+      url: `/v1/properties/${fx.propertyId}/terminals/${t.deviceRef}`, headers: chef })
+    expect(w.statusCode).toBe(200)
+    const job = await owner.query<{ state: string; canceled_by: string }>(
+      `SELECT state, canceled_by FROM terminal_job WHERE public_ref = $1`, [jobRef])
+    expect(job.rows[0]).toEqual({ state: 'canceled', canceled_by: 'revoked' })
+    expect((await freigaben(gh, b)).borrowed).toEqual([])
+  })
+
+  it('zeigt das Geraet als belegt, waehrend das Hotel schickt -- aber nicht nach Ablauf', async () => {
+    const t = await geteilt()
+    const refA = await reservierung(await gast('Hotelgast'))
+    await melden(refA)
+    const jobA = json(await auftrag(t.deviceRef, refA)).jobRef as string
+
+    const refB = await reservierungB()
+    await melden(refB, gh, b)
+    const stand = json(await app.inject({ method: 'GET',
+      url: `/v1/reservations/${refB}/terminal`, headers: gh }))
+    expect((stand.terminals as Array<{ busy: boolean }>)[0]!.busy).toBe(true)
+    const besetzt = await auftrag(t.deviceRef, refB, 'registration_sign', gh)
+    expect(besetzt.statusCode).toBe(409)
+    expect(json(besetzt).code).toBe('terminal.deviceBusy')
+
+    // Abgelaufen, aber noch nicht umgeschrieben -- und fuer das Gaestehaus
+    // unsichtbar. Es darf das Geraet trotzdem nicht sperren.
+    await owner.query(
+      `UPDATE terminal_job SET expires_at = now() - interval '1 minute' WHERE public_ref = $1`,
+      [jobA])
+    expect((await auftrag(t.deviceRef, refB, 'registration_sign', gh)).statusCode).toBe(201)
+    const alt = await owner.query<{ state: string }>(
+      `SELECT state FROM terminal_job WHERE public_ref = $1`, [jobA])
+    expect(alt.rows[0]!.state).toBe('expired')
+  })
+
+  it('protokolliert den Freigabecode nicht', async () => {
+    await geteilt()
+    const prot = await owner.query<{ changed: unknown; new_values: unknown }>(
+      `SELECT * FROM audit_log WHERE table_name = 'terminal_share'`)
+    expect(prot.rows.length).toBeGreaterThan(0)
+    for (const z of prot.rows) {
+      expect(JSON.stringify(z)).not.toMatch(/x[0-9a-f]{32}/)
+    }
+  })
+})

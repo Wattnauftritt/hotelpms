@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useEscape } from '../lib/tasten.js'
 import { useT, useLocale, intlTag, type Locale } from '../lib/i18n/index.js'
 import { useTerminals, useCreateTerminal, useRepairTerminal, useRevokeTerminal,
-         useKioskKey, useTerminalWachzeit, type Kopplungscode,
-         type TerminalGeraet, type Kioskschluessel }
+         useKioskKey, useTerminalWachzeit, useShareCode, useTerminalShares,
+         useRedeemShare, useEndShare, type Kopplungscode,
+         type TerminalGeraet, type Kioskschluessel, type Freigabecode }
   from '../lib/queries/terminal.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { TerminalInhalte } from './TerminalInhalte.tsx'
@@ -29,18 +30,23 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
   const kiosk = useKioskKey(propertyId)
   const [adresse, setAdresse] = useState<Kioskschluessel | null>(null)
   const [kopiert, setKopiert] = useState(false)
+  const freigeben = useShareCode(propertyId)
+  const [freigabe, setFreigabe] = useState<Freigabecode | null>(null)
   const liste = useTerminals(propertyId, code !== null)
 
   // Escape schliesst den angezeigten Code oder die Adresse -- beide sind
   // eine Lage ueber der Liste, und danach braucht sie niemand mehr.
-  useEscape(() => { setCode(null); setAdresse(null) }, code !== null || adresse !== null)
+  useEscape(() => { setCode(null); setAdresse(null); setFreigabe(null) },
+    code !== null || adresse !== null || freigabe !== null)
 
   // Code und Adresse schliessen einander aus: beide machen das bisherige
-  // Geheimnis des Geraets wertlos, und nur das zuletzt erzeugte gilt.
-  const zeigeCode = (c: Kopplungscode): void => { setAdresse(null); setCode(c) }
+  // Geheimnis des Geraets wertlos, und nur das zuletzt erzeugte gilt. Der
+  // Freigabecode steht allein, damit niemand die beiden Codes verwechselt.
+  const zeigeCode = (c: Kopplungscode): void => { setAdresse(null); setFreigabe(null); setCode(c) }
   const zeigeAdresse = (k: Kioskschluessel): void => {
-    setCode(null); setKopiert(false); setAdresse(k)
+    setCode(null); setFreigabe(null); setKopiert(false); setAdresse(k)
   }
+  const zeigeFreigabe = (f: Freigabecode): void => { setCode(null); setAdresse(null); setFreigabe(f) }
   /*
    * Das Geheimnis hinter dem `#`: der Browser schickt den Teil nach dem
    * Zeichen nie an einen Server, er landet also in keiner Protokollzeile
@@ -121,6 +127,23 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
         </div>
       )}
 
+      {freigabe !== null && (
+        <div className="rounded-sm border border-neutral-300 bg-white p-4 space-y-2" role="status">
+          <div className="text-sm font-medium">
+            {t('terminal.settings.shareTitle', { name: freigabe.name })}
+          </div>
+          <div className="text-2xl font-mono tracking-widest select-all">{freigabe.shareCode}</div>
+          <p className="text-xs text-neutral-600">
+            {t('terminal.settings.shareHint',
+              { zeit: zeitpunkt(freigabe.shareCodeExpiresAt, locale) })}
+          </p>
+          <button type="button" onClick={() => setFreigabe(null)}
+                  className="text-xs text-neutral-600 underline">
+            {t('common.close')}
+          </button>
+        </div>
+      )}
+
       <form className="flex flex-wrap items-end gap-2"
             onSubmit={e => {
               e.preventDefault()
@@ -143,6 +166,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
       {neu.isError && <Fehler error={neu.error} />}
       {kiosk.isError && <Fehler error={kiosk.error} />}
       {widerrufen.isError && <Fehler error={widerrufen.error} />}
+      {freigeben.isError && <Fehler error={freigeben.error} />}
 
       {liste.data.terminals.length === 0
         ? <p className="text-sm text-neutral-500">{t('terminal.settings.none')}</p>
@@ -173,6 +197,14 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
                                    hover:bg-neutral-50">
                   {t('terminal.settings.kiosk')}
                 </button>
+                {d.state === 'paired' && (
+                  <button type="button" disabled={freigeben.isPending}
+                          onClick={() => freigeben.mutate(d.deviceRef, { onSuccess: zeigeFreigabe })}
+                          className="text-xs px-2 py-1 rounded-sm border border-neutral-300
+                                     hover:bg-neutral-50">
+                    {t('terminal.settings.share')}
+                  </button>
+                )}
                 <button type="button" disabled={widerrufen.isPending}
                         onClick={() => {
                           if (confirm(t('terminal.settings.revokeConfirm', { name: d.name }))) {
@@ -191,9 +223,97 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
         <p className="text-xs text-neutral-500">{t('terminal.settings.awakeHint')}</p>
       )}
 
+      {/* Zwei Haeuser, eine Rezeption (Migration 0103). */}
+      <Mitnutzung propertyId={propertyId} />
+
       {/* Was die Terminals zeigen duerfen: Seiten, Diashow, Adressen. */}
       <TerminalInhalte propertyId={propertyId} />
     </div>
+  )
+}
+
+/**
+ * Mitnutzung durch ein anderes Haus desselben Kontos (Migration 0103).
+ *
+ * Beide Richtungen an einer Stelle: welche Geraete dieses Hauses andere
+ * mitnutzen, welche anderer Haeuser dieses mitnutzt, und das Feld fuer
+ * einen Freigabecode. Beenden kann jede Seite; ein offener Auftrag des
+ * mitnutzenden Hauses faellt dabei mit.
+ */
+function Mitnutzung({ propertyId }: { propertyId: number }): JSX.Element | null {
+  const t = useT()
+  const liste = useTerminalShares(propertyId)
+  const einloesen = useRedeemShare(propertyId)
+  const beenden = useEndShare(propertyId)
+  const [code, setCode] = useState('')
+  const [erfolg, setErfolg] = useState<{ device: string; haus: string } | null>(null)
+  if (liste.isError) return <Fehler error={liste.error} />
+  if (liste.data === undefined) return null
+  const { lent, borrowed } = liste.data
+  const knopf = 'text-xs px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50'
+  const ende = (shareRef: string, device: string): void => {
+    if (confirm(t('terminal.share.endConfirm', { device }))) beenden.mutate(shareRef)
+  }
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-medium">{t('terminal.share.title')}</h3>
+      <p className="text-xs text-neutral-600">{t('terminal.share.hint')}</p>
+      {(lent.length > 0 || borrowed.length > 0) && (
+        <ul className="divide-y divide-neutral-100 border border-neutral-200 rounded-sm bg-white">
+          {lent.map(f => (
+            <li key={f.shareRef} className="px-3 py-2 flex items-center gap-3 text-sm">
+              <span className="grow">
+                {t('terminal.share.lent', { device: f.deviceName, haus: f.guestProperty })}
+              </span>
+              <button type="button" disabled={beenden.isPending} className={knopf}
+                      onClick={() => ende(f.shareRef, f.deviceName)}>
+                {t('terminal.share.end')}
+              </button>
+            </li>
+          ))}
+          {borrowed.map(f => (
+            <li key={f.shareRef} className="px-3 py-2 flex items-center gap-3 text-sm">
+              <span className="grow">
+                {t('terminal.share.borrowed', { device: f.deviceName, haus: f.ownerProperty })}
+              </span>
+              <button type="button" disabled={beenden.isPending} className={knopf}
+                      onClick={() => ende(f.shareRef, f.deviceName)}>
+                {t('terminal.share.end')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="flex flex-wrap items-end gap-2"
+            onSubmit={e => {
+              e.preventDefault()
+              if (code.trim() === '') return
+              setErfolg(null)
+              einloesen.mutate(code.trim(), { onSuccess: r => {
+                setCode(''); setErfolg({ device: r.deviceName, haus: r.ownerProperty })
+              } })
+            }}>
+        <label className="text-sm">
+          <div className="text-neutral-600">{t('terminal.share.redeemLabel')}</div>
+          <input value={code} onChange={e => setCode(e.target.value)} maxLength={24}
+                 autoComplete="off" spellCheck={false}
+                 placeholder="XXXX-XXXX-XXXX-XXXX"
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-72 font-mono" />
+        </label>
+        <button type="submit" disabled={code.trim() === '' || einloesen.isPending}
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t('terminal.share.redeem')}
+        </button>
+      </form>
+      {erfolg !== null && (
+        <p className="text-xs text-emerald-700" role="status">
+          {t('terminal.share.redeemed', erfolg)}
+        </p>
+      )}
+      {einloesen.isError && <Fehler error={einloesen.error} />}
+      {beenden.isError && <Fehler error={beenden.error} />}
+    </section>
   )
 }
 
@@ -232,6 +352,15 @@ function Wachzeit({ propertyId, geraet }: { propertyId: number; geraet: Terminal
       {setzen.isError && <div className="basis-full"><Fehler error={setzen.error} /></div>}
     </form>
   )
+}
+
+/**
+ * Ein Zeitpunkt mit Tag und Uhrzeit: der Freigabecode gilt einen Tag, und
+ * "bis 14:30" hiesse sonst heute oder morgen.
+ */
+function zeitpunkt(iso: string, locale: Locale): string {
+  return new Intl.DateTimeFormat(intlTag(locale), { dateStyle: 'short', timeStyle: 'short' })
+    .format(new Date(iso))
 }
 
 /** Ein Zeitpunkt als Uhrzeit des Betrachters. Ein Zeitpunkt, kein Kalendertag. */

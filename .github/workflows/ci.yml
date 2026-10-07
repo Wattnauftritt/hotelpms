@@ -19,7 +19,65 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# `actions: read` fuer die Suche nach dem Gruen-Vermerk in `vorab`.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  # --------------------------------------------------------------------
+  # Ist genau dieser Quellstand schon gruen durch CI gekommen?
+  #
+  # Der Lauf eines Pull Requests prueft nicht den Kopf des Zweigs, sondern
+  # `refs/pull/N/merge`: den Zweig, probeweise in main gemergt. Wird
+  # danach gemergt, ohne dass main sich bewegt hat, ist der Merge-Commit
+  # auf main ein anderer Commit mit **demselben Baum** -- Datei fuer Datei
+  # das, was eben geprueft wurde. Ihn noch einmal vier Testlaeufer lang zu
+  # pruefen, findet nichts Neues.
+  #
+  # Verglichen wird deshalb der Baum (`HEAD^{tree}`), nicht der Commit.
+  # Hat sich main zwischen Pruefung und Merge bewegt -- zwei Pull Requests
+  # kurz hintereinander --, ist der Baum ein anderer, kein Vermerk passt,
+  # und der Lauf auf main prueft voll. Genau dort entsteht, was kein
+  # einzelner Pull Request gesehen hat.
+  #
+  # Uebersprungene Jobs zaehlen als bestanden: der Lauf auf main endet als
+  # `success`, und `freigeben.yml` findet ihn wie bisher.
+  # --------------------------------------------------------------------
+  vorab:
+    runs-on: ubuntu-latest
+    outputs:
+      baum: ${{ steps.baum.outputs.baum }}
+      geprueft: ${{ steps.vermerk.outputs.geprueft }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - id: baum
+        run: echo "baum=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+      # Nur auf main. Im Pull Request wird immer geprueft: dort ist der
+      # Lauf die Pruefung, auf die der Merge sich verlaesst.
+      - id: vermerk
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Nur Vermerke aus Laeufen dieses Repositorys, nicht aus einem
+          # Fork: dessen Pull Request bringt seine eigene ci.yml mit und
+          # koennte einen Vermerk fuer einen beliebigen Baum hochladen.
+          treffer="$(gh api \
+            "repos/${{ github.repository }}/actions/artifacts?name=ci-gruen-${{ steps.baum.outputs.baum }}&per_page=100" \
+            --jq '[.artifacts[]
+                   | select(.expired | not)
+                   | select(.workflow_run.head_repository_id == .workflow_run.repository_id)]
+                  | length')"
+          if [ "$treffer" -gt 0 ]; then
+            echo "geprueft=true" >> "$GITHUB_OUTPUT"
+            echo "Baum ${{ steps.baum.outputs.baum }} ist bereits gruen geprueft, Pruefung und Tests entfallen." \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "geprueft=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # --------------------------------------------------------------------
   # Was sich ohne Datenbank pruefen laesst. Laeuft parallel zu den Tests
   # und ist in zwei bis drei Minuten fertig -- lange bevor die Tests
@@ -27,6 +85,8 @@ jobs:
   # Faelle braucht.
   # --------------------------------------------------------------------
   pruefen:
+    needs: vorab
+    if: needs.vorab.outputs.geprueft != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -78,6 +138,8 @@ jobs:
   # dieselbe Zeit und kostet die Abdeckung.
   # --------------------------------------------------------------------
   tests:
+    needs: vorab
+    if: needs.vorab.outputs.geprueft != 'true'
     runs-on: ubuntu-latest
     strategy:
       # Ein roter Anteil beantwortet die Frage noch nicht: liegt es an der
@@ -121,3 +183,20 @@ jobs:
           psql -d hotelpms_test -c "CREATE EXTENSION pg_trgm; CREATE EXTENSION pgcrypto;"
       - run: pnpm install --frozen-lockfile
       - run: pnpm vitest run --shard=${{ matrix.shard }}/4
+
+  # --------------------------------------------------------------------
+  # Der Vermerk fuer `vorab`: dieser Baum ist gruen. Ein Artefakt, weil
+  # sich danach ueber die API nach Namen suchen laesst, ohne den Lauf zu
+  # kennen. Zwei Wochen genuegen -- ein Pull Request, der laenger liegt,
+  # wird auf main eben noch einmal geprueft.
+  # --------------------------------------------------------------------
+  gruen:
+    needs: [vorab, pruefen, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ needs.vorab.outputs.baum }}" > gruen.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ci-gruen-${{ needs.vorab.outputs.baum }}
+          path: gruen.txt
+          retention-days: 14
