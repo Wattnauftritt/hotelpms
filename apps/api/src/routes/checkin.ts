@@ -125,6 +125,7 @@ interface Einreichung {
   termsAccepted: string[]
   termsSignatureSvg?: string
   digitalGuestCard: boolean
+  expectedArrival: string | null
 }
 
 const GAST_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality',
@@ -135,7 +136,15 @@ const PERSON_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationalit
 const BEFREIUNG_FELDER = new Set(['reason', 'proof'])
 const ANSCHRIFT_FELDER = new Set(['line1', 'postalCode', 'city', 'country'])
 const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed',
-                               'termsAccepted', 'termsSignatureSvg', 'digitalGuestCard'])
+                               'termsAccepted', 'termsSignatureSvg', 'digitalGuestCard',
+                               'expectedArrival'])
+
+/**
+ * Wie im Formular des Adminpanels. Dort steht die Spalte auf 255, weil
+ * uebernommene Werte laenger sein koennen; was ein Gast hier eintippt, ist
+ * eine Uhrzeit oder eine Spanne, keine Nachricht ans Haus.
+ */
+const ANKUNFT_MAX = 50
 
 function istObjekt(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -150,7 +159,7 @@ function istObjekt(v: unknown): v is Record<string, unknown> {
  * vor. Es gibt kein Feld dafuer (§ 30 BMG erlaubt die Nummer, verbietet die
  * Kopie), und das soll die Antwort sagen.
  */
-function pruefe(body: unknown, heute: string): Einreichung {
+function pruefe(body: unknown, heute: string, kanal: CheckinKontext['channel']): Einreichung {
   const f: Record<string, Meldung[]> = {}
   const fehlt = (k: string, m: Meldung = 'field.required'): void => {
     (f[k] ??= []).push(m)
@@ -271,6 +280,26 @@ function pruefe(body: unknown, heute: string): Einreichung {
     fehlt('digitalGuestCard', 'field.invalid')
   }
 
+  /*
+   * Die Ankunftszeit nur ueber den Mail-Link, und dort verlangt -- wie im
+   * Adminpanel, dessen Formular sie zur Pflicht machte (07.10.2026): die
+   * Rezeption plant den Tag danach. Am Terminal steht der Gast schon im
+   * Haus; dort wird sie weder gefragt noch gespeichert. Freitext ohne
+   * Formatpruefung, denn "zwischen 16 und 17 Uhr" ist eine gute Antwort.
+   */
+  let ankunft: string | null = null
+  if (kanal === 'mail') {
+    const a = body.expectedArrival
+    if (a !== undefined && a !== null && typeof a !== 'string') {
+      fehlt('expectedArrival', 'field.invalid')
+    } else if (typeof a === 'string' && a.trim().length > ANKUNFT_MAX) {
+      fehlt('expectedArrival', 'field.invalid')
+    } else {
+      ankunft = typeof a === 'string' && a.trim() !== '' ? a.trim() : null
+      if (ankunft === null) fehlt('expectedArrival')
+    }
+  }
+
   if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
   return {
     guest: { ...g!, address: anschrift!, idDocumentType: ausweisTyp,
@@ -279,7 +308,8 @@ function pruefe(body: unknown, heute: string): Einreichung {
     signatureSvg: svg,
     termsAccepted: akzeptiert,
     termsSignatureSvg: termsSvg,
-    digitalGuestCard: body.digitalGuestCard === true
+    digitalGuestCard: body.digitalGuestCard === true,
+    expectedArrival: ankunft
   }
 }
 
@@ -440,7 +470,7 @@ export function checkinRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       nichtSpeichern(reply)
       return checkinTx(req, async (client, k): Promise<CheckinSubmitted> => {
-        const e = pruefe(req.body, k.businessDate)
+        const e = pruefe(req.body, k.businessDate, k.channel)
         const r = await reservierungZumLink(client, k)
         if (r.reg_id !== null) throw Errors.conflict('checkin.alreadyDone')
 
@@ -490,7 +520,8 @@ export function checkinRoutes(app: FastifyInstance): void {
           quelle: k.channel === 'terminal' ? 'terminal' : 'online',
           befreiungen,
           // Nur wo das Haus an AVS meldet; sonst ginge die Einwilligung ins Leere.
-          digitalGuestCard: e.digitalGuestCard && await meldetAnAvs(client, r.property_id)
+          digitalGuestCard: e.digitalGuestCard && await meldetAnAvs(client, r.property_id),
+          ankunft: e.expectedArrival
         })
 
         /*

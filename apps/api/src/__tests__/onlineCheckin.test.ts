@@ -137,6 +137,7 @@ function inlaendisch(extra: Record<string, unknown> = {}): Record<string, unknow
              nationality: 'DE',
              address: { line1: 'Deichweg 4', postalCode: '24937', city: 'Flensburg',
                         country: 'DE' }, ...extra },
+    expectedArrival: 'gegen 16 Uhr',
     confirmed: true
   }
 }
@@ -147,6 +148,7 @@ function auslaendisch(extra: Record<string, unknown> = {}): Record<string, unkno
              nationality: 'NL', idDocumentType: 'passport', idDocumentNumber: 'NX12345P7',
              address: { line1: 'Herengracht 1', postalCode: '1015', city: 'Amsterdam',
                         country: 'NL' }, ...extra },
+    expectedArrival: 'gegen 16 Uhr',
     confirmed: true
   }
 }

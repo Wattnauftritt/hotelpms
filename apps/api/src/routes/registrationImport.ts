@@ -51,7 +51,7 @@ import { stimmeBedingungZu } from '../platform/hausbedingungen.js'
  */
 
 const WURZEL = new Set(['source', 'completedAt', 'guest', 'companions', 'signature',
-                        'avsReportedAt', 'agreement'])
+                        'avsReportedAt', 'agreement', 'expectedArrivalTime'])
 const GAST = new Set(['lastName', 'firstName', 'birthDate', 'nationality', 'address'])
 const PERSON = new Set(['lastName', 'firstName', 'birthDate', 'nationality'])
 const ANSCHRIFT = new Set(['line1', 'postalCode', 'city', 'country'])
@@ -74,6 +74,8 @@ const SYSTEM_MAX = 40
 const REFERENCE_MAX = 100
 /** Die Seitenlaengen, die `istUnterschriftSvg` zulaesst. */
 const KANTE_MAX = 9999
+/** Wie die Spalte im Adminpanel (`guest_registrations.expected_arrival_time`). */
+const ANKUNFT_MAX = 255
 
 /**
  * `nationality` darf `null` sein: das Formular im Adminpanel nahm Freitext,
@@ -98,6 +100,8 @@ interface Eingabe {
   signature: { svg: string; signedAt: string | null } | null
   avsReportedAt: string | null
   agreement: { termsCode: string; termsVersion: number; agreedAt: string | null } | null
+  /** Freitext wie "ca. 18 Uhr", so wie der Gast ihn dort geschrieben hat (0099). */
+  expectedArrival: string | null
 }
 
 function istObjekt(v: unknown): v is Record<string, unknown> {
@@ -264,10 +268,21 @@ function pruefe(body: unknown): Eingabe {
     }
   }
 
+  // Ohne Formatpruefung: dort stehen "16:00", "ca. 18 Uhr" und
+  // "zwischen 16 und 17 Uhr", und jedes davon sagt der Rezeption genug.
+  let expectedArrival: string | null = null
+  const ea = body.expectedArrivalTime
+  if (ea !== undefined && ea !== null) {
+    if (typeof ea !== 'string' || ea.trim().length > ANKUNFT_MAX) {
+      fehlt('expectedArrivalTime', 'field.invalid')
+    } else if (ea.trim() !== '') expectedArrival = ea.trim()
+  }
+
   if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE_IMPORT })
   return {
     source: source!, completedAt: completedAt!, avsReportedAt: avsReportedAt!,
-    guest: { ...g!, address: anschrift }, companions: begleiter, signature, agreement
+    guest: { ...g!, address: anschrift }, companions: begleiter, signature, agreement,
+    expectedArrival
   }
 }
 
@@ -298,6 +313,17 @@ async function zustimmungUebernehmen(
     agreedAt: z.agreedAt ?? e.signature?.signedAt ?? e.completedAt,
     vorhanden: 'behalten' })
   return ergebnis.neu ? 'stored' : 'exists'
+}
+
+/** Die Ankunftszeit an einen schon vorhandenen Hauptschein, wenn dort keine steht. */
+async function ankunftNachtragen(
+  client: PoolClient, reservationId: number, ankunft: string
+): Promise<'stored' | 'exists'> {
+  const r = await client.query(
+    `UPDATE registration SET expected_arrival = $2
+      WHERE reservation_id = $1 AND group_registration_id IS NULL
+        AND expected_arrival IS NULL`, [reservationId, ankunft])
+  return (r.rowCount ?? 0) > 0 ? 'stored' : 'exists'
 }
 
 export function registrationImportRoutes(app: FastifyInstance): void {
@@ -372,8 +398,18 @@ export function registrationImportRoutes(app: FastifyInstance): void {
           const agreement = e.agreement === null ? {}
             : { agreement: gesperrt ? 'skipped' as const
                   : await zustimmungUebernehmen(client, e, aufenthalt) }
+          /*
+           * Die Ankunftszeit ebenso: die Scheine, die vor 0099 kamen, hatten
+           * sie nicht dabei. Nur wo noch keine steht -- der Schein wird nie
+           * ueberschrieben, und was hier steht, hat der Gast selbst
+           * angegeben.
+           */
+          const ankunft = e.expectedArrival === null ? {}
+            : { expectedArrivalTime: gesperrt ? 'skipped' as const
+                  : await ankunftNachtragen(client, Number(res.id), e.expectedArrival) }
           return { reservationRef, guestRef: gast.public_ref,
-                   result: 'kept_existing', reason: 'registration_exists', ...agreement }
+                   result: 'kept_existing', reason: 'registration_exists',
+                   ...agreement, ...ankunft }
         }
 
         if (gast.status === 'anonymized') throw Errors.conflict('guest.anonymizedNotRevived')
@@ -412,7 +448,8 @@ export function registrationImportRoutes(app: FastifyInstance): void {
             : { art: 'jetzt', svg: e.signature.svg, signedAt: e.signature.signedAt },
           quelle: 'import',
           herkunft: { system: e.source.system, reference: e.source.reference,
-                      completedAt: e.completedAt, avsReportedAt: e.avsReportedAt }
+                      completedAt: e.completedAt, avsReportedAt: e.avsReportedAt },
+          ankunft: e.expectedArrival
         })
 
         const agreement = e.agreement === null ? {}

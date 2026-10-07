@@ -59,6 +59,11 @@ export const tagesgeschaeft = {
     de: 'Meldeschein fehlt',
     en: 'Registration form missing',
     tr: 'Meldeschein eksik' },
+  // Vor dem Freitext des Gastes, den er im Meldeformular angegeben hat.
+  'today.expectedArrival': {
+    de: 'Voraussichtliche Ankunft',
+    en: 'Expected arrival',
+    tr: 'Tahmini varış' },
   'today.balance': {
     de: 'Offener Saldo',
     en: 'Open balance',
