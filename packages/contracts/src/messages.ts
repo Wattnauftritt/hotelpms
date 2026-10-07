@@ -340,6 +340,10 @@ const M = {
     de: 'Benutzer',
     en: 'User',
     tr: 'Kullanıcı' },
+  'res.workEntry': {
+    de: 'Eintrag',
+    en: 'Entry',
+    tr: 'Kayıt' },
   'res.task': {
     de: 'Aufgabe',
     en: 'Task',
@@ -390,6 +394,10 @@ const M = {
     de: 'Datum im Format YYYY-MM-DD erwartet',
     en: 'Date in the format YYYY-MM-DD expected',
     tr: 'YYYY-MM-DD biçiminde tarih bekleniyor' },
+  'field.clockTime': {
+    de: 'Uhrzeit im Format HH:MM erwartet',
+    en: 'Time in the format HH:MM expected',
+    tr: 'SS:DD biçiminde saat bekleniyor' },
   'field.isoMonth': {
     de: 'Format YYYY-MM erwartet',
     en: 'Format YYYY-MM expected',
@@ -1398,6 +1406,39 @@ const M = {
     de: 'Für dieses Zimmer ist keine Nacharbeit offen.',
     en: 'There is no open rework for this room.',
     tr: 'Bu oda için açık bir yeniden yapılacak iş yok.' },
+  // Arbeitszeit (0111)
+  'worktime.monthClosed': {
+    de: 'Der Monat {month} ist abgeschlossen. Änderungen gehen nur nach dem Wiederöffnen.',
+    en: 'The month {month} is closed. Changes are only possible after reopening it.',
+    tr: '{month} ayı kapatıldı. Değişiklik ancak yeniden açıldıktan sonra yapılabilir.' },
+  'worktime.notClosed': {
+    de: 'Der Monat {month} ist nicht abgeschlossen.',
+    en: 'The month {month} is not closed.',
+    tr: '{month} ayı kapatılmadı.' },
+  'worktime.monthRunning': {
+    de: 'Der Monat {month} läuft noch und lässt sich erst danach abschließen.',
+    en: 'The month {month} is still running and can only be closed afterwards.',
+    tr: '{month} ayı hâlâ devam ediyor ve ancak bittikten sonra kapatılabilir.' },
+  'worktime.ownDays': {
+    de: 'Selbst eintragen geht für heute und gestern. Ältere Tage korrigiert die Leitung.',
+    en: 'You can enter today and yesterday yourself. Older days are corrected by management.',
+    tr: 'Kendiniz yalnızca bugün ve dün için kayıt girebilirsiniz. Daha eski günleri yönetim düzeltir.' },
+  'worktime.kitchenOnly': {
+    de: 'Küchendienste trägt nur ein, wer in der Küche arbeitet.',
+    en: 'Only kitchen staff can enter kitchen shifts.',
+    tr: 'Mutfak vardiyalarını yalnızca mutfakta çalışanlar girebilir.' },
+  'worktime.sameTime': {
+    de: 'Beginn und Ende sind gleich.',
+    en: 'Start and end are the same.',
+    tr: 'Başlangıç ve bitiş aynı.' },
+  'worktime.correctionRange': {
+    de: 'Eine Korrektur ist zwischen -1440 und 1440 Minuten und nicht null.',
+    en: 'A correction is between -1440 and 1440 minutes and not zero.',
+    tr: 'Bir düzeltme -1440 ile 1440 dakika arasında olmalı ve sıfır olmamalıdır.' },
+  'worktime.reasonRequired': {
+    de: 'Bitte einen Grund angeben.',
+    en: 'Please give a reason.',
+    tr: 'Lütfen bir neden belirtin.' },
   // Meine Zimmer (0108): Zimmer hat nur ein Mensch, kein Zugang und kein Geraet.
   'staff.personOnly': {
     de: 'Die Personal-App benutzt nur eine angemeldete Person.',

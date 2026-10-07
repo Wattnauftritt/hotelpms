@@ -187,3 +187,14 @@ describe('Kueche', () => {
     expect(tagName('2026-10-01', 'de')).toContain('1.10')
   })
 })
+
+describe('Arbeitszeit', () => {
+  it('schreibt Minuten als Stunden:Minuten, auch negativ', async () => {
+    const { hm, monatPlus } = await import('../lib/arbeitszeit.js')
+    expect(hm(125)).toBe('2:05')
+    expect(hm(-20)).toBe('-0:20')
+    expect(hm(0)).toBe('0:00')
+    expect(monatPlus('2026-01', -1)).toBe('2025-12')
+    expect(monatPlus('2026-12', 1)).toBe('2027-01')
+  })
+})

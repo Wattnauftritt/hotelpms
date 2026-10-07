@@ -10,6 +10,7 @@ import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
 import { MeineZimmer } from './MeineZimmer.js'
 import { Kontrolle } from './Kontrolle.js'
 import { Kueche } from './Kueche.js'
+import { Zeit } from './Zeit.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -271,9 +272,9 @@ function Start({ me, locale, onLocale }: {
   // Zimmer haben beide selten selbst.
   const kontrolle = rechte.includes('housekeeping:inspect')
   const kueche = rechte.includes('kitchen:breakfast')
-  type Reiter = 'heute' | 'kontrolle' | 'kueche' | 'mehr'
+  type Reiter = 'heute' | 'kontrolle' | 'kueche' | 'zeit' | 'mehr'
   const reiterListe: Reiter[] = ['heute', ...(kontrolle ? ['kontrolle' as const] : []),
-    ...(kueche ? ['kueche' as const] : []), 'mehr']
+    ...(kueche ? ['kueche' as const] : []), 'zeit', 'mehr']
   const [reiter, setReiter] = useState<Reiter>(
     () => kontrolle ? 'kontrolle' : kueche ? 'kueche' : 'heute')
   const hausWahl = haeuser.length > 1 && <label className="block">
@@ -301,6 +302,10 @@ function Start({ me, locale, onLocale }: {
       {reiter === 'kueche' && kueche && <>
         {hausWahl}
         <Kueche key={haus} propertyId={haus} locale={locale} />
+      </>}
+      {reiter === 'zeit' && <>
+        {hausWahl}
+        <Zeit key={haus} propertyId={haus} locale={locale} kueche={kueche} />
       </>}
       {reiter === 'mehr' && <>
         <Karte titel={t('more.language')}>
@@ -334,10 +339,10 @@ function Start({ me, locale, onLocale }: {
       {reiterListe.map(r => (
         <button key={r} type="button" aria-current={r === reiter ? 'page' : undefined}
                 onClick={() => setReiter(r)}
-                className={`py-4 text-base ${r === reiter
+                className={`py-4 ${reiterListe.length > 4 ? 'text-sm' : 'text-base'} ${r === reiter
                   ? 'font-semibold text-neutral-900' : 'text-neutral-500'}`}>
           {t(r === 'heute' ? 'tab.today' : r === 'kontrolle' ? 'tab.inspect'
-             : r === 'kueche' ? 'tab.kitchen' : 'tab.more')}
+             : r === 'kueche' ? 'tab.kitchen' : r === 'zeit' ? 'tab.time' : 'tab.more')}
         </button>
       ))}
     </nav>

@@ -1061,7 +1061,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Schritt 2: der Sortierer als reine Funktion in `packages/domain`. Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker, Züge des Sortierers ohne `local`-Vermerk. Schritt 4: Hotel — Vorschau, Übernehmen, Rückgängig im Zimmerplan.
 
-### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 5 von 10**
+### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 6 von 10**
 
 **Anlass.** Sven, 07.10.2026: StayGrid übernimmt das Personalsystem, das bisher eine eigene App war (Repo `zurseerobbe`, Flask-PWA): Putzplan, Zimmerstatus, Kontrolle durch die Hausdame, Frühstückszahl für die Küche, Zusatzarbeiten mit Minuten, Oberfläche in de/en/ru/uk mit Rückübersetzung frei eingetragener Tätigkeiten. Plan mit zehn Bausteinen: Projektordner `personal-app/plan.md`. Die alte App läuft weiter, bis Sven umschaltet. **Keine Kommen/Gehen-Erfassung:** das Personal kommt von einer Zeitarbeitsfirma und wird vertraglich nach Pauschalminuten je Zimmer abgerechnet (Svens Entscheidung).
 
@@ -1077,7 +1077,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Baustein 5 (Frühstück).** Migration `0110`: Recht `kitchen:breakfast` für Küche, Hausdame, Rezeption, Direktion, Betriebsverwaltung, Inhaber — die Küche sieht damit die Zahl und nichts sonst. `GET /v1/properties/:id/kitchen` liefert sieben Tage ab dem offenen Geschäftstag nach derselben Regel wie `GET /breakfast` (Personen der Vornacht, `fruehstueckeJeTag` in `routes/occupancyStats.ts`), ohne Spiegel und ohne Enddatum. Reiter „Frühstück“ in der Personal-App und Bildschirm „Frühstück“ in der regulären Oberfläche. Wer nur Personalrechte hat (`staff:app`, `kitchen:breakfast`), landet immer in der Personal-App (`nurPersonal` in `personal/adresse.ts`). Tests: `kueche.test.ts`, `personalApp.test.ts`.
 
-**Offen.** 6: Arbeitszeit aus Pauschalminuten und Zusatzarbeiten. 7: Übersetzung. 8: Push. 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
+**Baustein 6 (Arbeitszeit).** Migration `0111`: `staff_work_entry` (Zusatzarbeit mit Text und Minuten, Küche mit Beginn und Ende — über Mitternacht zählt das Ende am Folgetag —, Korrektur der Leitung mit Vorzeichen und Grund; zurückziehen statt löschen über `withdrawn_at`), `staff_month_close` mit Geschichte (wieder öffnen nur mit Grund). Ein Trigger sperrt Einträge und die abrechnungsrelevanten Spalten von `housekeeping_task` in einem abgeschlossenen Monat; die Routen antworten vorher mit 409 `worktime.monthClosed`. Minuten, Uhrzeiten und Text stehen in `audit_redaction`. Arbeitszeit eines Tages = Minuten der gereinigten Zimmer (`outcome = 'cleaned'`) + Zusatzarbeit + Küche + Korrektur. Routen in `routes/worktime.ts`: die Kraft (`staff:app`) sieht nur sich und trägt nur heute und gestern ein; die Leitung (`worktime:manage`, nicht die Hausdame) sieht die Monatsübersicht, korrigiert, schließt ab (nicht im laufenden Monat), öffnet wieder und lädt die CSV für die Zeitarbeitsfirma — nur für einen abgeschlossenen Monat. Reiter „Zeit“ in der Personal-App, Bildschirm „Arbeitszeit“ in der regulären Oberfläche. Tests: `arbeitszeit.test.ts`, `worktime.test.ts` (Domain), `personalApp.test.ts`.
+
+**Offen.** 7: Übersetzung. 8: Push. 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
 
 ---
 
