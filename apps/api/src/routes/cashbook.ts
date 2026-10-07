@@ -318,7 +318,7 @@ export function cashbookRoutes(app: FastifyInstance): void {
                   m.text, m.guest_name, m.group_no, m.reverses_no, m.voided_by_no,
                   CASE WHEN m.wirksam THEN
                     $5::bigint + sum(CASE WHEN m.wirksam THEN m.amount_cent ELSE 0 END)
-                      OVER (ORDER BY m.business_date, m.entry_no)
+                      OVER (ORDER BY m.business_date, COALESCE(m.group_no, m.entry_no), m.entry_no)
                   END AS balance_cent,
                   m.external_number, (d.entry_id IS NOT NULL) AS datev,
                   COALESCE(u.display_name, m.created_by_name) AS created_by_name,
@@ -326,7 +326,9 @@ export function cashbookRoutes(app: FastifyInstance): void {
              FROM monat m
              LEFT JOIN cashbook_datev_mark d ON d.entry_id = m.id
              LEFT JOIN app_user u ON u.id = m.created_by
-            ORDER BY m.business_date, m.entry_no`,
+            -- Eine Gruppe steht zusammen unter ihrer ersten Zeile, auch wenn
+            -- ihre Nummern nicht aufeinander folgen (so die erste Uebernahme).
+            ORDER BY m.business_date, COALESCE(m.group_no, m.entry_no), m.entry_no`,
           [haus, von, bis, ab, startCent])
 
         // Belegverweise des Monats in einer Abfrage, ohne die Bytes.

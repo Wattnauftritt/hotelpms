@@ -156,6 +156,28 @@ describe('Kassenbuch aus dem Adminpanel uebernehmen', () => {
                             { ref: '12', kopf: '10' }, { ref: '13', kopf: '10' }])
   })
 
+  it('nummeriert eine Gastbuchung am Stueck, in der Reihenfolge des Adminpanels', async () => {
+    // Sven, 07.10.2026: Fruehstueck und Kurtaxe standen mit Nummern weit
+    // hinter der Uebernachtung, der Monat zerriss jede Gastbuchung.
+    await schieben({ settings: stand, entries: eintraege() })
+    const r = await owner.query<{ ref: string; nr: number }>(
+      `SELECT external_reference AS ref, entry_no::int AS nr FROM cashbook_entry ORDER BY entry_no`)
+    expect(r.rows.map(z => z.ref)).toEqual(['10', '11', '12', '13', '15', '16', '17', '18'])
+  })
+
+  it('zeigt eine Gruppe unter ihrer ersten Zeile, auch wenn ihre Nummern auseinanderliegen', async () => {
+    // Ueber zwei Stapel bekommt das Mitglied eine Nummer hinter der Einzahlung.
+    const alle = eintraege()
+    await schieben({ settings: stand, entries: [alle[0]!, alle[4]!] })
+    await schieben({ entries: [alle[1]!] })
+    const m = await monat()
+    expect(m.entries.map((e: { externalNumber: string }) => e.externalNumber))
+      .toEqual(['KB-10', 'KB-11', 'KB-15'])
+    // Der laufende Bestand folgt der Anzeige, nicht der Nummer.
+    expect(m.entries.map((e: { balanceAfterCent: number }) => e.balanceAfterCent))
+      .toEqual([20_000 + 16_700, 20_000 + 16_700 + 1_540, 20_000 + 16_700 + 1_540 - 5_000])
+  })
+
   it('macht aus einem Storno dort eine Gegenbuchung hier, einmal', async () => {
     await schieben({ settings: stand, entries: eintraege() })
     const zwei = eintraege()

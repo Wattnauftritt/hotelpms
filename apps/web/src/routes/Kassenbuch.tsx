@@ -12,6 +12,7 @@ import {
   type DatevAuswahl, type Belegversand
 } from '../lib/queries/kassenbuch.js'
 import { belegVorbereiten, BelegZuGross } from '../lib/kassenbeleg.js'
+import { kassenbloecke, type Kassenblock } from '../lib/kassengruppen.js'
 
 /**
  * Kassenbuch (Migration 0095, Dokument 09).
@@ -20,6 +21,10 @@ import { belegVorbereiten, BelegZuGross } from '../lib/kassenbeleg.js'
  * lernt: oben erfassen, darunter der Monat mit laufendem Bestand. Anders
  * als dort laesst sich nichts loeschen; ein Fehler wird storniert, und
  * Buchung wie Storno bleiben stehen.
+ *
+ * Eine Gastbuchung steht als eine Zeile mit ihrer Summe da und laesst sich
+ * aufklappen; im Monat stehen sonst Uebernachtung, Fruehstueck und Kurtaxe
+ * jedes Gastes einzeln, und der Monat ist nicht mehr zu ueberblicken.
  *
  * Der Monat ist ein Aufruf. Die Fruehstuecksaufteilung einer Gastbuchung
  * rechnet die Vorschau mit derselben Funktion wie der Server, sonst stuende
@@ -204,9 +209,11 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
   )
 }
 
-function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno }: {
+function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, gruppe }: {
   z: Kassenzeile; propertyId: number; darfStornieren: boolean; darfBuchen: boolean
   onStorno: (z: Kassenzeile) => void
+  /** Nur an der ersten Zeile einer Gruppe; zugeklappt steht hier die Summe. */
+  gruppe?: { block: Kassenblock; offen: boolean; onToggle: () => void }
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -215,12 +222,27 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno }: {
   const aufgehoben = z.voidedByNo !== null
   const storno = z.reversesNo !== null
   const mitglied = z.groupNo !== null
+  const zu = gruppe !== undefined && !gruppe.offen
+  const betrag = zu ? gruppe.block.summeCent : z.amountCent
+  const bestand = zu ? gruppe.block.bestandCent : z.balanceAfterCent
+  const belege = zu ? gruppe.block.belege : z.receipts
   return (
     <tr className={`border-t border-neutral-100 ${aufgehoben ? 'text-neutral-400 line-through' : ''}`}>
-      <td className="px-2 py-1 tabular-nums text-neutral-500">{z.entryNo}</td>
+      <td className="px-2 py-1 tabular-nums text-neutral-500 whitespace-nowrap">
+        {gruppe !== undefined && (
+          <button className="mr-1 w-4 text-neutral-600 no-underline print:hidden" onClick={gruppe.onToggle}
+                  aria-expanded={gruppe.offen}
+                  aria-label={t(gruppe.offen ? 'cash.group.close' : 'cash.group.open')}>
+            {gruppe.offen ? '▾' : '▸'}
+          </button>
+        )}
+        {z.entryNo}
+      </td>
       <td className="px-2 py-1 tabular-nums">{mitglied ? '' : formatDate(z.businessDate, locale)}</td>
       <td className={`px-2 py-1 ${mitglied ? 'pl-6' : ''}`}>
         {t(ART[z.kind])}
+        {zu && <span className="ml-1 text-xs text-neutral-500 no-underline">
+          {t('cash.group.lines', { n: gruppe.block.mitglieder.length })}</span>}
         {storno && <span className="ml-1 text-xs text-amber-800 no-underline">
           {t('cash.reverses', { n: z.reversesNo! })}</span>}
         {aufgehoben && <span className="ml-1 text-xs">{t('cash.voidedBy', { n: z.voidedByNo! })}</span>}
@@ -231,15 +253,16 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno }: {
           <span className="ml-1 text-xs text-neutral-500">{z.externalNumber}</span>
         )}
       </td>
-      <td className="px-2 py-1 text-right tabular-nums">{z.taxRateBp / 100} %</td>
-      <td className={`px-2 py-1 text-right tabular-nums ${z.amountCent < 0 ? 'text-red-700' : ''}`}>
-        {formatMoney(z.amountCent, locale)}
+      {/* Zugeklappt mischt die Summe mehrere Saetze; einer davon stuende falsch da. */}
+      <td className="px-2 py-1 text-right tabular-nums">{zu ? '' : `${z.taxRateBp / 100} %`}</td>
+      <td className={`px-2 py-1 text-right tabular-nums ${betrag < 0 ? 'text-red-700' : ''}`}>
+        {formatMoney(betrag, locale)}
       </td>
       <td className="px-2 py-1 text-right tabular-nums font-medium">
-        {z.balanceAfterCent === null ? '' : formatMoney(z.balanceAfterCent, locale)}
+        {bestand === null ? '' : formatMoney(bestand, locale)}
       </td>
       <td className="px-2 py-1 whitespace-nowrap no-underline">
-        {z.receipts.map((b, i) => (
+        {belege.map((b, i) => (
           <a key={b.ref} href={belegAdresse(propertyId, b.ref)} target="_blank" rel="noreferrer"
              className="mr-1 text-xs underline">{t('cash.receipt.n', { n: i + 1 })}</a>
         ))}
@@ -461,10 +484,21 @@ export function Kassenbuch({ propertyId, permissions }: {
   const [einstellen, setEinstellen] = useState(false)
   const [datev, setDatev] = useState(false)
   const [storno, setStorno] = useState<Kassenzeile | null>(null)
+  // Aufgeklappte Gruppen nach der Nummer ihrer ersten Zeile; zugeklappt ist
+  // der Normalfall, weil er den Monat lesbar macht.
+  const [offen, setOffen] = useState<ReadonlySet<number>>(new Set())
 
   const e = useKasseneinstellung(propertyId)
   const q = useKassenmonat(propertyId, monat, e.data?.enabled === true)
   const m = q.data
+  const bloecke = useMemo(() => kassenbloecke(m?.entries ?? []), [m])
+  const gruppen = bloecke.filter(b => b.mitglieder.length > 0).map(b => b.kopf.entryNo)
+  const umschalten = (nr: number) => setOffen(o => {
+    const n = new Set(o)
+    if (!n.delete(nr)) n.add(nr)
+    return n
+  })
+  const alleOffen = gruppen.length > 0 && gruppen.every(nr => offen.has(nr))
   const blaettern = (n: number) => {
     if (m) setMonat(addMonths(`${m.month}-01`, n).slice(0, 7))
   }
@@ -540,15 +574,29 @@ export function Kassenbuch({ propertyId, permissions }: {
                         <th className="px-2 py-1 text-right">{t('cash.field.amount')}</th>
                         <th className="px-2 py-1 text-right">{t('cash.col.balance')}</th>
                         <th className="px-2 py-1 text-left">{t('cash.col.receipts')}</th>
-                        <th />
+                        <th className="px-2 py-1 text-right">
+                          {gruppen.length > 0 && (
+                            <button className="text-xs font-normal underline print:hidden"
+                                    onClick={() => setOffen(alleOffen ? new Set() : new Set(gruppen))}>
+                              {t(alleOffen ? 'cash.group.closeAll' : 'cash.group.openAll')}
+                            </button>
+                          )}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {m.entries.map(z => (
-                        <Zeile key={z.entryNo} z={z} propertyId={propertyId}
-                               darfBuchen={darfBuchen} darfStornieren={darfStornieren}
-                               onStorno={setStorno} />
-                      ))}
+                      {bloecke.flatMap(b => {
+                        const auf = offen.has(b.kopf.entryNo)
+                        const zeile = (z: Kassenzeile, gruppe?: Parameters<typeof Zeile>[0]['gruppe']) => (
+                          <Zeile key={z.entryNo} z={z} propertyId={propertyId}
+                                 darfBuchen={darfBuchen} darfStornieren={darfStornieren}
+                                 onStorno={setStorno} gruppe={gruppe} />
+                        )
+                        if (b.mitglieder.length === 0) return [zeile(b.kopf)]
+                        const kopf = zeile(b.kopf, { block: b, offen: auf,
+                                                     onToggle: () => umschalten(b.kopf.entryNo) })
+                        return auf ? [kopf, ...b.mitglieder.map(z => zeile(z))] : [kopf]
+                      })}
                     </tbody>
                   </table>
                 </div>}
