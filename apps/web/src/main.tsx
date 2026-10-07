@@ -22,6 +22,7 @@ import { api, ApiError } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
 import { useSchmal } from './lib/mobil.js'
 import './styles.css'
+import { nurPersonal } from './personal/adresse.js'
 
 function spracheDesBrowsers(): Locale {
   const l = navigator.language.slice(0, 2)
@@ -347,6 +348,16 @@ function App(): JSX.Element {
     setAuftrag(ziel)
     setSprung(n => n + 1)
     setAdresse({ screen: zielBildschirm })
+  }
+
+  /*
+   * Die Kueche hat mit dem Fruehstueck auch hier einen Bildschirm, arbeitet
+   * aber am Telefon. Wer nur Personalrechte hat, geht in die Personal-App,
+   * auch wenn ein Bildschirm da waere.
+   */
+  if (!me.data.isPlatformStaff && nurPersonal(me.data.properties)) {
+    location.replace('/personal')
+    return <></>
   }
 
   if (screen === undefined) {

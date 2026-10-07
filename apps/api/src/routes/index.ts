@@ -16,6 +16,7 @@ import { housekeepingRoutes } from './housekeeping.js'
 import { cleaningPlanRoutes } from './cleaningPlan.js'
 import { myRoomsRoutes } from './myRooms.js'
 import { inspectionRoutes } from './inspection.js'
+import { kitchenRoutes } from './kitchen.js'
 import { registrationRoutes } from './registrations.js'
 import { termsRoutes } from './terms.js'
 import { taxExemptionRoutes } from './taxExemptions.js'
@@ -85,6 +86,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   cleaningPlanRoutes(app)
   myRoomsRoutes(app)
   inspectionRoutes(app)
+  kitchenRoutes(app)
   registrationRoutes(app)
   termsRoutes(app)
   taxExemptionRoutes(app)

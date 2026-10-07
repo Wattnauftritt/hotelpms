@@ -135,6 +135,8 @@ function KontrollKarte({ z, offen, laeuft, onToggle, onPruefen }: {
           && <Marke farbe="bg-green-100 text-green-900">{t(`outcome.${z.outcome}`)}</Marke>}
         {z.inspection === 'rework'
           && <Marke farbe="bg-red-600 text-white">{t('inspect.rework')}</Marke>}
+        {z.inspection === 'passed'
+          && <Marke farbe="bg-green-600 text-white">{t('inspect.passed')}</Marke>}
         {z.outcome === null && z.kind === 'departure' && !z.free
           && <Marke farbe="bg-amber-100 text-amber-900">{t('room.waiting')}</Marke>}
         {z.arrivalToday && z.inspection !== 'passed'

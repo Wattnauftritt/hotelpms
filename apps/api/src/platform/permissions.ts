@@ -53,7 +53,10 @@ export const PERMISSIONS = [
   // Personal-App (0105): die App benutzen. Was darin zu sehen ist, sagt der
   // Plan -- die eigenen Zimmer, nie fremde. Als Zugriffsbereich eines
   // Maschinenzugangs ausgeschlossen, denn eine Maschine hat keine Zimmer.
-  'staff:app'
+  'staff:app',
+  // Kueche (0110): die Fruehstueckszahl, und nichts sonst. Kueche, Hausdame
+  // und Rezeption; report:operational zeigte der Kueche viel zu viel.
+  'kitchen:breakfast'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

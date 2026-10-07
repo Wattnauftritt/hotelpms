@@ -25,3 +25,19 @@ export function personalSeite(pathname: string, search: string): PersonalSeite {
   const token = new URLSearchParams(search).get('token')
   return { art, token: token !== null && token.length > 0 ? token : null }
 }
+
+/**
+ * Die Rechte, die nur in der Personal-App etwas bedeuten. Die Kueche hat
+ * mit `kitchen:breakfast` auch an der Rezeption einen Bildschirm
+ * (Fruehstueck), arbeitet aber am Telefon; wer **nur** diese Rechte hat,
+ * gehoert in die Personal-App, nicht vor den Zimmerplan.
+ */
+export const PERSONAL_RECHTE: readonly string[] = ['staff:app', 'kitchen:breakfast']
+
+/** Nur Personal: in irgendeinem Haus `staff:app`, und nirgends mehr als die Personalrechte. */
+export function nurPersonal(
+  properties: ReadonlyArray<{ permissions: readonly string[] }>
+): boolean {
+  return properties.some(p => p.permissions.includes('staff:app'))
+    && properties.every(p => p.permissions.every(r => PERSONAL_RECHTE.includes(r)))
+}

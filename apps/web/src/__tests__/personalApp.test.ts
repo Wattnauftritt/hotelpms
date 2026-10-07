@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { STAFF_LOCALES } from '@hotelpms/contracts'
-import { istPersonalAdresse, personalSeite } from '../personal/adresse.js'
+import { istPersonalAdresse, nurPersonal, personalSeite } from '../personal/adresse.js'
 import { fehlerText, personalKeys, startSprache, text } from '../personal/texte.js'
 import { ApiError } from '../lib/api.js'
 import { ordneZimmer, type MeinZimmer } from '../personal/MeineZimmer.js'
 import { abschnitt, type KontrollZimmer } from '../personal/Kontrolle.js'
+import { tagName } from '../personal/Kueche.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -166,5 +167,23 @@ describe('Kontrolle', () => {
     expect(abschnitt(k({ status: 'done', outcome: 'cleaned', inspection: 'passed' })))
       .toBe('passed')
     expect(abschnitt(k({ status: 'skipped', outcome: 'declined' }))).toBe('passed')
+  })
+})
+
+describe('Kueche', () => {
+  /*
+   * Die Kueche hat an der Rezeption den Bildschirm Fruehstueck, gehoert aber
+   * in die Personal-App. Die Hausdame hat mehr und bleibt, wo sie ist.
+   */
+  it('erkennt, wer nur Personalrechte hat', () => {
+    expect(nurPersonal([{ permissions: ['staff:app', 'kitchen:breakfast'] }])).toBe(true)
+    expect(nurPersonal([{ permissions: ['staff:app'] }])).toBe(true)
+    expect(nurPersonal([{ permissions: ['staff:app', 'kitchen:breakfast',
+                                        'housekeeping:inspect'] }])).toBe(false)
+    expect(nurPersonal([{ permissions: ['kitchen:breakfast'] }])).toBe(false)
+  })
+
+  it('nennt den Tag ohne Verschiebung durch die Zeitzone', () => {
+    expect(tagName('2026-10-01', 'de')).toContain('1.10')
   })
 })
