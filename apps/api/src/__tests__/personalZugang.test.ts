@@ -65,7 +65,9 @@ describe('Einladen ohne Mailadresse', () => {
     expect(b.username).toBe('anna.k')
     expect(b.email).toBeNull()
     expect(b.delivery).toBe('link')
-    expect(b.link).toMatch(/\/einladung\?token=/)
+    // In die Personal-App, nicht in die Seite der Rezeption: dort ist sie
+    // in der Sprache der Kraft.
+    expect(b.link).toMatch(/\/personal\/einladung\?token=/)
     expect(Date.parse(b.linkExpiresAt)).toBeGreaterThan(Date.now())
 
     const u = await owner.query<{ email: string | null; username: string; status: string }>(
@@ -176,7 +178,7 @@ describe('Zugangslink zum Weitergeben', () => {
     const r = await zugangslink(await refVon(`username = 'anna.k'`))
     expect(r.statusCode).toBe(200)
     expect(r.json()).toMatchObject({ kind: 'password_reset', delivery: 'link' })
-    expect(r.json().link).toMatch(/\/kennwort\?token=/)
+    expect(r.json().link).toMatch(/\/personal\/kennwort\?token=/)
   })
 
   it('verweigert den Link fuer einen benutzten Zugang mit Mailadresse', async () => {
@@ -199,6 +201,8 @@ describe('Zugangslink zum Weitergeben', () => {
     const r2 = await zugangslink(r1.json().userRef, { delivery: 'link' })
     expect(r2.statusCode).toBe(200)
     expect(r2.json().kind).toBe('invite')
+    // Rezeption arbeitet in der Oberflaeche der Rezeption.
+    expect(r2.json().link).not.toContain('/personal/')
   })
 
   it('schickt ohne Angabe weiter per Mail, wenn es eine Adresse gibt', async () => {

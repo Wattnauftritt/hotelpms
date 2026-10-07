@@ -350,6 +350,15 @@ function App(): JSX.Element {
   }
 
   if (screen === undefined) {
+    /*
+     * Reinigung und Kueche haben an der Rezeption keinen Bildschirm, aber
+     * eine eigene App. Wer sich hier anmeldet -- weil er die alte Adresse
+     * im Kopf hat --, landet dort statt vor dem Satz, er habe keinen Zugriff.
+     */
+    if (me.data.properties.some(p => p.permissions.includes('staff:app'))) {
+      location.replace('/personal')
+      return <></>
+    }
     return <I18nContext.Provider value={locale}>
       <Hinweis><Text k="app.noScreen" params={{ haus: haus.name }} /></Hinweis>
     </I18nContext.Provider>
