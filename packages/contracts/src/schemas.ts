@@ -298,7 +298,8 @@ export const DailySheet = Type.Object({
     })])),
   departures: Type.Array(Type.Composite([
     DailyRow, Type.Object({ balanceCent: Type.Union([Cent, Type.Null()]) })])),
-  inHouse: Type.Array(DailyRow)
+  inHouse: Type.Array(Type.Composite([
+    DailyRow, Type.Object({ registered: Type.Boolean() })]))
 })
 export type DailySheet = Static<typeof DailySheet>
 

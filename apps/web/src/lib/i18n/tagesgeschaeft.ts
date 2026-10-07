@@ -18,6 +18,12 @@ export const tagesgeschaeft = {
     de: 'Check-in',
     en: 'Check in',
     tr: 'Check-in' },
+  // Fuer den schon Eingecheckten, dem der Meldeschein fehlt -- meist eine
+  // spaete Anreise ueber den Schluesselsafe, die der Nachtlauf eingecheckt hat.
+  'today.registration': {
+    de: 'Meldeschein',
+    en: 'Registration',
+    tr: 'Meldeschein' },
   'today.checkout': {
     de: 'Check-out',
     en: 'Check out',

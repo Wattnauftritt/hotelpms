@@ -85,6 +85,16 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
      * nur, wer heute laut Buchung abreist; wer frueher geht, war dort nie
      * zu finden. Die Schnittstelle kuerzt den Aufenthalt dabei auf heute.
      */
+    /*
+     * Meldeschein beim Gast im Haus: der Nachtlauf checkt die spaete Anreise
+     * ueber den Schluesselsafe ein (0088), Meldeschein und AVS-Datei fehlen
+     * dann noch. Derselbe Dialog, ohne Check-in.
+     */
+    if (rechte.darf('reservation:checkin') && ziel.status === 'InHouse') {
+      eintraege.push({ schluessel: 'meldeschein', text: t('kontext.registration'),
+                       onClick: () => onCheckIn(ziel.reservationRef) })
+    }
+
     if (rechte.darf('reservation:checkin') && ziel.status === 'InHouse') {
       eintraege.push({ schluessel: 'checkout', text: t('kontext.checkOut'),
                        onClick: () => {

@@ -9,7 +9,7 @@ import { naechte } from '../../lib/mobil.js'
 import { Fehler, Laedt } from '../Shell.tsx'
 
 type Liste = 'arrivals' | 'departures' | 'inHouse'
-type Zeile = DailySheet['inHouse'][number]
+type Zeile = Omit<DailySheet['inHouse'][number], 'registered'>
   & { registered?: boolean; balanceCent?: number | null; expectedArrival?: string | null }
 
 /**
@@ -133,6 +133,13 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
               <Handlung disabled={!online || aktion.isPending || r.status === 'CheckedOut'}
                         onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-out' })}>
                 {t('today.checkout')}
+              </Handlung>
+            )}
+            {/* Spaete Anreise ueber den Schluesselsafe: der Nachtlauf hat
+                eingecheckt, der Meldeschein fehlt noch. */}
+            {liste !== 'departures' && r.status === 'InHouse' && r.registered === false && (
+              <Handlung disabled={!online} onClick={() => onCheckIn(r.reservationRef)}>
+                {t('today.registration')}
               </Handlung>
             )}
             {liste === 'inHouse' && r.folioRef !== null && (

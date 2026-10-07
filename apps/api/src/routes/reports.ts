@@ -129,8 +129,21 @@ export function reportRoutes(app: FastifyInstance): void {
               AND r.status IN ('InHouse','CheckedOut')
             ORDER BY res.code`, [id, d])
 
+        /*
+         * Auch die Hausliste sagt, ob der Meldeschein fehlt: wer nach
+         * Rezeptionsschluss ueber den Schluesselsafe anreist, checkt der
+         * Nachtlauf ein (0088), und am Morgen steht er nicht mehr unter den
+         * Anreisen, sondern nur noch hier.
+         */
         const inHouse = await client.query(
-          `SELECT ${basis} ${von}
+          `SELECT ${basis},
+                  (EXISTS (SELECT 1 FROM registration reg
+                            WHERE reg.reservation_id = r.id
+                              AND reg.group_registration_id IS NULL)
+                   OR EXISTS (SELECT 1 FROM reservation_external_registration ext
+                               WHERE ext.reservation_id = r.id
+                                 AND ext.completed_at IS NOT NULL)) AS "registered"
+             ${von}
             WHERE r.property_id = $1 AND r.status = 'InHouse'
               AND r.arrival <= $2::date AND r.departure > $2::date
             ORDER BY res.code`, [id, d])
