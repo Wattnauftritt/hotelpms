@@ -8,10 +8,14 @@ import { api } from '../api.js'
 export type ReinigungsArt = 'departure' | 'stayover'
 
 export interface PlanZimmer {
-  resourceId: number
+  /** Das Haus der Zeile; bei gemeinsamem Personal stehen mehrere im Plan (0116). */
+  propertyId: number
+  /** Ein Zimmer oder ein Reinigungsbereich wie das Bad, nie beides. */
+  resourceId: number | null
+  areaId: number | null
   code: string
-  categoryId: number
-  categoryCode: string
+  categoryId: number | null
+  categoryCode: string | null
   building: string | null
   floor: string | null
   due: ReinigungsArt | null
@@ -27,7 +31,21 @@ export interface PlanZimmer {
   waived: boolean
 }
 
-export interface PlanKraft { userId: number; displayName: string; active: boolean }
+export interface PlanKraft {
+  userId: number
+  displayName: string
+  active: boolean
+  /** Was die Kraft am selben Tag in anderen Haeusern schon hat. */
+  elsewhere: Array<{ propertyId: number; propertyName: string; rooms: number; minutes: number }>
+}
+
+export interface Bereich {
+  id: number
+  code: string
+  building: string | null
+  minutes: number
+  active: boolean
+}
 
 export interface Sollminute {
   kind: ReinigungsArt
@@ -53,14 +71,27 @@ export interface PlanEintrag {
 
 export interface Reinigungsplan {
   date: string
+  /** Gemeinsames Personal: ein Plan ueber alle Haeuser in `houses`. */
+  shared: boolean
+  houses: Array<{ id: number; name: string }>
   rooms: PlanZimmer[]
+  areas: Bereich[]
   staff: PlanKraft[]
   norms: Sollminute[]
   defaults: Record<ReinigungsArt, number>
   log: PlanEintrag[]
 }
 
-export interface Zuteilung { resourceId: number; kind: ReinigungsArt; assignedTo: number | null }
+export interface Zuteilung {
+  resourceId?: number
+  areaId?: number
+  kind: ReinigungsArt
+  assignedTo: number | null
+}
+
+/** Zimmer und Bereich in einem Schluessel -- ihre Nummern sind zwei Reihen. */
+export const zielVon = (z: { resourceId?: number | null; areaId?: number | null }): string =>
+  z.areaId != null ? `a${z.areaId}` : `r${z.resourceId}`
 
 const schluessel = (propertyId: number, datum: string) => ['cleaning-plan', propertyId, datum]
 
@@ -95,5 +126,36 @@ export function useSollminutenSpeichern(propertyId: number) {
     mutationFn: (norms: Sollminute[]) =>
       api.put(`/v1/properties/${propertyId}/cleaning-norms`, { norms }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['cleaning-plan', propertyId] }) }
+  })
+}
+
+export function useBereicheSpeichern(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (areas: Array<Omit<Bereich, 'id'> & { id: number | null }>) =>
+      api.put<{ areas: Bereich[] }>(`/v1/properties/${propertyId}/cleaning-areas`, { areas }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['cleaning-plan'] }) }
+  })
+}
+
+/** Reinigung und Fruehstueck gemeinsam fuer den Betrieb oder je Haus (0116). */
+export const usePersonalGemeinsam = (propertyId: number, darf: boolean) =>
+  useQuery<{ shared: boolean }>({
+    queryKey: ['staff-setting', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/staff-setting`),
+    enabled: darf
+  })
+
+export function usePersonalGemeinsamSpeichern(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (shared: boolean) =>
+      api.put<{ shared: boolean }>(`/v1/properties/${propertyId}/staff-setting`, { shared }),
+    onSuccess: neu => {
+      qc.setQueryData(['staff-setting', propertyId], neu)
+      // Wer was sieht, haengt daran: Plan, Kueche, Rechte im Kopf.
+      void qc.invalidateQueries({ queryKey: ['cleaning-plan'] })
+      void qc.invalidateQueries({ queryKey: ['me'] })
+    }
   })
 }

@@ -22,6 +22,8 @@ export interface Tag { date: string; roomMinutes: number; rooms: number; entries
 export interface Monat {
   month: string; closed: boolean; today: string; days: Tag[]
   totals: { rooms: number; extra: number; kitchen: number; correction: number; total: number }
+  /** Die Monatssumme in den anderen Haeusern derselben Kraft (0116). */
+  otherHouses?: Array<{ propertyId: number; name: string; total: number }>
 }
 
 /** `2:05` -- Stunden und Minuten, in jeder Sprache gleich lesbar. */

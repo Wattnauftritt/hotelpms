@@ -83,6 +83,20 @@ export function Zeit({ propertyId, locale, kueche }: {
       <p className="text-4xl font-semibold tabular-nums">{hm(m.totals.total)}</p>
       <p className="text-sm text-neutral-600">{t('time.total', { minutes: m.totals.total })}</p>
       {m.closed && <p className="text-sm text-neutral-600 mt-1">{t('time.closed')}</p>}
+      {/* Wer in mehreren Haeusern arbeitet, sieht die Summe, nach der
+          abgerechnet wird -- nicht nur die dieses Hauses (0116). */}
+      {(m.otherHouses ?? []).length > 0 && <div className="mt-2 pt-2 border-t border-neutral-100
+                                                         text-sm text-neutral-700">
+        {m.otherHouses!.map(h => <p key={h.propertyId} className="flex justify-between">
+          <span>{h.name}</span><span className="tabular-nums">{hm(h.total)}</span>
+        </p>)}
+        <p className="flex justify-between font-semibold">
+          <span>{t('time.allHouses')}</span>
+          <span className="tabular-nums">
+            {hm(m.totals.total + m.otherHouses!.reduce((s, h) => s + h.total, 0))}
+          </span>
+        </p>
+      </div>}
     </section>
     {m.month === aktuell && !m.closed
       && <Eintragen propertyId={propertyId} locale={locale} kueche={kueche}

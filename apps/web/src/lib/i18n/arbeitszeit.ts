@@ -213,5 +213,14 @@ export const arbeitszeit = {
   'worktime.by': {
     de: 'von {name}',
     en: 'by {name}',
-    tr: '{name} tarafından' }
+    tr: '{name} tarafından' },
+  // Mehrere Haeuser (0116)
+  'worktime.elsewhere': {
+    de: '{house} {time}',
+    en: '{house} {time}',
+    tr: '{house} {time}' },
+  'worktime.allHouses': {
+    de: 'alle Häuser {time}',
+    en: 'all properties {time}',
+    tr: 'tüm tesisler {time}' }
 } satisfies Record<string, LocalizedText>

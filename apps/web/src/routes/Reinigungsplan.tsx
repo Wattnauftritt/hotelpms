@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useT, useLocale, intlTag } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 import {
   useReinigungsplan, usePlanSpeichern, usePlanVorschlag, useSollminutenSpeichern,
+  useBereicheSpeichern, usePersonalGemeinsam, usePersonalGemeinsamSpeichern, zielVon,
   type Reinigungsplan as Plan, type PlanZimmer, type ReinigungsArt, type Sollminute,
-  type Zuteilung
+  type Zuteilung, type Bereich
 } from '../lib/queries/reinigungsplan.js'
+import { useHausrechte } from '../lib/rechte.js'
 import { useCleaningWaiverSettings, useSaveCleaningWaiverSettings } from '../lib/queries/checkin.js'
 
 /**
@@ -22,15 +24,21 @@ import { useCleaningWaiverSettings, useSaveCleaningWaiverSettings } from '../lib
  * Die Last je Kraft steht neben dem Namen und rechnet beim Umschieben mit:
  * nach Minuten, weil danach abgerechnet wird, und weil zwei Abreisen mehr
  * Arbeit sind als sechs Bleiber.
+ *
+ * Bereiche wie das Gemeinschaftsbad stehen als Zeile mit `areaId` in
+ * derselben Liste (0116). Arbeitet der Betrieb mit gemeinsamem Personal,
+ * stehen die Zimmer aller Haeuser hier, nach Haus getrennt; sonst steht
+ * neben einer Kraft, was sie heute im anderen Haus schon hat.
  */
 
-type Entwurf = Map<number, number | null>
+/** Je Zimmer oder Bereich (`zielVon`) die Kraft. */
+type Entwurf = Map<string, number | null>
 
 const artVon = (z: PlanZimmer): ReinigungsArt | null => z.kind ?? z.due
 
 function entwurfAus(plan: Plan): Entwurf {
   return new Map(plan.rooms.filter(z => artVon(z) !== null)
-    .map(z => [z.resourceId, z.assignedTo]))
+    .map(z => [zielVon(z), z.assignedTo]))
 }
 
 export function Reinigungsplan({ propertyId }: { propertyId: number }): JSX.Element {
@@ -44,7 +52,9 @@ export function Reinigungsplan({ propertyId }: { propertyId: number }): JSX.Elem
     <DatumsWahl value={datum} onChange={setDatum} />
     <Tagesplan key={`${datum}-${q.dataUpdatedAt}`} propertyId={propertyId} plan={q.data} />
     <Sollminuten key={`n-${q.dataUpdatedAt}`} propertyId={propertyId} plan={q.data} />
+    <Bereiche key={`b-${q.dataUpdatedAt}`} propertyId={propertyId} bereiche={q.data.areas} />
     <VerzichtEinstellung propertyId={propertyId} />
+    <Gemeinsam propertyId={propertyId} />
     <Verlauf plan={q.data} />
   </div>
 }
@@ -64,27 +74,29 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
       : new Set(plan.staff.filter(k => k.active).map(k => k.userId))
   })
 
-  const geaendert = faellig.some(z => entwurf.get(z.resourceId) !== z.assignedTo)
+  const geaendert = faellig.some(z => entwurf.get(zielVon(z)) !== z.assignedTo)
   const last = useMemo(() => {
     const m = new Map<number, { rooms: number; minutes: number }>()
     for (const z of faellig) {
-      const k = entwurf.get(z.resourceId)
+      const k = entwurf.get(zielVon(z))
       if (k === null || k === undefined) continue
       const l = m.get(k) ?? { rooms: 0, minutes: 0 }
       m.set(k, { rooms: l.rooms + 1, minutes: l.minutes + z.minutes })
     }
     return m
   }, [entwurf, faellig])
-  const offen = faellig.filter(z => (entwurf.get(z.resourceId) ?? null) === null).length
+  const offen = faellig.filter(z => (entwurf.get(zielVon(z)) ?? null) === null).length
 
-  const zuteilen = (resourceId: number, kraft: number | null): void =>
-    setEntwurf(alt => new Map(alt).set(resourceId, kraft))
+  const zuteilen = (ziel: string, kraft: number | null): void =>
+    setEntwurf(alt => new Map(alt).set(ziel, kraft))
+  const mehrereHaeuser = plan.houses.length > 1
+  const hausName = (id: number): string => plan.houses.find(h => h.id === id)?.name ?? ''
 
   const vorschlagen = (): void => {
     vorschlag.mutate([...heute], {
       onSuccess: r => setEntwurf(alt => {
         const neu = new Map(alt)
-        for (const a of r.assignments) neu.set(a.resourceId, a.assignedTo)
+        for (const a of r.assignments) neu.set(zielVon(a), a.assignedTo)
         return neu
       })
     })
@@ -92,7 +104,8 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
 
   const sichern = (): void => {
     const liste: Zuteilung[] = faellig.map(z => ({
-      resourceId: z.resourceId, kind: artVon(z)!, assignedTo: entwurf.get(z.resourceId) ?? null
+      ...(z.areaId !== null ? { areaId: z.areaId } : { resourceId: z.resourceId! }),
+      kind: artVon(z)!, assignedTo: entwurf.get(zielVon(z)) ?? null
     }))
     speichern.mutate(liste)
   }
@@ -125,6 +138,12 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
                   {k.active ? t('cleaningPlan.load', { rooms: l.rooms, minutes: l.minutes })
                             : t('cleaningPlan.inactive')}
                 </span>
+                {k.elsewhere.map(a => (
+                  <span key={a.propertyId} className="block text-xs text-neutral-500">
+                    {t('cleaningPlan.elsewhere', { house: a.propertyName, rooms: a.rooms,
+                                                   minutes: a.minutes })}
+                  </span>
+                ))}
               </span>
             </label>
           </li>
@@ -177,12 +196,19 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
               </tr>
             </thead>
             <tbody>
-              {faellig.map(z => {
-                const kraft = entwurf.get(z.resourceId) ?? null
+              {faellig.map((z, i) => {
+                const ziel = zielVon(z)
+                const kraft = entwurf.get(ziel) ?? null
                 const erledigt = z.taskStatus === 'done'
-                return <tr key={z.resourceId}
-                           className={`border-b border-neutral-100
-                                       ${kraft === null ? 'bg-amber-50' : ''}`}>
+                const neuesHaus = mehrereHaeuser && faellig[i - 1]?.propertyId !== z.propertyId
+                return <Fragment key={ziel}>
+                  {neuesHaus && <tr>
+                    <th colSpan={4} className="pt-3 pb-1 text-left text-sm font-semibold">
+                      {hausName(z.propertyId)}
+                    </th>
+                  </tr>}
+                  <tr className={`border-b border-neutral-100
+                                  ${kraft === null ? 'bg-amber-50' : ''}`}>
                   <td className="py-1 pr-2 font-medium">
                     {z.code}
                     {z.building !== null && (
@@ -190,8 +216,9 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
                     )}
                   </td>
                   <td className="py-1 pr-2">
-                    {t(artVon(z) === 'departure' ? 'cleaningPlan.departure'
-                                                  : 'cleaningPlan.stayover')}
+                    {t(z.areaId !== null ? 'cleaningPlan.area'
+                       : artVon(z) === 'departure' ? 'cleaningPlan.departure'
+                       : 'cleaningPlan.stayover')}
                     {z.departureCheckedOut && (
                       <span className="ml-1 text-xs text-emerald-700">
                         {t('cleaningPlan.checkedOut')}
@@ -215,7 +242,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
                       ? <span>{name(kraft)} · <span className="text-emerald-700">
                           {t('cleaningPlan.done')}</span></span>
                       : <select value={kraft ?? ''}
-                                onChange={e => zuteilen(z.resourceId,
+                                onChange={e => zuteilen(ziel,
                                   e.target.value === '' ? null : Number(e.target.value))}
                                 className="border border-neutral-300 rounded-sm px-1 py-0.5
                                            bg-white max-w-full">
@@ -226,6 +253,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
                         </select>}
                   </td>
                 </tr>
+                </Fragment>
               })}
             </tbody>
           </table>}
@@ -249,7 +277,10 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
   const [neuesZimmer, setNeuesZimmer] = useState('')
   useEffect(() => { if (sichern.isSuccess) setOffen(false) }, [sichern.isSuccess])
 
-  const kategorien = [...new Map(plan.rooms.map(z => [z.categoryId, z.categoryCode]))]
+  // Sollminuten sind eine Einstellung je Haus: nur die eigenen Zimmer, ohne
+  // Bereiche (die tragen ihre Minuten selbst).
+  const eigene = plan.rooms.filter(z => z.propertyId === propertyId && z.resourceId !== null)
+  const kategorien = [...new Map(eigene.map(z => [z.categoryId!, z.categoryCode!]))]
   const zimmerMitWert = [...new Set([...werte.keys()]
     .map(k => k.split('/')[2]!).filter(r => r !== ''))].map(Number)
   const feld = (kind: ReinigungsArt, cat: number | null, room: number | null): JSX.Element => {
@@ -304,7 +335,7 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
           {zimmerMitWert.map(id => (
             <tr key={`z${id}`}>
               <td className="pr-3 py-0.5">
-                {t('cleaningPlan.room')} {plan.rooms.find(z => z.resourceId === id)?.code ?? id}
+                {t('cleaningPlan.room')} {eigene.find(z => z.resourceId === id)?.code ?? id}
               </td>
               <td className="pr-3">{feld('departure', null, id)}</td>
               <td>{feld('stayover', null, id)}</td>
@@ -317,8 +348,8 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
         <select value={neuesZimmer} onChange={e => setNeuesZimmer(e.target.value)}
                 className="border border-neutral-300 rounded-sm px-1 py-0.5 bg-white">
           <option value="" />
-          {plan.rooms.filter(z => !zimmerMitWert.includes(z.resourceId)).map(z => (
-            <option key={z.resourceId} value={z.resourceId}>{z.code}</option>
+          {eigene.filter(z => !zimmerMitWert.includes(z.resourceId!)).map(z => (
+            <option key={z.resourceId} value={z.resourceId!}>{z.code}</option>
           ))}
         </select>
         <button type="button" disabled={neuesZimmer === ''}
@@ -336,6 +367,121 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
                          disabled:bg-neutral-300">
         {t(sichern.isPending ? 'common.loading' : 'cleaningPlan.normSave')}
       </button>
+    </div>
+  </details>
+}
+
+/**
+ * Reinigungsbereiche (0116): was gereinigt wird, aber kein Zimmer ist. Die
+ * Liste ist der ganze Stand; ein Bereich wird abgeschaltet, nicht
+ * geloescht -- an alten Aufgaben haengen abgerechnete Minuten.
+ */
+type BereichEntwurf = { id: number | null; code: string; building: string; minutes: string
+                        active: boolean }
+
+function Bereiche({ propertyId, bereiche }: {
+  propertyId: number; bereiche: Bereich[]
+}): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const sichern = useBereicheSpeichern(propertyId)
+  const [zeilen, setZeilen] = useState<BereichEntwurf[]>(() => bereiche.map(b => ({
+    id: b.id, code: b.code, building: b.building ?? '', minutes: String(b.minutes),
+    active: b.active })))
+  const aendern = (i: number, teil: Partial<BereichEntwurf>): void =>
+    setZeilen(alt => alt.map((z, j) => j === i ? { ...z, ...teil } : z))
+  const speichern = (): void => {
+    sichern.mutate(zeilen.filter(z => z.code.trim() !== '').map(z => ({
+      id: z.id, code: z.code.trim(), building: z.building.trim() === '' ? null : z.building.trim(),
+      minutes: Number(z.minutes), active: z.active })))
+  }
+  const feld = 'border border-neutral-300 rounded-sm px-1 py-0.5'
+  return <details className="border border-neutral-200 rounded-sm bg-white">
+    <summary className="px-3 py-2 text-sm font-semibold cursor-pointer">
+      {t('cleaningPlan.areas')}
+    </summary>
+    <div className="px-3 pb-3 space-y-2 text-sm">
+      <p className="text-xs text-neutral-600">{t('cleaningPlan.areasHint')}</p>
+      {zeilen.length > 0 && <table className="text-sm">
+        <thead>
+          <tr className="text-left text-xs text-neutral-500">
+            <th className="pr-2 font-normal">{t('cleaningPlan.areaCode')}</th>
+            <th className="pr-2 font-normal">{t('cleaningPlan.areaBuilding')}</th>
+            <th className="pr-2 font-normal">{t('cleaningPlan.minutes')}</th>
+            <th className="font-normal" />
+          </tr>
+        </thead>
+        <tbody>
+          {zeilen.map((z, i) => <tr key={z.id ?? `neu${i}`}>
+            <td className="pr-2 py-0.5">
+              <input value={z.code} maxLength={20} onChange={e => aendern(i, { code: e.target.value })}
+                     className={`w-28 ${feld}`} />
+            </td>
+            <td className="pr-2">
+              <input value={z.building} maxLength={40}
+                     onChange={e => aendern(i, { building: e.target.value })}
+                     className={`w-28 ${feld}`} />
+            </td>
+            <td className="pr-2">
+              <input type="number" min={0} max={480} inputMode="numeric" value={z.minutes}
+                     onChange={e => aendern(i, { minutes: e.target.value })}
+                     className={`w-20 text-right ${feld}`} />
+            </td>
+            <td>
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={z.active}
+                       onChange={e => aendern(i, { active: e.target.checked })} />
+                {t('cleaningPlan.areaActive')}
+              </label>
+            </td>
+          </tr>)}
+        </tbody>
+      </table>}
+      <div className="flex flex-wrap gap-2">
+        <button type="button"
+                onClick={() => setZeilen(alt => [...alt,
+                  { id: null, code: '', building: '', minutes: '20', active: true }])}
+                className="px-2 py-0.5 rounded-sm border border-neutral-300">
+          {t('cleaningPlan.areaAdd')}
+        </button>
+        <button type="button" onClick={speichern} disabled={!online || sichern.isPending}
+                className="px-3 py-0.5 rounded-sm bg-neutral-900 text-white disabled:bg-neutral-300">
+          {t(sichern.isPending ? 'common.loading' : 'cleaningPlan.areaSave')}
+        </button>
+      </div>
+      {sichern.isError && <Fehler error={sichern.error} />}
+    </div>
+  </details>
+}
+
+/**
+ * Gemeinsam oder je Haus (0116). Eine Einstellung des Betriebs; nur wer
+ * den Betrieb verwaltet, sieht sie. Hier und nicht in den Einstellungen:
+ * sie aendert, was dieser Bildschirm zeigt.
+ */
+function Gemeinsam({ propertyId }: { propertyId: number }): JSX.Element | null {
+  const t = useT()
+  const { darf } = useHausrechte(propertyId)
+  const verwalten = darf('settings:account')
+  const q = usePersonalGemeinsam(propertyId, verwalten)
+  const sichern = usePersonalGemeinsamSpeichern(propertyId)
+  if (!verwalten) return null
+  return <details className="border border-neutral-200 rounded-sm bg-white">
+    <summary className="px-3 py-2 text-sm font-semibold cursor-pointer">
+      {t('cleaningPlan.shared')}
+    </summary>
+    <div className="px-3 pb-3 space-y-2 text-sm">
+      {q.data === undefined ? (q.isError ? <Fehler error={q.error} /> : <Laedt />) : <>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={q.data.shared} disabled={sichern.isPending}
+                 onChange={e => sichern.mutate(e.currentTarget.checked)} />
+          {t('cleaningPlan.sharedToggle')}
+        </label>
+        <p className="text-xs text-neutral-600">
+          {t(q.data.shared ? 'cleaningPlan.sharedOn' : 'cleaningPlan.sharedOff')}
+        </p>
+      </>}
+      {sichern.isError && <Fehler error={sichern.error} />}
     </div>
   </details>
 }

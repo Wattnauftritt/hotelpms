@@ -264,8 +264,8 @@ function Start({ me, locale, onLocale }: {
 }): JSX.Element {
   const t = usePT()
   const vorname = me.displayName.split(' ')[0] ?? me.displayName
-  // Meist ein Haus. Arbeitet jemand in zweien, waehlt er oben -- die Liste
-  // gilt immer fuer ein Haus, wie der Plan der Hausdame.
+  // Meist ein Haus. Arbeitet jemand in zweien, zeigt "Heute" beide in einer
+  // Liste; Kontrolle, Kueche und Zeit gelten je Haus, gewaehlt wird oben.
   const haeuser = me.properties.filter(p => p.permissions.includes('staff:app'))
   const [haus, setHaus] = useState(() => haeuser[0]?.id ?? 0)
   const rechte = haeuser.find(h => h.id === haus)?.permissions ?? []
@@ -294,8 +294,8 @@ function Start({ me, locale, onLocale }: {
     <main className="flex-1 px-4 py-4 pb-24 space-y-4 max-w-lg w-full mx-auto">
       {reiter === 'heute' && <>
         <p className="text-xl font-semibold">{t('today.hello', { name: vorname })}</p>
-        {hausWahl}
-        <MeineZimmer key={haus} propertyId={haus} locale={locale} />
+        {/* Alle Haeuser in einer Liste (0116) -- hier gibt es nichts zu waehlen. */}
+        <MeineZimmer locale={locale} />
       </>}
       {reiter === 'kontrolle' && kontrolle && <>
         {hausWahl}

@@ -27,6 +27,8 @@ interface Bericht {
   workEntries: { total: number; imported: number; unmapped: number; closed: number
                  translations: number }
   unknownRooms: string[]
+  /** Wohin die Putzplanzeilen gingen: eine Datei, mehrere Haeuser (0116). */
+  houses?: Array<{ propertyId: number; name: string; schedules: number }>
 }
 
 export function AltdatenPersonal({ propertyId }: { propertyId: number }): JSX.Element {
@@ -89,6 +91,12 @@ export function AltdatenPersonal({ propertyId }: { propertyId: number }): JSX.El
           <tr><td className="pr-4">{t('worktime.legacy.schedules')}</td>
             <td className="tabular-nums">{t('worktime.legacy.counts', {
               imported: b.schedules.imported, total: b.schedules.total })}</td></tr>
+          {(b.houses ?? []).length > 1 && b.houses!.map(h => (
+            <tr key={h.propertyId}>
+              <td className="pr-4 pl-3 text-neutral-600">{h.name}</td>
+              <td className="tabular-nums text-neutral-600">{h.schedules}</td>
+            </tr>
+          ))}
           <tr><td className="pr-4">{t('worktime.legacy.entries')}</td>
             <td className="tabular-nums">{t('worktime.legacy.counts', {
               imported: b.workEntries.imported, total: b.workEntries.total })}</td></tr>

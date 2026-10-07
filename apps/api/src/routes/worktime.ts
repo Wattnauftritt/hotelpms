@@ -5,7 +5,7 @@ import { addDays, isClockTime, isIsoDate, isMonth, minutesBetween, monthRange }
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { can, type Principal } from '../platform/context.js'
+import { can, propertyIds, type Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
 import { csv } from './reports.js'
 import { reiheUebersetzungEin, zielDeutsch } from '../platform/uebersetzung.js'
@@ -228,8 +228,9 @@ function idAusPfad(req: FastifyRequest, name: string): number {
 }
 
 /**
- * Wer in diesem Haus Arbeitszeit haben kann: Reinigung und Kueche, dazu
- * jeder, der im Monat Minuten hat. Ein Name aus einem fremden Haus kommt so
+ * Wer in diesem Haus Arbeitszeit haben kann: Reinigung und Kueche -- bei
+ * gemeinsamem Personal (0116) die des ganzen Betriebs --, dazu jeder, der
+ * im Monat Minuten hat. Ein Name aus einem fremden Haus kommt so
  * nicht in die Liste -- die Benutzertabelle hat keine Zeilenrichtlinie.
  */
 async function liesKraefte(
@@ -241,7 +242,8 @@ async function liesKraefte(
       WHERE u.id IN (
               SELECT upr.user_id FROM user_property_role upr
                 JOIN role ro ON ro.id = upr.role_id
-               WHERE upr.property_id = $1 AND ro.key IN ('housekeeping_staff','kitchen')
+               WHERE upr.property_id = ANY (staff_houses($1))
+                 AND ro.key IN ('housekeeping_staff','kitchen')
               UNION
               SELECT assigned_to FROM housekeeping_task
                WHERE property_id = $1 AND outcome = 'cleaned' AND assigned_to IS NOT NULL
@@ -321,15 +323,64 @@ async function sammle(client: PoolClient, propertyId: number, month: string) {
   }
 }
 
-/** Die Uebersicht: je Kraft die Summe je Tag und die Summen nach Art. */
-async function liesUebersicht(client: PoolClient, propertyId: number, month: string) {
+/**
+ * Die Uebersicht: je Kraft die Summe je Tag und die Summen nach Art, dazu
+ * die Monatssumme in den anderen Haeusern (`elsewhere`), die die Leitung
+ * ebenfalls fuehrt.
+ */
+async function liesUebersicht(
+  client: PoolClient, propertyId: number, month: string, andere: number[]
+) {
   const s = await sammle(client, propertyId, month)
+  const anderswo = await summeAnderswo(client, andere, s.staff.map(k => k.userId), s.from, s.to)
   return {
     month: s.month, from: s.from, to: s.to, closed: s.closed,
     staff: s.staff.map(({ tage, ...k }) => ({
-      ...k, days: Object.fromEntries(tage.map(([d, t]) => [d, t.total]))
+      ...k, days: Object.fromEntries(tage.map(([d, t]) => [d, t.total])),
+      elsewhere: anderswo.get(k.userId) ?? []
     }))
   }
+}
+
+interface Anderswo { propertyId: number; name: string; total: number }
+
+/**
+ * Die Monatssumme derselben Personen in anderen Haeusern (Sven, 07.10.2026:
+ * dieselben Kraefte reinigen Hotel und Gaestehaus, und die
+ * Zeitarbeitsfirma rechnet je Mensch ab, nicht je Haus). Gerechnet wie
+ * `sammle`: gereinigte Zimmer plus nicht zurueckgezogene Eintraege.
+ *
+ * Welche Haeuser, entscheidet der Aufrufer -- die Leitung sieht nur
+ * Haeuser, in denen sie selbst `worktime:manage` hat, die Kraft nur ihre
+ * eigenen. Zwei Abfragen fuer alle Personen, nicht zwei je Person.
+ */
+async function summeAnderswo(
+  client: PoolClient, haeuser: number[], userIds: number[], from: string, to: string
+): Promise<Map<number, Anderswo[]>> {
+  const ergebnis = new Map<number, Anderswo[]>()
+  if (haeuser.length === 0 || userIds.length === 0) return ergebnis
+  const { rows } = await client.query<{ userId: number } & Anderswo>(
+    `SELECT x.user_id::int AS "userId", x.property_id::int AS "propertyId", p.name,
+            sum(x.minutes)::int AS total
+       FROM (SELECT assigned_to AS user_id, property_id, minutes FROM housekeeping_task
+              WHERE property_id = ANY($1::bigint[]) AND assigned_to = ANY($2::bigint[])
+                AND outcome = 'cleaned' AND business_date BETWEEN $3::date AND $4::date
+             UNION ALL
+             SELECT user_id, property_id, minutes FROM staff_work_entry
+              WHERE property_id = ANY($1::bigint[]) AND user_id = ANY($2::bigint[])
+                AND withdrawn_at IS NULL AND business_date BETWEEN $3::date AND $4::date) x
+       JOIN property p ON p.id = x.property_id
+      GROUP BY 1, 2, 3
+      ORDER BY 3`, [haeuser, userIds, from, to])
+  for (const { userId, ...a } of rows) {
+    ergebnis.set(userId, [...(ergebnis.get(userId) ?? []), a])
+  }
+  return ergebnis
+}
+
+/** Die anderen Haeuser, in denen der Aufrufer das Recht hat. */
+function andereMit(p: Principal, propertyId: number, recht: 'staff:app' | 'worktime:manage'): number[] {
+  return propertyIds(p).filter(id => id !== propertyId && can(p, recht, id))
 }
 
 /** Gehoert die Person zu diesem Haus? Sonst ist sie fuer die Leitung 404. */
@@ -339,7 +390,7 @@ async function kraftImHaus(
   const { from, to } = monthRange(month)
   const { rows } = await client.query<{ ja: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM user_property_role
-                     WHERE property_id = $1 AND user_id = $2)
+                     WHERE property_id = ANY (staff_houses($1)) AND user_id = $2)
          OR EXISTS (SELECT 1 FROM housekeeping_task
                      WHERE property_id = $1 AND assigned_to = $2
                        AND business_date BETWEEN $3::date AND $4::date)
@@ -366,10 +417,15 @@ export function worktimeRoutes(app: FastifyInstance): void {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const ich = personVon(req)
       const q = req.query as { month?: string }
+      const andere = andereMit(req.principal as Principal, propertyId, 'staff:app')
       return tx(req.pool, req, async client => {
         const month = await monatOderOffen(client, propertyId, q.month)
         const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, propertyId, ich, month)), today: heute }
+        const monat = await liesMonat(client, propertyId, ich, month)
+        // Was dieselbe Kraft im selben Monat in ihren anderen Haeusern hat --
+        // auf dem Telefon soll die Summe stehen, nach der abgerechnet wird.
+        const anderswo = await summeAnderswo(client, andere, [ich], monat.from, monat.to)
+        return { ...monat, today: heute, otherHouses: anderswo.get(ich) ?? [] }
       })
     }
   })
@@ -474,8 +530,10 @@ export function worktimeRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const q = req.query as { month?: string }
+      const andere = andereMit(req.principal as Principal, propertyId, 'worktime:manage')
       return tx(req.pool, req, async client =>
-        liesUebersicht(client, propertyId, await monatOderOffen(client, propertyId, q.month)))
+        liesUebersicht(client, propertyId, await monatOderOffen(client, propertyId, q.month),
+          andere))
     }
   })
 
@@ -667,7 +725,8 @@ export function worktimeRoutes(app: FastifyInstance): void {
            VALUES ($1, $2::date, $3)
            ON CONFLICT (property_id, month) WHERE reopened_at IS NULL DO NOTHING`,
           [propertyId, `${month}-01`, principal.userId])
-        return liesUebersicht(client, propertyId, month)
+        return liesUebersicht(client, propertyId, month,
+          andereMit(principal, propertyId, 'worktime:manage'))
       })
     }
   })
@@ -696,7 +755,8 @@ export function worktimeRoutes(app: FastifyInstance): void {
             WHERE property_id = $1 AND month = $2::date AND reopened_at IS NULL`,
           [propertyId, `${month}-01`, principal.userId, grund])
         if (rowCount === 0) throw Errors.conflict('worktime.notClosed', { month })
-        return liesUebersicht(client, propertyId, month)
+        return liesUebersicht(client, propertyId, month,
+          andereMit(principal, propertyId, 'worktime:manage'))
       })
     }
   })
