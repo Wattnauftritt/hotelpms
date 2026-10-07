@@ -68,7 +68,12 @@ export function Ruhebild({ folien, nr, haus, kopf }: {
               <div className="mt-3 font-serif text-3xl drop-shadow-md">{haus}</div>
             )}
           </div>
-          {kopf}
+          <div className="flex flex-col items-end gap-6">
+            {kopf}
+            {/* Hochkant steht die Uhr oben: unten braucht der Text die
+                ganze Breite, neben ihm bliebe er zu schmal. */}
+            <Uhr className="hidden portrait:block" />
+          </div>
         </header>
 
         <main className="grow flex items-end px-10 pb-10 gap-10">
@@ -87,7 +92,7 @@ export function Ruhebild({ folien, nr, haus, kopf }: {
                 )}
               </article>
             )}
-          <Uhr />
+          <Uhr className="portrait:hidden" />
         </main>
 
         {n > 1 && (
@@ -142,7 +147,7 @@ function Begruessung({ haus }: { haus: string | null }): JSX.Element {
 }
 
 /** Uhrzeit und Datum, wie in einer Hotelhalle. Die Zeit des Geraets genuegt. */
-function Uhr(): JSX.Element {
+function Uhr({ className }: { className: string }): JSX.Element {
   const locale = useLocale()
   const [jetzt, setJetzt] = useState(() => new Date())
   useEffect(() => {
@@ -150,7 +155,7 @@ function Uhr(): JSX.Element {
     return () => window.clearInterval(z)
   }, [])
   return (
-    <div className="ml-auto shrink-0 text-right drop-shadow-md">
+    <div className={`ml-auto shrink-0 text-right drop-shadow-md ${className}`}>
       <div className="text-6xl font-light tabular-nums">
         {new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(jetzt)}
       </div>
