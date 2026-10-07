@@ -259,10 +259,11 @@ interface Gastposttexte {
   zahlungGueltig: string
   zahlungHinweis: string
   // Online-Check-in (Dokument 30)
+  checkinAnredeMitName: string
+  checkinAnredeOhneName: string
   checkinBetreff: string
   checkinEinladung: string
   checkinFrist: string
-  checkinUnterschrift: string
   checkinFreiwillig: string
   checkinWeitergabe: string
   checkinTest: string
@@ -310,16 +311,17 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'schicken wir Ihnen gern einen neuen.',
     zahlungHinweis: 'Bei Fragen antworten Sie einfach auf diese E-Mail und nennen '
       + 'Sie die Buchungsnummer {ref}.',
+    // Herzlicher als die Anrede der uebrigen Post, auf Wunsch des Hauses
+    // (Sven, 07.10.2026): die Einladung ist eine Begruessung, kein Beleg.
+    checkinAnredeMitName: 'Hallo {name},',
+    checkinAnredeOhneName: 'Hallo,',
     checkinBetreff: 'Online-Check-in für Ihren Aufenthalt — {haus}',
-    checkinEinladung: 'am {anreise} erwarten wir Sie im Hause {haus}. Damit es bei '
+    checkinEinladung: 'am {anreise} erwarten wir Sie in unserem Hause {haus}. Damit es bei '
       + 'der Ankunft schneller geht, können Sie den Meldeschein schon jetzt '
       + 'ausfüllen:',
     checkinFrist: 'Der Link gilt bis zum {bis} und nur für Ihre Buchung {ref}.',
-    checkinUnterschrift: 'Gäste ohne deutsche Staatsangehörigkeit unterschreiben '
-      + 'den Meldeschein am Anreisetag vor Ort und zeigen dort ihren Reisepass oder '
-      + 'Personalausweis vor.',
-    checkinFreiwillig: 'Das Ausfüllen vorab ist freiwillig. Sie können den '
-      + 'Meldeschein ebenso bei der Ankunft ausfüllen.',
+    checkinFreiwillig: 'Gerne können Sie den Meldeschein natürlich auch am '
+      + 'Anreisetag vor Ort ausfüllen.',
     checkinWeitergabe: 'Bitte geben Sie den Link nicht weiter: wer ihn hat, kann '
       + 'Angaben zu Ihrem Aufenthalt machen.',
     checkinTest: 'TESTMAIL — so sieht die Einladung zum Online-Check-in für Ihre Gäste aus. '
@@ -366,16 +368,15 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'expired, we will gladly send you a new one.',
     zahlungHinweis: 'If you have any questions, simply reply to this email and '
       + 'quote the booking reference {ref}.',
+    checkinAnredeMitName: 'Hello {name},',
+    checkinAnredeOhneName: 'Hello,',
     checkinBetreff: 'Online check-in for your stay — {haus}',
-    checkinEinladung: 'we look forward to welcoming you at {haus} on {anreise}. '
+    checkinEinladung: 'we look forward to welcoming you to our {haus} on {anreise}. '
       + 'To make your arrival quicker, you can fill in the registration form '
       + '(Meldeschein) now:',
     checkinFrist: 'The link is valid until {bis} and only for your booking {ref}.',
-    checkinUnterschrift: 'Guests without German citizenship sign the registration '
-      + 'form on site on the day of arrival and show their passport or identity '
-      + 'card there.',
-    checkinFreiwillig: 'Filling it in beforehand is optional. You can just as well '
-      + 'complete the form on arrival.',
+    checkinFreiwillig: 'You are of course also welcome to fill in the registration '
+      + 'form on site on the day of arrival.',
     checkinWeitergabe: 'Please do not pass the link on: whoever has it can enter '
       + 'details about your stay.',
     checkinTest: 'TEST MESSAGE — this is how the online check-in invitation looks to '
@@ -422,16 +423,15 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'sturen wij u graag een nieuwe.',
     zahlungHinweis: 'Heeft u vragen, antwoord dan gewoon op deze e-mail en vermeld '
       + 'het boekingsnummer {ref}.',
+    checkinAnredeMitName: 'Hallo {name},',
+    checkinAnredeOhneName: 'Hallo,',
     checkinBetreff: 'Online inchecken voor uw verblijf — {haus}',
-    checkinEinladung: 'op {anreise} verwelkomen wij u graag bij {haus}. Om uw '
+    checkinEinladung: 'op {anreise} verwelkomen wij u graag in ons {haus}. Om uw '
       + 'aankomst te versnellen, kunt u het inschrijvingsformulier (Meldeschein) '
       + 'nu al invullen:',
     checkinFrist: 'De link is geldig tot {bis} en alleen voor uw boeking {ref}.',
-    checkinUnterschrift: 'Gasten zonder Duitse nationaliteit ondertekenen het '
-      + 'formulier op de dag van aankomst ter plaatse en tonen daar hun paspoort '
-      + 'of identiteitskaart.',
-    checkinFreiwillig: 'Vooraf invullen is vrijwillig. U kunt het formulier ook '
-      + 'bij aankomst invullen.',
+    checkinFreiwillig: 'U kunt het formulier natuurlijk ook graag op de dag van '
+      + 'aankomst ter plaatse invullen.',
     checkinWeitergabe: 'Geef de link niet door: wie hem heeft, kan gegevens over '
       + 'uw verblijf invullen.',
     checkinTest: 'TESTBERICHT — zo ziet de uitnodiging voor online inchecken eruit voor '
@@ -492,16 +492,15 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'chętnie prześlemy nowy.',
     zahlungHinweis: 'W razie pytań wystarczy odpowiedzieć na tę wiadomość, '
       + 'podając numer rezerwacji {ref}.',
+    checkinAnredeMitName: 'Dzień dobry,',
+    checkinAnredeOhneName: 'Dzień dobry,',
     checkinBetreff: 'Odprawa online przed pobytem — {haus}',
-    checkinEinladung: 'Oczekujemy Państwa w obiekcie {haus} w dniu {anreise}. '
+    checkinEinladung: 'Oczekujemy Państwa w naszym obiekcie {haus} w dniu {anreise}. '
       + 'Aby przyspieszyć przyjazd, można już teraz wypełnić kartę meldunkową '
       + '(Meldeschein):',
     checkinFrist: 'Link jest ważny do {bis} i wyłącznie dla rezerwacji {ref}.',
-    checkinUnterschrift: 'Goście bez obywatelstwa niemieckiego podpisują kartę '
-      + 'meldunkową w dniu przyjazdu na miejscu i okazują tam paszport lub dowód '
-      + 'osobisty.',
-    checkinFreiwillig: 'Wypełnienie karty z wyprzedzeniem jest dobrowolne. Można ją '
-      + 'również wypełnić po przyjeździe.',
+    checkinFreiwillig: 'Kartę można oczywiście wypełnić również na miejscu w dniu '
+      + 'przyjazdu.',
     checkinWeitergabe: 'Prosimy nie przekazywać linku dalej: kto go posiada, może '
       + 'wprowadzać dane dotyczące Państwa pobytu.',
     checkinTest: 'WIADOMOŚĆ TESTOWA — tak wygląda zaproszenie do odprawy online dla '
@@ -671,9 +670,11 @@ export interface CheckinInvitationData {
  * anklicken mag, soll ihn lesen koennen; und ein Gast, der stutzt, sieht so,
  * wohin er fuehrt.
  *
- * Der Satz zur Unterschrift steht fuer jeden da, nicht nur fuer
- * auslaendische Gaeste: die Staatsangehoerigkeit kennt das Haus vor dem
- * Ausfuellen oft gar nicht, und eine Mail, die sie erraet, raet falsch.
+ * **Kein Satz zur Unterschrift.** Frueher stand hier fuer jeden Gast, dass
+ * auslaendische Gaeste am Anreisetag unterschreiben. Das Haus hat ihn
+ * gestrichen (Sven, 07.10.2026): er sprach jeden an und betraf die
+ * wenigsten. Wer unterschreiben muss, erfaehrt es auf der Seite selbst
+ * (`gastCheckin.done.signatureLater`) und vor Ort.
  */
 export function renderCheckinInvitationEmail(
   d: CheckinInvitationData, lang: EmailLanguage = 'de'
@@ -686,11 +687,12 @@ export function renderCheckinInvitationEmail(
     ref: d.reservationRef
   }
   const lines = [
-    anrede(d.guestName, lang),
+    d.guestName === null || d.guestName === ''
+      ? t.checkinAnredeOhneName
+      : einsetzen(t.checkinAnredeMitName, { name: d.guestName }),
     einsetzen(t.checkinEinladung, werte),
     d.link,
     einsetzen(t.checkinFrist, werte),
-    t.checkinUnterschrift,
     t.checkinFreiwillig,
     t.checkinWeitergabe,
     d.propertyName
