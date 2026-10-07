@@ -1061,7 +1061,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Schritt 2: der Sortierer als reine Funktion in `packages/domain`. Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker, Züge des Sortierers ohne `local`-Vermerk. Schritt 4: Hotel — Vorschau, Übernehmen, Rückgängig im Zimmerplan.
 
-### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 7 von 10**
+### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 8 von 10**
 
 **Anlass.** Sven, 07.10.2026: StayGrid übernimmt das Personalsystem, das bisher eine eigene App war (Repo `zurseerobbe`, Flask-PWA): Putzplan, Zimmerstatus, Kontrolle durch die Hausdame, Frühstückszahl für die Küche, Zusatzarbeiten mit Minuten, Oberfläche in de/en/ru/uk mit Rückübersetzung frei eingetragener Tätigkeiten. Plan mit zehn Bausteinen: Projektordner `personal-app/plan.md`. Die alte App läuft weiter, bis Sven umschaltet. **Keine Kommen/Gehen-Erfassung:** das Personal kommt von einer Zeitarbeitsfirma und wird vertraglich nach Pauschalminuten je Zimmer abgerechnet (Svens Entscheidung).
 
@@ -1081,7 +1081,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Baustein 7 (Übersetzung).** Migration `0112`: `staff_text_job` (Warteschlange je Quelle) und `staff_text_translation` (Übersetzung je Sprache, mit Fingerabdruck `source_hash` des Textes, für den sie entstand, und `origin` `machine`/`manual`; der Text in `audit_redaction`, ebenso die Notiz der Hausdame und Titel und Beschreibung der Wartungsmeldung). Eingereiht wird ausdrücklich in den Routen, nie per Trigger: Eintrag der Kraft und Zimmerproblem nach Deutsch (nicht, wer Deutsch gewählt hat), Nacharbeitsnotiz in die Sprache der Kraft (`platform/uebersetzung.ts`). Der Worker übersetzt über DeepL (`jobs/staffTranslation.ts`, `DEEPL_API_KEY`, Dokument 17 Abschnitt 8a) außerhalb der Sperre, mit Wiederholung und Aufgabe nach sechs Versuchen; ohne Schlüssel bleibt alles stehen, und jeder liest das Original. Gelesen wird eine Übersetzung nur, solange ihr Fingerabdruck zum aktuellen Text passt. Die Leitung sieht Deutsch neben dem Eintrag und berichtigt es von Hand (`PUT …/worktime/entries/:id/translation`); DeepL überschreibt das nur, wenn die Kraft den Text ändert. Die Wartungsliste zeigt Meldungen aus der App auch deutsch, die Kraft liest die Notiz der Hausdame in ihrer Sprache mit dem Original darunter. DeepL steht als Unterauftragsverarbeiter im Verarbeitungsverzeichnis. Tests: `uebersetzung.test.ts`, `staffTranslation.test.ts` (Worker und Domain).
 
-**Offen.** 8: Push. 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
+**Baustein 8 (Push).** Migration `0113`: `push_subscription` (je Telefon, an die Sitzung gebunden — Abmelden löscht, der Worker schickt nur an gültige Sitzungen; Adresse und Schlüssel in `audit_redaction`) und die Warteschlange `staff_push` (Art und Zimmernummer bzw. Datum, nie ein Gast; eine gleiche ausstehende Meldung wird nicht verdoppelt). Drei Anlässe: Plan geändert (`PUT cleaning-plan`, an jede Kraft, deren Zimmer sich für den offenen Tag oder später ändern), Zimmer frei (Trigger auf Anweisungsebene an `reservation`, weil ein Gast auf vielen Wegen abreist; dieselbe Regel wie `free` in Meine Zimmer), nacharbeiten (Kontrolle). Angemeldet wird nur eine Adresse der Browserhersteller (`isPushEndpoint`). Der Worker sendet im eigenen 20-Sekunden-Takt mit `web-push`, baut Titel und Text in der Sprache der Kraft (`PUSH_TEXTS` in `@hotelpms/contracts`) und entfernt Abos, die der Dienst nicht mehr kennt. Personal-App: Karte „Benachrichtigungen“ unter Mehr, Berechtigung nur auf Tippen, beim Start stille Neuanmeldung an die Sitzung, auf dem iPhone der Weg zur installierten App. Betrieb: Dokument 17, Abschnitt 8b. Tests: `push.test.ts` (API, Domain), `staffPush.test.ts`, `pwa.test.ts`.
+
+**Offen.** 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
 
 ---
 

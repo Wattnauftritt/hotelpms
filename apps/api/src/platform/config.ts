@@ -56,6 +56,12 @@ export interface Config {
    * eine Freigabe, nach der die Post im Werbeordner landet.
    */
   relayEmailDomain: string
+  /**
+   * Oeffentlicher VAPID-Schluessel fuer Web-Push an das Personal (Baustein 8).
+   * Das Telefon braucht ihn zum Abonnieren; den privaten Teil hat nur der
+   * Worker. Ohne ihn bietet die Personal-App keine Benachrichtigung an.
+   */
+  vapidPublicKey: string | null
 }
 
 function need(name: string, minLength = 1): string {
@@ -87,6 +93,7 @@ export function loadConfig(): Config {
     allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS),
     brevoApiKey: process.env.BREVO_API_KEY ?? null,
     platformNoticeEmail: process.env.PLATFORM_NOTICE_EMAIL ?? 'info@staygrid.cloud',
-    relayEmailDomain: process.env.RELAY_EMAIL_DOMAIN ?? 'mail.staygrid.cloud'
+    relayEmailDomain: process.env.RELAY_EMAIL_DOMAIN ?? 'mail.staygrid.cloud',
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null
   }
 }

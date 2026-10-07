@@ -330,6 +330,30 @@ Die Leitung kann eine Übersetzung im Bildschirm Arbeitszeit von Hand berichtige
 
 ---
 
+## 8b. Benachrichtigungen an das Personal (Web-Push)
+
+Die Personal-App meldet sich auf dem Telefon, wenn die Hausdame den Plan ändert, ein Abreisezimmer frei wird oder etwas nachzuarbeiten ist (Aufgabe 18, Baustein 8, Migration 0113). Gesendet wird über die Push-Dienste der Browserhersteller mit VAPID; ein eigener Dienst oder ein Konto bei einem Anbieter ist nicht nötig.
+
+**Schlüssel einmal erzeugen** und nie wieder ändern — ein neuer Schlüssel macht jedes angemeldete Telefon stumm, bis die Kraft die App neu öffnet:
+
+```
+pnpm --filter @hotelpms/worker exec web-push generate-vapid-keys
+```
+
+`VAPID_PUBLIC_KEY` gehört in die Umgebung von **API und Worker** (die App braucht ihn zum Anmelden), `VAPID_PRIVATE_KEY` nur in die des Workers, dazu `VAPID_SUBJECT=mailto:info@staygrid.cloud` — die Adresse, unter der uns ein Push-Dienst bei Problemen erreicht. Ohne Schlüssel bietet die App keine Benachrichtigung an, und die Warteschlange `staff_push` bleibt stehen.
+
+**Was hinausgeht.** Titel und Text in der Sprache der Kraft, Ende-zu-Ende verschlüsselt (RFC 8291): der Push-Dienst sieht die Adresse des Telefons, nicht den Inhalt. Der Inhalt nennt eine Zimmernummer oder ein Datum, nie einen Gast und nie die Notiz der Hausdame. Zugestellt wird nur an die Dienste von Google, Apple, Mozilla und Microsoft (`isPushEndpoint`); jede andere Adresse weist schon die Anmeldung ab — dieselbe Vorsicht wie bei den Webhook-Zielen in Abschnitt 8.
+
+**Ein Abo hängt an der Sitzung.** Abmelden, Ablauf oder ein Kennwortwechsel beenden es; auf einem Telefon, das die nächste Kraft in die Hand nimmt, kommen keine Meldungen der vorigen an. Auf dem iPhone gibt es Push nur für die auf dem Home-Bildschirm installierte App; das sagt die App selbst.
+
+| Befund in `staff_push` | Ursache |
+|---|---|
+| `pending`, Versuche 0, älter als eine Minute | Kein `VAPID_PRIVATE_KEY` im Worker |
+| `sent`, aber nichts kam an | Die Kraft hat kein Telefon angemeldet (das ist kein Fehler), oder das Telefon unterdrückt Meldungen der App |
+| `last_error` `http_403` | Öffentlicher und privater Schlüssel passen nicht zusammen |
+
+---
+
 ## 9. Was regelmäßig zu prüfen ist
 
 | Wann | Was |

@@ -4,6 +4,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { reiheUebersetzungEin } from '../platform/uebersetzung.js'
+import { meldePush } from '../platform/push.js'
 import type { Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
 
@@ -132,8 +133,9 @@ export function inspectionRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const tag = await tagOderOffen(client, propertyId, undefined)
         const { rows } = await client.query<{ resource_id: number; outcome: string | null
-                                              code: string; locale: string | null }>(
-          `SELECT t.resource_id::int, t.outcome, r.code, u.locale
+                                              code: string; locale: string | null
+                                              assigned_to: number | null }>(
+          `SELECT t.resource_id::int, t.outcome, r.code, u.locale, t.assigned_to::int
              FROM housekeeping_task t JOIN resource r ON r.id = t.resource_id
              LEFT JOIN app_user u ON u.id = t.assigned_to
             WHERE t.id = $1 AND t.property_id = $2 AND t.business_date = $3::date
@@ -162,6 +164,10 @@ export function inspectionRoutes(app: FastifyInstance): void {
             && ['en', 'ru', 'uk'].includes(aufgabe.locale)) {
           await reiheUebersetzungEin(client, propertyId, 'inspection_note', taskId,
             [aufgabe.locale])
+        }
+        if (ergebnis === 'rework' && aufgabe.assigned_to !== null) {
+          await meldePush(client, propertyId, [aufgabe.assigned_to], 'rework',
+            { room: aufgabe.code }, `${taskId}`)
         }
         /*
          * Der Zimmerstand folgt: kontrolliert ist bezugsfertig, nacharbeiten

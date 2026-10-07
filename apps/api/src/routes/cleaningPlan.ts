@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
+import { meldePush } from '../platform/push.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
@@ -416,6 +417,28 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
                                  THEN now() ELSE t.planned_at END`,
             [propertyId, date, zeilen.map(z => z.resourceId), zeilen.map(z => z.kind),
              zeilen.map(z => z.assignedTo), zeilen.map(z => z.minutes), principal.userId])
+        }
+        /*
+         * Wessen Zimmer sich geaendert haben, der bekommt eine Meldung
+         * (Baustein 8) -- auch wer Zimmer verloren hat. Nur fuer den offenen
+         * Tag und spaeter: ein vergangener Plan interessiert niemanden mehr
+         * auf dem Telefon.
+         */
+        if (date >= await tagOderOffen(client, propertyId, undefined)) {
+          const vorher = new Map<number, Set<string>>()
+          const nachher = new Map<number, Set<string>>()
+          const merke = (m: Map<number, Set<string>>, u: number | null, k: string): void => {
+            if (u === null) return
+            if (!m.has(u)) m.set(u, new Set())
+            m.get(u)!.add(k)
+          }
+          for (const t of bisher.rows) merke(vorher, t.assigned_to, `${t.resource_id}:${t.kind}`)
+          for (const z of zeilen) merke(nachher, z.assignedTo, `${z.resourceId}:${z.kind}`)
+          const gleich = (a?: Set<string>, b?: Set<string>): boolean =>
+            (a?.size ?? 0) === (b?.size ?? 0) && [...(a ?? [])].every(k => b?.has(k) === true)
+          const betroffen = [...new Set([...vorher.keys(), ...nachher.keys()])]
+            .filter(u => !gleich(vorher.get(u), nachher.get(u)))
+          await meldePush(client, propertyId, betroffen, 'plan', { date }, date)
         }
         return liesPlan(client, propertyId, date)
       })

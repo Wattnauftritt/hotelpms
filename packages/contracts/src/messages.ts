@@ -1444,6 +1444,14 @@ const M = {
     de: 'Die Personal-App benutzt nur eine angemeldete Person.',
     en: 'Only a signed-in person can use the staff app.',
     tr: 'Personel uygulamasını yalnızca oturum açmış bir kişi kullanabilir.' },
+  'push.endpoint': {
+    de: 'Diese Adresse fuer Benachrichtigungen wird nicht angenommen.',
+    en: 'This notification address is not accepted.',
+    tr: 'Bu bildirim adresi kabul edilmiyor.' },
+  'push.keys': {
+    de: 'Die Schluessel des Telefons fehlen oder sind ungueltig.',
+    en: 'The phone keys are missing or invalid.',
+    tr: 'Telefon anahtarları eksik veya geçersiz.' },
 
   // ------------------------------------------- Gaesteterminal (Dokument 31)
 
