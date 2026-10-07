@@ -511,6 +511,46 @@ const texte = {
     en: 'On iPhone: tap Share, then “Add to Home Screen”.',
     ru: 'На iPhone: «Поделиться», затем «На экран „Домой“».',
     uk: 'На iPhone: «Поділитися», потім «На екран „Додому“».' },
+  'push.title': {
+    de: 'Benachrichtigungen',
+    en: 'Notifications',
+    ru: 'Уведомления',
+    uk: 'Сповіщення' },
+  'push.hint': {
+    de: 'Das Telefon meldet sich, wenn ein Zimmer frei wird, der Plan sich ändert oder etwas nachzuarbeiten ist.',
+    en: 'Your phone tells you when a room becomes free, the plan changes or something needs redoing.',
+    ru: 'Телефон сообщит, когда номер освободится, план изменится или нужно что-то доделать.',
+    uk: 'Телефон повідомить, коли номер звільниться, план зміниться або треба щось доробити.' },
+  'push.enable': {
+    de: 'Benachrichtigungen einschalten',
+    en: 'Turn on notifications',
+    ru: 'Включить уведомления',
+    uk: 'Увімкнути сповіщення' },
+  'push.disable': {
+    de: 'Ausschalten',
+    en: 'Turn off',
+    ru: 'Выключить',
+    uk: 'Вимкнути' },
+  'push.on': {
+    de: 'Dieses Telefon bekommt Benachrichtigungen.',
+    en: 'This phone receives notifications.',
+    ru: 'Этот телефон получает уведомления.',
+    uk: 'Цей телефон отримує сповіщення.' },
+  'push.denied': {
+    de: 'Benachrichtigungen sind in den Einstellungen des Telefons gesperrt. Dort für diese App erlauben.',
+    en: 'Notifications are blocked in the phone settings. Allow them there for this app.',
+    ru: 'Уведомления запрещены в настройках телефона. Разрешите их там для этого приложения.',
+    uk: 'Сповіщення заборонені в налаштуваннях телефона. Дозвольте їх там для цього застосунку.' },
+  'push.ios': {
+    de: 'Auf dem iPhone gibt es Benachrichtigungen nur für die installierte App: Teilen-Symbol, dann „Zum Home-Bildschirm“, und die App von dort öffnen.',
+    en: 'On iPhone, notifications only work in the installed app: tap Share, then “Add to Home Screen”, and open the app from there.',
+    ru: 'На iPhone уведомления работают только в установленном приложении: «Поделиться», затем «На экран „Домой“», и откройте приложение оттуда.',
+    uk: 'На iPhone сповіщення працюють лише у встановленому застосунку: «Поділитися», потім «На екран „Додому“», і відкрийте застосунок звідти.' },
+  'push.unsupported': {
+    de: 'Dieser Browser kann keine Benachrichtigungen empfangen.',
+    en: 'This browser cannot receive notifications.',
+    ru: 'Этот браузер не может получать уведомления.',
+    uk: 'Цей браузер не може отримувати сповіщення.' },
   'more.toReception': {
     de: 'Zur StayGrid-Oberfläche',
     en: 'Open StayGrid desk view',

@@ -11,6 +11,7 @@ import { MeineZimmer } from './MeineZimmer.js'
 import { Kontrolle } from './Kontrolle.js'
 import { Kueche } from './Kueche.js'
 import { Zeit } from './Zeit.js'
+import { Benachrichtigung, pushNeuBinden } from './Benachrichtigung.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -277,6 +278,7 @@ function Start({ me, locale, onLocale }: {
     ...(kueche ? ['kueche' as const] : []), 'zeit', 'mehr']
   const [reiter, setReiter] = useState<Reiter>(
     () => kontrolle ? 'kontrolle' : kueche ? 'kueche' : 'heute')
+  useEffect(() => { if (haus !== 0) void pushNeuBinden(haus) }, [haus])
   const hausWahl = haeuser.length > 1 && <label className="block">
     <span className="block text-sm text-neutral-600">{t('today.property')}</span>
     <select value={haus} onChange={e => setHaus(Number(e.target.value))} className={FELD}>
@@ -311,6 +313,7 @@ function Start({ me, locale, onLocale }: {
         <Karte titel={t('more.language')}>
           <SprachWahl locale={locale} onLocale={onLocale} />
         </Karte>
+        {haus !== 0 && <Benachrichtigung propertyId={haus} locale={locale} />}
         <KennwortAendern locale={locale} />
         <Karte>
           <p className="text-sm text-neutral-600">

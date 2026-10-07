@@ -104,3 +104,42 @@ describe('Service Worker', () => {
     expect([...w.speicher.keys()].sort()).toEqual(['fremd'])
   })
 })
+
+describe('Service Worker: Push (Baustein 8)', () => {
+  function pushWorker() {
+    const behandler = new Map<string, (e: unknown) => void>()
+    const gezeigt: Array<{ titel: string; opts: { body: string; tag?: string
+                                                  data: { url: string } } }> = []
+    const geoeffnet: string[] = []
+    const self = {
+      location: { origin: 'https://app.staygrid.cloud' },
+      addEventListener: (art: string, f: (e: unknown) => void) => behandler.set(art, f),
+      registration: { showNotification: (titel: string, opts: never) => {
+        gezeigt.push({ titel, opts }); return Promise.resolve() } },
+      clients: { matchAll: () => Promise.resolve([]),
+                 openWindow: (u: string) => { geoeffnet.push(u); return Promise.resolve() } }
+    }
+    runInNewContext(serviceWorkerQuelle([], 'v1'), { self, caches: {}, fetch, URL, Promise })
+    const ausloesen = async (art: string, e: Record<string, unknown>) => {
+      let warten: Promise<unknown> | undefined
+      behandler.get(art)!({ ...e, waitUntil: (p: Promise<unknown>) => { warten = p } })
+      await warten
+    }
+    return { ausloesen, gezeigt, geoeffnet }
+  }
+
+  it('zeigt an, was kommt, und fuehrt nie nach draussen', async () => {
+    const w = pushWorker()
+    const daten = (d: unknown) => ({ data: { json: () => d } })
+    await w.ausloesen('push', daten({ title: 'Zimmer 101 ist frei', body: 'Los',
+                                      url: '/personal', tag: 'room_free-101' }))
+    await w.ausloesen('push', daten({ title: 'x', body: 'y', url: 'https://boese.example/' }))
+    await w.ausloesen('push', daten({ title: 'x', body: 'y', url: '//boese.example/' }))
+    expect(w.gezeigt.map(g => [g.titel, g.opts.tag, g.opts.data.url])).toEqual([
+      ['Zimmer 101 ist frei', 'room_free-101', '/personal'],
+      ['x', undefined, '/personal'], ['x', undefined, '/personal']])
+    await w.ausloesen('notificationclick',
+      { notification: { close: () => undefined, data: { url: '/personal' } } })
+    expect(w.geoeffnet).toEqual(['/personal'])
+  })
+})

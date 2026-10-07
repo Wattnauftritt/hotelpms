@@ -13,6 +13,7 @@ import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
+import { sendStaffPushes, createWebPushSender } from './jobs/staffPush.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { createBrevoAdapter } from './email/brevo.js'
@@ -381,6 +382,47 @@ async function platformEmailsTakt(): Promise<void> {
   }
 }
 
+/*
+ * Push an das Personal (Baustein 8). Der oeffentliche Schluessel steht auch
+ * in der Umgebung der API, der private nur hier. Ohne beide bleibt die
+ * Warteschlange stehen; die App bietet ohne oeffentlichen Schluessel gar
+ * keine Benachrichtigung an.
+ */
+const vapidPublic = process.env.VAPID_PUBLIC_KEY ?? null
+const vapidPrivate = process.env.VAPID_PRIVATE_KEY ?? null
+const pushSender = vapidPublic !== null && vapidPrivate !== null
+  ? createWebPushSender({ publicKey: vapidPublic, privateKey: vapidPrivate,
+                          subject: process.env.VAPID_SUBJECT ?? 'mailto:info@staygrid.cloud' })
+  : null
+if (pushSender === null) {
+  log.warn('VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY nicht gesetzt: keine Push-Meldungen an das Personal.')
+}
+
+/*
+ * Eigener, kurzer Takt: "Zimmer 12 ist frei" nach fuenf Minuten heisst,
+ * die Kraft hat vier Minuten vor der Tuer gestanden. Doppelt gesendet wird
+ * nichts, claim() sperrt mit SKIP LOCKED und setzt eine Frist.
+ */
+const PUSH_INTERVAL_MS = 20_000
+let pushLaeuft = false
+async function pushTakt(): Promise<void> {
+  if (pushSender === null || pushLaeuft) return
+  pushLaeuft = true
+  try {
+    for (const p of await activeProperties()) {
+      try {
+        const r = await sendStaffPushes(pool, propertyContext(p.account_id, p.id), p.id, pushSender)
+        // Zahlen, kein Empfaenger und kein Zimmer.
+        if (r.attempted > 0) log.info({ property: p.id, ...r }, 'Push an das Personal')
+      } catch (e) {
+        log.error({ property: p.id, err: e }, 'Push an das Personal fehlgeschlagen')
+      }
+    }
+  } finally {
+    pushLaeuft = false
+  }
+}
+
 async function main(): Promise<void> {
   log.info('hotelpms Worker gestartet')
   await tick()
@@ -389,11 +431,13 @@ async function main(): Promise<void> {
     5 * 60_000)
   const mailInterval = setInterval(() => { void platformEmailsTakt() },
     PLATFORM_EMAIL_INTERVAL_MS)
+  const pushInterval = setInterval(() => { void pushTakt() }, PUSH_INTERVAL_MS)
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       log.info('Sanftes Herunterfahren')
       clearInterval(interval)
       clearInterval(mailInterval)
+      clearInterval(pushInterval)
       void Promise.all([pool.end(), admin.end()]).then(() => process.exit(0))
     })
   }

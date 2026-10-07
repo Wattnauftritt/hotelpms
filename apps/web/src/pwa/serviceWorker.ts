@@ -30,6 +30,11 @@
  * verhindern soll. Die Huelle ohne Netz ist nicht nutzlos: sie zeigt, dass
  * der Server nicht erreichbar ist, statt der Fehlerseite des Browsers, und
  * sie laedt von selbst nach, sobald er es wieder ist (`main.tsx`).
+ *
+ * **Push (Baustein 8, Migration 0113).** Der Worker schickt Titel, Text,
+ * Ziel und Kennung fertig in der Sprache der Kraft; hier wird nur angezeigt.
+ * Das Ziel muss ein Pfad dieser Seite sein -- eine Meldung fuehrt nie nach
+ * draussen. Gespeichert wird davon nichts.
  */
 export function serviceWorkerQuelle(dateien: readonly string[], fassung: string): string {
   const huelle = ['/', ...dateien.map(d => '/' + d)]
@@ -71,6 +76,35 @@ self.addEventListener('fetch', function (e) {
     e.respondWith(caches.open(SPEICHER).then(function (c) { return c.match(req) })
       .then(function (r) { return r || fetch(req) }))
   }
+})
+
+function eigenerPfad(p) {
+  return typeof p === 'string' && p.charAt(0) === '/' && p.charAt(1) !== '/' ? p : '/personal'
+}
+
+self.addEventListener('push', function (e) {
+  let d = {}
+  try { d = e.data ? e.data.json() : {} } catch (x) { d = {} }
+  const titel = typeof d.title === 'string' ? d.title : 'StayGrid'
+  e.waitUntil(self.registration.showNotification(titel, {
+    body: typeof d.body === 'string' ? d.body : '',
+    tag: typeof d.tag === 'string' ? d.tag : undefined,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { url: eigenerPfad(d.url) }
+  }))
+})
+
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close()
+  const ziel = eigenerPfad(e.notification.data && e.notification.data.url)
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then(function (fenster) {
+      for (const f of fenster) {
+        if (new URL(f.url).pathname.indexOf(ziel) === 0 && 'focus' in f) return f.focus()
+      }
+      return self.clients.openWindow(ziel)
+    }))
 })
 `
 }

@@ -235,6 +235,10 @@ export function authRoutes(app: FastifyInstance): void {
         await req.pool.query(
           `UPDATE user_session SET revoked_at = now()
             WHERE id = $1 AND revoked_at IS NULL`, [sessionId])
+        // Das Telefon bekommt nach dem Abmelden keine Meldungen mehr
+        // (Baustein 8). Der Worker prueft die Sitzung ohnehin; hier geht
+        // auch die Adresse weg, an die er schicken koennte.
+        await req.pool.query('DELETE FROM push_subscription WHERE session_id = $1', [sessionId])
       }
       reply.clearCookie(COOKIE, { path: '/' })
       return { ok: true }
