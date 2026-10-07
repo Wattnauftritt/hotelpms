@@ -178,7 +178,7 @@ Die Gastseite schreibt ins Gastprofil: Name, Geburtsdatum, Staatsangehörigkeit,
 
 **Genau einmal.** Die Abfrage schließt Reservierungen mit einem Mail-Link aus; zwei gleichzeitige Läufe sähen trotzdem beide „noch keiner". Dagegen steht ein eindeutiger Teilindex über `reservation_id` für den automatischen Link (`channel = 'mail' AND created_by IS NULL`): `createCheckinToken` gibt dann `null`, und es wird nichts eingereiht. Von Hand ausgegebene Links zählen nicht mit, damit „erneut senden" geht.
 
-**Sprache** nach dem Gastprofil über `emailLanguage()` — Deutsch, Englisch, Niederländisch, Polnisch, sonst Deutsch. Die Sätze stehen als Tabelle je Sprache in `email.ts`, mit Platzhaltern statt Zusammensetzen. Der Satz zur Unterschrift steht für jeden da: die Staatsangehörigkeit kennt das Haus vor dem Ausfüllen oft gar nicht, und eine Mail, die sie errät, rät falsch.
+**Sprache** nach dem Gastprofil über `emailLanguage()` — Deutsch, Englisch, Niederländisch, Polnisch, sonst Deutsch. Die Sätze stehen als Tabelle je Sprache in `email.ts`, mit Platzhaltern statt Zusammensetzen. Einen Satz zur Unterschrift trägt die Mail nicht mehr (Sven, 07.10.2026): er sprach jeden Gast an und betraf die wenigsten. Wer unterschreiben muss, liest es nach dem Ausfüllen auf der Seite und erfährt es vor Ort. Die Anrede ist „Hallo …“ statt „Guten Tag …“, die Einladung eine Begrüßung, kein Beleg.
 
 ### 6.1 Vorschau und Testmail
 

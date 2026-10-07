@@ -207,7 +207,7 @@ describe('Deutsche Gastpost', () => {
     for (const stueck of alles('de')) {
       expect(stueck).not.toMatch(/\b(fuer|ueber|Gaeste|koennen|bestaetigt|vollstaendig)\b/)
     }
-    expect(renderCheckinInvitationEmail(einladung, 'de').text).toContain('Gäste')
+    expect(renderCheckinInvitationEmail(einladung, 'de').text).toContain('ausfüllen')
   })
 })
 
@@ -221,5 +221,28 @@ describe('Testmail der Einladung zum Online-Check-in', () => {
       expect(test.text.length, lang).toBeGreaterThan(echt.text.length + 20)
       expect(test.html.endsWith(echt.html), lang).toBe(true)
     }
+  })
+})
+
+describe('Einladung zum Online-Check-in auf Deutsch', () => {
+  /** Der Wortlaut, den das Haus vorgegeben hat (Sven, 07.10.2026). */
+  it('folgt dem Wortlaut des Hauses', () => {
+    const m = renderCheckinInvitationEmail({
+      propertyName: 'Hotel Neptuns Ankerplatz & Zur Seerobbe', guestName: 'Erika Mustermann',
+      reservationRef: 'MUSTER1', arrival: '2026-10-09', validUntil: '2026-10-12',
+      link: 'https://app.staygrid.cloud/checkin#testmail'
+    }, 'de')
+    expect(m.text).toBe([
+      'Hallo Erika Mustermann,',
+      'am 09.10.2026 erwarten wir Sie in unserem Hause Hotel Neptuns Ankerplatz & Zur '
+        + 'Seerobbe. Damit es bei der Ankunft schneller geht, können Sie den Meldeschein '
+        + 'schon jetzt ausfüllen:',
+      'https://app.staygrid.cloud/checkin#testmail',
+      'Der Link gilt bis zum 12.10.2026 und nur für Ihre Buchung MUSTER1.',
+      'Gerne können Sie den Meldeschein natürlich auch am Anreisetag vor Ort ausfüllen.',
+      'Bitte geben Sie den Link nicht weiter: wer ihn hat, kann Angaben zu Ihrem '
+        + 'Aufenthalt machen.',
+      'Hotel Neptuns Ankerplatz & Zur Seerobbe'
+    ].join('\n\n'))
   })
 })
