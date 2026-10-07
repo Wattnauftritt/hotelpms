@@ -1180,7 +1180,10 @@ export type PropertyRole = Static<typeof PropertyRole>
 export const PropertyUser = Type.Object({
   userRef: Type.String(),
   displayName: Type.String(),
-  email: Type.String(),
+  /** Fehlt bei Personal ohne Mailadresse (Migration 0105). */
+  email: Type.Union([Type.String(), Type.Null()]),
+  /** Anmeldung ohne Mailadresse. */
+  username: Type.Union([Type.String(), Type.Null()]),
   status: Type.String(),
   lastLoginAt: Type.Union([Type.String(), Type.Null()]),
   roles: Type.Array(Type.Object({ key: Type.String(), name: Type.String() })),

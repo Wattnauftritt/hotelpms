@@ -58,6 +58,26 @@ export const EMAIL_LANGUAGES = ['de', 'en', 'nl', 'pl'] as const
 export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
 
 /**
+ * Die Sprachen der **Personal-App** (Migration 0105).
+ *
+ * Eine dritte Liste, aus demselben Grund wie die Gastpost: das Personal
+ * einer Reinigungsfirma liest Russisch und Ukrainisch, die Rezeption nicht
+ * Tuerkisch neben Deutsch. Die Personal-App ist klein -- ein paar Dutzend
+ * Saetze --, und **in ihr** ist jede dieser Sprachen vollstaendig; ihr
+ * Katalog prueft das mit demselben Typ-Trick wie der grosse. Die Oberflaeche
+ * der Rezeption bleibt bei `LOCALES`.
+ */
+export const STAFF_LOCALES = ['de', 'en', 'ru', 'uk'] as const
+export type StaffLocale = (typeof STAFF_LOCALES)[number]
+
+/**
+ * Was am Benutzer als Sprache stehen darf: jede, die eine der beiden
+ * Oberflaechen anbietet. Welche davon eine Oberflaeche zeigt, entscheidet
+ * sie selbst; eine russische Wahl faellt in der Rezeption auf Deutsch.
+ */
+export const BENUTZERSPRACHEN = ['de', 'en', 'tr', 'ru', 'uk'] as const
+
+/**
  * Die Sprache eines Gastes auf eine Sprache abbilden, in der wir schreiben.
  *
  * Gegen die Liste und nicht gegen eine einzelne Sprache: mit
@@ -382,6 +402,13 @@ const M = {
     de: 'Keine brauchbare Adresse',
     en: 'Not a usable address',
     tr: 'Kullanılabilir bir adres değil' },
+  'field.username': {
+    de: '3 bis 40 Zeichen: Kleinbuchstaben, Ziffern, Punkt, Binde- oder '
+        + 'Unterstrich, kein @',
+    en: '3 to 40 characters: lowercase letters, digits, dot, hyphen or '
+        + 'underscore, no @',
+    tr: '3 ila 40 karakter: küçük harf, rakam, nokta, tire veya alt çizgi, '
+        + '@ yok' },
   'field.httpsOnly': {
     de: 'Muss mit https:// beginnen. Ohne TLS nur an eine Adresse aus einem '
       + 'freigegebenen Netz, und dann als Adresse, nicht als Name',
@@ -1762,6 +1789,39 @@ const M = {
         + 'person for a different address.',
     tr: 'Bu adres işletmenizin dışında zaten kullanılıyor. Kişiden başka bir '
         + 'adres isteyin.' },
+  // Der Benutzername ist ueber alle Kunden eindeutig, weil die Anmeldung vor
+  // jedem Mandanten liegt. Derselbe Satz fuer "bei uns" und "anderswo".
+  'user.usernameTaken': {
+    de: 'Dieser Benutzername ist schon vergeben. Hängen Sie zum Beispiel eine '
+        + 'Ziffer oder den ersten Buchstaben des Nachnamens an.',
+    en: 'That username is already taken. Add a digit or the first letter of '
+        + 'the surname, for example.',
+    tr: 'Bu kullanıcı adı zaten alınmış. Örneğin bir rakam veya soyadının ilk '
+        + 'harfini ekleyin.' },
+  'user.needsEmailOrUsername': {
+    de: 'Eine Mailadresse oder ein Benutzername ist nötig, sonst kann sich '
+        + 'die Person nicht anmelden.',
+    en: 'An email address or a username is required, otherwise the person '
+        + 'cannot sign in.',
+    tr: 'Bir e-posta adresi veya kullanıcı adı gerekli, aksi halde kişi '
+        + 'giriş yapamaz.' },
+  'user.noEmailForMail': {
+    de: 'Diese Person hat keine Mailadresse. Geben Sie ihr den Link oder '
+        + 'den QR-Code persönlich.',
+    en: 'This person has no email address. Hand them the link or the QR '
+        + 'code in person.',
+    tr: 'Bu kişinin e-posta adresi yok. Bağlantıyı veya QR kodunu kişiye '
+        + 'elden verin.' },
+  'user.linkOnlyWithoutEmail': {
+    de: 'Ein Link zum Weitergeben geht nur bei einer offenen Einladung oder '
+        + 'bei einem Zugang ohne Mailadresse. Diese Person bekommt ihren '
+        + 'Link per Mail.',
+    en: 'A link to hand over is only available for a pending invitation or '
+        + 'an account without an email address. This person receives their '
+        + 'link by email.',
+    tr: 'Elden verilecek bağlantı yalnızca bekleyen bir davet veya e-posta '
+        + 'adresi olmayan bir hesap için mümkündür. Bu kişi bağlantısını '
+        + 'e-postayla alır.' },
   'user.notYourself': {
     de: 'Den eigenen Zugang können Sie hier nicht sperren oder entfernen.',
     en: 'You cannot block or remove your own account here.',

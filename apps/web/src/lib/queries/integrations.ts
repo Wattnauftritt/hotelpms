@@ -181,8 +181,10 @@ function nachBenutzeraenderung(qc: ReturnType<typeof useQueryClient>, propertyId
 export function useInviteUser(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { email: string; displayName: string; roleKeys: string[] }) =>
-      api.post<{ userRef: string; addedToProperty: boolean }>(
+    mutationFn: (body: { email?: string; username?: string; displayName: string
+                         roleKeys: string[]; delivery: 'email' | 'link' }) =>
+      api.post<{ userRef: string; addedToProperty: boolean
+                 link?: string; linkExpiresAt?: string }>(
         `/v1/properties/${propertyId}/users`, body),
     onSuccess: nachBenutzeraenderung(qc, propertyId)
   })
@@ -191,10 +193,14 @@ export function useInviteUser(propertyId: number) {
 export function useUserAction(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ userRef, action }: {
-      userRef: string; action: 'access-link' | 'unlock' | 'block' | 'unblock' }) =>
-      api.post<{ kind?: string; sessionsRevoked?: number }>(
-        `/v1/properties/${propertyId}/users/${userRef}/${action}`),
+    mutationFn: ({ userRef, action, delivery }: {
+      userRef: string; action: 'access-link' | 'unlock' | 'block' | 'unblock'
+      /** Nur beim Zugangslink: per Mail oder zum Weitergeben (0105). */
+      delivery?: 'email' | 'link' }) =>
+      api.post<{ kind?: string; sessionsRevoked?: number
+                 link?: string; linkExpiresAt?: string }>(
+        `/v1/properties/${propertyId}/users/${userRef}/${action}`,
+        delivery === undefined ? undefined : { delivery }),
     onSuccess: nachBenutzeraenderung(qc, propertyId)
   })
 }

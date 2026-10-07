@@ -28,7 +28,9 @@ import { accountFor, type Principal } from '../platform/context.js'
 interface UserRow {
   userRef: string
   displayName: string
-  email: string
+  /** Fehlt bei Personal ohne Mailadresse (Migration 0105). */
+  email: string | null
+  username: string | null
   status: string
   lastLoginAt: string | null
   roles: Array<{ key: string; name: string }>
@@ -67,7 +69,7 @@ export function userRoutes(app: FastifyInstance): void {
         const accountId = konto.rows[0]?.account_id ?? -1
         const { rows } = await client.query<UserRow>(
           `SELECT u.public_ref AS "userRef", u.display_name AS "displayName",
-                  u.email, u.status, u.last_login_at AS "lastLoginAt",
+                  u.email, u.username, u.status, u.last_login_at AS "lastLoginAt",
                   COALESCE(r.rollen, '[]'::jsonb) AS roles,
                   COALESCE(p.rechte, '{}'::text[]) AS permissions,
                   EXISTS (SELECT 1 FROM account_user_block b

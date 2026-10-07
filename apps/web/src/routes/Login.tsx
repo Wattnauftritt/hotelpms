@@ -27,7 +27,7 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
           setFehler(null)
           setLaeuft(true)
           try {
-            await api.post('/v1/auth/login', { email, password: kennwort })
+            await api.post('/v1/auth/login', { login: email.trim(), password: kennwort })
             onDone()
           } catch (err) {
             setFehler(err instanceof ApiError ? err.message : String(err))
@@ -38,7 +38,10 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
         <h1 className="font-semibold">StayGrid</h1>
         <label className="block">
           <span className="block text-xs text-neutral-600">{t('login.email')}</span>
-          <input type="email" required autoComplete="username" value={email}
+          {/* Text, nicht `email`: Personal ohne Postfach meldet sich mit dem
+              Benutzernamen an (0105), und den lehnte der Browser sonst ab. */}
+          <input type="text" required autoComplete="username" autoCapitalize="none"
+                 spellCheck={false} value={email}
                  onChange={e => setEmail(e.target.value)}
                  className="mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1
                             text-sm" />

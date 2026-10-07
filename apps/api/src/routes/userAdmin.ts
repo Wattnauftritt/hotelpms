@@ -4,7 +4,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
-import { einmalTokenUndPost } from './auth.js'
+import { einmalTokenUndPost, einmalLink } from './auth.js'
 
 /**
  * Der Kunde verwaltet sein Personal selbst.
@@ -46,7 +46,8 @@ import { einmalTokenUndPost } from './auth.js'
 
 interface Ziel {
   id: number
-  email: string
+  /** Fehlt bei Personal ohne Mailadresse (Migration 0105). */
+  email: string | null
   display_name: string
   status: string
   /** Hat eine Rolle fuer den ganzen Betrieb -- dann entscheidet settings:account. */
@@ -140,6 +141,31 @@ export async function nichtDenLetztenVerwalter(
   }
 }
 
+/**
+ * Der Benutzername, wie er gespeichert wird: klein, ohne Leerraum. Die Form
+ * prueft die Datenbank (0105) noch einmal; hier steht sie, damit die
+ * Meldung am Feld haengt und nicht als Constraint-Verletzung kommt.
+ */
+const BENUTZERNAME = /^[a-z0-9][a-z0-9._-]{2,39}$/
+
+/**
+ * Wie der Zugang die Person erreicht: per Mail, oder als Link, den die
+ * Leitung persoenlich weitergibt -- als QR-Code am Handy oder als
+ * Nachricht. Ohne Angabe per Mail, wenn es eine Adresse gibt.
+ */
+type Zustellung = 'email' | 'link'
+
+function zustellung(wert: unknown, hatMail: boolean): Zustellung {
+  if (wert === undefined || wert === null) return hatMail ? 'email' : 'link'
+  if (wert !== 'email' && wert !== 'link') {
+    throw Errors.validation({ delivery: ['field.allowedValues'] }, { values: 'email, link' })
+  }
+  if (wert === 'email' && !hatMail) {
+    throw Errors.validation({ delivery: ['user.noEmailForMail'] })
+  }
+  return wert
+}
+
 async function sitzungenBeenden(client: PoolClient, userId: number): Promise<number> {
   const r = await client.query(
     `UPDATE user_session SET revoked_at = now()
@@ -172,19 +198,29 @@ export function userAdminRoutes(app: FastifyInstance): void {
     summary: 'Benutzer einladen, mit Rollen in diesem Haus',
     handler: async (req, reply) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      const b = (req.body ?? {}) as { email?: string; displayName?: string; roleKeys?: string[] }
+      const b = (req.body ?? {}) as { email?: string; username?: string; displayName?: string
+                                       roleKeys?: string[]; delivery?: string }
       const email = String(b.email ?? '').trim().toLowerCase()
+      const username = String(b.username ?? '').trim().toLowerCase()
       const name = String(b.displayName ?? '').trim()
       const principal = req.principal as Principal
 
+      /*
+       * Mailadresse **oder** Benutzername (Migration 0105). Das Personal
+       * einer Zeitarbeitsfirma hat oft keine Adresse, und eine erfundene
+       * waere schlimmer als keine: an sie ginge jede Ruecksetzung.
+       */
       const fehler: Record<string, string[]> = {}
-      if (!email || !email.includes('@')) fehler.email = ['field.invalid']
+      if (!email && !username) fehler.username = ['user.needsEmailOrUsername']
+      if (email && !email.includes('@')) fehler.email = ['field.invalid']
+      if (username && !BENUTZERNAME.test(username)) fehler.username = ['field.username']
       if (!name) fehler.displayName = ['field.required']
       if (!Array.isArray(b.roleKeys) || b.roleKeys.length === 0) {
         fehler.roleKeys = ['field.roleKeyList']
       }
       if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
       const gewuenscht = [...new Set(b.roleKeys as string[])]
+      const weg = zustellung(b.delivery, email !== '')
 
       const angelegt = await tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, propertyId)
@@ -199,17 +235,26 @@ export function userAdminRoutes(app: FastifyInstance): void {
             { values: gewuenscht.filter(k => !gefunden.has(k)).join(', ') })
         }
 
-        const da = await client.query<Ziel & { public_ref: string; im_betrieb: boolean }>(
-          `SELECT u.id, u.public_ref, u.email, u.display_name, u.status,
+        /*
+         * Gibt es die Person schon? Ueber die Adresse, wenn eine kam, sonst
+         * ueber den Benutzernamen. Passt der Benutzername zu jemand
+         * anderem als die Adresse, ist er vergeben -- sonst bekaeme der
+         * Kollege mit diesem Namen die Rollen der neuen Kraft.
+         */
+        const da = await client.query<Ziel & { public_ref: string; im_betrieb: boolean
+                                               username: string | null }>(
+          `SELECT u.id, u.public_ref, u.email, u.username, u.display_name, u.status,
                   EXISTS (SELECT 1 FROM user_account_role uar
-                           WHERE uar.user_id = u.id AND uar.account_id = $2) AS hat_account_rolle,
+                           WHERE uar.user_id = u.id AND uar.account_id = $3) AS hat_account_rolle,
                   (EXISTS (SELECT 1 FROM user_account_role uar
-                            WHERE uar.user_id = u.id AND uar.account_id = $2)
+                            WHERE uar.user_id = u.id AND uar.account_id = $3)
                    OR EXISTS (SELECT 1 FROM user_property_role upr
                                WHERE upr.user_id = u.id
                                  AND upr.property_id IN
-                                     (SELECT id FROM account_active_properties($2)))) AS im_betrieb
-             FROM app_user u WHERE lower(u.email) = $1`, [email, accountId])
+                                     (SELECT id FROM account_active_properties($3)))) AS im_betrieb
+             FROM app_user u
+            WHERE ($1 <> '' AND lower(u.email) = $1)
+               OR ($2 <> '' AND u.username = $2)`, [email, username, accountId])
         /*
          * Die anderen Haeuser ueber account_active_properties(), nicht ueber
          * einen Verbund mit `property`: dessen Zeilenrichtlinie zeigt nur die
@@ -218,8 +263,19 @@ export function userAdminRoutes(app: FastifyInstance): void {
          * damit wieder "vergeben" gewesen.
          */
         if (da.rowCount !== 0) {
-          const ziel = da.rows[0]!
-          if (!ziel.im_betrieb) throw Errors.conflict('user.emailTaken')
+          const perMail = email !== '' ? da.rows.find(r => r.email === email) : undefined
+          const ziel = perMail ?? da.rows[0]!
+          // Zwei verschiedene Menschen, oder ein Name, der zu einer anderen
+          // Adresse gehoert: der Name ist vergeben. Kommt eine bekannte
+          // Adresse mit einem neuen Namen, bleibt es bei der bekannten
+          // Person und ihrer Anmeldung; der Name wird nicht nachgetragen.
+          if (da.rows.length > 1 || (perMail === undefined && email !== '')) {
+            throw Errors.conflict('user.usernameTaken')
+          }
+          if (!ziel.im_betrieb) {
+            if (perMail !== undefined) throw Errors.conflict('user.emailTaken')
+            throw Errors.conflict('user.usernameTaken')
+          }
           verlangtBetriebsrecht(ziel, principal)
           // Hinzu, nicht ersetzen: wer im Haus schon Rollen hat, verliert
           // durch eine zweite Einladung keine davon.
@@ -228,32 +284,52 @@ export function userAdminRoutes(app: FastifyInstance): void {
              SELECT $1, $2, unnest($3::bigint[]), $4
              ON CONFLICT DO NOTHING`,
             [ziel.id, propertyId, rollen.rows.map(r => r.id), principal.userId])
-          return { ...ziel, hinzugefuegt: true as const }
+          return { ...ziel, hinzugefuegt: true as const, link: null }
         }
 
         const u = await client.query<{ id: number; public_ref: string }>(
-          `INSERT INTO app_user (email, display_name, status)
-           VALUES ($1, $2, 'invited') RETURNING id, public_ref`, [email, name])
+          `INSERT INTO app_user (email, username, display_name, status)
+           VALUES (NULLIF($1, ''), NULLIF($2, ''), $3, 'invited')
+           RETURNING id, public_ref`, [email, username, name])
         await client.query(
           `INSERT INTO user_property_role (user_id, property_id, role_id, granted_by)
            SELECT $1, $2, unnest($3::bigint[]), $4`,
           [u.rows[0]!.id, propertyId, rollen.rows.map(r => r.id), principal.userId])
 
+        if (weg === 'link') {
+          const l = await einmalLink(client, { userId: u.rows[0]!.id, kind: 'invite',
+                                               createdBy: principal.userId })
+          return { ...u.rows[0]!, hinzugefuegt: false as const, link: l }
+        }
         await einmalTokenUndPost(client, {
           userId: u.rows[0]!.id, name, email, kind: 'invite',
           createdBy: principal.userId,
           accountName: await kundenName(client, Number(propertyId))
         })
-        return { ...u.rows[0]!, hinzugefuegt: false as const }
+        return { ...u.rows[0]!, hinzugefuegt: false as const, link: null }
+      }).catch((e: unknown) => {
+        // Zwei Einladungen mit demselben Namen gleichzeitig: die zweite
+        // scheitert am eindeutigen Index, nicht an der Abfrage davor.
+        if ((e as { code?: string; constraint?: string }).code === '23505'
+            && (e as { constraint?: string }).constraint === 'app_user_username') {
+          throw Errors.conflict('user.usernameTaken')
+        }
+        throw e
       })
 
       if (angelegt.hinzugefuegt) {
-        return { userRef: angelegt.public_ref, email, displayName: angelegt.display_name,
+        return { userRef: angelegt.public_ref, email: angelegt.email,
+                 username: angelegt.username, displayName: angelegt.display_name,
                  roleKeys: gewuenscht, status: angelegt.status, addedToProperty: true }
       }
       reply.status(201)
-      return { userRef: angelegt.public_ref, email, displayName: name,
-               roleKeys: gewuenscht, status: 'invited', addedToProperty: false }
+      return { userRef: angelegt.public_ref, email: email || null, username: username || null,
+               displayName: name, roleKeys: gewuenscht, status: 'invited',
+               addedToProperty: false, delivery: weg,
+               ...(angelegt.link !== null
+                 ? { link: angelegt.link.link,
+                     linkExpiresAt: new Date(Date.now() + angelegt.link.gueltigMs).toISOString() }
+                 : {}) }
     }
   })
 
@@ -261,6 +337,9 @@ export function userAdminRoutes(app: FastifyInstance): void {
    * Einen Zugangslink schicken: die Einladung erneut, oder die
    * Kennwort-Ruecksetzung. Kein Kennwort im Klartext, nie -- es ginge durch
    * ein Gespraech an der Rezeption und bliebe dort stehen.
+   *
+   * Fuer Personal ohne Mailadresse und offene Einladungen auch als Link zum
+   * Weitergeben (`delivery: 'link'`, Migration 0105).
    */
   registerRoute(app, {
     method: 'POST',
@@ -271,7 +350,8 @@ export function userAdminRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { propertyId, userRef } = req.params as { propertyId: string; userRef: string }
       const principal = req.principal as Principal
-      const kind = await tx(req.pool, req, async client => {
+      const gewuenschterWeg = (req.body as { delivery?: string } | undefined)?.delivery
+      const ergebnis = await tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
         verlangtBetriebsrecht(ziel, principal)
@@ -280,15 +360,36 @@ export function userAdminRoutes(app: FastifyInstance): void {
           [accountId, ziel.id])
         if (gesperrt.rowCount !== 0) throw Errors.conflict('user.blocked')
         const art = ziel.status === 'invited' ? 'invite' : 'password_reset'
+        const weg = zustellung(gewuenschterWeg, ziel.email !== null)
+
+        if (weg === 'link') {
+          /*
+           * Den Link sieht hier der Aufrufende. Das ist der Zweck bei einer
+           * offenen Einladung und bei Personal ohne Adresse -- bei einem
+           * benutzten Zugang mit Adresse waere es der Weg, ihn zu
+           * uebernehmen: Link erzeugen, Kennwort setzen, fertig. Der geht
+           * deshalb an seine Adresse, wie bisher.
+           */
+          if (ziel.status !== 'invited' && ziel.email !== null) {
+            throw Errors.conflict('user.linkOnlyWithoutEmail')
+          }
+          const l = await einmalLink(client, { userId: ziel.id, kind: art,
+                                               createdBy: principal.userId })
+          return { art, weg, link: l }
+        }
         await einmalTokenUndPost(client, {
-          userId: ziel.id, name: ziel.display_name, email: ziel.email, kind: art,
+          userId: ziel.id, name: ziel.display_name, email: ziel.email!, kind: art,
           createdBy: principal.userId,
           accountName: await kundenName(client, Number(propertyId))
         })
-        return art
+        return { art, weg, link: null }
       })
+      if (ergebnis.link !== null) {
+        return { userRef, kind: ergebnis.art, delivery: 'link', link: ergebnis.link.link,
+                 linkExpiresAt: new Date(Date.now() + ergebnis.link.gueltigMs).toISOString() }
+      }
       reply.status(202)
-      return { userRef, kind }
+      return { userRef, kind: ergebnis.art, delivery: 'email' }
     }
   })
 
