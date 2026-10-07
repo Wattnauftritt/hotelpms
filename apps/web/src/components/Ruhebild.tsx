@@ -127,7 +127,7 @@ function Hintergrund({ folie, nr }: { folie: Folie; nr: number }): JSX.Element {
              // die naechste darueber einblendet.
              ['--ruhe-dauer' as string]: `${folie.seconds + 2}s`
            }} />
-      <div className="absolute inset-0 bg-linear-to-t from-black/75 via-black/15 to-black/45" />
+      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent via-45% to-black/35" />
     </div>
   )
 }
