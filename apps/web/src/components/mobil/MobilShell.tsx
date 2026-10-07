@@ -4,7 +4,7 @@ import { useOnline } from '../../lib/offline.js'
 import { useEscape } from '../../lib/tasten.js'
 import { Hauswahl } from '../Hauswahl.tsx'
 import { Detailsuche } from '../Detailsuche.tsx'
-import { Abmelden, Installieren, OfflineHinweis, Sprachwahl, Uebungshinweis,
+import { Abmelden, Installieren, OfflineHinweis, Sprachwahl, Uebungshinweis, ZurPersonalApp,
          type ShellProps } from '../Shell.tsx'
 
 /**
@@ -198,6 +198,7 @@ function MehrBlatt({ hinten, onWahl, onClose, screen, ...props }: ShellProps & {
           <div className="flex flex-wrap items-center gap-3">
             <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
             <Installieren />
+            {props.personalApp === true && <ZurPersonalApp />}
           </div>
           <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
                     onArbeitsplatz={() => { onClose(); props.onArbeitsplatz() }}

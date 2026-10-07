@@ -1351,6 +1351,33 @@ const M = {
     en: 'The signature is too large. Please draw it again.',
     tr: 'İmza çok büyük. Lütfen yeniden çizin.' },
 
+  // ------------------------------------------------- Reinigungsplan (0106)
+  /*
+   * Eine gereinigte Aufgabe bleibt bei der Kraft, die sie gereinigt hat: an
+   * ihr haengen Minuten, die abgerechnet werden. Umzuteilen hiesse, Arbeit
+   * auf jemanden zu buchen, der sie nicht getan hat.
+   */
+  'cleaning.taskDone': {
+    de: 'Zimmer {room} ist schon erledigt und bleibt bei der Kraft, die es gereinigt hat.',
+    en: 'Room {room} is already done and stays with the person who cleaned it.',
+    tr: '{room} numaralı oda zaten tamamlandı ve onu temizleyen kişide kalır.' },
+  'cleaning.notStaff': {
+    de: 'Zimmer bekommt nur, wer in diesem Haus die Rolle Reinigung hat.',
+    en: 'Only people with the Cleaning role in this property can be given rooms.',
+    tr: 'Yalnızca bu tesiste Temizlik rolü olan kişilere oda verilebilir.' },
+  'cleaning.normTarget': {
+    de: 'Sollminuten gelten für eine Kategorie oder ein Zimmer, nicht für beides.',
+    en: 'Target minutes apply to a category or a room, not both.',
+    tr: 'Hedef dakikalar bir kategoriye veya bir odaya uygulanır, ikisine birden değil.' },
+  'cleaning.normTwice': {
+    de: 'Dieselben Sollminuten stehen zweimal in der Liste.',
+    en: 'The same target minutes appear twice in the list.',
+    tr: 'Aynı hedef dakikalar listede iki kez yer alıyor.' },
+  'cleaning.oneTaskPerRoom': {
+    de: 'Jedes Zimmer nur einmal je Tag: Abreise oder Bleiber.',
+    en: 'Each room only once per day: departure or stayover.',
+    tr: 'Her oda günde yalnızca bir kez: ayrılış veya konaklama devamı.' },
+
   // ------------------------------------------- Gaesteterminal (Dokument 31)
 
   'terminal.pairingInvalid': {

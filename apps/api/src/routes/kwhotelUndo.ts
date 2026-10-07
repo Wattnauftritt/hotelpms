@@ -72,14 +72,18 @@ export const VERWEISE_GAST = [
 /** Was an einem Zimmer haengen kann und es deshalb stehen laesst. */
 export const VERWEISE_ZIMMER = [
   ['reservation', 'resource_id'], ['maintenance_block', 'resource_id'],
-  ['maintenance_ticket', 'resource_id']
+  ['maintenance_ticket', 'resource_id'],
+  // Eigene Sollminuten (0106) hat jemand von Hand eingetragen; das Zimmer
+  // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
+  ['cleaning_norm', 'resource_id']
 ] as const
 /** Zustand des Zimmers, der mit ihm geht. */
 export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task'] as const
 
 export const VERWEISE_GRUPPE = [
   ['resource', 'category_id'], ['reservation', 'category_id'], ['rate_plan', 'category_id'],
-  ['availability_block', 'category_id'], ['rate_steer_rule', 'category_id']
+  ['availability_block', 'category_id'], ['rate_steer_rule', 'category_id'],
+  ['cleaning_norm', 'category_id']
 ] as const
 
 class Zurueck extends Error {

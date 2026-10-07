@@ -14,6 +14,10 @@ export const common = {
     de: 'Rezeption',
     en: 'Front desk',
     tr: 'Resepsiyon' },
+  'shell.personalApp': {
+    de: 'Personal-App',
+    en: 'Staff app',
+    tr: 'Personel uygulaması' },
   'nav.housekeeping': {
     de: 'Housekeeping',
     en: 'Housekeeping',
