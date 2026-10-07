@@ -904,7 +904,12 @@ export const MaintenanceTicket = Type.Object({
   resourceId: Type.Union([Type.Integer(), Type.Null()]),
   roomCode: Type.Union([Type.String(), Type.Null()]),
   /** Laufende Sperrungen des Zimmers. Kommen mit, nicht je Zeile nachgeladen. */
-  blocks: Type.Array(MaintenanceBlock)
+  blocks: Type.Array(MaintenanceBlock),
+  /**
+   * Meldung aus der Personal-App, deutsch (0112). Fehlt oder ist `null`,
+   * solange nichts uebersetzt ist oder der Text schon deutsch war.
+   */
+  translationDe: Type.Optional(Type.Union([Type.String(), Type.Null()]))
 })
 export type MaintenanceTicket = Static<typeof MaintenanceTicket>
 

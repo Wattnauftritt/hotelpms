@@ -33,6 +33,10 @@ export const einstellungen = {
     de: 'Beschreibung',
     en: 'Description',
     tr: 'Açıklama' },
+  'maint.translationDe': {
+    de: 'Deutsch',
+    en: 'German',
+    tr: 'Almanca' },
   'maint.priority': {
     de: 'Dringlichkeit',
     en: 'Priority',

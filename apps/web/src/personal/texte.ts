@@ -217,6 +217,11 @@ const texte = {
     en: 'Arrival today',
     ru: 'Сегодня заезд',
     uk: 'Сьогодні заїзд' },
+  'room.original': {
+    de: 'Original',
+    en: 'Original',
+    ru: 'Оригинал',
+    uk: 'Оригінал' },
   'room.problems': {
     de: 'Gemeldet: {n}',
     en: 'Reported: {n}',

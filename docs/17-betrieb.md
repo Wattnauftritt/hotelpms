@@ -312,6 +312,24 @@ So eng wie möglich: das Netz, in dem der Empfänger steht, nicht `10.0.0.0/8`. 
 
 ---
 
+## 8a. Übersetzung der Personaltexte über DeepL
+
+Was eine Reinigungskraft in der Personal-App frei schreibt — Zusatzarbeit, ein Problem am Zimmer — liest die Leitung deutsch; die Notiz der Hausdame liest die Kraft in ihrer Sprache (Aufgabe 18, Baustein 7, Migration 0112). Übersetzt der Worker, nicht die Anfrage: die Kraft wartet beim Speichern nicht auf DeepL, und fällt DeepL aus, speichert sie trotzdem.
+
+**`DEEPL_API_KEY` in die Umgebung des Workers**, wie der Schlüssel für Brevo. Ein Schlüssel des kostenlosen Zugangs endet auf `:fx` und geht von selbst an `api-free.deepl.com`. Ohne Schlüssel bleiben die Aufträge in `staff_text_job` stehen, jeder liest das Original, und mit dem Schlüssel wird nachgeholt.
+
+**DeepL ist Unterauftragsverarbeiter** (Verarbeitungsverzeichnis, Abschnitt 5) und braucht einen AVV. Nur die Pro-Fassung sagt zu, Texte nicht zu speichern und nicht zum Training zu verwenden; der kostenlose Zugang taugt deshalb zum Ausprobieren im Übungshaus, nicht für den Betrieb. Hinausgeschickt wird nur, was die Personal-App einreiht — eine Wartungsmeldung der Rezeption kann einen Gastnamen tragen und geht nie an DeepL. Wer Deutsch als eigene Sprache gewählt hat, schreibt nichts, was übersetzt werden müsste.
+
+| Befund in `staff_text_job` | Ursache |
+|---|---|
+| `pending`, Versuche 0, älter als ein paar Minuten | Kein `DEEPL_API_KEY` |
+| `last_error` `http_403` | Schlüssel ungültig, oder ein Pro-Schlüssel mit `:fx` am Ende |
+| `last_error` `http_456` | Kontingent erschöpft. Nach sechs Versuchen `failed`; das Original bleibt lesbar |
+
+Die Leitung kann eine Übersetzung im Bildschirm Arbeitszeit von Hand berichtigen; DeepL überschreibt das nicht, solange die Kraft ihren Text nicht ändert.
+
+---
+
 ## 9. Was regelmäßig zu prüfen ist
 
 | Wann | Was |

@@ -102,6 +102,26 @@ export const arbeitszeit = {
     de: 'Korrektur speichern',
     en: 'Save correction',
     tr: 'Düzeltmeyi kaydet' },
+  'worktime.translationDe': {
+    de: 'Deutsch',
+    en: 'German',
+    tr: 'Almanca' },
+  'worktime.translationManual': {
+    de: 'von Hand',
+    en: 'edited',
+    tr: 'elle' },
+  'worktime.editTranslation': {
+    de: 'Übersetzung berichtigen',
+    en: 'Correct translation',
+    tr: 'Çeviriyi düzelt' },
+  'worktime.autoTranslation': {
+    de: 'automatisch',
+    en: 'automatic',
+    tr: 'otomatik' },
+  'worktime.cancel': {
+    de: 'Abbrechen',
+    en: 'Cancel',
+    tr: 'Vazgeç' },
   'worktime.by': {
     de: 'von {name}',
     en: 'by {name}',

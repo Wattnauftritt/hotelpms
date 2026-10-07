@@ -173,6 +173,9 @@ function KraftDetail({ propertyId, userId, monat, offen, onKorrigiert }: {
                 {t('worktime.correction')}: {e.description}</span>}
               <span className="ml-2 tabular-nums text-neutral-500">{hm(e.minutes)}</span>
               {e.withdrawn && <span className="ml-2">({t('worktime.withdrawn')})</span>}
+              {e.kind !== 'correction' && e.description !== null
+                && <Uebersetzung eintrag={e} propertyId={propertyId}
+                                 onNeu={m => qc.setQueryData(key, m)} />}
             </div>)}
           </td>
           <td className="py-1.5 text-right tabular-nums font-medium">{hm(d.total)}</td>
@@ -200,5 +203,48 @@ function KraftDetail({ propertyId, userId, monat, offen, onKorrigiert }: {
         {t('worktime.save')}</button>
     </form>}
     {korrigieren.isError && <Fehler error={korrigieren.error} />}
+  </div>
+}
+
+/**
+ * Deutsch neben dem Text der Kraft (0112), mit Berichtigung von Hand. DeepL
+ * kennt die Woerter des Hauses nicht; wer abrechnet, soll lesen, was gemeint
+ * war. Zurueck an DeepL geht es mit "automatisch".
+ */
+function Uebersetzung({ eintrag, propertyId, onNeu }: {
+  eintrag: KraftMonat['days'][number]['entries'][number]; propertyId: number
+  onNeu: (m: Omit<KraftMonat, 'today'>) => void
+}): JSX.Element | null {
+  const t = useT()
+  const [text, setText] = useState<string | null>(null)
+  const speichern = useMutation({
+    mutationFn: (neu: string | null) => api.put<Omit<KraftMonat, 'today'>>(
+      `/v1/properties/${propertyId}/worktime/entries/${eintrag.id}/translation`, { text: neu }),
+    onSuccess: m => { setText(null); onNeu(m) }
+  })
+  if (text !== null) {
+    return <form className="flex gap-2 mt-1 no-underline" onSubmit={e => {
+      e.preventDefault(); speichern.mutate(text.trim())
+    }}>
+      <input autoFocus required maxLength={500} value={text} onChange={e => setText(e.target.value)}
+             className="border border-neutral-300 rounded px-2 py-0.5 flex-1" />
+      <button type="submit" disabled={speichern.isPending || text.trim() === ''}
+              className="px-2 py-0.5 rounded border border-neutral-300">{t('worktime.save')}</button>
+      <button type="button" onClick={() => setText(null)}
+              className="px-2 py-0.5 text-neutral-500">{t('worktime.cancel')}</button>
+      {speichern.isError && <Fehler error={speichern.error} />}
+    </form>
+  }
+  return <div className="text-neutral-500">
+    {eintrag.translationDe !== null && <span>
+      {t('worktime.translationDe')}: {eintrag.translationDe}
+      {eintrag.translationManual && <span className="ml-1">({t('worktime.translationManual')})</span>}
+    </span>}
+    <button type="button" className="ml-2 underline"
+            onClick={() => setText(eintrag.translationDe ?? eintrag.description ?? '')}>
+      {t('worktime.editTranslation')}</button>
+    {eintrag.translationManual
+      && <button type="button" className="ml-2 underline" disabled={speichern.isPending}
+                 onClick={() => speichern.mutate(null)}>{t('worktime.autoTranslation')}</button>}
   </div>
 }

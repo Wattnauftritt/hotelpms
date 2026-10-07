@@ -13,6 +13,9 @@ export interface Eintrag {
   start: string | null
   end: string | null
   withdrawn: boolean
+  /** Deutsch, sobald uebersetzt (0112); `null`, wenn schon deutsch. */
+  translationDe: string | null
+  translationManual: boolean
 }
 export interface Tag { date: string; roomMinutes: number; rooms: number; entries: Eintrag[]
                        total: number }
