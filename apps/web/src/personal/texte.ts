@@ -258,6 +258,62 @@ const texte = {
     ru: 'Уже было чисто',
     uk: 'Вже було чисто' },
 
+  'tab.inspect': {
+    de: 'Kontrolle',
+    en: 'Inspection',
+    ru: 'Проверка',
+    uk: 'Перевірка' },
+  'inspect.passed': {
+    de: 'Kontrolliert',
+    en: 'Inspected',
+    ru: 'Проверено',
+    uk: 'Перевірено' },
+  'inspect.rework': {
+    de: 'Nacharbeiten',
+    en: 'Rework',
+    ru: 'Доработать',
+    uk: 'Доопрацювати' },
+  'inspect.reworked': {
+    de: 'Nachgearbeitet',
+    en: 'Rework done',
+    ru: 'Доработано',
+    uk: 'Доопрацьовано' },
+  'inspect.reworkHint': {
+    de: 'Was fehlt? Die Kraft sieht den Satz in ihrer Liste.',
+    en: 'What is missing? The cleaner sees this sentence in their list.',
+    ru: 'Чего не хватает? Горничная увидит это в своём списке.',
+    uk: 'Чого бракує? Покоївка побачить це у своєму списку.' },
+  'inspect.undo': {
+    de: 'Kontrolle zurücknehmen',
+    en: 'Undo inspection',
+    ru: 'Отменить проверку',
+    uk: 'Скасувати перевірку' },
+  'inspect.waiting': {
+    de: 'Noch nicht gereinigt',
+    en: 'Not cleaned yet',
+    ru: 'Ещё не убрано',
+    uk: 'Ще не прибрано' },
+  'inspect.toCheck': {
+    de: 'Zu kontrollieren',
+    en: 'To inspect',
+    ru: 'Проверить',
+    uk: 'Перевірити' },
+  'inspect.unassigned': {
+    de: 'Nicht zugeteilt',
+    en: 'Not assigned',
+    ru: 'Не назначено',
+    uk: 'Не призначено' },
+  'inspect.empty': {
+    de: 'Für heute ist noch kein Zimmer geplant.',
+    en: 'No rooms are planned for today yet.',
+    ru: 'На сегодня ещё нет запланированных номеров.',
+    uk: 'На сьогодні ще немає запланованих номерів.' },
+  'inspect.summary': {
+    de: '{passed} kontrolliert · {open} zu kontrollieren · {todo} noch nicht gereinigt',
+    en: '{passed} inspected · {open} to inspect · {todo} not cleaned yet',
+    ru: 'Проверено: {passed} · проверить: {open} · не убрано: {todo}',
+    uk: 'Перевірено: {passed} · перевірити: {open} · не прибрано: {todo}' },
+
   'problem.report': {
     de: 'Problem melden',
     en: 'Report a problem',

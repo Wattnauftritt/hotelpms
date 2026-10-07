@@ -1385,6 +1385,19 @@ const M = {
     de: 'Jedes Zimmer nur einmal je Tag: Abreise oder Bleiber.',
     en: 'Each room only once per day: departure or stayover.',
     tr: 'Her oda günde yalnızca bir kez: ayrılış veya konaklama devamı.' },
+  // Kontrolle (0109)
+  'inspection.noteRequired': {
+    de: 'Nacharbeiten braucht einen Satz, was fehlt.',
+    en: 'Rework needs a sentence saying what is missing.',
+    tr: 'Yeniden yapılacak iş için neyin eksik olduğunu belirten bir cümle gerekir.' },
+  'inspection.notCleaned': {
+    de: 'Zimmer {room} ist noch nicht als gereinigt gemeldet.',
+    en: 'Room {room} has not been reported as cleaned yet.',
+    tr: '{room} numaralı oda henüz temizlendi olarak bildirilmedi.' },
+  'inspection.noRework': {
+    de: 'Für dieses Zimmer ist keine Nacharbeit offen.',
+    en: 'There is no open rework for this room.',
+    tr: 'Bu oda için açık bir yeniden yapılacak iş yok.' },
   // Meine Zimmer (0108): Zimmer hat nur ein Mensch, kein Zugang und kein Geraet.
   'staff.personOnly': {
     de: 'Die Personal-App benutzt nur eine angemeldete Person.',

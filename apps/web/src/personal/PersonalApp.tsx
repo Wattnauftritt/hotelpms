@@ -8,6 +8,7 @@ import { SpracheContext, SPRACHNAME, fehlerText, startSprache, usePT }
   from './texte.js'
 import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
 import { MeineZimmer } from './MeineZimmer.js'
+import { Kontrolle } from './Kontrolle.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -259,12 +260,24 @@ function Start({ me, locale, onLocale }: {
   me: Me; locale: StaffLocale; onLocale: (l: StaffLocale) => void
 }): JSX.Element {
   const t = usePT()
-  const [reiter, setReiter] = useState<'heute' | 'mehr'>('heute')
   const vorname = me.displayName.split(' ')[0] ?? me.displayName
   // Meist ein Haus. Arbeitet jemand in zweien, waehlt er oben -- die Liste
   // gilt immer fuer ein Haus, wie der Plan der Hausdame.
   const haeuser = me.properties.filter(p => p.permissions.includes('staff:app'))
   const [haus, setHaus] = useState(() => haeuser[0]?.id ?? 0)
+  const rechte = haeuser.find(h => h.id === haus)?.permissions ?? []
+  // Die Hausdame beginnt mit der Kontrolle: Zimmer hat sie selten selbst.
+  const kontrolle = rechte.includes('housekeeping:inspect')
+  const reiterListe = kontrolle ? ['heute', 'kontrolle', 'mehr'] as const
+                                : ['heute', 'mehr'] as const
+  type Reiter = 'heute' | 'kontrolle' | 'mehr'
+  const [reiter, setReiter] = useState<Reiter>(() => kontrolle ? 'kontrolle' : 'heute')
+  const hausWahl = haeuser.length > 1 && <label className="block">
+    <span className="block text-sm text-neutral-600">{t('today.property')}</span>
+    <select value={haus} onChange={e => setHaus(Number(e.target.value))} className={FELD}>
+      {haeuser.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+    </select>
+  </label>
 
   return <div className="min-h-dvh bg-neutral-50 flex flex-col">
     <header className="bg-neutral-900 text-white px-4 py-3
@@ -274,13 +287,12 @@ function Start({ me, locale, onLocale }: {
     <main className="flex-1 px-4 py-4 pb-24 space-y-4 max-w-lg w-full mx-auto">
       {reiter === 'heute' && <>
         <p className="text-xl font-semibold">{t('today.hello', { name: vorname })}</p>
-        {haeuser.length > 1 && <label className="block">
-          <span className="block text-sm text-neutral-600">{t('today.property')}</span>
-          <select value={haus} onChange={e => setHaus(Number(e.target.value))} className={FELD}>
-            {haeuser.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-        </label>}
+        {hausWahl}
         <MeineZimmer key={haus} propertyId={haus} locale={locale} />
+      </>}
+      {reiter === 'kontrolle' && kontrolle && <>
+        {hausWahl}
+        <Kontrolle key={haus} propertyId={haus} locale={locale} />
       </>}
       {reiter === 'mehr' && <>
         <Karte titel={t('more.language')}>
@@ -309,13 +321,14 @@ function Start({ me, locale, onLocale }: {
       </>}
     </main>
     <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-neutral-200
-                    grid grid-cols-2 pb-[env(safe-area-inset-bottom)]">
-      {(['heute', 'mehr'] as const).map(r => (
+                    grid pb-[env(safe-area-inset-bottom)]"
+         style={{ gridTemplateColumns: `repeat(${reiterListe.length}, minmax(0, 1fr))` }}>
+      {reiterListe.map(r => (
         <button key={r} type="button" aria-current={r === reiter ? 'page' : undefined}
                 onClick={() => setReiter(r)}
                 className={`py-4 text-base ${r === reiter
                   ? 'font-semibold text-neutral-900' : 'text-neutral-500'}`}>
-          {t(r === 'heute' ? 'tab.today' : 'tab.more')}
+          {t(r === 'heute' ? 'tab.today' : r === 'kontrolle' ? 'tab.inspect' : 'tab.more')}
         </button>
       ))}
     </nav>
