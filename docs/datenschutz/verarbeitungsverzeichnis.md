@@ -64,6 +64,7 @@ Rechnungsadresse.
 | ⟨Hoster⟩ | Unterauftragsverarbeiter | alle, im Rahmen des Betriebs | ⟨Land⟩ |
 | Stripe | Unterauftragsverarbeiter | **nur** Belegnummer, Betrag, Währung — kein Name, keine Anschrift | Irland / USA, Angemessenheitsbeschluss bzw. SCC |
 | Brevo | Unterauftragsverarbeiter | Empfängeradresse, Name, Nachrichtentext | Frankreich |
+| DeepL | Unterauftragsverarbeiter | freie Texte des Personals aus der Personal-App (Tätigkeit, Zimmerproblem, Notiz der Hausdame) — **keine** Gastdaten, kein Name des Personals; nur mit Pro-Vertrag | Deutschland |
 | Channel Manager ⟨Anbieter⟩ | eigenständig | Preise, Verfügbarkeit, Restriktionen — **keine** Gastdaten | ⟨Land⟩ |
 | Meldebehörde | gesetzlich | Meldedaten | Deutschland |
 | Statistisches Landesamt | gesetzlich | aggregiert nach Wohnsitzland; das System **erzeugt** den Satz, übermittelt wird er außerhalb über eSTATISTIK.core | Deutschland |

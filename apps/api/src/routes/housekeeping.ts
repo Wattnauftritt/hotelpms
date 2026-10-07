@@ -434,9 +434,15 @@ export function housekeepingRoutes(app: FastifyInstance): void {
           `SELECT m.id, m.title, m.description, m.priority, m.status,
                   m.created_at::text AS "createdAt", m.closed_at AS "closedAt",
                   m.resource_id AS "resourceId", r.code AS "roomCode",
-                  COALESCE(b.sperren, '[]'::jsonb) AS blocks
+                  COALESCE(b.sperren, '[]'::jsonb) AS blocks,
+                  tr.text AS "translationDe"
              FROM maintenance_ticket m
              LEFT JOIN resource r ON r.id = m.resource_id
+             -- Meldungen aus der Personal-App, deutsch (0112). Nur solange
+             -- die Uebersetzung zum aktuellen Text gehoert.
+             LEFT JOIN staff_text_translation tr
+                    ON tr.source_kind = 'problem' AND tr.source_id = m.id AND tr.lang = 'de'
+                   AND tr.source_hash = digest(m.description, 'sha256')
              LEFT JOIN LATERAL (
                SELECT jsonb_agg(jsonb_build_object(
                         'kind', mb.kind, 'from', mb.from_date::text,

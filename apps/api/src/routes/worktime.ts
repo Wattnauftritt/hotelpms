@@ -8,6 +8,7 @@ import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
 import { csv } from './reports.js'
+import { reiheUebersetzungEin, zielDeutsch } from '../platform/uebersetzung.js'
 
 /**
  * Arbeitszeit (Aufgabe 18, Baustein 6; Migration 0111).
@@ -43,6 +44,14 @@ interface Eintrag {
   createdBy: string | null
   createdAt: string
   withdrawn: boolean
+  /**
+   * Der Text deutsch (0112), sobald der Worker ihn uebersetzt hat -- und nur,
+   * solange er zum aktuellen Text gehoert. `null`, wenn der Text schon
+   * deutsch war oder noch nichts da ist.
+   */
+  translationDe: string | null
+  /** Von Hand berichtigt; DeepL ueberschreibt das nicht. */
+  translationManual: boolean
 }
 
 interface Tag {
@@ -113,9 +122,13 @@ async function liesMonat(
     `SELECT e.id::int, e.business_date::text AS date, e.kind, e.description, e.minutes,
             to_char(e.start_time, 'HH24:MI') AS start, to_char(e.end_time, 'HH24:MI') AS "end",
             e.source, u.display_name AS "createdBy", e.created_at AS "createdAt",
-            (e.withdrawn_at IS NOT NULL) AS withdrawn
+            (e.withdrawn_at IS NOT NULL) AS withdrawn,
+            tr.text AS "translationDe", COALESCE(tr.origin = 'manual', false) AS "translationManual"
        FROM staff_work_entry e
        LEFT JOIN app_user u ON u.id = e.created_by
+       LEFT JOIN staff_text_translation tr
+              ON tr.source_kind = 'work_entry' AND tr.source_id = e.id AND tr.lang = 'de'
+             AND tr.source_hash = digest(e.description, 'sha256')
       WHERE e.property_id = $1 AND e.user_id = $2
         AND e.business_date BETWEEN $3::date AND $4::date
       ORDER BY e.business_date, e.id`, [propertyId, userId, from, to])
@@ -196,9 +209,9 @@ async function eigenerTag(
 /** Ein eigener, nicht zurueckgezogener Eintrag von heute oder gestern. */
 async function eigenerEintrag(
   client: PoolClient, propertyId: number, userId: number, id: number
-): Promise<{ date: string; kind: Art }> {
-  const { rows } = await client.query<{ date: string; kind: Art }>(
-    `SELECT business_date::text AS date, kind FROM staff_work_entry
+): Promise<{ date: string; kind: Art; description: string | null }> {
+  const { rows } = await client.query<{ date: string; kind: Art; description: string | null }>(
+    `SELECT business_date::text AS date, kind, description FROM staff_work_entry
       WHERE id = $1 AND property_id = $2 AND user_id = $3 AND withdrawn_at IS NULL
         AND kind <> 'correction'
       FOR UPDATE`, [id, propertyId, userId])
@@ -375,11 +388,15 @@ export function worktimeRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const tag = await eigenerTag(client, propertyId, b.date)
         await monatOffen(client, propertyId, tag)
-        await client.query(
+        const neu = await client.query<{ id: number }>(
           `INSERT INTO staff_work_entry (property_id, user_id, business_date, kind,
                                          description, minutes, start_time, end_time, created_by)
-           VALUES ($1, $2, $3::date, $4, $5, $6, $7::time, $8::time, $2)`,
+           VALUES ($1, $2, $3::date, $4, $5, $6, $7::time, $8::time, $2) RETURNING id::int`,
           [propertyId, ich, tag, e.kind, e.description, e.minutes, e.start, e.end])
+        if (e.description !== null) {
+          await reiheUebersetzungEin(client, propertyId, 'work_entry', neu.rows[0]!.id,
+            await zielDeutsch(client, ich))
+        }
         reply.code(201)
         const heute = await tagOderOffen(client, propertyId, undefined)
         return { ...(await liesMonat(client, propertyId, ich, tag.slice(0, 7))), today: heute }
@@ -407,6 +424,12 @@ export function worktimeRoutes(app: FastifyInstance): void {
               SET kind = $2, description = $3, minutes = $4, start_time = $5::time,
                   end_time = $6::time, updated_by = $7, updated_at = now()
             WHERE id = $1`, [id, e.kind, e.description, e.minutes, e.start, e.end, ich])
+        // Nur ein geaenderter Text geht noch einmal an DeepL; geaenderte
+        // Minuten aendern an der Uebersetzung nichts.
+        if (e.description !== null && e.description !== alt.description) {
+          await reiheUebersetzungEin(client, propertyId, 'work_entry', id,
+            await zielDeutsch(client, ich))
+        }
         const heute = await tagOderOffen(client, propertyId, undefined)
         return { ...(await liesMonat(client, propertyId, ich, alt.date.slice(0, 7))), today: heute }
       })
@@ -561,6 +584,62 @@ export function worktimeRoutes(app: FastifyInstance): void {
           [propertyId, userId, date, grund, b.minutes, principal.userId])
         reply.code(201)
         return liesMonat(client, propertyId, userId, date.slice(0, 7))
+      })
+    }
+  })
+
+  /**
+   * Uebersetzung eines Eintrags von Hand berichtigen (0112). DeepL trifft
+   * Fachwoerter des Hauses nicht immer ("Waescheraum" ist kein
+   * "laundry room", wenn dort nur Bettwaesche liegt). Die Berichtigung gilt
+   * dem Text, wie er jetzt dasteht: aendert die Kraft ihn spaeter, wird neu
+   * uebersetzt. `text: null` gibt die Zeile wieder an DeepL.
+   *
+   * Auch im abgeschlossenen Monat: die Uebersetzung ist keine Abrechnung.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/worktime/entries/:entryId/translation',
+    permission: 'worktime:manage',
+    propertyParam: 'propertyId',
+    summary: 'Deutsche Uebersetzung eines Eintrags berichtigen',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const id = idAusPfad(req, 'entryId')
+      const principal = req.principal as Principal
+      const roh = (req.body as { text?: unknown } | null)?.text
+      if (roh !== null && typeof roh !== 'string') {
+        throw Errors.validation({ text: ['field.required'] })
+      }
+      const text = typeof roh === 'string' ? roh.trim() : null
+      if (text === '') throw Errors.validation({ text: ['field.required'] })
+      if (text !== null && text.length > BESCHREIBUNG_MAX) {
+        throw Errors.validation({ text: ['field.maxLength'] }, { max: BESCHREIBUNG_MAX })
+      }
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query<{ user_id: number; date: string
+                                              description: string | null }>(
+          `SELECT user_id::int, business_date::text AS date, description
+             FROM staff_work_entry
+            WHERE id = $1 AND property_id = $2 AND kind <> 'correction'`, [id, propertyId])
+        const e = rows[0]
+        if (e === undefined || e.description === null) throw Errors.notFound('res.workEntry')
+        if (text === null) {
+          await client.query(
+            `DELETE FROM staff_text_translation
+              WHERE source_kind = 'work_entry' AND source_id = $1 AND lang = 'de'`, [id])
+          await reiheUebersetzungEin(client, propertyId, 'work_entry', id, ['de'])
+        } else {
+          await client.query(
+            `INSERT INTO staff_text_translation (property_id, source_kind, source_id,
+                                                 source_hash, lang, text, origin, updated_by)
+             VALUES ($1, 'work_entry', $2, digest($3::text, 'sha256'), 'de', $4, 'manual', $5)
+             ON CONFLICT (source_kind, source_id, lang) DO UPDATE
+               SET source_hash = EXCLUDED.source_hash, text = EXCLUDED.text,
+                   origin = 'manual', updated_by = EXCLUDED.updated_by, updated_at = now()`,
+            [propertyId, id, e.description, text, principal.userId])
+        }
+        return liesMonat(client, propertyId, e.user_id, e.date.slice(0, 7))
       })
     }
   })

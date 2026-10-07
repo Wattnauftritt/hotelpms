@@ -69,6 +69,11 @@ function Zeile(
           {ticket.description !== null && ticket.description !== '' && (
             <div className="mt-1 text-sm text-neutral-700">{ticket.description}</div>
           )}
+          {/* Aus der Personal-App in der Sprache der Kraft; daneben deutsch. */}
+          {ticket.translationDe != null && (
+            <div className="mt-0.5 text-sm text-neutral-500">
+              {t('maint.translationDe')}: {ticket.translationDe}</div>
+          )}
           {/* Die Sperrung steht an der Meldung: sonst ist nicht zu sehen,
               ob das Zimmer gerade Kapazität kostet. */}
           {ticket.blocks.length > 0 && (

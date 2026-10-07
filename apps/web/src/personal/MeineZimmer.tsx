@@ -32,6 +32,7 @@ export interface MeinZimmer {
   openProblems: number
   inspection: 'passed' | 'rework' | null
   inspectionNote: string | null
+  inspectionNoteTranslated?: string | null
 }
 interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }
 
@@ -176,8 +177,13 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, p
       {z.minutes !== null && <span className="text-sm text-neutral-500 whitespace-nowrap">
         {t('room.minutes', { minutes: z.minutes })}</span>}
     </button>
-    {nacharbeit && z.inspectionNote !== null
-      && <p className="px-4 pb-3 -mt-1 text-base text-red-900">„{z.inspectionNote}“</p>}
+    {/* In der Sprache der Kraft, sobald uebersetzt; das Original darunter,
+        damit sie es der Hausdame zeigen kann. */}
+    {nacharbeit && z.inspectionNote !== null && <div className="px-4 pb-3 -mt-1">
+      <p className="text-base text-red-900">„{z.inspectionNoteTranslated ?? z.inspectionNote}“</p>
+      {z.inspectionNoteTranslated != null
+        && <p className="text-sm text-neutral-500">{t('room.original')}: {z.inspectionNote}</p>}
+    </div>}
     {offen && <div className="px-4 pb-4 space-y-2">
       {nacharbeit && <button type="button" disabled={laeuft} className={KNOPF}
                              onClick={onNachgearbeitet}>{t('inspect.reworked')}</button>}

@@ -12,6 +12,7 @@ import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
+import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { createBrevoAdapter } from './email/brevo.js'
@@ -309,6 +310,29 @@ async function emails(p: PropertyRow): Promise<void> {
   }
 }
 
+/*
+ * Uebersetzung der Personaltexte (Baustein 7). Ohne Schluessel bleiben die
+ * Auftraege stehen, und jeder liest das Original -- dasselbe Verhalten wie
+ * bei der Post: verloren ist nichts, nachgeholt wird mit dem Schluessel.
+ */
+const deeplKey = process.env.DEEPL_API_KEY ?? null
+const translator = deeplKey ? createDeeplTranslator(deeplKey) : null
+if (translator === null) {
+  log.warn('DEEPL_API_KEY ist nicht gesetzt: Texte des Personals bleiben unuebersetzt.')
+}
+
+async function staffTexts(p: PropertyRow): Promise<void> {
+  if (translator === null) return
+  const r = await translateStaffTexts(pool, propertyContext(p.account_id, p.id), p.id, translator)
+  if (r.attempted === 0) return
+  // Zahlen, kein Text: was die Kraft geschrieben hat, gehoert nicht ins Protokoll.
+  log.info({ property: p.id, ...r }, 'Personaltexte uebersetzt')
+  if (r.failed > 0) {
+    log.error({ property: p.id, failed: r.failed },
+      'Uebersetzung endgueltig gescheitert -- das Original bleibt lesbar')
+  }
+}
+
 async function tick(): Promise<void> {
   await platformMaintenance()
   // Vor der Arbeit je Property: wer auf einen Zugangslink wartet, wartet
@@ -328,6 +352,7 @@ async function tick(): Promise<void> {
       // Vor der Zustellung: was hier eingereiht wird, geht im selben Tick hinaus.
       await onlineCheckins(p)
       await emails(p)
+      await staffTexts(p)
     } catch (e) {
       log.error({ property: p.id, err: e }, 'Arbeit fuer Property fehlgeschlagen')
     }

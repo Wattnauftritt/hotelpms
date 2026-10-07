@@ -5,6 +5,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
+import { reiheUebersetzungEin, zielDeutsch } from '../platform/uebersetzung.js'
 
 /**
  * Meine Zimmer (Aufgabe 18, Baustein 3; Migration 0108).
@@ -65,6 +66,8 @@ interface MeinZimmer {
    */
   inspection: 'passed' | 'rework' | null
   inspectionNote: string | null
+  /** Die Notiz in der Sprache der Kraft (0112), sobald uebersetzt. */
+  inspectionNoteTranslated: string | null
   /** Heute kommt jemand -- dieses Zimmer zuerst. */
   arrivalToday: boolean
   /** Offene Wartungsmeldungen am Zimmer, damit niemand dasselbe zweimal meldet. */
@@ -83,6 +86,13 @@ async function liesMeineZimmer(
             c.code AS "categoryCode", r.building, r.floor, t.kind, t.minutes,
             t.status, t.outcome, t.inspection,
             CASE WHEN t.inspection = 'rework' THEN t.inspection_note END AS "inspectionNote",
+            CASE WHEN t.inspection = 'rework' THEN
+              (SELECT tr.text FROM staff_text_translation tr
+                 JOIN app_user u ON u.id = t.assigned_to
+                WHERE tr.source_kind = 'inspection_note' AND tr.source_id = t.id
+                  AND tr.lang = u.locale
+                  AND tr.source_hash = digest(t.inspection_note, 'sha256')) END
+              AS "inspectionNoteTranslated",
             (t.kind <> 'departure' OR NOT EXISTS (
                SELECT 1 FROM reservation a
                 WHERE a.resource_id = r.id AND a.departure = t.business_date
@@ -285,6 +295,8 @@ export function myRoomsRoutes(app: FastifyInstance): void {
                                            created_by)
            VALUES ($1, $2, $3, $4, $5) RETURNING id::int`,
           [propertyId, aufgabe.resource_id, titel, sauber, ich])
+        await reiheUebersetzungEin(client, propertyId, 'problem', rows[0]!.id,
+          await zielDeutsch(client, ich))
         reply.code(201)
         return {
           ticketId: rows[0]!.id,

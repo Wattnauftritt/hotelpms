@@ -3,6 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { reiheUebersetzungEin } from '../platform/uebersetzung.js'
 import type { Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
 
@@ -131,9 +132,10 @@ export function inspectionRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const tag = await tagOderOffen(client, propertyId, undefined)
         const { rows } = await client.query<{ resource_id: number; outcome: string | null
-                                              code: string }>(
-          `SELECT t.resource_id::int, t.outcome, r.code
+                                              code: string; locale: string | null }>(
+          `SELECT t.resource_id::int, t.outcome, r.code, u.locale
              FROM housekeeping_task t JOIN resource r ON r.id = t.resource_id
+             LEFT JOIN app_user u ON u.id = t.assigned_to
             WHERE t.id = $1 AND t.property_id = $2 AND t.business_date = $3::date
               AND t.kind IN ('departure','stayover')
             FOR UPDATE OF t`, [taskId, propertyId, tag])
@@ -151,6 +153,16 @@ export function inspectionRoutes(app: FastifyInstance): void {
                   inspected_by = CASE WHEN $2::text IS NULL THEN NULL ELSE $4::bigint END,
                   inspected_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END
             WHERE id = $1`, [taskId, ergebnis, notiz, principal.userId])
+        /*
+         * Die Hausdame schreibt deutsch, die Kraft liest in ihrer Sprache.
+         * Ohne gewaehlte Sprache oder bei Deutsch geht nichts an DeepL --
+         * die Notiz steht dann so da, wie sie geschrieben wurde.
+         */
+        if (ergebnis === 'rework' && aufgabe.locale !== null
+            && ['en', 'ru', 'uk'].includes(aufgabe.locale)) {
+          await reiheUebersetzungEin(client, propertyId, 'inspection_note', taskId,
+            [aufgabe.locale])
+        }
         /*
          * Der Zimmerstand folgt: kontrolliert ist bezugsfertig, nacharbeiten
          * ist schmutzig, zuruecknehmen ist wieder sauber -- gereinigt war
