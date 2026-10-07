@@ -6,6 +6,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
+import { eigenesProfil } from '../platform/gast.js'
 
 /**
  * Kontaktdaten eines Gastes aus einem Umsystem (Migration 0083).
@@ -358,23 +359,40 @@ async function kontaktSchreiben(
                                              checkinLinkRevoked?: boolean }>> }> {
   if (res.primary_guest_id === null) throw Errors.conflict('reservation.noPrimaryGuest')
 
-  const g = await client.query<GastZeile & { loeschantrag: boolean }>(
+  const lesen = async (id: number) => (await client.query<GastZeile & { loeschantrag: boolean }>(
     `SELECT id, public_ref, status, erasure_requested_at IS NOT NULL AS loeschantrag,
             first_name, email, phone, language,
             address_line1, postal_code, city, country, contact_origin
-       FROM guest WHERE id = $1 FOR UPDATE`, [res.primary_guest_id])
-  const gast = g.rows[0]!
+       FROM guest WHERE id = $1 FOR UPDATE`, [id])).rows[0]!
+  let gast = await lesen(res.primary_guest_id)
   if (gast.status === 'anonymized') throw Errors.conflict('guest.anonymizedNotRevived')
   // Nach einem Loeschantrag traegt niemand mehr Kontaktdaten nach --
   // ein Abgleich am wenigsten, der sie aus einer zweiten Quelle hat.
   if (gast.loeschantrag) throw Errors.conflict('guest.erasureRequested')
 
-  const sperre = await client.query<{ erfasst: boolean; link: boolean }>(
-    `SELECT EXISTS (SELECT 1 FROM registration WHERE reservation_id = $1) AS erfasst,
-            EXISTS (SELECT 1 FROM checkin_token
+  const erfasstAbfrage = await client.query<{ erfasst: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM registration WHERE reservation_id = $1) AS erfasst`, [res.id])
+  const { erfasst } = erfasstAbfrage.rows[0]!
+  /*
+   * Haengt das Profil noch an anderen Reservierungen, bekommt diese ein
+   * eigenes, bevor etwas hineingeschrieben wird (Migration 0107). Das
+   * Umsystem meint diesen Aufenthalt; ein Vorname, den es fuer ihn schickt,
+   * stand sonst in jeder Reservierung desselben KWHotel-Gastsatzes. Nicht,
+   * wenn der Meldeschein erfasst ist: dann aendert der Abgleich ohnehin
+   * nichts, und ein Profil ohne Anlass entstuende.
+   */
+  const felderDa = (['firstName', 'email', 'phone', 'language', 'address'] as const)
+    .some(f => eingabe[f] !== undefined)
+  if (!erfasst && felderDa) {
+    const profil = await eigenesProfil(client, Number(res.id), Number(gast.id))
+    if (profil.getrennt) gast = await lesen(profil.id)
+  }
+
+  const sperre = await client.query<{ link: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM checkin_token
                      WHERE reservation_id = $1 AND channel = 'mail'
                        AND revoked_at IS NULL) AS link`, [res.id])
-  const { erfasst, link } = sperre.rows[0]!
+  const { link } = sperre.rows[0]!
 
   const herkunft: Herkunft = {
     client: principal.clientKey, ...quelle, at: new Date().toISOString() }

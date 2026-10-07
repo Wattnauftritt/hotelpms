@@ -105,3 +105,43 @@ export async function gastAendern(
      g.preferences ? JSON.stringify(g.preferences) : null])
   return rows[0]!
 }
+
+/** Haengt das Profil noch an einer anderen Reservierung, in irgendeinem Haus? */
+export async function profilGeteilt(
+  client: PoolClient, guestId: number, reservationId: number
+): Promise<boolean> {
+  const r = await client.query<{ geteilt: boolean }>(
+    `SELECT guest_is_shared($1, $2) AS geteilt`, [guestId, reservationId])
+  return r.rows[0]!.geteilt
+}
+
+/**
+ * Das Profil, in das ein Umsystem fuer diese Reservierung schreiben darf.
+ *
+ * Haengt der Hauptgast noch an einer anderen Reservierung, bekommt diese
+ * hier ein eigenes Profil (Migration 0107), und der Aufrufer schreibt
+ * dorthin. Ein Umsystem kennt den Aufenthalt, nicht den Menschen: ob zwei
+ * Aufenthalte unter einem KWHotel-Gastsatz derselbe Mensch sind, weiss es
+ * nicht, und ein Name, den es fuer den einen schickt, stand sonst bei allen.
+ * So kamen fremde Vornamen in die Anreiseliste.
+ *
+ * Die Rezeption und der Gast selbst trennen nicht: sie haengen einen
+ * Stammgast bewusst an ein vorhandenes Profil.
+ */
+export async function eigenesProfil(
+  client: PoolClient, reservationId: number, guestId: number
+): Promise<{ id: number; publicRef: string; getrennt: boolean }> {
+  if (!(await profilGeteilt(client, guestId, reservationId))) {
+    const g = await client.query<{ public_ref: string }>(
+      `SELECT public_ref FROM guest WHERE id = $1`, [guestId])
+    return { id: guestId, publicRef: g.rows[0]!.public_ref, getrennt: false }
+  }
+  // Erst trennen, dann lesen: das neue Profil entsteht waehrend der
+  // Anweisung und ist in ihrem eigenen Schnappschuss noch nicht zu sehen.
+  const s = await client.query<{ out_new_guest: string }>(
+    `SELECT out_new_guest FROM guest_split_reservations(ARRAY[$1::bigint])`, [reservationId])
+  const id = Number(s.rows[0]!.out_new_guest)
+  const z = (await client.query<{ public_ref: string }>(
+    `SELECT public_ref FROM guest WHERE id = $1`, [id])).rows[0]!
+  return { id, publicRef: z.public_ref, getrennt: true }
+}

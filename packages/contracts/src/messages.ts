@@ -1260,6 +1260,10 @@ const M = {
     de: 'Die Reservierung hat keinen Hauptgast.',
     en: 'The reservation has no primary guest.',
     tr: 'Rezervasyonun ana misafiri yok.' },
+  'guestSplit.planChanged': {
+    de: 'Der Bestand hat sich seit dem Probelauf geaendert: {actual} neue Profile statt {expected}. Bitte den Probelauf wiederholen.',
+    en: 'The data changed since the dry run: {actual} new profiles instead of {expected}. Please repeat the dry run.',
+    tr: 'Deneme çalıştırmasından bu yana veriler değişti: {expected} yerine {actual} yeni profil. Lütfen deneme çalıştırmasını tekrarlayın.' },
   'guest.erasureRequested': {
     de: 'Fuer diesen Gast liegt ein Loeschantrag vor; es werden keine Daten nachgetragen.',
     en: 'An erasure request exists for this guest; no data is added.',
