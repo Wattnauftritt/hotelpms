@@ -122,6 +122,94 @@ export const arbeitszeit = {
     de: 'Abbrechen',
     en: 'Cancel',
     tr: 'Vazgeç' },
+  'worktime.legacy.title': {
+    de: 'Altdaten aus der alten Personal-App',
+    en: 'Data from the old staff app',
+    tr: 'Eski personel uygulamasından veriler' },
+  'worktime.legacy.hint': {
+    de: 'Export des Cleaning-Backends hochladen (Dokument 34). Jeder Tag im Ausschnitt wird ersetzt, soweit er aus der alten App kam; was in StayGrid geplant oder eingetragen ist, bleibt. Ein abgeschlossener Monat wird nicht angefasst.',
+    en: 'Upload the export from the cleaning backend (document 34). Every day in the range is replaced where it came from the old app; anything planned or entered in StayGrid stays. A closed month is not touched.',
+    tr: 'Temizlik arka ucunun dışa aktarımını yükleyin (belge 34). Aralıktaki her gün, eski uygulamadan geldiyse değiştirilir; StayGrid’de planlanan veya girilen her şey kalır. Kapatılmış bir aya dokunulmaz.' },
+  'worktime.legacy.notJson': {
+    de: 'Die Datei ist kein lesbares JSON.',
+    en: 'The file is not readable JSON.',
+    tr: 'Dosya okunabilir bir JSON değil.' },
+  'worktime.legacy.check': {
+    de: 'Prüfen',
+    en: 'Check',
+    tr: 'Kontrol et' },
+  'worktime.legacy.commit': {
+    de: 'Übernehmen',
+    en: 'Import',
+    tr: 'Aktar' },
+  'worktime.legacy.recheck': {
+    de: 'Zuordnung geändert: bitte erneut prüfen.',
+    en: 'Mapping changed: please check again.',
+    tr: 'Eşleştirme değişti: lütfen tekrar kontrol edin.' },
+  'worktime.legacy.done': {
+    de: 'Übernommen.',
+    en: 'Imported.',
+    tr: 'Aktarıldı.' },
+  'worktime.legacy.days': {
+    de: 'Ersetzt werden die Tage {from} bis {to} ({n} Tage).',
+    en: 'Days {from} to {to} are replaced ({n} days).',
+    tr: '{from} ile {to} arasındaki günler değiştirilir ({n} gün).' },
+  'worktime.legacy.closedDays': {
+    de: '{n} Tage liegen in abgeschlossenen Monaten und bleiben.',
+    en: '{n} days are in closed months and stay as they are.',
+    tr: '{n} gün kapatılmış aylarda ve olduğu gibi kalıyor.' },
+  'worktime.legacy.schedules': {
+    de: 'Putzplan',
+    en: 'Cleaning plan',
+    tr: 'Temizlik planı' },
+  'worktime.legacy.entries': {
+    de: 'Zusatzarbeiten',
+    en: 'Extra work',
+    tr: 'Ek işler' },
+  'worktime.legacy.counts': {
+    de: '{imported} von {total}',
+    en: '{imported} of {total}',
+    tr: '{total} içinden {imported}' },
+  'worktime.legacy.skipStaygrid': {
+    de: '{n} Zeilen übersprungen: in StayGrid steht für das Zimmer an dem Tag schon ein Plan.',
+    en: '{n} rows skipped: StayGrid already has a plan for the room on that day.',
+    tr: '{n} satır atlandı: StayGrid’de o gün oda için zaten bir plan var.' },
+  'worktime.legacy.skipUnmapped': {
+    de: '{n} Zeilen übersprungen: Person nicht zugeordnet.',
+    en: '{n} rows skipped: person not mapped.',
+    tr: '{n} satır atlandı: kişi eşleştirilmedi.' },
+  'worktime.legacy.skipRoom': {
+    de: '{n} Zeilen übersprungen: Zimmer unbekannt ({rooms}).',
+    en: '{n} rows skipped: unknown room ({rooms}).',
+    tr: '{n} satır atlandı: bilinmeyen oda ({rooms}).' },
+  'worktime.legacy.skipClosed': {
+    de: '{n} Zeilen übersprungen: Monat abgeschlossen.',
+    en: '{n} rows skipped: month closed.',
+    tr: '{n} satır atlandı: ay kapatıldı.' },
+  'worktime.legacy.oldUser': {
+    de: 'Benutzer der alten App',
+    en: 'User in the old app',
+    tr: 'Eski uygulamadaki kullanıcı' },
+  'worktime.legacy.rows': {
+    de: 'Zeilen',
+    en: 'Rows',
+    tr: 'Satır' },
+  'worktime.legacy.person': {
+    de: 'Person in StayGrid',
+    en: 'Person in StayGrid',
+    tr: 'StayGrid’deki kişi' },
+  'worktime.legacy.skip': {
+    de: '– nicht übernehmen –',
+    en: '– do not import –',
+    tr: '– aktarma –' },
+  'worktime.legacy.suggested': {
+    de: 'Vorschlag',
+    en: 'Suggestion',
+    tr: 'Öneri' },
+  'worktime.legacy.inactive': {
+    de: 'inaktiv',
+    en: 'inactive',
+    tr: 'pasif' },
   'worktime.by': {
     de: 'von {name}',
     en: 'by {name}',

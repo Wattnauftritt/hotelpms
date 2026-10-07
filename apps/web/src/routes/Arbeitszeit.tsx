@@ -5,6 +5,7 @@ import { api } from '../lib/api.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { hm, type Monat as KraftMonat } from '../lib/arbeitszeit.js'
+import { AltdatenPersonal } from './AltdatenPersonal.tsx'
 
 /**
  * Arbeitszeit (Aufgabe 18, Baustein 6) -- fuer die Leitung.
@@ -128,6 +129,11 @@ export function Arbeitszeit({ propertyId }: { propertyId: number }): JSX.Element
           </Fragment>)}
         </tbody>
       </table>}
+
+    <details className="border-t border-neutral-200 pt-3">
+      <summary className="cursor-pointer text-sm font-medium">{t('worktime.legacy.title')}</summary>
+      <div className="mt-3"><AltdatenPersonal propertyId={propertyId} /></div>
+    </details>
   </div>
 }
 

@@ -1444,6 +1444,39 @@ const M = {
     de: 'Die Personal-App benutzt nur eine angemeldete Person.',
     en: 'Only a signed-in person can use the staff app.',
     tr: 'Personel uygulamasını yalnızca oturum açmış bir kişi kullanabilir.' },
+  // Altdaten der alten Personal-App (Dokument 34).
+  'staffImport.notJson': {
+    de: 'Die Datei ist kein Export der alten Personal-App.',
+    en: 'The file is not an export of the old staff app.',
+    tr: 'Dosya eski personel uygulamasının dışa aktarımı değil.' },
+  'staffImport.format': {
+    de: 'Die Datei ist kein Export der alten Personal-App (Feld format).',
+    en: 'The file is not an export of the old staff app (field format).',
+    tr: 'Dosya eski personel uygulamasının dışa aktarımı değil (format alanı).' },
+  'staffImport.schema': {
+    de: 'Diese Fassung des Exports ({version}) wird nicht gelesen.',
+    en: 'This export version ({version}) is not supported.',
+    tr: 'Bu dışa aktarım sürümü ({version}) desteklenmiyor.' },
+  'staffImport.missingGroup': {
+    de: 'Im Export fehlt die Liste {group}.',
+    en: 'The export is missing the list {group}.',
+    tr: 'Dışa aktarımda {group} listesi eksik.' },
+  'staffImport.checksum': {
+    de: 'Zeilenzahl oder Prüfsumme von {group} stimmen nicht. Die Datei ist unvollständig oder verändert; es wurde nichts übernommen.',
+    en: 'Row count or checksum of {group} do not match. The file is incomplete or altered; nothing was imported.',
+    tr: '{group} satır sayısı veya sağlama toplamı uyuşmuyor. Dosya eksik veya değiştirilmiş; hiçbir şey aktarılmadı.' },
+  'staffImport.badRow': {
+    de: 'Zeile {row} in {group}: Feld {field} fehlt oder ist ungültig.',
+    en: 'Row {row} in {group}: field {field} is missing or invalid.',
+    tr: '{group} içinde {row}. satır: {field} alanı eksik veya geçersiz.' },
+  'staffImport.duplicate': {
+    de: 'Zeile {row} im Putzplan: Zimmer {room} steht am {date} doppelt.',
+    en: 'Row {row} in the cleaning plan: room {room} appears twice on {date}.',
+    tr: 'Temizlik planında {row}. satır: {room} odası {date} tarihinde iki kez var.' },
+  'staffImport.notInProperty': {
+    de: 'Die Person für {username} arbeitet nicht in diesem Haus.',
+    en: 'The person chosen for {username} does not work in this property.',
+    tr: '{username} için seçilen kişi bu tesiste çalışmıyor.' },
   'push.endpoint': {
     de: 'Diese Adresse fuer Benachrichtigungen wird nicht angenommen.',
     en: 'This notification address is not accepted.',
