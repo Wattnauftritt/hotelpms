@@ -28,6 +28,12 @@ interface Props {
   onArbeitsplatz: () => void
   /** Es handelt gerade jemand anderes als der Angemeldete. */
   gewechselt: boolean
+  /**
+   * Darf dieser Benutzer die Personal-App benutzen? Dann steht der Weg
+   * dorthin in der Kopfleiste: die Hausdame plant hier am Rechner und
+   * kontrolliert mit dem Telefon (Sven, 07.10.2026).
+   */
+  personalApp?: boolean
   haeuser: readonly Haus[]
   haus: Haus | undefined
   onHaus: (id: number) => void
@@ -395,6 +401,15 @@ function useKeinKontextmenue(): void {
   }, [])
 }
 
+/** Der Weg in die Personal-App. Ein Link, kein Knopf: es ist eine andere Seite. */
+export function ZurPersonalApp(): JSX.Element {
+  const t = useT()
+  return <a href="/personal"
+            className="text-sm px-2 py-1 rounded-sm text-neutral-600 hover:bg-neutral-100">
+    {t('shell.personalApp')}
+  </a>
+}
+
 export function Shell(props: Props): JSX.Element {
   const online = useOnline()
   const schmal = useSchmal()
@@ -435,6 +450,7 @@ export function Shell(props: Props): JSX.Element {
               */}
             <div className="relative z-10 flex shrink-0 items-center gap-4 bg-white">
               <Installieren />
+              {props.personalApp === true && <ZurPersonalApp />}
               <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
               <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
               <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}

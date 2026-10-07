@@ -3,6 +3,7 @@ import type { TextKey } from './lib/i18n/index.js'
 import { Tape } from './routes/Tape.tsx'
 import { Today } from './routes/Today.tsx'
 import { Housekeeping } from './routes/Housekeeping.tsx'
+import { Reinigungsplan } from './routes/Reinigungsplan.tsx'
 import { Blocks } from './routes/Blocks.tsx'
 import { Setup } from './routes/Setup.tsx'
 import { Reports } from './routes/Reports.tsx'
@@ -191,7 +192,12 @@ export const SCREENS: readonly ScreenDefinition[] = [
                              platformPermissions={c.platformPermissions} /> },
   // Uebernahme aus Altsystemen, zuerst KWHotel. Einrichtung, kein Tagesgeschaeft.
   { key: 'import', group: 'settings', nav: 'nav.import', permission: 'settings:property',
-    render: () => <Datenuebernahme /> }
+    render: () => <Datenuebernahme /> },
+  // Zimmer den Reinigungskraeften zuteilen (0106). Angehaengt, nicht hinter
+  // Housekeeping eingefuegt: an den Schluesseln davor haengen Lesezeichen,
+  // und die Hausdame beginnt weiter mit dem Zimmerstand.
+  { key: 'cleaningPlan', nav: 'nav.cleaningPlan', permission: 'housekeeping:plan',
+    render: c => <Reinigungsplan propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */
