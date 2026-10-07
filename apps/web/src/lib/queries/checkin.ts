@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { CheckinLink, CheckinMailPreview, CheckinSettings } from '@hotelpms/contracts'
+import type { CheckinLink, CheckinMailPreview, CheckinSettings, CleaningWaiverSettings,
+              CleaningWaiverView } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /**
@@ -101,6 +102,37 @@ export function useRevokeCheckinLinks(reservationRef: string) {
       api.post<{ revoked: number }>(`/v1/reservations/${reservationRef}/online-checkin/revoke`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+    }
+  })
+}
+
+/** Reinigungsverzicht fuer den Gast setzen, am Tresen oder am Telefon (0115). */
+export function useSetCleaningWaiver(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { date: string; waived: boolean }) =>
+      api.put<CleaningWaiverView | null>(`/v1/reservations/${reservationRef}/cleaning-waiver`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+    }
+  })
+}
+
+export const useCleaningWaiverSettings = (propertyId: number) =>
+  useQuery<CleaningWaiverSettings>({
+    queryKey: ['cleaningWaiverSettings', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/cleaning-waiver-settings`)
+  })
+
+export function useSaveCleaningWaiverSettings(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: CleaningWaiverSettings) =>
+      api.put<CleaningWaiverSettings>(`/v1/properties/${propertyId}/cleaning-waiver-settings`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['cleaningWaiverSettings', propertyId] })
+      // Der Schalter aendert, was im Plan faellig ist.
+      void qc.invalidateQueries({ queryKey: ['cleaning-plan', propertyId] })
     }
   })
 }

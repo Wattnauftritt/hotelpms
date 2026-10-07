@@ -14,7 +14,7 @@ Die Datei geht **nicht** ins Repo und nicht in den Projektordner: sie trägt Nam
 | Übersetzung einer Zusatzarbeit | `staff_text_translation` (Deutsch) | manuelle immer, DeepL nur, wenn sie zum aktuellen Text gehört |
 | Benutzer | **nicht** angelegt | jeder Alt-Benutzername wird einmal einer Person in StayGrid zugeordnet |
 | Push-Abos, Kennwörter | nichts | jedes Telefon meldet sich in der neuen App neu an |
-| Reinigungsverzicht des Gastes | (noch) nichts | Baustein 10 |
+| Reinigungsverzicht des Gastes | nichts | die Alt-App kennt dazu keine Buchung; in StayGrid hängt er an der Reservierung (Migration 0115) |
 
 ## 2. Dateiformat
 

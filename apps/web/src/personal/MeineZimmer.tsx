@@ -33,6 +33,8 @@ export interface MeinZimmer {
   inspection: 'passed' | 'rework' | null
   inspectionNote: string | null
   inspectionNoteTranslated?: string | null
+  /** Der Gast verzichtet heute (0115); `water`: es gibt eine Flasche dafuer. */
+  waiver?: { water: boolean; delivered: boolean } | null
 }
 interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }
 
@@ -80,6 +82,12 @@ export function MeineZimmer({ propertyId, locale }: {
     onSuccess: neu => { qc.setQueryData(key, neu); setOffen(null); setHinweis(null) },
     onError: fehler
   })
+  const wasser = useMutation({
+    mutationFn: (taskId: number) =>
+      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/water`),
+    onSuccess: neu => { qc.setQueryData(key, neu); setOffen(null); setHinweis(null) },
+    onError: fehler
+  })
   const setzen = useMutation({
     mutationFn: ({ taskId, outcome }: { taskId: number; outcome: Ausgang | null }) =>
       api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}`, { outcome }),
@@ -120,8 +128,9 @@ export function MeineZimmer({ propertyId, locale }: {
         {i === ersteErledigte && <h2 className="text-sm font-semibold text-neutral-500
                                                 pt-3 pb-1">{t('today.done')}</h2>}
         <ZimmerKarte z={z} offen={offen === z.taskId}
-                     laeuft={setzen.isPending || nachgearbeitet.isPending}
+                     laeuft={setzen.isPending || nachgearbeitet.isPending || wasser.isPending}
                      onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
+                     onWasser={() => wasser.mutate(z.taskId)}
                      onToggle={() => setOffen(offen === z.taskId ? null : z.taskId)}
                      onSetzen={outcome => setzen.mutate({ taskId: z.taskId, outcome })}
                      propertyId={propertyId} locale={locale}
@@ -137,10 +146,10 @@ function Marke({ farbe, children }: { farbe: string; children: React.ReactNode }
   </span>
 }
 
-function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, propertyId,
-                       locale, onGemeldet, onFehler }: {
+function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, onWasser,
+                       propertyId, locale, onGemeldet, onFehler }: {
   z: MeinZimmer; offen: boolean; laeuft: boolean; onToggle: () => void
-  onNachgearbeitet: () => void
+  onNachgearbeitet: () => void; onWasser: () => void
   onSetzen: (o: Ausgang | null) => void; propertyId: number; locale: StaffLocale
   onGemeldet: (neu: Tag) => void; onFehler: (e: unknown) => void
 }): JSX.Element {
@@ -148,6 +157,7 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, p
   const nacharbeit = z.inspection === 'rework'
   const fertig = z.status !== 'open' && !nacharbeit
   const [melden, setMelden] = useState(false)
+  const wasserOffen = z.waiver?.water === true && !z.waiver.delivered
 
   return <div className={`rounded-lg border bg-white ${nacharbeit ? 'border-red-400 border-2'
                            : fertig ? 'border-neutral-200 opacity-80'
@@ -166,6 +176,11 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, p
           : <Marke farbe="bg-amber-100 text-amber-900">{t('room.waiting')}</Marke>)}
         {!fertig && z.arrivalToday
           && <Marke farbe="bg-purple-100 text-purple-900">{t('room.arrival')}</Marke>}
+        {z.waiver != null && !fertig
+          && <Marke farbe="bg-amber-100 text-amber-900">{t('room.waived')}</Marke>}
+        {wasserOffen && <Marke farbe="bg-sky-100 text-sky-900">{t('room.water')}</Marke>}
+        {z.waiver?.delivered === true
+          && <Marke farbe="bg-green-100 text-green-900">{t('room.waterDelivered')}</Marke>}
         {z.openProblems > 0
           && <Marke farbe="bg-red-100 text-red-900">{t('room.problems', { n: z.openProblems })}</Marke>}
         {fertig && z.outcome !== null
@@ -187,8 +202,12 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, p
     {offen && <div className="px-4 pb-4 space-y-2">
       {nacharbeit && <button type="button" disabled={laeuft} className={KNOPF}
                              onClick={onNachgearbeitet}>{t('inspect.reworked')}</button>}
+      {/* Verzicht mit Wasser: die Flasche ist die Aufgabe, nicht die Reinigung. */}
+      {wasserOffen && !nacharbeit && <button type="button" disabled={laeuft} className={KNOPF}
+                                             onClick={onWasser}>{t('room.waterDone')}</button>}
       {!fertig && !nacharbeit && <>
-        <button type="button" disabled={laeuft} className={KNOPF}
+        <button type="button" disabled={laeuft}
+                className={wasserOffen ? KNOPF_LEISE : KNOPF}
                 onClick={() => onSetzen('cleaned')}>{t('outcome.cleaned')}</button>
         <div className="grid grid-cols-2 gap-2">
           <button type="button" disabled={laeuft} className={`${KNOPF_LEISE} text-sm`}

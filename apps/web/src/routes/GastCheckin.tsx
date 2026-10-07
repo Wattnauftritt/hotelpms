@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CHECKIN_PATH, CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
          istAuslaendisch, type CheckinFormView, type CheckinSubmit,
-         type CheckinSubmitted, type CheckinTaxExemption } from '@hotelpms/contracts'
+         type CheckinSubmitted, type CheckinTaxExemption,
+         type CleaningWaiverView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { LOCALES, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
          type TextKey } from '../lib/i18n/index.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Datumsfeld } from '../components/Datumsfeld.tsx'
+import { VerzichtTage } from '../components/Reinigungsverzicht.tsx'
 
 /**
  * Online-Check-in: die Seite des Gastes (Dokument 30).
@@ -144,6 +146,9 @@ export function GastCheckin({ token, modus, onFertig }: {
         {view !== null && ergebnis === null && view.state === 'open' && (
           <Formular token={token} view={view} gross={gross} onErledigt={setErgebnis} />
         )}
+        {view?.cleaningWaiver != null && (
+          <Verzicht token={token} start={view.cleaningWaiver} gross={gross} />
+        )}
       </div>
     </I18nContext.Provider>
   )
@@ -173,6 +178,43 @@ function OhneLink(): JSX.Element {
 }
 
 // ------------------------------------------------------------- Bausteine
+
+/**
+ * Reinigungsverzicht (0115). Unter dem Meldeschein und nicht davor: wer den
+ * Link oeffnet, soll zuerst sehen, was er tun muss, dann was er tun kann.
+ * Eigener Zustand wie der Rest der Seite, kein Zwischenspeicher.
+ */
+function Verzicht({ token, start, gross }: {
+  token: string; start: CleaningWaiverView; gross: boolean
+}): JSX.Element | null {
+  const t = useT()
+  const [view, setView] = useState<CleaningWaiverView | null>(start)
+  const [busy, setBusy] = useState(false)
+  const [fehler, setFehler] = useState<unknown>(null)
+  if (view === null) return null
+  const setzen = (date: string, waived: boolean): void => {
+    setBusy(true); setFehler(null)
+    api.post<CleaningWaiverView | null>('/v1/checkin/cleaning-waiver', { date, waived },
+      { [CHECKIN_TOKEN_HEADER]: token })
+      .then(setView)
+      .catch((e: unknown) => setFehler(e))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <section className={`rounded-sm border border-neutral-200 bg-white space-y-3
+                         ${gross ? 'p-6' : 'p-4'}`}>
+      <h2 className={`${gross ? 'text-xl' : 'text-base'} font-semibold`}>
+        {t('gastCheckin.waiver.title')}
+      </h2>
+      <p className="text-neutral-700">
+        {t('gastCheckin.waiver.text')}{view.waterGift && <> {t('gastCheckin.waiver.water')}</>}
+      </p>
+      <p className="font-medium">{t('gastCheckin.waiver.skip')}:</p>
+      <VerzichtTage view={view} onSet={setzen} busy={busy} gross={gross} />
+      {fehler !== null && <Meldung fehler={fehler} gross={gross} />}
+    </section>
+  )
+}
 
 function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => void }
 ): JSX.Element {

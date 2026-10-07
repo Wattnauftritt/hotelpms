@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { onlineCheckinStand } from '../platform/checkin.js'
+import { verzichtStand } from '../platform/reinigungsverzicht.js'
+import { tagOderOffen } from './cleaningPlan.js'
 import { tx } from '../platform/db.js'
 import { AppError, Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
@@ -11,7 +13,7 @@ import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen, addDays,
          type ReservationStatus, type ReservationAction,
          type WebhookEventType } from '@hotelpms/domain'
-import type { Principal } from '../platform/context.js'
+import { can, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -1274,7 +1276,7 @@ export function reservationRoutes(app: FastifyInstance): void {
       const { reservationRef } = req.params as { reservationRef: string }
       return tx(req.pool, req, async client => {
         const r = await client.query<{ id: number }>(
-          `SELECT r.id,
+          `SELECT r.id, r.property_id AS "_propertyId",
                   r.public_ref            AS "reservationRef",
                   b.public_ref            AS "bookingRef",
                   -- Wie viele Aufenthalte an der Buchung haengen. Das Fenster
@@ -1349,15 +1351,22 @@ export function reservationRoutes(app: FastifyInstance): void {
         // (Dokument 30). Im selben Aufruf, nicht als zweiter vom Fenster.
         const onlineCheckin = await onlineCheckinStand(client, kopf.id as number,
           req.principal as Principal)
+        // Reinigungsverzicht (0115), ebenfalls im selben Aufruf.
+        const hausId = Number(kopf._propertyId)
+        const cleaningWaiver = await verzichtStand(client, kopf.id as number, hausId,
+          await tagOderOffen(client, hausId, undefined),
+          can(req.principal as Principal, 'reservation:checkin', hausId))
 
         // Die laufende id bleibt drinnen; nach aussen geht die oeffentliche
         // Referenz (C1, Dokument 13).
         delete kopf.id
+        delete kopf._propertyId
         return {
           ...kopf,
           nights: naechte.rows,
           occupants: mitreisende.rows,
           onlineCheckin,
+          cleaningWaiver,
           totalCent: naechte.rows.reduce(
             (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
         }

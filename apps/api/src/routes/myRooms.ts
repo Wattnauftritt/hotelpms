@@ -72,6 +72,11 @@ interface MeinZimmer {
   arrivalToday: boolean
   /** Offene Wartungsmeldungen am Zimmer, damit niemand dasselbe zweimal meldet. */
   openProblems: number
+  /**
+   * Der Gast verzichtet heute auf die Reinigung (0115). `water`: das Haus
+   * gibt dafuer eine Flasche, `delivered`: sie steht schon vor der Tuer.
+   */
+  waiver: { water: boolean; delivered: boolean } | null
 }
 
 /**
@@ -101,10 +106,21 @@ async function liesMeineZimmer(
                      WHERE an.resource_id = r.id AND an.arrival = t.business_date
                        AND an.status IN ('Confirmed','InHouse')) AS "arrivalToday",
             (SELECT count(*)::int FROM maintenance_ticket m
-              WHERE m.resource_id = r.id AND m.status <> 'done') AS "openProblems"
+              WHERE m.resource_id = r.id AND m.status <> 'done') AS "openProblems",
+            CASE WHEN w.id IS NOT NULL THEN json_build_object(
+              'water', COALESCE(s.enabled AND s.water_gift, false),
+              'delivered', w.water_delivered_at IS NOT NULL) END AS waiver
        FROM housekeeping_task t
        JOIN resource r ON r.id = t.resource_id
        JOIN resource_category c ON c.id = r.category_id
+       LEFT JOIN property_cleaning_waiver_setting s ON s.property_id = t.property_id
+       LEFT JOIN LATERAL (
+              SELECT w.id, w.water_delivered_at FROM cleaning_waiver w
+                JOIN reservation b ON b.id = w.reservation_id
+               WHERE t.kind = 'stayover' AND b.resource_id = r.id
+                 AND w.business_date = t.business_date AND w.withdrawn_at IS NULL
+                 AND b.status IN ('Confirmed','InHouse')
+               LIMIT 1) w ON true
       WHERE t.property_id = $1 AND t.assigned_to = $2 AND t.business_date = $3::date
         AND t.kind IN ('departure','stayover')
       ORDER BY r.building NULLS LAST,
@@ -267,6 +283,46 @@ export function myRoomsRoutes(app: FastifyInstance): void {
    * offen: ein tropfender Hahn hindert nicht am Putzen, und wenn doch, sagt
    * die Kraft das mit dem Ausgang.
    */
+  /**
+   * Wasser hingestellt (Reinigungsverzicht, 0115). Haekt die Flasche ab und
+   * meldet das Zimmer, wenn noch nichts gemeldet ist, als "keine Reinigung
+   * gewuenscht" -- es wurde nicht gereinigt und zaehlt keine Minuten, wie
+   * in der alten App. Ein zweiter Druck aendert nichts.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/my-rooms/:taskId/water',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Wasser beim Reinigungsverzicht hingestellt (Personal-App)',
+    handler: async (req) => {
+      const { propertyId, taskId } = aufgabeAusPfad(req)
+      const ich = personVon(req)
+      return tx(req.pool, req, async client => {
+        const aufgabe = await eigeneAufgabe(client, propertyId, ich, taskId)
+        const w = await client.query(
+          `UPDATE cleaning_waiver w
+              SET water_delivered_at = COALESCE(w.water_delivered_at, now()),
+                  water_delivered_by = COALESCE(w.water_delivered_by, $3)
+             FROM reservation b, housekeeping_task t, property_cleaning_waiver_setting s
+            WHERE t.id = $1 AND t.kind = 'stayover'
+              AND b.id = w.reservation_id AND b.resource_id = t.resource_id
+              AND b.status IN ('Confirmed','InHouse')
+              AND w.business_date = t.business_date AND w.withdrawn_at IS NULL
+              AND s.property_id = $2 AND s.enabled AND s.water_gift`,
+          [taskId, propertyId, ich])
+        if (w.rowCount === 0) throw Errors.unprocessable('cleaningWaiver.noWater')
+        if (aufgabe.outcome === null) {
+          await client.query(
+            `UPDATE housekeeping_task
+                SET outcome = 'declined', status = 'skipped', done_at = now(), done_by = $2
+              WHERE id = $1`, [taskId, ich])
+        }
+        return liesMeineZimmer(client, propertyId, ich, aufgabe.date)
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'POST',
     url: '/v1/properties/:propertyId/my-rooms/:taskId/problem',

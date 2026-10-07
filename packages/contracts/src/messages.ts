@@ -1449,6 +1449,22 @@ const M = {
     de: 'Die Datei ist kein Export der alten Personal-App.',
     en: 'The file is not an export of the old staff app.',
     tr: 'Dosya eski personel uygulamasının dışa aktarımı değil.' },
+  'cleaningWaiver.disabled': {
+    de: 'Das Haus bietet den Verzicht auf die Zwischenreinigung nicht an.',
+    en: 'The property does not offer skipping the stay-over cleaning.',
+    tr: 'Tesis ara temizlikten vazgeçme seçeneği sunmuyor.' },
+  'cleaningWaiver.notAStayDay': {
+    de: 'An diesem Tag ist keine Zwischenreinigung vorgesehen.',
+    en: 'No stay-over cleaning is planned on this day.',
+    tr: 'Bu gün için ara temizlik planlanmamış.' },
+  'cleaningWaiver.locked': {
+    de: 'Das Zimmer ist fuer diesen Tag schon gemeldet; der Wunsch aendert nichts mehr.',
+    en: 'The room has already been reported for this day; the request no longer changes anything.',
+    tr: 'Oda bu gün için zaten bildirildi; istek artık bir şey değiştirmez.' },
+  'cleaningWaiver.noWater': {
+    de: 'Fuer dieses Zimmer ist heute kein Wasser vorgesehen.',
+    en: 'No water is due for this room today.',
+    tr: 'Bu oda için bugün su öngörülmemiş.' },
   'staffImport.format': {
     de: 'Die Datei ist kein Export der alten Personal-App (Feld format).',
     en: 'The file is not an export of the old staff app (field format).',

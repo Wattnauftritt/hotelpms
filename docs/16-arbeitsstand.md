@@ -1061,7 +1061,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Schritt 2: der Sortierer als reine Funktion in `packages/domain`. Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker, Züge des Sortierers ohne `local`-Vermerk. Schritt 4: Hotel — Vorschau, Übernehmen, Rückgängig im Zimmerplan.
 
-### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 9 von 10**
+### Aufgabe 18 — Personalsystem und Personal-App — **fertig, Bausteine 1 bis 10**
 
 **Anlass.** Sven, 07.10.2026: StayGrid übernimmt das Personalsystem, das bisher eine eigene App war (Repo `zurseerobbe`, Flask-PWA): Putzplan, Zimmerstatus, Kontrolle durch die Hausdame, Frühstückszahl für die Küche, Zusatzarbeiten mit Minuten, Oberfläche in de/en/ru/uk mit Rückübersetzung frei eingetragener Tätigkeiten. Plan mit zehn Bausteinen: Projektordner `personal-app/plan.md`. Die alte App läuft weiter, bis Sven umschaltet. **Keine Kommen/Gehen-Erfassung:** das Personal kommt von einer Zeitarbeitsfirma und wird vertraglich nach Pauschalminuten je Zimmer abgerechnet (Svens Entscheidung).
 
@@ -1085,7 +1085,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Baustein 9 (Altdaten).** Der Vertrag mit dem Cleaning-Backend steht in [`34-altdaten-personal-app.md`](34-altdaten-personal-app.md): eine JSON-Datei mit Manifest (Zeilenzahl und SHA-256 je Liste, kanonisch wie `json.dumps(…, sort_keys=True)`), Personal, Putzplan mit gespeicherten Minuten, Zusatzarbeiten mit deutscher Übersetzung. `POST /v1/properties/:id/staff-import` (`worktime:manage`) rechnet ohne `commit` einen Trockenlauf und schreibt mit `commit` in einer Transaktion: jeder Tag des Ausschnitts wird ersetzt, soweit er aus der Alt-App kam (`source = 'legacy'`), StayGrid gewinnt je Zimmer und Tag, abgeschlossene Monate bleiben. Migration `0114`: `staff_legacy_user` merkt sich die Zuordnung Alt-Benutzername → Person für jeden Folgeexport. Prüfen der Datei in `parseLegacyStaffExport` (`@hotelpms/domain`). Bildschirm Arbeitszeit, Abschnitt „Altdaten aus der alten Personal-App“. Den Exportbefehl baut das Cleaning-Backend nach Dokument 34. Tests: `personalAltdaten.test.ts`, `staffLegacy.test.ts`.
 
-**Offen.** 10: Reinigungsverzicht des Gastes.
+**Baustein 10 (Reinigungsverzicht).** Migration `0115`: `property_cleaning_waiver_setting` (zwei Schalter je Haus wie in der alten App: Verzicht überhaupt, Wasser als Dank; beide aus als Vorgabe) und `cleaning_waiver` je Reservierung und Bleibetag. In der alten App eine offene Seite ohne Bezug zur Buchung, auf der jeder für jedes Zimmer verzichten konnte; hier setzt ihn nur, wer die Reservierung vor sich hat — der Gast über seinen Check-in-Link (gilt bis zur Abreise, auch nach dem Meldeschein und an der Station, `POST /v1/checkin/cleaning-waiver`), die Rezeption im Seitenfenster (`PUT /v1/reservations/:ref/cleaning-waiver`, `reservation:checkin`). Die Regel für beide in `platform/reinigungsverzicht.ts`: Bleibetage ab dem Geschäftstag, gesperrt, sobald die Kraft das Zimmer an dem Tag gemeldet hat; zurückgenommen wird mit `withdrawn_at`, nicht gelöscht. Im Plan fällt ein verzichtetes Zimmer ohne Wasser aus dem Fälligen, mit Wasser bleibt es drin, und die Kraft hakt „Wasser hingestellt“ ab (`POST …/my-rooms/:taskId/water`) — das meldet zugleich „keine Reinigung gewünscht“, null Minuten wie in der alten App. Schalter im Reinigungsplan unter `housekeeping:plan`. Tests: `reinigungsverzicht.test.ts`.
+
+**Offen.** Nichts aus dem Plan. Umschalten von der alten App entscheidet Sven; vorher braucht der Betrieb `DEEPL_API_KEY` (Pro mit AVV), die VAPID-Schlüssel und den Exportbefehl des Cleaning-Backends nach Dokument 34.
 
 ---
 

@@ -820,6 +820,47 @@ export const OnlineCheckinStatus = Type.Object({
 })
 export type OnlineCheckinStatus = Static<typeof OnlineCheckinStatus>
 
+/**
+ * Reinigungsverzicht des Gastes (Aufgabe 18, Baustein 10; Migration 0115).
+ *
+ * Dieselbe Form fuer die Gastseite und das Seitenfenster der Rezeption:
+ * beide zeigen die Bleibetage ab heute und ob dort verzichtet ist. Sie kommt
+ * mit der Seite, die sie traegt (`CheckinFormView`, `ReservationDetail`),
+ * nicht als eigener Aufruf.
+ */
+export const CleaningWaiverDay = Type.Object({
+  date: IsoDate,
+  waived: Type.Boolean(),
+  /**
+   * Die Kraft hat das Zimmer an diesem Tag schon gemeldet (gereinigt,
+   * abgelehnt, Wasser hingestellt). Danach aendert der Wunsch nichts mehr --
+   * er wuerde nur zeigen, was nicht geschehen ist.
+   */
+  locked: Type.Boolean()
+})
+export type CleaningWaiverDay = Static<typeof CleaningWaiverDay>
+
+export const CleaningWaiverView = Type.Object({
+  /** Gibt es als Dank eine Flasche Wasser? Steht so auf der Gastseite. */
+  waterGift: Type.Boolean(),
+  days: Type.Array(CleaningWaiverDay),
+  /** Darf der Aufrufer hier setzen? Fuer die Rezeption; der Gast immer. */
+  mayEdit: Type.Boolean()
+})
+export type CleaningWaiverView = Static<typeof CleaningWaiverView>
+
+export const CleaningWaiverSet = Type.Object({
+  date: IsoDate,
+  waived: Type.Boolean()
+}, { additionalProperties: false })
+export type CleaningWaiverSet = Static<typeof CleaningWaiverSet>
+
+export const CleaningWaiverSettings = Type.Object({
+  enabled: Type.Boolean(),
+  waterGift: Type.Boolean()
+}, { additionalProperties: false })
+export type CleaningWaiverSettings = Static<typeof CleaningWaiverSettings>
+
 export const ReservationDetail = Type.Object({
   reservationRef: Type.String(),
   bookingRef: Type.String(),
@@ -872,7 +913,9 @@ export const ReservationDetail = Type.Object({
   nights: Type.Array(ReservationNight),
   occupants: Type.Array(ReservationOccupant),
   totalCent: Cent,
-  onlineCheckin: Type.Optional(OnlineCheckinStatus)
+  onlineCheckin: Type.Optional(OnlineCheckinStatus),
+  /** Reinigungsverzicht (0115); `null`, wenn das Haus ihn nicht anbietet oder kein Bleibetag mehr kommt. */
+  cleaningWaiver: Type.Optional(Type.Union([CleaningWaiverView, Type.Null()]))
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 

@@ -293,6 +293,38 @@ export const onlineCheckin = {
       + 'arrival; please have your passport or identity card ready.',
     tr: 'Bilgileriniz alındı. İmzayı varış günü tesiste atacaksınız; lütfen '
       + 'pasaportunuzu veya kimlik kartınızı hazır bulundurun.' },
+  'gastCheckin.waiver.title': {
+    de: 'Zimmerreinigung während des Aufenthalts',
+    en: 'Room cleaning during your stay',
+    tr: 'Konaklama sırasında oda temizliği' },
+  'gastCheckin.waiver.text': {
+    de: 'Sie brauchen an einem Tag keine Reinigung? Dann lassen wir Sie in Ruhe – und sparen Wasser und Waschmittel.',
+    en: 'Don’t need cleaning on a given day? Then we will leave you in peace – and save water and detergent.',
+    tr: 'Bir gün temizliğe ihtiyacınız yok mu? O zaman sizi rahatsız etmeyiz – su ve deterjan tasarrufu yaparız.' },
+  'gastCheckin.waiver.water': {
+    de: 'Als Dankeschön stellen wir Ihnen an diesem Tag eine Flasche Wasser vor die Tür.',
+    en: 'As a thank-you, we will leave a bottle of water at your door that day.',
+    tr: 'Teşekkür olarak o gün kapınızın önüne bir şişe su bırakacağız.' },
+  'gastCheckin.waiver.skip': {
+    de: 'Keine Reinigung',
+    en: 'No cleaning',
+    tr: 'Temizlik yok' },
+  'gastCheckin.waiver.locked': {
+    de: 'erledigt',
+    en: 'done',
+    tr: 'tamamlandı' },
+  'reservation.waiver.title': {
+    de: 'Zwischenreinigung',
+    en: 'Stay-over cleaning',
+    tr: 'Ara temizlik' },
+  'reservation.waiver.hint': {
+    de: 'Angehakt: der Gast verzichtet an diesem Tag.',
+    en: 'Ticked: the guest skips cleaning on that day.',
+    tr: 'İşaretli: misafir o gün temizlikten vazgeçiyor.' },
+  'reservation.waiver.water': {
+    de: 'Dafür gibt es eine Flasche Wasser.',
+    en: 'A bottle of water is given in return.',
+    tr: 'Karşılığında bir şişe su verilir.' },
   'gastCheckin.done.close': {
     de: 'Fertig',
     en: 'Done',

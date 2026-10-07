@@ -1,5 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox'
-import { IsoDate } from './schemas.js'
+import { IsoDate, CleaningWaiverView } from './schemas.js'
 
 /**
  * Online-Check-in: der Vertrag zwischen Gastseite, Terminal und Schnittstelle.
@@ -184,7 +184,12 @@ export const CheckinFormView = Type.Object({
     code: Type.String(),
     label: Type.String(),
     needsProof: Type.Boolean()
-  }))
+  })),
+  /**
+   * Reinigungsverzicht (0115): die Bleibetage ab heute. `null`, wenn das
+   * Haus ihn nicht anbietet oder kein Bleibetag mehr kommt.
+   */
+  cleaningWaiver: Type.Union([CleaningWaiverView, Type.Null()])
 })
 export type CheckinFormView = Static<typeof CheckinFormView>
 

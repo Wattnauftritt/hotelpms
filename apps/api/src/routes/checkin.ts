@@ -19,6 +19,7 @@ import { erfasseMeldeschein, unterschreibeMeldeschein,
 import { geltendeBedingungen, stimmeBedingungZu,
          type GeltendeBedingung } from '../platform/hausbedingungen.js'
 import { gastAendern, gastAnlegen } from '../platform/gast.js'
+import { verzichtStand, setzeVerzicht } from '../platform/reinigungsverzicht.js'
 import type { Principal } from '../platform/context.js'
 
 /**
@@ -421,6 +422,16 @@ async function reservierungAmTresen(
   return r
 }
 
+/** `{date, waived}` -- fuer Gastseite und Rezeption dieselbe Pruefung. */
+export function verzichtAusRumpf(body: unknown): { date: string; waived: boolean } {
+  const b = (istObjekt(body) ? body : {}) as { date?: unknown; waived?: unknown }
+  if (typeof b.date !== 'string' || !isIsoDate(b.date)) {
+    throw Errors.validation({ date: ['field.isoDate'] })
+  }
+  if (typeof b.waived !== 'boolean') throw Errors.validation({ waived: ['field.invalid'] })
+  return { date: b.date, waived: b.waived }
+}
+
 // ------------------------------------------------------------------- Routen
 
 export function checkinRoutes(app: FastifyInstance): void {
@@ -455,8 +466,34 @@ export function checkinRoutes(app: FastifyInstance): void {
             requiresSignature: b.requiresSignature })),
           digitalGuestCardOffered: await meldetAnAvs(client, r.property_id),
           exemptionReasons: (await befreiungsgruende(client, r.property_id)).map(g => ({
-            code: g.code, label: g.label, needsProof: g.needs_proof }))
+            code: g.code, label: g.label, needsProof: g.needs_proof })),
+          cleaningWaiver: await verzichtStand(client, k.reservationId, k.propertyId,
+            k.businessDate, true)
         }
+      })
+    }
+  })
+
+  /**
+   * Auf die Zwischenreinigung eines Tages verzichten, oder es zuruecknehmen
+   * (Baustein 10, Migration 0115). Der Link gilt bis zur Abreise und reicht
+   * damit fuer den ganzen Aufenthalt -- auch nachdem der Meldeschein
+   * eingereicht ist; dafuer bekommt der Gast keinen zweiten.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/checkin/cleaning-waiver',
+    // Oeffentlich: der Link in der Kopfzeile ist der Ausweis (Dokument 30).
+    permission: null,
+    summary: 'Online-Check-in: auf die Zwischenreinigung eines Tages verzichten',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      const { date, waived } = verzichtAusRumpf(req.body)
+      return checkinTx(req, async (client, k) => {
+        await setzeVerzicht(client, {
+          reservationId: k.reservationId, propertyId: k.propertyId,
+          businessDate: k.businessDate, date, waived, source: 'guest', userId: null })
+        return verzichtStand(client, k.reservationId, k.propertyId, k.businessDate, true)
       })
     }
   })
