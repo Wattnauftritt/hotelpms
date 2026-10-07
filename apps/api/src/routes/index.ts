@@ -13,6 +13,7 @@ import { sharedGuestProfileRoutes } from './sharedGuestProfiles.js'
 import { rateRoutes } from './rates.js'
 import { rateSteeringRoutes } from './rateSteering.js'
 import { housekeepingRoutes } from './housekeeping.js'
+import { cleaningPlanRoutes } from './cleaningPlan.js'
 import { registrationRoutes } from './registrations.js'
 import { termsRoutes } from './terms.js'
 import { taxExemptionRoutes } from './taxExemptions.js'
@@ -79,6 +80,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   rateRoutes(app)
   rateSteeringRoutes(app)
   housekeepingRoutes(app)
+  cleaningPlanRoutes(app)
   registrationRoutes(app)
   termsRoutes(app)
   taxExemptionRoutes(app)

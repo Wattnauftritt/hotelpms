@@ -196,6 +196,11 @@ const texte = {
     en: 'On iPhone: tap Share, then “Add to Home Screen”.',
     ru: 'На iPhone: «Поделиться», затем «На экран „Домой“».',
     uk: 'На iPhone: «Поділитися», потім «На екран „Додому“».' },
+  'more.toReception': {
+    de: 'Zur StayGrid-Oberfläche',
+    en: 'Open StayGrid desk view',
+    ru: 'Открыть StayGrid для ресепшена',
+    uk: 'Відкрити StayGrid для рецепції' },
   'more.logout': {
     de: 'Abmelden',
     en: 'Sign out',

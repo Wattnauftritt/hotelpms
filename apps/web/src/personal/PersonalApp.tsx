@@ -301,6 +301,16 @@ function Start({ me, locale, onLocale }: {
             {t('more.signedInAs', { name: me.username ?? me.displayName })}
           </p>
           <Installieren />
+          {/*
+            * Wer mehr darf als die Personal-App -- Hausdame, Direktion --,
+            * arbeitet auch an der Oberflaeche der Rezeption und wechselt
+            * zwischen beiden (Sven, 07.10.2026). Dieselbe Sitzung, ein Link.
+            */}
+          {me.properties.some(p => p.permissions.some(r => r !== 'staff:app')) && (
+            <a href="/" className={`block text-center ${KNOPF_LEISE}`}>
+              {t('more.toReception')}
+            </a>
+          )}
           <button type="button" className={KNOPF_LEISE} onClick={() => { void abmelden() }}>
             {t('more.logout')}
           </button>

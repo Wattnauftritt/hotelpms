@@ -29,6 +29,7 @@ import { mobil } from './mobil.js'
 import { meldescheine } from './meldescheine.js'
 import { kassenbuch } from './kassenbuch.js'
 import { zimmerSortieren } from './zimmerSortieren.js'
+import { reinigungsplan } from './reinigungsplan.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -146,7 +147,8 @@ const texts = {
   ...mobil,
   ...meldescheine,
   ...kassenbuch,
-  ...zimmerSortieren
+  ...zimmerSortieren,
+  ...reinigungsplan
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts

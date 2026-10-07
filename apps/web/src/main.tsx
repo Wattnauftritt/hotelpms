@@ -373,6 +373,7 @@ function App(): JSX.Element {
            onAbmelden={() => { void abmelden() }}
            onArbeitsplatz={() => setArbeitsplatz(true)}
            gewechselt={me.data.workstationSwitched}
+           personalApp={rechte.includes('staff:app')}
            haeuser={haeuser} haus={haus}
            onHaus={id => {
              /*
