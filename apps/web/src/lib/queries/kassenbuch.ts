@@ -122,6 +122,16 @@ export function useStornieren(propertyId: number) {
   })
 }
 
+/** Vollstaendig loeschen, solange nichts davon an DATEV ging (Migration 0100). */
+export function useLoeschen(propertyId: number) {
+  const nachladen = useNachladen(propertyId)
+  return useMutation({
+    mutationFn: (entryNo: number) =>
+      api.delete<{ erasedNos: number[] }>(`/v1/properties/${propertyId}/cashbook/entries/${entryNo}`),
+    onSuccess: nachladen
+  })
+}
+
 export function useBelegNachreichen(propertyId: number) {
   const nachladen = useNachladen(propertyId)
   return useMutation({

@@ -1047,6 +1047,8 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Belege an DATEV.** Migration `0098`: beim Markieren geht jeder fällige Beleg als eigene Mail (Art `cashbook_receipt`) an `datev_upload_email`, der Anhang als Verweis auf `cashbook_receipt` wie die Rechnung auf `invoice_document`. Gescheitertes und Nachgereichtes geht beim nächsten Markieren oder über `POST …/cashbook/datev/receipts` raus.
 
+**Gruppen und Löschen (07.10.2026).** Die Übernahme nummeriert eine Gastbuchung am Stück, der Monat ordnet jede Gruppe unter ihrer ersten Zeile, und die Oberfläche klappt sie auf eine Zeile mit Summe zu. Migration `0100`: auf Svens Entscheidung („Bis zum DATEV-Export") lässt sich eine Buchung samt Gruppe, Stornos und Belegen löschen, solange nichts davon an DATEV ging — über `cashbook_erase()`, mit Protokoll; `UPDATE` bleibt gesperrt, Übernommenes löscht nur das Adminpanel.
+
 **Offen.** Nichts im Code. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
 
 ---

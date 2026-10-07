@@ -512,6 +512,38 @@ export function cashbookRoutes(app: FastifyInstance): void {
   })
 
   registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/cashbook/entries/:entryNo',
+    permission: 'cashbook:void',
+    propertyParam: 'propertyId',
+    summary: 'Kassenbuch: Buchung loeschen, solange sie nicht an DATEV ging (Gastbuchung als Ganzes)',
+    handler: async (req) => {
+      const { propertyId, entryNo } = req.params as { propertyId: string; entryNo: string }
+      const haus = Number(propertyId)
+      return tx(req.pool, req, async client => {
+        await eingeschaltet(client, haus)
+        const z = await buchung(client, haus, Number(entryNo))
+        if (z.reverses_id !== null) throw Errors.conflict('cashbook.eraseReversal')
+        const kopf = z.group_id ?? z.id
+        // Dieselben Pruefungen wie in cashbook_erase(), hier mit lesbarer
+        // Antwort. Die Funktion bleibt der Riegel, falls die Route irrt.
+        const p = await client.query<{ fremd: boolean; datev: boolean }>(
+          `SELECT k.external_system IS NOT NULL AS fremd,
+                  EXISTS (SELECT 1 FROM cashbook_entry e JOIN cashbook_datev_mark d ON d.entry_id = e.id
+                           WHERE e.id = k.id OR e.group_id = k.id
+                              OR e.reverses_id IN (SELECT g.id FROM cashbook_entry g
+                                                    WHERE g.id = k.id OR g.group_id = k.id)) AS datev
+             FROM cashbook_entry k WHERE k.id = $1`, [kopf])
+        if (p.rows[0]!.fremd) throw Errors.conflict('cashbook.eraseImported')
+        if (p.rows[0]!.datev) throw Errors.conflict('cashbook.eraseExported')
+        const r = await client.query<{ n: string[] }>(
+          `SELECT cashbook_erase($1, $2)::text[] AS n`, [haus, Number(entryNo)])
+        return { erasedNos: r.rows[0]!.n.map(Number) }
+      })
+    }
+  })
+
+  registerRoute(app, {
     method: 'POST',
     url: '/v1/properties/:propertyId/cashbook/entries/:entryNo/receipts',
     permission: 'cashbook:write',
