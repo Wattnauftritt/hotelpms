@@ -34,7 +34,12 @@ import { BELEG_RUMPF_MAX, belegAnhaengen, belegAusDaten } from '../platform/kass
  *
  * **Probelauf.** `dryRun` rechnet alles in der Transaktion und rollt es
  * zurueck; die Antwort ist dieselbe. Der Befehl im Adminpanel faehrt damit
- * zuerst.
+ * zuerst. Ein Probelauf nimmt die ganze Kasse in **einem** Stapel
+ * (`STAPEL_PROBE_MAX`): ueber mehrere Stapel verteilt behielte er vom
+ * vorigen nichts, und die Gegenprobe im letzten saehe nur dessen Zeilen und
+ * keinen Anfangsbestand -- sie koennte nie stimmen (so im ersten Probelauf
+ * am 07.10.2026). Ein echter Lauf bleibt bei `STAPEL_MAX`, damit eine
+ * Transaktion kurz bleibt; der Probelauf haelt nichts fest.
  *
  * **Gegenprobe.** `check` traegt die Monatswerte des Adminpanels, die
  * Antwort stellt die eigenen daneben.
@@ -45,6 +50,8 @@ import { BELEG_RUMPF_MAX, belegAnhaengen, belegAusDaten } from '../platform/kass
  */
 
 const STAPEL_MAX = 500
+/** Ein Hotel bucht keine zehntausend Kassenzeilen, bevor es umstellt. */
+const STAPEL_PROBE_MAX = 10_000
 /** Eine Kasse seit April 2026; mehr als das ist kein Kassenbuch eines Hotels. */
 const IDS_MAX = 500_000
 const MONATE_MAX = 60
@@ -137,7 +144,9 @@ function pruefe(body: unknown): Eingabe {
   const roh = body.entries ?? []
   const entries: Eintrag[] = []
   if (!Array.isArray(roh)) fehler('entries')
-  else if (roh.length > STAPEL_MAX) fehler('entries', 'field.maxValue')
+  else if (roh.length > (body.dryRun === true ? STAPEL_PROBE_MAX : STAPEL_MAX)) {
+    fehler('entries', 'field.maxValue')
+  }
   else {
     const gesehen = new Set<number>()
     roh.forEach((e: unknown, i: number) => {
@@ -251,7 +260,9 @@ function pruefe(body: unknown): Eingabe {
     }
   }
 
-  if (Object.keys(f).length > 0) throw Errors.validation(f, { max: STAPEL_MAX })
+  if (Object.keys(f).length > 0) {
+    throw Errors.validation(f, { max: body.dryRun === true ? STAPEL_PROBE_MAX : STAPEL_MAX })
+  }
   return { system: system!, dryRun: body.dryRun === true,
            settings: istObjekt(body.settings) ? body.settings : null,
            entries: entries.sort((a, b) => a.id - b.id), reconcile, check }
@@ -326,8 +337,9 @@ export function cashbookImportRoutes(app: FastifyInstance): void {
     url: '/v1/properties/:propertyId/cashbook/import',
     permission: 'cashbook:import',
     propertyParam: 'propertyId',
-    // Die ID-Liste: eine halbe Million Zahlen sind gut drei Megabyte.
-    bodyLimit: 8 * 1024 * 1024,
+    // Die ID-Liste: eine halbe Million Zahlen sind gut drei Megabyte; ein
+    // Probelauf mit zehntausend Zeilen zu je einem halben Kilobyte noch fuenf.
+    bodyLimit: 16 * 1024 * 1024,
     summary: 'Kassenbuch aus einem Umsystem uebernehmen (idempotent, mit Probelauf)',
     handler: async (req) => {
       const haus = Number((req.params as { propertyId: string }).propertyId)
