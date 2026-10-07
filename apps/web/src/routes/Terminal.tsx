@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { LOCALES, I18nContext, useT, useLocale, formatDate, type Locale }
   from '../lib/i18n/index.js'
 import { api, ApiError } from '../lib/api.js'
@@ -7,7 +7,9 @@ import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { Bildschirmtastatur } from '../components/Bildschirmtastatur.tsx'
 import { Fehler } from '../components/Shell.tsx'
 import { GastCheckin } from './GastCheckin.tsx'
+import { Ruhebild, type Folie } from '../components/Ruhebild.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
+import { useBildschirmWach } from '../lib/wachhalten.js'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -86,11 +88,11 @@ export function hauptskript(html: string): string | null {
 
 type Art = 'registration_fill' | 'registration_sign' | 'terms_sign' | 'content' | 'url'
 
-interface Folie { title: string; body: string; seconds: number; imageRef: string | null }
-
 interface Frage {
   property: string
   isTraining: boolean
+  /** In der Wachzeit des Geraets (Migration 0102)? */
+  awake: boolean
   job: { jobRef: string; kind: Art; state: string } | null
 }
 
@@ -141,6 +143,10 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
   })
   const [haus, setHaus] = useState<{ name: string; uebung: boolean } | null>(null)
   const [ohneNetz, setOhneNetz] = useState(false)
+  // Die Wachzeit rechnet die Schnittstelle in der Zeit des Hauses aus und
+  // sagt sie mit jeder Frage; die Uhr des Geraets zaehlt dafuer nicht.
+  const [wach, setWach] = useState(false)
+  useBildschirmWach(wach)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
 
@@ -216,6 +222,7 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
         if (aus) return
         setOhneNetz(false)
         setHaus({ name: f.property, uebung: f.isTraining })
+        setWach(f.awake)
         const p = phaseRef.current
         if (p.art === 'auftrag') {
           // Die Rezeption hat abgebrochen, oder der Auftrag ist abgelaufen:
@@ -334,27 +341,35 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
       .finally(abraeumen)
   }
 
+  const uebung = haus?.uebung === true && (
+    <span className="text-xs px-2 py-1 rounded-sm bg-amber-100 text-amber-900">
+      {t('kiosk.training')}
+    </span>
+  )
+
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50 select-none">
-      <header className="flex items-center gap-3 px-6 py-4">
+      {/* In Ruhe traegt das Ruhebild Hausname und Sprachwahl selbst. */}
+      {!ruht && <header className="flex items-center gap-3 px-6 py-4">
         <span className="text-lg font-semibold grow">{haus?.name ?? ''}</span>
-        {haus?.uebung === true && (
-          <span className="text-xs px-2 py-1 rounded-sm bg-amber-100 text-amber-900">
-            {t('kiosk.training')}
-          </span>
-        )}
+        {uebung}
         {/* Das Meldeformular fuehrt seine eigene Sprachwahl (GastCheckin). */}
         {!(phase.art === 'auftrag' && phase.kind === 'registration_fill') && (
           <Sprachwahl onLocale={onLocale} />
         )}
-      </header>
+      </header>}
 
       <main className="grow grid place-items-center px-6 pb-8">
         {(phase.art === 'start' || phase.art === 'kiosk') &&
           <div className="text-neutral-400">…</div>}
         {phase.art === 'koppeln' && <Koppeln anfangsFehler={phase.fehler}
                                              onGekoppelt={() => setPhase({ art: 'start' })} />}
-        {phase.art === 'ruhe' && <Ruhe />}
+        {phase.art === 'ruhe' && (
+          <Ruhe haus={haus?.name ?? null}
+                kopf={<div className="flex items-center gap-3">
+                  {uebung}<Sprachwahl onLocale={onLocale} hell />
+                </div>} />
+        )}
         {phase.art === 'auftrag' && (() => {
           const Ansicht = ANSICHTEN[phase.kind]
           const jobRef = phase.jobRef
@@ -371,7 +386,7 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
       </main>
 
       {ohneNetz && (
-        <footer className="px-6 py-2 text-sm text-amber-800 bg-amber-50">
+        <footer className="relative z-10 px-6 py-2 text-sm text-amber-800 bg-amber-50">
           {t('kiosk.offline')}
         </footer>
       )}
@@ -390,8 +405,7 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
  * Ein Auftrag der Rezeption unterbricht die Diashow, und nach dem Auftrag
  * baut sich die Seite neu auf und beginnt sie von vorn.
  */
-function Ruhe(): JSX.Element {
-  const t = useT()
+function Ruhe({ haus, kopf }: { haus: string | null; kopf: ReactNode }): JSX.Element {
   const [folien, setFolien] = useState<Folie[]>([])
   const [nr, setNr] = useState(0)
 
@@ -414,15 +428,7 @@ function Ruhe(): JSX.Element {
     return () => window.clearTimeout(z)
   }, [folie, nr])
 
-  if (folie === undefined) {
-    return (
-      <div className="text-center space-y-3">
-        <div className="text-4xl font-light">{t('kiosk.welcome')}</div>
-        <p className="text-neutral-500">{t('kiosk.idleHint')}</p>
-      </div>
-    )
-  }
-  return <Inhaltsseite title={folie.title} body={folie.body} imageRef={folie.imageRef} />
+  return <Ruhebild folien={folien} nr={nr} haus={haus} kopf={kopf} />
 }
 
 /** Eine Seite des Hauses, wie das Terminal sie zeigt. */
@@ -441,7 +447,11 @@ function Inhaltsseite({ title, body, imageRef }: {
   )
 }
 
-function Sprachwahl({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element {
+function Sprachwahl({ onLocale, hell = false }: {
+  onLocale: (l: Locale) => void
+  /** Auf einem Foto im Ruhezustand: helle Schrift auf Glas. */
+  hell?: boolean
+}): JSX.Element {
   const t = useT()
   const locale = useLocale()
   return (
@@ -449,9 +459,13 @@ function Sprachwahl({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Elemen
       {LOCALES.map(l => (
         <button key={l} type="button" onClick={() => onLocale(l)}
                 aria-pressed={l === locale}
-                className={`px-3 py-2 text-sm rounded-sm border ${l === locale
-                  ? 'border-neutral-900 bg-white font-medium'
-                  : 'border-neutral-300 text-neutral-600'}`}>
+                className={`px-3 py-2 text-sm rounded-sm border ${hell
+                  ? (l === locale
+                    ? 'border-white bg-white text-neutral-900 font-medium'
+                    : 'border-white/50 bg-black/20 text-white backdrop-blur-sm')
+                  : (l === locale
+                    ? 'border-neutral-900 bg-white font-medium'
+                    : 'border-neutral-300 text-neutral-600')}`}>
           {l.toUpperCase()}
         </button>
       ))}

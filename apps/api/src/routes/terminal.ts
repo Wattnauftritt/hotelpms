@@ -196,6 +196,29 @@ async function beenden(
   await zieheLinksZurueck(client, [jobId])
 }
 
+/**
+ * Liegt die Uhrzeit des Hauses in der Wachzeit des Geraets (Migration 0102)?
+ * Ueber Mitternacht, wenn der Anfang nach dem Ende liegt. In der Zeitzone
+ * des Hauses: die Uhr eines Kioskrechners stimmt nicht immer.
+ */
+const WACH_SQL = `CASE
+    WHEN d.awake_from IS NULL THEN false
+    WHEN d.awake_from < d.awake_until
+      THEN (now() AT TIME ZONE p.timezone)::time >= d.awake_from
+       AND (now() AT TIME ZONE p.timezone)::time <  d.awake_until
+    ELSE (now() AT TIME ZONE p.timezone)::time >= d.awake_from
+      OR (now() AT TIME ZONE p.timezone)::time <  d.awake_until
+  END`
+
+/** `HH:MM`, 00:00 bis 23:59, oder null. */
+function uhrzeitAusRumpf(wert: unknown, feld: string): string | null {
+  if (wert === null || wert === undefined || wert === '') return null
+  if (typeof wert !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(wert)) {
+    throw Errors.validation({ [feld]: ['field.invalid'] })
+  }
+  return wert
+}
+
 function nameAusRumpf(body: unknown): string {
   const name = (body as { name?: unknown } | undefined)?.name
   if (typeof name !== 'string' || name.trim() === '') {
@@ -278,7 +301,9 @@ export function terminalRoutes(app: FastifyInstance): void {
                   to_char(s.last_seen_at AT TIME ZONE 'UTC',
                           'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastSeenAt",
                   coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
-                    AS online
+                    AS online,
+                  to_char(d.awake_from, 'HH24:MI') AS "awakeFrom",
+                  to_char(d.awake_until, 'HH24:MI') AS "awakeUntil"
              FROM terminal_device d
              LEFT JOIN terminal_device_seen s ON s.device_id = d.id
             WHERE d.property_id = $1 AND d.revoked_at IS NULL
@@ -428,6 +453,36 @@ export function terminalRoutes(app: FastifyInstance): void {
            RETURNING id`, [rows[0]!.id])
         await zieheLinksZurueck(client, offen.rows.map(r => Number(r.id)))
         return { deviceRef, revoked: true }
+      })
+    }
+  })
+
+  /**
+   * Wachzeit eines Geraets setzen oder entfernen (Migration 0102). Beide
+   * Zeiten oder keine; gleiche Zeiten waeren "nie" oder "immer" und werden
+   * abgewiesen.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/terminals/:deviceRef/awake',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaesteterminal: Wachzeit setzen',
+    handler: async (req) => {
+      const { propertyId, deviceRef } = req.params as { propertyId: string; deviceRef: string }
+      const b = (req.body ?? {}) as { from?: unknown; until?: unknown }
+      const von = uhrzeitAusRumpf(b.from, 'from')
+      const bis = uhrzeitAusRumpf(b.until, 'until')
+      if (von === null && bis !== null) throw Errors.validation({ from: ['field.required'] })
+      if (von !== null && bis === null) throw Errors.validation({ until: ['field.required'] })
+      if (von !== null && von === bis) throw Errors.validation({ until: ['field.invalid'] })
+      return tx(req.pool, req, async client => {
+        const { rowCount } = await client.query(
+          `UPDATE terminal_device SET awake_from = $3::time, awake_until = $4::time
+            WHERE public_ref = $1 AND property_id = $2 AND revoked_at IS NULL`,
+          [deviceRef, Number(propertyId), von, bis])
+        if (rowCount === 0) throw Errors.notFound('res.terminal')
+        return { deviceRef, awakeFrom: von, awakeUntil: bis }
       })
     }
   })
@@ -740,10 +795,11 @@ export function terminalRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const { rows } = await client.query<{
           property: string; is_training: boolean; public_ref: string | null
-          kind: string | null; state: string | null }>(
+          kind: string | null; state: string | null; awake: boolean }>(
           `SELECT p.name AS property, p.is_training,
-                  j.public_ref, j.kind, j.state
+                  j.public_ref, j.kind, j.state, ${WACH_SQL} AS awake
              FROM property p
+             JOIN terminal_device d ON d.id = $1
              LEFT JOIN terminal_job j
                     ON j.device_id = $1 AND j.state IN ('pending','opened')
                    AND j.expires_at > now()
@@ -752,6 +808,7 @@ export function terminalRoutes(app: FastifyInstance): void {
         return {
           property: r?.property ?? '',
           isTraining: r?.is_training ?? false,
+          awake: r?.awake ?? false,
           job: r === undefined || r.public_ref === null ? null
             : { jobRef: r.public_ref, kind: r.kind, state: r.state }
         }

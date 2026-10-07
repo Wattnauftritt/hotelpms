@@ -60,3 +60,25 @@
 .querleiste::-webkit-scrollbar-track { background: var(--color-neutral-100); border-radius: 6px; }
 .querleiste::-webkit-scrollbar-thumb { background: var(--color-neutral-400); border-radius: 6px; }
 .querleiste::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-500); }
+
+/*
+ * Der Ruhezustand am Gaesteterminal (components/Ruhebild.tsx).
+ *
+ * Ein Bild blendet ueber das vorige und zoomt dabei langsam -- sonst steht
+ * am Tresen ein Standbild, das niemand mehr ansieht. Die Dauer setzt die
+ * Folie selbst (`--ruhe-dauer`), damit der Zoom nicht mitten in der Folie
+ * stehen bleibt. Wer Bewegung abgeschaltet hat, bekommt nur das Ueberblenden.
+ */
+@keyframes ruhe-ein { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ruhe-zoom { from { transform: scale(1) } to { transform: scale(1.09) } }
+@keyframes ruhe-text {
+  from { opacity: 0; transform: translateY(1.5rem) }
+  to { opacity: 1; transform: none }
+}
+.ruhe-ein { animation: ruhe-ein 1.6s ease-out both; }
+.ruhe-zoom { animation: ruhe-zoom var(--ruhe-dauer, 10s) linear both; }
+.ruhe-text { animation: ruhe-text 1.2s 0.4s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .ruhe-zoom { animation: none; }
+  .ruhe-text { animation: ruhe-ein 1.2s ease-out both; }
+}

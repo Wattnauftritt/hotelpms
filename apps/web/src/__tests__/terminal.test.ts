@@ -21,6 +21,7 @@ const code = (pfad: string): string =>
   quelle(pfad).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
 const terminal = code('../routes/Terminal.tsx')
+const ruhebild = code('../components/Ruhebild.tsx')
 
 describe('Terminalseite aus der Adresse', () => {
   it('erkennt genau /terminal', () => {
@@ -78,6 +79,7 @@ describe('Referer eines Rahmens', () => {
 describe('Ruhezustand raeumt die Daten ab', () => {
   it('legt keine Gastdaten im Browser ab', () => {
     expect(terminal).not.toMatch(/localStorage|sessionStorage|indexedDB/)
+    expect(ruhebild).not.toMatch(/localStorage|sessionStorage|indexedDB/)
     // Kein Zwischenspeicher, der eine Antwort ueber die Ansicht hinaus haelt.
     expect(terminal).not.toContain('@tanstack/react-query')
   })
@@ -211,6 +213,15 @@ describe('Ein allgemeiner Anzeige-Client, kein Scheunentor', () => {
   it('bettet das Meldeformular des Online-Check-ins ein, statt ein zweites zu bauen', () => {
     expect(terminal).toContain("from './GastCheckin.tsx'")
     expect(terminal).toMatch(/<GastCheckin token=\{token\} modus="terminal"/)
+  })
+
+  it('zeigt im Ruhebild nur Seiten und Bilder des Hauses', () => {
+    // Das Ruhebild fragt selbst nichts: die Folien kommen aus der Diashow,
+    // die Bilder nur ueber die Bildroute des Geraets. Kein Text aus einem
+    // Auftrag, keine fremde Adresse, kein HTML.
+    expect(ruhebild).not.toMatch(/api\.|fetch\(|dangerouslySetInnerHTML|innerHTML/)
+    expect(ruhebild).toContain('`/v1/terminal/images/${ref}`')
+    expect(ruhebild.match(/src=\{[^}]+\}/g)).toEqual(['src={bildAdresse(folie.imageRef)}'])
   })
 
   it('holt die Diashow, aber nie in der Frage nach dem Auftrag', () => {

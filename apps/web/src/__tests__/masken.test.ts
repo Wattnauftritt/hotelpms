@@ -47,9 +47,12 @@ describe('Der Rahmen einer Maske', () => {
      * keine Maske ueber dem Bildschirm, sondern eine ganze Seite ohne Rand,
      * damit das Belegfoto die volle Breite hat (Sven, 07.10.2026). Eine
      * Kastenbreite gibt es dort nicht, die hier auseinanderlaufen koennte.
+     *
+     * Die dritte ist das Ruhebild am Gaesteterminal: ebenfalls keine Maske,
+     * sondern der ganze Bildschirm, solange niemand etwas ausfuellt.
      */
     expect(eigene).toEqual(['components/Detailsuche.tsx', 'components/Dialog.tsx',
-                            'components/mobil/MobilKasse.tsx'])
+                            'components/Ruhebild.tsx', 'components/mobil/MobilKasse.tsx'])
   })
 
   it('haelt die Knopfleiste ausserhalb des rollenden Teils', () => {

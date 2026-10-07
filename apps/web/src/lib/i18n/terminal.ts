@@ -116,6 +116,26 @@ export const terminal = {
     de: 'Terminal „{name}“ widerrufen? Es kann danach nichts mehr öffnen.',
     en: 'Revoke terminal "{name}"? It will no longer be able to open anything.',
     tr: '„{name}“ terminali iptal edilsin mi? Ardından hiçbir şey açamaz.' },
+  'terminal.settings.awake': {
+    de: 'Bildschirm wach halten von',
+    en: 'Keep screen on from',
+    tr: 'Ekranı açık tut:' },
+  'terminal.settings.awakeUntil': {
+    de: 'bis',
+    en: 'to',
+    tr: '–' },
+  'terminal.settings.awakeSave': {
+    de: 'Speichern',
+    en: 'Save',
+    tr: 'Kaydet' },
+  'terminal.settings.awakeHint': {
+    de: 'Zeit des Hauses. Leer lassen: der Rechner schaltet den Bildschirm ab, wie in '
+      + 'Windows eingestellt. Einschalten kann ihn die Seite nicht; das tut eine Berührung '
+      + 'oder die Energieeinstellung des Rechners.',
+    en: 'Property time. Leave empty: the computer turns the screen off as set in Windows. '
+      + 'The page cannot turn it on; a touch or the computer\'s power settings do.',
+    tr: 'Tesis saati. Boş bırakın: bilgisayar ekranı Windows\'taki ayara göre kapatır. '
+      + 'Sayfa ekranı açamaz; bunu bir dokunuş veya bilgisayarın güç ayarları yapar.' },
   'terminal.settings.none': {
     de: 'Noch kein Terminal angelegt.',
     en: 'No terminal set up yet.',
