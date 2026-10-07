@@ -59,6 +59,12 @@ interface MeinZimmer {
    * frei. Bleiber sind frei: der Gast ist da, das ist der Normalfall.
    */
   free: boolean
+  /**
+   * Die Kontrolle der Hausdame (0109). Bei `rework` steht in
+   * `inspectionNote`, was fehlt, und das Zimmer gehoert wieder nach oben.
+   */
+  inspection: 'passed' | 'rework' | null
+  inspectionNote: string | null
   /** Heute kommt jemand -- dieses Zimmer zuerst. */
   arrivalToday: boolean
   /** Offene Wartungsmeldungen am Zimmer, damit niemand dasselbe zweimal meldet. */
@@ -75,7 +81,8 @@ async function liesMeineZimmer(
   const { rows } = await client.query<MeinZimmer>(
     `SELECT t.id::int AS "taskId", r.id::int AS "resourceId", r.code,
             c.code AS "categoryCode", r.building, r.floor, t.kind, t.minutes,
-            t.status, t.outcome,
+            t.status, t.outcome, t.inspection,
+            CASE WHEN t.inspection = 'rework' THEN t.inspection_note END AS "inspectionNote",
             (t.kind <> 'departure' OR NOT EXISTS (
                SELECT 1 FROM reservation a
                 WHERE a.resource_id = r.id AND a.departure = t.business_date
@@ -103,11 +110,13 @@ async function liesMeineZimmer(
 /** Die eigene Aufgabe von heute, gesperrt -- sonst 404. */
 async function eigeneAufgabe(
   client: PoolClient, propertyId: number, userId: number, taskId: number
-): Promise<{ id: number; resource_id: number; outcome: Ausgang | null; date: string }> {
+): Promise<{ id: number; resource_id: number; outcome: Ausgang | null; date: string
+              inspection: string | null }> {
   const tag = await tagOderOffen(client, propertyId, undefined)
   const { rows } = await client.query<{
-    id: number; resource_id: number; outcome: Ausgang | null; date: string }>(
-    `SELECT id::int, resource_id::int, outcome, business_date::text AS date
+    id: number; resource_id: number; outcome: Ausgang | null; date: string
+    inspection: string | null }>(
+    `SELECT id::int, resource_id::int, outcome, business_date::text AS date, inspection
        FROM housekeeping_task
       WHERE id = $1 AND property_id = $2 AND assigned_to = $3
         AND business_date = $4::date AND kind IN ('departure','stayover')
@@ -177,9 +186,12 @@ export function myRoomsRoutes(app: FastifyInstance): void {
         const aufgabe = await eigeneAufgabe(client, propertyId, ich, taskId)
         const neu = outcome as Ausgang | null
         if (neu !== aufgabe.outcome) {
+          // Ein anderer Ausgang macht die Kontrolle hinfaellig: sie galt dem
+          // Zimmer, wie es vorher gemeldet war.
           await client.query(
             `UPDATE housekeeping_task
-                SET outcome = $2,
+                SET inspection = NULL, inspected_by = NULL, inspected_at = NULL,
+                    outcome = $2,
                     status = CASE $2 WHEN 'cleaned' THEN 'done'
                                      WHEN 'declined' THEN 'skipped'
                                      WHEN 'was_clean' THEN 'skipped'
@@ -198,9 +210,42 @@ export function myRoomsRoutes(app: FastifyInstance): void {
                      && (aufgabe.outcome === 'cleaned' || aufgabe.outcome === 'was_clean')) {
             await client.query(
               `UPDATE housekeeping_status SET status = 'dirty', updated_by = $2, updated_at = now()
-                WHERE resource_id = $1 AND status = 'clean'`, [aufgabe.resource_id, ich])
+                WHERE resource_id = $1 AND status IN ('clean','inspected')`, [aufgabe.resource_id, ich])
           }
         }
+        return liesMeineZimmer(client, propertyId, ich, aufgabe.date)
+      })
+    }
+  })
+
+  /**
+   * Nachgearbeitet: die Hausdame hatte "nacharbeiten" gesagt, die Kraft war
+   * noch einmal drin. Die Kontrolle faellt auf offen zurueck, das Zimmer
+   * wird wieder sauber, und die Hausdame schaut noch einmal. Der Satz der
+   * Hausdame bleibt stehen -- er gehoert zur Geschichte des Zimmers.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/my-rooms/:taskId/reworked',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Nacharbeit an einem eigenen Zimmer melden (Personal-App)',
+    handler: async (req) => {
+      const { propertyId, taskId } = aufgabeAusPfad(req)
+      const ich = personVon(req)
+      return tx(req.pool, req, async client => {
+        const aufgabe = await eigeneAufgabe(client, propertyId, ich, taskId)
+        if (aufgabe.inspection !== 'rework') throw Errors.conflict('inspection.noRework')
+        await client.query(
+          `UPDATE housekeeping_task
+              SET inspection = NULL, inspected_by = NULL, inspected_at = NULL
+            WHERE id = $1`, [taskId])
+        await client.query(
+          `INSERT INTO housekeeping_status (property_id, resource_id, status, updated_by)
+           VALUES ($1, $2, 'clean', $3)
+           ON CONFLICT (resource_id) DO UPDATE SET
+             status = 'clean', updated_by = $3, updated_at = now()`,
+          [propertyId, aufgabe.resource_id, ich])
         return liesMeineZimmer(client, propertyId, ich, aufgabe.date)
       })
     }

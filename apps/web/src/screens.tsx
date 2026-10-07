@@ -4,6 +4,7 @@ import { Tape } from './routes/Tape.tsx'
 import { Today } from './routes/Today.tsx'
 import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Reinigungsplan } from './routes/Reinigungsplan.tsx'
+import { Kontrolle } from './routes/Kontrolle.tsx'
 import { Blocks } from './routes/Blocks.tsx'
 import { Setup } from './routes/Setup.tsx'
 import { Reports } from './routes/Reports.tsx'
@@ -197,7 +198,9 @@ export const SCREENS: readonly ScreenDefinition[] = [
   // Housekeeping eingefuegt: an den Schluesseln davor haengen Lesezeichen,
   // und die Hausdame beginnt weiter mit dem Zimmerstand.
   { key: 'cleaningPlan', nav: 'nav.cleaningPlan', permission: 'housekeeping:plan',
-    render: c => <Reinigungsplan propertyId={c.propertyId} /> }
+    render: c => <Reinigungsplan propertyId={c.propertyId} /> },
+  { key: 'inspection', nav: 'nav.inspection', permission: 'housekeeping:inspect',
+    render: c => <Kontrolle propertyId={c.propertyId} /> }
 ]
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */

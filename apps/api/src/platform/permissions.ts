@@ -25,6 +25,10 @@ export const PERMISSIONS = [
   // Reinigungsplan (0106): Zimmer den Kraeften zuteilen und Sollminuten
   // pflegen. Eigenes Recht, weil an den Minuten die Abrechnung haengt.
   'housekeeping:plan',
+  // Kontrolle (0109): gereinigte Zimmer abnehmen oder nacharbeiten lassen.
+  // Eigenes Recht, weil "kontrolliert" das Zimmer fuer die Rezeption
+  // bezugsfertig macht.
+  'housekeeping:inspect',
   'report:operational', 'report:revenue', 'report:export',
   'nightaudit:run',
   // Gastpost (0028): eigenes Recht, weil Hinausschicken etwas anderes ist

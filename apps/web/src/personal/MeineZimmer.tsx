@@ -30,17 +30,21 @@ export interface MeinZimmer {
   free: boolean
   arrivalToday: boolean
   openProblems: number
+  inspection: 'passed' | 'rework' | null
+  inspectionNote: string | null
 }
 interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }
 
 /**
- * Offene zuerst, darin freie vor wartenden und Anreisen vor dem Rest --
- * ein Zimmer, in das heute jemand einzieht, soll nicht als letztes dran
- * sein. Sonst bleibt die Reihenfolge des Hauses.
+ * Nacharbeit ganz oben -- die Hausdame wartet darauf. Dann offene, darin
+ * freie vor wartenden und Anreisen vor dem Rest: ein Zimmer, in das heute
+ * jemand einzieht, soll nicht als letztes dran sein. Sonst bleibt die
+ * Reihenfolge des Hauses.
  */
 export function ordneZimmer(rooms: readonly MeinZimmer[]): MeinZimmer[] {
   const rang = (z: MeinZimmer): number =>
-    z.status !== 'open' ? 3 : !z.free ? 2 : z.arrivalToday ? 0 : 1
+    z.inspection === 'rework' ? -1
+      : z.status !== 'open' ? 3 : !z.free ? 2 : z.arrivalToday ? 0 : 1
   return rooms.map((z, i) => ({ z, i }))
     .sort((a, b) => rang(a.z) - rang(b.z) || a.i - b.i)
     .map(x => x.z)
@@ -69,6 +73,12 @@ export function MeineZimmer({ propertyId, locale }: {
       setHinweis(fehlerText(e, locale))
     }
   }
+  const nachgearbeitet = useMutation({
+    mutationFn: (taskId: number) =>
+      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/reworked`),
+    onSuccess: neu => { qc.setQueryData(key, neu); setOffen(null); setHinweis(null) },
+    onError: fehler
+  })
   const setzen = useMutation({
     mutationFn: ({ taskId, outcome }: { taskId: number; outcome: Ausgang | null }) =>
       api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}`, { outcome }),
@@ -89,9 +99,10 @@ export function MeineZimmer({ propertyId, locale }: {
   if (rooms.length === 0) {
     return <Karte><p className="text-base text-neutral-700">{t('today.empty')}</p></Karte>
   }
-  const erledigt = rooms.filter(z => z.status !== 'open').length
+  const fertig = (z: MeinZimmer): boolean => z.status !== 'open' && z.inspection !== 'rework'
+  const erledigt = rooms.filter(fertig).length
   const geordnet = ordneZimmer(rooms)
-  const ersteErledigte = geordnet.findIndex(z => z.status !== 'open')
+  const ersteErledigte = geordnet.findIndex(fertig)
 
   return <div className="space-y-3">
     <div className="flex items-baseline justify-between text-base">
@@ -107,7 +118,9 @@ export function MeineZimmer({ propertyId, locale }: {
       {geordnet.map((z, i) => <li key={z.taskId}>
         {i === ersteErledigte && <h2 className="text-sm font-semibold text-neutral-500
                                                 pt-3 pb-1">{t('today.done')}</h2>}
-        <ZimmerKarte z={z} offen={offen === z.taskId} laeuft={setzen.isPending}
+        <ZimmerKarte z={z} offen={offen === z.taskId}
+                     laeuft={setzen.isPending || nachgearbeitet.isPending}
+                     onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
                      onToggle={() => setOffen(offen === z.taskId ? null : z.taskId)}
                      onSetzen={outcome => setzen.mutate({ taskId: z.taskId, outcome })}
                      propertyId={propertyId} locale={locale}
@@ -123,17 +136,20 @@ function Marke({ farbe, children }: { farbe: string; children: React.ReactNode }
   </span>
 }
 
-function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, propertyId, locale,
-                       onGemeldet, onFehler }: {
+function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, propertyId,
+                       locale, onGemeldet, onFehler }: {
   z: MeinZimmer; offen: boolean; laeuft: boolean; onToggle: () => void
+  onNachgearbeitet: () => void
   onSetzen: (o: Ausgang | null) => void; propertyId: number; locale: StaffLocale
   onGemeldet: (neu: Tag) => void; onFehler: (e: unknown) => void
 }): JSX.Element {
   const t = usePT()
-  const fertig = z.status !== 'open'
+  const nacharbeit = z.inspection === 'rework'
+  const fertig = z.status !== 'open' && !nacharbeit
   const [melden, setMelden] = useState(false)
 
-  return <div className={`rounded-lg border bg-white ${fertig ? 'border-neutral-200 opacity-80'
+  return <div className={`rounded-lg border bg-white ${nacharbeit ? 'border-red-400 border-2'
+                           : fertig ? 'border-neutral-200 opacity-80'
                            : !z.free ? 'border-amber-300' : 'border-neutral-300'}`}>
     <button type="button" onClick={onToggle} aria-expanded={offen}
             className="w-full text-left px-4 py-3 flex items-center gap-3">
@@ -153,12 +169,19 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, propertyId, locale,
           && <Marke farbe="bg-red-100 text-red-900">{t('room.problems', { n: z.openProblems })}</Marke>}
         {fertig && z.outcome !== null
           && <Marke farbe="bg-green-100 text-green-900">{t(`outcome.${z.outcome}`)}</Marke>}
+        {fertig && z.inspection === 'passed'
+          && <Marke farbe="bg-green-600 text-white">{t('inspect.passed')}</Marke>}
+        {nacharbeit && <Marke farbe="bg-red-600 text-white">{t('inspect.rework')}</Marke>}
       </span>
       {z.minutes !== null && <span className="text-sm text-neutral-500 whitespace-nowrap">
         {t('room.minutes', { minutes: z.minutes })}</span>}
     </button>
+    {nacharbeit && z.inspectionNote !== null
+      && <p className="px-4 pb-3 -mt-1 text-base text-red-900">„{z.inspectionNote}“</p>}
     {offen && <div className="px-4 pb-4 space-y-2">
-      {!fertig && <>
+      {nacharbeit && <button type="button" disabled={laeuft} className={KNOPF}
+                             onClick={onNachgearbeitet}>{t('inspect.reworked')}</button>}
+      {!fertig && !nacharbeit && <>
         <button type="button" disabled={laeuft} className={KNOPF}
                 onClick={() => onSetzen('cleaned')}>{t('outcome.cleaned')}</button>
         <div className="grid grid-cols-2 gap-2">
