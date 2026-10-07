@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ReservationDetail } from '@hotelpms/contracts'
+import type { CleaningWaiverView, ReservationDetail } from '@hotelpms/contracts'
 import { useReservation, usePatchReservationNotes, useReservationStatusAction, useSetRoomFixed,
          useSendConfirmation } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
@@ -9,6 +9,8 @@ import { VerlaufDialog } from './Verlauf.tsx'
 import { AmTerminal } from './AmTerminal.tsx'
 import { Anzahlung } from './Anzahlung.tsx'
 import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
+import { VerzichtTage } from './Reinigungsverzicht.tsx'
+import { useSetCleaningWaiver } from '../lib/queries/checkin.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { useSprung } from '../lib/suche.js'
 
@@ -212,6 +214,12 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
         <OnlineCheckinStand reservationRef={r.reservationRef} stand={r.onlineCheckin} />
       )}
 
+      {/* Reinigungsverzicht (0115): nur, wenn das Haus ihn anbietet und
+          noch ein Bleibetag kommt. */}
+      {r.cleaningWaiver != null && (
+        <VerzichtAmTresen reservationRef={r.reservationRef} view={r.cleaningWaiver} />
+      )}
+
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded-sm p-3">
         <Feld label={t('plan.guest')}>
           {/* Der Name fuehrt ins Gastprofil. Mail und Telefon stehen
@@ -335,6 +343,24 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
  * ausdrücklich kein Ort für Gesundheitsdaten: das Feld wird weder
  * durchsucht noch anonymisiert.
  */
+function VerzichtAmTresen({ reservationRef, view }: {
+  reservationRef: string; view: CleaningWaiverView
+}): JSX.Element {
+  const t = useT()
+  const setzen = useSetCleaningWaiver(reservationRef)
+  return (
+    <section className="bg-white border border-neutral-200 rounded-sm p-3 space-y-2">
+      <h3 className="text-sm font-medium">{t('reservation.waiver.title')}</h3>
+      <p className="text-xs text-neutral-600">
+        {t('reservation.waiver.hint')}{view.waterGift && <> {t('reservation.waiver.water')}</>}
+      </p>
+      <VerzichtTage view={view} busy={setzen.isPending}
+                    onSet={(date, waived) => setzen.mutate({ date, waived })} />
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </section>
+  )
+}
+
 function NotizFeld({ reservationRef, notes }: {
   reservationRef: string; notes: string | null
 }): JSX.Element {

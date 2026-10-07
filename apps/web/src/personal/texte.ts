@@ -252,6 +252,26 @@ const texte = {
     en: 'Cleaned',
     ru: 'Убрано',
     uk: 'Прибрано' },
+  'room.waived': {
+    de: 'Gast verzichtet heute',
+    en: 'Guest skips today',
+    ru: 'Гость сегодня отказался',
+    uk: 'Гість сьогодні відмовився' },
+  'room.water': {
+    de: 'Wasser hinstellen',
+    en: 'Leave water',
+    ru: 'Поставить воду',
+    uk: 'Поставити воду' },
+  'room.waterDone': {
+    de: 'Wasser hingestellt',
+    en: 'Water left at the door',
+    ru: 'Вода поставлена',
+    uk: 'Воду поставлено' },
+  'room.waterDelivered': {
+    de: 'Wasser steht',
+    en: 'Water delivered',
+    ru: 'Вода стоит',
+    uk: 'Вода стоїть' },
   'outcome.declined': {
     de: 'Gast will keine Reinigung',
     en: 'Guest declined cleaning',

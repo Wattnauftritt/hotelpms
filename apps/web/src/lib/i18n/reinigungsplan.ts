@@ -98,6 +98,26 @@ export const reinigungsplan = {
     en: 'from old app',
     tr: 'eski uygulamadan' },
 
+  'cleaningPlan.waived': {
+    de: 'Gast verzichtet',
+    en: 'Guest skips',
+    tr: 'Misafir istemiyor' },
+  'cleaningPlan.waiver': {
+    de: 'Reinigungsverzicht',
+    en: 'Cleaning opt-out',
+    tr: 'Temizlikten vazgeçme' },
+  'cleaningPlan.waiverHint': {
+    de: 'Gäste verzichten über ihren Check-in-Link oder an der Rezeption auf die Zwischenreinigung eines Tages. Ohne Wasser fällt das Zimmer an dem Tag aus dem Plan; mit Wasser bleibt es drin, und die Kraft hakt die Flasche ab.',
+    en: 'Guests skip a day’s stay-over cleaning via their check-in link or at reception. Without water the room drops out of the plan that day; with water it stays, and staff tick off the bottle.',
+    tr: 'Misafirler check-in bağlantısı veya resepsiyon üzerinden bir günün ara temizliğinden vazgeçer. Su olmadan oda o gün plandan çıkar; su ile planda kalır ve personel şişeyi işaretler.' },
+  'cleaningPlan.waiverEnabled': {
+    de: 'Gäste dürfen verzichten',
+    en: 'Guests may opt out',
+    tr: 'Misafirler vazgeçebilir' },
+  'cleaningPlan.waiverWater': {
+    de: 'Als Dank eine Flasche Wasser',
+    en: 'A bottle of water as a thank-you',
+    tr: 'Teşekkür olarak bir şişe su' },
   'cleaningPlan.norms': {
     de: 'Sollminuten',
     en: 'Target minutes',

@@ -23,6 +23,8 @@ export interface PlanZimmer {
   minutes: number
   taskStatus: 'open' | 'done' | 'skipped' | null
   source: 'staygrid' | 'legacy' | null
+  /** Der Gast verzichtet heute auf die Zwischenreinigung (0115). */
+  waived: boolean
 }
 
 export interface PlanKraft { userId: number; displayName: string; active: boolean }

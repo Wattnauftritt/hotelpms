@@ -48,6 +48,12 @@ interface Zimmer {
   minutes: number
   taskStatus: 'open' | 'done' | 'skipped' | null
   source: 'staygrid' | 'legacy' | null
+  /**
+   * Der Gast verzichtet heute auf die Zwischenreinigung (0115). Gibt das
+   * Haus dafuer Wasser, bleibt das Zimmer im Plan -- jemand muss die
+   * Flasche hinstellen --, sonst ist nichts faellig.
+   */
+  waived: boolean
 }
 
 interface Kraft { userId: number; displayName: string; active: boolean }
@@ -123,7 +129,8 @@ async function liesKraefte(
 async function liesZimmer(
   client: PoolClient, propertyId: number, date: string, norms: CleaningNorm[]
 ): Promise<Zimmer[]> {
-  const { rows } = await client.query<Omit<Zimmer, 'minutes'> & { taskMinutes: number | null }>(
+  const { rows } = await client.query<Omit<Zimmer, 'minutes'> & { taskMinutes: number | null
+                                                                   water: boolean }>(
     `SELECT r.id::int AS "resourceId", r.code, r.category_id::int AS "categoryId",
             c.code AS "categoryCode", r.building, r.floor,
             CASE WHEN ab.status IS NOT NULL THEN 'departure'
@@ -133,7 +140,10 @@ async function liesZimmer(
                      WHERE an.resource_id = r.id AND an.arrival = $2::date
                        AND an.status IN ('Confirmed','InHouse')) AS "arrivalToday",
             t.id::int AS "taskId", t.kind, t.assigned_to::int AS "assignedTo",
-            t.minutes AS "taskMinutes", t.status AS "taskStatus", t.source
+            t.minutes AS "taskMinutes", t.status AS "taskStatus", t.source,
+            COALESCE(bl.waived, false) AS waived,
+            COALESCE((SELECT s.enabled AND s.water_gift FROM property_cleaning_waiver_setting s
+                       WHERE s.property_id = $1), false) AS water
        FROM resource r
        JOIN resource_category c ON c.id = r.category_id
        LEFT JOIN LATERAL (
@@ -142,7 +152,11 @@ async function liesZimmer(
                  AND a.status IN ('Confirmed','InHouse','CheckedOut')
                ORDER BY a.status = 'CheckedOut' DESC LIMIT 1) ab ON true
        LEFT JOIN LATERAL (
-              SELECT true AS found FROM reservation b
+              SELECT true AS found,
+                     EXISTS (SELECT 1 FROM cleaning_waiver w
+                              WHERE w.reservation_id = b.id AND w.business_date = $2::date
+                                AND w.withdrawn_at IS NULL) AS waived
+                FROM reservation b
                WHERE b.resource_id = r.id
                  AND b.arrival < $2::date AND b.departure > $2::date
                  AND b.status IN ('Confirmed','InHouse')
@@ -155,16 +169,21 @@ async function liesZimmer(
                NULLIF(substring(r.floor from '^-?[0-9]+'), '')::numeric NULLS LAST, r.floor,
                NULLIF(substring(r.code from '^[0-9]+'), '')::numeric NULLS LAST, r.code`,
     [propertyId, date])
-  return rows.map(({ taskMinutes, ...z }) => {
+  return rows.map(({ taskMinutes, water, ...z }) => {
     /*
      * Null Sollminuten fuer Bleiber heisst: hier gibt es keine
      * Zwischenreinigung. So stand es fuer das Gaestehaus fest im Code der
      * alten App; hier ist es eine Einstellung je Kategorie oder Zimmer, und
      * der Vorschlag laesst diese Zimmer aus. Eine schon geplante Aufgabe
      * bleibt sichtbar -- die hat jemand bewusst angelegt.
+     *
+     * Ebenso ein Bleiber, dessen Gast verzichtet, wenn es dafuer kein
+     * Wasser gibt: dann ist dort nichts zu tun. Mit Wasser bleibt er
+     * faellig, und die Kraft hakt die Flasche ab statt einer Reinigung.
      */
-    const due = z.due === 'stayover' && z.kind === null
-      && resolveCleaningMinutes(norms, z, 'stayover') === 0 ? null : z.due
+    const ohneReinigung = resolveCleaningMinutes(norms, z, 'stayover') === 0
+      || (z.waived && !water)
+    const due = z.due === 'stayover' && z.kind === null && ohneReinigung ? null : z.due
     const art = z.kind ?? due
     return {
       ...z,

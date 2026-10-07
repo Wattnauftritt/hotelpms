@@ -56,6 +56,7 @@ import { terminalRoutes } from './terminal.js'
 import { terminalInhaltRoutes } from './terminalInhalte.js'
 import { searchRoutes } from './search.js'
 import { checkinRoutes } from './checkin.js'
+import { cleaningWaiverRoutes } from './cleaningWaiver.js'
 import { openApiRoutes } from './openapi.js'
 import { pushRoutes } from './push.js'
 import type { DomainVerwaltung } from '../platform/brevoDomains.js'
@@ -129,6 +130,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   terminalRoutes(app)
   terminalInhaltRoutes(app)
   checkinRoutes(app)
+  cleaningWaiverRoutes(app)
   pushRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.
   openApiRoutes(app)

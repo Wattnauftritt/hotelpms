@@ -8,6 +8,7 @@ import {
   type Reinigungsplan as Plan, type PlanZimmer, type ReinigungsArt, type Sollminute,
   type Zuteilung
 } from '../lib/queries/reinigungsplan.js'
+import { useCleaningWaiverSettings, useSaveCleaningWaiverSettings } from '../lib/queries/checkin.js'
 
 /**
  * Reinigungsplan (Aufgabe 18, Baustein 2).
@@ -43,6 +44,7 @@ export function Reinigungsplan({ propertyId }: { propertyId: number }): JSX.Elem
     <DatumsWahl value={datum} onChange={setDatum} />
     <Tagesplan key={`${datum}-${q.dataUpdatedAt}`} propertyId={propertyId} plan={q.data} />
     <Sollminuten key={`n-${q.dataUpdatedAt}`} propertyId={propertyId} plan={q.data} />
+    <VerzichtEinstellung propertyId={propertyId} />
     <Verlauf plan={q.data} />
   </div>
 }
@@ -198,6 +200,9 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
                     {z.arrivalToday && (
                       <span className="ml-1 text-xs text-blue-700">{t('cleaningPlan.arrival')}</span>
                     )}
+                    {z.waived && (
+                      <span className="ml-1 text-xs text-amber-700">{t('cleaningPlan.waived')}</span>
+                    )}
                   </td>
                   <td className="py-1 pr-2 text-right tabular-nums">
                     {z.minutes}
@@ -331,6 +336,40 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
                          disabled:bg-neutral-300">
         {t(sichern.isPending ? 'common.loading' : 'cleaningPlan.normSave')}
       </button>
+    </div>
+  </details>
+}
+
+/**
+ * Reinigungsverzicht (0115): ob Gaeste auf die Zwischenreinigung verzichten
+ * koennen, und ob es dafuer Wasser gibt. Hier und nicht in den
+ * Einstellungen des Hauses: die Hausdame entscheidet es, und sie sieht im
+ * Plan darueber, was der Schalter bewirkt.
+ */
+function VerzichtEinstellung({ propertyId }: { propertyId: number }): JSX.Element {
+  const t = useT()
+  const q = useCleaningWaiverSettings(propertyId)
+  const sichern = useSaveCleaningWaiverSettings(propertyId)
+  const e = q.data
+  return <details className="border border-neutral-200 rounded-sm bg-white">
+    <summary className="px-3 py-2 text-sm font-semibold cursor-pointer">
+      {t('cleaningPlan.waiver')}
+    </summary>
+    <div className="px-3 pb-3 space-y-2 text-sm">
+      <p className="text-xs text-neutral-600">{t('cleaningPlan.waiverHint')}</p>
+      {e === undefined ? (q.isError ? <Fehler error={q.error} /> : <Laedt />) : <>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={e.enabled} disabled={sichern.isPending}
+                 onChange={x => sichern.mutate({ ...e, enabled: x.currentTarget.checked })} />
+          {t('cleaningPlan.waiverEnabled')}
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={e.waterGift} disabled={sichern.isPending || !e.enabled}
+                 onChange={x => sichern.mutate({ ...e, waterGift: x.currentTarget.checked })} />
+          {t('cleaningPlan.waiverWater')}
+        </label>
+      </>}
+      {sichern.isError && <Fehler error={sichern.error} />}
     </div>
   </details>
 }
