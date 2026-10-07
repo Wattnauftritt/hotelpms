@@ -6,7 +6,7 @@ import { Dialog, Feld, KNOPF, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
 import { addMonths } from '../lib/dates.js'
 import {
-  useKasseneinstellung, useKassenmonat, useBuchen, useStornieren, useBelegNachreichen,
+  useKasseneinstellung, useKassenmonat, useBuchen, useStornieren, useLoeschen, useBelegNachreichen,
   useKasseneinstellungSpeichern, useDatevExport, useDatevMarkieren, useBelegeSenden, belegAdresse,
   type Kassenart, type Kassenzeile, type Kasseneinstellung, type NeuerBeleg, type Neubuchung,
   type DatevAuswahl, type Belegversand
@@ -19,8 +19,9 @@ import { kassenbloecke, type Kassenblock } from '../lib/kassengruppen.js'
  *
  * Aufgebaut wie im Adminpanel, damit die Rezeption beim Umstieg nichts neu
  * lernt: oben erfassen, darunter der Monat mit laufendem Bestand. Anders
- * als dort laesst sich nichts loeschen; ein Fehler wird storniert, und
- * Buchung wie Storno bleiben stehen.
+ * als dort ist Stornieren der Normalfall: Buchung und Storno bleiben stehen.
+ * Loeschen geht nur, solange nichts davon an DATEV ging (Migration 0100);
+ * gedacht fuer Testbuchungen.
  *
  * Eine Gastbuchung steht als eine Zeile mit ihrer Summe da und laesst sich
  * aufklappen; im Monat stehen sonst Uebernachtung, Fruehstueck und Kurtaxe
@@ -209,9 +210,10 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
   )
 }
 
-function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, gruppe }: {
+function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, onLoeschen, gruppe }: {
   z: Kassenzeile; propertyId: number; darfStornieren: boolean; darfBuchen: boolean
   onStorno: (z: Kassenzeile) => void
+  onLoeschen: (z: Kassenzeile) => void
   /** Nur an der ersten Zeile einer Gruppe; zugeklappt steht hier die Summe. */
   gruppe?: { block: Kassenblock; offen: boolean; onToggle: () => void }
 }): JSX.Element {
@@ -284,8 +286,34 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, gruppe }: 
             {t('cash.void')}
           </button>
         )}
+        {/* Uebernommenes loescht das Adminpanel, sonst kaeme es wieder. */}
+        {darfStornieren && !storno && !mitglied && !z.datevExported && z.externalNumber === null && (
+          <button className="ml-2 text-xs text-neutral-600 underline print:hidden" onClick={() => onLoeschen(z)}>
+            {t('cash.erase')}
+          </button>
+        )}
       </td>
     </tr>
+  )
+}
+
+function Loeschen({ propertyId, z, onClose }: {
+  propertyId: number; z: Kassenzeile; onClose: () => void
+}): JSX.Element {
+  const t = useT()
+  const weg = useLoeschen(propertyId)
+  return (
+    <Dialog titel={t('cash.erase.title', { n: z.entryNo })} breite="schmal" onClose={onClose}
+            fuss={<>
+              <button className={KNOPF_LEISE} onClick={onClose}>{t('common.cancel')}</button>
+              <button className={KNOPF} disabled={weg.isPending}
+                      onClick={() => weg.mutate(z.entryNo, { onSuccess: onClose })}>
+                {t('cash.erase')}
+              </button>
+            </>}>
+      <p className="text-sm text-neutral-700">{t('cash.erase.hint')}</p>
+      {weg.isError && <Fehler error={weg.error} />}
+    </Dialog>
   )
 }
 
@@ -484,6 +512,7 @@ export function Kassenbuch({ propertyId, permissions }: {
   const [einstellen, setEinstellen] = useState(false)
   const [datev, setDatev] = useState(false)
   const [storno, setStorno] = useState<Kassenzeile | null>(null)
+  const [loeschen, setLoeschen] = useState<Kassenzeile | null>(null)
   // Aufgeklappte Gruppen nach der Nummer ihrer ersten Zeile; zugeklappt ist
   // der Normalfall, weil er den Monat lesbar macht.
   const [offen, setOffen] = useState<ReadonlySet<number>>(new Set())
@@ -590,7 +619,7 @@ export function Kassenbuch({ propertyId, permissions }: {
                         const zeile = (z: Kassenzeile, gruppe?: Parameters<typeof Zeile>[0]['gruppe']) => (
                           <Zeile key={z.entryNo} z={z} propertyId={propertyId}
                                  darfBuchen={darfBuchen} darfStornieren={darfStornieren}
-                                 onStorno={setStorno} gruppe={gruppe} />
+                                 onStorno={setStorno} onLoeschen={setLoeschen} gruppe={gruppe} />
                         )
                         if (b.mitglieder.length === 0) return [zeile(b.kopf)]
                         const kopf = zeile(b.kopf, { block: b, offen: auf,
@@ -620,6 +649,7 @@ export function Kassenbuch({ propertyId, permissions }: {
 
       {datev && m && <DatevExport propertyId={propertyId} heute={m.today} onClose={() => setDatev(false)} />}
       {einstellen && <Einstellung propertyId={propertyId} e={e.data} onClose={() => setEinstellen(false)} />}
+      {loeschen !== null && <Loeschen propertyId={propertyId} z={loeschen} onClose={() => setLoeschen(null)} />}
       {storno !== null && <Stornieren propertyId={propertyId} z={storno} onClose={() => setStorno(null)} />}
     </div>
   )

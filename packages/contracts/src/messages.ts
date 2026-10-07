@@ -1534,6 +1534,18 @@ const M = {
     de: 'Erwartet wird eine Adresse von DATEV Upload-Mail (…@uploadmail.datev.de).',
     en: 'Expected a DATEV Upload-Mail address (…@uploadmail.datev.de).',
     tr: 'Bir DATEV Upload-Mail adresi bekleniyor (…@uploadmail.datev.de).' },
+  'cashbook.eraseExported': {
+    de: 'Die Buchung ging an DATEV und laesst sich nur noch stornieren.',
+    en: 'The entry was exported to DATEV and can only be voided.',
+    tr: 'Kayıt DATEV\'e aktarıldı ve yalnızca iptal edilebilir.' },
+  'cashbook.eraseImported': {
+    de: 'Die Buchung stammt aus dem Adminpanel; sie wird dort entfernt, sonst kommt sie mit der naechsten Uebernahme wieder.',
+    en: 'The entry comes from the Adminpanel; remove it there, otherwise the next import brings it back.',
+    tr: 'Kayıt Adminpanel\'den geliyor; orada kaldırılmalı, aksi halde bir sonraki aktarımda geri gelir.' },
+  'cashbook.eraseReversal': {
+    de: 'Eine Stornobuchung wird zusammen mit ihrer Buchung geloescht.',
+    en: 'A reversal entry is deleted together with its entry.',
+    tr: 'Bir iptal kaydı, ait olduğu kayıtla birlikte silinir.' },
   'checkin.reservationNotOpen': {
     de: 'Fuer diese Reservierung ist kein Online-Check-in moeglich: sie ist storniert, '
       + 'abgereist oder ohne Hauptgast.',

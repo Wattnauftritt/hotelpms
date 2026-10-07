@@ -193,6 +193,71 @@ describe('Stornieren', () => {
   })
 })
 
+describe('Loeschen bis zum DATEV-Export', () => {
+  // Sven, 07.10.2026: rechtsverbindlich ist, was an DATEV ging (Migration 0100).
+  beforeEach(() => einschalten())
+  const loeschen = (nr: number, wer = chef) =>
+    app.inject({ method: 'DELETE', url: url(`/entries/${nr}`), headers: wer })
+
+  it('entfernt eine Gastbuchung samt Storno und Beleg und protokolliert es', async () => {
+    await buchen({ kind: 'guest', totalCent: 10_000, breakfasts: 2, cityTaxCent: 0,
+                   receipts: [{ data: PDF.toString('base64') }] })
+    await buchen({ kind: 'cash_in', amountCent: 500 })
+    expect((await app.inject({ method: 'POST', url: url('/entries/2/void'), headers: chef }))
+      .statusCode).toBe(201)
+
+    const r = await loeschen(3)
+    expect(r.statusCode, r.body).toBe(200)
+    expect(json(r).erasedNos).toEqual([1, 2, 3, 5, 6, 7])
+
+    const m = json(await app.inject({ method: 'GET', url: url(), headers: chef }))
+    expect(m.entries.map((e: { entryNo: number }) => e.entryNo)).toEqual([4])
+    expect(m.closingBalanceCent).toBe(20_500)
+    const b = await owner.query(`SELECT count(*)::int AS n FROM cashbook_receipt`)
+    expect(b.rows[0].n).toBe(0)
+    const a = await owner.query<{ t: string; n: number; wer: string | null }>(
+      `SELECT table_name AS t, count(*)::int AS n, max(user_id)::text AS wer FROM audit_log
+        WHERE action = 'DELETE' GROUP BY table_name ORDER BY table_name`)
+    expect(a.rows.map(z => [z.t, z.n])).toEqual([['cashbook_entry', 6], ['cashbook_receipt', 1]])
+    expect(a.rows[0]!.wer).not.toBeNull()
+    // Am Weg vorbei bleibt es gesperrt, auch fuer die Eigentuemerrolle.
+    await expect(owner.query(`DELETE FROM cashbook_entry`)).rejects.toThrow(/GoBD/)
+  })
+
+  it('laesst stehen, was an DATEV ging, aus dem Adminpanel kam oder ein Storno ist', async () => {
+    await buchen({ kind: 'cash_in', amountCent: 500 })
+    await buchen({ kind: 'cash_in', amountCent: 700 })
+    await owner.query(`INSERT INTO cashbook_datev_mark (entry_id, property_id, source)
+                       SELECT id, property_id, 'staygrid' FROM cashbook_entry WHERE entry_no = 1`)
+    expect(json(await loeschen(1)).type).toContain('conflict')
+    expect((await loeschen(1)).body).toContain('cashbook.eraseExported')
+
+    expect((await app.inject({ method: 'POST', url: url('/entries/2/void'), headers: chef }))
+      .statusCode).toBe(201)
+    expect((await loeschen(3)).body).toContain('cashbook.eraseReversal')
+
+    await owner.query(`INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent,
+                         tax_rate_bp, external_system, external_reference)
+                       VALUES ($1, $2, 'cash_in', 100, 0, 'adminpanel', '77')`, [fx.propertyId, HEUTE])
+    expect((await loeschen(4)).body).toContain('cashbook.eraseImported')
+
+    expect((await loeschen(99)).statusCode).toBe(404)
+    expect((await loeschen(2, rezeption)).statusCode).toBe(403)
+    const n = await owner.query(`SELECT count(*)::int AS n FROM cashbook_entry`)
+    expect(n.rows[0].n).toBe(4)
+  })
+
+  it('verweigert der Anwendung das Loeschen am Weg vorbei, auch mit gesetztem Schalter', async () => {
+    await buchen({ kind: 'cash_in', amountCent: 500 })
+    const c = await pool.connect()
+    try {
+      await c.query('BEGIN')
+      await c.query(`SELECT set_config('hotelpms.cashbook_erase', 'on', true)`)
+      await expect(c.query(`DELETE FROM cashbook_entry`)).rejects.toThrow(/permission denied/)
+    } finally { await c.query('ROLLBACK'); c.release() }
+  })
+})
+
 describe('Belege', () => {
   beforeEach(() => einschalten())
 

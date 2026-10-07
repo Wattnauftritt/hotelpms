@@ -245,6 +245,18 @@ export const kassenbuch = {
     de: '+ Beleg',
     en: '+ Receipt',
     tr: '+ Fiş' },
+  'cash.erase': {
+    de: 'Löschen',
+    en: 'Delete',
+    tr: 'Sil' },
+  'cash.erase.title': {
+    de: 'Buchung {n} löschen',
+    en: 'Delete entry {n}',
+    tr: '{n} numaralı kaydı sil' },
+  'cash.erase.hint': {
+    de: 'Die Buchung verschwindet ganz, bei einer Gastbuchung mit allen Zeilen, Stornos und Belegen. Das geht nur, solange nichts davon an DATEV ging, und das Protokoll hält fest, wer gelöscht hat. Für einen echten Fehler ist Stornieren der richtige Weg.',
+    en: 'The entry disappears completely; for a guest entry with all of its lines, reversals and receipts. This is only possible while none of it went to DATEV, and the log records who deleted it. For a real mistake, voiding is the right way.',
+    tr: 'Kayıt tamamen kaldırılır; misafir kaydında tüm satırları, iptalleri ve belgeleriyle birlikte. Bu yalnızca hiçbiri DATEV\'e gitmediyse mümkündür ve kimin sildiği kayıt altına alınır. Gerçek bir hata için doğru yol iptal etmektir.' },
   'cash.void': {
     de: 'Stornieren',
     en: 'Void',
