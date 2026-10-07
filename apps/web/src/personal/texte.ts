@@ -148,14 +148,141 @@ const texte = {
     ru: 'Здравствуйте, {name}',
     uk: 'Вітаємо, {name}' },
   /*
-   * Platzhalter bis Baustein 2. Er sagt, was hier erscheinen wird, damit
-   * eine leere Seite nicht wie ein Fehler aussieht.
+   * Ohne Zimmer: das ist kein Fehler, sondern ein Tag ohne Plan -- oder
+   * jemand aus der Kueche. Der Satz sagt, an wen man sich wendet.
    */
   'today.empty': {
-    de: 'Hier stehen bald deine Zimmer für heute. Bis dahin gilt der Plan wie gewohnt.',
-    en: 'Your rooms for today will appear here soon. Until then, use the plan as usual.',
-    ru: 'Скоро здесь появятся ваши номера на сегодня. А пока работайте по плану, как обычно.',
-    uk: 'Незабаром тут зʼявляться ваші номери на сьогодні. А поки працюйте за планом, як зазвичай.' },
+    de: 'Für heute sind dir keine Zimmer zugeteilt. Frag die Hausdame, wenn das nicht stimmt.',
+    en: 'No rooms are assigned to you today. Ask the head housekeeper if that seems wrong.',
+    ru: 'На сегодня вам не назначены номера. Если это ошибка, спросите у старшей горничной.',
+    uk: 'На сьогодні вам не призначено номерів. Якщо це помилка, запитайте старшу покоївку.' },
+  'today.progress': {
+    de: '{done} von {total} erledigt',
+    en: '{done} of {total} done',
+    ru: 'Готово: {done} из {total}',
+    uk: 'Готово: {done} з {total}' },
+  'today.minutes': {
+    de: 'Heute {minutes} Min.',
+    en: 'Today {minutes} min',
+    ru: 'Сегодня {minutes} мин.',
+    uk: 'Сьогодні {minutes} хв' },
+  'today.open': {
+    de: 'Offen',
+    en: 'To do',
+    ru: 'Осталось',
+    uk: 'Залишилось' },
+  'today.done': {
+    de: 'Erledigt',
+    en: 'Done',
+    ru: 'Готово',
+    uk: 'Готово' },
+  'today.property': {
+    de: 'Haus',
+    en: 'Property',
+    ru: 'Объект',
+    uk: 'Обʼєкт' },
+
+  'room.number': {
+    de: 'Zimmer {code}',
+    en: 'Room {code}',
+    ru: 'Номер {code}',
+    uk: 'Номер {code}' },
+  'room.departure': {
+    de: 'Abreise',
+    en: 'Check-out',
+    ru: 'Выезд',
+    uk: 'Виїзд' },
+  'room.stayover': {
+    de: 'Bleiber',
+    en: 'Stayover',
+    ru: 'Проживающий',
+    uk: 'Проживає' },
+  'room.free': {
+    de: 'Frei',
+    en: 'Free',
+    ru: 'Свободен',
+    uk: 'Вільний' },
+  /*
+   * Kein Verbot: viele Haeuser checken nicht jeden Gast von Hand aus. Die
+   * Kraft sieht, ob das Zimmer leer ist; der Satz sagt nur, was StayGrid
+   * weiss.
+   */
+  'room.waiting': {
+    de: 'Gast noch nicht ausgecheckt',
+    en: 'Guest not checked out yet',
+    ru: 'Гость ещё не выехал',
+    uk: 'Гість ще не виїхав' },
+  'room.arrival': {
+    de: 'Heute Anreise',
+    en: 'Arrival today',
+    ru: 'Сегодня заезд',
+    uk: 'Сьогодні заїзд' },
+  'room.problems': {
+    de: 'Gemeldet: {n}',
+    en: 'Reported: {n}',
+    ru: 'Сообщено: {n}',
+    uk: 'Повідомлено: {n}' },
+  'room.minutes': {
+    de: '{minutes} Min.',
+    en: '{minutes} min',
+    ru: '{minutes} мин.',
+    uk: '{minutes} хв' },
+  /*
+   * Die Hausdame hat umgeplant, waehrend die Kraft im Zimmer war, oder der
+   * Tag ist abgeschlossen. Die Liste laedt neu; der Satz sagt, warum das
+   * Zimmer weg ist.
+   */
+  'room.gone': {
+    de: 'Dieses Zimmer ist dir nicht mehr zugeteilt. Die Liste ist neu geladen.',
+    en: 'This room is no longer assigned to you. The list has been reloaded.',
+    ru: 'Этот номер вам больше не назначен. Список обновлён.',
+    uk: 'Цей номер вам більше не призначено. Список оновлено.' },
+  'room.undo': {
+    de: 'Zurücknehmen',
+    en: 'Undo',
+    ru: 'Отменить',
+    uk: 'Скасувати' },
+  'outcome.cleaned': {
+    de: 'Gereinigt',
+    en: 'Cleaned',
+    ru: 'Убрано',
+    uk: 'Прибрано' },
+  'outcome.declined': {
+    de: 'Gast will keine Reinigung',
+    en: 'Guest declined cleaning',
+    ru: 'Гость отказался от уборки',
+    uk: 'Гість відмовився від прибирання' },
+  'outcome.was_clean': {
+    de: 'War schon sauber',
+    en: 'Was already clean',
+    ru: 'Уже было чисто',
+    uk: 'Вже було чисто' },
+
+  'problem.report': {
+    de: 'Problem melden',
+    en: 'Report a problem',
+    ru: 'Сообщить о проблеме',
+    uk: 'Повідомити про проблему' },
+  'problem.hint': {
+    de: 'Was ist kaputt oder fehlt? Die Hausdame und die Technik sehen es sofort.',
+    en: 'What is broken or missing? The head housekeeper and maintenance see it right away.',
+    ru: 'Что сломано или чего не хватает? Старшая горничная и техники увидят это сразу.',
+    uk: 'Що зламано або чого бракує? Старша покоївка і технічна служба побачать це одразу.' },
+  'problem.send': {
+    de: 'Melden',
+    en: 'Send',
+    ru: 'Отправить',
+    uk: 'Надіслати' },
+  'problem.cancel': {
+    de: 'Abbrechen',
+    en: 'Cancel',
+    ru: 'Отмена',
+    uk: 'Скасувати' },
+  'problem.sent': {
+    de: 'Gemeldet. Danke!',
+    en: 'Reported. Thank you!',
+    ru: 'Отправлено. Спасибо!',
+    uk: 'Надіслано. Дякуємо!' },
 
   'more.language': {
     de: 'Sprache',

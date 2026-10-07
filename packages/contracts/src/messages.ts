@@ -654,6 +654,10 @@ const M = {
     de: 'Das Recht eines Gaesteterminals ist kein Zugriffsbereich: {values}',
     en: 'The permission of a guest terminal is not a scope: {values}',
     tr: 'Misafir terminalinin yetkisi bir erişim alanı değildir: {values}' },
+  'field.noStaffScopes': {
+    de: 'Das Recht der Personal-App ist kein Zugriffsbereich: {values}',
+    en: 'The staff app permission is not a scope: {values}',
+    tr: 'Personel uygulamasının yetkisi bir erişim alanı değildir: {values}' },
   // ------------------------------------------------- Zugriff und Anmeldung
 
   'access.accountOutOfScope': {
@@ -1381,6 +1385,11 @@ const M = {
     de: 'Jedes Zimmer nur einmal je Tag: Abreise oder Bleiber.',
     en: 'Each room only once per day: departure or stayover.',
     tr: 'Her oda günde yalnızca bir kez: ayrılış veya konaklama devamı.' },
+  // Meine Zimmer (0108): Zimmer hat nur ein Mensch, kein Zugang und kein Geraet.
+  'staff.personOnly': {
+    de: 'Die Personal-App benutzt nur eine angemeldete Person.',
+    en: 'Only a signed-in person can use the staff app.',
+    tr: 'Personel uygulamasını yalnızca oturum açmış bir kişi kullanabilir.' },
 
   // ------------------------------------------- Gaesteterminal (Dokument 31)
 

@@ -291,9 +291,10 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const { rows, rowCount } = await client.query<{ resource_id: number
                                                         property_id: number }>(
-          `UPDATE housekeeping_task SET status = 'done', done_at = now()
+          `UPDATE housekeeping_task
+              SET status = 'done', done_at = now(), outcome = 'cleaned', done_by = $2
             WHERE id = $1 AND status = 'open'
-            RETURNING resource_id, property_id`, [Number(taskId)])
+            RETURNING resource_id, property_id`, [Number(taskId), principal.userId])
         if (rowCount === 0) throw Errors.notFound('res.task')
         // Eine erledigte Reinigung setzt den Zimmerstatus mit, sonst muss
         // die Kraft zwei Dinge tippen und tippt eines davon nicht.
