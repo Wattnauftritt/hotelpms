@@ -209,6 +209,10 @@ Ohne Auftrag zeigt das Terminal die Seiten, die das Haus in die Diashow aufgenom
 
 Ein Auftrag unterbricht die Diashow sofort; danach baut die Seite sich wie immer neu auf und beginnt von vorn.
 
+**Wie sie aussieht** (`components/Ruhebild.tsx`, Oktober 2026). Ein Bild füllt den ganzen Bildschirm, zoomt langsam und blendet über das vorige; Titel und Text stehen unten links auf einem Verlauf, der sie auf jedem Foto lesbar hält, der Text höchstens sechs Zeilen hoch. Eine Seite ohne Bild steht auf einem Meeresverlauf mit vollem Text — dafür sind Hinweise wie Check-out, WLAN und Parkplätze gedacht. Oben links „Willkommen" und der Hausname, oben rechts die Sprachwahl, unten rechts Uhrzeit und Datum des Geräts, unten die Punkte der Folien. Ohne Seiten in der Diashow steht der Hausname groß in der Mitte. Wer am Gerät Bewegung abgeschaltet hat (`prefers-reduced-motion`), bekommt das Überblenden ohne Zoom.
+
+Die Fotos lädt das Haus selbst als Seiten hoch, im Repository liegt keines: die Rechte an einem Hotelfoto hat das Hotel, nicht StayGrid, und das Aussehen ist für jedes Haus dasselbe. Bilder im Querformat in voller Bildschirmbreite (1920 Pixel) wirken am besten; was nicht ins Format passt, wird beschnitten, nicht verzerrt. Schrift im Foto selbst (ein eingebranntes Logo, ein Werbebanner) steht dann über dem Titel der Seite — ein Bild ohne Aufdruck ist hier das bessere.
+
 ---
 
 ## 8. Bedienfeld der Rezeption
