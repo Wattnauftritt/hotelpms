@@ -114,6 +114,36 @@ async function personenJeZeitraum(
   return rows
 }
 
+export interface FruehstuecksTag {
+  date: string
+  breakfasts: number
+  adults: number
+  children: number
+  unsplit: number
+  assumed: number
+}
+
+/**
+ * Fruehstuecke je Tag von `from` bis `to`, nach der Regel unten (Personen
+ * der Vornacht). Auch die Kueche der Personal-App liest hier (Baustein 5),
+ * damit es im Haus nur **eine** Fruehstueckszahl gibt.
+ */
+export async function fruehstueckeJeTag(
+  client: PoolClient, propertyId: number, from: string, to: string
+): Promise<FruehstuecksTag[]> {
+  // Eine Zeile je Nacht vor dem Fruehstueckstag, dann um einen Tag weiter.
+  const naechte = await personenJeZeitraum(
+    client, propertyId, addDays(from, -1), addDays(to, -1), 'day')
+  return naechte.map(n => ({
+    date: addDays(n.period, 1),
+    breakfasts: n.personNights,
+    adults: n.adultNights,
+    children: n.childNights,
+    unsplit: n.unsplitPersonNights,
+    assumed: n.assumedPersonNights
+  }))
+}
+
 export function occupancyStatsRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -220,17 +250,7 @@ export function occupancyStatsRoutes(app: FastifyInstance): void {
 
       const { from, to } = q
       return tx(req.pool, req, async client => {
-        // Eine Zeile je Nacht vor dem Fruehstueckstag, dann um einen Tag weiter.
-        const naechte = await personenJeZeitraum(
-          client, propertyId, addDays(from, -1), addDays(to, -1), 'day')
-        const days = naechte.map(n => ({
-          date: addDays(n.period, 1),
-          breakfasts: n.personNights,
-          adults: n.adultNights,
-          children: n.childNights,
-          unsplit: n.unsplitPersonNights,
-          assumed: n.assumedPersonNights
-        }))
+        const days = await fruehstueckeJeTag(client, propertyId, from, to)
         const summe = (f: 'breakfasts' | 'adults' | 'children' | 'unsplit' | 'assumed') =>
           days.reduce((s, d) => s + d[f], 0)
         return {

@@ -1061,7 +1061,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Schritt 2: der Sortierer als reine Funktion in `packages/domain`. Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker, Züge des Sortierers ohne `local`-Vermerk. Schritt 4: Hotel — Vorschau, Übernehmen, Rückgängig im Zimmerplan.
 
-### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 4 von 10**
+### Aufgabe 18 — Personalsystem und Personal-App — **Bausteine 1 bis 5 von 10**
 
 **Anlass.** Sven, 07.10.2026: StayGrid übernimmt das Personalsystem, das bisher eine eigene App war (Repo `zurseerobbe`, Flask-PWA): Putzplan, Zimmerstatus, Kontrolle durch die Hausdame, Frühstückszahl für die Küche, Zusatzarbeiten mit Minuten, Oberfläche in de/en/ru/uk mit Rückübersetzung frei eingetragener Tätigkeiten. Plan mit zehn Bausteinen: Projektordner `personal-app/plan.md`. Die alte App läuft weiter, bis Sven umschaltet. **Keine Kommen/Gehen-Erfassung:** das Personal kommt von einer Zeitarbeitsfirma und wird vertraglich nach Pauschalminuten je Zimmer abgerechnet (Svens Entscheidung).
 
@@ -1075,7 +1075,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Baustein 4 (Kontrolle).** Migration `0109`: `housekeeping_task.inspection` (`passed`, `rework`) mit `inspection_note` (bei Nacharbeit Pflicht), `inspected_by`/`inspected_at`, im Verlauf mitgeschrieben; Recht `housekeeping:inspect` für Hausdame, Direktion, Betriebsverwaltung, Inhaber. Routen in `routes/inspection.ts`: alle Zimmer des offenen Tags mit Kraft und Ausgang, **ohne Minuten** (die Hausdame sieht keine Arbeitszeit), und kontrollieren, nacharbeiten oder zurücknehmen — nur an gereinigt oder sauber gemeldeten Zimmern (409 `inspection.notCleaned`). Kontrolliert setzt den Zimmerstand `inspected`, die Rezeption sieht das Zimmer damit als kontrolliert im Zimmerplan; nacharbeiten setzt `dirty` und stellt das Zimmer mit dem Satz oben in die Liste der Kraft, die „Nachgearbeitet“ meldet (`POST …/my-rooms/:taskId/reworked`). Abgerechnet wird die Reinigung trotzdem einmal. Seite „Kontrolle“ in der Personal-App (eigener Reiter, für die Hausdame der erste) und in der regulären Oberfläche. Tests: `kontrolle.test.ts`, `personalApp.test.ts`.
 
-**Offen.** 5: Küche. 6: Arbeitszeit aus Pauschalminuten und Zusatzarbeiten. 7: Übersetzung. 8: Push. 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
+**Baustein 5 (Frühstück).** Migration `0110`: Recht `kitchen:breakfast` für Küche, Hausdame, Rezeption, Direktion, Betriebsverwaltung, Inhaber — die Küche sieht damit die Zahl und nichts sonst. `GET /v1/properties/:id/kitchen` liefert sieben Tage ab dem offenen Geschäftstag nach derselben Regel wie `GET /breakfast` (Personen der Vornacht, `fruehstueckeJeTag` in `routes/occupancyStats.ts`), ohne Spiegel und ohne Enddatum. Reiter „Frühstück“ in der Personal-App und Bildschirm „Frühstück“ in der regulären Oberfläche. Wer nur Personalrechte hat (`staff:app`, `kitchen:breakfast`), landet immer in der Personal-App (`nurPersonal` in `personal/adresse.ts`). Tests: `kueche.test.ts`, `personalApp.test.ts`.
+
+**Offen.** 6: Arbeitszeit aus Pauschalminuten und Zusatzarbeiten. 7: Übersetzung. 8: Push. 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
 
 ---
 

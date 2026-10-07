@@ -3,12 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { KENNWORT_MIN, STAFF_LOCALES, type StaffLocale } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useInstallation } from '../lib/pwa.js'
-import { personalSeite } from './adresse.js'
+import { nurPersonal, personalSeite } from './adresse.js'
 import { SpracheContext, SPRACHNAME, fehlerText, startSprache, usePT }
   from './texte.js'
 import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
 import { MeineZimmer } from './MeineZimmer.js'
 import { Kontrolle } from './Kontrolle.js'
+import { Kueche } from './Kueche.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -266,12 +267,15 @@ function Start({ me, locale, onLocale }: {
   const haeuser = me.properties.filter(p => p.permissions.includes('staff:app'))
   const [haus, setHaus] = useState(() => haeuser[0]?.id ?? 0)
   const rechte = haeuser.find(h => h.id === haus)?.permissions ?? []
-  // Die Hausdame beginnt mit der Kontrolle: Zimmer hat sie selten selbst.
+  // Die Hausdame beginnt mit der Kontrolle, die Kueche mit dem Fruehstueck:
+  // Zimmer haben beide selten selbst.
   const kontrolle = rechte.includes('housekeeping:inspect')
-  const reiterListe = kontrolle ? ['heute', 'kontrolle', 'mehr'] as const
-                                : ['heute', 'mehr'] as const
-  type Reiter = 'heute' | 'kontrolle' | 'mehr'
-  const [reiter, setReiter] = useState<Reiter>(() => kontrolle ? 'kontrolle' : 'heute')
+  const kueche = rechte.includes('kitchen:breakfast')
+  type Reiter = 'heute' | 'kontrolle' | 'kueche' | 'mehr'
+  const reiterListe: Reiter[] = ['heute', ...(kontrolle ? ['kontrolle' as const] : []),
+    ...(kueche ? ['kueche' as const] : []), 'mehr']
+  const [reiter, setReiter] = useState<Reiter>(
+    () => kontrolle ? 'kontrolle' : kueche ? 'kueche' : 'heute')
   const hausWahl = haeuser.length > 1 && <label className="block">
     <span className="block text-sm text-neutral-600">{t('today.property')}</span>
     <select value={haus} onChange={e => setHaus(Number(e.target.value))} className={FELD}>
@@ -294,6 +298,10 @@ function Start({ me, locale, onLocale }: {
         {hausWahl}
         <Kontrolle key={haus} propertyId={haus} locale={locale} />
       </>}
+      {reiter === 'kueche' && kueche && <>
+        {hausWahl}
+        <Kueche key={haus} propertyId={haus} locale={locale} />
+      </>}
       {reiter === 'mehr' && <>
         <Karte titel={t('more.language')}>
           <SprachWahl locale={locale} onLocale={onLocale} />
@@ -309,7 +317,7 @@ function Start({ me, locale, onLocale }: {
             * arbeitet auch an der Oberflaeche der Rezeption und wechselt
             * zwischen beiden (Sven, 07.10.2026). Dieselbe Sitzung, ein Link.
             */}
-          {me.properties.some(p => p.permissions.some(r => r !== 'staff:app')) && (
+          {!nurPersonal(me.properties) && (
             <a href="/" className={`block text-center ${KNOPF_LEISE}`}>
               {t('more.toReception')}
             </a>
@@ -328,7 +336,8 @@ function Start({ me, locale, onLocale }: {
                 onClick={() => setReiter(r)}
                 className={`py-4 text-base ${r === reiter
                   ? 'font-semibold text-neutral-900' : 'text-neutral-500'}`}>
-          {t(r === 'heute' ? 'tab.today' : r === 'kontrolle' ? 'tab.inspect' : 'tab.more')}
+          {t(r === 'heute' ? 'tab.today' : r === 'kontrolle' ? 'tab.inspect'
+             : r === 'kueche' ? 'tab.kitchen' : 'tab.more')}
         </button>
       ))}
     </nav>

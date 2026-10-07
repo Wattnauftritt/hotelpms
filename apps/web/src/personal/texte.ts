@@ -314,6 +314,37 @@ const texte = {
     ru: 'Проверено: {passed} · проверить: {open} · не убрано: {todo}',
     uk: 'Перевірено: {passed} · перевірити: {open} · не прибрано: {todo}' },
 
+  'tab.kitchen': {
+    de: 'Frühstück',
+    en: 'Breakfast',
+    ru: 'Завтрак',
+    uk: 'Сніданок' },
+  'kitchen.today': {
+    de: 'Heute',
+    en: 'Today',
+    ru: 'Сегодня',
+    uk: 'Сьогодні' },
+  'kitchen.tomorrow': {
+    de: 'Morgen',
+    en: 'Tomorrow',
+    ru: 'Завтра',
+    uk: 'Завтра' },
+  'kitchen.children': {
+    de: 'davon Kinder: {n}',
+    en: 'children: {n}',
+    ru: 'из них детей: {n}',
+    uk: 'з них дітей: {n}' },
+  'kitchen.week': {
+    de: 'Nächste Tage',
+    en: 'Next days',
+    ru: 'Следующие дни',
+    uk: 'Наступні дні' },
+  'kitchen.assumed': {
+    de: 'Heute geschätzt: {n} Personen ohne genaue Angabe, gezählt mit der vollen Zimmerbelegung.',
+    en: 'Estimated today: {n} guests without an exact count, counted at full room occupancy.',
+    ru: 'Сегодня оценка: {n} гостей без точного числа, посчитаны по полной вместимости номера.',
+    uk: 'Сьогодні оцінка: {n} гостей без точної кількості, пораховані за повною місткістю номера.' },
+
   'problem.report': {
     de: 'Problem melden',
     en: 'Report a problem',
