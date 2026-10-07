@@ -32,15 +32,15 @@ import { kassenbloecke, type Kassenblock } from '../lib/kassengruppen.js'
  * hier ein Cent anders als nachher im Buch.
  */
 
-const ART: Record<Kassenart, TextKey> = {
+export const ART: Record<Kassenart, TextKey> = {
   lodging: 'cash.kind.lodging', breakfast_food: 'cash.kind.breakfastFood',
   breakfast_drinks: 'cash.kind.breakfastDrinks', city_tax: 'cash.kind.cityTax',
   cash_in: 'cash.kind.cashIn', bank_deposit: 'cash.kind.bankDeposit',
   expense: 'cash.kind.expense', other: 'cash.kind.other', legacy_guest: 'cash.kind.legacyGuest'
 }
 
-type Erfassung = 'guest' | 'city_tax' | 'cash_in' | 'bank_deposit' | 'expense' | 'other'
-const ERFASSUNG: Array<[Erfassung, TextKey]> = [
+export type Erfassung = 'guest' | 'city_tax' | 'cash_in' | 'bank_deposit' | 'expense' | 'other'
+export const ERFASSUNG: Array<[Erfassung, TextKey]> = [
   ['guest', 'cash.kind.guest'], ['city_tax', 'cash.kind.cityTax'],
   ['cash_in', 'cash.kind.cashIn'], ['bank_deposit', 'cash.kind.bankDeposit'],
   ['expense', 'cash.kind.expense'], ['other', 'cash.kind.other']
@@ -60,9 +60,16 @@ function Kachel({ titel, cent, betont }: { titel: string; cent: number; betont?:
   )
 }
 
-/** Fotos oder Dateien sammeln, bevor die Buchung gespeichert wird. */
-function Belegwahl({ belege, onBelege }: {
-  belege: NeuerBeleg[]; onBelege: (b: NeuerBeleg[]) => void
+/**
+ * Fotos oder Dateien sammeln, bevor die Buchung gespeichert wird.
+ *
+ * `gross` ist die Fassung fuer das Telefon: dort ist das Foto der
+ * Normalfall, also steht die Kamera als erster und breiter Knopf, und das
+ * Bild wird so gross gezeigt, dass man vor dem Buchen sieht, ob der Bon
+ * lesbar ist. Ein verwackelter Beleg faellt sonst erst dem Steuerberater auf.
+ */
+export function Belegwahl({ belege, onBelege, gross = false }: {
+  belege: NeuerBeleg[]; onBelege: (b: NeuerBeleg[]) => void; gross?: boolean
 }): JSX.Element {
   const t = useT()
   const kamera = useRef<HTMLInputElement>(null)
@@ -78,13 +85,16 @@ function Belegwahl({ belege, onBelege }: {
     }
     onBelege([...belege, ...neu].slice(0, 10))
   }
+  const entfernen = (i: number) => onBelege(belege.filter((_, j) => j !== i))
   return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={KNOPF_LEISE} onClick={() => kamera.current?.click()}>
+    <div className={gross ? 'space-y-3' : 'space-y-1'}>
+      <div className={gross ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
+        <button type="button" onClick={() => kamera.current?.click()}
+                className={gross ? 'h-14 rounded-md bg-violet-700 text-base font-medium text-white' : KNOPF_LEISE}>
           {t('cash.receipt.photo')}
         </button>
-        <button type="button" className={KNOPF_LEISE} onClick={() => datei.current?.click()}>
+        <button type="button" onClick={() => datei.current?.click()}
+                className={gross ? 'h-14 rounded-md border border-neutral-300 bg-white text-base' : KNOPF_LEISE}>
           {t('cash.receipt.file')}
         </button>
         <input ref={kamera} type="file" accept="image/*" capture="environment" hidden
@@ -92,30 +102,46 @@ function Belegwahl({ belege, onBelege }: {
         <input ref={datei} type="file" accept="application/pdf,image/jpeg,image/png" multiple hidden
                onChange={e => { void nehmen(e.target.files); e.target.value = '' }} />
       </div>
-      {belege.length > 0 && (
-        <ul className="flex flex-wrap gap-2 text-xs">
-          {belege.map((b, i) => (
-            <li key={i} className="flex items-center gap-1 rounded-sm border border-neutral-200 px-2 py-1">
-              {b.data.startsWith('data:image/')
-                ? <img src={b.data} alt="" className="h-10 w-10 object-cover" />
-                : <span>PDF</span>}
-              <span className="max-w-32 truncate">{b.name}</span>
-              <button type="button" aria-label={t('cash.receipt.remove')}
-                      onClick={() => onBelege(belege.filter((_, j) => j !== i))}>×</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {fehler !== null && <div className="text-xs text-red-700">{fehler}</div>}
+      {belege.length > 0 && (gross
+        ? <ul className="space-y-3">
+            {belege.map((b, i) => (
+              <li key={i} className="relative overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
+                {b.data.startsWith('data:image/')
+                  ? <img src={b.data} alt={b.name} className="max-h-[60vh] w-full object-contain" />
+                  : <div className="flex h-20 items-center gap-2 px-3 text-sm">
+                      <span className="rounded-sm bg-neutral-200 px-2 py-1 text-xs">PDF</span>
+                      <span className="truncate">{b.name}</span>
+                    </div>}
+                <button type="button" aria-label={t('cash.receipt.remove')} onClick={() => entfernen(i)}
+                        className="absolute right-2 top-2 h-10 w-10 rounded-full bg-black/60 text-xl text-white">×</button>
+              </li>
+            ))}
+          </ul>
+        : <ul className="flex flex-wrap gap-2 text-xs">
+            {belege.map((b, i) => (
+              <li key={i} className="flex items-center gap-1 rounded-sm border border-neutral-200 px-2 py-1">
+                {b.data.startsWith('data:image/')
+                  ? <img src={b.data} alt="" className="h-10 w-10 object-cover" />
+                  : <span>PDF</span>}
+                <span className="max-w-32 truncate">{b.name}</span>
+                <button type="button" aria-label={t('cash.receipt.remove')}
+                        onClick={() => entfernen(i)}>×</button>
+              </li>
+            ))}
+          </ul>)}
+      {fehler !== null && <div className={gross ? 'text-sm text-red-700' : 'text-xs text-red-700'}>{fehler}</div>}
     </div>
   )
 }
 
-function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
+/**
+ * Zustand und Speichern einer neuen Buchung. Schreibtisch und Telefon teilen
+ * ihn, damit beide dasselbe buchen: zwei Fassungen liefen beim naechsten
+ * Feld auseinander, und eine davon buchte die Kurtaxe nicht mehr mit.
+ */
+export function useErfassung({ propertyId, heute, fruehstueckCent, speisenBp }: {
   propertyId: number; heute: string; fruehstueckCent: number; speisenBp: number
-}): JSX.Element {
-  const t = useT()
-  const locale = useLocale()
+}) {
   const buchen = useBuchen(propertyId)
   const [art, setArt] = useState<Erfassung>('guest')
   const [datum, setDatum] = useState(heute)
@@ -137,7 +163,7 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
   const leeren = () => {
     setBetrag(''); setAnzahl('0'); setKurtaxe(''); setGast(''); setText(''); setBelege([])
   }
-  const speichern = () => {
+  const speichern = (danach?: () => void) => {
     const gemeinsam = { businessDate: datum, guestName: gast.trim() || undefined,
                         text: text.trim() || undefined, receipts: belege }
     const b: Neubuchung = art === 'guest'
@@ -146,8 +172,25 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
           cityTaxCent: centAusEingabe(kurtaxe) ?? 0 }
       : { kind: art, ...gemeinsam, amountCent: cent ?? 0,
           ...(art === 'expense' || art === 'other' ? { taxRateBp: satz } : {}) }
-    buchen.mutate(b, { onSuccess: leeren })
+    buchen.mutate(b, { onSuccess: () => { leeren(); danach?.() } })
   }
+
+  return {
+    art, setArt, datum, setDatum, betrag, setBetrag, anzahl, setAnzahl, kurtaxe, setKurtaxe,
+    satz, setSatz, gast, setGast, text, setText, belege, setBelege, vorschau, buchen, speichern,
+    bereit: !buchen.isPending && (art === 'guest' || !!cent)
+  }
+}
+
+function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
+  propertyId: number; heute: string; fruehstueckCent: number; speisenBp: number
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const {
+    art, setArt, datum, setDatum, betrag, setBetrag, anzahl, setAnzahl, kurtaxe, setKurtaxe,
+    satz, setSatz, gast, setGast, text, setText, belege, setBelege, vorschau, buchen, speichern, bereit
+  } = useErfassung({ propertyId, heute, fruehstueckCent, speisenBp })
 
   return (
     <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
@@ -202,8 +245,7 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
       {art === 'other' && <div className="text-xs text-neutral-500">{t('cash.otherHint')}</div>}
       <Belegwahl belege={belege} onBelege={setBelege} />
       {buchen.isError && <Fehler error={buchen.error} />}
-      <button className={KNOPF} disabled={buchen.isPending || (art !== 'guest' && !cent)}
-              onClick={speichern}>
+      <button className={KNOPF} disabled={!bereit} onClick={() => speichern()}>
         {t('cash.save')}
       </button>
     </section>
@@ -297,7 +339,7 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, onLoeschen
   )
 }
 
-function Loeschen({ propertyId, z, onClose }: {
+export function Loeschen({ propertyId, z, onClose }: {
   propertyId: number; z: Kassenzeile; onClose: () => void
 }): JSX.Element {
   const t = useT()
@@ -317,7 +359,7 @@ function Loeschen({ propertyId, z, onClose }: {
   )
 }
 
-function Stornieren({ propertyId, z, onClose }: {
+export function Stornieren({ propertyId, z, onClose }: {
   propertyId: number; z: Kassenzeile; onClose: () => void
 }): JSX.Element {
   const t = useT()
@@ -347,7 +389,7 @@ function Stornieren({ propertyId, z, onClose }: {
  * abgebrochener Download sonst Zeilen als uebergeben hinterliesse, die nie
  * ankamen (so war es im Adminpanel).
  */
-function DatevExport({ propertyId, heute, onClose }: {
+export function DatevExport({ propertyId, heute, onClose }: {
   propertyId: number; heute: string; onClose: () => void
 }): JSX.Element {
   const t = useT()
@@ -423,7 +465,7 @@ function Belegversandhinweis({ v }: { v: Belegversand }): JSX.Element | null {
   return v.queued > 0 ? <p>{t('cash.datev.receiptsQueued', { n: v.queued })}</p> : null
 }
 
-function Einstellung({ propertyId, e, onClose }: {
+export function Einstellung({ propertyId, e, onClose }: {
   propertyId: number; e: Kasseneinstellung; onClose: () => void
 }): JSX.Element {
   const t = useT()

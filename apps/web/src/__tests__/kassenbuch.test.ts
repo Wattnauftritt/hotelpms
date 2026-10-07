@@ -24,6 +24,14 @@ describe('Kassenbuch in der Oberflaeche', () => {
     expect(quelle).toContain("from '@hotelpms/domain/cashbook'")
   })
 
+  it('bucht am Telefon ueber denselben Haken wie am Desktop', () => {
+    // Eine zweite Fassung des Buchens liefe beim naechsten Feld auseinander.
+    const mobil = readFileSync(new URL('../components/mobil/MobilKasse.tsx', import.meta.url), 'utf8')
+    expect(mobil).toContain('useErfassung(')
+    expect(mobil).not.toContain('useBuchen')
+    expect(mobil).not.toContain('splitGuestBooking')
+  })
+
   it('fasst eine Gastbuchung zu einer Zeile mit Summe und letztem Bestand zusammen', () => {
     const z = (entryNo: number, amountCent: number, groupNo: number | null,
                balanceAfterCent: number | null): Kassenzeile => ({

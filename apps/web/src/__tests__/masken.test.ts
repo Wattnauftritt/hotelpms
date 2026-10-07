@@ -42,8 +42,14 @@ describe('Der Rahmen einer Maske', () => {
      * steht oben und nicht in der Mitte, weil die Liste mit jedem Anschlag
      * waechst und schrumpft -- mittig ausgerichtet sprang das Feld dabei auf
      * und ab, unter dem Cursor weg.
+     *
+     * Die zweite ist die Seite "Neue Buchung" des Kassenbuchs am Telefon:
+     * keine Maske ueber dem Bildschirm, sondern eine ganze Seite ohne Rand,
+     * damit das Belegfoto die volle Breite hat (Sven, 07.10.2026). Eine
+     * Kastenbreite gibt es dort nicht, die hier auseinanderlaufen koennte.
      */
-    expect(eigene).toEqual(['components/Detailsuche.tsx', 'components/Dialog.tsx'])
+    expect(eigene).toEqual(['components/Detailsuche.tsx', 'components/Dialog.tsx',
+                            'components/mobil/MobilKasse.tsx'])
   })
 
   it('haelt die Knopfleiste ausserhalb des rollenden Teils', () => {
