@@ -425,7 +425,7 @@ export function registrationImportRoutes(app: FastifyInstance): void {
           /*
            * Ein uebernommener Schein, dessen Gast keinen Vornamen mehr hat,
            * ist einer, den die Bereinigung geteilter Profile abgetrennt hat
-           * (0106): sein Name stand am geteilten Profil und war von einem
+           * (0107): sein Name stand am geteilten Profil und war von einem
            * spaeteren Schein ueberschrieben. Uebernehmen verlangt einen
            * Vornamen, anders entsteht dieser Zustand nicht. Dann traegt der
            * erneut geschickte Schein die Angaben des Gastes nach; der Schein
@@ -446,7 +446,7 @@ export function registrationImportRoutes(app: FastifyInstance): void {
         if (gast.loeschantrag) throw Errors.conflict('guest.erasureRequested')
 
         // Der Schein gilt diesem Aufenthalt. Ein Profil, an dem noch andere
-        // haengen, bekaeme sonst seinen Namen fuer alle (Migration 0106).
+        // haengen, bekaeme sonst seinen Namen fuer alle (Migration 0107).
         const profil = await eigenesProfil(client, Number(res.id), Number(res.primary_guest_id))
         aufenthalt.primaryGuestId = profil.id
 

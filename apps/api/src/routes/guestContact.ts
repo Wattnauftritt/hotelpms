@@ -375,7 +375,7 @@ async function kontaktSchreiben(
   const { erfasst } = erfasstAbfrage.rows[0]!
   /*
    * Haengt das Profil noch an anderen Reservierungen, bekommt diese ein
-   * eigenes, bevor etwas hineingeschrieben wird (Migration 0106). Das
+   * eigenes, bevor etwas hineingeschrieben wird (Migration 0107). Das
    * Umsystem meint diesen Aufenthalt; ein Vorname, den es fuer ihn schickt,
    * stand sonst in jeder Reservierung desselben KWHotel-Gastsatzes. Nicht,
    * wenn der Meldeschein erfasst ist: dann aendert der Abgleich ohnehin

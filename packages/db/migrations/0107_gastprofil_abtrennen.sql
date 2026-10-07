@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0106 -- Eine Reservierung von einem geteilten Gastprofil abtrennen.
+-- 0107 -- Eine Reservierung von einem geteilten Gastprofil abtrennen.
 --
 -- Anforderung: Sven, 07.10.2026, ueber das Adminpanel (Thread "falsche
 -- Vornamen"). In der Anreiseliste standen Vornamen aus fremden Buchungen.

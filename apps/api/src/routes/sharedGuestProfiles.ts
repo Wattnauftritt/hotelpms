@@ -7,13 +7,13 @@ import { Errors } from '../platform/errors.js'
 import { geschaeftstag } from '../platform/kassenbuch.js'
 
 /**
- * Geteilte Gastprofile aus dem KWHotel-Import trennen (Migration 0106).
+ * Geteilte Gastprofile aus dem KWHotel-Import trennen (Migration 0107).
  *
  * **Was passiert ist.** Der Import legte ein Profil je KWHotel-Gastsatz an,
  * und unter einem Gastsatz stehen dort oft verschiedene Menschen. Seit dem
  * 04.10. schreiben Meldeschein und Gastkontakt aus dem Adminpanel Namen ins
  * Profil -- und damit in jede Reservierung daran. Die Anreiseliste zeigte
- * Vornamen aus fremden Buchungen. Seit 0106 trennen beide Routen selbst;
+ * Vornamen aus fremden Buchungen. Seit 0107 trennen beide Routen selbst;
  * hier wird der Bestand bereinigt.
  *
  * **Was die Bereinigung tut.** Je geteiltem Profil behaelt es genau eine

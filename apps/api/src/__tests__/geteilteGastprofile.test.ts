@@ -7,7 +7,7 @@ import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 
 /**
- * Geteilte Gastprofile aus dem KWHotel-Import (Migration 0106).
+ * Geteilte Gastprofile aus dem KWHotel-Import (Migration 0107).
  *
  * Ein KWHotel-Gastsatz trug mehrere Menschen, der Import machte daraus ein
  * Profil, und ein Name, den das Adminpanel fuer einen Aufenthalt schickte,

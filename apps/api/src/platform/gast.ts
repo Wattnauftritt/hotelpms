@@ -119,7 +119,7 @@ export async function profilGeteilt(
  * Das Profil, in das ein Umsystem fuer diese Reservierung schreiben darf.
  *
  * Haengt der Hauptgast noch an einer anderen Reservierung, bekommt diese
- * hier ein eigenes Profil (Migration 0106), und der Aufrufer schreibt
+ * hier ein eigenes Profil (Migration 0107), und der Aufrufer schreibt
  * dorthin. Ein Umsystem kennt den Aufenthalt, nicht den Menschen: ob zwei
  * Aufenthalte unter einem KWHotel-Gastsatz derselbe Mensch sind, weiss es
  * nicht, und ein Name, den es fuer den einen schickt, stand sonst bei allen.
