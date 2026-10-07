@@ -478,6 +478,54 @@ export function cashbookImportRoutes(app: FastifyInstance): void {
    * Gastbuchung an ihre erste). `sha256` prueft, dass die Datei vollstaendig
    * ankam; dieselbe Datei ein zweites Mal ist kein Fehler, sondern `exists`.
    */
+  /*
+   * Eine Uebernahme verwerfen (Migration 0101). Sven hat keine Konsole auf
+   * der StayGrid-Maschine, also loest das Adminpanel es aus. Ohne `dryRun`
+   * muessen die erwarteten Anzahlen mitkommen und stimmen: wer loescht,
+   * sagt vorher, was er zu loeschen meint, und eine Zeile, die seit der
+   * Probe dazukam, haelt den Lauf an.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/cashbook/import/reset',
+    permission: 'cashbook:import',
+    propertyParam: 'propertyId',
+    summary: 'Kassenbuch: Uebernahme verwerfen, solange das Haus nur eine Kopie fuehrt (mit Probelauf)',
+    handler: async (req) => {
+      const haus = Number((req.params as { propertyId: string }).propertyId)
+      const b = (req.body ?? {}) as { system?: unknown; dryRun?: unknown; expect?: unknown }
+      const f: Record<string, Meldung[]> = {}
+      if (typeof b.system !== 'string' || !SYSTEM.test(b.system)) f.system = ['field.required']
+      const probe = b.dryRun === true
+      const erwartet = istObjekt(b.expect) ? {
+        entries: ganzzahl(b.expect.entries), receipts: ganzzahl(b.expect.receipts),
+        datevMarks: ganzzahl(b.expect.datevMarks) } : null
+      if (!probe && (erwartet === null || Object.values(erwartet).some(n => n === null || n < 0))) {
+        f.expect = ['field.required']
+      }
+      if (Object.keys(f).length > 0) throw Errors.validation(f)
+
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ entries: string; receipts: string; datev_marks: string }>(
+          `SELECT * FROM cashbook_import_reset($1, $2, false)`, [haus, b.system])
+          .catch((err: { code?: string }) => {
+            if (err.code === '23514') throw Errors.conflict('cashbook.resetNotACopy')
+            throw err
+          })
+        const gefunden = { entries: Number(r.rows[0]!.entries), receipts: Number(r.rows[0]!.receipts),
+                           datevMarks: Number(r.rows[0]!.datev_marks) }
+        if (probe) return { dryRun: true, found: gefunden, deleted: false }
+        if (gefunden.entries !== erwartet!.entries || gefunden.receipts !== erwartet!.receipts
+            || gefunden.datevMarks !== erwartet!.datevMarks) {
+          throw Errors.conflict('cashbook.resetCountsDiffer', {
+            entries: gefunden.entries, receipts: gefunden.receipts, datevMarks: gefunden.datevMarks })
+        }
+        await client.query(`SELECT * FROM cashbook_import_reset($1, $2, true)`, [haus, b.system])
+        return { dryRun: false, found: gefunden, deleted: true }
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'PUT',
     url: '/v1/properties/:propertyId/cashbook/import/:legacyId/receipt',

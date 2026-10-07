@@ -321,3 +321,65 @@ describe('Belege aus dem Adminpanel', () => {
     expect((await beleg(10, svg, sha(svg))).statusCode).toBe(422)
   })
 })
+
+describe('Uebernahme verwerfen', () => {
+  // Sven, 07.10.2026: Haus leeren und ohne die Testbuchungen neu schieben (Migration 0101).
+  const leeren = (payload: Record<string, unknown>, wer = maschine) => app.inject({
+    method: 'POST', url: url('/import/reset'), headers: wer, payload: { system: 'adminpanel', ...payload } })
+  const anzahl = async (t: string) =>
+    (await owner.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t}`)).rows[0]!.n
+
+  it('zaehlt in der Probe, loescht nur mit stimmenden Anzahlen und beginnt bei Nummer 1', async () => {
+    const zwei = eintraege()
+    zwei[5]!.voided = true
+    await schieben({ settings: stand, entries: zwei })
+    await app.inject({ method: 'PUT', url: url('/import/10/receipt'), headers: maschine,
+      payload: { system: 'adminpanel', data: PDF.toString('base64'), sha256: sha(PDF), name: 'a.pdf' } })
+
+    const probe = await leeren({ dryRun: true })
+    expect(probe.statusCode, probe.body).toBe(200)
+    // 8 Zeilen, die Gegenbuchung zu 16, ein Beleg, KB-15 als exportiert gemeldet.
+    expect(json(probe)).toEqual({ dryRun: true, found: { entries: 9, receipts: 1, datevMarks: 1 },
+                                  deleted: false })
+    expect(await anzahl('cashbook_entry')).toBe(9)
+
+    expect((await leeren({})).statusCode).toBe(422)
+    const falsch = await leeren({ expect: { entries: 8, receipts: 1, datevMarks: 1 } })
+    expect(falsch.statusCode).toBe(409)
+    expect(falsch.body).toContain('cashbook.resetCountsDiffer')
+    expect(await anzahl('cashbook_entry')).toBe(9)
+
+    const r = await leeren({ expect: { entries: 9, receipts: 1, datevMarks: 1 } })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(json(r).deleted).toBe(true)
+    for (const t of ['cashbook_entry', 'cashbook_receipt', 'cashbook_datev_mark', 'cashbook_counter']) {
+      expect(await anzahl(t)).toBe(0)
+    }
+    const a = await owner.query(`SELECT count(*)::int AS n FROM audit_log
+                                  WHERE action = 'DELETE' AND table_name = 'cashbook_entry'`)
+    expect(a.rows[0].n).toBe(9)
+
+    await schieben({ entries: eintraege().filter(z => z.id !== 16) })
+    const nr = await owner.query(`SELECT min(entry_no)::int AS n FROM cashbook_entry`)
+    expect(nr.rows[0].n).toBe(1)
+  })
+
+  it('verwirft nichts, was keine reine Kopie mehr ist, und nur fuer den Maschinenzugang', async () => {
+    await schieben({ settings: stand, entries: eintraege() })
+    expect((await leeren({ dryRun: true }, chef)).statusCode).toBe(403)
+
+    // Eine Buchung aus StayGrid selbst.
+    await owner.query(`INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp)
+                       VALUES ($1, $2, 'cash_in', 100, 0)`, [fx.propertyId, HEUTE])
+    const r = await leeren({ dryRun: true })
+    expect(r.statusCode).toBe(409)
+    expect(r.body).toContain('cashbook.resetNotACopy')
+    expect(await anzahl('cashbook_entry')).toBe(9)
+  })
+
+  it('verwirft nach dem Stichtag nichts mehr', async () => {
+    await schieben({ settings: stand, entries: eintraege() })
+    await owner.query(`UPDATE cashbook_setting SET datev_from = '2026-10-01'`)
+    expect((await leeren({ dryRun: true })).body).toContain('cashbook.resetNotACopy')
+  })
+})
