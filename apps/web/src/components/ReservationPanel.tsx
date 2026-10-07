@@ -189,11 +189,13 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
                            r.guestName === null ? '' : ` · ${r.guestName}`}`}
                          onClose={() => setVerlauf(false)} />
         )}
-        {r.checkedInAt === null && r.canceledAt === null && (
+        {/* Auch beim Gast im Haus: den hat vielleicht der Nachtlauf
+            eingecheckt, und Meldeschein und AVS-Datei fehlen noch. */}
+        {r.canceledAt === null && (r.checkedInAt === null || r.status === 'InHouse') && (
           <button onClick={() => onOpenCheckIn(r.reservationRef)}
                   className="text-xs px-2 py-1 rounded-sm border border-neutral-300
                              hover:bg-neutral-50">
-            {t('checkin.title')}
+            {t(r.status === 'InHouse' ? 'checkin.titleInHouse' : 'checkin.title')}
           </button>
         )}
         <StornoAktionen reservationRef={r.reservationRef} status={r.status} />

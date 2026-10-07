@@ -40,6 +40,12 @@ import type { Guest } from '@hotelpms/contracts'
  * eingerichtet, heisst der Knopf deshalb "Einchecken und AVS-Datei". Erst
  * die Datei, dann der Check-in: scheitert die Datei, ist noch nichts
  * geschehen, und "Nur einchecken" bleibt als Ausweg.
+ *
+ * **Ist der Gast schon im Haus**, bleibt der Dialog derselbe, nur ohne
+ * Check-in (Sven, 07.10.2026). Wer nach Rezeptionsschluss ueber den
+ * Schluesselsafe anreist, checkt der Nachtlauf ein (Migration 0088); am
+ * naechsten Morgen fehlen Meldeschein und Kurkarte trotzdem noch. Der Fuss
+ * bietet dann nur die AVS-Datei an.
  */
 export function CheckIn({ reservationRef, propertyId, onClose }: {
   reservationRef: string; propertyId: number; onClose: () => void
@@ -67,6 +73,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   // Ohne zugewiesenes Zimmer lehnt die API den Check-in ab -- das sagt die
   // Maske vorher, statt den Knopf drueckbar zu machen und dann zu scheitern.
   const ohneZimmer = reservierung.data !== undefined && reservierung.data.resourceId === null
+  const imHaus = reservierung.data?.status === 'InHouse'
   const f = form.data
   // Vorab per Link erfasst, Unterschrift steht aus: erst unterschreiben,
   // dann einchecken. Sie gehoert an den Anreisetag, und der ist jetzt.
@@ -86,6 +93,11 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
     await einchecken_und_schliessen()
   }
 
+  const melden_schliessen = async (): Promise<void> => {
+    await avsMelden.mutateAsync({ digitalGuestCard: mitKarte })
+    onClose()
+  }
+
   return (
     /*
      * `nebenbeiSchliessen={false}`: waehrend der Gast am Terminal ausfuellt,
@@ -93,10 +105,20 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
      * er los, und die Rezeption saehe nicht, wann der Schein steht.
      */
     <Dialog breite="breit" nebenbeiSchliessen={false} onClose={onClose}
-            titel={t('checkin.title')} unterzeile={reservationRef}
+            titel={t(imHaus ? 'checkin.titleInHouse' : 'checkin.title')}
+            unterzeile={reservationRef}
             fuss={
               <>
-                {avsBereit ? (
+                {imHaus ? (
+                  avsBereit && (
+                    <button type="button"
+                            disabled={avsMelden.isPending || !angemeldet || unterschriftOffen}
+                            onClick={() => void melden_schliessen()}
+                            className={KNOPF}>
+                      {t('checkin.avsOnly')}
+                    </button>
+                  )
+                ) : avsBereit ? (
                   <>
                     <button type="button" disabled={eincheckenGesperrt}
                             onClick={() => void melden_einchecken_schliessen()}
@@ -124,7 +146,12 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
               </>
             }>
       <div className="space-y-3">
-        {ohneZimmer && (
+        {imHaus && (
+          <p className="text-xs text-neutral-600 bg-neutral-50 rounded-sm p-2">
+            {t('checkin.alreadyInHouse')}
+          </p>
+        )}
+        {ohneZimmer && !imHaus && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200
                         rounded-sm p-2">
             {t('checkin.needsRoom')}

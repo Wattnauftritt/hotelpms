@@ -336,3 +336,43 @@ describe('Bildschirm Meldescheine', () => {
     expect(b.registrations[0].avsExportedHere).toBe(true)
   })
 })
+
+describe('Gast, den der Nachtlauf eingecheckt hat', () => {
+  /*
+   * Spaete Anreise ueber den Schluesselsafe (Sven, 07.10.2026): der Nachtlauf
+   * checkt ein (0088), am Morgen steht der Gast nicht mehr unter den
+   * Anreisen. Der Meldeschein muss sich trotzdem nachholen lassen, die
+   * Hausliste muss zeigen, dass er fehlt, und die AVS-Datei muss gehen.
+   */
+  it('zeigt den fehlenden Meldeschein in der Hausliste und laesst ihn samt AVS-Datei nachholen',
+    async () => {
+      await einrichten()
+      const { ref } = await aufenthalt({ ohneSchein: true })
+      const zimmer = await owner.query<{ id: number }>(
+        `SELECT id FROM resource WHERE property_id = $1 ORDER BY id LIMIT 1`, [fx.propertyId])
+      await owner.query(
+        `UPDATE reservation SET status = 'InHouse', resource_id = $2,
+                checked_in_at = '2026-10-03T23:30:00Z'
+          WHERE public_ref = $1`, [ref, zimmer.rows[0]!.id])
+
+      const hausliste = async () => {
+        const d = await app.inject({ method: 'GET', headers: chef,
+          url: `/v1/properties/${fx.propertyId}/daily-sheet?date=2026-10-04` })
+        expect(d.statusCode, d.body).toBe(200)
+        const j = d.json<{ arrivals: Array<{ reservationRef: string }>
+                           inHouse: Array<{ reservationRef: string; registered: boolean }> }>()
+        expect(j.arrivals.some(a => a.reservationRef === ref)).toBe(false)
+        return j.inHouse.find(x => x.reservationRef === ref)!
+      }
+      expect((await hausliste()).registered).toBe(false)
+
+      const schein = await app.inject({ method: 'POST', url: '/v1/registrations', headers: chef,
+        payload: { propertyId: fx.propertyId, reservationRef: ref } })
+      expect(schein.statusCode, schein.body).toBe(201)
+      expect((await hausliste()).registered).toBe(true)
+
+      const datei = await melden(ref)
+      expect(datei.statusCode, datei.body).toBe(201)
+      expect(datei.json<Datei>().persons).toBe(1)
+    })
+})

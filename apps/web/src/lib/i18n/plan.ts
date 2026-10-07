@@ -714,6 +714,10 @@ export const plan = {
     de: 'Check-in …',
     en: 'Check in …',
     tr: 'Giriş yap …' },
+  'kontext.registration': {
+    de: 'Meldeschein …',
+    en: 'Registration …',
+    tr: 'Meldeschein …' },
   'kontext.checkOut': {
     de: 'Check-out',
     en: 'Check out',
@@ -1046,6 +1050,19 @@ export const plan = {
     de: 'Check-in',
     en: 'Check-in',
     tr: 'Check-in' },
+  // Derselbe Dialog fuer einen Gast, der schon im Haus ist.
+  'checkin.titleInHouse': {
+    de: 'Meldeschein',
+    en: 'Registration',
+    tr: 'Meldeschein' },
+  'checkin.alreadyInHouse': {
+    de: 'Der Gast ist bereits eingecheckt, etwa vom Nachtlauf nach einer Anreise über den Schlüsselsafe. Meldeschein und AVS-Datei lassen sich hier nachholen.',
+    en: 'The guest is already checked in, for example by the night audit after a late arrival via the key safe. The Meldeschein and the AVS file can be completed here.',
+    tr: 'Misafir zaten check-in yapmış, örneğin anahtar kasası üzerinden geç varıştan sonra gece denetimi tarafından. Meldeschein ve AVS dosyası burada tamamlanabilir.' },
+  'checkin.avsOnly': {
+    de: 'AVS-Datei herunterladen',
+    en: 'Download AVS file',
+    tr: 'AVS dosyasını indir' },
   'checkin.needsRoom': {
     de: 'Ohne zugewiesenes Zimmer ist kein Check-in möglich. '
       + 'Zuerst ein Zimmer zuweisen.',

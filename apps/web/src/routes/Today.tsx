@@ -50,6 +50,9 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                     ⚠ {t('today.registrationMissing')}
                   </span>
                 )}
+                {r.status === 'InHouse' && !r.registered && (
+                  <MeldescheinKnopf onClick={() => onCheckIn(r.reservationRef)} />
+                )}
                 {r.status === 'InHouse' ? (
                   // Wer sich am Tresen in der Zeile vertippt, korrigiert es
                   // in derselben Zeile.
@@ -114,14 +117,40 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
             <Zeile key={r.reservationRef} name={namen(r)} raum={r.roomCode}
                    kategorie={r.categoryCode}
                    onFolio={r.folioRef === null ? undefined : () => onFolio(r.folioRef!)}>
-              <span className="text-[11px] text-neutral-500 tabular-nums">
-                → {formatDate(r.departure, locale)}
-              </span>
+              <div className="flex items-center gap-2">
+                {/* Der Nachtlauf checkt die spaete Anreise ueber den
+                    Schluesselsafe ein (0088); am Morgen steht sie nur noch
+                    hier, und der Meldeschein fehlt. */}
+                {!r.registered && (
+                  <MeldescheinKnopf onClick={() => onCheckIn(r.reservationRef)} />
+                )}
+                <span className="text-[11px] text-neutral-500 tabular-nums">
+                  → {formatDate(r.departure, locale)}
+                </span>
+              </div>
             </Zeile>
           ))}
         </Spalte>
       </div>
     </div>
+  )
+}
+
+/**
+ * Meldeschein nachholen bei einem Gast, der schon eingecheckt ist. Oeffnet
+ * denselben Dialog wie der Check-in; der erkennt den Gast im Haus und bietet
+ * nur Meldeschein und AVS-Datei an.
+ */
+function MeldescheinKnopf({ onClick }: { onClick: () => void }): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  return (
+    <button disabled={!online} onClick={onClick}
+            title={t('today.registrationMissing')}
+            className="text-xs px-2 py-1 rounded-sm border border-amber-300 bg-amber-50
+                       text-amber-900 hover:bg-amber-100 disabled:opacity-40">
+      ⚠ {t('today.registration')}
+    </button>
   )
 }
 
