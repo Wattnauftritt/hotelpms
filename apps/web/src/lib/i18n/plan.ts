@@ -38,6 +38,14 @@ export const plan = {
     de: 'Kein Zimmer zugewiesen',
     en: 'No room assigned',
     tr: 'Oda atanmamış' },
+  'plan.roomFixed': {
+    de: 'Zimmer fest',
+    en: 'Room fixed',
+    tr: 'Oda sabit' },
+  'plan.roomFixedHint': {
+    de: 'Beim Sortieren bleibt dieser Aufenthalt in seinem Zimmer.',
+    en: 'Sorting leaves this stay in its room.',
+    tr: 'Sıralama bu konaklamayı odasında bırakır.' },
   'plan.category': {
     de: 'Zimmergruppe',
     en: 'Room category',

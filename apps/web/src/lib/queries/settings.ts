@@ -216,7 +216,8 @@ export function useUpdateRoom(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...body }: { id: number } & Partial<Pick<Room,
-      'code' | 'name' | 'floor' | 'attributes' | 'categoryId' | 'active' | 'salesCode'>>) =>
+      'code' | 'name' | 'floor' | 'attributes' | 'categoryId' | 'active' | 'salesCode'
+      | 'quality' | 'building'>>) =>
       api.patch(`/v1/rooms/${id}`, body),
     onSuccess: () => { stammdatenNeuLaden(qc, propertyId) }
   })

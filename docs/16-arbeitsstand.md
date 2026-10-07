@@ -1051,6 +1051,14 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Nichts im Code. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
 
+### Aufgabe 17 — Zimmer sortieren — **Schritt 1 von 4**
+
+**Anlass.** Sven, 07.10.2026: StayGrid verteilt Buchungen auf Zimmer, im Gästehaus automatisch, im Hotel auf Knopfdruck. Die Regeln stammen aus dem Adminpanel, das beides bisher selbst gemacht hat. Svens Entscheidung: StayGrid übernimmt die Zimmervergabe im Gästehaus sofort, das Adminpanel hört gleichzeitig damit auf; an RoomCloud meldet es nur noch die Zahl freier Zimmer. Plan: Projektordner `zimmer-sortierung/plan.md`.
+
+**Schritt 1 (Stammdaten).** Migration `0104`: `resource.quality` (0–100, Vorgabe 50) und `resource.building`, `reservation.room_fixed` („Zimmer fest", Schloss am Balken, löst keinen `local`-Vermerk nach 0092 aus), `room_sort_setting` je Haus (Modus `off`/`manual`/`auto`, heutige Anreisen fest, Gewichte als Abweichung von `DEFAULT_ROOM_SORT_WEIGHTS` in `packages/domain/src/roomSort.ts`). Route `apps/api/src/routes/roomSort.ts`, Einstellungen > Zimmer sortieren, Qualität und Gebäude in den Stammdaten.
+
+**Offen.** Schritt 2: der Sortierer als reine Funktion in `packages/domain`. Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker, Züge des Sortierers ohne `local`-Vermerk. Schritt 4: Hotel — Vorschau, Übernehmen, Rückgängig im Zimmerplan.
+
 ---
 
 ## 3. Fallstricke, die schon einmal zugeschlagen haben

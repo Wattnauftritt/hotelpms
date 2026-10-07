@@ -1293,6 +1293,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   c.code                  AS "categoryCode",
                   c.name                  AS "categoryName",
                   r.resource_id           AS "resourceId",
+                  r.room_fixed            AS "roomFixed",
                   u.code                  AS "roomCode",
                   u.floor,
                   r.rate_plan_id          AS "ratePlanId",
@@ -1381,12 +1382,13 @@ export function reservationRoutes(app: FastifyInstance): void {
     method: 'PATCH',
     url: '/v1/reservations/:reservationRef',
     permission: 'reservation:write',
-    summary: 'Notiz, Hauptgast oder Personenzahl einer Reservierung aendern',
+    summary: 'Notiz, Hauptgast, Personenzahl oder Zimmer fest einer Reservierung aendern',
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = req.body as { notes?: string | null; shortNote?: string | null
                                  guestRef?: string
-                                 guestCount?: number; adults?: number; children?: number }
+                                 guestCount?: number; adults?: number; children?: number
+                                 roomFixed?: boolean }
       /*
        * Die Personenzahl -- vorher nur beim Anlegen zu setzen (Sven,
        * 06.10.2026: "man kann bei bestehenden Buchungen die Personenzahl
@@ -1398,6 +1400,9 @@ export function reservationRoutes(app: FastifyInstance): void {
       const personenGeaendert = body.guestCount !== undefined
         || body.adults !== undefined || body.children !== undefined
       const personen = personenGeaendert ? personenAngabe(body) : null
+      if (body.roomFixed !== undefined && typeof body.roomFixed !== 'boolean') {
+        throw Errors.validation({ roomFixed: ['field.invalid'] })
+      }
       if (body.notes !== undefined && body.notes !== null
           && body.notes.length > NOTES_MAX_LENGTH) {
         throw Errors.validation({ notes: ['field.maxLength'] },
@@ -1427,6 +1432,20 @@ export function reservationRoutes(app: FastifyInstance): void {
             `UPDATE reservation SET short_note = NULLIF(btrim($2), ''),
                                     updated_at = now()
               WHERE id = $1`, [res.id, body.shortNote ?? ''])
+        }
+
+        /*
+         * "Zimmer fest" (Migration 0104): der Sortierer laesst die
+         * Reservierung, wo sie ist. Hier und nicht in `assign-unit`: das
+         * Schloss bewegt nichts, und ein Stammgast im Wunschzimmer soll es
+         * auch bekommen, ohne dass jemand das Zimmer neu waehlt. Kein
+         * Vermerk nach 0092 -- der Trigger dort sieht nur Zeitraum, Zimmer,
+         * Gruppe und Storno.
+         */
+        if (body.roomFixed !== undefined) {
+          await client.query(
+            `UPDATE reservation SET room_fixed = $2, updated_at = now() WHERE id = $1`,
+            [res.id, body.roomFixed])
         }
 
         let gastRef: string | null | undefined
@@ -1462,7 +1481,8 @@ export function reservationRoutes(app: FastifyInstance): void {
           ...(body.notes !== undefined ? ['notes'] : []),
           ...(body.shortNote !== undefined ? ['shortNote'] : []),
           ...(body.guestRef !== undefined ? ['guest'] : []),
-          ...(personen !== null ? ['persons'] : [])
+          ...(personen !== null ? ['persons'] : []),
+          ...(body.roomFixed !== undefined ? ['roomFixed'] : [])
         ]
         if (geaendert.length > 0) {
           await emitEvent(client, res.property_id, 'reservation.changed', {
@@ -1475,7 +1495,8 @@ export function reservationRoutes(app: FastifyInstance): void {
           notes: body.notes ?? null,
           ...(body.shortNote === undefined ? {} : { shortNote: body.shortNote }),
           ...(gastRef === undefined ? {} : { guestRef: gastRef }),
-          ...(personen === null ? {} : personen)
+          ...(personen === null ? {} : personen),
+          ...(body.roomFixed === undefined ? {} : { roomFixed: body.roomFixed })
         }
       })
     }

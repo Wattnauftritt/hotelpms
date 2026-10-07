@@ -224,6 +224,8 @@ function ZimmerAendern(
   const [attributes, setAttributes] = useState(zimmer.attributes.join(', '))
   const [categoryId, setCategoryId] = useState(zimmer.categoryId)
   const [salesCode, setSalesCode] = useState(zimmer.salesCode ?? '')
+  const [quality, setQuality] = useState(String(zimmer.quality))
+  const [building, setBuilding] = useState(zimmer.building ?? '')
 
   return (
     <form className="mt-3 grid gap-3 sm:grid-cols-4"
@@ -232,7 +234,8 @@ function ZimmerAendern(
             aendern.mutate(
               { id: zimmer.id, code: code.trim(), name: name.trim() || null, floor,
                 attributes: merkmaleLesen(attributes), categoryId,
-                salesCode: salesCode.trim() || null },
+                salesCode: salesCode.trim() || null,
+                quality: Number(quality), building: building.trim() || null },
               { onSuccess: onClose })
           }}>
       <Feld label={t('common.room')}>
@@ -266,6 +269,16 @@ function ZimmerAendern(
                  className={eingabe} />
         </Feld>
       </div>
+      {/* Fuer den Sortierer (Migration 0104): welches Zimmer die besten
+          Gaeste bekommt, und wo eine Gruppe zusammen liegt. */}
+      <Feld label={t('master.quality')} hint={t('master.qualityHint')}>
+        <input type="number" min={0} max={100} step={1} required value={quality}
+               onChange={e => setQuality(e.target.value)} className={eingabe} />
+      </Feld>
+      <Feld label={t('master.building')} hint={t('master.buildingHint')}>
+        <input value={building} maxLength={40} onChange={e => setBuilding(e.target.value)}
+               className={eingabe} />
+      </Feld>
       <div className="sm:col-span-4">
         <Feld label={t('master.attributes')} hint={t('master.attributesHint')}>
           <input value={attributes} onChange={e => setAttributes(e.target.value)}
@@ -309,6 +322,9 @@ function Zimmer(
           {zimmer.categoryCode}{zimmer.salesCode ? ` · ${zimmer.salesCode}` : ''}
         </span>
         <span className="w-16 text-neutral-500">{zimmer.floor ?? ''}</span>
+        <span className="w-24 truncate text-neutral-500">{zimmer.building ?? ''}</span>
+        <span className="w-10 text-neutral-500 tabular-nums"
+              title={t('master.quality')}>{zimmer.quality}</span>
         <span className="grow text-neutral-500">{zimmer.attributes.join(', ')}</span>
         {zimmer.outOfOrderBlocks > 0 && (
           <span className="text-xs px-1.5 py-0.5 rounded-sm border border-amber-300

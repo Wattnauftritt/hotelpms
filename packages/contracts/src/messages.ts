@@ -547,6 +547,10 @@ const M = {
     de: 'Unbekannt: {values}',
     en: 'Unknown: {values}',
     tr: 'Bilinmeyen: {values}' },
+  'field.unknownKey': {
+    de: 'unbekannter Schluessel',
+    en: 'unknown key',
+    tr: 'bilinmeyen anahtar' },
   'field.seriesEmpty': {
     de: 'Die Serie ist nach den Auslassungen leer',
     en: 'After the exclusions the series is empty',

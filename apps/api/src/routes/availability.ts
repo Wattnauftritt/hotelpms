@@ -396,6 +396,8 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   -- einem Template-Literal, und ein Backtick beendet es.
                   r.short_note,
                   r.notes,
+                  -- Das Schloss am Balken: der Sortierer laesst ihn liegen.
+                  r.room_fixed,
                   -- Die Buchungsreferenz traegt die Gruppe in den Plan.
                   -- Ohne sie sieht die Oberflaeche acht einzelne Balken und
                   -- kann nicht anbieten, sie gemeinsam zu verschieben --

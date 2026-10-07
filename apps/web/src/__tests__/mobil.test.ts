@@ -21,7 +21,7 @@ function res(over: Partial<Res>): Res {
     last_name: 'Kuehl', first_name: null, booking_ref: 'B1', booking_rooms: 1,
     source: 'direct', external_reference: null, rate_code: null, occupants: 2,
     guest_count: null, adults: null, children: null, category_max_occupancy: 2,
-    short_note: null, notes: null, ...over
+    short_note: null, notes: null, room_fixed: false, ...over
   }
 }
 

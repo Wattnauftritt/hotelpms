@@ -326,6 +326,22 @@ export const einstellungen = {
     de: 'Nur nötig, wenn ein Kanal dieses Zimmer unter einer eigenen Kategorie verkauft, etwa FZ und APT in derselben Zimmergruppe.',
     en: 'Only needed if a channel sells this room under its own category, such as FZ and APT in the same room category.',
     tr: 'Yalnızca bir kanal bu odayı kendi kategorisiyle satıyorsa gerekir, örneğin aynı oda tipinde FZ ve APT.' },
+  'master.quality': {
+    de: 'Qualität',
+    en: 'Quality',
+    tr: 'Kalite' },
+  'master.qualityHint': {
+    de: '0 bis 100, gewöhnlich 50. Beim Sortieren bekommen die besten Zimmer die Gäste, für die sie sich lohnen.',
+    en: '0 to 100, usually 50. When sorting, the best rooms go to the guests they pay off for.',
+    tr: '0 ile 100 arası, genelde 50. Sıralamada en iyi odalar en çok değer katan misafirlere verilir.' },
+  'master.building': {
+    de: 'Gebäude',
+    en: 'Building',
+    tr: 'Bina' },
+  'master.buildingHint': {
+    de: 'Etwa Haupthaus oder Nebenhaus. Eine Gruppe wird möglichst in einem Gebäude untergebracht.',
+    en: 'For example main or annex building. A group is kept in one building where possible.',
+    tr: 'Örneğin ana bina veya ek bina. Grup mümkünse tek binada tutulur.' },
   'master.floor': {
     de: 'Etage',
     en: 'Floor',

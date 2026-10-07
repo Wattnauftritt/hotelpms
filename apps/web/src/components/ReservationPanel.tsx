@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReservationDetail } from '@hotelpms/contracts'
-import { useReservation, usePatchReservationNotes, useReservationStatusAction,
+import { useReservation, usePatchReservationNotes, useReservationStatusAction, useSetRoomFixed,
          useSendConfirmation } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
@@ -236,6 +236,8 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
         <Feld label={t('plan.room')}>
           {r.roomCode ?? <span className="text-neutral-400">{t('plan.noRoom')}</span>}
           {r.floor !== null && <span className="text-neutral-400"> · {r.floor}</span>}
+          <ZimmerFest reservationRef={r.reservationRef} fest={r.roomFixed}
+                      offen={r.canceledAt === null && r.checkedOutAt === null} />
         </Feld>
         <Feld label={t('plan.category')}>{r.categoryName}</Feld>
         <Feld label={t('plan.ratePlan')}>{r.ratePlanCode ?? '—'}</Feld>
@@ -481,4 +483,28 @@ function BestaetigungSchicken({ reservationRef }: { reservationRef: string }): J
 function zeitpunkt(iso: string, locale: Locale): string {
   return new Intl.DateTimeFormat(intlTag(locale),
     { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
+}
+
+/**
+ * Das Schloss: der Sortierer laesst diesen Aufenthalt in seinem Zimmer
+ * (Migration 0104). Am Zimmer und nicht unter "Aendern", weil es zum Zimmer
+ * gehoert -- der Stammgast im Wunschzimmer, die Familie, der man das
+ * Zimmer am Telefon zugesagt hat.
+ */
+function ZimmerFest(
+  { reservationRef, fest, offen }: { reservationRef: string; fest: boolean; offen: boolean }
+): JSX.Element {
+  const t = useT()
+  const setzen = useSetRoomFixed(reservationRef)
+  return (
+    <div className="mt-1">
+      <label className="inline-flex items-center gap-1.5 text-xs text-neutral-600"
+             title={t('plan.roomFixedHint')}>
+        <input type="checkbox" checked={fest} disabled={!offen || setzen.isPending}
+               onChange={e => setzen.mutate(e.target.checked)} />
+        {t('plan.roomFixed')}
+      </label>
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </div>
+  )
 }
