@@ -147,9 +147,9 @@ export const common = {
     en: 'Nothing can be saved without a connection.',
     tr: 'Bağlantı olmadan hiçbir şey kaydedilemez.' },
   'login.email': {
-    de: 'E-Mail',
-    en: 'Email',
-    tr: 'E-posta' },
+    de: 'E-Mail oder Benutzername',
+    en: 'Email or username',
+    tr: 'E-posta veya kullanıcı adı' },
   'login.password': {
     de: 'Kennwort',
     en: 'Password',

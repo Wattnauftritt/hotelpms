@@ -8,6 +8,7 @@ import { useHausrechte } from '../lib/rechte.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { ZugangsLink } from '../components/ZugangsLink.tsx'
 
 /**
  * Benutzer und Rollen: der Kunde verwaltet sein Personal selbst (0040).
@@ -92,7 +93,11 @@ function BenutzerZeile(
       <div className="flex flex-wrap items-center gap-3">
         <span className="font-medium">{benutzer.displayName}</span>
         {istSelbst && <span className="text-xs text-neutral-400">{t('user.you')}</span>}
-        <span className="text-sm text-neutral-500 grow">{benutzer.email}</span>
+        {/* Personal ohne Mailadresse meldet sich mit dem Benutzernamen an
+            (0105); dann steht der hier, sonst wuesste niemand, womit. */}
+        <span className="text-sm text-neutral-500 grow">
+          {benutzer.email ?? benutzer.username}
+        </span>
         {benutzer.blocked ? (
           <span className="text-xs px-1.5 py-0.5 rounded-sm bg-red-50 text-red-900
                            border border-red-200">{t('user.blocked')}</span>
@@ -153,11 +158,24 @@ function BenutzerZeile(
           )}
           <button onClick={() => setOffen(o => o === 'name' ? null : 'name')}
                   className={knopf}>{t('user.rename')}</button>
-          {!benutzer.blocked && benutzer.status !== 'disabled' && (
+          {!benutzer.blocked && benutzer.status !== 'disabled' && benutzer.email !== null && (
             <button disabled={!online || aktion.isPending} className={knopf}
                     onClick={() => aktion.mutate({ userRef: benutzer.userRef,
-                                                   action: 'access-link' })}>
+                                                   action: 'access-link',
+                                                   delivery: 'email' })}>
               {t(benutzer.status === 'invited' ? 'user.sendInvite' : 'user.sendReset')}
+            </button>
+          )}
+          {/* Zum Weitergeben nur, wo die API es erlaubt: offene Einladung
+              oder kein Postfach. Bei einem benutzten Zugang mit Adresse waere
+              der sichtbare Link der Weg, ihn zu uebernehmen. */}
+          {!benutzer.blocked && benutzer.status !== 'disabled'
+            && (benutzer.status === 'invited' || benutzer.email === null) && (
+            <button disabled={!online || aktion.isPending} className={knopf}
+                    onClick={() => aktion.mutate({ userRef: benutzer.userRef,
+                                                   action: 'access-link',
+                                                   delivery: 'link' })}>
+              {t('user.showLink')}
             </button>
           )}
           {benutzer.lockedUntil !== null && (
@@ -195,9 +213,16 @@ function BenutzerZeile(
               </button>
             </>
           )}
-          {aktion.isSuccess && aktion.data.kind !== undefined && (
+          {aktion.isSuccess && aktion.data.kind !== undefined
+            && aktion.data.link === undefined && (
             <span className="text-xs text-green-800 self-center">{t('user.linkSent')}</span>
           )}
+        </div>
+      )}
+      {aktion.isSuccess && aktion.data.link !== undefined
+        && aktion.data.linkExpiresAt !== undefined && (
+        <div className="mt-2">
+          <ZugangsLink link={aktion.data.link} gueltigBis={aktion.data.linkExpiresAt} />
         </div>
       )}
 
@@ -262,38 +287,71 @@ function BenutzerEinladen({ propertyId, rollen }: {
   const online = useOnline()
   const einladen = useInviteUser(propertyId)
   const [email, setEmail] = useState('')
+  const [benutzername, setBenutzername] = useState('')
   const [name, setName] = useState('')
+  const [weg, setWeg] = useState<'email' | 'link'>('email')
   const [gewaehlt, setGewaehlt] = useState<string[]>(['reception'])
+  // Ohne Adresse gibt es nur den Link; die Wahl steht dann gar nicht da.
+  const ohneMail = email.trim() === ''
+  const wirklich = ohneMail ? 'link' : weg
 
   return (
     <form className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2"
           onSubmit={e => {
             e.preventDefault()
-            einladen.mutate({ email: email.trim(), displayName: name.trim(),
-                              roleKeys: gewaehlt },
-              { onSuccess: () => { setEmail(''); setName('') } })
+            einladen.mutate({ email: email.trim() || undefined,
+                              username: benutzername.trim().toLowerCase() || undefined,
+                              displayName: name.trim(), roleKeys: gewaehlt,
+                              delivery: wirklich },
+              { onSuccess: () => { setEmail(''); setBenutzername(''); setName('') } })
           }}>
       <div className="font-medium text-sm">{t('user.invite')}</div>
       <p className="text-xs text-neutral-500">{t('user.inviteHint')}</p>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-3">
         <label className="block">
           <span className="block text-xs text-neutral-600">{t('user.name')}</span>
           <input required value={name} onChange={e => setName(e.target.value)}
                  className={feld} />
         </label>
         <label className="block">
-          <span className="block text-xs text-neutral-600">{t('user.email')}</span>
-          <input required type="email" value={email}
+          <span className="block text-xs text-neutral-600">{t('user.username')}</span>
+          <input value={benutzername} autoCapitalize="none" spellCheck={false}
+                 placeholder={t('user.usernameHint')}
+                 required={ohneMail}
+                 onChange={e => setBenutzername(e.target.value)} className={feld} />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-neutral-600">{t('user.emailOptional')}</span>
+          <input type="email" value={email}
+                 required={benutzername.trim() === ''}
                  onChange={e => setEmail(e.target.value)} className={feld} />
         </label>
       </div>
+      {!ohneMail && (
+        <fieldset className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <legend className="text-xs text-neutral-600">{t('user.delivery')}</legend>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={weg === 'email'} onChange={() => setWeg('email')} />
+            {t('user.deliveryEmail')}
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={weg === 'link'} onChange={() => setWeg('link')} />
+            {t('user.deliveryLink')}
+          </label>
+        </fieldset>
+      )}
       <RollenWahl rollen={rollen} gewaehlt={gewaehlt} onChange={setGewaehlt} />
       {einladen.isError && <Fehler error={einladen.error} />}
       {einladen.isSuccess && (
         <p className="text-sm text-green-900 bg-green-50 border border-green-200
                       rounded-sm px-2 py-1">
-          {t(einladen.data.addedToProperty ? 'user.added' : 'user.invited')}
+          {t(einladen.data.addedToProperty ? 'user.added'
+             : einladen.data.link !== undefined ? 'user.invitedLink' : 'user.invited')}
         </p>
+      )}
+      {einladen.isSuccess && einladen.data.link !== undefined
+        && einladen.data.linkExpiresAt !== undefined && (
+        <ZugangsLink link={einladen.data.link} gueltigBis={einladen.data.linkExpiresAt} />
       )}
       <button type="submit" disabled={!online || einladen.isPending || gewaehlt.length === 0}
               className={knopfStark}>{t('user.invite')}</button>

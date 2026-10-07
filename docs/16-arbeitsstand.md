@@ -1059,6 +1059,14 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Schritt 2: der Sortierer als reine Funktion in `packages/domain`. Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker, Züge des Sortierers ohne `local`-Vermerk. Schritt 4: Hotel — Vorschau, Übernehmen, Rückgängig im Zimmerplan.
 
+### Aufgabe 18 — Personalsystem und Personal-App — **Baustein 1a von 10**
+
+**Anlass.** Sven, 07.10.2026: StayGrid übernimmt das Personalsystem, das bisher eine eigene App war (Repo `zurseerobbe`, Flask-PWA): Putzplan, Zimmerstatus, Kontrolle durch die Hausdame, Frühstückszahl für die Küche, Zusatzarbeiten mit Minuten, Oberfläche in de/en/ru/uk mit Rückübersetzung frei eingetragener Tätigkeiten. Plan mit zehn Bausteinen: Projektordner `personal-app/plan.md`. Die alte App läuft weiter, bis Sven umschaltet. **Keine Kommen/Gehen-Erfassung:** das Personal kommt von einer Zeitarbeitsfirma und wird vertraglich nach Pauschalminuten je Zimmer abgerechnet (Svens Entscheidung).
+
+**Baustein 1a (Zugang).** Migration `0105`: `app_user.email` darf fehlen, dafür `username` (klein, ohne `@`, eindeutig über alle Kunden, in `audit_redaction`); `app_user.locale` für die selbst gewählte Sprache; Rollen `housekeeping_staff` (Reinigung) und `kitchen` (Küche) mit dem neuen Recht `staff:app`, das auch Inhaber, Betriebsverwaltung, Direktion und Housekeeping bekommen. Einladen mit Mailadresse **oder** Benutzernamen, zugestellt per Mail oder als Link/QR-Code zum Weitergeben (`delivery: 'link'`, `einmalLink()` in `routes/auth.ts`). Den Link zum Weitergeben gibt es nur bei offener Einladung oder ohne Mailadresse — bei einem benutzten Zugang mit Adresse wäre er der Weg, ihn zu übernehmen. Anmelden mit Mailadresse oder Benutzername in einem Feld (`login`), `PUT /v1/auth/locale`. Bildschirm Benutzer: Benutzername, Wahl des Wegs, QR-Code (`components/ZugangsLink.tsx`, `qrcode-generator`). Tests: `personalZugang.test.ts`.
+
+**Offen.** 1b: die Personal-App selbst (eigene schlanke PWA unter `/personal`, Sprachen `STAFF_LOCALES`). 2: Reinigungsplan mit Zuteilung und Sollminuten. 3: meine Zimmer in der App. 4: Kontrolle. 5: Küche. 6: Arbeitszeit aus Pauschalminuten und Zusatzarbeiten. 7: Übersetzung. 8: Push. 9: Altdaten aus `zurseerobbe`. 10: Reinigungsverzicht des Gastes.
+
 ---
 
 ## 3. Fallstricke, die schon einmal zugeschlagen haben

@@ -62,8 +62,8 @@ function sitzungNachAussen(z: SitzungZeile, jetzt: number): Record<string, unkno
 async function benutzerDesKunden(
   client: { query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[]; rowCount: number | null }> },
   accountId: number, userId: number
-): Promise<{ id: number; email: string; display_name: string; status: string }> {
-  const r = await client.query<{ id: number; email: string; display_name: string
+): Promise<{ id: number; email: string | null; display_name: string; status: string }> {
+  const r = await client.query<{ id: number; email: string | null; display_name: string
                                  status: string }>(
     `SELECT id, email, display_name, status
        FROM platform_account_users($1) WHERE id = $2`, [accountId, userId])
@@ -154,6 +154,9 @@ export function platformSupportRoutes(app: FastifyInstance): void {
         const u = await benutzerDesKunden(client, accountId, userId)
         if (u.status === 'disabled') throw Errors.conflict('platform.userDisabled')
         const kind = u.status === 'invited' ? 'invite' : 'password_reset'
+        // Personal ohne Mailadresse bekommt den Link vom eigenen Haus,
+        // persoenlich (Migration 0105). Wir haben keinen Weg zu ihm.
+        if (u.email === null) throw Errors.conflict('user.noEmailForMail')
         await einmalTokenUndPost(client, {
           userId, name: u.display_name, email: u.email, kind,
           createdBy: principal.userId,

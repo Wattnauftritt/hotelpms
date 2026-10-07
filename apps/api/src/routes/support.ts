@@ -134,6 +134,8 @@ export function supportRoutes(app: FastifyInstance): void {
             WHERE uar.account_id = $1
               AND rp.permission_key = 'settings:account'
               AND u.status = 'active'
+              -- Ohne Adresse erreicht die Anfrage niemanden (Migration 0105).
+              AND u.email IS NOT NULL
             ORDER BY u.id`, [accountId])
         if (empfaenger.rowCount === 0) {
           throw Errors.validation({ accountId: ['support.noApprover'] })

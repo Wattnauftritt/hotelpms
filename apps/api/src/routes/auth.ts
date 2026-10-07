@@ -9,7 +9,7 @@ import { tx } from '../platform/db.js'
 import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
          renderPasswordResetEmail, renderInviteEmail,
          type AuthTokenKind } from '@hotelpms/domain'
-import { kennwortZuKurz, KENNWORT_MIN } from '@hotelpms/contracts'
+import { kennwortZuKurz, KENNWORT_MIN, BENUTZERSPRACHEN } from '@hotelpms/contracts'
 import { isSendableAddress, renderEmailChangeEmail,
          renderEmailChangeNotice, maskEmail } from '@hotelpms/domain'
 
@@ -104,7 +104,15 @@ export function authRoutes(app: FastifyInstance): void {
     permission: null,
     summary: 'Anmelden',
     handler: async (req, reply) => {
-      const { email, password } = req.body as { email?: string; password?: string }
+      /*
+       * Mailadresse oder Benutzername in einem Feld (Migration 0105). Ein
+       * Benutzername enthaelt nie ein `@`, die beiden sind also nicht zu
+       * verwechseln. `login` ist der neue Name des Feldes, `email` bleibt,
+       * weil Adminpanel und Tests es so schicken.
+       */
+      const b = req.body as { login?: string; email?: string; password?: string }
+      const email = (b.login ?? b.email ?? '').trim()
+      const password = b.password
       if (!email || !password) {
         throw Errors.validation({ email: ['field.required'], password: ['field.required'] })
       }
@@ -117,7 +125,7 @@ export function authRoutes(app: FastifyInstance): void {
                 f.locked_until::text AS herkunft_gesperrt_bis
            FROM app_user u
            LEFT JOIN login_failure f ON f.user_id = u.id AND f.origin = $2
-          WHERE lower(u.email) = lower($1)`, [email, herkunft])
+          WHERE lower(u.email) = lower($1) OR u.username = lower($1)`, [email, herkunft])
       const benutzer = rows[0]
 
       /*
@@ -250,9 +258,11 @@ export function authRoutes(app: FastifyInstance): void {
       const p = req.principal as Principal
       if (p.userId === null) throw Errors.unauthorized()
 
-      const benutzer = await req.pool.query<{ display_name: string; email: string
+      const benutzer = await req.pool.query<{ display_name: string; email: string | null
+                                             username: string | null; locale: string | null
                                              hat_pin: boolean }>(
-        `SELECT display_name, email, workstation_pin_hash IS NOT NULL AS hat_pin
+        `SELECT display_name, email, username, locale,
+                workstation_pin_hash IS NOT NULL AS hat_pin
            FROM app_user WHERE id = $1`, [p.userId])
 
       const haeuser = propertyIds(p)
@@ -296,6 +306,10 @@ export function authRoutes(app: FastifyInstance): void {
         accountSuspended,
         displayName: benutzer.rows[0]?.display_name ?? '',
         email: benutzer.rows[0]?.email ?? '',
+        /** Anmeldung ohne Mailadresse (Personal, Migration 0105). */
+        username: benutzer.rows[0]?.username ?? null,
+        /** Die selbst gewaehlte Sprache; `null`, solange niemand gewaehlt hat. */
+        locale: benutzer.rows[0]?.locale ?? null,
         isPlatformStaff: p.isPlatformStaff,
         supportSession: p.supportSessionId !== null,
         /*
@@ -335,6 +349,37 @@ export function authRoutes(app: FastifyInstance): void {
                                     ...(p.permissionsByProperty.get(r.id) ?? [])])].sort()
         }))
       }
+    }
+  })
+
+  /**
+   * Die eigene Sprache festhalten.
+   *
+   * Bisher stand sie nur im Browser. Die Personal-App laeuft aber auf einem
+   * Handy, und eine Nachricht an dieses Handy -- Plan geaendert, Zimmer frei
+   * -- schreibt der Server. Er muss die Sprache also kennen, ohne dass die
+   * Person gerade davorsitzt (Migration 0105).
+   *
+   * Kein Kennwort noetig: wer eine fremde Sitzung vorfindet und die Sprache
+   * umstellt, hat nichts gewonnen, was er nicht auch am Bildschirm haette.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/auth/locale',
+    permission: null,
+    summary: 'Eigene Sprache festhalten',
+    handler: async (req) => {
+      const p = req.principal as Principal
+      if (p.userId === null) throw Errors.unauthorized()
+      const locale = (req.body as { locale?: string } | undefined)?.locale
+      if (locale === undefined || !(BENUTZERSPRACHEN as readonly string[]).includes(locale)) {
+        throw Errors.validation({ locale: ['field.allowedValues'] },
+          { values: BENUTZERSPRACHEN.join(', ') })
+      }
+      await req.pool.query(
+        `UPDATE app_user SET locale = $2, updated_at = now() WHERE id = $1`,
+        [p.userId, locale])
+      return { locale }
     }
   })
 
@@ -669,9 +714,9 @@ export function authRoutes(app: FastifyInstance): void {
    */
   async function eigenesKennwort(
     req: FastifyRequest, userId: number
-  ): Promise<{ hash: string | null; name: string | null; email: string }> {
+  ): Promise<{ hash: string | null; name: string | null; email: string | null }> {
     const { rows } = await req.pool.query<{
-      password_hash: string | null; display_name: string | null; email: string
+      password_hash: string | null; display_name: string | null; email: string | null
       locked_until: string | null; herkunft_gesperrt_bis: string | null }>(
       `SELECT u.password_hash, u.display_name, u.email, u.locked_until::text,
               f.locked_until::text AS herkunft_gesperrt_bis
@@ -782,7 +827,7 @@ export function authRoutes(app: FastifyInstance): void {
         await zaehleFehlversuch(req.pool, userId, req.ip)
         throw Errors.unauthorized('auth.badCredentials')
       }
-      if (neueAdresse.toLowerCase() === eigen.email.toLowerCase()) {
+      if (neueAdresse.toLowerCase() === eigen.email?.toLowerCase()) {
         throw Errors.validation({ newEmail: ['auth.emailUnchanged'] })
       }
 
@@ -825,14 +870,18 @@ export function authRoutes(app: FastifyInstance): void {
          * eine Nachricht ueber eine Aenderung, die man nicht veranlasst hat,
          * mit einem Knopf darin, ist die Bauform jeder Phishing-Mail.
          */
-        const hinweis = renderEmailChangeNotice({
-          userName: eigen.name, maskedNewEmail: maskEmail(neueAdresse) })
-        await client.query(
-          `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
-                                       body_text, body_html)
-           VALUES ($1,'email_change_notice',$2,$3,$4,$5,$6)`,
-          [userId, eigen.email, eigen.name,
-           hinweis.subject, hinweis.text, hinweis.html])
+        // Wer bisher keine Adresse hatte (Personal, Migration 0105), hat
+        // auch keine alte, an die ein Hinweis gehen koennte.
+        if (eigen.email !== null) {
+          const hinweis = renderEmailChangeNotice({
+            userName: eigen.name, maskedNewEmail: maskEmail(neueAdresse) })
+          await client.query(
+            `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
+                                         body_text, body_html)
+             VALUES ($1,'email_change_notice',$2,$3,$4,$5,$6)`,
+            [userId, eigen.email, eigen.name,
+             hinweis.subject, hinweis.text, hinweis.html])
+        }
 
         reply.status(202)
         // Die neue Adresse geht nicht zurueck: sie stuende sonst in jeder
@@ -908,6 +957,36 @@ export function authRoutes(app: FastifyInstance): void {
  * Das Token selbst steht **nur** in der Nachricht, nie in der Antwort der
  * API und nie im Protokoll. Wer die Antwort mitliest, bekommt keinen Zugang.
  */
+/**
+ * Ein Einmaltoken anlegen und den Link dazu liefern, ohne ihn zu verschicken.
+ *
+ * Fuer Personal ohne Mailadresse (Migration 0105): die Leitung gibt den Link
+ * persoenlich weiter, als QR-Code am Handy der Reinigungskraft oder als
+ * Nachricht. Wer diesen Weg nimmt, sieht das Token -- deshalb erlauben ihn
+ * die Routen nur dort, wo der Aufrufende den Zugang ohnehin vergeben darf:
+ * bei einer offenen Einladung und bei einem Zugang ohne Mailadresse. Einen
+ * fremden, laengst benutzten Zugang mit Mailadresse uebernimmt so niemand.
+ */
+export async function einmalLink(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  opts: { userId: number; kind: AuthTokenKind; createdBy?: number | null; newEmail?: string }
+): Promise<{ token: string; link: string; gueltigMs: number }> {
+  const { token, hash } = neuesToken()
+  const gueltigMs = TOKEN_GUELTIGKEIT[opts.kind]
+
+  await client.query(
+    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, created_by,
+                             new_email)
+     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5, $6)`,
+    [opts.userId, opts.kind, hash, String(gueltigMs), opts.createdBy ?? null,
+     opts.newEmail ?? null])
+
+  const PFAD: Record<AuthTokenKind, string> = {
+    invite: 'einladung', password_reset: 'kennwort', email_change: 'mailadresse'
+  }
+  return { token, link: `${config.publicAppUrl}/${PFAD[opts.kind]}?token=${token}`, gueltigMs }
+}
+
 export async function einmalTokenUndPost(
   client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
   opts: {
@@ -923,20 +1002,7 @@ export async function einmalTokenUndPost(
     accountName?: string | null
   }
 ): Promise<void> {
-  const { token, hash } = neuesToken()
-  const gueltigMs = TOKEN_GUELTIGKEIT[opts.kind]
-
-  await client.query(
-    `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, created_by,
-                             new_email)
-     VALUES ($1, $2, $3, now() + ($4 || ' milliseconds')::interval, $5, $6)`,
-    [opts.userId, opts.kind, hash, String(gueltigMs), opts.createdBy ?? null,
-     opts.newEmail ?? null])
-
-  const PFAD: Record<AuthTokenKind, string> = {
-    invite: 'einladung', password_reset: 'kennwort', email_change: 'mailadresse'
-  }
-  const link = `${config.publicAppUrl}/${PFAD[opts.kind]}?token=${token}`
+  const { link, gueltigMs } = await einmalLink(client, opts)
   const stunden = Math.round(gueltigMs / 3_600_000)
   const text = opts.kind === 'invite'
     ? renderInviteEmail({ userName: opts.name, link, gueltigStunden: stunden,
