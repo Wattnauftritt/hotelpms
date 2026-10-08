@@ -4,14 +4,15 @@ import type { StaffLocale } from '@hotelpms/contracts'
 import { api } from '../lib/api.js'
 import { fehlerText, usePT } from './texte.js'
 import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
+import { CHIP_FARBE, CHIP_ZEICHEN, chipZustand, nachKraft } from '../lib/kontrollChips.js'
 
 /**
  * Kontrolle durch die Hausdame (Baustein 4, Aufgabe 18 in Dokument 16).
  *
- * Drei Abschnitte in der Reihenfolge, in der sie die Hausdame brauchen:
- * was gereinigt ist und auf sie wartet, was noch nicht gereinigt ist, was
- * sie schon abgenommen hat. An jedem Zimmer steht, wer es hat -- Minuten
- * stehen nicht da, die gehoeren zur Abrechnung, nicht zur Kontrolle.
+ * Je Kraft eine Karte mit ihren Abreisen und Bleibern als Chips, deren
+ * Farbe den Stand zeigt (`lib/kontrollChips.ts`). Minuten stehen nicht da,
+ * anders als in der alten App: sie gehoeren zur Abrechnung, und die
+ * Hausdame sieht keine Arbeitszeit.
  */
 
 export interface KontrollZimmer {
@@ -84,25 +85,51 @@ export function Kontrolle({ propertyId, locale }: {
   const teile: Record<Abschnitt, KontrollZimmer[]> = { toCheck: [], waiting: [], passed: [] }
   for (const z of rooms) teile[abschnitt(z)].push(z)
 
+  // Je Kraft eine Karte, darin Abreisen und Bleiber als Chips; die Farbe
+  // sagt den Stand (Sven, 08.10.2026, wie in der alten App). Ein Tipp auf
+  // einen Chip klappt darunter auf, was die Hausdame damit tun kann.
   return <div className="space-y-3">
     <p className="text-sm text-neutral-600">{t('inspect.summary', {
       passed: teile.passed.length, open: teile.toCheck.length, todo: teile.waiting.length })}</p>
+    <p className="text-xs text-neutral-500">{t('inspect.legend')}</p>
     {fehler !== null && <Fehler text={fehler} />}
-    {(['toCheck', 'waiting', 'passed'] as const).map(a => teile[a].length > 0 &&
-      <section key={a} className="space-y-2">
-        <h2 className="text-sm font-semibold text-neutral-500 pt-2">
-          {t(a === 'toCheck' ? 'inspect.toCheck' : a === 'waiting' ? 'inspect.waiting'
-             : 'inspect.passed')}
-        </h2>
-        <ul className="space-y-2">
-          {teile[a].map(z => <li key={z.taskId}>
-            <KontrollKarte z={z} offen={offen === z.taskId} laeuft={pruefen.isPending}
-                           onToggle={() => setOffen(offen === z.taskId ? null : z.taskId)}
-                           onPruefen={(result, note) =>
-                             pruefen.mutate({ taskId: z.taskId, result, note })} />
-          </li>)}
-        </ul>
-      </section>)}
+    {nachKraft(rooms).map(g => {
+      const gewaehlt = g.rooms.find(z => z.taskId === offen)
+      return <section key={g.name ?? ''}
+                      className="bg-white border border-neutral-200 rounded-lg p-3 space-y-3">
+        <h2 className="font-semibold text-lg">{g.name ?? t('inspect.unassigned')}</h2>
+        {(['departure', 'stayover'] as const).map(art => {
+          const liste = g.rooms.filter(z => z.kind === art)
+          if (liste.length === 0) return null
+          const rot = art === 'departure'
+          return <div key={art}
+                      className={`border-l-4 pl-2 ${rot ? 'border-red-500' : 'border-sky-500'}`}>
+            <h3 className={`text-sm font-semibold mb-1.5 ${rot ? 'text-red-700' : 'text-sky-700'}`}>
+              {t(rot ? 'room.departure' : 'room.stayover')}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {liste.map(z => {
+                const zu = chipZustand(z)
+                return <button key={z.taskId} type="button" aria-expanded={offen === z.taskId}
+                               onClick={() => setOffen(offen === z.taskId ? null : z.taskId)}
+                               className={`min-w-[4.5rem] px-3 py-2 rounded-lg border-2 text-lg
+                                           font-semibold tabular-nums ${CHIP_FARBE[zu]}
+                                           ${offen === z.taskId ? 'ring-2 ring-neutral-900' : ''}`}>
+                  {z.code}
+                  {CHIP_ZEICHEN[zu] !== '' && <span className="ml-1.5">{CHIP_ZEICHEN[zu]}</span>}
+                  {z.arrivalToday && zu !== 'passed' && <span className="ml-1 text-sm">↘</span>}
+                  {z.openProblems > 0 && <span className="ml-1 text-sm">⚠</span>}
+                </button>
+              })}
+            </div>
+          </div>
+        })}
+        {gewaehlt !== undefined
+          && <KontrollKarte z={gewaehlt} laeuft={pruefen.isPending}
+                            onPruefen={(result, note) =>
+                              pruefen.mutate({ taskId: gewaehlt.taskId, result, note })} />}
+      </section>
+    })}
   </div>
 }
 
@@ -112,8 +139,9 @@ function Marke({ farbe, children }: { farbe: string; children: React.ReactNode }
   </span>
 }
 
-function KontrollKarte({ z, offen, laeuft, onToggle, onPruefen }: {
-  z: KontrollZimmer; offen: boolean; laeuft: boolean; onToggle: () => void
+/** Was die Hausdame mit dem angetippten Zimmer tun kann. */
+function KontrollKarte({ z, laeuft, onPruefen }: {
+  z: KontrollZimmer; laeuft: boolean
   onPruefen: (result: 'passed' | 'rework' | null, note?: string) => void
 }): JSX.Element {
   const t = usePT()
@@ -123,8 +151,7 @@ function KontrollKarte({ z, offen, laeuft, onToggle, onPruefen }: {
 
   return <div className={`rounded-lg border bg-white ${z.inspection === 'rework'
     ? 'border-red-300' : 'border-neutral-300'}`}>
-    <button type="button" onClick={onToggle} aria-expanded={offen}
-            className="w-full text-left px-4 py-3 flex items-center gap-3">
+    <div className="w-full text-left px-4 py-3 flex items-center gap-3">
       <span className="text-2xl font-semibold tabular-nums min-w-[3.5rem]">{z.code}</span>
       <span className="flex flex-wrap gap-1.5 flex-1">
         <Marke farbe={z.kind === 'departure' ? 'bg-blue-100 text-blue-900'
@@ -144,12 +171,10 @@ function KontrollKarte({ z, offen, laeuft, onToggle, onPruefen }: {
         {z.openProblems > 0
           && <Marke farbe="bg-red-100 text-red-900">{t('room.problems', { n: z.openProblems })}</Marke>}
       </span>
-      <span className="text-sm text-neutral-500 text-right">
-        {z.staffName ?? t('inspect.unassigned')}</span>
-    </button>
+    </div>
     {z.inspection === 'rework' && z.inspectionNote !== null
       && <p className="px-4 pb-3 -mt-1 text-sm text-red-900">„{z.inspectionNote}“</p>}
-    {offen && <div className="px-4 pb-4 space-y-2">
+    <div className="px-4 pb-4 space-y-2">
       {gereinigt && z.inspection === null && !nacharbeit && <>
         <button type="button" disabled={laeuft} className={KNOPF}
                 onClick={() => onPruefen('passed')}>{t('inspect.passed')}</button>
@@ -175,6 +200,6 @@ function KontrollKarte({ z, offen, laeuft, onToggle, onPruefen }: {
                                         onClick={() => onPruefen(null)}>{t('inspect.undo')}</button>}
       {!gereinigt && z.inspection === null
         && <p className="text-sm text-neutral-600">{t('inspect.waiting')}</p>}
-    </div>}
+    </div>
   </div>
 }
