@@ -72,6 +72,8 @@ interface Zimmer {
    * Flasche hinstellen --, sonst ist nichts faellig.
    */
   waived: boolean
+  /** Verzichtet und das Haus gibt Wasser: die Flasche ist zuzuteilen. */
+  water: boolean
   /**
    * Die gespeicherte Aufgabe hat eine andere Art als heute faellig ist:
    * der Gast reist frueher ab oder verlaengert, nachdem der Plan stand.
@@ -221,7 +223,7 @@ async function planHaeuser(client: PoolClient, p: Principal, propertyId: number)
 async function liesZimmer(
   client: PoolClient, propertyId: number, date: string, norms: CleaningNorm[]
 ): Promise<Zimmer[]> {
-  const { rows } = await client.query<Omit<Zimmer, 'minutes'> & { taskMinutes: number | null
+  const { rows } = await client.query<Omit<Zimmer, 'minutes' | 'water'> & { taskMinutes: number | null
                                                                    water: boolean
                                                                    areaMinutes: number | null }>(
     `SELECT * FROM (
@@ -293,7 +295,7 @@ async function liesZimmer(
     [propertyId, date])
   return rows.map(({ taskMinutes, water, areaMinutes, ...z }) => {
     if (z.areaId !== null) {
-      return { ...z, kindChanged: false,
+      return { ...z, water: false, kindChanged: false,
                minutes: taskMinutes ?? ((z.kind ?? z.due) === null ? 0 : areaMinutes!) }
     }
     const zimmer = { resourceId: z.resourceId!, categoryId: z.categoryId! }
@@ -325,6 +327,7 @@ async function liesZimmer(
     const art = kindChanged ? due : z.kind ?? due
     return {
       ...z,
+      water: z.waived && water,
       due,
       kind: kindChanged ? due : z.kind,
       kindChanged,

@@ -267,6 +267,11 @@ const texte = {
     en: 'Guest skips today',
     ru: 'Гость сегодня отказался',
     uk: 'Гість сьогодні відмовився' },
+  'room.more': {
+    de: 'Weitere Status',
+    en: 'More statuses',
+    ru: 'Другие статусы',
+    uk: 'Інші статуси' },
   'room.water': {
     de: 'Wasser hinstellen',
     en: 'Leave water',
@@ -349,10 +354,10 @@ const texte = {
     ru: 'Проверено: {passed} · проверить: {open} · не убрано: {todo}',
     uk: 'Перевірено: {passed} · перевірити: {open} · не прибрано: {todo}' },
   'inspect.legend': {
-    de: 'Weiß offen · … Gast noch da · ✓ gereinigt, prüfen · ✓✓ kontrolliert · ↺ nacharbeiten · ⊘ Gast wollte keine · ↘ Anreise',
-    en: 'White open · … guest still in · ✓ cleaned, inspect · ✓✓ inspected · ↺ rework · ⊘ guest declined · ↘ arrival',
-    ru: 'Белый — не убрано · … гость ещё в номере · ✓ убрано, проверить · ✓✓ проверено · ↺ доработать · ⊘ гость отказался · ↘ заезд',
-    uk: 'Білий — не прибрано · … гість ще в номері · ✓ прибрано, перевірити · ✓✓ перевірено · ↺ доопрацювати · ⊘ гість відмовився · ↘ заїзд' },
+    de: 'Weiß offen · … Gast noch da · ✓ gereinigt, prüfen · ✓✓ kontrolliert · ↺ nacharbeiten · ⊘ Gast will keine (rot: heute gesperrt) · ↘ Anreise',
+    en: 'White open · … guest still in · ✓ cleaned, inspect · ✓✓ inspected · ↺ rework · ⊘ guest declined (red: locked today) · ↘ arrival',
+    ru: 'Белый — не убрано · … гость ещё в номере · ✓ убрано, проверить · ✓✓ проверено · ↺ доработать · ⊘ гость отказался (красный: сегодня закрыт) · ↘ заезд',
+    uk: 'Білий — не прибрано · … гість ще в номері · ✓ прибрано, перевірити · ✓✓ перевірено · ↺ доопрацювати · ⊘ гість відмовився (червоний: сьогодні закрито) · ↘ заїзд' },
 
   'tab.kitchen': {
     de: 'Frühstück',

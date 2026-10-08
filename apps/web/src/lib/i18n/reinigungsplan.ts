@@ -111,9 +111,13 @@ export const reinigungsplan = {
     en: 'Target minutes',
     tr: 'Hedef dakikalar' },
   'cleaningPlan.normsHint': {
-    de: 'Nach diesen Minuten rechnet die Zeitarbeitsfirma ab. Ein Zimmer schlägt die Kategorie, die Kategorie das Haus. Ein leeres Feld nimmt die nächste Stufe. Geänderte Werte gelten für neu geplante Zimmer; schon gespeicherte Tage behalten ihre Minuten.',
-    en: 'The staffing agency bills by these minutes. A room overrides its category, a category overrides the property. An empty field falls back to the next level. Changes apply to newly planned rooms; days already saved keep their minutes.',
-    tr: 'Personel ajansı bu dakikalara göre faturalandırır. Oda kategoriyi, kategori tesisi geçersiz kılar. Boş alan bir üst seviyeyi kullanır. Değişiklikler yeni planlanan odalar için geçerlidir; kaydedilmiş günler dakikalarını korur.' },
+    de: 'Nach diesen Minuten rechnet die Zeitarbeitsfirma ab. Ein Zimmer schlägt die Kategorie, die Kategorie das Haus. Ein leeres Feld nimmt die nächste Stufe. „Keine Zwischenreinigung“ nimmt die Bleiber aus dem Plan, etwa im Gästehaus; Abreisen bleiben. Geänderte Werte gelten für neu geplante Zimmer; schon gespeicherte Tage behalten ihre Minuten.',
+    en: 'The staffing agency bills by these minutes. A room overrides its category, a category overrides the property. An empty field falls back to the next level. “No stayover cleaning” takes stayovers out of the plan, for example in the guesthouse; departures stay. Changes apply to newly planned rooms; days already saved keep their minutes.',
+    tr: 'Personel ajansı bu dakikalara göre faturalandırır. Oda kategoriyi, kategori tesisi geçersiz kılar. Boş alan bir üst seviyeyi kullanır. „Ara temizlik yok“ konaklayan odaları plandan çıkarır, örneğin misafirhanede; çıkışlar kalır. Değişiklikler yeni planlanan odalar için geçerlidir; kaydedilmiş günler dakikalarını korur.' },
+  'cleaningPlan.noStayover': {
+    de: 'Keine Zwischenreinigung',
+    en: 'No stayover cleaning',
+    tr: 'Ara temizlik yok' },
   'cleaningPlan.normProperty': {
     de: 'Ganzes Haus',
     en: 'Whole property',

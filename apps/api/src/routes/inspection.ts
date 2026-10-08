@@ -44,6 +44,8 @@ interface KontrollZimmer {
   free: boolean
   arrivalToday: boolean
   openProblems: number
+  /** Der Gast verzichtet heute (0115): nichts zu reinigen, nichts abzunehmen. */
+  waived: boolean
 }
 
 /**
@@ -67,7 +69,12 @@ async function liesKontrolle(
                      WHERE an.resource_id = r.id AND an.arrival = t.business_date
                        AND an.status IN ('Confirmed','InHouse')) AS "arrivalToday",
             (SELECT count(*)::int FROM maintenance_ticket m
-              WHERE m.resource_id = r.id AND m.status <> 'done') AS "openProblems"
+              WHERE m.resource_id = r.id AND m.status <> 'done') AS "openProblems",
+            (t.kind = 'stayover' AND EXISTS (
+               SELECT 1 FROM cleaning_waiver w
+                 JOIN reservation b ON b.id = w.reservation_id
+                WHERE b.resource_id = r.id AND b.status IN ('Confirmed','InHouse')
+                  AND w.business_date = t.business_date AND w.withdrawn_at IS NULL)) AS waived
        FROM housekeeping_task t
        LEFT JOIN resource r ON r.id = t.resource_id
        LEFT JOIN resource_category c ON c.id = r.category_id

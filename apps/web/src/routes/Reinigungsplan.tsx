@@ -49,8 +49,12 @@ export const stunden = (minuten: number): string =>
  * Was ein Zimmer einer Kraft einbringt. Ein nicht gereinigtes (Gast hat
  * abgelehnt, war sauber) zaehlt nicht: abgerechnet wird nur, was gereinigt
  * ist (`outcome = 'cleaned'`), und die Karte soll dieselbe Zahl zeigen.
+ * Ebenso ein offenes Zimmer, dessen Gast heute verzichtet: es ist gesperrt,
+ * auch wenn es schon zugeteilt war (Sven, 08.10.2026).
  */
-const zaehlt = (z: PlanZimmer): number => z.taskStatus === 'skipped' ? 0 : z.minutes
+const gesperrt = (z: PlanZimmer): boolean => z.waived && z.taskStatus !== 'done'
+const zaehlt = (z: PlanZimmer): number =>
+  z.taskStatus === 'skipped' || gesperrt(z) ? 0 : z.minutes
 
 export interface KraftSumme {
   abreisen: number; abreiseMinuten: number; bleiber: number; bleiberMinuten: number
@@ -63,7 +67,7 @@ export function summen(
   const m = new Map<number, KraftSumme>()
   for (const z of faellig) {
     const k = entwurf.get(zielVon(z))
-    if (k === null || k === undefined) continue
+    if (k === null || k === undefined || gesperrt(z)) continue
     const s = m.get(k) ?? { abreisen: 0, abreiseMinuten: 0, bleiber: 0, bleiberMinuten: 0 }
     if (artVon(z) === 'departure') { s.abreisen++; s.abreiseMinuten += zaehlt(z) }
     else { s.bleiber++; s.bleiberMinuten += zaehlt(z) }
@@ -165,8 +169,12 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
     const art = artVon(z)
     const erledigt = z.taskStatus === 'done'
     const ausgelassen = z.taskStatus === 'skipped'
-    const fest = erledigt || ausgelassen
-    const farbe = erledigt ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+    const verzicht = gesperrt(z)
+    // Mit Wasser bleibt das Zimmer zuteilbar: die Flasche muss jemand
+    // hinstellen. Ohne ist es gesperrt.
+    const fest = erledigt || ausgelassen || (verzicht && !z.water)
+    const farbe = verzicht ? 'border-red-700 bg-red-600 text-white line-through'
+      : erledigt ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
       : ausgelassen ? 'border-neutral-300 bg-neutral-50 text-neutral-500'
       : art === 'departure' ? 'border-red-300 bg-red-50 text-red-800 hover:bg-red-100'
       : 'border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100'
@@ -199,7 +207,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
       {z.arrivalToday && !fest && <span aria-hidden className="text-xs">↘</span>}
       {z.kindChanged && <span aria-hidden className="text-xs font-bold">!</span>}
       {erledigt && <span aria-hidden>✓</span>}
-      {ausgelassen && <span aria-hidden>⊘</span>}
+      {(ausgelassen || verzicht) && <span aria-hidden>⊘</span>}
       {!imPool && <span className="text-[0.65rem] font-normal opacity-70">{zaehlt(z)}′</span>}
     </button>
   }
@@ -380,14 +388,32 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
   const kategorien = [...new Map(eigene.map(z => [z.categoryId!, z.categoryCode!]))]
   const zimmerMitWert = [...new Set([...werte.keys()]
     .map(k => k.split('/')[2]!).filter(r => r !== ''))].map(Number)
+  /*
+   * "Keine Zwischenreinigung" ist dasselbe wie null Bleiber-Minuten -- so
+   * rechnet der Plan schon (`liesZimmer`), und das Gaestehaus der alten App
+   * stand genau so fest im Code. Als Haken ist es aber auffindbar (Sven,
+   * 08.10.2026: "muss in den Einstellungen auswaehlbar sein").
+   */
+  const ohneZwischen = (cat: number | null, room: number | null): JSX.Element => {
+    const k = `stayover/${cat ?? ''}/${room ?? ''}`
+    const an = werte.get(k)?.trim() === '0'
+    return <label className="ml-2 inline-flex items-center gap-1 text-xs text-neutral-700">
+      <input type="checkbox" checked={an}
+             onChange={e => setWerte(alt => new Map(alt).set(k, e.target.checked ? '0' : ''))} />
+      {t('cleaningPlan.noStayover')}
+    </label>
+  }
   const feld = (kind: ReinigungsArt, cat: number | null, room: number | null): JSX.Element => {
     const k = `${kind}/${cat ?? ''}/${room ?? ''}`
-    return <input type="number" min={0} max={480} inputMode="numeric"
+    const aus = kind === 'stayover' && werte.get(k)?.trim() === '0'
+    if (aus) return ohneZwischen(cat, room)
+    return <><input type="number" min={0} max={480} inputMode="numeric"
                   value={werte.get(k) ?? ''}
                   placeholder={cat === null && room === null
                     ? t('cleaningPlan.normDefault', { minutes: plan.defaults[kind] }) : ''}
                   onChange={e => setWerte(alt => new Map(alt).set(k, e.target.value))}
                   className="w-32 border border-neutral-300 rounded-sm px-1 py-0.5 text-right" />
+      {kind === 'stayover' && ohneZwischen(cat, room)}</>
   }
 
   const speichern = (): void => {

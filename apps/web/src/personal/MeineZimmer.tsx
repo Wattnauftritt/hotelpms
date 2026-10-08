@@ -70,7 +70,9 @@ export function MeineZimmer({ locale }: { locale: StaffLocale }): JSX.Element {
   if (mitZimmern.length === 0) {
     return <Karte><p className="text-base text-neutral-700">{t('today.empty')}</p></Karte>
   }
-  const rooms = mitZimmern.flatMap(h => h.rooms)
+  // Ein Zimmer, dessen Gast verzichtet, zaehlt nicht mit (Sven, 08.10.2026:
+  // "rot markiert, gesperrt und ungezaehlt").
+  const rooms = mitZimmern.flatMap(h => h.rooms).filter(z => z.waiver == null)
   const fertig = (z: MeinZimmer): boolean => z.status !== 'open' && z.inspection !== 'rework'
   const erledigt = rooms.filter(fertig).length
   const minutes = mitZimmern.reduce((s, h) => s + h.minutes, 0)
@@ -150,7 +152,8 @@ function HausListe({ haus, locale, ueberschrift }: {
         <h3 className={`text-base font-semibold ${rot ? 'text-red-700' : 'text-sky-700'}`}>
           {t(rot ? 'room.departure' : 'room.stayover')}
           <span className="ml-2 text-base font-normal text-neutral-500">
-            {liste.filter(fertig).length}/{liste.length}</span>
+            {liste.filter(z => z.waiver == null && fertig(z)).length}/
+            {liste.filter(z => z.waiver == null).length}</span>
         </h3>
         <div className="grid grid-cols-3 gap-1.5">
           {liste.flatMap(z => {
@@ -158,23 +161,30 @@ function HausListe({ haus, locale, ueberschrift }: {
             const auf = offen === z.taskId
             const wasserOffen = z.waiver?.water === true && !z.waiver.delivered
             const kachel = <div key={z.taskId}
-                                className={`rounded-lg border-l-4 border p-2 flex flex-col justify-between gap-1.5
+                                className={`relative rounded-lg border-l-4 border p-2 flex flex-col justify-between gap-1.5
                                             ${KACHEL[zu]} ${auf ? 'ring-2 ring-neutral-900' : ''}`}>
-              <button type="button" aria-expanded={auf} className="text-left leading-tight space-y-0.5"
+              {/* Die weiteren Status (keine Reinigung, war sauber, Problem,
+                  zuruecknehmen) stehen unter dem Tipp auf die Kachel; das
+                  Zeichen in der Ecke sagt, dass es sie gibt (Sven, 08.10.2026:
+                  "kann keinen Status ausser gereinigt waehlen"). */}
+              {zu !== 'waived' && <span aria-hidden className="absolute top-1 right-1 w-7 h-7 grid
+                place-items-center rounded-full bg-white/80 border border-neutral-300 text-sm
+                font-bold text-neutral-700 pointer-events-none">⋯</span>}
+              <button type="button" aria-expanded={auf} aria-label={`${z.code}, ${t('room.more')}`}
+                      className="text-left leading-tight space-y-0.5"
                       onClick={() => setOffen(auf ? null : z.taskId)}>
-                <span className="flex flex-wrap items-baseline justify-between gap-x-1">
-                  <span className="text-xl font-bold tabular-nums">
-                    {z.code}
-                    {MEIN_ZEICHEN[zu] !== '' && <span className="ml-1 text-base">{MEIN_ZEICHEN[zu]}</span>}
-                  </span>
-                  {z.minutes !== null && <span className="text-xs opacity-70 whitespace-nowrap">
-                    {t('room.minutes', { minutes: z.minutes })}</span>}
+                <span className="block text-xl font-bold tabular-nums pr-7">
+                  {z.code}
+                  {MEIN_ZEICHEN[zu] !== '' && <span className="ml-0.5 text-sm">{MEIN_ZEICHEN[zu]}</span>}
                 </span>
+                {z.minutes !== null && zu !== 'waived'
+                  && <span className="block text-xs opacity-70">
+                  {t('room.minutes', { minutes: z.minutes })}</span>}
                 <span className="block text-xs font-medium">{zustandText(z, zu, t)}</span>
                 {(z.arrivalToday && zu !== 'done' && zu !== 'passed') && <span
                   className="block text-xs text-purple-800">{t('room.arrival')}</span>}
-                {z.waiver != null && zu !== 'done' && <span className="block text-xs
-                  text-amber-800">{t(wasserOffen ? 'room.water' : 'room.waived')}</span>}
+                {wasserOffen && <span className="block text-xs text-red-800">
+                  {t('room.water')}</span>}
                 {z.openProblems > 0 && <span className="block text-xs text-red-800">
                   {t('room.problems', { n: z.openProblems })}</span>}
               </button>
@@ -185,7 +195,7 @@ function HausListe({ haus, locale, ueberschrift }: {
                 : wasserOffen && z.status === 'open'
                   ? <button type="button" disabled={laeuft} className={KACHEL_KNOPF}
                             onClick={() => wasser.mutate(z.taskId)}>{t('room.waterDone')}</button>
-                  : z.status === 'open'
+                  : z.status === 'open' && zu !== 'waived'
                     && <button type="button" disabled={laeuft} className={KACHEL_KNOPF}
                                onClick={() => setzen.mutate({ taskId: z.taskId,
                                                               outcome: 'cleaned' })}>
@@ -216,10 +226,14 @@ function HausListe({ haus, locale, ueberschrift }: {
  * Nacharbeit; grau, was erledigt ist.
  */
 export type MeinChipZustand = 'ready' | 'blocked' | 'stayover' | 'rework' | 'done' | 'passed'
-  | 'skipped'
+  | 'skipped' | 'waived'
 
 export function meinChip(z: MeinZimmer): MeinChipZustand {
   if (z.inspection === 'rework') return 'rework'
+  // Rot und gesperrt, auch wenn zugeteilt: der Gast will heute keine
+  // Reinigung. Gibt es Wasser, ist die Flasche die einzige Aufgabe. Was vor
+  // dem Verzicht schon gereinigt war, bleibt gereinigt.
+  if (z.waiver != null && z.outcome !== 'cleaned' && z.outcome !== 'was_clean') return 'waived'
   if (z.status !== 'open') {
     if (z.inspection === 'passed') return 'passed'
     return z.outcome === 'cleaned' ? 'done' : 'skipped'
@@ -235,10 +249,19 @@ const KACHEL: Record<MeinChipZustand, string> = {
   rework: 'bg-red-50 border-red-300 border-l-red-600 text-red-950',
   done: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500',
   passed: 'bg-neutral-100 border-neutral-200 border-l-green-600 text-neutral-600',
-  skipped: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500'
+  skipped: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500',
+  waived: 'bg-red-50 border-red-300 border-l-red-600 text-red-900'
 }
 const MEIN_ZEICHEN: Record<MeinChipZustand, string> = {
-  ready: '', blocked: '', stayover: '', rework: '↺', done: '✓', passed: '✓✓', skipped: '⊘'
+  ready: '', blocked: '', stayover: '', rework: '↺', done: '✓', passed: '✓✓', skipped: '⊘',
+  waived: '⊘'
+}
+const STATUS = `min-h-[3rem] px-1 py-2 text-sm font-medium rounded-md border-2
+                disabled:opacity-50 leading-tight`
+const STATUS_FARBE: Record<Ausgang, string> = {
+  cleaned: 'bg-green-600 border-green-700 text-white active:bg-green-700',
+  declined: 'bg-red-50 border-red-400 text-red-800 active:bg-red-100',
+  was_clean: 'bg-sky-50 border-sky-400 text-sky-900 active:bg-sky-100'
 }
 const KACHEL_KNOPF = `w-full min-h-[2.5rem] px-1 text-sm font-medium rounded-md bg-white border
                       border-neutral-300 active:bg-neutral-100 disabled:opacity-50`
@@ -253,6 +276,7 @@ function zustandText(z: MeinZimmer, zu: MeinChipZustand,
     case 'done': return t('outcome.cleaned')
     case 'passed': return t('inspect.passed')
     case 'skipped': return t(z.outcome === 'was_clean' ? 'outcome.was_clean' : 'outcome.declined')
+    case 'waived': return t('room.waived')
   }
 }
 
@@ -294,8 +318,8 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, o
           : <Marke farbe="bg-amber-100 text-amber-900">{t('room.waiting')}</Marke>)}
         {!fertig && z.arrivalToday
           && <Marke farbe="bg-purple-100 text-purple-900">{t('room.arrival')}</Marke>}
-        {z.waiver != null && !fertig
-          && <Marke farbe="bg-amber-100 text-amber-900">{t('room.waived')}</Marke>}
+        {z.waiver != null
+          && <Marke farbe="bg-red-600 text-white">{t('room.waived')}</Marke>}
         {wasserOffen && <Marke farbe="bg-sky-100 text-sky-900">{t('room.water')}</Marke>}
         {z.waiver?.delivered === true
           && <Marke farbe="bg-green-100 text-green-900">{t('room.waterDelivered')}</Marke>}
@@ -323,18 +347,18 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, o
       {/* Verzicht mit Wasser: die Flasche ist die Aufgabe, nicht die Reinigung. */}
       {wasserOffen && !nacharbeit && <button type="button" disabled={laeuft} className={KNOPF}
                                              onClick={onWasser}>{t('room.waterDone')}</button>}
-      {!fertig && !nacharbeit && <>
-        <button type="button" disabled={laeuft}
-                className={wasserOffen ? KNOPF_LEISE : KNOPF}
-                onClick={() => onSetzen('cleaned')}>{t('outcome.cleaned')}</button>
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" disabled={laeuft} className={`${KNOPF_LEISE} text-sm`}
-                  onClick={() => onSetzen('declined')}>{t('outcome.declined')}</button>
-          <button type="button" disabled={laeuft} className={`${KNOPF_LEISE} text-sm`}
-                  onClick={() => onSetzen('was_clean')}>{t('outcome.was_clean')}</button>
-        </div>
-      </>}
-      {fertig && <button type="button" disabled={laeuft} className={KNOPF_LEISE}
+      {/* Die Status wie im Cleaning-Backend, je mit ihrer Farbe. Verzichtet
+          der Gast, ist das Zimmer gesperrt: keiner davon, auch kein
+          Zuruecknehmen der Wasserflasche. */}
+      {!fertig && !nacharbeit && z.waiver == null && <div className="grid grid-cols-3 gap-2">
+        <button type="button" disabled={laeuft} className={`${STATUS} ${STATUS_FARBE.cleaned}`}
+                onClick={() => onSetzen('cleaned')}>✓ {t('outcome.cleaned')}</button>
+        <button type="button" disabled={laeuft} className={`${STATUS} ${STATUS_FARBE.declined}`}
+                onClick={() => onSetzen('declined')}>⊘ {t('outcome.declined')}</button>
+        <button type="button" disabled={laeuft} className={`${STATUS} ${STATUS_FARBE.was_clean}`}
+                onClick={() => onSetzen('was_clean')}>✧ {t('outcome.was_clean')}</button>
+      </div>}
+      {fertig && z.waiver == null && <button type="button" disabled={laeuft} className={KNOPF_LEISE}
                          onClick={() => onSetzen(null)}>{t('room.undo')}</button>}
       {melden
         ? <Melden taskId={z.taskId} propertyId={propertyId} locale={locale}

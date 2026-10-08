@@ -149,6 +149,18 @@ async function liesMeineZimmer(
   return { date, rooms: rows, minutes }
 }
 
+/** Verzichtet der Gast heute auf die Reinigung dieses Bleibers (0115)? */
+async function verzichtet(client: PoolClient, taskId: number): Promise<boolean> {
+  const { rows } = await client.query(
+    `SELECT 1 FROM housekeeping_task t
+       JOIN reservation b ON b.resource_id = t.resource_id
+                         AND b.status IN ('Confirmed','InHouse')
+       JOIN cleaning_waiver w ON w.reservation_id = b.id
+                             AND w.business_date = t.business_date AND w.withdrawn_at IS NULL
+      WHERE t.id = $1 AND t.kind = 'stayover' LIMIT 1`, [taskId])
+  return rows.length > 0
+}
+
 /** Die eigene Aufgabe von heute, gesperrt -- sonst 404. */
 async function eigeneAufgabe(
   client: PoolClient, propertyId: number, userId: number, taskId: number
@@ -267,6 +279,13 @@ export function myRoomsRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const aufgabe = await eigeneAufgabe(client, propertyId, ich, taskId)
         const neu = outcome as Ausgang | null
+        // Verzichtet der Gast, ist das Zimmer gesperrt, auch wenn es schon
+        // zugeteilt war (Sven, 08.10.2026: "rot markiert, gesperrt und
+        // ungezaehlt"). Gereinigt oder sauber gemeldet zaehlte Minuten fuer
+        // eine Reinigung, die nicht stattfinden soll.
+        if ((neu === 'cleaned' || neu === 'was_clean') && await verzichtet(client, taskId)) {
+          throw Errors.conflict('cleaningWaiver.roomLocked')
+        }
         if (neu !== aufgabe.outcome) {
           // Ein anderer Ausgang macht die Kontrolle hinfaellig: sie galt dem
           // Zimmer, wie es vorher gemeldet war.

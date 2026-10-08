@@ -169,6 +169,13 @@ describe('Reinigungsverzicht', () => {
     expect(t.waiver).toEqual({ water: false, delivered: false })
     expect((await app.inject({ method: 'POST', url: p(`/my-rooms/${t.taskId}/water`),
       headers: auth(olga.sessionId) })).statusCode).toBe(422)
+    // Zugeteilt und trotzdem gesperrt (Sven, 08.10.2026): gereinigt oder
+    // sauber gemeldet zaehlte Minuten fuer eine Reinigung, die nicht sein soll.
+    for (const outcome of ['cleaned', 'was_clean']) {
+      const r = await app.inject({ method: 'POST', url: p(`/my-rooms/${t.taskId}`),
+        headers: auth(olga.sessionId), payload: { outcome } })
+      expect(r.statusCode, r.body).toBe(409)
+    }
 
     expect((await app.inject({ method: 'PUT', url: `/v1/reservations/${ref}/cleaning-waiver`,
       headers: auth(olga.sessionId), payload: { date: '2026-10-02', waived: true } })).statusCode)

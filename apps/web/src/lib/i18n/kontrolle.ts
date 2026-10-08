@@ -19,9 +19,9 @@ export const kontrolle = {
     en: 'Inspected makes the room ready for the next guest; reception sees it in the room plan right away. Rework sends it back to the cleaner with your note.',
     tr: 'Kontrol edildi odayı bir sonraki misafir için hazır yapar; resepsiyon bunu oda planında hemen görür. Yeniden yap, notunuzla birlikte odayı temizlik personeline geri gönderir.' },
   'inspection.legend': {
-    de: 'Weiß offen · … Gast noch da · ✓ gereinigt, prüfen · ✓✓ kontrolliert · ↺ nacharbeiten · ⊘ Gast wollte keine · ↘ Anreise · ⚠ Problem gemeldet',
-    en: 'White open · … guest still in · ✓ cleaned, inspect · ✓✓ inspected · ↺ rework · ⊘ guest declined · ↘ arrival · ⚠ problem reported',
-    tr: 'Beyaz açık · … misafir hâlâ odada · ✓ temizlendi, kontrol et · ✓✓ kontrol edildi · ↺ yeniden yap · ⊘ misafir istemedi · ↘ varış · ⚠ sorun bildirildi' },
+    de: 'Weiß offen · … Gast noch da · ✓ gereinigt, prüfen · ✓✓ kontrolliert · ↺ nacharbeiten · ⊘ Gast will keine (rot: heute gesperrt) · ↘ Anreise · ⚠ Problem gemeldet',
+    en: 'White open · … guest still in · ✓ cleaned, inspect · ✓✓ inspected · ↺ rework · ⊘ guest declined (red: locked today) · ↘ arrival · ⚠ problem reported',
+    tr: 'Beyaz açık · … misafir hâlâ odada · ✓ temizlendi, kontrol et · ✓✓ kontrol edildi · ↺ yeniden yap · ⊘ misafir istemedi (kırmızı: bugün kilitli) · ↘ varış · ⚠ sorun bildirildi' },
   'inspection.empty': {
     de: 'Für heute ist noch kein Zimmer geplant.',
     en: 'No rooms are planned for today yet.',

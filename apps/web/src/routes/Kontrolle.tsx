@@ -97,7 +97,7 @@ export function Kontrolle({ propertyId }: { propertyId: number }): JSX.Element {
 const ZUSTAND: Record<ChipZustand, TextKey> = {
   open: 'inspection.notCleaned', blocked: 'inspection.waitingCheckout',
   toCheck: 'inspection.cleaned', passed: 'inspection.passed', rework: 'inspection.rework',
-  declined: 'inspection.declined'
+  declined: 'inspection.declined', waived: 'inspection.declined'
 }
 
 /** Was die Hausdame mit dem angeklickten Zimmer tun kann. */
