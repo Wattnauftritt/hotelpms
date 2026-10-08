@@ -4,7 +4,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          type Fixture } from '@hotelpms/testing'
 import type { DbContext, Pool } from '@hotelpms/db'
 import { PUSH_MAX_ATTEMPTS } from '@hotelpms/domain'
-import { sendStaffPushes, buildPushPayload, type PushSender, type PushTarget,
+import { sendStaffPushes, buildPushPayload, vapidSchluessel, type PushSender, type PushTarget,
          type PushPayload } from '../jobs/staffPush.js'
 
 /**
@@ -115,5 +115,40 @@ describe('sendStaffPushes', () => {
   it('schreibt das Datum eines Plans aus', () => {
     expect(buildPushPayload('plan', { date: '2026-10-08' }, 'de')).toMatchObject({
       body: 'Deine Zimmer für Donnerstag, 8.10. haben sich geändert.', tag: 'plan-2026-10-08' })
+  })
+})
+
+/*
+ * Sven, 08.10.2026: ohne Terminal keine Umgebungsvariablen -- der Worker
+ * erzeugt das Paar selbst (0117). Zwei Starts duerfen kein zweites Paar
+ * erzeugen, sonst gingen die Abos des ersten ins Leere.
+ */
+describe('VAPID-Schluessel', () => {
+  const ohne = { publicKey: null, privateKey: null }
+
+  it('erzeugt ein Paar, legt es ab und behaelt es beim naechsten Start', async () => {
+    await owner.query('DELETE FROM platform_vapid_key')
+    const erst = await vapidSchluessel(owner, ohne)
+    expect(erst.quelle).toBe('neu')
+    expect(erst.publicKey).toMatch(/^[A-Za-z0-9_-]{80,}$/)
+    const dann = await vapidSchluessel(owner, ohne)
+    expect(dann).toEqual({ ...erst, quelle: 'datenbank' })
+    const gleichzeitig = await Promise.all([vapidSchluessel(owner, ohne),
+                                            vapidSchluessel(owner, ohne)])
+    expect(gleichzeitig.map(v => v.publicKey)).toEqual([erst.publicKey, erst.publicKey])
+  })
+
+  it('nimmt die Umgebung, wenn sie gesetzt ist', async () => {
+    expect(await vapidSchluessel(owner, { publicKey: 'Bpub', privateKey: 'priv' }))
+      .toEqual({ publicKey: 'Bpub', privateKey: 'priv', quelle: 'umgebung' })
+  })
+
+  it('zeigt der Anwendungsrolle nur den oeffentlichen Schluessel', async () => {
+    await owner.query('DELETE FROM platform_vapid_key')
+    const v = await vapidSchluessel(owner, ohne)
+    const { rows } = await app.query<{ k: string }>('SELECT public_key AS k FROM platform_vapid_key')
+    expect(rows).toEqual([{ k: v.publicKey }])
+    await expect(app.query('SELECT private_key FROM platform_vapid_key'))
+      .rejects.toThrow(/permission denied/)
   })
 })

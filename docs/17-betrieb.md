@@ -334,13 +334,11 @@ Die Leitung kann eine Übersetzung im Bildschirm Arbeitszeit von Hand berichtige
 
 Die Personal-App meldet sich auf dem Telefon, wenn die Hausdame den Plan ändert, ein Abreisezimmer frei wird oder etwas nachzuarbeiten ist (Aufgabe 18, Baustein 8, Migration 0113). Gesendet wird über die Push-Dienste der Browserhersteller mit VAPID; ein eigener Dienst oder ein Konto bei einem Anbieter ist nicht nötig.
 
-**Schlüssel einmal erzeugen** und nie wieder ändern — ein neuer Schlüssel macht jedes angemeldete Telefon stumm, bis die Kraft die App neu öffnet:
+**Schlüssel erzeugt der Worker selbst.** Fehlen `VAPID_PUBLIC_KEY` und `VAPID_PRIVATE_KEY` in der Umgebung, erzeugt der Worker beim ersten Start ein Paar und legt es in `platform_vapid_key` ab (Migration 0117); die API liest den öffentlichen Schlüssel von dort. Die Anwendungsrolle sieht nur diese eine Spalte, den privaten Schlüssel liest einzig die Eigentümerrolle des Workers. Ein Terminal ist dafür nicht nötig (Sven, 08.10.2026).
 
-```
-pnpm --filter @hotelpms/worker exec web-push generate-vapid-keys
-```
+Wer die Schlüssel selbst setzen will, setzt beide in die Umgebung — sie gewinnen dann über die Datenbank. `VAPID_PUBLIC_KEY` gehört in die Umgebung von **API und Worker**, `VAPID_PRIVATE_KEY` nur in die des Workers. `VAPID_SUBJECT` (Vorgabe `mailto:info@staygrid.cloud`) ist die Adresse, unter der uns ein Push-Dienst bei Problemen erreicht.
 
-`VAPID_PUBLIC_KEY` gehört in die Umgebung von **API und Worker** (die App braucht ihn zum Anmelden), `VAPID_PRIVATE_KEY` nur in die des Workers, dazu `VAPID_SUBJECT=mailto:info@staygrid.cloud` — die Adresse, unter der uns ein Push-Dienst bei Problemen erreicht. Ohne Schlüssel bietet die App keine Benachrichtigung an, und die Warteschlange `staff_push` bleibt stehen.
+**Nie wechseln ohne Grund.** Ein neues Paar macht jedes angemeldete Telefon stumm, bis die Kraft die App neu öffnet und Benachrichtigungen wieder einschaltet. Wechseln heißt: die Zeile in `platform_vapid_key` löschen (oder die Umgebung ändern) und den Worker neu starten.
 
 **Was hinausgeht.** Titel und Text in der Sprache der Kraft, Ende-zu-Ende verschlüsselt (RFC 8291): der Push-Dienst sieht die Adresse des Telefons, nicht den Inhalt. Der Inhalt nennt eine Zimmernummer oder ein Datum, nie einen Gast und nie die Notiz der Hausdame. Zugestellt wird nur an die Dienste von Google, Apple, Mozilla und Microsoft (`isPushEndpoint`); jede andere Adresse weist schon die Anmeldung ab — dieselbe Vorsicht wie bei den Webhook-Zielen in Abschnitt 8.
 
@@ -348,7 +346,7 @@ pnpm --filter @hotelpms/worker exec web-push generate-vapid-keys
 
 | Befund in `staff_push` | Ursache |
 |---|---|
-| `pending`, Versuche 0, älter als eine Minute | Kein `VAPID_PRIVATE_KEY` im Worker |
+| `pending`, Versuche 0, älter als eine Minute | Worker ohne Schlüssel — im Protokoll steht „VAPID-Schlüssel nicht verfügbar“ |
 | `sent`, aber nichts kam an | Die Kraft hat kein Telefon angemeldet (das ist kein Fehler), oder das Telefon unterdrückt Meldungen der App |
 | `last_error` `http_403` | Öffentlicher und privater Schlüssel passen nicht zusammen |
 

@@ -3,6 +3,7 @@ import { isPushEndpoint } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
+import { tx } from '../platform/db.js'
 import type { Principal } from '../platform/context.js'
 
 /**
@@ -43,6 +44,7 @@ function endpointAus(req: FastifyRequest): string {
 
 export function pushRoutes(app: FastifyInstance): void {
   const config = loadConfig()
+  let gespeichert: string | null = null
 
   registerRoute(app, {
     method: 'GET',
@@ -52,7 +54,16 @@ export function pushRoutes(app: FastifyInstance): void {
     summary: 'Schluessel fuer Benachrichtigungen (Personal-App)',
     handler: async (req) => {
       sitzung(req)
-      return { publicKey: config.vapidPublicKey }
+      if (config.vapidPublicKey !== null) return { publicKey: config.vapidPublicKey }
+      // Ohne Umgebung der Schluessel, den der Worker erzeugt hat (0117).
+      // Gemerkt wird erst ein gefundener: vor dem ersten Start des Workers
+      // steht noch keiner da, und die App fragt beim naechsten Oeffnen neu.
+      gespeichert ??= await tx(req.pool, req, async client => {
+        const { rows } = await client.query<{ k: string }>(
+          'SELECT public_key AS k FROM platform_vapid_key')
+        return rows[0]?.k ?? null
+      })
+      return { publicKey: gespeichert }
     }
   })
 

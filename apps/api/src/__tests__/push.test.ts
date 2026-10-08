@@ -116,6 +116,33 @@ describe('Telefon anmelden', () => {
   })
 })
 
+describe('Schluessel aus der Datenbank', () => {
+  // Ohne Umgebungsvariable der Schluessel, den der Worker abgelegt hat (0117).
+  it('liest den oeffentlichen Schluessel, den der Worker erzeugt hat', async () => {
+    const vorher = process.env.VAPID_PUBLIC_KEY
+    delete process.env.VAPID_PUBLIC_KEY
+    const built = await buildServer({ pool: appPool(2) })
+    const ohneEnv = built.app
+    registerAllRoutes(ohneEnv)
+    await ohneEnv.ready()
+    try {
+      await owner.query('DELETE FROM platform_vapid_key')
+      const leer = await ohneEnv.inject({ method: 'GET', url: p('/push'),
+        headers: auth(olga.sessionId) })
+      expect(leer.json()).toEqual({ publicKey: null })
+      await owner.query(`INSERT INTO platform_vapid_key (public_key, private_key)
+                         VALUES ('BAusDerDatenbank', 'geheim')`)
+      const da = await ohneEnv.inject({ method: 'GET', url: p('/push'),
+        headers: auth(olga.sessionId) })
+      expect(da.json()).toEqual({ publicKey: 'BAusDerDatenbank' })
+    } finally {
+      process.env.VAPID_PUBLIC_KEY = vorher
+      await ohneEnv.close()
+      await built.pool.end()
+    }
+  })
+})
+
 describe('Anlaesse', () => {
   it('meldet einen geaenderten Plan an alle Betroffenen, einmal', async () => {
     expect((await planen([[0, olga.userId], [1, olga.userId]])).statusCode).toBe(200)

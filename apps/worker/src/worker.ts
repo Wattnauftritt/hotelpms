@@ -13,7 +13,8 @@ import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
-import { sendStaffPushes, createWebPushSender } from './jobs/staffPush.js'
+import { sendStaffPushes, createWebPushSender, vapidSchluessel, type PushSender }
+  from './jobs/staffPush.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { createBrevoAdapter } from './email/brevo.js'
@@ -383,19 +384,25 @@ async function platformEmailsTakt(): Promise<void> {
 }
 
 /*
- * Push an das Personal (Baustein 8). Der oeffentliche Schluessel steht auch
- * in der Umgebung der API, der private nur hier. Ohne beide bleibt die
- * Warteschlange stehen; die App bietet ohne oeffentlichen Schluessel gar
- * keine Benachrichtigung an.
+ * Push an das Personal (Baustein 8). Die Schluessel kommen aus der Umgebung
+ * oder, ohne sie, aus der Datenbank; fehlen beide, erzeugt der Worker beim
+ * Start ein Paar (0117). Die API liest den oeffentlichen von dort, den
+ * privaten kennt nur der Worker.
  */
-const vapidPublic = process.env.VAPID_PUBLIC_KEY ?? null
-const vapidPrivate = process.env.VAPID_PRIVATE_KEY ?? null
-const pushSender = vapidPublic !== null && vapidPrivate !== null
-  ? createWebPushSender({ publicKey: vapidPublic, privateKey: vapidPrivate,
-                          subject: process.env.VAPID_SUBJECT ?? 'mailto:info@staygrid.cloud' })
-  : null
-if (pushSender === null) {
-  log.warn('VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY nicht gesetzt: keine Push-Meldungen an das Personal.')
+let pushSender: PushSender | null = null
+async function pushVorbereiten(): Promise<void> {
+  try {
+    const v = await vapidSchluessel(admin, {
+      publicKey: process.env.VAPID_PUBLIC_KEY ?? null,
+      privateKey: process.env.VAPID_PRIVATE_KEY ?? null
+    })
+    pushSender = createWebPushSender({ publicKey: v.publicKey, privateKey: v.privateKey,
+      subject: process.env.VAPID_SUBJECT ?? 'mailto:info@staygrid.cloud' })
+    if (v.quelle === 'neu') log.info('VAPID-Schluessel erzeugt und in der Datenbank abgelegt')
+  } catch (e) {
+    // Ohne Schluessel laeuft alles andere weiter; der naechste Start versucht es neu.
+    log.error({ err: e }, 'VAPID-Schluessel nicht verfuegbar: keine Push-Meldungen an das Personal')
+  }
 }
 
 /*
@@ -406,12 +413,13 @@ if (pushSender === null) {
 const PUSH_INTERVAL_MS = 20_000
 let pushLaeuft = false
 async function pushTakt(): Promise<void> {
-  if (pushSender === null || pushLaeuft) return
+  const sender = pushSender
+  if (sender === null || pushLaeuft) return
   pushLaeuft = true
   try {
     for (const p of await activeProperties()) {
       try {
-        const r = await sendStaffPushes(pool, propertyContext(p.account_id, p.id), p.id, pushSender)
+        const r = await sendStaffPushes(pool, propertyContext(p.account_id, p.id), p.id, sender)
         // Zahlen, kein Empfaenger und kein Zimmer.
         if (r.attempted > 0) log.info({ property: p.id, ...r }, 'Push an das Personal')
       } catch (e) {
@@ -425,6 +433,7 @@ async function pushTakt(): Promise<void> {
 
 async function main(): Promise<void> {
   log.info('hotelpms Worker gestartet')
+  await pushVorbereiten()
   await tick()
   const interval = setInterval(
     () => { void tick().catch(e => log.error({ err: e }, 'Tick fehlgeschlagen')) },
