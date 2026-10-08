@@ -39,7 +39,8 @@ import type { Guest } from '@hotelpms/contracts'
  * AVS einlesen -- dort entsteht in diesem Moment die Kurkarte. Ist das Haus
  * eingerichtet, heisst der Knopf deshalb "Einchecken und AVS-Datei". Erst
  * die Datei, dann der Check-in: scheitert die Datei, ist noch nichts
- * geschehen, und "Nur einchecken" bleibt als Ausweg.
+ * geschehen, und "Nur einchecken" bleibt als Ausweg -- auch ohne
+ * Meldeschein; den holt der Dialog nach, wenn der Gast schon im Haus ist.
  *
  * **Ist der Gast schon im Haus**, bleibt der Dialog derselbe, nur ohne
  * Check-in (Sven, 07.10.2026). Wer nach Rezeptionsschluss ueber den
@@ -87,6 +88,18 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
   const mitKarte = gaestekarte ?? avs.data?.digitalGuestCard ?? false
   const eincheckenGesperrt = ohneZimmer || einchecken.isPending || avsMelden.isPending
     || f === undefined || !angemeldet || unterschriftOffen
+  /*
+   * "Nur einchecken" ist der Ausweg ohne Meldeschein und ohne AVS-Datei
+   * (Sven, 08.10.2026): der Gast steht da, das Terminal ist besetzt oder er
+   * will erst aufs Zimmer. Gesperrt nur, was die API ohnehin abweist. Den
+   * Schein holt derselbe Dialog spaeter nach, wie beim Gast, den der
+   * Nachtlauf eingecheckt hat. Er hing einmal an `eincheckenGesperrt` und
+   * war damit genau dann tot, wenn er gebraucht wurde -- und sah dabei
+   * klickbar aus, weil der leise Knopf keinen gesperrten Zustand zeigte.
+   */
+  const nurEincheckenGesperrt = ohneZimmer || einchecken.isPending || avsMelden.isPending
+  const nurEincheckenAnbieten = avsBereit || (f !== undefined && !angemeldet)
+    || unterschriftOffen
 
   const melden_einchecken_schliessen = async (): Promise<void> => {
     await avsMelden.mutateAsync({ digitalGuestCard: mitKarte })
@@ -118,25 +131,29 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                       {t('checkin.avsOnly')}
                     </button>
                   )
-                ) : avsBereit ? (
-                  <>
-                    <button type="button" disabled={eincheckenGesperrt}
-                            onClick={() => void melden_einchecken_schliessen()}
-                            className={KNOPF}>
-                      {t('checkin.submitWithAvs')}
-                    </button>
-                    <button type="button" disabled={eincheckenGesperrt}
-                            onClick={() => void einchecken_und_schliessen()}
-                            className={KNOPF_LEISE}>
-                      {t('checkin.submitWithoutAvs')}
-                    </button>
-                  </>
                 ) : (
-                  <button type="button" disabled={eincheckenGesperrt}
-                          onClick={() => void einchecken_und_schliessen()}
-                          className={KNOPF}>
-                    {t('checkin.submit')}
-                  </button>
+                  <>
+                    {avsBereit ? (
+                      <button type="button" disabled={eincheckenGesperrt}
+                              onClick={() => void melden_einchecken_schliessen()}
+                              className={KNOPF}>
+                        {t('checkin.submitWithAvs')}
+                      </button>
+                    ) : (
+                      <button type="button" disabled={eincheckenGesperrt}
+                              onClick={() => void einchecken_und_schliessen()}
+                              className={KNOPF}>
+                        {t('checkin.submit')}
+                      </button>
+                    )}
+                    {nurEincheckenAnbieten && (
+                      <button type="button" disabled={nurEincheckenGesperrt}
+                              onClick={() => void einchecken_und_schliessen()}
+                              className={KNOPF_LEISE}>
+                        {t('checkin.submitWithoutAvs')}
+                      </button>
+                    )}
+                  </>
                 )}
                 <button type="button" onClick={onClose} className={KNOPF_LEISE}>
                   {t('common.back')}

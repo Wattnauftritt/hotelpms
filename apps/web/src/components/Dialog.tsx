@@ -57,7 +57,7 @@ export const KNOPF = 'px-4 py-2 text-sm rounded-sm bg-neutral-900 text-white '
 
 /** Der Knopf daneben -- Schliessen, Abbrechen, Zurueck. */
 export const KNOPF_LEISE = 'px-4 py-2 text-sm rounded-sm border border-neutral-300 '
-  + 'bg-white hover:bg-neutral-50'
+  + 'bg-white hover:bg-neutral-50 disabled:opacity-40 disabled:hover:bg-white'
 
 export function Dialog({ titel, unterzeile, breite = 'breit', fuss, onClose,
                          nebenbeiSchliessen = true, children }: {
