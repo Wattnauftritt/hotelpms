@@ -190,7 +190,7 @@ describe('Der Titel des Balkens', () => {
     routed: false, group: null }
   const basis = { last_name: 'Thiessen', first_name: 'Anna', public_ref: '35533',
                   arrival: '2026-10-05', departure: '2026-10-08',
-                  guest_count: 2, occupants: 0,
+                  guest_count: 2, occupants: 0, status: 'Confirmed',
                   stay_price_cent: 22_200, night_price_min_cent: 7_400,
                   night_price_max_cent: 7_400, payment: zahlung,
                   short_note: null, notes: null }
@@ -297,12 +297,18 @@ describe('Scrollleiste unter dem Plan', () => {
 
 describe('Personenzahl am Balken', () => {
   it('nimmt die gebuchte Zahl, sonst die erfassten Mitreisenden', () => {
-    expect(personenzahl({ guest_count: 3, occupants: 1 })).toBe(3)
-    expect(personenzahl({ guest_count: null, occupants: 2 })).toBe(2)
+    expect(personenzahl({ guest_count: 3, occupants: 1, status: 'Confirmed' })).toBe(3)
+    expect(personenzahl({ guest_count: null, occupants: 2, status: 'InHouse' })).toBe(2)
   })
 
   it('zeigt ohne Angabe keine Null', () => {
-    expect(personenzahl({ guest_count: null, occupants: 0 })).toBeNull()
+    expect(personenzahl({ guest_count: null, occupants: 0, status: 'InHouse' })).toBeNull()
+  })
+
+  it('zaehlt vor dem Check-in nicht den Besteller als Person', () => {
+    // Die Gruppe Liedtke: der Besteller steht nur im ersten Zimmer.
+    expect(personenzahl({ guest_count: null, occupants: 1, status: 'Confirmed' })).toBeNull()
+    expect(personenzahl({ guest_count: null, occupants: 1, status: 'Optional' })).toBeNull()
   })
 
   it('steht ganz rechts, ausserhalb des Teils, den truncate kuerzt', () => {

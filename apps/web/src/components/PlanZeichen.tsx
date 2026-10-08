@@ -149,7 +149,7 @@ export function ZahlungsStand({ zahlung }: { zahlung: PlanPayment | null | undef
  * Fett, damit das Auge sie beim Ueberfliegen einer Spalte vom Namen trennt.
  */
 export function PersonenZeichen({ r }: {
-  r: { guest_count: number | null; occupants: number
+  r: { guest_count: number | null; occupants: number; status: string
        adults: number | null; children: number | null }
 }): JSX.Element | null {
   const t = useT()

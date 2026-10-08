@@ -121,11 +121,19 @@ export function zahlungsTitel(p: PlanPayment, t: Uebersetzer,
  * Die gebuchte Zahl zuerst. Fehlt sie (eine Buchung von Hand ohne Angabe,
  * ein Altbestand), die erfassten Mitreisenden -- aber nur, wenn es welche
  * gibt: eine Null waere eine Aussage ("niemand"), und eine falsche.
+ *
+ * **Die Mitreisenden erst ab dem Check-in.** Davor steht in der Liste nur
+ * der Besteller, den das Anlegen hineinschreibt -- bei einer Gruppe im
+ * ersten Zimmer und in keinem anderen. Daraus wurde "1 P." am ersten
+ * Balken und nichts an den uebrigen, und die Gruppe Liedtke sah aus wie
+ * ein Gast auf fuenf Zimmern (Sven, 08.10.2026). Erst der Meldeschein
+ * macht aus der Liste eine Zaehlung.
  */
 export function personenzahl(
-  r: { guest_count: number | null; occupants: number }
+  r: { guest_count: number | null; occupants: number; status: string }
 ): number | null {
   if (r.guest_count !== null) return r.guest_count
+  if (r.status !== 'InHouse' && r.status !== 'CheckedOut') return null
   return r.occupants > 0 ? r.occupants : null
 }
 
@@ -138,6 +146,7 @@ export interface BalkenAngaben {
   departure: string
   guest_count: number | null
   occupants: number
+  status: string
   /** Fehlen ohne Folio-Recht; dann steht kein Preis im Titel. */
   stay_price_cent?: number | undefined
   night_price_min_cent?: number | undefined

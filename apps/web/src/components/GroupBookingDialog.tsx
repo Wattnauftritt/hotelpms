@@ -129,6 +129,37 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
    * sind keine Angabe, sondern eine Frage.
    */
   const [quelle, setQuelle] = useState<'gruppe' | 'zimmer'>('gruppe')
+  /*
+   * Personen je Zimmer, vorbelegt mit der Belegung der Zimmergruppe -- wie
+   * in der Einzelbuchung. Die Maske fragte bisher gar nicht danach, und
+   * jede Gruppe stand ohne Personen im Plan; am ersten Zimmer las der
+   * Balken dann den Besteller als "1 P." (Sven, 08.10.2026: "hat die ganze
+   * Gruppe jetzt eine Person auf 5 Zimmern?"). Je Zeile, weil eine Gruppe
+   * aus Doppel- und Einzelzimmern keine gemeinsame Zahl hat.
+   */
+  const [personen, setPersonen] = useState<Record<number, { erw: string; ki: string }>>(
+    () => Object.fromEntries(selection.rooms.map(r =>
+      [r.resourceId, { erw: String(r.maxOccupancy), ki: '' }])))
+  const personenVon = (resourceId: number, maxOccupancy: number): { erw: string; ki: string } =>
+    personen[resourceId] ?? { erw: String(maxOccupancy), ki: '' }
+  const personenSetzen = (resourceId: number, maxOccupancy: number,
+                          feld: 'erw' | 'ki', wert: string): void =>
+    setPersonen(v => ({ ...v,
+      [resourceId]: { ...(v[resourceId] ?? { erw: String(maxOccupancy), ki: '' }),
+                      [feld]: wert } }))
+  /*
+   * Was je Zimmer hinausgeht. Ein leeres Erwachsenenfeld heisst "nicht
+   * gesagt", wie in der Einzelbuchung; `null` heisst ungueltig.
+   */
+  const personenJeZimmer = zimmer.map(z => {
+    const { erw, ki } = personenVon(z.resourceId, z.maxOccupancy)
+    if (erw.trim() === '') return ki.trim() === '' ? {} : null
+    const adults = Number(erw)
+    const children = ki.trim() === '' ? undefined : Number(ki)
+    if (!Number.isInteger(adults) || adults < 1) return null
+    if (children !== undefined && (!Number.isInteger(children) || children < 0)) return null
+    return children === undefined ? { adults } : { adults, children }
+  })
   const [gruppenPreis, setGruppenPreis] = useState<Preiseingabe>(LEERER_PREIS)
   const [zimmerPreis, setZimmerPreis] = useState<Record<number, Preiseingabe>>({})
   const buchen = useCreateBooking(propertyId)
@@ -249,6 +280,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
      * faellt erst auf der Rechnung auf.
      */
     : luecken.length > 0 ? 'group.needAllRoomPrices'
+    : personenJeZimmer.some(p => p === null) ? 'verlegen.personsInvalid'
     : null
   const gueltig = grund === null
 
@@ -318,7 +350,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                            * spaetestens der Rest-Cent laesst sie auseinander
                            * laufen.
                            */
-                          rooms: zimmer.map(z => {
+                          rooms: zimmer.map((z, i) => {
                             const eigen = eigeneTage[z.resourceId]
                             return {
                               categoryId: z.categoryId, resourceId: z.resourceId,
@@ -327,6 +359,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                               // Buchung, und die Absicht steht nicht doppelt da.
                               arrival: eigen?.arrival,
                               departure: eigen?.departure,
+                              ...personenJeZimmer[i],
                               totalCent: quelle === 'zimmer'
                                 ? alsGesamt(zimmerPreis[z.resourceId] ?? LEERER_PREIS,
                                             daysBetween(eigen?.arrival ?? arrival,
@@ -491,6 +524,8 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                 <th className="font-medium">{t('booking.arrival')}</th>
                 <th className="font-medium">{t('booking.departure')}</th>
                 <th className="font-medium text-right pr-2">{t('group.nightsHead')}</th>
+                <th className="font-medium pr-2">{t('booking.adults')}</th>
+                <th className="font-medium pr-2">{t('booking.children')}</th>
                 {/*
                   * Beide Preisspalten stehen immer da, auch wenn der Preis
                   * fuer die ganze Gruppe gilt -- dann zeigen sie, was daraus
@@ -537,6 +572,24 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                     <td className={`tabular-nums text-right pr-2
                                     ${zeileNaechte <= 0 ? 'text-red-700 font-medium' : ''}`}>
                       {zeileNaechte}
+                    </td>
+                    <td className="pr-2">
+                      <input value={personenVon(z.resourceId, z.maxOccupancy).erw}
+                             onChange={e => personenSetzen(z.resourceId, z.maxOccupancy,
+                                                           'erw', e.target.value)}
+                             inputMode="numeric" placeholder="—"
+                             aria-label={`${z.roomCode} ${t('booking.adults')}`}
+                             className="border border-neutral-300 rounded-sm px-2 py-1 text-sm
+                                        w-14 tabular-nums" />
+                    </td>
+                    <td className="pr-2">
+                      <input value={personenVon(z.resourceId, z.maxOccupancy).ki}
+                             onChange={e => personenSetzen(z.resourceId, z.maxOccupancy,
+                                                           'ki', e.target.value)}
+                             inputMode="numeric" placeholder="0"
+                             aria-label={`${z.roomCode} ${t('booking.children')}`}
+                             className="border border-neutral-300 rounded-sm px-2 py-1 text-sm
+                                        w-14 tabular-nums" />
                     </td>
                     {/*
                       * Immer ein Eingabefeld, auch wenn der Betrag gerade
@@ -610,6 +663,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                     {t('group.priceSum')}
                   </td>
                   <td className="tabular-nums text-right pr-2">{naechteGesamt}</td>
+                  <td colSpan={2} />
                   <td />
                   <td className="tabular-nums text-right font-medium">
                     {quelle === 'zimmer'
@@ -626,7 +680,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                     bleibt gesperrt. */}
                 {luecken.length > 0 && (
                   <tr>
-                    <td colSpan={8} className="text-xs text-red-700 pt-1">
+                    <td colSpan={10} className="text-xs text-red-700 pt-1">
                       {t('group.priceFromRatePlan', { n: ohnePreis })}
                     </td>
                   </tr>

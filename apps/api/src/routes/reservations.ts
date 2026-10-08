@@ -112,6 +112,9 @@ interface CreateBookingRoom {
   /** Abweichende Tage fuer dieses Zimmer. Ohne Angabe die der Buchung. */
   arrival?: string
   departure?: string
+  /** Personen in diesem Zimmer. Ohne Angabe die der Buchung. */
+  adults?: number
+  children?: number
 }
 
 interface CreateBooking {
@@ -883,6 +886,17 @@ export function reservationRoutes(app: FastifyInstance): void {
         throw Errors.validation({ rooms: ['field.positiveInteger'] })
       }
       /*
+       * Personen je Zimmer. Die Angabe der Buchung gilt fuer jedes Zimmer
+       * gleich -- bei einer Gruppe aus Doppel- und Einzelzimmern stimmt sie
+       * fuer keines. Die Gruppenmaske fragte bisher gar nicht, und die Gruppe
+       * Liedtke stand mit fuenf Zimmern ohne eine Person da (Sven,
+       * 08.10.2026). Dieselbe Pruefung wie fuer die Buchung.
+       */
+      const personenJeZimmerAngabe = zimmer.map(z =>
+        z.adults === undefined && z.children === undefined
+          ? null
+          : personenAngabe({ adults: z.adults, children: z.children }))
+      /*
        * Der Zeitraum je Zimmer: was nicht dabeisteht, erbt den der Buchung.
        *
        * **Einmal ausgerechnet und danach nur noch benutzt.** Die Anreise
@@ -1144,8 +1158,10 @@ export function reservationRoutes(app: FastifyInstance): void {
              body.status ?? 'Confirmed', body.optionExpiresAt ?? null,
              ratePlanId ?? null, guestId ?? null, body.notes ?? null,
              body.shortNote?.trim() || null,
-             block?.id ?? null, z.resourceId ?? null, personen.guestCount,
-             personen.adults, personen.children, principal.userId])
+             block?.id ?? null, z.resourceId ?? null,
+             (personenJeZimmerAngabe[i] ?? personen).guestCount,
+             (personenJeZimmerAngabe[i] ?? personen).adults,
+             (personenJeZimmerAngabe[i] ?? personen).children, principal.userId])
           const reservationId = res.rows[0]!.id
 
           // Eine Anweisung fuer alle Naechte der Reservierung statt einer je

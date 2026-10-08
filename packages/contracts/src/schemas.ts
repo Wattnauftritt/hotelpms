@@ -469,7 +469,14 @@ export const CreateBookingRoom = Type.Object({
    * Ebene tiefer.
    */
   arrival: Type.Optional(IsoDate),
-  departure: Type.Optional(IsoDate)
+  departure: Type.Optional(IsoDate),
+  /**
+   * Personen **in diesem Zimmer**, wie `adults`/`children` der Buchung.
+   * Ohne Angabe gilt die der Buchung. Eine Gruppe aus Doppel- und
+   * Einzelzimmern hat keine gemeinsame Zahl je Zimmer.
+   */
+  adults: Type.Optional(Type.Integer({ minimum: 1, maximum: 99 })),
+  children: Type.Optional(Type.Integer({ minimum: 0, maximum: 98 }))
 })
 export type CreateBookingRoom = Static<typeof CreateBookingRoom>
 

@@ -190,6 +190,9 @@ export interface CreateBookingBody {
      */
     arrival?: string
     departure?: string
+    /** Personen in diesem Zimmer. Ohne Angabe die der Buchung. */
+    adults?: number
+    children?: number
   }>
   arrival: string
   departure: string
