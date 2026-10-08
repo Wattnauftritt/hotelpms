@@ -5,9 +5,10 @@ import { STAFF_LOCALES } from '@hotelpms/contracts'
 import { istPersonalAdresse, nurPersonal, personalSeite } from '../personal/adresse.js'
 import { fehlerText, personalKeys, startSprache, text } from '../personal/texte.js'
 import { ApiError } from '../lib/api.js'
-import { ordneZimmer, type MeinZimmer } from '../personal/MeineZimmer.js'
+import { meinChip, type MeinZimmer } from '../personal/MeineZimmer.js'
 import { abschnitt, type KontrollZimmer } from '../personal/Kontrolle.js'
 import { tagName } from '../personal/Kueche.js'
+import { chipZustand, nachKraft } from '../lib/kontrollChips.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -126,24 +127,20 @@ describe('Meine Zimmer', () => {
     inspectionNote: null, ...teil })
 
   /*
-   * Ein Zimmer, in das heute jemand einzieht, zuerst; eines, dessen Gast
-   * noch da ist, hinter die freien; Erledigtes ans Ende. Sonst bleibt die
-   * Reihenfolge des Hauses, damit niemand quer ueber die Etagen laeuft.
+   * Die Farbe der Kachel: gruen ist, was jetzt gereinigt werden kann. Eine
+   * Abreise, deren Gast noch da ist, darf nicht gruen sein -- sonst steht
+   * die Kraft vor einer besetzten Tuer.
    */
-  it('ordnet Anreise, frei, wartend, erledigt -- sonst wie im Haus', () => {
-    const liste = [
-      z('101', { status: 'done', outcome: 'cleaned' }),
-      z('102', { free: false }),
-      z('103', {}),
-      z('104', { arrivalToday: true }),
-      z('105', { kind: 'stayover' })]
-    expect(ordneZimmer(liste).map(x => x.code)).toEqual(['104', '103', '105', '102', '101'])
-  })
-
-  it('stellt Nacharbeit vor alles andere', () => {
-    const liste = [z('101', {}), z('102', { status: 'done', outcome: 'cleaned',
-                                           inspection: 'rework', inspectionNote: 'Spiegel' })]
-    expect(ordneZimmer(liste).map(x => x.code)).toEqual(['102', '101'])
+  it('zeigt frei, wartend, Bleiber, erledigt und Nacharbeit getrennt', () => {
+    expect(meinChip(z('101', {}))).toBe('ready')
+    expect(meinChip(z('102', { free: false }))).toBe('blocked')
+    expect(meinChip(z('103', { kind: 'stayover' }))).toBe('stayover')
+    expect(meinChip(z('104', { status: 'done', outcome: 'cleaned' }))).toBe('done')
+    expect(meinChip(z('105', { status: 'done', outcome: 'cleaned', inspection: 'passed' })))
+      .toBe('passed')
+    expect(meinChip(z('106', { status: 'skipped', outcome: 'declined' }))).toBe('skipped')
+    expect(meinChip(z('107', { status: 'done', outcome: 'cleaned', inspection: 'rework' })))
+      .toBe('rework')
   })
 })
 
@@ -196,5 +193,32 @@ describe('Arbeitszeit', () => {
     expect(hm(0)).toBe('0:00')
     expect(monatPlus('2026-01', -1)).toBe('2025-12')
     expect(monatPlus('2026-12', 1)).toBe('2027-01')
+  })
+})
+
+describe('Kontrolle als Chips', () => {
+  const k = (teil: Partial<KontrollZimmer>): KontrollZimmer => ({
+    taskId: 1, code: '101', kind: 'departure', staffName: 'Anna', status: 'open',
+    outcome: null, inspection: null, inspectionNote: null, free: true, arrivalToday: false,
+    openProblems: 0, ...teil })
+
+  it('faerbt nach Stand und haelt Nacharbeit ueber allem', () => {
+    expect(chipZustand(k({}))).toBe('open')
+    expect(chipZustand(k({ free: false }))).toBe('blocked')
+    expect(chipZustand(k({ kind: 'stayover', free: false }))).toBe('open')
+    expect(chipZustand(k({ status: 'done', outcome: 'cleaned' }))).toBe('toCheck')
+    expect(chipZustand(k({ status: 'skipped', outcome: 'was_clean' }))).toBe('toCheck')
+    expect(chipZustand(k({ status: 'done', outcome: 'cleaned', inspection: 'passed' })))
+      .toBe('passed')
+    expect(chipZustand(k({ status: 'done', outcome: 'cleaned', inspection: 'rework' })))
+      .toBe('rework')
+    expect(chipZustand(k({ status: 'skipped', outcome: 'declined' }))).toBe('declined')
+  })
+
+  it('gibt jeder Kraft eine Karte, nach Namen, Unzugeteiltes zuletzt', () => {
+    const liste = [k({ taskId: 1, staffName: 'Olga' }), k({ taskId: 2, staffName: null }),
+                   k({ taskId: 3, staffName: 'Angela' }), k({ taskId: 4, staffName: 'Olga' })]
+    expect(nachKraft(liste).map(g => [g.name, g.rooms.map(z => z.taskId)]))
+      .toEqual([['Angela', [3]], ['Olga', [1, 4]], [null, [2]]])
   })
 })

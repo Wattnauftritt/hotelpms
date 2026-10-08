@@ -212,6 +212,11 @@ const texte = {
    * Kraft sieht, ob das Zimmer leer ist; der Satz sagt nur, was StayGrid
    * weiss.
    */
+  'room.ready': {
+    de: 'Abgereist – bereit',
+    en: 'Checked out – ready',
+    ru: 'Выехал – можно убирать',
+    uk: 'Виїхав – можна прибирати' },
   'room.waiting': {
     de: 'Gast noch nicht ausgecheckt',
     en: 'Guest not checked out yet',
@@ -343,6 +348,11 @@ const texte = {
     en: '{passed} inspected · {open} to inspect · {todo} not cleaned yet',
     ru: 'Проверено: {passed} · проверить: {open} · не убрано: {todo}',
     uk: 'Перевірено: {passed} · перевірити: {open} · не прибрано: {todo}' },
+  'inspect.legend': {
+    de: 'Weiß offen · … Gast noch da · ✓ gereinigt, prüfen · ✓✓ kontrolliert · ↺ nacharbeiten · ⊘ Gast wollte keine · ↘ Anreise',
+    en: 'White open · … guest still in · ✓ cleaned, inspect · ✓✓ inspected · ↺ rework · ⊘ guest declined · ↘ arrival',
+    ru: 'Белый — не убрано · … гость ещё в номере · ✓ убрано, проверить · ✓✓ проверено · ↺ доработать · ⊘ гость отказался · ↘ заезд',
+    uk: 'Білий — не прибрано · … гість ще в номері · ✓ прибрано, перевірити · ✓✓ перевірено · ↺ доопрацювати · ⊘ гість відмовився · ↘ заїзд' },
 
   'tab.kitchen': {
     de: 'Frühstück',

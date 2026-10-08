@@ -8,9 +8,9 @@ import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
 /**
  * Meine Zimmer (Baustein 3, Aufgabe 18 in Dokument 16).
  *
- * Die Liste des Tages so, wie man durchs Haus geht, offene oben. Ein Tipp
- * auf ein Zimmer klappt die Ausgaenge auf; "Gereinigt" ist der grosse
- * Knopf, weil es der haeufigste ist. Jede Antwort der Schnittstelle bringt
+ * Abreisen und Bleiber des Tages als Chips, so wie man durchs Haus geht;
+ * die Farbe zeigt den Stand (`meinChip`). Ein Tipp auf einen Chip zeigt die
+ * Ausgaenge; "Gereinigt" ist der grosse Knopf, weil es der haeufigste ist. Jede Antwort der Schnittstelle bringt
  * die ganze Liste mit, also gibt es nach dem Tippen keine zweite Runde.
  *
  * Neu geladen wird jede Minute und beim Zurueckkehren in die App -- so
@@ -48,21 +48,6 @@ interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }
 interface Haus extends Tag { propertyId: number; name: string }
 interface Alle { houses: Haus[] }
 const KEY = ['my-rooms']
-
-/**
- * Nacharbeit ganz oben -- die Hausdame wartet darauf. Dann offene, darin
- * freie vor wartenden und Anreisen vor dem Rest: ein Zimmer, in das heute
- * jemand einzieht, soll nicht als letztes dran sein. Sonst bleibt die
- * Reihenfolge des Hauses.
- */
-export function ordneZimmer(rooms: readonly MeinZimmer[]): MeinZimmer[] {
-  const rang = (z: MeinZimmer): number =>
-    z.inspection === 'rework' ? -1
-      : z.status !== 'open' ? 3 : !z.free ? 2 : z.arrivalToday ? 0 : 1
-  return rooms.map((z, i) => ({ z, i }))
-    .sort((a, b) => rang(a.z) - rang(b.z) || a.i - b.i)
-    .map(x => x.z)
-}
 
 export function MeineZimmer({ locale }: { locale: StaffLocale }): JSX.Element {
   const t = usePT()
@@ -147,27 +132,126 @@ function HausListe({ haus, locale, ueberschrift }: {
   })
 
   const fertig = (z: MeinZimmer): boolean => z.status !== 'open' && z.inspection !== 'rework'
-  const geordnet = ordneZimmer(haus.rooms)
-  const ersteErledigte = geordnet.findIndex(fertig)
+  const laeuft = setzen.isPending || nachgearbeitet.isPending || wasser.isPending
 
-  return <section className="space-y-2">
+  // Abreisen und Bleiber als Kacheln in Gehreihenfolge, wie in der alten
+  // App (Sven, 08.10.2026: "dort sehen die Damen auch, welche Zimmer schon
+  // leer sind und gereinigt werden koennen"). Die Farbe sagt den Stand,
+  // "Gereinigt" sitzt direkt auf der Kachel; ein Tipp auf die Kachel zeigt
+  // darunter den Rest (keine Reinigung, war sauber, Problem, zuruecknehmen).
+  return <section className="space-y-3">
     {ueberschrift && <h2 className="text-base font-semibold pt-2">{haus.name}</h2>}
     {hinweis !== null && <Fehler text={hinweis} />}
-    <ul className="space-y-2">
-      {geordnet.map((z, i) => <li key={z.taskId}>
-        {i === ersteErledigte && <h3 className="text-sm font-semibold text-neutral-500
-                                                pt-3 pb-1">{t('today.done')}</h3>}
-        <ZimmerKarte z={z} offen={offen === z.taskId}
-                     laeuft={setzen.isPending || nachgearbeitet.isPending || wasser.isPending}
-                     onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
-                     onWasser={() => wasser.mutate(z.taskId)}
-                     onToggle={() => setOffen(offen === z.taskId ? null : z.taskId)}
-                     onSetzen={outcome => setzen.mutate({ taskId: z.taskId, outcome })}
-                     propertyId={propertyId} locale={locale}
-                     onGemeldet={uebernehmen} onFehler={fehler} />
-      </li>)}
-    </ul>
+    {(['departure', 'stayover'] as const).map(art => {
+      const liste = haus.rooms.filter(z => z.kind === art)
+      if (liste.length === 0) return null
+      const rot = art === 'departure'
+      return <div key={art} className="space-y-2">
+        <h3 className={`text-lg font-semibold ${rot ? 'text-red-700' : 'text-sky-700'}`}>
+          {t(rot ? 'room.departure' : 'room.stayover')}
+          <span className="ml-2 text-base font-normal text-neutral-500">
+            {liste.filter(fertig).length}/{liste.length}</span>
+        </h3>
+        <div className="grid grid-cols-2 gap-2">
+          {liste.flatMap(z => {
+            const zu = meinChip(z)
+            const auf = offen === z.taskId
+            const wasserOffen = z.waiver?.water === true && !z.waiver.delivered
+            const kachel = <div key={z.taskId}
+                                className={`rounded-lg border-l-4 border p-3 flex flex-col gap-2
+                                            ${KACHEL[zu]} ${auf ? 'ring-2 ring-neutral-900' : ''}`}>
+              <button type="button" aria-expanded={auf} className="text-left space-y-0.5"
+                      onClick={() => setOffen(auf ? null : z.taskId)}>
+                <span className="block text-2xl font-bold tabular-nums">
+                  {z.code}
+                  {MEIN_ZEICHEN[zu] !== '' && <span className="ml-1.5">{MEIN_ZEICHEN[zu]}</span>}
+                </span>
+                {z.minutes !== null && <span className="block text-base">
+                  {t('room.minutes', { minutes: z.minutes })}</span>}
+                <span className="block text-sm font-medium">{zustandText(z, zu, t)}</span>
+                {(z.arrivalToday && zu !== 'done' && zu !== 'passed') && <span
+                  className="block text-sm text-purple-800">{t('room.arrival')}</span>}
+                {z.waiver != null && zu !== 'done' && <span className="block text-sm
+                  text-amber-800">{t(wasserOffen ? 'room.water' : 'room.waived')}</span>}
+                {z.openProblems > 0 && <span className="block text-sm text-red-800">
+                  {t('room.problems', { n: z.openProblems })}</span>}
+              </button>
+              {zu === 'rework'
+                ? <button type="button" disabled={laeuft} className={KACHEL_KNOPF}
+                          onClick={() => nachgearbeitet.mutate(z.taskId)}>
+                    ✓ {t('inspect.reworked')}</button>
+                : wasserOffen && z.status === 'open'
+                  ? <button type="button" disabled={laeuft} className={KACHEL_KNOPF}
+                            onClick={() => wasser.mutate(z.taskId)}>{t('room.waterDone')}</button>
+                  : z.status === 'open'
+                    && <button type="button" disabled={laeuft} className={KACHEL_KNOPF}
+                               onClick={() => setzen.mutate({ taskId: z.taskId,
+                                                              outcome: 'cleaned' })}>
+                         ✓ {t('outcome.cleaned')}</button>}
+            </div>
+            return auf
+              ? [kachel, <div key={`d${z.taskId}`} className="col-span-2">
+                  <ZimmerKarte z={z} offen laeuft={laeuft}
+                               onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
+                               onWasser={() => wasser.mutate(z.taskId)}
+                               onToggle={() => setOffen(null)}
+                               onSetzen={outcome => setzen.mutate({ taskId: z.taskId, outcome })}
+                               propertyId={propertyId} locale={locale}
+                               onGemeldet={uebernehmen} onFehler={fehler} />
+                </div>]
+              : [kachel]
+          })}
+        </div>
+      </div>
+    })}
   </section>
+}
+
+/**
+ * Der Stand eines Zimmers fuer die Kraft. Gruen ist, was jetzt gereinigt
+ * werden kann -- eine leere Abreise, ein Bleiber, ein Bereich wie das Bad
+ * (immer frei, 0116); gelb eine Abreise, in der der Gast noch ist; rot
+ * Nacharbeit; grau, was erledigt ist.
+ */
+export type MeinChipZustand = 'ready' | 'blocked' | 'stayover' | 'rework' | 'done' | 'passed'
+  | 'skipped'
+
+export function meinChip(z: MeinZimmer): MeinChipZustand {
+  if (z.inspection === 'rework') return 'rework'
+  if (z.status !== 'open') {
+    if (z.inspection === 'passed') return 'passed'
+    return z.outcome === 'cleaned' ? 'done' : 'skipped'
+  }
+  if (z.kind === 'stayover') return 'stayover'
+  return z.free ? 'ready' : 'blocked'
+}
+
+const KACHEL: Record<MeinChipZustand, string> = {
+  ready: 'bg-green-50 border-green-200 border-l-green-600 text-green-950',
+  stayover: 'bg-green-50 border-green-200 border-l-green-600 text-green-950',
+  blocked: 'bg-amber-50 border-amber-200 border-l-amber-500 text-amber-950',
+  rework: 'bg-red-50 border-red-300 border-l-red-600 text-red-950',
+  done: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500',
+  passed: 'bg-neutral-100 border-neutral-200 border-l-green-600 text-neutral-600',
+  skipped: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500'
+}
+const MEIN_ZEICHEN: Record<MeinChipZustand, string> = {
+  ready: '', blocked: '', stayover: '', rework: '↺', done: '✓', passed: '✓✓', skipped: '⊘'
+}
+const KACHEL_KNOPF = `w-full py-2.5 text-base font-medium rounded-md bg-white border
+                      border-neutral-300 active:bg-neutral-100 disabled:opacity-50`
+
+function zustandText(z: MeinZimmer, zu: MeinChipZustand,
+                     t: ReturnType<typeof usePT>): string | null {
+  switch (zu) {
+    case 'ready': return t(z.areaId != null ? 'room.free' : 'room.ready')
+    case 'blocked': return t('room.waiting')
+    case 'stayover': return null
+    case 'rework': return t('inspect.rework')
+    case 'done': return t('outcome.cleaned')
+    case 'passed': return t('inspect.passed')
+    case 'skipped': return t(z.outcome === 'was_clean' ? 'outcome.was_clean' : 'outcome.declined')
+  }
 }
 
 function Marke({ farbe, children }: { farbe: string; children: React.ReactNode }): JSX.Element {
