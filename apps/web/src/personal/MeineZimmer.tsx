@@ -147,33 +147,35 @@ function HausListe({ haus, locale, ueberschrift }: {
       if (liste.length === 0) return null
       const rot = art === 'departure'
       return <div key={art} className="space-y-2">
-        <h3 className={`text-lg font-semibold ${rot ? 'text-red-700' : 'text-sky-700'}`}>
+        <h3 className={`text-base font-semibold ${rot ? 'text-red-700' : 'text-sky-700'}`}>
           {t(rot ? 'room.departure' : 'room.stayover')}
           <span className="ml-2 text-base font-normal text-neutral-500">
             {liste.filter(fertig).length}/{liste.length}</span>
         </h3>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           {liste.flatMap(z => {
             const zu = meinChip(z)
             const auf = offen === z.taskId
             const wasserOffen = z.waiver?.water === true && !z.waiver.delivered
             const kachel = <div key={z.taskId}
-                                className={`rounded-lg border-l-4 border p-3 flex flex-col gap-2
+                                className={`rounded-lg border-l-4 border p-2 flex flex-col justify-between gap-1.5
                                             ${KACHEL[zu]} ${auf ? 'ring-2 ring-neutral-900' : ''}`}>
-              <button type="button" aria-expanded={auf} className="text-left space-y-0.5"
+              <button type="button" aria-expanded={auf} className="text-left leading-tight space-y-0.5"
                       onClick={() => setOffen(auf ? null : z.taskId)}>
-                <span className="block text-2xl font-bold tabular-nums">
-                  {z.code}
-                  {MEIN_ZEICHEN[zu] !== '' && <span className="ml-1.5">{MEIN_ZEICHEN[zu]}</span>}
+                <span className="flex flex-wrap items-baseline justify-between gap-x-1">
+                  <span className="text-xl font-bold tabular-nums">
+                    {z.code}
+                    {MEIN_ZEICHEN[zu] !== '' && <span className="ml-1 text-base">{MEIN_ZEICHEN[zu]}</span>}
+                  </span>
+                  {z.minutes !== null && <span className="text-xs opacity-70 whitespace-nowrap">
+                    {t('room.minutes', { minutes: z.minutes })}</span>}
                 </span>
-                {z.minutes !== null && <span className="block text-base">
-                  {t('room.minutes', { minutes: z.minutes })}</span>}
-                <span className="block text-sm font-medium">{zustandText(z, zu, t)}</span>
+                <span className="block text-xs font-medium">{zustandText(z, zu, t)}</span>
                 {(z.arrivalToday && zu !== 'done' && zu !== 'passed') && <span
-                  className="block text-sm text-purple-800">{t('room.arrival')}</span>}
-                {z.waiver != null && zu !== 'done' && <span className="block text-sm
+                  className="block text-xs text-purple-800">{t('room.arrival')}</span>}
+                {z.waiver != null && zu !== 'done' && <span className="block text-xs
                   text-amber-800">{t(wasserOffen ? 'room.water' : 'room.waived')}</span>}
-                {z.openProblems > 0 && <span className="block text-sm text-red-800">
+                {z.openProblems > 0 && <span className="block text-xs text-red-800">
                   {t('room.problems', { n: z.openProblems })}</span>}
               </button>
               {zu === 'rework'
@@ -190,7 +192,7 @@ function HausListe({ haus, locale, ueberschrift }: {
                          ✓ {t('outcome.cleaned')}</button>}
             </div>
             return auf
-              ? [kachel, <div key={`d${z.taskId}`} className="col-span-2">
+              ? [kachel, <div key={`d${z.taskId}`} className="col-span-3">
                   <ZimmerKarte z={z} offen laeuft={laeuft}
                                onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
                                onWasser={() => wasser.mutate(z.taskId)}
@@ -238,7 +240,7 @@ const KACHEL: Record<MeinChipZustand, string> = {
 const MEIN_ZEICHEN: Record<MeinChipZustand, string> = {
   ready: '', blocked: '', stayover: '', rework: '↺', done: '✓', passed: '✓✓', skipped: '⊘'
 }
-const KACHEL_KNOPF = `w-full py-2.5 text-base font-medium rounded-md bg-white border
+const KACHEL_KNOPF = `w-full min-h-[2.5rem] px-1 text-sm font-medium rounded-md bg-white border
                       border-neutral-300 active:bg-neutral-100 disabled:opacity-50`
 
 function zustandText(z: MeinZimmer, zu: MeinChipZustand,

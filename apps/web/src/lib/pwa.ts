@@ -67,11 +67,49 @@ export function useInstallation(): (() => void) | null {
  * Unter `pnpm dev:web` gibt es keine `sw.js`, und ein Worker aus einem
  * frueheren Bau, der auf `localhost:5173` liegen geblieben ist, lieferte
  * eine alte Huelle aus, waehrend man den eigenen Stand pruefen will.
+ *
+ * **Neue Fassung ohne Neuinstallieren.** Wer die App oeffnet, bekommt die
+ * neue Fassung ohnehin: die Seite geht zuerst ans Netz, und der neue Worker
+ * uebernimmt sofort (`skipWaiting`, `clients.claim`). Ein Handy oeffnet die
+ * App aber selten neu, es holt sie aus dem Hintergrund zurueck -- dann
+ * laeuft der alte Stand tagelang weiter. Deshalb fragt die Seite bei jeder
+ * Rueckkehr in den Vordergrund und stuendlich nach einer neuen Fassung.
+ *
+ * Mit `neuLaden` (Personal-App) laedt die Seite sich nach einem Wechsel
+ * selbst neu, aber nur, waehrend sie verdeckt ist und kein Feld Text haelt:
+ * mitten in einer Problemmeldung neu zu laden, verwuerfe den Text. Die Rezeption laedt
+ * nicht selbst neu; ein halb ausgefuelltes Formular in einem Tab im
+ * Hintergrund ist dort der Normalfall, und sie bekommt die neue Fassung
+ * beim naechsten Aufruf.
  */
-export function serviceWorkerAnmelden(): void {
+export function serviceWorkerAnmelden({ neuLaden = false }: { neuLaden?: boolean } = {}): void {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
   window.addEventListener('load', () => {
-    // Scheitert die Anmeldung, laeuft die Oberflaeche wie bisher im Tab.
-    navigator.serviceWorker.register('/sw.js').catch(() => { /* ohne Worker */ })
+    // Ein Worker, der beim Laden schon steuerte, macht einen Wechsel zur
+    // neuen Fassung; der allererste Worker ist keine.
+    const hatteWorker = navigator.serviceWorker.controller !== null
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      const pruefen = (): void => { reg.update().catch(() => { /* ohne Netz: spaeter */ }) }
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') pruefen()
+      })
+      setInterval(pruefen, 60 * 60 * 1000)
+    }).catch(() => { /* Scheitert die Anmeldung, laeuft die Oberflaeche wie bisher im Tab. */ })
+    if (!neuLaden || !hatteWorker) return
+    let faellig = false
+    // Auch verdeckt nicht, solange in einem Feld Text steht: wer zum
+    // Uebersetzen kurz die App wechselt, kommt zu seinem Text zurueck.
+    const tippt = (): boolean => {
+      const f = document.activeElement
+      return (f instanceof HTMLTextAreaElement || f instanceof HTMLInputElement) && f.value !== ''
+    }
+    const vielleichtLaden = (): void => {
+      if (faellig && document.visibilityState === 'hidden' && !tippt()) window.location.reload()
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      faellig = true
+      vielleichtLaden()
+    })
+    document.addEventListener('visibilitychange', vielleichtLaden)
   })
 }

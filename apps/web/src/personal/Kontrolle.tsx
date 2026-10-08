@@ -96,29 +96,29 @@ export function Kontrolle({ propertyId, locale }: {
     {nachKraft(rooms).map(g => {
       const gewaehlt = g.rooms.find(z => z.taskId === offen)
       return <section key={g.name ?? ''}
-                      className="bg-white border border-neutral-200 rounded-lg p-3 space-y-3">
-        <h2 className="font-semibold text-lg">{g.name ?? t('inspect.unassigned')}</h2>
+                      className="bg-white border border-neutral-200 rounded-lg p-2.5 space-y-2">
+        <h2 className="font-semibold text-base">{g.name ?? t('inspect.unassigned')}</h2>
         {(['departure', 'stayover'] as const).map(art => {
           const liste = g.rooms.filter(z => z.kind === art)
           if (liste.length === 0) return null
           const rot = art === 'departure'
           return <div key={art}
                       className={`border-l-4 pl-2 ${rot ? 'border-red-500' : 'border-sky-500'}`}>
-            <h3 className={`text-sm font-semibold mb-1.5 ${rot ? 'text-red-700' : 'text-sky-700'}`}>
+            <h3 className={`text-xs font-semibold mb-1 ${rot ? 'text-red-700' : 'text-sky-700'}`}>
               {t(rot ? 'room.departure' : 'room.stayover')}
             </h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {liste.map(z => {
                 const zu = chipZustand(z)
                 return <button key={z.taskId} type="button" aria-expanded={offen === z.taskId}
                                onClick={() => setOffen(offen === z.taskId ? null : z.taskId)}
-                               className={`min-w-[4.5rem] px-3 py-2 rounded-lg border-2 text-lg
+                               className={`min-w-[3.5rem] min-h-[2.5rem] px-2 rounded-md border-2 text-base
                                            font-semibold tabular-nums ${CHIP_FARBE[zu]}
                                            ${offen === z.taskId ? 'ring-2 ring-neutral-900' : ''}`}>
                   {z.code}
-                  {CHIP_ZEICHEN[zu] !== '' && <span className="ml-1.5">{CHIP_ZEICHEN[zu]}</span>}
-                  {z.arrivalToday && zu !== 'passed' && <span className="ml-1 text-sm">↘</span>}
-                  {z.openProblems > 0 && <span className="ml-1 text-sm">⚠</span>}
+                  {CHIP_ZEICHEN[zu] !== '' && <span className="ml-1 text-sm">{CHIP_ZEICHEN[zu]}</span>}
+                  {z.arrivalToday && zu !== 'passed' && <span className="ml-0.5 text-xs">↘</span>}
+                  {z.openProblems > 0 && <span className="ml-0.5 text-xs">⚠</span>}
                 </button>
               })}
             </div>
