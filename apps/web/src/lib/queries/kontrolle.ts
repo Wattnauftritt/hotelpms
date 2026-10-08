@@ -21,6 +21,7 @@ export interface KontrollZimmer {
   free: boolean
   arrivalToday: boolean
   openProblems: number
+  waived: boolean
 }
 export interface KontrollTag { date: string; rooms: KontrollZimmer[] }
 

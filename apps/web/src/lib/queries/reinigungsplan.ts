@@ -29,6 +29,8 @@ export interface PlanZimmer {
   source: 'staygrid' | 'legacy' | null
   /** Der Gast verzichtet heute auf die Zwischenreinigung (0115). */
   waived: boolean
+  /** Verzichtet, und das Haus gibt Wasser: jemand stellt die Flasche hin. */
+  water: boolean
   /**
    * Der Kalender hat sich nach dem Speichern geaendert (fruehere Abreise,
    * Verlaengerung): `kind` ist schon die neue Art, gespeichert ist sie noch

@@ -1478,6 +1478,10 @@ const M = {
     de: 'Das Zimmer ist fuer diesen Tag schon gemeldet; der Wunsch aendert nichts mehr.',
     en: 'The room has already been reported for this day; the request no longer changes anything.',
     tr: 'Oda bu gün için zaten bildirildi; istek artık bir şey değiştirmez.' },
+  'cleaningWaiver.roomLocked': {
+    de: 'Der Gast verzichtet heute auf die Reinigung; das Zimmer ist gesperrt.',
+    en: 'The guest skips cleaning today; the room is locked.',
+    tr: 'Misafir bugün temizlik istemiyor; oda kilitli.' },
   'cleaningWaiver.noWater': {
     de: 'Fuer dieses Zimmer ist heute kein Wasser vorgesehen.',
     en: 'No water is due for this room today.',

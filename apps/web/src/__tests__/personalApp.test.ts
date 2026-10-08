@@ -142,13 +142,24 @@ describe('Meine Zimmer', () => {
     expect(meinChip(z('107', { status: 'done', outcome: 'cleaned', inspection: 'rework' })))
       .toBe('rework')
   })
+
+  // Sven, 08.10.2026: verzichtet der Gast, ist das Zimmer auch zugeteilt rot
+  // und gesperrt -- mit oder ohne Wasser, und nach dem Wasser ebenso.
+  it('sperrt ein Zimmer, dessen Gast verzichtet', () => {
+    const verzicht = { kind: 'stayover' as const,
+                       waiver: { water: false, delivered: false } }
+    expect(meinChip(z('201', verzicht))).toBe('waived')
+    expect(meinChip(z('202', { ...verzicht, status: 'skipped', outcome: 'declined' })))
+      .toBe('waived')
+    expect(meinChip(z('203', { ...verzicht, status: 'done', outcome: 'cleaned' }))).toBe('done')
+  })
 })
 
 describe('Kontrolle', () => {
   const k = (teil: Partial<KontrollZimmer>): KontrollZimmer => ({
     taskId: 1, code: '101', kind: 'departure', staffName: 'Anna', status: 'open',
     outcome: null, inspection: null, inspectionNote: null, free: true, arrivalToday: false,
-    openProblems: 0, ...teil })
+    openProblems: 0, waived: false, ...teil })
 
   /*
    * Nacharbeit gehoert zurueck zu "noch nicht gereinigt" -- die Kraft ist
@@ -200,7 +211,7 @@ describe('Kontrolle als Chips', () => {
   const k = (teil: Partial<KontrollZimmer>): KontrollZimmer => ({
     taskId: 1, code: '101', kind: 'departure', staffName: 'Anna', status: 'open',
     outcome: null, inspection: null, inspectionNote: null, free: true, arrivalToday: false,
-    openProblems: 0, ...teil })
+    openProblems: 0, waived: false, ...teil })
 
   it('faerbt nach Stand und haelt Nacharbeit ueber allem', () => {
     expect(chipZustand(k({}))).toBe('open')
@@ -213,6 +224,10 @@ describe('Kontrolle als Chips', () => {
     expect(chipZustand(k({ status: 'done', outcome: 'cleaned', inspection: 'rework' })))
       .toBe('rework')
     expect(chipZustand(k({ status: 'skipped', outcome: 'declined' }))).toBe('declined')
+    // Verzichtet der Gast, ist das Zimmer gesperrt, auch wenn es zugeteilt ist.
+    expect(chipZustand(k({ kind: 'stayover', waived: true }))).toBe('waived')
+    expect(chipZustand(k({ kind: 'stayover', waived: true, status: 'done', outcome: 'cleaned' })))
+      .toBe('toCheck')
   })
 
   it('gibt jeder Kraft eine Karte, nach Namen, Unzugeteiltes zuletzt', () => {

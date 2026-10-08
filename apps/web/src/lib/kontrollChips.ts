@@ -12,6 +12,8 @@ export interface KontrollChipZimmer {
   outcome: 'cleaned' | 'declined' | 'was_clean' | null
   inspection: 'passed' | 'rework' | null
   free: boolean
+  /** Der Gast verzichtet heute (0115). */
+  waived?: boolean
 }
 
 /**
@@ -21,13 +23,16 @@ export interface KontrollChipZimmer {
  * - `passed`: abgenommen
  * - `rework`: Nacharbeit, die Kraft ist wieder dran
  * - `declined`: der Gast wollte keine Reinigung, nichts abzunehmen
+ * - `waived`: der Gast verzichtet heute; gesperrt, auch wenn zugeteilt
  */
 export type ChipZustand = 'open' | 'blocked' | 'toCheck' | 'passed' | 'rework' | 'declined'
+  | 'waived'
 
 export function chipZustand(z: KontrollChipZimmer): ChipZustand {
   if (z.inspection === 'rework') return 'rework'
   if (z.inspection === 'passed') return 'passed'
   if (z.outcome === 'declined') return 'declined'
+  if (z.waived === true && z.outcome === null) return 'waived'
   if (z.outcome === 'cleaned' || z.outcome === 'was_clean') return 'toCheck'
   return z.kind === 'departure' && !z.free ? 'blocked' : 'open'
 }
@@ -35,8 +40,8 @@ export function chipZustand(z: KontrollChipZimmer): ChipZustand {
 /**
  * Gruen mit Haken heisst wie in der alten App "gereinigt"; kraeftig gruen
  * mit Doppelhaken ist, was die Hausdame abgenommen hat. Rot ist nur
- * Nacharbeit -- Abreise und Bleiber unterscheidet der Rahmen der Gruppe,
- * nicht die Farbe des Chips.
+ * Nacharbeit und, durchgestrichen, ein Zimmer, dessen Gast verzichtet -- Abreise
+ * und Bleiber unterscheidet der Rahmen der Gruppe, nicht die Farbe des Chips.
  */
 export const CHIP_FARBE: Record<ChipZustand, string> = {
   open: 'bg-white border-neutral-300 text-neutral-800',
@@ -44,11 +49,12 @@ export const CHIP_FARBE: Record<ChipZustand, string> = {
   toCheck: 'bg-green-50 border-green-300 text-green-900',
   passed: 'bg-green-600 border-green-700 text-white',
   rework: 'bg-red-600 border-red-700 text-white',
-  declined: 'bg-neutral-100 border-neutral-300 text-neutral-500'
+  declined: 'bg-neutral-100 border-neutral-300 text-neutral-500',
+  waived: 'bg-red-50 border-red-400 text-red-700 line-through'
 }
 
 export const CHIP_ZEICHEN: Record<ChipZustand, string> = {
-  open: '', blocked: '…', toCheck: '✓', passed: '✓✓', rework: '↺', declined: '⊘'
+  open: '', blocked: '…', toCheck: '✓', passed: '✓✓', rework: '↺', declined: '⊘', waived: '⊘'
 }
 
 /**
