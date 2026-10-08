@@ -72,6 +72,13 @@ interface Zimmer {
    * Flasche hinstellen --, sonst ist nichts faellig.
    */
   waived: boolean
+  /**
+   * Die gespeicherte Aufgabe hat eine andere Art als heute faellig ist:
+   * der Gast reist frueher ab oder verlaengert, nachdem der Plan stand.
+   * `kind` und `minutes` sind dann schon die neuen; erst Speichern
+   * schreibt sie an die Aufgabe und schickt sie aufs Telefon.
+   */
+  kindChanged: boolean
 }
 
 interface Kraft {
@@ -256,7 +263,24 @@ async function liesZimmer(
         WHERE r.property_id = $1 AND r.active
        UNION ALL
        SELECT a.property_id::int, NULL, a.id::int, a.code, NULL, NULL, a.building, NULL,
-              CASE WHEN a.active THEN 'departure' END, false, false,
+              -- Ein Bereich ist schmutzig, wenn es ein Zimmer daneben ist
+              -- (Sven, 08.10.2026: "Wenn dort ein Zimmer belegt ist oder
+              -- belegt war und schmutzig ist, muss auch das Bad schmutzig
+              -- sein. Wenn das Gaestehaus leer ist, ist das Bad sauber."):
+              -- im selben Haus, und traegt der Bereich ein Gebaeude, im
+              -- selben Gebaeude, war letzte Nacht jemand oder steht ein
+              -- Zimmer auf schmutzig.
+              CASE WHEN a.active AND EXISTS (
+                     SELECT 1 FROM resource n
+                      WHERE n.property_id = a.property_id AND n.active
+                        AND (a.building IS NULL OR n.building = a.building)
+                        AND (EXISTS (SELECT 1 FROM reservation g
+                                      WHERE g.resource_id = n.id
+                                        AND g.arrival < $2::date AND g.departure >= $2::date
+                                        AND g.status IN ('Confirmed','InHouse','CheckedOut'))
+                             OR EXISTS (SELECT 1 FROM housekeeping_status h
+                                         WHERE h.resource_id = n.id AND h.status = 'dirty')))
+                   THEN 'departure' END, false, false,
               t.id::int, t.kind, t.assigned_to::int, t.minutes, t.status, t.source,
               false, false, a.minutes
          FROM cleaning_area a
@@ -269,7 +293,8 @@ async function liesZimmer(
     [propertyId, date])
   return rows.map(({ taskMinutes, water, areaMinutes, ...z }) => {
     if (z.areaId !== null) {
-      return { ...z, minutes: taskMinutes ?? ((z.kind ?? z.due) === null ? 0 : areaMinutes!) }
+      return { ...z, kindChanged: false,
+               minutes: taskMinutes ?? ((z.kind ?? z.due) === null ? 0 : areaMinutes!) }
     }
     const zimmer = { resourceId: z.resourceId!, categoryId: z.categoryId! }
     /*
@@ -286,11 +311,25 @@ async function liesZimmer(
     const ohneReinigung = resolveCleaningMinutes(norms, zimmer, 'stayover') === 0
       || (z.waived && !water)
     const due = z.due === 'stayover' && z.kind === null && ohneReinigung ? null : z.due
-    const art = z.kind ?? due
+    /*
+     * Reist ein Gast frueher ab, nachdem der Plan gespeichert ist, stuende
+     * das Zimmer sonst bis zum Abend als Bleiber da -- mit 10 statt 30
+     * Minuten und ohne Abreisereinigung. Eine offene Aufgabe folgt deshalb
+     * dem Kalender, eine erledigte nicht (an ihr haengen abgerechnete
+     * Minuten), eine aus der alten App auch nicht (deren Minuten bleiben).
+     * Ohne Faelligkeit (storniert) bleibt sie, wie sie ist: das entscheidet
+     * die Hausdame.
+     */
+    const kindChanged = z.kind !== null && due !== null && z.kind !== due
+      && z.taskStatus === 'open' && z.source !== 'legacy'
+    const art = kindChanged ? due : z.kind ?? due
     return {
       ...z,
       due,
-      minutes: taskMinutes ?? (art === null ? 0 : resolveCleaningMinutes(norms, zimmer, art))
+      kind: kindChanged ? due : z.kind,
+      kindChanged,
+      minutes: (kindChanged ? null : taskMinutes)
+        ?? (art === null ? 0 : resolveCleaningMinutes(norms, zimmer, art))
     }
   })
 }

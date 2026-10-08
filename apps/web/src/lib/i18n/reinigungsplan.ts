@@ -261,9 +261,13 @@ export const reinigungsplan = {
     en: 'not cleaned',
     tr: 'temizlenmedi' },
   'cleaningPlan.legend': {
-    de: '✓ erledigt · ⊘ nicht gereinigt · ● ausgecheckt · ↘ Anreise heute',
-    en: '✓ done · ⊘ not cleaned · ● checked out · ↘ arrival today',
-    tr: '✓ tamamlandı · ⊘ temizlenmedi · ● çıkış yaptı · ↘ bugün varış' },
+    de: '✓ erledigt · ⊘ nicht gereinigt · ● ausgecheckt · ↘ Anreise heute · ! Kalender geändert, speichern',
+    en: '✓ done · ⊘ not cleaned · ● checked out · ↘ arrival today · ! calendar changed, save',
+    tr: '✓ tamamlandı · ⊘ temizlenmedi · ● çıkış yaptı · ↘ bugün varış · ! takvim değişti, kaydedin' },
+  'cleaningPlan.kindChanged': {
+    de: 'Kalender seit dem Speichern geändert – erst Speichern schickt es aufs Telefon',
+    en: 'Calendar changed since saving – saving sends it to the phone',
+    tr: 'Kaydettikten sonra takvim değişti – telefona ancak kaydedince gider' },
   'cleaningPlan.sharedToggle': {
     de: 'Gemeinsam für alle Häuser des Betriebs',
     en: 'Shared across all properties of the business',

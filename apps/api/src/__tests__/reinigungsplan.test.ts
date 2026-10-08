@@ -211,3 +211,38 @@ describe('Zuteilen', () => {
     expect(r.statusCode).toBe(404)
   })
 })
+
+describe('Kalender aendert sich nach dem Speichern', () => {
+  it('folgt einer frueheren Abreise, bis die Hausdame speichert', async () => {
+    // 103 ist als Bleiber geplant; dann reist der Gast doch heute ab.
+    expect((await speichern([
+      { resourceId: zimmer[2], kind: 'stayover', assignedTo: anna.userId }])).statusCode).toBe(200)
+    await owner.query(`UPDATE reservation SET departure = $2::date WHERE resource_id = $1`,
+      [zimmer[2], TAG])
+
+    const vorher = (await lies()).json().rooms.find(
+      (z: { resourceId: number }) => z.resourceId === zimmer[2])
+    expect(vorher).toMatchObject({ due: 'departure', kind: 'departure', kindChanged: true,
+                                   minutes: 30, assignedTo: anna.userId })
+
+    expect((await speichern([
+      { resourceId: zimmer[2], kind: 'departure', assignedTo: anna.userId }])).statusCode).toBe(200)
+    const { rows } = await owner.query<{ kind: string; minutes: number }>(
+      `SELECT kind, minutes FROM housekeeping_task WHERE resource_id = $1`, [zimmer[2]])
+    expect(rows).toEqual([{ kind: 'departure', minutes: 30 }])
+    const nachher = (await lies()).json().rooms.find(
+      (z: { resourceId: number }) => z.resourceId === zimmer[2])
+    expect(nachher.kindChanged).toBe(false)
+  })
+
+  it('laesst eine erledigte Aufgabe, wie sie ist', async () => {
+    await speichern([{ resourceId: zimmer[2], kind: 'stayover', assignedTo: anna.userId }])
+    await owner.query(`UPDATE housekeeping_task SET status = 'done', outcome = 'cleaned',
+                         done_at = now() WHERE resource_id = $1`, [zimmer[2]])
+    await owner.query(`UPDATE reservation SET departure = $2::date WHERE resource_id = $1`,
+      [zimmer[2], TAG])
+    const z = (await lies()).json().rooms.find(
+      (x: { resourceId: number }) => x.resourceId === zimmer[2])
+    expect(z).toMatchObject({ kind: 'stayover', kindChanged: false, minutes: 10 })
+  })
+})

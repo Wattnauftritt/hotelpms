@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
-         makeCategory, makeResources, openBusinessDay, type Fixture } from '@hotelpms/testing'
+         makeCategory, makeResources, makeReservation, openBusinessDay,
+         type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { legacyChecksum } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
@@ -68,6 +69,10 @@ const gemeinsam = (shared: boolean) =>
 const plan = (propertyId: number, session = hausdame.sessionId) =>
   app.inject({ method: 'GET', url: `/v1/properties/${propertyId}/cleaning-plan?date=${TAG}`,
     headers: auth(session) })
+/** Ein Zimmer des Gaestehauses schmutzig: das Bad ist faellig. */
+const ghSchmutzig = () => owner.query(
+  `INSERT INTO housekeeping_status (property_id, resource_id, status) VALUES ($1, $2, 'dirty')`,
+  [gh, ghZimmer[0]])
 const bad = async () => {
   const r = await app.inject({ method: 'PUT', url: `/v1/properties/${gh}/cleaning-areas`,
     headers: auth(inhaber.sessionId), payload: { areas: [{ code: 'Bad', minutes: 20 }] } })
@@ -87,10 +92,25 @@ describe('Reinigungsbereiche', () => {
       headers: auth(inhaber.sessionId), payload: { areas: [{ code: '6101', minutes: 5 }] } })
     expect(doppelt.statusCode).toBe(409)
 
-    const p = await plan(gh, inhaber.sessionId)
-    expect(p.statusCode, p.body).toBe(200)
-    expect(p.json().rooms.find((z: { areaId: number | null }) => z.areaId === badId))
-      .toMatchObject({ code: 'Bad', resourceId: null, due: 'departure', minutes: 20 })
+    // Das Bad haengt am Gaestehaus: leer ist es sauber, ...
+    const badIm = async () => {
+      const p = await plan(gh, inhaber.sessionId)
+      expect(p.statusCode, p.body).toBe(200)
+      return p.json().rooms.find((z: { areaId: number | null }) => z.areaId === badId)
+    }
+    expect(await badIm()).toMatchObject({ code: 'Bad', resourceId: null, due: null })
+    // ... war letzte Nacht jemand da, ist es schmutzig ...
+    const ghKat = (await owner.query<{ category_id: number }>(
+      `SELECT category_id::int FROM resource WHERE id = $1`, [ghZimmer[0]])).rows[0]!.category_id
+    const gast = await makeReservation(owner, { propertyId: gh, categoryId: ghKat,
+      resourceId: ghZimmer[0], arrival: '2026-09-29', departure: TAG, status: 'InHouse',
+      reserveInventory: false, withFolio: false })
+    expect(await badIm()).toMatchObject({ due: 'departure', minutes: 20 })
+    // ... und ebenso, solange ein Zimmer schmutzig steht.
+    await owner.query(`DELETE FROM reservation WHERE id = $1`, [gast.reservationId])
+    expect((await badIm()).due).toBeNull()
+    await ghSchmutzig()
+    expect((await badIm()).due).toBe('departure')
 
     const s = await app.inject({ method: 'PUT', url: `/v1/properties/${gh}/cleaning-plan`,
       headers: auth(inhaber.sessionId), payload: { date: TAG, assignments: [
@@ -105,8 +125,10 @@ describe('Reinigungsbereiche', () => {
       headers: auth(olga.sessionId), payload: { outcome: 'cleaned' } })
     expect(g.statusCode, g.body).toBe(200)
     expect(g.json().minutes).toBe(20)
-    const { rows } = await owner.query(`SELECT 1 FROM housekeeping_status WHERE property_id = $1`, [gh])
-    expect(rows).toHaveLength(0)
+    // Das Bad hat keinen Zimmerstand: nur das schmutzige Zimmer steht da.
+    const { rows } = await owner.query(
+      `SELECT resource_id::int, status FROM housekeeping_status WHERE property_id = $1`, [gh])
+    expect(rows).toEqual([{ resource_id: ghZimmer[0], status: 'dirty' }])
   })
 })
 
