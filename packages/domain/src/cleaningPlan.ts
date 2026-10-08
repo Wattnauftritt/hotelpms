@@ -50,64 +50,73 @@ export function resolveCleaningMinutes(
 }
 
 /**
- * Zimmer auf Kraefte verteilen, so gleich wie moeglich und am Stueck.
+ * Zimmer auf Kraefte verteilen: zuerst gleich viele Abreisen, dann so
+ * viele Bleiber, dass die Gesamtzeit gleich wird.
  *
- * Die Zimmer kommen in der Reihenfolge, in der man durchs Haus geht
- * (Gebaeude, Etage, Nummer). Jede Kraft bekommt einen **zusammenhaengenden
- * Abschnitt** dieser Reihe -- eine Etage oder ein Flur, nicht jedes dritte
- * Zimmer quer durchs Haus. Unter dieser Bedingung ist die Aufteilung
- * optimal: die laengste Einzellast ist so klein wie moeglich (lineare
- * Partition, dynamische Programmierung; bei 250 Zimmern und zehn Kraeften
- * gut eine halbe Million Schritte).
+ * Die Regel ist die der Hausdame (Sven, 08.10.2026): "Mitarbeiter sollten
+ * gleich viel Abreisen bekommen und danach moeglichst auch gleich viele
+ * Bleiber, damit die Gesamtzeit gleich ist. Aber gleich viel Abreisen ist
+ * wichtiger, weil das am schwersten ist und am laengsten dauert." Eine
+ * reine Verteilung nach Minuten, wie sie hier vorher stand, gab einer Kraft
+ * sechs Abreisen und einer anderen zwei Abreisen und zwanzig Bleiber --
+ * auf dem Papier gleich lang, am Ende des Tages nicht.
  *
- * Gleichmaessig nach Minuten und nicht nach Zimmerzahl: zwei Abreisen sind
- * mehr Arbeit als sechs Bleiber, und abgerechnet wird nach Minuten.
+ * 1. Die Abreisen (Bereiche wie das Bad zaehlen dazu) gehen in
+ *    gleich grossen Stuecken, hoechstens eine Abreise Unterschied; die
+ *    vorderen Kraefte bekommen die eine mehr.
+ * 2. Die Bleiber gehen einzeln an die Kraft mit der bisher kleinsten
+ *    Gesamtzeit. Haben alle gleich lange Abreisen, sind das gleich viele
+ *    Bleiber; hat eine ein Zimmer mit 60 Minuten erwischt, bekommt sie
+ *    weniger.
+ * 3. Welche Zimmer: jede Kraft bekommt ihre Abreisen und ihre Bleiber je
+ *    als **zusammenhaengendes Stueck** der Reihe, in der man durchs Haus
+ *    geht (Gebaeude, Etage, Nummer), und die erste Kraft vorne -- eine
+ *    Etage oder ein Flur, nicht jedes dritte Zimmer quer durchs Haus.
  *
  * Ergebnis: je Zimmer die Kraft, in der Reihenfolge der Eingabe. Gibt es
  * keine Kraft, bleibt alles unzugeteilt.
  */
 export function suggestCleaningPlan<S>(
-  rooms: ReadonlyArray<{ minutes: number }>, staff: readonly S[]
+  rooms: ReadonlyArray<{ minutes: number; kind: CleaningKind }>, staff: readonly S[]
 ): Array<S | null> {
-  const n = rooms.length
-  const k = Math.min(staff.length, n)
-  if (k === 0) return rooms.map(() => null)
+  const k = staff.length
+  const ergebnis: Array<S | null> = rooms.map(() => null)
+  if (k === 0) return ergebnis
 
-  const summe = [0]
-  for (const r of rooms) summe.push(summe[summe.length - 1]! + r.minutes)
-  const last = (von: number, bis: number): number => summe[bis]! - summe[von]!
+  const abreisen = rooms.flatMap((r, i) => r.kind === 'departure' ? [i] : [])
+  const bleiber = rooms.flatMap((r, i) => r.kind === 'stayover' ? [i] : [])
 
-  // best[j][i]: kleinste Hoechstlast, wenn die ersten i Zimmer auf j Kraefte
-  // gehen. schnitt[j][i]: wo der letzte Abschnitt beginnt.
-  const best: number[][] = []
-  const schnitt: number[][] = []
-  best[1] = []
-  schnitt[1] = []
-  for (let i = 0; i <= n; i++) { best[1]![i] = last(0, i); schnitt[1]![i] = 0 }
-  for (let j = 2; j <= k; j++) {
-    best[j] = []
-    schnitt[j] = []
-    for (let i = 0; i <= n; i++) {
-      let wert = Infinity
-      let wo = 0
-      for (let p = j - 1; p <= i; p++) {
-        const w = Math.max(best[j - 1]![p]!, last(p, i))
-        // Bei Gleichstand der fruehere Schnitt: die vorderen Kraefte
-        // bekommen nicht weniger als die hinteren.
-        if (w < wert) { wert = w; wo = p }
-      }
-      if (i < j - 1) { wert = best[j - 1]![i]!; wo = i }
-      best[j]![i] = wert
-      schnitt[j]![i] = wo
+  // 1. Gleich viele Abreisen, die vorderen Kraefte die eine mehr.
+  const anzahlAbreisen = staff.map((_, j) =>
+    Math.floor(abreisen.length / k) + (j < abreisen.length % k ? 1 : 0))
+  const minuten = staff.map(() => 0)
+  let pos = 0
+  for (let j = 0; j < k; j++) {
+    for (const i of abreisen.slice(pos, pos + anzahlAbreisen[j]!)) {
+      ergebnis[i] = staff[j]!
+      minuten[j]! += rooms[i]!.minutes
     }
+    pos += anzahlAbreisen[j]!
   }
 
-  const ergebnis: Array<S | null> = rooms.map(() => null)
-  let ende = n
-  for (let j = k; j >= 1; j--) {
-    const beginn = schnitt[j]![ende]!
-    for (let i = beginn; i < ende; i++) ergebnis[i] = staff[j - 1]!
-    ende = beginn
+  // 2. Wie viele Bleiber: einzeln an die bisher kuerzeste Gesamtzeit; bei
+  // Gleichstand an die mit weniger Bleibern, dann an die vordere.
+  const anzahlBleiber = staff.map(() => 0)
+  for (const i of bleiber) {
+    let wer = 0
+    for (let j = 1; j < k; j++) {
+      if (minuten[j]! < minuten[wer]!
+          || (minuten[j] === minuten[wer] && anzahlBleiber[j]! < anzahlBleiber[wer]!)) wer = j
+    }
+    minuten[wer]! += rooms[i]!.minutes
+    anzahlBleiber[wer]! += 1
+  }
+
+  // 3. Welche Bleiber: am Stueck in Hausreihenfolge, die erste Kraft vorne.
+  pos = 0
+  for (let j = 0; j < k; j++) {
+    for (const i of bleiber.slice(pos, pos + anzahlBleiber[j]!)) ergebnis[i] = staff[j]!
+    pos += anzahlBleiber[j]!
   }
   return ergebnis
 }

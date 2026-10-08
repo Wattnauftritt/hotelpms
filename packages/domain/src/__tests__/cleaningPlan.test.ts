@@ -24,29 +24,48 @@ describe('Sollminuten', () => {
 })
 
 describe('Vorschlag der Zuteilung', () => {
-  const m = (...minuten: number[]): Array<{ minutes: number }> =>
-    minuten.map(x => ({ minutes: x }))
-
-  it('teilt in zusammenhaengende Abschnitte mit kleinster Hoechstlast', () => {
-    // 30+30 | 60 | 10+10+10+30 -- jede Kraft 60.
-    expect(suggestCleaningPlan(m(30, 30, 60, 10, 10, 10, 30), ['a', 'b', 'c']))
-      .toEqual(['a', 'a', 'b', 'c', 'c', 'c', 'c'])
+  type Z = { minutes: number; kind: 'departure' | 'stayover' }
+  const a = (minutes = 30): Z => ({ minutes, kind: 'departure' })
+  const b = (minutes = 10): Z => ({ minutes, kind: 'stayover' })
+  const je = <S>(rooms: Z[], plan: Array<S | null>, s: S) => ({
+    abreisen: rooms.filter((r, i) => plan[i] === s && r.kind === 'departure').length,
+    bleiber: rooms.filter((r, i) => plan[i] === s && r.kind === 'stayover').length,
+    minuten: rooms.reduce((sum, r, i) => sum + (plan[i] === s ? r.minutes : 0), 0)
   })
 
-  it('haelt jede Kraft an einem Stueck', () => {
-    const plan = suggestCleaningPlan(m(...Array.from({ length: 40 }, (_, i) => 10 + (i % 3) * 10)),
-      ['a', 'b', 'c', 'd'])
-    const wechsel = plan.filter((s, i) => i > 0 && s !== plan[i - 1]).length
-    expect(wechsel).toBe(3)
-    const last = (s: string): number =>
-      plan.reduce((sum, x, i) => sum + (x === s ? 10 + (i % 3) * 10 : 0), 0)
-    const lasten = ['a', 'b', 'c', 'd'].map(last)
-    expect(Math.max(...lasten) - Math.min(...lasten)).toBeLessThanOrEqual(30)
+  it('gibt jeder Kraft gleich viele Abreisen, auch wenn Bleiber das ausgleichen koennten', () => {
+    // Nach Minuten allein bekaeme eine Kraft sechs Abreisen und die andere
+    // zwei Abreisen und zwoelf Bleiber -- gleich lang, aber nicht gerecht.
+    const rooms = [...Array.from({ length: 8 }, () => a()), ...Array.from({ length: 12 }, () => b())]
+    const plan = suggestCleaningPlan(rooms, ['x', 'y'])
+    expect(je(rooms, plan, 'x')).toEqual({ abreisen: 4, bleiber: 6, minuten: 180 })
+    expect(je(rooms, plan, 'y')).toEqual({ abreisen: 4, bleiber: 6, minuten: 180 })
+  })
+
+  it('gleicht laengere Abreisen mit weniger Bleibern aus', () => {
+    // x hat das Zimmer mit 60 Minuten: 90 gegen 60, also bekommt y drei
+    // Bleiber mehr, bevor x wieder dran ist.
+    const rooms = [a(60), a(30), b(), b(), b(), b(), b()]
+    const plan = suggestCleaningPlan(rooms, ['x', 'y'])
+    expect(je(rooms, plan, 'x')).toEqual({ abreisen: 1, bleiber: 1, minuten: 70 })
+    expect(je(rooms, plan, 'y')).toEqual({ abreisen: 1, bleiber: 4, minuten: 70 })
+  })
+
+  it('haelt Abreisen und Bleiber je Kraft am Stueck, die erste vorne', () => {
+    const rooms = [a(), b(), a(), b(), a(), b(), a(), b()]
+    expect(suggestCleaningPlan(rooms, ['x', 'y']))
+      .toEqual(['x', 'x', 'x', 'x', 'y', 'y', 'y', 'y'])
+  })
+
+  it('weicht bei Abreisen hoechstens um eine ab', () => {
+    const rooms = Array.from({ length: 7 }, () => a())
+    const plan = suggestCleaningPlan(rooms, ['x', 'y', 'z'])
+    expect(['x', 'y', 'z'].map(s => je(rooms, plan, s).abreisen)).toEqual([3, 2, 2])
   })
 
   it('kommt mit mehr Kraeften als Zimmern und ohne Kraft zurecht', () => {
-    expect(suggestCleaningPlan(m(30, 10), ['a', 'b', 'c'])).toEqual(['a', 'b'])
-    expect(suggestCleaningPlan(m(30, 10), [])).toEqual([null, null])
-    expect(suggestCleaningPlan([], ['a'])).toEqual([])
+    expect(suggestCleaningPlan([a(), b()], ['x', 'y', 'z'])).toEqual(['x', 'y'])
+    expect(suggestCleaningPlan([a(), b()], [])).toEqual([null, null])
+    expect(suggestCleaningPlan([], ['x'])).toEqual([])
   })
 })
