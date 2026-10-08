@@ -34,6 +34,38 @@ export interface PushSender {
   send(target: PushTarget, payload: PushPayload, ttlSeconds: number): Promise<number>
 }
 
+/**
+ * Das VAPID-Schluesselpaar (0117). Die Umgebung gewinnt; sonst das Paar aus
+ * der Datenbank, und gibt es dort keins, erzeugt der Worker eins und legt es
+ * ab (Sven, 08.10.2026: ohne Terminal soll Push trotzdem gehen).
+ *
+ * `ON CONFLICT DO NOTHING` und danach neu lesen: starten zwei Worker
+ * gleichzeitig, gewinnt einer, und beide benutzen dasselbe Paar. Zwei
+ * verschiedene Paare hiessen, dass die Haelfte der Abos nicht zugestellt
+ * wird. `owner` ist die Eigentuemerrolle -- nur sie liest den privaten
+ * Schluessel.
+ */
+export async function vapidSchluessel(
+  owner: Pool, env: { publicKey: string | null; privateKey: string | null }
+): Promise<{ publicKey: string; privateKey: string; quelle: 'umgebung' | 'datenbank' | 'neu' }> {
+  if (env.publicKey !== null && env.privateKey !== null) {
+    return { publicKey: env.publicKey, privateKey: env.privateKey, quelle: 'umgebung' }
+  }
+  const lies = async (): Promise<{ publicKey: string; privateKey: string } | null> => {
+    const { rows } = await owner.query<{ publicKey: string; privateKey: string }>(
+      `SELECT public_key AS "publicKey", private_key AS "privateKey" FROM platform_vapid_key`)
+    return rows[0] ?? null
+  }
+  const da = await lies()
+  if (da !== null) return { ...da, quelle: 'datenbank' }
+  const neu = webpush.generateVAPIDKeys()
+  const r = await owner.query(
+    `INSERT INTO platform_vapid_key (public_key, private_key) VALUES ($1, $2)
+     ON CONFLICT (id) DO NOTHING`, [neu.publicKey, neu.privateKey])
+  const jetzt = await lies()
+  return { ...jetzt!, quelle: r.rowCount === 1 ? 'neu' : 'datenbank' }
+}
+
 export function createWebPushSender(vapid: {
   subject: string; publicKey: string; privateKey: string
 }): PushSender {
