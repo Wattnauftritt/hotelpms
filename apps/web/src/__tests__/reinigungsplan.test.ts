@@ -11,7 +11,7 @@ const zimmer = (teil: Partial<PlanZimmer>): PlanZimmer => ({
   propertyId: 1, resourceId: null, areaId: null, code: '1', categoryId: null,
   categoryCode: null, building: null, floor: null, due: null, departureCheckedOut: false,
   arrivalToday: false, taskId: null, kind: null, assignedTo: null, minutes: 0,
-  taskStatus: null, source: null, waived: false, ...teil })
+  taskStatus: null, source: null, waived: false, kindChanged: false, ...teil })
 
 describe('Summen je Kraft', () => {
   it('trennt Abreisen und Bleiber und zaehlt nicht Gereinigtes mit null', () => {

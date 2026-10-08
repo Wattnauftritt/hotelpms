@@ -119,7 +119,9 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
       : new Set(plan.staff.filter(k => k.active).map(k => k.userId))
   })
 
-  const geaendert = faellig.some(z => entwurf.get(zielVon(z)) !== z.assignedTo)
+  // Auch ohne Umteilung ungespeichert: eine Art, die der Kalender seit dem
+  // Speichern geaendert hat, steht noch nicht an der Aufgabe.
+  const geaendert = faellig.some(z => entwurf.get(zielVon(z)) !== z.assignedTo || z.kindChanged)
   const last = useMemo(() => summen(faellig, entwurf), [entwurf, faellig])
   const kraftVon = (z: PlanZimmer): number | null => entwurf.get(zielVon(z)) ?? null
   const offen = faellig.filter(z => kraftVon(z) === null)
@@ -175,6 +177,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
       z.departureCheckedOut ? t('cleaningPlan.checkedOut') : null,
       z.arrivalToday ? t('cleaningPlan.arrival') : null,
       z.waived ? t('cleaningPlan.waived') : null,
+      z.kindChanged ? t('cleaningPlan.kindChanged') : null,
       erledigt ? t('cleaningPlan.done') : null,
       ausgelassen ? t('cleaningPlan.skipped') : null,
       z.source === 'legacy' ? t('cleaningPlan.legacy') : null
@@ -194,6 +197,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
       {z.code}
       {z.departureCheckedOut && !fest && <span aria-hidden className="text-[0.6rem]">●</span>}
       {z.arrivalToday && !fest && <span aria-hidden className="text-xs">↘</span>}
+      {z.kindChanged && <span aria-hidden className="text-xs font-bold">!</span>}
       {erledigt && <span aria-hidden>✓</span>}
       {ausgelassen && <span aria-hidden>⊘</span>}
       {!imPool && <span className="text-[0.65rem] font-normal opacity-70">{zaehlt(z)}′</span>}
