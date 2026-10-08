@@ -30,7 +30,7 @@ const queryClient = new QueryClient({
   }
 })
 
-serviceWorkerAnmelden()
+serviceWorkerAnmelden({ neuLaden: true })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
