@@ -193,6 +193,40 @@ describe('Mehrere Zimmer in einer Buchung', () => {
   })
 })
 
+describe('Personen je Zimmer', () => {
+  /*
+   * Die Gruppe Liedtke: fuenf Zimmer, und die Maske fragte nach keiner
+   * Person. Eine Angabe der Buchung gaelte fuer jedes Zimmer gleich -- bei
+   * Doppel- und Einzelzimmern stimmt sie fuer keines.
+   */
+  it('nimmt die Personen je Zimmer und laesst ohne Angabe die der Buchung gelten', async () => {
+    const r = await buchen({ adults: 1, rooms: [
+      { categoryId: dz, resourceId: dzZimmer[0], adults: 2, children: 1 },
+      { categoryId: dz, resourceId: dzZimmer[1], adults: 2 },
+      { categoryId: dz, resourceId: dzZimmer[2] }
+    ] })
+    expect(r.statusCode, r.body).toBe(201)
+    const p = await owner.query<{ guest_count: number; adults: number
+                                  children: number | null }>(
+      `SELECT guest_count, adults, children FROM reservation
+        WHERE property_id = $1 ORDER BY resource_id`, [fx.propertyId])
+    expect(p.rows).toEqual([
+      { guest_count: 3, adults: 2, children: 1 },
+      { guest_count: 2, adults: 2, children: null },
+      { guest_count: 1, adults: 1, children: null }
+    ])
+  })
+
+  it('weist Kinder ohne Erwachsene in einem Zimmer ab, und zwar die ganze Gruppe', async () => {
+    const r = await buchen({ rooms: [
+      { categoryId: dz, resourceId: dzZimmer[0], adults: 2 },
+      { categoryId: dz, resourceId: dzZimmer[1], children: 1 }
+    ] })
+    expect(r.statusCode).toBe(422)
+    expect((await anzahlBuchungen()).reservierungen).toBe(0)
+  })
+})
+
 describe('Was eine Gruppe abweisen muss', () => {
   it('weist dasselbe Zimmer zweimal in der Auswahl ab', async () => {
     const r = await buchen({ rooms: zimmerListe(

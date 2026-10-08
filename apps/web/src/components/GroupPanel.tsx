@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { useBooking, useShiftBooking, useAddBookingRoom, useChangeStay, istAusgebucht,
-         useReservationStatusAction } from '../lib/queries/booking.js'
+         useReservationStatusAction, useSetPersons } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
@@ -28,6 +28,22 @@ import { Fehler, Laedt } from './Shell.tsx'
  * Statistik verschwunden, und der Abend haette einen Storno weniger als
  * das Haus.
  */
+/** Wann die Personenzahl noch aendert -- dieselbe Regel wie die Schnittstelle. */
+const PERSONEN_AENDERBAR = new Set(['Inquired', 'Optional', 'Confirmed', 'InHouse'])
+
+/** "2" oder "2 + 1" -- Erwachsene und Kinder, wo getrennt bekannt. */
+function PersonenZelle({ z }: {
+  z: { guestCount: number | null; adults: number | null; children: number | null }
+}): JSX.Element {
+  if (z.guestCount === null) return <span className="text-neutral-400">—</span>
+  return (
+    <span className="tabular-nums">
+      {z.adults !== null && z.children !== null && z.children > 0
+        ? `${z.adults} + ${z.children}` : z.guestCount}
+    </span>
+  )
+}
+
 export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSelect }: {
   propertyId: number
   bookingRef: string
@@ -49,11 +65,21 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
   const verschieben = useShiftBooking()
   const dazu = useAddBookingRoom(propertyId)
   const umbuchen = useChangeStay()
+  const personenSetzen = useSetPersons()
 
   /** Welches Zimmer gerade seine Tage aendert. Nur eines auf einmal. */
   const [aendert, setAendert] = useState<string | null>(null)
   const [von, setVon] = useState('')
   const [bis, setBis] = useState('')
+  /*
+   * Die Personen des Zimmers, das gerade geaendert wird. Hier und nicht nur
+   * in der Maske am Balken: bei einer Gruppe sucht die Rezeption die Zahl in
+   * der Gruppenmaske, und dort gab es bisher nur die Tage (Sven,
+   * 08.10.2026: "ich kann die Personenanzahl in gespeicherten Buchungen
+   * nicht mehr aendern").
+   */
+  const [erw, setErw] = useState('')
+  const [ki, setKi] = useState('')
   const [neueGruppe, setNeueGruppe] = useState<number | ''>('')
 
   const daten = q.data
@@ -140,6 +166,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                     <th className="font-medium">{t('booking.arrival')}</th>
                     <th className="font-medium">{t('booking.departure')}</th>
                     <th className="font-medium text-right">{t('group.nightsHead')}</th>
+                    <th className="font-medium pl-3">{t('group.personsHead')}</th>
                     <th className="font-medium text-right">{t('group.total')}</th>
                     <th />
                   </tr>
@@ -154,6 +181,17 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                      * ansah, zu welcher Zeile es gehoert.
                      */
                     const offen = aendert === z.reservationRef
+                    const personenAenderbar = PERSONEN_AENDERBAR.has(z.status)
+                    const erwVorher = z.adults ?? z.guestCount
+                    const kiVorher = z.children ?? 0
+                    const anzErw = erw.trim() === '' ? null : Number(erw)
+                    const anzKi = ki.trim() === '' ? 0 : Number(ki)
+                    const personenAnders = personenAenderbar
+                      && !(anzErw === null && erwVorher === null && anzKi === 0)
+                      && (anzErw !== erwVorher || anzKi !== kiVorher)
+                    const personenGueltig = anzErw !== null && Number.isInteger(anzErw)
+                      && anzErw >= 1 && Number.isInteger(anzKi) && anzKi >= 0
+                    const tageAnders = von !== z.arrival || bis !== z.departure
                     return (
                       <tr key={z.reservationRef}
                           className={`border-t border-neutral-100 align-middle
@@ -187,23 +225,55 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                             <td className="tabular-nums text-right pr-2">
                               {daysBetween(von, bis)}
                             </td>
+                            <td className="pl-3 pr-2 whitespace-nowrap">
+                              {personenAenderbar ? (
+                                <>
+                                  <input value={erw} onChange={e => setErw(e.target.value)}
+                                         inputMode="numeric" placeholder="—"
+                                         aria-label={t('booking.adults')}
+                                         title={t('booking.adults')}
+                                         className="border border-neutral-300 rounded-sm
+                                                    px-2 py-1 text-sm w-12 tabular-nums" />
+                                  <span className="text-neutral-400 px-1">+</span>
+                                  <input value={ki} onChange={e => setKi(e.target.value)}
+                                         inputMode="numeric" placeholder="0"
+                                         aria-label={t('booking.children')}
+                                         title={t('booking.children')}
+                                         className="border border-neutral-300 rounded-sm
+                                                    px-2 py-1 text-sm w-12 tabular-nums" />
+                                </>
+                              ) : <PersonenZelle z={z} />}
+                            </td>
                             <td />
                             <td className="text-right whitespace-nowrap">
                               <button type="button"
-                                      disabled={umbuchen.isPending || daysBetween(von, bis) <= 0}
+                                      disabled={umbuchen.isPending || personenSetzen.isPending
+                                                || daysBetween(von, bis) <= 0
+                                                || (personenAnders && !personenGueltig)
+                                                || (!tageAnders && !personenAnders)}
                                       onClick={() => {
                                         const body = { reservationRef: aendert,
                                                        arrival: von, departure: bis }
                                         const fertig = (): void => {
                                           setAendert(null); void q.refetch() }
+                                        // Die Personen nach den Tagen: scheitern
+                                        // die Tage, bleibt alles beim Alten.
+                                        const nachTagen = !personenAnders ? fertig
+                                          : (): void => personenSetzen.mutate(
+                                            { reservationRef: z.reservationRef,
+                                              adults: anzErw!,
+                                              children: anzKi > 0 || kiVorher > 0
+                                                ? anzKi : undefined },
+                                            { onSuccess: fertig })
+                                        if (!tageAnders) { nachTagen(); return }
                                         umbuchen.mutate(body, {
-                                          onSuccess: fertig,
+                                          onSuccess: nachTagen,
                                           onError: fehler => {
                                             if (istAusgebucht(fehler)
                                                 && confirm(t('plan.overbookConfirm'))) {
                                               umbuchen.mutate(
                                                 { ...body, allowOverbooking: true },
-                                                { onSuccess: fertig })
+                                                { onSuccess: nachTagen })
                                             }
                                           }
                                         })
@@ -226,6 +296,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                             <td className="tabular-nums text-right pr-2">
                               {daysBetween(z.arrival, z.departure)}
                             </td>
+                            <td className="pl-3"><PersonenZelle z={z} /></td>
                             <td className="tabular-nums text-right">
                               {formatMoney(z.totalCent, locale)}
                             </td>
@@ -237,6 +308,8 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                                             setAendert(z.reservationRef)
                                             setVon(z.arrival)
                                             setBis(z.departure)
+                                            setErw(erwVorher === null ? '' : String(erwVorher))
+                                            setKi(kiVorher === 0 ? '' : String(kiVorher))
                                           }}
                                           className="text-xs text-neutral-600 px-1 underline
                                                      decoration-dotted">
@@ -254,6 +327,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                 </tbody>
               </table>
               {umbuchen.isError && <Fehler error={umbuchen.error} />}
+              {personenSetzen.isError && <Fehler error={personenSetzen.error} />}
             </Abschnitt>
 
             {/*

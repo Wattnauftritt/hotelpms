@@ -873,9 +873,13 @@ export const plan = {
     en: 'days. Stays that differ stay different.',
     tr: 'gün. Farklı olan konaklamalar farklı kalır.' },
   'group.changeDates': {
-    de: 'Tage ändern',
-    en: 'Change dates',
-    tr: 'Tarihleri değiştir' },
+    de: 'Ändern',
+    en: 'Edit',
+    tr: 'Değiştir' },
+  'group.personsHead': {
+    de: 'Personen',
+    en: 'Guests',
+    tr: 'Kişi' },
   'group.removeConfirm': {
     de: 'Dieses Zimmer aus der Gruppe nehmen? Die Reservierung wird storniert.',
     en: 'Remove this room from the group? The reservation will be canceled.',
