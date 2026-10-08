@@ -96,6 +96,24 @@ describe('Der Rahmen einer Maske', () => {
     const checkin = readFileSync(join(SRC, 'routes', 'CheckIn.tsx'), 'utf8')
     expect(checkin).toContain('nebenbeiSchliessen={false}')
   })
+
+  it('laesst "Nur einchecken" ohne Meldeschein zu', () => {
+    /*
+     * Der Ausweg hing an derselben Sperre wie "Einchecken und AVS-Datei" --
+     * die verlangt einen Meldeschein. Solange das Formular noch ans Terminal
+     * gehen sollte, war "Nur einchecken" deshalb tot und sah klickbar aus
+     * (Sven, 08.10.2026).
+     */
+    const checkin = readFileSync(join(SRC, 'routes', 'CheckIn.tsx'), 'utf8')
+    const sperre = checkin.match(/const nurEincheckenGesperrt = ([^\n]+)/)?.[1] ?? ''
+    expect(sperre).not.toBe('')
+    expect(sperre).not.toContain('angemeldet')
+    expect(sperre).not.toContain('unterschriftOffen')
+    expect(checkin).toContain('disabled={nurEincheckenGesperrt}')
+    // Ein gesperrter leiser Knopf muss auch so aussehen.
+    const dialog = readFileSync(join(SRC, 'components', 'Dialog.tsx'), 'utf8')
+    expect(dialog).toMatch(/KNOPF_LEISE = [^;]*disabled:opacity/)
+  })
 })
 
 describe('Die Gruppenmaske zeigt die Tage jedes Zimmers', () => {
