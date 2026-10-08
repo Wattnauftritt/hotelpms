@@ -389,7 +389,8 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
 
   /**
    * Ein Vorschlag, nichts gespeichert. Verteilt die faelligen und noch
-   * offenen Zimmer auf die genannten Kraefte (`suggestCleaningPlan`);
+   * offenen Zimmer auf die genannten Kraefte (`suggestCleaningPlan`:
+   * gleich viele Abreisen, dann Bleiber bis zur gleichen Gesamtzeit);
    * erledigte bleiben, wo sie sind. Die Hausdame sieht ihn, schiebt nach
    * und speichert mit `PUT`.
    */
@@ -417,7 +418,8 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
         }
         const zimmer = (await liesPlanZimmer(client, h, tag))
           .filter(z => (z.kind ?? z.due) !== null && z.taskStatus !== 'done')
-        const zuteilung = suggestCleaningPlan(zimmer, gewaehlt)
+        const zuteilung = suggestCleaningPlan(
+          zimmer.map(z => ({ minutes: z.minutes, kind: (z.kind ?? z.due)! })), gewaehlt)
         return {
           date: tag,
           assignments: zimmer.map((z, i) => ({

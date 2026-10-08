@@ -131,16 +131,16 @@ describe('Sollminuten', () => {
 })
 
 describe('Zuteilen', () => {
-  it('schlaegt zusammenhaengende, gleich schwere Abschnitte vor', async () => {
+  it('schlaegt gleich viele Abreisen vor, dann Bleiber zur kuerzeren Gesamtzeit', async () => {
     const r = await app.inject({ method: 'POST', url: url('/suggest'),
       headers: auth(hausdame.sessionId),
       payload: { date: TAG, staff: [anna.userId, olga.userId] } })
     expect(r.statusCode).toBe(200)
-    // 30 | 30 + 10: die Haelfte je Kraft, am Stueck.
+    // Je eine Abreise; der Bleiber geht bei Gleichstand an die vordere.
     expect(r.json().assignments).toEqual([
       { resourceId: zimmer[0], kind: 'departure', assignedTo: anna.userId },
       { resourceId: zimmer[1], kind: 'departure', assignedTo: olga.userId },
-      { resourceId: zimmer[2], kind: 'stayover', assignedTo: olga.userId }])
+      { resourceId: zimmer[2], kind: 'stayover', assignedTo: anna.userId }])
     // Nur ein Vorschlag: gespeichert ist nichts.
     const t = await owner.query(`SELECT 1 FROM housekeeping_task`)
     expect(t.rowCount).toBe(0)

@@ -10,17 +10,13 @@ export const reinigungsplan = {
     en: 'Cleaning plan',
     tr: 'Temizlik planı' },
   'cleaningPlan.staff': {
-    de: 'Wer arbeitet heute',
-    en: 'Working today',
-    tr: 'Bugün çalışanlar' },
+    de: 'Im Dienst',
+    en: 'On duty',
+    tr: 'Görevde' },
   'cleaningPlan.noStaff': {
     de: 'Noch niemand hat die Rolle Reinigung. Unter Einstellungen › Benutzer einladen.',
     en: 'Nobody has the Cleaning role yet. Invite people under Settings › Users.',
     tr: 'Henüz kimsede Temizlik rolü yok. Ayarlar › Kullanıcılar altından davet edin.' },
-  'cleaningPlan.load': {
-    de: '{rooms} Zimmer · {minutes} Min.',
-    en: '{rooms} rooms · {minutes} min',
-    tr: '{rooms} oda · {minutes} dk' },
   'cleaningPlan.inactive': {
     de: 'ohne Rolle Reinigung',
     en: 'without Cleaning role',
@@ -30,9 +26,9 @@ export const reinigungsplan = {
     en: 'Suggest',
     tr: 'Öneri' },
   'cleaningPlan.suggestHint': {
-    de: 'Verteilt die offenen Zimmer gleichmäßig nach Minuten auf die Angehakten, jede Kraft am Stück durchs Haus. Erledigte bleiben, wo sie sind. Gespeichert wird erst mit „Speichern“.',
-    en: 'Spreads the open rooms evenly by minutes across the ticked people, each in one stretch through the building. Finished rooms stay put. Nothing is saved until you press “Save”.',
-    tr: 'Açık odaları işaretlenen kişilere dakikaya göre eşit dağıtır; herkes binada tek bir bölümü alır. Tamamlananlar yerinde kalır. “Kaydet”e basılana kadar hiçbir şey kaydedilmez.' },
+    de: 'Der Vorschlag gibt allen im Dienst gleich viele Abreisen und dann so viele Bleiber, dass die Gesamtzeit gleich wird, jede Kraft am Stück durchs Haus. Erledigte bleiben, wo sie sind. Gespeichert wird erst mit „Speichern“.',
+    en: 'The suggestion gives everyone on duty the same number of departures, then enough stayovers to even out the total time, each in one stretch through the building. Finished rooms stay put. Nothing is saved until you press “Save”.',
+    tr: 'Öneri, görevdeki herkese aynı sayıda ayrılış odası, ardından toplam süreyi eşitleyecek kadar kalış odası verir; herkes binada tek bir bölümü alır. Tamamlananlar yerinde kalır. “Kaydet”e basılana kadar hiçbir şey kaydedilmez.' },
   'cleaningPlan.save': {
     de: 'Speichern',
     en: 'Save',
@@ -57,18 +53,10 @@ export const reinigungsplan = {
     de: 'Zimmer',
     en: 'Room',
     tr: 'Oda' },
-  'cleaningPlan.due': {
-    de: 'Fällig',
-    en: 'Due',
-    tr: 'Durum' },
   'cleaningPlan.minutes': {
     de: 'Minuten',
     en: 'Minutes',
     tr: 'Dakika' },
-  'cleaningPlan.assignee': {
-    de: 'Kraft',
-    en: 'Assigned to',
-    tr: 'Atanan' },
   'cleaningPlan.nobody': {
     de: '– niemand –',
     en: '– nobody –',
@@ -228,6 +216,54 @@ export const reinigungsplan = {
     de: 'Getrennt: jedes Haus hat sein eigenes Personal, seinen eigenen Plan und seine eigene Frühstückszahl.',
     en: 'Separate: each property has its own staff, its own plan and its own breakfast count.',
     tr: 'Ayrı: her tesisin kendi personeli, kendi planı ve kendi kahvaltı sayısı vardır.' },
+  'cleaningPlan.openDepartures': {
+    de: 'Abreisen offen',
+    en: 'Departures open',
+    tr: 'Açık ayrılışlar' },
+  'cleaningPlan.openStayovers': {
+    de: 'Bleiber offen',
+    en: 'Stayovers open',
+    tr: 'Açık kalışlar' },
+  'cleaningPlan.poolEmpty': {
+    de: 'Alle verteilt',
+    en: 'All assigned',
+    tr: 'Hepsi atandı' },
+  'cleaningPlan.departures': {
+    de: 'Abreisen',
+    en: 'Departures',
+    tr: 'Ayrılışlar' },
+  'cleaningPlan.stayovers': {
+    de: 'Bleiber',
+    en: 'Stayovers',
+    tr: 'Kalışlar' },
+  'cleaningPlan.boardHint': {
+    de: 'Mitarbeiter antippen, dann Zimmer antippen – oder Zimmer auf einen Mitarbeiter ziehen. Ein Zimmer in einer Karte antippen legt es zurück.',
+    en: 'Tap a person, then tap rooms – or drag rooms onto a person. Tapping a room in a card puts it back.',
+    tr: 'Önce kişiye, sonra odalara dokunun – ya da odaları kişinin üzerine sürükleyin. Karttaki bir odaya dokunmak onu geri koyar.' },
+  'cleaningPlan.dropHere': {
+    de: 'Zimmer hierher ziehen',
+    en: 'Drag rooms here',
+    tr: 'Odaları buraya sürükleyin' },
+  'cleaningPlan.selected': {
+    de: 'ausgewählt',
+    en: 'selected',
+    tr: 'seçili' },
+  'cleaningPlan.part': {
+    de: '{rooms} · {time} Std.',
+    en: '{rooms} · {time} h',
+    tr: '{rooms} · {time} sa' },
+  'cleaningPlan.total': {
+    de: 'Gesamt {time} Std.',
+    en: 'Total {time} h',
+    tr: 'Toplam {time} sa' },
+  'cleaningPlan.skipped': {
+    de: 'nicht gereinigt',
+    en: 'not cleaned',
+    tr: 'temizlenmedi' },
+  'cleaningPlan.legend': {
+    de: '✓ erledigt · ⊘ nicht gereinigt · ● ausgecheckt · ↘ Anreise heute',
+    en: '✓ done · ⊘ not cleaned · ● checked out · ↘ arrival today',
+    tr: '✓ tamamlandı · ⊘ temizlenmedi · ● çıkış yaptı · ↘ bugün varış' },
   'cleaningPlan.sharedToggle': {
     de: 'Gemeinsam für alle Häuser des Betriebs',
     en: 'Shared across all properties of the business',

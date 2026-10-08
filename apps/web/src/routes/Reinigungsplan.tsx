@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type DragEvent } from 'react'
 import { useT, useLocale, intlTag } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
@@ -41,6 +41,37 @@ function entwurfAus(plan: Plan): Entwurf {
     .map(z => [zielVon(z), z.assignedTo]))
 }
 
+/** Minuten als Stunden, wie die Hausdame sie liest: 330 → "5:30". */
+export const stunden = (minuten: number): string =>
+  `${Math.floor(minuten / 60)}:${String(minuten % 60).padStart(2, '0')}`
+
+/**
+ * Was ein Zimmer einer Kraft einbringt. Ein nicht gereinigtes (Gast hat
+ * abgelehnt, war sauber) zaehlt nicht: abgerechnet wird nur, was gereinigt
+ * ist (`outcome = 'cleaned'`), und die Karte soll dieselbe Zahl zeigen.
+ */
+const zaehlt = (z: PlanZimmer): number => z.taskStatus === 'skipped' ? 0 : z.minutes
+
+export interface KraftSumme {
+  abreisen: number; abreiseMinuten: number; bleiber: number; bleiberMinuten: number
+}
+
+/** Je Kraft Abreisen und Bleiber, nach Zahl und Minuten. */
+export function summen(
+  faellig: readonly PlanZimmer[], entwurf: ReadonlyMap<string, number | null>
+): Map<number, KraftSumme> {
+  const m = new Map<number, KraftSumme>()
+  for (const z of faellig) {
+    const k = entwurf.get(zielVon(z))
+    if (k === null || k === undefined) continue
+    const s = m.get(k) ?? { abreisen: 0, abreiseMinuten: 0, bleiber: 0, bleiberMinuten: 0 }
+    if (artVon(z) === 'departure') { s.abreisen++; s.abreiseMinuten += zaehlt(z) }
+    else { s.bleiber++; s.bleiberMinuten += zaehlt(z) }
+    m.set(k, s)
+  }
+  return m
+}
+
 export function Reinigungsplan({ propertyId }: { propertyId: number }): JSX.Element {
   const [datum, setDatum] = useState(today())
   const q = useReinigungsplan(propertyId, datum)
@@ -59,12 +90,26 @@ export function Reinigungsplan({ propertyId }: { propertyId: number }): JSX.Elem
   </div>
 }
 
+/**
+ * Der Tagesplan als Brett, wie der Putzplan der alten App (Sven,
+ * 08.10.2026: "die Planung ist sehr unuebersichtlich"). Oben liegen die
+ * offenen Zimmer als Chips, Abreisen rot, Bleiber blau -- die Farbe sagt,
+ * welche Reinigung ein Zimmer bekommt. Darunter steht je Kraft eine Karte
+ * mit ihren Abreisen und Bleibern und den Summen; dieselbe Karte ist nach
+ * dem Speichern der fertige Plan, mit Haken an dem, was erledigt ist.
+ *
+ * Zwei Wege, ein Zimmer zu verteilen: eine Kraft antippen und dann Zimmer
+ * antippen (am Tablet, wo Ziehen nicht geht), oder ein Zimmer auf eine
+ * Karte ziehen. Ein Zimmer in einer Karte antippen legt es zurueck, oder
+ * zur ausgewaehlten Kraft, wenn eine andere ausgewaehlt ist.
+ */
 function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JSX.Element {
   const t = useT()
   const online = useOnline()
   const speichern = usePlanSpeichern(propertyId, plan.date)
   const vorschlag = usePlanVorschlag(propertyId, plan.date)
   const [entwurf, setEntwurf] = useState<Entwurf>(() => entwurfAus(plan))
+  const [gewaehlt, setGewaehlt] = useState<number | null>(null)
   const faellig = plan.rooms.filter(z => artVon(z) !== null)
 
   // Wer heute arbeitet: wer schon Zimmer hat, sonst alle mit der Rolle.
@@ -75,17 +120,9 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
   })
 
   const geaendert = faellig.some(z => entwurf.get(zielVon(z)) !== z.assignedTo)
-  const last = useMemo(() => {
-    const m = new Map<number, { rooms: number; minutes: number }>()
-    for (const z of faellig) {
-      const k = entwurf.get(zielVon(z))
-      if (k === null || k === undefined) continue
-      const l = m.get(k) ?? { rooms: 0, minutes: 0 }
-      m.set(k, { rooms: l.rooms + 1, minutes: l.minutes + z.minutes })
-    }
-    return m
-  }, [entwurf, faellig])
-  const offen = faellig.filter(z => (entwurf.get(zielVon(z)) ?? null) === null).length
+  const last = useMemo(() => summen(faellig, entwurf), [entwurf, faellig])
+  const kraftVon = (z: PlanZimmer): number | null => entwurf.get(zielVon(z)) ?? null
+  const offen = faellig.filter(z => kraftVon(z) === null)
 
   const zuteilen = (ziel: string, kraft: number | null): void =>
     setEntwurf(alt => new Map(alt).set(ziel, kraft))
@@ -110,154 +147,210 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
     speichern.mutate(liste)
   }
 
-  const kraefte = plan.staff
-  const name = (id: number | null): string =>
-    kraefte.find(k => k.userId === id)?.displayName ?? '–'
+  // Karten: wer im Dienst ist, und wer schon Zimmer hat, auch ohne Haken.
+  const karten = plan.staff.filter(k =>
+    heute.has(k.userId) || faellig.some(z => kraftVon(z) === k.userId))
 
-  return <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
-    <aside className="space-y-2">
-      <h2 className="text-sm font-semibold">{t('cleaningPlan.staff')}</h2>
-      {kraefte.length === 0 && (
-        <p className="text-sm text-neutral-600">{t('cleaningPlan.noStaff')}</p>
+  const fallen = (e: DragEvent, kraft: number | null): void => {
+    e.preventDefault()
+    const ziel = e.dataTransfer.getData('text/plain')
+    if (faellig.some(z => zielVon(z) === ziel && z.taskStatus !== 'done')) zuteilen(ziel, kraft)
+  }
+  const zulassen = (e: DragEvent): void => { e.preventDefault() }
+
+  const chip = (z: PlanZimmer, imPool: boolean): JSX.Element => {
+    const ziel = zielVon(z)
+    const art = artVon(z)
+    const erledigt = z.taskStatus === 'done'
+    const ausgelassen = z.taskStatus === 'skipped'
+    const fest = erledigt || ausgelassen
+    const farbe = erledigt ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+      : ausgelassen ? 'border-neutral-300 bg-neutral-50 text-neutral-500'
+      : art === 'departure' ? 'border-red-300 bg-red-50 text-red-800 hover:bg-red-100'
+      : 'border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100'
+    const titel = [
+      mehrereHaeuser ? hausName(z.propertyId) : null,
+      t(z.areaId !== null ? 'cleaningPlan.area'
+        : art === 'departure' ? 'cleaningPlan.departure' : 'cleaningPlan.stayover'),
+      z.departureCheckedOut ? t('cleaningPlan.checkedOut') : null,
+      z.arrivalToday ? t('cleaningPlan.arrival') : null,
+      z.waived ? t('cleaningPlan.waived') : null,
+      erledigt ? t('cleaningPlan.done') : null,
+      ausgelassen ? t('cleaningPlan.skipped') : null,
+      z.source === 'legacy' ? t('cleaningPlan.legacy') : null
+    ].filter(x => x !== null).join(' · ')
+    const antippen = (): void => {
+      if (fest) return
+      if (imPool) { if (gewaehlt !== null) zuteilen(ziel, gewaehlt); return }
+      zuteilen(ziel, gewaehlt !== null && gewaehlt !== kraftVon(z) ? gewaehlt : null)
+    }
+    return <button key={ziel} type="button" title={titel} aria-label={`${z.code}, ${titel}`}
+                   draggable={!fest}
+                   onDragStart={e => { e.dataTransfer.setData('text/plain', ziel) }}
+                   onClick={antippen}
+                   className={`inline-flex items-baseline gap-1 min-w-[3.25rem] justify-center
+                               px-2 py-1 rounded-sm border text-sm font-medium tabular-nums
+                               ${farbe} ${fest ? 'cursor-default' : 'cursor-pointer'}`}>
+      {z.code}
+      {z.departureCheckedOut && !fest && <span aria-hidden className="text-[0.6rem]">●</span>}
+      {z.arrivalToday && !fest && <span aria-hidden className="text-xs">↘</span>}
+      {erledigt && <span aria-hidden>✓</span>}
+      {ausgelassen && <span aria-hidden>⊘</span>}
+      {!imPool && <span className="text-[0.65rem] font-normal opacity-70">{zaehlt(z)}′</span>}
+    </button>
+  }
+
+  // Chips nach Haus gruppiert, wenn der Plan mehrere Haeuser traegt.
+  const gruppiert = (liste: PlanZimmer[]): JSX.Element[] => {
+    if (!mehrereHaeuser) return liste.map(z => chip(z, true))
+    return plan.houses.flatMap(h => {
+      const im = liste.filter(z => z.propertyId === h.id)
+      if (im.length === 0) return []
+      return [<div key={h.id} className="w-full flex flex-wrap gap-1.5 items-center">
+        <span className="w-full text-xs text-neutral-500">{h.name}</span>
+        {im.map(z => chip(z, true))}
+      </div>]
+    })
+  }
+
+  const pool = (art: ReinigungsArt): JSX.Element => {
+    const liste = offen.filter(z => artVon(z) === art)
+    const rot = art === 'departure'
+    return <div onDragOver={zulassen} onDrop={e => fallen(e, null)}
+                className={`rounded-sm border border-dashed p-2 min-h-16
+                            ${rot ? 'border-red-300 bg-red-50/40' : 'border-sky-300 bg-sky-50/40'}`}>
+      <h3 className={`text-sm font-semibold mb-1.5 ${rot ? 'text-red-800' : 'text-sky-800'}`}>
+        {t(rot ? 'cleaningPlan.openDepartures' : 'cleaningPlan.openStayovers')}
+        <span className="ml-1 font-normal text-neutral-500">{liste.length}</span>
+      </h3>
+      {liste.length === 0
+        ? <p className="text-xs text-neutral-500">{t('cleaningPlan.poolEmpty')}</p>
+        : <div className="flex flex-wrap gap-1.5">{gruppiert(liste)}</div>}
+    </div>
+  }
+
+  return <div className="space-y-3">
+    <div className="flex flex-wrap items-center gap-2">
+      {offen.length > 0 && (
+        <span className="text-sm text-amber-800">
+          {t('cleaningPlan.unassigned', { rooms: offen.length })}
+        </span>
       )}
-      <ul className="space-y-1">
-        {kraefte.map(k => {
-          const l = last.get(k.userId) ?? { rooms: 0, minutes: 0 }
-          return <li key={k.userId}>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" className="mt-0.5" disabled={!k.active}
-                     checked={heute.has(k.userId)}
-                     onChange={e => setHeute(alt => {
-                       const neu = new Set(alt)
-                       if (e.target.checked) neu.add(k.userId); else neu.delete(k.userId)
-                       return neu
-                     })} />
-              <span>
-                <span className="block">{k.displayName}</span>
-                <span className="block text-xs text-neutral-500">
-                  {k.active ? t('cleaningPlan.load', { rooms: l.rooms, minutes: l.minutes })
-                            : t('cleaningPlan.inactive')}
-                </span>
-                {k.elsewhere.map(a => (
-                  <span key={a.propertyId} className="block text-xs text-neutral-500">
-                    {t('cleaningPlan.elsewhere', { house: a.propertyName, rooms: a.rooms,
-                                                   minutes: a.minutes })}
-                  </span>
-                ))}
-              </span>
-            </label>
-          </li>
-        })}
-      </ul>
+      <div className="grow" />
+      {geaendert && <span className="text-sm text-neutral-500">{t('cleaningPlan.unsaved')}</span>}
       <button type="button" onClick={vorschlagen}
               disabled={!online || heute.size === 0 || faellig.length === 0
                         || vorschlag.isPending}
-              className="w-full text-sm px-3 py-1.5 rounded-sm border border-neutral-300
-                         bg-white hover:bg-neutral-50 disabled:opacity-40">
+              className="text-sm px-3 py-1 rounded-sm border border-neutral-300 bg-white
+                         hover:bg-neutral-50 disabled:opacity-40">
         {t(vorschlag.isPending ? 'common.loading' : 'cleaningPlan.suggest')}
       </button>
-      <p className="text-xs text-neutral-500">{t('cleaningPlan.suggestHint')}</p>
-      {vorschlag.isError && <Fehler error={vorschlag.error} />}
-    </aside>
+      <button type="button" onClick={() => setEntwurf(entwurfAus(plan))}
+              disabled={!geaendert}
+              className="text-sm px-3 py-1 rounded-sm border border-neutral-300
+                         disabled:opacity-40">
+        {t('cleaningPlan.discard')}
+      </button>
+      <button type="button" onClick={sichern}
+              disabled={!online || !geaendert || speichern.isPending}
+              className="text-sm px-3 py-1 rounded-sm bg-neutral-900 text-white
+                         disabled:bg-neutral-300">
+        {t(speichern.isPending ? 'common.loading' : 'cleaningPlan.save')}
+      </button>
+    </div>
+    {speichern.isError && <Fehler error={speichern.error} />}
+    {vorschlag.isError && <Fehler error={vorschlag.error} />}
 
-    <section className="space-y-2 min-w-0">
-      <div className="flex flex-wrap items-center gap-2">
-        {offen > 0 && (
-          <span className="text-sm text-amber-800">
-            {t('cleaningPlan.unassigned', { rooms: offen })}
-          </span>
-        )}
-        <div className="grow" />
-        {geaendert && <span className="text-sm text-neutral-500">{t('cleaningPlan.unsaved')}</span>}
-        <button type="button" onClick={() => setEntwurf(entwurfAus(plan))}
-                disabled={!geaendert}
-                className="text-sm px-3 py-1 rounded-sm border border-neutral-300
-                           disabled:opacity-40">
-          {t('cleaningPlan.discard')}
-        </button>
-        <button type="button" onClick={sichern}
-                disabled={!online || !geaendert || speichern.isPending}
-                className="text-sm px-3 py-1 rounded-sm bg-neutral-900 text-white
-                           disabled:bg-neutral-300">
-          {t(speichern.isPending ? 'common.loading' : 'cleaningPlan.save')}
-        </button>
-      </div>
-      {speichern.isError && <Fehler error={speichern.error} />}
+    <div className="flex flex-wrap items-center gap-1.5 text-sm">
+      <span className="text-neutral-600 mr-1">{t('cleaningPlan.staff')}</span>
+      {plan.staff.length === 0 && (
+        <span className="text-neutral-600">{t('cleaningPlan.noStaff')}</span>
+      )}
+      {plan.staff.map(k => (
+        <label key={k.userId}
+               className={`flex items-center gap-1 px-2 py-0.5 rounded-full border
+                           ${heute.has(k.userId) ? 'border-neutral-700 bg-neutral-100'
+                                                 : 'border-neutral-300'}
+                           ${k.active ? '' : 'opacity-50'}`}
+               title={k.active ? undefined : t('cleaningPlan.inactive')}>
+          <input type="checkbox" disabled={!k.active} checked={heute.has(k.userId)}
+                 onChange={e => setHeute(alt => {
+                   const neu = new Set(alt)
+                   if (e.target.checked) neu.add(k.userId); else neu.delete(k.userId)
+                   return neu
+                 })} />
+          {k.displayName}
+        </label>
+      ))}
+    </div>
+    <p className="text-xs text-neutral-500">{t('cleaningPlan.suggestHint')}</p>
 
-      {faellig.length === 0
-        ? <p className="text-sm text-neutral-600">{t('cleaningPlan.nothingDue')}</p>
-        : <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="text-left text-xs text-neutral-500 border-b border-neutral-200">
-                <th className="py-1 pr-2 font-normal">{t('cleaningPlan.room')}</th>
-                <th className="py-1 pr-2 font-normal">{t('cleaningPlan.due')}</th>
-                <th className="py-1 pr-2 font-normal text-right">{t('cleaningPlan.minutes')}</th>
-                <th className="py-1 font-normal">{t('cleaningPlan.assignee')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {faellig.map((z, i) => {
-                const ziel = zielVon(z)
-                const kraft = entwurf.get(ziel) ?? null
-                const erledigt = z.taskStatus === 'done'
-                const neuesHaus = mehrereHaeuser && faellig[i - 1]?.propertyId !== z.propertyId
-                return <Fragment key={ziel}>
-                  {neuesHaus && <tr>
-                    <th colSpan={4} className="pt-3 pb-1 text-left text-sm font-semibold">
-                      {hausName(z.propertyId)}
-                    </th>
-                  </tr>}
-                  <tr className={`border-b border-neutral-100
-                                  ${kraft === null ? 'bg-amber-50' : ''}`}>
-                  <td className="py-1 pr-2 font-medium">
-                    {z.code}
-                    {z.building !== null && (
-                      <span className="ml-1 text-xs text-neutral-400">{z.building}</span>
-                    )}
-                  </td>
-                  <td className="py-1 pr-2">
-                    {t(z.areaId !== null ? 'cleaningPlan.area'
-                       : artVon(z) === 'departure' ? 'cleaningPlan.departure'
-                       : 'cleaningPlan.stayover')}
-                    {z.departureCheckedOut && (
-                      <span className="ml-1 text-xs text-emerald-700">
-                        {t('cleaningPlan.checkedOut')}
-                      </span>
-                    )}
-                    {z.arrivalToday && (
-                      <span className="ml-1 text-xs text-blue-700">{t('cleaningPlan.arrival')}</span>
-                    )}
-                    {z.waived && (
-                      <span className="ml-1 text-xs text-amber-700">{t('cleaningPlan.waived')}</span>
-                    )}
-                  </td>
-                  <td className="py-1 pr-2 text-right tabular-nums">
-                    {z.minutes}
-                    {z.source === 'legacy' && (
-                      <span className="ml-1 text-xs text-neutral-400">{t('cleaningPlan.legacy')}</span>
-                    )}
-                  </td>
-                  <td className="py-1">
-                    {erledigt
-                      ? <span>{name(kraft)} · <span className="text-emerald-700">
-                          {t('cleaningPlan.done')}</span></span>
-                      : <select value={kraft ?? ''}
-                                onChange={e => zuteilen(ziel,
-                                  e.target.value === '' ? null : Number(e.target.value))}
-                                className="border border-neutral-300 rounded-sm px-1 py-0.5
-                                           bg-white max-w-full">
-                          <option value="">{t('cleaningPlan.nobody')}</option>
-                          {kraefte.filter(k => k.active || k.userId === kraft).map(k => (
-                            <option key={k.userId} value={k.userId}>{k.displayName}</option>
-                          ))}
-                        </select>}
-                  </td>
-                </tr>
-                </Fragment>
-              })}
-            </tbody>
-          </table>}
-    </section>
+    {faellig.length === 0
+      ? <p className="text-sm text-neutral-600">{t('cleaningPlan.nothingDue')}</p>
+      : <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {pool('departure')}
+            {pool('stayover')}
+          </div>
+          <p className="text-xs text-neutral-500">
+            {t('cleaningPlan.boardHint')} {t('cleaningPlan.legend')}
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            {karten.map(k => {
+              const s = last.get(k.userId)
+                ?? { abreisen: 0, abreiseMinuten: 0, bleiber: 0, bleiberMinuten: 0 }
+              const meine = faellig.filter(z => kraftVon(z) === k.userId)
+              const aktiv = gewaehlt === k.userId
+              const reihe = (art: ReinigungsArt): JSX.Element => {
+                const liste = meine.filter(z => artVon(z) === art)
+                const rot = art === 'departure'
+                return <div className={`border-l-2 pl-2 ${rot ? 'border-red-400' : 'border-sky-400'}`}>
+                  <div className={`text-xs font-semibold mb-1 ${rot ? 'text-red-800' : 'text-sky-800'}`}>
+                    {t(rot ? 'cleaningPlan.departures' : 'cleaningPlan.stayovers')}
+                    <span className="ml-1 font-normal text-neutral-500">
+                      {t('cleaningPlan.part', {
+                        rooms: rot ? s.abreisen : s.bleiber,
+                        time: stunden(rot ? s.abreiseMinuten : s.bleiberMinuten) })}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 min-h-8">
+                    {liste.map(z => chip(z, false))}
+                  </div>
+                </div>
+              }
+              return <section key={k.userId} onDragOver={zulassen}
+                              onDrop={e => fallen(e, k.userId)}
+                              className={`rounded-sm border bg-white p-3 space-y-2
+                                          ${aktiv ? 'border-emerald-500 ring-2 ring-emerald-200'
+                                                  : 'border-neutral-200'}`}>
+                <button type="button" onClick={() => setGewaehlt(aktiv ? null : k.userId)}
+                        aria-pressed={aktiv}
+                        className="w-full flex items-center gap-2 text-left">
+                  <span className="font-semibold">{k.displayName}</span>
+                  {aktiv && <span className="text-xs text-emerald-700">
+                    {t('cleaningPlan.selected')}</span>}
+                  <span className="grow" />
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-900 text-white
+                                   tabular-nums">
+                    {t('cleaningPlan.total',
+                       { time: stunden(s.abreiseMinuten + s.bleiberMinuten) })}
+                  </span>
+                </button>
+                {k.elsewhere.map(a => (
+                  <p key={a.propertyId} className="text-xs text-neutral-500">
+                    {t('cleaningPlan.elsewhere', { house: a.propertyName, rooms: a.rooms,
+                                                   minutes: a.minutes })}
+                  </p>
+                ))}
+                {meine.length === 0
+                  ? <p className="text-sm text-neutral-400 border border-dashed border-neutral-300
+                                  rounded-sm py-4 text-center">{t('cleaningPlan.dropHere')}</p>
+                  : <>{reihe('departure')}{reihe('stayover')}</>}
+              </section>
+            })}
+          </div>
+        </>}
   </div>
 }
 
