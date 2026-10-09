@@ -6,6 +6,7 @@ import { Errors } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
+import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 
 /** Kennzahlen ueber mehr als zwei Jahre gehoeren ins Berichtsreplikat. */
 const MAX_DAYS = 800
@@ -102,6 +103,13 @@ export function reportRoutes(app: FastifyInstance): void {
                      LEFT JOIN guest g ON g.id = r.primary_guest_id
                      LEFT JOIN folio fo ON fo.reservation_id = r.id AND fo.kind = 'guest'`
 
+        /*
+         * Alle drei Listen nach Zimmernummer, wie ein Mensch zaehlt (2 vor
+         * 10). Die Anreisen standen nach Nachname, Abreisen und Hausliste
+         * nach `res.code` als Text, also "10" vor "2" -- drei Spalten in drei
+         * Reihenfolgen, und keine davon die des Zimmerplans (Sven,
+         * 09.10.2026). Ohne Zimmer steht eine Anreise am Ende.
+         */
         const arrivals = await client.query(
           `SELECT ${basis},
                   -- Auch ein Meldeschein, den ein Umsystem erfasst hat (0085):
@@ -116,7 +124,7 @@ export function reportRoutes(app: FastifyInstance): void {
              LEFT JOIN reservation_external_registration ext ON ext.reservation_id = r.id
             WHERE r.property_id = $1 AND r.arrival = $2::date
               AND r.status IN ('Confirmed','InHouse')
-            ORDER BY g.last_name NULLS LAST, res.code`, [id, d])
+            ORDER BY ${zimmerNachNummer('res')}, g.last_name NULLS LAST, r.public_ref`, [id, d])
 
         const departures = await client.query(
           `SELECT ${basis},
@@ -127,7 +135,7 @@ export function reportRoutes(app: FastifyInstance): void {
              ${von}
             WHERE r.property_id = $1 AND r.departure = $2::date
               AND r.status IN ('InHouse','CheckedOut')
-            ORDER BY res.code`, [id, d])
+            ORDER BY ${zimmerNachNummer('res')}, g.last_name NULLS LAST, r.public_ref`, [id, d])
 
         /*
          * Auch die Hausliste sagt, ob der Meldeschein fehlt: wer nach
@@ -146,7 +154,7 @@ export function reportRoutes(app: FastifyInstance): void {
              ${von}
             WHERE r.property_id = $1 AND r.status = 'InHouse'
               AND r.arrival <= $2::date AND r.departure > $2::date
-            ORDER BY res.code`, [id, d])
+            ORDER BY ${zimmerNachNummer('res')}, g.last_name NULLS LAST, r.public_ref`, [id, d])
 
         return { date: d, arrivals: arrivals.rows, departures: departures.rows,
                  inHouse: inHouse.rows }
