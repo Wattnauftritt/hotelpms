@@ -9,7 +9,13 @@ import { Stammdaten } from '../components/Stammdaten.tsx'
 import { ErsteSchritteContext } from '../lib/ersteSchritte.js'
 
 /**
- * Einrichtung eines Hauses.
+ * Zimmer und Zimmergruppen eines Hauses (im Menue „Zimmer", frueher
+ * „Einrichtung").
+ *
+ * Im Betrieb ist das die Seite, auf der Zimmer und Gruppen angelegt und
+ * gepflegt werden, und nur das (Sven, 09.10.2026). Die Liste dessen, was
+ * dem Haus noch fehlt, steht deshalb nur da, solange etwas fehlt: ein fertig
+ * eingerichtetes Haus braucht keine acht gruenen Haken über seinen Zimmern.
  *
  * Jedes Hotel hat einen anderen Zuschnitt, und es gibt keine Vorlage, die
  * mehr als die Hälfte davon trifft. Deshalb hier kein Assistent mit festen
@@ -35,6 +41,7 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
 
   return (
     <div className="space-y-6 max-w-5xl">
+      {!status.data.complete && (
       <section className="bg-white border border-neutral-200 rounded-sm p-4">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium">{t('setup.title')}</h2>
@@ -75,16 +82,18 @@ export function Setup({ propertyId }: { propertyId: number }): JSX.Element {
           ))}
         </ol>
       </section>
+      )}
 
+      {/* Anlegen konnte die Einrichtung schon, aendern nicht -- obwohl die
+          API es seit jeher kann. Die reine Anzeigetabelle weicht deshalb
+          der pflegbaren Liste. Sie steht oben, solange das Haus eingerichtet
+          ist: im Betrieb aendert man Zimmer haeufiger, als man neue anlegt. */}
+      {status.data.complete && <Stammdaten propertyId={propertyId} />}
       <NeueGruppe propertyId={propertyId} />
       <Serie propertyId={propertyId}
              kategorien={kategorien.data.categories.map(c => ({ id: c.id, code: c.code,
                                                                 name: c.name }))} />
-
-      {/* Anlegen konnte die Einrichtung schon, aendern nicht -- obwohl die
-          API es seit jeher kann. Die reine Anzeigetabelle weicht deshalb
-          der pflegbaren Liste. */}
-      <Stammdaten propertyId={propertyId} />
+      {!status.data.complete && <Stammdaten propertyId={propertyId} />}
     </div>
   )
 }

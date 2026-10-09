@@ -70,3 +70,38 @@ export function nachKraft<Z extends KontrollChipZimmer>(
     .sort((a, b) => a.name === null ? 1 : b.name === null ? -1
       : a.name.localeCompare(b.name, 'de'))
 }
+
+/**
+ * Die Aufgabe des Tages je Zimmer, fuer die Kacheln im Housekeeping.
+ *
+ * Seit die Kontrolle im Housekeeping steht (Sven, 09.10.2026), legt der
+ * Bildschirm zwei Antworten uebereinander: den Zimmerstand und die
+ * Kontrolle. Hat ein Zimmer mehr als eine Aufgabe, gilt die erste der
+ * Schnittstelle -- dieselbe, die die Personal-App zuerst zeigt.
+ * Reinigungsbereiche (0116) haben kein Zimmer und stehen nicht darin; sie
+ * bekommen im Housekeeping eigene Kacheln.
+ */
+export function jeZimmer<Z extends { resourceId: number | null }>(
+  rooms: readonly Z[]
+): Map<number, Z> {
+  const m = new Map<number, Z>()
+  for (const z of rooms) {
+    if (z.resourceId !== null && !m.has(z.resourceId)) m.set(z.resourceId, z)
+  }
+  return m
+}
+
+/**
+ * Welche Zimmer der Filter im Housekeeping zeigt.
+ *
+ * `kraft`: `undefined` heisst alle, `null` die nicht zugeteilten. Ersetzt die
+ * Karten je Kraft der alten Kontrollseite: dort sah die Hausdame auf einen
+ * Blick, was eine Kraft noch vor sich hat.
+ */
+export function kachelSichtbar(
+  z: KontrollChipZimmer | undefined, kraft: string | null | undefined, nurPruefen: boolean
+): boolean {
+  if (kraft !== undefined && (z === undefined || z.staffName !== kraft)) return false
+  if (nurPruefen && (z === undefined || chipZustand(z) !== 'toCheck')) return false
+  return true
+}

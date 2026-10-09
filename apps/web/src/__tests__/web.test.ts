@@ -144,6 +144,15 @@ describe('Bildschirme und Rechte', () => {
     expect(resolveScreen('setup', ['housekeeping:read'])?.key).toBe('housekeeping')
   })
 
+  it('fuehrt die alte Kontrolle ins Housekeeping, wo sie jetzt steht', () => {
+    // Sven, 09.10.2026: die Kontrolle ist im Housekeeping aufgegangen. Ein
+    // Lesezeichen darauf soll nicht still auf dem Kalender landen.
+    expect(SCREENS.some(s => s.key === 'inspection')).toBe(false)
+    expect(resolveScreen('inspection',
+      ['reservation:read', 'housekeeping:read', 'housekeeping:inspect'])?.key)
+      .toBe('housekeeping')
+  })
+
   it('sagt es, statt einen leeren Rahmen zu zeigen, wenn nichts erlaubt ist', () => {
     expect(resolveScreen('tape', [])).toBeUndefined()
   })

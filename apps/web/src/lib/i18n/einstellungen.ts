@@ -277,13 +277,13 @@ export const einstellungen = {
     en: 'Move down',
     tr: 'Aşağı taşı' },
   'master.orderHint': {
-    de: 'In dieser Reihenfolge stehen sie im Zimmerplan.',
-    en: 'This is their order in the room chart.',
-    tr: 'Oda planında bu sırayla görünürler.' },
+    de: 'In dieser Reihenfolge stehen sie im Kalender.',
+    en: 'This is their order in the calendar.',
+    tr: 'Takvimde bu sırayla görünürler.' },
   'master.sortOrderHint': {
-    de: 'Reihenfolge im Zimmerplan und in Listen.',
-    en: 'Order in the room chart and in lists.',
-    tr: 'Oda planındaki ve listelerdeki sıra.' },
+    de: 'Reihenfolge im Kalender und in Listen.',
+    en: 'Order in the calendar and in lists.',
+    tr: 'Takvimdeki ve listelerdeki sıra.' },
   'master.overbooking': {
     de: 'Überbuchung',
     en: 'Overbooking',
@@ -319,9 +319,9 @@ export const einstellungen = {
     en: 'Room name',
     tr: 'Oda adı' },
   'master.roomNameHint': {
-    de: 'Optional, z. B. „Dünenblick“. Steht im Zimmerplan neben der Nummer.',
-    en: 'Optional, e.g. “Dune View”. Shown next to the number in the room chart.',
-    tr: 'İsteğe bağlı, ör. „Kumul Manzarası“. Oda planında numaranın yanında görünür.' },
+    de: 'Optional, z. B. „Dünenblick“. Steht im Kalender neben der Nummer.',
+    en: 'Optional, e.g. “Dune View”. Shown next to the number in the calendar.',
+    tr: 'İsteğe bağlı, ör. „Kumul Manzarası“. Takvimde numaranın yanında görünür.' },
   'master.salesCode': {
     de: 'Verkaufscode',
     en: 'Sales code',

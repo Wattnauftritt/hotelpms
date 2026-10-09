@@ -8,7 +8,7 @@ import { ApiError } from '../lib/api.js'
 import { meinChip, type MeinZimmer } from '../personal/MeineZimmer.js'
 import { abschnitt, type KontrollZimmer } from '../personal/Kontrolle.js'
 import { tagName } from '../personal/Kueche.js'
-import { chipZustand, nachKraft } from '../lib/kontrollChips.js'
+import { chipZustand, jeZimmer, kachelSichtbar, nachKraft } from '../lib/kontrollChips.js'
 
 /**
  * Die Personal-App (Baustein 1b, Aufgabe 18 in Dokument 16).
@@ -235,5 +235,35 @@ describe('Kontrolle als Chips', () => {
                    k({ taskId: 3, staffName: 'Angela' }), k({ taskId: 4, staffName: 'Olga' })]
     expect(nachKraft(liste).map(g => [g.name, g.rooms.map(z => z.taskId)]))
       .toEqual([['Angela', [3]], ['Olga', [1, 4]], [null, [2]]])
+  })
+})
+
+describe('Kontrolle im Housekeeping', () => {
+  // Seit 09.10.2026 ohne eigenen Bildschirm: die Kacheln tragen sie mit.
+  const k = (teil: Partial<KontrollZimmer> & { resourceId?: number | null; areaId?: number }) => ({
+    taskId: 1, resourceId: 10 as number | null, areaId: null as number | null, code: '101', kind: 'departure' as const, staffName: 'Anna',
+    status: 'open' as const, outcome: null, inspection: null, inspectionNote: null,
+    free: true, arrivalToday: false, openProblems: 0, waived: false, ...teil })
+
+  it('nimmt je Zimmer die erste Aufgabe', () => {
+    const m = jeZimmer([k({ taskId: 1 }), k({ taskId: 2 }), k({ taskId: 3, resourceId: 11 }),
+                        k({ taskId: 4, resourceId: null, areaId: 1, code: 'Bad' })])
+    expect(m.get(10)?.taskId).toBe(1)
+    expect(m.get(11)?.taskId).toBe(3)
+    // Ein Bereich hat kein Zimmer; er bekommt eine eigene Kachel.
+    expect(m.size).toBe(2)
+  })
+
+  it('filtert nach Kraft und nach "nur zu kontrollieren"', () => {
+    const anna = k({ status: 'done', outcome: 'cleaned' })
+    const offen = k({ staffName: null })
+    expect(kachelSichtbar(anna, undefined, false)).toBe(true)
+    expect(kachelSichtbar(undefined, undefined, false)).toBe(true)
+    expect(kachelSichtbar(anna, 'Anna', true)).toBe(true)
+    expect(kachelSichtbar(anna, 'Olga', false)).toBe(false)
+    expect(kachelSichtbar(offen, null, false)).toBe(true)
+    expect(kachelSichtbar(offen, null, true)).toBe(false)
+    // Ein Zimmer ohne Aufgabe gehoert keiner Kraft.
+    expect(kachelSichtbar(undefined, null, false)).toBe(false)
   })
 })

@@ -7,7 +7,8 @@ import { useInstallation } from '../lib/pwa.js'
 import { useEscape } from '../lib/tasten.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
 import { Detailsuche } from './Detailsuche.tsx'
-import type { ScreenDefinition } from '../screens.js'
+import type { Gruppe, ScreenDefinition } from '../screens.js'
+import { inLeistenReihenfolge } from '../lib/leiste.js'
 import { useSchmal } from '../lib/mobil.js'
 import { MobilShell } from './mobil/MobilShell.tsx'
 
@@ -76,36 +77,60 @@ function navKnopf(aktiv: boolean): string {
  * Die Leiste rechnet mit Plaetzen, nicht mit Bildschirmen. Sonst nahmen
  * Einrichtung, Wartung, Einstellungen, Datenuebernahme und Gaesteterminals
  * fuenf Plaetze vorn ein, die man an der Rezeption fast nie braucht.
+ *
+ * `rechts`: das Menue steht immer sichtbar am rechten Ende und klappt nicht
+ * ins "Mehr" ein (die Einstellungen). Ein Menue ohne das Merkmal steht an
+ * seiner Stelle in der Reihe und wandert wie ein Bildschirm ins "Mehr".
  */
 export interface NavEintrag {
   key: string
   nav: TextKey
   screens: readonly ScreenDefinition[]
   gruppe: boolean
+  rechts: boolean
 }
 
-const GRUPPEN: Record<NonNullable<ScreenDefinition['group']>, TextKey> = {
-  settings: 'nav.settings'
+const GRUPPEN: Record<Gruppe, { nav: TextKey; rechts: boolean }> = {
+  settings: { nav: 'nav.settings', rechts: true },
+  housekeeping: { nav: 'nav.housekeepingGroup', rechts: false }
 }
 
 /**
  * Fasst die erlaubten Bildschirme zu Plaetzen zusammen.
  *
- * Die Bildschirme behalten ihre Reihenfolge aus `SCREENS`, das Adminpanel
- * bleibt hinten, weil es nicht zum Haus gehoert; die Menues stehen am
- * Schluss. Eine Gruppe ohne erlaubten Bildschirm erscheint nicht -- ein
- * leeres Menue ist ein Knopf ohne Wirkung.
+ * Die Reihenfolge kommt aus `inLeistenReihenfolge`, das Adminpanel bleibt
+ * hinten, weil es nicht zum Haus gehoert; die Menues am rechten Rand stehen
+ * am Schluss. Eine Gruppe ohne erlaubten Bildschirm erscheint nicht -- ein
+ * leeres Menue ist ein Knopf ohne Wirkung. Eine Gruppe in der Reihe mit nur
+ * **einem** erlaubten Bildschirm erscheint als dieser Bildschirm: die Kueche
+ * sieht "Fruehstueck", nicht ein Menue "Housekeeping" mit einer Zeile darin.
  */
 export function navEintraege(screens: readonly ScreenDefinition[]): NavEintrag[] {
   const einzeln = (s: ScreenDefinition): NavEintrag =>
-    ({ key: s.key, nav: s.nav, screens: [s], gruppe: false })
-  const haus = screens.filter(s => s.group === undefined && s.platformStaff !== true)
-  const plattform = screens.filter(s => s.group === undefined && s.platformStaff === true)
-  const gruppen = Object.entries(GRUPPEN).flatMap(([key, nav]) => {
-    const darin = screens.filter(s => s.group === key)
-    return darin.length === 0 ? [] : [{ key: `gruppe:${key}`, nav, screens: darin, gruppe: true }]
-  })
-  return [...haus.map(einzeln), ...plattform.map(einzeln), ...gruppen]
+    ({ key: s.key, nav: s.nav, screens: [s], gruppe: false, rechts: false })
+  const sortiert = inLeistenReihenfolge(screens)
+  const inGruppe = (s: ScreenDefinition, rechts: boolean): boolean =>
+    s.group !== undefined && GRUPPEN[s.group].rechts === rechts
+  const reihe: NavEintrag[] = []
+  const gesehen = new Set<string>()
+  for (const s of sortiert.filter(x => x.platformStaff !== true && !inGruppe(x, true))) {
+    if (s.group === undefined) { reihe.push(einzeln(s)); continue }
+    if (gesehen.has(s.group)) continue
+    gesehen.add(s.group)
+    const darin = sortiert.filter(x => x.group === s.group)
+    reihe.push(darin.length === 1 ? einzeln(s)
+      : { key: `gruppe:${s.group}`, nav: GRUPPEN[s.group].nav, screens: darin,
+          gruppe: true, rechts: false })
+  }
+  const plattform = sortiert.filter(s => s.platformStaff === true && s.group === undefined)
+  const rechts = (Object.entries(GRUPPEN) as Array<[Gruppe, { nav: TextKey; rechts: boolean }]>)
+    .filter(([, g]) => g.rechts)
+    .flatMap(([key, g]) => {
+      const darin = sortiert.filter(s => s.group === key)
+      return darin.length === 0 ? []
+        : [{ key: `gruppe:${key}`, nav: g.nav, screens: darin, gruppe: true, rechts: true }]
+    })
+  return [...reihe, ...plattform.map(einzeln), ...rechts]
 }
 
 /**
@@ -210,8 +235,8 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
   const rahmen = useRef<HTMLDivElement>(null)
   const muster = useRef<HTMLDivElement>(null)
   const alle = useMemo(() => navEintraege(screens), [screens])
-  const eintraege = useMemo(() => alle.filter(e => !e.gruppe), [alle])
-  const gruppen = alle.filter(e => e.gruppe)
+  const eintraege = useMemo(() => alle.filter(e => !e.rechts), [alle])
+  const gruppen = alle.filter(e => e.rechts)
   const [sichtbar, setSichtbar] = useState(eintraege.length)
 
   const aktiv = eintraege.findIndex(e => e.screens.some(s => s.key === screen))
@@ -260,7 +285,7 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
           <div ref={muster} className="flex w-max gap-1">
             {eintraege.map(e => (
               <span key={e.key} data-eintrag className={navKnopf(false)}>
-                {t(e.nav)}
+                {t(e.nav)}{e.gruppe && <> <span className="text-xs">▾</span></>}
               </span>
             ))}
             {eintraege.map(e => (
@@ -275,19 +300,39 @@ function Nav({ screen, onScreen, screens }: Pick<Props, 'screen' | 'onScreen' | 
         </div>
 
         <nav className="flex gap-1">
-          {vorne.map(e => (
-            <button key={e.key} type="button" onClick={() => onScreen(e.key)}
-                    aria-current={screen === e.key ? 'page' : undefined}
-                    className={navKnopf(screen === e.key)}>
-              {t(e.nav)}
-            </button>
-          ))}
+          {vorne.map(e => e.gruppe
+            ? (
+              <Aufklapp key={e.key} beschriftung={t(e.nav)} titel={t(e.nav)}
+                        aktiv={e.screens.some(s => s.key === screen)}>
+                {zu => e.screens.map(s => (
+                  <MenueZeile key={s.key} s={s} screen={screen} onWahl={waehlen(zu)} />
+                ))}
+              </Aufklapp>
+            )
+            : (
+              <button key={e.key} type="button" onClick={() => onScreen(e.key)}
+                      aria-current={screen === e.key ? 'page' : undefined}
+                      className={navKnopf(screen === e.key)}>
+                {t(e.nav)}
+              </button>
+            ))}
           {hinten.length > 0 && (
             <Aufklapp beschriftung={aktivHinten !== undefined ? t(aktivHinten.nav) : t('nav.more')}
                       titel={t('nav.more')} aktiv={aktivHinten !== undefined}>
-              {zu => hinten.map(e => (
-                <MenueZeile key={e.key} s={e.screens[0]!} screen={screen} onWahl={waehlen(zu)} />
-              ))}
+              {/* Ein Menue im "Mehr" klappt nicht ein zweites Mal auf: es
+                  steht als Ueberschrift ueber seinen Zeilen. */}
+              {zu => hinten.map(e => e.gruppe
+                ? (
+                  <div key={e.key} role="group" aria-label={t(e.nav)}>
+                    <div className="px-3 pt-2 pb-0.5 text-xs font-medium text-neutral-500">
+                      {t(e.nav)}
+                    </div>
+                    {e.screens.map(s => (
+                      <MenueZeile key={s.key} s={s} screen={screen} onWahl={waehlen(zu)} />
+                    ))}
+                  </div>
+                )
+                : <MenueZeile key={e.key} s={e.screens[0]!} screen={screen} onWahl={waehlen(zu)} />)}
             </Aufklapp>
           )}
         </nav>

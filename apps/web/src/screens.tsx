@@ -4,7 +4,6 @@ import { Tape } from './routes/Tape.tsx'
 import { Today } from './routes/Today.tsx'
 import { Housekeeping } from './routes/Housekeeping.tsx'
 import { Reinigungsplan } from './routes/Reinigungsplan.tsx'
-import { Kontrolle } from './routes/Kontrolle.tsx'
 import { Fruehstueck } from './routes/Fruehstueck.tsx'
 import { Arbeitszeit } from './routes/Arbeitszeit.tsx'
 import { Blocks } from './routes/Blocks.tsx'
@@ -88,6 +87,9 @@ export interface ScreenContext {
   openCheckIn: (reservationRef: string) => void
 }
 
+/** Die Menues der Leiste; was sie anzeigen und wo, steht in der Shell. */
+export type Gruppe = 'settings' | 'housekeeping'
+
 export interface ScreenDefinition {
   /** Steht so in der Adresse: `?screen=tape`. Nie umbenennen, es gibt Lesezeichen. */
   key: string
@@ -121,8 +123,13 @@ export interface ScreenDefinition {
    * weder Schluessel noch Rechte: die Liste hier bleibt flach, damit
    * Lesezeichen und `resolveScreen` gleich bleiben; nur die Leiste fasst
    * zusammen.
+   *
+   * „housekeeping" fasst Zimmerstand, Reinigungsplan, Fruehstueck und
+   * Arbeitszeit unter einem Platz vorn in der Leiste zusammen (Sven,
+   * 09.10.2026). Anders als die Einstellungen steht dieses Menue an seiner
+   * Stelle in der Reihenfolge, nicht am rechten Rand.
    */
-  group?: 'settings'
+  group?: Gruppe
   render: (ctx: ScreenContext) => JSX.Element
 }
 
@@ -140,8 +147,10 @@ export const SCREENS: readonly ScreenDefinition[] = [
                                                  onFolio={c.openFolio}
                                                  onCheckIn={c.openCheckIn} />} /> },
   { key: 'housekeeping', nav: 'nav.housekeeping', permission: 'housekeeping:read',
+    group: 'housekeeping',
     render: c => <NachBreite schmal={() => <MobilZimmer propertyId={c.propertyId} />}
-                             breit={() => <Housekeeping propertyId={c.propertyId} />} /> },
+                             breit={() => <Housekeeping propertyId={c.propertyId}
+                                                        permissions={c.permissions} />} /> },
   { key: 'blocks', nav: 'nav.blocks', permission: 'inventory:read',
     render: c => <Blocks propertyId={c.propertyId} /> },
   { key: 'setup', group: 'settings', nav: 'nav.setup', permission: 'settings:property',
@@ -155,7 +164,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'settings', group: 'settings', nav: 'nav.settingsGeneral',
     permission: ['integration:manage', 'settings:property'],
     render: c => <Settings propertyId={c.propertyId} /> },
-  { key: 'integrations', nav: 'nav.integrations', permission: 'integration:manage',
+  { key: 'integrations', group: 'settings', nav: 'nav.integrations', permission: 'integration:manage',
     render: c => <Integrations propertyId={c.propertyId} /> },
   // Personal einladen, Rollen vergeben, sperren. Stand frueher als Reiter
   // unter „Schnittstellen" und wurde dort nicht gefunden.
@@ -199,15 +208,25 @@ export const SCREENS: readonly ScreenDefinition[] = [
   // Zimmer den Reinigungskraeften zuteilen (0106). Angehaengt, nicht hinter
   // Housekeeping eingefuegt: an den Schluesseln davor haengen Lesezeichen,
   // und die Hausdame beginnt weiter mit dem Zimmerstand.
-  { key: 'cleaningPlan', nav: 'nav.cleaningPlan', permission: 'housekeeping:plan',
+  { key: 'cleaningPlan', group: 'housekeeping', nav: 'nav.cleaningPlan', permission: 'housekeeping:plan',
     render: c => <Reinigungsplan propertyId={c.propertyId} /> },
-  { key: 'inspection', nav: 'nav.inspection', permission: 'housekeeping:inspect',
-    render: c => <Kontrolle propertyId={c.propertyId} /> },
-  { key: 'breakfast', nav: 'nav.breakfast', permission: 'kitchen:breakfast',
+  // „inspection" (Kontrolle) steht seit 09.10.2026 im Housekeeping; die
+  // alte Adresse fuehrt dorthin (`UMGEZOGEN`).
+  { key: 'breakfast', group: 'housekeeping', nav: 'nav.breakfast', permission: 'kitchen:breakfast',
     render: c => <Fruehstueck propertyId={c.propertyId} /> },
-  { key: 'worktime', nav: 'nav.worktime', permission: 'worktime:manage',
+  { key: 'worktime', group: 'housekeeping', nav: 'nav.worktime', permission: 'worktime:manage',
     render: c => <Arbeitszeit propertyId={c.propertyId} /> }
 ]
+
+/**
+ * Bildschirme, die in einem anderen aufgegangen sind.
+ *
+ * Ein Lesezeichen auf die alte Adresse soll dort ankommen, wo die Arbeit
+ * jetzt steht, und nicht still auf dem Zimmerplan.
+ */
+const UMGEZOGEN: Readonly<Record<string, string>> = {
+  inspection: 'housekeeping'
+}
 
 /** Die Bildschirme, die dieser Benutzer in diesem Haus benutzen darf. */
 export function visibleScreens(
@@ -248,6 +267,7 @@ export function resolveScreen(
   start: string | null = null
 ): ScreenDefinition | undefined {
   const erlaubt = visibleScreens(permissions, platformStaff)
-  return erlaubt.find(s => s.key === adresse)
+  const ziel = adresse === null ? null : UMGEZOGEN[adresse] ?? adresse
+  return erlaubt.find(s => s.key === ziel)
     ?? erlaubt.find(s => s.key === start) ?? erlaubt[0]
 }
