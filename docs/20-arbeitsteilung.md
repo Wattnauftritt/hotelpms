@@ -142,6 +142,7 @@ Verschieben ist `assign-unit`, verkürzen und verlängern ist `change-stay`. Bei
 2. Texte in `lib/i18n/deinbereich.ts`, im Index importieren und in beide Sprachblöcke eintragen.
 3. Abfragen in `lib/queries/deinbereich.ts`.
 4. **Eine** Zeile ans Ende von `SCREENS` in `screens.tsx`, mit dem Recht, das ihn sichtbar macht.
+5. Seinen Platz in der Leiste: den Schlüssel in `REIHENFOLGE` (`lib/leiste.ts`) einsortieren und, wenn er in ein Menü gehört, `group` setzen (`housekeeping` vorn in der Reihe, `settings` rechts). Ohne diesen Schritt steht er hinten — sichtbar, nur nicht einsortiert.
 
 **Prüfe deinen Bildschirm mit einem Konto, das nicht alles darf.** Ein Bildschirm, der nur als `hotel_director` funktioniert, ist nicht fertig. `packages/testing` legt Benutzer mit beliebiger Rolle an.
 

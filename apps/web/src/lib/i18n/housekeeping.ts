@@ -54,6 +54,10 @@ export const housekeeping = {
     de: 'Auf sauber setzen',
     en: 'Mark as clean',
     tr: 'Temiz olarak işaretle' },
+  'hk.allStaff': {
+    de: 'alle Kräfte',
+    en: 'all cleaners',
+    tr: 'tüm temizlik görevlileri' },
   'hk.openTickets': {
     de: 'Offene Meldungen',
     en: 'Open tickets',

@@ -72,14 +72,26 @@ describe('Das Menue Einstellungen', () => {
     navEintraege(visibleScreens(rechte, plattform))
       .map(e => e.gruppe ? `${e.key}[${e.screens.map(s => s.key).join(',')}]` : e.key)
 
-  it('fasst die fuenf Bildschirme zu einem Platz am Ende zusammen', () => {
+  it('ordnet Leiste und Menues in Svens Reihenfolge (09.10.2026)', () => {
     const alle = ['reservation:read', 'reservation:checkin', 'housekeeping:read',
+                  'housekeeping:plan', 'kitchen:breakfast', 'worktime:manage',
                   'inventory:read', 'settings:property', 'integration:manage',
-                  'rate:read', 'guest:read', 'folio:read', 'report:operational']
+                  'user:manage', 'rate:read', 'guest:read', 'folio:read',
+                  'report:operational', 'cashbook:read']
     expect(plaetze(alle, true)).toEqual([
-      'tape', 'today', 'housekeeping', 'blocks', 'reports', 'integrations', 'rates',
-      'guests', 'availability', 'invoices', 'registrations', 'admin',
-      'gruppe:settings[setup,maintenance,settings,terminal,import]'])
+      'tape', 'today',
+      'gruppe:housekeeping[housekeeping,cleaningPlan,breakfast,worktime]',
+      'blocks', 'guests', 'registrations', 'invoices', 'reports', 'availability', 'rates',
+      'cashbook', 'admin',
+      'gruppe:settings[setup,settings,maintenance,users,terminal,integrations,import]'])
+  })
+
+  it('zeigt ein Menue mit nur einem erlaubten Bildschirm als diesen Bildschirm', () => {
+    // Die Kueche sieht "Fruehstueck", kein Menue "Housekeeping" mit einer Zeile.
+    expect(plaetze(['kitchen:breakfast'])).toEqual(['breakfast'])
+    expect(plaetze(['housekeeping:read', 'housekeeping:plan']))
+      .toEqual(['gruppe:housekeeping[housekeeping,cleaningPlan]',
+                'gruppe:settings[maintenance]'])
   })
 
   it('zeigt im Menue nur, was das Recht erlaubt', () => {
@@ -95,6 +107,6 @@ describe('Das Menue Einstellungen', () => {
 
   it('klappt das Menue nicht ins "Mehr" ein', () => {
     // Es stuende sonst schon bei 1 920 Pixeln dort: ein Menue im Menue.
-    expect(shell).toContain('const eintraege = useMemo(() => alle.filter(e => !e.gruppe), [alle])')
+    expect(shell).toContain('const eintraege = useMemo(() => alle.filter(e => !e.rechts), [alle])')
   })
 })

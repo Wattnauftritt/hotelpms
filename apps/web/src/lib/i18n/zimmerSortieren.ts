@@ -22,9 +22,9 @@ export const zimmerSortieren = {
     en: 'Never',
     tr: 'Hiçbir zaman' },
   'roomSort.mode.manual': {
-    de: 'Auf Knopfdruck im Zimmerplan',
-    en: 'On request in the room plan',
-    tr: 'Oda planında düğmeyle' },
+    de: 'Auf Knopfdruck im Kalender',
+    en: 'On request in the calendar',
+    tr: 'Takvimde düğmeyle' },
   'roomSort.mode.auto': {
     de: 'Automatisch nach jeder Änderung',
     en: 'Automatically after every change',

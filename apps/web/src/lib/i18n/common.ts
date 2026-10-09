@@ -7,9 +7,9 @@ export const common = {
     en: 'StayGrid',
     tr: 'StayGrid' },
   'nav.tape': {
-    de: 'Zimmerplan',
-    en: 'Room chart',
-    tr: 'Oda planı' },
+    de: 'Kalender',
+    en: 'Calendar',
+    tr: 'Takvim' },
   'nav.today': {
     de: 'Rezeption',
     en: 'Front desk',
@@ -22,18 +22,24 @@ export const common = {
     de: 'Housekeeping',
     en: 'Housekeeping',
     tr: 'Kat hizmetleri' },
+  // Das Menue vorn; der erste Eintrag darin heisst wie das Menue selbst,
+  // so hat Sven es gewuenscht (09.10.2026).
+  'nav.housekeepingGroup': {
+    de: 'Housekeeping',
+    en: 'Housekeeping',
+    tr: 'Kat hizmetleri' },
   'nav.setup': {
-    de: 'Einrichtung',
-    en: 'Setup',
-    tr: 'Kurulum' },
+    de: 'Zimmer',
+    en: 'Rooms',
+    tr: 'Odalar' },
   'nav.guests': {
     de: 'Gäste',
     en: 'Guests',
     tr: 'Misafirler' },
   'nav.blocks': {
-    de: 'Gruppen',
-    en: 'Groups',
-    tr: 'Gruplar' },
+    de: 'Kontingente',
+    en: 'Allotments',
+    tr: 'Kontenjanlar' },
   'nav.more': {
     de: 'Mehr',
     en: 'More',

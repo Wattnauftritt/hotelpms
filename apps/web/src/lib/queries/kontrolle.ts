@@ -7,7 +7,9 @@ import { api } from '../api.js'
  */
 export interface KontrollZimmer {
   taskId: number
-  resourceId: number
+  /** Ein Reinigungsbereich (0116, etwa das Bad) hat kein Zimmer, nur `areaId`. */
+  resourceId: number | null
+  areaId: number | null
   code: string
   categoryCode: string
   kind: 'departure' | 'stayover'
@@ -27,9 +29,12 @@ export interface KontrollTag { date: string; rooms: KontrollZimmer[] }
 
 const schluessel = (propertyId: number) => ['inspection', propertyId]
 
-export const useKontrolle = (propertyId: number) =>
+// `enabled`: der Housekeeping-Bildschirm fragt nur, wer kontrollieren darf --
+// sonst stuende dort fuer jede Kraft eine 403.
+export const useKontrolle = (propertyId: number, enabled = true) =>
   useQuery<KontrollTag>({
     queryKey: schluessel(propertyId),
+    enabled,
     queryFn: () => api.get(`/v1/properties/${propertyId}/inspection`),
     // Die Kraefte melden laufend; die Hausdame soll nicht neu laden muessen.
     refetchInterval: 60_000

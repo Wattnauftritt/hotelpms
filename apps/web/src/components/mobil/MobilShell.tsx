@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { I18nContext, useT, type TextKey } from '../../lib/i18n/index.js'
 import { useOnline } from '../../lib/offline.js'
 import { useEscape } from '../../lib/tasten.js'
+import { inLeistenReihenfolge } from '../../lib/leiste.js'
 import { Hauswahl } from '../Hauswahl.tsx'
 import { Detailsuche } from '../Detailsuche.tsx'
 import { Abmelden, Installieren, OfflineHinweis, Sprachwahl, Uebungshinweis, ZurPersonalApp,
@@ -49,7 +50,7 @@ function Rahmen(props: ShellProps): JSX.Element {
   const erlaubt = new Set(props.screens.map(s => s.key))
   const vorn = VORN.filter(v => erlaubt.has(v.key))
   const vornKeys = new Set(vorn.map(v => v.key))
-  const hinten = props.screens.filter(s => !vornKeys.has(s.key))
+  const hinten = inLeistenReihenfolge(props.screens.filter(s => !vornKeys.has(s.key)))
   const mehrAktiv = !vornKeys.has(props.screen)
   const kopf = useKopfhoehe()
 
