@@ -111,6 +111,50 @@ BEGIN
 END $$;
 
 /*
+ * Dasselbe fuer das Umgruppieren eines Zimmers (0080): erst zieht der
+ * Trigger am Zimmer den Platz in die neue Gruppe, dann gibt die Funktion
+ * ihn in der alten frei -- dort steht dazwischen 0, und das Abschneiden
+ * liess einen Platz stehen, den niemand mehr haelt.
+ */
+CREATE OR REPLACE FUNCTION inventory_carry_room(
+  p_property bigint, p_resource bigint, p_from_category bigint, p_to_category bigint
+) RETURNS TABLE (reservation_id bigint, public_ref text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  PERFORM assert_property_in_context(p_property);
+  IF p_from_category = p_to_category THEN RETURN; END IF;
+
+  RETURN QUERY
+  WITH mit AS (
+    UPDATE reservation r
+       SET category_id = p_to_category, updated_at = now()
+     WHERE r.property_id = p_property AND r.resource_id = p_resource
+       AND r.category_id = p_from_category
+       AND r.status IN ('Optional','Confirmed','InHouse')
+       AND r.departure > current_date
+       AND r.block_id IS NULL
+    RETURNING r.id, r.public_ref, greatest(r.arrival, current_date) AS von, r.departure AS bis
+  ), naechte AS (
+    SELECT d::date AS date, count(*)::integer AS n
+      FROM mit, generate_series(mit.von, mit.bis - 1, interval '1 day') AS d
+     GROUP BY 1
+  ), je_gruppe AS (
+    -- Die Haussumme bleibt: der Gast zieht nur von einer Gruppe in die andere.
+    SELECT p_from_category AS category_id, date, -n AS delta FROM naechte
+    UNION ALL
+    SELECT p_to_category, date, n FROM naechte
+  ), bestand AS (
+    UPDATE inventory_day inv
+       SET sold = inv.sold + g.delta, updated_at = now()
+      FROM je_gruppe g
+     WHERE inv.property_id = p_property AND inv.category_id = g.category_id
+       AND inv.date = g.date
+    RETURNING 1
+  )
+  SELECT mit.id, mit.public_ref FROM mit;
+END $$;
+
+/*
  * Wendet Zeilen (Haus, Gruppe, Tag, Anzahl) auf `sold` an. Tage ohne
  * Bestandszeile werden uebergangen; Anwenden und Zuruecknehmen uebergehen
  * dieselben.
