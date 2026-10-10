@@ -175,6 +175,38 @@ describe('Anlegen und Abgleichen', () => {
       segments: [{ roomCode: '6101', arrival: '2026-11-03', departure: '2026-11-05' }] })
     expect(r.statusCode).toBe(201)
     expect((JSON.parse(r.body) as Antwort).reservations![0]!.conflict).toBe('room')
+
+    // Nicht unter dem anderen Balken, sondern in der Ablage (Sven, 10.10.2026),
+    // mit dem gewollten Zimmer vermerkt.
+    const zeile = await owner.query<{ resource_id: number | null; wanted: string | null }>(
+      `SELECT r.resource_id, z.code AS wanted FROM reservation r
+         JOIN booking b ON b.id = r.booking_id
+         LEFT JOIN resource z ON z.id = r.channel_wanted_resource_id
+        WHERE b.external_reference = 'rc-2'`)
+    expect(zeile.rows[0]).toEqual({ resource_id: null, wanted: '6101' })
+  })
+
+  it('legt eine wartende Buchung in ihr Zimmer, sobald ein Push es frei macht', async () => {
+    const token = await zugang()
+    await put(token, 'rc-1', {
+      segments: [{ roomCode: '6101', arrival: '2026-11-02', departure: '2026-11-04' }] })
+    // Das Umsystem sortiert um: rc-2 will 6101, bevor rc-1 dort ausgezogen ist.
+    const zwei = await put(token, 'rc-2', {
+      segments: [{ roomCode: '6101', arrival: '2026-11-02', departure: '2026-11-04' }] })
+    expect((JSON.parse(zwei.body) as Antwort).reservations![0]!.conflict).toBe('room')
+    await put(token, 'rc-1', {
+      segments: [{ roomCode: '6102', arrival: '2026-11-02', departure: '2026-11-04' }] })
+
+    const zeilen = await owner.query<{ ref: string; code: string | null
+                                       konflikt: string | null }>(
+      `SELECT b.external_reference AS ref, z.code, r.channel_conflict AS konflikt
+         FROM reservation r JOIN booking b ON b.id = r.booking_id
+         LEFT JOIN resource z ON z.id = r.resource_id
+        WHERE r.status = 'Confirmed' ORDER BY b.external_reference`)
+    expect(zeilen.rows).toEqual([
+      { ref: 'rc-1', code: '6102', konflikt: null },
+      { ref: 'rc-2', code: '6101', konflikt: null }])
+    expect(await verkauft('2026-11-02', '2026-11-04')).toEqual([2, 2])
   })
 
   it('nimmt eine Buchung an, wenn die Gruppe voll ist', async () => {
