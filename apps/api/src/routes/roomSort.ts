@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import type { PoolClient } from '@hotelpms/db'
 import {
   ROOM_SORT_MODES, checkRoomSortWeights, resolveRoomSortWeights, sortRooms, isIsoDate,
-  nightsBetween, type RoomSortMode, type RoomSortWeights, type SortRoom, type SortStay
+  nightsBetween, addDays, type RoomSortMode, type RoomSortWeights, type SortRoom, type SortStay
 } from '@hotelpms/domain'
 import { emitEvent } from '../platform/events.js'
 import type { Principal } from '../platform/context.js'
@@ -211,7 +211,10 @@ function beweglich(x: StayRow, l: Lage, from: string, to: string): boolean {
   if (x.room_fixed || x.channel_owner === 'local') return false
   if (x.arrival < from || x.departure > to) return false
   if (x.arrival < l.today) return false
-  if (l.keepToday && x.arrival === l.today) return false
+  // Fest heisst: das Zimmer bleibt. Wer heute anreist und noch keines hat,
+  // bekommt eines -- sonst stuende ein Gast aus RoomCloud, der heute frueh
+  // gebucht hat, bis morgen in der Ablage.
+  if (l.keepToday && x.arrival === l.today && x.resource_id !== null) return false
   return true
 }
 
@@ -294,6 +297,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
       const pid = Number(propertyId)
 
       return tx(req.pool, req, async client => {
+        await sortierSperre(client, pid)
         const l = await lage(client, pid, from, to, true)
         if (l.basis !== b.basis) throw Errors.conflict('roomSort.changed')
 
@@ -314,22 +318,9 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
         if (wunsch.length !== soll.size) throw Errors.conflict('roomSort.changed')
 
         const zuege = [...soll.values()]
-        await schreiben(client, zuege.map(m => ({ id: m.stayId, resourceId: m.toRoomId })))
-
-        const run = await client.query<{ public_ref: string }>(
-          `INSERT INTO room_sort_run (property_id, from_date, to_date, trigger, moves, created_by)
-           VALUES ($1, $2, $3, 'manual', $4::jsonb, $5) RETURNING public_ref`,
-          [pid, from, to, JSON.stringify(zuege.map(m => ({
-            reservationId: m.stayId, fromResourceId: m.fromRoomId, toResourceId: m.toRoomId }))),
-           principal.userId ?? null])
-
-        for (const m of zuege) {
-          const x = nachId.get(m.stayId)!
-          await emitEvent(client, pid, 'reservation.changed', {
-            reservationRef: x.public_ref, resourceId: m.toRoomId,
-            arrival: x.arrival, departure: x.departure, categoryId: Number(x.category_id) })
-        }
-        return { runRef: run.rows[0]!.public_ref, moved: zuege.length }
+        const runRef = await laufSchreiben(client, pid, from, to, 'manual', zuege, nachId,
+          principal.userId ?? null)
+        return { runRef, moved: zuege.length }
       })
     }
   })
@@ -403,7 +394,14 @@ async function schreiben(
 ): Promise<void> {
   await client.query(`SELECT set_config('app.room_sort', 'on', true)`)
   await client.query(
-    `UPDATE reservation r SET resource_id = x.res, updated_at = now()
+    // Wer ein Zimmer bekommt, wartet nicht mehr auf das, das die Quelle
+    // wollte (0121): sonst legte ihn der naechste Push dorthin zurueck, und
+    // der Konfliktvermerk am Balken stimmte nicht mehr.
+    `UPDATE reservation r SET resource_id = x.res, updated_at = now(),
+            channel_wanted_resource_id = CASE WHEN x.res IS NULL
+                                              THEN r.channel_wanted_resource_id END,
+            channel_conflict = CASE WHEN x.res IS NOT NULL AND r.channel_conflict = 'room'
+                                    THEN NULL ELSE r.channel_conflict END
        FROM unnest($1::bigint[], $2::bigint[]) AS x(id, res)
       WHERE r.id = x.id`,
     [zuege.map(z => z.id), zuege.map(z => z.resourceId)])
@@ -425,4 +423,76 @@ async function schreiben(
     throw Errors.conflict('roomSort.roomTaken',
       { room: konflikt.rows[0]!.code, reservation: konflikt.rows[0]!.ref })
   }
+}
+
+/** Zuege schreiben, den Lauf festhalten und je Reservierung ein Ereignis. */
+async function laufSchreiben(
+  client: PoolClient, pid: number, from: string, to: string, trigger: 'manual' | 'auto',
+  zuege: ReturnType<typeof sortRooms>['moves'], nachId: Map<number, StayRow>,
+  userId: number | null
+): Promise<string> {
+  await schreiben(client, zuege.map(m => ({ id: m.stayId, resourceId: m.toRoomId })))
+  const run = await client.query<{ public_ref: string }>(
+    `INSERT INTO room_sort_run (property_id, from_date, to_date, trigger, moves, created_by)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING public_ref`,
+    [pid, from, to, trigger, JSON.stringify(zuege.map(m => ({
+      reservationId: m.stayId, fromResourceId: m.fromRoomId, toResourceId: m.toRoomId }))),
+     userId])
+  for (const m of zuege) {
+    const x = nachId.get(m.stayId)!
+    await emitEvent(client, pid, 'reservation.changed', {
+      reservationRef: x.public_ref, resourceId: m.toRoomId,
+      arrival: x.arrival, departure: x.departure, categoryId: Number(x.category_id) })
+  }
+  return run.rows[0]!.public_ref
+}
+
+/**
+ * Ein Sortierlauf je Haus zur Zeit.
+ *
+ * Der Lauf sperrt alle Aufenthalte des Zeitraums, ein Push vorher seine
+ * Buchung. Laufen zwei Pushes gleichzeitig, haelt jeder seine Buchung und
+ * wartet auf die des anderen -- eine Verklemmung, die PostgreSQL mit einem
+ * Abbruch aufloest. Die Sperre je Haus kommt deshalb zuerst, vor jeder
+ * Zeilensperre.
+ */
+export async function sortierSperre(client: PoolClient, propertyId: number): Promise<void> {
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext('room_sort'), $1::int)`,
+    [propertyId])
+}
+
+/** Vergibt StayGrid in diesem Haus die Zimmer selbst (Modus `auto`, E1)? */
+export async function vergibtSelbst(client: PoolClient, propertyId: number): Promise<boolean> {
+  const r = await client.query<{ mode: RoomSortMode }>(
+    `SELECT mode FROM room_sort_setting WHERE property_id = $1`, [propertyId])
+  return r.rows[0]?.mode === 'auto'
+}
+
+/** Ein Jahr: so weit reicht, was RoomCloud im Gaestehaus verkauft. */
+const AUTO_SORT_DAYS = 366
+
+/**
+ * Automatisch sortieren (Modus `auto`, Gaestehaus).
+ *
+ * Laeuft am Ende eines Pushes in derselben Transaktion: die Buchung kommt
+ * ohne Zimmer an und hat danach eines, ohne dass jemand den Plan ansieht.
+ * Ab dem Geschaeftstag, weil die Anreisen von heute ohne Zimmer auch eines
+ * brauchen; wer heute schon eines hat, behaelt es (`beweglich`). Schreibt
+ * wie Uebernehmen und legt einen Lauf an, damit auch ein automatischer Zug
+ * im Verlauf steht und sich zuruecknehmen laesst. Der Aufrufer haelt
+ * `sortierSperre`.
+ */
+export async function autoSortieren(client: PoolClient, propertyId: number): Promise<number> {
+  if (!await vergibtSelbst(client, propertyId)) return 0
+  const heute = (await client.query<{ d: string }>(
+    `SELECT COALESCE((SELECT max(b.date) FROM business_day b WHERE b.property_id = $1),
+                     current_date)::text AS d`, [propertyId])).rows[0]!.d
+  const from = heute
+  const to = addDays(heute, AUTO_SORT_DAYS)
+  const l = await lage(client, propertyId, from, to, true)
+  const r = rechnen(l, from, to)
+  if (r.moves.length === 0) return 0
+  const nachId = new Map(l.stays.map(x => [Number(x.id), x]))
+  await laufSchreiben(client, propertyId, from, to, 'auto', r.moves, nachId, null)
+  return r.moves.length
 }

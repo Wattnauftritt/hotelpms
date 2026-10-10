@@ -93,6 +93,9 @@ export function ZimmerSortierenEinstellung({ propertyId }: { propertyId: number 
             {t(`roomSort.mode.${m}` as TextKey)}
           </label>
         ))}
+        {modus === 'auto' && (
+          <p className="text-xs text-neutral-500 pl-6">{t('roomSort.mode.autoHint')}</p>
+        )}
       </fieldset>
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" className="mt-1" checked={heuteFest}

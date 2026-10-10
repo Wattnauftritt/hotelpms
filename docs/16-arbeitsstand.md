@@ -1055,7 +1055,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Offen.** Nichts im Code. Bis zum Stichtag exportiert nur das Adminpanel an DATEV.
 
-### Aufgabe 17 — Zimmer sortieren — **Schritte 1, 2 und 4 von 4**
+### Aufgabe 17 — Zimmer sortieren — **fertig in StayGrid, Schritte 1 bis 4**
 
 **Anlass.** Sven, 07.10.2026: StayGrid verteilt Buchungen auf Zimmer, im Gästehaus automatisch, im Hotel auf Knopfdruck. Die Regeln stammen aus dem Adminpanel, das beides bisher selbst gemacht hat. Svens Entscheidung: StayGrid übernimmt die Zimmervergabe im Gästehaus sofort, das Adminpanel hört gleichzeitig damit auf; an RoomCloud meldet es nur noch die Zahl freier Zimmer. Plan: Projektordner `zimmer-sortierung/plan.md`.
 
@@ -1065,7 +1065,9 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Schritt 4 (Knopf im Zimmerplan).** Knopf „Zimmer sortieren" in der Leiste des Zimmerplans, nur mit `reservation:write` und wenn das Haus nicht „Nie" eingestellt hat (`components/ZimmerSortieren.tsx`). Migration `0122`: `room_sort_run` hält jeden Lauf mit seinen Zügen (nur Kennungen, kein Name), und `channel_owner_from_reservation` überspringt Züge mit `app.room_sort` — sonst stünde jede gepushte Gästehausbuchung nach dem ersten Sortieren auf `local`. Routen: `POST …/room-sort/preview` (höchstens 62 Tage, schreibt nichts, liefert einen Fingerabdruck `basis` des Plans), `…/apply` schreibt genau die Züge der Vorschau und lehnt ab, wenn sich der Plan seitdem geändert hat, `…/runs/:runRef/undo` nimmt einen Lauf zurück, aber nur, wenn seitdem niemand einen der Gäste anders gelegt hat. Tests: `zimmerSortieren.test.ts`.
 
-**Offen.** Schritt 3: Gästehaus — Push ohne `roomCode`, Vergabe beim Eingang, Automatik im Worker für Häuser mit Modus `auto`; das Adminpanel hört gleichzeitig auf, Zimmer zu vergeben.
+**Schritt 3 (Gästehaus vergibt StayGrid).** Im Kanalpush (`routes/channelPush.ts`) ist `segments[].roomCode` optional; ohne Zimmer kommt die Gruppe aus `categoryCode` oder ist die einzige des Hauses. Der Schalter ist der Modus des Hauses, nicht der Rumpf: steht er auf `auto`, gilt ein mitgeschicktes Zimmer nicht mehr, ein Aufenthalt behält sein bisheriges, solange es frei ist (`zimmerFreiMachen`), und am Ende jedes PUT und jedes Stornos sortiert `autoSortieren()` ab dem Geschäftstag ein Jahr voraus, in derselben Transaktion, mit einem Lauf `trigger = 'auto'`. Heutige Anreisen ohne Zimmer bekommen eines, auch wenn „heutige Anreisen fest" eingestellt ist. Eine Sperre je Haus (`sortierSperre`, `pg_advisory_xact_lock`) kommt vor jeder Zeilensperre, damit zwei Pushes sich nicht verklemmen. Ohne `auto` landet ein Abschnitt ohne Zimmer in der Ablage. Kein Worker: was an der Rezeption entsteht, sortiert der Knopf oder der nächste Push. Tests: `kanalUmsystem.test.ts`, „StayGrid vergibt die Zimmer".
+
+**Offen.** Das Adminpanel hört auf, im Gästehaus Zimmer zu vergeben, und meldet RoomCloud die Zahl freier Zimmer statt einzelner; die Änderung dort braucht Svens OK in seinem eigenen Thread. In StayGrid wird dann das Gästehaus unter Einstellungen > Zimmer sortieren auf „Automatisch" gestellt — das ist der Umschalttag.
 
 ### Aufgabe 18 — Personalsystem und Personal-App — **fertig, Bausteine 1 bis 10**
 
