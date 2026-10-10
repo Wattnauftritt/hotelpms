@@ -1417,9 +1417,12 @@ export const plan = {
     en: 'The source has canceled this booking. Please check.',
     tr: 'Kaynak bu rezervasyonu iptal etti. Lütfen kontrol edin.' },
   'plan.channel.conflictRoom': {
-    de: 'Beim Übernehmen war das Zimmer schon belegt.',
-    en: 'The room was already occupied when this was taken over.',
-    tr: 'Aktarım sırasında oda zaten doluydu.' },
+    de: 'Beim Übernehmen war das Zimmer schon belegt. Die Buchung liegt in der Ablage '
+      + 'und kommt in ihr Zimmer, sobald es frei ist.',
+    en: 'The room was already occupied when this was taken over. The booking is in the '
+      + 'holding area and moves to its room as soon as it is free.',
+    tr: 'Aktarım sırasında oda zaten doluydu. Rezervasyon bekleme alanında ve oda '
+      + 'boşalınca oraya yerleşir.' },
   'plan.channel.conflictInventory': {
     de: 'Beim Übernehmen war die Zimmergruppe voll.',
     en: 'The room type was full when this was taken over.',

@@ -72,6 +72,8 @@ export const VERWEISE_GAST = [
 /** Was an einem Zimmer haengen kann und es deshalb stehen laesst. */
 export const VERWEISE_ZIMMER = [
   ['reservation', 'resource_id'], ['maintenance_block', 'resource_id'],
+  // Das Zimmer, auf das eine gepushte Buchung in der Ablage wartet (0121).
+  ['reservation', 'channel_wanted_resource_id'],
   ['maintenance_ticket', 'resource_id'],
   // Eigene Sollminuten (0106) hat jemand von Hand eingetragen; das Zimmer
   // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
