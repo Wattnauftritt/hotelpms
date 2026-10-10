@@ -248,3 +248,95 @@ describe('Sammelmeldeschein einer Reisegruppe', () => {
     expect(regs.rowCount).toBe(0)
   })
 })
+
+/**
+ * Der Schein mit Inhalt (Sven, 10.10.2026: "warum kann ich die
+ * Meldescheine nicht oeffnen"). Die Liste sagt nur, dass es einen gibt.
+ */
+describe('Der Schein mit Inhalt', () => {
+  const UNTERSCHRIFT = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="200">'
+    + '<image href="data:image/png;base64,iVBORw0KGgo=" width="600" height="200"/></svg>'
+
+  const ansehen = (id: number, kopf = auth) =>
+    app.inject({ method: 'GET', url: `/v1/registrations/${id}`, headers: kopf })
+
+  async function sammelschein(): Promise<{ haupt: number; mit: number }> {
+    const petersen = await gast('Petersen')
+    await owner.query(
+      `UPDATE guest SET first_name = 'Jens', birth_date = '1970-03-04',
+              address_line1 = 'Deichstr. 2', postal_code = '27472', city = 'Cuxhaven',
+              id_document_type = 'id_card', id_document_number_enc = '\\x00'
+        WHERE public_ref = $1`, [petersen])
+    const ref = await reservierung(petersen)
+    const r = await melden(ref, { occupantGuestRefs: [await gast('Nissen')] })
+    expect(r.statusCode, r.body).toBe(201)
+    const ids = await owner.query<{ id: string; mit: boolean }>(
+      `SELECT id, group_registration_id IS NOT NULL AS mit FROM registration
+        WHERE property_id = $1 ORDER BY id`, [fx.propertyId])
+    return { haupt: Number(ids.rows.find(x => !x.mit)!.id),
+             mit: Number(ids.rows.find(x => x.mit)!.id) }
+  }
+
+  it('zeigt Hauptgast und Mitreisende mit Geburtsdatum und Anschrift', async () => {
+    const { haupt } = await sammelschein()
+    const r = await ansehen(haupt)
+    expect(r.statusCode, r.body).toBe(200)
+    const d = r.json<{ id: number; occupantCount: number
+                       persons: Array<Record<string, unknown>> }>()
+    expect(d.id).toBe(haupt)
+    expect(d.occupantCount).toBe(2)
+    expect(d.persons).toHaveLength(2)
+    expect(d.persons[0]).toMatchObject({
+      main: true, lastName: 'Petersen', firstName: 'Jens', birthDate: '1970-03-04',
+      address: { line1: 'Deichstr. 2', postalCode: '27472', city: 'Cuxhaven', country: 'DE' },
+      idDocumentType: 'id_card', hasIdDocumentNumber: true })
+    expect(d.persons[1]).toMatchObject({ main: false, lastName: 'Nissen' })
+    // Die Ausweisnummer liegt hinter ihrem eigenen Recht und Abruf.
+    expect(r.body).not.toContain('id_document_number')
+  })
+
+  it('liefert zum Mitreisenden das ganze Blatt', async () => {
+    const { haupt, mit } = await sammelschein()
+    const r = await ansehen(mit)
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json<{ id: number }>().id).toBe(haupt)
+  })
+
+  it('gibt die Unterschrift nur in der Form der Gastwege heraus', async () => {
+    const ref = await reservierung(await gast('Jansen', 'NL'))
+    expect((await melden(ref, { signatureSvg: UNTERSCHRIFT })).statusCode).toBe(201)
+    const id = Number((await owner.query<{ id: string }>(
+      `SELECT id FROM registration WHERE property_id = $1`, [fx.propertyId])).rows[0]!.id)
+    const gut = (await ansehen(id)).json<{ signatureSvg: string | null; signedAt: string }>()
+    expect(gut.signatureSvg).toBe(UNTERSCHRIFT)
+    expect(gut.signedAt).not.toBeNull()
+
+    // Am Tresen geht jedes SVG durch; angezeigt wird es nicht.
+    await owner.query(`UPDATE registration SET signature_svg = '<svg onload="x()"/>'
+                        WHERE id = $1`, [id])
+    expect((await ansehen(id)).json<{ signatureSvg: string | null }>().signatureSvg).toBeNull()
+  })
+
+  it('bleibt der Rolle "Nur lesen" verschlossen, die die Liste sieht', async () => {
+    const { haupt } = await sammelschein()
+    const u = await makeUser(owner,
+      { email: 'lesen@test.de', propertyId: fx.propertyId, roleKey: 'read_only' })
+    expect((await ansehen(haupt, { cookie: `hp_session=${u.sessionId}` })).statusCode)
+      .toBe(403)
+  })
+
+  it('sieht einen Schein aus einem anderen Haus des Accounts nicht', async () => {
+    const { haupt } = await sammelschein()
+    const b = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1,'B','Haus B','Weg 1','27472','Cuxhaven','DE') RETURNING id`, [fx.accountId])
+    const u = await makeUser(owner, { email: 'b@test.de', propertyId: Number(b.rows[0]!.id),
+                                      accountId: fx.accountId, roleKey: 'reception' })
+    expect((await ansehen(haupt, { cookie: `hp_session=${u.sessionId}` })).statusCode)
+      .toBe(404)
+  })
+
+  it('kennt keinen Schein, den es nicht gibt', async () => {
+    expect((await ansehen(999999)).statusCode).toBe(404)
+  })
+})

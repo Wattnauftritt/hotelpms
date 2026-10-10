@@ -84,5 +84,55 @@ export const meldescheine = {
   'reg.companions': {
     de: 'Mitreisende',
     en: 'Companions',
-    tr: 'Birlikte seyahat edenler' }
+    tr: 'Birlikte seyahat edenler' },
+  /* Der Schein mit Inhalt (10.10.2026): Sven konnte ihn in der Liste nicht
+     oeffnen, gesehen hat man bis dahin nur, dass es ihn gibt. */
+  'reg.open': {
+    de: 'Ansehen',
+    en: 'View',
+    tr: 'Görüntüle' },
+  'reg.sheet': {
+    de: 'Meldeschein',
+    en: 'Meldeschein',
+    tr: 'Meldeschein' },
+  'reg.stay': {
+    de: 'Aufenthalt',
+    en: 'Stay',
+    tr: 'Konaklama' },
+  'reg.occupants': {
+    de: 'Personen',
+    en: 'Persons',
+    tr: 'Kişiler' },
+  'reg.mainGuest': {
+    de: 'Hauptgast',
+    en: 'Main guest',
+    tr: 'Ana misafir' },
+  'reg.expectedArrival': {
+    de: 'Ankunftszeit',
+    en: 'Arrival time',
+    tr: 'Varış saati' },
+  'reg.digitalGuestCard': {
+    de: 'Digitale Gästekarte gewünscht',
+    en: 'Digital guest card requested',
+    tr: 'Dijital misafir kartı istendi' },
+  'reg.exemptionProof': {
+    de: 'Nachweis: {nachweis}',
+    en: 'Proof: {nachweis}',
+    tr: 'Belge: {nachweis}' },
+  'reg.signature': {
+    de: 'Unterschrift',
+    en: 'Signature',
+    tr: 'İmza' },
+  'reg.signedAt': {
+    de: 'unterschrieben am {datum}',
+    en: 'signed on {datum}',
+    tr: '{datum} tarihinde imzalandı' },
+  'reg.signatureNoImage': {
+    de: 'Die Unterschrift liegt vor, ihr Bild lässt sich hier nicht anzeigen.',
+    en: 'The signature is on file, but its image cannot be shown here.',
+    tr: 'İmza kayıtlı, ancak görüntüsü burada gösterilemiyor.' },
+  'reg.noAccess': {
+    de: 'Den Inhalt eines Meldescheins sieht nur, wer Gastprofile sehen darf.',
+    en: 'Only users allowed to see guest profiles can view a Meldeschein.',
+    tr: 'Meldeschein içeriğini yalnızca misafir profillerini görebilenler görür.' }
 } satisfies Record<string, LocalizedText>

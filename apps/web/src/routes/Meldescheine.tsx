@@ -1,11 +1,13 @@
-import { useMemo, useState, type JSX } from 'react'
-import { useMeldescheine, nachHauptschein, MAX_MELDESCHEIN_TAGE, type Hauptschein }
-  from '../lib/queries/meldescheine.js'
+import { useMemo, useState, type JSX, type ReactNode } from 'react'
+import { useMeldescheine, useMeldeschein, nachHauptschein, MAX_MELDESCHEIN_TAGE,
+         type Hauptschein, type MeldescheinPerson } from '../lib/queries/meldescheine.js'
 import { useT, useLocale, formatDate, type TextKey } from '../lib/i18n/index.js'
 import { useSprung } from '../lib/suche.js'
 import { today, addDays, daysBetween } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
+import { Dialog, KNOPF_LEISE } from '../components/Dialog.tsx'
+import { AusweisFeld } from './Guests.tsx'
 
 /**
  * Meldescheine: alle Scheine eines Zeitraums nach Anreise (Sven, 04.10.2026).
@@ -18,6 +20,12 @@ import { useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
  * Schnittstelle gibt sie hier nicht heraus: sie werden der Meldebehörde
  * vorgelegt, nicht in einer Übersicht gezeigt, an der jemand vorbeigeht.
  * Der Knopf an jeder Zeile führt zur Reservierung.
+ *
+ * **Der Inhalt erst beim Öffnen** (10.10.2026). Sven fragte, warum sich ein
+ * Schein hier nicht öffnen lässt -- gesehen hat man bis dahin nur, dass es
+ * ihn gibt. „Ansehen" lädt den einen Schein mit Geburtsdaten, Anschriften,
+ * Mitreisenden und Unterschrift; die Ausweisnummer bleibt hinter ihrem
+ * eigenen Recht und Klick, wie im Gastprofil.
  *
  * Gesucht wird im Zeitraum, nicht über die Schnittstelle: die Liste ist ein
  * Aufruf, und ein Name in der Abfragezeichenfolge wäre ein Gastname im
@@ -43,8 +51,12 @@ function name(r: { lastName: string; firstName: string | null }): string {
   return r.firstName ? `${r.lastName}, ${r.firstName}` : r.lastName
 }
 
-export function Meldescheine({ propertyId }: { propertyId: number }): JSX.Element {
+export function Meldescheine({ propertyId, permissions }: {
+  propertyId: number; permissions: readonly string[]
+}): JSX.Element {
   const t = useT()
+  const darfInhalt = permissions.includes('guest:read')
+  const [offen, setOffen] = useState<number | null>(null)
   const locale = useLocale()
   const { springen } = useSprung()
   const [von, setVon] = useState(addDays(today(), -30))
@@ -108,6 +120,13 @@ export function Meldescheine({ propertyId }: { propertyId: number }): JSX.Elemen
                           <span>{r.nationality ?? '–'}</span>
                           <span>{t('reg.persons', { n: r.occupantCount })}</span>
                           <Unterschrift r={r} />
+                          {darfInhalt && (
+                            <button onClick={() => setOffen(Number(r.id))}
+                                    className="px-2 py-1 rounded-sm border border-neutral-300
+                                               hover:bg-neutral-50">
+                              {t('reg.open')}
+                            </button>
+                          )}
                           <button onClick={() => springen({ art: 'reservierung',
                                                              ref: r.reservationRef })}
                                   className="px-2 py-1 rounded-sm border border-neutral-300
@@ -144,7 +163,136 @@ export function Meldescheine({ propertyId }: { propertyId: number }): JSX.Elemen
                     ))}
                   </ul>
                 </>}
+      {offen !== null && (
+        <MeldescheinAnsicht id={offen} darfIdentitaet={permissions.includes('guest:read_identity')}
+                            onClose={() => setOffen(null)} />
+      )}
     </div>
+  )
+}
+
+/**
+ * Der Schein, wie er ausgefuellt wurde. Nur zeigen, nichts aendern: ein
+ * Meldeschein ist eine Erklaerung des Gastes, und eine Korrektur gehoert
+ * ins Gastprofil, nicht auf das Blatt.
+ */
+function MeldescheinAnsicht({ id, darfIdentitaet, onClose }: {
+  id: number; darfIdentitaet: boolean; onClose: () => void
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const q = useMeldeschein(id)
+  const d = q.data
+  const datum = (iso: string | null): string => iso === null ? '–' : formatDate(iso, locale)
+
+  return (
+    <Dialog breite="breit" onClose={onClose} titel={t('reg.sheet')}
+            unterzeile={d === undefined ? undefined
+              : `${name(d.persons[0] ?? { lastName: '', firstName: null })} · ${d.reservationRef}`}
+            fuss={<button type="button" onClick={onClose} className={KNOPF_LEISE}>
+                    {t('common.close')}
+                  </button>}>
+      {q.isError
+        ? <Fehler error={q.error} />
+        : d === undefined
+          ? <Laedt />
+          : <div className="space-y-4 text-sm">
+              <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Angabe label={t('reg.stay')}>
+                  {datum(d.arrival)} – {datum(d.plannedDeparture)}
+                </Angabe>
+                <Angabe label={t('reg.occupants')}>
+                  {d.occupantCount}
+                </Angabe>
+                <Angabe label={t('reg.expectedArrival')}>{d.expectedArrival ?? '–'}</Angabe>
+                <Angabe label={t(QUELLE[d.source], { system: d.externalSystem ?? '' })}>
+                  {datum(d.completedAt.slice(0, 10))}
+                </Angabe>
+              </section>
+
+              {d.persons.map(p => (
+                <Person key={p.guestRef} p={p} darfIdentitaet={darfIdentitaet} />
+              ))}
+
+              <section className="rounded-sm border border-neutral-200 p-3">
+                <div className="text-xs text-neutral-500">{t('reg.signature')}</div>
+                {!d.signatureRequired
+                  ? <div className="text-neutral-500">{t('reg.signature.notNeeded')}</div>
+                  : d.signedAt === null
+                    ? <div className="text-amber-800">{t('reg.signature.pending')}</div>
+                    : <>
+                        <div className="text-emerald-800">
+                          {t('reg.signedAt', { datum: datum(d.signedAt.slice(0, 10)) })}
+                        </div>
+                        {/* Als Bild, nie als Markup: ein SVG in <img> fuehrt
+                            nichts aus und laedt nichts nach. */}
+                        {d.signatureSvg !== null
+                          ? <img alt={t('reg.signature')}
+                                 src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(d.signatureSvg)}`}
+                                 className="mt-2 max-h-40 border border-neutral-200 bg-white" />
+                          : <div className="text-neutral-500">{t('reg.signatureNoImage')}</div>}
+                      </>}
+              </section>
+
+              <div className="text-xs text-neutral-500 flex flex-wrap gap-x-4">
+                {d.digitalGuestCard && <span>{t('reg.digitalGuestCard')}</span>}
+                {d.avsReportedAt !== null && (
+                  <span>{t('reg.avsReported', { datum: datum(d.avsReportedAt.slice(0, 10)) })}</span>
+                )}
+                <span>{t('reg.destroyAfter', { datum: datum(d.destroyAfter) })}</span>
+              </div>
+            </div>}
+    </Dialog>
+  )
+}
+
+function Angabe({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  return (
+    <div>
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div>{children}</div>
+    </div>
+  )
+}
+
+function Person({ p, darfIdentitaet }: {
+  p: MeldescheinPerson; darfIdentitaet: boolean
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const a = p.address
+  const anschrift = [a.line1, [a.postalCode, a.city].filter(Boolean).join(' '), a.country]
+    .filter(x => x !== null && x !== '').join(', ')
+  return (
+    <section className="rounded-sm border border-neutral-200 p-3 space-y-3">
+      <div className="text-xs text-neutral-500">
+        {p.main ? t('reg.mainGuest') : t('reg.companions')}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Angabe label={t('guests.lastName')}>{p.lastName}</Angabe>
+        <Angabe label={t('guests.firstName')}>{p.firstName ?? '–'}</Angabe>
+        <Angabe label={t('guests.birthDate')}>
+          {p.birthDate === null ? '–' : formatDate(p.birthDate, locale)}
+        </Angabe>
+        <Angabe label={t('guests.nationality')}>{p.nationality ?? '–'}</Angabe>
+        {(p.main || anschrift !== '') && (
+          <div className="col-span-2 sm:col-span-4">
+            <Angabe label={t('guests.address')}>{anschrift === '' ? '–' : anschrift}</Angabe>
+          </div>
+        )}
+        {p.taxExemption !== null && (
+          <div className="col-span-2 sm:col-span-4">
+            {t('reg.taxExemption', { grund: p.taxExemption })}
+            {p.taxExemptionProof !== null
+              && ` · ${t('reg.exemptionProof', { nachweis: p.taxExemptionProof })}`}
+          </div>
+        )}
+      </div>
+      {(p.idDocumentType !== null || p.hasIdDocumentNumber) && (
+        <AusweisFeld guestRef={p.guestRef} hasIdDocumentNumber={p.hasIdDocumentNumber}
+                     idDocumentType={p.idDocumentType} darfLesen={darfIdentitaet} />
+      )}
+    </section>
   )
 }
 

@@ -404,7 +404,7 @@ function Hausnotizen({ guestRef, propertyId, notes, darfSchreiben }: {
  * Ausweisnummer, maskiert bis zu einem ausdruecklichen Klick (A6). § 30 BMG
  * erlaubt die Nummer, nicht die Kopie -- es gibt kein Feld fuer einen Upload.
  */
-function AusweisFeld({ guestRef, hasIdDocumentNumber, idDocumentType, darfLesen }: {
+export function AusweisFeld({ guestRef, hasIdDocumentNumber, idDocumentType, darfLesen }: {
   guestRef: string; hasIdDocumentNumber: boolean
   idDocumentType: string | null; darfLesen: boolean
 }): JSX.Element {

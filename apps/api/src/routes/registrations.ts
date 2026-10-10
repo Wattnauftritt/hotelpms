@@ -8,6 +8,7 @@ import { requiresRegistrationSignature } from '@hotelpms/domain'
 import { erfasseMeldeschein, unterschreibeMeldeschein, AUFBEWAHRUNG_MONATE }
   from '../platform/meldeschein.js'
 import type { PoolClient } from '@hotelpms/db'
+import { istUnterschriftSvg } from '@hotelpms/contracts'
 
 /**
  * Wie bei jedem anderen Zeitraumparameter im System (rates.ts, reports.ts,
@@ -297,6 +298,114 @@ export function registrationRoutes(app: FastifyInstance): void {
                   AND NOT p.is_training AS ok
              FROM property p WHERE p.id = $1`, [Number(propertyId)])
         return { registrations: rows, avsReporting: avs.rows[0]?.ok ?? false }
+      })
+    }
+  })
+  /**
+   * Ein Meldeschein mit Inhalt, fuer den Bildschirm "Meldescheine" (Sven,
+   * 10.10.2026: "warum kann ich die Meldescheine nicht oeffnen"). Die Liste
+   * zeigt nur, dass es einen Schein gibt; was darauf steht -- Geburtsdatum,
+   * Anschrift, Mitreisende, die Unterschrift --, sah man bisher nirgends.
+   *
+   * Eigenes Recht `guest:read` statt `report:operational` wie die Liste:
+   * die Rolle "Nur lesen" sieht die Uebersicht, aber keine Gastprofile, und
+   * dieser Schein ist eines. Die Ausweisnummer kommt nicht mit; sie liegt
+   * hinter `guest:read_identity` und wird je Abruf protokolliert
+   * (`/v1/guests/:guestRef/id-document`).
+   *
+   * Die Unterschrift kommt nur in der Form mit, die die Gastwege erzeugen
+   * (`istUnterschriftSvg`): ein Bild in einer festen Huelle, kein SVG aus
+   * fremder Hand, das die Oberflaeche dann anzeigen muesste.
+   *
+   * Wird ein Mitreisender angefragt, kommt sein Sammelmeldeschein -- der
+   * Schein ist das Blatt, nicht die Zeile.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/registrations/:registrationId',
+    permission: 'guest:read',
+    summary: 'Meldeschein mit Inhalt',
+    handler: async (req) => {
+      const { registrationId } = req.params as { registrationId: string }
+      const id = Number(registrationId)
+      const principal = req.principal as Principal
+      if (!Number.isSafeInteger(id) || id <= 0) throw Errors.notFound('res.registration')
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query<{
+          id: string; haupt: boolean; property_id: string
+          reservation_ref: string; arrival: string; planned_departure: string
+          occupant_count: number; is_foreign: boolean; signature_required: boolean
+          signed_at: string | null; signature_svg: string | null
+          source: string; external_system: string | null; completed_at: string
+          avs_reported_at: string | null; destroy_after: string
+          expected_arrival: string | null; digital_guest_card: boolean
+          guest_ref: string; last_name: string; first_name: string | null
+          birth_date: string | null; nationality: string | null
+          address_line1: string | null; postal_code: string | null
+          city: string | null; country: string | null
+          id_document_type: string | null; has_id_document: boolean
+          tax_exemption: string | null; tax_exemption_proof: string | null }>(
+          `WITH haupt AS (
+             SELECT COALESCE(group_registration_id, id) AS id
+               FROM registration WHERE id = $1)
+           SELECT reg.id, (reg.group_registration_id IS NULL) AS haupt,
+                  reg.property_id, r.public_ref AS reservation_ref,
+                  reg.arrival::text, reg.planned_departure::text,
+                  reg.occupant_count, reg.is_foreign, reg.signature_required,
+                  reg.signed_at, reg.signature_svg, reg.source, reg.external_system,
+                  COALESCE(reg.completed_at, reg.created_at) AS completed_at,
+                  reg.avs_reported_at, reg.destroy_after::text,
+                  reg.expected_arrival, reg.digital_guest_card,
+                  g.public_ref AS guest_ref, g.last_name, g.first_name,
+                  g.birth_date::text, g.nationality, g.address_line1, g.postal_code,
+                  g.city, g.country, g.id_document_type,
+                  (g.id_document_number_enc IS NOT NULL) AS has_id_document,
+                  x.label AS tax_exemption, reg.tax_exemption_proof
+             FROM haupt h
+             JOIN registration reg ON reg.id = h.id OR reg.group_registration_id = h.id
+             JOIN guest g ON g.id = reg.guest_id
+             JOIN reservation r ON r.id = reg.reservation_id
+             LEFT JOIN city_tax_exemption_reason x ON x.id = reg.tax_exemption_reason_id
+            ORDER BY (reg.group_registration_id IS NOT NULL), reg.id`, [id])
+        const h = rows.find(r => r.haupt)
+        // Ein fremdes Haus im selben Account sieht aus wie kein Schein: die
+        // Zeilenrichtlinie filtert nach Mandant, das Recht gilt je Haus.
+        if (h === undefined || !can(principal, 'guest:read', Number(h.property_id))) {
+          throw Errors.notFound('res.registration')
+        }
+        return {
+          id: Number(h.id),
+          reservationRef: h.reservation_ref,
+          arrival: h.arrival,
+          plannedDeparture: h.planned_departure,
+          occupantCount: h.occupant_count,
+          isForeign: h.is_foreign,
+          signatureRequired: h.signature_required,
+          signedAt: h.signed_at,
+          signatureSvg: h.signature_svg !== null && istUnterschriftSvg(h.signature_svg)
+            ? h.signature_svg : null,
+          source: h.source,
+          externalSystem: h.external_system,
+          completedAt: h.completed_at,
+          avsReportedAt: h.avs_reported_at,
+          destroyAfter: h.destroy_after,
+          expectedArrival: h.expected_arrival,
+          digitalGuestCard: h.digital_guest_card,
+          persons: rows.map(p => ({
+            main: p.haupt,
+            guestRef: p.guest_ref,
+            lastName: p.last_name,
+            firstName: p.first_name,
+            birthDate: p.birth_date,
+            nationality: p.nationality,
+            address: { line1: p.address_line1, postalCode: p.postal_code,
+                       city: p.city, country: p.country },
+            idDocumentType: p.id_document_type,
+            hasIdDocumentNumber: p.has_id_document,
+            taxExemption: p.tax_exemption,
+            taxExemptionProof: p.tax_exemption_proof
+          }))
+        }
       })
     }
   })
