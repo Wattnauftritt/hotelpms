@@ -14,6 +14,9 @@ import { isIsoDate } from './dates.js'
 export const LEGACY_STAFF_FORMAT = 'zurseerobbe-staygrid'
 export const LEGACY_STAFF_SCHEMA = 1
 
+/** Hoechstens 31 Tage zu 1440 Minuten, wie `staff_work_entry` fuer Altdaten (0119). */
+export const LEGACY_WORK_MINUTES_MAX = 44640
+
 export type LegacyTaskStatus = 'open' | 'cleaned' | 'declined' | 'was_clean' | 'problem'
 const STATUS: readonly LegacyTaskStatus[] = ['open', 'cleaned', 'declined', 'was_clean', 'problem']
 const SPRACHEN = ['de', 'en', 'ru', 'uk'] as const
@@ -149,8 +152,10 @@ export function parseLegacyStaffExport(raw: unknown): LegacyStaffExport {
     feld(imAusschnitt(w.date), 'workEntries', i, 'date')
     feld(text(w.username, 100), 'workEntries', i, 'username')
     feld(text(w.text, 500), 'workEntries', i, 'text')
+    // Bis zu einem Monat: die alte App kannte Sammelbuchungen fuer nicht
+    // erfasste Stunden ("Uneingetragenes", 4080 Minuten; Migration 0119).
     feld(Number.isInteger(w.minutes) && (w.minutes as number) >= 1
-         && (w.minutes as number) <= 1440, 'workEntries', i, 'minutes')
+         && (w.minutes as number) <= LEGACY_WORK_MINUTES_MAX, 'workEntries', i, 'minutes')
     return {
       date: w.date as string, username: w.username as string, text: (w.text as string).trim(),
       minutes: w.minutes as number, language: sprache(w.language),

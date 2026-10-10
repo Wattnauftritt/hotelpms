@@ -115,6 +115,24 @@ describe('Altdaten der Personal-App', () => {
     expect((await owner.query(`SELECT 1 FROM staff_legacy_user`)).rowCount).toBe(0)
   })
 
+  it('uebernimmt eine Sammelbuchung ueber mehrere Tage, wie die alte App sie hatte', async () => {
+    // Svens echter Export: "Uneingetragenes" mit 4080 Minuten am Monatsende (0119).
+    const d = datei({
+      schedules: [],
+      workEntries: [{ date: '2026-09-30', username: 'olga', text: 'Uneingetragenes', minutes: 4080,
+                      language: null, translationDe: null, translationManual: false }]
+    })
+    const r = await senden(d, { commit: true, mapping: { ivan: null } })
+    expect(r.statusCode).toBe(200)
+    const m = await arbeitszeit()
+    expect(m.totals.extra).toBe(4080)
+    // Was eine Kraft selbst eintraegt, bleibt bei einem Tag.
+    await expect(owner.query(
+      `INSERT INTO staff_work_entry (property_id, user_id, business_date, kind, description, minutes)
+       VALUES ($1, $2, '2026-09-30', 'extra', 'x', 1441)`, [fx.propertyId, olga.userId]))
+      .rejects.toThrow()
+  })
+
   it('uebernimmt mit gespeicherten Minuten, Status und Uebersetzung', async () => {
     const d = datei({
       schedules: [plan('2026-09-30', 0, 'olga', 'cleaned', 45), plan('2026-09-30', 1, 'olga', 'declined', 0),
