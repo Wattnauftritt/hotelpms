@@ -234,7 +234,14 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
           {r.guestEmail !== null && (
             <div className="text-xs text-neutral-500 break-all">{r.guestEmail}</div>
           )}
-          {r.guestPhone !== null && (
+          {/* Die Nummer aus dem Meldeformular zuerst: sie gilt fuer diesen
+              Aufenthalt, die aus dem Profil ist oft das Festnetz zu Hause. */}
+          {r.stayPhone !== null && (
+            <div className="text-xs text-neutral-700">
+              {r.stayPhone} <span className="text-neutral-500">{t('plan.stayPhone')}</span>
+            </div>
+          )}
+          {r.guestPhone !== null && r.guestPhone !== r.stayPhone && (
             <div className="text-xs text-neutral-500">{r.guestPhone}</div>
           )}
           {r.companyName !== null && (

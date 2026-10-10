@@ -1339,6 +1339,12 @@ export function reservationRoutes(app: FastifyInstance): void {
                   nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
                   g.email                 AS "guestEmail",
                   g.phone                 AS "guestPhone",
+                  -- Die Nummer fuer den Aufenthalt aus dem Meldeformular
+                  -- (0123), meist das Handy; die aus dem Profil ist oft das
+                  -- Festnetz zu Hause.
+                  (SELECT reg.stay_phone FROM registration reg
+                    WHERE reg.reservation_id = r.id
+                      AND reg.group_registration_id IS NULL) AS "stayPhone",
                   g.language              AS "guestLanguage",
                   co.public_ref           AS "companyRef",
                   co.name                 AS "companyName",

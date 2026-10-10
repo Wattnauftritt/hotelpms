@@ -267,6 +267,12 @@ export const CheckinSubmit = Type.Object({
    * dort ist der Gast schon da.
    */
   expectedArrival: Type.Optional(Type.String({ maxLength: 50 })),
+  /**
+   * Telefonnummer fuer den Aufenthalt (0123), meist das Handy. Verlangt,
+   * ueber den Mail-Link wie am Terminal. Geht an den Meldeschein,
+   * ins Gastprofil nur, wo dort noch keine Nummer steht.
+   */
+  phone: Type.Optional(Type.String({ maxLength: 50 })),
   /** "Meine Angaben sind richtig und vollstaendig." */
   confirmed: Type.Literal(true)
 }, { additionalProperties: false })

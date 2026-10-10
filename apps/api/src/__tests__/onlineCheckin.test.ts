@@ -138,6 +138,7 @@ function inlaendisch(extra: Record<string, unknown> = {}): Record<string, unknow
              address: { line1: 'Deichweg 4', postalCode: '24937', city: 'Flensburg',
                         country: 'DE' }, ...extra },
     expectedArrival: 'gegen 16 Uhr',
+    phone: '0171 1234567',
     confirmed: true
   }
 }
@@ -149,6 +150,7 @@ function auslaendisch(extra: Record<string, unknown> = {}): Record<string, unkno
              address: { line1: 'Herengracht 1', postalCode: '1015', city: 'Amsterdam',
                         country: 'NL' }, ...extra },
     expectedArrival: 'gegen 16 Uhr',
+    phone: '+31 6 12345678',
     confirmed: true
   }
 }

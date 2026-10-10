@@ -895,6 +895,8 @@ export const ReservationDetail = Type.Object({
   guestName: Type.Union([Type.String(), Type.Null()]),
   guestEmail: Type.Union([Type.String(), Type.Null()]),
   guestPhone: Type.Union([Type.String(), Type.Null()]),
+  /** Telefon fuer den Aufenthalt, aus dem Meldeformular (0123). */
+  stayPhone: Type.Union([Type.String(), Type.Null()]),
   guestLanguage: Type.Union([Type.String(), Type.Null()]),
   companyRef: Type.Union([Type.String(), Type.Null()]),
   companyName: Type.Union([Type.String(), Type.Null()]),

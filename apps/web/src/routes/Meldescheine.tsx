@@ -197,7 +197,7 @@ function MeldescheinAnsicht({ id, darfIdentitaet, onClose }: {
         : d === undefined
           ? <Laedt />
           : <div className="space-y-4 text-sm">
-              <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <section className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <Angabe label={t('reg.stay')}>
                   {datum(d.arrival)} – {datum(d.plannedDeparture)}
                 </Angabe>
@@ -205,6 +205,7 @@ function MeldescheinAnsicht({ id, darfIdentitaet, onClose }: {
                   {d.occupantCount}
                 </Angabe>
                 <Angabe label={t('reg.expectedArrival')}>{d.expectedArrival ?? '–'}</Angabe>
+                <Angabe label={t('reg.stayPhone')}>{d.stayPhone ?? '–'}</Angabe>
                 <Angabe label={t(QUELLE[d.source], { system: d.externalSystem ?? '' })}>
                   {datum(d.completedAt.slice(0, 10))}
                 </Angabe>

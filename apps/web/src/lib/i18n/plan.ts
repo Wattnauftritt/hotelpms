@@ -22,6 +22,10 @@ export const plan = {
     de: 'Ändern',
     en: 'Edit',
     tr: 'Düzenle' },
+  'plan.stayPhone': {
+    de: '(im Aufenthalt)',
+    en: '(during stay)',
+    tr: '(konaklama sırasında)' },
   'plan.noGuest': {
     de: 'Kein Gast hinterlegt',
     en: 'No guest on file',
