@@ -319,6 +319,12 @@ export interface StayPreview {
    * trotzdem; die Maske warnt und schickt beim Speichern die Bestaetigung.
    */
   overbooking: boolean
+  /**
+   * Bei `overbooking` die vollen Tage und woraus sie voll sind -- auch aus
+   * dem, was der Plan nicht zeigt.
+   */
+  fullDays?: Array<{ date: string; capacity: number; sold: number; blocked: number
+                     withoutRoom: number; inactiveRoom: number; counterDrift: number }>
   nights: Array<{ date: string; priceCent: number; posted: boolean }>
 }
 

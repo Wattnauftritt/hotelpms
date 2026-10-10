@@ -339,6 +339,26 @@ export const plan = {
       + 'overbooks it; the plan then shows a warning.',
     tr: 'Oda tipi en az bir gün için dolu. Kaydetmek fazla rezervasyon '
       + 'oluşturur; plan ardından bir uyarı gösterir.' },
+  'verlegen.fullDay': {
+    de: '{datum}: {zimmer} Zimmer, {belegt} vergeben',
+    en: '{datum}: {zimmer} rooms, {belegt} taken',
+    tr: '{datum}: {zimmer} oda, {belegt} dolu' },
+  'verlegen.fullDayBlocked': {
+    de: 'davon {n} im Kontingent',
+    en: '{n} of them held in an allotment',
+    tr: 'bunların {n} tanesi kontenjanda' },
+  'verlegen.fullDayWithoutRoom': {
+    de: '{n} Buchung(en) ohne Zimmer',
+    en: '{n} booking(s) without a room',
+    tr: 'odası olmayan {n} rezervasyon' },
+  'verlegen.fullDayInactiveRoom': {
+    de: '{n} Buchung(en) in einem stillgelegten Zimmer, im Plan nicht sichtbar',
+    en: '{n} booking(s) in a deactivated room, not visible in the plan',
+    tr: 'devre dışı bir odada {n} rezervasyon, planda görünmüyor' },
+  'verlegen.fullDayDrift': {
+    de: 'der Zähler steht {n} über den Buchungen; das ist ein Fehler, bitte melden',
+    en: 'the counter is {n} above the bookings; this is a bug, please report it',
+    tr: 'sayaç rezervasyonlardan {n} fazla; bu bir hata, lütfen bildirin' },
   'booking.shortNote': {
     de: 'Kurznotiz',
     en: 'Short note',

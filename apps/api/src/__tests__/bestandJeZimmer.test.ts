@@ -163,4 +163,39 @@ describe('Bestand je Zimmer', () => {
     expect(await bestand(vz)).toBe(0)
     expect(await abweichungen()).toEqual([])
   })
+
+  it('nennt, woraus ein voller Tag voll ist', async () => {
+    // Ein Zaehler ueber den Buchungen und eine Buchung ohne Zimmer: beides
+    // zeigt der Plan nicht als belegtes Zimmer.
+    await owner.query(
+      `UPDATE inventory_day SET sold = sold + 1
+        WHERE property_id = $1 AND category_id IN (0, $2) AND date = $3`,
+      [fx.propertyId, dz, VON])
+    const timm = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      resourceId: dzZimmer, arrival: '2026-11-14', departure: '2026-11-16' })
+    const vorschau = await post(
+      `/v1/reservations/${await refVon(timm.reservationId)}/change-stay/preview`,
+      { arrival: VON, departure: BIS, resourceId: dzZimmer })
+    expect(vorschau.statusCode, vorschau.body).toBe(200)
+    const v = JSON.parse(vorschau.body) as { overbooking: boolean
+      fullDays: Array<Record<string, unknown>> }
+    expect(v.overbooking).toBe(true)
+    expect(v.fullDays).toEqual([{ date: VON, capacity: 1, sold: 2, blocked: 0,
+      withoutRoom: 0, inactiveRoom: 0, counterDrift: 1 }])
+  })
+
+  it('zaehlt eine Buchung im stillgelegten Zimmer als unsichtbar', async () => {
+    const zweites = (await makeResources(owner, fx.propertyId, dz, 1, 'X'))[0]!
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      resourceId: zweites, arrival: VON, departure: BIS })
+    // Am Planer vorbei stillgelegt: die Route liesse das mit Buchung nicht zu.
+    await owner.query(`UPDATE resource SET active = false WHERE id = $1`, [zweites])
+    const timm = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      resourceId: dzZimmer, arrival: '2026-11-14', departure: '2026-11-16' })
+    const vorschau = await post(
+      `/v1/reservations/${await refVon(timm.reservationId)}/change-stay/preview`,
+      { arrival: VON, departure: BIS, resourceId: dzZimmer })
+    const v = JSON.parse(vorschau.body) as { fullDays: Array<{ inactiveRoom: number }> }
+    expect(v.fullDays[0]?.inactiveRoom).toBe(1)
+  })
 })
