@@ -283,15 +283,14 @@ export async function testhotelAnlegen(): Promise<void> {
      * category_id <> 0. Der Fehler war also weder auf dem Bildschirm noch im
      * Protokoll zu sehen -- nur in der Zahl.
      */
+    // Erst leeren: der Trigger aus 0120 hat beim Einfuegen schon Plaetze
+    // zwischen Gruppen verschoben, und ein Tag ohne Buchung bliebe sonst stehen.
+    await client.query(
+      `UPDATE inventory_day SET sold = 0 WHERE property_id = $1 AND sold <> 0`, [propertyId])
     await client.query(
       `WITH belegt AS (
-         SELECT r.category_id, d.day::date AS date, count(*)::int AS n
-           FROM reservation r
-           CROSS JOIN LATERAL
-             generate_series(r.arrival, r.departure - 1, interval '1 day') d(day)
-          WHERE r.property_id = $1
-            AND r.status IN ('Optional','Confirmed','InHouse')
-          GROUP BY 1, 2
+         -- Je Gruppe des Zimmers, ohne Zimmer der gebuchten (Migration 0120).
+         SELECT category_id, date, n FROM inventory_sold_expected($1, NULL)
        ), je_zeile AS (
          SELECT category_id, date, n FROM belegt
          UNION ALL

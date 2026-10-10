@@ -607,9 +607,11 @@ export async function aufenthaltVerlegen(
     }
     const zeitraumAnders = neuAnkunft !== r.arrival || neuAbreise !== r.departure
     /*
-     * Bestand bewegt sich nur, wenn Tage oder Zimmergruppe wandern. Wer in
-     * der Maske nur den Preis oder das Zimmer aendert, laesst ihn liegen --
-     * und dann ist auch ein Abruf aus einem Kontingent kein Hindernis.
+     * Die Buchung wandert, wenn Tage oder gebuchte Gruppe es tun. Wer in
+     * der Maske nur den Preis oder das Zimmer aendert, laesst sie liegen --
+     * und dann ist auch ein Abruf aus einem Kontingent kein Hindernis. Der
+     * Zaehler kann trotzdem wandern, wenn das neue Zimmer in einer anderen
+     * Gruppe liegt (unten).
      */
     const bestandAnders = zeitraumAnders || neuKategorie !== r.category_id
 
@@ -671,11 +673,26 @@ export async function aufenthaltVerlegen(
         arrival: neuAnkunft, departure: neuAbreise, exceptReservationId: r.id })
     }
 
-    if (bestandAnders) {
+    /*
+     * **Gezaehlt wird in der Gruppe des Zimmers** (Migration 0120). Eine
+     * Buchung im fremden Zimmer haelt dessen Gruppe, nicht die gebuchte;
+     * ohne Zimmer die gebuchte. Hier wird der Bestand deshalb in genau
+     * diesen Gruppen bewegt -- vorher in der des alten Zimmers, danach in
+     * der des neuen --, damit die Frage "ist dort Platz?" an der Gruppe
+     * gestellt wird, in der der Gast danach liegt. Der Trigger, der das
+     * sonst fuer jede Aenderung nachzieht, laesst diese Anweisung aus.
+     */
+    const gruppen = await client.query<{ alt: number | null; neu: number | null }>(
+      `SELECT (SELECT category_id FROM resource WHERE id = $1) AS alt,
+              (SELECT category_id FROM resource WHERE id = $2) AS neu`,
+      [r.resource_id, zielZimmer])
+    const zaehltVorher = gruppen.rows[0]!.alt ?? r.category_id
+    const zaehltDanach = gruppen.rows[0]!.neu ?? neuKategorie
+    if (zeitraumAnders || zaehltVorher !== zaehltDanach) {
       const inv = await client.query<{ e: string | null }>(
         `SELECT inventory_move($1,$2,$3::date,$4::date,$5,$6::date,$7::date) AS e`,
-        [r.property_id, r.category_id, r.arrival, r.departure,
-         neuKategorie, neuAnkunft, neuAbreise])
+        [r.property_id, zaehltVorher, r.arrival, r.departure,
+         zaehltDanach, neuAnkunft, neuAbreise])
       inventoryError(inv.rows[0]!.e)
     }
 
@@ -702,6 +719,7 @@ export async function aufenthaltVerlegen(
          FROM reservation_night WHERE reservation_id = $1`, [r.id])
     const bisherJeNacht = schnitt.rows[0]!.p === null ? null : Number(schnitt.rows[0]!.p)
 
+    await client.query(`SELECT set_config('app.inventory_by_room', 'on', true)`)
     await client.query(
       `UPDATE reservation
           SET arrival = $2::date, departure = $3::date, category_id = $4,
@@ -710,6 +728,7 @@ export async function aufenthaltVerlegen(
               updated_at = now()
         WHERE id = $1`,
       [r.id, neuAnkunft, neuAbreise, neuKategorie, body.ratePlanId ?? null, zielZimmer])
+    await client.query(`SELECT set_config('app.inventory_by_room', '', true)`)
 
     /*
      * Naechte fortschreiben. Bereits gebuchte Naechte bleiben unberuehrt:

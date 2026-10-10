@@ -266,16 +266,13 @@ for (let h = 1; h <= HAEUSER; h++) {
    * geprueft. Hier ist der Bestand bereits ueberschneidungsfrei erzeugt, und
    * der Abgleich des Workers rechnet dasselbe nach.
    */
+  // Erst leeren: der Trigger aus 0120 hat beim Einfuegen schon Plaetze
+  // zwischen Gruppen verschoben, und ein Tag ohne Buchung bliebe sonst stehen.
+  await schritt('Bestandszaehler',
+    `UPDATE inventory_day SET sold = 0 WHERE property_id = $1 AND sold <> 0`, [propertyId])
   await schritt('Bestandszaehler',
     `UPDATE inventory_day i SET sold = COALESCE(z.n, 0)
-       FROM (
-         SELECT r.category_id, d.day::date AS date, count(*)::int AS n
-           FROM reservation r
-           CROSS JOIN LATERAL generate_series(r.arrival, r.departure - 1,
-                                              interval '1 day') d(day)
-          WHERE r.property_id = $1 AND r.status IN ('Optional','Confirmed','InHouse')
-          GROUP BY r.category_id, d.day
-       ) z
+       FROM inventory_sold_expected($1, NULL) z
       WHERE i.property_id = $1 AND i.category_id = z.category_id AND i.date = z.date`,
     [propertyId])
 
