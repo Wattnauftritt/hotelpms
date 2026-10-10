@@ -52,6 +52,14 @@ interface Eintrag {
   translationDe: string | null
   /** Von Hand berichtigt; DeepL ueberschreibt das nicht. */
   translationManual: boolean
+  /**
+   * Von der Leitung angepasst (0118): was die Kraft selbst eingetragen
+   * hatte, und wer anpasste. Beides `null`, solange niemand angepasst hat.
+   */
+  originalMinutes: number | null
+  adjustedBy: string | null
+  /** Wer zurueckgezogen hat, wenn es nicht die Kraft selbst war. */
+  withdrawnBy: string | null
 }
 
 interface Tag {
@@ -63,6 +71,8 @@ interface Tag {
   total: number
 }
 
+interface Haelfte { from: string; to: string; total: number }
+
 interface Monat {
   month: string
   from: string
@@ -70,6 +80,12 @@ interface Monat {
   closed: boolean
   days: Tag[]
   totals: { rooms: number; extra: number; kitchen: number; correction: number; total: number }
+  /**
+   * 1. bis 15. und 16. bis Monatsende: die Zeitarbeitsfirma wird alle zwei
+   * Wochen bezahlt (Sven, 10.10.2026), und die Summe soll nicht von Hand
+   * aus der Tagesliste zusammengezaehlt werden.
+   */
+  halves: [Haelfte, Haelfte]
 }
 
 function personVon(req: FastifyRequest): number {
@@ -118,20 +134,7 @@ async function liesMonat(
       WHERE property_id = $1 AND assigned_to = $2 AND outcome = 'cleaned'
         AND business_date BETWEEN $3::date AND $4::date
       GROUP BY business_date`, [propertyId, userId, from, to])
-  const eintraege = await client.query<Eintrag>(
-    `SELECT e.id::int, e.business_date::text AS date, e.kind, e.description, e.minutes,
-            to_char(e.start_time, 'HH24:MI') AS start, to_char(e.end_time, 'HH24:MI') AS "end",
-            e.source, u.display_name AS "createdBy", e.created_at AS "createdAt",
-            (e.withdrawn_at IS NOT NULL) AS withdrawn,
-            tr.text AS "translationDe", COALESCE(tr.origin = 'manual', false) AS "translationManual"
-       FROM staff_work_entry e
-       LEFT JOIN app_user u ON u.id = e.created_by
-       LEFT JOIN staff_text_translation tr
-              ON tr.source_kind = 'work_entry' AND tr.source_id = e.id AND tr.lang = 'de'
-             AND tr.source_hash = digest(e.description, 'sha256')
-      WHERE e.property_id = $1 AND e.user_id = $2
-        AND e.business_date BETWEEN $3::date AND $4::date
-      ORDER BY e.business_date, e.id`, [propertyId, userId, from, to])
+  const eintraege = await liesEintraege(client, propertyId, from, to, userId)
   const zu = await istAbgeschlossen(client, propertyId, from)
 
   const jeTagZimmer = new Map(zimmer.rows.map(z => [z.date, z]))
@@ -151,7 +154,115 @@ async function liesMonat(
     totals.total += total
     days.push({ date: d, roomMinutes, rooms: z?.rooms ?? 0, entries, total })
   }
-  return { month, from, to, closed: zu, days, totals }
+  const mitte = `${month}-15`
+  const summe = (bis: boolean): number =>
+    days.filter(d => (d.date <= mitte) === bis).reduce((s, d) => s + d.total, 0)
+  const halves: [Haelfte, Haelfte] = [
+    { from, to: mitte, total: summe(true) },
+    { from: addDays(mitte, 1), to, total: summe(false) }]
+  return { month, from, to, closed: zu, days, totals, halves }
+}
+
+/**
+ * Die Eintraege eines Zeitraums, einer Person oder aller (`userId` null).
+ * Monat und Tagesansicht lesen hier, damit beide dieselbe Zeile zeigen.
+ */
+async function liesEintraege(
+  client: PoolClient, propertyId: number, from: string, to: string, userId: number | null
+): Promise<{ rows: Array<Eintrag & { userId: number }> }> {
+  return client.query<Eintrag & { userId: number }>(
+    `SELECT e.id::int, e.user_id::int AS "userId", e.business_date::text AS date, e.kind,
+            e.description, e.minutes,
+            to_char(e.start_time, 'HH24:MI') AS start, to_char(e.end_time, 'HH24:MI') AS "end",
+            e.source, u.display_name AS "createdBy", e.created_at AS "createdAt",
+            (e.withdrawn_at IS NOT NULL) AS withdrawn,
+            tr.text AS "translationDe", COALESCE(tr.origin = 'manual', false) AS "translationManual",
+            e.original_minutes AS "originalMinutes", ad.display_name AS "adjustedBy",
+            CASE WHEN e.withdrawn_at IS NOT NULL AND e.updated_by <> e.user_id
+                 THEN wd.display_name END AS "withdrawnBy"
+       FROM staff_work_entry e
+       LEFT JOIN app_user u ON u.id = e.created_by
+       LEFT JOIN app_user ad ON ad.id = e.adjusted_by
+       LEFT JOIN app_user wd ON wd.id = e.updated_by
+       LEFT JOIN staff_text_translation tr
+              ON tr.source_kind = 'work_entry' AND tr.source_id = e.id AND tr.lang = 'de'
+             AND tr.source_hash = digest(e.description, 'sha256')
+      WHERE e.property_id = $1 AND ($2::bigint IS NULL OR e.user_id = $2)
+        AND e.business_date BETWEEN $3::date AND $4::date
+      ORDER BY e.business_date, e.id`, [propertyId, userId, from, to])
+}
+
+interface ZimmerDesTags {
+  taskId: number
+  code: string
+  kind: 'departure' | 'stayover' | 'deep_clean' | 'inspection'
+  /** Geplante Minuten; gezaehlt werden sie nur bei `outcome = 'cleaned'`. */
+  minutes: number
+  status: 'open' | 'done' | 'skipped'
+  outcome: 'cleaned' | 'declined' | 'was_clean' | null
+}
+
+interface KraftDesTags {
+  userId: number
+  name: string
+  username: string | null
+  rooms: ZimmerDesTags[]
+  entries: Eintrag[]
+  totals: { departure: number; stayover: number; otherRooms: number; extra: number
+            kitchen: number; correction: number; total: number }
+}
+
+/**
+ * Ein Tag aller Kraefte, wie die alte App ihn zeigte: je Kraft die
+ * zugeteilten Zimmer nach Abreise und Bleiber, die Zusatzarbeiten und die
+ * Summen. Drei Abfragen fuer das ganze Haus. Es stehen nur Kraefte da, die
+ * an diesem Tag etwas haben -- eine leere Karte je Kraft im Haus waere
+ * Rauschen.
+ */
+async function liesTag(
+  client: PoolClient, propertyId: number, date: string
+): Promise<{ date: string; closed: boolean; staff: KraftDesTags[] }> {
+  const zimmer = await client.query<ZimmerDesTags & { userId: number }>(
+    `SELECT * FROM (
+       SELECT t.id::int AS "taskId", t.assigned_to::int AS "userId",
+              COALESCE(r.code, a.code) AS code, t.kind, COALESCE(t.minutes, 0) AS minutes,
+              t.status, t.outcome
+         FROM housekeeping_task t
+         LEFT JOIN resource r ON r.id = t.resource_id
+         LEFT JOIN cleaning_area a ON a.id = t.area_id
+        WHERE t.property_id = $1 AND t.business_date = $2::date
+          AND t.assigned_to IS NOT NULL) z
+      ORDER BY NULLIF(substring(z.code from '^[0-9]+'), '')::numeric NULLS LAST, z.code`,
+    [propertyId, date])
+  const eintraege = await liesEintraege(client, propertyId, date, date, null)
+  const ids = [...new Set([...zimmer.rows.map(z => z.userId),
+                           ...eintraege.rows.map(e => e.userId)])]
+  const namen = ids.length === 0 ? [] : (await client.query<{ userId: number; name: string
+                                                               username: string | null }>(
+    `SELECT id::int AS "userId", display_name AS name, username FROM app_user
+      WHERE id = ANY($1::bigint[]) ORDER BY display_name`, [ids])).rows
+  const staff = namen.map(n => {
+    const rooms = zimmer.rows.filter(z => z.userId === n.userId)
+      .map(({ userId: _, ...z }) => z)
+    const entries = eintraege.rows.filter(e => e.userId === n.userId)
+      .map(({ userId: _, ...e }) => e)
+    const totals = { departure: 0, stayover: 0, otherRooms: 0, extra: 0, kitchen: 0,
+                     correction: 0, total: 0 }
+    for (const z of rooms) {
+      if (z.outcome !== 'cleaned') continue
+      const art = z.kind === 'departure' ? 'departure'
+        : z.kind === 'stayover' ? 'stayover' : 'otherRooms'
+      totals[art] += z.minutes
+      totals.total += z.minutes
+    }
+    for (const e of entries) {
+      if (e.withdrawn) continue
+      totals[e.kind] += e.minutes
+      totals.total += e.minutes
+    }
+    return { ...n, rooms, entries, totals }
+  })
+  return { date, closed: await istAbgeschlossen(client, propertyId, date), staff }
 }
 
 interface EintragsEingabe {
@@ -210,14 +321,37 @@ async function eigenerTag(
 async function eigenerEintrag(
   client: PoolClient, propertyId: number, userId: number, id: number
 ): Promise<{ date: string; kind: Art; description: string | null }> {
-  const { rows } = await client.query<{ date: string; kind: Art; description: string | null }>(
-    `SELECT business_date::text AS date, kind, description FROM staff_work_entry
+  const { rows } = await client.query<{ date: string; kind: Art; description: string | null
+                                        adjusted: boolean }>(
+    `SELECT business_date::text AS date, kind, description,
+            (adjusted_at IS NOT NULL) AS adjusted
+       FROM staff_work_entry
       WHERE id = $1 AND property_id = $2 AND user_id = $3 AND withdrawn_at IS NULL
         AND kind <> 'correction'
       FOR UPDATE`, [id, propertyId, userId])
   const e = rows[0]
   if (e === undefined) throw Errors.notFound('res.workEntry')
+  // Angepasst hat die Leitung (0118); ein Tipp der Kraft kippte sonst ihre
+  // Anpassung, ohne dass es jemand merkt.
+  if (e.adjusted) throw Errors.conflict('worktime.adjustedByLead')
   await eigenerTag(client, propertyId, e.date)
+  return { date: e.date, kind: e.kind, description: e.description }
+}
+
+/** Ein Eintrag der Kraefte fuer die Leitung: Zusatzarbeit oder Kueche, gesperrt. */
+async function eintragDerLeitung(
+  client: PoolClient, propertyId: number, id: number
+): Promise<{ date: string; kind: Art; minutes: number; originalMinutes: number | null
+             withdrawn: boolean }> {
+  const { rows } = await client.query<{ date: string; kind: Art; minutes: number
+                                        originalMinutes: number | null; withdrawn: boolean }>(
+    `SELECT business_date::text AS date, kind, minutes, original_minutes AS "originalMinutes",
+            (withdrawn_at IS NOT NULL) AS withdrawn
+       FROM staff_work_entry
+      WHERE id = $1 AND property_id = $2 AND kind <> 'correction'
+      FOR UPDATE`, [id, propertyId])
+  const e = rows[0]
+  if (e === undefined) throw Errors.notFound('res.workEntry')
   return e
 }
 
@@ -578,6 +712,96 @@ export function worktimeRoutes(app: FastifyInstance): void {
         reply.header('content-disposition', `attachment; filename="arbeitszeit-${month}.csv"`)
         // Mit Byte-Order-Mark: sonst liest Excel die Umlaute der Namen falsch.
         return '﻿' + csv([kopf, ...zeilen])
+      })
+    }
+  })
+
+  /**
+   * Ein Tag aller Kraefte mit Zimmern und Zusatzarbeiten (Sven, 10.10.2026:
+   * so sah die Stundenuebersicht der alten App aus). Ein Tag ist die
+   * Obergrenze des Zeitraums.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/worktime/day',
+    permission: 'worktime:manage',
+    propertyParam: 'propertyId',
+    summary: 'Arbeitszeit aller Kraefte an einem Tag, mit Zimmern und Zusatzarbeiten',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const q = req.query as { date?: string }
+      if (q.date !== undefined && !isIsoDate(q.date)) {
+        throw Errors.validation({ date: ['field.isoDate'] })
+      }
+      return tx(req.pool, req, async client =>
+        liesTag(client, propertyId, q.date ?? await tagOderOffen(client, propertyId, undefined)))
+    }
+  })
+
+  /**
+   * Die Minuten einer Zusatzarbeit anpassen, wenn die Kraft sich vertippt
+   * hat (0118). Kein Ueberschreiben ohne Spur: der Wert der Kraft bleibt in
+   * `original_minutes`, und sie sieht an ihrem Eintrag, dass und von wem
+   * angepasst wurde. Kuechendienste haben Beginn und Ende; dort bleibt die
+   * Korrektur mit Grund.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/worktime/entries/:entryId',
+    permission: 'worktime:manage',
+    propertyParam: 'propertyId',
+    summary: 'Minuten einer Zusatzarbeit anpassen',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const id = idAusPfad(req, 'entryId')
+      const principal = req.principal as Principal
+      const minuten = (req.body as { minutes?: unknown } | null)?.minutes
+      if (!Number.isInteger(minuten) || (minuten as number) < 1 || (minuten as number) > 1440) {
+        throw Errors.validation({ minutes: ['field.range'] }, { min: 1, max: 1440 })
+      }
+      return tx(req.pool, req, async client => {
+        const e = await eintragDerLeitung(client, propertyId, id)
+        if (e.kind !== 'extra') throw Errors.conflict('worktime.extraOnly')
+        if (e.withdrawn) throw Errors.notFound('res.workEntry')
+        await monatOffen(client, propertyId, e.date)
+        if (minuten !== e.minutes) {
+          // Die erste Anpassung haelt fest, was die Kraft eingetragen hatte;
+          // jede weitere laesst das stehen.
+          await client.query(
+            `UPDATE staff_work_entry
+                SET minutes = $2, original_minutes = COALESCE(original_minutes, minutes),
+                    adjusted_by = $3, adjusted_at = now(), updated_by = $3, updated_at = now()
+              WHERE id = $1`, [id, minuten, principal.userId])
+        }
+        return liesTag(client, propertyId, e.date)
+      })
+    }
+  })
+
+  /**
+   * Eine Zusatzarbeit oder einen Kuechendienst herausnehmen ("×" der alten
+   * App). Zurueckziehen wie bei der Kraft, nicht loeschen: die Zeile bleibt
+   * stehen, durchgestrichen, mit dem Namen dessen, der sie herausnahm.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/worktime/entries/:entryId/withdraw',
+    permission: 'worktime:manage',
+    propertyParam: 'propertyId',
+    summary: 'Eintrag einer Kraft zurueckziehen',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const id = idAusPfad(req, 'entryId')
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const e = await eintragDerLeitung(client, propertyId, id)
+        await monatOffen(client, propertyId, e.date)
+        if (!e.withdrawn) {
+          await client.query(
+            `UPDATE staff_work_entry SET withdrawn_at = now(), updated_by = $2, updated_at = now()
+              WHERE id = $1`, [id, principal.userId])
+        }
+        return liesTag(client, propertyId, e.date)
       })
     }
   })
