@@ -56,7 +56,7 @@ Eine JSON-Datei in UTF-8. Alle Daten sind **Hoteltage in Europe/Berlin** (`YYYY-
 | `schedules[].kind` | ja | `departure` (Abreise) oder `stayover` (Bleiber) |
 | `schedules[].username` | nein | `null`, wenn die Zeile niemandem zugeteilt ist |
 | `schedules[].minutes` | ja | ganze Zahl ≥ 0, der in der Alt-App **gespeicherte** Wert |
-| `workEntries[].minutes` | ja | 1 bis 1440 |
+| `workEntries[].minutes` | ja | 1 bis 44640 (ein Monat); die alte App kannte Sammelbuchungen wie „Uneingetragenes“ mit 4080 Minuten (Migration 0119) |
 | `workEntries[].text` | ja | höchstens 500 Zeichen; Küche als `"Küche"` |
 
 **Prüfsumme.** `sha256` ist der SHA-256 (hex, klein) über die kanonische Form der jeweiligen Liste: Schlüssel sortiert, ohne Leerraum, Nicht-ASCII unmaskiert, UTF-8. In Python:
