@@ -712,6 +712,8 @@ Gerechnet wird jetzt mit dem **verkauften Produkt**: ein Doppelzimmer ist für z
 
 Beim Ziehen färben sich die Zeilen danach: grün die gebuchte Gruppe, rot die zu kleinen, neutral der Rest. Neutral ist die wichtige Mitte — eine andere Gruppe, die groß genug ist, ist ein Upgrade und Alltag; abgerechnet wird, was gebucht wurde. Die API prüft die Gruppe deshalb bewusst nicht. Gefragt wird beim Loslassen, nicht beim Ziehen: eine Rückfrage mitten in der Geste steht im Weg.
 
+**Nachtrag: Gezählt wird im Zimmer** (Sven, 10.10.2026, Migration `0120`). Ein Upgrade hielt bisher den Platz seiner gebuchten Gruppe: ein Doppelzimmer-Gast im Vierbettzimmer ließ die Doppelzimmer voll aussehen, während eines leer im Plan stand, und das Vierbettzimmer frei, obwohl jemand darin lag — und genau diese Zahl ging an den Kanal. Jetzt bindet eine Buchung **mit Zimmer** die Gruppe dieses Zimmers, ohne Zimmer (Ablage) die gebuchte. Die gebuchte Gruppe bleibt an der Reservierung, abgerechnet wird weiter, was gebucht wurde. Alle Wege binden und geben frei wie bisher in der gebuchten Gruppe; ein Trigger auf Anweisungsebene verschiebt den Platz einer Reservierung im fremden Zimmer in dessen Gruppe und zurück, `change-stay` rechnet selbst in der Gruppe des Zimmers, damit die Überbuchungsfrage dort gestellt wird, wo der Gast danach liegt. Weil eine Freigabe dadurch kurz unter 0 gehen kann, schneidet `inventory_release` nicht mehr selbst ab; das geschieht aufgeschoben am Ende der Transaktion. `inventory_sold_expected()` ist die eine Rechnung, gegen die Abgleich, Saatlauf und Testhotel prüfen; die Warnung im Plan zählt genauso.
+
 ---
 
 ### Belegungsplan: Reinigungs- und Zahlungsstand — **erledigt**

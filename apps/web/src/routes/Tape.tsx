@@ -830,9 +830,21 @@ function useWarnungen(
     }
 
     const kapazitaet = new Map<number, number>()
+    const gruppeDesZimmers = new Map<number, number>()
     for (const u of data.units) {
       kapazitaet.set(u.category_id, (kapazitaet.get(u.category_id) ?? 0) + 1)
+      gruppeDesZimmers.set(u.id, u.category_id)
     }
+    /*
+     * Gezaehlt wird in der Gruppe des Zimmers, in dem die Buchung liegt,
+     * ohne Zimmer in der gebuchten -- wie der Bestand (Migration 0120). Ein
+     * Doppelzimmer-Gast im Vierbettzimmer machte sonst die Doppelzimmer
+     * "ueberbucht", waehrend eines davon leer im Plan stand (Sven,
+     * 10.10.2026).
+     */
+    const zaehltIn = (r: { resource_id: number | null; category_id: number }) =>
+      (r.resource_id === null ? undefined : gruppeDesZimmers.get(r.resource_id))
+        ?? r.category_id
     const namen = new Map(kategorien.map(k => [k.id, k.name]))
     const tageListe = eachDay(data.from, data.to)
 
@@ -840,7 +852,7 @@ function useWarnungen(
       let betroffeneTage = 0
       for (const tag of tageListe) {
         const belegt = data.reservations.filter(r =>
-          r.category_id === categoryId && BINDEND.has(r.status)
+          zaehltIn(r) === categoryId && BINDEND.has(r.status)
           && r.arrival <= tag && r.departure > tag).length
         if (belegt > kapa) betroffeneTage++
       }

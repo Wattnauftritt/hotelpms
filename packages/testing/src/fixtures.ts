@@ -199,6 +199,21 @@ export async function makeReservation(
   const status = opts.status ?? 'Confirmed'
   const price = opts.priceCent ?? 11_000
 
+  /*
+   * Erst binden, dann einfuegen -- wie die Routen. Liegt die Reservierung
+   * in einem Zimmer einer anderen Gruppe, verschiebt der Trigger aus 0120
+   * ihren Platz beim Einfuegen; ohne gebundenen Platz stuende die gebuchte
+   * Gruppe danach auf -1, und jede Anweisung hier ist ihre eigene
+   * Transaktion.
+   */
+  if (opts.reserveInventory !== false) {
+    const res = await owner.query<{ inventory_reserve: string | null }>(
+      `SELECT inventory_reserve($1,$2,$3::date,$4::date,1)`,
+      [opts.propertyId, opts.categoryId, opts.arrival, opts.departure])
+    const fehler = res.rows[0]!.inventory_reserve
+    if (fehler !== null) throw new Error(`inventory_reserve: ${fehler}`)
+  }
+
   const b = await owner.query<{ id: number }>(
     `INSERT INTO booking (property_id, source) VALUES ($1, 'direct') RETURNING id`,
     [opts.propertyId])
@@ -226,14 +241,6 @@ export async function makeReservation(
       `INSERT INTO folio (property_id, reservation_id) VALUES ($1,$2) RETURNING id`,
       [opts.propertyId, reservationId])
     folioId = f.rows[0]!.id
-  }
-
-  if (opts.reserveInventory !== false) {
-    const res = await owner.query<{ inventory_reserve: string | null }>(
-      `SELECT inventory_reserve($1,$2,$3::date,$4::date,1)`,
-      [opts.propertyId, opts.categoryId, opts.arrival, opts.departure])
-    const fehler = res.rows[0]!.inventory_reserve
-    if (fehler !== null) throw new Error(`inventory_reserve: ${fehler}`)
   }
 
   return { bookingId, reservationId, folioId }

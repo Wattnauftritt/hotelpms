@@ -366,6 +366,8 @@ describe('Zimmer umgruppieren mit Reservierungen', () => {
     expect(still.statusCode).toBe(200)
   })
 
+  // Seit 0120 zaehlt ein Upgrade in der Gruppe seines Zimmers: es wandert
+  // mit dem Zimmer, die gebuchte Gruppe an der Reservierung bleibt.
   it('laesst ein Upgrade bei der gebuchten Gruppe', async () => {
     const dz = await makeCategory(owner, fx.propertyId, { code: 'DZ' })
     const su = await makeCategory(owner, fx.propertyId, { code: 'SU' })
@@ -383,7 +385,9 @@ describe('Zimmer umgruppieren mit Reservierungen', () => {
     const nachher = await owner.query<{ category_id: number }>(
       `SELECT category_id FROM reservation WHERE id = $1`, [res.reservationId])
     expect(nachher.rows[0]!.category_id).toBe(dz)
-    expect(await verkauft(dz, 3)).toBe(1)
+    expect(await verkauft(dz, 3)).toBe(0)
+    expect(await verkauft(su, 3)).toBe(0)
+    expect(await verkauft(ap, 3)).toBe(1)
   })
 
   it('nennt beim Stilllegen der Gruppe die Reservierungen und ihr Zimmer', async () => {

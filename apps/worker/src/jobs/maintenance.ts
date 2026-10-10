@@ -69,13 +69,9 @@ export async function reconcileInventory(
 ): Promise<InventoryDrift[]> {
   const r = await client.query<InventoryDrift>(
     `WITH gezaehlt AS (
-       SELECT r.category_id, d.day::date AS date, count(*)::int AS counted
-         FROM reservation r
-         CROSS JOIN LATERAL generate_series(r.arrival, r.departure - 1, interval '1 day') d(day)
-        WHERE r.property_id = $1
-          AND r.status IN ('Optional','Confirmed','InHouse')
-          AND d.day >= current_date
-        GROUP BY r.category_id, d.day
+       -- Je Gruppe des Zimmers, ohne Zimmer der gebuchten (Migration 0120).
+       SELECT category_id, date, n AS counted
+         FROM inventory_sold_expected($1, current_date)
      )
      SELECT i.category_id AS "categoryId", i.date::text AS date,
             COALESCE(g.counted, 0) AS counted, i.sold AS stored
