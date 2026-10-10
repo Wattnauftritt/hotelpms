@@ -10,6 +10,7 @@ import {
 } from '../platform/channelAuth.js'
 import { isTrainingProperty } from '../platform/training.js'
 import { personenAngabe, type Personen } from './reservations.js'
+import { autoSortieren, sortierSperre, vergibtSelbst } from './roomSort.js'
 
 /*
  * Kanalbuchungen aus einem fuehrenden Umsystem (Migration 0092).
@@ -40,6 +41,16 @@ import { personenAngabe, type Personen } from './reservations.js'
  * Ebenso geschuetzt ist eine Buchung, an der jemand angereist ist
  * (`kept_checked_in`): der Gast ist da. Sonst ist die Quelle Herr, auch
  * ueber Stornos (Sven, 05.10.2026).
+ *
+ * **Wer das Zimmer vergibt.** Bisher das Umsystem: jeder Abschnitt nannte
+ * sein Zimmer. Seit Sven entschieden hat, dass StayGrid im Gaestehaus die
+ * Zimmer vergibt (07.10.2026, Thread "Zimmer-Sortierung"), darf ein
+ * Abschnitt ohne Zimmer kommen, nur mit seiner Gruppe. Steht das Haus auf
+ * "automatisch sortieren", gilt ein mitgeschicktes Zimmer gar nicht mehr:
+ * StayGrid behaelt das bisherige, solange es frei ist, und sortiert am Ende
+ * des Aufrufs. Der Schalter ist die Einstellung des Hauses und nicht der
+ * Rumpf -- so gibt es keinen Tag, an dem beide vergeben oder keiner, und das
+ * Adminpanel darf weiter Zimmer schicken, bis es umgestellt ist.
  */
 
 /** Wie bei `change-stay`: ein Aufenthalt, kein Dauermietvertrag. */
@@ -49,7 +60,10 @@ const MAX_SEGMENTS = 20
 const REF_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/
 
 interface PushSegment {
-  roomCode: string
+  /** Wunsch der Quelle; gilt nicht, wenn StayGrid im Haus selbst vergibt. */
+  roomCode?: string
+  /** Die Gruppe, wenn kein Zimmer mitkommt. Entfaellt, wenn das Haus nur eine hat. */
+  categoryCode?: string
   arrival: string
   departure: string
   adults?: number
@@ -70,8 +84,7 @@ interface PushBody {
 }
 
 interface Abschnitt {
-  roomCode: string
-  resourceId: number
+  resourceId: number | null
   categoryId: number
   arrival: string
   departure: string
@@ -113,8 +126,12 @@ function rumpfLesen(roh: unknown): PushBody & { quelle: string | null } {
     throw Errors.validation({ segments: ['field.maxValue'] }, { max: MAX_SEGMENTS })
   }
   body.segments.forEach((s, i) => {
-    if (typeof s?.roomCode !== 'string' || s.roomCode.trim() === '') {
-      throw Errors.validation({ [`segments.${i}.roomCode`]: ['field.required'] })
+    if (s?.roomCode !== undefined && (typeof s.roomCode !== 'string' || s.roomCode.trim() === '')) {
+      throw Errors.validation({ [`segments.${i}.roomCode`]: ['field.invalid'] })
+    }
+    if (s?.categoryCode !== undefined
+        && (typeof s.categoryCode !== 'string' || s.categoryCode.trim() === '')) {
+      throw Errors.validation({ [`segments.${i}.categoryCode`]: ['field.invalid'] })
     }
     if (!isIsoDate(s.arrival) || !isIsoDate(s.departure)) {
       throw Errors.validation({ [`segments.${i}.arrival`]: ['field.isoDate'] })
@@ -148,7 +165,7 @@ function rumpfLesen(roh: unknown): PushBody & { quelle: string | null } {
  */
 function pruefsumme(body: PushBody): string {
   const teile = body.segments
-    .map(s => [s.roomCode.trim(), s.arrival, s.departure,
+    .map(s => [s.roomCode?.trim() ?? null, s.categoryCode?.trim() ?? null, s.arrival, s.departure,
                s.adults ?? null, s.children ?? null, s.guestCount ?? null])
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
   return createHash('sha256')
@@ -156,25 +173,55 @@ function pruefsumme(body: PushBody): string {
     .digest('hex')
 }
 
+/**
+ * Zimmer und Gruppe der Abschnitte.
+ *
+ * Ein Abschnitt ohne Zimmer braucht seine Gruppe: aus `categoryCode`, oder
+ * die einzige des Hauses. Im Gaestehaus mit fuenf gleichen Doppelzimmern
+ * (Sven, 07.10.2026) schickt das Adminpanel dann gar nichts dazu. Ein
+ * unbekanntes Zimmer bleibt ein Fehler, auch wenn StayGrid selbst vergibt:
+ * es heisst, dass Quelle und Stammdaten auseinanderlaufen, und das soll
+ * auffallen, statt still eine andere Gruppe zu treffen.
+ */
 async function abschnitteAufloesen(
-  client: PoolClient, propertyId: number, segments: PushSegment[]
+  client: PoolClient, propertyId: number, segments: PushSegment[], selbst: boolean
 ): Promise<Abschnitt[]> {
-  const codes = [...new Set(segments.map(s => s.roomCode.trim()))]
+  const codes = [...new Set(segments.flatMap(s => s.roomCode === undefined ? [] : [s.roomCode.trim()]))]
   const { rows } = await client.query<{ id: number; code: string; category_id: number }>(
     `SELECT r.id, r.code, r.category_id FROM resource r
        JOIN resource_category c ON c.id = r.category_id AND c.active
       WHERE r.property_id = $1 AND r.active AND r.code = ANY($2::text[])`,
     [propertyId, codes])
   const nachCode = new Map(rows.map(r => [r.code, r]))
+  const gruppen = (await client.query<{ id: number; code: string }>(
+    `SELECT id, code FROM resource_category WHERE property_id = $1 AND active`,
+    [propertyId])).rows
+  const gruppeNachCode = new Map(gruppen.map(g => [g.code, Number(g.id)]))
   return segments.map((s, i) => {
-    const z = nachCode.get(s.roomCode.trim())
-    if (z === undefined) {
-      throw Errors.validation({ [`segments.${i}.roomCode`]: ['field.unknownRoom'] })
+    const personen = personenAngabe(s)
+    if (s.roomCode !== undefined) {
+      const z = nachCode.get(s.roomCode.trim())
+      if (z === undefined) {
+        throw Errors.validation({ [`segments.${i}.roomCode`]: ['field.unknownRoom'] })
+      }
+      return {
+        resourceId: selbst ? null : Number(z.id),
+        categoryId: Number(z.category_id), arrival: s.arrival, departure: s.departure, personen
+      }
     }
-    return {
-      roomCode: z.code, resourceId: z.id, categoryId: z.category_id,
-      arrival: s.arrival, departure: s.departure, personen: personenAngabe(s)
+    let categoryId: number | undefined
+    if (s.categoryCode !== undefined) {
+      categoryId = gruppeNachCode.get(s.categoryCode.trim())
+      if (categoryId === undefined) {
+        throw Errors.validation({ [`segments.${i}.categoryCode`]: ['field.unknownCategory'] })
+      }
+    } else if (gruppen.length === 1) {
+      categoryId = Number(gruppen[0]!.id)
+    } else {
+      throw Errors.validation({ [`segments.${i}.roomCode`]: ['field.required'] })
     }
+    return { resourceId: null, categoryId, arrival: s.arrival,
+             departure: s.departure, personen }
   })
 }
 
@@ -232,13 +279,16 @@ function zuordnen(
   const darf = (a: Abschnitt, r: Bestehend) =>
     r.status !== 'CheckedOut' && (r.status !== 'InHouse' || r.arrival === a.arrival)
 
+  // Ohne Zimmer im Abschnitt zaehlen nur die Tage: StayGrid hat es vergeben.
+  const zimmerPasst = (a: Abschnitt, r: Bestehend) =>
+    a.resourceId === null ? r.category_id === a.categoryId : r.resource_id === a.resourceId
   for (const a of [...offen]) {
-    const r = [...frei].find(x => x.resource_id === a.resourceId
+    const r = [...frei].find(x => zimmerPasst(a, x)
       && x.arrival === a.arrival && x.departure === a.departure)
     if (r) nimm(a, r)
   }
   for (const a of [...offen]) {
-    const r = [...frei].find(x => x.resource_id === a.resourceId && darf(a, x)
+    const r = [...frei].find(x => zimmerPasst(a, x) && darf(a, x)
       && x.arrival < a.departure && x.departure > a.arrival)
     if (r) nimm(a, r)
   }
@@ -316,6 +366,7 @@ async function naechteSchreiben(
 async function besetzteAbschnitte(
   client: PoolClient, bookingId: number, abschnitte: Abschnitt[]
 ): Promise<Set<Abschnitt>> {
+  abschnitte = abschnitte.filter(a => a.resourceId !== null)
   if (abschnitte.length === 0) return new Set()
   const r = await client.query<{ i: string }>(
     `SELECT x.i FROM unnest($2::bigint[], $3::date[], $4::date[])
@@ -397,6 +448,35 @@ async function konflikteSetzen(
   return ergebnis
 }
 
+/**
+ * Zimmer der eigenen Aufenthalte loesen, die nach dem Push belegt oder
+ * gesperrt waeren. Nur, wenn StayGrid selbst vergibt: dann ist das Zimmer
+ * kein Wunsch der Quelle, auf den eine Buchung warten koennte, und der
+ * Sortierer legt sie gleich danach neu. Ohne diesen Schritt saehe er eine
+ * Doppelbelegung und liesse die ganze Gruppe liegen.
+ */
+async function zimmerFreiMachen(client: PoolClient, ids: number[]): Promise<void> {
+  await client.query(
+    `UPDATE reservation r SET resource_id = NULL, updated_at = now()
+      WHERE r.id = ANY($1::bigint[]) AND r.resource_id IS NOT NULL
+        AND (EXISTS (SELECT 1 FROM reservation o
+                      WHERE o.resource_id = r.resource_id AND o.id <> r.id
+                        AND o.status IN ('Optional','Confirmed','InHouse')
+                        AND o.arrival < r.departure AND o.departure > r.arrival)
+             OR EXISTS (SELECT 1 FROM maintenance_block m
+                         WHERE m.resource_id = r.resource_id AND m.kind = 'out_of_order'
+                           AND m.from_date < r.departure AND m.to_date > r.arrival))`,
+    [ids])
+}
+
+/** Das Zimmer, in dem jeder Aufenthalt am Ende liegt (nach dem Sortieren). */
+async function zimmerCodes(client: PoolClient, ids: number[]): Promise<Map<number, string>> {
+  const r = await client.query<{ id: number; code: string }>(
+    `SELECT r.id, u.code FROM reservation r JOIN resource u ON u.id = r.resource_id
+      WHERE r.id = ANY($1::bigint[])`, [ids])
+  return new Map(r.rows.map(x => [Number(x.id), x.code]))
+}
+
 interface BuchungZeile {
   id: number
   public_ref: string
@@ -459,7 +539,9 @@ export function channelPushRoutes(app: FastifyInstance): void {
       const ergebnis = await withTransaction(req.pool, channelContext(principal), async client => {
         await alsPush(client, principal)
         await trainingSperre(client, propertyId)
-        const soll = await abschnitteAufloesen(client, propertyId, body.segments)
+        await sortierSperre(client, propertyId)
+        const selbst = await vergibtSelbst(client, propertyId)
+        const soll = await abschnitteAufloesen(client, propertyId, body.segments, selbst)
 
         let buchung = await buchungSperren(client, propertyId, ref)
         let angelegt = false
@@ -518,10 +600,16 @@ export function channelPushRoutes(app: FastifyInstance): void {
 
         const { paare, neu, uebrig } = zuordnen(soll, lebend)
         const besetzt = await besetzteAbschnitte(client, buchung.id, soll)
-        const zimmerFuer = (a: Abschnitt) => besetzt.has(a) ? null : a.resourceId
+        // Vergibt StayGrid selbst, behaelt ein Aufenthalt sein Zimmer, solange
+        // die Gruppe bleibt; ob es fuer die neuen Tage frei ist, klaert
+        // `zimmerFreiMachen`, und wohin er dann kommt, der Sortierer.
+        const zimmerFuer = (a: Abschnitt, r?: Bestehend) =>
+          a.resourceId === null
+            ? (r !== undefined && r.category_id === a.categoryId ? r.resource_id : null)
+            : besetzt.has(a) ? null : a.resourceId
         const wartetAuf = (a: Abschnitt) => besetzt.has(a) ? a.resourceId : null
         const ueberbucht = new Set<number>()
-        const traeger: Array<{ reservationId: number; reservationRef: string; roomCode: string
+        const traeger: Array<{ reservationId: number; reservationRef: string
                                 arrival: string; departure: string }> = []
 
         // Erst freigeben, was wegfaellt oder umzieht, dann binden: sonst
@@ -552,11 +640,11 @@ export function channelPushRoutes(app: FastifyInstance): void {
                     notes = COALESCE($9, notes), channel_wanted_resource_id = $10,
                     updated_at = now()
               WHERE id = $1`,
-            [r.id, a.arrival, a.departure, a.categoryId, zimmerFuer(a),
+            [r.id, a.arrival, a.departure, a.categoryId, zimmerFuer(a, r),
              a.personen.guestCount, a.personen.adults, a.personen.children,
              body.notes ?? null, wartetAuf(a)])
           traeger.push({ reservationId: r.id, reservationRef: r.public_ref,
-                         roomCode: a.roomCode, arrival: a.arrival, departure: a.departure })
+                         arrival: a.arrival, departure: a.departure })
         }
 
         for (const a of neu) {
@@ -582,12 +670,17 @@ export function channelPushRoutes(app: FastifyInstance): void {
             `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
              VALUES ($1,$2,$3,'guest')`, [propertyId, id, buchung.booker_guest_id])
           traeger.push({ reservationId: id, reservationRef: res.rows[0]!.public_ref,
-                         roomCode: a.roomCode, arrival: a.arrival, departure: a.departure })
+                         arrival: a.arrival, departure: a.departure })
         }
 
         await naechteSchreiben(client, propertyId, body.totalCent ?? 0, traeger)
-        const konflikte = await konflikteSetzen(client, traeger.map(t => t.reservationId),
-          ueberbucht)
+        const ids = traeger.map(t => t.reservationId)
+        if (selbst) {
+          await zimmerFreiMachen(client, ids)
+          await autoSortieren(client, propertyId)
+        }
+        const konflikte = await konflikteSetzen(client, ids, ueberbucht)
+        const endZimmer = await zimmerCodes(client, ids)
 
         await client.query(
           `UPDATE booking
@@ -619,7 +712,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
           status: angelegt ? 'created' as const : 'updated' as const,
           bookingRef: buchung.public_ref,
           reservations: traeger.map(t => ({
-            reservationRef: t.reservationRef, roomCode: t.roomCode,
+            reservationRef: t.reservationRef, roomCode: endZimmer.get(t.reservationId) ?? null,
             arrival: t.arrival, departure: t.departure,
             conflict: konflikte.get(t.reservationId) ?? null
           })),
@@ -650,6 +743,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
       return withTransaction(req.pool, channelContext(principal), async client => {
         await alsPush(client, principal)
         await trainingSperre(client, propertyId)
+        await sortierSperre(client, propertyId)
         const buchung = await buchungSperren(client, propertyId, ref)
         if (buchung === null) throw Errors.notFound('res.booking')
         eigeneBuchung(buchung, principal)
@@ -686,6 +780,8 @@ export function channelPushRoutes(app: FastifyInstance): void {
               WHERE id = ANY($1::bigint[])`, [stornieren.map(r => r.id)])
         }
         await wartendePlatzieren(client, propertyId)
+        // Ein frei gewordenes Zimmer kann einem anderen Gast besser passen.
+        if (stornieren.length > 0) await autoSortieren(client, propertyId)
         // Der Hash gehoert zum letzten Stand; ein spaeterer PUT derselben
         // Abschnitte soll die Buchung wiederbeleben, nicht "unchanged" sagen.
         await client.query(

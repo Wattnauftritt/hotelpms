@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeResources, makeUser, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, openBusinessDay, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -365,5 +365,96 @@ describe('Aenderung an der Rezeption', () => {
     const b = await owner.query(`SELECT channel_owner FROM booking WHERE public_ref = $1`,
       [a.bookingRef])
     expect(b.rows[0]!.channel_owner).toBe('source')
+  })
+})
+
+/*
+ * StayGrid vergibt die Zimmer im Gaestehaus (Sven, 07.10.2026, Thread
+ * "Zimmer-Sortierung"). Der Schalter ist der Modus des Hauses: auf
+ * "automatisch" gilt ein mitgeschicktes Zimmer nicht mehr, und am Ende jedes
+ * Pushes sortiert StayGrid -- ohne die Buchung dem Umsystem wegzunehmen.
+ */
+describe('StayGrid vergibt die Zimmer', () => {
+  async function automatisch(): Promise<void> {
+    await openBusinessDay(owner, fx.propertyId, '2026-10-10')
+    await owner.query(`UPDATE resource SET quality = CASE code WHEN '6102' THEN 90 ELSE 40 END
+                        WHERE property_id = $1`, [fx.propertyId])
+    await owner.query(`INSERT INTO room_sort_setting (property_id, mode) VALUES ($1, 'auto')`,
+      [fx.propertyId])
+  }
+  async function lage(): Promise<Record<string, string | null>> {
+    const { rows } = await owner.query<{ ref: string; code: string | null }>(
+      `SELECT b.external_reference AS ref, z.code FROM reservation r
+         JOIN booking b ON b.id = r.booking_id
+         LEFT JOIN resource z ON z.id = r.resource_id
+        WHERE r.status = 'Confirmed' ORDER BY b.external_reference`)
+    return Object.fromEntries(rows.map(r => [r.ref, r.code]))
+  }
+
+  it('gibt einer Buchung ohne Zimmer eines und den laengsten Gast ins schoenste', async () => {
+    await automatisch()
+    const token = await zugang()
+    const kurz = await put(token, 'rc-kurz', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-03' }] })
+    expect(kurz.statusCode).toBe(201)
+    expect((JSON.parse(kurz.body) as Antwort).reservations![0]!.roomCode).toBe('6102')
+
+    const lang = await put(token, 'rc-lang', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-09' }] })
+    expect((JSON.parse(lang.body) as Antwort).reservations![0]!.roomCode).toBe('6102')
+    expect(await lage()).toEqual({ 'rc-kurz': '6101', 'rc-lang': '6102' })
+
+    // Der Zug gehoert dem Sortierer, nicht der Rezeption: beide Buchungen
+    // nehmen weiter Aenderungen und Stornos aus RoomCloud an.
+    const owners = await owner.query<{ channel_owner: string }>(
+      `SELECT DISTINCT channel_owner FROM booking WHERE property_id = $1`, [fx.propertyId])
+    expect(owners.rows).toEqual([{ channel_owner: 'source' }])
+    const laeufe = await owner.query<{ trigger: string }>(
+      `SELECT trigger FROM room_sort_run WHERE property_id = $1`, [fx.propertyId])
+    expect(laeufe.rows.map(r => r.trigger)).toContain('auto')
+  })
+
+  it('folgt nicht mehr dem Zimmer, das die Quelle mitschickt', async () => {
+    await automatisch()
+    const token = await zugang()
+    await put(token, 'rc-1', {
+      segments: [{ roomCode: '6101', arrival: '2026-11-02', departure: '2026-11-05' }] })
+    expect(await lage()).toEqual({ 'rc-1': '6102' })
+  })
+
+  it('behaelt das Zimmer, wenn die Quelle nur verlaengert', async () => {
+    await automatisch()
+    const token = await zugang()
+    const a = JSON.parse((await put(token, 'rc-1', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-04' }] })).body) as Antwort
+    const b = JSON.parse((await put(token, 'rc-1', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-06' }] })).body) as Antwort
+    expect(b.reservations![0]!.reservationRef).toBe(a.reservations![0]!.reservationRef)
+    expect(b.reservations![0]!.roomCode).toBe('6102')
+    expect(await verkauft('2026-11-01', '2026-11-07')).toEqual([0, 1, 1, 1, 1, 0])
+  })
+
+  it('legt eine Buchung ohne Zimmer in die Ablage, solange das Haus nicht selbst vergibt', async () => {
+    const token = await zugang()
+    const r = await put(token, 'rc-1', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-04' }] })
+    expect(r.statusCode).toBe(201)
+    expect((JSON.parse(r.body) as Antwort).reservations![0]!.roomCode).toBeNull()
+    expect(await lage()).toEqual({ 'rc-1': null })
+    expect(await verkauft('2026-11-02', '2026-11-04')).toEqual([1, 1])
+  })
+
+  it('verlangt die Gruppe, wenn das Haus mehrere hat', async () => {
+    await makeCategory(owner, fx.propertyId, { code: 'FW' })
+    const token = await zugang()
+    const ohne = await put(token, 'rc-1', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-04' }] })
+    expect(ohne.statusCode).toBe(422)
+    const mit = await put(token, 'rc-1', {
+      segments: [{ categoryCode: 'GH', arrival: '2026-11-02', departure: '2026-11-04' }] })
+    expect(mit.statusCode).toBe(201)
+    const unbekannt = await put(token, 'rc-2', {
+      segments: [{ categoryCode: 'XX', arrival: '2026-11-02', departure: '2026-11-04' }] })
+    expect(unbekannt.statusCode).toBe(422)
   })
 })
