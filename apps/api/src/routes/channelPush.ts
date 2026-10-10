@@ -300,19 +300,91 @@ async function naechteSchreiben(
 }
 
 /**
+ * Welche Abschnitte in ein Zimmer wollen, in dem an einem ihrer Tage schon
+ * ein Gast einer **anderen** Buchung liegt.
+ *
+ * Diese Abschnitte kommen in die Ablage, nicht in das Zimmer (Sven,
+ * 10.10.2026: "Buchungen die ueberbelegt sind muessen im Band ueber dem
+ * Kalender landen"). Bisher lagen sie im belegten Zimmer, mit einem
+ * Konfliktvermerk am Balken -- und im Plan genau unter dem anderen Balken.
+ * Gesehen hat sie niemand; gezaehlt hat der Bestand sie trotzdem, und die
+ * Rezeption bekam "ausgebucht" fuer ein Haus, in dem ein Zimmer leer
+ * aussah. Das Zimmer, das die Quelle wollte, bleibt vermerkt
+ * (`channel_wanted_resource_id`); wird es frei, legt `wartendePlatzieren`
+ * die Buchung dorthin.
+ */
+async function besetzteAbschnitte(
+  client: PoolClient, bookingId: number, abschnitte: Abschnitt[]
+): Promise<Set<Abschnitt>> {
+  if (abschnitte.length === 0) return new Set()
+  const r = await client.query<{ i: string }>(
+    `SELECT x.i FROM unnest($2::bigint[], $3::date[], $4::date[])
+                      WITH ORDINALITY AS x(res, von, bis, i)
+      WHERE EXISTS (SELECT 1 FROM reservation o
+                     WHERE o.resource_id = x.res AND o.booking_id <> $1
+                       AND o.status IN ('Confirmed','InHouse')
+                       AND o.arrival < x.bis AND o.departure > x.von)`,
+    [bookingId, abschnitte.map(a => a.resourceId), abschnitte.map(a => a.arrival),
+     abschnitte.map(a => a.departure)])
+  return new Set(r.rows.map(z => abschnitte[Number(z.i) - 1]!))
+}
+
+/**
+ * Wartende aus der Ablage in ihr Zimmer legen, sobald es frei ist.
+ *
+ * Das Umsystem schiebt Gaeste um, und meist kommt der Push, der ein Zimmer
+ * frei macht, nach dem, der hinein will. Ohne diesen Schritt bliebe die
+ * Buchung in der Ablage, bis die Quelle sie zufaellig noch einmal schickt.
+ * Einzeln und der Reihe nach: zwei Wartende auf dasselbe Zimmer duerfen
+ * nicht in derselben Anweisung beide hinein. Nur Buchungen, die noch der
+ * Quelle gehoeren; was die Rezeption angefasst hat, legt sie selbst.
+ */
+async function wartendePlatzieren(client: PoolClient, propertyId: number): Promise<void> {
+  const wartend = await client.query<{ id: number }>(
+    `SELECT r.id FROM reservation r JOIN booking b ON b.id = r.booking_id
+      WHERE r.property_id = $1 AND r.resource_id IS NULL
+        AND r.channel_wanted_resource_id IS NOT NULL
+        AND r.status IN ('Optional','Confirmed') AND b.channel_owner = 'source'
+      ORDER BY r.arrival, r.id`, [propertyId])
+  for (const w of wartend.rows) {
+    await client.query(
+      `UPDATE reservation r
+          SET resource_id = r.channel_wanted_resource_id,
+              channel_wanted_resource_id = NULL,
+              channel_conflict = CASE WHEN r.channel_conflict = 'room' THEN NULL
+                                      ELSE r.channel_conflict END,
+              updated_at = now()
+        WHERE r.id = $1
+          AND EXISTS (SELECT 1 FROM resource z
+                       WHERE z.id = r.channel_wanted_resource_id AND z.active)
+          AND NOT EXISTS (SELECT 1 FROM reservation o
+                           WHERE o.resource_id = r.channel_wanted_resource_id
+                             AND o.id <> r.id AND o.status IN ('Confirmed','InHouse')
+                             AND o.arrival < r.departure AND o.departure > r.arrival)
+          AND NOT EXISTS (SELECT 1 FROM maintenance_block m
+                           WHERE m.resource_id = r.channel_wanted_resource_id
+                             AND m.kind = 'out_of_order'
+                             AND m.from_date < r.departure AND m.to_date > r.arrival)`,
+      [w.id])
+  }
+}
+
+/**
  * Konflikte neu setzen: Gruppe ueberbucht (beim Binden erkannt) oder im
- * Zimmer liegt an einem der Tage schon jemand.
+ * Zimmer liegt an einem der Tage schon jemand -- dann liegt die Buchung in
+ * der Ablage und wartet auf ihr Zimmer.
  */
 async function konflikteSetzen(
   client: PoolClient, ids: number[], ueberbucht: Set<number>
 ): Promise<Map<number, string | null>> {
   const zimmer = await client.query<{ id: number }>(
     `SELECT r.id FROM reservation r
-      WHERE r.id = ANY($1::bigint[]) AND r.resource_id IS NOT NULL
-        AND EXISTS (SELECT 1 FROM reservation o
+      WHERE r.id = ANY($1::bigint[])
+        AND (r.channel_wanted_resource_id IS NOT NULL
+         OR r.resource_id IS NOT NULL AND EXISTS (SELECT 1 FROM reservation o
                      WHERE o.resource_id = r.resource_id AND o.id <> r.id
                        AND o.status IN ('Confirmed','InHouse')
-                       AND o.arrival < r.departure AND o.departure > r.arrival)`,
+                       AND o.arrival < r.departure AND o.departure > r.arrival))`,
     [ids])
   const imZimmer = new Set(zimmer.rows.map(z => z.id))
   const ergebnis = new Map<number, string | null>(ids.map(id => [id,
@@ -437,6 +509,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
         const lebend = ist.filter(r => LEBEND.has(r.status))
 
         if (!angelegt && buchung.source_hash === hash && lebend.length === soll.length) {
+          await wartendePlatzieren(client, propertyId)
           await client.query(
             `UPDATE booking SET source_updated_at = COALESCE($2::timestamptz, source_updated_at)
               WHERE id = $1`, [buchung.id, body.quelle])
@@ -444,6 +517,9 @@ export function channelPushRoutes(app: FastifyInstance): void {
         }
 
         const { paare, neu, uebrig } = zuordnen(soll, lebend)
+        const besetzt = await besetzteAbschnitte(client, buchung.id, soll)
+        const zimmerFuer = (a: Abschnitt) => besetzt.has(a) ? null : a.resourceId
+        const wartetAuf = (a: Abschnitt) => besetzt.has(a) ? a.resourceId : null
         const ueberbucht = new Set<number>()
         const traeger: Array<{ reservationId: number; reservationRef: string; roomCode: string
                                 arrival: string; departure: string }> = []
@@ -473,11 +549,12 @@ export function channelPushRoutes(app: FastifyInstance): void {
             `UPDATE reservation
                 SET arrival = $2::date, departure = $3::date, category_id = $4,
                     resource_id = $5, guest_count = $6, adults = $7, children = $8,
-                    notes = COALESCE($9, notes), updated_at = now()
+                    notes = COALESCE($9, notes), channel_wanted_resource_id = $10,
+                    updated_at = now()
               WHERE id = $1`,
-            [r.id, a.arrival, a.departure, a.categoryId, a.resourceId,
+            [r.id, a.arrival, a.departure, a.categoryId, zimmerFuer(a),
              a.personen.guestCount, a.personen.adults, a.personen.children,
-             body.notes ?? null])
+             body.notes ?? null, wartetAuf(a)])
           traeger.push({ reservationId: r.id, reservationRef: r.public_ref,
                          roomCode: a.roomCode, arrival: a.arrival, departure: a.departure })
         }
@@ -487,12 +564,13 @@ export function channelPushRoutes(app: FastifyInstance): void {
           const res = await client.query<{ id: number; public_ref: string }>(
             `INSERT INTO reservation
                (property_id, booking_id, category_id, resource_id, arrival, departure,
-                status, primary_guest_id, notes, guest_count, adults, children)
-             VALUES ($1,$2,$3,$4,$5::date,$6::date,'Confirmed',$7,$8,$9,$10,$11)
+                status, primary_guest_id, notes, guest_count, adults, children,
+                channel_wanted_resource_id)
+             VALUES ($1,$2,$3,$4,$5::date,$6::date,'Confirmed',$7,$8,$9,$10,$11,$12)
              RETURNING id, public_ref`,
-            [propertyId, buchung.id, a.categoryId, a.resourceId, a.arrival, a.departure,
+            [propertyId, buchung.id, a.categoryId, zimmerFuer(a), a.arrival, a.departure,
              buchung.booker_guest_id, body.notes ?? null,
-             a.personen.guestCount, a.personen.adults, a.personen.children])
+             a.personen.guestCount, a.personen.adults, a.personen.children, wartetAuf(a)])
           const id = res.rows[0]!.id
           if (voll) ueberbucht.add(id)
           if (buchung.booker_guest_id !== null) {
@@ -518,6 +596,9 @@ export function channelPushRoutes(app: FastifyInstance): void {
                   source_canceled_at = NULL
             WHERE id = $1`,
           [buchung.id, body.channelCode ?? principal.provider, hash, body.quelle])
+
+        // Was dieser Push frei gemacht hat, bekommt ein Wartender.
+        await wartendePlatzieren(client, propertyId)
 
         // Ein Ereignis je beruehrter Reservierung, wie an der Rezeption.
         const neuIds = new Set(traeger.slice(paare.length).map(t => t.reservationId))
@@ -604,6 +685,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
                     channel_conflict = NULL, updated_at = now()
               WHERE id = ANY($1::bigint[])`, [stornieren.map(r => r.id)])
         }
+        await wartendePlatzieren(client, propertyId)
         // Der Hash gehoert zum letzten Stand; ein spaeterer PUT derselben
         // Abschnitte soll die Buchung wiederbeleben, nicht "unchanged" sagen.
         await client.query(
