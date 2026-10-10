@@ -7,7 +7,7 @@ import { Dialog, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
- * Der Knopf "Zimmer sortieren" im Zimmerplan (Migration 0121).
+ * Der Knopf "Zimmer sortieren" im Zimmerplan (Migration 0122).
  *
  * **Erst zeigen, dann schreiben.** Sven wollte die Pruefung vor dem
  * Schreiben ausdruecklich: ein Sortierer, der auf Knopfdruck zwanzig Gaeste

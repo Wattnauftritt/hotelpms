@@ -153,7 +153,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    */
   const [verlauf, setVerlauf] = useState(false)
   /*
-   * Zimmer sortieren (Migration 0121). Der Knopf steht nur, wo er etwas
+   * Zimmer sortieren (Migration 0122). Der Knopf steht nur, wo er etwas
    * tun darf: ohne `reservation:write` lehnt die API ab, und bei "Nie" in
    * den Einstellungen ebenso -- ein Knopf, der immer nur einen Fehler
    * bringt, ist schlechter als keiner.

@@ -8,7 +8,7 @@ import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 
 /**
- * Zimmer sortieren im Zimmerplan (Migration 0121, Sven 10.10.2026: "ich
+ * Zimmer sortieren im Zimmerplan (Migration 0122, Sven 10.10.2026: "ich
  * habe im kalender keinen knopf zum zimmer sortieren"). Gegen die echte
  * Datenbank, weil die Zusagen in Sperren, Triggern und der Zeilenrichtlinie
  * stecken: Uebernehmen schreibt nur, was die Vorschau zeigte, eine gepushte

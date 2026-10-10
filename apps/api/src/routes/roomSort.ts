@@ -94,7 +94,7 @@ export function roomSortRoutes(app: FastifyInstance): void {
 // ------------------------------------------------------------------ Sortieren
 
 /**
- * Vorschau, Uebernehmen, Rueckgaengig (Migration 0121).
+ * Vorschau, Uebernehmen, Rueckgaengig (Migration 0122).
  *
  * **Die Vorschau schreibt nichts**, Uebernehmen schreibt genau die Zuege der
  * Vorschau. Dazwischen kann jemand am Plan gearbeitet haben; deshalb traegt
@@ -396,7 +396,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
  * nur das Ergebnis nicht.
  *
  * `app.room_sort` haelt den Trigger aus 0092 an: ein Zug des Sortierers ist
- * keine Aenderung der Rezeption (Migration 0121).
+ * keine Aenderung der Rezeption (Migration 0122).
  */
 async function schreiben(
   client: PoolClient, zuege: Array<{ id: number; resourceId: number | null }>

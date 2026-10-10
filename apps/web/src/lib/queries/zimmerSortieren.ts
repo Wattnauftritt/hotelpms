@@ -42,7 +42,7 @@ export function useSortierEinstellungSpeichern(propertyId: number) {
 }
 
 /**
- * Sortieren im Zimmerplan (Migration 0121): erst die Vorschau, dann genau
+ * Sortieren im Zimmerplan (Migration 0122): erst die Vorschau, dann genau
  * deren Zuege uebernehmen, und ein Lauf laesst sich zuruecknehmen.
  *
  * `basis` ist der Fingerabdruck des Plans zur Zeit der Vorschau. Die API
