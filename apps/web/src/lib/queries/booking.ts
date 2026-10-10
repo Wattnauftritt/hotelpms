@@ -90,6 +90,24 @@ export function usePatchReservationNotes(reservationRef: string) {
 }
 
 /**
+ * Kurznotiz am Balken. Bisher nur beim Anlegen zu setzen: das Seitenfenster
+ * bot allein die lange Notiz an, und wer dort "Balkon" eintrug, suchte es
+ * am Balken vergeblich -- die lange Notiz steht dort absichtlich nicht.
+ */
+export function usePatchReservationShortNote(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (shortNote: string | null) =>
+      api.patch<{ reservationRef: string; shortNote: string | null }>(
+        `/v1/reservations/${reservationRef}`, { shortNote }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
+/**
  * "Zimmer fest" (Migration 0104): der Sortierer laesst den Aufenthalt
  * liegen. Wie die Notiz eine kleine Mutation fuer sich -- das Schloss bewegt
  * nichts, und es soll sich setzen lassen, ohne das Zimmer neu zu waehlen.
