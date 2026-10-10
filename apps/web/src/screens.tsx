@@ -182,7 +182,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
   // Alle Meldescheine eines Zeitraums (Sven, 04.10.2026). Dasselbe Recht wie
   // die Liste der Schnittstelle, die er liest.
   { key: 'registrations', nav: 'nav.registrations', permission: 'report:operational',
-    render: c => <Meldescheine propertyId={c.propertyId} /> },
+    render: c => <Meldescheine propertyId={c.propertyId} permissions={c.permissions} /> },
   // Kassenbuch (Dokument 09, 0095). Ob es eingeschaltet ist, zeigt der
   // Bildschirm selbst; wer es einschalten darf, braucht ihn auch ausgeschaltet.
   // Am Telefon eine eigene Fassung: dort wird vor allem ein Bon fotografiert.

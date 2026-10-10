@@ -60,3 +60,51 @@ export function nachHauptschein(liste: readonly Meldeschein[]): Hauptschein[] {
   }
   return [...haupt.values(), ...ohne]
 }
+
+/** Eine Person auf dem Schein: der Hauptgast zuerst, dann die Mitreisenden. */
+export interface MeldescheinPerson {
+  main: boolean
+  guestRef: string
+  lastName: string
+  firstName: string | null
+  birthDate: string | null
+  nationality: string | null
+  address: { line1: string | null; postalCode: string | null
+             city: string | null; country: string | null }
+  idDocumentType: string | null
+  hasIdDocumentNumber: boolean
+  taxExemption: string | null
+  taxExemptionProof: string | null
+}
+
+export interface MeldescheinInhalt {
+  id: number
+  reservationRef: string
+  arrival: string
+  plannedDeparture: string
+  occupantCount: number
+  isForeign: boolean
+  signatureRequired: boolean
+  signedAt: string | null
+  /** Nur in der Form der Gastwege, sonst `null` (siehe Route). */
+  signatureSvg: string | null
+  source: Meldeschein['source']
+  externalSystem: string | null
+  completedAt: string
+  avsReportedAt: string | null
+  destroyAfter: string
+  expectedArrival: string | null
+  digitalGuestCard: boolean
+  persons: MeldescheinPerson[]
+}
+
+/**
+ * Ein Schein mit Inhalt, erst beim Oeffnen geladen: die Liste bleibt ein
+ * Aufruf, und Geburtsdaten und Anschriften stehen nicht in einer Uebersicht.
+ */
+export const useMeldeschein = (id: number | null) =>
+  useQuery<MeldescheinInhalt>({
+    queryKey: ['meldeschein', id],
+    queryFn: () => api.get(`/v1/registrations/${id!}`),
+    enabled: id !== null
+  })
