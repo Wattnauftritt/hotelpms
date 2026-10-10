@@ -1089,6 +1089,30 @@ const M = {
     de: 'In dieser Buchung liegt kein Aufenthalt, der sich verschieben laesst',
     en: 'This booking has no stay that can be moved',
     tr: 'Bu kayıtta taşınabilecek bir konaklama yok' },
+  'roomSort.off': {
+    de: 'Das Haus sortiert keine Zimmer. Einschalten unter Einstellungen > Zimmer sortieren.',
+    en: 'This property does not sort rooms. Switch it on under Settings > Room sorting.',
+    tr: 'Bu tesis odaları sıralamıyor. Ayarlar > Oda sıralama altından açın.' },
+  'roomSort.changed': {
+    de: 'Seit der Vorschau hat sich im Plan etwas geaendert. Bitte die Vorschau neu berechnen.',
+    en: 'The plan has changed since the preview. Please calculate the preview again.',
+    tr: 'Önizlemeden bu yana planda değişiklik oldu. Lütfen önizlemeyi yeniden hesaplayın.' },
+  'roomSort.invalidMove': {
+    de: 'Dieser Zug gehoert nicht zur Vorschau: {reservation}.',
+    en: 'This move is not part of the preview: {reservation}.',
+    tr: 'Bu taşıma önizlemenin parçası değil: {reservation}.' },
+  'roomSort.undoStale': {
+    de: 'Rueckgaengig geht nicht mehr: {reservation} wurde seitdem anders geaendert.',
+    en: 'Undo is no longer possible: {reservation} has been changed since.',
+    tr: 'Geri alma artık mümkün değil: {reservation} o zamandan beri değiştirildi.' },
+  'roomSort.undone': {
+    de: 'Dieser Lauf ist schon zurueckgenommen.',
+    en: 'This run has already been undone.',
+    tr: 'Bu çalıştırma zaten geri alındı.' },
+  'roomSort.roomTaken': {
+    de: 'Zimmer {room} ist im Zeitraum von {reservation} belegt oder gesperrt.',
+    en: 'Room {room} is occupied or blocked during {reservation}.',
+    tr: '{room} numaralı oda {reservation} süresince dolu veya kapalı.' },
   'stay.inHouseKeepsRoom': {
     de: 'Ein angereister Gast kommt nicht in die Ablage. Waehle direkt das neue Zimmer; '
       + 'ist es belegt, tauschen beide Gaeste die Zimmer.',

@@ -22,10 +22,12 @@ import type { KontextZiel } from '../components/Kontextmenue.tsx'
 import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
 import { VerlaufDialog } from '../components/Verlauf.tsx'
+import { ZimmerSortieren } from '../components/ZimmerSortieren.tsx'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { PlanStatusLegende, ZahlungsStand } from '../components/PlanZeichen.tsx'
 import { usePlanReinigung } from '../lib/queries/housekeeping.js'
 import { useHausrechte } from '../lib/rechte.js'
+import { useSortierEinstellung } from '../lib/queries/zimmerSortieren.js'
 import { PlanSuche } from '../components/PlanSuche.tsx'
 
 const SPANNEN = [14, 30, 60] as const
@@ -150,6 +152,18 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
    * der Knopf in der Leiste und kein eigener Bildschirm.
    */
   const [verlauf, setVerlauf] = useState(false)
+  /*
+   * Zimmer sortieren (Migration 0122). Der Knopf steht nur, wo er etwas
+   * tun darf: ohne `reservation:write` lehnt die API ab, und bei "Nie" in
+   * den Einstellungen ebenso -- ein Knopf, der immer nur einen Fehler
+   * bringt, ist schlechter als keiner.
+   */
+  const [sortieren, setSortieren] = useState(false)
+  const planRechte = useHausrechte(propertyId)
+  const darfSortieren = planRechte.darf('reservation:write')
+  const sortierEinstellung = useSortierEinstellung(propertyId, darfSortieren)
+  const sortierKnopf = darfSortieren && sortierEinstellung.data !== undefined
+    && sortierEinstellung.data.mode !== 'off'
   /*
    * Die Gruppenmaske: alle Zimmer einer Buchung nebeneinander.
    *
@@ -559,6 +573,12 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
           {t('verlegen.planningMode')}
         </label>
         <div className="grow" />
+        {sortierKnopf && (
+          <button onClick={() => setSortieren(true)}
+                  className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
+            {t('roomSort.button')}
+          </button>
+        )}
         <button onClick={() => setVerlauf(true)}
                 className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
           {t('verlauf.title')}
@@ -701,6 +721,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                            () => setVerlegung(null), zusatz)} />
       )}
 
+      {sortieren && (
+        <ZimmerSortieren propertyId={propertyId} onClose={() => setSortieren(false)} />
+      )}
       {verlauf && (
         <VerlaufDialog was={{ art: 'haus', propertyId }}
                        titel={t('verlauf.hausTitle')}
