@@ -113,4 +113,64 @@ export const zimmerSortieren = {
     de: 'Gespeichert',
     en: 'Saved',
     tr: 'Kaydedildi' },
+  'roomSort.button': {
+    de: 'Zimmer sortieren',
+    en: 'Sort rooms',
+    tr: 'Odaları sırala' },
+  'roomSort.dialogHint': {
+    de: 'Zuerst zeigt StayGrid, wer in welches Zimmer käme. Geschrieben wird erst mit „Übernehmen", und ein Lauf lässt sich danach zurücknehmen.',
+    en: 'StayGrid first shows who would go into which room. Nothing is written until “Apply”, and a run can be undone afterwards.',
+    tr: 'StayGrid önce kimin hangi odaya gideceğini gösterir. “Uygula” demeden hiçbir şey yazılmaz ve bir çalıştırma sonradan geri alınabilir.' },
+  'roomSort.from': {
+    de: 'Von',
+    en: 'From',
+    tr: 'Başlangıç' },
+  'roomSort.to': {
+    de: 'Bis',
+    en: 'To',
+    tr: 'Bitiş' },
+  'roomSort.rangeTooLong': {
+    de: 'Höchstens {max} Tage auf einmal.',
+    en: 'At most {max} days at a time.',
+    tr: 'Bir seferde en fazla {max} gün.' },
+  'roomSort.preview': {
+    de: 'Vorschau berechnen',
+    en: 'Calculate preview',
+    tr: 'Önizlemeyi hesapla' },
+  'roomSort.apply': {
+    de: 'Übernehmen',
+    en: 'Apply',
+    tr: 'Uygula' },
+  'roomSort.undo': {
+    de: 'Rückgängig',
+    en: 'Undo',
+    tr: 'Geri al' },
+  'roomSort.nothingToDo': {
+    de: 'Alles liegt schon gut. Es gibt nichts umzusetzen.',
+    en: 'Everything is already well placed. There is nothing to move.',
+    tr: 'Her şey zaten iyi yerleşmiş. Taşınacak bir şey yok.' },
+  'roomSort.movesCount': {
+    de: '{n} Umsetzungen',
+    en: '{n} moves',
+    tr: '{n} taşıma' },
+  'roomSort.fixedCount': {
+    de: '{n} Aufenthalte bleiben liegen: schon angereist, „Zimmer fest", über den Zeitraum hinaus, Anreise heute (wenn so eingestellt) oder eine von Hand geänderte Kanalbuchung.',
+    en: '{n} stays stay put: already arrived, “room fixed”, reaching beyond the range, arriving today (if so configured) or a channel booking changed by hand.',
+    tr: '{n} konaklama yerinde kalır: giriş yapılmış, “oda sabit”, aralığın dışına taşan, bugün giriş (ayarlıysa) veya elle değiştirilmiş kanal rezervasyonu.' },
+  'roomSort.unassigned': {
+    de: 'ohne Zimmer',
+    en: 'no room',
+    tr: 'odasız' },
+  'roomSort.unplaced': {
+    de: 'Kein freies Zimmer gefunden, bleiben in der Ablage:',
+    en: 'No free room found, these stay unassigned:',
+    tr: 'Boş oda bulunamadı, bunlar odasız kalır:' },
+  'roomSort.applied': {
+    de: '{n} Aufenthalte umgesetzt.',
+    en: '{n} stays moved.',
+    tr: '{n} konaklama taşındı.' },
+  'roomSort.undoneDone': {
+    de: 'Zurückgenommen. Alle liegen wieder wie vorher.',
+    en: 'Undone. Everyone is back where they were.',
+    tr: 'Geri alındı. Herkes eski yerinde.' },
 } as const satisfies Record<string, LocalizedText>
