@@ -82,6 +82,10 @@ export function Zeit({ propertyId, locale, kueche }: {
     <section className="bg-white border border-neutral-200 rounded-lg p-4 text-center">
       <p className="text-4xl font-semibold tabular-nums">{hm(m.totals.total)}</p>
       <p className="text-sm text-neutral-600">{t('time.total', { minutes: m.totals.total })}</p>
+      {/* Die Zeitarbeitsfirma zahlt alle zwei Wochen; die Kraft soll die
+          Zahl sehen, nach der sie bezahlt wird. */}
+      <p className="text-sm text-neutral-600 tabular-nums">
+        {t('time.halves', { first: hm(m.halves[0].total), second: hm(m.halves[1].total) })}</p>
       {m.closed && <p className="text-sm text-neutral-600 mt-1">{t('time.closed')}</p>}
       {/* Wer in mehreren Haeusern arbeitet, sieht die Summe, nach der
           abgerechnet wird -- nicht nur die dieses Hauses (0116). */}
@@ -131,8 +135,14 @@ export function Zeit({ propertyId, locale, kueche }: {
               <span className="tabular-nums whitespace-nowrap">
                 {t('room.minutes', { minutes: e.minutes })}</span>
             </div>
+            {e.originalMinutes !== null && !e.withdrawn
+              && <p className="text-amber-800">
+                {t('time.adjusted', { minutes: e.originalMinutes })}</p>}
+            {e.withdrawnBy !== null
+              // inline-block: sonst erbt der Satz das Durchstreichen der Zeile.
+              && <span className="inline-block">{t('time.withdrawnByLead')}</span>}
             {e.kind !== 'correction' && !e.withdrawn && !m.closed
-              && eigeneTage.includes(e.date)
+              && e.originalMinutes === null && eigeneTage.includes(e.date)
               && <button type="button" disabled={zurueck.isPending}
                          className="text-sm text-red-800 underline mt-1"
                          onClick={() => zurueck.mutate(e.id)}>{t('time.withdraw')}</button>}

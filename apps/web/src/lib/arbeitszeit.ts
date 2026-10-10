@@ -16,12 +16,20 @@ export interface Eintrag {
   /** Deutsch, sobald uebersetzt (0112); `null`, wenn schon deutsch. */
   translationDe: string | null
   translationManual: boolean
+  /** Was die Kraft eingetragen hatte, bevor die Leitung anpasste (0118). */
+  originalMinutes: number | null
+  adjustedBy: string | null
+  /** Wer zurueckzog, wenn es nicht die Kraft selbst war. */
+  withdrawnBy: string | null
 }
 export interface Tag { date: string; roomMinutes: number; rooms: number; entries: Eintrag[]
                        total: number }
+export interface Haelfte { from: string; to: string; total: number }
 export interface Monat {
   month: string; closed: boolean; today: string; days: Tag[]
   totals: { rooms: number; extra: number; kitchen: number; correction: number; total: number }
+  /** 1. bis 15. und 16. bis Monatsende -- die Zeitarbeitsfirma zahlt halbmonatlich. */
+  halves: [Haelfte, Haelfte]
   /** Die Monatssumme in den anderen Haeusern derselben Kraft (0116). */
   otherHouses?: Array<{ propertyId: number; name: string; total: number }>
 }
@@ -38,4 +46,20 @@ export function monatPlus(month: string, n: number): string {
   const [j, m] = month.split('-').map(Number) as [number, number]
   const i = j * 12 + (m - 1) + n
   return `${Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}`
+}
+
+/**
+ * Summen 1.–15. und 16.–Monatsende aus den Tagessummen einer Kraft. Die
+ * Uebersicht aller Kraefte liefert nur Tage; dieselbe Grenze wie die
+ * Schnittstelle (`halves`), damit beide Bildschirme dieselbe Zahl zeigen.
+ */
+export function haelften(month: string, days: Record<string, number>): [number, number] {
+  let a = 0
+  let b = 0
+  for (const [d, min] of Object.entries(days)) {
+    if (!d.startsWith(month)) continue
+    if (d <= `${month}-15`) a += min
+    else b += min
+  }
+  return [a, b]
 }

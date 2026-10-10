@@ -205,6 +205,107 @@ describe('Leitung', () => {
     expect(nachher.statusCode).toBe(201)
   })
 
+  it('zeigt einen Tag je Kraft mit Zimmern und Zusatzarbeiten', async () => {
+    await eintragen(anna.sessionId,
+      { date: '2026-09-30', kind: 'extra', description: 'Gelber Container', minutes: 25 })
+    const r = await app.inject({ method: 'GET', url: p('/worktime/day?date=2026-09-30'),
+      headers: auth(chef.sessionId) })
+    expect(r.statusCode).toBe(200)
+    // Nur wer an dem Tag etwas hat; Olga und der Koch stehen nicht da.
+    expect(r.json().staff.map((k: { userId: number }) => k.userId)).toEqual([anna.userId])
+    const a = r.json().staff[0]
+    expect(a.rooms).toHaveLength(3)
+    expect(a.rooms.map((z: { outcome: string }) => z.outcome).sort())
+      .toEqual(['cleaned', 'cleaned', 'declined'])
+    expect(a.entries[0]).toMatchObject({ description: 'Gelber Container', minutes: 25 })
+    // Das abgelehnte Zimmer zaehlt nicht, wie im Monat.
+    expect(a.totals).toMatchObject({ departure: 60, stayover: 0, extra: 25, total: 85 })
+
+    const kaputt = await app.inject({ method: 'GET', url: p('/worktime/day?date=30.09.2026'),
+      headers: auth(chef.sessionId) })
+    expect(kaputt.statusCode).toBe(422)
+    const hd = await app.inject({ method: 'GET', url: p('/worktime/day?date=2026-09-30'),
+      headers: auth(hausdame.sessionId) })
+    expect(hd.statusCode).toBe(403)
+  })
+
+  it('summiert die Monatshaelften fuer die Zeitarbeitsfirma', async () => {
+    await app.inject({ method: 'POST', url: p('/worktime/corrections'),
+      headers: auth(chef.sessionId),
+      payload: { userId: anna.userId, date: '2026-09-15', minutes: 45, reason: 'Nachtrag' } })
+    const r = await app.inject({ method: 'GET', url: p(`/worktime/${anna.userId}?month=2026-09`),
+      headers: auth(chef.sessionId) })
+    // Der 15. gehoert zur ersten Haelfte, der 30. zur zweiten.
+    expect(r.json().halves).toEqual([
+      { from: '2026-09-01', to: '2026-09-15', total: 45 },
+      { from: '2026-09-16', to: '2026-09-30', total: 60 }])
+    const meins = await app.inject({ method: 'GET', url: p('/my-time?month=2026-09'),
+      headers: auth(anna.sessionId) })
+    expect(meins.json().halves.map((h: { total: number }) => h.total)).toEqual([45, 60])
+  })
+
+  it('passt die Minuten einer Zusatzarbeit an, und die Kraft sieht, was sie hatte', async () => {
+    const e = await eintragen(anna.sessionId,
+      { kind: 'extra', description: 'Flur', minutes: 40 })
+    const id = e.json().days[0].entries[0].id
+    const anpassen = (minutes: number, session = chef.sessionId) =>
+      app.inject({ method: 'PUT', url: p(`/worktime/entries/${id}`), headers: auth(session),
+                   payload: { minutes } })
+
+    const r = await anpassen(10)
+    expect(r.statusCode).toBe(200)
+    const eintrag = r.json().staff[0].entries[0]
+    expect(eintrag).toMatchObject({ minutes: 10, originalMinutes: 40 })
+    expect(eintrag.adjustedBy).not.toBeNull()
+    expect(r.json().staff[0].totals.extra).toBe(10)
+    // Eine zweite Anpassung laesst stehen, was die Kraft eingetragen hatte.
+    expect((await anpassen(15)).json().staff[0].entries[0])
+      .toMatchObject({ minutes: 15, originalMinutes: 40 })
+    expect((await anpassen(0)).statusCode).toBe(422)
+    expect((await anpassen(20, hausdame.sessionId)).statusCode).toBe(403)
+
+    // Die Kraft sieht es und kippt es nicht mit einem Tipp.
+    const meins = await app.inject({ method: 'GET', url: p('/my-time'),
+      headers: auth(anna.sessionId) })
+    expect(meins.json().days[0].entries[0]).toMatchObject({ minutes: 15, originalMinutes: 40 })
+    const selbst = await app.inject({ method: 'PUT', url: p(`/my-time/${id}`),
+      headers: auth(anna.sessionId), payload: { kind: 'extra', description: 'Flur', minutes: 40 } })
+    expect(selbst.statusCode).toBe(409)
+    expect(selbst.json().code).toBe('worktime.adjustedByLead')
+    const zurueck = await app.inject({ method: 'POST', url: p(`/my-time/${id}/withdraw`),
+      headers: auth(anna.sessionId) })
+    expect(zurueck.statusCode).toBe(409)
+
+    // Kuechendienste haben Beginn und Ende; dort bleibt die Korrektur.
+    const k = await eintragen(koch.sessionId, { kind: 'kitchen', start: '06:00', end: '10:00' })
+    const kid = k.json().days[0].entries[0].id
+    const kueche = await app.inject({ method: 'PUT', url: p(`/worktime/entries/${kid}`),
+      headers: auth(chef.sessionId), payload: { minutes: 60 } })
+    expect(kueche.statusCode).toBe(409)
+  })
+
+  it('nimmt eine Zusatzarbeit heraus, und die Kraft sieht, von wem', async () => {
+    const e = await eintragen(anna.sessionId,
+      { kind: 'extra', description: 'Toilette', minutes: 10 })
+    const id = e.json().days[0].entries[0].id
+    const r = await app.inject({ method: 'POST', url: p(`/worktime/entries/${id}/withdraw`),
+      headers: auth(chef.sessionId) })
+    expect(r.statusCode).toBe(200)
+    const a = r.json().staff[0]
+    expect(a.entries[0].withdrawn).toBe(true)
+    expect(a.entries[0].withdrawnBy).not.toBeNull()
+    expect(a.totals.extra).toBe(0)
+    const meins = await app.inject({ method: 'GET', url: p('/my-time'),
+      headers: auth(anna.sessionId) })
+    expect(meins.json().days[0].entries[0].withdrawnBy).not.toBeNull()
+    // Zieht die Kraft selbst zurueck, steht kein fremder Name daran.
+    const f = await eintragen(anna.sessionId, { kind: 'extra', description: 'Fenster', minutes: 5 })
+    const fid = f.json().days[0].entries[1].id
+    const w = await app.inject({ method: 'POST', url: p(`/my-time/${fid}/withdraw`),
+      headers: auth(anna.sessionId) })
+    expect(w.json().days[0].entries[1]).toMatchObject({ withdrawn: true, withdrawnBy: null })
+  })
+
   it('kennt keine Kraft aus einem fremden Haus', async () => {
     const fremd = await makeProperty(owner, { name: 'Anderes' })
     const x = await makeUser(owner, { email: 'x@anders.de', propertyId: fremd.propertyId,

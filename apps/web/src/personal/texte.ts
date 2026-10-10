@@ -485,6 +485,21 @@ const texte = {
     en: 'Correction by management',
     ru: 'Исправление руководства',
     uk: 'Виправлення керівництва' },
+  'time.adjusted': {
+    de: 'Von der Leitung angepasst, du hattest {minutes} Min.',
+    en: 'Adjusted by management, you had entered {minutes} min',
+    ru: 'Изменено руководством, вы указали {minutes} мин.',
+    uk: 'Змінено керівництвом, ви вказали {minutes} хв' },
+  'time.withdrawnByLead': {
+    de: 'Von der Leitung herausgenommen',
+    en: 'Removed by management',
+    ru: 'Удалено руководством',
+    uk: 'Вилучено керівництвом' },
+  'time.halves': {
+    de: '1.–15.: {first} · 16.–Ende: {second}',
+    en: '1st–15th: {first} · 16th–end: {second}',
+    ru: '1–15: {first} · 16–конец: {second}',
+    uk: '1–15: {first} · 16–кінець: {second}' },
   'time.withdraw': {
     de: 'Zurückziehen',
     en: 'Withdraw',
@@ -633,6 +648,11 @@ const texte = {
     en: 'Start and end are the same.',
     ru: 'Начало и конец совпадают.',
     uk: 'Початок і кінець однакові.' },
+  'error.worktime.adjustedByLead': {
+    de: 'Die Leitung hat diesen Eintrag angepasst. Sag ihr Bescheid, wenn etwas nicht stimmt.',
+    en: 'Management has adjusted this entry. Tell them if something is wrong.',
+    ru: 'Руководство изменило эту запись. Сообщите ему, если что-то не так.',
+    uk: 'Керівництво змінило цей запис. Повідомте його, якщо щось не так.' },
   'error.auth.badCredentials': {
     de: 'Benutzername oder Kennwort stimmt nicht.',
     en: 'Username or password is incorrect.',

@@ -1452,6 +1452,14 @@ const M = {
     de: 'Eine Korrektur ist zwischen -1440 und 1440 Minuten und nicht null.',
     en: 'A correction is between -1440 and 1440 minutes and not zero.',
     tr: 'Bir düzeltme -1440 ile 1440 dakika arasında olmalı ve sıfır olmamalıdır.' },
+  'worktime.adjustedByLead': {
+    de: 'Die Leitung hat diesen Eintrag angepasst. Ändern kann ihn jetzt nur noch die Leitung.',
+    en: 'Management has adjusted this entry. Only management can change it now.',
+    tr: 'Yönetim bu kaydı düzenledi. Artık yalnızca yönetim değiştirebilir.' },
+  'worktime.extraOnly': {
+    de: 'Minuten lassen sich nur bei Zusatzarbeiten anpassen. Küchendienste korrigierst du mit Grund.',
+    en: 'Minutes can only be adjusted for extra work. Correct kitchen shifts with a reason.',
+    tr: 'Dakikalar yalnızca ek işlerde düzenlenebilir. Mutfak vardiyalarını gerekçeyle düzeltin.' },
   'worktime.reasonRequired': {
     de: 'Bitte einen Grund angeben.',
     en: 'Please give a reason.',

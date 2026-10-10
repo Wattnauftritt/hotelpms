@@ -210,6 +210,163 @@ export const arbeitszeit = {
     de: 'inaktiv',
     en: 'inactive',
     tr: 'pasif' },
+  // Tages- und Monatsansicht (Sven, 10.10.2026)
+  'worktime.viewDay': {
+    de: 'Tag',
+    en: 'Day',
+    tr: 'Gün' },
+  'worktime.viewMonth': {
+    de: 'Monat',
+    en: 'Month',
+    tr: 'Ay' },
+  'worktime.date': {
+    de: 'Datum',
+    en: 'Date',
+    tr: 'Tarih' },
+  'worktime.today': {
+    de: 'Heute',
+    en: 'Today',
+    tr: 'Bugün' },
+  'worktime.prevDay': {
+    de: 'Vorheriger Tag',
+    en: 'Previous day',
+    tr: 'Önceki gün' },
+  'worktime.nextDay': {
+    de: 'Nächster Tag',
+    en: 'Next day',
+    tr: 'Sonraki gün' },
+  'worktime.employee': {
+    de: 'Mitarbeiter',
+    en: 'Staff member',
+    tr: 'Personel' },
+  'worktime.allStaff': {
+    de: 'Alle',
+    en: 'All',
+    tr: 'Tümü' },
+  'worktime.firstHalf': {
+    de: '1.–15.',
+    en: '1–15',
+    tr: '1–15' },
+  'worktime.secondHalf': {
+    de: '16.–{last}.',
+    en: '16–{last}',
+    tr: '16–{last}' },
+  'worktime.monthTotal': {
+    de: 'Gesamt Monat',
+    en: 'Month total',
+    tr: 'Ay toplamı' },
+  'worktime.summary': {
+    de: 'Zusammenfassung',
+    en: 'Summary',
+    tr: 'Özet' },
+  'worktime.halvesHint': {
+    de: 'Die Zeitarbeitsfirma rechnet halbmonatlich ab: 1. bis 15. und 16. bis Monatsende.',
+    en: 'The staffing agency bills twice a month: 1st to 15th and 16th to month end.',
+    tr: 'Personel ajansı ayda iki kez faturalandırır: 1–15 ve 16–ay sonu.' },
+  'worktime.openDay': {
+    de: 'Tag öffnen',
+    en: 'Open day',
+    tr: 'Günü aç' },
+  'worktime.departures': {
+    de: 'Abreise-Zimmer',
+    en: 'Departure rooms',
+    tr: 'Çıkış odaları' },
+  'worktime.stayovers': {
+    de: 'Bleiber-Zimmer',
+    en: 'Stayover rooms',
+    tr: 'Konaklayan odaları' },
+  'worktime.otherRooms': {
+    de: 'Weitere Reinigungen',
+    en: 'Other cleaning',
+    tr: 'Diğer temizlikler' },
+  'worktime.noRooms': {
+    de: 'keine',
+    en: 'none',
+    tr: 'yok' },
+  'worktime.extraWork': {
+    de: 'Zusätzliche Arbeiten',
+    en: 'Extra work',
+    tr: 'Ek işler' },
+  'worktime.description': {
+    de: 'Beschreibung',
+    en: 'Description',
+    tr: 'Açıklama' },
+  'worktime.time': {
+    de: 'Zeit',
+    en: 'Time',
+    tr: 'Süre' },
+  'worktime.minutes': {
+    de: 'Minuten',
+    en: 'Minutes',
+    tr: 'Dakika' },
+  'worktime.editTime': {
+    de: 'Zeit ändern',
+    en: 'Change time',
+    tr: 'Süreyi değiştir' },
+  'worktime.saveTime': {
+    de: 'Speichern',
+    en: 'Save',
+    tr: 'Kaydet' },
+  'worktime.remove': {
+    de: 'Herausnehmen',
+    en: 'Remove',
+    tr: 'Çıkar' },
+  'worktime.removeConfirm': {
+    de: 'Wirklich herausnehmen?',
+    en: 'Really remove?',
+    tr: 'Gerçekten çıkarılsın mı?' },
+  'worktime.adjusted': {
+    de: 'angepasst von {name}, eingetragen waren {time}',
+    en: 'adjusted by {name}, {time} had been entered',
+    tr: '{name} tarafından düzenlendi, girilen süre {time} idi' },
+  'worktime.withdrawnBy': {
+    de: 'herausgenommen von {name}',
+    en: 'removed by {name}',
+    tr: '{name} tarafından çıkarıldı' },
+  'worktime.dayEmpty': {
+    de: 'An diesem Tag hat niemand Zimmer oder Zusatzarbeiten.',
+    en: 'Nobody has rooms or extra work on this day.',
+    tr: 'Bu gün kimsenin odası veya ek işi yok.' },
+  'worktime.dayClosed': {
+    de: 'Der Monat ist abgeschlossen. Ändern geht erst nach dem Wiederöffnen in der Monatsansicht.',
+    en: 'The month is closed. Changes are only possible after reopening it in the month view.',
+    tr: 'Ay kapatıldı. Değişiklik ancak ay görünümünde yeniden açıldıktan sonra yapılabilir.' },
+  'worktime.sumDepartures': {
+    de: 'Abreisen',
+    en: 'Departures',
+    tr: 'Çıkışlar' },
+  'worktime.sumStayovers': {
+    de: 'Bleiber',
+    en: 'Stayovers',
+    tr: 'Konaklayanlar' },
+  'worktime.sumOther': {
+    de: 'Weitere',
+    en: 'Other',
+    tr: 'Diğer' },
+  'worktime.sumExtra': {
+    de: 'Zusätzlich',
+    en: 'Extra',
+    tr: 'Ek' },
+  'worktime.room.cleaned': {
+    de: 'gereinigt',
+    en: 'cleaned',
+    tr: 'temizlendi' },
+  'worktime.room.declined': {
+    de: 'Gast wollte keine Reinigung',
+    en: 'guest declined cleaning',
+    tr: 'misafir temizlik istemedi' },
+  'worktime.room.was_clean': {
+    de: 'war schon sauber',
+    en: 'was already clean',
+    tr: 'zaten temizdi' },
+  'worktime.room.open': {
+    de: 'noch offen, zählt noch nicht',
+    en: 'still open, not counted yet',
+    tr: 'henüz açık, sayılmıyor' },
+  'worktime.correctionTitle': {
+    de: 'Korrektur mit Grund',
+    en: 'Correction with reason',
+    tr: 'Gerekçeli düzeltme' },
   'worktime.by': {
     de: 'von {name}',
     en: 'by {name}',
