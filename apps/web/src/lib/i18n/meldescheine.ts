@@ -103,6 +103,10 @@ export const meldescheine = {
     de: 'Personen',
     en: 'Persons',
     tr: 'Kişiler' },
+  'reg.stayPhone': {
+    de: 'Telefon im Aufenthalt',
+    en: 'Phone during stay',
+    tr: 'Konaklama sırasında telefon' },
   'reg.mainGuest': {
     de: 'Hauptgast',
     en: 'Main guest',

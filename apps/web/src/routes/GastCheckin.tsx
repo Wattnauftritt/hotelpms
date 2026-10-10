@@ -375,6 +375,7 @@ function Formular({ token, view, gross, onErledigt }: {
   const [bestaetigt, setBestaetigt] = useState(false)
   const [gaestekarte, setGaestekarte] = useState(false)
   const [ankunft, setAnkunft] = useState('')
+  const [telefon, setTelefon] = useState('')
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<unknown>(null)
 
@@ -436,6 +437,7 @@ function Formular({ token, view, gross, onErledigt }: {
         ? { termsSignatureSvg: signatur } : {}),
       ...(view.digitalGuestCardOffered && gaestekarte ? { digitalGuestCard: true } : {}),
       ...(mitAnkunft ? { expectedArrival: ankunft } : {}),
+      ...(telefon.trim() !== '' ? { phone: telefon } : {}),
       confirmed: true
     }
     try {
@@ -603,6 +605,22 @@ function Formular({ token, view, gross, onErledigt }: {
               </div>
             </div>
           )}
+
+          {/* Die Nummer fuer den Aufenthalt (Sven, 10.10.2026): in der Buchung
+              steht oft das Festnetz zu Hause. Pflicht auf beiden Wegen:
+              gebraucht wird sie gerade, wenn der Gast im Haus ist. */}
+          <div className={abschnitt}>
+            <h2 className="font-semibold">{t('gastCheckin.phone.title')}</h2>
+            <p className="text-neutral-600">{t('gastCheckin.phone.hint')}</p>
+            <Feld label={t('gastCheckin.phone.label')}
+                  fehler={felder.get('phone')} gross={gross}>
+              <input type="tel" inputMode="tel" value={telefon} maxLength={50}
+                     autoComplete="tel"
+                     placeholder={t('gastCheckin.phone.placeholder')}
+                     onChange={e => setTelefon(e.target.value)}
+                     className={`${eingabe} ${rahmen('phone')}`} />
+            </Feld>
+          </div>
 
           {/* Wie im Formular des Adminpanels: Freitext, denn "zwischen 16 und
               17 Uhr" ist eine bessere Antwort als eine erfundene Minute. */}

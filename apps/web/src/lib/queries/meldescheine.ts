@@ -94,6 +94,8 @@ export interface MeldescheinInhalt {
   avsReportedAt: string | null
   destroyAfter: string
   expectedArrival: string | null
+  /** Telefon fuer den Aufenthalt aus dem Formular (0123). */
+  stayPhone: string | null
   digitalGuestCard: boolean
   persons: MeldescheinPerson[]
 }

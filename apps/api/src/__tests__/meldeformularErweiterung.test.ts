@@ -129,6 +129,7 @@ function inlaendisch(gast: Record<string, unknown> = {},
              address: { line1: 'Deichweg 4', postalCode: '24937', city: 'Flensburg',
                         country: 'DE' }, ...gast },
     expectedArrival: 'gegen 16 Uhr',
+    phone: '0171 1234567',
     confirmed: true,
     ...wurzel
   }
@@ -372,6 +373,65 @@ describe('Voraussichtliche Ankunftszeit (0099)', () => {
     const ohne = await einreichen(t!.token, inlaendisch({}, { expectedArrival: undefined }))
     expect(ohne.statusCode, ohne.body).toBe(201)
     expect(await ankunft(r.id)).toBeNull()
+  })
+})
+
+/**
+ * Telefon fuer den Aufenthalt (0123, Sven 10.10.2026): in der Buchung steht
+ * oft das Festnetz zu Hause, erreichen muss man den Gast vor Ort.
+ */
+describe('Telefonnummer fuer den Aufenthalt (0123)', () => {
+  const stand = async (reservationId: number) => (await owner.query<{
+    stay_phone: string | null; phone: string | null }>(
+    `SELECT reg.stay_phone, g.phone FROM registration reg
+       JOIN reservation r ON r.id = reg.reservation_id
+       JOIN guest g ON g.id = r.primary_guest_id
+      WHERE reg.reservation_id = $1 AND reg.group_registration_id IS NULL`,
+    [reservationId])).rows[0]
+
+  it('wird verlangt und geprueft, ueber den Mail-Link wie am Terminal', async () => {
+    const r = await reservierung()
+    const t1 = await mailLink(r.ref)
+    for (const phone of [undefined, '  ', 'abc', '12 34', '+49 171 1234567 Durchwahl']) {
+      const res = await einreichen(t1, inlaendisch({}, { phone }))
+      expect(res.statusCode, `${String(phone)}: ${res.body}`).toBe(422)
+      expect(res.body).toContain('phone')
+    }
+
+    const vorOrt = await reservierung({ anreise: HEUTE, abreise: '2026-10-03' })
+    const t = await withTransaction(pool,
+      { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null },
+      c => createCheckinToken(c, { reservationId: vorOrt.id, channel: 'terminal' }))
+    const ohne = await einreichen(t!.token, inlaendisch({}, { phone: undefined }))
+    expect(ohne.statusCode, ohne.body).toBe(422)
+  })
+
+  it('steht am Schein und fuellt ein leeres Profiltelefon', async () => {
+    const r = await reservierung()
+    const res = await einreichen(await mailLink(r.ref),
+      inlaendisch({}, { phone: ' +49 (171) 123-4567 ' }))
+    expect(res.statusCode, res.body).toBe(201)
+    expect(await stand(r.id)).toEqual({ stay_phone: '+49 (171) 123-4567',
+                                        phone: '+49 (171) 123-4567' })
+  })
+
+  it('ersetzt die Festnetznummer im Profil nicht, steht aber an der Reservierung', async () => {
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET phone = '04721 12345' WHERE id = $1`, [r.guestId])
+    const res = await einreichen(await mailLink(r.ref),
+      inlaendisch({}, { phone: '0171 7654321' }))
+    expect(res.statusCode, res.body).toBe(201)
+    expect(await stand(r.id)).toEqual({ stay_phone: '0171 7654321', phone: '04721 12345' })
+
+    const d = await app.inject({ method: 'GET', url: `/v1/reservations/${r.ref}`,
+                                 headers: chef })
+    expect(d.statusCode, d.body).toBe(200)
+    expect(d.json()).toMatchObject({ guestPhone: '04721 12345', stayPhone: '0171 7654321' })
+
+    // Eine Nummer bezeichnet einen Menschen: nicht ins Protokoll.
+    const prot = await owner.query<{ changed: string }>(
+      `SELECT changed::text FROM audit_log WHERE table_name = 'registration'`)
+    for (const p of prot.rows) expect(p.changed).not.toContain('7654321')
   })
 })
 

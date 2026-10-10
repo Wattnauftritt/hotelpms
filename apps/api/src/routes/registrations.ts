@@ -338,7 +338,8 @@ export function registrationRoutes(app: FastifyInstance): void {
           signed_at: string | null; signature_svg: string | null
           source: string; external_system: string | null; completed_at: string
           avs_reported_at: string | null; destroy_after: string
-          expected_arrival: string | null; digital_guest_card: boolean
+          expected_arrival: string | null; stay_phone: string | null
+          digital_guest_card: boolean
           guest_ref: string; last_name: string; first_name: string | null
           birth_date: string | null; nationality: string | null
           address_line1: string | null; postal_code: string | null
@@ -355,7 +356,7 @@ export function registrationRoutes(app: FastifyInstance): void {
                   reg.signed_at, reg.signature_svg, reg.source, reg.external_system,
                   COALESCE(reg.completed_at, reg.created_at) AS completed_at,
                   reg.avs_reported_at, reg.destroy_after::text,
-                  reg.expected_arrival, reg.digital_guest_card,
+                  reg.expected_arrival, reg.stay_phone, reg.digital_guest_card,
                   g.public_ref AS guest_ref, g.last_name, g.first_name,
                   g.birth_date::text, g.nationality, g.address_line1, g.postal_code,
                   g.city, g.country, g.id_document_type,
@@ -390,6 +391,7 @@ export function registrationRoutes(app: FastifyInstance): void {
           avsReportedAt: h.avs_reported_at,
           destroyAfter: h.destroy_after,
           expectedArrival: h.expected_arrival,
+          stayPhone: h.stay_phone,
           digitalGuestCard: h.digital_guest_card,
           persons: rows.map(p => ({
             main: p.haupt,

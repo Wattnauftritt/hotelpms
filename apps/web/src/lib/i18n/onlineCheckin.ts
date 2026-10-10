@@ -131,6 +131,24 @@ export const onlineCheckin = {
     en: 'Number',
     tr: 'Numara' },
 
+  'gastCheckin.phone.title': {
+    de: 'Erreichbarkeit während des Aufenthalts',
+    en: 'How to reach you during your stay',
+    tr: 'Konaklama sırasında size nasıl ulaşabiliriz' },
+  'gastCheckin.phone.hint': {
+    de: 'Unter welcher Nummer erreichen wir Sie während Ihres Aufenthalts? '
+      + 'Am besten Ihre Mobilnummer.',
+    en: 'Which number can we reach you on during your stay? Ideally your mobile number.',
+    tr: 'Konaklamanız sırasında size hangi numaradan ulaşabiliriz? '
+      + 'Tercihen cep telefonu numaranız.' },
+  'gastCheckin.phone.label': {
+    de: 'Telefonnummer',
+    en: 'Phone number',
+    tr: 'Telefon numarası' },
+  'gastCheckin.phone.placeholder': {
+    de: 'z. B. +49 171 1234567',
+    en: 'e.g. +44 7700 900123',
+    tr: 'ör. +90 532 123 45 67' },
   'gastCheckin.arrival.title': {
     de: 'Ihre Ankunft',
     en: 'Your arrival',

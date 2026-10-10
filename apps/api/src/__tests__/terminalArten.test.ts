@@ -179,7 +179,7 @@ describe('Meldeformular ausfuellen (Online-Check-in am Terminal)', () => {
                             nationality: 'DE',
                             address: { line1: 'Deichweg 4', postalCode: '24937',
                                        city: 'Flensburg', country: 'DE' } },
-                   confirmed: true } })
+                   phone: '0171 1234567', confirmed: true } })
       expect(ein.statusCode, ein.body).toBe(201)
 
       const fertig = await abschliessen(t.secret, json(a).jobRef)
@@ -255,7 +255,7 @@ describe('Meldeformular ausfuellen (Online-Check-in am Terminal)', () => {
                             nationality: 'DE',
                             address: { line1: 'Deichweg 4', postalCode: '24937',
                                        city: 'Flensburg', country: 'DE' } },
-                   confirmed: true } })
+                   phone: '0171 1234567', confirmed: true } })
       expect(ein.statusCode, ein.body).toBe(201)
 
       const ab = wer === 'terminal'

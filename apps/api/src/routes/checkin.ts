@@ -127,6 +127,7 @@ interface Einreichung {
   termsSignatureSvg?: string
   digitalGuestCard: boolean
   expectedArrival: string | null
+  phone: string | null
 }
 
 const GAST_FELDER = new Set(['lastName', 'firstName', 'birthDate', 'nationality',
@@ -138,7 +139,7 @@ const BEFREIUNG_FELDER = new Set(['reason', 'proof'])
 const ANSCHRIFT_FELDER = new Set(['line1', 'postalCode', 'city', 'country'])
 const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed',
                                'termsAccepted', 'termsSignatureSvg', 'digitalGuestCard',
-                               'expectedArrival'])
+                               'expectedArrival', 'phone'])
 
 /**
  * Wie im Formular des Adminpanels. Dort steht die Spalte auf 255, weil
@@ -146,6 +147,19 @@ const WURZEL_FELDER = new Set(['guest', 'companions', 'signatureSvg', 'confirmed
  * eine Uhrzeit oder eine Spanne, keine Nachricht ans Haus.
  */
 const ANKUNFT_MAX = 50
+
+/**
+ * Eine Telefonnummer, wie Menschen sie schreiben: Ziffern, Plus, Leerzeichen,
+ * Klammern, Schraegstrich, Bindestrich, Punkt -- und genug Ziffern, dass es
+ * eine sein kann. Kein Formatzwang: "+31 6 1234 5678" und "0171/1234567"
+ * sind beide richtig.
+ */
+const TELEFON = /^\+?[0-9 ()/.-]+$/
+const TELEFON_MAX = 50
+function istTelefon(s: string): boolean {
+  const ziffern = s.replace(/[^0-9]/g, '').length
+  return s.length <= TELEFON_MAX && TELEFON.test(s) && ziffern >= 6 && ziffern <= 20
+}
 
 function istObjekt(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -301,6 +315,22 @@ function pruefe(body: unknown, heute: string, kanal: CheckinKontext['channel']):
     }
   }
 
+  /*
+   * Die Nummer fuer den Aufenthalt (Sven, 10.10.2026): in der Buchung steht
+   * oft das Festnetz zu Hause, im Urlaub erreicht man den Gast am Handy.
+   * Verlangt, ueber den Mail-Link wie am Terminal: gebraucht wird sie
+   * gerade, wenn der Gast im Haus ist und nicht im Zimmer.
+   */
+  let telefon: string | null = null
+  const tel = body.phone
+  if (tel !== undefined && tel !== null && typeof tel !== 'string') {
+    fehlt('phone', 'field.invalid')
+  } else {
+    telefon = typeof tel === 'string' && tel.trim() !== '' ? tel.trim() : null
+    if (telefon !== null && !istTelefon(telefon)) fehlt('phone', 'field.invalid')
+    else if (telefon === null) fehlt('phone')
+  }
+
   if (Object.keys(f).length > 0) throw Errors.validation(f, { max: MAX_MITREISENDE })
   return {
     guest: { ...g!, address: anschrift!, idDocumentType: ausweisTyp,
@@ -310,7 +340,8 @@ function pruefe(body: unknown, heute: string, kanal: CheckinKontext['channel']):
     termsAccepted: akzeptiert,
     termsSignatureSvg: termsSvg,
     digitalGuestCard: body.digitalGuestCard === true,
-    expectedArrival: ankunft
+    expectedArrival: ankunft,
+    phone: telefon
   }
 }
 
@@ -522,6 +553,8 @@ export function checkinRoutes(app: FastifyInstance): void {
          * Ins Profil des Gastes, auf demselben Weg wie die Rezeption. E-Mail
          * und Telefon bleiben unberuehrt: an die Adresse ging der Link, und
          * ueber eine Seite ohne Anmeldung soll sie niemand umbiegen koennen.
+         * Die Telefonnummer aus dem Formular geht an den Meldeschein; ins
+         * Profil nur, wo dort gar keine steht -- fuellen ist kein Umbiegen.
          */
         await gastAendern(client, r.primary_guest_id, {
           lastName: e.guest.lastName, firstName: e.guest.firstName,
@@ -531,6 +564,12 @@ export function checkinRoutes(app: FastifyInstance): void {
           idDocumentType: e.guest.idDocumentType,
           idDocumentNumber: e.guest.idDocumentNumber
         })
+        if (e.phone !== null) {
+          await client.query(
+            `UPDATE guest SET phone = $2
+              WHERE id = $1 AND (phone IS NULL OR btrim(phone) = '')`,
+            [r.primary_guest_id, e.phone])
+        }
 
         // Mitreisende als eigene Profile: die Meldepflicht gilt je Person.
         const mitreisende: number[] = []
@@ -558,7 +597,8 @@ export function checkinRoutes(app: FastifyInstance): void {
           befreiungen,
           // Nur wo das Haus an AVS meldet; sonst ginge die Einwilligung ins Leere.
           digitalGuestCard: e.digitalGuestCard && await meldetAnAvs(client, r.property_id),
-          ankunft: e.expectedArrival
+          ankunft: e.expectedArrival,
+          telefon: e.phone
         })
 
         /*
