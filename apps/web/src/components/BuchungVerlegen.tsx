@@ -521,6 +521,21 @@ export function BuchungVerlegen({ verlegung, zimmer, belegtVon, laeuft, fehler,
           <p role="alert" className="text-sm text-amber-900 bg-amber-50 border
                                      border-amber-300 rounded-sm p-2">
             {t('verlegen.overbooking')}
+            {/* Woraus der Tag voll ist. Zeigt der Plan eine Luecke, steht
+                hier, was sie trotzdem fuellt (Sven, 10.10.2026). */}
+            {(vorschau.data?.fullDays ?? []).map(d => (
+              <span key={d.date} className="block mt-1">
+                {[
+                  t('verlegen.fullDay', { datum: formatDate(d.date, locale),
+                                          zimmer: d.capacity, belegt: d.sold + d.blocked }),
+                  d.blocked > 0 ? t('verlegen.fullDayBlocked', { n: d.blocked }) : null,
+                  d.withoutRoom > 0 ? t('verlegen.fullDayWithoutRoom', { n: d.withoutRoom }) : null,
+                  d.inactiveRoom > 0
+                    ? t('verlegen.fullDayInactiveRoom', { n: d.inactiveRoom }) : null,
+                  d.counterDrift > 0 ? t('verlegen.fullDayDrift', { n: d.counterDrift }) : null
+                ].filter(x => x !== null).join(' · ')}
+              </span>
+            ))}
           </p>
         )}
 

@@ -2356,6 +2356,8 @@ export function reservationRoutes(app: FastifyInstance): void {
             overbooking = true
             ergebnis = await aufenthaltVerlegen(client, reservationRef, body)
           }
+          const vollAn = overbooking
+            ? await volleTage(client, reservationRef) : []
           const naechte = await client.query<{ date: string; priceCent: string
                                                 posted: boolean }>(
             `SELECT n.date::text, n.price_cent AS "priceCent", n.posted
@@ -2369,6 +2371,7 @@ export function reservationRoutes(app: FastifyInstance): void {
             previousTotalCent: Number(vorher.rows[0]?.total ?? 0),
             totalCent: ergebnis.totalCent,
             overbooking,
+            fullDays: vollAn,
             nights: naechte.rows.map(n => ({
               date: n.date, priceCent: Number(n.priceCent), posted: n.posted }))
           }
@@ -2378,6 +2381,64 @@ export function reservationRoutes(app: FastifyInstance): void {
       })
     }
   })
+}
+
+/**
+ * **Woran die Gruppe voll ist**, je Tag des Aufenthalts danach.
+ *
+ * "Die Zimmergruppe ist ausgebucht" allein half nicht, wenn der Plan an
+ * dem Tag eine Luecke zeigte (Sven, 10.10.2026, zweimal an einem Morgen).
+ * Was der Plan nicht zeigt und trotzdem bindet: ein Kontingent, eine
+ * Buchung ohne Zimmer, eine Buchung in einem stillgelegten Zimmer -- und
+ * ein Zaehler, der von den Reservierungen abweicht. Die Maske nennt jeden
+ * dieser Teile, damit die Rezeption sieht, ob die Warnung stimmt.
+ *
+ * Gerechnet im Zustand **nach** der Aenderung, also mit der eigenen
+ * Buchung: so stehen genau die Tage da, an denen sie zu viel ist. In der
+ * Gruppe, in der sie danach zaehlt -- der ihres Zimmers (Migration 0120).
+ */
+async function volleTage(client: PoolClient, ref: string): Promise<Array<{
+  date: string; capacity: number; sold: number; blocked: number
+  withoutRoom: number; inactiveRoom: number; counterDrift: number }>> {
+  const r = await client.query<{
+    date: string; capacity: number; sold: number; blocked: number
+    without_room: number; inactive_room: number; expected: number }>(
+    `WITH ich AS (
+       SELECT r.property_id, COALESCE(s.category_id, r.category_id) AS cat,
+              r.arrival, r.departure
+         FROM reservation r LEFT JOIN resource s ON s.id = r.resource_id
+        WHERE r.public_ref = $1
+     ), bindend AS (
+       SELECT d::date AS date, x.resource_id, x.aktiv
+         FROM ich
+         JOIN LATERAL (
+           SELECT r.resource_id, s.active AS aktiv, r.arrival, r.departure
+             FROM reservation r LEFT JOIN resource s ON s.id = r.resource_id
+            WHERE r.property_id = ich.property_id
+              AND r.status IN ('Optional','Confirmed','InHouse')
+              AND COALESCE(s.category_id, r.category_id) = ich.cat
+              AND r.arrival < ich.departure AND r.departure > ich.arrival
+         ) x ON true
+        CROSS JOIN LATERAL generate_series(GREATEST(x.arrival, ich.arrival),
+                                           LEAST(x.departure, ich.departure) - 1,
+                                           interval '1 day') d
+     )
+     SELECT i.date::text, i.capacity, i.sold, i.blocked,
+            count(b.date) FILTER (WHERE b.date IS NOT NULL AND b.resource_id IS NULL)::int AS without_room,
+            count(b.date) FILTER (WHERE b.resource_id IS NOT NULL
+                                 AND NOT b.aktiv)::int AS inactive_room,
+            count(b.date)::int AS expected
+       FROM ich
+       JOIN inventory_day i ON i.property_id = ich.property_id AND i.category_id = ich.cat
+        AND i.date >= ich.arrival AND i.date < ich.departure
+       LEFT JOIN bindend b ON b.date = i.date
+      WHERE i.sold + i.blocked > i.capacity + i.overbooking
+      GROUP BY i.date, i.capacity, i.sold, i.blocked
+      ORDER BY i.date`, [ref])
+  return r.rows.map(t => ({
+    date: t.date, capacity: t.capacity, sold: t.sold, blocked: t.blocked,
+    withoutRoom: t.without_room, inactiveRoom: t.inactive_room,
+    counterDrift: t.sold - t.expected }))
 }
 
 /**
