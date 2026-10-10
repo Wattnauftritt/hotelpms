@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CleaningWaiverView, ReservationDetail } from '@hotelpms/contracts'
-import { useReservation, usePatchReservationNotes, useReservationStatusAction, useSetRoomFixed,
-         useSendConfirmation } from '../lib/queries/booking.js'
+import { useReservation, usePatchReservationNotes, usePatchReservationShortNote,
+         useReservationStatusAction, useSetRoomFixed, useSendConfirmation } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
@@ -15,6 +15,7 @@ import { Fehler, Laedt } from './Shell.tsx'
 import { useSprung } from '../lib/suche.js'
 
 const NOTES_MAX_LENGTH = 2000
+const SHORT_NOTE_MAX_LENGTH = 40
 /** Storno ist aus diesen Zustaenden erlaubt (reservationState.ts). */
 const STORNIERBAR = new Set(['Optional', 'Confirmed'])
 /** Aendern bindet Bestand und geht nur, wo er gebunden ist (`occupiesInventory`). */
@@ -340,6 +341,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
           sie gesichert ist. Ohne Folio gibt es nichts, worauf gezahlt wird. */}
       {r.folioRef !== null && <Anzahlung folioRef={r.folioRef} />}
 
+      <KurznotizFeld reservationRef={r.reservationRef} shortNote={r.shortNote} />
       <NotizFeld reservationRef={r.reservationRef} notes={r.notes} />
     </div>
   )
@@ -364,6 +366,51 @@ function VerzichtAmTresen({ reservationRef, view }: {
       <VerzichtTage view={view} busy={setzen.isPending}
                     onSet={(date, waived) => setzen.mutate({ date, waived })} />
       {setzen.isError && <Fehler error={setzen.error} />}
+    </section>
+  )
+}
+
+/**
+ * Kurznotiz am Balken. Neben der langen Notiz und nicht in ihr: die steht
+ * nur im Titel, weil ein Absatz auf einem 44 Pixel breiten Balken nichts
+ * sagt. Ohne dieses Feld war die Kurznotiz nach dem Anlegen weder zu sehen
+ * noch zu aendern, und was man ins einzige Notizfeld schrieb, kam nie am
+ * Balken an.
+ */
+function KurznotizFeld({ reservationRef, shortNote }: {
+  reservationRef: string; shortNote: string | null
+}): JSX.Element {
+  const t = useT()
+  const [text, setText] = useState(shortNote ?? '')
+  const speichern = usePatchReservationShortNote(reservationRef)
+
+  useEffect(() => { setText(shortNote ?? '') }, [reservationRef, shortNote])
+
+  const geaendert = text.trim() !== (shortNote ?? '')
+
+  return (
+    <section className="bg-white border border-neutral-200 rounded-sm p-3">
+      <h3 className="text-sm font-medium">{t('booking.shortNote')}</h3>
+      <form className="mt-2 flex items-center gap-2"
+            onSubmit={e => {
+              e.preventDefault()
+              if (geaendert) speichern.mutate(text.trim() === '' ? null : text.trim())
+            }}>
+        <input value={text} onChange={e => setText(e.target.value)}
+               maxLength={SHORT_NOTE_MAX_LENGTH}
+               placeholder={t('booking.shortNotePlaceholder')}
+               className="flex-1 min-w-0 border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        <button type="submit" disabled={!geaendert || speichern.isPending}
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t('plan.notesSave')}
+        </button>
+      </form>
+      <p className="mt-1 text-xs text-neutral-500">{t('booking.shortNoteHint')}</p>
+      {!geaendert && speichern.isSuccess && (
+        <span className="text-xs text-emerald-700">✓ {t('plan.notesSaved')}</span>
+      )}
+      {speichern.isError && <div className="mt-2"><Fehler error={speichern.error} /></div>}
     </section>
   )
 }

@@ -877,6 +877,8 @@ export const ReservationDetail = Type.Object({
   arrival: Type.String(),
   departure: Type.String(),
   notes: Type.Union([Type.String(), Type.Null()]),
+  /** Merkmal fuer den Balken im Plan, hoechstens vierzig Zeichen. */
+  shortNote: Type.Union([Type.String(), Type.Null()]),
   /** Personen; `adults`/`children` nur, wenn getrennt erfasst (0076). */
   guestCount: Type.Union([Type.Integer(), Type.Null()]),
   adults: Type.Union([Type.Integer(), Type.Null()]),

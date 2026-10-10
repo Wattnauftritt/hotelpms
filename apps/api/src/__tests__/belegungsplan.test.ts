@@ -447,4 +447,15 @@ describe('Kurznotiz und lange Notiz', () => {
       `SELECT short_note FROM reservation WHERE public_ref = $1`, [ref])
     expect(z.rows[0]!.short_note).toBeNull()
   })
+
+  it('liefert sie im Seitenfenster und leert sie mit null', async () => {
+    // Das Seitenfenster ist der Ort, sie nach dem Anlegen zu aendern; ohne
+    // das Feld in der Antwort zeigte es ein leeres Eingabefeld.
+    const r = await buchen({ resourceId: zimmer[0], shortNote: 'Balkon' })
+    const ref = JSON.parse(r.body).reservationRef as string
+    expect(JSON.parse((await get(`/v1/reservations/${ref}`)).body).shortNote).toBe('Balkon')
+    const p = await patch(`/v1/reservations/${ref}`, { shortNote: null })
+    expect(p.statusCode, p.body).toBe(200)
+    expect(JSON.parse((await get(`/v1/reservations/${ref}`)).body).shortNote).toBeNull()
+  })
 })
