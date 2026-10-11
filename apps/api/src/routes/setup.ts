@@ -6,6 +6,8 @@ import { hinweisText, type Meldung } from '../platform/texte.js'
 import { emitEvent } from '../platform/events.js'
 import type { PoolClient } from '@hotelpms/db'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
+import type { Principal } from '../platform/context.js'
+import { rechtImHaus } from './depositRequests.js'
 
 /**
  * Einrichtung des Hauses: Zimmergruppen und Zimmer.
@@ -245,6 +247,8 @@ export function setupRoutes(app: FastifyInstance): void {
           `SELECT id, property_id, active FROM resource_category WHERE id = $1 FOR UPDATE`,
           [Number(categoryId)])
         if (cur.rowCount === 0) throw Errors.notFound('res.category')
+        // Das Recht im Haus der Gruppe, nicht in irgendeinem (Befund H3).
+        rechtImHaus(req.principal as Principal, 'settings:property', cur.rows[0]!.property_id)
 
         // Stilllegen mit belegten Zimmern in der Zukunft würde Kapazität
         // unter gebuchten Reservierungen wegziehen. Erst umbuchen, dann
@@ -535,6 +539,7 @@ export function setupRoutes(app: FastifyInstance): void {
             WHERE id = $1 FOR UPDATE`, [Number(roomId)])
         if (cur.rowCount === 0) throw Errors.notFound('res.room')
         const zimmer = cur.rows[0]!
+        rechtImHaus(req.principal as Principal, 'settings:property', zimmer.property_id)
 
         if (body.categoryId !== undefined && body.categoryId !== zimmer.category_id) {
           await assertCategory(client, zimmer.property_id, body.categoryId)

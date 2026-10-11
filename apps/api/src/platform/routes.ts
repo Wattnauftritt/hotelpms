@@ -35,17 +35,37 @@ export function registeredRoutes(): readonly RouteSpec[] {
   return registry
 }
 
+/**
+ * Die Property, gegen die geprueft wird.
+ *
+ * Pfad, Abfragezeichenfolge und Rumpf koennen sie **alle drei** tragen, und
+ * die Handler lesen sie, wo sie sie erwarten -- meist im Rumpf. Hier zuerst
+ * gefundenes zu nehmen hiess: `?propertyId=A` mit `{ propertyId: B }` im Rumpf
+ * prueft A und schreibt in B (Sicherheitsaudit 2026-10-11, Befund H1). Deshalb
+ * muessen alle vorhandenen Angaben dieselbe Zahl nennen. Ein Wert, der keine
+ * Zahl ist, wird abgewiesen statt uebergangen: sonst entfiele die Pruefung
+ * des Hauses, und `can` saehe nur noch, ob das Recht **irgendwo** besteht.
+ */
 export function resolveProperty(req: FastifyRequest, spec: RouteSpec): number | undefined {
-  if (!spec.propertyParam) return undefined
-  const params = req.params as Record<string, string> | undefined
-  const query = req.query as Record<string, string> | undefined
-  const body = req.body as Record<string, unknown> | undefined
-  const raw = params?.[spec.propertyParam]
-    ?? query?.[spec.propertyParam]
-    ?? (body?.[spec.propertyParam] as string | number | undefined)
-  if (raw === undefined) return undefined
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : undefined
+  const name = spec.propertyParam
+  if (!name) return undefined
+  const params = req.params as Record<string, unknown> | undefined
+  const query = req.query as Record<string, unknown> | undefined
+  const body = req.body
+  const quellen = [params?.[name], query?.[name],
+    body !== null && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)[name] : undefined]
+    .filter(v => v !== undefined && v !== null && v !== '')
+  if (quellen.length === 0) return undefined
+  const werte = quellen.map(v =>
+    typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN)
+  if (werte.some(n => !Number.isSafeInteger(n) || n <= 0)) {
+    throw Errors.validation({ [name]: ['field.positiveInteger'] })
+  }
+  if (werte.some(n => n !== werte[0])) {
+    throw Errors.forbidden('access.propertyOutOfScope')
+  }
+  return werte[0]
 }
 
 export function registerRoute(app: FastifyInstance, spec: RouteSpec): void {

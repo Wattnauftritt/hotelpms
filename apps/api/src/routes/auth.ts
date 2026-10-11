@@ -327,7 +327,12 @@ export function authRoutes(app: FastifyInstance): void {
          */
         workstationPinSet: benutzer.rows[0]?.hat_pin ?? false,
         workstationSwitched: p.sessionUserId !== null && p.sessionUserId !== p.userId,
-        accountPermissions: [...p.accountPermissions].sort(),
+        /*
+         * Fuer die Oberflaeche die Vereinigung: sie blendet danach Menues
+         * ein. Geprueft wird je Account (`can`, `accountFor`), nicht hier.
+         */
+        accountPermissions: [...new Set([...p.accountPermissions,
+          ...[...p.accountPermissionsByAccount.values()].flatMap(s => [...s])])].sort(),
         /*
          * Die Plattformrechte. Sie haengen an keiner Property und standen
          * deshalb bisher in keiner Antwort -- das Adminpanel haette ohne sie
@@ -350,7 +355,8 @@ export function authRoutes(app: FastifyInstance): void {
            * erlaubt haette.
            */
           permissions: [...new Set([...p.accountPermissions,
-                                    ...(p.permissionsByProperty.get(r.id) ?? [])])].sort()
+            ...(p.accountPermissionsByAccount.get(p.propertyAccounts.get(r.id) ?? -1) ?? []),
+            ...(p.permissionsByProperty.get(r.id) ?? [])])].sort()
         }))
       }
     }

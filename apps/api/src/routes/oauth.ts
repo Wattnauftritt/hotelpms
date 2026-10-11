@@ -6,8 +6,8 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { hashToken } from '../platform/auth.js'
-import { accountFor, type Principal } from '../platform/context.js'
-import { isPermission, PERMISSIONS } from '../platform/permissions.js'
+import { accountFor, accountRight, can, type Principal } from '../platform/context.js'
+import { isPermission, PERMISSIONS, type Permission } from '../platform/permissions.js'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
 
 /**
@@ -139,6 +139,49 @@ function pruefeScopes(scopes: unknown): asserts scopes is string[] {
   }
 }
 
+/**
+ * Rechte, die in keiner Rolle stehen und nur fuer Umsysteme da sind. Ein
+ * Mensch hat sie nie selbst; wer Zugaenge fuer diese Haeuser verwalten darf,
+ * darf sie deshalb vergeben. Ein Test haelt fest, dass jedes Recht ohne Rolle
+ * hier steht.
+ */
+export const NUR_FUER_MASCHINEN: ReadonlySet<string> = new Set([
+  'cashbook:import', 'guest:contact_write', 'registration:import'])
+
+/**
+ * Was ein Zugang darf, darf sein Anleger selbst -- in jedem Haus, das der
+ * Zugang erreicht.
+ *
+ * Bis hierhin genuegte `integration:manage` in **irgendeinem** Haus. Die
+ * Hoteldirektion eines Hauses legte damit einen Zugang fuer alle Haeuser mit
+ * `settings:account` an und machte sich ueber dessen Token zum Inhaber des
+ * ganzen Betriebs (Befund H2, Sicherheitsaudit 2026-10-11). Ein Zugang fuer
+ * alle Haeuser (`propertyIds` leer) verlangt deshalb das Recht auf
+ * Betriebsebene, einer fuer einzelne Haeuser das Recht in jedem davon.
+ */
+export function pruefeReichweite(
+  p: Principal, accountId: number, scopes: readonly string[], propertyIds: readonly number[]
+): void {
+  const fehlt = (permission: string): never => {
+    throw Errors.forbidden('access.missingPermission', { permission })
+  }
+  if (propertyIds.length === 0) {
+    if (!accountRight(p, 'integration:manage', accountId)) fehlt('integration:manage')
+    for (const s of scopes) {
+      if (NUR_FUER_MASCHINEN.has(s)) continue
+      if (!accountRight(p, s as Permission, accountId)) fehlt(s)
+    }
+    return
+  }
+  for (const haus of propertyIds) {
+    if (!can(p, 'integration:manage', haus)) fehlt('integration:manage')
+    for (const s of scopes) {
+      if (NUR_FUER_MASCHINEN.has(s)) continue
+      if (!can(p, s as Permission, haus)) fehlt(s)
+    }
+  }
+}
+
 export function oauthRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'POST',
@@ -222,7 +265,7 @@ export function oauthRoutes(app: FastifyInstance): void {
       const body = req.body as {
         accountId?: number; name: string; scopes: string[]; propertyIds?: number[] }
       const principal = req.principal as Principal
-      const accountId = accountFor(principal, body.accountId)
+      const accountId = accountFor(principal, body.accountId, 'integration:manage')
 
       if (typeof body.name !== 'string' || body.name.trim() === '') {
         throw Errors.validation({ name: ['field.required'] })
@@ -240,6 +283,7 @@ export function oauthRoutes(app: FastifyInstance): void {
             [accountId, propertyIds])
           if (eigene.rowCount !== propertyIds.length) throw Errors.notFound('res.property')
         }
+        pruefeReichweite(principal, accountId, body.scopes, propertyIds)
 
         const r = await client.query<{ public_ref: string }>(
           `INSERT INTO oauth_client (account_id, name, secret_hash, scopes, property_ids)
@@ -324,14 +368,16 @@ export function oauthRoutes(app: FastifyInstance): void {
       const propertyIds = body.propertyIds as number[] | undefined
 
       return tx(req.pool, req, async client => {
-        const c = await client.query<{ id: number; account_id: number; status: string }>(
-          `SELECT id, account_id, status FROM oauth_client WHERE public_ref = $1 FOR UPDATE`,
+        const c = await client.query<{ id: number; account_id: number; status: string
+                                       scopes: string[]; property_ids: number[] }>(
+          `SELECT id, account_id, status, scopes, property_ids
+             FROM oauth_client WHERE public_ref = $1 FOR UPDATE`,
           [clientRef])
         if (c.rowCount === 0) throw Errors.notFound('res.oauthClient')
         const z = c.rows[0]!
         // Die Zeilenrichtlinie laesst jeden Account des Aufrufers durch; das
         // Recht gilt aber je Account, wie beim Anlegen (`accountFor`).
-        accountFor(req.principal as Principal, Number(z.account_id))
+        accountFor(req.principal as Principal, Number(z.account_id), 'integration:manage')
         if (z.status !== 'active') throw Errors.conflict('oauthClient.disabled')
 
         if (propertyIds !== undefined && propertyIds.length > 0) {
@@ -342,6 +388,13 @@ export function oauthRoutes(app: FastifyInstance): void {
             throw Errors.notFound('res.property')
           }
         }
+        // Gegen den bisherigen **und** den kuenftigen Zuschnitt: wer einen
+        // Zugang fuer alle Haeuser nicht anlegen duerfte, aendert ihn auch
+        // nicht -- auch nicht, um ihn auf das eigene Haus zu verengen.
+        pruefeReichweite(req.principal as Principal, Number(z.account_id),
+          z.scopes, z.property_ids.map(Number))
+        pruefeReichweite(req.principal as Principal, Number(z.account_id),
+          scopes ?? z.scopes, propertyIds ?? z.property_ids.map(Number))
 
         const neu = await client.query<{ name: string; scopes: string[]
                                          property_ids: string[] }>(
@@ -393,9 +446,14 @@ export function oauthRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { clientRef } = req.params as { clientRef: string }
       return tx(req.pool, req, async client => {
-        const c = await client.query<{ id: number }>(
-          `SELECT id FROM oauth_client WHERE public_ref = $1 FOR UPDATE`, [clientRef])
+        const c = await client.query<{ id: number; account_id: number; property_ids: number[] }>(
+          `SELECT id, account_id, property_ids
+             FROM oauth_client WHERE public_ref = $1 FOR UPDATE`, [clientRef])
         if (c.rowCount === 0) throw Errors.notFound('res.oauthClient')
+        // Sperren darf, wer den Zugang in dieser Reichweite verwalten darf --
+        // sonst legte die Direktion eines Hauses das Umsystem aller still.
+        pruefeReichweite(req.principal as Principal, Number(c.rows[0]!.account_id),
+          [], c.rows[0]!.property_ids.map(Number))
 
         await client.query(
           `UPDATE oauth_client SET status = 'disabled' WHERE id = $1`, [c.rows[0]!.id])

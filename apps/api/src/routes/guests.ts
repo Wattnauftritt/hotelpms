@@ -215,7 +215,7 @@ export function guestRoutes(app: FastifyInstance): void {
       if (!body.lastName || body.lastName.trim() === '') {
         throw Errors.validation({ lastName: ['field.required'] })
       }
-      const accountId = accountFor(principal, body.accountId)
+      const accountId = accountFor(principal, body.accountId, 'guest:write')
 
       return tx(req.pool, req, async client => {
         const duplicates = await findDuplicates(client, accountId, body)
@@ -575,7 +575,7 @@ export function guestRoutes(app: FastifyInstance): void {
       if (!body.name || body.name.trim() === '') {
         throw Errors.validation({ name: ['field.required'] })
       }
-      const accountId = accountFor(principal, body.accountId)
+      const accountId = accountFor(principal, body.accountId, 'guest:write')
       return tx(req.pool, req, async client => {
         const { rows } = await client.query<{ public_ref: string }>(
           `INSERT INTO company (account_id, name, vat_id, address_line1, postal_code,

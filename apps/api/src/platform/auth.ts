@@ -79,7 +79,8 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
     const offeneHaeuser = new Set(scope.rows.map(r => r.property_id))
 
     const accountIds = new Set<number>()
-    const accountPermissions = new Set<Permission>()
+    const accountPermissionsByAccount = new Map<number, Set<Permission>>()
+    const propertyAccounts = new Map<number, number>()
     const platformPermissions = new Set<Permission>()
     const permissionsByProperty = new Map<number, Set<Permission>>()
 
@@ -91,7 +92,9 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
         // Nutzers zugleich, und ein gesperrter darf keine mitbringen.
         if (!offeneAccounts.has(r.account_id)) continue
         accountIds.add(r.account_id)
-        accountPermissions.add(r.permission_key)
+        let set = accountPermissionsByAccount.get(r.account_id)
+        if (!set) { set = new Set(); accountPermissionsByAccount.set(r.account_id, set) }
+        set.add(r.permission_key)
       } else if (r.level === 'property' && r.property_id !== null) {
         /*
          * Dieselbe Sperre eine Ebene tiefer. Eine Property-Rolle wirkte
@@ -109,6 +112,7 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
 
     for (const s of scope.rows) {
       accountIds.add(s.account_id)
+      propertyAccounts.set(s.property_id, s.account_id)
       if (!permissionsByProperty.has(s.property_id)) {
         permissionsByProperty.set(s.property_id, new Set())
       }
@@ -127,9 +131,25 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
     for (const r of geteilt.rows) {
       if (!isPermission(r.permission_key)) continue
       accountIds.add(r.account_id)
+      propertyAccounts.set(r.property_id, r.account_id)
       let set = permissionsByProperty.get(r.property_id)
       if (!set) { set = new Set(); permissionsByProperty.set(r.property_id, set) }
       set.add(r.permission_key)
+    }
+
+    /*
+     * Was in **jedem** Account des Nutzers auf Betriebsebene gilt. Wer nur
+     * einen Account hat -- der Normalfall --, bekommt genau seine
+     * Account-Rechte; wer in einem zweiten Betrieb nur eine Hausrolle hat,
+     * bekommt hier nichts, und seine Inhaberrechte wirken nur noch im
+     * eigenen Betrieb (Befund K1, Sicherheitsaudit 2026-10-11).
+     */
+    const accountPermissions = new Set<Permission>()
+    const [erster, ...weitere] = [...accountIds]
+    for (const perm of (erster === undefined ? [] : accountPermissionsByAccount.get(erster) ?? [])) {
+      if (weitere.every(a => accountPermissionsByAccount.get(a)?.has(perm))) {
+        accountPermissions.add(perm)
+      }
     }
 
     return {
@@ -139,6 +159,8 @@ export async function loadPrincipal(pool: Pool, userId: number): Promise<Princip
       accountIds: [...accountIds],
       permissionsByProperty,
       accountPermissions,
+      accountPermissionsByAccount,
+      propertyAccounts,
       platformPermissions,
       supportSessionId: null,
       // Wer die Sitzung eroeffnet hat, weiss nur der Aufrufer dieser
@@ -218,6 +240,8 @@ export async function loadPrincipalFromToken(pool: Pool, token: string): Promise
        * achtzehn dazu -- die Einschraenkung waere wirkungslos.
        */
       accountPermissions: new Set(),
+      accountPermissionsByAccount: new Map(),
+      propertyAccounts: new Map(haeuser.map(h => [h, Number(row.account_id)])),
       platformPermissions: new Set(),
       supportSessionId: null,
       sessionUserId: null,
@@ -276,6 +300,9 @@ export async function loadPrincipalFromDevice(pool: Pool, secret: string): Promi
       // Bewusst leer, aus demselben Grund wie beim Maschinentoken: was hier
       // stuende, wirkte auf alle Haeuser des Accounts.
       accountPermissions: new Set(),
+      accountPermissionsByAccount: new Map(),
+      propertyAccounts: new Map([haus, ...row.shared_property_ids.map(Number)]
+        .map(h => [h, Number(row.account_id)])),
       platformPermissions: new Set(),
       supportSessionId: null,
       sessionUserId: null,
@@ -305,7 +332,8 @@ export async function applySupportSession(
 
   if (active.rowCount === 0) {
     // Kein Zugriff auf Fachdaten. Plattformrechte bleiben erhalten.
-    return { ...principal, accountIds: [], permissionsByProperty: new Map() }
+    return { ...principal, accountIds: [], permissionsByProperty: new Map(),
+             propertyAccounts: new Map() }
   }
 
   const session = active.rows[0]!
@@ -355,6 +383,8 @@ export async function applySupportSession(
      * zwischen "sehen" und "aendern" haengt an derselben Stelle.
      */
     accountPermissions: new Set(),
+    accountPermissionsByAccount: new Map(),
+    propertyAccounts: new Map(props.rows.map(p => [p.id, session.account_id])),
     supportSessionId: session.id
   }
 }

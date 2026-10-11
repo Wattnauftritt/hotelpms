@@ -3,7 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import type { Principal } from '../platform/context.js'
+import { accountRight, type Principal } from '../platform/context.js'
 import { einmalTokenUndPost, einmalLink } from './auth.js'
 
 /**
@@ -105,8 +105,8 @@ async function benutzerImBetrieb(
  * settings:account angefasst. Sonst koennte die Hoteldirektion eines Hauses
  * den Inhaber sperren.
  */
-function verlangtBetriebsrecht(ziel: Ziel, principal: Principal): void {
-  if (ziel.hat_account_rolle && !principal.accountPermissions.has('settings:account')) {
+function verlangtBetriebsrecht(ziel: Ziel, principal: Principal, accountId: number): void {
+  if (ziel.hat_account_rolle && !accountRight(principal, 'settings:account', accountId)) {
     throw Errors.forbidden('user.accountRoleNeedsAccountRight')
   }
 }
@@ -294,7 +294,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
             if (perMail !== undefined) throw Errors.conflict('user.emailTaken')
             throw Errors.conflict('user.usernameTaken')
           }
-          verlangtBetriebsrecht(ziel, principal)
+          verlangtBetriebsrecht(ziel, principal, accountId)
           // Hinzu, nicht ersetzen: wer im Haus schon Rollen hat, verliert
           // durch eine zweite Einladung keine davon.
           await client.query(
@@ -374,7 +374,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const ergebnis = await tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
-        verlangtBetriebsrecht(ziel, principal)
+        verlangtBetriebsrecht(ziel, principal, accountId)
         const gesperrt = await client.query(
           `SELECT 1 FROM account_user_block WHERE account_id = $1 AND user_id = $2`,
           [accountId, ziel.id])
@@ -431,7 +431,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
-        verlangtBetriebsrecht(ziel, principal)
+        verlangtBetriebsrecht(ziel, principal, accountId)
         await client.query(
           `UPDATE app_user
               SET failed_login_count = 0, locked_until = NULL,
@@ -468,7 +468,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
-        verlangtBetriebsrecht(ziel, principal)
+        verlangtBetriebsrecht(ziel, principal, accountId)
         await client.query(
           `UPDATE app_user SET display_name = $2, updated_at = now() WHERE id = $1`,
           [ziel.id, name])
@@ -499,7 +499,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
         if (ziel.id === principal.userId) throw Errors.conflict('user.notYourself')
-        verlangtBetriebsrecht(ziel, principal)
+        verlangtBetriebsrecht(ziel, principal, accountId)
         await nichtDenLetztenVerwalter(client, accountId, ziel.id)
         await client.query(
           `INSERT INTO account_user_block (account_id, user_id, blocked_by)
@@ -523,7 +523,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
-        verlangtBetriebsrecht(ziel, principal)
+        verlangtBetriebsrecht(ziel, principal, accountId)
         await client.query(
           `DELETE FROM account_user_block WHERE account_id = $1 AND user_id = $2`,
           [accountId, ziel.id])
@@ -554,7 +554,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
         const accountId = await hausUndAccount(client, Number(propertyId))
         const ziel = await benutzerImBetrieb(client, accountId, userRef)
         if (ziel.id === principal.userId) throw Errors.conflict('user.notYourself')
-        verlangtBetriebsrecht(ziel, principal)
+        verlangtBetriebsrecht(ziel, principal, accountId)
         await nichtDenLetztenVerwalter(client, accountId, ziel.id)
 
         await client.query(
