@@ -12,7 +12,7 @@ import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
   from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
-import { anzahlungssicht } from './depositRequests.js'
+import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
@@ -323,6 +323,20 @@ export function billingRoutes(app: FastifyInstance): void {
         throw Errors.validation({ name: ['field.required'] })
       }
       return tx(req.pool, req, async client => {
+        /*
+         * Das Recht im Haus der Zahlungsart, nicht in irgendeinem: die Pfade
+         * dieser Datei tragen keine Property, `registerRoute` prueft deshalb
+         * nur "irgendwo", und die Zeilenrichtlinie laesst jedes Haus durch,
+         * in dem der Benutzer irgendeine Rolle hat (Befund H4,
+         * Sicherheitsaudit 2026-10-11). Jede Route hier prueft das Recht
+         * deshalb noch einmal, sobald der Datensatz und damit sein Haus
+         * feststeht.
+         */
+        const pmHaus = await client.query<{ property_id: number }>(
+          `SELECT property_id FROM payment_method WHERE id = $1 FOR UPDATE`,
+          [Number(paymentMethodId)])
+        if (pmHaus.rowCount === 0) throw Errors.notFound('res.paymentMethod')
+        rechtImHaus(req.principal as Principal, 'settings:property', pmHaus.rows[0]!.property_id)
         const { rows, rowCount } = await client.query(
           `UPDATE payment_method SET
              name = COALESCE($2, name),
@@ -356,6 +370,7 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM folio WHERE public_ref = $1`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
+        rechtImHaus(req.principal as Principal, 'folio:read', folio.property_id)
 
         const charges = await client.query(
           `SELECT id, business_date::text, description, quantity,
@@ -419,6 +434,7 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM folio WHERE public_ref = $1`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
+        rechtImHaus(req.principal as Principal, 'invoice:issue', folio.property_id)
         if (folio.status === 'closed') throw Errors.conflict('folio.closed')
 
         /*
@@ -480,6 +496,7 @@ export function billingRoutes(app: FastifyInstance): void {
         const f = await client.query<{ id: number; property_id: number; status: string }>(
           `SELECT id, property_id, status FROM folio WHERE public_ref = $1`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        rechtImHaus(principal, 'folio:post', f.rows[0]!.property_id)
         if (f.rows[0]!.status === 'closed') throw Errors.conflict('folio.closed')
         const folio = f.rows[0]!
 
@@ -532,6 +549,7 @@ export function billingRoutes(app: FastifyInstance): void {
           `SELECT id, property_id, status FROM folio WHERE public_ref = $1`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:post', folio.property_id)
 
         const pm = await client.query<{ id: number }>(
           `SELECT id FROM payment_method WHERE property_id = $1 AND code = $2 AND active`,
@@ -635,6 +653,7 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM folio WHERE public_ref = $1 FOR UPDATE`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
+        rechtImHaus(principal, 'invoice:issue', folio.property_id)
 
         // Der Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG ist der
         // geplante Aufenthalt: die Leistung selbst steht noch aus, aber
@@ -927,12 +946,14 @@ export function billingRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { invoiceRef } = req.params as { invoiceRef: string }
       return tx(req.pool, req, async client => {
-        const r = await client.query<{ number: string; pdf: Buffer | null }>(
-          `SELECT i.number, d.pdf
+        const r = await client.query<{ number: string; property_id: number
+                                       pdf: Buffer | null }>(
+          `SELECT i.number, i.property_id, d.pdf
              FROM invoice i
              LEFT JOIN invoice_document d ON d.invoice_id = i.id
             WHERE i.public_ref = $1`, [invoiceRef])
         if (r.rowCount === 0) throw Errors.notFound('res.invoice')
+        rechtImHaus(req.principal as Principal, 'folio:read', r.rows[0]!.property_id)
         const pdf = r.rows[0]!.pdf
         if (pdf === null) throw Errors.documentPending()
 
@@ -969,6 +990,7 @@ export function billingRoutes(app: FastifyInstance): void {
              FOR UPDATE`, [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
+        rechtImHaus(principal, 'invoice:issue', folio.property_id)
 
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
         // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
@@ -1293,6 +1315,7 @@ export function billingRoutes(app: FastifyInstance): void {
           [folioRef])
         if (f.rowCount === 0) throw Errors.notFound('res.folio')
         const folio = f.rows[0]!
+        rechtImHaus(req.principal as Principal, 'folio:read', folio.property_id)
 
         /*
          * Der Verbund gegen eine *gruppierte* Unterabfrage, nicht gegen

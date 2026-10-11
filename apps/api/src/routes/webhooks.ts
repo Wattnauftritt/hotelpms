@@ -85,14 +85,26 @@ interface DeliveryRow {
 const FIELDS = `public_ref, url, event_types, property_ids, status,
                 disabled_at, disabled_reason, created_at`
 
-/** Laedt das Abonnement oder bricht ab. Die Zeilenrichtlinie filtert den Mandanten. */
+/**
+ * Laedt das Abonnement oder bricht ab -- und prueft das Recht an ihm.
+ *
+ * Die Zeilenrichtlinie laesst jedes Abonnement eines Accounts des Aufrufers
+ * durch; `registerRoute` prueft `integration:manage` nur "irgendwo". Wer es
+ * in einem Haus hatte, entfernte so das Abonnement fuer alle Haeuser oder
+ * fuer ein fremdes (Befund H4, Sicherheitsaudit 2026-10-11). Geprueft wird
+ * dieselbe Reichweite wie beim Anlegen.
+ */
 async function loadSubscription(
-  client: PoolClient, ref: string
+  client: PoolClient, principal: Principal, ref: string, sperren: boolean
 ): Promise<{ id: number; status: string }> {
-  const { rows, rowCount } = await client.query<{ id: number; status: string }>(
-    `SELECT id, status FROM webhook_subscription WHERE public_ref = $1 FOR UPDATE`, [ref])
+  const { rows, rowCount } = await client.query<{ id: number; status: string
+                                                  account_id: number; property_ids: number[] }>(
+    `SELECT id, status, account_id, property_ids FROM webhook_subscription
+      WHERE public_ref = $1 ${sperren ? 'FOR UPDATE' : ''}`, [ref])
   if (rowCount === 0) throw Errors.notFound('res.subscription')
-  return rows[0]!
+  const sub = rows[0]!
+  pruefeReichweite(principal, Number(sub.account_id), [], sub.property_ids)
+  return sub
 }
 
 export function webhookRoutes(app: FastifyInstance): void {
@@ -196,7 +208,8 @@ export function webhookRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { subscriptionRef } = req.params as { subscriptionRef: string }
       return tx(req.pool, req, async client => {
-        const sub = await loadSubscription(client, subscriptionRef)
+        const sub = await loadSubscription(
+          client, req.principal as Principal, subscriptionRef, true)
         await client.query(`DELETE FROM webhook_subscription WHERE id = $1`, [sub.id])
         return { subscriptionRef, deleted: true }
       })
@@ -218,7 +231,8 @@ export function webhookRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { subscriptionRef } = req.params as { subscriptionRef: string }
       return tx(req.pool, req, async client => {
-        const sub = await loadSubscription(client, subscriptionRef)
+        const sub = await loadSubscription(
+          client, req.principal as Principal, subscriptionRef, true)
         await client.query(
           `UPDATE webhook_subscription
               SET status = 'active', disabled_at = NULL, disabled_reason = NULL
@@ -244,9 +258,8 @@ export function webhookRoutes(app: FastifyInstance): void {
       const max = Math.min(Math.max(Number(limit) || 50, 1), 200)
 
       return tx(req.pool, req, async client => {
-        const s = await client.query<{ id: number }>(
-          `SELECT id FROM webhook_subscription WHERE public_ref = $1`, [subscriptionRef])
-        if (s.rowCount === 0) throw Errors.notFound('res.subscription')
+        const sub = await loadSubscription(
+          client, req.principal as Principal, subscriptionRef, false)
 
         // Ein Aufruf je Bildschirm: die Versuche kommen als Feld mit, nicht
         // als eine Nachfrage je Zustellung.
@@ -268,7 +281,7 @@ export function webhookRoutes(app: FastifyInstance): void {
               AND ($2::text IS NULL OR d.status = $2)
             ORDER BY d.id DESC
             LIMIT $3`,
-          [s.rows[0]!.id, status ?? null, max])
+          [sub.id, status ?? null, max])
 
         // Die Art aus der Datenbank wird erst hier zum Satz. Im Protokoll
         // steht sie als Art, damit sie sich auswerten laesst; am Bildschirm

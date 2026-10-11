@@ -4,7 +4,7 @@ import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { tx } from '../platform/db.js'
-import type { Principal } from '../platform/context.js'
+import { canInAccount, type Principal } from '../platform/context.js'
 import { isSupportLevel, supportPermissions,
          SUPPORT_MAX_STUNDEN, SUPPORT_VORGABE_STUNDEN,
          type SupportLevel } from '../platform/support.js'
@@ -81,6 +81,17 @@ function nachAussen(z: Zeile, jetzt: number): Record<string, unknown> {
     // Liste ein zweites Mal zu fuehren.
     permissions: [...supportPermissions(z.level)].sort()
   }
+}
+
+/**
+ * Die Accounts, in denen der Aufrufer `settings:account` hat -- nicht alle,
+ * die er sieht. Die Zeilenrichtlinie und `principal.accountIds` umfassen
+ * jeden Account mit irgendeiner Rolle; wer im eigenen Betrieb Inhaber und im
+ * fremden nur Rezeption ist, gab sonst dort dem Plattformpersonal Zugang
+ * (Befund H4, Sicherheitsaudit 2026-10-11, wie K1).
+ */
+function eigeneKonten(p: Principal): number[] {
+  return p.accountIds.filter(a => canInAccount(p, 'settings:account', a))
 }
 
 export function supportRoutes(app: FastifyInstance): void {
@@ -237,7 +248,7 @@ export function supportRoutes(app: FastifyInstance): void {
         client.query<Zeile>(
           `SELECT ${SPALTEN} ${VERBUND}
             WHERE s.account_id = ANY($1::bigint[])
-            ORDER BY s.requested_at DESC LIMIT 100`, [principal.accountIds]))
+            ORDER BY s.requested_at DESC LIMIT 100`, [eigeneKonten(principal)]))
       const jetzt = Date.now()
       return { sessions: rows.rows.map(z => nachAussen(z, jetzt)) }
     }
@@ -270,7 +281,7 @@ export function supportRoutes(app: FastifyInstance): void {
               AND revoked_at IS NULL
               AND expires_at > now()
             RETURNING id`,
-          [Number(id), principal.accountIds, principal.userId])
+          [Number(id), eigeneKonten(principal), principal.userId])
 
         if (r.rowCount === 0) {
           // Auseinanderhalten, was der Kunde auseinanderhalten kann: gibt es
@@ -278,7 +289,7 @@ export function supportRoutes(app: FastifyInstance): void {
           const da = await client.query<{ granted_at: string | null }>(
             `SELECT granted_at FROM support_session
               WHERE id = $1 AND account_id = ANY($2::bigint[])`,
-            [Number(id), principal.accountIds])
+            [Number(id), eigeneKonten(principal)])
           if (da.rows.length === 0) throw Errors.validation({ id: ['support.unknownSession'] })
           if (da.rows[0]!.granted_at !== null) {
             throw Errors.conflict('support.alreadyGranted')
@@ -313,12 +324,12 @@ export function supportRoutes(app: FastifyInstance): void {
         const r = await client.query(
           `UPDATE support_session SET revoked_at = now()
             WHERE id = $1 AND account_id = ANY($2::bigint[]) AND revoked_at IS NULL`,
-          [Number(id), principal.accountIds])
+          [Number(id), eigeneKonten(principal)])
         if (r.rowCount === 0) {
           const da = await client.query(
             `SELECT 1 FROM support_session
               WHERE id = $1 AND account_id = ANY($2::bigint[])`,
-            [Number(id), principal.accountIds])
+            [Number(id), eigeneKonten(principal)])
           if (da.rowCount === 0) throw Errors.validation({ id: ['support.unknownSession'] })
           // Schon widerrufen: das Ziel ist erreicht, also kein Fehler.
         }

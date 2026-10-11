@@ -21,6 +21,8 @@ import { geltendeBedingungen, stimmeBedingungZu,
 import { gastAendern, gastAnlegen } from '../platform/gast.js'
 import { verzichtStand, setzeVerzicht } from '../platform/reinigungsverzicht.js'
 import type { Principal } from '../platform/context.js'
+import type { Permission } from '../platform/permissions.js'
+import { rechtImHaus } from './depositRequests.js'
 
 /**
  * Online-Check-in (Dokument 30).
@@ -425,7 +427,7 @@ interface ReservierungAmTresen {
 }
 
 async function reservierungAmTresen(
-  client: PoolClient, reservationRef: string
+  client: PoolClient, reservationRef: string, principal: Principal, permission: Permission
 ): Promise<ReservierungAmTresen> {
   const { rows } = await client.query<ReservierungAmTresen>(
     `SELECT r.id, r.property_id, r.status::text, r.arrival::text, r.departure::text,
@@ -441,6 +443,14 @@ async function reservierungAmTresen(
       WHERE r.public_ref = $1`, [reservationRef])
   if (rows.length === 0) throw Errors.notFound('res.reservation')
   const r = rows[0]!
+  /*
+   * Das Recht im Haus der Reservierung, nicht in irgendeinem: der Pfad traegt
+   * keine Property, `registerRoute` prueft deshalb nur "irgendwo", und die
+   * Zeilenrichtlinie laesst jedes Haus durch, in dem der Benutzer irgendeine
+   * Rolle hat (Befund H4, Sicherheitsaudit 2026-10-11). Vor dem Zustand,
+   * damit ein fremdes Haus auch den nicht verraet.
+   */
+  rechtImHaus(principal, permission, r.property_id)
   if (!OFFEN.has(r.status) || r.primary_guest_id === null || r.guest_status !== 'active') {
     throw Errors.unprocessable('checkin.reservationNotOpen')
   }
@@ -670,7 +680,8 @@ export function checkinRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       nichtSpeichern(reply)
       return tx(req.pool, req, async (client): Promise<CheckinLink> => {
-        const r = await reservierungAmTresen(client, reservationRef)
+        const r = await reservierungAmTresen(
+          client, reservationRef, principal, 'reservation:checkin')
         const t = await createCheckinToken(client, {
           reservationId: r.id, channel: 'mail', createdBy: principal.userId })
         reply.status(201)
@@ -696,7 +707,7 @@ export function checkinRoutes(app: FastifyInstance): void {
       const { reservationRef } = req.params as { reservationRef: string }
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
-        const r = await reservierungAmTresen(client, reservationRef)
+        const r = await reservierungAmTresen(client, reservationRef, principal, 'email:send')
         if (!isSendableAddress(r.email)) {
           throw Errors.unprocessable('mail.noReservationAddress')
         }
@@ -738,9 +749,10 @@ export function checkinRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       return tx(req.pool, req, async client => {
-        const r = await client.query<{ id: number }>(
-          `SELECT id FROM reservation WHERE public_ref = $1`, [reservationRef])
+        const r = await client.query<{ id: number; property_id: number }>(
+          `SELECT id, property_id FROM reservation WHERE public_ref = $1`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
+        rechtImHaus(req.principal as Principal, 'reservation:checkin', r.rows[0]!.property_id)
         const u = await client.query(
           `UPDATE checkin_token SET revoked_at = now()
             WHERE reservation_id = $1 AND revoked_at IS NULL`, [r.rows[0]!.id])

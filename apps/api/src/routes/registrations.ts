@@ -8,6 +8,7 @@ import { requiresRegistrationSignature } from '@hotelpms/domain'
 import { erfasseMeldeschein, unterschreibeMeldeschein, AUFBEWAHRUNG_MONATE }
   from '../platform/meldeschein.js'
 import type { PoolClient } from '@hotelpms/db'
+import { rechtImHaus } from './depositRequests.js'
 import { istUnterschriftSvg } from '@hotelpms/contracts'
 
 /**
@@ -79,8 +80,9 @@ export function registrationRoutes(app: FastifyInstance): void {
           city: string | null; country: string | null
           guest_ref: string | null; occupants: number
           existing_id: number | null; signed_at: string | null
-          signature_required: boolean | null; source: string | null }>(
-          `SELECT r.arrival::text, r.departure::text, p.name AS property_name,
+          signature_required: boolean | null; source: string | null
+          property_id: number }>(
+          `SELECT r.property_id, r.arrival::text, r.departure::text, p.name AS property_name,
                   g.last_name, g.first_name, g.birth_date::text, g.nationality,
                   g.address_line1, g.postal_code, g.city, g.country,
                   g.public_ref AS guest_ref,
@@ -96,6 +98,10 @@ export function registrationRoutes(app: FastifyInstance): void {
             WHERE r.public_ref = $1`, [reservationRef])
         if (rowCount === 0) throw Errors.notFound('res.reservation')
         const r = rows[0]!
+        // Das Recht im Haus der Reservierung, nicht in irgendeinem: der Pfad
+        // traegt keine Property, und die Zeilenrichtlinie filtert nach
+        // Mandant, nicht nach Haus (Befund H4, Sicherheitsaudit 2026-10-11).
+        rechtImHaus(req.principal as Principal, 'reservation:checkin', r.property_id)
         // Nach Staatsangehoerigkeit, hilfsweise Wohnsitz (requiresRegistrationSignature).
         const auslaendisch = requiresRegistrationSignature(r)
         // Liegt schon ein Schein vor, entscheidet, was dort steht -- ein

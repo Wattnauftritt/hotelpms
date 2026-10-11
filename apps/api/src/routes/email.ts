@@ -9,6 +9,7 @@ import { loadConfig } from '../platform/config.js'
 import { createBrevoDomains, DomainApiError, type DomainVerwaltung }
   from '../platform/brevoDomains.js'
 import type { Principal } from '../platform/context.js'
+import { rechtImHaus } from './depositRequests.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -213,6 +214,14 @@ export function emailRoutes(
             WHERE i.public_ref = $1`, [invoiceRef])
         if (inv.rowCount === 0) throw Errors.notFound('res.invoice')
         const i = inv.rows[0]!
+        /*
+         * Das Recht im Haus des Datensatzes, nicht in irgendeinem: die Pfade
+         * tragen keine Property, `registerRoute` prueft deshalb nur
+         * "irgendwo", und die Zeilenrichtlinie laesst jedes Haus durch, in
+         * dem der Benutzer irgendeine Rolle hat (Befund H4, Sicherheitsaudit
+         * 2026-10-11).
+         */
+        rechtImHaus(principal, 'email:send', i.property_id)
 
         // Schon heraus? Dann nicht noch einmal, ausser jemand sagt es
         // ausdruecklich. Ein zweiter Klick ist haeufiger als ein zweiter
@@ -300,6 +309,7 @@ export function emailRoutes(
             WHERE r.public_ref = $1`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
+        rechtImHaus(principal, 'email:send', res.property_id)
 
         if (res.anonymized) {
           throw Errors.unprocessable(
@@ -387,6 +397,11 @@ export function emailRoutes(
         // schlimmer als die Absage.
         // Eine zurueckgezogene Einladung zum Online-Check-in verliert ihren
         // Rumpf: darin steht der Link im Klartext (Dokument 30).
+        const m = await client.query<{ property_id: number }>(
+          `SELECT property_id FROM outbound_email WHERE public_ref = $1 FOR UPDATE`,
+          [messageRef])
+        if (m.rowCount === 0) throw Errors.conflict('mail.onlyUnsentCancellable')
+        rechtImHaus(req.principal as Principal, 'email:send', m.rows[0]!.property_id)
         const r = await client.query(
           `UPDATE outbound_email SET status = 'canceled',
                   body_text = CASE WHEN kind = 'checkin_invitation' THEN '' ELSE body_text END,

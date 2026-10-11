@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import { isIsoDate } from '@hotelpms/domain'
 import { geltendeBedingungen, stimmeBedingungZu } from '../platform/hausbedingungen.js'
+import { rechtImHaus } from './depositRequests.js'
 
 /**
  * Hausbedingungen: was ein Haus ueber den Meldeschein hinaus unterschreiben
@@ -94,6 +95,10 @@ export function termsRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
+        // Das Recht im Haus der Reservierung, nicht in irgendeinem: der Pfad
+        // traegt keine Property, und die Zeilenrichtlinie filtert nach
+        // Mandant, nicht nach Haus (Befund H4, Sicherheitsaudit 2026-10-11).
+        rechtImHaus(req.principal as Principal, 'reservation:checkin', res.property_id)
 
         // Welche Fassung gilt, steht in platform/hausbedingungen.ts -- das
         // Gaesteterminal legt dieselbe vor.

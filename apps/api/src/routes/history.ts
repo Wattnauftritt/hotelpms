@@ -4,6 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
+import { rechtImHaus } from './depositRequests.js'
 
 /**
  * Der Aenderungsverlauf -- die erste Route, die `audit_log` **liest**.
@@ -389,6 +390,10 @@ export function historyRoutes(app: FastifyInstance): void {
  */
 async function verlauf(client: PoolClient, principal: Principal, propertyId: number,
                        was: { bookingId?: number; reservationId?: number }) {
+  // Das Recht im Haus der Buchung, nicht in irgendeinem: der Pfad traegt
+  // keine Property, und die Zeilenrichtlinie filtert nach Mandant, nicht nach
+  // Haus (Befund H4, Sicherheitsaudit 2026-10-11).
+  rechtImHaus(principal, 'reservation:read', propertyId)
   const { rows } = await client.query<ProtokollZeile>(
     `WITH ziel AS (
        SELECT r.id, r.booking_id
