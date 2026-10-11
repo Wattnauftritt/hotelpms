@@ -135,8 +135,16 @@ function inhalt(z: Zeile[], s: Einstellung, a: Aufenthalt, mitNummer: boolean
     .filter(meldepflichtig)
   const erster = gemeldet[0]
   if (erster === undefined) throw Errors.unprocessable('avs.nobodyToReport')
-  // Die Einwilligung in die Karte per Mail gab der Hauptgast fuer sich.
-  const email = erster === haupt && haupt.digital_guest_card ? haupt.email : null
+  /*
+   * Die Gaestekarte per Mail bestellt der Hauptgast fuer den ganzen Schein,
+   * und alle Karten gehen an seine Adresse. Frueher bekam nur er sie: AVS
+   * verschickt eine Karte nur an eine Person mit `email`, und die
+   * Mitreisenden standen ohne -- der Hauptgast hatte "per E-Mail"
+   * angekreuzt und bekam fuer seine Familie trotzdem nur eine Karte (Sven,
+   * 11.10.2026). Eine eigene Adresse eines Mitreisenden geht nicht mit:
+   * eingewilligt hat der Hauptgast, und zwar fuer seine.
+   */
+  const email = haupt.digital_guest_card ? haupt.email : null
   return {
     schein: {
       arrival: haupt.arrival, departure: haupt.departure,
@@ -149,7 +157,7 @@ function inhalt(z: Zeile[], s: Einstellung, a: Aufenthalt, mitNummer: boolean
               - s.breakfast_cent * naechte(haupt.arrival, haupt.departure) * gemeldet.length)
           : null
       },
-      companions: gemeldet.slice(1).map(x => person(x, null))
+      companions: gemeldet.slice(1).map(x => person(x, email))
     },
     personen: gemeldet.length
   }
