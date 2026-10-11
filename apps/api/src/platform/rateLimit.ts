@@ -200,8 +200,35 @@ function zeigtZugangsdaten(req: FastifyRequest): boolean {
       || req.headers.authorization?.startsWith('Bearer ') === true
 }
 
+/**
+ * Pfade, die auch mit gueltiger Sitzung gezaehlt werden. Wer sich anmeldet
+ * oder eine Ruecksetzmail ausloest, handelt nicht fuer die eigene Sitzung:
+ * mit dem Cookie irgendeines Benutzers liessen sich sonst die Kennwoerter
+ * aller Konten ohne Grenze je Herkunft durchprobieren und beliebig viele
+ * Mails an fremde Postfaecher schicken (M3, Sicherheitsaudit 2026-10-11).
+ * Die Rezeption trifft das nicht: sie meldet sich einmal je Schicht an.
+ * Der Personenwechsel steht nicht hier; er zaehlt seine Fehlversuche selbst
+ * und kommt an einem vollen Tresen oefter vor, als die Grenze erlaubt.
+ */
+const IMMER_GEZAEHLT = ['/v1/auth/login', '/v1/auth/password-reset']
+
+/**
+ * Der Pfad, wie Fastify ihn zugeordnet hat. Die rohe URL liesse sich mit
+ * Prozentkodierung an der Liste vorbeifuehren -- `/v1/auth/%6cogin` faende
+ * dieselbe Route und zaehlte unter der lockeren Grenze (N3).
+ */
+function pfad(req: FastifyRequest): string {
+  return req.routeOptions.url ?? req.url
+}
+
+function immerGezaehlt(req: FastifyRequest): boolean {
+  const p = pfad(req)
+  return IMMER_GEZAEHLT.some(x => p.startsWith(x))
+}
+
 function pruefe(req: FastifyRequest): void {
-  const teuer = TEURE_PFADE.some(p => req.url.startsWith(p))
+  const p = pfad(req)
+  const teuer = TEURE_PFADE.some(x => p.startsWith(x))
   const limiter = teuer ? limiters.anmeldung : limiters.allgemein
   const opts = teuer ? LOGIN_LIMIT : ANON_LIMIT
 
@@ -232,12 +259,12 @@ function pruefe(req: FastifyRequest): void {
  */
 export function registerRateLimit(app: FastifyInstance): void {
   app.addHook('onRequest', async (req) => {
-    if (zeigtZugangsdaten(req)) return
+    if (zeigtZugangsdaten(req) && !immerGezaehlt(req)) return
     pruefe(req)
   })
 
   app.addHook('preValidation', async (req) => {
-    if (!zeigtZugangsdaten(req)) return
+    if (!zeigtZugangsdaten(req) || immerGezaehlt(req)) return
     /*
      * Angemeldete Anfragen bleiben unbegrenzt: sie sind einer Person oder
      * einem Client zurechenbar, und eine Rezeption, die im Andrang gebremst
