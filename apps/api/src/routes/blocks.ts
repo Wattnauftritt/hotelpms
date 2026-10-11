@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
+import { rechtImHaus } from './depositRequests.js'
 
 /**
  * Kontingente und Gruppen (Aufgabe 10, Dokument 16).
@@ -171,6 +172,10 @@ export function blockRoutes(app: FastifyInstance): void {
       const { blockRef } = req.params as { blockRef: string }
       return tx(req.pool, req, async client => {
         const b = await loadBlock(client, blockRef)
+        // Das Recht im Haus des Kontingents, nicht in irgendeinem: der Pfad
+        // traegt keine Property, und die Zeilenrichtlinie filtert nach
+        // Mandant, nicht nach Haus (Befund H4, Sicherheitsaudit 2026-10-11).
+        rechtImHaus(req.principal as Principal, 'inventory:write', b.property_id)
         if (b.status !== 'active') {
           throw Errors.conflict('block.alreadyStatus', { status: b.status })
         }

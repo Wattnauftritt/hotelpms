@@ -4,6 +4,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isIsoDate } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
+import { rechtImHaus } from './depositRequests.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 import { aufgabeVerzichtet } from '../platform/reinigungsverzicht.js'
 
@@ -299,6 +300,19 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       const { taskId } = req.params as { taskId: string }
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
+        /*
+         * Das Recht im Haus der Aufgabe, nicht in irgendeinem: der Pfad
+         * traegt keine Property, `registerRoute` prueft deshalb nur
+         * "irgendwo", und die Zeilenrichtlinie laesst jedes Haus durch, in
+         * dem der Benutzer irgendeine Rolle hat (Befund H4, Sicherheitsaudit
+         * 2026-10-11). Vor der Verzichtspruefung, damit ein fremdes Haus
+         * nicht einmal erfaehrt, ob dort verzichtet wurde.
+         */
+        const t = await client.query<{ property_id: number }>(
+          `SELECT property_id FROM housekeeping_task WHERE id = $1 FOR UPDATE`,
+          [Number(taskId)])
+        if (t.rowCount === 0) throw Errors.notFound('res.task')
+        rechtImHaus(principal, 'housekeeping:write', t.rows[0]!.property_id)
         // Dieselbe Sperre wie in der Personal-App: verzichtet der Gast,
         // wird nicht gereinigt und nicht gezaehlt (Sven, 08.10.2026).
         if (await aufgabeVerzichtet(client, Number(taskId))) {
@@ -511,6 +525,12 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       }
 
       return tx(req.pool, req, async client => {
+        // Wie oben: das Recht im Haus der Meldung (Befund H4).
+        const m = await client.query<{ property_id: number }>(
+          `SELECT property_id FROM maintenance_ticket WHERE id = $1 FOR UPDATE`,
+          [Number(ticketId)])
+        if (m.rowCount === 0) throw Errors.notFound('res.maintenanceTicket')
+        rechtImHaus(req.principal as Principal, 'maintenance:write', m.rows[0]!.property_id)
         const { rows, rowCount } = await client.query(
           `UPDATE maintenance_ticket SET
              status = COALESCE($2, status),

@@ -8,7 +8,7 @@ import { AppError, Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { loadBlock } from './blocks.js'
-import { geschaeftstag } from './depositRequests.js'
+import { geschaeftstag, rechtImHaus } from './depositRequests.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen, addDays,
          type ReservationStatus, type ReservationAction,
@@ -1372,6 +1372,15 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE r.public_ref = $1`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const kopf = r.rows[0]! as Record<string, unknown>
+        /*
+         * Das Recht im Haus des Datensatzes, nicht in irgendeinem: die Pfade
+         * mit Reservierung oder Buchung tragen keine Property, `registerRoute`
+         * prueft deshalb nur "irgendwo", und die Zeilenrichtlinie laesst jedes
+         * Haus durch, in dem der Benutzer irgendeine Rolle hat (Befund H4,
+         * Sicherheitsaudit 2026-10-11). Jede solche Route hier prueft das
+         * Recht noch einmal, sobald das Haus feststeht.
+         */
+        rechtImHaus(req.principal as Principal, 'reservation:read', Number(kopf._propertyId))
 
         const naechte = await client.query(
           `SELECT date::text, price_cent AS "priceCent",
@@ -1471,6 +1480,7 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
+        rechtImHaus(req.principal as Principal, 'reservation:write', res.property_id)
 
         if (body.notes !== undefined) {
           await client.query(
@@ -1574,7 +1584,7 @@ export function reservationRoutes(app: FastifyInstance): void {
       const { bookingRef } = req.params as { bookingRef: string }
       return tx(req.pool, req, async client => {
         const b = await client.query<{ id: number }>(
-          `SELECT b.id,
+          `SELECT b.id, b.property_id AS "_propertyId",
                   b.public_ref          AS "bookingRef",
                   b.source, b.external_reference AS "externalReference",
                   b.created_at          AS "createdAt",
@@ -1588,6 +1598,8 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE b.public_ref = $1`, [bookingRef])
         if (b.rowCount === 0) throw Errors.notFound('res.booking')
         const kopf = b.rows[0]! as Record<string, unknown>
+        rechtImHaus(req.principal as Principal, 'reservation:read', Number(kopf._propertyId))
+        delete kopf._propertyId
 
         /*
          * Die Summe je Zimmer kommt als Unterabfrage im Verbund, nicht in
@@ -1676,14 +1688,19 @@ export function reservationRoutes(app: FastifyInstance): void {
          * sich gegenseitig blockiert, obwohl sie nichts gemeinsam haben.
          */
         const rows = await client.query<{ public_ref: string; arrival: string
-                                          departure: string; status: ReservationStatus }>(
-          `SELECT r.public_ref, r.arrival::text, r.departure::text, r.status
+                                          departure: string; status: ReservationStatus
+                                          property_id: number }>(
+          `SELECT r.public_ref, r.arrival::text, r.departure::text, r.status, r.property_id
              FROM reservation r
              JOIN booking b ON b.id = r.booking_id
             WHERE b.public_ref = $1
             ORDER BY r.id
               FOR UPDATE OF r`, [bookingRef])
         if (rows.rowCount === 0) throw Errors.notFound('res.booking')
+        // Eine Buchung liegt in einem Haus; jede Zeile traegt es (Befund H4).
+        for (const haus of new Set(rows.rows.map(r => r.property_id))) {
+          rechtImHaus(req.principal as Principal, 'reservation:write', haus)
+        }
 
         const beweglich = rows.rows.filter(r => occupiesInventory(r.status))
         if (beweglich.length === 0) throw Errors.conflict('stay.groupNothingToMove')
@@ -1762,6 +1779,7 @@ export function reservationRoutes(app: FastifyInstance): void {
             GROUP BY b.id, b.property_id, b.booker_guest_id`, [bookingRef])
         if (b.rowCount === 0) throw Errors.notFound('res.booking')
         const buchung = b.rows[0]!
+        rechtImHaus(principal, 'reservation:write', buchung.property_id)
 
         const arrival = body.arrival ?? buchung.arrival
         const departure = body.departure ?? buchung.departure
@@ -1863,6 +1881,13 @@ export function reservationRoutes(app: FastifyInstance): void {
               FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (cur.rowCount === 0) throw Errors.notFound('res.reservation')
         const r = cur.rows[0]!
+        /*
+         * `propertyParam` greift hier nur, wenn der Aufrufer eine Property
+         * mitschickt -- der Pfad traegt keine, und ohne Angabe prueft
+         * `registerRoute` das Recht "irgendwo". Mit Angabe stuende Haus A im
+         * Rumpf und die Reservierung aus Haus B im Pfad (Befund H4).
+         */
+        if (permission !== null) rechtImHaus(principal, permission, r.property_id)
 
         let target: ReservationStatus
         try { target = applyAction(r.status, act) }
@@ -2146,6 +2171,7 @@ export function reservationRoutes(app: FastifyInstance): void {
              FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
+        rechtImHaus(req.principal as Principal, 'reservation:write', res.property_id)
 
         /*
          * `null` nimmt das Zimmer wieder ab und legt die Buchung zurueck
@@ -2235,6 +2261,7 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (a === undefined || b === undefined) throw Errors.notFound('res.reservation')
         // Die Zeilenrichtlinie trennt Mandanten, nicht Haeuser.
         if (a.property_id !== b.property_id) throw Errors.notFound('res.reservation')
+        rechtImHaus(req.principal as Principal, 'reservation:write', a.property_id)
         if (!occupiesInventory(a.status) || !occupiesInventory(b.status)) {
           throw Errors.conflict('stay.statusHoldsNoInventory',
             { status: occupiesInventory(a.status) ? b.status : a.status })
@@ -2304,6 +2331,7 @@ export function reservationRoutes(app: FastifyInstance): void {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = aenderungLesen(req.body)
       return tx(req.pool, req, async client => {
+        await rechtAnReservierung(client, req.principal as Principal, reservationRef)
         await ueberbuchenErlauben(client, body.allowOverbooking)
         return aufenthaltVerlegen(client, reservationRef, body)
       })
@@ -2343,6 +2371,7 @@ export function reservationRoutes(app: FastifyInstance): void {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = aenderungLesen(req.body)
       return tx(req.pool, req, async client => {
+        await rechtAnReservierung(client, req.principal as Principal, reservationRef)
         const vorher = await client.query<{ total: string }>(
           `SELECT COALESCE(sum(n.price_cent), 0)::bigint AS total
              FROM reservation r
@@ -2387,6 +2416,20 @@ export function reservationRoutes(app: FastifyInstance): void {
       })
     }
   })
+}
+
+/**
+ * `reservation:write` im Haus der Reservierung, bevor `aufenthaltVerlegen`
+ * irgendetwas anfasst (Befund H4). Eigene Abfrage, weil die Verlegung ihre
+ * Zeile selbst laedt und auch fuer die Gruppe laeuft, die schon geprueft hat.
+ */
+async function rechtAnReservierung(
+  client: PoolClient, principal: Principal, reservationRef: string
+): Promise<void> {
+  const r = await client.query<{ property_id: number }>(
+    `SELECT property_id FROM reservation WHERE public_ref = $1`, [reservationRef])
+  if (r.rowCount === 0) throw Errors.notFound('res.reservation')
+  rechtImHaus(principal, 'reservation:write', r.rows[0]!.property_id)
 }
 
 /**
