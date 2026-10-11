@@ -263,6 +263,14 @@ export const common = {
     de: 'Erneut versuchen',
     en: 'Try again',
     tr: 'Tekrar dene' },
+  'app.loadFailed': {
+    de: 'Dieser Bildschirm ließ sich nicht laden. Meist gibt es eine neue Fassung von StayGrid, oder die Verbindung ist weg.',
+    en: 'This screen could not be loaded. Usually there is a new version of StayGrid, or the connection is gone.',
+    tr: 'Bu ekran yüklenemedi. Genellikle StayGrid’in yeni bir sürümü vardır ya da bağlantı kopmuştur.' },
+  'app.reload': {
+    de: 'Neu laden',
+    en: 'Reload',
+    tr: 'Yeniden yükle' },
   'app.noProperty': {
     de: 'Diesem Benutzer ist noch kein Haus zugeordnet.',
     en: 'This user is not assigned to any property yet.',

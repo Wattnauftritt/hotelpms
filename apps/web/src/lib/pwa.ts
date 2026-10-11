@@ -81,13 +81,29 @@ export function useInstallation(): (() => void) | null {
  * nicht selbst neu; ein halb ausgefuelltes Formular in einem Tab im
  * Hintergrund ist dort der Normalfall, und sie bekommt die neue Fassung
  * beim naechsten Aufruf.
+ *
+ * **`app` sagt dem Worker, was er vorladen soll** (Performance-Audit
+ * 11.10.2026, Befund 11). Er selbst kennt beim Installieren nur den Grund;
+ * die Dateien einer Anwendung holt er erst, wenn eine Seite dieser
+ * Anwendung danach fragt -- bei der Anmeldung und nach jedem Wechsel der
+ * Fassung, denn ein neuer Worker beginnt mit leerem Speicher. Die Gastseiten
+ * rufen das hier gar nicht auf.
  */
-export function serviceWorkerAnmelden({ neuLaden = false }: { neuLaden?: boolean } = {}): void {
+export function serviceWorkerAnmelden(
+  { app, neuLaden = false }: { app: 'rezeption' | 'personal'; neuLaden?: boolean }
+): void {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
+  const vorladen = (w: ServiceWorker | null | undefined): void => {
+    w?.postMessage({ vorladen: app })
+  }
   window.addEventListener('load', () => {
     // Ein Worker, der beim Laden schon steuerte, macht einen Wechsel zur
     // neuen Fassung; der allererste Worker ist keine.
     const hatteWorker = navigator.serviceWorker.controller !== null
+    void navigator.serviceWorker.ready.then(reg => { vorladen(reg.active) })
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      vorladen(navigator.serviceWorker.controller)
+    })
     navigator.serviceWorker.register('/sw.js').then(reg => {
       const pruefen = (): void => { reg.update().catch(() => { /* ohne Netz: spaeter */ }) }
       document.addEventListener('visibilitychange', () => {

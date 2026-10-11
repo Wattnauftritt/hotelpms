@@ -6,11 +6,8 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
-import { TerminalSeite, istTerminalAdresse } from './routes/Terminal.tsx'
-import { GastCheckinSeite, checkinAusAdresse } from './routes/GastCheckin.tsx'
-import { AdminpanelSeite } from './routes/Adminpanel.tsx'
-import { Folio } from './routes/Folio.tsx'
-import { CheckIn } from './routes/CheckIn.tsx'
+import { AdminpanelSeite, Folio, CheckIn } from './screens.js'
+import { Nachladen } from './components/Nachladen.tsx'
 import { ReservationPanel } from './components/ReservationPanel.tsx'
 import { ErsteSchritteRahmen } from './components/ErsteSchritte.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
@@ -106,18 +103,11 @@ function App(): JSX.Element {
    */
   const [zugang] = useState(zugangAusAdresse)
   /*
-   * Das Gaesteterminal ebenso vor allem anderen (Dokument 31): davor steht
-   * ein Gast, und eine Anmeldemaske waere dort die falsche Einladung. Es
-   * weist sich mit seinem eigenen Geraetecookie aus, nicht mit einer
-   * Sitzung.
+   * Gaesteterminal (Dokument 31) und Online-Check-in (Dokument 30) stehen
+   * nicht mehr hier, sondern haben eigene Einstiege (`boot.ts`, `gast/`):
+   * davor steht ein Gast, und er soll die Rezeption weder sehen noch
+   * herunterladen.
    */
-  const [terminal] = useState(() => istTerminalAdresse())
-  /*
-   * Der Online-Check-in des Gastes (Dokument 30) steht aus demselben Grund
-   * hier vorn: wer den Link aus seiner Buchungsmail oeffnet, ist Gast und
-   * hat keinen Zugang -- er braucht auch keinen. Der Link ist der Ausweis.
-   */
-  const [gastCheckin] = useState(checkinAusAdresse)
   const [adresse, setAdresse] = useAdresse()
   const schmal = useSchmal()
   // Das Folio liegt ueber dem Tagesgeschaeft, nicht daneben: es wird von dort
@@ -190,11 +180,6 @@ function App(): JSX.Element {
     } finally {
       location.replace(location.pathname)
     }
-  }
-
-  if (terminal) return <TerminalSeite />
-  if (gastCheckin !== null) {
-    return <GastCheckinSeite token={gastCheckin.token} />
   }
 
   if (zugang !== null) {
@@ -307,8 +292,10 @@ function App(): JSX.Element {
                         mitArbeitsplatz={false}
                         onClose={() => setArbeitsplatz(false)} />
         )}
-        <AdminpanelSeite userId={me.data.userId}
-                         platformPermissions={me.data.platformPermissions} />
+        <Nachladen schluessel="admin">
+          <AdminpanelSeite userId={me.data.userId}
+                           platformPermissions={me.data.platformPermissions} />
+        </Nachladen>
       </Shell>
     }
     /*
@@ -426,6 +413,14 @@ function App(): JSX.Element {
                              setAuftrag(null)
                              setAdresse({ screen: k })
                            }}>
+      {/*
+        * Bildschirme, Folio und Check-in werden erst beim ersten Oeffnen
+        * geladen (`screens.tsx`). Die Grenze steht innerhalb der Shell:
+        * Kopfleiste und Navigation bleiben stehen, nur die Flaeche darunter
+        * wartet. Der Schluessel setzt einen Ladefehler zurueck, sobald man
+        * woanders hingeht.
+        */}
+      <Nachladen schluessel={`${screen.key}|${folioRef ?? ''}|${checkInRef ?? ''}`}>
       {folioRef !== null
         ? <Folio folioRef={folioRef} propertyId={haus.id}
                  onClose={() => setFolioRef(null)} />
@@ -448,6 +443,7 @@ function App(): JSX.Element {
                                  openCheckIn: setCheckInRef })}
               </Fragment>
             </Fragment>}
+      </Nachladen>
       {/*
         * Das Seitenfenster einer gesuchten Reservierung. Folio und Check-in
         * ersetzen den Bildschirm; das Fenster schliesst dabei, sonst laege
@@ -468,7 +464,7 @@ function App(): JSX.Element {
   )
 }
 
-serviceWorkerAnmelden()
+serviceWorkerAnmelden({ app: 'rezeption' })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

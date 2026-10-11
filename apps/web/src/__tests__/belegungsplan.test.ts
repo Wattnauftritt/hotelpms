@@ -265,7 +265,9 @@ describe('Die Tagesgrenzen im Plan', () => {
      */
     expect(plan).toContain('const heute = today()')
     expect(plan).toContain('d === heute')
-    expect(plan).toContain('d === p.heute')
+    // Auch die Spalten hinter den Zimmerzeilen, die einmal fuer alle Zeilen
+    // entstehen -- und neu, wenn der Tag wechselt.
+    expect(plan).toMatch(/tagesSpalten = useMemo\([\s\S]*?d === heute[\s\S]*?\[tage, spalte, heute\]\)/)
   })
 
   it('trennt Zimmergruppen nur, wenn auch nach Gruppe sortiert ist', () => {

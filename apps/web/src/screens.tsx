@@ -1,32 +1,64 @@
-import type { JSX } from 'react'
+import { lazy, type ComponentType, type JSX, type LazyExoticComponent } from 'react'
 import type { TextKey } from './lib/i18n/index.js'
-import { Tape } from './routes/Tape.tsx'
-import { Today } from './routes/Today.tsx'
-import { Housekeeping } from './routes/Housekeeping.tsx'
-import { Reinigungsplan } from './routes/Reinigungsplan.tsx'
-import { Fruehstueck } from './routes/Fruehstueck.tsx'
-import { Arbeitszeit } from './routes/Arbeitszeit.tsx'
-import { Blocks } from './routes/Blocks.tsx'
-import { Setup } from './routes/Setup.tsx'
-import { Reports } from './routes/Reports.tsx'
-import { Maintenance } from './routes/Maintenance.tsx'
-import { Settings } from './routes/Settings.tsx'
-import { Integrations } from './routes/Integrations.tsx'
-import { Benutzer } from './routes/Benutzer.tsx'
-import { Rates } from './routes/Rates.tsx'
-import { Guests } from './routes/Guests.tsx'
-import { Availability } from './routes/Availability.tsx'
-import { Invoices } from './routes/Invoices.tsx'
-import { Adminpanel } from './routes/Adminpanel.tsx'
-import { TerminalPult } from './routes/TerminalPult.tsx'
-import { Datenuebernahme } from './routes/Datenuebernahme.tsx'
-import { Meldescheine } from './routes/Meldescheine.tsx'
-import { Kassenbuch } from './routes/Kassenbuch.tsx'
 import { NachBreite } from './components/mobil/NachBreite.tsx'
-import { MobilHeute } from './components/mobil/MobilHeute.tsx'
-import { MobilPlan } from './components/mobil/MobilPlan.tsx'
-import { MobilZimmer } from './components/mobil/MobilZimmer.tsx'
-import { MobilKasse } from './components/mobil/MobilKasse.tsx'
+
+/**
+ * Ein Bildschirm, der erst beim ersten Oeffnen geladen wird.
+ *
+ * Vorher stand jeder Bildschirm hier als statischer Import, und die
+ * Rezeption lud beim Anmelden gut ein Megabyte JavaScript: Adminpanel,
+ * Kassenbuch, Preissteuerung, Datenuebernahme -- auch an einem Platz, an dem
+ * niemand je das Recht dazu hat (Performance-Audit 11.10.2026, Befund 10).
+ * Jetzt holt der erste Klick die Datei des Bildschirms; die Grenze dafuer
+ * steht in `main.tsx` (`Nachladen`).
+ *
+ * Benannte Exporte, weil die Bildschirme so gebaut sind; `lazy` verlangt
+ * einen `default`, den diese Huelle nachreicht. Der Name steht als
+ * Zeichenkette da, aber `keyof` haelt ihn an den Exporten der Datei fest:
+ * ein Tippfehler ist ein Typfehler, kein leerer Bildschirm.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dieselbe Schranke wie `lazy` selbst
+function faul<M extends Record<K, ComponentType<any>>, K extends keyof M>(
+  laden: () => Promise<M>, name: K
+): LazyExoticComponent<M[K]> {
+  return lazy(async () => ({ default: (await laden())[name] }))
+}
+
+const Tape = faul(() => import('./routes/Tape.tsx'), 'Tape')
+const Today = faul(() => import('./routes/Today.tsx'), 'Today')
+const Housekeeping = faul(() => import('./routes/Housekeeping.tsx'), 'Housekeeping')
+const Reinigungsplan = faul(() => import('./routes/Reinigungsplan.tsx'), 'Reinigungsplan')
+const Fruehstueck = faul(() => import('./routes/Fruehstueck.tsx'), 'Fruehstueck')
+const Arbeitszeit = faul(() => import('./routes/Arbeitszeit.tsx'), 'Arbeitszeit')
+const Blocks = faul(() => import('./routes/Blocks.tsx'), 'Blocks')
+const Setup = faul(() => import('./routes/Setup.tsx'), 'Setup')
+const Reports = faul(() => import('./routes/Reports.tsx'), 'Reports')
+const Maintenance = faul(() => import('./routes/Maintenance.tsx'), 'Maintenance')
+const Settings = faul(() => import('./routes/Settings.tsx'), 'Settings')
+const Integrations = faul(() => import('./routes/Integrations.tsx'), 'Integrations')
+const Benutzer = faul(() => import('./routes/Benutzer.tsx'), 'Benutzer')
+const Rates = faul(() => import('./routes/Rates.tsx'), 'Rates')
+const Guests = faul(() => import('./routes/Guests.tsx'), 'Guests')
+const Availability = faul(() => import('./routes/Availability.tsx'), 'Availability')
+const Invoices = faul(() => import('./routes/Invoices.tsx'), 'Invoices')
+const Adminpanel = faul(() => import('./routes/Adminpanel.tsx'), 'Adminpanel')
+const TerminalPult = faul(() => import('./routes/TerminalPult.tsx'), 'TerminalPult')
+const Datenuebernahme = faul(() => import('./routes/Datenuebernahme.tsx'), 'Datenuebernahme')
+const Meldescheine = faul(() => import('./routes/Meldescheine.tsx'), 'Meldescheine')
+const Kassenbuch = faul(() => import('./routes/Kassenbuch.tsx'), 'Kassenbuch')
+const MobilHeute = faul(() => import('./components/mobil/MobilHeute.tsx'), 'MobilHeute')
+const MobilPlan = faul(() => import('./components/mobil/MobilPlan.tsx'), 'MobilPlan')
+const MobilZimmer = faul(() => import('./components/mobil/MobilZimmer.tsx'), 'MobilZimmer')
+const MobilKasse = faul(() => import('./components/mobil/MobilKasse.tsx'), 'MobilKasse')
+
+/*
+ * Was `main.tsx` ueber den Bildschirmen oeffnet, ebenso erst bei Bedarf:
+ * das Folio, der Check-in und das Adminpanel ohne Haus. Sie stehen hier,
+ * damit die Liste der nachgeladenen Teile an einer Stelle liegt.
+ */
+export const Folio = faul(() => import('./routes/Folio.tsx'), 'Folio')
+export const CheckIn = faul(() => import('./routes/CheckIn.tsx'), 'CheckIn')
+export const AdminpanelSeite = faul(() => import('./routes/Adminpanel.tsx'), 'AdminpanelSeite')
 
 /**
  * Das Verzeichnis der Bildschirme.

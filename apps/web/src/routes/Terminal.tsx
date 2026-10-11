@@ -5,11 +5,12 @@ import { api, ApiError } from '../lib/api.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { Bildschirmtastatur } from '../components/Bildschirmtastatur.tsx'
-import { Fehler } from '../components/Shell.tsx'
+import { Fehler } from '../components/Fehler.tsx'
 import { GastCheckin } from './GastCheckin.tsx'
 import { Ruhebild, type Folie } from '../components/Ruhebild.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
 import { useBildschirmWach } from '../lib/wachhalten.js'
+import { TERMINAL_PFAD, istTerminalAdresse } from '../gast/adresse.js'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -42,12 +43,8 @@ import { useBildschirmWach } from '../lib/wachhalten.js'
  *   Cookie und nimmt es sofort aus der Adresse.
  */
 
-export const TERMINAL_PFAD = '/terminal'
-
-/** Steht die Terminalseite in der Adresse? Wie `zugangAusAdresse`, zum Pruefen ohne Browser. */
-export function istTerminalAdresse(pathname: string = location.pathname): boolean {
-  return pathname.replace(/\/+$/, '') === TERMINAL_PFAD
-}
+// Liegen in `gast/adresse.ts`, damit `boot.ts` ohne diese Seite entscheiden kann.
+export { TERMINAL_PFAD, istTerminalAdresse }
 
 /**
  * Das Geheimnis der Kiosk-Adresse (`/terminal#k=...`), sonst `null`.

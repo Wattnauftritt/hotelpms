@@ -35,6 +35,17 @@ export type OccupancyScope = (typeof OCCUPANCY_SCOPES)[number]
 /** Hoechstens so weit voraus wird gesteuert. */
 export const STEER_MAX_HORIZON_DAYS = 365
 
+/*
+ * `__NO_SIDE_EFFECTS__` an beiden Helfern: die Oberflaeche holt aus dieser
+ * Datei nur die Listen oben. Ein Aufruf eines eigenen Helfers auf oberster
+ * Ebene gilt dem Bundler sonst als moeglicherweise wirksam, und mit ihm
+ * blieben alle Schemata dieser Datei samt TypeBox im Browser
+ * (Performance-Audit 11.10.2026, Befund 10; `Type.*` selbst erklaert
+ * `apps/web/vite.config.ts`). Wer hier einen weiteren Helfer anlegt, setzt
+ * die Anmerkung mit -- oder prueft nach `vite build`, dass `TypeBox` in
+ * keiner Datei unter `apps/web/dist/assets` steht.
+ */
+/*#__NO_SIDE_EFFECTS__*/
 const Nullable = <T extends ReturnType<typeof Type.Integer>>(t: T) =>
   Type.Union([t, Type.Null()])
 
@@ -44,6 +55,7 @@ const Nullable = <T extends ReturnType<typeof Type.Integer>>(t: T) =>
  * gebauten Fassung (`dist`) stand dann `source: string`, und die
  * Oberflaeche brach erst beim Bauen, nicht bei der Typpruefung der Quellen.
  */
+/*#__NO_SIDE_EFFECTS__*/
 const literals = <T extends readonly string[]>(werte: T) =>
   Type.Unsafe<T[number]>(Type.Union(werte.map(w => Type.Literal(w))))
 

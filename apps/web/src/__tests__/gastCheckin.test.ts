@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { checkinLink, checkinTokenAusFragment, istAuslaendisch, istUnterschriftSvg }
   from '@hotelpms/contracts'
 import { checkinAusAdresse } from '../routes/GastCheckin.tsx'
+import { istCheckinAdresse } from '../gast/adresse.js'
 
 /**
  * Die Gastseite des Online-Check-ins (Dokument 30).
@@ -66,11 +67,25 @@ describe('Nichts bleibt im Browser', () => {
     expect(ohneKommentare).not.toMatch(/type="file"|FileReader|capture=/)
   })
 
-  it('steht in main.tsx vor der Anmeldung', () => {
-    const main = quelle('main.tsx')
-    const gast = main.indexOf('if (gastCheckin !== null)')
+  /*
+   * Vor der Anmeldung und vor der Rezeption: `boot.ts` laedt fuer
+   * `/checkin` einen eigenen Einstieg (Performance-Audit 11.10.2026, Befund
+   * 10). Der Gast bekommt weder die Anmeldemaske noch die Dateien der
+   * Rezeption.
+   */
+  it('hat einen eigenen Einstieg vor der Rezeption', () => {
+    const boot = quelle('boot.ts')
+    const gast = boot.indexOf("import('./gast/checkin.tsx')")
     expect(gast).toBeGreaterThan(0)
-    expect(gast).toBeLessThan(main.indexOf("queryKey: ['me']"))
+    expect(gast).toBeLessThan(boot.indexOf("import('./main.tsx')"))
+    expect(quelle('main.tsx')).not.toContain('GastCheckin')
+  })
+
+  it('erkennt genau /checkin', () => {
+    expect(istCheckinAdresse('/checkin')).toBe(true)
+    expect(istCheckinAdresse('/checkin/')).toBe(true)
+    expect(istCheckinAdresse('/checkins')).toBe(false)
+    expect(istCheckinAdresse('/personal/checkin')).toBe(false)
   })
 })
 

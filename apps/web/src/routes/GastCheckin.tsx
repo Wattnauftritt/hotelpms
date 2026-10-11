@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CHECKIN_PATH, CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
+import { CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
          istAuslaendisch, type CheckinFormView, type CheckinSubmit,
          type CheckinSubmitted, type CheckinTaxExemption,
          type CleaningWaiverView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
+import { istCheckinAdresse } from '../gast/adresse.js'
 import { LOCALES, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
          type TextKey } from '../lib/i18n/index.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
@@ -47,7 +48,7 @@ export type CheckinModus = 'mail' | 'terminal'
 export function checkinAusAdresse(
   pathname: string = location.pathname, hash: string = location.hash
 ): { token: string | null } | null {
-  if (pathname.replace(/\/+$/, '') !== CHECKIN_PATH) return null
+  if (!istCheckinAdresse(pathname)) return null
   return { token: checkinTokenAusFragment(hash) }
 }
 

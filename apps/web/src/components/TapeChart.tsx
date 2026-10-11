@@ -493,6 +493,26 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
   const dringlich = useCallback(
     (arrival: string) => daysBetween(heute, arrival) <= 2, [heute])
 
+  /*
+   * Die Tagesspalten hinter den Balken, einmal fuer alle Zeilen.
+   *
+   * Jede Zeile baute sie bisher selbst: ein Element je Tag mit
+   * Wochenend- und Wochenrandpruefung, also ein `new Date` je Zelle -- bei
+   * 250 Zimmern und 60 Tagen 15 000 davon bei jedem Neuzeichnen einer
+   * Zeile (Performance-Audit 11.10.2026, Befund 14). Hier entstehen die
+   * Elemente einmal; jede Zeile haengt **dieselben** ein, und React erkennt
+   * ein unveraendertes Element an seiner Identitaet und geht nicht hinein.
+   * Das Bild bleibt gleich: dieselben Elemente an derselben Stelle, ueber
+   * dem Grund der Zeile (Passung) und unter den Balken.
+   */
+  const tagesSpalten = useMemo(() => tage.map((d, i) => (
+    <div key={d}
+         style={{ left: i * spalte, width: spalte }}
+         className={`absolute inset-y-0 pointer-events-none ${TAGESRAND(d)}
+                     ${d === heute ? 'bg-sky-100/70'
+                       : isWeekend(d) ? 'bg-neutral-100' : ''}`} />
+  )), [tage, spalte, heute])
+
   /**
    * Das Band offen oder zusammengeklappt.
    *
@@ -1392,9 +1412,9 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             : null
           const kasten = ghost?.kaesten.get(u.id)
           return (
-            <Zimmerzeile key={u.id} unit={u} tage={tage} zeile={ZEILE}
+            <Zimmerzeile key={u.id} unit={u} tagesSpalten={tagesSpalten} zeile={ZEILE}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
-                         balken={balken} umriss={umriss} spalte={spalte} heute={heute}
+                         balken={balken} umriss={umriss}
                          gruppenAnfang={nachGruppe === true && i > 0
                            && data.units[i - 1]?.category_id !== u.category_id}
                          passung={passung}
@@ -1492,17 +1512,14 @@ interface ZimmerzeileProps {
   unit: TapeChartData['units'][number]
   /** Zeilenhoehe in Pixeln, vom Regler. */
   zeile: number
-  tage: readonly string[]
+  /** Die Tagesspalten, gemerkt in der Elternkomponente und fuer alle Zeilen dieselben. */
+  tagesSpalten: readonly JSX.Element[]
   reservations: ReservationRow[] | undefined
   blocks: TapeChartData['blocks'] | undefined
   /** Stabil ueber `useCallback` in der Elternkomponente. */
   balken: (von: string, bis: string) => { left: number; width: number }
   /** Ebenso stabil; die Umrisslinie als `clip-path`. */
   umriss: (von: string, bis: string) => string
-  /** Breite einer Tagesspalte. Eine Zahl, also vertraegt `memo` sie. */
-  spalte: number
-  /** Der heutige Tag, fuer die hervorgehobene Spalte. */
-  heute: string
   /**
    * Erste Zeile einer Zimmergruppe -- setzt den Trennstrich darueber.
    *
@@ -1579,13 +1596,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
       <div className="relative grow cursor-crosshair"
            onPointerDown={e => p.onCreatePointerDown(u.id, u.category_id, e)}
            onContextMenu={e => p.onFreiKontext(u.id, u.category_id, e)}>
-        {p.tage.map((d, i) => (
-          <div key={d}
-               style={{ left: i * p.spalte, width: p.spalte }}
-               className={`absolute inset-y-0 pointer-events-none ${TAGESRAND(d)}
-                           ${d === p.heute ? 'bg-sky-100/70'
-                             : isWeekend(d) ? 'bg-neutral-100' : ''}`} />
-        ))}
+        {p.tagesSpalten}
         {(p.blocks ?? []).map((b, i) => (
           <div key={i}
                style={{ ...p.balken(b.from_date, b.to_date), ...balkenHoehe }}
