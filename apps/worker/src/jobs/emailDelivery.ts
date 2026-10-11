@@ -1,6 +1,7 @@
 import { withTransaction, type Pool, type PoolClient, type DbContext } from '@hotelpms/db'
 import { EMAIL_MAX_ATTEMPTS, emailRetryDelaySeconds, emailShouldRetry } from '@hotelpms/domain'
 import { EmailSendError, type EmailAdapter, type EmailAttachment } from '../email/brevo.js'
+import type { TickBreaker } from './breaker.js'
 
 /**
  * Zustellung ausgehender Gastpost (Brevo).
@@ -68,6 +69,11 @@ export interface EmailDeliveryOptions {
   batchSize?: number
   leaseSeconds?: number
   baseDelaySeconds?: number
+  /**
+   * Sicherung des Anbieters fuer diesen Tick, geteilt ueber alle Haeuser
+   * (Befund 9). Ohne sie wird jede Nachricht versucht, wie bisher.
+   */
+  breaker?: TickBreaker
 }
 
 async function claim(
@@ -243,16 +249,45 @@ export async function deliverEmails(
   const leaseSeconds = opts.leaseSeconds ?? 300
   const baseDelaySeconds = opts.baseDelaySeconds ?? 120
 
+  const breaker = opts.breaker
+  const result: EmailDeliveryResult = { attempted: 0, sent: 0, retrying: 0, failed: 0 }
+  // Ist der Anbieter in diesem Tick schon aufgefallen, wird nicht einmal
+  // beansprucht: das kostete einen Versuch, ohne dass einer stattfindet.
+  if (breaker?.tripped() === true) return result
+
   const claimed = await withTransaction(pool, ctx, c =>
     claim(c, propertyId, batchSize, leaseSeconds))
-  const result: EmailDeliveryResult = {
-    attempted: claimed.length, sent: 0, retrying: 0, failed: 0 }
 
-  for (const e of claimed) {
+  for (const [i, e] of claimed.entries()) {
+    if (breaker?.tripped() === true) {
+      await release(pool, ctx, claimed.slice(i).map(x => x.id))
+      break
+    }
     const versuch = await send(adapter, e)
+    if (breaker !== undefined) {
+      if (versuch.error !== null && emailShouldRetry(versuch.statusCode)) breaker.failure()
+      else breaker.success()
+    }
+    result.attempted++
     const ausgang = await withTransaction(pool, ctx, c =>
       record(c, propertyId, e, versuch, baseDelaySeconds))
     result[ausgang]++
   }
   return result
+}
+
+/**
+ * Beanspruchte, aber nicht versuchte Nachrichten zurueckgeben.
+ *
+ * Der Versuchszaehler stieg beim Beanspruchen; abgeschickt wurde aber
+ * nichts, also zaehlt der Versuch nicht. Stehen bliebe sonst die Frist von
+ * fuenf Minuten, und nach fuenf solchen Ticks waere eine Rechnungsmail
+ * aufgegeben, die nie beim Anbieter war. Faellig wird sie sofort wieder --
+ * im naechsten Tick, mit einer frischen Sicherung.
+ */
+async function release(pool: Pool, ctx: DbContext, ids: number[]): Promise<void> {
+  await withTransaction(pool, ctx, c => c.query(
+    `UPDATE outbound_email
+        SET attempts = attempts - 1, next_attempt_at = now()
+      WHERE id = ANY($1::bigint[]) AND status = 'pending' AND attempts > 0`, [ids]))
 }

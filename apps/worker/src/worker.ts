@@ -4,19 +4,21 @@ import { createPool, withTransaction, SYSTEM_CONTEXT, STAPEL_TIMEOUT_MS, seriali
 import pino from 'pino'
 import { runNightAudit } from './jobs/nightAudit.js'
 import { ensureAuditPartitions, dropOldAuditPartitions,
-         auditDefaultPartitionRows, materializeInventory,
+         auditDefaultPartitionRows, materializeInventory, materializeInventoryTail,
          reconcileInventory, purgeRegistrations, purgeGuestDocuments,
          completeGuestErasures, purgeExpired, redactOldEmails,
-         overdueNightAudits } from './jobs/maintenance.js'
+         overdueNightAudits, purgeRetention } from './jobs/maintenance.js'
+import { TickBreaker } from './jobs/breaker.js'
 import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
-import { sendStaffPushes, createWebPushSender, vapidSchluessel, type PushSender }
-  from './jobs/staffPush.js'
+import { sendStaffPushes, createWebPushSender, vapidSchluessel, propertiesWithDuePushes,
+         type PushSender } from './jobs/staffPush.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
+import { sortDueRooms } from './jobs/roomSortAuto.js'
 import { createBrevoAdapter } from './email/brevo.js'
 import { parseCidrList } from '@hotelpms/domain'
 
@@ -71,13 +73,33 @@ const pool = createPool({ kind: 'direct', max: 4, applicationName: 'hotelpms-wor
 const admin = createPool({ kind: 'owner', max: 2, applicationName: 'hotelpms-worker-admin',
                            statementTimeoutMs: STAPEL_TIMEOUT_MS })
 
-/**
- * Streuung der Nachtlauf-Startzeit ueber ein Fenster, abgeleitet aus der
- * Property-ID. Sonst starten bei 500 Mandanten 500 Laeufe zur selben Minute
- * (P4, Dokument 12).
+/*
+ * Hier stand `jitterMinutes`, eine Streuung der Nachtlauf-Startzeit ueber
+ * zwei Stunden (P4, Dokument 12), die nie aufgerufen wurde (Befund 14).
+ * Entfernt statt angeschlossen: P4 fuerchtet 500 gleichzeitige Laeufe, und
+ * die gibt es nicht -- der Tick arbeitet die Haeuser nacheinander ab, und
+ * ein zweiter Tick startet nicht, solange der erste laeuft. Die Streuung
+ * ergibt sich daraus von selbst. Angeschlossen haette sie den Nachtlauf bis
+ * zu zwei Stunden hinter den Tageswechsel geschoben, und in dieser Zeit
+ * checkt die Rezeption Gaeste aus, deren letzte Logis noch nicht gebucht ist.
  */
-export function jitterMinutes(propertyId: number, windowMinutes = 120): number {
-  return (propertyId * 37) % windowMinutes
+
+/*
+ * Arbeiten, die nicht in jeden Tick gehoeren (Befunde 13, 14).
+ *
+ * Der Merker lebt im Prozess, nicht in der Datenbank: nach einem Neustart
+ * laeuft alles einmal sofort, und das ist richtig so -- ein Neustart ist
+ * ohnehin der Moment, in dem man den vollen Abgleich sehen will. Gesetzt
+ * wird er erst nach Erfolg; was scheitert, versucht der naechste Tick.
+ */
+const zuletzt = new Map<string, string>()
+const tagSchluessel = (): string => new Date().toISOString().slice(0, 10)
+const stundenSchluessel = (): string => new Date().toISOString().slice(0, 13)
+function faellig(aufgabe: string, periode: string): boolean {
+  return zuletzt.get(aufgabe) !== periode
+}
+function erledigt(aufgabe: string, periode: string): void {
+  zuletzt.set(aufgabe, periode)
 }
 
 /** Kontext einer einzelnen Property. Kein Benutzer: das Audit-Log haelt das fest. */
@@ -116,6 +138,20 @@ async function platformMaintenance(): Promise<void> {
     if (purged > 0) log.info({ purged }, 'Abgelaufene Sitzungen und Schluessel entfernt')
   })
 
+  // Aufbewahrung der Arbeitstabellen, einmal am Tag (Befund 13).
+  const tag = tagSchluessel()
+  // Ein Fehler hier haelt den Tick nicht an: liegengebliebene Zeilen sind
+  // ein Platzproblem, ein ausgefallener Nachtlauf ein Buchungsproblem.
+  if (faellig('aufbewahrung', tag)) {
+    try {
+      const r = await purgeRetention(admin)
+      erledigt('aufbewahrung', tag)
+      if (Object.values(r).some(n => n > 0)) log.info(r, 'Arbeitstabellen aufgeraeumt')
+    } catch (e) {
+      log.error({ err: e }, 'Aufbewahrung der Arbeitstabellen fehlgeschlagen')
+    }
+  }
+
   // Der schlimmste Ausfall ist der stille: laeuft der Nachtlauf nicht, fehlt
   // die Logis auf den Folios, und bemerkt wird es vom Gast beim Check-out.
   await withTransaction(admin, SYSTEM_CONTEXT, async client => {
@@ -132,22 +168,37 @@ async function platformMaintenance(): Promise<void> {
 
 async function propertyMaintenance(p: PropertyRow): Promise<void> {
   const ctx = propertyContext(p.account_id, p.id)
+  const tag = tagSchluessel()
+  const stunde = stundenSchluessel()
+  // Voll einmal am Tag, sonst nur das Ende des Horizonts (Befund 14).
+  const voll = faellig(`materialisieren:${p.id}`, tag)
+  const abgleich = faellig(`abgleich:${p.id}`, stunde)
+  // guest_document_purge wirkt je Konto; je Haus aufgerufen, lief es in
+  // einem Konto mit zehn Haeusern zehnmal je Tick fuer dasselbe Ergebnis.
+  // Die Frist ist ein Jahr, ein Tag Verzug aendert daran nichts (Befund 1).
+  const ausweisLauf = faellig(`ausweise:${p.account_id}`, tag)
   await withTransaction(pool, ctx, async client => {
-    const materialized = await materializeInventory(client, p.id)
+    const materialized = voll
+      ? await materializeInventory(client, p.id)
+      : await materializeInventoryTail(client, p.id)
     if (materialized > 0) log.info({ property: p.id, materialized }, 'Inventar materialisiert')
-    const drift = await reconcileInventory(client, p.id)
-    if (drift.length > 0) {
-      log.error({ property: p.id, drift: drift.slice(0, 5) },
-        'ALARM: Bestandszaehler weicht von den Reservierungen ab')
+    if (abgleich) {
+      const drift = await reconcileInventory(client, p.id)
+      if (drift.length > 0) {
+        log.error({ property: p.id, drift: drift.slice(0, 5) },
+          'ALARM: Bestandszaehler weicht von den Reservierungen ab')
+      }
     }
     const registrations = await purgeRegistrations(client, p.id)
     if (registrations > 0) {
       log.info({ property: p.id, registrations }, 'Meldescheine nach Jahresfrist vernichtet')
     }
-    const ausweise = await purgeGuestDocuments(client)
-    if (ausweise > 0) {
-      log.info({ property: p.id, ausweise },
-        'Ausweisnummern nach Jahresfrist entfernt')
+    if (ausweisLauf) {
+      const ausweise = await purgeGuestDocuments(client)
+      if (ausweise > 0) {
+        log.info({ property: p.id, ausweise },
+          'Ausweisnummern nach Jahresfrist entfernt')
+      }
     }
     const vollendet = await completeGuestErasures(client)
     if (vollendet > 0) {
@@ -160,6 +211,10 @@ async function propertyMaintenance(p: PropertyRow): Promise<void> {
         'Gastadressen im Postausgang entfernt')
     }
   })
+  // Erst nach dem Festschreiben: eine zurueckgerollte Transaktion hat nichts erledigt.
+  if (voll) erledigt(`materialisieren:${p.id}`, tag)
+  if (abgleich) erledigt(`abgleich:${p.id}`, stunde)
+  if (ausweisLauf) erledigt(`ausweise:${p.account_id}`, tag)
 
   // Eigene Transaktionen je Beleg, deshalb ausserhalb der obigen: das
   // Zeichnen eines PDF ist Rechenarbeit und hat in einer offenen
@@ -301,9 +356,10 @@ async function onlineCheckins(p: PropertyRow): Promise<void> {
 }
 
 /** Faellige Gastpost zustellen. */
-async function emails(p: PropertyRow): Promise<void> {
+async function emails(p: PropertyRow, breaker: TickBreaker): Promise<void> {
   if (mailer === null) return
-  const r = await deliverEmails(pool, propertyContext(p.account_id, p.id), p.id, mailer)
+  const r = await deliverEmails(pool, propertyContext(p.account_id, p.id), p.id, mailer,
+    { breaker })
   if (r.attempted === 0) return
   // Kein Empfaenger und kein Betreff ins Protokoll: beides ist Gastdatum
   // (C8, Dokument 13). Die Zahlen genuegen; das Einzelne steht im
@@ -326,9 +382,10 @@ if (translator === null) {
   log.warn('DEEPL_API_KEY ist nicht gesetzt: Texte des Personals bleiben unuebersetzt.')
 }
 
-async function staffTexts(p: PropertyRow): Promise<void> {
+async function staffTexts(p: PropertyRow, breaker: TickBreaker): Promise<void> {
   if (translator === null) return
-  const r = await translateStaffTexts(pool, propertyContext(p.account_id, p.id), p.id, translator)
+  const r = await translateStaffTexts(pool, propertyContext(p.account_id, p.id), p.id,
+    translator, { breaker })
   if (r.attempted === 0) return
   // Zahlen, kein Text: was die Kraft geschrieben hat, gehoert nicht ins Protokoll.
   log.info({ property: p.id, ...r }, 'Personaltexte uebersetzt')
@@ -369,20 +426,31 @@ async function tickArbeit(): Promise<void> {
   } catch (e) {
     log.error({ err: e }, 'Zustellung der Zugangspost fehlgeschlagen')
   }
+  // Je Anbieter eine Sicherung fuer diesen Tick, ueber alle Haeuser (Befund 9).
+  const brevo = new TickBreaker()
+  const deepl = new TickBreaker()
   for (const p of await activeProperties()) {
     // Eine fehlerhafte Property darf die anderen nicht aufhalten.
     try {
       await propertyMaintenance(p)
       await nightAudit(p)
       await rateSteering(p)
+      // Vor den Webhooks: die Zuege des Laufs gehen im selben Tick hinaus.
+      await sortDueRooms(pool, propertyContext(p.account_id, p.id), p.id, log)
       await webhooks(p)
       // Vor der Zustellung: was hier eingereiht wird, geht im selben Tick hinaus.
       await onlineCheckins(p)
-      await emails(p)
-      await staffTexts(p)
+      await emails(p, brevo)
+      await staffTexts(p, deepl)
     } catch (e) {
       log.error({ property: p.id, err: e }, 'Arbeit fuer Property fehlgeschlagen')
     }
+  }
+  if (brevo.tripped()) {
+    log.error('ALARM: Brevo antwortet nicht -- Gastpost in diesem Tick ausgesetzt')
+  }
+  if (deepl.tripped()) {
+    log.error('DeepL antwortet nicht -- Uebersetzungen in diesem Tick ausgesetzt')
   }
 }
 
@@ -442,7 +510,12 @@ async function pushTakt(): Promise<void> {
   if (sender === null || pushLaeuft) return
   pushLaeuft = true
   try {
+    // Erst fragen, wo etwas ansteht; die uebrigen Haeuser kosten dann
+    // keine Transaktion (Befund 13).
+    const mitPush = await propertiesWithDuePushes(admin)
+    if (mitPush.size === 0) return
     for (const p of await activeProperties()) {
+      if (!mitPush.has(p.id)) continue
       try {
         const r = await sendStaffPushes(pool, propertyContext(p.account_id, p.id), p.id, sender)
         // Zahlen, kein Empfaenger und kein Zimmer.

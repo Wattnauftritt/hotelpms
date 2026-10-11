@@ -7,6 +7,7 @@ import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
 import { EMAIL_MAX_ATTEMPTS } from '@hotelpms/domain'
 import { deliverEmails } from '../jobs/emailDelivery.js'
 import { createBrevoAdapter } from '../email/brevo.js'
+import { TickBreaker } from '../jobs/breaker.js'
 
 let owner: Pool
 let app: Pool
@@ -362,6 +363,55 @@ describe('Fehlschlag', () => {
     expect(z.attempts).toBe(1)
     // Ohne Code ist der Fehler voruebergehend: es wird wiederholt.
     expect(z.status).toBe('pending')
+  })
+})
+
+/**
+ * Befund 9: ist Brevo tot, wartete bisher jede Nachricht jedes Hauses ihre
+ * volle Zeitgrenze ab. Die Sicherung haelt nach wenigen Fehlern in Folge
+ * an, fuer alle Haeuser des Ticks.
+ */
+describe('Sicherung gegen einen ausgefallenen Anbieter', () => {
+  it('hoert nach Fehlern in Folge auf und gibt Ungefragtes ohne Versuch zurueck', async () => {
+    await absender()
+    const refs = [
+      await einreihen({ invoiceId: await rechnung() }),
+      await einreihen({ invoiceId: await rechnung() }),
+      await einreihen({ invoiceId: await rechnung() })
+    ]
+    const a = await anbieter(() => 503)
+    const adapter = createBrevoAdapter('k', { baseUrl: a.url })
+    const breaker = new TickBreaker(2)
+
+    const r = await deliverEmails(app, ctx, fx.propertyId, adapter, { breaker })
+    expect(r).toMatchObject({ attempted: 2, retrying: 2 })
+    expect(breaker.tripped()).toBe(true)
+    expect(a.empfangen).toHaveLength(2)
+
+    const dritte = await owner.query<{ attempts: number; faellig: boolean; status: string }>(
+      `SELECT attempts, next_attempt_at <= now() AS faellig, status
+         FROM outbound_email WHERE public_ref = $1`, [refs[2]])
+    expect(dritte.rows[0]).toEqual({ attempts: 0, faellig: true, status: 'pending' })
+
+    // Das naechste Haus im selben Tick fragt nicht mehr, und beansprucht nichts.
+    const danach = await deliverEmails(app, ctx, fx.propertyId, adapter, { breaker })
+    expect(danach.attempted).toBe(0)
+    expect(a.empfangen).toHaveLength(2)
+    expect((await zeile(refs[2]!)).attempts).toBe(0)
+    await a.schliessen()
+  })
+
+  it('loest bei einer abgelehnten Adresse nicht aus', async () => {
+    await absender()
+    await einreihen({ invoiceId: await rechnung() })
+    await einreihen({ invoiceId: await rechnung() })
+    const a = await anbieter(() => 400)
+    const breaker = new TickBreaker(1)
+    const r = await deliverEmails(app, ctx, fx.propertyId,
+      createBrevoAdapter('k', { baseUrl: a.url }), { breaker })
+    await a.schliessen()
+    expect(r).toMatchObject({ attempted: 2, failed: 2 })
+    expect(breaker.tripped()).toBe(false)
   })
 })
 

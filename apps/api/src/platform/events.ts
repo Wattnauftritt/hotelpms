@@ -20,27 +20,37 @@ export async function emitEvent(
   type: WebhookEventType,
   data: Record<string, unknown>
 ): Promise<number> {
-  /*
-   * Ereignisse zu einer Reservierung tragen ausserdem die Buchung und den
-   * Cursorstand (Migration 0075). Das Ereignis heisst "jetzt nachfragen":
-   * der Empfaenger holt die Zeile ueber `changedSince`, und am Cursor sieht
-   * er, ob er sie schon hat -- ein gespeicherter Cursor, der **groesser**
-   * ist als dieser, enthaelt die Aenderung. Gleich genuegt nicht: der
-   * Horizont einer Liste steht auf `<xid>.0`, solange die Transaktion
-   * dieses Ereignisses noch laeuft.
-   *
-   * Im selben Aufruf wie das Einreihen, nicht als zweite Abfrage, und nur
-   * ergaenzend: was die Route selbst mitgibt, gewinnt.
-   */
-  const { rows } = await client.query<{ webhook_enqueue: number }>(
-    `SELECT webhook_enqueue($1, $2,
-       CASE WHEN $2 LIKE 'reservation.%'
-            THEN jsonb_strip_nulls(jsonb_build_object(
-                   'bookingRef', (SELECT b.public_ref FROM reservation r
-                                    JOIN booking b ON b.id = r.booking_id
-                                   WHERE r.public_ref = $3::jsonb ->> 'reservationRef'),
-                   'cursor', pg_current_xact_id()::text || '.0'))
-            ELSE '{}'::jsonb END || $3::jsonb)`,
-    [propertyId, type, JSON.stringify(data)])
-  return rows[0]!.webhook_enqueue
+  return emitEvents(client, propertyId, type, [data])
+}
+
+/**
+ * Viele Ereignisse einer Art in einer Anweisung (Performance-Audit
+ * 11.10.2026, Befund 6).
+ *
+ * Wer je Zeile `emitEvent` ruft, zahlt je Zeile eine Runde: ein Sortierlauf
+ * mit vierzig Zuegen waren vierzig. `webhook_enqueue_bulk` (Migration 0141)
+ * legt je Element einen eigenen Umschlag mit eigener Referenz an, in der
+ * Reihenfolge des Feldes -- fuer den Empfaenger dasselbe wie vierzig
+ * Einzelaufrufe.
+ *
+ * Ereignisse zu einer Reservierung tragen ausserdem die Buchung und den
+ * Cursorstand (Migration 0075). Das Ereignis heisst "jetzt nachfragen": der
+ * Empfaenger holt die Zeile ueber `changedSince`, und am Cursor sieht er, ob
+ * er sie schon hat -- ein gespeicherter Cursor, der **groesser** ist als
+ * dieser, enthaelt die Aenderung. Gleich genuegt nicht: der Horizont einer
+ * Liste steht auf `<xid>.0`, solange die Transaktion dieses Ereignisses
+ * noch laeuft. Ergaenzt wird in der SQL-Funktion, nur ergaenzend: was die
+ * Route selbst mitgibt, gewinnt. Dort, weil auch der Worker einreiht.
+ */
+export async function emitEvents(
+  client: PoolClient,
+  propertyId: number,
+  type: WebhookEventType,
+  rows: Array<Record<string, unknown>>
+): Promise<number> {
+  if (rows.length === 0) return 0
+  const { rows: r } = await client.query<{ n: number }>(
+    `SELECT webhook_enqueue_bulk($1, $2, $3::jsonb[]) AS n`,
+    [propertyId, type, rows.map(d => JSON.stringify(d))])
+  return r[0]!.n
 }

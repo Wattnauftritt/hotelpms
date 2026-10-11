@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeResources, makeUser, openBusinessDay, type Fixture } from '@hotelpms/testing'
-import type { Pool } from '@hotelpms/db'
+import { withTransaction, type Pool } from '@hotelpms/db'
+import { roomSortRunDue } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 
@@ -432,6 +433,71 @@ describe('StayGrid vergibt die Zimmer', () => {
     expect(b.reservations![0]!.reservationRef).toBe(a.reservations![0]!.reservationRef)
     expect(b.reservations![0]!.roomCode).toBe('6102')
     expect(await verkauft('2026-11-01', '2026-11-07')).toEqual([0, 1, 1, 1, 1, 0])
+  })
+
+  /*
+   * Der Push sortiert nur noch die Umgebung seiner Buchung; das Jahr
+   * sortiert der Worker, gebuendelt (Performance-Audit 11.10.2026, Befund 6,
+   * Migration 0141). Was der Push zusagt -- das Zimmer in der Antwort --,
+   * bleibt; was weiter weg liegt, kommt im naechsten Lauf dran.
+   */
+  it('sortiert im Push nur die Umgebung und merkt das Jahr fuer den Worker vor', async () => {
+    const token = await zugang()
+    // Noch von Hand: die Quelle legt den langen Januargast ins schlechtere Zimmer.
+    await put(token, 'rc-januar', {
+      segments: [{ roomCode: '6101', arrival: '2027-01-10', departure: '2027-01-20' }] })
+    await automatisch()
+
+    const neu = await put(token, 'rc-november', {
+      segments: [{ arrival: '2026-11-02', departure: '2026-11-03' }] })
+    expect((JSON.parse(neu.body) as Antwort).reservations![0]!.roomCode).toBe('6102')
+    // Januar liegt weit ausserhalb der Umgebung: der Push hat ihn nicht angefasst.
+    expect(await lage()).toEqual({ 'rc-januar': '6101', 'rc-november': '6102' })
+    const vermerk = await owner.query(`SELECT 1 FROM room_sort_due WHERE property_id = $1`,
+      [fx.propertyId])
+    expect(vermerk.rowCount).toBe(1)
+
+    const ctx = { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null }
+    // Gerade erst gepusht: der Worker wartet, ob noch einer kommt.
+    expect(await withTransaction(pool, ctx, c => roomSortRunDue(c, fx.propertyId)))
+      .toEqual({ sorted: false, moved: 0 })
+    expect(await lage()).toEqual({ 'rc-januar': '6101', 'rc-november': '6102' })
+
+    const lauf = await withTransaction(pool, ctx, c =>
+      roomSortRunDue(c, fx.propertyId, { quietSeconds: 0 }))
+    expect(lauf).toEqual({ sorted: true, moved: 1 })
+    expect(await lage()).toEqual({ 'rc-januar': '6102', 'rc-november': '6102' })
+    expect((await owner.query(`SELECT 1 FROM room_sort_due`)).rowCount).toBe(0)
+
+    // Ein Lauf des Sortierers, keiner der Rezeption: die Buchung bleibt der Quelle.
+    const b = await owner.query<{ channel_owner: string }>(
+      `SELECT channel_owner FROM booking WHERE external_reference = 'rc-januar'`)
+    expect(b.rows[0]!.channel_owner).toBe('source')
+    const laeufe = await owner.query<{ trigger: string; from_date: string; to_date: string }>(
+      `SELECT trigger, from_date::text, to_date::text FROM room_sort_run
+        WHERE property_id = $1 ORDER BY id DESC LIMIT 1`, [fx.propertyId])
+    expect(laeufe.rows[0]).toEqual(
+      { trigger: 'auto', from_date: '2026-10-10', to_date: '2027-10-11' })
+  })
+
+  it('sortiert beim Storno nicht selbst, sondern merkt das Haus vor', async () => {
+    await automatisch()
+    const token = await zugang()
+    await put(token, 'rc-1', { segments: [{ arrival: '2026-11-02', departure: '2026-11-04' }] })
+    await owner.query(`DELETE FROM room_sort_due`)
+    const vorher = (await owner.query(`SELECT 1 FROM room_sort_run`)).rowCount
+
+    expect((await cancel(token, 'rc-1')).statusCode).toBe(200)
+    expect((await owner.query(`SELECT 1 FROM room_sort_run`)).rowCount).toBe(vorher)
+    expect((await owner.query(`SELECT 1 FROM room_sort_due`)).rowCount).toBe(1)
+  })
+
+  it('merkt nichts vor, solange das Haus nicht selbst vergibt', async () => {
+    const token = await zugang()
+    await put(token, 'rc-1', { segments: [{ roomCode: '6101', arrival: '2026-11-02',
+                                            departure: '2026-11-04' }] })
+    await cancel(token, 'rc-1')
+    expect((await owner.query(`SELECT 1 FROM room_sort_due`)).rowCount).toBe(0)
   })
 
   it('legt eine Buchung ohne Zimmer in die Ablage, solange das Haus nicht selbst vergibt', async () => {

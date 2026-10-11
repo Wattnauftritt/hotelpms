@@ -1,16 +1,20 @@
 import { createHash } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
-import { withTransaction, type PoolClient } from '@hotelpms/db'
-import { isIsoDate, nightsBetween, eachNight, preisJeNacht } from '@hotelpms/domain'
+import type { PoolClient } from '@hotelpms/db'
+import {
+  isIsoDate, nightsBetween, eachNight, preisJeNacht, addDays, MAX_SORT_DAYS,
+  roomSortAuto, roomSortMarkDue, roomSortSetting, roomSortToday
+} from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
+import { txIm } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { emitEvent } from '../platform/events.js'
+import { emitEvents } from '../platform/events.js'
 import {
   authenticateChannel, channelContext, type ChannelPrincipal
 } from '../platform/channelAuth.js'
 import { isTrainingProperty } from '../platform/training.js'
 import { personenAngabe, type Personen } from './reservations.js'
-import { autoSortieren, sortierSperre, vergibtSelbst } from './roomSort.js'
+import { sortierKonflikt, sortierSperre, vergibtSelbst } from './roomSort.js'
 
 /*
  * Kanalbuchungen aus einem fuehrenden Umsystem (Migration 0092).
@@ -51,7 +55,23 @@ import { autoSortieren, sortierSperre, vergibtSelbst } from './roomSort.js'
  * des Aufrufs. Der Schalter ist die Einstellung des Hauses und nicht der
  * Rumpf -- so gibt es keinen Tag, an dem beide vergeben oder keiner, und das
  * Adminpanel darf weiter Zimmer schicken, bis es umgestellt ist.
+ *
+ * **Wie weit der Push sortiert.** Nur die Umgebung der eigenen Buchung
+ * (`sortierFenster`), nicht mehr ein ganzes Jahr: der Jahreslauf sperrte
+ * jeden Aufenthalt des Jahres und rechnete auf dem einen Faden der API,
+ * solange jede andere Anfrage wartete (Performance-Audit 11.10.2026,
+ * Befund 6). Das Zimmer selbst muss aber in der Antwort stehen -- so ist
+ * der Push vereinbart (`reservations[].roomCode`, Plan "Zimmer sortieren"
+ * 3.6: "sofort im selben Aufruf"). Das Jahr sortiert danach der Worker,
+ * gebuendelt (`room_sort_due`, Migration 0141).
  */
+
+/**
+ * Tage vor und nach der Buchung, die der Push mitsortiert. Wer in diesen
+ * Tagen liegt, darf weichen, damit der neue Gast ein durchgehendes Zimmer
+ * bekommt; zwei Wochen reichen fuer die Aufenthalte, die ihn umgeben.
+ */
+const SORTIER_RAND_TAGE = 14
 
 /** Wie bei `change-stay`: ein Aufenthalt, kein Dauermietvertrag. */
 const MAX_SEGMENT_NIGHTS = 400
@@ -522,6 +542,30 @@ function eigeneBuchung(b: BuchungZeile, p: ChannelPrincipal): void {
   }
 }
 
+/**
+ * Der Zeitraum, den ein Push selbst sortiert: seine Aufenthalte ab dem
+ * Geschaeftstag, mit `SORTIER_RAND_TAGE` davor und danach, hoechstens so
+ * lang wie ein Lauf am Knopf (`MAX_SORT_DAYS`). Ist schon die Buchung
+ * laenger, sortiert der Push nicht selbst; das Zimmer vergibt dann der
+ * Worker im naechsten Lauf, und bis dahin liegt sie in der Ablage. Eine
+ * Gaestehausbuchung ueber zwei Monate ist die Ausnahme, und ihretwegen ein
+ * Jahr in der Anfrage zu sortieren war genau der Fehler.
+ */
+function sortierFenster(
+  traeger: Array<{ arrival: string; departure: string }>, heute: string
+): { from: string; to: string } | null {
+  if (traeger.length === 0) return null
+  const bis = traeger.reduce((m, t) => t.departure > m ? t.departure : m, traeger[0]!.departure)
+  if (bis <= heute) return null
+  const erste = traeger.reduce((m, t) => t.arrival < m ? t.arrival : m, traeger[0]!.arrival)
+  const von = erste > heute ? erste : heute
+  const mitRand = { from: addDays(von, -SORTIER_RAND_TAGE) > heute
+                      ? addDays(von, -SORTIER_RAND_TAGE) : heute,
+                    to: addDays(bis, SORTIER_RAND_TAGE) }
+  if (nightsBetween(mitRand.from, mitRand.to) <= MAX_SORT_DAYS) return mitRand
+  return nightsBetween(von, bis) <= MAX_SORT_DAYS ? { from: von, to: bis } : null
+}
+
 export function channelPushRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'PUT',
@@ -536,11 +580,14 @@ export function channelPushRoutes(app: FastifyInstance): void {
       const hash = pruefsumme(body)
       const propertyId = principal.propertyId
 
-      const ergebnis = await withTransaction(req.pool, channelContext(principal), async client => {
+      const ergebnis = await txIm(req.pool, req, channelContext(principal), async client => {
         await alsPush(client, principal)
         await trainingSperre(client, propertyId)
         await sortierSperre(client, propertyId)
-        const selbst = await vergibtSelbst(client, propertyId)
+        // Einmal gelesen und durchgereicht: bisher fragte der Push die
+        // Einstellung dreimal und den Geschaeftstag zweimal (Befund 14).
+        const einstellung = await roomSortSetting(client, propertyId)
+        const selbst = einstellung.mode === 'auto'
         const soll = await abschnitteAufloesen(client, propertyId, body.segments, selbst)
 
         let buchung = await buchungSperren(client, propertyId, ref)
@@ -677,7 +724,14 @@ export function channelPushRoutes(app: FastifyInstance): void {
         const ids = traeger.map(t => t.reservationId)
         if (selbst) {
           await zimmerFreiMachen(client, ids)
-          await autoSortieren(client, propertyId)
+          const heute = await roomSortToday(client, propertyId)
+          const fenster = sortierFenster(traeger, heute)
+          if (fenster !== null) {
+            await sortierKonflikt(() => roomSortAuto(client, propertyId, fenster.from, fenster.to,
+              { setting: einstellung, today: heute }))
+          }
+          // Was der Push um sich herum nicht sortiert, sortiert der Worker.
+          await roomSortMarkDue(client, propertyId)
         }
         const konflikte = await konflikteSetzen(client, ids, ueberbucht)
         const endZimmer = await zimmerCodes(client, ids)
@@ -693,20 +747,21 @@ export function channelPushRoutes(app: FastifyInstance): void {
         // Was dieser Push frei gemacht hat, bekommt ein Wartender.
         await wartendePlatzieren(client, propertyId)
 
-        // Ein Ereignis je beruehrter Reservierung, wie an der Rezeption.
-        const neuIds = new Set(traeger.slice(paare.length).map(t => t.reservationId))
-        for (const t of traeger) {
-          await emitEvent(client, propertyId,
-            neuIds.has(t.reservationId) ? 'reservation.created' : 'reservation.changed', {
-              reservationRef: t.reservationRef, bookingRef: buchung.public_ref,
-              arrival: t.arrival, departure: t.departure, source: 'channel',
-              externalReference: ref })
-        }
-        for (const r of stornieren) {
-          await emitEvent(client, propertyId, 'reservation.canceled', {
-            reservationRef: r.public_ref, bookingRef: buchung.public_ref, status: 'Canceled',
-            arrival: r.arrival, departure: r.departure })
-        }
+        // Ein Ereignis je beruehrter Reservierung, wie an der Rezeption --
+        // je Art eine Anweisung, nicht eine je Zeile (Befund 6). Erst die
+        // geaenderten, dann die neuen, dann die stornierten: die
+        // Reihenfolge, in der sie bisher einzeln hinausgingen.
+        const ereignis = (t: typeof traeger[number]) => ({
+          reservationRef: t.reservationRef, bookingRef: buchung.public_ref,
+          arrival: t.arrival, departure: t.departure, source: 'channel',
+          externalReference: ref })
+        await emitEvents(client, propertyId, 'reservation.changed',
+          traeger.slice(0, paare.length).map(ereignis))
+        await emitEvents(client, propertyId, 'reservation.created',
+          traeger.slice(paare.length).map(ereignis))
+        await emitEvents(client, propertyId, 'reservation.canceled', stornieren.map(r => ({
+          reservationRef: r.public_ref, bookingRef: buchung.public_ref, status: 'Canceled',
+          arrival: r.arrival, departure: r.departure })))
 
         return {
           status: angelegt ? 'created' as const : 'updated' as const,
@@ -740,7 +795,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
         ?.sourceUpdatedAt, 'sourceUpdatedAt')
       const propertyId = principal.propertyId
 
-      return withTransaction(req.pool, channelContext(principal), async client => {
+      return txIm(req.pool, req, channelContext(principal), async client => {
         await alsPush(client, principal)
         await trainingSperre(client, propertyId)
         await sortierSperre(client, propertyId)
@@ -781,18 +836,20 @@ export function channelPushRoutes(app: FastifyInstance): void {
         }
         await wartendePlatzieren(client, propertyId)
         // Ein frei gewordenes Zimmer kann einem anderen Gast besser passen.
-        if (stornieren.length > 0) await autoSortieren(client, propertyId)
+        // Das sortiert der Worker; die Antwort auf ein Storno nennt kein
+        // Zimmer, also muss der Aufruf darauf nicht warten (Befund 6).
+        if (stornieren.length > 0 && await vergibtSelbst(client, propertyId)) {
+          await roomSortMarkDue(client, propertyId)
+        }
         // Der Hash gehoert zum letzten Stand; ein spaeterer PUT derselben
         // Abschnitte soll die Buchung wiederbeleben, nicht "unchanged" sagen.
         await client.query(
           `UPDATE booking SET source_hash = NULL,
                   source_updated_at = COALESCE($2::timestamptz, source_updated_at)
             WHERE id = $1`, [buchung.id, quelle])
-        for (const r of stornieren) {
-          await emitEvent(client, propertyId, 'reservation.canceled', {
-            reservationRef: r.public_ref, bookingRef: buchung.public_ref, status: 'Canceled',
-            arrival: r.arrival, departure: r.departure })
-        }
+        await emitEvents(client, propertyId, 'reservation.canceled', stornieren.map(r => ({
+          reservationRef: r.public_ref, bookingRef: buchung.public_ref, status: 'Canceled',
+          arrival: r.arrival, departure: r.departure })))
 
         return {
           status: stornieren.length > 0 ? 'canceled' as const : 'already_canceled' as const,

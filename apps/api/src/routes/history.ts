@@ -383,10 +383,17 @@ export function historyRoutes(app: FastifyInstance): void {
  * nachzuladen waere eine Runde je Zimmer. Die Vorauswahl laeuft deshalb als
  * `WITH` im selben Aufruf.
  *
- * Das Haus steht als erste Bedingung dabei, obwohl die Zeilenrichtlinie es
- * ohnehin erzwingt: ohne sie muesste PostgreSQL fuer den Zweig ueber
- * `row_key` -- der keine `row_id` hat und damit keinen Index findet -- das
- * Protokoll aller Haeuser durchsehen.
+ * **Ein Zweig je Tabelle, nicht ein `OR`.** Mit vier `OR IN (...)`-Zweigen
+ * fand der Planer keinen Index, der alle traegt, und ging das Protokoll des
+ * ganzen Hauses durch: 7 s und 450 000 Zeilen fuer eine Buchung im
+ * Saatlauf (Performance-Audit 11.10.2026, Befund 14). Jeder Zweig fuer
+ * sich trifft `audit_log_lookup` (table_name, row_id); die Naechte, die
+ * keine `row_id` haben, kommen ueber `audit_reservation_night_rows` und
+ * ihren Index (0141). Die Zweige sind disjunkt -- jeder hat seine Tabelle --,
+ * also braucht `UNION ALL` kein Entdoppeln.
+ *
+ * Das Haus steht in jedem Zweig dabei, obwohl die Zeilenrichtlinie es
+ * ohnehin erzwingt: sie filtert nach Mandant, nicht nach Haus.
  */
 async function verlauf(client: PoolClient, principal: Principal, propertyId: number,
                        was: { bookingId?: number; reservationId?: number }) {
@@ -400,23 +407,32 @@ async function verlauf(client: PoolClient, principal: Principal, propertyId: num
          FROM reservation r
         WHERE ($1::bigint IS NULL OR r.booking_id = $1)
           AND ($2::bigint IS NULL OR r.id = $2)
+     ),
+     treffer AS (
+       SELECT a.id, a.occurred_at FROM audit_log a
+        WHERE a.property_id = $3 AND a.table_name = 'reservation'
+          AND a.row_id IN (SELECT id FROM ziel)
+       UNION ALL
+       -- Einmal, nicht je Zimmer: acht Reservierungen zeigten den
+       -- Eintrag der Buchung sonst achtmal.
+       SELECT a.id, a.occurred_at FROM audit_log a
+        WHERE a.property_id = $3 AND a.table_name = 'booking'
+          AND a.row_id IN (SELECT booking_id FROM ziel)
+       UNION ALL
+       SELECT a.id, a.occurred_at FROM audit_log a
+        WHERE a.property_id = $3 AND a.table_name = 'charge'
+          AND a.row_id IN (SELECT c.id FROM charge c
+                            WHERE c.reservation_id IN (SELECT id FROM ziel))
+       UNION ALL
+       -- Zusammengesetzter Schluessel: die Nacht steht in row_key. Ueber
+       -- die Funktion aus 0141, weil der Index darauf unter der
+       -- Zeilenrichtlinie sonst nicht greift.
+       SELECT n.id, n.occurred_at
+         FROM audit_reservation_night_rows($3, ARRAY(SELECT id FROM ziel)) n
      )
      ${RUMPF}
      WHERE a.property_id = $3
-       AND (
-         (a.table_name = 'reservation'
-            AND a.row_id IN (SELECT id FROM ziel))
-         -- Einmal, nicht je Zimmer: acht Reservierungen zeigten den
-         -- Eintrag der Buchung sonst achtmal.
-         OR (a.table_name = 'booking'
-            AND a.row_id IN (SELECT DISTINCT booking_id FROM ziel))
-         OR (a.table_name = 'charge'
-            AND a.row_id IN (SELECT c.id FROM charge c
-                              WHERE c.reservation_id IN (SELECT id FROM ziel)))
-         -- Zusammengesetzter Schluessel: die Nacht steht in row_key.
-         OR (a.table_name = 'reservation_night'
-            AND (a.row_key ->> 'reservation_id')::bigint IN (SELECT id FROM ziel))
-       )
+       AND (a.id, a.occurred_at) IN (SELECT id, occurred_at FROM treffer)
      ORDER BY a.occurred_at DESC, a.id DESC
      LIMIT 500`,
     [was.bookingId ?? null, was.reservationId ?? null, propertyId])

@@ -1,5 +1,6 @@
 import webpush from 'web-push'
-import { withTransaction, type Pool, type PoolClient, type DbContext } from '@hotelpms/db'
+import { withTransaction, SYSTEM_CONTEXT, type Pool, type PoolClient, type DbContext }
+  from '@hotelpms/db'
 import { isPushEndpoint, pushTtlSeconds, PUSH_MAX_ATTEMPTS } from '@hotelpms/domain'
 import { renderPushText, STAFF_LOCALES, type StaffLocale, type PushTextKey }
   from '@hotelpms/contracts'
@@ -215,18 +216,33 @@ export async function sendStaffPushes(
   pool: Pool, ctx: DbContext, propertyId: number, sender: PushSender,
   opts: { batchSize?: number; leaseSeconds?: number; baseDelaySeconds?: number } = {}
 ): Promise<StaffPushResult> {
-  const claimed = await withTransaction(pool, ctx, async c => {
-    // Erledigtes nach einem Monat weg: es sagt nur noch, wer wann welches
-    // Zimmer gemeldet bekam, und das steht im Plan selbst.
-    await c.query(
-      `DELETE FROM staff_push WHERE property_id = $1 AND status <> 'pending'
-          AND created_at < now() - interval '30 days'`, [propertyId])
-    return claim(c, propertyId, opts.batchSize ?? 100, opts.leaseSeconds ?? 120)
-  })
+  // Das Aufraeumen des Erledigten steht seit Befund 13 in purgeRetention,
+  // einmal am Tag ueber alle Haeuser, nicht mehr hier alle 20 s je Haus.
+  const claimed = await withTransaction(pool, ctx, c =>
+    claim(c, propertyId, opts.batchSize ?? 100, opts.leaseSeconds ?? 120))
   const result: StaffPushResult = { attempted: claimed.length, sent: 0, retrying: 0, failed: 0 }
   for (const p of claimed) {
     const v = p.targets.length === 0 ? null : await sende(sender, p)
     result[await withTransaction(pool, ctx, c => record(c, p, v, opts.baseDelaySeconds ?? 30))]++
   }
   return result
+}
+
+/**
+ * Haeuser mit faelliger Push-Meldung, in einer Abfrage ueber alle
+ * (Befund 13).
+ *
+ * Der Takt laeuft alle 20 Sekunden. Bisher oeffnete er dafuer je aktivem
+ * Haus eine Transaktion, auch wenn nirgends etwas anstand -- bei
+ * fuenfhundert Haeusern fuenfhundert Runden, dreimal je Minute, fuer
+ * nichts. Der Teilindex staff_push_faellig enthaelt nur offene Zeilen;
+ * die Frage kostet damit fast nichts. Mit der Eigentuemerrolle, weil sie
+ * mandantenuebergreifend ist und nur Kennungen liest, keine Inhalte.
+ */
+export async function propertiesWithDuePushes(admin: Pool): Promise<Set<number>> {
+  const r = await withTransaction(admin, SYSTEM_CONTEXT, c =>
+    c.query<{ property_id: number }>(
+      `SELECT DISTINCT property_id::int FROM staff_push
+        WHERE status = 'pending' AND next_at <= now()`))
+  return new Set(r.rows.map(x => x.property_id))
 }

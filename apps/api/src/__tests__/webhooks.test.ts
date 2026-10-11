@@ -5,7 +5,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCatego
 import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
-import { emitEvent } from '../platform/events.js'
+import { emitEvent, emitEvents } from '../platform/events.js'
 
 let owner: Pool
 let app: FastifyInstance
@@ -280,6 +280,48 @@ describe('Einreihen aus den Fachrouten', () => {
     const buchungen = await owner.query(
       `SELECT 1 FROM booking WHERE property_id = $1`, [fx.propertyId])
     expect(buchungen.rowCount).toBe(0)
+  })
+
+  /*
+   * Viele Ereignisse in einer Anweisung (Performance-Audit 11.10.2026,
+   * Befund 6). Fuer den Empfaenger darf das nicht anders aussehen als
+   * Einzelaufrufe: je Ereignis und Abonnement eine Zustellung, je Ereignis
+   * eine eigene Referenz, die Reihenfolge des Aufrufers, Buchung und Cursor
+   * an jeder Reservierung -- und was der Aufrufer mitgibt, gewinnt.
+   */
+  it('reiht viele Ereignisse in einer Anweisung ein, wie einzeln', async () => {
+    await anlegen()
+    await anlegen({ url: 'https://zweites.example.de/hook' })
+    const a = await buchen('2026-10-10', '2026-10-12')
+    const b = await buchen('2026-10-20', '2026-10-22')
+    await owner.query(`DELETE FROM webhook_delivery`)
+
+    const n = await withTransaction(pool, ctx, client => emitEvents(client, fx.propertyId,
+      'reservation.changed', [{ reservationRef: b, nr: 1 },
+                              { reservationRef: a, nr: 2, bookingRef: 'VOM-AUFRUFER' },
+                              { reservationRef: 'GIBT-ES-NICHT', nr: 3 }]))
+    expect(n).toBe(6)
+
+    const zeilen = await owner.query<{ event_ref: string; subscription_id: number
+                                       payload: { id: string; type: string
+                                                  data: Record<string, unknown> } }>(
+      `SELECT event_ref, subscription_id, payload FROM webhook_delivery
+        WHERE property_id = $1 ORDER BY id`, [fx.propertyId])
+    expect(zeilen.rows.map(z => z.payload.data.nr)).toEqual([1, 1, 2, 2, 3, 3])
+    // Zwei Abonnements, also jede Referenz zweimal, und drei verschiedene.
+    expect(new Set(zeilen.rows.map(z => z.event_ref)).size).toBe(3)
+    for (const z of zeilen.rows) {
+      expect(z.payload.id).toBe(z.event_ref)
+      expect(z.payload.type).toBe('reservation.changed')
+      expect(z.payload.data.cursor).toMatch(/^\d+\.0$/)
+    }
+    expect(typeof zeilen.rows[0]!.payload.data.bookingRef).toBe('string')
+    expect(zeilen.rows[2]!.payload.data.bookingRef).toBe('VOM-AUFRUFER')
+    expect(zeilen.rows[4]!.payload.data).not.toHaveProperty('bookingRef')
+
+    // Ein leeres Feld fragt die Datenbank gar nicht erst.
+    expect(await withTransaction(pool, ctx, client =>
+      emitEvents(client, fx.propertyId, 'reservation.changed', []))).toBe(0)
   })
 
   /**

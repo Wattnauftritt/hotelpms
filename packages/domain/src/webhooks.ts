@@ -88,7 +88,10 @@ export function webhookDelivered(statusCode: number): boolean {
  */
 export const WEBHOOK_FAILURE_KINDS = [
   'timeout', 'dns', 'refused', 'unreachable', 'reset', 'tls',
-  'blockedTarget', 'httpStatus', 'other'
+  'blockedTarget', 'httpStatus', 'other',
+  // Nicht versucht: das Abonnement wurde stillgelegt, waehrend die
+  // Zustellung noch offen war (Migration 0140).
+  'subscriptionDisabled'
 ] as const
 
 export type WebhookFailureKind = (typeof WEBHOOK_FAILURE_KINDS)[number]

@@ -455,4 +455,56 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
     expect(await beleg(kaputt.id)).toBeNull()
     expect(await beleg(gesund.id)).not.toBeNull()
   })
+
+  /**
+   * Befund 14: die Abholung nahm stets die aeltesten Rechnungen ohne Beleg.
+   * Scheiterten so viele, wie in einen Lauf passen, kam keine neuere mehr
+   * an die Reihe. Jetzt wartet eine gescheiterte ihren Abstand ab.
+   */
+  it('laesst eine gescheiterte Rechnung warten, statt neuere aufzuhalten', async () => {
+    const kaputt = await rechnung()
+    const f = await owner.query<{ folio_id: number }>(
+      `SELECT folio_id FROM invoice WHERE id = $1`, [kaputt.id])
+    await owner.query(
+      `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                           net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account,
+                           invoice_id)
+       VALUES ($1,$2,'2026-10-02'::date,'Unterschlagene Position',1,
+               10000,700,10700,700,'8300',$3)`,
+      [fx.propertyId, f.rows[0]!.folio_id, kaputt.id])
+
+    // Ein Platz je Lauf: vorher haette die kaputte ihn jedes Mal belegt.
+    const erst = await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE, limit: 1 })
+    expect(erst.failed.map(x => x.invoiceId)).toEqual([kaputt.id])
+
+    const gesund = await rechnung()
+    const zweit = await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE, limit: 1 })
+    expect(zweit).toMatchObject({ created: 1, failed: [] })
+    expect(await beleg(gesund.id)).not.toBeNull()
+
+    const fehler = await owner.query<{ attempts: number; spaeter: boolean; last_error: string }>(
+      `SELECT attempts, next_attempt_at > now() AS spaeter, last_error
+         FROM invoice_document_failure WHERE invoice_id = $1`, [kaputt.id])
+    expect(fehler.rows[0]).toMatchObject({ attempts: 1, spaeter: true })
+    expect(fehler.rows[0]!.last_error).toMatch(/festgeschrieben/)
+
+    // Ist der Abstand um, kommt sie wieder dran, und der Abstand waechst.
+    await owner.query(`UPDATE invoice_document_failure SET next_attempt_at = now()`)
+    const dritt = await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    expect(dritt.failed.map(x => x.invoiceId)).toEqual([kaputt.id])
+    const nochmal = await owner.query<{ attempts: number; minuten: number }>(
+      `SELECT attempts, round(extract(epoch FROM next_attempt_at - now()) / 60)::int AS minuten
+         FROM invoice_document_failure WHERE invoice_id = $1`, [kaputt.id])
+    expect(nochmal.rows[0]).toEqual({ attempts: 2, minuten: 10 })
+  })
+
+  it('vergisst den Fehlschlag, sobald der Beleg entstanden ist', async () => {
+    const r = await rechnung()
+    await owner.query(
+      `INSERT INTO invoice_document_failure (invoice_id, property_id, next_attempt_at, last_error)
+       VALUES ($1, $2, now(), 'voruebergehend')`, [r.id, fx.propertyId])
+    expect((await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })).created).toBe(1)
+    const rest = await owner.query(`SELECT 1 FROM invoice_document_failure`)
+    expect(rest.rowCount).toBe(0)
+  })
 })

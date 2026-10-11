@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto'
 import { hash as argonHash } from '@node-rs/argon2'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { withTransaction, type PoolClient } from '@hotelpms/db'
+import type { PoolClient } from '@hotelpms/db'
 import { isIsoDate, nightsBetween, eachNight } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
-import { tx } from '../platform/db.js'
+import { tx, txIm } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { emitEvent } from '../platform/events.js'
 import { authenticateChannel, channelContext } from '../platform/channelAuth.js'
@@ -310,7 +310,7 @@ export function channelRoutes(app: FastifyInstance): void {
       const principal = await authenticateChannel(req.pool, req.headers.authorization)
       const { from, to, since } = ariRange(req)
 
-      const rows = await withTransaction(req.pool, channelContext(principal), async client => {
+      const rows = await txIm(req.pool, req, channelContext(principal), async client => {
         await assertNoChannelForTraining(client, principal.propertyId)
         return ariAvailability(client, principal.propertyId, from, to, since)
       })
@@ -327,7 +327,7 @@ export function channelRoutes(app: FastifyInstance): void {
       const principal = await authenticateChannel(req.pool, req.headers.authorization)
       const { from, to, since } = ariRange(req)
 
-      const rows = await withTransaction(req.pool, channelContext(principal), async client => {
+      const rows = await txIm(req.pool, req, channelContext(principal), async client => {
         await assertNoChannelForTraining(client, principal.propertyId)
         return ariRates(client, principal.propertyId, from, to, since)
       })
@@ -356,7 +356,7 @@ export function channelRoutes(app: FastifyInstance): void {
       }
       const personen = personenAngabe(body)
 
-      const result = await withTransaction(req.pool, channelContext(principal), async client => {
+      const result = await txIm(req.pool, req, channelContext(principal), async client => {
         await assertNoChannelForTraining(client, principal.propertyId)
         const { categoryId, salesCode } = await kanalKategorie(
           client, principal.propertyId, body.categoryCode, body.salesCode)

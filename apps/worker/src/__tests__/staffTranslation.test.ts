@@ -5,6 +5,7 @@ import type { DbContext, Pool } from '@hotelpms/db'
 import { TRANSLATION_MAX_ATTEMPTS, type StaffTextLang } from '@hotelpms/domain'
 import { translateStaffTexts, TranslationError,
          type Translator } from '../jobs/staffTranslation.js'
+import { TickBreaker } from '../jobs/breaker.js'
 
 /**
  * Der Uebersetzungslauf (0112, Baustein 7) mit einem untergeschobenen
@@ -34,21 +35,25 @@ beforeEach(async () => {
 })
 
 /** Haengt `[de]` an und tut, als waere alles russisch -- ausser Deutschem. */
-function falscherUebersetzer(fehler?: () => Error | null): Translator & { aufrufe: string[] } {
-  const aufrufe: string[] = []
-  return {
-    aufrufe,
-    async translate(text: string, target: StaffTextLang) {
-      aufrufe.push(`${target}:${text}`)
+function falscherUebersetzer(fehler?: () => Error | null): Translator & {
+  aufrufe: string[]; anfragen: number } {
+  const u = {
+    aufrufe: [] as string[],
+    anfragen: 0,
+    async translate(texts: string[], target: StaffTextLang) {
+      u.anfragen++
+      for (const text of texts) u.aufrufe.push(`${target}:${text}`)
       const f = fehler?.() ?? null
       if (f !== null) throw f
-      const deutsch = /^[A-Za-z ]+$/.test(text)
-      return { text: `[${target}] ${text}`, detectedSource: deutsch ? 'DE' : 'RU' }
+      return texts.map(text => ({
+        text: `[${target}] ${text}`,
+        detectedSource: /^[A-Za-z ]+$/.test(text) ? 'DE' : 'RU' }))
     }
   }
+  return u
 }
 
-async function eintrag(text: string): Promise<number> {
+async function eintrag(text: string, targets = '{de}'): Promise<number> {
   const { rows } = await owner.query<{ id: number }>(
     `INSERT INTO staff_work_entry (property_id, user_id, business_date, kind, description,
                                    minutes, created_by)
@@ -56,7 +61,7 @@ async function eintrag(text: string): Promise<number> {
     [fx.propertyId, kraft, text])
   await owner.query(
     `INSERT INTO staff_text_job (property_id, source_kind, source_id, targets)
-     VALUES ($1, 'work_entry', $2, '{de}')`, [fx.propertyId, rows[0]!.id])
+     VALUES ($1, 'work_entry', $2, $3::text[])`, [fx.propertyId, rows[0]!.id, targets])
   return rows[0]!.id
 }
 
@@ -128,5 +133,54 @@ describe('translateStaffTexts', () => {
       { accountIds: [fremd.accountId], propertyIds: [fremd.propertyId], userId: null },
       fremd.propertyId, falscherUebersetzer())
     expect(r.attempted).toBe(0)
+  })
+
+  it('fragt DeepL einmal je Zielsprache, nicht einmal je Auftrag', async () => {
+    await eintrag('Сложила бельё')
+    await eintrag('Помыла окна')
+    await eintrag('Убрала номер', '{de,en}')
+    const u = falscherUebersetzer()
+    const r = await translateStaffTexts(app, ctx, fx.propertyId, u)
+    expect(r).toMatchObject({ attempted: 3, done: 3 })
+    expect(u.anfragen).toBe(2)
+    expect((await uebersetzungen()).map(x => x.text).sort()).toEqual([
+      '[de] Помыла окна', '[de] Сложила бельё', '[de] Убрала номер', '[en] Убрала номер'])
+  })
+
+  /**
+   * Befund 9: ein toter Dienst soll den Tick nicht fuer alle Haeuser
+   * aufhalten. Nach dem Ausloesen wird nicht mehr gefragt, und was nicht
+   * gefragt wurde, verliert keinen Versuch.
+   */
+  it('fragt nach ausgeloester Sicherung nicht weiter und gibt Ungefragtes zurueck', async () => {
+    const a = await eintrag('Сложила бельё', '{de}')
+    const b = await eintrag('Помыла окна', '{en}')
+    const breaker = new TickBreaker(1)
+    const u = falscherUebersetzer(() => new TranslationError('network'))
+    const r = await translateStaffTexts(app, ctx, fx.propertyId, u, { breaker })
+    expect(breaker.tripped()).toBe(true)
+    expect(u.anfragen).toBe(1)
+    expect(r).toMatchObject({ attempted: 1, retrying: 1 })
+
+    const { rows } = await owner.query<{ source_id: number; status: string; attempts: number
+                                         faellig: boolean }>(
+      `SELECT source_id::int, status, attempts, next_at <= now() AS faellig
+         FROM staff_text_job ORDER BY source_id`)
+    expect(rows).toEqual([
+      { source_id: a, status: 'pending', attempts: 1, faellig: false },
+      { source_id: b, status: 'pending', attempts: 0, faellig: true }])
+
+    // Im selben Tick fragt auch das naechste Haus nicht mehr.
+    expect((await translateStaffTexts(app, ctx, fx.propertyId, u, { breaker })).attempted)
+      .toBe(0)
+    expect(u.anfragen).toBe(1)
+  })
+
+  it('zaehlt einen abgelehnten Text nicht als Ausfall des Dienstes', async () => {
+    await eintrag('Сложила бельё')
+    const breaker = new TickBreaker(1)
+    await translateStaffTexts(app, ctx, fx.propertyId,
+      falscherUebersetzer(() => new TranslationError('http_400')), { breaker })
+    expect(breaker.tripped()).toBe(false)
   })
 })

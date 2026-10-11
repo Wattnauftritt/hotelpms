@@ -115,16 +115,47 @@ function depositLine(d: DepositLedgerRow): CiiLine {
   }
 }
 
-/** Nummern der Rechnungen ohne Beleg, aelteste zuerst. */
+/**
+ * Nummern der Rechnungen ohne Beleg, aelteste zuerst -- aber die, an denen
+ * es schon einmal gescheitert ist, erst nach ihrem Abstand und hinter allen
+ * anderen (Befund 14). Bisher kamen 50 dauerhaft scheiternde Rechnungen bei
+ * jedem Lauf zuerst an die Reihe und hielten jede neuere auf, und mit ihr
+ * die Rechnungsmail, die auf den Anhang wartet.
+ */
 async function pending(
   client: PoolClient, propertyId: number, limit: number
 ): Promise<number[]> {
   const r = await client.query<{ id: number }>(
     `SELECT i.id FROM invoice i
        LEFT JOIN invoice_document d ON d.invoice_id = i.id
+       LEFT JOIN invoice_document_failure f ON f.invoice_id = i.id
       WHERE i.property_id = $1 AND d.invoice_id IS NULL
-      ORDER BY i.id LIMIT $2`, [propertyId, limit])
+        AND (f.invoice_id IS NULL OR f.next_attempt_at <= now())
+      ORDER BY f.invoice_id IS NOT NULL, i.id LIMIT $2`, [propertyId, limit])
   return r.rows.map(x => x.id)
+}
+
+/**
+ * Fehlschlag vermerken. Der Abstand verdoppelt sich ab fuenf Minuten und
+ * endet bei einem Tag: aufgegeben wird nie, denn ohne Beleg ist die
+ * Rechnung nicht ausgebbar, und behoben wird der Grund meist von Hand --
+ * dann soll sie spaetestens am naechsten Tag von selbst nachkommen.
+ */
+async function vermerkeFehler(
+  client: PoolClient, propertyId: number, invoiceId: number, grund: string
+): Promise<void> {
+  await client.query(
+    `INSERT INTO invoice_document_failure
+       (invoice_id, property_id, next_attempt_at, last_error)
+     VALUES ($1, $2, now() + interval '5 minutes', left($3, 1000))
+     ON CONFLICT (invoice_id) DO UPDATE
+       SET attempts = invoice_document_failure.attempts + 1,
+           next_attempt_at = now() + least(
+             interval '5 minutes' * power(2, least(invoice_document_failure.attempts, 20)),
+             interval '1 day'),
+           last_error = EXCLUDED.last_error,
+           last_failed_at = now()`,
+    [invoiceId, propertyId, grund])
 }
 
 /**
@@ -199,18 +230,22 @@ async function load(
   return { invoice, row }
 }
 
+interface Gezeichnet {
+  pdf: Uint8Array
+  xml: string | null
+  findings: CiiFinding[]
+}
+
 /**
- * Erzeugt einen einzelnen Beleg und legt ihn ab.
+ * Zeichnet einen einzelnen Beleg, ohne Datenbank.
  *
- * Gibt zurueck, ob ein XML eingebettet wurde. Fehlt es, steht der Grund in
+ * Gibt mit dem Beleg die Befunde zurueck. Fehlt das XML, steht der Grund in
  * der Zeile und als Hinweis auf dem Blatt: eine Kleinbetragsrechnung ohne
  * Empfaenger ist nach § 33 UStDV gueltig und nach EN 16931 kein Beleg.
  */
-export async function renderInvoiceDocument(
-  client: PoolClient, propertyId: number, invoiceId: number, now: Date
-): Promise<{ findings: CiiFinding[] } | null> {
-  const geladen = await load(client, invoiceId)
-  if (geladen === null) return null
+async function zeichne(
+  geladen: { invoice: CiiInvoice; row: InvoiceRow }, now: Date
+): Promise<Gezeichnet> {
   const { invoice, row } = geladen
 
   // Der Beleg darf nicht behaupten, was die Rechnung nicht sagt. Weichen
@@ -242,25 +277,35 @@ export async function renderInvoiceDocument(
     subject: `Rechnung ${invoice.number} vom ${invoice.issuedOn}`,
     createdAt: now
   })
+  return { pdf, xml, findings }
+}
 
+/** Legt den gezeichneten Beleg ab und vergisst einen frueheren Fehlschlag. */
+async function ablegen(
+  client: PoolClient, propertyId: number, invoiceId: number, g: Gezeichnet
+): Promise<void> {
   await client.query(
     `INSERT INTO invoice_document
        (invoice_id, property_id, pdf, xml, xml_findings, byte_count, sha256)
      VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
      ON CONFLICT (invoice_id) DO NOTHING`,
-    [invoiceId, propertyId, Buffer.from(pdf), xml, JSON.stringify(findings),
-     pdf.length, createHash('sha256').update(pdf).digest('hex')])
-
-  return { findings }
+    [invoiceId, propertyId, Buffer.from(g.pdf), g.xml, JSON.stringify(g.findings),
+     g.pdf.length, createHash('sha256').update(g.pdf).digest('hex')])
+  await client.query(
+    `DELETE FROM invoice_document_failure WHERE invoice_id = $1`, [invoiceId])
 }
 
 /**
  * Arbeitet die Rechnungen einer Property ab, die noch keinen Beleg haben.
  *
- * **Je Rechnung eine eigene Transaktion.** Die Erzeugung ist Rechenarbeit,
- * kein Datenbankzugriff; hundert Belege in einer Transaktion hielten
- * minutenlang eine Verbindung und wuerden bei einem Fehler in Beleg 99
- * auch die ersten 98 verwerfen.
+ * **Je Rechnung eigene, kurze Transaktionen.** Lesen in einer, Ablegen in
+ * einer zweiten; das Zeichnen dazwischen liegt in keiner (Befund 14). Es
+ * ist Rechenarbeit von einigen hundert Millisekunden und hielt bisher
+ * Verbindung und Transaktion so lange offen -- bei einem Pool von vier
+ * Verbindungen fuer den ganzen Worker ist das ein Viertel davon. Zwischen
+ * Lesen und Ablegen kann sich nichts aendern, was der Beleg zeigt: Rechnung
+ * und Positionen sind Haertegrad 1. Hundert Belege in einer Transaktion
+ * wuerden ausserdem bei einem Fehler in Beleg 99 die ersten 98 verwerfen.
  */
 export async function renderPendingInvoices(
   pool: Pool, ctx: DbContext, propertyId: number,
@@ -280,18 +325,24 @@ export async function renderPendingInvoices(
     // aufhalten: sonst bekommt das ganze Haus keine Belege mehr, weil an
     // einer einzigen Rechnung vor Wochen etwas schieflief. Derselbe Grund
     // wie beim Tick ueber die Properties, eine Ebene tiefer.
-    let r: { findings: CiiFinding[] } | null
+    let g: Gezeichnet
     try {
-      r = await withTransaction(pool, ctx, c =>
-        renderInvoiceDocument(c, propertyId, id, now))
+      const geladen = await withTransaction(pool, ctx, c => load(c, id))
+      if (geladen === null) continue
+      g = await zeichne(geladen, now)
+      await withTransaction(pool, ctx, c => ablegen(c, propertyId, id, g))
     } catch (e) {
-      ergebnis.failed.push({ invoiceId: id, reason: e instanceof Error ? e.message : String(e) })
+      const reason = e instanceof Error ? e.message : String(e)
+      ergebnis.failed.push({ invoiceId: id, reason })
+      // Gemerkt, damit dieselbe Rechnung nicht jeden Tick wieder vorne
+      // steht. Scheitert schon das, bleibt es beim Alarm im Protokoll.
+      await withTransaction(pool, ctx, c => vermerkeFehler(c, propertyId, id, reason))
+        .catch(() => undefined)
       continue
     }
-    if (r === null) continue
     ergebnis.created += 1
-    if (r.findings.length > 0) ergebnis.withoutXml += 1
-    for (const f of r.findings) {
+    if (g.findings.length > 0) ergebnis.withoutXml += 1
+    for (const f of g.findings) {
       // Am Haus liegt es, nicht an der Rechnung: das trifft jede weitere
       // und muss deshalb einmal laut gemeldet werden.
       if (f.key.startsWith('seller_') && !gesehen.has(f.key)) {
