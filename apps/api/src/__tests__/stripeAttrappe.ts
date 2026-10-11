@@ -17,6 +17,12 @@ export interface Attrappe extends StripeAdapter {
   beendet: string[]
   /** Naechstes Beenden lehnt der Anbieter ab (4xx). */
   verweigern: boolean
+  /**
+   * Haelt das Anlegen auf, bis das Versprechen erfuellt ist -- ein Anbieter,
+   * der gerade langsam ist. Damit laesst sich pruefen, was waehrenddessen
+   * in der Datenbank gesperrt ist und was ein zweiter Klick tut.
+   */
+  anlegenHalten: Promise<void> | null
   /** Ein Checkout als bezahlt markieren, wie es der Gast beim Anbieter taete. */
   bezahlen(ref: string): void
   zuruecksetzen(): void
@@ -28,7 +34,9 @@ export function stripeAttrappe(): Attrappe {
     angelegt: 0,
     beendet: [],
     verweigern: false,
+    anlegenHalten: null,
     async createCheckoutSession(p) {
+      if (a.anlegenHalten !== null) await a.anlegenHalten
       const ref = `cs_test_${++a.angelegt}`
       const s = { status: 'open' as const, amountCent: p.amountCent,
                   url: `https://checkout.stripe.test/${ref}`,
@@ -57,6 +65,7 @@ export function stripeAttrappe(): Attrappe {
     },
     zuruecksetzen() {
       a.sitzungen.clear(); a.angelegt = 0; a.beendet = []; a.verweigern = false
+      a.anlegenHalten = null
     }
   }
   return a

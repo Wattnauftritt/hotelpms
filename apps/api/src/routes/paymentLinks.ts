@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { withTransaction, SYSTEM_CONTEXT, type PoolClient } from '@hotelpms/db'
+import { withTransaction, SYSTEM_CONTEXT, type Pool, type PoolClient } from '@hotelpms/db'
 import { EMAIL_LANGUAGES, emailLanguage, isSendableAddress, depositRequestOpenCent,
          renderPaymentLinkEmail, renderPayPage, paymentLinkValidUntil, paymentLinkValid,
          neuesToken, hashToken, type EmailLanguage, type PayPageKind,
@@ -11,7 +12,8 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import type { Config } from '../platform/config.js'
 import type { Principal } from '../platform/context.js'
 import { isTrainingProperty } from '../platform/training.js'
-import { ProviderRefused, type StripeAdapter } from '../platform/payments/stripe.js'
+import { ProviderRefused, type StripeAdapter, type CheckoutState,
+         type CheckoutSession } from '../platform/payments/stripe.js'
 import { rechtImHaus, anforderungSperren, postBereitschaft,
          geschaeftstag } from './depositRequests.js'
 
@@ -34,8 +36,10 @@ import { rechtImHaus, anforderungSperren, postBereitschaft,
  * nur der Hash, und der steht auf der Redaktionsliste des Audits.
  *
  * **Doppelzahlung.** Je Link hoechstens ein offener Checkout -- ein
- * eindeutiger Index in der Datenbank und eine Zeilensperre hier, damit zwei
- * gleichzeitig geoeffnete Tabs denselben bekommen. Ein neuer entsteht erst,
+ * eindeutiger Index in der Datenbank und ein Anspruch je Link (Migration
+ * 0142), damit zwei gleichzeitig geoeffnete Tabs denselben bekommen. Eine
+ * Zeilensperre ueber den ganzen Weg war es bis zum Performance-Audit vom
+ * 11.10.2026; sie hielt eine Verbindung, solange der Anbieter brauchte. Ein neuer entsteht erst,
  * wenn der Anbieter den alten fuer abgelaufen erklaert oder ihn auf unsere
  * Bitte beendet hat; meldet er ihn als abgeschlossen, bekommt der Gast die
  * Seite "wird verarbeitet" und keinen zweiten. Der Webhook nimmt dagegen
@@ -84,6 +88,7 @@ interface Lage {
   offenCent?: number
   linkId?: number
   propertyId?: number
+  accountId?: number
   folioId?: number
   folioRef?: string
   depositRequestId?: number | null
@@ -95,8 +100,10 @@ interface Lage {
  * hat, und bleibt bis zum Ende dieselbe Transaktion -- wie im Webhook.
  *
  * `sperren` haelt die Zeile des Links bis zum Ende der Transaktion fest. Der
- * Weg zum Anbieter braucht das, damit zwei gleichzeitige Aufrufe nicht
- * zwei Checkouts anlegen; die Seite allein braucht es nicht.
+ * Weg zum Anbieter braucht das, damit zwei gleichzeitige Aufrufe den
+ * Anspruch auf den Link nacheinander pruefen (`anspruchNehmen`); die Seite
+ * allein braucht es nicht. Der Anbieter selbst wird erst nach dieser
+ * Transaktion gefragt.
  */
 async function lage(
   client: PoolClient, token: string | undefined, sprache: EmailLanguage, sperren: boolean
@@ -147,6 +154,7 @@ async function lage(
     deposit: z.deposit_request_id !== null, validUntil: z.valid_until
   }
   const grund = { lang, daten, linkId: z.id, propertyId: s.property_id,
+                  accountId: s.account_id,
                   folioId: z.folio_id, folioRef: z.folio_ref,
                   depositRequestId: z.deposit_request_id }
 
@@ -378,7 +386,15 @@ export function paymentLinkRoutes(
       const id = Number(linkId)
       if (!Number.isInteger(id) || id <= 0) throw Errors.notFound('res.paymentLink')
 
-      return tx(req.pool, req, async client => {
+      /*
+       * Drei Schritte, damit keine Verbindung auf den Anbieter wartet
+       * (Performance-Audit 11.10.2026, Befund 4): kurz pruefen und den
+       * Anspruch auf den Link nehmen, ohne Transaktion den Anbieter fragen,
+       * kurz das Ergebnis schreiben. Der Anspruch haelt einen Gast, der den
+       * Link gerade oeffnet, davon ab, dazwischen einen neuen Checkout
+       * anzulegen -- das tat vorher die Zeilensperre ueber den ganzen Weg.
+       */
+      const erst = await bisFrei(() => tx(req.pool, req, async client => {
         const l = await client.query<{ id: number; property_id: number; revoked: boolean }>(
           `SELECT id, property_id, revoked_at IS NOT NULL AS revoked
              FROM payment_link WHERE id = $1 FOR UPDATE`, [id])
@@ -387,28 +403,56 @@ export function paymentLinkRoutes(
         rechtImHaus(principal, 'folio:post', link.property_id)
         if (link.revoked) throw Errors.conflict('payments.linkNotOpen')
 
+        const anspruch = await anspruchNehmen(client, link.id, link.property_id)
+        if (anspruch === null) return BESETZT
         const offen = await client.query<{ id: number; provider_reference: string }>(
           `SELECT id, provider_reference FROM payment_intent
             WHERE payment_link_id = $1 AND property_id = $2 AND status = 'pending'`,
           [link.id, link.property_id])
-        for (const c of offen.rows) {
-          if (!stripe) throw Errors.notConfigured('payments.stripeKeyMissing')
-          await checkoutSchliessen(client, stripe, c, req, 'conflict')
-        }
+        return { link, anspruch, offen: offen.rows }
+      }))
+      if (erst === BESETZT) throw Errors.conflict('payments.linkBusy')
+      const { link, anspruch, offen } = erst
 
-        await client.query(
-          `UPDATE payment_link SET revoked_at = now(), revoked_by = $2, token_hash = NULL
-            WHERE id = $1`, [link.id, principal.userId])
-        // Wartet die Mail mit diesem Link noch auf den Versand, geht sie
-        // nicht mehr hinaus: sie truege einen Link, der ins Leere fuehrt.
-        // Zurueckgezogen wird sie, nicht geloescht; der Trigger aus 0068
-        // nimmt das Token dabei aus dem Rumpf.
-        await client.query(
-          `UPDATE outbound_email SET status = 'canceled'
-            WHERE id = (SELECT email_id FROM payment_link WHERE id = $1)
-              AND status = 'pending'`, [link.id])
-        return { linkId: link.id, status: 'canceled' }
+      // Beim Anbieter, ohne Verbindung aus dem Pool.
+      const erledigt: Erledigt[] = []
+      let fehler: unknown = null
+      try {
+        for (const c of offen) {
+          if (!stripe) throw Errors.notConfigured('payments.stripeKeyMissing')
+          const r = await checkoutSchliessen(stripe, c.provider_reference, req, 'conflict')
+          if (r !== 'abgeschlossen') erledigt.push({ id: c.id, status: r })
+        }
+      } catch (err) {
+        fehler = err
+      }
+
+      /*
+       * Was beim Anbieter schon beendet ist, wird vermerkt, auch wenn danach
+       * etwas schiefging: sonst stuende ein Checkout als offen in der
+       * Datenbank, den der Anbieter nicht mehr kennt. Der Anspruch geht in
+       * jedem Fall zurueck.
+       */
+      await tx(req.pool, req, async client => {
+        await client.query(`SELECT 1 FROM payment_link WHERE id = $1 FOR UPDATE`, [link.id])
+        await erledigtVermerken(client, erledigt)
+        if (fehler === null) {
+          await client.query(
+            `UPDATE payment_link SET revoked_at = now(), revoked_by = $2, token_hash = NULL
+              WHERE id = $1`, [link.id, principal.userId])
+          // Wartet die Mail mit diesem Link noch auf den Versand, geht sie
+          // nicht mehr hinaus: sie truege einen Link, der ins Leere fuehrt.
+          // Zurueckgezogen wird sie, nicht geloescht; der Trigger aus 0068
+          // nimmt das Token dabei aus dem Rumpf.
+          await client.query(
+            `UPDATE outbound_email SET status = 'canceled'
+              WHERE id = (SELECT email_id FROM payment_link WHERE id = $1)
+                AND status = 'pending'`, [link.id])
+        }
+        await anspruchFreigeben(client, link.id, anspruch)
       })
+      if (fehler !== null) throw fehler
+      return { linkId: link.id, status: 'canceled' }
     }
   })
 
@@ -461,12 +505,7 @@ export function paymentLinkRoutes(
       const { t } = (req.query ?? {}) as { t?: string }
       const sprache = spracheAusKopf(req.headers['accept-language'])
       try {
-        const ziel = await withTransaction(req.pool, SYSTEM_CONTEXT, async client => {
-          const x = await lage(client, t, sprache, true)
-          if (x.kind !== 'open') return x
-          if (!stripe) return { ...x, kind: 'unavailable' as const }
-          return await checkoutOeffnen(client, stripe, x, config, req)
-        })
+        const ziel = await checkoutOeffnen(req.pool, stripe, t, sprache, config, req)
         if ('url' in ziel) {
           void reply.status(303).header('location', ziel.url)
             .header('cache-control', 'no-store').header('referrer-policy', 'no-referrer')
@@ -502,33 +541,119 @@ export function paymentLinkRoutes(
 }
 
 /**
+ * Wie lange ein zweiter Aufruf auf den Anspruch eines ersten wartet, bevor
+ * er aufgibt. Der erste braucht hoechstens drei Aufrufe beim Anbieter mit je
+ * acht Sekunden Zeitgrenze; gewartet wird ohne Verbindung aus dem Pool.
+ */
+const ANSPRUCH_WARTEN_MS = 30_000
+
+/** Ein anderer Aufruf ist gerade fuer diesen Link beim Anbieter. */
+const BESETZT = Symbol('besetzt')
+
+/**
+ * Den Anspruch auf den Weg zum Anbieter fuer einen Link nehmen (Migration
+ * 0142). Laeuft unter der Zeilensperre des Links; `null`, wenn ein anderer
+ * Aufruf ihn haelt und er noch nicht verfallen ist.
+ */
+async function anspruchNehmen(
+  client: PoolClient, linkId: number, propertyId: number
+): Promise<string | null> {
+  const anspruch = randomUUID()
+  const r = await client.query(
+    `INSERT INTO payment_link_checkout_claim (payment_link_id, property_id, claim_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (payment_link_id) DO UPDATE
+        SET claim_id = EXCLUDED.claim_id, claimed_at = now()
+      WHERE payment_link_checkout_claim.claimed_at < now() - interval '60 seconds'
+     RETURNING claim_id`, [linkId, propertyId, anspruch])
+  return r.rowCount === 1 ? anspruch : null
+}
+
+/**
+ * Den eigenen Anspruch freigeben -- nur den eigenen: ist er verfallen und
+ * hat ihn ein anderer Aufruf uebernommen, bleibt dessen stehen.
+ */
+async function anspruchFreigeben(
+  client: PoolClient, linkId: number, anspruch: string
+): Promise<void> {
+  await client.query(
+    `DELETE FROM payment_link_checkout_claim
+      WHERE payment_link_id = $1 AND claim_id = $2`, [linkId, anspruch])
+}
+
+/**
+ * Einen Schritt wiederholen, solange ein anderer Aufruf den Anspruch haelt.
+ * Zwischen den Versuchen wird keine Verbindung gehalten.
+ */
+async function bisFrei<T>(
+  versuch: () => Promise<T | typeof BESETZT>
+): Promise<T | typeof BESETZT> {
+  const ende = Date.now() + ANSPRUCH_WARTEN_MS
+  let pause = 25
+  for (;;) {
+    const r = await versuch()
+    if (r !== BESETZT || Date.now() >= ende) return r
+    await new Promise(fertig => setTimeout(fertig, pause))
+    pause = Math.min(pause * 2, 500)
+  }
+}
+
+/** Ein Checkout, den der Anbieter fuer erledigt erklaert hat, und wie. */
+interface Erledigt { id: number; status: 'canceled' | 'failed' }
+
+/**
+ * Vermerken, was beim Anbieter erledigt ist. Nur aus `pending`: hat der
+ * Webhook die Zahlung inzwischen verbucht, bleibt sie verbucht.
+ */
+async function erledigtVermerken(client: PoolClient, erledigt: Erledigt[]): Promise<void> {
+  for (const e of erledigt) {
+    if (e.status === 'canceled') {
+      await client.query(
+        `UPDATE payment_intent SET status = 'canceled', canceled_at = now()
+          WHERE id = $1 AND status = 'pending'`, [e.id])
+    } else {
+      // Beim Anbieter abgelaufen: dieselbe Markierung, die seine
+      // Ablaufmeldung setzen wuerde. Kommt sie spaeter noch, aendert sie
+      // nichts mehr.
+      await client.query(
+        `UPDATE payment_intent SET status = 'failed' WHERE id = $1 AND status = 'pending'`,
+        [e.id])
+    }
+  }
+}
+
+/**
  * Einen offenen Checkout beim Anbieter schliessen, bevor etwas anderes
  * geschieht. Der Anbieter ist die einzige Stelle, die verlaesslich weiss,
  * ob er noch bezahlt werden kann.
  *
- * `bei_abschluss`: was geschehen soll, wenn der Anbieter ihn als
+ * Fragt nur den Anbieter und schreibt nichts: die Antwort vermerkt der
+ * Aufrufer in einer eigenen kurzen Transaktion (`erledigtVermerken`).
+ *
+ * `beiAbschluss`: was geschehen soll, wenn der Anbieter ihn als
  * abgeschlossen meldet -- beim Widerruf eine Antwort an die Rezeption, beim
  * Oeffnen durch den Gast die Seite "wird verarbeitet".
  */
 async function checkoutSchliessen(
-  client: PoolClient, stripe: StripeAdapter,
-  c: { id: number; provider_reference: string }, req: FastifyRequest,
-  beiAbschluss: 'conflict' | 'melden'
-): Promise<'geschlossen' | 'abgeschlossen'> {
-  let stand
-  try {
-    stand = await stripe.getCheckoutSession(c.provider_reference)
-  } catch (err) {
-    req.log.warn({ err }, 'Checkout beim Anbieter nicht abgefragt')
-    throw Errors.upstreamFailed('payments.providerUnavailable')
+  stripe: StripeAdapter, ref: string, req: FastifyRequest,
+  beiAbschluss: 'conflict' | 'melden', bekannt?: CheckoutState['status']
+): Promise<'canceled' | 'failed' | 'abgeschlossen'> {
+  let status = bekannt
+  if (status === undefined) {
+    try {
+      status = (await stripe.getCheckoutSession(ref)).status
+    } catch (err) {
+      req.log.warn({ err }, 'Checkout beim Anbieter nicht abgefragt')
+      throw Errors.upstreamFailed('payments.providerUnavailable')
+    }
   }
-  if (stand.status === 'complete') {
+  if (status === 'complete') {
     if (beiAbschluss === 'conflict') throw Errors.conflict('payments.linkNotCancelable')
     return 'abgeschlossen'
   }
-  if (stand.status === 'open') {
+  if (status === 'open') {
     try {
-      await stripe.expireCheckoutSession(c.provider_reference)
+      await stripe.expireCheckoutSession(ref)
     } catch (err) {
       if (err instanceof ProviderRefused) {
         if (beiAbschluss === 'conflict') throw Errors.conflict('payments.linkNotCancelable')
@@ -537,30 +662,132 @@ async function checkoutSchliessen(
       req.log.warn({ err }, 'Checkout beim Anbieter nicht beendet')
       throw Errors.upstreamFailed('payments.providerUnavailable')
     }
-    await client.query(
-      `UPDATE payment_intent SET status = 'canceled', canceled_at = now()
-        WHERE id = $1 AND status = 'pending'`, [c.id])
-    return 'geschlossen'
+    return 'canceled'
   }
-  // Beim Anbieter abgelaufen: dieselbe Markierung, die seine Ablaufmeldung
-  // setzen wuerde. Kommt sie spaeter noch, aendert sie nichts mehr.
-  await client.query(
-    `UPDATE payment_intent SET status = 'failed' WHERE id = $1 AND status = 'pending'`,
-    [c.id])
-  return 'geschlossen'
+  return 'failed'
 }
 
+/**
+ * Der Weg vom Knopf zum Anbieter, in drei Schritten (Performance-Audit
+ * 11.10.2026, Befund 4).
+ *
+ * Vorher lief alles in einer Transaktion mit Zeilensperre auf dem Link,
+ * auch die Aufrufe beim Anbieter. Haengt der Anbieter, hielt jeder Gast,
+ * der neu laedt, eine Verbindung aus dem Pool von zehn -- ein paar Gaeste
+ * legten die Rezeption lahm. Jetzt:
+ *
+ * 1. Kurz: lesen, Link sperren, entscheiden, den Anspruch nehmen.
+ * 2. Ohne Transaktion: den Anbieter fragen, alte Checkouts beenden, einen
+ *    neuen anlegen.
+ * 3. Kurz: das Ergebnis schreiben und den Anspruch freigeben.
+ *
+ * **Zwei Tabs, ein Doppelklick.** Der zweite Aufruf findet den Anspruch,
+ * wartet ohne Verbindung und sieht danach den fertigen Checkout, den er
+ * wiederverwendet. Haelt doch einmal ein verfallener Anspruch zwei Aufrufe
+ * nicht auseinander, entscheidet der eindeutige Index (ein offener Checkout
+ * je Link): eingetragen wird nur einer, und nur dessen Adresse geht an den
+ * Gast. Der andere wird beim Anbieter beendet -- und selbst wenn das
+ * scheitert, kennt seine Adresse niemand, und bezahlen kann ihn keiner.
+ */
 async function checkoutOeffnen(
-  client: PoolClient, stripe: StripeAdapter, x: Lage, config: Config, req: FastifyRequest
+  pool: Pool, stripe: StripeAdapter | null, token: string | undefined,
+  sprache: EmailLanguage, config: Config, req: FastifyRequest
 ): Promise<{ url: string } | Lage> {
-  const offenCent = x.offenCent!
-  const vorhanden = await client.query<{ id: number; provider_reference: string
-                                         amount_cent: string }>(
-    `SELECT id, provider_reference, amount_cent FROM payment_intent
-      WHERE payment_link_id = $1 AND property_id = $2 AND status = 'pending'`,
-    [x.linkId, x.propertyId])
+  const nichtMoeglich: Lage = { kind: 'unavailable', lang: sprache, daten: {} }
 
-  for (const c of vorhanden.rows) {
+  // 1. Lesen und entscheiden.
+  const erst = await bisFrei(() => withTransaction(pool, SYSTEM_CONTEXT, async client => {
+    const x = await lage(client, token, sprache, true)
+    if (x.kind !== 'open') return { x }
+    if (!stripe) return { x: { ...x, kind: 'unavailable' as const } }
+    const anspruch = await anspruchNehmen(client, x.linkId!, x.propertyId!)
+    if (anspruch === null) return BESETZT
+    const vorhanden = await client.query<{ id: number; provider_reference: string
+                                           amount_cent: string }>(
+      `SELECT id, provider_reference, amount_cent FROM payment_intent
+        WHERE payment_link_id = $1 AND property_id = $2 AND status = 'pending'`,
+      [x.linkId, x.propertyId])
+    return { x, anspruch, vorhanden: vorhanden.rows }
+  }))
+  if (erst === BESETZT) return nichtMoeglich
+  if (erst.anspruch === undefined || erst.vorhanden === undefined || stripe === null) {
+    return erst.x
+  }
+  const { x, anspruch, vorhanden } = erst
+
+  // 2. Beim Anbieter, ohne Verbindung aus dem Pool.
+  const erledigt: Erledigt[] = []
+  let ziel: { url: string } | Lage | null = null
+  let neu: CheckoutSession | null = null
+  try {
+    ziel = await beimAnbieter(stripe, x, vorhanden, erledigt, req)
+    if (ziel === null) {
+      try {
+        neu = await stripe.createCheckoutSession({
+          amountCent: x.offenCent!,
+          reference: x.folioRef!,
+          // Ohne Token: der Anbieter soll den Ausweis des Gastes nicht kennen.
+          successUrl: `${config.publicAppUrl}/v1/pay/done?lang=${x.lang}`,
+          cancelUrl: `${config.publicAppUrl}/v1/pay/done?lang=${x.lang}&ergebnis=abgebrochen`
+        })
+      } catch (err) {
+        req.log.warn({ err }, 'Checkout beim Anbieter nicht angelegt')
+        ziel = { ...x, kind: 'unavailable' }
+      }
+    }
+  } catch (err) {
+    // Ein Fehler hier darf den Anspruch nicht eine Minute stehen lassen.
+    req.log.error({ err }, 'Checkout beim Anbieter nicht vorbereitet')
+    ziel = { ...x, kind: 'unavailable' }
+  }
+
+  // 3. Ergebnis schreiben, Anspruch freigeben.
+  const ctx = { accountIds: [x.accountId!], propertyIds: [x.propertyId!], userId: null }
+  const eingetragen = await withTransaction(pool, ctx, async client => {
+    const l = await client.query<{ revoked: boolean }>(
+      `SELECT revoked_at IS NOT NULL AS revoked FROM payment_link WHERE id = $1 FOR UPDATE`,
+      [x.linkId])
+    await erledigtVermerken(client, erledigt)
+    let ok = false
+    if (neu !== null && l.rows[0]?.revoked === false) {
+      const ins = await client.query(
+        `INSERT INTO payment_intent (property_id, folio_id, provider, provider_reference,
+                                     amount_cent, deposit_request_id, expires_at,
+                                     payment_link_id)
+         VALUES ($1,$2,'stripe',$3,$4,$5,$6,$7)
+         ON CONFLICT DO NOTHING`,
+        [x.propertyId, x.folioId, neu.providerReference, x.offenCent,
+         x.depositRequestId ?? null, neu.expiresAt ?? null, x.linkId])
+      ok = ins.rowCount === 1
+    }
+    await anspruchFreigeben(client, x.linkId!, anspruch)
+    return ok
+  })
+
+  if (neu === null) return ziel ?? nichtMoeglich
+  if (eingetragen) return { url: neu.url }
+  // Nicht eingetragen: inzwischen widerrufen oder ein anderer Checkout war
+  // schneller. Diesen beim Anbieter beenden; seine Adresse bekommt niemand.
+  try {
+    await stripe.expireCheckoutSession(neu.providerReference)
+  } catch (err) {
+    req.log.warn({ err }, 'Ueberzaehligen Checkout beim Anbieter nicht beendet')
+  }
+  return nichtMoeglich
+}
+
+/**
+ * Die vorhandenen Checkouts eines Links beim Anbieter pruefen. Liefert das
+ * Ziel, wenn eines feststeht (wiederverwenden, "wird verarbeitet", nicht
+ * moeglich), oder `null`, wenn ein neuer anzulegen ist. Was beim Anbieter
+ * beendet wurde, steht danach in `erledigt`.
+ */
+async function beimAnbieter(
+  stripe: StripeAdapter, x: Lage,
+  vorhanden: Array<{ id: number; provider_reference: string; amount_cent: string }>,
+  erledigt: Erledigt[], req: FastifyRequest
+): Promise<{ url: string } | Lage | null> {
+  for (const c of vorhanden) {
     let stand
     try {
       stand = await stripe.getCheckoutSession(c.provider_reference)
@@ -574,7 +801,7 @@ async function checkoutOeffnen(
      * landen alle im selben Checkout.
      */
     if (stand.status === 'open' && stand.url !== null
-        && Number(c.amount_cent) === offenCent
+        && Number(c.amount_cent) === x.offenCent
         && (stand.expiresAt === undefined
             || stand.expiresAt.getTime() - Date.now() > MINDESTRESTZEIT_MS)) {
       return { url: stand.url }
@@ -583,34 +810,13 @@ async function checkoutOeffnen(
     // Anderer Betrag oder bald abgelaufen: erst beim Anbieter schliessen,
     // dann einen neuen. Meldet er ihn dabei als abgeschlossen, keinen neuen.
     try {
-      const r = await checkoutSchliessen(client, stripe, c, req, 'melden')
+      const r = await checkoutSchliessen(stripe, c.provider_reference, req, 'melden',
+                                         stand.status)
       if (r === 'abgeschlossen') return { ...x, kind: 'processing' }
+      erledigt.push({ id: c.id, status: r })
     } catch {
       return { ...x, kind: 'unavailable' }
     }
   }
-
-  let session
-  try {
-    session = await stripe.createCheckoutSession({
-      amountCent: offenCent,
-      reference: x.folioRef!,
-      // Ohne Token: der Anbieter soll den Ausweis des Gastes nicht kennen.
-      successUrl: `${config.publicAppUrl}/v1/pay/done?lang=${x.lang}`,
-      cancelUrl: `${config.publicAppUrl}/v1/pay/done?lang=${x.lang}&ergebnis=abgebrochen`
-    })
-  } catch (err) {
-    req.log.warn({ err }, 'Checkout beim Anbieter nicht angelegt')
-    return { ...x, kind: 'unavailable' }
-  }
-
-  // Der eindeutige Index (ein offener Checkout je Link) haelt fest, was die
-  // Sperre auf der Linkzeile schon sicherstellt.
-  await client.query(
-    `INSERT INTO payment_intent (property_id, folio_id, provider, provider_reference,
-                                 amount_cent, deposit_request_id, expires_at, payment_link_id)
-     VALUES ($1,$2,'stripe',$3,$4,$5,$6,$7)`,
-    [x.propertyId, x.folioId, session.providerReference, offenCent,
-     x.depositRequestId ?? null, session.expiresAt ?? null, x.linkId])
-  return { url: session.url }
+  return null
 }

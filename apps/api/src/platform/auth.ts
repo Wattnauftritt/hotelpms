@@ -6,169 +6,205 @@ import { ANONYMOUS } from './context.js'
 import { isSupportLevel, supportPermissions } from './support.js'
 import { isPermission, type Permission } from './permissions.js'
 
-interface RoleRow {
-  level: 'platform' | 'account' | 'property'
-  account_id: number | null
-  property_id: number | null
-  permission_key: Permission
+/** Was `principal_user_data` (Migration 0142) liefert, Schluessel kurz gehalten. */
+interface PrincipalUserData {
+  platformStaff: boolean
+  roles: Array<{ l: 'platform' | 'account' | 'property'; a: number | null
+                 p: number | null; k: Permission }>
+  openAccounts: number[]
+  /** [property_id, account_id] aus `user_property_scope`. */
+  scope: Array<[number, number]>
+  /** [property_id, account_id, permission_key] aus `user_shared_staff_permissions`. */
+  shared: Array<[number, number, string]>
+}
+
+/** Was `principal_support_data` (Migration 0142) liefert. */
+interface SupportData {
+  id: number
+  accountId: number
+  level: string
+  properties: number[]
 }
 
 /**
  * Laedt die wirksamen Berechtigungen eines Nutzers.
- * Wird bei der Anmeldung berechnet und in der Sitzung gehalten; bei einer
- * Rollenaenderung werden alle Sitzungen des Nutzers ungueltig (Dokument 14).
+ *
+ * Wird **je Anfrage** neu berechnet, nicht bei der Anmeldung -- hier stand
+ * lange "bei der Anmeldung berechnet und in der Sitzung gehalten", und das
+ * war nie so (Performance-Audit 11.10.2026, Befund 8). Gerade deshalb wirkt
+ * eine Sperre, ein Widerruf oder eine entzogene Rolle mit der naechsten
+ * Anfrage. Ein Zwischenspeicher im Prozess wuerde das aufweichen und ist
+ * bewusst nicht gebaut; stattdessen kostet es nur noch eine Runde.
+ *
+ * Die Anmeldung je Anfrage geht ueber `loadSessionPrincipal`; diese
+ * Fassung bleibt fuer Aufrufer, die nur eine Benutzer-ID haben.
  */
 export async function loadPrincipal(pool: Pool, userId: number): Promise<Principal> {
-  return withTransaction(pool, SYSTEM_CONTEXT, async client => {
-    const user = await client.query<{ is_platform_staff: boolean; status: string }>(
-      `SELECT is_platform_staff, status FROM app_user WHERE id = $1`, [userId])
-    if (user.rowCount === 0 || user.rows[0]!.status !== 'active') return ANONYMOUS
+  const r = await pool.query<{ d: PrincipalUserData | null }>(
+    `SELECT principal_user_data($1) AS d`, [userId])
+  return principalAus(userId, r.rows[0]?.d ?? null)
+}
 
-    const rows = await client.query<RoleRow>(
-      `SELECT 'platform'::text AS level, NULL::bigint AS account_id,
-              NULL::bigint AS property_id, rp.permission_key
-         FROM user_platform_role upr
-         JOIN role_permission rp ON rp.role_id = upr.role_id
-        WHERE upr.user_id = $1
-        UNION ALL
-       SELECT 'account', uar.account_id, NULL, rp.permission_key
-         FROM user_account_role uar
-         JOIN role_permission rp ON rp.role_id = uar.role_id
-        WHERE uar.user_id = $1
-        UNION ALL
-       SELECT 'property', NULL, upr2.property_id, rp.permission_key
-         FROM user_property_role upr2
-         JOIN role_permission rp ON rp.role_id = upr2.role_id
-        WHERE upr2.user_id = $1`, [userId])
+/**
+ * Baut das Principal aus der Antwort von `principal_user_data`.
+ *
+ * Die Datenbank liefert nur, was gilt (Zugriffsbereich, Sperren); welche
+ * Rolle damit in welchem Account wirkt, steht hier, mit den Gruenden.
+ */
+function principalAus(userId: number, d: PrincipalUserData | null): Principal {
+  // Unbekannt oder nicht aktiv (eingeladen, deaktiviert): anonym.
+  if (d === null) return ANONYMOUS
 
-    /*
-     * Welche Accounts dieses Nutzers ueberhaupt noch offen sind.
-     *
-     * Ein gesperrter Kunde (`account.status`) soll nicht weiterarbeiten, als
-     * waere nichts -- und bis Migration 0038 tat er genau das: die Spalte
-     * gab es seit 0002, gelesen hat sie niemand. Eine Account-Rolle bringt
-     * ihren Account hier **direkt** mit, auch ohne Haus; ohne diese Liste
-     * bliebe die Sperre auf halbem Weg stehen.
-     *
-     * Ueber eine SECURITY-DEFINER-Funktion, weil `account` eine erzwungene
-     * Zeilenrichtlinie traegt und hier noch kein Kontext gesetzt ist -- die
-     * Falle aus den Migrationen 0014, 0018 und 0032.
-     */
-    const offen = await client.query<{ account_id: number }>(
-      `SELECT account_id FROM user_account_scope($1)`, [userId])
-    const offeneAccounts = new Set(offen.rows.map(r => r.account_id))
+  /*
+   * Welche Accounts dieses Nutzers ueberhaupt noch offen sind.
+   *
+   * Ein gesperrter Kunde (`account.status`) soll nicht weiterarbeiten, als
+   * waere nichts -- und bis Migration 0038 tat er genau das: die Spalte
+   * gab es seit 0002, gelesen hat sie niemand. Eine Account-Rolle bringt
+   * ihren Account hier **direkt** mit, auch ohne Haus; ohne diese Liste
+   * bliebe die Sperre auf halbem Weg stehen.
+   *
+   * Ueber eine SECURITY-DEFINER-Funktion, weil `account` eine erzwungene
+   * Zeilenrichtlinie traegt und hier noch kein Kontext gesetzt ist -- die
+   * Falle aus den Migrationen 0014, 0018 und 0032.
+   */
+  const offeneAccounts = new Set(d.openAccounts)
 
-    /*
-     * Zugriffsbereich aufloesen.
-     *
-     * Das ist ein Henne-Ei-Problem: um zu wissen, welche Haeuser jemand
-     * sehen darf, muss einmal etwas gelesen werden, das die
-     * Zeilenrichtlinie noch nicht freigibt. Zwei fruehere Abfragen taten das
-     * mit leerem Kontext und bekamen deshalb **nichts** zurueck. Die Folge
-     * war, dass eine Account-Rolle auf gar kein Haus wirkte und eine
-     * Property-Rolle ihren Account nicht mitbrachte, sodass die Rezeption
-     * keine Gastprofile sah (Migration 0018).
-     *
-     * Jetzt eine SECURITY-DEFINER-Funktion, die nur fuer diesen einen Nutzer
-     * antwortet und nur Kennungen liefert -- und die seit Migration 0038
-     * auch am Zustand des Kunden endet. Sie steht deshalb **vor** der
-     * Schleife: sie entscheidet mit, welche Rolle ueberhaupt noch wirkt.
-     */
-    const scope = await client.query<{ property_id: number; account_id: number }>(
-      `SELECT property_id, account_id FROM user_property_scope($1)`, [userId])
-    const offeneHaeuser = new Set(scope.rows.map(r => r.property_id))
+  /*
+   * Zugriffsbereich aufloesen.
+   *
+   * Das ist ein Henne-Ei-Problem: um zu wissen, welche Haeuser jemand
+   * sehen darf, muss einmal etwas gelesen werden, das die
+   * Zeilenrichtlinie noch nicht freigibt. Zwei fruehere Abfragen taten das
+   * mit leerem Kontext und bekamen deshalb **nichts** zurueck. Die Folge
+   * war, dass eine Account-Rolle auf gar kein Haus wirkte und eine
+   * Property-Rolle ihren Account nicht mitbrachte, sodass die Rezeption
+   * keine Gastprofile sah (Migration 0018).
+   *
+   * Jetzt eine SECURITY-DEFINER-Funktion, die nur fuer diesen einen Nutzer
+   * antwortet und nur Kennungen liefert -- und die seit Migration 0038
+   * auch am Zustand des Kunden endet. Sie entscheidet mit, welche Rolle
+   * ueberhaupt noch wirkt.
+   */
+  const offeneHaeuser = new Set(d.scope.map(([p]) => p))
 
-    const accountIds = new Set<number>()
-    const accountPermissionsByAccount = new Map<number, Set<Permission>>()
-    const propertyAccounts = new Map<number, number>()
-    const platformPermissions = new Set<Permission>()
-    const permissionsByProperty = new Map<number, Set<Permission>>()
+  const accountIds = new Set<number>()
+  const accountPermissionsByAccount = new Map<number, Set<Permission>>()
+  const propertyAccounts = new Map<number, number>()
+  const platformPermissions = new Set<Permission>()
+  const permissionsByProperty = new Map<number, Set<Permission>>()
 
-    for (const r of rows.rows) {
-      if (r.level === 'platform') platformPermissions.add(r.permission_key)
-      else if (r.level === 'account' && r.account_id !== null) {
-        // Rollen an einem gesperrten Account wirken nicht. Auch die Rechte
-        // nicht: sie gelten in diesem Modell ueber alle Accounts des
-        // Nutzers zugleich, und ein gesperrter darf keine mitbringen.
-        if (!offeneAccounts.has(r.account_id)) continue
-        accountIds.add(r.account_id)
-        let set = accountPermissionsByAccount.get(r.account_id)
-        if (!set) { set = new Set(); accountPermissionsByAccount.set(r.account_id, set) }
-        set.add(r.permission_key)
-      } else if (r.level === 'property' && r.property_id !== null) {
-        /*
-         * Dieselbe Sperre eine Ebene tiefer. Eine Property-Rolle wirkte
-         * bisher unabhaengig vom Zugriffsbereich -- ein gesperrter Kunde
-         * haette seine Rezeption also weiterarbeiten lassen, waehrend die
-         * Account-Ebene schon zu war. Was der Zugriffsbereich nicht nennt,
-         * traegt hier auch keine Rechte.
-         */
-        if (!offeneHaeuser.has(r.property_id)) continue
-        let set = permissionsByProperty.get(r.property_id)
-        if (!set) { set = new Set(); permissionsByProperty.set(r.property_id, set) }
-        set.add(r.permission_key)
-      }
+  for (const r of d.roles) {
+    if (r.l === 'platform') platformPermissions.add(r.k)
+    else if (r.l === 'account' && r.a !== null) {
+      // Rollen an einem gesperrten Account wirken nicht. Auch die Rechte
+      // nicht: sie gelten in diesem Modell ueber alle Accounts des
+      // Nutzers zugleich, und ein gesperrter darf keine mitbringen.
+      if (!offeneAccounts.has(r.a)) continue
+      accountIds.add(r.a)
+      let set = accountPermissionsByAccount.get(r.a)
+      if (!set) { set = new Set(); accountPermissionsByAccount.set(r.a, set) }
+      set.add(r.k)
+    } else if (r.l === 'property' && r.p !== null) {
+      /*
+       * Dieselbe Sperre eine Ebene tiefer. Eine Property-Rolle wirkte
+       * bisher unabhaengig vom Zugriffsbereich -- ein gesperrter Kunde
+       * haette seine Rezeption also weiterarbeiten lassen, waehrend die
+       * Account-Ebene schon zu war. Was der Zugriffsbereich nicht nennt,
+       * traegt hier auch keine Rechte.
+       */
+      if (!offeneHaeuser.has(r.p)) continue
+      let set = permissionsByProperty.get(r.p)
+      if (!set) { set = new Set(); permissionsByProperty.set(r.p, set) }
+      set.add(r.k)
     }
+  }
 
-    for (const s of scope.rows) {
-      accountIds.add(s.account_id)
-      propertyAccounts.set(s.property_id, s.account_id)
-      if (!permissionsByProperty.has(s.property_id)) {
-        permissionsByProperty.set(s.property_id, new Set())
-      }
+  for (const [propertyId, accountId] of d.scope) {
+    accountIds.add(accountId)
+    propertyAccounts.set(propertyId, accountId)
+    if (!permissionsByProperty.has(propertyId)) {
+      permissionsByProperty.set(propertyId, new Set())
     }
+  }
 
-    /*
-     * Betrieb mit gemeinsamem Personal (Migration 0116): eine Rolle
-     * Reinigung, Kueche oder Hausdame in einem Haus wirkt in allen Haeusern
-     * des Betriebs. Die Funktion prueft dieselben Sperren wie der
-     * Zugriffsbereich; was sie liefert, ist also offen.
-     */
-    const geteilt = await client.query<{ property_id: number; account_id: number
-                                         permission_key: string }>(
-      `SELECT property_id, account_id, permission_key
-         FROM user_shared_staff_permissions($1)`, [userId])
-    for (const r of geteilt.rows) {
-      if (!isPermission(r.permission_key)) continue
-      accountIds.add(r.account_id)
-      propertyAccounts.set(r.property_id, r.account_id)
-      let set = permissionsByProperty.get(r.property_id)
-      if (!set) { set = new Set(); permissionsByProperty.set(r.property_id, set) }
-      set.add(r.permission_key)
-    }
+  /*
+   * Betrieb mit gemeinsamem Personal (Migration 0116): eine Rolle
+   * Reinigung, Kueche oder Hausdame in einem Haus wirkt in allen Haeusern
+   * des Betriebs. Die Funktion prueft dieselben Sperren wie der
+   * Zugriffsbereich; was sie liefert, ist also offen.
+   */
+  for (const [propertyId, accountId, key] of d.shared) {
+    if (!isPermission(key)) continue
+    accountIds.add(accountId)
+    propertyAccounts.set(propertyId, accountId)
+    let set = permissionsByProperty.get(propertyId)
+    if (!set) { set = new Set(); permissionsByProperty.set(propertyId, set) }
+    set.add(key)
+  }
 
-    /*
-     * Was in **jedem** Account des Nutzers auf Betriebsebene gilt. Wer nur
-     * einen Account hat -- der Normalfall --, bekommt genau seine
-     * Account-Rechte; wer in einem zweiten Betrieb nur eine Hausrolle hat,
-     * bekommt hier nichts, und seine Inhaberrechte wirken nur noch im
-     * eigenen Betrieb (Befund K1, Sicherheitsaudit 2026-10-11).
-     */
-    const accountPermissions = new Set<Permission>()
-    const [erster, ...weitere] = [...accountIds]
-    for (const perm of (erster === undefined ? [] : accountPermissionsByAccount.get(erster) ?? [])) {
-      if (weitere.every(a => accountPermissionsByAccount.get(a)?.has(perm))) {
-        accountPermissions.add(perm)
-      }
+  /*
+   * Was in **jedem** Account des Nutzers auf Betriebsebene gilt. Wer nur
+   * einen Account hat -- der Normalfall --, bekommt genau seine
+   * Account-Rechte; wer in einem zweiten Betrieb nur eine Hausrolle hat,
+   * bekommt hier nichts, und seine Inhaberrechte wirken nur noch im
+   * eigenen Betrieb (Befund K1, Sicherheitsaudit 2026-10-11).
+   */
+  const accountPermissions = new Set<Permission>()
+  const [erster, ...weitere] = [...accountIds]
+  for (const perm of (erster === undefined ? [] : accountPermissionsByAccount.get(erster) ?? [])) {
+    if (weitere.every(a => accountPermissionsByAccount.get(a)?.has(perm))) {
+      accountPermissions.add(perm)
     }
+  }
 
-    return {
-      userId,
-      clientKey: `user:${userId}`,
-      isPlatformStaff: user.rows[0]!.is_platform_staff,
-      accountIds: [...accountIds],
-      permissionsByProperty,
-      accountPermissions,
-      accountPermissionsByAccount,
-      propertyAccounts,
-      platformPermissions,
-      supportSessionId: null,
-      // Wer die Sitzung eroeffnet hat, weiss nur der Aufrufer dieser
-      // Funktion; hier steht bewusst die handelnde Person selbst.
-      sessionUserId: userId,
-      terminalDeviceId: null
-    }
-  })
+  return {
+    userId,
+    clientKey: `user:${userId}`,
+    isPlatformStaff: d.platformStaff,
+    accountIds: [...accountIds],
+    permissionsByProperty,
+    accountPermissions,
+    accountPermissionsByAccount,
+    propertyAccounts,
+    platformPermissions,
+    supportSessionId: null,
+    // Wer die Sitzung eroeffnet hat, weiss nur der Aufrufer dieser
+    // Funktion; hier steht bewusst die handelnde Person selbst.
+    sessionUserId: userId,
+    terminalDeviceId: null
+  }
+}
+
+/**
+ * Principal aus dem Sitzungscookie, in **einer** Runde zur Datenbank
+ * (`session_principal`, Migration 0142).
+ *
+ * Vorher waren es rund zehn: Sitzung lesen, `loadPrincipal` als eigene
+ * Transaktion mit fuenf Abfragen, fuer Plattformpersonal zwei weitere
+ * Transaktionen fuer die Support-Sitzung, dann last_seen_at -- je Anfrage,
+ * auch beim Abfragetakt des Terminals, und nichts davon im Abfragezaehler
+ * (Performance-Audit 11.10.2026, Befund 8). Die Regeln sind dieselben: die
+ * Funktion ruft dieselben Bausteine, und zusammengesetzt wird hier wie in
+ * `loadPrincipal` und `applySupportSession`.
+ *
+ * `null`, wenn die Sitzung unbekannt, widerrufen oder abgelaufen ist.
+ */
+export async function loadSessionPrincipal(
+  pool: Pool, sessionId: string
+): Promise<Principal | null> {
+  const r = await pool.query<{ session_user_id: number; effective_user_id: number
+                               principal: PrincipalUserData | null
+                               support: SupportData | null }>(
+    `SELECT * FROM session_principal($1)`, [sessionId])
+  const row = r.rows[0]
+  if (row === undefined) return null
+  // Arbeitsplatz-PIN wechselt die handelnde Person, ohne Neuanmeldung.
+  let principal = principalAus(row.effective_user_id, row.principal)
+  principal = mitSupport(principal, row.support)
+  // Wer sich angemeldet hat, bleibt bekannt, auch wenn gerade jemand
+  // anderes handelt: die Oberflaeche zeigt den Wechsel damit an.
+  return { ...principal, sessionUserId: row.session_user_id }
 }
 
 /**
@@ -320,25 +356,29 @@ export async function applySupportSession(
   pool: Pool, principal: Principal
 ): Promise<Principal> {
   if (!principal.isPlatformStaff || principal.userId === null) return principal
+  const r = await pool.query<{ d: SupportData | null }>(
+    `SELECT principal_support_data($1) AS d`, [principal.userId])
+  return mitSupport(principal, r.rows[0]?.d ?? null)
+}
 
-  const active = await withTransaction(pool, SYSTEM_CONTEXT, client =>
-    client.query<{ id: number; account_id: number; level: string }>(
-      `SELECT id, account_id, level FROM support_session
-        WHERE platform_user_id = $1
-          AND granted_at IS NOT NULL
-          AND revoked_at IS NULL
-          AND expires_at > now()
-        ORDER BY granted_at DESC LIMIT 1`, [principal.userId]))
+/**
+ * Die Support-Sitzung auf ein Principal anwenden. `session` ist die Antwort
+ * von `principal_support_data` (Migration 0142): die zuletzt freigegebene,
+ * nicht widerrufene, nicht abgelaufene Sitzung mit den aktiven Haeusern
+ * ihres Kunden, oder null.
+ */
+function mitSupport(principal: Principal, session: SupportData | null): Principal {
+  if (!principal.isPlatformStaff || principal.userId === null) return principal
 
-  if (active.rowCount === 0) {
+  if (session === null) {
     // Kein Zugriff auf Fachdaten. Plattformrechte bleiben erhalten.
     return { ...principal, accountIds: [], permissionsByProperty: new Map(),
              propertyAccounts: new Map() }
   }
 
-  const session = active.rows[0]!
   /*
-   * Ueber eine SECURITY-DEFINER-Funktion, nicht direkt auf `property`.
+   * Die Haeuser kommen ueber eine SECURITY-DEFINER-Funktion, nicht direkt
+   * aus `property`.
    *
    * Hier stand `SELECT id FROM property WHERE account_id = $1` unter
    * SYSTEM_CONTEXT -- also mit leeren app_property_ids(), waehrend die
@@ -347,10 +387,6 @@ export async function applySupportSession(
    * bekam kein einziges Haus. Dieselbe Falle wie in den Migrationen 0014 und
    * 0018 (Migration 0032).
    */
-  const props = await withTransaction(pool, SYSTEM_CONTEXT, client =>
-    client.query<{ id: number }>(
-      `SELECT id FROM account_active_properties($1)`, [session.account_id]))
-
   /*
    * Die Rechte der freigegebenen Stufe, nicht die des Kunden.
    *
@@ -368,11 +404,11 @@ export async function applySupportSession(
     : new Set<Permission>()
 
   const permissionsByProperty = new Map<number, Set<Permission>>()
-  for (const p of props.rows) permissionsByProperty.set(p.id, new Set(rechte))
+  for (const p of session.properties) permissionsByProperty.set(p, new Set(rechte))
 
   return {
     ...principal,
-    accountIds: [session.account_id],
+    accountIds: [session.accountId],
     permissionsByProperty,
     /*
      * Bewusst leer, aus demselben Grund wie beim Maschinentoken oben: `can()`
@@ -384,7 +420,7 @@ export async function applySupportSession(
      */
     accountPermissions: new Set(),
     accountPermissionsByAccount: new Map(),
-    propertyAccounts: new Map(props.rows.map(p => [p.id, session.account_id])),
+    propertyAccounts: new Map(session.properties.map(p => [p, session.accountId])),
     supportSessionId: session.id
   }
 }
