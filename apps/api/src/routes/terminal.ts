@@ -272,7 +272,8 @@ async function geraetAnmelden(req: FastifyRequest, reply: FastifyReply,
     // `strict` wie bei der Sitzung (H6, Dokument 25): niemand verlinkt
     // von aussen auf das Terminal.
     sameSite: 'strict',
-    secure: config.nodeEnv === 'production',
+    // An die oeffentliche Adresse gekoppelt, nicht nur an NODE_ENV (N6).
+    secure: config.secureTransport,
     // Nur an die Routen des Terminals. Die Anwendung unter `/v1/*`
     // bekommt es nie zu sehen, auch nicht versehentlich.
     path: '/v1/terminal',

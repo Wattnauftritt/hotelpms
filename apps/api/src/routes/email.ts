@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { isSendableAddress, isFreemailDomain, domainOf, emailLanguage,
+import { isSendableAddress, isFreemailDomain, isPlatformDomain, domainOf, emailLanguage,
          renderInvoiceEmail, renderReservationEmail, renderDomainRequestNotice }
   from '@hotelpms/domain'
 import { loadConfig } from '../platform/config.js'
@@ -502,6 +502,17 @@ export function emailRoutes(
          */
         if (isFreemailDomain(domain)) {
           throw Errors.unprocessable('domain.freemail',
+            { relay: config.relayEmailDomain })
+        }
+        /*
+         * Unsere eigene Domain und alles darunter. Ein freigegebenes
+         * `mail.staygrid.cloud` liesse das Haus mit jedem Namensteil senden,
+         * auch mit dem eines anderen Hauses oder unserem (N5, Audit
+         * 11.10.2026). Die Freigabe macht zwar ein Mensch, aber nichts
+         * warnte ihn -- also hier abweisen, und beim Freigeben noch einmal.
+         */
+        if (isPlatformDomain(domain, config.platformDomains)) {
+          throw Errors.unprocessable('domain.platformDomain',
             { relay: config.relayEmailDomain })
         }
       }

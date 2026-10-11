@@ -85,6 +85,15 @@ umschalten() {
 # ----------------------------------------------------------------- zurueck
 if [ "$MODUS" = "rollback" ]; then
   SHA="${2:?rollback braucht den Stand: deploy.sh rollback <sha>}"
+  # Dieselbe Form, die die API prueft -- und hier noch einmal, weil der Wert
+  # aus deploy_request kommt, in das die Anwendungsrolle schreiben darf
+  # (0033). Ein `../` darin fuehrte aus releases/ hinaus, und wer Code in der
+  # API ausfuehrt, kaeme ueber diesen Agenten aus ihrer Sandbox heraus
+  # (N9, Audit 11.10.2026). Das Skript vertraut der API nicht, es prueft.
+  if ! [[ "$SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
+    echo "Kein Commit-Hash: '$SHA'. Erwartet werden 7 bis 40 Hexziffern." >&2
+    exit 1
+  fi
   ZIEL="$RELEASES/$SHA"
   if [ ! -d "$ZIEL" ]; then
     echo "Stand $SHA liegt nicht mehr unter $RELEASES." >&2
@@ -103,6 +112,16 @@ fi
 
 # ------------------------------------------------------------------ bauen
 MARKER="${2:-${HOTELPMS_DEPLOY_REF:-produktion}}"
+
+# Auch der Marker kommt ueber deploy_request (N9). Die API schreibt dort
+# nur `produktion`, aber die Spalte nimmt jeden Text an: ein Wert mit
+# Bindestrich vorn waere fuer git eine Option, kein Name. Erlaubt ist, was
+# als Zweig, Tag oder Hash vorkommt -- und keine `..`, die git als Bereich
+# laese.
+if ! [[ "$MARKER" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || [[ "$MARKER" == *..* ]]; then
+  echo "Ungueltiger Marker: '$MARKER'." >&2
+  exit 1
+fi
 
 # Ein eigener Klon, aus dem heraus geholt wird. Er ist nie der Stand, der
 # laeuft: dort steht nur Geschichte, kein Arbeitsbaum, den ein halber Lauf

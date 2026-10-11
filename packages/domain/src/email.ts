@@ -86,6 +86,35 @@ export function isFreemailDomain(value: string | null | undefined): boolean {
 }
 
 /**
+ * Gehoert diese Domain der Plattform selbst -- gleich oder darunter?
+ *
+ * Ein Haus darf sie nicht als **eigene** Absenderdomain beantragen (N5,
+ * Audit 11.10.2026). Nach einer Freigabe duerfte es sonst mit jedem
+ * Namensteil darunter senden, `rechnung@mail.staygrid.cloud` eingeschlossen,
+ * und waere damit von unserer eigenen Post nicht mehr zu unterscheiden. Der
+ * Weg fuer ein Haus ohne eigene Domain ist `relay`: dort vergeben wir den
+ * Namensteil, nicht das Haus.
+ *
+ * Verglichen wird an der Punktgrenze, damit `nichtstaygrid.cloud` nicht
+ * faelschlich als Plattformdomain gilt. Nimmt wie `isFreemailDomain` auch
+ * eine ganze Adresse entgegen.
+ */
+export function isPlatformDomain(
+  value: string | null | undefined, platformDomains: readonly string[]
+): boolean {
+  if (!value) return false
+  let v = value.trim().toLowerCase()
+  if (v.includes('@')) v = v.slice(v.lastIndexOf('@') + 1)
+  // Ein abschliessender Punkt ist im DNS dieselbe Domain.
+  v = v.replace(/\.+$/, '')
+  if (v === '') return false
+  return platformDomains.some(d => {
+    const p = d.trim().toLowerCase().replace(/\.+$/, '')
+    return p !== '' && (v === p || v.endsWith(`.${p}`))
+  })
+}
+
+/**
  * Die Domain aus einer Adresse, kleingeschrieben. Leer, wenn keine drin ist.
  *
  * Eine eigene Funktion, weil dieselbe Zeile sonst an vier Stellen stuende --

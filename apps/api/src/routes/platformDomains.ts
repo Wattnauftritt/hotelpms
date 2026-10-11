@@ -3,6 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { tx } from '../platform/db.js'
 import { loadConfig } from '../platform/config.js'
+import { isPlatformDomain } from '@hotelpms/domain'
 import { createBrevoDomains, DomainApiError, type DomainVerwaltung }
   from '../platform/brevoDomains.js'
 
@@ -109,6 +110,18 @@ export function platformDomainRoutes(
        * Eine zweite Anmeldung derselben Domain je Kunde waere eine Zeile,
        * die nichts tut und beim Aufraeumen falsch aussieht.
        */
+      /*
+       * Noch einmal beim Freigeben, nicht nur beim Antrag: ein Antrag aus der
+       * Zeit vor dieser Pruefung steht womoeglich noch offen, und wer hier
+       * klickt, sieht einer Domain nicht an, dass sie unsere ist (N5, Audit
+       * 11.10.2026). Freigegeben duerfte das Haus unter ihr mit jedem
+       * Namensteil senden.
+       */
+      if (antrag.mode === 'own' && isPlatformDomain(antrag.domain, config.platformDomains)) {
+        throw Errors.unprocessable('domain.platformDomain',
+          { relay: config.relayEmailDomain })
+      }
+
       let providerId: string | null = null
       let records: unknown[] = []
 

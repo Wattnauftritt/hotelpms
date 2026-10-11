@@ -1,4 +1,4 @@
-import { parseCidrList, type Cidr } from '@hotelpms/domain'
+import { parseCidrList, domainOf, type Cidr } from '@hotelpms/domain'
 
 /**
  * Konfiguration aus der Umgebung, beim Start validiert.
@@ -62,7 +62,45 @@ export interface Config {
    * Worker. Ohne ihn bietet die Personal-App keine Benachrichtigung an.
    */
   vapidPublicKey: string | null
+  /**
+   * Ob Cookies nur ueber https gehen (`Secure`) und ein 500er seine
+   * Fehlermeldung verschweigt.
+   *
+   * Nicht allein an `NODE_ENV` gehaengt (N6, Audit 11.10.2026): die Unit
+   * setzt `production`, aber eine `EnvironmentFile`, die aus `.env.example`
+   * kopiert wurde, bringt `NODE_ENV=development` mit und gewinnt. Dann gingen
+   * Sitzungscookies ohne `Secure` hinaus. Die oeffentliche Adresse ist die
+   * Angabe, die auf der echten Maschine stimmen **muss** -- sonst fuehren die
+   * Zahlungslinks ins Leere --, und steht sie auf https, ist die Lage klar.
+   */
+  secureTransport: boolean
+  /**
+   * Domains, die der Plattform gehoeren. Ein Haus darf keine davon und
+   * nichts darunter als eigene Absenderdomain beantragen (N5, Audit
+   * 11.10.2026). Hergeleitet aus der Konfiguration, die es schon gibt, statt
+   * aus einer eigenen Liste: die Unterdomain fuer `relay`, die Domain des
+   * Hinweispostfachs und die Produktdomain. Eine zweite Liste wuerde beim
+   * Umzug der Relay-Domain nicht mitgezogen.
+   */
+  platformDomains: string[]
 }
+
+/**
+ * Die Produktdomain. Steht fest, weil sie der Name des Produkts ist und
+ * nicht Einstellung einer Maschine (CLAUDE.md): auch eine selbst betriebene
+ * Installation soll niemandem erlauben, unter `staygrid.cloud` zu senden.
+ */
+const PRODUKTDOMAIN = 'staygrid.cloud'
+
+/**
+ * Praefix der Beispielgeheimnisse in `.env.example`. Wer die Datei auf die
+ * Produktivmaschine kopiert und die beiden Zeilen stehen laesst, besteht die
+ * Laengenpruefung -- und jeder Klon des Repositorys kennt dann den
+ * `ID_DOCUMENT_KEY`, mit dem die Ausweisnummern in jedem Backup
+ * verschluesselt sind (N7, Audit 11.10.2026; dasselbe Muster wie S1 in
+ * Dokument 28).
+ */
+const BEISPIEL_PRAEFIX = 'entwicklung-'
 
 function need(name: string, minLength = 1): string {
   const v = process.env[name]
@@ -73,27 +111,62 @@ function need(name: string, minLength = 1): string {
   return v
 }
 
+/**
+ * Ein Geheimnis, das in Produktion nicht aus `.env.example` stammen darf.
+ *
+ * Abgewiesen wird nur in Produktion: in der Entwicklung und im Test sind die
+ * Beispielwerte genau richtig, und ein Start, der dort abbricht, wuerde
+ * dazu verleiten, die Pruefung abzuschalten.
+ */
+export function needSecret(
+  name: string, nodeEnv: Config['nodeEnv'], minLength = 32
+): string {
+  const v = need(name, minLength)
+  if (nodeEnv === 'production' && v.trim().toLowerCase().startsWith(BEISPIEL_PRAEFIX)) {
+    throw new Error(
+      `Umgebungsvariable ${name} enthaelt den Beispielwert aus .env.example. `
+      + 'In Produktion ein eigenes Geheimnis setzen. Start abgebrochen.')
+  }
+  return v
+}
+
+/** Siehe `Config.secureTransport`. */
+export function isSecureTransport(nodeEnv: Config['nodeEnv'], publicAppUrl: string): boolean {
+  return nodeEnv === 'production' || /^https:\/\//i.test(publicAppUrl.trim())
+}
+
+/** Siehe `Config.platformDomains`. Leere Angaben fallen heraus. */
+export function platformDomainsOf(relayEmailDomain: string, platformNoticeEmail: string): string[] {
+  return [...new Set([PRODUKTDOMAIN, relayEmailDomain.trim().toLowerCase(),
+                      domainOf(platformNoticeEmail)].filter(d => d !== ''))]
+}
+
 export function loadConfig(): Config {
   const nodeEnv = (process.env.NODE_ENV ?? 'development') as Config['nodeEnv']
+  const publicAppUrl = process.env.PUBLIC_APP_URL ?? 'http://localhost:5173'
+  const platformNoticeEmail = process.env.PLATFORM_NOTICE_EMAIL ?? 'info@staygrid.cloud'
+  const relayEmailDomain = process.env.RELAY_EMAIL_DOMAIN ?? 'mail.staygrid.cloud'
   return {
     nodeEnv,
     logLevel: process.env.LOG_LEVEL ?? 'info',
     port: Number(process.env.PORT ?? 3000),
     listenSocket: process.env.LISTEN_SOCKET ?? null,
     // 32 Zeichen Mindestlaenge, damit ein zu kurzes Geheimnis auffaellt.
-    sessionSecret: need('SESSION_SECRET', 32),
-    idDocumentKey: need('ID_DOCUMENT_KEY', 32),
+    sessionSecret: needSecret('SESSION_SECRET', nodeEnv),
+    idDocumentKey: needSecret('ID_DOCUMENT_KEY', nodeEnv),
     // Keine Wildcard: ein API mit Cookie-Sitzungen und * ist angreifbar (S9).
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean),
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? null,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null,
-    publicAppUrl: process.env.PUBLIC_APP_URL ?? 'http://localhost:5173',
+    publicAppUrl,
     // Wirft bei einem Tippfehler, und zwar hier: ein verworfenes Netz faellt
     // sonst erst auf, wenn eine Zustellung ausbleibt.
     allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS),
     brevoApiKey: process.env.BREVO_API_KEY ?? null,
-    platformNoticeEmail: process.env.PLATFORM_NOTICE_EMAIL ?? 'info@staygrid.cloud',
-    relayEmailDomain: process.env.RELAY_EMAIL_DOMAIN ?? 'mail.staygrid.cloud',
-    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null
+    platformNoticeEmail,
+    relayEmailDomain,
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null,
+    secureTransport: isSecureTransport(nodeEnv, publicAppUrl),
+    platformDomains: platformDomainsOf(relayEmailDomain, platformNoticeEmail)
   }
 }

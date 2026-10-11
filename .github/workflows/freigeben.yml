@@ -43,19 +43,33 @@ jobs:
       # Die ganze Geschichte, nicht nur der Kopf: sonst laesst sich ein
       # aelterer Commit nicht aufloesen, und genau dafuer ist das Eingabefeld
       # da.
-      - uses: actions/checkout@v4
+      #
+      # Auf eine SHA gepinnt wie in ci.yml, nicht auf `@v4`: ein Tag einer
+      # fremden Action laesst sich verschieben, und gerade dieser Job hat
+      # Schreibrecht auf das Repository (N8, Audit 11.10.2026).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with: { fetch-depth: 0 }
 
       - name: Stand aufloesen
         id: stand
+        # Die Eingabe kommt ueber die Umgebung, nicht als Ausdruck in den
+        # Skripttext. Eingesetzt wird ein Ausdruck vor dem Start der Shell,
+        # und ein `main"; curl ...; "` liefe dann als Befehl -- in einem Job
+        # mit Schreibrecht (N8, Audit 11.10.2026). Als Variable bleibt er Text.
+        env:
+          REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
+          # Ein Bindestrich vorn waere fuer git eine Option, kein Name.
+          case "$REF" in
+            -*) echo "::error::'$REF' ist kein Commit, Zweig oder Tag."; exit 1 ;;
+          esac
           # ^{commit} loest auch einen Zweig oder einen Tag auf einen Commit
           # auf. Ohne das zeigte `produktion` auf ein Tag-Objekt statt auf
           # den Stand, und `git checkout --detach` auf der Maschine bekaeme
           # etwas anderes, als hier ausgewaehlt wurde.
-          if ! sha="$(git rev-parse --verify "${{ inputs.ref }}^{commit}" 2>/dev/null)"; then
-            echo "::error::'${{ inputs.ref }}' ist kein Commit, Zweig oder Tag in diesem Repository."
+          if ! sha="$(git rev-parse --verify "$REF^{commit}" 2>/dev/null)"; then
+            echo "::error::'$REF' ist kein Commit, Zweig oder Tag in diesem Repository."
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
@@ -74,9 +88,11 @@ jobs:
       - name: Ist dieser Stand gruen durch CI?
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.stand.outputs.sha }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          sha="${{ steps.stand.outputs.sha }}"
+          sha="$SHA"
           # Gefragt wird der **Workflow-Lauf**, nicht ein einzelner Job.
           #
           # Hier stand `select(.name == "build")`, und das war der eine Job,
@@ -91,7 +107,7 @@ jobs:
           # Jobnamen pflegte, haette beim naechsten Anteil wieder eine
           # Freigabe, die einen halb gepruefen Stand durchlaesst.
           ergebnis="$(gh api \
-            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" \
+            "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100" \
             --jq '.workflow_runs
                   | if length == 0 then "fehlt"
                     elif any(.[]; .conclusion == "success") then "success"
@@ -123,14 +139,15 @@ jobs:
           esac
 
       - name: Tag setzen
+        env:
+          SHA: ${{ steps.stand.outputs.sha }}
         run: |
           set -euo pipefail
-          sha="${{ steps.stand.outputs.sha }}"
+          sha="$SHA"
           # -f, weil `produktion` wandert. Der Tag ist ein Zeiger auf den
           # freigegebenen Stand, keine Wegmarke in der Geschichte -- wer
           # wissen will, was wann lief, liest deploy_request auf der
           # Maschine, nicht die Tagliste.
           git tag -f produktion "$sha"
           git push -f origin produktion
-          echo "produktion zeigt jetzt auf ${{ steps.stand.outputs.kurz }}" \
-            >> "$GITHUB_STEP_SUMMARY"
+          echo "produktion zeigt jetzt auf ${sha:0:12}" >> "$GITHUB_STEP_SUMMARY"

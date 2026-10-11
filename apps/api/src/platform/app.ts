@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cookie from '@fastify/cookie'
-import { createPool, type Pool } from '@hotelpms/db'
+import { createPool, serializeLogError, type Pool } from '@hotelpms/db'
 import { loadConfig, type Config } from './config.js'
 import { renderMessage } from '@hotelpms/contracts'
 import { AppError, Errors } from './errors.js'
@@ -112,7 +112,10 @@ export async function buildServer(
               req.url.slice(schnitt + 1)).keys()]
               .map(k => `${k}=[redigiert]`).join('&')
         return { id: req.id, method: req.method, url }
-      }
+      },
+      // Ohne `detail`, `where` und Parameter: ein pg-Fehler traegt dort die
+      // ganze Zeile, also Gastnamen (N10, Audit 11.10.2026).
+      err: serializeLogError
     },
     ...(overrides.logStream === undefined ? {} : { stream: overrides.logStream })
   }
@@ -284,7 +287,10 @@ export async function buildServer(
     return reply.status(500).type('application/problem+json').send({
       type: 'urn:staygrid:internal', title: renderMessage('error.internal', 'de'),
       code: 'error.internal', status: 500,
-      detail: config.nodeEnv === 'production' ? undefined : (err as Error).message,
+      // Wie das Cookie an die oeffentliche Adresse gekoppelt (N6): ein
+      // NODE_ENV=development aus einer kopierten .env soll keine
+      // Fehlertexte nach draussen geben.
+      detail: config.secureTransport ? undefined : (err as Error).message,
       instance
     })
   })

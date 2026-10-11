@@ -1222,6 +1222,13 @@ const M = {
       + 'sender domain. Choose sending via {relay} instead.',
     tr: 'GMX, Web.de veya T-Online adresi gönderen alan adı olarak kaydedilemez. '
       + '{relay} üzerinden gönderimi seçin.' },
+  'domain.platformDomain': {
+    de: 'Diese Domain gehoert StayGrid und laesst sich nicht als eigene '
+      + 'Absenderdomain anmelden. Waehlen Sie den Versand ueber {relay}.',
+    en: 'This domain belongs to StayGrid and cannot be registered as your own '
+      + 'sender domain. Choose sending via {relay} instead.',
+    tr: 'Bu alan adı StayGrid\'e aittir ve kendi gönderen alan adınız olarak '
+      + 'kaydedilemez. {relay} üzerinden gönderimi seçin.' },
   'domain.taken': {
     de: 'Diese Domain ist bereits fuer ein anderes Haus angemeldet.',
     en: 'This domain is already registered for another property.',

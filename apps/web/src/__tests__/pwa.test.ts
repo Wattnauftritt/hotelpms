@@ -216,8 +216,12 @@ describe('Service Worker: Push (Baustein 8)', () => {
                                       url: '/personal', tag: 'room_free-101' }))
     await w.ausloesen('push', daten({ title: 'x', body: 'y', url: 'https://boese.example/' }))
     await w.ausloesen('push', daten({ title: 'x', body: 'y', url: '//boese.example/' }))
+    // Der URL-Parser macht aus beiden "//boese.example" (Audit 11.10.2026).
+    await w.ausloesen('push', daten({ title: 'x', body: 'y', url: '/\\boese.example/' }))
+    await w.ausloesen('push', daten({ title: 'x', body: 'y', url: '/\t/boese.example/' }))
     expect(w.gezeigt.map(g => [g.titel, g.opts.tag, g.opts.data.url])).toEqual([
       ['Zimmer 101 ist frei', 'room_free-101', '/personal'],
+      ['x', undefined, '/personal'], ['x', undefined, '/personal'],
       ['x', undefined, '/personal'], ['x', undefined, '/personal']])
     await w.ausloesen('notificationclick',
       { notification: { close: () => undefined, data: { url: '/personal' } } })
