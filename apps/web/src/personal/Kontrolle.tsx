@@ -45,8 +45,12 @@ export function abschnitt(z: KontrollZimmer): Abschnitt {
   return 'waiting'
 }
 
-export function Kontrolle({ propertyId, locale }: {
-  propertyId: number; locale: StaffLocale
+/**
+ * `titel`: der Name des Hauses, wenn die Hausdame mehrere untereinander
+ * sieht. `legende` nur beim ersten, sonst stuende sie je Haus da.
+ */
+export function Kontrolle({ propertyId, locale, titel, legende = true }: {
+  propertyId: number; locale: StaffLocale; titel?: string; legende?: boolean
 }): JSX.Element {
   const t = usePT()
   const qc = useQueryClient()
@@ -70,18 +74,21 @@ export function Kontrolle({ propertyId, locale }: {
     }
   })
 
-  if (tag.isPending) return <Karte><p>{t('app.loading')}</p></Karte>
+  const kopf = titel !== undefined
+    && <h2 className="text-lg font-semibold pt-2">{titel}</h2>
+  if (tag.isPending) return <>{kopf}<Karte><p>{t('app.loading')}</p></Karte></>
   if (tag.isError) {
-    return <Karte>
+    return <>{kopf}<Karte>
       <Fehler text={fehlerText(tag.error, locale)} />
       <button type="button" className={KNOPF_LEISE} onClick={() => { void tag.refetch() }}>
         {t('app.retry')}
       </button>
-    </Karte>
+    </Karte></>
   }
   const rooms = tag.data.rooms
   if (rooms.length === 0) {
-    return <Karte><p className="text-base text-neutral-700">{t('inspect.empty')}</p></Karte>
+    return <>{kopf}<Karte>
+      <p className="text-base text-neutral-700">{t('inspect.empty')}</p></Karte></>
   }
   const teile: Record<Abschnitt, KontrollZimmer[]> = { toCheck: [], waiting: [], passed: [] }
   for (const z of rooms) teile[abschnitt(z)].push(z)
@@ -90,9 +97,10 @@ export function Kontrolle({ propertyId, locale }: {
   // sagt den Stand (Sven, 08.10.2026, wie in der alten App). Ein Tipp auf
   // einen Chip klappt darunter auf, was die Hausdame damit tun kann.
   return <div className="space-y-3">
+    {kopf}
     <p className="text-sm text-neutral-600">{t('inspect.summary', {
       passed: teile.passed.length, open: teile.toCheck.length, todo: teile.waiting.length })}</p>
-    <p className="text-xs text-neutral-500">{t('inspect.legend')}</p>
+    {legende && <p className="text-xs text-neutral-500">{t('inspect.legend')}</p>}
     {fehler !== null && <Fehler text={fehler} />}
     {nachKraft(rooms).map(g => {
       const gewaehlt = g.rooms.find(z => z.taskId === offen)

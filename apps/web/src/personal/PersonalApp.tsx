@@ -270,8 +270,10 @@ function Start({ me, locale, onLocale }: {
   const [haus, setHaus] = useState(() => haeuser[0]?.id ?? 0)
   const rechte = haeuser.find(h => h.id === haus)?.permissions ?? []
   // Die Hausdame beginnt mit der Kontrolle, die Kueche mit dem Fruehstueck:
-  // Zimmer haben beide selten selbst.
-  const kontrolle = rechte.includes('housekeeping:inspect')
+  // Zimmer haben beide selten selbst. Die Kontrolle zeigt alle Haeuser
+  // untereinander (Sven, 11.10.2026: "lieber etwas scrollen" als umschalten).
+  const kontrollHaeuser = haeuser.filter(h => h.permissions.includes('housekeeping:inspect'))
+  const kontrolle = kontrollHaeuser.length > 0
   const kueche = rechte.includes('kitchen:breakfast')
   type Reiter = 'heute' | 'kontrolle' | 'kueche' | 'zeit' | 'mehr'
   const reiterListe: Reiter[] = ['heute', ...(kontrolle ? ['kontrolle' as const] : []),
@@ -297,10 +299,10 @@ function Start({ me, locale, onLocale }: {
         {/* Alle Haeuser in einer Liste (0116) -- hier gibt es nichts zu waehlen. */}
         <MeineZimmer locale={locale} />
       </>}
-      {reiter === 'kontrolle' && kontrolle && <>
-        {hausWahl}
-        <Kontrolle key={haus} propertyId={haus} locale={locale} />
-      </>}
+      {reiter === 'kontrolle' && kontrolle && kontrollHaeuser.map((h, i) =>
+        <Kontrolle key={h.id} propertyId={h.id} locale={locale}
+                   titel={kontrollHaeuser.length > 1 ? h.name : undefined}
+                   legende={i === 0} />)}
       {reiter === 'kueche' && kueche && <>
         {hausWahl}
         <Kueche key={haus} propertyId={haus} locale={locale} />
