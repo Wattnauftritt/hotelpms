@@ -165,6 +165,32 @@ export function datumLesen(text: string, heute: string): string {
   return iso > heute ? '' : iso
 }
 
+/**
+ * Waehrend des Tippens die Punkte selbst setzen: `03111985` wird beim
+ * Schreiben zu `03.11.1985`.
+ *
+ * **Warum.** Auf dem Telefon bringt `inputMode="numeric"` den Ziffernblock,
+ * und der hat auf dem iPhone keinen Punkt. Ohne Hilfe stuende dort eine
+ * Ziffernkette, die der Gast nicht als Datum wiedererkennt; mit ihr sieht er
+ * beim Tippen, wie es gelesen wird.
+ *
+ * **Nur was so aussieht, als kaeme es von hier.** Gesetzt wird nur, solange
+ * der Text aus Ziffern besteht und Punkte allenfalls an den Stellen traegt,
+ * an die diese Funktion sie setzt. Wer selbst `3.11.85` schreibt, behaelt
+ * seine Schreibweise -- `datumLesen` versteht sie ohnehin. Ein geloeschter
+ * Punkt am Ende verschwindet mit, damit Zurueck nicht an ihm haengen bleibt.
+ */
+export function datumTippen(text: string): string {
+  if (!/^[0-9.]*$/.test(text)) return text
+  const punkte = [...text].flatMap((z, i) => z === '.' ? [i] : [])
+  if (punkte.some(i => i !== 2 && i !== 5)) return text
+  const ziffern = text.replace(/\./g, '')
+  if (ziffern.length > 8) return text
+  return ziffern.slice(0, 2)
+    + (ziffern.length > 2 ? `.${ziffern.slice(2, 4)}` : '')
+    + (ziffern.length > 4 ? `.${ziffern.slice(4)}` : '')
+}
+
 /** ISO -> `TT.MM.JJJJ`. Als Zeichenkette zerlegt, nie ueber `new Date` in Ortszeit. */
 export function datumAusIso(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)

@@ -452,16 +452,16 @@ function Formular({ token, view, gross, onErledigt }: {
   }
 
   /*
-   * Am Terminal tippt der Gast das Datum als Ziffern (`Datumsfeld`); per
-   * Mail-Link auf dem eigenen Geraet bleibt das Datumsfeld des Browsers, das
-   * dort Kalender und Tastatur des Telefons mitbringt.
+   * Das Datum wird getippt, am Terminal wie per Mail-Link (`Datumsfeld`).
+   * Das Datumsfeld des Browsers brachte auf dem Telefon einen Kalender beim
+   * heutigen Monat, und bis zum Geburtsjahr war es ein langes Blaettern
+   * (Sven, 11.10.2026). Auf dem eigenen Geraet darf der Browser das
+   * Geburtsdatum vorschlagen; am Terminal nicht, davor steht der Naechste.
    */
   const datum = (wert: string, setzen: (v: string) => void, pfad: string,
-                 vervollstaendigen: string): JSX.Element => gross
-    ? <Datumsfeld value={wert} onChange={setzen} className={`${eingabe} ${rahmen(pfad)}`} />
-    : <input type="date" value={wert} autoComplete={vervollstaendigen}
-             onChange={e => setzen(e.target.value)}
-             className={`${eingabe} ${rahmen(pfad)}`} />
+                 vervollstaendigen: string): JSX.Element =>
+    <Datumsfeld value={wert} onChange={setzen} className={`${eingabe} ${rahmen(pfad)}`}
+                autoComplete={gross ? 'off' : vervollstaendigen} />
 
   const laenderAuswahl = (wert: string, setzen: (v: string) => void, pfad: string,
                           beschriftung: TextKey): JSX.Element => (
