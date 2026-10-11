@@ -54,22 +54,22 @@ beforeEach(async () => {
 const url = (): string => `/v1/properties/${fx.propertyId}/room-sort-settings`
 
 describe('Einstellung je Haus', () => {
-  it('liefert ohne Eintrag die Vorgabe: auf Knopfdruck, heutige Anreisen fest', async () => {
+  it('liefert ohne Eintrag die Vorgabe: auf Knopfdruck', async () => {
     const r = await app.inject({ method: 'GET', url: url(), headers: rezeption })
     expect(r.statusCode).toBe(200)
     expect(r.json()).toMatchObject({
-      configured: false, mode: 'manual', keepToday: true, weights: {},
+      configured: false, mode: 'manual', weights: {},
       effective: { pricePercent: 70, topRoomPenalty: 1000, smallRoomAttribute: 'klein' }
     })
   })
 
   it('speichert nur die Abweichung und rechnet die Vorgabe dazu', async () => {
     const r = await app.inject({ method: 'PUT', url: url(), headers: chef,
-      payload: { mode: 'auto', keepToday: false,
+      payload: { mode: 'auto',
                  weights: { wishPenalty: 500,
                             wishes: [{ keyword: 'Meerblick', attribute: 'meerblick' }] } } })
     expect(r.statusCode).toBe(200)
-    expect(r.json()).toMatchObject({ configured: true, mode: 'auto', keepToday: false,
+    expect(r.json()).toMatchObject({ configured: true, mode: 'auto',
       weights: { wishPenalty: 500, wishes: [{ keyword: 'meerblick', attribute: 'meerblick' }] } })
     expect(r.json().effective.topRoomPenalty).toBe(DEFAULT_ROOM_SORT_WEIGHTS.topRoomPenalty)
     expect(r.json().effective.wishPenalty).toBe(500)

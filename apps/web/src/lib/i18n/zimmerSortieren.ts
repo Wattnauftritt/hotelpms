@@ -33,14 +33,6 @@ export const zimmerSortieren = {
     de: 'Nach jeder Buchung, Änderung oder Stornierung aus dem Kanal sortiert StayGrid ab heute ein Jahr voraus. Ein Zimmer, das der Kanal mitschickt, gilt dann nicht mehr. Der Knopf im Zimmerplan bleibt für alles, was an der Rezeption entsteht.',
     en: 'After every booking, change or cancellation from the channel, StayGrid sorts from today one year ahead. A room sent by the channel no longer applies. The button in the room plan remains for everything created at the desk.',
     tr: 'Kanaldan gelen her rezervasyon, değişiklik veya iptalden sonra StayGrid bugünden itibaren bir yıl ileriye sıralar. Kanalın gönderdiği oda artık geçerli olmaz. Resepsiyonda oluşan her şey için oda planındaki düğme kalır.' },
-  'roomSort.keepToday': {
-    de: 'Anreisen von heute nicht umsetzen',
-    en: 'Do not move today’s arrivals',
-    tr: 'Bugünkü girişleri taşıma' },
-  'roomSort.keepTodayHint': {
-    de: 'Die Reinigung hat das Zimmer für heute vorbereitet, und der Gast steht vielleicht schon an der Rezeption.',
-    en: 'Housekeeping has prepared the room for today, and the guest may already be at the desk.',
-    tr: 'Kat hizmetleri odayı bugün için hazırladı ve misafir resepsiyonda olabilir.' },
   'roomSort.weights': {
     de: 'Gewichte',
     en: 'Weights',

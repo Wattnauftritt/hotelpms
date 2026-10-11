@@ -114,9 +114,7 @@ describe('Vorschau', () => {
     expect(r.statusCode).toBe(409)
   })
 
-  it('laesst feste Gaeste liegen und heutige, wenn das Haus es so eingestellt hat', async () => {
-    await owner.query(`INSERT INTO room_sort_setting (property_id, keep_today) VALUES ($1, true)`,
-      [fx.propertyId])
+  it('laesst feste und eingecheckte Gaeste liegen', async () => {
     const fest = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
       arrival: '2026-10-12', departure: '2026-10-19', resourceId: z11 })
     await owner.query(`UPDATE reservation SET room_fixed = true WHERE id = $1`,
@@ -124,7 +122,7 @@ describe('Vorschau', () => {
     await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
       arrival: '2026-10-12', departure: '2026-10-13', resourceId: z10 })
     const heute = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
-      arrival: HEUTE, departure: '2026-10-12', resourceId: z11 })
+      arrival: HEUTE, departure: '2026-10-12', resourceId: z11, status: 'InHouse' })
     const v = (await app.inject({ method: 'POST', url: url('preview'), headers: rezeption,
       payload: ZEITRAUM })).json()
     const refs = v.moves.map((m: { reservationRef: string }) => m.reservationRef)
@@ -132,7 +130,7 @@ describe('Vorschau', () => {
     expect(refs).not.toContain(await ref(heute.reservationId))
   })
 
-  it('sortiert Anreisen von heute vorgegeben mit (Sven, 11.10.2026)', async () => {
+  it('sortiert Anreisen von heute mit, solange sie nicht eingecheckt sind (Sven, 11.10.2026)', async () => {
     // Noch nicht eingecheckt heisst: das Zimmer ist noch nicht seins.
     const lang = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
       arrival: HEUTE, departure: '2026-10-17', resourceId: z11, priceCent: 12000 })
