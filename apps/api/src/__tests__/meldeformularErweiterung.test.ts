@@ -295,6 +295,10 @@ describe('Kurtaxe-Befreiung im Meldeformular', () => {
     expect(prot.rows.length).toBeGreaterThan(0)
     for (const p of prot.rows) expect(p.changed).not.toContain('SB-98765')
 
+    // Der Nachweis gehoert zum Meldeschein und bleibt mit ihm bis zu dessen
+    // Frist (§ 30 Abs. 4 BMG, Migration 0128); danach geht er mit der Loeschung.
+    await owner.query(`UPDATE registration SET destroy_after = current_date - 1
+                        WHERE reservation_id = $1`, [r.id])
     await withTransaction(pool,
       { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null },
       c => c.query(`SELECT guest_erase_one($1)`, [r.guestId]))
