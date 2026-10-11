@@ -177,4 +177,44 @@ export const zimmerSortieren = {
     de: 'Zurückgenommen. Alle liegen wieder wie vorher.',
     en: 'Undone. Everyone is back where they were.',
     tr: 'Geri alındı. Herkes eski yerinde.' },
+  'roomSort.before': {
+    de: 'Vorher',
+    en: 'Before',
+    tr: 'Önce' },
+  'roomSort.after': {
+    de: 'Nachher',
+    en: 'After',
+    tr: 'Sonra' },
+  'roomSort.onlyAffected': {
+    de: 'Nur Zimmergruppen mit Umsetzungen',
+    en: 'Only categories with moves',
+    tr: 'Yalnızca taşıma olan oda tipleri' },
+  'roomSort.noRoomRow': {
+    de: 'Ohne Zimmer',
+    en: 'No room',
+    tr: 'Odasız' },
+  'roomSort.legendMoved': {
+    de: 'wird umgesetzt',
+    en: 'will be moved',
+    tr: 'taşınacak' },
+  'roomSort.legendStays': {
+    de: 'bleibt',
+    en: 'stays',
+    tr: 'kalır' },
+  'roomSort.legendFixed': {
+    de: 'fest (angereist, „Zimmer fest" …)',
+    en: 'fixed (arrived, “room fixed” …)',
+    tr: 'sabit (giriş yapılmış, “oda sabit” …)' },
+  'roomSort.showList': {
+    de: 'Als Liste anzeigen',
+    en: 'Show as list',
+    tr: 'Liste olarak göster' },
+  'roomSort.barFrom': {
+    de: 'vorher {room}',
+    en: 'before {room}',
+    tr: 'önce {room}' },
+  'roomSort.barTo': {
+    de: 'nachher {room}',
+    en: 'after {room}',
+    tr: 'sonra {room}' },
 } as const satisfies Record<string, LocalizedText>

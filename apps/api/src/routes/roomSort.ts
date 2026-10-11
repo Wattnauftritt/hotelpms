@@ -10,6 +10,7 @@ import {
   nightsBetween, addDays, type RoomSortMode, type RoomSortWeights, type SortRoom, type SortStay
 } from '@hotelpms/domain'
 import { emitEvent } from '../platform/events.js'
+import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 import type { Principal } from '../platform/context.js'
 
 /**
@@ -247,6 +248,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
         const r = rechnen(l, from, to)
         const nachId = new Map(l.stays.map(x => [Number(x.id), x]))
         const zimmer = new Map(l.rooms.map(z => [z.id, z.code]))
+        const nachZug = new Map(r.moves.map(m => [m.stayId, m]))
         return {
           from, to, basis: l.basis,
           moves: r.moves.map(m => {
@@ -263,7 +265,31 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
                      arrival: x.arrival, departure: x.departure }
           }),
           fixed: l.stays.filter(x => !beweglich(x, l, from, to)).length,
-          costBefore: Math.round(r.costBefore), costAfter: Math.round(r.costAfter)
+          costBefore: Math.round(r.costBefore), costAfter: Math.round(r.costAfter),
+          /*
+           * Alles fuer den Kalender in der Vorschau (Sven, 11.10.2026: "so hat
+           * man ja absolut keinen Ueberblick"). Eine Liste von 34 Zuegen zeigt
+           * nicht, ob das Ergebnis besser aussieht -- ein Plan vorher und
+           * nachher schon. Zimmer in der Reihenfolge des Zimmerplans, damit
+           * man dort wiederfindet, was man hier sieht.
+           */
+          rooms: (await client.query<{ id: number; code: string; name: string | null
+                                       category_id: number; category_name: string }>(
+            `SELECT r.id, r.code, r.name, r.category_id, c.name AS category_name
+               FROM resource r JOIN resource_category c ON c.id = r.category_id
+              WHERE r.property_id = $1 AND r.active
+              ORDER BY c.sort_order, c.id, ${zimmerNachNummer('r')}`, [Number(propertyId)]))
+            .rows.map(z => ({ id: Number(z.id), code: z.code, name: z.name,
+                              categoryId: Number(z.category_id), categoryName: z.category_name })),
+          stays: l.stays.filter(x => x.status !== 'CheckedOut' || x.resource_id !== null)
+            .map(x => {
+              const zug = nachZug.get(Number(x.id))
+              const vorher = x.resource_id === null ? null : Number(x.resource_id)
+              return { reservationRef: x.public_ref, guestName: x.last_name,
+                       arrival: x.arrival, departure: x.departure,
+                       fromRoomId: vorher, toRoomId: zug === undefined ? vorher : zug.toRoomId,
+                       moved: zug !== undefined, fixed: !beweglich(x, l, from, to) }
+            })
         }
       })
     }

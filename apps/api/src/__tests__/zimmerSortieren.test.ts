@@ -88,6 +88,14 @@ describe('Vorschau', () => {
     expect(v.moves.find((m: { reservationRef: string }) => m.reservationRef === undefined))
       .toBeUndefined()
     expect(v.costAfter).toBeLessThan(v.costBefore)
+    // Der Kalender in der Vorschau: alle Zimmer, und jeder Aufenthalt
+    // vorher und nachher (Sven, 11.10.2026).
+    expect(v.rooms.map((z: { code: string }) => z.code)).toEqual(['10', '11'])
+    const langZeile = v.stays.find((x: { reservationRef: string }) =>
+      x.reservationRef === v.moves.find((m: { fromRoomId: number }) => m.fromRoomId === z11)
+        .reservationRef)
+    expect(langZeile).toMatchObject({ fromRoomId: z11, toRoomId: z10, moved: true, fixed: false })
+    expect(v.stays).toHaveLength(2)
     expect(await zimmerVon(lang)).toBe(z11)
     expect(await zimmerVon(kurz)).toBe(z10)
   })

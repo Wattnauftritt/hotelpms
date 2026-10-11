@@ -5,6 +5,7 @@ import { useSortierVorschau, useSortierenUebernehmen, useSortierenZuruecknehmen,
          type SortierVorschau } from '../lib/queries/zimmerSortieren.js'
 import { Dialog, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
+import { SortierKalender } from './SortierKalender.tsx'
 
 /**
  * Der Knopf "Zimmer sortieren" im Zimmerplan (Migration 0122).
@@ -35,6 +36,9 @@ export function ZimmerSortieren({ propertyId, onClose }: {
   const [vorschau, setVorschau] = useState<SortierVorschau | null>(null)
   const [lauf, setLauf] = useState<{ runRef: string; moved: number } | null>(null)
   const [zurueck, setZurueck] = useState(false)
+  // Nachher zuerst: die Frage ist "wie saehe es aus", vorher kennt man.
+  const [nachher, setNachher] = useState(true)
+  const [nurBetroffene, setNurBetroffene] = useState(true)
 
   const rechnen = useSortierVorschau(propertyId)
   const uebernehmen = useSortierenUebernehmen(propertyId)
@@ -82,7 +86,7 @@ export function ZimmerSortieren({ propertyId, onClose }: {
   )
 
   return (
-    <Dialog titel={t('roomSort.button')} breite="mittel" fuss={fuss} onClose={onClose}>
+    <Dialog titel={t('roomSort.button')} breite={vorschau === null ? 'mittel' : 'weit'} fuss={fuss} onClose={onClose}>
       <p className="text-sm text-neutral-600 mb-4">{t('roomSort.dialogHint')}</p>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -118,23 +122,48 @@ export function ZimmerSortieren({ propertyId, onClose }: {
             ? <p className="text-sm">{t('roomSort.nothingToDo')}</p>
             : (
               <>
-                <div className="text-sm font-medium">
-                  {t('roomSort.movesCount', { n: vorschau.moves.length })}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-sm font-medium">
+                    {t('roomSort.movesCount', { n: vorschau.moves.length })}
+                  </div>
+                  <div className="inline-flex rounded-sm border border-neutral-300 text-sm"
+                       role="group">
+                    {[false, true].map(w => (
+                      <button key={String(w)} type="button" aria-pressed={nachher === w}
+                              onClick={() => setNachher(w)}
+                              className={`px-3 py-1 ${nachher === w
+                                ? 'bg-neutral-900 text-white' : 'bg-white hover:bg-neutral-50'}`}>
+                        {t(w ? 'roomSort.after' : 'roomSort.before')}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="text-sm flex items-center gap-1.5">
+                    <input type="checkbox" checked={nurBetroffene}
+                           onChange={e => setNurBetroffene(e.target.checked)} />
+                    {t('roomSort.onlyAffected')}
+                  </label>
                 </div>
-                <ul className="text-sm divide-y divide-neutral-100 border border-neutral-200
-                               rounded-sm">
-                  {vorschau.moves.map(m => (
-                    <li key={m.reservationRef} className="flex gap-3 px-3 py-1.5">
-                      <span className="grow truncate">{m.guestName ?? m.reservationRef}</span>
-                      <span className="text-neutral-500 tabular-nums">
-                        {formatDate(m.arrival, locale)} – {formatDate(m.departure, locale)}
-                      </span>
-                      <span className="tabular-nums w-28 text-right">
-                        {m.fromRoomCode ?? t('roomSort.unassigned')} → <b>{m.toRoomCode}</b>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <SortierKalender vorschau={vorschau} nachher={nachher}
+                                 nurBetroffene={nurBetroffene} />
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-neutral-600">
+                    {t('roomSort.showList')}
+                  </summary>
+                  <ul className="mt-2 divide-y divide-neutral-100 border border-neutral-200
+                                 rounded-sm">
+                    {vorschau.moves.map(m => (
+                      <li key={m.reservationRef} className="flex gap-3 px-3 py-1.5">
+                        <span className="grow truncate">{m.guestName ?? m.reservationRef}</span>
+                        <span className="text-neutral-500 tabular-nums">
+                          {formatDate(m.arrival, locale)} – {formatDate(m.departure, locale)}
+                        </span>
+                        <span className="tabular-nums w-28 text-right">
+                          {m.fromRoomCode ?? t('roomSort.unassigned')} → <b>{m.toRoomCode}</b>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </>
             )}
           {vorschau.unplaced.length > 0 && (
