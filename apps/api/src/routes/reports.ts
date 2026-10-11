@@ -7,6 +7,7 @@ import { hinweisText } from '../platform/texte.js'
 import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
+import { sendeJsonExport, type JsonExportDatei } from '../platform/exportDatei.js'
 
 /** Kennzahlen ueber mehr als zwei Jahre gehoeren ins Berichtsreplikat. */
 const MAX_DAYS = 800
@@ -618,16 +619,27 @@ export function reportRoutes(app: FastifyInstance): void {
     permission: 'report:export',
     propertyParam: 'propertyId',
     summary: 'GoBD-Export der Umsaetze eines Zeitraums',
-    handler: async (req) => {
+    handler: async (req, reply) => {
       const { propertyId } = req.params as { propertyId: string }
       const q = req.query as { from: string; to: string }
       checkRange(q.from, q.to)
       const id = Number(propertyId)
 
-      return tx(req.pool, req, async client => {
+      /*
+       * Ueber eine Exportdatei wie der Mandantenexport (Performance-Audit
+       * 11.10.2026, Befund 12): 800 Tage Leistungen eines grossen Hauses
+       * sind Hunderttausende Zeilen, und als ein Objekt mit einem
+       * `JSON.stringify` hielten sie die Ereignisschleife fuer alle an.
+       */
+      return sendeJsonExport(reply, datei => tx(req.pool, req, async client => {
         await assertNotTraining(client, id, 'training.what.gobd')
 
-        const invoices = await client.query(
+        await datei.schreibe('{"from":')
+        await datei.wert(q.from)
+        await datei.schreibe(',"to":')
+        await datei.wert(q.to)
+        await datei.schreibe(',"invoices":')
+        await datei.feld(client,
           `SELECT number, issued_on::text AS "issuedOn",
                   business_date::text AS "businessDate", kind,
                   issuer_snapshot AS issuer, recipient_snapshot AS recipient,
@@ -636,7 +648,8 @@ export function reportRoutes(app: FastifyInstance): void {
             WHERE property_id = $1 AND issued_on BETWEEN $2::date AND $3::date
             ORDER BY number`, [id, q.from, q.to])
 
-        const charges = await client.query(
+        await datei.schreibe(',"charges":')
+        await datei.feld(client,
           `SELECT c.id, i.number AS "invoiceNumber", c.business_date::text AS "businessDate",
                   c.description, c.quantity, c.net_cent AS "netCent",
                   c.tax_cent AS "taxCent", c.gross_cent AS "grossCent",
@@ -646,7 +659,8 @@ export function reportRoutes(app: FastifyInstance): void {
             WHERE c.property_id = $1 AND c.business_date BETWEEN $2::date AND $3::date
             ORDER BY c.id`, [id, q.from, q.to])
 
-        const settlements = await client.query(
+        await datei.schreibe(',"settlements":')
+        await datei.feld(client,
           `SELECT s.id, i.number AS "invoiceNumber", s.business_date::text AS "businessDate",
                   s.amount_cent AS "amountCent", pm.code AS "paymentMethod",
                   s.external_reference AS "externalReference",
@@ -657,26 +671,22 @@ export function reportRoutes(app: FastifyInstance): void {
             WHERE s.property_id = $1 AND s.business_date BETWEEN $2::date AND $3::date
             ORDER BY s.id`, [id, q.from, q.to])
 
-        return {
-          from: q.from, to: q.to,
-          invoices: invoices.rows,
-          charges: charges.rows,
-          settlements: settlements.rows,
-          beschreibung: {
-            charge: 'Einzelne Leistung auf einem Folio. Unveraenderlich. Eine Korrektur '
-                  + 'ist eine zweite Zeile mit negativem Betrag und reversesId auf das '
-                  + 'Original, nie eine Aenderung der ersten.',
-            settlement: 'Verrechnung einer Zahlung. Die Zahlung selbst wird ausserhalb '
-                      + 'dieses Systems abgewickelt und dort aufgezeichnet; '
-                      + 'externalReference verweist darauf.',
-            invoice: 'Rechnung mit lueckenloser Nummer je Property und Jahr. '
-                   + 'issuer und recipient sind Momentaufnahmen zum Zeitpunkt der '
-                   + 'Ausstellung, keine Verweise auf Stammdaten.',
-            betraege: 'Alle Betraege in Cent als ganze Zahl. taxRateBp in Basispunkten, '
-                    + '700 entspricht 7 Prozent.'
-          }
-        }
-      })
+        await datei.schreibe(',"beschreibung":')
+        await datei.wert({
+          charge: 'Einzelne Leistung auf einem Folio. Unveraenderlich. Eine Korrektur '
+                + 'ist eine zweite Zeile mit negativem Betrag und reversesId auf das '
+                + 'Original, nie eine Aenderung der ersten.',
+          settlement: 'Verrechnung einer Zahlung. Die Zahlung selbst wird ausserhalb '
+                    + 'dieses Systems abgewickelt und dort aufgezeichnet; '
+                    + 'externalReference verweist darauf.',
+          invoice: 'Rechnung mit lueckenloser Nummer je Property und Jahr. '
+                 + 'issuer und recipient sind Momentaufnahmen zum Zeitpunkt der '
+                 + 'Ausstellung, keine Verweise auf Stammdaten.',
+          betraege: 'Alle Betraege in Cent als ganze Zahl. taxRateBp in Basispunkten, '
+                  + '700 entspricht 7 Prozent.'
+        })
+        await datei.schreibe('}')
+      }))
     }
   })
 
@@ -870,105 +880,131 @@ export function reportRoutes(app: FastifyInstance): void {
     permission: 'settings:account',
     propertyParam: 'propertyId',
     summary: 'Vollstaendiger Mandantenexport einer Property',
-    handler: async (req) => {
+    handler: async (req, reply) => {
       const { propertyId } = req.params as { propertyId: string }
       const id = Number(propertyId)
 
-      return tx(req.pool, req, async client => {
-        const p = await client.query(
-          `SELECT id, public_ref, code, name, timezone, currency, rollover_time::text,
-                  checkin_time::text, checkout_time::text, address_line1, postal_code,
-                  city, country, tax_number, vat_id, municipality_key, is_training,
-                  status, created_at::text
-             FROM property WHERE id = $1`, [id])
-        if (p.rowCount === 0) throw Errors.notFound('res.property')
+      // Zeitpunkt des Snapshots, nicht des letzten Bytes: der Export zeigt
+      // den Stand bei Beginn der Transaktion.
+      const exportedAt = new Date().toISOString()
 
-        // Je Tabelle eine Abfrage. Der Export ist selten und darf gruendlich
-        // sein; er laeuft einmal je Vertragsende, nicht je Bildschirm.
-        const hole = async (name: string, sql: string): Promise<[string, unknown[]]> =>
-          [name, (await client.query(sql, [id])).rows]
-
-        const teile = await Promise.all([
-          hole('categories', `SELECT * FROM resource_category WHERE property_id = $1
-                               ORDER BY id`),
-          hole('rooms', `SELECT * FROM resource WHERE property_id = $1 ORDER BY id`),
-          hole('maintenanceBlocks', `SELECT * FROM maintenance_block WHERE property_id = $1
-                                      ORDER BY id`),
-          hole('ratePlans', `SELECT * FROM rate_plan WHERE property_id = $1 ORDER BY id`),
-          hole('rateDays', `SELECT * FROM rate_day WHERE property_id = $1
-                             ORDER BY rate_plan_id, date`),
-          hole('restrictions', `SELECT * FROM restriction_day WHERE property_id = $1
-                                 ORDER BY rate_plan_id, date`),
-          hole('taxRules', `SELECT * FROM tax_rule WHERE property_id = $1 ORDER BY id`),
-          hole('cancellationPolicies', `SELECT * FROM cancellation_policy
-                                         WHERE property_id = $1 ORDER BY id`),
-          hole('products', `SELECT * FROM product WHERE property_id = $1 ORDER BY id`),
-          hole('paymentMethods', `SELECT * FROM payment_method WHERE property_id = $1
-                                   ORDER BY id`),
-          hole('bookings', `SELECT * FROM booking WHERE property_id = $1 ORDER BY id`),
-          hole('reservations', `SELECT * FROM reservation WHERE property_id = $1
-                                 ORDER BY id`),
-          hole('reservationNights', `SELECT * FROM reservation_night WHERE property_id = $1
-                                      ORDER BY reservation_id, date`),
-          hole('occupants', `SELECT * FROM reservation_occupant WHERE property_id = $1
-                              ORDER BY id`),
-          hole('availabilityBlocks', `SELECT * FROM availability_block WHERE property_id = $1
-                                       ORDER BY id`),
-          hole('folios', `SELECT * FROM folio WHERE property_id = $1 ORDER BY id`),
-          hole('charges', `SELECT * FROM charge WHERE property_id = $1 ORDER BY id`),
-          hole('settlements', `SELECT * FROM settlement WHERE property_id = $1 ORDER BY id`),
-          hole('invoices', `SELECT * FROM invoice WHERE property_id = $1 ORDER BY id`),
-          hole('invoiceCounters', `SELECT * FROM invoice_counter WHERE property_id = $1
-                                    ORDER BY year`),
-          hole('businessDays', `SELECT * FROM business_day WHERE property_id = $1
-                                 ORDER BY date`),
-          hole('dayStatistics', `SELECT * FROM business_day_stat WHERE property_id = $1
-                                  ORDER BY date`),
-          hole('housekeepingStatus', `SELECT * FROM housekeeping_status
-                                       WHERE property_id = $1 ORDER BY resource_id`),
-          hole('maintenanceTickets', `SELECT * FROM maintenance_ticket WHERE property_id = $1
-                                       ORDER BY id`),
-          hole('guestNotes', `SELECT * FROM guest_property_note WHERE property_id = $1
-                               ORDER BY id`),
-          // Gaeste haengen am Account, nicht am Haus (Entscheidung 13).
-          // Mitgegeben werden die, die hier tatsaechlich waren.
-          hole('guests', `SELECT g.id, g.public_ref, g.last_name, g.first_name, g.email,
-                                 g.phone, g.birth_date, g.nationality, g.language,
-                                 g.address_line1, g.postal_code, g.city, g.country,
-                                 g.id_document_type, g.id_document_key_version,
-                                 g.preferences, g.status, g.created_at
-                            FROM guest g
-                           WHERE EXISTS (SELECT 1 FROM reservation r
-                                          WHERE r.property_id = $1
-                                            AND r.primary_guest_id = g.id)
-                           ORDER BY g.id`)
-        ])
-
-        const daten = Object.fromEntries(teile)
-        const zeilen = Object.entries(daten)
-          .map(([k, v]) => [k, (v as unknown[]).length] as const)
-
-        return {
-          exportedAt: new Date().toISOString(),
-          property: p.rows[0],
-          ...daten,
-          zeilenzahl: Object.fromEntries(zeilen),
-          hinweise: [
-            'Alle Betraege in Cent als ganze Zahl. Steuersaetze in Basispunkten, '
-            + '700 entspricht 7 Prozent.',
-            'Aufenthaltsdaten sind Kalenderdaten in der Zeitzone der Property, '
-            + 'keine Zeitpunkte.',
-            'Ausweisnummern sind nicht enthalten. Sie liegen verschluesselt vor; '
-            + 'sie ohne den Schluessel zu exportieren waere nutzlos, mit dem '
-            + 'Schluessel waere es eine Weitergabe des Schluessels. Die '
-            + 'Schluesselversion ist als id_document_key_version vermerkt.',
-            'Meldescheine sind nicht enthalten: sie unterliegen der Jahresfrist '
-            + 'nach § 30 BMG und werden vernichtet, nicht weitergegeben.',
-            'Die steuerliche Aufbewahrungspflicht fuer Buchungsbelege liegt beim '
-            + 'Betrieb und betraegt acht Jahre.'
-          ]
-        }
-      })
+      return sendeJsonExport(reply, datei => tx(req.pool, req,
+        client => schreibeMandantenexport(client, id, datei, exportedAt)))
     }
   })
+}
+
+/*
+ * Je Tabelle eine Abfrage, nacheinander ueber einen Cursor in die
+ * Exportdatei (Performance-Audit 11.10.2026, Befund 12). Vorher hielt
+ * ein `Promise.all` alle Ergebnisse zugleich im Speicher und baute
+ * daraus ein Objekt und eine Zeichenkette -- bei drei Jahren eines
+ * grossen Hauses Hunderte MB, mit angehaltener Ereignisschleife.
+ * Parallel war es ohnehin nie: ein Client fuehrt seine Anfragen
+ * nacheinander aus, und `pg` warnt inzwischen vor genau dem Muster.
+ */
+export const MANDANTENEXPORT_TEILE: ReadonlyArray<readonly [string, string]> = [
+  ['categories', `SELECT * FROM resource_category WHERE property_id = $1
+                       ORDER BY id`],
+  ['rooms', `SELECT * FROM resource WHERE property_id = $1 ORDER BY id`],
+  ['maintenanceBlocks', `SELECT * FROM maintenance_block WHERE property_id = $1
+                              ORDER BY id`],
+  ['ratePlans', `SELECT * FROM rate_plan WHERE property_id = $1 ORDER BY id`],
+  ['rateDays', `SELECT * FROM rate_day WHERE property_id = $1
+                     ORDER BY rate_plan_id, date`],
+  ['restrictions', `SELECT * FROM restriction_day WHERE property_id = $1
+                         ORDER BY rate_plan_id, date`],
+  ['taxRules', `SELECT * FROM tax_rule WHERE property_id = $1 ORDER BY id`],
+  ['cancellationPolicies', `SELECT * FROM cancellation_policy
+                                 WHERE property_id = $1 ORDER BY id`],
+  ['products', `SELECT * FROM product WHERE property_id = $1 ORDER BY id`],
+  ['paymentMethods', `SELECT * FROM payment_method WHERE property_id = $1
+                           ORDER BY id`],
+  ['bookings', `SELECT * FROM booking WHERE property_id = $1 ORDER BY id`],
+  ['reservations', `SELECT * FROM reservation WHERE property_id = $1
+                         ORDER BY id`],
+  ['reservationNights', `SELECT * FROM reservation_night WHERE property_id = $1
+                              ORDER BY reservation_id, date`],
+  ['occupants', `SELECT * FROM reservation_occupant WHERE property_id = $1
+                      ORDER BY id`],
+  ['availabilityBlocks', `SELECT * FROM availability_block WHERE property_id = $1
+                               ORDER BY id`],
+  ['folios', `SELECT * FROM folio WHERE property_id = $1 ORDER BY id`],
+  ['charges', `SELECT * FROM charge WHERE property_id = $1 ORDER BY id`],
+  ['settlements', `SELECT * FROM settlement WHERE property_id = $1 ORDER BY id`],
+  ['invoices', `SELECT * FROM invoice WHERE property_id = $1 ORDER BY id`],
+  ['invoiceCounters', `SELECT * FROM invoice_counter WHERE property_id = $1
+                            ORDER BY year`],
+  ['businessDays', `SELECT * FROM business_day WHERE property_id = $1
+                         ORDER BY date`],
+  ['dayStatistics', `SELECT * FROM business_day_stat WHERE property_id = $1
+                          ORDER BY date`],
+  ['housekeepingStatus', `SELECT * FROM housekeeping_status
+                               WHERE property_id = $1 ORDER BY resource_id`],
+  ['maintenanceTickets', `SELECT * FROM maintenance_ticket WHERE property_id = $1
+                               ORDER BY id`],
+  ['guestNotes', `SELECT * FROM guest_property_note WHERE property_id = $1
+                       ORDER BY id`],
+  // Gaeste haengen am Account, nicht am Haus (Entscheidung 13).
+  // Mitgegeben werden die, die hier tatsaechlich waren.
+  ['guests', `SELECT g.id, g.public_ref, g.last_name, g.first_name, g.email,
+                         g.phone, g.birth_date, g.nationality, g.language,
+                         g.address_line1, g.postal_code, g.city, g.country,
+                         g.id_document_type, g.id_document_key_version,
+                         g.preferences, g.status, g.created_at
+                    FROM guest g
+                   WHERE EXISTS (SELECT 1 FROM reservation r
+                                  WHERE r.property_id = $1
+                                    AND r.primary_guest_id = g.id)
+                   ORDER BY g.id`]
+]
+
+/** Steht am Ende des Mandantenexports, fuer Leser ohne dieses System. */
+export const MANDANTENEXPORT_HINWEISE: readonly string[] = [
+  'Alle Betraege in Cent als ganze Zahl. Steuersaetze in Basispunkten, '
+  + '700 entspricht 7 Prozent.',
+  'Aufenthaltsdaten sind Kalenderdaten in der Zeitzone der Property, '
+  + 'keine Zeitpunkte.',
+  'Ausweisnummern sind nicht enthalten. Sie liegen verschluesselt vor; '
+  + 'sie ohne den Schluessel zu exportieren waere nutzlos, mit dem '
+  + 'Schluessel waere es eine Weitergabe des Schluessels. Die '
+  + 'Schluesselversion ist als id_document_key_version vermerkt.',
+  'Meldescheine sind nicht enthalten: sie unterliegen der Jahresfrist '
+  + 'nach § 30 BMG und werden vernichtet, nicht weitergegeben.',
+  'Die steuerliche Aufbewahrungspflicht fuer Buchungsbelege liegt beim '
+  + 'Betrieb und betraegt acht Jahre.'
+]
+
+/**
+ * Der Inhalt des Mandantenexports, getrennt von der Route, damit er sich an
+ * einem grossen Bestand messen laesst, ohne dort eine Sitzung anzulegen.
+ * Laeuft in der Transaktion des Aufrufers und unter dessen Kontext.
+ */
+export async function schreibeMandantenexport(
+  client: PoolClient, id: number, datei: JsonExportDatei, exportedAt: string
+): Promise<void> {
+  const p = await client.query(
+    `SELECT id, public_ref, code, name, timezone, currency, rollover_time::text,
+            checkin_time::text, checkout_time::text, address_line1, postal_code,
+            city, country, tax_number, vat_id, municipality_key, is_training,
+            status, created_at::text
+       FROM property WHERE id = $1`, [id])
+  if (p.rowCount === 0) throw Errors.notFound('res.property')
+
+  // Aufbau und Reihenfolge der Schluessel wie vorher das eine Objekt,
+  // damit jeder Leser des alten Exports den neuen liest.
+  await datei.schreibe('{"exportedAt":')
+  await datei.wert(exportedAt)
+  await datei.schreibe(',"property":')
+  await datei.wert(p.rows[0])
+  const zeilenzahl: Record<string, number> = {}
+  for (const [name, sql] of MANDANTENEXPORT_TEILE) {
+    await datei.schreibe(`,${JSON.stringify(name)}:`)
+    zeilenzahl[name] = await datei.feld(client, sql, [id])
+  }
+  await datei.schreibe(',"zeilenzahl":')
+  await datei.wert(zeilenzahl)
+  await datei.schreibe(',"hinweise":')
+  await datei.wert(MANDANTENEXPORT_HINWEISE)
+  await datei.schreibe('}')
 }
