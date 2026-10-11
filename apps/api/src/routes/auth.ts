@@ -57,7 +57,11 @@ const SPERRE_MINUTEN = 15
  * Tresen zwanzigmal am Tag getippt, während jemand danebensteht. Vier
  * Ziffern sind zehntausend Möglichkeiten — das hält nur, weil nach fünf
  * Fehlversuchen für eine Viertelstunde Schluss ist. Ohne die Sperre wäre er
- * in Sekunden geraten, mit ihr braucht es Jahre.
+ * in Sekunden geraten. Mit ihr bleiben fünf Versuche je Viertelstunde, also
+ * 480 am Tag; im Mittel braucht es 5000 — gut zehn Tage, nicht Jahre. Das
+ * genügt nur, weil überhaupt nur ein Kollege aus demselben Haus raten kann und
+ * der Wechsel im Protokoll steht: die Sperre macht das Raten auffällig und
+ * langsam, unmöglich macht sie es nicht.
  *
  * Zwölf Ziffern als Obergrenze, damit niemand ein Kennwort hineinschreibt:
  * ein PIN ist kein Kennwort, und wer ihn dafür hält, benutzt am Ende
@@ -214,7 +218,8 @@ export function authRoutes(app: FastifyInstance): void {
          * landen soll.
          */
         sameSite: 'strict',
-        secure: config.nodeEnv === 'production',
+        // An die oeffentliche Adresse gekoppelt, nicht nur an NODE_ENV (N6).
+        secure: config.secureTransport,
         path: '/',
         maxAge: SITZUNG_ABSOLUT_STUNDEN * 3600
       })
@@ -528,13 +533,26 @@ export function authRoutes(app: FastifyInstance): void {
         && (gemeinsam.rowCount ?? 0) > 0
 
       if (!erlaubt) {
-        // Gezaehlt wird nur, wenn der PIN wirklich falsch war. Ein Zaehler,
-        // der auch bei fremder Zugehoerigkeit steigt, waere ein Weg, einen
-        // beliebigen Kollegen auszusperren, ohne seinen PIN je zu treffen.
-        if (ziel !== undefined && !passt) {
+        /*
+         * Gezaehlt wird nur, wenn der PIN wirklich falsch war **und** Aufrufer
+         * und Ziel ein Haus teilen. Ohne die zweite Bedingung koennte ein
+         * Angemeldeter eines ganz anderen Kunden den Personenwechsel eines
+         * Fremden sperren, dessen Adresse er kennt (N2, Audit 11.10.2026).
+         * Von dort kann er ohnehin nie wechseln, `erlaubt` verlangt das
+         * gemeinsame Haus; er braucht den Zaehler also nicht, um aufzuhalten.
+         *
+         * Mit dem Setzen der Sperre faellt der Zaehler auf null. Sonst stuende
+         * er danach bei fuenf, und schon der naechste Tippfehler des
+         * Betroffenen sperrte wieder eine Viertelstunde — eine Sperre, die
+         * nie mehr ganz aufgeht, trifft den Kollegen am Tresen haerter als
+         * den, der raet.
+         */
+        if (ziel !== undefined && !passt && (gemeinsam.rowCount ?? 0) > 0) {
           await req.pool.query(
             `UPDATE app_user
-                SET workstation_pin_failed_count = workstation_pin_failed_count + 1,
+                SET workstation_pin_failed_count =
+                      CASE WHEN workstation_pin_failed_count + 1 >= $2 THEN 0
+                           ELSE workstation_pin_failed_count + 1 END,
                     workstation_pin_locked_until =
                       CASE WHEN workstation_pin_failed_count + 1 >= $2
                            THEN now() + ($3 || ' minutes')::interval END

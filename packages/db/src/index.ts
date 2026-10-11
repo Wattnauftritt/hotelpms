@@ -4,3 +4,4 @@ export { withTransaction, SYSTEM_CONTEXT, type DbContext, type TxBericht }
   from './context.js'
 export { migrate, type MigrationResult } from './migrate.js'
 export { requireEnv, dbUrl } from './config.js'
+export { serializeLogError, type SerializedLogError } from './logError.js'

@@ -121,8 +121,18 @@ self.addEventListener('fetch', function (e) {
   }
 })
 
+// Nur ein Pfad dieser Seite. Der URL-Parser liest einen Backslash wie einen
+// Schraegstrich und wirft Tab und Zeilenumbruch weg: aus "/\\boese.example"
+// und "/<Tab>/boese.example" wird so "//boese.example", eine fremde Herkunft
+// (Audit 11.10.2026). Deshalb Zeichencodes statt eines Musters -- 92 ist der
+// Backslash, unter 32 die Steuerzeichen.
 function eigenerPfad(p) {
-  return typeof p === 'string' && p.charAt(0) === '/' && p.charAt(1) !== '/' ? p : '/personal'
+  if (typeof p !== 'string' || p.charAt(0) !== '/' || p.charAt(1) === '/') return '/personal'
+  for (let i = 0; i < p.length; i++) {
+    const c = p.charCodeAt(i)
+    if (c === 92 || c < 32) return '/personal'
+  }
+  return p
 }
 
 self.addEventListener('push', function (e) {

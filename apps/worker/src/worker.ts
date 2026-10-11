@@ -1,4 +1,4 @@
-import { createPool, withTransaction, SYSTEM_CONTEXT, STAPEL_TIMEOUT_MS,
+import { createPool, withTransaction, SYSTEM_CONTEXT, STAPEL_TIMEOUT_MS, serializeLogError,
          type DbContext, type Pool }
   from '@hotelpms/db'
 import pino from 'pino'
@@ -20,7 +20,10 @@ import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { createBrevoAdapter } from './email/brevo.js'
 import { parseCidrList } from '@hotelpms/domain'
 
-const log = pino({ level: process.env.LOG_LEVEL ?? 'info' })
+// Eigener Serialisierer fuer Fehler: ein pg-Fehler traegt in `detail` die
+// ganze Zeile, und im Nachtlauf sind das Gastnamen (N10, Audit 11.10.2026).
+const log = pino({ level: process.env.LOG_LEVEL ?? 'info',
+                   serializers: { err: serializeLogError } })
 
 /*
  * Netze, in die ein Webhook trotz Sperrliste zugestellt werden darf
