@@ -2044,6 +2044,13 @@ const M = {
         + 'manages the business settings may change that.',
     tr: 'Bu kişinin tüm işletme için bir rolü var. Bunu yalnızca işletme '
         + 'ayarlarını yöneten biri değiştirebilir.' },
+  'user.rolesOutsideYourProperties': {
+    de: 'Diese Person hat Rollen auch in Häusern, die Sie nicht verwalten. Das '
+        + 'darf nur ändern, wer das Personal des ganzen Betriebs verwaltet.',
+    en: 'This person also holds roles in properties you do not manage. Only '
+        + 'someone who manages the staff of the whole business may change that.',
+    tr: 'Bu kişinin yönetmediğiniz tesislerde de rolleri var. Bunu yalnızca tüm '
+        + 'işletmenin personelini yöneten biri değiştirebilir.' },
   'user.lastAccountAdmin': {
     de: 'Das ist die letzte Person, die den Betrieb verwalten kann. Geben Sie '
         + 'das Recht zuerst jemand anderem.',

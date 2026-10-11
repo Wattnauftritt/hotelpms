@@ -6,6 +6,7 @@ import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 import { rechtImHaus } from './depositRequests.js'
+import { firmaImBetrieb, ratenplanImHaus } from '../platform/fremdeIds.js'
 
 /**
  * Kontingente und Gruppen (Aufgabe 10, Dokument 16).
@@ -81,6 +82,12 @@ export function blockRoutes(app: FastifyInstance): void {
           `SELECT 1 FROM resource_category WHERE id = $1 AND property_id = $2`,
           [body.categoryId, pid])
         if (k.rowCount === 0) throw Errors.notFound('res.category')
+        // Dasselbe fuer Ratenplan und Firma: der Plan eines anderen Hauses
+        // gaebe jedem Abruf seine Preise, die Firma eines anderen Kunden
+        // stuende als Vertragspartner da. Die Fremdschluesselpruefung sieht
+        // beides nicht (M4, Sicherheitsaudit 2026-10-11).
+        await ratenplanImHaus(client, pid, body.ratePlanId)
+        await firmaImBetrieb(client, pid, body.companyId)
 
         // Kontingent zuerst binden. Schlaegt das fehl, wird alles
         // zurueckgerollt und es entsteht kein Kontingent ohne Deckung.

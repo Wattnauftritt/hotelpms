@@ -11,6 +11,7 @@ import { authenticateChannel, channelContext } from '../platform/channelAuth.js'
 import type { Principal } from '../platform/context.js'
 import { inventoryError, priceNights, personenAngabe } from './reservations.js'
 import { isTrainingProperty } from '../platform/training.js'
+import { gaesteImBetrieb } from '../platform/fremdeIds.js'
 
 /** Ein Jahr je Anfrage, wie bei der Verfuegbarkeit fuer die Oberflaeche. */
 const MAX_ARI_DAYS = 400
@@ -360,6 +361,16 @@ export function channelRoutes(app: FastifyInstance): void {
         await assertNoChannelForTraining(client, principal.propertyId)
         const { categoryId, salesCode } = await kanalKategorie(
           client, principal.propertyId, body.categoryCode, body.salesCode)
+
+        /*
+         * Eine vorhandene Gastkennung des Channel Managers gehoert zum
+         * Betrieb dieser Verbindung. Die Fremdschluesselpruefung sieht an
+         * der Zeilenrichtlinie vorbei; ohne diese Frage haengte ein
+         * Anbieter den Gast eines anderen Kunden an eine Reservierung
+         * hier (M4, Sicherheitsaudit 2026-10-11). Vor dem Binden des
+         * Bestands, damit eine Abweisung nichts zurueckzunehmen hat.
+         */
+        await gaesteImBetrieb(client, principal.propertyId, [body.guestId])
 
         let ratePlanId: number | undefined
         if (body.ratePlanCode) {
