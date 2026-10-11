@@ -6,7 +6,7 @@ import { tagOderOffen } from './cleaningPlan.js'
 import { tx } from '../platform/db.js'
 import { AppError, Errors } from '../platform/errors.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
-import { emitEvent } from '../platform/events.js'
+import { emitEvent, emitEvents } from '../platform/events.js'
 import { loadBlock } from './blocks.js'
 import { geschaeftstag, rechtImHaus } from './depositRequests.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
@@ -457,35 +457,6 @@ async function preiseJePlan(
     const p = jeTag.get(`${a.ratePlanId}|${n}`)
     return p?.[1] ?? p?.[0] ?? 0
   }))
-}
-
-/**
- * Ein Ereignis je Datensatz, eingereiht in **einer** Anweisung.
- *
- * Dasselbe wie `emitEvent` in einer Schleife -- derselbe Umschlag, dieselbe
- * Ergaenzung um Buchung und Cursorstand, dieselbe Reihenfolge --, nur ohne
- * eine Runde zur Datenbank je Reservierung. Eine Gruppe mit fuenfzig
- * Zimmern brauchte dafuer bisher fuenfzig (Performance-Audit 11.10.2026,
- * Abschnitt 14). Der Ausdruck muss dem in `emitEvent` gleichen; wer den
- * einen aendert, aendert den anderen.
- */
-async function ereignisseEinreihen(
-  client: PoolClient, propertyId: number, type: WebhookEventType,
-  daten: ReadonlyArray<Record<string, unknown>>
-): Promise<void> {
-  if (daten.length === 0) return
-  await client.query(
-    `SELECT webhook_enqueue($1, $2,
-       CASE WHEN $2 LIKE 'reservation.%'
-            THEN jsonb_strip_nulls(jsonb_build_object(
-                   'bookingRef', (SELECT b.public_ref FROM reservation r
-                                    JOIN booking b ON b.id = r.booking_id
-                                   WHERE r.public_ref = x.d ->> 'reservationRef'),
-                   'cursor', pg_current_xact_id()::text || '.0'))
-            ELSE '{}'::jsonb END || x.d)
-       FROM unnest($3::jsonb[]) WITH ORDINALITY AS x(d, ord)
-      ORDER BY x.ord`,
-    [propertyId, type, daten.map(d => JSON.stringify(d))])
 }
 
 /**
@@ -1072,7 +1043,7 @@ export async function aufenthalteVerlegen(
   // Ein Ereignis je Aufenthalt, wie bisher, eingereiht in einer Anweisung.
   // Je Haus eine, falls Aufenthalte verschiedener Haeuser zusammenkommen.
   for (const haus of new Set(plaene.map(p => p.r.property_id))) {
-    await ereignisseEinreihen(client, haus, 'reservation.changed',
+    await emitEvents(client, haus, 'reservation.changed',
       plaene.flatMap((p, i) => p.r.property_id !== haus ? [] : [{
         reservationRef: p.r.public_ref, status: p.r.status,
         arrival: p.neuAnkunft, departure: p.neuAbreise,
@@ -1589,7 +1560,7 @@ export function reservationRoutes(app: FastifyInstance): void {
          * `bookingRef` ist in allen acht dasselbe -- daran haengen sie
          * zusammen. Eingereiht werden sie in einer Anweisung.
          */
-        await ereignisseEinreihen(client, body.propertyId, 'reservation.created',
+        await emitEvents(client, body.propertyId, 'reservation.created',
           angelegt.map(a => ({
             reservationRef: a.reservationRef,
             bookingRef: result.bookingRef,
