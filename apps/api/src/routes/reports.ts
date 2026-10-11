@@ -8,6 +8,7 @@ import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 import { sendeJsonExport, type JsonExportDatei } from '../platform/exportDatei.js'
+import { formelsicher, writeCsv as csv } from '../platform/csv.js'
 
 /** Kennzahlen ueber mehr als zwei Jahre gehoeren ins Berichtsreplikat. */
 const MAX_DAYS = 800
@@ -46,16 +47,6 @@ function checkRange(from: string, to: string): number {
   if (days <= 0) throw Errors.validation({ to: ['field.onOrAfterFrom'] })
   if (days > MAX_DAYS) throw Errors.rangeTooLarge(MAX_DAYS)
   return days
-}
-
-/** CSV nach RFC 4180. Semikolon, weil deutsche Tabellenkalkulationen das erwarten. */
-export function csv(rows: ReadonlyArray<ReadonlyArray<string | number | null>>): string {
-  const feld = (v: string | number | null): string => {
-    if (v === null) return ''
-    const s = String(v)
-    return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  return rows.map(r => r.map(feld).join(';')).join('\r\n') + '\r\n'
 }
 
 export function reportRoutes(app: FastifyInstance): void {
@@ -568,7 +559,18 @@ export function reportRoutes(app: FastifyInstance): void {
             (Math.abs(betragCent) / 100).toFixed(2).replace('.', ','),
             (betragCent < 0) !== haben ? 'H' : 'S', 'EUR', '', '', '',
             DEBITOR_SAMMEL, gegenkonto, '', belegdatum(datum), belegfeld, '', '',
-            text.slice(0, 60)
+            /*
+             * Der Buchungstext beginnt mit dem Empfaengernamen, und den kann
+             * ein Gast im Online-Check-in selbst setzen (Befund M10).
+             * Entschaerft vor dem Kuerzen: DATEV nimmt hoechstens 60 Zeichen,
+             * und ein Hochkomma, das `csv()` erst danach voranstellte, machte
+             * daraus 61. Das Hochkomma selbst ist im Buchungstext ein
+             * gewoehnliches Textzeichen; es steht dann sichtbar vor einem
+             * Namen, der ohnehin keiner ist. Der Betrag ist hier immer ohne
+             * Vorzeichen (siehe oben), ein Hochkomma koennte ihn also nie
+             * treffen -- auch wenn `csv()` reine Zahlen ohnehin auslaesst.
+             */
+            formelsicher(text).slice(0, 60)
           ]
         })
 

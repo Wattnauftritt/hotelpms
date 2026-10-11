@@ -425,7 +425,7 @@ export function importRoutes(app: FastifyInstance): void {
         const { header, rows } = parseCsv(body.csv, { maxRows: MAX_ZEILEN })
         records = toRecords(header, rows, spalten)
       } catch (e) {
-        if (e instanceof CsvError) throw Errors.unprocessable(e.message)
+        if (e instanceof CsvError) throw Errors.unprocessable(e.message, e.params)
         throw e
       }
 

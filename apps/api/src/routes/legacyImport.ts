@@ -47,7 +47,7 @@ export function legacyImportRoutes(app: FastifyInstance): void {
         try {
           records = LEGACY_ADAPTERS[system](body.data)
         } catch (e) {
-          if (e instanceof LegacyFormatError) throw Errors.unprocessable(e.message)
+          if (e instanceof LegacyFormatError) throw Errors.unprocessable(e.message, e.params)
           throw e
         }
 

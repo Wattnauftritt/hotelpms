@@ -7,7 +7,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { can, propertyIds, type Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
-import { csv } from './reports.js'
+import { writeCsv as csv } from '../platform/csv.js'
 import { reiheUebersetzungEin, zielDeutsch } from '../platform/uebersetzung.js'
 
 /**
@@ -534,8 +534,6 @@ async function kraftImHaus(
   if (!rows[0]!.ja) throw Errors.notFound('res.user')
 }
 
-/** Text, der in einer Tabellenkalkulation nicht als Formel startet. */
-const zelle = (s: string): string => /^[=+\-@]/.test(s) ? `'${s}` : s
 const stunden = (min: number): string => (min / 60).toFixed(2).replace('.', ',')
 
 export function worktimeRoutes(app: FastifyInstance): void {
@@ -698,8 +696,10 @@ export function worktimeRoutes(app: FastifyInstance): void {
         const zeilen: Array<Array<string | number | null>> = []
         for (const k of u.staff) {
           if (k.tage.length === 0) continue
-          const name = zelle(k.name)
-          const login = k.username === null ? null : zelle(k.username)
+          // Gegen Formeln entschaerft `csv()` selbst (Befund M10); die
+          // negative Korrektur bleibt dabei eine Zahl.
+          const name = k.name
+          const login = k.username
           for (const [d, t] of k.tage) {
             zeilen.push([name, login, d, t.rooms, t.roomMinutes, t.extra, t.kitchen,
                          t.correction, t.total, stunden(t.total)])

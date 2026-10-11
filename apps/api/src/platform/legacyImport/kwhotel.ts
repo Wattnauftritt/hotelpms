@@ -128,8 +128,13 @@ export function readKwhotelDump(text: string): KwhotelBestand {
     description: p.Opis ?? null
   }))
   // Ein Zimmer, das nur in der neueren Tabelle steht, gibt es auch.
+  // Ueber eine Menge und nicht `zimmer.some()` je Zeile: das war quadratisch,
+  // und 40 000 erfundene Zimmer in 400 KiB hielten den einzigen API-Prozess
+  // sieben Sekunden fest -- fuer alle Kunden (Befund M9, Audit 11.10.2026).
+  const bekannt = new Set(zimmer.map(z => z.id))
   for (const r of rooms) {
-    if (!zimmer.some(z => z.id === r.id)) {
+    if (!bekannt.has(r.id!)) {
+      bekannt.add(r.id!)
       zimmer.push({ id: r.id!, name: (r.name ?? '').trim(), description: null })
     }
   }

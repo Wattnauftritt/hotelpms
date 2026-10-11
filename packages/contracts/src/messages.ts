@@ -2422,6 +2422,20 @@ const M = {
     de: 'Reservierung {reference}: die letzte Nacht liegt vor der Anreise',
     en: 'Reservation {reference}: the last night is before arrival',
     tr: 'Rezervasyon {reference}: son gece varıştan önce' },
+  'import.kwhotel.stayTooLong': {
+    de: 'Reservierung {reference}: {nights} Naechte in einer Zeile, hoechstens '
+      + '{max} gehen. Datum in KWHotel pruefen oder den Gast als Platzhalter '
+      + 'auslassen',
+    en: 'Reservation {reference}: {nights} nights in one row, at most {max} '
+      + 'are allowed. Check the dates in KWHotel or leave the guest out as a '
+      + 'placeholder',
+    tr: 'Rezervasyon {reference}: bir satırda {nights} gece, en fazla {max} '
+      + 'olabilir. KWHotel\'deki tarihleri kontrol edin veya misafiri yer '
+      + 'tutucu olarak dışarıda bırakın' },
+  'import.csv.tooManyColumns': {
+    de: 'Zeile {line}: mehr als {max} Spalten. Ist das Trennzeichen richtig?',
+    en: 'Line {line}: more than {max} columns. Is the delimiter correct?',
+    tr: 'Satır {line}: {max} sütundan fazla. Ayırıcı doğru mu?' },
   'import.kwhotel.negativePrice': {
     de: 'Reservierung {reference}: negativer Preis',
     en: 'Reservation {reference}: negative price',
