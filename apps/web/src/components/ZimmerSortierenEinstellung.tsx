@@ -43,7 +43,6 @@ export function ZimmerSortierenEinstellung({ propertyId }: { propertyId: number 
   const q = useSortierEinstellung(propertyId)
   const speichern = useSortierEinstellungSpeichern(propertyId)
   const [modus, setModus] = useState<SortierModus>('manual')
-  const [heuteFest, setHeuteFest] = useState(true)
   const [zahlen, setZahlen] = useState<Record<string, string>>({})
   const [klein, setKlein] = useState('')
   const [wuensche, setWuensche] = useState('')
@@ -52,7 +51,6 @@ export function ZimmerSortierenEinstellung({ propertyId }: { propertyId: number 
     if (q.data === undefined) return
     const w = q.data.weights
     setModus(q.data.mode)
-    setHeuteFest(q.data.keepToday)
     setZahlen(Object.fromEntries(ZAHLEN.map(k => [k, typeof w[k] === 'number' ? String(w[k]) : ''])))
     setKlein(typeof w.smallRoomAttribute === 'string' ? w.smallRoomAttribute : '')
     setWuensche(Array.isArray(w.wishes) ? wuenscheText(w.wishes) : '')
@@ -97,14 +95,6 @@ export function ZimmerSortierenEinstellung({ propertyId }: { propertyId: number 
           <p className="text-xs text-neutral-500 pl-6">{t('roomSort.mode.autoHint')}</p>
         )}
       </fieldset>
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-1" checked={heuteFest}
-               onChange={e => setHeuteFest(e.target.checked)} />
-        <span>
-          {t('roomSort.keepToday')}
-          <span className="block text-xs text-neutral-500">{t('roomSort.keepTodayHint')}</span>
-        </span>
-      </label>
       <details className="text-sm">
         <summary className="cursor-pointer text-xs text-neutral-600">
           {t('roomSort.weights')}
@@ -144,7 +134,7 @@ export function ZimmerSortierenEinstellung({ propertyId }: { propertyId: number 
       <div className="flex items-center gap-3">
         <button type="button" disabled={!online || !gueltig || speichern.isPending}
                 onClick={() => speichern.mutate({
-                  mode: modus, keepToday: heuteFest, weights: gewichte() })}
+                  mode: modus, weights: gewichte() })}
                 className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('common.save')}

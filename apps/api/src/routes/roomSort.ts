@@ -26,14 +26,13 @@ import type { Principal } from '../platform/context.js'
  * Schreiben an `settings:property` wie die Zimmer selbst.
  */
 
-interface Zeile { mode: RoomSortMode; keep_today: boolean; weights: Partial<RoomSortWeights> }
+interface Zeile { mode: RoomSortMode; weights: Partial<RoomSortWeights> }
 
 function antwort(z: Zeile | undefined): Record<string, unknown> {
-  const s = z ?? { mode: 'manual' as const, keep_today: true, weights: {} }
+  const s = z ?? { mode: 'manual' as const, weights: {} }
   return {
     configured: z !== undefined,
     mode: s.mode,
-    keepToday: s.keep_today,
     weights: s.weights,
     effective: resolveRoomSortWeights(s.weights)
   }
@@ -50,7 +49,7 @@ export function roomSortRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       return tx(req.pool, req, async client => {
         const s = await client.query<Zeile>(
-          `SELECT mode, keep_today, weights FROM room_sort_setting WHERE property_id = $1`,
+          `SELECT mode, weights FROM room_sort_setting WHERE property_id = $1`,
           [Number(propertyId)])
         return antwort(s.rows[0])
       })
@@ -71,21 +70,18 @@ export function roomSortRoutes(app: FastifyInstance): void {
       if (typeof mode !== 'string' || !(ROOM_SORT_MODES as readonly string[]).includes(mode)) {
         f.mode = ['field.invalid']
       }
-      const keepToday = b.keepToday === undefined ? true : b.keepToday
-      if (typeof keepToday !== 'boolean') f.keepToday = ['field.invalid']
       const geprueft = checkRoomSortWeights(b.weights === undefined ? {} : b.weights)
       if (!geprueft.ok) Object.assign(f, geprueft.errors)
       if (Object.keys(f).length > 0 || !geprueft.ok) throw Errors.validation(f)
 
       return tx(req.pool, req, async client => {
         const { rows } = await client.query<Zeile>(
-          `INSERT INTO room_sort_setting (property_id, mode, keep_today, weights)
-           VALUES ($1, $2, $3, $4::jsonb)
+          `INSERT INTO room_sort_setting (property_id, mode, weights)
+           VALUES ($1, $2, $3::jsonb)
            ON CONFLICT (property_id) DO UPDATE
-              SET mode = EXCLUDED.mode, keep_today = EXCLUDED.keep_today,
-                  weights = EXCLUDED.weights, updated_at = now()
-           RETURNING mode, keep_today, weights`,
-          [Number(propertyId), mode, keepToday, JSON.stringify(geprueft.value)])
+              SET mode = EXCLUDED.mode, weights = EXCLUDED.weights, updated_at = now()
+           RETURNING mode, weights`,
+          [Number(propertyId), mode, JSON.stringify(geprueft.value)])
         return antwort(rows[0])
       })
     }
@@ -131,7 +127,6 @@ interface Lage {
   rooms: SortRoom[]
   basis: string
   today: string
-  keepToday: boolean
   weights: RoomSortWeights
 }
 
@@ -150,9 +145,9 @@ async function lage(
   client: PoolClient, propertyId: number, from: string, to: string, sperren: boolean
 ): Promise<Lage> {
   const s = await client.query<Zeile>(
-    `SELECT mode, keep_today, weights FROM room_sort_setting WHERE property_id = $1`,
+    `SELECT mode, weights FROM room_sort_setting WHERE property_id = $1`,
     [propertyId])
-  const einstellung = s.rows[0] ?? { mode: 'manual' as const, keep_today: true, weights: {} }
+  const einstellung = s.rows[0] ?? { mode: 'manual' as const, weights: {} }
   if (einstellung.mode === 'off') throw Errors.conflict('roomSort.off')
 
   const today = (await client.query<{ d: string }>(
@@ -202,7 +197,7 @@ async function lage(
     rooms: rooms.rows.map(x => ({ id: Number(x.id), categoryId: Number(x.category_id), code: x.code,
                                   quality: x.quality, floor: x.floor, building: x.building,
                                   attributes: x.attributes, blocked: x.blocked })),
-    basis, today, keepToday: einstellung.keep_today,
+    basis, today,
     weights: resolveRoomSortWeights(einstellung.weights)
   }
 }
@@ -211,11 +206,11 @@ function beweglich(x: StayRow, l: Lage, from: string, to: string): boolean {
   if (x.status !== 'Optional' && x.status !== 'Confirmed') return false
   if (x.room_fixed || x.channel_owner === 'local') return false
   if (x.arrival < from || x.departure > to) return false
+  // Wer heute anreist, wird mitsortiert, solange er nicht eingecheckt ist
+  // (Status oben). Sven, 11.10.2026: "das ist der einzige punkt" -- bis zum
+  // Check-in ist das Zimmer noch nicht seins, und gerade heute kostet eine
+  // Luecke am meisten.
   if (x.arrival < l.today) return false
-  // Fest heisst: das Zimmer bleibt. Wer heute anreist und noch keines hat,
-  // bekommt eines -- sonst stuende ein Gast aus RoomCloud, der heute frueh
-  // gebucht hat, bis morgen in der Ablage.
-  if (l.keepToday && x.arrival === l.today && x.resource_id !== null) return false
   return true
 }
 

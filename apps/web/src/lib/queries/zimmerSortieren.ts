@@ -18,7 +18,6 @@ export type SortierGewichte = Record<string, number | string | SortierWunsch[]>
 export interface SortierEinstellung {
   configured: boolean
   mode: SortierModus
-  keepToday: boolean
   weights: SortierGewichte
   effective: SortierGewichte & { wishes: SortierWunsch[] }
 }
@@ -33,7 +32,7 @@ export const useSortierEinstellung = (propertyId: number, enabled = true) =>
 export function useSortierEinstellungSpeichern(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { mode: SortierModus; keepToday: boolean; weights: SortierGewichte }) =>
+    mutationFn: (body: { mode: SortierModus; weights: SortierGewichte }) =>
       api.put<SortierEinstellung>(`/v1/properties/${propertyId}/room-sort-settings`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['room-sort-settings', propertyId] })
