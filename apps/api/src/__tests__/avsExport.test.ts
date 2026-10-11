@@ -244,6 +244,16 @@ describe('Melden', () => {
     expect(ohne.xml).not.toContain('<email>')
   })
 
+  it('schickt die Gaestekarten der Mitreisenden an die Adresse des Hauptgastes', async () => {
+    await einrichten()
+    const a = await aufenthalt({
+      haupt: { nachname: 'Familie', email: 'familie@example.test' },
+      mit: [{ nachname: 'Familie', vorname: 'Tom', geburt: '1990-01-01' }] })
+    const d = JSON.parse((await melden(a.ref, { digitalGuestCard: true })).body) as Datei
+    expect(d.xml.match(/<email>familie@example.test<\/email>/g)).toHaveLength(2)
+    expect(d.xml.match(/<digit_gastkart>true<\/digit_gastkart>/g)).toHaveLength(2)
+  })
+
   it('gibt die Ausweisnummer nur mit dem Recht darauf heraus und protokolliert es',
      async () => {
     await einrichten()

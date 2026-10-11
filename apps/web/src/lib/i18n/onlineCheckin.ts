@@ -256,13 +256,15 @@ export const onlineCheckin = {
     tr: 'Lütfen konaklama koşullarını buraya parmağınızla veya fareyle imzalayın.' },
 
   'gastCheckin.digitalGuestCard': {
-    de: 'Bitte schicken Sie mir die Gästekarte per E-Mail (freiwillig). Die '
-      + 'Gästekarte stellt die Gemeinde aus; dafür geht meine Mailadresse an ihr '
+    de: 'Bitte schicken Sie mir die Gästekarten per E-Mail, auch die meiner '
+      + 'Mitreisenden (freiwillig). Die Gästekarte stellt die Gemeinde aus; dafür geht meine Mailadresse an ihr '
       + 'Meldesystem.',
-    en: 'Please send me the guest card by email (optional). The guest card is '
+    en: 'Please send me the guest cards by email, including those of my companions '
+      + '(optional). The guest card is '
       + 'issued by the municipality; my email address goes to its registration system '
       + 'for this.',
-    tr: 'Misafir kartını bana e-postayla gönderin (isteğe bağlı). Misafir kartını '
+    tr: 'Misafir kartlarını, refakatçilerimin kartları dahil, bana e-postayla '
+      + 'gönderin (isteğe bağlı). Misafir kartını '
       + 'belediye düzenler; bunun için e-posta adresim belediyenin kayıt sistemine '
       + 'iletilir.' },
   'gastCheckin.confirm': {
