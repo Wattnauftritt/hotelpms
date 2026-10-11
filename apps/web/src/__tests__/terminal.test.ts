@@ -33,12 +33,36 @@ describe('Terminalseite aus der Adresse', () => {
     expect(istTerminalAdresse('/')).toBe(false)
   })
 
-  it('steht in main.tsx vor der Frage, wer angemeldet ist', () => {
+  /*
+   * Vor der Frage, wer angemeldet ist -- und seit dem Performance-Audit
+   * (11.10.2026, Befund 10) vor der Rezeption ueberhaupt: `boot.ts` laedt
+   * fuer `/terminal` und `/checkin` einen eigenen Einstieg, und `main.tsx`
+   * kennt die Gastseiten nicht mehr. Stuende dort wieder ein Import, laege
+   * die ganze Rezeption wieder im Download des Gastes, ohne dass sich auf
+   * dem Bildschirm etwas aendert.
+   */
+  it('hat einen eigenen Einstieg, und die Rezeption kennt ihn nicht', () => {
+    const boot = code('../boot.ts')
+    expect(boot).toMatch(/istTerminalAdresse\(location\.pathname\)\)\s*\{\s*void import\('\.\/gast\/terminal\.tsx'\)/)
+    expect(boot).toMatch(/istCheckinAdresse\(location\.pathname\)\)\s*\{\s*void import\('\.\/gast\/checkin\.tsx'\)/)
+    expect(boot.indexOf("import('./gast/terminal.tsx')"))
+      .toBeLessThan(boot.indexOf("import('./main.tsx')"))
     const main = code('../main.tsx')
-    expect(main.indexOf('if (terminal) return <TerminalSeite />'))
-      .toBeGreaterThan(-1)
-    expect(main.indexOf('if (terminal) return <TerminalSeite />'))
-      .toBeLessThan(main.indexOf("queryKey: ['me']"))
+    expect(main).not.toMatch(/routes\/(Terminal|GastCheckin)/)
+    expect(main).not.toMatch(/TerminalSeite|GastCheckinSeite/)
+  })
+
+  /*
+   * Die Gastseiten melden keinen Service Worker an (Befund 11, Dokument
+   * 33) und benutzen kein TanStack Query -- dessen Zwischenspeicher hielte
+   * Gastdaten ueber den Auftrag hinaus (CLAUDE.md).
+   */
+  it('meldet auf den Gastseiten keinen Service Worker an', () => {
+    for (const einstieg of ['../gast/terminal.tsx', '../gast/checkin.tsx']) {
+      const c = code(einstieg)
+      expect(c, einstieg).not.toMatch(/serviceWorker|lib\/pwa/)
+      expect(c, einstieg).not.toMatch(/@tanstack|QueryClient/)
+    }
   })
 })
 

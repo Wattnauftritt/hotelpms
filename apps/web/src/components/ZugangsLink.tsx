@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
-import qrcode from 'qrcode-generator'
 import { useT, useLocale } from '../lib/i18n/index.js'
 
 /**
@@ -21,21 +20,35 @@ export function ZugangsLink({ link, gueltigBis }: { link: string; gueltigBis: st
   const locale = useLocale()
   const [kopiert, setKopiert] = useState(false)
 
-  const { pfad, groesse } = useMemo(() => {
-    // Fehlerkorrektur M: ein Handybildschirm spiegelt, ein Ausdruck knickt.
-    const qr = qrcode(0, 'M')
-    qr.addData(link)
-    qr.make()
-    const n = qr.getModuleCount()
-    let d = ''
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        if (qr.isDark(y, x)) d += `M${x + 4} ${y + 4}h1v1h-1z`
+  /*
+   * Der Erzeuger kommt erst, wenn ein Link gezeigt wird. Er wird an wenigen
+   * Stellen gebraucht (Personal einladen), stand aber im ersten Laden jeder
+   * Rezeption (Performance-Audit 11.10.2026, Befund 10). Bis er da ist,
+   * bleibt das Feld leer; Link und Kopierknopf stehen sofort.
+   */
+  const [code, setCode] = useState<{ link: string; pfad: string; groesse: number } | null>(null)
+  useEffect(() => {
+    let aktuell = true
+    void import('qrcode-generator').then(({ default: qrcode }) => {
+      if (!aktuell) return
+      // Fehlerkorrektur M: ein Handybildschirm spiegelt, ein Ausdruck knickt.
+      const qr = qrcode(0, 'M')
+      qr.addData(link)
+      qr.make()
+      const n = qr.getModuleCount()
+      let d = ''
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          if (qr.isDark(y, x)) d += `M${x + 4} ${y + 4}h1v1h-1z`
+        }
       }
-    }
-    // Vier Module Ruhezone ringsum, sonst lesen manche Kameras nicht.
-    return { pfad: d, groesse: n + 8 }
+      // Vier Module Ruhezone ringsum, sonst lesen manche Kameras nicht.
+      setCode({ link, pfad: d, groesse: n + 8 })
+    })
+    return () => { aktuell = false }
   }, [link])
+  // Nie den Code eines vorigen Links zu einem neuen zeigen.
+  const { pfad, groesse } = code !== null && code.link === link ? code : { pfad: '', groesse: 33 }
 
   const kopieren = async (): Promise<void> => {
     try {

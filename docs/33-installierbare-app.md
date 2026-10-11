@@ -19,6 +19,10 @@ Die Content-Security-Policy bleibt unverändert: Manifest und Worker kommen von 
 
 Gespeichert wird die **Hülle**: `index.html` und die gehashten Dateien unter `/assets/`. Darin steht kein Gastname; es sind dieselben Bytes für jedes Haus.
 
+**Je Anwendung nur ihre Dateien** (Performance-Audit 11.10.2026, Befund 11). Beim Installieren lädt der Worker nur die Seite und den kleinen Einstieg `boot.ts`. Die Seite, die ihn anmeldet, sagt ihm danach, welche Anwendung sie ist (`serviceWorkerAnmelden({ app })` in `lib/pwa.ts`), und erst dann holt er deren Dateien — die Rezeption alle Bildschirme samt den nachgeladenen, damit sie ohne Netz von einem zum nächsten kommt; die Personal-App nur ihre eigenen. Welche Dateien zu welcher Anwendung gehören, steht beim Bau fest (`vite.config.ts`). Was trotzdem fehlt, legt er beim ersten Abruf unter `/assets/` ab. Vorher lud er jede Datei des Baus auf jedes Gerät: das Telefon einer Reinigungskraft holte im Hintergrund die ganze Rezeption.
+
+**Die Gastseiten melden keinen Worker an.** Online-Check-in und Gästeterminal haben eigene Einstiege (`src/gast/`), die `boot.ts` am Pfad wählt; sie laden weder die Rezeption noch `lib/pwa.ts`.
+
 **Nie gespeichert wird die Schnittstelle.** Alles unter `/v1/` geht am Worker vorbei, auch Seitenaufrufe wie die Zahlungsseite des Gastes. Zwei Gründe, jeder für sich genügt:
 
 - Ein Zwischenspeicher für Fachdaten zeigt der Rezeption einen alten Stand, als wäre er neu. Wer eine alte Belegung für die aktuelle hält, bucht doppelt.

@@ -35,18 +35,53 @@
  * Ziel und Kennung fertig in der Sprache der Kraft; hier wird nur angezeigt.
  * Das Ziel muss ein Pfad dieser Seite sein -- eine Meldung fuehrt nie nach
  * draussen. Gespeichert wird davon nichts.
+ *
+ * **Je Anwendung nur ihre Dateien** (Performance-Audit 11.10.2026, Befund
+ * 11). Beim Installieren kommt nur der Grund -- Seite und `boot.ts`. Die
+ * Seite, die den Worker anmeldet, sagt danach, welche Anwendung sie ist
+ * (`lib/pwa.ts`), und erst dann laedt er deren Dateien vor: die Rezeption
+ * alle Bildschirme, die Personal-App ihre drei. Ein Worker weiss beim
+ * Installieren nicht, wer ihn angemeldet hat; und an einem Geraet, das
+ * beides oeffnet, soll beides offline gehen. Was dennoch fehlt, legt er beim
+ * ersten Abruf ab -- auch das nur unter `/assets/`. Die Gastseiten melden
+ * keinen Worker an.
  */
-export function serviceWorkerQuelle(dateien: readonly string[], fassung: string): string {
-  const huelle = ['/', ...dateien.map(d => '/' + d)]
+export interface Huelle {
+  /** Was jedes Fenster braucht, um ohne Netz aufzugehen. */
+  grund: readonly string[]
+  /** Je Anwendung ihre Dateien, beim ersten Oeffnen vorgeladen. */
+  apps: Readonly<Record<string, readonly string[]>>
+}
+
+export function serviceWorkerQuelle(huelle: Huelle, fassung: string): string {
   return `/* Erzeugt beim Bau aus apps/web/src/pwa/serviceWorker.ts. */
 'use strict'
 const SPEICHER = 'staygrid-huelle-' + ${JSON.stringify(fassung)}
-const HUELLE = ${JSON.stringify(huelle)}
+const GRUND = ${JSON.stringify(huelle.grund)}
+const APPS = ${JSON.stringify(huelle.apps)}
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(SPEICHER)
-    .then(function (c) { return c.addAll(HUELLE) })
+    .then(function (c) { return c.addAll(GRUND) })
     .then(function () { return self.skipWaiting() }))
+})
+
+/* Nur holen, was noch fehlt: die Seite meldet sich bei jedem Aufruf. */
+function vorladen(liste) {
+  return caches.open(SPEICHER).then(function (c) {
+    return Promise.all(liste.map(function (u) {
+      return c.match(u).then(function (r) { return r ? null : u })
+    })).then(function (fehlt) {
+      fehlt = fehlt.filter(function (u) { return u !== null })
+      return fehlt.length > 0 ? c.addAll(fehlt) : undefined
+    })
+  })
+}
+
+self.addEventListener('message', function (e) {
+  const app = e.data && e.data.vorladen
+  if (typeof app !== 'string' || !Object.prototype.hasOwnProperty.call(APPS, app)) return
+  e.waitUntil(vorladen(APPS[app]).catch(function () { /* ohne Netz: beim naechsten Aufruf */ }))
 })
 
 self.addEventListener('activate', function (e) {
@@ -73,8 +108,16 @@ self.addEventListener('fetch', function (e) {
     return
   }
   if (url.pathname.indexOf('/assets/') === 0) {
-    e.respondWith(caches.open(SPEICHER).then(function (c) { return c.match(req) })
-      .then(function (r) { return r || fetch(req) }))
+    e.respondWith(caches.open(SPEICHER).then(function (c) {
+      return c.match(req).then(function (r) {
+        if (r) return r
+        return fetch(req).then(function (antwort) {
+          // Die Namen tragen ihren Hash: was einmal ok kam, gilt fuer diese Fassung.
+          if (antwort.ok) e.waitUntil(c.put(req, antwort.clone()).catch(function () {}))
+          return antwort
+        })
+      })
+    }))
   }
 })
 
