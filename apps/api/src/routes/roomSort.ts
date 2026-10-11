@@ -3,13 +3,14 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Meldung } from '../platform/texte.js'
-import { createHash } from 'node:crypto'
 import type { PoolClient } from '@hotelpms/db'
 import {
-  ROOM_SORT_MODES, checkRoomSortWeights, resolveRoomSortWeights, sortRooms, isIsoDate,
-  nightsBetween, addDays, type RoomSortMode, type RoomSortWeights, type SortRoom, type SortStay
+  ROOM_SORT_MODES, checkRoomSortWeights, resolveRoomSortWeights, isIsoDate, nightsBetween,
+  MAX_SORT_DAYS, RoomSortRoomTakenError, roomSortCompute, roomSortLoad, roomSortLock,
+  roomSortMovable, roomSortRun, roomSortSetting, roomSortWrite,
+  type RoomSortMode, type RoomSortSituation, type RoomSortWeights
 } from '@hotelpms/domain'
-import { emitEvent } from '../platform/events.js'
+import { emitEvents } from '../platform/events.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 import type { Principal } from '../platform/context.js'
 
@@ -104,31 +105,10 @@ export function roomSortRoutes(app: FastifyInstance): void {
  * Adminpanel wurden Zeilen geloescht und neu angelegt, und mit ihnen gingen
  * Meldeschein und Bezuege verloren.
  *
- * **Wer liegen bleibt** (die Regeln aus dem Adminpanel und Svens
- * Grundregeln): angereist oder abgereist, "Zimmer fest", Anreise vor dem
- * Geschaeftstag (gilt als angereist, Sven 05.10.2026), Anreise heute, wenn
- * das Haus es so eingestellt hat, ueber den Zeitraum hinaus, in einem Zimmer
- * einer anderen Gruppe (Upgrade), und eine Kanalbuchung, die in StayGrid von
- * Hand geaendert wurde (`local`, Sven 05.10.2026: geschuetzt).
+ * **Wer liegen bleibt**, wie gelesen und geschrieben wird, steht in
+ * `@hotelpms/domain` (`roomSortRun.ts`): der Worker sortiert im Modus
+ * `auto` dasselbe, und Apps duerfen einander nicht importieren.
  */
-
-/** Zwei Monate: so weit plant eine Rezeption Zimmer, und es bleibt eine Runde. */
-const MAX_SORT_DAYS = 62
-
-interface StayRow {
-  id: number; public_ref: string; booking_id: number; category_id: number
-  arrival: string; departure: string; resource_id: number | null; status: string
-  room_fixed: boolean; channel_owner: string | null; price_cent: number | null
-  text: string; last_name: string | null; updated_at: string
-}
-
-interface Lage {
-  stays: StayRow[]
-  rooms: SortRoom[]
-  basis: string
-  today: string
-  weights: RoomSortWeights
-}
 
 function zeitraum(b: Record<string, unknown>): { from: string; to: string } {
   const from = typeof b.from === 'string' ? b.from : ''
@@ -141,91 +121,25 @@ function zeitraum(b: Record<string, unknown>): { from: string; to: string } {
   return { from, to }
 }
 
+/** Die Lage fuer die Route: "Nie" ist hier eine Antwort an den Benutzer. */
 async function lage(
   client: PoolClient, propertyId: number, from: string, to: string, sperren: boolean
-): Promise<Lage> {
-  const s = await client.query<Zeile>(
-    `SELECT mode, weights FROM room_sort_setting WHERE property_id = $1`,
-    [propertyId])
-  const einstellung = s.rows[0] ?? { mode: 'manual' as const, weights: {} }
-  if (einstellung.mode === 'off') throw Errors.conflict('roomSort.off')
+): Promise<RoomSortSituation> {
+  const l = await roomSortLoad(client, propertyId, from, to, sperren)
+  if (l === null) throw Errors.conflict('roomSort.off')
+  return l
+}
 
-  const today = (await client.query<{ d: string }>(
-    `SELECT COALESCE((SELECT max(b.date) FROM business_day b WHERE b.property_id = $1),
-                     current_date)::text AS d`, [propertyId])).rows[0]!.d
-
-  // Alles, was im Zeitraum ein Zimmer belegt oder eines braucht. Gesperrt,
-  // wenn Uebernehmen fragt: der Stand soll bis zum Schreiben gelten.
-  const stays = await client.query<StayRow>(
-    `SELECT r.id, r.public_ref, r.booking_id, r.category_id,
-            r.arrival::text, r.departure::text, r.resource_id, r.status::text,
-            r.room_fixed, b.channel_owner,
-            (SELECT round(avg(n.price_cent))::int FROM reservation_night n
-              WHERE n.reservation_id = r.id) AS price_cent,
-            concat_ws(' ', r.short_note, r.notes) AS text,
-            g.last_name, r.updated_at::text
-       FROM reservation r
-       JOIN booking b ON b.id = r.booking_id
-       LEFT JOIN guest g ON g.id = r.primary_guest_id
-      WHERE r.property_id = $1
-        AND r.arrival < $3::date AND r.departure > $2::date
-        AND r.status IN ('Optional','Confirmed','InHouse','CheckedOut')
-      ORDER BY r.id
-      ${sperren ? 'FOR UPDATE OF r' : ''}`, [propertyId, from, to])
-
-  const rooms = await client.query<{ id: number; category_id: number; code: string
-                                     quality: number; floor: string | null
-                                     building: string | null; attributes: string[]
-                                     blocked: Array<{ from: string; to: string }> }>(
-    `SELECT r.id, r.category_id, r.code, r.quality, r.floor, r.building, r.attributes,
-            COALESCE((SELECT json_agg(json_build_object('from', m.from_date::text,
-                                                        'to', m.to_date::text))
-                        FROM maintenance_block m
-                       WHERE m.resource_id = r.id AND m.kind = 'out_of_order'
-                         AND m.from_date < $3::date AND m.to_date > $2::date), '[]') AS blocked
-       FROM resource r WHERE r.property_id = $1 AND r.active
-      ORDER BY r.id`, [propertyId, from, to])
-
-  const basis = createHash('sha256').update(JSON.stringify([
-    stays.rows.map(x => [x.id, x.resource_id, x.arrival, x.departure, x.status, x.room_fixed,
-                         x.channel_owner, x.updated_at]),
-    rooms.rows.map(x => [x.id, x.category_id, x.blocked])
-  ])).digest('base64url')
-
-  return {
-    stays: stays.rows,
-    rooms: rooms.rows.map(x => ({ id: Number(x.id), categoryId: Number(x.category_id), code: x.code,
-                                  quality: x.quality, floor: x.floor, building: x.building,
-                                  attributes: x.attributes, blocked: x.blocked })),
-    basis, today,
-    weights: resolveRoomSortWeights(einstellung.weights)
+/** Ein belegtes Zimmer nach dem Schreiben ist ein Konflikt fuer die Rezeption. */
+export async function sortierKonflikt<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f()
+  } catch (e) {
+    if (e instanceof RoomSortRoomTakenError) {
+      throw Errors.conflict('roomSort.roomTaken', { room: e.room, reservation: e.reservation })
+    }
+    throw e
   }
-}
-
-function beweglich(x: StayRow, l: Lage, from: string, to: string): boolean {
-  if (x.status !== 'Optional' && x.status !== 'Confirmed') return false
-  if (x.room_fixed || x.channel_owner === 'local') return false
-  if (x.arrival < from || x.departure > to) return false
-  // Wer heute anreist, wird mitsortiert, solange er nicht eingecheckt ist
-  // (Status oben). Sven, 11.10.2026: "das ist der einzige punkt" -- bis zum
-  // Check-in ist das Zimmer noch nicht seins, und gerade heute kostet eine
-  // Luecke am meisten.
-  if (x.arrival < l.today) return false
-  return true
-}
-
-function rechnen(l: Lage, from: string, to: string): ReturnType<typeof sortRooms> {
-  const stays: SortStay[] = l.stays.map(x => ({
-    id: Number(x.id), bookingId: Number(x.booking_id), categoryId: Number(x.category_id),
-    arrival: x.arrival, departure: x.departure,
-    resourceId: x.resource_id === null ? null : Number(x.resource_id),
-    // Abgereiste und Stornierte belegen nichts mehr, Abgereiste aber an
-    // ihren Tagen schon: sie stehen nur bis zur Abreise im Zeitraum.
-    fixed: !beweglich(x, l, from, to),
-    pricePerNightCent: x.price_cent === null ? null : Number(x.price_cent),
-    text: x.text ?? ''
-  }))
-  return sortRooms(l.rooms, stays, l.weights)
 }
 
 export function roomSortRunRoutes(app: FastifyInstance): void {
@@ -240,7 +154,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
       const { from, to } = zeitraum((req.body ?? {}) as Record<string, unknown>)
       return tx(req.pool, req, async client => {
         const l = await lage(client, Number(propertyId), from, to, false)
-        const r = rechnen(l, from, to)
+        const r = roomSortCompute(l, from, to)
         const nachId = new Map(l.stays.map(x => [Number(x.id), x]))
         const zimmer = new Map(l.rooms.map(z => [z.id, z.code]))
         const nachZug = new Map(r.moves.map(m => [m.stayId, m]))
@@ -259,7 +173,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
             return { reservationRef: x.public_ref, guestName: x.last_name,
                      arrival: x.arrival, departure: x.departure }
           }),
-          fixed: l.stays.filter(x => !beweglich(x, l, from, to)).length,
+          fixed: l.stays.filter(x => !roomSortMovable(x, l, from, to)).length,
           costBefore: Math.round(r.costBefore), costAfter: Math.round(r.costAfter),
           /*
            * Alles fuer den Kalender in der Vorschau (Sven, 11.10.2026: "so hat
@@ -283,7 +197,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
               return { reservationRef: x.public_ref, guestName: x.last_name,
                        arrival: x.arrival, departure: x.departure,
                        fromRoomId: vorher, toRoomId: zug === undefined ? vorher : zug.toRoomId,
-                       moved: zug !== undefined, fixed: !beweglich(x, l, from, to) }
+                       moved: zug !== undefined, fixed: !roomSortMovable(x, l, from, to) }
             })
         }
       })
@@ -318,7 +232,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
       const pid = Number(propertyId)
 
       return tx(req.pool, req, async client => {
-        await sortierSperre(client, pid)
+        await roomSortLock(client, pid)
         const l = await lage(client, pid, from, to, true)
         if (l.basis !== b.basis) throw Errors.conflict('roomSort.changed')
 
@@ -328,7 +242,7 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
          * schreibt Uebernehmen nie etwas, das der Sortierer nicht
          * vorgeschlagen hat, auch wenn jemand den Rumpf von Hand baut.
          */
-        const r = rechnen(l, from, to)
+        const r = roomSortCompute(l, from, to)
         const nachId = new Map(l.stays.map(x => [Number(x.id), x]))
         const soll = new Map(r.moves.map(m => [nachId.get(m.stayId)!.public_ref, m]))
         for (const w of wunsch) {
@@ -339,8 +253,8 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
         if (wunsch.length !== soll.size) throw Errors.conflict('roomSort.changed')
 
         const zuege = [...soll.values()]
-        const runRef = await laufSchreiben(client, pid, from, to, 'manual', zuege, nachId,
-          principal.userId ?? null)
+        const runRef = await sortierKonflikt(() => roomSortRun(client, pid, from, to, 'manual',
+          zuege, nachId, principal.userId ?? null))
         return { runRef, moved: zuege.length }
       })
     }
@@ -386,134 +300,23 @@ export function roomSortRunRoutes(app: FastifyInstance): void {
             throw Errors.conflict('roomSort.undoStale', { reservation: x?.public_ref ?? '' })
           }
         }
-        await schreiben(client, lauf.moves.map(m => ({ id: m.reservationId,
-                                                       resourceId: m.fromResourceId })))
+        await sortierKonflikt(() => roomSortWrite(client, lauf.moves.map(m => ({
+          id: m.reservationId, resourceId: m.fromResourceId }))))
         await client.query(
           `UPDATE room_sort_run SET undone_at = now(), undone_by = $2 WHERE id = $1`,
           [lauf.id, principal.userId ?? null])
-        for (const m of lauf.moves) {
-          await emitEvent(client, pid, 'reservation.changed', {
-            reservationRef: nach.get(m.reservationId)!.public_ref, resourceId: m.fromResourceId })
-        }
+        // Eine Anweisung fuer alle Ereignisse, nicht eine je Zug (Befund 6).
+        await emitEvents(client, pid, 'reservation.changed', lauf.moves.map(m => ({
+          reservationRef: nach.get(m.reservationId)!.public_ref, resourceId: m.fromResourceId })))
         return { runRef, undone: lauf.moves.length }
       })
     }
   })
 }
 
-/**
- * Zimmer setzen, in einer Anweisung, und danach pruefen, dass kein Zimmer
- * doppelt belegt oder gesperrt ist. Erst schreiben, dann pruefen: bei einem
- * Ringtausch (A nach B, B nach C, C nach A) ist jeder Zwischenstand belegt,
- * nur das Ergebnis nicht.
- *
- * `app.room_sort` haelt den Trigger aus 0092 an: ein Zug des Sortierers ist
- * keine Aenderung der Rezeption (Migration 0122).
- */
-async function schreiben(
-  client: PoolClient, zuege: Array<{ id: number; resourceId: number | null }>
-): Promise<void> {
-  await client.query(`SELECT set_config('app.room_sort', 'on', true)`)
-  await client.query(
-    // Wer ein Zimmer bekommt, wartet nicht mehr auf das, das die Quelle
-    // wollte (0121): sonst legte ihn der naechste Push dorthin zurueck, und
-    // der Konfliktvermerk am Balken stimmte nicht mehr.
-    `UPDATE reservation r SET resource_id = x.res, updated_at = now(),
-            channel_wanted_resource_id = CASE WHEN x.res IS NULL
-                                              THEN r.channel_wanted_resource_id END,
-            channel_conflict = CASE WHEN x.res IS NOT NULL AND r.channel_conflict = 'room'
-                                    THEN NULL ELSE r.channel_conflict END
-       FROM unnest($1::bigint[], $2::bigint[]) AS x(id, res)
-      WHERE r.id = x.id`,
-    [zuege.map(z => z.id), zuege.map(z => z.resourceId)])
-  await client.query(`SELECT set_config('app.room_sort', '', true)`)
-
-  const konflikt = await client.query<{ code: string; ref: string }>(
-    `SELECT u.code, r.public_ref AS ref
-       FROM reservation r JOIN resource u ON u.id = r.resource_id
-      WHERE r.id = ANY($1::bigint[])
-        AND (EXISTS (SELECT 1 FROM reservation o
-                      WHERE o.resource_id = r.resource_id AND o.id <> r.id
-                        AND o.status IN ('Optional','Confirmed','InHouse')
-                        AND o.arrival < r.departure AND o.departure > r.arrival)
-             OR EXISTS (SELECT 1 FROM maintenance_block m
-                         WHERE m.resource_id = r.resource_id AND m.kind = 'out_of_order'
-                           AND m.from_date < r.departure AND m.to_date > r.arrival))
-      LIMIT 1`, [zuege.map(z => z.id)])
-  if (konflikt.rowCount && konflikt.rowCount > 0) {
-    throw Errors.conflict('roomSort.roomTaken',
-      { room: konflikt.rows[0]!.code, reservation: konflikt.rows[0]!.ref })
-  }
-}
-
-/** Zuege schreiben, den Lauf festhalten und je Reservierung ein Ereignis. */
-async function laufSchreiben(
-  client: PoolClient, pid: number, from: string, to: string, trigger: 'manual' | 'auto',
-  zuege: ReturnType<typeof sortRooms>['moves'], nachId: Map<number, StayRow>,
-  userId: number | null
-): Promise<string> {
-  await schreiben(client, zuege.map(m => ({ id: m.stayId, resourceId: m.toRoomId })))
-  const run = await client.query<{ public_ref: string }>(
-    `INSERT INTO room_sort_run (property_id, from_date, to_date, trigger, moves, created_by)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING public_ref`,
-    [pid, from, to, trigger, JSON.stringify(zuege.map(m => ({
-      reservationId: m.stayId, fromResourceId: m.fromRoomId, toResourceId: m.toRoomId }))),
-     userId])
-  for (const m of zuege) {
-    const x = nachId.get(m.stayId)!
-    await emitEvent(client, pid, 'reservation.changed', {
-      reservationRef: x.public_ref, resourceId: m.toRoomId,
-      arrival: x.arrival, departure: x.departure, categoryId: Number(x.category_id) })
-  }
-  return run.rows[0]!.public_ref
-}
-
-/**
- * Ein Sortierlauf je Haus zur Zeit.
- *
- * Der Lauf sperrt alle Aufenthalte des Zeitraums, ein Push vorher seine
- * Buchung. Laufen zwei Pushes gleichzeitig, haelt jeder seine Buchung und
- * wartet auf die des anderen -- eine Verklemmung, die PostgreSQL mit einem
- * Abbruch aufloest. Die Sperre je Haus kommt deshalb zuerst, vor jeder
- * Zeilensperre.
- */
-export async function sortierSperre(client: PoolClient, propertyId: number): Promise<void> {
-  await client.query(`SELECT pg_advisory_xact_lock(hashtext('room_sort'), $1::int)`,
-    [propertyId])
-}
-
 /** Vergibt StayGrid in diesem Haus die Zimmer selbst (Modus `auto`, E1)? */
 export async function vergibtSelbst(client: PoolClient, propertyId: number): Promise<boolean> {
-  const r = await client.query<{ mode: RoomSortMode }>(
-    `SELECT mode FROM room_sort_setting WHERE property_id = $1`, [propertyId])
-  return r.rows[0]?.mode === 'auto'
+  return (await roomSortSetting(client, propertyId)).mode === 'auto'
 }
 
-/** Ein Jahr: so weit reicht, was RoomCloud im Gaestehaus verkauft. */
-const AUTO_SORT_DAYS = 366
-
-/**
- * Automatisch sortieren (Modus `auto`, Gaestehaus).
- *
- * Laeuft am Ende eines Pushes in derselben Transaktion: die Buchung kommt
- * ohne Zimmer an und hat danach eines, ohne dass jemand den Plan ansieht.
- * Ab dem Geschaeftstag, weil die Anreisen von heute ohne Zimmer auch eines
- * brauchen; wer heute schon eines hat, behaelt es (`beweglich`). Schreibt
- * wie Uebernehmen und legt einen Lauf an, damit auch ein automatischer Zug
- * im Verlauf steht und sich zuruecknehmen laesst. Der Aufrufer haelt
- * `sortierSperre`.
- */
-export async function autoSortieren(client: PoolClient, propertyId: number): Promise<number> {
-  if (!await vergibtSelbst(client, propertyId)) return 0
-  const heute = (await client.query<{ d: string }>(
-    `SELECT COALESCE((SELECT max(b.date) FROM business_day b WHERE b.property_id = $1),
-                     current_date)::text AS d`, [propertyId])).rows[0]!.d
-  const from = heute
-  const to = addDays(heute, AUTO_SORT_DAYS)
-  const l = await lage(client, propertyId, from, to, true)
-  const r = rechnen(l, from, to)
-  if (r.moves.length === 0) return 0
-  const nachId = new Map(l.stays.map(x => [Number(x.id), x]))
-  await laufSchreiben(client, propertyId, from, to, 'auto', r.moves, nachId, null)
-  return r.moves.length
-}
+export { roomSortLock as sortierSperre }

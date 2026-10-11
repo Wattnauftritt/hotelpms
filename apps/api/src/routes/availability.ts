@@ -452,13 +452,15 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   AND x.arrival < $3::date AND x.departure > $2::date
                 GROUP BY n.reservation_id
              ) nt ON nt.reservation_id = r.id` : ''}
-             ${mitGastnotiz ? `LEFT JOIN (
-               SELECT gpn.guest_id,
-                      array_agg(gpn.note ORDER BY gpn.created_at, gpn.id) AS notes
+             -- Nur die Notizen des Gastes dieser Zeile, ueber den Index auf
+             -- guest_id. Bisher gruppierte der Verbund alle Notizen des
+             -- Hauses, auch die von Gaesten, die seit Jahren nicht mehr da
+             -- waren (Performance-Audit 11.10.2026, Befund 14).
+             ${mitGastnotiz ? `LEFT JOIN LATERAL (
+               SELECT array_agg(gpn.note ORDER BY gpn.created_at, gpn.id) AS notes
                  FROM guest_property_note gpn
-                WHERE gpn.property_id = $1
-                GROUP BY gpn.guest_id
-             ) gn ON gn.guest_id = r.primary_guest_id` : ''}
+                WHERE gpn.property_id = $1 AND gpn.guest_id = r.primary_guest_id
+             ) gn ON true` : ''}
             WHERE r.property_id = $1
               AND r.arrival < $3::date AND r.departure > $2::date
               -- Abgereiste gehoeren in den Plan: wer zurueckblaettert,

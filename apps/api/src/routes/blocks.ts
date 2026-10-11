@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { isIsoDate, nightsBetween } from '@hotelpms/domain'
+import { addDays, isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 import { rechtImHaus } from './depositRequests.js'
@@ -44,6 +44,17 @@ export async function loadBlock(client: PoolClient, ref: string): Promise<BlockR
   if (rowCount === 0) throw Errors.notFound('res.block')
   return rows[0]!
 }
+
+/**
+ * Wie weit die Liste zurueckreicht, wenn niemand `from` nennt: Kontingente,
+ * die in den letzten dreissig Tagen endeten. Ein abgelaufenes Kontingent
+ * nimmt keinen Abruf mehr an; wer nach der Gruppe vom Fruehjahr sucht,
+ * nennt `from`.
+ */
+const BLOCK_LIST_LOOKBACK_DAYS = 30
+/** Obergrenze je Aufruf (CLAUDE.md: jeder Endpunkt hat eine). */
+const BLOCK_LIST_MAX = 500
+const BLOCK_LIST_DEFAULT = 200
 
 export function blockRoutes(app: FastifyInstance): void {
   registerRoute(app, {
@@ -121,9 +132,23 @@ export function blockRoutes(app: FastifyInstance): void {
     summary: 'Kontingente mit Abrufstand',
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
-      const { status } = req.query as { status?: string }
+      const q = req.query as { status?: string; from?: string; limit?: string }
+      if (q.from !== undefined && !isIsoDate(q.from)) {
+        throw Errors.validation({ from: ['field.isoDate'] })
+      }
+      /*
+       * Begrenzt in beide Richtungen (Performance-Audit 11.10.2026, Befund
+       * 14): bisher kam jedes Kontingent, das das Haus je hatte, mit allen
+       * Abrufen. Zeitlich ab `from` (Ende am oder nach dem Tag), sonst ab
+       * dem Geschaeftstag minus dreissig Tage; der Menge nach `limit`.
+       */
+      const limit = Math.min(Math.max(Number(q.limit) || BLOCK_LIST_DEFAULT, 1), BLOCK_LIST_MAX)
 
       return tx(req.pool, req, async client => {
+        const ab = q.from ?? addDays((await client.query<{ d: string }>(
+          `SELECT COALESCE((SELECT max(b.date) FROM business_day b WHERE b.property_id = $1),
+                           current_date)::text AS d`, [Number(propertyId)])).rows[0]!.d,
+          -BLOCK_LIST_LOOKBACK_DAYS)
         /*
          * Ein Aufruf je Bildschirm. Die Abrufe kommen als Feld mit, nicht als
          * eine Nachfrage je Kontingent: sonst kostet die Gruppenliste eine
@@ -156,9 +181,11 @@ export function blockRoutes(app: FastifyInstance): void {
              ) p ON true
             WHERE b.property_id = $1
               AND ($2::text IS NULL OR b.status = $2)
-            ORDER BY b.from_date, b.id`,
-          [Number(propertyId), status ?? null])
-        return { blocks: rows }
+              AND b.to_date >= $3::date
+            ORDER BY b.from_date, b.id
+            LIMIT $4`,
+          [Number(propertyId), q.status ?? null, ab, limit])
+        return { blocks: rows, from: ab, limit }
       })
     }
   })

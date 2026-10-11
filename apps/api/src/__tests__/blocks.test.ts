@@ -314,6 +314,42 @@ describe('Liste', () => {
     expect(liste[0]!.pickups[0]!.guest).toBe('Jansen, Ute')
   })
 
+  /*
+   * Begrenzt (Performance-Audit 11.10.2026, Befund 14): ohne Angabe nur, was
+   * hoechstens dreissig Tage vor dem Geschaeftstag endete, und nie mehr als
+   * `limit` Zeilen. Wer weiter zurueck will, nennt `from`.
+   */
+  it('liefert ohne Angabe nur die juengeren Kontingente, mit from auch aeltere', async () => {
+    const aktuell = await kontingent()
+    const alt = (dbis: string) => owner.query(
+      `INSERT INTO availability_block
+         (property_id, name, category_id, from_date, to_date, quantity, status)
+       VALUES ($1,'Alt',$2,'2026-08-01'::date,$3::date,2,'released')`,
+      [fx.propertyId, catId, dbis])
+    await alt('2026-09-01')   // Geschaeftstag 01.10. minus dreissig Tage: noch dabei
+    await alt('2026-08-31')   // einen Tag frueher: nicht mehr
+
+    const liste = async (query = '') => {
+      const r = await app.inject({
+        method: 'GET', url: `/v1/properties/${fx.propertyId}/blocks${query}`,
+        headers: auth(admin.sessionId) })
+      expect(r.statusCode, r.body).toBe(200)
+      return (json(r) as unknown as { blocks: Array<{ blockRef: string; toDate: string }> })
+        .blocks
+    }
+    expect((await liste()).map(b => b.toDate)).toEqual(['2026-09-01', BIS])
+    expect((await liste('?status=active')).map(b => b.blockRef)).toEqual([aktuell])
+    // Sortiert nach Beginn, dann Anlage: beide alten beginnen am 01.08.
+    expect((await liste('?from=2026-01-01')).map(b => b.toDate))
+      .toEqual(['2026-09-01', '2026-08-31', BIS])
+    expect(await liste('?from=2026-01-01&limit=1')).toHaveLength(1)
+
+    const falsch = await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/blocks?from=gestern`,
+      headers: auth(admin.sessionId) })
+    expect(falsch.statusCode).toBe(422)
+  })
+
   it('zeigt die Kontingente eines fremden Hauses nicht', async () => {
     const fremd = await makeProperty(owner, { code: 'FREMD' })
     const fremdeKat = await makeCategory(owner, fremd.propertyId)

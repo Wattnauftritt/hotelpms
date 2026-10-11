@@ -17,6 +17,7 @@ import { sendStaffPushes, createWebPushSender, vapidSchluessel, type PushSender 
   from './jobs/staffPush.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
+import { sortDueRooms } from './jobs/roomSortAuto.js'
 import { createBrevoAdapter } from './email/brevo.js'
 import { parseCidrList } from '@hotelpms/domain'
 
@@ -372,6 +373,8 @@ async function tickArbeit(): Promise<void> {
       await propertyMaintenance(p)
       await nightAudit(p)
       await rateSteering(p)
+      // Vor den Webhooks: die Zuege des Laufs gehen im selben Tick hinaus.
+      await sortDueRooms(pool, propertyContext(p.account_id, p.id), p.id, log)
       await webhooks(p)
       // Vor der Zustellung: was hier eingereiht wird, geht im selben Tick hinaus.
       await onlineCheckins(p)

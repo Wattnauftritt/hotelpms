@@ -20,12 +20,26 @@ export function contextFor(principal: Principal): DbContext {
 export function tx<T>(
   pool: Pool, req: FastifyRequest, fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {
+  return txIm(pool, req, contextFor(req.principal as Principal), fn)
+}
+
+/**
+ * Wie `tx`, aber mit einem Kontext, der nicht aus der Sitzung kommt -- die
+ * Kanalrouten leiten ihn aus dem Verbindungstoken ab (`channelContext`).
+ *
+ * Sie liefen bisher ueber `withTransaction` ohne Zaehler, und damit war
+ * der teuerste Schreibpfad, der Kanal-Push, im Betriebsprotokoll
+ * unsichtbar (Performance-Audit 11.10.2026, Befund 14).
+ */
+export function txIm<T>(
+  pool: Pool, req: FastifyRequest, ctx: DbContext, fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
   /*
    * Die Kosten summieren, nicht setzen: eine Route darf `tx` mehrmals
    * aufrufen -- der Check-in tut es --, und die Frage ist, was die
    * **Anfrage** gekostet hat, nicht ihre letzte Transaktion.
    */
-  return withTransaction(pool, contextFor(req.principal as Principal), fn, b => {
+  return withTransaction(pool, ctx, fn, b => {
     req.dbKosten.anweisungen += b.anweisungen
     req.dbKosten.dauerMs += b.dauerMs
   })
