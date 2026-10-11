@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeResources, makeUser, type Fixture } from '@hotelpms/testing'
-import type { Pool } from '@hotelpms/db'
+import { withTransaction, type Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
@@ -338,5 +338,65 @@ describe('Der Schein mit Inhalt', () => {
 
   it('kennt keinen Schein, den es nicht gibt', async () => {
     expect((await ansehen(999999)).statusCode).toBe(404)
+  })
+})
+
+/*
+ * Befund H5 aus dem Sicherheitsaudit vom 11.10.2026 (Migration 0128): der
+ * Loeschantrag eines Hauptgasts mit Mitreisenden brach am Fremdschluessel
+ * der Mitreisendenscheine ab und ging still verloren. Svens Entscheidung:
+ * Meldescheine bleiben bis zu ihrer Frist und fallen dann zusammen.
+ */
+describe('Loeschantrag und Meldescheinfrist', () => {
+  async function abgereisterSammelschein(): Promise<{ gastRef: string; gastId: number }> {
+    const petersen = await gast('Petersen')
+    await owner.query(
+      `UPDATE guest SET birth_date = '1970-03-04', nationality = 'DE', email = 'p@example.org'
+        WHERE public_ref = $1`, [petersen])
+    const ref = await reservierung(petersen)
+    expect((await melden(ref, { occupantGuestRefs: [await gast('Nissen')] })).statusCode)
+      .toBe(201)
+    await owner.query(`UPDATE reservation SET status = 'Canceled' WHERE public_ref = $1`, [ref])
+    const g = await owner.query<{ id: string }>(
+      `SELECT id FROM guest WHERE public_ref = $1`, [petersen])
+    return { gastRef: petersen, gastId: Number(g.rows[0]!.id) }
+  }
+
+  const scheine = async (): Promise<number> => (await owner.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM registration WHERE property_id = $1`, [fx.propertyId]))
+    .rows[0]!.n
+
+  it('nimmt den Antrag an und laesst die Scheine bis zur Frist stehen', async () => {
+    const { gastRef, gastId } = await abgereisterSammelschein()
+    const r = await app.inject({ method: 'POST',
+      url: `/v1/guests/${gastRef}/anonymize`, headers: auth })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json<{ status: string; completesAfter: string }>()).toMatchObject({
+      status: 'partial', completesAfter: '2027-10-04' })
+    expect(await scheine()).toBe(2)
+
+    // Was der Schein braucht, bleibt; was er nicht braucht, ist weg.
+    const g = await owner.query<{ birth_date: string | null; email: string | null
+                                  erasure_requested_at: string | null }>(
+      `SELECT birth_date::text, email, erasure_requested_at::text FROM guest WHERE id = $1`,
+      [gastId])
+    expect(g.rows[0]).toMatchObject({ birth_date: '1970-03-04', email: null })
+    expect(g.rows[0]!.erasure_requested_at).not.toBeNull()
+  })
+
+  it('vollendet nach Ablauf der Frist und nimmt die Mitreisendenscheine mit', async () => {
+    const { gastRef, gastId } = await abgereisterSammelschein()
+    await app.inject({ method: 'POST', url: `/v1/guests/${gastRef}/anonymize`, headers: auth })
+    await owner.query(`UPDATE registration SET destroy_after = current_date - 1
+                        WHERE property_id = $1`, [fx.propertyId])
+
+    const n = await withTransaction(pool,
+      { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null },
+      c => c.query<{ n: number }>(`SELECT guest_erasure_complete() AS n`))
+    expect(n.rows[0]!.n).toBe(1)
+    expect(await scheine()).toBe(0)
+    const g = await owner.query<{ status: string }>(
+      `SELECT status FROM guest WHERE id = $1`, [gastId])
+    expect(g.rows[0]!.status).toBe('anonymized')
   })
 })

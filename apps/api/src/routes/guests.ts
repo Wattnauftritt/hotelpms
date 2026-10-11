@@ -495,14 +495,18 @@ export function guestRoutes(app: FastifyInstance): void {
          * braucht; der Rest faellt im Nachtlauf, sobald die Frist abgelaufen
          * ist. Dass das nicht vergessen wird, haengt nicht an einem
          * Menschen, sondern an `erasure_requested_at`.
+         *
+         * Seit Migration 0128 haelt auch der Meldeschein: ein Jahr nach der
+         * Abreise (§ 30 Abs. 4 BMG). Die Funktion nennt die spaetere der
+         * beiden Fristen.
          */
         const frist = await client.query<{ bis: string | null }>(
-          `SELECT guest_levy_retention_until($1)::text AS bis`, [id])
+          `SELECT guest_retention_until($1)::text AS bis`, [id])
         const bis = frist.rows[0]?.bis ?? null
 
         if (bis !== null) {
-          // Name und Anschrift bleiben, das Gaesteverzeichnis braucht sie bis
-          // zum Fristende. Alles uebrige faellt sofort.
+          // Was Gaesteverzeichnis und Meldeschein brauchen, bleibt bis zum
+          // Fristende. Alles uebrige faellt sofort.
           await client.query(`SELECT guest_erase_partial($1)`, [id])
           return { guestRef, status: 'partial', alreadyDone: false, completesAfter: bis }
         }
