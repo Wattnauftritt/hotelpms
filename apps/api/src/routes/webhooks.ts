@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
+import { pruefeReichweite } from './oauth.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { apiText, hinweisText } from '../platform/texte.js'
@@ -103,7 +104,7 @@ export function webhookRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const body = req.body as SubscriptionBody
       const principal = req.principal as Principal
-      const accountId = accountFor(principal, body.accountId)
+      const accountId = accountFor(principal, body.accountId, 'integration:manage')
 
       /*
        * Das Ziel pruefen, nicht nur seinen Praefix (Befund B1).
@@ -149,6 +150,9 @@ export function webhookRoutes(app: FastifyInstance): void {
             throw Errors.notFound('res.property')
           }
         }
+        // Ereignisse aller Haeuser nur mit dem Recht auf Betriebsebene,
+        // sonst nur aus Haeusern, in denen das Recht besteht (Befund H2).
+        pruefeReichweite(principal, accountId, [], propertyIds)
 
         const r = await client.query<SubscriptionRow>(
           `INSERT INTO webhook_subscription

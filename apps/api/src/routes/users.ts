@@ -124,7 +124,7 @@ export function userRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       const q = req.query as { accountId?: string }
       const accountId = accountFor(principal,
-        q.accountId === undefined ? undefined : Number(q.accountId))
+        q.accountId === undefined ? undefined : Number(q.accountId), 'user:manage')
 
       return tx(req.pool, req, async client => {
         // Systemrollen und die eigenen des Accounts. Fremde Accounts sind
