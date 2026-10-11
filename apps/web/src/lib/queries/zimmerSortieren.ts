@@ -70,6 +70,29 @@ export interface SortierVorschau {
   fixed: number
   costBefore: number
   costAfter: number
+  /** Alle Zimmer in der Reihenfolge des Zimmerplans, fuer den Kalender. */
+  rooms: SortierZimmer[]
+  /** Jeder Aufenthalt im Zeitraum, vorher und nachher. */
+  stays: SortierAufenthalt[]
+}
+
+export interface SortierZimmer {
+  id: number
+  code: string
+  name: string | null
+  categoryId: number
+  categoryName: string
+}
+
+export interface SortierAufenthalt {
+  reservationRef: string
+  guestName: string | null
+  arrival: string
+  departure: string
+  fromRoomId: number | null
+  toRoomId: number | null
+  moved: boolean
+  fixed: boolean
 }
 
 export function useSortierVorschau(propertyId: number) {
