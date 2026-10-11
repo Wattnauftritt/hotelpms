@@ -5,6 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { isIsoDate } from '@hotelpms/domain'
 import type { Principal } from '../platform/context.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
+import { aufgabeVerzichtet } from '../platform/reinigungsverzicht.js'
 
 const STATES = ['dirty', 'clean', 'inspected', 'occupied'] as const
 type HousekeepingState = (typeof STATES)[number]
@@ -108,6 +109,10 @@ export function housekeepingRoutes(app: FastifyInstance): void {
    * Abreisetag weder als Abreise noch als Bleiber da, und sein Zimmer fiele
    * aus dem Tagesplan.
    *
+   * `stayoverWaived`: der Bleiber verzichtet an dem Tag auf die Reinigung
+   * (0115). Das Zimmer ist dann gesperrt; der Zimmerstatus zeigt es, damit
+   * niemand am Rechner "Erledigt" drueckt, was die Personal-App verweigert.
+   *
    * Der Bleiber kommt ueber `LATERAL ... LIMIT 1`: zwei Reservierungen auf
    * demselben Zimmer in derselben Nacht sind ein Datenfehler, und er soll
    * die Zimmerzeile nicht verdoppeln.
@@ -142,6 +147,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
                   ab.departure::text AS "departureDate",
                   (ab.status = 'CheckedOut') AS "departureCheckedOut",
                   bl.public_ref AS "stayoverRef",
+                  COALESCE(bl.waived, false) AS "stayoverWaived",
                   an.public_ref AS "arrivalRef",
                   (SELECT count(*) FROM maintenance_ticket m
                     WHERE m.resource_id = r.id AND m.status <> 'done')::int AS "openTickets"
@@ -158,7 +164,11 @@ export function housekeepingRoutes(app: FastifyInstance): void {
                     ON an.resource_id = r.id AND an.arrival = tag.d
                    AND an.status IN ('Confirmed','InHouse')
              LEFT JOIN LATERAL (
-                    SELECT b.public_ref FROM reservation b
+                    SELECT b.public_ref,
+                           EXISTS (SELECT 1 FROM cleaning_waiver w
+                                    WHERE w.reservation_id = b.id AND w.business_date = tag.d
+                                      AND w.withdrawn_at IS NULL) AS waived
+                      FROM reservation b
                      WHERE b.resource_id = r.id
                        AND b.arrival < tag.d AND b.departure > tag.d
                        AND b.status IN ('Confirmed','InHouse')
@@ -289,6 +299,11 @@ export function housekeepingRoutes(app: FastifyInstance): void {
       const { taskId } = req.params as { taskId: string }
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
+        // Dieselbe Sperre wie in der Personal-App: verzichtet der Gast,
+        // wird nicht gereinigt und nicht gezaehlt (Sven, 08.10.2026).
+        if (await aufgabeVerzichtet(client, Number(taskId))) {
+          throw Errors.conflict('cleaningWaiver.roomLocked')
+        }
         const { rows, rowCount } = await client.query<{ resource_id: number
                                                         property_id: number }>(
           `UPDATE housekeeping_task

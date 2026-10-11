@@ -39,6 +39,6 @@ export const PUSH_MAX_ATTEMPTS = 4
  * aufhebt. Ein frei gewordenes Zimmer ist am naechsten Morgen keine
  * Nachricht mehr, ein geaenderter Plan fuer morgen schon.
  */
-export function pushTtlSeconds(kind: 'plan' | 'room_free' | 'rework'): number {
+export function pushTtlSeconds(kind: 'plan' | 'room_free' | 'rework' | 'waived'): number {
   return kind === 'plan' ? 12 * 3600 : 4 * 3600
 }

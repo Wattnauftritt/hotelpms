@@ -38,7 +38,17 @@ export const PUSH_TEXTS = {
     de: 'Die Hausdame hat etwas gefunden. Details in der App.',
     en: 'The head housekeeper found something. Details in the app.',
     ru: 'Старшая горничная нашла недочёт. Подробности в приложении.',
-    uk: 'Старша покоївка знайшла недолік. Подробиці в застосунку.' }
+    uk: 'Старша покоївка знайшла недолік. Подробиці в застосунку.' },
+  'waived.title': {
+    de: 'Zimmer {room}: nicht reinigen',
+    en: 'Room {room}: do not clean',
+    ru: 'Номер {room}: не убирать',
+    uk: 'Номер {room}: не прибирати' },
+  'waived.body': {
+    de: 'Der Gast verzichtet heute auf die Reinigung.',
+    en: 'The guest does not want cleaning today.',
+    ru: 'Гость сегодня отказался от уборки.',
+    uk: 'Гість сьогодні відмовився від прибирання.' }
 } satisfies Record<string, Record<StaffLocale, string>>
 
 export type PushTextKey = keyof typeof PUSH_TEXTS

@@ -46,6 +46,10 @@ export const housekeeping = {
     de: 'Bleiber',
     en: 'Stayover',
     tr: 'Kalan misafir' },
+  'hk.waived': {
+    de: 'Gast verzichtet, nicht reinigen',
+    en: 'Guest skips, do not clean',
+    tr: 'Misafir istemiyor, temizlemeyin' },
   'hk.arrivalToday': {
     de: 'Anreise heute',
     en: 'Arriving today',

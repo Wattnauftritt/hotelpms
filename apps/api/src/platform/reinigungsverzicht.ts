@@ -1,6 +1,7 @@
 import type { PoolClient } from '@hotelpms/db'
 import type { CleaningWaiverView } from '@hotelpms/contracts'
 import { Errors } from './errors.js'
+import { meldePush } from './push.js'
 
 /**
  * Reinigungsverzicht des Gastes (Aufgabe 18, Baustein 10; Migration 0115).
@@ -101,10 +102,54 @@ export async function setzeVerzicht(
       `INSERT INTO cleaning_waiver (property_id, reservation_id, business_date, source, created_by)
        VALUES ($1, $2, $3::date, $4, $5)`,
       [a.propertyId, a.reservationId, a.date, a.source, a.userId])
+    await meldeZugeteilter(client, a.reservationId, a.date)
   } else {
     await client.query(
       `UPDATE cleaning_waiver SET withdrawn_at = now(), withdrawn_by = $3
         WHERE reservation_id = $1 AND business_date = $2::date AND withdrawn_at IS NULL`,
       [a.reservationId, a.date, a.userId])
   }
+}
+
+/**
+ * Ist das Zimmer schon einer Kraft zugeteilt, erfaehrt sie es sofort.
+ *
+ * Sven, 11.10.2026: wer ueber den Schluesselsafe anreist, meldet sich oft
+ * erst am naechsten Morgen an und waehlt die Reinigung dann ab, wenn der
+ * Plan schon steht. Die App sperrt das Zimmer beim naechsten Laden ohnehin;
+ * die Meldung sorgt dafuer, dass die Kraft nicht vorher schon losgeht.
+ */
+async function meldeZugeteilter(
+  client: PoolClient, reservationId: number, date: string
+): Promise<void> {
+  const { rows } = await client.query<{ property_id: number; assigned_to: number
+                                        task_id: number; code: string }>(
+    `SELECT t.property_id::int, t.assigned_to::int, t.id::int AS task_id, r.code
+       FROM reservation b
+       JOIN housekeeping_task t ON t.resource_id = b.resource_id
+                               AND t.business_date = $2::date AND t.kind = 'stayover'
+       JOIN resource r ON r.id = t.resource_id
+      WHERE b.id = $1 AND t.assigned_to IS NOT NULL AND t.outcome IS NULL`,
+    [reservationId, date])
+  for (const t of rows) {
+    await meldePush(client, t.property_id, [t.assigned_to], 'waived',
+      { room: t.code }, `waived-${t.task_id}`)
+  }
+}
+
+/**
+ * Verzichtet der Gast am Tag dieser Aufgabe auf die Reinigung? Nur ein
+ * Bleiber kann verzichtet sein; die Abreisereinigung braucht der naechste
+ * Gast. An einer Stelle, weil Personal-App und Zimmerstatus dieselbe
+ * Sperre pruefen -- eine Tuer ohne sie waere der Weg darum herum.
+ */
+export async function aufgabeVerzichtet(client: PoolClient, taskId: number): Promise<boolean> {
+  const { rows } = await client.query(
+    `SELECT 1 FROM housekeeping_task t
+       JOIN reservation b ON b.resource_id = t.resource_id
+                         AND b.status IN ('Confirmed','InHouse')
+       JOIN cleaning_waiver w ON w.reservation_id = b.id
+                             AND w.business_date = t.business_date AND w.withdrawn_at IS NULL
+      WHERE t.id = $1 AND t.kind = 'stayover' LIMIT 1`, [taskId])
+  return rows.length > 0
 }
