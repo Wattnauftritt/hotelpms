@@ -3,11 +3,13 @@ import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeUser, makeGuest, makeReservation, makeEmailDomain, makePaymentMethod }
   from '@hotelpms/testing'
-import type { Pool } from '@hotelpms/db'
+import { withTransaction, type Pool } from '@hotelpms/db'
+import { hashToken } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
 import { NUR_FUER_MASCHINEN } from '../routes/oauth.js'
+import { hashPassword } from '../routes/auth.js'
 
 /*
  * Die Rechteausweitungen aus dem Sicherheitsaudit vom 11.10.2026
@@ -313,5 +315,147 @@ describe('H4: Routen ohne Property prüfen das Recht im Haus des Datensatzes', (
       payload: { name: 'Umbenannt' } })
     expect((await aendern(pmB)).statusCode).toBe(403)
     expect((await aendern(pmA)).statusCode).toBe(200)
+  })
+})
+
+describe('M2, M3, N1: Kennwort und Anmeldepfade', () => {
+  const KENNWORT = 'ein-ordentlich-langes-kennwort'
+
+  async function mitKennwort(): Promise<{ userId: number; cookie: string }> {
+    const fx = await makeProperty(owner)
+    const u = await makeUser(owner, {
+      email: 'rezeption@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
+    await owner.query(`UPDATE app_user SET password_hash = $2 WHERE id = $1`,
+      [u.userId, await hashPassword(KENNWORT)])
+    return { userId: u.userId, cookie: `hp_session=${u.sessionId}` }
+  }
+
+  it('M2: der PIN-Wechsel zaehlt falsche Kennwoerter und sperrt', async () => {
+    const u = await mitKennwort()
+    const pin = (password: string) => app.inject({
+      method: 'POST', url: '/v1/auth/workstation-pin', headers: { cookie: u.cookie },
+      payload: { password, pin: '4711' } })
+
+    for (let i = 0; i < 10; i++) expect((await pin('falsch')).statusCode).toBe(401)
+    const f = await owner.query<{ failed_count: number }>(
+      `SELECT failed_count FROM login_failure WHERE user_id = $1`, [u.userId])
+    expect(f.rows[0]!.failed_count).toBe(10)
+
+    // Gesperrt: auch das richtige Kennwort traegt nicht mehr.
+    const richtig = await pin(KENNWORT)
+    expect(richtig.statusCode).toBe(401)
+    expect(richtig.json().code).toBe('auth.tooManyAttempts')
+  })
+
+  it('M3: ein gueltiges Cookie hebt die Grenze der Ruecksetzung nicht auf', async () => {
+    const u = await mitKennwort()
+    const codes: number[] = []
+    for (let i = 0; i < 65; i++) {
+      const r = await app.inject({
+        method: 'POST', url: '/v1/auth/password-reset', headers: { cookie: u.cookie },
+        payload: { email: 'opfer@example.test' } })
+      codes.push(r.statusCode)
+    }
+    expect(codes).toContain(429)
+  })
+
+  it('N3: Prozentkodierung fuehrt nicht an der Grenze vorbei', async () => {
+    const codes: number[] = []
+    for (let i = 0; i < 65; i++) {
+      const r = await app.inject({
+        method: 'POST', url: '/v1/auth/password-rese%74',
+        payload: { email: 'opfer@example.test' } })
+      codes.push(r.statusCode)
+    }
+    expect(codes).toContain(429)
+  })
+
+  it('N1: ein Token zur Adressaenderung setzt kein Kennwort', async () => {
+    const u = await mitKennwort()
+    const token = 'adressaenderung-' + 'x'.repeat(32)
+    await owner.query(
+      `INSERT INTO auth_token (user_id, kind, token_hash, expires_at, new_email)
+       VALUES ($1, 'email_change', $2, now() + interval '1 hour', 'neu@example.test')`,
+      [u.userId, hashToken(token)])
+    const r = await app.inject({
+      method: 'POST', url: '/v1/auth/password-reset/confirm',
+      payload: { token, password: 'ein-ganz-neues-langes-kennwort' } })
+    expect(r.statusCode).toBe(422)
+    const t = await owner.query<{ used_at: string | null }>(
+      `SELECT used_at FROM auth_token WHERE user_id = $1`, [u.userId])
+    expect(t.rows[0]!.used_at).toBeNull()
+  })
+})
+
+describe('M6, M7, N11: Loeschung und Pruefprotokoll', () => {
+  async function gastMitSpuren() {
+    const fx = await makeProperty(owner)
+    const kat = await makeCategory(owner, fx.propertyId, { code: 'DZ' })
+    const g = await makeGuest(owner, fx.accountId)
+    const r = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: kat, arrival: '2026-10-20',
+      departure: '2026-10-22', reserveInventory: false })
+    await owner.query(
+      `UPDATE reservation SET primary_guest_id = $2, notes = 'Sauerstoffgeraet',
+              short_note = 'Rollstuhl' WHERE id = $1`, [r.reservationId, g.id])
+    const e = await owner.query<{ id: number }>(
+      `INSERT INTO outbound_email (property_id, kind, to_email, subject, body_text,
+                                   reservation_id, status, last_error)
+       VALUES ($1, 'reservation_confirmation', 'gast@example.test', 'x', 'x', $2,
+               'failed', 'invalid recipient gast@example.test')
+       RETURNING id`, [fx.propertyId, r.reservationId])
+    await owner.query(
+      `INSERT INTO outbound_email_attempt (email_id, property_id, attempt, error)
+       VALUES ($1, $2, 1, 'invalid recipient gast@example.test')`,
+      [e.rows[0]!.id, fx.propertyId])
+    return { fx, guestId: g.id, reservationId: r.reservationId, emailId: e.rows[0]!.id }
+  }
+
+  async function spuren(x: { reservationId: number; emailId: number }) {
+    const r = await owner.query<{ notes: string | null; short_note: string | null }>(
+      `SELECT notes, short_note FROM reservation WHERE id = $1`, [x.reservationId])
+    const e = await owner.query<{ last_error: string | null; to_email: string }>(
+      `SELECT last_error, to_email FROM outbound_email WHERE id = $1`, [x.emailId])
+    const a = await owner.query<{ error: string | null }>(
+      `SELECT error FROM outbound_email_attempt WHERE email_id = $1`, [x.emailId])
+    return { ...r.rows[0]!, ...e.rows[0]!, attemptError: a.rows[0]!.error }
+  }
+
+  for (const fn of ['guest_erase_one', 'guest_erase_partial']) {
+    it(`${fn} leert Notizen und Fehlertexte`, async () => {
+      const x = await gastMitSpuren()
+      await withTransaction(pool,
+        { accountIds: [x.fx.accountId], propertyIds: [x.fx.propertyId], userId: null },
+        c => c.query(`SELECT ${fn}($1)`, [x.guestId]))
+      expect(await spuren(x)).toEqual({
+        notes: null, short_note: null, last_error: null,
+        to_email: 'entfernt@invalid', attemptError: null })
+    })
+  }
+
+  it('die Hilfsfunktionen sind fuer die Anwendung nicht aufrufbar', async () => {
+    const x = await gastMitSpuren()
+    for (const fn of ['guest_notes_erase', 'guest_email_redact',
+                      'guest_registration_purge_expired']) {
+      await expect(withTransaction(pool,
+        { accountIds: [x.fx.accountId], propertyIds: [x.fx.propertyId], userId: null },
+        c => c.query(`SELECT ${fn}($1)`, [x.guestId]))).rejects.toThrow(/permission denied/)
+    }
+  })
+
+  it('M7: das Signiergeheimnis landet nicht im Pruefprotokoll', async () => {
+    const fx = await makeProperty(owner)
+    const u = await makeUser(owner, {
+      email: 'inhaber@test.de', accountId: fx.accountId, roleKey: 'owner' })
+    const r = await app.inject({
+      method: 'POST', url: '/v1/webhook-subscriptions', headers: auth(u.sessionId),
+      payload: { url: 'https://hooks.example.com/staygrid' } })
+    expect(r.statusCode).toBe(201)
+    const geheim = await owner.query<{ signing_secret: string }>(
+      `SELECT signing_secret FROM webhook_subscription`)
+    const log = await owner.query<{ changed: unknown }>(
+      `SELECT changed FROM audit_log WHERE table_name = 'webhook_subscription'`)
+    expect(log.rows.length).toBeGreaterThan(0)
+    expect(JSON.stringify(log.rows)).not.toContain(geheim.rows[0]!.signing_secret)
   })
 })

@@ -1435,7 +1435,9 @@ export function reservationRoutes(app: FastifyInstance): void {
    *
    * Notizen sind **kein** Ort fuer Gesundheitsdaten oder aehnlich
    * Heikles. Das steht so in der Maske, nicht nur hier: das Feld ist
-   * Freitext und wird weder durchsucht noch anonymisiert.
+   * Freitext und wird nicht durchsucht. Mit der Loeschung des Gastes
+   * faellt sie trotzdem (Migration 0129): was in der Maske steht, haelt
+   * niemanden davon ab, es doch hineinzuschreiben.
    */
   registerRoute(app, {
     method: 'PATCH',

@@ -419,9 +419,13 @@ export function authRoutes(app: FastifyInstance): void {
       const { password, pin } = req.body as { password?: string; pin?: string | null }
       if (!password) throw Errors.validation({ password: ['field.required'] })
 
-      const u = await req.pool.query<{ password_hash: string | null }>(
-        `SELECT password_hash FROM app_user WHERE id = $1`, [p.userId])
-      if (!await pruefeKennwort(u.rows[0]?.password_hash ?? null, password)) {
+      // Wie beim Kennwortwechsel: Sperre achten und Fehlversuche zaehlen. Die
+      // allgemeine Ratenbegrenzung erreicht eine angemeldete Anfrage nicht,
+      // und ohne Zaehler liesse sich hier das Kennwort an einer offenen
+      // Sitzung beliebig oft raten (M2, Sicherheitsaudit 2026-10-11).
+      const eigen = await eigenesKennwort(req, p.userId)
+      if (!await pruefeKennwort(eigen.hash, password)) {
+        await zaehleFehlversuch(req.pool, p.userId, req.ip)
         throw Errors.unauthorized('auth.badCredentials')
       }
 
@@ -628,6 +632,10 @@ export function authRoutes(app: FastifyInstance): void {
         const t = await client.query<{ user_id: number }>(
           `UPDATE auth_token SET used_at = now()
             WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+              -- Ein Token zur Adressaenderung ging an die neu eingetippte
+              -- Adresse, bei einem Tippfehler an einen Fremden. Ein Kennwort
+              -- setzt es nicht (N1, Sicherheitsaudit 2026-10-11).
+              AND kind IN ('invite', 'password_reset')
             RETURNING user_id`, [hashToken(token)])
         if (t.rowCount === 0) throw Errors.validation({ token: ['auth.tokenInvalid'] })
 
