@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { eachNight, isIsoDate } from '@hotelpms/domain'
+import { eachNight, isIsoDate, nightsBetween } from '@hotelpms/domain'
 import { renderMessage, type KwhotelFinding, type KwhotelImportReport,
          type KwhotelRoomMatch, type RoomSuggestion, type MessageKey, type MessageParams } from '@hotelpms/contracts'
 import type { PoolClient } from '@hotelpms/db'
@@ -44,6 +44,20 @@ export const SYSTEM = 'kwhotel'
 const AKTIV_VORGABE = [0, 1, 2, 4]
 const STORNO_VORGABE = [10, 11, 12, 13, 14, 19, 22]
 const MAX_BEFUNDE = 500
+
+/**
+ * Hoechstens so viele Naechte je KWHotel-Zeile.
+ *
+ * Eine Zeile ist ein Zimmer fuer einen Aufenthalt; ein Jahr ist bei einem
+ * Hotel schon ein Dauermieter, und ein echter Abzug liegt weit darunter.
+ * Ohne Grenze wird aus `1000-01-01..9998-12-31` beim Schreiben eine Liste
+ * von 3,3 Millionen Naechten und 200 MB Speicher -- zwanzig solcher Zeilen
+ * bringen den einzigen API-Prozess an die Heap-Grenze (Befund M9, Audit
+ * 11.10.2026). Eine laengere Zeile wird nicht gekuerzt, sondern als Befund
+ * gemeldet wie eine Abreise vor der Anreise: abgeschnitten staende ein
+ * falscher Aufenthalt mit falschem Preis je Nacht im Haus.
+ */
+export const MAX_NAECHTE = 366
 
 interface Body {
   propertyId: number
@@ -94,21 +108,32 @@ export class Befunde {
 }
 
 /**
+ * Die groesste Belegung je KWHotel-Zimmer, in einem Durchgang ueber alle
+ * Reservierungen. Je Zimmer neu gesucht war das Zimmer mal Reservierungen
+ * und mit einem praeparierten Abzug Sekunden lang (Befund M9).
+ */
+export function personenJeZimmer(bestand: KwhotelBestand): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const x of bestand.reservations) {
+    if (x.roomId === null) continue
+    m.set(x.roomId, Math.max(m.get(x.roomId) ?? 1, x.persons))
+  }
+  return m
+}
+
+/**
  * Was die Maske fuer ein fehlendes Zimmer vorschlaegt: die Nummer aus dem
  * KWHotel-Namen, die Zimmergruppe aus dessen Kuerzel ("01 EZ Balkon" -> EZ)
  * und Beschreibung, die Belegung aus den Reservierungen, die tatsaechlich auf
  * dem Zimmer lagen. Nur ein Vorschlag -- angelegt wird, was die Anfrage sagt.
  */
-export function vorschlag(r: KwRoom, bestand: KwhotelBestand): RoomSuggestion {
+export function vorschlag(r: KwRoom, personenJeZimmer: ReadonlyMap<string, number>): RoomSuggestion {
   const m = /^\s*0*(\d+)\s*(.*)$/.exec(r.name)
   const code = m !== null ? (m[1] === '' ? '0' : m[1]!) : r.name.trim().slice(0, 20)
   const rest = m !== null ? m[2]! : r.name
   const kuerzel = (/^([A-Za-zÄÖÜäöü]+)/.exec(rest.trim())?.[1] ?? '').toUpperCase().slice(0, 10)
   const name = (r.description ?? '').trim() || rest.trim() || r.name
-  let personen = 1
-  for (const x of bestand.reservations) {
-    if (x.roomId === r.id) personen = Math.max(personen, x.persons)
-  }
+  const personen = Math.max(1, personenJeZimmer.get(r.id) ?? 1)
   return {
     code,
     // Der Name, unter dem das Haus das Zimmer in KWHotel kennt ("01 EZ
@@ -147,6 +172,7 @@ async function zimmerAnlegen(
                       categoryId: number | null
                       neu: { code: string; name: string; maxOccupancy: number } | null }
   const auftraege: Auftrag[] = []
+  const kwZimmer = new Set(bestand.rooms.map(r => r.id))
   const text = (v: unknown, max: number): string | null =>
     typeof v === 'string' && v.trim() !== '' && v.trim().length <= max ? v.trim() : null
   for (const e of roh as unknown[]) {
@@ -162,7 +188,7 @@ async function zimmerAnlegen(
     const neu = nk === undefined || nk === null ? null : {
       code: text(nk.code, 10), name: text(nk.name, 80), maxOccupancy: nk.maxOccupancy }
     const katId = Number.isInteger(o.categoryId) ? o.categoryId as number : null
-    if (kw === null || code === null || !bestand.rooms.some(r => r.id === kw)
+    if (kw === null || code === null || !kwZimmer.has(kw)
         || (katId === null) === (neu === null)
         || (neu !== null && (neu.code === null || neu.name === null
             || !Number.isInteger(neu.maxOccupancy) || (neu.maxOccupancy as number) < 1
@@ -329,6 +355,7 @@ async function uebernehmen(
   }
 
   const zuordnung = new Map<string, KwhotelRoomMatch>()
+  const belegung = personenJeZimmer(bestand)
   for (const r of bestand.rooms) {
     let resourceId: number | null = null
     let match: KwhotelRoomMatch['match'] = 'none'
@@ -345,7 +372,7 @@ async function uebernehmen(
     zuordnung.set(r.id, {
       kwRoomId: r.id, name: r.name, reservations: 0, resourceId,
       roomCode: resourceId === null ? null : zimmerById.get(resourceId)!.code, match,
-      suggestion: vorschlag(r, bestand)
+      suggestion: vorschlag(r, belegung)
     })
   }
 
@@ -383,6 +410,12 @@ async function uebernehmen(
     if (ab !== undefined && r.departure <= (ab as string)) { counts.beforeFrom++; continue }
     if (r.departure <= r.arrival) {
       befunde.add('error', 'import.kwhotel.invalidStay', { reference: r.id }, r.id)
+      continue
+    }
+    const naechte = nightsBetween(r.arrival, r.departure)
+    if (naechte > MAX_NAECHTE) {
+      befunde.add('error', 'import.kwhotel.stayTooLong',
+        { reference: r.id, nights: naechte, max: MAX_NAECHTE }, r.id)
       continue
     }
     if (r.totalCent < 0) {
@@ -485,7 +518,11 @@ async function uebernehmen(
   const gruppen = new Map<string, KwReservation[]>()
   for (const r of [...neu].sort((a, b) => Number(a.id) - Number(b.id))) {
     const k = gruppenSchluessel(r)
-    gruppen.set(k, [...(gruppen.get(k) ?? []), r])
+    // Anhaengen statt die Liste je Zeile neu zu kopieren: eine Gruppe mit
+    // vielen Zeilen waere sonst quadratisch (Befund M9).
+    const l = gruppen.get(k)
+    if (l === undefined) gruppen.set(k, [r])
+    else l.push(r)
   }
   const gruppenNummern = [...new Set(neu.filter(r => r.groupId !== null).map(r => r.groupId!))]
   const alteBuchungen = new Map((await client.query<{ id: number; ref: string }>(

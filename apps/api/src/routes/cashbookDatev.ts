@@ -7,6 +7,7 @@ import { Errors, type Meldung } from '../platform/errors.js'
 import { assertNotTraining } from '../platform/training.js'
 import { einstellungLesen, geschaeftstag, type Einstellung } from '../platform/kassenbuch.js'
 import type { Principal } from '../platform/context.js'
+import { formelsicher } from '../platform/csv.js'
 
 /**
  * DATEV-Export des Kassenbuchs (Dokument 09, vierte Fassung; Migration 0097).
@@ -87,8 +88,10 @@ function belegtext(z: DatevKassenzeile): string {
   const teile = z.externalNumber !== null && z.guestName !== null && z.text !== null
     ? [z.text]
     : [ARTNAME[z.kind] ?? '', z.guestName ?? '', z.text ?? '']
-  return Array.from(teile.filter(t => t.trim() !== '').join(' ')
-    .replace(/;/g, ',').replace(/"/g, '').replace(/\s+/g, ' ').trim()).slice(0, 60).join('')
+  // Entschaerft vor dem Kuerzen, damit ein Hochkomma die 60 Zeichen nicht
+  // ueberschreitet (Befund M10, siehe `formelsicher`).
+  return Array.from(formelsicher(teile.filter(t => t.trim() !== '').join(' ')
+    .replace(/;/g, ',').replace(/"/g, '').replace(/\s+/g, ' ').trim())).slice(0, 60).join('')
 }
 
 /**
@@ -205,9 +208,17 @@ async function auswahl(
   }))
 }
 
-/** Ohne Anfuehrungszeichen, wie im Adminpanel; die Felder sind vorher bereinigt. */
+/**
+ * Ohne Anfuehrungszeichen, wie im Adminpanel; die Felder sind vorher bereinigt.
+ *
+ * Gegen Formeln entschaerft wird trotzdem jedes Feld (Befund M10): die
+ * Rechnungsnummer einer uebernommenen Zeile stammt aus dem Altsystem, und
+ * die Datei oeffnet der Steuerberater oft zuerst in Excel. `VorzBetrag`
+ * traegt hier immer ein Vorzeichen (`-12,50`, `+3,00`) -- das ist das Format
+ * von Kassenbuch online und als reine Zahl ausdruecklich ausgenommen.
+ */
 function csv(zeilen: string[][]): string {
-  return '\uFEFF' + zeilen.map(z => z.join(';')).join('\r\n') + '\r\n'
+  return '\uFEFF' + zeilen.map(z => z.map(formelsicher).join(';')).join('\r\n') + '\r\n'
 }
 
 export function cashbookDatevRoutes(app: FastifyInstance): void {
