@@ -335,7 +335,29 @@ async function staffTexts(p: PropertyRow): Promise<void> {
   }
 }
 
+// Ein Tick, der laenger als das Intervall braucht, startete bisher einen
+// zweiten daneben: beide teilen sich den kleinen Pool, wiederholen
+// Materialisierung und Abgleich, und die zweite holt Webhooks erneut, deren
+// Lease (300 s) waehrend der Zustellung des ersten ablief -- doppelte
+// Zustellung. Wie bei pushTakt: wer noch laeuft, laeuft allein.
+let tickLaeuft = false
+
 async function tick(): Promise<void> {
+  if (tickLaeuft) {
+    log.warn('Tick uebersprungen, der vorige laeuft noch')
+    return
+  }
+  tickLaeuft = true
+  const beginn = Date.now()
+  try {
+    await tickArbeit()
+  } finally {
+    tickLaeuft = false
+    log.info({ ms: Date.now() - beginn }, 'Tick beendet')
+  }
+}
+
+async function tickArbeit(): Promise<void> {
   await platformMaintenance()
   // Vor der Arbeit je Property: wer auf einen Zugangslink wartet, wartet
   // sonst hinter dem Nachtlauf von fuenfhundert Haeusern.

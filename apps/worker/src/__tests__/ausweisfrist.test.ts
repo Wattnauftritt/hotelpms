@@ -136,6 +136,31 @@ describe('Ausweisnummer nach der Jahresfrist', () => {
     expect(await hatAusweis(g)).toBe(true)
   })
 
+  /**
+   * Der zweite Weg zum Aufenthalt. Seit 0127 sucht die Funktion Hauptgast
+   * und Mitreisende in zwei getrennten Abfragen ueber Index statt in einem
+   * OR; vergaesse eine davon den Mitreisenden, fiele seine Nummer, waehrend
+   * die Frist noch laeuft.
+   */
+  it('sieht den Aufenthalt als Mitreisender, nicht nur als Hauptgast', async () => {
+    const g = await gastMitAusweis()
+    await aufenthalt(g, '2024-05-01', '2024-05-04')          // lange her
+    const anderer = await gastMitAusweis('Hansen')
+    const ab = new Date(Date.now() - 2 * 86400_000).toISOString().slice(0, 10)
+    const von = new Date(Date.now() - 5 * 86400_000).toISOString().slice(0, 10)
+    const res = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId,
+      arrival: von, departure: ab, status: 'CheckedOut', resourceId: rooms[1]! })
+    await owner.query(`UPDATE reservation SET primary_guest_id = $2 WHERE id = $1`,
+      [res.reservationId, anderer])
+    await owner.query(
+      `INSERT INTO reservation_occupant (property_id, reservation_id, guest_id)
+       VALUES ($1,$2,$3)`, [fx.propertyId, res.reservationId, g])
+
+    expect(await laufen()).toBe(0)
+    expect(await hatAusweis(g)).toBe(true)
+  })
+
   it('faellt ohne jeden Aufenthalt auf das Anlagedatum des Profils zurueck', async () => {
     const g = await gastMitAusweis()
     expect(await laufen()).toBe(0)          // gerade angelegt

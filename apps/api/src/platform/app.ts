@@ -254,7 +254,13 @@ export async function buildServer(
     // anderes handelt: die Oberflaeche zeigt den Wechsel damit an.
     principal = { ...principal, sessionUserId: row.user_id }
     req.principal = principal
-    await pool.query(`UPDATE user_session SET last_seen_at = now() WHERE id = $1`, [sessionId])
+    // Hoechstens einmal je Minute. Die Spalte liest niemand minutengenau,
+    // aber ein Schreiben je GET waren eine Zeile WAL und eine Zeilensperre
+    // bei jedem Aufruf, auch beim Abfragetakt des Terminals (Audit
+    // 11.10.2026). Dasselbe Muster wie terminal_device_seen (0071).
+    await pool.query(
+      `UPDATE user_session SET last_seen_at = now()
+        WHERE id = $1 AND last_seen_at < now() - interval '60 seconds'`, [sessionId])
   })
 
   // Erst jetzt, nicht vorher: ausnehmen laesst sich nur, wer sich
