@@ -36,16 +36,22 @@ const GELD_FELDER = new Set(['price_cent', 'net_cent', 'tax_cent', 'gross_cent',
 const DATUM_FELDER = new Set(['arrival', 'departure', 'business_date',
                               'from_date', 'to_date'])
 /**
+ * Felder, deren Wert ein Gastprofil oder eine Firma ist.
+ *
+ * Name **und** Nummer: "Hauptgast #22157 → #35937" liess niemanden
+ * herausfinden, wer gemeint war, und "Mueller → Mueller" verschwiege, dass
+ * es zwei Profile sind -- genau so sieht ein getrenntes KWHotel-Profil aus
+ * (Migration 0107). Ohne `guest:read` liefert die API keinen Namen, dann
+ * bleibt die Nummer allein.
+ */
+const GAST_FELDER = new Set(['primary_guest_id', 'booker_guest_id'])
+const FIRMEN_FELDER = new Set(['booker_company_id'])
+/**
  * Felder, deren Wert eine Kennung aus einer anderen Tabelle ist.
  *
- * Sie bleiben Kennung: "Hauptgast 9" liest sich wie eine Anzahl, "#9" nicht.
- * Den Namen dazu holen hiesse, fuer jede Zeile eine weitere Tabelle
- * mitzuschicken -- und beim Gast waere es zudem ein Name mehr an einer
- * Stelle, an der schon einer steht.
+ * Sie bleiben Kennung: "Ratenplan 9" liest sich wie eine Anzahl, "#9" nicht.
  */
-const KENNUNG_FELDER = new Set(['primary_guest_id', 'booker_guest_id',
-                                'booker_company_id', 'rate_plan_id',
-                                'invoice_id', 'reverses_id'])
+const KENNUNG_FELDER = new Set(['rate_plan_id', 'invoice_id', 'reverses_id'])
 
 /**
  * Spaltenname → Beschriftung, und Tabellenname → Gegenstand.
@@ -243,6 +249,8 @@ function wert(name: string, v: unknown, daten: VerlaufDaten,
   if (v === '[redigiert]') return t('verlauf.redigiert')
   if (ZIMMER_FELDER.has(name)) return daten.rooms[String(v)] ?? `#${String(v)}`
   if (GRUPPEN_FELDER.has(name)) return daten.categories[String(v)] ?? `#${String(v)}`
+  if (GAST_FELDER.has(name)) return mitName(daten.guests?.[String(v)], v)
+  if (FIRMEN_FELDER.has(name)) return mitName(daten.companies?.[String(v)], v)
   if (KENNUNG_FELDER.has(name)) return `#${String(v)}`
   if (GELD_FELDER.has(name)) return formatMoney(Number(v), locale)
   if (DATUM_FELDER.has(name) && typeof v === 'string') {
@@ -254,6 +262,10 @@ function wert(name: string, v: unknown, daten: VerlaufDaten,
   }
   if (typeof v === 'boolean') return v ? t('verlauf.ja') : t('verlauf.nein')
   return String(v)
+}
+
+function mitName(name: string | undefined, v: unknown): string {
+  return name === undefined ? `#${String(v)}` : `${name} (#${String(v)})`
 }
 
 /** Datum und Uhrzeit. Die Uhrzeit ist hier der Punkt -- "heute" reicht nicht. */

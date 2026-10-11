@@ -44,6 +44,12 @@ export interface Verlauf {
   /** Kennung → Zimmernummer. Im Protokoll steht die Kennung. */
   rooms: Record<string, string>
   categories: Record<string, string>
+  /**
+   * Gastprofil → "Nachname, Vorname", Firma → Name. Nur die, die im Verlauf
+   * vorkommen, und nur mit `guest:read`; ohne das Recht bleibt die Nummer.
+   */
+  guests?: Record<string, string>
+  companies?: Record<string, string>
 }
 
 export const useVerlauf = (was:

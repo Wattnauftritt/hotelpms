@@ -239,4 +239,46 @@ describe('Aenderungsverlauf am Zimmerplan', () => {
     expect(notiz!.fields.notes).toEqual({ von: '[redigiert]', nach: '[redigiert]' })
     expect(JSON.stringify(changes)).not.toContain('Nuesse')
   })
+
+  it('nennt beim Hauptgast und Besteller den Namen neben der Nummer', async () => {
+    /*
+     * So sieht die Trennung eines geteilten KWHotel-Profils aus (0107):
+     * Hauptgast und Besteller wechseln auf ein neues Profil mit demselben
+     * Nachnamen. "#22157 → #35937" liess niemanden herausfinden, wer das
+     * war; die Nummer steht nirgends in der Oberflaeche.
+     */
+    const r = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: dz,
+      arrival: '2026-10-01', departure: '2026-10-04' })
+    const g = await owner.query<{ id: string }>(
+      `INSERT INTO guest (account_id, last_name, first_name)
+       VALUES ($1, 'Mueller', 'Hans'), ($1, 'Mueller', NULL) RETURNING id`, [fx.accountId])
+    const [alt, neu] = g.rows.map(x => x.id)
+    await owner.query(`UPDATE reservation SET primary_guest_id = $1 WHERE id = $2`,
+      [alt, r.reservationId])
+    await owner.query(`UPDATE booking SET booker_guest_id = $1 WHERE id = $2`, [alt, r.bookingId])
+    await owner.query(`UPDATE reservation SET primary_guest_id = $1 WHERE id = $2`,
+      [neu, r.reservationId])
+    await owner.query(`UPDATE booking SET booker_guest_id = $1 WHERE id = $2`, [neu, r.bookingId])
+    const b = await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM booking WHERE id = $1`, [r.bookingId])
+
+    const v = await app.inject({ method: 'GET', headers: auth,
+      url: `/v1/bookings/${b.rows[0]!.public_ref}/history` })
+    expect(v.statusCode).toBe(200)
+    expect(v.json().guests).toEqual({ [alt!]: 'Mueller, Hans', [neu!]: 'Mueller' })
+
+    /*
+     * Ohne `guest:read` kein Name: der Verlauf haengt an
+     * `reservation:read`, und das Gastprofil soll nicht durch die
+     * Hintertuer lesbar werden.
+     */
+    const ohne = await makeUser(owner,
+      { email: 'rm@test.de', propertyId: fx.propertyId, roleKey: 'revenue' })
+    const w = await app.inject({ method: 'GET',
+      headers: { cookie: `hp_session=${ohne.sessionId}` },
+      url: `/v1/bookings/${b.rows[0]!.public_ref}/history` })
+    expect(w.statusCode).toBe(200)
+    expect(w.json().guests).toEqual({})
+  })
 })

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { can, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -160,23 +161,77 @@ function aufbereiten(zeilen: ProtokollZeile[]): Aenderung[] {
   return raus
 }
 
+/** Felder, deren Wert ein Gastprofil ist -- und eine Firma. */
+const GAST_FELDER = ['primary_guest_id', 'booker_guest_id'] as const
+const FIRMEN_FELDER = ['booker_company_id'] as const
+
+/** Alle Kennungen eines Feldes aus den aufbereiteten Eintraegen, vorher wie nachher. */
+function kennungen(changes: Aenderung[], felder: readonly string[]): number[] {
+  const ids = new Set<number>()
+  for (const c of changes) {
+    for (const f of felder) {
+      const w = c.fields[f]
+      if (w === undefined) continue
+      for (const v of [w.von, w.nach]) {
+        const n = Number(v)
+        if (v !== null && v !== '' && Number.isInteger(n)) ids.add(n)
+      }
+    }
+  }
+  return [...ids]
+}
+
 /**
  * Die Namen hinter den Kennungen -- einmal, nicht je Zeile.
  *
  * Im Protokoll steht `resource_id: {von: 7, nach: 9}`. Daraus "203 → 205" zu
  * machen, braucht die Zimmerliste; sie je Eintrag nachzuschlagen waere eine
  * Abfrage je Zeile fuer Daten, die in einen Satz passen.
+ *
+ * **Die Gastprofile kamen spaeter dazu**, und aus einem bestimmten Grund:
+ * "Hauptgast #22157 → #35937" war eine Auskunft, die niemand weiterverfolgen
+ * konnte -- die Nummer steht nirgends in der Oberflaeche. So sieht die
+ * Trennung eines geteilten KWHotel-Profils aus (Migration 0107): derselbe
+ * Nachname auf beiden Seiten, ein neues Profil. Mit dem Namen ist das
+ * ablesbar, mit zwei Nummern nicht.
+ *
+ * Nur die Profile, die im Verlauf vorkommen, und nur mit `guest:read` --
+ * der Verlauf selbst haengt an `reservation:read`, und ein Name, den das
+ * Gastprofil nicht zeigen duerfte, kommt hier nicht durch die Hintertuer.
+ * Was redigiert ist, bleibt redigiert: gelesen wird das Profil von heute,
+ * nicht das Protokoll, und ein geloeschtes heisst "Anonymisiert".
  */
-async function namen(client: PoolClient, propertyId: number): Promise<{
+async function namen(client: PoolClient, propertyId: number, changes: Aenderung[],
+                     principal: Principal): Promise<{
   rooms: Record<string, string>; categories: Record<string, string>
+  guests: Record<string, string>; companies: Record<string, string>
 }> {
   const z = await client.query<{ id: number; code: string }>(
     `SELECT id, code FROM resource WHERE property_id = $1`, [propertyId])
   const k = await client.query<{ id: number; name: string }>(
     `SELECT id, name FROM resource_category WHERE property_id = $1`, [propertyId])
+  const guests: Record<string, string> = {}
+  const companies: Record<string, string> = {}
+  if (can(principal, 'guest:read', propertyId)) {
+    const gIds = kennungen(changes, GAST_FELDER)
+    if (gIds.length > 0) {
+      const g = await client.query<{ id: string; last_name: string; first_name: string | null }>(
+        `SELECT id, last_name, first_name FROM guest WHERE id = ANY ($1::bigint[])`, [gIds])
+      for (const r of g.rows) {
+        guests[String(r.id)] = r.first_name ? `${r.last_name}, ${r.first_name}` : r.last_name
+      }
+    }
+    const fIds = kennungen(changes, FIRMEN_FELDER)
+    if (fIds.length > 0) {
+      const f = await client.query<{ id: string; name: string }>(
+        `SELECT id, name FROM company WHERE id = ANY ($1::bigint[])`, [fIds])
+      for (const r of f.rows) companies[String(r.id)] = r.name
+    }
+  }
   return {
     rooms: Object.fromEntries(z.rows.map(r => [String(r.id), r.code])),
-    categories: Object.fromEntries(k.rows.map(r => [String(r.id), r.name]))
+    categories: Object.fromEntries(k.rows.map(r => [String(r.id), r.name])),
+    guests, companies
   }
 }
 
@@ -267,7 +322,8 @@ export function historyRoutes(app: FastifyInstance): void {
             ORDER BY a.occurred_at DESC, a.id DESC
             LIMIT $4`,
           [id, PLAN_TABELLEN, before, limit])
-        return { changes: aufbereiten(rows), ...(await namen(client, id)) }
+        const changes = aufbereiten(rows)
+        return { changes, ...(await namen(client, id, changes, req.principal as Principal)) }
       })
     }
   })
@@ -292,7 +348,7 @@ export function historyRoutes(app: FastifyInstance): void {
         const b = await client.query<{ id: number; property_id: number }>(
           `SELECT id, property_id FROM booking WHERE public_ref = $1`, [bookingRef])
         if (b.rowCount === 0) throw Errors.notFound('res.booking')
-        return await verlauf(client, b.rows[0]!.property_id,
+        return await verlauf(client, req.principal as Principal, b.rows[0]!.property_id,
           { bookingId: b.rows[0]!.id })
       })
     }
@@ -311,7 +367,7 @@ export function historyRoutes(app: FastifyInstance): void {
           `SELECT id, property_id FROM reservation WHERE public_ref = $1`,
           [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
-        return await verlauf(client, r.rows[0]!.property_id,
+        return await verlauf(client, req.principal as Principal, r.rows[0]!.property_id,
           { reservationId: r.rows[0]!.id })
       })
     }
@@ -331,7 +387,7 @@ export function historyRoutes(app: FastifyInstance): void {
  * `row_key` -- der keine `row_id` hat und damit keinen Index findet -- das
  * Protokoll aller Haeuser durchsehen.
  */
-async function verlauf(client: PoolClient, propertyId: number,
+async function verlauf(client: PoolClient, principal: Principal, propertyId: number,
                        was: { bookingId?: number; reservationId?: number }) {
   const { rows } = await client.query<ProtokollZeile>(
     `WITH ziel AS (
@@ -359,5 +415,6 @@ async function verlauf(client: PoolClient, propertyId: number,
      ORDER BY a.occurred_at DESC, a.id DESC
      LIMIT 500`,
     [was.bookingId ?? null, was.reservationId ?? null, propertyId])
-  return { changes: aufbereiten(rows), ...(await namen(client, propertyId)) }
+  const changes = aufbereiten(rows)
+  return { changes, ...(await namen(client, propertyId, changes, principal)) }
 }
