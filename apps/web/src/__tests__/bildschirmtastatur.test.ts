@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { EBENEN, datumAusIso, datumLesen, einfuegen, grossSchreiben, heuteIso,
+import { EBENEN, datumAusIso, datumLesen, datumTippen, einfuegen, grossSchreiben, heuteIso,
          loeschen, startEbene } from '../lib/bildschirmtastatur.js'
 
 /**
@@ -134,5 +134,32 @@ describe('An der Terminalseite', () => {
     const g = code('../routes/GastCheckin.tsx')
     expect(g).toContain('<Datumsfeld')
     expect(g).not.toMatch(/<input type="date"[^>]*birthDate/)
+  })
+})
+
+describe('Datum beim Tippen', () => {
+  /** Auf dem Ziffernblock des iPhones gibt es keinen Punkt. */
+  it('setzt die Punkte selbst, Ziffer fuer Ziffer', () => {
+    const schritte: string[] = []
+    let text = ''
+    for (const z of '03111985') {
+      text = datumTippen(text + z)
+      schritte.push(text)
+    }
+    expect(schritte).toEqual(['0', '03', '03.1', '03.11', '03.11.1', '03.11.19',
+                              '03.11.198', '03.11.1985'])
+    expect(datumLesen(text, '2026-10-11')).toBe('1985-11-03')
+  })
+
+  it('laesst Zurueck nicht am Punkt haengen', () => {
+    expect(datumTippen('03.11.')).toBe('03.11')
+    expect(datumTippen('03.')).toBe('03')
+  })
+
+  it('laesst eine eigene Schreibweise stehen', () => {
+    expect(datumTippen('3.11.85')).toBe('3.11.85')
+    expect(datumTippen('1985-11-03')).toBe('1985-11-03')
+    expect(datumTippen('03 11 1985')).toBe('03 11 1985')
+    expect(datumTippen('031119851')).toBe('031119851')
   })
 })

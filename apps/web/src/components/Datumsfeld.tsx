@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../lib/i18n/index.js'
-import { datumAusIso, datumLesen, heuteIso } from '../lib/bildschirmtastatur.js'
+import { datumAusIso, datumLesen, datumTippen, heuteIso } from '../lib/bildschirmtastatur.js'
 
 /**
- * Ein Geburtsdatum am Touchscreen: getippt statt `<input type="date">`.
+ * Ein Geburtsdatum am Touchscreen und auf dem Telefon: getippt statt
+ * `<input type="date">`.
+ *
+ * Auf dem Telefon oeffnet das Datumsfeld des Browsers einen Kalender beim
+ * heutigen Monat, und Gaeste mit dem Link aus der Vorab-Mail haben sich
+ * darueber beschwert, dass sie bis zum Geburtsjahr blaettern muessen (Sven,
+ * 11.10.2026). Hier kommt der Ziffernblock, und die Punkte setzt das Feld
+ * selbst (`datumTippen`).
  *
  * Warum, und welche Schreibweisen gelten, steht an `datumLesen`. Nach aussen
  * verhaelt es sich wie das Datumsfeld: hinein und heraus geht ISO, ein
@@ -14,8 +21,10 @@ import { datumAusIso, datumLesen, heuteIso } from '../lib/bildschirmtastatur.js'
  * Format YYYY-MM-DD erwartet") ist fuer Programme geschrieben, nicht fuer
  * jemanden am Tresen.
  */
-export function Datumsfeld({ value, onChange, className }: {
+export function Datumsfeld({ value, onChange, className, autoComplete = 'off' }: {
   value: string; onChange: (iso: string) => void; className: string
+  /** `bday` auf dem eigenen Geraet des Gastes, `off` am Terminal fuer alle. */
+  autoComplete?: string
 }): JSX.Element {
   const t = useT()
   const [text, setText] = useState(() => datumAusIso(value))
@@ -31,10 +40,10 @@ export function Datumsfeld({ value, onChange, className }: {
   }, [value])
   return (
     <>
-      <input value={text} inputMode="numeric" autoComplete="off" spellCheck={false}
+      <input value={text} inputMode="numeric" autoComplete={autoComplete} spellCheck={false}
              placeholder={t('kiosk.date.placeholder')} maxLength={10}
              onChange={e => {
-               const neu = e.target.value.replace(/[^0-9./ -]/g, '')
+               const neu = datumTippen(e.target.value.replace(/[^0-9./ -]/g, ''))
                setText(neu)
                setUnlesbar(false)
                onChange(datumLesen(neu, heuteIso()))
