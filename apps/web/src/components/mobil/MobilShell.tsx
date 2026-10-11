@@ -63,8 +63,20 @@ function Rahmen(props: ShellProps): JSX.Element {
     <div className="min-h-screen bg-neutral-50 text-neutral-900
                     pb-[calc(4rem+env(safe-area-inset-bottom))]">
       <header ref={kopf} className="sticky top-0 z-30 bg-white border-b border-neutral-200">
-        <div className="flex items-center gap-3 px-4 py-2">
+        <div className="flex items-center gap-2 px-4 py-2">
           <span className="shrink-0 font-semibold">StayGrid</span>
+          {/*
+            * Im Kopf statt unter "Mehr": die Hausdame wechselt am Telefon
+            * mehrmals am Tag hin und her (Sven, 11.10.2026: "erst auf Mehr,
+            * dann ganz nach unten, und dann steht da klein Personal-App").
+            */}
+          {props.personalApp === true && (
+            <a href="/personal"
+               className="shrink-0 whitespace-nowrap rounded-full bg-neutral-900 px-2.5 py-1.5
+                          text-xs font-medium text-white active:bg-neutral-700">
+              {t('shell.personalApp')}
+            </a>
+          )}
           <div className="flex min-w-0 grow justify-end">
             <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
           </div>
