@@ -2,6 +2,15 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { PaymentWebhookEvent } from '@hotelpms/domain'
 
 /**
+ * Obergrenze je Anfrage an Stripe. Ohne sie wartet fetch bei einem
+ * haengenden Stripe minutenlang -- und die Zahlungsseite tut das innerhalb
+ * einer Transaktion mit Zeilensperre, auf einem Pool von zehn Verbindungen.
+ * Ein paar Gaeste, die neu laden, legten so jede Rezeption lahm (Audit
+ * 11.10.2026). Acht Sekunden genuegen Stripe auch an einem schlechten Tag.
+ */
+const STRIPE_TIMEOUT_MS = 8_000
+
+/**
  * Nur diese Fassade wird von den Routen benutzt, damit ein Test einen
  * Adapter unterschieben kann, ohne eine Netzwerkverbindung zu Stripe zu
  * brauchen. Autorisieren, Belasten, Erstatten und Token folgen laut
@@ -85,7 +94,8 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
           Authorization: `Bearer ${secretKey}`,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body
+        body,
+        signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS)
       })
       if (!res.ok) {
         throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
@@ -101,7 +111,8 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
     async getCheckoutSession(providerReference: string): Promise<CheckoutState> {
       const res = await fetch(
         `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}`,
-        { headers: { Authorization: `Bearer ${secretKey}` } })
+        { headers: { Authorization: `Bearer ${secretKey}` },
+          signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) })
       if (!res.ok) {
         throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
       }
@@ -120,7 +131,8 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
     async expireCheckoutSession(providerReference: string): Promise<void> {
       const res = await fetch(
         `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}/expire`,
-        { method: 'POST', headers: { Authorization: `Bearer ${secretKey}` } })
+        { method: 'POST', headers: { Authorization: `Bearer ${secretKey}` },
+          signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) })
       if (res.ok) return
       const text = await res.text()
       if (res.status >= 400 && res.status < 500) throw new ProviderRefused(res.status, text)
