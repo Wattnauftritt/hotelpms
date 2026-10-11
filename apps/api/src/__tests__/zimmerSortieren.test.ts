@@ -114,7 +114,9 @@ describe('Vorschau', () => {
     expect(r.statusCode).toBe(409)
   })
 
-  it('laesst feste, angereiste und heutige Gaeste liegen', async () => {
+  it('laesst feste Gaeste liegen und heutige, wenn das Haus es so eingestellt hat', async () => {
+    await owner.query(`INSERT INTO room_sort_setting (property_id, keep_today) VALUES ($1, true)`,
+      [fx.propertyId])
     const fest = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
       arrival: '2026-10-12', departure: '2026-10-19', resourceId: z11 })
     await owner.query(`UPDATE reservation SET room_fixed = true WHERE id = $1`,
@@ -128,6 +130,19 @@ describe('Vorschau', () => {
     const refs = v.moves.map((m: { reservationRef: string }) => m.reservationRef)
     expect(refs).not.toContain(await ref(fest.reservationId))
     expect(refs).not.toContain(await ref(heute.reservationId))
+  })
+
+  it('sortiert Anreisen von heute vorgegeben mit (Sven, 11.10.2026)', async () => {
+    // Noch nicht eingecheckt heisst: das Zimmer ist noch nicht seins.
+    const lang = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      arrival: HEUTE, departure: '2026-10-17', resourceId: z11, priceCent: 12000 })
+    const kurz = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      arrival: HEUTE, departure: '2026-10-11', resourceId: z10, priceCent: 12000 })
+    const v = (await app.inject({ method: 'POST', url: url('preview'), headers: rezeption,
+      payload: ZEITRAUM })).json()
+    const refs = v.moves.map((m: { reservationRef: string }) => m.reservationRef)
+    expect(refs).toContain(await ref(lang.reservationId))
+    expect(refs).toContain(await ref(kurz.reservationId))
   })
 })
 

@@ -43,7 +43,7 @@ export function ZimmerSortierenEinstellung({ propertyId }: { propertyId: number 
   const q = useSortierEinstellung(propertyId)
   const speichern = useSortierEinstellungSpeichern(propertyId)
   const [modus, setModus] = useState<SortierModus>('manual')
-  const [heuteFest, setHeuteFest] = useState(true)
+  const [heuteFest, setHeuteFest] = useState(false)
   const [zahlen, setZahlen] = useState<Record<string, string>>({})
   const [klein, setKlein] = useState('')
   const [wuensche, setWuensche] = useState('')

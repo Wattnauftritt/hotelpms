@@ -29,7 +29,7 @@ import type { Principal } from '../platform/context.js'
 interface Zeile { mode: RoomSortMode; keep_today: boolean; weights: Partial<RoomSortWeights> }
 
 function antwort(z: Zeile | undefined): Record<string, unknown> {
-  const s = z ?? { mode: 'manual' as const, keep_today: true, weights: {} }
+  const s = z ?? { mode: 'manual' as const, keep_today: false, weights: {} }
   return {
     configured: z !== undefined,
     mode: s.mode,
@@ -71,7 +71,7 @@ export function roomSortRoutes(app: FastifyInstance): void {
       if (typeof mode !== 'string' || !(ROOM_SORT_MODES as readonly string[]).includes(mode)) {
         f.mode = ['field.invalid']
       }
-      const keepToday = b.keepToday === undefined ? true : b.keepToday
+      const keepToday = b.keepToday === undefined ? false : b.keepToday
       if (typeof keepToday !== 'boolean') f.keepToday = ['field.invalid']
       const geprueft = checkRoomSortWeights(b.weights === undefined ? {} : b.weights)
       if (!geprueft.ok) Object.assign(f, geprueft.errors)
@@ -152,7 +152,7 @@ async function lage(
   const s = await client.query<Zeile>(
     `SELECT mode, keep_today, weights FROM room_sort_setting WHERE property_id = $1`,
     [propertyId])
-  const einstellung = s.rows[0] ?? { mode: 'manual' as const, keep_today: true, weights: {} }
+  const einstellung = s.rows[0] ?? { mode: 'manual' as const, keep_today: false, weights: {} }
   if (einstellung.mode === 'off') throw Errors.conflict('roomSort.off')
 
   const today = (await client.query<{ d: string }>(
