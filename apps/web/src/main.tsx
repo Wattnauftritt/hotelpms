@@ -20,6 +20,7 @@ import { LOCALES, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
 import { api, ApiError } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
+import { offlineKopieLoeschen } from './lib/offline.js'
 import { useSchmal } from './lib/mobil.js'
 import './styles.css'
 import { nurPersonal } from './personal/adresse.js'
@@ -183,8 +184,13 @@ function App(): JSX.Element {
    * Bildschirm muss leer sein, auch wenn die Sitzung noch steht. Ist die
    * API nicht erreichbar, scheitert danach auch `me`, und es erscheint die
    * Anmeldemaske.
+   *
+   * Die Offline-Kopie im Browserspeicher ueberlebt jeden Neuaufbau, sie wird
+   * deshalb ausdruecklich geleert -- vor dem Aufruf, damit sie auch ohne
+   * Netz verschwindet, wenn der Aufruf nie zurueckkommt (Befund M8).
    */
   const abmelden = async (): Promise<void> => {
+    offlineKopieLoeschen()
     try {
       await api.post('/v1/auth/logout')
     } finally {
@@ -207,7 +213,18 @@ function App(): JSX.Element {
   // Nicht erneut versuchen: 401 ist eine Antwort, kein Ausfall.
   const me = useQuery<Me>({
     queryKey: ['me'],
-    queryFn: () => api.get<Me>('/v1/auth/me'),
+    queryFn: async () => {
+      try {
+        return await api.get<Me>('/v1/auth/me')
+      } catch (e) {
+        // Abgelaufene Sitzung: wer hier niemanden abmeldet, laesst die
+        // Offline-Kopie fuer den Naechsten am Rechner liegen (Befund M8).
+        // Nur bei 401 -- ohne Netz ist die Kopie gerade das, was gebraucht
+        // wird.
+        if (e instanceof ApiError && e.status === 401) offlineKopieLoeschen()
+        throw e
+      }
+    },
     retry: false,
     // Ist der Server weg, aber das Netz da, meldet der Browser kein
     // "online" -- es gibt also keinen Anlass, von dem aus React Query neu

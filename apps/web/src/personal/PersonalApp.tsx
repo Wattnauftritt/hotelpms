@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { KENNWORT_MIN, STAFF_LOCALES, type StaffLocale } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useInstallation } from '../lib/pwa.js'
+import { offlineKopieLoeschen } from '../lib/offline.js'
 import { nurPersonal, personalSeite } from './adresse.js'
 import { SpracheContext, SPRACHNAME, fehlerText, startSprache, usePT }
   from './texte.js'
@@ -250,8 +251,15 @@ function Installieren(): JSX.Element | null {
  * (`main.tsx`): nur der Neuaufbau laesst garantiert nichts stehen. Auf einem
  * Telefon, das abends jemand anderes in die Hand nimmt, ist das genauso
  * wichtig wie am Tresen.
+ *
+ * Die App selbst legt nichts im Browser ab, aber sie teilt sich die Herkunft
+ * mit der Rezeption: wer am selben Geraet beides benutzt hat, hat dort deren
+ * Offline-Kopie mit Gastnamen liegen. Ein Abmelden hier beendet auch jene
+ * Sitzung, also geht die Kopie mit -- vor dem Aufruf, damit sie auch ohne
+ * Netz verschwindet (Befund M8).
  */
 async function abmelden(): Promise<void> {
+  offlineKopieLoeschen()
   try {
     await api.post('/v1/auth/logout')
   } finally {
