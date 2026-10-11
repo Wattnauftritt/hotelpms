@@ -195,6 +195,10 @@ export function Housekeeping(
             <div className="mt-1 space-y-0.5 text-[11px] opacity-80">
               {r.departureRef !== null && <div>↗ {t('hk.departureToday')}</div>}
               {r.stayoverRef !== null && <div>● {t('hk.stayover')}</div>}
+              {r.stayoverWaived && (
+                <div className="rounded-sm bg-red-600 px-1 font-medium text-white">
+                  ⊘ {t('hk.waived')}</div>
+              )}
               {r.arrivalRef !== null && <div>↘ {t('hk.arrivalToday')}</div>}
               {r.openTickets > 0 && (
                 <div className="text-red-800">🔧 {r.openTickets} {t('hk.openTickets')}</div>
@@ -215,7 +219,7 @@ export function Housekeeping(
               * HTML -- der Browser zieht ihn heraus, und dann sitzt er
               * woanders als gedacht.
               */}
-            {r.taskId !== null && r.taskStatus === 'open' && (
+            {r.taskId !== null && r.taskStatus === 'open' && !r.stayoverWaived && (
               <div role="button" tabIndex={0}
                    aria-label={t('hk.finishTask')}
                    onClick={e => { e.stopPropagation(); erledigen.mutate(r.taskId!) }}

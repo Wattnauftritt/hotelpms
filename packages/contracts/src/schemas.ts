@@ -323,6 +323,8 @@ export const HousekeepingRoom = Type.Object({
   departureDate: Type.Union([Type.String(), Type.Null()]),
   departureCheckedOut: Type.Union([Type.Boolean(), Type.Null()]),
   stayoverRef: Type.Union([Type.String(), Type.Null()]),
+  /** Der Bleiber verzichtet an dem Tag auf die Reinigung (0115). */
+  stayoverWaived: Type.Boolean(),
   arrivalRef: Type.Union([Type.String(), Type.Null()]),
   openTickets: Type.Integer()
 })

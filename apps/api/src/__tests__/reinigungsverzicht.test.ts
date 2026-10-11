@@ -184,4 +184,38 @@ describe('Reinigungsverzicht', () => {
       headers: auth(olga.sessionId), payload: { enabled: false, waterGift: false } })).statusCode)
       .toBe(403)
   })
+
+  it('nachtraeglich: schon zugeteilt, dann verzichtet -- Meldung an die Kraft, gesperrt ueberall', async () => {
+    // Sven, 11.10.2026: Anreise ueber den Schluesselsafe, Anmeldung erst am
+    // Morgen, der Plan steht schon.
+    await einstellen(true, false)
+    const plan = await app.inject({ method: 'PUT', url: p('/cleaning-plan'),
+      headers: auth(hausdame.sessionId), payload: { date: TAG, assignments: [
+        { resourceId: zimmer[0], kind: 'stayover', assignedTo: olga.userId }] } })
+    expect(plan.statusCode, plan.body).toBe(200)
+    const vorher = await app.inject({ method: 'GET', url: p(`/housekeeping?date=${TAG}`),
+      headers: auth(hausdame.sessionId) })
+    expect(vorher.json().rooms.find((r: { resourceId: number }) => r.resourceId === zimmer[0])
+      .stayoverWaived).toBe(false)
+
+    expect((await gast(TAG, true)).statusCode).toBe(200)
+
+    const push = await owner.query(
+      `SELECT user_id::int, params FROM staff_push WHERE kind = 'waived'`)
+    expect(push.rows).toEqual([{ user_id: olga.userId, params: { room: expect.any(String) } }])
+
+    const hk = await app.inject({ method: 'GET', url: p(`/housekeeping?date=${TAG}`),
+      headers: auth(hausdame.sessionId) })
+    const z = hk.json().rooms.find((r: { resourceId: number }) => r.resourceId === zimmer[0])
+    expect(z.stayoverWaived).toBe(true)
+    // "Erledigt" am Rechner ist dieselbe Sperre wie in der Personal-App.
+    const fertig = await app.inject({ method: 'POST', url: `/v1/housekeeping/tasks/${z.taskId}/done`,
+      headers: auth(hausdame.sessionId) })
+    expect(fertig.statusCode, fertig.body).toBe(409)
+
+    // Gesperrt und nicht gezaehlt: die Kraft kann nichts melden.
+    const r = await app.inject({ method: 'POST', url: p(`/my-rooms/${z.taskId}`),
+      headers: auth(olga.sessionId), payload: { outcome: 'cleaned' } })
+    expect(r.statusCode, r.body).toBe(409)
+  })
 })

@@ -227,6 +227,12 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
 
   const pool = (art: ReinigungsArt): JSX.Element => {
     const liste = offen.filter(z => artVon(z) === art)
+    // Verzichtet der Gast und gibt es kein Wasser, ist nichts zu tun, und
+    // die Schnittstelle nennt das Zimmer nicht faellig. Stehen bleibt es
+    // trotzdem, rot und gesperrt (Sven, 11.10.2026: "das muss dort
+    // angezeigt werden") -- sonst fragt sich die Hausdame, wo es hin ist.
+    const verzichtet = art === 'stayover'
+      ? plan.rooms.filter(z => z.waived && artVon(z) === null) : []
     const rot = art === 'departure'
     return <div onDragOver={zulassen} onDrop={e => fallen(e, null)}
                 className={`rounded-sm border border-dashed p-2 min-h-16
@@ -235,9 +241,9 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
         {t(rot ? 'cleaningPlan.openDepartures' : 'cleaningPlan.openStayovers')}
         <span className="ml-1 font-normal text-neutral-500">{liste.length}</span>
       </h3>
-      {liste.length === 0
+      {liste.length === 0 && verzichtet.length === 0
         ? <p className="text-xs text-neutral-500">{t('cleaningPlan.poolEmpty')}</p>
-        : <div className="flex flex-wrap gap-1.5">{gruppiert(liste)}</div>}
+        : <div className="flex flex-wrap gap-1.5">{gruppiert([...liste, ...verzichtet])}</div>}
     </div>
   }
 

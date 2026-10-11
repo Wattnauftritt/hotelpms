@@ -88,7 +88,7 @@ export function createWebPushSender(vapid: {
   }
 }
 
-type Art = 'plan' | 'room_free' | 'rework'
+type Art = 'plan' | 'room_free' | 'rework' | 'waived'
 
 interface ClaimedPush {
   id: number
