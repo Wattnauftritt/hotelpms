@@ -332,4 +332,78 @@ describe('Zustellung ausgehender Ereignisse', () => {
       expect(e.empfangen).toHaveLength(0)
     } finally { await e.schliessen() }
   })
+
+  /**
+   * Befund 9: ein Ziel, das nicht antwortet, kostete je Zustellung die volle
+   * Frist -- fuenfzig Zeilen, fuenfzig Fristen, und alle Haeuser dahinter
+   * warteten mit. Jetzt eine Frist je Abonnement und Lauf; die anderen
+   * Abonnements laufen weiter, die uebrigen Zeilen gehen ohne Versuch zurueck.
+   */
+  it('beliefert ein Ziel nach der ersten Zeitueberschreitung in diesem Lauf nicht weiter', async () => {
+    let haengend = 0
+    const tot: Server = createServer(() => { haengend++ })
+    await new Promise<void>(r => tot.listen(0, '127.0.0.1', r))
+    const totUrl = `http://127.0.0.1:${(tot.address() as AddressInfo).port}/ereignisse`
+    const gut = await empfaenger(() => 200)
+    try {
+      const totesAbo = await abonnement(totUrl)
+      await abonnement(gut.url)
+      for (let i = 0; i < 3; i++) await einreihen('reservation.created')
+
+      const r = await deliverWebhooks(app, ctx, fx.propertyId,
+        { requestTimeoutMs: 300, allowedCidrs: LOKAL_FREIGEGEBEN })
+      expect(r).toMatchObject({ attempted: 4, delivered: 3, retrying: 1 })
+      expect(haengend).toBe(1)
+      expect(gut.empfangen).toHaveLength(3)
+
+      const { rows } = await owner.query<{ status: string; attempts: number; faellig: boolean
+                                           last_error: string | null }>(
+        `SELECT status, attempts, next_attempt_at <= now() AS faellig, last_error
+           FROM webhook_delivery WHERE subscription_id = $1 ORDER BY id`, [totesAbo])
+      expect(rows).toEqual([
+        { status: 'pending', attempts: 1, faellig: false, last_error: 'timeout' },
+        { status: 'pending', attempts: 0, faellig: true, last_error: null },
+        { status: 'pending', attempts: 0, faellig: true, last_error: null }])
+    } finally {
+      tot.closeAllConnections()
+      await new Promise<void>(r => { tot.close(() => { r() }) })
+      await gut.schliessen()
+    }
+  })
+
+  /**
+   * Befund 13: offene Zustellungen eines stillgelegten Abonnements blieben
+   * fuer immer offen und wurden bei jedem Abholen neu gelesen. Der Trigger
+   * aus 0140 laesst sie scheitern -- in allen Haeusern, nicht nur in dem,
+   * dessen Worker gerade stilllegt.
+   */
+  it('laesst offene Zustellungen beim Stilllegen scheitern, auch in anderen Haeusern', async () => {
+    const id = await abonnement('https://empfaenger.example/ereignisse')
+    await einreihen('reservation.created')
+    await einreihen('reservation.checked_in')
+    // Ein zweites Haus desselben Kontos mit eigener offener Zustellung.
+    const zweites = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1, 'ZWEI', 'Zweites Haus', 'Hafenstr. 2', '25813', 'Husum', 'DE')
+       RETURNING id`, [fx.accountId])
+    await owner.query(
+      `INSERT INTO webhook_delivery (subscription_id, account_id, property_id, event_type,
+                                     event_ref, payload)
+       VALUES ($1, $2, $3, 'reservation.created', 'evt_zwei', '{}'::jsonb)`,
+      [id, fx.accountId, zweites.rows[0]!.id])
+    await owner.query(
+      `UPDATE webhook_delivery SET status = 'delivered' WHERE id = (
+         SELECT min(id) FROM webhook_delivery WHERE property_id = $1)`, [fx.propertyId])
+
+    await withTransaction(app, ctx, c => c.query(
+      `UPDATE webhook_subscription SET status = 'disabled', disabled_at = now() WHERE id = $1`,
+      [id]))
+
+    const { rows } = await owner.query<{ status: string; last_error: string | null }>(
+      `SELECT status, last_error FROM webhook_delivery ORDER BY id`)
+    expect(rows).toEqual([
+      { status: 'delivered', last_error: null },
+      { status: 'failed', last_error: 'subscriptionDisabled' },
+      { status: 'failed', last_error: 'subscriptionDisabled' }])
+  })
 })

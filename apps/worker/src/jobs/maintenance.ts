@@ -1,4 +1,4 @@
-import type { PoolClient } from '@hotelpms/db'
+import { withTransaction, SYSTEM_CONTEXT, type Pool, type PoolClient } from '@hotelpms/db'
 
 /**
  * Taegliche Pflegearbeiten. Alle idempotent.
@@ -53,9 +53,54 @@ export async function materializeInventory(
 }
 
 /**
+ * Nur das Ende des Horizonts nachziehen (Befund 14).
+ *
+ * Der volle Lauf prueft 24 Monate je Kategorie -- bei 250 Zimmern rund
+ * 180 000 Proben und eine Kapazitaetsrechnung ueber den ganzen Zeitraum --,
+ * und das alle fuenf Minuten, obwohl je Tag genau ein neuer Tag am Ende
+ * dazukommt. Die Kapazitaet halten die Trigger auf Zimmer und Sperrungen
+ * ohnehin aktuell (0013); der volle Lauf ist das Sicherheitsnetz und laeuft
+ * deshalb einmal am Tag (worker.ts).
+ *
+ * Gesucht wird je aktiver Kategorie -- und der Haussummenzeile -- der
+ * letzte materialisierte Tag. Fehlt einer Kategorie der heutige Tag, ist
+ * sie neu: dann ab heute, und das ist dieselbe Arbeit wie der volle Lauf.
+ * Eine Kategorie ohne Zeilen kann sonst bis zum naechsten Morgen nicht
+ * gebucht werden (`not_materialized`), denn auf resource_category liegt
+ * kein Trigger.
+ */
+export async function materializeInventoryTail(
+  client: PoolClient, propertyId: number, months = 24
+): Promise<number> {
+  const r = await client.query<{ von: string | null; bis: string }>(
+    `WITH cats AS (
+       SELECT id FROM resource_category WHERE property_id = $1 AND active
+       UNION ALL SELECT 0
+     )
+     SELECT min(CASE
+                  WHEN NOT EXISTS (SELECT 1 FROM inventory_day i
+                                    WHERE i.property_id = $1 AND i.category_id = c.id
+                                      AND i.date = current_date)
+                  THEN current_date
+                  ELSE (SELECT max(i.date) FROM inventory_day i
+                         WHERE i.property_id = $1 AND i.category_id = c.id) + 1
+                END)::text AS von,
+            (current_date + ($2 || ' months')::interval)::date::text AS bis
+       FROM cats c`,
+    [propertyId, months])
+  const { von, bis } = r.rows[0]!
+  if (von === null || von >= bis) return 0
+  const m = await client.query<{ inventory_materialize: number }>(
+    `SELECT inventory_materialize($1, $2::date, $3::date)`, [propertyId, von, bis])
+  return m.rows[0]!.inventory_materialize
+}
+
+/**
  * Rechnet die Zaehler gegen die Reservierungen nach.
  * Ein stiller Zaehlerfehler ist das Schlimmste, was einem Bestandssystem
- * passieren kann, deshalb laeuft dieser Abgleich taeglich.
+ * passieren kann, deshalb laeuft dieser Abgleich regelmaessig -- stuendlich,
+ * nicht in jedem Tick (worker.ts): ein Zaehler, der abweicht, weicht auch
+ * in einer Stunde noch ab, und der Alarm kommt frueh genug.
  */
 export interface InventoryDrift {
   categoryId: number
@@ -223,4 +268,113 @@ export async function overdueNightAudits(
       ORDER BY bd.date NULLS FIRST`,
     [toleranceDays])
   return r.rows
+}
+
+/**
+ * Aufbewahrung der Arbeitstabellen des Workers (Befund 13).
+ *
+ * Diese Tabellen wuchsen bisher unbegrenzt, und keine davon ist ein
+ * Buchungsbeleg: ein Zustellversuch, eine erledigte Uebersetzung, eine
+ * gesendete Push-Meldung beantworten Fragen der naechsten Wochen ("ist das
+ * rausgegangen, und wenn nein, warum"), nicht der naechsten Jahre. Die
+ * Rechnung selbst, ihr Beleg und der Postausgang bleiben unberuehrt.
+ *
+ * Mandantenuebergreifend und mit der Eigentuemerrolle, wie purgeExpired:
+ * unter dem leeren Systemkontext saehe die Anwendungsrolle in jeder dieser
+ * Tabellen keine Zeile und meldete trotzdem Erfolg.
+ *
+ * In Stapeln, jeder in seiner eigenen Transaktion. Der erste Lauf nach dem
+ * Einspielen findet die ganze Geschichte vor; in einem Stueck hielte er
+ * Sperren und WAL fuer Millionen Zeilen.
+ */
+export interface RetentionResult {
+  webhookDeliveries: number
+  emailAttempts: number
+  platformEmailBodies: number
+  staffTextJobs: number
+  staffPushes: number
+}
+
+const STAPEL = 5_000
+const MAX_STAPEL = 200
+
+async function stapelweise(admin: Pool, sql: string): Promise<number> {
+  let summe = 0
+  for (let i = 0; i < MAX_STAPEL; i++) {
+    const r = await withTransaction(admin, SYSTEM_CONTEXT, c => c.query(sql, [STAPEL]))
+    const n = r.rowCount ?? 0
+    summe += n
+    if (n < STAPEL) break
+  }
+  return summe
+}
+
+export async function purgeRetention(admin: Pool): Promise<RetentionResult> {
+  /*
+   * Webhook-Zustellungen: erledigte und gescheiterte nach 30 Tagen, die
+   * Versuche fallen ueber ON DELETE CASCADE mit. Jede Zeile traegt die volle
+   * Nutzlast des Ereignisses; nach einem Monat fragt niemand mehr danach,
+   * und der Empfaenger hat sie, oder er hat sie nie gewollt. Offene bleiben,
+   * gleich wie alt -- die verschwinden nur durch Zustellen oder Aufgeben.
+   */
+  const webhookDeliveries = await stapelweise(admin,
+    `DELETE FROM webhook_delivery WHERE id IN (
+       SELECT id FROM webhook_delivery
+        WHERE status <> 'pending' AND occurred_at < now() - interval '30 days'
+        LIMIT $1)`)
+
+  /*
+   * Versuchsprotokoll der Gastpost nach 90 Tagen -- derselbe Abstand, nach
+   * dem email_redact_old Empfaenger und Rumpf entfernt. Im Fehlertext kann
+   * die abgelehnte Adresse stehen (Brevo schickt sie zurueck); geschwaerzt
+   * wird die Nachricht, aber nicht ihr Versuch, und das hier holt es nach.
+   */
+  const emailAttempts = await stapelweise(admin,
+    `DELETE FROM outbound_email_attempt WHERE id IN (
+       SELECT id FROM outbound_email_attempt
+        WHERE attempted_at < now() - interval '90 days'
+        LIMIT $1)`)
+
+  /*
+   * Zugangspost: der Rumpf traegt den Link mit dem Token. Nach Versand oder
+   * Aufgeben faellt er sofort (platformEmail.ts); liegen blieb er bei einer
+   * Nachricht, die nie hinausging -- ohne BREVO_API_KEY etwa. Nach sieben
+   * Tagen ist jedes Token darin abgelaufen (das laengste gilt 48 Stunden),
+   * und auth_token_cleanup raeumt zur selben Frist die Tokenzeile ab. Was
+   * dann noch offen ist, wird aufgegeben statt spaeter mit leerem Rumpf
+   * verschickt. Die Zeile selbst bleibt: das Panel beantwortet aus ihr
+   * "ist die Einladung angekommen".
+   */
+  const platformEmailBodies = await stapelweise(admin,
+    `UPDATE platform_email
+        SET body_text = '', body_html = NULL,
+            status = CASE WHEN status = 'pending' THEN 'failed' ELSE status END,
+            last_error = CASE WHEN status = 'pending' THEN 'expired' ELSE last_error END
+      WHERE id IN (SELECT id FROM platform_email
+                    WHERE created_at < now() - interval '7 days'
+                      AND (body_text <> '' OR body_html IS NOT NULL)
+                    LIMIT $1)`)
+
+  // Erledigte Uebersetzungsauftraege: die Uebersetzung steht in
+  // staff_text_translation, der Auftrag sagt nichts mehr. Wird der Text
+  // geaendert, legt das Einreihen einen neuen an.
+  const staffTextJobs = await stapelweise(admin,
+    `DELETE FROM staff_text_job WHERE id IN (
+       SELECT id FROM staff_text_job
+        WHERE status = 'done' AND created_at < now() - interval '30 days'
+        LIMIT $1)`)
+
+  /*
+   * Push an das Personal: erledigt nach einem Monat weg. Stand bisher in
+   * sendStaffPushes und lief damit alle 20 Sekunden je Haus als Scan; es
+   * sagt nur noch, wer wann welches Zimmer gemeldet bekam, und das steht im
+   * Plan selbst.
+   */
+  const staffPushes = await stapelweise(admin,
+    `DELETE FROM staff_push WHERE id IN (
+       SELECT id FROM staff_push
+        WHERE status <> 'pending' AND created_at < now() - interval '30 days'
+        LIMIT $1)`)
+
+  return { webhookDeliveries, emailAttempts, platformEmailBodies, staffTextJobs, staffPushes }
 }

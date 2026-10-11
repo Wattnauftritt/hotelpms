@@ -74,6 +74,8 @@ export interface WebhookDeliveryOptions {
   /** Wie lange eine beanspruchte Zustellung fuer andere gesperrt bleibt. */
   leaseSeconds?: number
   requestTimeoutMs?: number
+  /** Frist der Namensaufloesung, getrennt von der der Anfrage. */
+  dnsTimeoutMs?: number
   /** Grundabstand der Wiederholung, der sich mit jedem Versuch verdoppelt. */
   baseDelaySeconds?: number
   /**
@@ -135,17 +137,40 @@ type Ziel = { address: string; family: number } | null
  * Adresse, ist sie beim statischen Pruefen bereits geprueft worden.
  */
 async function resolveTarget(
-  url: URL, literal: string | null, allowed: readonly Cidr[]
+  url: URL, literal: string | null, allowed: readonly Cidr[], dnsTimeoutMs: number
 ): Promise<Ziel> {
   if (literal !== null) {
     return { address: literal, family: literal.includes(':') ? 6 : 4 }
   }
-  const antworten = await dnsLookup(url.hostname, { all: true, verbatim: true })
+  const antworten = await mitFrist(
+    dnsLookup(url.hostname, { all: true, verbatim: true }), dnsTimeoutMs)
   if (antworten.length === 0) return null
   for (const a of antworten) {
     if (checkResolvedAddress(url.protocol, a.address, allowed) !== null) return null
   }
   return { address: antworten[0]!.address, family: antworten[0]!.family }
+}
+
+/**
+ * Eigene Frist fuer die Namensaufloesung (Befund 9).
+ *
+ * `dns.lookup` laeuft ueber getaddrinfo im Threadpool von libuv und kennt
+ * keine Zeitgrenze; ein Nameserver, der nicht antwortet, haelt sie so lange
+ * auf, wie das System es zulaesst -- je Versuch und Wiederholung bis zu
+ * dreissig Sekunden, ausserhalb der Frist der Anfrage. Abbrechen laesst sich
+ * die Suche nicht, aber nicht mehr auf sie warten. Der Fehler traegt
+ * `ETIMEDOUT` und zaehlt damit als Zeitueberschreitung.
+ */
+function mitFrist<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const frist = setTimeout(() => {
+      const e: NodeJS.ErrnoException = new Error('Zeitueberschreitung bei der Namensaufloesung')
+      e.code = 'ETIMEDOUT'
+      reject(e)
+    }, ms)
+    p.then(v => { clearTimeout(frist); resolve(v) },
+           (e: unknown) => { clearTimeout(frist); reject(e as Error) })
+  })
 }
 
 /**
@@ -211,7 +236,7 @@ function sendRequest(
 }
 
 async function send(
-  d: ClaimedDelivery, timeoutMs: number, allowed: readonly Cidr[]
+  d: ClaimedDelivery, timeoutMs: number, dnsTimeoutMs: number, allowed: readonly Cidr[]
 ): Promise<AttemptResult> {
   const body = JSON.stringify(d.payload)
   const timestamp = Math.floor(Date.now() / 1000)
@@ -232,7 +257,7 @@ async function send(
   let ziel: Ziel
   try {
     ziel = await resolveTarget(
-      geprueft.target.url, geprueft.target.literalAddress, allowed)
+      geprueft.target.url, geprueft.target.literalAddress, allowed, dnsTimeoutMs)
   } catch (e) {
     return { statusCode: null, kind: classifyDeliveryError(e), durationMs: dauer() }
   }
@@ -325,19 +350,44 @@ export async function deliverWebhooks(
   const leaseSeconds = opts.leaseSeconds ?? 300
   const timeoutMs = opts.requestTimeoutMs ?? 10_000
   const baseDelaySeconds = opts.baseDelaySeconds ?? 60
+  const dnsTimeoutMs = opts.dnsTimeoutMs ?? Math.min(timeoutMs, 5_000)
   const allowed = opts.allowedCidrs ?? []
 
   const claimed = await withTransaction(pool, ctx, c =>
     claim(c, propertyId, batchSize, leaseSeconds))
   const result: WebhookDeliveryResult = {
-    attempted: claimed.length, delivered: 0, retrying: 0, failed: 0, disabled: 0 }
+    attempted: 0, delivered: 0, retrying: 0, failed: 0, disabled: 0 }
 
+  /*
+   * Ein Ziel, das einmal nicht rechtzeitig geantwortet hat, wird in diesem
+   * Lauf nicht weiter beliefert (Befund 9). Ein totes Ziel kostete sonst
+   * fuenfzig Zustellungen zu je zehn Sekunden, und hinter ihm warteten alle
+   * Haeuser, die im Tick danach kommen. Die uebrigen Zeilen des Abonnements
+   * gehen zurueck in die Warteschlange, ohne verbrauchten Versuch: sie sind
+   * nicht gescheitert, sie wurden nicht versucht. Eine schnelle Ablehnung
+   * (Verbindung abgewiesen, 500) kostet nichts und haelt nicht an.
+   */
+  const ausgesetzt = new Set<number>()
+  const zurueck: number[] = []
   for (const d of claimed) {
-    const versuch = await send(d, timeoutMs, allowed)
+    if (ausgesetzt.has(d.subscription_id)) { zurueck.push(d.id); continue }
+    const versuch = await send(d, timeoutMs, dnsTimeoutMs, allowed)
+    if (versuch.kind === 'timeout') ausgesetzt.add(d.subscription_id)
+    result.attempted++
     const { ausgang, stillgelegt } = await withTransaction(pool, ctx, c =>
       record(c, propertyId, d, versuch, baseDelaySeconds))
     result[ausgang]++
-    if (stillgelegt) result.disabled++
+    if (stillgelegt) {
+      result.disabled++
+      // Die offenen Zeilen hat der Trigger der Stilllegung schon auf
+      // gescheitert gesetzt (0140); auch die beanspruchten gehen nicht mehr hinaus.
+      ausgesetzt.add(d.subscription_id)
+    }
+  }
+  if (zurueck.length > 0) {
+    await withTransaction(pool, ctx, c => c.query(
+      `UPDATE webhook_delivery SET attempts = attempts - 1, next_attempt_at = now()
+        WHERE id = ANY($1::bigint[]) AND status = 'pending' AND attempts > 0`, [zurueck]))
   }
   return result
 }

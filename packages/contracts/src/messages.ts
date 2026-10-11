@@ -2334,6 +2334,10 @@ const M = {
     de: 'Die Zustellung ist gescheitert',
     en: 'The delivery failed',
     tr: 'İletim başarısız oldu' },
+  'webhookError.subscriptionDisabled': {
+    de: 'Nicht zugestellt, weil das Abonnement stillgelegt wurde',
+    en: 'Not delivered because the subscription was disabled',
+    tr: 'Abonelik devre dışı bırakıldığı için iletilmedi' },
 
   // ------------------------------------------------ Uebernahme aus KWHotel
 

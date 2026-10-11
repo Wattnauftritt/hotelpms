@@ -80,6 +80,20 @@ export async function runNightAudit(
 }
 
 /**
+ * Wie weit zurueck nach einem unvollstaendigen Tag gesucht wird (Befund 14).
+ *
+ * Die Suche zaehlte je Geschaeftstag seit Inbetriebnahme die Schrittmarken
+ * -- bei jedem Tick, und jeden Tag ein Tag mehr. Unvollstaendig kann aber
+ * nur der offene Tag sein und der davor: der Tageswechsel ist Schritt 1,
+ * schliesst den Tag und oeffnet den naechsten, und ein Lauf nach einem
+ * Absturz macht erst den alten Tag fertig, bevor er den neuen anfasst.
+ * Gezaehlt wird vom juengsten Geschaeftstag, nicht vom offenen: fehlt der
+ * offene Tag, soll die Suche trotzdem etwas finden. Eine Woche ist
+ * reichlich Abstand fuer beides.
+ */
+const SUCHFENSTER_TAGE = 7
+
+/**
  * Welcher Tag ist dran?
  *
  * Der aelteste Geschaeftstag, dessen Schrittmarken unvollstaendig sind. Damit
@@ -100,11 +114,13 @@ async function resolveBusinessDate(
        FROM business_day bd
        JOIN property p ON p.id = bd.property_id
       WHERE bd.property_id = $1
+        AND bd.date >= (SELECT max(m.date) FROM business_day m
+                         WHERE m.property_id = $1) - $3::int
         AND (SELECT count(*) FROM night_audit_step s
               WHERE s.property_id = bd.property_id AND s.business_date = bd.date) < $2
       ORDER BY bd.date
       LIMIT 1`,
-    [propertyId, STEPS.length])
+    [propertyId, STEPS.length, SUCHFENSTER_TAGE])
   if (r.rowCount === 0) return null
 
   const row = r.rows[0]!
