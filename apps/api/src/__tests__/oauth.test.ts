@@ -427,3 +427,36 @@ describe('Maschinenzugang aendern', () => {
     expect(r.statusCode).toBe(409)
   })
 })
+
+/*
+ * M12 aus dem Sicherheitsaudit vom 11.10.2026: eine Kontosperre stoppte die
+ * Menschen, nicht die Maschinen (Migration 0133).
+ */
+describe('Gesperrter Account, archiviertes Haus', () => {
+  const hk = () => `/v1/properties/${fx.propertyId}/housekeeping?date=2026-10-01`
+
+  it('ein Token traegt nach der Kontosperre nicht mehr, ein neues gibt es nicht', async () => {
+    const z = await zugang()
+    const t = await token(z)
+    await owner.query(`UPDATE account SET status = 'suspended' WHERE id = $1`, [fx.accountId])
+
+    const r = await app.inject({ method: 'GET', url: hk(), headers: bearer(t) })
+    expect(r.statusCode).toBe(401)
+    const neu = await tokenAnfrage({
+      grant_type: 'client_credentials', client_id: z.clientId, client_secret: z.clientSecret })
+    expect(neu.statusCode).toBe(401)
+  })
+
+  it('auf ein archiviertes Haus beschraenkt, reicht er nicht auf die anderen', async () => {
+    const zwei = await owner.query<{ id: string }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1, 'ZWEI', 'Zweites Haus', 'x', '1', 'y', 'DE') RETURNING id`, [fx.accountId])
+    const zweiId = Number(zwei.rows[0]!.id)
+    const z = await zugang({ propertyIds: [zweiId] })
+    const t = await token(z)
+    await owner.query(`UPDATE property SET status = 'archived' WHERE id = $1`, [zweiId])
+
+    const r = await app.inject({ method: 'GET', url: hk(), headers: bearer(t) })
+    expect(r.statusCode).toBe(401)
+  })
+})
