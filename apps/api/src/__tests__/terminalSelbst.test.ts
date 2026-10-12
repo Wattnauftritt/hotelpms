@@ -11,7 +11,7 @@ import { limiters } from '../platform/rateLimit.js'
 
 /**
  * Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14; Migration
- * 0145).
+ * 0150).
  *
  * Geprueft wird, was still schiefginge: ein Zimmer, das am Touchscreen mit
  * dem falschen Gast erscheint; ein Link, der die Sitzung ueberlebt und dem

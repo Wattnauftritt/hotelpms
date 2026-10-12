@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox'
 import { LOCALES } from './messages.js'
+import { CleaningWaiverView } from './cleaningWaiver.js'
 
 /**
  * Digitale Gaestemappe: der Vertrag zwischen der Seite des Gastes, den
@@ -17,6 +18,13 @@ export const FOLDER_ROOM_HEADER = 'x-staygrid-folder-room'
 
 /** Der Pfad der Mappe in der Oberflaeche. */
 export const FOLDER_PATH = '/mappe'
+
+/**
+ * Das Cookie der Freischaltung (0147). Nur an die Routen der Mappe
+ * (`Path=/v1/mappe`), nie an die Anwendung: ein Telefon, das ein Gast
+ * weitergibt, soll damit nichts anderes erreichen.
+ */
+export const FOLDER_SESSION_COOKIE = 'hp_mappe'
 
 /**
  * Die Sprachen der Mappe (Sven, 11.10.2026): dieselben wie die der
@@ -83,6 +91,144 @@ export const FolderPageText = Type.Object({
 })
 export type FolderPageText = Static<typeof FolderPageText>
 
+/**
+ * Was ein freigeschaltetes Telefon ueber den eigenen Aufenthalt sieht.
+ * `cleaningWaiver` ist `null`, wenn das Haus den Verzicht nicht anbietet
+ * oder kein Bleibetag mehr kommt (0148) -- dieselbe Form wie unter dem
+ * Meldeschein, damit beide Tueren dasselbe zeigen.
+ */
+// ------------------------------------------------------------ Wuensche (0149)
+
+/** Feste Gruende fuer "Nicht moeglich": der Gast liest sie in seiner Sprache. */
+export const GUEST_REQUEST_DECLINE_REASONS = ['unavailable', 'notThatDay', 'askReception'] as const
+export type GuestRequestDeclineReason = (typeof GUEST_REQUEST_DECLINE_REASONS)[number]
+export const GuestRequestStatus = Type.Union([
+  Type.Literal('open'), Type.Literal('done'), Type.Literal('declined')])
+const DeclineReason = Type.Union(GUEST_REQUEST_DECLINE_REASONS.map(r => Type.Literal(r)))
+/** Name je Sprache; `de` ist immer da und gilt, wo eine Sprache fehlt. */
+const NameJeSprache = Type.Record(Type.String(), Type.String())
+
+/** Ein Eintrag des Katalogs, wie der Gast ihn sieht. */
+export const FolderRequestItem = Type.Object({
+  itemRef: Type.String(),
+  name: NameJeSprache,
+  maxQty: Type.Integer(),
+  /** Brutto je Stueck in Cent; `null` heisst kostenlos. */
+  unitPriceCent: Type.Union([Type.Integer(), Type.Null()])
+})
+export type FolderRequestItem = Static<typeof FolderRequestItem>
+
+/** Ein eigener Wunsch mit Stand. */
+export const FolderRequest = Type.Object({
+  requestRef: Type.String(),
+  name: NameJeSprache,
+  qty: Type.Integer(),
+  unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
+  wantedFor: Type.Union([Type.String(), Type.Null()]),
+  status: GuestRequestStatus,
+  declineReason: Type.Union([DeclineReason, Type.Null()]),
+  createdAt: Type.String()
+})
+export type FolderRequest = Static<typeof FolderRequest>
+
+export const FolderRequests = Type.Object({
+  items: Type.Array(FolderRequestItem),
+  mine: Type.Array(FolderRequest),
+  /**
+   * Die Tage, die der Gast als Wunschtag waehlen kann: ab heute
+   * (Geschaeftstag) oder der Anreise bis zur Abreise. Die Seite rechnet
+   * sie nicht selbst, weil sie den Geschaeftstag nicht kennt.
+   */
+  days: Type.Array(Type.String())
+})
+export type FolderRequests = Static<typeof FolderRequests>
+
+/** Einen Wunsch absenden. */
+export const FolderRequestCreate = Type.Object({
+  itemRef: Type.String({ minLength: 1, maxLength: 20 }),
+  qty: Type.Integer({ minimum: 1, maximum: 20 }),
+  wantedFor: Type.Optional(Type.Union([Type.String(), Type.Null()]))
+}, { additionalProperties: false })
+export type FolderRequestCreate = Static<typeof FolderRequestCreate>
+
+/**
+ * Ein Wunsch, wie die Rezeption ihn sieht: im Eingang unter "Heute" und
+ * im Seitenfenster der Reservierung.
+ */
+export const GuestRequestRow = Type.Object({
+  requestRef: Type.String(),
+  reservationRef: Type.String(),
+  roomCode: Type.Union([Type.String(), Type.Null()]),
+  lastName: Type.Union([Type.String(), Type.Null()]),
+  firstName: Type.Union([Type.String(), Type.Null()]),
+  itemName: NameJeSprache,
+  qty: Type.Integer(),
+  unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
+  wantedFor: Type.Union([Type.String(), Type.Null()]),
+  handler: Type.Union([Type.Literal('reception'), Type.Literal('housekeeping')]),
+  source: Type.Union([Type.Literal('folder'), Type.Literal('mail'), Type.Literal('terminal')]),
+  status: GuestRequestStatus,
+  declineReason: Type.Union([DeclineReason, Type.Null()]),
+  createdAt: Type.String()
+})
+export type GuestRequestRow = Static<typeof GuestRequestRow>
+
+export const GuestRequestDecline = Type.Object({
+  reason: DeclineReason
+}, { additionalProperties: false })
+export type GuestRequestDecline = Static<typeof GuestRequestDecline>
+
+/** Ein Eintrag des Katalogs in den Einstellungen. */
+export const GuestRequestItemAdmin = Type.Object({
+  itemRef: Type.String(),
+  name: NameJeSprache,
+  handler: Type.Union([Type.Literal('reception'), Type.Literal('housekeeping')]),
+  maxQty: Type.Integer(),
+  /** `null`: kostenlos. Sonst der Artikel dahinter. */
+  price: Type.Union([Type.Object({
+    grossCent: Type.Integer(),
+    taxRuleId: Type.Integer(),
+    revenueAccount: Type.String()
+  }), Type.Null()]),
+  onFolder: Type.Boolean(),
+  onTerminal: Type.Boolean(),
+  active: Type.Boolean(),
+  position: Type.Integer()
+})
+export type GuestRequestItemAdmin = Static<typeof GuestRequestItemAdmin>
+
+export const GuestRequestItemInput = Type.Object({
+  name: NameJeSprache,
+  handler: Type.Union([Type.Literal('reception'), Type.Literal('housekeeping')]),
+  maxQty: Type.Integer({ minimum: 1, maximum: 20 }),
+  price: Type.Union([Type.Object({
+    grossCent: Type.Integer({ minimum: 1, maximum: 10_000_00 }),
+    taxRuleId: Type.Integer(),
+    revenueAccount: Type.String({ pattern: '^[0-9]{4,8}$' })
+  }, { additionalProperties: false }), Type.Null()]),
+  onFolder: Type.Boolean(),
+  onTerminal: Type.Boolean(),
+  active: Type.Boolean(),
+  position: Type.Integer({ minimum: 0, maximum: 1000 })
+}, { additionalProperties: false })
+export type GuestRequestItemInput = Static<typeof GuestRequestItemInput>
+
+export const GuestRequestCatalog = Type.Object({
+  items: Type.Array(GuestRequestItemAdmin),
+  /** Die Umsatzsteuersaetze des Hauses, zur Auswahl am Preis. */
+  taxRules: Type.Array(Type.Object({
+    id: Type.Integer(), name: Type.String(), rateBp: Type.Integer() }))
+})
+export type GuestRequestCatalog = Static<typeof GuestRequestCatalog>
+
+export const GuestFolderStay = Type.Object({
+  departure: Type.String(),
+  cleaningWaiver: Type.Union([CleaningWaiverView, Type.Null()]),
+  /** `null`, wenn das Haus keinen Eintrag fuer die Mappe hat (0149). */
+  requests: Type.Union([FolderRequests, Type.Null()])
+})
+export type GuestFolderStay = Static<typeof GuestFolderStay>
+
 export const GuestFolderView = Type.Object({
   propertyName: Type.String(),
   /** Name des Zimmers, sonst seine Nummer. */
@@ -90,6 +236,12 @@ export const GuestFolderView = Type.Object({
   checkinTime: Type.String(),
   checkoutTime: Type.String(),
   wifi: Type.Union([FolderWifi, Type.Null()]),
+  /**
+   * Der eigene Aufenthalt, sobald dieses Telefon freigeschaltet ist (0147);
+   * sonst `null`. Kein Name, keine Adresse, kein Betrag: wer das Telefon
+   * weitergibt, gibt nur den Abreisetag mit.
+   */
+  stay: Type.Union([GuestFolderStay, Type.Null()]),
   pages: Type.Array(Type.Object({
     contentRef: Type.String(),
     title: Type.String(),
@@ -166,3 +318,15 @@ export const FolderPageTextSet = Type.Object({
   body: Type.String({ maxLength: 10000 })
 }, { additionalProperties: false })
 export type FolderPageTextSet = Static<typeof FolderPageTextSet>
+
+/** Freischalten: Nachname oder PLZ, in einem Feld (0147). */
+export const FolderUnlock = Type.Object({
+  value: Type.String({ minLength: 1, maxLength: 100 })
+}, { additionalProperties: false })
+export type FolderUnlock = Static<typeof FolderUnlock>
+
+/** Die Freischaltungen einer Reservierung, fuer das Seitenfenster der Rezeption. */
+export const GuestFolderStayStatus = Type.Object({
+  activeSessions: Type.Integer()
+})
+export type GuestFolderStayStatus = Static<typeof GuestFolderStayStatus>

@@ -227,7 +227,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
       {/* Zwei Haeuser, eine Rezeption (Migration 0103). */}
       <Mitnutzung propertyId={propertyId} />
 
-      {/* Der Gast bedient sich selbst (Migration 0145). */}
+      {/* Der Gast bedient sich selbst (Migration 0150). */}
       <SelbstbedienungSchalter propertyId={propertyId} />
 
       {/* Was die Terminals zeigen duerfen: Seiten, Diashow, Adressen. */}
@@ -237,7 +237,7 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
 }
 
 /**
- * Selbstbedienung am Touchscreen (Migration 0145): Zimmer antippen, Name
+ * Selbstbedienung am Touchscreen (Migration 0150): Zimmer antippen, Name
  * bestaetigen, Reinigung abbestellen. Ohne eingeschalteten Verzicht gibt
  * es dort nichts zu tun; der Hinweis sagt, wo er eingeschaltet wird, statt
  * einen Schalter zu bieten, der still nichts bewirkt.

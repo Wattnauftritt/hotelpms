@@ -150,6 +150,7 @@ export function GastCheckin({ token, modus, onFertig }: {
         {view?.cleaningWaiver != null && (
           <Verzicht token={token} start={view.cleaningWaiver} gross={gross} />
         )}
+        {view?.guestFolder === true && modus === 'mail' && <ZurMappe token={token} />}
       </div>
     </I18nContext.Provider>
   )
@@ -213,6 +214,34 @@ export function Verzicht({ token, start, gross }: {
       <p className="font-medium">{t('gastCheckin.waiver.skip')}:</p>
       <VerzichtTage view={view} onSet={setzen} busy={busy} gross={gross} />
       {fehler !== null && <Meldung fehler={fehler} gross={gross} />}
+    </section>
+  )
+}
+
+/**
+ * Weiter in die Gaestemappe (0147). Der Link aus der Mail schaltet sie frei;
+ * die Schnittstelle setzt das Cookie und nennt die Adresse des Zimmers.
+ * Nur im Mailweg -- am Terminal steht der naechste Gast.
+ */
+function ZurMappe({ token }: { token: string }): JSX.Element {
+  const t = useT()
+  const [busy, setBusy] = useState(false)
+  const [fehler, setFehler] = useState<unknown>(null)
+  const oeffnen = (): void => {
+    setBusy(true); setFehler(null)
+    api.post<{ link: string }>('/v1/mappe/from-checkin', {}, { [CHECKIN_TOKEN_HEADER]: token })
+      .then(r => { location.assign(r.link) })
+      .catch((e: unknown) => { setFehler(e); setBusy(false) })
+  }
+  return (
+    <section className="rounded-sm border border-neutral-200 bg-white space-y-3 p-4">
+      <h2 className="text-base font-semibold">{t('gastCheckin.folder.title')}</h2>
+      <p className="text-neutral-700">{t('gastCheckin.folder.text')}</p>
+      <button type="button" disabled={busy} onClick={oeffnen}
+              className="rounded-sm bg-neutral-900 px-4 py-2 text-white disabled:opacity-40">
+        {t('gastCheckin.folder.open')}
+      </button>
+      {fehler !== null && <Meldung fehler={fehler} gross={false} />}
     </section>
   )
 }

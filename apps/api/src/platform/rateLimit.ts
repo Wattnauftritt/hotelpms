@@ -171,7 +171,11 @@ export const KOPPLUNG_FEHLVERSUCHE: RateLimitOptions = {
 // ein Kiosk tut es einmal je Start, nicht je Frage.
 const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch',
                      '/v1/auth/password-reset', '/oauth/token',
-                     '/v1/terminal/pair', '/v1/terminal/resume']
+                     '/v1/terminal/pair', '/v1/terminal/resume',
+                     // Nachname oder PLZ der Gaestemappe (0147). Zaehlt
+                     // ausserdem je Zimmer in der Datenbank; diese Grenze
+                     // haelt den, der viele Zimmer zugleich durchprobiert.
+                     '/v1/mappe/unlock']
 
 /**
  * Die aktiven Zaehler. Nach aussen gegeben, damit ein Test sie zuruecksetzen

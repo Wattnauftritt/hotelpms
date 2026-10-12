@@ -9,7 +9,9 @@ import { VerlaufDialog } from './Verlauf.tsx'
 import { AmTerminal } from './AmTerminal.tsx'
 import { Anzahlung } from './Anzahlung.tsx'
 import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
+import { MappeFreischaltungen } from './MappeFreischaltungen.tsx'
 import { VerzichtTage } from './Reinigungsverzicht.tsx'
+import { GastWunschListe } from './GastWuensche.tsx'
 import { useSetCleaningWaiver } from '../lib/queries/checkin.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { useSprung } from '../lib/suche.js'
@@ -215,10 +217,25 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
         <OnlineCheckinStand reservationRef={r.reservationRef} stand={r.onlineCheckin} />
       )}
 
+      {/* Gaestemappe (0147): nur, solange ein Telefon freigeschaltet ist --
+          sonst gibt es nichts aufzuheben. */}
+      {r.guestFolder != null && r.guestFolder.activeSessions > 0 && (
+        <MappeFreischaltungen reservationRef={r.reservationRef} stand={r.guestFolder} />
+      )}
+
       {/* Reinigungsverzicht (0115): nur, wenn das Haus ihn anbietet und
           noch ein Bleibetag kommt. */}
       {r.cleaningWaiver != null && (
         <VerzichtAmTresen reservationRef={r.reservationRef} view={r.cleaningWaiver} />
+      )}
+
+      {/* Wuensche aus der Gaestemappe (0149), auch die erledigten: wer am
+          Tresen nach dem Sekt fragt, will sehen, ob er schon gebucht ist. */}
+      {r.guestRequests != null && r.guestRequests.length > 0 && (
+        <section className="bg-white border border-neutral-200 rounded-sm">
+          <h3 className="px-3 pt-3 text-sm font-medium">{t('folder.req.title')}</h3>
+          <GastWunschListe wuensche={r.guestRequests} />
+        </section>
       )}
 
       <section className="grid grid-cols-2 gap-3 bg-neutral-50 rounded-sm p-3">

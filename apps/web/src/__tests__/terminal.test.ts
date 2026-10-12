@@ -274,7 +274,7 @@ describe('Neuer Stand am ruhenden Terminal', () => {
   })
 })
 
-describe('Selbstbedienung (Migration 0145)', () => {
+describe('Selbstbedienung (Migration 0150)', () => {
   const selbst = code('../routes/TerminalSelbst.tsx')
 
   it('haelt Name und Link nur im Zustand der Ansicht', () => {

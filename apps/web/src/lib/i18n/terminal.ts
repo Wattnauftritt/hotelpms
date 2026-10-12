@@ -1188,7 +1188,7 @@ export const terminal = {
     es: 'Bienvenido',
     ru: 'Добро пожаловать',
     uk: 'Ласкаво просимо' },
-  // ---------------------------------------- Selbstbedienung (Migration 0145)
+  // ---------------------------------------- Selbstbedienung (Migration 0150)
   'kiosk.self.button': {
     de: 'Service für Ihr Zimmer',
     en: 'Service for your room',

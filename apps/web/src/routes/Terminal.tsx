@@ -105,7 +105,7 @@ type Phase =
   | { art: 'koppeln'; fehler?: unknown }
   | { art: 'ruhe' }
   | { art: 'auftrag'; jobRef: string; kind: Art; daten: unknown }
-  /** Der Gast bedient sich selbst (Migration 0145); kein Auftrag. */
+  /** Der Gast bedient sich selbst (Migration 0150); kein Auftrag. */
   | { art: 'selbst' }
   | { art: 'danke'; selbst?: boolean }
 

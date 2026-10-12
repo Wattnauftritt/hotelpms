@@ -1,4 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox'
+import { GuestFolderStayStatus, GuestRequestRow } from './gaestemappe.js'
+import { CleaningWaiverView } from './cleaningWaiver.js'
 
 /**
  * Geteilte Schemata zwischen API und Oberfläche.
@@ -310,7 +312,12 @@ export const DailySheet = Type.Object({
     DailyRow, Type.Object({
       registered: Type.Boolean(),
       waivedDates: Type.Array(Type.String())
-    })]))
+    })])),
+  /**
+   * Offene Wuensche aus der Gaestemappe (0149), gleich welchen Tages: ein
+   * Kissen von gestern Abend ist heute noch offen.
+   */
+  guestRequests: Type.Array(GuestRequestRow)
 })
 export type DailySheet = Static<typeof DailySheet>
 
@@ -834,34 +841,9 @@ export const OnlineCheckinStatus = Type.Object({
 })
 export type OnlineCheckinStatus = Static<typeof OnlineCheckinStatus>
 
-/**
- * Reinigungsverzicht des Gastes (Aufgabe 18, Baustein 10; Migration 0115).
- *
- * Dieselbe Form fuer die Gastseite und das Seitenfenster der Rezeption:
- * beide zeigen die Bleibetage ab heute und ob dort verzichtet ist. Sie kommt
- * mit der Seite, die sie traegt (`CheckinFormView`, `ReservationDetail`),
- * nicht als eigener Aufruf.
- */
-export const CleaningWaiverDay = Type.Object({
-  date: IsoDate,
-  waived: Type.Boolean(),
-  /**
-   * Die Kraft hat das Zimmer an diesem Tag schon gemeldet (gereinigt,
-   * abgelehnt, Wasser hingestellt). Danach aendert der Wunsch nichts mehr --
-   * er wuerde nur zeigen, was nicht geschehen ist.
-   */
-  locked: Type.Boolean()
-})
-export type CleaningWaiverDay = Static<typeof CleaningWaiverDay>
-
-export const CleaningWaiverView = Type.Object({
-  /** Gibt es als Dank eine Flasche Wasser? Steht so auf der Gastseite. */
-  waterGift: Type.Boolean(),
-  days: Type.Array(CleaningWaiverDay),
-  /** Darf der Aufrufer hier setzen? Fuer die Rezeption; der Gast immer. */
-  mayEdit: Type.Boolean()
-})
-export type CleaningWaiverView = Static<typeof CleaningWaiverView>
+// Reinigungsverzicht (0115): in `cleaningWaiver.ts`, weil die Gaestemappe ihn
+// auch traegt und `gaestemappe.ts` sonst im Kreis mit dieser Datei laege.
+export { CleaningWaiverDay, CleaningWaiverView } from './cleaningWaiver.js'
 
 export const CleaningWaiverSet = Type.Object({
   date: IsoDate,
@@ -933,7 +915,11 @@ export const ReservationDetail = Type.Object({
   totalCent: Cent,
   onlineCheckin: Type.Optional(OnlineCheckinStatus),
   /** Reinigungsverzicht (0115); `null`, wenn das Haus ihn nicht anbietet oder kein Bleibetag mehr kommt. */
-  cleaningWaiver: Type.Optional(Type.Union([CleaningWaiverView, Type.Null()]))
+  cleaningWaiver: Type.Optional(Type.Union([CleaningWaiverView, Type.Null()])),
+  /** Freischaltungen der Gaestemappe (0147); `null`, wenn das Haus keine Mappe anbietet. */
+  guestFolder: Type.Optional(Type.Union([GuestFolderStayStatus, Type.Null()])),
+  /** Die Wuensche dieses Aufenthalts aus der Gaestemappe (0149), neueste zuerst. */
+  guestRequests: Type.Optional(Type.Array(GuestRequestRow))
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 

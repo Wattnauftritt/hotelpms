@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
-import { folderLink, type GuestFolderView, type GuestFolderSettings,
+import { folderLink, type GuestFolderStay, type GuestFolderView, type GuestFolderSettings,
          type GuestFolderCards } from '@hotelpms/contracts'
 import { FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
@@ -8,7 +8,16 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import type { Principal } from '../platform/context.js'
-import { mappeTx, wlan, wlanAusRumpf } from '../platform/gaestemappe.js'
+import { mappeTx, wlan, wlanAusRumpf, aufenthaltDerSitzung, freischalten,
+         freischaltungLoeschen, eigeneFreischaltungAufheben,
+         mappeZumLink, aufenthaltAnsicht, AUFENTHALT_NEU } from '../platform/gaestemappe.js'
+import { setzeVerzicht } from '../platform/reinigungsverzicht.js'
+import { verzichtAusRumpf } from './checkin.js'
+import { rechtImHaus } from './depositRequests.js'
+import { checkinTx } from '../platform/checkin.js'
+import { folderNameMatches, folderPostalMatches, FOLDER_UNLOCK_MAX_FAILURES,
+         FOLDER_UNLOCK_WINDOW_SECONDS } from '@hotelpms/domain'
+import { tooManyRequests } from '../platform/rateLimit.js'
 import { bildSenden } from '../platform/terminalBild.js'
 
 /**
@@ -146,10 +155,12 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
               AND c.archived_at IS NULL
             GROUP BY c.id, i.public_ref
             ORDER BY c.folder_position, c.id`, [k.propertyId])
+        const a = await aufenthaltDerSitzung(client, req, k)
         return {
           propertyName: h.property_name, roomName: h.room_name,
           checkinTime: h.checkin_time, checkoutTime: h.checkout_time,
-          wifi: wlan(h), pages: seiten.rows
+          wifi: wlan(h), stay: a === null ? null : await aufenthaltAnsicht(client, k, a),
+          pages: seiten.rows
         }
       })
     }
@@ -182,6 +193,191 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
         return r.rows[0]!
       })
       return bildSenden(reply, bild)
+    }
+  })
+
+
+  /**
+   * Freischalten mit Nachname oder PLZ (0147). Verglichen wird gegen jeden
+   * Aufenthalt, der heute im Zimmer der Karte laeuft -- am Wechseltag zwei,
+   * und die Freischaltung bindet sich an den, der passt. Gegen jede Person
+   * daran: Hauptgast, Mitreisende, Meldescheine.
+   *
+   * Die Antwort auf einen Fehlversuch sagt nicht, ob das Zimmer belegt ist:
+   * "passt nicht" fuer ein leeres wie fuer ein fremdes Zimmer.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/unlock',
+    // Oeffentlich: die Zimmer-Referenz ist der Ausweis, Nachname oder PLZ
+    // die Bestaetigung; Fehlversuche zaehlen je Zimmer (0147).
+    permission: null,
+    summary: 'Gaestemappe: mit Nachname oder PLZ freischalten',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      const roh = (req.body as { value?: unknown } | undefined)?.value
+      const wert = typeof roh === 'string' ? roh.trim() : ''
+      if (wert === '' || wert.length > 100) throw Errors.validation({ value: ['field.required'] })
+
+      /*
+       * Der Fehlversuch muss gezaehlt bleiben, auch wenn die Antwort ein
+       * Fehler ist. Ein `throw` in der Transaktion rollte den Zaehler mit
+       * zurueck -- deshalb kommt das Ergebnis heraus und der Fehler danach.
+       */
+      const ergebnis = await mappeTx(req, async (client, k): Promise<
+        { art: 'gesperrt' } | { art: 'falsch' } | { art: 'ok'; stay: GuestFolderStay }> => {
+        const sperre = await client.query<{ failures: number }>(
+          `SELECT failures FROM guest_folder_unlock_failure
+            WHERE resource_id = $1
+              AND window_start > now() - make_interval(secs => $2)`,
+          [k.resourceId, FOLDER_UNLOCK_WINDOW_SECONDS])
+        if ((sperre.rows[0]?.failures ?? 0) >= FOLDER_UNLOCK_MAX_FAILURES) {
+          return { art: 'gesperrt' }
+        }
+
+        const kandidaten = await client.query<{
+          id: number; arrival: string; last_names: string[]; postal_codes: string[] }>(
+          `SELECT r.id::int, r.arrival::text,
+                  array_remove(array_agg(DISTINCT g.last_name), NULL) AS last_names,
+                  array_remove(array_agg(DISTINCT g.postal_code), NULL) AS postal_codes
+             FROM reservation r
+             LEFT JOIN LATERAL (
+                    SELECT r.primary_guest_id AS guest_id
+                    UNION SELECT o.guest_id FROM reservation_occupant o
+                           WHERE o.reservation_id = r.id
+                    UNION SELECT m.guest_id FROM registration m
+                           WHERE m.reservation_id = r.id) p ON true
+             LEFT JOIN guest g ON g.id = p.guest_id AND g.status = 'active'
+            WHERE r.property_id = $1 AND r.resource_id = $2
+              AND r.status::text = ANY ($4::text[])
+              AND r.arrival <= $3::date AND r.departure >= $3::date
+            GROUP BY r.id
+            -- Am Wechseltag gewinnt bei Gleichstand der Ankommende.
+            ORDER BY r.arrival DESC, r.id`,
+          [k.propertyId, k.resourceId, k.businessDate, AUFENTHALT_NEU])
+        const treffer = kandidaten.rows.find(c =>
+          folderNameMatches(wert, c.last_names) || folderPostalMatches(wert, c.postal_codes))
+
+        if (treffer === undefined) {
+          await client.query(
+            `INSERT INTO guest_folder_unlock_failure (resource_id, property_id, failures)
+             VALUES ($1, $2, 1)
+             ON CONFLICT (resource_id) DO UPDATE SET
+               failures = CASE WHEN guest_folder_unlock_failure.window_start
+                                    > now() - make_interval(secs => $3)
+                               THEN guest_folder_unlock_failure.failures + 1 ELSE 1 END,
+               window_start = CASE WHEN guest_folder_unlock_failure.window_start
+                                        > now() - make_interval(secs => $3)
+                                   THEN guest_folder_unlock_failure.window_start ELSE now() END,
+               last_failure_at = now()`,
+            [k.resourceId, k.propertyId, FOLDER_UNLOCK_WINDOW_SECONDS])
+          return { art: 'falsch' }
+        }
+        await client.query(
+          `DELETE FROM guest_folder_unlock_failure WHERE resource_id = $1`, [k.resourceId])
+        const s = await freischalten(client, reply,
+          { propertyId: k.propertyId, reservationId: treffer.id, channel: 'room' })
+        return { art: 'ok',
+                 stay: await aufenthaltAnsicht(client, k,
+                   { reservationId: treffer.id, departure: s.departure }) }
+      })
+      if (ergebnis.art === 'gesperrt') throw tooManyRequests(FOLDER_UNLOCK_WINDOW_SECONDS)
+      if (ergebnis.art === 'falsch') throw Errors.unprocessable('folder.unlockFailed')
+      return { stay: ergebnis.stay }
+    }
+  })
+
+  /**
+   * Auf die Zwischenreinigung eines Tages verzichten oder es zuruecknehmen,
+   * aus der Mappe im Zimmer (0148). Nur mit Freischaltung: die Karte allein
+   * hat jeder, der je im Zimmer war, und ein frueherer Gast soll dem
+   * jetzigen nicht die Reinigung abbestellen. Welche Tage gehen und bis
+   * wann, entscheidet `setzeVerzicht` wie fuer die anderen beiden Tueren.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/cleaning-waiver',
+    // Oeffentlich: Zimmer-Referenz und Freischaltung im Cookie sind der
+    // Ausweis; ohne Freischaltung 403 (0147, 0148).
+    permission: null,
+    summary: 'Gaestemappe: auf die Zwischenreinigung eines Tages verzichten',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      const { date, waived } = verzichtAusRumpf(req.body)
+      return mappeTx(req, async (client, k) => {
+        const a = await aufenthaltDerSitzung(client, req, k)
+        if (a === null) throw Errors.forbidden('folder.unlockRequired')
+        await setzeVerzicht(client, {
+          reservationId: a.reservationId, propertyId: k.propertyId,
+          businessDate: k.businessDate, date, waived, source: 'folder', userId: null })
+        return (await aufenthaltAnsicht(client, k, a)).cleaningWaiver
+      })
+    }
+  })
+
+  /**
+   * Die eigene Freischaltung aufheben -- wer das Telefon weitergibt oder an
+   * einem fremden Geraet war. Das Cookie geht in jedem Fall.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/lock',
+    // Oeffentlich: hebt nur auf, was das Cookie dieses Telefons ausweist (0147).
+    permission: null,
+    summary: 'Gaestemappe: Freischaltung dieses Telefons aufheben',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      await mappeTx(req, (client, k) => eigeneFreischaltungAufheben(client, req, k.propertyId))
+      freischaltungLoeschen(reply)
+      return { stay: null }
+    }
+  })
+
+  /**
+   * Aus dem Online-Check-in in die Mappe (0147). Der Link aus der Mail ist
+   * schon an genau diesen Aufenthalt gebunden und reicht als Freischaltung;
+   * Nachname oder PLZ zu verlangen hiesse, dem Gast noch einmal zu sagen,
+   * was er gerade eingetragen hat. Der Link am Terminal schaltet nichts
+   * frei -- das Geraet gehoert dem naechsten Gast.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/from-checkin',
+    // Oeffentlich: der Link in der Kopfzeile ist der Ausweis (Dokument 30).
+    permission: null,
+    summary: 'Gaestemappe: ueber den Link zum Online-Check-in oeffnen',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      return checkinTx(req, async (client, k) => {
+        const z = await mappeZumLink(client, k)
+        if (z === null) throw Errors.unprocessable('folder.notAvailable')
+        await freischalten(client, reply,
+          { propertyId: k.propertyId, reservationId: k.reservationId, channel: 'mail' })
+        return { link: folderLink(config.publicAppUrl, z.ref) }
+      })
+    }
+  })
+
+  /** Alle Freischaltungen einer Reservierung aufheben, an der Rezeption. */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/reservations/:reservationRef/guest-folder/revoke',
+    permission: 'reservation:checkin',
+    summary: 'Gaestemappe: Freischaltungen einer Reservierung aufheben',
+    handler: async (req) => {
+      const { reservationRef } = req.params as { reservationRef: string }
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const r = await client.query<{ id: number; property_id: number }>(
+          `SELECT id, property_id FROM reservation WHERE public_ref = $1`, [reservationRef])
+        if (r.rowCount === 0) throw Errors.notFound('res.reservation')
+        rechtImHaus(principal, 'reservation:checkin', r.rows[0]!.property_id)
+        const u = await client.query(
+          `UPDATE guest_folder_session SET revoked_at = now(), revoked_by = $2
+            WHERE reservation_id = $1 AND revoked_at IS NULL`,
+          [r.rows[0]!.id, principal.userId])
+        return { reservationRef, revoked: u.rowCount ?? 0 }
+      })
     }
   })
 

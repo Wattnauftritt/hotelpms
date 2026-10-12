@@ -2,7 +2,7 @@ import type { PoolClient } from '@hotelpms/db'
 
 /**
  * Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14; Migration
- * 0145): was die Routen des Terminals und das Oeffnen eines Auftrags
+ * 0150): was die Routen des Terminals und das Oeffnen eines Auftrags
  * gemeinsam brauchen.
  */
 
