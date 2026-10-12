@@ -149,7 +149,52 @@ const DATUMSFORM: Record<Locale, Datumsform> = {
   uk: 'tag-zuerst'
 }
 
-const texts = {
+/**
+ * Alle Schluessel, aus den Bereichen zusammengesetzt.
+ *
+ * **Warum ausgeschrieben und nicht `keyof typeof texts`.** Mit vierzehn
+ * Sprachen ist der abgeleitete Typ des ganzen Katalogs -- jeder Satz als
+ * eigener Zeichenkettentyp -- groesser, als `tsc` beim Schreiben der
+ * Deklarationen ausgeben mag (TS7056). Die Schluessel allein sind klein;
+ * die Werte braucht niemand als Literal, nur als `LocalizedText`.
+ */
+export type TextKey =
+  | keyof typeof common
+  | keyof typeof tagesgeschaeft
+  | keyof typeof housekeeping
+  | keyof typeof einrichtung
+  | keyof typeof folio
+  | keyof typeof gruppen
+  | keyof typeof plan
+  | keyof typeof berichte
+  | keyof typeof einstellungen
+  | keyof typeof schnittstellen
+  | keyof typeof benutzer
+  | keyof typeof preise
+  | keyof typeof preissteuerung
+  | keyof typeof gaeste
+  | keyof typeof rechnung
+  | keyof typeof zugang
+  | keyof typeof support
+  | keyof typeof admin
+  | keyof typeof terminal
+  | keyof typeof hausnotiz
+  | keyof typeof planstatus
+  | keyof typeof suche
+  | keyof typeof onlineCheckin
+  | keyof typeof ersteSchritte
+  | keyof typeof altsystem
+  | keyof typeof mobil
+  | keyof typeof meldescheine
+  | keyof typeof kassenbuch
+  | keyof typeof zimmerSortieren
+  | keyof typeof reinigungsplan
+  | keyof typeof kontrolle
+  | keyof typeof kueche
+  | keyof typeof arbeitszeit
+  | keyof typeof gaestemappe
+
+const texts: Record<TextKey, LocalizedText> = {
   ...common,
   ...tagesgeschaeft,
   ...housekeeping,
@@ -184,9 +229,7 @@ const texts = {
   ...kueche,
   ...arbeitszeit,
   ...gaestemappe
-} as const satisfies Record<string, LocalizedText>
-
-export type TextKey = keyof typeof texts
+}
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */
 export function textKeys(): TextKey[] {
