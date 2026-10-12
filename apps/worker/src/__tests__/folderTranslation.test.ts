@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          type Fixture } from '@hotelpms/testing'
 import type { DbContext, Pool } from '@hotelpms/db'
-import { TRANSLATION_MAX_ATTEMPTS, folderTextFromDeeplXml,
+import { FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS, folderTextFromDeeplXml,
          folderTextToDeeplXml } from '@hotelpms/domain'
 import { TranslationError, type TranslateOptions,
          type Translator } from '../jobs/staffTranslation.js'
@@ -79,21 +79,25 @@ describe('Format einer Seite fuer DeepL', () => {
 })
 
 describe('translateFolderPages', () => {
-  it('uebersetzt jede Seite der Mappe in en, nl und pl, mit Deutsch als Quelle', async () => {
+  it('uebersetzt jede Seite der Mappe in jede Sprache der Mappe, mit Deutsch als Quelle', async () => {
     const id = await seite('Frühstück', '- **7** bis 10 Uhr')
     await seite('Nur am Terminal', 'x', null)
     const u = falscherUebersetzer()
     const r = await translateFolderPages(app, ctx, fx.propertyId, u)
-    expect(r).toEqual({ attempted: 3, done: 3, retrying: 0, failed: 0 })
+    // Dreizehn: die vierzehn Sprachen der Mappe ohne die deutsche Vorlage (0145).
+    expect(FOLDER_TRANSLATION_LANGS).toHaveLength(13)
+    expect(FOLDER_TRANSLATION_LANGS).not.toContain('de')
+    expect(r).toEqual({ attempted: 13, done: 13, retrying: 0, failed: 0 })
     // Ein Aufruf je Sprache, Titel und Text darin.
-    expect(u.anfragen.map(a => a.target)).toEqual(['en', 'nl', 'pl'])
+    expect(u.anfragen.map(a => a.target)).toEqual([...FOLDER_TRANSLATION_LANGS])
     expect(u.anfragen[0]!.opts).toEqual({ source: 'de', xml: true })
     expect(u.anfragen[0]!.texts).toHaveLength(2)
     const z = await zeilen()
     expect(z.map(x => [x.content_id, x.lang, x.origin])).toEqual(
-      [[id, 'en', 'machine'], [id, 'nl', 'machine'], [id, 'pl', 'machine']])
-    expect(z[2]!.title).toBe('[pl] Frühstück')
-    expect(z[2]!.body).toBe('- [pl] **7** bis 10 Uhr')
+      [...FOLDER_TRANSLATION_LANGS].sort().map(l => [id, l, 'machine']))
+    const pl = z.find(x => x.lang === 'pl')!
+    expect(pl.title).toBe('[pl] Frühstück')
+    expect(pl.body).toBe('- [pl] **7** bis 10 Uhr')
 
     // Im naechsten Tick ist nichts mehr faellig.
     expect((await translateFolderPages(app, ctx, fx.propertyId, u)).attempted).toBe(0)
@@ -111,7 +115,7 @@ describe('translateFolderPages', () => {
 
     await owner.query(`UPDATE terminal_content SET body = '7:30 bis 10 Uhr' WHERE id = $1`, [id])
     const r = await translateFolderPages(app, ctx, fx.propertyId, u)
-    expect(r.done).toBe(3)
+    expect(r.done).toBe(13)
     const en = (await zeilen()).find(x => x.lang === 'en')!
     expect(en).toMatchObject({ origin: 'machine', body: '[en] 7:30 bis 10 Uhr' })
   })
@@ -129,8 +133,8 @@ describe('translateFolderPages', () => {
     const u = falscherUebersetzer(() => new TranslationError('http_400'))
     for (let i = 1; i <= TRANSLATION_MAX_ATTEMPTS; i++) {
       const r = await translateFolderPages(app, ctx, fx.propertyId, u, { baseDelaySeconds: 0 })
-      expect(r.attempted).toBe(3)
-      expect(r.failed).toBe(i === TRANSLATION_MAX_ATTEMPTS ? 3 : 0)
+      expect(r.attempted).toBe(13)
+      expect(r.failed).toBe(i === TRANSLATION_MAX_ATTEMPTS ? 13 : 0)
       await owner.query(`UPDATE terminal_content_translation SET next_at = now()`)
     }
     expect((await translateFolderPages(app, ctx, fx.propertyId, u)).attempted).toBe(0)
@@ -144,7 +148,7 @@ describe('translateFolderPages', () => {
     const breaker = new TickBreaker(1)
     const u = falscherUebersetzer(() => new TranslationError('http_503'))
     const r = await translateFolderPages(app, ctx, fx.propertyId, u, { breaker })
-    // Der erste Aufruf (en) scheitert und loest aus; nl und pl werden nicht gefragt.
+    // Der erste Aufruf (en) scheitert und loest aus; die anderen Sprachen werden nicht gefragt.
     expect(r).toMatchObject({ attempted: 1, retrying: 1 })
     expect(u.anfragen).toHaveLength(1)
     const z = await zeilen()

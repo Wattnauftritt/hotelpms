@@ -1,3 +1,5 @@
+import { FOLDER_LOCALES, type FolderLocale } from '@hotelpms/contracts'
+
 /**
  * Hausseiten der Gaestemappe uebersetzen (Migration 0144).
  *
@@ -14,9 +16,15 @@
  * dazwischen steht.
  */
 
-/** Die Sprachen der Mappe ohne die Vorlage, wie in Migration 0144. */
-export const FOLDER_TRANSLATION_LANGS = ['en', 'nl', 'pl'] as const
-export type FolderTranslationLang = typeof FOLDER_TRANSLATION_LANGS[number]
+/**
+ * Die Sprachen der Mappe ohne die Vorlage, wie in Migration 0145. Aus
+ * `FOLDER_LOCALES` abgeleitet und nicht daneben aufgeschrieben: eine Sprache,
+ * die die Mappe anbietet, aber nicht uebersetzt, zeigt dem Gast seine
+ * Sprachwahl und darunter die deutsche Seite.
+ */
+export const FOLDER_TRANSLATION_LANGS =
+  FOLDER_LOCALES.filter((l): l is Exclude<FolderLocale, 'de'> => l !== 'de')
+export type FolderTranslationLang = Exclude<FolderLocale, 'de'>
 
 function maskieren(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
