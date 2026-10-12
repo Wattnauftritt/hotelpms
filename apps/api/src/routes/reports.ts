@@ -89,6 +89,15 @@ export function reportRoutes(app: FastifyInstance): void {
                        fo.public_ref AS "folioRef",
                        (SELECT count(*) FROM reservation_occupant o
                          WHERE o.reservation_id = r.id)::int AS occupants`
+        /*
+         * Die Tage, fuer die der Gast die Reinigung abgewaehlt hat (0115),
+         * ohne zurueckgenommene. Die Rezeption soll das in der Hausliste
+         * sehen, ohne jede Reservierung aufzuklappen (Sven, 12.10.2026);
+         * der Index `cleaning_waiver_aktiv` traegt die Abfrage je Zeile.
+         */
+        const verzicht = `ARRAY(SELECT w.business_date::text FROM cleaning_waiver w
+                                 WHERE w.reservation_id = r.id AND w.withdrawn_at IS NULL
+                                 ORDER BY w.business_date) AS "waivedDates"`
         const von = `FROM reservation r
                      LEFT JOIN resource res ON res.id = r.resource_id
                      JOIN resource_category c ON c.id = r.category_id
@@ -109,7 +118,8 @@ export function reportRoutes(app: FastifyInstance): void {
                   (reg.id IS NOT NULL OR ext.completed_at IS NOT NULL) AS "registered",
                   -- Was der Gast im Meldeformular angegeben hat (0099), damit
                   -- die Rezeption den Tag danach plant.
-                  reg.expected_arrival AS "expectedArrival"
+                  reg.expected_arrival AS "expectedArrival",
+                  ${verzicht}
              ${von}
              LEFT JOIN registration reg ON reg.reservation_id = r.id
                    AND reg.group_registration_id IS NULL
@@ -142,7 +152,8 @@ export function reportRoutes(app: FastifyInstance): void {
                               AND reg.group_registration_id IS NULL)
                    OR EXISTS (SELECT 1 FROM reservation_external_registration ext
                                WHERE ext.reservation_id = r.id
-                                 AND ext.completed_at IS NOT NULL)) AS "registered"
+                                 AND ext.completed_at IS NOT NULL)) AS "registered",
+                  ${verzicht}
              ${von}
             WHERE r.property_id = $1 AND r.status = 'InHouse'
               AND r.arrival <= $2::date AND r.departure > $2::date

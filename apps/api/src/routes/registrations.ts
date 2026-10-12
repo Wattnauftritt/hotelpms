@@ -287,7 +287,15 @@ export function registrationRoutes(app: FastifyInstance): void {
                   -- Kurtaxe-Befreiung, wie die Person sie erklaert hat (0089).
                   -- Der Grund, nicht die Nummer: wie die Ausweisnummer gehoert
                   -- sie nicht in eine Uebersicht, an der jemand vorbeigeht.
-                  x.label AS "taxExemption"
+                  x.label AS "taxExemption",
+                  -- Tage ohne Reinigung (0115), nur am Hauptschein: der
+                  -- Verzicht haengt an der Reservierung, nicht an der Person.
+                  CASE WHEN reg.group_registration_id IS NULL
+                       THEN ARRAY(SELECT w.business_date::text FROM cleaning_waiver w
+                                   WHERE w.reservation_id = reg.reservation_id
+                                     AND w.withdrawn_at IS NULL
+                                   ORDER BY w.business_date)
+                       ELSE '{}'::text[] END AS "waivedDates"
              FROM registration reg
              JOIN guest g ON g.id = reg.guest_id
              JOIN reservation r ON r.id = reg.reservation_id
@@ -351,7 +359,8 @@ export function registrationRoutes(app: FastifyInstance): void {
           address_line1: string | null; postal_code: string | null
           city: string | null; country: string | null
           id_document_type: string | null; has_id_document: boolean
-          tax_exemption: string | null; tax_exemption_proof: string | null }>(
+          tax_exemption: string | null; tax_exemption_proof: string | null
+          waived_dates: string[] }>(
           `WITH haupt AS (
              SELECT COALESCE(group_registration_id, id) AS id
                FROM registration WHERE id = $1)
@@ -367,7 +376,11 @@ export function registrationRoutes(app: FastifyInstance): void {
                   g.birth_date::text, g.nationality, g.address_line1, g.postal_code,
                   g.city, g.country, g.id_document_type,
                   (g.id_document_number_enc IS NOT NULL) AS has_id_document,
-                  x.label AS tax_exemption, reg.tax_exemption_proof
+                  x.label AS tax_exemption, reg.tax_exemption_proof,
+                  ARRAY(SELECT w.business_date::text FROM cleaning_waiver w
+                         WHERE w.reservation_id = reg.reservation_id
+                           AND w.withdrawn_at IS NULL
+                         ORDER BY w.business_date) AS waived_dates
              FROM haupt h
              JOIN registration reg ON reg.id = h.id OR reg.group_registration_id = h.id
              JOIN guest g ON g.id = reg.guest_id
@@ -399,6 +412,7 @@ export function registrationRoutes(app: FastifyInstance): void {
           expectedArrival: h.expected_arrival,
           stayPhone: h.stay_phone,
           digitalGuestCard: h.digital_guest_card,
+          waivedDates: h.waived_dates,
           persons: rows.map(p => ({
             main: p.haupt,
             guestRef: p.guest_ref,

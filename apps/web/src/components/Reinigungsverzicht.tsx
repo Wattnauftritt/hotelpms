@@ -1,5 +1,5 @@
 import type { CleaningWaiverView } from '@hotelpms/contracts'
-import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
+import { useT, useLocale, formatDate, formatDayMonth, weekdayShort } from '../lib/i18n/index.js'
 
 /**
  * Die Bleibetage mit je einem Haken "keine Reinigung" (Migration 0115).
@@ -37,5 +37,33 @@ export function VerzichtTage({ view, onSet, busy, gross = false }: {
         </li>
       ))}
     </ul>
+  )
+}
+
+/**
+ * Die abgewaehlten Tage als eine kurze Marke, nur zum Lesen (Sven,
+ * 12.10.2026): in der Hausliste und an den Meldescheinen soll man sehen,
+ * wann nicht gereinigt wird, ohne die Reservierung aufzuklappen. Geaendert
+ * wird weiter im Seitenfenster, ueber `setzeVerzicht`.
+ *
+ * `heute` hebt den Tag hervor, um den es auf dem Bildschirm gerade geht.
+ */
+export function VerzichtMarke({ dates, heute }: {
+  dates: readonly string[]; heute?: string
+}): JSX.Element | null {
+  const t = useT()
+  const locale = useLocale()
+  if (dates.length === 0) return null
+  return (
+    <span title={t('waiver.daysHint')}
+          className="inline-flex flex-wrap items-center gap-x-1 text-[11px] px-1 rounded-sm
+                     bg-rose-50 text-rose-800">
+      <span>{t('waiver.days')}:</span>
+      {dates.map((d, i) => (
+        <span key={d} className={`tabular-nums ${d === heute ? 'font-semibold underline' : ''}`}>
+          {weekdayShort(d, locale)} {formatDayMonth(d, locale)}{i < dates.length - 1 ? ',' : ''}
+        </span>
+      ))}
+    </span>
   )
 }

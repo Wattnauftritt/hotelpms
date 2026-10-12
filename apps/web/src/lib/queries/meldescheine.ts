@@ -31,6 +31,8 @@ export interface Meldeschein {
   reservationRef: string
   /** Befreiungsgrund fuer die Kurtaxe, wie das Haus ihn benennt. */
   taxExemption: string | null
+  /** Tage ohne Reinigung (0115); am Mitreisenden immer leer. */
+  waivedDates: string[]
 }
 
 /** Wie in `routes/registrations.ts`. */
@@ -97,6 +99,8 @@ export interface MeldescheinInhalt {
   /** Telefon fuer den Aufenthalt aus dem Formular (0123). */
   stayPhone: string | null
   digitalGuestCard: boolean
+  /** Tage ohne Reinigung auf Wunsch des Gastes (0115). */
+  waivedDates: string[]
   persons: MeldescheinPerson[]
 }
 
