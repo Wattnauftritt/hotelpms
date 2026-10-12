@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { LOCALES, I18nContext, useT, useLocale, formatDate, type Locale }
+import { LOCALES, SPRACHNAMEN, sprachKuerzel, I18nContext, useT, useLocale, formatDate, type Locale }
   from '../lib/i18n/index.js'
 import { api, ApiError } from '../lib/api.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
@@ -105,7 +105,7 @@ type Phase =
   | { art: 'koppeln'; fehler?: unknown }
   | { art: 'ruhe' }
   | { art: 'auftrag'; jobRef: string; kind: Art; daten: unknown }
-  /** Der Gast bedient sich selbst (Migration 0144); kein Auftrag. */
+  /** Der Gast bedient sich selbst (Migration 0145); kein Auftrag. */
   | { art: 'selbst' }
   | { art: 'danke'; selbst?: boolean }
 
@@ -122,7 +122,7 @@ export function abraeumen(): void {
 }
 
 function spracheDesBrowsers(): Locale {
-  const l = navigator.language.slice(0, 2)
+  const l = sprachKuerzel(navigator.language)
   return (LOCALES as readonly string[]).includes(l) ? (l as Locale) : 'de'
 }
 
@@ -524,7 +524,11 @@ function Sprachwahl({ onLocale, hell = false }: {
   const t = useT()
   const locale = useLocale()
   return (
-    <div className="flex gap-1" role="group" aria-label={t('kiosk.language')}>
+    // Vierzehn Sprachen passen nicht in eine Zeile; sie brechen um, statt
+    // die Leiste ueber den Rand zu schieben. Der Name in der eigenen Sprache,
+    // nicht das Kuerzel: "UK" laese ein Gast als Vereinigtes Koenigreich.
+    <div className="flex flex-wrap justify-end gap-1" role="group"
+         aria-label={t('kiosk.language')}>
       {LOCALES.map(l => (
         <button key={l} type="button" onClick={() => onLocale(l)}
                 aria-pressed={l === locale}
@@ -535,7 +539,7 @@ function Sprachwahl({ onLocale, hell = false }: {
                   : (l === locale
                     ? 'border-neutral-900 bg-white font-medium'
                     : 'border-neutral-300 text-neutral-600')}`}>
-          {l.toUpperCase()}
+          {SPRACHNAMEN[l]}
         </button>
       ))}
     </div>

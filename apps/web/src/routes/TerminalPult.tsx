@@ -61,7 +61,7 @@ export function TerminalPult({ propertyId }: { propertyId: number }): JSX.Elemen
           {!istOffen(d.job?.state) && d.busy && (
             <p className="text-xs text-neutral-500">{t('terminal.deviceBusy')}</p>
           )}
-          {/* Ein Gast bedient sich selbst (Migration 0144). Schicken geht
+          {/* Ein Gast bedient sich selbst (Migration 0145). Schicken geht
               trotzdem -- der Auftrag hat Vorrang und beendet die
               Selbstbedienung --, aber die Rezeption soll es vorher sehen. */}
           {!istOffen(d.job?.state) && !d.busy && d.selfService && (

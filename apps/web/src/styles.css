@@ -82,3 +82,23 @@
   .ruhe-zoom { animation: none; }
   .ruhe-text { animation: ruhe-ein 1.2s ease-out both; }
 }
+
+/* Zimmerkarten der Gaestemappe (Migration 0143, components/Zimmerkarten.tsx).
+   Jede Karte ein eigenes Blatt A6 ohne Rand. Als benannte Seite und nicht
+   als `@page { size: ... }`: sonst druckte auch das Kassenbuch auf A6. Die
+   Masse in Millimetern und nicht `A6`: Chrome kennt das Schluesselwort
+   nicht und legt die Karte dann still auf ein Blatt Letter. Beim Druck
+   verschwindet die Rezeption dahinter, nicht nur die Knoepfe. */
+@page zimmerkarte {
+  size: 105mm 148mm;
+  margin: 0;
+}
+@media print {
+  body:has(.zimmerkarten-druck) > #root { display: none !important; }
+  .zimmerkarten-druck { position: static !important; overflow: visible !important;
+                        background: none !important; }
+  .zimmerkarten-druck > div { display: block !important; padding: 0 !important; }
+  .zimmerkarten-druck .nur-bildschirm { display: none !important; }
+  .zimmerkarte { page: zimmerkarte; break-after: page; border: 0 !important;
+                 box-shadow: none !important; }
+}

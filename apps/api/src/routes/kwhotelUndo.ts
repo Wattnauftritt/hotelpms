@@ -54,7 +54,7 @@ export const FOLGEN_RESERVIERUNG = [
   'registration', 'charge', 'outbound_email', 'guest_agreement', 'deposit_request',
   'checkin_token', 'terminal_job', 'reservation_occupant', 'routing_rule',
   'reservation_external_registration', 'avs_export', 'cleaning_waiver',
-  // Ein Gast hat sich am Terminal als Gast dieses Zimmers bestaetigt (0144):
+  // Ein Gast hat sich am Terminal als Gast dieses Zimmers bestaetigt (0145):
   // die Buchung ist benutzt worden, also keine Fehluebernahme mehr.
   'terminal_self_session'
 ] as const
@@ -81,12 +81,16 @@ export const VERWEISE_ZIMMER = [
   // Eigene Sollminuten (0106) hat jemand von Hand eingetragen; das Zimmer
   // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
   ['cleaning_norm', 'resource_id'],
-  // Am Terminal angetippt (0144); haengt immer auch an einer Reservierung,
+  // Am Terminal angetippt (0145); haengt immer auch an einer Reservierung,
   // die die Ruecknahme schon aufhaelt.
   ['terminal_self_session', 'resource_id']
 ] as const
-/** Zustand des Zimmers, der mit ihm geht. */
-export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task'] as const
+/**
+ * Zustand des Zimmers, der mit ihm geht. Die Referenz der Gaestemappe (0143)
+ * gehoert dazu: ohne das Zimmer zeigt eine gedruckte Karte ohnehin nichts.
+ */
+export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task',
+                               'guest_folder_room'] as const
 
 export const VERWEISE_GRUPPE = [
   ['resource', 'category_id'], ['reservation', 'category_id'], ['rate_plan', 'category_id'],

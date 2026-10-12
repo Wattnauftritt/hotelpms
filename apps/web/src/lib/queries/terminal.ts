@@ -59,7 +59,7 @@ export interface Kioskschluessel {
 
 export interface TerminalStand {
   /** `shared`: gehoert einem anderen Haus und wird mitgenutzt (Migration 0103). */
-  /** `selfService`: ein Gast bedient sich dort gerade selbst (Migration 0144). */
+  /** `selfService`: ein Gast bedient sich dort gerade selbst (Migration 0145). */
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean
                      shared: boolean; selfService: boolean }>
   /** Was die Rezeption fuer diese Reservierung anstossen kann. */
@@ -157,7 +157,7 @@ export function useTerminalWachzeit(propertyId: number) {
   })
 }
 
-/** Selbstbedienung am Touchscreen (Migration 0144), ein Schalter je Haus. */
+/** Selbstbedienung am Touchscreen (Migration 0145), ein Schalter je Haus. */
 export interface Selbstbedienung { enabled: boolean; cleaningWaiverEnabled: boolean }
 
 export const useSelbstbedienung = (propertyId: number) =>

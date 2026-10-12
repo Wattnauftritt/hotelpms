@@ -1,3 +1,5 @@
+import { STAFF_LOCALES, sprachKuerzel, type StaffLocale } from '@hotelpms/contracts'
+
 /**
  * Uebersetzung freier Texte des Personals (Aufgabe 18, Baustein 7).
  *
@@ -6,8 +8,12 @@
  * Netzaufruf steht im Worker.
  */
 
-export const STAFF_TEXT_LANGS = ['de', 'en', 'ru', 'uk'] as const
-export type StaffTextLang = typeof STAFF_TEXT_LANGS[number]
+/**
+ * Alle Sprachen der Personal-App; DeepL uebersetzt in jede davon. Die
+ * Datenbank prueft dieselbe Liste (Migration 0144).
+ */
+export const STAFF_TEXT_LANGS = STAFF_LOCALES
+export type StaffTextLang = StaffLocale
 
 /** Danach gilt ein Auftrag als gescheitert; das Original bleibt lesbar. */
 export const TRANSLATION_MAX_ATTEMPTS = 6
@@ -16,17 +22,17 @@ export const TRANSLATION_MAX_ATTEMPTS = 6
  * Zielsprache, wie DeepL sie haben will. Englisch braucht eine Variante,
  * sonst lehnt DeepL das Ziel ab; britisch, weil die Haeuser in Europa sind.
  */
-export function deeplTargetCode(lang: StaffTextLang): string {
+export function deeplTargetCode(lang: string): string {
   return lang === 'en' ? 'EN-GB' : lang.toUpperCase()
 }
 
 /**
- * Erkannte Ausgangssprache aus der Antwort, auf unsere vier abgebildet.
+ * Erkannte Ausgangssprache aus der Antwort, auf unsere abgebildet.
  * Alles andere ist `null`: uebersetzt ist es trotzdem, nur laesst sich
  * nicht sagen, ob das Ziel schon die Ausgangssprache war.
  */
 export function staffLangFromDeepl(code: string | null | undefined): StaffTextLang | null {
-  const k = (code ?? '').slice(0, 2).toLowerCase()
+  const k = sprachKuerzel(code)
   return (STAFF_TEXT_LANGS as readonly string[]).includes(k) ? k as StaffTextLang : null
 }
 

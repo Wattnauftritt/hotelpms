@@ -33,6 +33,7 @@ import { reinigungsplan } from './reinigungsplan.js'
 import { kontrolle } from './kontrolle.js'
 import { kueche } from './kueche.js'
 import { arbeitszeit } from './arbeitszeit.js'
+import { gaestemappe } from './gaestemappe.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -71,7 +72,7 @@ import { arbeitszeit } from './arbeitszeit.js'
  * laufen auseinander, und das Ergebnis waere eine Sprache, die man waehlen
  * kann und in der die Fehlermeldungen deutsch bleiben.
  */
-export { LOCALES } from '@hotelpms/contracts'
+export { LOCALES, SPRACHNAMEN, sprachKuerzel } from '@hotelpms/contracts'
 export type Locale = MessageLocale
 
 /**
@@ -90,7 +91,18 @@ export type Locale = MessageLocale
 const INTL_TAG: Record<Locale, string> = {
   de: 'de-DE',
   en: 'en-GB',
-  tr: 'tr-TR'
+  nl: 'nl-NL',
+  da: 'da-DK',
+  sv: 'sv-SE',
+  nb: 'nb-NO',
+  pl: 'pl-PL',
+  cs: 'cs-CZ',
+  fr: 'fr-FR',
+  it: 'it-IT',
+  es: 'es-ES',
+  tr: 'tr-TR',
+  ru: 'ru-RU',
+  uk: 'uk-UA'
 }
 
 /**
@@ -117,11 +129,72 @@ export type Datumsform = 'tag-zuerst' | 'iso'
 const DATUMSFORM: Record<Locale, Datumsform> = {
   de: 'tag-zuerst',
   en: 'iso',
+  // Schwedisch schreibt Kalendertage selbst als 2026-10-01; die anderen mit
+  // dem Tag zuerst. Punkte statt ihrer Schraegstriche oder Bindestriche
+  // (Frankreich 01/10/2026, Niederlande 01-10-2026) sind dort ueberall
+  // lesbar und vor allem eindeutig -- anders als die Schraegstriche des
+  // Englischen ist bei Tag-zuerst nichts zu verwechseln.
+  nl: 'tag-zuerst',
+  da: 'tag-zuerst',
+  sv: 'iso',
+  nb: 'tag-zuerst',
+  pl: 'tag-zuerst',
+  cs: 'tag-zuerst',
+  fr: 'tag-zuerst',
+  it: 'tag-zuerst',
+  es: 'tag-zuerst',
   // Tuerkisch schreibt 01.10.2026, mit Punkten und Tag zuerst -- wie Deutsch.
-  tr: 'tag-zuerst'
+  tr: 'tag-zuerst',
+  ru: 'tag-zuerst',
+  uk: 'tag-zuerst'
 }
 
-const texts = {
+/**
+ * Alle Schluessel, aus den Bereichen zusammengesetzt.
+ *
+ * **Warum ausgeschrieben und nicht `keyof typeof texts`.** Mit vierzehn
+ * Sprachen ist der abgeleitete Typ des ganzen Katalogs -- jeder Satz als
+ * eigener Zeichenkettentyp -- groesser, als `tsc` beim Schreiben der
+ * Deklarationen ausgeben mag (TS7056). Die Schluessel allein sind klein;
+ * die Werte braucht niemand als Literal, nur als `LocalizedText`.
+ */
+export type TextKey =
+  | keyof typeof common
+  | keyof typeof tagesgeschaeft
+  | keyof typeof housekeeping
+  | keyof typeof einrichtung
+  | keyof typeof folio
+  | keyof typeof gruppen
+  | keyof typeof plan
+  | keyof typeof berichte
+  | keyof typeof einstellungen
+  | keyof typeof schnittstellen
+  | keyof typeof benutzer
+  | keyof typeof preise
+  | keyof typeof preissteuerung
+  | keyof typeof gaeste
+  | keyof typeof rechnung
+  | keyof typeof zugang
+  | keyof typeof support
+  | keyof typeof admin
+  | keyof typeof terminal
+  | keyof typeof hausnotiz
+  | keyof typeof planstatus
+  | keyof typeof suche
+  | keyof typeof onlineCheckin
+  | keyof typeof ersteSchritte
+  | keyof typeof altsystem
+  | keyof typeof mobil
+  | keyof typeof meldescheine
+  | keyof typeof kassenbuch
+  | keyof typeof zimmerSortieren
+  | keyof typeof reinigungsplan
+  | keyof typeof kontrolle
+  | keyof typeof kueche
+  | keyof typeof arbeitszeit
+  | keyof typeof gaestemappe
+
+const texts: Record<TextKey, LocalizedText> = {
   ...common,
   ...tagesgeschaeft,
   ...housekeeping,
@@ -154,10 +227,9 @@ const texts = {
   ...reinigungsplan,
   ...kontrolle,
   ...kueche,
-  ...arbeitszeit
-} as const satisfies Record<string, LocalizedText>
-
-export type TextKey = keyof typeof texts
+  ...arbeitszeit,
+  ...gaestemappe
+}
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */
 export function textKeys(): TextKey[] {
@@ -236,6 +308,16 @@ export function formatMoney(cent: number, locale: Locale, currency = 'EUR'): str
 export function formatDate(iso: string, locale: Locale): string {
   const [y, m, d] = iso.split('-')
   return DATUMSFORM[locale] === 'tag-zuerst' ? `${d}.${m}.${y}` : `${y}-${m}-${d}`
+}
+
+/**
+ * Tag und Monat ohne Jahr, fuer eine Reihe von Tagen im selben Aufenthalt.
+ * In ISO bleibt das Jahr stehen: `10-13` liest niemand sicher als Datum.
+ */
+export function formatDayMonth(iso: string, locale: Locale): string {
+  if (DATUMSFORM[locale] !== 'tag-zuerst') return formatDate(iso, locale)
+  const [, m, d] = iso.split('-')
+  return `${d}.${m}.`
 }
 
 const wochentage = new Map<Locale, Intl.DateTimeFormat>()

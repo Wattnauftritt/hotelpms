@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
+import { STAFF_TEXT_LANGS } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -176,7 +177,8 @@ export function inspectionRoutes(app: FastifyInstance): void {
          * die Notiz steht dann so da, wie sie geschrieben wurde.
          */
         if (ergebnis === 'rework' && aufgabe.locale !== null
-            && ['en', 'ru', 'uk'].includes(aufgabe.locale)) {
+            && aufgabe.locale !== 'de'
+            && (STAFF_TEXT_LANGS as readonly string[]).includes(aufgabe.locale)) {
           await reiheUebersetzungEin(client, propertyId, 'inspection_note', taskId,
             [aufgabe.locale])
         }

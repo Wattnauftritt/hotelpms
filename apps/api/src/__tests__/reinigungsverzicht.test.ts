@@ -218,4 +218,54 @@ describe('Reinigungsverzicht', () => {
       headers: auth(olga.sessionId), payload: { outcome: 'cleaned' } })
     expect(r.statusCode, r.body).toBe(409)
   })
+
+  it('steht nur lesend in Hausliste und Meldescheinen, ohne zurueckgenommene Tage', async () => {
+    expect((await einstellen(true, false)).statusCode).toBe(200)
+    expect((await gast('2026-10-03', true)).statusCode).toBe(200)
+    expect((await gast('2026-10-02', true)).statusCode).toBe(200)
+    expect((await gast('2026-10-03', false)).statusCode).toBe(200)
+    expect((await gast('2026-10-03', true)).statusCode).toBe(200)
+    expect((await gast('2026-10-01', true)).statusCode).toBe(200)
+    expect((await gast('2026-10-01', false)).statusCode).toBe(200)
+
+    const blatt = await app.inject({ method: 'GET', url: p(`/daily-sheet?date=${TAG}`),
+      headers: auth(chef.sessionId) })
+    expect(blatt.statusCode, blatt.body).toBe(200)
+    const zeile = blatt.json<{ inHouse: Array<{ reservationRef: string; waivedDates: string[] }> }>()
+      .inHouse.find(z => z.reservationRef === ref)!
+    expect(zeile.waivedDates).toEqual(['2026-10-02', '2026-10-03'])
+
+    // Hauptschein und Mitreisender: der Verzicht haengt an der Reservierung
+    // und steht nur am Hauptschein.
+    const res = await owner.query<{ id: number; primary_guest_id: number }>(
+      `SELECT id, primary_guest_id FROM reservation WHERE public_ref = $1`, [ref])
+    const { id: resId, primary_guest_id: gastId } = res.rows[0]!
+    const mit = await owner.query<{ id: number }>(
+      `INSERT INTO guest (account_id, last_name, first_name, language)
+       VALUES ($1, 'Petersen', 'Jan', 'de') RETURNING id`, [fx.accountId])
+    const haupt = await owner.query<{ id: number }>(
+      `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
+                                 planned_departure, is_foreign, destroy_after)
+       VALUES ($1,$2,$3,'2026-09-30','2026-10-04',false,'2027-12-31') RETURNING id`,
+      [fx.propertyId, resId, gastId])
+    await owner.query(
+      `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
+                                 planned_departure, is_foreign, destroy_after,
+                                 group_registration_id)
+       VALUES ($1,$2,$3,'2026-09-30','2026-10-04',false,'2027-12-31',$4)`,
+      [fx.propertyId, resId, mit.rows[0]!.id, haupt.rows[0]!.id])
+
+    const liste = await app.inject({ method: 'GET',
+      url: p('/registrations?from=2026-09-01&to=2026-10-31'), headers: auth(chef.sessionId) })
+    expect(liste.statusCode, liste.body).toBe(200)
+    const scheine = liste.json<{ registrations: Array<{ groupRegistrationId: number | null
+                                                        waivedDates: string[] }> }>().registrations
+    expect(scheine.map(r => [r.groupRegistrationId === null, r.waivedDates]).sort()).toEqual([
+      [false, []], [true, ['2026-10-02', '2026-10-03']]])
+
+    const schein = await app.inject({ method: 'GET', url: `/v1/registrations/${haupt.rows[0]!.id}`,
+      headers: auth(chef.sessionId) })
+    expect(schein.statusCode, schein.body).toBe(200)
+    expect(schein.json().waivedDates).toEqual(['2026-10-02', '2026-10-03'])
+  })
 })

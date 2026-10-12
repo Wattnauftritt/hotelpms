@@ -7,10 +7,12 @@ import { useSprung } from '../../lib/suche.js'
 import { addDays, today } from '../../lib/dates.js'
 import { naechte } from '../../lib/mobil.js'
 import { Fehler, Laedt } from '../Shell.tsx'
+import { VerzichtMarke } from '../Reinigungsverzicht.tsx'
 
 type Liste = 'arrivals' | 'departures' | 'inHouse'
-type Zeile = Omit<DailySheet['inHouse'][number], 'registered'>
-  & { registered?: boolean; balanceCent?: number | null; expectedArrival?: string | null }
+type Zeile = Omit<DailySheet['inHouse'][number], 'registered' | 'waivedDates'>
+  & { registered?: boolean; balanceCent?: number | null; expectedArrival?: string | null
+      waivedDates?: string[] }
 
 /**
  * Das Tagesgeschaeft am Telefon: Anreisen, Abreisen, Im Haus.
@@ -98,6 +100,9 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                       <span className="sr-only">{t('today.expectedArrival')}: </span>
                       🕒 {r.expectedArrival}
                     </Marke>
+                  )}
+                  {r.waivedDates !== undefined && (
+                    <VerzichtMarke dates={r.waivedDates} heute={d.date} />
                   )}
                   {r.registered === false && (
                     <Marke farbe="bg-amber-100 text-amber-900">

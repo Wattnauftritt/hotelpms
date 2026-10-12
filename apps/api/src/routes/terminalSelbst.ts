@@ -12,7 +12,7 @@ import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_S
 
 /**
  * Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14; Migration
- * 0144).
+ * 0145).
  *
  * Ohne Auftrag der Rezeption tippt ein Gast am Touchscreen sein Zimmer an,
  * bestaetigt "Sind Sie Herr/Frau <Nachname>?" und verzichtet danach auf

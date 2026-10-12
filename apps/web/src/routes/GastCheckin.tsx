@@ -6,7 +6,7 @@ import { CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
 import { api, ApiError } from '../lib/api.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { istCheckinAdresse } from '../gast/adresse.js'
-import { LOCALES, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
+import { LOCALES, SPRACHNAMEN, sprachKuerzel, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
          type TextKey } from '../lib/i18n/index.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Datumsfeld } from '../components/Datumsfeld.tsx'
@@ -63,7 +63,7 @@ export function checkinAusAdresse(
 function startSprache(browser: string, profil?: string): Locale {
   const angeboten = (l: string): l is Locale => (LOCALES as readonly string[]).includes(l)
   if (profil !== undefined && angeboten(profil)) return profil
-  const b = browser.slice(0, 2).toLowerCase()
+  const b = sprachKuerzel(browser)
   return angeboten(b) ? b : 'en'
 }
 
@@ -228,14 +228,15 @@ function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => vo
       </h1>
       {/* Die Sprachen als Knoepfe und nicht als Auswahlliste: am Terminal
           trifft ein Finger einen Knopf sicherer als eine aufklappende Liste. */}
-      <div role="group" aria-label={t('gastCheckin.language')} className="flex gap-1">
+      <div role="group" aria-label={t('gastCheckin.language')}
+           className="flex flex-wrap justify-end gap-1">
         {LOCALES.map(l => (
           <button key={l} type="button" onClick={() => onLocale(l)}
                   aria-pressed={l === locale}
-                  className={`${gross ? 'px-4 py-2' : 'px-2 py-0.5'} rounded-sm border uppercase
+                  className={`${gross ? 'px-4 py-2' : 'px-2 py-0.5'} rounded-sm border
                     ${l === locale ? 'border-neutral-900 bg-neutral-900 text-white'
                                    : 'border-neutral-300 bg-white'}`}>
-            {l}
+            {SPRACHNAMEN[l]}
           </button>
         ))}
       </div>

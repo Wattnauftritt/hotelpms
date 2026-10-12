@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0144 Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14)
+-- 0145 Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14)
 --
 -- Sven, 12.10.2026: Am Touchscreen der Rezeption waehlt ein Gast seine
 -- Zimmernummer, das Terminal fragt "Sind Sie Herr/Frau <Nachname>?", und

@@ -58,6 +58,7 @@ import { terminalSelbstRoutes } from './terminalSelbst.js'
 import { searchRoutes } from './search.js'
 import { checkinRoutes } from './checkin.js'
 import { cleaningWaiverRoutes } from './cleaningWaiver.js'
+import { gaestemappeRoutes } from './gaestemappe.js'
 import { staffSettingRoutes } from './staffSetting.js'
 import { openApiRoutes } from './openapi.js'
 import { pushRoutes } from './push.js'
@@ -135,6 +136,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   terminalSelbstRoutes(app)
   checkinRoutes(app)
   cleaningWaiverRoutes(app)
+  gaestemappeRoutes(app)
   staffSettingRoutes(app)
   pushRoutes(app)
   // Zuletzt: die Beschreibung liest die Registrierung aller Routen.

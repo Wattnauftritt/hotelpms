@@ -1045,7 +1045,7 @@ export function terminalRoutes(app: FastifyInstance): void {
         }
         if (auftrag.state === 'pending') {
           // Der Auftrag der Rezeption hat Vorrang vor einem Gast, der sich
-          // gerade selbst bedient (Migration 0144). Was der gespeichert hat,
+          // gerade selbst bedient (Migration 0145). Was der gespeichert hat,
           // bleibt; sein Link faellt.
           await beendeSelbstbedienung(client, deviceId, 'job')
           await client.query(
@@ -1131,7 +1131,7 @@ export function terminalRoutes(app: FastifyInstance): void {
          * Wer die Diashow holt, bedient gerade niemanden: eine noch offene
          * Selbstbedienung dieses Geraets stammt von einer Seite, die
          * abgestuerzt oder neu geladen ist. Ihr Link gaelte sonst bis zum
-         * Ende des Geschaeftstags (Migration 0144).
+         * Ende des Geschaeftstags (Migration 0145).
          */
         await beendeSelbstbedienung(client, deviceId, 'timeout')
         const { rows } = await client.query(
@@ -1142,7 +1142,7 @@ export function terminalRoutes(app: FastifyInstance): void {
               AND c.idle_position IS NOT NULL
             ORDER BY c.idle_position
             LIMIT $2`, [propertyId, DIASHOW_MAX])
-        // Ob der Knopf zur Selbstbedienung dasteht (Migration 0144). Hier und
+        // Ob der Knopf zur Selbstbedienung dasteht (Migration 0145). Hier und
         // nicht in der Frage alle zwei Sekunden: der Schalter aendert sich selten.
         return { slides: rows, selfService: await selbstbedienungAngeboten(client, propertyIds) }
       })

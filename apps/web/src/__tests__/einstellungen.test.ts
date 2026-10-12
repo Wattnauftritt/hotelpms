@@ -17,14 +17,15 @@ describe('Bereiche der Einstellungen', () => {
     // beides ist, wie das Haus nach aussen abrechnet und auftritt.
     // Der Online-Check-in ebenso (Dokument 30): wann ein Gast vorab Post
     // bekommt, entscheidet das Haus. Und die Gaesteterminals (Dokument 31):
-    // ein Terminal gehoert einem Haus.
+    // ein Terminal gehoert einem Haus. Die Gaestemappe (0143) baut auf
+    // dessen Seiten auf und haengt deshalb am selben Recht.
     expect(einstellungsBereiche(p => p === 'settings:property').map(b => b.key))
-      .toEqual(['pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'roomSort'])
+      .toEqual(['pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'folder', 'roomSort'])
     // Support-Zugriff kam mit Aufgabe 13c dazu und haengt an
     // settings:account -- siehe support.test.ts.
     expect(einstellungsBereiche(() => true).map(b => b.key))
-      .toEqual(['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'roomSort',
-                'support'])
+      .toEqual(['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'folder',
+                'roomSort', 'support'])
     expect(einstellungsBereiche(() => false)).toEqual([])
   })
 })
