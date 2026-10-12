@@ -58,7 +58,10 @@ function Wunsch({ w, mitGast, busy, onDone, onDecline }: {
           {mitGast && <span className="text-neutral-600">{gast} · </span>}
           {/* Eine Nachricht (0153) steht im Wortlaut des Gastes, in seiner
               Sprache -- uebersetzt wird sie nicht, die Rezeption fragt nach. */}
-          {name === null
+          {w.isExtension
+            ? <span className="text-[11px] px-1 me-1 rounded-sm bg-emerald-100 text-emerald-900">
+                {t('folder.req.extension')}</span>
+            : name === null
             ? <>
                 <span className="text-[11px] px-1 me-1 rounded-sm bg-amber-100 text-amber-900">
                   {t('folder.req.message')}</span>

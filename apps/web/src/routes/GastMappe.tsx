@@ -242,6 +242,14 @@ function Wuensche({ start, roomRef, locale }: {
       .finally(() => setBusy(false))
   }
   const name = (n: Record<string, string>): string => n[locale] ?? n.de ?? ''
+  const verlaengern = (): void => {
+    setBusy(true); setMeldung(null)
+    api.post<FolderRequests | null>('/v1/mappe/extension', {},
+      { [FOLDER_ROOM_HEADER]: roomRef })
+      .then(v => { setView(v); setMeldung('req.sent') })
+      .catch(() => setMeldung('req.failed'))
+      .finally(() => setBusy(false))
+  }
   const nachricht = (text: string): void => {
     setBusy(true); setMeldung(null)
     api.post<FolderRequests | null>('/v1/mappe/messages', { text },
@@ -254,6 +262,21 @@ function Wuensche({ start, roomRef, locale }: {
   return (
     <section className={KARTE} aria-labelledby="mappe-wuensche">
       <h2 id="mappe-wuensche" className="font-semibold">{t('req.title')}</h2>
+      {/* Noch eine Nacht (0155): oben, weil es das Wichtigste ist, was die
+          Mappe anbietet -- aber ohne Hervorhebung, die draengt. */}
+      {view.extension !== null && (
+        <div className="space-y-2 rounded-md bg-neutral-100 p-3">
+          <h3 className="font-medium">{t('ext.title')}</h3>
+          <p className="text-sm">
+            {t('ext.hint', { date: kurzerTag(view.extension.night, locale),
+                             price: preis(view.extension.priceCent, locale) })}
+          </p>
+          <button type="button" disabled={busy} onClick={verlaengern}
+                  className="w-full rounded-md bg-neutral-900 px-4 py-2 text-white disabled:opacity-40">
+            {t('ext.ask')}
+          </button>
+        </div>
+      )}
       {view.items.length > 0 && (
         <>
           <p className="text-sm text-neutral-600">{t('req.hint')}</p>
@@ -294,7 +317,9 @@ function Wuensche({ start, roomRef, locale }: {
           <ul className="space-y-1 text-sm">
             {view.mine.map(w => (
               <li key={w.requestRef}>
-                {w.name === null
+                {w.isExtension
+                  ? <span>{t('ext.mine')}</span>
+                  : w.name === null
                   ? <span>{t('msg.mine')}{w.message !== null && <>: „{w.message}“</>}</span>
                   : <span>{w.qty} × {name(w.name)}</span>}
                 {w.wantedFor !== null && <span> · {kurzerTag(w.wantedFor, locale)}</span>}
