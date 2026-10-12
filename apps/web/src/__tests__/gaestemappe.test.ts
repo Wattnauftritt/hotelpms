@@ -79,7 +79,9 @@ describe('Katalog der Mappe', () => {
   it('setzt Platzhalter ein und beginnt in der Sprache des Telefons', () => {
     expect(mappeText('room', 'nl', { room: '12' })).toBe('Kamer 12')
     expect(startSprache('pl-PL')).toBe('pl')
-    expect(startSprache('fr-FR')).toBe('en')
+    expect(startSprache('fr-FR')).toBe('fr')
+    expect(startSprache('no')).toBe('nb')
+    expect(startSprache('ar-SA')).toBe('en')
   })
 })
 

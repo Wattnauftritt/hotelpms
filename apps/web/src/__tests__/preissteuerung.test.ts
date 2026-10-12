@@ -5,7 +5,7 @@ import type { SteerRule, SteerPreviewCell } from '@hotelpms/contracts'
 import { bpAusEingabe, prozentText, eingabeAusBp, regelSatz, regelNutzlast,
          eingabeAusRegel, auswahlNutzlast, zellSchluessel, stufenpreis,
          LEERE_REGEL } from '../lib/preissteuerung.js'
-import { textFor, type TextKey } from '../lib/i18n/index.js'
+import { LOCALES, textFor, type TextKey } from '../lib/i18n/index.js'
 
 /**
  * Die Preissteuerung in der Oberflaeche (Dokument 32).
@@ -76,7 +76,7 @@ describe('Eine Regel als Satz', () => {
   })
 
   it('setzt jeden Platzhalter ein, in jeder Sprache', () => {
-    for (const locale of ['de', 'en', 'tr'] as const) {
+    for (const locale of LOCALES) {
       const tl = (k: TextKey, p?: Record<string, string | number>): string =>
         textFor(k, locale).replace(/\{(\w+)\}/g, (g, n: string) =>
           p !== undefined && n in p ? String(p[n]) : g)

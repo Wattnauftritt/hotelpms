@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LOCALES, textFor, useLocale, type Locale, type TextKey } from '../lib/i18n/index.js'
+import { LOCALES, sprachKuerzel, textFor, useLocale, type Locale, type TextKey } from '../lib/i18n/index.js'
 import { EBENEN, einfuegen, grossSchreiben, loeschen, startEbene,
          type Ebene, type Feldstand, type Taste } from '../lib/bildschirmtastatur.js'
 
@@ -217,8 +217,8 @@ function istTextfeld(el: EventTarget | Element | null): el is Textfeld {
 }
 
 function spracheVon(el: Element, sonst: Locale): Locale {
-  const lang = el.closest('[lang]')?.getAttribute('lang')?.slice(0, 2)
-  return (LOCALES as readonly string[]).includes(lang ?? '') ? lang as Locale : sonst
+  const lang = sprachKuerzel(el.closest('[lang]')?.getAttribute('lang'))
+  return (LOCALES as readonly string[]).includes(lang) ? lang as Locale : sonst
 }
 
 /**

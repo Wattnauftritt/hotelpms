@@ -67,13 +67,17 @@ describe('Adresse der Personal-App', () => {
 describe('Sprache der Personal-App', () => {
   it('nimmt die gespeicherte, sonst die des Telefons, sonst Deutsch', () => {
     expect(startSprache('uk', 'ru-RU')).toBe('uk')
-    // Tuerkisch kann die Rezeption, diese App nicht: das Telefon entscheidet.
-    expect(startSprache('tr', 'ru-RU')).toBe('ru')
+    expect(startSprache('tr', 'ru-RU')).toBe('tr')
+    // Eine Sprache, die die App nicht spricht: das Telefon entscheidet.
+    expect(startSprache('zz', 'ru-RU')).toBe('ru')
     expect(startSprache(null, 'uk-UA')).toBe('uk')
-    expect(startSprache(null, 'fr-FR')).toBe('de')
+    expect(startSprache(null, 'fr-FR')).toBe('fr')
+    // Norwegisch meldet sich je nach Telefon als nb, no oder nn.
+    expect(startSprache(null, 'no')).toBe('nb')
+    expect(startSprache(null, 'ar-SA')).toBe('de')
   })
 
-  it('hat in jeder der vier Sprachen einen Satz mit denselben Platzhaltern', () => {
+  it('hat in jeder Sprache einen Satz mit denselben Platzhaltern', () => {
     const platzhalter = (s: string): string[] =>
       [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]!).sort()
     for (const key of personalKeys()) {

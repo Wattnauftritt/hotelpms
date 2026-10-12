@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import { FOLDER_ROOM_HEADER, folderRefAusFragment, wifiQrText,
+import { FOLDER_ROOM_HEADER, SPRACHNAMEN, folderRefAusFragment, wifiQrText,
          type FolderLocale, type FolderWifi, type GuestFolderView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useQr } from '../lib/qr.js'
@@ -104,8 +104,7 @@ function Kopf({ view, locale, onLocale }: {
   )
 }
 
-const SPRACHNAME: Record<FolderLocale, string> = {
-  de: 'Deutsch', en: 'English', nl: 'Nederlands', pl: 'Polski' }
+const SPRACHNAME: Record<FolderLocale, string> = SPRACHNAMEN
 
 function Sprachen({ locale, onLocale }: {
   locale: FolderLocale; onLocale: (l: FolderLocale) => void

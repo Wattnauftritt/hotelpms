@@ -29,7 +29,7 @@ Der Betrieb hatte bisher ein eigenes System: Gäste bekamen das Meldeformular vo
 |---|---|
 | Schema, Rechte der Anwendungsrolle, Einlösen, Löschung | `packages/db/migrations/0061_online_checkin.sql` |
 | Link ausgeben (API **und** Worker) | `packages/domain/src/checkinToken.ts` → `createCheckinToken` |
-| Mailtext in vier Sprachen | `packages/domain/src/email.ts` → `renderCheckinInvitationEmail` |
+| Mailtext in allen Sprachen der Gastpost | `packages/domain/src/email.ts` → `renderCheckinInvitationEmail` |
 | Vertrag (Kopfzeile, Link, „ausländisch", Unterschriftsform, Schemata) | `packages/contracts/src/checkin.ts` |
 | Regeln des Meldescheins, eine Fassung für drei Wege | `apps/api/src/platform/meldeschein.ts` |
 | Gastprofil schreiben, eine Fassung für zwei Wege | `apps/api/src/platform/gast.ts` |
@@ -274,4 +274,4 @@ Antworten auf ungültige Links: 404 (unbekannt oder verstümmelt), 410 mit `chec
 - ~~Hausbedingungen sind auf der Gastseite nicht dabei.~~ Seit 05.10.2026 (Sven) zeigt die Gastseite die offenen Hausbedingungen des Anreisetags vollständig, verlangt die Zustimmung und, wo die Fassung es will, eine Unterschrift — auch von zu Hause und von inländischen Gästen, weil die Hausbedingung privatrechtlich ist und § 29 Abs. 2 BMG für sie nicht gilt. Gespeichert über `stimmeBedingungZu`, also je Fassung. Dazu je Person die Kurtaxe-Befreiung mit den Gründen des Hauses (Migration 0089, Arbeitsstand in Dokument 16).
 - Seit 07.10.2026 fragt die Gastseite über den Mail-Link nach der voraussichtlichen Ankunftszeit, als Freitext und wie im Adminpanel verpflichtend; am Terminal nicht. Sie steht am Hauptschein und bei den Anreisen des Tages (Migration 0099, Dokument 16).
 - Seit 10.10.2026 verlangt die Gastseite über den Mail-Link wie am Terminal eine Telefonnummer für den Aufenthalt. Sie steht am Hauptschein und an der Reservierung; ins Gastprofil geht sie nur, wenn dort keine Nummer steht, damit die Seite ohne Anmeldung keine vorhandene Kontaktangabe ersetzt (Migration 0123, Dokument 16).
-- Die Gastseite kennt Deutsch, Englisch und Türkisch (`LOCALES`); die Mail Deutsch, Englisch, Niederländisch und Polnisch (`EMAIL_LANGUAGES`). Ein niederländischer Gast bekommt die Mail auf Niederländisch und die Seite auf Englisch. Beide Listen zusammenzuführen ist eine Übersetzungsaufgabe für Oberfläche **und** Meldungskatalog, keine dieses Teils.
+- Gastseite und Mail sprechen seit dem 12.10.2026 dieselben vierzehn Sprachen (`LOCALES`, `EMAIL_LANGUAGES`; siehe Dokument 16, „Vierzehn Sprachen“). Ein niederländischer Gast bekommt Mail und Seite auf Niederländisch.

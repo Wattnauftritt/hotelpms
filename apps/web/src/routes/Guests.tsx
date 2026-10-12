@@ -245,9 +245,9 @@ function GastFormular({ initial, darfSchreiben, onSaved }: {
         <input value={nationality} onChange={e => setNationality(e.target.value)}
                disabled={!darfSchreiben} placeholder={t('guests.nationality')}
                className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-        {/* Nur die Sprachen, in denen wir tatsaechlich schreiben. Franzoesisch
-            anzubieten waere ein Versprechen, das die Post nicht haelt: sie
-            ginge auf Deutsch hinaus, und niemand saehe warum. */}
+        {/* Nur die Sprachen, in denen wir tatsaechlich schreiben. Eine
+            weitere anzubieten waere ein Versprechen, das die Post nicht
+            haelt: sie ginge auf Deutsch hinaus, und niemand saehe warum. */}
         <label className="text-sm">
           <select value={language} onChange={e => setLanguage(e.target.value)}
                   disabled={!darfSchreiben} aria-label={t('guests.language')}

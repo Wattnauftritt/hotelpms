@@ -13,7 +13,7 @@ import { ErsteSchritteRahmen } from './components/ErsteSchritte.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
 import { SprungContext, type Sprungziel } from './lib/suche.js'
-import { LOCALES, I18nContext, useT, type Locale, type TextKey }
+import { LOCALES, sprachKuerzel, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
 import { api, ApiError } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
@@ -23,7 +23,7 @@ import './styles.css'
 import { nurPersonal } from './personal/adresse.js'
 
 function spracheDesBrowsers(): Locale {
-  const l = navigator.language.slice(0, 2)
+  const l = sprachKuerzel(navigator.language)
   return (LOCALES as readonly string[]).includes(l) ? (l as Locale) : 'de'
 }
 
