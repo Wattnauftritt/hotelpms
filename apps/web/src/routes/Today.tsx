@@ -54,7 +54,6 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                     🕒 {r.expectedArrival}
                   </span>
                 )}
-                <VerzichtMarke dates={r.waivedDates} heute={d.date} />
                 {!r.registered && (
                   <span title={t('today.registrationMissing')}
                         className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-800">
@@ -129,6 +128,9 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                    kategorie={r.categoryCode}
                    onFolio={r.folioRef === null ? undefined : () => onFolio(r.folioRef!)}>
               <div className="flex flex-wrap items-center justify-end gap-2">
+                {/* Nur hier, nicht bei den Anreisen: die Spalte ist schon mit
+                    Ankunftszeit und Meldeschein voll, und wer eingecheckt
+                    ist, steht ohnehin auch in dieser Liste. */}
                 <VerzichtMarke dates={r.waivedDates} heute={d.date} />
                 {/* Der Nachtlauf checkt die spaete Anreise ueber den
                     Schluesselsafe ein (0088); am Morgen steht sie nur noch
