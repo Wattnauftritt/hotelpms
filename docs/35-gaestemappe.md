@@ -79,16 +79,16 @@ Migration `0148`. Das freigeschaltete Telefon sieht unter „Ihr Aufenthalt“ d
 
 ## 8. Wünsche und Extras
 
-Migration `0149`. Das Haus pflegt unter Einstellungen → Gästemappe einen kurzen **Katalog**: Kopfkissen, Decke, Babybett, aber auch Sekt aufs Zimmer oder ein Lunchpaket. Je Eintrag: der Name je Sprache (Deutsch Pflicht, eine leere Sprache zeigt den deutschen), wer sich kümmert (Rezeption oder Housekeeping, Svens Entscheidung), eine Höchstmenge, ob er in der Mappe und/oder am Terminal steht, und optional ein **Bruttopreis** mit Umsatzsteuersatz und Erlöskonto. Partnerangebote gibt es nicht (Sven); was kostenlos ist, bleibt kostenlos.
+Migration `0149`. Das Haus pflegt unter Einstellungen → Gästemappe einen kurzen **Katalog**: Kopfkissen, Decke, Babybett, aber auch Sekt aufs Zimmer oder ein Lunchpaket. Je Eintrag: der Name je Sprache (Deutsch Pflicht, eine leere Sprache zeigt den deutschen), wer sich kümmert (Rezeption oder Housekeeping, Svens Entscheidung), eine Höchstmenge, ob er in der Mappe und/oder am Terminal steht (dort nur, solange er kostenlos ist, Dokument 31, §14), und optional ein **Bruttopreis** mit Umsatzsteuersatz und Erlöskonto. Partnerangebote gibt es nicht (Sven); was kostenlos ist, bleibt kostenlos.
 
 - **Kein Freitext.** Der Gast wählt Eintrag, Menge und optional einen Tag seines Aufenthalts; die Rezeption lehnt mit einem Grund aus einer festen Liste ab (nicht vorrätig, an dem Tag nicht, bitte an der Rezeption melden). So liest jede Seite die Antwort in ihrer Sprache, und keine Spalte trägt etwas, das einen Menschen bezeichnet. Die freie Nachricht kommt mit Abschnitt 9 und bringt dann ihre eigene Löschung mit.
 - **Ein Extra mit Preis ist ein `product`.** StayGrid hat keine Artikelpflege; der Katalog legt deshalb einen eigenen Artikel `MAPPE-<id>` an, den eine spätere Artikelpflege wiederfindet. Ohne Preis wird er abgeschaltet, nicht gelöscht.
 - **Gebucht wird beim Annehmen, nicht beim Bestellen**, brutto auf das offene Gastfolio, mit dem Preis, den der Gast gesehen hat — ändert das Haus ihn dazwischen, gilt für diesen Wunsch der alte. Wer annimmt, braucht dafür zusätzlich `folio:post`. Ohne offenes Gastfolio 409.
 - **Höchstens zehn offene Wünsche je Aufenthalt.** Eine freigeschaltete Mappe ist kein Ausweis gegen einen Gast, der aus Spaß dreißig Kissen bestellt.
-- Die Rezeption sieht offene Wünsche über den Spalten unter „Heute“ und alle im Seitenfenster der Reservierung. Housekeeping-Einträge tragen dort einen Vermerk, bis sie mit dem nächsten Schritt in die Personal-App gehen.
+- Die Rezeption sieht offene Wünsche über den Spalten unter „Heute“ und alle im Seitenfenster der Reservierung. Housekeeping-Einträge tragen dort einen Vermerk.
+- **Housekeeping-Wünsche in der Personal-App** (Migration `0152`). Ein kostenloser Wunsch, um den sich Housekeeping kümmert, steht an der Kachel der Kraft, der das Zimmer heute zugeteilt ist, in ihrer Sprache, mit „Gebracht“; sie bekommt eine Push-Meldung, die nur die Zimmernummer nennt. Ein Wunsch für einen späteren Tag meldet sich nicht vorab, sondern steht an dem Tag in der App. Ein Extra mit Preis bleibt bei der Rezeption, auch wenn Housekeeping es bringt: annehmen heißt dort buchen, und das darf die Kraft nicht. Hat das Zimmer heute keine Kraft, bleibt der Wunsch bei der Rezeption, die ihn ohnehin sieht.
 
 ## 9. Was als Nächstes kommt
 
-1. Wünsche in der Personal-App mit Push und Übersetzung.
-2. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
-3. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+1. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
+2. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

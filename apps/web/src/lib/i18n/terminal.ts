@@ -1938,43 +1938,67 @@ export const terminal = {
     lt: 'Siūlyti savitarną',
     lv: 'Piedāvāt pašapkalpošanos',
     et: 'Paku iseteenindust' },
-  'terminal.self.needsWaiver': {
-    de: 'Am Touchscreen erscheint noch nichts: der Reinigungsverzicht ist im '
-      + 'Reinigungsplan ausgeschaltet.',
-    en: 'Nothing appears on the touchscreen yet: skipping cleaning is switched off '
-      + 'in the cleaning plan.',
-    tr: 'Dokunmatik ekranda henüz bir şey görünmüyor: temizlik iptali temizlik '
-      + 'planında kapalı.',
-    nl: 'Op het touchscreen verschijnt nog niets: afzien van schoonmaak is in het schoonmaakschema uitgeschakeld.',
-    da: 'Der vises endnu intet på touchskærmen: fravalg af rengøring er slået fra i rengøringsplanen.',
-    sv: 'Ingenting visas ännu på pekskärmen: avstående från städning är avstängt i städschemat.',
-    nb: 'Ingenting vises ennå på berøringsskjermen: fravalg av rengjøring er slått av i rengjøringsplanen.',
-    pl: 'Na ekranie dotykowym nic się jeszcze nie pojawia: rezygnacja ze sprzątania jest wyłączona w planie sprzątania.',
-    cs: 'Na dotykové obrazovce se zatím nic nezobrazí: vzdání se úklidu je v plánu úklidu vypnuté.',
-    fr: 'Rien ne s’affiche encore sur l’écran tactile : la renonciation au ménage est désactivée dans le planning de ménage.',
-    it: 'Sul touchscreen non compare ancora nulla: la rinuncia alla pulizia è disattivata nel piano delle pulizie.',
-    es: 'En la pantalla táctil aún no aparece nada: la renuncia a la limpieza está desactivada en el plan de limpieza.',
-    ru: 'На сенсорном экране пока ничего не отображается: отказ от уборки отключён в плане уборки.',
-    uk: 'На сенсорному екрані поки нічого не з’являється: відмову від прибирання вимкнено в плані прибирання.',
-    zh: '触摸屏上暂时不会显示任何内容：清洁计划中已关闭免清洁选项。',
-    ko: '터치스크린에 아직 아무것도 표시되지 않습니다. 청소 계획에서 청소 생략이 꺼져 있습니다.',
-    ar: 'لا يظهر شيء على شاشة اللمس بعد: خيار الاستغناء عن التنظيف معطَّل في خطة التنظيف.',
-    pt: 'Ainda não aparece nada no ecrã tátil: a dispensa de limpeza está desativada no plano de limpeza.',
-    fi: 'Kosketusnäytöllä ei vielä näy mitään: siivouksesta luopuminen on poistettu käytöstä siivoussuunnitelmassa.',
-    is: 'Ekkert birtist enn á snertiskjánum: afþökkun þrifa er óvirk í þrifaáætluninni.',
-    sk: 'Na dotykovej obrazovke sa zatiaľ nič nezobrazí: vynechanie upratovania je v pláne upratovania vypnuté.',
-    sl: 'Na zaslonu na dotik se še nič ne prikaže: odpoved čiščenja je v načrtu čiščenja izklopljena.',
-    hu: 'Az érintőképernyőn még semmi nem jelenik meg: a takarításról való lemondás ki van kapcsolva a takarítási tervben.',
-    ro: 'Pe ecranul tactil nu apare încă nimic: renunțarea la curățenie este dezactivată în planul de curățenie.',
-    bg: 'На сензорния екран все още не се показва нищо: отказът от почистване е изключен в плана за почистване.',
-    hr: 'Na dodirnom zaslonu još se ništa ne prikazuje: odricanje od čišćenja isključeno je u planu čišćenja.',
-    sr: 'Na ekranu na dodir još se ništa ne prikazuje: odricanje od čišćenja je isključeno u planu čišćenja.',
-    mk: 'На екранот на допир сè уште ништо не се прикажува: откажувањето на чистењето е исклучено во планот за чистење.',
-    sq: 'Në ekranin me prekje nuk shfaqet ende asgjë: heqja dorë nga pastrimi është e çaktivizuar në planin e pastrimit.',
-    el: 'Δεν εμφανίζεται ακόμη τίποτα στην οθόνη αφής: η παράλειψη καθαρισμού είναι απενεργοποιημένη στο πρόγραμμα καθαρισμού.',
-    lt: 'Jutikliniame ekrane dar niekas nerodoma: valymo atsisakymas valymo plane išjungtas.',
-    lv: 'Skārienekrānā vēl nekas neparādās: atteikšanās no uzkopšanas uzkopšanas plānā ir izslēgta.',
-    et: 'Puuteekraanil ei kuvata veel midagi: koristusest loobumine on koristusplaanis välja lülitatud.' },
+  'terminal.self.needsOffer': {
+    de: 'Am Touchscreen erscheint noch nichts: der Reinigungsverzicht ist im Reinigungsplan '
+      + 'ausgeschaltet, und im Wunschkatalog der Gästemappe ist kein kostenloser Eintrag '
+      + '„Am Gästeterminal“ angehakt.',
+    en: 'Nothing appears on the touchscreen yet: skipping cleaning is switched off in the '
+      + 'cleaning plan, and no free item in the guest folder\'s request catalogue is ticked '
+      + '"At the guest terminal".',
+    tr: 'Dokunmatik ekranda henüz bir şey görünmüyor: temizlik iptali temizlik planında kapalı '
+      + 've misafir rehberinin istek kataloğunda "Misafir terminalinde" işaretli ücretsiz bir '
+      + 'öğe yok.',
+    nl: 'Op het touchscreen verschijnt nog niets: afzien van schoonmaak is in het schoonmaakschema '
+      + 'uitgeschakeld en in de verzoekencatalogus van de gastenmap is geen gratis item '
+      + '„Op de gastterminal” aangevinkt.',
+    da: 'Der vises endnu intet på touchskærmen: fravalg af rengøring er slået fra i '
+      + 'rengøringsplanen, og i gæstemappens ønskekatalog er intet gratis punkt markeret '
+      + '„På gæsteterminalen“.',
+    sv: 'Ingenting visas ännu på pekskärmen: avstående från städning är avstängt i städschemat, '
+      + 'och i gästmappens önskekatalog är ingen kostnadsfri post markerad ”På gästterminalen”.',
+    nb: 'Ingenting vises ennå på berøringsskjermen: fravalg av rengjøring er slått av i '
+      + 'rengjøringsplanen, og i gjestemappens ønskekatalog er ingen gratis oppføring merket '
+      + '«På gjesteterminalen».',
+    pl: 'Na ekranie dotykowym nic się jeszcze nie pojawia: rezygnacja ze sprzątania jest '
+      + 'wyłączona w planie sprzątania, a w katalogu próśb informatora żadna bezpłatna pozycja '
+      + 'nie jest zaznaczona „Na terminalu dla gości”.',
+    cs: 'Na dotykové obrazovce se zatím nic nezobrazí: vzdání se úklidu je v plánu úklidu '
+      + 'vypnuté a v katalogu požadavků složky pro hosty není zaškrtnutá žádná bezplatná '
+      + 'položka „Na terminálu pro hosty“.',
+    fr: 'Rien ne s’affiche encore sur l’écran tactile : la renonciation au ménage est '
+      + 'désactivée dans le planning de ménage, et aucun article gratuit du catalogue des '
+      + 'demandes du livret d’accueil n’est coché « Au terminal client ».',
+    it: 'Sul touchscreen non compare ancora nulla: la rinuncia alla pulizia è disattivata nel '
+      + 'piano delle pulizie e nel catalogo delle richieste della cartella ospite nessuna voce '
+      + 'gratuita è spuntata «Al terminale ospiti».',
+    es: 'En la pantalla táctil aún no aparece nada: la renuncia a la limpieza está desactivada '
+      + 'en el plan de limpieza y en el catálogo de peticiones de la carpeta del huésped no hay '
+      + 'ningún artículo gratuito marcado «En el terminal de huéspedes».',
+    ru: 'На сенсорном экране пока ничего не отображается: отказ от уборки отключён в плане '
+      + 'уборки, а в каталоге пожеланий папки гостя нет бесплатной позиции с отметкой '
+      + '«На терминале для гостей».',
+    uk: 'На сенсорному екрані поки нічого не відображається: відмову від прибирання вимкнено '
+      + 'в плані прибирання, а в каталозі побажань папки гостя немає безкоштовної позиції з '
+      + 'позначкою «На терміналі для гостей».',
+    zh: '触摸屏上暂时不会显示任何内容：清洁计划中已关闭免清洁选项，且宾客手册的需求目录中没有勾选“在宾客终端”的免费项目。',
+    ko: '터치스크린에 아직 아무것도 표시되지 않습니다. 청소 계획에서 청소 생략이 꺼져 있고, 객실 안내서 요청 목록에 “고객 단말기에서”가 체크된 무료 항목이 없습니다.',
+    ar: 'لا يظهر شيء على شاشة اللمس بعد: خيار الاستغناء عن التنظيف معطَّل في خطة التنظيف، ولا يوجد في كتالوج طلبات دليل النزلاء أي بند مجاني محدَّد عليه «على شاشة النزلاء».',
+    pt: 'Ainda não aparece nada no ecrã tátil: a dispensa de limpeza está desativada no plano de limpeza e, no catálogo de pedidos do guia do hóspede, nenhum item gratuito tem marcado «No terminal para hóspedes».',
+    fi: 'Kosketusnäytöllä ei vielä näy mitään: siivouksesta luopuminen on poistettu käytöstä siivoussuunnitelmassa, eikä asiakaskansion toiveluettelossa ole yhtään maksutonta kohdetta, jossa olisi valittuna ”Asiakaspäätteellä”.',
+    is: 'Ekkert birtist enn á snertiskjánum: afþökkun þrifa er óvirk í þrifaáætluninni og í óskalista gestamöppunnar er ekkert ókeypis atriði merkt „Á gestaskjánum“.',
+    sk: 'Na dotykovej obrazovke sa zatiaľ nič nezobrazí: vynechanie upratovania je v pláne upratovania vypnuté a v katalógu želaní v informáciách pre hostí nie je žiadna bezplatná položka označená „Na termináli pre hostí“.',
+    sl: 'Na zaslonu na dotik se še nič ne prikaže: odpoved čiščenja je v načrtu čiščenja izklopljena, v katalogu želja v mapi za goste pa ni označen noben brezplačen element „Na terminalu za goste“.',
+    hu: 'Az érintőképernyőn még semmi nem jelenik meg: a takarításról való lemondás ki van kapcsolva a takarítási tervben, és a vendégtájékoztató kéréskatalógusában egyetlen ingyenes tételnél sincs bejelölve a „Vendégterminálon” opció.',
+    ro: 'Pe ecranul tactil nu apare încă nimic: renunțarea la curățenie este dezactivată în planul de curățenie, iar în catalogul de solicitări din mapa oaspetelui nu este bifat niciun articol gratuit „La terminalul pentru oaspeți”.',
+    bg: 'На сензорния екран все още не се показва нищо: отказът от почистване е изключен в плана за почистване, а в каталога с желания в папката за гости няма безплатен артикул с отметка „На терминала за гости“.',
+    hr: 'Na dodirnom zaslonu još se ništa ne prikazuje: odricanje od čišćenja isključeno je u planu čišćenja, a u katalogu želja u mapi za goste nije označena nijedna besplatna stavka „Na terminalu za goste”.',
+    sr: 'Na ekranu na dodir još se ništa ne prikazuje: odricanje od čišćenja je isključeno u planu čišćenja, a u katalogu želja u fascikli za goste nije označena nijedna besplatna stavka „Na terminalu za goste“.',
+    mk: 'На екранот на допир сè уште ништо не се прикажува: откажувањето на чистењето е исклучено во планот за чистење, а во каталогот на желби во папката за гости нема бесплатна ставка означена „На терминалот за гости“.',
+    sq: 'Në ekranin me prekje nuk shfaqet ende asgjë: heqja dorë nga pastrimi është e çaktivizuar në planin e pastrimit dhe në katalogun e dëshirave të dosjes së mysafirëve nuk ka asnjë artikull falas të shënuar „Në terminalin e mysafirëve“.',
+    el: 'Δεν εμφανίζεται ακόμη τίποτα στην οθόνη αφής: η παράλειψη καθαρισμού είναι απενεργοποιημένη στο πρόγραμμα καθαρισμού και στον κατάλογο αιτημάτων του οδηγού επισκεπτών δεν έχει επιλεγεί κανένα δωρεάν στοιχείο «Στο τερματικό επισκεπτών».',
+    lt: 'Jutikliniame ekrane dar niekas nerodoma: valymo atsisakymas valymo plane išjungtas, o svečių aplanko pageidavimų kataloge nė vienas nemokamas punktas nepažymėtas „Svečių terminale“.',
+    lv: 'Skārienekrānā vēl nekas neparādās: atteikšanās no uzkopšanas uzkopšanas plānā ir izslēgta, un viesu mapes vēlmju katalogā nav atzīmēta neviena bezmaksas pozīcija “Viesu terminālī”.',
+    et: 'Puuteekraanil ei kuvata veel midagi: koristusest loobumine on koristusplaanis välja lülitatud ja külaliste kausta soovikataloogis pole ühtegi tasuta punkti, mille juures oleks märgitud „Külaliste terminalis“.' },
   'terminal.selfServiceActive': {
     de: 'Ein Gast bedient sich gerade selbst. Ein Auftrag beendet das.',
     en: 'A guest is using self-service right now. Sending a job ends it.',
@@ -2663,6 +2687,40 @@ export const terminal = {
     lt: 'Atsisakyti valymo',
     lv: 'Atteikties no uzkopšanas',
     et: 'Loobu toa koristusest' },
+  'kiosk.self.buttonHintRequests': {
+    de: 'Kopfkissen und mehr',
+    en: 'Pillows and more',
+    tr: 'Yastık ve daha fazlası',
+    nl: 'Hoofdkussens en meer',
+    da: 'Hovedpuder og mere',
+    sv: 'Kuddar och mer',
+    nb: 'Hodeputer og mer',
+    pl: 'Poduszki i nie tylko',
+    cs: 'Polštáře a další',
+    fr: 'Oreillers et plus',
+    it: 'Cuscini e altro',
+    es: 'Almohadas y más',
+    ru: 'Подушки и не только',
+    uk: 'Подушки та інше',
+    zh: '枕头及其他',
+    ko: '베개 등',
+    ar: 'وسائد والمزيد',
+    pt: 'Almofadas e mais',
+    fi: 'Tyynyt ja muuta',
+    is: 'Koddar og fleira',
+    sk: 'Vankúše a ďalšie',
+    sl: 'Blazine in drugo',
+    hu: 'Párnák és egyebek',
+    ro: 'Perne și altele',
+    bg: 'Възглавници и още',
+    hr: 'Jastuci i više',
+    sr: 'Jastuci i još toga',
+    mk: 'Перници и друго',
+    sq: 'Jastëkë dhe më shumë',
+    el: 'Μαξιλάρια και άλλα',
+    lt: 'Pagalvės ir kt.',
+    lv: 'Spilveni un citas lietas',
+    et: 'Padjad ja muu' },
   'kiosk.self.chooseRoom': {
     de: 'Bitte wählen Sie Ihre Zimmernummer.',
     en: 'Please select your room number.',

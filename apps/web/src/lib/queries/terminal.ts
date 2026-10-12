@@ -158,7 +158,11 @@ export function useTerminalWachzeit(propertyId: number) {
 }
 
 /** Selbstbedienung am Touchscreen (Migration 0150), ein Schalter je Haus. */
-export interface Selbstbedienung { enabled: boolean; cleaningWaiverEnabled: boolean }
+export interface Selbstbedienung {
+  enabled: boolean; cleaningWaiverEnabled: boolean
+  /** Kostenlose Eintraege im Wunschkatalog mit Haekchen "Am Gaesteterminal". */
+  terminalItems: number
+}
 
 export const useSelbstbedienung = (propertyId: number) =>
   useQuery<Selbstbedienung>({
@@ -171,7 +175,11 @@ export function useSetSelbstbedienung(propertyId: number) {
   return useMutation({
     mutationFn: (enabled: boolean) => api.put<Selbstbedienung>(
       `/v1/properties/${propertyId}/terminal-self-service`, { enabled }),
-    onSuccess: d => { qc.setQueryData(['terminal-self-service', propertyId], d) }
+    onSuccess: d => {
+      qc.setQueryData(['terminal-self-service', propertyId], d)
+      // Das erste Einschalten legt die Kopfkissen in den Wunschkatalog.
+      void qc.invalidateQueries({ queryKey: ['guest-request-items', propertyId] })
+    }
   })
 }
 

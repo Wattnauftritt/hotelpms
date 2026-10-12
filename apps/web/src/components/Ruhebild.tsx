@@ -28,7 +28,7 @@ const bildAdresse = (ref: string): string => `/v1/terminal/images/${ref}`
  * nichts ausser der Uhrzeit; Folien und Nummer kommen von aussen, und ein
  * Auftrag ersetzt sie sofort.
  */
-export function Ruhebild({ folien, nr, haus, kopf, aktion }: {
+export function Ruhebild({ folien, nr, haus, kopf, aktion, wlan }: {
   folien: Folie[]
   /** Die laufende Nummer, ueber die Liste hinaus gezaehlt. */
   nr: number
@@ -37,6 +37,8 @@ export function Ruhebild({ folien, nr, haus, kopf, aktion }: {
   kopf: ReactNode
   /** Was der Gast selbst antippen kann (Selbstbedienung), unten mittig. */
   aktion?: ReactNode
+  /** Die WLAN-Kachel, unten neben dem Knopf. */
+  wlan?: ReactNode
 }): JSX.Element {
   const t = useT()
   const n = folien.length
@@ -100,8 +102,10 @@ export function Ruhebild({ folien, nr, haus, kopf, aktion }: {
         {/* Ueber den Punkten und nicht ueber dem Text: eine Folie soll der
             Knopf nicht verdecken, und auch ohne Folien steht er an derselben
             Stelle -- die Begruessung liegt mittig darueber. */}
-        {aktion !== undefined && (
-          <div className="relative flex justify-center px-10 pb-6">{aktion}</div>
+        {(aktion !== undefined || wlan !== undefined) && (
+          <div className="relative flex flex-wrap items-end justify-center gap-8 px-10 pb-6">
+            {aktion}{wlan}
+          </div>
         )}
 
         {n > 1 && (

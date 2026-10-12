@@ -257,4 +257,92 @@ describe('Selbstbedienung am Gaesteterminal', () => {
     const r = await app.inject({ method: 'GET', url: '/v1/terminal/self/rooms', headers: chef })
     expect([401, 403]).toContain(r.statusCode)
   })
+
+  it('bestellt Kopfkissen aus dem Katalog: nur nach "Ja", nur kostenlos, Quelle terminal',
+    async () => {
+      await einschalten()
+      const a = await aufenthalt(zimmer[0]!, 'Petersen', '2026-09-30', '2026-10-04')
+      // Ein Extra mit Preis, am Terminal angehakt: bleibt trotzdem der Mappe.
+      const art = await owner.query<{ id: number }>(
+        `INSERT INTO product (property_id, code, name, price_cent, charge_mode)
+         VALUES ($1, 'SEKT', 'Sekt', 2900, 'once') RETURNING id`, [fx.propertyId])
+      const sekt = await owner.query<{ public_ref: string }>(
+        `INSERT INTO guest_request_item (property_id, name, product_id, on_terminal)
+         VALUES ($1, '{"de":"Sekt"}', $2, true) RETURNING public_ref`,
+        [fx.propertyId, art.rows[0]!.id])
+
+      const s = (await antippen(zimmer[0]!)).json<{ sessionRef: string }>().sessionRef
+      const vorJa = await app.inject({ method: 'POST',
+        url: `/v1/terminal/self/sessions/${s}/requests`, headers: geraet,
+        payload: { itemRef: sekt.rows[0]!.public_ref, qty: 1 } })
+      expect(vorJa.statusCode).toBe(409)
+
+      const j = await antworten(s, true)
+      const items = j.json<{ requests: { items: Array<{ itemRef: string; maxQty: number
+                                                       name: Record<string, string> }> } }>()
+        .requests.items
+      // Der Startbestand vom ersten Einschalten, in allen Sprachen.
+      expect(items.map(i => i.name.de)).toEqual(['Zusätzliches Kopfkissen',
+                                                  'Kopfkissen ohne Federn'])
+      expect(items.every(i => i.maxQty === 2 && Object.keys(i.name).length === 14)).toBe(true)
+
+      const bestellen = (itemRef: string, qty: number) => app.inject({ method: 'POST',
+        url: `/v1/terminal/self/sessions/${s}/requests`, headers: geraet,
+        payload: { itemRef, qty } })
+      const teuer = await bestellen(sekt.rows[0]!.public_ref, 1)
+      expect(teuer.statusCode).toBe(422)
+      expect(teuer.body).toContain('guestRequest.itemUnavailable')
+      const zuviel = await bestellen(items[1]!.itemRef, 3)
+      expect(zuviel.statusCode).toBe(422)
+      expect(zuviel.body).toContain('guestRequest.qty')
+      const ok = await bestellen(items[1]!.itemRef, 2)
+      expect(ok.statusCode, ok.body).toBe(200)
+      expect(ok.json<{ mine: Array<{ qty: number; status: string }> }>().mine)
+        .toMatchObject([{ qty: 2, status: 'open' }])
+      const w = await owner.query(
+        `SELECT reservation_id::int, resource_id::int, source, wanted_for FROM guest_request`)
+      expect(w.rows).toEqual([{ reservation_id: a.id, resource_id: zimmer[0],
+                                source: 'terminal', wanted_for: null }])
+
+      // Nach dem Ende der Sitzung nimmt die Route nichts mehr an.
+      await app.inject({ method: 'POST', url: `/v1/terminal/self/sessions/${s}/end`,
+        headers: geraet, payload: { reason: 'done' } })
+      expect((await bestellen(items[0]!.itemRef, 1)).statusCode).toBe(409)
+    })
+
+  it('bietet sich ohne Verzicht an, wenn der Katalog etwas hat, und belegt ihn nur einmal vor',
+    async () => {
+      await aufenthalt(zimmer[0]!, 'Petersen', '2026-09-30', '2026-10-04')
+      const schalten = (enabled: boolean) => app.inject({ method: 'PUT',
+        url: `/v1/properties/${fx.propertyId}/terminal-self-service`, headers: chef,
+        payload: { enabled } })
+      const r = await schalten(true)
+      expect(r.json()).toEqual({ enabled: true, cleaningWaiverEnabled: false, terminalItems: 2 })
+      const ruhe = async () => (await app.inject({ method: 'GET', url: '/v1/terminal/idle',
+        headers: geraet })).json<{ selfService: boolean
+                                   selfServiceOffers: unknown; wifi: unknown }>()
+      expect(await ruhe()).toMatchObject({ selfService: true,
+        selfServiceOffers: { cleaning: false, requests: true }, wifi: null })
+      expect(await raeume()).toHaveLength(1)
+
+      // Aus und wieder an: kein zweiter Satz Kissen.
+      await schalten(false)
+      await schalten(true)
+      expect((await owner.query(`SELECT count(*)::int AS n FROM guest_request_item`)).rows)
+        .toEqual([{ n: 2 }])
+
+      // Ohne Eintrag am Terminal und ohne Verzicht gibt es nichts zu bedienen.
+      await owner.query(`UPDATE guest_request_item SET on_terminal = false`)
+      expect(await ruhe()).toMatchObject({ selfService: false, selfServiceOffers: null })
+      expect(await raeume()).toEqual([])
+    })
+
+  it('zeigt im Ruhezustand das WLAN des Hauses, auch ohne Selbstbedienung', async () => {
+    await owner.query(
+      `INSERT INTO guest_folder_setting (property_id, wifi_ssid, wifi_password)
+       VALUES ($1, 'Seerobbe Gast', 'meerblick123')`, [fx.propertyId])
+    const r = await app.inject({ method: 'GET', url: '/v1/terminal/idle', headers: geraet })
+    expect(r.json()).toMatchObject({ selfService: false, wifi: { ssid: 'Seerobbe Gast',
+      password: 'meerblick123', security: 'WPA', hidden: false } })
+  })
 })
