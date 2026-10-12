@@ -6,10 +6,11 @@ import { meldePush } from './push.js'
 /**
  * Reinigungsverzicht des Gastes (Aufgabe 18, Baustein 10; Migration 0115).
  *
- * An einer Stelle fuer beide Tueren -- die Gastseite hinter dem
- * Check-in-Link und das Seitenfenster der Rezeption. Zwei Fassungen der
- * Regel "welcher Tag darf noch" liefen auseinander, und dann setzt der Gast
- * einen Tag, den die Rezeption nicht mehr setzen duerfte, oder umgekehrt.
+ * An einer Stelle fuer alle Tueren -- die Gastseite hinter dem
+ * Check-in-Link, das Seitenfenster der Rezeption und seit 0148 die
+ * freigeschaltete Gaestemappe. Zwei Fassungen der Regel "welcher Tag darf
+ * noch" liefen auseinander, und dann setzt der Gast einen Tag, den die
+ * Rezeption nicht mehr setzen duerfte, oder umgekehrt.
  *
  * **Welche Tage.** Die Bleibetage (Anreise < Tag < Abreise) ab dem offenen
  * Geschaeftstag. Der Anreisetag hat keine Zwischenreinigung, der
@@ -86,7 +87,8 @@ export async function verzichtStand(
 export async function setzeVerzicht(
   client: PoolClient,
   a: { reservationId: number; propertyId: number; businessDate: string
-       date: string; waived: boolean; source: 'guest' | 'reception'; userId: number | null }
+       date: string; waived: boolean; source: 'guest' | 'reception' | 'folder'
+       userId: number | null }
 ): Promise<void> {
   const e = await verzichtEinstellung(client, a.propertyId)
   if (!e.enabled) throw Errors.unprocessable('cleaningWaiver.disabled')

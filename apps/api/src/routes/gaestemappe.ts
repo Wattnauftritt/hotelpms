@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
-import { folderLink, type GuestFolderView, type GuestFolderSettings,
+import { folderLink, type GuestFolderStay, type GuestFolderView, type GuestFolderSettings,
          type GuestFolderCards } from '@hotelpms/contracts'
 import { FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
@@ -10,7 +10,9 @@ import { loadConfig } from '../platform/config.js'
 import type { Principal } from '../platform/context.js'
 import { mappeTx, wlan, wlanAusRumpf, aufenthaltDerSitzung, freischalten,
          freischaltungLoeschen, eigeneFreischaltungAufheben,
-         mappeZumLink, AUFENTHALT_NEU } from '../platform/gaestemappe.js'
+         mappeZumLink, aufenthaltAnsicht, AUFENTHALT_NEU } from '../platform/gaestemappe.js'
+import { setzeVerzicht } from '../platform/reinigungsverzicht.js'
+import { verzichtAusRumpf } from './checkin.js'
 import { rechtImHaus } from './depositRequests.js'
 import { checkinTx } from '../platform/checkin.js'
 import { folderNameMatches, folderPostalMatches, FOLDER_UNLOCK_MAX_FAILURES,
@@ -157,7 +159,7 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
         return {
           propertyName: h.property_name, roomName: h.room_name,
           checkinTime: h.checkin_time, checkoutTime: h.checkout_time,
-          wifi: wlan(h), stay: a === null ? null : { departure: a.departure },
+          wifi: wlan(h), stay: a === null ? null : await aufenthaltAnsicht(client, k, a),
           pages: seiten.rows
         }
       })
@@ -223,7 +225,7 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
        * zurueck -- deshalb kommt das Ergebnis heraus und der Fehler danach.
        */
       const ergebnis = await mappeTx(req, async (client, k): Promise<
-        { art: 'gesperrt' } | { art: 'falsch' } | { art: 'ok'; departure: string }> => {
+        { art: 'gesperrt' } | { art: 'falsch' } | { art: 'ok'; stay: GuestFolderStay }> => {
         const sperre = await client.query<{ failures: number }>(
           `SELECT failures FROM guest_folder_unlock_failure
             WHERE resource_id = $1
@@ -275,11 +277,41 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
           `DELETE FROM guest_folder_unlock_failure WHERE resource_id = $1`, [k.resourceId])
         const s = await freischalten(client, reply,
           { propertyId: k.propertyId, reservationId: treffer.id, channel: 'room' })
-        return { art: 'ok', departure: s.departure }
+        return { art: 'ok',
+                 stay: await aufenthaltAnsicht(client, k,
+                   { reservationId: treffer.id, departure: s.departure }) }
       })
       if (ergebnis.art === 'gesperrt') throw tooManyRequests(FOLDER_UNLOCK_WINDOW_SECONDS)
       if (ergebnis.art === 'falsch') throw Errors.unprocessable('folder.unlockFailed')
-      return { stay: { departure: ergebnis.departure } }
+      return { stay: ergebnis.stay }
+    }
+  })
+
+  /**
+   * Auf die Zwischenreinigung eines Tages verzichten oder es zuruecknehmen,
+   * aus der Mappe im Zimmer (0148). Nur mit Freischaltung: die Karte allein
+   * hat jeder, der je im Zimmer war, und ein frueherer Gast soll dem
+   * jetzigen nicht die Reinigung abbestellen. Welche Tage gehen und bis
+   * wann, entscheidet `setzeVerzicht` wie fuer die anderen beiden Tueren.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/cleaning-waiver',
+    // Oeffentlich: Zimmer-Referenz und Freischaltung im Cookie sind der
+    // Ausweis; ohne Freischaltung 403 (0147, 0148).
+    permission: null,
+    summary: 'Gaestemappe: auf die Zwischenreinigung eines Tages verzichten',
+    handler: async (req, reply) => {
+      nichtSpeichern(reply)
+      const { date, waived } = verzichtAusRumpf(req.body)
+      return mappeTx(req, async (client, k) => {
+        const a = await aufenthaltDerSitzung(client, req, k)
+        if (a === null) throw Errors.forbidden('folder.unlockRequired')
+        await setzeVerzicht(client, {
+          reservationId: a.reservationId, propertyId: k.propertyId,
+          businessDate: k.businessDate, date, waived, source: 'folder', userId: null })
+        return (await aufenthaltAnsicht(client, k, a)).cleaningWaiver
+      })
     }
   })
 

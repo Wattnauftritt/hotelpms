@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { FOLDER_ROOM_HEADER, SPRACHNAMEN, folderRefAusFragment, wifiQrText,
-         type FolderLocale, type FolderWifi, type GuestFolderView } from '@hotelpms/contracts'
+         type CleaningWaiverView, type FolderLocale, type FolderWifi,
+         type GuestFolderView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useQr } from '../lib/qr.js'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
+import { VerzichtListe } from '../components/VerzichtListe.tsx'
 import { FOLDER_LOCALES, MappeSprache, startSprache, useMappeT,
          type MappeTextKey } from '../gast/mappeTexte.js'
 
@@ -19,7 +21,8 @@ import { FOLDER_LOCALES, MappeSprache, startSprache, useMappeT,
  * Gezeigt wird, was ohnehin auf der Karte im Zimmer steht oder dort
  * ausliegen koennte: WLAN, Zeiten, die Seiten des Hauses. Den eigenen
  * Aufenthalt sieht erst, wer mit Nachname oder PLZ freigeschaltet hat
- * (0147), und auch dann nur den Abreisetag. Die Freischaltung haelt ein
+ * (0147), und auch dann nur den Abreisetag und die Tage, an denen er auf die
+ * Reinigung verzichten kann (0148). Die Freischaltung haelt ein
  * Cookie, das die Seite nie zu sehen bekommt (`httpOnly`).
  */
 
@@ -118,6 +121,9 @@ function Aufenthalt({ view, roomRef, locale, onChange }: {
       <section className={KARTE} aria-labelledby="mappe-aufenthalt">
         <h2 id="mappe-aufenthalt" className="font-semibold">{t('stay.title')}</h2>
         <p>{t('stay.departure', { date: kalendertag(view.stay.departure, locale) })}</p>
+        {view.stay.cleaningWaiver !== null && (
+          <Verzicht start={view.stay.cleaningWaiver} roomRef={roomRef} locale={locale} />
+        )}
         <button type="button" disabled={busy} onClick={() => senden('/v1/mappe/lock', {})}
                 className="text-sm text-neutral-600 underline disabled:opacity-40">
           {t('stay.lock')}
@@ -148,6 +154,54 @@ function Aufenthalt({ view, roomRef, locale, onChange }: {
       {fehler !== null && <p role="alert" className="text-sm text-red-800">{t(fehler)}</p>}
     </section>
   )
+}
+
+/**
+ * Auf die Zwischenreinigung verzichten (0148), mit derselben Liste wie unter
+ * dem Meldeschein. Steht im Abschnitt des Aufenthalts und nur dort: ohne
+ * Freischaltung gibt es nichts zu verzichten, und die Karte allein hat
+ * jeder, der je im Zimmer war.
+ *
+ * Eigener Zustand: die Antwort ist der neue Stand der Tage, die Seite muss
+ * dafuer nicht neu laden.
+ */
+function Verzicht({ start, roomRef, locale }: {
+  start: CleaningWaiverView; roomRef: string; locale: FolderLocale
+}): JSX.Element | null {
+  const t = useMappeT()
+  const [view, setView] = useState<CleaningWaiverView | null>(start)
+  const [busy, setBusy] = useState(false)
+  const [fehler, setFehler] = useState<MappeTextKey | null>(null)
+  if (view === null) return null
+  const setzen = (date: string, waived: boolean): void => {
+    setBusy(true); setFehler(null)
+    api.post<CleaningWaiverView | null>('/v1/mappe/cleaning-waiver', { date, waived },
+      { [FOLDER_ROOM_HEADER]: roomRef })
+      .then(setView)
+      .catch((e: unknown) => setFehler(e instanceof ApiError && e.status === 409
+        ? 'waiver.tooLate' : 'offline'))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="space-y-2 border-t border-neutral-200 pt-3">
+      <h3 className="font-medium">{t('waiver.title')}</h3>
+      <p className="text-sm text-neutral-700">
+        {t('waiver.text')}{view.waterGift && <> {t('waiver.water')}</>}
+      </p>
+      <p className="text-sm font-medium">{t('waiver.skip')}:</p>
+      <VerzichtListe view={view} onSet={setzen} busy={busy} gross
+                     tag={d => kurzerTag(d, locale)} erledigt={t('waiver.locked')} />
+      {fehler !== null && <p role="alert" className="text-sm text-red-800">{t(fehler)}</p>}
+    </div>
+  )
+}
+
+/** "Di., 14.10." in der Sprache der Mappe; ueber UTC wie `kalendertag`. */
+function kurzerTag(iso: string, locale: FolderLocale): string {
+  const [j, m, d] = iso.split('-').map(Number)
+  return new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'numeric',
+                                           timeZone: 'UTC' })
+    .format(new Date(Date.UTC(j!, m! - 1, d!)))
 }
 
 /**
