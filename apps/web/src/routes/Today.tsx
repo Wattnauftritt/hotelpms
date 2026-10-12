@@ -4,6 +4,7 @@ import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
+import { VerzichtMarke } from '../components/Reinigungsverzicht.tsx'
 
 /**
  * Das Tagesgeschäft: Anreisen, Abreisen, Hausliste.
@@ -53,6 +54,7 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                     🕒 {r.expectedArrival}
                   </span>
                 )}
+                <VerzichtMarke dates={r.waivedDates} heute={d.date} />
                 {!r.registered && (
                   <span title={t('today.registrationMissing')}
                         className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-800">
@@ -126,7 +128,8 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
             <Zeile key={r.reservationRef} name={namen(r)} raum={r.roomCode}
                    kategorie={r.categoryCode}
                    onFolio={r.folioRef === null ? undefined : () => onFolio(r.folioRef!)}>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <VerzichtMarke dates={r.waivedDates} heute={d.date} />
                 {/* Der Nachtlauf checkt die spaete Anreise ueber den
                     Schluesselsafe ein (0088); am Morgen steht sie nur noch
                     hier, und der Meldeschein fehlt. */}

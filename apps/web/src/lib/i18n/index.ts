@@ -240,6 +240,16 @@ export function formatDate(iso: string, locale: Locale): string {
   return DATUMSFORM[locale] === 'tag-zuerst' ? `${d}.${m}.${y}` : `${y}-${m}-${d}`
 }
 
+/**
+ * Tag und Monat ohne Jahr, fuer eine Reihe von Tagen im selben Aufenthalt.
+ * In ISO bleibt das Jahr stehen: `10-13` liest niemand sicher als Datum.
+ */
+export function formatDayMonth(iso: string, locale: Locale): string {
+  if (DATUMSFORM[locale] !== 'tag-zuerst') return formatDate(iso, locale)
+  const [, m, d] = iso.split('-')
+  return `${d}.${m}.`
+}
+
 const wochentage = new Map<Locale, Intl.DateTimeFormat>()
 
 /**

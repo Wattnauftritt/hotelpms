@@ -8,6 +8,7 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
 import { useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
 import { Dialog, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { AusweisFeld } from './Guests.tsx'
+import { VerzichtMarke } from '../components/Reinigungsverzicht.tsx'
 
 /**
  * Meldescheine: alle Scheine eines Zeitraums nach Anreise (Sven, 04.10.2026).
@@ -149,6 +150,7 @@ export function Meldescheine({ propertyId, permissions }: {
                           {r.taxExemption !== null && (
                             <span>{t('reg.taxExemption', { grund: r.taxExemption })}</span>
                           )}
+                          <VerzichtMarke dates={r.waivedDates} />
                         </div>
                         {r.mitreisende.length > 0 && (
                           <div className="mt-1 text-xs text-neutral-600">
@@ -210,6 +212,10 @@ function MeldescheinAnsicht({ id, darfIdentitaet, onClose }: {
                   {datum(d.completedAt.slice(0, 10))}
                 </Angabe>
               </section>
+
+              {d.waivedDates.length > 0 && (
+                <div><VerzichtMarke dates={d.waivedDates} /></div>
+              )}
 
               {d.persons.map(p => (
                 <Person key={p.guestRef} p={p} darfIdentitaet={darfIdentitaet} />

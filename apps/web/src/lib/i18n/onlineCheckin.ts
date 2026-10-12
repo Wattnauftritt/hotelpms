@@ -345,6 +345,16 @@ export const onlineCheckin = {
     de: 'Dafür gibt es eine Flasche Wasser.',
     en: 'A bottle of water is given in return.',
     tr: 'Karşılığında bir şişe su verilir.' },
+  // Nur lesend, in Hausliste und Meldescheinen: die Tage, fuer die der Gast
+  // die Reinigung abgewaehlt hat.
+  'waiver.days': {
+    de: 'Keine Reinigung',
+    en: 'No cleaning',
+    tr: 'Temizlik yok' },
+  'waiver.daysHint': {
+    de: 'Der Gast hat für diese Tage auf die Zwischenreinigung verzichtet.',
+    en: 'The guest skipped stay-over cleaning on these days.',
+    tr: 'Misafir bu günlerde ara temizlikten vazgeçti.' },
   'gastCheckin.done.close': {
     de: 'Fertig',
     en: 'Done',

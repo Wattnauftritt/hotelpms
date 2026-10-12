@@ -300,12 +300,17 @@ export const DailySheet = Type.Object({
     DailyRow, Type.Object({
       registered: Type.Boolean(),
       /** Voraussichtliche Ankunftszeit aus dem Meldeformular, Freitext. */
-      expectedArrival: Type.Union([Type.String(), Type.Null()])
+      expectedArrival: Type.Union([Type.String(), Type.Null()]),
+      /** Tage ohne Reinigung auf Wunsch des Gastes (0115), aufsteigend. */
+      waivedDates: Type.Array(Type.String())
     })])),
   departures: Type.Array(Type.Composite([
     DailyRow, Type.Object({ balanceCent: Type.Union([Cent, Type.Null()]) })])),
   inHouse: Type.Array(Type.Composite([
-    DailyRow, Type.Object({ registered: Type.Boolean() })]))
+    DailyRow, Type.Object({
+      registered: Type.Boolean(),
+      waivedDates: Type.Array(Type.String())
+    })]))
 })
 export type DailySheet = Static<typeof DailySheet>
 
