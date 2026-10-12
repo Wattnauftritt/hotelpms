@@ -33,6 +33,7 @@ import { reinigungsplan } from './reinigungsplan.js'
 import { kontrolle } from './kontrolle.js'
 import { kueche } from './kueche.js'
 import { arbeitszeit } from './arbeitszeit.js'
+import { gaestemappe } from './gaestemappe.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -154,7 +155,8 @@ const texts = {
   ...reinigungsplan,
   ...kontrolle,
   ...kueche,
-  ...arbeitszeit
+  ...arbeitszeit,
+  ...gaestemappe
 } as const satisfies Record<string, LocalizedText>
 
 export type TextKey = keyof typeof texts

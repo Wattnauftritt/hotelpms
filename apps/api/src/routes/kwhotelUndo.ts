@@ -79,8 +79,12 @@ export const VERWEISE_ZIMMER = [
   // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
   ['cleaning_norm', 'resource_id']
 ] as const
-/** Zustand des Zimmers, der mit ihm geht. */
-export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task'] as const
+/**
+ * Zustand des Zimmers, der mit ihm geht. Die Referenz der Gaestemappe (0143)
+ * gehoert dazu: ohne das Zimmer zeigt eine gedruckte Karte ohnehin nichts.
+ */
+export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task',
+                               'guest_folder_room'] as const
 
 export const VERWEISE_GRUPPE = [
   ['resource', 'category_id'], ['reservation', 'category_id'], ['rate_plan', 'category_id'],

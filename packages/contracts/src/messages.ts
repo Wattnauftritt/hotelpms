@@ -1629,6 +1629,26 @@ const M = {
     de: 'Nicht mehr gueltig',
     en: 'No longer valid',
     tr: 'Artık geçerli değil' },
+  'res.guestFolder': {
+    de: 'Gaestemappe',
+    en: 'Guest folder',
+    tr: 'Misafir dosyası' },
+  'folder.off': {
+    de: 'Dieses Haus bietet die Gaestemappe gerade nicht an.',
+    en: 'This hotel does not offer the guest folder at the moment.',
+    tr: 'Bu otel şu anda misafir dosyası sunmuyor.' },
+  'folder.closed': {
+    de: 'Die Gaestemappe dieses Zimmers ist nicht verfuegbar. Bitte wenden Sie sich an die Rezeption.',
+    en: 'The guest folder of this room is not available. Please contact the front desk.',
+    tr: 'Bu odanın misafir dosyası kullanılamıyor. Lütfen resepsiyona başvurun.' },
+  'folder.wifiSsid': {
+    de: 'Der Netzname darf hoechstens 32 Byte lang sein.',
+    en: 'The network name may be at most 32 bytes long.',
+    tr: 'Ağ adı en fazla 32 bayt olabilir.' },
+  'folder.wifiPassword': {
+    de: 'Das Kennwort passt nicht zur Verschluesselung: WPA braucht 8 bis 63 Zeichen, WEP 5 bis 26, ein offenes Netz keins.',
+    en: 'The password does not match the security type: WPA needs 8 to 63 characters, WEP 5 to 26, an open network none.',
+    tr: 'Şifre güvenlik türüne uymuyor: WPA 8 ila 63 karakter, WEP 5 ila 26 karakter gerektirir, açık ağ şifre gerektirmez.' },
   'res.checkinLink': {
     de: 'Check-in-Link',
     en: 'Check-in link',
