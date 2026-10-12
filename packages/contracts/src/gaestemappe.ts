@@ -19,6 +19,13 @@ export const FOLDER_ROOM_HEADER = 'x-staygrid-folder-room'
 export const FOLDER_PATH = '/mappe'
 
 /**
+ * Das Cookie der Freischaltung (0147). Nur an die Routen der Mappe
+ * (`Path=/v1/mappe`), nie an die Anwendung: ein Telefon, das ein Gast
+ * weitergibt, soll damit nichts anderes erreichen.
+ */
+export const FOLDER_SESSION_COOKIE = 'hp_mappe'
+
+/**
  * Die Sprachen der Mappe (Sven, 11.10.2026): dieselben wie die der
  * Gastpost, weil es dieselben Gaeste sind -- seit dem 12.10.2026 alle
  * vierzehn. Eine eigene Liste neben `EMAIL_LANGUAGES`, weil die Mappe ihren
@@ -90,6 +97,12 @@ export const GuestFolderView = Type.Object({
   checkinTime: Type.String(),
   checkoutTime: Type.String(),
   wifi: Type.Union([FolderWifi, Type.Null()]),
+  /**
+   * Der eigene Aufenthalt, sobald dieses Telefon freigeschaltet ist (0147);
+   * sonst `null`. Kein Name, keine Adresse, kein Betrag: wer das Telefon
+   * weitergibt, gibt nur den Abreisetag mit.
+   */
+  stay: Type.Union([Type.Object({ departure: Type.String() }), Type.Null()]),
   pages: Type.Array(Type.Object({
     contentRef: Type.String(),
     title: Type.String(),
@@ -166,3 +179,15 @@ export const FolderPageTextSet = Type.Object({
   body: Type.String({ maxLength: 10000 })
 }, { additionalProperties: false })
 export type FolderPageTextSet = Static<typeof FolderPageTextSet>
+
+/** Freischalten: Nachname oder PLZ, in einem Feld (0147). */
+export const FolderUnlock = Type.Object({
+  value: Type.String({ minLength: 1, maxLength: 100 })
+}, { additionalProperties: false })
+export type FolderUnlock = Static<typeof FolderUnlock>
+
+/** Die Freischaltungen einer Reservierung, fuer das Seitenfenster der Rezeption. */
+export const GuestFolderStayStatus = Type.Object({
+  activeSessions: Type.Integer()
+})
+export type GuestFolderStayStatus = Static<typeof GuestFolderStayStatus>

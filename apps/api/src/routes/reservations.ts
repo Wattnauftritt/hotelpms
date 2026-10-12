@@ -1731,9 +1731,21 @@ export function reservationRoutes(app: FastifyInstance): void {
           req.principal as Principal)
         // Reinigungsverzicht (0115), ebenfalls im selben Aufruf.
         const hausId = Number(kopf._propertyId)
+        const geschaeftstag = await tagOderOffen(client, hausId, undefined)
         const cleaningWaiver = await verzichtStand(client, kopf.id as number, hausId,
-          await tagOderOffen(client, hausId, undefined),
+          geschaeftstag,
           can(req.principal as Principal, 'reservation:checkin', hausId))
+
+        // Freischaltungen der Gaestemappe (0147), ebenfalls im selben Aufruf.
+        const mappe = await client.query<{ n: number }>(
+          `SELECT (SELECT count(*) FROM guest_folder_session s
+                    WHERE s.reservation_id = $1 AND s.revoked_at IS NULL
+                      AND s.expires_on >= $3::date)::int AS n
+             FROM guest_folder_setting g
+            WHERE g.property_id = $2 AND g.enabled`,
+          [kopf.id, hausId, geschaeftstag])
+        const guestFolder = mappe.rows[0] === undefined ? null
+          : { activeSessions: mappe.rows[0].n }
 
         // Die laufende id bleibt drinnen; nach aussen geht die oeffentliche
         // Referenz (C1, Dokument 13).
@@ -1745,6 +1757,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           occupants: mitreisende.rows,
           onlineCheckin,
           cleaningWaiver,
+          guestFolder,
           totalCent: naechte.rows.reduce(
             (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
         }

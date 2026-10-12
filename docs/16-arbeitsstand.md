@@ -1107,7 +1107,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Nachtrag: Bad am Gästehaus, Kalender nach dem Speichern** (Sven, 08.10.2026). Ein Reinigungsbereich ist nicht mehr jeden Tag fällig, sondern nur, wenn im selben Haus (trägt der Bereich ein Gebäude: im selben Gebäude) letzte Nacht ein Zimmer belegt war oder eines auf schmutzig steht — „wenn das Gästehaus leer ist, ist das Bad natürlich sauber“. Und eine offene, gespeicherte Aufgabe folgt dem Kalender: reist ein Gast früher ab oder verlängert, steht das Zimmer im Plan sofort mit der neuen Art und deren Sollminuten, markiert mit „!“, und Speichern schreibt es an die Aufgabe und schickt es aufs Telefon. Erledigte Aufgaben und Zeilen aus der alten App bleiben, wie sie sind. Tests in `reinigungsplan.test.ts` und `personalHaeuser.test.ts`.
 
-### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 3 fertig**
+### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 4 fertig**
 
 Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des Gastes die Mappe des Hauses; später kann der Gast darüber auf die Reinigung verzichten, Extras bestellen, eine späte Abreise anfragen. Plan mit allen Entscheidungen in [`35-gaestemappe.md`](35-gaestemappe.md).
 
@@ -1115,7 +1115,9 @@ Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des G
 
 **Baustein 3 (Übersetzung der Hausseiten).** Migration `0144`: `terminal_content_translation` je Seite und Sprache (en, nl, pl) mit dem Fingerabdruck der deutschen Fassung (`terminal_content_hash`), `origin` `machine`/`manual` und dem Auftrag in derselben Zeile. Keine Warteschlange: der Worker (`jobs/folderTranslation.ts`) übersetzt, was in einer eingeschalteten Mappe steht und nicht zum Fingerabdruck passt, über DeepL mit `tag_handling=xml`, damit Fettes und Aufzählung stehen bleiben. Die Mappe zeigt nur passende Übersetzungen, sonst deutsch. Einstellungen → Gästemappe: Stand je Sprache, Maske zum Überschreiben (`PUT`/`DELETE …/guest-folder/pages/:ref/translations/:lang`). Mitbehoben: die Gastseite zeigte `**fett**` und `- ` roh, jetzt über `Inhaltstext`. Tests: `apps/worker/src/__tests__/folderTranslation.test.ts`, dazu die beiden Tests der Gästemappe.
 
-**Offen:** Freischaltung mit Nachname oder PLZ, Verzicht, Wünsche und Extras mit Preis, Wünsche in der Personal-App, späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35.
+**Baustein 4 (Freischalten).** Migration `0147`: `guest_folder_session` (Hash des Cookies `hp_mappe`, gebunden an eine Reservierung, bis Ende des Abreisetags; Hash in `audit_redaction`, Anwendung darf nur aufheben) und `guest_folder_unlock_failure` (zehn Fehlversuche je Zimmer und Viertelstunde). `POST /v1/mappe/unlock` vergleicht nachsichtig gegen Nachname oder PLZ jeder Person an jedem heute laufenden Aufenthalt im Zimmer (`folderUnlock.ts`), am Wechseltag gegen beide. `POST /v1/mappe/from-checkin` öffnet die Mappe aus dem Mail-Link ab dem Anreisetag, `POST /v1/mappe/lock` meldet das Telefon ab, `POST /v1/reservations/:ref/guest-folder/revoke` hebt an der Rezeption auf. `guest_erase_one()`/`guest_erase_partial()` neu gefasst mit `guest_folder_sessions_erase()`, `purgeExpired()` räumt nach sieben Tagen ab. Verarbeitungsverzeichnis ergänzt. Tests: `apps/api/src/__tests__/gaestemappeFreischaltung.test.ts`.
+
+**Offen:** Verzicht, Wünsche und Extras mit Preis, Wünsche in der Personal-App, späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35.
 
 ### Vierzehn Sprachen im ganzen System — **erledigt**
 

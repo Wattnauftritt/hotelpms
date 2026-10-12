@@ -189,7 +189,13 @@ export const CheckinFormView = Type.Object({
    * Reinigungsverzicht (0115): die Bleibetage ab heute. `null`, wenn das
    * Haus ihn nicht anbietet oder kein Bleibetag mehr kommt.
    */
-  cleaningWaiver: Type.Union([CleaningWaiverView, Type.Null()])
+  cleaningWaiver: Type.Union([CleaningWaiverView, Type.Null()]),
+  /**
+   * Oeffnet dieser Link die Gaestemappe des Zimmers (0147)? Nur ueber den
+   * Mail-Link, ab dem Anreisetag, mit zugeteiltem Zimmer und eingeschalteter
+   * Mappe. Vorher gibt es keine Karte im Zimmer, zu der die Mappe gehoert.
+   */
+  guestFolder: Type.Boolean()
 })
 export type CheckinFormView = Static<typeof CheckinFormView>
 

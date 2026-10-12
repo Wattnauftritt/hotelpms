@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox'
+import { GuestFolderStayStatus } from './gaestemappe.js'
 
 /**
  * Geteilte Schemata zwischen API und Oberfläche.
@@ -933,7 +934,9 @@ export const ReservationDetail = Type.Object({
   totalCent: Cent,
   onlineCheckin: Type.Optional(OnlineCheckinStatus),
   /** Reinigungsverzicht (0115); `null`, wenn das Haus ihn nicht anbietet oder kein Bleibetag mehr kommt. */
-  cleaningWaiver: Type.Optional(Type.Union([CleaningWaiverView, Type.Null()]))
+  cleaningWaiver: Type.Optional(Type.Union([CleaningWaiverView, Type.Null()])),
+  /** Freischaltungen der Gaestemappe (0147); `null`, wenn das Haus keine Mappe anbietet. */
+  guestFolder: Type.Optional(Type.Union([GuestFolderStayStatus, Type.Null()]))
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 

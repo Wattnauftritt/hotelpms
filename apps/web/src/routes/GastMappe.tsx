@@ -17,8 +17,10 @@ import { FOLDER_LOCALES, MappeSprache, startSprache, useMappeT,
  * noch einmal oder nimmt den Verlauf seines Browsers.
  *
  * Gezeigt wird, was ohnehin auf der Karte im Zimmer steht oder dort
- * ausliegen koennte: WLAN, Zeiten, die Seiten des Hauses. Kein Gast, kein
- * Aufenthalt -- das kommt erst mit der Freischaltung.
+ * ausliegen koennte: WLAN, Zeiten, die Seiten des Hauses. Den eigenen
+ * Aufenthalt sieht erst, wer mit Nachname oder PLZ freigeschaltet hat
+ * (0147), und auch dann nur den Abreisetag. Die Freischaltung haelt ein
+ * Cookie, das die Seite nie zu sehen bekommt (`httpOnly`).
  */
 
 export function mappeRefAusAdresse(hash: string = location.hash): string | null {
@@ -69,6 +71,9 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
           )}
           {stand.art === 'da' && roomRef !== null && (
             <>
+              <Aufenthalt view={stand.view} roomRef={roomRef} locale={locale}
+                          onChange={stay => setStand({ art: 'da',
+                                                      view: { ...stand.view, stay } })} />
               {stand.view.wifi !== null && <Wlan wifi={stand.view.wifi} />}
               <Zeiten view={stand.view} />
               {stand.view.pages.map(s => (
@@ -80,6 +85,81 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
       </div>
     </MappeSprache.Provider>
   )
+}
+
+/**
+ * Der eigene Aufenthalt: freischalten, oder Abreisetag und Abmelden.
+ *
+ * Ein Feld fuer beides, Nachname oder PLZ: zwei Felder hiessen, den Gast
+ * entscheiden zu lassen, welches der Meldeschein kennt. Die Schnittstelle
+ * versucht beides.
+ */
+function Aufenthalt({ view, roomRef, locale, onChange }: {
+  view: GuestFolderView; roomRef: string; locale: FolderLocale
+  onChange: (stay: GuestFolderView['stay']) => void
+}): JSX.Element {
+  const t = useMappeT()
+  const [wert, setWert] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [fehler, setFehler] = useState<MappeTextKey | null>(null)
+  const kopf = { [FOLDER_ROOM_HEADER]: roomRef }
+
+  const senden = (pfad: string, rumpf: object): void => {
+    setBusy(true); setFehler(null)
+    api.post<{ stay: GuestFolderView['stay'] }>(pfad, rumpf, kopf)
+      .then(r => { setWert(''); onChange(r.stay) })
+      .catch((e: unknown) => setFehler(!(e instanceof ApiError) ? 'offline'
+        : e.status === 429 ? 'stay.locked' : e.status === 422 ? 'stay.wrong' : 'offline'))
+      .finally(() => setBusy(false))
+  }
+
+  if (view.stay !== null) {
+    return (
+      <section className={KARTE} aria-labelledby="mappe-aufenthalt">
+        <h2 id="mappe-aufenthalt" className="font-semibold">{t('stay.title')}</h2>
+        <p>{t('stay.departure', { date: kalendertag(view.stay.departure, locale) })}</p>
+        <button type="button" disabled={busy} onClick={() => senden('/v1/mappe/lock', {})}
+                className="text-sm text-neutral-600 underline disabled:opacity-40">
+          {t('stay.lock')}
+        </button>
+      </section>
+    )
+  }
+  return (
+    <section className={KARTE} aria-labelledby="mappe-aufenthalt">
+      <h2 id="mappe-aufenthalt" className="font-semibold">{t('stay.title')}</h2>
+      <p className="text-sm text-neutral-600">{t('stay.hint')}</p>
+      <form className="flex gap-2" onSubmit={e => {
+        e.preventDefault()
+        if (wert.trim() !== '') senden('/v1/mappe/unlock', { value: wert.trim() })
+      }}>
+        <label className="grow">
+          <span className="sr-only">{t('stay.field')}</span>
+          <input value={wert} onChange={e => setWert(e.target.value)} maxLength={100}
+                 placeholder={t('stay.field')} autoComplete="off" autoCapitalize="words"
+                 spellCheck={false}
+                 className="w-full rounded-md border border-neutral-300 px-3 py-2" />
+        </label>
+        <button type="submit" disabled={busy || wert.trim() === ''}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-white disabled:opacity-40">
+          {t('stay.unlock')}
+        </button>
+      </form>
+      {fehler !== null && <p role="alert" className="text-sm text-red-800">{t(fehler)}</p>}
+    </section>
+  )
+}
+
+/**
+ * Ein Kalendertag in der Sprache der Mappe. Ueber UTC und nicht ueber
+ * `new Date(iso)` in Ortszeit: sonst rutscht die Abreise auf einem Telefon
+ * westlich von Greenwich auf den Vortag (CLAUDE.md, Geld und Datum).
+ */
+function kalendertag(iso: string, locale: FolderLocale): string {
+  const [j, m, d] = iso.split('-').map(Number)
+  return new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long',
+                                           timeZone: 'UTC' })
+    .format(new Date(Date.UTC(j!, m! - 1, d!)))
 }
 
 function Kopf({ view, locale, onLocale }: {

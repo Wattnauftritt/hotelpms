@@ -54,11 +54,24 @@ Migration `0144`, Svens Entscheidung „automatisch“. Deutsch ist die Vorlage,
 
 Nebenbei behoben: die Gastseite zeigte den Seitentext roh, mit Sternchen statt Fettschrift und Strichen statt Aufzählung. Sie nutzt jetzt `Inhaltstext` wie das Terminal.
 
-## 6. Was als Nächstes kommt
+## 6. Freischalten
 
-1. Freischalten: Nachname oder PLZ gegen den laufenden Aufenthalt des Zimmers; am Wechseltag gegen beide Aufenthalte, die Sitzung bindet sich an den passenden. Mappen-Sitzung als `httpOnly`-Cookie mit `Path=/v1/mappe` bis Ende des Abreisetags, Hash in `audit_redaction`, Löschung in `guest_erase_one()`. Fehlversuche je Zimmer in der Datenbank. Der Mail-Link (`checkin_token`) öffnet die Mappe freigeschaltet.
-2. Reinigungsverzicht in der Mappe (`cleaning_waiver.source = 'folder'`).
-3. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
-4. Wünsche in der Personal-App mit Push und Übersetzung.
-5. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
-6. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+Migration `0147`. Wer die Karte scannt, sieht Hausinfos und WLAN; den eigenen Aufenthalt erst, wer einmal mit **Nachname oder PLZ** bestätigt.
+
+- **Gegen wen.** Jede Reservierung, die heute im Zimmer der Karte läuft (Optional, Bestätigt, Im Haus; Anreise bis Abreisetag), und jede Person daran: Hauptgast, Mitreisende, Meldescheine. Am Wechseltag sind das zwei Aufenthalte, und die Freischaltung bindet sich an den, der passt; bei Gleichstand an den Ankommenden. Damit braucht es keine Uhrzeit, ab der ein Zimmer „dem Neuen gehört“.
+- **Wie nachsichtig.** Groß/klein, Akzente, `ß`, Umlaut und Umschrift (`Müller`, `Mueller`, `Muller`), jeder Teil eines Doppelnamens; aber kein Anfang eines Namens („Sch“ öffnet nicht „Schmidt“). Die PLZ ohne Leerzeichen und Bindestrich. Die Regel steht in `packages/domain/src/folderUnlock.ts`, nicht in SQL — dort fehlt `unaccent`, und zwei Fassungen liefen auseinander.
+- **Wie lange.** Ein `httpOnly`-Cookie `hp_mappe` mit `Path=/v1/mappe` und `SameSite=Strict` bis zum Ende des Abreisetags am Ort des Hauses; in der Datenbank nur sein Hash (`guest_folder_session`, in `audit_redaction`). Die Freischaltung hängt an der Reservierung, nicht am Zimmer: wechselt der Gast das Zimmer, gilt sie mit der neuen Karte und nicht mehr mit der alten. Gezeigt wird danach nur der Abreisetag — kein Name, keine Adresse.
+- **Fehlversuche je Zimmer, in der Datenbank.** Zehn je Viertelstunde, dann wartet das Zimmer, auch mit dem richtigen Namen. Je Herkunft hälfe nicht: im Hotel-WLAN teilen sich alle Gäste eine Adresse. Zusätzlich steht `/v1/mappe/unlock` unter der engen Grenze für anonyme Anfragen, gegen den, der viele Zimmer zugleich durchprobiert. Ein Fehlversuch sagt nicht, ob das Zimmer belegt ist.
+- **Mail-Link.** Wer den Link zum Online-Check-in aus der Mail öffnet, bekommt ab dem Anreisetag, mit zugeteiltem Zimmer und eingeschalteter Mappe, den Knopf „Gästemappe öffnen“ (`POST /v1/mappe/from-checkin`): der Link ist schon an genau diesen Aufenthalt gebunden und reicht als Freischaltung. Der Link am Terminal schaltet nichts frei — an dem Gerät steht der nächste Gast.
+- **Aufheben.** Der Gast meldet sein Telefon selbst ab (`/v1/mappe/lock`); die Rezeption hebt im Seitenfenster der Reservierung alle auf, solange eine besteht (`reservation:checkin`).
+- **Löschen.** `guest_erase_one()` und `guest_erase_partial()` löschen die Freischaltungen über `guest_folder_sessions_erase()`; sonst räumt `purgeExpired()` sie sieben Tage nach dem Abreisetag ab. Eingetragen im Verarbeitungsverzeichnis.
+
+Offen und bewusst nicht hier: Die allgemeine Grenze für anonyme Anfragen (300 je Minute und Adresse) gilt auch für das Laden der Mappe. In einem großen Haus hinter **einer** Adresse kann ein voller Frühstücksraum sie erreichen; dann ist die Mappe für eine Minute nicht zu laden. Messen, bevor eine Ausnahme gebaut wird.
+
+## 7. Was als Nächstes kommt
+
+1. Reinigungsverzicht in der Mappe (`cleaning_waiver.source = 'folder'`).
+2. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
+3. Wünsche in der Personal-App mit Push und Übersetzung.
+4. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
+5. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

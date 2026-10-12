@@ -281,9 +281,11 @@ describe('Die Gastseite', () => {
     expect(f.headers['cache-control']).toBe('no-store')
     const v = JSON.parse(f.body) as Record<string, unknown>
     // `terms` und `exemptionReasons` legt das Haus an; ueber den Gast sagen
-    // sie nichts (Migration 0089); `cleaningWaiver` traegt nur Tage (0115).
+    // sie nichts (Migration 0089); `cleaningWaiver` traegt nur Tage (0115),
+    // `guestFolder` nur ja oder nein (0147).
     expect(Object.keys(v).sort()).toEqual(['arrival', 'channel', 'cleaningWaiver', 'departure',
-      'digitalGuestCardOffered', 'exemptionReasons', 'firstName', 'language', 'lastName', 'maxCompanions',
+      'digitalGuestCardOffered', 'exemptionReasons', 'firstName', 'guestFolder', 'language',
+      'lastName', 'maxCompanions',
       'propertyName', 'signatureAllowed', 'state', 'terms'])
     expect(v).toMatchObject({ lastName: 'Petersen', arrival: ANREISE, departure: ABREISE,
                               propertyName: 'Testhotel', state: 'open', channel: 'mail',
