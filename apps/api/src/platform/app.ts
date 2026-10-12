@@ -87,6 +87,8 @@ export async function buildServer(
       // steht trotzdem hier, falls ihn jemand erweitert.
       paths: ['req.headers.authorization', 'req.headers.cookie',
               'req.headers["x-staygrid-checkin-token"]',
+              // Die Zimmer-Referenz der Gaestemappe ebenso (Migration 0143).
+              'req.headers["x-staygrid-folder-room"]',
               'req.body', 'res.body', '*.password', '*.idDocumentNumber'],
       remove: true
     },

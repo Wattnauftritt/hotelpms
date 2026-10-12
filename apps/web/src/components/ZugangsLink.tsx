@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { JSX } from 'react'
 import { useT, useLocale } from '../lib/i18n/index.js'
+import { useQr } from '../lib/qr.js'
 
 /**
  * Ein Zugangslink zum Weitergeben, als QR-Code und als Text (Migration 0105).
@@ -10,9 +11,7 @@ import { useT, useLocale } from '../lib/i18n/index.js'
  * der Link geht als Nachricht. Beides zeigt dieselbe Adresse; der QR-Code
  * ist nur die bequemere Form am Tresen.
  *
- * Der Code wird als SVG-Pfad gezeichnet, nicht als HTML-Zeichenkette: die
- * Content-Security-Policy erlaubt kein eingeschleustes Markup, und ein
- * Pfad aus Rechtecken braucht keins.
+ * Der Code kommt aus `lib/qr.ts`, als SVG-Pfad.
  */
 export function ZugangsLink({ link, gueltigBis }: { link: string; gueltigBis: string }
 ): JSX.Element {
@@ -20,35 +19,7 @@ export function ZugangsLink({ link, gueltigBis }: { link: string; gueltigBis: st
   const locale = useLocale()
   const [kopiert, setKopiert] = useState(false)
 
-  /*
-   * Der Erzeuger kommt erst, wenn ein Link gezeigt wird. Er wird an wenigen
-   * Stellen gebraucht (Personal einladen), stand aber im ersten Laden jeder
-   * Rezeption (Performance-Audit 11.10.2026, Befund 10). Bis er da ist,
-   * bleibt das Feld leer; Link und Kopierknopf stehen sofort.
-   */
-  const [code, setCode] = useState<{ link: string; pfad: string; groesse: number } | null>(null)
-  useEffect(() => {
-    let aktuell = true
-    void import('qrcode-generator').then(({ default: qrcode }) => {
-      if (!aktuell) return
-      // Fehlerkorrektur M: ein Handybildschirm spiegelt, ein Ausdruck knickt.
-      const qr = qrcode(0, 'M')
-      qr.addData(link)
-      qr.make()
-      const n = qr.getModuleCount()
-      let d = ''
-      for (let y = 0; y < n; y++) {
-        for (let x = 0; x < n; x++) {
-          if (qr.isDark(y, x)) d += `M${x + 4} ${y + 4}h1v1h-1z`
-        }
-      }
-      // Vier Module Ruhezone ringsum, sonst lesen manche Kameras nicht.
-      setCode({ link, pfad: d, groesse: n + 8 })
-    })
-    return () => { aktuell = false }
-  }, [link])
-  // Nie den Code eines vorigen Links zu einem neuen zeigen.
-  const { pfad, groesse } = code !== null && code.link === link ? code : { pfad: '', groesse: 33 }
+  const { pfad, groesse } = useQr(link)
 
   const kopieren = async (): Promise<void> => {
     try {

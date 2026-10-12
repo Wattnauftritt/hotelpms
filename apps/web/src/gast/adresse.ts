@@ -1,4 +1,4 @@
-import { CHECKIN_PATH } from '@hotelpms/contracts'
+import { CHECKIN_PATH, FOLDER_PATH } from '@hotelpms/contracts'
 
 /**
  * Welche Gastseite in der Adresse steht -- ohne React und ohne die Seiten
@@ -22,4 +22,9 @@ export function istTerminalAdresse(pathname: string = location.pathname): boolea
 /** Steht der Online-Check-in des Gastes (`/checkin#...`) in der Adresse? */
 export function istCheckinAdresse(pathname: string = location.pathname): boolean {
   return pathname.replace(/\/+$/, '') === CHECKIN_PATH
+}
+
+/** Steht die Gaestemappe (`/mappe#...`) in der Adresse? */
+export function istMappeAdresse(pathname: string = location.pathname): boolean {
+  return pathname.replace(/\/+$/, '') === FOLDER_PATH
 }

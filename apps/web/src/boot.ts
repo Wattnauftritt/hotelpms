@@ -1,5 +1,5 @@
 import { istPersonalAdresse } from './personal/adresse.js'
-import { istCheckinAdresse, istTerminalAdresse } from './gast/adresse.js'
+import { istCheckinAdresse, istMappeAdresse, istTerminalAdresse } from './gast/adresse.js'
 
 /**
  * Welche Oberflaeche dieser Aufruf laedt.
@@ -11,7 +11,7 @@ import { istCheckinAdresse, istTerminalAdresse } from './gast/adresse.js'
  * entscheidet dieser kleine Einstieg nur ueber den Pfad und laedt dann genau
  * eine der Anwendungen; der Bau legt sie in getrennte Dateien.
  *
- * Die beiden Gastseiten -- Online-Check-in und Gaesteterminal -- gehen
+ * Die Gastseiten -- Online-Check-in, Gaesteterminal und Gaestemappe -- gehen
  * denselben Weg und aus einem staerkeren Grund: davor steht ein Gast, der
  * ein Formular ausfuellt und mit der Rezeption nichts zu tun hat
  * (Performance-Audit 11.10.2026, Befund 10). Sie standen bisher als erste
@@ -23,6 +23,8 @@ if (istPersonalAdresse(location.pathname)) {
   void import('./gast/terminal.tsx')
 } else if (istCheckinAdresse(location.pathname)) {
   void import('./gast/checkin.tsx')
+} else if (istMappeAdresse(location.pathname)) {
+  void import('./gast/mappe.tsx')
 } else {
   void import('./main.tsx')
 }

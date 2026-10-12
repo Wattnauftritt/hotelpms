@@ -18,6 +18,7 @@ import { OnlineCheckinEinstellung } from '../components/OnlineCheckinEinstellung
 import { KurtaxeBefreiung } from '../components/KurtaxeBefreiung.tsx'
 import { AvsEinstellung } from '../components/AvsEinstellung.tsx'
 import { ZimmerSortierenEinstellung } from '../components/ZimmerSortierenEinstellung.tsx'
+import { GaestemappeEinstellung } from '../components/GaestemappeEinstellung.tsx'
 
 /**
  * Einstellungen des Hauses, die nicht Einrichtung sind.
@@ -28,8 +29,8 @@ import { ZimmerSortierenEinstellung } from '../components/ZimmerSortierenEinstel
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'roomSort',
-                'support'] as const
+const REITER = ['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'folder',
+                'roomSort', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -56,6 +57,10 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   // genau einem, und wer es koppelt, richtet dieses Haus ein.
   if (darf('settings:property')) {
     bereiche.push({ key: 'terminal', label: 'terminal.settings.title' })
+  }
+  // Gaestemappe (0143): wie die Seiten des Terminals, auf denen sie aufbaut.
+  if (darf('settings:property')) {
+    bereiche.push({ key: 'folder', label: 'folder.title' })
   }
   // Zimmer sortieren (0104): wie die Zimmer selbst an settings:property.
   if (darf('settings:property')) {
@@ -706,6 +711,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
         <OnlineCheckinEinstellung propertyId={propertyId} isTraining={isTraining} />
       )}
       {aktiv.key === 'terminal' && <Gaesteterminals propertyId={propertyId} />}
+      {aktiv.key === 'folder' && <GaestemappeEinstellung propertyId={propertyId} />}
       {aktiv.key === 'roomSort' && <ZimmerSortierenEinstellung propertyId={propertyId} />}
       {aktiv.key === 'support' && <SupportZugriff />}
     </div>
