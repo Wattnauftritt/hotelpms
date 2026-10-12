@@ -6,6 +6,7 @@ import { useT, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { Zimmerkarten } from './Zimmerkarten.tsx'
+import { GaestemappeUebersetzung, UebersetzungsStand } from './GaestemappeUebersetzung.tsx'
 
 /**
  * Einstellungen der digitalen Gaestemappe (Migration 0143): an/aus, das WLAN
@@ -31,6 +32,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
     { ssid: '', password: '', security: 'WPA', hidden: false })
   const [auswahl, setAuswahl] = useState<string[]>([])
   const [karten, setKarten] = useState(false)
+  const [uebersetzen, setUebersetzen] = useState<string | null>(null)
 
   useEffect(() => {
     if (q.data === undefined) return
@@ -45,6 +47,11 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
   if (q.data === undefined) return <Laedt />
   const seiten = q.data.pages
   const titel = new Map(seiten.map(s => [s.contentRef, s.title]))
+  // Uebersetzt wird, was gespeichert in der Mappe steht -- nicht die Auswahl
+  // auf dem Bildschirm, die noch niemand gespeichert hat.
+  const gespeichert = new Map(seiten.filter(s => s.folderPosition !== null)
+    .map(s => [s.contentRef, s]))
+  const offeneSeite = uebersetzen === null ? undefined : gespeichert.get(uebersetzen)
 
   function verschieben(i: number, um: number): void {
     setAuswahl(a => {
@@ -138,6 +145,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">{t('folder.pages')}</h2>
         <p className="text-xs text-neutral-500">{t('folder.pagesHint')}</p>
+        <p className="text-xs text-neutral-500">{t('folder.tr.hint')}</p>
         {seiten.length === 0
           ? <p className="text-sm text-neutral-600">{t('folder.pagesNone')}</p>
           : (
@@ -147,6 +155,14 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
                   <input type="checkbox" checked aria-label={titel.get(ref)}
                          onChange={() => setAuswahl(a => a.filter(x => x !== ref))} />
                   <span className="grow">{titel.get(ref)}</span>
+                  {gespeichert.has(ref) && (
+                    <button type="button" onClick={() => setUebersetzen(ref)}
+                            title={t('folder.tr.open')} aria-label={t('folder.tr.open')}
+                            className="flex items-center gap-2 px-1.5 text-neutral-600
+                                       hover:text-neutral-900">
+                      <UebersetzungsStand seite={gespeichert.get(ref)!} />
+                    </button>
+                  )}
                   <button type="button" disabled={i === 0} onClick={() => verschieben(i, -1)}
                           aria-label={t('folder.up')} title={t('folder.up')}
                           className="px-1.5 text-neutral-600 disabled:opacity-30">↑</button>
@@ -192,6 +208,10 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
       </section>
 
       {karten && <Zimmerkarten propertyId={propertyId} onClose={() => setKarten(false)} />}
+      {offeneSeite !== undefined && (
+        <GaestemappeUebersetzung propertyId={propertyId} seite={offeneSeite}
+                                 onClose={() => setUebersetzen(null)} />
+      )}
     </div>
   )
 }

@@ -78,6 +78,66 @@ export const gaestemappe = {
     de: 'Gespeichert',
     en: 'Saved',
     tr: 'Kaydedildi' },
+  'folder.tr.title': {
+    de: 'Übersetzungen',
+    en: 'Translations',
+    tr: 'Çeviriler' },
+  'folder.tr.hint': {
+    de: 'Die Seiten werden automatisch mit DeepL ins Englische, Niederländische und Polnische übersetzt. Deutsch bleibt die Vorlage: Änderst du eine Seite, wird sie neu übersetzt, und bis dahin sehen Gäste sie auf Deutsch. Eine Übersetzung, die nicht passt, kannst du von Hand überschreiben.',
+    en: 'Pages are translated automatically into English, Dutch and Polish with DeepL. German stays the original: when you change a page it is translated again, and until then guests see it in German. You can overwrite a translation that does not fit by hand.',
+    tr: 'Sayfalar DeepL ile otomatik olarak İngilizce, Felemenkçe ve Lehçeye çevrilir. Almanca asıl metin olarak kalır: bir sayfayı değiştirdiğinde yeniden çevrilir ve o zamana kadar misafirler Almanca görür. Uymayan bir çeviriyi elle değiştirebilirsin.' },
+  'folder.tr.open': {
+    de: 'Übersetzungen',
+    en: 'Translations',
+    tr: 'Çeviriler' },
+  'folder.tr.lang.en': {
+    de: 'Englisch',
+    en: 'English',
+    tr: 'İngilizce' },
+  'folder.tr.lang.nl': {
+    de: 'Niederländisch',
+    en: 'Dutch',
+    tr: 'Felemenkçe' },
+  'folder.tr.lang.pl': {
+    de: 'Polnisch',
+    en: 'Polish',
+    tr: 'Lehçe' },
+  'folder.tr.state.machine': {
+    de: 'automatisch übersetzt',
+    en: 'translated automatically',
+    tr: 'otomatik çevrildi' },
+  'folder.tr.state.manual': {
+    de: 'von Hand übersetzt',
+    en: 'translated by hand',
+    tr: 'elle çevrildi' },
+  'folder.tr.state.pending': {
+    de: 'wird übersetzt, Gäste sehen solange Deutsch',
+    en: 'being translated, guests see German until then',
+    tr: 'çevriliyor, o zamana kadar misafirler Almanca görür' },
+  'folder.tr.state.failed': {
+    de: 'Übersetzung gescheitert, Gäste sehen Deutsch',
+    en: 'translation failed, guests see German',
+    tr: 'çeviri başarısız oldu, misafirler Almanca görür' },
+  'folder.tr.original': {
+    de: 'Deutsche Vorlage',
+    en: 'German original',
+    tr: 'Almanca asıl metin' },
+  'folder.tr.field.title': {
+    de: 'Titel',
+    en: 'Title',
+    tr: 'Başlık' },
+  'folder.tr.field.body': {
+    de: 'Text',
+    en: 'Text',
+    tr: 'Metin' },
+  'folder.tr.saveManual': {
+    de: 'Von Hand speichern',
+    en: 'Save by hand',
+    tr: 'Elle kaydet' },
+  'folder.tr.reset': {
+    de: 'Neu von DeepL übersetzen lassen',
+    en: 'Have DeepL translate again',
+    tr: 'DeepL ile yeniden çevir' },
   'folder.cards': {
     de: 'Zimmerkarten',
     en: 'Room cards',

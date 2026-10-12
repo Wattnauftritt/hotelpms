@@ -57,6 +57,14 @@ describe('Seite des Gastes', () => {
     // Seitentext ist Text, nie HTML.
     expect(seite).not.toContain('dangerouslySetInnerHTML')
   })
+
+  it('zeigt die Uebersetzung der gewaehlten Sprache und sonst Deutsch, als deutsch ausgezeichnet', () => {
+    const seite = quelle('routes/GastMappe.tsx')
+    expect(seite).toMatch(/locale === 'de' \? undefined : seite\.translations\[locale\]/)
+    expect(seite).toMatch(/lang=\{fassung === undefined \? 'de' : locale\}/)
+    // Im Format des Terminals, damit **fett** nicht als Sternchen erscheint.
+    expect(seite).toContain('<Inhaltstext')
+  })
 })
 
 describe('Katalog der Mappe', () => {

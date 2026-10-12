@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { GuestFolderSettings, GuestFolderSettingsSet,
-              GuestFolderCards } from '@hotelpms/contracts'
+              GuestFolderCards, FolderPageTextSet } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /** Digitale Gaestemappe: Einstellung, Seiten und Zimmerkarten (Migration 0143). */
@@ -51,5 +51,23 @@ export function useZimmerkarteErneuern(propertyId: number) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['guest-folder-cards', propertyId] })
     }
+  })
+}
+
+/**
+ * Eine Uebersetzung von Hand setzen oder zurueck an DeepL geben (0144).
+ * `text: null` heisst zurueck: die Seite ist im naechsten Lauf wieder faellig.
+ */
+export function useGaestemappeUebersetzung(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ contentRef, lang, text }: {
+      contentRef: string; lang: string; text: FolderPageTextSet | null }) => {
+      const url = `/v1/properties/${propertyId}/guest-folder/pages/${contentRef}/translations/${lang}`
+      return text === null
+        ? api.delete<GuestFolderSettings>(url)
+        : api.put<GuestFolderSettings>(url, text)
+    },
+    onSuccess: d => { qc.setQueryData(schluessel(propertyId), d) }
   })
 }

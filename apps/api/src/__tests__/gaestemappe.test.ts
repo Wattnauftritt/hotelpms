@@ -185,6 +185,69 @@ describe('Gaestemappe', () => {
     expect(JSON.stringify(log.rows)).not.toContain('Krabbe')
   })
 
+  it('zeigt Uebersetzungen nur zur aktuellen deutschen Fassung, und Handarbeit gewinnt (0144)', async () => {
+    const ref = await seite(fx.propertyId, 'Frühstück', '7 bis 10 Uhr')
+    await einstellen(true)
+    await app.inject({ method: 'PUT', url: p('/guest-folder/pages'),
+      headers: auth(chef.sessionId), payload: { contentRefs: [ref] } })
+    // Was der Worker schreiben wuerde: eine Uebersetzung zur jetzigen Fassung.
+    await owner.query(
+      `INSERT INTO terminal_content_translation
+              (content_id, property_id, lang, title, body, source_hash, origin)
+       SELECT id, property_id, 'nl', 'Ontbijt', '7 tot 10 uur',
+              terminal_content_hash(title, body), 'machine'
+         FROM terminal_content WHERE public_ref = $1`, [ref])
+    const k = await karten()
+    const gast = async () => (await mappe(refAus(k.rooms[0]!.link))).json().pages[0]
+    expect((await gast()).translations).toEqual({ nl: { title: 'Ontbijt', body: '7 tot 10 uur' } })
+
+    const stand = async () => (await app.inject({ method: 'GET', url: p('/guest-folder'),
+      headers: auth(chef.sessionId) })).json().pages[0].translations
+    expect((await stand()).map((t: { lang: string; state: string }) => [t.lang, t.state]))
+      .toEqual([['en', 'pending'], ['nl', 'machine'], ['pl', 'pending']])
+
+    // Von Hand berichtigt.
+    const url = p(`/guest-folder/pages/${ref}/translations/nl`)
+    const hand = await app.inject({ method: 'PUT', url, headers: auth(chef.sessionId),
+      payload: { title: '  Ontbijt ', body: 'Van 7 tot 10 uur' } })
+    expect(hand.statusCode, hand.body).toBe(200)
+    expect((await gast()).translations.nl).toEqual({ title: 'Ontbijt', body: 'Van 7 tot 10 uur' })
+    expect((await stand())[1]).toMatchObject({ state: 'manual', body: 'Van 7 tot 10 uur' })
+
+    // Die deutsche Seite aendert sich: bis zur neuen Uebersetzung deutsch.
+    await owner.query(`UPDATE terminal_content SET body = '7:30 bis 10 Uhr' WHERE public_ref = $1`,
+      [ref])
+    expect((await gast()).translations).toEqual({})
+    expect((await stand())[1]).toMatchObject({ state: 'pending', title: null })
+
+    // Zurueck an DeepL.
+    await app.inject({ method: 'PUT', url, headers: auth(chef.sessionId),
+      payload: { title: 'Ontbijt', body: 'Van 7.30 tot 10 uur' } })
+    const weg = await app.inject({ method: 'DELETE', url, headers: auth(chef.sessionId) })
+    expect(weg.statusCode, weg.body).toBe(200)
+    expect((await stand())[1]).toMatchObject({ state: 'pending', title: null })
+  })
+
+  it('nimmt Uebersetzungen nur fuer Seiten des eigenen Hauses und in den Sprachen der Mappe', async () => {
+    const ref = await seite(fx.propertyId, 'Frühstück')
+    const ok = { title: 'Breakfast', body: '' }
+    const put = (url: string, payload: unknown = ok) =>
+      app.inject({ method: 'PUT', url, headers: auth(chef.sessionId), payload })
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/de`))).statusCode).toBe(422)
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/fr`))).statusCode).toBe(422)
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/en`),
+      { title: ' ', body: '' })).statusCode).toBe(422)
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/en`),
+      { title: 'x', body: 'y'.repeat(10001) })).statusCode).toBe(422)
+
+    const anderes = await makeProperty(owner, { accountId: fx.accountId, name: 'Ankerplatz' })
+    const fremd = await seite(anderes.propertyId, 'Fremd')
+    expect((await put(p(`/guest-folder/pages/${fremd}/translations/en`))).statusCode).toBe(404)
+    expect((await app.inject({ method: 'DELETE', headers: auth(chef.sessionId),
+      url: p(`/guest-folder/pages/${fremd}/translations/en`) })).statusCode).toBe(404)
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/en`))).statusCode).toBe(200)
+  })
+
   it('verlangt fuer die Einstellungen das Recht am Haus', async () => {
     const kraft = await makeUser(owner, { email: 'olga@kunde.de', propertyId: fx.propertyId,
       roleKey: 'housekeeping_staff' })

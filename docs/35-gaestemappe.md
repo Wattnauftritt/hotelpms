@@ -42,12 +42,23 @@ Eingelöst wird sie in der Datenbank: `guest_folder_room_open()` beginnt mit lee
 - **WLAN** an `guest_folder_setting`, Prüfung wie die CHECK-Regel: WPA 8–63 Zeichen, WEP 5–26, offen ohne Kennwort, Name höchstens 32 Byte. Der QR-Code folgt dem Format `WIFI:T:…;S:…;P:…;H:…;;` und maskiert `\ ; , : "` (`wifiQrText`). Der Erzeuger kodiert UTF-8, sonst wäre „Gästehaus“ ein anderes Netz.
 - **Zimmerkarte** wird aus dem Browser gedruckt, kein PDF vom Server. Jede Karte ein eigenes Blatt über die benannte Seite `@page zimmerkarte` (sonst druckte das Kassenbuch auf A6), Maße in Millimetern: Chrome kennt das Schlüsselwort `A6` nicht und legt die Karte dann still auf Letter. Die Karte spricht Deutsch und Englisch, unabhängig von der Sprache der Rezeption; die Sätze kommen aus dem Katalog der Mappe. Referenzen legt `GET …/guest-folder/cards` für fehlende Zimmer an — ein GET, das schreibt, mit Absicht: ein Knopf „Referenzen anlegen“ wäre ein Schritt, den jemand vergisst.
 
-## 5. Was als Nächstes kommt
+## 5. Übersetzung der Seiten
 
-1. Hausseiten automatisch übersetzen (Worker, DeepL, wie Baustein 7 der Personal-App).
-2. Freischalten: Nachname oder PLZ gegen den laufenden Aufenthalt des Zimmers; am Wechseltag gegen beide Aufenthalte, die Sitzung bindet sich an den passenden. Mappen-Sitzung als `httpOnly`-Cookie mit `Path=/v1/mappe` bis Ende des Abreisetags, Hash in `audit_redaction`, Löschung in `guest_erase_one()`. Fehlversuche je Zimmer in der Datenbank. Der Mail-Link (`checkin_token`) öffnet die Mappe freigeschaltet.
-3. Reinigungsverzicht in der Mappe (`cleaning_waiver.source = 'folder'`).
-4. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
-5. Wünsche in der Personal-App mit Push und Übersetzung.
-6. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
-7. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+Migration `0144`, Svens Entscheidung „automatisch“. Deutsch ist die Vorlage, übersetzt wird nach Englisch, Niederländisch und Polnisch (`terminal_content_translation`, eine Zeile je Seite und Sprache).
+
+- **Eine Übersetzung gehört zu genau einer deutschen Fassung.** Sie trägt den Fingerabdruck von Titel und Text, zu denen sie entstand (`terminal_content_hash`). Ändert jemand die deutsche Seite, passt er nicht mehr, und die Mappe zeigt die Seite deutsch, bis die neue Übersetzung da ist — eine veraltete nennt womöglich die alte Frühstückszeit, und ein Gast glaubt der Seite in seiner Sprache mehr als der, die er nicht lesen kann. Die deutsche Fassung trägt dann `lang="de"`, damit ein Vorleseprogramm sie richtig ausspricht.
+- **Keine Warteschlange.** Fällig ist, was nicht zum Fingerabdruck passt; der Worker (`jobs/folderTranslation.ts`) findet das selbst, im selben Tick wie die Texte des Personals und hinter derselben Sicherung für DeepL. Übersetzt wird nur, was in einer **eingeschalteten** Mappe steht — eine Seite nur fürs Terminal liest niemand auf Polnisch, und jedes Zeichen kostet Kontingent. Nach sechs Fehlversuchen bleibt die Fassung deutsch, bis jemand die Seite ändert oder „Neu von DeepL übersetzen lassen“ drückt.
+- **Das Format überlebt die Übersetzung.** Jede Zeile geht als eigenes XML-Element hinaus, Fettes als `<b>`, mit `tag_handling=xml` und fester Ausgangssprache Deutsch. Als Klartext verschob DeepL die Sternchen von `**fett**`; eine Antwort, die nicht Zeile für Zeile passt, gilt als Fehler und wird wiederholt (`folderTextToDeeplXml`, `folderTextFromDeeplXml`).
+- **Von Hand überschreiben.** Einstellungen → Gästemappe zeigt je Seite den Stand (EN ✓, NL …, PL !) und öffnet eine Maske mit der deutschen Vorlage über den drei Sprachen (`PUT`/`DELETE …/guest-folder/pages/:ref/translations/:lang`). Eine Übersetzung von Hand gilt für die deutsche Fassung von jetzt; ändert sich die Seite, übersetzt DeepL neu, denn die Berichtigung stimmte für einen Text, den es nicht mehr gibt.
+- **Datenschutz.** Hausseiten bezeichnen keinen Menschen; an DeepL geht nur, was das Haus für alle Gäste geschrieben hat. Kein Eintrag in `audit_redaction`, kein neuer Eintrag im Verarbeitungsverzeichnis — DeepL steht dort bereits als Unterauftragsverarbeiter.
+
+Nebenbei behoben: die Gastseite zeigte den Seitentext roh, mit Sternchen statt Fettschrift und Strichen statt Aufzählung. Sie nutzt jetzt `Inhaltstext` wie das Terminal.
+
+## 6. Was als Nächstes kommt
+
+1. Freischalten: Nachname oder PLZ gegen den laufenden Aufenthalt des Zimmers; am Wechseltag gegen beide Aufenthalte, die Sitzung bindet sich an den passenden. Mappen-Sitzung als `httpOnly`-Cookie mit `Path=/v1/mappe` bis Ende des Abreisetags, Hash in `audit_redaction`, Löschung in `guest_erase_one()`. Fehlversuche je Zimmer in der Datenbank. Der Mail-Link (`checkin_token`) öffnet die Mappe freigeschaltet.
+2. Reinigungsverzicht in der Mappe (`cleaning_waiver.source = 'folder'`).
+3. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
+4. Wünsche in der Personal-App mit Push und Übersetzung.
+5. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
+6. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

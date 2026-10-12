@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { folderLink, type GuestFolderView, type GuestFolderSettings,
          type GuestFolderCards } from '@hotelpms/contracts'
+import { FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -26,6 +27,8 @@ import { bildSenden } from '../platform/terminalBild.js'
 
 const config = loadConfig()
 const SEITEN_MAX = 30
+const TITEL_MAX = 300
+const TEXT_MAX = 10000
 
 /** Wie beim Online-Check-in: nichts davon gehoert in einen Zwischenspeicher. */
 function nichtSpeichern(reply: FastifyReply): void {
@@ -62,12 +65,43 @@ async function einstellungAnsicht(
   client: PoolClient, propertyId: number
 ): Promise<GuestFolderSettings> {
   const e = await einstellung(client, propertyId)
+  /*
+   * Der Stand je Sprache, fuer die Seiten in der Mappe. Eine Uebersetzung
+   * zaehlt nur, solange sie zur deutschen Fassung passt; sonst wartet sie,
+   * oder sie ist nach dem letzten Versuch gescheitert (0144).
+   */
   const seiten = await client.query<GuestFolderSettings['pages'][number]>(
-    `SELECT public_ref AS "contentRef", title, folder_position AS "folderPosition"
-       FROM terminal_content
-      WHERE property_id = $1 AND archived_at IS NULL
-      ORDER BY folder_position NULLS LAST, title, id`, [propertyId])
+    `SELECT c.public_ref AS "contentRef", c.title, c.body, c.folder_position AS "folderPosition",
+            COALESCE(json_agg(json_build_object(
+              'lang', l.lang,
+              'state', CASE
+                 WHEN t.source_hash = h.hash THEN t.origin
+                 WHEN t.pending_hash = h.hash AND t.attempts >= $3
+                      AND t.last_error IS NOT NULL THEN 'failed'
+                 ELSE 'pending' END,
+              'title', CASE WHEN t.source_hash = h.hash THEN t.title END,
+              'body', CASE WHEN t.source_hash = h.hash THEN t.body END)
+              ORDER BY l.n) FILTER (WHERE l.lang IS NOT NULL), '[]') AS translations
+       FROM terminal_content c
+      CROSS JOIN LATERAL (SELECT terminal_content_hash(c.title, c.body) AS hash) h
+       LEFT JOIN unnest($2::text[]) WITH ORDINALITY AS l(lang, n)
+              ON c.folder_position IS NOT NULL
+       LEFT JOIN terminal_content_translation t ON t.content_id = c.id AND t.lang = l.lang
+      WHERE c.property_id = $1 AND c.archived_at IS NULL
+      GROUP BY c.id
+      ORDER BY c.folder_position NULLS LAST, c.title, c.id`,
+    [propertyId, FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS])
   return { enabled: e?.enabled ?? false, wifi: wlan(e), pages: seiten.rows }
+}
+
+function uebersetzungsParameter(p: unknown): {
+  propertyId: number; contentRef: string; lang: string } {
+  const { propertyId, contentRef, lang } = p as {
+    propertyId: string; contentRef: string; lang: string }
+  if (!(FOLDER_TRANSLATION_LANGS as readonly string[]).includes(lang)) {
+    throw Errors.validation({ lang: ['field.invalid'] })
+  }
+  return { propertyId: Number(propertyId), contentRef, lang }
 }
 
 export function gaestemappeRoutes(app: FastifyInstance): void {
@@ -95,13 +129,22 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
             WHERE p.id = $1`, [k.propertyId, k.resourceId])
         const h = haus.rows[0]
         if (h === undefined) throw Errors.gone('folder.closed')
+        // Nur Uebersetzungen zur aktuellen deutschen Fassung: eine veraltete
+        // nennt womoeglich die alte Fruehstueckszeit (0144).
         const seiten = await client.query<GuestFolderView['pages'][number]>(
           `SELECT c.public_ref AS "contentRef", c.title, c.body,
-                  i.public_ref AS "imageRef"
+                  i.public_ref AS "imageRef",
+                  COALESCE(json_object_agg(t.lang, json_build_object(
+                    'title', t.title, 'body', t.body)) FILTER (WHERE t.lang IS NOT NULL),
+                    '{}') AS translations
              FROM terminal_content c
              LEFT JOIN terminal_content_image i ON i.content_id = c.id
+             LEFT JOIN terminal_content_translation t
+                    ON t.content_id = c.id
+                   AND t.source_hash = terminal_content_hash(c.title, c.body)
             WHERE c.property_id = $1 AND c.folder_position IS NOT NULL
               AND c.archived_at IS NULL
+            GROUP BY c.id, i.public_ref
             ORDER BY c.folder_position, c.id`, [k.propertyId])
         return {
           propertyName: h.property_name, roomName: h.room_name,
@@ -220,6 +263,83 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
           `UPDATE terminal_content SET folder_position = NULL
             WHERE property_id = $1 AND folder_position IS NOT NULL
               AND NOT (public_ref = ANY ($2::text[]))`, [propertyId, refs])
+        return einstellungAnsicht(client, propertyId)
+      })
+    }
+  })
+
+  /**
+   * Eine Uebersetzung von Hand (0144). Sie gilt fuer die deutsche Fassung
+   * von jetzt; aendert jemand die Seite, uebersetzt DeepL die neue, und
+   * die Berichtigung ist mit der alten Fassung hinfaellig -- sie stimmte
+   * fuer einen Text, den es nicht mehr gibt.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/guest-folder/pages/:contentRef/translations/:lang',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaestemappe: Uebersetzung einer Seite von Hand setzen',
+    handler: async (req): Promise<GuestFolderSettings> => {
+      const { propertyId, contentRef, lang } = uebersetzungsParameter(req.params)
+      const b = (req.body ?? {}) as { title?: unknown; body?: unknown }
+      const titel = typeof b.title === 'string' ? b.title.trim() : ''
+      if (titel === '') throw Errors.validation({ title: ['field.required'] })
+      if (titel.length > TITEL_MAX) {
+        throw Errors.validation({ title: ['field.maxLength'] }, { max: TITEL_MAX })
+      }
+      if (typeof b.body !== 'string') throw Errors.validation({ body: ['field.invalid'] })
+      if (b.body.length > TEXT_MAX) {
+        throw Errors.validation({ body: ['field.maxLength'] }, { max: TEXT_MAX })
+      }
+      const text = b.body
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const r = await client.query(
+          `INSERT INTO terminal_content_translation
+                  (content_id, property_id, lang, title, body, source_hash, origin, updated_by)
+           SELECT id, property_id, $3, $4, $5, terminal_content_hash(title, body), 'manual', $6
+             FROM terminal_content
+            WHERE public_ref = $2 AND property_id = $1 AND archived_at IS NULL
+           ON CONFLICT (content_id, lang) DO UPDATE SET
+             title = EXCLUDED.title, body = EXCLUDED.body, source_hash = EXCLUDED.source_hash,
+             origin = 'manual', updated_by = EXCLUDED.updated_by, updated_at = now(),
+             pending_hash = NULL, attempts = 0, next_at = NULL, last_error = NULL`,
+          [propertyId, contentRef, lang, titel, text, principal.userId])
+        if (r.rowCount === 0) throw Errors.notFound('res.terminalContent')
+        return einstellungAnsicht(client, propertyId)
+      })
+    }
+  })
+
+  /**
+   * Zurueck zur automatischen Uebersetzung: die von Hand verwerfen, oder
+   * eine gescheiterte noch einmal versuchen. Der Worker findet die Seite
+   * im naechsten Tick wieder faellig.
+   */
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/guest-folder/pages/:contentRef/translations/:lang',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Gaestemappe: Uebersetzung einer Seite neu von DeepL holen',
+    handler: async (req): Promise<GuestFolderSettings> => {
+      const { propertyId, contentRef, lang } = uebersetzungsParameter(req.params)
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const seite = await client.query(
+          `SELECT 1 FROM terminal_content
+            WHERE public_ref = $2 AND property_id = $1 AND archived_at IS NULL`,
+          [propertyId, contentRef])
+        if (seite.rowCount === 0) throw Errors.notFound('res.terminalContent')
+        await client.query(
+          `UPDATE terminal_content_translation t
+              SET title = NULL, body = NULL, source_hash = NULL, origin = NULL,
+                  pending_hash = NULL, attempts = 0, next_at = NULL, last_error = NULL,
+                  updated_by = $4, updated_at = now()
+             FROM terminal_content c
+            WHERE c.id = t.content_id AND c.public_ref = $2 AND c.property_id = $1
+              AND t.lang = $3`, [propertyId, contentRef, lang, principal.userId])
         return einstellungAnsicht(client, propertyId)
       })
     }

@@ -3,6 +3,7 @@ import { FOLDER_ROOM_HEADER, folderRefAusFragment, wifiQrText,
          type FolderLocale, type FolderWifi, type GuestFolderView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useQr } from '../lib/qr.js'
+import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { FOLDER_LOCALES, MappeSprache, startSprache, useMappeT,
          type MappeTextKey } from '../gast/mappeTexte.js'
 
@@ -71,7 +72,7 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
               {stand.view.wifi !== null && <Wlan wifi={stand.view.wifi} />}
               <Zeiten view={stand.view} />
               {stand.view.pages.map(s => (
-                <Seite key={s.contentRef} seite={s} roomRef={roomRef} />
+                <Seite key={s.contentRef} seite={s} roomRef={roomRef} locale={locale} />
               ))}
             </>
           )}
@@ -198,12 +199,20 @@ function Zeiten({ view }: { view: GuestFolderView }): JSX.Element {
 }
 
 /**
- * Eine Seite des Hauses. Text, kein HTML -- wie am Terminal; ein Bild per
- * `fetch` mit der Kopfzeile, weil ein Bild-Element keine schicken kann.
+ * Eine Seite des Hauses. Text, kein HTML -- im kleinen Format des Terminals
+ * (`Inhaltstext`); ein Bild per `fetch` mit der Kopfzeile, weil ein
+ * Bild-Element keine schicken kann.
+ *
+ * In der gewaehlten Sprache, wenn es eine passende Uebersetzung gibt (0144),
+ * sonst deutsch -- und dann mit `lang="de"`, damit ein Vorleseprogramm die
+ * Seite nicht mit niederlaendischer Aussprache liest.
  */
-function Seite({ seite, roomRef }: {
-  seite: GuestFolderView['pages'][number]; roomRef: string
+function Seite({ seite, roomRef, locale }: {
+  seite: GuestFolderView['pages'][number]; roomRef: string; locale: FolderLocale
 }): JSX.Element {
+  const fassung = locale === 'de' ? undefined : seite.translations[locale]
+  const titel = fassung?.title ?? seite.title
+  const text = fassung?.body ?? seite.body
   const [bild, setBild] = useState<string | null>(null)
   useEffect(() => {
     if (seite.imageRef === null) return
@@ -226,10 +235,12 @@ function Seite({ seite, roomRef }: {
   }, [seite.imageRef, roomRef])
 
   return (
-    <section className={KARTE}>
-      <h2 className="font-semibold">{seite.title}</h2>
+    <section className={KARTE} lang={fassung === undefined ? 'de' : locale}>
+      <h2 className="font-semibold">{titel}</h2>
       {bild !== null && <img src={bild} alt="" className="w-full rounded-sm object-cover" />}
-      {seite.body !== '' && <p className="whitespace-pre-line text-neutral-800">{seite.body}</p>}
+      {text.trim() !== '' && (
+        <div className="text-neutral-800"><Inhaltstext text={text} /></div>
+      )}
     </section>
   )
 }

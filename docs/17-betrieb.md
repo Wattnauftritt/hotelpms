@@ -328,6 +328,8 @@ Was eine Reinigungskraft in der Personal-App frei schreibt — Zusatzarbeit, ein
 
 Die Leitung kann eine Übersetzung im Bildschirm Arbeitszeit von Hand berichtigen; DeepL überschreibt das nicht, solange die Kraft ihren Text nicht ändert.
 
+Derselbe Schlüssel übersetzt die **Hausseiten der Gästemappe** (Migration 0144, Dokument 35). Dort gibt es keine Aufträge; der Stand steht in `terminal_content_translation`. Ohne Schlüssel sehen Gäste die Seiten deutsch, und die Einstellungen zeigen „wird übersetzt“. `last_error` und die Versuche bedeuten dasselbe wie in der Tabelle oben.
+
 ---
 
 ## 8b. Benachrichtigungen an das Personal (Web-Push)

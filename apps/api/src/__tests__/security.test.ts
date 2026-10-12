@@ -7,6 +7,7 @@ import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { registeredRoutes } from '../platform/routes.js'
+import { limiters } from '../platform/rateLimit.js'
 
 let owner: Pool
 let app: FastifyInstance
@@ -93,6 +94,10 @@ describe('Berechtigungen ueber alle Routen', () => {
   it('weist jede geschuetzte Route ohne Anmeldung ab', async () => {
     for (const r of registeredRoutes()) {
       if (r.permission === null) continue
+      // Jede Anfrage hier ist anonym und zaehlt auf die allgemeine Grenze;
+      // mit der naechsten Route mehr staende dort 429 statt 401, und der
+      // Test pruefte die Ratenbegrenzung statt der Anmeldung.
+      limiters.reset()
       const url = r.url.replace(/:(\w+)/g, '1')
       const res = await app.inject({ method: r.method, url, payload: r.method === 'GET' ? undefined : {} })
       expect(res.statusCode, `${r.method} ${r.url} ohne Anmeldung`).toBe(401)
