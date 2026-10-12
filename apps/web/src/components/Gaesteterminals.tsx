@@ -238,9 +238,11 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
 
 /**
  * Selbstbedienung am Touchscreen (Migration 0150): Zimmer antippen, Name
- * bestaetigen, Reinigung abbestellen. Ohne eingeschalteten Verzicht gibt
- * es dort nichts zu tun; der Hinweis sagt, wo er eingeschaltet wird, statt
- * einen Schalter zu bieten, der still nichts bewirkt.
+ * bestaetigen, Reinigung abbestellen oder Kopfkissen bestellen. Ohne
+ * eingeschalteten Verzicht und ohne Eintrag im Wunschkatalog gibt es dort
+ * nichts zu tun; der Hinweis sagt, wo beides eingeschaltet wird, statt
+ * einen Schalter zu bieten, der still nichts bewirkt. Beim ersten
+ * Einschalten legt die Schnittstelle die beiden Kopfkissen in den Katalog.
  */
 function SelbstbedienungSchalter({ propertyId }: { propertyId: number }): JSX.Element | null {
   const t = useT()
@@ -257,8 +259,8 @@ function SelbstbedienungSchalter({ propertyId }: { propertyId: number }): JSX.El
                onChange={e => setzen.mutate(e.currentTarget.checked)} />
         {t('terminal.self.enabled')}
       </label>
-      {q.data.enabled && !q.data.cleaningWaiverEnabled && (
-        <p className="text-xs text-amber-700">{t('terminal.self.needsWaiver')}</p>
+      {q.data.enabled && !q.data.cleaningWaiverEnabled && q.data.terminalItems === 0 && (
+        <p className="text-xs text-amber-700">{t('terminal.self.needsOffer')}</p>
       )}
       {setzen.isError && <Fehler error={setzen.error} />}
     </section>

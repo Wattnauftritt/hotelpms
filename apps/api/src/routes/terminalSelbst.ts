@@ -7,8 +7,9 @@ import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
 import { geraetVon } from '../platform/terminal.js'
 import { verzichtStand } from '../platform/reinigungsverzicht.js'
-import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_SQL }
-  from '../platform/terminalSelbst.js'
+import { mappeWuensche, wunschAusRumpf, wunschAnlegen } from '../platform/gastwuensche.js'
+import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_SQL,
+         kissenVorbelegen, einstellungAnsicht } from '../platform/terminalSelbst.js'
 
 /**
  * Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14; Migration
@@ -20,10 +21,13 @@ import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_S
  * vertippten Zimmer, nicht vor Absicht: das Geraet steht im Haus (Sven,
  * 12.10.2026).
  *
- * **Drei Routen, kein zweiter Verzicht.** Nach "Ja" bekommt das Terminal
- * einen Check-in-Link (Kanal `terminal`) und ruft damit
+ * **Kein zweiter Verzicht, kein zweiter Wunsch.** Nach "Ja" bekommt das
+ * Terminal einen Check-in-Link (Kanal `terminal`) und ruft damit
  * `POST /v1/checkin/cleaning-waiver` -- denselben Endpunkt wie der Gast auf
  * seinem Telefon, mit derselben Sperre und demselben Push an die Kraft.
+ * Kopfkissen und andere Wuensche gehen ueber `wunschAnlegen` aus dem
+ * Katalog der Gaestemappe (0149), mit Quelle `terminal` und nur, was dort
+ * "am Terminal" angehakt und kostenlos ist.
  *
  * **Was der Bildschirm preisgibt.** Vor "Ja" die Nummern belegter Zimmer
  * und den Nachnamen des Hauptgastes; keinen Vornamen, keine Daten, keine
@@ -95,14 +99,7 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
     summary: 'Gaesteterminal: Einstellung zur Selbstbedienung',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      return tx(req.pool, req, async client => {
-        const { rows } = await client.query<{ enabled: boolean; waiver: boolean }>(
-          `SELECT coalesce((SELECT enabled FROM property_terminal_self_setting
-                             WHERE property_id = $1), false) AS enabled,
-                  coalesce((SELECT enabled FROM property_cleaning_waiver_setting
-                             WHERE property_id = $1), false) AS waiver`, [propertyId])
-        return { enabled: rows[0]!.enabled, cleaningWaiverEnabled: rows[0]!.waiver }
-      })
+      return tx(req.pool, req, client => einstellungAnsicht(client, propertyId))
     }
   })
 
@@ -118,16 +115,27 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
       if (typeof b.enabled !== 'boolean') throw Errors.validation({ enabled: ['field.invalid'] })
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
-        await client.query(
+        /*
+         * Beim ersten Einschalten die beiden Kopfkissen in den Wunschkatalog
+         * (Plan terminal-selfservice, Abschnitt 9): ein Haus, das die
+         * Selbstbedienung einschaltet, soll sie nicht erst bestuecken
+         * muessen. Nur beim ersten Mal -- wer sie danach abschaltet, will
+         * sie nicht zurueck.
+         */
+        const neu = await client.query(
           `INSERT INTO property_terminal_self_setting (property_id, enabled, updated_by)
            VALUES ($1, $2, $3)
-           ON CONFLICT (property_id) DO UPDATE SET
-             enabled = $2, updated_by = $3, updated_at = now()`,
+           ON CONFLICT (property_id) DO NOTHING`,
           [propertyId, b.enabled, principal.userId])
-        const w = await client.query<{ enabled: boolean }>(
-          `SELECT enabled FROM property_cleaning_waiver_setting WHERE property_id = $1`,
-          [propertyId])
-        return { enabled: b.enabled, cleaningWaiverEnabled: w.rows[0]?.enabled ?? false }
+        if (neu.rowCount === 0) {
+          await client.query(
+            `UPDATE property_terminal_self_setting
+                SET enabled = $2, updated_by = $3, updated_at = now()
+              WHERE property_id = $1`, [propertyId, b.enabled, principal.userId])
+        } else if (b.enabled) {
+          await kissenVorbelegen(client, propertyId, principal.userId)
+        }
+        return einstellungAnsicht(client, propertyId)
       })
     }
   })
@@ -287,8 +295,42 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
           confirmed: true,
           token: t.token,
           cleaningWaiver: await verzichtStand(client, s.reservation_id, s.property_id,
-                                              geschaeftstag, true)
+                                              geschaeftstag, true),
+          requests: await mappeWuensche(client, s.property_id, s.reservation_id,
+                                        geschaeftstag, 'terminal')
         }
+      })
+    }
+  })
+
+  /**
+   * Einen Wunsch aus dem Katalog bestellen, etwa ein Kopfkissen. Nur in
+   * einer bestaetigten, offenen Sitzung: das "Ja" ist der Ausweis, wie die
+   * Freischaltung in der Mappe. Ohne Wunschtag -- am Terminal steht der
+   * Gast und will das Kissen heute.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/terminal/self/sessions/:sessionRef/requests',
+    permission: 'terminal:device',
+    summary: 'Gaesteterminal: einen Wunsch aus dem Katalog bestellen',
+    handler: async (req, reply) => {
+      const { deviceId } = geraetVon(req)
+      const { sessionRef } = req.params as { sessionRef: string }
+      const w = wunschAusRumpf(req.body)
+      void reply.header('cache-control', 'no-store')
+      return tx(req.pool, req, async client => {
+        const s = await eigeneSitzung(client, deviceId, sessionRef)
+        if (s.confirmed_at === null) throw Errors.conflict('terminalSelf.sessionClosed')
+        const tag = await client.query<{ d: string }>(
+          `SELECT ${GESCHAEFTSTAG_SQL}::text AS d FROM property p WHERE p.id = $1`,
+          [s.property_id])
+        const geschaeftstag = tag.rows[0]!.d
+        await wunschAnlegen(client, {
+          propertyId: s.property_id, reservationId: s.reservation_id,
+          businessDate: geschaeftstag, source: 'terminal',
+          itemRef: w.itemRef, qty: w.qty, wantedFor: null })
+        return mappeWuensche(client, s.property_id, s.reservation_id, geschaeftstag, 'terminal')
       })
     }
   })
