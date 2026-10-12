@@ -4,6 +4,7 @@ import { LOCALES, GUEST_REQUEST_DECLINE_REASONS, type FolderRequests,
          type GuestRequestRow } from '@hotelpms/contracts'
 import { isIsoDate, taxFromGross } from '@hotelpms/domain'
 import { Errors } from './errors.js'
+import { meldePush } from './push.js'
 import { can, type Principal } from './context.js'
 import type { Permission } from './permissions.js'
 
@@ -96,8 +97,9 @@ export async function wunschAnlegen(
        itemRef: string; qty: number; wantedFor: string | null }
 ): Promise<void> {
   const tuer = a.source === 'terminal' ? 'i.on_terminal' : 'i.on_folder'
-  const e = await client.query<{ id: number; max_qty: number; preis: number | null }>(
-    `SELECT i.id::int, i.max_qty, ${PREIS} AS preis
+  const e = await client.query<{ id: number; max_qty: number; preis: number | null
+                                 handler: 'reception' | 'housekeeping' }>(
+    `SELECT i.id::int, i.max_qty, ${PREIS} AS preis, i.handler
        FROM guest_request_item i
        LEFT JOIN product p ON p.id = i.product_id
       WHERE i.public_ref = $1 AND i.property_id = $2 AND i.active AND ${tuer}`,
@@ -127,12 +129,31 @@ export async function wunschAnlegen(
   if (offen.rows[0]!.n >= OFFENE_WUENSCHE_MAX) {
     throw Errors.conflict('guestRequest.tooManyOpen', { max: OFFENE_WUENSCHE_MAX })
   }
-  await client.query(
+  const neu = await client.query<{ id: number }>(
     `INSERT INTO guest_request (property_id, reservation_id, resource_id, item_id, qty,
                                 unit_price_cent, wanted_for, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8) RETURNING id::int`,
     [a.propertyId, a.reservationId, res.resource_id, item.id, a.qty, item.preis,
      a.wantedFor, a.source])
+
+  // Kostenlos und Sache des Housekeepings: die Kraft, der das Zimmer heute
+  // zugeteilt ist, bekommt eine Meldung (0150) und sieht den Wunsch an der
+  // Kachel. Ein Extra mit Preis bleibt bei der Rezeption -- annehmen heisst
+  // dort buchen, und das darf die Kraft nicht. Ein Wunsch fuer einen
+  // spaeteren Tag meldet sich nicht jetzt; er steht an dem Tag in der App.
+  if (item.handler === 'housekeeping' && item.preis === null && res.resource_id !== null
+      && (a.wantedFor === null || a.wantedFor <= a.businessDate)) {
+    const k = await client.query<{ user_id: number; code: string }>(
+      `SELECT t.assigned_to::int AS user_id, r.code
+         FROM housekeeping_task t JOIN resource r ON r.id = t.resource_id
+        WHERE t.resource_id = $1 AND t.business_date = $2::date
+          AND t.kind IN ('departure','stayover') AND t.assigned_to IS NOT NULL`,
+      [res.resource_id, a.businessDate])
+    for (const z of k.rows) {
+      await meldePush(client, a.propertyId, [z.user_id], 'request', { room: z.code },
+        String(neu.rows[0]!.id))
+    }
+  }
 }
 
 // ------------------------------------------------------------ Rezeption

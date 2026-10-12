@@ -279,3 +279,60 @@ describe('Bearbeiten an der Rezeption', () => {
     expect((await owner.query(`SELECT 1 FROM charge`)).rowCount).toBe(0)
   })
 })
+
+describe('Housekeeping-Wuensche in der Personal-App (0150)', () => {
+  it('meldet einen kostenlosen Wunsch der Kraft des Zimmers, und sie hakt ihn ab', async () => {
+    const hausdame = await makeUser(owner, { email: 'hd@kunde.de', propertyId: fx.propertyId,
+      roleKey: 'housekeeping' })
+    const olga = await makeUser(owner, { email: 'olga@kunde.de', propertyId: fx.propertyId,
+      roleKey: 'housekeeping_staff' })
+    const c = await katalog(
+      eintrag({ de: 'Kopfkissen', uk: 'Подушка' }, { handler: 'housekeeping' }),
+      eintrag({ de: 'Sekt' }, { handler: 'housekeeping', position: 1,
+        price: { grossCent: 2400, taxRuleId: steuer19, revenueAccount: '8400' } }),
+      eintrag({ de: 'Decke' }, { handler: 'housekeeping', position: 2 }))
+    const [kissen, sekt, decke] = c.items
+    await aufenthalt(zimmer[0]!, 'Petersen')
+    const plan = await app.inject({ method: 'PUT', url: p('/cleaning-plan'),
+      headers: auth(hausdame.sessionId), payload: { date: HEUTE, assignments: [
+        { resourceId: zimmer[0], kind: 'stayover', assignedTo: olga.userId }] } })
+    expect(plan.statusCode, plan.body).toBe(200)
+
+    const cookie = await freischalten(zimmer[0]!, 'Petersen')
+    expect((await bestellen(zimmer[0]!, { itemRef: kissen!.itemRef, qty: 2 }, cookie))
+      .statusCode).toBe(200)
+    // Mit Preis bleibt es bei der Rezeption, fuer morgen meldet es sich morgen.
+    await bestellen(zimmer[0]!, { itemRef: sekt!.itemRef, qty: 1 }, cookie)
+    await bestellen(zimmer[0]!, { itemRef: decke!.itemRef, qty: 1, wantedFor: '2026-10-13' },
+      cookie)
+
+    const push = await owner.query(
+      `SELECT user_id::int, params FROM staff_push WHERE kind = 'request'`)
+    expect(push.rows).toEqual([{ user_id: olga.userId, params: { room: expect.any(String) } }])
+
+    const meine = await app.inject({ method: 'GET', url: p('/my-rooms'),
+      headers: auth(olga.sessionId) })
+    const z = meine.json().rooms[0]
+    expect(z.requests).toEqual([{ requestRef: expect.any(String),
+      name: { de: 'Kopfkissen', uk: 'Подушка' }, qty: 2 }])
+
+    // Ein fremder Wunsch (der Sekt) ist ueber diese Route nicht zu haben.
+    const sektRef = (await heute()).find((w: { itemName: { de: string } }) =>
+      w.itemName.de === 'Sekt').requestRef
+    expect((await app.inject({ method: 'POST',
+      url: p(`/my-rooms/${z.taskId}/requests/${sektRef}/done`),
+      headers: auth(olga.sessionId) })).statusCode).toBe(404)
+
+    const ok = await app.inject({ method: 'POST',
+      url: p(`/my-rooms/${z.taskId}/requests/${z.requests[0].requestRef}/done`),
+      headers: auth(olga.sessionId) })
+    expect(ok.statusCode, ok.body).toBe(200)
+    expect(ok.json().rooms[0].requests).toEqual([])
+    // Die Rezeption sieht nur noch den Sekt und die Decke; der Gast "erledigt".
+    expect((await heute()).map((w: { itemName: { de: string } }) => w.itemName.de).sort())
+      .toEqual(['Decke', 'Sekt'])
+    const mine = (await mappe(zimmer[0]!, cookie)).json().stay.requests.mine
+    expect(mine.find((w: { name: { de: string } }) => w.name.de === 'Kopfkissen').status)
+      .toBe('done')
+  })
+})

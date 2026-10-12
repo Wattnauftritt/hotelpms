@@ -43,6 +43,8 @@ export interface MeinZimmer {
   inspectionNoteTranslated?: string | null
   /** Der Gast verzichtet heute (0115); `water`: es gibt eine Flasche dafuer. */
   waiver?: { water: boolean; delivered: boolean } | null
+  /** Offene, kostenlose Gaestewuensche fuers Zimmer (0150); Name je Sprache. */
+  requests?: Array<{ requestRef: string; name: Record<string, string>; qty: number }>
 }
 interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }
 interface Haus extends Tag { propertyId: number; name: string }
@@ -133,8 +135,17 @@ function HausListe({ haus, locale, ueberschrift }: {
     onError: fehler
   })
 
+  const gebracht = useMutation({
+    mutationFn: ({ taskId, requestRef }: { taskId: number; requestRef: string }) =>
+      api.post<Tag>(`/v1/properties/${propertyId}/my-rooms/${taskId}/requests/${requestRef}/done`),
+    // Die Karte bleibt offen: es kann noch ein zweiter Wunsch daran haengen.
+    onSuccess: neu => { uebernehmen(neu); setHinweis(null) },
+    onError: fehler
+  })
+
   const fertig = (z: MeinZimmer): boolean => z.status !== 'open' && z.inspection !== 'rework'
   const laeuft = setzen.isPending || nachgearbeitet.isPending || wasser.isPending
+    || gebracht.isPending
 
   // Abreisen und Bleiber als Kacheln in Gehreihenfolge, wie in der alten
   // App (Sven, 08.10.2026: "dort sehen die Damen auch, welche Zimmer schon
@@ -187,6 +198,8 @@ function HausListe({ haus, locale, ueberschrift }: {
                   {t('room.water')}</span>}
                 {z.openProblems > 0 && <span className="block text-xs text-red-800">
                   {t('room.problems', { n: z.openProblems })}</span>}
+                {(z.requests?.length ?? 0) > 0 && <span className="block text-xs font-medium
+                  text-amber-800">🛎 {t('room.requests', { n: z.requests!.length })}</span>}
               </button>
               {zu === 'rework'
                 ? <button type="button" disabled={laeuft} className={KACHEL_KNOPF}
@@ -206,6 +219,8 @@ function HausListe({ haus, locale, ueberschrift }: {
                   <ZimmerKarte z={z} offen laeuft={laeuft}
                                onNachgearbeitet={() => nachgearbeitet.mutate(z.taskId)}
                                onWasser={() => wasser.mutate(z.taskId)}
+                               onGebracht={requestRef => gebracht.mutate({ taskId: z.taskId,
+                                                                          requestRef })}
                                onToggle={() => setOffen(null)}
                                onSetzen={outcome => setzen.mutate({ taskId: z.taskId, outcome })}
                                propertyId={propertyId} locale={locale}
@@ -287,9 +302,10 @@ function Marke({ farbe, children }: { farbe: string; children: React.ReactNode }
 }
 
 function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, onWasser,
-                       propertyId, locale, onGemeldet, onFehler }: {
+                       onGebracht, propertyId, locale, onGemeldet, onFehler }: {
   z: MeinZimmer; offen: boolean; laeuft: boolean; onToggle: () => void
   onNachgearbeitet: () => void; onWasser: () => void
+  onGebracht: (requestRef: string) => void
   onSetzen: (o: Ausgang | null) => void; propertyId: number; locale: StaffLocale
   onGemeldet: (neu: Tag) => void; onFehler: (e: unknown) => void
 }): JSX.Element {
@@ -342,6 +358,19 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, o
         && <p className="text-sm text-neutral-500">{t('room.original')}: {z.inspectionNote}</p>}
     </div>}
     {offen && <div className="px-4 pb-4 space-y-2">
+      {/* Gaestewuensche zuerst: sie stehen auch an einem Zimmer, das der
+          Gast heute nicht gereinigt haben will -- das Kissen will er trotzdem. */}
+      {(z.requests?.length ?? 0) > 0 && <div className="rounded-md border border-amber-300
+                                                       bg-amber-50 p-3 space-y-2">
+        <p className="text-sm font-semibold text-amber-900">🛎 {t('request.heading')}</p>
+        {z.requests!.map(w => <div key={w.requestRef} className="flex items-center gap-3">
+          <span className="flex-1 text-base">{w.qty} × {w.name[locale] ?? w.name.de}</span>
+          <button type="button" disabled={laeuft}
+                  className="min-h-[2.5rem] px-3 text-sm font-medium rounded-md bg-green-600
+                             text-white active:bg-green-700 disabled:opacity-50"
+                  onClick={() => onGebracht(w.requestRef)}>✓ {t('request.done')}</button>
+        </div>)}
+      </div>}
       {nacharbeit && <button type="button" disabled={laeuft} className={KNOPF}
                              onClick={onNachgearbeitet}>{t('inspect.reworked')}</button>}
       {/* Verzicht mit Wasser: die Flasche ist die Aufgabe, nicht die Reinigung. */}

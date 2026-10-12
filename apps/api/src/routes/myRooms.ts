@@ -89,6 +89,13 @@ interface MeinZimmer {
    * gibt dafuer eine Flasche, `delivered`: sie steht schon vor der Tuer.
    */
   waiver: { water: boolean; delivered: boolean } | null
+  /**
+   * Offene Gaestewuensche fuers Zimmer, um die sich Housekeeping kuemmert
+   * und die nichts kosten (0149, 0150). Name je Sprache; die App nimmt die
+   * der Kraft. Ein Wunsch fuer einen spaeteren Tag steht erst an dem Tag
+   * hier. Kein Gastname: die Kraft braucht das Zimmer, nicht den Gast.
+   */
+  requests: Array<{ requestRef: string; name: Record<string, string>; qty: number }>
 }
 
 /**
@@ -123,7 +130,16 @@ async function liesMeineZimmer(
               WHERE m.resource_id = r.id AND m.status <> 'done') AS "openProblems",
             CASE WHEN w.id IS NOT NULL THEN json_build_object(
               'water', COALESCE(s.enabled AND s.water_gift, false),
-              'delivered', w.water_delivered_at IS NOT NULL) END AS waiver
+              'delivered', w.water_delivered_at IS NOT NULL) END AS waiver,
+            COALESCE((SELECT json_agg(json_build_object('requestRef', q.public_ref,
+                                                        'name', i.name, 'qty', q.qty)
+                                      ORDER BY q.created_at, q.id)
+                        FROM guest_request q
+                        JOIN guest_request_item i ON i.id = q.item_id
+                       WHERE q.resource_id = r.id AND q.status = 'open'
+                         AND i.handler = 'housekeeping' AND q.unit_price_cent IS NULL
+                         AND (q.wanted_for IS NULL OR q.wanted_for <= t.business_date)),
+                     '[]'::json) AS requests
        FROM housekeeping_task t
        LEFT JOIN resource r ON r.id = t.resource_id
        LEFT JOIN resource_category c ON c.id = r.category_id
@@ -387,6 +403,38 @@ export function myRoomsRoutes(app: FastifyInstance): void {
                 SET outcome = 'declined', status = 'skipped', done_at = now(), done_by = $2
               WHERE id = $1`, [taskId, ich])
         }
+        return liesMeineZimmer(client, propertyId, ich, aufgabe.date)
+      })
+    }
+  })
+
+  /**
+   * Einen Gaestewunsch gebracht (0150). Nur an einem eigenen Zimmer von
+   * heute und nur, was die App zeigt: kostenlos und Sache des
+   * Housekeepings. Ein Extra mit Preis wird an der Rezeption angenommen,
+   * weil das dort bucht.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/my-rooms/:taskId/requests/:requestRef/done',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Gaestewunsch an einem eigenen Zimmer erledigt (Personal-App)',
+    handler: async (req) => {
+      const { propertyId, taskId } = aufgabeAusPfad(req)
+      const { requestRef } = req.params as { requestRef: string }
+      const ich = personVon(req)
+      return tx(req.pool, req, async client => {
+        const aufgabe = await eigeneAufgabe(client, propertyId, ich, taskId)
+        const w = await client.query(
+          `UPDATE guest_request q
+              SET status = 'done', handled_by = $3, handled_at = now()
+             FROM guest_request_item i
+            WHERE q.public_ref = $1 AND q.resource_id = $2 AND q.status = 'open'
+              AND i.id = q.item_id AND i.handler = 'housekeeping'
+              AND q.unit_price_cent IS NULL`,
+          [requestRef, aufgabe.resource_id, ich])
+        if (w.rowCount === 0) throw Errors.notFound('res.guestRequest')
         return liesMeineZimmer(client, propertyId, ich, aufgabe.date)
       })
     }
