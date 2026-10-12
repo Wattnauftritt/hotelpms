@@ -6,6 +6,7 @@ import { hashToken, neuesToken } from '@hotelpms/domain'
 import { Errors } from './errors.js'
 import { loadConfig } from './config.js'
 import { verzichtStand } from './reinigungsverzicht.js'
+import { mappeWuensche } from './gastwuensche.js'
 
 /**
  * Digitale Gaestemappe: wie eine Anfrage ohne Anmeldung an genau ein Zimmer
@@ -167,8 +168,8 @@ export async function aufenthaltDerSitzung(
 
 /**
  * Was das freigeschaltete Telefon ueber seinen Aufenthalt sieht. Der
- * Verzicht kommt mit, nicht als eigener Aufruf: die Mappe ist ein
- * Bildschirm, und er steht darauf (0148).
+ * Verzicht und die Wuensche kommen mit, nicht als eigener Aufruf: die
+ * Mappe ist ein Bildschirm, und beides steht darauf (0148, 0149).
  */
 export async function aufenthaltAnsicht(
   client: PoolClient, k: MappeKontext, a: { reservationId: number; departure: string }
@@ -176,7 +177,8 @@ export async function aufenthaltAnsicht(
   return {
     departure: a.departure,
     cleaningWaiver: await verzichtStand(client, a.reservationId, k.propertyId,
-      k.businessDate, true)
+      k.businessDate, true),
+    requests: await mappeWuensche(client, k.propertyId, a.reservationId, k.businessDate)
   }
 }
 

@@ -5,6 +5,7 @@ import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 import { VerzichtMarke } from '../components/Reinigungsverzicht.tsx'
+import { GastWunschListe } from '../components/GastWuensche.tsx'
 
 /**
  * Das Tagesgeschäft: Anreisen, Abreisen, Hausliste.
@@ -38,6 +39,19 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
         </button>
         {aktion.isError && <Fehler error={aktion.error} />}
       </div>
+
+      {/* Offene Gaestewuensche (0149) stehen ueber den Spalten und nur, wenn
+          es welche gibt: sie gelten nicht fuer den gewaehlten Tag, sondern
+          bis jemand sie erledigt, und sollen nicht unter vierzig Anreisen
+          verschwinden. */}
+      {d.guestRequests.length > 0 && (
+        <section className="bg-white border border-amber-300 rounded-sm">
+          <h2 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">
+            {t('folder.req.title')} ({d.guestRequests.length})
+          </h2>
+          <GastWunschListe wuensche={d.guestRequests} mitGast />
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Spalte titel={`${t('today.arrivals')} (${d.arrivals.length})`}>

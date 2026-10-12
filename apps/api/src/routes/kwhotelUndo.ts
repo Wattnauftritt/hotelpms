@@ -55,7 +55,9 @@ export const FOLGEN_RESERVIERUNG = [
   'checkin_token', 'terminal_job', 'reservation_occupant', 'routing_rule',
   'reservation_external_registration', 'avs_export', 'cleaning_waiver',
   // Ein Gast hat die Mappe freigeschaltet (0147): der Aufenthalt laeuft.
-  'guest_folder_session'
+  'guest_folder_session',
+  // Ein Wunsch aus der Mappe (0149), womoeglich schon gebucht.
+  'guest_request'
 ] as const
 export const FOLGEN_FOLIO = [
   'invoice', 'charge', 'settlement', 'routing_rule', 'payment_intent', 'deposit_ledger',
@@ -79,7 +81,9 @@ export const VERWEISE_ZIMMER = [
   ['maintenance_ticket', 'resource_id'],
   // Eigene Sollminuten (0106) hat jemand von Hand eingetragen; das Zimmer
   // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
-  ['cleaning_norm', 'resource_id']
+  ['cleaning_norm', 'resource_id'],
+  // Ein Wunsch aus der Mappe nennt das Zimmer, in dem er bestellt wurde (0149).
+  ['guest_request', 'resource_id']
 ] as const
 /**
  * Zustand des Zimmers, der mit ihm geht. Die Referenz der Gaestemappe (0143)

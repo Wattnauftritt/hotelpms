@@ -1,5 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox'
-import { GuestFolderStayStatus } from './gaestemappe.js'
+import { GuestFolderStayStatus, GuestRequestRow } from './gaestemappe.js'
 import { CleaningWaiverView } from './cleaningWaiver.js'
 
 /**
@@ -312,7 +312,12 @@ export const DailySheet = Type.Object({
     DailyRow, Type.Object({
       registered: Type.Boolean(),
       waivedDates: Type.Array(Type.String())
-    })]))
+    })])),
+  /**
+   * Offene Wuensche aus der Gaestemappe (0149), gleich welchen Tages: ein
+   * Kissen von gestern Abend ist heute noch offen.
+   */
+  guestRequests: Type.Array(GuestRequestRow)
 })
 export type DailySheet = Static<typeof DailySheet>
 
@@ -912,7 +917,9 @@ export const ReservationDetail = Type.Object({
   /** Reinigungsverzicht (0115); `null`, wenn das Haus ihn nicht anbietet oder kein Bleibetag mehr kommt. */
   cleaningWaiver: Type.Optional(Type.Union([CleaningWaiverView, Type.Null()])),
   /** Freischaltungen der Gaestemappe (0147); `null`, wenn das Haus keine Mappe anbietet. */
-  guestFolder: Type.Optional(Type.Union([GuestFolderStayStatus, Type.Null()]))
+  guestFolder: Type.Optional(Type.Union([GuestFolderStayStatus, Type.Null()])),
+  /** Die Wuensche dieses Aufenthalts aus der Gaestemappe (0149), neueste zuerst. */
+  guestRequests: Type.Optional(Type.Array(GuestRequestRow))
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 

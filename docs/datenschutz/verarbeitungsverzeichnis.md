@@ -51,6 +51,10 @@ Sprache, Aufenthaltsdaten, Rechnungsdaten, Meldedaten, Ausweisart und
 der Hash des Cookies, nie Nachname oder PLZ, mit denen der Gast bestätigt;
 beide werden nur verglichen. Die Seite zeigt nach der Freischaltung nur den
 Abreisetag. Fehlversuche zählen je Zimmer, ohne Bezug zu einer Person.
+Wünsche aus der Mappe (`guest_request`, Migration 0149): Eintrag aus dem
+Katalog des Hauses, Menge, gewünschter Tag, Stand — kein Freitext. Sie
+hängen an der Reservierung und werden mit deren Gast anonymisiert; ein
+angenommenes Extra mit Preis ist eine Buchung und bleibt wie jede andere.
 
 **Beschäftigte des Betriebs.** Name, dienstliche E-Mail, Rolle, Zeitpunkt der
 letzten Anmeldung, Authentifizierungsmerkmale.
