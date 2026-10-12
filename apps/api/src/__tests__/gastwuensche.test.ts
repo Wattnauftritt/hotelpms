@@ -280,7 +280,7 @@ describe('Bearbeiten an der Rezeption', () => {
   })
 })
 
-describe('Housekeeping-Wuensche in der Personal-App (0151)', () => {
+describe('Housekeeping-Wuensche in der Personal-App (0152)', () => {
   it('meldet einen kostenlosen Wunsch der Kraft des Zimmers, und sie hakt ihn ab', async () => {
     const hausdame = await makeUser(owner, { email: 'hd@kunde.de', propertyId: fx.propertyId,
       roleKey: 'housekeeping' })

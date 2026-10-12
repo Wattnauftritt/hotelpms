@@ -137,7 +137,7 @@ export async function wunschAnlegen(
      a.wantedFor, a.source])
 
   // Kostenlos und Sache des Housekeepings: die Kraft, der das Zimmer heute
-  // zugeteilt ist, bekommt eine Meldung (0151) und sieht den Wunsch an der
+  // zugeteilt ist, bekommt eine Meldung (0152) und sieht den Wunsch an der
   // Kachel. Ein Extra mit Preis bleibt bei der Rezeption -- annehmen heisst
   // dort buchen, und das darf die Kraft nicht. Ein Wunsch fuer einen
   // spaeteren Tag meldet sich nicht jetzt; er steht an dem Tag in der App.
