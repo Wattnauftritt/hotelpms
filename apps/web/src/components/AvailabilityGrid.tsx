@@ -39,13 +39,13 @@ export function AvailabilityGrid({ from, to, days, categories, onSelect }: {
       <div style={{ minWidth: LABEL_BREITE + tage.length * SPALTE }}>
         <div className="flex sticky top-0 z-20 bg-white border-b border-neutral-200">
           <div className="w-40 shrink-0 px-2 py-1 text-xs font-medium text-neutral-500
-                          border-r border-neutral-200">
+                          border-e border-neutral-200">
             {t('availability.category')}
           </div>
           {tage.map(d => (
             <div key={d} style={{ width: SPALTE }}
                  className={`shrink-0 text-center text-[11px] leading-tight py-1
-                             border-r border-neutral-100
+                             border-e border-neutral-100
                              ${isWeekend(d) ? 'bg-neutral-50' : ''}`}>
               <div className="text-neutral-400">{weekdayShort(d, locale)}</div>
               <div className="tabular-nums">{d.slice(8)}</div>
@@ -57,7 +57,7 @@ export function AvailabilityGrid({ from, to, days, categories, onSelect }: {
           const byDate = jeKategorie.get(k.id) ?? new Map<string, AvailabilityDay>()
           return (
             <div key={k.id} className="flex border-b border-neutral-100">
-              <div className="w-40 shrink-0 px-2 py-1 text-xs border-r border-neutral-200
+              <div className="w-40 shrink-0 px-2 py-1 text-xs border-e border-neutral-200
                               flex items-center truncate">
                 {k.name}
               </div>
@@ -72,7 +72,7 @@ export function AvailabilityGrid({ from, to, days, categories, onSelect }: {
                           title={frei === null ? '' : `${frei} ${t('availability.free')}`}
                           style={{ width: SPALTE }}
                           className={`shrink-0 py-1 text-[11px] text-center tabular-nums
-                                      border-r border-neutral-100
+                                      border-e border-neutral-100
                                       ${frei === null ? 'text-neutral-300'
                                         : frei <= 0 ? 'bg-red-50 text-red-700'
                                         : 'hover:bg-emerald-50 text-emerald-800'}`}>

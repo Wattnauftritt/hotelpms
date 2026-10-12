@@ -94,7 +94,7 @@ function Wunsch({ w, mitGast, busy, onDone, onDecline }: {
           )}
         </div>
       ) : (
-        <p className={`text-xs text-right ${w.status === 'done' ? 'text-emerald-800' : 'text-red-800'}`}>
+        <p className={`text-xs text-end ${w.status === 'done' ? 'text-emerald-800' : 'text-red-800'}`}>
           {t(`folder.req.status.${w.status}`)}
           {w.declineReason !== null && <> · {t(`folder.req.reason.${w.declineReason}`)}</>}
         </p>

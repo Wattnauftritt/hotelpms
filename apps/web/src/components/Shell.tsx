@@ -169,7 +169,7 @@ function Aufklapp(
       </button>
       {offen && (
         <div role="menu"
-             className="absolute left-0 z-40 mt-1 w-56 rounded-sm border border-neutral-200
+             className="absolute start-0 z-40 mt-1 w-56 rounded-sm border border-neutral-200
                         bg-white py-1 shadow-xl">
           {children(() => setOffen(false))}
         </div>
@@ -187,7 +187,7 @@ function MenueZeile(
   return (
     <button type="button" role="menuitem" onClick={() => onWahl(s.key)}
             aria-current={screen === s.key ? 'page' : undefined}
-            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-start text-sm
                         hover:bg-neutral-100
                         ${screen === s.key ? 'bg-neutral-50 font-medium' : ''}`}>
       {/* Der Haken in fester Spalte, wie in der Hauswahl. */}

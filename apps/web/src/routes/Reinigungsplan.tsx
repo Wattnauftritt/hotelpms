@@ -323,7 +323,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
               const reihe = (art: ReinigungsArt): JSX.Element => {
                 const liste = meine.filter(z => artVon(z) === art)
                 const rot = art === 'departure'
-                return <div className={`border-l-2 pl-2 ${rot ? 'border-red-400' : 'border-sky-400'}`}>
+                return <div className={`border-s-2 pl-2 ${rot ? 'border-red-400' : 'border-sky-400'}`}>
                   <div className={`text-xs font-semibold mb-1 ${rot ? 'text-red-800' : 'text-sky-800'}`}>
                     {t(rot ? 'cleaningPlan.departures' : 'cleaningPlan.stayovers')}
                     <span className="ml-1 font-normal text-neutral-500">
@@ -344,7 +344,7 @@ function Tagesplan({ propertyId, plan }: { propertyId: number; plan: Plan }): JS
                                                   : 'border-neutral-200'}`}>
                 <button type="button" onClick={() => setGewaehlt(aktiv ? null : k.userId)}
                         aria-pressed={aktiv}
-                        className="w-full flex items-center gap-2 text-left">
+                        className="w-full flex items-center gap-2 text-start">
                   <span className="font-semibold">{k.displayName}</span>
                   {aktiv && <span className="text-xs text-emerald-700">
                     {t('cleaningPlan.selected')}</span>}
@@ -418,7 +418,7 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
                   placeholder={cat === null && room === null
                     ? t('cleaningPlan.normDefault', { minutes: plan.defaults[kind] }) : ''}
                   onChange={e => setWerte(alt => new Map(alt).set(k, e.target.value))}
-                  className="w-32 border border-neutral-300 rounded-sm px-1 py-0.5 text-right" />
+                  className="w-32 border border-neutral-300 rounded-sm px-1 py-0.5 text-end" />
       {kind === 'stayover' && ohneZwischen(cat, room)}</>
   }
 
@@ -442,7 +442,7 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
       <p className="text-xs text-neutral-600">{t('cleaningPlan.normsHint')}</p>
       <table className="text-sm">
         <thead>
-          <tr className="text-left text-xs text-neutral-500">
+          <tr className="text-start text-xs text-neutral-500">
             <th className="pr-3 font-normal" />
             <th className="pr-3 font-normal">{t('cleaningPlan.departure')}</th>
             <th className="font-normal">{t('cleaningPlan.stayover')}</th>
@@ -533,7 +533,7 @@ function Bereiche({ propertyId, bereiche }: {
       <p className="text-xs text-neutral-600">{t('cleaningPlan.areasHint')}</p>
       {zeilen.length > 0 && <table className="text-sm">
         <thead>
-          <tr className="text-left text-xs text-neutral-500">
+          <tr className="text-start text-xs text-neutral-500">
             <th className="pr-2 font-normal">{t('cleaningPlan.areaCode')}</th>
             <th className="pr-2 font-normal">{t('cleaningPlan.areaBuilding')}</th>
             <th className="pr-2 font-normal">{t('cleaningPlan.minutes')}</th>
@@ -554,7 +554,7 @@ function Bereiche({ propertyId, bereiche }: {
             <td className="pr-2">
               <input type="number" min={0} max={480} inputMode="numeric" value={z.minutes}
                      onChange={e => aendern(i, { minutes: e.target.value })}
-                     className={`w-20 text-right ${feld}`} />
+                     className={`w-20 text-end ${feld}`} />
             </td>
             <td>
               <label className="flex items-center gap-1">

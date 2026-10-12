@@ -200,7 +200,7 @@ export function ErsteSchritte({ propertyId, darfPreise, bildschirme, onScreen, o
           </div>
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-neutral-600">
+              <tr className="text-start text-xs text-neutral-600">
                 <th className="pb-1 pr-2 font-normal w-24">{t('first.code')}</th>
                 <th className="pb-1 pr-2 font-normal">{t('first.name')}</th>
                 <th className="pb-1 pr-2 font-normal w-24">{t('first.persons')}</th>
@@ -301,7 +301,7 @@ export function ErsteSchritte({ propertyId, darfPreise, bildschirme, onScreen, o
               <label key={i} className="flex items-center gap-3 text-sm">
                 <span className="grow">{z.code} · {z.name}</span>
                 <span className="text-xs text-neutral-500">{t('first.pricePerNight')}</span>
-                <input className={`${FELD} w-32 text-right tabular-nums`} inputMode="decimal"
+                <input className={`${FELD} w-32 text-end tabular-nums`} inputMode="decimal"
                        value={z.preis} placeholder="0,00"
                        onChange={e => aendern(i, { preis: e.target.value })} />
               </label>

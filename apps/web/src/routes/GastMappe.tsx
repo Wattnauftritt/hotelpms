@@ -3,6 +3,7 @@ import { FOLDER_ROOM_HEADER, SPRACHNAMEN, folderRefAusFragment, wifiQrText,
          type CleaningWaiverView, type FolderLocale, type FolderRequestItem,
          type FolderRequests, type FolderWifi, type GuestFolderView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
+import { dokumentSprache } from '../lib/dokumentSprache.js'
 import { useQr } from '../lib/qr.js'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { VerzichtListe } from '../components/VerzichtListe.tsx'
@@ -38,7 +39,7 @@ type Laden =
 
 export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Element {
   const [locale, setLocale] = useState<FolderLocale>(() => startSprache(navigator.language))
-  useEffect(() => { document.documentElement.lang = locale }, [locale])
+  useEffect(() => { dokumentSprache(locale) }, [locale])
   const [stand, setStand] = useState<Laden>(
     roomRef === null ? { art: 'fehler', text: 'unknown' } : { art: 'laedt' })
   const [versuch, setVersuch] = useState(0)
@@ -242,7 +243,7 @@ function Wuensche({ start, roomRef, locale }: {
                 <button type="button" aria-expanded={offen === i.itemRef}
                         onClick={() => { setOffen(offen === i.itemRef ? null : i.itemRef)
                                          setMeldung(null) }}
-                        className="flex w-full items-baseline justify-between gap-3 text-left">
+                        className="flex w-full items-baseline justify-between gap-3 text-start">
                   <span className="font-medium">{name(i.name)}</span>
                   <span className="text-sm text-neutral-600">
                     {i.unitPriceCent === null ? t('req.free') : preis(i.unitPriceCent, locale)}
@@ -511,7 +512,8 @@ function Seite({ seite, roomRef, locale }: {
   }, [seite.imageRef, roomRef])
 
   return (
-    <section className={KARTE} lang={fassung === undefined ? 'de' : locale}>
+    <section className={KARTE} lang={fassung === undefined ? 'de' : locale}
+             dir={fassung === undefined ? 'ltr' : undefined}>
       <h2 className="font-semibold">{titel}</h2>
       {bild !== null && <img src={bild} alt="" className="w-full rounded-sm object-cover" />}
       {text.trim() !== '' && (

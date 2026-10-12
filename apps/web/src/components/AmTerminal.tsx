@@ -208,7 +208,7 @@ export function GeraetWahl({ terminals, onWahl, onAbbruch }: {
       {terminals.map(d => (
         <button key={d.deviceRef} type="button" disabled={d.busy === true}
                 onClick={() => onWahl(d.deviceRef)}
-                className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-neutral-50
+                className="w-full text-start px-2 py-1.5 text-sm rounded-sm hover:bg-neutral-50
                            disabled:text-neutral-400">
           {d.name}
           {d.shared === true && <span className="text-xs text-neutral-500">

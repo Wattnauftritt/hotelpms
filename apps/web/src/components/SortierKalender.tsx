@@ -153,8 +153,11 @@ export function SortierKalender({ vorschau, nachher, nurBetroffene }: {
     )
   }
 
+  // `dir="ltr"`: die Balken stehen ueber `left` in Pixeln oder Prozent. In
+  // einer arabischen Oberflaeche spiegelte sich das Raster drumherum, die
+  // Balken nicht, und ein Aufenthalt stuende unter den falschen Tagen.
   return (
-    <div className="space-y-2">
+    <div dir="ltr" className="space-y-2">
       <div className="flex flex-wrap gap-3 text-xs text-neutral-600">
         <span className="flex items-center gap-1">
           <span className="inline-block w-4 h-3 rounded-sm bg-amber-400 ring-1 ring-amber-600" />
@@ -174,7 +177,7 @@ export function SortierKalender({ vorschau, nachher, nurBetroffene }: {
            data-testid="sortier-kalender">
         <div className="min-w-max">
           <div className="flex sticky top-0 z-10 bg-white border-b border-neutral-200">
-            <div className="w-28 shrink-0 sticky left-0 bg-white" />
+            <div className="w-28 shrink-0 sticky start-0 bg-white" />
             {tage.map(d => (
               <div key={d} className={`text-center text-[10px] leading-3 py-1 tabular-nums
                                        ${isWeekend(d) ? 'bg-neutral-100' : ''}`}
@@ -187,7 +190,7 @@ export function SortierKalender({ vorschau, nachher, nurBetroffene }: {
 
           {ohneZimmer.length > 0 && (
             <div className="flex border-b border-neutral-200 bg-amber-50">
-              <div className="w-28 shrink-0 sticky left-0 bg-amber-50 px-2 text-xs leading-6
+              <div className="w-28 shrink-0 sticky start-0 bg-amber-50 px-2 text-xs leading-6
                               text-amber-900 truncate">
                 {t('roomSort.noRoomRow')}
               </div>
@@ -197,7 +200,7 @@ export function SortierKalender({ vorschau, nachher, nurBetroffene }: {
 
           {zeilen.map(zeile => zeile.art === 'gruppe'
             ? (
-              <div key={zeile.key} className="sticky left-0 px-2 py-0.5 text-[11px] font-medium
+              <div key={zeile.key} className="sticky start-0 px-2 py-0.5 text-[11px] font-medium
                                               text-neutral-600 bg-neutral-50 border-b
                                               border-neutral-200">
                 {zeile.name}
@@ -205,7 +208,7 @@ export function SortierKalender({ vorschau, nachher, nurBetroffene }: {
             )
             : (
               <div key={zeile.key} className="flex border-b border-neutral-100">
-                <div className="w-28 shrink-0 sticky left-0 z-[1] bg-white px-2 text-xs leading-6
+                <div className="w-28 shrink-0 sticky start-0 z-[1] bg-white px-2 text-xs leading-6
                                 truncate" title={zeile.z.name ?? zeile.z.code}>
                   {zeile.z.code}{zeile.z.name !== null && zeile.z.name !== zeile.z.code
                     && <span className="text-neutral-500"> {zeile.z.name}</span>}

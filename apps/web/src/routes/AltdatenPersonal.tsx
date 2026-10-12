@@ -116,7 +116,7 @@ export function AltdatenPersonal({ propertyId }: { propertyId: number }): JSX.El
       </ul>
 
       <table className="w-full text-sm border-collapse">
-        <thead className="text-left text-neutral-500 border-b border-neutral-200">
+        <thead className="text-start text-neutral-500 border-b border-neutral-200">
           <tr><th className="py-1 pr-3 font-medium">{t('worktime.legacy.oldUser')}</th>
               <th className="py-1 pr-3 font-medium">{t('worktime.legacy.rows')}</th>
               <th className="py-1 font-medium">{t('worktime.legacy.person')}</th></tr>

@@ -214,7 +214,7 @@ function Zeile({ name, raum, kategorie, onFolio, children }: {
       {onFolio === undefined
         ? <span className="grow truncate text-sm">{name}</span>
         : <button onClick={onFolio}
-                  className="grow truncate text-sm text-left hover:underline">
+                  className="grow truncate text-sm text-start hover:underline">
             {name}
           </button>}
       {children}

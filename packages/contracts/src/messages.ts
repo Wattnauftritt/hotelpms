@@ -45,7 +45,9 @@
  * Nachbarn im Norden und Westen, dann Osten und Sueden.
  */
 export const LOCALES = [
-  'de', 'en', 'nl', 'da', 'sv', 'nb', 'pl', 'cs', 'fr', 'it', 'es', 'tr', 'ru', 'uk'
+  'de', 'en', 'nl', 'da', 'sv', 'nb', 'fi', 'is', 'pl', 'cs', 'sk', 'sl', 'hu',
+  'ro', 'bg', 'hr', 'sr', 'mk', 'sq', 'el', 'lt', 'lv', 'et', 'fr', 'it', 'es',
+  'pt', 'tr', 'ru', 'uk', 'ar', 'zh', 'ko'
 ] as const
 export type MessageLocale = (typeof LOCALES)[number]
 
@@ -62,14 +64,33 @@ export const SPRACHNAMEN: { readonly [L in MessageLocale]: string } = {
   da: 'Dansk',
   sv: 'Svenska',
   nb: 'Norsk',
+  fi: 'Suomi',
+  is: 'Íslenska',
   pl: 'Polski',
   cs: 'Čeština',
+  sk: 'Slovenčina',
+  sl: 'Slovenščina',
+  hu: 'Magyar',
+  ro: 'Română',
+  bg: 'Български',
+  hr: 'Hrvatski',
+  sr: 'Srpski',
+  mk: 'Македонски',
+  sq: 'Shqip',
+  el: 'Ελληνικά',
+  lt: 'Lietuvių',
+  lv: 'Latviešu',
+  et: 'Eesti',
   fr: 'Français',
   it: 'Italiano',
   es: 'Español',
+  pt: 'Português',
   tr: 'Türkçe',
   ru: 'Русский',
-  uk: 'Українська'
+  uk: 'Українська',
+  ar: 'العربية',
+  zh: '中文',
+  ko: '한국어'
 }
 
 /**
@@ -91,6 +112,20 @@ export const SPRACHNAMEN: { readonly [L in MessageLocale]: string } = {
  */
 export const EMAIL_LANGUAGES = LOCALES
 export type EmailLanguage = (typeof EMAIL_LANGUAGES)[number]
+
+/**
+ * In welche Richtung eine Sprache schreibt.
+ *
+ * Arabisch ist die einzige von rechts nach links. Mehr als `dir="rtl"` am
+ * Wurzelelement braucht es dafuer nicht: die Oberflaeche ordnet mit Flex und
+ * Grid, und beide spiegeln sich mit der Richtung von selbst. Eine Liste und
+ * kein `=== 'ar'` an fuenf Stellen, damit eine zweite solche Sprache
+ * (Hebraeisch, Persisch) eine Zeile hier ist und nicht eine Suche.
+ */
+const VON_RECHTS: ReadonlySet<string> = new Set(['ar'])
+export function schreibrichtung(locale: string): 'rtl' | 'ltr' {
+  return VON_RECHTS.has(locale) ? 'rtl' : 'ltr'
+}
 
 /**
  * Die Sprachen der **Personal-App** (Migration 0105).

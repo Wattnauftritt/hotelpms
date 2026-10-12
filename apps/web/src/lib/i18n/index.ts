@@ -73,6 +73,7 @@ import { gaestemappe } from './gaestemappe.js'
  * kann und in der die Fehlermeldungen deutsch bleiben.
  */
 export { LOCALES, SPRACHNAMEN, sprachKuerzel } from '@hotelpms/contracts'
+export { dokumentSprache } from '../dokumentSprache.js'
 export type Locale = MessageLocale
 
 /**
@@ -95,14 +96,38 @@ const INTL_TAG: Record<Locale, string> = {
   da: 'da-DK',
   sv: 'sv-SE',
   nb: 'nb-NO',
+  fi: 'fi-FI',
+  is: 'is-IS',
   pl: 'pl-PL',
   cs: 'cs-CZ',
+  sk: 'sk-SK',
+  sl: 'sl-SI',
+  hu: 'hu-HU',
+  ro: 'ro-RO',
+  bg: 'bg-BG',
+  hr: 'hr-HR',
+  // Lateinische Schrift: die Uebersetzung ist lateinisch geschrieben, und
+  // ohne `Latn` schriebe `Intl` Monatsnamen kyrillisch daneben.
+  sr: 'sr-Latn-RS',
+  mk: 'mk-MK',
+  sq: 'sq-AL',
+  el: 'el-GR',
+  lt: 'lt-LT',
+  lv: 'lv-LV',
+  et: 'et-EE',
   fr: 'fr-FR',
   it: 'it-IT',
   es: 'es-ES',
+  pt: 'pt-PT',
   tr: 'tr-TR',
   ru: 'ru-RU',
-  uk: 'uk-UA'
+  uk: 'uk-UA',
+  // `-u-nu-latn`: arabische Ziffern wie ueberall. Mit den ostarabischen
+  // Ziffern, die `ar` sonst je nach Browser waehlt, staenden Betraege auf
+  // der Rechnung anders da als auf dem Bildschirm daneben.
+  ar: 'ar-u-nu-latn',
+  zh: 'zh-CN',
+  ko: 'ko-KR'
 }
 
 /**
@@ -138,21 +163,43 @@ const DATUMSFORM: Record<Locale, Datumsform> = {
   da: 'tag-zuerst',
   sv: 'iso',
   nb: 'tag-zuerst',
+  fi: 'tag-zuerst',
+  is: 'tag-zuerst',
   pl: 'tag-zuerst',
   cs: 'tag-zuerst',
+  sk: 'tag-zuerst',
+  sl: 'tag-zuerst',
+  // Ungarisch, Litauisch, Chinesisch und Koreanisch schreiben das Jahr
+  // zuerst. Tag zuerst waere dort die fremde Reihenfolge; ISO ist ihre
+  // eigene und bleibt eindeutig.
+  hu: 'iso',
+  ro: 'tag-zuerst',
+  bg: 'tag-zuerst',
+  hr: 'tag-zuerst',
+  sr: 'tag-zuerst',
+  mk: 'tag-zuerst',
+  sq: 'tag-zuerst',
+  el: 'tag-zuerst',
+  lt: 'iso',
+  lv: 'tag-zuerst',
+  et: 'tag-zuerst',
   fr: 'tag-zuerst',
   it: 'tag-zuerst',
   es: 'tag-zuerst',
+  pt: 'tag-zuerst',
   // Tuerkisch schreibt 01.10.2026, mit Punkten und Tag zuerst -- wie Deutsch.
   tr: 'tag-zuerst',
   ru: 'tag-zuerst',
-  uk: 'tag-zuerst'
+  uk: 'tag-zuerst',
+  ar: 'tag-zuerst',
+  zh: 'iso',
+  ko: 'iso'
 }
 
 /**
  * Alle Schluessel, aus den Bereichen zusammengesetzt.
  *
- * **Warum ausgeschrieben und nicht `keyof typeof texts`.** Mit vierzehn
+ * **Warum ausgeschrieben und nicht `keyof typeof texts`.** Mit dreiunddreissig
  * Sprachen ist der abgeleitete Typ des ganzen Katalogs -- jeder Satz als
  * eigener Zeichenkettentyp -- groesser, als `tsc` beim Schreiben der
  * Deklarationen ausgeben mag (TS7056). Die Schluessel allein sind klein;

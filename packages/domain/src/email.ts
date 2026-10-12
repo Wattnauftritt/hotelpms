@@ -1,4 +1,4 @@
-import type { EmailLanguage } from '@hotelpms/contracts'
+import { schreibrichtung, type EmailLanguage } from '@hotelpms/contracts'
 import { formatCent } from './money.js'
 
 /**
@@ -229,13 +229,20 @@ function esc(v: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Aus Zeilen einen HTML-Rumpf machen. Keine Vorlagensprache, keine Bilder. */
-function htmlBody(lines: string[]): string {
+/**
+ * Aus Zeilen einen HTML-Rumpf machen. Keine Vorlagensprache, keine Bilder.
+ *
+ * `dir="rtl"` fuer Arabisch: ohne die Angabe setzt ein Mailprogramm den
+ * Satz linksbuendig und stellt Satzzeichen ans falsche Ende. `lang` daneben,
+ * damit ein Vorleseprogramm die Sprache nicht raten muss.
+ */
+function htmlBody(lines: string[], lang: EmailLanguage = 'de'): string {
   const absaetze = lines.map(l => l === ''
     ? ''
     : `<p style="margin:0 0 12px 0">${esc(l).replace(/\n/g, '<br>')}</p>`)
     .filter(Boolean).join('\n')
-  return '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;'
+  return `<div lang="${lang}" dir="${schreibrichtung(lang)}" `
+    + 'style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;'
     + `font-size:15px;line-height:1.5;color:#111">\n${absaetze}\n</div>`
 }
 
@@ -925,7 +932,7 @@ export function renderInvoiceEmail(
   return {
     subject: einsetzen(t.rechnungBetreff, werte),
     text: lines.join('\n\n'),
-    html: htmlBody(lines)
+    html: htmlBody(lines, lang)
   }
 }
 
@@ -961,7 +968,7 @@ export function renderReservationEmail(
   return {
     subject: einsetzen(t.buchungBetreff, werte),
     text: lines.join('\n\n'),
-    html: htmlBody(lines)
+    html: htmlBody(lines, lang)
   }
 }
 
@@ -973,11 +980,14 @@ export function renderReservationEmail(
  * davor. Englisch bleibt beim ISO-Format, weil "03/04" diesseits und
  * jenseits des Atlantiks zwei verschiedene Tage sind.
  */
+const JAHR_ZUERST: ReadonlySet<EmailLanguage> = new Set(['en', 'sv', 'hu', 'lt', 'zh', 'ko'])
+
 function kalendertag(iso: string, lang: EmailLanguage): string {
   const [jahr, monat, tag] = iso.split('-')
   if (jahr === undefined || monat === undefined || tag === undefined) return iso
-  // Schwedisch schreibt Kalendertage selbst in ISO-Form.
-  if (lang === 'en' || lang === 'sv') return iso
+  // Schwedisch, Ungarisch, Litauisch, Chinesisch und Koreanisch schreiben
+  // das Jahr selbst zuerst; dieselbe Wahl wie `DATUMSFORM` der Oberflaeche.
+  if (JAHR_ZUERST.has(lang)) return iso
   if (lang === 'nl') return `${tag}-${monat}-${jahr}`
   return `${tag}.${monat}.${jahr}`
 }
@@ -1023,7 +1033,7 @@ export function renderPaymentLinkEmail(
   return {
     subject: einsetzen(t.zahlungBetreff, werte),
     text: lines.join('\n\n'),
-    html: htmlBody(lines)
+    html: htmlBody(lines, lang)
   }
 }
 
@@ -1079,7 +1089,7 @@ export function renderCheckinInvitationEmail(
   ]
   // Im HTML-Teil wird der Link anklickbar. Ersetzt wird der bereits
   // entschaerfte Absatz, damit nichts aus dem Link selbst als Markup gilt.
-  const html = htmlBody(lines).replace(
+  const html = htmlBody(lines, lang).replace(
     `>${esc(d.link)}</p>`,
     `><a href="${esc(d.link)}">${esc(d.link)}</a></p>`)
   return {
@@ -1192,7 +1202,7 @@ export function renderInviteEmail(
       subject: d.accountName
         ? `Welcome to StayGrid – your access for ${d.accountName}`
         : 'Welcome to StayGrid – your access is ready',
-      text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines), d.link)
+      text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines, lang), d.link)
     }
   }
   const lines = [
@@ -1218,7 +1228,7 @@ export function renderInviteEmail(
     subject: d.accountName
       ? `Willkommen bei StayGrid – Ihr Zugang für ${d.accountName}`
       : 'Willkommen bei StayGrid – Ihr Zugang ist bereit',
-    text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines), d.link)
+    text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines, lang), d.link)
   }
 }
 
@@ -1250,7 +1260,7 @@ export function renderPasswordResetEmail(
       'If you did not request this, nothing has changed: your current password '
         + 'remains valid and this link expires on its own.'
     ]
-    return { subject: 'Reset your password', text: lines.join('\n\n'), html: htmlBody(lines) }
+    return { subject: 'Reset your password', text: lines.join('\n\n'), html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1260,7 +1270,7 @@ export function renderPasswordResetEmail(
     'Haben Sie das nicht angefordert, hat sich nichts geaendert: Ihr bisheriges '
       + 'Kennwort gilt weiter, und dieser Link verfaellt von selbst.'
   ]
-  return { subject: 'Kennwort zuruecksetzen', text: lines.join('\n\n'), html: htmlBody(lines) }
+  return { subject: 'Kennwort zuruecksetzen', text: lines.join('\n\n'), html: htmlBody(lines, lang) }
 }
 
 /**
@@ -1300,7 +1310,7 @@ export function renderSupportRequestEmail(
         + 'is never granted without your approval.'
     ]
     return { subject: 'Support is asking for access', text: lines.join('\n\n'),
-             html: htmlBody(lines) }
+             html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1315,7 +1325,7 @@ export function renderSupportRequestEmail(
       + 'bekommt niemand Zugriff auf Ihre Daten.'
   ]
   return { subject: 'Support bittet um Zugriff', text: lines.join('\n\n'),
-           html: htmlBody(lines) }
+           html: htmlBody(lines, lang) }
 }
 
 /*
@@ -1391,7 +1401,7 @@ export function renderEmailChangeEmail(
       'If this was not you, do nothing. Without the link nothing changes.'
     ]
     return { subject: 'Confirm your new email address', text: lines.join('\n\n'),
-             html: htmlBody(lines) }
+             html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1403,7 +1413,7 @@ export function renderEmailChangeEmail(
     'Waren Sie das nicht, tun Sie nichts. Ohne den Link aendert sich nichts.'
   ]
   return { subject: 'Neue Mailadresse bestaetigen', text: lines.join('\n\n'),
-           html: htmlBody(lines) }
+           html: htmlBody(lines, lang) }
 }
 
 /**
@@ -1453,7 +1463,7 @@ export function renderEmailChangeNotice(
         + 'administrator. This message contains no link on purpose.'
     ]
     return { subject: 'Change of your email address requested',
-             text: lines.join('\n\n'), html: htmlBody(lines) }
+             text: lines.join('\n\n'), html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1465,5 +1475,5 @@ export function renderEmailChangeNotice(
       + 'Verwaltung Bescheid. Diese Nachricht enthaelt bewusst keinen Link.'
   ]
   return { subject: 'Aenderung Ihrer Mailadresse angefordert',
-           text: lines.join('\n\n'), html: htmlBody(lines) }
+           text: lines.join('\n\n'), html: htmlBody(lines, lang) }
 }

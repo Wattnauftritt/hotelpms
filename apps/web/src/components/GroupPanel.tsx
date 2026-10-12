@@ -160,14 +160,14 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
             <Abschnitt titel={t('group.selection')}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-neutral-500 text-left">
+                  <tr className="text-xs text-neutral-500 text-start">
                     <th className="font-medium py-1">{t('common.room')}</th>
                     <th className="font-medium">{t('common.status')}</th>
                     <th className="font-medium">{t('booking.arrival')}</th>
                     <th className="font-medium">{t('booking.departure')}</th>
-                    <th className="font-medium text-right">{t('group.nightsHead')}</th>
+                    <th className="font-medium text-end">{t('group.nightsHead')}</th>
                     <th className="font-medium pl-3">{t('group.personsHead')}</th>
-                    <th className="font-medium text-right">{t('group.total')}</th>
+                    <th className="font-medium text-end">{t('group.total')}</th>
                     <th />
                   </tr>
                 </thead>
@@ -222,7 +222,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                                      className="border border-neutral-300 rounded-sm
                                                 px-2 py-1 text-sm" />
                             </td>
-                            <td className="tabular-nums text-right pr-2">
+                            <td className="tabular-nums text-end pr-2">
                               {daysBetween(von, bis)}
                             </td>
                             <td className="pl-3 pr-2 whitespace-nowrap">
@@ -245,7 +245,7 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                               ) : <PersonenZelle z={z} />}
                             </td>
                             <td />
-                            <td className="text-right whitespace-nowrap">
+                            <td className="text-end whitespace-nowrap">
                               <button type="button"
                                       disabled={umbuchen.isPending || personenSetzen.isPending
                                                 || daysBetween(von, bis) <= 0
@@ -293,14 +293,14 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                           <>
                             <td className="tabular-nums">{formatDate(z.arrival, locale)}</td>
                             <td className="tabular-nums">{formatDate(z.departure, locale)}</td>
-                            <td className="tabular-nums text-right pr-2">
+                            <td className="tabular-nums text-end pr-2">
                               {daysBetween(z.arrival, z.departure)}
                             </td>
                             <td className="pl-3"><PersonenZelle z={z} /></td>
-                            <td className="tabular-nums text-right">
+                            <td className="tabular-nums text-end">
                               {formatMoney(z.totalCent, locale)}
                             </td>
-                            <td className="text-right whitespace-nowrap">
+                            <td className="text-end whitespace-nowrap">
                               {!storniert && (
                                 <>
                                   <button type="button"

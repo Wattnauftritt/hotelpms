@@ -125,7 +125,7 @@ export function Kontextmenue({ punkt, eintraege, onClose }: {
       {eintraege.map(e => (
         <button key={e.schluessel} type="button" role="menuitem"
                 onClick={() => { e.onClick(); onClose() }}
-                className={`block w-full text-left px-3 py-1.5 hover:bg-neutral-100
+                className={`block w-full text-start px-3 py-1.5 hover:bg-neutral-100
                             ${e.abgesetzt ? 'border-t border-neutral-200 mt-1 pt-2' : ''}
                             ${e.gefaehrlich ? 'text-red-700' : ''}`}>
           {e.text}

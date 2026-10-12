@@ -132,7 +132,7 @@ function Firma({ folioRef, recipient }: {
                         setzen.mutate({ companyRef: c.companyRef })
                         setBegriff('')
                       }}
-                      className="w-full text-left px-1 py-1 hover:bg-neutral-50">
+                      className="w-full text-start px-1 py-1 hover:bg-neutral-50">
                 {c.name}
                 {c.city !== null && (
                   <span className="ml-1 text-xs text-neutral-500">{c.city}</span>

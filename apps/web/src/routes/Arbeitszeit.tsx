@@ -48,7 +48,7 @@ interface TagAllerKraefte {
                            kitchen: number; correction: number; total: number } }>
 }
 
-const REITER = 'px-3 py-1.5 text-sm border border-neutral-300 first:rounded-l last:rounded-r -ml-px'
+const REITER = 'px-3 py-1.5 text-sm border border-neutral-300 first:rounded-s last:rounded-e -ml-px'
 
 export function Arbeitszeit({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
@@ -156,10 +156,10 @@ function KraftTag({ propertyId, kraft: k, offen, onNeu }: {
         <span className="tabular-nums">{arbeiten.filter(e => !e.withdrawn).length}</span>
       </div>
       <table className="w-full text-sm">
-        <thead className="text-left text-neutral-500">
+        <thead className="text-start text-neutral-500">
           <tr className="border-b border-neutral-100">
             <th className="px-3 py-1.5 font-medium">{t('worktime.description')}</th>
-            <th className="px-3 py-1.5 font-medium text-right">{t('worktime.time')}</th>
+            <th className="px-3 py-1.5 font-medium text-end">{t('worktime.time')}</th>
             <th className="px-3 py-1.5"><span className="sr-only">{t('worktime.editTime')}</span></th>
           </tr>
         </thead>
@@ -184,7 +184,7 @@ function ZimmerFeld({ titel, farbe, zimmer }: {
   titel: string; farbe: string; zimmer: ZimmerDesTags[]
 }): JSX.Element {
   const t = useT()
-  return <div className={`rounded bg-neutral-50 border-l-4 ${farbe} p-3`}>
+  return <div className={`rounded bg-neutral-50 border-s-4 ${farbe} p-3`}>
     <h4 className="text-sm font-medium mb-2">{titel}</h4>
     {zimmer.length === 0
       ? <p className="text-sm text-neutral-400">{t('worktime.noRooms')}</p>
@@ -247,7 +247,7 @@ function ArbeitZeile({ propertyId, eintrag: e, offen, onNeu }: {
       {(anpassen.isError || herausnehmen.isError)
         && <Fehler error={anpassen.error ?? herausnehmen.error} />}
     </td>
-    <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap">
+    <td className="px-3 py-1.5 text-end tabular-nums whitespace-nowrap">
       {minuten === null
         ? <span className={e.withdrawn ? 'line-through text-neutral-400' : ''}>{hm(e.minutes)}</span>
         : <form className="inline-flex gap-1" onSubmit={ev => {
@@ -255,7 +255,7 @@ function ArbeitZeile({ propertyId, eintrag: e, offen, onNeu }: {
           }}>
             <input type="number" autoFocus required min={1} max={1440} value={minuten}
                    aria-label={t('worktime.minutes')} onChange={ev => setMinuten(ev.target.value)}
-                   className="border border-neutral-300 rounded px-1 py-0.5 w-20 text-right" />
+                   className="border border-neutral-300 rounded px-1 py-0.5 w-20 text-end" />
             <span className="self-center text-neutral-500">min</span>
             <button type="submit" disabled={anpassen.isPending || minuten === ''
                                             || Number(minuten) < 1}
@@ -265,7 +265,7 @@ function ArbeitZeile({ propertyId, eintrag: e, offen, onNeu }: {
                     className="px-2 py-0.5 text-neutral-500">{t('worktime.cancel')}</button>
           </form>}
     </td>
-    <td className="px-3 py-1.5 text-right whitespace-nowrap">
+    <td className="px-3 py-1.5 text-end whitespace-nowrap">
       {aktiv && minuten === null && <span className="inline-flex gap-2">
         {e.kind === 'extra' && <button type="button" onClick={() => setMinuten(String(e.minutes))}
                 className="px-2 py-0.5 rounded border border-neutral-300">{t('worktime.editTime')}</button>}
@@ -382,15 +382,15 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
       : zeilen.length === 0
       ? <p className="text-sm text-neutral-500">{t('worktime.empty')}</p>
       : <div className="overflow-x-auto"><table className="w-full text-sm border-collapse">
-        <thead className="text-left text-neutral-500 border-b border-neutral-200">
+        <thead className="text-start text-neutral-500 border-b border-neutral-200">
           <tr>
             <th className="py-2 pr-3 font-medium">{t('worktime.name')}</th>
-            <th className="py-2 pr-3 font-medium text-right">{t('worktime.firstHalf')}</th>
-            <th className="py-2 pr-3 font-medium text-right">
+            <th className="py-2 pr-3 font-medium text-end">{t('worktime.firstHalf')}</th>
+            <th className="py-2 pr-3 font-medium text-end">
               {t('worktime.secondHalf', { last: letzter })}</th>
             {(['worktime.rooms', 'worktime.extra', 'worktime.kitchen', 'worktime.correction',
                'worktime.total'] as const).map(k =>
-              <th key={k} className="py-2 pr-3 font-medium text-right">{t(k)}</th>)}
+              <th key={k} className="py-2 pr-3 font-medium text-end">{t(k)}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -399,7 +399,7 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
             return <tr key={k.userId} onClick={() => setKraft(k.userId)}
                        className="border-b border-neutral-100 cursor-pointer hover:bg-neutral-50">
               <td className="py-2 pr-3">
-                <button type="button" className="text-left hover:underline">{k.name}</button>
+                <button type="button" className="text-start hover:underline">{k.name}</button>
                 {k.username !== null && <span className="ml-2 text-neutral-400">{k.username}</span>}
                 {(k.elsewhere ?? []).length > 0 && <span className="block text-xs text-neutral-500">
                   {k.elsewhere!.map(h => t('worktime.elsewhere', { house: h.name, time: hm(h.total) }))
@@ -409,12 +409,12 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
                     + k.elsewhere!.reduce((s, h) => s + h.total, 0)) })}
                 </span>}
               </td>
-              <td className="py-2 pr-3 text-right tabular-nums">{hm(erste)}</td>
-              <td className="py-2 pr-3 text-right tabular-nums">{hm(zweite)}</td>
+              <td className="py-2 pr-3 text-end tabular-nums">{hm(erste)}</td>
+              <td className="py-2 pr-3 text-end tabular-nums">{hm(zweite)}</td>
               {([k.totals.rooms, k.totals.extra, k.totals.kitchen, k.totals.correction] as const)
-                .map((v, i) => <td key={i} className="py-2 pr-3 text-right tabular-nums text-neutral-600">
+                .map((v, i) => <td key={i} className="py-2 pr-3 text-end tabular-nums text-neutral-600">
                   {v === 0 ? '–' : hm(v)}</td>)}
-              <td className="py-2 pr-3 text-right tabular-nums font-semibold">{hm(k.totals.total)}</td>
+              <td className="py-2 pr-3 text-end tabular-nums font-semibold">{hm(k.totals.total)}</td>
             </tr>
           })}
         </tbody>
@@ -477,15 +477,15 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
       {' · '}{formatDate(m.days[0]!.date, locale)} – {formatDate(m.days.at(-1)!.date, locale)}</p>
     <div className="grid gap-4 lg:grid-cols-[1fr_16rem] items-start">
       <div className="overflow-x-auto"><table className="w-full text-sm">
-        <thead className="text-left text-neutral-500 bg-neutral-50">
+        <thead className="text-start text-neutral-500 bg-neutral-50">
           <tr>
             <th className="px-2 py-1.5 font-medium">{t('worktime.date')}</th>
-            <th className="px-2 py-1.5 font-medium text-right">{t('worktime.rooms')}</th>
-            <th className="px-2 py-1.5 font-medium text-right">{t('worktime.extra')}</th>
-            {mitKueche && <th className="px-2 py-1.5 font-medium text-right">{t('worktime.kitchen')}</th>}
+            <th className="px-2 py-1.5 font-medium text-end">{t('worktime.rooms')}</th>
+            <th className="px-2 py-1.5 font-medium text-end">{t('worktime.extra')}</th>
+            {mitKueche && <th className="px-2 py-1.5 font-medium text-end">{t('worktime.kitchen')}</th>}
             {mitKorrektur
-              && <th className="px-2 py-1.5 font-medium text-right">{t('worktime.correction')}</th>}
-            <th className="px-2 py-1.5 font-medium text-right">{t('worktime.total')}</th>
+              && <th className="px-2 py-1.5 font-medium text-end">{t('worktime.correction')}</th>}
+            <th className="px-2 py-1.5 font-medium text-end">{t('worktime.total')}</th>
           </tr>
         </thead>
         <tbody>
@@ -499,11 +499,11 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
               <td className="px-2 py-1">
                 <span className="inline-block w-8 text-neutral-400">{weekdayShort(d.date, locale)}</span>
                 {formatDate(d.date, locale)}</td>
-              <td className="px-2 py-1 text-right">{hm(d.roomMinutes)}</td>
-              <td className="px-2 py-1 text-right">{hm(a.extra)}</td>
-              {mitKueche && <td className="px-2 py-1 text-right">{hm(a.kitchen)}</td>}
-              {mitKorrektur && <td className="px-2 py-1 text-right">{hm(a.correction)}</td>}
-              <td className="px-2 py-1 text-right font-medium">{hm(d.total)}</td>
+              <td className="px-2 py-1 text-end">{hm(d.roomMinutes)}</td>
+              <td className="px-2 py-1 text-end">{hm(a.extra)}</td>
+              {mitKueche && <td className="px-2 py-1 text-end">{hm(a.kitchen)}</td>}
+              {mitKorrektur && <td className="px-2 py-1 text-end">{hm(a.correction)}</td>}
+              <td className="px-2 py-1 text-end font-medium">{hm(d.total)}</td>
             </tr>
           })}
         </tbody>

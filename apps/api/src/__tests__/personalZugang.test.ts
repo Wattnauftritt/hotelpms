@@ -225,7 +225,7 @@ describe('Eigene Sprache', () => {
     expect(me.json().locale).toBe('uk')
 
     const schlecht = await app.inject({ method: 'PUT', url: '/v1/auth/locale',
-      headers: auth(direktion.sessionId), payload: { locale: 'ar' } })
+      headers: auth(direktion.sessionId), payload: { locale: 'ja' } })
     expect(schlecht.statusCode).toBe(422)
 
     // Jede Sprache der Oberflaeche laesst sich speichern; die Datenbank

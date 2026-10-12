@@ -142,7 +142,9 @@ export function Bildschirmtastatur(): JSX.Element {
       {/* Platzhalter: so weit laesst sich die Seite unter die Tastatur rollen. */}
       <div aria-hidden style={{ height: hoehe }} />
       {offen && (
-        <div ref={tafel} role="group" aria-label={t('kiosk.keyboard.title')}
+        // `dir="ltr"`: die Tasten liegen wie auf einer echten Tastatur. Auf
+        // einer arabischen Seite spiegelte das Raster sonst QWERTZ zu ZTREWQ.
+        <div ref={tafel} role="group" aria-label={t('kiosk.keyboard.title')} dir="ltr"
              onMouseDown={e => e.preventDefault()}
              className="fixed inset-x-0 bottom-0 z-50 select-none border-t-2 border-neutral-300
                         bg-neutral-100 px-2 pt-2 pb-3 shadow-[0_-6px_24px_rgba(0,0,0,.18)]">

@@ -407,6 +407,63 @@ export const gaeste = {
     es: 'Ucraniano',
     ru: 'Украинский',
     uk: 'Українська' },
+  'guests.language.zh': {
+    de: 'Chinesisch',
+    en: 'Chinese' },
+  'guests.language.ko': {
+    de: 'Koreanisch',
+    en: 'Korean' },
+  'guests.language.ar': {
+    de: 'Arabisch',
+    en: 'Arabic' },
+  'guests.language.pt': {
+    de: 'Portugiesisch',
+    en: 'Portuguese' },
+  'guests.language.fi': {
+    de: 'Finnisch',
+    en: 'Finnish' },
+  'guests.language.is': {
+    de: 'Isländisch',
+    en: 'Icelandic' },
+  'guests.language.sk': {
+    de: 'Slowakisch',
+    en: 'Slovak' },
+  'guests.language.sl': {
+    de: 'Slowenisch',
+    en: 'Slovenian' },
+  'guests.language.hu': {
+    de: 'Ungarisch',
+    en: 'Hungarian' },
+  'guests.language.ro': {
+    de: 'Rumänisch',
+    en: 'Romanian' },
+  'guests.language.bg': {
+    de: 'Bulgarisch',
+    en: 'Bulgarian' },
+  'guests.language.hr': {
+    de: 'Kroatisch',
+    en: 'Croatian' },
+  'guests.language.sr': {
+    de: 'Serbisch',
+    en: 'Serbian' },
+  'guests.language.mk': {
+    de: 'Mazedonisch',
+    en: 'Macedonian' },
+  'guests.language.sq': {
+    de: 'Albanisch',
+    en: 'Albanian' },
+  'guests.language.el': {
+    de: 'Griechisch',
+    en: 'Greek' },
+  'guests.language.lt': {
+    de: 'Litauisch',
+    en: 'Lithuanian' },
+  'guests.language.lv': {
+    de: 'Lettisch',
+    en: 'Latvian' },
+  'guests.language.et': {
+    de: 'Estnisch',
+    en: 'Estonian' },
   'guests.languageHint': {
     de: 'In dieser Sprache gehen Bestätigung und Rechnung '
       + 'hinaus. Angeboten wird nur, worin wir auch schreiben.',

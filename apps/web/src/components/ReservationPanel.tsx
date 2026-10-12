@@ -75,7 +75,7 @@ export function ReservationPanel({ reservationRef, onClose, onOpenFolio, onOpenC
   useEscape(onClose)
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-xl bg-white border-l
+    <div className="fixed inset-y-0 end-0 z-40 w-full max-w-xl bg-white border-s
                     border-neutral-200 shadow-xl overflow-y-auto">
       {/* Breiter als der Plan dahinter vertraegt? Nein: 576 statt 448 Pixel
           lassen die Felder nebeneinander stehen und verdecken vom Plan die
@@ -245,7 +245,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
               Profil dafuer nicht oeffnen will. */}
           {r.guestRef !== null
             ? <button onClick={() => springen({ art: 'gast', ref: r.guestRef! })}
-                      className="text-left underline decoration-dotted">
+                      className="text-start underline decoration-dotted">
                 {r.guestName ?? t('plan.openGuest')}
               </button>
             : <span className="text-neutral-400">{t('plan.noGuest')}</span>}
@@ -311,7 +311,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
                 <td className="px-3 py-1.5 text-neutral-500 tabular-nums">
                   {formatDate(n.date, locale)}
                 </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">
+                <td className="px-3 py-1.5 text-end tabular-nums">
                   {formatMoney(n.priceCent, locale)}
                 </td>
               </tr>

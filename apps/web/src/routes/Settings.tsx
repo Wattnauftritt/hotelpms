@@ -318,7 +318,7 @@ function Absenderdomain(
               Grund, warum die Prüfung danach fehlschlägt. */}
           <div className="overflow-x-auto">
             <table className="text-xs w-full">
-              <thead className="text-neutral-500 text-left">
+              <thead className="text-neutral-500 text-start">
                 <tr>
                   <th className="pr-3 pb-1 font-normal">{t('mailDomain.host')}</th>
                   <th className="pr-3 pb-1 font-normal">{t('mailDomain.type')}</th>

@@ -85,7 +85,7 @@ export function GuestPicker({ value, onChange, onEingabe }: {
                   leeres Formular. Ein Klick, und der Gast heißt so, wie er
                   gerade geschrieben wurde. */}
               <button type="button" onClick={() => setFormular(true)}
-                      className="text-xs text-left underline text-neutral-800">
+                      className="text-xs text-start underline text-neutral-800">
                 {t('guestPicker.createNamed', { name: begriff.trim() })}
               </button>
             </div>
@@ -94,7 +94,7 @@ export function GuestPicker({ value, onChange, onEingabe }: {
               {suche.data.guests.map(g => (
                 <li key={g.guestRef}>
                   <button type="button" onClick={() => onChange(g)}
-                          className="w-full text-left px-2 py-1 text-sm hover:bg-neutral-50">
+                          className="w-full text-start px-2 py-1 text-sm hover:bg-neutral-50">
                     {g.lastName}{g.firstName ? `, ${g.firstName}` : ''}
                     {g.email && <span className="text-neutral-400"> · {g.email}</span>}
                   </button>

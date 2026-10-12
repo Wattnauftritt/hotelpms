@@ -65,8 +65,8 @@ const Zeile = memo(function Zeile(p: ZeilenProps): JSX.Element {
   return (
     <tr>
       <th scope="row"
-          className="sticky left-0 z-10 bg-white border-b border-r
-                     border-neutral-200 px-2 py-1 text-left font-normal">
+          className="sticky start-0 z-10 bg-white border-b border-e
+                     border-neutral-200 px-2 py-1 text-start font-normal">
         <div className="font-medium">{p.plan.name}</div>
         <div className="text-xs text-neutral-500">
           {p.plan.code} · {p.plan.categoryCode}
@@ -110,8 +110,8 @@ const Kopfzeile = memo(function Kopfzeile(
 ): JSX.Element {
   return (
     <tr>
-      <th className="sticky left-0 z-20 bg-white border-b border-r border-neutral-200
-                     px-2 py-1 text-left font-medium min-w-44">
+      <th className="sticky start-0 z-20 bg-white border-b border-e border-neutral-200
+                     px-2 py-1 text-start font-medium min-w-44">
         {planLabel}
       </th>
       {tage.map(d => (

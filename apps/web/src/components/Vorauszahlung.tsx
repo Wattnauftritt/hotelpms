@@ -43,7 +43,7 @@ export function Vorauszahlung({ folioRef, saldoCent, stand, geschlossen }: {
   return (
     <section className="bg-white border border-neutral-200 rounded-sm">
       <button onClick={() => setAuf(v => !v)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left">
+              className="w-full flex items-center gap-2 px-3 py-2 text-start">
         <span className="text-sm font-medium">{t('vz.title')}</span>
         <span className="text-xs text-neutral-500">{t('vz.open')}</span>
         <div className="grow" />

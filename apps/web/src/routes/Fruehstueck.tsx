@@ -57,8 +57,8 @@ export function Fruehstueck({ propertyId }: { propertyId: number }): JSX.Element
           {rest.map(d => <tr key={d.date} className="border-b border-neutral-100">
             <td className="py-1.5">{name(d.date)}</td>
             {haeuser.length > 1
-              && <td className="py-1.5 text-right text-neutral-500">{aufteilung(d.date)}</td>}
-            <td className="py-1.5 text-right font-semibold tabular-nums">{d.breakfasts}</td>
+              && <td className="py-1.5 text-end text-neutral-500">{aufteilung(d.date)}</td>}
+            <td className="py-1.5 text-end font-semibold tabular-nums">{d.breakfasts}</td>
           </tr>)}
         </tbody>
       </table>

@@ -1,4 +1,4 @@
-import type { EmailLanguage } from '@hotelpms/contracts'
+import { schreibrichtung, type EmailLanguage } from '@hotelpms/contracts'
 import { formatCent } from './money.js'
 
 /**
@@ -410,11 +410,14 @@ function einsetzen(satz: string, werte: Record<string, string>): string {
 }
 
 /** Kalendertag in der Schreibweise der Sprache, ohne `Date` (wie in der Gastpost). */
+const JAHR_ZUERST: ReadonlySet<EmailLanguage> = new Set(['en', 'sv', 'hu', 'lt', 'zh', 'ko'])
+
 function kalendertag(iso: string, lang: EmailLanguage): string {
   const [jahr, monat, tag] = iso.split('-')
   if (jahr === undefined || monat === undefined || tag === undefined) return iso
-  // Schwedisch schreibt Kalendertage selbst in ISO-Form.
-  if (lang === 'en' || lang === 'sv') return iso
+  // Schwedisch, Ungarisch, Litauisch, Chinesisch und Koreanisch schreiben
+  // das Jahr selbst zuerst; dieselbe Wahl wie `DATUMSFORM` der Oberflaeche.
+  if (JAHR_ZUERST.has(lang)) return iso
   if (lang === 'nl') return `${tag}-${monat}-${jahr}`
   return `${tag}.${monat}.${jahr}`
 }
@@ -466,7 +469,7 @@ export function renderPayPage(
   if (kind !== 'unknown') teile.push(`<p style="${P};color:#555">${esc(t.rueckfrage)}</p>`)
 
   return '<!doctype html>\n'
-    + `<html lang="${lang}"><head><meta charset="utf-8">`
+    + `<html lang="${lang}" dir="${schreibrichtung(lang)}"><head><meta charset="utf-8">`
     + '<meta name="viewport" content="width=device-width,initial-scale=1">'
     + '<meta name="robots" content="noindex,nofollow">'
     + `<title>${esc(d.propertyName === undefined ? t.titel

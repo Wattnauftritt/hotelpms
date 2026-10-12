@@ -119,8 +119,8 @@ const TAGESRAND = (d: string, ton: 'grau' | 'bernstein' = 'grau'): string =>
     // Im bernsteinfarbenen Band braucht die Linie denselben Ton wie der
     // Grund. Eine graue Linie auf Bernstein ergibt einen dritten Ton, den
     // niemand gemeint hat, und verschwindet dabei trotzdem fast.
-    ? (isWeekEnd(d) ? 'border-r-2 border-r-amber-400' : 'border-r border-r-amber-200')
-    : (isWeekEnd(d) ? 'border-r-2 border-r-neutral-400' : 'border-r border-r-neutral-200')
+    ? (isWeekEnd(d) ? 'border-e-2 border-e-amber-400' : 'border-e border-e-amber-200')
+    : (isWeekEnd(d) ? 'border-e-2 border-e-neutral-400' : 'border-e border-e-neutral-200')
 /**
  * So hoch ist das Band der Buchungen ohne Zimmer, in Zeilen. Vier, weil der
  * Plan darunter der eigentliche Bildschirm ist; darüber hinaus wird
@@ -1182,8 +1182,11 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                  edge, arrival: r.arrival, departure: r.departure, day: tagUnter(e.clientX) })
     }, [tagUnter, setDragState])
 
+  // `dir="ltr"`: die Balken stehen ueber `left` in Pixeln oder Prozent. In
+  // einer arabischen Oberflaeche spiegelte sich das Raster drumherum, die
+  // Balken nicht, und ein Aufenthalt stuende unter den falschen Tagen.
   return (
-    <div className="overflow-auto border border-neutral-200 rounded-sm" ref={rasterRef}
+    <div dir="ltr" className="overflow-auto border border-neutral-200 rounded-sm" ref={rasterRef}
          style={rasterHoehe === null ? undefined : { maxHeight: rasterHoehe }}>
       <Schwebehinweis bereich={rasterRef} />
       <div style={{ minWidth: LABEL_BREITE + tage.length * spalte }}>
@@ -1206,7 +1209,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
             */}
           <div style={{ width: LABEL_BREITE }}
                data-unassigned-band={bandAlsZiel ? '' : undefined}
-               className={`shrink-0 px-2 py-1.5 text-xs border-r transition-colors
+               className={`shrink-0 px-2 py-1.5 text-xs border-e transition-colors
                            ${!bandAlsZiel
                              ? 'font-medium text-neutral-500 border-neutral-200'
                              : drag.ueberBand
@@ -1269,8 +1272,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                     onClick={() => setBandOffen(o => !o)}
                     disabled={nichtZugewiesen.length <= BAND_ZEILEN}
                     style={{ width: LABEL_BREITE }}
-                    className="shrink-0 px-2 py-1 text-xs text-amber-800 text-left
-                               border-r border-amber-200 disabled:cursor-default">
+                    className="shrink-0 px-2 py-1 text-xs text-amber-800 text-start
+                               border-e border-amber-200 disabled:cursor-default">
               <div className="font-medium">
                 {nichtZugewiesen.length > BAND_ZEILEN && (bandOffen ? '▾ ' : '▸ ')}
                 {t('today.needsRoom')} ({nichtZugewiesen.length})
@@ -1343,7 +1346,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                              * tauschte eine Information gegen eine andere.
                              */
                             className={`absolute isolate flex items-center px-2
-                                        text-xs text-white text-left cursor-move
+                                        text-xs text-white text-start cursor-move
                                         hover:brightness-110
                                         ${dringlich(r.arrival)
                                           ? 'bg-red-600' : FARBE[r.status] ?? 'bg-neutral-400'}`}>
@@ -1573,7 +1576,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
          style={{ height: ZEILE }}>
       <div style={{ width: LABEL_BREITE }}
            onContextMenu={e => p.onZimmerKontext(u.id, e)}
-           className="shrink-0 px-2 text-xs border-r border-neutral-200
+           className="shrink-0 px-2 text-xs border-e border-neutral-200
                       flex items-center gap-2 overflow-hidden">
         <span className={`${ZEILE < 26 ? 'text-xs' : 'text-sm'} font-medium tabular-nums`}
         >{u.code}</span>
@@ -1640,7 +1643,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                      * Funktion, die niemand findet, ist keine.
                      */
                     className={`absolute isolate flex items-center px-2
-                                text-xs text-white text-left hover:brightness-110
+                                text-xs text-white text-start hover:brightness-110
                                 ${fest ? 'cursor-pointer' : 'cursor-move'}
                                 ${inGehaltenerGruppe
                                   ? 'bg-sky-500 z-10' : FARBE[r.status] ?? 'bg-neutral-400'}`}>
@@ -1680,9 +1683,9 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
               {!fest && (
                 <>
                   <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
-                        className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />
+                        className="absolute inset-y-0 start-0 w-2 cursor-ew-resize" />
                   <span onPointerDown={e => p.onResizePointerDown(r, 'end', e)}
-                        className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" />
+                        className="absolute inset-y-0 end-0 w-2 cursor-ew-resize" />
                 </>
               )}
             </button>
