@@ -43,7 +43,9 @@ CREATE TABLE terminal_self_session (
   device_id        bigint NOT NULL REFERENCES terminal_device(id),
   resource_id      bigint NOT NULL REFERENCES resource(id),
   reservation_id   bigint NOT NULL REFERENCES reservation(id),
-  checkin_token_id bigint REFERENCES checkin_token(id),
+  -- Die Loeschung eines Gastes entfernt seine Links (guest_erase_one); die
+  -- Sitzung bleibt als Verweis ohne Link stehen, wie ein Auftrag (0073).
+  checkin_token_id bigint REFERENCES checkin_token(id) ON DELETE SET NULL,
   created_at       timestamptz NOT NULL DEFAULT now(),
   expires_at       timestamptz NOT NULL,
   confirmed_at     timestamptz,

@@ -53,7 +53,10 @@ import { Befunde, SYSTEM } from './kwhotelImport.js'
 export const FOLGEN_RESERVIERUNG = [
   'registration', 'charge', 'outbound_email', 'guest_agreement', 'deposit_request',
   'checkin_token', 'terminal_job', 'reservation_occupant', 'routing_rule',
-  'reservation_external_registration', 'avs_export', 'cleaning_waiver'
+  'reservation_external_registration', 'avs_export', 'cleaning_waiver',
+  // Ein Gast hat sich am Terminal als Gast dieses Zimmers bestaetigt (0144):
+  // die Buchung ist benutzt worden, also keine Fehluebernahme mehr.
+  'terminal_self_session'
 ] as const
 export const FOLGEN_FOLIO = [
   'invoice', 'charge', 'settlement', 'routing_rule', 'payment_intent', 'deposit_ledger',
@@ -77,7 +80,10 @@ export const VERWEISE_ZIMMER = [
   ['maintenance_ticket', 'resource_id'],
   // Eigene Sollminuten (0106) hat jemand von Hand eingetragen; das Zimmer
   // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
-  ['cleaning_norm', 'resource_id']
+  ['cleaning_norm', 'resource_id'],
+  // Am Terminal angetippt (0144); haengt immer auch an einer Reservierung,
+  // die die Ruecknahme schon aufhaelt.
+  ['terminal_self_session', 'resource_id']
 ] as const
 /** Zustand des Zimmers, der mit ihm geht. */
 export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task'] as const
