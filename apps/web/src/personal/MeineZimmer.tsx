@@ -43,7 +43,7 @@ export interface MeinZimmer {
   inspectionNoteTranslated?: string | null
   /** Der Gast verzichtet heute (0115); `water`: es gibt eine Flasche dafuer. */
   waiver?: { water: boolean; delivered: boolean } | null
-  /** Offene, kostenlose Gaestewuensche fuers Zimmer (0150); Name je Sprache. */
+  /** Offene, kostenlose Gaestewuensche fuers Zimmer (0151); Name je Sprache. */
   requests?: Array<{ requestRef: string; name: Record<string, string>; qty: number }>
 }
 interface Tag { date: string; rooms: MeinZimmer[]; minutes: number }

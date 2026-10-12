@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0150 Gaestewuensche in der Personal-App (Dokument 35, Abschnitt 8)
+-- 0151 Gaestewuensche in der Personal-App (Dokument 35, Abschnitt 8)
 --
 -- Ein kostenloser Wunsch, um den sich Housekeeping kuemmert -- ein Kissen,
 -- eine Decke --, geht an die Kraft, der das Zimmer heute zugeteilt ist:

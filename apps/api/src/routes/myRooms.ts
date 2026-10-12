@@ -91,7 +91,7 @@ interface MeinZimmer {
   waiver: { water: boolean; delivered: boolean } | null
   /**
    * Offene Gaestewuensche fuers Zimmer, um die sich Housekeeping kuemmert
-   * und die nichts kosten (0149, 0150). Name je Sprache; die App nimmt die
+   * und die nichts kosten (0149, 0151). Name je Sprache; die App nimmt die
    * der Kraft. Ein Wunsch fuer einen spaeteren Tag steht erst an dem Tag
    * hier. Kein Gastname: die Kraft braucht das Zimmer, nicht den Gast.
    */
@@ -409,7 +409,7 @@ export function myRoomsRoutes(app: FastifyInstance): void {
   })
 
   /**
-   * Einen Gaestewunsch gebracht (0150). Nur an einem eigenen Zimmer von
+   * Einen Gaestewunsch gebracht (0151). Nur an einem eigenen Zimmer von
    * heute und nur, was die App zeigt: kostenlos und Sache des
    * Housekeepings. Ein Extra mit Preis wird an der Rezeption angenommen,
    * weil das dort bucht.
