@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import type { CleaningWaiverView } from '@hotelpms/contracts'
-import { useT } from '../lib/i18n/index.js'
+import type { CleaningWaiverView, FolderRequests } from '@hotelpms/contracts'
+import { useT, useLocale } from '../lib/i18n/index.js'
+import { mappeText } from '../gast/mappeTexte.js'
 import { api } from '../lib/api.js'
 import { Fehler } from '../components/Fehler.tsx'
 import { Verzicht } from './GastCheckin.tsx'
@@ -10,7 +11,7 @@ import { Verzicht } from './GastCheckin.tsx'
  *
  * Ohne Auftrag der Rezeption: Zimmer antippen, "Sind Sie Herr/Frau
  * <Nachname>?" mit Ja oder Nein, danach die Reinigung einzelner Tage
- * abbestellen. Die Rueckfrage schuetzt vor einem vertippten Zimmer, mehr
+ * abbestellen und Kopfkissen bestellen. Die Rueckfrage schuetzt vor einem vertippten Zimmer, mehr
  * soll sie nicht (Sven, 12.10.2026).
  *
  * Fuer diese Ansicht gilt, was fuer jeden Auftrag gilt (`Terminal.tsx`):
@@ -32,7 +33,7 @@ type Schritt =
   | { art: 'zimmer' }
   | { art: 'frage'; sessionRef: string; lastName: string; code: string }
   | { art: 'verzicht'; sessionRef: string; token: string; view: CleaningWaiverView | null
-      code: string }
+      requests: FolderRequests | null; code: string }
 
 export type SelbstEnde = 'done' | 'canceled'
 
@@ -72,12 +73,14 @@ export function Selbstbedienung({ onSitzung, onEnde }: {
   const antworten = (s: Extract<Schritt, { art: 'frage' }>, yes: boolean): void => {
     setLaeuft(true); setFehler(null)
     api.post<{ confirmed: boolean; lastName?: string | null; token?: string
-               cleaningWaiver?: CleaningWaiverView | null }>(
+               cleaningWaiver?: CleaningWaiverView | null
+               requests?: FolderRequests | null }>(
       `/v1/terminal/self/sessions/${s.sessionRef}/confirm`, { yes })
       .then(r => {
         if (r.confirmed && r.token !== undefined) {
           setSchritt({ art: 'verzicht', sessionRef: s.sessionRef, token: r.token,
-                       view: r.cleaningWaiver ?? null, code: s.code })
+                       view: r.cleaningWaiver ?? null, requests: r.requests ?? null,
+                       code: s.code })
         } else if (typeof r.lastName === 'string') {
           // Ein zweiter Aufenthalt im selben Zimmer: nach ihm fragen.
           setSchritt({ ...s, lastName: r.lastName })
@@ -146,9 +149,16 @@ export function Selbstbedienung({ onSitzung, onEnde }: {
       {schritt.art === 'verzicht' && (
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="text-xl text-neutral-500">{t('kiosk.self.room', { room: schritt.code })}</div>
-          {schritt.view === null
+          {schritt.view === null && (schritt.requests?.items.length ?? 0) === 0
             ? <p className="text-xl">{t('kiosk.self.nothing')}</p>
-            : <Verzicht token={schritt.token} start={schritt.view} gross />}
+            : (
+              <>
+                {schritt.view !== null && <Verzicht token={schritt.token} start={schritt.view} gross />}
+                {schritt.requests !== null && schritt.requests.items.length > 0 && (
+                  <Wuensche sessionRef={schritt.sessionRef} start={schritt.requests} />
+                )}
+              </>
+            )}
           <button type="button" onClick={() => onEnde('done')}
                   className="w-full py-5 text-2xl rounded-sm bg-neutral-900 text-white">
             {t('kiosk.done')}
@@ -164,5 +174,93 @@ export function Selbstbedienung({ onSitzung, onEnde }: {
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Kopfkissen und was das Haus sonst am Terminal anbietet (Katalog der
+ * Gaestemappe, Migration 0149): nur kostenlose Eintraege, ohne Wunschtag.
+ * Die Saetze sind die der Mappe -- ein Wunsch, eine Sprache, ob am Telefon
+ * oder hier.
+ */
+function Wuensche({ sessionRef, start }: {
+  sessionRef: string; start: FolderRequests
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const [view, setView] = useState<FolderRequests>(start)
+  const [menge, setMenge] = useState<Record<string, number>>({})
+  const [busy, setBusy] = useState(false)
+  const [meldung, setMeldung] = useState<'ok' | 'fehler' | null>(null)
+  const name = (n: Record<string, string>): string => n[locale] ?? n.de ?? ''
+
+  const bestellen = (itemRef: string, qty: number): void => {
+    setBusy(true); setMeldung(null)
+    api.post<FolderRequests | null>(`/v1/terminal/self/sessions/${sessionRef}/requests`,
+      { itemRef, qty })
+      .then(v => { if (v !== null) setView(v); setMeldung('ok') })
+      .catch(() => setMeldung('fehler'))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <section className="space-y-4 rounded-sm border border-neutral-300 bg-white p-6">
+      <h2 className="text-2xl font-semibold">{mappeText('req.title', locale)}</h2>
+      <ul className="divide-y divide-neutral-200">
+        {view.items.map(i => {
+          const q = menge[i.itemRef] ?? 1
+          return (
+            <li key={i.itemRef} className="flex flex-wrap items-center gap-4 py-4">
+              <span className="grow text-2xl">{name(i.name)}</span>
+              {i.maxQty > 1 && (
+                <div className="flex items-center gap-2" aria-label={mappeText('req.qty', locale)}>
+                  {Array.from({ length: i.maxQty }, (_, n) => n + 1).map(n => (
+                    <button key={n} type="button" aria-pressed={q === n}
+                            onClick={() => setMenge({ ...menge, [i.itemRef]: n })}
+                            className={`h-14 w-14 rounded-sm border text-2xl
+                              ${q === n ? 'border-neutral-900 bg-neutral-900 text-white'
+                                        : 'border-neutral-300 bg-white'}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button type="button" disabled={busy} onClick={() => bestellen(i.itemRef, q)}
+                      className="rounded-sm bg-[#e8891c] px-6 py-3 text-2xl text-white
+                                 disabled:opacity-50">
+                {mappeText('req.send', locale)}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      {meldung !== null && (
+        <p role={meldung === 'fehler' ? 'alert' : 'status'}
+           className={`text-xl ${meldung === 'fehler' ? 'text-red-800' : 'text-green-800'}`}>
+          {meldung === 'fehler' ? mappeText('req.failed', locale) : t('kiosk.self.thanks')}
+        </p>
+      )}
+      {view.mine.length > 0 && (
+        <div className="space-y-2 border-t border-neutral-200 pt-4">
+          <h3 className="text-xl font-medium">{mappeText('req.mine', locale)}</h3>
+          <ul className="space-y-1 text-lg">
+            {view.mine.map(w => (
+              <li key={w.requestRef}>
+                {w.qty} × {name(w.name)}
+                <span className={w.status === 'declined' ? ' text-red-800'
+                  : w.status === 'done' ? ' text-green-800' : ' text-neutral-600'}>
+                  {' · '}{mappeText(`req.status.${w.status}`, locale)}
+                </span>
+                {w.declineReason !== null && (
+                  <span className="block text-neutral-700">
+                    {mappeText(`req.reason.${w.declineReason}`, locale)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   )
 }

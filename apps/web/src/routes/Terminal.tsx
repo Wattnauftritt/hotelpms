@@ -12,6 +12,9 @@ import { referrerFuer } from '../lib/rahmen.js'
 import { useBildschirmWach } from '../lib/wachhalten.js'
 import { TERMINAL_PFAD, istTerminalAdresse } from '../gast/adresse.js'
 import { Selbstbedienung, type SelbstEnde } from './TerminalSelbst.tsx'
+import { wifiQrText, type FolderWifi } from '@hotelpms/contracts'
+import { useQr } from '../lib/qr.js'
+import { mappeText } from '../gast/mappeTexte.js'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -465,14 +468,19 @@ function Ruhe({ haus, kopf, onSelbst }: {
 }): JSX.Element {
   const t = useT()
   const [folien, setFolien] = useState<Folie[]>([])
-  const [selbst, setSelbst] = useState(false)
+  const [angebot, setAngebot] = useState<Angebot | null>(null)
+  const [wifi, setWifi] = useState<FolderWifi | null>(null)
   const [nr, setNr] = useState(0)
 
   useEffect(() => {
     let aus = false
     const holen = (): void => {
-      api.get<{ slides: Folie[]; selfService: boolean }>('/v1/terminal/idle')
-        .then(r => { if (!aus) { setFolien(r.slides); setSelbst(r.selfService) } })
+      api.get<{ slides: Folie[]; selfServiceOffers: Angebot | null; wifi: FolderWifi | null }>(
+        '/v1/terminal/idle')
+        .then(r => {
+          if (aus) return
+          setFolien(r.slides); setAngebot(r.selfServiceOffers); setWifi(r.wifi)
+        })
         .catch(() => { /* ohne Diashow bleibt die Begruessung */ })
     }
     holen()
@@ -487,17 +495,57 @@ function Ruhe({ haus, kopf, onSelbst }: {
     return () => window.clearTimeout(z)
   }, [folie, nr])
 
+  // Was es gibt, steht unter dem Knopf -- eine Aufzaehlung, kein Satz.
+  const angebote = angebot === null ? [] : [
+    ...(angebot.cleaning ? [t('kiosk.self.buttonHint')] : []),
+    ...(angebot.requests ? [t('kiosk.self.buttonHintRequests')] : [])
+  ]
   return <Ruhebild folien={folien} nr={nr} haus={haus} kopf={kopf}
-                   aktion={selbst ? (
+                   wlan={wifi === null ? undefined : <WlanKachel wifi={wifi} />}
+                   aktion={angebot !== null ? (
                      <button type="button" onClick={onSelbst}
                              className="px-10 py-5 rounded-sm bg-[#e8891c] text-white shadow-lg
                                         text-center active:brightness-95">
                        <span className="block text-3xl font-semibold">{t('kiosk.self.button')}</span>
-                       <span className="block text-lg text-white/90">
-                         {t('kiosk.self.buttonHint')}
-                       </span>
+                       <span className="block text-lg text-white/90">{angebote.join(' · ')}</span>
                      </button>
                    ) : undefined} />
+}
+
+/** Was die Selbstbedienung anbietet, fuer die Zeile unter dem Knopf. */
+interface Angebot { cleaning: boolean; requests: boolean }
+
+/**
+ * Das WLAN des Hauses im Ruhezustand: QR-Code, daneben Netz und Kennwort
+ * ausgeschrieben fuer ein Geraet ohne Kamera. Dieselbe Einstellung und
+ * dieselben Saetze wie Gaestemappe und Zimmerkarte (0143); der Code
+ * entsteht im Browser.
+ */
+function WlanKachel({ wifi }: { wifi: FolderWifi }): JSX.Element {
+  const locale = useLocale()
+  const m = (k: 'wifi.title' | 'wifi.network' | 'wifi.password' | 'wifi.noPassword'): string =>
+    mappeText(k, locale)
+  const { pfad, groesse } = useQr(wifiQrText(wifi))
+  return (
+    <div className="flex items-center gap-4 rounded-sm bg-white/95 p-4 text-neutral-900 shadow-lg">
+      <svg viewBox={`0 0 ${groesse} ${groesse}`} role="img" aria-label={m('wifi.title')}
+           className="h-36 w-36" shapeRendering="crispEdges">
+        <path d={pfad} fill="#000" />
+      </svg>
+      <dl className="space-y-1 text-lg">
+        <dt className="text-sm uppercase tracking-wider text-neutral-500">{m('wifi.title')}</dt>
+        <dd className="font-semibold break-all">{wifi.ssid}</dd>
+        {wifi.password !== null
+          ? (
+            <>
+              <dt className="text-sm text-neutral-500">{m('wifi.password')}</dt>
+              <dd className="font-mono break-all">{wifi.password}</dd>
+            </>
+          )
+          : <dd className="text-sm text-neutral-600">{m('wifi.noPassword')}</dd>}
+      </dl>
+    </div>
+  )
 }
 
 /** Eine Seite des Hauses, wie das Terminal sie zeigt. */

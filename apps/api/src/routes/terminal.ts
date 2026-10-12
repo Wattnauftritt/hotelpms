@@ -11,6 +11,7 @@ import { hasProperty, type Principal } from '../platform/context.js'
 import { geraetVon, pruefeHaus } from '../platform/terminal.js'
 import { bildLesen, bildSenden } from '../platform/terminalBild.js'
 import { beendeSelbstbedienung, selbstbedienungAngeboten } from '../platform/terminalSelbst.js'
+import { wlan } from '../platform/gaestemappe.js'
 import { ARTEN, TERMINAL_KINDS, istArt, angebote, inhalteDesHauses, zieheLinksZurueck,
          AUFTRAG_LABEL_JOINS, AUFTRAG_LABEL_SQL,
          type Auftrag, type Lage, type TerminalKind, type Wunsch }
@@ -1144,7 +1145,19 @@ export function terminalRoutes(app: FastifyInstance): void {
             LIMIT $2`, [propertyId, DIASHOW_MAX])
         // Ob der Knopf zur Selbstbedienung dasteht (Migration 0150). Hier und
         // nicht in der Frage alle zwei Sekunden: der Schalter aendert sich selten.
-        return { slides: rows, selfService: await selbstbedienungAngeboten(client, propertyIds) }
+        const angebot = await selbstbedienungAngeboten(client, propertyIds)
+        /*
+         * Das WLAN des Hauses fuer die Kachel im Ruhezustand, dieselbe
+         * Einstellung wie Gaestemappe und Zimmerkarte (0143). Auch bei
+         * abgeschalteter Mappe: das Netz steht ohnehin auf der Karte im
+         * Zimmer. Nur das des Hauses, dem das Geraet gehoert -- ein
+         * mitnutzendes Gaestehaus hat sein eigenes Netz in seinen Zimmern.
+         */
+        const w = await client.query<Parameters<typeof wlan>[0] & object>(
+          `SELECT wifi_ssid, wifi_password, wifi_security, wifi_hidden
+             FROM guest_folder_setting WHERE property_id = $1`, [propertyId])
+        return { slides: rows, selfService: angebot !== null, selfServiceOffers: angebot,
+                 wifi: wlan(w.rows[0]) }
       })
     }
   })
