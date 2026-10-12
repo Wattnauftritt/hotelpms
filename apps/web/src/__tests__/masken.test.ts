@@ -50,9 +50,14 @@ describe('Der Rahmen einer Maske', () => {
      *
      * Die dritte ist das Ruhebild am Gaesteterminal: ebenfalls keine Maske,
      * sondern der ganze Bildschirm, solange niemand etwas ausfuellt.
+     *
+     * Die vierte ist die Druckvorschau der Zimmerkarten (0143): eine Bahn
+     * aus A6-Karten, die so aussehen soll wie das Papier, nicht ein Kasten
+     * mit Knopfleiste.
      */
     expect(eigene).toEqual(['components/Detailsuche.tsx', 'components/Dialog.tsx',
-                            'components/Ruhebild.tsx', 'components/mobil/MobilKasse.tsx'])
+                            'components/Ruhebild.tsx', 'components/Zimmerkarten.tsx',
+                            'components/mobil/MobilKasse.tsx'])
   })
 
   it('haelt die Knopfleiste ausserhalb des rollenden Teils', () => {
