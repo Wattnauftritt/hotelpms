@@ -1,5 +1,6 @@
 import { useState, type JSX } from 'react'
-import type { FolderPageTranslation, GuestFolderSettings } from '@hotelpms/contracts'
+import { SPRACHNAMEN, type FolderLocale, type FolderPageTranslation,
+         type GuestFolderSettings } from '@hotelpms/contracts'
 import { useGaestemappeUebersetzung } from '../lib/queries/gaestemappe.js'
 import { useT, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -25,14 +26,26 @@ const FARBE: Record<FolderPageTranslation['state'], string> = {
   failed: 'text-red-700'
 }
 
-/** Kurz in der Liste der Seiten: je Sprache das Kuerzel und ein Zeichen. */
+/**
+ * Wie die Sprache sich selbst nennt, wie in jeder Sprachwahl des Systems.
+ * Die Schnittstelle liefert die Sprache als Zeichenkette; eine, die die
+ * Oberflaeche noch nicht kennt, steht als Kuerzel da statt leer.
+ */
+function sprachname(lang: string): string {
+  return SPRACHNAMEN[lang as FolderLocale] ?? lang.toUpperCase()
+}
+
+/**
+ * Kurz in der Liste der Seiten: je Sprache das Kuerzel und ein Zeichen.
+ * Umbrechend, weil es seit 0145 dreizehn sind.
+ */
 export function UebersetzungsStand({ seite }: { seite: Seite }): JSX.Element {
   const t = useT()
   return (
-    <span className="flex gap-1.5 text-xs">
+    <span className="flex flex-wrap gap-x-1.5 text-xs">
       {seite.translations.map(u => (
         <span key={u.lang} className={FARBE[u.state]}
-              title={`${t(`folder.tr.lang.${u.lang}` as TextKey)}: `
+              title={`${sprachname(u.lang)}: `
                 + t(`folder.tr.state.${u.state}` as TextKey)}>
           {u.lang.toUpperCase()}{u.state === 'failed' ? ' !' : u.state === 'pending' ? ' …' : ' ✓'}
         </span>
@@ -80,7 +93,7 @@ function Sprache({ propertyId, contentRef, u }: {
   return (
     <section className="space-y-2 border-t border-neutral-200 pt-4">
       <h3 className="text-sm font-medium">
-        {t(`folder.tr.lang.${u.lang}` as TextKey)}
+        {sprachname(u.lang)}
         <span className={`ml-2 font-normal ${FARBE[u.state]}`}>
           {t(`folder.tr.state.${u.state}` as TextKey)}
         </span>

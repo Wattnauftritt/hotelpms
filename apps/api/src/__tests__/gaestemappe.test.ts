@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          makeCategory, makeResources, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
+import { FOLDER_TRANSLATION_LANGS } from '@hotelpms/domain'
 import { FOLDER_ROOM_HEADER, folderRefAusFragment, wifiQrText,
          type GuestFolderCards } from '@hotelpms/contracts'
 import { buildServer } from '../platform/app.js'
@@ -204,7 +205,7 @@ describe('Gaestemappe', () => {
     const stand = async () => (await app.inject({ method: 'GET', url: p('/guest-folder'),
       headers: auth(chef.sessionId) })).json().pages[0].translations
     expect((await stand()).map((t: { lang: string; state: string }) => [t.lang, t.state]))
-      .toEqual([['en', 'pending'], ['nl', 'machine'], ['pl', 'pending']])
+      .toEqual(FOLDER_TRANSLATION_LANGS.map(l => [l, l === 'nl' ? 'machine' : 'pending']))
 
     // Von Hand berichtigt.
     const url = p(`/guest-folder/pages/${ref}/translations/nl`)
@@ -234,7 +235,7 @@ describe('Gaestemappe', () => {
     const put = (url: string, payload: unknown = ok) =>
       app.inject({ method: 'PUT', url, headers: auth(chef.sessionId), payload })
     expect((await put(p(`/guest-folder/pages/${ref}/translations/de`))).statusCode).toBe(422)
-    expect((await put(p(`/guest-folder/pages/${ref}/translations/fr`))).statusCode).toBe(422)
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/pt`))).statusCode).toBe(422)
     expect((await put(p(`/guest-folder/pages/${ref}/translations/en`),
       { title: ' ', body: '' })).statusCode).toBe(422)
     expect((await put(p(`/guest-folder/pages/${ref}/translations/en`),
