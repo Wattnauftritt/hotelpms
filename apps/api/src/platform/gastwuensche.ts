@@ -1,7 +1,7 @@
 import type { PoolClient } from '@hotelpms/db'
 import { LOCALES, GUEST_REQUEST_DECLINE_REASONS, type FolderRequests,
          type GuestRequestCatalog, type GuestRequestDeclineReason, type GuestRequestItemAdmin,
-         type GuestRequestRow } from '@hotelpms/contracts'
+         type GuestRequestOffer, type GuestRequestRow } from '@hotelpms/contracts'
 import { isIsoDate, taxFromGross } from '@hotelpms/domain'
 import { Errors } from './errors.js'
 import { meldePush } from './push.js'
@@ -35,6 +35,23 @@ const PREIS = `CASE WHEN p.active THEN p.price_cent::int END`
  */
 export const AM_TERMINAL = `i.on_terminal AND ${PREIS} IS NULL`
 
+/**
+ * Ob ein Eintrag `i` fuer die Reservierung `r` heute angeboten wird (0154).
+ * Zur Abreise ab dem Abend davor; die spaete Abreise ausserdem nur, wenn
+ * am Abreisetag niemand in dieses Zimmer anreist -- sonst laege ein
+ * Angebot in der Mappe, das die Rezeption ablehnen muss. `bd` ist der
+ * Platzhalter des Geschaeftstags.
+ */
+function angeboten(bd: string): string {
+  return `(i.offer = 'stay'
+     OR (${bd}::date >= r.departure - 1
+         AND (i.offer = 'departure'
+              OR NOT EXISTS (SELECT 1 FROM reservation n
+                              WHERE n.resource_id = r.resource_id AND n.id <> r.id
+                                AND n.arrival = r.departure
+                                AND n.status::text IN ('Optional','Confirmed','InHouse')))))`
+}
+
 // ---------------------------------------------------------------- Gast
 
 /**
@@ -48,12 +65,14 @@ export async function mappeWuensche(
 ): Promise<FolderRequests | null> {
   const items = await client.query<FolderRequests['items'][number]>(
     `SELECT i.public_ref AS "itemRef", i.name, i.max_qty AS "maxQty",
-            ${PREIS} AS "unitPriceCent"
+            ${PREIS} AS "unitPriceCent", i.offer <> 'stay' AS "forDeparture"
        FROM guest_request_item i
+       JOIN reservation r ON r.id = $2
        LEFT JOIN product p ON p.id = i.product_id
       WHERE i.property_id = $1 AND i.active
         AND ${tuer === 'terminal' ? AM_TERMINAL : 'i.on_folder'}
-      ORDER BY i.position, i.id`, [propertyId])
+        AND ${angeboten('$3')}
+      ORDER BY i.position, i.id`, [propertyId, reservationId, businessDate])
   const mine = await client.query<FolderRequests['mine'][number]>(
     `SELECT q.public_ref AS "requestRef", i.name, q.message, q.qty,
             q.unit_price_cent::int AS "unitPriceCent", q.wanted_for::text AS "wantedFor",
@@ -165,20 +184,6 @@ export async function wunschAnlegen(
        source: 'folder' | 'mail' | 'terminal'
        itemRef: string; qty: number; wantedFor: string | null }
 ): Promise<void> {
-  const tuer = a.source === 'terminal' ? AM_TERMINAL : 'i.on_folder'
-  const e = await client.query<{ id: number; max_qty: number; preis: number | null
-                                 handler: 'reception' | 'housekeeping' }>(
-    `SELECT i.id::int, i.max_qty, ${PREIS} AS preis, i.handler
-       FROM guest_request_item i
-       LEFT JOIN product p ON p.id = i.product_id
-      WHERE i.public_ref = $1 AND i.property_id = $2 AND i.active AND ${tuer}`,
-    [a.itemRef, a.propertyId])
-  const item = e.rows[0]
-  if (item === undefined) throw Errors.unprocessable('guestRequest.itemUnavailable')
-  if (a.qty < 1 || a.qty > item.max_qty) {
-    throw Errors.validation({ qty: ['guestRequest.qty'] }, { max: item.max_qty })
-  }
-
   // Die Reservierung sperren: zwei schnelle Klicks sollen die Grenze der
   // offenen Wuensche nicht gemeinsam ueberspringen.
   const r = await client.query<{ arrival: string; departure: string; resource_id: number | null }>(
@@ -187,9 +192,30 @@ export async function wunschAnlegen(
     [a.reservationId, a.propertyId])
   const res = r.rows[0]
   if (res === undefined) throw Errors.notFound('res.reservation')
-  if (a.wantedFor !== null
-      && (a.wantedFor < a.businessDate || a.wantedFor < res.arrival
-          || a.wantedFor > res.departure)) {
+
+  // Dieselbe Regel wie beim Anzeigen: was die Mappe nicht anbietet, laesst
+  // sich auch nicht per Hand absenden (0154).
+  const tuer = a.source === 'terminal' ? AM_TERMINAL : 'i.on_folder'
+  const e = await client.query<{ id: number; max_qty: number; preis: number | null
+                                 handler: 'reception' | 'housekeeping'; zur_abreise: boolean }>(
+    `SELECT i.id::int, i.max_qty, ${PREIS} AS preis, i.handler,
+            i.offer <> 'stay' AS zur_abreise
+       FROM guest_request_item i
+       JOIN reservation r ON r.id = $3
+       LEFT JOIN product p ON p.id = i.product_id
+      WHERE i.public_ref = $1 AND i.property_id = $2 AND i.active AND ${tuer}
+        AND ${angeboten('$4')}`,
+    [a.itemRef, a.propertyId, a.reservationId, a.businessDate])
+  const item = e.rows[0]
+  if (item === undefined) throw Errors.unprocessable('guestRequest.itemUnavailable')
+  if (a.qty < 1 || a.qty > item.max_qty) {
+    throw Errors.validation({ qty: ['guestRequest.qty'] }, { max: item.max_qty })
+  }
+  // Zur Abreise gilt der Abreisetag, was immer die Seite schickt.
+  const wantedFor = item.zur_abreise ? res.departure : a.wantedFor
+  if (wantedFor !== null
+      && (wantedFor < a.businessDate || wantedFor < res.arrival
+          || wantedFor > res.departure)) {
     throw Errors.validation({ wantedFor: ['guestRequest.wantedFor'] })
   }
   await offeneGrenze(client, a.reservationId)
@@ -198,7 +224,7 @@ export async function wunschAnlegen(
                                 unit_price_cent, wanted_for, source)
      VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8) RETURNING id::int`,
     [a.propertyId, a.reservationId, res.resource_id, item.id, a.qty, item.preis,
-     a.wantedFor, a.source])
+     wantedFor, a.source])
 
   // Kostenlos und Sache des Housekeepings: die Kraft, der das Zimmer heute
   // zugeteilt ist, bekommt eine Meldung (0152) und sieht den Wunsch an der
@@ -206,7 +232,7 @@ export async function wunschAnlegen(
   // dort buchen, und das darf die Kraft nicht. Ein Wunsch fuer einen
   // spaeteren Tag meldet sich nicht jetzt; er steht an dem Tag in der App.
   if (item.handler === 'housekeeping' && item.preis === null && res.resource_id !== null
-      && (a.wantedFor === null || a.wantedFor <= a.businessDate)) {
+      && (wantedFor === null || wantedFor <= a.businessDate)) {
     const k = await client.query<{ user_id: number; code: string }>(
       `SELECT t.assigned_to::int AS user_id, r.code
          FROM housekeeping_task t JOIN resource r ON r.id = t.resource_id
@@ -379,7 +405,8 @@ export async function katalogAnsicht(
             CASE WHEN p.active THEN json_build_object(
               'grossCent', p.price_cent::int, 'taxRuleId', p.tax_rule_id::int,
               'revenueAccount', p.revenue_account) END AS price,
-            i.on_folder AS "onFolder", i.on_terminal AS "onTerminal", i.active, i.position
+            i.on_folder AS "onFolder", i.on_terminal AS "onTerminal", i.offer,
+            i.active, i.position
        FROM guest_request_item i
        LEFT JOIN product p ON p.id = i.product_id
       WHERE i.property_id = $1
@@ -404,7 +431,8 @@ interface Eintrag {
   handler: 'reception' | 'housekeeping'
   maxQty: number
   price: { grossCent: number; taxRuleId: number; revenueAccount: string } | null
-  onFolder: boolean; onTerminal: boolean; active: boolean; position: number
+  onFolder: boolean; onTerminal: boolean; offer: GuestRequestOffer
+  active: boolean; position: number
 }
 
 function ganz(v: unknown, min: number, max: number, feld: string): number {
@@ -416,6 +444,14 @@ function ganz(v: unknown, min: number, max: number, feld: string): number {
 
 function wahr(v: unknown, feld: string): boolean {
   if (typeof v !== 'boolean') throw Errors.validation({ [feld]: ['field.invalid'] })
+  return v
+}
+
+function angebot(v: unknown): GuestRequestOffer {
+  if (v === undefined) return 'stay'
+  if (v !== 'stay' && v !== 'departure' && v !== 'late_checkout') {
+    throw Errors.validation({ offer: ['field.invalid'] })
+  }
   return v
 }
 
@@ -460,6 +496,7 @@ export function eintragAusRumpf(body: unknown): Eintrag {
   return {
     name, handler: b.handler, maxQty: ganz(b.maxQty, 1, 20, 'maxQty'), price,
     onFolder: wahr(b.onFolder, 'onFolder'), onTerminal: wahr(b.onTerminal, 'onTerminal'),
+    offer: angebot(b.offer),
     active: wahr(b.active, 'active'), position: ganz(b.position, 0, 1000, 'position')
   }
 }
@@ -480,18 +517,18 @@ export async function eintragSpeichern(
     throw Errors.validation({ 'price.taxRuleId': ['guestRequest.taxRule'] })
   }
   const werte = [propertyId, JSON.stringify(e.name), e.handler, e.maxQty, e.onFolder,
-                 e.onTerminal, e.active, e.position, userId]
+                 e.onTerminal, e.active, e.position, userId, e.offer]
   const r = itemRef === null
     ? await client.query<{ id: number; product_id: number | null }>(
         `INSERT INTO guest_request_item (property_id, name, handler, max_qty, on_folder,
-                                         on_terminal, active, position, updated_by)
-         VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9)
+                                         on_terminal, active, position, updated_by, offer)
+         VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id::int, product_id::int`, werte)
     : await client.query<{ id: number; product_id: number | null }>(
         `UPDATE guest_request_item SET name = $2::jsonb, handler = $3, max_qty = $4,
                 on_folder = $5, on_terminal = $6, active = $7, position = $8,
-                updated_by = $9, updated_at = now()
-          WHERE property_id = $1 AND public_ref = $10
+                updated_by = $9, offer = $10, updated_at = now()
+          WHERE property_id = $1 AND public_ref = $11
          RETURNING id::int, product_id::int`, [...werte, itemRef])
   const item = r.rows[0]
   if (item === undefined) throw Errors.notFound('res.guestRequestItem')

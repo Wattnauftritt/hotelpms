@@ -401,3 +401,90 @@ describe('Nachricht an die Rezeption (0153)', () => {
     })
   }
 })
+
+describe('Zur Abreise und spaete Abreise (0154)', () => {
+  async function abreisend(raum: number, lastName: string, departure: string): Promise<number> {
+    const g = await makeGuest(owner, fx.accountId, { lastName })
+    const r = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: kategorie,
+      arrival: '2026-10-10', departure, resourceId: raum, status: 'InHouse',
+      reserveInventory: false })
+    await owner.query(`UPDATE reservation SET primary_guest_id = $2 WHERE id = $1`,
+      [r.reservationId, g.id])
+    return r.reservationId
+  }
+  const namen = async (raum: number, cookie: string) =>
+    (await mappe(raum, cookie)).json().stay.requests.items
+      .map((i: { name: { de: string }; forDeparture: boolean }) => [i.name.de, i.forDeparture])
+
+  it('bietet erst ab dem Abend davor an und setzt den Abreisetag selbst', async () => {
+    const c = await katalog(
+      eintrag({ de: 'Kissen' }),
+      eintrag({ de: 'Lunchpaket' }, { offer: 'departure' }),
+      eintrag({ de: 'Bis 13 Uhr' }, { offer: 'late_checkout', maxQty: 1,
+        price: { grossCent: 1500, taxRuleId: steuer19, revenueAccount: '8400' } }))
+    expect(c.items.map(i => i.offer)).toEqual(['stay', 'departure', 'late_checkout'])
+    const lunch = c.items[1]!.itemRef
+
+    // Abreise uebermorgen: nur das Kissen, und das Lunchpaket nicht per Hand.
+    await abreisend(zimmer[0]!, 'Weit', '2026-10-14')
+    const weit = await freischalten(zimmer[0]!, 'Weit')
+    expect(await namen(zimmer[0]!, weit)).toEqual([['Kissen', false]])
+    expect((await bestellen(zimmer[0]!, { itemRef: lunch, qty: 1 }, weit)).statusCode).toBe(422)
+
+    // Abreise morgen: alles, und der Wunschtag ist der Abreisetag.
+    const res = await abreisend(zimmer[1]!, 'Nah', '2026-10-13')
+    const nah = await freischalten(zimmer[1]!, 'Nah')
+    expect(await namen(zimmer[1]!, nah))
+      .toEqual([['Kissen', false], ['Lunchpaket', true], ['Bis 13 Uhr', true]])
+    const b = await bestellen(zimmer[1]!, { itemRef: lunch, qty: 1, wantedFor: HEUTE }, nah)
+    expect(b.statusCode, b.body).toBe(200)
+    expect((await owner.query(`SELECT wanted_for::text AS d FROM guest_request
+                                WHERE reservation_id = $1`, [res])).rows).toEqual([{ d: '2026-10-13' }])
+
+    // Reist morgen jemand in das Zimmer an, gibt es keine spaete Abreise mehr.
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: kategorie,
+      arrival: '2026-10-13', departure: '2026-10-15', resourceId: zimmer[1]!,
+      status: 'Confirmed', reserveInventory: false })
+    expect(await namen(zimmer[1]!, nah)).toEqual([['Kissen', false], ['Lunchpaket', true]])
+    expect((await bestellen(zimmer[1]!, { itemRef: c.items[2]!.itemRef, qty: 1 }, nah))
+      .statusCode).toBe(422)
+  })
+
+  it('zeigt die Abreiseseite ab dem Abend davor und den Bewertungslink am Abreisetag', async () => {
+    const seite = (await owner.query<{ public_ref: string }>(
+      `INSERT INTO terminal_content (property_id, title, folder_position)
+       VALUES ($1, 'Abreise', 1) RETURNING public_ref`, [fx.propertyId])).rows[0]!.public_ref
+    const fremd = await makeProperty(owner, { name: 'Andere' })
+    const [link, fremderLink] = await Promise.all([fx.propertyId, fremd.propertyId].map(async id =>
+      (await owner.query<{ public_ref: string }>(
+        `INSERT INTO terminal_url (property_id, label, url)
+         VALUES ($1, 'Google', 'https://g.page/r/seerobbe/review') RETURNING public_ref`,
+        [id])).rows[0]!.public_ref))
+
+    const setzen = (payload: object) => app.inject({ method: 'PUT', url: p('/guest-folder'),
+      headers: auth(chef.sessionId), payload: { enabled: true, wifi: null, ...payload } })
+    expect((await setzen({ reviewUrl: fremderLink })).statusCode).toBe(422)
+    const s = await setzen({ departurePage: seite, reviewUrl: link })
+    expect(s.statusCode, s.body).toBe(200)
+    expect(s.json()).toMatchObject({ departurePage: seite, reviewUrl: link,
+      urls: [{ urlRef: link, label: 'Google' }] })
+    // Ohne die Felder bleibt beides.
+    expect((await setzen({})).json()).toMatchObject({ departurePage: seite, reviewUrl: link })
+
+    await abreisend(zimmer[0]!, 'Weit', '2026-10-14')
+    await abreisend(zimmer[1]!, 'Nah', '2026-10-13')
+    const weit = (await mappe(zimmer[0]!, await freischalten(zimmer[0]!, 'Weit'))).json().stay
+    expect(weit).toMatchObject({ departureSoon: false, departurePage: null, review: null })
+    const nahCookie = await freischalten(zimmer[1]!, 'Nah')
+    expect((await mappe(zimmer[1]!, nahCookie)).json().stay)
+      .toMatchObject({ departureSoon: true, departurePage: seite, review: null })
+
+    // Am Abreisetag der Link; eine entfernte Adresse verschwindet.
+    await owner.query(`UPDATE business_day SET date = '2026-10-13' WHERE property_id = $1`,
+      [fx.propertyId])
+    expect((await mappe(zimmer[1]!, nahCookie)).json().stay.review)
+      .toEqual({ label: 'Google', url: 'https://g.page/r/seerobbe/review' })
+    await owner.query(`UPDATE terminal_url SET removed_at = now()`)
+    expect((await mappe(zimmer[1]!, nahCookie)).json().stay.review).toBeNull()
+  })
+})

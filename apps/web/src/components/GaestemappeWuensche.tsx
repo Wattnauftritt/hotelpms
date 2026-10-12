@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { FOLDER_LOCALES, SPRACHNAMEN, type GuestRequestItemAdmin,
-         type GuestRequestItemInput } from '@hotelpms/contracts'
+         type GuestRequestItemInput, type GuestRequestOffer } from '@hotelpms/contracts'
 import { useWunschkatalog, useWunschEintragSpeichern } from '../lib/queries/gaestemappe.js'
 import { useT, useLocale, formatMoney } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -32,6 +32,7 @@ type Entwurf = {
   revenueAccount: string
   onFolder: boolean
   onTerminal: boolean
+  offer: GuestRequestOffer
   active: boolean
   position: number
 }
@@ -47,6 +48,7 @@ function entwurfAus(e: GuestRequestItemAdmin | null, position: number,
     revenueAccount: e?.price?.revenueAccount ?? '8400',
     onFolder: e?.onFolder ?? true,
     onTerminal: e?.onTerminal ?? false,
+    offer: e?.offer ?? 'stay',
     active: e?.active ?? true,
     position: e?.position ?? position
   }
@@ -78,6 +80,11 @@ export function GaestemappeWuensche({ propertyId }: { propertyId: number }): JSX
                 {e.handler === 'housekeeping' && (
                   <span className="text-[11px] px-1 rounded-sm bg-sky-100 text-sky-900">
                     {t('folder.req.housekeeping')}
+                  </span>
+                )}
+                {e.offer !== 'stay' && (
+                  <span className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-900">
+                    {t(`folder.req.offer.${e.offer}`)}
                   </span>
                 )}
                 <span className="tabular-nums text-neutral-600">
@@ -129,7 +136,8 @@ function Eintrag({ propertyId, eintrag, taxRules, position, onClose }: {
       name, handler: e.handler, maxQty: e.maxQty,
       price: mitPreis && cent !== null && e.taxRuleId !== null
         ? { grossCent: cent, taxRuleId: e.taxRuleId, revenueAccount: e.revenueAccount } : null,
-      onFolder: e.onFolder, onTerminal: e.onTerminal, active: e.active, position: e.position
+      onFolder: e.onFolder, onTerminal: e.onTerminal, offer: e.offer, active: e.active,
+      position: e.position
     } }, { onSuccess: onClose })
   }
 
@@ -212,6 +220,18 @@ function Eintrag({ propertyId, eintrag, taxRules, position, onClose }: {
             </>
           )}
         </div>
+        <label className="block text-sm">
+          {t('folder.req.field.offer')}
+          <select className={FELD} value={e.offer}
+                  onChange={x => setzen('offer', x.target.value as GuestRequestOffer)}>
+            <option value="stay">{t('folder.req.offer.stay')}</option>
+            <option value="departure">{t('folder.req.offer.departure')}</option>
+            <option value="late_checkout">{t('folder.req.offer.late_checkout')}</option>
+          </select>
+          <span className="mt-1 block text-xs text-neutral-500">
+            {t(`folder.req.offer.${e.offer}.hint`)}
+          </span>
+        </label>
         {mitPreis && taxRules.length === 0 && (
           <p className="text-sm text-amber-900">{t('folder.req.noTaxRule')}</p>
         )}

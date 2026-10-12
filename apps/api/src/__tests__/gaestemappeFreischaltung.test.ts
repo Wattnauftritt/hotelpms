@@ -112,14 +112,16 @@ describe('Freischalten', () => {
 
     const r = await freischalten(zimmer[0]!, 'mueller')
     expect(r.statusCode, r.body).toBe(200)
-    expect(r.json()).toEqual({ stay: { departure: '2026-10-14', cleaningWaiver: null, requests: null } })
+    expect(r.json()).toEqual({ stay: { departure: '2026-10-14', cleaningWaiver: null, requests: null,
+      departureSoon: false, departurePage: null, review: null } })
     const c = r.cookies.find(x => x.name === FOLDER_SESSION_COOKIE)!
     expect(c).toMatchObject({ httpOnly: true, path: '/v1/mappe', sameSite: 'Strict' })
     // Bis zum Ende des Abreisetags am Ort des Hauses.
     expect(new Date(c.expires!).toISOString()).toBe('2026-10-14T22:00:00.000Z')
 
     const nachher = await mappe(zimmer[0]!, c.value)
-    expect(nachher.json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null, requests: null })
+    expect(nachher.json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null, requests: null,
+      departureSoon: false, departurePage: null, review: null })
     // Im Nachbarzimmer gilt die Freischaltung nicht.
     expect((await mappe(zimmer[1]!, c.value)).json().stay).toBeNull()
     // Kein Name in der Antwort.
@@ -134,9 +136,11 @@ describe('Freischalten', () => {
     await owner.query(`UPDATE guest SET postal_code = '27472' WHERE id = $1`, [kommt.guestId])
 
     const a = await freischalten(zimmer[0]!, 'Abreise')
-    expect(a.json().stay).toEqual({ departure: HEUTE, cleaningWaiver: null, requests: null })
+    expect(a.json().stay).toEqual({ departure: HEUTE, cleaningWaiver: null, requests: null,
+      departureSoon: true, departurePage: null, review: null })
     const b = await freischalten(zimmer[0]!, '27472')
-    expect(b.json().stay).toEqual({ departure: '2026-10-15', cleaningWaiver: null, requests: null })
+    expect(b.json().stay).toEqual({ departure: '2026-10-15', cleaningWaiver: null, requests: null,
+      departureSoon: false, departurePage: null, review: null })
 
     const sitzungen = await owner.query<{ reservation_id: number }>(
       `SELECT reservation_id::int FROM guest_folder_session ORDER BY id`)
@@ -154,7 +158,8 @@ describe('Freischalten', () => {
     await owner.query(`UPDATE reservation SET resource_id = $2 WHERE id = $1`,
       [a.reservationId, zimmer[1]])
     expect((await mappe(zimmer[0]!, c)).json().stay).toBeNull()
-    expect((await mappe(zimmer[1]!, c)).json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null, requests: null })
+    expect((await mappe(zimmer[1]!, c)).json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null, requests: null,
+      departureSoon: false, departurePage: null, review: null })
   })
 
   it('sagt bei einem leeren und einem fremden Zimmer dasselbe und zaehlt je Zimmer', async () => {
@@ -264,7 +269,8 @@ describe('Mail-Link', () => {
     expect(r.statusCode, r.body).toBe(200)
     const ref = folderRefAusFragment(r.json<{ link: string }>().link.split('#')[1]!)
     expect(ref).toBe(refs.get(zimmer[0]!))
-    expect((await mappe(zimmer[0]!, cookieAus(r))).json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null, requests: null })
+    expect((await mappe(zimmer[0]!, cookieAus(r))).json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null, requests: null,
+      departureSoon: false, departurePage: null, review: null })
 
     expect((await oeffnen(await link(a.reservationId, 'terminal'))).statusCode).toBe(422)
 

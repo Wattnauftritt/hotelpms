@@ -97,7 +97,15 @@ Migration `0153`, Svens Entscheidung vom 11.10.2026: ein freies Feld statt eines
 - Nur in der Mappe, **nicht am Terminal**: dort steht der nächste Gast hinter dem, der gerade tippt.
 - **Freitext ist personenbezogen.** Die Spalte steht in `audit_redaction`; `guest_erase_one()` und `guest_erase_partial()` leeren sie über `guest_request_messages_erase()`; der Worker leert sie 30 Tage nach der Abreise. Die Zeile bleibt als „Nachricht, erledigt“ stehen. Höchstens 500 Zeichen.
 
-## 10. Was als Nächstes kommt
+## 10. Zur Abreise
 
-1. Späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
-2. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+Migration `0154`, Svens Entscheidungen vom 11.10.2026: späte Abreise gegen Gebühr als Anfrage, Preise legt das Haus fest; am Abreisetag der Bewertungslink.
+
+- **Wann ein Eintrag angeboten wird** (`guest_request_item.offer`): den ganzen Aufenthalt (wie bisher), **zur Abreise** oder als **späte Abreise**. Die beiden letzten stehen ab dem Abend vor der Abreise in der Mappe und gelten für den Abreisetag; die Seite fragt nach keinem Tag, und die Schnittstelle setzt ihn selbst. Die späte Abreise erscheint außerdem nur, wenn am Abreisetag niemand in dieses Zimmer anreist. Kommt die Anreise erst nach dem Wunsch, entscheidet die Rezeption.
+- Eine späte Abreise ist **ein Eintrag wie jedes Extra**: Preis, Annehmen und Buchen aufs Folio sind dieselben (Abschnitt 8). Mehrere Stufen („bis 13 Uhr“, „bis 16 Uhr“) sind mehrere Einträge.
+- **Abreiseseite.** Eine der Seiten in der Mappe, gewählt unter Einstellungen → Gästemappe. Ab dem Abend vor der Abreise nennt der Abschnitt des Aufenthalts die Check-out-Zeit und verweist auf diese Seite.
+- **Bewertungslink.** Eine am Gästeterminal freigegebene Adresse (`terminal_url`, nur https), keine, die nur hier jemand eintippt. Am Abreisetag als Knopf, in neuem Fenster und ohne `Referer`. Eine entfernte Adresse verschwindet aus der Mappe.
+
+## 11. Was als Nächstes kommt
+
+1. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

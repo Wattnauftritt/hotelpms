@@ -79,6 +79,7 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
               <Aufenthalt view={stand.view} roomRef={roomRef} locale={locale}
                           onChange={stay => setStand({ art: 'da',
                                                       view: { ...stand.view, stay } })} />
+              {stand.view.stay?.review != null && <Bewertung review={stand.view.stay.review} />}
               {stand.view.stay?.requests != null && (
                 <Wuensche start={stand.view.stay.requests} roomRef={roomRef} locale={locale} />
               )}
@@ -126,6 +127,17 @@ function Aufenthalt({ view, roomRef, locale, onChange }: {
       <section className={KARTE} aria-labelledby="mappe-aufenthalt">
         <h2 id="mappe-aufenthalt" className="font-semibold">{t('stay.title')}</h2>
         <p>{t('stay.departure', { date: kalendertag(view.stay.departure, locale) })}</p>
+        {view.stay.departureSoon && (
+          <p>{t('stay.checkoutBy', { time: view.checkoutTime })}</p>
+        )}
+        {view.stay.departurePage !== null && (
+          // Kein `href="#..."`: die Adresse traegt hinter dem # das Zimmer.
+          <button type="button" className="text-sm underline"
+                  onClick={() => document.getElementById(`seite-${view.stay!.departurePage!}`)
+                    ?.scrollIntoView({ behavior: 'smooth' })}>
+            {t('stay.departurePage')}
+          </button>
+        )}
         {view.stay.cleaningWaiver !== null && (
           <Verzicht start={view.stay.cleaningWaiver} roomRef={roomRef} locale={locale} />
         )}
@@ -344,7 +356,7 @@ function Bestellung({ item, days, locale, busy, onSend }: {
   return (
     <form className="mt-2 space-y-2" onSubmit={e => {
       e.preventDefault()
-      onSend(qty, tag === '' ? null : tag)
+      onSend(qty, tag === '' || item.forDeparture ? null : tag)
     }}>
       <div className="flex gap-2">
         {item.maxQty > 1 && (
@@ -357,7 +369,10 @@ function Bestellung({ item, days, locale, busy, onSend }: {
             </select>
           </label>
         )}
-        {days.length > 0 && (
+        {item.forDeparture && (
+          <p className="grow self-end pb-2 text-sm text-neutral-600">{t('req.forDeparture')}</p>
+        )}
+        {!item.forDeparture && days.length > 0 && (
           <label className="grow text-sm">
             {t('req.day')}
             <select value={tag} onChange={e => setTag(e.target.value)} className={feld}>
@@ -505,6 +520,25 @@ function Wlan({ wifi }: { wifi: FolderWifi }): JSX.Element {
   )
 }
 
+/**
+ * Am Abreisetag der Bewertungslink des Hauses (0154). Eine freigegebene
+ * Adresse, nie eine aus dem Aufenthalt; in einem neuen Fenster und ohne
+ * `Referer`, damit die Bewertungsseite die Mappe nicht kennt.
+ */
+function Bewertung({ review }: { review: { label: string; url: string } }): JSX.Element {
+  const t = useMappeT()
+  return (
+    <section className={KARTE} aria-labelledby="mappe-bewertung">
+      <h2 id="mappe-bewertung" className="font-semibold">{t('review.title')}</h2>
+      <p className="text-sm text-neutral-600">{t('review.hint')}</p>
+      <a href={review.url} target="_blank" rel="noopener noreferrer"
+         className="block rounded-md bg-neutral-900 px-4 py-2 text-center text-white">
+        {review.label}
+      </a>
+    </section>
+  )
+}
+
 function Zeiten({ view }: { view: GuestFolderView }): JSX.Element {
   const t = useMappeT()
   return (
@@ -553,7 +587,8 @@ function Seite({ seite, roomRef, locale }: {
   }, [seite.imageRef, roomRef])
 
   return (
-    <section className={KARTE} lang={fassung === undefined ? 'de' : locale}
+    <section id={`seite-${seite.contentRef}`} className={`${KARTE} scroll-mt-4`}
+             lang={fassung === undefined ? 'de' : locale}
              dir={fassung === undefined ? 'ltr' : undefined}>
       <h2 className="font-semibold">{titel}</h2>
       {bild !== null && <img src={bild} alt="" className="w-full rounded-sm object-cover" />}
