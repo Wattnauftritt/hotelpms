@@ -54,9 +54,14 @@ describe('Der Rahmen einer Maske', () => {
      * Die vierte ist die Druckvorschau der Zimmerkarten (0143): eine Bahn
      * aus A6-Karten, die so aussehen soll wie das Papier, nicht ein Kasten
      * mit Knopfleiste.
+     *
+     * Die fuenfte ist die Sprachwahl fuer Gaeste: ein Raster aus Knoepfen,
+     * eine Wahl schliesst es. Titel und Knopfleiste wuerden die Flaeche
+     * nehmen, die dreiunddreissig Sprachen am Terminal brauchen.
      */
     expect(eigene).toEqual(['components/Detailsuche.tsx', 'components/Dialog.tsx',
-                            'components/Ruhebild.tsx', 'components/Zimmerkarten.tsx',
+                            'components/Ruhebild.tsx', 'components/Sprachauswahl.tsx',
+                            'components/Zimmerkarten.tsx',
                             'components/mobil/MobilKasse.tsx'])
   })
 
