@@ -84,7 +84,7 @@ describe('translateFolderPages', () => {
     await seite('Nur am Terminal', 'x', null)
     const u = falscherUebersetzer()
     const r = await translateFolderPages(app, ctx, fx.propertyId, u)
-    // Alle Sprachen der Mappe ohne die deutsche Vorlage (0145, 0150).
+    // Alle Sprachen der Mappe ohne die deutsche Vorlage (0145, 0151).
     expect(FOLDER_TRANSLATION_LANGS).toHaveLength(32)
     expect(FOLDER_TRANSLATION_LANGS).not.toContain('de')
     expect(r).toEqual({ attempted: 32, done: 32, retrying: 0, failed: 0 })
