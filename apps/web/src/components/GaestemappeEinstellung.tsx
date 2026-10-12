@@ -29,6 +29,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
   const speichern = useGaestemappeSpeichern(propertyId)
   const seitenSpeichern = useGaestemappeSeiten(propertyId)
   const [an, setAn] = useState(false)
+  const [nachrichten, setNachrichten] = useState(false)
   const [mitWlan, setMitWlan] = useState(true)
   const [wlan, setWlan] = useState<FolderWifi>(
     { ssid: '', password: '', security: 'WPA', hidden: false })
@@ -39,6 +40,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
   useEffect(() => {
     if (q.data === undefined) return
     setAn(q.data.enabled)
+    setNachrichten(q.data.messagesEnabled)
     setMitWlan(q.data.wifi !== null)
     if (q.data.wifi !== null) setWlan({ ...q.data.wifi, password: q.data.wifi.password ?? '' })
     setAuswahl(q.data.pages.filter(s => s.folderPosition !== null)
@@ -79,6 +81,14 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={an} onChange={e => setAn(e.target.checked)} />
           {t('folder.enabled')}
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={nachrichten}
+                 onChange={e => setNachrichten(e.target.checked)} />
+          <span>
+            {t('folder.messages')}
+            <span className="block text-xs text-neutral-500">{t('folder.messagesHint')}</span>
+          </span>
         </label>
 
         <fieldset className="space-y-2 rounded-sm border border-neutral-200 p-3">
@@ -132,6 +142,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
                   disabled={!online || !wlanGueltig || speichern.isPending}
                   onClick={() => speichern.mutate({
                     enabled: an,
+                    messagesEnabled: nachrichten,
                     wifi: mitWlan
                       ? { ssid: wlan.ssid.trim(), security: wlan.security, hidden: wlan.hidden,
                           password: offen ? null : passwort }

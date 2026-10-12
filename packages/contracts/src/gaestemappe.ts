@@ -121,7 +121,10 @@ export type FolderRequestItem = Static<typeof FolderRequestItem>
 /** Ein eigener Wunsch mit Stand. */
 export const FolderRequest = Type.Object({
   requestRef: Type.String(),
-  name: NameJeSprache,
+  /** Leer bei einer Nachricht (0153). */
+  name: Type.Union([NameJeSprache, Type.Null()]),
+  /** Der Text einer Nachricht; leer bei einem Eintrag, und nach der Loeschung. */
+  message: Type.Union([Type.String(), Type.Null()]),
   qty: Type.Integer(),
   unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
   wantedFor: Type.Union([Type.String(), Type.Null()]),
@@ -139,9 +142,17 @@ export const FolderRequests = Type.Object({
    * (Geschaeftstag) oder der Anreise bis zur Abreise. Die Seite rechnet
    * sie nicht selbst, weil sie den Geschaeftstag nicht kennt.
    */
-  days: Type.Array(Type.String())
+  days: Type.Array(Type.String()),
+  /** Ob das Haus die freie Nachricht an die Rezeption anbietet (0153). */
+  messages: Type.Boolean()
 })
 export type FolderRequests = Static<typeof FolderRequests>
+
+/** Eine Nachricht an die Rezeption absenden (0153). */
+export const FolderMessageCreate = Type.Object({
+  text: Type.String({ minLength: 1, maxLength: 500 })
+}, { additionalProperties: false })
+export type FolderMessageCreate = Static<typeof FolderMessageCreate>
 
 /** Einen Wunsch absenden. */
 export const FolderRequestCreate = Type.Object({
@@ -161,7 +172,10 @@ export const GuestRequestRow = Type.Object({
   roomCode: Type.Union([Type.String(), Type.Null()]),
   lastName: Type.Union([Type.String(), Type.Null()]),
   firstName: Type.Union([Type.String(), Type.Null()]),
-  itemName: NameJeSprache,
+  /** Leer bei einer Nachricht (0153). */
+  itemName: Type.Union([NameJeSprache, Type.Null()]),
+  message: Type.Union([Type.String(), Type.Null()]),
+  isMessage: Type.Boolean(),
   qty: Type.Integer(),
   unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
   wantedFor: Type.Union([Type.String(), Type.Null()]),
@@ -279,6 +293,8 @@ export type FolderPageTranslation = Static<typeof FolderPageTranslation>
 /** Die Einstellung des Hauses. */
 export const GuestFolderSettings = Type.Object({
   enabled: Type.Boolean(),
+  /** Freie Nachricht an die Rezeption (0153), aus als Vorgabe. */
+  messagesEnabled: Type.Boolean(),
   wifi: Type.Union([FolderWifi, Type.Null()]),
   /** Alle Seiten des Hauses; `folderPosition` leer heisst: nicht in der Mappe. */
   pages: Type.Array(Type.Object({
@@ -294,6 +310,8 @@ export type GuestFolderSettings = Static<typeof GuestFolderSettings>
 
 export const GuestFolderSettingsSet = Type.Object({
   enabled: Type.Boolean(),
+  /** Fehlt: bleibt, wie es ist. */
+  messagesEnabled: Type.Optional(Type.Boolean()),
   wifi: Type.Union([FolderWifi, Type.Null()])
 }, { additionalProperties: false })
 export type GuestFolderSettingsSet = Static<typeof GuestFolderSettingsSet>

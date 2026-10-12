@@ -192,7 +192,9 @@ function Wuensche({ sessionRef, start }: {
   const [menge, setMenge] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState(false)
   const [meldung, setMeldung] = useState<'ok' | 'fehler' | null>(null)
-  const name = (n: Record<string, string>): string => n[locale] ?? n.de ?? ''
+  // Leer bei einer Nachricht aus der Mappe (0153); das Terminal zeigt keine.
+  const name = (n: Record<string, string> | null): string =>
+    n === null ? '' : n[locale] ?? n.de ?? ''
 
   const bestellen = (itemRef: string, qty: number): void => {
     setBusy(true); setMeldung(null)

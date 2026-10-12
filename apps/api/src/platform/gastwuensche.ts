@@ -55,21 +55,81 @@ export async function mappeWuensche(
         AND ${tuer === 'terminal' ? AM_TERMINAL : 'i.on_folder'}
       ORDER BY i.position, i.id`, [propertyId])
   const mine = await client.query<FolderRequests['mine'][number]>(
-    `SELECT q.public_ref AS "requestRef", i.name, q.qty,
+    `SELECT q.public_ref AS "requestRef", i.name, q.message, q.qty,
             q.unit_price_cent::int AS "unitPriceCent", q.wanted_for::text AS "wantedFor",
             q.status, q.decline_reason AS "declineReason", q.created_at AS "createdAt"
        FROM guest_request q
-       JOIN guest_request_item i ON i.id = q.item_id
-      WHERE q.reservation_id = $1
-      ORDER BY q.created_at DESC, q.id DESC`, [reservationId])
-  if (items.rowCount === 0 && mine.rowCount === 0) return null
+       LEFT JOIN guest_request_item i ON i.id = q.item_id
+      WHERE q.reservation_id = $1 AND (NOT q.is_message OR $2)
+      ORDER BY q.created_at DESC, q.id DESC`, [reservationId, tuer === 'folder'])
+  // Die Nachricht gibt es nur in der Mappe: am Terminal steht der naechste
+  // Gast hinter dem, der gerade tippt (Dokument 31).
+  const messages = tuer === 'folder' && await nachrichtAn(client, propertyId)
+  if (items.rowCount === 0 && mine.rowCount === 0 && !messages) return null
   const days = await client.query<{ d: string }>(
     `SELECT d::date::text AS d
        FROM reservation r,
             generate_series(greatest(r.arrival, $2::date), r.departure, interval '1 day') d
       WHERE r.id = $1
       ORDER BY d`, [reservationId, businessDate])
-  return { items: items.rows, mine: mine.rows, days: days.rows.map(r => r.d) }
+  return { items: items.rows, mine: mine.rows, days: days.rows.map(r => r.d), messages }
+}
+
+/** Ob das Haus die Nachricht an die Rezeption eingeschaltet hat (0153). */
+async function nachrichtAn(client: PoolClient, propertyId: number): Promise<boolean> {
+  const r = await client.query<{ an: boolean }>(
+    `SELECT messages_enabled AS an FROM guest_folder_setting WHERE property_id = $1`,
+    [propertyId])
+  return r.rows[0]?.an ?? false
+}
+
+/** Laenger ist kein "Sonstiges" mehr, sondern ein Brief; dafuer gibt es die Mail. */
+export const NACHRICHT_MAX = 500
+
+export function nachrichtAusRumpf(body: unknown): string {
+  const t = (typeof body === 'object' && body !== null
+    ? (body as { text?: unknown }).text : undefined)
+  if (typeof t !== 'string' || t.trim() === '') {
+    throw Errors.validation({ text: ['field.required'] })
+  }
+  if (t.trim().length > NACHRICHT_MAX) {
+    throw Errors.validation({ text: ['field.maxLength'] }, { max: NACHRICHT_MAX })
+  }
+  return t.trim()
+}
+
+/**
+ * Eine Nachricht an die Rezeption (0153). Wie ein Wunsch: derselbe Stand,
+ * dieselbe Grenze offener Wuensche, dieselbe Sperre auf die Reservierung.
+ * Nur aus der Mappe und nur, wenn das Haus sie eingeschaltet hat.
+ */
+export async function nachrichtAnlegen(
+  client: PoolClient,
+  a: { propertyId: number; reservationId: number; text: string }
+): Promise<void> {
+  if (!await nachrichtAn(client, a.propertyId)) {
+    throw Errors.unprocessable('guestRequest.messagesOff')
+  }
+  const r = await client.query<{ resource_id: number | null }>(
+    `SELECT resource_id::int FROM reservation WHERE id = $1 AND property_id = $2 FOR UPDATE`,
+    [a.reservationId, a.propertyId])
+  const res = r.rows[0]
+  if (res === undefined) throw Errors.notFound('res.reservation')
+  await offeneGrenze(client, a.reservationId)
+  await client.query(
+    `INSERT INTO guest_request (property_id, reservation_id, resource_id, is_message,
+                                message, qty, source)
+     VALUES ($1, $2, $3, true, $4, 1, 'folder')`,
+    [a.propertyId, a.reservationId, res.resource_id, a.text])
+}
+
+async function offeneGrenze(client: PoolClient, reservationId: number): Promise<void> {
+  const offen = await client.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM guest_request
+      WHERE reservation_id = $1 AND status = 'open'`, [reservationId])
+  if (offen.rows[0]!.n >= OFFENE_WUENSCHE_MAX) {
+    throw Errors.conflict('guestRequest.tooManyOpen', { max: OFFENE_WUENSCHE_MAX })
+  }
 }
 
 /** Was ein Rumpf fuer einen neuen Wunsch sein darf. */
@@ -132,12 +192,7 @@ export async function wunschAnlegen(
           || a.wantedFor > res.departure)) {
     throw Errors.validation({ wantedFor: ['guestRequest.wantedFor'] })
   }
-  const offen = await client.query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM guest_request
-      WHERE reservation_id = $1 AND status = 'open'`, [a.reservationId])
-  if (offen.rows[0]!.n >= OFFENE_WUENSCHE_MAX) {
-    throw Errors.conflict('guestRequest.tooManyOpen', { max: OFFENE_WUENSCHE_MAX })
-  }
+  await offeneGrenze(client, a.reservationId)
   const neu = await client.query<{ id: number }>(
     `INSERT INTO guest_request (property_id, reservation_id, resource_id, item_id, qty,
                                 unit_price_cent, wanted_for, source)
@@ -177,12 +232,14 @@ function recht(principal: Principal, permission: Permission, propertyId: number)
 const ZEILE = `
   SELECT q.public_ref AS "requestRef", r.public_ref AS "reservationRef",
          res.code AS "roomCode", g.last_name AS "lastName", g.first_name AS "firstName",
-         i.name AS "itemName", q.qty, q.unit_price_cent::int AS "unitPriceCent",
-         q.wanted_for::text AS "wantedFor", i.handler, q.source, q.status,
+         i.name AS "itemName", q.message, q.is_message AS "isMessage", q.qty,
+         q.unit_price_cent::int AS "unitPriceCent",
+         q.wanted_for::text AS "wantedFor", COALESCE(i.handler, 'reception') AS handler,
+         q.source, q.status,
          q.decline_reason AS "declineReason", q.created_at AS "createdAt"
     FROM guest_request q
     JOIN reservation r ON r.id = q.reservation_id
-    JOIN guest_request_item i ON i.id = q.item_id
+    LEFT JOIN guest_request_item i ON i.id = q.item_id
     LEFT JOIN resource res ON res.id = q.resource_id
     LEFT JOIN guest g ON g.id = r.primary_guest_id`
 
@@ -223,7 +280,7 @@ async function sperren(
             q.unit_price_cent::int, i.name ->> 'de' AS name_de, i.product_id::int,
             tr.rate_bp, p.revenue_account
        FROM guest_request q
-       JOIN guest_request_item i ON i.id = q.item_id
+       LEFT JOIN guest_request_item i ON i.id = q.item_id
        LEFT JOIN product p ON p.id = i.product_id
        LEFT JOIN tax_rule tr ON tr.id = p.tax_rule_id
       WHERE q.public_ref = $1

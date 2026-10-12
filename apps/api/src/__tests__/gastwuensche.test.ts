@@ -336,3 +336,68 @@ describe('Housekeeping-Wuensche in der Personal-App (0152)', () => {
       .toBe('done')
   })
 })
+
+describe('Nachricht an die Rezeption (0153)', () => {
+  const schreiben = (raum: number, text: string, cookie?: string) => app.inject({
+    method: 'POST', url: '/v1/mappe/messages',
+    headers: { [FOLDER_ROOM_HEADER]: refs.get(raum)!,
+               ...(cookie === undefined ? {} : { cookie: `${FOLDER_SESSION_COOKIE}=${cookie}` }) },
+    payload: { text } })
+
+  it('kommt nur eingeschaltet und freigeschaltet an, und die Rezeption erledigt sie', async () => {
+    await aufenthalt(zimmer[0]!, 'Petersen')
+    expect((await schreiben(zimmer[0]!, 'Hallo')).statusCode).toBe(403)
+    const cookie = await freischalten(zimmer[0]!, 'Petersen')
+    // Aus als Vorgabe: ohne Katalog und ohne Nachricht keine Wuensche.
+    expect((await mappe(zimmer[0]!, cookie)).json().stay.requests).toBeNull()
+    expect((await schreiben(zimmer[0]!, 'Hallo', cookie)).statusCode).toBe(422)
+
+    const an = await app.inject({ method: 'PUT', url: p('/guest-folder'),
+      headers: auth(chef.sessionId), payload: { enabled: true, wifi: null, messagesEnabled: true } })
+    expect(an.json().messagesEnabled).toBe(true)
+    // Ohne das Feld bleibt es, wie es ist.
+    const wieder = await app.inject({ method: 'PUT', url: p('/guest-folder'),
+      headers: auth(chef.sessionId), payload: { enabled: true, wifi: null } })
+    expect(wieder.json().messagesEnabled).toBe(true)
+    expect((await mappe(zimmer[0]!, cookie)).json().stay.requests)
+      .toMatchObject({ items: [], mine: [], messages: true })
+
+    expect((await schreiben(zimmer[0]!, 'x'.repeat(501), cookie)).statusCode).toBe(422)
+    const ok = await schreiben(zimmer[0]!, '  Koennen wir morgen um 7 fruehstuecken?  ', cookie)
+    expect(ok.statusCode, ok.body).toBe(200)
+    expect(ok.json().mine).toEqual([expect.objectContaining({
+      name: null, message: 'Koennen wir morgen um 7 fruehstuecken?', status: 'open' })])
+
+    const offen = await heute()
+    expect(offen).toEqual([expect.objectContaining({ isMessage: true, itemName: null,
+      message: 'Koennen wir morgen um 7 fruehstuecken?', lastName: 'Petersen' })])
+    const ja = await app.inject({ method: 'POST',
+      url: `/v1/guest-requests/${offen[0].requestRef}/done`, headers: auth(chef.sessionId) })
+    expect(ja.statusCode, ja.body).toBe(200)
+    expect(ja.json()).toMatchObject({ status: 'done', isMessage: true })
+    expect((await owner.query(`SELECT 1 FROM charge`)).rowCount).toBe(0)
+
+    // Der Freitext steht nicht im Protokoll.
+    const log = await owner.query(`SELECT changed::text AS c FROM audit_log
+                                    WHERE table_name = 'guest_request'`)
+    expect(log.rowCount).toBeGreaterThan(0)
+    expect(JSON.stringify(log.rows)).not.toContain('fruehstuecken')
+  })
+
+  for (const fn of ['guest_erase_one', 'guest_erase_partial']) {
+    it(`${fn} leert den Text der Nachricht`, async () => {
+      const r = await aufenthalt(zimmer[0]!, 'Petersen')
+      await owner.query(
+        `INSERT INTO guest_request (property_id, reservation_id, is_message, message, qty, source)
+         VALUES ($1, $2, true, 'Ich bin allergisch gegen Nuesse', 1, 'folder')`,
+        [fx.propertyId, r])
+      const g = await owner.query<{ id: number }>(
+        `SELECT primary_guest_id::int AS id FROM reservation WHERE id = $1`, [r])
+      await owner.query(`SELECT set_config('app.account_ids', $1, false), ${fn}($2)`,
+        [String(fx.accountId), g.rows[0]!.id])
+      await owner.query(`SELECT set_config('app.account_ids', '', false)`)
+      const q = await owner.query(`SELECT message, is_message FROM guest_request`)
+      expect(q.rows).toEqual([{ message: null, is_message: true }])
+    })
+  }
+})
