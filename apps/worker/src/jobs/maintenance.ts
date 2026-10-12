@@ -229,7 +229,18 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
    */
   const f = await client.query(
     `DELETE FROM login_failure WHERE last_failure_at < now() - interval '7 days'`)
+  /*
+   * Freischaltungen der Gaestemappe (0147). Nach dem Abreisetag oeffnet
+   * keine mehr etwas; eine Woche Abstand, damit die Rezeption eine Frage
+   * zum letzten Aufenthalt noch nachsehen kann. Danach ist die Zeile nur
+   * noch eine Spur davon, welches Telefon zu welchem Gast gehoerte.
+   */
+  const m = await client.query(
+    `DELETE FROM guest_folder_session WHERE expires_on < current_date - 7`)
+  const z = await client.query(
+    `DELETE FROM guest_folder_unlock_failure WHERE last_failure_at < now() - interval '1 day'`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
+    + (m.rowCount ?? 0) + (z.rowCount ?? 0)
 }
 
 /**

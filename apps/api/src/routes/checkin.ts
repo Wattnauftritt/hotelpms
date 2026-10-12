@@ -23,6 +23,7 @@ import { verzichtStand, setzeVerzicht } from '../platform/reinigungsverzicht.js'
 import type { Principal } from '../platform/context.js'
 import type { Permission } from '../platform/permissions.js'
 import { rechtImHaus } from './depositRequests.js'
+import { mappeZumLink } from '../platform/gaestemappe.js'
 
 /**
  * Online-Check-in (Dokument 30).
@@ -509,7 +510,8 @@ export function checkinRoutes(app: FastifyInstance): void {
           exemptionReasons: (await befreiungsgruende(client, r.property_id)).map(g => ({
             code: g.code, label: g.label, needsProof: g.needs_proof })),
           cleaningWaiver: await verzichtStand(client, k.reservationId, k.propertyId,
-            k.businessDate, true)
+            k.businessDate, true),
+          guestFolder: (await mappeZumLink(client, k, false)) !== null
         }
       })
     }

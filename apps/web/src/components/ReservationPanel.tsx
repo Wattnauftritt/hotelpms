@@ -9,6 +9,7 @@ import { VerlaufDialog } from './Verlauf.tsx'
 import { AmTerminal } from './AmTerminal.tsx'
 import { Anzahlung } from './Anzahlung.tsx'
 import { OnlineCheckinStand } from './OnlineCheckinStand.tsx'
+import { MappeFreischaltungen } from './MappeFreischaltungen.tsx'
 import { VerzichtTage } from './Reinigungsverzicht.tsx'
 import { useSetCleaningWaiver } from '../lib/queries/checkin.js'
 import { Fehler, Laedt } from './Shell.tsx'
@@ -213,6 +214,12 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
           mehr auszufuellen. */}
       {r.onlineCheckin !== undefined && r.canceledAt === null && (
         <OnlineCheckinStand reservationRef={r.reservationRef} stand={r.onlineCheckin} />
+      )}
+
+      {/* Gaestemappe (0147): nur, solange ein Telefon freigeschaltet ist --
+          sonst gibt es nichts aufzuheben. */}
+      {r.guestFolder != null && r.guestFolder.activeSessions > 0 && (
+        <MappeFreischaltungen reservationRef={r.reservationRef} stand={r.guestFolder} />
       )}
 
       {/* Reinigungsverzicht (0115): nur, wenn das Haus ihn anbietet und

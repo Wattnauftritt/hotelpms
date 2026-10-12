@@ -53,7 +53,9 @@ import { Befunde, SYSTEM } from './kwhotelImport.js'
 export const FOLGEN_RESERVIERUNG = [
   'registration', 'charge', 'outbound_email', 'guest_agreement', 'deposit_request',
   'checkin_token', 'terminal_job', 'reservation_occupant', 'routing_rule',
-  'reservation_external_registration', 'avs_export', 'cleaning_waiver'
+  'reservation_external_registration', 'avs_export', 'cleaning_waiver',
+  // Ein Gast hat die Mappe freigeschaltet (0147): der Aufenthalt laeuft.
+  'guest_folder_session'
 ] as const
 export const FOLGEN_FOLIO = [
   'invoice', 'charge', 'settlement', 'routing_rule', 'payment_intent', 'deposit_ledger',
@@ -84,7 +86,7 @@ export const VERWEISE_ZIMMER = [
  * gehoert dazu: ohne das Zimmer zeigt eine gedruckte Karte ohnehin nichts.
  */
 export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task',
-                               'guest_folder_room'] as const
+                               'guest_folder_room', 'guest_folder_unlock_failure'] as const
 
 export const VERWEISE_GRUPPE = [
   ['resource', 'category_id'], ['reservation', 'category_id'], ['rate_plan', 'category_id'],

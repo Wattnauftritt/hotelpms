@@ -71,3 +71,15 @@ export function useGaestemappeUebersetzung(propertyId: number) {
     onSuccess: d => { qc.setQueryData(schluessel(propertyId), d) }
   })
 }
+
+/** Alle Freischaltungen einer Reservierung aufheben, an der Rezeption (0147). */
+export function useMappeFreischaltungenAufheben(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ revoked: number }>(`/v1/reservations/${reservationRef}/guest-folder/revoke`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+    }
+  })
+}

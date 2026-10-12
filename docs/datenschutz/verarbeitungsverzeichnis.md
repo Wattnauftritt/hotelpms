@@ -35,6 +35,7 @@ Tabelle `account`.
 | 6 | Zahlungsabwicklung | Erfüllung des Vertrags |
 | 7 | Benutzer- und Rechteverwaltung des Betriebs | Organisation des Verantwortlichen |
 | 8 | Protokollierung | Art. 32 Abs. 1 lit. b, Nachweisbarkeit |
+| 9 | Digitale Gästemappe | Erfüllung des Vertrags: Hausinfos, später Wünsche und Reinigungsverzicht des laufenden Aufenthalts |
 
 ## 4. Kategorien betroffener Personen und Daten
 
@@ -43,6 +44,13 @@ Sprache, Aufenthaltsdaten, Rechnungsdaten, Meldedaten, Ausweisart und
 -nummer, Unterschrift bei ausländischen Gästen, Hausnotizen.
 
 **Mitreisende.** Zuordnung zur Reservierung und Alter bei Anreise.
+
+**Gäste in der digitalen Gästemappe.** Die Freischaltung eines Telefons
+(`guest_folder_session`, Migration 0147): Zuordnung zur Reservierung, Weg
+(Zimmerkarte oder Mail-Link), Zeitpunkt und Abreisetag. Gespeichert wird nur
+der Hash des Cookies, nie Nachname oder PLZ, mit denen der Gast bestätigt;
+beide werden nur verglichen. Die Seite zeigt nach der Freischaltung nur den
+Abreisetag. Fehlversuche zählen je Zimmer, ohne Bezug zu einer Person.
 
 **Beschäftigte des Betriebs.** Name, dienstliche E-Mail, Rolle, Zeitpunkt der
 letzten Anmeldung, Authentifizierungsmerkmale.
@@ -64,7 +72,7 @@ Rechnungsadresse.
 | ⟨Hoster⟩ | Unterauftragsverarbeiter | alle, im Rahmen des Betriebs | ⟨Land⟩ |
 | Stripe | Unterauftragsverarbeiter | **nur** Belegnummer, Betrag, Währung — kein Name, keine Anschrift | Irland / USA, Angemessenheitsbeschluss bzw. SCC |
 | Brevo | Unterauftragsverarbeiter | Empfängeradresse, Name, Nachrichtentext | Frankreich |
-| DeepL | Unterauftragsverarbeiter | freie Texte des Personals aus der Personal-App (Tätigkeit, Zimmerproblem, Notiz der Hausdame) — **keine** Gastdaten, kein Name des Personals; nur mit Pro-Vertrag | Deutschland |
+| DeepL | Unterauftragsverarbeiter | freie Texte des Personals aus der Personal-App (Tätigkeit, Zimmerproblem, Notiz der Hausdame) und die Hausseiten der Gästemappe (Migration 0144) — **keine** Gastdaten, kein Name des Personals; nur mit Pro-Vertrag | Deutschland |
 | Push-Dienste der Browserhersteller (Google, Apple, Mozilla, Microsoft) | Übermittlungsweg, keine Verarbeitung im Auftrag: der Inhalt ist Ende-zu-Ende verschlüsselt | Geräteadresse des Telefons; Inhalt (Zimmernummer oder Datum) nur verschlüsselt — **keine** Gastdaten | je nach Hersteller, USA mit Angemessenheitsbeschluss |
 | Channel Manager ⟨Anbieter⟩ | eigenständig | Preise, Verfügbarkeit, Restriktionen — **keine** Gastdaten | ⟨Land⟩ |
 | Meldebehörde | gesetzlich | Meldedaten | Deutschland |
@@ -91,6 +99,7 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Gastprofil | auf Verlangen, sobald keine Frist entgegensteht | `guest_erase_one()`, `guest_erasure_complete()` |
 | Gastpost | 90 Tage, bei Löschverlangen sofort | `email_redact_old()`, `guest_erase_one()` |
 | Sitzungen und Einmaltoken | 7 Tage nach Ablauf | `purgeExpired()` |
+| Freischaltungen der Gästemappe | 7 Tage nach dem Abreisetag, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
 | Idempotenzschlüssel | 24 Stunden | `purgeExpired()` |
 | Protokoll | zehn Jahre | `audit_log_drop_old_partitions()` |
 
