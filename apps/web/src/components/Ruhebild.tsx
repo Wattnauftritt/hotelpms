@@ -28,13 +28,15 @@ const bildAdresse = (ref: string): string => `/v1/terminal/images/${ref}`
  * nichts ausser der Uhrzeit; Folien und Nummer kommen von aussen, und ein
  * Auftrag ersetzt sie sofort.
  */
-export function Ruhebild({ folien, nr, haus, kopf }: {
+export function Ruhebild({ folien, nr, haus, kopf, aktion }: {
   folien: Folie[]
   /** Die laufende Nummer, ueber die Liste hinaus gezaehlt. */
   nr: number
   haus: string | null
   /** Sprachwahl und Uebungshinweis, oben rechts. */
   kopf: ReactNode
+  /** Was der Gast selbst antippen kann (Selbstbedienung), unten mittig. */
+  aktion?: ReactNode
 }): JSX.Element {
   const t = useT()
   const n = folien.length
@@ -94,6 +96,13 @@ export function Ruhebild({ folien, nr, haus, kopf }: {
             )}
           <Uhr className="portrait:hidden" />
         </main>
+
+        {/* Ueber den Punkten und nicht ueber dem Text: eine Folie soll der
+            Knopf nicht verdecken, und auch ohne Folien steht er an derselben
+            Stelle -- die Begruessung liegt mittig darueber. */}
+        {aktion !== undefined && (
+          <div className="relative flex justify-center px-10 pb-6">{aktion}</div>
+        )}
 
         {n > 1 && (
           <div className="flex justify-center gap-2 pb-6" aria-hidden="true">

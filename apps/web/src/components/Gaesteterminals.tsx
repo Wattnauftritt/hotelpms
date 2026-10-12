@@ -3,7 +3,8 @@ import { useEscape } from '../lib/tasten.js'
 import { useT, useLocale, intlTag, type Locale } from '../lib/i18n/index.js'
 import { useTerminals, useCreateTerminal, useRepairTerminal, useRevokeTerminal,
          useKioskKey, useTerminalWachzeit, useShareCode, useTerminalShares,
-         useRedeemShare, useEndShare, type Kopplungscode,
+         useRedeemShare, useEndShare, useSelbstbedienung, useSetSelbstbedienung,
+         type Kopplungscode,
          type TerminalGeraet, type Kioskschluessel, type Freigabecode }
   from '../lib/queries/terminal.js'
 import { Fehler, Laedt } from './Shell.tsx'
@@ -226,9 +227,41 @@ export function Gaesteterminals({ propertyId }: { propertyId: number }): JSX.Ele
       {/* Zwei Haeuser, eine Rezeption (Migration 0103). */}
       <Mitnutzung propertyId={propertyId} />
 
+      {/* Der Gast bedient sich selbst (Migration 0150). */}
+      <SelbstbedienungSchalter propertyId={propertyId} />
+
       {/* Was die Terminals zeigen duerfen: Seiten, Diashow, Adressen. */}
       <TerminalInhalte propertyId={propertyId} />
     </div>
+  )
+}
+
+/**
+ * Selbstbedienung am Touchscreen (Migration 0150): Zimmer antippen, Name
+ * bestaetigen, Reinigung abbestellen. Ohne eingeschalteten Verzicht gibt
+ * es dort nichts zu tun; der Hinweis sagt, wo er eingeschaltet wird, statt
+ * einen Schalter zu bieten, der still nichts bewirkt.
+ */
+function SelbstbedienungSchalter({ propertyId }: { propertyId: number }): JSX.Element | null {
+  const t = useT()
+  const q = useSelbstbedienung(propertyId)
+  const setzen = useSetSelbstbedienung(propertyId)
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return null
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-medium">{t('terminal.self.title')}</h3>
+      <p className="text-xs text-neutral-600">{t('terminal.self.hint')}</p>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={q.data.enabled} disabled={setzen.isPending}
+               onChange={e => setzen.mutate(e.currentTarget.checked)} />
+        {t('terminal.self.enabled')}
+      </label>
+      {q.data.enabled && !q.data.cleaningWaiverEnabled && (
+        <p className="text-xs text-amber-700">{t('terminal.self.needsWaiver')}</p>
+      )}
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </section>
   )
 }
 
