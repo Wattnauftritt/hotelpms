@@ -57,7 +57,10 @@ export const FOLGEN_RESERVIERUNG = [
   // Ein Gast hat die Mappe freigeschaltet (0147): der Aufenthalt laeuft.
   'guest_folder_session',
   // Ein Wunsch aus der Mappe (0149), womoeglich schon gebucht.
-  'guest_request'
+  'guest_request',
+  // Ein Gast hat sich am Terminal als Gast dieses Zimmers bestaetigt (0150):
+  // die Buchung ist benutzt worden, also keine Fehluebernahme mehr.
+  'terminal_self_session'
 ] as const
 export const FOLGEN_FOLIO = [
   'invoice', 'charge', 'settlement', 'routing_rule', 'payment_intent', 'deposit_ledger',
@@ -83,7 +86,10 @@ export const VERWEISE_ZIMMER = [
   // bleibt dafuer stehen wie fuer eine Wartungsmeldung.
   ['cleaning_norm', 'resource_id'],
   // Ein Wunsch aus der Mappe nennt das Zimmer, in dem er bestellt wurde (0149).
-  ['guest_request', 'resource_id']
+  ['guest_request', 'resource_id'],
+  // Am Terminal angetippt (0150); haengt immer auch an einer Reservierung,
+  // die die Ruecknahme schon aufhaelt.
+  ['terminal_self_session', 'resource_id']
 ] as const
 /**
  * Zustand des Zimmers, der mit ihm geht. Die Referenz der Gaestemappe (0143)

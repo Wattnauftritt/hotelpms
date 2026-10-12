@@ -69,6 +69,15 @@ Rechnungsadresse.
 > (`audit_redaction`, Migration 0044). Dass der Betrieb sie so führt, ist Teil
 > der Weisung nach Art. 29 und gehört in die Einweisung der Rezeption.
 
+> **Offenlegung am Gästeterminal.** Bietet ein Haus die Selbstbedienung am
+> Touchscreen der Rezeption an (Dokument 31, §14), zeigt das Terminal jedem,
+> der davor steht, die Nummern belegter Zimmer und nach einem Tipp den
+> Nachnamen des Hauptgastes („Sind Sie Herr/Frau …?“). Kein Vorname, keine
+> Daten, keine Anschrift. Die Rückfrage schützt vor einem vertippten Zimmer;
+> dass der Nachname dabei in der Halle steht, hat der Betrieb so entschieden
+> (Sven, 12.10.2026). Ab der vierten Rückfrage ohne „Ja“ in einer Minute
+> macht das Gerät eine Pause, damit niemand die Namen aller Zimmer abliest.
+
 ## 5. Empfänger
 
 | Empfänger | Rolle | Übermittelte Daten | Ort |

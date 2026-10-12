@@ -54,6 +54,7 @@ import { userAdminRoutes } from './userAdmin.js'
 import { historyRoutes } from './history.js'
 import { terminalRoutes } from './terminal.js'
 import { terminalInhaltRoutes } from './terminalInhalte.js'
+import { terminalSelbstRoutes } from './terminalSelbst.js'
 import { searchRoutes } from './search.js'
 import { checkinRoutes } from './checkin.js'
 import { cleaningWaiverRoutes } from './cleaningWaiver.js'
@@ -133,6 +134,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   userAdminRoutes(app)
   terminalRoutes(app)
   terminalInhaltRoutes(app)
+  terminalSelbstRoutes(app)
   checkinRoutes(app)
   cleaningWaiverRoutes(app)
   gaestemappeRoutes(app)
