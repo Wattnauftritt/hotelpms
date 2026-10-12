@@ -1798,7 +1798,7 @@ describe('Platz fuer den Plan', () => {
 
   it('haelt Legende und Gesten hinter einem Knopf statt in eigenen Zeilen', () => {
     expect(bildschirm).toContain("{t('plan.legend')}")
-    expect(bildschirm).toContain('absolute right-0 top-full')
+    expect(bildschirm).toContain('absolute end-0 top-full')
     // Die Gestenzeile unter dem Plan ist weg; die Saetze stehen in der Legende.
     expect(bildschirm.match(/t\('plan\.dragHint'\)/g)).toHaveLength(1)
   })

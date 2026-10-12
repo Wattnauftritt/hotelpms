@@ -235,7 +235,7 @@ describe('Gaestemappe', () => {
     const put = (url: string, payload: unknown = ok) =>
       app.inject({ method: 'PUT', url, headers: auth(chef.sessionId), payload })
     expect((await put(p(`/guest-folder/pages/${ref}/translations/de`))).statusCode).toBe(422)
-    expect((await put(p(`/guest-folder/pages/${ref}/translations/pt`))).statusCode).toBe(422)
+    expect((await put(p(`/guest-folder/pages/${ref}/translations/ja`))).statusCode).toBe(422)
     expect((await put(p(`/guest-folder/pages/${ref}/translations/en`),
       { title: ' ', body: '' })).statusCode).toBe(422)
     expect((await put(p(`/guest-folder/pages/${ref}/translations/en`),

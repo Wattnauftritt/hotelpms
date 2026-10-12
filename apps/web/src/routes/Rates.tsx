@@ -176,7 +176,7 @@ function Preismaske(p: MaskenProps): JSX.Element {
                      placeholder="0,00"
                      aria-label={`${t('rate.price.perOccupancy')} ${i + 1}`}
                      className="border border-neutral-300 rounded-sm px-2 py-1 w-24
-                                text-right tabular-nums" />
+                                text-end tabular-nums" />
             </label>
           ))}
         </div>
@@ -425,7 +425,7 @@ function Ratenplaene(
                   <input type="number" value={deriveValue}
                          onChange={e => setDeriveValue(e.target.value)}
                          className="border border-neutral-300 rounded-sm px-2 py-1 w-24
-                                    text-right tabular-nums" />
+                                    text-end tabular-nums" />
                 </label>
               </>
             )}

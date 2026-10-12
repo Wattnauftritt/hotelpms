@@ -126,7 +126,7 @@ function PlanZeile({ propertyId, plan, darfSteuern }: {
     && (minCent === null || maxCent === null || minCent <= maxCent)
   const gesperrt = !darfSteuern || plan.derived
 
-  const feld = 'border border-neutral-300 rounded-sm px-2 py-1 w-24 text-right tabular-nums '
+  const feld = 'border border-neutral-300 rounded-sm px-2 py-1 w-24 text-end tabular-nums '
     + 'disabled:bg-neutral-100'
 
   return (
@@ -207,7 +207,7 @@ function Plaene({ propertyId, plaene, darfSteuern }: {
       <div className="overflow-x-auto">
         <table className="text-sm">
           <thead>
-            <tr className="text-left text-xs text-neutral-500">
+            <tr className="text-start text-xs text-neutral-500">
               <th className="font-normal pr-3">{t('rate.plan')}</th>
               <th className="font-normal pr-2">{t('steer.source')}</th>
               <th className="font-normal pr-2">{t('steer.min')}</th>
@@ -651,8 +651,8 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
                   <table className="text-xs border-collapse" data-vorschau>
                     <thead>
                       <tr>
-                        <th className="sticky left-0 bg-white border-b border-r
-                                       border-neutral-200 px-2 py-1 text-left font-medium
+                        <th className="sticky start-0 bg-white border-b border-e
+                                       border-neutral-200 px-2 py-1 text-start font-medium
                                        min-w-40">
                           {t('rate.plan')}
                         </th>
@@ -668,8 +668,8 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
                     <tbody>
                       {gesteuert.map(p => (
                         <tr key={p.ratePlanId}>
-                          <th className="sticky left-0 bg-white border-r border-neutral-200
-                                         px-2 py-1 text-left font-normal">
+                          <th className="sticky start-0 bg-white border-e border-neutral-200
+                                         px-2 py-1 text-start font-normal">
                             <div className="text-sm">{p.name}</div>
                             <div className="text-neutral-500">{p.code}</div>
                           </th>
@@ -692,7 +692,7 @@ function Vorschau({ propertyId, daten, darfUebernehmen }: {
                                   onClick={() => umschalten(z)}
                                   aria-selected={gewaehlt.has(k)}
                                   data-geaendert={z.changed ? 'ja' : 'nein'}
-                                  className={`border-t border-neutral-100 px-1 py-1 text-right
+                                  className={`border-t border-neutral-100 px-1 py-1 text-end
                                               tabular-nums cursor-pointer select-none ${farbe}
                                               ${gewaehlt.has(k) ? 'ring-2 ring-inset ring-neutral-900' : ''}
                                               ${fokus === k ? 'outline-solid outline-1 outline-neutral-400' : ''}`}>
@@ -805,7 +805,7 @@ function Verlauf({ propertyId, daten }: {
         : <ul className="divide-y divide-neutral-100">
             {daten.runs.map(r => (
               <li key={r.runId} className="py-1.5 text-sm">
-                <button type="button" className="text-left w-full hover:bg-neutral-50"
+                <button type="button" className="text-start w-full hover:bg-neutral-50"
                         aria-expanded={offen === r.runId}
                         onClick={() => setOffen(offen === r.runId ? null : r.runId)}>
                   <span className="tabular-nums">{zeit.format(new Date(r.createdAt))}</span>

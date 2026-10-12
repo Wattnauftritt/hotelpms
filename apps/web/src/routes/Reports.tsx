@@ -170,15 +170,15 @@ function Kennzahlen({ propertyId }: { propertyId: number }): JSX.Element {
 
               <div className="overflow-x-auto">
                 <table className="text-sm w-full">
-                  <thead className="text-neutral-600 text-left">
+                  <thead className="text-neutral-600 text-start">
                     <tr>
                       <th className="py-1 pr-3">{t('common.date')}</th>
-                      <th className="py-1 pr-3 text-right">{t('kpi.sold')}</th>
-                      <th className="py-1 pr-3 text-right">{t('kpi.available')}</th>
-                      <th className="py-1 pr-3 text-right">{t('kpi.occupancy')}</th>
-                      <th className="py-1 pr-3 text-right">{t('kpi.adr')}</th>
-                      <th className="py-1 pr-3 text-right">{t('kpi.revpar')}</th>
-                      <th className="py-1 pr-3 text-right">{t('kpi.revenue')}</th>
+                      <th className="py-1 pr-3 text-end">{t('kpi.sold')}</th>
+                      <th className="py-1 pr-3 text-end">{t('kpi.available')}</th>
+                      <th className="py-1 pr-3 text-end">{t('kpi.occupancy')}</th>
+                      <th className="py-1 pr-3 text-end">{t('kpi.adr')}</th>
+                      <th className="py-1 pr-3 text-end">{t('kpi.revpar')}</th>
+                      <th className="py-1 pr-3 text-end">{t('kpi.revenue')}</th>
                       <th className="py-1">{t('kpi.source')}</th>
                     </tr>
                   </thead>
@@ -186,15 +186,15 @@ function Kennzahlen({ propertyId }: { propertyId: number }): JSX.Element {
                     {q.data.days.map(d => (
                       <tr key={d.date} className="border-t border-neutral-100">
                         <td className="py-1 pr-3">{formatDate(d.date, locale)}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">{d.sold}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">{d.available}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">
+                        <td className="py-1 pr-3 text-end tabular-nums">{d.sold}</td>
+                        <td className="py-1 pr-3 text-end tabular-nums">{d.available}</td>
+                        <td className="py-1 pr-3 text-end tabular-nums">
                           {prozent(d.occupancyPercent, locale)}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">
+                        <td className="py-1 pr-3 text-end tabular-nums">
                           {formatMoney(d.adrCent, locale)}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">
+                        <td className="py-1 pr-3 text-end tabular-nums">
                           {formatMoney(d.revparCent, locale)}</td>
-                        <td className="py-1 pr-3 text-right tabular-nums">
+                        <td className="py-1 pr-3 text-end tabular-nums">
                           {formatMoney(d.roomRevenueCent, locale)}</td>
                         <td className="py-1 text-neutral-500">
                           {t(d.source === 'aufgezeichnet'
@@ -335,11 +335,11 @@ function Beherbergung({ propertyId }: { propertyId: number }): JSX.Element {
               </div>
 
               <table className="text-sm">
-                <thead className="text-neutral-600 text-left">
+                <thead className="text-neutral-600 text-start">
                   <tr>
                     <th className="py-1 pr-6">{t('stat.country')}</th>
-                    <th className="py-1 pr-6 text-right">{t('stat.arrivals')}</th>
-                    <th className="py-1 text-right">{t('stat.nights')}</th>
+                    <th className="py-1 pr-6 text-end">{t('stat.arrivals')}</th>
+                    <th className="py-1 text-end">{t('stat.nights')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -349,15 +349,15 @@ function Beherbergung({ propertyId }: { propertyId: number }): JSX.Element {
                         {z.country === 'XX' || z.country === null
                           ? t('stat.unknownCountry') : z.country}
                       </td>
-                      <td className="py-1 pr-6 text-right tabular-nums">{z.arrivals}</td>
-                      <td className="py-1 text-right tabular-nums">{z.nights}</td>
+                      <td className="py-1 pr-6 text-end tabular-nums">{z.arrivals}</td>
+                      <td className="py-1 text-end tabular-nums">{z.nights}</td>
                     </tr>
                   ))}
                   <tr className="border-t border-neutral-300 font-medium">
                     <td className="py-1 pr-6">{t('stat.total')}</td>
-                    <td className="py-1 pr-6 text-right tabular-nums">
+                    <td className="py-1 pr-6 text-end tabular-nums">
                       {q.data.totals.arrivals}</td>
-                    <td className="py-1 text-right tabular-nums">{q.data.totals.nights}</td>
+                    <td className="py-1 text-end tabular-nums">{q.data.totals.nights}</td>
                   </tr>
                 </tbody>
               </table>

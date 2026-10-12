@@ -518,12 +518,12 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                             : undefined}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-neutral-500 text-left">
+              <tr className="text-xs text-neutral-500 text-start">
                 <th className="font-medium py-1">{t('common.room')}</th>
                 <th className="font-medium">{t('common.category')}</th>
                 <th className="font-medium">{t('booking.arrival')}</th>
                 <th className="font-medium">{t('booking.departure')}</th>
-                <th className="font-medium text-right pr-2">{t('group.nightsHead')}</th>
+                <th className="font-medium text-end pr-2">{t('group.nightsHead')}</th>
                 <th className="font-medium pr-2">{t('booking.adults')}</th>
                 <th className="font-medium pr-2">{t('booking.children')}</th>
                 {/*
@@ -532,8 +532,8 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                   * je Zimmer wird. Vorher war die Aufteilung erst **nach**
                   * dem Buchen zu sehen, und der Reiseleiter fragt vorher.
                   */}
-                <th className="font-medium text-right pr-2">{t('group.priceNight')}</th>
-                <th className="font-medium text-right">{t('group.total')}</th>
+                <th className="font-medium text-end pr-2">{t('group.priceNight')}</th>
+                <th className="font-medium text-end">{t('group.total')}</th>
                 <th />
               </tr>
             </thead>
@@ -569,7 +569,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                              className="border border-neutral-300 rounded-sm px-2 py-1 text-sm
                                         disabled:bg-neutral-100 disabled:text-neutral-500" />
                     </td>
-                    <td className={`tabular-nums text-right pr-2
+                    <td className={`tabular-nums text-end pr-2
                                     ${zeileNaechte <= 0 ? 'text-red-700 font-medium' : ''}`}>
                       {zeileNaechte}
                     </td>
@@ -606,7 +606,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                       * **dieses** Zimmers zusammen und stehen deshalb unter
                       * beiden Ueberschriften.
                       */}
-                    <td colSpan={2} className="text-right">
+                    <td colSpan={2} className="text-end">
                       <div className="flex justify-end">
                         <PreisFelder klein naechte={zeileNaechte}
                                      wert={zimmerFeld(i)}
@@ -614,7 +614,7 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                                      onChange={w => zimmerpreisSetzen(z.resourceId, w)} />
                       </div>
                     </td>
-                    <td className="text-right whitespace-nowrap">
+                    <td className="text-end whitespace-nowrap">
                       {/*
                         * Zurueck auf die Tage der Gruppe -- beim Abruf aus
                         * einem Kontingent gar nicht erst angeboten: dort
@@ -662,10 +662,10 @@ export function GroupBookingDialog({ propertyId, selection, onClose }: {
                   <td className="py-1.5 text-neutral-500" colSpan={4}>
                     {t('group.priceSum')}
                   </td>
-                  <td className="tabular-nums text-right pr-2">{naechteGesamt}</td>
+                  <td className="tabular-nums text-end pr-2">{naechteGesamt}</td>
                   <td colSpan={2} />
                   <td />
-                  <td className="tabular-nums text-right font-medium">
+                  <td className="tabular-nums text-end font-medium">
                     {quelle === 'zimmer'
                       ? formatMoney(summeJeZimmer, locale)
                       : vorschau === null ? '—'

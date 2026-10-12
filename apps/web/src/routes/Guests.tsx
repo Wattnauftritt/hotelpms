@@ -117,7 +117,7 @@ function GaesteReiter({ propertyId, darfSchreiben, darfIdentitaet, darfExport }:
                 {suche.data.guests.map(g => (
                   <li key={g.guestRef}>
                     <button type="button" onClick={() => setAusgewaehlt(g.guestRef)}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50
+                            className={`w-full text-start px-3 py-2 text-sm hover:bg-neutral-50
                                         ${ausgewaehlt === g.guestRef ? 'bg-neutral-50' : ''}`}>
                       {g.lastName}{g.firstName ? `, ${g.firstName}` : ''}
                       {g.email && <span className="text-neutral-400"> · {g.email}</span>}
@@ -460,7 +460,7 @@ function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Elemen
                 {suche.data.companies.map(f => (
                   <li key={f.companyRef}>
                     <button type="button" onClick={() => setAusgewaehlt(f.companyRef)}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50
+                            className={`w-full text-start px-3 py-2 text-sm hover:bg-neutral-50
                                         ${ausgewaehlt === f.companyRef ? 'bg-neutral-50' : ''}`}>
                       {f.name}
                       {f.city && <span className="text-neutral-400"> · {f.city}</span>}

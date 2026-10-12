@@ -84,10 +84,10 @@ describe('translateFolderPages', () => {
     await seite('Nur am Terminal', 'x', null)
     const u = falscherUebersetzer()
     const r = await translateFolderPages(app, ctx, fx.propertyId, u)
-    // Dreizehn: die vierzehn Sprachen der Mappe ohne die deutsche Vorlage (0145).
-    expect(FOLDER_TRANSLATION_LANGS).toHaveLength(13)
+    // Alle Sprachen der Mappe ohne die deutsche Vorlage (0145, 0151).
+    expect(FOLDER_TRANSLATION_LANGS).toHaveLength(32)
     expect(FOLDER_TRANSLATION_LANGS).not.toContain('de')
-    expect(r).toEqual({ attempted: 13, done: 13, retrying: 0, failed: 0 })
+    expect(r).toEqual({ attempted: 32, done: 32, retrying: 0, failed: 0 })
     // Ein Aufruf je Sprache, Titel und Text darin.
     expect(u.anfragen.map(a => a.target)).toEqual([...FOLDER_TRANSLATION_LANGS])
     expect(u.anfragen[0]!.opts).toEqual({ source: 'de', xml: true })
@@ -115,7 +115,7 @@ describe('translateFolderPages', () => {
 
     await owner.query(`UPDATE terminal_content SET body = '7:30 bis 10 Uhr' WHERE id = $1`, [id])
     const r = await translateFolderPages(app, ctx, fx.propertyId, u)
-    expect(r.done).toBe(13)
+    expect(r.done).toBe(32)
     const en = (await zeilen()).find(x => x.lang === 'en')!
     expect(en).toMatchObject({ origin: 'machine', body: '[en] 7:30 bis 10 Uhr' })
   })
@@ -133,8 +133,8 @@ describe('translateFolderPages', () => {
     const u = falscherUebersetzer(() => new TranslationError('http_400'))
     for (let i = 1; i <= TRANSLATION_MAX_ATTEMPTS; i++) {
       const r = await translateFolderPages(app, ctx, fx.propertyId, u, { baseDelaySeconds: 0 })
-      expect(r.attempted).toBe(13)
-      expect(r.failed).toBe(i === TRANSLATION_MAX_ATTEMPTS ? 13 : 0)
+      expect(r.attempted).toBe(32)
+      expect(r.failed).toBe(i === TRANSLATION_MAX_ATTEMPTS ? 32 : 0)
       await owner.query(`UPDATE terminal_content_translation SET next_at = now()`)
     }
     expect((await translateFolderPages(app, ctx, fx.propertyId, u)).attempted).toBe(0)

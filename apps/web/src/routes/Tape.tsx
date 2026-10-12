@@ -545,7 +545,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                   disabled={zeile >= ZEILE_MAX} aria-label={t('plan.rowHeightLarger')}
                   title={t('plan.rowHeightLarger')}
                   className="px-1.5 border border-neutral-300 rounded disabled:opacity-40">+</button>
-          <span className="tabular-nums w-6 text-right text-neutral-500">{zeile}</span>
+          <span className="tabular-nums w-6 text-end text-neutral-500">{zeile}</span>
         </div>
         <label className="text-sm flex items-center gap-1.5 text-neutral-700">
           <input type="checkbox" checked={gruppiert}
@@ -918,7 +918,7 @@ function Legende({ propertyId }: { propertyId: number }): JSX.Element {
         {t('plan.legend')} {offen ? '▴' : '▾'}
       </button>
       {offen && (
-        <div className="absolute right-0 top-full mt-1 z-40 w-[46rem] max-w-[90vw] space-y-2
+        <div className="absolute end-0 top-full mt-1 z-40 w-[46rem] max-w-[90vw] space-y-2
                         rounded-sm border border-neutral-200 bg-white p-3 text-xs
                         text-neutral-600 shadow-lg">
           <div className="flex flex-wrap items-center gap-3">

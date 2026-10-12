@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { LOCALES, SPRACHNAMEN, sprachKuerzel, I18nContext, useT, useLocale, formatDate, type Locale }
+import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, useLocale, formatDate, type Locale }
   from '../lib/i18n/index.js'
 import { api, ApiError } from '../lib/api.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { Bildschirmtastatur } from '../components/Bildschirmtastatur.tsx'
+import { Sprachauswahl } from '../components/Sprachauswahl.tsx'
 import { Fehler } from '../components/Fehler.tsx'
 import { GastCheckin } from './GastCheckin.tsx'
 import { Ruhebild, type Folie } from '../components/Ruhebild.tsx'
@@ -133,7 +134,7 @@ export function TerminalSeite(): JSX.Element {
   // Die Sprache waehlt der Gast; mit dem Neuaufbau nach dem Auftrag faellt
   // sie auf die des Geraets zurueck, der naechste Gast waehlt neu.
   const [locale, setLocale] = useState<Locale>(spracheDesBrowsers)
-  useEffect(() => { document.documentElement.lang = locale }, [locale])
+  useEffect(() => { dokumentSprache(locale) }, [locale])
   return (
     <I18nContext.Provider value={locale}>
       <Terminal onLocale={setLocale} />
@@ -572,25 +573,8 @@ function Sprachwahl({ onLocale, hell = false }: {
   const t = useT()
   const locale = useLocale()
   return (
-    // Vierzehn Sprachen passen nicht in eine Zeile; sie brechen um, statt
-    // die Leiste ueber den Rand zu schieben. Der Name in der eigenen Sprache,
-    // nicht das Kuerzel: "UK" laese ein Gast als Vereinigtes Koenigreich.
-    <div className="flex flex-wrap justify-end gap-1" role="group"
-         aria-label={t('kiosk.language')}>
-      {LOCALES.map(l => (
-        <button key={l} type="button" onClick={() => onLocale(l)}
-                aria-pressed={l === locale}
-                className={`px-3 py-2 text-sm rounded-sm border ${hell
-                  ? (l === locale
-                    ? 'border-white bg-white text-neutral-900 font-medium'
-                    : 'border-white/50 bg-black/20 text-white backdrop-blur-sm')
-                  : (l === locale
-                    ? 'border-neutral-900 bg-white font-medium'
-                    : 'border-neutral-300 text-neutral-600')}`}>
-          {SPRACHNAMEN[l]}
-        </button>
-      ))}
-    </div>
+    <Sprachauswahl locale={locale} onLocale={onLocale} label={t('kiosk.language')}
+                   hell={hell} gross />
   )
 }
 
@@ -776,7 +760,7 @@ function AdresseZeigen({ daten, abschliessen }: AnsichtProps): JSX.Element {
   return (
     // Ueber die ganze Flaeche, aber keine Maske: das Terminal hat nichts
     // darunter, zu dem man zurueckklickt. "Fertig" ist der einzige Weg.
-    <div className="fixed left-0 top-0 h-screen w-screen flex flex-col bg-white">
+    <div className="fixed start-0 top-0 h-screen w-screen flex flex-col bg-white">
       <div className="flex items-center gap-4 px-6 py-3 border-b border-neutral-200 bg-neutral-50">
         <div className="grow">
           <div className="text-lg font-medium">{d.label}</div>

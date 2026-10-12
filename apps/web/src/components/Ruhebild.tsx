@@ -168,7 +168,7 @@ function Uhr({ className }: { className: string }): JSX.Element {
     return () => window.clearInterval(z)
   }, [])
   return (
-    <div className={`ml-auto shrink-0 text-right drop-shadow-md ${className}`}>
+    <div className={`ml-auto shrink-0 text-end drop-shadow-md ${className}`}>
       <div className="text-6xl font-light tabular-nums">
         {new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(jetzt)}
       </div>

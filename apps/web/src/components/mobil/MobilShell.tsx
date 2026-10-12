@@ -193,7 +193,7 @@ function MehrBlatt({ hinten, onWahl, onClose, screen, ...props }: ShellProps & {
               {hinten.map(s => (
                 <button key={s.key} type="button" onClick={() => onWahl(s.key)}
                         aria-current={screen === s.key ? 'page' : undefined}
-                        className={`flex h-12 w-full items-center px-3 text-left text-sm
+                        className={`flex h-12 w-full items-center px-3 text-start text-sm
                                     ${screen === s.key ? 'font-semibold text-violet-700' : ''}`}>
                   <span className="grow truncate">{t(s.nav)}</span>
                   <span aria-hidden className="text-neutral-400">›</span>

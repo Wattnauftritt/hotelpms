@@ -74,7 +74,8 @@ describe('Sprache der Personal-App', () => {
     expect(startSprache(null, 'fr-FR')).toBe('fr')
     // Norwegisch meldet sich je nach Telefon als nb, no oder nn.
     expect(startSprache(null, 'no')).toBe('nb')
-    expect(startSprache(null, 'ar-SA')).toBe('de')
+    expect(startSprache(null, 'ar-SA')).toBe('ar')
+    expect(startSprache(null, 'ja-JP')).toBe('de')
   })
 
   it('hat in jeder Sprache einen Satz mit denselben Platzhaltern', () => {

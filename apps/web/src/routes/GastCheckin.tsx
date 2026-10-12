@@ -6,9 +6,10 @@ import { CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
 import { api, ApiError } from '../lib/api.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { istCheckinAdresse } from '../gast/adresse.js'
-import { LOCALES, SPRACHNAMEN, sprachKuerzel, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
+import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
          type TextKey } from '../lib/i18n/index.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
+import { Sprachauswahl } from '../components/Sprachauswahl.tsx'
 import { Datumsfeld } from '../components/Datumsfeld.tsx'
 import { VerzichtTage } from '../components/Reinigungsverzicht.tsx'
 
@@ -159,7 +160,7 @@ export function GastCheckin({ token, modus, onFertig }: {
 /** Die Seite unter `/checkin`, fuer den Link aus der Mail. */
 export function GastCheckinSeite({ token }: { token: string | null }): JSX.Element {
   const [locale] = useState<Locale>(() => startSprache(navigator.language))
-  useEffect(() => { document.documentElement.lang = locale }, [locale])
+  useEffect(() => { dokumentSprache(locale) }, [locale])
   return (
     <div className="min-h-screen bg-neutral-50 p-4 sm:p-8">
       {token === null
@@ -255,20 +256,8 @@ function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => vo
       <h1 className={`${gross ? 'text-2xl' : 'text-lg'} font-semibold grow`}>
         {t('gastCheckin.title')}
       </h1>
-      {/* Die Sprachen als Knoepfe und nicht als Auswahlliste: am Terminal
-          trifft ein Finger einen Knopf sicherer als eine aufklappende Liste. */}
-      <div role="group" aria-label={t('gastCheckin.language')}
-           className="flex flex-wrap justify-end gap-1">
-        {LOCALES.map(l => (
-          <button key={l} type="button" onClick={() => onLocale(l)}
-                  aria-pressed={l === locale}
-                  className={`${gross ? 'px-4 py-2' : 'px-2 py-0.5'} rounded-sm border
-                    ${l === locale ? 'border-neutral-900 bg-neutral-900 text-white'
-                                   : 'border-neutral-300 bg-white'}`}>
-            {SPRACHNAMEN[l]}
-          </button>
-        ))}
-      </div>
+      <Sprachauswahl locale={locale} onLocale={onLocale} label={t('gastCheckin.language')}
+                     gross={gross} />
     </div>
   )
 }

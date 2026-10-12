@@ -169,7 +169,7 @@ function KundenListe({ onOpen }: { onOpen: (id: number) => void }): JSX.Element 
         {treffer.map(a => (
           <li key={a.id}>
             <button type="button" onClick={() => onOpen(a.id)}
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-50">
+                    className="w-full text-start px-3 py-2 hover:bg-neutral-50">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-medium text-sm">{a.name}</span>
                 <Abzeichen k={KONTO_ZUSTAND[a.status]}
@@ -324,7 +324,7 @@ function RollenEditor({ accountId, u, properties }: {
   const [betrieb, setBetrieb] = useState<string[]>(u.accountRoles)
 
   return (
-    <div className="mt-1 space-y-2 border-l-2 border-neutral-200 pl-3">
+    <div className="mt-1 space-y-2 border-s-2 border-neutral-200 pl-3">
       <p className="text-xs text-neutral-600">{t('admin.user.rolesHint')}</p>
       {properties.map(p => (
         <form key={p.id} className="space-y-1"

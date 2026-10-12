@@ -178,14 +178,17 @@ function Woche({ start, daten, gruppen, lagen, zu, onZu, onOeffnen }: {
   const spalten = (
     <div aria-hidden className="pointer-events-none absolute inset-0 flex">
       {tage.map(d => (
-        <div key={d} className={`flex-1 border-l border-neutral-100
+        <div key={d} className={`flex-1 border-s border-neutral-100
                                  ${d === heute ? 'bg-violet-50' : isWeekend(d) ? 'bg-neutral-50' : ''}`} />
       ))}
     </div>
   )
 
+  // `dir="ltr"`: die Balken stehen ueber `left` in Pixeln oder Prozent. In
+  // einer arabischen Oberflaeche spiegelte sich das Raster drumherum, die
+  // Balken nicht, und ein Aufenthalt stuende unter den falschen Tagen.
   return (
-    <div className="-mx-3 border-y border-neutral-200 bg-white">
+    <div dir="ltr" className="-mx-3 border-y border-neutral-200 bg-white">
       <div className="sticky top-[var(--kopf,0px)] z-10 flex border-b border-neutral-200 bg-neutral-50">
         <div className="w-12 shrink-0" />
         {tage.map(d => (
@@ -208,7 +211,7 @@ function Woche({ start, daten, gruppen, lagen, zu, onZu, onOeffnen }: {
                     className="flex h-9 w-full items-center gap-2 border-b border-neutral-200
                                bg-neutral-100 px-3 text-xs">
               <span aria-hidden className="w-3">{offen ? '▾' : '▸'}</span>
-              <span className="grow truncate text-left font-semibold">{g.name}</span>
+              <span className="grow truncate text-start font-semibold">{g.name}</span>
               <span className="text-neutral-500">{t('mobil.plan.rooms', { n: g.zimmer.length })}</span>
               <span className="font-semibold text-emerald-700">
                 {t('mobil.count.free', { n: frei })}
@@ -245,10 +248,10 @@ function Woche({ start, daten, gruppen, lagen, zu, onZu, onOeffnen }: {
                         <button key={r.public_ref} type="button" onClick={() => onOeffnen(r.public_ref)}
                                 style={{ left: `calc(${s.start * 100}% + 1px)`,
                                          width: `calc(${(s.ende - s.start) * 100}% - 2px)` }}
-                                className={`absolute inset-y-1 truncate px-1.5 text-left text-[11px]
+                                className={`absolute inset-y-1 truncate px-1.5 text-start text-[11px]
                                             font-semibold leading-6 ${balkenFarbe(r.status)}
-                                            rounded ${s.offenLinks ? 'rounded-l-none' : ''}
-                                            ${s.offenRechts ? 'rounded-r-none' : ''}`}>
+                                            rounded ${s.offenLinks ? 'rounded-s-none' : ''}
+                                            ${s.offenRechts ? 'rounded-e-none' : ''}`}>
                           {r.status === 'Optional' ? `${t('mobil.plan.option')} ` : ''}
                           {r.last_name ?? r.public_ref}
                         </button>
@@ -297,10 +300,10 @@ function Tag({ gruppen, lagen, onOeffnen }: {
                 <button key={u.id} type="button" disabled={r === null}
                         onClick={() => { if (r !== null) onOeffnen(r.public_ref) }}
                         aria-label={`${u.code}: ${t(`mobil.lage.${l.lage}`)}${r !== null ? `, ${text}` : ''}`}
-                        className={`relative h-14 overflow-hidden rounded-lg p-1.5 text-left ${KACHEL[l.lage]}`}>
+                        className={`relative h-14 overflow-hidden rounded-lg p-1.5 text-start ${KACHEL[l.lage]}`}>
                   {u.housekeeping === 'dirty' && (
                     <span title={t('hk.dirty')}
-                          className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+                          className="absolute end-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
                   )}
                   <div className="text-sm font-bold tabular-nums">{u.code}</div>
                   <div className="truncate text-[10px]">

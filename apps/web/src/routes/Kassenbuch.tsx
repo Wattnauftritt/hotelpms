@@ -113,7 +113,7 @@ export function Belegwahl({ belege, onBelege, gross = false }: {
                       <span className="truncate">{b.name}</span>
                     </div>}
                 <button type="button" aria-label={t('cash.receipt.remove')} onClick={() => entfernen(i)}
-                        className="absolute right-2 top-2 h-10 w-10 rounded-full bg-black/60 text-xl text-white">×</button>
+                        className="absolute end-2 top-2 h-10 w-10 rounded-full bg-black/60 text-xl text-white">×</button>
               </li>
             ))}
           </ul>
@@ -207,16 +207,16 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
         </Feld>
         <Feld label={t(art === 'guest' ? 'cash.field.total' : 'cash.field.amount')}>
           <input inputMode="decimal" value={betrag} onChange={e => setBetrag(e.target.value)}
-                 className={`${FELD} text-right tabular-nums`} placeholder="0,00" />
+                 className={`${FELD} text-end tabular-nums`} placeholder="0,00" />
         </Feld>
         {art === 'guest' && <>
           <Feld label={t('cash.field.breakfasts')}>
             <input type="number" min={0} value={anzahl} onChange={e => setAnzahl(e.target.value)}
-                   className={`${FELD} text-right`} />
+                   className={`${FELD} text-end`} />
           </Feld>
           <Feld label={t('cash.field.cityTax')}>
             <input inputMode="decimal" value={kurtaxe} onChange={e => setKurtaxe(e.target.value)}
-                   className={`${FELD} text-right tabular-nums`} placeholder="0,00" />
+                   className={`${FELD} text-end tabular-nums`} placeholder="0,00" />
           </Feld>
         </>}
         {(art === 'expense' || art === 'other') && (
@@ -298,11 +298,11 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, onLoeschen
         )}
       </td>
       {/* Zugeklappt mischt die Summe mehrere Saetze; einer davon stuende falsch da. */}
-      <td className="px-2 py-1 text-right tabular-nums">{zu ? '' : `${z.taxRateBp / 100} %`}</td>
-      <td className={`px-2 py-1 text-right tabular-nums ${betrag < 0 ? 'text-red-700' : ''}`}>
+      <td className="px-2 py-1 text-end tabular-nums">{zu ? '' : `${z.taxRateBp / 100} %`}</td>
+      <td className={`px-2 py-1 text-end tabular-nums ${betrag < 0 ? 'text-red-700' : ''}`}>
         {formatMoney(betrag, locale)}
       </td>
-      <td className="px-2 py-1 text-right tabular-nums font-medium">
+      <td className="px-2 py-1 text-end tabular-nums font-medium">
         {bestand === null ? '' : formatMoney(bestand, locale)}
       </td>
       <td className="px-2 py-1 whitespace-nowrap no-underline">
@@ -322,7 +322,7 @@ function Zeile({ z, propertyId, darfStornieren, darfBuchen, onStorno, onLoeschen
         </>}
         {nachreichen.isError && <Fehler error={nachreichen.error} />}
       </td>
-      <td className="px-2 py-1 text-right">
+      <td className="px-2 py-1 text-end">
         {darfStornieren && !aufgehoben && !storno && !mitglied && (
           <button className="text-xs text-red-700 underline print:hidden" onClick={() => onStorno(z)}>
             {t('cash.void')}
@@ -497,17 +497,17 @@ export function Einstellung({ propertyId, e, onClose }: {
           {t('cash.settings.enabled')}
         </label>
         <Feld label={t('cash.settings.openingBalance')}>
-          <input value={anfang} onChange={ev => setAnfang(ev.target.value)} className={`${FELD} text-right`} />
+          <input value={anfang} onChange={ev => setAnfang(ev.target.value)} className={`${FELD} text-end`} />
         </Feld>
         <Feld label={t('cash.settings.openingDate')}>
           <input type="date" value={w.openingDate ?? ''} className={FELD}
                  onChange={ev => setW({ ...w, openingDate: ev.target.value || null })} />
         </Feld>
         <Feld label={t('cash.settings.breakfastPrice')}>
-          <input value={preis} onChange={ev => setPreis(ev.target.value)} className={`${FELD} text-right`} />
+          <input value={preis} onChange={ev => setPreis(ev.target.value)} className={`${FELD} text-end`} />
         </Feld>
         <Feld label={t('cash.settings.foodShare')}>
-          <input type="number" min={0} max={100} value={w.breakfastFoodShareBp / 100} className={`${FELD} text-right`}
+          <input type="number" min={0} max={100} value={w.breakfastFoodShareBp / 100} className={`${FELD} text-end`}
                  onChange={ev => setW({ ...w, breakfastFoodShareBp: Math.round(Number(ev.target.value) * 100) })} />
         </Feld>
         <Feld label={t('cash.settings.chart')}>
@@ -637,15 +637,15 @@ export function Kassenbuch({ propertyId, permissions }: {
                   <table className="w-full text-sm">
                     <thead className="text-xs text-neutral-600">
                       <tr>
-                        <th className="px-2 py-1 text-left">{t('cash.col.no')}</th>
-                        <th className="px-2 py-1 text-left">{t('cash.field.date')}</th>
-                        <th className="px-2 py-1 text-left">{t('cash.field.kind')}</th>
-                        <th className="px-2 py-1 text-left">{t('cash.field.text')}</th>
-                        <th className="px-2 py-1 text-right">{t('cash.col.tax')}</th>
-                        <th className="px-2 py-1 text-right">{t('cash.field.amount')}</th>
-                        <th className="px-2 py-1 text-right">{t('cash.col.balance')}</th>
-                        <th className="px-2 py-1 text-left">{t('cash.col.receipts')}</th>
-                        <th className="px-2 py-1 text-right">
+                        <th className="px-2 py-1 text-start">{t('cash.col.no')}</th>
+                        <th className="px-2 py-1 text-start">{t('cash.field.date')}</th>
+                        <th className="px-2 py-1 text-start">{t('cash.field.kind')}</th>
+                        <th className="px-2 py-1 text-start">{t('cash.field.text')}</th>
+                        <th className="px-2 py-1 text-end">{t('cash.col.tax')}</th>
+                        <th className="px-2 py-1 text-end">{t('cash.field.amount')}</th>
+                        <th className="px-2 py-1 text-end">{t('cash.col.balance')}</th>
+                        <th className="px-2 py-1 text-start">{t('cash.col.receipts')}</th>
+                        <th className="px-2 py-1 text-end">
                           {gruppen.length > 0 && (
                             <button className="text-xs font-normal underline print:hidden"
                                     onClick={() => setOffen(alleOffen ? new Set() : new Set(gruppen))}>

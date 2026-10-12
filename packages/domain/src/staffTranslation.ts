@@ -21,9 +21,12 @@ export const TRANSLATION_MAX_ATTEMPTS = 6
 /**
  * Zielsprache, wie DeepL sie haben will. Englisch braucht eine Variante,
  * sonst lehnt DeepL das Ziel ab; britisch, weil die Haeuser in Europa sind.
+ * Portugiesisch europaeisch aus demselben Grund und weil die Oberflaeche es
+ * so spricht (`pt-PT`); Chinesisch in Kurzzeichen wie ihr Katalog.
  */
+const DEEPL_ZIEL: Readonly<Record<string, string>> = { en: 'EN-GB', pt: 'PT-PT', zh: 'ZH-HANS' }
 export function deeplTargetCode(lang: string): string {
-  return lang === 'en' ? 'EN-GB' : lang.toUpperCase()
+  return DEEPL_ZIEL[lang] ?? lang.toUpperCase()
 }
 
 /**

@@ -127,7 +127,7 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
 
       {offen && (
         <div role="menu"
-             className="absolute right-0 z-40 mt-1 w-80 rounded-sm border border-neutral-200
+             className="absolute end-0 z-40 mt-1 w-80 rounded-sm border border-neutral-200
                         bg-white py-1 shadow-xl">
           {suchen && (
             <div className="px-2 pb-1">
@@ -141,7 +141,7 @@ export function Hauswahl({ haeuser, haus, onHaus }: {
               <button key={h.id} type="button" role="menuitem"
                       onClick={() => waehlen(h.id)}
                       aria-current={h.id === haus.id ? 'true' : undefined}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-start
                                   text-sm hover:bg-neutral-100
                                   ${h.id === haus.id ? 'bg-neutral-50 font-medium' : ''}`}>
                 {/* Der Haken steht in einer festen Spalte, nicht hinter dem

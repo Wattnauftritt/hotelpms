@@ -172,17 +172,17 @@ function HausListe({ haus, locale, ueberschrift }: {
             const auf = offen === z.taskId
             const wasserOffen = z.waiver?.water === true && !z.waiver.delivered
             const kachel = <div key={z.taskId}
-                                className={`relative rounded-lg border-l-4 border p-2 flex flex-col justify-between gap-1.5
+                                className={`relative rounded-lg border-s-4 border p-2 flex flex-col justify-between gap-1.5
                                             ${KACHEL[zu]} ${auf ? 'ring-2 ring-neutral-900' : ''}`}>
               {/* Die weiteren Status (keine Reinigung, war sauber, Problem,
                   zuruecknehmen) stehen unter dem Tipp auf die Kachel; das
                   Zeichen in der Ecke sagt, dass es sie gibt (Sven, 08.10.2026:
                   "kann keinen Status ausser gereinigt waehlen"). */}
-              {zu !== 'waived' && <span aria-hidden className="absolute top-1 right-1 w-7 h-7 grid
+              {zu !== 'waived' && <span aria-hidden className="absolute top-1 end-1 w-7 h-7 grid
                 place-items-center rounded-full bg-white/80 border border-neutral-300 text-sm
                 font-bold text-neutral-700 pointer-events-none">⋯</span>}
               <button type="button" aria-expanded={auf} aria-label={`${z.code}, ${t('room.more')}`}
-                      className="text-left leading-tight space-y-0.5"
+                      className="text-start leading-tight space-y-0.5"
                       onClick={() => setOffen(auf ? null : z.taskId)}>
                 <span className="block text-xl font-bold tabular-nums pr-7">
                   {z.code}
@@ -258,14 +258,14 @@ export function meinChip(z: MeinZimmer): MeinChipZustand {
 }
 
 const KACHEL: Record<MeinChipZustand, string> = {
-  ready: 'bg-green-50 border-green-200 border-l-green-600 text-green-950',
-  stayover: 'bg-green-50 border-green-200 border-l-green-600 text-green-950',
-  blocked: 'bg-amber-50 border-amber-200 border-l-amber-500 text-amber-950',
-  rework: 'bg-red-50 border-red-300 border-l-red-600 text-red-950',
-  done: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500',
-  passed: 'bg-neutral-100 border-neutral-200 border-l-green-600 text-neutral-600',
-  skipped: 'bg-neutral-100 border-neutral-200 border-l-neutral-400 text-neutral-500',
-  waived: 'bg-red-50 border-red-300 border-l-red-600 text-red-900'
+  ready: 'bg-green-50 border-green-200 border-s-green-600 text-green-950',
+  stayover: 'bg-green-50 border-green-200 border-s-green-600 text-green-950',
+  blocked: 'bg-amber-50 border-amber-200 border-s-amber-500 text-amber-950',
+  rework: 'bg-red-50 border-red-300 border-s-red-600 text-red-950',
+  done: 'bg-neutral-100 border-neutral-200 border-s-neutral-400 text-neutral-500',
+  passed: 'bg-neutral-100 border-neutral-200 border-s-green-600 text-neutral-600',
+  skipped: 'bg-neutral-100 border-neutral-200 border-s-neutral-400 text-neutral-500',
+  waived: 'bg-red-50 border-red-300 border-s-red-600 text-red-900'
 }
 const MEIN_ZEICHEN: Record<MeinChipZustand, string> = {
   ready: '', blocked: '', stayover: '', rework: '↺', done: '✓', passed: '✓✓', skipped: '⊘',
@@ -319,7 +319,7 @@ function ZimmerKarte({ z, offen, laeuft, onToggle, onSetzen, onNachgearbeitet, o
                            : fertig ? 'border-neutral-200 opacity-80'
                            : !z.free ? 'border-amber-300' : 'border-neutral-300'}`}>
     <button type="button" onClick={onToggle} aria-expanded={offen}
-            className="w-full text-left px-4 py-3 flex items-center gap-3">
+            className="w-full text-start px-4 py-3 flex items-center gap-3">
       <span className={`text-2xl font-semibold tabular-nums min-w-[3.5rem]
                         ${fertig ? 'text-neutral-400 line-through' : ''}`}>{z.code}</span>
       <span className="flex flex-wrap gap-1.5 flex-1">

@@ -537,9 +537,9 @@ function Zimmerzuordnung({ bericht: b, zimmer, gruppen, einstellungen: e,
       )}
       <table className="mt-1 text-sm">
         <thead>
-          <tr className="text-left text-xs text-neutral-500">
+          <tr className="text-start text-xs text-neutral-500">
             <th className="pr-6 font-normal">{t('import.rooms.kw')}</th>
-            <th className="pr-6 font-normal text-right">{t('import.rooms.reservations')}</th>
+            <th className="pr-6 font-normal text-end">{t('import.rooms.reservations')}</th>
             <th className="font-normal">{t('import.rooms.target')}</th>
           </tr>
         </thead>
@@ -558,7 +558,7 @@ function Zimmerzuordnung({ bericht: b, zimmer, gruppen, einstellungen: e,
             return (
               <tr key={r.kwRoomId} className="align-top">
                 <td className="pr-6 py-0.5">{r.name}</td>
-                <td className="pr-6 py-0.5 text-right tabular-nums">{zahl(r.reservations)}</td>
+                <td className="pr-6 py-0.5 text-end tabular-nums">{zahl(r.reservations)}</td>
                 <td className="py-0.5">
                   <select value={wert} aria-label={r.name}
                           className={`border rounded-sm px-1 py-0.5 text-sm ${

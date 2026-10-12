@@ -112,7 +112,7 @@ export function Kontrolle({ propertyId, locale, titel, legende = true }: {
           if (liste.length === 0) return null
           const rot = art === 'departure'
           return <div key={art}
-                      className={`border-l-4 pl-2 ${rot ? 'border-red-500' : 'border-sky-500'}`}>
+                      className={`border-s-4 pl-2 ${rot ? 'border-red-500' : 'border-sky-500'}`}>
             <h3 className={`text-xs font-semibold mb-1 ${rot ? 'text-red-700' : 'text-sky-700'}`}>
               {t(rot ? 'room.departure' : 'room.stayover')}
             </h3>
@@ -160,7 +160,7 @@ function KontrollKarte({ z, laeuft, onPruefen }: {
 
   return <div className={`rounded-lg border bg-white ${z.inspection === 'rework'
     ? 'border-red-300' : 'border-neutral-300'}`}>
-    <div className="w-full text-left px-4 py-3 flex items-center gap-3">
+    <div className="w-full text-start px-4 py-3 flex items-center gap-3">
       <span className="text-2xl font-semibold tabular-nums min-w-[3.5rem]">{z.code}</span>
       <span className="flex flex-wrap gap-1.5 flex-1">
         <Marke farbe={z.kind === 'departure' ? 'bg-blue-100 text-blue-900'

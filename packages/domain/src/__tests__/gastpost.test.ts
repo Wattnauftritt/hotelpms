@@ -137,7 +137,7 @@ describe('Zahlungslink an den Gast', () => {
       expect(m.subject, lang).toContain('ABC123')
       // Englisch schreibt ISO, damit "03/04" niemand falsch herum liest,
       // Schwedisch ohnehin; die anderen den Tag zuerst.
-      const iso = lang === 'en' || lang === 'sv'
+      const iso = ['en', 'sv', 'hu', 'lt', 'zh', 'ko'].includes(lang)
       expect(m.text, lang).toContain(iso ? '2026-09-20'
         : lang === 'nl' ? '20-09-2026' : '20.09.2026')
       // Bis wann der Link gilt -- seit 0068 Tage, nicht Stunden.
@@ -193,7 +193,7 @@ describe('Sprachwahl am Gastprofil', () => {
 
   /** Was wir nicht schreiben, geht auf Deutsch hinaus -- und nicht gar nicht. */
   it('faellt bei einer unbekannten Sprache auf Deutsch zurueck', () => {
-    for (const unbekannt of ['ar', 'zz', '', null, undefined]) {
+    for (const unbekannt of ['ja', 'zz', '', null, undefined]) {
       expect(emailLanguage(unbekannt)).toBe('de')
     }
   })

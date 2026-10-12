@@ -13,7 +13,7 @@ import { ErsteSchritteRahmen } from './components/ErsteSchritte.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
 import { SprungContext, type Sprungziel } from './lib/suche.js'
-import { LOCALES, sprachKuerzel, I18nContext, useT, type Locale, type TextKey }
+import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
 import { api, ApiError } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
@@ -92,7 +92,7 @@ function App(): JSX.Element {
    * Uebersetzer im Browser zu erkennen glaubt. Der Effekt faellt sehend
    * niemandem auf, und genau deshalb bliebe er stehen.
    */
-  useEffect(() => { document.documentElement.lang = locale }, [locale])
+  useEffect(() => { dokumentSprache(locale) }, [locale])
   /*
    * Einladung und Kennwortruecksetzung stehen **vor** allem anderen, auch vor
    * der Frage, wer angemeldet ist. Wer diesen Link aus einer E-Mail anklickt,

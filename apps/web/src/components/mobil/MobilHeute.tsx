@@ -85,7 +85,7 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
           <li key={r.reservationRef}
               className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
             <button type="button" onClick={() => springen({ art: 'reservierung', ref: r.reservationRef })}
-                    className="flex min-w-0 grow items-center gap-3 text-left">
+                    className="flex min-w-0 grow items-center gap-3 text-start">
               <Zimmer code={r.roomCode} />
               <div className="min-w-0">
                 <div className="truncate font-semibold">{name(r)}</div>

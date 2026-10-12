@@ -81,7 +81,8 @@ describe('Katalog der Mappe', () => {
     expect(startSprache('pl-PL')).toBe('pl')
     expect(startSprache('fr-FR')).toBe('fr')
     expect(startSprache('no')).toBe('nb')
-    expect(startSprache('ar-SA')).toBe('en')
+    expect(startSprache('ar-SA')).toBe('ar')
+    expect(startSprache('ja-JP')).toBe('en')
   })
 })
 

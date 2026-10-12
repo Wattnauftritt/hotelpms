@@ -184,7 +184,7 @@ export function Housekeeping(
           <button key={r.resourceId}
                   onClick={() => umschalten(r.resourceId)}
                   aria-pressed={gewaehlt.has(r.resourceId)}
-                  className={`text-left border rounded-sm p-2 ${FARBE[r.status]}
+                  className={`text-start border rounded-sm p-2 ${FARBE[r.status]}
                               ${gewaehlt.has(r.resourceId)
                                 ? 'ring-2 ring-neutral-900' : ''}`}>
             <div className="flex items-baseline justify-between">

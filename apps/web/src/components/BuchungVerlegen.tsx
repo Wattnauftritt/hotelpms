@@ -472,7 +472,7 @@ export function BuchungVerlegen({ verlegung, zimmer, belegtVon, laeuft, fehler,
                           {formatDate(n.date, locale)}
                           {n.posted && ` · ${t('verlegen.nightPosted')}`}
                         </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
+                        <td className="px-2 py-1 text-end tabular-nums">
                           {formatMoney(n.priceCent, locale)}
                         </td>
                       </tr>

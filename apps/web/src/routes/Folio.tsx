@@ -80,13 +80,13 @@ export function Folio({ folioRef, propertyId, onClose }: {
                     <span className="ml-1 text-xs text-neutral-500">({t('folio.reversal')})</span>
                   )}
                 </td>
-                <td className="px-3 py-1.5 w-14 text-right tabular-nums text-neutral-500">
+                <td className="px-3 py-1.5 w-14 text-end tabular-nums text-neutral-500">
                   {c.quantity}
                 </td>
-                <td className="px-3 py-1.5 w-16 text-right tabular-nums text-neutral-500">
+                <td className="px-3 py-1.5 w-16 text-end tabular-nums text-neutral-500">
                   {c.tax_rate_bp / 100} %
                 </td>
-                <td className="px-3 py-1.5 w-24 text-right tabular-nums">
+                <td className="px-3 py-1.5 w-24 text-end tabular-nums">
                   {formatMoney(c.gross_cent, locale)}
                 </td>
                 <td className="px-3 py-1.5 w-8 text-center">
@@ -118,7 +118,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
                 <td className="px-3 py-1.5 text-neutral-500 text-xs">
                   {s.external_reference}
                 </td>
-                <td className="px-3 py-1.5 w-24 text-right tabular-nums">
+                <td className="px-3 py-1.5 w-24 text-end tabular-nums">
                   {formatMoney(s.amount_cent, locale)}
                 </td>
               </tr>

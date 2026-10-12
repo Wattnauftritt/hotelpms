@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { KENNWORT_MIN, STAFF_LOCALES, type StaffLocale } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
+import { dokumentSprache } from '../lib/dokumentSprache.js'
 import { useInstallation } from '../lib/pwa.js'
 import { offlineKopieLoeschen } from '../lib/offline.js'
 import { nurPersonal, personalSeite } from './adresse.js'
@@ -59,9 +60,10 @@ function SprachWahl({ locale, onLocale, knapp = false }: {
       {STAFF_LOCALES.map(l => <option key={l} value={l}>{SPRACHNAME[l]}</option>)}
     </select>
   }
-  return <div className="grid grid-cols-2 gap-2">
+  // Drei Spalten: dreiunddreissig Sprachen in zweien waeren siebzehn Zeilen.
+  return <div className="grid grid-cols-3 gap-2">
     {STAFF_LOCALES.map(l => (
-      <button key={l} type="button" aria-pressed={l === locale}
+      <button key={l} type="button" aria-pressed={l === locale} lang={l}
               onClick={() => onLocale(l)}
               className={`py-3 rounded-md border text-base
                 ${l === locale ? 'border-neutral-900 bg-neutral-900 text-white'
@@ -372,7 +374,7 @@ export function PersonalApp(): JSX.Element {
   const [seite] = useState(() => personalSeite(location.pathname, location.search))
   const [locale, setLocale] = useState<StaffLocale>(
     () => startSprache(null, navigator.language))
-  useEffect(() => { document.documentElement.lang = locale }, [locale])
+  useEffect(() => { dokumentSprache(locale) }, [locale])
   const qc = useQueryClient()
 
   const me = useQuery<Me>({

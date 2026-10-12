@@ -34,7 +34,7 @@ export function ChannelSicht({ propertyId, von, bis, belegung }: {
   return (
     <section className="bg-white border border-neutral-200 rounded-sm">
       <button onClick={() => setAuf(v => !v)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left">
+              className="w-full flex items-center gap-2 px-3 py-2 text-start">
         <span className="text-sm font-medium">{t('cv.title')}</span>
         <span className="text-xs text-neutral-500">{t('cv.open')}</span>
         <div className="grow" />
@@ -128,7 +128,7 @@ function Inhalt({ propertyId, von, bis, belegung }: {
         <table className="text-xs border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 bg-white text-left font-medium px-2 py-1
+              <th className="sticky start-0 z-10 bg-white text-start font-medium px-2 py-1
                              border-b border-neutral-200 whitespace-nowrap">
                 {t('cv.availability')}
               </th>
@@ -149,7 +149,7 @@ function Inhalt({ propertyId, von, bis, belegung }: {
           <tbody>
             {kategorien.map(k => (
               <tr key={k}>
-                <td className="sticky left-0 z-10 bg-white px-2 py-1 font-medium
+                <td className="sticky start-0 z-10 bg-white px-2 py-1 font-medium
                                border-b border-neutral-100 whitespace-nowrap">{k}</td>
                 {tage.map(d => {
                   const a = frei.get(`${k}${TRENNER}${d}`)
@@ -166,13 +166,13 @@ function Inhalt({ propertyId, von, bis, belegung }: {
               </tr>
             ))}
             <tr>
-              <td className="sticky left-0 z-10 bg-white px-2 pt-3 pb-1 text-left
+              <td className="sticky start-0 z-10 bg-white px-2 pt-3 pb-1 text-start
                              font-medium whitespace-nowrap">{t('cv.rates')}</td>
               <td colSpan={tage.length} />
             </tr>
             {plaene.map(p => (
               <tr key={`${p.categoryCode}/${p.ratePlanCode}`}>
-                <td className="sticky left-0 z-10 bg-white px-2 py-1 border-b
+                <td className="sticky start-0 z-10 bg-white px-2 py-1 border-b
                                border-neutral-100 whitespace-nowrap">
                   <span className="text-neutral-500">{p.categoryCode}</span>{' '}
                   <span className="font-medium">{p.ratePlanCode}</span>
@@ -185,7 +185,7 @@ function Inhalt({ propertyId, von, bis, belegung }: {
                     : z.priceCent[belegung - 1] ?? z.priceCent[0] ?? null
                   return (
                     <td key={d}
-                        className={`px-1 py-1 text-right tabular-nums whitespace-nowrap
+                        className={`px-1 py-1 text-end tabular-nums whitespace-nowrap
                                     border-b border-neutral-100
                                     ${preis === null ? 'bg-amber-50 text-amber-700'
                                       : z?.closed === true

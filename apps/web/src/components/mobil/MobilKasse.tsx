@@ -114,7 +114,7 @@ export function MobilKasse({ propertyId, permissions }: {
 
       {darfBuchen && (
         <button type="button" onClick={() => setNeu(true)}
-                className="fixed right-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20
+                className="fixed end-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20
                            h-14 rounded-full bg-neutral-900 px-5 text-base font-medium text-white shadow-lg">
           + {t('cash.new')}
         </button>
@@ -202,7 +202,7 @@ function Liste({ bloecke, onWahl }: {
               return (
                 <li key={z.entryNo}>
                   <button type="button" onClick={() => onWahl(z.entryNo)}
-                          className={`flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left
+                          className={`flex min-h-14 w-full items-center gap-3 px-3 py-2 text-start
                                       ${aufgehoben ? 'text-neutral-400' : ''}`}>
                     <div className="min-w-0 grow">
                       <div className={`truncate text-sm font-medium ${aufgehoben ? 'line-through' : ''}`}>
@@ -217,7 +217,7 @@ function Liste({ bloecke, onWahl }: {
                         {b.belege.length > 0 && <Bueroklammer />}
                       </div>
                     </div>
-                    <div className="shrink-0 text-right">
+                    <div className="shrink-0 text-end">
                       <div className={`text-sm font-semibold tabular-nums
                                        ${b.summeCent < 0 && !aufgehoben ? 'text-red-700' : ''}
                                        ${aufgehoben ? 'line-through' : ''}`}>
@@ -304,7 +304,7 @@ function Vollbild({ titel, onClose, fuss, children }: {
                 className="h-12 shrink-0 px-2 text-base text-violet-700">
           ‹ {t('common.back')}
         </button>
-        <h2 className="min-w-0 grow truncate pr-2 text-right text-base font-semibold">{titel}</h2>
+        <h2 className="min-w-0 grow truncate pr-2 text-end text-base font-semibold">{titel}</h2>
       </header>
       <div className="grow overflow-y-auto overscroll-contain p-4">{children}</div>
       {fuss !== undefined && (
@@ -388,8 +388,8 @@ function NeueBuchung({ propertyId, m, onClose }: {
             <input inputMode="decimal" value={f.betrag} onChange={ev => f.setBetrag(ev.target.value)}
                    placeholder="0,00"
                    className="h-16 w-full rounded-md border border-neutral-300 bg-white pl-3 pr-10
-                              text-right text-3xl font-semibold tabular-nums" />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xl text-neutral-500">
+                              text-end text-3xl font-semibold tabular-nums" />
+            <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xl text-neutral-500">
               €
             </span>
           </div>
@@ -400,11 +400,11 @@ function NeueBuchung({ propertyId, m, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             <Feld label={t('cash.field.breakfasts')}>
               <input inputMode="numeric" value={f.anzahl} onChange={ev => f.setAnzahl(ev.target.value)}
-                     className={`${FELD_GROSS} text-right`} />
+                     className={`${FELD_GROSS} text-end`} />
             </Feld>
             <Feld label={t('cash.field.cityTax')}>
               <input inputMode="decimal" value={f.kurtaxe} onChange={ev => f.setKurtaxe(ev.target.value)}
-                     placeholder="0,00" className={`${FELD_GROSS} text-right tabular-nums`} />
+                     placeholder="0,00" className={`${FELD_GROSS} text-end tabular-nums`} />
             </Feld>
           </div>
         )}
@@ -493,7 +493,7 @@ function Buchungsblatt({ propertyId, b, darfBuchen, darfStornieren, onStorno, on
               <span className="w-10 shrink-0 tabular-nums text-neutral-500">{r.entryNo}</span>
               <span className="min-w-0 grow truncate">{t(ART[r.kind])}</span>
               <span className="shrink-0 tabular-nums text-neutral-500">{r.taxRateBp / 100} %</span>
-              <span className="w-24 shrink-0 text-right tabular-nums">{formatMoney(r.amountCent, locale)}</span>
+              <span className="w-24 shrink-0 text-end tabular-nums">{formatMoney(r.amountCent, locale)}</span>
             </li>
           ))}
           {b.bestandCent !== null && (

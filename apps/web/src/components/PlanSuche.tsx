@@ -218,7 +218,7 @@ export function PlanSuche({ propertyId, von, bis, onVon, onOeffnen }: {
              data-plansuche
              className="w-56 border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       {zeigen && (
-        <div className="absolute left-0 top-full mt-1 z-40 w-md max-w-[90vw]
+        <div className="absolute start-0 top-full mt-1 z-40 w-md max-w-[90vw]
                         bg-white border border-neutral-200 rounded-sm shadow-lg">
           {q.isError && (
             <div className="px-3 py-2 text-xs text-red-800">{t('error.title')}</div>

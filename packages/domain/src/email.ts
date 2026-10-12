@@ -1,4 +1,4 @@
-import type { EmailLanguage } from '@hotelpms/contracts'
+import { schreibrichtung, type EmailLanguage } from '@hotelpms/contracts'
 import { formatCent } from './money.js'
 
 /**
@@ -229,13 +229,20 @@ function esc(v: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** Aus Zeilen einen HTML-Rumpf machen. Keine Vorlagensprache, keine Bilder. */
-function htmlBody(lines: string[]): string {
+/**
+ * Aus Zeilen einen HTML-Rumpf machen. Keine Vorlagensprache, keine Bilder.
+ *
+ * `dir="rtl"` fuer Arabisch: ohne die Angabe setzt ein Mailprogramm den
+ * Satz linksbuendig und stellt Satzzeichen ans falsche Ende. `lang` daneben,
+ * damit ein Vorleseprogramm die Sprache nicht raten muss.
+ */
+function htmlBody(lines: string[], lang: EmailLanguage = 'de'): string {
   const absaetze = lines.map(l => l === ''
     ? ''
     : `<p style="margin:0 0 12px 0">${esc(l).replace(/\n/g, '<br>')}</p>`)
     .filter(Boolean).join('\n')
-  return '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;'
+  return `<div lang="${lang}" dir="${schreibrichtung(lang)}" `
+    + 'style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;'
     + `font-size:15px;line-height:1.5;color:#111">\n${absaetze}\n</div>`
 }
 
@@ -885,6 +892,671 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     checkinFreiwillig: 'Звісно, Ви можете заповнити реєстраційний бланк і на місці в день заїзду.',
     checkinWeitergabe: 'Будь ласка, не передавайте це посилання іншим: хто його має, може вносити дані про Ваше перебування.',
     checkinTest: 'ТЕСТОВИЙ ЛИСТ — так виглядає запрошення на онлайн-check-in для Ваших гостей. Ім’я, бронювання та дати — приклади; посилання не веде до справжнього реєстраційного бланка.'
+  },
+
+  zh: {
+    anredeMitName: '{name}，您好：',
+    anredeOhneName: '尊敬的宾客，您好：',
+    rechnungBetreff: '发票 {nummer} — {haus}',
+    rechnungAnhang: '随信附上 {haus} 为您开具的发票 {nummer}（PDF），总金额 {betrag}。',
+    rechnungOffenMitFrist: '其中尚有 {offen} 未付，请于 {frist} 前支付。',
+    rechnungOffenOhneFrist: '其中尚有 {offen} 未付。',
+    rechnungBeglichen: '此发票已全额结清。本副本供您存档。',
+    rechnungDank: '感谢您的光临——期待再次欢迎您。',
+    buchungBetreff: '预订确认 {ref} — {haus}',
+    buchungBestaetigt: '我们已确认您在 {haus} 的预订。',
+    buchungNummer: '预订编号：{ref}',
+    buchungAnreise: '入住：{datum}，{zeit} 起',
+    buchungAbreise: '退房：{datum}，{zeit} 前',
+    buchungZimmer: '房间：{zimmer}',
+    buchungGesamt: '总金额：{betrag}',
+    buchungHinweis: '如有疑问，请提供预订编号。如需更改，您可以直接回复此邮件。',
+    zahlungBetreff: '您的住宿付款 {ref} — {haus}',
+    zahlungAnzahlungMitFrist: '关于您 {anreise} 至 {abreise} 的住宿，敬请于 {frist} 前支付预付款 {betrag}。',
+    zahlungAnzahlungOhneFrist: '关于您 {anreise} 至 {abreise} 的住宿，敬请支付预付款 {betrag}。',
+    zahlungAllgemein: '关于您 {anreise} 至 {abreise} 的住宿，敬请支付 {betrag}。',
+    zahlungLink: '您可以通过以下链接，在酒店的支付服务商处安全付款：',
+    zahlungKarte: '您只需在那里输入银行卡信息；酒店不会获得这些信息。',
+    zahlungGueltig: '此链接有效期至 {gueltig}（含当日）。如已过期，我们很乐意为您发送新链接。',
+    zahlungHinweis: '如有任何疑问，请直接回复此邮件并注明预订编号 {ref}。',
+    checkinAnredeMitName: '{name}，您好：',
+    checkinAnredeOhneName: '您好：',
+    checkinBetreff: '您的住宿在线入住 — {haus}',
+    checkinEinladung: '我们期待于 {anreise} 在 {haus} 迎接您。为使您到店时更加快捷，您现在即可填写入住登记表（Meldeschein）：',
+    checkinFrist: '此链接有效期至 {bis}，且仅适用于您的预订 {ref}。',
+    checkinFreiwillig: '当然，您也可以在到店当天于现场填写入住登记表。',
+    checkinWeitergabe: '请勿转发此链接：任何持有此链接的人都可以填写有关您住宿的信息。',
+    checkinTest: '测试邮件——这是您的宾客看到的在线入住邀请。姓名、预订和日期均为示例；此链接不会指向真实的入住登记表。'
+  },
+
+  ko: {
+    anredeMitName: '{name} 님께,',
+    anredeOhneName: '안녕하세요,',
+    rechnungBetreff: '청구서 {nummer} — {haus}',
+    rechnungAnhang: '{haus}의 청구서 {nummer}을(를) PDF 파일로 첨부해 드립니다. 총액은 {betrag}입니다.',
+    rechnungOffenMitFrist: '이 중 미결제 금액은 {offen}이며, {frist}까지 납부해 주시기 바랍니다.',
+    rechnungOffenOhneFrist: '이 중 미결제 금액은 {offen}입니다.',
+    rechnungBeglichen: '청구서가 전액 결제되었습니다. 이 사본은 보관용입니다.',
+    rechnungDank: '숙박해 주셔서 진심으로 감사드립니다. 다시 모실 수 있기를 바랍니다.',
+    buchungBetreff: '예약 확인 {ref} — {haus}',
+    buchungBestaetigt: '{haus} 예약이 확정되었음을 알려 드립니다.',
+    buchungNummer: '예약 번호: {ref}',
+    buchungAnreise: '체크인: {datum} {zeit}부터',
+    buchungAbreise: '체크아웃: {datum} {zeit}까지',
+    buchungZimmer: '객실: {zimmer}',
+    buchungGesamt: '총액: {betrag}',
+    buchungHinweis: '문의하실 때는 예약 번호를 알려 주세요. 변경 사항이 있으시면 이 이메일에 회신해 주시면 됩니다.',
+    zahlungBetreff: '숙박 {ref} 결제 안내 — {haus}',
+    zahlungAnzahlungMitFrist: '{anreise}부터 {abreise}까지의 숙박에 대해 {frist}까지 선금 {betrag}을(를) 결제해 주시기 바랍니다.',
+    zahlungAnzahlungOhneFrist: '{anreise}부터 {abreise}까지의 숙박에 대해 선금 {betrag}을(를) 결제해 주시기 바랍니다.',
+    zahlungAllgemein: '{anreise}부터 {abreise}까지의 숙박에 대해 {betrag}을(를) 결제해 주시기 바랍니다.',
+    zahlungLink: '아래 링크를 통해 호텔의 결제 대행사에서 안전하게 결제하실 수 있습니다:',
+    zahlungKarte: '카드 정보는 그곳에서만 입력하시며, 호텔은 카드 정보를 받지 않습니다.',
+    zahlungGueltig: '이 링크는 {gueltig}까지(당일 포함) 유효합니다. 만료된 경우 새 링크를 보내 드리겠습니다.',
+    zahlungHinweis: '궁금하신 점이 있으시면 예약 번호 {ref}와 함께 이 이메일에 회신해 주세요.',
+    checkinAnredeMitName: '안녕하세요, {name} 님,',
+    checkinAnredeOhneName: '안녕하세요,',
+    checkinBetreff: '숙박 온라인 체크인 안내 — {haus}',
+    checkinEinladung: '{anreise}에 {haus}에서 고객님을 맞이하기를 기다리고 있습니다. 도착 시 더 빠르게 진행되도록 지금 숙박 신고서(Meldeschein)를 미리 작성하실 수 있습니다:',
+    checkinFrist: '이 링크는 {bis}까지 유효하며 예약 {ref}에만 사용하실 수 있습니다.',
+    checkinFreiwillig: '물론 도착 당일 현장에서 숙박 신고서를 작성하셔도 됩니다.',
+    checkinWeitergabe: '이 링크를 다른 사람에게 전달하지 마세요. 링크를 가진 사람은 누구나 고객님의 숙박 정보를 입력할 수 있습니다.',
+    checkinTest: '테스트 메일 — 고객에게 보내는 온라인 체크인 안내는 이렇게 보입니다. 이름, 예약, 날짜는 예시이며 링크는 실제 숙박 신고서로 연결되지 않습니다.'
+  },
+
+  ar: {
+    anredeMitName: 'السيد/السيدة {name}،',
+    anredeOhneName: 'ضيفنا العزيز،',
+    rechnungBetreff: 'الفاتورة {nummer} — {haus}',
+    rechnungAnhang: 'نرفق لكم فاتورتكم {nummer} من {haus} بصيغة PDF، بإجمالي {betrag}.',
+    rechnungOffenMitFrist: 'المبلغ المتبقي منها {offen}، ويستحق الدفع حتى {frist}.',
+    rechnungOffenOhneFrist: 'المبلغ المتبقي منها {offen}.',
+    rechnungBeglichen: 'سُدّدت الفاتورة بالكامل. هذه النسخة لسجلاتكم.',
+    rechnungDank: 'شكرًا جزيلًا على إقامتكم — يسعدنا أن نرحّب بكم مجددًا.',
+    buchungBetreff: 'تأكيد الحجز {ref} — {haus}',
+    buchungBestaetigt: 'يسعدنا تأكيد حجزكم في {haus}.',
+    buchungNummer: 'رقم الحجز: {ref}',
+    buchungAnreise: 'الوصول: {datum} من الساعة {zeit}',
+    buchungAbreise: 'المغادرة: {datum} حتى الساعة {zeit}',
+    buchungZimmer: 'الغرفة: {zimmer}',
+    buchungGesamt: 'المبلغ الإجمالي: {betrag}',
+    buchungHinweis: 'يرجى ذكر رقم الحجز عند أي استفسار. يمكنكم الرد على هذه الرسالة إذا رغبتم في تغيير أي شيء.',
+    zahlungBetreff: 'الدفع لإقامتكم {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'نرجو منكم، لإقامتكم من {anreise} إلى {abreise}، دفع دفعة مقدمة قدرها {betrag} حتى {frist}.',
+    zahlungAnzahlungOhneFrist: 'نرجو منكم، لإقامتكم من {anreise} إلى {abreise}، دفع دفعة مقدمة قدرها {betrag}.',
+    zahlungAllgemein: 'نرجو منكم، لإقامتكم من {anreise} إلى {abreise}، دفع مبلغ {betrag}.',
+    zahlungLink: 'عبر الرابط التالي يمكنكم الدفع بأمان لدى مزوّد خدمة الدفع الخاص بالمنشأة:',
+    zahlungKarte: 'تُدخلون بيانات بطاقتكم هناك فقط؛ ولا تحصل عليها المنشأة.',
+    zahlungGueltig: 'الرابط صالح حتى {gueltig} شاملًا. وإذا انتهت صلاحيته، يسعدنا أن نرسل لكم رابطًا جديدًا.',
+    zahlungHinweis: 'إذا كانت لديكم أي أسئلة، فما عليكم إلا الرد على هذه الرسالة مع ذكر رقم الحجز {ref}.',
+    checkinAnredeMitName: 'مرحبًا {name}،',
+    checkinAnredeOhneName: 'مرحبًا،',
+    checkinBetreff: 'تسجيل الوصول عبر الإنترنت لإقامتكم — {haus}',
+    checkinEinladung: 'نتطلع إلى استقبالكم في {haus} يوم {anreise}. ولتسريع إجراءات وصولكم، يمكنكم ملء استمارة التسجيل (Meldeschein) من الآن:',
+    checkinFrist: 'الرابط صالح حتى {bis} ولحجزكم {ref} فقط.',
+    checkinFreiwillig: 'ويمكنكم بالطبع أيضًا ملء استمارة التسجيل في المكان يوم الوصول.',
+    checkinWeitergabe: 'يرجى عدم مشاركة الرابط: فمن يملكه يستطيع إدخال بيانات عن إقامتكم.',
+    checkinTest: 'رسالة تجريبية — هكذا تبدو دعوة تسجيل الوصول عبر الإنترنت لنزلائكم. الاسم والحجز والتواريخ أمثلة؛ والرابط لا يقود إلى استمارة تسجيل حقيقية.'
+  },
+
+  pt: {
+    anredeMitName: 'Caro(a) {name},',
+    anredeOhneName: 'Caro(a) hóspede,',
+    rechnungBetreff: 'Fatura {nummer} — {haus}',
+    rechnungAnhang: 'em anexo encontra a sua fatura {nummer} de {haus} em PDF, no valor total de {betrag}.',
+    rechnungOffenMitFrist: 'Encontra-se em aberto o montante de {offen}, a pagar até {frist}.',
+    rechnungOffenOhneFrist: 'Encontra-se em aberto o montante de {offen}.',
+    rechnungBeglichen: 'A fatura está integralmente paga. Este exemplar destina-se aos seus registos.',
+    rechnungDank: 'Muito obrigado pela sua estadia — teremos todo o gosto em recebê-lo(a) novamente.',
+    buchungBetreff: 'Confirmação de reserva {ref} — {haus}',
+    buchungBestaetigt: 'confirmámos a sua reserva em {haus}.',
+    buchungNummer: 'Número da reserva: {ref}',
+    buchungAnreise: 'Chegada: {datum} a partir das {zeit}',
+    buchungAbreise: 'Partida: {datum} até às {zeit}',
+    buchungZimmer: 'Quarto: {zimmer}',
+    buchungGesamt: 'Montante total: {betrag}',
+    buchungHinweis: 'Por favor, indique o número da reserva em caso de dúvidas. Pode responder a este e-mail se pretender alterar algo.',
+    zahlungBetreff: 'Pagamento da sua estadia {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'para a sua estadia de {anreise} a {abreise}, solicitamos um adiantamento de {betrag} até {frist}.',
+    zahlungAnzahlungOhneFrist: 'para a sua estadia de {anreise} a {abreise}, solicitamos um adiantamento de {betrag}.',
+    zahlungAllgemein: 'para a sua estadia de {anreise} a {abreise}, solicitamos um pagamento de {betrag}.',
+    zahlungLink: 'Através do seguinte link pode pagar em segurança junto do prestador de serviços de pagamento do hotel:',
+    zahlungKarte: 'Os dados do seu cartão são introduzidos apenas aí; o hotel nunca os recebe.',
+    zahlungGueltig: 'O link é válido até {gueltig}, inclusive. Se tiver expirado, teremos todo o gosto em enviar-lhe um novo.',
+    zahlungHinweis: 'Em caso de dúvidas, responda simplesmente a este e-mail e indique o número da reserva {ref}.',
+    checkinAnredeMitName: 'Olá, {name},',
+    checkinAnredeOhneName: 'Olá,',
+    checkinBetreff: 'Check-in online para a sua estadia — {haus}',
+    checkinEinladung: 'a {anreise} esperamos por si no nosso {haus}. Para que a chegada seja mais rápida, pode preencher já o Meldeschein (boletim de alojamento):',
+    checkinFrist: 'O link é válido até {bis} e apenas para a sua reserva {ref}.',
+    checkinFreiwillig: 'Naturalmente, também pode preencher o boletim de alojamento no local, no dia de chegada.',
+    checkinWeitergabe: 'Por favor, não partilhe o link: quem o tiver pode introduzir dados sobre a sua estadia.',
+    checkinTest: 'E-MAIL DE TESTE — é assim que os seus hóspedes veem o convite para o check-in online. Nome, reserva e datas são exemplos; o link não leva a nenhum boletim de alojamento real.'
+  },
+
+  fi: {
+    anredeMitName: 'Hyvä {name},',
+    anredeOhneName: 'Hyvä asiakkaamme,',
+    rechnungBetreff: 'Lasku {nummer} — {haus}',
+    rechnungAnhang: 'Liitteenä on laskunne {nummer} majoituspaikasta {haus} PDF-muodossa, yhteensä {betrag}.',
+    rechnungOffenMitFrist: 'Siitä on avoinna {offen}, maksettava viimeistään {frist}.',
+    rechnungOffenOhneFrist: 'Siitä on avoinna {offen}.',
+    rechnungBeglichen: 'Lasku on maksettu kokonaan. Tämä kappale on arkistoanne varten.',
+    rechnungDank: 'Kiitos oleskelustanne — toivotamme teidät mielellämme uudelleen tervetulleeksi.',
+    buchungBetreff: 'Varausvahvistus {ref} — {haus}',
+    buchungBestaetigt: 'olemme vahvistaneet varauksenne majoituspaikkaan {haus}.',
+    buchungNummer: 'Varausnumero: {ref}',
+    buchungAnreise: 'Saapuminen: {datum} klo {zeit} alkaen',
+    buchungAbreise: 'Lähtö: {datum} viimeistään klo {zeit}',
+    buchungZimmer: 'Huone: {zimmer}',
+    buchungGesamt: 'Kokonaissumma: {betrag}',
+    buchungHinweis: 'Mainitsettehan varausnumeron yhteydenotoissanne. Voitte vastata tähän sähköpostiin, jos jotain on muutettava.',
+    zahlungBetreff: 'Maksu oleskelustanne {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'pyydämme oleskelustanne {anreise}–{abreise} ennakkomaksua {betrag} viimeistään {frist}.',
+    zahlungAnzahlungOhneFrist: 'pyydämme oleskelustanne {anreise}–{abreise} ennakkomaksua {betrag}.',
+    zahlungAllgemein: 'pyydämme oleskelustanne {anreise}–{abreise} maksua {betrag}.',
+    zahlungLink: 'Seuraavan linkin kautta maksatte turvallisesti majoituspaikan maksupalveluntarjoajalle:',
+    zahlungKarte: 'Syötätte korttitietonne vain siellä; majoituspaikka ei saa niitä.',
+    zahlungGueltig: 'Linkki on voimassa {gueltig} asti (mukaan lukien). Jos se on vanhentunut, lähetämme mielellämme uuden.',
+    zahlungHinweis: 'Jos teillä on kysyttävää, vastatkaa tähän sähköpostiin ja mainitkaa varausnumero {ref}.',
+    checkinAnredeMitName: 'Hei {name},',
+    checkinAnredeOhneName: 'Hei,',
+    checkinBetreff: 'Verkkosisäänkirjautuminen oleskeluanne varten — {haus}',
+    checkinEinladung: 'odotamme teitä majoituspaikkaamme {haus} {anreise}. Saapumisen nopeuttamiseksi voitte täyttää majoittujailmoituksen (Meldeschein) jo nyt:',
+    checkinFrist: 'Linkki on voimassa {bis} asti ja vain varauksellenne {ref}.',
+    checkinFreiwillig: 'Voitte toki täyttää majoittujailmoituksen myös paikan päällä saapumispäivänä.',
+    checkinWeitergabe: 'Älkää välittäkö linkkiä eteenpäin: sen haltija voi antaa tietoja oleskelustanne.',
+    checkinTest: 'TESTIVIESTI — tältä verkkosisäänkirjautumisen kutsu näyttää asiakkaillenne. Nimi, varaus ja päivämäärät ovat esimerkkejä; linkki ei johda oikeaan majoittujailmoitukseen.'
+  },
+
+  is: {
+    anredeMitName: 'Góðan dag {name},',
+    anredeOhneName: 'Góðan dag,',
+    rechnungBetreff: 'Reikningur {nummer} — {haus}',
+    rechnungAnhang: 'meðfylgjandi er reikningur þinn {nummer} frá {haus} sem PDF, samtals {betrag}.',
+    rechnungOffenMitFrist: 'Ógreitt er {offen}, greiðist í síðasta lagi {frist}.',
+    rechnungOffenOhneFrist: 'Ógreitt er {offen}.',
+    rechnungBeglichen: 'Reikningurinn er að fullu greiddur. Þetta eintak er fyrir þín gögn.',
+    rechnungDank: 'Kærar þakkir fyrir dvölina — við myndum gleðjast yfir að taka á móti þér aftur.',
+    buchungBetreff: 'Bókunarstaðfesting {ref} — {haus}',
+    buchungBestaetigt: 'við höfum staðfest bókun þína hjá {haus}.',
+    buchungNummer: 'Bókunarnúmer: {ref}',
+    buchungAnreise: 'Koma: {datum} frá kl. {zeit}',
+    buchungAbreise: 'Brottför: {datum} fyrir kl. {zeit}',
+    buchungZimmer: 'Herbergi: {zimmer}',
+    buchungGesamt: 'Heildarupphæð: {betrag}',
+    buchungHinweis: 'Vinsamlegast tilgreindu bókunarnúmerið í öllum fyrirspurnum. Þú getur svarað þessum tölvupósti ef eitthvað á að breytast.',
+    zahlungBetreff: 'Greiðsla fyrir dvöl þína {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'fyrir dvöl þína frá {anreise} til {abreise} biðjum við vinsamlegast um innborgun að upphæð {betrag} fyrir {frist}.',
+    zahlungAnzahlungOhneFrist: 'fyrir dvöl þína frá {anreise} til {abreise} biðjum við vinsamlegast um innborgun að upphæð {betrag}.',
+    zahlungAllgemein: 'fyrir dvöl þína frá {anreise} til {abreise} biðjum við vinsamlegast um greiðslu að upphæð {betrag}.',
+    zahlungLink: 'Með eftirfarandi tengli greiðir þú á öruggan hátt hjá greiðsluþjónustu hótelsins:',
+    zahlungKarte: 'Kortaupplýsingarnar slærðu aðeins inn þar; hótelið fær þær aldrei.',
+    zahlungGueltig: 'Tengillinn gildir til og með {gueltig}. Ef hann er útrunninn sendum við þér gjarnan nýjan.',
+    zahlungHinweis: 'Ef þú hefur spurningar skaltu einfaldlega svara þessum tölvupósti og tilgreina bókunarnúmerið {ref}.',
+    checkinAnredeMitName: 'Halló {name},',
+    checkinAnredeOhneName: 'Halló,',
+    checkinBetreff: 'Netinnritun fyrir dvöl þína — {haus}',
+    checkinEinladung: 'við hlökkum til að taka á móti þér hjá {haus} {anreise}. Til að flýta fyrir við komuna geturðu fyllt út skráningareyðublaðið (Meldeschein) strax núna:',
+    checkinFrist: 'Tengillinn gildir til {bis} og aðeins fyrir bókun þína {ref}.',
+    checkinFreiwillig: 'Þú getur að sjálfsögðu líka fyllt út skráningareyðublaðið á staðnum á komudegi.',
+    checkinWeitergabe: 'Vinsamlegast láttu tengilinn ekki ganga áfram: hver sem hefur hann getur slegið inn upplýsingar um dvöl þína.',
+    checkinTest: 'PRÓFUNARPÓSTUR — svona lítur boð um netinnritun út fyrir gestina ykkar. Nafn, bókun og dagsetningar eru dæmi; tengillinn leiðir ekki á raunverulegt skráningareyðublað.'
+  },
+
+  sk: {
+    anredeMitName: 'Dobrý deň, {name},',
+    anredeOhneName: 'Dobrý deň,',
+    rechnungBetreff: 'Faktúra {nummer} — {haus}',
+    rechnungAnhang: 'v prílohe Vám posielame Vašu faktúru {nummer} od {haus} vo formáte PDF na celkovú sumu {betrag}.',
+    rechnungOffenMitFrist: 'Z toho zostáva neuhradených {offen}, splatných do {frist}.',
+    rechnungOffenOhneFrist: 'Z toho zostáva neuhradených {offen}.',
+    rechnungBeglichen: 'Faktúra je úplne uhradená. Tento exemplár je pre Vaše záznamy.',
+    rechnungDank: 'Ďakujeme za Váš pobyt — radi Vás opäť privítame.',
+    buchungBetreff: 'Potvrdenie rezervácie {ref} — {haus}',
+    buchungBestaetigt: 'potvrdili sme Vašu rezerváciu v {haus}.',
+    buchungNummer: 'Číslo rezervácie: {ref}',
+    buchungAnreise: 'Príchod: {datum} od {zeit}',
+    buchungAbreise: 'Odchod: {datum} do {zeit}',
+    buchungZimmer: 'Izba: {zimmer}',
+    buchungGesamt: 'Celková suma: {betrag}',
+    buchungHinweis: 'Pri otázkach, prosím, uveďte číslo rezervácie. Ak by sa malo niečo zmeniť, môžete odpovedať na tento e-mail.',
+    zahlungBetreff: 'Platba za Váš pobyt {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'za Váš pobyt od {anreise} do {abreise} Vás prosíme o zálohu vo výške {betrag} do {frist}.',
+    zahlungAnzahlungOhneFrist: 'za Váš pobyt od {anreise} do {abreise} Vás prosíme o zálohu vo výške {betrag}.',
+    zahlungAllgemein: 'za Váš pobyt od {anreise} do {abreise} Vás prosíme o platbu vo výške {betrag}.',
+    zahlungLink: 'Prostredníctvom nasledujúceho odkazu zaplatíte bezpečne u poskytovateľa platobných služieb hotela:',
+    zahlungKarte: 'Údaje o svojej karte zadávate len tam; hotel ich nedostane.',
+    zahlungGueltig: 'Odkaz platí do {gueltig} vrátane. Ak vyprší, radi Vám pošleme nový.',
+    zahlungHinweis: 'Ak máte otázky, jednoducho odpovedzte na tento e-mail a uveďte číslo rezervácie {ref}.',
+    checkinAnredeMitName: 'Dobrý deň, {name},',
+    checkinAnredeOhneName: 'Dobrý deň,',
+    checkinBetreff: 'Online check-in pre Váš pobyt — {haus}',
+    checkinEinladung: 'dňa {anreise} Vás očakávame v našom hoteli {haus}. Aby bol Váš príchod rýchlejší, môžete registračný formulár (Meldeschein) vyplniť už teraz:',
+    checkinFrist: 'Odkaz platí do {bis} a len pre Vašu rezerváciu {ref}.',
+    checkinFreiwillig: 'Registračný formulár môžete samozrejme vyplniť aj na mieste v deň príchodu.',
+    checkinWeitergabe: 'Odkaz, prosím, nikomu neposielajte: kto ho má, môže zadávať údaje o Vašom pobyte.',
+    checkinTest: 'TESTOVACÍ E-MAIL — takto vyzerá pozvánka na online check-in pre Vašich hostí. Meno, rezervácia a dátumy sú príklady; odkaz nevedie k skutočnému registračnému formuláru.'
+  },
+
+  sl: {
+    anredeMitName: 'Dober dan, {name},',
+    anredeOhneName: 'Dober dan,',
+    rechnungBetreff: 'Račun {nummer} — {haus}',
+    rechnungAnhang: 'v prilogi vam pošiljamo račun {nummer} hotela {haus} v obliki PDF, v skupnem znesku {betrag}.',
+    rechnungOffenMitFrist: 'Od tega je odprtih še {offen}, plačljivo do {frist}.',
+    rechnungOffenOhneFrist: 'Od tega je odprtih še {offen}.',
+    rechnungBeglichen: 'Račun je v celoti poravnan. Ta izvod je za vašo evidenco.',
+    rechnungDank: 'Najlepša hvala za vaše bivanje — veseli bomo, če vas bomo lahko spet pozdravili.',
+    buchungBetreff: 'Potrditev rezervacije {ref} — {haus}',
+    buchungBestaetigt: 'potrdili smo vašo rezervacijo v hotelu {haus}.',
+    buchungNummer: 'Številka rezervacije: {ref}',
+    buchungAnreise: 'Prihod: {datum} od {zeit}',
+    buchungAbreise: 'Odhod: {datum} do {zeit}',
+    buchungZimmer: 'Soba: {zimmer}',
+    buchungGesamt: 'Skupni znesek: {betrag}',
+    buchungHinweis: 'Pri vprašanjih navedite številko rezervacije. Če želite kaj spremeniti, lahko odgovorite na to e-pošto.',
+    zahlungBetreff: 'Plačilo za vaše bivanje {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'za vaše bivanje od {anreise} do {abreise} vas prosimo za predplačilo v višini {betrag} do {frist}.',
+    zahlungAnzahlungOhneFrist: 'za vaše bivanje od {anreise} do {abreise} vas prosimo za predplačilo v višini {betrag}.',
+    zahlungAllgemein: 'za vaše bivanje od {anreise} do {abreise} vas prosimo za plačilo v višini {betrag}.',
+    zahlungLink: 'Prek naslednje povezave varno plačate pri ponudniku plačilnih storitev hotela:',
+    zahlungKarte: 'Podatke kartice vnesete le tam; hotel jih ne prejme.',
+    zahlungGueltig: 'Povezava velja do vključno {gueltig}. Če je potekla, vam bomo z veseljem poslali novo.',
+    zahlungHinweis: 'Če imate vprašanja, preprosto odgovorite na to e-pošto in navedite številko rezervacije {ref}.',
+    checkinAnredeMitName: 'Pozdravljeni, {name},',
+    checkinAnredeOhneName: 'Pozdravljeni,',
+    checkinBetreff: 'Spletni check-in za vaše bivanje — {haus}',
+    checkinEinladung: 'dne {anreise} vas pričakujemo v našem hotelu {haus}. Da bo prihod hitrejši, lahko prijavnico (Meldeschein) izpolnite že zdaj:',
+    checkinFrist: 'Povezava velja do {bis} in samo za vašo rezervacijo {ref}.',
+    checkinFreiwillig: 'Prijavnico lahko seveda izpolnite tudi na dan prihoda na kraju samem.',
+    checkinWeitergabe: 'Prosimo, povezave ne posredujte naprej: kdor jo ima, lahko vnaša podatke o vašem bivanju.',
+    checkinTest: 'TESTNO SPOROČILO — tako vabilo na spletni check-in vidijo vaši gostje. Ime, rezervacija in datumi so primeri; povezava ne vodi do prave prijavnice.'
+  },
+
+  hu: {
+    anredeMitName: 'Kedves {name}!',
+    anredeOhneName: 'Kedves Vendégünk!',
+    rechnungBetreff: 'Számla {nummer} — {haus}',
+    rechnungAnhang: 'Mellékelten küldjük a(z) {haus} {nummer} számú számláját PDF formátumban, összesen {betrag} értékben.',
+    rechnungOffenMitFrist: 'Ebből {offen} még nyitott, fizetendő {frist}-ig.',
+    rechnungOffenOhneFrist: 'Ebből {offen} még nyitott.',
+    rechnungBeglichen: 'A számla teljes egészében ki van egyenlítve. Ez a példány az Ön nyilvántartására szolgál.',
+    rechnungDank: 'Köszönjük, hogy nálunk szállt meg — örömmel látjuk újra vendégül.',
+    buchungBetreff: 'Foglalás visszaigazolása {ref} — {haus}',
+    buchungBestaetigt: 'Visszaigazoltuk foglalását a(z) {haus} szállodában.',
+    buchungNummer: 'Foglalási szám: {ref}',
+    buchungAnreise: 'Érkezés: {datum}, {zeit} órától',
+    buchungAbreise: 'Távozás: {datum}, {zeit} óráig',
+    buchungZimmer: 'Szoba: {zimmer}',
+    buchungGesamt: 'Teljes összeg: {betrag}',
+    buchungHinweis: 'Kérdés esetén kérjük, adja meg a foglalási számot. Ha valamit módosítani szeretne, válaszolhat erre az e-mailre.',
+    zahlungBetreff: 'Fizetés a(z) {ref} tartózkodásáért — {haus}',
+    zahlungAnzahlungMitFrist: '{anreise} és {abreise} közötti tartózkodásához kérjük, fizessen {betrag} előleget {frist}-ig.',
+    zahlungAnzahlungOhneFrist: '{anreise} és {abreise} közötti tartózkodásához kérjük, fizessen {betrag} előleget.',
+    zahlungAllgemein: '{anreise} és {abreise} közötti tartózkodásához kérjük, fizessen {betrag} összeget.',
+    zahlungLink: 'Az alábbi linken biztonságosan fizethet a szálloda fizetési szolgáltatójánál:',
+    zahlungKarte: 'Kártyaadatait csak ott adja meg; a szálloda nem kapja meg őket.',
+    zahlungGueltig: 'A link {gueltig} napjával bezárólag érvényes. Ha lejárt, szívesen küldünk újat.',
+    zahlungHinweis: 'Kérdés esetén egyszerűen válaszoljon erre az e-mailre, és adja meg a(z) {ref} foglalási számot.',
+    checkinAnredeMitName: 'Kedves {name}!',
+    checkinAnredeOhneName: 'Üdvözöljük!',
+    checkinBetreff: 'Online check-in a tartózkodásához — {haus}',
+    checkinEinladung: '{anreise} napján várjuk Önt a(z) {haus} szállodában. Hogy az érkezés gyorsabb legyen, a bejelentőlapot (Meldeschein) már most kitöltheti:',
+    checkinFrist: 'A link {bis}-ig érvényes, és csak a(z) {ref} foglalására.',
+    checkinFreiwillig: 'Természetesen a bejelentőlapot az érkezés napján a helyszínen is kitöltheti.',
+    checkinWeitergabe: 'Kérjük, ne adja tovább a linket: akinél megvan, adatokat adhat meg a tartózkodásáról.',
+    checkinTest: 'TESZTÜZENET — így látják vendégei az online check-in meghívót. A név, a foglalás és az adatok csak példák; a link nem vezet valódi bejelentőlaphoz.'
+  },
+
+  ro: {
+    anredeMitName: 'Bună ziua, {name},',
+    anredeOhneName: 'Bună ziua,',
+    rechnungBetreff: 'Factura {nummer} — {haus}',
+    rechnungAnhang: 'vă trimitem atașat factura dumneavoastră {nummer} de la {haus} în format PDF, în valoare totală de {betrag}.',
+    rechnungOffenMitFrist: 'Din aceasta rămâne de plată {offen}, scadent până la {frist}.',
+    rechnungOffenOhneFrist: 'Din aceasta rămâne de plată {offen}.',
+    rechnungBeglichen: 'Factura a fost achitată integral. Acest exemplar este pentru evidența dumneavoastră.',
+    rechnungDank: 'Vă mulțumim pentru sejur — ne-ar face plăcere să vă primim din nou.',
+    buchungBetreff: 'Confirmarea rezervării {ref} — {haus}',
+    buchungBestaetigt: 'am confirmat rezervarea dumneavoastră la {haus}.',
+    buchungNummer: 'Număr de rezervare: {ref}',
+    buchungAnreise: 'Sosire: {datum} de la ora {zeit}',
+    buchungAbreise: 'Plecare: {datum} până la ora {zeit}',
+    buchungZimmer: 'Cameră: {zimmer}',
+    buchungGesamt: 'Suma totală: {betrag}',
+    buchungHinweis: 'Vă rugăm să menționați numărul de rezervare în orice corespondență. Puteți răspunde la acest e-mail dacă doriți să modificați ceva.',
+    zahlungBetreff: 'Plată pentru sejurul dumneavoastră {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'pentru sejurul dumneavoastră din {anreise} până în {abreise} vă rugăm să achitați un avans de {betrag} până la {frist}.',
+    zahlungAnzahlungOhneFrist: 'pentru sejurul dumneavoastră din {anreise} până în {abreise} vă rugăm să achitați un avans de {betrag}.',
+    zahlungAllgemein: 'pentru sejurul dumneavoastră din {anreise} până în {abreise} vă rugăm să efectuați o plată de {betrag}.',
+    zahlungLink: 'Prin linkul următor plătiți în siguranță la furnizorul de plăți al hotelului:',
+    zahlungKarte: 'Datele cardului le introduceți doar acolo; hotelul nu le primește.',
+    zahlungGueltig: 'Linkul este valabil până la {gueltig} inclusiv. Dacă a expirat, vă trimitem cu plăcere unul nou.',
+    zahlungHinweis: 'Pentru întrebări, răspundeți pur și simplu la acest e-mail și menționați numărul de rezervare {ref}.',
+    checkinAnredeMitName: 'Bună, {name},',
+    checkinAnredeOhneName: 'Bună,',
+    checkinBetreff: 'Check-in online pentru sejurul dumneavoastră — {haus}',
+    checkinEinladung: 'vă așteptăm pe {anreise} la {haus}. Pentru ca sosirea să fie mai rapidă, puteți completa deja acum fișa de înregistrare (Meldeschein):',
+    checkinFrist: 'Linkul este valabil până la {bis} și doar pentru rezervarea dumneavoastră {ref}.',
+    checkinFreiwillig: 'Desigur, puteți completa fișa de înregistrare și la fața locului, în ziua sosirii.',
+    checkinWeitergabe: 'Vă rugăm să nu transmiteți linkul mai departe: cine îl are poate introduce date despre sejurul dumneavoastră.',
+    checkinTest: 'E-MAIL DE TEST — așa arată invitația la check-in online pentru oaspeții dumneavoastră. Numele, rezervarea și datele sunt exemple; linkul nu duce la o fișă de înregistrare reală.'
+  },
+
+  bg: {
+    anredeMitName: 'Здравейте, {name},',
+    anredeOhneName: 'Здравейте,',
+    rechnungBetreff: 'Фактура {nummer} — {haus}',
+    rechnungAnhang: 'Приложено Ви изпращаме фактура {nummer} на {haus} във формат PDF на обща стойност {betrag}.',
+    rechnungOffenMitFrist: 'От тях остават за плащане {offen}, платими до {frist}.',
+    rechnungOffenOhneFrist: 'От тях остават за плащане {offen}.',
+    rechnungBeglichen: 'Фактурата е изцяло платена. Този екземпляр е за Вашия архив.',
+    rechnungDank: 'Благодарим Ви за престоя — ще се радваме да Ви посрещнем отново.',
+    buchungBetreff: 'Потвърждение на резервация {ref} — {haus}',
+    buchungBestaetigt: 'Потвърдихме Вашата резервация в {haus}.',
+    buchungNummer: 'Номер на резервация: {ref}',
+    buchungAnreise: 'Пристигане: {datum} от {zeit} ч.',
+    buchungAbreise: 'Заминаване: {datum} до {zeit} ч.',
+    buchungZimmer: 'Стая: {zimmer}',
+    buchungGesamt: 'Обща сума: {betrag}',
+    buchungHinweis: 'Моля, посочвайте номера на резервацията при запитвания. Можете да отговорите на този имейл, ако желаете промяна.',
+    zahlungBetreff: 'Плащане за Вашия престой {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'За Вашия престой от {anreise} до {abreise} Ви молим за авансово плащане от {betrag} до {frist}.',
+    zahlungAnzahlungOhneFrist: 'За Вашия престой от {anreise} до {abreise} Ви молим за авансово плащане от {betrag}.',
+    zahlungAllgemein: 'За Вашия престой от {anreise} до {abreise} Ви молим за плащане от {betrag}.',
+    zahlungLink: 'Чрез следния линк плащате сигурно при доставчика на платежни услуги на хотела:',
+    zahlungKarte: 'Данните от картата си въвеждате само там; хотелът не ги получава.',
+    zahlungGueltig: 'Линкът е валиден до {gueltig} включително. Ако е изтекъл, с удоволствие ще Ви изпратим нов.',
+    zahlungHinweis: 'При въпроси просто отговорете на този имейл и посочете номера на резервацията {ref}.',
+    checkinAnredeMitName: 'Здравейте, {name},',
+    checkinAnredeOhneName: 'Здравейте,',
+    checkinBetreff: 'Онлайн check-in за Вашия престой — {haus}',
+    checkinEinladung: 'На {anreise} Ви очакваме в нашия хотел {haus}. За да мине пристигането по-бързо, можете да попълните регистрационната карта (Meldeschein) още сега:',
+    checkinFrist: 'Линкът е валиден до {bis} и само за Вашата резервация {ref}.',
+    checkinFreiwillig: 'Разбира се, можете да попълните регистрационната карта и на място в деня на пристигане.',
+    checkinWeitergabe: 'Моля, не предавайте линка на други: който го има, може да въвежда данни за Вашия престой.',
+    checkinTest: 'ТЕСТОВ ИМЕЙЛ — така изглежда поканата за онлайн check-in за Вашите гости. Име, резервация и дати са примерни; линкът не води до реална регистрационна карта.'
+  },
+
+  hr: {
+    anredeMitName: 'Dobar dan, {name},',
+    anredeOhneName: 'Dobar dan,',
+    rechnungBetreff: 'Račun {nummer} — {haus}',
+    rechnungAnhang: 'u privitku Vam šaljemo Vaš račun {nummer} objekta {haus} u PDF-u, na ukupan iznos od {betrag}.',
+    rechnungOffenMitFrist: 'Od toga je otvoreno {offen}, plativo do {frist}.',
+    rechnungOffenOhneFrist: 'Od toga je otvoreno {offen}.',
+    rechnungBeglichen: 'Račun je u cijelosti podmiren. Ovaj primjerak je za Vašu evidenciju.',
+    rechnungDank: 'Hvala Vam na boravku — bit će nam drago ponovno Vas ugostiti.',
+    buchungBetreff: 'Potvrda rezervacije {ref} — {haus}',
+    buchungBestaetigt: 'potvrdili smo Vašu rezervaciju u objektu {haus}.',
+    buchungNummer: 'Broj rezervacije: {ref}',
+    buchungAnreise: 'Dolazak: {datum} od {zeit} sati',
+    buchungAbreise: 'Odlazak: {datum} do {zeit} sati',
+    buchungZimmer: 'Soba: {zimmer}',
+    buchungGesamt: 'Ukupni iznos: {betrag}',
+    buchungHinweis: 'Molimo navedite broj rezervacije pri upitima. Možete odgovoriti na ovu e-poruku ako nešto treba promijeniti.',
+    zahlungBetreff: 'Plaćanje za Vaš boravak {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'za Vaš boravak od {anreise} do {abreise} molimo Vas za predujam od {betrag} do {frist}.',
+    zahlungAnzahlungOhneFrist: 'za Vaš boravak od {anreise} do {abreise} molimo Vas za predujam od {betrag}.',
+    zahlungAllgemein: 'za Vaš boravak od {anreise} do {abreise} molimo Vas za uplatu od {betrag}.',
+    zahlungLink: 'Putem sljedeće poveznice sigurno plaćate kod pružatelja platnih usluga objekta:',
+    zahlungKarte: 'Podatke svoje kartice unosite samo ondje; objekt ih ne dobiva.',
+    zahlungGueltig: 'Poveznica vrijedi do uključivo {gueltig}. Ako je istekla, rado ćemo Vam poslati novu.',
+    zahlungHinweis: 'Za pitanja jednostavno odgovorite na ovu e-poruku i navedite broj rezervacije {ref}.',
+    checkinAnredeMitName: 'Pozdrav, {name},',
+    checkinAnredeOhneName: 'Pozdrav,',
+    checkinBetreff: 'Online check-in za Vaš boravak — {haus}',
+    checkinEinladung: '{anreise} očekujemo Vas u našem objektu {haus}. Kako bi dolazak bio brži, prijavnicu (Meldeschein) možete ispuniti već sada:',
+    checkinFrist: 'Poveznica vrijedi do {bis} i samo za Vašu rezervaciju {ref}.',
+    checkinFreiwillig: 'Prijavnicu, naravno, možete ispuniti i na licu mjesta na dan dolaska.',
+    checkinWeitergabe: 'Molimo ne prosljeđujte poveznicu: tko je ima, može unositi podatke o Vašem boravku.',
+    checkinTest: 'TESTNA PORUKA — ovako izgleda poziv na online check-in za Vaše goste. Ime, rezervacija i datumi su primjeri; poveznica ne vodi do stvarne prijavnice.'
+  },
+
+  sr: {
+    anredeMitName: 'Poštovani/a {name},',
+    anredeOhneName: 'Poštovani,',
+    rechnungBetreff: 'Račun {nummer} — {haus}',
+    rechnungAnhang: 'u prilogu Vam dostavljamo račun {nummer} objekta {haus} u PDF formatu, na ukupan iznos od {betrag}.',
+    rechnungOffenMitFrist: 'Od toga je otvoreno {offen}, plativo do {frist}.',
+    rechnungOffenOhneFrist: 'Od toga je otvoreno {offen}.',
+    rechnungBeglichen: 'Račun je u potpunosti izmiren. Ovaj primerak je za Vašu evidenciju.',
+    rechnungDank: 'Hvala Vam na boravku — bilo bi nam drago da Vas ponovo dočekamo.',
+    buchungBetreff: 'Potvrda rezervacije {ref} — {haus}',
+    buchungBestaetigt: 'potvrdili smo Vašu rezervaciju u objektu {haus}.',
+    buchungNummer: 'Broj rezervacije: {ref}',
+    buchungAnreise: 'Dolazak: {datum} od {zeit} h',
+    buchungAbreise: 'Odlazak: {datum} do {zeit} h',
+    buchungZimmer: 'Soba: {zimmer}',
+    buchungGesamt: 'Ukupan iznos: {betrag}',
+    buchungHinweis: 'Molimo navedite broj rezervacije u slučaju pitanja. Možete odgovoriti na ovu e-poruku ako nešto treba da se promeni.',
+    zahlungBetreff: 'Plaćanje za Vaš boravak {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'za Vaš boravak od {anreise} do {abreise} molimo Vas za avans od {betrag} do {frist}.',
+    zahlungAnzahlungOhneFrist: 'za Vaš boravak od {anreise} do {abreise} molimo Vas za avans od {betrag}.',
+    zahlungAllgemein: 'za Vaš boravak od {anreise} do {abreise} molimo Vas za uplatu od {betrag}.',
+    zahlungLink: 'Preko sledećeg linka bezbedno plaćate kod pružaoca platnih usluga objekta:',
+    zahlungKarte: 'Podatke o kartici unosite samo tamo; objekat ih ne dobija.',
+    zahlungGueltig: 'Link važi do uključno {gueltig}. Ako je istekao, rado ćemo Vam poslati novi.',
+    zahlungHinweis: 'Za pitanja jednostavno odgovorite na ovu e-poruku i navedite broj rezervacije {ref}.',
+    checkinAnredeMitName: 'Dobar dan, {name},',
+    checkinAnredeOhneName: 'Dobar dan,',
+    checkinBetreff: 'Online check-in za Vaš boravak — {haus}',
+    checkinEinladung: 'dana {anreise} očekujemo Vas u našem objektu {haus}. Da bi dolazak prošao brže, već sada možete popuniti prijavu boravka (Meldeschein):',
+    checkinFrist: 'Link važi do {bis} i samo za Vašu rezervaciju {ref}.',
+    checkinFreiwillig: 'Naravno, prijavu boravka možete popuniti i na licu mesta na dan dolaska.',
+    checkinWeitergabe: 'Molimo ne prosleđujte link: ko ga ima, može da unosi podatke o Vašem boravku.',
+    checkinTest: 'TEST PORUKA — ovako izgleda poziv za online check-in za Vaše goste. Ime, rezervacija i podaci su primeri; link ne vodi do prave prijave boravka.'
+  },
+
+  mk: {
+    anredeMitName: 'Почитувани {name},',
+    anredeOhneName: 'Почитувани,',
+    rechnungBetreff: 'Фактура {nummer} — {haus}',
+    rechnungAnhang: 'во прилог Ви ја доставуваме Вашата фактура {nummer} од {haus} како PDF, во вкупен износ од {betrag}.',
+    rechnungOffenMitFrist: 'Од тоа сè уште е отворено {offen}, платливо до {frist}.',
+    rechnungOffenOhneFrist: 'Од тоа сè уште е отворено {offen}.',
+    rechnungBeglichen: 'Фактурата е целосно платена. Овој примерок е за Вашата евиденција.',
+    rechnungDank: 'Ви благодариме за престојот — ќе ни биде задоволство повторно да Ве пречекаме.',
+    buchungBetreff: 'Потврда на резервација {ref} — {haus}',
+    buchungBestaetigt: 'ја потврдивме Вашата резервација во {haus}.',
+    buchungNummer: 'Број на резервација: {ref}',
+    buchungAnreise: 'Пристигнување: {datum} од {zeit} ч.',
+    buchungAbreise: 'Заминување: {datum} до {zeit} ч.',
+    buchungZimmer: 'Соба: {zimmer}',
+    buchungGesamt: 'Вкупен износ: {betrag}',
+    buchungHinweis: 'Ве молиме наведете го бројот на резервацијата при прашања. Можете да одговорите на оваа е-порака ако треба нешто да се смени.',
+    zahlungBetreff: 'Плаќање за Вашиот престој {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'за Вашиот престој од {anreise} до {abreise} Ве молиме за аванс од {betrag} до {frist}.',
+    zahlungAnzahlungOhneFrist: 'за Вашиот престој од {anreise} до {abreise} Ве молиме за аванс од {betrag}.',
+    zahlungAllgemein: 'за Вашиот престој од {anreise} до {abreise} Ве молиме за плаќање од {betrag}.',
+    zahlungLink: 'Преку следниот линк безбедно плаќате кај давателот на платежни услуги на објектот:',
+    zahlungKarte: 'Податоците за Вашата картичка ги внесувате само таму; објектот не ги добива.',
+    zahlungGueltig: 'Линкот важи до и вклучително {gueltig}. Ако истече, со задоволство ќе Ви испратиме нов.',
+    zahlungHinweis: 'Ако имате прашања, едноставно одговорете на оваа е-порака и наведете го бројот на резервацијата {ref}.',
+    checkinAnredeMitName: 'Добар ден {name},',
+    checkinAnredeOhneName: 'Добар ден,',
+    checkinBetreff: 'Онлајн check-in за Вашиот престој — {haus}',
+    checkinEinladung: 'на {anreise} Ве очекуваме во {haus}. За побрзо пристигнување, можете уште сега да го пополните пријавниот лист (Meldeschein):',
+    checkinFrist: 'Линкот важи до {bis} и само за Вашата резервација {ref}.',
+    checkinFreiwillig: 'Се разбира, пријавниот лист можете да го пополните и на лице место на денот на пристигнувањето.',
+    checkinWeitergabe: 'Ве молиме не го проследувајте линкот: кој го има, може да внесува податоци за Вашиот престој.',
+    checkinTest: 'ТЕСТ-ПОРАКА — вака изгледа поканата за онлајн check-in за Вашите гости. Името, резервацијата и датумите се примери; линкот не води до вистински пријавен лист.'
+  },
+
+  sq: {
+    anredeMitName: 'Përshëndetje {name},',
+    anredeOhneName: 'Përshëndetje,',
+    rechnungBetreff: 'Fatura {nummer} — {haus}',
+    rechnungAnhang: 'bashkëngjitur gjeni faturën tuaj {nummer} nga {haus} në format PDF, me një shumë totale prej {betrag}.',
+    rechnungOffenMitFrist: 'Prej saj mbeten të papaguara {offen}, për t\'u paguar deri më {frist}.',
+    rechnungOffenOhneFrist: 'Prej saj mbeten të papaguara {offen}.',
+    rechnungBeglichen: 'Fatura është shlyer plotësisht. Kjo kopje është për dokumentet tuaja.',
+    rechnungDank: 'Faleminderit për qëndrimin tuaj — do të ishim të lumtur t\'ju mirëpresim sërish.',
+    buchungBetreff: 'Konfirmimi i rezervimit {ref} — {haus}',
+    buchungBestaetigt: 'e kemi konfirmuar rezervimin tuaj në {haus}.',
+    buchungNummer: 'Numri i rezervimit: {ref}',
+    buchungAnreise: 'Mbërritja: {datum} nga ora {zeit}',
+    buchungAbreise: 'Largimi: {datum} deri në orën {zeit}',
+    buchungZimmer: 'Dhoma: {zimmer}',
+    buchungGesamt: 'Shuma totale: {betrag}',
+    buchungHinweis: 'Ju lutemi përmendni numrin e rezervimit në çdo pyetje. Mund t\'i përgjigjeni këtij e-maili nëse dëshironi të ndryshoni diçka.',
+    zahlungBetreff: 'Pagesa për qëndrimin tuaj {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'për qëndrimin tuaj nga {anreise} deri më {abreise} ju lutemi për një paradhënie prej {betrag} deri më {frist}.',
+    zahlungAnzahlungOhneFrist: 'për qëndrimin tuaj nga {anreise} deri më {abreise} ju lutemi për një paradhënie prej {betrag}.',
+    zahlungAllgemein: 'për qëndrimin tuaj nga {anreise} deri më {abreise} ju lutemi për një pagesë prej {betrag}.',
+    zahlungLink: 'Përmes lidhjes së mëposhtme paguani në mënyrë të sigurt te ofruesi i shërbimit të pagesave i hotelit:',
+    zahlungKarte: 'Të dhënat e kartës i futni vetëm atje; hoteli nuk i merr ato.',
+    zahlungGueltig: 'Lidhja është e vlefshme deri më {gueltig} përfshirë. Nëse ka skaduar, do t\'ju dërgojmë me kënaqësi një të re.',
+    zahlungHinweis: 'Për pyetje thjesht përgjigjuni këtij e-maili dhe përmendni numrin e rezervimit {ref}.',
+    checkinAnredeMitName: 'Përshëndetje {name},',
+    checkinAnredeOhneName: 'Përshëndetje,',
+    checkinBetreff: 'Check-in online për qëndrimin tuaj — {haus}',
+    checkinEinladung: 'më {anreise} ju presim në {haus}. Që mbërritja të shkojë më shpejt, mund ta plotësoni formularin e regjistrimit (Meldeschein) që tani:',
+    checkinFrist: 'Lidhja është e vlefshme deri më {bis} dhe vetëm për rezervimin tuaj {ref}.',
+    checkinFreiwillig: 'Sigurisht, formularin e regjistrimit mund ta plotësoni me kënaqësi edhe në vend, në ditën e mbërritjes.',
+    checkinWeitergabe: 'Ju lutemi mos ua jepni lidhjen të tjerëve: kush e ka, mund të japë të dhëna për qëndrimin tuaj.',
+    checkinTest: 'E-MAIL PROVË — kështu duket ftesa për check-in online për mysafirët tuaj. Emri, rezervimi dhe datat janë shembuj; lidhja nuk çon te asnjë formular i vërtetë regjistrimi.'
+  },
+
+  el: {
+    anredeMitName: 'Γεια σας {name},',
+    anredeOhneName: 'Αγαπητοί επισκέπτες,',
+    rechnungBetreff: 'Τιμολόγιο {nummer} — {haus}',
+    rechnungAnhang: 'Σας επισυνάπτουμε το τιμολόγιό σας {nummer} από το {haus} σε μορφή PDF, συνολικού ποσού {betrag}.',
+    rechnungOffenMitFrist: 'Από αυτό εκκρεμεί ποσό {offen}, πληρωτέο έως τις {frist}.',
+    rechnungOffenOhneFrist: 'Από αυτό εκκρεμεί ποσό {offen}.',
+    rechnungBeglichen: 'Το τιμολόγιο έχει εξοφληθεί πλήρως. Αυτό το αντίγραφο είναι για το αρχείο σας.',
+    rechnungDank: 'Σας ευχαριστούμε για τη διαμονή σας — θα χαρούμε να σας υποδεχθούμε ξανά.',
+    buchungBetreff: 'Επιβεβαίωση κράτησης {ref} — {haus}',
+    buchungBestaetigt: 'Επιβεβαιώσαμε την κράτησή σας στο {haus}.',
+    buchungNummer: 'Αριθμός κράτησης: {ref}',
+    buchungAnreise: 'Άφιξη: {datum} από τις {zeit}',
+    buchungAbreise: 'Αναχώρηση: {datum} έως τις {zeit}',
+    buchungZimmer: 'Δωμάτιο: {zimmer}',
+    buchungGesamt: 'Συνολικό ποσό: {betrag}',
+    buchungHinweis: 'Παρακαλούμε αναφέρετε τον αριθμό κράτησης σε κάθε επικοινωνία. Μπορείτε να απαντήσετε σε αυτό το email αν θέλετε να αλλάξει κάτι.',
+    zahlungBetreff: 'Πληρωμή για τη διαμονή σας {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'Για τη διαμονή σας από {anreise} έως {abreise} σας παρακαλούμε για προκαταβολή {betrag} έως τις {frist}.',
+    zahlungAnzahlungOhneFrist: 'Για τη διαμονή σας από {anreise} έως {abreise} σας παρακαλούμε για προκαταβολή {betrag}.',
+    zahlungAllgemein: 'Για τη διαμονή σας από {anreise} έως {abreise} σας παρακαλούμε για πληρωμή {betrag}.',
+    zahlungLink: 'Μέσω του παρακάτω συνδέσμου πληρώνετε με ασφάλεια στον πάροχο πληρωμών του καταλύματος:',
+    zahlungKarte: 'Τα στοιχεία της κάρτας σας τα εισάγετε μόνο εκεί· το κατάλυμα δεν τα λαμβάνει.',
+    zahlungGueltig: 'Ο σύνδεσμος ισχύει έως και {gueltig}. Αν έχει λήξει, θα σας στείλουμε ευχαρίστως νέο.',
+    zahlungHinweis: 'Για οποιαδήποτε ερώτηση απαντήστε απλώς σε αυτό το email αναφέροντας τον αριθμό κράτησης {ref}.',
+    checkinAnredeMitName: 'Γεια σας {name},',
+    checkinAnredeOhneName: 'Γεια σας,',
+    checkinBetreff: 'Online check-in για τη διαμονή σας — {haus}',
+    checkinEinladung: 'Στις {anreise} σας περιμένουμε στο {haus}. Για να γίνει πιο γρήγορα η άφιξή σας, μπορείτε να συμπληρώσετε ήδη από τώρα το δελτίο εγγραφής (Meldeschein):',
+    checkinFrist: 'Ο σύνδεσμος ισχύει έως τις {bis} και μόνο για την κράτησή σας {ref}.',
+    checkinFreiwillig: 'Φυσικά μπορείτε επίσης να συμπληρώσετε το δελτίο εγγραφής επί τόπου την ημέρα της άφιξης.',
+    checkinWeitergabe: 'Παρακαλούμε μην προωθήσετε τον σύνδεσμο: όποιος τον έχει μπορεί να καταχωρίσει στοιχεία για τη διαμονή σας.',
+    checkinTest: 'ΔΟΚΙΜΑΣΤΙΚΟ EMAIL — έτσι βλέπουν οι επισκέπτες σας την πρόσκληση για online check-in. Όνομα, κράτηση και ημερομηνίες είναι παραδείγματα· ο σύνδεσμος δεν οδηγεί σε πραγματικό δελτίο εγγραφής.'
+  },
+
+  lt: {
+    anredeMitName: 'Laba diena, {name},',
+    anredeOhneName: 'Laba diena,',
+    rechnungBetreff: 'Sąskaita {nummer} — {haus}',
+    rechnungAnhang: 'Prisegame Jūsų sąskaitą {nummer} iš {haus} PDF formatu, bendra suma {betrag}.',
+    rechnungOffenMitFrist: 'Dar neapmokėta {offen}, mokėtina iki {frist}.',
+    rechnungOffenOhneFrist: 'Dar neapmokėta {offen}.',
+    rechnungBeglichen: 'Sąskaita visiškai apmokėta. Šis egzempliorius skirtas Jūsų dokumentams.',
+    rechnungDank: 'Dėkojame, kad apsistojote pas mus — būtume laimingi vėl Jus pasveikinti.',
+    buchungBetreff: 'Rezervacijos patvirtinimas {ref} — {haus}',
+    buchungBestaetigt: 'Patvirtinome Jūsų rezervaciją {haus}.',
+    buchungNummer: 'Rezervacijos numeris: {ref}',
+    buchungAnreise: 'Atvykimas: {datum} nuo {zeit}',
+    buchungAbreise: 'Išvykimas: {datum} iki {zeit}',
+    buchungZimmer: 'Kambarys: {zimmer}',
+    buchungGesamt: 'Bendra suma: {betrag}',
+    buchungHinweis: 'Kreipdamiesi nurodykite rezervacijos numerį. Jei norite ką nors pakeisti, galite atsakyti į šį el. laišką.',
+    zahlungBetreff: 'Mokėjimas už Jūsų viešnagę {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'Už Jūsų viešnagę nuo {anreise} iki {abreise} maloniai prašome sumokėti {betrag} avansą iki {frist}.',
+    zahlungAnzahlungOhneFrist: 'Už Jūsų viešnagę nuo {anreise} iki {abreise} maloniai prašome sumokėti {betrag} avansą.',
+    zahlungAllgemein: 'Už Jūsų viešnagę nuo {anreise} iki {abreise} maloniai prašome sumokėti {betrag}.',
+    zahlungLink: 'Šia nuoroda saugiai sumokėsite per viešbučio mokėjimo paslaugų teikėją:',
+    zahlungKarte: 'Kortelės duomenis įvedate tik ten; viešbutis jų negauna.',
+    zahlungGueltig: 'Nuoroda galioja iki {gueltig} imtinai. Jei ji nebegalios, mielai atsiųsime naują.',
+    zahlungHinweis: 'Kilus klausimams, tiesiog atsakykite į šį el. laišką ir nurodykite rezervacijos numerį {ref}.',
+    checkinAnredeMitName: 'Sveiki, {name},',
+    checkinAnredeOhneName: 'Sveiki,',
+    checkinBetreff: 'Internetinė registracija Jūsų viešnagei — {haus}',
+    checkinEinladung: '{anreise} laukiame Jūsų {haus}. Kad atvykus viskas vyktų greičiau, registracijos formą (Meldeschein) galite užpildyti jau dabar:',
+    checkinFrist: 'Nuoroda galioja iki {bis} ir tik Jūsų rezervacijai {ref}.',
+    checkinFreiwillig: 'Žinoma, registracijos formą taip pat galite užpildyti vietoje atvykimo dieną.',
+    checkinWeitergabe: 'Prašome neperduoti šios nuorodos kitiems: kas ją turi, gali pateikti duomenis apie Jūsų viešnagę.',
+    checkinTest: 'BANDOMASIS LAIŠKAS — taip Jūsų svečiams atrodo kvietimas į internetinę registraciją. Vardas, rezervacija ir datos yra pavyzdžiai; nuoroda neveda į tikrą registracijos formą.'
+  },
+
+  lv: {
+    anredeMitName: 'Labdien, {name},',
+    anredeOhneName: 'Labdien,',
+    rechnungBetreff: 'Rēķins {nummer} — {haus}',
+    rechnungAnhang: 'pielikumā PDF formātā atradīsiet savu rēķinu {nummer} no {haus} par kopējo summu {betrag}.',
+    rechnungOffenMitFrist: 'Vēl jāsamaksā {offen}, termiņš līdz {frist}.',
+    rechnungOffenOhneFrist: 'Vēl jāsamaksā {offen}.',
+    rechnungBeglichen: 'Rēķins ir pilnībā apmaksāts. Šī kopija ir Jūsu dokumentācijai.',
+    rechnungDank: 'Paldies par Jūsu uzturēšanos — mēs labprāt Jūs atkal sagaidīsim.',
+    buchungBetreff: 'Rezervācijas apstiprinājums {ref} — {haus}',
+    buchungBestaetigt: 'esam apstiprinājuši Jūsu rezervāciju {haus}.',
+    buchungNummer: 'Rezervācijas numurs: {ref}',
+    buchungAnreise: 'Ierašanās: {datum} no {zeit}',
+    buchungAbreise: 'Izbraukšana: {datum} līdz {zeit}',
+    buchungZimmer: 'Numurs: {zimmer}',
+    buchungGesamt: 'Kopā: {betrag}',
+    buchungHinweis: 'Lūdzu, saziņā norādiet rezervācijas numuru. Ja kaut kas jāmaina, varat atbildēt uz šo e-pastu.',
+    zahlungBetreff: 'Maksājums par Jūsu uzturēšanos {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'par Jūsu uzturēšanos no {anreise} līdz {abreise} laipni lūdzam samaksāt avansu {betrag} līdz {frist}.',
+    zahlungAnzahlungOhneFrist: 'par Jūsu uzturēšanos no {anreise} līdz {abreise} laipni lūdzam samaksāt avansu {betrag}.',
+    zahlungAllgemein: 'par Jūsu uzturēšanos no {anreise} līdz {abreise} laipni lūdzam samaksāt {betrag}.',
+    zahlungLink: 'Jūs varat droši samaksāt pie viesnīcas maksājumu pakalpojumu sniedzēja, izmantojot šo saiti:',
+    zahlungKarte: 'Kartes datus Jūs ievadāt tikai tur; viesnīca tos nekad nesaņem.',
+    zahlungGueltig: 'Saite ir derīga līdz {gueltig} ieskaitot. Ja tās derīgums ir beidzies, mēs labprāt nosūtīsim Jums jaunu.',
+    zahlungHinweis: 'Ja Jums ir jautājumi, vienkārši atbildiet uz šo e-pastu un norādiet rezervācijas numuru {ref}.',
+    checkinAnredeMitName: 'Sveiki, {name},',
+    checkinAnredeOhneName: 'Sveiki,',
+    checkinBetreff: 'Tiešsaistes reģistrēšanās Jūsu uzturēšanās reizei — {haus}',
+    checkinEinladung: '{anreise} gaidām Jūs mūsu viesnīcā {haus}. Lai ierašanās būtu ātrāka, Jūs jau tagad varat aizpildīt reģistrācijas veidlapu (Meldeschein):',
+    checkinFrist: 'Saite ir derīga līdz {bis} un tikai Jūsu rezervācijai {ref}.',
+    checkinFreiwillig: 'Protams, reģistrācijas veidlapu varat aizpildīt arī uz vietas ierašanās dienā.',
+    checkinWeitergabe: 'Lūdzu, nenododiet saiti tālāk: ikviens, kam tā ir, var ievadīt datus par Jūsu uzturēšanos.',
+    checkinTest: 'TESTA ZIŅOJUMS — šādi Jūsu viesi redz tiešsaistes reģistrēšanās ielūgumu. Vārds, rezervācija un datumi ir piemēri; saite neved uz īstu reģistrācijas veidlapu.'
+  },
+
+  et: {
+    anredeMitName: 'Lugupeetud {name}',
+    anredeOhneName: 'Lugupeetud külaline',
+    rechnungBetreff: 'Arve {nummer} — {haus}',
+    rechnungAnhang: 'Manuses on Teie arve {nummer} hotellilt {haus} PDF-failina, kogusummas {betrag}.',
+    rechnungOffenMitFrist: 'Sellest on tasumata {offen}, tasuda hiljemalt {frist}.',
+    rechnungOffenOhneFrist: 'Sellest on tasumata {offen}.',
+    rechnungBeglichen: 'Arve on täielikult tasutud. See eksemplar on Teie dokumentide jaoks.',
+    rechnungDank: 'Täname Teid viibimise eest — meil oleks hea meel Teid taas tervitada.',
+    buchungBetreff: 'Broneeringu kinnitus {ref} — {haus}',
+    buchungBestaetigt: 'Oleme kinnitanud Teie broneeringu hotellis {haus}.',
+    buchungNummer: 'Broneeringu number: {ref}',
+    buchungAnreise: 'Saabumine: {datum} alates kell {zeit}',
+    buchungAbreise: 'Lahkumine: {datum} kuni kella {zeit}',
+    buchungZimmer: 'Tuba: {zimmer}',
+    buchungGesamt: 'Kogusumma: {betrag}',
+    buchungHinweis: 'Palun märkige päringute korral broneeringu number. Kui midagi tuleb muuta, võite sellele e-kirjale vastata.',
+    zahlungBetreff: 'Makse Teie viibimise eest {ref} — {haus}',
+    zahlungAnzahlungMitFrist: 'Palume Teie viibimise eest ajavahemikus {anreise} kuni {abreise} ettemaksu summas {betrag} hiljemalt {frist}.',
+    zahlungAnzahlungOhneFrist: 'Palume Teie viibimise eest ajavahemikus {anreise} kuni {abreise} ettemaksu summas {betrag}.',
+    zahlungAllgemein: 'Palume Teie viibimise eest ajavahemikus {anreise} kuni {abreise} makset summas {betrag}.',
+    zahlungLink: 'Järgmise lingi kaudu saate turvaliselt maksta hotelli makseteenuse pakkuja juures:',
+    zahlungKarte: 'Kaardiandmed sisestate ainult seal; hotell neid ei saa.',
+    zahlungGueltig: 'Link kehtib kuni {gueltig} (kaasa arvatud). Kui see on aegunud, saadame Teile hea meelega uue.',
+    zahlungHinweis: 'Küsimuste korral vastake lihtsalt sellele e-kirjale ja märkige broneeringu number {ref}.',
+    checkinAnredeMitName: 'Tere, {name}!',
+    checkinAnredeOhneName: 'Tere!',
+    checkinBetreff: 'Veebipõhine check-in Teie viibimiseks — {haus}',
+    checkinEinladung: 'Ootame Teid {anreise} oma hotelli {haus}. Et saabumine kiiremini läheks, saate registreerimislehe (Meldeschein) täita juba praegu:',
+    checkinFrist: 'Link kehtib kuni {bis} ja ainult Teie broneeringu {ref} jaoks.',
+    checkinFreiwillig: 'Loomulikult võite registreerimislehe täita ka saabumispäeval kohapeal.',
+    checkinWeitergabe: 'Palun ärge andke linki edasi: kellel see on, saab sisestada andmeid Teie viibimise kohta.',
+    checkinTest: 'TESTKIRI — nii näeb veebipõhise check-in\'i kutse Teie külaliste jaoks välja. Nimi, broneering ja andmed on näited; link ei vii päris registreerimislehele.'
   }
 }
 
@@ -925,7 +1597,7 @@ export function renderInvoiceEmail(
   return {
     subject: einsetzen(t.rechnungBetreff, werte),
     text: lines.join('\n\n'),
-    html: htmlBody(lines)
+    html: htmlBody(lines, lang)
   }
 }
 
@@ -961,7 +1633,7 @@ export function renderReservationEmail(
   return {
     subject: einsetzen(t.buchungBetreff, werte),
     text: lines.join('\n\n'),
-    html: htmlBody(lines)
+    html: htmlBody(lines, lang)
   }
 }
 
@@ -973,11 +1645,14 @@ export function renderReservationEmail(
  * davor. Englisch bleibt beim ISO-Format, weil "03/04" diesseits und
  * jenseits des Atlantiks zwei verschiedene Tage sind.
  */
+const JAHR_ZUERST: ReadonlySet<EmailLanguage> = new Set(['en', 'sv', 'hu', 'lt', 'zh', 'ko'])
+
 function kalendertag(iso: string, lang: EmailLanguage): string {
   const [jahr, monat, tag] = iso.split('-')
   if (jahr === undefined || monat === undefined || tag === undefined) return iso
-  // Schwedisch schreibt Kalendertage selbst in ISO-Form.
-  if (lang === 'en' || lang === 'sv') return iso
+  // Schwedisch, Ungarisch, Litauisch, Chinesisch und Koreanisch schreiben
+  // das Jahr selbst zuerst; dieselbe Wahl wie `DATUMSFORM` der Oberflaeche.
+  if (JAHR_ZUERST.has(lang)) return iso
   if (lang === 'nl') return `${tag}-${monat}-${jahr}`
   return `${tag}.${monat}.${jahr}`
 }
@@ -1023,7 +1698,7 @@ export function renderPaymentLinkEmail(
   return {
     subject: einsetzen(t.zahlungBetreff, werte),
     text: lines.join('\n\n'),
-    html: htmlBody(lines)
+    html: htmlBody(lines, lang)
   }
 }
 
@@ -1079,7 +1754,7 @@ export function renderCheckinInvitationEmail(
   ]
   // Im HTML-Teil wird der Link anklickbar. Ersetzt wird der bereits
   // entschaerfte Absatz, damit nichts aus dem Link selbst als Markup gilt.
-  const html = htmlBody(lines).replace(
+  const html = htmlBody(lines, lang).replace(
     `>${esc(d.link)}</p>`,
     `><a href="${esc(d.link)}">${esc(d.link)}</a></p>`)
   return {
@@ -1192,7 +1867,7 @@ export function renderInviteEmail(
       subject: d.accountName
         ? `Welcome to StayGrid – your access for ${d.accountName}`
         : 'Welcome to StayGrid – your access is ready',
-      text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines), d.link)
+      text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines, lang), d.link)
     }
   }
   const lines = [
@@ -1218,7 +1893,7 @@ export function renderInviteEmail(
     subject: d.accountName
       ? `Willkommen bei StayGrid – Ihr Zugang für ${d.accountName}`
       : 'Willkommen bei StayGrid – Ihr Zugang ist bereit',
-    text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines), d.link)
+    text: lines.join('\n\n'), html: linkKlickbar(htmlBody(lines, lang), d.link)
   }
 }
 
@@ -1250,7 +1925,7 @@ export function renderPasswordResetEmail(
       'If you did not request this, nothing has changed: your current password '
         + 'remains valid and this link expires on its own.'
     ]
-    return { subject: 'Reset your password', text: lines.join('\n\n'), html: htmlBody(lines) }
+    return { subject: 'Reset your password', text: lines.join('\n\n'), html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1260,7 +1935,7 @@ export function renderPasswordResetEmail(
     'Haben Sie das nicht angefordert, hat sich nichts geaendert: Ihr bisheriges '
       + 'Kennwort gilt weiter, und dieser Link verfaellt von selbst.'
   ]
-  return { subject: 'Kennwort zuruecksetzen', text: lines.join('\n\n'), html: htmlBody(lines) }
+  return { subject: 'Kennwort zuruecksetzen', text: lines.join('\n\n'), html: htmlBody(lines, lang) }
 }
 
 /**
@@ -1300,7 +1975,7 @@ export function renderSupportRequestEmail(
         + 'is never granted without your approval.'
     ]
     return { subject: 'Support is asking for access', text: lines.join('\n\n'),
-             html: htmlBody(lines) }
+             html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1315,7 +1990,7 @@ export function renderSupportRequestEmail(
       + 'bekommt niemand Zugriff auf Ihre Daten.'
   ]
   return { subject: 'Support bittet um Zugriff', text: lines.join('\n\n'),
-           html: htmlBody(lines) }
+           html: htmlBody(lines, lang) }
 }
 
 /*
@@ -1391,7 +2066,7 @@ export function renderEmailChangeEmail(
       'If this was not you, do nothing. Without the link nothing changes.'
     ]
     return { subject: 'Confirm your new email address', text: lines.join('\n\n'),
-             html: htmlBody(lines) }
+             html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1403,7 +2078,7 @@ export function renderEmailChangeEmail(
     'Waren Sie das nicht, tun Sie nichts. Ohne den Link aendert sich nichts.'
   ]
   return { subject: 'Neue Mailadresse bestaetigen', text: lines.join('\n\n'),
-           html: htmlBody(lines) }
+           html: htmlBody(lines, lang) }
 }
 
 /**
@@ -1453,7 +2128,7 @@ export function renderEmailChangeNotice(
         + 'administrator. This message contains no link on purpose.'
     ]
     return { subject: 'Change of your email address requested',
-             text: lines.join('\n\n'), html: htmlBody(lines) }
+             text: lines.join('\n\n'), html: htmlBody(lines, lang) }
   }
   const lines = [
     d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
@@ -1465,5 +2140,5 @@ export function renderEmailChangeNotice(
       + 'Verwaltung Bescheid. Diese Nachricht enthaelt bewusst keinen Link.'
   ]
   return { subject: 'Aenderung Ihrer Mailadresse angefordert',
-           text: lines.join('\n\n'), html: htmlBody(lines) }
+           text: lines.join('\n\n'), html: htmlBody(lines, lang) }
 }

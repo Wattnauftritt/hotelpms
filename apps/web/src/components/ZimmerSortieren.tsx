@@ -157,7 +157,7 @@ export function ZimmerSortieren({ propertyId, onClose }: {
                         <span className="text-neutral-500 tabular-nums">
                           {formatDate(m.arrival, locale)} – {formatDate(m.departure, locale)}
                         </span>
-                        <span className="tabular-nums w-28 text-right">
+                        <span className="tabular-nums w-28 text-end">
                           {m.fromRoomCode ?? t('roomSort.unassigned')} → <b>{m.toRoomCode}</b>
                         </span>
                       </li>
