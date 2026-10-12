@@ -16,7 +16,7 @@ export const TRANSLATION_MAX_ATTEMPTS = 6
  * Zielsprache, wie DeepL sie haben will. Englisch braucht eine Variante,
  * sonst lehnt DeepL das Ziel ab; britisch, weil die Haeuser in Europa sind.
  */
-export function deeplTargetCode(lang: StaffTextLang): string {
+export function deeplTargetCode(lang: string): string {
   return lang === 'en' ? 'EN-GB' : lang.toUpperCase()
 }
 

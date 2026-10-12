@@ -35,7 +35,18 @@ export interface TranslationResult {
  * Reihenfolge wie die Texte.
  */
 export interface Translator {
-  translate(texts: string[], target: StaffTextLang): Promise<TranslationResult[]>
+  translate(texts: string[], target: string, opts?: TranslateOptions): Promise<TranslationResult[]>
+}
+
+/**
+ * Fuer die Hausseiten der Gaestemappe (0144): die Ausgangssprache steht
+ * fest, und der Text kommt als XML, damit das Format der Seite stehen
+ * bleibt. Die Texte des Personals brauchen beides nicht -- dort ist die
+ * Sprache gerade das, was DeepL erkennen soll.
+ */
+export interface TranslateOptions {
+  source?: string
+  xml?: boolean
 }
 
 /**
@@ -52,7 +63,7 @@ export class TranslationError extends Error {
 export function createDeeplTranslator(apiKey: string, timeoutMs = 10_000): Translator {
   const url = deeplEndpoint(apiKey)
   return {
-    async translate(texts, target) {
+    async translate(texts, target, opts = {}) {
       let res: Response
       try {
         res = await fetch(url, {
@@ -61,7 +72,14 @@ export function createDeeplTranslator(apiKey: string, timeoutMs = 10_000): Trans
             authorization: `DeepL-Auth-Key ${apiKey}`,
             'content-type': 'application/json'
           },
-          body: JSON.stringify({ text: texts, target_lang: deeplTargetCode(target) }),
+          body: JSON.stringify({
+            text: texts, target_lang: deeplTargetCode(target),
+            ...(opts.source === undefined ? {} : { source_lang: opts.source.toUpperCase() }),
+            // Jede Zeile ist ein eigenes Element; Saetze ueber die Zeile
+            // hinweg zusammenzuziehen, zerlegte die Aufzaehlung.
+            ...(opts.xml === true
+              ? { tag_handling: 'xml', split_sentences: 'nonewlines' } : {})
+          }),
           signal: AbortSignal.timeout(timeoutMs)
         })
       } catch {

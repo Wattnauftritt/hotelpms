@@ -14,6 +14,7 @@ import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
 import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
+import { translateFolderPages } from './jobs/folderTranslation.js'
 import { sendStaffPushes, createWebPushSender, vapidSchluessel, propertiesWithDuePushes,
          type PushSender } from './jobs/staffPush.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
@@ -395,6 +396,22 @@ async function staffTexts(p: PropertyRow, breaker: TickBreaker): Promise<void> {
   }
 }
 
+/*
+ * Hausseiten der Gaestemappe (0144). Ohne Schluessel zeigt die Mappe die
+ * deutsche Seite; nachgeholt wird, sobald er gesetzt ist.
+ */
+async function folderPages(p: PropertyRow, breaker: TickBreaker): Promise<void> {
+  if (translator === null) return
+  const r = await translateFolderPages(pool, propertyContext(p.account_id, p.id), p.id,
+    translator, { breaker })
+  if (r.attempted === 0) return
+  log.info({ property: p.id, ...r }, 'Seiten der Gaestemappe uebersetzt')
+  if (r.failed > 0) {
+    log.error({ property: p.id, failed: r.failed },
+      'Uebersetzung einer Seite endgueltig gescheitert -- die Mappe zeigt sie deutsch')
+  }
+}
+
 // Ein Tick, der laenger als das Intervall braucht, startete bisher einen
 // zweiten daneben: beide teilen sich den kleinen Pool, wiederholen
 // Materialisierung und Abgleich, und die zweite holt Webhooks erneut, deren
@@ -442,6 +459,7 @@ async function tickArbeit(): Promise<void> {
       await onlineCheckins(p)
       await emails(p, brevo)
       await staffTexts(p, deepl)
+      await folderPages(p, deepl)
     } catch (e) {
       log.error({ property: p.id, err: e }, 'Arbeit fuer Property fehlgeschlagen')
     }

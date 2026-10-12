@@ -74,6 +74,13 @@ export function wifiQrText(w: FolderWifi): string {
 }
 
 /** Was die Seite des Gastes zeigt (`GET /v1/mappe`). */
+/** Eine Seite in einer Sprache der Gaeste (0144). */
+export const FolderPageText = Type.Object({
+  title: Type.String({ minLength: 1, maxLength: 300 }),
+  body: Type.String({ maxLength: 10000 })
+})
+export type FolderPageText = Static<typeof FolderPageText>
+
 export const GuestFolderView = Type.Object({
   propertyName: Type.String(),
   /** Name des Zimmers, sonst seine Nummer. */
@@ -85,10 +92,35 @@ export const GuestFolderView = Type.Object({
     contentRef: Type.String(),
     title: Type.String(),
     body: Type.String(),
-    imageRef: Type.Union([Type.String(), Type.Null()])
+    imageRef: Type.Union([Type.String(), Type.Null()]),
+    /**
+     * Nur Uebersetzungen, die zur deutschen Fassung passen; fehlt eine
+     * Sprache, zeigt die Seite des Gastes die deutsche.
+     */
+    translations: Type.Record(Type.String(), FolderPageText)
   }))
 })
 export type GuestFolderView = Static<typeof GuestFolderView>
+
+/**
+ * Stand einer Uebersetzung: `machine` und `manual` passen zur deutschen
+ * Fassung, `pending` wartet auf DeepL (auch nach einer Aenderung der Seite),
+ * `failed` hat alle Versuche hinter sich und bleibt deutsch, bis jemand die
+ * Seite aendert oder von Hand uebersetzt.
+ */
+export const FolderTranslationState = Type.Union([
+  Type.Literal('machine'), Type.Literal('manual'),
+  Type.Literal('pending'), Type.Literal('failed')])
+export type FolderTranslationState = Static<typeof FolderTranslationState>
+
+export const FolderPageTranslation = Type.Object({
+  lang: Type.String(),
+  state: FolderTranslationState,
+  /** Die passende Uebersetzung; `null`, solange es keine gibt. */
+  title: Type.Union([Type.String(), Type.Null()]),
+  body: Type.Union([Type.String(), Type.Null()])
+})
+export type FolderPageTranslation = Static<typeof FolderPageTranslation>
 
 /** Die Einstellung des Hauses. */
 export const GuestFolderSettings = Type.Object({
@@ -98,7 +130,10 @@ export const GuestFolderSettings = Type.Object({
   pages: Type.Array(Type.Object({
     contentRef: Type.String(),
     title: Type.String(),
-    folderPosition: Type.Union([Type.Integer(), Type.Null()])
+    body: Type.String(),
+    folderPosition: Type.Union([Type.Integer(), Type.Null()]),
+    /** Je Sprache der Gaeste; leer fuer eine Seite, die nicht in der Mappe steht. */
+    translations: Type.Array(FolderPageTranslation)
   }))
 })
 export type GuestFolderSettings = Static<typeof GuestFolderSettings>
@@ -122,3 +157,10 @@ export const GuestFolderCards = Type.Object({
   }))
 })
 export type GuestFolderCards = Static<typeof GuestFolderCards>
+
+/** Eine Uebersetzung von Hand setzen (0144). */
+export const FolderPageTextSet = Type.Object({
+  title: Type.String({ minLength: 1, maxLength: 300 }),
+  body: Type.String({ maxLength: 10000 })
+}, { additionalProperties: false })
+export type FolderPageTextSet = Static<typeof FolderPageTextSet>
