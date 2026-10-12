@@ -107,6 +107,14 @@ export const GuestRequestStatus = Type.Union([
 const DeclineReason = Type.Union(GUEST_REQUEST_DECLINE_REASONS.map(r => Type.Literal(r)))
 /** Name je Sprache; `de` ist immer da und gilt, wo eine Sprache fehlt. */
 const NameJeSprache = Type.Record(Type.String(), Type.String())
+/**
+ * Wann ein Eintrag angeboten wird (0154): den ganzen Aufenthalt, zur
+ * Abreise (Abend davor und Abreisetag), oder als spaete Abreise -- wie zur
+ * Abreise, aber nur, wenn am Abreisetag niemand ins Zimmer anreist.
+ */
+export const GuestRequestOffer = Type.Union([
+  Type.Literal('stay'), Type.Literal('departure'), Type.Literal('late_checkout')])
+export type GuestRequestOffer = Static<typeof GuestRequestOffer>
 
 /** Ein Eintrag des Katalogs, wie der Gast ihn sieht. */
 export const FolderRequestItem = Type.Object({
@@ -114,7 +122,12 @@ export const FolderRequestItem = Type.Object({
   name: NameJeSprache,
   maxQty: Type.Integer(),
   /** Brutto je Stueck in Cent; `null` heisst kostenlos. */
-  unitPriceCent: Type.Union([Type.Integer(), Type.Null()])
+  unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
+  /**
+   * Gilt fuer den Abreisetag und nur fuer ihn (0154): die Seite fragt nach
+   * keinem Tag.
+   */
+  forDeparture: Type.Boolean()
 })
 export type FolderRequestItem = Static<typeof FolderRequestItem>
 
@@ -206,6 +219,7 @@ export const GuestRequestItemAdmin = Type.Object({
   }), Type.Null()]),
   onFolder: Type.Boolean(),
   onTerminal: Type.Boolean(),
+  offer: GuestRequestOffer,
   active: Type.Boolean(),
   position: Type.Integer()
 })
@@ -222,6 +236,8 @@ export const GuestRequestItemInput = Type.Object({
   }, { additionalProperties: false }), Type.Null()]),
   onFolder: Type.Boolean(),
   onTerminal: Type.Boolean(),
+  /** Fehlt: den ganzen Aufenthalt. */
+  offer: Type.Optional(GuestRequestOffer),
   active: Type.Boolean(),
   position: Type.Integer({ minimum: 0, maximum: 1000 })
 }, { additionalProperties: false })
@@ -239,7 +255,13 @@ export const GuestFolderStay = Type.Object({
   departure: Type.String(),
   cleaningWaiver: Type.Union([CleaningWaiverView, Type.Null()]),
   /** `null`, wenn das Haus keinen Eintrag fuer die Mappe hat (0149). */
-  requests: Type.Union([FolderRequests, Type.Null()])
+  requests: Type.Union([FolderRequests, Type.Null()]),
+  /** Ab dem Abend vor der Abreise (0154); die Seite nennt dann die Uhrzeit. */
+  departureSoon: Type.Boolean(),
+  /** Die Seite zur Abreise, ab dem Abend davor; sonst `null`. */
+  departurePage: Type.Union([Type.String(), Type.Null()]),
+  /** Am Abreisetag der Bewertungslink des Hauses; sonst `null`. */
+  review: Type.Union([Type.Object({ label: Type.String(), url: Type.String() }), Type.Null()])
 })
 export type GuestFolderStay = Static<typeof GuestFolderStay>
 
@@ -295,6 +317,13 @@ export const GuestFolderSettings = Type.Object({
   enabled: Type.Boolean(),
   /** Freie Nachricht an die Rezeption (0153), aus als Vorgabe. */
   messagesEnabled: Type.Boolean(),
+  /** Die Seite zur Abreise (0154), eine der Seiten in der Mappe. */
+  departurePage: Type.Union([Type.String(), Type.Null()]),
+  /** Der Bewertungslink am Abreisetag (0154), eine der freigegebenen Adressen. */
+  reviewUrl: Type.Union([Type.String(), Type.Null()]),
+  /** Die freigegebenen Adressen des Hauses, zur Auswahl. */
+  urls: Type.Array(Type.Object({
+    urlRef: Type.String(), label: Type.String(), url: Type.String() })),
   wifi: Type.Union([FolderWifi, Type.Null()]),
   /** Alle Seiten des Hauses; `folderPosition` leer heisst: nicht in der Mappe. */
   pages: Type.Array(Type.Object({
@@ -312,6 +341,9 @@ export const GuestFolderSettingsSet = Type.Object({
   enabled: Type.Boolean(),
   /** Fehlt: bleibt, wie es ist. */
   messagesEnabled: Type.Optional(Type.Boolean()),
+  /** Fehlt: bleibt; `null`: keine. */
+  departurePage: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  reviewUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   wifi: Type.Union([FolderWifi, Type.Null()])
 }, { additionalProperties: false })
 export type GuestFolderSettingsSet = Static<typeof GuestFolderSettingsSet>

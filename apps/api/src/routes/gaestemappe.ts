@@ -59,14 +59,19 @@ async function referenzenAnlegen(client: PoolClient, propertyId: number): Promis
 interface EinstellungZeile {
   enabled: boolean; wifi_ssid: string | null; wifi_password: string | null
   wifi_security: 'WPA' | 'WEP' | 'nopass'; wifi_hidden: boolean; messages_enabled: boolean
+  departure_page?: string | null; review_url?: string | null
 }
 
 async function einstellung(
   client: PoolClient, propertyId: number
 ): Promise<EinstellungZeile | undefined> {
   const { rows } = await client.query<EinstellungZeile>(
-    `SELECT enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden, messages_enabled
-       FROM guest_folder_setting WHERE property_id = $1`, [propertyId])
+    `SELECT s.enabled, s.wifi_ssid, s.wifi_password, s.wifi_security, s.wifi_hidden,
+            s.messages_enabled, c.public_ref AS departure_page, u.public_ref AS review_url
+       FROM guest_folder_setting s
+       LEFT JOIN terminal_content c ON c.id = s.departure_content_id AND c.archived_at IS NULL
+       LEFT JOIN terminal_url u ON u.id = s.review_url_id AND u.removed_at IS NULL
+      WHERE s.property_id = $1`, [propertyId])
   return rows[0]
 }
 
@@ -100,8 +105,26 @@ async function einstellungAnsicht(
       GROUP BY c.id
       ORDER BY c.folder_position NULLS LAST, c.title, c.id`,
     [propertyId, FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS])
+  const urls = await client.query<GuestFolderSettings['urls'][number]>(
+    `SELECT public_ref AS "urlRef", label, url FROM terminal_url
+      WHERE property_id = $1 AND removed_at IS NULL ORDER BY label, id`, [propertyId])
   return { enabled: e?.enabled ?? false, messagesEnabled: e?.messages_enabled ?? false,
-           wifi: wlan(e), pages: seiten.rows }
+           departurePage: e?.departure_page ?? null, reviewUrl: e?.review_url ?? null,
+           urls: urls.rows, wifi: wlan(e), pages: seiten.rows }
+}
+
+/**
+ * Eine Referenz aus dem Rumpf auf eine Zeile des Hauses (0154). `undefined`:
+ * nicht geschickt, bleibt; `null`: keine. Eine fremde oder entfernte
+ * Referenz ist ein Fehler, keine stille Leere.
+ */
+async function refZuId(
+  client: PoolClient, propertyId: number, feld: string, ref: unknown, sql: string
+): Promise<number | null | undefined> {
+  if (ref === undefined || ref === null) return ref as undefined | null
+  const r = await client.query<{ id: number }>(sql, [ref, propertyId])
+  if (r.rows[0] === undefined) throw Errors.validation({ [feld]: ['field.invalid'] })
+  return r.rows[0].id
 }
 
 function uebersetzungsParameter(p: unknown): {
@@ -404,26 +427,44 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
     summary: 'Gaestemappe ein- oder ausschalten, WLAN des Hauses setzen',
     handler: async (req): Promise<GuestFolderSettings> => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      const b = (req.body ?? {}) as { enabled?: unknown; wifi?: unknown; messagesEnabled?: unknown }
+      const b = (req.body ?? {}) as { enabled?: unknown; wifi?: unknown; messagesEnabled?: unknown
+                                      departurePage?: unknown; reviewUrl?: unknown }
       if (typeof b.enabled !== 'boolean') throw Errors.validation({ enabled: ['field.invalid'] })
       if (b.messagesEnabled !== undefined && typeof b.messagesEnabled !== 'boolean') {
         throw Errors.validation({ messagesEnabled: ['field.invalid'] })
       }
+      for (const f of ['departurePage', 'reviewUrl'] as const) {
+        const v = b[f]
+        if (v !== undefined && v !== null && (typeof v !== 'string' || v.length > 40)) {
+          throw Errors.validation({ [f]: ['field.invalid'] })
+        }
+      }
       const w = wlanAusRumpf(b.wifi)
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
+        const seite = await refZuId(client, propertyId, 'departurePage', b.departurePage,
+          `SELECT id::int FROM terminal_content
+            WHERE public_ref = $1 AND property_id = $2 AND archived_at IS NULL`)
+        const link = await refZuId(client, propertyId, 'reviewUrl', b.reviewUrl,
+          `SELECT id::int FROM terminal_url
+            WHERE public_ref = $1 AND property_id = $2 AND removed_at IS NULL`)
         await client.query(
           `INSERT INTO guest_folder_setting
              (property_id, enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden, updated_by,
-              messages_enabled)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::boolean, false))
+              messages_enabled, departure_content_id, review_url_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::boolean, false), $10, $12)
            ON CONFLICT (property_id) DO UPDATE SET
              enabled = $2, wifi_ssid = $3, wifi_password = $4, wifi_security = $5,
              wifi_hidden = $6, updated_by = $7, updated_at = now(),
-             messages_enabled = COALESCE($8::boolean, guest_folder_setting.messages_enabled)`,
+             messages_enabled = COALESCE($8::boolean, guest_folder_setting.messages_enabled),
+             departure_content_id = CASE WHEN $9 THEN $10::bigint
+                                         ELSE guest_folder_setting.departure_content_id END,
+             review_url_id = CASE WHEN $11 THEN $12::bigint
+                                  ELSE guest_folder_setting.review_url_id END`,
           [propertyId, b.enabled, w?.ssid ?? null, w?.password ?? null,
            w?.security ?? 'WPA', w?.hidden ?? false, principal.userId,
-           typeof b.messagesEnabled === 'boolean' ? b.messagesEnabled : null])
+           typeof b.messagesEnabled === 'boolean' ? b.messagesEnabled : null,
+           seite !== undefined, seite ?? null, link !== undefined, link ?? null])
         if (b.enabled) await referenzenAnlegen(client, propertyId)
         return einstellungAnsicht(client, propertyId)
       })

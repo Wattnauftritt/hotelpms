@@ -174,11 +174,34 @@ export async function aufenthaltDerSitzung(
 export async function aufenthaltAnsicht(
   client: PoolClient, k: MappeKontext, a: { reservationId: number; departure: string }
 ): Promise<GuestFolderStay> {
+  // Ab dem Abend vor der Abreise. Kalendertage als Text vergleichen: kein
+  // `new Date`, das in Ortszeit einen Tag verschiebt.
+  const vorabend = await client.query<{ bald: boolean; heute: boolean }>(
+    `SELECT $1::date >= $2::date - 1 AS bald, $1::date >= $2::date AS heute`,
+    [k.businessDate, a.departure])
+  const { bald, heute } = vorabend.rows[0]!
+  /*
+   * Seite und Link nur, solange sie noch gelten: eine Seite, die nicht mehr
+   * in der Mappe steht, haette keinen Abschnitt, auf den der Verweis zeigt;
+   * eine entfernte Adresse hat das Haus zurueckgezogen.
+   */
+  const abreise = bald
+    ? (await client.query<{ page: string | null; label: string | null; url: string | null }>(
+        `SELECT c.public_ref AS page, u.label, u.url
+           FROM guest_folder_setting s
+           LEFT JOIN terminal_content c ON c.id = s.departure_content_id
+                 AND c.folder_position IS NOT NULL AND c.archived_at IS NULL
+           LEFT JOIN terminal_url u ON u.id = s.review_url_id AND u.removed_at IS NULL
+          WHERE s.property_id = $1`, [k.propertyId])).rows[0]
+    : undefined
   return {
     departure: a.departure,
     cleaningWaiver: await verzichtStand(client, a.reservationId, k.propertyId,
       k.businessDate, true),
-    requests: await mappeWuensche(client, k.propertyId, a.reservationId, k.businessDate)
+    requests: await mappeWuensche(client, k.propertyId, a.reservationId, k.businessDate),
+    departureSoon: bald,
+    departurePage: abreise?.page ?? null,
+    review: heute && abreise?.url != null ? { label: abreise.label!, url: abreise.url } : null
   }
 }
 

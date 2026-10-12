@@ -30,6 +30,8 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
   const seitenSpeichern = useGaestemappeSeiten(propertyId)
   const [an, setAn] = useState(false)
   const [nachrichten, setNachrichten] = useState(false)
+  const [abreiseSeite, setAbreiseSeite] = useState('')
+  const [bewertung, setBewertung] = useState('')
   const [mitWlan, setMitWlan] = useState(true)
   const [wlan, setWlan] = useState<FolderWifi>(
     { ssid: '', password: '', security: 'WPA', hidden: false })
@@ -41,6 +43,8 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
     if (q.data === undefined) return
     setAn(q.data.enabled)
     setNachrichten(q.data.messagesEnabled)
+    setAbreiseSeite(q.data.departurePage ?? '')
+    setBewertung(q.data.reviewUrl ?? '')
     setMitWlan(q.data.wifi !== null)
     if (q.data.wifi !== null) setWlan({ ...q.data.wifi, password: q.data.wifi.password ?? '' })
     setAuswahl(q.data.pages.filter(s => s.folderPosition !== null)
@@ -136,6 +140,35 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
           )}
         </fieldset>
 
+        {/* Seite und Adresse pflegt das Haus am Gaesteterminal; hier wird nur
+            gewaehlt, welche zur Abreise gehoert (0154). */}
+        <fieldset className="space-y-2 rounded-sm border border-neutral-200 p-3">
+          <legend className="text-xs text-neutral-600 px-1">{t('folder.departure')}</legend>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('folder.departurePage')}</span>
+            <select value={abreiseSeite} className={eingabe}
+                    onChange={e => setAbreiseSeite(e.target.value)}>
+              <option value="">{t('folder.none')}</option>
+              {seiten.filter(s => s.folderPosition !== null || s.contentRef === abreiseSeite)
+                .map(s => <option key={s.contentRef} value={s.contentRef}>{s.title}</option>)}
+            </select>
+            <span className="block text-xs text-neutral-500 mt-1">
+              {t('folder.departurePageHint')}
+            </span>
+          </label>
+          <label className="block text-sm">
+            <span className="block text-xs text-neutral-600 mb-1">{t('folder.reviewUrl')}</span>
+            <select value={bewertung} className={eingabe}
+                    onChange={e => setBewertung(e.target.value)}>
+              <option value="">{t('folder.none')}</option>
+              {q.data.urls.map(u => (
+                <option key={u.urlRef} value={u.urlRef}>{u.label} · {u.url}</option>
+              ))}
+            </select>
+            <span className="block text-xs text-neutral-500 mt-1">{t('folder.reviewUrlHint')}</span>
+          </label>
+        </fieldset>
+
         {speichern.isError && <Fehler error={speichern.error} />}
         <div className="flex items-center gap-3">
           <button type="button" className={knopf}
@@ -143,6 +176,8 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
                   onClick={() => speichern.mutate({
                     enabled: an,
                     messagesEnabled: nachrichten,
+                    departurePage: abreiseSeite === '' ? null : abreiseSeite,
+                    reviewUrl: bewertung === '' ? null : bewertung,
                     wifi: mitWlan
                       ? { ssid: wlan.ssid.trim(), security: wlan.security, hidden: wlan.hidden,
                           password: offen ? null : passwort }
