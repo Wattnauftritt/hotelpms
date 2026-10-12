@@ -98,7 +98,7 @@ CREATE OR REPLACE FUNCTION guest_folder_room_open(p_ref text)
 RETURNS TABLE (
   out_property_id bigint, out_account_id bigint, out_resource_id bigint,
   out_business_date date, out_state text)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   r       record;
   v_bd    date;
