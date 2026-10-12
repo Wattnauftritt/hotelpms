@@ -7,6 +7,7 @@ import { hinweisText } from '../platform/texte.js'
 import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
+import { offeneWuensche } from '../platform/gastwuensche.js'
 import { sendeJsonExport, type JsonExportDatei } from '../platform/exportDatei.js'
 import { formelsicher, writeCsv as csv } from '../platform/csv.js'
 
@@ -160,7 +161,7 @@ export function reportRoutes(app: FastifyInstance): void {
             ORDER BY ${zimmerNachNummer('res')}, g.last_name NULLS LAST, r.public_ref`, [id, d])
 
         return { date: d, arrivals: arrivals.rows, departures: departures.rows,
-                 inHouse: inHouse.rows }
+                 inHouse: inHouse.rows, guestRequests: await offeneWuensche(client, id) }
       })
     }
   })

@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { GuestFolderSettings, GuestFolderSettingsSet,
-              GuestFolderCards, FolderPageTextSet } from '@hotelpms/contracts'
+              GuestFolderCards, FolderPageTextSet, GuestRequestCatalog,
+              GuestRequestDeclineReason, GuestRequestItemInput,
+              GuestRequestRow } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /** Digitale Gaestemappe: Einstellung, Seiten und Zimmerkarten (Migration 0143). */
@@ -80,6 +82,50 @@ export function useMappeFreischaltungenAufheben(reservationRef: string) {
       api.post<{ revoked: number }>(`/v1/reservations/${reservationRef}/guest-folder/revoke`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+    }
+  })
+}
+
+// ------------------------------------------------------------ Wuensche (0149)
+
+const katalogSchluessel = (propertyId: number) => ['guest-request-items', propertyId] as const
+
+export const useWunschkatalog = (propertyId: number) =>
+  useQuery<GuestRequestCatalog>({
+    queryKey: katalogSchluessel(propertyId),
+    queryFn: () => api.get(`/v1/properties/${propertyId}/guest-folder/request-items`)
+  })
+
+export function useWunschEintragSpeichern(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemRef, eintrag }: { itemRef: string | null; eintrag: GuestRequestItemInput }) =>
+      itemRef === null
+        ? api.post<GuestRequestCatalog>(
+            `/v1/properties/${propertyId}/guest-folder/request-items`, eintrag)
+        : api.put<GuestRequestCatalog>(
+            `/v1/properties/${propertyId}/guest-folder/request-items/${itemRef}`, eintrag),
+    onSuccess: d => { qc.setQueryData(katalogSchluessel(propertyId), d) }
+  })
+}
+
+/**
+ * Einen Gaestewunsch erledigen oder ablehnen. Danach stimmen "Heute" und
+ * das Seitenfenster nicht mehr; beide laden neu, und das Folio auch, weil
+ * ein Extra mit Preis darauf gebucht wurde.
+ */
+export function useWunschBearbeiten() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ requestRef, reason }: { requestRef: string
+                                           reason: GuestRequestDeclineReason | null }) =>
+      reason === null
+        ? api.post<GuestRequestRow>(`/v1/guest-requests/${requestRef}/done`, {})
+        : api.post<GuestRequestRow>(`/v1/guest-requests/${requestRef}/decline`, { reason }),
+    onSuccess: d => {
+      void qc.invalidateQueries({ queryKey: ['daily'] })
+      void qc.invalidateQueries({ queryKey: ['reservation', d.reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['folio'] })
     }
   })
 }

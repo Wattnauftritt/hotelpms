@@ -7,10 +7,12 @@ import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { Zimmerkarten } from './Zimmerkarten.tsx'
 import { GaestemappeUebersetzung, UebersetzungsStand } from './GaestemappeUebersetzung.tsx'
+import { GaestemappeWuensche } from './GaestemappeWuensche.tsx'
 
 /**
  * Einstellungen der digitalen Gaestemappe (Migration 0143): an/aus, das WLAN
- * des Hauses, welche Seiten in der Mappe stehen, und die Zimmerkarten.
+ * des Hauses, welche Seiten in der Mappe stehen, der Wunschkatalog (0149)
+ * und die Zimmerkarten.
  *
  * Die Seiten selbst werden am Gaesteterminal gepflegt, nicht hier: zwei
  * Pflegestellen fuer dieselbe Fruehstueckszeit laufen auseinander.
@@ -196,6 +198,8 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
           </div>
         )}
       </section>
+
+      <GaestemappeWuensche propertyId={propertyId} />
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">{t('folder.cards')}</h2>

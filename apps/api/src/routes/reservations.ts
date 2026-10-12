@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { onlineCheckinStand } from '../platform/checkin.js'
 import { verzichtStand } from '../platform/reinigungsverzicht.js'
+import { wuenscheDerReservierung } from '../platform/gastwuensche.js'
 import { tagOderOffen } from './cleaningPlan.js'
 import { tx } from '../platform/db.js'
 import { AppError, Errors } from '../platform/errors.js'
@@ -1746,6 +1747,8 @@ export function reservationRoutes(app: FastifyInstance): void {
           [kopf.id, hausId, geschaeftstag])
         const guestFolder = mappe.rows[0] === undefined ? null
           : { activeSessions: mappe.rows[0].n }
+        // Wuensche aus der Mappe (0149), ebenfalls im selben Aufruf.
+        const guestRequests = await wuenscheDerReservierung(client, kopf.id as number)
 
         // Die laufende id bleibt drinnen; nach aussen geht die oeffentliche
         // Referenz (C1, Dokument 13).
@@ -1758,6 +1761,7 @@ export function reservationRoutes(app: FastifyInstance): void {
           onlineCheckin,
           cleaningWaiver,
           guestFolder,
+          guestRequests,
           totalCent: naechte.rows.reduce(
             (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
         }

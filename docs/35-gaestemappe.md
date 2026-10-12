@@ -77,9 +77,18 @@ Migration `0148`. Das freigeschaltete Telefon sieht unter „Ihr Aufenthalt“ d
 - **Eine Regel, drei Türen.** Welche Tage gehen, bis wann, und wer davon erfährt (Push an die zugeteilte Kraft), entscheidet weiter `setzeVerzicht` in `platform/reinigungsverzicht.ts`. Ob die Mappe den Verzicht zeigt, folgt der Einstellung des Verzichts selbst (`property_cleaning_waiver_setting`); einen zweiten Schalter in der Mappe gibt es nicht, weil ein Haus, das den Verzicht anbietet, ihn nicht an einer Tür anbieten und an der anderen verschweigen will.
 - **Eigene Herkunft.** `cleaning_waiver.source = 'folder'` neben `guest` (Mail-Link) und `reception`, damit nachzulesen bleibt, über welche Tür verzichtet wurde.
 
-## 8. Was als Nächstes kommt
+## 8. Wünsche und Extras
 
-1. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
-2. Wünsche in der Personal-App mit Push und Übersetzung.
-3. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
-4. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+Migration `0149`. Das Haus pflegt unter Einstellungen → Gästemappe einen kurzen **Katalog**: Kopfkissen, Decke, Babybett, aber auch Sekt aufs Zimmer oder ein Lunchpaket. Je Eintrag: der Name je Sprache (Deutsch Pflicht, eine leere Sprache zeigt den deutschen), wer sich kümmert (Rezeption oder Housekeeping, Svens Entscheidung), eine Höchstmenge, ob er in der Mappe und/oder am Terminal steht, und optional ein **Bruttopreis** mit Umsatzsteuersatz und Erlöskonto. Partnerangebote gibt es nicht (Sven); was kostenlos ist, bleibt kostenlos.
+
+- **Kein Freitext.** Der Gast wählt Eintrag, Menge und optional einen Tag seines Aufenthalts; die Rezeption lehnt mit einem Grund aus einer festen Liste ab (nicht vorrätig, an dem Tag nicht, bitte an der Rezeption melden). So liest jede Seite die Antwort in ihrer Sprache, und keine Spalte trägt etwas, das einen Menschen bezeichnet. Die freie Nachricht kommt mit Abschnitt 9 und bringt dann ihre eigene Löschung mit.
+- **Ein Extra mit Preis ist ein `product`.** StayGrid hat keine Artikelpflege; der Katalog legt deshalb einen eigenen Artikel `MAPPE-<id>` an, den eine spätere Artikelpflege wiederfindet. Ohne Preis wird er abgeschaltet, nicht gelöscht.
+- **Gebucht wird beim Annehmen, nicht beim Bestellen**, brutto auf das offene Gastfolio, mit dem Preis, den der Gast gesehen hat — ändert das Haus ihn dazwischen, gilt für diesen Wunsch der alte. Wer annimmt, braucht dafür zusätzlich `folio:post`. Ohne offenes Gastfolio 409.
+- **Höchstens zehn offene Wünsche je Aufenthalt.** Eine freigeschaltete Mappe ist kein Ausweis gegen einen Gast, der aus Spaß dreißig Kissen bestellt.
+- Die Rezeption sieht offene Wünsche über den Spalten unter „Heute“ und alle im Seitenfenster der Reservierung. Housekeeping-Einträge tragen dort einen Vermerk, bis sie mit dem nächsten Schritt in die Personal-App gehen.
+
+## 9. Was als Nächstes kommt
+
+1. Wünsche in der Personal-App mit Push und Übersetzung.
+2. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
+3. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

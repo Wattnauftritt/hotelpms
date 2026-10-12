@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type JSX } from 'react'
 import { FOLDER_ROOM_HEADER, SPRACHNAMEN, folderRefAusFragment, wifiQrText,
-         type CleaningWaiverView, type FolderLocale, type FolderWifi,
-         type GuestFolderView } from '@hotelpms/contracts'
+         type CleaningWaiverView, type FolderLocale, type FolderRequestItem,
+         type FolderRequests, type FolderWifi, type GuestFolderView } from '@hotelpms/contracts'
 import { api, ApiError } from '../lib/api.js'
 import { useQr } from '../lib/qr.js'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
@@ -21,8 +21,9 @@ import { FOLDER_LOCALES, MappeSprache, startSprache, useMappeT,
  * Gezeigt wird, was ohnehin auf der Karte im Zimmer steht oder dort
  * ausliegen koennte: WLAN, Zeiten, die Seiten des Hauses. Den eigenen
  * Aufenthalt sieht erst, wer mit Nachname oder PLZ freigeschaltet hat
- * (0147), und auch dann nur den Abreisetag und die Tage, an denen er auf die
- * Reinigung verzichten kann (0148). Die Freischaltung haelt ein
+ * (0147), und auch dann nur den Abreisetag, die Tage, an denen er auf die
+ * Reinigung verzichten kann (0148), und seine eigenen Wuensche (0149).
+ * Die Freischaltung haelt ein
  * Cookie, das die Seite nie zu sehen bekommt (`httpOnly`).
  */
 
@@ -77,6 +78,9 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
               <Aufenthalt view={stand.view} roomRef={roomRef} locale={locale}
                           onChange={stay => setStand({ art: 'da',
                                                       view: { ...stand.view, stay } })} />
+              {stand.view.stay?.requests != null && (
+                <Wuensche start={stand.view.stay.requests} roomRef={roomRef} locale={locale} />
+              )}
               {stand.view.wifi !== null && <Wlan wifi={stand.view.wifi} />}
               <Zeiten view={stand.view} />
               {stand.view.pages.map(s => (
@@ -194,6 +198,145 @@ function Verzicht({ start, roomRef, locale }: {
       {fehler !== null && <p role="alert" className="text-sm text-red-800">{t(fehler)}</p>}
     </div>
   )
+}
+
+/**
+ * Wuensche und Extras (0149): aus dem Katalog des Hauses waehlen, Menge und
+ * optional einen Tag, absenden. Kein Freitext -- die Rezeption soll lesen
+ * koennen, was gewuenscht ist, in welcher Sprache der Gast auch schreibt.
+ *
+ * Eigener Abschnitt und nicht im Aufenthalt: er ist das, wofuer der Gast
+ * die Mappe oeffnet, und soll nicht unter Abreisetag und Reinigung liegen.
+ * Erscheint nur freigeschaltet -- ein Extra mit Preis landet auf dem Folio
+ * des Aufenthalts.
+ */
+function Wuensche({ start, roomRef, locale }: {
+  start: FolderRequests; roomRef: string; locale: FolderLocale
+}): JSX.Element {
+  const t = useMappeT()
+  const [view, setView] = useState<FolderRequests | null>(start)
+  const [offen, setOffen] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [meldung, setMeldung] = useState<MappeTextKey | null>(null)
+  if (view === null) return <></>
+
+  const senden = (itemRef: string, qty: number, wantedFor: string | null): void => {
+    setBusy(true); setMeldung(null)
+    api.post<FolderRequests | null>('/v1/mappe/requests', { itemRef, qty, wantedFor },
+      { [FOLDER_ROOM_HEADER]: roomRef })
+      .then(v => { setView(v); setOffen(null); setMeldung('req.sent') })
+      .catch(() => setMeldung('req.failed'))
+      .finally(() => setBusy(false))
+  }
+  const name = (n: Record<string, string>): string => n[locale] ?? n.de ?? ''
+
+  return (
+    <section className={KARTE} aria-labelledby="mappe-wuensche">
+      <h2 id="mappe-wuensche" className="font-semibold">{t('req.title')}</h2>
+      {view.items.length > 0 && (
+        <>
+          <p className="text-sm text-neutral-600">{t('req.hint')}</p>
+          <ul className="divide-y divide-neutral-200">
+            {view.items.map(i => (
+              <li key={i.itemRef} className="py-2">
+                <button type="button" aria-expanded={offen === i.itemRef}
+                        onClick={() => { setOffen(offen === i.itemRef ? null : i.itemRef)
+                                         setMeldung(null) }}
+                        className="flex w-full items-baseline justify-between gap-3 text-left">
+                  <span className="font-medium">{name(i.name)}</span>
+                  <span className="text-sm text-neutral-600">
+                    {i.unitPriceCent === null ? t('req.free') : preis(i.unitPriceCent, locale)}
+                  </span>
+                </button>
+                {offen === i.itemRef && (
+                  <Bestellung item={i} days={view.days} locale={locale} busy={busy}
+                              onSend={(q, d) => senden(i.itemRef, q, d)} />
+                )}
+              </li>
+            ))}
+          </ul>
+          {view.items.some(i => i.unitPriceCent !== null) && (
+            <p className="text-xs text-neutral-600">{t('req.priceNote')}</p>
+          )}
+        </>
+      )}
+      {meldung !== null && (
+        <p role={meldung === 'req.failed' ? 'alert' : 'status'}
+           className={meldung === 'req.failed' ? 'text-sm text-red-800' : 'text-sm text-green-800'}>
+          {t(meldung)}
+        </p>
+      )}
+      {view.mine.length > 0 && (
+        <div className="space-y-1 border-t border-neutral-200 pt-3">
+          <h3 className="font-medium">{t('req.mine')}</h3>
+          <ul className="space-y-1 text-sm">
+            {view.mine.map(w => (
+              <li key={w.requestRef}>
+                <span>{w.qty} × {name(w.name)}</span>
+                {w.wantedFor !== null && <span> · {kurzerTag(w.wantedFor, locale)}</span>}
+                <span className={w.status === 'declined' ? ' text-red-800'
+                  : w.status === 'done' ? ' text-green-800' : ' text-neutral-600'}>
+                  {' · '}{t(`req.status.${w.status}`)}
+                </span>
+                {w.declineReason !== null && (
+                  <span className="block text-neutral-700">{t(`req.reason.${w.declineReason}`)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Menge und Tag fuer einen Eintrag; ohne Wahl, wo es nichts zu waehlen gibt. */
+function Bestellung({ item, days, locale, busy, onSend }: {
+  item: FolderRequestItem; days: string[]; locale: FolderLocale; busy: boolean
+  onSend: (qty: number, wantedFor: string | null) => void
+}): JSX.Element {
+  const t = useMappeT()
+  const [qty, setQty] = useState(1)
+  const [tag, setTag] = useState('')
+  const feld = 'mt-1 w-full rounded-md border border-neutral-300 bg-white px-3 py-2'
+  return (
+    <form className="mt-2 space-y-2" onSubmit={e => {
+      e.preventDefault()
+      onSend(qty, tag === '' ? null : tag)
+    }}>
+      <div className="flex gap-2">
+        {item.maxQty > 1 && (
+          <label className="w-24 text-sm">
+            {t('req.qty')}
+            <select value={qty} onChange={e => setQty(Number(e.target.value))} className={feld}>
+              {Array.from({ length: item.maxQty }, (_, n) => n + 1).map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {days.length > 0 && (
+          <label className="grow text-sm">
+            {t('req.day')}
+            <select value={tag} onChange={e => setTag(e.target.value)} className={feld}>
+              <option value="">{t('req.asap')}</option>
+              {days.map(d => <option key={d} value={d}>{kurzerTag(d, locale)}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <button type="submit" disabled={busy}
+              className="w-full rounded-md bg-neutral-900 px-4 py-2 text-white disabled:opacity-40">
+        {t('req.send')}
+        {item.unitPriceCent !== null && <> · {preis(item.unitPriceCent * qty, locale)}</>}
+      </button>
+    </form>
+  )
+}
+
+/** Ein Betrag in Cent in der Sprache der Mappe; Geld bleibt bis hier ganzzahlig. */
+function preis(cent: number, locale: FolderLocale): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cent / 100)
 }
 
 /** "Di., 14.10." in der Sprache der Mappe; ueber UTC wie `kalendertag`. */
