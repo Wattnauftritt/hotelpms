@@ -1107,7 +1107,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Nachtrag: Bad am Gästehaus, Kalender nach dem Speichern** (Sven, 08.10.2026). Ein Reinigungsbereich ist nicht mehr jeden Tag fällig, sondern nur, wenn im selben Haus (trägt der Bereich ein Gebäude: im selben Gebäude) letzte Nacht ein Zimmer belegt war oder eines auf schmutzig steht — „wenn das Gästehaus leer ist, ist das Bad natürlich sauber“. Und eine offene, gespeicherte Aufgabe folgt dem Kalender: reist ein Gast früher ab oder verlängert, steht das Zimmer im Plan sofort mit der neuen Art und deren Sollminuten, markiert mit „!“, und Speichern schreibt es an die Aufgabe und schickt es aufs Telefon. Erledigte Aufgaben und Zeilen aus der alten App bleiben, wie sie sind. Tests in `reinigungsplan.test.ts` und `personalHaeuser.test.ts`.
 
-### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 6 fertig**
+### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 7 fertig**
 
 Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des Gastes die Mappe des Hauses; später kann der Gast darüber auf die Reinigung verzichten, Extras bestellen, eine späte Abreise anfragen. Plan mit allen Entscheidungen in [`35-gaestemappe.md`](35-gaestemappe.md).
 
@@ -1121,7 +1121,9 @@ Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des G
 
 **Baustein 6 (Wünsche und Extras).** Migration `0149`: `guest_request_item` (Katalog je Haus, Name je Sprache, wer sich kümmert, Höchstmenge, für Mappe und/oder Terminal) und `guest_request` (Eintrag, Menge, optional Tag, Preis wie gesehen, Stand, Grund der Ablehnung aus fester Liste). Kein Freitext, deshalb nichts für `audit_redaction` und keine eigene Löschung. Ein Extra mit Preis ist ein eigener Artikel `MAPPE-<id>` mit Steuerregel und Erlöskonto, weil StayGrid keine Artikelpflege hat; beim Annehmen geht es brutto mit dem Preis, den der Gast gesehen hat, aufs offene Gastfolio (409 ohne Folio). `POST /v1/mappe/requests` nur mit Freischaltung, höchstens zehn offene je Aufenthalt; `POST /v1/guest-requests/:ref/done|decline` (`reservation:checkin`, für ein Extra mit Preis zusätzlich `folio:post`); Katalog unter `…/guest-folder/request-items` (`settings:property`). Rezeption: offene Wünsche über den Spalten unter „Heute“ (`guestRequests` im Tagesblatt), alle im Seitenfenster der Reservierung; Einstellungen → Gästemappe → Wunschkatalog. Rückgängigmachen der KWHotel-Übernahme kennt beide Tabellen. Tests: `apps/api/src/__tests__/gastwuensche.test.ts`.
 
-**Offen:** Wünsche in der Personal-App, freie Nachricht, späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35. Der Weg vom Gästeterminal (`source = 'terminal'`, `on_terminal`) baut der Faden zum Selbstservice am Terminal an.
+**Baustein 7 (Housekeeping-Wünsche in der Personal-App).** Migration `0152`: `staff_push.kind` kennt `request`. `wunschAnlegen` meldet einen kostenlosen Housekeeping-Wunsch für heute der Kraft, der das Zimmer heute zugeteilt ist (nur Zimmernummer, wie die anderen Meldungen). `GET /v1/my-rooms` bringt je Zimmer `requests` (offen, kostenlos, Housekeeping, Wunschtag heute oder früher); `POST …/my-rooms/:taskId/requests/:ref/done` hakt ab, nur am eigenen Zimmer von heute. Ein Extra mit Preis bleibt bei der Rezeption, weil Annehmen dort bucht. Tests: `gastwuensche.test.ts`.
+
+**Offen:** freie Nachricht, späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35. Der Weg vom Gästeterminal (`source = 'terminal'`, `on_terminal`) baut der Faden zum Selbstservice am Terminal an.
 
 ### Vierzehn Sprachen im ganzen System — **erledigt**
 

@@ -11,7 +11,7 @@ import type { PoolClient } from '@hotelpms/db'
  */
 export async function meldePush(
   client: PoolClient, propertyId: number, userIds: readonly number[],
-  kind: 'plan' | 'rework' | 'waived', params: Record<string, string>, dedupeKey: string
+  kind: 'plan' | 'rework' | 'waived' | 'request', params: Record<string, string>, dedupeKey: string
 ): Promise<void> {
   if (userIds.length === 0) return
   await client.query(

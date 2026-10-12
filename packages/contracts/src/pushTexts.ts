@@ -128,7 +128,37 @@ export const PUSH_TEXTS = {
     it: 'Oggi l’ospite rinuncia alla pulizia.',
     es: 'El huésped renuncia hoy a la limpieza.',
     pl: 'Gość rezygnuje dziś ze sprzątania.',
-    cs: 'Host se dnes úklidu vzdává.' }
+    cs: 'Host se dnes úklidu vzdává.' },
+  'request.title': {
+    de: 'Zimmer {room}: Gästewunsch',
+    en: 'Room {room}: guest request',
+    ru: 'Номер {room}: пожелание гостя',
+    uk: 'Номер {room}: побажання гостя',
+    nl: 'Kamer {room}: gastverzoek',
+    sv: 'Rum {room}: gästönskemål',
+    tr: 'Oda {room}: misafir isteği',
+    da: 'Værelse {room}: gæsteønske',
+    nb: 'Rom {room}: gjesteønske',
+    fr: 'Chambre {room} : demande du client',
+    it: 'Camera {room}: richiesta dell’ospite',
+    es: 'Habitación {room}: petición del huésped',
+    pl: 'Pokój {room}: prośba gościa',
+    cs: 'Pokoj {room}: požadavek hosta' },
+  'request.body': {
+    de: 'Der Gast möchte etwas aufs Zimmer. Details in der App.',
+    en: 'The guest would like something brought to the room. Details in the app.',
+    ru: 'Гость просит что-то принести в номер. Подробности в приложении.',
+    uk: 'Гість просить щось принести в номер. Подробиці в застосунку.',
+    nl: 'De gast wil iets op de kamer. Details in de app.',
+    sv: 'Gästen vill ha något till rummet. Detaljer i appen.',
+    tr: 'Misafir odaya bir şey istiyor. Ayrıntılar uygulamada.',
+    da: 'Gæsten ønsker noget bragt til værelset. Detaljer i appen.',
+    nb: 'Gjesten ønsker noe brakt til rommet. Detaljer i appen.',
+    fr: 'Le client souhaite qu’on lui apporte quelque chose. Détails dans l’app.',
+    it: 'L’ospite desidera qualcosa in camera. Dettagli nell’app.',
+    es: 'El huésped quiere que le lleven algo a la habitación. Detalles en la app.',
+    pl: 'Gość prosi o coś do pokoju. Szczegóły w aplikacji.',
+    cs: 'Host si přeje něco přinést na pokoj. Podrobnosti v aplikaci.' }
 } satisfies Record<string, Record<StaffLocale, string>>
 
 export type PushTextKey = keyof typeof PUSH_TEXTS
