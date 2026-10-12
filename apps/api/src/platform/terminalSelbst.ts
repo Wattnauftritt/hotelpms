@@ -1,4 +1,5 @@
 import type { PoolClient } from '@hotelpms/db'
+import { AM_TERMINAL } from './gastwuensche.js'
 
 /**
  * Selbstbedienung am Gaesteterminal (Dokument 31, Abschnitt 14; Migration
@@ -49,23 +50,100 @@ export async function beendeSelbstbedienung(
 }
 
 /**
- * Die Haeuser des Geraets, die die Selbstbedienung anbieten. Solange der
- * Verzicht ihre einzige Funktion ist, muss auch er eingeschaltet sein --
- * sonst stuende nach "Ja" ein leerer Bildschirm da. Liefert je Haus den
- * Geschaeftstag als `d`; `$1` sind die Haeuser des Geraets.
+ * Die Haeuser des Geraets, die die Selbstbedienung anbieten. Es muss auch
+ * etwas zu bedienen geben: der Reinigungsverzicht oder ein kostenloser
+ * Eintrag im Wunschkatalog mit Haekchen "am Terminal" -- sonst stuende nach
+ * "Ja" ein leerer Bildschirm da. Liefert je Haus den Geschaeftstag als
+ * `d`; `$1` sind die Haeuser des Geraets.
  */
 export const HAEUSER_SQL = `
   SELECT p.id, p.name, ${GESCHAEFTSTAG_SQL} AS d
     FROM property p
     JOIN property_terminal_self_setting ts ON ts.property_id = p.id AND ts.enabled
-    JOIN property_cleaning_waiver_setting ws ON ws.property_id = p.id AND ws.enabled
-   WHERE p.id = ANY ($1::bigint[])`
+   WHERE p.id = ANY ($1::bigint[])
+     AND (EXISTS (SELECT 1 FROM property_cleaning_waiver_setting ws
+                   WHERE ws.property_id = ts.property_id AND ws.enabled)
+          -- Hier heisst der Artikel \`p\` wie in AM_TERMINAL; das Haus
+          -- kommt deshalb ueber \`ts\`.
+          OR EXISTS (SELECT 1 FROM guest_request_item i
+                       LEFT JOIN product p ON p.id = i.product_id
+                      WHERE i.property_id = ts.property_id AND i.active
+                        AND ${AM_TERMINAL}))`
 
-/** Bietet eines der Haeuser des Geraets die Selbstbedienung an? */
+/**
+ * Was die Selbstbedienung am Geraet anbietet, fuer den Knopf im
+ * Ruhezustand: Reinigung abbestellen, Wuensche -- oder `null`, dann steht
+ * kein Knopf da.
+ */
 export async function selbstbedienungAngeboten(
   client: PoolClient, propertyIds: number[]
-): Promise<boolean> {
-  const { rows } = await client.query<{ an: boolean }>(
-    `SELECT EXISTS (${HAEUSER_SQL}) AS an`, [propertyIds])
-  return rows[0]?.an === true
+): Promise<{ cleaning: boolean; requests: boolean } | null> {
+  const { rows } = await client.query<{ cleaning: boolean; requests: boolean; an: boolean }>(
+    `WITH h AS (${HAEUSER_SQL})
+     SELECT EXISTS (SELECT 1 FROM h) AS an,
+            EXISTS (SELECT 1 FROM h JOIN property_cleaning_waiver_setting ws
+                                      ON ws.property_id = h.id AND ws.enabled) AS cleaning,
+            EXISTS (SELECT 1 FROM h JOIN guest_request_item i ON i.property_id = h.id
+                      LEFT JOIN product p ON p.id = i.product_id
+                     WHERE i.active AND ${AM_TERMINAL}) AS requests`, [propertyIds])
+  const r = rows[0]!
+  return r.an ? { cleaning: r.cleaning, requests: r.requests } : null
+}
+
+/** Was Einstellungen → Gaesteterminals zur Selbstbedienung zeigt. */
+export interface SelbstEinstellung {
+  enabled: boolean
+  cleaningWaiverEnabled: boolean
+  /** Kostenlose Eintraege im Wunschkatalog mit Haekchen "am Terminal". */
+  terminalItems: number
+}
+
+export async function einstellungAnsicht(
+  client: PoolClient, propertyId: number
+): Promise<SelbstEinstellung> {
+  const { rows } = await client.query<SelbstEinstellung>(
+    `SELECT coalesce((SELECT enabled FROM property_terminal_self_setting
+                       WHERE property_id = $1), false) AS enabled,
+            coalesce((SELECT enabled FROM property_cleaning_waiver_setting
+                       WHERE property_id = $1), false) AS "cleaningWaiverEnabled",
+            (SELECT count(*)::int FROM guest_request_item i
+               LEFT JOIN product p ON p.id = i.product_id
+              WHERE i.property_id = $1 AND i.active AND ${AM_TERMINAL}) AS "terminalItems"`,
+    [propertyId])
+  return rows[0]!
+}
+
+/**
+ * Der Startbestand am Terminal (Plan terminal-selfservice, Abschnitt 9):
+ * zwei Kopfkissen, beide an Housekeeping, hoechstens zwei. Nur fuers
+ * Terminal angehakt; ob sie auch in die Mappe gehoeren, entscheidet das
+ * Haus im Katalog. Ein Eintrag, den es unter diesem Namen schon gibt,
+ * bleibt, wie er ist.
+ */
+const KISSEN: ReadonlyArray<Record<string, string>> = [
+  { de: 'Zusätzliches Kopfkissen', en: 'Extra pillow', nl: 'Extra hoofdkussen',
+    da: 'Ekstra hovedpude', sv: 'Extra kudde', nb: 'Ekstra hodepute',
+    pl: 'Dodatkowa poduszka', cs: 'Polštář navíc', fr: 'Oreiller supplémentaire',
+    it: 'Cuscino aggiuntivo', es: 'Almohada adicional', tr: 'Ekstra yastık',
+    ru: 'Дополнительная подушка', uk: 'Додаткова подушка' },
+  { de: 'Kopfkissen ohne Federn', en: 'Feather-free pillow', nl: 'Hoofdkussen zonder veren',
+    da: 'Hovedpude uden fjer', sv: 'Kudde utan fjäder', nb: 'Hodepute uten fjær',
+    pl: 'Poduszka bez pierza', cs: 'Polštář bez peří', fr: 'Oreiller sans plumes',
+    it: 'Cuscino senza piume', es: 'Almohada sin plumas', tr: 'Tüysüz yastık',
+    ru: 'Подушка без пера', uk: 'Подушка без пір’я' }
+]
+
+export async function kissenVorbelegen(
+  client: PoolClient, propertyId: number, userId: number | null
+): Promise<void> {
+  await client.query(
+    `INSERT INTO guest_request_item (property_id, name, handler, max_qty, on_folder,
+                                     on_terminal, position, updated_by)
+     SELECT $1, n.name, 'housekeeping', 2, false, true,
+            (SELECT coalesce(max(position), 0) FROM guest_request_item
+              WHERE property_id = $1) + n.nr, $3
+       FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS n(name, nr)
+      WHERE NOT EXISTS (SELECT 1 FROM guest_request_item i
+                         WHERE i.property_id = $1 AND i.name ->> 'de' = n.name ->> 'de')`,
+    [propertyId, JSON.stringify(KISSEN), userId])
 }

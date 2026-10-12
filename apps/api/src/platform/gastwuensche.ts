@@ -28,6 +28,13 @@ export const OFFENE_WUENSCHE_MAX = 10
 /** Ein Eintrag gilt als kostenlos, wenn sein Artikel fehlt oder abgeschaltet ist. */
 const PREIS = `CASE WHEN p.active THEN p.price_cent::int END`
 
+/**
+ * Was das Gaesteterminal anbietet: freigegeben und kostenlos. Extras mit
+ * Preis bleiben der Mappe (Sven, 12.10.2026): am Terminal steht der Gast
+ * vor der Rezeption und kann dort fragen. `p` ist der Artikel des Eintrags.
+ */
+export const AM_TERMINAL = `i.on_terminal AND ${PREIS} IS NULL`
+
 // ---------------------------------------------------------------- Gast
 
 /**
@@ -36,14 +43,16 @@ const PREIS = `CASE WHEN p.active THEN p.price_cent::int END`
  * Mappe keinen Abschnitt, statt eines leeren.
  */
 export async function mappeWuensche(
-  client: PoolClient, propertyId: number, reservationId: number, businessDate: string
+  client: PoolClient, propertyId: number, reservationId: number, businessDate: string,
+  tuer: 'folder' | 'terminal' = 'folder'
 ): Promise<FolderRequests | null> {
   const items = await client.query<FolderRequests['items'][number]>(
     `SELECT i.public_ref AS "itemRef", i.name, i.max_qty AS "maxQty",
             ${PREIS} AS "unitPriceCent"
        FROM guest_request_item i
        LEFT JOIN product p ON p.id = i.product_id
-      WHERE i.property_id = $1 AND i.active AND i.on_folder
+      WHERE i.property_id = $1 AND i.active
+        AND ${tuer === 'terminal' ? AM_TERMINAL : 'i.on_folder'}
       ORDER BY i.position, i.id`, [propertyId])
   const mine = await client.query<FolderRequests['mine'][number]>(
     `SELECT q.public_ref AS "requestRef", i.name, q.qty,
@@ -96,7 +105,7 @@ export async function wunschAnlegen(
        source: 'folder' | 'mail' | 'terminal'
        itemRef: string; qty: number; wantedFor: string | null }
 ): Promise<void> {
-  const tuer = a.source === 'terminal' ? 'i.on_terminal' : 'i.on_folder'
+  const tuer = a.source === 'terminal' ? AM_TERMINAL : 'i.on_folder'
   const e = await client.query<{ id: number; max_qty: number; preis: number | null
                                  handler: 'reception' | 'housekeeping' }>(
     `SELECT i.id::int, i.max_qty, ${PREIS} AS preis, i.handler
