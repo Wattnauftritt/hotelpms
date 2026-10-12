@@ -370,6 +370,80 @@ describe('Der dauerhafte Zahlungslink', () => {
     expect(stripe.angelegt).toBe(1)
   })
 
+  /*
+   * Performance-Audit 11.10.2026, Befund 4: der Anbieter wird ausserhalb
+   * jeder Transaktion gefragt. Haengt er, ist der Link nicht gesperrt, und
+   * ein zweiter Klick wartet ohne Verbindung auf den ersten, statt einen
+   * zweiten Checkout anzulegen.
+   */
+  it('haelt keine Sperre, waehrend der Anbieter antwortet, und legt trotzdem nur einen an',
+    async () => {
+      const x = await anforderungMitLink()
+      let weiter!: () => void
+      stripe.anlegenHalten = new Promise<void>(r => { weiter = r })
+
+      const erster = zurKasse(x.token)
+      // Warten, bis der erste beim Anbieter steht: sein Anspruch ist da.
+      for (let i = 0; i < 200; i++) {
+        const a = await owner.query(
+          `SELECT 1 FROM payment_link_checkout_claim WHERE payment_link_id = $1`, [x.linkId])
+        if (a.rowCount === 1) break
+        await new Promise(r => setTimeout(r, 10))
+      }
+      // Die Zeile des Links ist frei: NOWAIT schluege sonst fehl. Die
+      // Sperre faellt mit dem Ende der Anweisung wieder weg.
+      await owner.query(`SELECT 1 FROM payment_link WHERE id = $1 FOR UPDATE NOWAIT`,
+        [x.linkId])
+
+      const zweiter = zurKasse(x.token)
+      await new Promise(r => setTimeout(r, 100))
+      weiter()
+      const [a, b] = await Promise.all([erster, zweiter])
+      expect([a.statusCode, b.statusCode]).toEqual([303, 303])
+      expect(b.headers.location).toBe(a.headers.location)
+      expect(stripe.angelegt).toBe(1)
+      const ansprueche = await owner.query(
+        `SELECT 1 FROM payment_link_checkout_claim WHERE payment_link_id = $1`, [x.linkId])
+      expect(ansprueche.rowCount).toBe(0)
+    })
+
+  it('uebergeht einen verfallenen Anspruch, etwa nach einem abgestuerzten Prozess',
+    async () => {
+      const x = await anforderungMitLink()
+      await owner.query(
+        `INSERT INTO payment_link_checkout_claim (payment_link_id, property_id, claim_id,
+                                                  claimed_at)
+         VALUES ($1, $2, gen_random_uuid(), now() - interval '2 minutes')`,
+        [x.linkId, fx.propertyId])
+      expect(await oeffnen(x.token)).toBe('cs_test_1')
+    })
+
+  it('wartet beim Widerruf auf einen Checkout, der gerade entsteht, und beendet ihn',
+    async () => {
+      const x = await anforderungMitLink()
+      let weiter!: () => void
+      stripe.anlegenHalten = new Promise<void>(r => { weiter = r })
+      const gast = zurKasse(x.token)
+      for (let i = 0; i < 200; i++) {
+        const a = await owner.query(
+          `SELECT 1 FROM payment_link_checkout_claim WHERE payment_link_id = $1`, [x.linkId])
+        if (a.rowCount === 1) break
+        await new Promise(r => setTimeout(r, 10))
+      }
+      const widerruf = app.inject({ method: 'POST',
+        url: `/v1/payment-links/${x.linkId}/cancel`, headers: auth })
+      await new Promise(r => setTimeout(r, 100))
+      weiter()
+      const [g, w] = await Promise.all([gast, widerruf])
+      expect(g.statusCode).toBe(303)
+      expect(w.statusCode, w.body).toBe(200)
+      // Der eben angelegte Checkout ist beim Anbieter beendet, nicht offen.
+      expect(stripe.beendet).toEqual(['cs_test_1'])
+      const intents = await owner.query(
+        `SELECT status FROM payment_intent WHERE payment_link_id = $1`, [x.linkId])
+      expect(intents.rows).toEqual([{ status: 'canceled' }])
+    })
+
   it('legt nach Ablauf beim Anbieter einen neuen an, und nur einen', async () => {
     const x = await anforderungMitLink()
     const erst = await oeffnen(x.token)

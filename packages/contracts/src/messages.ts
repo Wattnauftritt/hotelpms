@@ -2100,6 +2100,16 @@ const M = {
       + 'been paid or has already expired; please reload the status.',
     tr: 'Ödeme sağlayıcısı bağlantıyı artık geri almıyor. Genellikle az önce '
       + 'ödenmiş veya süresi dolmuştur; lütfen durumu yeniden yükleyin.' },
+  'payments.linkBusy': {
+    de: 'Fuer diesen Zahlungslink laeuft gerade eine Anfrage beim '
+      + 'Zahlungsdienstleister, meist weil der Gast ihn eben oeffnet. Nichts '
+      + 'wurde geaendert; bitte gleich erneut versuchen.',
+    en: 'A request to the payment provider is in progress for this payment '
+      + 'link, usually because the guest is opening it right now. Nothing was '
+      + 'changed; please try again in a moment.',
+    tr: 'Bu ödeme bağlantısı için şu anda ödeme sağlayıcısında bir istek '
+      + 'sürüyor, genellikle misafir onu şu an açtığı için. Hiçbir şey '
+      + 'değiştirilmedi; lütfen birazdan tekrar deneyin.' },
   'payments.providerUnavailable': {
     de: 'Der Zahlungsdienstleister ist gerade nicht erreichbar. Nichts wurde '
       + 'geaendert; bitte spaeter erneut versuchen.',

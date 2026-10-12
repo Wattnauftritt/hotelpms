@@ -5,7 +5,7 @@ import { loadConfig, type Config } from './config.js'
 import { renderMessage } from '@hotelpms/contracts'
 import { AppError, Errors } from './errors.js'
 import { ANONYMOUS, type Principal } from './context.js'
-import { loadPrincipal, applySupportSession, loadPrincipalFromToken,
+import { loadSessionPrincipal, loadPrincipalFromToken,
          loadPrincipalFromDevice, DEVICE_COOKIE } from './auth.js'
 import { registerRateLimit } from './rateLimit.js'
 
@@ -243,27 +243,15 @@ export async function buildServer(
 
     const sessionId = req.cookies['hp_session']
     if (!sessionId) return
-    const { rows } = await pool.query<{ user_id: number; active_user_id: number | null }>(
-      `SELECT user_id, active_user_id FROM user_session
-        WHERE id = $1 AND revoked_at IS NULL
-          AND expires_at > now() AND absolute_expires_at > now()`, [sessionId])
-    if (rows.length === 0) return
-    const row = rows[0]!
-    // Arbeitsplatz-PIN wechselt die handelnde Person, ohne Neuanmeldung.
-    const effectiveUser = row.active_user_id ?? row.user_id
-    let principal = await loadPrincipal(pool, effectiveUser)
-    principal = await applySupportSession(pool, principal)
-    // Wer sich angemeldet hat, bleibt bekannt, auch wenn gerade jemand
-    // anderes handelt: die Oberflaeche zeigt den Wechsel damit an.
-    principal = { ...principal, sessionUserId: row.user_id }
-    req.principal = principal
-    // Hoechstens einmal je Minute. Die Spalte liest niemand minutengenau,
-    // aber ein Schreiben je GET waren eine Zeile WAL und eine Zeilensperre
-    // bei jedem Aufruf, auch beim Abfragetakt des Terminals (Audit
-    // 11.10.2026). Dasselbe Muster wie terminal_device_seen (0071).
-    await pool.query(
-      `UPDATE user_session SET last_seen_at = now()
-        WHERE id = $1 AND last_seen_at < now() - interval '60 seconds'`, [sessionId])
+    /*
+     * Sitzung, handelnde Person (Arbeitsplatz-PIN), Rechte, Support-Sitzung
+     * und last_seen_at in einer Runde (Migration 0142). Vorher waren es rund
+     * zehn, je Anfrage und auch beim Abfragetakt des Terminals
+     * (Performance-Audit 11.10.2026, Befund 8). Bewusst ohne Zwischenspeicher:
+     * eine Sperre soll mit der naechsten Anfrage wirken.
+     */
+    const principal = await loadSessionPrincipal(pool, sessionId)
+    if (principal !== null) req.principal = principal
   })
 
   // Erst jetzt, nicht vorher: ausnehmen laesst sich nur, wer sich
