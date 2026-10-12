@@ -58,14 +58,14 @@ async function referenzenAnlegen(client: PoolClient, propertyId: number): Promis
 
 interface EinstellungZeile {
   enabled: boolean; wifi_ssid: string | null; wifi_password: string | null
-  wifi_security: 'WPA' | 'WEP' | 'nopass'; wifi_hidden: boolean
+  wifi_security: 'WPA' | 'WEP' | 'nopass'; wifi_hidden: boolean; messages_enabled: boolean
 }
 
 async function einstellung(
   client: PoolClient, propertyId: number
 ): Promise<EinstellungZeile | undefined> {
   const { rows } = await client.query<EinstellungZeile>(
-    `SELECT enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden
+    `SELECT enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden, messages_enabled
        FROM guest_folder_setting WHERE property_id = $1`, [propertyId])
   return rows[0]
 }
@@ -100,7 +100,8 @@ async function einstellungAnsicht(
       GROUP BY c.id
       ORDER BY c.folder_position NULLS LAST, c.title, c.id`,
     [propertyId, FOLDER_TRANSLATION_LANGS, TRANSLATION_MAX_ATTEMPTS])
-  return { enabled: e?.enabled ?? false, wifi: wlan(e), pages: seiten.rows }
+  return { enabled: e?.enabled ?? false, messagesEnabled: e?.messages_enabled ?? false,
+           wifi: wlan(e), pages: seiten.rows }
 }
 
 function uebersetzungsParameter(p: unknown): {
@@ -403,20 +404,26 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
     summary: 'Gaestemappe ein- oder ausschalten, WLAN des Hauses setzen',
     handler: async (req): Promise<GuestFolderSettings> => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      const b = (req.body ?? {}) as { enabled?: unknown; wifi?: unknown }
+      const b = (req.body ?? {}) as { enabled?: unknown; wifi?: unknown; messagesEnabled?: unknown }
       if (typeof b.enabled !== 'boolean') throw Errors.validation({ enabled: ['field.invalid'] })
+      if (b.messagesEnabled !== undefined && typeof b.messagesEnabled !== 'boolean') {
+        throw Errors.validation({ messagesEnabled: ['field.invalid'] })
+      }
       const w = wlanAusRumpf(b.wifi)
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         await client.query(
           `INSERT INTO guest_folder_setting
-             (property_id, enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden, updated_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (property_id, enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden, updated_by,
+              messages_enabled)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::boolean, false))
            ON CONFLICT (property_id) DO UPDATE SET
              enabled = $2, wifi_ssid = $3, wifi_password = $4, wifi_security = $5,
-             wifi_hidden = $6, updated_by = $7, updated_at = now()`,
+             wifi_hidden = $6, updated_by = $7, updated_at = now(),
+             messages_enabled = COALESCE($8::boolean, guest_folder_setting.messages_enabled)`,
           [propertyId, b.enabled, w?.ssid ?? null, w?.password ?? null,
-           w?.security ?? 'WPA', w?.hidden ?? false, principal.userId])
+           w?.security ?? 'WPA', w?.hidden ?? false, principal.userId,
+           typeof b.messagesEnabled === 'boolean' ? b.messagesEnabled : null])
         if (b.enabled) await referenzenAnlegen(client, propertyId)
         return einstellungAnsicht(client, propertyId)
       })

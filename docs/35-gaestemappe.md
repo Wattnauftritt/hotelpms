@@ -88,7 +88,16 @@ Migration `0149`. Das Haus pflegt unter Einstellungen → Gästemappe einen kurz
 - Die Rezeption sieht offene Wünsche über den Spalten unter „Heute“ und alle im Seitenfenster der Reservierung. Housekeeping-Einträge tragen dort einen Vermerk.
 - **Housekeeping-Wünsche in der Personal-App** (Migration `0152`). Ein kostenloser Wunsch, um den sich Housekeeping kümmert, steht an der Kachel der Kraft, der das Zimmer heute zugeteilt ist, in ihrer Sprache, mit „Gebracht“; sie bekommt eine Push-Meldung, die nur die Zimmernummer nennt. Ein Wunsch für einen späteren Tag meldet sich nicht vorab, sondern steht an dem Tag in der App. Ein Extra mit Preis bleibt bei der Rezeption, auch wenn Housekeeping es bringt: annehmen heißt dort buchen, und das darf die Kraft nicht. Hat das Zimmer heute keine Kraft, bleibt der Wunsch bei der Rezeption, die ihn ohnehin sieht.
 
-## 9. Was als Nächstes kommt
+## 9. Nachricht an die Rezeption
 
-1. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
+Migration `0153`, Svens Entscheidung vom 11.10.2026: ein freies Feld statt eines Chats. Ein Chat verlangt, dass jemand dauernd antwortet; eine Nachricht mit Stand passt zu einer kleinen Rezeption.
+
+- Sie kommt **als Wunsch** an: derselbe Stand (offen, erledigt, nicht möglich), dieselbe Grenze von zehn offenen je Aufenthalt, dieselbe Stelle unter „Heute“ und im Seitenfenster, mit dem Vermerk „Nachricht“. Die Rezeption liest sie im Wortlaut des Gastes; übersetzt wird nicht.
+- **Aus als Vorgabe**, eingeschaltet unter Einstellungen → Gästemappe. Eine Nachricht, die niemand liest, ist schlimmer als keine.
+- Nur in der Mappe, **nicht am Terminal**: dort steht der nächste Gast hinter dem, der gerade tippt.
+- **Freitext ist personenbezogen.** Die Spalte steht in `audit_redaction`; `guest_erase_one()` und `guest_erase_partial()` leeren sie über `guest_request_messages_erase()`; der Worker leert sie 30 Tage nach der Abreise. Die Zeile bleibt als „Nachricht, erledigt“ stehen. Höchstens 500 Zeichen.
+
+## 10. Was als Nächstes kommt
+
+1. Späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
 2. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

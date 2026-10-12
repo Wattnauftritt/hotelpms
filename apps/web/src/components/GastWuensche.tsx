@@ -43,7 +43,7 @@ function Wunsch({ w, mitGast, busy, onDone, onDecline }: {
   const locale = useLocale()
   const online = useOnline()
   const [ablehnen, setAblehnen] = useState(false)
-  const name = w.itemName[locale] ?? w.itemName.de ?? ''
+  const name = w.itemName === null ? null : w.itemName[locale] ?? w.itemName.de ?? ''
   const gast = w.lastName === null ? w.reservationRef
     : w.firstName === null ? w.lastName : `${w.lastName}, ${w.firstName}`
   const knopf = 'text-xs px-2 py-1 rounded-sm disabled:opacity-40'
@@ -56,7 +56,17 @@ function Wunsch({ w, mitGast, busy, onDone, onDecline }: {
         )}
         <span className="grow">
           {mitGast && <span className="text-neutral-600">{gast} · </span>}
-          <span className="font-medium">{w.qty} × {name}</span>
+          {/* Eine Nachricht (0153) steht im Wortlaut des Gastes, in seiner
+              Sprache -- uebersetzt wird sie nicht, die Rezeption fragt nach. */}
+          {name === null
+            ? <>
+                <span className="text-[11px] px-1 me-1 rounded-sm bg-amber-100 text-amber-900">
+                  {t('folder.req.message')}</span>
+                {w.message === null
+                  ? <span className="italic text-neutral-500">{t('folder.req.messageErased')}</span>
+                  : <span className="whitespace-pre-wrap">{w.message}</span>}
+              </>
+            : <span className="font-medium">{w.qty} × {name}</span>}
           {w.wantedFor !== null && (
             <span className="text-neutral-600">
               {' · '}{t('folder.req.for', { date: formatDate(w.wantedFor, locale) })}

@@ -5,8 +5,8 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
 import { mappeTx, aufenthaltDerSitzung } from '../platform/gaestemappe.js'
-import { mappeWuensche, wunschAusRumpf, wunschAnlegen, wunschErledigen, wunschAblehnen,
-         ablehnGrund, wunschZeile, katalogAnsicht, eintragAusRumpf,
+import { mappeWuensche, wunschAusRumpf, wunschAnlegen, nachrichtAusRumpf, nachrichtAnlegen,
+         wunschErledigen, wunschAblehnen, ablehnGrund, wunschZeile, katalogAnsicht, eintragAusRumpf,
          eintragSpeichern } from '../platform/gastwuensche.js'
 
 /**
@@ -40,6 +40,30 @@ export function gastwuenscheRoutes(app: FastifyInstance): void {
         if (a === null) throw Errors.forbidden('folder.unlockRequired')
         await wunschAnlegen(client, { propertyId: k.propertyId, reservationId: a.reservationId,
           businessDate: k.businessDate, source: 'folder', ...w })
+        return mappeWuensche(client, k.propertyId, a.reservationId, k.businessDate)
+      })
+    }
+  })
+
+  /**
+   * Eine Nachricht an die Rezeption (0153). Wie ein Wunsch nur mit
+   * Freischaltung, und nur, wenn das Haus sie eingeschaltet hat.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/messages',
+    // Oeffentlich: Zimmer-Referenz und Freischaltung im Cookie sind der
+    // Ausweis; ohne Freischaltung 403 (0147, 0153).
+    permission: null,
+    summary: 'Gaestemappe: eine Nachricht an die Rezeption schicken',
+    handler: async (req, reply): Promise<FolderRequests | null> => {
+      reply.header('cache-control', 'no-store')
+      const text = nachrichtAusRumpf(req.body)
+      return mappeTx(req, async (client, k) => {
+        const a = await aufenthaltDerSitzung(client, req, k)
+        if (a === null) throw Errors.forbidden('folder.unlockRequired')
+        await nachrichtAnlegen(client, { propertyId: k.propertyId,
+          reservationId: a.reservationId, text })
         return mappeWuensche(client, k.propertyId, a.reservationId, k.businessDate)
       })
     }

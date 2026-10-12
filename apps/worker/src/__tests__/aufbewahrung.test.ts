@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          makeCategory, makeResources, makeReservation, type Fixture } from '@hotelpms/testing'
 import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
-import { purgeRetention, materializeInventory, materializeInventoryTail,
+import { purgeRetention, purgeExpired, materializeInventory, materializeInventoryTail,
          reconcileInventory } from '../jobs/maintenance.js'
 import { propertiesWithDuePushes } from '../jobs/staffPush.js'
 
@@ -206,5 +206,30 @@ describe('Materialisierung und Abgleich', () => {
       [fx.propertyId, dz, tag(10)])
     const drift = await withTransaction(app, ctx, c => reconcileInventory(c, fx.propertyId))
     expect(drift).toEqual([{ categoryId: dz, date: tag(10), counted: 0, stored: 1 }])
+  })
+})
+
+describe('Nachrichten aus der Gaestemappe (0153)', () => {
+  it('leert den Text 30 Tage nach der Abreise und laesst den Wunsch stehen', async () => {
+    const kat = await makeCategory(owner, fx.propertyId)
+    const [raum] = await makeResources(owner, fx.propertyId, kat, 1)
+    const alt = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: kat,
+      arrival: '2020-01-01', departure: '2020-01-03', resourceId: raum,
+      status: 'CheckedOut', reserveInventory: false })
+    const neu = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: kat,
+      arrival: '2099-01-01', departure: '2099-01-03', resourceId: raum,
+      status: 'Confirmed', reserveInventory: false })
+    for (const r of [alt.reservationId, neu.reservationId]) {
+      await owner.query(
+        `INSERT INTO guest_request (property_id, reservation_id, is_message, message, qty, source)
+         VALUES ($1, $2, true, 'Bitte Herrn Meier anrufen', 1, 'folder')`, [fx.propertyId, r])
+    }
+    const c = await owner.connect()
+    try { await purgeExpired(c) } finally { c.release() }
+    const rows = await owner.query<{ reservation_id: number; message: string | null }>(
+      `SELECT reservation_id::int, message FROM guest_request ORDER BY reservation_id`)
+    expect(rows.rows).toEqual([
+      { reservation_id: alt.reservationId, message: null },
+      { reservation_id: neu.reservationId, message: 'Bitte Herrn Meier anrufen' }])
   })
 })

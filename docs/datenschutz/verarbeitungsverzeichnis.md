@@ -52,9 +52,13 @@ der Hash des Cookies, nie Nachname oder PLZ, mit denen der Gast bestätigt;
 beide werden nur verglichen. Die Seite zeigt nach der Freischaltung nur den
 Abreisetag. Fehlversuche zählen je Zimmer, ohne Bezug zu einer Person.
 Wünsche aus der Mappe (`guest_request`, Migration 0149): Eintrag aus dem
-Katalog des Hauses, Menge, gewünschter Tag, Stand — kein Freitext. Sie
-hängen an der Reservierung und werden mit deren Gast anonymisiert; ein
-angenommenes Extra mit Preis ist eine Buchung und bleibt wie jede andere.
+Katalog des Hauses, Menge, gewünschter Tag, Stand. Sie hängen an der
+Reservierung und werden mit deren Gast anonymisiert; ein angenommenes Extra
+mit Preis ist eine Buchung und bleibt wie jede andere. Seit Migration 0153
+kann ein Wunsch eine **freie Nachricht** an die Rezeption sein (höchstens 500
+Zeichen, nur wenn das Haus sie einschaltet). Ihr Text ist Freitext und kann
+alles enthalten; er steht nicht im Protokoll und wird gelöscht, siehe
+Löschfristen.
 
 **Beschäftigte des Betriebs.** Name, dienstliche E-Mail, Rolle, Zeitpunkt der
 letzten Anmeldung, Authentifizierungsmerkmale.
@@ -113,6 +117,7 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Gastpost | 90 Tage, bei Löschverlangen sofort | `email_redact_old()`, `guest_erase_one()` |
 | Sitzungen und Einmaltoken | 7 Tage nach Ablauf | `purgeExpired()` |
 | Freischaltungen der Gästemappe | 7 Tage nach dem Abreisetag, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
+| Text einer Nachricht aus der Gästemappe | 30 Tage nach der Abreise, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
 | Idempotenzschlüssel | 24 Stunden | `purgeExpired()` |
 | Protokoll | zehn Jahre | `audit_log_drop_old_partitions()` |
 

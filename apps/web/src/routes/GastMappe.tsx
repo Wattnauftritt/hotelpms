@@ -230,6 +230,14 @@ function Wuensche({ start, roomRef, locale }: {
       .finally(() => setBusy(false))
   }
   const name = (n: Record<string, string>): string => n[locale] ?? n.de ?? ''
+  const nachricht = (text: string): void => {
+    setBusy(true); setMeldung(null)
+    api.post<FolderRequests | null>('/v1/mappe/messages', { text },
+      { [FOLDER_ROOM_HEADER]: roomRef })
+      .then(v => { setView(v); setMeldung('req.sent') })
+      .catch(() => setMeldung('req.failed'))
+      .finally(() => setBusy(false))
+  }
 
   return (
     <section className={KARTE} aria-labelledby="mappe-wuensche">
@@ -261,6 +269,7 @@ function Wuensche({ start, roomRef, locale }: {
           )}
         </>
       )}
+      {view.messages && <Nachricht busy={busy} onSend={nachricht} />}
       {meldung !== null && (
         <p role={meldung === 'req.failed' ? 'alert' : 'status'}
            className={meldung === 'req.failed' ? 'text-sm text-red-800' : 'text-sm text-green-800'}>
@@ -273,7 +282,9 @@ function Wuensche({ start, roomRef, locale }: {
           <ul className="space-y-1 text-sm">
             {view.mine.map(w => (
               <li key={w.requestRef}>
-                <span>{w.qty} × {name(w.name)}</span>
+                {w.name === null
+                  ? <span>{t('msg.mine')}{w.message !== null && <>: „{w.message}“</>}</span>
+                  : <span>{w.qty} × {name(w.name)}</span>}
                 {w.wantedFor !== null && <span> · {kurzerTag(w.wantedFor, locale)}</span>}
                 <span className={w.status === 'declined' ? ' text-red-800'
                   : w.status === 'done' ? ' text-green-800' : ' text-neutral-600'}>
@@ -288,6 +299,36 @@ function Wuensche({ start, roomRef, locale }: {
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * Die freie Nachricht an die Rezeption (0153), fuer alles, was nicht im
+ * Katalog steht. Kein Chat: sie kommt als Wunsch an, mit Stand, und die
+ * Rezeption antwortet mit dem Stand oder kommt vorbei.
+ */
+function Nachricht({ busy, onSend }: {
+  busy: boolean; onSend: (text: string) => void
+}): JSX.Element {
+  const t = useMappeT()
+  const [text, setText] = useState('')
+  return (
+    <form className="space-y-2 border-t border-neutral-200 pt-3" onSubmit={e => {
+      e.preventDefault()
+      if (text.trim() !== '') { onSend(text.trim()); setText('') }
+    }}>
+      <h3 className="font-medium">{t('msg.title')}</h3>
+      <p className="text-sm text-neutral-600">{t('msg.hint')}</p>
+      <label className="block">
+        <span className="sr-only">{t('msg.title')}</span>
+        <textarea value={text} onChange={e => setText(e.target.value)} maxLength={500} rows={3}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2" />
+      </label>
+      <button type="submit" disabled={busy || text.trim() === ''}
+              className="w-full rounded-md bg-neutral-900 px-4 py-2 text-white disabled:opacity-40">
+        {t('msg.send')}
+      </button>
+    </form>
   )
 }
 
