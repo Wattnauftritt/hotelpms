@@ -73,7 +73,7 @@ SELECT attach_audit('terminal_self_session');
 -- Sitzungen. Nur ja oder nein, kein Zimmer und kein Name.
 CREATE FUNCTION terminal_device_self_busy(p_device_id bigint)
 RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT EXISTS (SELECT 1 FROM terminal_self_session s
                   WHERE s.device_id = p_device_id
                     AND s.ended_at IS NULL AND s.expires_at > now())
