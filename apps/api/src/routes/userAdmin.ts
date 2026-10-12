@@ -3,7 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
-import { accountRight, type Principal } from '../platform/context.js'
+import { accountRight, can, type Principal } from '../platform/context.js'
 import { einmalTokenUndPost, einmalLink } from './auth.js'
 
 /**
@@ -54,6 +54,14 @@ interface Ziel {
   hat_account_rolle: boolean
 }
 
+/** Was ueber den Zielbenutzer zusaetzlich feststehen muss, bevor ihn eine Hausleitung anfasst. */
+interface ZielReichweite extends Ziel {
+  /** Die Haeuser dieses Betriebs, in denen er eine Hausrolle hat. */
+  hausrollen: number[]
+  /** Hat eine Rolle ausserhalb der aktiven Haeuser dieses Betriebs. */
+  ausserhalb_betrieb: boolean
+}
+
 /**
  * Der Name des Kunden fuer Anrede und Betreff der Einladung. Ueber das Haus,
  * weil die Route im Kontext eines Hauses laeuft: die Zeile in `property` ist
@@ -80,14 +88,48 @@ async function hausUndAccount(client: PoolClient, propertyId: number): Promise<n
  * Ohne diese Frage waere jede Route hier der Weg, mit einer erratenen
  * Kennung beim Nachbarn zu arbeiten. Die Antwort verraet nicht, ob es die
  * Kennung ueberhaupt gibt.
+ *
+ * **Und ob der Aufrufer ihn anfassen darf (M1, Sicherheitsaudit
+ * 2026-10-11).** "Im Betrieb" genuegte bisher. Die Direktion von Haus A lud
+ * die Leitung von Haus B per Benutzername in A ein, bekam damit ihre
+ * Kennung, liess sich den Zugangslink geben und war danach Leitung von B;
+ * oder sie sperrte sie im ganzen Betrieb. Wer kein Recht auf Betriebsebene
+ * hat, fasst deshalb nur Menschen an, deren Hausrollen in diesem Betrieb
+ * **alle** in Haeusern liegen, die er selbst verwaltet, und die keine Rolle
+ * fuer den ganzen Betrieb tragen.
+ *
+ * Rollen bei einem anderen Kunden zaehlen hier nicht: Sperren und Entfernen
+ * wirken nur in diesem Betrieb (Migration 0040), und die Aushilfe in zwei
+ * Betrieben darf vom einen gesperrt werden, ohne dass der andere es
+ * erfaehrt. Der eine Weg, der ueber die Grenze des Betriebs reicht -- der
+ * Zugangslink in der Hand des Aufrufers --, prueft das selbst
+ * (`ausserhalb_betrieb`).
+ *
+ * Die Haeuser kommen ueber `account_active_properties()`, nicht ueber einen
+ * Verbund mit `property`: dessen Zeilenrichtlinie zeigt nur die Haeuser des
+ * Aufrufers, und genau die fremden, um die es geht, fielen dabei still
+ * heraus. Rollen in einem stillgelegten Haus tragen keine Rechte
+ * (user_property_scope) und bleiben deshalb aussen vor.
  */
 async function benutzerImBetrieb(
-  client: PoolClient, accountId: number, userRef: string
-): Promise<Ziel> {
-  const u = await client.query<Ziel>(
+  client: PoolClient, accountId: number, userRef: string, principal: Principal
+): Promise<ZielReichweite> {
+  const u = await client.query<ZielReichweite>(
     `SELECT u.id, u.email, u.display_name, u.status,
             EXISTS (SELECT 1 FROM user_account_role uar
-                     WHERE uar.user_id = u.id AND uar.account_id = $2) AS hat_account_rolle
+                     WHERE uar.user_id = u.id AND uar.account_id = $2) AS hat_account_rolle,
+            COALESCE((SELECT array_agg(DISTINCT upr.property_id)
+                        FROM user_property_role upr
+                       WHERE upr.user_id = u.id
+                         AND upr.property_id IN
+                             (SELECT id FROM account_active_properties($2))),
+                     '{}'::bigint[]) AS hausrollen,
+            (EXISTS (SELECT 1 FROM user_account_role uar
+                      WHERE uar.user_id = u.id AND uar.account_id <> $2)
+             OR EXISTS (SELECT 1 FROM user_property_role upr
+                         WHERE upr.user_id = u.id
+                           AND upr.property_id NOT IN
+                               (SELECT id FROM account_active_properties($2)))) AS ausserhalb_betrieb
        FROM app_user u
       WHERE u.public_ref = $1
         AND (EXISTS (SELECT 1 FROM user_account_role uar
@@ -97,7 +139,26 @@ async function benutzerImBetrieb(
                       WHERE upr.user_id = u.id AND p.account_id = $2))`,
     [userRef, accountId])
   if (u.rowCount === 0) throw Errors.notFound('res.user')
-  return u.rows[0]!
+  const ziel = u.rows[0]!
+  // bigint kommt als Zeichenkette; can() vergleicht mit Zahlen.
+  ziel.hausrollen = ziel.hausrollen.map(Number)
+  if (!betriebsebene(principal, accountId)) {
+    verlangtBetriebsrecht(ziel, principal, accountId)
+    if (ziel.hausrollen.some(h => !can(principal, 'user:manage', h))) {
+      throw Errors.forbidden('user.rolesOutsideYourProperties')
+    }
+  }
+  return ziel
+}
+
+/**
+ * Verwaltet der Aufrufer Personal fuer den ganzen Betrieb? Dann gilt die
+ * Grenze von oben nicht -- `settings:account` schliesst das ein, es vergibt
+ * sogar die Rollen fuer den Betrieb.
+ */
+function betriebsebene(principal: Principal, accountId: number): boolean {
+  return accountRight(principal, 'user:manage', accountId)
+    || accountRight(principal, 'settings:account', accountId)
 }
 
 /**
@@ -373,7 +434,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const gewuenschterWeg = (req.body as { delivery?: string } | undefined)?.delivery
       const ergebnis = await tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
         verlangtBetriebsrecht(ziel, principal, accountId)
         const gesperrt = await client.query(
           `SELECT 1 FROM account_user_block WHERE account_id = $1 AND user_id = $2`,
@@ -392,6 +453,18 @@ export function userAdminRoutes(app: FastifyInstance): void {
            */
           if (ziel.status !== 'invited' && ziel.email !== null) {
             throw Errors.conflict('user.linkOnlyWithoutEmail')
+          }
+          /*
+           * Wer auch ausserhalb dieses Betriebs Rollen hat, bekommt keinen
+           * Link in fremde Hand, auch nicht vom Inhaber: wer den Link hat,
+           * hat den Zugang, und der reicht in den anderen Betrieb hinein,
+           * ueber den hier niemand zu entscheiden hat (M1, Sicherheitsaudit
+           * 2026-10-11). Eine Rolle in einem stillgelegten eigenen Haus
+           * zaehlt mit -- sie wirkt wieder, sobald das Haus zurueckkommt.
+           * Per Mail an die eigene Adresse bleibt der Weg offen.
+           */
+          if (ziel.ausserhalb_betrieb) {
+            throw Errors.forbidden('user.rolesOutsideYourProperties')
           }
           const l = await einmalLink(client, { userId: ziel.id, kind: art,
                                                createdBy: principal.userId,
@@ -430,7 +503,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
         verlangtBetriebsrecht(ziel, principal, accountId)
         await client.query(
           `UPDATE app_user
@@ -467,7 +540,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
         verlangtBetriebsrecht(ziel, principal, accountId)
         await client.query(
           `UPDATE app_user SET display_name = $2, updated_at = now() WHERE id = $1`,
@@ -497,7 +570,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
         if (ziel.id === principal.userId) throw Errors.conflict('user.notYourself')
         verlangtBetriebsrecht(ziel, principal, accountId)
         await nichtDenLetztenVerwalter(client, accountId, ziel.id)
@@ -522,7 +595,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
         verlangtBetriebsrecht(ziel, principal, accountId)
         await client.query(
           `DELETE FROM account_user_block WHERE account_id = $1 AND user_id = $2`,
@@ -552,7 +625,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
         if (ziel.id === principal.userId) throw Errors.conflict('user.notYourself')
         verlangtBetriebsrecht(ziel, principal, accountId)
         await nichtDenLetztenVerwalter(client, accountId, ziel.id)
@@ -613,7 +686,7 @@ export function userAdminRoutes(app: FastifyInstance): void {
 
       return tx(req.pool, req, async client => {
         const accountId = await hausUndAccount(client, Number(propertyId))
-        const ziel = await benutzerImBetrieb(client, accountId, userRef)
+        const ziel = await benutzerImBetrieb(client, accountId, userRef, principal)
 
         const rollen = gewuenscht.length === 0
           ? { rows: [] as Array<{ id: number; key: string }> }

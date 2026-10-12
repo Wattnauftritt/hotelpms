@@ -14,6 +14,7 @@ import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          type ReservationStatus, type ReservationAction,
          type WebhookEventType } from '@hotelpms/domain'
 import { can, type Principal } from '../platform/context.js'
+import { gaesteImBetrieb, gastPerRefImBetrieb, ratenplanImHaus } from '../platform/fremdeIds.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -344,10 +345,9 @@ async function setzeHauptgast(
       { status: res.status })
   }
 
-  const g = await client.query<{ id: number }>(
-    `SELECT id FROM guest WHERE public_ref = $1`, [guestRef])
-  if (g.rowCount === 0) throw Errors.notFound('res.guest')
-  const guestId = g.rows[0]!.id
+  // Im Betrieb des Hauses, nicht nur im Kontext (M4, Sicherheitsaudit
+  // 2026-10-11): wer in zwei Betrieben arbeitet, saehe sonst beide Gaeste.
+  const guestId = await gastPerRefImBetrieb(client, res.property_id, guestRef)
 
   const fakturiert = await client.query(
     `SELECT 1 FROM charge c
@@ -889,9 +889,23 @@ export async function aufenthalteVerlegen(
   // Der erste Aufenthalt, der an der Datenbank scheitert, und woran.
   let pruefFehler: { i: number; fehler: AppError } | null = null
   for (const [i, p] of plaene.entries()) {
-    const f = p.neuKategorie !== p.r.category_id && !gruppen[i]!.kategorie_ok
-      ? Errors.notFound('res.category')
-      : zimmerAntwort.get(i) ?? null
+    let f: AppError | null = p.neuKategorie !== p.r.category_id && !gruppen[i]!.kategorie_ok
+      ? Errors.notFound('res.category') : null
+    // Der Ratenplan aus dem Rumpf gehoert zu diesem Haus, in derselben
+    // Reihenfolge wie bisher: nach der Kategorie, vor dem Zimmer. Die
+    // Fremdschluesselpruefung sieht an der Zeilenrichtlinie vorbei, und ein
+    // Plan des Nachbarhauses setzte sonst still seine Preise ein (M4,
+    // Sicherheitsaudit 2026-10-11). Nur wer einen Plan mitschickt, kostet
+    // eine Abfrage -- die Gruppenverlegung schickt keinen.
+    if (f === null && p.body.ratePlanId !== undefined) {
+      try {
+        await ratenplanImHaus(client, p.r.property_id, p.body.ratePlanId)
+      } catch (e) {
+        if (!(e instanceof AppError)) throw e
+        f = e
+      }
+    }
+    f ??= zimmerAntwort.get(i) ?? null
     if (f !== null) { pruefFehler = { i, fehler: f }; break }
   }
   // Bis hierher kaeme die Schleife mit dem Bestand.
@@ -1219,13 +1233,21 @@ export function reservationRoutes(app: FastifyInstance): void {
           client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
 
+        /*
+         * Gast, Mitreisende und Ratenplan werden aufgeloest, bevor etwas
+         * geschrieben wird (M4, Sicherheitsaudit 2026-10-11). Die
+         * Fremdschluesselpruefung liest an der Zeilenrichtlinie vorbei: ein
+         * Gast eines anderen Kunden hing sonst an dieser Buchung, und ein
+         * Ratenplan des Nachbarhauses setzte seine Preise ein. Fremd und
+         * unbekannt bekommen dieselbe Antwort.
+         */
         let guestId = body.guestId
         if (body.guestRef !== undefined) {
-          const g = await client.query<{ id: number }>(
-            `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
-          if (g.rowCount === 0) throw Errors.notFound('res.guest')
-          guestId = g.rows[0]!.id
+          guestId = await gastPerRefImBetrieb(client, body.propertyId, body.guestRef)
         }
+        await gaesteImBetrieb(client, body.propertyId,
+          [guestId, ...(body.occupants ?? []).map(o => o.guestId)])
+        await ratenplanImHaus(client, body.propertyId, body.ratePlanId)
 
         /*
          * Abruf aus einem Kontingent. Der Platz ist dann schon gehalten und
@@ -1673,6 +1695,20 @@ export function reservationRoutes(app: FastifyInstance): void {
          * Recht noch einmal, sobald das Haus feststeht.
          */
         rechtImHaus(req.principal as Principal, 'reservation:read', Number(kopf._propertyId))
+        /*
+         * Mailadresse und Telefon nur mit `guest:read` im Haus der
+         * Reservierung (M5, Sicherheitsaudit 2026-10-11). `reservation:read`
+         * haben auch Revenue und Maschinenzugaenge, die Kontaktdaten nicht
+         * brauchen; die Liste verlangt fuer dieselben Felder dieses Recht
+         * schon (reservationList.ts), und das Seitenfenster war der Weg
+         * daran vorbei. Name und Referenz bleiben: ohne sie weiss niemand,
+         * wessen Buchung er vor sich hat.
+         */
+        if (!can(req.principal as Principal, 'guest:read', Number(kopf._propertyId))) {
+          kopf.guestEmail = null
+          kopf.guestPhone = null
+          kopf.stayPhone = null
+        }
 
         const naechte = await client.query(
           `SELECT date::text, price_cent AS "priceCent",

@@ -14,6 +14,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
+import { produktImHaus } from '../platform/fremdeIds.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
 const VAT_FALLBACK = 700
@@ -499,6 +500,11 @@ export function billingRoutes(app: FastifyInstance): void {
         rechtImHaus(principal, 'folio:post', f.rows[0]!.property_id)
         if (f.rows[0]!.status === 'closed') throw Errors.conflict('folio.closed')
         const folio = f.rows[0]!
+        // Der Artikel gehoert zum Haus des Folios. Die Buchung ist
+        // Haertegrad 1; ein Verweis auf den Artikel eines fremden Hauses
+        // liesse sich danach nur noch gegenbuchen (M4, Sicherheitsaudit
+        // 2026-10-11).
+        await produktImHaus(client, folio.property_id, body.productId)
 
         const bd = await client.query<{ date: string }>(
           `SELECT date::text FROM business_day
