@@ -64,6 +64,11 @@ export function AmTerminal({ reservationRef }: { reservationRef: string }): JSX.
   return (
     <section className="bg-white border border-neutral-200 rounded-sm p-3 space-y-2">
       <h3 className="text-sm font-medium">{t('terminal.title')}</h3>
+      {/* Bei einem Terminal geht der Auftrag ohne Auswahl hinaus; dass sich
+          dort gerade ein Gast selbst bedient, soll vorher dastehen. */}
+      {!offen && terminals.length === 1 && terminals[0]!.selfService && (
+        <p className="text-xs text-amber-700">{t('terminal.selfServiceActive')}</p>
+      )}
 
       {!offen && terminals.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -197,7 +202,7 @@ export function TerminalAuftrag({ reservationRef, kind, beschriftung, ohneTermin
 /** Die Auswahl des Terminals, wenn es mehr als eines gibt. */
 export function GeraetWahl({ terminals, onWahl, onAbbruch }: {
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy?: boolean
-                     shared?: boolean }>
+                     shared?: boolean; selfService?: boolean }>
   onWahl: (deviceRef: string) => void
   onAbbruch: () => void
 }): JSX.Element {
@@ -216,6 +221,8 @@ export function GeraetWahl({ terminals, onWahl, onAbbruch }: {
           {!d.online && <span className="text-xs text-amber-700">
             {' · '}{t('terminal.deviceOffline')}</span>}
           {d.busy === true && <span className="text-xs">{' · '}{t('terminal.deviceBusy')}</span>}
+          {d.busy !== true && d.selfService === true && <span className="text-xs">
+            {' · '}{t('terminal.selfServiceActive')}</span>}
         </button>
       ))}
       <button type="button" onClick={onAbbruch} className="text-xs text-neutral-500 underline">
