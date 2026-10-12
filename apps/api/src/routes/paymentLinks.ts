@@ -5,6 +5,7 @@ import { EMAIL_LANGUAGES, emailLanguage, isSendableAddress, depositRequestOpenCe
          renderPaymentLinkEmail, renderPayPage, paymentLinkValidUntil, paymentLinkValid,
          neuesToken, hashToken, type EmailLanguage, type PayPageKind,
          type PayPageData } from '@hotelpms/domain'
+import { sprachKuerzel } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
@@ -54,7 +55,7 @@ const MINDESTRESTZEIT_MS = 10 * 60_000
 /** Die Sprache aus dem Browser, wenn kein Gast bekannt ist. */
 function spracheAusKopf(kopf: string | undefined): EmailLanguage {
   for (const teil of (kopf ?? '').split(',')) {
-    const kurz = teil.trim().slice(0, 2).toLowerCase()
+    const kurz = sprachKuerzel(teil)
     if ((EMAIL_LANGUAGES as readonly string[]).includes(kurz)) return kurz as EmailLanguage
   }
   return 'de'

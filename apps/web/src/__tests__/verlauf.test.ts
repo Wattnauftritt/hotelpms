@@ -81,7 +81,7 @@ describe('Der Verlauf zeigt Namen, nicht Kennungen', () => {
     }
   })
 
-  it('bringt alle drei Sprachen mit', () => {
+  it('bringt alle Sprachen mit', () => {
     // Eine vergessene Sprache ist sonst ein Typfehler -- aber erst, wenn der
     // Schluessel ueberhaupt im Katalog steht.
     expect(texte).toContain("'verlauf.title'")

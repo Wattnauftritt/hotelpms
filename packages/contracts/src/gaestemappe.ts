@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox'
+import { LOCALES } from './messages.js'
 
 /**
  * Digitale Gaestemappe: der Vertrag zwischen der Seite des Gastes, den
@@ -19,12 +20,13 @@ export const FOLDER_PATH = '/mappe'
 
 /**
  * Die Sprachen der Mappe (Sven, 11.10.2026): dieselben wie die der
- * Gastpost, weil es dieselben Gaeste sind. Eine eigene Liste neben
- * `EMAIL_LANGUAGES`, weil die Mappe ihren eigenen Katalog hat, in dem jede
- * Sprache vollstaendig sein muss -- die Gastpost kann eine Sprache dazu
- * nehmen, ohne dass die Mappe halb uebersetzt erscheint.
+ * Gastpost, weil es dieselben Gaeste sind -- seit dem 12.10.2026 alle
+ * vierzehn. Eine eigene Liste neben `EMAIL_LANGUAGES`, weil die Mappe ihren
+ * eigenen Katalog hat, in dem jede Sprache vollstaendig sein muss -- die
+ * Gastpost kann eine Sprache dazu nehmen, ohne dass die Mappe halb
+ * uebersetzt erscheint.
  */
-export const FOLDER_LOCALES = ['de', 'en', 'nl', 'pl'] as const
+export const FOLDER_LOCALES = LOCALES
 export type FolderLocale = (typeof FOLDER_LOCALES)[number]
 
 /** Die Adresse im QR-Code der Zimmerkarte. */

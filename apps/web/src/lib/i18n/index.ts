@@ -72,7 +72,7 @@ import { gaestemappe } from './gaestemappe.js'
  * laufen auseinander, und das Ergebnis waere eine Sprache, die man waehlen
  * kann und in der die Fehlermeldungen deutsch bleiben.
  */
-export { LOCALES } from '@hotelpms/contracts'
+export { LOCALES, SPRACHNAMEN, sprachKuerzel } from '@hotelpms/contracts'
 export type Locale = MessageLocale
 
 /**
@@ -91,7 +91,18 @@ export type Locale = MessageLocale
 const INTL_TAG: Record<Locale, string> = {
   de: 'de-DE',
   en: 'en-GB',
-  tr: 'tr-TR'
+  nl: 'nl-NL',
+  da: 'da-DK',
+  sv: 'sv-SE',
+  nb: 'nb-NO',
+  pl: 'pl-PL',
+  cs: 'cs-CZ',
+  fr: 'fr-FR',
+  it: 'it-IT',
+  es: 'es-ES',
+  tr: 'tr-TR',
+  ru: 'ru-RU',
+  uk: 'uk-UA'
 }
 
 /**
@@ -118,8 +129,24 @@ export type Datumsform = 'tag-zuerst' | 'iso'
 const DATUMSFORM: Record<Locale, Datumsform> = {
   de: 'tag-zuerst',
   en: 'iso',
+  // Schwedisch schreibt Kalendertage selbst als 2026-10-01; die anderen mit
+  // dem Tag zuerst. Punkte statt ihrer Schraegstriche oder Bindestriche
+  // (Frankreich 01/10/2026, Niederlande 01-10-2026) sind dort ueberall
+  // lesbar und vor allem eindeutig -- anders als die Schraegstriche des
+  // Englischen ist bei Tag-zuerst nichts zu verwechseln.
+  nl: 'tag-zuerst',
+  da: 'tag-zuerst',
+  sv: 'iso',
+  nb: 'tag-zuerst',
+  pl: 'tag-zuerst',
+  cs: 'tag-zuerst',
+  fr: 'tag-zuerst',
+  it: 'tag-zuerst',
+  es: 'tag-zuerst',
   // Tuerkisch schreibt 01.10.2026, mit Punkten und Tag zuerst -- wie Deutsch.
-  tr: 'tag-zuerst'
+  tr: 'tag-zuerst',
+  ru: 'tag-zuerst',
+  uk: 'tag-zuerst'
 }
 
 const texts = {

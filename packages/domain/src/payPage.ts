@@ -181,6 +181,216 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
       + 'ponownie.',
     rueckfrage: 'W razie pytań prosimy odpowiedzieć na wiadomość, w której '
       + 'otrzymali Państwo ten link.'
+  },
+
+  da: {
+    titel: 'Betaling',
+    offenAnzahlung: 'Depositum for dit ophold fra {anreise} til {abreise}.',
+    offenAnzahlungFrist: 'Depositum for dit ophold fra {anreise} til {abreise}, forfalder den {frist}.',
+    offenZahlung: 'Betaling for dit ophold fra {anreise} til {abreise}.',
+    betrag: 'Udestående beløb',
+    gueltig: 'Dette link gælder til og med {datum}.',
+    knopf: 'Videre til betaling',
+    karte: 'Du betaler hos hotellets betalingsudbyder. Dine kortoplysninger indtaster du kun der; hotellet modtager dem aldrig.',
+    bezahlt: 'Denne betaling er modtaget. Mange tak.',
+    inBearbeitung: 'Din betaling behandles lige nu. Du behøver ikke gøre mere; betal venligst ikke en gang til.',
+    widerrufen: 'Dette betalingslink gælder ikke længere. Kontakt venligst hotellet.',
+    abgelaufen: 'Dette betalingslink er udløbet. Kontakt venligst hotellet; det sender dig gerne et nyt.',
+    uebung: 'Dette er et øvelseshotel. Her betales der ikke noget.',
+    nichtMoeglich: 'Betaling er ikke mulig lige nu. Prøv venligst igen senere.',
+    unbekannt: 'Dette link er ugyldigt. Kontrollér venligst, at det er kopieret helt fra e-mailen.',
+    zurueck: 'Mange tak. Så snart betalingsudbyderen bekræfter betalingen, registrerer hotellet den. Du kan lukke dette vindue.',
+    abgebrochen: 'Betalingen blev ikke gennemført. Du kan åbne linket fra din e-mail igen.',
+    rueckfrage: 'Har du spørgsmål, så svar på den e-mail, du har modtaget dette link med.'
+  },
+
+  sv: {
+    titel: 'Betalning',
+    offenAnzahlung: 'Förskott för din vistelse från {anreise} till {abreise}.',
+    offenAnzahlungFrist: 'Förskott för din vistelse från {anreise} till {abreise}, förfaller den {frist}.',
+    offenZahlung: 'Betalning för din vistelse från {anreise} till {abreise}.',
+    betrag: 'Belopp att betala',
+    gueltig: 'Denna länk gäller till och med {datum}.',
+    knopf: 'Vidare till betalning',
+    karte: 'Du betalar hos hotellets betalleverantör. Du anger dina kortuppgifter bara där; hotellet får aldrig ta del av dem.',
+    bezahlt: 'Denna betalning har tagits emot. Tack.',
+    inBearbeitung: 'Din betalning behandlas. Du behöver inte göra något mer; betala inte en gång till.',
+    widerrufen: 'Denna betallänk är inte längre giltig. Kontakta hotellet.',
+    abgelaufen: 'Denna betallänk har gått ut. Kontakta hotellet; det skickar gärna en ny.',
+    uebung: 'Detta är ett övningshotell. Här betalas ingenting.',
+    nichtMoeglich: 'Betalning är inte möjlig just nu. Försök igen senare.',
+    unbekannt: 'Denna länk är ogiltig. Kontrollera att den kopierats fullständigt från mejlet.',
+    zurueck: 'Tack. Så snart betalleverantören bekräftar betalningen registrerar hotellet den. Du kan stänga detta fönster.',
+    abgebrochen: 'Betalningen slutfördes inte. Du kan öppna länken i ditt mejl igen.',
+    rueckfrage: 'Har du frågor, svara på mejlet där du fick denna länk.'
+  },
+
+  nb: {
+    titel: 'Betaling',
+    offenAnzahlung: 'Forskudd for oppholdet ditt fra {anreise} til {abreise}.',
+    offenAnzahlungFrist: 'Forskudd for oppholdet ditt fra {anreise} til {abreise}, forfaller {frist}.',
+    offenZahlung: 'Betaling for oppholdet ditt fra {anreise} til {abreise}.',
+    betrag: 'Utestående beløp',
+    gueltig: 'Denne lenken gjelder til og med {datum}.',
+    knopf: 'Gå videre til betaling',
+    karte: 'Du betaler hos hotellets betalingsleverandør. Kortopplysningene dine legger du bare inn der; hotellet mottar dem aldri.',
+    bezahlt: 'Denne betalingen er mottatt. Tusen takk.',
+    inBearbeitung: 'Betalingen din behandles nå. Du trenger ikke gjøre noe mer; ikke betal en gang til.',
+    widerrufen: 'Denne betalingslenken gjelder ikke lenger. Ta kontakt med hotellet.',
+    abgelaufen: 'Denne betalingslenken er utløpt. Ta kontakt med hotellet; de sender deg gjerne en ny.',
+    uebung: 'Dette er et øvingshotell. Her betales ingenting.',
+    nichtMoeglich: 'Betaling er ikke mulig akkurat nå. Prøv igjen senere.',
+    unbekannt: 'Denne lenken er ugyldig. Kontroller at den er kopiert fullstendig fra e-posten.',
+    zurueck: 'Tusen takk. Så snart betalingsleverandøren bekrefter betalingen, registrerer hotellet den. Du kan lukke dette vinduet.',
+    abgebrochen: 'Betalingen ble ikke fullført. Du kan åpne lenken fra e-posten din på nytt.',
+    rueckfrage: 'Har du spørsmål, svarer du på e-posten du fikk denne lenken i.'
+  },
+
+  fr: {
+    titel: 'Paiement',
+    offenAnzahlung: 'Acompte pour votre séjour du {anreise} au {abreise}.',
+    offenAnzahlungFrist: 'Acompte pour votre séjour du {anreise} au {abreise}, à régler le {frist}.',
+    offenZahlung: 'Paiement de votre séjour du {anreise} au {abreise}.',
+    betrag: 'Montant dû',
+    gueltig: 'Ce lien est valable jusqu’au {datum} inclus.',
+    knopf: 'Continuer vers le paiement',
+    karte: 'Vous payez auprès du prestataire de paiement de l’établissement. Vous saisissez vos données de carte uniquement là-bas ; l’établissement ne les reçoit pas.',
+    bezahlt: 'Ce paiement a bien été reçu. Merci beaucoup.',
+    inBearbeitung: 'Votre paiement est en cours de traitement. Vous n’avez rien d’autre à faire ; veuillez ne pas payer une seconde fois.',
+    widerrufen: 'Ce lien de paiement n’est plus valable. Veuillez contacter l’établissement.',
+    abgelaufen: 'Ce lien de paiement a expiré. Veuillez contacter l’établissement ; il vous en enverra volontiers un nouveau.',
+    uebung: 'Ceci est un établissement d’exercice. Aucun paiement n’est effectué ici.',
+    nichtMoeglich: 'Le paiement n’est pas possible pour le moment. Veuillez réessayer plus tard.',
+    unbekannt: 'Ce lien n’est pas valable. Veuillez vérifier qu’il a été copié en entier depuis l’e-mail.',
+    zurueck: 'Merci beaucoup. Dès que le prestataire de paiement aura confirmé le paiement, l’établissement l’enregistrera. Vous pouvez fermer cette fenêtre.',
+    abgebrochen: 'Le paiement n’a pas abouti. Vous pouvez rouvrir le lien figurant dans votre e-mail.',
+    rueckfrage: 'Pour toute question, répondez à l’e-mail par lequel vous avez reçu ce lien.'
+  },
+
+  it: {
+    titel: 'Pagamento',
+    offenAnzahlung: 'Acconto per il Suo soggiorno dal {anreise} al {abreise}.',
+    offenAnzahlungFrist: 'Acconto per il Suo soggiorno dal {anreise} al {abreise}, da pagare entro il {frist}.',
+    offenZahlung: 'Pagamento per il Suo soggiorno dal {anreise} al {abreise}.',
+    betrag: 'Importo da pagare',
+    gueltig: 'Questo link è valido fino al {datum} incluso.',
+    knopf: 'Procedi al pagamento',
+    karte: 'Il pagamento avviene presso il fornitore di pagamento della struttura. I dati della Sua carta li inserisce solo lì; la struttura non li riceve.',
+    bezahlt: 'Questo pagamento è stato ricevuto. Grazie mille.',
+    inBearbeitung: 'Il Suo pagamento è in fase di elaborazione. Non deve fare altro; La preghiamo di non pagare una seconda volta.',
+    widerrufen: 'Questo link di pagamento non è più valido. La preghiamo di rivolgersi alla struttura.',
+    abgelaufen: 'Questo link di pagamento è scaduto. La preghiamo di rivolgersi alla struttura, che Le invierà volentieri un nuovo link.',
+    uebung: 'Questa è una struttura di prova. Qui non si paga nulla.',
+    nichtMoeglich: 'Il pagamento al momento non è possibile. La preghiamo di riprovare più tardi.',
+    unbekannt: 'Questo link non è valido. Verifichi di averlo copiato per intero dall’e-mail.',
+    zurueck: 'Grazie mille. Non appena il fornitore di pagamento conferma il pagamento, la struttura lo registra. Può chiudere questa finestra.',
+    abgebrochen: 'Il pagamento non è stato completato. Può riaprire il link dalla Sua e-mail.',
+    rueckfrage: 'Per qualsiasi domanda risponda all’e-mail con cui ha ricevuto questo link.'
+  },
+
+  es: {
+    titel: 'Pago',
+    offenAnzahlung: 'Anticipo para su estancia del {anreise} al {abreise}.',
+    offenAnzahlungFrist: 'Anticipo para su estancia del {anreise} al {abreise}, con vencimiento el {frist}.',
+    offenZahlung: 'Pago de su estancia del {anreise} al {abreise}.',
+    betrag: 'Importe pendiente',
+    gueltig: 'Este enlace es válido hasta el {datum} inclusive.',
+    knopf: 'Continuar al pago',
+    karte: 'Paga a través del proveedor de pagos del establecimiento. Sus datos de tarjeta solo los introduce allí; el establecimiento no los recibe.',
+    bezahlt: 'Hemos recibido este pago. Muchas gracias.',
+    inBearbeitung: 'Su pago se está procesando. No tiene que hacer nada más; por favor, no pague una segunda vez.',
+    widerrufen: 'Este enlace de pago ya no es válido. Póngase en contacto con el establecimiento.',
+    abgelaufen: 'Este enlace de pago ha caducado. Póngase en contacto con el establecimiento; le enviará uno nuevo con mucho gusto.',
+    uebung: 'Este es un establecimiento de prácticas. Aquí no se paga nada.',
+    nichtMoeglich: 'En este momento no es posible realizar el pago. Vuelva a intentarlo más tarde.',
+    unbekannt: 'Este enlace no es válido. Compruebe que lo ha copiado completo desde el e-mail.',
+    zurueck: 'Muchas gracias. En cuanto el proveedor de pagos confirme el pago, el establecimiento lo registrará. Puede cerrar esta ventana.',
+    abgebrochen: 'El pago no se ha completado. Puede volver a abrir el enlace desde su e-mail.',
+    rueckfrage: 'Si tiene alguna pregunta, responda al e-mail con el que recibió este enlace.'
+  },
+
+  tr: {
+    titel: 'Ödeme',
+    offenAnzahlung: '{anreise} – {abreise} tarihleri arasındaki konaklamanız için ön ödeme.',
+    offenAnzahlungFrist: '{anreise} – {abreise} tarihleri arasındaki konaklamanız için ön ödeme, son ödeme tarihi {frist}.',
+    offenZahlung: '{anreise} – {abreise} tarihleri arasındaki konaklamanız için ödeme.',
+    betrag: 'Ödenecek tutar',
+    gueltig: 'Bu bağlantı {datum} tarihi dahil geçerlidir.',
+    knopf: 'Ödemeye geç',
+    karte: 'Ödemeyi tesisin ödeme hizmet sağlayıcısında yaparsınız. Kart bilgilerinizi yalnızca orada girersiniz; tesis bu bilgileri almaz.',
+    bezahlt: 'Bu ödeme alınmıştır. Çok teşekkür ederiz.',
+    inBearbeitung: 'Ödemeniz şu anda işleniyor. Başka bir şey yapmanıza gerek yok; lütfen ikinci kez ödeme yapmayın.',
+    widerrufen: 'Bu ödeme bağlantısı artık geçerli değil. Lütfen tesisle iletişime geçin.',
+    abgelaufen: 'Bu ödeme bağlantısının süresi doldu. Lütfen tesisle iletişime geçin; size memnuniyetle yenisini gönderecektir.',
+    uebung: 'Bu bir eğitim tesisidir. Burada ödeme yapılmaz.',
+    nichtMoeglich: 'Ödeme şu anda mümkün değil. Lütfen daha sonra tekrar deneyin.',
+    unbekannt: 'Bu bağlantı geçersiz. Lütfen e-postadan eksiksiz kopyalanıp kopyalanmadığını kontrol edin.',
+    zurueck: 'Teşekkür ederiz. Ödeme hizmet sağlayıcısı ödemeyi onaylar onaylamaz tesis bunu kaydedecektir. Bu pencereyi kapatabilirsiniz.',
+    abgebrochen: 'Ödeme tamamlanmadı. E-postanızdaki bağlantıyı yeniden açabilirsiniz.',
+    rueckfrage: 'Sorularınız için bu bağlantıyı aldığınız e-postayı yanıtlayın.'
+  },
+
+  ru: {
+    titel: 'Оплата',
+    offenAnzahlung: 'Предоплата за Ваше пребывание с {anreise} по {abreise}.',
+    offenAnzahlungFrist: 'Предоплата за Ваше пребывание с {anreise} по {abreise}, срок оплаты — {frist}.',
+    offenZahlung: 'Оплата Вашего пребывания с {anreise} по {abreise}.',
+    betrag: 'Сумма к оплате',
+    gueltig: 'Эта ссылка действует до {datum} включительно.',
+    knopf: 'Перейти к оплате',
+    karte: 'Вы оплачиваете у платёжного провайдера отеля. Данные карты Вы вводите только там; отель их не получает.',
+    bezahlt: 'Этот платёж получен. Большое спасибо.',
+    inBearbeitung: 'Ваш платёж сейчас обрабатывается. Больше ничего делать не нужно; пожалуйста, не оплачивайте повторно.',
+    widerrufen: 'Эта платёжная ссылка больше не действует. Пожалуйста, свяжитесь с отелем.',
+    abgelaufen: 'Срок действия этой платёжной ссылки истёк. Пожалуйста, свяжитесь с отелем — Вам с удовольствием пришлют новую.',
+    uebung: 'Это учебный отель. Здесь ничего не оплачивается.',
+    nichtMoeglich: 'Оплата сейчас невозможна. Пожалуйста, попробуйте позже.',
+    unbekannt: 'Эта ссылка недействительна. Пожалуйста, проверьте, полностью ли она скопирована из письма.',
+    zurueck: 'Большое спасибо. Как только платёжный провайдер подтвердит платёж, отель его зарегистрирует. Вы можете закрыть это окно.',
+    abgebrochen: 'Оплата не была завершена. Вы можете снова открыть ссылку из Вашего письма.',
+    rueckfrage: 'Если у Вас есть вопросы, ответьте на письмо, в котором Вы получили эту ссылку.'
+  },
+
+  cs: {
+    titel: 'Platba',
+    offenAnzahlung: 'Záloha za Váš pobyt od {anreise} do {abreise}.',
+    offenAnzahlungFrist: 'Záloha za Váš pobyt od {anreise} do {abreise}, splatná dne {frist}.',
+    offenZahlung: 'Platba za Váš pobyt od {anreise} do {abreise}.',
+    betrag: 'Částka k úhradě',
+    gueltig: 'Tento odkaz platí do {datum} včetně.',
+    knopf: 'Pokračovat k platbě',
+    karte: 'Platíte u poskytovatele platebních služeb hotelu. Údaje o kartě zadáváte pouze tam; hotel je nedostane.',
+    bezahlt: 'Tato platba byla přijata. Děkujeme.',
+    inBearbeitung: 'Vaše platba se právě zpracovává. Nemusíte nic dalšího dělat; prosím neplaťte podruhé.',
+    widerrufen: 'Tento platební odkaz již neplatí. Obraťte se prosím na hotel.',
+    abgelaufen: 'Platnost tohoto platebního odkazu vypršela. Obraťte se prosím na hotel; rád Vám pošle nový.',
+    uebung: 'Toto je cvičný hotel. Zde se nic neplatí.',
+    nichtMoeglich: 'Platba momentálně není možná. Zkuste to prosím později.',
+    unbekannt: 'Tento odkaz je neplatný. Zkontrolujte prosím, zda byl z e-mailu převzat celý.',
+    zurueck: 'Děkujeme. Jakmile poskytovatel platebních služeb platbu potvrdí, hotel ji zaznamená. Toto okno můžete zavřít.',
+    abgebrochen: 'Platba nebyla dokončena. Odkaz z Vašeho e-mailu můžete otevřít znovu.',
+    rueckfrage: 'S dotazy odpovězte na e-mail, ve kterém jste tento odkaz obdrželi.'
+  },
+
+  uk: {
+    titel: 'Оплата',
+    offenAnzahlung: 'Аванс за Ваше перебування з {anreise} по {abreise}.',
+    offenAnzahlungFrist: 'Аванс за Ваше перебування з {anreise} по {abreise}, сплатити до {frist}.',
+    offenZahlung: 'Оплата Вашого перебування з {anreise} по {abreise}.',
+    betrag: 'Сума до сплати',
+    gueltig: 'Це посилання дійсне до {datum} включно.',
+    knopf: 'Перейти до оплати',
+    karte: 'Ви оплачуєте через платіжного провайдера готелю. Дані своєї картки Ви вводите лише там; готель їх не отримує.',
+    bezahlt: 'Цей платіж надійшов. Щиро дякуємо.',
+    inBearbeitung: 'Ваш платіж зараз обробляється. Більше нічого робити не потрібно; будь ласка, не оплачуйте вдруге.',
+    widerrufen: 'Це посилання на оплату більше не дійсне. Будь ласка, зверніться до готелю.',
+    abgelaufen: 'Термін дії цього посилання на оплату минув. Будь ласка, зверніться до готелю — Вам охоче надішлють нове.',
+    uebung: 'Це навчальний готель. Тут нічого не оплачується.',
+    nichtMoeglich: 'Оплата зараз неможлива. Будь ласка, спробуйте пізніше ще раз.',
+    unbekannt: 'Це посилання недійсне. Будь ласка, перевірте, чи його повністю скопійовано з листа.',
+    zurueck: 'Щиро дякуємо. Щойно платіжний провайдер підтвердить оплату, готель її зафіксує. Ви можете закрити це вікно.',
+    abgebrochen: 'Оплату не завершено. Ви можете знову відкрити посилання з Вашого листа.',
+    rueckfrage: 'Якщо у Вас є запитання, дайте відповідь на лист, у якому Ви отримали це посилання.'
   }
 }
 
@@ -203,7 +413,8 @@ function einsetzen(satz: string, werte: Record<string, string>): string {
 function kalendertag(iso: string, lang: EmailLanguage): string {
   const [jahr, monat, tag] = iso.split('-')
   if (jahr === undefined || monat === undefined || tag === undefined) return iso
-  if (lang === 'en') return iso
+  // Schwedisch schreibt Kalendertage selbst in ISO-Form.
+  if (lang === 'en' || lang === 'sv') return iso
   if (lang === 'nl') return `${tag}-${monat}-${jahr}`
   return `${tag}.${monat}.${jahr}`
 }

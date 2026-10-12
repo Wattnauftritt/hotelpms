@@ -135,12 +135,13 @@ describe('Zahlungslink an den Gast', () => {
       expect(m.html, lang).toContain(zahlung.url)
       expect(m.text, lang).toContain('104,70 EUR')
       expect(m.subject, lang).toContain('ABC123')
-      // Englisch schreibt ISO, damit "03/04" niemand falsch herum liest;
-      // die anderen den Tag zuerst.
-      expect(m.text, lang).toContain(lang === 'en' ? '2026-09-20'
+      // Englisch schreibt ISO, damit "03/04" niemand falsch herum liest,
+      // Schwedisch ohnehin; die anderen den Tag zuerst.
+      const iso = lang === 'en' || lang === 'sv'
+      expect(m.text, lang).toContain(iso ? '2026-09-20'
         : lang === 'nl' ? '20-09-2026' : '20.09.2026')
       // Bis wann der Link gilt -- seit 0068 Tage, nicht Stunden.
-      expect(m.text, lang).toContain(lang === 'en' ? '2026-09-27'
+      expect(m.text, lang).toContain(iso ? '2026-09-27'
         : lang === 'nl' ? '27-09-2026' : '27.09.2026')
     }
   })
@@ -185,11 +186,14 @@ describe('Sprachwahl am Gastprofil', () => {
     expect(emailLanguage('en-GB')).toBe('en')
     expect(emailLanguage('NL')).toBe('nl')
     expect(emailLanguage('pl_PL')).toBe('pl')
+    // Norwegisch steht am Profil auch als `no` oder `nn`.
+    expect(emailLanguage('no')).toBe('nb')
+    expect(emailLanguage('nn-NO')).toBe('nb')
   })
 
   /** Was wir nicht schreiben, geht auf Deutsch hinaus -- und nicht gar nicht. */
   it('faellt bei einer unbekannten Sprache auf Deutsch zurueck', () => {
-    for (const unbekannt of ['fr', 'zz', '', null, undefined]) {
+    for (const unbekannt of ['ar', 'zz', '', null, undefined]) {
       expect(emailLanguage(unbekannt)).toBe('de')
     }
   })

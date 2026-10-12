@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
-import { I18nContext, useT, LOCALES, type Locale, type TextKey }
+import { I18nContext, useT, LOCALES, SPRACHNAMEN, type Locale, type TextKey }
   from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { useInstallation } from '../lib/pwa.js'
@@ -541,7 +541,7 @@ export function Sprachwahl({ locale, onLocale }: Pick<Props, 'locale' | 'onLocal
     <select value={locale} onChange={e => onLocale(e.target.value as Locale)}
             aria-label={t('common.language')}
             className="text-sm border border-neutral-300 rounded-sm px-2 py-1">
-      {LOCALES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+      {LOCALES.map(l => <option key={l} value={l}>{SPRACHNAMEN[l]}</option>)}
     </select>
   )
 }
