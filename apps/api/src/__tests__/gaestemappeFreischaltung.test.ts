@@ -15,7 +15,8 @@ import { limiters } from '../platform/rateLimit.js'
 /**
  * Freischalten der Gaestemappe mit Nachname oder PLZ (Migration 0147):
  * Wechseltag, Fehlversuche je Zimmer, Mail-Link, Aufheben an der Rezeption
- * und die Loeschung des Gastes.
+ * und die Loeschung des Gastes. Dazu der Reinigungsverzicht aus der Mappe,
+ * der die Freischaltung braucht (0148).
  */
 
 let owner: Pool
@@ -111,14 +112,14 @@ describe('Freischalten', () => {
 
     const r = await freischalten(zimmer[0]!, 'mueller')
     expect(r.statusCode, r.body).toBe(200)
-    expect(r.json()).toEqual({ stay: { departure: '2026-10-14' } })
+    expect(r.json()).toEqual({ stay: { departure: '2026-10-14', cleaningWaiver: null } })
     const c = r.cookies.find(x => x.name === FOLDER_SESSION_COOKIE)!
     expect(c).toMatchObject({ httpOnly: true, path: '/v1/mappe', sameSite: 'Strict' })
     // Bis zum Ende des Abreisetags am Ort des Hauses.
     expect(new Date(c.expires!).toISOString()).toBe('2026-10-14T22:00:00.000Z')
 
     const nachher = await mappe(zimmer[0]!, c.value)
-    expect(nachher.json().stay).toEqual({ departure: '2026-10-14' })
+    expect(nachher.json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null })
     // Im Nachbarzimmer gilt die Freischaltung nicht.
     expect((await mappe(zimmer[1]!, c.value)).json().stay).toBeNull()
     // Kein Name in der Antwort.
@@ -133,9 +134,9 @@ describe('Freischalten', () => {
     await owner.query(`UPDATE guest SET postal_code = '27472' WHERE id = $1`, [kommt.guestId])
 
     const a = await freischalten(zimmer[0]!, 'Abreise')
-    expect(a.json().stay).toEqual({ departure: HEUTE })
+    expect(a.json().stay).toEqual({ departure: HEUTE, cleaningWaiver: null })
     const b = await freischalten(zimmer[0]!, '27472')
-    expect(b.json().stay).toEqual({ departure: '2026-10-15' })
+    expect(b.json().stay).toEqual({ departure: '2026-10-15', cleaningWaiver: null })
 
     const sitzungen = await owner.query<{ reservation_id: number }>(
       `SELECT reservation_id::int FROM guest_folder_session ORDER BY id`)
@@ -153,7 +154,7 @@ describe('Freischalten', () => {
     await owner.query(`UPDATE reservation SET resource_id = $2 WHERE id = $1`,
       [a.reservationId, zimmer[1]])
     expect((await mappe(zimmer[0]!, c)).json().stay).toBeNull()
-    expect((await mappe(zimmer[1]!, c)).json().stay).toEqual({ departure: '2026-10-14' })
+    expect((await mappe(zimmer[1]!, c)).json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null })
   })
 
   it('sagt bei einem leeren und einem fremden Zimmer dasselbe und zaehlt je Zimmer', async () => {
@@ -263,7 +264,7 @@ describe('Mail-Link', () => {
     expect(r.statusCode, r.body).toBe(200)
     const ref = folderRefAusFragment(r.json<{ link: string }>().link.split('#')[1]!)
     expect(ref).toBe(refs.get(zimmer[0]!))
-    expect((await mappe(zimmer[0]!, cookieAus(r))).json().stay).toEqual({ departure: '2026-10-14' })
+    expect((await mappe(zimmer[0]!, cookieAus(r))).json().stay).toEqual({ departure: '2026-10-14', cleaningWaiver: null })
 
     expect((await oeffnen(await link(a.reservationId, 'terminal'))).statusCode).toBe(422)
 
@@ -273,5 +274,66 @@ describe('Mail-Link', () => {
     const vorher = await app.inject({ method: 'GET', url: '/v1/checkin/form',
       headers: { [CHECKIN_TOKEN_HEADER]: mail } })
     expect(vorher.json().guestFolder).toBe(false)
+  })
+})
+
+describe('Reinigungsverzicht aus der Mappe (0148)', () => {
+  const verzichten = (raum: number, date: string, waived: boolean, cookie?: string) =>
+    app.inject({ method: 'POST', url: '/v1/mappe/cleaning-waiver',
+      headers: { [FOLDER_ROOM_HEADER]: refs.get(raum)!,
+                 ...(cookie === undefined ? {} : { cookie: `${FOLDER_SESSION_COOKIE}=${cookie}` }) },
+      payload: { date, waived } })
+
+  beforeEach(async () => {
+    await owner.query(
+      `INSERT INTO property_cleaning_waiver_setting (property_id, enabled, water_gift)
+       VALUES ($1, true, true)`, [fx.propertyId])
+  })
+
+  it('verlangt die Freischaltung und setzt dann ueber dieselbe Regel wie die anderen Tueren', async () => {
+    const a = await aufenthalt({ zimmer: zimmer[0]!, arrival: '2026-10-10',
+      departure: '2026-10-14', lastName: 'Petersen' })
+    // Die Karte allein reicht nicht: die hat jeder, der je im Zimmer war.
+    const ohne = await verzichten(zimmer[0]!, '2026-10-13', true)
+    expect(ohne.statusCode).toBe(403)
+    expect(ohne.json().code).toBe('folder.unlockRequired')
+
+    const r = await freischalten(zimmer[0]!, 'Petersen')
+    // Bleibetage ab dem Geschaeftstag, ohne den Abreisetag.
+    expect(r.json().stay.cleaningWaiver).toEqual({ waterGift: true, mayEdit: true, days: [
+      { date: '2026-10-12', waived: false, locked: false },
+      { date: '2026-10-13', waived: false, locked: false }] })
+    const c = cookieAus(r)
+
+    const ja = await verzichten(zimmer[0]!, '2026-10-13', true, c)
+    expect(ja.statusCode, ja.body).toBe(200)
+    expect(ja.json().days[1]).toEqual({ date: '2026-10-13', waived: true, locked: false })
+    const w = await owner.query<{ source: string; created_by: number | null }>(
+      `SELECT source, created_by FROM cleaning_waiver WHERE reservation_id = $1`,
+      [a.reservationId])
+    expect(w.rows).toEqual([{ source: 'folder', created_by: null }])
+    expect((await mappe(zimmer[0]!, c)).json().stay.cleaningWaiver.days[1].waived).toBe(true)
+
+    // Der Abreisetag hat eine Abreisereinigung, auf die niemand verzichtet.
+    expect((await verzichten(zimmer[0]!, '2026-10-14', true, c)).statusCode).toBe(422)
+    // Zuruecknehmen geht ebenso.
+    const nein = await verzichten(zimmer[0]!, '2026-10-13', false, c)
+    expect(nein.json().days[1].waived).toBe(false)
+  })
+
+  it('wirkt nicht im Nachbarzimmer und nicht nach dem Abmelden', async () => {
+    await aufenthalt({ zimmer: zimmer[0]!, arrival: '2026-10-10',
+      departure: '2026-10-14', lastName: 'Petersen' })
+    await aufenthalt({ zimmer: zimmer[1]!, arrival: '2026-10-10',
+      departure: '2026-10-14', lastName: 'Nachbar' })
+    const c = cookieAus(await freischalten(zimmer[0]!, 'Petersen'))
+    expect((await verzichten(zimmer[1]!, '2026-10-13', true, c)).statusCode).toBe(403)
+
+    await app.inject({ method: 'POST', url: '/v1/mappe/lock',
+      headers: { [FOLDER_ROOM_HEADER]: refs.get(zimmer[0]!)!,
+                 cookie: `${FOLDER_SESSION_COOKIE}=${c}` } })
+    expect((await verzichten(zimmer[0]!, '2026-10-13', true, c)).statusCode).toBe(403)
+    const n = await owner.query(`SELECT 1 FROM cleaning_waiver`)
+    expect(n.rowCount).toBe(0)
   })
 })

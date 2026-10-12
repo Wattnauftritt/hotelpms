@@ -69,10 +69,17 @@ Migration `0147`. Wer die Karte scannt, sieht Hausinfos und WLAN; den eigenen Au
 
 Offen und bewusst nicht hier: Die allgemeine Grenze für anonyme Anfragen (300 je Minute und Adresse) gilt auch für das Laden der Mappe. In einem großen Haus hinter **einer** Adresse kann ein voller Frühstücksraum sie erreichen; dann ist die Mappe für eine Minute nicht zu laden. Messen, bevor eine Ausnahme gebaut wird.
 
-## 7. Was als Nächstes kommt
+## 7. Reinigungsverzicht
 
-1. Reinigungsverzicht in der Mappe (`cleaning_waiver.source = 'folder'`).
-2. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
-3. Wünsche in der Personal-App mit Push und Übersetzung.
-4. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
-5. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+Migration `0148`. Das freigeschaltete Telefon sieht unter „Ihr Aufenthalt“ dieselben Bleibetage mit „Keine Reinigung“ wie die Gastseite des Online-Check-ins (`VerzichtListe.tsx`, ohne den Katalog der Rezeption).
+
+- **Nur mit Freischaltung.** `POST /v1/mappe/cleaning-waiver` antwortet ohne Freischaltung mit 403 (`folder.unlockRequired`). Die Karte allein hat jeder, der je im Zimmer war; ein früherer Gast soll dem jetzigen nicht die Reinigung abbestellen. Genau diese Lücke hatte die offene Verzichtsseite der alten App.
+- **Eine Regel, drei Türen.** Welche Tage gehen, bis wann, und wer davon erfährt (Push an die zugeteilte Kraft), entscheidet weiter `setzeVerzicht` in `platform/reinigungsverzicht.ts`. Ob die Mappe den Verzicht zeigt, folgt der Einstellung des Verzichts selbst (`property_cleaning_waiver_setting`); einen zweiten Schalter in der Mappe gibt es nicht, weil ein Haus, das den Verzicht anbietet, ihn nicht an einer Tür anbieten und an der anderen verschweigen will.
+- **Eigene Herkunft.** `cleaning_waiver.source = 'folder'` neben `guest` (Mail-Link) und `reception`, damit nachzulesen bleibt, über welche Tür verzichtet wurde.
+
+## 8. Was als Nächstes kommt
+
+1. Wünsche und Extras mit Preis (`guest_request_item`, `guest_request`; bei Annahme Buchung aufs Folio über `product`).
+2. Wünsche in der Personal-App mit Push und Übersetzung.
+3. Freie Nachricht, späte Abreise gegen Gebühr, Abreiseseite, Bewertungslink.
+4. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.

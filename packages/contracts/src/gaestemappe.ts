@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox'
 import { LOCALES } from './messages.js'
+import { CleaningWaiverView } from './cleaningWaiver.js'
 
 /**
  * Digitale Gaestemappe: der Vertrag zwischen der Seite des Gastes, den
@@ -90,6 +91,18 @@ export const FolderPageText = Type.Object({
 })
 export type FolderPageText = Static<typeof FolderPageText>
 
+/**
+ * Was ein freigeschaltetes Telefon ueber den eigenen Aufenthalt sieht.
+ * `cleaningWaiver` ist `null`, wenn das Haus den Verzicht nicht anbietet
+ * oder kein Bleibetag mehr kommt (0148) -- dieselbe Form wie unter dem
+ * Meldeschein, damit beide Tueren dasselbe zeigen.
+ */
+export const GuestFolderStay = Type.Object({
+  departure: Type.String(),
+  cleaningWaiver: Type.Union([CleaningWaiverView, Type.Null()])
+})
+export type GuestFolderStay = Static<typeof GuestFolderStay>
+
 export const GuestFolderView = Type.Object({
   propertyName: Type.String(),
   /** Name des Zimmers, sonst seine Nummer. */
@@ -102,7 +115,7 @@ export const GuestFolderView = Type.Object({
    * sonst `null`. Kein Name, keine Adresse, kein Betrag: wer das Telefon
    * weitergibt, gibt nur den Abreisetag mit.
    */
-  stay: Type.Union([Type.Object({ departure: Type.String() }), Type.Null()]),
+  stay: Type.Union([GuestFolderStay, Type.Null()]),
   pages: Type.Array(Type.Object({
     contentRef: Type.String(),
     title: Type.String(),

@@ -1,5 +1,6 @@
 import type { CleaningWaiverView } from '@hotelpms/contracts'
 import { useT, useLocale, formatDate, formatDayMonth, weekdayShort } from '../lib/i18n/index.js'
+import { VerzichtListe } from './VerzichtListe.tsx'
 
 /**
  * Die Bleibetage mit je einem Haken "keine Reinigung" (Migration 0115).
@@ -7,7 +8,8 @@ import { useT, useLocale, formatDate, formatDayMonth, weekdayShort } from '../li
  * Eine Komponente fuer die Gastseite und das Seitenfenster der Rezeption:
  * was der Gast sieht, soll die Rezeption am Telefon genauso vor sich haben.
  * Wer was mit dem Haken tut, entscheidet der Aufrufer (`onSet`) -- der Gast
- * mit seinem Link, die Rezeption mit ihrer Sitzung.
+ * mit seinem Link, die Rezeption mit ihrer Sitzung. Die Liste selbst steht
+ * in `VerzichtListe.tsx`, weil die Gaestemappe sie mit ihrem Katalog zeigt.
  */
 export function VerzichtTage({ view, onSet, busy, gross = false }: {
   view: CleaningWaiverView
@@ -18,25 +20,9 @@ export function VerzichtTage({ view, onSet, busy, gross = false }: {
   const t = useT()
   const locale = useLocale()
   return (
-    <ul className={`flex flex-wrap ${gross ? 'gap-3' : 'gap-2'}`}>
-      {view.days.map(d => (
-        <li key={d.date}>
-          <label className={`flex items-center gap-2 rounded-sm border
-                             ${gross ? 'px-4 py-3' : 'px-2 py-1 text-xs'}
-                             ${d.waived ? 'border-emerald-600 bg-emerald-50' : 'border-neutral-300 bg-white'}
-                             ${d.locked || !view.mayEdit ? 'opacity-60' : 'cursor-pointer'}`}>
-            <input type="checkbox" checked={d.waived}
-                   disabled={busy || d.locked || !view.mayEdit}
-                   onChange={e => onSet(d.date, e.currentTarget.checked)}
-                   className={gross ? 'h-6 w-6' : ''} />
-            <span>
-              {weekdayShort(d.date, locale)} {formatDate(d.date, locale)}
-              {d.locked && <span className="text-neutral-500"> · {t('gastCheckin.waiver.locked')}</span>}
-            </span>
-          </label>
-        </li>
-      ))}
-    </ul>
+    <VerzichtListe view={view} onSet={onSet} busy={busy} gross={gross}
+                   tag={d => `${weekdayShort(d, locale)} ${formatDate(d, locale)}`}
+                   erledigt={t('gastCheckin.waiver.locked')} />
   )
 }
 

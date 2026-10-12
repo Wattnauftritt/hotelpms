@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox'
 import { GuestFolderStayStatus } from './gaestemappe.js'
+import { CleaningWaiverView } from './cleaningWaiver.js'
 
 /**
  * Geteilte Schemata zwischen API und Oberfläche.
@@ -835,34 +836,9 @@ export const OnlineCheckinStatus = Type.Object({
 })
 export type OnlineCheckinStatus = Static<typeof OnlineCheckinStatus>
 
-/**
- * Reinigungsverzicht des Gastes (Aufgabe 18, Baustein 10; Migration 0115).
- *
- * Dieselbe Form fuer die Gastseite und das Seitenfenster der Rezeption:
- * beide zeigen die Bleibetage ab heute und ob dort verzichtet ist. Sie kommt
- * mit der Seite, die sie traegt (`CheckinFormView`, `ReservationDetail`),
- * nicht als eigener Aufruf.
- */
-export const CleaningWaiverDay = Type.Object({
-  date: IsoDate,
-  waived: Type.Boolean(),
-  /**
-   * Die Kraft hat das Zimmer an diesem Tag schon gemeldet (gereinigt,
-   * abgelehnt, Wasser hingestellt). Danach aendert der Wunsch nichts mehr --
-   * er wuerde nur zeigen, was nicht geschehen ist.
-   */
-  locked: Type.Boolean()
-})
-export type CleaningWaiverDay = Static<typeof CleaningWaiverDay>
-
-export const CleaningWaiverView = Type.Object({
-  /** Gibt es als Dank eine Flasche Wasser? Steht so auf der Gastseite. */
-  waterGift: Type.Boolean(),
-  days: Type.Array(CleaningWaiverDay),
-  /** Darf der Aufrufer hier setzen? Fuer die Rezeption; der Gast immer. */
-  mayEdit: Type.Boolean()
-})
-export type CleaningWaiverView = Static<typeof CleaningWaiverView>
+// Reinigungsverzicht (0115): in `cleaningWaiver.ts`, weil die Gaestemappe ihn
+// auch traegt und `gaestemappe.ts` sonst im Kreis mit dieser Datei laege.
+export { CleaningWaiverDay, CleaningWaiverView } from './cleaningWaiver.js'
 
 export const CleaningWaiverSet = Type.Object({
   date: IsoDate,

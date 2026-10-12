@@ -1,9 +1,11 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { withTransaction, SYSTEM_CONTEXT, type PoolClient } from '@hotelpms/db'
-import { FOLDER_ROOM_HEADER, FOLDER_SESSION_COOKIE, type FolderWifi } from '@hotelpms/contracts'
+import { FOLDER_ROOM_HEADER, FOLDER_SESSION_COOKIE, type FolderWifi,
+         type GuestFolderStay } from '@hotelpms/contracts'
 import { hashToken, neuesToken } from '@hotelpms/domain'
 import { Errors } from './errors.js'
 import { loadConfig } from './config.js'
+import { verzichtStand } from './reinigungsverzicht.js'
 
 /**
  * Digitale Gaestemappe: wie eine Anfrage ohne Anmeldung an genau ein Zimmer
@@ -161,6 +163,21 @@ export async function aufenthaltDerSitzung(
   const z = r.rows[0]
   return z === undefined ? null
     : { sessionId: z.id, reservationId: z.reservation_id, departure: z.departure }
+}
+
+/**
+ * Was das freigeschaltete Telefon ueber seinen Aufenthalt sieht. Der
+ * Verzicht kommt mit, nicht als eigener Aufruf: die Mappe ist ein
+ * Bildschirm, und er steht darauf (0148).
+ */
+export async function aufenthaltAnsicht(
+  client: PoolClient, k: MappeKontext, a: { reservationId: number; departure: string }
+): Promise<GuestFolderStay> {
+  return {
+    departure: a.departure,
+    cleaningWaiver: await verzichtStand(client, a.reservationId, k.propertyId,
+      k.businessDate, true)
+  }
 }
 
 /**

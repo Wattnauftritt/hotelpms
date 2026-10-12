@@ -1117,7 +1117,9 @@ Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des G
 
 **Baustein 4 (Freischalten).** Migration `0147`: `guest_folder_session` (Hash des Cookies `hp_mappe`, gebunden an eine Reservierung, bis Ende des Abreisetags; Hash in `audit_redaction`, Anwendung darf nur aufheben) und `guest_folder_unlock_failure` (zehn Fehlversuche je Zimmer und Viertelstunde). `POST /v1/mappe/unlock` vergleicht nachsichtig gegen Nachname oder PLZ jeder Person an jedem heute laufenden Aufenthalt im Zimmer (`folderUnlock.ts`), am Wechseltag gegen beide. `POST /v1/mappe/from-checkin` öffnet die Mappe aus dem Mail-Link ab dem Anreisetag, `POST /v1/mappe/lock` meldet das Telefon ab, `POST /v1/reservations/:ref/guest-folder/revoke` hebt an der Rezeption auf. `guest_erase_one()`/`guest_erase_partial()` neu gefasst mit `guest_folder_sessions_erase()`, `purgeExpired()` räumt nach sieben Tagen ab. Verarbeitungsverzeichnis ergänzt. Tests: `apps/api/src/__tests__/gaestemappeFreischaltung.test.ts`.
 
-**Offen:** Verzicht, Wünsche und Extras mit Preis, Wünsche in der Personal-App, späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35.
+**Baustein 5 (Reinigungsverzicht).** Migration `0148`: `cleaning_waiver.source` kennt `folder`. `POST /v1/mappe/cleaning-waiver` nur mit Freischaltung (sonst 403 `folder.unlockRequired`), über `setzeVerzicht` wie Mail-Link und Rezeption; die Tage kommen mit `GET /v1/mappe` unter `stay.cleaningWaiver`. Die Liste der Tage steht ohne Katalog in `VerzichtListe.tsx`, damit die Mappe den Katalog der Rezeption nicht mitlädt. `CleaningWaiverView` liegt in `packages/contracts/src/cleaningWaiver.ts`, weil `schemas.ts` und `gaestemappe.ts` sonst einander im Kreis laden. Tests: `gaestemappeFreischaltung.test.ts`.
+
+**Offen:** Wünsche und Extras mit Preis, Wünsche in der Personal-App, späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35.
 
 ### Vierzehn Sprachen im ganzen System — **erledigt**
 
