@@ -11,6 +11,7 @@ import { Ruhebild, type Folie } from '../components/Ruhebild.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
 import { useBildschirmWach } from '../lib/wachhalten.js'
 import { TERMINAL_PFAD, istTerminalAdresse } from '../gast/adresse.js'
+import { Selbstbedienung, type SelbstEnde } from './TerminalSelbst.tsx'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -64,6 +65,11 @@ const FRAGE_MS = 2_000
 const FRAGE_OHNE_NETZ_MS = 10_000
 /** Ohne Beruehrung zurueck in den Ruhezustand. */
 const STILLE_MS = 90_000
+/**
+ * In der Selbstbedienung kuerzer: es gibt nichts zu tippen, und vor dem
+ * Gast stehen Name und Zimmer -- wer geht, laesst sie nicht lange stehen.
+ */
+const STILLE_SELBST_MS = 60_000
 /** Wie lange der Dank stehen bleibt. */
 const DANKE_MS = 4_000
 
@@ -99,7 +105,9 @@ type Phase =
   | { art: 'koppeln'; fehler?: unknown }
   | { art: 'ruhe' }
   | { art: 'auftrag'; jobRef: string; kind: Art; daten: unknown }
-  | { art: 'danke' }
+  /** Der Gast bedient sich selbst (Migration 0144); kein Auftrag. */
+  | { art: 'selbst' }
+  | { art: 'danke'; selbst?: boolean }
 
 /**
  * Zurueck in den Ruhezustand, und zwar durch Neuaufbau.
@@ -206,7 +214,10 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
   }, [kioskKey])
 
   // ------------------------------------------------------------ Abfrage
+  // Auch waehrend der Selbstbedienung: ein Auftrag der Rezeption soll
+  // ankommen, und er hat Vorrang.
   const fragt = phase.art === 'start' || phase.art === 'ruhe' || phase.art === 'auftrag'
+    || phase.art === 'selbst'
   useEffect(() => {
     if (!fragt) return
     let aus = false
@@ -225,6 +236,12 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
           // Die Rezeption hat abgebrochen, oder der Auftrag ist abgelaufen:
           // weg mit den Daten, sofort.
           if (f.job === null || f.job.jobRef !== p.jobRef) { abraeumen(); return }
+        } else if (p.art === 'selbst' && f.job !== null) {
+          // Ein Auftrag kommt, waehrend sich ein Gast selbst bedient: erst
+          // weg mit Name und Link, dann oeffnet die neu aufgebaute Seite den
+          // Auftrag bei der naechsten Frage. Das Oeffnen beendet die Sitzung
+          // auch auf der Schnittstelle; gespeicherte Tage bleiben.
+          abraeumen(); return
         } else if (f.job !== null) {
           const auf = await api.post<{ jobRef: string; kind: Art; data: unknown }>(
             `/v1/terminal/job/${f.job.jobRef}/open`)
@@ -313,6 +330,35 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
     return () => { aus = true; window.clearInterval(z) }
   }, [ruht])
 
+  // ---------------------------------- Selbstbedienung: Stille raeumt ab
+  const sitzung = useRef<string | null>(null)
+  const selbst = phase.art === 'selbst'
+  useEffect(() => {
+    if (!selbst) return
+    let zuletzt = Date.now()
+    const beruehrt = (): void => { zuletzt = Date.now() }
+    window.addEventListener('pointerdown', beruehrt)
+    window.addEventListener('keydown', beruehrt)
+    const pruefen = window.setInterval(() => {
+      if (Date.now() - zuletzt < STILLE_SELBST_MS) return
+      window.clearInterval(pruefen)
+      selbstBeenden('timeout').finally(abraeumen)
+    }, 5_000)
+    return () => {
+      window.removeEventListener('pointerdown', beruehrt)
+      window.removeEventListener('keydown', beruehrt)
+      window.clearInterval(pruefen)
+    }
+  }, [selbst])
+
+  /** Die Sitzung schliessen, damit ihr Link faellt. Abgeraeumt wird trotzdem. */
+  const selbstBeenden = async (reason: SelbstEnde | 'timeout'): Promise<void> => {
+    const ref = sitzung.current
+    if (ref === null) return
+    await api.post(`/v1/terminal/self/sessions/${ref}/end`, { reason })
+      .catch(() => { /* ohne Netz faellt der Link mit der naechsten Sitzung */ })
+  }
+
   // ---------------------------------------------- Dank, dann Ruhe
   useEffect(() => {
     if (phase.art !== 'danke') return
@@ -365,7 +411,17 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
           <Ruhe haus={haus?.name ?? null}
                 kopf={<div className="flex items-center gap-3">
                   {uebung}<Sprachwahl onLocale={onLocale} hell />
-                </div>} />
+                </div>}
+                onSelbst={() => setPhase({ art: 'selbst' })} />
+        )}
+        {phase.art === 'selbst' && (
+          <Selbstbedienung onSitzung={ref => { sitzung.current = ref }}
+                           onEnde={ende => {
+                             void selbstBeenden(ende).finally(() => {
+                               if (ende === 'done') setPhase({ art: 'danke', selbst: true })
+                               else abraeumen()
+                             })
+                           }} />
         )}
         {phase.art === 'auftrag' && (() => {
           const Ansicht = ANSICHTEN[phase.kind]
@@ -376,8 +432,10 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
         })()}
         {phase.art === 'danke' && (
           <div className="text-center space-y-3">
-            <div className="text-4xl font-light">{t('kiosk.thanks')}</div>
-            <p className="text-neutral-500">{t('kiosk.thanksHint')}</p>
+            <div className="text-4xl font-light">
+              {t(phase.selbst === true ? 'kiosk.self.thanks' : 'kiosk.thanks')}
+            </div>
+            {phase.selbst !== true && <p className="text-neutral-500">{t('kiosk.thanksHint')}</p>}
           </div>
         )}
       </main>
@@ -402,15 +460,19 @@ function Terminal({ onLocale }: { onLocale: (l: Locale) => void }): JSX.Element 
  * Ein Auftrag der Rezeption unterbricht die Diashow, und nach dem Auftrag
  * baut sich die Seite neu auf und beginnt sie von vorn.
  */
-function Ruhe({ haus, kopf }: { haus: string | null; kopf: ReactNode }): JSX.Element {
+function Ruhe({ haus, kopf, onSelbst }: {
+  haus: string | null; kopf: ReactNode; onSelbst: () => void
+}): JSX.Element {
+  const t = useT()
   const [folien, setFolien] = useState<Folie[]>([])
+  const [selbst, setSelbst] = useState(false)
   const [nr, setNr] = useState(0)
 
   useEffect(() => {
     let aus = false
     const holen = (): void => {
-      api.get<{ slides: Folie[] }>('/v1/terminal/idle')
-        .then(r => { if (!aus) setFolien(r.slides) })
+      api.get<{ slides: Folie[]; selfService: boolean }>('/v1/terminal/idle')
+        .then(r => { if (!aus) { setFolien(r.slides); setSelbst(r.selfService) } })
         .catch(() => { /* ohne Diashow bleibt die Begruessung */ })
     }
     holen()
@@ -425,7 +487,17 @@ function Ruhe({ haus, kopf }: { haus: string | null; kopf: ReactNode }): JSX.Ele
     return () => window.clearTimeout(z)
   }, [folie, nr])
 
-  return <Ruhebild folien={folien} nr={nr} haus={haus} kopf={kopf} />
+  return <Ruhebild folien={folien} nr={nr} haus={haus} kopf={kopf}
+                   aktion={selbst ? (
+                     <button type="button" onClick={onSelbst}
+                             className="px-10 py-5 rounded-sm bg-[#e8891c] text-white shadow-lg
+                                        text-center active:brightness-95">
+                       <span className="block text-3xl font-semibold">{t('kiosk.self.button')}</span>
+                       <span className="block text-lg text-white/90">
+                         {t('kiosk.self.buttonHint')}
+                       </span>
+                     </button>
+                   ) : undefined} />
 }
 
 /** Eine Seite des Hauses, wie das Terminal sie zeigt. */

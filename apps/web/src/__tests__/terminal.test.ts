@@ -273,3 +273,26 @@ describe('Neuer Stand am ruhenden Terminal', () => {
     expect(terminal).toMatch(/if \(!ruht\) return/)
   })
 })
+
+describe('Selbstbedienung (Migration 0144)', () => {
+  const selbst = code('../routes/TerminalSelbst.tsx')
+
+  it('haelt Name und Link nur im Zustand der Ansicht', () => {
+    expect(selbst).not.toMatch(/localStorage|sessionStorage|indexedDB/)
+    expect(selbst).not.toContain('@tanstack/react-query')
+  })
+
+  it('speichert den Verzicht ueber dieselbe Komponente wie die Gastseite', () => {
+    expect(selbst).toContain("import { Verzicht } from './GastCheckin.tsx'")
+    expect(selbst).not.toContain('/v1/checkin/cleaning-waiver')
+  })
+
+  it('fragt weiter nach Auftraegen und raeumt ab, wenn einer kommt', () => {
+    expect(terminal).toMatch(/const fragt = [^\n]*\n\s*\|\| phase\.art === 'selbst'/)
+    expect(terminal).toMatch(/p\.art === 'selbst' && f\.job !== null\) \{[\s\S]{0,400}?abraeumen\(\); return/)
+  })
+
+  it('beendet die Sitzung nach Stille und raeumt ab', () => {
+    expect(terminal).toContain("selbstBeenden('timeout').finally(abraeumen)")
+  })
+})

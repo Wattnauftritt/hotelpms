@@ -59,8 +59,9 @@ export interface Kioskschluessel {
 
 export interface TerminalStand {
   /** `shared`: gehoert einem anderen Haus und wird mitgenutzt (Migration 0103). */
+  /** `selfService`: ein Gast bedient sich dort gerade selbst (Migration 0144). */
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean
-                     shared: boolean }>
+                     shared: boolean; selfService: boolean }>
   /** Was die Rezeption fuer diese Reservierung anstossen kann. */
   offers: Angebot[]
   registration: { registrationId: number; signatureRequired: boolean; signed: boolean } | null
@@ -69,7 +70,7 @@ export interface TerminalStand {
 
 export interface Pult {
   terminals: Array<{ deviceRef: string; name: string; online: boolean; busy: boolean
-                     shared: boolean; job: Auftragsstand | null }>
+                     shared: boolean; selfService: boolean; job: Auftragsstand | null }>
   offers: Angebot[]
 }
 
@@ -153,6 +154,24 @@ export function useTerminalWachzeit(propertyId: number) {
       api.put(`/v1/properties/${propertyId}/terminals/${w.deviceRef}/awake`,
         { from: w.from, until: w.until }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['terminals', propertyId] }) }
+  })
+}
+
+/** Selbstbedienung am Touchscreen (Migration 0144), ein Schalter je Haus. */
+export interface Selbstbedienung { enabled: boolean; cleaningWaiverEnabled: boolean }
+
+export const useSelbstbedienung = (propertyId: number) =>
+  useQuery<Selbstbedienung>({
+    queryKey: ['terminal-self-service', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/terminal-self-service`)
+  })
+
+export function useSetSelbstbedienung(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.put<Selbstbedienung>(
+      `/v1/properties/${propertyId}/terminal-self-service`, { enabled }),
+    onSuccess: d => { qc.setQueryData(['terminal-self-service', propertyId], d) }
   })
 }
 

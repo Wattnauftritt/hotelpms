@@ -268,6 +268,37 @@ export const terminal = {
     de: 'belegt',
     en: 'busy',
     tr: 'meşgul' },
+  'terminal.self.title': {
+    de: 'Selbstbedienung am Touchscreen',
+    en: 'Self-service on the touchscreen',
+    tr: 'Dokunmatik ekranda self servis' },
+  'terminal.self.hint': {
+    de: 'Ohne Auftrag der Rezeption tippen Gäste ihre Zimmernummer an, bestätigen '
+      + '„Sind Sie Herr/Frau …?“ und bestellen die Reinigung einzelner Tage ab. Am '
+      + 'Touchscreen steht dabei der Nachname des Hauptgastes. Ein Auftrag der '
+      + 'Rezeption hat immer Vorrang.',
+    en: 'Without a job from the front desk, guests tap their room number, confirm '
+      + '"Are you Mr/Ms …?" and skip cleaning on single days. The touchscreen shows '
+      + 'the main guest\'s last name. A job from the front desk always comes first.',
+    tr: 'Resepsiyondan görev olmadan misafirler oda numaralarına dokunur, '
+      + '"… Bey/Hanım siz misiniz?" sorusunu onaylar ve tek tek günler için temizliği '
+      + 'iptal eder. Ekranda ana misafirin soyadı görünür. Resepsiyonun görevi her '
+      + 'zaman önceliklidir.' },
+  'terminal.self.enabled': {
+    de: 'Selbstbedienung anbieten',
+    en: 'Offer self-service',
+    tr: 'Self servis sun' },
+  'terminal.self.needsWaiver': {
+    de: 'Am Touchscreen erscheint noch nichts: der Reinigungsverzicht ist im '
+      + 'Reinigungsplan ausgeschaltet.',
+    en: 'Nothing appears on the touchscreen yet: skipping cleaning is switched off '
+      + 'in the cleaning plan.',
+    tr: 'Dokunmatik ekranda henüz bir şey görünmüyor: temizlik iptali temizlik '
+      + 'planında kapalı.' },
+  'terminal.selfServiceActive': {
+    de: 'Ein Gast bedient sich gerade selbst. Ein Auftrag beendet das.',
+    en: 'A guest is using self-service right now. Sending a job ends it.',
+    tr: 'Bir misafir şu anda self servisi kullanıyor. Bir görev göndermek bunu sonlandırır.' },
   'terminal.state.pending': {
     de: 'Wartet auf „{terminal}“ …',
     en: 'Waiting for "{terminal}" …',
@@ -343,6 +374,55 @@ export const terminal = {
     de: 'Willkommen',
     en: 'Welcome',
     tr: 'Hoş geldiniz' },
+  // ---------------------------------------- Selbstbedienung (Migration 0144)
+  'kiosk.self.button': {
+    de: 'Service für Ihr Zimmer',
+    en: 'Service for your room',
+    tr: 'Odanız için hizmet' },
+  'kiosk.self.buttonHint': {
+    de: 'Reinigung abbestellen',
+    en: 'Skip room cleaning',
+    tr: 'Oda temizliğini iptal et' },
+  'kiosk.self.chooseRoom': {
+    de: 'Bitte wählen Sie Ihre Zimmernummer.',
+    en: 'Please select your room number.',
+    tr: 'Lütfen oda numaranızı seçin.' },
+  'kiosk.self.noRooms': {
+    de: 'Gerade ist hier nichts möglich. Bitte fragen Sie an der Rezeption.',
+    en: 'Nothing is available here right now. Please ask at the front desk.',
+    tr: 'Şu anda burada bir işlem yapılamıyor. Lütfen resepsiyona sorun.' },
+  'kiosk.self.question': {
+    de: 'Sind Sie Herr/Frau {name}?',
+    en: 'Are you Mr/Ms {name}?',
+    tr: '{name} Bey/Hanım siz misiniz?' },
+  'kiosk.self.companion': {
+    de: 'oder gehören Sie zu Herrn/Frau {name}?',
+    en: 'or are you travelling with Mr/Ms {name}?',
+    tr: 'veya {name} Bey/Hanım ile birlikte mi kalıyorsunuz?' },
+  'kiosk.self.yes': {
+    de: 'Ja',
+    en: 'Yes',
+    tr: 'Evet' },
+  'kiosk.self.no': {
+    de: 'Nein',
+    en: 'No',
+    tr: 'Hayır' },
+  'kiosk.self.wrongRoom': {
+    de: 'Bitte prüfen Sie die Zimmernummer oder fragen Sie an der Rezeption.',
+    en: 'Please check the room number or ask at the front desk.',
+    tr: 'Lütfen oda numarasını kontrol edin veya resepsiyona sorun.' },
+  'kiosk.self.room': {
+    de: 'Zimmer {room}',
+    en: 'Room {room}',
+    tr: 'Oda {room}' },
+  'kiosk.self.nothing': {
+    de: 'Für Ihren Aufenthalt gibt es hier gerade nichts zu wählen.',
+    en: 'There is nothing to choose here for your stay right now.',
+    tr: 'Konaklamanız için şu anda burada seçilecek bir şey yok.' },
+  'kiosk.self.thanks': {
+    de: 'Danke, wir kümmern uns darum.',
+    en: 'Thank you, we will take care of it.',
+    tr: 'Teşekkürler, ilgileneceğiz.' },
   'kiosk.idleHint': {
     de: 'Die Rezeption öffnet hier gleich Ihr Formular.',
     en: 'The front desk will open your form here in a moment.',

@@ -320,6 +320,10 @@ const M = {
     de: 'Terminalauftrag',
     en: 'Terminal job',
     tr: 'Terminal görevi' },
+  'res.terminalSelfSession': {
+    de: 'Selbstbedienung am Terminal',
+    en: 'Terminal self-service',
+    tr: 'Terminal self servis' },
   'res.terminalContent': {
     de: 'Terminalseite',
     en: 'Terminal page',
@@ -1623,6 +1627,14 @@ const M = {
     de: 'Der Auftrag ist nicht mehr offen.',
     en: 'The job is no longer open.',
     tr: 'Görev artık açık değil.' },
+  'terminalSelf.sessionClosed': {
+    de: 'Bitte waehlen Sie Ihr Zimmer noch einmal.',
+    en: 'Please select your room again.',
+    tr: 'Lütfen odanızı yeniden seçin.' },
+  'terminalSelf.pause': {
+    de: 'Bitte warten Sie einen Moment oder fragen Sie an der Rezeption.',
+    en: 'Please wait a moment or ask at the front desk.',
+    tr: 'Lütfen biraz bekleyin veya resepsiyona sorun.' },
 
   // ------------------------------------------------ Online-Check-in (Dok. 30)
   'error.gone': {

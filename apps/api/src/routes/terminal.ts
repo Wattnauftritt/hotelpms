@@ -10,6 +10,7 @@ import { limiters, tooManyRequests, KOPPLUNG_FEHLVERSUCHE } from '../platform/ra
 import { hasProperty, type Principal } from '../platform/context.js'
 import { geraetVon, pruefeHaus } from '../platform/terminal.js'
 import { bildLesen, bildSenden } from '../platform/terminalBild.js'
+import { beendeSelbstbedienung, selbstbedienungAngeboten } from '../platform/terminalSelbst.js'
 import { ARTEN, TERMINAL_KINDS, istArt, angebote, inhalteDesHauses, zieheLinksZurueck,
          AUFTRAG_LABEL_JOINS, AUFTRAG_LABEL_SQL,
          type Auftrag, type Lage, type TerminalKind, type Wunsch }
@@ -711,7 +712,8 @@ export function terminalRoutes(app: FastifyInstance): void {
           `SELECT d.public_ref AS "deviceRef", d.name, d.property_id <> $1 AS shared,
                   coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
                     AS online,
-                  terminal_device_busy(d.id) AS busy
+                  terminal_device_busy(d.id) AS busy,
+                  terminal_device_self_busy(d.id) AS "selfService"
              FROM terminal_device d
              LEFT JOIN terminal_device_seen s ON s.device_id = d.id
             WHERE ${GERAET_DES_HAUSES} AND d.paired_at IS NOT NULL
@@ -764,6 +766,7 @@ export function terminalRoutes(app: FastifyInstance): void {
                   coalesce(s.last_seen_at > now() - make_interval(secs => $2), false)
                     AS online,
                   terminal_device_busy(d.id) AS busy,
+                  terminal_device_self_busy(d.id) AS "selfService",
                   CASE WHEN a."jobRef" IS NULL THEN NULL ELSE to_jsonb(a) END AS job
              FROM terminal_device d
              LEFT JOIN terminal_device_seen s ON s.device_id = d.id
@@ -1041,6 +1044,10 @@ export function terminalRoutes(app: FastifyInstance): void {
           throw Errors.conflict('terminal.jobNotOpen')
         }
         if (auftrag.state === 'pending') {
+          // Der Auftrag der Rezeption hat Vorrang vor einem Gast, der sich
+          // gerade selbst bedient (Migration 0144). Was der gespeichert hat,
+          // bleibt; sein Link faellt.
+          await beendeSelbstbedienung(client, deviceId, 'job')
           await client.query(
             `UPDATE terminal_job
                 SET state = 'opened', opened_at = now(),
@@ -1118,8 +1125,15 @@ export function terminalRoutes(app: FastifyInstance): void {
     permission: 'terminal:device',
     summary: 'Gaesteterminal: Diashow des Ruhezustands',
     handler: async (req) => {
-      const { propertyId } = geraetVon(req)
+      const { deviceId, propertyId, propertyIds } = geraetVon(req)
       return tx(req.pool, req, async client => {
+        /*
+         * Wer die Diashow holt, bedient gerade niemanden: eine noch offene
+         * Selbstbedienung dieses Geraets stammt von einer Seite, die
+         * abgestuerzt oder neu geladen ist. Ihr Link gaelte sonst bis zum
+         * Ende des Geschaeftstags (Migration 0144).
+         */
+        await beendeSelbstbedienung(client, deviceId, 'timeout')
         const { rows } = await client.query(
           `SELECT c.title, c.body, c.idle_seconds AS seconds, i.public_ref AS "imageRef"
              FROM terminal_content c
@@ -1128,7 +1142,9 @@ export function terminalRoutes(app: FastifyInstance): void {
               AND c.idle_position IS NOT NULL
             ORDER BY c.idle_position
             LIMIT $2`, [propertyId, DIASHOW_MAX])
-        return { slides: rows }
+        // Ob der Knopf zur Selbstbedienung dasteht (Migration 0144). Hier und
+        // nicht in der Frage alle zwei Sekunden: der Schalter aendert sich selten.
+        return { slides: rows, selfService: await selbstbedienungAngeboten(client, propertyIds) }
       })
     }
   })

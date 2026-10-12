@@ -185,7 +185,7 @@ function OhneLink(): JSX.Element {
  * Link oeffnet, soll zuerst sehen, was er tun muss, dann was er tun kann.
  * Eigener Zustand wie der Rest der Seite, kein Zwischenspeicher.
  */
-function Verzicht({ token, start, gross }: {
+export function Verzicht({ token, start, gross }: {
   token: string; start: CleaningWaiverView; gross: boolean
 }): JSX.Element | null {
   const t = useT()
