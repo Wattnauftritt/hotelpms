@@ -12,6 +12,9 @@ export const PERMISSIONS = [
   // Fertige Meldescheine aus einem Umsystem (0087): setzt Geburtsdatum und
   // Staatsangehoerigkeit und legt Mitreisende an, also mehr als Kontaktdaten.
   'registration:import',
+  // Centgenauer Preis aus einem Umsystem (0160): landet auf der Rechnung,
+  // also enger gefasst als Kontaktdaten.
+  'reservation:price_import',
   'folio:read', 'folio:post', 'folio:void_own', 'folio:void_any',
   'folio:discount', 'folio:discount_unlimited', 'folio:route',
   'invoice:issue', 'invoice:credit',

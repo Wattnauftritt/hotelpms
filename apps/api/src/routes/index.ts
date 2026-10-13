@@ -9,6 +9,7 @@ import { billingRoutes } from './billing.js'
 import { guestRoutes } from './guests.js'
 import { guestContactRoutes } from './guestContact.js'
 import { registrationImportRoutes } from './registrationImport.js'
+import { priceImportRoutes } from './priceImport.js'
 import { sharedGuestProfileRoutes } from './sharedGuestProfiles.js'
 import { rateRoutes } from './rates.js'
 import { rateSteeringRoutes } from './rateSteering.js'
@@ -87,6 +88,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   guestRoutes(app)
   guestContactRoutes(app)
   registrationImportRoutes(app)
+  priceImportRoutes(app)
   sharedGuestProfileRoutes(app)
   rateRoutes(app)
   rateSteeringRoutes(app)

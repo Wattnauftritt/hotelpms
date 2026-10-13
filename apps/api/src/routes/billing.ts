@@ -538,7 +538,7 @@ async function rechnungsEntwurf(
        JOIN invoice di ON di.id = dl.deposit_invoice_id
       WHERE dl.folio_id = $1 AND dl.kind = 'received'
         -- Offen ist, was keine Schlussrechnung verrechnet, die noch gilt:
-        -- eine Stornorechnung hebt die Verrechnung wieder auf (0160).
+        -- eine Stornorechnung hebt die Verrechnung wieder auf (0161).
         AND NOT EXISTS (
           SELECT 1 FROM deposit_ledger a
            WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied'

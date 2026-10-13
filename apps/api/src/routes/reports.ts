@@ -593,7 +593,7 @@ export function reportRoutes(app: FastifyInstance): void {
           /*
            * Die Richtung kommt allein aus dem Vorzeichen. Eine
            * Stornorechnung traegt die Gegenbuchungen ihres Originals, also
-           * negative Betraege (0160); ein zusaetzliches Haben fuer
+           * negative Betraege (0161); ein zusaetzliches Haben fuer
            * `credit_note` drehte sie ein zweites Mal und buchte das Storno
            * als weiteren Umsatz.
            */

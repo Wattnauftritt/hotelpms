@@ -1183,7 +1183,18 @@ Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`
 
 Tests in `rechnungsdialog.test.ts`.
 
-### Stornorechnung, Anzahlung, Check-out, Ortszeit (`0160`) — **erledigt**
+### Centgenauer Preis aus einem Umsystem (`0160`) — **erledigt**
+
+**Warum.** Die Rezeption trägt den Gesamtbetrag in ganzen Euro ein; zum Planen genügt das. Das Adminpanel kennt aus der Quellbuchung den Preis auf den Cent, bei RoomCloud je Zimmer und oft je Nacht. Der Nachtlauf bucht, was in `reservation_night` steht, und die Rechnung zeigt, was er gebucht hat (Sven, 13.10.2026).
+
+- **`PUT /v1/reservations/:reservationRef/price`** mit eigenem Recht `reservation:price_import` (nur für Maschinenzugänge; ein Preis landet auf der Rechnung, eine Mailadresse nicht). Rumpf: `source`, `arrival`, `departure`, `totalCent`, optional `nights[]` mit `date` und `priceCent`.
+- **Wer gewinnt.** Bis der Preis aus der Quelle kommt, ist der eingetragene eine Schätzung und wird ersetzt. Was danach in StayGrid an Preis oder Zeitraum geändert wird, bleibt (`kept_existing`, `changed_locally`). Erkannt wird das am Vergleich mit den Nächten, wie dieser Weg sie zuletzt geschrieben hat (`reservation_external_price.nights`), nicht an einem Trigger: so zählt jeder Weg, der Nächte ändert, auch der nächste.
+- **Nie angefasst:** gebuchte Nächte (der Rest verteilt sich auf die offenen, die Summe stimmt trotzdem), ein anderer Zeitraum als der in StayGrid (`stay_differs`, das Adminpanel gleicht mit Toleranz ab), Buchungen aus einem Channel-Zugang (`channel_booking`, die bringen ihren Preis selbst mit).
+- **Gästehaus-Push:** `segments[].totalCent` je Zimmer, an jedem Abschnitt oder an keinem. Die Prüfsumme ändert sich nur, wenn die Angabe kommt; bestehende Buchungen melden durch den Deploy keine Abweichung.
+
+Tests in `preisUmsystem.test.ts` und `kanalUmsystem.test.ts`.
+
+### Stornorechnung, Anzahlung, Check-out, Ortszeit (`0161`) — **erledigt**
 
 **Warum.** Befunde 2, 5 und 6 der Prüfung vom 13.10.2026 und der Zeitzonenbefund: eine ausgestellte Rechnung ließ sich nicht berichtigen, die Anzahlungsrechnung forderte bezahltes Geld noch einmal, der Check-out ging über offenen Saldo hinweg, und Rechnungen nach Mitternacht trugen das Datum des Vortags.
 
