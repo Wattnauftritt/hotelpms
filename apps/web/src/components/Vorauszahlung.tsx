@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import type { DepositInvoice, PrepaymentSettlement, PrepaymentView } from '@hotelpms/contracts'
-import { usePrepayments, useIssueDepositInvoice } from '../lib/queries/billing.js'
+import { usePrepayments, useIssueDepositInvoice,
+         useRefundDeposit } from '../lib/queries/billing.js'
+import { usePaymentMethods } from '../lib/queries.js'
+import { centAusEingabe } from '../lib/preisraster.js'
 import { anzahlungBereit, anzahlungsNutzlast, summeTeile,
          type Steuerart, type Teil } from '../lib/vorauszahlung.js'
 import { newIdempotencyKey } from '../lib/api.js'
@@ -76,7 +79,8 @@ function Inhalt({ folioRef, saldoCent, stand, geschlossen }: {
         <h4 className="text-xs font-medium text-neutral-600 mb-1">{t('anz.title')}</h4>
         <Anforderungen folioRef={folioRef} v={v} />
       </div>
-      <Anzahlungen deposits={v.deposits} />
+      <Anzahlungen deposits={v.deposits} folioRef={folioRef} propertyId={v.propertyId}
+                   darfZurueck={rechte.darf('invoice:credit') && !geschlossen} />
       {/* Die Anzahlungsrechnung haengt an invoice:issue, nicht an
           folio:post: wer eine Minibar bucht, stellt noch keine Rechnung aus. */}
       {!v.canIssueDeposit
@@ -91,7 +95,10 @@ function Inhalt({ folioRef, saldoCent, stand, geschlossen }: {
 
 // ------------------------------------------------------------ Anzahlungen
 
-function Anzahlungen({ deposits }: { deposits: readonly DepositInvoice[] }): JSX.Element {
+function Anzahlungen({ deposits, folioRef, propertyId, darfZurueck }: {
+  deposits: readonly DepositInvoice[]; folioRef: string; propertyId: number
+  darfZurueck: boolean
+}): JSX.Element {
   const t = useT()
   const locale = useLocale()
 
@@ -126,7 +133,19 @@ function Anzahlungen({ deposits }: { deposits: readonly DepositInvoice[] }): JSX
                     ✓ {t('vz.dep.appliedTo')} {d.appliedInvoiceNumber}
                     {d.appliedOn !== null && ` · ${formatDate(d.appliedOn, locale)}`}
                   </span>}
+              {d.refundedCent > 0 && (
+                <span className="ms-2 text-neutral-600 tabular-nums">
+                  {formatMoney(d.refundedCent, locale)} {t('vz.dep.refunded')}
+                </span>
+              )}
             </div>
+            {/* Nur solange nicht verrechnet: danach erst die Schlussrechnung
+                stornieren, sonst stuende die Steuer auf demselben Geld
+                zweimal berichtigt. */}
+            {darfZurueck && d.appliedInvoiceNumber === null
+             && d.amountGrossCent > d.refundedCent && (
+              <Rueckzahlung folioRef={folioRef} propertyId={propertyId} anzahlung={d} />
+            )}
           </li>
         ))}
       </ul>
@@ -136,6 +155,68 @@ function Anzahlungen({ deposits }: { deposits: readonly DepositInvoice[] }): JSX
 }
 
 const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
+
+/**
+ * Anzahlung zurueckzahlen: ganz oder teilweise, etwa bei frueherer Abreise.
+ * Vorbelegt mit dem offenen Rest; zurueck geht er ueber die Zahlart, mit der
+ * das Haus auszahlt.
+ */
+function Rueckzahlung({ folioRef, propertyId, anzahlung }: {
+  folioRef: string; propertyId: number; anzahlung: DepositInvoice
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const zahlarten = usePaymentMethods(propertyId)
+  const zurueck = useRefundDeposit(folioRef)
+  const rest = anzahlung.amountGrossCent - anzahlung.refundedCent
+  const [auf, setAuf] = useState(false)
+  const [betrag, setBetrag] = useState((rest / 100).toFixed(2).replace('.', ','))
+  const [zahlart, setZahlart] = useState('')
+  const cent = centAusEingabe(betrag)
+
+  if (!auf) {
+    return (
+      <button onClick={() => { setAuf(true) }}
+              className="mt-1 text-xs px-2 py-0.5 rounded-sm border border-neutral-300
+                         hover:bg-neutral-50">
+        {t('vz.dep.refund')}
+      </button>
+    )
+  }
+  return (
+    <form className="mt-1 flex flex-wrap items-center gap-2 text-xs"
+          onSubmit={e => {
+            e.preventDefault()
+            if (cent === null || cent <= 0 || zahlart === '') return
+            zurueck.mutate({ invoiceRef: anzahlung.invoiceRef, amountCent: cent,
+                             paymentMethodCode: zahlart },
+                           { onSuccess: () => { setAuf(false) } })
+          }}>
+      <input value={betrag} inputMode="decimal" aria-label={t('vz.dep.refund')}
+             onChange={e => { setBetrag(e.target.value) }}
+             className="w-24 border border-neutral-300 rounded-sm px-2 py-0.5 tabular-nums" />
+      <select value={zahlart} onChange={e => { setZahlart(e.target.value) }}
+              aria-label={t('folio.method')}
+              className="border border-neutral-300 rounded-sm px-1 py-0.5 bg-white">
+        <option value="">{t('folio.method')}</option>
+        {(zahlarten.data?.paymentMethods ?? []).map(m =>
+          <option key={m.code} value={m.code}>{m.name}</option>)}
+      </select>
+      <button type="submit"
+              disabled={zurueck.isPending || cent === null || cent <= 0 || cent > rest
+                        || zahlart === ''}
+              className="px-2 py-0.5 rounded-sm bg-neutral-900 text-white disabled:opacity-40">
+        {t('vz.dep.refund')} {cent !== null && cent > 0 ? formatMoney(cent, locale) : ''}
+      </button>
+      <button type="button" onClick={() => { setAuf(false) }}
+              className="px-2 py-0.5 rounded-sm border border-neutral-300">
+        {t('common.cancel')}
+      </button>
+      <span className="basis-full text-neutral-500">{t('vz.dep.refundHint')}</span>
+      {zurueck.isError && <span className="basis-full"><Fehler error={zurueck.error} /></span>}
+    </form>
+  )
+}
 
 function NeueAnzahlung({ folioRef, settlements }: {
   folioRef: string; settlements: readonly PrepaymentSettlement[]

@@ -594,12 +594,24 @@ async function rechnungsEntwurf(
     tax_rate_bp: number; amount_gross_cent: string
     deposit_number: string; deposit_issued_on: string
   }>(
-    `SELECT dl.deposit_invoice_id, dl.net_cent, dl.tax_cent, dl.tax_rate_bp,
-            dl.amount_gross_cent, di.number AS deposit_number,
+    // Verrechnet wird, was nach Rueckzahlungen bleibt (0162): die Steuer
+    // auf den zurueckgezahlten Teil hat dessen Korrektur schon berichtigt.
+    `SELECT dl.deposit_invoice_id, dl.net_cent - COALESCE(r.net, 0) AS net_cent,
+            dl.tax_cent - COALESCE(r.tax, 0) AS tax_cent, dl.tax_rate_bp,
+            dl.amount_gross_cent - COALESCE(r.gross, 0) AS amount_gross_cent,
+            di.number AS deposit_number,
             di.issued_on::text AS deposit_issued_on
        FROM deposit_ledger dl
        JOIN invoice di ON di.id = dl.deposit_invoice_id
+       LEFT JOIN LATERAL (
+         SELECT sum(x.amount_gross_cent) AS gross, sum(x.net_cent) AS net,
+                sum(x.tax_cent) AS tax
+           FROM deposit_ledger x
+          WHERE x.deposit_invoice_id = dl.deposit_invoice_id
+            AND x.tax_rate_bp = dl.tax_rate_bp AND x.kind = 'refunded'
+       ) r ON true
       WHERE dl.folio_id = $1 AND dl.kind = 'received'
+        AND dl.amount_gross_cent > COALESCE(r.gross, 0)
         -- Offen ist, was keine Schlussrechnung verrechnet, die noch gilt:
         -- eine Stornorechnung hebt die Verrechnung wieder auf (0161).
         AND NOT EXISTS (
@@ -1041,7 +1053,7 @@ export function billingRoutes(app: FastifyInstance): void {
                   sn.number AS "cancelledBy",
                   d.invoice_id IS NOT NULL AS "documentReady"
              FROM invoice i
-             LEFT JOIN invoice sn ON sn.reverses_id = i.id
+             LEFT JOIN invoice sn ON sn.reverses_id = i.id AND NOT sn.partial_reversal
              LEFT JOIN invoice_document d ON d.invoice_id = i.id
             WHERE i.folio_id = $1 ORDER BY i.id`, [folio.id])
 
@@ -1964,7 +1976,7 @@ export function billingRoutes(app: FastifyInstance): void {
                           FROM deposit_ledger
                          WHERE property_id = $1 AND kind = 'received'
                          GROUP BY deposit_invoice_id) a ON a.deposit_invoice_id = i.id
-             LEFT JOIN invoice sn ON sn.reverses_id = i.id
+             LEFT JOIN invoice sn ON sn.reverses_id = i.id AND NOT sn.partial_reversal
              LEFT JOIN invoice o ON o.id = i.reverses_id
             WHERE i.property_id = $1
               AND i.issued_on BETWEEN $2::date AND $3::date
@@ -2085,7 +2097,8 @@ export function billingRoutes(app: FastifyInstance): void {
           throw Errors.conflict('invoice.notCancellable')
         }
         const schon = await client.query<{ number: string }>(
-          `SELECT number FROM invoice WHERE reverses_id = $1`, [original.id])
+          `SELECT number FROM invoice WHERE reverses_id = $1 AND NOT partial_reversal`,
+          [original.id])
         if ((schon.rowCount ?? 0) > 0) {
           throw Errors.conflict('invoice.alreadyCancelled', { number: schon.rows[0]!.number })
         }
@@ -2184,6 +2197,194 @@ export function billingRoutes(app: FastifyInstance): void {
           payableCent: totals.payableCent
         })
 
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
+   * Rueckzahlung einer Anzahlung (0162).
+   *
+   * Reist der Gast frueher ab oder storniert, steht ihm Geld zu. Die
+   * Anzahlungsrechnung hat die Steuer auf das ganze vereinnahmte Geld
+   * ausgewiesen; ohne Berichtigung schuldet das Haus sie auch fuer den Teil,
+   * der zurueckging (§ 14c, § 17 Abs. 2 Nr. 2 UStG). Deshalb entsteht in
+   * einem Zug:
+   *
+   * - eine Rechnungskorrektur zur Anzahlungsrechnung (`credit_note`,
+   *   `partial_reversal`) ueber den zurueckgezahlten Teil, zu den Saetzen,
+   *   zu denen er versteuert wurde;
+   * - je Satz eine Zeile 'refunded' im Anzahlungsjournal;
+   * - der Zahlungsvermerk der Auszahlung, negativ, an der Korrektur.
+   *
+   * Verrechnet die naechste Schlussrechnung die Anzahlung, nimmt sie nur
+   * noch, was davon bleibt. Eine schon verrechnete Anzahlung geht nicht:
+   * erst die Schlussrechnung stornieren, sonst stuende die Steuer auf
+   * demselben Geld zweimal berichtigt.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/invoices/:invoiceRef/refund',
+    permission: 'invoice:credit',
+    summary: 'Anzahlung ganz oder teilweise zurueckzahlen',
+    handler: async (req, reply) => {
+      const { invoiceRef } = req.params as { invoiceRef: string }
+      const body = (req.body ?? {}) as { amountCent?: unknown; paymentMethodCode?: unknown
+                                         externalReference?: unknown }
+      const f: Record<string, Meldung[]> = {}
+      if (typeof body.amountCent !== 'number' || !Number.isSafeInteger(body.amountCent)
+          || body.amountCent <= 0 || body.amountCent > MAX_POSITION_CENT) {
+        f.amountCent = ['field.positiveInteger']
+      }
+      if (typeof body.paymentMethodCode !== 'string' || body.paymentMethodCode === '') {
+        f.paymentMethodCode = ['field.required']
+      }
+      if (body.externalReference !== undefined
+          && (typeof body.externalReference !== 'string' || body.externalReference.length > 200)) {
+        f.externalReference = ['field.maxLength']
+      }
+      if (Object.keys(f).length > 0) throw Errors.validation(f, { max: 200 })
+      const betrag = body.amountCent as number
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, { invoiceRef, ...body }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const d = await client.query<{ id: number; property_id: number; folio_id: number
+                                       kind: string; number: string
+                                       service_from: string | null; service_to: string | null
+                                       issuer_snapshot: unknown; recipient_snapshot: unknown }>(
+          `SELECT id, property_id, folio_id, kind, number, service_from::text,
+                  service_to::text, issuer_snapshot, recipient_snapshot
+             FROM invoice WHERE public_ref = $1`, [invoiceRef])
+        if (d.rowCount === 0) throw Errors.notFound('res.invoice')
+        const anzahlung = d.rows[0]!
+        rechtImHaus(principal, 'invoice:credit', anzahlung.property_id)
+        if (anzahlung.kind !== 'deposit') throw Errors.conflict('deposit.refundOnlyDeposit')
+
+        // Unter der Sperre des Folios: dort laufen auch Schlussrechnung und
+        // Verrechnung, und die duerfen nicht dazwischen geraten.
+        const fo = await client.query<{ public_ref: string; status: string }>(
+          `SELECT public_ref, status FROM folio WHERE id = $1 FOR UPDATE`, [anzahlung.folio_id])
+        if (fo.rows[0]!.status === 'closed') throw Errors.conflict('folio.closed')
+
+        const verrechnet = await client.query(
+          `SELECT 1 FROM deposit_ledger a
+            WHERE a.deposit_invoice_id = $1 AND a.kind = 'applied'
+              AND NOT EXISTS (SELECT 1 FROM invoice s
+                               WHERE s.reverses_id = a.applied_invoice_id
+                                 AND NOT s.partial_reversal)`, [anzahlung.id])
+        if ((verrechnet.rowCount ?? 0) > 0) throw Errors.conflict('deposit.refundApplied')
+
+        // Was je Satz noch offen ist: vereinnahmt minus schon zurueckgezahlt.
+        const rest = (await client.query<{ rate: number; gross: string; net: string
+                                           tax: string }>(
+          `SELECT tax_rate_bp AS rate,
+                  (sum(amount_gross_cent) FILTER (WHERE kind = 'received')
+                   - COALESCE(sum(amount_gross_cent) FILTER (WHERE kind = 'refunded'), 0))::text
+                    AS gross,
+                  (sum(net_cent) FILTER (WHERE kind = 'received')
+                   - COALESCE(sum(net_cent) FILTER (WHERE kind = 'refunded'), 0))::text AS net,
+                  (sum(tax_cent) FILTER (WHERE kind = 'received')
+                   - COALESCE(sum(tax_cent) FILTER (WHERE kind = 'refunded'), 0))::text AS tax
+             FROM deposit_ledger
+            WHERE deposit_invoice_id = $1 AND kind IN ('received', 'refunded')
+            GROUP BY tax_rate_bp ORDER BY tax_rate_bp`, [anzahlung.id])).rows
+          .map(r => ({ rateBp: r.rate, grossCent: Number(r.gross), netCent: Number(r.net),
+                       taxCent: Number(r.tax) }))
+          .filter(r => r.grossCent > 0)
+        const offen = rest.reduce((s, r) => s + r.grossCent, 0)
+        if (betrag > offen) {
+          throw Errors.unprocessable('deposit.refundTooHigh', { max: (offen / 100).toFixed(2) })
+        }
+
+        /*
+         * Je Satz: alles zurueck nimmt genau den Rest, Netto und Steuer
+         * eingeschlossen -- nachgerechnet bliebe sonst ein Cent Steuer auf
+         * einer Anzahlung stehen, die es nicht mehr gibt. Ein Teil wird nach
+         * dem Rest der Saetze aufgeteilt und wie die Anzahlungsrechnung
+         * gerechnet.
+         */
+        let teile: Array<{ rateBp: number; netCent: number; taxCent: number; grossCent: number }>
+        if (betrag === offen) {
+          teile = rest
+        } else {
+          const anteile = splitDeposit(betrag, rest.map(r => ({ rateBp: r.rateBp,
+                                                                grossCent: r.grossCent })))
+          teile = sumInvoice(depositLines(betrag, anteile)).groups
+          for (const t of teile) {
+            const r = rest.find(x => x.rateBp === t.rateBp)
+            if (r === undefined || t.grossCent > r.grossCent) {
+              throw Errors.unprocessable('deposit.refundTooHigh',
+                { max: (offen / 100).toFixed(2) })
+            }
+          }
+        }
+        const netto = teile.reduce((s, t) => s + t.netCent, 0)
+        const steuer = teile.reduce((s, t) => s + t.taxCent, 0)
+        const totals = {
+          netCent: -netto, taxCent: -steuer, grossCent: -betrag,
+          groups: teile.map(t => ({ rateBp: t.rateBp, netCent: -t.netCent,
+                                    taxCent: -t.taxCent, grossCent: -t.grossCent })),
+          roundingCent: 0, payableCent: -betrag, prepaidCent: -betrag
+        }
+
+        const pm = await client.query<{ id: number }>(
+          `SELECT id FROM payment_method WHERE property_id = $1 AND code = $2 AND active`,
+          [anzahlung.property_id, body.paymentMethodCode])
+        if (pm.rowCount === 0) {
+          throw Errors.validation({ paymentMethodCode: ['field.unknownPaymentMethod'] })
+        }
+
+        const heute = await heuteImHaus(client, anzahlung.property_id)
+        const geschaeftstag = await offenerGeschaeftstag(client, anzahlung.property_id)
+        const num = await naechsteNummer(client, anzahlung.property_id)
+        const k = await client.query<{ id: number; public_ref: string; number: string }>(
+          `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
+                                service_from, service_to, issuer_snapshot, recipient_snapshot,
+                                totals, created_by, reverses_id, partial_reversal)
+           VALUES ($1,$2,$3,$4::date,$5::date,'credit_note',$6::date,$7::date,$8,$9,$10,$11,
+                   $12,true)
+           RETURNING id, public_ref, number`,
+          [anzahlung.property_id, anzahlung.folio_id, num.rows[0]!.next_invoice_number,
+           heute, geschaeftstag, anzahlung.service_from, anzahlung.service_to,
+           JSON.stringify(anzahlung.issuer_snapshot), JSON.stringify(anzahlung.recipient_snapshot),
+           JSON.stringify(totals), principal.userId, anzahlung.id])
+        const korrektur = k.rows[0]!
+
+        const z = await client.query<{ id: number }>(
+          `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent,
+                                   payment_method_id, external_reference, created_by, invoice_id)
+           VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8) RETURNING id`,
+          [anzahlung.property_id, anzahlung.folio_id, geschaeftstag, -betrag, pm.rows[0]!.id,
+           (body.externalReference as string | undefined) ?? null, principal.userId,
+           korrektur.id])
+        for (const t of teile) {
+          await client.query(
+            `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                         amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                         business_date, settlement_id, applied_invoice_id,
+                                         created_by)
+             VALUES ($1,$2,$3,'refunded',$4,$5,$6,$7,$8::date,$9,$10,$11)`,
+            [anzahlung.property_id, anzahlung.folio_id, anzahlung.id, t.grossCent, t.netCent,
+             t.taxCent, t.rateBp, geschaeftstag, z.rows[0]!.id, korrektur.id,
+             principal.userId])
+        }
+
+        const result = { invoiceRef: korrektur.public_ref, number: korrektur.number,
+                         amountCent: betrag, remainingCent: offen - betrag }
+        await emitEvent(client, anzahlung.property_id, 'invoice.finalized', {
+          invoiceRef: korrektur.public_ref, number: korrektur.number,
+          folioRef: fo.rows[0]!.public_ref, kind: 'credit_note',
+          serviceFrom: anzahlung.service_from, serviceTo: anzahlung.service_to,
+          grossCent: -betrag
+        })
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
@@ -2466,6 +2667,8 @@ export function billingRoutes(app: FastifyInstance): void {
                   sum(dl.amount_gross_cent) FILTER (WHERE dl.kind = 'received')::bigint
                     AS "amountGrossCent",
                   sum(dl.tax_cent) FILTER (WHERE dl.kind = 'received')::bigint AS "taxCent",
+                  COALESCE(sum(dl.amount_gross_cent) FILTER (WHERE dl.kind = 'refunded'), 0)
+                    ::bigint AS "refundedCent",
                   jsonb_agg(jsonb_build_object(
                       'rateBp', dl.tax_rate_bp,
                       'grossCent', dl.amount_gross_cent,

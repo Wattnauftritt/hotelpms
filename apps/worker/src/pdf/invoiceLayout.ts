@@ -45,6 +45,9 @@ export interface InvoiceLayoutInput {
    *  eine elektronische Rechnung erwartet und ein blosses PDF bekommt, soll
    *  den Grund lesen koennen und nicht nachfragen muessen. */
   missingXmlNote?: string | null
+  /** Ueberschrift statt der zur Art: eine Korrektur, die nur einen Teil
+   *  aufhebt, ist keine Stornorechnung (0162). */
+  title?: string
 }
 
 const TITEL: Record<CiiInvoice['kind'], string> = {
@@ -126,7 +129,7 @@ function linie(z: Zeichner, y: number): void {
   })
 }
 
-function kopf(z: Zeichner, inv: CiiInvoice): void {
+function kopf(z: Zeichner, inv: CiiInvoice, titel: string): void {
   const s = inv.seller
   text(z, s.name, RAND, z.y - 4, { size: 14, bold: true })
   const anschrift = [s.addressLine1, [s.postalCode, s.city].filter(Boolean).join(' ')]
@@ -172,7 +175,7 @@ function kopf(z: Zeichner, inv: CiiInvoice): void {
   }
 
   z.y = Math.min(y, ey) - 26
-  text(z, TITEL[inv.kind], RAND, z.y, { size: 15, bold: true })
+  text(z, titel, RAND, z.y, { size: 15, bold: true })
   z.y -= 24
 }
 
@@ -355,7 +358,7 @@ export async function renderInvoicePdf(input: InvoiceLayoutInput): Promise<PDFDo
   const z: Zeichner = {
     doc, schrift, seite: doc.addPage([A4.width, A4.height]), y: A4.height - RAND
   }
-  kopf(z, input.invoice)
+  kopf(z, input.invoice, input.title ?? TITEL[input.invoice.kind])
   positionen(z, input.invoice)
   summen(z, input.invoice)
   hinweise(z, input)

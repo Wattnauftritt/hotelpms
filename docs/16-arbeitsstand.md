@@ -1220,3 +1220,23 @@ Tests in `stornorechnung.test.ts`.
 - **Zwischenrechnung** im Rechnungsdialog; die Anzahlung bleibt für die Schlussrechnung.
 
 Tests in `buchungseingabe.test.ts`, `folioSplit.test.ts` und `nightAuditRules.test.ts`.
+
+### Rückzahlung einer Anzahlung — **erledigt**
+
+**Warum.** Reiste ein Gast früher ab, als er angezahlt hatte, wies die Schlussrechnung sich selbst ab, und die Steuer auf das zurückgezahlte Geld blieb auf der Anzahlungsrechnung ausgewiesen (§ 14c UStG).
+
+- `POST /v1/invoices/:invoiceRef/refund` (Recht `invoice:credit`, idempotent) zahlt einen Teil oder alles einer noch nicht verrechneten Anzahlung zurück. Es entsteht eine **Rechnungskorrektur** zur Anzahlungsrechnung (`credit_note`, `partial_reversal`, Migration 0162) über den Betrag zum Satz der Anzahlung, eine Zeile `refunded` im Anzahlungsjournal und die Auszahlung als negativer Zahlungsvermerk an der Korrektur.
+- Die Schlussrechnung verrechnet Eingang minus Rückzahlung; DATEV bucht `refunded` wie `applied`. Eine teilweise aufgehobene Anzahlungsrechnung gilt nicht als storniert.
+- Oberfläche: „Zurückzahlen“ an der Anzahlung im Vorauszahlungsblatt.
+
+Tests in `anzahlungRueckzahlung.test.ts` und `invoiceDocument.test.ts` (Worker).
+
+### Offene Posten und Mahnung — **erledigt**
+
+**Warum.** Welche Firmenrechnung über ihr Zahlungsziel ist, stand nirgends gesammelt; die Rechnungsliste zeigt nur einen Zeitraum.
+
+- `GET /v1/properties/:propertyId/open-items`: alle Schluss- und Zwischenrechnungen mit Restbetrag, ohne Zeitraum, mit Fälligkeit (`due_on`, sonst Ziel der Firma, sonst Ausstellungstag), Verzugstagen und letzter Mahnstufe. Höchstens 500 Zeilen.
+- `POST /v1/invoices/:invoiceRef/reminders` hält die nächste Stufe fest (1 Erinnerung, 2 und 3 Mahnung, danach `reminder.maxLevel`), mit neuer Frist (Vorgabe sieben Tage, höchstens 60). Auf Wunsch geht sie per Mail an die Rechnungsadresse oder eine andere, die Rechnung liegt bei. Ohne Mail wird nur festgehalten, etwa nach einem Anruf. Die Tabelle `invoice_reminder` (Migration 0163) ist unveränderlich.
+- Oberfläche: Abschnitt „Offene Posten“ im Rechnungsbildschirm.
+
+Tests in `offenePosten.test.ts`.

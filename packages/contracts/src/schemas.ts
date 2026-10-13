@@ -1448,6 +1448,8 @@ export const DepositInvoice = Type.Object({
   amountGrossCent: Cent,
   taxCent: Cent,
   groups: Type.Array(DepositGroup),
+  /** Schon zurueckgezahlt (0162); offen ist `amountGrossCent - refundedCent`. */
+  refundedCent: Cent,
   appliedInvoiceNumber: Type.Union([Type.String(), Type.Null()]),
   appliedInvoiceRef: Type.Union([Type.String(), Type.Null()]),
   appliedOn: Type.Union([IsoDate, Type.Null()])

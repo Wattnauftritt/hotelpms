@@ -6,6 +6,7 @@ import { reservationRoutes } from './reservations.js'
 import { reservationListRoutes } from './reservationList.js'
 import { occupancyStatsRoutes } from './occupancyStats.js'
 import { billingRoutes } from './billing.js'
+import { openItemRoutes } from './openItems.js'
 import { guestRoutes } from './guests.js'
 import { guestContactRoutes } from './guestContact.js'
 import { registrationImportRoutes } from './registrationImport.js'
@@ -85,6 +86,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   reservationListRoutes(app)
   occupancyStatsRoutes(app)
   billingRoutes(app)
+  openItemRoutes(app)
   guestRoutes(app)
   guestContactRoutes(app)
   registrationImportRoutes(app)
