@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
-import { Errors } from '../platform/errors.js'
+import { Errors, type Meldung } from '../platform/errors.js'
 import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 import { emitEvent } from '../platform/events.js'
@@ -71,6 +71,62 @@ function writeOrigin(principal: Principal): 'manual' | 'external' {
     ? 'external' : 'manual'
 }
 
+/** Hoechstens so viele Leistungen je Rate; mehr ist keine Rate, sondern ein Paket. */
+const INKLUSIV_MAX = 10
+const ABRECHNUNG = ['per_night', 'per_person_night', 'once'] as const
+
+interface Inklusivleistung {
+  name: string; grossCent: number; chargeMode: typeof ABRECHNUNG[number]; taxRuleId: number
+}
+
+function inklusivPruefen(roh: unknown): Inklusivleistung[] {
+  if (!Array.isArray(roh)) throw Errors.validation({ inclusions: ['field.required'] })
+  if (roh.length > INKLUSIV_MAX) {
+    throw Errors.validation({ inclusions: ['field.range'] }, { min: '0', max: String(INKLUSIV_MAX) })
+  }
+  const fehler: Record<string, Meldung[]> = {}
+  const aus = roh.map((x: unknown, i): Inklusivleistung => {
+    const l = (x ?? {}) as Record<string, unknown>
+    const name = typeof l.name === 'string' ? l.name.trim() : ''
+    if (name === '' || name.length > 60) fehler[`inclusions.${i}.name`] = ['field.required']
+    const cent = l.grossCent
+    if (!(typeof cent === 'number' && Number.isInteger(cent)
+          && cent >= BREAKFAST_MIN && cent <= BREAKFAST_MAX)) {
+      fehler[`inclusions.${i}.grossCent`] = ['field.range']
+    }
+    if (!ABRECHNUNG.includes(l.chargeMode as typeof ABRECHNUNG[number])) {
+      fehler[`inclusions.${i}.chargeMode`] = ['field.invalid']
+    }
+    if (!(typeof l.taxRuleId === 'number' && Number.isSafeInteger(l.taxRuleId))) {
+      fehler[`inclusions.${i}.taxRuleId`] = ['field.invalid']
+    }
+    return { name, grossCent: cent as number,
+             chargeMode: l.chargeMode as Inklusivleistung['chargeMode'],
+             taxRuleId: l.taxRuleId as number }
+  })
+  if (Object.keys(fehler).length > 0) {
+    throw Errors.validation(fehler, { min: '0,01 €', max: '1.000,00 €' })
+  }
+  return aus
+}
+
+/** Automatikkonto in SKR03 nach Satz, wie Fruehstueck und Positionen am Folio. */
+function kontoFuerSatz(rateBp: number): string {
+  return rateBp === 1900 ? '8400' : rateBp === 700 ? '8300' : '8200'
+}
+
+/** Die Umsatzsteuersaetze des Hauses, aus denen eine Leistung waehlt. */
+async function umsatzsteuer(
+  client: PoolClient, propertyId: number
+): Promise<Array<{ id: number; name: string; rateBp: number }>> {
+  const r = await client.query<{ id: number; name: string; rateBp: number }>(
+    `SELECT id::int, name, rate_bp AS "rateBp" FROM tax_rule
+      WHERE property_id = $1 AND kind = 'vat' AND basis = 'percent' AND active
+        AND rate_bp IS NOT NULL
+      ORDER BY rate_bp, id`, [propertyId])
+  return r.rows
+}
+
 export function rateRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -87,10 +143,17 @@ export function rateRoutes(app: FastifyInstance): void {
                   rp.base_rate_plan_id AS "baseRatePlanId",
                   rp.derive_kind AS "deriveKind", rp.derive_value AS "deriveValue",
                   rp.breakfast_cent AS "breakfastCent",
-                  rp.breakfast_child_cent AS "childBreakfastCent", rp.active
+                  rp.breakfast_child_cent AS "childBreakfastCent", rp.active,
+                  COALESCE((SELECT json_agg(json_build_object(
+                                     'name', p.name, 'grossCent', p.price_cent,
+                                     'chargeMode', p.charge_mode,
+                                     'taxRuleId', p.tax_rule_id) ORDER BY p.id)
+                              FROM rate_plan_product rpp
+                              JOIN product p ON p.id = rpp.product_id AND p.active
+                             WHERE rpp.rate_plan_id = rp.id), '[]'::json) AS inclusions
              FROM rate_plan rp JOIN resource_category c ON c.id = rp.category_id
             WHERE rp.property_id = $1 ORDER BY c.code, rp.code`, [Number(propertyId)])
-        return { ratePlans: rows }
+        return { ratePlans: rows, vatRules: await umsatzsteuer(client, Number(propertyId)) }
       })
     }
   })
@@ -176,6 +239,72 @@ export function rateRoutes(app: FastifyInstance): void {
             WHERE id = $1 AND property_id = $2`,
           [plan, Number(propertyId), wert, kind])
         return { ratePlanId: plan, breakfastCent: wert, childBreakfastCent: kind }
+      })
+    }
+  })
+
+  /**
+   * Weitere Inklusivleistungen der Rate setzen: Parken, Sauna, Sekt zur
+   * Anreise (Migration 0165). Die Liste ersetzt die bisherige.
+   *
+   * Gespeichert wird im Modell, das es seit 0007 gibt -- `product` und
+   * `rate_plan_product` --, weil die Anzahlung schon daraus rechnet. Je
+   * Platz in der Liste ein Produkt mit festem Kuerzel; eine entfernte
+   * Leistung wird stillgelegt, nicht geloescht, denn gebuchte Zeilen und
+   * das Protokoll verweisen auf sie. Das Erloeskonto folgt dem Satz, wie
+   * beim Fruehstueck: der DATEV-Stapel setzt keinen Steuerschluessel, das
+   * Konto traegt den Satz. Wirkt ab der naechsten Nacht.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/rate-plans/:ratePlanId/inclusions',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Inklusivleistungen im Ratenpreis setzen',
+    handler: async (req) => {
+      const { propertyId, ratePlanId } = req.params as { propertyId: string; ratePlanId: string }
+      const haus = Number(propertyId)
+      const plan = Number(ratePlanId)
+      if (!Number.isSafeInteger(plan) || plan <= 0) {
+        throw Errors.validation({ ratePlanId: ['field.positiveInteger'] })
+      }
+      const liste = inklusivPruefen((req.body as { inclusions?: unknown } | null)?.inclusions)
+      return tx(req.pool, req, async client => {
+        await assertPlan(client, haus, plan)
+        const saetze = new Map((await umsatzsteuer(client, haus)).map(r => [r.id, r.rateBp]))
+        const fehler: Record<string, Meldung[]> = {}
+        liste.forEach((l, i) => {
+          if (!saetze.has(l.taxRuleId)) fehler[`inclusions.${i}.taxRuleId`] = ['field.invalid']
+        })
+        if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
+
+        const ids: number[] = []
+        for (const [i, l] of liste.entries()) {
+          const r = await client.query<{ id: number }>(
+            `INSERT INTO product (property_id, code, name, price_cent, tax_rule_id, charge_mode,
+                                  revenue_account, active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+             ON CONFLICT (property_id, code) DO UPDATE
+               SET name = EXCLUDED.name, price_cent = EXCLUDED.price_cent,
+                   tax_rule_id = EXCLUDED.tax_rule_id, charge_mode = EXCLUDED.charge_mode,
+                   revenue_account = EXCLUDED.revenue_account, active = true,
+                   split_tax_rule_id = NULL, split_share_bp = NULL
+             RETURNING id::int`,
+            [haus, `INKL-${plan}-${i + 1}`, l.name, l.grossCent, l.taxRuleId, l.chargeMode,
+             kontoFuerSatz(saetze.get(l.taxRuleId)!)])
+          ids.push(r.rows[0]!.id)
+        }
+        await client.query(
+          `UPDATE product SET active = false
+            WHERE property_id = $1 AND code LIKE $2 AND NOT (id = ANY($3::bigint[]))`,
+          [haus, `INKL-${plan}-%`, ids])
+        await client.query(`DELETE FROM rate_plan_product WHERE rate_plan_id = $1`, [plan])
+        if (ids.length > 0) {
+          await client.query(
+            `INSERT INTO rate_plan_product (rate_plan_id, product_id, property_id)
+             SELECT $1, unnest($2::bigint[]), $3`, [plan, ids, haus])
+        }
+        return { ratePlanId: plan, inclusions: liste }
       })
     }
   })

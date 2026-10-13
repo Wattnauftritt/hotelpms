@@ -1298,6 +1298,16 @@ export type PropertyUser = Static<typeof PropertyUser>
 
 // ------------------------------------------------------------------ Raten
 
+export const RateInclusion = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 60 }),
+  /** Brutto je Einheit der Abrechnungsart. */
+  grossCent: Cent,
+  chargeMode: Type.Union([Type.Literal('per_night'), Type.Literal('per_person_night'),
+                          Type.Literal('once')]),
+  taxRuleId: Type.Integer()
+})
+export type RateInclusion = Static<typeof RateInclusion>
+
 export const RatePlan = Type.Object({
   id: Type.Integer(),
   ratePlanRef: Type.String(),
@@ -1319,7 +1329,12 @@ export const RatePlan = Type.Object({
    * bei Buchungen, die Erwachsene und Kinder getrennt nennen.
    */
   childBreakfastCent: Type.Union([Cent, Type.Null()]),
-  active: Type.Boolean()
+  active: Type.Boolean(),
+  /**
+   * Weitere im Preis enthaltene Leistungen (Parken, Sauna). Der Nachtlauf
+   * rechnet sie wie das Fruehstueck heraus (Migration 0165).
+   */
+  inclusions: Type.Array(RateInclusion)
 })
 export type RatePlan = Static<typeof RatePlan>
 

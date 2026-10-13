@@ -1,9 +1,9 @@
 import { useMemo, useState, type JSX } from 'react'
-import type { RatePlan } from '@hotelpms/contracts'
+import type { RateInclusion, RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
-         useCreateRatePlan, useRebuildDerived, useSetBreakfast,
-         tageInklusive, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
+         useCreateRatePlan, useRebuildDerived, useSetBreakfast, useSetInclusions,
+         tageInklusive, type VatRule, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
 import { ChannelSicht } from '../components/ChannelSicht.tsx'
 import { betroffeneTage, centAusEingabe, eingabeAusCent, preisVorschau,
@@ -399,6 +399,120 @@ function FruehstueckZeile(
   )
 }
 
+interface InklusivEntwurf {
+  name: string; preis: string; chargeMode: RateInclusion['chargeMode']; taxRuleId: number | null
+}
+
+/**
+ * Weitere Inklusivleistungen einer Rate (Migration 0165): Parken, Sauna,
+ * Sekt zur Anreise. Der Nachtlauf rechnet sie wie das Frühstück aus dem
+ * Nachtpreis heraus, jede zu ihrem Satz. Gespeichert wird die ganze Liste;
+ * der Schlüssel der Zeile hängt am gespeicherten Stand, damit der Entwurf
+ * nach dem Speichern neu beginnt.
+ */
+function InklusivZeile(
+  { propertyId, plan, vatRules, darfSchreiben }: {
+    propertyId: number; plan: RatePlan; vatRules: readonly VatRule[]; darfSchreiben: boolean }
+): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const setzen = useSetInclusions(propertyId)
+  const [liste, setListe] = useState<InklusivEntwurf[]>(() => plan.inclusions.map(i => ({
+    name: i.name, preis: eingabeAusCent(i.grossCent), chargeMode: i.chargeMode,
+    taxRuleId: i.taxRuleId })))
+  // Ohne Vorgabe der volle Satz: Parken, Wellness und Getraenke tragen ihn.
+  const vorgabeSatz = vatRules.find(v => v.rateBp === 1900)?.id ?? vatRules[0]?.id ?? null
+
+  const fertig = liste.map(e => {
+    const cent = centAusEingabe(e.preis)
+    return e.name.trim() !== '' && cent !== null && cent > 0 && e.taxRuleId !== null
+      ? { name: e.name.trim(), grossCent: cent, chargeMode: e.chargeMode, taxRuleId: e.taxRuleId }
+      : null
+  })
+  const gueltig = fertig.every(f => f !== null)
+  const geaendert = JSON.stringify(fertig) !== JSON.stringify(plan.inclusions)
+  const aendern = (i: number, teil: Partial<InklusivEntwurf>): void =>
+    setListe(l => l.map((e, j) => j === i ? { ...e, ...teil } : e))
+
+  return (
+    <form className="space-y-1.5 text-sm"
+          onSubmit={e => {
+            e.preventDefault()
+            if (!gueltig || !geaendert) return
+            setzen.mutate({ ratePlanId: plan.id,
+                            inclusions: fertig.filter((f): f is RateInclusion => f !== null) })
+          }}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="w-56 truncate">{plan.name}
+          <span className="text-neutral-500"> ({plan.code})</span></span>
+        {liste.length === 0 && (
+          <span className="text-neutral-500">{t('rate.inclusion.none')}</span>
+        )}
+        {darfSchreiben && liste.length < 10 && (
+          <button type="button" disabled={vorgabeSatz === null}
+                  onClick={() => setListe(l => [...l, { name: '', preis: '',
+                    chargeMode: 'per_night', taxRuleId: vorgabeSatz }])}
+                  className="px-2 py-0.5 rounded-sm border border-neutral-300
+                             hover:bg-neutral-50 disabled:opacity-40">
+            {t('rate.inclusion.add')}
+          </button>
+        )}
+        {darfSchreiben && (
+          <button type="submit"
+                  disabled={!online || !gueltig || !geaendert || setzen.isPending}
+                  className="px-3 py-1 rounded-sm border border-neutral-300
+                             hover:bg-neutral-50 disabled:opacity-40">
+            {t('common.save')}
+          </button>
+        )}
+        {setzen.isSuccess && !geaendert && (
+          <span role="status" className="text-emerald-800">{t('rate.breakfast.saved')}</span>
+        )}
+      </div>
+      {liste.map((e, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2 ps-4">
+          <input value={e.name} onChange={x => aendern(i, { name: x.target.value })}
+                 disabled={!darfSchreiben} maxLength={60}
+                 aria-label={t('rate.inclusion.name')} placeholder={t('rate.inclusion.name')}
+                 aria-invalid={e.name.trim() === ''}
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-44" />
+          <input value={e.preis} onChange={x => aendern(i, { preis: x.target.value })}
+                 disabled={!darfSchreiben} inputMode="decimal"
+                 aria-label={t('rate.inclusion.price')}
+                 aria-invalid={fertig[i] === null && e.name.trim() !== ''}
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-24
+                            text-end tabular-nums" />
+          <span>€</span>
+          <select value={e.chargeMode} disabled={!darfSchreiben}
+                  aria-label={t('rate.inclusion.mode')}
+                  onChange={x => aendern(i, {
+                    chargeMode: x.target.value as RateInclusion['chargeMode'] })}
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
+            <option value="per_night">{t('rate.inclusion.perNight')}</option>
+            <option value="per_person_night">{t('rate.inclusion.perPersonNight')}</option>
+            <option value="once">{t('rate.inclusion.once')}</option>
+          </select>
+          <select value={e.taxRuleId ?? ''} disabled={!darfSchreiben}
+                  aria-label={t('rate.inclusion.tax')}
+                  onChange={x => aendern(i, { taxRuleId: Number(x.target.value) })}
+                  className="border border-neutral-300 rounded-sm px-2 py-1">
+            {vatRules.map(v => (
+              <option key={v.id} value={v.id}>{v.name} ({v.rateBp / 100} %)</option>
+            ))}
+          </select>
+          {darfSchreiben && (
+            <button type="button" onClick={() => setListe(l => l.filter((_, j) => j !== i))}
+                    className="text-neutral-500 hover:text-neutral-900">
+              {t('rate.inclusion.remove')}
+            </button>
+          )}
+        </div>
+      ))}
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </form>
+  )
+}
+
 /**
  * Ratenpläne anlegen und abgeleitete Raten neu rechnen (B4).
  *
@@ -407,9 +521,10 @@ function FruehstueckZeile(
  * Zeile darüber.
  */
 function Ratenplaene(
-  { propertyId, plaene, kategorien, von, bis, darfSchreiben }: {
+  { propertyId, plaene, vatRules, kategorien, von, bis, darfSchreiben }: {
     propertyId: number
     plaene: readonly RatePlan[]
+    vatRules: readonly VatRule[]
     kategorien: ReadonlyArray<{ id: number; name: string }>
     von: string; bis: string; darfSchreiben: boolean }
 ): JSX.Element {
@@ -477,6 +592,18 @@ function Ratenplaene(
           <div className="text-xs text-neutral-500">
             {t('rate.breakfast.hint')} {t('rate.breakfast.childHint')}
           </div>
+        </div>
+      )}
+
+      {plaene.length > 0 && (
+        <div className="space-y-3 border-t border-neutral-200 pt-3">
+          <div className="text-sm text-neutral-600">{t('rate.inclusion.title')}</div>
+          {plaene.map(p => (
+            <InklusivZeile key={`${p.id}-${JSON.stringify(p.inclusions)}`}
+                           propertyId={propertyId} plan={p} vatRules={vatRules}
+                           darfSchreiben={darfSchreiben} />
+          ))}
+          <div className="text-xs text-neutral-500">{t('rate.inclusion.hint')}</div>
         </div>
       )}
 
@@ -679,6 +806,7 @@ function Preisraster(
 
                 <Ratenplaene propertyId={propertyId}
                              plaene={plaene.data?.ratePlans ?? []}
+                             vatRules={plaene.data?.vatRules ?? []}
                              kategorien={kategorien.data?.categories ?? []}
                              von={von} bis={bis} darfSchreiben={darfSchreiben} />
 

@@ -162,3 +162,68 @@ describe('Anzahlung mit Fruehstueck aus der Rate', () => {
       { rateBp: 1900, grossCent: 655 }])
   })
 })
+
+describe('Weitere Inklusivleistungen an der Rate (0165)', () => {
+  const steuer = async (code: string, rateBp: number): Promise<number> =>
+    (await owner.query<{ id: number }>(
+      `INSERT INTO tax_rule (property_id, code, kind, name, basis, rate_bp)
+       VALUES ($1,$2,'vat',$2,'percent',$3) RETURNING id`,
+      [fx.propertyId, code, rateBp])).rows[0]!.id
+  const inklusiv = (ratePlanId: number, inclusions: unknown, headers = preise) => app.inject({
+    method: 'PUT', url: `/v1/properties/${fx.propertyId}/rate-plans/${ratePlanId}/inclusions`,
+    headers, payload: { inclusions } })
+  const lesen = async (ratePlanId: number) => {
+    const r = JSON.parse((await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/rate-plans`, headers: preise })).body
+    ) as { ratePlans: Array<{ id: number; inclusions: Array<{ name: string }> }>
+           vatRules: Array<{ id: number }> }
+    return { plan: r.ratePlans.find(p => p.id === ratePlanId)!, vatRules: r.vatRules }
+  }
+
+  it('setzt, ersetzt und leert die Liste, Konto nach Satz', async () => {
+    const id = await plan()
+    const voll = await steuer('U19', 1900)
+    const r = await inklusiv(id, [
+      { name: 'Parken', grossCent: 1_000, chargeMode: 'per_night', taxRuleId: voll },
+      { name: 'Sekt', grossCent: 800, chargeMode: 'once', taxRuleId: voll }])
+    expect(r.statusCode, r.body).toBe(200)
+    const gelesen = await lesen(id)
+    expect(gelesen.plan.inclusions.map(i => i.name)).toEqual(['Parken', 'Sekt'])
+    expect(gelesen.vatRules.map(v => v.id)).toContain(voll)
+    const konten = await owner.query<{ revenue_account: string }>(
+      `SELECT revenue_account FROM product WHERE active ORDER BY id`)
+    expect(konten.rows.map(k => k.revenue_account)).toEqual(['8400', '8400'])
+
+    // Eine entfernte Leistung wird stillgelegt, nicht geloescht.
+    expect((await inklusiv(id, [
+      { name: 'Parkplatz', grossCent: 1_200, chargeMode: 'per_night', taxRuleId: voll }]))
+      .statusCode).toBe(200)
+    expect((await lesen(id)).plan.inclusions).toEqual([
+      { name: 'Parkplatz', grossCent: 1_200, chargeMode: 'per_night', taxRuleId: voll }])
+    const alle = await owner.query<{ n: number; aktiv: number }>(
+      `SELECT count(*)::int AS n, count(*) FILTER (WHERE active)::int AS aktiv FROM product`)
+    expect(alle.rows[0]).toEqual({ n: 2, aktiv: 1 })
+
+    expect((await inklusiv(id, [])).statusCode).toBe(200)
+    expect((await lesen(id)).plan.inclusions).toEqual([])
+  })
+
+  it('weist einen fremden Steuersatz und einen Preis von null ab', async () => {
+    const id = await plan()
+    const fremd = await makeProperty(owner, { name: 'Fremd', code: 'FREMD' })
+    const fremdeSteuer = (await owner.query<{ id: number }>(
+      `INSERT INTO tax_rule (property_id, code, kind, name, basis, rate_bp)
+       VALUES ($1,'X','vat','X','percent',1900) RETURNING id`, [fremd.propertyId])).rows[0]!.id
+    const r = await inklusiv(id, [
+      { name: 'Parken', grossCent: 1_000, chargeMode: 'per_night', taxRuleId: fremdeSteuer }])
+    expect(r.statusCode, r.body).toBe(422)
+    expect(r.body).toContain('inclusions.0.taxRuleId')
+
+    const voll = await steuer('U19', 1900)
+    const null_ = await inklusiv(id, [
+      { name: 'Parken', grossCent: 0, chargeMode: 'per_night', taxRuleId: voll }])
+    expect(null_.statusCode).toBe(422)
+    // Die Rezeption pflegt keine Raten.
+    expect((await inklusiv(id, [], rezeption)).statusCode).toBe(403)
+  })
+})

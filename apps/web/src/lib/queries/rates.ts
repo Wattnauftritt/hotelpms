@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ChannelView, RateGrid, RatePlan, SetRates,
+import type { ChannelView, RateGrid, RateInclusion, RatePlan, SetRates,
               SetRestrictions } from '@hotelpms/contracts'
 import { api } from '../api.js'
 import { addDays } from '../dates.js'
@@ -32,7 +32,7 @@ export function tageInklusive(from: string, to: string): string[] {
 }
 
 export const useRatePlans = (propertyId: number) =>
-  useQuery<{ ratePlans: RatePlan[] }>({
+  useQuery<{ ratePlans: RatePlan[]; vatRules: VatRule[] }>({
     queryKey: ['ratePlans', propertyId],
     queryFn: () => api.get(`/v1/properties/${propertyId}/rate-plans`),
     // Ratenplaene aendern sich im Betrieb selten; die Preise darin taeglich.
@@ -90,6 +90,26 @@ export function useCreateRatePlan(propertyId: number) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+    }
+  })
+}
+
+/** Ein Umsatzsteuersatz des Hauses, aus dem eine Inklusivleistung waehlt. */
+export interface VatRule { id: number; name: string; rateBp: number }
+
+/**
+ * Weitere Inklusivleistungen setzen; die Liste ersetzt die bisherige
+ * (Migration 0165). Wirkt ab der naechsten Nacht.
+ */
+export function useSetInclusions(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { ratePlanId: number; inclusions: RateInclusion[] }) =>
+      api.put<{ ratePlanId: number; inclusions: RateInclusion[] }>(
+        `/v1/properties/${propertyId}/rate-plans/${body.ratePlanId}/inclusions`,
+        { inclusions: body.inclusions }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
     }
   })
 }
