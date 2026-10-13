@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
-import { Errors } from '../platform/errors.js'
+import { Errors, type Meldung } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { isIsoDate, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP } from '@hotelpms/domain'
-import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
+import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party }
   from '@hotelpms/domain'
@@ -144,11 +144,14 @@ const KUERZEL = /^[A-Z0-9]{1,6}$/
 
 async function rechnungseinstellung(client: PoolClient, propertyId: number): Promise<{
   prefix: string | null; missing: boolean; locked: boolean; nextNumber: string
+  paymentTermsDays: number
 }> {
   const r = await client.query<{ prefix: string | null; fehlt: boolean
-                                 zaehler: string | null; naechste: string | null }>(
+                                 zaehler: string | null; naechste: string | null
+                                 ziel: number }>(
     `SELECT p.invoice_prefix AS prefix, invoice_prefix_missing(p.id) AS fehlt,
-            c.prefix AS zaehler, c.next_number::text AS naechste
+            c.prefix AS zaehler, c.next_number::text AS naechste,
+            p.payment_terms_days AS ziel
        FROM property p
        LEFT JOIN invoice_counter c ON c.property_id = p.id AND c.year = $2
       WHERE p.id = $1`, [propertyId, new Date().getUTCFullYear()])
@@ -165,7 +168,8 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
     // Ohne Kuerzel und mit einem zweiten Haus: genau dann verweigert die
     // Rechnung, und genau dann muss der Bildschirm es sagen.
     missing: z.fehlt,
-    locked, nextNumber
+    locked, nextNumber,
+    paymentTermsDays: z.ziel
   }
 }
 
@@ -354,6 +358,321 @@ async function erwarteteSaetze(
  * Ein Jahr Rechnungen je Anfrage. Mehr braucht keine Ansicht, und die
  * Buchhaltung nimmt ohnehin den GoBD-Export.
  */
+interface RechnungsAuftrag {
+  kind?: 'final' | 'interim'
+  chargeIds?: number[]
+  /**
+   * Abweichende Rechnungsanschrift fuer **diese** Rechnung (Sven,
+   * 13.10.2026: Firmengaeste haben oft eine andere). Ein leerer Wert nimmt
+   * das Feld heraus. Die Stammdaten bleiben unberuehrt; wer sie aendern
+   * will, aendert die Firma.
+   */
+  recipient?: Partial<Record<typeof EMPFAENGER_FELDER[number], string>>
+  /** Faelligkeit (BT-9). Ohne Angabe aus dem Ziel der Firma, sonst des Hauses. */
+  dueOn?: string
+  /** Gleich bezahlt: bucht den offenen Betrag als Zahlungsvermerk dieser Rechnung. */
+  paid?: { paymentMethodCode: string; externalReference?: string }
+}
+
+const EMPFAENGER_FELDER = ['name', 'addressLine1', 'postalCode', 'city', 'country',
+                           'vatId'] as const
+const EMPFAENGER_MAX = 200
+/** Laengstes Zahlungsziel, das eine Rechnung tragen darf. */
+const ZIEL_MAX_TAGE = 365
+
+/** Prueft die Angaben des Rechnungsdialogs, bevor eine Abfrage laeuft. */
+function auftragPruefen(a: RechnungsAuftrag): void {
+  const f: Record<string, Meldung[]> = {}
+  if (a.recipient !== undefined) {
+    if (typeof a.recipient !== 'object' || a.recipient === null) {
+      f.recipient = ['field.invalid']
+    } else {
+      for (const [k, v] of Object.entries(a.recipient)) {
+        if (!(EMPFAENGER_FELDER as readonly string[]).includes(k)
+            || typeof v !== 'string' || v.length > EMPFAENGER_MAX) {
+          f[`recipient.${k}`] = ['field.invalid']
+        }
+      }
+      const land = a.recipient.country?.trim()
+      if (land && !/^[A-Z]{2}$/.test(land)) f['recipient.country'] = ['field.invalid']
+    }
+  }
+  if (a.dueOn !== undefined && !isIsoDate(a.dueOn)) f.dueOn = ['field.isoDate']
+  if (a.paid !== undefined && typeof a.paid?.paymentMethodCode !== 'string') {
+    f['paid.paymentMethodCode'] = ['field.required']
+  }
+  if (Object.keys(f).length > 0) throw Errors.validation(f)
+}
+
+/** Die Vorgabe aus den Stammdaten, ueberschrieben mit dem, was der Dialog sagt. */
+function mitAbweichung(vorgabe: Party, abweichung: RechnungsAuftrag['recipient']): Party {
+  if (abweichung === undefined) return vorgabe
+  const p: Record<string, string | null | undefined> = { ...vorgabe }
+  for (const k of EMPFAENGER_FELDER) {
+    const v = abweichung[k]
+    if (v === undefined) continue
+    const t = v.trim()
+    if (t === '') delete p[k]
+    else p[k] = t
+  }
+  return p as Party
+}
+
+/**
+ * Was eine Rechnung waere, ohne sie festzuschreiben.
+ *
+ * Dieselbe Rechnung fuer die Vorschau im Dialog und fuer das Festschreiben:
+ * zwei Rechenwege liefen auseinander, und die Vorschau zeigte dann eine
+ * andere Summe als das Papier. Schreibt nichts; die Nummer vergibt erst
+ * der Aufrufer, der wirklich festschreibt.
+ */
+async function rechnungsEntwurf(
+  client: PoolClient,
+  folio: { id: number; property_id: number; guest_id: number | null
+           company_id: number | null },
+  auftrag: RechnungsAuftrag
+) {
+  // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
+  // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
+  // Die Kurtaxe nie: siehe OHNE_KURTAXE.
+  const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
+                                       gross_cent: number
+                                       description: string; quantity: number
+                                       business_date: string }>(
+    auftrag.chargeIds?.length
+      ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
+                business_date::text FROM charge c
+          WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2)
+            AND ${OHNE_KURTAXE} ORDER BY id`
+      : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
+                business_date::text FROM charge c
+          WHERE folio_id = $1 AND invoice_id IS NULL AND ${OHNE_KURTAXE}
+          ORDER BY id`,
+    auftrag.chargeIds?.length ? [folio.id, auftrag.chargeIds] : [folio.id])
+  if (charges.rowCount === 0) throw Errors.unprocessable('folio.nothingOpen')
+
+  /*
+   * Offene Anzahlungen dieses Folios: Verrechnung als eigene Position
+   * mit negativem Betrag und Verweis auf die Anzahlungsrechnung
+   * (Aufgabe 3, § 13 Abs. 1 Nr. 1a UStG). Der Steuersatz der Position
+   * bleibt der der Anzahlung, nicht der des Aufenthalts: verrechnet
+   * wird, was schon versteuert wurde, zum Satz, zu dem es versteuert
+   * wurde. Das Folio selbst bleibt unberuehrt, dessen Saldo kommt
+   * allein aus charge und settlement; die Anzahlung stand dort schon
+   * als settlement und wuerde sonst doppelt gezaehlt.
+   *
+   * Nur auf der Schlussrechnung ueber alle offenen Positionen. Eine
+   * Zwischenrechnung ueber eine Auswahl darf die Anzahlung nicht
+   * verbrauchen: sie gehoert zum ganzen Aufenthalt, nicht zu einer
+   * Auswahl daraus. Sonst zoege eine Zwischenrechnung ueber ein
+   * Mineralwasser die ganze Anzahlung ab -- und lautete ueber einen
+   * negativen Betrag.
+   */
+  const schlussrechnung = (auftrag.kind ?? 'final') === 'final' && !auftrag.chargeIds?.length
+  const deposits = schlussrechnung ? await client.query<{
+    deposit_invoice_id: number; net_cent: string; tax_cent: string
+    tax_rate_bp: number; amount_gross_cent: string
+    deposit_number: string; deposit_issued_on: string
+  }>(
+    `SELECT dl.deposit_invoice_id, dl.net_cent, dl.tax_cent, dl.tax_rate_bp,
+            dl.amount_gross_cent, di.number AS deposit_number,
+            di.issued_on::text AS deposit_issued_on
+       FROM deposit_ledger dl
+       JOIN invoice di ON di.id = dl.deposit_invoice_id
+      WHERE dl.folio_id = $1 AND dl.kind = 'received'
+        AND NOT EXISTS (
+          SELECT 1 FROM deposit_ledger a
+           WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied')
+      ORDER BY dl.id`,
+    [folio.id]) : { rows: [] as Array<{
+      deposit_invoice_id: number; net_cent: string; tax_cent: string
+      tax_rate_bp: number; amount_gross_cent: string
+      deposit_number: string; deposit_issued_on: string }> }
+
+  const positionen = [
+    ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
+    ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
+  ]
+
+  /*
+   * Rundungsausgleich (Aufgabe 12).
+   *
+   * Die Rechnung kann nicht jeden Bruttobetrag treffen. Die Steuer wird
+   * je Satzgruppe aus der Nettosumme gerechnet (BR-CO-14), und bei
+   * ganzzahligem Netto und ganzzahliger Steuer gibt es Bruttobetraege,
+   * zu denen kein Netto passt: zu 7 Prozent 6,5 Prozent aller Betraege,
+   * zu 19 Prozent 16,0 Prozent. Ein Kassenbeleg ueber glatte 250,00 zu
+   * 7 Prozent ergibt 233,64 + 16,35 = 249,99; darueber liegt erst
+   * wieder 250,01.
+   *
+   * Ohne Ausgleich fordert die Rechnung einen Cent weniger, als die
+   * Positionen zusammen ergeben. Der Gast zahlt, was auf dem Papier
+   * steht, und der Cent bleibt auf dem Folio offen -- fuer immer, weil
+   * niemand nach einem Cent sucht. Ueber viele Posten waren es bis zu
+   * drei.
+   *
+   * **Warum keine eigene Position.** Das war der erste Entwurf und ist
+   * an der eigenen Pflichtangabenpruefung gescheitert: eine Position zu
+   * 0 Prozent braucht nach § 14 Abs. 4 Nr. 8 UStG den Grund der
+   * Steuerbefreiung, und fuer eine Rundung gibt es keinen -- sie ist
+   * kein Umsatz. Im Satz der Gruppe wiederum muesste die Position rund
+   * vierzehn Cent gross sein, um einen Cent Wirkung zu haben, weil sie
+   * die Steuer der ganzen Gruppe mitverschiebt.
+   *
+   * EN 16931 hat dafuer den Rundungsbetrag auf Belegebene (BT-114): er
+   * laesst Satzgruppen und Gesamtsumme unberuehrt und wirkt allein auf
+   * den Zahlbetrag (BR-CO-16). Keine Position, keine Steuerkategorie,
+   * kein Befreiungsgrund -- und auf dem Blatt eine benannte Zeile.
+   */
+  const gerundet = sumInvoice(positionen)
+  const zielBrutto =
+    charges.rows.reduce((sum, c) => sum + Number(c.gross_cent), 0)
+    - deposits.rows.reduce((sum, d) => sum + Number(d.amount_gross_cent), 0)
+  const roundingCent = zielBrutto - gerundet.grossCent
+
+  /*
+   * Was festgeschrieben und zurueckgegeben wird, traegt beides: die
+   * normgerechten Summen (BT-106, BT-110, BT-112) und daneben den
+   * Ausgleich und den Betrag, den die Rechnung tatsaechlich fordert.
+   * Der Beleg liest den Ausgleich spaeter von hier und rechnet ihn
+   * nicht neu -- waere er ableitbar, waere er nicht noetig.
+   */
+  /*
+   * Was schon bezahlt ist, wird **jetzt** festgestellt und in die
+   * Momentaufnahme geschrieben, statt es spaeter beim Zeichnen des
+   * Belegs aus den Zahlungsvermerken zu rechnen.
+   *
+   * Der Grund ist derselbe wie beim Ausgleich: der Beleg ist eine
+   * Momentaufnahme. Zahlt der Gast nach dem Festschreiben und ist der
+   * Beleg noch nicht gezeichnet, stuende auf ihm ein anderer
+   * vorausgezahlter Betrag als auf dem gleich ausgedruckten -- und
+   * welcher, haenge davon ab, wann der Worker gelaufen ist. Die
+   * Zuordnung selbst laeuft weiter, damit eine Liste sagen kann, was
+   * offen ist; der Beleg liest sie nicht.
+   */
+  /*
+   * Dieselbe Kurtaxe von der anderen Seite: hat der Gast vorab alles
+   * bezahlt, auch sie, passt sein Vermerk nur mit ihr unter die
+   * Grenze. Ausgewiesen wird als vorausbezahlt (BT-113) dennoch
+   * hoechstens der Betrag der Rechnung -- der Rest war die Kurtaxe,
+   * und der Zahlbetrag darf nicht negativ werden.
+   */
+  const kurtaxe = await kurtaxeAmFolio(client, folio.id)
+  const { ids: vorausbezahlt, summeCent: gezahltCent } =
+    passendeVermerke(await offeneVermerke(client, folio.id), zielBrutto + kurtaxe)
+  const prepaidCent = Math.min(gezahltCent, Math.max(zielBrutto, 0))
+  const totals = { ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent }
+
+  /*
+   * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
+   * frueher abreist oder ein Teil des Aufenthalts schon
+   * zwischenabgerechnet wurde. Dem Gast steht dann Geld zu -- und
+   * dafuer ist eine Rechnung ueber einen negativen Betrag das falsche
+   * Papier. Abgewiesen wird hier deshalb, solange es die Rueckzahlung
+   * ('refunded' im Anzahlungsjournal) noch nicht gibt: lieber keine
+   * Rechnung als eine, die niemand buchen kann.
+   */
+  if (deposits.rows.length > 0 && totals.grossCent < 0) {
+    throw Errors.unprocessable(
+      'deposit.exceedsServices', { cent: -totals.grossCent })
+  }
+
+  /*
+   * Aussteller und Empfaenger werden gleich in der Form gelesen, in der
+   * sie geprueft und gespeichert werden. Eine Umbenennung zwischen
+   * Datenbank und Pruefung ist eine Stelle, an der ein Feld lautlos
+   * verschwindet: genau das ist hier einmal passiert, die Anschrift kam
+   * als postal_code an und wurde als postalCode gesucht.
+   */
+  const prop = await client.query<Party>(
+    `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+            city, country, tax_number AS "taxNumber", vat_id AS "vatId"
+       FROM property WHERE id = $1`, [folio.property_id])
+  const recipient = folio.company_id
+    ? await client.query<Party>(
+        `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
+                city, country, vat_id AS "vatId"
+           FROM company WHERE id = $1`, [folio.company_id])
+    : folio.guest_id
+      ? await client.query<Party>(
+          `SELECT trim(both ', ' from
+                    coalesce(last_name,'') || ', ' || coalesce(first_name,'')) AS name,
+                  address_line1 AS "addressLine1", postal_code AS "postalCode",
+                  city, country
+             FROM guest WHERE id = $1`, [folio.guest_id])
+      : { rows: [] as Party[] }
+  const vorgabe = recipient.rows[0] ?? {}
+  const empfaenger = mitAbweichung(vorgabe, auftrag.recipient)
+
+  const bd = await client.query<{ date: string }>(
+    `SELECT date::text FROM business_day
+      WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
+    [folio.property_id])
+  const businessDate = bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
+
+  /*
+   * Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG.
+   *
+   * Bei Beherbergung ist das der **Aufenthalt**, nicht das
+   * Rechnungsdatum. Die Verwechslung ist der häufigste Mangel an
+   * Hotelrechnungen. Er wird aus den Geschäftsdaten der abzurechnenden
+   * Positionen abgeleitet und nicht vom Aufrufer entgegengenommen:
+   * die Positionen wissen es, der Aufrufer könnte sich irren.
+   */
+  const daten = charges.rows.map(c => c.business_date).sort()
+  const serviceFrom = daten[0]!
+  const serviceTo = daten[daten.length - 1]!
+
+  
+  /*
+   * Faelligkeit. Ohne Angabe aus dem Ziel der Firma, sonst aus der Vorgabe
+   * des Hauses, gezaehlt ab dem Ausstellungstag. Ist nichts offen, gibt es
+   * keine: "zahlbar bis" ueber null Euro liest ein Gast als Mahnung.
+   */
+  const ziel = await client.query<{ heute: string; vorgabe: string; spaetestens: string }>(
+    `SELECT current_date::text AS heute,
+            (current_date + COALESCE(
+               (SELECT c.payment_terms_days FROM company c WHERE c.id = $2),
+               p.payment_terms_days))::text AS vorgabe,
+            (current_date + $3::int)::text AS spaetestens
+       FROM property p WHERE p.id = $1`,
+    [folio.property_id, folio.company_id, ZIEL_MAX_TAGE])
+  const { heute, spaetestens } = ziel.rows[0]!
+  if (auftrag.dueOn !== undefined && (auftrag.dueOn < heute || auftrag.dueOn > spaetestens)) {
+    throw Errors.validation({ dueOn: ['field.range'] }, { min: heute, max: spaetestens })
+  }
+  const offenCent = auftrag.paid !== undefined ? 0
+    : totals.payableCent - totals.prepaidCent
+  const dueOn = offenCent > 0 ? auftrag.dueOn ?? ziel.rows[0]!.vorgabe : null
+
+  return {
+    charges: charges.rows, deposits: deposits.rows, totals, vorausbezahlt,
+    issuer: prop.rows[0] ?? {}, recipient: empfaenger, defaultRecipient: vorgabe,
+    businessDate, serviceFrom, serviceTo, dueOn, offenCent, heute
+  }
+}
+
+/** Die Pflichtangaben einer Rechnung, wie sie festgeschrieben wuerde. */
+function rechnungsMaengel(
+  e: Awaited<ReturnType<typeof rechnungsEntwurf>>, nummer: string,
+  kind: 'final' | 'interim'
+) {
+  return blockingFindings({
+    number: nummer,
+    issuedOn: e.heute,
+    serviceFrom: e.serviceFrom, serviceTo: e.serviceTo,
+    issuer: e.issuer,
+    recipient: e.recipient,
+    lines: e.charges.map(c => ({
+      description: c.description, quantity: c.quantity,
+      netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
+    // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet
+    // der geforderte Betrag, nicht die Summe vor dem Rundungsausgleich.
+    grossCent: e.totals.payableCent,
+    kind
+  })
+}
+
 const MAX_RECHNUNGSTAGE = 400
 
 export function billingRoutes(app: FastifyInstance): void {
@@ -386,13 +705,27 @@ export function billingRoutes(app: FastifyInstance): void {
     summary: 'Rechnungskuerzel des Hauses setzen',
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
-      const b = (req.body ?? {}) as { prefix?: unknown }
+      const b = (req.body ?? {}) as { prefix?: unknown; paymentTermsDays?: unknown }
+      // Beides einzeln setzbar: wer das Zahlungsziel aendert, soll nicht
+      // das Kuerzel mitschicken muessen.
+      const ziel = b.paymentTermsDays
+      if (ziel !== undefined && !(typeof ziel === 'number' && Number.isInteger(ziel)
+                                  && ziel >= 0 && ziel <= ZIEL_MAX_TAGE)) {
+        throw Errors.validation({ paymentTermsDays: ['field.range'] },
+          { min: 0, max: ZIEL_MAX_TAGE })
+      }
       const prefix = typeof b.prefix === 'string' ? b.prefix.trim().toUpperCase() : ''
-      if (!KUERZEL.test(prefix)) throw Errors.validation({ prefix: ['field.invalid'] })
+      if ((b.prefix !== undefined || ziel === undefined) && !KUERZEL.test(prefix)) {
+        throw Errors.validation({ prefix: ['field.invalid'] })
+      }
 
       return tx(req.pool, req, async client => {
+        if (ziel !== undefined) {
+          await client.query(`UPDATE property SET payment_terms_days = $2 WHERE id = $1`,
+            [Number(propertyId), ziel])
+        }
         const jetzt = await rechnungseinstellung(client, Number(propertyId))
-        if (jetzt.prefix === prefix) return jetzt
+        if (b.prefix === undefined || jetzt.prefix === prefix) return jetzt
         if (jetzt.locked) {
           throw Errors.conflict('invoice.prefixInUse', { prefix: jetzt.prefix ?? '' })
         }
@@ -672,7 +1005,13 @@ export function billingRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { folioRef } = req.params as { folioRef: string }
       const body = req.body as {
-        description: string; netCent: number; taxRateBp: number
+        description: string; netCent?: number; taxRateBp: number
+        /**
+         * Brutto statt netto, fuer den Rechnungsdialog: dort wird ein Betrag
+         * so eingegeben, wie er auf dem Papier stehen soll. Genau eines von
+         * beiden.
+         */
+        grossCent?: number
         quantity?: number; revenueAccount?: string; productId?: number
       }
       const principal = req.principal as Principal
@@ -703,8 +1042,19 @@ export function billingRoutes(app: FastifyInstance): void {
         const businessDate = bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
 
         const qty = body.quantity ?? 1
-        const net = body.netCent * qty
-        const tax = taxFromNet(net, body.taxRateBp)
+        let net: number
+        let tax: number
+        if (typeof body.grossCent === 'number' && body.netCent === undefined) {
+          if (!Number.isSafeInteger(body.grossCent)) {
+            throw Errors.validation({ grossCent: ['field.integer'] })
+          }
+          const brutto = body.grossCent * qty
+          tax = taxFromGross(brutto, body.taxRateBp)
+          net = brutto - tax
+        } else {
+          net = (body.netCent ?? 0) * qty
+          tax = taxFromNet(net, body.taxRateBp)
+        }
         const r = await client.query<{ id: number }>(
           `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
                                net_cent, tax_cent, gross_cent, tax_rate_bp,
@@ -722,6 +1072,84 @@ export function billingRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Gegenbuchung einer offenen Position (Rechnungsdialog: "korrigieren").
+   *
+   * Eine Buchung ist Haertegrad 1 und wird nie geaendert. Korrigiert wird,
+   * indem die Position mit `reverses_id` aufgehoben und richtig neu gebucht
+   * wird; beides bleibt sichtbar, und der Pruefer sieht, was war (GoBD,
+   * Nachvollziehbarkeit). Nur offene Positionen: eine schon berechnete
+   * gehoert zu einer Rechnung, die erst storniert werden muesste.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/charges/:chargeId/reverse',
+    permission: 'folio:post',
+    summary: 'Offene Position gegenbuchen',
+    handler: async (req, reply) => {
+      const { folioRef, chargeId } = req.params as { folioRef: string; chargeId: string }
+      const id = Number(chargeId)
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        throw Errors.validation({ chargeId: ['field.positiveInteger'] })
+      }
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, { chargeId: id }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const f = await client.query<{ id: number; property_id: number; status: string }>(
+          `SELECT id, property_id, status FROM folio WHERE public_ref = $1 FOR UPDATE`,
+          [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:post', folio.property_id)
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+
+        // Die Position gehoert zu diesem Folio, ist offen, selbst keine
+        // Gegenbuchung und noch nicht gegengebucht.
+        const c = await client.query<{ invoice_id: number | null; reverses_id: number | null
+                                       aufgehoben: boolean }>(
+          `SELECT c.invoice_id, c.reverses_id,
+                  EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id) AS aufgehoben
+             FROM charge c WHERE c.id = $1 AND c.folio_id = $2`, [id, folio.id])
+        if (c.rowCount === 0) throw Errors.notFound('res.charge')
+        const pos = c.rows[0]!
+        if (pos.invoice_id !== null) throw Errors.conflict('charge.invoiced')
+        if (pos.reverses_id !== null || pos.aufgehoben) {
+          throw Errors.conflict('charge.alreadyReversed')
+        }
+
+        const bd = await client.query<{ date: string }>(
+          `SELECT date::text FROM business_day
+            WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
+          [folio.property_id])
+        const r = await client.query<{ id: number; gross_cent: string }>(
+          `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                               net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                               revenue_account, product_id, reservation_id, reverses_id,
+                               created_by, package_part)
+           SELECT c.property_id, c.folio_id, $3::date, 'Storno ' || c.description,
+                  c.quantity, -c.net_cent, -c.tax_cent, -c.gross_cent, c.tax_rate_bp,
+                  c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id,
+                  $4, c.package_part
+             FROM charge c WHERE c.id = $1 AND c.folio_id = $2
+           RETURNING id, gross_cent`,
+          [id, folio.id, bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10),
+           principal.userId])
+
+        const result = { chargeId: r.rows[0]!.id, reversesId: id,
+                         grossCent: Number(r.rows[0]!.gross_cent) }
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'POST',
     url: '/v1/folios/:folioRef/settlements',
@@ -731,6 +1159,11 @@ export function billingRoutes(app: FastifyInstance): void {
       const { folioRef } = req.params as { folioRef: string }
       const body = req.body as {
         amountCent: number; paymentMethodCode: string; externalReference?: string
+        /**
+         * Fuer genau diese Rechnung ("Zahlung eingegangen" in der
+         * Rechnungsliste). Ohne Angabe die aelteste offene des Folios.
+         */
+        invoiceRef?: string
       }
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
@@ -785,7 +1218,11 @@ export function billingRoutes(app: FastifyInstance): void {
                   AS rest
              FROM invoice i
             WHERE i.folio_id = $1 AND i.kind IN ('final','interim')
-            ORDER BY i.id`, [folio.id])
+              AND ($2::text IS NULL OR i.public_ref = $2)
+            ORDER BY i.id`, [folio.id, body.invoiceRef ?? null])
+        if (body.invoiceRef !== undefined && offen.rowCount === 0) {
+          throw Errors.notFound('res.invoice')
+        }
         /*
          * Zahlt der Gast Rechnung und Kurtaxe in einem Betrag -- der
          * Regelfall am Tresen --, uebersteigt der Vermerk den Rest der
@@ -1161,6 +1598,64 @@ export function billingRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Vorschau fuer den Rechnungsdialog: was festgeschrieben wuerde, mit
+   * denselben Angaben wie `POST .../invoice`, aber ohne Nummer und ohne
+   * Schreiben. Die Maengel kommen als Liste statt als Fehler, damit der
+   * Dialog sie zeigen kann, bevor jemand auf "Festschreiben" drueckt.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/invoice-preview',
+    permission: 'invoice:issue',
+    summary: 'Rechnung vorab ansehen',
+    handler: async (req) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = (req.body ?? {}) as RechnungsAuftrag
+      const principal = req.principal as Principal
+      auftragPruefen(body)
+
+      return tx(req.pool, req, async client => {
+        const f = await client.query<{ id: number; property_id: number; guest_id: number | null
+                                       company_id: number | null; email: string | null }>(
+          `SELECT f.id, f.property_id, f.guest_id, f.company_id,
+                  COALESCE(c.invoice_email, g.email) AS email
+             FROM folio f
+             LEFT JOIN company c ON c.id = f.company_id
+             LEFT JOIN guest g ON g.id = f.guest_id
+            WHERE f.public_ref = $1`, [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'invoice:issue', folio.property_id)
+
+        const e = await rechnungsEntwurf(client, folio, body)
+        // Die Nummer vergibt erst das Festschreiben; geprueft wird hier
+        // alles andere.
+        const maengel = rechnungsMaengel(e, 'ENTWURF', body.kind ?? 'final')
+        const einstellung = await rechnungseinstellung(client, folio.property_id)
+        return {
+          lines: e.charges.map(c => ({
+            chargeId: c.id, description: c.description, quantity: c.quantity,
+            businessDate: c.business_date, grossCent: Number(c.gross_cent),
+            taxRateBp: c.tax_rate_bp })),
+          depositsApplied: e.deposits.map(d => ({
+            depositInvoiceNumber: d.deposit_number,
+            amountGrossCent: Number(d.amount_gross_cent) })),
+          totals: e.totals,
+          serviceFrom: e.serviceFrom, serviceTo: e.serviceTo,
+          recipient: e.recipient,
+          defaultRecipient: e.defaultRecipient,
+          recipientEmail: folio.email,
+          dueOn: e.dueOn,
+          openCent: e.offenCent,
+          nextNumber: einstellung.nextNumber,
+          prefixMissing: einstellung.missing,
+          findings: maengel.map(m => ({ key: m.key, reference: m.reference, de: m.de, en: m.en }))
+        }
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'POST',
     url: '/v1/folios/:folioRef/invoice',
@@ -1168,10 +1663,11 @@ export function billingRoutes(app: FastifyInstance): void {
     summary: 'Rechnung festschreiben',
     handler: async (req, reply) => {
       const { folioRef } = req.params as { folioRef: string }
-      const body = (req.body ?? {}) as { kind?: 'final' | 'interim'; chargeIds?: number[] }
+      const body = (req.body ?? {}) as RechnungsAuftrag
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+      auftragPruefen(body)
 
       return tx(req.pool, req, async client => {
         const stored = await beginIdempotent(
@@ -1186,230 +1682,61 @@ export function billingRoutes(app: FastifyInstance): void {
         const folio = f.rows[0]!
         rechtImHaus(principal, 'invoice:issue', folio.property_id)
 
-        // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
-        // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
-        // Die Kurtaxe nie: siehe OHNE_KURTAXE.
-        const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
-                                             gross_cent: number
-                                             description: string; quantity: number
-                                             business_date: string }>(
-          body.chargeIds?.length
-            ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                      business_date::text FROM charge c
-                WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2)
-                  AND ${OHNE_KURTAXE} ORDER BY id`
-            : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                      business_date::text FROM charge c
-                WHERE folio_id = $1 AND invoice_id IS NULL AND ${OHNE_KURTAXE}
-                ORDER BY id`,
-          body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
-        if (charges.rowCount === 0) throw Errors.unprocessable('folio.nothingOpen')
-
-        /*
-         * Offene Anzahlungen dieses Folios: Verrechnung als eigene Position
-         * mit negativem Betrag und Verweis auf die Anzahlungsrechnung
-         * (Aufgabe 3, § 13 Abs. 1 Nr. 1a UStG). Der Steuersatz der Position
-         * bleibt der der Anzahlung, nicht der des Aufenthalts: verrechnet
-         * wird, was schon versteuert wurde, zum Satz, zu dem es versteuert
-         * wurde. Das Folio selbst bleibt unberuehrt, dessen Saldo kommt
-         * allein aus charge und settlement; die Anzahlung stand dort schon
-         * als settlement und wuerde sonst doppelt gezaehlt.
-         *
-         * Nur auf der Schlussrechnung ueber alle offenen Positionen. Eine
-         * Zwischenrechnung ueber eine Auswahl darf die Anzahlung nicht
-         * verbrauchen: sie gehoert zum ganzen Aufenthalt, nicht zu einer
-         * Auswahl daraus. Sonst zoege eine Zwischenrechnung ueber ein
-         * Mineralwasser die ganze Anzahlung ab -- und lautete ueber einen
-         * negativen Betrag.
-         */
-        const schlussrechnung = (body.kind ?? 'final') === 'final' && !body.chargeIds?.length
-        const deposits = schlussrechnung ? await client.query<{
-          deposit_invoice_id: number; net_cent: string; tax_cent: string
-          tax_rate_bp: number; amount_gross_cent: string
-          deposit_number: string; deposit_issued_on: string
-        }>(
-          `SELECT dl.deposit_invoice_id, dl.net_cent, dl.tax_cent, dl.tax_rate_bp,
-                  dl.amount_gross_cent, di.number AS deposit_number,
-                  di.issued_on::text AS deposit_issued_on
-             FROM deposit_ledger dl
-             JOIN invoice di ON di.id = dl.deposit_invoice_id
-            WHERE dl.folio_id = $1 AND dl.kind = 'received'
-              AND NOT EXISTS (
-                SELECT 1 FROM deposit_ledger a
-                 WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied')
-            ORDER BY dl.id`,
-          [folio.id]) : { rows: [] as Array<{
-            deposit_invoice_id: number; net_cent: string; tax_cent: string
-            tax_rate_bp: number; amount_gross_cent: string
-            deposit_number: string; deposit_issued_on: string }> }
-
-        const positionen = [
-          ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
-          ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
-        ]
-
-        /*
-         * Rundungsausgleich (Aufgabe 12).
-         *
-         * Die Rechnung kann nicht jeden Bruttobetrag treffen. Die Steuer wird
-         * je Satzgruppe aus der Nettosumme gerechnet (BR-CO-14), und bei
-         * ganzzahligem Netto und ganzzahliger Steuer gibt es Bruttobetraege,
-         * zu denen kein Netto passt: zu 7 Prozent 6,5 Prozent aller Betraege,
-         * zu 19 Prozent 16,0 Prozent. Ein Kassenbeleg ueber glatte 250,00 zu
-         * 7 Prozent ergibt 233,64 + 16,35 = 249,99; darueber liegt erst
-         * wieder 250,01.
-         *
-         * Ohne Ausgleich fordert die Rechnung einen Cent weniger, als die
-         * Positionen zusammen ergeben. Der Gast zahlt, was auf dem Papier
-         * steht, und der Cent bleibt auf dem Folio offen -- fuer immer, weil
-         * niemand nach einem Cent sucht. Ueber viele Posten waren es bis zu
-         * drei.
-         *
-         * **Warum keine eigene Position.** Das war der erste Entwurf und ist
-         * an der eigenen Pflichtangabenpruefung gescheitert: eine Position zu
-         * 0 Prozent braucht nach § 14 Abs. 4 Nr. 8 UStG den Grund der
-         * Steuerbefreiung, und fuer eine Rundung gibt es keinen -- sie ist
-         * kein Umsatz. Im Satz der Gruppe wiederum muesste die Position rund
-         * vierzehn Cent gross sein, um einen Cent Wirkung zu haben, weil sie
-         * die Steuer der ganzen Gruppe mitverschiebt.
-         *
-         * EN 16931 hat dafuer den Rundungsbetrag auf Belegebene (BT-114): er
-         * laesst Satzgruppen und Gesamtsumme unberuehrt und wirkt allein auf
-         * den Zahlbetrag (BR-CO-16). Keine Position, keine Steuerkategorie,
-         * kein Befreiungsgrund -- und auf dem Blatt eine benannte Zeile.
-         */
-        const gerundet = sumInvoice(positionen)
-        const zielBrutto =
-          charges.rows.reduce((sum, c) => sum + Number(c.gross_cent), 0)
-          - deposits.rows.reduce((sum, d) => sum + Number(d.amount_gross_cent), 0)
-        const roundingCent = zielBrutto - gerundet.grossCent
-
-        /*
-         * Was festgeschrieben und zurueckgegeben wird, traegt beides: die
-         * normgerechten Summen (BT-106, BT-110, BT-112) und daneben den
-         * Ausgleich und den Betrag, den die Rechnung tatsaechlich fordert.
-         * Der Beleg liest den Ausgleich spaeter von hier und rechnet ihn
-         * nicht neu -- waere er ableitbar, waere er nicht noetig.
-         */
-        /*
-         * Was schon bezahlt ist, wird **jetzt** festgestellt und in die
-         * Momentaufnahme geschrieben, statt es spaeter beim Zeichnen des
-         * Belegs aus den Zahlungsvermerken zu rechnen.
-         *
-         * Der Grund ist derselbe wie beim Ausgleich: der Beleg ist eine
-         * Momentaufnahme. Zahlt der Gast nach dem Festschreiben und ist der
-         * Beleg noch nicht gezeichnet, stuende auf ihm ein anderer
-         * vorausgezahlter Betrag als auf dem gleich ausgedruckten -- und
-         * welcher, haenge davon ab, wann der Worker gelaufen ist. Die
-         * Zuordnung selbst laeuft weiter, damit eine Liste sagen kann, was
-         * offen ist; der Beleg liest sie nicht.
-         */
-        /*
-         * Dieselbe Kurtaxe von der anderen Seite: hat der Gast vorab alles
-         * bezahlt, auch sie, passt sein Vermerk nur mit ihr unter die
-         * Grenze. Ausgewiesen wird als vorausbezahlt (BT-113) dennoch
-         * hoechstens der Betrag der Rechnung -- der Rest war die Kurtaxe,
-         * und der Zahlbetrag darf nicht negativ werden.
-         */
-        const kurtaxe = await kurtaxeAmFolio(client, folio.id)
-        const { ids: vorausbezahlt, summeCent: gezahltCent } =
-          passendeVermerke(await offeneVermerke(client, folio.id), zielBrutto + kurtaxe)
-        const prepaidCent = Math.min(gezahltCent, Math.max(zielBrutto, 0))
-        const totals = { ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent }
-
-        /*
-         * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
-         * frueher abreist oder ein Teil des Aufenthalts schon
-         * zwischenabgerechnet wurde. Dem Gast steht dann Geld zu -- und
-         * dafuer ist eine Rechnung ueber einen negativen Betrag das falsche
-         * Papier. Abgewiesen wird hier deshalb, solange es die Rueckzahlung
-         * ('refunded' im Anzahlungsjournal) noch nicht gibt: lieber keine
-         * Rechnung als eine, die niemand buchen kann.
-         */
-        if (deposits.rows.length > 0 && totals.grossCent < 0) {
-          throw Errors.unprocessable(
-            'deposit.exceedsServices', { cent: -totals.grossCent })
-        }
-
-        /*
-         * Aussteller und Empfaenger werden gleich in der Form gelesen, in der
-         * sie geprueft und gespeichert werden. Eine Umbenennung zwischen
-         * Datenbank und Pruefung ist eine Stelle, an der ein Feld lautlos
-         * verschwindet: genau das ist hier einmal passiert, die Anschrift kam
-         * als postal_code an und wurde als postalCode gesucht.
-         */
-        const prop = await client.query<Party>(
-          `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                  city, country, tax_number AS "taxNumber", vat_id AS "vatId"
-             FROM property WHERE id = $1`, [folio.property_id])
-        const recipient = folio.company_id
-          ? await client.query<Party>(
-              `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                      city, country, vat_id AS "vatId"
-                 FROM company WHERE id = $1`, [folio.company_id])
-          : folio.guest_id
-            ? await client.query<Party>(
-                `SELECT trim(both ', ' from
-                          coalesce(last_name,'') || ', ' || coalesce(first_name,'')) AS name,
-                        address_line1 AS "addressLine1", postal_code AS "postalCode",
-                        city, country
-                   FROM guest WHERE id = $1`, [folio.guest_id])
-            : { rows: [] as Party[] }
+        const e = await rechnungsEntwurf(client, folio, body)
+        const charges = { rows: e.charges }
+        const deposits = { rows: e.deposits }
+        const { serviceFrom, serviceTo, businessDate } = e
 
         const num = await naechsteNummer(client, folio.property_id)
-
-        const bd = await client.query<{ date: string }>(
-          `SELECT date::text FROM business_day
-            WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
-          [folio.property_id])
-        const businessDate = bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
-
-        /*
-         * Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG.
-         *
-         * Bei Beherbergung ist das der **Aufenthalt**, nicht das
-         * Rechnungsdatum. Die Verwechslung ist der häufigste Mangel an
-         * Hotelrechnungen. Er wird aus den Geschäftsdaten der abzurechnenden
-         * Positionen abgeleitet und nicht vom Aufrufer entgegengenommen:
-         * die Positionen wissen es, der Aufrufer könnte sich irren.
-         */
-        const daten = charges.rows.map(c => c.business_date).sort()
-        const serviceFrom = daten[0]!
-        const serviceTo = daten[daten.length - 1]!
 
         // Vor dem Festschreiben prüfen. Eine fehlende Pflichtangabe kostet
         // dem Empfänger den Vorsteuerabzug, und das merkt niemand beim
         // Ausstellen, sondern der Firmenkunde drei Monate später (E4).
-        const maengel = blockingFindings({
-          number: num.rows[0]!.next_invoice_number,
-          issuedOn: new Date().toISOString().slice(0, 10),
-          serviceFrom, serviceTo,
-          issuer: prop.rows[0] ?? {},
-          recipient: recipient.rows[0] ?? {},
-          lines: charges.rows.map(c => ({
-            description: c.description, quantity: c.quantity,
-            netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
-          // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet
-          // der geforderte Betrag, nicht die Summe vor dem Rundungsausgleich.
-          grossCent: totals.payableCent,
-          kind: (body.kind ?? 'final') as 'final' | 'interim'
-        })
+        const maengel = rechnungsMaengel(e, num.rows[0]!.next_invoice_number,
+                                         body.kind ?? 'final')
         if (maengel.length > 0) {
           throw Errors.unprocessable(
             'invoice.requirementsUnmet',
             { maengel: maengel.map(m => `${m.de} (${m.reference})`).join(' ') })
         }
 
+        /*
+         * "Gleich bezahlt" im Dialog: ein echter Zahlungsvermerk ueber den
+         * offenen Betrag, dieser Rechnung zugeordnet. Ein blosses Kennzeichen
+         * "bezahlt" liesse das Folio mit Saldo stehen und die Kasse ohne
+         * Zahlart -- am Monatsende stimmte nichts davon.
+         */
+        let { totals, vorausbezahlt } = e
+        const rest = totals.payableCent - totals.prepaidCent
+        if (body.paid !== undefined && rest > 0) {
+          const pm = await client.query<{ id: number }>(
+            `SELECT id FROM payment_method WHERE property_id = $1 AND code = $2 AND active`,
+            [folio.property_id, body.paid.paymentMethodCode])
+          if (pm.rowCount === 0) {
+            throw Errors.validation({ 'paid.paymentMethodCode': ['field.unknownPaymentMethod'] })
+          }
+          const z = await client.query<{ id: number }>(
+            `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent,
+                                     payment_method_id, external_reference, created_by)
+             VALUES ($1,$2,$3::date,$4,$5,$6,$7) RETURNING id`,
+            [folio.property_id, folio.id, businessDate, rest, pm.rows[0]!.id,
+             body.paid.externalReference?.trim() || null, principal.userId])
+          vorausbezahlt = [...vorausbezahlt, z.rows[0]!.id]
+          totals = { ...totals, prepaidCent: totals.payableCent }
+        }
         const inv = await client.query<{ id: number; public_ref: string; number: string }>(
           `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
                                 service_from, service_to,
-                                issuer_snapshot, recipient_snapshot, totals, created_by)
-           VALUES ($1,$2,$3,current_date,$4::date,$5,$6::date,$7::date,$8,$9,$10,$11)
+                                issuer_snapshot, recipient_snapshot, totals, created_by,
+                                due_on)
+           VALUES ($1,$2,$3,current_date,$4::date,$5,$6::date,$7::date,$8,$9,$10,$11,
+                   $12::date)
            RETURNING id, public_ref, number`,
           [folio.property_id, folio.id, num.rows[0]!.next_invoice_number, businessDate,
            body.kind ?? 'final', serviceFrom, serviceTo,
-           JSON.stringify(prop.rows[0] ?? {}), JSON.stringify(recipient.rows[0] ?? {}),
-           JSON.stringify(totals), principal.userId])
+           JSON.stringify(e.issuer), JSON.stringify(e.recipient),
+           JSON.stringify(totals), principal.userId,
+           body.paid !== undefined ? null : e.dueOn])
 
         // charge.invoice_id wird einmal gesetzt und nie geaendert. Die Tabelle
         // ist append-only, daher hebt der Trigger hier gezielt ab: das
@@ -1440,6 +1767,7 @@ export function billingRoutes(app: FastifyInstance): void {
           number: inv.rows[0]!.number,
           serviceFrom, serviceTo,
           totals,
+          dueOn: body.paid !== undefined ? null : e.dueOn,
           depositsApplied: deposits.rows.map(d => ({
             depositInvoiceNumber: d.deposit_number, amountGrossCent: Number(d.amount_gross_cent)
           }))

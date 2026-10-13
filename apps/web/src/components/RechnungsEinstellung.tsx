@@ -18,8 +18,12 @@ export function RechnungsEinstellung({ propertyId }: { propertyId: number }): JS
   const q = useInvoiceSettings(propertyId)
   const speichern = useSaveInvoiceSettings(propertyId)
   const [kuerzel, setKuerzel] = useState('')
+  const [ziel, setZiel] = useState('')
 
-  useEffect(() => { setKuerzel(q.data?.prefix ?? '') }, [q.data])
+  useEffect(() => {
+    setKuerzel(q.data?.prefix ?? '')
+    setZiel(q.data === undefined ? '' : String(q.data.paymentTermsDays))
+  }, [q.data])
 
   if (q.isError) return <Fehler error={q.error} />
   if (q.data === undefined) return <Laedt />
@@ -58,6 +62,9 @@ export function RechnungsEinstellung({ propertyId }: { propertyId: number }): JS
         <p className="text-xs text-neutral-500">{t('invoiceSettings.locked')}</p>
       )}
       {speichern.isError && <Fehler error={speichern.error} />}
+      <ZielFeld wert={ziel} setWert={setZiel} gespeichert={q.data.paymentTermsDays}
+                speichern={tage => speichern.mutate({ paymentTermsDays: tage })}
+                gesperrt={!online || speichern.isPending} />
       {!q.data.locked && (
         <button type="button"
                 disabled={!online || !gueltig || wert === q.data.prefix || speichern.isPending}
@@ -67,6 +74,38 @@ export function RechnungsEinstellung({ propertyId }: { propertyId: number }): JS
           {t('common.save')}
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * Zahlungsziel fuer Gaeste ohne Firma (Migration 0159). Eine Firma bringt
+ * ihr eigenes mit; im Rechnungsdialog laesst sich beides je Rechnung aendern.
+ */
+function ZielFeld({ wert, setWert, gespeichert, speichern, gesperrt }: {
+  wert: string; setWert: (s: string) => void; gespeichert: number
+  speichern: (tage: number) => void; gesperrt: boolean
+}): JSX.Element {
+  const t = useT()
+  const tage = Number(wert)
+  const gueltig = wert.trim() !== '' && Number.isInteger(tage) && tage >= 0 && tage <= 365
+  return (
+    <div className="space-y-1 border-t border-neutral-200 pt-3">
+      <label className="block text-sm">
+        <span className="block text-xs text-neutral-600 mb-1">
+          {t('invoiceSettings.paymentTerms')}
+        </span>
+        <input value={wert} onChange={e => setWert(e.target.value)} inputMode="numeric"
+               className="w-24 border border-neutral-300 rounded-sm px-2 py-1 text-sm
+                          text-end tabular-nums" />
+      </label>
+      <p className="text-xs text-neutral-500">{t('invoiceSettings.paymentTermsHint')}</p>
+      <button type="button" disabled={gesperrt || !gueltig || tage === gespeichert}
+              onClick={() => speichern(tage)}
+              className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                         disabled:opacity-40">
+        {t('common.save')}
+      </button>
     </div>
   )
 }

@@ -1169,3 +1169,16 @@ Tests in `rechnungKurtaxeKuerzel.test.ts`. Die übrigen Befunde der Prüfung ste
 - **Die Anzahlung** rechnet das Frühstück aus der Rate genauso heraus wie der Nachtlauf.
 
 Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts` (API).
+
+### Rechnungsdialog und Zahlungsziel (`0159`) — **erledigt**
+
+**Warum.** Eine Rechnung war ein Knopf ohne Vorschau: alle offenen Positionen, Empfänger aus Firma oder Gast, kein Zahlungsziel. Firmengäste haben oft eine andere Rechnungsanschrift und zahlen auf Rechnung (Sven, 13.10.2026). Und ohne Fälligkeit (BT-9) oder Zahlungsbedingung (BT-20) wies der Validator jede Rechnung mit offenem Betrag ab (Befund 4 der Prüfung).
+
+- **Dialog statt Knopf** (`Rechnungsdialog.tsx`), vorbefüllt aus Folio und Empfänger. Die Summen kommen aus `POST /v1/folios/:folioRef/invoice-preview`, das denselben Entwurf rechnet wie das Festschreiben (`rechnungsEntwurf`), ohne Nummer und ohne Schreiben.
+- **Positionen:** abwählen (bleibt offen am Folio), korrigieren als Gegenbuchung mit `reverses_id` (`POST .../charges/:chargeId/reverse`) und Neubuchung, ergänzen und Nachlass als eigene Position mit negativem Betrag. `POST .../charges` nimmt dafür auch `grossCent`. Eine Position wird nie umgeschrieben.
+- **Abweichende Anschrift** gilt nur für die Rechnung (`recipient` im Auftrag, landet im `recipient_snapshot`); wahlweise wird sie über `PATCH /v1/companies/:ref` in die Firma übernommen.
+- **Zahlungsziel** an der Rechnung (`invoice.due_on`), vorbelegt aus `company.payment_terms_days`, sonst aus `property.payment_terms_days` (Einstellungen, Rechnungen). Es steht auf Blatt und XML (`paymentTermsText`, BT-20 und BT-9); ohne Fälligkeit steht „Zahlbar sofort ohne Abzug“, eine bezahlte Rechnung bekommt keine Bedingung.
+- **Bezahlt** ist immer ein echter Zahlungsvermerk: „Bereits bezahlt“ im Dialog bucht den offenen Betrag dieser Rechnung, „Zahlung eingegangen“ in der Rechnungsliste ebenso (`invoiceRef` an `POST .../settlements`).
+- **Mailversand** gleich aus dem Dialog, an die hinterlegte oder eine eingegebene Adresse (bestehende Route `POST /v1/invoices/:invoiceRef/send`). Die Mail nimmt Fälligkeit und offenen Betrag jetzt aus der Rechnung.
+
+Tests in `rechnungsdialog.test.ts`.

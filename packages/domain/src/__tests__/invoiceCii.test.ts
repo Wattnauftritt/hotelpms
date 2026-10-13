@@ -357,6 +357,9 @@ describe('CII-XML nach EN 16931', () => {
           <udt:DateTimeString format="102">20261001</udt:DateTimeString>
         </ram:EndDateTime>
       </ram:BillingSpecifiedPeriod>
+      <ram:SpecifiedTradePaymentTerms>
+        <ram:Description>Zahlbar sofort ohne Abzug.</ram:Description>
+      </ram:SpecifiedTradePaymentTerms>
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
         <ram:LineTotalAmount>100.00</ram:LineTotalAmount>
         <ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>

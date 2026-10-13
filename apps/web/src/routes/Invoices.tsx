@@ -1,7 +1,9 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { InvoiceListItem } from '@hotelpms/contracts'
 import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail,
-         istBelegInArbeit, zeitraum, MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
+         useRecordInvoicePayment, istBelegInArbeit, zeitraum,
+         MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
+import { usePaymentMethods } from '../lib/queries.js'
 import { ApiError } from '../lib/api.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -129,11 +131,51 @@ function Versand(
   )
 }
 
+type Aufgeklappt = 'beleg' | 'versand' | 'zahlung'
+
+/**
+ * "Zahlung eingegangen": eine Firma ueberweist auf Rechnung, Tage spaeter.
+ * Gebucht wird ein echter Zahlungsvermerk am Folio, fuer genau diese
+ * Rechnung -- ein blosses Haekchen liesse den Saldo stehen.
+ */
+function ZahlungEingegangen({ r, propertyId, onFertig }: {
+  r: InvoiceListItem; propertyId: number; onFertig: () => void
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const online = useOnline()
+  const zahlarten = usePaymentMethods(propertyId)
+  const buchen = useRecordInvoicePayment(propertyId)
+  const [zahlart, setZahlart] = useState('')
+  const rest = r.payableCent - r.settledCent
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="tabular-nums">{formatMoney(rest, locale, r.currency)}</span>
+      <select value={zahlart} onChange={e => setZahlart(e.target.value)}
+              aria-label={t('folio.method')}
+              className="border border-neutral-300 rounded-sm px-2 py-1">
+        <option value="">{t('folio.method')}</option>
+        {(zahlarten.data?.paymentMethods ?? []).map(m =>
+          <option key={m.code} value={m.code}>{m.name}</option>)}
+      </select>
+      <button disabled={!online || zahlart === '' || buchen.isPending}
+              onClick={() => buchen.mutate({ folioRef: r.folioRef, invoiceRef: r.invoiceRef,
+                                             amountCent: rest, paymentMethodCode: zahlart },
+                                           { onSuccess: onFertig })}
+              className="px-3 py-1 rounded-sm bg-neutral-900 text-white disabled:opacity-40">
+        {t('rdlg.record')}
+      </button>
+      {buchen.isError && <Fehler error={buchen.error} />}
+    </div>
+  )
+}
+
 function Zeile(
   { r, propertyId, offen, onOffen, darfSenden, onFolio }: {
     r: InvoiceListItem; propertyId: number
-    offen: 'beleg' | 'versand' | null
-    onOffen: (was: 'beleg' | 'versand' | null) => void
+    offen: Aufgeklappt | null
+    onOffen: (was: Aufgeklappt | null) => void
     darfSenden: boolean
     onFolio: (folioRef: string) => void }
 ): JSX.Element {
@@ -201,6 +243,12 @@ function Zeile(
             {t('inv.send')}
           </button>
         )}
+        {r.settledCent < r.payableCent && (r.kind === 'final' || r.kind === 'interim') && (
+          <button onClick={() => onOffen(offen === 'zahlung' ? null : 'zahlung')}
+                  className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
+            {t('rdlg.paymentReceived')}
+          </button>
+        )}
         <button onClick={() => onFolio(r.folioRef)}
                 className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
           {t('inv.folio')}
@@ -208,6 +256,11 @@ function Zeile(
       </div>
 
       {offen === 'beleg' && <div className="mt-3"><Beleg invoiceRef={r.invoiceRef} /></div>}
+      {offen === 'zahlung' && (
+        <div className="mt-3 border-t border-neutral-200 pt-3">
+          <ZahlungEingegangen r={r} propertyId={propertyId} onFertig={() => onOffen(null)} />
+        </div>
+      )}
       {offen === 'versand' && (
         <div className="mt-3 border-t border-neutral-200 pt-3">
           <Versand invoiceRef={r.invoiceRef} propertyId={propertyId} />
@@ -278,7 +331,7 @@ export function Invoices(
   const [laenge, setLaenge] = useState<number>(30)
   const [bis, setBis] = useState(today())
   const [kind, setKind] = useState<string | null>(null)
-  const [offen, setOffen] = useState<{ ref: string; was: 'beleg' | 'versand' } | null>(null)
+  const [offen, setOffen] = useState<{ ref: string; was: Aufgeklappt } | null>(null)
 
   const { von } = zeitraum(bis, laenge)
   const darfSenden = permissions.includes('email:send')

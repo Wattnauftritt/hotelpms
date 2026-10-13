@@ -200,10 +200,14 @@ export function emailRoutes(
           due_date: string | null; property_name: string }>(
           `SELECT i.id, i.property_id, i.number, i.currency,
                   (i.totals->>'grossCent')::bigint AS gross_cent,
-                  (i.totals->>'grossCent')::bigint
+                  COALESCE((i.totals->>'payableCent')::bigint,
+                           (i.totals->>'grossCent')::bigint)
                     - COALESCE((SELECT sum(s.amount_cent) FROM settlement s
                                  WHERE s.invoice_id = i.id), 0) AS open_cent,
-                  CASE WHEN c.payment_terms_days IS NULL THEN NULL
+                  -- Seit 0159 steht die Faelligkeit an der Rechnung; aeltere
+                  -- leiten sie wie bisher aus dem Ziel der Firma ab.
+                  CASE WHEN i.due_on IS NOT NULL THEN to_char(i.due_on, 'DD.MM.YYYY')
+                       WHEN c.payment_terms_days IS NULL THEN NULL
                        ELSE to_char(i.issued_on + c.payment_terms_days, 'DD.MM.YYYY')
                   END AS due_date,
                   p.name AS property_name

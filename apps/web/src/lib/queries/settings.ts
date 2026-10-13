@@ -273,6 +273,8 @@ export interface Rechnungseinstellung {
   /** Unter dem Kuerzel steht schon eine Rechnung; es bleibt. */
   locked: boolean
   nextNumber: string
+  /** Zahlungsziel fuer Gaeste ohne Firma (Migration 0159). */
+  paymentTermsDays: number
 }
 
 export const useInvoiceSettings = (propertyId: number) =>
@@ -284,7 +286,7 @@ export const useInvoiceSettings = (propertyId: number) =>
 export function useSaveInvoiceSettings(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { prefix: string }) =>
+    mutationFn: (body: { prefix?: string; paymentTermsDays?: number }) =>
       api.put<Rechnungseinstellung>(`/v1/properties/${propertyId}/invoice-settings`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['invoice-settings', propertyId] })

@@ -57,6 +57,7 @@ interface InvoiceRow {
   issuer_snapshot: Partial<CiiParty>
   recipient_snapshot: Partial<CiiParty>
   totals: { grossCent: number; roundingCent?: number; prepaidCent?: number }
+  due_on: string | null
 }
 
 interface ChargeRow {
@@ -172,7 +173,7 @@ async function load(
   const i = await client.query<InvoiceRow>(
     `SELECT id, public_ref, number, issued_on::text, kind, currency,
             service_from::text, service_to::text,
-            issuer_snapshot, recipient_snapshot, totals
+            issuer_snapshot, recipient_snapshot, totals, due_on::text
        FROM invoice WHERE id = $1`, [invoiceId])
   if (i.rowCount === 0) return null
   const row = i.rows[0]!
@@ -228,7 +229,8 @@ async function load(
     // BT-114. Der Ausgleich steht in der festgeschriebenen Momentaufnahme und
     // wird nicht neu gerechnet: waere er ableitbar, waere er nicht noetig.
     // Rechnungen vor Aufgabe 12 haben ihn nicht; dort ist er null.
-    roundingCent: Number(row.totals.roundingCent ?? 0)
+    roundingCent: Number(row.totals.roundingCent ?? 0),
+    dueOn: row.due_on
   }
   return { invoice, row }
 }

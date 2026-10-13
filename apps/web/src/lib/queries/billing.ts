@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { InvoiceList, InvoiceRecipient, PaymentLinkCreated,
               PrepaymentView } from '@hotelpms/contracts'
-import { api, ApiError } from '../api.js'
+import { api, ApiError, newIdempotencyKey } from '../api.js'
 import { addDays } from '../dates.js'
 
 /**
@@ -291,5 +291,123 @@ export function useSetRecipient(folioRef: string) {
       api.patch<{ recipient: InvoiceRecipient }>(
         `/v1/folios/${folioRef}/recipient`, body),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['folio', folioRef] }) }
+  })
+}
+
+/** Was der Rechnungsdialog schickt; dieselbe Form fuer Vorschau und Festschreiben. */
+export interface RechnungsAuftrag {
+  chargeIds?: number[]
+  recipient?: Partial<Record<'name' | 'addressLine1' | 'postalCode' | 'city' | 'country'
+                             | 'vatId', string>>
+  dueOn?: string
+  paid?: { paymentMethodCode: string }
+}
+
+export interface Empfaengerdaten {
+  name?: string | null; addressLine1?: string | null; postalCode?: string | null
+  city?: string | null; country?: string | null; vatId?: string | null
+}
+
+export interface Rechnungsvorschau {
+  lines: Array<{ chargeId: number; description: string; quantity: number
+                 businessDate: string; grossCent: number; taxRateBp: number }>
+  depositsApplied: Array<{ depositInvoiceNumber: string; amountGrossCent: number }>
+  totals: { netCent: number; taxCent: number; grossCent: number; roundingCent: number
+            payableCent: number; prepaidCent: number
+            groups: Array<{ rateBp: number; netCent: number; taxCent: number
+                            grossCent: number }> }
+  serviceFrom: string; serviceTo: string
+  recipient: Empfaengerdaten
+  defaultRecipient: Empfaengerdaten
+  recipientEmail: string | null
+  dueOn: string | null
+  openCent: number
+  nextNumber: string
+  prefixMissing: boolean
+  findings: Array<{ key: string; reference: string; de: string; en: string }>
+}
+
+/**
+ * Vorschau des Rechnungsdialogs. Eine Anfrage je Stand der Eingabe, nicht je
+ * Tastendruck: der Dialog schickt sie erst, wenn ein Feld verlassen wird.
+ */
+export const useInvoicePreview = (folioRef: string, auftrag: RechnungsAuftrag,
+                                  aktiv: boolean) =>
+  useQuery<Rechnungsvorschau>({
+    queryKey: ['invoicePreview', folioRef, auftrag],
+    queryFn: () => api.post(`/v1/folios/${folioRef}/invoice-preview`, auftrag),
+    enabled: aktiv,
+    retry: false,
+    placeholderData: prev => prev
+  })
+
+/**
+ * Festschreiben aus dem Dialog. Der Idempotenzschluessel haengt an der
+ * Absicht: ein zweiter Klick, waehrend der erste laeuft, darf keine zweite
+ * Nummer verbrauchen.
+ */
+export function useIssueInvoiceWith(folioRef: string, propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ auftrag, key }: { auftrag: RechnungsAuftrag; key: string }) =>
+      api.post<{ invoiceRef: string; number: string; dueOn: string | null }>(
+        `/v1/folios/${folioRef}/invoice`, auftrag, { 'idempotency-key': key }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
+    }
+  })
+}
+
+/** Korrektur im Dialog: Gegenbuchung, danach die richtige Position neu. */
+export function useCorrectCharge(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (k: { chargeId: number; description: string; grossCent: number
+                            taxRateBp: number }) => {
+      await api.post(`/v1/folios/${folioRef}/charges/${k.chargeId}/reverse`, {},
+        { 'idempotency-key': newIdempotencyKey() })
+      if (k.grossCent !== 0) {
+        await api.post(`/v1/folios/${folioRef}/charges`,
+          { description: k.description, grossCent: k.grossCent, taxRateBp: k.taxRateBp },
+          { 'idempotency-key': newIdempotencyKey() })
+      }
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
+    }
+  })
+}
+
+/** Position oder Nachlass, brutto eingegeben wie auf dem Papier. */
+export function useAddGrossCharge(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (b: { description: string; grossCent: number; taxRateBp: number }) =>
+      api.post<{ chargeId: number }>(`/v1/folios/${folioRef}/charges`, b,
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
+    }
+  })
+}
+
+/** "Zahlung eingegangen" in der Rechnungsliste: fuer genau diese Rechnung. */
+export function useRecordInvoicePayment(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (b: { folioRef: string; invoiceRef: string; amountCent: number
+                      paymentMethodCode: string }) =>
+      api.post(`/v1/folios/${b.folioRef}/settlements`,
+        { amountCent: b.amountCent, paymentMethodCode: b.paymentMethodCode,
+          invoiceRef: b.invoiceRef },
+        { 'idempotency-key': newIdempotencyKey() }),
+    onSuccess: (_d, b) => {
+      void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['folio', b.folioRef] })
+    }
   })
 }
