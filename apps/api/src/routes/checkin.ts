@@ -387,7 +387,7 @@ async function offeneBedingungen(
  *
  * Eine Nummer zu einem Grund, der keine verlangt, wird verworfen, nicht
  * gespeichert: eine Erhebung ohne Anlass, wie bei der Ausweisnummer
- * inlaendischer Gaeste.
+ * inlaendischer Gaeste. Zu einem Grund, der eine verlangt, ist sie Pflicht.
  */
 function pruefeGegenHaus(
   e: Einreichung, gruende: GrundImHaus[], offen: GeltendeBedingung[]
@@ -397,8 +397,15 @@ function pruefeGegenHaus(
   const personen: Array<[Person, string]> = [
     [e.guest, 'guest'], ...e.companions.map((c, i): [Person, string] => [c, `companions.${i}`])]
   for (const [p, pfad] of personen) {
-    if (p.taxExemption && !nachCode.has(p.taxExemption.reason)) {
+    if (!p.taxExemption) continue
+    const g = nachCode.get(p.taxExemption.reason)
+    if (g === undefined) {
       (f[`${pfad}.taxExemption.reason`] ??= []).push('checkin.unknownExemption')
+    } else if (g.needs_proof && p.taxExemption.proof === null) {
+      // Pflicht, wo der Grund danach fragt: das Haus muss die Befreiung im
+      // Zweifel gegenueber der Gemeinde belegen, und ohne Nummer kann es
+      // das nicht (Sven, 13.10.2026).
+      (f[`${pfad}.taxExemption.proof`] ??= []).push('field.required')
     }
   }
   const akzeptiert = new Set(e.termsAccepted)
