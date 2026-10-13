@@ -566,7 +566,8 @@ async function gebuchteNaechteGegenbuchen(
     `SELECT c.id, c.invoice_id
        FROM charge c
       WHERE c.reservation_id = $1 AND c.reverses_id IS NULL
-        AND (c.revenue_account = '8300' OR c.tax_rule_id IS NOT NULL)
+        AND (c.revenue_account = '8300' OR c.tax_rule_id IS NOT NULL
+             OR c.package_part IS NOT NULL)
         AND c.business_date IN (SELECT date FROM reservation_night
                                  WHERE reservation_id = $1 AND posted)
         AND NOT EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id)
@@ -580,10 +581,11 @@ async function gebuchteNaechteGegenbuchen(
       `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
                            net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
                            revenue_account, product_id, reservation_id, reverses_id,
-                           created_by)
+                           created_by, package_part)
        SELECT $2, c.folio_id, $3::date, 'Storno ' || c.description || ' (nicht angereist)',
               c.quantity, -c.net_cent, -c.tax_cent, -c.gross_cent, c.tax_rate_bp,
-              c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id, $4
+              c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id, $4,
+              c.package_part
          FROM charge c WHERE c.id = ANY($1::bigint[])
         ORDER BY c.id`,
       [offen.rows.map(c => c.id), propertyId, heute, userId])

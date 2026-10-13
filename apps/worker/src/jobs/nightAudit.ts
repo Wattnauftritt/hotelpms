@@ -1,5 +1,7 @@
 import { withTransaction, type DbContext, type Pool, type PoolClient } from '@hotelpms/db'
-import { addDays, businessDateFor } from '@hotelpms/domain'
+import { addDays, businessDateFor, BREAKFAST_DRINKS_ACCOUNT, BREAKFAST_DRINKS_RATE_BP,
+         BREAKFAST_DRINKS_SHARE_BP, BREAKFAST_FOOD_ACCOUNT,
+         BREAKFAST_FOOD_RATE_BP } from '@hotelpms/domain'
 
 export interface NightAuditResult {
   businessDate: string
@@ -164,6 +166,13 @@ async function rollover(
  * Schritt 2: Logis der geschlossenen Nacht buchen, mit dem geschlossenen
  * Datum, nie mit "heute". Der Steuersatz kommt aus der Regel der Property;
  * fehlt sie, bleibt es beim ermaessigten Satz fuer Beherbergung.
+ *
+ * Enthaelt die Rate Fruehstueck (`rate_plan.breakfast_cent`, Migration
+ * 0158), wird es aus dem Nachtpreis herausgerechnet und als Speisen und
+ * Getraenke gebucht, je zu ihrem Satz. Die Rechnung dazu steht in
+ * `breakfastPerNight` und `splitNight` (domain); hier dieselbe in SQL, damit der Nachtlauf bei 250
+ * Zimmern eine Anweisung bleibt. Anteil und Saetze kommen als Parameter aus
+ * der Domain, damit es sie nur einmal gibt.
  */
 async function postAccommodation(
   client: PoolClient, propertyId: number, businessDate: string
@@ -179,10 +188,27 @@ async function postAccommodation(
               -- anderes Folio geht, etwa das der Firma, dann dorthin. Ohne
               -- das landet die Firmenrechnung beim Gast, und der Check-out
               -- am Morgen wird zur Diskussion.
-              COALESCE(rr.target_folio_id, f.id) AS folio_id
+              COALESCE(rr.target_folio_id, f.id) AS folio_id,
+              -- Fruehstueck wie breakfastPerNight (domain), nie mehr als
+              -- die Nacht. Ein Kinderpreis greift nur, wenn die Buchung
+              -- Erwachsene getrennt nennt; sonst zahlen alle wie
+              -- Erwachsene, Personen aus der angegebenen Zahl, sonst aus
+              -- den erfassten Gaesten, mindestens eine.
+              LEAST(CASE
+                      WHEN rp.breakfast_cent IS NULL THEN 0
+                      WHEN rp.breakfast_child_cent IS NOT NULL AND r.adults IS NOT NULL
+                        THEN r.adults::bigint * rp.breakfast_cent
+                             + COALESCE(r.children, 0)::bigint * rp.breakfast_child_cent
+                      ELSE rp.breakfast_cent::bigint
+                           * GREATEST(COALESCE(r.guest_count,
+                                               (SELECT count(*) FROM reservation_occupant o
+                                                 WHERE o.reservation_id = r.id)::int), 1)
+                    END,
+                    GREATEST(rn.price_cent, 0)) AS fruehstueck
          FROM reservation_night rn
          JOIN reservation r ON r.id = rn.reservation_id
          JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
+         LEFT JOIN rate_plan rp ON rp.id = COALESCE(rn.rate_plan_id, r.rate_plan_id)
          LEFT JOIN LATERAL (
            SELECT target_folio_id FROM routing_rule x
             WHERE x.reservation_id = r.id
@@ -194,22 +220,42 @@ async function postAccommodation(
         WHERE r.property_id = $1 AND rn.date = $2::date
           AND r.status IN ('InHouse', 'CheckedOut') AND NOT rn.posted
         FOR UPDATE OF rn
+     ), teile AS (
+       -- Getraenke einmal gerundet, Speisen der Rest: die drei Teile ergeben
+       -- immer genau den Nachtpreis (wie splitNight).
+       SELECT f.*, round(f.fruehstueck * $3::int / 10000.0)::bigint AS getraenke
+         FROM faellig f
+     ), zeilen AS (
+       SELECT t.property_id, t.folio_id, t.reservation_id,
+              z.text, z.brutto, z.satz, z.konto, z.teil
+         FROM teile t CROSS JOIN steuer s
+         CROSS JOIN LATERAL (VALUES
+           (1, 'Uebernachtung', t.price_cent - t.fruehstueck, s.rate_bp, '8300', NULL::text),
+           (2, 'Fruehstueck Speisen', t.fruehstueck - t.getraenke, $4::int, $6::text,
+               'breakfast_food'),
+           (3, 'Fruehstueck Getraenke', t.getraenke, $5::int, $7::text, 'breakfast_drinks')
+         ) z(n, text, brutto, satz, konto, teil)
+        -- Die Logis auch bei null: eine Nacht, die gebucht wurde, steht im
+        -- Folio, wie bisher. Fruehstuecksteile nur, wenn es sie gibt.
+        WHERE z.n = 1 OR z.brutto > 0
+        ORDER BY t.reservation_id, z.n
      ), gebucht AS (
        INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
                            net_cent, tax_cent, gross_cent, tax_rate_bp,
-                           revenue_account, reservation_id)
-       SELECT f.property_id, f.folio_id, $2::date,
-              'Uebernachtung ' || to_char($2::date, 'DD.MM.YYYY'), 1,
-              f.price_cent - round(f.price_cent * s.rate_bp / (10000.0 + s.rate_bp)),
-              round(f.price_cent * s.rate_bp / (10000.0 + s.rate_bp)),
-              f.price_cent, s.rate_bp, '8300', f.reservation_id
-         FROM faellig f CROSS JOIN steuer s
+                           revenue_account, reservation_id, package_part)
+       SELECT z.property_id, z.folio_id, $2::date,
+              z.text || ' ' || to_char($2::date, 'DD.MM.YYYY'), 1,
+              z.brutto - round(z.brutto * z.satz / (10000.0 + z.satz)),
+              round(z.brutto * z.satz / (10000.0 + z.satz)),
+              z.brutto, z.satz, z.konto, z.reservation_id, z.teil
+         FROM zeilen z
        RETURNING 1
      )
      UPDATE reservation_night rn SET posted = true
        FROM faellig f
       WHERE rn.reservation_id = f.reservation_id AND rn.date = f.date`,
-    [propertyId, businessDate])
+    [propertyId, businessDate, BREAKFAST_DRINKS_SHARE_BP, BREAKFAST_FOOD_RATE_BP,
+     BREAKFAST_DRINKS_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT])
   return r.rowCount ?? 0
 }
 

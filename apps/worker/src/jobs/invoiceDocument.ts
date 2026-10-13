@@ -66,6 +66,7 @@ interface ChargeRow {
   tax_rate_bp: number
   revenue_account: string
   business_date: string
+  package_part: string | null
 }
 
 interface DepositLedgerRow {
@@ -92,7 +93,9 @@ function line(c: ChargeRow): CiiLine {
   return {
     name: c.description,
     quantity: c.quantity,
-    unitCode: c.revenue_account === KONTO_LOGIS ? 'DAY' : 'C62',
+    // Das Fruehstueck im Zimmerpreis liegt auf demselben Konto, ist aber
+    // kein Tag Beherbergung (Migration 0158).
+    unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
     netCent: Number(c.net_cent),
     rateBp: c.tax_rate_bp
   }
@@ -176,7 +179,7 @@ async function load(
 
   const c = await client.query<ChargeRow>(
     `SELECT description, quantity, net_cent, tax_rate_bp, revenue_account,
-            business_date::text
+            business_date::text, package_part
        FROM charge WHERE invoice_id = $1 ORDER BY id`, [invoiceId])
 
   /*

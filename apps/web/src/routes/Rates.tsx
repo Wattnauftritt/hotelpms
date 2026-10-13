@@ -2,7 +2,7 @@ import { useMemo, useState, type JSX } from 'react'
 import type { RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
-         useCreateRatePlan, useRebuildDerived,
+         useCreateRatePlan, useRebuildDerived, useSetBreakfast,
          tageInklusive, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
 import { ChannelSicht } from '../components/ChannelSicht.tsx'
@@ -312,6 +312,94 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
 }
 
 /**
+ * Frühstück je Rate (Migration 0158): enthalten ja oder nein, der Preis
+ * je Person und Nacht und wahlweise ein eigener für Kinder (0 = frei). Mehr fragt die Maske nicht ab: den Getränkeanteil
+ * gibt das BMF pauschal vor, er steht in der Domain und nicht hier.
+ */
+function FruehstueckZeile(
+  { propertyId, plan, darfSchreiben }: {
+    propertyId: number; plan: RatePlan; darfSchreiben: boolean }
+): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const setzen = useSetBreakfast(propertyId)
+  const [enthalten, setEnthalten] = useState(plan.breakfastCent !== null)
+  const [preis, setPreis] = useState(
+    plan.breakfastCent === null ? '' : eingabeAusCent(plan.breakfastCent))
+  const [kinderEigen, setKinderEigen] = useState(plan.childBreakfastCent !== null)
+  const [kinderPreis, setKinderPreis] = useState(
+    plan.childBreakfastCent === null ? '' : eingabeAusCent(plan.childBreakfastCent))
+
+  const cent = centAusEingabe(preis)
+  const kinderCent = centAusEingabe(kinderPreis)
+  // Ein Kinderpreis von 0 ist gueltig: Kinder fruehstuecken frei.
+  const gueltig = !enthalten
+    || (cent !== null && cent > 0 && (!kinderEigen || kinderCent !== null))
+  const neu = enthalten ? cent : null
+  const neuKinder = enthalten && kinderEigen ? kinderCent : null
+  const geaendert = neu !== plan.breakfastCent || neuKinder !== plan.childBreakfastCent
+
+  return (
+    <form className="flex flex-wrap items-center gap-3 text-sm"
+          onSubmit={e => {
+            e.preventDefault()
+            if (!gueltig || !geaendert) return
+            setzen.mutate({ ratePlanId: plan.id, breakfastCent: neu,
+                            childBreakfastCent: neuKinder })
+          }}>
+      <span className="w-56 truncate">{plan.name}
+        <span className="text-neutral-500"> ({plan.code})</span></span>
+      <label className="flex items-center gap-1.5">
+        <input type="checkbox" checked={enthalten} disabled={!darfSchreiben}
+               onChange={e => setEnthalten(e.target.checked)} />
+        {t('rate.breakfast')}
+      </label>
+      {enthalten && (
+        <label className="flex items-center gap-1.5">
+          <span className="text-neutral-600">{t('rate.breakfast.price')}</span>
+          <input value={preis} onChange={e => setPreis(e.target.value)}
+                 disabled={!darfSchreiben} inputMode="decimal"
+                 aria-invalid={!gueltig}
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-24
+                            text-end tabular-nums" />
+          <span>€</span>
+        </label>
+      )}
+      {enthalten && (
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" checked={kinderEigen} disabled={!darfSchreiben}
+                 onChange={e => setKinderEigen(e.target.checked)} />
+          {t('rate.breakfast.children')}
+        </label>
+      )}
+      {enthalten && kinderEigen && (
+        <label className="flex items-center gap-1.5">
+          <span className="text-neutral-600">{t('rate.breakfast.childPrice')}</span>
+          <input value={kinderPreis} onChange={e => setKinderPreis(e.target.value)}
+                 disabled={!darfSchreiben} inputMode="decimal" placeholder="0,00"
+                 aria-invalid={kinderCent === null}
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-24
+                            text-end tabular-nums" />
+          <span>€</span>
+        </label>
+      )}
+      {darfSchreiben && (
+        <button type="submit"
+                disabled={!online || !gueltig || !geaendert || setzen.isPending}
+                className="px-3 py-1 rounded-sm border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('common.save')}
+        </button>
+      )}
+      {setzen.isSuccess && !geaendert && (
+        <span role="status" className="text-emerald-800">{t('rate.breakfast.saved')}</span>
+      )}
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </form>
+  )
+}
+
+/**
  * Ratenpläne anlegen und abgeleitete Raten neu rechnen (B4).
  *
  * Steht unter dem Raster und nicht in der Einrichtung: wer Preise pflegt,
@@ -377,6 +465,20 @@ function Ratenplaene(
         )}
       </div>
       {neuRechnen.isError && <Fehler error={neuRechnen.error} />}
+
+      {plaene.length > 0 && (
+        <div className="space-y-2 border-t border-neutral-200 pt-3">
+          <div className="text-sm text-neutral-600">{t('rate.breakfast.title')}</div>
+          {plaene.map(p => (
+            <FruehstueckZeile key={p.id}
+                              propertyId={propertyId} plan={p}
+                              darfSchreiben={darfSchreiben} />
+          ))}
+          <div className="text-xs text-neutral-500">
+            {t('rate.breakfast.hint')} {t('rate.breakfast.childHint')}
+          </div>
+        </div>
+      )}
 
       {darfSchreiben && (
         <form onSubmit={absenden} className="space-y-2 border-t border-neutral-200 pt-3">

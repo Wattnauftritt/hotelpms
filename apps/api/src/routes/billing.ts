@@ -5,7 +5,8 @@ import { Errors } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
-import { isIsoDate, nightsBetween } from '@hotelpms/domain'
+import { isIsoDate, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
+         BREAKFAST_FOOD_RATE_BP } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party }
@@ -245,14 +246,40 @@ async function naechsteNummer(
 async function erwarteteSaetze(
   client: PoolClient, propertyId: number, reservationId: number
 ): Promise<RateGroupAmount[]> {
+  /*
+   * Das Fruehstueck aus der Rate rechnet wie der Nachtlauf
+   * (`breakfastPerNight`, `splitNight`): je Nacht Erwachsene und Kinder zu
+   * ihrem Preis, nie mehr als die Nacht, mit dem Plan der Nacht. Die Anzahlung soll dieselben Saetze ausweisen, die spaeter die
+   * Schlussrechnung traegt.
+   */
   const r = await client.query<{ rate_plan_id: number | null; naechte: number
-                                 logis_cent: number; personen: number }>(
-    `SELECT res.rate_plan_id, (res.departure - res.arrival) AS naechte,
+                                 logis_cent: number; personen: number
+                                 fruehstueck_cent: number }>(
+    `WITH p AS (
+       SELECT res.id, res.adults, res.children,
+              GREATEST(COALESCE(res.guest_count,
+                (SELECT count(*) FROM reservation_occupant o
+                  WHERE o.reservation_id = res.id)::int), 1) AS personen
+         FROM reservation res WHERE res.id = $1 AND res.property_id = $2
+     )
+     SELECT res.rate_plan_id, (res.departure - res.arrival) AS naechte,
             COALESCE((SELECT sum(rn.price_cent) FROM reservation_night rn
                        WHERE rn.reservation_id = res.id), 0)::bigint AS logis_cent,
-            GREATEST((SELECT count(*) FROM reservation_occupant o
-                       WHERE o.reservation_id = res.id), 1)::int AS personen
-       FROM reservation res WHERE res.id = $1 AND res.property_id = $2`,
+            p.personen,
+            COALESCE((SELECT sum(LEAST(
+                                CASE WHEN rp.breakfast_child_cent IS NOT NULL
+                                          AND p.adults IS NOT NULL
+                                     THEN p.adults::bigint * rp.breakfast_cent
+                                          + COALESCE(p.children, 0)::bigint
+                                            * rp.breakfast_child_cent
+                                     ELSE rp.breakfast_cent::bigint * p.personen END,
+                                GREATEST(rn.price_cent, 0)))
+                        FROM reservation_night rn
+                        JOIN rate_plan rp
+                          ON rp.id = COALESCE(rn.rate_plan_id, res.rate_plan_id)
+                       WHERE rn.reservation_id = res.id
+                         AND rp.breakfast_cent IS NOT NULL), 0)::bigint AS fruehstueck_cent
+       FROM reservation res JOIN p ON p.id = res.id`,
     [reservationId, propertyId])
   if (r.rowCount === 0) return []
   const res = r.rows[0]!
@@ -287,6 +314,17 @@ async function erwarteteSaetze(
   const personen = Number(res.personen)
   const posten: ExpectedItem[] = []
   let extras = 0
+
+  const fruehstueck = Number(res.fruehstueck_cent)
+  if (fruehstueck > 0) {
+    extras += fruehstueck
+    posten.push({
+      grossCent: fruehstueck,
+      rateBp: BREAKFAST_FOOD_RATE_BP,
+      splitShareBp: BREAKFAST_DRINKS_SHARE_BP,
+      splitRateBp: BREAKFAST_DRINKS_RATE_BP
+    })
+  }
 
   for (const p of enthalten.rows) {
     const menge = p.charge_mode === 'once' ? 1

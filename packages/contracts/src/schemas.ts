@@ -1281,6 +1281,16 @@ export const RatePlan = Type.Object({
   baseRatePlanId: Type.Union([Type.Integer(), Type.Null()]),
   deriveKind: Type.Union([Type.Literal('amount'), Type.Literal('percent'), Type.Null()]),
   deriveValue: Type.Union([Type.Integer(), Type.Null()]),
+  /**
+   * Im Preis enthaltenes Fruehstueck, brutto je Person und Nacht. `null`:
+   * nicht enthalten. Der Nachtlauf rechnet es heraus (Migration 0158).
+   */
+  breakfastCent: Type.Union([Cent, Type.Null()]),
+  /**
+   * Fruehstueck je Kind und Nacht; 0 frei, `null` wie Erwachsene. Greift nur
+   * bei Buchungen, die Erwachsene und Kinder getrennt nennen.
+   */
+  childBreakfastCent: Type.Union([Cent, Type.Null()]),
   active: Type.Boolean()
 })
 export type RatePlan = Static<typeof RatePlan>

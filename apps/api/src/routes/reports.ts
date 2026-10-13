@@ -206,7 +206,8 @@ export function reportRoutes(app: FastifyInstance): void {
        SELECT i.date::text, i.capacity, i.sold, i.blocked,
               COALESCE((SELECT sum(c.net_cent) FROM charge c
                          WHERE c.property_id = $1 AND c.business_date = i.date
-                           AND c.revenue_account = '8300'), 0)::bigint,
+                           AND c.revenue_account = '8300'
+                           AND c.package_part IS NULL), 0)::bigint,
               'auf den Buechern'
          FROM inventory_day i, heute, zeitraum z
         WHERE i.property_id = $1 AND i.category_id = 0

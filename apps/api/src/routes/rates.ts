@@ -9,6 +9,9 @@ import type { Principal } from '../platform/context.js'
 
 /** Ein Jahr je Anfrage. Mehr braucht niemand, und es begrenzt die Sperrzeit. */
 const MAX_DAYS = 400
+/** Fruehstueck je Person und Nacht, wie die Bedingung in Migration 0158. */
+const BREAKFAST_MIN = 1
+const BREAKFAST_MAX = 100_000
 /** Sieben Bits, Montag = 0. */
 const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6]
 
@@ -83,7 +86,8 @@ export function rateRoutes(app: FastifyInstance): void {
                   rp.category_id AS "categoryId", c.code AS "categoryCode",
                   rp.base_rate_plan_id AS "baseRatePlanId",
                   rp.derive_kind AS "deriveKind", rp.derive_value AS "deriveValue",
-                  rp.active
+                  rp.breakfast_cent AS "breakfastCent",
+                  rp.breakfast_child_cent AS "childBreakfastCent", rp.active
              FROM rate_plan rp JOIN resource_category c ON c.id = rp.category_id
             WHERE rp.property_id = $1 ORDER BY c.code, rp.code`, [Number(propertyId)])
         return { ratePlans: rows }
@@ -124,6 +128,54 @@ export function rateRoutes(app: FastifyInstance): void {
            body.deriveKind ?? null, body.deriveValue ?? null])
         reply.status(201)
         return { ratePlanId: rows[0]!.id, ratePlanRef: rows[0]!.public_ref }
+      })
+    }
+  })
+
+  /**
+   * Fruehstueck im Ratenpreis setzen oder entfernen (Migration 0158).
+   *
+   * Das Haus sagt nur, ob und zu welchem Preis je Person und Nacht, dazu
+   * wahlweise einen eigenen Preis fuer Kinder (0 = frei); den
+   * Getraenkeanteil gibt das BMF vor und steht in der Domain. Wirkt ab der
+   * naechsten Nacht, die der Nachtlauf bucht: eine gebuchte Nacht ist
+   * Haertegrad 1 und wird nicht nachtraeglich umgeteilt.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/rate-plans/:ratePlanId/breakfast',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Fruehstueck im Ratenpreis setzen',
+    handler: async (req) => {
+      const { propertyId, ratePlanId } = req.params as { propertyId: string; ratePlanId: string }
+      const plan = Number(ratePlanId)
+      if (!Number.isSafeInteger(plan) || plan <= 0) {
+        throw Errors.validation({ ratePlanId: ['field.positiveInteger'] })
+      }
+      const body = (req.body ?? {}) as { breakfastCent?: unknown; childBreakfastCent?: unknown }
+      const wert = body.breakfastCent ?? null
+      if (wert !== null
+          && !(typeof wert === 'number' && Number.isInteger(wert)
+               && wert >= BREAKFAST_MIN && wert <= BREAKFAST_MAX)) {
+        throw Errors.validation({ breakfastCent: ['field.range'] },
+          { min: '0,01 €', max: '1.000,00 €' })
+      }
+      // Ohne Fruehstueck gibt es auch keinen Kinderpreis; 0 heisst frei.
+      const kind = wert === null ? null : body.childBreakfastCent ?? null
+      if (kind !== null
+          && !(typeof kind === 'number' && Number.isInteger(kind)
+               && kind >= 0 && kind <= BREAKFAST_MAX)) {
+        throw Errors.validation({ childBreakfastCent: ['field.range'] },
+          { min: '0,00 €', max: '1.000,00 €' })
+      }
+      return tx(req.pool, req, async client => {
+        await assertPlan(client, Number(propertyId), plan)
+        await client.query(
+          `UPDATE rate_plan SET breakfast_cent = $3, breakfast_child_cent = $4
+            WHERE id = $1 AND property_id = $2`,
+          [plan, Number(propertyId), wert, kind])
+        return { ratePlanId: plan, breakfastCent: wert, childBreakfastCent: kind }
       })
     }
   })
