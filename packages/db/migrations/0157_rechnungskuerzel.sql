@@ -27,7 +27,7 @@ CREATE UNIQUE INDEX property_invoice_prefix ON property (account_id, invoice_pre
 -- selbst laeuft weiter: eine Nummer H-2026-00042 nach 2026-00041 ist
 -- eindeutig und luecklos nachvollziehbar.
 CREATE OR REPLACE FUNCTION next_invoice_number(p_property bigint, p_year integer)
-RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE n bigint; pfx text; haus text;
 BEGIN
   PERFORM assert_property_in_context(p_property);
@@ -47,7 +47,7 @@ END $$;
 -- Uebungshaeuser zaehlen nicht: sie tragen ihr eigenes Kuerzel und
 -- exportieren nichts.
 CREATE OR REPLACE FUNCTION invoice_prefix_missing(p_property bigint)
-RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE p property%ROWTYPE;
 BEGIN
   PERFORM assert_property_in_context(p_property);
