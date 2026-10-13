@@ -6,6 +6,8 @@ import type { TapeChart, DailySheet, HousekeepingBoard, Category, Room,
               CreateBlock } from '@hotelpms/contracts'
 import { api, newIdempotencyKey } from './api.js'
 import { cacheRead, cacheWrite } from './offline.js'
+import { auschecken } from './auschecken.js'
+import { useLocale } from './i18n/index.js'
 
 /**
  * Ein Aufruf je Bildschirm, nicht je Zeile.
@@ -118,10 +120,13 @@ export function useRoomSeries(propertyId: number) {
 
 export function useReservationAction(propertyId: number, date: string) {
   const qc = useQueryClient()
+  const locale = useLocale()
   return useMutation({
     mutationFn: ({ ref, action }: { ref: string
                                     action: 'check-in' | 'check-out' | 'undo-check-in' }) =>
-      api.post(`/v1/reservations/${ref}/${action}`),
+      action === 'check-out'
+        ? auschecken(`/v1/reservations/${ref}/${action}`, locale)
+        : api.post(`/v1/reservations/${ref}/${action}`),
     onSuccess: () => {
       // Nach Check-in oder Check-out ändern sich Tagesliste, Zimmerplan und
       // Zimmerstatus gemeinsam. Sie einzeln nachzuladen zeigte kurzzeitig

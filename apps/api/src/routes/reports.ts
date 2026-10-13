@@ -590,8 +590,15 @@ export function reportRoutes(app: FastifyInstance): void {
         })
 
         const gebucht = [
+          /*
+           * Die Richtung kommt allein aus dem Vorzeichen. Eine
+           * Stornorechnung traegt die Gegenbuchungen ihres Originals, also
+           * negative Betraege (0161); ein zusaetzliches Haben fuer
+           * `credit_note` drehte sie ein zweites Mal und buchte das Storno
+           * als weiteren Umsatz.
+           */
           ...rows.map(r => zeile(
-            r.gross_cent, r.kind === 'credit_note', r.revenue_account,
+            r.gross_cent, false, r.revenue_account,
             r.issued_on, r.number,
             `${r.recipient} ${r.tax_rate_bp / 100}%`)),
           /*
@@ -600,10 +607,13 @@ export function reportRoutes(app: FastifyInstance): void {
            * Schlussrechnung: sie gehoert zu deren Beleg, auf dem sie als
            * Position steht.
            */
+          // Eine aufgehobene Verrechnung ('unapplied', Stornorechnung)
+          // bucht in die Richtung der Vereinnahmung zurueck und traegt die
+          // Nummer der Stornorechnung.
           ...anzahlungen.rows.map(a => zeile(
             a.gross_cent, a.kind === 'applied', ANZAHLUNG_KONTO,
             a.business_date,
-            a.kind === 'applied' ? (a.applied_number ?? a.deposit_number) : a.deposit_number,
+            a.kind === 'received' ? a.deposit_number : (a.applied_number ?? a.deposit_number),
             `${a.recipient} Anzahlung ${a.deposit_number} ${a.tax_rate_bp / 100}%`))
         ]
 

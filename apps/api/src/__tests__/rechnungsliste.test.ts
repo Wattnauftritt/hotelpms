@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
-         makeGuest, makePaymentMethod, openBusinessDay, type Fixture }
+         makeGuest, makePaymentMethod, openBusinessDay, heuteImHaus, type Fixture }
   from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
@@ -46,7 +46,7 @@ let lauf = 0
 beforeEach(async () => {
   await truncateAll()
   fx = await makeProperty(owner)
-  await openBusinessDay(owner, fx.propertyId, new Date().toISOString().slice(0, 10))
+  await openBusinessDay(owner, fx.propertyId, heuteImHaus())
   await makePaymentMethod(owner, fx.propertyId, 'BAR')
   const u = await makeUser(owner,
     { email: 'rez@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
@@ -77,7 +77,8 @@ const liste = (von: string, bis: string, extra = '') => app.inject({
   headers: auth })
 
 const zeilen = (body: string): Zeile[] => (JSON.parse(body) as { invoices: Zeile[] }).invoices
-const heute = (): string => new Date().toISOString().slice(0, 10)
+// Der Tag im Haus: daran haengt das Ausstellungsdatum.
+const heute = (): string => heuteImHaus()
 
 describe('Rechnungsliste', () => {
   it('nennt Nummer, Empfaenger, Betrag und das Folio dahinter', async () => {

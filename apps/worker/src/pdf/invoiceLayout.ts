@@ -225,7 +225,10 @@ function positionen(z: Zeichner, inv: CiiInvoice): void {
  */
 function summen(z: Zeichner, inv: CiiInvoice): void {
   const totals = ciiTotals(inv)
-  const prepaid = inv.prepaidCent ?? 0
+  // Eine Stornorechnung ist mit ihrem Original verrechnet; "davon bereits
+  // gezahlt" und "offen" waeren auf ihr eine Aussage ueber Geld, das nicht
+  // fliesst. Der Bezug steht in den Hinweisen.
+  const prepaid = inv.kind === 'credit_note' ? 0 : inv.prepaidCent ?? 0
   const rundung = inv.roundingCent ?? 0
   const benoetigt = 90 + totals.groups.length * 12
     + (prepaid !== 0 ? 24 : 0) + (rundung !== 0 ? 26 : 0)

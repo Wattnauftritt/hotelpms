@@ -1376,6 +1376,10 @@ export const InvoiceListItem = Type.Object({
   payableCent: Cent,
   /** Davon zugeordnet vermerkt. Der Rest ist offen. */
   settledCent: Cent,
+  /** Nummer der Stornorechnung, die diese Rechnung aufhebt (0161). */
+  cancelledBy: Type.Union([Type.String(), Type.Null()]),
+  /** Bei einer Stornorechnung: die Nummer des Originals. */
+  reverses: Type.Union([Type.String(), Type.Null()]),
   recipient: Type.String(),
   folioRef: Type.String(),
   /** Der Beleg entsteht nach dem Festschreiben im Worker. */

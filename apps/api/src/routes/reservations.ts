@@ -2252,6 +2252,53 @@ export function reservationRoutes(app: FastifyInstance): void {
         }
 
         /*
+         * **Check-out mit offenem Saldo fragt nach** (Pruefung 13.10.2026,
+         * Befund 6).
+         *
+         * Ein Klick checkte aus, auch wenn am Folio noch Geld offen war oder
+         * Positionen ohne Rechnung standen. Folios werden nie geschlossen;
+         * eine vergessene Rechnung fiel nur noch ueber die Liste des
+         * Nachtlaufs ab 500 Euro auf. Beherbergung ist eine Leistung im
+         * Zusammenhang mit einem Grundstueck, die Rechnung ist deshalb auch
+         * gegenueber Privatgaesten Pflicht (§ 14 Abs. 2 Satz 1 Nr. 1 UStG).
+         *
+         * Gesperrt wird nicht: ein Firmengast zahlt auf Rechnung, die erst
+         * Tage spaeter geschrieben wird, und ein Gast, der abgereist ist,
+         * ist abgereist. Die Rezeption bestaetigt, dann geht es durch.
+         * Maschinenzugaenge (Adminpanel) fragt niemand -- dort sitzt kein
+         * Mensch, der bestaetigen koennte, und der Abgleich laeuft dort.
+         */
+        const body = (req.body ?? {}) as { openBalance?: string }
+        if (act === 'check_out' && principal.userId !== null
+            && body.openBalance !== 'accept') {
+          const offen = await client.query<{ saldo: string; posten: number }>(
+            `SELECT COALESCE((SELECT sum(c.gross_cent) FROM charge c
+                                JOIN folio f ON f.id = c.folio_id
+                               WHERE f.reservation_id = $1), 0)
+                  - COALESCE((SELECT sum(s.amount_cent) FROM settlement s
+                                JOIN folio f ON f.id = s.folio_id
+                               WHERE f.reservation_id = $1), 0) AS saldo,
+                    (SELECT count(*)::int FROM charge c
+                       JOIN folio f ON f.id = c.folio_id
+                      WHERE f.reservation_id = $1 AND c.invoice_id IS NULL
+                        AND c.gross_cent <> 0 AND c.reverses_id IS NULL
+                        -- Gegengebucht und noch offen: hebt sich auf.
+                        AND NOT EXISTS (SELECT 1 FROM charge g
+                                         WHERE g.reverses_id = c.id AND g.invoice_id IS NULL)
+                        -- Die Kurtaxe steht auf keiner Rechnung (0157).
+                        AND NOT EXISTS (SELECT 1 FROM tax_rule tr
+                                         WHERE tr.id = c.tax_rule_id
+                                           AND tr.kind = 'city_tax')) AS posten`,
+            [r.id])
+          const saldo = Number(offen.rows[0]!.saldo)
+          const posten = offen.rows[0]!.posten
+          if (saldo !== 0 || posten > 0) {
+            throw Errors.conflict('checkout.openBalance', {
+              amount: (saldo / 100).toFixed(2), items: posten })
+          }
+        }
+
+        /*
          * **Wer vorzeitig abreist, dessen Aufenthalt endet heute.**
          *
          * Ohne das stand der abgereiste Gast im Plan bis zur gebuchten

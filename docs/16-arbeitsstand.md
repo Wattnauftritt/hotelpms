@@ -1193,3 +1193,14 @@ Tests in `rechnungsdialog.test.ts`.
 - **Gästehaus-Push:** `segments[].totalCent` je Zimmer, an jedem Abschnitt oder an keinem. Die Prüfsumme ändert sich nur, wenn die Angabe kommt; bestehende Buchungen melden durch den Deploy keine Abweichung.
 
 Tests in `preisUmsystem.test.ts` und `kanalUmsystem.test.ts`.
+
+### Stornorechnung, Anzahlung, Check-out, Ortszeit (`0161`) — **erledigt**
+
+**Warum.** Befunde 2, 5 und 6 der Prüfung vom 13.10.2026 und der Zeitzonenbefund: eine ausgestellte Rechnung ließ sich nicht berichtigen, die Anzahlungsrechnung forderte bezahltes Geld noch einmal, der Check-out ging über offenen Saldo hinweg, und Rechnungen nach Mitternacht trugen das Datum des Vortags.
+
+- **Stornorechnung** über `POST /v1/invoices/:invoiceRef/cancel` (`invoice:credit`), Knopf „Stornieren“ in der Rechnungsliste. Sie hat eine eigene Nummer, `kind = 'credit_note'`, `reverses_id` auf das Original und die Summen des Originals mit umgekehrtem Vorzeichen. Jede Position bekommt eine Gegenbuchung auf der Stornorechnung und eine neue offene Buchung am Folio, beide am Geschäftstag des Originals. Zugeordnete Zahlungen gehen ebenso als Gegenvermerk und neuer offener Vermerk über, verrechnete Anzahlungen werden wieder offen (`deposit_ledger.kind = 'unapplied'`). Im XML ist sie Typ 381 mit positiven Beträgen und BT-25; im DATEV-Stapel kommt die Richtung allein aus dem Vorzeichen. `POST .../invoice` nimmt `kind: 'credit_note'` nicht mehr an. Anzahlungsrechnungen werden nicht storniert; die hebt eine Rückzahlung auf.
+- **Anzahlungsrechnung** trägt `prepaidCent = payableCent`; Beleg, Liste und Mail führen sie als bezahlt, ältere ebenso.
+- **Check-out** fragt bei offenem Saldo oder Positionen ohne Rechnung nach (409 `checkout.openBalance`, mit `{ openBalance: 'accept' }` geht er durch). Die Rückfrage steht in `lib/auschecken.ts`, für alle Knöpfe. Maschinenzugänge fragt niemand.
+- **Ortszeit:** Ausstellungstag, Nummernjahr und Zahlungsziel rechnen mit `property.timezone` (`heuteImHaus`), nicht mit UTC.
+
+Tests in `stornorechnung.test.ts`.

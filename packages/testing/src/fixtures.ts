@@ -245,3 +245,18 @@ export async function makeReservation(
 
   return { bookingId, reservationId, folioId }
 }
+
+/**
+ * Der heutige Tag im Haus der Fixtures (`Europe/Berlin`), nicht in UTC.
+ *
+ * Rechnungen tragen seit der Pruefung vom 13.10.2026 den Kalendertag des
+ * Hauses. Ein Test, der "heute" in UTC rechnet, fand zwischen Mitternacht
+ * und zwei Uhr Ortszeit seine eigene Rechnung nicht mehr.
+ */
+export function heuteImHaus(versatzTage = 0): string {
+  const heute = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' })
+    .format(new Date())
+  const d = new Date(`${heute}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + versatzTage)
+  return d.toISOString().slice(0, 10)
+}
