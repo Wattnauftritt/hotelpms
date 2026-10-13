@@ -116,6 +116,9 @@ jobs:
       - run: ./scripts/check-docs.sh
       - run: ./scripts/check-caddyfile.sh
       - run: ./scripts/check-sudoers.sh
+      # Beispielbelege gegen das Schematron von EN 16931. Java bringt der
+      # Laeufer mit; Saxon und die Regeln laedt das Skript mit Pruefsumme.
+      - run: ./scripts/check-erechnung.sh
       - run: pnpm lint
       - run: pnpm typecheck
       # `build` ist strenger als `typecheck` und hat schon Fehler gefunden,

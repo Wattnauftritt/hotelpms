@@ -221,3 +221,65 @@ describe('Vorgabe des Hauses', () => {
     expect(v.dueOn).toBe(await heutePlus(21))
   })
 })
+
+describe('Kontakt, Bank und Leitweg-ID (0164)', () => {
+  const kontakt = {
+    contactName: 'Rezeption', phone: '+49 4721 1234', email: 'rechnung@seerobbe.test',
+    iban: 'de02 1203 0000 0000 2020 51', bic: 'byladem1001', bankName: 'DKB',
+    commercialRegister: 'HRB 1234 Amtsgericht Tostedt'
+  }
+  const setzen = (contact: unknown) => app.inject({
+    method: 'PUT', url: `/v1/properties/${fx.propertyId}/invoice-settings`,
+    headers: auth, payload: { contact } })
+
+  it('speichert die Angaben vereinheitlicht und meldet, was der XRechnung fehlt', async () => {
+    const vorher = JSON.parse((await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/invoice-settings`,
+      headers: auth })).body) as { eInvoiceMissing: { xrechnung: string[] } }
+    expect(vorher.eInvoiceMissing.xrechnung).toEqual(expect.arrayContaining(['contact', 'iban']))
+
+    const r = await setzen(kontakt)
+    expect(r.statusCode, r.body).toBe(200)
+    const b = JSON.parse(r.body) as { contact: Record<string, string | null>
+                                      eInvoiceMissing: { xml: string[]; xrechnung: string[] } }
+    // Leerzeichen und Kleinbuchstaben landen nicht in der Momentaufnahme.
+    expect(b.contact).toMatchObject({ iban: 'DE02120300000000202051', bic: 'BYLADEM1001',
+                                      commercialRegister: kontakt.commercialRegister })
+    expect(b.eInvoiceMissing.xrechnung).not.toContain('contact')
+    expect(b.eInvoiceMissing.xrechnung).not.toContain('iban')
+    expect(b.eInvoiceMissing.xml).not.toContain('identifier')
+
+    // Ein leerer Text loescht, die uebrigen Felder bleiben.
+    const leer = JSON.parse((await setzen({ phone: '' })).body) as {
+      contact: Record<string, string | null> }
+    expect(leer.contact.phone).toBeNull()
+    expect(leer.contact.iban).toBe('DE02120300000000202051')
+  })
+
+  it('weist eine IBAN mit falscher Pruefziffer ab', async () => {
+    const r = await setzen({ iban: 'DE03120300000000202051' })
+    expect(r.statusCode, r.body).toBe(422)
+    expect(r.body).toContain('contact.iban')
+  })
+
+  it('traegt Bank und Leitweg-ID in die Momentaufnahme der Rechnung', async () => {
+    expect((await setzen(kontakt)).statusCode).toBe(200)
+    const f = await folio({ terms: 14 })
+    await owner.query(`UPDATE company SET buyer_reference = '04011000-12345-34'`)
+    expect((await post(`/v1/folios/${f.ref}/invoice`, {})).statusCode).toBe(201)
+
+    const i = await owner.query<{ issuer_snapshot: Record<string, unknown>
+                                  recipient_snapshot: Record<string, unknown> }>(
+      `SELECT issuer_snapshot, recipient_snapshot FROM invoice`)
+    expect(i.rows[0]!.issuer_snapshot).toMatchObject({
+      iban: 'DE02120300000000202051', bic: 'BYLADEM1001', contactName: 'Rezeption',
+      registrationId: kontakt.commercialRegister })
+    expect(i.rows[0]!.recipient_snapshot).toMatchObject({ buyerReference: '04011000-12345-34' })
+
+    // Die Bank des Hauses aendert die ausgestellte Rechnung nicht mehr.
+    expect((await setzen({ iban: 'DE89370400440532013000' })).statusCode).toBe(200)
+    const nachher = await owner.query<{ iban: string }>(
+      `SELECT issuer_snapshot->>'iban' AS iban FROM invoice`)
+    expect(nachher.rows[0]!.iban).toBe('DE02120300000000202051')
+  })
+})

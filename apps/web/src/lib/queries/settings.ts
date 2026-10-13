@@ -266,6 +266,12 @@ export function useUpdateBefreiungsgrund(propertyId: number) {
 }
 
 /** Rechnungskuerzel des Hauses (Migration 0157). */
+export interface RechnungsKontakt {
+  contactName: string | null; phone: string | null; email: string | null
+  iban: string | null; bic: string | null; bankName: string | null
+  commercialRegister: string | null
+}
+
 export interface Rechnungseinstellung {
   prefix: string | null
   /** Ohne Kuerzel verweigert dieses Haus die Rechnung: der Account hat ein zweites. */
@@ -275,6 +281,10 @@ export interface Rechnungseinstellung {
   nextNumber: string
   /** Zahlungsziel fuer Gaeste ohne Firma (Migration 0159). */
   paymentTermsDays: number
+  /** Kopf, Fuss und E-Rechnung (Migration 0164). */
+  contact: RechnungsKontakt
+  /** Was der E-Rechnung fehlt; leer heisst: geht. */
+  eInvoiceMissing: { xml: string[]; xrechnung: string[] }
 }
 
 export const useInvoiceSettings = (propertyId: number) =>
@@ -286,7 +296,8 @@ export const useInvoiceSettings = (propertyId: number) =>
 export function useSaveInvoiceSettings(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { prefix?: string; paymentTermsDays?: number }) =>
+    mutationFn: (body: { prefix?: string; paymentTermsDays?: number
+                         contact?: Partial<RechnungsKontakt> }) =>
       api.put<Rechnungseinstellung>(`/v1/properties/${propertyId}/invoice-settings`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['invoice-settings', propertyId] })

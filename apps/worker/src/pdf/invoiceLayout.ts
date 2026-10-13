@@ -161,6 +161,9 @@ function kopf(z: Zeichner, inv: CiiInvoice, titel: string): void {
       ? datum(inv.serviceFrom)
       : `${datum(inv.serviceFrom)} bis ${datum(inv.serviceTo)}`]
   ]
+  // BT-10: die Eingangsstelle einer Behoerde ordnet die Rechnung allein
+  // danach zu; auf dem Blatt, damit die Papierfassung dieselbe Angabe traegt.
+  if (inv.buyerReference) eck.push(['Leitweg-ID', inv.buyerReference])
   if (inv.seller.vatId) eck.push(['USt-IdNr.', inv.seller.vatId])
   if (inv.seller.taxNumber) eck.push(['Steuernummer', inv.seller.taxNumber])
 
@@ -322,7 +325,17 @@ function fusszeilen(doc: PDFDocument, schrift: Schriften, input: InvoiceLayoutIn
     .filter(Boolean).join(' · ')
   const steuer = [
     s.vatId ? `USt-IdNr. ${s.vatId}` : null,
-    s.taxNumber ? `Steuernummer ${s.taxNumber}` : null
+    s.taxNumber ? `Steuernummer ${s.taxNumber}` : null,
+    s.registrationId ?? null
+  ].filter(Boolean).join(' · ')
+  // Bisher stand auf keiner Rechnung eine Bankverbindung; eine Firma mit
+  // Zahlungsziel musste sie erfragen (Pruefung vom 13.10.2026).
+  const bank = input.invoice.payee
+  const kontakt = [
+    s.phone ? `Telefon ${s.phone}` : null,
+    s.email ?? null,
+    bank?.iban ? [bank.bankName, `IBAN ${bank.iban.replace(/(.{4})(?=.)/g, '$1 ')}`,
+                  bank.bic ? `BIC ${bank.bic}` : null].filter(Boolean).join(' ') : null
   ].filter(Boolean).join(' · ')
 
   for (const [i, seite] of seiten.entries()) {
@@ -332,6 +345,9 @@ function fusszeilen(doc: PDFDocument, schrift: Schriften, input: InvoiceLayoutIn
     })
     seite.drawText(anschrift, { x: RAND, y: 42, size: 7, font: schrift.regular, color: GRAU })
     seite.drawText(steuer, { x: RAND, y: 33, size: 7, font: schrift.regular, color: GRAU })
+    if (kontakt !== '') {
+      seite.drawText(kontakt, { x: RAND, y: 24, size: 7, font: schrift.regular, color: GRAU })
+    }
     const seitenzahl = `Beleg ${input.publicRef} · Seite ${i + 1} von ${seiten.length}`
     seite.drawText(seitenzahl, {
       x: RECHTS - schrift.regular.widthOfTextAtSize(seitenzahl, 7),

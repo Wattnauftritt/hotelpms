@@ -1249,3 +1249,15 @@ Tests in `offenePosten.test.ts`.
 - **GoBD:** `GET …/exports/gobd?format=zip` liefert ein ZIP mit `index.xml` nach GDPdU (DTD vom 01.08.2002), fünf Tabellen als CSV (Rechnungen, Positionen, Zahlungsvermerke, Anzahlungsjournal, Änderungsprotokoll) und unter `belege/` je Rechnung PDF und CII-XML. Werte unverändert, Text in Anführungszeichen, Beträge in Euro mit Komma. Höchstens 32 000 Belege je Archiv, sonst nennt die Antwort einen kürzeren Zeitraum. Das ZIP schreibt `platform/zipDatei.ts` selbst (Deflate, Datendeskriptor, kein ZIP64). Die DTD selbst liegt nicht bei; die Prüfsoftware bringt sie mit.
 
 Tests in `gobdArchiv.test.ts` (entpackt das Archiv und prüft jede Prüfsumme) und `depositSplit.test.ts` (Rundungsbetrag im Stapel).
+
+### E-Rechnung: Kontakt, Bank, Handelsregister, Leitweg-ID (`0164`) — **erledigt**
+
+**Warum.** Auf keiner Rechnung stand eine Bankverbindung, das XML hatte keine Zahlungsanweisung und keinen Verkäuferkontakt, ohne USt-IdNr. des Hauses entstand gar keins, und an eine Behörde ging keine XRechnung. Ein Validator lief nirgends — beim Nachstellen fiel auf, dass **jede Stornorechnung** nach BR-CO-25 abgewiesen wurde (offener Betrag ohne Fälligkeit oder Bedingung).
+
+- **Haus** (Einstellungen → Rechnungen): Ansprechpartner, Telefon, Rechnungsmail, IBAN (Prüfziffer nach Modulo 97), BIC, Bank, Handelsregister. Alles geht in die Momentaufnahme der Rechnung; Ansprechpartner, Telefon und Mail stehen in `audit_redaction`. Der Bildschirm nennt, was dem XML und was der XRechnung noch fehlt.
+- **Firma:** Leitweg-ID (BT-10). Mit ihr wird das XML eine XRechnung 3.0 (`isXRechnung`), mit Kontakt, Bank und elektronischer Adresse als Pflicht; was fehlt, meldet `ciiFindings` vor dem Ausstellen.
+- **XML:** Handelsregister genügt statt USt-IdNr. (BT-30, BR-CO-26), Kontakt (BG-6), elektronische Adresse (BT-34/BT-49), Zahlungsanweisung 58 mit IBAN und Rechnungsnummer als Verwendungszweck (BG-16, BT-83). Eine Stornorechnung nennt als Bedingung die Verrechnung mit der Ausgangsrechnung.
+- **PDF:** Leitweg-ID im Kopf, Register in der Steuerzeile, eine Fußzeile mit Telefon, Mail und Bank.
+- **CI:** `scripts/check-erechnung.sh` prüft neun Beispielbelege (`scripts/erechnung-beispiele.ts`) gegen das Schematron von EN 16931 für CII (CEN 1.3.14, Saxon-HE, Downloads mit Prüfsumme). Die BR-DE-Regeln der XRechnung prüft es **nicht** — deren Schematron liegt nicht als ladbares Release vor; sie deckt `ciiFindings`.
+
+Tests in `invoiceCii.test.ts`, `rechnungsdialog.test.ts` (Einstellung, falsche IBAN, Momentaufnahme) und `companies.test.ts` (Leitweg-ID).

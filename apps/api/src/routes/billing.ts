@@ -5,7 +5,7 @@ import { Errors, type Meldung } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
-import { isIsoDate, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
+import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
@@ -254,9 +254,78 @@ function kontoFuerSatz(rateBp: number): string {
 /** Grossbuchstaben und Ziffern, bis sechs; der Bindestrich kommt von selbst. */
 const KUERZEL = /^[A-Z0-9]{1,6}$/
 
+/** Angaben fuer Kopf, Fuss und XML der Rechnung (0164). Leer heisst: steht nicht drauf. */
+const KONTAKT_FELDER = {
+  contactName: 'invoice_contact_name', phone: 'invoice_phone', email: 'invoice_email',
+  iban: 'bank_iban', bic: 'bank_bic', bankName: 'bank_name',
+  commercialRegister: 'commercial_register'
+} as const
+type KontaktFeld = keyof typeof KONTAKT_FELDER
+
+/**
+ * Prueft und vereinheitlicht die Kontaktangaben aus dem Rumpf. Nur die
+ * genannten Felder werden geschrieben; ein leerer Text loescht.
+ */
+function kontaktPruefen(roh: unknown): Partial<Record<KontaktFeld, string | null>> | null {
+  if (roh === undefined) return null
+  if (roh === null || typeof roh !== 'object') {
+    throw Errors.validation({ contact: ['field.invalid'] })
+  }
+  const aus: Partial<Record<KontaktFeld, string | null>> = {}
+  const fehler: Record<string, Meldung[]> = {}
+  for (const [k, v] of Object.entries(roh as Record<string, unknown>)) {
+    if (!(k in KONTAKT_FELDER)) continue
+    const feld = k as KontaktFeld
+    if (v !== null && typeof v !== 'string') { fehler[`contact.${k}`] = ['field.invalid']; continue }
+    let t = (v ?? '').trim()
+    if (t.length > 100) { fehler[`contact.${k}`] = ['field.invalid']; continue }
+    if (feld === 'iban' || feld === 'bic') t = t.replace(/\s+/g, '').toUpperCase()
+    if (t !== '' && feld === 'iban' && !ibanGueltig(t)) fehler['contact.iban'] = ['field.invalid']
+    if (t !== '' && feld === 'bic' && !/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(t)) {
+      fehler['contact.bic'] = ['field.invalid']
+    }
+    if (t !== '' && feld === 'email' && !isSendableAddress(t)) fehler['contact.email'] = ['field.email']
+    aus[feld] = t === '' ? null : t
+  }
+  if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
+  return Object.keys(aus).length === 0 ? null : aus
+}
+
+/** IBAN-Pruefziffer nach ISO 13616 (Modulo 97). Ein Zahlendreher wird sonst gedruckt. */
+function ibanGueltig(iban: string): boolean {
+  if (!/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/.test(iban)) return false
+  const umgestellt = (iban.slice(4) + iban.slice(0, 4))
+    .replace(/[A-Z]/g, c => String(c.charCodeAt(0) - 55))
+  let rest = 0
+  for (const ziffer of umgestellt) rest = (rest * 10 + Number(ziffer)) % 97
+  return rest === 1
+}
+
+/**
+ * Was der E-Rechnung fehlt. `xml`: ohne das traegt keine Rechnung ein XML
+ * (BR-CO-26, BR-08); `xrechnung`: ohne das scheitert die Rechnung an eine
+ * Behoerde mit Leitweg-ID (BR-DE-*). Der Bildschirm nennt es, statt dass
+ * es erst als Hinweis auf einem Beleg auffaellt.
+ */
+function eRechnungFehlt(p: Record<string, string | null>): { xml: string[]; xrechnung: string[] } {
+  const leer = (v: string | null | undefined): boolean => v === null || v === undefined || v === ''
+  const xml: string[] = []
+  if (leer(p.vat_id) && leer(p.commercial_register)) xml.push('identifier')
+  if (leer(p.postal_code) || leer(p.city) || leer(p.country)) xml.push('address')
+  const xrechnung: string[] = []
+  if (leer(p.invoice_contact_name) || leer(p.invoice_phone) || leer(p.invoice_email)) {
+    xrechnung.push('contact')
+  }
+  if (leer(p.bank_iban)) xrechnung.push('iban')
+  if (leer(p.vat_id) && leer(p.tax_number)) xrechnung.push('taxId')
+  return { xml, xrechnung }
+}
+
 async function rechnungseinstellung(client: PoolClient, propertyId: number): Promise<{
   prefix: string | null; missing: boolean; locked: boolean; nextNumber: string
   paymentTermsDays: number
+  contact: Record<KontaktFeld, string | null>
+  eInvoiceMissing: { xml: string[]; xrechnung: string[] }
 }> {
   const jahr = Number((await heuteImHaus(client, propertyId)).slice(0, 4))
   const r = await client.query<{ prefix: string | null; fehlt: boolean
@@ -269,6 +338,12 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
        LEFT JOIN invoice_counter c ON c.property_id = p.id AND c.year = $2
       WHERE p.id = $1`, [propertyId, jahr])
   const z = r.rows[0]!
+  const p = (await client.query<Record<string, string | null>>(
+    `SELECT ${Object.values(KONTAKT_FELDER).join(', ')}, vat_id, tax_number,
+            postal_code, city, country
+       FROM property WHERE id = $1`, [propertyId])).rows[0]!
+  const contact = Object.fromEntries(Object.entries(KONTAKT_FELDER)
+    .map(([k, spalte]) => [k, p[spalte] ?? null])) as Record<KontaktFeld, string | null>
   const locked = z.prefix !== null && ((await client.query(
     `SELECT 1 FROM invoice
       WHERE property_id = $1 AND (number LIKE $2 OR number LIKE $3) LIMIT 1`,
@@ -281,7 +356,9 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
     // Rechnung, und genau dann muss der Bildschirm es sagen.
     missing: z.fehlt,
     locked, nextNumber,
-    paymentTermsDays: z.ziel
+    paymentTermsDays: z.ziel,
+    contact,
+    eInvoiceMissing: eRechnungFehlt(p)
   }
 }
 
@@ -721,12 +798,17 @@ async function rechnungsEntwurf(
    */
   const prop = await client.query<Party>(
     `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-            city, country, tax_number AS "taxNumber", vat_id AS "vatId"
+            city, country, tax_number AS "taxNumber", vat_id AS "vatId",
+            commercial_register AS "registrationId", invoice_contact_name AS "contactName",
+            invoice_phone AS phone,
+            invoice_email AS email, invoice_email AS "electronicAddress",
+            bank_iban AS iban, bank_bic AS bic, bank_name AS "bankName"
        FROM property WHERE id = $1`, [folio.property_id])
   const recipient = folio.company_id
     ? await client.query<Party>(
         `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                city, country, vat_id AS "vatId"
+                city, country, vat_id AS "vatId",
+                buyer_reference AS "buyerReference", invoice_email AS "electronicAddress"
            FROM company WHERE id = $1`, [folio.company_id])
     : folio.guest_id
       ? await client.query<Party>(
@@ -839,7 +921,9 @@ export function billingRoutes(app: FastifyInstance): void {
     summary: 'Rechnungskuerzel des Hauses setzen',
     handler: async (req) => {
       const { propertyId } = req.params as { propertyId: string }
-      const b = (req.body ?? {}) as { prefix?: unknown; paymentTermsDays?: unknown }
+      const b = (req.body ?? {}) as { prefix?: unknown; paymentTermsDays?: unknown
+                                      contact?: Partial<Record<KontaktFeld, unknown>> }
+      const kontakt = kontaktPruefen(b.contact)
       // Beides einzeln setzbar: wer das Zahlungsziel aendert, soll nicht
       // das Kuerzel mitschicken muessen.
       const ziel = b.paymentTermsDays
@@ -849,7 +933,8 @@ export function billingRoutes(app: FastifyInstance): void {
           { min: 0, max: ZIEL_MAX_TAGE })
       }
       const prefix = typeof b.prefix === 'string' ? b.prefix.trim().toUpperCase() : ''
-      if ((b.prefix !== undefined || ziel === undefined) && !KUERZEL.test(prefix)) {
+      const anderes = ziel !== undefined || kontakt !== null
+      if ((b.prefix !== undefined || !anderes) && !KUERZEL.test(prefix)) {
         throw Errors.validation({ prefix: ['field.invalid'] })
       }
 
@@ -857,6 +942,13 @@ export function billingRoutes(app: FastifyInstance): void {
         if (ziel !== undefined) {
           await client.query(`UPDATE property SET payment_terms_days = $2 WHERE id = $1`,
             [Number(propertyId), ziel])
+        }
+        if (kontakt !== null) {
+          const felder = Object.keys(kontakt) as KontaktFeld[]
+          await client.query(
+            `UPDATE property SET ${felder.map((k, i) => `${KONTAKT_FELDER[k]} = $${i + 2}`)
+              .join(', ')} WHERE id = $1`,
+            [Number(propertyId), ...felder.map(k => kontakt[k])])
         }
         const jetzt = await rechnungseinstellung(client, Number(propertyId))
         if (b.prefix === undefined || jetzt.prefix === prefix) return jetzt
@@ -1780,12 +1872,18 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const prop = await client.query<Party>(
           `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                  city, country, tax_number AS "taxNumber", vat_id AS "vatId"
+                  city, country, tax_number AS "taxNumber", vat_id AS "vatId",
+                  commercial_register AS "registrationId", invoice_contact_name AS "contactName",
+                  invoice_phone AS phone,
+                  invoice_email AS email, invoice_email AS "electronicAddress",
+                  bank_iban AS iban, bank_bic AS bic, bank_name AS "bankName"
              FROM property WHERE id = $1`, [folio.property_id])
         const recipient = folio.company_id
           ? await client.query<Party>(
               `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                      city, country, vat_id AS "vatId"
+                      city, country, vat_id AS "vatId",
+                      buyer_reference AS "buyerReference",
+                      invoice_email AS "electronicAddress"
                  FROM company WHERE id = $1`, [folio.company_id])
           : folio.guest_id
             ? await client.query<Party>(
