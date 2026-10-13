@@ -200,10 +200,14 @@ export function emailRoutes(
           due_date: string | null; property_name: string }>(
           `SELECT i.id, i.property_id, i.number, i.currency,
                   (i.totals->>'grossCent')::bigint AS gross_cent,
-                  COALESCE((i.totals->>'payableCent')::bigint,
-                           (i.totals->>'grossCent')::bigint)
-                    - COALESCE((SELECT sum(s.amount_cent) FROM settlement s
-                                 WHERE s.invoice_id = i.id), 0) AS open_cent,
+                  -- Anzahlungs- und Stornorechnungen sind nie offen; wie in
+                  -- der Rechnungsliste (Pruefung 13.10.2026, Befund 5).
+                  CASE WHEN i.kind IN ('deposit','credit_note') THEN 0
+                       ELSE COALESCE((i.totals->>'payableCent')::bigint,
+                                     (i.totals->>'grossCent')::bigint)
+                            - COALESCE((SELECT sum(s.amount_cent) FROM settlement s
+                                         WHERE s.invoice_id = i.id), 0)
+                  END AS open_cent,
                   -- Seit 0159 steht die Faelligkeit an der Rechnung; aeltere
                   -- leiten sie wie bisher aus dem Ziel der Firma ab.
                   CASE WHEN i.due_on IS NOT NULL THEN to_char(i.due_on, 'DD.MM.YYYY')

@@ -9,7 +9,7 @@ import { isIsoDate, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SH
          BREAKFAST_FOOD_RATE_BP } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
-         type Party }
+         type Party, type InvoiceTotals }
   from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
@@ -139,6 +139,56 @@ async function vermerkeZuordnen(
     [ids, invoiceId])
 }
 
+/**
+ * Der Kalendertag im Haus, nicht der der Datenbank.
+ *
+ * Die Datenbank laeuft in UTC. Eine Rechnung zwischen Mitternacht und zwei
+ * Uhr trug damit das Datum des Vortags, und in der Silvesternacht eine
+ * Nummer des Vorjahres (Pruefung 13.10.2026). Ausstellungstag und
+ * Nummernjahr kommen deshalb aus `property.timezone`.
+ */
+async function heuteImHaus(client: PoolClient, propertyId: number): Promise<string> {
+  const r = await client.query<{ heute: string }>(
+    `SELECT (now() AT TIME ZONE timezone)::date::text AS heute
+       FROM property WHERE id = $1`, [propertyId])
+  return r.rows[0]!.heute
+}
+
+/**
+ * Der offene Geschaeftstag. Fehlt er, weil der erste Nachtlauf noch nicht
+ * war, gilt der Kalendertag im Haus.
+ */
+async function offenerGeschaeftstag(client: PoolClient, propertyId: number): Promise<string> {
+  const bd = await client.query<{ date: string }>(
+    `SELECT date::text FROM business_day
+      WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
+    [propertyId])
+  return bd.rows[0]?.date ?? await heuteImHaus(client, propertyId)
+}
+
+/**
+ * Die Summen einer Stornorechnung: die des Originals mit umgekehrtem
+ * Vorzeichen. Nicht aus den Gegenbuchungen neu gerechnet -- die
+ * Stornorechnung hebt auf, was auf dem Original stand, auch dessen
+ * Rundungsausgleich, und nicht, was eine neue Rechnung heute ergaebe.
+ * Vorausbezahlt ist sie ganz: sie wird mit dem Original verrechnet, Geld
+ * fliesst nicht.
+ */
+function gegenSummen(t: Record<string, unknown>): InvoiceTotals & {
+  roundingCent: number; payableCent: number; prepaidCent: number
+} {
+  const n = (v: unknown): number => -Number(v ?? 0)
+  const gruppen = (t.groups as Array<Record<string, number>> | undefined) ?? []
+  const brutto = n(t.grossCent)
+  const zahlbar = t.payableCent === undefined ? brutto : n(t.payableCent)
+  return {
+    netCent: n(t.netCent), taxCent: n(t.taxCent), grossCent: brutto,
+    groups: gruppen.map(g => ({ rateBp: Number(g.rateBp), netCent: n(g.netCent),
+                                taxCent: n(g.taxCent), grossCent: n(g.grossCent) })),
+    roundingCent: n(t.roundingCent), payableCent: zahlbar, prepaidCent: zahlbar
+  }
+}
+
 /** Grossbuchstaben und Ziffern, bis sechs; der Bindestrich kommt von selbst. */
 const KUERZEL = /^[A-Z0-9]{1,6}$/
 
@@ -146,6 +196,7 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
   prefix: string | null; missing: boolean; locked: boolean; nextNumber: string
   paymentTermsDays: number
 }> {
+  const jahr = Number((await heuteImHaus(client, propertyId)).slice(0, 4))
   const r = await client.query<{ prefix: string | null; fehlt: boolean
                                  zaehler: string | null; naechste: string | null
                                  ziel: number }>(
@@ -154,13 +205,12 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
             p.payment_terms_days AS ziel
        FROM property p
        LEFT JOIN invoice_counter c ON c.property_id = p.id AND c.year = $2
-      WHERE p.id = $1`, [propertyId, new Date().getUTCFullYear()])
+      WHERE p.id = $1`, [propertyId, jahr])
   const z = r.rows[0]!
   const locked = z.prefix !== null && ((await client.query(
     `SELECT 1 FROM invoice
       WHERE property_id = $1 AND (number LIKE $2 OR number LIKE $3) LIMIT 1`,
     [propertyId, `${z.prefix}-%`, `${TRAINING_PREFIX}${z.prefix}-%`])).rowCount ?? 0) > 0
-  const jahr = new Date().getUTCFullYear()
   const nextNumber = `${z.zaehler ?? ''}${z.prefix === null ? '' : `${z.prefix}-`}${jahr}-`
     + String(Number(z.naechste ?? 1)).padStart(5, '0')
   return {
@@ -227,7 +277,7 @@ async function naechsteNummer(
     `SELECT invoice_prefix_missing($1) AS fehlt`, [propertyId])
   if (kuerzel.rows[0]!.fehlt) throw Errors.unprocessable('invoice.prefixMissing')
 
-  const year = new Date().getUTCFullYear()
+  const year = Number((await heuteImHaus(client, propertyId)).slice(0, 4))
   if (await isTrainingProperty(client, propertyId)) {
     await client.query(
       `INSERT INTO invoice_counter (property_id, year, prefix)
@@ -397,6 +447,13 @@ function auftragPruefen(a: RechnungsAuftrag): void {
       if (land && !/^[A-Z]{2}$/.test(land)) f['recipient.country'] = ['field.invalid']
     }
   }
+  // Eine Stornorechnung entsteht nur ueber `POST /v1/invoices/:ref/cancel`,
+  // mit Bezug und Gegenbuchungen. Ungeprueft durchgereicht entstand hier
+  // eine "Stornorechnung" mit positiven Betraegen und ohne Original
+  // (Pruefung 13.10.2026, Befund 2).
+  if (a.kind !== undefined && a.kind !== 'final' && a.kind !== 'interim') {
+    f.kind = ['field.invalid']
+  }
   if (a.dueOn !== undefined && !isIsoDate(a.dueOn)) f.dueOn = ['field.isoDate']
   if (a.paid !== undefined && typeof a.paid?.paymentMethodCode !== 'string') {
     f['paid.paymentMethodCode'] = ['field.required']
@@ -480,9 +537,12 @@ async function rechnungsEntwurf(
        FROM deposit_ledger dl
        JOIN invoice di ON di.id = dl.deposit_invoice_id
       WHERE dl.folio_id = $1 AND dl.kind = 'received'
+        -- Offen ist, was keine Schlussrechnung verrechnet, die noch gilt:
+        -- eine Stornorechnung hebt die Verrechnung wieder auf (0160).
         AND NOT EXISTS (
           SELECT 1 FROM deposit_ledger a
-           WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied')
+           WHERE a.deposit_invoice_id = dl.deposit_invoice_id AND a.kind = 'applied'
+             AND NOT EXISTS (SELECT 1 FROM invoice s WHERE s.reverses_id = a.applied_invoice_id))
       ORDER BY dl.id`,
     [folio.id]) : { rows: [] as Array<{
       deposit_invoice_id: number; net_cent: string; tax_cent: string
@@ -604,11 +664,8 @@ async function rechnungsEntwurf(
   const vorgabe = recipient.rows[0] ?? {}
   const empfaenger = mitAbweichung(vorgabe, auftrag.recipient)
 
-  const bd = await client.query<{ date: string }>(
-    `SELECT date::text FROM business_day
-      WHERE property_id = $1 AND status = 'open' ORDER BY date DESC LIMIT 1`,
-    [folio.property_id])
-  const businessDate = bd.rows[0]?.date ?? new Date().toISOString().slice(0, 10)
+  const businessDate = await offenerGeschaeftstag(client, folio.property_id)
+  const heute = await heuteImHaus(client, folio.property_id)
 
   /*
    * Leistungszeitraum nach § 14 Abs. 4 Nr. 6 UStG.
@@ -629,15 +686,14 @@ async function rechnungsEntwurf(
    * des Hauses, gezaehlt ab dem Ausstellungstag. Ist nichts offen, gibt es
    * keine: "zahlbar bis" ueber null Euro liest ein Gast als Mahnung.
    */
-  const ziel = await client.query<{ heute: string; vorgabe: string; spaetestens: string }>(
-    `SELECT current_date::text AS heute,
-            (current_date + COALESCE(
+  const ziel = await client.query<{ vorgabe: string; spaetestens: string }>(
+    `SELECT ($4::date + COALESCE(
                (SELECT c.payment_terms_days FROM company c WHERE c.id = $2),
                p.payment_terms_days))::text AS vorgabe,
-            (current_date + $3::int)::text AS spaetestens
+            ($4::date + $3::int)::text AS spaetestens
        FROM property p WHERE p.id = $1`,
-    [folio.property_id, folio.company_id, ZIEL_MAX_TAGE])
-  const { heute, spaetestens } = ziel.rows[0]!
+    [folio.property_id, folio.company_id, ZIEL_MAX_TAGE, heute])
+  const { spaetestens } = ziel.rows[0]!
   if (auftrag.dueOn !== undefined && (auftrag.dueOn < heute || auftrag.dueOn > spaetestens)) {
     throw Errors.validation({ dueOn: ['field.range'] }, { min: heute, max: spaetestens })
   }
@@ -1400,11 +1456,23 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const num = await naechsteNummer(client, folio.property_id)
 
-        const totals = sumInvoice(positionen)
+        /*
+         * Die Anzahlungsrechnung entsteht erst, wenn das Geld da ist: sie
+         * belegt einen Zahlungseingang. Sie ist deshalb bezahlt, und das
+         * steht in der Momentaufnahme (BT-113 gleich BT-112, Zahlbetrag 0).
+         * Bisher fehlte es, und der Beleg forderte den ganzen Betrag ein
+         * zweites Mal; die Liste fuehrte sie dauerhaft als offen, und der
+         * Validator wies sie nach BR-CO-25 ab (Pruefung 13.10.2026,
+         * Befund 5).
+         */
+        const summen = sumInvoice(positionen)
+        const totals = { ...summen, roundingCent: 0,
+                         payableCent: summen.grossCent, prepaidCent: summen.grossCent }
 
+        const heute = await heuteImHaus(client, folio.property_id)
         const maengel = blockingFindings({
           number: num.rows[0]!.next_invoice_number,
-          issuedOn: new Date().toISOString().slice(0, 10),
+          issuedOn: heute,
           serviceFrom: arrival, serviceTo: departure,
           issuer: prop.rows[0] ?? {},
           recipient: recipient.rows[0] ?? {},
@@ -1427,11 +1495,12 @@ export function billingRoutes(app: FastifyInstance): void {
           `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
                                 service_from, service_to,
                                 issuer_snapshot, recipient_snapshot, totals, created_by)
-           VALUES ($1,$2,$3,current_date,$4::date,'deposit',$5::date,$6::date,$7,$8,$9,$10)
+           VALUES ($1,$2,$3,$11::date,$4::date,'deposit',$5::date,$6::date,$7,$8,$9,$10)
            RETURNING id, public_ref, number`,
           [folio.property_id, folio.id, num.rows[0]!.next_invoice_number, settlement.business_date,
            arrival, departure, JSON.stringify(prop.rows[0] ?? {}),
-           JSON.stringify(recipient.rows[0] ?? {}), JSON.stringify(totals), principal.userId])
+           JSON.stringify(recipient.rows[0] ?? {}), JSON.stringify(totals), principal.userId,
+           heute])
 
         /*
          * Die Vereinnahmung ins Anzahlungsjournal eintragen, je Satzgruppe
@@ -1531,7 +1600,19 @@ export function billingRoutes(app: FastifyInstance): void {
                            (i.totals->>'grossCent')::bigint) AS "payableCent",
                   -- ::bigint, weil sum() ueber bigint numeric liefert und
                   -- numeric als Zeichenkette ankommt.
-                  COALESCE(z.summe, 0)::bigint AS "settledCent",
+                  -- Eine Anzahlungsrechnung belegt einen Zahlungseingang, eine
+                  -- Stornorechnung wird mit ihrem Original verrechnet: beide
+                  -- sind nie offen (Befund 2 und 5 der Pruefung vom
+                  -- 13.10.2026). Bisher stand jede Anzahlungsrechnung fuer
+                  -- immer als offen in der Liste.
+                  CASE i.kind
+                    WHEN 'deposit' THEN COALESCE(a.summe, 0)
+                    WHEN 'credit_note' THEN COALESCE((i.totals->>'payableCent')::bigint,
+                                                     (i.totals->>'grossCent')::bigint)
+                    ELSE COALESCE(z.summe, 0)
+                  END::bigint AS "settledCent",
+                  sn.number AS "cancelledBy",
+                  o.number AS "reverses",
                   COALESCE(i.recipient_snapshot->>'name', '') AS recipient,
                   f.public_ref AS "folioRef",
                   d.invoice_id IS NOT NULL AS "documentReady",
@@ -1549,6 +1630,12 @@ export function billingRoutes(app: FastifyInstance): void {
                           FROM settlement
                          WHERE property_id = $1 AND invoice_id IS NOT NULL
                          GROUP BY invoice_id) z ON z.invoice_id = i.id
+             LEFT JOIN (SELECT deposit_invoice_id, sum(amount_gross_cent) AS summe
+                          FROM deposit_ledger
+                         WHERE property_id = $1 AND kind = 'received'
+                         GROUP BY deposit_invoice_id) a ON a.deposit_invoice_id = i.id
+             LEFT JOIN invoice sn ON sn.reverses_id = i.id
+             LEFT JOIN invoice o ON o.id = i.reverses_id
             WHERE i.property_id = $1
               AND i.issued_on BETWEEN $2::date AND $3::date
               AND ($4::text IS NULL OR i.kind = $4)
@@ -1594,6 +1681,177 @@ export function billingRoutes(app: FastifyInstance): void {
         reply.header('content-type', 'application/pdf')
         reply.header('content-disposition', `attachment; filename="${name}"`)
         return pdf
+      })
+    }
+  })
+
+  /**
+   * Stornorechnung (Pruefung 13.10.2026, Befund 2).
+   *
+   * Hebt eine Schluss- oder Zwischenrechnung ganz auf: eine eigene Rechnung
+   * mit eigener Nummer, Typ 381 und Bezug auf das Original (BT-25). Eine
+   * falsche Rechnung laesst sich nicht aendern -- sie ist Haertegrad 1 --,
+   * aber berichtigen, und erst die Berichtigung beendet die Steuerschuld
+   * aus § 14c UStG.
+   *
+   * **Was dabei am Folio geschieht.** Jede Position des Originals bekommt
+   * eine Gegenbuchung, die auf der Stornorechnung steht, und daneben eine
+   * neue, offene Buchung mit denselben Angaben. Der Saldo bleibt, und die
+   * richtige Rechnung entsteht danach wie jede andere -- mit anderer
+   * Anschrift, ohne eine Position, mit Nachlass. Beide Buchungen tragen
+   * den Geschaeftstag des Originals: der Leistungszeitraum der neuen
+   * Rechnung bleibt der Aufenthalt, und die Tagesstatistik sieht netto
+   * nichts.
+   *
+   * Zahlungsvermerke und Anzahlungen, die dem Original zugeordnet waren,
+   * werden ebenso uebertragen: Gegenvermerk auf der Stornorechnung, neuer
+   * offener Vermerk daneben. Ohne das stuende die neue Rechnung als offen
+   * da, obwohl der Gast laengst bezahlt hat.
+   *
+   * Anzahlungsrechnungen nicht: die hebt eine Rueckzahlung auf, keine
+   * Stornierung, weil an ihr ein Zahlungseingang haengt.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/invoices/:invoiceRef/cancel',
+    permission: 'invoice:credit',
+    summary: 'Rechnung stornieren',
+    handler: async (req, reply) => {
+      const { invoiceRef } = req.params as { invoiceRef: string }
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, { invoiceRef }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const o = await client.query<{
+          id: number; property_id: number; folio_id: number; number: string; kind: string
+          issued_on: string; service_from: string | null; service_to: string | null
+          issuer_snapshot: unknown; recipient_snapshot: unknown
+          totals: Record<string, unknown> }>(
+          `SELECT id, property_id, folio_id, number, kind, issued_on::text,
+                  service_from::text, service_to::text,
+                  issuer_snapshot, recipient_snapshot, totals
+             FROM invoice WHERE public_ref = $1`, [invoiceRef])
+        if (o.rowCount === 0) throw Errors.notFound('res.invoice')
+        const original = o.rows[0]!
+        rechtImHaus(principal, 'invoice:credit', original.property_id)
+
+        // Unter der Sperre des Folios, wie das Festschreiben: zwei
+        // Stornierungen zugleich faenden sonst beide kein Storno vor.
+        const f = await client.query<{ public_ref: string }>(
+          `SELECT public_ref FROM folio WHERE id = $1 FOR UPDATE`, [original.folio_id])
+        const folioRef = f.rows[0]!.public_ref
+
+        if (original.kind !== 'final' && original.kind !== 'interim') {
+          throw Errors.conflict('invoice.notCancellable')
+        }
+        const schon = await client.query<{ number: string }>(
+          `SELECT number FROM invoice WHERE reverses_id = $1`, [original.id])
+        if ((schon.rowCount ?? 0) > 0) {
+          throw Errors.conflict('invoice.alreadyCancelled', { number: schon.rows[0]!.number })
+        }
+
+        const businessDate = await offenerGeschaeftstag(client, original.property_id)
+        const heute = await heuteImHaus(client, original.property_id)
+        const num = await naechsteNummer(client, original.property_id)
+        const totals = gegenSummen(original.totals)
+
+        const cn = await client.query<{ id: number; public_ref: string; number: string }>(
+          `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
+                                service_from, service_to, issuer_snapshot,
+                                recipient_snapshot, totals, reverses_id, created_by)
+           VALUES ($1,$2,$3,$12::date,$4::date,'credit_note',$5::date,$6::date,
+                   $7,$8,$9,$10,$11)
+           RETURNING id, public_ref, number`,
+          [original.property_id, original.folio_id, num.rows[0]!.next_invoice_number,
+           businessDate, original.service_from, original.service_to,
+           JSON.stringify(original.issuer_snapshot),
+           JSON.stringify(original.recipient_snapshot),
+           JSON.stringify(totals), original.id, principal.userId, heute])
+        const gutschrift = cn.rows[0]!
+
+        // Gegenbuchungen auf die Stornorechnung, neue offene Buchungen ans
+        // Folio. Herkunft und Fremdreferenz der Kasse bleiben am Original:
+        // sie sind je Haus eindeutig und gehoeren zu genau einer Buchung.
+        await client.query(
+          `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                               net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                               revenue_account, product_id, reservation_id, reverses_id,
+                               invoice_id, created_by, package_part)
+           SELECT c.property_id, c.folio_id, c.business_date, 'Storno ' || c.description,
+                  c.quantity, -c.net_cent, -c.tax_cent, -c.gross_cent, c.tax_rate_bp,
+                  c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id,
+                  $2, $3, c.package_part
+             FROM charge c WHERE c.invoice_id = $1 ORDER BY c.id`,
+          [original.id, gutschrift.id, principal.userId])
+        await client.query(
+          `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                               net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                               revenue_account, product_id, reservation_id,
+                               created_by, package_part)
+           SELECT c.property_id, c.folio_id, c.business_date, c.description,
+                  c.quantity, c.net_cent, c.tax_cent, c.gross_cent, c.tax_rate_bp,
+                  c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id,
+                  $2, c.package_part
+             FROM charge c WHERE c.invoice_id = $1 ORDER BY c.id`,
+          [original.id, principal.userId])
+
+        // Zahlungsvermerke des Originals: Gegenvermerk auf die
+        // Stornorechnung, derselbe Betrag wieder offen am Folio.
+        await client.query(
+          `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent,
+                                   payment_method_id, external_reference, invoice_id,
+                                   reverses_id, created_by)
+           SELECT s.property_id, s.folio_id, $2::date, -s.amount_cent, s.payment_method_id,
+                  s.external_reference, $3, s.id, $4
+             FROM settlement s WHERE s.invoice_id = $1 ORDER BY s.id`,
+          [original.id, businessDate, gutschrift.id, principal.userId])
+        await client.query(
+          `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent,
+                                   payment_method_id, external_reference, created_by)
+           SELECT s.property_id, s.folio_id, $2::date, s.amount_cent, s.payment_method_id,
+                  s.external_reference, $3
+             FROM settlement s WHERE s.invoice_id = $1 ORDER BY s.id`,
+          [original.id, businessDate, principal.userId])
+
+        // Verrechnete Anzahlungen werden wieder offen.
+        await client.query(
+          `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                       amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                       business_date, applied_invoice_id, created_by)
+           SELECT dl.property_id, dl.folio_id, dl.deposit_invoice_id, 'unapplied',
+                  dl.amount_gross_cent, dl.net_cent, dl.tax_cent, dl.tax_rate_bp,
+                  $2::date, $3, $4
+             FROM deposit_ledger dl
+            WHERE dl.applied_invoice_id = $1 AND dl.kind = 'applied'
+            ORDER BY dl.id`,
+          [original.id, businessDate, gutschrift.id, principal.userId])
+
+        const result = {
+          invoiceRef: gutschrift.public_ref,
+          number: gutschrift.number,
+          reversesNumber: original.number,
+          totals
+        }
+
+        await emitEvent(client, original.property_id, 'invoice.finalized', {
+          invoiceRef: result.invoiceRef,
+          number: result.number,
+          folioRef,
+          kind: 'credit_note',
+          reversesNumber: original.number,
+          serviceFrom: original.service_from, serviceTo: original.service_to,
+          grossCent: totals.grossCent,
+          payableCent: totals.payableCent
+        })
+
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
       })
     }
   })
@@ -1729,14 +1987,14 @@ export function billingRoutes(app: FastifyInstance): void {
                                 service_from, service_to,
                                 issuer_snapshot, recipient_snapshot, totals, created_by,
                                 due_on)
-           VALUES ($1,$2,$3,current_date,$4::date,$5,$6::date,$7::date,$8,$9,$10,$11,
+           VALUES ($1,$2,$3,$13::date,$4::date,$5,$6::date,$7::date,$8,$9,$10,$11,
                    $12::date)
            RETURNING id, public_ref, number`,
           [folio.property_id, folio.id, num.rows[0]!.next_invoice_number, businessDate,
            body.kind ?? 'final', serviceFrom, serviceTo,
            JSON.stringify(e.issuer), JSON.stringify(e.recipient),
            JSON.stringify(totals), principal.userId,
-           body.paid !== undefined ? null : e.dueOn])
+           body.paid !== undefined ? null : e.dueOn, e.heute])
 
         // charge.invoice_id wird einmal gesetzt und nie geaendert. Die Tabelle
         // ist append-only, daher hebt der Trigger hier gezielt ab: das
@@ -1878,12 +2136,18 @@ export function billingRoutes(app: FastifyInstance): void {
                       'grossCent', dl.amount_gross_cent,
                       'taxCent', dl.tax_cent)
                     ORDER BY dl.tax_rate_bp) FILTER (WHERE dl.kind = 'received') AS groups,
-                  max(ai.number) AS "appliedInvoiceNumber",
-                  max(ai.public_ref) AS "appliedInvoiceRef",
-                  max(dl.business_date) FILTER (WHERE dl.kind = 'applied')::text AS "appliedOn"
+                  -- Verrechnet ist sie mit der Schlussrechnung, die noch gilt;
+                  -- eine stornierte hat die Verrechnung wieder aufgehoben.
+                  max(ai.number) FILTER (WHERE dl.kind = 'applied' AND sn.id IS NULL)
+                    AS "appliedInvoiceNumber",
+                  max(ai.public_ref) FILTER (WHERE dl.kind = 'applied' AND sn.id IS NULL)
+                    AS "appliedInvoiceRef",
+                  max(dl.business_date) FILTER (WHERE dl.kind = 'applied' AND sn.id IS NULL)::text
+                    AS "appliedOn"
              FROM deposit_ledger dl
              JOIN invoice di ON di.id = dl.deposit_invoice_id
              LEFT JOIN invoice ai ON ai.id = dl.applied_invoice_id
+             LEFT JOIN invoice sn ON sn.reverses_id = dl.applied_invoice_id
             WHERE dl.folio_id = $1
             GROUP BY di.id, di.public_ref, di.number, di.issued_on
             ORDER BY di.number`,

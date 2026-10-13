@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ReservationDetail, BookingCreated, AvailabilityDay } from '@hotelpms/contracts'
 import { api, ApiError, newIdempotencyKey } from '../api.js'
+import { auschecken } from '../auschecken.js'
+import { useLocale } from '../i18n/index.js'
 
 /**
  * Die Zimmergruppe ist ausgebucht -- die Antwort, auf die die Rezeption mit
@@ -396,11 +398,15 @@ export function useChangeStay() {
 /** Storno und Wiederherstellen (A11), Check-out und dessen Gegenstueck. */
 export function useReservationStatusAction(reservationRef: string) {
   const qc = useQueryClient()
+  const locale = useLocale()
   return useMutation({
     mutationFn: (action: 'cancel' | 'reinstate' | 'check-out' | 'undo-check-in' | 'no-show'
                  | 'undo-check-out') =>
-      api.post<{ reservationRef: string; status: string }>(
-        `/v1/reservations/${reservationRef}/${action}`),
+      action === 'check-out'
+        ? auschecken<{ reservationRef: string; status: string }>(
+            `/v1/reservations/${reservationRef}/${action}`, locale)
+        : api.post<{ reservationRef: string; status: string }>(
+            `/v1/reservations/${reservationRef}/${action}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
       void qc.invalidateQueries({ queryKey: ['tape'] })

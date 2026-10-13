@@ -1,10 +1,10 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { InvoiceListItem } from '@hotelpms/contracts'
 import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail,
-         useRecordInvoicePayment, istBelegInArbeit, zeitraum,
+         useRecordInvoicePayment, useCancelInvoice, istBelegInArbeit, zeitraum,
          MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
 import { usePaymentMethods } from '../lib/queries.js'
-import { ApiError } from '../lib/api.js'
+import { ApiError, newIdempotencyKey } from '../lib/api.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
@@ -18,11 +18,12 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
  * — der ein Übungshaus hart abweist und an einem Recht hängt, das die
  * Rezeption nicht hat.
  *
- * **Kein „offen"-Merkmal.** Ob eine Rechnung bezahlt ist, weiß das Modell
- * nicht: `settlement.invoice_id` wäre die Stelle dafür und wird nirgends
- * geschrieben. Eine solche Spalte zeigte bei jeder Rechnung den vollen
- * Betrag, auch bei der längst bezahlten. Der Zahlungsstand steht am
- * Gastkonto, und dorthin führt ein Knopf an jeder Zeile.
+ * **Zahlungsstand.** Je Rechnung die Zahlungsvermerke, die ihr zugeordnet
+ * sind (`settlement.invoice_id`, geschrieben beim Festschreiben und bei
+ * „Zahlung eingegangen"). Anzahlungs- und Stornorechnungen sind nie offen:
+ * die eine belegt einen Zahlungseingang, die andere wird mit ihrem
+ * Original verrechnet. Vermerke von vor der Zuordnung trägt keine
+ * Rechnung; dann ist der Saldo am Gastkonto die Wahrheit.
  */
 
 const ARTEN = ['final', 'interim', 'deposit', 'credit_note'] as const
@@ -172,15 +173,20 @@ function ZahlungEingegangen({ r, propertyId, onFertig }: {
 }
 
 function Zeile(
-  { r, propertyId, offen, onOffen, darfSenden, onFolio }: {
+  { r, propertyId, offen, onOffen, darfSenden, darfStornieren, onFolio }: {
     r: InvoiceListItem; propertyId: number
     offen: Aufgeklappt | null
     onOffen: (was: Aufgeklappt | null) => void
     darfSenden: boolean
+    darfStornieren: boolean
     onFolio: (folioRef: string) => void }
 ): JSX.Element {
   const t = useT()
   const locale = useLocale()
+  const online = useOnline()
+  const stornieren = useCancelInvoice(propertyId)
+  const storniert = r.cancelledBy !== null
+  const abrechnung = r.kind === 'final' || r.kind === 'interim'
 
   return (
     <li className="rounded-sm border border-neutral-200 bg-white p-3">
@@ -192,6 +198,11 @@ function Zeile(
                          bg-neutral-50 text-neutral-700">
           {t(`inv.kind.${r.kind}` as 'inv.kind.final')}
         </span>
+        {r.reverses !== null && (
+          <span className="text-xs text-neutral-600">
+            {t('inv.reverses', { number: r.reverses })}
+          </span>
+        )}
         <div className="grow" />
         <span className="font-semibold tabular-nums">
           {formatMoney(r.grossCent, locale, r.currency)}
@@ -202,7 +213,11 @@ function Zeile(
           faerbt niemand gruen, und ein offener Rest ist keine Warnung,
           sondern eine Zahl. */}
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-xs">
-        {r.settledCent >= r.payableCent
+        {storniert
+          ? <span className="text-neutral-600">
+              {t('inv.cancelledBy', { number: r.cancelledBy! })}
+            </span>
+          : r.settledCent >= r.payableCent
           ? <span className="text-emerald-800">✓ {t('inv.paid')}</span>
           : <>
               <span className="text-amber-800 tabular-nums">
@@ -243,10 +258,22 @@ function Zeile(
             {t('inv.send')}
           </button>
         )}
-        {r.settledCent < r.payableCent && (r.kind === 'final' || r.kind === 'interim') && (
+        {r.settledCent < r.payableCent && abrechnung && !storniert && (
           <button onClick={() => onOffen(offen === 'zahlung' ? null : 'zahlung')}
                   className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
             {t('rdlg.paymentReceived')}
+          </button>
+        )}
+        {darfStornieren && abrechnung && !storniert && (
+          <button disabled={!online || stornieren.isPending}
+                  onClick={() => {
+                    if (!window.confirm(t('inv.cancelConfirm', { number: r.number }))) return
+                    stornieren.mutate({ invoiceRef: r.invoiceRef, folioRef: r.folioRef,
+                                        key: newIdempotencyKey() })
+                  }}
+                  className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50
+                             disabled:opacity-40">
+            {t('inv.cancel')}
           </button>
         )}
         <button onClick={() => onFolio(r.folioRef)}
@@ -254,6 +281,7 @@ function Zeile(
           {t('inv.folio')}
         </button>
       </div>
+      {stornieren.isError && <div className="mt-2"><Fehler error={stornieren.error} /></div>}
 
       {offen === 'beleg' && <div className="mt-3"><Beleg invoiceRef={r.invoiceRef} /></div>}
       {offen === 'zahlung' && (
@@ -335,6 +363,7 @@ export function Invoices(
 
   const { von } = zeitraum(bis, laenge)
   const darfSenden = permissions.includes('email:send')
+  const darfStornieren = permissions.includes('invoice:credit')
   const q = useInvoices(propertyId, von, bis, kind)
 
   return (
@@ -383,7 +412,8 @@ export function Invoices(
                          offen={offen?.ref === r.invoiceRef ? offen.was : null}
                          onOffen={was => setOffen(
                            was === null ? null : { ref: r.invoiceRef, was })}
-                         darfSenden={darfSenden} onFolio={onFolio} />
+                         darfSenden={darfSenden} darfStornieren={darfStornieren}
+                         onFolio={onFolio} />
                 ))}
               </ul>}
     </div>

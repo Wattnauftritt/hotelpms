@@ -105,6 +105,12 @@ export interface CiiInvoice {
   exemptionReason?: string | null
   /** BT-22, freie Hinweise. Der § 13b-Hinweis kommt von selbst dazu. */
   notes?: string[]
+  /**
+   * BT-25 und BT-26: die Rechnung, die eine Stornorechnung aufhebt. Ohne
+   * Bezug ist eine Stornorechnung nach § 14c UStG keine Berichtigung,
+   * sondern ein zweiter Beleg.
+   */
+  precedingInvoice?: { number: string; issuedOn: IsoDate } | null
 }
 
 /** Wörtlicher Hinweis nach § 14a Abs. 5 UStG. Ohne ihn schuldet das Haus. */
@@ -363,6 +369,26 @@ export function paymentTermsText(inv: CiiInvoice): string | null {
 }
 
 /**
+ * Eine Stornorechnung mit positiven Betraegen.
+ *
+ * Im System traegt sie die Gegenbuchungen, also negative Betraege: so
+ * stimmen Folio, DATEV-Stapel und Blatt ohne Sonderfall. Typ 381 aber ist
+ * eine Gutschrift, und die Norm liest die Richtung aus dem Typ -- negative
+ * Betraege darin drehten sie ein zweites Mal. Gedreht wird deshalb genau
+ * hier und nirgends sonst.
+ */
+function alsGutschrift(inv: CiiInvoice): CiiInvoice {
+  if (inv.kind !== 'credit_note') return inv
+  return {
+    ...inv,
+    // Die Menge bleibt: ihr Vorzeichen folgt im XML dem Betrag (BR-27).
+    lines: inv.lines.map(l => ({ ...l, netCent: -l.netCent })),
+    prepaidCent: -(inv.prepaidCent ?? 0),
+    roundingCent: -(inv.roundingCent ?? 0)
+  }
+}
+
+/**
  * Baut das CII-XML nach EN 16931.
  *
  * Abgedeckt sind die Pflichtfelder des Profils, soweit sie in einer
@@ -375,7 +401,8 @@ export function paymentTermsText(inv: CiiInvoice): string | null {
  * Aufzurufen erst, wenn `ciiFindings` leer ist. Diese Funktion gibt aus,
  * was da ist, und erfindet nichts; sie ist kein zweiter Prüfer.
  */
-export function buildInvoiceCii(inv: CiiInvoice): string {
+export function buildInvoiceCii(beleg: CiiInvoice): string {
+  const inv = alsGutschrift(beleg)
   const totals = ciiTotals(inv)
   const prepaid = inv.prepaidCent ?? 0
   const rundung = inv.roundingCent ?? 0
@@ -466,7 +493,13 @@ export function buildInvoiceCii(inv: CiiInvoice): string {
             leaf('ram:GrandTotalAmount', amount(totals.grossCent)),
             leaf('ram:TotalPrepaidAmount', amount(prepaid)),
             // BR-CO-16: Zahlbetrag = Gesamtsumme - Anzahlung + Rundung.
-            leaf('ram:DuePayableAmount', amount(totals.grossCent - prepaid + rundung)))))
+            leaf('ram:DuePayableAmount', amount(totals.grossCent - prepaid + rundung))),
+          // BT-25 und BT-26, in der XSD-Sequenz nach den Summen.
+          inv.precedingInvoice ? el('ram:InvoiceReferencedDocument',
+            leaf('ram:IssuerAssignedID', inv.precedingInvoice.number),
+            el('ram:FormattedIssueDateTime',
+              leaf('qdt:DateTimeString', inv.precedingInvoice.issuedOn.replace(/-/g, ''),
+                { format: '102' }))) : null))
     ]
   }
 

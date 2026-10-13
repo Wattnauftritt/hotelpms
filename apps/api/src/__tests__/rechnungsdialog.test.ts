@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
-         makeGuest, openBusinessDay, type Fixture } from '@hotelpms/testing'
+         makeGuest, openBusinessDay, heuteImHaus, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildInvoiceCii } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
@@ -73,9 +73,8 @@ async function folio(firma?: { terms: number }): Promise<Folio> {
 const post = (url: string, payload: unknown) => app.inject({
   method: 'POST', url, headers: { ...auth, 'idempotency-key': `k-${++lauf}` }, payload })
 
-const heutePlus = async (tage: number): Promise<string> =>
-  (await owner.query<{ d: string }>(`SELECT (current_date + $1::int)::text AS d`, [tage]))
-    .rows[0]!.d
+// Der Tag im Haus, nicht der der Datenbank: daran rechnet das Zahlungsziel.
+const heutePlus = async (tage: number): Promise<string> => Promise.resolve(heuteImHaus(tage))
 
 describe('Vorschau', () => {
   it('rechnet wie das Festschreiben, ohne eine Nummer zu verbrauchen', async () => {

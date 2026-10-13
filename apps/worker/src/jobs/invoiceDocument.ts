@@ -58,6 +58,8 @@ interface InvoiceRow {
   recipient_snapshot: Partial<CiiParty>
   totals: { grossCent: number; roundingCent?: number; prepaidCent?: number }
   due_on: string | null
+  preceding_number: string | null
+  preceding_issued_on: string | null
 }
 
 interface ChargeRow {
@@ -71,11 +73,17 @@ interface ChargeRow {
 }
 
 interface DepositLedgerRow {
-  kind: 'received' | 'applied'
+  kind: 'received' | 'applied' | 'unapplied'
   net_cent: string | number
   tax_rate_bp: number
   deposit_number: string
   deposit_issued_on: string
+}
+
+/** 2026-10-13 als 13.10.2026. */
+function datumDe(iso: string): string {
+  const [j, m, t] = iso.split('-')
+  return `${t}.${m}.${j}`
 }
 
 function party(snapshot: Partial<CiiParty>): CiiParty {
@@ -112,6 +120,15 @@ function depositLine(d: DepositLedgerRow): CiiLine {
   if (d.kind === 'received') {
     return { name: 'Anzahlung auf den Aufenthalt', quantity: 1,
               netCent: Number(d.net_cent), rateBp: d.tax_rate_bp }
+  }
+  // Auf der Stornorechnung: die Verrechnung wird mit dem Original
+  // aufgehoben, die Anzahlung ist wieder offen.
+  if (d.kind === 'unapplied') {
+    return {
+      name: `Verrechnung der Anzahlung aufgehoben (Rechnung ${d.deposit_number} `
+        + `vom ${d.deposit_issued_on})`,
+      quantity: 1, netCent: Number(d.net_cent), rateBp: d.tax_rate_bp
+    }
   }
   return {
     name: `Anzahlung verrechnet (Rechnung ${d.deposit_number} vom ${d.deposit_issued_on})`,
@@ -171,10 +188,13 @@ async function load(
   client: PoolClient, invoiceId: number
 ): Promise<{ invoice: CiiInvoice; row: InvoiceRow } | null> {
   const i = await client.query<InvoiceRow>(
-    `SELECT id, public_ref, number, issued_on::text, kind, currency,
-            service_from::text, service_to::text,
-            issuer_snapshot, recipient_snapshot, totals, due_on::text
-       FROM invoice WHERE id = $1`, [invoiceId])
+    `SELECT i.id, i.public_ref, i.number, i.issued_on::text, i.kind, i.currency,
+            i.service_from::text, i.service_to::text,
+            i.issuer_snapshot, i.recipient_snapshot, i.totals, i.due_on::text,
+            o.number AS preceding_number, o.issued_on::text AS preceding_issued_on
+       FROM invoice i
+       LEFT JOIN invoice o ON o.id = i.reverses_id
+      WHERE i.id = $1`, [invoiceId])
   if (i.rowCount === 0) return null
   const row = i.rows[0]!
 
@@ -225,12 +245,23 @@ async function load(
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,
     serviceTo: row.service_to ?? daten[daten.length - 1] ?? row.issued_on,
-    prepaidCent: Number(row.totals.prepaidCent ?? s.rows[0]!.prepaid),
+    // Eine Anzahlungsrechnung belegt einen Zahlungseingang und ist bezahlt.
+    // Aeltere tragen das nicht in der Momentaufnahme (Befund 5 der
+    // Pruefung vom 13.10.2026); fuer sie gilt ihre Summe als vereinnahmt.
+    prepaidCent: Number(row.totals.prepaidCent
+      ?? (row.kind === 'deposit' ? row.totals.grossCent : s.rows[0]!.prepaid)),
     // BT-114. Der Ausgleich steht in der festgeschriebenen Momentaufnahme und
     // wird nicht neu gerechnet: waere er ableitbar, waere er nicht noetig.
     // Rechnungen vor Aufgabe 12 haben ihn nicht; dort ist er null.
     roundingCent: Number(row.totals.roundingCent ?? 0),
-    dueOn: row.due_on
+    dueOn: row.due_on,
+    precedingInvoice: row.preceding_number === null ? null
+      : { number: row.preceding_number, issuedOn: row.preceding_issued_on! },
+    // Auf dem Blatt steht der Bezug als Satz, im XML zusaetzlich als
+    // BT-25: ein Mensch liest das eine, der Validator das andere.
+    notes: row.preceding_number === null ? [] : [
+      `Diese Stornorechnung hebt die Rechnung ${row.preceding_number} vom `
+        + `${datumDe(row.preceding_issued_on!)} vollstaendig auf.`]
   }
   return { invoice, row }
 }

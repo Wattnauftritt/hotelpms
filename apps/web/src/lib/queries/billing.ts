@@ -411,3 +411,20 @@ export function useRecordInvoicePayment(propertyId: number) {
     }
   })
 }
+
+/**
+ * Rechnung stornieren (Pruefung 13.10.2026, Befund 2). Danach stehen die
+ * Positionen wieder offen am Folio; die Liste und das Folio laden neu.
+ */
+export function useCancelInvoice(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (b: { invoiceRef: string; folioRef: string; key: string }) =>
+      api.post<{ invoiceRef: string; number: string }>(
+        `/v1/invoices/${b.invoiceRef}/cancel`, {}, { 'idempotency-key': b.key }),
+    onSuccess: (_d, b) => {
+      void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['folio', b.folioRef] })
+    }
+  })
+}
