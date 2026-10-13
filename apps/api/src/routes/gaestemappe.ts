@@ -59,7 +59,7 @@ async function referenzenAnlegen(client: PoolClient, propertyId: number): Promis
 interface EinstellungZeile {
   enabled: boolean; wifi_ssid: string | null; wifi_password: string | null
   wifi_security: 'WPA' | 'WEP' | 'nopass'; wifi_hidden: boolean; messages_enabled: boolean
-  departure_page?: string | null; review_url?: string | null
+  extend_enabled?: boolean; departure_page?: string | null; review_url?: string | null
 }
 
 async function einstellung(
@@ -67,7 +67,7 @@ async function einstellung(
 ): Promise<EinstellungZeile | undefined> {
   const { rows } = await client.query<EinstellungZeile>(
     `SELECT s.enabled, s.wifi_ssid, s.wifi_password, s.wifi_security, s.wifi_hidden,
-            s.messages_enabled, c.public_ref AS departure_page, u.public_ref AS review_url
+            s.messages_enabled, s.extend_enabled, c.public_ref AS departure_page, u.public_ref AS review_url
        FROM guest_folder_setting s
        LEFT JOIN terminal_content c ON c.id = s.departure_content_id AND c.archived_at IS NULL
        LEFT JOIN terminal_url u ON u.id = s.review_url_id AND u.removed_at IS NULL
@@ -109,6 +109,7 @@ async function einstellungAnsicht(
     `SELECT public_ref AS "urlRef", label, url FROM terminal_url
       WHERE property_id = $1 AND removed_at IS NULL ORDER BY label, id`, [propertyId])
   return { enabled: e?.enabled ?? false, messagesEnabled: e?.messages_enabled ?? false,
+           extendEnabled: e?.extend_enabled ?? false,
            departurePage: e?.departure_page ?? null, reviewUrl: e?.review_url ?? null,
            urls: urls.rows, wifi: wlan(e), pages: seiten.rows }
 }
@@ -428,10 +429,13 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
     handler: async (req): Promise<GuestFolderSettings> => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const b = (req.body ?? {}) as { enabled?: unknown; wifi?: unknown; messagesEnabled?: unknown
-                                      departurePage?: unknown; reviewUrl?: unknown }
+                                      extendEnabled?: unknown; departurePage?: unknown
+                                      reviewUrl?: unknown }
       if (typeof b.enabled !== 'boolean') throw Errors.validation({ enabled: ['field.invalid'] })
-      if (b.messagesEnabled !== undefined && typeof b.messagesEnabled !== 'boolean') {
-        throw Errors.validation({ messagesEnabled: ['field.invalid'] })
+      for (const f of ['messagesEnabled', 'extendEnabled'] as const) {
+        if (b[f] !== undefined && typeof b[f] !== 'boolean') {
+          throw Errors.validation({ [f]: ['field.invalid'] })
+        }
       }
       for (const f of ['departurePage', 'reviewUrl'] as const) {
         const v = b[f]
@@ -451,8 +455,9 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
         await client.query(
           `INSERT INTO guest_folder_setting
              (property_id, enabled, wifi_ssid, wifi_password, wifi_security, wifi_hidden, updated_by,
-              messages_enabled, departure_content_id, review_url_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::boolean, false), $10, $12)
+              messages_enabled, departure_content_id, review_url_id, extend_enabled)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::boolean, false), $10, $12,
+                   COALESCE($13::boolean, false))
            ON CONFLICT (property_id) DO UPDATE SET
              enabled = $2, wifi_ssid = $3, wifi_password = $4, wifi_security = $5,
              wifi_hidden = $6, updated_by = $7, updated_at = now(),
@@ -460,11 +465,13 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
              departure_content_id = CASE WHEN $9 THEN $10::bigint
                                          ELSE guest_folder_setting.departure_content_id END,
              review_url_id = CASE WHEN $11 THEN $12::bigint
-                                  ELSE guest_folder_setting.review_url_id END`,
+                                  ELSE guest_folder_setting.review_url_id END,
+             extend_enabled = COALESCE($13::boolean, guest_folder_setting.extend_enabled)`,
           [propertyId, b.enabled, w?.ssid ?? null, w?.password ?? null,
            w?.security ?? 'WPA', w?.hidden ?? false, principal.userId,
            typeof b.messagesEnabled === 'boolean' ? b.messagesEnabled : null,
-           seite !== undefined, seite ?? null, link !== undefined, link ?? null])
+           seite !== undefined, seite ?? null, link !== undefined, link ?? null,
+           typeof b.extendEnabled === 'boolean' ? b.extendEnabled : null])
         if (b.enabled) await referenzenAnlegen(client, propertyId)
         return einstellungAnsicht(client, propertyId)
       })

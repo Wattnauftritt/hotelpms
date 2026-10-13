@@ -106,6 +106,15 @@ Migration `0154`, Svens Entscheidungen vom 11.10.2026: späte Abreise gegen Geb�
 - **Abreiseseite.** Eine der Seiten in der Mappe, gewählt unter Einstellungen → Gästemappe. Ab dem Abend vor der Abreise nennt der Abschnitt des Aufenthalts die Check-out-Zeit und verweist auf diese Seite.
 - **Bewertungslink.** Eine am Gästeterminal freigegebene Adresse (`terminal_url`, nur https), keine, die nur hier jemand eintippt. Am Abreisetag als Knopf, in neuem Fenster und ohne `Referer`. Eine entfernte Adresse verschwindet aus der Mappe.
 
-## 11. Was als Nächstes kommt
+## 11. Noch eine Nacht
 
-1. Verlängern, Upgrade, Bericht „Umsatz aus der Gästemappe“.
+Migration `0156`, Plan Abschnitt 9.1 Punkt 1. Eine Nacht mehr bringt mehr als jedes Extra, und direkt gebucht kostet sie keine Provision.
+
+- **Eine Anfrage, keine Buchung.** Die Mappe fragt „Noch eine Nacht bleiben?“ mit Datum und Preis; der Gast fragt an, die Rezeption nimmt an oder lehnt ab. Erst das Annehmen rückt die Abreise, über dieselbe Rechnung wie `change-stay` (Bestand, Zimmer, Preis der Nacht). Aufs Folio kommt dabei nichts; die Nacht bucht der Nachtlauf wie jede andere. Hat sich die Abreise seit der Anfrage geändert, wird nichts verlängert (`guestRequest.extensionStale`).
+- **Angeboten** ab dem zweiten Tag bis zum Abreisetag, wenn das Haus es eingeschaltet hat (aus als Vorgabe), keine Anfrage schon offen ist, niemand in der Nacht in das Zimmer des Gastes kommt und die Gruppe samt Haussumme in `inventory_day` noch ein Zimmer hat. Nicht für einen Abruf aus einem Kontingent.
+- **Der Preis** ist der Schnitt der Nächte, die der Aufenthalt schon hat. So rechnet `change-stay` die neue Nacht, und so steht sie danach auf der Rechnung. Ohne Preis kein Angebot.
+- Nur in der Mappe, nicht am Terminal: wer dort steht, steht vor der Rezeption.
+
+## 12. Was als Nächstes kommt
+
+1. Upgrade am Anreisetag, Bericht „Umsatz aus der Gästemappe“.

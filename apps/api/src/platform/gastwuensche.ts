@@ -74,24 +74,28 @@ export async function mappeWuensche(
         AND ${angeboten('$3')}
       ORDER BY i.position, i.id`, [propertyId, reservationId, businessDate])
   const mine = await client.query<FolderRequests['mine'][number]>(
-    `SELECT q.public_ref AS "requestRef", i.name, q.message, q.qty,
+    `SELECT q.public_ref AS "requestRef", i.name, q.message, q.is_extension AS "isExtension", q.qty,
             q.unit_price_cent::int AS "unitPriceCent", q.wanted_for::text AS "wantedFor",
             q.status, q.decline_reason AS "declineReason", q.created_at AS "createdAt"
        FROM guest_request q
        LEFT JOIN guest_request_item i ON i.id = q.item_id
-      WHERE q.reservation_id = $1 AND (NOT q.is_message OR $2)
+      WHERE q.reservation_id = $1 AND (NOT (q.is_message OR q.is_extension) OR $2)
       ORDER BY q.created_at DESC, q.id DESC`, [reservationId, tuer === 'folder'])
-  // Die Nachricht gibt es nur in der Mappe: am Terminal steht der naechste
-  // Gast hinter dem, der gerade tippt (Dokument 31).
+  // Nachricht und Verlaengerung gibt es nur in der Mappe: am Terminal steht
+  // der naechste Gast hinter dem, der gerade tippt (Dokument 31), und wer
+  // verlaengern will, steht ohnehin vor der Rezeption.
   const messages = tuer === 'folder' && await nachrichtAn(client, propertyId)
-  if (items.rowCount === 0 && mine.rowCount === 0 && !messages) return null
+  const extension = tuer === 'folder'
+    ? await verlaengerungAngebot(client, propertyId, reservationId, businessDate) : null
+  if (items.rowCount === 0 && mine.rowCount === 0 && !messages && extension === null) return null
   const days = await client.query<{ d: string }>(
     `SELECT d::date::text AS d
        FROM reservation r,
             generate_series(greatest(r.arrival, $2::date), r.departure, interval '1 day') d
       WHERE r.id = $1
       ORDER BY d`, [reservationId, businessDate])
-  return { items: items.rows, mine: mine.rows, days: days.rows.map(r => r.d), messages }
+  return { items: items.rows, mine: mine.rows, days: days.rows.map(r => r.d), messages,
+           extension }
 }
 
 /** Ob das Haus die Nachricht an die Rezeption eingeschaltet hat (0153). */
@@ -140,6 +144,68 @@ export async function nachrichtAnlegen(
                                 message, qty, source)
      VALUES ($1, $2, $3, true, $4, 1, 'folder')`,
     [a.propertyId, a.reservationId, res.resource_id, a.text])
+}
+
+/**
+ * Noch eine Nacht (0156): was die Mappe anbietet, oder `null`.
+ *
+ * Ab dem zweiten Tag bis zum Abreisetag, nur wenn das Haus es eingeschaltet
+ * hat, keine Verlaengerung schon offen ist und die Nacht frei ist -- im
+ * Zimmer des Gastes und in seiner Gruppe, Haussumme eingeschlossen. Kein
+ * Abruf aus einem Kontingent: dessen Tage gehoeren dem Kontingent, und
+ * `change-stay` weist ihn ab.
+ *
+ * Der Preis ist der, den `change-stay` fuer die neue Nacht ansetzt: der
+ * Schnitt der Naechte, die der Aufenthalt schon hat. So sieht der Gast,
+ * was danach auf der Rechnung steht. Ohne Preis kein Angebot -- eine Nacht
+ * fuer null Euro ist ein Fehler, kein Angebot.
+ */
+export async function verlaengerungAngebot(
+  client: PoolClient, propertyId: number, reservationId: number, businessDate: string
+): Promise<{ night: string; priceCent: number } | null> {
+  const r = await client.query<{ night: string; preis: number | null }>(
+    `SELECT r.departure::text AS night,
+            (SELECT round(avg(price_cent))::int FROM reservation_night
+              WHERE reservation_id = r.id) AS preis
+       FROM reservation r
+       JOIN guest_folder_setting s ON s.property_id = r.property_id AND s.extend_enabled
+      WHERE r.id = $1 AND r.property_id = $2
+        AND r.status::text IN ('Confirmed','InHouse') AND r.block_id IS NULL
+        AND $3::date > r.arrival AND $3::date <= r.departure
+        AND NOT EXISTS (SELECT 1 FROM guest_request q
+                         WHERE q.reservation_id = r.id AND q.is_extension
+                           AND q.status = 'open')
+        AND NOT EXISTS (SELECT 1 FROM reservation n
+                         WHERE n.resource_id = r.resource_id AND n.id <> r.id
+                           AND n.arrival <= r.departure AND n.departure > r.departure
+                           AND n.status::text IN ('Optional','Confirmed','InHouse'))
+        AND (SELECT count(*) FROM inventory_day d
+              WHERE d.property_id = r.property_id AND d.date = r.departure
+                AND d.category_id IN (0, r.category_id)
+                AND d.capacity - d.sold - d.blocked > 0) = 2`,
+    [reservationId, propertyId, businessDate])
+  const z = r.rows[0]
+  return z === undefined || z.preis === null || z.preis <= 0
+    ? null : { night: z.night, priceCent: z.preis }
+}
+
+/** Die Anfrage nach der naechsten Nacht (0156); verlaengert wird beim Annehmen. */
+export async function verlaengerungAnlegen(
+  client: PoolClient, a: { propertyId: number; reservationId: number; businessDate: string }
+): Promise<void> {
+  const r = await client.query<{ resource_id: number | null }>(
+    `SELECT resource_id::int FROM reservation WHERE id = $1 AND property_id = $2 FOR UPDATE`,
+    [a.reservationId, a.propertyId])
+  if (r.rows[0] === undefined) throw Errors.notFound('res.reservation')
+  const angebot = await verlaengerungAngebot(client, a.propertyId, a.reservationId,
+    a.businessDate)
+  if (angebot === null) throw Errors.unprocessable('guestRequest.extensionUnavailable')
+  await offeneGrenze(client, a.reservationId)
+  await client.query(
+    `INSERT INTO guest_request (property_id, reservation_id, resource_id, is_extension, qty,
+                                unit_price_cent, wanted_for, source)
+     VALUES ($1, $2, $3, true, 1, $4, $5::date, 'folder')`,
+    [a.propertyId, a.reservationId, r.rows[0].resource_id, angebot.priceCent, angebot.night])
 }
 
 async function offeneGrenze(client: PoolClient, reservationId: number): Promise<void> {
@@ -258,7 +324,8 @@ function recht(principal: Principal, permission: Permission, propertyId: number)
 const ZEILE = `
   SELECT q.public_ref AS "requestRef", r.public_ref AS "reservationRef",
          res.code AS "roomCode", g.last_name AS "lastName", g.first_name AS "firstName",
-         i.name AS "itemName", q.message, q.is_message AS "isMessage", q.qty,
+         i.name AS "itemName", q.message, q.is_message AS "isMessage",
+         q.is_extension AS "isExtension", q.qty,
          q.unit_price_cent::int AS "unitPriceCent",
          q.wanted_for::text AS "wantedFor", COALESCE(i.handler, 'reception') AS handler,
          q.source, q.status,
@@ -294,6 +361,8 @@ export async function wuenscheDerReservierung(
 
 interface Gesperrt {
   id: number; property_id: number; reservation_id: number; status: string
+  is_extension: boolean; wanted_for: string | null
+  reservation_ref: string; departure: string; next_day: string
   qty: number; unit_price_cent: number | null; name_de: string
   product_id: number | null; rate_bp: number | null; revenue_account: string | null
 }
@@ -304,13 +373,16 @@ async function sperren(
   const r = await client.query<Gesperrt>(
     `SELECT q.id::int, q.property_id::int, q.reservation_id::int, q.status, q.qty,
             q.unit_price_cent::int, i.name ->> 'de' AS name_de, i.product_id::int,
-            tr.rate_bp, p.revenue_account
+            tr.rate_bp, p.revenue_account,
+            q.is_extension, q.wanted_for::text, r.public_ref AS reservation_ref,
+            r.departure::text, (r.departure + 1)::text AS next_day
        FROM guest_request q
+       JOIN reservation r ON r.id = q.reservation_id
        LEFT JOIN guest_request_item i ON i.id = q.item_id
        LEFT JOIN product p ON p.id = i.product_id
        LEFT JOIN tax_rule tr ON tr.id = p.tax_rule_id
       WHERE q.public_ref = $1
-        FOR UPDATE OF q`, [requestRef])
+        FOR UPDATE OF q, r`, [requestRef])
   const q = r.rows[0]
   if (q === undefined) throw Errors.notFound('res.guestRequest')
   recht(principal, 'reservation:checkin', q.property_id)
@@ -325,11 +397,24 @@ async function sperren(
  * buchen darf, entscheidet `folio:post` -- dieselbe Regel wie am Tresen.
  */
 export async function wunschErledigen(
-  client: PoolClient, principal: Principal, requestRef: string
+  client: PoolClient, principal: Principal, requestRef: string,
+  verlaengern?: (reservationRef: string, departure: string) => Promise<unknown>
 ): Promise<string> {
   const q = await sperren(client, principal, requestRef)
   let chargeId: number | null = null
-  if (q.unit_price_cent !== null) {
+  if (q.is_extension) {
+    /*
+     * Noch eine Nacht (0156): die Abreise rueckt um einen Tag, ueber
+     * dieselbe Rechnung wie `change-stay` -- Bestand, Zimmer und Preis der
+     * Nacht. Keine Buchung aufs Folio, die Nacht bucht der Nachtlauf. Ist
+     * die Abreise inzwischen eine andere, meint die Anfrage eine Nacht,
+     * die es so nicht mehr gibt.
+     */
+    recht(principal, 'reservation:write', q.property_id)
+    if (q.wanted_for !== q.departure) throw Errors.conflict('guestRequest.extensionStale')
+    if (verlaengern === undefined) throw new Error('verlaengern fehlt')
+    await verlaengern(q.reservation_ref, q.next_day)
+  } else if (q.unit_price_cent !== null) {
     recht(principal, 'folio:post', q.property_id)
     const f = await client.query<{ id: number }>(
       `SELECT id::int FROM folio

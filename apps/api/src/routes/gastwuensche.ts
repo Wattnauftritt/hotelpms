@@ -7,7 +7,8 @@ import type { Principal } from '../platform/context.js'
 import { mappeTx, aufenthaltDerSitzung } from '../platform/gaestemappe.js'
 import { mappeWuensche, wunschAusRumpf, wunschAnlegen, nachrichtAusRumpf, nachrichtAnlegen,
          wunschErledigen, wunschAblehnen, ablehnGrund, wunschZeile, katalogAnsicht, eintragAusRumpf,
-         eintragSpeichern } from '../platform/gastwuensche.js'
+         eintragSpeichern, verlaengerungAnlegen } from '../platform/gastwuensche.js'
+import { aufenthaltVerlegen } from './reservations.js'
 
 /**
  * Wuensche und Extras aus der Gaestemappe (Migration 0149, Dokument 35).
@@ -69,6 +70,29 @@ export function gastwuenscheRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Noch eine Nacht bleiben (0156). Eine Anfrage, keine Buchung: die
+   * Rezeption bestaetigt, und erst dann rueckt die Abreise.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/mappe/extension',
+    // Oeffentlich: Zimmer-Referenz und Freischaltung im Cookie sind der
+    // Ausweis; ohne Freischaltung 403 (0147, 0156).
+    permission: null,
+    summary: 'Gaestemappe: um eine Nacht verlaengern anfragen',
+    handler: async (req, reply): Promise<FolderRequests | null> => {
+      reply.header('cache-control', 'no-store')
+      return mappeTx(req, async (client, k) => {
+        const a = await aufenthaltDerSitzung(client, req, k)
+        if (a === null) throw Errors.forbidden('folder.unlockRequired')
+        await verlaengerungAnlegen(client, { propertyId: k.propertyId,
+          reservationId: a.reservationId, businessDate: k.businessDate })
+        return mappeWuensche(client, k.propertyId, a.reservationId, k.businessDate)
+      })
+    }
+  })
+
   // ------------------------------------------------------------ Rezeption
 
   registerRoute(app, {
@@ -80,7 +104,8 @@ export function gastwuenscheRoutes(app: FastifyInstance): void {
       const { requestRef } = req.params as { requestRef: string }
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
-        await wunschErledigen(client, principal, requestRef)
+        await wunschErledigen(client, principal, requestRef,
+          (ref, departure) => aufenthaltVerlegen(client, ref, { departure }))
         return wunschZeile(client, requestRef)
       })
     }

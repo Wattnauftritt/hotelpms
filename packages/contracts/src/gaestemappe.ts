@@ -138,6 +138,8 @@ export const FolderRequest = Type.Object({
   name: Type.Union([NameJeSprache, Type.Null()]),
   /** Der Text einer Nachricht; leer bei einem Eintrag, und nach der Loeschung. */
   message: Type.Union([Type.String(), Type.Null()]),
+  /** Die Anfrage nach einer weiteren Nacht (0156); `wantedFor` ist die Nacht. */
+  isExtension: Type.Boolean(),
   qty: Type.Integer(),
   unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
   wantedFor: Type.Union([Type.String(), Type.Null()]),
@@ -157,7 +159,13 @@ export const FolderRequests = Type.Object({
    */
   days: Type.Array(Type.String()),
   /** Ob das Haus die freie Nachricht an die Rezeption anbietet (0153). */
-  messages: Type.Boolean()
+  messages: Type.Boolean(),
+  /**
+   * Noch eine Nacht (0156): die Nacht und ihr Preis, wenn das Haus sie
+   * anbietet und sie frei ist; sonst `null`. Nur in der Mappe.
+   */
+  extension: Type.Union([Type.Object({ night: Type.String(), priceCent: Type.Integer() }),
+    Type.Null()])
 })
 export type FolderRequests = Static<typeof FolderRequests>
 
@@ -189,6 +197,8 @@ export const GuestRequestRow = Type.Object({
   itemName: Type.Union([NameJeSprache, Type.Null()]),
   message: Type.Union([Type.String(), Type.Null()]),
   isMessage: Type.Boolean(),
+  /** Noch eine Nacht (0156); `wantedFor` ist die Nacht. */
+  isExtension: Type.Boolean(),
   qty: Type.Integer(),
   unitPriceCent: Type.Union([Type.Integer(), Type.Null()]),
   wantedFor: Type.Union([Type.String(), Type.Null()]),
@@ -317,6 +327,8 @@ export const GuestFolderSettings = Type.Object({
   enabled: Type.Boolean(),
   /** Freie Nachricht an die Rezeption (0153), aus als Vorgabe. */
   messagesEnabled: Type.Boolean(),
+  /** Noch eine Nacht anbieten (0156), aus als Vorgabe. */
+  extendEnabled: Type.Boolean(),
   /** Die Seite zur Abreise (0154), eine der Seiten in der Mappe. */
   departurePage: Type.Union([Type.String(), Type.Null()]),
   /** Der Bewertungslink am Abreisetag (0154), eine der freigegebenen Adressen. */
@@ -341,6 +353,7 @@ export const GuestFolderSettingsSet = Type.Object({
   enabled: Type.Boolean(),
   /** Fehlt: bleibt, wie es ist. */
   messagesEnabled: Type.Optional(Type.Boolean()),
+  extendEnabled: Type.Optional(Type.Boolean()),
   /** Fehlt: bleibt; `null`: keine. */
   departurePage: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   reviewUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])),

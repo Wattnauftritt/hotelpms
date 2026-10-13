@@ -30,6 +30,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
   const seitenSpeichern = useGaestemappeSeiten(propertyId)
   const [an, setAn] = useState(false)
   const [nachrichten, setNachrichten] = useState(false)
+  const [verlaengern, setVerlaengern] = useState(false)
   const [abreiseSeite, setAbreiseSeite] = useState('')
   const [bewertung, setBewertung] = useState('')
   const [mitWlan, setMitWlan] = useState(true)
@@ -43,6 +44,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
     if (q.data === undefined) return
     setAn(q.data.enabled)
     setNachrichten(q.data.messagesEnabled)
+    setVerlaengern(q.data.extendEnabled)
     setAbreiseSeite(q.data.departurePage ?? '')
     setBewertung(q.data.reviewUrl ?? '')
     setMitWlan(q.data.wifi !== null)
@@ -92,6 +94,14 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
           <span>
             {t('folder.messages')}
             <span className="block text-xs text-neutral-500">{t('folder.messagesHint')}</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={verlaengern}
+                 onChange={e => setVerlaengern(e.target.checked)} />
+          <span>
+            {t('folder.extend')}
+            <span className="block text-xs text-neutral-500">{t('folder.extendHint')}</span>
           </span>
         </label>
 
@@ -176,6 +186,7 @@ export function GaestemappeEinstellung({ propertyId }: { propertyId: number }): 
                   onClick={() => speichern.mutate({
                     enabled: an,
                     messagesEnabled: nachrichten,
+                    extendEnabled: verlaengern,
                     departurePage: abreiseSeite === '' ? null : abreiseSeite,
                     reviewUrl: bewertung === '' ? null : bewertung,
                     wifi: mitWlan

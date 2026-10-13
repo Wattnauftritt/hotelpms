@@ -1109,7 +1109,7 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Nachtrag: Bad am Gästehaus, Kalender nach dem Speichern** (Sven, 08.10.2026). Ein Reinigungsbereich ist nicht mehr jeden Tag fällig, sondern nur, wenn im selben Haus (trägt der Bereich ein Gebäude: im selben Gebäude) letzte Nacht ein Zimmer belegt war oder eines auf schmutzig steht — „wenn das Gästehaus leer ist, ist das Bad natürlich sauber“. Und eine offene, gespeicherte Aufgabe folgt dem Kalender: reist ein Gast früher ab oder verlängert, steht das Zimmer im Plan sofort mit der neuen Art und deren Sollminuten, markiert mit „!“, und Speichern schreibt es an die Aufgabe und schickt es aufs Telefon. Erledigte Aufgaben und Zeilen aus der alten App bleiben, wie sie sind. Tests in `reinigungsplan.test.ts` und `personalHaeuser.test.ts`.
 
-### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 9 fertig**
+### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 10 fertig**
 
 Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des Gastes die Mappe des Hauses; später kann der Gast darüber auf die Reinigung verzichten, Extras bestellen, eine späte Abreise anfragen. Plan mit allen Entscheidungen in [`35-gaestemappe.md`](35-gaestemappe.md).
 
@@ -1128,6 +1128,8 @@ Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des G
 **Baustein 8 (Nachricht an die Rezeption).** Migration `0153`: `guest_folder_setting.messages_enabled` (aus als Vorgabe), `guest_request` kann statt eines Katalogeintrags eine Nachricht tragen (`is_message`, `message` bis 500 Zeichen, in `audit_redaction`). `POST /v1/mappe/messages` nur mit Freischaltung und eingeschaltet, sonst 403 bzw. 422 `guestRequest.messagesOff`; zählt auf die zehn offenen Wünsche. Nicht am Terminal. `guest_erase_one()`/`guest_erase_partial()` neu gefasst mit `guest_request_messages_erase()`, `purgeExpired()` leert den Text 30 Tage nach der Abreise. Verarbeitungsverzeichnis ergänzt. Tests: `gastwuensche.test.ts`, `apps/worker/src/__tests__/aufbewahrung.test.ts`.
 
 **Baustein 9 (Zur Abreise).** Migration `0154`: `guest_request_item.offer` (`stay`, `departure`, `late_checkout`; Abend vor der Abreise und Abreisetag, Wunschtag ist der Abreisetag; späte Abreise nur ohne Anreise ins Zimmer am selben Tag, dieselbe Regel beim Anzeigen und beim Anlegen), `guest_folder_setting.departure_content_id` und `review_url_id` (Seite und freigegebene Adresse des Terminals). Die Mappe zeigt ab dem Abend davor die Check-out-Zeit und den Verweis auf die Abreiseseite, am Abreisetag den Bewertungslink. Tests: `gastwuensche.test.ts`, `gaestemappeFreischaltung.test.ts`.
+
+**Baustein 10 (Noch eine Nacht).** Migration `0156`: `guest_folder_setting.extend_enabled` (aus als Vorgabe), `guest_request.is_extension` mit der Nacht in `wanted_for` und dem gezeigten Preis, höchstens eine offene je Aufenthalt. `POST /v1/mappe/extension` nur mit Freischaltung und freier Nacht (Zimmer und `inventory_day`, Gruppe und Haussumme). Annehmen unter `reservation:write` verlegt die Abreise über `aufenthaltVerlegen` (`change-stay`); ist die Abreise inzwischen eine andere, 409 `guestRequest.extensionStale`. Preis ist der Schnitt der bisherigen Nächte, wie `change-stay` ihn ansetzt. Tests: `gastwuensche.test.ts`.
 
 **Offen:** späte Abreise, Verlängern, Upgrade, Bericht — in dieser Reihenfolge, siehe Dokument 35. Der Weg vom Gästeterminal (`source = 'terminal'`, `on_terminal`) baut der Faden zum Selbstservice am Terminal an.
 

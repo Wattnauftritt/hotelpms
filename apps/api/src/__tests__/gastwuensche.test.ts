@@ -488,3 +488,83 @@ describe('Zur Abreise und spaete Abreise (0154)', () => {
     expect((await mappe(zimmer[1]!, nahCookie)).json().stay.review).toBeNull()
   })
 })
+
+describe('Noch eine Nacht (0156)', () => {
+  beforeEach(async () => {
+    await owner.query(`SELECT inventory_materialize($1,'2026-10-01'::date,'2026-11-01'::date)`,
+      [fx.propertyId])
+  })
+  const einschalten = (an: boolean) => app.inject({ method: 'PUT', url: p('/guest-folder'),
+    headers: auth(chef.sessionId), payload: { enabled: true, wifi: null, extendEnabled: an } })
+  async function gast(raum: number, lastName: string, arrival = '2026-10-10',
+                      departure = '2026-10-14'): Promise<{ id: number; cookie: string }> {
+    const g = await makeGuest(owner, fx.accountId, { lastName })
+    const r = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: kategorie,
+      arrival, departure, resourceId: raum, status: 'InHouse', priceCent: 9000 })
+    await owner.query(`UPDATE reservation SET primary_guest_id = $2 WHERE id = $1`,
+      [r.reservationId, g.id])
+    return { id: r.reservationId, cookie: await freischalten(raum, lastName) }
+  }
+  const angebot = async (raum: number, cookie: string) =>
+    (await mappe(raum, cookie)).json().stay.requests?.extension ?? null
+  const anfragen = (raum: number, cookie: string) => app.inject({ method: 'POST',
+    url: '/v1/mappe/extension',
+    headers: { [FOLDER_ROOM_HEADER]: refs.get(raum)!, cookie: `${FOLDER_SESSION_COOKIE}=${cookie}` } })
+
+  it('fragt an, und erst das Annehmen rueckt die Abreise', async () => {
+    const g = await gast(zimmer[0]!, 'Lang')
+    expect(await angebot(zimmer[0]!, g.cookie)).toBeNull()
+    expect((await anfragen(zimmer[0]!, g.cookie)).statusCode).toBe(422)
+
+    expect((await einschalten(true)).json().extendEnabled).toBe(true)
+    expect(await angebot(zimmer[0]!, g.cookie)).toEqual({ night: '2026-10-14', priceCent: 9000 })
+    const a = await anfragen(zimmer[0]!, g.cookie)
+    expect(a.statusCode, a.body).toBe(200)
+    const w = a.json().mine[0]
+    expect(w).toMatchObject({ isExtension: true, wantedFor: '2026-10-14', unitPriceCent: 9000,
+      status: 'open' })
+    // Eine offene Anfrage genuegt; die zweite waere dieselbe Nacht.
+    expect(a.json().extension).toBeNull()
+    expect((await anfragen(zimmer[0]!, g.cookie)).statusCode).toBe(422)
+    expect((await owner.query(`SELECT departure::text FROM reservation WHERE id = $1`, [g.id]))
+      .rows).toEqual([{ departure: '2026-10-14' }])
+
+    const ok = await app.inject({ method: 'POST', url: `/v1/guest-requests/${w.requestRef}/done`,
+      headers: auth(chef.sessionId) })
+    expect(ok.statusCode, ok.body).toBe(200)
+    expect(ok.json()).toMatchObject({ isExtension: true, status: 'done' })
+    const r = await owner.query(
+      `SELECT r.departure::text, (SELECT count(*)::int FROM reservation_night
+                                   WHERE reservation_id = r.id) AS naechte,
+              (SELECT count(*)::int FROM charge WHERE reservation_id = r.id) AS buchungen
+         FROM reservation r WHERE r.id = $1`, [g.id])
+    expect(r.rows).toEqual([{ departure: '2026-10-15', naechte: 5, buchungen: 0 }])
+  })
+
+  it('bietet nichts am Anreisetag und nichts, wenn das Zimmer belegt ist', async () => {
+    await einschalten(true)
+    const neu = await gast(zimmer[1]!, 'Neu', HEUTE, '2026-10-15')
+    expect(await angebot(zimmer[1]!, neu.cookie)).toBeNull()
+
+    const g = await gast(zimmer[0]!, 'Lang')
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: kategorie,
+      arrival: '2026-10-14', departure: '2026-10-16', resourceId: zimmer[0]!,
+      status: 'Confirmed' })
+    expect(await angebot(zimmer[0]!, g.cookie)).toBeNull()
+  })
+
+  it('verlaengert nicht, wenn sich die Abreise inzwischen geaendert hat', async () => {
+    await einschalten(true)
+    const g = await gast(zimmer[0]!, 'Lang')
+    const w = (await anfragen(zimmer[0]!, g.cookie)).json().mine[0]
+    const ref = (await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM reservation WHERE id = $1`, [g.id])).rows[0]!.public_ref
+    const kurz = await app.inject({ method: 'POST', url: `/v1/reservations/${ref}/change-stay`,
+      headers: auth(chef.sessionId), payload: { departure: '2026-10-13' } })
+    expect(kurz.statusCode, kurz.body).toBe(200)
+    const nein = await app.inject({ method: 'POST',
+      url: `/v1/guest-requests/${w.requestRef}/done`, headers: auth(chef.sessionId) })
+    expect(nein.statusCode).toBe(409)
+    expect(nein.json().code).toBe('guestRequest.extensionStale')
+  })
+})

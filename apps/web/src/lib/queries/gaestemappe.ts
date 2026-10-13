@@ -126,6 +126,12 @@ export function useWunschBearbeiten() {
       void qc.invalidateQueries({ queryKey: ['daily'] })
       void qc.invalidateQueries({ queryKey: ['reservation', d.reservationRef] })
       void qc.invalidateQueries({ queryKey: ['folio'] })
+      // Eine angenommene Verlaengerung (0156) rueckt die Abreise: Plan und
+      // Verfuegbarkeit stimmen danach nicht mehr.
+      if (d.isExtension) {
+        void qc.invalidateQueries({ queryKey: ['tape'] })
+        void qc.invalidateQueries({ queryKey: ['availability'] })
+      }
     }
   })
 }
