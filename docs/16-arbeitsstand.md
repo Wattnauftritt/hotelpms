@@ -1156,3 +1156,15 @@ Sven, 12.10.2026: „erweitere im gesamten System unser i18n und die Übersetzun
 - **Rechnungskürzel je Haus** unter Einstellungen, Rechnungen: `H-2026-00001`. Ohne Kürzel verweigert ein Haus die Rechnung, sobald der Account ein zweites echtes Haus führt. Geprüft wird das in `invoice_prefix_missing()` mit `SECURITY DEFINER`, weil ein Benutzer mit Recht auf ein Haus das andere über die Zeilenrichtlinie nicht sieht. Das Kürzel ist im Account eindeutig und bleibt fest, sobald eine Rechnung darunter steht. Die Zählung läuft beim Setzen weiter, sie beginnt nicht neu.
 
 Tests in `rechnungKurtaxeKuerzel.test.ts`. Die übrigen Befunde der Prüfung stehen in `/mnt/project-files/rechnung/pruefung-2026-10-13.md`.
+
+### Frühstück inklusive je Rate (`0158`) — **erledigt**
+
+**Warum.** Der Nachtlauf buchte den ganzen Nachtpreis als Übernachtung zu 7 Prozent, auch wenn das Frühstück darin steckte. Seit 2026 sind die Speisen ebenfalls 7 Prozent, die Getränke aber 19; das Aufteilungsgebot verlangt, sie herauszurechnen (Befund 3 der Prüfung vom 13.10.2026).
+
+- **Das Haus stellt je Rate nur zwei Dinge ein:** ob Frühstück enthalten ist und was es je Person und Nacht kostet (`rate_plan.breakfast_cent`, Preise, Ratenpläne).
+- **Der Getränkeanteil ist keine Einstellung.** Er ist die Pauschale des BMF-Schreibens vom 22.12.2025 zu Kombiangeboten, 30 Prozent, und steht einmal in `packages/domain/src/breakfast.ts`. Die Business-Package-Pauschale (15 Prozent des Paketpreises) nutzen wir nicht.
+- **Der Nachtlauf teilt die Nacht** in Übernachtung, Frühstück Speisen (7 %, 8300) und Frühstück Getränke (19 %, 8400). Personen aus `guest_count`, sonst aus den erfassten Gästen, mindestens eine. Nie mehr Frühstück als der Nachtpreis. Wirkt ab der nächsten gebuchten Nacht; gebuchte Nächte bleiben, wie sie sind.
+- **`charge.package_part`** markiert die Frühstücksteile. Die Speisen liegen auf 8300 wie die Logis, weil der DATEV-Stapel sich auf das Automatikkonto verlässt; ohne Markierung zählten sie in den Kennzahlen als Zimmerumsatz, trügen im XML die Einheit `DAY` und würden bei Nichtanreise nicht mit gegengebucht.
+- **Die Anzahlung** rechnet das Frühstück aus der Rate genauso heraus wie der Nachtlauf.
+
+Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts` (API).

@@ -94,6 +94,23 @@ export function useCreateRatePlan(propertyId: number) {
   })
 }
 
+/**
+ * Fruehstueck im Ratenpreis setzen; `null` nimmt es heraus. Wirkt ab der
+ * naechsten Nacht, die der Nachtlauf bucht (Migration 0158).
+ */
+export function useSetBreakfast(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { ratePlanId: number; breakfastCent: number | null }) =>
+      api.put<{ ratePlanId: number; breakfastCent: number | null }>(
+        `/v1/properties/${propertyId}/rate-plans/${body.ratePlanId}/breakfast`,
+        { breakfastCent: body.breakfastCent }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
+    }
+  })
+}
+
 /** Abgeleitete Raten fuer einen Zeitraum neu rechnen. */
 export function useRebuildDerived(propertyId: number) {
   const qc = useQueryClient()
