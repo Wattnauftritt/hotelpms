@@ -138,6 +138,101 @@ async function vermerkeZuordnen(
     [ids, invoiceId])
 }
 
+/** Grossbuchstaben und Ziffern, bis sechs; der Bindestrich kommt von selbst. */
+const KUERZEL = /^[A-Z0-9]{1,6}$/
+
+async function rechnungseinstellung(client: PoolClient, propertyId: number): Promise<{
+  prefix: string | null; missing: boolean; locked: boolean; nextNumber: string
+}> {
+  const r = await client.query<{ prefix: string | null; fehlt: boolean
+                                 zaehler: string | null; naechste: string | null }>(
+    `SELECT p.invoice_prefix AS prefix, invoice_prefix_missing(p.id) AS fehlt,
+            c.prefix AS zaehler, c.next_number::text AS naechste
+       FROM property p
+       LEFT JOIN invoice_counter c ON c.property_id = p.id AND c.year = $2
+      WHERE p.id = $1`, [propertyId, new Date().getUTCFullYear()])
+  const z = r.rows[0]!
+  const locked = z.prefix !== null && ((await client.query(
+    `SELECT 1 FROM invoice
+      WHERE property_id = $1 AND (number LIKE $2 OR number LIKE $3) LIMIT 1`,
+    [propertyId, `${z.prefix}-%`, `${TRAINING_PREFIX}${z.prefix}-%`])).rowCount ?? 0) > 0
+  const jahr = new Date().getUTCFullYear()
+  const nextNumber = `${z.zaehler ?? ''}${z.prefix === null ? '' : `${z.prefix}-`}${jahr}-`
+    + String(Number(z.naechste ?? 1)).padStart(5, '0')
+  return {
+    prefix: z.prefix,
+    // Ohne Kuerzel und mit einem zweiten Haus: genau dann verweigert die
+    // Rechnung, und genau dann muss der Bildschirm es sagen.
+    missing: z.fehlt,
+    locked, nextNumber
+  }
+}
+
+/**
+ * Kurtaxe gehoert nicht auf die Rechnung des Hauses.
+ *
+ * Sie ist die Abgabe der Gemeinde; das Haus zieht sie nur ein und fuehrt
+ * sie ab. Den Beleg dafuer hat der Gast schon in der Hand: die Kurkarte mit
+ * dem Betrag darauf. So rechnen die Haeuser heute (Sven, 13.10.2026), und
+ * so ist es auch steuerlich richtig -- ein durchlaufender Posten ist kein
+ * Entgelt des Hauses (§ 10 Abs. 1 Satz 5 UStG). Auf der Rechnung stuende
+ * sie zu 0 Prozent, und die Pflichtangabenpruefung verlangte dafuer einen
+ * Befreiungsgrund, den es nicht gibt: jede Rechnung ueber einen Aufenthalt
+ * mit Kurtaxe wurde abgewiesen.
+ *
+ * Am Folio bleibt sie stehen. Dort wird sie kassiert, und der Saldo muss
+ * sie kennen, sonst ginge der Gast mit offener Kurtaxe. Eine
+ * Bettensteuer (`bed_tax`) ist etwas anderes: die schuldet das Haus
+ * selbst, sie ist Teil seines Entgelts und bleibt auf der Rechnung.
+ *
+ * Ein Fragment fuer `charge c`, damit Rechnung und Zahlungszuordnung
+ * dieselbe Grenze ziehen.
+ */
+const OHNE_KURTAXE = `NOT EXISTS (SELECT 1 FROM tax_rule tr
+                                   WHERE tr.id = c.tax_rule_id AND tr.kind = 'city_tax')`
+
+/** Was am Folio an Kurtaxe gebucht ist, brutto: der Teil des Saldos, der auf keiner Rechnung steht. */
+async function kurtaxeAmFolio(client: PoolClient, folioId: number): Promise<number> {
+  const r = await client.query<{ cent: string }>(
+    `SELECT COALESCE(sum(c.gross_cent), 0)::bigint AS cent FROM charge c
+      WHERE c.folio_id = $1 AND NOT (${OHNE_KURTAXE})`, [folioId])
+  return Math.max(Number(r.rows[0]!.cent), 0)
+}
+
+/**
+ * Die naechste Rechnungsnummer, fuer Schluss- wie Anzahlungsrechnung.
+ *
+ * Ein Uebungshaus bekommt ein sichtbares Kuerzel vor der Nummer. Die
+ * Nummernfolge ist ohnehin je Property getrennt, aber eine Uebungsrechnung
+ * muss man auch dann als solche erkennen, wenn sie ausgedruckt auf dem
+ * Tresen liegt (C11, Dokument 13). Das Kuerzel wird einmal am Zaehler
+ * gesetzt, nicht bei jeder Nummer: sonst haette dieselbe Property mal mit
+ * und mal ohne Kuerzel numeriert.
+ *
+ * **Ohne Hauskuerzel keine Rechnung, sobald der Account zwei Haeuser hat.**
+ * Beide zaehlten sonst ab 2026-00001, und § 14 Abs. 4 Nr. 4 UStG verlangt
+ * Eindeutigkeit beim Unternehmer, nicht beim Haus (Migration 0157). Lieber
+ * eine Rechnung, die heute nicht entsteht, als zwei mit derselben Nummer,
+ * die der Steuerberater in einem Jahr findet.
+ */
+async function naechsteNummer(
+  client: PoolClient, propertyId: number
+): Promise<{ rows: Array<{ next_invoice_number: string }> }> {
+  const kuerzel = await client.query<{ fehlt: boolean }>(
+    `SELECT invoice_prefix_missing($1) AS fehlt`, [propertyId])
+  if (kuerzel.rows[0]!.fehlt) throw Errors.unprocessable('invoice.prefixMissing')
+
+  const year = new Date().getUTCFullYear()
+  if (await isTrainingProperty(client, propertyId)) {
+    await client.query(
+      `INSERT INTO invoice_counter (property_id, year, prefix)
+       VALUES ($1,$2,$3) ON CONFLICT (property_id, year) DO NOTHING`,
+      [propertyId, year, TRAINING_PREFIX])
+  }
+  return client.query<{ next_invoice_number: string }>(
+    `SELECT next_invoice_number($1, $2)`, [propertyId, year])
+}
+
 /**
  * Die erwartete Zusammensetzung des Aufenthalts nach Steuersaetzen: die
  * Grundlage, in deren Verhaeltnis eine pauschale Anzahlung aufgeteilt wird.
@@ -224,6 +319,62 @@ async function erwarteteSaetze(
 const MAX_RECHNUNGSTAGE = 400
 
 export function billingRoutes(app: FastifyInstance): void {
+  /**
+   * Rechnungskuerzel des Hauses (Migration 0157).
+   *
+   * `required` sagt, ob ohne Kuerzel keine Rechnung entsteht -- das haengt
+   * an den anderen Haeusern des Accounts, die der Bildschirm nicht sieht.
+   * `locked`: unter dem Kuerzel ist schon eine Rechnung ausgestellt. Dann
+   * bleibt es. Gaebe das Haus es ab und nahm ein anderes Haus es spaeter
+   * auf, zaehlte dieses ab H-2026-00001 noch einmal.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/invoice-settings',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Rechnungskuerzel des Hauses',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async client => rechnungseinstellung(client, Number(propertyId)))
+    }
+  })
+
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/invoice-settings',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Rechnungskuerzel des Hauses setzen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const b = (req.body ?? {}) as { prefix?: unknown }
+      const prefix = typeof b.prefix === 'string' ? b.prefix.trim().toUpperCase() : ''
+      if (!KUERZEL.test(prefix)) throw Errors.validation({ prefix: ['field.invalid'] })
+
+      return tx(req.pool, req, async client => {
+        const jetzt = await rechnungseinstellung(client, Number(propertyId))
+        if (jetzt.prefix === prefix) return jetzt
+        if (jetzt.locked) {
+          throw Errors.conflict('invoice.prefixInUse', { prefix: jetzt.prefix ?? '' })
+        }
+        try {
+          await client.query(
+            `UPDATE property SET invoice_prefix = $2 WHERE id = $1`,
+            [Number(propertyId), prefix])
+        } catch (e) {
+          // Der Index sieht die anderen Haeuser des Accounts, die
+          // Zeilenrichtlinie nicht: eine Vorabfrage fände das Kuerzel nie.
+          if ((e as { constraint?: string }).constraint === 'property_invoice_prefix') {
+            throw Errors.conflict('invoice.prefixTaken', { prefix })
+          }
+          throw e
+        }
+        return rechnungseinstellung(client, Number(propertyId))
+      })
+    }
+  })
+
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/payment-methods',
@@ -376,8 +527,9 @@ export function billingRoutes(app: FastifyInstance): void {
         const charges = await client.query(
           `SELECT id, business_date::text, description, quantity,
                   net_cent, tax_cent, gross_cent, tax_rate_bp,
-                  revenue_account, invoice_id, reverses_id
-             FROM charge WHERE folio_id = $1 ORDER BY id`, [folio.id])
+                  revenue_account, invoice_id, reverses_id,
+                  NOT (${OHNE_KURTAXE}) AS city_tax
+             FROM charge c WHERE folio_id = $1 ORDER BY id`, [folio.id])
         const settlements = await client.query(
           `SELECT s.id, s.business_date::text, s.amount_cent, s.external_reference,
                   pm.code AS method, s.reverses_id
@@ -596,9 +748,15 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM invoice i
             WHERE i.folio_id = $1 AND i.kind IN ('final','interim')
             ORDER BY i.id`, [folio.id])
+        /*
+         * Zahlt der Gast Rechnung und Kurtaxe in einem Betrag -- der
+         * Regelfall am Tresen --, uebersteigt der Vermerk den Rest der
+         * Rechnung um genau die Kurtaxe, die nicht auf ihr steht. Ohne diesen
+         * Spielraum bliebe jede solche Rechnung fuer immer "offen".
+         */
         const ziel = offen.rows.find(z => Number(z.rest) > 0)
         if (ziel !== undefined && body.amountCent > 0
-            && body.amountCent <= Number(ziel.rest)) {
+            && body.amountCent <= Number(ziel.rest) + await kurtaxeAmFolio(client, folio.id)) {
           await vermerkeZuordnen(client, ziel.id, [r.rows[0]!.id])
         }
 
@@ -765,15 +923,7 @@ export function billingRoutes(app: FastifyInstance): void {
                    FROM guest WHERE id = $1`, [folio.guest_id])
             : { rows: [] as Party[] }
 
-        const year = new Date().getUTCFullYear()
-        if (await isTrainingProperty(client, folio.property_id)) {
-          await client.query(
-            `INSERT INTO invoice_counter (property_id, year, prefix)
-             VALUES ($1,$2,$3) ON CONFLICT (property_id, year) DO NOTHING`,
-            [folio.property_id, year, TRAINING_PREFIX])
-        }
-        const num = await client.query<{ next_invoice_number: string }>(
-          `SELECT next_invoice_number($1, $2)`, [folio.property_id, year])
+        const num = await naechsteNummer(client, folio.property_id)
 
         const totals = sumInvoice(positionen)
 
@@ -1000,17 +1150,20 @@ export function billingRoutes(app: FastifyInstance): void {
 
         // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
         // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
+        // Die Kurtaxe nie: siehe OHNE_KURTAXE.
         const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
                                              gross_cent: number
                                              description: string; quantity: number
                                              business_date: string }>(
           body.chargeIds?.length
             ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                      business_date::text FROM charge
-                WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2) ORDER BY id`
+                      business_date::text FROM charge c
+                WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2)
+                  AND ${OHNE_KURTAXE} ORDER BY id`
             : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                      business_date::text FROM charge
-                WHERE folio_id = $1 AND invoice_id IS NULL ORDER BY id`,
+                      business_date::text FROM charge c
+                WHERE folio_id = $1 AND invoice_id IS NULL AND ${OHNE_KURTAXE}
+                ORDER BY id`,
           body.chargeIds?.length ? [folio.id, body.chargeIds] : [folio.id])
         if (charges.rowCount === 0) throw Errors.unprocessable('folio.nothingOpen')
 
@@ -1113,8 +1266,17 @@ export function billingRoutes(app: FastifyInstance): void {
          * Zuordnung selbst laeuft weiter, damit eine Liste sagen kann, was
          * offen ist; der Beleg liest sie nicht.
          */
-        const { ids: vorausbezahlt, summeCent: prepaidCent } =
-          passendeVermerke(await offeneVermerke(client, folio.id), zielBrutto)
+        /*
+         * Dieselbe Kurtaxe von der anderen Seite: hat der Gast vorab alles
+         * bezahlt, auch sie, passt sein Vermerk nur mit ihr unter die
+         * Grenze. Ausgewiesen wird als vorausbezahlt (BT-113) dennoch
+         * hoechstens der Betrag der Rechnung -- der Rest war die Kurtaxe,
+         * und der Zahlbetrag darf nicht negativ werden.
+         */
+        const kurtaxe = await kurtaxeAmFolio(client, folio.id)
+        const { ids: vorausbezahlt, summeCent: gezahltCent } =
+          passendeVermerke(await offeneVermerke(client, folio.id), zielBrutto + kurtaxe)
+        const prepaidCent = Math.min(gezahltCent, Math.max(zielBrutto, 0))
         const totals = { ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent }
 
         /*
@@ -1156,26 +1318,7 @@ export function billingRoutes(app: FastifyInstance): void {
                    FROM guest WHERE id = $1`, [folio.guest_id])
             : { rows: [] as Party[] }
 
-        /*
-         * Ein Uebungshaus bekommt ein sichtbares Kuerzel vor der Nummer.
-         * Die Nummernfolge ist ohnehin je Property getrennt, aber eine
-         * Uebungsrechnung muss man auch dann als solche erkennen, wenn sie
-         * ausgedruckt auf dem Tresen liegt (C11, Dokument 13).
-         *
-         * Das Kuerzel wird einmal am Zaehler gesetzt, nicht bei jeder
-         * Nummer: sonst haette dieselbe Property mal mit und mal ohne
-         * Kuerzel numeriert, und die Folge waere nicht mehr lueckenlos
-         * nachvollziehbar.
-         */
-        const year = new Date().getUTCFullYear()
-        if (await isTrainingProperty(client, folio.property_id)) {
-          await client.query(
-            `INSERT INTO invoice_counter (property_id, year, prefix)
-             VALUES ($1,$2,$3) ON CONFLICT (property_id, year) DO NOTHING`,
-            [folio.property_id, year, TRAINING_PREFIX])
-        }
-        const num = await client.query<{ next_invoice_number: string }>(
-          `SELECT next_invoice_number($1, $2)`, [folio.property_id, year])
+        const num = await naechsteNummer(client, folio.property_id)
 
         const bd = await client.query<{ date: string }>(
           `SELECT date::text FROM business_day

@@ -264,3 +264,30 @@ export function useUpdateBefreiungsgrund(propertyId: number) {
     }
   })
 }
+
+/** Rechnungskuerzel des Hauses (Migration 0157). */
+export interface Rechnungseinstellung {
+  prefix: string | null
+  /** Ohne Kuerzel verweigert dieses Haus die Rechnung: der Account hat ein zweites. */
+  missing: boolean
+  /** Unter dem Kuerzel steht schon eine Rechnung; es bleibt. */
+  locked: boolean
+  nextNumber: string
+}
+
+export const useInvoiceSettings = (propertyId: number) =>
+  useQuery<Rechnungseinstellung>({
+    queryKey: ['invoice-settings', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/invoice-settings`)
+  })
+
+export function useSaveInvoiceSettings(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { prefix: string }) =>
+      api.put<Rechnungseinstellung>(`/v1/properties/${propertyId}/invoice-settings`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['invoice-settings', propertyId] })
+    }
+  })
+}

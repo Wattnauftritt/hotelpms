@@ -39,7 +39,9 @@ export function Folio({ folioRef, propertyId, onClose }: {
   if (q.data === undefined) return <Laedt />
   const f = q.data
 
-  const offen = f.charges.filter(c => c.invoice_id === null)
+  // Die Kurtaxe steht auf keiner Rechnung (Beleg ist die Kurkarte). Zaehlte
+  // sie als offen, boete die Maske ein Abrechnen an, das nichts abrechnet.
+  const offen = f.charges.filter(c => c.invoice_id === null && !c.city_tax)
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -78,6 +80,11 @@ export function Folio({ folioRef, propertyId, onClose }: {
                   {c.description}
                   {c.reverses_id !== null && (
                     <span className="ml-1 text-xs text-neutral-500">({t('folio.reversal')})</span>
+                  )}
+                  {c.city_tax && (
+                    <span className="ms-1 text-xs text-neutral-500">
+                      ({t('folio.cityTaxNotInvoiced')})
+                    </span>
                   )}
                 </td>
                 <td className="px-3 py-1.5 w-14 text-end tabular-nums text-neutral-500">

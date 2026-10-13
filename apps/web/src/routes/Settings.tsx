@@ -19,6 +19,7 @@ import { KurtaxeBefreiung } from '../components/KurtaxeBefreiung.tsx'
 import { AvsEinstellung } from '../components/AvsEinstellung.tsx'
 import { ZimmerSortierenEinstellung } from '../components/ZimmerSortierenEinstellung.tsx'
 import { GaestemappeEinstellung } from '../components/GaestemappeEinstellung.tsx'
+import { RechnungsEinstellung } from '../components/RechnungsEinstellung.tsx'
 
 /**
  * Einstellungen des Hauses, die nicht Einrichtung sind.
@@ -29,7 +30,7 @@ import { GaestemappeEinstellung } from '../components/GaestemappeEinstellung.tsx
  * Moment im Leben eines Hauses.
  */
 
-const REITER = ['mail', 'pay', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'folder',
+const REITER = ['mail', 'pay', 'invoices', 'terms', 'exemptions', 'avs', 'checkin', 'terminal', 'folder',
                 'roomSort', 'support'] as const
 type Reiter = (typeof REITER)[number]
 
@@ -39,6 +40,9 @@ export function einstellungsBereiche(darf: (p: string) => boolean): Bereich[] {
   const bereiche: Bereich[] = []
   if (darf('integration:manage')) bereiche.push({ key: 'mail', label: 'mail.title' })
   if (darf('settings:property')) bereiche.push({ key: 'pay', label: 'pay.title' })
+  // Rechnungskuerzel (0157): ohne es stellt ein Haus in einem Account mit
+  // mehreren Haeusern keine Rechnung aus.
+  if (darf('settings:property')) bereiche.push({ key: 'invoices', label: 'invoiceSettings.title' })
   if (darf('settings:property')) bereiche.push({ key: 'terms', label: 'terms.title' })
   // Kurtaxe-Befreiung (0089): was das Meldeformular als Grund anbietet.
   if (darf('settings:property')) {
@@ -704,6 +708,7 @@ export function Settings({ propertyId }: { propertyId: number }): JSX.Element {
         </div>
       )}
       {aktiv.key === 'pay' && <Zahlungsarten propertyId={propertyId} />}
+      {aktiv.key === 'invoices' && <RechnungsEinstellung propertyId={propertyId} />}
       {aktiv.key === 'terms' && <Hausbedingungen propertyId={propertyId} />}
       {aktiv.key === 'exemptions' && <KurtaxeBefreiung propertyId={propertyId} />}
       {aktiv.key === 'avs' && <AvsEinstellung propertyId={propertyId} />}
