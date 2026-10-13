@@ -262,14 +262,3 @@ export function useReleaseBlock(propertyId: number) {
     }
   })
 }
-
-export function useIssueInvoice(folioRef: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () =>
-      api.post<{ number: string; serviceFrom: string; serviceTo: string }>(
-        `/v1/folios/${folioRef}/invoice`, {},
-        { 'idempotency-key': newIdempotencyKey() }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['folio', folioRef] }) }
-  })
-}

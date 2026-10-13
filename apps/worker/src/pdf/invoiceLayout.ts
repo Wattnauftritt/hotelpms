@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { ciiTotals, formatCent, type CiiInvoice, type CiiLine } from '@hotelpms/domain'
+import { ciiTotals, formatCent, paymentTermsText, type CiiInvoice,
+         type CiiLine } from '@hotelpms/domain'
 import { loadAssets } from './pdfa3.js'
 
 /**
@@ -291,6 +292,10 @@ function hinweise(z: Zeichner, input: InvoiceLayoutInput): void {
     zeilen.push('Steuerschuldnerschaft des Leistungsempfaengers')
   }
   if (inv.exemptionReason) zeilen.push(inv.exemptionReason)
+  // Dieselbe Bedingung wie im XML (BT-20), damit Blatt und Datei nicht
+  // Verschiedenes sagen.
+  const bedingung = paymentTermsText(inv)
+  if (bedingung !== null) zeilen.push(bedingung)
   zeilen.push(...(inv.notes ?? []))
   if (input.missingXmlNote) zeilen.push(input.missingXmlNote)
 

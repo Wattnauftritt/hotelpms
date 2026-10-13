@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { useFolio, usePaymentMethods, usePostCharge, usePostSettlement,
-         useIssueInvoice } from '../lib/queries.js'
+import { useFolio, usePaymentMethods, usePostCharge,
+         usePostSettlement } from '../lib/queries.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Vorauszahlung } from '../components/Vorauszahlung.tsx'
 import { Rechnungsempfaenger } from '../components/Rechnungsempfaenger.tsx'
+import { Rechnungsdialog } from '../components/Rechnungsdialog.tsx'
 
 /**
  * Das Folio: Positionen, Zahlungsvermerke, Saldo.
@@ -33,7 +34,7 @@ export function Folio({ folioRef, propertyId, onClose }: {
   const online = useOnline()
   const q = useFolio(folioRef)
   const zahlarten = usePaymentMethods(propertyId)
-  const fakturieren = useIssueInvoice(folioRef)
+  const [dialog, setDialog] = useState(false)
 
   if (q.isError) return <Fehler error={q.error} />
   if (q.data === undefined) return <Laedt />
@@ -162,25 +163,23 @@ export function Folio({ folioRef, propertyId, onClose }: {
         </div>
       )}
 
-      {offen.length > 0 && online && (
-        <section className="bg-white border border-neutral-200 rounded-sm p-3">
-          <div className="flex items-center gap-3">
-            <button onClick={() => fakturieren.mutate()}
-                    disabled={fakturieren.isPending}
-                    className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
-                               disabled:bg-neutral-300">
-              {t('folio.issueInvoice')} ({offen.length})
-            </button>
-            <span className="text-xs text-neutral-500">{t('folio.issueHint')}</span>
-          </div>
-          {fakturieren.isError && <div className="mt-2"><Fehler error={fakturieren.error} /></div>}
-          {fakturieren.isSuccess && (
-            <p className="mt-2 text-sm text-emerald-800">
-              ✓ {t('folio.invoiceNumber')} {fakturieren.data.number}
-            </p>
-          )}
-        </section>
-      )}
+      {/* Der Dialog statt eines Knopfs (Sven, 13.10.2026): vorbefuellt, aber
+          vor dem Festschreiben anpassbar. Ein festgeschriebener Beleg ist
+          Haertegrad 1; was danach nicht stimmt, braucht eine Stornorechnung. */}
+      {offen.length > 0 && online && (dialog
+        ? <Rechnungsdialog folioRef={folioRef} propertyId={propertyId} offen={offen}
+                           empfaenger={f.recipient} onClose={() => setDialog(false)} />
+        : (
+          <section className="bg-white border border-neutral-200 rounded-sm p-3">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setDialog(true)}
+                      className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white">
+                {t('folio.issueInvoice')} ({offen.length})
+              </button>
+              <span className="text-xs text-neutral-500">{t('folio.issueHint')}</span>
+            </div>
+          </section>
+        ))}
     </div>
   )
 }

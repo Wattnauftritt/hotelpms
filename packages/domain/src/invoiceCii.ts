@@ -79,6 +79,11 @@ export interface CiiInvoice {
   /** BT-113, bereits vereinnahmt und auf diese Rechnung angerechnet. */
   prepaidCent?: Cent
   /**
+   * BT-9, Faelligkeit. Ohne sie gilt "zahlbar sofort" (BT-20); eine von
+   * beiden verlangt BR-CO-25, sobald etwas offen ist (Migration 0159).
+   */
+  dueOn?: IsoDate | null
+  /**
    * BT-114, Rundungsbetrag auf Belegebene.
    *
    * Die Norm rechnet die Steuer je Satzgruppe aus der Nettosumme (BR-CO-14).
@@ -341,6 +346,23 @@ export function ciiFindings(inv: CiiInvoice): CiiFinding[] {
 }
 
 /**
+ * Zahlungsbedingung (BT-20) als Satz, oder `null`, wenn nichts offen ist.
+ *
+ * BR-CO-25 verlangt Faelligkeit oder Bedingung, sobald der Zahlbetrag
+ * positiv ist. Ohne beides wies der Validator jede Rechnung mit offenem
+ * Betrag ab (Pruefung 13.10.2026, Befund 4). Eine bezahlte Rechnung
+ * bekommt keine Bedingung: "zahlbar bis" ueber null Euro liest ein Gast als
+ * Mahnung.
+ */
+export function paymentTermsText(inv: CiiInvoice): string | null {
+  const offen = ciiTotals(inv).grossCent - (inv.prepaidCent ?? 0) + (inv.roundingCent ?? 0)
+  if (offen <= 0 || inv.kind === 'credit_note') return null
+  if (!inv.dueOn) return 'Zahlbar sofort ohne Abzug.'
+  const [j, m, t] = inv.dueOn.split('-')
+  return `Zahlbar ohne Abzug bis ${t}.${m}.${j}.`
+}
+
+/**
  * Baut das CII-XML nach EN 16931.
  *
  * Abgedeckt sind die Pflichtfelder des Profils, soweit sie in einer
@@ -357,6 +379,7 @@ export function buildInvoiceCii(inv: CiiInvoice): string {
   const totals = ciiTotals(inv)
   const prepaid = inv.prepaidCent ?? 0
   const rundung = inv.roundingCent ?? 0
+  const bedingung = paymentTermsText(inv)
 
   const hinweise = [
     ...(inv.reverseCharge === true ? [REVERSE_CHARGE_NOTE] : []),
@@ -426,6 +449,11 @@ export function buildInvoiceCii(inv: CiiInvoice): string {
           el('ram:BillingSpecifiedPeriod',
             dateNode('ram:StartDateTime', inv.serviceFrom),
             dateNode('ram:EndDateTime', inv.serviceTo)),
+          // BT-20 und BT-9. In der XSD-Sequenz nach dem Zeitraum und vor
+          // den Summen.
+          bedingung === null ? null : el('ram:SpecifiedTradePaymentTerms',
+            leaf('ram:Description', bedingung),
+            inv.dueOn ? dateNode('ram:DueDateDateTime', inv.dueOn) : null),
           el('ram:SpecifiedTradeSettlementHeaderMonetarySummation',
             leaf('ram:LineTotalAmount', amount(totals.netCent)),
             leaf('ram:TaxBasisTotalAmount', amount(totals.netCent)),
