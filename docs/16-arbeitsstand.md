@@ -1146,3 +1146,13 @@ Sven, 12.10.2026: „erweitere im gesamten System unser i18n und die Übersetzun
 **Bewusst nicht.** Maltesisch, Irisch, Luxemburgisch, Belarussisch, Bosnisch, Katalanisch, Walisisch und Baskisch: deren Sprecher lesen Englisch, Deutsch, Französisch, Russisch, Kroatisch oder Spanisch, und jede Sprache mehr ist ein Satz mehr an jedem Schlüssel. Die Zugangspost an Benutzer (Einladung, Kennwort, Mailadresse, Support) bleibt deutsch; die Routen rufen sie ohne Sprache auf.
 
 **Woher die Sätze kommen.** Maschinell übersetzt aus dem Deutschen mit dem Englischen als Gegenlesung, Platzhalter und Rechtsbegriffe (`Meldeschein`, `§ 30 BMG`, `DATEV`, `GoBD`) geprüft. Ein Muttersprachler sollte die Gastseiten (Online-Check-in, Terminal, Mappe, Mail) einmal gegenlesen, bevor ein Haus sie Gästen zeigt.
+
+### Kurtaxe und Rechnungskürzel (`0157`) — **erledigt**
+
+**Warum.** Die Prüfung des Rechnungssystems vom 13.10.2026 fand zwei Fehler, die am ersten Tag aufgefallen wären. Jede Rechnung über einen Aufenthalt mit Kurtaxe wurde abgewiesen: die Kurtaxe stand mit 0 Prozent auf ihr, und die Pflichtangabenprüfung verlangte einen Befreiungsgrund, den es nicht gibt. Und zwei Häuser eines Accounts vergaben beide `2026-00001`, obwohl § 14 Abs. 4 Nr. 4 UStG die Eindeutigkeit beim Unternehmer verlangt. Bei Sven sind Hotel und Gästehaus ein Rechtsträger.
+
+- **Kurtaxe steht auf keiner Rechnung des Hauses.** Sie ist die Abgabe der Gemeinde, das Haus zieht sie nur ein; ihr Beleg ist die Kurkarte. So rechnen die Häuser heute, und steuerlich ist sie ein durchlaufender Posten. Am Folio bleibt sie und zählt im Saldo; die Folio-Ansicht kennzeichnet sie (`city_tax`). Eine Bettensteuer schuldet das Haus selbst und bleibt auf der Rechnung.
+- **Zahlt der Gast Rechnung und Kurtaxe in einem Betrag**, wird der Vermerk trotzdem der Rechnung zugeordnet; ausgewiesen als vorausbezahlt wird höchstens der Rechnungsbetrag.
+- **Rechnungskürzel je Haus** unter Einstellungen, Rechnungen: `H-2026-00001`. Ohne Kürzel verweigert ein Haus die Rechnung, sobald der Account ein zweites echtes Haus führt. Geprüft wird das in `invoice_prefix_missing()` mit `SECURITY DEFINER`, weil ein Benutzer mit Recht auf ein Haus das andere über die Zeilenrichtlinie nicht sieht. Das Kürzel ist im Account eindeutig und bleibt fest, sobald eine Rechnung darunter steht. Die Zählung läuft beim Setzen weiter, sie beginnt nicht neu.
+
+Tests in `rechnungKurtaxeKuerzel.test.ts`. Die übrigen Befunde der Prüfung stehen in `/mnt/project-files/rechnung/pruefung-2026-10-13.md`.

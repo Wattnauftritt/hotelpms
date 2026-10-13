@@ -369,7 +369,12 @@ export const Charge = Type.Object({
   /** Gesetzt, sobald die Position auf einer Rechnung steht. Dann unveraenderlich. */
   invoice_id: Type.Union([Type.Integer(), Type.Null()]),
   /** Verweis auf die Position, die diese Zeile storniert. */
-  reverses_id: Type.Union([Type.Integer(), Type.Null()])
+  reverses_id: Type.Union([Type.Integer(), Type.Null()]),
+  /**
+   * Kurtaxe: am Folio kassiert, auf keiner Rechnung des Hauses. Ihr Beleg
+   * ist die Kurkarte; `invoice_id` bleibt deshalb fuer immer leer.
+   */
+  city_tax: Type.Boolean()
 })
 export type Charge = Static<typeof Charge>
 
