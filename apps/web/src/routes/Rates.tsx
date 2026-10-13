@@ -312,8 +312,8 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
 }
 
 /**
- * Frühstück je Rate (Migration 0158): enthalten ja oder nein und der Preis
- * je Person und Nacht. Mehr fragt die Maske nicht ab: den Getränkeanteil
+ * Frühstück je Rate (Migration 0158): enthalten ja oder nein, der Preis
+ * je Person und Nacht und wahlweise ein eigener für Kinder (0 = frei). Mehr fragt die Maske nicht ab: den Getränkeanteil
  * gibt das BMF pauschal vor, er steht in der Domain und nicht hier.
  */
 function FruehstueckZeile(
@@ -326,18 +326,26 @@ function FruehstueckZeile(
   const [enthalten, setEnthalten] = useState(plan.breakfastCent !== null)
   const [preis, setPreis] = useState(
     plan.breakfastCent === null ? '' : eingabeAusCent(plan.breakfastCent))
+  const [kinderEigen, setKinderEigen] = useState(plan.childBreakfastCent !== null)
+  const [kinderPreis, setKinderPreis] = useState(
+    plan.childBreakfastCent === null ? '' : eingabeAusCent(plan.childBreakfastCent))
 
   const cent = centAusEingabe(preis)
-  const gueltig = !enthalten || (cent !== null && cent > 0)
+  const kinderCent = centAusEingabe(kinderPreis)
+  // Ein Kinderpreis von 0 ist gueltig: Kinder fruehstuecken frei.
+  const gueltig = !enthalten
+    || (cent !== null && cent > 0 && (!kinderEigen || kinderCent !== null))
   const neu = enthalten ? cent : null
-  const geaendert = neu !== plan.breakfastCent
+  const neuKinder = enthalten && kinderEigen ? kinderCent : null
+  const geaendert = neu !== plan.breakfastCent || neuKinder !== plan.childBreakfastCent
 
   return (
     <form className="flex flex-wrap items-center gap-3 text-sm"
           onSubmit={e => {
             e.preventDefault()
             if (!gueltig || !geaendert) return
-            setzen.mutate({ ratePlanId: plan.id, breakfastCent: neu })
+            setzen.mutate({ ratePlanId: plan.id, breakfastCent: neu,
+                            childBreakfastCent: neuKinder })
           }}>
       <span className="w-56 truncate">{plan.name}
         <span className="text-neutral-500"> ({plan.code})</span></span>
@@ -352,6 +360,24 @@ function FruehstueckZeile(
           <input value={preis} onChange={e => setPreis(e.target.value)}
                  disabled={!darfSchreiben} inputMode="decimal"
                  aria-invalid={!gueltig}
+                 className="border border-neutral-300 rounded-sm px-2 py-1 w-24
+                            text-end tabular-nums" />
+          <span>€</span>
+        </label>
+      )}
+      {enthalten && (
+        <label className="flex items-center gap-1.5">
+          <input type="checkbox" checked={kinderEigen} disabled={!darfSchreiben}
+                 onChange={e => setKinderEigen(e.target.checked)} />
+          {t('rate.breakfast.children')}
+        </label>
+      )}
+      {enthalten && kinderEigen && (
+        <label className="flex items-center gap-1.5">
+          <span className="text-neutral-600">{t('rate.breakfast.childPrice')}</span>
+          <input value={kinderPreis} onChange={e => setKinderPreis(e.target.value)}
+                 disabled={!darfSchreiben} inputMode="decimal" placeholder="0,00"
+                 aria-invalid={kinderCent === null}
                  className="border border-neutral-300 rounded-sm px-2 py-1 w-24
                             text-end tabular-nums" />
           <span>€</span>
@@ -448,7 +474,9 @@ function Ratenplaene(
                               propertyId={propertyId} plan={p}
                               darfSchreiben={darfSchreiben} />
           ))}
-          <div className="text-xs text-neutral-500">{t('rate.breakfast.hint')}</div>
+          <div className="text-xs text-neutral-500">
+            {t('rate.breakfast.hint')} {t('rate.breakfast.childHint')}
+          </div>
         </div>
       )}
 

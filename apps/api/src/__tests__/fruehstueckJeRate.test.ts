@@ -57,10 +57,11 @@ async function plan(propertyId = fx.propertyId, catId = categoryId): Promise<num
 }
 
 const setzen = (ratePlanId: number, breakfastCent: unknown,
-                headers = preise, propertyId = fx.propertyId) => app.inject({
+                headers = preise, propertyId = fx.propertyId,
+                childBreakfastCent: unknown = null) => app.inject({
   method: 'PUT',
   url: `/v1/properties/${propertyId}/rate-plans/${ratePlanId}/breakfast`,
-  headers, payload: { breakfastCent } })
+  headers, payload: { breakfastCent, childBreakfastCent } })
 
 describe('Fruehstueck an der Rate', () => {
   it('setzt, liest und entfernt den Preis', async () => {
@@ -85,6 +86,21 @@ describe('Fruehstueck an der Rate', () => {
       const r = await setzen(id, falsch)
       expect(r.statusCode, String(falsch)).toBe(422)
     }
+  })
+
+  it('nimmt einen Kinderpreis an, auch 0, aber nicht ohne Fruehstueck', async () => {
+    const id = await plan()
+    expect((await setzen(id, 1_500, preise, fx.propertyId, 0)).statusCode).toBe(200)
+    let z = await owner.query(`SELECT breakfast_child_cent FROM rate_plan WHERE id = $1`, [id])
+    expect(z.rows[0]!.breakfast_child_cent).toBe(0)
+
+    expect((await setzen(id, 1_500, preise, fx.propertyId, -1)).statusCode).toBe(422)
+    expect((await setzen(id, 1_500, preise, fx.propertyId, 7.5)).statusCode).toBe(422)
+
+    // Fruehstueck heraus: der Kinderpreis geht mit, sonst stuende er allein.
+    expect((await setzen(id, null, preise, fx.propertyId, 800)).statusCode).toBe(200)
+    z = await owner.query(`SELECT breakfast_child_cent FROM rate_plan WHERE id = $1`, [id])
+    expect(z.rows[0]!.breakfast_child_cent).toBeNull()
   })
 
   it('verlangt das Recht, Raten zu pflegen', async () => {

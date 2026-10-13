@@ -30,23 +30,40 @@ export interface NightSplit {
 }
 
 /**
+ * Das Fruehstueck einer Nacht, brutto.
+ *
+ * Kinder zahlen nur dann einen eigenen Preis, wenn die Rate einen hat
+ * (`childCent`, 0 heisst frei) **und** die Buchung Erwachsene und Kinder
+ * getrennt nennt. Nennt sie nur eine Gesamtzahl, laesst sich nicht ablesen,
+ * wer davon Kind ist (Migration 0076); dann zahlen alle den Preis fuer
+ * Erwachsene, mindestens eine Person.
+ */
+export function breakfastPerNight(input: {
+  adultCent: Cent | null
+  childCent: Cent | null
+  persons: number
+  adults: number | null
+  children: number | null
+}): Cent {
+  if (input.adultCent === null) return 0
+  if (input.childCent !== null && input.adults !== null) {
+    return input.adults * input.adultCent + (input.children ?? 0) * input.childCent
+  }
+  return Math.max(input.persons, 1) * input.adultCent
+}
+
+/**
  * Eine Nacht in Logis, Speisen und Getraenke.
  *
- * Das Fruehstueck ist Preis mal Personen, aber nie mehr als die Nacht
- * selbst: ein Ratenpreis unter dem Fruehstueckswert ist eine Frage an die
- * Stammdaten, kein Grund, eine negative Logis zu buchen. Gerundet wird
- * einmal, beim Getraenkeanteil; die Speisen sind der Rest, damit die drei
- * Teile immer genau den Nachtpreis ergeben.
+ * Nie mehr Fruehstueck als die Nacht selbst: ein Ratenpreis unter dem
+ * Fruehstueckswert ist eine Frage an die Stammdaten, kein Grund, eine
+ * negative Logis zu buchen. Gerundet wird einmal, beim Getraenkeanteil; die
+ * Speisen sind der Rest, damit die drei Teile immer genau den Nachtpreis
+ * ergeben.
  */
-export function splitNight(input: {
-  priceCent: Cent
-  breakfastCent: Cent | null
-  persons: number
-}): NightSplit {
+export function splitNight(input: { priceCent: Cent; breakfastCent: Cent }): NightSplit {
   const preis = Math.max(input.priceCent, 0)
-  const fruehstueck = input.breakfastCent === null
-    ? 0
-    : Math.min(input.breakfastCent * Math.max(input.persons, 1), preis)
+  const fruehstueck = Math.min(Math.max(input.breakfastCent, 0), preis)
   const getraenke = roundHalfUp((fruehstueck * BREAKFAST_DRINKS_SHARE_BP) / 10_000)
   return {
     lodgingCent: preis - fruehstueck,

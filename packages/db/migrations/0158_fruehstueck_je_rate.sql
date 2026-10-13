@@ -21,6 +21,18 @@ ALTER TABLE rate_plan ADD COLUMN breakfast_cent integer
 COMMENT ON COLUMN rate_plan.breakfast_cent IS
   'Im Preis enthaltenes Fruehstueck, brutto je Person und Nacht. Leer: nicht enthalten.';
 
+-- Kinder (Sven, 13.10.2026): ein eigener Preis je Kind und Nacht, 0 heisst
+-- frei. Leer heisst: Kinder zahlen wie Erwachsene. Er greift nur, wenn die
+-- Buchung Erwachsene und Kinder getrennt nennt (0076); aus einer
+-- Gesamtzahl laesst sich nicht ablesen, wer Kind ist.
+ALTER TABLE rate_plan ADD COLUMN breakfast_child_cent integer
+  CHECK (breakfast_child_cent IS NULL OR breakfast_child_cent BETWEEN 0 AND 100000);
+ALTER TABLE rate_plan ADD CONSTRAINT rate_plan_breakfast_child_needs_adult
+  CHECK (breakfast_child_cent IS NULL OR breakfast_cent IS NOT NULL);
+
+COMMENT ON COLUMN rate_plan.breakfast_child_cent IS
+  'Fruehstueck je Kind und Nacht, brutto; 0 frei. Leer: wie Erwachsene.';
+
 -- Woran eine Buchung als Fruehstuecksteil der Nacht erkennbar ist.
 --
 -- Die Speisen gehen auf 8300 wie die Logis: in SKR03 ist das das

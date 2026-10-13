@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeResources, makeReservation, openBusinessDay, type Fixture } from '@hotelpms/testing'
 import { type DbContext, type Pool } from '@hotelpms/db'
-import { splitNight } from '@hotelpms/domain'
+import { breakfastPerNight, splitNight } from '@hotelpms/domain'
 import { runNightAudit } from '../jobs/nightAudit.js'
 
 /**
@@ -38,11 +38,14 @@ beforeEach(async () => {
   await openBusinessDay(owner, fx.propertyId, TAG)
 })
 
-async function rate(breakfastCent: number | null): Promise<number> {
+async function rate(breakfastCent: number | null,
+                    childCent: number | null = null): Promise<number> {
   const r = await owner.query<{ id: number }>(
-    `INSERT INTO rate_plan (property_id, category_id, code, name, breakfast_cent)
-     VALUES ($1,$2,$3,$3,$4) RETURNING id`,
-    [fx.propertyId, catId, `R${breakfastCent ?? 0}`, breakfastCent])
+    `INSERT INTO rate_plan (property_id, category_id, code, name, breakfast_cent,
+                            breakfast_child_cent)
+     VALUES ($1,$2,$3,$3,$4,$5) RETURNING id`,
+    [fx.propertyId, catId, `R${breakfastCent ?? 0}-${childCent ?? 'x'}`, breakfastCent,
+     childCent])
   return r.rows[0]!.id
 }
 
@@ -88,7 +91,9 @@ describe('Fruehstueck im Zimmerpreis', () => {
         tax_rate_bp: 1900, revenue_account: '8400', package_part: 'breakfast_drinks' }
     ])
     // Dieselbe Rechnung wie in der Domain, damit beide nicht auseinanderlaufen.
-    expect(splitNight({ priceCent: 11_000, breakfastCent: 1_500, persons: 2 }))
+    const fruehstueck = breakfastPerNight({ adultCent: 1_500, childCent: null, persons: 2,
+                                            adults: null, children: null })
+    expect(splitNight({ priceCent: 11_000, breakfastCent: fruehstueck }))
       .toEqual({ lodgingCent: 8_000, foodCent: 2_100, drinksCent: 900 })
 
     // Ohne Fruehstueck in der Rate bleibt es bei einer Zeile.
@@ -121,5 +126,33 @@ describe('Fruehstueck im Zimmerpreis', () => {
 
     expect((await buchungen(res.reservationId)).map(x => x.gross_cent))
       .toEqual([9_500, 1_050, 450])
+  })
+
+  /**
+   * Kinderpreis (Sven, 13.10.2026): greift nur, wenn die Buchung Erwachsene
+   * und Kinder getrennt nennt. Nennt sie nur eine Gesamtzahl, zahlen alle
+   * wie Erwachsene -- wer Kind ist, steht dann nirgends.
+   */
+  it('rechnet Kinder zu ihrem eigenen Preis, frei mit 0', async () => {
+    const getrennt = await gast({ ratePlanId: await rate(1_500, 800), personen: 3,
+                                  preis: 15_000, zimmer: 0 })
+    await owner.query(`UPDATE reservation SET adults = 2, children = 1 WHERE id = $1`,
+      [getrennt])
+    const frei = await gast({ ratePlanId: await rate(1_500, 0), personen: 3,
+                              preis: 15_000, zimmer: 1 })
+    await owner.query(`UPDATE reservation SET adults = 2, children = 1 WHERE id = $1`,
+      [frei])
+    const nurSumme = await gast({ ratePlanId: await rate(1_500, 900), personen: 3,
+                                  preis: 15_000, zimmer: 2 })
+    await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
+
+    const summe = async (id: number): Promise<number> =>
+      (await buchungen(id)).filter(z => z.package_part !== null)
+        .reduce((s, z) => s + z.gross_cent, 0)
+    expect(await summe(getrennt)).toBe(2 * 1_500 + 800)
+    expect(await summe(frei)).toBe(2 * 1_500)
+    expect(await summe(nurSumme)).toBe(3 * 1_500)
+    expect(breakfastPerNight({ adultCent: 1_500, childCent: 800, persons: 3,
+                               adults: 2, children: 1 })).toBe(3_800)
   })
 })

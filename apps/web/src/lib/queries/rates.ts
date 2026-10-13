@@ -101,10 +101,12 @@ export function useCreateRatePlan(propertyId: number) {
 export function useSetBreakfast(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { ratePlanId: number; breakfastCent: number | null }) =>
-      api.put<{ ratePlanId: number; breakfastCent: number | null }>(
+    mutationFn: (body: { ratePlanId: number; breakfastCent: number | null
+                         childBreakfastCent: number | null }) =>
+      api.put<{ ratePlanId: number; breakfastCent: number | null
+                childBreakfastCent: number | null }>(
         `/v1/properties/${propertyId}/rate-plans/${body.ratePlanId}/breakfast`,
-        { breakfastCent: body.breakfastCent }),
+        { breakfastCent: body.breakfastCent, childBreakfastCent: body.childBreakfastCent }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
     }

@@ -170,7 +170,7 @@ async function rollover(
  * Enthaelt die Rate Fruehstueck (`rate_plan.breakfast_cent`, Migration
  * 0158), wird es aus dem Nachtpreis herausgerechnet und als Speisen und
  * Getraenke gebucht, je zu ihrem Satz. Die Rechnung dazu steht in
- * `splitNight` (domain); hier dieselbe in SQL, damit der Nachtlauf bei 250
+ * `breakfastPerNight` und `splitNight` (domain); hier dieselbe in SQL, damit der Nachtlauf bei 250
  * Zimmern eine Anweisung bleibt. Anteil und Saetze kommen als Parameter aus
  * der Domain, damit es sie nur einmal gibt.
  */
@@ -189,13 +189,21 @@ async function postAccommodation(
               -- das landet die Firmenrechnung beim Gast, und der Check-out
               -- am Morgen wird zur Diskussion.
               COALESCE(rr.target_folio_id, f.id) AS folio_id,
-              -- Fruehstueck: Preis mal Personen, nie mehr als die Nacht.
-              -- Die Personen aus der angegebenen Zahl, sonst aus den
-              -- erfassten Gaesten, mindestens eine.
-              LEAST(COALESCE(rp.breakfast_cent, 0)::bigint
-                      * GREATEST(COALESCE(r.guest_count,
-                                          (SELECT count(*) FROM reservation_occupant o
-                                            WHERE o.reservation_id = r.id)::int), 1),
+              -- Fruehstueck wie breakfastPerNight (domain), nie mehr als
+              -- die Nacht. Ein Kinderpreis greift nur, wenn die Buchung
+              -- Erwachsene getrennt nennt; sonst zahlen alle wie
+              -- Erwachsene, Personen aus der angegebenen Zahl, sonst aus
+              -- den erfassten Gaesten, mindestens eine.
+              LEAST(CASE
+                      WHEN rp.breakfast_cent IS NULL THEN 0
+                      WHEN rp.breakfast_child_cent IS NOT NULL AND r.adults IS NOT NULL
+                        THEN r.adults::bigint * rp.breakfast_cent
+                             + COALESCE(r.children, 0)::bigint * rp.breakfast_child_cent
+                      ELSE rp.breakfast_cent::bigint
+                           * GREATEST(COALESCE(r.guest_count,
+                                               (SELECT count(*) FROM reservation_occupant o
+                                                 WHERE o.reservation_id = r.id)::int), 1)
+                    END,
                     GREATEST(rn.price_cent, 0)) AS fruehstueck
          FROM reservation_night rn
          JOIN reservation r ON r.id = rn.reservation_id
