@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { withTransaction, type DbContext, type Pool, type PoolClient } from '@hotelpms/db'
 import { buildInvoiceCii, ciiFindings, ciiTotals,
-         type CiiFinding, type CiiInvoice, type CiiLine, type CiiParty }
+         type CiiFinding, type CiiInvoice, type CiiLine, type CiiParty, type CiiPayee }
   from '@hotelpms/domain'
 import { renderInvoicePdf } from '../pdf/invoiceLayout.js'
 import { finalizePdfA3 } from '../pdf/pdfa3.js'
@@ -95,8 +95,21 @@ function party(snapshot: Partial<CiiParty>): CiiParty {
     city: snapshot.city ?? null,
     country: snapshot.country ?? null,
     taxNumber: snapshot.taxNumber ?? null,
-    vatId: snapshot.vatId ?? null
+    vatId: snapshot.vatId ?? null,
+    registrationId: snapshot.registrationId ?? null,
+    electronicAddress: snapshot.electronicAddress ?? null,
+    contactName: snapshot.contactName ?? null,
+    phone: snapshot.phone ?? null,
+    email: snapshot.email ?? null
   }
+}
+
+/** Bankverbindung aus der Momentaufnahme des Ausstellers (0164). */
+function payee(snapshot: { name?: string; iban?: string | null; bic?: string | null
+                           bankName?: string | null }): CiiPayee | null {
+  if (!snapshot.iban) return null
+  return { iban: snapshot.iban, bic: snapshot.bic ?? null,
+           accountName: snapshot.name ?? null, bankName: snapshot.bankName ?? null }
 }
 
 function line(c: ChargeRow): CiiLine {
@@ -251,6 +264,9 @@ async function load(
     currency: row.currency,
     seller: party(row.issuer_snapshot),
     buyer: party(row.recipient_snapshot),
+    buyerReference: (row.recipient_snapshot as { buyerReference?: string | null })
+      .buyerReference ?? null,
+    payee: payee(row.issuer_snapshot as Parameters<typeof payee>[0]),
     lines: [...c.rows.map(line), ...d.rows.map(depositLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.

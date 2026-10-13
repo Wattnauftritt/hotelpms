@@ -108,6 +108,23 @@ describe('Firmen', () => {
     expect(lesen.statusCode).toBe(200)
   })
 
+  it('nimmt eine Leitweg-ID, prueft ihre Form und loescht sie mit null', async () => {
+    const ref = await firmaAnlegen()
+    const patch = (buyerReference: unknown) => app.inject({
+      method: 'PATCH', url: `/v1/companies/${ref}`, headers: auth, payload: { buyerReference } })
+    const r = await patch(' 04011000-12345-34 ')
+    expect(r.statusCode, r.body).toBe(200)
+    expect(JSON.parse(r.body).buyerReference).toBe('04011000-12345-34')
+    // Ein Leerzeichen mitten darin ist keine Leitweg-ID; die Behoerde wiese die Rechnung ab.
+    expect((await patch('04011000 12345')).statusCode).toBe(422)
+    // Ein Aendern anderer Felder laesst sie stehen.
+    const andere = await app.inject({
+      method: 'PATCH', url: `/v1/companies/${ref}`, headers: auth,
+      payload: { paymentTermsDays: 30 } })
+    expect(JSON.parse(andere.body).buyerReference).toBe('04011000-12345-34')
+    expect(JSON.parse((await patch(null)).body).buyerReference).toBeNull()
+  })
+
   it('haelt Firmen des einen Mandanten vom anderen fern', async () => {
     const ref = await firmaAnlegen()
     const fremd = await makeProperty(owner, { name: 'Fremdhotel', code: 'FREMD' })

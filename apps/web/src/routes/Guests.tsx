@@ -513,6 +513,7 @@ function FirmaFormular({ initial, darfSchreiben, onSaved }: {
   const [country, setCountry] = useState(initial?.country ?? 'DE')
   const [paymentTermsDays, setPaymentTermsDays] = useState(initial?.paymentTermsDays ?? 14)
   const [invoiceEmail, setInvoiceEmail] = useState(initial?.invoiceEmail ?? '')
+  const [leitweg, setLeitweg] = useState(initial?.buyerReference ?? '')
   const [active, setActive] = useState(initial?.active ?? true)
 
   const anlegen = useCreateCompany()
@@ -523,7 +524,10 @@ function FirmaFormular({ initial, darfSchreiben, onSaved }: {
     const body = {
       name: name.trim(), vatId: orUndef(vatId), addressLine1: orUndef(addressLine1),
       postalCode: orUndef(postalCode), city: orUndef(city), country: orUndef(country) ?? 'DE',
-      paymentTermsDays, invoiceEmail: orUndef(invoiceEmail)
+      paymentTermsDays, invoiceEmail: orUndef(invoiceEmail),
+      // Leer schickt einen leeren Text: so laesst sich eine Leitweg-ID
+      // wieder entfernen, wenn die Firma doch keine Behoerde ist.
+      buyerReference: initial ? leitweg.trim() : orUndef(leitweg)
     }
     if (initial) {
       aendern.mutate({ ...body, active }, { onSuccess: onSaved })
@@ -564,6 +568,12 @@ function FirmaFormular({ initial, darfSchreiben, onSaved }: {
       <input value={invoiceEmail} onChange={e => setInvoiceEmail(e.target.value)} type="email"
              disabled={!darfSchreiben} placeholder={t('companies.invoiceEmail')}
              className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      <input value={leitweg} onChange={e => setLeitweg(e.target.value)}
+             disabled={!darfSchreiben} placeholder={t('companies.buyerReference')}
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm font-mono" />
+      {leitweg.trim() !== '' && (
+        <p className="text-xs text-neutral-500">{t('companies.buyerReferenceHint')}</p>
+      )}
       {initial !== undefined && darfSchreiben && (
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />

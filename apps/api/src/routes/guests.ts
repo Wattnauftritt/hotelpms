@@ -574,21 +574,23 @@ export function guestRoutes(app: FastifyInstance): void {
       const body = req.body as {
         accountId?: number; name: string; vatId?: string; addressLine1?: string
         postalCode?: string; city?: string; country?: string
-        paymentTermsDays?: number; invoiceEmail?: string }
+        paymentTermsDays?: number; invoiceEmail?: string; buyerReference?: string }
       const principal = req.principal as Principal
       if (!body.name || body.name.trim() === '') {
         throw Errors.validation({ name: ['field.required'] })
       }
+      const leitweg = leitwegId(body.buyerReference)
       const accountId = accountFor(principal, body.accountId, 'guest:write')
       return tx(req.pool, req, async client => {
         const { rows } = await client.query<{ public_ref: string }>(
           `INSERT INTO company (account_id, name, vat_id, address_line1, postal_code,
-                                city, country, payment_terms_days, invoice_email)
-           VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'DE'),COALESCE($8,14),$9)
+                                city, country, payment_terms_days, invoice_email,
+                                buyer_reference)
+           VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'DE'),COALESCE($8,14),$9,$10)
            RETURNING public_ref`,
           [accountId, body.name.trim(), body.vatId ?? null, body.addressLine1 ?? null,
            body.postalCode ?? null, body.city ?? null, body.country ?? null,
-           body.paymentTermsDays ?? null, body.invoiceEmail ?? null])
+           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, leitweg ?? null])
         reply.status(201)
         return { companyRef: rows[0]!.public_ref, name: body.name.trim() }
       })
@@ -641,7 +643,8 @@ export function guestRoutes(app: FastifyInstance): void {
   const COMPANY_FIELDS = `public_ref AS "companyRef", name, vat_id AS "vatId",
                            address_line1 AS "addressLine1", postal_code AS "postalCode",
                            city, country, payment_terms_days AS "paymentTermsDays",
-                           invoice_email AS "invoiceEmail", active`
+                           invoice_email AS "invoiceEmail",
+                           buyer_reference AS "buyerReference", active`
 
   registerRoute(app, {
     method: 'GET',
@@ -669,8 +672,9 @@ export function guestRoutes(app: FastifyInstance): void {
       const body = req.body as {
         name?: string; vatId?: string; addressLine1?: string; postalCode?: string
         city?: string; country?: string; paymentTermsDays?: number; invoiceEmail?: string
-        active?: boolean
+        active?: boolean; buyerReference?: string | null
       }
+      const leitweg = leitwegId(body.buyerReference)
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number }>(
           `SELECT id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
@@ -687,13 +691,31 @@ export function guestRoutes(app: FastifyInstance): void {
              payment_terms_days = COALESCE($8, payment_terms_days),
              invoice_email      = COALESCE($9, invoice_email),
              active             = COALESCE($10, active),
+             buyer_reference    = CASE WHEN $11 THEN $12 ELSE buyer_reference END,
              updated_at         = now()
            WHERE id = $1 RETURNING ${COMPANY_FIELDS}`,
           [cur.rows[0]!.id, body.name ?? null, body.vatId ?? null, body.addressLine1 ?? null,
            body.postalCode ?? null, body.city ?? null, body.country ?? null,
-           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, body.active ?? null])
+           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, body.active ?? null,
+           leitweg !== undefined, leitweg ?? null])
         return rows[0]
       })
     }
   })
+}
+
+/**
+ * Leitweg-ID (BT-10) einer Behoerde, 0164. `undefined`: nicht genannt;
+ * `null`: leer, also loeschen. Mit ihr wird die Rechnung eine XRechnung.
+ */
+function leitwegId(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined
+  if (v === null) return null
+  if (typeof v !== 'string') throw Errors.validation({ buyerReference: ['field.invalid'] })
+  const t = v.trim()
+  if (t === '') return null
+  if (!/^[0-9A-Za-z-]{1,46}$/.test(t)) {
+    throw Errors.validation({ buyerReference: ['field.invalid'] })
+  }
+  return t
 }

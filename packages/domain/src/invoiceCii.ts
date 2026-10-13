@@ -34,6 +34,30 @@ export interface CiiParty {
   taxNumber?: string | null
   /** BT-31 beim Aussteller, BT-48 beim Empfänger. */
   vatId?: string | null
+  /**
+   * BT-30, Handelsregisternummer. Genuegt BR-CO-26 wie die USt-IdNr.; ein
+   * Haus in der Rechtsform einer GmbH hat sie immer, eine USt-IdNr. nicht
+   * unbedingt.
+   */
+  registrationId?: string | null
+  /** BT-34 beim Aussteller, BT-49 beim Empfänger: elektronische Adresse, hier eine Mailadresse. */
+  electronicAddress?: string | null
+  /** BG-6, Kontakt beim Aussteller: BT-41 Ansprechpartner, BT-42 Telefon, BT-43 Mail. */
+  contactName?: string | null
+  phone?: string | null
+  email?: string | null
+}
+
+/** BG-16 und BG-17: Zahlungsanweisung per Ueberweisung. */
+export interface CiiPayee {
+  /** BT-84. */
+  iban: string
+  /** BT-86. */
+  bic?: string | null
+  /** BT-85, Kontoinhaber. */
+  accountName?: string | null
+  /** Nur fuers Blatt; das XML kennt die Bank ueber die BIC. */
+  bankName?: string | null
 }
 
 /**
@@ -111,6 +135,15 @@ export interface CiiInvoice {
    * sondern ein zweiter Beleg.
    */
   precedingInvoice?: { number: string; issuedOn: IsoDate } | null
+  /**
+   * BT-10, Leitweg-ID eines oeffentlichen Auftraggebers. Mit ihr wird das
+   * XML eine XRechnung (BT-24), weil die Eingangsplattformen von Bund und
+   * Laendern ZUGFeRD nur in diesem Profil annehmen; dazu gehoeren die
+   * strengeren Regeln BR-DE-*, die `ciiFindings` dann mit prueft.
+   */
+  buyerReference?: string | null
+  /** BG-16, Bankverbindung des Hauses. Ohne sie keine Zahlungsanweisung im XML. */
+  payee?: CiiPayee | null
 }
 
 /** Wörtlicher Hinweis nach § 14a Abs. 5 UStG. Ohne ihn schuldet das Haus. */
@@ -125,6 +158,18 @@ const NS = {
 
 /** BT-24. Kennzeichnet das Profil; ein Prüfer wählt danach sein Regelwerk. */
 export const EN16931_GUIDELINE = 'urn:cen.eu:en16931:2017'
+
+/** BT-24 der XRechnung 3.0, als CIUS von EN 16931. */
+export const XRECHNUNG_GUIDELINE =
+  'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0'
+
+/** BT-23, den die XRechnung 3.0 verlangt. */
+export const XRECHNUNG_PROCESS = 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0'
+
+/** Gilt die strengere XRechnung? Genau dann, wenn eine Leitweg-ID dasteht. */
+export function isXRechnung(inv: Pick<CiiInvoice, 'buyerReference'>): boolean {
+  return !leer(inv.buyerReference)
+}
 
 /** BT-3 nach UNTDID 1001. */
 function documentTypeCode(kind: CiiInvoice['kind']): string {
@@ -225,6 +270,16 @@ function unitPrice(netCent: Cent, quantity: number): string {
 }
 
 function partyNode(name: string, p: CiiParty, opts: { taxNumber: boolean }): XmlNode {
+  // Reihenfolge nach der XSD-Sequenz von TradeParty: Name,
+  // SpecifiedLegalOrganization, DefinedTradeContact, PostalTradeAddress,
+  // URIUniversalCommunication, SpecifiedTaxRegistration.
+  const kontakt = opts.taxNumber && (p.contactName || p.phone || p.email)
+    ? el('ram:DefinedTradeContact',
+        p.contactName ? leaf('ram:PersonName', p.contactName) : null,
+        p.phone ? el('ram:TelephoneUniversalCommunication',
+          leaf('ram:CompleteNumber', p.phone)) : null,
+        p.email ? el('ram:EmailURIUniversalCommunication', leaf('ram:URIID', p.email)) : null)
+    : null
   // Kein erfundenes Land, wenn keines da ist: ein Gast ohne Landangabe ist
   // nicht automatisch Inlaender, und ein stillschweigendes DE waere im
   // Zweifel eine falsche Angabe in einem steuerlichen Beleg. Fehlt es,
@@ -237,7 +292,13 @@ function partyNode(name: string, p: CiiParty, opts: { taxNumber: boolean }): Xml
 
   return el(name,
     leaf('ram:Name', p.name),
+    p.registrationId ? el('ram:SpecifiedLegalOrganization',
+      leaf('ram:ID', p.registrationId)) : null,
+    kontakt,
     anschrift,
+    // EM: die Adresse ist eine Mailadresse (EAS-Codeliste).
+    p.electronicAddress ? el('ram:URIUniversalCommunication',
+      leaf('ram:URIID', p.electronicAddress, { schemeID: 'EM' })) : null,
     // Umsatzsteuer-Identifikationsnummer und Steuernummer sind zwei
     // Registrierungen, nicht zwei Schreibweisen derselben: VA ist die
     // USt-IdNr nach BT-31, FC die Steuernummer nach BT-32.
@@ -275,6 +336,8 @@ export function ciiTotals(inv: CiiInvoice): InvoiceTotals {
 export interface CiiFinding {
   key: 'seller_name' | 'seller_address' | 'seller_identifier'
      | 'buyer_name' | 'buyer_address' | 'lines' | 'currency'
+     | 'xrechnung_contact' | 'xrechnung_payment' | 'xrechnung_seller_address'
+     | 'xrechnung_buyer_address' | 'xrechnung_tax_id'
   /** Regel der Norm, damit die Meldung nachprüfbar ist. */
   rule: string
   de: string
@@ -326,10 +389,10 @@ export function ciiFindings(inv: CiiInvoice): CiiFinding[] {
       'Anschrift des Ausstellers ist unvollstaendig. '
       + 'Postleitzahl, Ort und Laendercode sind noetig.')
   }
-  if (leer(inv.seller.vatId)) {
+  if (leer(inv.seller.vatId) && leer(inv.seller.registrationId)) {
     add('seller_identifier', 'BR-CO-26',
-      'Dem Haus fehlt die Umsatzsteuer-Identifikationsnummer. '
-      + 'Die Steuernummer genuegt der Norm nicht; ohne USt-IdNr. traegt die '
+      'Dem Haus fehlen USt-IdNr. und Handelsregisternummer. '
+      + 'Die Steuernummer genuegt der Norm nicht; ohne eines von beiden traegt die '
       + 'Rechnung kein XML.')
   }
   if (leer(inv.buyer.name)) {
@@ -347,6 +410,36 @@ export function ciiFindings(inv: CiiInvoice): CiiFinding[] {
   }
   if (leer(inv.currency)) {
     add('currency', 'BR-05', 'Waehrung fehlt.')
+  }
+
+  /*
+   * XRechnung: mit Leitweg-ID gelten die Regeln der CIUS zusaetzlich. Ein
+   * Beleg, der an einer davon scheitert, wird von der Eingangsplattform
+   * zurueckgewiesen -- erst dort und Tage spaeter, wenn niemand mehr an
+   * die Rechnung denkt. Hier faellt es beim Ausstellen auf.
+   */
+  if (isXRechnung(inv)) {
+    if (leer(inv.seller.contactName) || leer(inv.seller.phone) || leer(inv.seller.email)) {
+      add('xrechnung_contact', 'BR-DE-2, BR-DE-5, BR-DE-6, BR-DE-7',
+        'Fuer eine XRechnung braucht das Haus Ansprechpartner, Telefon und Mailadresse '
+        + 'fuer Rechnungen.')
+    }
+    if (inv.payee === null || inv.payee === undefined || leer(inv.payee.iban)) {
+      add('xrechnung_payment', 'BR-DE-1',
+        'Fuer eine XRechnung braucht das Haus eine Bankverbindung (IBAN).')
+    }
+    if (leer(inv.seller.electronicAddress)) {
+      add('xrechnung_seller_address', 'BT-34',
+        'Fuer eine XRechnung braucht das Haus eine Mailadresse fuer Rechnungen.')
+    }
+    if (leer(inv.buyer.electronicAddress)) {
+      add('xrechnung_buyer_address', 'BT-49',
+        'Fuer eine XRechnung braucht die Firma eine Rechnungsmailadresse.')
+    }
+    if (leer(inv.seller.vatId) && leer(inv.seller.taxNumber)) {
+      add('xrechnung_tax_id', 'BR-DE-16',
+        'Fuer eine XRechnung braucht das Haus USt-IdNr. oder Steuernummer.')
+    }
   }
   return f
 }
@@ -395,8 +488,9 @@ function alsGutschrift(inv: CiiInvoice): CiiInvoice {
  * Beherbergungsrechnung vorkommen: BT-1 bis BT-5, BT-22, BT-24, BT-27 bis
  * BT-40, BT-44 bis BT-55, BT-72 bis BT-74, BT-106 bis BT-120, BT-126 bis
  * BT-131 und BT-146 bis BT-153. Nicht belegt sind die Gruppen, die dieses
- * System nicht kennt: Bestellbezug, Lieferadresse, Zahlungsanweisung,
- * Nachlaesse auf Dokumentebene.
+ * System nicht kennt: Bestellbezug, Lieferadresse, Nachlaesse auf
+ * Dokumentebene. Kontakt, Bankverbindung und Leitweg-ID stehen da, wo das
+ * Haus sie hinterlegt hat.
  *
  * Aufzurufen erst, wenn `ciiFindings` leer ist. Diese Funktion gibt aus,
  * was da ist, und erfindet nichts; sie ist kein zweiter Prüfer.
@@ -406,7 +500,26 @@ export function buildInvoiceCii(beleg: CiiInvoice): string {
   const totals = ciiTotals(inv)
   const prepaid = inv.prepaidCent ?? 0
   const rundung = inv.roundingCent ?? 0
-  const bedingung = paymentTermsText(inv)
+  /*
+   * Eine Gutschrift traegt nach dem Drehen einen positiven Zahlbetrag, und
+   * BR-CO-25 verlangt dann eine Bedingung. Ohne sie wies der Validator jede
+   * Stornorechnung ab; aufgefallen ist es erst, als die Beispielbelege in
+   * CI gegen das Schematron liefen. Die Bedingung sagt, was mit dem Betrag
+   * geschieht -- gezahlt wird an den Kunden, nicht vom Kunden.
+   */
+  const bedingung = inv.kind === 'credit_note'
+    ? (totals.grossCent - prepaid + rundung > 0
+        ? (inv.precedingInvoice
+            ? `Wird mit Rechnung ${inv.precedingInvoice.number} verrechnet oder erstattet.`
+            : 'Wird verrechnet oder erstattet.')
+        : null)
+    : paymentTermsText(inv)
+  const xrechnung = isXRechnung(inv)
+  // Die Bankverbindung nur, wo etwas zu ueberweisen ist: auf einer
+  // Gutschrift oder einer bezahlten Rechnung laese ein Kunde sie als
+  // Zahlungsaufforderung. Die XRechnung verlangt sie immer (BR-DE-1).
+  const zahlung = inv.payee && inv.payee.iban
+    && (xrechnung || (bedingung !== null && inv.kind !== 'credit_note')) ? inv.payee : null
 
   const hinweise = [
     ...(inv.reverseCharge === true ? [REVERSE_CHARGE_NOTE] : []),
@@ -451,8 +564,10 @@ export function buildInvoiceCii(beleg: CiiInvoice): string {
     },
     children: [
       el('rsm:ExchangedDocumentContext',
+        xrechnung ? el('ram:BusinessProcessSpecifiedDocumentContextParameter',
+          leaf('ram:ID', XRECHNUNG_PROCESS)) : null,
         el('ram:GuidelineSpecifiedDocumentContextParameter',
-          leaf('ram:ID', EN16931_GUIDELINE))),
+          leaf('ram:ID', xrechnung ? XRECHNUNG_GUIDELINE : EN16931_GUIDELINE))),
       el('rsm:ExchangedDocument',
         leaf('ram:ID', inv.number),
         leaf('ram:TypeCode', documentTypeCode(inv.kind)),
@@ -461,6 +576,8 @@ export function buildInvoiceCii(beleg: CiiInvoice): string {
       el('rsm:SupplyChainTradeTransaction',
         ...positionen,
         el('ram:ApplicableHeaderTradeAgreement',
+          // BT-10 steht in der XSD-Sequenz vor den Beteiligten.
+          inv.buyerReference ? leaf('ram:BuyerReference', inv.buyerReference) : null,
           partyNode('ram:SellerTradeParty', inv.seller, { taxNumber: true }),
           partyNode('ram:BuyerTradeParty', inv.buyer, { taxNumber: false })),
         el('ram:ApplicableHeaderTradeDelivery',
@@ -469,7 +586,19 @@ export function buildInvoiceCii(beleg: CiiInvoice): string {
           el('ram:ActualDeliverySupplyChainEvent',
             dateNode('ram:OccurrenceDateTime', inv.serviceTo))),
         el('ram:ApplicableHeaderTradeSettlement',
+          // BT-83: mit der Rechnungsnummer als Verwendungszweck findet die
+          // Buchhaltung die Ueberweisung ohne Nachfrage.
+          zahlung ? leaf('ram:PaymentReference', inv.number) : null,
           leaf('ram:InvoiceCurrencyCode', inv.currency),
+          // BG-16, in der XSD-Sequenz vor den Steuergruppen. 58 ist die
+          // SEPA-Ueberweisung (UNTDID 4461).
+          zahlung ? el('ram:SpecifiedTradeSettlementPaymentMeans',
+            leaf('ram:TypeCode', '58'),
+            el('ram:PayeePartyCreditorFinancialAccount',
+              leaf('ram:IBANID', zahlung.iban),
+              zahlung.accountName ? leaf('ram:AccountName', zahlung.accountName) : null),
+            zahlung.bic ? el('ram:PayeeSpecifiedCreditorFinancialInstitution',
+              leaf('ram:BICID', zahlung.bic)) : null) : null,
           ...steuergruppen,
           // BT-73 und BT-74. Der Leistungszeitraum nach § 14 Abs. 4 Nr. 6
           // UStG ist der Aufenthalt, nicht das Rechnungsdatum.

@@ -818,6 +818,8 @@ export const Company = Type.Object({
   country: Type.String(),
   paymentTermsDays: Type.Integer(),
   invoiceEmail: Type.Union([Type.String(), Type.Null()]),
+  /** BT-10, Leitweg-ID einer Behoerde. Mit ihr wird die Rechnung eine XRechnung. */
+  buyerReference: Type.Union([Type.String(), Type.Null()]),
   active: Type.Boolean()
 })
 export type Company = Static<typeof Company>
@@ -831,7 +833,8 @@ export const CreateCompany = Type.Object({
   city: Type.Optional(Type.String()),
   country: Type.Optional(Type.String()),
   paymentTermsDays: Type.Optional(Type.Integer({ minimum: 0 })),
-  invoiceEmail: Type.Optional(Type.String())
+  invoiceEmail: Type.Optional(Type.String()),
+  buyerReference: Type.Optional(Type.String())
 })
 export type CreateCompany = Static<typeof CreateCompany>
 

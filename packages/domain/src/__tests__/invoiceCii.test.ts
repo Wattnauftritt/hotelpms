@@ -430,3 +430,65 @@ describe('Geschaeftsregeln von EN 16931', () => {
     expect(feld(xmlOhneLand, 'ram:BuyerTradeParty')).not.toContain('CountryID')
   })
 })
+
+describe('Kontakt, Bank, Handelsregister und XRechnung (0164)', () => {
+  const bank = { iban: 'DE02120300000000202051', bic: 'BYLADEM1001', accountName: 'Seehotel' }
+  const offen = { ...rechnung, dueOn: '2026-10-18', payee: bank }
+
+  it('laesst die Handelsregisternummer statt der USt-IdNr. genuegen (BT-30)', () => {
+    const ohneUstId = { ...rechnung,
+      seller: { ...rechnung.seller, vatId: null, registrationId: 'HRB 1234 AG Husum' } }
+    expect(ciiFindings(ohneUstId)).toEqual([])
+    expect(feld(buildInvoiceCii(ohneUstId), 'ram:SellerTradeParty',
+      'ram:SpecifiedLegalOrganization', 'ram:ID')).toBe('HRB 1234 AG Husum')
+  })
+
+  it('gibt die Bankverbindung nur aus, wo etwas zu ueberweisen ist', () => {
+    const xml = buildInvoiceCii(offen)
+    expect(feld(xml, 'ram:SpecifiedTradeSettlementPaymentMeans', 'ram:TypeCode')).toBe('58')
+    expect(feld(xml, 'ram:PayeePartyCreditorFinancialAccount', 'ram:IBANID'))
+      .toBe(bank.iban)
+    expect(feld(xml, 'ram:PaymentReference')).toBe(rechnung.number)
+    // Bezahlt: keine Zahlungsanweisung, sie laese sich als Aufforderung.
+    const bezahlt = buildInvoiceCii({ ...rechnung, payee: bank, prepaidCent: 1_000_000 })
+    expect(bezahlt).not.toContain('PaymentMeans')
+  })
+
+  it('setzt die Stornorechnung mit einer Bedingung, sonst greift BR-CO-25', () => {
+    const storno = buildInvoiceCii({
+      ...rechnung, kind: 'credit_note', payee: bank,
+      lines: rechnung.lines.map(l => ({ ...l, netCent: -l.netCent })),
+      precedingInvoice: { number: '2026-00041', issuedOn: '2026-10-01' }
+    })
+    expect(feld(storno, 'ram:SpecifiedTradePaymentTerms', 'ram:Description'))
+      .toBe('Wird mit Rechnung 2026-00041 verrechnet oder erstattet.')
+    // Auf einer Gutschrift steht nicht das Konto des Hauses.
+    expect(storno).not.toContain('IBANID')
+  })
+
+  it('wird mit Leitweg-ID eine XRechnung und verlangt ihre Angaben', () => {
+    const behoerde = { ...offen, buyerReference: '04011000-12345-34' }
+    expect(ciiFindings(behoerde).map(f => f.key)).toEqual([
+      'xrechnung_contact', 'xrechnung_seller_address', 'xrechnung_buyer_address'])
+
+    const vollstaendig = {
+      ...behoerde,
+      seller: { ...behoerde.seller, contactName: 'Rezeption', phone: '+49 4841 1',
+                email: 'rechnung@hotel.test', electronicAddress: 'rechnung@hotel.test' },
+      buyer: { ...behoerde.buyer, electronicAddress: 'eingang@amt.test' }
+    }
+    expect(ciiFindings(vollstaendig)).toEqual([])
+    const xml = buildInvoiceCii(vollstaendig)
+    expect(feld(xml, 'ram:GuidelineSpecifiedDocumentContextParameter', 'ram:ID'))
+      .toBe('urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0')
+    expect(feld(xml, 'ram:BuyerReference')).toBe('04011000-12345-34')
+    expect(feld(xml, 'ram:SellerTradeParty', 'ram:DefinedTradeContact', 'ram:PersonName'))
+      .toBe('Rezeption')
+    expect(xml).toContain('<ram:URIID schemeID="EM">eingang@amt.test</ram:URIID>')
+  })
+
+  it('bleibt ohne Leitweg-ID beim Profil EN 16931', () => {
+    expect(feld(buildInvoiceCii(offen), 'ram:GuidelineSpecifiedDocumentContextParameter',
+      'ram:ID')).toBe('urn:cen.eu:en16931:2017')
+  })
+})
