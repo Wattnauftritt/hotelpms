@@ -348,7 +348,9 @@ describe('Anzahlung und Zwischenrechnung', () => {
 
     const r = await fakturieren(a.folioRef)
     expect(r.statusCode, r.body).toBe(422)
-    expect(r.body).toContain('Rueckzahlung')
+    // Der Weg ist die Rueckzahlung des Ueberschusses (0162), die Meldung
+    // sagt das.
+    expect(JSON.parse(r.body).code).toBe('deposit.exceedsServices')
 
     // Und die Anzahlung ist dabei nicht verbraucht worden.
     const journal = await owner.query(

@@ -609,9 +609,11 @@ export function reportRoutes(app: FastifyInstance): void {
            */
           // Eine aufgehobene Verrechnung ('unapplied', Stornorechnung)
           // bucht in die Richtung der Vereinnahmung zurueck und traegt die
-          // Nummer der Stornorechnung.
+          // Nummer der Stornorechnung. Eine Rueckzahlung ('refunded', 0162)
+          // loest die Anzahlung auf wie eine Verrechnung, mit der Nummer
+          // ihrer Rechnungskorrektur.
           ...anzahlungen.rows.map(a => zeile(
-            a.gross_cent, a.kind === 'applied', ANZAHLUNG_KONTO,
+            a.gross_cent, a.kind === 'applied' || a.kind === 'refunded', ANZAHLUNG_KONTO,
             a.business_date,
             a.kind === 'received' ? a.deposit_number : (a.applied_number ?? a.deposit_number),
             `${a.recipient} Anzahlung ${a.deposit_number} ${a.tax_rate_bp / 100}%`))

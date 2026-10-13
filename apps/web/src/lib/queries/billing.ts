@@ -405,6 +405,25 @@ export function useCorrectCharge(folioRef: string) {
   })
 }
 
+/** Rueckzahlung einer Anzahlung, mit Rechnungskorrektur (0162). */
+export function useRefundDeposit(folioRef: string) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (r: { invoiceRef: string; amountCent: number; paymentMethodCode: string }) =>
+      api.post<{ invoiceRef: string; number: string }>(
+        `/v1/invoices/${r.invoiceRef}/refund`,
+        { amountCent: r.amountCent, paymentMethodCode: r.paymentMethodCode },
+        { 'idempotency-key': absicht.schluessel(r.invoiceRef) }),
+    onSuccess: () => {
+      absicht.erledigt()
+      void qc.invalidateQueries({ queryKey: ['prepayments', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+    }
+  })
+}
+
 /** Split: ein weiteres Folio zum selben Aufenthalt. */
 export function useSplitFolio(folioRef: string) {
   const qc = useQueryClient()
@@ -499,6 +518,44 @@ export function useCancelInvoice(propertyId: number) {
       absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
       void qc.invalidateQueries({ queryKey: ['folio', b.folioRef] })
+    }
+  })
+}
+
+/** Offene Posten: unbezahlte Schluss- und Zwischenrechnungen, ohne Zeitraum. */
+export interface OffenerPosten {
+  invoiceRef: string; number: string; kind: string; issuedOn: string; dueOn: string
+  recipient: string; folioRef: string; grossCent: number; openCent: number
+  daysOverdue: number; reminderLevel: number | null; remindedOn: string | null
+  reminderDueOn: string | null
+}
+export interface OffenePosten {
+  today: string; truncated: boolean; totalOpenCent: number; totalOverdueCent: number
+  items: OffenerPosten[]
+}
+
+export const useOpenItems = (propertyId: number, aktiv: boolean) =>
+  useQuery<OffenePosten>({
+    queryKey: ['openItems', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/open-items`),
+    enabled: aktiv,
+    staleTime: 15_000
+  })
+
+/** Erinnern oder mahnen: die naechste Stufe, auf Wunsch gleich per Mail. */
+export function useRemind(propertyId: number) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (r: { invoiceRef: string; dueOn: string; send: boolean; to?: string }) =>
+      api.post<{ level: number; messageRef: string | null }>(
+        `/v1/invoices/${r.invoiceRef}/reminders`,
+        { dueOn: r.dueOn, send: r.send, ...(r.to ? { to: r.to } : {}) },
+        { 'idempotency-key': absicht.schluessel(r.invoiceRef) }),
+    onSuccess: () => {
+      absicht.erledigt()
+      void qc.invalidateQueries({ queryKey: ['openItems', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['outbox', propertyId] })
     }
   })
 }

@@ -425,6 +425,47 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
       expect(d.xml).toContain('<ram:BilledQuantity unitCode="C62">-1</ram:BilledQuantity>')
       expect(d.xml).toContain('<ram:GrandTotalAmount>300.00</ram:GrandTotalAmount>')
     })
+
+    it('zeichnet die Rueckzahlung als Rechnungskorrektur zur Anzahlungsrechnung', async () => {
+      // Wie die Route sie schreibt (0162): negative Summen, Bezug auf die
+      // Anzahlungsrechnung, eine Zeile 'refunded' je Satz.
+      const dep = await anzahlung(21_400)
+      const netCent = 7_477
+      const taxCent = 523
+      const pm = await makePaymentMethod(owner, fx.propertyId, 'UEB')
+      const totals = { netCent: -netCent, taxCent: -taxCent, grossCent: -8_000,
+                       groups: [{ rateBp: 700, netCent: -netCent, taxCent: -taxCent,
+                                  grossCent: -8_000 }],
+                       roundingCent: 0, payableCent: -8_000, prepaidCent: -8_000 }
+      const k = await owner.query<{ id: number }>(
+        `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
+                              service_from, service_to, issuer_snapshot, recipient_snapshot,
+                              totals, reverses_id, partial_reversal)
+         SELECT property_id, folio_id, number || '-K', '2026-10-02'::date, '2026-10-02'::date,
+                'credit_note', service_from, service_to, issuer_snapshot, recipient_snapshot,
+                $2, id, true
+           FROM invoice WHERE id = $1 RETURNING id`, [dep.id, JSON.stringify(totals)])
+      const z = await owner.query<{ id: number }>(
+        `INSERT INTO settlement (property_id, folio_id, business_date, amount_cent,
+                                 payment_method_id, invoice_id)
+         VALUES ($1,$2,'2026-10-02'::date,-8000,$3,$4) RETURNING id`,
+        [fx.propertyId, dep.folioId, pm, k.rows[0]!.id])
+      await owner.query(
+        `INSERT INTO deposit_ledger (property_id, folio_id, deposit_invoice_id, kind,
+                                     amount_gross_cent, net_cent, tax_cent, tax_rate_bp,
+                                     business_date, settlement_id, applied_invoice_id)
+         VALUES ($1,$2,$3,'refunded',8000,$4,$5,700,'2026-10-02'::date,$6,$7)`,
+        [fx.propertyId, dep.folioId, dep.id, netCent, taxCent, z.rows[0]!.id, k.rows[0]!.id])
+
+      const ergebnis = await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+      expect(ergebnis.failed).toEqual([])
+      const d = (await beleg(k.rows[0]!.id))!
+      expect(d.xml).toContain('<ram:TypeCode>381</ram:TypeCode>')
+      expect(d.xml).toContain(`Rueckzahlung der Anzahlung (Rechnung ${dep.number}`)
+      expect(d.xml).toContain('<ram:GrandTotalAmount>80.00</ram:GrandTotalAmount>')
+      expect(d.xml).toContain(`<ram:IssuerAssignedID>${dep.number}</ram:IssuerAssignedID>`)
+      expect(d.xml).toContain('berichtigt die Anzahlungsrechnung')
+    })
   })
 
   it('verweigert den Beleg, wenn Positionen und Summe auseinandergehen', async () => {

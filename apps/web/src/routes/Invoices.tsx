@@ -9,6 +9,7 @@ import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { OffenePosten } from '../components/OffenePosten.tsx'
 
 /**
  * Rechnungen: Liste, Beleg, Versand (B5 bis B7 aus Dokument 20).
@@ -407,6 +408,8 @@ export function Invoices(
 
       <div className="text-xs text-neutral-500">{t('inv.paymentHint')}</div>
 
+      <OffenePosten propertyId={propertyId} onFolio={onFolio} darfSenden={darfSenden}
+                    darfMahnen={permissions.includes('invoice:issue')} />
       {darfSenden && <Postausgang propertyId={propertyId} />}
 
       {q.isError

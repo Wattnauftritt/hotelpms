@@ -88,11 +88,15 @@ async function planPayments(
          FROM settlement s JOIN konto k ON k.folio_id = s.folio_id
         GROUP BY k.reservation_id
      ), angezahlt AS (
-       -- Nur die Vereinnahmung: eine Verrechnung in der Schlussrechnung
-       -- aendert nichts daran, dass das Geld da ist.
-       SELECT k.reservation_id, sum(d.amount_gross_cent)::bigint AS cent
+       -- Die Vereinnahmung: eine Verrechnung in der Schlussrechnung
+       -- aendert nichts daran, dass das Geld da ist. Eine Rueckzahlung
+       -- schon (0162).
+       SELECT k.reservation_id,
+              (sum(d.amount_gross_cent) FILTER (WHERE d.kind = 'received')
+               - COALESCE(sum(d.amount_gross_cent) FILTER (WHERE d.kind = 'refunded'), 0)
+              )::bigint AS cent
          FROM deposit_ledger d JOIN konto k ON k.folio_id = d.folio_id
-        WHERE d.kind = 'received'
+        WHERE d.kind IN ('received', 'refunded')
         GROUP BY k.reservation_id
      ), angefordert AS (
        SELECT a.reservation_id, sum(a.cent)::bigint AS cent FROM (

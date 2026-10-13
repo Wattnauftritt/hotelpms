@@ -41,7 +41,7 @@ interface SendInvoiceBody {
 }
 
 /** Mailadresse und Anrede zu einer Rechnung, aus dem Fachdatum. */
-async function invoiceRecipient(
+export async function invoiceRecipient(
   client: PoolClient, invoiceId: number
 ): Promise<{ email: string | null; name: string | null; language: string
              anonymized: boolean }> {

@@ -60,6 +60,7 @@ interface InvoiceRow {
   due_on: string | null
   preceding_number: string | null
   preceding_issued_on: string | null
+  partial_reversal: boolean
 }
 
 interface ChargeRow {
@@ -73,7 +74,7 @@ interface ChargeRow {
 }
 
 interface DepositLedgerRow {
-  kind: 'received' | 'applied' | 'unapplied'
+  kind: 'received' | 'applied' | 'unapplied' | 'refunded'
   net_cent: string | number
   tax_rate_bp: number
   deposit_number: string
@@ -120,6 +121,15 @@ function depositLine(d: DepositLedgerRow): CiiLine {
   if (d.kind === 'received') {
     return { name: 'Anzahlung auf den Aufenthalt', quantity: 1,
               netCent: Number(d.net_cent), rateBp: d.tax_rate_bp }
+  }
+  // Auf der Rechnungskorrektur zur Anzahlungsrechnung (0162): der
+  // zurueckgezahlte Teil, zum Satz, zu dem er versteuert wurde.
+  if (d.kind === 'refunded') {
+    return {
+      name: `Rueckzahlung der Anzahlung (Rechnung ${d.deposit_number} `
+        + `vom ${d.deposit_issued_on})`,
+      quantity: 1, netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp
+    }
   }
   // Auf der Stornorechnung: die Verrechnung wird mit dem Original
   // aufgehoben, die Anzahlung ist wieder offen.
@@ -191,7 +201,8 @@ async function load(
     `SELECT i.id, i.public_ref, i.number, i.issued_on::text, i.kind, i.currency,
             i.service_from::text, i.service_to::text,
             i.issuer_snapshot, i.recipient_snapshot, i.totals, i.due_on::text,
-            o.number AS preceding_number, o.issued_on::text AS preceding_issued_on
+            o.number AS preceding_number, o.issued_on::text AS preceding_issued_on,
+            i.partial_reversal
        FROM invoice i
        LEFT JOIN invoice o ON o.id = i.reverses_id
       WHERE i.id = $1`, [invoiceId])
@@ -259,9 +270,12 @@ async function load(
       : { number: row.preceding_number, issuedOn: row.preceding_issued_on! },
     // Auf dem Blatt steht der Bezug als Satz, im XML zusaetzlich als
     // BT-25: ein Mensch liest das eine, der Validator das andere.
-    notes: row.preceding_number === null ? [] : [
-      `Diese Stornorechnung hebt die Rechnung ${row.preceding_number} vom `
-        + `${datumDe(row.preceding_issued_on!)} vollstaendig auf.`]
+    notes: row.preceding_number === null ? []
+      : row.partial_reversal ? [
+        `Diese Rechnungskorrektur berichtigt die Anzahlungsrechnung ${row.preceding_number} `
+          + `vom ${datumDe(row.preceding_issued_on!)} um die zurueckgezahlte Anzahlung.`]
+      : [`Diese Stornorechnung hebt die Rechnung ${row.preceding_number} vom `
+          + `${datumDe(row.preceding_issued_on!)} vollstaendig auf.`]
   }
   return { invoice, row }
 }
@@ -302,6 +316,7 @@ async function zeichne(
   const doc = await renderInvoicePdf({
     invoice,
     publicRef: row.public_ref,
+    ...(row.partial_reversal ? { title: 'Rechnungskorrektur' } : {}),
     missingXmlNote: xml === null
       ? 'Dieser Beleg traegt keine elektronische Rechnung nach EN 16931: '
         + findings.map(f => `${f.de} (${f.rule})`).join(' ')

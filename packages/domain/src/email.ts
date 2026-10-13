@@ -183,6 +183,20 @@ export interface InvoiceEmailData {
   openCent: number
 }
 
+/** Zahlungserinnerung (Stufe 1) oder Mahnung (ab Stufe 2) zu einer Rechnung. */
+export interface ReminderEmailData {
+  propertyName: string
+  guestName: string | null
+  invoiceNumber: string
+  /** Ausstellungstag der Rechnung, schon fuer den Leser geschrieben. */
+  issuedOn: string
+  openCent: number
+  currency: string
+  /** Neue Frist, schon fuer den Leser geschrieben. */
+  dueDate: string
+  level: number
+}
+
 export interface ReservationEmailData {
   propertyName: string
   guestName: string | null
@@ -277,6 +291,13 @@ interface Gastposttexte {
   rechnungBeglichen: string
   rechnungDank: string
 
+  // Zahlungserinnerung und Mahnung (Pruefung Rechnungssystem 13.10.2026)
+  erinnerungBetreff: string
+  mahnungBetreff: string
+  mahnungOffen: string
+  mahnungFrist: string
+  mahnungUeberschneidung: string
+
   buchungBetreff: string
   buchungBestaetigt: string
   buchungNummer: string
@@ -321,6 +342,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'Dieses Exemplar ist für Ihre Unterlagen.',
     rechnungDank: 'Vielen Dank für Ihren Aufenthalt — wir würden uns freuen, '
       + 'Sie wieder begrüßen zu dürfen.',
+
+    erinnerungBetreff: 'Zahlungserinnerung zu Rechnung {nummer} — {haus}',
+    mahnungBetreff: 'Mahnung zu Rechnung {nummer} — {haus}',
+    mahnungOffen: 'zu unserer Rechnung {nummer} vom {datum} ist noch ein Betrag von {offen} offen.',
+    mahnungFrist: 'Bitte überweisen Sie ihn bis zum {frist}. Die Rechnung liegt noch einmal bei.',
+    mahnungUeberschneidung: 'Sollte sich Ihre Zahlung mit dieser Nachricht überschnitten haben, betrachten Sie sie bitte als gegenstandslos.',
 
     buchungBetreff: 'Buchungsbestätigung {ref} — {haus}',
     buchungBestaetigt: 'wir haben Ihre Buchung im Hause {haus} bestätigt.',
@@ -379,6 +406,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'This copy is for your records.',
     rechnungDank: 'Thank you for your stay — we would be glad to welcome you again.',
 
+    erinnerungBetreff: 'Payment reminder for invoice {nummer} — {haus}',
+    mahnungBetreff: 'Overdue notice for invoice {nummer} — {haus}',
+    mahnungOffen: 'an amount of {offen} is still outstanding on our invoice {nummer} dated {datum}.',
+    mahnungFrist: 'Please transfer it by {frist}. The invoice is attached once more.',
+    mahnungUeberschneidung: 'If your payment has crossed with this message, please disregard it.',
+
     buchungBetreff: 'Booking confirmation {ref} — {haus}',
     buchungBestaetigt: 'we have confirmed your booking at {haus}.',
     buchungNummer: 'Booking reference: {ref}',
@@ -433,6 +466,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungBeglichen: 'De factuur is volledig voldaan. '
       + 'Dit exemplaar is voor uw administratie.',
     rechnungDank: 'Hartelijk dank voor uw verblijf — wij verwelkomen u graag opnieuw.',
+
+    erinnerungBetreff: 'Betalingsherinnering voor factuur {nummer} — {haus}',
+    mahnungBetreff: 'Aanmaning voor factuur {nummer} — {haus}',
+    mahnungOffen: 'van onze factuur {nummer} van {datum} staat nog een bedrag van {offen} open.',
+    mahnungFrist: 'Wij verzoeken u dit uiterlijk {frist} over te maken. De factuur is nogmaals bijgevoegd.',
+    mahnungUeberschneidung: 'Mocht uw betaling deze herinnering hebben gekruist, dan kunt u dit bericht als niet verzonden beschouwen.',
 
     buchungBetreff: 'Boekingsbevestiging {ref} — {haus}',
     buchungBestaetigt: 'wij hebben uw boeking bij {haus} bevestigd.',
@@ -501,6 +540,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'Ten egzemplarz jest dla Państwa dokumentacji.',
     rechnungDank: 'Dziękujemy za pobyt — będzie nam miło gościć Państwa ponownie.',
 
+    erinnerungBetreff: 'Przypomnienie o płatności faktury {nummer} — {haus}',
+    mahnungBetreff: 'Wezwanie do zapłaty faktury {nummer} — {haus}',
+    mahnungOffen: 'z naszej faktury {nummer} z dnia {datum} pozostaje do zapłaty kwota {offen}.',
+    mahnungFrist: 'Prosimy o przelew do dnia {frist}. Fakturę załączamy ponownie.',
+    mahnungUeberschneidung: 'Jeśli Państwa płatność minęła się z tą wiadomością, prosimy ją zignorować.',
+
     buchungBetreff: 'Potwierdzenie rezerwacji {ref} — {haus}',
     buchungBestaetigt: 'Potwierdzamy Państwa rezerwację w obiekcie {haus}.',
     buchungNummer: 'Numer rezerwacji: {ref}',
@@ -553,6 +598,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Heraf udestår {offen}.',
     rechnungBeglichen: 'Fakturaen er betalt fuldt ud. Dette eksemplar er til dine papirer.',
     rechnungDank: 'Mange tak for dit ophold — vi glæder os til at byde dig velkommen igen.',
+    erinnerungBetreff: 'Betalingspåmindelse for faktura {nummer} — {haus}',
+    mahnungBetreff: 'Rykker for faktura {nummer} — {haus}',
+    mahnungOffen: 'på vores faktura {nummer} af {datum} står der stadig {offen} åbent.',
+    mahnungFrist: 'Vi beder Dem overføre beløbet senest {frist}. Fakturaen er vedhæftet igen.',
+    mahnungUeberschneidung: 'Hvis Deres betaling har krydset denne meddelelse, bedes De se bort fra den.',
+
     buchungBetreff: 'Bookingbekræftelse {ref} — {haus}',
     buchungBestaetigt: 'Vi har bekræftet din booking hos {haus}.',
     buchungNummer: 'Bookingnummer: {ref}',
@@ -588,6 +639,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Ett belopp på {offen} återstår att betala.',
     rechnungBeglichen: 'Fakturan är betald i sin helhet. Denna kopia är för dina handlingar.',
     rechnungDank: 'Tack för din vistelse – vi välkomnar dig gärna igen.',
+    erinnerungBetreff: 'Betalningspåminnelse för faktura {nummer} — {haus}',
+    mahnungBetreff: 'Inkassovarning för faktura {nummer} — {haus}',
+    mahnungOffen: 'på vår faktura {nummer} från {datum} återstår fortfarande {offen} att betala.',
+    mahnungFrist: 'Vänligen betala beloppet senast {frist}. Fakturan bifogas på nytt.',
+    mahnungUeberschneidung: 'Om er betalning har korsat detta meddelande kan ni bortse från det.',
+
     buchungBetreff: 'Bokningsbekräftelse {ref} – {haus}',
     buchungBestaetigt: 'Vi har bekräftat din bokning på {haus}.',
     buchungNummer: 'Bokningsnummer: {ref}',
@@ -623,6 +680,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Av dette gjenstår {offen}.',
     rechnungBeglichen: 'Fakturaen er betalt i sin helhet. Dette eksemplaret er til ditt eget arkiv.',
     rechnungDank: 'Tusen takk for oppholdet — vi ser frem til å ønske deg velkommen igjen.',
+    erinnerungBetreff: 'Betalingspåminnelse for faktura {nummer} — {haus}',
+    mahnungBetreff: 'Purring på faktura {nummer} — {haus}',
+    mahnungOffen: 'på vår faktura {nummer} datert {datum} står det fortsatt {offen} utestående.',
+    mahnungFrist: 'Vennligst overfør beløpet innen {frist}. Fakturaen er vedlagt på nytt.',
+    mahnungUeberschneidung: 'Dersom betalingen din har krysset denne meldingen, kan du se bort fra den.',
+
     buchungBetreff: 'Bookingbekreftelse {ref} — {haus}',
     buchungBestaetigt: 'Vi har bekreftet bookingen din hos {haus}.',
     buchungNummer: 'Bookingnummer: {ref}',
@@ -658,6 +721,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Il reste {offen} à régler.',
     rechnungBeglichen: 'La facture est entièrement réglée. Cet exemplaire est destiné à vos archives.',
     rechnungDank: 'Merci pour votre séjour — nous serions ravis de vous accueillir à nouveau.',
+    erinnerungBetreff: 'Rappel de paiement pour la facture {nummer} — {haus}',
+    mahnungBetreff: 'Relance pour la facture {nummer} — {haus}',
+    mahnungOffen: 'un montant de {offen} reste dû sur notre facture {nummer} du {datum}.',
+    mahnungFrist: 'Nous vous prions de le virer d’ici le {frist}. La facture est de nouveau jointe.',
+    mahnungUeberschneidung: 'Si votre paiement a croisé ce message, veuillez ne pas en tenir compte.',
+
     buchungBetreff: 'Confirmation de réservation {ref} — {haus}',
     buchungBestaetigt: 'Nous avons confirmé votre réservation à {haus}.',
     buchungNummer: 'Numéro de réservation : {ref}',
@@ -693,6 +762,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Resta da pagare un importo di {offen}.',
     rechnungBeglichen: 'La fattura è stata saldata per intero. Questa copia è per i Suoi archivi.',
     rechnungDank: 'Grazie per il Suo soggiorno — saremo lieti di accoglierLa di nuovo.',
+    erinnerungBetreff: 'Promemoria di pagamento per la fattura {nummer} — {haus}',
+    mahnungBetreff: 'Sollecito per la fattura {nummer} — {haus}',
+    mahnungOffen: 'sulla nostra fattura {nummer} del {datum} risulta ancora aperto un importo di {offen}.',
+    mahnungFrist: 'La preghiamo di bonificarlo entro il {frist}. Alleghiamo nuovamente la fattura.',
+    mahnungUeberschneidung: 'Se il Suo pagamento si è incrociato con questo messaggio, La preghiamo di non tenerne conto.',
+
     buchungBetreff: 'Conferma di prenotazione {ref} — {haus}',
     buchungBestaetigt: 'abbiamo confermato la Sua prenotazione presso {haus}.',
     buchungNummer: 'Numero di prenotazione: {ref}',
@@ -728,6 +803,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'De ese importe quedan pendientes {offen}.',
     rechnungBeglichen: 'La factura está pagada en su totalidad. Este ejemplar es para su archivo.',
     rechnungDank: 'Muchas gracias por su estancia; será un placer volver a recibirle.',
+    erinnerungBetreff: 'Recordatorio de pago de la factura {nummer} — {haus}',
+    mahnungBetreff: 'Requerimiento de pago de la factura {nummer} — {haus}',
+    mahnungOffen: 'de nuestra factura {nummer} del {datum} queda pendiente un importe de {offen}.',
+    mahnungFrist: 'Le rogamos que lo transfiera antes del {frist}. Adjuntamos de nuevo la factura.',
+    mahnungUeberschneidung: 'Si su pago se ha cruzado con este mensaje, le rogamos que lo ignore.',
+
     buchungBetreff: 'Confirmación de reserva {ref} — {haus}',
     buchungBestaetigt: 'Hemos confirmado su reserva en {haus}.',
     buchungNummer: 'Número de reserva: {ref}',
@@ -763,6 +844,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Bunun {offen} tutarındaki kısmı henüz ödenmemiştir.',
     rechnungBeglichen: 'Fatura tamamen ödenmiştir. Bu nüsha kayıtlarınız içindir.',
     rechnungDank: 'Konaklamanız için çok teşekkür ederiz — sizi yeniden ağırlamaktan mutluluk duyarız.',
+    erinnerungBetreff: '{nummer} numaralı fatura için ödeme hatırlatması — {haus}',
+    mahnungBetreff: '{nummer} numaralı fatura için ihtar — {haus}',
+    mahnungOffen: '{datum} tarihli {nummer} numaralı faturamızdan hâlâ {offen} tutarında ödeme açık.',
+    mahnungFrist: 'Lütfen tutarı {frist} tarihine kadar havale edin. Fatura tekrar ektedir.',
+    mahnungUeberschneidung: 'Ödemeniz bu mesajla aynı anda yapıldıysa lütfen bu mesajı dikkate almayın.',
+
     buchungBetreff: 'Rezervasyon onayı {ref} — {haus}',
     buchungBestaetigt: '{haus} tesisindeki rezervasyonunuzu onayladık.',
     buchungNummer: 'Rezervasyon numarası: {ref}',
@@ -798,6 +885,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Из них к оплате остаётся {offen}.',
     rechnungBeglichen: 'Счёт полностью оплачен. Этот экземпляр — для Ваших документов.',
     rechnungDank: 'Благодарим Вас за пребывание — будем рады снова видеть Вас у нас.',
+    erinnerungBetreff: 'Напоминание об оплате счёта {nummer} — {haus}',
+    mahnungBetreff: 'Претензия по счёту {nummer} — {haus}',
+    mahnungOffen: 'по нашему счёту {nummer} от {datum} остаётся неоплаченной сумма {offen}.',
+    mahnungFrist: 'Просим перевести её до {frist}. Счёт прилагаем повторно.',
+    mahnungUeberschneidung: 'Если ваш платёж разминулся с этим сообщением, просим считать его недействительным.',
+
     buchungBetreff: 'Подтверждение бронирования {ref} — {haus}',
     buchungBestaetigt: 'Мы подтвердили Ваше бронирование в {haus}.',
     buchungNummer: 'Номер бронирования: {ref}',
@@ -833,6 +926,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Z toho zbývá uhradit {offen}.',
     rechnungBeglichen: 'Faktura je zcela uhrazena. Tento výtisk je pro Vaši evidenci.',
     rechnungDank: 'Děkujeme za Váš pobyt — budeme rádi, když Vás opět přivítáme.',
+    erinnerungBetreff: 'Upomínka platby faktury {nummer} — {haus}',
+    mahnungBetreff: 'Upomínka k faktuře {nummer} — {haus}',
+    mahnungOffen: 'z naší faktury {nummer} ze dne {datum} zůstává neuhrazeno {offen}.',
+    mahnungFrist: 'Prosíme o úhradu do {frist}. Fakturu přikládáme znovu.',
+    mahnungUeberschneidung: 'Pokud se Vaše platba s touto zprávou minula, považujte ji prosím za bezpředmětnou.',
+
     buchungBetreff: 'Potvrzení rezervace {ref} — {haus}',
     buchungBestaetigt: 'potvrdili jsme Vaši rezervaci v {haus}.',
     buchungNummer: 'Číslo rezervace: {ref}',
@@ -868,6 +967,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'З неї залишається до сплати {offen}.',
     rechnungBeglichen: 'Рахунок повністю оплачено. Цей примірник — для Ваших документів.',
     rechnungDank: 'Дякуємо за Ваше перебування — будемо раді вітати Вас знову.',
+    erinnerungBetreff: 'Нагадування про оплату рахунку {nummer} — {haus}',
+    mahnungBetreff: 'Вимога щодо оплати рахунку {nummer} — {haus}',
+    mahnungOffen: 'за нашим рахунком {nummer} від {datum} залишається неоплаченою сума {offen}.',
+    mahnungFrist: 'Просимо переказати її до {frist}. Рахунок додаємо повторно.',
+    mahnungUeberschneidung: 'Якщо ваш платіж розминувся з цим повідомленням, просимо вважати його недійсним.',
+
     buchungBetreff: 'Підтвердження бронювання {ref} — {haus}',
     buchungBestaetigt: 'ми підтвердили Ваше бронювання в {haus}.',
     buchungNummer: 'Номер бронювання: {ref}',
@@ -903,6 +1008,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: '其中尚有 {offen} 未付。',
     rechnungBeglichen: '此发票已全额结清。本副本供您存档。',
     rechnungDank: '感谢您的光临——期待再次欢迎您。',
+    erinnerungBetreff: '发票 {nummer} 付款提醒 — {haus}',
+    mahnungBetreff: '发票 {nummer} 催款通知 — {haus}',
+    mahnungOffen: '我们于 {datum} 开具的发票 {nummer} 仍有 {offen} 未付。',
+    mahnungFrist: '请于 {frist} 前汇款。随函再次附上发票。',
+    mahnungUeberschneidung: '如您的付款与本消息错过，请忽略本消息。',
+
     buchungBetreff: '预订确认 {ref} — {haus}',
     buchungBestaetigt: '我们已确认您在 {haus} 的预订。',
     buchungNummer: '预订编号：{ref}',
@@ -938,6 +1049,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: '이 중 미결제 금액은 {offen}입니다.',
     rechnungBeglichen: '청구서가 전액 결제되었습니다. 이 사본은 보관용입니다.',
     rechnungDank: '숙박해 주셔서 진심으로 감사드립니다. 다시 모실 수 있기를 바랍니다.',
+    erinnerungBetreff: '청구서 {nummer} 결제 안내 — {haus}',
+    mahnungBetreff: '청구서 {nummer} 독촉 — {haus}',
+    mahnungOffen: '{datum}자 청구서 {nummer}에 아직 {offen}이 미결제 상태입니다.',
+    mahnungFrist: '{frist}까지 송금해 주시기 바랍니다. 청구서를 다시 첨부합니다.',
+    mahnungUeberschneidung: '이미 결제하셨다면 이 메시지는 무시해 주십시오.',
+
     buchungBetreff: '예약 확인 {ref} — {haus}',
     buchungBestaetigt: '{haus} 예약이 확정되었음을 알려 드립니다.',
     buchungNummer: '예약 번호: {ref}',
@@ -973,6 +1090,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'المبلغ المتبقي منها {offen}.',
     rechnungBeglichen: 'سُدّدت الفاتورة بالكامل. هذه النسخة لسجلاتكم.',
     rechnungDank: 'شكرًا جزيلًا على إقامتكم — يسعدنا أن نرحّب بكم مجددًا.',
+    erinnerungBetreff: 'تذكير بالدفع للفاتورة {nummer} — {haus}',
+    mahnungBetreff: 'إنذار بشأن الفاتورة {nummer} — {haus}',
+    mahnungOffen: 'لا يزال مبلغ {offen} مستحقاً من فاتورتنا رقم {nummer} بتاريخ {datum}.',
+    mahnungFrist: 'يرجى تحويله حتى {frist}. نرفق الفاتورة مرة أخرى.',
+    mahnungUeberschneidung: 'إذا تزامن دفعك مع هذه الرسالة، فيرجى تجاهلها.',
+
     buchungBetreff: 'تأكيد الحجز {ref} — {haus}',
     buchungBestaetigt: 'يسعدنا تأكيد حجزكم في {haus}.',
     buchungNummer: 'رقم الحجز: {ref}',
@@ -1008,6 +1131,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Encontra-se em aberto o montante de {offen}.',
     rechnungBeglichen: 'A fatura está integralmente paga. Este exemplar destina-se aos seus registos.',
     rechnungDank: 'Muito obrigado pela sua estadia — teremos todo o gosto em recebê-lo(a) novamente.',
+    erinnerungBetreff: 'Lembrete de pagamento da fatura {nummer} — {haus}',
+    mahnungBetreff: 'Interpelação relativa à fatura {nummer} — {haus}',
+    mahnungOffen: 'da nossa fatura {nummer} de {datum} continua em aberto o montante de {offen}.',
+    mahnungFrist: 'Solicitamos a transferência até {frist}. Voltamos a anexar a fatura.',
+    mahnungUeberschneidung: 'Caso o seu pagamento se tenha cruzado com esta mensagem, queira ignorá-la.',
+
     buchungBetreff: 'Confirmação de reserva {ref} — {haus}',
     buchungBestaetigt: 'confirmámos a sua reserva em {haus}.',
     buchungNummer: 'Número da reserva: {ref}',
@@ -1043,6 +1172,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Siitä on avoinna {offen}.',
     rechnungBeglichen: 'Lasku on maksettu kokonaan. Tämä kappale on arkistoanne varten.',
     rechnungDank: 'Kiitos oleskelustanne — toivotamme teidät mielellämme uudelleen tervetulleeksi.',
+    erinnerungBetreff: 'Maksumuistutus laskusta {nummer} — {haus}',
+    mahnungBetreff: 'Maksukehotus laskusta {nummer} — {haus}',
+    mahnungOffen: 'laskustamme {nummer} ({datum}) on yhä maksamatta {offen}.',
+    mahnungFrist: 'Pyydämme maksamaan summan viimeistään {frist}. Lasku on liitteenä uudelleen.',
+    mahnungUeberschneidung: 'Jos maksunne on mennyt ristiin tämän viestin kanssa, voitte jättää sen huomiotta.',
+
     buchungBetreff: 'Varausvahvistus {ref} — {haus}',
     buchungBestaetigt: 'olemme vahvistaneet varauksenne majoituspaikkaan {haus}.',
     buchungNummer: 'Varausnumero: {ref}',
@@ -1078,6 +1213,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Ógreitt er {offen}.',
     rechnungBeglichen: 'Reikningurinn er að fullu greiddur. Þetta eintak er fyrir þín gögn.',
     rechnungDank: 'Kærar þakkir fyrir dvölina — við myndum gleðjast yfir að taka á móti þér aftur.',
+    erinnerungBetreff: 'Greiðsluáminning vegna reiknings {nummer} — {haus}',
+    mahnungBetreff: 'Innheimtubréf vegna reiknings {nummer} — {haus}',
+    mahnungOffen: 'af reikningi okkar {nummer} dags. {datum} eru enn {offen} ógreiddar.',
+    mahnungFrist: 'Vinsamlegast millifærið upphæðina fyrir {frist}. Reikningurinn fylgir aftur.',
+    mahnungUeberschneidung: 'Ef greiðsla þín hefur farið á mis við þessi skilaboð, vinsamlegast hunsaðu þau.',
+
     buchungBetreff: 'Bókunarstaðfesting {ref} — {haus}',
     buchungBestaetigt: 'við höfum staðfest bókun þína hjá {haus}.',
     buchungNummer: 'Bókunarnúmer: {ref}',
@@ -1113,6 +1254,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Z toho zostáva neuhradených {offen}.',
     rechnungBeglichen: 'Faktúra je úplne uhradená. Tento exemplár je pre Vaše záznamy.',
     rechnungDank: 'Ďakujeme za Váš pobyt — radi Vás opäť privítame.',
+    erinnerungBetreff: 'Pripomienka platby faktúry {nummer} — {haus}',
+    mahnungBetreff: 'Upomienka k faktúre {nummer} — {haus}',
+    mahnungOffen: 'z našej faktúry {nummer} zo dňa {datum} zostáva neuhradených {offen}.',
+    mahnungFrist: 'Prosíme o úhradu do {frist}. Faktúru prikladáme znova.',
+    mahnungUeberschneidung: 'Ak sa Vaša platba s touto správou minula, považujte ju, prosím, za bezpredmetnú.',
+
     buchungBetreff: 'Potvrdenie rezervácie {ref} — {haus}',
     buchungBestaetigt: 'potvrdili sme Vašu rezerváciu v {haus}.',
     buchungNummer: 'Číslo rezervácie: {ref}',
@@ -1148,6 +1295,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Od tega je odprtih še {offen}.',
     rechnungBeglichen: 'Račun je v celoti poravnan. Ta izvod je za vašo evidenco.',
     rechnungDank: 'Najlepša hvala za vaše bivanje — veseli bomo, če vas bomo lahko spet pozdravili.',
+    erinnerungBetreff: 'Opomnik za plačilo računa {nummer} — {haus}',
+    mahnungBetreff: 'Opomin za račun {nummer} — {haus}',
+    mahnungOffen: 'pri našem računu {nummer} z dne {datum} je še neplačanih {offen}.',
+    mahnungFrist: 'Prosimo, nakažite znesek do {frist}. Račun ponovno prilagamo.',
+    mahnungUeberschneidung: 'Če se je vaše plačilo križalo s tem sporočilom, ga prosimo prezrite.',
+
     buchungBetreff: 'Potrditev rezervacije {ref} — {haus}',
     buchungBestaetigt: 'potrdili smo vašo rezervacijo v hotelu {haus}.',
     buchungNummer: 'Številka rezervacije: {ref}',
@@ -1183,6 +1336,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Ebből {offen} még nyitott.',
     rechnungBeglichen: 'A számla teljes egészében ki van egyenlítve. Ez a példány az Ön nyilvántartására szolgál.',
     rechnungDank: 'Köszönjük, hogy nálunk szállt meg — örömmel látjuk újra vendégül.',
+    erinnerungBetreff: 'Fizetési emlékeztető a(z) {nummer} számú számláról — {haus}',
+    mahnungBetreff: 'Fizetési felszólítás a(z) {nummer} számú számláról — {haus}',
+    mahnungOffen: '{datum} keltű, {nummer} számú számlánkból még {offen} nyitott.',
+    mahnungFrist: 'Kérjük, utalja át {frist} napjáig. A számlát ismét mellékeljük.',
+    mahnungUeberschneidung: 'Ha fizetése keresztezte ezt az üzenetet, kérjük, tekintse tárgytalannak.',
+
     buchungBetreff: 'Foglalás visszaigazolása {ref} — {haus}',
     buchungBestaetigt: 'Visszaigazoltuk foglalását a(z) {haus} szállodában.',
     buchungNummer: 'Foglalási szám: {ref}',
@@ -1218,6 +1377,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Din aceasta rămâne de plată {offen}.',
     rechnungBeglichen: 'Factura a fost achitată integral. Acest exemplar este pentru evidența dumneavoastră.',
     rechnungDank: 'Vă mulțumim pentru sejur — ne-ar face plăcere să vă primim din nou.',
+    erinnerungBetreff: 'Memento de plată pentru factura {nummer} — {haus}',
+    mahnungBetreff: 'Somație pentru factura {nummer} — {haus}',
+    mahnungOffen: 'din factura noastră {nummer} din {datum} a rămas neachitată suma de {offen}.',
+    mahnungFrist: 'Vă rugăm să o virați până la {frist}. Atașăm din nou factura.',
+    mahnungUeberschneidung: 'Dacă plata dumneavoastră s-a încrucișat cu acest mesaj, vă rugăm să îl ignorați.',
+
     buchungBetreff: 'Confirmarea rezervării {ref} — {haus}',
     buchungBestaetigt: 'am confirmat rezervarea dumneavoastră la {haus}.',
     buchungNummer: 'Număr de rezervare: {ref}',
@@ -1253,6 +1418,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'От тях остават за плащане {offen}.',
     rechnungBeglichen: 'Фактурата е изцяло платена. Този екземпляр е за Вашия архив.',
     rechnungDank: 'Благодарим Ви за престоя — ще се радваме да Ви посрещнем отново.',
+    erinnerungBetreff: 'Напомняне за плащане по фактура {nummer} — {haus}',
+    mahnungBetreff: 'Покана за плащане по фактура {nummer} — {haus}',
+    mahnungOffen: 'по нашата фактура {nummer} от {datum} остава неплатена сума от {offen}.',
+    mahnungFrist: 'Моля, преведете я до {frist}. Прилагаме фактурата отново.',
+    mahnungUeberschneidung: 'Ако плащането ви се е разминало с това съобщение, моля, не го вземайте предвид.',
+
     buchungBetreff: 'Потвърждение на резервация {ref} — {haus}',
     buchungBestaetigt: 'Потвърдихме Вашата резервация в {haus}.',
     buchungNummer: 'Номер на резервация: {ref}',
@@ -1288,6 +1459,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Od toga je otvoreno {offen}.',
     rechnungBeglichen: 'Račun je u cijelosti podmiren. Ovaj primjerak je za Vašu evidenciju.',
     rechnungDank: 'Hvala Vam na boravku — bit će nam drago ponovno Vas ugostiti.',
+    erinnerungBetreff: 'Podsjetnik za plaćanje računa {nummer} — {haus}',
+    mahnungBetreff: 'Opomena za račun {nummer} — {haus}',
+    mahnungOffen: 'po našem računu {nummer} od {datum} još je otvoren iznos od {offen}.',
+    mahnungFrist: 'Molimo uplatite ga do {frist}. Račun ponovno prilažemo.',
+    mahnungUeberschneidung: 'Ako se vaša uplata mimoišla s ovom porukom, molimo zanemarite je.',
+
     buchungBetreff: 'Potvrda rezervacije {ref} — {haus}',
     buchungBestaetigt: 'potvrdili smo Vašu rezervaciju u objektu {haus}.',
     buchungNummer: 'Broj rezervacije: {ref}',
@@ -1323,6 +1500,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Od toga je otvoreno {offen}.',
     rechnungBeglichen: 'Račun je u potpunosti izmiren. Ovaj primerak je za Vašu evidenciju.',
     rechnungDank: 'Hvala Vam na boravku — bilo bi nam drago da Vas ponovo dočekamo.',
+    erinnerungBetreff: 'Podsetnik za plaćanje računa {nummer} — {haus}',
+    mahnungBetreff: 'Opomena za račun {nummer} — {haus}',
+    mahnungOffen: 'po našem računu {nummer} od {datum} još je otvoren iznos od {offen}.',
+    mahnungFrist: 'Molimo uplatite ga do {frist}. Račun ponovo prilažemo.',
+    mahnungUeberschneidung: 'Ako se vaša uplata mimoišla sa ovom porukom, molimo zanemarite je.',
+
     buchungBetreff: 'Potvrda rezervacije {ref} — {haus}',
     buchungBestaetigt: 'potvrdili smo Vašu rezervaciju u objektu {haus}.',
     buchungNummer: 'Broj rezervacije: {ref}',
@@ -1358,6 +1541,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Од тоа сè уште е отворено {offen}.',
     rechnungBeglichen: 'Фактурата е целосно платена. Овој примерок е за Вашата евиденција.',
     rechnungDank: 'Ви благодариме за престојот — ќе ни биде задоволство повторно да Ве пречекаме.',
+    erinnerungBetreff: 'Потсетник за плаќање на фактура {nummer} — {haus}',
+    mahnungBetreff: 'Опомена за фактура {nummer} — {haus}',
+    mahnungOffen: 'по нашата фактура {nummer} од {datum} сè уште е отворен износ од {offen}.',
+    mahnungFrist: 'Ве молиме уплатете го до {frist}. Фактурата повторно ја приложуваме.',
+    mahnungUeberschneidung: 'Ако вашата уплата се разминала со оваа порака, ве молиме занемарете ја.',
+
     buchungBetreff: 'Потврда на резервација {ref} — {haus}',
     buchungBestaetigt: 'ја потврдивме Вашата резервација во {haus}.',
     buchungNummer: 'Број на резервација: {ref}',
@@ -1393,6 +1582,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Prej saj mbeten të papaguara {offen}.',
     rechnungBeglichen: 'Fatura është shlyer plotësisht. Kjo kopje është për dokumentet tuaja.',
     rechnungDank: 'Faleminderit për qëndrimin tuaj — do të ishim të lumtur t\'ju mirëpresim sërish.',
+    erinnerungBetreff: 'Kujtesë pagese për faturën {nummer} — {haus}',
+    mahnungBetreff: 'Paralajmërim për faturën {nummer} — {haus}',
+    mahnungOffen: 'nga fatura jonë {nummer} e datës {datum} mbetet ende e papaguar shuma {offen}.',
+    mahnungFrist: 'Ju lutemi ta transferoni deri më {frist}. Fatura bashkëngjitet sërish.',
+    mahnungUeberschneidung: 'Nëse pagesa juaj është kryqëzuar me këtë mesazh, ju lutemi ta shpërfillni.',
+
     buchungBetreff: 'Konfirmimi i rezervimit {ref} — {haus}',
     buchungBestaetigt: 'e kemi konfirmuar rezervimin tuaj në {haus}.',
     buchungNummer: 'Numri i rezervimit: {ref}',
@@ -1428,6 +1623,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Από αυτό εκκρεμεί ποσό {offen}.',
     rechnungBeglichen: 'Το τιμολόγιο έχει εξοφληθεί πλήρως. Αυτό το αντίγραφο είναι για το αρχείο σας.',
     rechnungDank: 'Σας ευχαριστούμε για τη διαμονή σας — θα χαρούμε να σας υποδεχθούμε ξανά.',
+    erinnerungBetreff: 'Υπενθύμιση πληρωμής για το τιμολόγιο {nummer} — {haus}',
+    mahnungBetreff: 'Όχληση για το τιμολόγιο {nummer} — {haus}',
+    mahnungOffen: 'από το τιμολόγιό μας {nummer} της {datum} παραμένει ανεξόφλητο ποσό {offen}.',
+    mahnungFrist: 'Παρακαλούμε μεταφέρετέ το έως {frist}. Επισυνάπτουμε ξανά το τιμολόγιο.',
+    mahnungUeberschneidung: 'Αν η πληρωμή σας διασταυρώθηκε με αυτό το μήνυμα, παρακαλούμε αγνοήστε το.',
+
     buchungBetreff: 'Επιβεβαίωση κράτησης {ref} — {haus}',
     buchungBestaetigt: 'Επιβεβαιώσαμε την κράτησή σας στο {haus}.',
     buchungNummer: 'Αριθμός κράτησης: {ref}',
@@ -1463,6 +1664,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Dar neapmokėta {offen}.',
     rechnungBeglichen: 'Sąskaita visiškai apmokėta. Šis egzempliorius skirtas Jūsų dokumentams.',
     rechnungDank: 'Dėkojame, kad apsistojote pas mus — būtume laimingi vėl Jus pasveikinti.',
+    erinnerungBetreff: 'Priminimas apie sąskaitos {nummer} apmokėjimą — {haus}',
+    mahnungBetreff: 'Raginimas dėl sąskaitos {nummer} — {haus}',
+    mahnungOffen: 'pagal mūsų {datum} sąskaitą {nummer} dar neapmokėta {offen}.',
+    mahnungFrist: 'Prašome sumokėti iki {frist}. Sąskaitą pridedame dar kartą.',
+    mahnungUeberschneidung: 'Jei jūsų mokėjimas prasilenkė su šia žinute, prašome į ją neatsižvelgti.',
+
     buchungBetreff: 'Rezervacijos patvirtinimas {ref} — {haus}',
     buchungBestaetigt: 'Patvirtinome Jūsų rezervaciją {haus}.',
     buchungNummer: 'Rezervacijos numeris: {ref}',
@@ -1498,6 +1705,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Vēl jāsamaksā {offen}.',
     rechnungBeglichen: 'Rēķins ir pilnībā apmaksāts. Šī kopija ir Jūsu dokumentācijai.',
     rechnungDank: 'Paldies par Jūsu uzturēšanos — mēs labprāt Jūs atkal sagaidīsim.',
+    erinnerungBetreff: 'Maksājuma atgādinājums par rēķinu {nummer} — {haus}',
+    mahnungBetreff: 'Brīdinājums par rēķinu {nummer} — {haus}',
+    mahnungOffen: 'par mūsu {datum} rēķinu {nummer} vēl nav samaksāti {offen}.',
+    mahnungFrist: 'Lūdzam pārskaitīt summu līdz {frist}. Rēķinu pievienojam atkārtoti.',
+    mahnungUeberschneidung: 'Ja jūsu maksājums ir pārklājies ar šo ziņu, lūdzu, neņemiet to vērā.',
+
     buchungBetreff: 'Rezervācijas apstiprinājums {ref} — {haus}',
     buchungBestaetigt: 'esam apstiprinājuši Jūsu rezervāciju {haus}.',
     buchungNummer: 'Rezervācijas numurs: {ref}',
@@ -1533,6 +1746,12 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Sellest on tasumata {offen}.',
     rechnungBeglichen: 'Arve on täielikult tasutud. See eksemplar on Teie dokumentide jaoks.',
     rechnungDank: 'Täname Teid viibimise eest — meil oleks hea meel Teid taas tervitada.',
+    erinnerungBetreff: 'Maksemeeldetuletus arve {nummer} kohta — {haus}',
+    mahnungBetreff: 'Maksenõue arve {nummer} kohta — {haus}',
+    mahnungOffen: 'meie {datum} arvest {nummer} on veel tasumata {offen}.',
+    mahnungFrist: 'Palume summa üle kanda hiljemalt {frist}. Arve on uuesti lisatud.',
+    mahnungUeberschneidung: 'Kui teie makse ristus selle teatega, palume seda mitte arvestada.',
+
     buchungBetreff: 'Broneeringu kinnitus {ref} — {haus}',
     buchungBestaetigt: 'Oleme kinnitanud Teie broneeringu hotellis {haus}.',
     buchungNummer: 'Broneeringu number: {ref}',
@@ -1596,6 +1815,37 @@ export function renderInvoiceEmail(
   ]
   return {
     subject: einsetzen(t.rechnungBetreff, werte),
+    text: lines.join('\n\n'),
+    html: htmlBody(lines, lang)
+  }
+}
+
+/**
+ * Erinnerung und Mahnung. Die erste Stufe heisst freundlich Zahlungs-
+ * erinnerung; wer zweimal schreibt, mahnt. Der Satz ueber die
+ * ueberschnittene Zahlung steht immer da: der haeufigste Grund fuer einen
+ * offenen Posten ist eine Zahlung, die noch nicht zugeordnet ist.
+ */
+export function renderReminderEmail(
+  d: ReminderEmailData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  const t = TEXTE[lang]
+  const werte = {
+    nummer: d.invoiceNumber,
+    haus: d.propertyName,
+    datum: d.issuedOn,
+    offen: `${formatCent(d.openCent)} ${d.currency}`,
+    frist: d.dueDate
+  }
+  const lines = [
+    anrede(d.guestName, lang),
+    einsetzen(t.mahnungOffen, werte),
+    einsetzen(t.mahnungFrist, werte),
+    t.mahnungUeberschneidung,
+    d.propertyName
+  ]
+  return {
+    subject: einsetzen(d.level <= 1 ? t.erinnerungBetreff : t.mahnungBetreff, werte),
     text: lines.join('\n\n'),
     html: htmlBody(lines, lang)
   }
