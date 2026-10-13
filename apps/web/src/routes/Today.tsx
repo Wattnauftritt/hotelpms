@@ -6,6 +6,7 @@ import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 import { VerzichtMarke } from '../components/Reinigungsverzicht.tsx'
 import { GastWunschListe } from '../components/GastWuensche.tsx'
+import { kanalFarbe } from '../lib/kanalFarbe.js'
 
 /**
  * Das Tagesgeschäft: Anreisen, Abreisen, Hausliste.
@@ -63,8 +64,8 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                     das Haus nicht und erwartet anderes als ein Stammgast. */}
                 {r.channelCode !== null && (
                   <span title={`${t('today.channel')}: ${r.channelCode}`}
-                        className="max-w-[8rem] truncate text-[11px] px-1 rounded-sm
-                                   bg-neutral-100 text-neutral-700">
+                        className={`max-w-[8rem] truncate text-[11px] px-1 rounded-sm
+                                    ${kanalFarbe(r.channelCode)}`}>
                     {r.channelCode}
                   </span>
                 )}
