@@ -6,6 +6,7 @@ import { useOnline } from '../../lib/offline.js'
 import { useSprung } from '../../lib/suche.js'
 import { addDays, today } from '../../lib/dates.js'
 import { naechte } from '../../lib/mobil.js'
+import { kanalFarbe } from '../../lib/kanalFarbe.js'
 import { Fehler, Laedt } from '../Shell.tsx'
 import { VerzichtMarke } from '../Reinigungsverzicht.tsx'
 
@@ -96,7 +97,7 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {liste === 'arrivals' && r.channelCode !== null && (
-                    <Marke farbe="bg-neutral-100 text-neutral-700">
+                    <Marke farbe={kanalFarbe(r.channelCode)}>
                       <span className="sr-only">{t('today.channel')}: </span>
                       {r.channelCode}
                     </Marke>

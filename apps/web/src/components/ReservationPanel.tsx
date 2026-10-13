@@ -15,6 +15,7 @@ import { GastWunschListe } from './GastWuensche.tsx'
 import { useSetCleaningWaiver } from '../lib/queries/checkin.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { useSprung } from '../lib/suche.js'
+import { kanalFarbe } from '../lib/kanalFarbe.js'
 
 const NOTES_MAX_LENGTH = 2000
 const SHORT_NOTE_MAX_LENGTH = 40
@@ -286,7 +287,12 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
               : t('ps.personsTitle', { n: r.guestCount })}
         </Feld>
         <Feld label={t('plan.total')}>{formatMoney(r.totalCent, locale)}</Feld>
-        <Feld label={t('today.channel')}>{r.channelCode ?? '—'}</Feld>
+        <Feld label={t('today.channel')}>
+          {r.channelCode === null ? '—'
+            : <span className={`text-xs px-1 rounded-sm ${kanalFarbe(r.channelCode)}`}>
+                {r.channelCode}
+              </span>}
+        </Feld>
         <Feld label={t('plan.source')}>{r.source}</Feld>
       </section>
 
