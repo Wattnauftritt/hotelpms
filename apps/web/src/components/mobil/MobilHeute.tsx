@@ -95,6 +95,12 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                   {r.occupants > 0 && ` · ${t('mobil.persons', { n: r.occupants })}`}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1">
+                  {liste === 'arrivals' && r.channelCode !== null && (
+                    <Marke farbe="bg-neutral-100 text-neutral-700">
+                      <span className="sr-only">{t('today.channel')}: </span>
+                      {r.channelCode}
+                    </Marke>
+                  )}
                   {r.expectedArrival !== undefined && r.expectedArrival !== null && (
                     <Marke farbe="bg-sky-50 text-sky-800">
                       <span className="sr-only">{t('today.expectedArrival')}: </span>

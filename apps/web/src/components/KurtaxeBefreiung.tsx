@@ -80,8 +80,10 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
         <div className="flex flex-wrap gap-2">
           <label className="block text-sm w-40">
             <span className="block text-xs text-neutral-600 mb-1">{t('exemption.code')}</span>
-            <input value={code} onChange={e => setCode(e.target.value)}
-                   placeholder="behinderung" className={eingabe} />
+            {/* Kein Platzhalter, auch nicht als Beispiel: ein grauer Text im
+                Feld sah aus wie ein schon eingetragener Wert, und der graue
+                Knopf darunter wie ein Fehler (Sven, 13.10.2026). */}
+            <input value={code} onChange={e => setCode(e.target.value)} className={eingabe} />
             {/* Was gespeichert wird, wenn es vom Getippten abweicht: wer
                 "Behinderung" schreibt, sieht "behinderung". */}
             {kuerzel !== '' && kuerzel !== code.trim() && (
@@ -93,7 +95,7 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
           <label className="block text-sm grow">
             <span className="block text-xs text-neutral-600 mb-1">{t('exemption.label')}</span>
             <input value={label} onChange={e => setLabel(e.target.value)} maxLength={120}
-                   placeholder="100 % Behinderung" className={eingabe} />
+                   className={eingabe} />
           </label>
           <label className="block text-sm w-28">
             <span className="block text-xs text-neutral-600 mb-1">{t('exemption.avsCategory')}</span>
@@ -120,6 +122,10 @@ export function KurtaxeBefreiung({ propertyId }: { propertyId: number }): JSX.El
                            disabled:bg-neutral-300">
           {t('common.save')}
         </button>
+        {/* Warum der Knopf grau ist, statt ihn wortlos zu sperren. */}
+        {label.trim() === '' && (
+          <p className="text-xs text-neutral-500">{t('exemption.labelMissing')}</p>
+        )}
       </div>
     </div>
   )
