@@ -273,6 +273,23 @@ describe('Kurtaxe-Befreiung im Meldeformular', () => {
       { last_name: 'Petersen', reason: null, proof: null }])
   })
 
+  it('verlangt die Nummer, wo der Grund danach fragt', async () => {
+    await grund('jahreskurkarte', { proof: true })
+    const r = await reservierung()
+    const link = await mailLink(r.ref)
+    const ohne = await einreichen(link, inlaendisch(
+      { taxExemption: { reason: 'jahreskurkarte', proof: '  ' } }))
+    expect(ohne.statusCode, ohne.body).toBe(422)
+    expect(ohne.body).toContain('guest.taxExemption.proof')
+    expect(await scheine(r.id)).toEqual([])
+
+    const mit = await einreichen(link, inlaendisch(
+      { taxExemption: { reason: 'jahreskurkarte', proof: 'JK-2026-17' } }))
+    expect(mit.statusCode, mit.body).toBe(201)
+    expect(await scheine(r.id)).toEqual(
+      [{ last_name: 'Petersen', reason: 'jahreskurkarte', proof: 'JK-2026-17' }])
+  })
+
   it('weist einen Grund ab, den das Haus nicht oder nicht mehr anbietet', async () => {
     await grund('alt', { active: false })
     const r = await reservierung()

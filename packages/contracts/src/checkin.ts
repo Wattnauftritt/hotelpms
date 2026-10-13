@@ -208,8 +208,9 @@ export const CheckinAddress = Type.Object({
 
 /**
  * Befreiung von der Kurtaxe, je Person. `reason` ist das Kuerzel eines
- * Grundes des Hauses; `proof` die Ausweis- oder Kartennummer, freiwillig und
- * nur, wo der Grund danach fragt -- sonst verworfen.
+ * Grundes des Hauses; `proof` die Ausweis- oder Kartennummer. Wo der Grund
+ * danach fragt, ist sie Pflicht -- das Haus muss die Befreiung gegenueber der
+ * Gemeinde belegen koennen; sonst wird sie verworfen.
  */
 export const CheckinTaxExemption = Type.Object({
   reason: Type.String({ minLength: 1, maxLength: 40 }),
