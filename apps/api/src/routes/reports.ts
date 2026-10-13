@@ -10,6 +10,8 @@ import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 import { offeneWuensche } from '../platform/gastwuensche.js'
 import { sendeJsonExport, type JsonExportDatei } from '../platform/exportDatei.js'
 import { formelsicher, writeCsv as csv } from '../platform/csv.js'
+import { sendeZip } from '../platform/zipDatei.js'
+import { gobdArchiv } from '../platform/gobdArchiv.js'
 
 /** Kennzahlen ueber mehr als zwei Jahre gehoeren ins Berichtsreplikat. */
 const MAX_DAYS = 800
@@ -48,6 +50,86 @@ function checkRange(from: string, to: string): number {
   if (days <= 0) throw Errors.validation({ to: ['field.onOrAfterFrom'] })
   if (days > MAX_DAYS) throw Errors.rangeTooLarge(MAX_DAYS)
   return days
+}
+
+
+/** Was an einer festgeschriebenen Rechnung fuer DATEV zaehlt. */
+interface RechnungsSummen {
+  groups?: Array<{ rateBp: number; grossCent: number }>
+  roundingCent?: number
+}
+
+/** SKR03, wie `kontoFuerSatz` im Folio fuer 0 %: Erloese ohne Steuerautomatik. */
+const RUNDUNG_KONTO = '8200'
+
+/**
+ * Erloesbuchungen je Rechnung aus der festgeschriebenen Summe statt aus der
+ * Summe der Positionen (Pruefung des Rechnungssystems vom 13.10.2026).
+ *
+ * Die Rechnung rechnet die Steuer je Satzgruppe aus der Nettosumme; die
+ * Bruttosumme einer Gruppe weicht deshalb um Cent von der Summe der
+ * Bruttopositionen ab, und den Unterschied traegt der Rundungsbetrag
+ * (BT-114). DATEV rechnet die Steuer aus dem gebuchten Brutto. Buchte der
+ * Stapel die Positionen, stuende dort eine andere Steuer als auf dem Beleg.
+ *
+ * Je Satz wird deshalb das Brutto der Gruppe gebucht, zuzueglich der
+ * verrechneten Anzahlung (die bucht eigens gegen 1718), und auf die Konten
+ * des Satzes nach ihren Positionen verteilt; den Rest nimmt das groesste.
+ * Der Rundungsbetrag steht als eigene Zeile ohne Steuer. Debitor und
+ * Zahlbetrag stimmen damit auf den Cent.
+ *
+ * Geht die Rechnung nicht auf -- aeltere Summen ohne Gruppen, eine
+ * Stornorechnung mit anderer Herkunft --, bleibt es bei den Positionen:
+ * lieber ein Cent Steuerdifferenz als ein Debitor, der nicht aufgeht.
+ */
+export function erloesBuchungen(rows: ReadonlyArray<{
+  id: number; number: string; business_date: string; tax_rate_bp: number
+  revenue_account: string; gross_cent: string | number; recipient: string
+  totals: RechnungsSummen | null; deposits: Record<string, string> | null
+}>): Array<{ number: string; datum: string; recipient: string; konto: string
+             rateBp: number | null; grossCent: number }> {
+  const out: Array<{ number: string; datum: string; recipient: string; konto: string
+                     rateBp: number | null; grossCent: number }> = []
+  const jeRechnung = new Map<number, typeof rows[number][]>()
+  for (const r of rows) {
+    const l = jeRechnung.get(r.id)
+    if (l) l.push(r); else jeRechnung.set(r.id, [r])
+  }
+  for (const zeilen of jeRechnung.values()) {
+    const kopf = zeilen[0]!
+    const basis = zeilen.map(z => ({
+      number: z.number, datum: z.business_date, recipient: z.recipient,
+      konto: z.revenue_account, rateBp: z.tax_rate_bp as number | null,
+      grossCent: Number(z.gross_cent) }))
+    const gruppen = kopf.totals?.groups
+    const rundung = Number(kopf.totals?.roundingCent ?? 0)
+    if (!Array.isArray(gruppen)) { out.push(...basis); continue }
+
+    const saetze = new Set(basis.map(b => b.rateBp!))
+    for (const g of gruppen) saetze.add(g.rateBp)
+    const angepasst = basis.map(b => ({ ...b }))
+    let differenz = 0
+    let geht = true
+    for (const satz of saetze) {
+      const konten = angepasst.filter(b => b.rateBp === satz)
+      const ziel = Number(gruppen.find(g => g.rateBp === satz)?.grossCent ?? 0)
+        + Number(kopf.deposits?.[String(satz)] ?? 0)
+      const ist = konten.reduce((s, b) => s + b.grossCent, 0)
+      if (ziel === ist) continue
+      if (konten.length === 0) { geht = false; break }
+      const groesstes = konten.reduce((a, b) =>
+        Math.abs(b.grossCent) > Math.abs(a.grossCent) ? b : a)
+      groesstes.grossCent += ziel - ist
+      differenz += ziel - ist
+    }
+    if (!geht || differenz + rundung !== 0) { out.push(...basis); continue }
+    out.push(...angepasst.filter(b => b.grossCent !== 0))
+    if (rundung !== 0) {
+      out.push({ number: kopf.number, datum: kopf.business_date, recipient: kopf.recipient,
+                 konto: RUNDUNG_KONTO, rateBp: null, grossCent: rundung })
+    }
+  }
+  return out
 }
 
 export function reportRoutes(app: FastifyInstance): void {
@@ -487,20 +569,34 @@ export function reportRoutes(app: FastifyInstance): void {
           `SELECT name FROM property WHERE id = $1`, [id])
         if (prop.rowCount === 0) throw Errors.notFound('res.property')
 
+        /*
+         * Geschnitten wird nach dem Geschaeftstag der Rechnung, nicht nach
+         * ihrem Ausstellungsdatum: nach Mitternacht vor dem Nachtlauf
+         * gehoert eine Rechnung noch zum Vortag, und ein Stapel nach
+         * Kalendertag fuehrte sie im falschen Monat (Pruefung vom
+         * 13.10.2026). Die Anzahlungen unten schneiden genauso.
+         */
         const { rows } = await client.query<{
-          number: string; issued_on: string; tax_rate_bp: number
-          revenue_account: string; gross_cent: number
-          recipient: string; kind: string }>(
-          `SELECT i.number, i.issued_on::text AS issued_on, c.tax_rate_bp,
-                  c.revenue_account, sum(c.gross_cent)::bigint AS gross_cent,
+          id: number; number: string; business_date: string; tax_rate_bp: number
+          revenue_account: string; gross_cent: string
+          recipient: string; totals: RechnungsSummen | null; deposits: Record<string, string> | null }>(
+          `SELECT i.id, i.number, i.business_date::text AS business_date, c.tax_rate_bp,
+                  c.revenue_account, sum(c.gross_cent)::text AS gross_cent,
                   COALESCE(i.recipient_snapshot->>'name', 'Divers') AS recipient,
-                  i.kind
+                  i.totals,
+                  (SELECT jsonb_object_agg(x.rate, x.gross) FROM (
+                     SELECT d.tax_rate_bp::text AS rate,
+                            sum(CASE d.kind WHEN 'unapplied' THEN -d.amount_gross_cent
+                                            ELSE d.amount_gross_cent END)::text AS gross
+                       FROM deposit_ledger d
+                      WHERE d.applied_invoice_id = i.id AND d.kind IN ('applied','unapplied')
+                      GROUP BY d.tax_rate_bp) x) AS deposits
              FROM invoice i JOIN charge c ON c.invoice_id = i.id
-            WHERE i.property_id = $1 AND i.issued_on BETWEEN $2::date AND $3::date
-            GROUP BY i.id, i.number, i.issued_on, c.tax_rate_bp, c.revenue_account,
-                     i.recipient_snapshot, i.kind
-            ORDER BY i.issued_on, i.number, c.revenue_account, c.tax_rate_bp`,
+            WHERE i.property_id = $1 AND i.business_date BETWEEN $2::date AND $3::date
+            GROUP BY i.id, c.tax_rate_bp, c.revenue_account
+            ORDER BY i.business_date, i.number, c.revenue_account, c.tax_rate_bp`,
           [id, q.from, q.to])
+        const erloese = erloesBuchungen(rows)
 
         /*
          * Anzahlungen: die Vereinnahmung am Geschaeftstag des
@@ -597,10 +693,9 @@ export function reportRoutes(app: FastifyInstance): void {
            * `credit_note` drehte sie ein zweites Mal und buchte das Storno
            * als weiteren Umsatz.
            */
-          ...rows.map(r => zeile(
-            r.gross_cent, false, r.revenue_account,
-            r.issued_on, r.number,
-            `${r.recipient} ${r.tax_rate_bp / 100}%`)),
+          ...erloese.map(r => zeile(
+            r.grossCent, false, r.konto, r.datum, r.number,
+            r.rateBp === null ? `${r.recipient} Rundung` : `${r.recipient} ${r.rateBp / 100}%`)),
           /*
            * Die Vereinnahmung bucht auf das Anzahlungskonto, die Verrechnung
            * loest sie wieder auf. Die Verrechnung traegt die Nummer der
@@ -650,9 +745,26 @@ export function reportRoutes(app: FastifyInstance): void {
     summary: 'GoBD-Export der Umsaetze eines Zeitraums',
     handler: async (req, reply) => {
       const { propertyId } = req.params as { propertyId: string }
-      const q = req.query as { from: string; to: string }
+      const q = req.query as { from: string; to: string; format?: string }
       checkRange(q.from, q.to)
       const id = Number(propertyId)
+      if (q.format !== undefined && q.format !== 'zip' && q.format !== 'json') {
+        throw Errors.validation({ format: ['field.invalid'] })
+      }
+
+      /*
+       * Das Archiv fuer die Betriebspruefung: Tabellen mit Beschreibung
+       * nach GDPdU, Belege, Protokoll und Anzahlungsjournal
+       * (`platform/gobdArchiv.ts`). Das JSON bleibt fuer Auswertungen, die
+       * es schon lesen.
+       */
+      if (q.format === 'zip') {
+        return sendeZip(reply, `gobd-${q.from}-${q.to}.zip`, zip => tx(req.pool, req,
+          async client => {
+            await assertNotTraining(client, id, 'training.what.gobd')
+            await gobdArchiv(client, zip, id, q.from, q.to)
+          }))
+      }
 
       /*
        * Ueber eine Exportdatei wie der Mandantenexport (Performance-Audit

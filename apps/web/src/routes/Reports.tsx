@@ -399,7 +399,7 @@ function Ausgaben(
   const datevPfad = `/v1/properties/${propertyId}/exports/datev?from=${from}&to=${to}`
     + (berater === '' ? '' : `&consultantNumber=${encodeURIComponent(berater)}`)
     + (mandant === '' ? '' : `&clientNumber=${encodeURIComponent(mandant)}`)
-  const gobdPfad = `/v1/properties/${propertyId}/exports/gobd?from=${from}&to=${to}`
+  const gobdPfad = `/v1/properties/${propertyId}/exports/gobd?from=${from}&to=${to}&format=zip`
   const abgabePfad = `/v1/properties/${propertyId}/exports/guest-levy`
     + `?from=${from}&to=${to}&format=csv`
   const mandantPfad = `/v1/properties/${propertyId}/exports/tenant`
@@ -462,7 +462,7 @@ function Ausgaben(
           <div className="font-medium">{t('export.gobd')}</div>
           <div className="text-xs text-neutral-500">{t('export.gobdHint')}</div>
           <button
-            onClick={() => starten(gobdPfad, `gobd-${from}-${to}.json`)}
+            onClick={() => starten(gobdPfad, `gobd-${from}-${to}.zip`)}
             disabled={ausgabe.isPending}
             className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                        disabled:opacity-40">
