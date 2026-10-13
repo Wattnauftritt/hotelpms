@@ -262,7 +262,7 @@ function Wuensche({ start, roomRef, locale }: {
   return (
     <section className={KARTE} aria-labelledby="mappe-wuensche">
       <h2 id="mappe-wuensche" className="font-semibold">{t('req.title')}</h2>
-      {/* Noch eine Nacht (0155): oben, weil es das Wichtigste ist, was die
+      {/* Noch eine Nacht (0156): oben, weil es das Wichtigste ist, was die
           Mappe anbietet -- aber ohne Hervorhebung, die draengt. */}
       {view.extension !== null && (
         <div className="space-y-2 rounded-md bg-neutral-100 p-3">

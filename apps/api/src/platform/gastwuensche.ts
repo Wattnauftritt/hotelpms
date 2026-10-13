@@ -147,7 +147,7 @@ export async function nachrichtAnlegen(
 }
 
 /**
- * Noch eine Nacht (0155): was die Mappe anbietet, oder `null`.
+ * Noch eine Nacht (0156): was die Mappe anbietet, oder `null`.
  *
  * Ab dem zweiten Tag bis zum Abreisetag, nur wenn das Haus es eingeschaltet
  * hat, keine Verlaengerung schon offen ist und die Nacht frei ist -- im
@@ -189,7 +189,7 @@ export async function verlaengerungAngebot(
     ? null : { night: z.night, priceCent: z.preis }
 }
 
-/** Die Anfrage nach der naechsten Nacht (0155); verlaengert wird beim Annehmen. */
+/** Die Anfrage nach der naechsten Nacht (0156); verlaengert wird beim Annehmen. */
 export async function verlaengerungAnlegen(
   client: PoolClient, a: { propertyId: number; reservationId: number; businessDate: string }
 ): Promise<void> {
@@ -404,7 +404,7 @@ export async function wunschErledigen(
   let chargeId: number | null = null
   if (q.is_extension) {
     /*
-     * Noch eine Nacht (0155): die Abreise rueckt um einen Tag, ueber
+     * Noch eine Nacht (0156): die Abreise rueckt um einen Tag, ueber
      * dieselbe Rechnung wie `change-stay` -- Bestand, Zimmer und Preis der
      * Nacht. Keine Buchung aufs Folio, die Nacht bucht der Nachtlauf. Ist
      * die Abreise inzwischen eine andere, meint die Anfrage eine Nacht,

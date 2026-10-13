@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0155 Digitale Gaestemappe: noch eine Nacht bleiben
+-- 0156 Digitale Gaestemappe: noch eine Nacht bleiben
 --
 -- Plan gaestemappe/plan.md, Abschnitt 9.1 Punkt 1: "Noch eine Nacht
 -- bleiben?" ab dem zweiten Tag, nur wenn das Zimmer die naechste Nacht

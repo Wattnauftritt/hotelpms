@@ -108,7 +108,7 @@ Migration `0154`, Svens Entscheidungen vom 11.10.2026: späte Abreise gegen Geb�
 
 ## 11. Noch eine Nacht
 
-Migration `0155`, Plan Abschnitt 9.1 Punkt 1. Eine Nacht mehr bringt mehr als jedes Extra, und direkt gebucht kostet sie keine Provision.
+Migration `0156`, Plan Abschnitt 9.1 Punkt 1. Eine Nacht mehr bringt mehr als jedes Extra, und direkt gebucht kostet sie keine Provision.
 
 - **Eine Anfrage, keine Buchung.** Die Mappe fragt „Noch eine Nacht bleiben?“ mit Datum und Preis; der Gast fragt an, die Rezeption nimmt an oder lehnt ab. Erst das Annehmen rückt die Abreise, über dieselbe Rechnung wie `change-stay` (Bestand, Zimmer, Preis der Nacht). Aufs Folio kommt dabei nichts; die Nacht bucht der Nachtlauf wie jede andere. Hat sich die Abreise seit der Anfrage geändert, wird nichts verlängert (`guestRequest.extensionStale`).
 - **Angeboten** ab dem zweiten Tag bis zum Abreisetag, wenn das Haus es eingeschaltet hat (aus als Vorgabe), keine Anfrage schon offen ist, niemand in der Nacht in das Zimmer des Gastes kommt und die Gruppe samt Haussumme in `inventory_day` noch ein Zimmer hat. Nicht für einen Abruf aus einem Kontingent.

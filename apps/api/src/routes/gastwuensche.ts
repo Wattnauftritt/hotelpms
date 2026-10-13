@@ -71,14 +71,14 @@ export function gastwuenscheRoutes(app: FastifyInstance): void {
   })
 
   /**
-   * Noch eine Nacht bleiben (0155). Eine Anfrage, keine Buchung: die
+   * Noch eine Nacht bleiben (0156). Eine Anfrage, keine Buchung: die
    * Rezeption bestaetigt, und erst dann rueckt die Abreise.
    */
   registerRoute(app, {
     method: 'POST',
     url: '/v1/mappe/extension',
     // Oeffentlich: Zimmer-Referenz und Freischaltung im Cookie sind der
-    // Ausweis; ohne Freischaltung 403 (0147, 0155).
+    // Ausweis; ohne Freischaltung 403 (0147, 0156).
     permission: null,
     summary: 'Gaestemappe: um eine Nacht verlaengern anfragen',
     handler: async (req, reply): Promise<FolderRequests | null> => {
