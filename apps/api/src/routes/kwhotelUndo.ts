@@ -67,7 +67,13 @@ export const FOLGEN_FOLIO = [
   'deposit_request', 'deposit_request_settlement', 'payment_link'
 ] as const
 /** Teil der Uebernahme selbst; geht mit der Reservierung bzw. wird hier entfernt. */
-export const TEIL_DER_UEBERNAHME = ['reservation_night', 'reservation_change', 'folio'] as const
+export const TEIL_DER_UEBERNAHME = [
+  'reservation_night', 'reservation_change', 'folio',
+  // Der Preis aus dem Umsystem (0160) faellt mit der Reservierung: das
+  // Umsystem schickt ihn beim Neuimport wieder, und an einem Gast ist damit
+  // noch nicht gearbeitet.
+  'reservation_external_price'
+] as const
 
 /** Was an einem Gastprofil haengen kann. Ebenso gegen die Datenbank getestet. */
 export const VERWEISE_GAST = [

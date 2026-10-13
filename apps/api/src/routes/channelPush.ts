@@ -89,6 +89,11 @@ interface PushSegment {
   adults?: number
   children?: number
   guestCount?: number
+  /**
+   * Preis dieses Abschnitts in Cent (Migration 0160), wenn die Quelle ihn je
+   * Zimmer kennt. Entweder an jedem Abschnitt oder an keinem.
+   */
+  totalCent?: number
 }
 
 interface PushBody {
@@ -109,6 +114,7 @@ interface Abschnitt {
   arrival: string
   departure: string
   personen: Personen
+  totalCent: number | null
 }
 
 interface Bestehend {
@@ -167,6 +173,26 @@ function rumpfLesen(roh: unknown): PushBody & { quelle: string | null } {
       && (!Number.isSafeInteger(body.totalCent) || body.totalCent < 0)) {
     throw Errors.validation({ totalCent: ['field.nonNegativeInteger'] })
   }
+  /*
+   * Preis je Abschnitt: an jedem oder an keinem. Mit einem Teil davon
+   * wuesste niemand, was die uebrigen kosten; und eine Summe daneben, die
+   * etwas anderes sagt, waeren zwei Preise fuer eine Buchung.
+   */
+  const jeAbschnitt = body.segments.map(s => s.totalCent)
+  jeAbschnitt.forEach((t, i) => {
+    if (t !== undefined && (!Number.isSafeInteger(t) || t < 0)) {
+      throw Errors.validation({ [`segments.${i}.totalCent`]: ['field.nonNegativeInteger'] })
+    }
+  })
+  const mit = jeAbschnitt.filter(t => t !== undefined).length
+  if (mit > 0 && mit < jeAbschnitt.length) {
+    const i = jeAbschnitt.findIndex(t => t === undefined)
+    throw Errors.validation({ [`segments.${i}.totalCent`]: ['field.required'] })
+  }
+  if (mit > 0 && body.totalCent !== undefined
+      && jeAbschnitt.reduce<number>((a, t) => a + t!, 0) !== body.totalCent) {
+    throw Errors.validation({ totalCent: ['field.invalid'] })
+  }
   if (body.channelCode !== undefined
       && (typeof body.channelCode !== 'string' || body.channelCode.length > 50)) {
     throw Errors.validation({ channelCode: ['field.invalid'] })
@@ -188,8 +214,19 @@ function pruefsumme(body: PushBody): string {
     .map(s => [s.roomCode?.trim() ?? null, s.categoryCode?.trim() ?? null, s.arrival, s.departure,
                s.adults ?? null, s.children ?? null, s.guestCount ?? null])
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+  /*
+   * Preise je Abschnitt nur, wenn es sie gibt: sonst bekaeme jede bestehende
+   * Buchung mit diesem Deploy eine andere Summe, und jede von der Rezeption
+   * gefuehrte stuende als "Quelle hat sich geaendert" da.
+   */
+  const jeAbschnitt = body.segments.some(s => s.totalCent !== undefined)
+    ? body.segments
+        .map(s => [s.roomCode?.trim() ?? null, s.categoryCode?.trim() ?? null, s.arrival,
+                   s.departure, s.totalCent ?? null])
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    : undefined
   return createHash('sha256')
-    .update(JSON.stringify({ s: teile, t: body.totalCent ?? null }))
+    .update(JSON.stringify({ s: teile, t: body.totalCent ?? null, p: jeAbschnitt }))
     .digest('hex')
 }
 
@@ -226,7 +263,8 @@ async function abschnitteAufloesen(
       }
       return {
         resourceId: selbst ? null : Number(z.id),
-        categoryId: Number(z.category_id), arrival: s.arrival, departure: s.departure, personen
+        categoryId: Number(z.category_id), arrival: s.arrival, departure: s.departure, personen,
+        totalCent: s.totalCent ?? null
       }
     }
     let categoryId: number | undefined
@@ -241,7 +279,7 @@ async function abschnitteAufloesen(
       throw Errors.validation({ [`segments.${i}.roomCode`]: ['field.required'] })
     }
     return { resourceId: null, categoryId, arrival: s.arrival,
-             departure: s.departure, personen }
+             departure: s.departure, personen, totalCent: s.totalCent ?? null }
   })
 }
 
@@ -338,10 +376,16 @@ async function gastAnlegen(
  * Der Gesamtpreis meint den ganzen Aufenthalt einschliesslich ihrer;
  * aufgeteilt wird, was nach ihnen uebrig ist, auf die ungebuchten Naechte
  * aller Abschnitte in ihrer Reihenfolge.
+ *
+ * Kennt die Quelle den Preis je Zimmer (`segments[].totalCent`, 0160), gilt
+ * dieselbe Rechnung je Abschnitt: sonst kostete im Zimmerwechsel vom
+ * Einzel- ins Doppelzimmer jede Nacht den Durchschnitt, und die Rechnung
+ * stimmte nur in der Summe.
  */
 async function naechteSchreiben(
   client: PoolClient, propertyId: number, totalCent: number,
-  traeger: Array<{ reservationId: number; arrival: string; departure: string }>
+  traeger: Array<{ reservationId: number; arrival: string; departure: string
+                   totalCent: number | null }>
 ): Promise<void> {
   const ids = traeger.map(t => t.reservationId)
   await client.query(
@@ -351,16 +395,29 @@ async function naechteSchreiben(
     `SELECT reservation_id, date::text, price_cent FROM reservation_night
       WHERE reservation_id = ANY($1::bigint[])`, [ids])
   const schonDa = new Set(gebucht.rows.map(g => `${g.reservation_id}/${g.date}`))
-  const summeGebucht = gebucht.rows.reduce((s, g) => s + Number(g.price_cent), 0)
+  const gebuchtVon = (rid: number | null) => gebucht.rows
+    .filter(g => rid === null || Number(g.reservation_id) === rid)
+    .reduce((s, g) => s + Number(g.price_cent), 0)
 
+  const offenVon = (t: typeof traeger[number]) => eachNight(t.arrival, t.departure)
+    .filter(d => !schonDa.has(`${t.reservationId}/${d}`))
+    .map(date => ({ reservationId: t.reservationId, date }))
   const offen: Array<{ reservationId: number; date: string }> = []
-  for (const t of traeger) {
-    for (const d of eachNight(t.arrival, t.departure)) {
-      if (!schonDa.has(`${t.reservationId}/${d}`)) offen.push({ reservationId: t.reservationId, date: d })
+  const preise: number[] = []
+  if (traeger.length > 0 && traeger.every(t => t.totalCent !== null)) {
+    for (const t of traeger) {
+      const o = offenVon(t)
+      if (o.length === 0) continue
+      offen.push(...o)
+      preise.push(...preisJeNacht(Math.max(0, t.totalCent! - gebuchtVon(t.reservationId)), o.length))
+    }
+  } else {
+    offen.push(...traeger.flatMap(offenVon))
+    if (offen.length > 0) {
+      preise.push(...preisJeNacht(Math.max(0, totalCent - gebuchtVon(null)), offen.length))
     }
   }
   if (offen.length === 0) return
-  const preise = preisJeNacht(Math.max(0, totalCent - summeGebucht), offen.length)
   // Eine Anweisung fuer alle Naechte (Performanceaudit).
   await client.query(
     `INSERT INTO reservation_night (reservation_id, property_id, date, price_cent)
@@ -657,7 +714,8 @@ export function channelPushRoutes(app: FastifyInstance): void {
         const wartetAuf = (a: Abschnitt) => besetzt.has(a) ? a.resourceId : null
         const ueberbucht = new Set<number>()
         const traeger: Array<{ reservationId: number; reservationRef: string
-                                arrival: string; departure: string }> = []
+                                arrival: string; departure: string
+                                totalCent: number | null }> = []
 
         // Erst freigeben, was wegfaellt oder umzieht, dann binden: sonst
         // zaehlte ein Umzug innerhalb der Buchung als Ueberbuchung.
@@ -691,7 +749,7 @@ export function channelPushRoutes(app: FastifyInstance): void {
              a.personen.guestCount, a.personen.adults, a.personen.children,
              body.notes ?? null, wartetAuf(a)])
           traeger.push({ reservationId: r.id, reservationRef: r.public_ref,
-                         arrival: a.arrival, departure: a.departure })
+                         arrival: a.arrival, departure: a.departure, totalCent: a.totalCent })
         }
 
         for (const a of neu) {
@@ -717,10 +775,11 @@ export function channelPushRoutes(app: FastifyInstance): void {
             `INSERT INTO folio (property_id, reservation_id, guest_id, kind)
              VALUES ($1,$2,$3,'guest')`, [propertyId, id, buchung.booker_guest_id])
           traeger.push({ reservationId: id, reservationRef: res.rows[0]!.public_ref,
-                         arrival: a.arrival, departure: a.departure })
+                         arrival: a.arrival, departure: a.departure, totalCent: a.totalCent })
         }
 
-        await naechteSchreiben(client, propertyId, body.totalCent ?? 0, traeger)
+        await naechteSchreiben(client, propertyId,
+          body.totalCent ?? body.segments.reduce((t, x) => t + (x.totalCent ?? 0), 0), traeger)
         const ids = traeger.map(t => t.reservationId)
         if (selbst) {
           await zimmerFreiMachen(client, ids)
