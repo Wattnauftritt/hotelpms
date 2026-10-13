@@ -146,7 +146,8 @@ function pruefeScopes(scopes: unknown): asserts scopes is string[] {
  * hier steht.
  */
 export const NUR_FUER_MASCHINEN: ReadonlySet<string> = new Set([
-  'cashbook:import', 'guest:contact_write', 'registration:import'])
+  'cashbook:import', 'guest:contact_write', 'registration:import',
+  'reservation:price_import'])
 
 /**
  * Was ein Zugang darf, darf sein Anleger selbst -- in jedem Haus, das der

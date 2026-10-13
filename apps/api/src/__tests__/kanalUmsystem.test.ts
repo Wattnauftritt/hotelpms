@@ -222,6 +222,31 @@ describe('Anlegen und Abgleichen', () => {
     expect(await verkauft('2026-11-02', '2026-11-03')).toEqual([3])
   })
 
+  it('nimmt den Preis je Zimmer, wenn die Quelle ihn kennt (0160)', async () => {
+    const token = await zugang()
+    const jeZimmer = { ...ZWEI_ABSCHNITTE, totalCent: undefined, segments: [
+      { ...ZWEI_ABSCHNITTE.segments[0], totalCent: 15_001 },
+      { ...ZWEI_ABSCHNITTE.segments[1], totalCent: 24_000 }] }
+    const r = await put(token, 'rc-1', jeZimmer)
+    expect(r.statusCode, r.body).toBe(201)
+    const a = JSON.parse(r.body) as Antwort
+    const rs = await reservierungen(a.bookingRef)
+    expect(rs.map(x => x.total)).toEqual([15_001, 24_000])
+
+    // Ein anderer Preis je Zimmer ist ein anderer Stand, nicht derselbe.
+    const b = await put(token, 'rc-1', { ...jeZimmer, segments: [
+      { ...jeZimmer.segments[0], totalCent: 16_000 }, jeZimmer.segments[1]] })
+    expect((JSON.parse(b.body) as Antwort).status).toBe('updated')
+    expect((await reservierungen(a.bookingRef)).map(x => x.total)).toEqual([16_000, 24_000])
+
+    // Halb je Zimmer oder eine Summe, die etwas anderes sagt, wird abgewiesen.
+    const halb = await put(token, 'rc-2', { ...ZWEI_ABSCHNITTE, segments: [
+      { ...ZWEI_ABSCHNITTE.segments[0], totalCent: 15_000 }, ZWEI_ABSCHNITTE.segments[1]] })
+    expect(halb.statusCode).toBe(422)
+    const zweiPreise = await put(token, 'rc-2', { ...jeZimmer, totalCent: 1 })
+    expect(zweiPreise.statusCode).toBe(422)
+  })
+
   it('ignoriert einen aelteren Stand', async () => {
     const token = await zugang()
     await put(token, 'rc-1', ZWEI_ABSCHNITTE)
