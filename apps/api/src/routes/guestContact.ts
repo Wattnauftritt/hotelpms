@@ -72,6 +72,8 @@ const POSTAL_MAX = 20
 const CITY_MAX = 100
 const SYSTEM_MAX = 40
 const REFERENCE_MAX = 100
+/** Dieselbe Grenze wie beim Kanal-Push (`channelPush.ts`). */
+const CHANNEL_MAX = 50
 
 interface Vermerk {
   system: string
@@ -90,6 +92,8 @@ interface Eingabe {
   source: { system: string; reference: string | null
             matchConfidence: number | null; manual: boolean } | null
   registration?: Vermerk | null
+  /** Buchungskanal (0155), unabhaengig von den Kontaktfeldern. */
+  channelCode?: string | null
 }
 
 /** Ein Zeitpunkt mit Zone. Ohne Zone waere er je nach Server ein anderer. */
@@ -130,6 +134,7 @@ function pruefen(body: unknown): Eingabe {
     }
   }
   nichtText('firstName'); nichtText('email'); nichtText('phone'); nichtText('language')
+  nichtText('channelCode')
 
   const firstName = text(b.firstName)
   if (typeof firstName === 'string' && firstName.length > FIRST_NAME_MAX) {
@@ -246,14 +251,22 @@ function pruefen(body: unknown): Eingabe {
     }
   }
 
-  if (!mitKontakt && b.registration === undefined && Object.keys(fehler).length === 0) {
+  // Der Kanal gehoert zur Buchung, nicht zum Gast: er braucht keine
+  // `source` mit Trefferguete, denn er nennt niemanden.
+  const channelCode = text(b.channelCode)
+  if (typeof channelCode === 'string' && channelCode.length > CHANNEL_MAX) {
+    falsch('channelCode', 'field.maxLength')
+  }
+
+  if (!mitKontakt && b.registration === undefined && channelCode === undefined
+      && Object.keys(fehler).length === 0) {
     falsch('email', 'field.required')
   }
   if (Object.keys(fehler).length > 0 || source === undefined
       || (mitKontakt && source === null)) {
     throw Errors.validation(fehler)
   }
-  return { ...eingabe, source, registration }
+  return { ...eingabe, source, registration, channelCode }
 }
 
 /**
@@ -303,17 +316,57 @@ export function guestContactRoutes(app: FastifyInstance): void {
             { permission: 'guest:contact_write' })
         }
         const vermerk = await vermerkSchreiben(client, res, eingabe.registration)
-        const kontakt = eingabe.source === null
+        const kanal = await kanalSchreiben(client, res, eingabe.channelCode)
+        // Nur mit Kontaktfeldern: ein Aufruf, der allein den Kanal nennt,
+        // braucht keinen Hauptgast, auch wenn er die Quelle mitschickt.
+        const mitKontakt = (['firstName', 'email', 'phone', 'language', 'address'] as const)
+          .some(f => eingabe[f] !== undefined)
+        const kontakt = eingabe.source === null || !mitKontakt
           ? null : await kontaktSchreiben(client, res, eingabe, eingabe.source, principal)
 
         return {
           reservationRef,
           guestRef: kontakt?.guestRef ?? null,
-          fields: { ...kontakt?.felder, ...(vermerk ? { registration: vermerk } : {}) }
+          fields: { ...kontakt?.felder, ...(vermerk ? { registration: vermerk } : {}),
+                    ...(kanal ? { channelCode: kanal } : {}) }
         }
       })
     }
   })
+}
+
+/**
+ * Der Buchungskanal aus dem Abgleich des Umsystems (Migration 0155).
+ *
+ * Gesetzt wird an der Buchung, nicht an der Reservierung: eine Gruppe kam
+ * ueber einen Kanal, nicht ueber acht. Eine Buchung aus einem
+ * Channel-Zugang bleibt, wie der Kanal sie gemeldet hat -- der weiss es
+ * genauer als ein Abgleich. Sonst gilt dieselbe Regel wie fuer die
+ * Kontaktfelder: Leeres fuellen, nur Eigenes ersetzen oder zurueckziehen.
+ */
+async function kanalSchreiben(
+  client: PoolClient, res: { id: number },
+  code: string | null | undefined
+): Promise<{ result: Ergebnis; reason?: Grund } | null> {
+  if (code === undefined) return null
+  const b = await client.query<{ id: number; channel_code: string | null
+                                 channel_code_external: boolean
+                                 channel_connection_id: number | null }>(
+    `SELECT b.id, b.channel_code, b.channel_code_external, b.channel_connection_id
+       FROM booking b JOIN reservation r ON r.booking_id = b.id
+      WHERE r.id = $1 FOR UPDATE OF b`, [res.id])
+  const alt = b.rows[0]!
+  if (alt.channel_code === code) return { result: 'unchanged' }
+  const eigen = alt.channel_code === null || alt.channel_code_external
+  if (alt.channel_connection_id !== null || !eigen) {
+    // Zurueckziehen, was gar nicht von hier stammt, aendert nichts.
+    return code === null ? { result: 'unchanged' }
+      : { result: 'kept_existing', reason: 'set_otherwise' }
+  }
+  await client.query(
+    `UPDATE booking SET channel_code = $2::text, channel_code_external = ($2::text IS NOT NULL)
+      WHERE id = $1`, [alt.id, code])
+  return { result: code === null ? 'withdrawn' : 'applied' }
 }
 
 /**
