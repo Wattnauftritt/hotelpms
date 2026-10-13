@@ -77,9 +77,11 @@ function fehlt(v: string | null | undefined): boolean {
 }
 
 function anschriftFehlt(p: Party): boolean {
-  // Postleitzahl und Ort genügen als Anschrift; die Straße kann bei einem
-  // Postfach entfallen. Fehlt beides, ist es keine Anschrift.
-  return fehlt(p.postalCode) || fehlt(p.city)
+  // Vollständig heißt: Straße oder Postfach, Postleitzahl und Ort (§ 14
+  // Abs. 4 Nr. 1 UStG). Bisher genügten Postleitzahl und Ort, und eine
+  // Firmenrechnung an „27472 Cuxhaven" ging durch (Prüfung 13.10.2026).
+  // Ein Postfach steht in derselben Zeile wie sonst die Straße.
+  return fehlt(p.addressLine1) || fehlt(p.postalCode) || fehlt(p.city)
 }
 
 /**
@@ -105,8 +107,10 @@ export function checkInvoiceRequirements(inv: InvoiceForCheck): Finding[] {
   }
   if (anschriftFehlt(inv.issuer)) {
     add('issuer_address', true, '§ 14 Abs. 4 Nr. 1 UStG',
-      'Anschrift des ausstellenden Betriebs fehlt. Postleitzahl und Ort sind nötig.',
-      'The issuing business address is missing. Postal code and city are required.')
+      'Anschrift des ausstellenden Betriebs fehlt. Straße oder Postfach, '
+      + 'Postleitzahl und Ort sind nötig.',
+      'The issuing business address is missing. Street or PO box, postal code '
+      + 'and city are required.')
   }
 
   // ---- Steuernummer oder USt-IdNr. Bei Kleinbetrag nicht erforderlich.
@@ -127,10 +131,12 @@ export function checkInvoiceRequirements(inv: InvoiceForCheck): Finding[] {
     }
     if (anschriftFehlt(inv.recipient)) {
       add('recipient_address', true, '§ 14 Abs. 4 Nr. 1 UStG',
-        'Anschrift des Rechnungsempfängers fehlt. Bei Firmenrechnungen kostet '
-        + 'das dem Kunden den Vorsteuerabzug.',
-        'The invoice recipient address is missing. For business invoices this '
-        + 'costs the customer the input tax deduction.')
+        'Anschrift des Rechnungsempfängers ist unvollständig: Straße oder '
+        + 'Postfach, Postleitzahl und Ort. Bei Firmenrechnungen kostet das dem '
+        + 'Kunden den Vorsteuerabzug.',
+        'The invoice recipient address is incomplete: street or PO box, postal '
+        + 'code and city. For business invoices this costs the customer the input '
+        + 'tax deduction.')
     }
   }
 

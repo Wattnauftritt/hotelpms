@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ReservationDetail, BookingCreated, AvailabilityDay } from '@hotelpms/contracts'
-import { api, ApiError, newIdempotencyKey } from '../api.js'
+import { api, ApiError } from '../api.js'
 import { auschecken } from '../auschecken.js'
 import { useLocale } from '../i18n/index.js'
+import { useAbsicht } from '../absicht.js'
 
 /**
  * Die Zimmergruppe ist ausgebucht -- die Antwort, auf die die Rezeption mit
@@ -255,11 +256,13 @@ export interface CreateBookingBody {
  */
 export function useCreateBooking(propertyId: number) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: (body: CreateBookingBody) =>
       api.post<BookingCreated>('/v1/bookings', body,
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: () => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['tape'] })
       void qc.invalidateQueries({ queryKey: ['availability', propertyId] })
     }
@@ -696,12 +699,14 @@ export const useBooking = (bookingRef: string | null) =>
  */
 export function useShiftBooking() {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: ({ bookingRef, shiftDays, allowOverbooking }:
                  { bookingRef: string; shiftDays: number; allowOverbooking?: boolean }) =>
       api.post(`/v1/bookings/${bookingRef}/change-stay`, { shiftDays, allowOverbooking },
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: (_r, { bookingRef }) => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['tape'] })
       void qc.invalidateQueries({ queryKey: ['booking', bookingRef] })
       // Jede Reservierung der Gruppe hat sich geaendert, und welche im
@@ -726,11 +731,13 @@ export interface AddRoomBody {
 /** Ein Zimmer zu einer bestehenden Gruppe, nicht als zweite Buchung. */
 export function useAddBookingRoom(propertyId: number) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: ({ bookingRef, ...body }: AddRoomBody) =>
       api.post(`/v1/bookings/${bookingRef}/rooms`, body,
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: (_r, { bookingRef }) => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['tape'] })
       void qc.invalidateQueries({ queryKey: ['booking', bookingRef] })
       void qc.invalidateQueries({ queryKey: ['availability', propertyId] })

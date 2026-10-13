@@ -246,6 +246,24 @@ describe('Umleitung der Logis', () => {
     expect(aufGast.rowCount).toBe(1)
   })
 
+  it('bucht bei einem weiteren Folio des Aufenthalts die Nacht nur einmal', async () => {
+    // Split ohne Umleitung: das weitere Folio haengt an derselben
+    // Reservierung. Der Nachtlauf verband bisher jedes offene Folio des
+    // Aufenthalts und buchte die Nacht auf jedes.
+    const gast = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-04',
+      status: 'InHouse', resourceId: rooms[2]!, priceCent: 11_000 })
+    const weiteres = await owner.query<{ id: number }>(
+      `INSERT INTO folio (property_id, reservation_id, kind, label)
+       VALUES ($1,$2,'company','Firma') RETURNING id`,
+      [fx.propertyId, gast.reservationId])
+    await lauf()
+    const n = await owner.query<{ folio_id: number }>(
+      `SELECT folio_id FROM charge WHERE reservation_id = $1`, [gast.reservationId])
+    expect(n.rows.map(r => Number(r.folio_id))).toEqual([gast.folioId])
+    expect(n.rows.some(r => Number(r.folio_id) === weiteres.rows[0]!.id)).toBe(false)
+  })
+
   it('laesst die genauere Regel gewinnen', async () => {
     const gast = await makeReservation(owner, {
       propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-04',

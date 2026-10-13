@@ -439,8 +439,8 @@ function App(): JSX.Element {
         */}
       <Nachladen schluessel={`${screen.key}|${folioRef ?? ''}|${checkInRef ?? ''}`}>
       {folioRef !== null
-        ? <Folio folioRef={folioRef} propertyId={haus.id}
-                 onClose={() => setFolioRef(null)} />
+        ? <Folio folioRef={folioRef} propertyId={haus.id} permissions={rechte}
+                 onFolio={setFolioRef} onClose={() => setFolioRef(null)} />
         : checkInRef !== null
           ? <CheckIn reservationRef={checkInRef} propertyId={haus.id}
                      onClose={() => setCheckInRef(null)} />

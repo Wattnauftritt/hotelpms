@@ -189,6 +189,68 @@ function gegenSummen(t: Record<string, unknown>): InvoiceTotals & {
   }
 }
 
+/**
+ * Die Umsatzsteuersaetze, die eine Buchung von Hand tragen darf.
+ *
+ * Bisher nahm `POST .../charges` jeden Satz an, auch 12,34 Prozent, und
+ * Menge 0 oder negativ; ein Bruchbetrag endete als Fehler 500 (Pruefung
+ * 13.10.2026). In Deutschland gibt es 7 und 19 Prozent; 0 steht fuer den
+ * nicht steuerbaren Posten.
+ */
+const ERLAUBTE_SAETZE: ReadonlySet<number> = new Set([0, 700, 1900])
+/** Eine Million Euro je Position. Darueber ist es ein Tippfehler. */
+const MAX_POSITION_CENT = 100_000_000
+const MAX_MENGE = 9_999
+/** Laengste Bezeichnung eines weiteren Folios. */
+const FOLIO_LABEL_MAX = 60
+/** Folios je Aufenthalt, Gastfolio eingeschlossen. */
+const FOLIOS_JE_AUFENTHALT = 6
+
+interface BuchungsAuftrag {
+  description: string; netCent?: number; taxRateBp: number
+  grossCent?: number
+  quantity?: number; revenueAccount?: string; productId?: number
+}
+
+/** Prueft eine Buchung von Hand, bevor eine Abfrage laeuft. */
+function buchungPruefen(b: BuchungsAuftrag): void {
+  const f: Record<string, Meldung[]> = {}
+  if (typeof b.description !== 'string' || b.description.trim() === '') {
+    f.description = ['field.required']
+  } else if (b.description.length > 200) {
+    f.description = ['field.maxLength']
+  }
+  if (!ERLAUBTE_SAETZE.has(b.taxRateBp)) f.taxRateBp = ['field.taxRate']
+  if (b.quantity !== undefined
+      && (!Number.isInteger(b.quantity) || b.quantity < 1 || b.quantity > MAX_MENGE)) {
+    f.quantity = ['field.positiveInteger']
+  }
+  const betrag = b.grossCent ?? b.netCent
+  if ((b.grossCent === undefined) === (b.netCent === undefined)) {
+    f.grossCent = ['field.required']
+  } else if (!Number.isSafeInteger(betrag) || Math.abs(betrag!) > MAX_POSITION_CENT) {
+    f[b.grossCent === undefined ? 'netCent' : 'grossCent'] = ['field.integer']
+  }
+  if (b.revenueAccount !== undefined
+      && (typeof b.revenueAccount !== 'string' || !/^\d{4,8}$/.test(b.revenueAccount))) {
+    f.revenueAccount = ['field.invalid']
+  }
+  if (Object.keys(f).length > 0) throw Errors.validation(f, { max: 200 })
+}
+
+/**
+ * Das Erloeskonto einer Buchung von Hand, wenn keines mitkommt.
+ *
+ * Bisher immer 8300. In SKR03 ist das das Automatikkonto fuer 7 Prozent,
+ * und der DATEV-Stapel setzt keinen Steuerschluessel: eine Minibar zu
+ * 19 Prozent buchte dort mit 7 Prozent Umsatzsteuer. 8400 ist das Konto
+ * fuer 19 Prozent, 8200 eines ohne Automatik fuer den nicht steuerbaren
+ * Posten.
+ */
+function kontoFuerSatz(rateBp: number): string {
+  return rateBp === 1900 ? '8400' : rateBp === 0 ? '8200' : '8300'
+}
+
 /** Grossbuchstaben und Ziffern, bis sechs; der Bindestrich kommt von selbst. */
 const KUERZEL = /^[A-Z0-9]{1,6}$/
 
@@ -340,9 +402,10 @@ async function erwarteteSaetze(
   if (Number(res.logis_cent) <= 0) return []
 
   const steuer = await client.query<{ rate_bp: number }>(
+    // Wie im Nachtlauf: der ermaessigte Satz, wo es ihn gibt.
     `SELECT COALESCE((SELECT rate_bp FROM tax_rule
                        WHERE property_id = $1 AND kind = 'vat' AND basis = 'percent'
-                         AND active ORDER BY id LIMIT 1), $2) AS rate_bp`,
+                         AND active ORDER BY rate_bp = 700 DESC, id LIMIT 1), $2) AS rate_bp`,
     [propertyId, VAT_FALLBACK])
   const logisSatz = steuer.rows[0]!.rate_bp
 
@@ -722,9 +785,12 @@ function rechnungsMaengel(
     lines: e.charges.map(c => ({
       description: c.description, quantity: c.quantity,
       netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
-    // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet
-    // der geforderte Betrag, nicht die Summe vor dem Rundungsausgleich.
-    grossCent: e.totals.payableCent,
+    // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet der
+    // Gesamtbetrag der Leistung, wie er gefordert wird -- mit Rundung, aber
+    // vor Abzug einer Anzahlung. Bisher galt der Betrag danach: 600 Euro
+    // Aufenthalt mit 400 Euro Anzahlung wurden zur Kleinbetragsrechnung
+    // ohne Empfaenger (Pruefung 13.10.2026).
+    grossCent: e.charges.reduce((sum, c) => sum + Number(c.gross_cent), 0),
     kind
   })
 }
@@ -963,10 +1029,53 @@ export function billingRoutes(app: FastifyInstance): void {
              FROM settlement s JOIN payment_method pm ON pm.id = s.payment_method_id
             WHERE s.folio_id = $1 ORDER BY s.id`, [folio.id])
 
+        /*
+         * Die Rechnungen dieses Folios, mit Beleg. Bisher fuehrte vom Folio
+         * kein Weg zum gerade ausgestellten PDF; man musste es in der
+         * Rechnungsliste suchen (Pruefung 13.10.2026).
+         */
+        const invoices = await client.query(
+          `SELECT i.public_ref AS "invoiceRef", i.number, i.kind,
+                  i.issued_on::text AS "issuedOn",
+                  (i.totals->>'grossCent')::bigint AS "grossCent",
+                  sn.number AS "cancelledBy",
+                  d.invoice_id IS NOT NULL AS "documentReady"
+             FROM invoice i
+             LEFT JOIN invoice sn ON sn.reverses_id = i.id
+             LEFT JOIN invoice_document d ON d.invoice_id = i.id
+            WHERE i.folio_id = $1 ORDER BY i.id`, [folio.id])
+
+        // Die Konten der Buchung (Split und Sammelrechnung): erst die des
+        // eigenen Zimmers, Gastfolio vorn, dann die der anderen Zimmer einer
+        // Gruppe. Weitere legt `.../split` als 'company' an.
+        const stay = folio.reservation_id === null ? [] : (await client.query<{
+          folioRef: string; label: string | null; main: boolean; saldo: string
+          accommodationHere: boolean; room: string | null; ownStay: boolean }>(
+          `SELECT x.public_ref AS "folioRef", x.label, x.kind = 'guest' AS main,
+                  (COALESCE((SELECT sum(gross_cent) FROM charge WHERE folio_id = x.id), 0)
+                 - COALESCE((SELECT sum(amount_cent) FROM settlement
+                              WHERE folio_id = x.id), 0))::text AS saldo,
+                  EXISTS (SELECT 1 FROM routing_rule rr
+                           WHERE rr.reservation_id = x.reservation_id
+                             AND rr.target_folio_id = x.id
+                             AND rr.match_kind = 'accommodation') AS "accommodationHere",
+                  u.code AS room, r.id = $1 AS "ownStay"
+             FROM reservation eigene
+             JOIN reservation r ON r.booking_id = eigene.booking_id
+             JOIN folio x ON x.reservation_id = r.id
+             LEFT JOIN resource u ON u.id = r.resource_id
+            WHERE eigene.id = $1 AND x.property_id = $2
+            ORDER BY r.id = $1 DESC, r.id, x.kind = 'guest' DESC, x.id
+            LIMIT 60`,
+          [folio.reservation_id, folio.property_id])).rows
+          .map(({ saldo, ...x }) => ({ ...x, balanceCent: Number(saldo) }))
+
         const charged = charges.rows.reduce((s, c) => s + Number(c.gross_cent), 0)
         const settled = settlements.rows.reduce((s, p) => s + Number(p.amount_cent), 0)
         return {
           folio, charges: charges.rows, settlements: settlements.rows,
+          invoices: invoices.rows.map(i => ({ ...i, grossCent: Number(i.grossCent) })),
+          stay,
           balanceCent: charged - settled,
           recipient: await empfaenger(client, folio.guest_id, folio.company_id)
         }
@@ -1060,19 +1169,14 @@ export function billingRoutes(app: FastifyInstance): void {
     summary: 'Leistung buchen',
     handler: async (req, reply) => {
       const { folioRef } = req.params as { folioRef: string }
-      const body = req.body as {
-        description: string; netCent?: number; taxRateBp: number
-        /**
-         * Brutto statt netto, fuer den Rechnungsdialog: dort wird ein Betrag
-         * so eingegeben, wie er auf dem Papier stehen soll. Genau eines von
-         * beiden.
-         */
-        grossCent?: number
-        quantity?: number; revenueAccount?: string; productId?: number
-      }
+      // grossCent statt netCent fuer Dialog und Folio: dort wird ein Betrag
+      // so eingegeben, wie er auf dem Papier stehen soll. Genau eines von
+      // beiden.
+      const body = (req.body ?? {}) as BuchungsAuftrag
       const principal = req.principal as Principal
       const key = req.headers['idempotency-key'] as string | undefined
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+      buchungPruefen(body)
 
       return tx(req.pool, req, async client => {
         const stored = await beginIdempotent(
@@ -1101,9 +1205,6 @@ export function billingRoutes(app: FastifyInstance): void {
         let net: number
         let tax: number
         if (typeof body.grossCent === 'number' && body.netCent === undefined) {
-          if (!Number.isSafeInteger(body.grossCent)) {
-            throw Errors.validation({ grossCent: ['field.integer'] })
-          }
           const brutto = body.grossCent * qty
           tax = taxFromGross(brutto, body.taxRateBp)
           net = brutto - tax
@@ -1118,7 +1219,8 @@ export function billingRoutes(app: FastifyInstance): void {
            VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
           [folio.property_id, folio.id, businessDate, body.description, qty,
            net, tax, net + tax, body.taxRateBp,
-           body.revenueAccount ?? '8300', body.productId ?? null, principal.userId])
+           body.revenueAccount ?? kontoFuerSatz(body.taxRateBp), body.productId ?? null,
+           principal.userId])
 
         const result = { chargeId: r.rows[0]!.id, netCent: net, taxCent: tax, grossCent: net + tax }
         await completeIdempotent(client, principal.clientKey, key, 201, result)
@@ -1202,6 +1304,234 @@ export function billingRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
+      })
+    }
+  })
+
+  /**
+   * Split: ein weiteres Folio zum selben Aufenthalt.
+   *
+   * "Firma zahlt Logis, Gast zahlt Extras" ging bisher nur ueber eine
+   * Rechnung mit abgewaehlten Positionen, und was offen blieb, sah niemand
+   * (Pruefung 13.10.2026). Das neue Folio hat die Art 'company': das
+   * Gastfolio bleibt das einzige, das beim Wechsel des Gastes mitgeht und
+   * auf das der Nachtlauf bucht, wenn keine Umleitung etwas anderes sagt.
+   * Den Empfaenger setzt danach `.../recipient` wie bei jedem Folio.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/split',
+    permission: 'folio:route',
+    summary: 'Weiteres Folio zum selben Aufenthalt anlegen',
+    handler: async (req, reply) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = (req.body ?? {}) as { label?: unknown }
+      if (body.label !== undefined && typeof body.label !== 'string') {
+        throw Errors.validation({ label: ['field.invalid'] })
+      }
+      const label = typeof body.label === 'string' ? body.label.trim() : ''
+      if (label.length > FOLIO_LABEL_MAX) {
+        throw Errors.validation({ label: ['field.maxLength'] }, { max: FOLIO_LABEL_MAX })
+      }
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, { folioRef, label }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const f = await client.query<{ property_id: number; reservation_id: number | null
+                                       status: string }>(
+          `SELECT property_id, reservation_id, status FROM folio WHERE public_ref = $1`,
+          [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:route', folio.property_id)
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+        if (folio.reservation_id === null) throw Errors.unprocessable('folio.noStay')
+
+        // Die Reservierung sperren: zwei gleichzeitige Klicks zaehlten sonst
+        // beide unter der Grenze.
+        await client.query(`SELECT 1 FROM reservation WHERE id = $1 FOR UPDATE`,
+          [folio.reservation_id])
+        const n = await client.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM folio WHERE reservation_id = $1`,
+          [folio.reservation_id])
+        if (n.rows[0]!.n >= FOLIOS_JE_AUFENTHALT) {
+          throw Errors.conflict('folio.tooMany', { max: FOLIOS_JE_AUFENTHALT })
+        }
+        const neu = await client.query<{ public_ref: string }>(
+          `INSERT INTO folio (property_id, reservation_id, kind, label)
+           VALUES ($1, $2, 'company', $3) RETURNING public_ref`,
+          [folio.property_id, folio.reservation_id, label === '' ? null : label])
+
+        const result = { folioRef: neu.rows[0]!.public_ref }
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
+   * Umbuchen: eine offene Position auf ein anderes Folio derselben Buchung,
+   * also desselben Zimmers (Split) oder eines anderen Zimmers der Gruppe
+   * (Sammelrechnung).
+   *
+   * Eine Position ist unveraenderlich (Haertegrad 1); umgebucht wird mit
+   * einer Gegenbuchung hier und derselben Position dort. Beide behalten den
+   * Geschaeftstag des Originals, damit Tagesumsatz und Statistik des Tages
+   * gleich bleiben -- umgebucht wird, wer zahlt, nicht wann geleistet
+   * wurde. Die Gegenbuchung nennt kein Ziel: eine Bezeichnung wie
+   * "Firma Petersen" stuende acht Jahre in einer Zeile, die keine Loeschung
+   * erreicht.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/charges/:chargeId/transfer',
+    permission: 'folio:route',
+    summary: 'Offene Position auf ein anderes Folio der Buchung umbuchen',
+    handler: async (req, reply) => {
+      const { folioRef, chargeId } = req.params as { folioRef: string; chargeId: string }
+      const id = Number(chargeId)
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        throw Errors.validation({ chargeId: ['field.positiveInteger'] })
+      }
+      const body = (req.body ?? {}) as { targetFolioRef?: unknown }
+      if (typeof body.targetFolioRef !== 'string' || body.targetFolioRef === '') {
+        throw Errors.validation({ targetFolioRef: ['field.required'] })
+      }
+      const ziel = body.targetFolioRef
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, { chargeId: id, ziel }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        // Beide Folios in fester Reihenfolge sperren; zwei Umbuchungen in
+        // entgegengesetzter Richtung warten sonst aufeinander.
+        const f = await client.query<{ id: number; public_ref: string; property_id: number
+                                       reservation_id: number | null; status: string }>(
+          `SELECT id, public_ref, property_id, reservation_id, status FROM folio
+            WHERE public_ref = ANY($1::text[]) ORDER BY id FOR UPDATE`,
+          [[folioRef, ziel]])
+        const quelle = f.rows.find(x => x.public_ref === folioRef)
+        if (quelle === undefined) throw Errors.notFound('res.folio')
+        rechtImHaus(principal, 'folio:route', quelle.property_id)
+        const nach = f.rows.find(x => x.public_ref === ziel)
+        // Ziel ist ein Folio derselben Buchung: dasselbe Zimmer (Split) oder
+        // ein anderes Zimmer der Gruppe (Sammelrechnung). Weiter nicht --
+        // eine Position wandert nicht zu einem fremden Gast.
+        const dieselbeBuchung = nach !== undefined && quelle.reservation_id !== null
+          && nach.reservation_id !== null
+          && (await client.query(
+            `SELECT 1 FROM reservation a JOIN reservation b ON b.booking_id = a.booking_id
+              WHERE a.id = $1 AND b.id = $2`,
+            [quelle.reservation_id, nach.reservation_id])).rowCount === 1
+        if (nach === undefined || nach.id === quelle.id
+            || nach.property_id !== quelle.property_id || !dieselbeBuchung) {
+          throw Errors.unprocessable('charge.transferTarget')
+        }
+        if (quelle.status === 'closed' || nach.status === 'closed') {
+          throw Errors.conflict('folio.closed')
+        }
+
+        const c = await client.query<{ invoice_id: number | null; reverses_id: number | null
+                                       aufgehoben: boolean }>(
+          `SELECT c.invoice_id, c.reverses_id,
+                  EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id) AS aufgehoben
+             FROM charge c WHERE c.id = $1 AND c.folio_id = $2`, [id, quelle.id])
+        if (c.rowCount === 0) throw Errors.notFound('res.charge')
+        const pos = c.rows[0]!
+        if (pos.invoice_id !== null) throw Errors.conflict('charge.invoiced')
+        if (pos.reverses_id !== null || pos.aufgehoben) {
+          throw Errors.conflict('charge.alreadyReversed')
+        }
+
+        const r = await client.query<{ id: number }>(
+          `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                               net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                               revenue_account, product_id, reservation_id, reverses_id,
+                               created_by, package_part)
+           SELECT c.property_id, c.folio_id, c.business_date, 'Umbuchung ' || c.description,
+                  c.quantity, -c.net_cent, -c.tax_cent, -c.gross_cent, c.tax_rate_bp,
+                  c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id,
+                  $3, c.package_part
+             FROM charge c WHERE c.id = $1 AND c.folio_id = $2
+           RETURNING id`,
+          [id, quelle.id, principal.userId])
+        const n = await client.query<{ id: number }>(
+          `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                               net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                               revenue_account, product_id, reservation_id,
+                               created_by, package_part)
+           SELECT c.property_id, $2, c.business_date, c.description,
+                  c.quantity, c.net_cent, c.tax_cent, c.gross_cent, c.tax_rate_bp,
+                  c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id,
+                  $3, c.package_part
+             FROM charge c WHERE c.id = $1
+           RETURNING id`,
+          [id, nach.id, principal.userId])
+
+        const result = { reversalId: r.rows[0]!.id, chargeId: n.rows[0]!.id,
+                         targetFolioRef: ziel }
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
+   * Umleitung: die Uebernachtungen eines Aufenthalts kuenftig auf dieses
+   * Folio. Der Nachtlauf beachtet `routing_rule` schon lange, nur setzen
+   * liess sie sich nirgends. Wirkt ab der naechsten Nacht; schon gebuchte
+   * Naechte bucht man mit `.../transfer` um.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/folios/:folioRef/routing',
+    permission: 'folio:route',
+    summary: 'Uebernachtungen des Aufenthalts auf dieses Folio umleiten',
+    handler: async (req) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = (req.body ?? {}) as { accommodation?: unknown }
+      if (typeof body.accommodation !== 'boolean') {
+        throw Errors.validation({ accommodation: ['field.required'] })
+      }
+      const hierher = body.accommodation
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const f = await client.query<{ id: number; property_id: number; kind: string
+                                       reservation_id: number | null; status: string }>(
+          `SELECT id, property_id, kind, reservation_id, status FROM folio
+            WHERE public_ref = $1 FOR UPDATE`, [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:route', folio.property_id)
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+        if (folio.reservation_id === null) throw Errors.unprocessable('folio.noStay')
+
+        // Eine Regel je Aufenthalt: wer sie auf ein Folio setzt, nimmt sie
+        // dem bisherigen. Aufs Gastfolio heisst keine Regel -- dorthin
+        // bucht der Nachtlauf ohnehin.
+        await client.query(
+          `DELETE FROM routing_rule
+            WHERE reservation_id = $1 AND match_kind = 'accommodation'
+              AND (target_folio_id = $2 OR $3)`,
+          [folio.reservation_id, folio.id, hierher])
+        if (hierher && folio.kind !== 'guest') {
+          await client.query(
+            `INSERT INTO routing_rule (property_id, reservation_id, target_folio_id, match_kind)
+             VALUES ($1, $2, $3, 'accommodation')`,
+            [folio.property_id, folio.reservation_id, folio.id])
+        }
+        return { accommodation: hierher && folio.kind !== 'guest' }
       })
     }
   })
@@ -1678,8 +2008,13 @@ export function billingRoutes(app: FastifyInstance): void {
         // Die Rechnungsnummer kann einen Praefix aus den Stammdaten tragen;
         // was dort steht, gehoert nicht ungeprueft in einen Dateinamen.
         const name = `Rechnung-${r.rows[0]!.number.replace(/[^\w.-]/g, '-')}.pdf`
+        // `?inline=1` oeffnet den Beleg im Browser statt ihn zu speichern:
+        // iOS zeigt ein PDF im eingebetteten Blatt oft gar nicht an, im
+        // eigenen Fenster schon (Pruefung 13.10.2026).
+        const inline = (req.query as { inline?: string } | undefined)?.inline === '1'
         reply.header('content-type', 'application/pdf')
-        reply.header('content-disposition', `attachment; filename="${name}"`)
+        reply.header('content-disposition',
+          `${inline ? 'inline' : 'attachment'}; filename="${name}"`)
         return pdf
       })
     }

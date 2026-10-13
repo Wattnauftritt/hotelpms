@@ -1204,3 +1204,19 @@ Tests in `preisUmsystem.test.ts` und `kanalUmsystem.test.ts`.
 - **Ortszeit:** Ausstellungstag, Nummernjahr und Zahlungsziel rechnen mit `property.timezone` (`heuteImHaus`), nicht mit UTC.
 
 Tests in `stornorechnung.test.ts`.
+
+### Eingaben am Folio, Split und Umbuchen — **erledigt**
+
+**Warum.** Die mittleren und niedrigen Befunde der Prüfung vom 13.10.2026: `POST …/charges` nahm 12,34 % und Menge 0 an, das Betragsfeld las „1.200“ als 12 Euro, ein zweiter Klick nach einer Zeitüberschreitung buchte doppelt, und „Firma zahlt Logis, Gast zahlt Extras“ ging nur über abgewählte Positionen.
+
+- **Eingaben:** Steuersatz 0, 7 oder 19 %, Menge ganzzahlig 1 bis 9 999, genau einer von `grossCent` und `netCent`, Text höchstens 200 Zeichen, Erlöskonto vier bis acht Ziffern. Ohne Angabe richtet sich das Konto nach dem Satz (8400, 8300, 8200); bisher war es immer 8300, und eine Minibar zählte in der Statistik als Logis.
+- **Betragsfeld:** Folio-Positionen und Zahlungen werden brutto eingegeben und mit `centAusEingabeMitVorzeichen` gelesen; Unlesbares wird gemeldet statt still verworfen.
+- **Idempotenz je Absicht** (`lib/absicht.ts`): der Schlüssel bleibt, bis die Handlung gelungen ist.
+- **Anschrift:** Straße oder Postfach ist Pflicht; die Grenze zur Kleinbetragsrechnung gilt vor Abzug der Anzahlung.
+- **Logis-Steuersatz:** die 7-%-Regel des Hauses, nicht die erste nach ID.
+- **Folio:** zeigt seine Rechnungen mit Beleg; Liste und Folio fragen nach, bis der Beleg da ist. `GET …/pdf?inline=1` öffnet ihn im Browser, weil iOS ein PDF im eingebetteten Blatt oft nicht zeigt. Mobil führt auch die Abreiseliste ins Folio.
+- **Split:** `POST /v1/folios/:folioRef/split` legt ein weiteres Folio zur Reservierung an (Art `company`, höchstens sechs je Aufenthalt). `POST …/charges/:chargeId/transfer` bucht eine offene Position auf ein anderes Folio derselben Buchung um, also auch auf ein anderes Zimmer einer Gruppe (Sammelrechnung): Gegenbuchung hier, gleiche Position dort, beide am Geschäftstag des Originals. `PUT …/routing` leitet die Übernachtungen künftig auf ein weiteres Folio. Alle drei verlangen `folio:route`.
+- **Nur das Gastfolio** bekommt die Nacht, die No-Show-Gebühr und die Kassenbuchung per Zimmernummer. Vorher verband der Nachtlauf jedes offene Folio der Reservierung und hätte mit einem zweiten jede Nacht doppelt gebucht.
+- **Zwischenrechnung** im Rechnungsdialog; die Anzahlung bleibt für die Schlussrechnung.
+
+Tests in `buchungseingabe.test.ts`, `folioSplit.test.ts` und `nightAuditRules.test.ts`.

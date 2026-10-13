@@ -5,7 +5,7 @@ import { useInvoicePreview, useIssueInvoiceWith, useCorrectCharge, useAddGrossCh
          useSendInvoice, type RechnungsAuftrag,
          type Empfaengerdaten } from '../lib/queries/billing.js'
 import { usePatchCompany } from '../lib/queries/guests.js'
-import { centAusEingabe, eingabeAusCent } from '../lib/preisraster.js'
+import { centAusEingabeMitVorzeichen, eingabeAusCent } from '../lib/preisraster.js'
 import { newIdempotencyKey } from '../lib/api.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -58,6 +58,7 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
   const [inFirma, setInFirma] = useState(false)
   const [faellig, setFaellig] = useState<string | null>(null)
   const [bezahlt, setBezahlt] = useState(false)
+  const [zwischen, setZwischen] = useState(false)
   const [zahlart, setZahlart] = useState('')
   const [mail, setMail] = useState<string | null>(null)
   const [mailAn, setMailAn] = useState(false)
@@ -69,10 +70,13 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
     // Nur bei einer Auswahl: alle offenen sind die Schlussrechnung, und nur
     // sie verrechnet eine Anzahlung.
     ...(abgewaehlt.size > 0 ? { chargeIds: ausgewaehlt } : {}),
+    // Waehrend eines langen Aufenthalts: die Leistungen bis heute, die
+    // Anzahlung bleibt fuer die Schlussrechnung (Pruefung 13.10.2026).
+    ...(zwischen ? { kind: 'interim' as const } : {}),
     ...(anschrift !== null ? { recipient: anschrift } : {}),
     ...(faellig !== null && !bezahlt ? { dueOn: faellig } : {}),
     ...(bezahlt && zahlart !== '' ? { paid: { paymentMethodCode: zahlart } } : {})
-  }), [abgewaehlt, anschrift, faellig, bezahlt, zahlart, offen])
+  }), [abgewaehlt, anschrift, faellig, bezahlt, zahlart, zwischen, offen])
 
   const vorschau = useInvoicePreview(folioRef, auftrag, online && ausgewaehlt.length > 0)
   const festschreiben = useIssueInvoiceWith(folioRef, propertyId)
@@ -134,6 +138,12 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
 
       <Positionen folioRef={folioRef} offen={offen} abgewaehlt={abgewaehlt}
                   setAbgewaehlt={setAbgewaehlt} />
+
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <input type="checkbox" checked={zwischen} onChange={e => setZwischen(e.target.checked)} />
+        {t('rdlg.interim')}
+        <span className="text-xs text-neutral-500">{t('rdlg.interimHint')}</span>
+      </label>
 
       <Anschrift vorgabe={v?.defaultRecipient} wert={v?.recipient} geaendert={geaendert}
                  setAnschrift={setAnschrift}
@@ -429,14 +439,3 @@ function Anschrift({ vorgabe, wert, geaendert, setAnschrift, firma, inFirma, set
   )
 }
 
-/**
- * Wie `centAusEingabe`, aber mit Vorzeichen: ein Nachlass ist negativ.
- * Das Vorzeichen wird vorher abgetrennt, damit die geprüfte Zahlenlogik
- * dieselbe bleibt.
- */
-function centAusEingabeMitVorzeichen(text: string): number | null {
-  const s = text.trim()
-  const minus = s.startsWith('-')
-  const c = centAusEingabe(minus ? s.slice(1) : s)
-  return c === null ? null : minus ? -c : c
-}

@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { InvoiceList, InvoiceRecipient, PaymentLinkCreated,
               PrepaymentView } from '@hotelpms/contracts'
-import { api, ApiError, newIdempotencyKey } from '../api.js'
+import { api, ApiError } from '../api.js'
 import { addDays } from '../dates.js'
+import { useAbsicht } from '../absicht.js'
 
 /**
  * Rechnungen: Liste, Beleg, Versand.
@@ -42,8 +43,28 @@ export const useInvoices = (
     queryFn: () => api.get(
       `/v1/properties/${propertyId}/invoices?from=${from}&to=${to}`
       + (kind === null ? '' : `&kind=${kind}`)),
-    staleTime: 30_000
+    staleTime: 30_000,
+    refetchInterval: belegNachfragen<InvoiceList>(d => d.invoices)
   })
+
+/**
+ * Nachfragen, solange ein Beleg noch entsteht.
+ *
+ * Das PDF zeichnet der Worker nach dem Festschreiben; ohne Nachfrage stand
+ * die neue Rechnung bis zum Neuladen ohne Beleg da (Pruefung 13.10.2026).
+ * Nach dreissig Runden ist Schluss: ein Beleg, der so lange nicht kommt,
+ * haengt, und dafuer gibt es die Meldung im Nachtlauf, nicht eine Seite,
+ * die endlos fragt.
+ */
+export function belegNachfragen<T>(
+  rechnungen: (d: T) => ReadonlyArray<{ documentReady: boolean }>
+): (q: { state: { data: T | undefined; dataUpdateCount: number } }) => number | false {
+  return q => {
+    const d = q.state.data
+    if (d === undefined || q.state.dataUpdateCount > 30) return false
+    return rechnungen(d).some(i => !i.documentReady) ? 5_000 : false
+  }
+}
 
 /**
  * Der Beleg als Blob.
@@ -296,6 +317,7 @@ export function useSetRecipient(folioRef: string) {
 
 /** Was der Rechnungsdialog schickt; dieselbe Form fuer Vorschau und Festschreiben. */
 export interface RechnungsAuftrag {
+  kind?: 'final' | 'interim'
   chargeIds?: number[]
   recipient?: Partial<Record<'name' | 'addressLine1' | 'postalCode' | 'city' | 'country'
                              | 'vatId', string>>
@@ -363,17 +385,19 @@ export function useIssueInvoiceWith(folioRef: string, propertyId: number) {
 /** Korrektur im Dialog: Gegenbuchung, danach die richtige Position neu. */
 export function useCorrectCharge(folioRef: string) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: async (k: { chargeId: number; description: string; grossCent: number
                             taxRateBp: number }) => {
       await api.post(`/v1/folios/${folioRef}/charges/${k.chargeId}/reverse`, {},
-        { 'idempotency-key': newIdempotencyKey() })
+        { 'idempotency-key': absicht.schluessel('storno') })
       if (k.grossCent !== 0) {
         await api.post(`/v1/folios/${folioRef}/charges`,
           { description: k.description, grossCent: k.grossCent, taxRateBp: k.taxRateBp },
-          { 'idempotency-key': newIdempotencyKey() })
+          { 'idempotency-key': absicht.schluessel('neu') })
       }
     },
+    onSuccess: () => { absicht.erledigt() },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
       void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
@@ -381,14 +405,59 @@ export function useCorrectCharge(folioRef: string) {
   })
 }
 
+/** Split: ein weiteres Folio zum selben Aufenthalt. */
+export function useSplitFolio(folioRef: string) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (label: string) =>
+      api.post<{ folioRef: string }>(`/v1/folios/${folioRef}/split`, { label },
+        { 'idempotency-key': absicht.schluessel() }),
+    onSuccess: () => {
+      absicht.erledigt()
+      void qc.invalidateQueries({ queryKey: ['folio'] })
+    }
+  })
+}
+
+/** Offene Position auf ein anderes Folio desselben Aufenthalts. */
+export function useTransferCharge(folioRef: string) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (u: { chargeId: number; targetFolioRef: string }) =>
+      api.post(`/v1/folios/${folioRef}/charges/${u.chargeId}/transfer`,
+        { targetFolioRef: u.targetFolioRef },
+        { 'idempotency-key': absicht.schluessel(`${u.chargeId}-${u.targetFolioRef}`) }),
+    onSuccess: () => {
+      absicht.erledigt()
+      // Beide Folios und die Salden in der Uebersicht des Aufenthalts.
+      void qc.invalidateQueries({ queryKey: ['folio'] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
+    }
+  })
+}
+
+/** Uebernachtungen kuenftig auf dieses Folio (oder zurueck aufs Gastfolio). */
+export function useAccommodationRouting(folioRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (accommodation: boolean) =>
+      api.put(`/v1/folios/${folioRef}/routing`, { accommodation }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['folio'] }) }
+  })
+}
+
 /** Position oder Nachlass, brutto eingegeben wie auf dem Papier. */
 export function useAddGrossCharge(folioRef: string) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: (b: { description: string; grossCent: number; taxRateBp: number }) =>
       api.post<{ chargeId: number }>(`/v1/folios/${folioRef}/charges`, b,
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: () => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
       void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
     }
@@ -398,14 +467,16 @@ export function useAddGrossCharge(folioRef: string) {
 /** "Zahlung eingegangen" in der Rechnungsliste: fuer genau diese Rechnung. */
 export function useRecordInvoicePayment(propertyId: number) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: (b: { folioRef: string; invoiceRef: string; amountCent: number
                       paymentMethodCode: string }) =>
       api.post(`/v1/folios/${b.folioRef}/settlements`,
         { amountCent: b.amountCent, paymentMethodCode: b.paymentMethodCode,
           invoiceRef: b.invoiceRef },
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: (_d, b) => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
       void qc.invalidateQueries({ queryKey: ['folio', b.folioRef] })
     }
@@ -418,11 +489,14 @@ export function useRecordInvoicePayment(propertyId: number) {
  */
 export function useCancelInvoice(propertyId: number) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
-    mutationFn: (b: { invoiceRef: string; folioRef: string; key: string }) =>
+    mutationFn: (b: { invoiceRef: string; folioRef: string }) =>
       api.post<{ invoiceRef: string; number: string }>(
-        `/v1/invoices/${b.invoiceRef}/cancel`, {}, { 'idempotency-key': b.key }),
+        `/v1/invoices/${b.invoiceRef}/cancel`, {},
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: (_d, b) => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['invoices', propertyId] })
       void qc.invalidateQueries({ queryKey: ['folio', b.folioRef] })
     }

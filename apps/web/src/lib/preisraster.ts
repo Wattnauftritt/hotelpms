@@ -48,6 +48,18 @@ export function centAusEingabe(text: string): number | null {
   return Number(m[1]) * 100 + Number(nachkomma)
 }
 
+/**
+ * Wie `centAusEingabe`, aber mit Vorzeichen: ein Nachlass ist negativ.
+ * Das Vorzeichen wird vorher abgetrennt, damit die geprüfte Zahlenlogik
+ * dieselbe bleibt.
+ */
+export function centAusEingabeMitVorzeichen(text: string): number | null {
+  const s = text.trim()
+  const minus = s.startsWith('-')
+  const c = centAusEingabe(minus ? s.slice(1) : s)
+  return c === null ? null : minus ? -c : c
+}
+
 /** Cent als Eingabetext mit Komma. Für das Vorbelegen eines Feldes. */
 export function eingabeAusCent(cent: number): string {
   const v = Math.abs(cent)

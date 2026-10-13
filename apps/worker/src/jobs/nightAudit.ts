@@ -179,9 +179,12 @@ async function postAccommodation(
 ): Promise<number> {
   const r = await client.query(
     `WITH steuer AS (
+       -- Beherbergung traegt den ermaessigten Satz (§ 12 Abs. 2 Nr. 11
+       -- UStG). Bisher galt die erste Regel nach ID; legte ein Haus 19 %
+       -- zuerst an, buchte jede Nacht zu 19 % (Pruefung 13.10.2026).
        SELECT COALESCE((SELECT rate_bp FROM tax_rule
                          WHERE property_id = $1 AND kind = 'vat' AND basis = 'percent'
-                           AND active ORDER BY id LIMIT 1), 700) AS rate_bp
+                           AND active ORDER BY rate_bp = 700 DESC, id LIMIT 1), 700) AS rate_bp
      ), faellig AS (
        SELECT rn.reservation_id, rn.date, rn.price_cent, r.property_id,
               -- Umleitung beachten: sagt eine Regel, dass Logis auf ein
@@ -207,7 +210,9 @@ async function postAccommodation(
                     GREATEST(rn.price_cent, 0)) AS fruehstueck
          FROM reservation_night rn
          JOIN reservation r ON r.id = rn.reservation_id
-         JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
+         -- Das Gastfolio; ein weiteres Folio (Split) buchte jede Nacht sonst
+         -- ein zweites Mal. Dorthin fuehrt nur die Umleitung.
+         JOIN folio f ON f.reservation_id = r.id AND f.status = 'open' AND f.kind = 'guest'
          LEFT JOIN rate_plan rp ON rp.id = COALESCE(rn.rate_plan_id, r.rate_plan_id)
          LEFT JOIN LATERAL (
            SELECT target_folio_id FROM routing_rule x
@@ -319,7 +324,7 @@ async function noShows(
        FROM reservation r
        LEFT JOIN rate_plan rp ON rp.id = r.rate_plan_id
        LEFT JOIN cancellation_policy cp ON cp.id = rp.cancellation_policy_id
-       LEFT JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
+       LEFT JOIN folio f ON f.reservation_id = r.id AND f.status = 'open' AND f.kind = 'guest'
       WHERE r.property_id = $1 AND r.arrival = $2::date AND r.status = 'Confirmed'
       ORDER BY r.id FOR UPDATE OF r`,
     [propertyId, businessDate])

@@ -1692,7 +1692,7 @@ export function reservationRoutes(app: FastifyInstance): void {
              LEFT JOIN guest g         ON g.id = r.primary_guest_id
              LEFT JOIN company co      ON co.id = b.booker_company_id
              LEFT JOIN availability_block bl ON bl.id = r.block_id
-             LEFT JOIN folio f         ON f.reservation_id = r.id
+             LEFT JOIN folio f         ON f.reservation_id = r.id AND f.kind = 'guest'
             WHERE r.public_ref = $1`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const kopf = r.rows[0]! as Record<string, unknown>

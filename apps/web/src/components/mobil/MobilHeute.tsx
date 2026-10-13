@@ -154,7 +154,10 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                 {t('today.registration')}
               </Handlung>
             )}
-            {liste === 'inHouse' && r.folioRef !== null && (
+            {/* Bei der Abreise wird abgerechnet; ohne den Weg ins Folio
+                blieb am Telefon nur der Check-out ueber den offenen Saldo
+                hinweg (Pruefung 13.10.2026). */}
+            {liste !== 'arrivals' && r.folioRef !== null && (
               <Handlung leise disabled={false} onClick={() => onFolio(r.folioRef!)}>
                 {t('mobil.today.folio')}
               </Handlung>
