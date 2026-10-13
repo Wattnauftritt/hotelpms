@@ -173,6 +173,16 @@ async function rollover(
  * `breakfastPerNight` und `splitNight` (domain); hier dieselbe in SQL, damit der Nachtlauf bei 250
  * Zimmern eine Anweisung bleibt. Anteil und Saetze kommen als Parameter aus
  * der Domain, damit es sie nur einmal gibt.
+ *
+ * Weitere Inklusivleistungen der Rate (`rate_plan_product`, Migration 0165)
+ * gehen genauso heraus, jede zu ihrem Satz und auf ihr Konto: je Nacht, je
+ * Person und Nacht oder einmal in der Anreisenacht -- dieselbe Rechnung wie
+ * die Anzahlung (`erwarteteSaetze`), damit Anzahlungs- und Schlussrechnung
+ * dieselben Saetze ausweisen. Fruehstueck und Leistungen zusammen nie mehr
+ * als die Nacht; reicht der Preis nicht, bekommen die ersten Leistungen
+ * (nach Anlage) ihren Wert und die letzten den Rest. Eine Aufteilung
+ * innerhalb eines Produkts (`split_share_bp`) bietet keine Maske an; der
+ * Nachtlauf bucht ein Produkt deshalb ganz zu seinem Satz.
  */
 async function postAccommodation(
   client: PoolClient, propertyId: number, businessDate: string
@@ -207,7 +217,12 @@ async function postAccommodation(
                                                (SELECT count(*) FROM reservation_occupant o
                                                  WHERE o.reservation_id = r.id)::int), 1)
                     END,
-                    GREATEST(rn.price_cent, 0)) AS fruehstueck
+                    GREATEST(rn.price_cent, 0)) AS fruehstueck,
+              COALESCE(rn.rate_plan_id, r.rate_plan_id) AS plan_id,
+              r.arrival,
+              GREATEST(COALESCE(r.guest_count,
+                                (SELECT count(*) FROM reservation_occupant o
+                                  WHERE o.reservation_id = r.id)::int), 1) AS personen
          FROM reservation_night rn
          JOIN reservation r ON r.id = rn.reservation_id
          -- Das Gastfolio; ein weiteres Folio (Split) buchte jede Nacht sonst
@@ -230,12 +245,37 @@ async function postAccommodation(
        -- immer genau den Nachtpreis (wie splitNight).
        SELECT f.*, round(f.fruehstueck * $3::int / 10000.0)::bigint AS getraenke
          FROM faellig f
+     ), inklusiv_roh AS (
+       SELECT t.reservation_id, p.id AS product_id, p.name, p.revenue_account,
+              tr.rate_bp,
+              p.price_cent * CASE p.charge_mode WHEN 'per_person_night' THEN t.personen
+                                                ELSE 1 END AS brutto
+         FROM teile t
+         JOIN rate_plan_product rpp ON rpp.rate_plan_id = t.plan_id
+         JOIN product p ON p.id = rpp.product_id AND p.active AND p.property_id = $1
+         LEFT JOIN tax_rule tr ON tr.id = p.tax_rule_id
+        WHERE p.price_cent > 0 AND (p.charge_mode <> 'once' OR t.arrival = $2::date)
+     ), inklusiv AS (
+       -- Was Fruehstueck und die vorigen Leistungen von der Nacht uebrig
+       -- lassen, nie weniger als null.
+       SELECT i.*,
+              GREATEST(LEAST(i.brutto,
+                             GREATEST(t.price_cent, 0) - t.fruehstueck
+                             - COALESCE(sum(i.brutto) OVER (
+                                 PARTITION BY i.reservation_id ORDER BY i.product_id
+                                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0)),
+                       0)::bigint AS anteil
+         FROM inklusiv_roh i JOIN teile t ON t.reservation_id = i.reservation_id
+     ), inklusiv_summe AS (
+       SELECT reservation_id, sum(anteil)::bigint AS summe FROM inklusiv GROUP BY reservation_id
      ), zeilen AS (
        SELECT t.property_id, t.folio_id, t.reservation_id,
-              z.text, z.brutto, z.satz, z.konto, z.teil
+              z.n, z.text, z.brutto, z.satz, z.konto, z.teil
          FROM teile t CROSS JOIN steuer s
+         LEFT JOIN inklusiv_summe k ON k.reservation_id = t.reservation_id
          CROSS JOIN LATERAL (VALUES
-           (1, 'Uebernachtung', t.price_cent - t.fruehstueck, s.rate_bp, '8300', NULL::text),
+           (1, 'Uebernachtung', t.price_cent - t.fruehstueck - COALESCE(k.summe, 0),
+               s.rate_bp, '8300', NULL::text),
            (2, 'Fruehstueck Speisen', t.fruehstueck - t.getraenke, $4::int, $6::text,
                'breakfast_food'),
            (3, 'Fruehstueck Getraenke', t.getraenke, $5::int, $7::text, 'breakfast_drinks')
@@ -243,7 +283,16 @@ async function postAccommodation(
         -- Die Logis auch bei null: eine Nacht, die gebucht wurde, steht im
         -- Folio, wie bisher. Fruehstuecksteile nur, wenn es sie gibt.
         WHERE z.n = 1 OR z.brutto > 0
-        ORDER BY t.reservation_id, z.n
+       UNION ALL
+       -- Ohne eigene Steuerregel traegt die Leistung den Satz der Logis,
+       -- wie in der Anzahlung.
+       SELECT t.property_id, t.folio_id, t.reservation_id,
+              3 + row_number() OVER (PARTITION BY i.reservation_id ORDER BY i.product_id),
+              i.name, i.anteil, COALESCE(i.rate_bp, s.rate_bp), i.revenue_account,
+              'inclusion'
+         FROM inklusiv i JOIN teile t ON t.reservation_id = i.reservation_id
+        CROSS JOIN steuer s
+        WHERE i.anteil > 0
      ), gebucht AS (
        INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
                            net_cent, tax_cent, gross_cent, tax_rate_bp,
@@ -254,6 +303,7 @@ async function postAccommodation(
               round(z.brutto * z.satz / (10000.0 + z.satz)),
               z.brutto, z.satz, z.konto, z.reservation_id, z.teil
          FROM zeilen z
+        ORDER BY z.reservation_id, z.n
        RETURNING 1
      )
      UPDATE reservation_night rn SET posted = true

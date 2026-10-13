@@ -1261,3 +1261,16 @@ Tests in `gobdArchiv.test.ts` (entpackt das Archiv und prüft jede Prüfsumme) u
 - **CI:** `scripts/check-erechnung.sh` prüft neun Beispielbelege (`scripts/erechnung-beispiele.ts`) gegen das Schematron von EN 16931 für CII (CEN 1.3.14, Saxon-HE, Downloads mit Prüfsumme). Die BR-DE-Regeln der XRechnung prüft es **nicht** — deren Schematron liegt nicht als ladbares Release vor; sie deckt `ciiFindings`.
 
 Tests in `invoiceCii.test.ts`, `rechnungsdialog.test.ts` (Einstellung, falsche IBAN, Momentaufnahme) und `companies.test.ts` (Leitweg-ID).
+
+### Weitere Inklusivleistungen je Rate (`0165`) — **erledigt**
+
+**Warum.** Nach dem Frühstück (`0158`) blieben Parken und andere Leistungen im Ratenpreis unaufgeteilt: der Nachtlauf buchte sie als Logis zu 7 %, während die Anzahlung sie aus `rate_plan_product` schon zu ihrem eigenen Satz rechnete. Anzahlungs- und Schlussrechnung wiesen damit verschiedene Sätze aus.
+
+- **Nachtlauf:** rechnet jede aktive Leistung der Rate aus dem Nachtpreis heraus — je Nacht, je Person und Nacht oder einmal in der Anreisenacht —, zu ihrem Satz und auf ihr Konto, markiert `package_part = 'inclusion'`. Frühstück und Leistungen zusammen nie mehr als die Nacht; reicht der Preis nicht, bekommen die zuerst angelegten ihren Wert.
+- **Preise → Ratenpläne:** Liste je Rate mit Bezeichnung, Bruttopreis, Abrechnung und Steuersatz (`PUT …/rate-plans/:id/inclusions`). Gespeichert als `product` mit Kürzel `INKL-<Rate>-<Platz>`; eine entfernte Leistung wird stillgelegt. Das Konto folgt dem Satz (8300/8400/8200).
+
+Tests in `inklusivNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
+
+### Verfahrensdokumentation — **erledigt**
+
+[`36-verfahrensdokumentation.md`](36-verfahrensdokumentation.md): Vorlage nach dem Muster von AWV und DStV. Was das System tut, steht ausgefüllt; was nur das Haus weiß (Verantwortliche, Kasse, Rhythmus der Übergabe, Vier-Augen-Prinzip), ist markiert. Ein Haus übernimmt sie und lässt sie von der Steuerberatung abnehmen.
