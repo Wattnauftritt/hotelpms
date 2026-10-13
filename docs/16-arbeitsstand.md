@@ -1240,3 +1240,12 @@ Tests in `anzahlungRueckzahlung.test.ts` und `invoiceDocument.test.ts` (Worker).
 - Oberfläche: Abschnitt „Offene Posten“ im Rechnungsbildschirm.
 
 Tests in `offenePosten.test.ts`.
+
+### DATEV und GoBD-Archiv — **erledigt**
+
+**Warum.** Der DATEV-Stapel schnitt nach Ausstellungsdatum und buchte die Summe der Positionen; die Steuer, die DATEV daraus rechnet, konnte um Cent von der des Belegs abweichen, und der Rundungsbetrag fehlte. Der GoBD-Export war ein JSON ohne Beschreibung nach GDPdU, ohne Belege, ohne Protokoll und ohne Anzahlungsjournal.
+
+- **DATEV:** geschnitten nach dem Geschäftstag der Rechnung. Je Satz wird das Brutto der Satzgruppe gebucht (zuzüglich der verrechneten Anzahlung, die eigens gegen 1718 läuft) und auf die Erlöskonten nach ihren Positionen verteilt; der Rundungsbetrag steht als eigene Zeile auf 8200 ohne Steuer (`erloesBuchungen` in `reports.ts`). Geht eine Rechnung nicht auf, bleibt es bei den Positionen.
+- **GoBD:** `GET …/exports/gobd?format=zip` liefert ein ZIP mit `index.xml` nach GDPdU (DTD vom 01.08.2002), fünf Tabellen als CSV (Rechnungen, Positionen, Zahlungsvermerke, Anzahlungsjournal, Änderungsprotokoll) und unter `belege/` je Rechnung PDF und CII-XML. Werte unverändert, Text in Anführungszeichen, Beträge in Euro mit Komma. Höchstens 32 000 Belege je Archiv, sonst nennt die Antwort einen kürzeren Zeitraum. Das ZIP schreibt `platform/zipDatei.ts` selbst (Deflate, Datendeskriptor, kein ZIP64). Die DTD selbst liegt nicht bei; die Prüfsoftware bringt sie mit.
+
+Tests in `gobdArchiv.test.ts` (entpackt das Archiv und prüft jede Prüfsumme) und `depositSplit.test.ts` (Rundungsbetrag im Stapel).

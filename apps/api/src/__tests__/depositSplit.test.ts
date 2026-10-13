@@ -430,6 +430,26 @@ describe('Anzahlung im DATEV-Stapel', () => {
     expect(zeilen[0]![9]).toBe(EINGANG.erster.slice(8, 10) + EINGANG.erster.slice(5, 7))
   })
 
+  /**
+   * Zwei Naechte zu je 125,00 brutto: die Gruppe rechnet 233,64 netto und
+   * 16,35 Steuer, also 249,99, und der Rundungsbetrag holt den Cent.
+   * DATEV bekommt das Brutto der Gruppe, damit seine Steuer die des Belegs
+   * ist, und den Cent eigens ohne Steuer.
+   */
+  it('bucht die Summe der Rechnung und den Rundungsbetrag eigens', async () => {
+    const a = await aufenthalt()
+    for (let i = 0; i < 2; i++) {
+      const r = await app.inject({ method: 'POST', url: `/v1/folios/${a.folioRef}/charges`,
+        headers: { ...auth, 'idempotency-key': key() },
+        payload: { description: 'Uebernachtung', grossCent: 12_500, taxRateBp: 700 } })
+      expect(r.statusCode, r.body).toBe(201)
+    }
+    const finale = JSON.parse((await fakturieren(a.folioRef)).body) as { number: string }
+    const zeilen = stapel((await datev(AUSSTELLUNG)).body).filter(z => z[10] === finale.number)
+    expect(zeilen.map(z => [z[0], z[1], z[7]])).toEqual([
+      ['249,99', 'S', '8300'], ['0,01', 'S', '8200']])
+  })
+
   it('zeigt die Anzahlung eines fremden Hauses nicht', async () => {
     const a = await aufenthalt()
     const s = await eingang(a.folioId, 20_000)
