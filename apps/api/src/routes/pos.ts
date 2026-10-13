@@ -89,7 +89,10 @@ async function folioByRoom(
             res.code AS room
        FROM reservation r
        JOIN resource res ON res.id = r.resource_id
-       JOIN folio f ON f.reservation_id = r.id AND f.status = 'open'
+       -- Nur das Gastfolio: ein weiteres Folio desselben Aufenthalts (Split)
+       -- ist kein zweiter Gast im Zimmer. Wohin eine Buchung dort geht,
+       -- sagt die Umleitung.
+       JOIN folio f ON f.reservation_id = r.id AND f.status = 'open' AND f.kind = 'guest'
        LEFT JOIN guest g ON g.id = f.guest_id
       WHERE r.property_id = $1 AND res.id = $2 AND r.status = 'InHouse'
       ORDER BY f.id`,

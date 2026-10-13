@@ -186,6 +186,11 @@ describe('Rechnung und Pflichtangaben', () => {
       expect(r.headers['content-type']).toBe('application/pdf')
       expect(r.headers['content-disposition']).toMatch(/^attachment; filename="Rechnung-\d{4}-\d{5}\.pdf"$/)
       expect(r.rawPayload.subarray(0, 5).toString()).toBe('%PDF-')
+
+      // Zum Ansehen im eigenen Fenster, vor allem fuer iOS.
+      const ansicht = await app.inject({
+        method: 'GET', url: `/v1/invoices/${ref}/pdf?inline=1`, headers: auth })
+      expect(ansicht.headers['content-disposition']).toMatch(/^inline; filename=/)
     })
 
     it('liefert die Bytes unveraendert', async () => {

@@ -426,8 +426,33 @@ export const FolioView = Type.Object({
   }),
   charges: Type.Array(Charge),
   settlements: Type.Array(Settlement),
+  /** Die Rechnungen dieses Folios, damit der Beleg einen Klick entfernt ist. */
+  invoices: Type.Array(Type.Object({
+    invoiceRef: Type.String(),
+    number: Type.String(),
+    kind: Type.String(),
+    issuedOn: IsoDate,
+    grossCent: Cent,
+    cancelledBy: Type.Union([Type.String(), Type.Null()]),
+    documentReady: Type.Boolean()
+  })),
   balanceCent: Cent,
-  recipient: InvoiceRecipient
+  recipient: InvoiceRecipient,
+  /**
+   * Alle Folios der Buchung, dieses eingeschlossen: erst die des eigenen
+   * Zimmers (`ownStay`, Gastfolio zuerst), dann die der anderen Zimmer
+   * einer Gruppe. Ziel einer Umbuchung (Split, Sammelrechnung).
+   * `accommodationHere`: die Uebernachtungen laufen per Umleitung hierher.
+   */
+  stay: Type.Array(Type.Object({
+    folioRef: Type.String(),
+    label: Type.Union([Type.String(), Type.Null()]),
+    main: Type.Boolean(),
+    balanceCent: Cent,
+    accommodationHere: Type.Boolean(),
+    room: Type.Union([Type.String(), Type.Null()]),
+    ownStay: Type.Boolean()
+  }))
 })
 export type FolioView = Static<typeof FolioView>
 

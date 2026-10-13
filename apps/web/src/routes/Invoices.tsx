@@ -4,7 +4,7 @@ import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail,
          useRecordInvoicePayment, useCancelInvoice, istBelegInArbeit, zeitraum,
          MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
 import { usePaymentMethods } from '../lib/queries.js'
-import { ApiError, newIdempotencyKey } from '../lib/api.js'
+import { ApiError } from '../lib/api.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
@@ -67,11 +67,21 @@ function Beleg({ invoiceRef }: { invoiceRef: string }): JSX.Element {
     <div className="space-y-2">
       <iframe src={url} title={`${t('inv.document')} ${invoiceRef}`}
               className="w-full h-[70vh] border border-neutral-200 rounded-sm bg-white" />
-      <a href={url} download={`Rechnung-${invoiceRef}.pdf`}
-         className="inline-block text-sm px-3 py-1.5 rounded-sm border border-neutral-300
-                    hover:bg-neutral-50">
-        {t('inv.download')}
-      </a>
+      <div className="flex flex-wrap gap-2">
+        <a href={url} download={`Rechnung-${invoiceRef}.pdf`}
+           className="inline-block text-sm px-3 py-1.5 rounded-sm border border-neutral-300
+                      hover:bg-neutral-50">
+          {t('inv.download')}
+        </a>
+        {/* iOS zeigt im eingebetteten Blatt oft nur die erste Seite oder
+            gar nichts; geoeffnet ueber die Adresse der API geht der Beleg
+            ueberall (Pruefung 13.10.2026). */}
+        <a href={`/v1/invoices/${invoiceRef}/pdf?inline=1`} target="_blank" rel="noreferrer"
+           className="inline-block text-sm px-3 py-1.5 rounded-sm border border-neutral-300
+                      hover:bg-neutral-50">
+          {t('inv.openDocument')}
+        </a>
+      </div>
     </div>
   )
 }
@@ -268,8 +278,7 @@ function Zeile(
           <button disabled={!online || stornieren.isPending}
                   onClick={() => {
                     if (!window.confirm(t('inv.cancelConfirm', { number: r.number }))) return
-                    stornieren.mutate({ invoiceRef: r.invoiceRef, folioRef: r.folioRef,
-                                        key: newIdempotencyKey() })
+                    stornieren.mutate({ invoiceRef: r.invoiceRef, folioRef: r.folioRef })
                   }}
                   className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50
                              disabled:opacity-40">

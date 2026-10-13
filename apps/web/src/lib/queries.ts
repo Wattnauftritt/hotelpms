@@ -4,9 +4,11 @@ import type { TapeChart, DailySheet, HousekeepingBoard, Category, Room,
               SetupStatus, RoomSeries, RoomSeriesReport, CreateCategory,
               HousekeepingState, FolioView, PaymentMethod, Block,
               CreateBlock } from '@hotelpms/contracts'
-import { api, newIdempotencyKey } from './api.js'
+import { api } from './api.js'
 import { cacheRead, cacheWrite } from './offline.js'
 import { auschecken } from './auschecken.js'
+import { useAbsicht } from './absicht.js'
+import { belegNachfragen } from './queries/billing.js'
 import { useLocale } from './i18n/index.js'
 
 /**
@@ -184,7 +186,8 @@ export const useFolio = (folioRef: string | null) =>
   useQuery<FolioView>({
     queryKey: ['folio', folioRef],
     queryFn: () => api.get(`/v1/folios/${folioRef!}`),
-    enabled: folioRef !== null
+    enabled: folioRef !== null,
+    refetchInterval: belegNachfragen<FolioView>(d => d.invoices)
   })
 
 export const usePaymentMethods = (propertyId: number) =>
@@ -205,12 +208,14 @@ export const usePaymentMethods = (propertyId: number) =>
  */
 export function usePostCharge(folioRef: string) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
-    mutationFn: (body: { description: string; netCent: number; taxRateBp: number
+    mutationFn: (body: { description: string; grossCent: number; taxRateBp: number
                          quantity?: number }) =>
       api.post(`/v1/folios/${folioRef}/charges`, body,
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: () => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
       void qc.invalidateQueries({ queryKey: ['daily'] })
     }
@@ -219,12 +224,14 @@ export function usePostCharge(folioRef: string) {
 
 export function usePostSettlement(folioRef: string) {
   const qc = useQueryClient()
+  const absicht = useAbsicht()
   return useMutation({
     mutationFn: (body: { amountCent: number; paymentMethodCode: string
                          externalReference?: string }) =>
       api.post(`/v1/folios/${folioRef}/settlements`, body,
-        { 'idempotency-key': newIdempotencyKey() }),
+        { 'idempotency-key': absicht.schluessel() }),
     onSuccess: () => {
+      absicht.erledigt()
       void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
       void qc.invalidateQueries({ queryKey: ['daily'] })
     }

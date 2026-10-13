@@ -61,6 +61,11 @@ describe('Pflichtangaben nach § 14 UStG', () => {
       .toContain('recipient_name')
     expect(schluessel(ohne({ recipient: { ...vollstaendig.recipient, city: '' } })))
       .toContain('recipient_address')
+    // Postleitzahl und Ort allein sind keine Anschrift (Pruefung 13.10.2026).
+    expect(schluessel(ohne({ recipient: { ...vollstaendig.recipient, addressLine1: null } })))
+      .toContain('recipient_address')
+    expect(schluessel(ohne({ issuer: { ...vollstaendig.issuer, addressLine1: '' } })))
+      .toContain('issuer_address')
   })
 
   it('verlangt Ausstellungsdatum und fortlaufende Nummer', () => {
