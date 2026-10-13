@@ -286,6 +286,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
               : t('ps.personsTitle', { n: r.guestCount })}
         </Feld>
         <Feld label={t('plan.total')}>{formatMoney(r.totalCent, locale)}</Feld>
+        <Feld label={t('today.channel')}>{r.channelCode ?? '—'}</Feld>
         <Feld label={t('plan.source')}>{r.source}</Feld>
       </section>
 

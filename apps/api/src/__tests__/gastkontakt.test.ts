@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeUser, makeGuest, makeReservation, type Fixture } from '@hotelpms/testing'
+         makeUser, makeGuest, makeReservation, makeResources,
+         type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -444,6 +445,101 @@ describe('Meldeschein aus dem Umsystem', () => {
     expect(b.statusCode).toBe(422)
     const c = await senden(m, r.ref, { registration: { invitationSentAt: null } })
     expect(c.statusCode).toBe(422)
+  })
+})
+
+describe('Buchungskanal aus dem Umsystem', () => {
+  const kanal = async (reservationId: number) => (await owner.query<{
+    channel_code: string | null; channel_code_external: boolean }>(
+    `SELECT b.channel_code, b.channel_code_external FROM booking b
+       JOIN reservation r ON r.booking_id = b.id WHERE r.id = $1`, [reservationId])).rows[0]!
+
+  it('traegt den Kanal ohne Quelle nach, ersetzt und zieht den eigenen zurueck', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const put = (channelCode: string | null) => app.inject({ method: 'PUT',
+      url: `/v1/reservations/${r.ref}/guest-contact`, headers: m, payload: { channelCode } })
+
+    const a = await put('Booking.com')
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json()).toEqual({ reservationRef: r.ref, guestRef: null,
+                               fields: { channelCode: { result: 'applied' } } })
+    expect(await kanal(r.reservationId))
+      .toEqual({ channel_code: 'Booking.com', channel_code_external: true })
+    expect((await put('Booking.com')).json<{ fields: unknown }>().fields)
+      .toEqual({ channelCode: { result: 'unchanged' } })
+    // Ein korrigierter Abgleich darf seinen eigenen Wert ersetzen.
+    expect((await put('Expedia')).json<{ fields: unknown }>().fields)
+      .toEqual({ channelCode: { result: 'applied' } })
+    expect((await put(null)).json<{ fields: unknown }>().fields)
+      .toEqual({ channelCode: { result: 'withdrawn' } })
+    expect(await kanal(r.reservationId))
+      .toEqual({ channel_code: null, channel_code_external: false })
+  })
+
+  it('zeigt den Kanal der Rezeption im Tagesgeschaeft', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { channelCode: '  Booking.com ' })
+    const d = await app.inject({ method: 'GET', headers: auth(admin.sessionId),
+      url: `/v1/properties/${fx.propertyId}/daily-sheet?date=2026-10-10` })
+    expect(d.statusCode, d.body).toBe(200)
+    const zeile = d.json<{ arrivals: Array<{ reservationRef: string; channelCode: string | null }> }>()
+      .arrivals.find(x => x.reservationRef === r.ref)!
+    expect(zeile.channelCode).toBe('Booking.com')
+  })
+
+  it('laesst einen Kanal stehen, den es nicht selbst gesetzt hat', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(`UPDATE booking SET channel_code = 'Telefon' WHERE id = $1`, [r.bookingId])
+    const a = await senden(m, r.ref, { channelCode: 'Booking.com' })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ channelCode: { result: 'kept_existing', reason: 'set_otherwise' } })
+    expect((await senden(m, r.ref, { channelCode: null })).json<{ fields: unknown }>().fields)
+      .toEqual({ channelCode: { result: 'unchanged' } })
+    expect((await kanal(r.reservationId)).channel_code).toBe('Telefon')
+  })
+
+  it('fasst eine Buchung aus einem Channel-Zugang nicht an, auch wenn sie keinen Kanal nennt', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const z = await owner.query<{ id: number }>(
+      `INSERT INTO channel_connection (property_id, account_id, provider, name, token_hash)
+       VALUES ($1,$2,'roomcloud','RoomCloud','x') RETURNING id`,
+      [fx.propertyId, fx.accountId])
+    await owner.query(`UPDATE booking SET channel_connection_id = $2 WHERE id = $1`,
+      [r.bookingId, z.rows[0]!.id])
+    expect((await senden(m, r.ref, { channelCode: 'Booking.com' })).json<{ fields: unknown }>()
+      .fields).toEqual({ channelCode: { result: 'kept_existing', reason: 'set_otherwise' } })
+    expect((await kanal(r.reservationId)).channel_code).toBeNull()
+  })
+
+  it('nimmt den Kanal schon beim Anlegen, und das Umsystem laesst ihn stehen', async () => {
+    await makeResources(owner, fx.propertyId, katId, 1)
+    await owner.query(`SELECT inventory_materialize($1,'2026-10-01'::date,'2026-11-01'::date)`,
+      [fx.propertyId])
+    const b = await app.inject({ method: 'POST', url: '/v1/bookings',
+      headers: { ...auth(admin.sessionId), 'idempotency-key': 'kanal-1' },
+      payload: { propertyId: fx.propertyId, categoryId: katId, arrival: '2026-10-10',
+                 departure: '2026-10-12', channelCode: 'Expedia' } })
+    expect(b.statusCode, b.body).toBe(201)
+    const ref = b.json<{ reservationRef: string }>().reservationRef
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const k = await senden(m, ref, { channelCode: 'Booking.com' })
+    expect(k.statusCode, k.body).toBe(200)
+    expect(k.json<{ fields: unknown }>().fields)
+      .toEqual({ channelCode: { result: 'kept_existing', reason: 'set_otherwise' } })
+    const d = await app.inject({ method: 'GET', headers: auth(admin.sessionId),
+      url: `/v1/reservations/${ref}` })
+    expect(d.json<{ channelCode: string | null }>().channelCode).toBe('Expedia')
+  })
+
+  it('weist einen zu langen oder nicht textuellen Kanal ab', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    expect((await senden(m, r.ref, { channelCode: 'x'.repeat(51) })).statusCode).toBe(422)
+    expect((await senden(m, r.ref, { channelCode: 42 })).statusCode).toBe(422)
   })
 })
 

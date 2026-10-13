@@ -88,6 +88,7 @@ export function reportRoutes(app: FastifyInstance): void {
                        res.code AS "roomCode", c.code AS "categoryCode",
                        g.last_name AS "lastName", g.first_name AS "firstName",
                        fo.public_ref AS "folioRef",
+                       bk.channel_code AS "channelCode",
                        (SELECT count(*) FROM reservation_occupant o
                          WHERE o.reservation_id = r.id)::int AS occupants`
         /*
@@ -100,6 +101,7 @@ export function reportRoutes(app: FastifyInstance): void {
                                  WHERE w.reservation_id = r.id AND w.withdrawn_at IS NULL
                                  ORDER BY w.business_date) AS "waivedDates"`
         const von = `FROM reservation r
+                     JOIN booking bk ON bk.id = r.booking_id
                      LEFT JOIN resource res ON res.id = r.resource_id
                      JOIN resource_category c ON c.id = r.category_id
                      LEFT JOIN guest g ON g.id = r.primary_guest_id

@@ -157,6 +157,8 @@ interface CreateBooking {
   /** Bestaetigte Ueberbuchung (`ueberbuchenErlauben`). */
   allowOverbooking?: boolean
   source?: string
+  /** Buchungskanal als Freitext, siehe Vertrag. */
+  channelCode?: string
   externalReference?: string
   notes?: string
   /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
@@ -1092,6 +1094,10 @@ export function reservationRoutes(app: FastifyInstance): void {
       if (!isIsoDate(body.arrival) || !isIsoDate(body.departure)) {
         throw Errors.validation({ arrival: ['field.isoDate'] })
       }
+      if (body.channelCode !== undefined
+          && (typeof body.channelCode !== 'string' || body.channelCode.length > 50)) {
+        throw Errors.validation({ channelCode: ['field.invalid'] })
+      }
       const naechte = nightsBetween(body.arrival, body.departure)
       if (naechte <= 0) {
         throw Errors.validation({ departure: ['field.afterArrival'] })
@@ -1375,10 +1381,11 @@ export function reservationRoutes(app: FastifyInstance): void {
         }
 
         const booking = await client.query<{ id: number; public_ref: string }>(
-          `INSERT INTO booking (property_id, booker_guest_id, source, external_reference, created_by)
-           VALUES ($1,$2,$3,$4,$5) RETURNING id, public_ref`,
+          `INSERT INTO booking (property_id, booker_guest_id, source, external_reference,
+                                created_by, channel_code)
+           VALUES ($1,$2,$3,$4,$5,NULLIF(btrim($6),'')) RETURNING id, public_ref`,
           [body.propertyId, guestId ?? null, body.source ?? 'direct',
-           body.externalReference ?? null, principal.userId])
+           body.externalReference ?? null, principal.userId, body.channelCode ?? null])
 
         // Der Ratenplan des Kontingents gilt, wenn keiner genannt ist: eine
         // Gruppe hat ihren Preis vereinbart, und ihn je Abruf erneut

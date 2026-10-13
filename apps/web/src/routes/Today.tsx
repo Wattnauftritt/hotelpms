@@ -59,6 +59,15 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
             <Zeile key={r.reservationRef} name={namen(r)} raum={r.roomCode}
                    kategorie={r.categoryCode}>
               <div className="flex items-center gap-2 min-w-0">
+                {/* Woher die Buchung kam (0155): wer vom Portal kommt, kennt
+                    das Haus nicht und erwartet anderes als ein Stammgast. */}
+                {r.channelCode !== null && (
+                  <span title={`${t('today.channel')}: ${r.channelCode}`}
+                        className="max-w-[8rem] truncate text-[11px] px-1 rounded-sm
+                                   bg-neutral-100 text-neutral-700">
+                    {r.channelCode}
+                  </span>
+                )}
                 {/* Freitext des Gastes aus dem Meldeformular; gekuerzt, der
                     ganze Wert steht im Tooltip. */}
                 {r.expectedArrival !== null && (

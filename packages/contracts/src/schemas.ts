@@ -293,7 +293,13 @@ const DailyRow = Type.Object({
   categoryCode: Type.String(),
   lastName: Type.Union([Type.String(), Type.Null()]),
   firstName: Type.Union([Type.String(), Type.Null()]),
-  occupants: Type.Integer()
+  occupants: Type.Integer(),
+  /**
+   * Ueber welchen Kanal die Buchung kam ("Booking.com"), null, wenn
+   * niemand es gesagt hat. Die Rezeption begruesst einen Gast von einem
+   * Portal anders als einen Stammgast, der angerufen hat.
+   */
+  channelCode: Type.Union([Type.String(), Type.Null()])
 })
 
 export const DailySheet = Type.Object({
@@ -523,6 +529,14 @@ export const CreateBooking = Type.Object({
   ratePlanId: Type.Optional(Type.Integer()),
   guestId: Type.Optional(Type.Integer()),
   source: Type.Optional(Type.String()),
+  /**
+   * Ueber welchen Kanal die Buchung kam, so wie das Haus ihn nennt
+   * ("Booking.com", "Expedia", "Telefon"). Freitext: welche Kanaele ein
+   * Haus hat, weiss StayGrid nicht, und eine feste Liste waere beim
+   * naechsten Portal falsch. Die Rezeption sieht ihn im Tagesgeschaeft und
+   * an der Reservierung.
+   */
+  channelCode: Type.Optional(Type.String({ maxLength: 50 })),
   externalReference: Type.Optional(Type.String()),
   notes: Type.Optional(Type.String()),
   /**
