@@ -25,12 +25,33 @@ const config = loadConfig()
  * eingerichtet.
  *
  * **Zwei Ablaufzeiten.** `expires_at` ist die Untätigkeitsfrist und wandert
- * mit jeder Anfrage mit; `absolute_expires_at` steht fest. Ohne die zweite
- * bleibt eine einmal gestohlene Sitzung unbegrenzt gültig, solange sie
- * benutzt wird.
+ * mit jeder Anfrage mit (`session_principal`, Migration 0173 — vorher stand
+ * das hier, geschah aber nirgends); `absolute_expires_at` steht fest. Ohne
+ * die zweite bleibt eine einmal gestohlene Sitzung unbegrenzt gültig,
+ * solange sie benutzt wird.
+ *
+ * **Warum sieben Tage und dreißig, nicht zwölf Stunden und vierundzwanzig.**
+ * Mit zwölf und vierundzwanzig Stunden musste sich jeder an jedem Gerät
+ * jeden Tag neu anmelden, am Telefon der Leitung und in der Personal-App
+ * erst recht: das liegt abends in der Tasche und wird morgens wieder
+ * aufgeklappt (Sven, 14.10.2026: „loggt einen oft aus, vor allem auf mobilen
+ * Geräten“). Eine Anmeldemaske, die täglich kommt, erzieht dazu, das
+ * Kennwort im Telefon zu speichern oder auf einen Zettel zu schreiben.
+ *
+ * Was eine kurze Frist schützen würde, schützen hier andere Stellen: das
+ * Cookie ist `HttpOnly`, `Secure` und `SameSite=Strict`, kommt also weder an
+ * ein Skript noch an eine fremde Seite; Abmelden, Kennwortwechsel,
+ * Kennwortrücksetzung, Rollenänderung und Stilllegen ziehen die Sitzungen
+ * sofort zurück. Der Rechner am Tresen, an dem jemand aufsteht, wird nicht
+ * durch eine Frist geschützt — den hielt auch die alte nicht, sie lief erst
+ * nach zwölf Stunden ab —, sondern durch den Arbeitsplatzwechsel per PIN
+ * und dadurch, dass Kennwort und Mailadresse nur mit dem Kennwort zu ändern
+ * sind. Sieben Tage Untätigkeit decken ein langes Wochenende und eine
+ * Aushilfe mit zwei Schichten die Woche; dreißig Tage begrenzen, wie lange
+ * ein gestohlenes Cookie trägt.
  */
-const SITZUNG_UNTAETIG_STUNDEN = 12
-const SITZUNG_ABSOLUT_STUNDEN = 24
+const SITZUNG_UNTAETIG_STUNDEN = 7 * 24
+const SITZUNG_ABSOLUT_STUNDEN = 30 * 24
 const COOKIE = 'hp_session'
 
 /**
@@ -181,9 +202,10 @@ export function authRoutes(app: FastifyInstance): void {
       const sessionId = neueSitzungsKennung()
       await req.pool.query(
         `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
-                                   ip, user_agent)
+                                   idle_window, ip, user_agent)
          VALUES ($1,$2, now() + ($3 || ' hours')::interval,
-                        now() + ($4 || ' hours')::interval, $5, $6)`,
+                        now() + ($4 || ' hours')::interval,
+                        ($3 || ' hours')::interval, $5, $6)`,
         [sessionId, benutzer.id, SITZUNG_UNTAETIG_STUNDEN, SITZUNG_ABSOLUT_STUNDEN,
          req.ip, (req.headers['user-agent'] ?? '').slice(0, 300)])
       await req.pool.query(
