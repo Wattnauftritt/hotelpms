@@ -457,6 +457,27 @@ export function useTransferCharge(folioRef: string) {
   })
 }
 
+/**
+ * Fruehstueck aus gebuchten Naechten herausrechnen (0169): Gegenbuchung und
+ * Aufteilung wie im Nachtlauf, fuer Naechte, die vor der Regel gebucht
+ * wurden.
+ */
+export function useSplitBreakfast(folioRef: string) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (b: { breakfastCent: number; childBreakfastCent: number | null }) =>
+      api.post<{ nights: number; breakfastCent: number }>(
+        `/v1/folios/${folioRef}/breakfast-split`, b,
+        { 'idempotency-key': absicht.schluessel(`${b.breakfastCent}-${b.childBreakfastCent}`) }),
+    onSuccess: () => {
+      absicht.erledigt()
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
+    }
+  })
+}
+
 /** Uebernachtungen kuenftig auf dieses Folio (oder zurueck aufs Gastfolio). */
 export function useAccommodationRouting(folioRef: string) {
   const qc = useQueryClient()

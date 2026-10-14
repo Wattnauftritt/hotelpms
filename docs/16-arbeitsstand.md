@@ -1278,6 +1278,7 @@ Tests in `inklusivNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
 - **Preise → Ratenpläne → Frühstück, Zeile „Regel des Hauses“** (`property.breakfast_cent`, `breakfast_child_cent`; `PUT /v1/properties/:id/breakfast-rule`, Recht `rate:write`). Sie gilt für jede Rate ohne eigenen Frühstückspreis und für Buchungen ohne Rate. Hat die Rate einen eigenen Preis, gilt dieser samt Kinderpreis.
 - **„Ohne Frühstück“ je Reservierung** (`reservation.breakfast_declined`): Schalter im Reservierungsfenster unter der Rate, `PATCH /v1/reservations/:ref` und beim Anlegen `breakfastDeclined`. Er schlägt Rate und Haus.
 - **Nachtlauf und Anzahlung** rechnen dieselbe Reihenfolge. Wie bei der Rate gilt es ab der nächsten gebuchten Nacht; gebuchte Nächte bleiben.
+- **Nachträglich für gebuchte Nächte:** im Folio „Frühstück nachträglich aufteilen“ (`POST /v1/folios/:ref/breakfast-split`, `folio:post`). Jede offene Übernachtung ohne Frühstücksteil bekommt eine Gegenbuchung und dieselbe Aufteilung wie im Nachtlauf, mit dem Geschäftstag der Nacht, damit der Leistungszeitraum der Rechnung bleibt. Berechnete Nächte bleiben; dort hilft nur eine Stornorechnung.
 - **Die Frühstückszahl** für Küche, Hausdame und Adminpanel (`fruehstueckeJeTag`, `GET /breakfast`) lässt abgewählte Reservierungen aus; die Belegungszahlen zählen sie weiter.
 
 Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
