@@ -173,7 +173,7 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 ### Geld und Datum
 
 - Geld ist **immer** eine ganze Zahl in Cent. Nie Fließkomma.
-- Steuer wird **je Satzgruppe aus der Nettosumme** gerechnet, nicht als Summe je Zeile gerundeter Beträge.
+- Steuer wird **je Satzgruppe aus der Nettosumme** gerechnet, nicht als Summe je Zeile gerundeter Beträge. Trifft die Gruppe so das gebuchte Brutto nicht, weil es zu keinem ganzzahligen Netto passt (250,00 zu 7 Prozent), trägt die Steuer der Gruppe den einen Cent (`taxAdjustToGross`; BR-S-09 lässt ihn zu). Eine Rundungszeile auf der Rechnung gibt es dafür nicht mehr (Svens Entscheidung, 14.10.2026).
 - Aufenthaltsdaten sind **Kalenderdaten**, keine Zeitpunkte. Nie durch `new Date(iso)` in Ortszeit schicken; das verschiebt sie je nach Zeitzone um einen Tag.
 - Fristen werden gegen den **Geschäftstag** geprüft, nicht gegen `now()`. Sonst findet ein Wiederholungslauf andere Zeilen als der erste.
 

@@ -57,7 +57,8 @@ interface InvoiceRow {
   issuer_snapshot: Partial<CiiParty>
   recipient_snapshot: Partial<CiiParty>
   totals: { grossCent: number; roundingCent?: number; prepaidCent?: number
-            lineAdjustCent?: Record<string, number> }
+            lineAdjustCent?: Record<string, number>
+            taxAdjustCent?: Record<string, number> }
   due_on: string | null
   preceding_number: string | null
   preceding_issued_on: string | null
@@ -292,6 +293,10 @@ async function load(
     // wird nicht neu gerechnet: waere er ableitbar, waere er nicht noetig.
     // Rechnungen vor Aufgabe 12 haben ihn nicht; dort ist er null.
     roundingCent: Number(row.totals.roundingCent ?? 0),
+    // Der Cent je Satz, den die Steuer traegt (taxAdjustToGross). Wie der
+    // Ausgleich aus der Momentaufnahme, nicht neu gerechnet.
+    ...(row.totals.taxAdjustCent === undefined ? {}
+      : { taxAdjustCent: row.totals.taxAdjustCent }),
     dueOn: row.due_on,
     precedingInvoice: row.preceding_number === null ? null
       : { number: row.preceding_number, issuedOn: row.preceding_issued_on! },

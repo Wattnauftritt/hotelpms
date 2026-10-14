@@ -431,12 +431,12 @@ describe('Anzahlung im DATEV-Stapel', () => {
   })
 
   /**
-   * Zwei Naechte zu je 125,00 brutto: die Gruppe rechnet 233,64 netto und
-   * 16,35 Steuer, also 249,99, und der Rundungsbetrag holt den Cent.
-   * DATEV bekommt das Brutto der Gruppe, damit seine Steuer die des Belegs
-   * ist, und den Cent eigens ohne Steuer.
+   * Zwei Naechte zu je 125,00 brutto: aus dem Netto aufgeschlagen ergaebe
+   * die Gruppe 233,64 + 16,35 = 249,99. Seit dem 14.10.2026 traegt die
+   * Steuer den Cent (233,64 + 16,36), und DATEV bekommt die 250,00 in einer
+   * Zeile auf dem Erloeskonto -- kein Rundungscent mehr auf einem eigenen.
    */
-  it('bucht die Summe der Rechnung und den Rundungsbetrag eigens', async () => {
+  it('bucht die Summe der Rechnung ohne eigenen Rundungscent', async () => {
     const a = await aufenthalt()
     for (let i = 0; i < 2; i++) {
       const r = await app.inject({ method: 'POST', url: `/v1/folios/${a.folioRef}/charges`,
@@ -447,7 +447,7 @@ describe('Anzahlung im DATEV-Stapel', () => {
     const finale = JSON.parse((await fakturieren(a.folioRef)).body) as { number: string }
     const zeilen = stapel((await datev(AUSSTELLUNG)).body).filter(z => z[10] === finale.number)
     expect(zeilen.map(z => [z[0], z[1], z[7]])).toEqual([
-      ['249,99', 'S', '8300'], ['0,01', 'S', '8200']])
+      ['250,00', 'S', '8300']])
   })
 
   it('zeigt die Anzahlung eines fremden Hauses nicht', async () => {

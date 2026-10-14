@@ -126,6 +126,12 @@ export interface CiiInvoice {
    * zusammen ergeben.
    */
   roundingCent?: Cent
+  /**
+   * Korrektur der Steuer je Satz um hoechstens einen Cent, Schluessel ist der
+   * Satz in Basispunkten (`taxAdjustToGross`). Damit trifft die Gruppe ein
+   * Brutto, zu dem es kein Netto gibt; BR-S-09 laesst die Einheit zu.
+   */
+  taxAdjustCent?: Record<string, Cent>
   /** § 13b UStG. Setzt die Kategorie aller Positionen auf AE. */
   reverseCharge?: boolean
   /** BT-120. Pflicht, sobald eine Kategorie ohne Steuer vorkommt. */
@@ -337,7 +343,8 @@ function exemptionReasonFor(inv: CiiInvoice, category: VatCategory): string | nu
  * Stelle.
  */
 export function ciiTotals(inv: CiiInvoice): InvoiceTotals {
-  return sumInvoice(inv.lines.map(l => ({ netCent: l.netCent, rateBp: l.rateBp })))
+  return sumInvoice(inv.lines.map(l => ({ netCent: l.netCent, rateBp: l.rateBp })),
+                    inv.taxAdjustCent)
 }
 
 export interface CiiFinding {
@@ -484,7 +491,9 @@ function alsGutschrift(inv: CiiInvoice): CiiInvoice {
     // Die Menge bleibt: ihr Vorzeichen folgt im XML dem Betrag (BR-27).
     lines: inv.lines.map(l => ({ ...l, netCent: -l.netCent })),
     prepaidCent: -(inv.prepaidCent ?? 0),
-    roundingCent: -(inv.roundingCent ?? 0)
+    roundingCent: -(inv.roundingCent ?? 0),
+    ...(inv.taxAdjustCent === undefined ? {} : { taxAdjustCent: Object.fromEntries(
+      Object.entries(inv.taxAdjustCent).map(([k, v]) => [k, -v])) })
   }
 }
 

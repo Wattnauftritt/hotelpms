@@ -68,7 +68,8 @@ export interface InvoiceTotals {
  * (B5, Dokument 13).
  */
 export function sumInvoice(
-  lines: ReadonlyArray<{ netCent: Cent; rateBp: BasisPoints }>
+  lines: ReadonlyArray<{ netCent: Cent; rateBp: BasisPoints }>,
+  taxAdjust?: Readonly<Record<string, Cent>>
 ): InvoiceTotals {
   const byRate = new Map<BasisPoints, Cent>()
   for (const l of lines) {
@@ -77,7 +78,7 @@ export function sumInvoice(
   const groups: TaxGroupTotal[] = [...byRate.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([rateBp, netCent]) => {
-      const taxCent = taxFromNet(netCent, rateBp)
+      const taxCent = taxFromNet(netCent, rateBp) + (taxAdjust?.[String(rateBp)] ?? 0)
       return { rateBp, netCent, taxCent, grossCent: netCent + taxCent }
     })
   return {
@@ -108,9 +109,9 @@ export function sumInvoice(
  * Die Buchungen selbst bleiben, wie sie sind; nur die Rechnung weist ihr
  * Netto so aus, dass Netto und Steuer zusammen das Brutto ergeben.
  *
- * Nicht jedes Brutto ist so darstellbar (zu 7 Prozent jeder sechzehnte
- * Cent-Betrag). Dann bleibt der naechste darstellbare, und der eine Cent
- * steht weiter als Ausgleich da -- seltener und nie mehr als einer je Satz.
+ * Nicht jedes Brutto ist so darstellbar (zu 7 Prozent jeder fuenfzehnte
+ * Cent-Betrag). Dann bleibt der naechste darstellbare, und den einen Cent
+ * traegt die Steuer der Gruppe (`taxAdjustToGross`).
  *
  * `fest` sind Zeilen, die mitzaehlen, aber nichts tragen duerfen
  * (die Verrechnung einer Anzahlung: deren Netto steht auf ihrer eigenen
@@ -151,6 +152,35 @@ export function alignLineNets<K>(
     }
   }
   return ausgleich
+}
+
+/**
+ * Der Cent, der nach `alignLineNets` je Satzgruppe noch fehlt, als
+ * Korrektur der Steuer dieser Gruppe.
+ *
+ * **Warum.** Zu 7 Prozent gibt es zu jedem fuenfzehnten Bruttobetrag kein
+ * Netto, dessen aufgeschlagene Steuer ihn trifft: 250,00 liegt zwischen
+ * 233,64 + 16,35 und 233,65 + 16,36. Bisher stand der Cent als Rundung
+ * (BT-114) auf dem Blatt. Sven, 14.10.2026: die Rechnung soll aufgehen, die
+ * Steuer wird dafuer aus dem Brutto herausgerechnet, wie bei Bruttopreisen
+ * ueblich: 250,00 - 233,64 = 16,36 statt aufgeschlagen 16,35.
+ *
+ * Die Norm laesst das zu: BR-S-09 prueft die Steuer der Gruppe gegen Netto
+ * mal Satz mit einer Waehrungseinheit Spielraum nach beiden Seiten.
+ * Getragen wird dennoch hoechstens ein Cent je Gruppe -- mehr ist kein
+ * Rundungsrest, sondern ein Fehler, und bleibt als Ausgleich sichtbar. Zu 0
+ * Prozent gibt es keine Steuer, die etwas tragen koennte.
+ */
+export function taxAdjustToGross(
+  groups: ReadonlyArray<TaxGroupTotal>,
+  targetGrossByRate: ReadonlyMap<BasisPoints, Cent>
+): Record<string, Cent> {
+  const out: Record<string, Cent> = {}
+  for (const g of groups) {
+    const rest = (targetGrossByRate.get(g.rateBp) ?? g.grossCent) - g.grossCent
+    if (g.rateBp !== 0 && rest !== 0 && Math.abs(rest) <= 1) out[String(g.rateBp)] = rest
+  }
+  return out
 }
 
 /**

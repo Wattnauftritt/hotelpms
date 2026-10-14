@@ -107,10 +107,10 @@ describe('Der Betrag, den die Rechnung fordert', () => {
 
     expect(r.status).toBe(201)
     expect(r.totals.payableCent).toBe(25_000)
-    // Die Gesamtsumme nach BT-112 bleibt die normgerecht gerechnete; der
-    // Unterschied steht als Rundungsbetrag daneben und nicht in ihr drin.
-    expect(r.totals.grossCent).toBe(24_999)
-    expect(r.totals.roundingCent).toBe(1)
+    // Seit dem 14.10.2026 traegt die Steuer den Cent (Sven: "Herausrechnen"):
+    // 233,64 + 16,36. Die Gesamtsumme trifft, ein Rundungsbetrag entfaellt.
+    expect(r.totals.grossCent).toBe(25_000)
+    expect(r.totals.roundingCent).toBe(0)
   })
 
   it('laesst das Folio auf null schliessen', async () => {
@@ -180,17 +180,35 @@ describe('Der Betrag, den die Rechnung fordert', () => {
     const ref = await folioMit(posten)
     const r = await faktura(ref)
     expect(r.totals.payableCent).toBe(posten.reduce((s, p) => s + p.brutto, 0))
+    expect(r.totals.grossCent).toBe(r.totals.payableCent)
+    expect(r.totals.roundingCent).toBe(0)
+  })
+
+  it('hebt den Cent der Steuer mit der Stornorechnung wieder auf', async () => {
+    const ref = await folioMit([{ brutto: 25_000, rateBp: 700 }])
+    const r = await faktura(ref)
+    const inv = await owner.query<{ id: number; public_ref: string }>(
+      `SELECT id, public_ref FROM invoice ORDER BY id DESC LIMIT 1`)
+    const s = await app.inject({ method: 'POST',
+      headers: { ...auth, 'idempotency-key': `storno-${++schluessel}` },
+      url: `/v1/invoices/${inv.rows[0]!.public_ref}/cancel`, payload: {} })
+    expect(s.statusCode).toBeLessThan(300)
+    const t = await owner.query<{ totals: Summen & { taxAdjustCent?: Record<string, number> } }>(
+      `SELECT totals FROM invoice WHERE reverses_id = $1`, [inv.rows[0]!.id])
+    expect(t.rows[0]!.totals.grossCent).toBe(-r.totals.grossCent)
+    expect(t.rows[0]!.totals.groups[0]).toMatchObject({ netCent: -23_364, taxCent: -1_636 })
+    expect(t.rows[0]!.totals.taxAdjustCent).toEqual({ '700': -1 })
   })
 
   it('haelt die Satzgruppen der Leistungen unberuehrt', async () => {
     const ref = await folioMit([{ brutto: 25_000, rateBp: 700 }])
     const r = await faktura(ref)
 
-    // Der Ausgleich wirkt auf Belegebene. Die Leistung bleibt vollstaendig im
-    // ermaessigten Satz, und es entsteht keine Gruppe zu 0 Prozent -- sonst
-    // stuende im DATEV-Stapel ein steuerfreier Umsatz, den es nicht gab.
+    // Den Cent traegt die Steuer der Gruppe. Die Leistung bleibt vollstaendig
+    // im ermaessigten Satz, und es entsteht keine Gruppe zu 0 Prozent --
+    // sonst stuende im DATEV-Stapel ein steuerfreier Umsatz, den es nicht gab.
     expect(r.totals.groups).toHaveLength(1)
     expect(r.totals.groups[0]).toMatchObject({
-      rateBp: 700, netCent: 23_364, taxCent: 1_635 })
+      rateBp: 700, netCent: 23_364, taxCent: 1_636, grossCent: 25_000 })
   })
 })
