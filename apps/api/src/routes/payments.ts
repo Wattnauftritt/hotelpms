@@ -4,11 +4,13 @@ import { paymentSucceeded } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
-import { createStripeAdapter, verifyStripeSignature, parseStripeEvent,
+import { verifyStripeSignature, parseStripeEvent,
          parseStripeAccountEvent, stripeEventAccount,
          type StripeAdapter } from '../platform/payments/stripe.js'
+import { stripeZugangQuelle } from '../platform/payments/zugang.js'
 import { paymentLinkRoutes } from './paymentLinks.js'
 import { paymentAccountRoutes } from './paymentAccount.js'
+import { paymentProviderRoutes } from './paymentProvider.js'
 
 export interface PaymentRouteOverrides {
   /** Fuer Tests: ein Adapter ohne echten Netzwerkzugriff auf Stripe. */
@@ -17,16 +19,17 @@ export interface PaymentRouteOverrides {
 
 export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOverrides = {}): void {
   const config = loadConfig()
-  const stripe = overrides.stripe
-    ?? (config.stripeSecretKey
-          ? createStripeAdapter(config.stripeSecretKey, config.stripeConnectClientId)
-          : null)
+  // Der Zugang kommt aus Umgebung oder Adminpanel (0168) und wird je
+  // Anfrage gelesen: im Panel gespeichert, gilt er ohne Neustart.
+  const zugang = stripeZugangQuelle(config, overrides.stripe)
 
   // Zahlungslinks: anlegen, widerrufen, und die Seite, die der Gast oeffnet
-  // (Migration 0068). Eigene Datei, derselbe Adapter.
-  paymentLinkRoutes(app, stripe, config)
+  // (Migration 0068). Eigene Datei, derselbe Zugang.
+  paymentLinkRoutes(app, zugang, config)
   // Das Stripe-Konto je Haus verbinden und trennen (Migration 0167).
-  paymentAccountRoutes(app, stripe, config)
+  paymentAccountRoutes(app, zugang, config)
+  // Den Zugang selbst im Adminpanel eintragen (Migration 0168).
+  paymentProviderRoutes(app, zugang, config)
 
   registerRoute(app, {
     method: 'POST',
@@ -34,13 +37,14 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
     permission: null,
     summary: 'Stripe-Benachrichtigung ueber eine Pay-by-Link-Zahlung entgegennehmen',
     handler: async (req, reply) => {
-      if (!config.stripeWebhookSecret) throw Errors.notConfigured('payments.stripeWebhookSecretMissing')
+      const { webhookSecret } = await zugang.laden(req.pool)
+      if (!webhookSecret) throw Errors.notConfigured('payments.stripeWebhookSecretMissing')
       const raw = req.rawBody
       if (!raw || raw.length === 0) throw Errors.validation({ body: ['field.bodyMissing'] })
 
       try {
         verifyStripeSignature(
-          raw, req.headers['stripe-signature'] as string | undefined, config.stripeWebhookSecret)
+          raw, req.headers['stripe-signature'] as string | undefined, webhookSecret)
       } catch (err) {
         throw Errors.invalidSignature((err as Error).message)
       }

@@ -341,3 +341,34 @@ export function useRejectEmailDomain() {
     }
   })
 }
+
+// ------------------------------------------- Stripe-Zugang der Plattform
+
+export type ZugangQuelle = 'env' | 'panel' | null
+
+export interface PaymentProviderView {
+  connectClientId: { value: string | null; source: ZugangQuelle }
+  secretKey: { hint: string | null; source: ZugangQuelle }
+  webhookSecret: { set: boolean; source: ZugangQuelle }
+  ready: boolean
+  redirectUri: string
+  webhookUrl: string
+  updatedAt: string | null
+}
+
+export const usePaymentProvider = () =>
+  useQuery<PaymentProviderView>({
+    queryKey: ['platformPaymentProvider'],
+    queryFn: () => api.get('/v1/platform/payment-provider')
+  })
+
+export function useSavePaymentProvider() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { connectClientId?: string; secretKey?: string; webhookSecret?: string }) =>
+      api.put('/v1/platform/payment-provider', body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['platformPaymentProvider'] })
+    }
+  })
+}

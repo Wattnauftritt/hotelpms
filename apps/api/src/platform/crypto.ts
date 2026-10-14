@@ -92,3 +92,19 @@ export function safeEqual(a: string, b: string): boolean {
   if (ab.length !== bb.length) return false
   return timingSafeEqual(ab, bb)
 }
+
+/**
+ * Ein Geheimnis der Plattform verschluesseln, etwa den Stripe-Schluessel
+ * (Migration 0168). Dasselbe Verfahren wie bei der Ausweisnummer, nur geht
+ * der Zweck in die Ableitung ein: aus demselben ID_DOCUMENT_KEY entstehen so
+ * verschiedene Schluessel, und ein Chiffrat des einen Zwecks laesst sich
+ * nicht als das eines anderen ausgeben.
+ */
+export function encryptSecret(plaintext: string, secret: string, zweck: string): Buffer {
+  return encryptIdDocument(plaintext, `${zweck}:${secret}`).ciphertext
+}
+
+/** Wirft, wenn das Chiffrat veraendert ist oder der Schluessel gewechselt hat. */
+export function decryptSecret(ciphertext: Buffer, secret: string, zweck: string): string {
+  return decryptIdDocument(ciphertext, `${zweck}:${secret}`, CURRENT_KEY_VERSION)
+}
