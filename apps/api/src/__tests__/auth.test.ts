@@ -70,6 +70,14 @@ describe('Anmeldung', () => {
     // das Cookie bei einer Navigation der obersten Ebene mit, und damit
     // konnte eine fremde Seite einen Pruefeintrag am Ausweisabruf erzeugen.
     expect(gesetzt.toLowerCase()).toContain('samesite=strict')
+    // Das Cookie lebt so lange wie die feste Grenze der Sitzung, sonst
+    // verwirft das Telefon es vor ihr (30 Tage, auth.ts).
+    expect(gesetzt).toContain(`Max-Age=${30 * 24 * 3600}`)
+    const sitzung = await owner.query<{ idle: number; absolut: number }>(
+      `SELECT extract(epoch FROM idle_window)::int AS idle,
+              extract(epoch FROM absolute_expires_at - created_at)::int AS absolut
+         FROM user_session WHERE id = $1`, [cookieAus(r).replace('hp_session=', '')])
+    expect(sitzung.rows).toEqual([{ idle: 7 * 86400, absolut: 30 * 86400 }])
 
     const me = await app.inject({ method: 'GET', url: '/v1/auth/me',
       headers: { cookie: cookieAus(r) } })

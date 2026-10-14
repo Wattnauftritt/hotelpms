@@ -151,4 +151,36 @@ describe('Anmeldung je Anfrage', () => {
     await mitSitzung(u.sessionId)
     expect((await zuletzt()).getTime()).toBe(nachher.getTime())
   })
+
+  /*
+   * Die Untaetigkeitsfrist gleitet mit (Migration 0173). Vorher wurde sie
+   * nur bei der Anmeldung gesetzt, und eine Sitzung, die den ganzen Tag
+   * benutzt wurde, endete trotzdem zwoelf Stunden nach der Anmeldung.
+   */
+  it('zieht die Untaetigkeitsfrist mit, aber nie ueber die feste Grenze', async () => {
+    const u = await makeUser(owner,
+      { email: 'rez@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
+    const frist = async () => (await owner.query<{ rest: number }>(
+      `SELECT extract(epoch FROM expires_at - now())::int AS rest
+         FROM user_session WHERE id = $1`, [u.sessionId])).rows[0]!.rest
+
+    await owner.query(
+      `UPDATE user_session SET idle_window = interval '7 days',
+                               expires_at = now() + interval '1 minute',
+                               absolute_expires_at = now() + interval '30 days',
+                               last_seen_at = now() - interval '5 minutes'
+        WHERE id = $1`, [u.sessionId])
+    expect((await mitSitzung(u.sessionId)).sicht.userId).toBe(u.userId)
+    expect(await frist()).toBeGreaterThan(7 * 86400 - 60)
+
+    // Kurz vor der festen Grenze: die Frist endet mit ihr, nicht danach.
+    await owner.query(
+      `UPDATE user_session SET expires_at = now() + interval '1 minute',
+                               absolute_expires_at = now() + interval '2 hours',
+                               last_seen_at = now() - interval '5 minutes'
+        WHERE id = $1`, [u.sessionId])
+    await mitSitzung(u.sessionId)
+    expect(await frist()).toBeLessThanOrEqual(2 * 3600)
+    expect(await frist()).toBeGreaterThan(2 * 3600 - 60)
+  })
 })

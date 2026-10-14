@@ -20,8 +20,10 @@ nach **Art. 32 DSGVO**. Anlage zum Auftragsverarbeitungsvertrag.
 
 - Anmeldung mit E-Mail und Kennwort; Kennworthash mit **Argon2id**.
 - Sperre nach mehreren Fehlversuchen (`failed_login_count`, `locked_until`).
-- Sitzung im Cookie mit `httpOnly`, `sameSite=lax` und `secure` im Betrieb;
-  absolute Laufzeit begrenzt, abgelaufene Sitzungen werden entfernt.
+- Sitzung im Cookie mit `httpOnly`, `sameSite=strict` und `secure` im Betrieb;
+  sieben Tage Untätigkeit, höchstens dreißig Tage ab Anmeldung (Migration
+  0173); Abmelden, Kennwortwechsel, Rollenänderung und Stilllegen ziehen sie
+  sofort zurück, abgelaufene Sitzungen werden entfernt.
 - Arbeitsplatzwechsel am geteilten Rezeptionsrechner über einen eigenen PIN;
   im Protokoll steht, wer tatsächlich gehandelt hat.
 - Maschinenzugänge über OAuth 2.0 Client Credentials mit begrenzten
