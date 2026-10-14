@@ -285,6 +285,8 @@ export interface Rechnungseinstellung {
   contact: RechnungsKontakt
   /** Was der E-Rechnung fehlt; leer heisst: geht. */
   eInvoiceMissing: { xml: string[]; xrechnung: string[] }
+  /** Logo auf dem Beleg (Migration 0170); `updatedAt` macht die Vorschau neu. */
+  logo: { mime: string; updatedAt: string } | null
 }
 
 export const useInvoiceSettings = (propertyId: number) =>
@@ -292,6 +294,19 @@ export const useInvoiceSettings = (propertyId: number) =>
     queryKey: ['invoice-settings', propertyId],
     queryFn: () => api.get(`/v1/properties/${propertyId}/invoice-settings`)
   })
+
+/** Logo hochladen (data-URL) oder mit `null` entfernen. */
+export function useInvoiceLogo(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: string | null) => data === null
+      ? api.delete<Rechnungseinstellung>(`/v1/properties/${propertyId}/invoice-logo`)
+      : api.put<Rechnungseinstellung>(`/v1/properties/${propertyId}/invoice-logo`, { data }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['invoice-settings', propertyId] })
+    }
+  })
+}
 
 export function useSaveInvoiceSettings(propertyId: number) {
   const qc = useQueryClient()

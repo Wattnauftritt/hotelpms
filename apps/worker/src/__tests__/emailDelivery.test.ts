@@ -416,32 +416,72 @@ describe('Sicherung gegen einen ausgefallenen Anbieter', () => {
 })
 
 describe('Gastdaten altern lassen', () => {
-  it('entfernt Empfaenger und Rumpf, behaelt den Nachweis', async () => {
+  /** Versendet eine Rechnungsmail und laesst sie um `alter` altern. */
+  async function versandt(status: number, alter: string): Promise<string> {
     await absender()
     const ref = await einreihen({ invoiceId: await rechnung() })
-    const a = await anbieter(() => 201)
+    const a = await anbieter(() => status)
     await deliverEmails(app, ctx, fx.propertyId, createBrevoAdapter('k', { baseUrl: a.url }))
     await a.schliessen()
-
     await owner.query(
-      `UPDATE outbound_email SET created_at = now() - interval '100 days'
-        WHERE public_ref = $1`, [ref])
+      `UPDATE outbound_email SET created_at = now() - $2::interval
+        WHERE public_ref = $1`, [ref, alter])
+    return ref
+  }
+
+  async function altern(): Promise<number> {
     const n = await withTransaction(app, ctx, c =>
       c.query<{ n: number }>(`SELECT email_redact_old($1,90) AS n`, [fx.propertyId]))
-    expect(n.rows[0]!.n).toBe(1)
+    return n.rows[0]!.n
+  }
 
-    const r = await owner.query<{
-      to_email: string; body_text: string; status: string
-      provider_message_id: string | null; attachment_sha256: string | null }>(
-      `SELECT to_email, body_text, status, provider_message_id, attachment_sha256
-         FROM outbound_email WHERE public_ref = $1`, [ref])
-    const z = r.rows[0]!
-    expect(z.to_email).toBe('entfernt@invalid')
+  async function gelesen(ref: string): Promise<{
+    to_email: string; to_name: string | null; subject: string; body_text: string
+    status: string; provider_message_id: string | null; attachment_sha256: string | null }> {
+    const r = await owner.query(
+      `SELECT to_email, to_name, subject, body_text, status, provider_message_id,
+              attachment_sha256 FROM outbound_email WHERE public_ref = $1`, [ref])
+    return r.rows[0] as never
+  }
+
+  it('entfernt bei einer versandten Rechnung den Rumpf, behaelt den Nachweis samt Adresse', async () => {
+    const ref = await versandt(201, '100 days')
+    expect(await altern()).toBe(1)
+
+    const z = await gelesen(ref)
     expect(z.body_text).toBe('')
-    // Die Antwort auf "ist die Rechnung rausgegangen" bleibt erhalten.
+    // Die Antwort auf "ist die Rechnung rausgegangen, und an wen" bleibt
+    // sechs Jahre erhalten (Migration 0170).
+    expect(z.to_email).toBe('anna@gast.test')
+    expect(z.to_name).toBe('Anna Beispiel')
+    expect(z.subject).toBe('Ihre Rechnung')
     expect(z.status).toBe('sent')
     expect(z.provider_message_id).toBe('<nachricht-1@brevo>')
     expect(z.attachment_sha256).toBe('abc123')
+  })
+
+  it('entfernt die Adresse des Nachweises nach sechs Jahren', async () => {
+    const ref = await versandt(201, '100 days')
+    expect(await altern()).toBe(1)
+    await owner.query(
+      `UPDATE outbound_email SET created_at = now() - interval '6 years 1 day'
+        WHERE public_ref = $1`, [ref])
+    expect(await altern()).toBe(1)
+    const z = await gelesen(ref)
+    expect(z.to_email).toBe('entfernt@invalid')
+    expect(z.to_name).toBeNull()
+    expect(z.status).toBe('sent')
+    // Ein dritter Lauf findet nichts mehr.
+    expect(await altern()).toBe(0)
+  })
+
+  it('schwaerzt eine gescheiterte Rechnungsmail ganz', async () => {
+    const ref = await versandt(400, '100 days')
+    expect(await altern()).toBe(1)
+    const z = await gelesen(ref)
+    expect(z.status).toBe('failed')
+    expect(z.to_email).toBe('entfernt@invalid')
+    expect(z.to_name).toBeNull()
   })
 
   it('ruehrt eine noch nicht abgeschickte Nachricht nicht an', async () => {

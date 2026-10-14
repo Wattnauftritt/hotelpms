@@ -137,6 +137,26 @@ export const useOutbox = (propertyId: number, aktiv: boolean) =>
     staleTime: 15_000
   })
 
+/** Versandnachweis einer Rechnung (Migration 0170). */
+export interface Versandnachweis {
+  invoiceRef: string
+  documentSha256: string | null
+  mails: Array<{
+    messageRef: string; status: 'pending' | 'sent' | 'failed' | 'canceled'
+    toEmail: string | null; toName: string | null; subject: string
+    requestedAt: string; sentAt: string | null; attempts: number
+    providerMessageId: string | null; attachmentSha256: string | null
+    sameDocument: boolean; requestedBy: string | null
+  }>
+}
+
+export const useInvoiceMails = (invoiceRef: string) =>
+  useQuery<Versandnachweis>({
+    queryKey: ['invoiceMails', invoiceRef],
+    queryFn: () => api.get(`/v1/invoices/${invoiceRef}/mails`),
+    staleTime: 15_000
+  })
+
 export function useCancelMail(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({

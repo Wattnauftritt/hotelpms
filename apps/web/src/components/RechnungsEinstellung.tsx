@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react'
-import { useInvoiceSettings, useSaveInvoiceSettings, type RechnungsKontakt,
+import { useInvoiceSettings, useSaveInvoiceSettings, useInvoiceLogo, type RechnungsKontakt,
          type Rechnungseinstellung } from '../lib/queries/settings.js'
 import { useT } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -75,9 +75,57 @@ export function RechnungsEinstellung({ propertyId }: { propertyId: number }): JS
           {t('common.save')}
         </button>
       )}
+      <LogoFeld propertyId={propertyId} logo={q.data.logo} />
       <KontaktFelder daten={q.data} gesperrt={!online || speichern.isPending}
                      speichern={contact => speichern.mutate({ contact })} />
     </div>
+  )
+}
+
+/**
+ * Logo auf der Rechnung (Migration 0170), oben rechts auf dem Beleg. Nur
+ * PNG und JPEG; die Schnittstelle prueft die Art an den Bytes. Wirkt auf
+ * jede Rechnung, die danach gezeichnet wird -- ein ausgestellter Beleg
+ * behaelt sein Logo.
+ */
+function LogoFeld({ propertyId, logo }: {
+  propertyId: number; logo: Rechnungseinstellung['logo']
+}): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const setzen = useInvoiceLogo(propertyId)
+  return (
+    <section className="space-y-2 border-t border-neutral-200 pt-4">
+      <h3 className="text-sm font-medium">{t('invoiceSettings.logo')}</h3>
+      <p className="text-xs text-neutral-600">{t('invoiceSettings.logoHint')}</p>
+      {logo !== null && (
+        <img src={`/v1/properties/${propertyId}/invoice-logo?v=${encodeURIComponent(logo.updatedAt)}`}
+             alt={t('invoiceSettings.logo')}
+             className="max-h-12 max-w-40 border border-neutral-200 rounded-sm bg-white p-1" />
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <input type="file" accept="image/png,image/jpeg" disabled={!online || setzen.isPending}
+               aria-label={t('invoiceSettings.logo')}
+               onChange={e => {
+                 const datei = e.target.files?.[0]
+                 e.target.value = ''
+                 if (datei === undefined) return
+                 const r = new FileReader()
+                 r.onload = () => setzen.mutate(String(r.result))
+                 r.readAsDataURL(datei)
+               }}
+               className="text-sm" />
+        {logo !== null && (
+          <button type="button" disabled={!online || setzen.isPending}
+                  onClick={() => setzen.mutate(null)}
+                  className="text-xs px-2 py-1 rounded-sm border border-neutral-300
+                             hover:bg-neutral-50 disabled:opacity-40">
+            {t('invoiceSettings.logoRemove')}
+          </button>
+        )}
+      </div>
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </section>
   )
 }
 

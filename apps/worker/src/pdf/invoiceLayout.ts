@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
+import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { ciiTotals, formatCent, paymentTermsText, type CiiInvoice,
          type CiiLine } from '@hotelpms/domain'
@@ -48,7 +48,13 @@ export interface InvoiceLayoutInput {
   /** Ueberschrift statt der zur Art: eine Korrektur, die nur einen Teil
    *  aufhebt, ist keine Stornorechnung (0162). */
   title?: string
+  /** Logo des Hauses (0170), oben rechts. PNG oder JPEG. */
+  logo?: { mime: string; bytes: Uint8Array } | null
 }
+
+/** Hoechstens so gross, damit es neben dem Namen steht und nicht ueber
+ *  dem Empfaengerblock: der muss ins Fenster des Umschlags passen. */
+const LOGO = { breite: 160, hoehe: 48 }
 
 const TITEL: Record<CiiInvoice['kind'], string> = {
   final: 'Rechnung',
@@ -129,7 +135,12 @@ function linie(z: Zeichner, y: number): void {
   })
 }
 
-function kopf(z: Zeichner, inv: CiiInvoice, titel: string): void {
+function kopf(z: Zeichner, inv: CiiInvoice, titel: string, logo: PDFImage | null): void {
+  if (logo !== null) {
+    const m = logo.scaleToFit(LOGO.breite, LOGO.hoehe)
+    z.seite.drawImage(logo, { x: RECHTS - m.width, y: z.y + 8 - m.height,
+                              width: m.width, height: m.height })
+  }
   const s = inv.seller
   text(z, s.name, RAND, z.y - 4, { size: 14, bold: true })
   const anschrift = [s.addressLine1, [s.postalCode, s.city].filter(Boolean).join(' ')]
@@ -360,6 +371,23 @@ function fusszeilen(doc: PDFDocument, schrift: Schriften, input: InvoiceLayoutIn
  * Zeichnet das Blatt und gibt das noch gewoehnliche PDF zurueck.
  * Aus ihm macht `finalizePdfA3` den Beleg.
  */
+/**
+ * Ein Logo, das sich nicht einbetten laesst, kostet die Rechnung nicht den
+ * Beleg: sie erscheint dann ohne. Die Schnittstelle prueft die Art an den
+ * Bytes, ein beschaedigtes Bild faellt erst hier auf.
+ */
+async function logoEinbetten(
+  doc: PDFDocument, logo: InvoiceLayoutInput['logo']
+): Promise<PDFImage | null> {
+  if (logo === undefined || logo === null) return null
+  try {
+    return logo.mime === 'image/png' ? await doc.embedPng(logo.bytes)
+      : await doc.embedJpg(logo.bytes)
+  } catch {
+    return null
+  }
+}
+
 export async function renderInvoicePdf(input: InvoiceLayoutInput): Promise<PDFDocument> {
   const { regular, bold } = await loadAssets()
   const doc = await PDFDocument.create()
@@ -374,7 +402,7 @@ export async function renderInvoicePdf(input: InvoiceLayoutInput): Promise<PDFDo
   const z: Zeichner = {
     doc, schrift, seite: doc.addPage([A4.width, A4.height]), y: A4.height - RAND
   }
-  kopf(z, input.invoice, input.title ?? TITEL[input.invoice.kind])
+  kopf(z, input.invoice, input.title ?? TITEL[input.invoice.kind], await logoEinbetten(doc, input.logo))
   positionen(z, input.invoice)
   summen(z, input.invoice)
   hinweise(z, input)

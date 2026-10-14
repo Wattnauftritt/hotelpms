@@ -209,7 +209,8 @@ async function vermerkeFehler(
  */
 async function load(
   client: PoolClient, invoiceId: number
-): Promise<{ invoice: CiiInvoice; row: InvoiceRow } | null> {
+): Promise<{ invoice: CiiInvoice; row: InvoiceRow
+             logo: { mime: string; bytes: Uint8Array } | null } | null> {
   const i = await client.query<InvoiceRow>(
     `SELECT i.id, i.public_ref, i.number, i.issued_on::text, i.kind, i.currency,
             i.service_from::text, i.service_to::text,
@@ -293,7 +294,13 @@ async function load(
       : [`Diese Stornorechnung hebt die Rechnung ${row.preceding_number} vom `
           + `${datumDe(row.preceding_issued_on!)} vollstaendig auf.`]
   }
-  return { invoice, row }
+  // Das Logo von heute, nicht aus der Momentaufnahme: es ist Gestaltung,
+  // keine Angabe der Rechnung. Ein einmal gezeichneter Beleg behaelt das
+  // Logo, mit dem er gezeichnet wurde (0170).
+  const logo = await client.query<{ mime: string; bytes: Buffer }>(
+    `SELECT l.mime, l.bytes FROM property_invoice_logo l
+      JOIN invoice i ON i.property_id = l.property_id WHERE i.id = $1`, [invoiceId])
+  return { invoice, row, logo: logo.rows[0] ?? null }
 }
 
 interface Gezeichnet {
@@ -310,7 +317,8 @@ interface Gezeichnet {
  * Empfaenger ist nach § 33 UStDV gueltig und nach EN 16931 kein Beleg.
  */
 async function zeichne(
-  geladen: { invoice: CiiInvoice; row: InvoiceRow }, now: Date
+  geladen: { invoice: CiiInvoice; row: InvoiceRow
+             logo?: { mime: string; bytes: Uint8Array } | null }, now: Date
 ): Promise<Gezeichnet> {
   const { invoice, row } = geladen
 
@@ -332,6 +340,7 @@ async function zeichne(
   const doc = await renderInvoicePdf({
     invoice,
     publicRef: row.public_ref,
+    logo: geladen.logo ?? null,
     ...(row.partial_reversal ? { title: 'Rechnungskorrektur' } : {}),
     missingXmlNote: xml === null
       ? 'Dieser Beleg traegt keine elektronische Rechnung nach EN 16931: '

@@ -1,11 +1,11 @@
 import { useEffect, useState, type JSX } from 'react'
 import type { InvoiceListItem } from '@hotelpms/contracts'
-import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail,
+import { useInvoices, useBeleg, useSendInvoice, useOutbox, useCancelMail, useInvoiceMails,
          useRecordInvoicePayment, useCancelInvoice, istBelegInArbeit, zeitraum,
          MAX_RECHNUNGSTAGE } from '../lib/queries/billing.js'
 import { usePaymentMethods } from '../lib/queries.js'
 import { ApiError } from '../lib/api.js'
-import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
+import { useT, useLocale, formatMoney, formatDate, intlTag } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
@@ -143,7 +143,7 @@ function Versand(
   )
 }
 
-type Aufgeklappt = 'beleg' | 'versand' | 'zahlung'
+type Aufgeklappt = 'beleg' | 'versand' | 'zahlung' | 'nachweis'
 
 /**
  * "Zahlung eingegangen": eine Firma ueberweist auf Rechnung, Tage spaeter.
@@ -259,6 +259,28 @@ function Zeile(
           </span>
         )}
         <div className="grow" />
+        {/* Ohne Aufklappen: wer zehn Rechnungen drucken oder ablegen will,
+            soll nicht zehnmal das Blatt laden. Drucken oeffnet den Beleg im
+            eigenen Fenster, dort druckt der Browser ihn, auch auf iOS. */}
+        {r.documentReady && (
+          <>
+            <a href={`/v1/invoices/${r.invoiceRef}/pdf`}
+               className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
+              {t('inv.pdf')}
+            </a>
+            <a href={`/v1/invoices/${r.invoiceRef}/pdf?inline=1`} target="_blank"
+               rel="noreferrer"
+               className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
+              {t('inv.print')}
+            </a>
+          </>
+        )}
+        {r.mailStatus !== null && (
+          <button onClick={() => onOffen(offen === 'nachweis' ? null : 'nachweis')}
+                  className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
+            {t('inv.proof')}
+          </button>
+        )}
         <button onClick={() => onOffen(offen === 'beleg' ? null : 'beleg')}
                 className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
           {offen === 'beleg' ? t('inv.hide') : t('inv.show')}
@@ -299,6 +321,11 @@ function Zeile(
           <ZahlungEingegangen r={r} propertyId={propertyId} onFertig={() => onOffen(null)} />
         </div>
       )}
+      {offen === 'nachweis' && (
+        <div className="mt-3 border-t border-neutral-200 pt-3">
+          <Nachweis invoiceRef={r.invoiceRef} />
+        </div>
+      )}
       {offen === 'versand' && (
         <div className="mt-3 border-t border-neutral-200 pt-3">
           <Versand invoiceRef={r.invoiceRef} propertyId={propertyId} />
@@ -306,6 +333,67 @@ function Zeile(
       )}
     </li>
   )
+}
+
+/**
+ * Versandnachweis (Migration 0170): an wen, wann, mit welcher Kennung des
+ * Anbieters und ob der Anhang die Fassung im Archiv ist. „Versandt" heisst
+ * vom Anbieter angenommen; mehr belegt ein Mailversand nicht, und der Satz
+ * darunter sagt es, damit niemand „zugestellt" daraus liest.
+ */
+function Nachweis({ invoiceRef }: { invoiceRef: string }): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const q = useInvoiceMails(invoiceRef)
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return <Laedt />
+  return (
+    <div className="space-y-2 text-sm">
+      {q.data.mails.map(m => (
+        <dl key={m.messageRef}
+            className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-0.5 rounded-sm
+                       border border-neutral-200 p-2">
+          <dt className="text-neutral-500">{t('inv.proof.status')}</dt>
+          <dd>{t(MAIL_LABEL[m.status] as 'inv.mail.sent' ?? 'inv.mail.pending')}</dd>
+          <dt className="text-neutral-500">{t('inv.proof.to')}</dt>
+          <dd className="break-all">
+            {m.toEmail ?? <span className="text-neutral-400">{t('inv.proof.removed')}</span>}
+            {m.toName !== null && <span className="text-neutral-500"> ({m.toName})</span>}
+          </dd>
+          <dt className="text-neutral-500">{t('inv.proof.subject')}</dt>
+          <dd>{m.subject}</dd>
+          <dt className="text-neutral-500">{t('inv.proof.requested')}</dt>
+          <dd>{zeitpunkt(m.requestedAt, locale)}
+            {m.requestedBy !== null && <span className="text-neutral-500"> · {m.requestedBy}</span>}
+          </dd>
+          {m.sentAt !== null && <>
+            <dt className="text-neutral-500">{t('inv.proof.sent')}</dt>
+            <dd>{zeitpunkt(m.sentAt, locale)}</dd>
+          </>}
+          {m.providerMessageId !== null && <>
+            <dt className="text-neutral-500">{t('inv.proof.providerId')}</dt>
+            <dd className="font-mono text-xs break-all">{m.providerMessageId}</dd>
+          </>}
+          {m.attachmentSha256 !== null && <>
+            <dt className="text-neutral-500">{t('inv.proof.document')}</dt>
+            <dd className={m.sameDocument ? 'text-emerald-800' : 'text-amber-800'}>
+              {m.sameDocument ? `✓ ${t('inv.proof.sameDocument')}`
+                : t('inv.proof.otherDocument')}
+              <span className="block font-mono text-xs text-neutral-500 break-all">
+                SHA-256 {m.attachmentSha256}
+              </span>
+            </dd>
+          </>}
+        </dl>
+      ))}
+      <p className="text-xs text-neutral-500">{t('inv.proof.hint')}</p>
+    </div>
+  )
+}
+
+function zeitpunkt(iso: string, locale: ReturnType<typeof useLocale>): string {
+  return new Intl.DateTimeFormat(intlTag(locale),
+    { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso))
 }
 
 function Postausgang({ propertyId }: { propertyId: number }): JSX.Element {
