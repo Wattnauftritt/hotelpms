@@ -47,6 +47,8 @@ export const ERFASSUNG: Array<[Erfassung, TextKey]> = [
 ]
 
 const FELD = 'border border-neutral-300 rounded-sm px-2 py-1 text-sm w-full'
+/** Pflichtfeld nach dem Buchungsversuch leer; mit `!`, weil FELD die Randfarbe schon setzt. */
+export const FEHLT = 'border-red-600!'
 
 function Kachel({ titel, cent, betont }: { titel: string; cent: number; betont?: boolean }): JSX.Element {
   const locale = useLocale()
@@ -146,12 +148,17 @@ export function useErfassung({ propertyId, heute, fruehstueckCent, speisenBp }: 
   const [art, setArt] = useState<Erfassung>('guest')
   const [datum, setDatum] = useState(heute)
   const [betrag, setBetrag] = useState('')
-  const [anzahl, setAnzahl] = useState('0')
+  // Leer statt 0: in einer vorbelegten 0 landete der Cursor oft davor, und
+  // aus 2 Fruehstuecken wurden 20. Leer gelassen wird nicht still zu 0,
+  // sondern beim Buchen angemahnt (siehe `fehlt`).
+  const [anzahl, setAnzahl] = useState('')
   const [kurtaxe, setKurtaxe] = useState('')
   const [satz, setSatz] = useState(1900)
   const [gast, setGast] = useState('')
   const [text, setText] = useState('')
   const [belege, setBelege] = useState<NeuerBeleg[]>([])
+  const [geprueft, setGeprueft] = useState(false)
+  const [gebucht, setGebucht] = useState<number | null>(null)
 
   const cent = centAusEingabe(betrag)
   const fruehstuecke = Number.parseInt(anzahl, 10)
@@ -160,24 +167,38 @@ export function useErfassung({ propertyId, heute, fruehstueckCent, speisenBp }: 
     cityTaxCent: centAusEingabe(kurtaxe) ?? 0, breakfastPriceCent: fruehstueckCent,
     breakfastFoodShareBp: speisenBp }), [art, cent, fruehstuecke, kurtaxe, fruehstueckCent, speisenBp])
 
+  // Erst nach dem ersten Buchungsversuch rot, nicht schon beim Oeffnen.
+  const fehlt = {
+    fruehstuecke: geprueft && art === 'guest' && !Number.isFinite(fruehstuecke),
+    kurtaxe: geprueft && art === 'guest' && centAusEingabe(kurtaxe) === null
+  }
+
+  // Datum und Art bleiben stehen: wer abends die Gaeste eines Tages
+  // nachtraegt, bucht mehrere hintereinander auf denselben Tag.
   const leeren = () => {
-    setBetrag(''); setAnzahl('0'); setKurtaxe(''); setGast(''); setText(''); setBelege([])
+    setBetrag(''); setAnzahl(''); setKurtaxe(''); setGast(''); setText(''); setBelege([])
+    setGeprueft(false)
   }
   const speichern = (danach?: () => void) => {
+    if (art === 'guest' && (!Number.isFinite(fruehstuecke) || centAusEingabe(kurtaxe) === null)) {
+      setGeprueft(true)
+      return
+    }
     const gemeinsam = { businessDate: datum, guestName: gast.trim() || undefined,
                         text: text.trim() || undefined, receipts: belege }
     const b: Neubuchung = art === 'guest'
-      ? { kind: 'guest', ...gemeinsam, totalCent: cent ?? 0,
-          breakfasts: Number.isFinite(fruehstuecke) ? fruehstuecke : 0,
+      ? { kind: 'guest', ...gemeinsam, totalCent: cent ?? 0, breakfasts: fruehstuecke,
           cityTaxCent: centAusEingabe(kurtaxe) ?? 0 }
       : { kind: art, ...gemeinsam, amountCent: cent ?? 0,
           ...(art === 'expense' || art === 'other' ? { taxRateBp: satz } : {}) }
-    buchen.mutate(b, { onSuccess: () => { leeren(); danach?.() } })
+    setGebucht(null)
+    buchen.mutate(b, { onSuccess: r => { leeren(); setGebucht(r.entryNo); danach?.() } })
   }
 
   return {
     art, setArt, datum, setDatum, betrag, setBetrag, anzahl, setAnzahl, kurtaxe, setKurtaxe,
     satz, setSatz, gast, setGast, text, setText, belege, setBelege, vorschau, buchen, speichern,
+    fehlt, gebucht,
     bereit: !buchen.isPending && (art === 'guest' || !!cent)
   }
 }
@@ -189,13 +210,23 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
   const locale = useLocale()
   const {
     art, setArt, datum, setDatum, betrag, setBetrag, anzahl, setAnzahl, kurtaxe, setKurtaxe,
-    satz, setSatz, gast, setGast, text, setText, belege, setBelege, vorschau, buchen, speichern, bereit
+    satz, setSatz, gast, setGast, text, setText, belege, setBelege, vorschau, buchen, speichern, bereit,
+    fehlt, gebucht
   } = useErfassung({ propertyId, heute, fruehstueckCent, speisenBp })
+  const gastFeld = useRef<HTMLInputElement>(null)
+  const gastEingabe = (
+    <Feld label={t('cash.field.guest')} className={art === 'guest' ? 'col-span-2' : ''}>
+      <input ref={gastFeld} value={gast} maxLength={100} onChange={e => setGast(e.target.value)}
+             className={FELD} />
+    </Feld>
+  )
 
   return (
     <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <h2 className="text-sm font-medium">{t('cash.new')}</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Bei der Gastbuchung zuerst der Name: er steht auf dem Zettel obenan. */}
+        {art === 'guest' && gastEingabe}
         <Feld label={t('cash.field.kind')}>
           <select value={art} onChange={e => setArt(e.target.value as Erfassung)} className={FELD}>
             {ERFASSUNG.map(([k, key]) => <option key={k} value={k}>{t(key)}</option>)}
@@ -212,11 +243,15 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
         {art === 'guest' && <>
           <Feld label={t('cash.field.breakfasts')}>
             <input type="number" min={0} value={anzahl} onChange={e => setAnzahl(e.target.value)}
-                   className={`${FELD} text-end`} />
+                   aria-invalid={fehlt.fruehstuecke}
+                   className={`${FELD} text-end ${fehlt.fruehstuecke ? FEHLT : ''}`} />
+            {fehlt.fruehstuecke && <span className="block text-xs text-red-700 mt-1">{t('cash.field.required')}</span>}
           </Feld>
           <Feld label={t('cash.field.cityTax')}>
             <input inputMode="decimal" value={kurtaxe} onChange={e => setKurtaxe(e.target.value)}
-                   className={`${FELD} text-end tabular-nums`} placeholder="0,00" />
+                   aria-invalid={fehlt.kurtaxe}
+                   className={`${FELD} text-end tabular-nums ${fehlt.kurtaxe ? FEHLT : ''}`} placeholder="0,00" />
+            {fehlt.kurtaxe && <span className="block text-xs text-red-700 mt-1">{t('cash.field.required')}</span>}
           </Feld>
         </>}
         {(art === 'expense' || art === 'other') && (
@@ -226,9 +261,7 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
             </select>
           </Feld>
         )}
-        <Feld label={t('cash.field.guest')}>
-          <input value={gast} maxLength={100} onChange={e => setGast(e.target.value)} className={FELD} />
-        </Feld>
+        {art !== 'guest' && gastEingabe}
         <Feld label={t('cash.field.text')} className="col-span-2">
           <input value={text} maxLength={255} onChange={e => setText(e.target.value)} className={FELD} />
         </Feld>
@@ -245,9 +278,13 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
       {art === 'other' && <div className="text-xs text-neutral-500">{t('cash.otherHint')}</div>}
       <Belegwahl belege={belege} onBelege={setBelege} />
       {buchen.isError && <Fehler error={buchen.error} />}
-      <button className={KNOPF} disabled={!bereit} onClick={() => speichern()}>
-        {t('cash.save')}
-      </button>
+      <div className="flex items-center gap-3">
+        <button className={KNOPF} disabled={!bereit} onClick={() => speichern(() => gastFeld.current?.focus())}>
+          {t('cash.save')}
+        </button>
+        {gebucht !== null && <span role="status" className="text-sm text-green-800">
+          {t('cash.booked', { n: gebucht })}</span>}
+      </div>
     </section>
   )
 }

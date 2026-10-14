@@ -11,7 +11,7 @@ import {
 import { belegVorbereiten } from '../../lib/kassenbeleg.js'
 import { kassenbloecke, type Kassenblock } from '../../lib/kassengruppen.js'
 import {
-  ART, ERFASSUNG, Belegwahl, useErfassung, Stornieren, Loeschen, DatevExport, Einstellung
+  ART, ERFASSUNG, FEHLT, Belegwahl, useErfassung, Stornieren, Loeschen, DatevExport, Einstellung
 } from '../../routes/Kassenbuch.tsx'
 
 /**
@@ -356,8 +356,12 @@ function Wahl<T extends string | number>({ werte, wert, onWert, spalten }: {
 
 /**
  * Neue Buchung als ganze Seite. Reihenfolge nach dem, was man in der Hand
- * hat: erst die Art, dann den Betrag, dann den Beleg; Datum und Text sind
- * meist schon richtig oder leer und stehen darunter.
+ * hat: bei der Gastbuchung zuerst der Name, dann die Art, der Betrag und der
+ * Beleg; Datum und Text sind meist schon richtig oder leer und stehen darunter.
+ *
+ * Nach dem Buchen bleibt die Seite offen und das Datum stehen: nachgetragen
+ * werden meist mehrere Gaeste desselben Tages hintereinander, und jedes Mal
+ * neu oeffnen und das Datum neu waehlen kostete mehr als die Buchung selbst.
  */
 function NeueBuchung({ propertyId, m, onClose }: {
   propertyId: number; m: Kassenmonat; onClose: () => void
@@ -367,17 +371,35 @@ function NeueBuchung({ propertyId, m, onClose }: {
   const f = useErfassung({ propertyId, heute: m.today, fruehstueckCent: m.breakfastPriceCent,
                            speisenBp: m.breakfastFoodShareBp })
   const schliessen = useZurueckSchliesst(onClose)
+  const gastFeld = useRef<HTMLInputElement>(null)
+  const kopf = useRef<HTMLDivElement>(null)
+  const weiter = (): void => {
+    kopf.current?.scrollIntoView({ block: 'start' })
+    if (f.art === 'guest') gastFeld.current?.focus()
+  }
+  const gastEingabe = (
+    <Feld label={t('cash.field.guest')}>
+      <input ref={gastFeld} value={f.gast} maxLength={100} onChange={ev => f.setGast(ev.target.value)}
+             className={FELD_GROSS} />
+    </Feld>
+  )
   return (
     <Vollbild titel={t('cash.new')} onClose={schliessen}
               fuss={<>
                 {f.buchen.isError && <div className="mb-2"><Fehler error={f.buchen.error} /></div>}
-                <button type="button" disabled={!f.bereit} onClick={() => f.speichern(schliessen)}
+                {f.gebucht !== null && !f.buchen.isError && (
+                  <div role="status" className="mb-2 text-center text-sm text-green-800">
+                    {t('cash.booked', { n: f.gebucht })}
+                  </div>
+                )}
+                <button type="button" disabled={!f.bereit} onClick={() => f.speichern(weiter)}
                         className="h-12 w-full rounded-md bg-neutral-900 text-base font-medium text-white
                                    disabled:bg-neutral-300">
                   {t('cash.save')}
                 </button>
               </>}>
-      <div className="space-y-5">
+      <div ref={kopf} className="space-y-5">
+        {f.art === 'guest' && gastEingabe}
         <Gruppe label={t('cash.field.kind')}>
           <Wahl werte={ERFASSUNG.map(([k, key]) => [k, t(key)] as const)} wert={f.art}
                 onWert={f.setArt} spalten="grid-cols-2" />
@@ -400,11 +422,15 @@ function NeueBuchung({ propertyId, m, onClose }: {
           <div className="grid grid-cols-2 gap-3">
             <Feld label={t('cash.field.breakfasts')}>
               <input inputMode="numeric" value={f.anzahl} onChange={ev => f.setAnzahl(ev.target.value)}
-                     className={`${FELD_GROSS} text-end`} />
+                     aria-invalid={f.fehlt.fruehstuecke}
+                     className={`${FELD_GROSS} text-end ${f.fehlt.fruehstuecke ? FEHLT : ''}`} />
+              {f.fehlt.fruehstuecke && <span className="mt-1 block text-sm text-red-700">{t('cash.field.required')}</span>}
             </Feld>
             <Feld label={t('cash.field.cityTax')}>
               <input inputMode="decimal" value={f.kurtaxe} onChange={ev => f.setKurtaxe(ev.target.value)}
-                     placeholder="0,00" className={`${FELD_GROSS} text-end tabular-nums`} />
+                     aria-invalid={f.fehlt.kurtaxe} placeholder="0,00"
+                     className={`${FELD_GROSS} text-end tabular-nums ${f.fehlt.kurtaxe ? FEHLT : ''}`} />
+              {f.fehlt.kurtaxe && <span className="mt-1 block text-sm text-red-700">{t('cash.field.required')}</span>}
             </Feld>
           </div>
         )}
@@ -433,10 +459,7 @@ function NeueBuchung({ propertyId, m, onClose }: {
           <input type="date" value={f.datum} max={m.today} onChange={ev => f.setDatum(ev.target.value)}
                  className={FELD_GROSS} />
         </Feld>
-        <Feld label={t('cash.field.guest')}>
-          <input value={f.gast} maxLength={100} onChange={ev => f.setGast(ev.target.value)}
-                 className={FELD_GROSS} />
-        </Feld>
+        {f.art !== 'guest' && gastEingabe}
         <Feld label={t('cash.field.text')}>
           <input value={f.text} maxLength={255} onChange={ev => f.setText(ev.target.value)}
                  className={FELD_GROSS} />
