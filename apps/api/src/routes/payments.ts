@@ -9,6 +9,7 @@ import { verifyStripeSignature, parseStripeEvent,
          type StripeAdapter } from '../platform/payments/stripe.js'
 import { stripeZugangQuelle } from '../platform/payments/zugang.js'
 import { paymentLinkRoutes } from './paymentLinks.js'
+import { zuOffenerRechnung } from './billing.js'
 import { paymentAccountRoutes } from './paymentAccount.js'
 import { paymentProviderRoutes } from './paymentProvider.js'
 
@@ -93,10 +94,10 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
         const intent = await client.query<{
           id: number; property_id: number; folio_id: number
           amount_cent: number; status: string; deposit_request_id: number | null
-          provider_account: string | null
+          provider_account: string | null; payment_link_id: number | null
         }>(
           `SELECT id, property_id, folio_id, amount_cent, status, deposit_request_id,
-                  provider_account
+                  provider_account, payment_link_id
              FROM payment_intent
             WHERE provider = 'stripe' AND provider_reference = $1 FOR UPDATE`,
           [event.providerReference])
@@ -183,6 +184,29 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
 
         await client.query(`UPDATE payment_intent SET settlement_id = $2 WHERE id = $1`,
           [row.id, settlement.rows[0]!.id])
+
+        /*
+         * Wem die Zahlung gilt (0172). Ein Link, der mit einer Rechnung
+         * verschickt wurde, zahlt auf genau diese; jeder andere Link nach
+         * der Regel des Tresens auf die aelteste offene Rechnung des Folios.
+         * Ohne Zuordnung stuende die Rechnung in der Liste weiter als offen,
+         * obwohl der Saldo null ist. Eine Anzahlung geht keiner Rechnung
+         * zu: sie wird beim Festschreiben verrechnet.
+         */
+        if (row.deposit_request_id === null) {
+          const link = row.payment_link_id === null ? undefined
+            : (await client.query<{ invoice_id: number | null }>(
+                `SELECT invoice_id FROM payment_link WHERE id = $1`,
+                [row.payment_link_id])).rows[0]
+          if (link?.invoice_id != null) {
+            await client.query(
+              `UPDATE settlement SET invoice_id = $2 WHERE id = $1 AND invoice_id IS NULL`,
+              [settlement.rows[0]!.id, link.invoice_id])
+          } else {
+            await zuOffenerRechnung(client, row.folio_id, settlement.rows[0]!.id,
+              Number(row.amount_cent))
+          }
+        }
 
         /*
          * Zahlt der Link auf eine Anzahlungsanforderung, gehoert der Eingang

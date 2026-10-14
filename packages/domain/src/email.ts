@@ -181,6 +181,14 @@ export interface InvoiceEmailData {
   dueDate?: string | null
   /** Offener Betrag. 0 heisst beglichen, und dann steht keine Zahlungsbitte drin. */
   openCent: number
+  /**
+   * Bankverbindung fuer die Ueberweisung. Aus der Momentaufnahme der
+   * Rechnung, nicht aus den aktuellen Einstellungen: zieht das Haus zur
+   * anderen Bank um, gilt fuer die alte Rechnung das, was darauf steht.
+   */
+  transfer?: { payee: string; iban: string; bic: string | null; bankName: string | null } | null
+  /** Zahlungslink ueber den offenen Betrag, fertig mit Token. */
+  paymentLink?: { url: string; validUntil: string } | null
 }
 
 /** Zahlungserinnerung (Stufe 1) oder Mahnung (ab Stufe 2) zu einer Rechnung. */
@@ -290,6 +298,9 @@ interface Gastposttexte {
   rechnungOffenOhneFrist: string
   rechnungBeglichen: string
   rechnungDank: string
+  rechnungUeberweisung: string
+  rechnungEmpfaenger: string
+  rechnungVerwendungszweck: string
 
   // Zahlungserinnerung und Mahnung (Pruefung Rechnungssystem 13.10.2026)
   erinnerungBetreff: string
@@ -343,6 +354,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungDank: 'Vielen Dank für Ihren Aufenthalt — wir würden uns freuen, '
       + 'Sie wieder begrüßen zu dürfen.',
 
+    rechnungUeberweisung: 'Bitte überweisen Sie den offenen Betrag auf folgendes Konto:',
+    rechnungEmpfaenger: 'Empfänger: {name}',
+    rechnungVerwendungszweck: 'Verwendungszweck: {nummer}',
     erinnerungBetreff: 'Zahlungserinnerung zu Rechnung {nummer} — {haus}',
     mahnungBetreff: 'Mahnung zu Rechnung {nummer} — {haus}',
     mahnungOffen: 'zu unserer Rechnung {nummer} vom {datum} ist noch ein Betrag von {offen} offen.',
@@ -406,6 +420,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'This copy is for your records.',
     rechnungDank: 'Thank you for your stay — we would be glad to welcome you again.',
 
+    rechnungUeberweisung: 'Please transfer the outstanding amount to the following account:',
+    rechnungEmpfaenger: 'Payee: {name}',
+    rechnungVerwendungszweck: 'Reference: {nummer}',
     erinnerungBetreff: 'Payment reminder for invoice {nummer} — {haus}',
     mahnungBetreff: 'Overdue notice for invoice {nummer} — {haus}',
     mahnungOffen: 'an amount of {offen} is still outstanding on our invoice {nummer} dated {datum}.',
@@ -467,6 +484,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'Dit exemplaar is voor uw administratie.',
     rechnungDank: 'Hartelijk dank voor uw verblijf — wij verwelkomen u graag opnieuw.',
 
+    rechnungUeberweisung: 'Gelieve het openstaande bedrag over te maken naar de volgende rekening:',
+    rechnungEmpfaenger: 'Begunstigde: {name}',
+    rechnungVerwendungszweck: 'Omschrijving: {nummer}',
     erinnerungBetreff: 'Betalingsherinnering voor factuur {nummer} — {haus}',
     mahnungBetreff: 'Aanmaning voor factuur {nummer} — {haus}',
     mahnungOffen: 'van onze factuur {nummer} van {datum} staat nog een bedrag van {offen} open.',
@@ -540,6 +560,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'Ten egzemplarz jest dla Państwa dokumentacji.',
     rechnungDank: 'Dziękujemy za pobyt — będzie nam miło gościć Państwa ponownie.',
 
+    rechnungUeberweisung: 'Prosimy o przelanie pozostałej kwoty na następujące konto:',
+    rechnungEmpfaenger: 'Odbiorca: {name}',
+    rechnungVerwendungszweck: 'Tytuł przelewu: {nummer}',
     erinnerungBetreff: 'Przypomnienie o płatności faktury {nummer} — {haus}',
     mahnungBetreff: 'Wezwanie do zapłaty faktury {nummer} — {haus}',
     mahnungOffen: 'z naszej faktury {nummer} z dnia {datum} pozostaje do zapłaty kwota {offen}.',
@@ -598,6 +621,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Heraf udestår {offen}.',
     rechnungBeglichen: 'Fakturaen er betalt fuldt ud. Dette eksemplar er til dine papirer.',
     rechnungDank: 'Mange tak for dit ophold — vi glæder os til at byde dig velkommen igen.',
+    rechnungUeberweisung: 'Overfør venligst det udestående beløb til følgende konto:',
+    rechnungEmpfaenger: 'Modtager: {name}',
+    rechnungVerwendungszweck: 'Reference: {nummer}',
     erinnerungBetreff: 'Betalingspåmindelse for faktura {nummer} — {haus}',
     mahnungBetreff: 'Rykker for faktura {nummer} — {haus}',
     mahnungOffen: 'på vores faktura {nummer} af {datum} står der stadig {offen} åbent.',
@@ -639,6 +665,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Ett belopp på {offen} återstår att betala.',
     rechnungBeglichen: 'Fakturan är betald i sin helhet. Denna kopia är för dina handlingar.',
     rechnungDank: 'Tack för din vistelse – vi välkomnar dig gärna igen.',
+    rechnungUeberweisung: 'Vänligen överför det utestående beloppet till följande konto:',
+    rechnungEmpfaenger: 'Mottagare: {name}',
+    rechnungVerwendungszweck: 'Referens: {nummer}',
     erinnerungBetreff: 'Betalningspåminnelse för faktura {nummer} — {haus}',
     mahnungBetreff: 'Inkassovarning för faktura {nummer} — {haus}',
     mahnungOffen: 'på vår faktura {nummer} från {datum} återstår fortfarande {offen} att betala.',
@@ -680,6 +709,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Av dette gjenstår {offen}.',
     rechnungBeglichen: 'Fakturaen er betalt i sin helhet. Dette eksemplaret er til ditt eget arkiv.',
     rechnungDank: 'Tusen takk for oppholdet — vi ser frem til å ønske deg velkommen igjen.',
+    rechnungUeberweisung: 'Vennligst overfør det utestående beløpet til følgende konto:',
+    rechnungEmpfaenger: 'Mottaker: {name}',
+    rechnungVerwendungszweck: 'Referanse: {nummer}',
     erinnerungBetreff: 'Betalingspåminnelse for faktura {nummer} — {haus}',
     mahnungBetreff: 'Purring på faktura {nummer} — {haus}',
     mahnungOffen: 'på vår faktura {nummer} datert {datum} står det fortsatt {offen} utestående.',
@@ -721,6 +753,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Il reste {offen} à régler.',
     rechnungBeglichen: 'La facture est entièrement réglée. Cet exemplaire est destiné à vos archives.',
     rechnungDank: 'Merci pour votre séjour — nous serions ravis de vous accueillir à nouveau.',
+    rechnungUeberweisung: 'Merci de virer le montant restant dû sur le compte suivant :',
+    rechnungEmpfaenger: 'Bénéficiaire : {name}',
+    rechnungVerwendungszweck: 'Référence : {nummer}',
     erinnerungBetreff: 'Rappel de paiement pour la facture {nummer} — {haus}',
     mahnungBetreff: 'Relance pour la facture {nummer} — {haus}',
     mahnungOffen: 'un montant de {offen} reste dû sur notre facture {nummer} du {datum}.',
@@ -762,6 +797,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Resta da pagare un importo di {offen}.',
     rechnungBeglichen: 'La fattura è stata saldata per intero. Questa copia è per i Suoi archivi.',
     rechnungDank: 'Grazie per il Suo soggiorno — saremo lieti di accoglierLa di nuovo.',
+    rechnungUeberweisung: 'Vi preghiamo di bonificare l’importo residuo sul seguente conto:',
+    rechnungEmpfaenger: 'Beneficiario: {name}',
+    rechnungVerwendungszweck: 'Causale: {nummer}',
     erinnerungBetreff: 'Promemoria di pagamento per la fattura {nummer} — {haus}',
     mahnungBetreff: 'Sollecito per la fattura {nummer} — {haus}',
     mahnungOffen: 'sulla nostra fattura {nummer} del {datum} risulta ancora aperto un importo di {offen}.',
@@ -803,6 +841,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'De ese importe quedan pendientes {offen}.',
     rechnungBeglichen: 'La factura está pagada en su totalidad. Este ejemplar es para su archivo.',
     rechnungDank: 'Muchas gracias por su estancia; será un placer volver a recibirle.',
+    rechnungUeberweisung: 'Le rogamos que transfiera el importe pendiente a la siguiente cuenta:',
+    rechnungEmpfaenger: 'Beneficiario: {name}',
+    rechnungVerwendungszweck: 'Concepto: {nummer}',
     erinnerungBetreff: 'Recordatorio de pago de la factura {nummer} — {haus}',
     mahnungBetreff: 'Requerimiento de pago de la factura {nummer} — {haus}',
     mahnungOffen: 'de nuestra factura {nummer} del {datum} queda pendiente un importe de {offen}.',
@@ -844,6 +885,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Bunun {offen} tutarındaki kısmı henüz ödenmemiştir.',
     rechnungBeglichen: 'Fatura tamamen ödenmiştir. Bu nüsha kayıtlarınız içindir.',
     rechnungDank: 'Konaklamanız için çok teşekkür ederiz — sizi yeniden ağırlamaktan mutluluk duyarız.',
+    rechnungUeberweisung: 'Lütfen kalan tutarı aşağıdaki hesaba havale edin:',
+    rechnungEmpfaenger: 'Alıcı: {name}',
+    rechnungVerwendungszweck: 'Açıklama: {nummer}',
     erinnerungBetreff: '{nummer} numaralı fatura için ödeme hatırlatması — {haus}',
     mahnungBetreff: '{nummer} numaralı fatura için ihtar — {haus}',
     mahnungOffen: '{datum} tarihli {nummer} numaralı faturamızdan hâlâ {offen} tutarında ödeme açık.',
@@ -885,6 +929,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Из них к оплате остаётся {offen}.',
     rechnungBeglichen: 'Счёт полностью оплачен. Этот экземпляр — для Ваших документов.',
     rechnungDank: 'Благодарим Вас за пребывание — будем рады снова видеть Вас у нас.',
+    rechnungUeberweisung: 'Просим перевести оставшуюся сумму на следующий счёт:',
+    rechnungEmpfaenger: 'Получатель: {name}',
+    rechnungVerwendungszweck: 'Назначение платежа: {nummer}',
     erinnerungBetreff: 'Напоминание об оплате счёта {nummer} — {haus}',
     mahnungBetreff: 'Претензия по счёту {nummer} — {haus}',
     mahnungOffen: 'по нашему счёту {nummer} от {datum} остаётся неоплаченной сумма {offen}.',
@@ -926,6 +973,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Z toho zbývá uhradit {offen}.',
     rechnungBeglichen: 'Faktura je zcela uhrazena. Tento výtisk je pro Vaši evidenci.',
     rechnungDank: 'Děkujeme za Váš pobyt — budeme rádi, když Vás opět přivítáme.',
+    rechnungUeberweisung: 'Prosíme o převod zbývající částky na následující účet:',
+    rechnungEmpfaenger: 'Příjemce: {name}',
+    rechnungVerwendungszweck: 'Účel platby: {nummer}',
     erinnerungBetreff: 'Upomínka platby faktury {nummer} — {haus}',
     mahnungBetreff: 'Upomínka k faktuře {nummer} — {haus}',
     mahnungOffen: 'z naší faktury {nummer} ze dne {datum} zůstává neuhrazeno {offen}.',
@@ -967,6 +1017,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'З неї залишається до сплати {offen}.',
     rechnungBeglichen: 'Рахунок повністю оплачено. Цей примірник — для Ваших документів.',
     rechnungDank: 'Дякуємо за Ваше перебування — будемо раді вітати Вас знову.',
+    rechnungUeberweisung: 'Просимо переказати залишок суми на такий рахунок:',
+    rechnungEmpfaenger: 'Одержувач: {name}',
+    rechnungVerwendungszweck: 'Призначення платежу: {nummer}',
     erinnerungBetreff: 'Нагадування про оплату рахунку {nummer} — {haus}',
     mahnungBetreff: 'Вимога щодо оплати рахунку {nummer} — {haus}',
     mahnungOffen: 'за нашим рахунком {nummer} від {datum} залишається неоплаченою сума {offen}.',
@@ -1008,6 +1061,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: '其中尚有 {offen} 未付。',
     rechnungBeglichen: '此发票已全额结清。本副本供您存档。',
     rechnungDank: '感谢您的光临——期待再次欢迎您。',
+    rechnungUeberweisung: '请将未付金额转账至以下账户：',
+    rechnungEmpfaenger: '收款人：{name}',
+    rechnungVerwendungszweck: '付款备注：{nummer}',
     erinnerungBetreff: '发票 {nummer} 付款提醒 — {haus}',
     mahnungBetreff: '发票 {nummer} 催款通知 — {haus}',
     mahnungOffen: '我们于 {datum} 开具的发票 {nummer} 仍有 {offen} 未付。',
@@ -1049,6 +1105,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: '이 중 미결제 금액은 {offen}입니다.',
     rechnungBeglichen: '청구서가 전액 결제되었습니다. 이 사본은 보관용입니다.',
     rechnungDank: '숙박해 주셔서 진심으로 감사드립니다. 다시 모실 수 있기를 바랍니다.',
+    rechnungUeberweisung: '미결제 금액을 다음 계좌로 송금해 주십시오:',
+    rechnungEmpfaenger: '수취인: {name}',
+    rechnungVerwendungszweck: '송금 메모: {nummer}',
     erinnerungBetreff: '청구서 {nummer} 결제 안내 — {haus}',
     mahnungBetreff: '청구서 {nummer} 독촉 — {haus}',
     mahnungOffen: '{datum}자 청구서 {nummer}에 아직 {offen}이 미결제 상태입니다.',
@@ -1090,6 +1149,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'المبلغ المتبقي منها {offen}.',
     rechnungBeglichen: 'سُدّدت الفاتورة بالكامل. هذه النسخة لسجلاتكم.',
     rechnungDank: 'شكرًا جزيلًا على إقامتكم — يسعدنا أن نرحّب بكم مجددًا.',
+    rechnungUeberweisung: 'يرجى تحويل المبلغ المستحق إلى الحساب التالي:',
+    rechnungEmpfaenger: 'المستفيد: {name}',
+    rechnungVerwendungszweck: 'مرجع التحويل: {nummer}',
     erinnerungBetreff: 'تذكير بالدفع للفاتورة {nummer} — {haus}',
     mahnungBetreff: 'إنذار بشأن الفاتورة {nummer} — {haus}',
     mahnungOffen: 'لا يزال مبلغ {offen} مستحقاً من فاتورتنا رقم {nummer} بتاريخ {datum}.',
@@ -1131,6 +1193,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Encontra-se em aberto o montante de {offen}.',
     rechnungBeglichen: 'A fatura está integralmente paga. Este exemplar destina-se aos seus registos.',
     rechnungDank: 'Muito obrigado pela sua estadia — teremos todo o gosto em recebê-lo(a) novamente.',
+    rechnungUeberweisung: 'Por favor, transfira o montante em falta para a seguinte conta:',
+    rechnungEmpfaenger: 'Beneficiário: {name}',
+    rechnungVerwendungszweck: 'Referência: {nummer}',
     erinnerungBetreff: 'Lembrete de pagamento da fatura {nummer} — {haus}',
     mahnungBetreff: 'Interpelação relativa à fatura {nummer} — {haus}',
     mahnungOffen: 'da nossa fatura {nummer} de {datum} continua em aberto o montante de {offen}.',
@@ -1172,6 +1237,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Siitä on avoinna {offen}.',
     rechnungBeglichen: 'Lasku on maksettu kokonaan. Tämä kappale on arkistoanne varten.',
     rechnungDank: 'Kiitos oleskelustanne — toivotamme teidät mielellämme uudelleen tervetulleeksi.',
+    rechnungUeberweisung: 'Pyydämme maksamaan avoimen summan seuraavalle tilille:',
+    rechnungEmpfaenger: 'Saaja: {name}',
+    rechnungVerwendungszweck: 'Viite: {nummer}',
     erinnerungBetreff: 'Maksumuistutus laskusta {nummer} — {haus}',
     mahnungBetreff: 'Maksukehotus laskusta {nummer} — {haus}',
     mahnungOffen: 'laskustamme {nummer} ({datum}) on yhä maksamatta {offen}.',
@@ -1213,6 +1281,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Ógreitt er {offen}.',
     rechnungBeglichen: 'Reikningurinn er að fullu greiddur. Þetta eintak er fyrir þín gögn.',
     rechnungDank: 'Kærar þakkir fyrir dvölina — við myndum gleðjast yfir að taka á móti þér aftur.',
+    rechnungUeberweisung: 'Vinsamlegast millifærið eftirstöðvarnar á eftirfarandi reikning:',
+    rechnungEmpfaenger: 'Viðtakandi: {name}',
+    rechnungVerwendungszweck: 'Skýring: {nummer}',
     erinnerungBetreff: 'Greiðsluáminning vegna reiknings {nummer} — {haus}',
     mahnungBetreff: 'Innheimtubréf vegna reiknings {nummer} — {haus}',
     mahnungOffen: 'af reikningi okkar {nummer} dags. {datum} eru enn {offen} ógreiddar.',
@@ -1254,6 +1325,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Z toho zostáva neuhradených {offen}.',
     rechnungBeglichen: 'Faktúra je úplne uhradená. Tento exemplár je pre Vaše záznamy.',
     rechnungDank: 'Ďakujeme za Váš pobyt — radi Vás opäť privítame.',
+    rechnungUeberweisung: 'Prosíme o prevod zostávajúcej sumy na nasledujúci účet:',
+    rechnungEmpfaenger: 'Príjemca: {name}',
+    rechnungVerwendungszweck: 'Účel platby: {nummer}',
     erinnerungBetreff: 'Pripomienka platby faktúry {nummer} — {haus}',
     mahnungBetreff: 'Upomienka k faktúre {nummer} — {haus}',
     mahnungOffen: 'z našej faktúry {nummer} zo dňa {datum} zostáva neuhradených {offen}.',
@@ -1295,6 +1369,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Od tega je odprtih še {offen}.',
     rechnungBeglichen: 'Račun je v celoti poravnan. Ta izvod je za vašo evidenco.',
     rechnungDank: 'Najlepša hvala za vaše bivanje — veseli bomo, če vas bomo lahko spet pozdravili.',
+    rechnungUeberweisung: 'Prosimo, nakažite odprti znesek na naslednji račun:',
+    rechnungEmpfaenger: 'Prejemnik: {name}',
+    rechnungVerwendungszweck: 'Namen plačila: {nummer}',
     erinnerungBetreff: 'Opomnik za plačilo računa {nummer} — {haus}',
     mahnungBetreff: 'Opomin za račun {nummer} — {haus}',
     mahnungOffen: 'pri našem računu {nummer} z dne {datum} je še neplačanih {offen}.',
@@ -1336,6 +1413,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Ebből {offen} még nyitott.',
     rechnungBeglichen: 'A számla teljes egészében ki van egyenlítve. Ez a példány az Ön nyilvántartására szolgál.',
     rechnungDank: 'Köszönjük, hogy nálunk szállt meg — örömmel látjuk újra vendégül.',
+    rechnungUeberweisung: 'Kérjük, a fennmaradó összeget utalja át a következő számlára:',
+    rechnungEmpfaenger: 'Kedvezményezett: {name}',
+    rechnungVerwendungszweck: 'Közlemény: {nummer}',
     erinnerungBetreff: 'Fizetési emlékeztető a(z) {nummer} számú számláról — {haus}',
     mahnungBetreff: 'Fizetési felszólítás a(z) {nummer} számú számláról — {haus}',
     mahnungOffen: '{datum} keltű, {nummer} számú számlánkból még {offen} nyitott.',
@@ -1377,6 +1457,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Din aceasta rămâne de plată {offen}.',
     rechnungBeglichen: 'Factura a fost achitată integral. Acest exemplar este pentru evidența dumneavoastră.',
     rechnungDank: 'Vă mulțumim pentru sejur — ne-ar face plăcere să vă primim din nou.',
+    rechnungUeberweisung: 'Vă rugăm să transferați suma restantă în următorul cont:',
+    rechnungEmpfaenger: 'Beneficiar: {name}',
+    rechnungVerwendungszweck: 'Referință: {nummer}',
     erinnerungBetreff: 'Memento de plată pentru factura {nummer} — {haus}',
     mahnungBetreff: 'Somație pentru factura {nummer} — {haus}',
     mahnungOffen: 'din factura noastră {nummer} din {datum} a rămas neachitată suma de {offen}.',
@@ -1418,6 +1501,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'От тях остават за плащане {offen}.',
     rechnungBeglichen: 'Фактурата е изцяло платена. Този екземпляр е за Вашия архив.',
     rechnungDank: 'Благодарим Ви за престоя — ще се радваме да Ви посрещнем отново.',
+    rechnungUeberweisung: 'Моля, преведете оставащата сума по следната сметка:',
+    rechnungEmpfaenger: 'Получател: {name}',
+    rechnungVerwendungszweck: 'Основание за плащане: {nummer}',
     erinnerungBetreff: 'Напомняне за плащане по фактура {nummer} — {haus}',
     mahnungBetreff: 'Покана за плащане по фактура {nummer} — {haus}',
     mahnungOffen: 'по нашата фактура {nummer} от {datum} остава неплатена сума от {offen}.',
@@ -1459,6 +1545,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Od toga je otvoreno {offen}.',
     rechnungBeglichen: 'Račun je u cijelosti podmiren. Ovaj primjerak je za Vašu evidenciju.',
     rechnungDank: 'Hvala Vam na boravku — bit će nam drago ponovno Vas ugostiti.',
+    rechnungUeberweisung: 'Molimo uplatite preostali iznos na sljedeći račun:',
+    rechnungEmpfaenger: 'Primatelj: {name}',
+    rechnungVerwendungszweck: 'Opis plaćanja: {nummer}',
     erinnerungBetreff: 'Podsjetnik za plaćanje računa {nummer} — {haus}',
     mahnungBetreff: 'Opomena za račun {nummer} — {haus}',
     mahnungOffen: 'po našem računu {nummer} od {datum} još je otvoren iznos od {offen}.',
@@ -1500,6 +1589,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Od toga je otvoreno {offen}.',
     rechnungBeglichen: 'Račun je u potpunosti izmiren. Ovaj primerak je za Vašu evidenciju.',
     rechnungDank: 'Hvala Vam na boravku — bilo bi nam drago da Vas ponovo dočekamo.',
+    rechnungUeberweisung: 'Molimo uplatite preostali iznos na sledeći račun:',
+    rechnungEmpfaenger: 'Primalac: {name}',
+    rechnungVerwendungszweck: 'Svrha uplate: {nummer}',
     erinnerungBetreff: 'Podsetnik za plaćanje računa {nummer} — {haus}',
     mahnungBetreff: 'Opomena za račun {nummer} — {haus}',
     mahnungOffen: 'po našem računu {nummer} od {datum} još je otvoren iznos od {offen}.',
@@ -1541,6 +1633,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Од тоа сè уште е отворено {offen}.',
     rechnungBeglichen: 'Фактурата е целосно платена. Овој примерок е за Вашата евиденција.',
     rechnungDank: 'Ви благодариме за престојот — ќе ни биде задоволство повторно да Ве пречекаме.',
+    rechnungUeberweisung: 'Ве молиме уплатете ја преостанатата сума на следнава сметка:',
+    rechnungEmpfaenger: 'Примач: {name}',
+    rechnungVerwendungszweck: 'Цел на плаќањето: {nummer}',
     erinnerungBetreff: 'Потсетник за плаќање на фактура {nummer} — {haus}',
     mahnungBetreff: 'Опомена за фактура {nummer} — {haus}',
     mahnungOffen: 'по нашата фактура {nummer} од {datum} сè уште е отворен износ од {offen}.',
@@ -1582,6 +1677,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Prej saj mbeten të papaguara {offen}.',
     rechnungBeglichen: 'Fatura është shlyer plotësisht. Kjo kopje është për dokumentet tuaja.',
     rechnungDank: 'Faleminderit për qëndrimin tuaj — do të ishim të lumtur t\'ju mirëpresim sërish.',
+    rechnungUeberweisung: 'Ju lutemi transferoni shumën e mbetur në llogarinë e mëposhtme:',
+    rechnungEmpfaenger: 'Përfituesi: {name}',
+    rechnungVerwendungszweck: 'Përshkrimi: {nummer}',
     erinnerungBetreff: 'Kujtesë pagese për faturën {nummer} — {haus}',
     mahnungBetreff: 'Paralajmërim për faturën {nummer} — {haus}',
     mahnungOffen: 'nga fatura jonë {nummer} e datës {datum} mbetet ende e papaguar shuma {offen}.',
@@ -1623,6 +1721,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Από αυτό εκκρεμεί ποσό {offen}.',
     rechnungBeglichen: 'Το τιμολόγιο έχει εξοφληθεί πλήρως. Αυτό το αντίγραφο είναι για το αρχείο σας.',
     rechnungDank: 'Σας ευχαριστούμε για τη διαμονή σας — θα χαρούμε να σας υποδεχθούμε ξανά.',
+    rechnungUeberweisung: 'Παρακαλούμε μεταφέρετε το υπόλοιπο ποσό στον ακόλουθο λογαριασμό:',
+    rechnungEmpfaenger: 'Δικαιούχος: {name}',
+    rechnungVerwendungszweck: 'Αιτιολογία: {nummer}',
     erinnerungBetreff: 'Υπενθύμιση πληρωμής για το τιμολόγιο {nummer} — {haus}',
     mahnungBetreff: 'Όχληση για το τιμολόγιο {nummer} — {haus}',
     mahnungOffen: 'από το τιμολόγιό μας {nummer} της {datum} παραμένει ανεξόφλητο ποσό {offen}.',
@@ -1664,6 +1765,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Dar neapmokėta {offen}.',
     rechnungBeglichen: 'Sąskaita visiškai apmokėta. Šis egzempliorius skirtas Jūsų dokumentams.',
     rechnungDank: 'Dėkojame, kad apsistojote pas mus — būtume laimingi vėl Jus pasveikinti.',
+    rechnungUeberweisung: 'Prašome pervesti likusią sumą į šią sąskaitą:',
+    rechnungEmpfaenger: 'Gavėjas: {name}',
+    rechnungVerwendungszweck: 'Mokėjimo paskirtis: {nummer}',
     erinnerungBetreff: 'Priminimas apie sąskaitos {nummer} apmokėjimą — {haus}',
     mahnungBetreff: 'Raginimas dėl sąskaitos {nummer} — {haus}',
     mahnungOffen: 'pagal mūsų {datum} sąskaitą {nummer} dar neapmokėta {offen}.',
@@ -1705,6 +1809,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Vēl jāsamaksā {offen}.',
     rechnungBeglichen: 'Rēķins ir pilnībā apmaksāts. Šī kopija ir Jūsu dokumentācijai.',
     rechnungDank: 'Paldies par Jūsu uzturēšanos — mēs labprāt Jūs atkal sagaidīsim.',
+    rechnungUeberweisung: 'Lūdzu, pārskaitiet atlikušo summu uz šādu kontu:',
+    rechnungEmpfaenger: 'Saņēmējs: {name}',
+    rechnungVerwendungszweck: 'Maksājuma mērķis: {nummer}',
     erinnerungBetreff: 'Maksājuma atgādinājums par rēķinu {nummer} — {haus}',
     mahnungBetreff: 'Brīdinājums par rēķinu {nummer} — {haus}',
     mahnungOffen: 'par mūsu {datum} rēķinu {nummer} vēl nav samaksāti {offen}.',
@@ -1746,6 +1853,9 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     rechnungOffenOhneFrist: 'Sellest on tasumata {offen}.',
     rechnungBeglichen: 'Arve on täielikult tasutud. See eksemplar on Teie dokumentide jaoks.',
     rechnungDank: 'Täname Teid viibimise eest — meil oleks hea meel Teid taas tervitada.',
+    rechnungUeberweisung: 'Palun kandke tasumata summa üle järgmisele kontole:',
+    rechnungEmpfaenger: 'Saaja: {name}',
+    rechnungVerwendungszweck: 'Selgitus: {nummer}',
     erinnerungBetreff: 'Maksemeeldetuletus arve {nummer} kohta — {haus}',
     mahnungBetreff: 'Maksenõue arve {nummer} kohta — {haus}',
     mahnungOffen: 'meie {datum} arvest {nummer} on veel tasumata {offen}.',
@@ -1779,6 +1889,11 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
   }
 }
 
+/** IBAN in Vierergruppen, wie sie auf Papier und im Banking steht. */
+function ibanLesbar(iban: string): string {
+  return iban.replace(/(.{4})(?=.)/g, '$1 ')
+}
+
 /** Werte einsetzen. Ein Platzhalter ohne Wert bleibt stehen, statt zu verschwinden. */
 function einsetzen(satz: string, werte: Record<string, string>): string {
   return satz.replace(/\{(\w+)\}/g, (ganz, name: string) =>
@@ -1804,12 +1919,37 @@ export function renderInvoiceEmail(
     frist: d.dueDate ?? ''
   }
 
+  /*
+   * Ueberweisung und Link nur, wenn etwas offen ist; eine beglichene
+   * Rechnung mit Bankverbindung liest sich wie eine Zahlungsaufforderung.
+   * Die Bankdaten als ein Absatz mit Zeilenumbruechen, damit sie sich am
+   * Stueck abschreiben lassen; der Link als eigener Absatz, aus demselben
+   * Grund wie in `renderPaymentLinkEmail`.
+   */
+  const offen = d.openCent > 0
+  const ueberweisung = offen && d.transfer ? [
+    t.rechnungUeberweisung,
+    [einsetzen(t.rechnungEmpfaenger, { name: d.transfer.payee }),
+     `IBAN: ${ibanLesbar(d.transfer.iban)}`,
+     ...(d.transfer.bic ? [`BIC: ${d.transfer.bic}`] : []),
+     ...(d.transfer.bankName ? [d.transfer.bankName] : []),
+     einsetzen(t.rechnungVerwendungszweck, werte)].join('\n')
+  ] : []
+  const link = offen && d.paymentLink ? [
+    t.zahlungLink,
+    d.paymentLink.url,
+    t.zahlungKarte,
+    einsetzen(t.zahlungGueltig, { gueltig: kalendertag(d.paymentLink.validUntil, lang) })
+  ] : []
+
   const lines = [
     anrede(d.guestName, lang),
     einsetzen(t.rechnungAnhang, werte),
-    d.openCent > 0
+    offen
       ? einsetzen(d.dueDate ? t.rechnungOffenMitFrist : t.rechnungOffenOhneFrist, werte)
       : t.rechnungBeglichen,
+    ...ueberweisung,
+    ...link,
     t.rechnungDank,
     d.propertyName
   ]

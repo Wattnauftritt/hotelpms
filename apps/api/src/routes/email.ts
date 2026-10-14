@@ -3,13 +3,16 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { isSendableAddress, isFreemailDomain, isPlatformDomain, domainOf, emailLanguage,
-         renderInvoiceEmail, renderReservationEmail, renderDomainRequestNotice }
+         renderInvoiceEmail, renderReservationEmail, renderDomainRequestNotice,
+         neuesToken, paymentLinkValidUntil }
   from '@hotelpms/domain'
 import { loadConfig } from '../platform/config.js'
 import { createBrevoDomains, DomainApiError, type DomainVerwaltung }
   from '../platform/brevoDomains.js'
 import type { Principal } from '../platform/context.js'
-import { rechtImHaus } from './depositRequests.js'
+import { rechtImHaus, geschaeftstag } from './depositRequests.js'
+import { zahlungskonto } from './paymentLinks.js'
+import { isTrainingProperty } from '../platform/training.js'
 import type { PoolClient } from '@hotelpms/db'
 
 /**
@@ -38,6 +41,13 @@ interface SendInvoiceBody {
    * damit ein doppelter Klick keine zweite Mail erzeugt.
    */
   resend?: boolean
+  /**
+   * Wie der Gast den offenen Betrag begleichen soll (0172): die
+   * Bankverbindung zur Ueberweisung, ein Zahlungslink, beides oder keines
+   * von beiden. Ist nichts offen, bleiben beide weg.
+   */
+  transfer?: boolean
+  paymentLink?: boolean
 }
 
 /** Mailadresse und Anrede zu einer Rechnung, aus dem Fachdatum. */
@@ -195,10 +205,17 @@ export function emailRoutes(
          * Privatgast gibt es keines, weil beim Check-out gezahlt wird.
          */
         const inv = await client.query<{
-          id: number; property_id: number; number: string; currency: string
+          id: number; property_id: number; folio_id: number; number: string; currency: string
           gross_cent: string | number; open_cent: string | number
-          due_date: string | null; property_name: string }>(
-          `SELECT i.id, i.property_id, i.number, i.currency,
+          due_date: string | null; due_iso: string | null; property_name: string
+          payee: string | null; iban: string | null; bic: string | null
+          bank_name: string | null }>(
+          `SELECT i.id, i.property_id, i.folio_id, i.number, i.currency,
+                  i.due_on::text AS due_iso,
+                  -- Die Bankverbindung, die auf der Rechnung steht, nicht die
+                  -- heutige des Hauses (Momentaufnahme, 0164).
+                  i.issuer_snapshot->>'name' AS payee, i.issuer_snapshot->>'iban' AS iban,
+                  i.issuer_snapshot->>'bic' AS bic, i.issuer_snapshot->>'bankName' AS bank_name,
                   (i.totals->>'grossCent')::bigint AS gross_cent,
                   -- Anzahlungs- und Stornorechnungen sind nie offen; wie in
                   -- der Rechnungsliste (Pruefung 13.10.2026, Befund 5).
@@ -253,20 +270,69 @@ export function emailRoutes(
             'mail.noInvoiceAddress')
         }
 
+        /*
+         * Ueberweisung und Zahlungslink, nur wenn etwas offen ist. Wer
+         * ausdruecklich die Ueberweisung waehlt, bekommt einen Fehler statt
+         * einer Mail ohne Bankverbindung: der Gast wuesste sonst nicht,
+         * wohin er zahlen soll, und die Rezeption nicht, dass es fehlt.
+         */
+        const offenCent = Number(i.open_cent)
+        const ueberweisung = b.transfer === true && offenCent > 0
+        const mitLink = b.paymentLink === true && offenCent > 0
+        if (ueberweisung && (i.iban === null || i.iban === '')) {
+          throw Errors.unprocessable('invoice.noBankAccount')
+        }
+
+        let link: { id: number; url: string; validUntil: string } | null = null
+        if (mitLink) {
+          // Dieselben Grenzen wie beim Link am Folio (paymentLinks.ts): ein
+          // Link ist eine Zahlungsaufforderung, und die legt an, wer am
+          // Folio buchen darf, nicht schon, wer Post verschicken darf.
+          rechtImHaus(principal, 'folio:post', i.property_id)
+          if (await isTrainingProperty(client, i.property_id)) {
+            throw Errors.unprocessable('training.noPaymentLink')
+          }
+          if (await zahlungskonto(client, i.property_id) === null) {
+            throw Errors.unprocessable('payments.accountNotConnected')
+          }
+          const validUntil = paymentLinkValidUntil({
+            businessDate: await geschaeftstag(client, i.property_id),
+            dueDate: i.due_iso,
+            departure: null
+          })
+          const { token, hash } = neuesToken()
+          const ins = await client.query<{ id: number }>(
+            `INSERT INTO payment_link (property_id, folio_id, invoice_id, token_hash,
+                                       amount_cent, valid_until, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6::date,$7) RETURNING id`,
+            [i.property_id, i.folio_id, i.id, hash, offenCent, validUntil, principal.userId])
+          link = { id: ins.rows[0]!.id, url: `${config.publicAppUrl}/v1/pay?t=${token}`,
+                   validUntil }
+        }
+
         const text = renderInvoiceEmail({
           propertyName: i.property_name,
           guestName: e.name,
           invoiceNumber: i.number,
           grossCent: Number(i.gross_cent),
-          openCent: Number(i.open_cent),
+          openCent: offenCent,
           currency: i.currency,
-          dueDate: i.due_date
+          dueDate: i.due_date,
+          transfer: ueberweisung ? { payee: i.payee ?? i.property_name, iban: i.iban!,
+                                     bic: i.bic, bankName: i.bank_name } : null,
+          paymentLink: link === null ? null : { url: link.url, validUntil: link.validUntil }
         }, emailLanguage(e.language))
 
         const q = await client.query<{ ref: string }>(
           `SELECT email_enqueue($1,'invoice',$2,$3,$4,$5,$6,$7,NULL,$8) AS ref`,
           [i.property_id, adresse, e.name, text.subject, text.text, text.html,
            i.id, principal.userId])
+        if (link !== null) {
+          await client.query(
+            `UPDATE payment_link
+                SET email_id = (SELECT id FROM outbound_email WHERE public_ref = $2)
+              WHERE id = $1`, [link.id, q.rows[0]!.ref])
+        }
 
         reply.status(202)
         return {
