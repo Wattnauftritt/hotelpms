@@ -128,7 +128,13 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 		# Pfad hinge an Caddys Sortierung gleichnamiger Direktiven, und die
 		# Rezeptionsoberfläche bettet selbst nichts ein. Auf der Maschine
 		# so eingetragen am 04.10.2026.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		#
+		# `blob:` für die Belegansicht der Rechnungsliste: sie lädt das PDF
+		# über die Sitzung und zeigt es als Blob-Adresse im Rahmen. Ohne den
+		# Eintrag zeigte Chrome "Dieser Inhalt ist blockiert" (Sven,
+		# 14.10.2026). Eine Blob-Adresse erzeugt nur die eigene Seite; fremde
+		# Inhalte kommen darüber nicht herein.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		-Server
 	}
 
