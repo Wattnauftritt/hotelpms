@@ -464,6 +464,13 @@ function NeueZahlung({ folioRef, offenCent, methoden, hinweis }: {
             <option value="">—</option>
             {methoden.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}
           </select>
+          {/* Ein neues Haus hat keine Zahlungsarten (Migration 0166); eine leere
+              Auswahl ohne Wort dazu sah aus wie ein Fehler. */}
+          {methoden.length === 0 && (
+            <span role="note" className="block mt-1 text-xs text-amber-800">
+              {t('folio.noMethods')}
+            </span>
+          )}
         </label>
         <label className="block">
           <span className="block text-xs text-neutral-600">{t('folio.reference')}</span>
