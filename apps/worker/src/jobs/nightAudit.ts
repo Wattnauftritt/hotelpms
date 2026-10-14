@@ -159,7 +159,42 @@ async function rollover(
     `INSERT INTO business_day (property_id, date) VALUES ($1, $2::date)
      ON CONFLICT DO NOTHING`,
     [propertyId, addDays(businessDate, 1)])
+  await departedRoomsDirty(client, propertyId, businessDate)
   return 1
+}
+
+/**
+ * Mit dem Tag endet der Aufenthalt: ein Zimmer, das noch "belegt" heisst,
+ * in dem aber die naechste Nacht niemand schlaeft, ist schmutzig.
+ *
+ * Schmutzig wird ein Zimmer sonst nur beim Check-out von Hand (0011). Seit
+ * eine Buchung auch ohne Check-in als angereist gilt (Grundregel vom
+ * 05.10.2026), checkt der Nachtlauf Gaeste ein, aber niemand checkt sie aus:
+ * das Zimmer blieb nach der Abreise auf "belegt" stehen, war am Folgetag
+ * weder Abreise noch Bleiber und fiel aus dem Reinigungsplan, obwohl es
+ * niemand gereinigt hatte. Ein gereinigtes Zimmer steht auf sauber und
+ * bleibt unberuehrt.
+ *
+ * Gehoert in den Tageswechsel und nicht in einen eigenen Schritt: ein
+ * zusaetzlicher Schritt liesse jeden schon geschlossenen Tag unvollstaendig
+ * aussehen. Belegt bleibt, wer ueber die Nacht bleibt, und wer schon fuer
+ * eine spaetere Nacht eingecheckt ist; eine bestaetigte Anreise des Tages
+ * zaehlt mit, denn Schritt 4 checkt sie gleich ein.
+ */
+async function departedRoomsDirty(
+  client: PoolClient, propertyId: number, businessDate: string
+): Promise<void> {
+  await client.query(
+    `UPDATE housekeeping_status h
+        SET status = 'dirty', updated_by = NULL, updated_at = now()
+      WHERE h.property_id = $1 AND h.status = 'occupied'
+        AND NOT EXISTS (
+              SELECT 1 FROM reservation r
+               WHERE r.resource_id = h.resource_id
+                 AND r.status IN ('Confirmed','InHouse')
+                 AND r.departure > $2::date
+                 AND (r.arrival <= $2::date OR r.status = 'InHouse'))`,
+    [propertyId, businessDate])
 }
 
 /**

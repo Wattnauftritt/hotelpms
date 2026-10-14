@@ -246,3 +246,41 @@ describe('Kalender aendert sich nach dem Speichern', () => {
     expect(z).toMatchObject({ kind: 'stayover', kindChanged: false, minutes: 10 })
   })
 })
+
+/**
+ * Sven, 14.10.2026: "weiss StayGrid morgen, dass Zimmer, die heute abgereist
+ * sind und heute nicht gereinigt wurden, immer noch schmutzig sind?" -- Das
+ * Zimmer stand richtig auf schmutzig, war am Folgetag aber weder Abreise
+ * noch Bleiber und fiel aus dem Plan.
+ */
+describe('Liegen gebliebene Abreise', () => {
+  const zeile = async (date = TAG) => (await app.inject({ method: 'GET',
+    url: url(`?date=${date}`), headers: auth(hausdame.sessionId) })).json().rooms.find(
+    (z: { resourceId: number }) => z.resourceId === zimmer[3])
+
+  beforeEach(async () => {
+    // 104 hatte gestern Abreise und ist seither nicht gereinigt.
+    await owner.query(
+      `INSERT INTO housekeeping_status (property_id, resource_id, status)
+       VALUES ($1, $2, 'dirty')`, [fx.propertyId, zimmer[3]])
+  })
+
+  it('steht am Folgetag als Abreise im Plan, frei zum Reinigen', async () => {
+    expect(await zeile()).toMatchObject({ due: 'departure', departureCheckedOut: true,
+                                          minutes: 30 })
+    const v = await app.inject({ method: 'POST', url: url('/suggest'),
+      headers: auth(hausdame.sessionId), payload: { date: TAG, staff: [anna.userId] } })
+    expect(v.json().assignments.map((a: { resourceId: number }) => a.resourceId))
+      .toContain(zimmer[3])
+  })
+
+  it('faellt heraus, sobald es sauber gemeldet ist', async () => {
+    await owner.query(`UPDATE housekeeping_status SET status = 'clean' WHERE resource_id = $1`,
+      [zimmer[3]])
+    expect((await zeile()).due).toBeNull()
+  })
+
+  it('schreibt den heutigen Stand nicht in einen vergangenen Tag', async () => {
+    expect((await zeile('2026-09-30')).due).toBeNull()
+  })
+})
