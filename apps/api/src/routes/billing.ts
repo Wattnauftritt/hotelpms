@@ -8,7 +8,7 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
-         breakfastPerNight, splitNight, alignLineNets } from '@hotelpms/domain'
+         breakfastPerNight, splitNight, alignLineNets, taxAdjustToGross } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
@@ -180,6 +180,7 @@ async function offenerGeschaeftstag(client: PoolClient, propertyId: number): Pro
 function gegenSummen(t: Record<string, unknown>): InvoiceTotals & {
   roundingCent: number; payableCent: number; prepaidCent: number
   lineAdjustCent?: Record<string, number>
+  taxAdjustCent?: Record<string, number>
 } {
   const n = (v: unknown): number => -Number(v ?? 0)
   const gruppen = (t.groups as Array<Record<string, number>> | undefined) ?? []
@@ -195,6 +196,11 @@ function gegenSummen(t: Record<string, unknown>): InvoiceTotals & {
     ...(t.lineAdjustCent !== undefined
       ? { lineAdjustCent: Object.fromEntries(
             Object.entries(t.lineAdjustCent as Record<string, number>)
+              .map(([k, v]) => [k, -Number(v)])) }
+      : {}),
+    ...(t.taxAdjustCent !== undefined
+      ? { taxAdjustCent: Object.fromEntries(
+            Object.entries(t.taxAdjustCent as Record<string, number>)
               .map(([k, v]) => [k, -Number(v)])) }
       : {})
   }
@@ -778,7 +784,23 @@ async function rechnungsEntwurf(
    * den Zahlbetrag (BR-CO-16). Keine Position, keine Steuerkategorie,
    * kein Befreiungsgrund -- und auf dem Blatt eine benannte Zeile.
    */
-  const gerundet = sumInvoice(positionen)
+  /*
+   * Seit dem 14.10.2026 bleibt der Rundungsbetrag fast immer null: den
+   * Cent, den `alignLineNets` je Gruppe nicht trifft, traegt die Steuer der
+   * Gruppe (`taxAdjustToGross`, Svens Entscheidung "Herausrechnen"). Er
+   * bleibt fuer den Rest, den das nicht deckt -- eine Gruppe zu 0 Prozent
+   * oder mehr als ein Cent.
+   */
+  const zielJeSatz = new Map<number, number>()
+  for (const c of charges.rows) {
+    zielJeSatz.set(c.tax_rate_bp, (zielJeSatz.get(c.tax_rate_bp) ?? 0) + Number(c.gross_cent))
+  }
+  for (const d of deposits.rows) {
+    zielJeSatz.set(d.tax_rate_bp,
+      (zielJeSatz.get(d.tax_rate_bp) ?? 0) - Number(d.amount_gross_cent))
+  }
+  const taxAdjustCent = taxAdjustToGross(sumInvoice(positionen).groups, zielJeSatz)
+  const gerundet = sumInvoice(positionen, taxAdjustCent)
   const zielBrutto =
     charges.rows.reduce((sum, c) => sum + Number(c.gross_cent), 0)
     - deposits.rows.reduce((sum, d) => sum + Number(d.amount_gross_cent), 0)
@@ -819,7 +841,8 @@ async function rechnungsEntwurf(
     ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent,
     ...(lineAdjustCent.size > 0
       ? { lineAdjustCent: Object.fromEntries(lineAdjustCent) as Record<string, number> }
-      : {})
+      : {}),
+    ...(Object.keys(taxAdjustCent).length > 0 ? { taxAdjustCent } : {})
   }
 
   /*

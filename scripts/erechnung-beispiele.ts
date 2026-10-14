@@ -53,6 +53,19 @@ const faelle: Record<string, CiiInvoice> = {
     lines: [{ name: 'Uebernachtung', quantity: 2, unitCode: 'DAY', netCent: 23_364, rateBp: 700 }],
     roundingCent: 1, dueOn: '2026-10-18', payee: bank
   },
+  // 250,00 zu 7 Prozent: die Steuer traegt den Cent (233,64 + 16,36), so
+  // rechnet die Rechnung seit dem 14.10.2026. Prueft BR-S-09 und BR-CO-14.
+  steuer_traegt_cent: {
+    ...basis,
+    lines: [{ name: 'Uebernachtung', quantity: 2, unitCode: 'DAY', netCent: 23_364, rateBp: 700 }],
+    taxAdjustCent: { '700': 1 }, dueOn: '2026-10-18', payee: bank
+  },
+  storno_steuer_traegt_cent: {
+    ...basis, number: '2026-00044', kind: 'credit_note',
+    lines: [{ name: 'Uebernachtung', quantity: 2, unitCode: 'DAY', netCent: -23_364, rateBp: 700 }],
+    taxAdjustCent: { '700': -1 },
+    precedingInvoice: { number: '2026-00042', issuedOn: '2026-10-04' }
+  },
   anzahlung: {
     ...basis, kind: 'deposit',
     lines: [{ name: 'Anzahlung auf den Aufenthalt', quantity: 1, netCent: 18_692, rateBp: 700 }],
