@@ -459,11 +459,28 @@ export function DatevExport({ propertyId, heute, onClose }: {
           <input type="date" value={a.to ?? ''} max={heute} className={FELD}
                  onChange={ev => { holen.reset(); setA({ ...a, to: ev.target.value || undefined }) }} />
         </Feld>
+        {/* Erneut senden ist die Ausnahme: eine verlorene Datei. Wer den Monat waehlt,
+            meint den Monat, nicht das, was DATEV daraus schon hat. */}
+        {a.mode === 'range' && (
+          <label className="col-span-2 flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={a.resend === true} className="mt-1"
+                   onChange={ev => { holen.reset(); setA({ ...a, resend: ev.target.checked }) }} />
+            <span>
+              {t('cash.datev.resend')}
+              {a.resend === true && (
+                <span className="block text-xs text-amber-800">{t('cash.datev.resendHint')}</span>
+              )}
+            </span>
+          </label>
+        )}
       </div>
       {holen.isError && <Fehler error={holen.error} />}
       {ergebnis && (
         <div className="space-y-2 text-sm">
           <p>{t('cash.datev.done', { n: ergebnis.entries })}</p>
+          {ergebnis.resent > 0 && (
+            <p className="font-medium text-amber-800">{t('cash.datev.resent', { n: ergebnis.resent })}</p>
+          )}
           {ergebnis.entries > 0 && !markieren.isSuccess && (
             <button className={KNOPF} disabled={markieren.isPending}
                     onClick={() => markieren.mutate({ ...a, through: ergebnis.through })}>

@@ -192,7 +192,7 @@ describe('DATEV-Export des Kassenbuchs', () => {
     expect(zeilen((await exportieren()).body).map(z => z[2])).toEqual([`SG-${spaeter.entryNo}`])
   })
 
-  it('laesst schon vom Adminpanel Gesendetes im offenen Export weg, im Zeitraum nicht', async () => {
+  it('laesst schon vom Adminpanel Gesendetes weg, auch im Zeitraum; erneut nur auf Wunsch', async () => {
     await einstellen()
     const r = await owner.query<{ id: string }>(
       `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
@@ -201,9 +201,20 @@ describe('DATEV-Export des Kassenbuchs', () => {
       [fx.propertyId])
     await owner.query(`INSERT INTO cashbook_datev_mark (entry_id, property_id, source)
                        VALUES ($1, $2, 'import')`, [r.rows[0]!.id, fx.propertyId])
-    expect(zeilen((await exportieren()).body)).toEqual([])
+    await owner.query(
+      `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
+          external_system, external_reference, external_number)
+       VALUES ($1, '2026-09-21', 'cash_in', 700, 0, 'adminpanel', '8', 'KB-8')`, [fx.propertyId])
+    expect(zeilen((await exportieren()).body).map(z => z[2])).toEqual(['KB-8'])
+    // Den Monat waehlen heisst nicht, ihn noch einmal zu schicken: so stand
+    // der September 2026 doppelt in DATEV.
     const zeitraum = await exportieren('?mode=range&from=2026-09-01&to=2026-09-30')
-    expect(zeilen(zeitraum.body).map(z => z[2])).toEqual(['KB-7'])
+    expect(zeilen(zeitraum.body).map(z => z[2])).toEqual(['KB-8'])
+    expect(zeitraum.headers['x-staygrid-cashbook-resent']).toBe('0')
+    const erneut = await exportieren('?mode=range&from=2026-09-01&to=2026-09-30&resend=true')
+    expect(zeilen(erneut.body).map(z => z[2])).toEqual(['KB-7', 'KB-8'])
+    expect(erneut.headers['x-staygrid-cashbook-resent']).toBe('1')
+    expect((await exportieren('?resend=true')).statusCode).toBe(422)
     expect((await exportieren('?mode=range&from=2025-01-01&to=2026-09-30')).statusCode).toBe(422)
   })
 

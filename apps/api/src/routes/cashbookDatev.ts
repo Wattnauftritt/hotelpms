@@ -136,7 +136,22 @@ export function datevZeilen(z: DatevKassenzeile, e: Einstellung): string[][] {
 const KOPF = ['Währung', 'VorzBetrag', 'RechNr', 'BelegDatum', 'Belegtext', 'UStSatz', 'BU',
               'Gegenkonto', 'Kost1', 'Kost2', 'Kostmenge', 'Skonto', 'Nachricht']
 
-interface Auswahl { mode: 'unsent' | 'range'; from: string | null; to: string }
+/**
+ * `range` grenzt nach Datum ein und laesst Uebergebenes trotzdem weg; erst
+ * `resend` nimmt es wieder mit. Frueher hiess „Zeitraum" zugleich „erneut":
+ * wer im Oktober den September exportierte, schickte die ersten 27
+ * Buchungen, die das Adminpanel laengst uebergeben hatte, ein zweites Mal,
+ * und DATEV stand um 307,77 EUR ueber dem Kassenbuch (Kassenbuch September
+ * 2026). Den Monat waehlt man oft, das erneute Senden fast nie.
+ */
+interface Auswahl { mode: 'unsent' | 'range'; from: string | null; to: string; resend: boolean }
+
+/** Ja/nein aus Abfragezeichenfolge oder Rumpf. */
+function janein(v: unknown): boolean | null {
+  if (v === undefined || v === null || v === false || v === 'false' || v === '0') return false
+  if (v === true || v === 'true' || v === '1') return true
+  return null
+}
 
 function auswahlPruefen(q: Record<string, unknown>, heute: string): Auswahl {
   const f: Record<string, Meldung[]> = {}
@@ -147,13 +162,16 @@ function auswahlPruefen(q: Record<string, unknown>, heute: string): Auswahl {
   if (from !== null && (typeof from !== 'string' || !isIsoDate(from))) f.from = ['field.isoDate']
   if (typeof to !== 'string' || !isIsoDate(to)) f.to = ['field.isoDate']
   if (mode === 'range' && from === null) f.from = ['field.required']
+  const resend = janein(q.resend)
+  if (resend === null || (resend && mode !== 'range')) f.resend = ['field.invalid']
   if (Object.keys(f).length > 0) throw Errors.validation(f)
   if (mode === 'range') {
     const tage = (Date.parse(to as string) - Date.parse(from as string)) / 86_400_000
     if (tage < 0) throw Errors.validation({ to: ['field.notBeforeFrom'] })
     if (tage > RANGE_MAX_TAGE) throw Errors.rangeTooLarge(RANGE_MAX_TAGE)
   }
-  return { mode: mode as Auswahl['mode'], from: from as string | null, to: to as string }
+  return { mode: mode as Auswahl['mode'], from: from as string | null, to: to as string,
+           resend: resend === true }
 }
 
 async function stichtagPruefen(client: PoolClient, haus: number, e: Einstellung): Promise<string> {
@@ -171,18 +189,19 @@ async function stichtagPruefen(client: PoolClient, haus: number, e: Einstellung)
  */
 async function auswahl(
   client: PoolClient, haus: number, a: Auswahl, bis: number | null
-): Promise<Array<DatevKassenzeile & { id: string }>> {
+): Promise<Array<DatevKassenzeile & { id: string; sent: boolean }>> {
   const r = await client.query<{
     id: string; entry_no: string; business_date: string; kind: string; amount_cent: string
     tax_rate_bp: number; text: string | null; guest_name: string | null
     external_number: string | null; legacy_split: Record<string, number> | null
-    reverses_number: string | null }>(
+    reverses_number: string | null; sent: boolean }>(
     `SELECT e.id, e.entry_no, e.business_date::text, e.kind, e.amount_cent, e.tax_rate_bp,
             e.text, e.guest_name, e.external_number, e.legacy_split,
             -- Das Storno traegt die Belegnummer der Buchung, die es aufhebt:
             -- unter ihr kennt DATEV die Zeile, die korrigiert wird.
             CASE WHEN o.id IS NOT NULL THEN COALESCE(o.external_number, 'SG-' || o.entry_no) END
-              AS reverses_number
+              AS reverses_number,
+            dm.entry_id IS NOT NULL AS sent
        FROM cashbook_entry e
        LEFT JOIN cashbook_entry o ON o.id = e.reverses_id
        LEFT JOIN cashbook_entry s ON s.reverses_id = e.id
@@ -191,20 +210,20 @@ async function auswahl(
       WHERE e.property_id = $1
         AND e.business_date <= $3::date
         AND ($2::date IS NULL OR e.business_date >= $2::date)
-        AND ($4 = 'range' OR dm.entry_id IS NULL)
+        AND ($4::boolean OR dm.entry_id IS NULL)
         AND ($5::bigint IS NULL OR e.entry_no <= $5)
         -- Buchung und Storno, beide nie an DATEV: heben sich auf, keines geht hin.
         AND NOT (e.reverses_id IS NULL AND s.id IS NOT NULL AND dm.entry_id IS NULL)
         AND NOT (e.reverses_id IS NOT NULL AND om.entry_id IS NULL)
       ORDER BY e.business_date, e.entry_no
       LIMIT $6`,
-    [haus, a.from, a.to, a.mode, bis, ZEILEN_MAX + 1])
+    [haus, a.from, a.to, a.resend, bis, ZEILEN_MAX + 1])
   if (r.rows.length > ZEILEN_MAX) throw Errors.unprocessable('cashbook.datevTooMany', { max: ZEILEN_MAX })
   return r.rows.map(z => ({
     id: z.id, entryNo: Number(z.entry_no), businessDate: z.business_date, kind: z.kind,
     amountCent: Number(z.amount_cent), taxRateBp: z.tax_rate_bp, text: z.text,
     guestName: z.guest_name, externalNumber: z.external_number, legacySplit: z.legacy_split,
-    reversesNumber: z.reverses_number
+    reversesNumber: z.reverses_number, sent: z.sent
   }))
 }
 
@@ -244,6 +263,9 @@ export function cashbookDatevRoutes(app: FastifyInstance): void {
           a.mode === 'range' && a.from !== null ? `${tag(a.from)}-${tag(a.to)}` : tag(a.to)}.csv"`)
         reply.header('x-staygrid-cashbook-through', String(bis.rows[0]!.n ?? 0))
         reply.header('x-staygrid-cashbook-entries', String(zeilen.length))
+        // Wie viele davon DATEV schon hat: die Oberflaeche nennt die Zahl,
+        // bevor jemand die Datei hochlaedt.
+        reply.header('x-staygrid-cashbook-resent', String(zeilen.filter(z => z.sent).length))
         reply.header('x-staygrid-cashbook-receipts-waiting', String(await belegeFaellig(client, haus)))
         return csv([KOPF, ...zeilen.flatMap(z => datevZeilen(z, e))])
       })
