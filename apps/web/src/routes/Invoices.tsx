@@ -10,6 +10,7 @@ import { useOnline } from '../lib/offline.js'
 import { today } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { OffenePosten } from '../components/OffenePosten.tsx'
+import { ZahlwegWahl, type Zahlweg } from '../components/ZahlwegWahl.tsx'
 
 /**
  * Rechnungen: Liste, Beleg, Versand (B5 bis B7 aus Dokument 20).
@@ -88,12 +89,14 @@ function Beleg({ invoiceRef }: { invoiceRef: string }): JSX.Element {
 }
 
 function Versand(
-  { invoiceRef, propertyId }: { invoiceRef: string; propertyId: number }
+  { invoiceRef, propertyId, offen }: { invoiceRef: string; propertyId: number; offen: boolean }
 ): JSX.Element {
   const t = useT()
   const online = useOnline()
   const senden = useSendInvoice(propertyId)
   const [to, setTo] = useState('')
+  const [zahlweg, setZahlweg] = useState<Zahlweg>({ transfer: false, paymentLink: false })
+  const wie = offen ? zahlweg : {}
 
   // 409 heisst hier nicht "kaputt", sondern "schon heraus". Ein zweiter
   // Versand muss ausdruecklich gewollt sein -- ein zweiter Klick ist
@@ -110,17 +113,18 @@ function Versand(
                className="border border-neutral-300 rounded-sm px-2 py-1 w-72" />
         <div className="text-xs text-neutral-500 mt-0.5">{t('inv.send.toHint')}</div>
       </label>
+      {offen && <ZahlwegWahl wert={zahlweg} setWert={setZahlweg} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={!online || senden.isPending}
-                onClick={() => senden.mutate({ invoiceRef, to })}
+                onClick={() => senden.mutate({ invoiceRef, to, ...wie })}
                 className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
                            disabled:opacity-40">
           {t('inv.send')}
         </button>
         {schonVerschickt && (
           <button type="button" disabled={!online || senden.isPending}
-                  onClick={() => senden.mutate({ invoiceRef, to, resend: true })}
+                  onClick={() => senden.mutate({ invoiceRef, to, resend: true, ...wie })}
                   className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300
                              hover:bg-neutral-50 disabled:opacity-40">
             {t('inv.send.again')}
@@ -328,7 +332,8 @@ function Zeile(
       )}
       {offen === 'versand' && (
         <div className="mt-3 border-t border-neutral-200 pt-3">
-          <Versand invoiceRef={r.invoiceRef} propertyId={propertyId} />
+          <Versand invoiceRef={r.invoiceRef} propertyId={propertyId} offen={(r.kind === 'final' || r.kind === 'interim')
+                                && r.payableCent - r.settledCent > 0} />
         </div>
       )}
     </li>

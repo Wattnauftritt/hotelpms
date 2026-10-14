@@ -128,11 +128,12 @@ async function lage(
 
   const l = await client.query<{
     id: number; folio_id: number; folio_ref: string; deposit_request_id: number | null
+    invoice_id: number | null
     amount_cent: string; valid_until: string; revoked: boolean
     property_name: string; currency: string; is_training: boolean
     arrival: string | null; departure: string | null; language: string | null
     bezahlt: boolean }>(
-    `SELECT l.id, l.folio_id, f.public_ref AS folio_ref, l.deposit_request_id,
+    `SELECT l.id, l.folio_id, f.public_ref AS folio_ref, l.deposit_request_id, l.invoice_id,
             l.amount_cent, l.valid_until::text, l.revoked_at IS NOT NULL AS revoked,
             p.name AS property_name, p.currency, p.is_training,
             r.arrival::text, r.departure::text, g.language,
@@ -181,6 +182,21 @@ async function lage(
     if (offen <= 0) return { ...grund, kind: 'paid' }
   } else if (z.bezahlt) {
     return { ...grund, kind: 'paid' }
+  } else if (z.invoice_id !== null) {
+    /*
+     * Ein Link an einer Rechnung verlangt, was von ihr noch offen ist
+     * (0172) -- hat der Gast inzwischen einen Teil ueberwiesen, zahlt er
+     * hier nur den Rest, und ist sie beglichen, gibt es nichts zu zahlen.
+     * Nie mehr als beim Anlegen: der Link nennt in der Mail einen Betrag.
+     */
+    const a = await client.query<{ rest: string }>(
+      `SELECT coalesce((i.totals->>'payableCent')::bigint,
+                       (i.totals->>'grossCent')::bigint, 0)
+              - coalesce((SELECT sum(s.amount_cent) FROM settlement s
+                           WHERE s.invoice_id = i.id), 0) AS rest
+         FROM invoice i WHERE i.id = $1`, [z.invoice_id])
+    offen = Math.min(offen, Number(a.rows[0]?.rest ?? 0))
+    if (offen <= 0) return { ...grund, kind: 'paid' }
   }
 
   // Gegen den Geschaeftstag, wie jede Frist (CLAUDE.md).

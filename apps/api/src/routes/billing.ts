@@ -129,6 +129,37 @@ function passendeVermerke(
 }
 
 /**
+ * Einen Zahlungsvermerk der aeltesten Rechnung des Folios zuordnen, die
+ * noch offen ist -- fuer das Vermerken am Tresen wie fuer den Eingang ueber
+ * einen Zahlungslink ohne eigene Rechnung (Webhook). Ohne `kandidaten`
+ * werden alle Schluss- und Zwischenrechnungen des Folios betrachtet.
+ *
+ * Zahlt der Gast Rechnung und Kurtaxe in einem Betrag -- der Regelfall am
+ * Tresen --, uebersteigt der Vermerk den Rest der Rechnung um genau die
+ * Kurtaxe, die nicht auf ihr steht. Ohne diesen Spielraum bliebe jede
+ * solche Rechnung fuer immer "offen".
+ */
+export async function zuOffenerRechnung(
+  client: PoolClient, folioId: number, settlementId: number, amountCent: number,
+  kandidaten?: ReadonlyArray<{ id: number; rest: number }>
+): Promise<void> {
+  const liste = kandidaten ?? (await client.query<{ id: number; rest: number }>(
+    `SELECT i.id,
+            coalesce((i.totals->>'payableCent')::bigint,
+                     (i.totals->>'grossCent')::bigint, 0)
+            - coalesce((SELECT sum(s.amount_cent)
+                          FROM settlement s WHERE s.invoice_id = i.id), 0) AS rest
+       FROM invoice i
+      WHERE i.folio_id = $1 AND i.kind IN ('final','interim')
+      ORDER BY i.id`, [folioId])).rows
+  const ziel = liste.find(z => Number(z.rest) > 0)
+  if (ziel !== undefined && amountCent > 0
+      && amountCent <= Number(ziel.rest) + await kurtaxeAmFolio(client, folioId)) {
+    await vermerkeZuordnen(client, ziel.id, [settlementId])
+  }
+}
+
+/**
  * Die Zuordnung schreiben. `settlement` ist Haertegrad 1; das ist der
  * **eine** erlaubte Uebergang (Migration 0012, `NULL` -> Wert), und was
  * hier zugeordnet wird, ist zugeordnet.
@@ -2034,17 +2065,7 @@ export function billingRoutes(app: FastifyInstance): void {
         if (body.invoiceRef !== undefined && offen.rowCount === 0) {
           throw Errors.notFound('res.invoice')
         }
-        /*
-         * Zahlt der Gast Rechnung und Kurtaxe in einem Betrag -- der
-         * Regelfall am Tresen --, uebersteigt der Vermerk den Rest der
-         * Rechnung um genau die Kurtaxe, die nicht auf ihr steht. Ohne diesen
-         * Spielraum bliebe jede solche Rechnung fuer immer "offen".
-         */
-        const ziel = offen.rows.find(z => Number(z.rest) > 0)
-        if (ziel !== undefined && body.amountCent > 0
-            && body.amountCent <= Number(ziel.rest) + await kurtaxeAmFolio(client, folio.id)) {
-          await vermerkeZuordnen(client, ziel.id, [r.rows[0]!.id])
-        }
+        await zuOffenerRechnung(client, folio.id, r.rows[0]!.id, body.amountCent, offen.rows)
 
         const result = { settlementId: r.rows[0]!.id, amountCent: body.amountCent }
         await completeIdempotent(client, principal.clientKey, key, 201, result)
