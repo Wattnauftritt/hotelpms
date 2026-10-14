@@ -239,3 +239,41 @@ export function useSetAccountRoles(propertyId: number) {
     onSuccess: nachBenutzeraenderung(qc, propertyId)
   })
 }
+
+// ------------------------------------------- Stripe-Konto des Hauses (0167)
+
+export interface PaymentAccountView {
+  /** Ist Stripe Connect auf dieser Installation eingerichtet? */
+  configured: boolean
+  account: { accountId: string; chargesEnabled: boolean; connectedAt: string } | null
+}
+
+export const usePaymentAccount = (propertyId: number) =>
+  useQuery<PaymentAccountView>({
+    queryKey: ['paymentAccount', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/payment-account`)
+  })
+
+/**
+ * Holt die Adresse bei Stripe und geht dorthin. Kein `window.open`: das
+ * Hotel meldet sich bei Stripe an, und die Rueckkehr kommt in dieses
+ * Fenster, nicht in ein zweites.
+ */
+export function useConnectPaymentAccount(propertyId: number) {
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ url: string }>(`/v1/properties/${propertyId}/payment-account/connect`),
+    onSuccess: r => { location.assign(r.url) }
+  })
+}
+
+export function useDisconnectPaymentAccount(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post(`/v1/properties/${propertyId}/payment-account/disconnect`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['paymentAccount', propertyId] })
+    }
+  })
+}

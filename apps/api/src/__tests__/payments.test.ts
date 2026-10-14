@@ -6,7 +6,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeGuest,
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
-import { stripeAttrappe } from './stripeAttrappe.js'
+import { stripeAttrappe, kontoVerbinden, TESTKONTO } from './stripeAttrappe.js'
 
 /**
  * Der Webhook laeuft ohne Sitzung. Ein Test dagegen kann Stripe nicht
@@ -24,11 +24,13 @@ function signStripe(rawBody: string, secret = WEBHOOK_SECRET, timestamp = Math.f
 }
 
 function checkoutCompletedEvent(
-  eventId: string, sessionId: string, amountTotal: number, paid = true
+  eventId: string, sessionId: string, amountTotal: number, paid = true,
+  account: string = TESTKONTO
 ): string {
   return JSON.stringify({
     id: eventId,
     type: 'checkout.session.completed',
+    account,
     data: { object: { id: sessionId, amount_total: amountTotal,
                        payment_status: paid ? 'paid' : 'unpaid' } }
   })
@@ -47,6 +49,7 @@ beforeAll(async () => {
   await ensureSchema()
   owner = ownerPool()
   process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET
+  process.env.STRIPE_CONNECT_CLIENT_ID = 'ca_test_plattform'
   const built = await buildServer({ pool: appPool(10) })
   app = built.app
   pool = built.pool
@@ -56,6 +59,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await app.close(); await owner.end(); await pool.end()
   delete process.env.STRIPE_WEBHOOK_SECRET
+  delete process.env.STRIPE_CONNECT_CLIENT_ID
 })
 
 let lauf = 0
@@ -63,6 +67,7 @@ beforeEach(async () => {
   await truncateAll()
   fakeStripe.zuruecksetzen()
   fx = await makeProperty(owner)
+  await kontoVerbinden(owner, fx.propertyId)
   const u = await makeUser(owner,
     { email: 'rez@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
   auth = { cookie: `hp_session=${u.sessionId}` }
@@ -206,5 +211,158 @@ describe('Pay-by-Link ueber Stripe', () => {
     const rawBody = checkoutCompletedEvent('evt_unbekannt', 'cs_test_nie_erzeugt', 1_000)
     const res = await webhook(rawBody, signStripe(rawBody))
     expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('Stripe Connect: jedes Haus sein eigenes Konto (0167)', () => {
+  const kontoEreignis = (typ: string, konto: string, extra: object = {}): string =>
+    JSON.stringify({ id: `evt_${typ}_${Math.random()}`, type: typ, account: konto,
+                     data: { object: { id: konto, ...extra } } })
+
+  async function verwalter(): Promise<Record<string, string>> {
+    const u = await makeUser(owner,
+      { email: 'chef@test.de', propertyId: fx.propertyId, roleKey: 'owner' })
+    return { cookie: `hp_session=${u.sessionId}` }
+  }
+
+  it('legt den Checkout auf dem Konto des Hauses an, nicht auf dem der Plattform', async () => {
+    const folio = await makeFolio()
+    const ref = await checkoutZu(folio.ref, 4_000)
+    expect(fakeStripe.sitzungen.get(ref)!.konto).toBe(TESTKONTO)
+    const intent = await owner.query(
+      `SELECT provider_account FROM payment_intent WHERE provider_reference = $1`, [ref])
+    expect(intent.rows[0]!.provider_account).toBe(TESTKONTO)
+  })
+
+  it('erzeugt ohne verbundenes Konto keinen Zahlungslink', async () => {
+    await owner.query(`DELETE FROM property_payment_account WHERE property_id = $1`,
+      [fx.propertyId])
+    const folio = await makeFolio()
+    const res = await requestLink(folio.ref, 1_000)
+    expect(res.statusCode).toBe(422)
+    expect(res.json().code).toBe('payments.accountNotConnected')
+  })
+
+  it('erzeugt keinen Zahlungslink, solange Stripe das Konto nicht freigeschaltet hat', async () => {
+    await owner.query(
+      `UPDATE property_payment_account SET charges_enabled = false WHERE property_id = $1`,
+      [fx.propertyId])
+    const folio = await makeFolio()
+    expect((await requestLink(folio.ref, 1_000)).statusCode).toBe(422)
+  })
+
+  it('oeffnet keinen Checkout mehr, wenn das Haus das Konto inzwischen getrennt hat', async () => {
+    const folio = await makeFolio()
+    const link = await requestLink(folio.ref, 2_000)
+    const t = new URL((link.json() as { url: string }).url).searchParams.get('t')!
+    await owner.query(`DELETE FROM property_payment_account WHERE property_id = $1`,
+      [fx.propertyId])
+    const r = await app.inject({ method: 'GET', url: `/v1/pay/checkout?t=${t}` })
+    expect(r.statusCode).toBe(200)
+    expect(fakeStripe.angelegt).toBe(0)
+  })
+
+  it('bucht nichts, wenn die Meldung von einem anderen Konto kommt als der Checkout', async () => {
+    const folio = await makeFolio()
+    const ref = await checkoutZu(folio.ref, 6_000)
+    const fremd = checkoutCompletedEvent('evt_fremd', ref, 6_000, true, 'acct_fremd')
+    expect((await webhook(fremd, signStripe(fremd))).statusCode).toBe(200)
+    expect(await settlementsOf(folio.id)).toHaveLength(0)
+  })
+
+  it('uebernimmt Freischaltung und Trennung aus den Meldungen von Stripe', async () => {
+    const gesperrt = kontoEreignis('account.updated', TESTKONTO, { charges_enabled: false })
+    expect((await webhook(gesperrt, signStripe(gesperrt))).statusCode).toBe(200)
+    let z = await owner.query(
+      `SELECT charges_enabled FROM property_payment_account WHERE property_id = $1`,
+      [fx.propertyId])
+    expect(z.rows[0]!.charges_enabled).toBe(false)
+
+    const frei = kontoEreignis('account.updated', TESTKONTO, { charges_enabled: true })
+    await webhook(frei, signStripe(frei))
+    z = await owner.query(
+      `SELECT charges_enabled FROM property_payment_account WHERE property_id = $1`,
+      [fx.propertyId])
+    expect(z.rows[0]!.charges_enabled).toBe(true)
+
+    const weg = kontoEreignis('account.application.deauthorized', TESTKONTO)
+    await webhook(weg, signStripe(weg))
+    z = await owner.query(
+      `SELECT 1 FROM property_payment_account WHERE property_id = $1`, [fx.propertyId])
+    expect(z.rowCount).toBe(0)
+  })
+
+  it('verbindet ein Konto ueber die Rueckkehr von Stripe, gebunden an Haus und Benutzer', async () => {
+    await owner.query(`DELETE FROM property_payment_account WHERE property_id = $1`,
+      [fx.propertyId])
+    const chef = await verwalter()
+
+    const start = await app.inject({ method: 'POST', headers: chef,
+      url: `/v1/properties/${fx.propertyId}/payment-account/connect` })
+    expect(start.statusCode).toBe(200)
+    const ziel = new URL((start.json() as { url: string }).url)
+    expect(ziel.host).toBe('connect.stripe.com')
+    expect(ziel.searchParams.get('client_id')).toBe('ca_test_plattform')
+    expect(ziel.searchParams.get('redirect_uri')).toMatch(/\/stripe-verbunden$/)
+    const state = ziel.searchParams.get('state')!
+
+    // Die Rezeption darf nicht verbinden, auch nicht mit einem gueltigen state.
+    fakeStripe.codes.set('ac_1', 'acct_neu')
+    const fremd = await app.inject({ method: 'POST', headers: auth,
+      url: '/v1/payment-account/complete', payload: { code: 'ac_1', state } })
+    expect(fremd.statusCode).toBe(403)
+
+    // Ein manipulierter state wird abgewiesen, bevor Stripe gefragt wird.
+    const falsch = await app.inject({ method: 'POST', headers: chef,
+      url: '/v1/payment-account/complete',
+      payload: { code: 'ac_1', state: state.replace(/^\d+/, '999') } })
+    expect(falsch.statusCode).toBe(422)
+    expect(fakeStripe.codes.has('ac_1')).toBe(true)
+
+    fakeStripe.freigeschaltet.add('acct_neu')
+    const ok = await app.inject({ method: 'POST', headers: chef,
+      url: '/v1/payment-account/complete', payload: { code: 'ac_1', state } })
+    expect(ok.statusCode).toBe(200)
+    expect(ok.json()).toMatchObject({ propertyId: fx.propertyId, accountId: 'acct_neu',
+                                      chargesEnabled: true })
+
+    const sicht = await app.inject({ method: 'GET', headers: chef,
+      url: `/v1/properties/${fx.propertyId}/payment-account` })
+    expect(sicht.json()).toMatchObject({ configured: true,
+      account: { accountId: 'acct_neu', chargesEnabled: true } })
+  })
+
+  it('trennt nicht, solange ein Checkout offen ist, und danach auch beim Anbieter', async () => {
+    const chef = await verwalter()
+    const folio = await makeFolio()
+    const ref = await checkoutZu(folio.ref, 3_000)
+
+    const zu = await app.inject({ method: 'POST', headers: chef,
+      url: `/v1/properties/${fx.propertyId}/payment-account/disconnect` })
+    expect(zu.statusCode).toBe(409)
+    expect(zu.json().code).toBe('payments.accountHasOpenCheckouts')
+
+    const bezahlt = checkoutCompletedEvent('evt_vor_trennen', ref, 3_000)
+    await webhook(bezahlt, signStripe(bezahlt))
+
+    const ok = await app.inject({ method: 'POST', headers: chef,
+      url: `/v1/properties/${fx.propertyId}/payment-account/disconnect` })
+    expect(ok.statusCode).toBe(200)
+    expect(fakeStripe.getrennt).toEqual([TESTKONTO])
+  })
+
+  it('trennt ein Konto, das ein zweites Haus mitnutzt, beim Anbieter nicht', async () => {
+    const zweites = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1,'GH','Gaestehaus','Hafenstr. 2','25813','Husum','DE') RETURNING id`,
+      [fx.accountId])
+    await kontoVerbinden(owner, zweites.rows[0]!.id)
+    const chef = await verwalter()
+
+    const ok = await app.inject({ method: 'POST', headers: chef,
+      url: `/v1/properties/${fx.propertyId}/payment-account/disconnect` })
+    expect(ok.statusCode).toBe(200)
+    expect(ok.json().providerDisconnected).toBe(false)
+    expect(fakeStripe.getrennt).toEqual([])
   })
 })

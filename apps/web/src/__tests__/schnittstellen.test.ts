@@ -18,10 +18,10 @@ describe('Bereiche der Schnittstellen', () => {
    */
   it('trennt Maschinen von Menschen', () => {
     expect(schnittstellenBereiche(p => p === 'integration:manage').map(b => b.key))
-      .toEqual(['webhooks', 'clients', 'channel'])
+      .toEqual(['webhooks', 'clients', 'channel', 'payments'])
     expect(schnittstellenBereiche(p => p === 'user:manage')).toEqual([])
     expect(schnittstellenBereiche(() => true).map(b => b.key))
-      .toEqual(['webhooks', 'clients', 'channel'])
+      .toEqual(['webhooks', 'clients', 'channel', 'payments'])
   })
 
   it('sagt nichts zu, solange nichts geladen ist', () => {

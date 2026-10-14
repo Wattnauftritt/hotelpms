@@ -21,6 +21,11 @@ export interface Config {
    */
   stripeSecretKey: string | null
   stripeWebhookSecret: string | null
+  /**
+   * Kennung der Plattform bei Stripe Connect (`ca_...`, Migration 0167).
+   * Ohne sie kann kein Haus sein Konto verbinden; keine geheime Angabe.
+   */
+  stripeConnectClientId: string | null
   /** Ziel fuer Erfolgs- und Abbruchseite nach Pay-by-Link. Keine geheime Angabe. */
   publicAppUrl: string
   /**
@@ -158,6 +163,7 @@ export function loadConfig(): Config {
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? '').split(',').filter(Boolean),
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? null,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null,
+    stripeConnectClientId: process.env.STRIPE_CONNECT_CLIENT_ID ?? null,
     publicAppUrl,
     // Wirft bei einem Tippfehler, und zwar hier: ein verworfenes Netz faellt
     // sonst erst auf, wenn eine Zustellung ausbleibt.

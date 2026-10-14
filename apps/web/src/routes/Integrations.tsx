@@ -4,7 +4,8 @@ import type { WebhookSubscription, OAuthClient, ChannelConnection } from '@hotel
 import { useWebhookSubscriptions, useWebhookDeliveries, useCreateWebhook,
          useSetWebhookStatus, useOAuthClients, useCreateOAuthClient,
          useRevokeOAuthClient, useUpdateOAuthClient, useChannelConnections, useCreateChannelConnection,
-         useDisableChannelConnection }
+         useDisableChannelConnection, usePaymentAccount, useConnectPaymentAccount,
+         useDisconnectPaymentAccount }
   from '../lib/queries/integrations.js'
 import { useHausrechte, useHaeuserMitRecht } from '../lib/rechte.js'
 import { useReiter } from '../lib/reiter.js'
@@ -14,7 +15,7 @@ import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 
 /**
- * Schnittstellen: Webhooks, Maschinenzugänge, Channel Manager.
+ * Schnittstellen: Webhooks, Maschinenzugänge, Channel Manager, Zahlungen.
  *
  * Benutzer und Rollen standen hier einmal als vierter Reiter und wurden von
  * keinem Kunden gefunden: wer Personal verwaltet, sucht nicht unter
@@ -32,7 +33,7 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
  * neuen Recht genau dieses.
  */
 
-const REITER = ['webhooks', 'clients', 'channel'] as const
+const REITER = ['webhooks', 'clients', 'channel', 'payments'] as const
 type Reiter = (typeof REITER)[number]
 
 interface Bereich { key: Reiter; label: TextKey }
@@ -43,6 +44,7 @@ export function schnittstellenBereiche(darf: (p: string) => boolean): Bereich[] 
     bereiche.push({ key: 'webhooks', label: 'int.tab.webhooks' })
     bereiche.push({ key: 'clients', label: 'int.tab.clients' })
     bereiche.push({ key: 'channel', label: 'int.tab.channel' })
+    bereiche.push({ key: 'payments', label: 'int.tab.payments' })
   }
   return bereiche
 }
@@ -576,6 +578,70 @@ function ChannelManager({ propertyId }: { propertyId: number }): JSX.Element {
   )
 }
 
+// ------------------------------------------------------------- Zahlungen
+
+/**
+ * Das Stripe-Konto des Hauses (Stripe Connect, Migration 0167).
+ *
+ * Verbunden wird bei Stripe, nicht hier: der Knopf fuehrt dorthin, das
+ * Hotel meldet sich mit seinem eigenen Konto an oder legt eines an, und
+ * Stripe schickt es nach `/stripe-verbunden` zurueck. Kein Feld fuer einen
+ * Schluessel -- ein Hotel, das seinen geheimen Stripe-Schluessel in eine
+ * fremde Oberflaeche tippt, haette der Plattform mehr gegeben, als sie
+ * braucht.
+ */
+function Zahlungen({ propertyId }: { propertyId: number }): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const q = usePaymentAccount(propertyId)
+  const verbinden = useConnectPaymentAccount(propertyId)
+  const trennen = useDisconnectPaymentAccount(propertyId)
+
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return <Laedt />
+  const { configured, account } = q.data
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-sm text-neutral-600">{t('pay.intro')}</p>
+
+      {account === null ? (
+        <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
+          <div className="text-sm">{t('pay.none')}</div>
+          {configured
+            ? <button onClick={() => verbinden.mutate()}
+                      disabled={!online || verbinden.isPending} className={knopfStark}>
+                {t('pay.connect')}
+              </button>
+            : <div className="text-sm text-amber-800">{t('pay.notConfigured')}</div>}
+          {verbinden.isError && <Fehler error={verbinden.error} />}
+        </div>
+      ) : (
+        <div className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={`text-xs px-1.5 py-0.5 rounded-sm border ${
+              account.chargesEnabled
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+              {t(account.chargesEnabled ? 'pay.ready' : 'pay.pending')}
+            </span>
+            <span className="text-sm text-neutral-600 grow">
+              {t('pay.account')}: <code>{account.accountId}</code>
+            </span>
+            <button onClick={() => {
+                      if (window.confirm(t('pay.disconnectConfirm'))) trennen.mutate()
+                    }}
+                    disabled={!online || trennen.isPending} className={knopf}>
+              {t('pay.disconnect')}
+            </button>
+          </div>
+          {trennen.isError && <Fehler error={trennen.error} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Integrations({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const { darf, geladen } = useHausrechte(propertyId)
@@ -608,6 +674,7 @@ export function Integrations({ propertyId }: { propertyId: number }): JSX.Elemen
       {aktiv.key === 'webhooks' && <Webhooks />}
       {aktiv.key === 'clients' && <Maschinenzugaenge propertyId={propertyId} />}
       {aktiv.key === 'channel' && <ChannelManager propertyId={propertyId} />}
+      {aktiv.key === 'payments' && <Zahlungen propertyId={propertyId} />}
     </div>
   )
 }

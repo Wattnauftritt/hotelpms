@@ -257,6 +257,11 @@ export function paymentLinkRoutes(
         if (await isTrainingProperty(client, folio.property_id)) {
           throw Errors.unprocessable('training.noPaymentLink')
         }
+        // Ohne verbundenes, freigeschaltetes Konto des Hauses endete der
+        // Link beim Gast mit "nicht moeglich" (0167).
+        if (await zahlungskonto(client, folio.property_id) === null) {
+          throw Errors.unprocessable('payments.accountNotConnected')
+        }
 
         const businessDate = await geschaeftstag(client, folio.property_id)
         let anforderung: { id: number; dueDate: string } | null = null
@@ -406,8 +411,9 @@ export function paymentLinkRoutes(
 
         const anspruch = await anspruchNehmen(client, link.id, link.property_id)
         if (anspruch === null) return BESETZT
-        const offen = await client.query<{ id: number; provider_reference: string }>(
-          `SELECT id, provider_reference FROM payment_intent
+        const offen = await client.query<{ id: number; provider_reference: string
+                                           provider_account: string | null }>(
+          `SELECT id, provider_reference, provider_account FROM payment_intent
             WHERE payment_link_id = $1 AND property_id = $2 AND status = 'pending'`,
           [link.id, link.property_id])
         return { link, anspruch, offen: offen.rows }
@@ -421,7 +427,8 @@ export function paymentLinkRoutes(
       try {
         for (const c of offen) {
           if (!stripe) throw Errors.notConfigured('payments.stripeKeyMissing')
-          const r = await checkoutSchliessen(stripe, c.provider_reference, req, 'conflict')
+          const r = await checkoutSchliessen(stripe, c.provider_account, c.provider_reference,
+                                             req, 'conflict')
           if (r !== 'abgeschlossen') erledigt.push({ id: c.id, status: r })
         }
       } catch (err) {
@@ -636,13 +643,13 @@ async function erledigtVermerken(client: PoolClient, erledigt: Erledigt[]): Prom
  * Oeffnen durch den Gast die Seite "wird verarbeitet".
  */
 async function checkoutSchliessen(
-  stripe: StripeAdapter, ref: string, req: FastifyRequest,
+  stripe: StripeAdapter, konto: string | null, ref: string, req: FastifyRequest,
   beiAbschluss: 'conflict' | 'melden', bekannt?: CheckoutState['status']
 ): Promise<'canceled' | 'failed' | 'abgeschlossen'> {
   let status = bekannt
   if (status === undefined) {
     try {
-      status = (await stripe.getCheckoutSession(ref)).status
+      status = (await stripe.getCheckoutSession(konto, ref)).status
     } catch (err) {
       req.log.warn({ err }, 'Checkout beim Anbieter nicht abgefragt')
       throw Errors.upstreamFailed('payments.providerUnavailable')
@@ -654,7 +661,7 @@ async function checkoutSchliessen(
   }
   if (status === 'open') {
     try {
-      await stripe.expireCheckoutSession(ref)
+      await stripe.expireCheckoutSession(konto, ref)
     } catch (err) {
       if (err instanceof ProviderRefused) {
         if (beiAbschluss === 'conflict') throw Errors.conflict('payments.linkNotCancelable')
@@ -701,20 +708,24 @@ async function checkoutOeffnen(
     const x = await lage(client, token, sprache, true)
     if (x.kind !== 'open') return { x }
     if (!stripe) return { x: { ...x, kind: 'unavailable' as const } }
+    // Das Konto des Hauses (0167). Hat es keines mehr verbunden, entsteht
+    // kein neuer Checkout -- auch nicht auf dem Konto der Plattform.
+    const konto = await zahlungskonto(client, x.propertyId!)
+    if (konto === null) return { x: { ...x, kind: 'unavailable' as const } }
     const anspruch = await anspruchNehmen(client, x.linkId!, x.propertyId!)
     if (anspruch === null) return BESETZT
-    const vorhanden = await client.query<{ id: number; provider_reference: string
-                                           amount_cent: string }>(
-      `SELECT id, provider_reference, amount_cent FROM payment_intent
+    const vorhanden = await client.query<Vorhanden>(
+      `SELECT id, provider_reference, provider_account, amount_cent FROM payment_intent
         WHERE payment_link_id = $1 AND property_id = $2 AND status = 'pending'`,
       [x.linkId, x.propertyId])
-    return { x, anspruch, vorhanden: vorhanden.rows }
+    return { x, konto, anspruch, vorhanden: vorhanden.rows }
   }))
   if (erst === BESETZT) return nichtMoeglich
-  if (erst.anspruch === undefined || erst.vorhanden === undefined || stripe === null) {
+  if (erst.anspruch === undefined || erst.vorhanden === undefined
+      || erst.konto === undefined || stripe === null) {
     return erst.x
   }
-  const { x, anspruch, vorhanden } = erst
+  const { x, konto, anspruch, vorhanden } = erst
 
   // 2. Beim Anbieter, ohne Verbindung aus dem Pool.
   const erledigt: Erledigt[] = []
@@ -724,7 +735,7 @@ async function checkoutOeffnen(
     ziel = await beimAnbieter(stripe, x, vorhanden, erledigt, req)
     if (ziel === null) {
       try {
-        neu = await stripe.createCheckoutSession({
+        neu = await stripe.createCheckoutSession(konto, {
           amountCent: x.offenCent!,
           reference: x.folioRef!,
           // Ohne Token: der Anbieter soll den Ausweis des Gastes nicht kennen.
@@ -754,11 +765,11 @@ async function checkoutOeffnen(
       const ins = await client.query(
         `INSERT INTO payment_intent (property_id, folio_id, provider, provider_reference,
                                      amount_cent, deposit_request_id, expires_at,
-                                     payment_link_id)
-         VALUES ($1,$2,'stripe',$3,$4,$5,$6,$7)
+                                     payment_link_id, provider_account)
+         VALUES ($1,$2,'stripe',$3,$4,$5,$6,$7,$8)
          ON CONFLICT DO NOTHING`,
         [x.propertyId, x.folioId, neu.providerReference, x.offenCent,
-         x.depositRequestId ?? null, neu.expiresAt ?? null, x.linkId])
+         x.depositRequestId ?? null, neu.expiresAt ?? null, x.linkId, konto])
       ok = ins.rowCount === 1
     }
     await anspruchFreigeben(client, x.linkId!, anspruch)
@@ -770,11 +781,31 @@ async function checkoutOeffnen(
   // Nicht eingetragen: inzwischen widerrufen oder ein anderer Checkout war
   // schneller. Diesen beim Anbieter beenden; seine Adresse bekommt niemand.
   try {
-    await stripe.expireCheckoutSession(neu.providerReference)
+    await stripe.expireCheckoutSession(konto, neu.providerReference)
   } catch (err) {
     req.log.warn({ err }, 'Ueberzaehligen Checkout beim Anbieter nicht beendet')
   }
   return nichtMoeglich
+}
+
+/** Ein offener Checkout eines Links, mit dem Konto, auf dem er liegt. */
+interface Vorhanden {
+  id: number; provider_reference: string; provider_account: string | null
+  amount_cent: string
+}
+
+/**
+ * Das Stripe-Konto des Hauses, wenn es verbunden ist und Zahlungen annehmen
+ * darf (0167); sonst `null`. `property_payment_account` traegt keine
+ * Zeilenrichtlinie, das Haus wird hier ausdruecklich gefiltert.
+ */
+export async function zahlungskonto(
+  client: PoolClient, propertyId: number
+): Promise<string | null> {
+  const r = await client.query<{ provider_account: string }>(
+    `SELECT provider_account FROM property_payment_account
+      WHERE property_id = $1 AND charges_enabled`, [propertyId])
+  return r.rows[0]?.provider_account ?? null
 }
 
 /**
@@ -784,14 +815,13 @@ async function checkoutOeffnen(
  * beendet wurde, steht danach in `erledigt`.
  */
 async function beimAnbieter(
-  stripe: StripeAdapter, x: Lage,
-  vorhanden: Array<{ id: number; provider_reference: string; amount_cent: string }>,
+  stripe: StripeAdapter, x: Lage, vorhanden: Vorhanden[],
   erledigt: Erledigt[], req: FastifyRequest
 ): Promise<{ url: string } | Lage | null> {
   for (const c of vorhanden) {
     let stand
     try {
-      stand = await stripe.getCheckoutSession(c.provider_reference)
+      stand = await stripe.getCheckoutSession(c.provider_account, c.provider_reference)
     } catch (err) {
       req.log.warn({ err }, 'Checkout beim Anbieter nicht abgefragt')
       return { ...x, kind: 'unavailable' }
@@ -811,8 +841,8 @@ async function beimAnbieter(
     // Anderer Betrag oder bald abgelaufen: erst beim Anbieter schliessen,
     // dann einen neuen. Meldet er ihn dabei als abgeschlossen, keinen neuen.
     try {
-      const r = await checkoutSchliessen(stripe, c.provider_reference, req, 'melden',
-                                         stand.status)
+      const r = await checkoutSchliessen(stripe, c.provider_account, c.provider_reference,
+                                         req, 'melden', stand.status)
       if (r === 'abgeschlossen') return { ...x, kind: 'processing' }
       erledigt.push({ id: c.id, status: r })
     } catch {
