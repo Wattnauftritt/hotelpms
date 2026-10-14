@@ -6,6 +6,7 @@ import { Shell, type Haus } from './components/Shell.tsx'
 import { Arbeitsplatz } from './components/Arbeitsplatz.tsx'
 import { Login } from './routes/Login.tsx'
 import { Zugang, zugangAusAdresse } from './routes/Zugang.tsx'
+import { StripeVerbunden, istStripeRueckkehr } from './routes/StripeVerbunden.tsx'
 import { AdminpanelSeite, Folio, CheckIn } from './screens.js'
 import { Nachladen } from './components/Nachladen.tsx'
 import { ReservationPanel } from './components/ReservationPanel.tsx'
@@ -256,6 +257,12 @@ function App(): JSX.Element {
     return <I18nContext.Provider value={locale}>
       <Login onDone={() => void qc.invalidateQueries({ queryKey: ['me'] })} />
     </I18nContext.Provider>
+  }
+
+  // Rueckkehr von Stripe nach dem Verbinden eines Kontos (0167). Erst nach
+  // der Anmeldung: die Seite reicht den Code mit der Sitzung weiter.
+  if (istStripeRueckkehr()) {
+    return <I18nContext.Provider value={locale}><StripeVerbunden /></I18nContext.Provider>
   }
 
   // Das Haus aus der Adresse, sonst das erste, auf das der Benutzer Zugriff

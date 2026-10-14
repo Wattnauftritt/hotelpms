@@ -165,6 +165,7 @@ export interface PostBereitschaft {
 export interface Anzahlungssicht {
   businessDate: string
   isTraining: boolean
+  paymentAccountReady: boolean
   canRequestDeposit: boolean
   stayCent: number | null
   arrival: string | null
@@ -208,6 +209,10 @@ export async function anzahlungssicht(
       WHERE p.id = $1`, [folio.property_id, folio.reservation_id])
   const k = kopf.rows[0]!
   const post = await postBereitschaft(client, folio.property_id, k.is_training)
+  // Ohne Zeilenrichtlinie (0167), das Haus wird ausdruecklich gefiltert.
+  const konto = await client.query(
+    `SELECT 1 FROM property_payment_account WHERE property_id = $1 AND charges_enabled`,
+    [folio.property_id])
 
   const auf = folio.reservation_id === null ? null
     : await aufenthalt(client, folio.reservation_id)
@@ -285,6 +290,7 @@ export async function anzahlungssicht(
   return {
     businessDate,
     isTraining: k.is_training,
+    paymentAccountReady: (konto.rowCount ?? 0) > 0,
     canRequestDeposit: auf !== null && folio.status === 'open'
       && !ABGESCHLOSSEN.has(auf.status),
     stayCent: auf?.stayCent ?? null,

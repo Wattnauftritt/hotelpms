@@ -5,8 +5,10 @@ import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { createStripeAdapter, verifyStripeSignature, parseStripeEvent,
+         parseStripeAccountEvent, stripeEventAccount,
          type StripeAdapter } from '../platform/payments/stripe.js'
 import { paymentLinkRoutes } from './paymentLinks.js'
+import { paymentAccountRoutes } from './paymentAccount.js'
 
 export interface PaymentRouteOverrides {
   /** Fuer Tests: ein Adapter ohne echten Netzwerkzugriff auf Stripe. */
@@ -16,11 +18,15 @@ export interface PaymentRouteOverrides {
 export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOverrides = {}): void {
   const config = loadConfig()
   const stripe = overrides.stripe
-    ?? (config.stripeSecretKey ? createStripeAdapter(config.stripeSecretKey) : null)
+    ?? (config.stripeSecretKey
+          ? createStripeAdapter(config.stripeSecretKey, config.stripeConnectClientId)
+          : null)
 
   // Zahlungslinks: anlegen, widerrufen, und die Seite, die der Gast oeffnet
   // (Migration 0068). Eigene Datei, derselbe Adapter.
   paymentLinkRoutes(app, stripe, config)
+  // Das Stripe-Konto je Haus verbinden und trennen (Migration 0167).
+  paymentAccountRoutes(app, stripe, config)
 
   registerRoute(app, {
     method: 'POST',
@@ -39,7 +45,35 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
         throw Errors.invalidSignature((err as Error).message)
       }
 
+      /*
+       * Meldungen ueber ein verbundenes Konto (0167): freigeschaltet oder
+       * gesperrt, oder das Hotel hat die Verbindung bei Stripe selbst
+       * geloest. Getroffen werden alle Haeuser auf diesem Konto -- teilen
+       * sich zwei Haeuser einer Firma eines, gilt die Meldung fuer beide.
+       */
+      const kontoEreignis = parseStripeAccountEvent(raw)
+      if (kontoEreignis !== null) {
+        await withTransaction(req.pool, SYSTEM_CONTEXT, async client => {
+          if (kontoEreignis.kind === 'account.updated') {
+            await client.query(
+              `UPDATE property_payment_account
+                  SET charges_enabled = $2, updated_at = now()
+                WHERE provider = 'stripe' AND provider_account = $1
+                  AND charges_enabled IS DISTINCT FROM $2`,
+              [kontoEreignis.account, kontoEreignis.chargesEnabled])
+          } else {
+            await client.query(
+              `DELETE FROM property_payment_account
+                WHERE provider = 'stripe' AND provider_account = $1`,
+              [kontoEreignis.account])
+          }
+        })
+        reply.status(200)
+        return { received: true }
+      }
+
       const event = parseStripeEvent(raw)
+      const eventKonto = stripeEventAccount(raw)
 
       // Eine einzige Transaktion: der Mandantenkontext ist zu Beginn leer
       // (SYSTEM_CONTEXT), denn payment_intent traegt keine Zeilenrichtlinie
@@ -55,8 +89,10 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
         const intent = await client.query<{
           id: number; property_id: number; folio_id: number
           amount_cent: number; status: string; deposit_request_id: number | null
+          provider_account: string | null
         }>(
-          `SELECT id, property_id, folio_id, amount_cent, status, deposit_request_id
+          `SELECT id, property_id, folio_id, amount_cent, status, deposit_request_id,
+                  provider_account
              FROM payment_intent
             WHERE provider = 'stripe' AND provider_reference = $1 FOR UPDATE`,
           [event.providerReference])
@@ -66,6 +102,18 @@ export function paymentsRoutes(app: FastifyInstance, overrides: PaymentRouteOver
           return
         }
         const row = intent.rows[0]!
+        /*
+         * Die Meldung muss vom Konto kommen, auf dem der Checkout liegt.
+         * Die Signatur beweist nur, dass Stripe sie schickt -- nicht, dass
+         * das Konto stimmt. Ohne diese Pruefung koennte ein anderes
+         * verbundenes Konto einen Checkout gleicher Kennung melden; die
+         * Kennungen sind bei Stripe eindeutig, die Pruefung kostet nichts.
+         */
+        if (row.provider_account !== eventKonto) {
+          req.log.warn({ paymentIntentId: row.id },
+            'Stripe-Ereignis von einem anderen Konto als dem des Checkouts')
+          return
+        }
 
         await client.query(`SELECT set_config('app.property_ids', $1, true)`,
           [String(row.property_id)])

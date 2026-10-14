@@ -17,7 +17,13 @@ const STRIPE_TIMEOUT_MS = 8_000
  * Dokument 02 spaeter; diese Aufgabe deckt Pay-by-Link.
  */
 export interface StripeAdapter {
-  createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSession>
+  /**
+   * Alle Checkout-Aufrufe tragen das Konto des Hauses (`account`, Stripe
+   * Connect, Migration 0167): angelegt, abgefragt und beendet wird im Namen
+   * des Hotels, das Geld geht direkt auf sein Konto. `null` nur fuer einen
+   * Checkout von vor 0167, der noch auf dem Konto der Plattform liegt.
+   */
+  createCheckoutSession(account: string, params: CheckoutSessionParams): Promise<CheckoutSession>
   /**
    * Einen offenen Checkout beim Anbieter beenden. Danach nimmt Stripe keine
    * Zahlung mehr darauf an -- das ist der eigentliche Zweck: ein Link, den
@@ -29,14 +35,28 @@ export interface StripeAdapter {
    * Der Aufrufer muss beides unterscheiden: im ersten Fall weiss er, dass
    * sich nichts geaendert hat, im zweiten nicht.
    */
-  expireCheckoutSession(providerReference: string): Promise<void>
+  expireCheckoutSession(account: string | null, providerReference: string): Promise<void>
   /**
    * Wo ein Checkout beim Anbieter steht. Die einzige verlaessliche Auskunft
    * darueber, ob ein alter Checkout noch bezahlt werden kann, bevor ein neuer
    * entsteht (Migration 0068): unsere Zeile sagt nur, was wir zuletzt
    * gehoert haben, und eine Benachrichtigung kann noch unterwegs sein.
    */
-  getCheckoutSession(providerReference: string): Promise<CheckoutState>
+  getCheckoutSession(account: string | null, providerReference: string): Promise<CheckoutState>
+
+  /**
+   * Den Code aus der Rueckkehr von Stripe einloesen (OAuth fuer
+   * Standard-Konten). Liefert die Konto-ID des Hotels. Ein Code gilt einmal;
+   * ein abgelaufener oder fremder wirft `ProviderRefused`.
+   */
+  connectExchange(code: string): Promise<{ accountId: string }>
+  /** Darf das verbundene Konto schon Zahlungen annehmen? */
+  getAccount(accountId: string): Promise<{ chargesEnabled: boolean }>
+  /**
+   * Die Verbindung beim Anbieter loesen. Danach darf die Plattform nichts
+   * mehr im Namen des Kontos tun; das Konto selbst bleibt dem Hotel.
+   */
+  deauthorize(accountId: string): Promise<void>
 }
 
 export interface CheckoutState {
@@ -75,9 +95,21 @@ export interface CheckoutSession {
   expiresAt?: Date
 }
 
-export function createStripeAdapter(secretKey: string): StripeAdapter {
+/**
+ * `connectClientId` ist die Kennung der Plattform bei Stripe Connect
+ * (`ca_...`). Ohne sie laesst sich nichts verbinden und nichts trennen; die
+ * Checkouts bereits verbundener Haeuser laufen trotzdem.
+ */
+export function createStripeAdapter(
+  secretKey: string, connectClientId: string | null = null
+): StripeAdapter {
+  const kopf = (account: string | null): Record<string, string> => ({
+    Authorization: `Bearer ${secretKey}`,
+    ...(account === null ? {} : { 'Stripe-Account': account })
+  })
+
   return {
-    async createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSession> {
+    async createCheckoutSession(account, params) {
       const body = new URLSearchParams({
         mode: 'payment',
         success_url: params.successUrl,
@@ -90,10 +122,7 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
       })
       const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
+        headers: { ...kopf(account), 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
         signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS)
       })
@@ -108,11 +137,10 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
       }
     },
 
-    async getCheckoutSession(providerReference: string): Promise<CheckoutState> {
+    async getCheckoutSession(account, providerReference) {
       const res = await fetch(
         `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}`,
-        { headers: { Authorization: `Bearer ${secretKey}` },
-          signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) })
+        { headers: kopf(account), signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) })
       if (!res.ok) {
         throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
       }
@@ -128,11 +156,54 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
       }
     },
 
-    async expireCheckoutSession(providerReference: string): Promise<void> {
+    async expireCheckoutSession(account, providerReference) {
       const res = await fetch(
         `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(providerReference)}/expire`,
-        { method: 'POST', headers: { Authorization: `Bearer ${secretKey}` },
+        { method: 'POST', headers: kopf(account),
           signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) })
+      if (res.ok) return
+      const text = await res.text()
+      if (res.status >= 400 && res.status < 500) throw new ProviderRefused(res.status, text)
+      throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${text}`)
+    },
+
+    async connectExchange(code) {
+      const res = await fetch('https://connect.stripe.com/oauth/token', {
+        method: 'POST',
+        headers: { ...kopf(null), 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'authorization_code', code }),
+        signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS)
+      })
+      const text = await res.text()
+      if (res.status >= 400 && res.status < 500) throw new ProviderRefused(res.status, text)
+      if (!res.ok) throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${text}`)
+      // Die Antwort traegt auch Zugangsschluessel des Kontos. Sie werden
+      // nicht gebraucht und nicht gespeichert: die Plattform handelt mit
+      // ihrem eigenen Schluessel und der Kopfzeile Stripe-Account.
+      const json = JSON.parse(text) as { stripe_user_id?: string }
+      if (typeof json.stripe_user_id !== 'string') throw new Error('Stripe: keine Konto-ID')
+      return { accountId: json.stripe_user_id }
+    },
+
+    async getAccount(accountId) {
+      const res = await fetch(
+        `https://api.stripe.com/v1/accounts/${encodeURIComponent(accountId)}`,
+        { headers: kopf(null), signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) })
+      if (!res.ok) {
+        throw new Error(`Stripe-Anfrage fehlgeschlagen (${res.status}): ${await res.text()}`)
+      }
+      const json = await res.json() as { charges_enabled?: boolean }
+      return { chargesEnabled: json.charges_enabled === true }
+    },
+
+    async deauthorize(accountId) {
+      if (connectClientId === null) throw new Error('STRIPE_CONNECT_CLIENT_ID fehlt')
+      const res = await fetch('https://connect.stripe.com/oauth/deauthorize', {
+        method: 'POST',
+        headers: { ...kopf(null), 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ client_id: connectClientId, stripe_user_id: accountId }),
+        signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS)
+      })
       if (res.ok) return
       const text = await res.text()
       if (res.status >= 400 && res.status < 500) throw new ProviderRefused(res.status, text)
@@ -141,13 +212,28 @@ export function createStripeAdapter(secretKey: string): StripeAdapter {
   }
 }
 
+/**
+ * Die Adresse, unter der ein Hotel sein Stripe-Konto verbindet oder ein
+ * neues anlegt. `state` bindet die Rueckkehr an Haus und Benutzer
+ * (`platform/payments/connectState.ts`); ohne ihn koennte ein Fremder einem
+ * angemeldeten Benutzer sein eigenes Konto unterschieben, und die Anzahlungen
+ * des Hotels gingen dorthin.
+ */
+export function stripeConnectUrl(clientId: string, state: string, redirectUri: string): string {
+  const p = new URLSearchParams({
+    response_type: 'code', client_id: clientId, scope: 'read_write',
+    state, redirect_uri: redirectUri
+  })
+  return `https://connect.stripe.com/oauth/authorize?${p.toString()}`
+}
+
 // Stripes eigene Empfehlung fuer die Toleranz gegen Wiedereinspielung.
 const SIGNATURE_TOLERANCE_SECONDS = 300
 
 /**
  * Signatur nach Stripe-Schema: Kopfzeile "t=<Unixzeit>,v1=<Hex-HMAC>". Die
  * HMAC-SHA256 laeuft ueber "<Zeitstempel>.<roher Rumpf>", mit dem
- * Webhook-Schluessel der Property. Wirft bei jeder Abweichung; der
+ * Webhook-Schluessel der Plattform. Wirft bei jeder Abweichung; der
  * Aufrufer entscheidet, wie er das meldet.
  */
 export function verifyStripeSignature(
@@ -176,7 +262,38 @@ export function verifyStripeSignature(
 interface StripeEventPayload {
   id: string
   type: string
-  data: { object: { id: string; amount_total?: number; payment_status?: string } }
+  /** Bei Connect: das Konto des Hotels, auf dem das Ereignis geschah. */
+  account?: string
+  data: { object: { id: string; amount_total?: number; payment_status?: string
+                    charges_enabled?: boolean } }
+}
+
+/** Was eine Meldung ueber ein verbundenes Konto selbst sagt. */
+export type StripeAccountEvent =
+  | { kind: 'account.updated'; account: string; chargesEnabled: boolean }
+  | { kind: 'account.deauthorized'; account: string }
+
+/**
+ * Meldungen ueber das Konto, nicht ueber eine Zahlung: freigeschaltet,
+ * gesperrt, vom Hotel bei Stripe getrennt. `null` fuer alles andere.
+ */
+export function parseStripeAccountEvent(rawBody: Buffer): StripeAccountEvent | null {
+  const json = JSON.parse(rawBody.toString('utf8')) as StripeEventPayload
+  if (json.type === 'account.updated') {
+    const account = json.account ?? json.data.object.id
+    return { kind: 'account.updated', account,
+             chargesEnabled: json.data.object.charges_enabled === true }
+  }
+  if (json.type === 'account.application.deauthorized' && typeof json.account === 'string') {
+    return { kind: 'account.deauthorized', account: json.account }
+  }
+  return null
+}
+
+/** Das Konto, auf dem ein Ereignis geschah; `null` auf dem der Plattform. */
+export function stripeEventAccount(rawBody: Buffer): string | null {
+  const json = JSON.parse(rawBody.toString('utf8')) as StripeEventPayload
+  return typeof json.account === 'string' ? json.account : null
 }
 
 /**

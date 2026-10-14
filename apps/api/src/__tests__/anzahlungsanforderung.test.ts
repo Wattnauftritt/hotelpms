@@ -6,7 +6,7 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
-import { stripeAttrappe, signiert, bezahltEreignis } from './stripeAttrappe.js'
+import { stripeAttrappe, signiert, bezahltEreignis, kontoVerbinden } from './stripeAttrappe.js'
 
 /**
  * Anzahlung anfordern, Zahlungslink, Eingang (Migrationen 0060, 0068).
@@ -64,6 +64,7 @@ beforeEach(async () => {
   await truncateAll()
   stripe.zuruecksetzen()
   fx = await makeProperty(owner)
+  await kontoVerbinden(owner, fx.propertyId)
   await openBusinessDay(owner, fx.propertyId, '2026-10-01')
   await makePaymentMethod(owner, fx.propertyId, 'TRANSFER')
   const u = await makeUser(owner,

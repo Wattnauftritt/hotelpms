@@ -72,6 +72,11 @@ export function ZahlungslinkErzeugen({ folioRef, v, vorschlagCent, depositReques
   if (v.isTraining) {
     return <p className="text-xs text-amber-800">{t('vz.link.training')}</p>
   }
+  // Ebenso ohne Stripe-Konto des Hauses (0167): wer hier steht, ist meist
+  // die Rezeption, und verbinden darf es nur, wer Schnittstellen verwaltet.
+  if (!v.paymentAccountReady) {
+    return <p className="text-xs text-amber-800">{t('vz.link.noAccount')}</p>
+  }
 
   const cent = centAusEingabe(betrag)
   const nichtEingerichtet = istNichtEingerichtet(erzeugen.error)

@@ -1603,6 +1603,12 @@ export const PrepaymentView = Type.Object({
   /** Ein Uebungshaus erzeugt keinen Zahlungslink und verschickt keine Post. */
   isTraining: Type.Boolean(),
   /**
+   * Hat das Haus ein freigeschaltetes Stripe-Konto verbunden (0167)? Ohne
+   * es entsteht kein Zahlungslink; die Maske sagt das, statt einen Knopf
+   * anzubieten, der danach scheitert.
+   */
+  paymentAccountReady: Type.Boolean(),
+  /**
    * Ohne Reservierung fehlt der Leistungszeitraum (Paragraph 14 Abs. 4
    * Nr. 6 UStG), und ein geschlossenes Folio nimmt nichts mehr an.
    */

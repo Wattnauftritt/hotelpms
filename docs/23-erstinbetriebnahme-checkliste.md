@@ -36,6 +36,16 @@ Die Absenderadresse muss **bei Brevo verifiziert** sein. Ist sie es nicht, weist
 
 **Fertig, wenn:** `grep -c PLATFORM_EMAIL_FROM /opt/hotelpms/shared/env` → `1`, und die Adresse im Brevo-Konto als verifiziert erscheint.
 
+**Zahlungslinks (optional).** Über das Stripe-Konto der Plattform läuft kein Geld; jedes Haus verbindet unter Schnittstellen › Zahlungen sein eigenes (Migration 0167). Die Plattform braucht dafür im Stripe-Dashboard Connect mit Standard-Konten, als Weiterleitungsadresse `PUBLIC_APP_URL/stripe-verbunden`, und einen Connect-Webhook („Ereignisse auf verbundenen Konten“) auf `/v1/payments/stripe/webhook` mit `checkout.session.completed`, `checkout.session.expired`, `account.updated` und `account.application.deauthorized`. Dann drei Werte in die Umgebungsdatei:
+
+```
+STRIPE_SECRET_KEY=sk_live_…
+STRIPE_WEBHOOK_SECRET=whsec_…
+STRIPE_CONNECT_CLIENT_ID=ca_…
+```
+
+Ohne sie läuft alles andere unverändert; nur der Reiter Zahlungen sagt „nicht eingerichtet“.
+
 ---
 
 ## 2. Den Tag `produktion` setzen

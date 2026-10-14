@@ -1271,6 +1271,23 @@ Tests in `invoiceCii.test.ts`, `rechnungsdialog.test.ts` (Einstellung, falsche I
 
 Tests in `inklusivNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
 
+### Stripe-Konto je Haus (Stripe Connect, `0167`) — **erledigt**
+
+**Warum.** Auf Wunsch von Sven, 14.10.2026: StayGrid soll als SaaS an andere Hotels gehen, und die Plattform will deren Zahlungen nicht verwalten. Bis hierhin lief jeder Checkout über das eine Stripe-Konto der Plattform; das Geld aller Hotels wäre bei uns eingegangen, mit Haftung für Rückbuchungen, Prüfpflichten und Auszahlung an die Häuser.
+
+**Wo es liegt.** Migration `0167`, `apps/api/src/routes/paymentAccount.ts` (Verbinden, Rückkehr, Trennen, Sicht), `platform/payments/stripe.ts` (Kopfzeile `Stripe-Account`, OAuth), `platform/payments/connectState.ts`. Oberfläche: Schnittstellen, Reiter Zahlungen (`routes/Integrations.tsx`), Rückkehrseite `/stripe-verbunden` (`routes/StripeVerbunden.tsx`).
+
+- **Standard-Konten mit Direct Charges.** Das Hotel meldet sich bei Stripe mit seinem eigenen Konto an oder legt eines an; StayGrid legt Checkouts nur in seinem Namen an. Auszahlung, Gebühren, Rückbuchungen und Erstattungen bleiben beim Hotel. Keine Plattformgebühr (Svens Entscheidung); eine ließe sich später als `application_fee_amount` am Checkout ergänzen.
+- **Ohne freigeschaltetes Konto kein Zahlungslink.** Die Route weist ab (`payments.accountNotConnected`), die Maske im Folio sagt es vorher (`paymentAccountReady`), und ein schon verschickter Link öffnet keinen Checkout mehr, auch nicht auf dem Konto der Plattform.
+- **Der Checkout merkt sich sein Konto** (`payment_intent.provider_account`). Abfragen und Beenden gehen an dasselbe Konto, auch wenn das Haus inzwischen ein anderes verbunden hat; der Webhook bucht nur, wenn die Meldung von diesem Konto kommt.
+- **`state` ist signiert und an Haus und Benutzer gebunden.** Sonst könnte ein Fremder einem angemeldeten Benutzer über die Rückkehradresse sein eigenes Konto unterschieben, und die Anzahlungen gingen dorthin.
+- **Zwei Häuser dürfen ein Konto teilen** (Hotel und Gästehaus, ein Rechtsträger). Getrennt wird beim Anbieter nur, wenn kein anderes Haus das Konto noch nutzt, und nie, solange ein Checkout offen ist.
+- **Ein Connect-Webhook für alle Häuser.** `account.updated` übernimmt die Freischaltung, `account.application.deauthorized` die Trennung durch das Hotel.
+
+Offen: Erstatten über Stripe (das Hotel erstattet im eigenen Dashboard und bucht die Gegenbuchung), und verzögerte Zahlarten (`checkout.session.async_payment_succeeded`) wertet der Webhook nicht aus — im Stripe-Dashboard nur sofortige Zahlarten aktivieren.
+
+Tests in `payments.test.ts` (Abschnitt Stripe Connect).
+
 ### Verfahrensdokumentation — **erledigt**
 
 [`36-verfahrensdokumentation.md`](36-verfahrensdokumentation.md): Vorlage nach dem Muster von AWV und DStV. Was das System tut, steht ausgefüllt; was nur das Haus weiß (Verantwortliche, Kasse, Rhythmus der Übergabe, Vier-Augen-Prinzip), ist markiert. Ein Haus übernimmt sie und lässt sie von der Steuerberatung abnehmen.
