@@ -1288,6 +1288,8 @@ Offen: Erstatten über Stripe (das Hotel erstattet im eigenen Dashboard und buch
 
 Tests in `payments.test.ts` (Abschnitt Stripe Connect).
 
+**Zugang im Adminpanel (`0168`).** Wer die Plattform betreibt, hat nicht zwingend ein Terminal (Sven, 14.10.2026). Client-ID, geheimer Schlüssel und Webhook-Geheimnis lassen sich deshalb unter Adminpanel › Zahlungen eintragen (Recht `platform:billing`); die Umgebungsdatei geht je Wert vor. Die Geheimnisse liegen verschlüsselt in `platform_payment_provider`, stehen in `audit_redaction` und kommen aus keiner Antwort wieder heraus, nur ein Hinweis wie `sk_live_…AbCd`. Gelesen wird je Anfrage mit dreißig Sekunden Zwischenspeicher, den das Speichern leert — ein Wert gilt ohne Neustart. `platform/payments/zugang.ts`, `routes/paymentProvider.ts`, Tests in `zahlungszugang.test.ts`.
+
 ### Verfahrensdokumentation — **erledigt**
 
 [`36-verfahrensdokumentation.md`](36-verfahrensdokumentation.md): Vorlage nach dem Muster von AWV und DStV. Was das System tut, steht ausgefüllt; was nur das Haus weiß (Verantwortliche, Kasse, Rhythmus der Übergabe, Vier-Augen-Prinzip), ist markiert. Ein Haus übernimmt sie und lässt sie von der Steuerberatung abnehmen.

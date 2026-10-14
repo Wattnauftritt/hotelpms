@@ -7,6 +7,7 @@ import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
          useSetCustomerPropertyRoles, useSetCustomerAccountRoles,
          useSupportAudit, useSessionActivity, useSetStaffRole, useStaffAccessLink,
          useEmailDomainRequests, useApproveEmailDomain, useRejectEmailDomain,
+         usePaymentProvider, useSavePaymentProvider, type ZugangQuelle,
          type PlatformAccount, type PlatformAccountUser, type PlatformProperty,
          type SupportAuditRow } from '../lib/queries/platform.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
@@ -41,7 +42,7 @@ import { Anfrage, Liste, Ausrollen, LaufenderStand } from './SupportKonsole.tsx'
  * dasselbe.
  */
 
-type Reiter = 'accounts' | 'domains' | 'staff' | 'operations' | 'support'
+type Reiter = 'accounts' | 'domains' | 'payments' | 'staff' | 'operations' | 'support'
 
 const KONTO_ZUSTAND: Record<PlatformAccount['status'], TextKey> = {
   active: 'admin.status.active',
@@ -989,6 +990,117 @@ export function Adminpanel({ userId, platformPermissions = [] }: {
   const t = useT()
   const [kunde, setKunde] = useState<number | null>(null)
 
+// ------------------------------------------------------------- Zahlungen
+
+/** Woher ein Wert kommt, als kleines Abzeichen neben dem Feld. */
+function Herkunft({ quelle }: { quelle: ZugangQuelle }): JSX.Element {
+  return quelle === 'env' ? <Abzeichen k="admin.pay.fromEnv" ton="still" />
+    : quelle === 'panel' ? <Abzeichen k="admin.pay.set" ton="gut" />
+      : <Abzeichen k="admin.pay.notSet" ton="warn" />
+}
+
+/**
+ * Der Stripe-Zugang der Plattform (Migration 0168).
+ *
+ * Fuer wen kein Terminal hat: hier statt in der Umgebungsdatei. Die
+ * Geheimnisse gehen hinein und kommen nicht wieder heraus -- die Felder
+ * bleiben nach dem Speichern leer, angezeigt wird nur, dass etwas
+ * eingetragen ist. Was in der Umgebungsdatei steht, geht vor und laesst
+ * sich hier nicht ueberschreiben; das Feld ist dann gesperrt, damit niemand
+ * einen Wert eintraegt, der nicht gilt.
+ */
+function Zahlungszugang(): JSX.Element {
+  const t = useT()
+  const online = useOnline()
+  const q = usePaymentProvider()
+  const speichern = useSavePaymentProvider()
+  const [clientId, setClientId] = useState('')
+  const [secretKey, setSecretKey] = useState('')
+  const [webhookSecret, setWebhookSecret] = useState('')
+  const [gespeichert, setGespeichert] = useState(false)
+
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return <Laedt />
+  const d = q.data
+  const feld = 'border border-neutral-300 rounded-sm px-2 py-1 text-sm w-full max-w-md ' +
+               'font-mono disabled:bg-neutral-100'
+
+  return (
+    <form className="space-y-4 max-w-2xl" autoComplete="off"
+          onSubmit={e => {
+            e.preventDefault()
+            setGespeichert(false)
+            speichern.mutate({
+              ...(clientId.trim() !== '' ? { connectClientId: clientId.trim() } : {}),
+              ...(secretKey.trim() !== '' ? { secretKey: secretKey.trim() } : {}),
+              ...(webhookSecret.trim() !== '' ? { webhookSecret: webhookSecret.trim() } : {})
+            }, { onSuccess: () => {
+              setClientId(''); setSecretKey(''); setWebhookSecret(''); setGespeichert(true)
+            } })
+          }}>
+      <p className="text-sm text-neutral-600">{t('admin.pay.intro')}</p>
+
+      <div className={`text-sm rounded-sm border px-2 py-1 ${d.ready
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+        : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+        {t(d.ready ? 'admin.pay.ready' : 'admin.pay.notReady')}
+      </div>
+
+      <label className="block space-y-1">
+        <div className="text-sm flex flex-wrap items-center gap-2">
+          {t('admin.pay.clientId')} <Herkunft quelle={d.connectClientId.source} />
+          {d.connectClientId.value !== null && (
+            <code className="text-xs text-neutral-600">{d.connectClientId.value}</code>
+          )}
+        </div>
+        <input value={clientId} onChange={e => setClientId(e.target.value)}
+               placeholder="ca_…" disabled={d.connectClientId.source === 'env'}
+               className={feld} />
+      </label>
+
+      <label className="block space-y-1">
+        <div className="text-sm flex flex-wrap items-center gap-2">
+          {t('admin.pay.secretKey')} <Herkunft quelle={d.secretKey.source} />
+          {d.secretKey.hint !== null && (
+            <code className="text-xs text-neutral-600">{d.secretKey.hint}</code>
+          )}
+        </div>
+        <input type="password" value={secretKey} onChange={e => setSecretKey(e.target.value)}
+               placeholder="sk_live_…" disabled={d.secretKey.source === 'env'}
+               autoComplete="new-password" className={feld} />
+      </label>
+
+      <label className="block space-y-1">
+        <div className="text-sm flex flex-wrap items-center gap-2">
+          {t('admin.pay.webhookSecret')} <Herkunft quelle={d.webhookSecret.source} />
+        </div>
+        <input type="password" value={webhookSecret}
+               onChange={e => setWebhookSecret(e.target.value)}
+               placeholder="whsec_…" disabled={d.webhookSecret.source === 'env'}
+               autoComplete="new-password" className={feld} />
+      </label>
+
+      <p className="text-xs text-neutral-500">{t('admin.pay.keepHint')}</p>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={!online || speichern.isPending}
+                className="text-sm px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                           disabled:opacity-40">
+          {t('common.save')}
+        </button>
+        {gespeichert && <Erfolg k="admin.pay.saved" />}
+      </div>
+      {speichern.isError && <Fehler error={speichern.error} />}
+
+      <section className="space-y-1 text-sm">
+        <h2 className="font-medium">{t('admin.pay.atStripe')}</h2>
+        <div>{t('admin.pay.redirect')}: <code className="text-xs">{d.redirectUri}</code></div>
+        <div>{t('admin.pay.webhookUrl')}: <code className="text-xs">{d.webhookUrl}</code></div>
+      </section>
+    </form>
+  )
+}
+
 // ------------------------------------------------------- Absenderdomains
 
 /**
@@ -1116,6 +1228,7 @@ function AbsenderdomainFreigaben(): JSX.Element {
   const reiters: Array<[Reiter, TextKey, string]> = ([
     ['accounts', 'admin.tab.accounts', 'platform:accounts'],
     ['domains', 'admin.domain.title', 'platform:accounts'],
+    ['payments', 'admin.tab.payments', 'platform:billing'],
     ['staff', 'admin.tab.staff', 'platform:staff'],
     ['operations', 'admin.tab.operations', 'platform:operations'],
     ['support', 'admin.tab.support', 'platform:support_session']
@@ -1176,6 +1289,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
       )}
 
       {offen === 'domains' && <AbsenderdomainFreigaben />}
+
+      {offen === 'payments' && <Zahlungszugang />}
 
       {offen === 'staff' && <Personal eigeneId={userId ?? null} />}
 

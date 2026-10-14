@@ -15,6 +15,7 @@ import type { Principal } from '../platform/context.js'
 import { isTrainingProperty } from '../platform/training.js'
 import { ProviderRefused, type StripeAdapter, type CheckoutState,
          type CheckoutSession } from '../platform/payments/stripe.js'
+import type { StripeZugangQuelle } from '../platform/payments/zugang.js'
 import { rechtImHaus, anforderungSperren, postBereitschaft,
          geschaeftstag } from './depositRequests.js'
 
@@ -191,7 +192,7 @@ async function lage(
 }
 
 export function paymentLinkRoutes(
-  app: FastifyInstance, stripe: StripeAdapter | null, config: Config
+  app: FastifyInstance, zugang: StripeZugangQuelle, config: Config
 ): void {
   /**
    * Einen Zahlungslink anlegen, auf Wunsch zu einer Anzahlungsanforderung
@@ -219,6 +220,7 @@ export function paymentLinkRoutes(
     permission: 'folio:post',
     summary: 'Dauerhaften Zahlungslink anlegen, optional per Gastpost schicken',
     handler: async (req, reply) => {
+      const { stripe } = await zugang.laden(req.pool)
       if (!stripe) throw Errors.notConfigured('payments.stripeKeyMissing')
 
       const { folioRef } = req.params as { folioRef: string }
@@ -420,6 +422,7 @@ export function paymentLinkRoutes(
       }))
       if (erst === BESETZT) throw Errors.conflict('payments.linkBusy')
       const { link, anspruch, offen } = erst
+      const { stripe } = offen.length > 0 ? await zugang.laden(req.pool) : { stripe: null }
 
       // Beim Anbieter, ohne Verbindung aus dem Pool.
       const erledigt: Erledigt[] = []
@@ -513,6 +516,7 @@ export function paymentLinkRoutes(
       const { t } = (req.query ?? {}) as { t?: string }
       const sprache = spracheAusKopf(req.headers['accept-language'])
       try {
+        const { stripe } = await zugang.laden(req.pool)
         const ziel = await checkoutOeffnen(req.pool, stripe, t, sprache, config, req)
         if ('url' in ziel) {
           void reply.status(303).header('location', ziel.url)

@@ -5,8 +5,8 @@ import { Errors } from '../platform/errors.js'
 import type { Config } from '../platform/config.js'
 import type { Principal } from '../platform/context.js'
 import { isTrainingProperty } from '../platform/training.js'
-import { ProviderRefused, stripeConnectUrl, type StripeAdapter }
-  from '../platform/payments/stripe.js'
+import { ProviderRefused, stripeConnectUrl } from '../platform/payments/stripe.js'
+import type { StripeZugangQuelle } from '../platform/payments/zugang.js'
 import { connectStateErzeugen, connectStatePruefen } from '../platform/payments/connectState.js'
 import { rechtImHaus } from './depositRequests.js'
 
@@ -32,10 +32,9 @@ import { rechtImHaus } from './depositRequests.js'
  * Geld der Gaeste geht.
  */
 export function paymentAccountRoutes(
-  app: FastifyInstance, stripe: StripeAdapter | null, config: Config
+  app: FastifyInstance, zugang: StripeZugangQuelle, config: Config
 ): void {
   const redirectUri = `${config.publicAppUrl}/stripe-verbunden`
-  const verbindbar = stripe !== null && config.stripeConnectClientId !== null
 
   registerRoute(app, {
     method: 'GET',
@@ -45,6 +44,7 @@ export function paymentAccountRoutes(
     summary: 'Verbundenes Stripe-Konto des Hauses',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const { stripe, connectClientId } = await zugang.laden(req.pool)
       const zeile = await tx(req.pool, req, async client => {
         const r = await client.query<{ provider_account: string; charges_enabled: boolean
                                        connected_at: Date }>(
@@ -75,7 +75,7 @@ export function paymentAccountRoutes(
       }
 
       return {
-        configured: verbindbar,
+        configured: stripe !== null && connectClientId !== null,
         account: zeile === null ? null : {
           accountId: zeile.provider_account,
           chargesEnabled,
@@ -95,7 +95,8 @@ export function paymentAccountRoutes(
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const principal = req.principal as Principal
-      if (!verbindbar || config.stripeConnectClientId === null) {
+      const { stripe, connectClientId } = await zugang.laden(req.pool)
+      if (stripe === null || connectClientId === null) {
         throw Errors.notConfigured('payments.connectNotConfigured')
       }
       if (principal.userId === null) throw Errors.forbidden('access.missingPermission',
@@ -109,7 +110,7 @@ export function paymentAccountRoutes(
       })
       const state = connectStateErzeugen(config.sessionSecret,
         { propertyId, userId: principal.userId })
-      return { url: stripeConnectUrl(config.stripeConnectClientId, state, redirectUri) }
+      return { url: stripeConnectUrl(connectClientId, state, redirectUri) }
     }
   })
 
@@ -127,6 +128,7 @@ export function paymentAccountRoutes(
     handler: async (req) => {
       const body = (req.body ?? {}) as { code?: string; state?: string; error?: string }
       const principal = req.principal as Principal
+      const { stripe } = await zugang.laden(req.pool)
       if (!stripe) throw Errors.notConfigured('payments.connectNotConfigured')
       const s = typeof body.state === 'string'
         ? connectStatePruefen(config.sessionSecret, body.state) : null
@@ -207,7 +209,8 @@ export function paymentAccountRoutes(
       })
 
       let beimAnbieter = false
-      if (!erst.geteilt && stripe !== null && config.stripeConnectClientId !== null) {
+      const { stripe, connectClientId } = await zugang.laden(req.pool)
+      if (!erst.geteilt && stripe !== null && connectClientId !== null) {
         try {
           await stripe.deauthorize(erst.konto)
           beimAnbieter = true
