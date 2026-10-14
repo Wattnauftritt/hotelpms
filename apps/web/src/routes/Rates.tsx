@@ -834,7 +834,19 @@ function Preisraster(
         : raster.data === undefined || plaene.data === undefined
           ? <Laedt />
           : aktivePlaene.length === 0
-            ? <div className="text-sm text-neutral-500">{t('rate.noPlans')}</div>
+            // Ohne Ratenplan muss der Abschnitt trotzdem stehen: dort wird
+            // der erste angelegt und die Fruehstuecksregel des Hauses
+            // gesetzt, die gerade fuer Buchungen ohne Rate gilt.
+            ? <>
+                <div className="text-sm text-neutral-500">{t('rate.noPlans')}</div>
+                <Ratenplaene propertyId={propertyId}
+                             plaene={plaene.data.ratePlans}
+                             vatRules={plaene.data.vatRules}
+                             hausFruehstueck={plaene.data.houseBreakfast
+                                              ?? { breakfastCent: null, childBreakfastCent: null }}
+                             kategorien={kategorien.data?.categories ?? []}
+                             von={von} bis={bis} darfSchreiben={darfSchreiben} />
+              </>
             : <>
                 <RateGrid plans={aktivePlaene} tage={tage} zellen={raster.data.cells}
                           belegung={belegung} auswahl={auswahl}
