@@ -325,8 +325,8 @@ describe('Fruehstueck nachtraeglich aufteilen (0169)', () => {
         ['Uebernachtung 08.10.2026', 8_933, 700, null],
         ['Storno Uebernachtung 08.10.2026', -8_933, 700, null],
         ['Uebernachtung 08.10.2026', 8_933 - 2_400, 700, null],
-        ['Fruehstueck Speisen 08.10.2026', 1_680, 700, 'breakfast_food'],
-        ['Fruehstueck Getraenke 08.10.2026', 720, 1900, 'breakfast_drinks']])
+        ['Frühstück Speisen 08.10.2026', 1_680, 700, 'breakfast_food'],
+        ['Frühstück Getränke 08.10.2026', 720, 1900, 'breakfast_drinks']])
     // Kein Datum ausser denen der Naechte: der Leistungszeitraum bleibt.
     expect(new Set(z.rows.map(x => x.business_date)))
       .toEqual(new Set(['2026-10-08', '2026-10-09']))

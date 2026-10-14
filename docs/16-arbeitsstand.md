@@ -1298,6 +1298,10 @@ Tests in `rechnungLogoNachweis.test.ts`, `invoicePdf.test.ts`, `emailDelivery.te
 
 Sven, 14.10.2026: Firmenrechnungen brauchen die Zeile „Herr Max Mustermann“ unter dem Firmennamen. `company.contact_name` (Feld „Ansprechpartner“ in der Firmenmaske), im Rechnungsdialog je Rechnung abweichend oder leer. Auf dem Blatt steht er unter dem Namen, im XML als BT-56 (`DefinedTradeContact/PersonName` des Erwerbers). Der Name steht in `audit_redaction`; die übrigen Firmenfelder bleiben nach 0044 im Protokoll. Tests in `companies.test.ts`, `rechnungsdialog.test.ts`, `invoiceCii.test.ts`.
 
+### Keine Rundungszeile mehr aus Positionsrundungen — **erledigt**
+
+Sven, 14.10.2026, an H-2026-00001: gebucht und bezahlt 268,00, die Rechnung forderte 268,03 mit „Rundung -0,03“. Ursache: jede Buchung rundet ihre Steuer für sich, die Rechnung rechnet je Satzgruppe aus der Nettosumme (BR-CO-14); über neun Zeilen wurden daraus drei Cent. `alignLineNets` (Domain) sucht je Gruppe das Netto, das mit seiner Steuer das gebuchte Brutto trifft, und schreibt den Unterschied der betragsgrößten Zeile zu. Der Ausgleich steht als `lineAdjustCent` in der Momentaufnahme (je Buchung; die Stornorechnung führt ihn negiert unter der Buchung des Originals), der Beleg liest ihn von dort. Die Buchungen bleiben unverändert. BT-114 bleibt nur noch für Beträge, die zu einem Satz nicht darstellbar sind, höchstens ein Cent je Satz. Dazu bucht der Nachtlauf „Übernachtung“ und „Frühstück Speisen/Getränke“ jetzt mit Umlauten; die Abfragen kennen beide Schreibweisen.
+
 ### Stripe-Konto je Haus (Stripe Connect, `0167`) — **erledigt**
 
 **Warum.** Auf Wunsch von Sven, 14.10.2026: StayGrid soll als SaaS an andere Hotels gehen, und die Plattform will deren Zahlungen nicht verwalten. Bis hierhin lief jeder Checkout über das eine Stripe-Konto der Plattform; das Geld aller Hotels wäre bei uns eingegangen, mit Haftung für Rückbuchungen, Prüfpflichten und Auszahlung an die Häuser.

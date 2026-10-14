@@ -83,11 +83,11 @@ describe('Fruehstueck im Zimmerpreis', () => {
 
     // 2 x 15 Euro Fruehstueck: 9 Euro Getraenke (30 %), 21 Euro Speisen.
     expect(await buchungen(mit)).toEqual([
-      { description: 'Uebernachtung 01.10.2026', gross_cent: 8_000, tax_cent: 523,
+      { description: 'Übernachtung 01.10.2026', gross_cent: 8_000, tax_cent: 523,
         tax_rate_bp: 700, revenue_account: '8300', package_part: null },
-      { description: 'Fruehstueck Speisen 01.10.2026', gross_cent: 2_100, tax_cent: 137,
+      { description: 'Frühstück Speisen 01.10.2026', gross_cent: 2_100, tax_cent: 137,
         tax_rate_bp: 700, revenue_account: '8300', package_part: 'breakfast_food' },
-      { description: 'Fruehstueck Getraenke 01.10.2026', gross_cent: 900, tax_cent: 144,
+      { description: 'Frühstück Getränke 01.10.2026', gross_cent: 900, tax_cent: 144,
         tax_rate_bp: 1900, revenue_account: '8400', package_part: 'breakfast_drinks' }
     ])
     // Dieselbe Rechnung wie in der Domain, damit beide nicht auseinanderlaufen.

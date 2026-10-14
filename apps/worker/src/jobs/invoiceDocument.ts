@@ -56,7 +56,8 @@ interface InvoiceRow {
   service_to: string | null
   issuer_snapshot: Partial<CiiParty>
   recipient_snapshot: Partial<CiiParty>
-  totals: { grossCent: number; roundingCent?: number; prepaidCent?: number }
+  totals: { grossCent: number; roundingCent?: number; prepaidCent?: number
+            lineAdjustCent?: Record<string, number> }
   due_on: string | null
   preceding_number: string | null
   preceding_issued_on: string | null
@@ -64,6 +65,8 @@ interface InvoiceRow {
 }
 
 interface ChargeRow {
+  id: number
+  reverses_id: number | null
   description: string
   quantity: number
   net_cent: string | number
@@ -112,14 +115,14 @@ function payee(snapshot: { name?: string; iban?: string | null; bic?: string | n
            accountName: snapshot.name ?? null, bankName: snapshot.bankName ?? null }
 }
 
-function line(c: ChargeRow): CiiLine {
+function line(c: ChargeRow, ausgleich: number): CiiLine {
   return {
     name: c.description,
     quantity: c.quantity,
     // Das Fruehstueck im Zimmerpreis liegt auf demselben Konto, ist aber
     // kein Tag Beherbergung (Migration 0158).
     unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
-    netCent: Number(c.net_cent),
+    netCent: Number(c.net_cent) + ausgleich,
     rateBp: c.tax_rate_bp
   }
 }
@@ -224,9 +227,16 @@ async function load(
   const row = i.rows[0]!
 
   const c = await client.query<ChargeRow>(
-    `SELECT description, quantity, net_cent, tax_rate_bp, revenue_account,
+    `SELECT id, reverses_id, description, quantity, net_cent, tax_rate_bp, revenue_account,
             business_date::text, package_part
        FROM charge WHERE invoice_id = $1 ORDER BY id`, [invoiceId])
+
+  // Ausgleich der Positionen (alignLineNets), aus der Momentaufnahme. Die
+  // Stornorechnung fuehrt ihn unter der Buchung des Originals, auf die ihre
+  // Gegenbuchung verweist. Aeltere Rechnungen haben keinen.
+  const ausgleich = row.totals.lineAdjustCent ?? {}
+  const ausgleichFuer = (x: ChargeRow): number => Number(
+    ausgleich[String(row.kind === 'credit_note' ? x.reverses_id ?? x.id : x.id)] ?? 0)
 
   /*
    * Bereits vereinnahmt und dieser Rechnung zugeordnet (BT-113).
@@ -268,7 +278,7 @@ async function load(
     buyerReference: (row.recipient_snapshot as { buyerReference?: string | null })
       .buyerReference ?? null,
     payee: payee(row.issuer_snapshot as Parameters<typeof payee>[0]),
-    lines: [...c.rows.map(line), ...d.rows.map(depositLine)],
+    lines: [...c.rows.map(x => line(x, ausgleichFuer(x))), ...d.rows.map(depositLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,

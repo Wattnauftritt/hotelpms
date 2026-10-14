@@ -156,9 +156,10 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
       {f.folio.status === 'open' && permissions.includes('folio:post')
        && f.charges.some(c => c.invoice_id === null && c.reverses_id === null
                               && !gegengebucht.has(c.id) && c.revenue_account === '8300'
-                              && c.description.startsWith('Uebernachtung ')
+                              && /^(Übernachtung|Uebernachtung) /.test(c.description)
                               && !f.charges.some(b => b.business_date === c.business_date
-                                                      && b.description.startsWith('Fruehstueck ')))
+                                                      && /^(Frühstück|Fruehstueck) /
+                                                        .test(b.description)))
        && <FruehstueckNachtraeglich folioRef={folioRef} />}
 
       {f.invoices.length > 0 && (

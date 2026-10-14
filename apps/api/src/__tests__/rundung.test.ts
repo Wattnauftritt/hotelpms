@@ -154,19 +154,21 @@ describe('Der Betrag, den die Rechnung fordert', () => {
     expect(r.totals.roundingCent).toBe(0)
   })
 
-  it('traegt auch mehrere Cent ueber viele Posten', async () => {
-    // Ein Barumsatz aus zehn Posten zu 19 Prozent. Die Abweichungen der
-    // einzelnen Posten heben sich meist auf; wo sie es nicht tun, werden es
-    // mehrere Cent. Dieser Korb ergibt drei.
+  it('gleicht mehrere Cent ueber viele Posten im Netto aus, nicht als Rundung', async () => {
+    // Ein Barumsatz aus zehn Posten zu 19 Prozent. Die Rundungen der
+    // einzelnen Posten ergaben hier drei Cent, die bisher als Ausgleich
+    // (BT-114) auf dem Blatt standen. Jetzt traegt sie das Netto der
+    // groessten Position, und die Gruppe trifft das gebuchte Brutto
+    // (alignLineNets, Sven 14.10.2026).
     const posten = [550, 650, 650, 780, 850, 950, 1200, 1200, 1690, 2900]
       .map(brutto => ({ brutto, rateBp: 1900 }))
     const ref = await folioMit(posten)
     const summe = posten.reduce((s, p) => s + p.brutto, 0)
 
     const r = await faktura(ref)
-    expect(r.totals.roundingCent).toBe(3)
+    expect(r.totals.roundingCent).toBe(0)
     expect(r.totals.payableCent).toBe(summe)
-    expect(r.totals.grossCent + r.totals.roundingCent).toBe(summe)
+    expect(r.totals.grossCent).toBe(summe)
   })
 
   it('trifft auch bei zwei Satzgruppen', async () => {

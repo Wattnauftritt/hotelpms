@@ -319,12 +319,15 @@ async function postAccommodation(
               z.n, z.text, z.brutto, z.satz, z.konto, z.teil
          FROM teile t CROSS JOIN steuer s
          LEFT JOIN inklusiv_summe k ON k.reservation_id = t.reservation_id
+         -- Die Texte stehen so auf der Rechnung des Gastes; dort gehoeren
+         -- die Umlaute hin (Sven, 14.10.2026). Aeltere Buchungen tragen
+         -- noch die Umschreibung, die Abfragen kennen beide.
          CROSS JOIN LATERAL (VALUES
-           (1, 'Uebernachtung', t.price_cent - t.fruehstueck - COALESCE(k.summe, 0),
+           (1, 'Übernachtung', t.price_cent - t.fruehstueck - COALESCE(k.summe, 0),
                s.rate_bp, '8300', NULL::text),
-           (2, 'Fruehstueck Speisen', t.fruehstueck - t.getraenke, $4::int, $6::text,
+           (2, 'Frühstück Speisen', t.fruehstueck - t.getraenke, $4::int, $6::text,
                'breakfast_food'),
-           (3, 'Fruehstueck Getraenke', t.getraenke, $5::int, $7::text, 'breakfast_drinks')
+           (3, 'Frühstück Getränke', t.getraenke, $5::int, $7::text, 'breakfast_drinks')
          ) z(n, text, brutto, satz, konto, teil)
         -- Die Logis auch bei null: eine Nacht, die gebucht wurde, steht im
         -- Folio, wie bisher. Fruehstuecksteile nur, wenn es sie gibt.

@@ -89,6 +89,71 @@ export function sumInvoice(
 }
 
 /**
+ * Gleicht die Nettobetraege der Positionen so aus, dass jede Satzgruppe
+ * der Rechnung genau das Brutto ergibt, das gebucht wurde.
+ *
+ * **Warum.** Jede Buchung rundet ihre Steuer fuer sich: eine Nacht zu
+ * 89,33 brutto wird 78,35 Logis + 3,60 Speisen + 1,39 Getraenke netto, und
+ * jede der drei Steuern ist auf den Cent gerundet. Die Rechnung rechnet die
+ * Steuer dagegen je Satzgruppe aus der Nettosumme (BR-CO-14). Ueber drei
+ * Naechte summierten sich die Rundungen der Zeilen zu drei Cent, und die
+ * Rechnung forderte 268,03 statt der gebuchten und bezahlten 268,00 -- der
+ * Ausgleich (BT-114) stand dann als "Rundung -0,03" auf dem Blatt (Sven,
+ * 14.10.2026: "kein anderes Hotel arbeitet hier mit Rundungen").
+ *
+ * Gesucht wird je Gruppe das Netto N, fuer das N + Steuer(N) das gebuchte
+ * Brutto trifft, so nah wie moeglich an der Summe der Zeilen. Den
+ * Unterschied traegt die betragsgroesste Zeile der Gruppe -- bei einer
+ * Uebernachtung die Logis, deren Netto sich um ein, zwei Cent verschiebt.
+ * Die Buchungen selbst bleiben, wie sie sind; nur die Rechnung weist ihr
+ * Netto so aus, dass Netto und Steuer zusammen das Brutto ergeben.
+ *
+ * Nicht jedes Brutto ist so darstellbar (zu 7 Prozent jeder sechzehnte
+ * Cent-Betrag). Dann bleibt der naechste darstellbare, und der eine Cent
+ * steht weiter als Ausgleich da -- seltener und nie mehr als einer je Satz.
+ *
+ * `fest` sind Zeilen, die mitzaehlen, aber nichts tragen duerfen
+ * (die Verrechnung einer Anzahlung: deren Netto steht auf ihrer eigenen
+ * Rechnung).
+ */
+export function alignLineNets<K>(
+  lines: ReadonlyArray<{ key: K; netCent: Cent; grossCent: Cent; rateBp: BasisPoints
+                         fest?: boolean }>
+): Map<K, Cent> {
+  const gruppen = new Map<BasisPoints, typeof lines[number][]>()
+  for (const l of lines) {
+    gruppen.set(l.rateBp, [...(gruppen.get(l.rateBp) ?? []), l])
+  }
+  const ausgleich = new Map<K, Cent>()
+  for (const [rateBp, zeilen] of gruppen) {
+    const netto = zeilen.reduce((s, l) => s + l.netCent, 0)
+    const brutto = zeilen.reduce((s, l) => s + l.grossCent, 0)
+    const traeger = zeilen.filter(l => !l.fest)
+      .reduce<typeof zeilen[number] | null>((b, l) =>
+        b === null || Math.abs(l.netCent) > Math.abs(b.netCent) ? l : b, null)
+    if (traeger === null || rateBp === 0) continue
+    // Jede Zeile hat hoechstens einen halben Cent Steuer verloren oder
+    // gewonnen; weiter als die Zahl der Zeilen liegt das Ziel nicht.
+    const weite = zeilen.length + 2
+    let bestes = netto
+    let abstand = Math.abs(netto + taxFromNet(netto, rateBp) - brutto)
+    for (let d = 1; d <= weite && abstand > 0; d++) {
+      for (const n of [netto - d, netto + d]) {
+        const a = Math.abs(n + taxFromNet(n, rateBp) - brutto)
+        if (a < abstand) { bestes = n; abstand = a }
+      }
+    }
+    // Die Zeile darf dabei nicht das Vorzeichen wechseln: aus einer
+    // Leistung wuerde sonst eine Gutschrift.
+    const neu = traeger.netCent + bestes - netto
+    if (bestes !== netto && Math.sign(neu) === Math.sign(traeger.netCent)) {
+      ausgleich.set(traeger.key, bestes - netto)
+    }
+  }
+  return ausgleich
+}
+
+/**
  * Teilt einen Paketpreis auf Logis und Zusatzleistungen auf.
  * In Deutschland gilt 7 Prozent auf die Uebernachtung und 19 Prozent auf
  * Leistungen, die nicht unmittelbar der Vermietung dienen. Ein Zimmerpreis

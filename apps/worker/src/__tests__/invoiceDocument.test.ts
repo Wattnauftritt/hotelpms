@@ -46,6 +46,9 @@ interface RechnungOpts {
   zusaetzlicheSummen?: Array<{ netCent: number; rateBp: number }>
   // Fuer Aufgabe 12: der festgeschriebene Rundungsausgleich (BT-114).
   roundingCent?: number
+  // Ausgleich im Netto der ersten Position (alignLineNets), wie ihn das
+  // Festschreiben in die Momentaufnahme schreibt.
+  ausgleichErste?: number
 }
 
 /**
@@ -72,7 +75,8 @@ async function rechnung(
     const rateBp = p.rateBp ?? 700
     const netto = p.netCent
     const steuer = Math.round(netto * rateBp / 10_000)
-    gruppen.set(rateBp, (gruppen.get(rateBp) ?? 0) + netto)
+    gruppen.set(rateBp, (gruppen.get(rateBp) ?? 0) + netto
+      + (i === 0 ? opts.ausgleichErste ?? 0 : 0))
     const c = await owner.query<{ id: number }>(
       `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
                            net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account)
@@ -96,7 +100,9 @@ async function rechnung(
     taxCent: groups.reduce((s, g) => s + g.taxCent, 0),
     grossCent: brutto,
     roundingCent: opts.roundingCent ?? 0,
-    payableCent: brutto + (opts.roundingCent ?? 0)
+    payableCent: brutto + (opts.roundingCent ?? 0),
+    ...(opts.ausgleichErste === undefined ? {}
+      : { lineAdjustCent: { [String(chargeIds[0])]: opts.ausgleichErste } })
   }
 
   const aussteller = await owner.query(
@@ -321,6 +327,17 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
     expect(d.xml).toContain('<ram:DuePayableAmount>321.02</ram:DuePayableAmount>')
     // Und auf dem Blatt steht der Ausgleich benannt, nicht still in der Summe.
     expect(d.pdf.toString('latin1')).toContain('factur-x.xml')
+  })
+
+  it('weist die Position mit dem festgeschriebenen Ausgleich im Netto aus', async () => {
+    // Gebucht 300,00 netto; die Rechnung weist 299,99 aus, weil erst so die
+    // Gruppe das gebuchte Brutto trifft (alignLineNets).
+    const r = await rechnung({ positionen: [{ netCent: 30_000 }], ausgleichErste: -1 })
+    await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    const d = (await beleg(r.id))!
+    expect(d.xml_findings).toEqual([])
+    expect(d.xml).toContain('<ram:LineTotalAmount>299.99</ram:LineTotalAmount>')
+    expect(d.xml).not.toContain('RoundingAmount')
   })
 
   /**
