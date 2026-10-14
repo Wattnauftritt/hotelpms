@@ -4,6 +4,7 @@ import { useSetRecipient } from '../lib/queries/billing.js'
 import { useSearchCompanies } from '../lib/queries/guests.js'
 import { useT } from '../lib/i18n/index.js'
 import { GuestPicker } from './GuestPicker.tsx'
+import { FirmaFormular } from './FirmaFormular.tsx'
 import { Fehler } from './Shell.tsx'
 
 /**
@@ -23,11 +24,18 @@ import { Fehler } from './Shell.tsx'
  * vollständigen Namen und die Anschrift des Empfängers; fehlt sie, weist
  * das Festschreiben ab. Das steht hier, bevor jemand auf „Rechnung
  * erstellen" drückt, nicht danach.
+ *
+ * **Eine fehlende Firma wird hier angelegt.** Die Suche fand nur, was es
+ * schon gab; stand die Firma noch nicht im System, blieb „Keine Firma
+ * gefunden" ohne Ausweg, und der Weg über den Gästebildschirm verliess das
+ * Folio mitten im Fakturieren.
  */
-export function Rechnungsempfaenger({ folioRef, recipient, geschlossen }: {
+export function Rechnungsempfaenger({ folioRef, recipient, geschlossen, darfFirmaAnlegen }: {
   folioRef: string
   recipient: InvoiceRecipient
   geschlossen: boolean
+  /** `guest:write`, dasselbe Recht wie im Reiter Firmen. */
+  darfFirmaAnlegen: boolean
 }): JSX.Element {
   const t = useT()
   const [auf, setAuf] = useState(false)
@@ -56,13 +64,15 @@ export function Rechnungsempfaenger({ folioRef, recipient, geschlossen }: {
         )}
       </div>
       {auf && <Auswahl folioRef={folioRef} recipient={recipient}
+                       darfFirmaAnlegen={darfFirmaAnlegen}
                        onFertig={() => setAuf(false)} />}
     </section>
   )
 }
 
-function Auswahl({ folioRef, recipient, onFertig }: {
-  folioRef: string; recipient: InvoiceRecipient; onFertig: () => void
+function Auswahl({ folioRef, recipient, darfFirmaAnlegen, onFertig }: {
+  folioRef: string; recipient: InvoiceRecipient; darfFirmaAnlegen: boolean
+  onFertig: () => void
 }): JSX.Element {
   const t = useT()
   const setzen = useSetRecipient(folioRef)
@@ -71,7 +81,7 @@ function Auswahl({ folioRef, recipient, onFertig }: {
     <div className="border-t border-neutral-200 px-3 py-2 space-y-3">
       {/* Die Firma zuerst, weil sie vorgeht: wer sie setzt, hat das
           Ergebnis, ohne am Gast etwas zu ändern. */}
-      <Firma folioRef={folioRef} recipient={recipient} />
+      <Firma folioRef={folioRef} recipient={recipient} darfAnlegen={darfFirmaAnlegen} />
 
       <div>
         <span className="block text-xs text-neutral-600">{t('emp.guestPick')}</span>
@@ -93,11 +103,12 @@ function Auswahl({ folioRef, recipient, onFertig }: {
   )
 }
 
-function Firma({ folioRef, recipient }: {
-  folioRef: string; recipient: InvoiceRecipient
+function Firma({ folioRef, recipient, darfAnlegen }: {
+  folioRef: string; recipient: InvoiceRecipient; darfAnlegen: boolean
 }): JSX.Element {
   const t = useT()
   const [begriff, setBegriff] = useState('')
+  const [neu, setNeu] = useState(false)
   const treffer = useSearchCompanies(begriff)
   const setzen = useSetRecipient(folioRef)
 
@@ -111,6 +122,26 @@ function Firma({ folioRef, recipient }: {
                 className="text-xs text-neutral-500 underline">
           {t('emp.companyClear')}
         </button>
+      </div>
+    )
+  }
+
+  if (neu) {
+    return (
+      <div className="space-y-1">
+        {/* Angelegt heisst hier zugleich gesetzt: wer die Firma aus dem
+            Folio anlegt, will die Rechnung an sie. */}
+        <FirmaFormular vorschlag={begriff.trim()} darfSchreiben
+                       onSaved={f => {
+                         setzen.mutate({ companyRef: f.companyRef })
+                         setNeu(false)
+                         setBegriff('')
+                       }} />
+        <button type="button" onClick={() => setNeu(false)}
+                className="text-xs text-neutral-500 underline">
+          {t('emp.companyNewCancel')}
+        </button>
+        {setzen.isError && <Fehler error={setzen.error} />}
       </div>
     )
   }
@@ -142,6 +173,16 @@ function Firma({ folioRef, recipient }: {
           ))}
           {treffer.data.companies.length === 0 && (
             <li className="px-1 py-1 text-neutral-400">{t('emp.companyNone')}</li>
+          )}
+          {/* Auch bei Treffern: eine aehnlich klingende Firma ist nicht
+              dieselbe, und die gesuchte fehlt dann trotzdem. */}
+          {darfAnlegen && (
+            <li>
+              <button type="button" onClick={() => setNeu(true)}
+                      className="w-full text-start px-1 py-1 text-neutral-700 underline">
+                + {t('emp.companyNew', { name: begriff.trim() })}
+              </button>
+            </li>
           )}
         </ul>
       )}
