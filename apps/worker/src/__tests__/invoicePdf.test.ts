@@ -206,3 +206,29 @@ describe('Darstellung von Betrag und Datum', () => {
     expect(datum('2026-01-31')).toBe('31.01.2026')
   })
 })
+
+describe('Logo des Hauses (0170)', () => {
+  // Ein Bildpunkt, ein gueltiges PNG.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64')
+
+  async function bilder(logo: { mime: string; bytes: Uint8Array } | null): Promise<number> {
+    const doc = await renderInvoicePdf({ invoice: rechnung, publicRef: 'inv_test', logo })
+    const bytes = await doc.save()
+    return (Buffer.from(bytes).toString('latin1').match(/\/Subtype\s*\/Image/g) ?? []).length
+  }
+
+  it('bettet das Logo als Bild ein', async () => {
+    expect(await bilder(null)).toBe(0)
+    // Ein PNG mit Alphakanal bringt seine Maske als zweites Bild mit.
+    expect(await bilder({ mime: 'image/png', bytes: PNG })).toBeGreaterThan(0)
+  })
+
+  it('zeichnet die Rechnung auch, wenn sich das Logo nicht lesen laesst', async () => {
+    // Ein kaputtes Logo darf den Beleg nicht kosten: die Rechnung ist
+    // Pflicht, das Logo Gestaltung.
+    const kaputt = Buffer.concat([PNG.subarray(0, 8), Buffer.from('kein Bild')])
+    expect(await bilder({ mime: 'image/png', bytes: kaputt })).toBe(0)
+  })
+})

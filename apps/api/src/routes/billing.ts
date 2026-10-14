@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { createHash } from 'node:crypto'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
@@ -17,6 +18,7 @@ import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
 import { produktImHaus } from '../platform/fremdeIds.js'
+import { bildAusRumpf, bildSenden, BILD_MAX_BYTES } from '../platform/terminalBild.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
 const VAT_FALLBACK = 700
@@ -327,6 +329,7 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
   paymentTermsDays: number
   contact: Record<KontaktFeld, string | null>
   eInvoiceMissing: { xml: string[]; xrechnung: string[] }
+  logo: { mime: string; updatedAt: string } | null
 }> {
   const jahr = Number((await heuteImHaus(client, propertyId)).slice(0, 4))
   const r = await client.query<{ prefix: string | null; fehlt: boolean
@@ -359,7 +362,10 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
     locked, nextNumber,
     paymentTermsDays: z.ziel,
     contact,
-    eInvoiceMissing: eRechnungFehlt(p)
+    eInvoiceMissing: eRechnungFehlt(p),
+    logo: (await client.query<{ mime: string; updatedAt: string }>(
+      `SELECT mime, created_at AS "updatedAt" FROM property_invoice_logo
+        WHERE property_id = $1`, [propertyId])).rows[0] ?? null
   }
 }
 
@@ -978,6 +984,119 @@ export function billingRoutes(app: FastifyInstance): void {
           throw e
         }
         return rechnungseinstellung(client, Number(propertyId))
+      })
+    }
+  })
+
+  /**
+   * Logo auf der Rechnung (Migration 0170). Base64 im JSON-Rumpf wie bei den
+   * Terminalbildern, hoechstens ein Megabyte, nur PNG und JPEG -- die
+   * Formate, die das PDF/A-3 ohne Umwandlung einbettet. Die Art erkennen die
+   * Bytes, nicht die Angabe. Wirkt auf jeden Beleg, der danach gezeichnet
+   * wird; ein gezeichneter bleibt, wie er ist.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/invoice-logo',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    bodyLimit: Math.ceil(BILD_MAX_BYTES * 4 / 3) + 4096,
+    summary: 'Logo fuer Rechnungen hochladen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const { art, bytes } = bildAusRumpf(req.body)
+      if (art !== 'image/png' && art !== 'image/jpeg') {
+        throw Errors.validation({ data: ['invoice.logoType'] })
+      }
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        await client.query(
+          `INSERT INTO property_invoice_logo (property_id, mime, bytes, sha256, created_by)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (property_id) DO UPDATE
+              SET mime = EXCLUDED.mime, bytes = EXCLUDED.bytes, sha256 = EXCLUDED.sha256,
+                  created_by = EXCLUDED.created_by, created_at = now()`,
+          [Number(propertyId), art, bytes, createHash('sha256').update(bytes).digest('hex'),
+           principal.userId])
+        return rechnungseinstellung(client, Number(propertyId))
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/invoice-logo',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Logo fuer Rechnungen entfernen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async client => {
+        await client.query(`DELETE FROM property_invoice_logo WHERE property_id = $1`,
+          [Number(propertyId)])
+        return rechnungseinstellung(client, Number(propertyId))
+      })
+    }
+  })
+
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/invoice-logo',
+    permission: 'settings:property',
+    propertyParam: 'propertyId',
+    summary: 'Logo fuer Rechnungen ansehen',
+    handler: async (req, reply) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const logo = await tx(req.pool, req, async client => {
+        const r = await client.query<{ mime: string; bytes: Buffer }>(
+          `SELECT mime, bytes FROM property_invoice_logo WHERE property_id = $1`,
+          [Number(propertyId)])
+        if (r.rowCount === 0) throw Errors.notFound('res.invoiceLogo')
+        return r.rows[0]!
+      })
+      return bildSenden(reply, logo)
+    }
+  })
+
+  /**
+   * Versandnachweis einer Rechnung (Migration 0170): an wen, wann, mit
+   * welcher Kennung des Anbieters und welcher Fassung des Belegs. "Versandt"
+   * heisst vom Anbieter angenommen, nicht im Postfach gelesen -- mehr kann
+   * ein Mailversand nicht belegen, und der Bildschirm sagt es so.
+   *
+   * Die volle Adresse, nicht verdeckt wie im Postausgang: sie ist der
+   * Nachweis, und wer das Folio sehen darf, sieht den Empfaenger ohnehin.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/invoices/:invoiceRef/mails',
+    permission: 'folio:read',
+    summary: 'Versandnachweis einer Rechnung',
+    handler: async (req) => {
+      const { invoiceRef } = req.params as { invoiceRef: string }
+      return tx(req.pool, req, async client => {
+        const i = await client.query<{ id: number; property_id: number
+                                       sha256: string | null }>(
+          `SELECT i.id, i.property_id, d.sha256
+             FROM invoice i LEFT JOIN invoice_document d ON d.invoice_id = i.id
+            WHERE i.public_ref = $1`, [invoiceRef])
+        if (i.rowCount === 0) throw Errors.notFound('res.invoice')
+        rechtImHaus(req.principal as Principal, 'folio:read', i.rows[0]!.property_id)
+        const { rows } = await client.query(
+          `SELECT e.public_ref AS "messageRef", e.status,
+                  NULLIF(e.to_email, 'entfernt@invalid') AS "toEmail",
+                  e.to_name AS "toName", e.subject,
+                  e.created_at AS "requestedAt", e.sent_at AS "sentAt",
+                  e.attempts, e.provider_message_id AS "providerMessageId",
+                  e.attachment_sha256 AS "attachmentSha256",
+                  e.attachment_sha256 IS NOT NULL
+                    AND e.attachment_sha256 = $2 AS "sameDocument",
+                  u.display_name AS "requestedBy"
+             FROM outbound_email e
+             LEFT JOIN app_user u ON u.id = e.requested_by
+            WHERE e.invoice_id = $1
+            ORDER BY e.id`, [i.rows[0]!.id, i.rows[0]!.sha256])
+        return { invoiceRef, documentSha256: i.rows[0]!.sha256, mails: rows }
       })
     }
   })

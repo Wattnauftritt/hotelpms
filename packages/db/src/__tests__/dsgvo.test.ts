@@ -327,6 +327,41 @@ describe('Befund 5 und 7: die Loeschung erreicht alles', () => {
     expect(r.rows[0]!.redacted_at).not.toBeNull()
   })
 
+  it('entfernt auch die Adresse eines gealterten Versandnachweises (0170)', async () => {
+    // Nach neunzig Tagen behaelt eine versandte Rechnungsmail ihre Adresse
+    // als Nachweis. Ein Loeschverlangen geht dem vor.
+    const b = await owner.query<{ id: number }>(
+      `INSERT INTO booking (property_id, source) VALUES ($1,'direct') RETURNING id`,
+      [fx.propertyId])
+    const res = await owner.query<{ id: number }>(
+      `INSERT INTO reservation (property_id, booking_id, category_id, arrival,
+                                departure, status, primary_guest_id)
+       VALUES ($1,$2,$3,current_date,current_date+1,'Confirmed',$4) RETURNING id`,
+      [fx.propertyId, b.rows[0]!.id, katId, gastId])
+    const f = await owner.query<{ id: number }>(
+      `INSERT INTO folio (property_id, kind, reservation_id) VALUES ($1,'guest',$2)
+       RETURNING id`, [fx.propertyId, res.rows[0]!.id])
+    const i = await owner.query<{ id: number }>(
+      `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date,
+                            issuer_snapshot, recipient_snapshot, totals)
+       VALUES ($1,$2,'2026-000001',current_date,current_date,'{}'::jsonb,'{}'::jsonb,
+               '{"grossCent":100}'::jsonb) RETURNING id`, [fx.propertyId, f.rows[0]!.id])
+    await owner.query(
+      `INSERT INTO outbound_email (property_id, kind, to_email, to_name, subject,
+                                   body_text, invoice_id, status, created_at, redacted_at)
+       VALUES ($1,'invoice','h.musterfrau@example.de','Hannelore Musterfrau',
+               'Ihre Rechnung','',$2,'sent', now() - interval '100 days', now())`,
+      [fx.propertyId, i.rows[0]!.id])
+
+    await alsMandant(owner, fx.accountId, fx.propertyId, q =>
+      q(`SELECT guest_erase_one($1)`, [gastId]))
+
+    const r = await owner.query<{ to_email: string; to_name: string | null }>(
+      `SELECT to_email, to_name FROM outbound_email`)
+    expect(r.rows[0]!.to_email).toBe('entfernt@invalid')
+    expect(r.rows[0]!.to_name).toBeNull()
+  })
+
   it('fasst einen Gast aus einem fremden Account nicht an', async () => {
     const fremd = await makeProperty(owner, { name: 'Fremd', code: 'FR2' })
     await alsMandant(owner, fremd.accountId, fremd.propertyId, q =>

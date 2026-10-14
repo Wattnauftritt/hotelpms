@@ -1283,6 +1283,17 @@ Tests in `inklusivNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
 
 Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
 
+### Rechnungslogo, Versandnachweis, PDF und Drucken aus der Liste (`0170`) — **erledigt**
+
+**Warum.** Sven, 14.10.2026: „wenn wir Rechnungen per Mail senden, muss StayGrid den Sendungsnachweis speichern“, Rechnungen sollen sich aus der Liste drucken und als PDF laden lassen, und ein Logo aus den Einstellungen tragen.
+
+- **Logo:** Einstellungen → Rechnungen, Feld „Logo“ (`PUT/GET/DELETE /v1/properties/:id/invoice-logo`, Recht `settings:property`). Nur PNG und JPEG bis 1 MB, erkannt an den Bytes; ein SVG ist ein Dokument mit Skript, ein WebP bettet das PDF/A-3 nicht ein. Es steht oben rechts auf jedem Beleg, der **danach** gezeichnet wird; gezeichnete Belege bleiben. Ein Logo, das sich nicht einbetten lässt, kostet den Beleg nicht, er erscheint dann ohne. Die Bilddaten stehen in `audit_redaction`.
+- **Versandnachweis:** Knopf „Versandnachweis“ in der Rechnungsliste (`GET /v1/invoices/:ref/mails`, `folio:read`): Empfänger, Betreff, Zeitpunkte, Kennung des Anbieters und ob der verschickte Anhang dieselbe Fassung ist wie der Beleg im Archiv. „Versandt“ heißt vom Anbieter angenommen, nicht gelesen.
+- **Aufbewahrung:** `email_redact_old()` leert bei einer **versandten Rechnungsmail** nach 90 Tagen nur noch den Rumpf; Adresse, Name und Betreff bleiben sechs Jahre (abgesandte Geschäftsbriefe, § 257 HGB, § 147 AO). Alle anderen Mails wie bisher. Ein Löschverlangen (`guest_email_redact()`) entfernt die Adresse weiterhin sofort, auch aus einem gealterten Nachweis.
+- **PDF und Drucken** stehen in jeder Zeile der Rechnungsliste, sobald der Beleg gezeichnet ist.
+
+Tests in `rechnungLogoNachweis.test.ts`, `invoicePdf.test.ts`, `emailDelivery.test.ts` und `dsgvo.test.ts`.
+
 ### Stripe-Konto je Haus (Stripe Connect, `0167`) — **erledigt**
 
 **Warum.** Auf Wunsch von Sven, 14.10.2026: StayGrid soll als SaaS an andere Hotels gehen, und die Plattform will deren Zahlungen nicht verwalten. Bis hierhin lief jeder Checkout über das eine Stripe-Konto der Plattform; das Geld aller Hotels wäre bei uns eingegangen, mit Haftung für Rückbuchungen, Prüfpflichten und Auszahlung an die Häuser.

@@ -114,7 +114,7 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Gästebeitragsnachweis | ⟨nach kommunaler Satzung⟩ | `property.guest_levy_retention_years` |
 | Rechnungen und Belege | zehn Jahre | keine Löschung, Aufbewahrungspflicht |
 | Gastprofil | auf Verlangen, sobald keine Frist entgegensteht | `guest_erase_one()`, `guest_erasure_complete()` |
-| Gastpost | 90 Tage, bei Löschverlangen sofort | `email_redact_old()`, `guest_erase_one()` |
+| Gastpost | 90 Tage, bei Löschverlangen sofort; bei versandten Rechnungen bleiben Empfänger und Betreff als Versandnachweis sechs Jahre (§ 257 HGB, § 147 AO, Migration 0170) | `email_redact_old()`, `guest_erase_one()` |
 | Sitzungen und Einmaltoken | 7 Tage nach Ablauf | `purgeExpired()` |
 | Freischaltungen der Gästemappe | 7 Tage nach dem Abreisetag, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
 | Text einer Nachricht aus der Gästemappe | 30 Tage nach der Abreise, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
