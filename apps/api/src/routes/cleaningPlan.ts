@@ -231,8 +231,10 @@ async function liesZimmer(
               NULL::int AS "areaId", r.code,
               r.category_id::int AS "categoryId", c.code AS "categoryCode", r.building, r.floor,
               CASE WHEN ab.status IS NOT NULL THEN 'departure'
-                   WHEN bl.found THEN 'stayover' END AS due,
-              COALESCE(ab.status = 'CheckedOut', false) AS "departureCheckedOut",
+                   WHEN bl.found THEN 'stayover'
+                   WHEN liegen.found THEN 'departure' END AS due,
+              COALESCE(ab.status = 'CheckedOut', bl.found IS NULL AND liegen.found, false)
+                AS "departureCheckedOut",
               EXISTS (SELECT 1 FROM reservation an
                        WHERE an.resource_id = r.id AND an.arrival = $2::date
                          AND an.status IN ('Confirmed','InHouse')) AS "arrivalToday",
@@ -259,6 +261,19 @@ async function liesZimmer(
                    AND b.arrival < $2::date AND b.departure > $2::date
                    AND b.status IN ('Confirmed','InHouse')
                  LIMIT 1) bl ON true
+         -- Liegen gebliebene Abreise: das Zimmer steht noch auf schmutzig,
+         -- obwohl heute niemand abreist. Der Gast ist an einem frueheren Tag
+         -- gegangen, und gereinigt hat seither niemand -- sonst stuende es
+         -- auf sauber. Ohne diese Zeile fiele das Zimmer am Tag nach der
+         -- Abreise aus dem Plan, obwohl es weiter schmutzig ist. Nur fuer
+         -- den offenen Geschaeftstag und spaeter: der Stand gilt jetzt, und
+         -- in einen vergangenen Tag gehoert er nicht.
+         LEFT JOIN LATERAL (
+                SELECT true AS found FROM housekeeping_status h
+                 WHERE h.resource_id = r.id AND h.status = 'dirty'
+                   AND $2::date >= (SELECT min(d.date) FROM business_day d
+                                     WHERE d.property_id = $1 AND d.status = 'open')
+                ) liegen ON true
          LEFT JOIN housekeeping_task t
                 ON t.resource_id = r.id AND t.business_date = $2::date
                AND t.kind IN ('departure','stayover')
