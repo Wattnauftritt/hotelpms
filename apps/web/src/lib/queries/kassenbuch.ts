@@ -158,7 +158,8 @@ export function useKasseneinstellungSpeichern(propertyId: number) {
 export const belegAdresse = (propertyId: number, ref: string): string =>
   `/v1/properties/${propertyId}/cashbook/receipts/${ref}`
 
-export interface DatevAuswahl { mode: 'unsent' | 'range'; from?: string; to?: string }
+/** `resend` nimmt im Zeitraum auch mit, was DATEV schon hat; sonst nie. */
+export interface DatevAuswahl { mode: 'unsent' | 'range'; from?: string; to?: string; resend?: boolean }
 
 /**
  * Die DATEV-Datei herunterladen. Markiert nichts: was der Export enthielt,
@@ -167,9 +168,10 @@ export interface DatevAuswahl { mode: 'unsent' | 'range'; from?: string; to?: st
  */
 async function datevHolen(
   propertyId: number, a: DatevAuswahl
-): Promise<{ through: number; entries: number; receiptsWaiting: number }> {
+): Promise<{ through: number; entries: number; resent: number; receiptsWaiting: number }> {
   const q = new URLSearchParams({ mode: a.mode, ...(a.from ? { from: a.from } : {}),
-                                  ...(a.to ? { to: a.to } : {}) })
+                                  ...(a.to ? { to: a.to } : {}),
+                                  ...(a.mode === 'range' && a.resend ? { resend: 'true' } : {}) })
   const res = await fetch(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`,
     { credentials: 'same-origin' })
   if (!res.ok) {
@@ -189,6 +191,7 @@ async function datevHolen(
   setTimeout(() => { URL.revokeObjectURL(url) }, 0)
   return { through: Number(res.headers.get('x-staygrid-cashbook-through') ?? 0),
            entries: Number(res.headers.get('x-staygrid-cashbook-entries') ?? 0),
+           resent: Number(res.headers.get('x-staygrid-cashbook-resent') ?? 0),
            receiptsWaiting: Number(res.headers.get('x-staygrid-cashbook-receipts-waiting') ?? 0) }
 }
 
