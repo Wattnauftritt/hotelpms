@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useFolio, usePaymentMethods, usePostCharge,
          usePostSettlement } from '../lib/queries.js'
-import { useSplitFolio, useTransferCharge,
+import { useSplitFolio, useTransferCharge, useSplitBreakfast,
          useAccommodationRouting } from '../lib/queries/billing.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
@@ -10,7 +10,7 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Vorauszahlung } from '../components/Vorauszahlung.tsx'
 import { Rechnungsempfaenger } from '../components/Rechnungsempfaenger.tsx'
 import { Rechnungsdialog } from '../components/Rechnungsdialog.tsx'
-import { centAusEingabeMitVorzeichen } from '../lib/preisraster.js'
+import { centAusEingabe, centAusEingabeMitVorzeichen } from '../lib/preisraster.js'
 import type { FolioView } from '@hotelpms/contracts'
 
 /**
@@ -151,6 +151,16 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
         </table>
       </section>
 
+      {/* Nur, wo es etwas aufzuteilen gibt: offene Uebernachtungen ohne
+          Fruehstuecksteil am selben Tag. Den Rest prueft die Route. */}
+      {f.folio.status === 'open' && permissions.includes('folio:post')
+       && f.charges.some(c => c.invoice_id === null && c.reverses_id === null
+                              && !gegengebucht.has(c.id) && c.revenue_account === '8300'
+                              && c.description.startsWith('Uebernachtung ')
+                              && !f.charges.some(b => b.business_date === c.business_date
+                                                      && b.description.startsWith('Fruehstueck ')))
+       && <FruehstueckNachtraeglich folioRef={folioRef} />}
+
       {f.invoices.length > 0 && (
         <section className="bg-white border border-neutral-200 rounded-sm overflow-hidden">
           <h3 className="px-3 py-2 text-sm font-medium border-b border-neutral-200">
@@ -264,6 +274,63 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
 const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
 type Konto = FolioView['stay'][number]
+
+/**
+ * Frühstück nachträglich aus gebuchten Nächten herausrechnen (0169). Für
+ * Aufenthalte, deren Nächte gebucht wurden, bevor Rate oder Haus das
+ * Frühstück kannten -- oder bevor jemand „Ohne Frühstück“ wieder abwählte.
+ * Zugeklappt, weil es ein Nachtrag ist und kein Arbeitsschritt.
+ */
+function FruehstueckNachtraeglich({ folioRef }: { folioRef: string }): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const online = useOnline()
+  const teilen = useSplitBreakfast(folioRef)
+  const [preis, setPreis] = useState('')
+  const [kinder, setKinder] = useState('')
+  const cent = centAusEingabe(preis)
+  const kinderCent = kinder.trim() === '' ? null : centAusEingabe(kinder)
+  const gueltig = cent !== null && cent > 0 && (kinder.trim() === '' || kinderCent !== null)
+
+  return (
+    <details className="bg-white border border-neutral-200 rounded-sm p-3 text-sm">
+      <summary className="cursor-pointer font-medium">{t('folio.breakfastSplit')}</summary>
+      <p className="mt-2 text-xs text-neutral-600">{t('folio.breakfastSplitHint')}</p>
+      <form className="mt-2 flex flex-wrap items-end gap-3"
+            onSubmit={e => {
+              e.preventDefault()
+              if (!gueltig) return
+              teilen.mutate({ breakfastCent: cent, childBreakfastCent: kinderCent })
+            }}>
+        <label className="block">
+          <span className="block text-xs text-neutral-600">{t('rate.breakfast.price')}</span>
+          <input value={preis} onChange={e => setPreis(e.target.value)} inputMode="decimal"
+                 className="mt-0.5 w-28 border border-neutral-300 rounded-sm px-2 py-1
+                            text-end tabular-nums" />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-neutral-600">{t('rate.breakfast.childPrice')}</span>
+          <input value={kinder} onChange={e => setKinder(e.target.value)} inputMode="decimal"
+                 placeholder="—"
+                 className="mt-0.5 w-28 border border-neutral-300 rounded-sm px-2 py-1
+                            text-end tabular-nums" />
+        </label>
+        <button type="submit" disabled={!online || !gueltig || teilen.isPending}
+                className="px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t('folio.breakfastSplitDo')}
+        </button>
+      </form>
+      {teilen.isSuccess && (
+        <p role="status" className="mt-2 text-emerald-800">
+          {t('folio.breakfastSplitDone', { nights: teilen.data.nights,
+                                           amount: formatMoney(teilen.data.breakfastCent, locale) })}
+        </p>
+      )}
+      {teilen.isError && <div className="mt-2"><Fehler error={teilen.error} /></div>}
+    </details>
+  )
+}
 
 function kontoName(k: Konto, t: ReturnType<typeof useT>): string {
   const name = k.label ?? (k.main ? t('folio.main') : t('folio.split'))

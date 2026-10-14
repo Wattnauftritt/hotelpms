@@ -32,7 +32,8 @@ export function tageInklusive(from: string, to: string): string[] {
 }
 
 export const useRatePlans = (propertyId: number) =>
-  useQuery<{ ratePlans: RatePlan[]; vatRules: VatRule[] }>({
+  useQuery<{ ratePlans: RatePlan[]; vatRules: VatRule[]
+              houseBreakfast: Fruehstueckswerte }>({
     queryKey: ['ratePlans', propertyId],
     queryFn: () => api.get(`/v1/properties/${propertyId}/rate-plans`),
     // Ratenplaene aendern sich im Betrieb selten; die Preise darin taeglich.
@@ -118,6 +119,23 @@ export function useSetInclusions(propertyId: number) {
  * Fruehstueck im Ratenpreis setzen; `null` nimmt es heraus. Wirkt ab der
  * naechsten Nacht, die der Nachtlauf bucht (Migration 0158).
  */
+/** Fruehstueck je Person und Nacht, an einer Rate oder als Regel des Hauses. */
+export interface Fruehstueckswerte {
+  breakfastCent: number | null; childBreakfastCent: number | null
+}
+
+/** Regel des Hauses (0169): gilt fuer Raten ohne eigenen Preis und Buchungen ohne Rate. */
+export function useSetHouseBreakfast(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Fruehstueckswerte) =>
+      api.put<Fruehstueckswerte>(`/v1/properties/${propertyId}/breakfast-rule`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
+    }
+  })
+}
+
 export function useSetBreakfast(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({

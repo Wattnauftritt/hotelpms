@@ -154,6 +154,8 @@ interface CreateBooking {
   children?: number
   /** Merkmal fuer den Balken im Plan. Der Vorgang gehoert in `notes`. */
   shortNote?: string
+  /** Ohne Fruehstueck gebucht (0169). */
+  breakfastDeclined?: boolean
   /** Bestaetigte Ueberbuchung (`ueberbuchenErlauben`). */
   allowOverbooking?: boolean
   source?: string
@@ -1478,10 +1480,12 @@ export function reservationRoutes(app: FastifyInstance): void {
           `INSERT INTO reservation
              (property_id, booking_id, category_id, arrival, departure, status,
               option_expires_at, rate_plan_id, primary_guest_id, notes, short_note,
-              block_id, resource_id, guest_count, adults, children, created_by)
+              block_id, resource_id, guest_count, adults, children, created_by,
+              breakfast_declined)
            SELECT $1, $2, x.category_id, x.arrival, x.departure, $3::reservation_status,
                   $4::timestamptz, $5::bigint, $6::bigint, $7::text, $8::text,
-                  $9::bigint, x.resource_id, x.guest_count, x.adults, x.children, $10::bigint
+                  $9::bigint, x.resource_id, x.guest_count, x.adults, x.children, $10::bigint,
+                  $18::boolean
              FROM unnest($11::bigint[], $12::date[], $13::date[], $14::bigint[],
                          $15::int[], $16::int[], $17::int[])
                   WITH ORDINALITY AS x(category_id, arrival, departure, resource_id,
@@ -1496,7 +1500,7 @@ export function reservationRoutes(app: FastifyInstance): void {
            zeitraeume.map(zr => zr.arrival), zeitraeume.map(zr => zr.departure),
            zimmer.map(z => z.resourceId ?? null),
            jePerson.map(p => p.guestCount), jePerson.map(p => p.adults),
-           jePerson.map(p => p.children)])
+           jePerson.map(p => p.children), body.breakfastDeclined === true])
         const reservierungen = [...res.rows].sort((a, b) => Number(a.id) - Number(b.id))
         if (reservierungen.length !== zimmer.length) {
           throw new Error('Gruppenbuchung: Zahl der angelegten Reservierungen weicht ab')
@@ -1655,6 +1659,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   c.name                  AS "categoryName",
                   r.resource_id           AS "resourceId",
                   r.room_fixed            AS "roomFixed",
+                  r.breakfast_declined    AS "breakfastDeclined",
                   u.code                  AS "roomCode",
                   u.floor,
                   r.rate_plan_id          AS "ratePlanId",
@@ -1803,7 +1808,7 @@ export function reservationRoutes(app: FastifyInstance): void {
       const body = req.body as { notes?: string | null; shortNote?: string | null
                                  guestRef?: string
                                  guestCount?: number; adults?: number; children?: number
-                                 roomFixed?: boolean }
+                                 roomFixed?: boolean; breakfastDeclined?: boolean }
       /*
        * Die Personenzahl -- vorher nur beim Anlegen zu setzen (Sven,
        * 06.10.2026: "man kann bei bestehenden Buchungen die Personenzahl
@@ -1817,6 +1822,9 @@ export function reservationRoutes(app: FastifyInstance): void {
       const personen = personenGeaendert ? personenAngabe(body) : null
       if (body.roomFixed !== undefined && typeof body.roomFixed !== 'boolean') {
         throw Errors.validation({ roomFixed: ['field.invalid'] })
+      }
+      if (body.breakfastDeclined !== undefined && typeof body.breakfastDeclined !== 'boolean') {
+        throw Errors.validation({ breakfastDeclined: ['field.invalid'] })
       }
       if (body.notes !== undefined && body.notes !== null
           && body.notes.length > NOTES_MAX_LENGTH) {
@@ -1864,6 +1872,16 @@ export function reservationRoutes(app: FastifyInstance): void {
             [res.id, body.roomFixed])
         }
 
+        /*
+         * "Ohne Fruehstueck" (0169). Wirkt wie die Regel an Rate und Haus ab
+         * der naechsten Nacht; eine gebuchte Nacht teilt niemand um.
+         */
+        if (body.breakfastDeclined !== undefined) {
+          await client.query(
+            `UPDATE reservation SET breakfast_declined = $2, updated_at = now() WHERE id = $1`,
+            [res.id, body.breakfastDeclined])
+        }
+
         let gastRef: string | null | undefined
         if (body.guestRef !== undefined) {
           gastRef = await setzeHauptgast(client, res, body.guestRef)
@@ -1898,7 +1916,8 @@ export function reservationRoutes(app: FastifyInstance): void {
           ...(body.shortNote !== undefined ? ['shortNote'] : []),
           ...(body.guestRef !== undefined ? ['guest'] : []),
           ...(personen !== null ? ['persons'] : []),
-          ...(body.roomFixed !== undefined ? ['roomFixed'] : [])
+          ...(body.roomFixed !== undefined ? ['roomFixed'] : []),
+          ...(body.breakfastDeclined !== undefined ? ['breakfastDeclined'] : [])
         ]
         if (geaendert.length > 0) {
           await emitEvent(client, res.property_id, 'reservation.changed', {
@@ -1912,7 +1931,9 @@ export function reservationRoutes(app: FastifyInstance): void {
           ...(body.shortNote === undefined ? {} : { shortNote: body.shortNote }),
           ...(gastRef === undefined ? {} : { guestRef: gastRef }),
           ...(personen === null ? {} : personen),
-          ...(body.roomFixed === undefined ? {} : { roomFixed: body.roomFixed })
+          ...(body.roomFixed === undefined ? {} : { roomFixed: body.roomFixed }),
+          ...(body.breakfastDeclined === undefined ? {}
+            : { breakfastDeclined: body.breakfastDeclined })
         }
       })
     }

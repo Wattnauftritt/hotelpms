@@ -1,8 +1,9 @@
-import { useMemo, useState, type JSX } from 'react'
+import { useMemo, useState, type JSX, type ReactNode } from 'react'
 import type { RateInclusion, RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
          useCreateRatePlan, useRebuildDerived, useSetBreakfast, useSetInclusions,
+         useSetHouseBreakfast, type Fruehstueckswerte,
          tageInklusive, type VatRule, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
 import { ChannelSicht } from '../components/ChannelSicht.tsx'
@@ -316,13 +317,51 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
  * je Person und Nacht und wahlweise ein eigener für Kinder (0 = frei). Mehr fragt die Maske nicht ab: den Getränkeanteil
  * gibt das BMF pauschal vor, er steht in der Domain und nicht hier.
  */
-function FruehstueckZeile(
+function FruehstueckRate(
   { propertyId, plan, darfSchreiben }: {
     propertyId: number; plan: RatePlan; darfSchreiben: boolean }
 ): JSX.Element {
+  const setzen = useSetBreakfast(propertyId)
+  return (
+    <FruehstueckZeile
+      titel={<>{plan.name}<span className="text-neutral-500"> ({plan.code})</span></>}
+      werte={plan} darfSchreiben={darfSchreiben}
+      onSave={w => setzen.mutate({ ratePlanId: plan.id, ...w })}
+      pending={setzen.isPending} gespeichert={setzen.isSuccess}
+      fehler={setzen.isError ? setzen.error : null} />
+  )
+}
+
+/**
+ * Dieselbe Frage als Regel des Hauses (Migration 0169). Sie gilt für jede
+ * Rate ohne eigenen Preis und für Buchungen ganz ohne Rate -- die aus dem
+ * Altsystem und dem Adminpanel, an denen sonst nichts das Frühstück kennt.
+ */
+function FruehstueckHaus(
+  { propertyId, werte, darfSchreiben }: {
+    propertyId: number; werte: Fruehstueckswerte; darfSchreiben: boolean }
+): JSX.Element {
+  const t = useT()
+  const setzen = useSetHouseBreakfast(propertyId)
+  return (
+    <FruehstueckZeile
+      titel={<span className="font-medium">{t('rate.breakfast.house')}</span>}
+      werte={werte} darfSchreiben={darfSchreiben}
+      onSave={w => setzen.mutate(w)}
+      pending={setzen.isPending} gespeichert={setzen.isSuccess}
+      fehler={setzen.isError ? setzen.error : null} />
+  )
+}
+
+function FruehstueckZeile(
+  { titel, werte, darfSchreiben, onSave, pending, gespeichert, fehler }: {
+    titel: ReactNode; werte: Fruehstueckswerte; darfSchreiben: boolean
+    onSave: (w: Fruehstueckswerte) => void
+    pending: boolean; gespeichert: boolean; fehler: unknown }
+): JSX.Element {
   const t = useT()
   const online = useOnline()
-  const setzen = useSetBreakfast(propertyId)
+  const plan = werte
   const [enthalten, setEnthalten] = useState(plan.breakfastCent !== null)
   const [preis, setPreis] = useState(
     plan.breakfastCent === null ? '' : eingabeAusCent(plan.breakfastCent))
@@ -344,11 +383,9 @@ function FruehstueckZeile(
           onSubmit={e => {
             e.preventDefault()
             if (!gueltig || !geaendert) return
-            setzen.mutate({ ratePlanId: plan.id, breakfastCent: neu,
-                            childBreakfastCent: neuKinder })
+            onSave({ breakfastCent: neu, childBreakfastCent: neuKinder })
           }}>
-      <span className="w-56 truncate">{plan.name}
-        <span className="text-neutral-500"> ({plan.code})</span></span>
+      <span className="w-56 truncate">{titel}</span>
       <label className="flex items-center gap-1.5">
         <input type="checkbox" checked={enthalten} disabled={!darfSchreiben}
                onChange={e => setEnthalten(e.target.checked)} />
@@ -385,16 +422,16 @@ function FruehstueckZeile(
       )}
       {darfSchreiben && (
         <button type="submit"
-                disabled={!online || !gueltig || !geaendert || setzen.isPending}
+                disabled={!online || !gueltig || !geaendert || pending}
                 className="px-3 py-1 rounded-sm border border-neutral-300
                            hover:bg-neutral-50 disabled:opacity-40">
           {t('common.save')}
         </button>
       )}
-      {setzen.isSuccess && !geaendert && (
+      {gespeichert && !geaendert && (
         <span role="status" className="text-emerald-800">{t('rate.breakfast.saved')}</span>
       )}
-      {setzen.isError && <Fehler error={setzen.error} />}
+      {fehler !== null && <Fehler error={fehler} />}
     </form>
   )
 }
@@ -521,10 +558,11 @@ function InklusivZeile(
  * Zeile darüber.
  */
 function Ratenplaene(
-  { propertyId, plaene, vatRules, kategorien, von, bis, darfSchreiben }: {
+  { propertyId, plaene, vatRules, hausFruehstueck, kategorien, von, bis, darfSchreiben }: {
     propertyId: number
     plaene: readonly RatePlan[]
     vatRules: readonly VatRule[]
+    hausFruehstueck: Fruehstueckswerte
     kategorien: ReadonlyArray<{ id: number; name: string }>
     von: string; bis: string; darfSchreiben: boolean }
 ): JSX.Element {
@@ -581,19 +619,24 @@ function Ratenplaene(
       </div>
       {neuRechnen.isError && <Fehler error={neuRechnen.error} />}
 
-      {plaene.length > 0 && (
-        <div className="space-y-2 border-t border-neutral-200 pt-3">
-          <div className="text-sm text-neutral-600">{t('rate.breakfast.title')}</div>
-          {plaene.map(p => (
-            <FruehstueckZeile key={p.id}
-                              propertyId={propertyId} plan={p}
-                              darfSchreiben={darfSchreiben} />
-          ))}
-          <div className="text-xs text-neutral-500">
-            {t('rate.breakfast.hint')} {t('rate.breakfast.childHint')}
-          </div>
+      {/* Auch ohne Raten: die Regel des Hauses ist genau fuer Buchungen
+          da, die keine haben. Der Schluessel haengt am gespeicherten Stand,
+          damit die Zeile nach dem Laden neu beginnt. */}
+      <div className="space-y-2 border-t border-neutral-200 pt-3">
+        <div className="text-sm text-neutral-600">{t('rate.breakfast.title')}</div>
+        <FruehstueckHaus key={JSON.stringify(hausFruehstueck)}
+                         propertyId={propertyId} werte={hausFruehstueck}
+                         darfSchreiben={darfSchreiben} />
+        <div className="text-xs text-neutral-500">{t('rate.breakfast.houseHint')}</div>
+        {plaene.map(p => (
+          <FruehstueckRate key={p.id}
+                           propertyId={propertyId} plan={p}
+                           darfSchreiben={darfSchreiben} />
+        ))}
+        <div className="text-xs text-neutral-500">
+          {t('rate.breakfast.hint')} {t('rate.breakfast.childHint')}
         </div>
-      )}
+      </div>
 
       {plaene.length > 0 && (
         <div className="space-y-3 border-t border-neutral-200 pt-3">
@@ -807,6 +850,8 @@ function Preisraster(
                 <Ratenplaene propertyId={propertyId}
                              plaene={plaene.data?.ratePlans ?? []}
                              vatRules={plaene.data?.vatRules ?? []}
+                             hausFruehstueck={plaene.data?.houseBreakfast
+                                              ?? { breakfastCent: null, childBreakfastCent: null }}
                              kategorien={kategorien.data?.categories ?? []}
                              von={von} bis={bis} darfSchreiben={darfSchreiben} />
 

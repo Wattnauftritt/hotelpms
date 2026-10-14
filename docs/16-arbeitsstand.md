@@ -1271,6 +1271,18 @@ Tests in `invoiceCii.test.ts`, `rechnungsdialog.test.ts` (Einstellung, falsche I
 
 Tests in `inklusivNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
 
+### Frühstück als Regel des Hauses, abwählbar je Reservierung (`0169`) — **erledigt**
+
+**Warum.** `0158` kannte das Frühstück nur an der Rate. Buchungen ohne Rate — alle aus dem Altsystem und dem Adminpanel — buchten deshalb die ganze Nacht als Übernachtung, und die Getränke zu 19 % fehlten auf der Rechnung. In Svens Hotel ist Frühstück immer inklusive, wenn es nicht abgewählt ist; das soll je Haus einstellbar sein, weil es nicht jedes Haus so macht (Sven, 14.10.2026).
+
+- **Preise → Ratenpläne → Frühstück, Zeile „Regel des Hauses“** (`property.breakfast_cent`, `breakfast_child_cent`; `PUT /v1/properties/:id/breakfast-rule`, Recht `rate:write`). Sie gilt für jede Rate ohne eigenen Frühstückspreis und für Buchungen ohne Rate. Hat die Rate einen eigenen Preis, gilt dieser samt Kinderpreis.
+- **„Ohne Frühstück“ je Reservierung** (`reservation.breakfast_declined`): Schalter im Reservierungsfenster unter der Rate, `PATCH /v1/reservations/:ref` und beim Anlegen `breakfastDeclined`. Er schlägt Rate und Haus.
+- **Nachtlauf und Anzahlung** rechnen dieselbe Reihenfolge. Wie bei der Rate gilt es ab der nächsten gebuchten Nacht; gebuchte Nächte bleiben.
+- **Nachträglich für gebuchte Nächte:** im Folio „Frühstück nachträglich aufteilen“ (`POST /v1/folios/:ref/breakfast-split`, `folio:post`). Jede offene Übernachtung ohne Frühstücksteil bekommt eine Gegenbuchung und dieselbe Aufteilung wie im Nachtlauf, mit dem Geschäftstag der Nacht, damit der Leistungszeitraum der Rechnung bleibt. Berechnete Nächte bleiben; dort hilft nur eine Stornorechnung.
+- **Die Frühstückszahl** für Küche, Hausdame und Adminpanel (`fruehstueckeJeTag`, `GET /breakfast`) lässt abgewählte Reservierungen aus; die Belegungszahlen zählen sie weiter.
+
+Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`.
+
 ### Stripe-Konto je Haus (Stripe Connect, `0167`) — **erledigt**
 
 **Warum.** Auf Wunsch von Sven, 14.10.2026: StayGrid soll als SaaS an andere Hotels gehen, und die Plattform will deren Zahlungen nicht verwalten. Bis hierhin lief jeder Checkout über das eine Stripe-Konto der Plattform; das Geld aller Hotels wäre bei uns eingegangen, mit Haftung für Rückbuchungen, Prüfpflichten und Auszahlung an die Häuser.

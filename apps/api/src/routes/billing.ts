@@ -6,7 +6,8 @@ import { hinweisText } from '../platform/texte.js'
 import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
-         BREAKFAST_FOOD_RATE_BP } from '@hotelpms/domain'
+         BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
+         breakfastPerNight, splitNight } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
@@ -460,19 +461,28 @@ async function erwarteteSaetze(
                        WHERE rn.reservation_id = res.id), 0)::bigint AS logis_cent,
             p.personen,
             COALESCE((SELECT sum(LEAST(
-                                CASE WHEN rp.breakfast_child_cent IS NOT NULL
+                                CASE WHEN fp.kind IS NOT NULL
                                           AND p.adults IS NOT NULL
-                                     THEN p.adults::bigint * rp.breakfast_cent
-                                          + COALESCE(p.children, 0)::bigint
-                                            * rp.breakfast_child_cent
-                                     ELSE rp.breakfast_cent::bigint * p.personen END,
+                                     THEN p.adults::bigint * fp.erwachsen
+                                          + COALESCE(p.children, 0)::bigint * fp.kind
+                                     ELSE fp.erwachsen::bigint * p.personen END,
                                 GREATEST(rn.price_cent, 0)))
                         FROM reservation_night rn
-                        JOIN rate_plan rp
+                        LEFT JOIN rate_plan rp
                           ON rp.id = COALESCE(rn.rate_plan_id, res.rate_plan_id)
+                        -- Wie im Nachtlauf: Rate vor Haus, abgewaehlt vor beidem (0169).
+                        CROSS JOIN LATERAL (
+                          SELECT CASE WHEN res.breakfast_declined THEN NULL
+                                      ELSE COALESCE(rp.breakfast_cent, pr.breakfast_cent)
+                                 END AS erwachsen,
+                                 CASE WHEN rp.breakfast_cent IS NOT NULL
+                                      THEN rp.breakfast_child_cent
+                                      ELSE pr.breakfast_child_cent END AS kind
+                        ) fp
                        WHERE rn.reservation_id = res.id
-                         AND rp.breakfast_cent IS NOT NULL), 0)::bigint AS fruehstueck_cent
-       FROM reservation res JOIN p ON p.id = res.id`,
+                         AND fp.erwachsen IS NOT NULL), 0)::bigint AS fruehstueck_cent
+       FROM reservation res JOIN p ON p.id = res.id
+       JOIN property pr ON pr.id = res.property_id`,
     [reservationId, propertyId])
   if (r.rowCount === 0) return []
   const res = r.rows[0]!
@@ -1405,6 +1415,166 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const result = { chargeId: r.rows[0]!.id, reversesId: id,
                          grossCent: Number(r.rows[0]!.gross_cent) }
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
+   * Fruehstueck nachtraeglich aus gebuchten Naechten herausrechnen (Sven,
+   * 14.10.2026: "fuer bereits eingecheckte und ausgecheckte Buchungen
+   * nachtraeglich festlegen und buchen").
+   *
+   * Die Regel an Rate und Haus (0158, 0169) wirkt erst ab der naechsten
+   * Nacht; was vorher gebucht wurde, steht als ganze Uebernachtung im
+   * Folio. Eine Position wird nie umgeschrieben (Haertegrad 1): jede offene
+   * Uebernachtung ohne Fruehstuecksteil bekommt eine Gegenbuchung und
+   * dieselbe Aufteilung wie im Nachtlauf -- Logis, Speisen, Getraenke.
+   *
+   * **Mit dem Geschaeftstag der Nacht**, nicht mit dem heutigen. Der
+   * Leistungszeitraum der Rechnung kommt aus den Geschaeftstagen der
+   * Positionen; mit heute verlaengerte die Korrektur den Aufenthalt auf dem
+   * Beleg bis zum Tag der Korrektur.
+   *
+   * Der Preis kommt aus dem Rumpf, vorbelegt in der Maske mit Rate oder
+   * Haus. Berechnete Naechte bleiben: dort hilft nur eine Stornorechnung.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/breakfast-split',
+    permission: 'folio:post',
+    summary: 'Fruehstueck aus gebuchten Naechten herausrechnen',
+    handler: async (req, reply) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+      const body = (req.body ?? {}) as { breakfastCent?: unknown; childBreakfastCent?: unknown }
+      const erwachsen = body.breakfastCent
+      if (!(typeof erwachsen === 'number' && Number.isInteger(erwachsen)
+            && erwachsen >= 1 && erwachsen <= 100_000)) {
+        throw Errors.validation({ breakfastCent: ['field.range'] },
+          { min: '0,01 €', max: '1.000,00 €' })
+      }
+      const kind = body.childBreakfastCent ?? null
+      if (kind !== null && !(typeof kind === 'number' && Number.isInteger(kind)
+                             && kind >= 0 && kind <= 100_000)) {
+        throw Errors.validation({ childBreakfastCent: ['field.range'] },
+          { min: '0,00 €', max: '1.000,00 €' })
+      }
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(client, principal.clientKey, key,
+          { folioRef, erwachsen, kind }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const f = await client.query<{ id: number; property_id: number; status: string }>(
+          `SELECT id, property_id, status FROM folio WHERE public_ref = $1 FOR UPDATE`,
+          [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:post', folio.property_id)
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+
+        /*
+         * Die Uebernachtungen des Nachtlaufs: Konto der Logis, ohne Produkt
+         * und ohne Teil, offen, nicht gegengebucht. Und nur Naechte, an
+         * denen fuer diese Reservierung noch kein Fruehstueck steht --
+         * sonst stuende es nach einer zweiten Korrektur doppelt da.
+         */
+        const naechte = await client.query<{
+          id: number; reservation_id: number; business_date: string; description: string
+          gross_cent: string; tax_rate_bp: number; tax_rule_id: number | null
+          personen: number; adults: number | null; children: number | null
+          declined: boolean }>(
+          `SELECT c.id, c.reservation_id, c.business_date::text, c.description,
+                  c.gross_cent, c.tax_rate_bp, c.tax_rule_id,
+                  GREATEST(COALESCE(r.guest_count,
+                    (SELECT count(*) FROM reservation_occupant o
+                      WHERE o.reservation_id = r.id)::int), 1) AS personen,
+                  r.adults, r.children, r.breakfast_declined AS declined
+             FROM charge c
+             JOIN reservation r ON r.id = c.reservation_id
+            WHERE c.folio_id = $1
+              AND c.package_part IS NULL AND c.product_id IS NULL
+              AND c.revenue_account = '8300' AND c.description LIKE 'Uebernachtung %'
+              AND c.invoice_id IS NULL AND c.reverses_id IS NULL AND c.gross_cent > 0
+              AND NOT EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id)
+              AND NOT EXISTS (SELECT 1 FROM charge b
+                               WHERE b.reservation_id = c.reservation_id
+                                 AND b.business_date = c.business_date
+                                 AND b.package_part IN ('breakfast_food', 'breakfast_drinks')
+                                 AND b.reverses_id IS NULL
+                                 AND NOT EXISTS (SELECT 1 FROM charge x
+                                                  WHERE x.reverses_id = b.id))
+            ORDER BY c.business_date, c.id
+            FOR UPDATE OF c`, [folio.id])
+        if (naechte.rows.some(n => n.declined)) throw Errors.conflict('breakfast.declined')
+        if (naechte.rowCount === 0) throw Errors.conflict('breakfast.nothingToSplit')
+
+        const zeilen: Array<{ datum: string; text: string; brutto: number; satz: number
+                              regel: number | null; konto: string; teil: string | null
+                              reservation: number; reverses: number | null }> = []
+        let summe = 0
+        for (const n of naechte.rows) {
+          const brutto = Number(n.gross_cent)
+          const teile = splitNight({ priceCent: brutto, breakfastCent: breakfastPerNight({
+            adultCent: erwachsen, childCent: kind, persons: n.personen,
+            adults: n.adults, children: n.children }) })
+          if (teile.foodCent + teile.drinksCent === 0) continue
+          summe += teile.foodCent + teile.drinksCent
+          // Das Datum der Nacht steht im Text des Nachtlaufs; es bleibt.
+          const tag = n.description.slice('Uebernachtung '.length)
+          const gemeinsam = { datum: n.business_date, reservation: n.reservation_id }
+          zeilen.push(
+            { ...gemeinsam, text: `Storno ${n.description}`, brutto: -brutto,
+              satz: n.tax_rate_bp, regel: n.tax_rule_id, konto: '8300', teil: null,
+              reverses: n.id },
+            { ...gemeinsam, text: n.description, brutto: teile.lodgingCent,
+              satz: n.tax_rate_bp, regel: n.tax_rule_id, konto: '8300', teil: null,
+              reverses: null },
+            { ...gemeinsam, text: `Fruehstueck Speisen ${tag}`, brutto: teile.foodCent,
+              satz: BREAKFAST_FOOD_RATE_BP, regel: null, konto: BREAKFAST_FOOD_ACCOUNT,
+              teil: 'breakfast_food', reverses: null })
+          if (teile.drinksCent > 0) {
+            zeilen.push({ ...gemeinsam, text: `Fruehstueck Getraenke ${tag}`,
+              brutto: teile.drinksCent, satz: BREAKFAST_DRINKS_RATE_BP, regel: null,
+              konto: BREAKFAST_DRINKS_ACCOUNT, teil: 'breakfast_drinks', reverses: null })
+          }
+        }
+        if (zeilen.length === 0) throw Errors.conflict('breakfast.nothingToSplit')
+
+        // Die Gegenbuchung uebernimmt den Steuerbetrag der Position, nicht
+        // einen neu gerechneten: sonst bliebe ein Cent Steuer stehen.
+        await client.query(
+          `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                               net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                               revenue_account, reservation_id, reverses_id, created_by,
+                               package_part)
+           SELECT $1, $2, z.datum, z.text, 1,
+                  CASE WHEN z.reverses IS NULL
+                       THEN z.brutto - round(z.brutto * z.satz / (10000.0 + z.satz))
+                       ELSE -o.net_cent END,
+                  CASE WHEN z.reverses IS NULL
+                       THEN round(z.brutto * z.satz / (10000.0 + z.satz))
+                       ELSE -o.tax_cent END,
+                  z.brutto, z.satz, z.regel, z.konto, z.reservation, z.reverses, $3, z.teil
+             FROM unnest($4::date[], $5::text[], $6::bigint[], $7::int[], $8::bigint[],
+                         $9::text[], $10::bigint[], $11::bigint[], $12::text[])
+                  WITH ORDINALITY AS z(datum, text, brutto, satz, regel, konto, reservation,
+                                       reverses, teil, ord)
+             LEFT JOIN charge o ON o.id = z.reverses
+            ORDER BY z.ord`,
+          [folio.property_id, folio.id, principal.userId,
+           zeilen.map(z => z.datum), zeilen.map(z => z.text), zeilen.map(z => z.brutto),
+           zeilen.map(z => z.satz), zeilen.map(z => z.regel), zeilen.map(z => z.konto),
+           zeilen.map(z => z.reservation), zeilen.map(z => z.reverses),
+           zeilen.map(z => z.teil)])
+
+        const result = { nights: zeilen.filter(z => z.reverses !== null).length,
+                         breakfastCent: summe }
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result

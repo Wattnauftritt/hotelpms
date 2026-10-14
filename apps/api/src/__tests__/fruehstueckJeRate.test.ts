@@ -227,3 +227,139 @@ describe('Weitere Inklusivleistungen an der Rate (0165)', () => {
     expect((await inklusiv(id, [], rezeption)).statusCode).toBe(403)
   })
 })
+
+describe('Fruehstueck als Regel des Hauses (0169)', () => {
+  const haus = (breakfastCent: unknown, childBreakfastCent: unknown = null,
+                headers = preise) => app.inject({
+    method: 'PUT', url: `/v1/properties/${fx.propertyId}/breakfast-rule`,
+    headers, payload: { breakfastCent, childBreakfastCent } })
+
+  it('setzt, liest und entfernt die Regel', async () => {
+    expect((await haus(1_200, 0)).statusCode).toBe(200)
+    const liste = await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/rate-plans`, headers: preise })
+    expect((JSON.parse(liste.body) as { houseBreakfast: unknown }).houseBreakfast)
+      .toEqual({ breakfastCent: 1_200, childBreakfastCent: 0 })
+
+    expect((await haus(null, 500)).statusCode).toBe(200)
+    const z = await owner.query(
+      `SELECT breakfast_cent, breakfast_child_cent FROM property WHERE id = $1`,
+      [fx.propertyId])
+    expect(z.rows[0]).toEqual({ breakfast_cent: null, breakfast_child_cent: null })
+  })
+
+  it('prueft wie an der Rate und verlangt dasselbe Recht', async () => {
+    for (const falsch of [0, 12.5, 100_001, '1200']) {
+      expect((await haus(falsch)).statusCode, String(falsch)).toBe(422)
+    }
+    expect((await haus(1_000, null, rezeption)).statusCode).toBe(403)
+  })
+
+  it('nimmt eine Reservierung per PATCH vom Fruehstueck aus und zeigt es', async () => {
+    const res = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId,
+      arrival: '2027-03-01', departure: '2027-03-03',
+      priceCent: 11_000, reserveInventory: false })
+    const ref = (await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM reservation WHERE id = $1`, [res.reservationId])).rows[0]!.public_ref
+    const ohne = await app.inject({
+      method: 'PATCH', url: `/v1/reservations/${ref}`,
+      headers: rezeption, payload: { breakfastDeclined: true } })
+    expect(ohne.statusCode, ohne.body).toBe(200)
+    const z = await owner.query(`SELECT breakfast_declined FROM reservation WHERE id = $1`,
+      [res.reservationId])
+    expect(z.rows[0]!.breakfast_declined).toBe(true)
+    const d = await app.inject({
+      method: 'GET', url: `/v1/reservations/${ref}`, headers: rezeption })
+    expect((JSON.parse(d.body) as { breakfastDeclined: boolean }).breakfastDeclined).toBe(true)
+  })
+})
+
+describe('Fruehstueck nachtraeglich aufteilen (0169)', () => {
+  /** Eine Nacht, wie der Nachtlauf sie vor der Regel gebucht hat. */
+  const nacht = (resId: number, folioId: number, datum: string, brutto: number) =>
+    owner.query<{ id: number }>(
+      `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                           net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account,
+                           reservation_id)
+       VALUES ($1,$2,$3::date,'Uebernachtung ' || to_char($3::date,'DD.MM.YYYY'),1,
+               $4::bigint - round($4::bigint * 700 / 10700.0), round($4::bigint * 700 / 10700.0),
+               $4::bigint, 700, '8300', $5)
+       RETURNING id`,
+      [fx.propertyId, folioId, datum, brutto, resId])
+
+  async function aufenthalt(): Promise<{ resId: number; folioId: number; folioRef: string }> {
+    const res = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId,
+      arrival: '2026-10-08', departure: '2026-10-11',
+      priceCent: 8_933, reserveInventory: false })
+    await owner.query(`UPDATE reservation SET guest_count = 2 WHERE id = $1`,
+      [res.reservationId])
+    const f = await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM folio WHERE id = $1`, [res.folioId])
+    return { resId: res.reservationId, folioId: res.folioId, folioRef: f.rows[0]!.public_ref }
+  }
+
+  const teilen = (folioRef: string, breakfastCent: unknown, childBreakfastCent: unknown = null) =>
+    app.inject({ method: 'POST', url: `/v1/folios/${folioRef}/breakfast-split`,
+                 headers: { ...rezeption, 'idempotency-key': key() },
+                 payload: { breakfastCent, childBreakfastCent } })
+
+  it('bucht jede offene Nacht gegen und teilt sie mit dem Datum der Nacht neu', async () => {
+    const a = await aufenthalt()
+    await nacht(a.resId, a.folioId, '2026-10-08', 8_933)
+    await nacht(a.resId, a.folioId, '2026-10-09', 8_934)
+
+    const r = await teilen(a.folioRef, 1_200)
+    expect(r.statusCode, r.body).toBe(201)
+    expect(JSON.parse(r.body)).toEqual({ nights: 2, breakfastCent: 2 * 2 * 1_200 })
+
+    const z = await owner.query<{ business_date: string; description: string
+                                  gross_cent: number; tax_rate_bp: number
+                                  package_part: string | null }>(
+      `SELECT business_date::text, description, gross_cent::int, tax_rate_bp, package_part
+         FROM charge WHERE folio_id = $1 ORDER BY id`, [a.folioId])
+    const erste = z.rows.filter(x => x.business_date === '2026-10-08')
+    expect(erste.map(x => [x.description, x.gross_cent, x.tax_rate_bp, x.package_part]))
+      .toEqual([
+        ['Uebernachtung 08.10.2026', 8_933, 700, null],
+        ['Storno Uebernachtung 08.10.2026', -8_933, 700, null],
+        ['Uebernachtung 08.10.2026', 8_933 - 2_400, 700, null],
+        ['Fruehstueck Speisen 08.10.2026', 1_680, 700, 'breakfast_food'],
+        ['Fruehstueck Getraenke 08.10.2026', 720, 1900, 'breakfast_drinks']])
+    // Kein Datum ausser denen der Naechte: der Leistungszeitraum bleibt.
+    expect(new Set(z.rows.map(x => x.business_date)))
+      .toEqual(new Set(['2026-10-08', '2026-10-09']))
+    // Summe des Folios unveraendert, Steuer der Gegenbuchung genau aufgehoben.
+    const s = await owner.query<{ brutto: number; paar: number }>(
+      `SELECT sum(c.gross_cent)::int AS brutto,
+              (SELECT sum(o.tax_cent + g.tax_cent + o.net_cent + g.net_cent)::int
+                 FROM charge g JOIN charge o ON o.id = g.reverses_id
+                WHERE g.folio_id = $1) AS paar
+         FROM charge c WHERE c.folio_id = $1`, [a.folioId])
+    expect(s.rows[0]).toEqual({ brutto: 8_933 + 8_934, paar: 0 })
+
+    // Ein zweites Mal gibt es nichts mehr aufzuteilen.
+    expect((await teilen(a.folioRef, 1_200)).statusCode).toBe(409)
+  })
+
+  it('weist "ohne Fruehstueck" ab und bucht dann nichts', async () => {
+    const a = await aufenthalt()
+    await nacht(a.resId, a.folioId, '2026-10-08', 8_933)
+    await owner.query(`UPDATE reservation SET breakfast_declined = true WHERE id = $1`,
+      [a.resId])
+    const r = await teilen(a.folioRef, 1_200)
+    expect(r.statusCode, r.body).toBe(409)
+    expect(r.body).toContain('breakfast.declined')
+    const z = await owner.query(`SELECT count(*)::int AS n FROM charge WHERE folio_id = $1`,
+      [a.folioId])
+    expect(z.rows[0]!.n).toBe(1)
+  })
+
+  it('prueft den Preis', async () => {
+    const a = await aufenthalt()
+    for (const falsch of [0, 12.5, '1200', null]) {
+      expect((await teilen(a.folioRef, falsch)).statusCode, String(falsch)).toBe(422)
+    }
+  })
+})

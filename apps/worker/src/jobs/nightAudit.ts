@@ -241,13 +241,14 @@ async function postAccommodation(
               -- die Nacht. Ein Kinderpreis greift nur, wenn die Buchung
               -- Erwachsene getrennt nennt; sonst zahlen alle wie
               -- Erwachsene, Personen aus der angegebenen Zahl, sonst aus
-              -- den erfassten Gaesten, mindestens eine.
+              -- den erfassten Gaesten, mindestens eine. Der Preis kommt
+              -- aus der Rate, sonst aus der Regel des Hauses (fp, 0169).
               LEAST(CASE
-                      WHEN rp.breakfast_cent IS NULL THEN 0
-                      WHEN rp.breakfast_child_cent IS NOT NULL AND r.adults IS NOT NULL
-                        THEN r.adults::bigint * rp.breakfast_cent
-                             + COALESCE(r.children, 0)::bigint * rp.breakfast_child_cent
-                      ELSE rp.breakfast_cent::bigint
+                      WHEN fp.erwachsen IS NULL THEN 0
+                      WHEN fp.kind IS NOT NULL AND r.adults IS NOT NULL
+                        THEN r.adults::bigint * fp.erwachsen
+                             + COALESCE(r.children, 0)::bigint * fp.kind
+                      ELSE fp.erwachsen::bigint
                            * GREATEST(COALESCE(r.guest_count,
                                                (SELECT count(*) FROM reservation_occupant o
                                                  WHERE o.reservation_id = r.id)::int), 1)
@@ -264,6 +265,16 @@ async function postAccommodation(
          -- ein zweites Mal. Dorthin fuehrt nur die Umleitung.
          JOIN folio f ON f.reservation_id = r.id AND f.status = 'open' AND f.kind = 'guest'
          LEFT JOIN rate_plan rp ON rp.id = COALESCE(rn.rate_plan_id, r.rate_plan_id)
+         JOIN property pr ON pr.id = r.property_id
+         -- Hat die Rate einen eigenen Fruehstueckspreis, gilt er samt
+         -- Kinderpreis; sonst der des Hauses. "Ohne Fruehstueck" an der
+         -- Reservierung schlaegt beides (0169).
+         CROSS JOIN LATERAL (
+           SELECT CASE WHEN r.breakfast_declined THEN NULL
+                       ELSE COALESCE(rp.breakfast_cent, pr.breakfast_cent) END AS erwachsen,
+                  CASE WHEN rp.breakfast_cent IS NOT NULL THEN rp.breakfast_child_cent
+                       ELSE pr.breakfast_child_cent END AS kind
+         ) fp
          LEFT JOIN LATERAL (
            SELECT target_folio_id FROM routing_rule x
             WHERE x.reservation_id = r.id

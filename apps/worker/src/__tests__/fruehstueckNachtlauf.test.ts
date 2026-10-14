@@ -156,3 +156,67 @@ describe('Fruehstueck im Zimmerpreis', () => {
                                adults: 2, children: 1 })).toBe(3_800)
   })
 })
+
+/**
+ * Fruehstueck als Regel des Hauses (Migration 0169, Sven 14.10.2026): gilt
+ * fuer Buchungen ohne Rate -- die aus Altsystem und Adminpanel -- und fuer
+ * Raten ohne eigenen Preis. Die Rate geht vor, "ohne Fruehstueck" an der
+ * Reservierung vor beidem.
+ */
+describe('Fruehstueck als Regel des Hauses', () => {
+  const summe = async (id: number): Promise<number> =>
+    (await buchungen(id)).filter(z => z.package_part !== null)
+      .reduce((s, z) => s + z.gross_cent, 0)
+
+  it('teilt auch Buchungen ohne Rate und Raten ohne eigenen Preis', async () => {
+    await owner.query(
+      `UPDATE property SET breakfast_cent = 1_200, breakfast_child_cent = 600 WHERE id = $1`,
+      [fx.propertyId])
+    const ohneRate = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-03',
+      status: 'InHouse', resourceId: rooms[0]!, priceCent: 11_000 })
+    await owner.query(`UPDATE reservation SET guest_count = 2 WHERE id = $1`,
+      [ohneRate.reservationId])
+    const rateOhnePreis = await gast({ ratePlanId: await rate(null), personen: 3,
+                                       preis: 15_000, zimmer: 1 })
+    await owner.query(`UPDATE reservation SET adults = 2, children = 1 WHERE id = $1`,
+      [rateOhnePreis])
+    const eigeneRate = await gast({ ratePlanId: await rate(1_500), personen: 2,
+                                    preis: 11_000, zimmer: 2 })
+    await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
+
+    // Nur eine Gesamtzahl: alle zum Preis der Erwachsenen.
+    expect(await summe(ohneRate.reservationId)).toBe(2 * 1_200)
+    expect(await summe(rateOhnePreis)).toBe(2 * 1_200 + 600)
+    // Die Rate mit eigenem Preis bleibt bei ihrem.
+    expect(await summe(eigeneRate)).toBe(2 * 1_500)
+    const z = await buchungen(ohneRate.reservationId)
+    expect(z.map(x => x.package_part)).toEqual([null, 'breakfast_food', 'breakfast_drinks'])
+    expect(z.reduce((s, x) => s + x.gross_cent, 0)).toBe(11_000)
+  })
+
+  it('rechnet bei "ohne Fruehstueck" keins heraus, weder Haus noch Rate', async () => {
+    await owner.query(`UPDATE property SET breakfast_cent = 1_200 WHERE id = $1`,
+      [fx.propertyId])
+    const ohneRate = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-03',
+      status: 'InHouse', resourceId: rooms[0]!, priceCent: 11_000 })
+    const mitRate = await gast({ ratePlanId: await rate(1_500), personen: 2,
+                                 preis: 11_000, zimmer: 1 })
+    await owner.query(
+      `UPDATE reservation SET breakfast_declined = true WHERE id = ANY($1::bigint[])`,
+      [[ohneRate.reservationId, mitRate]])
+    await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
+
+    expect((await buchungen(ohneRate.reservationId)).map(z => z.gross_cent)).toEqual([11_000])
+    expect((await buchungen(mitRate)).map(z => z.gross_cent)).toEqual([11_000])
+  })
+
+  it('laesst ein Haus ohne Regel, wie es war', async () => {
+    const ohneRate = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId: catId, arrival: TAG, departure: '2026-10-03',
+      status: 'InHouse', resourceId: rooms[0]!, priceCent: 11_000 })
+    await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
+    expect((await buchungen(ohneRate.reservationId)).map(z => z.gross_cent)).toEqual([11_000])
+  })
+})

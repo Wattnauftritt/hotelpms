@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { CleaningWaiverView, ReservationDetail } from '@hotelpms/contracts'
 import { useReservation, usePatchReservationNotes, usePatchReservationShortNote,
-         useReservationStatusAction, useSetRoomFixed, useSendConfirmation } from '../lib/queries/booking.js'
+         useReservationStatusAction, useSetRoomFixed, useSetBreakfastDeclined,
+         useSendConfirmation } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
@@ -274,7 +275,11 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
                       offen={r.canceledAt === null && r.checkedOutAt === null} />
         </Feld>
         <Feld label={t('plan.category')}>{r.categoryName}</Feld>
-        <Feld label={t('plan.ratePlan')}>{r.ratePlanCode ?? '—'}</Feld>
+        <Feld label={t('plan.ratePlan')}>
+          {r.ratePlanCode ?? '—'}
+          <OhneFruehstueck reservationRef={r.reservationRef} ohne={r.breakfastDeclined}
+                           offen={r.canceledAt === null && r.checkedOutAt === null} />
+        </Feld>
         <Feld label={t('plan.stay')}>
           {formatDate(r.arrival, locale)} – {formatDate(r.departure, locale)}
         </Feld>
@@ -581,6 +586,29 @@ function BestaetigungSchicken({ reservationRef }: { reservationRef: string }): J
       </div>
       {schicken.isError && <div className="mt-2"><Fehler error={schicken.error} /></div>}
     </section>
+  )
+}
+
+/**
+ * "Ohne Frühstück" (Migration 0169). An der Rate, weil dort steht, ob
+ * Frühstück enthalten ist: wo das Haus es immer einrechnet, ist das
+ * Abwählen die Ausnahme, und sie gehört an die einzelne Buchung.
+ */
+function OhneFruehstueck(
+  { reservationRef, ohne, offen }: { reservationRef: string; ohne: boolean; offen: boolean }
+): JSX.Element {
+  const t = useT()
+  const setzen = useSetBreakfastDeclined(reservationRef)
+  return (
+    <div className="mt-1">
+      <label className="inline-flex items-center gap-1.5 text-xs text-neutral-600"
+             title={t('plan.breakfastDeclinedHint')}>
+        <input type="checkbox" checked={ohne} disabled={!offen || setzen.isPending}
+               onChange={e => setzen.mutate(e.target.checked)} />
+        {t('plan.breakfastDeclined')}
+      </label>
+      {setzen.isError && <Fehler error={setzen.error} />}
+    </div>
   )
 }
 

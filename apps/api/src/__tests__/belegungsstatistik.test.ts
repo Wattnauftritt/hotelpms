@@ -229,6 +229,17 @@ describe('Fruehstueck', () => {
                                assumed: 0 })
   })
 
+  it('laesst Reservierungen "ohne Fruehstueck" aus, nicht aber aus der Belegung', async () => {
+    await buchen('2026-10-01', '2026-10-02', { adults: 2 })
+    const ref = await buchen('2026-10-01', '2026-10-02', { adults: 3 })
+    await owner.query(`UPDATE reservation SET breakfast_declined = true WHERE public_ref = $1`,
+      [ref])
+
+    const f = await fruehstueck('?from=2026-10-02&to=2026-10-02')
+    expect(f.totals.breakfasts).toBe(2)
+    expect((await statistik('?from=2026-10-01&to=2026-10-01')).totals.personNights).toBe(5)
+  })
+
   it('weist zu lange Zeitraeume ab und verlangt report:operational', async () => {
     const r = await app.inject({ method: 'GET',
       url: `/v1/properties/${fx.propertyId}/breakfast?from=2025-01-01&to=2026-01-02`,
