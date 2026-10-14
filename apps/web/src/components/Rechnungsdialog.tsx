@@ -30,10 +30,12 @@ import { Fehler } from './Shell.tsx'
  * als das Papier.
  */
 
-const FELDER = ['name', 'addressLine1', 'postalCode', 'city', 'country', 'vatId'] as const
+const FELDER = ['name', 'contactName', 'addressLine1', 'postalCode', 'city', 'country',
+                'vatId'] as const
 type Feld = typeof FELDER[number]
 const FELD_TEXT = {
-  name: 'companies.name', addressLine1: 'companies.address',
+  name: 'companies.name', contactName: 'companies.contactName',
+  addressLine1: 'companies.address',
   postalCode: 'companies.postalCode', city: 'companies.city',
   country: 'companies.country', vatId: 'companies.vatId'
 } as const
@@ -96,7 +98,8 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
     if (inFirma && geaendert && empfaenger.companyRef !== null) {
       const r = v.recipient
       await firma.mutateAsync({
-        name: r.name ?? undefined, addressLine1: r.addressLine1 ?? undefined,
+        name: r.name ?? undefined, contactName: r.contactName ?? '',
+        addressLine1: r.addressLine1 ?? undefined,
         postalCode: r.postalCode ?? undefined, city: r.city ?? undefined,
         country: r.country ?? undefined, vatId: r.vatId ?? undefined })
     }
@@ -409,7 +412,8 @@ function Anschrift({ vorgabe, wert, geaendert, setAnschrift, firma, inFirma, set
       <legend className="text-sm font-medium">{t('rdlg.recipient')}</legend>
       <div className="grid gap-2 sm:grid-cols-2">
         {FELDER.map(f => (
-          <label key={f} className={`text-xs ${f === 'name' || f === 'addressLine1'
+          <label key={f} className={`text-xs ${f === 'name' || f === 'contactName'
+                                                || f === 'addressLine1'
                                                 ? 'sm:col-span-2' : ''}`}>
             {t(FELD_TEXT[f])}
             <input value={anzeigen(f)} onBlur={uebernehmen}

@@ -153,6 +153,8 @@ function kopf(z: Zeichner, inv: CiiInvoice, titel: string, logo: PDFImage | null
   const b = inv.buyer
   const zeilen = [
     b.name,
+    // "z. Hd." unter der Firma, wie auf einem Briefumschlag (0171).
+    b.contactName ?? '',
     b.addressLine1 ?? '',
     [b.postalCode, b.city].filter(Boolean).join(' '),
     b.country && b.country.toUpperCase() !== 'DE' ? b.country.toUpperCase() : ''

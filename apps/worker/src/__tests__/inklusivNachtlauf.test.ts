@@ -104,11 +104,11 @@ describe('Inklusivleistungen im Zimmerpreis', () => {
     await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
 
     expect(await buchungen(r)).toEqual([
-      { description: 'Uebernachtung 01.10.2026', gross_cent: 7_000, tax_cent: 458,
+      { description: 'Übernachtung 01.10.2026', gross_cent: 7_000, tax_cent: 458,
         tax_rate_bp: 700, revenue_account: '8300', package_part: null },
-      { description: 'Fruehstueck Speisen 01.10.2026', gross_cent: 2_100, tax_cent: 137,
+      { description: 'Frühstück Speisen 01.10.2026', gross_cent: 2_100, tax_cent: 137,
         tax_rate_bp: 700, revenue_account: '8300', package_part: 'breakfast_food' },
-      { description: 'Fruehstueck Getraenke 01.10.2026', gross_cent: 900, tax_cent: 144,
+      { description: 'Frühstück Getränke 01.10.2026', gross_cent: 900, tax_cent: 144,
         tax_rate_bp: 1900, revenue_account: '8400', package_part: 'breakfast_drinks' },
       { description: 'Parken 01.10.2026', gross_cent: 1_000, tax_cent: 160,
         tax_rate_bp: 1900, revenue_account: '8400', package_part: 'inclusion' }
@@ -127,13 +127,13 @@ describe('Inklusivleistungen im Zimmerpreis', () => {
     const r = await gast({ ratePlanId: plan, personen: 2, preis: 11_000, zimmer: 0 })
     await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
     expect((await buchungen(r)).map(z => [z.description.split(' ')[0], z.gross_cent]))
-      .toEqual([['Uebernachtung', 9_200], ['Sauna', 1_000], ['Sekt', 800]])
+      .toEqual([['Übernachtung', 9_200], ['Sauna', 1_000], ['Sekt', 800]])
 
     await openBusinessDay(owner, fx.propertyId, '2026-10-02')
     await runNightAudit(app, ctx, fx.propertyId, { businessDate: '2026-10-02' })
     const zweite = (await buchungen(r)).filter(z => z.description.endsWith('02.10.2026'))
     expect(zweite.map(z => [z.description.split(' ')[0], z.gross_cent]))
-      .toEqual([['Uebernachtung', 10_000], ['Sauna', 1_000]])
+      .toEqual([['Übernachtung', 10_000], ['Sauna', 1_000]])
   })
 
   it('nimmt nie mehr heraus, als die Nacht kostet', async () => {

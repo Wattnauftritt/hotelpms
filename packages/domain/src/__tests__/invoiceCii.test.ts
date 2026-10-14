@@ -99,6 +99,17 @@ describe('CII-XML nach EN 16931', () => {
     expect(buyer).not.toContain('schemeID="FC"')
   })
 
+  it('nennt den Ansprechpartner des Empfaengers als BT-56, ohne ihn ist nichts da', () => {
+    expect(feld(xml, 'ram:BuyerTradeParty')).not.toContain('DefinedTradeContact')
+    const mit = buildInvoiceCii({
+      ...rechnung, buyer: { ...rechnung.buyer, contactName: 'Herr Max Mustermann' } })
+    const buyer = feld(mit, 'ram:BuyerTradeParty')!
+    expect(feld(buyer, 'ram:DefinedTradeContact', 'ram:PersonName'))
+      .toBe('Herr Max Mustermann')
+    // XSD-Reihenfolge: Kontakt vor der Anschrift.
+    expect(buyer.indexOf('DefinedTradeContact')).toBeLessThan(buyer.indexOf('PostalTradeAddress'))
+  })
+
   it('gibt je Position Nummer, Bezeichnung, Menge, Einzelpreis und Betrag', () => {
     expect(alle(xml, 'ram:LineID')).toEqual(['1', '2'])                // BT-126
     expect(alle(xml, 'ram:Name')).toContain('Uebernachtung')           // BT-153

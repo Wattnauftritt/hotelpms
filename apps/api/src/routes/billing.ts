@@ -8,7 +8,7 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
-         breakfastPerNight, splitNight } from '@hotelpms/domain'
+         breakfastPerNight, splitNight, alignLineNets } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
@@ -179,6 +179,7 @@ async function offenerGeschaeftstag(client: PoolClient, propertyId: number): Pro
  */
 function gegenSummen(t: Record<string, unknown>): InvoiceTotals & {
   roundingCent: number; payableCent: number; prepaidCent: number
+  lineAdjustCent?: Record<string, number>
 } {
   const n = (v: unknown): number => -Number(v ?? 0)
   const gruppen = (t.groups as Array<Record<string, number>> | undefined) ?? []
@@ -188,7 +189,14 @@ function gegenSummen(t: Record<string, unknown>): InvoiceTotals & {
     netCent: n(t.netCent), taxCent: n(t.taxCent), grossCent: brutto,
     groups: gruppen.map(g => ({ rateBp: Number(g.rateBp), netCent: n(g.netCent),
                                 taxCent: n(g.taxCent), grossCent: n(g.grossCent) })),
-    roundingCent: n(t.roundingCent), payableCent: zahlbar, prepaidCent: zahlbar
+    roundingCent: n(t.roundingCent), payableCent: zahlbar, prepaidCent: zahlbar,
+    // Der Ausgleich der Positionen mit umgekehrtem Vorzeichen, gefuehrt unter
+    // der Buchung des Originals: die Gegenbuchung verweist auf sie.
+    ...(t.lineAdjustCent !== undefined
+      ? { lineAdjustCent: Object.fromEntries(
+            Object.entries(t.lineAdjustCent as Record<string, number>)
+              .map(([k, v]) => [k, -Number(v)])) }
+      : {})
   }
 }
 
@@ -580,8 +588,8 @@ interface RechnungsAuftrag {
   paid?: { paymentMethodCode: string; externalReference?: string }
 }
 
-const EMPFAENGER_FELDER = ['name', 'addressLine1', 'postalCode', 'city', 'country',
-                           'vatId'] as const
+const EMPFAENGER_FELDER = ['name', 'contactName', 'addressLine1', 'postalCode', 'city',
+                           'country', 'vatId'] as const
 const EMPFAENGER_MAX = 200
 /** Laengstes Zahlungsziel, das eine Rechnung tragen darf. */
 const ZIEL_MAX_TAGE = 365
@@ -717,6 +725,24 @@ async function rechnungsEntwurf(
       tax_rate_bp: number; amount_gross_cent: string
       deposit_number: string; deposit_issued_on: string }> }
 
+  /*
+   * Netto der Positionen ausgleichen, damit jede Satzgruppe das gebuchte
+   * Brutto trifft (alignLineNets). Der Ausgleich steht in der
+   * Momentaufnahme und wird beim Zeichnen nicht neu gerechnet; die
+   * Buchungen selbst bleiben unberuehrt.
+   */
+  const lineAdjustCent = alignLineNets([
+    ...charges.rows.map(c => ({ key: String(c.id), netCent: Number(c.net_cent),
+                                grossCent: Number(c.gross_cent), rateBp: c.tax_rate_bp })),
+    ...deposits.rows.map(d => ({ key: `d${d.deposit_invoice_id}`, fest: true,
+                                 netCent: -Number(d.net_cent),
+                                 grossCent: -Number(d.amount_gross_cent),
+                                 rateBp: d.tax_rate_bp }))
+  ])
+  for (const c of charges.rows) {
+    c.net_cent = Number(c.net_cent) + (lineAdjustCent.get(String(c.id)) ?? 0)
+  }
+
   const positionen = [
     ...charges.rows.map(c => ({ netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
     ...deposits.rows.map(d => ({ netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp }))
@@ -789,7 +815,12 @@ async function rechnungsEntwurf(
   const { ids: vorausbezahlt, summeCent: gezahltCent } =
     passendeVermerke(await offeneVermerke(client, folio.id), zielBrutto + kurtaxe)
   const prepaidCent = Math.min(gezahltCent, Math.max(zielBrutto, 0))
-  const totals = { ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent }
+  const totals = {
+    ...gerundet, roundingCent, payableCent: zielBrutto, prepaidCent,
+    ...(lineAdjustCent.size > 0
+      ? { lineAdjustCent: Object.fromEntries(lineAdjustCent) as Record<string, number> }
+      : {})
+  }
 
   /*
    * Mehr angezahlt als abzurechnen: das kommt vor, wenn der Gast
@@ -823,7 +854,7 @@ async function rechnungsEntwurf(
   const recipient = folio.company_id
     ? await client.query<Party>(
         `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                city, country, vat_id AS "vatId",
+                city, country, vat_id AS "vatId", contact_name AS "contactName",
                 buyer_reference AS "buyerReference", invoice_email AS "electronicAddress"
            FROM company WHERE id = $1`, [folio.company_id])
     : folio.guest_id
@@ -1618,7 +1649,8 @@ export function billingRoutes(app: FastifyInstance): void {
              JOIN reservation r ON r.id = c.reservation_id
             WHERE c.folio_id = $1
               AND c.package_part IS NULL AND c.product_id IS NULL
-              AND c.revenue_account = '8300' AND c.description LIKE 'Uebernachtung %'
+              AND c.revenue_account = '8300'
+              AND (c.description LIKE 'Übernachtung %' OR c.description LIKE 'Uebernachtung %')
               AND c.invoice_id IS NULL AND c.reverses_id IS NULL AND c.gross_cent > 0
               AND NOT EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id)
               AND NOT EXISTS (SELECT 1 FROM charge b
@@ -1645,7 +1677,7 @@ export function billingRoutes(app: FastifyInstance): void {
           if (teile.foodCent + teile.drinksCent === 0) continue
           summe += teile.foodCent + teile.drinksCent
           // Das Datum der Nacht steht im Text des Nachtlaufs; es bleibt.
-          const tag = n.description.slice('Uebernachtung '.length)
+          const tag = n.description.replace(/^(Übernachtung|Uebernachtung) /, '')
           const gemeinsam = { datum: n.business_date, reservation: n.reservation_id }
           zeilen.push(
             { ...gemeinsam, text: `Storno ${n.description}`, brutto: -brutto,
@@ -1654,11 +1686,11 @@ export function billingRoutes(app: FastifyInstance): void {
             { ...gemeinsam, text: n.description, brutto: teile.lodgingCent,
               satz: n.tax_rate_bp, regel: n.tax_rule_id, konto: '8300', teil: null,
               reverses: null },
-            { ...gemeinsam, text: `Fruehstueck Speisen ${tag}`, brutto: teile.foodCent,
+            { ...gemeinsam, text: `Frühstück Speisen ${tag}`, brutto: teile.foodCent,
               satz: BREAKFAST_FOOD_RATE_BP, regel: null, konto: BREAKFAST_FOOD_ACCOUNT,
               teil: 'breakfast_food', reverses: null })
           if (teile.drinksCent > 0) {
-            zeilen.push({ ...gemeinsam, text: `Fruehstueck Getraenke ${tag}`,
+            zeilen.push({ ...gemeinsam, text: `Frühstück Getränke ${tag}`,
               brutto: teile.drinksCent, satz: BREAKFAST_DRINKS_RATE_BP, regel: null,
               konto: BREAKFAST_DRINKS_ACCOUNT, teil: 'breakfast_drinks', reverses: null })
           }
@@ -2170,7 +2202,7 @@ export function billingRoutes(app: FastifyInstance): void {
         const recipient = folio.company_id
           ? await client.query<Party>(
               `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                      city, country, vat_id AS "vatId",
+                      city, country, vat_id AS "vatId", contact_name AS "contactName",
                       buyer_reference AS "buyerReference",
                       invoice_email AS "electronicAddress"
                  FROM company WHERE id = $1`, [folio.company_id])

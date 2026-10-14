@@ -113,6 +113,32 @@ describe('Festschreiben mit Angaben aus dem Dialog', () => {
     expect(c.rows[0]!.city).toBe('Cuxhaven')
   })
 
+  it('traegt den Ansprechpartner der Firma unter den Namen, abweichend nur fuer diese Rechnung', async () => {
+    const f = await folio({ terms: 14 })
+    await owner.query(`UPDATE company SET contact_name = 'Herr Max Mustermann'`)
+    const v = await post(`/v1/folios/${f.ref}/invoice-preview`, { chargeIds: [f.nacht] })
+    expect((JSON.parse(v.body) as { recipient: { contactName: string } }).recipient.contactName)
+      .toBe('Herr Max Mustermann')
+
+    const r = await post(`/v1/folios/${f.ref}/invoice`, {
+      chargeIds: [f.nacht], recipient: { contactName: 'Frau Erika Musterfrau' } })
+    expect(r.statusCode, r.body).toBe(201)
+    const i = await owner.query<{ recipient_snapshot: Record<string, string> }>(
+      `SELECT recipient_snapshot FROM invoice`)
+    expect(i.rows[0]!.recipient_snapshot).toMatchObject({
+      name: 'Muster GmbH', contactName: 'Frau Erika Musterfrau' })
+    const c = await owner.query<{ contact_name: string }>(`SELECT contact_name FROM company`)
+    expect(c.rows[0]!.contact_name).toBe('Herr Max Mustermann')
+
+    // Leer nimmt ihn nur von dieser Rechnung.
+    const ohne = await post(`/v1/folios/${f.ref}/invoice`, {
+      chargeIds: [f.extra], recipient: { contactName: '' } })
+    expect(ohne.statusCode, ohne.body).toBe(201)
+    const j = await owner.query<{ recipient_snapshot: Record<string, string> }>(
+      `SELECT recipient_snapshot FROM invoice ORDER BY id DESC LIMIT 1`)
+    expect(j.rows[0]!.recipient_snapshot.contactName).toBeUndefined()
+  })
+
   it('schreibt das Zahlungsziel an die Rechnung und ins XML', async () => {
     const f = await folio()
     const ziel = await heutePlus(10)
