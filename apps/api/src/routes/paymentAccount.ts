@@ -147,7 +147,15 @@ export function paymentAccountRoutes(
         accountId = (await stripe.connectExchange(body.code)).accountId
         chargesEnabled = (await stripe.getAccount(accountId)).chargesEnabled
       } catch (err) {
-        if (err instanceof ProviderRefused) throw Errors.unprocessable('payments.connectRefused')
+        if (err instanceof ProviderRefused) {
+          // Die Begruendung von Stripe gehoert ins Protokoll: die Maske sagt
+          // nur "abgelehnt", und ein falscher Schluessel sieht dort genauso
+          // aus wie ein abgelaufener Code. Eine Fehlerantwort traegt keine
+          // Zugangsdaten, nur Fehlerart und Beschreibung.
+          req.log.warn({ status: err.status, stripe: err.message.slice(0, 500) },
+            'Stripe hat die Verbindung abgelehnt')
+          throw Errors.unprocessable('payments.connectRefused')
+        }
         req.log.warn({ err }, 'Stripe-Konto nicht verbunden')
         throw Errors.upstreamFailed('payments.providerUnavailable')
       }
