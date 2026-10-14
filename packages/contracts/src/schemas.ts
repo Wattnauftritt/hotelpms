@@ -627,6 +627,11 @@ export const CreateBooking = Type.Object({
    * `notes`.
    */
   shortNote: Type.Optional(Type.String({ maxLength: 40 })),
+  /**
+   * Ohne Fruehstueck gebucht (Migration 0169). Dann rechnet der Nachtlauf
+   * weder das Fruehstueck der Rate noch das des Hauses heraus.
+   */
+  breakfastDeclined: Type.Optional(Type.Boolean()),
   /** Abruf aus einem Kontingent statt aus dem freien Verkauf. */
   blockRef: Type.Optional(Type.String()),
   /**
@@ -925,6 +930,8 @@ export const ReservationDetail = Type.Object({
   resourceId: Type.Union([Type.Integer(), Type.Null()]),
   /** "Zimmer fest": der Sortierer laesst den Aufenthalt liegen (0104). */
   roomFixed: Type.Boolean(),
+  /** Ohne Fruehstueck gebucht: Rate und Haus rechnen keins heraus (0169). */
+  breakfastDeclined: Type.Boolean(),
   roomCode: Type.Union([Type.String(), Type.Null()]),
   floor: Type.Union([Type.String(), Type.Null()]),
   ratePlanId: Type.Union([Type.Integer(), Type.Null()]),
@@ -1320,8 +1327,9 @@ export const RatePlan = Type.Object({
   deriveKind: Type.Union([Type.Literal('amount'), Type.Literal('percent'), Type.Null()]),
   deriveValue: Type.Union([Type.Integer(), Type.Null()]),
   /**
-   * Im Preis enthaltenes Fruehstueck, brutto je Person und Nacht. `null`:
-   * nicht enthalten. Der Nachtlauf rechnet es heraus (Migration 0158).
+   * Im Preis enthaltenes Fruehstueck, brutto je Person und Nacht. Der
+   * Nachtlauf rechnet es heraus (Migration 0158). `null`: es gilt die Regel
+   * des Hauses (0169); hat das Haus keine, ist keins enthalten.
    */
   breakfastCent: Type.Union([Cent, Type.Null()]),
   /**

@@ -135,6 +135,23 @@ export function useSetRoomFixed(reservationRef: string) {
 }
 
 /**
+ * "Ohne Fruehstueck" (Migration 0169): der Nachtlauf rechnet ab der
+ * naechsten Nacht weder das Fruehstueck der Rate noch das des Hauses
+ * heraus.
+ */
+export function useSetBreakfastDeclined(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (breakfastDeclined: boolean) =>
+      api.patch<{ reservationRef: string; breakfastDeclined: boolean }>(
+        `/v1/reservations/${reservationRef}`, { breakfastDeclined }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+    }
+  })
+}
+
+/**
  * Den Hauptgast eines Zimmers setzen -- die Namensliste.
  *
  * Ein Bucher nimmt fuenf Zimmer, und die uebrigen Namen stehen bis zum

@@ -127,6 +127,27 @@ async function umsatzsteuer(
   return r.rows
 }
 
+/** Fruehstueckspreis fuer Erwachsene und Kinder, an der Rate wie am Haus. */
+function fruehstueckPruefen(rumpf: unknown): { wert: number | null; kind: number | null } {
+  const body = (rumpf ?? {}) as { breakfastCent?: unknown; childBreakfastCent?: unknown }
+  const wert = body.breakfastCent ?? null
+  if (wert !== null
+      && !(typeof wert === 'number' && Number.isInteger(wert)
+           && wert >= BREAKFAST_MIN && wert <= BREAKFAST_MAX)) {
+    throw Errors.validation({ breakfastCent: ['field.range'] },
+      { min: '0,01 €', max: '1.000,00 €' })
+  }
+  // Ohne Fruehstueck gibt es auch keinen Kinderpreis; 0 heisst frei.
+  const kind = wert === null ? null : body.childBreakfastCent ?? null
+  if (kind !== null
+      && !(typeof kind === 'number' && Number.isInteger(kind)
+           && kind >= 0 && kind <= BREAKFAST_MAX)) {
+    throw Errors.validation({ childBreakfastCent: ['field.range'] },
+      { min: '0,00 €', max: '1.000,00 €' })
+  }
+  return { wert: wert as number | null, kind: kind as number | null }
+}
+
 export function rateRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -153,7 +174,15 @@ export function rateRoutes(app: FastifyInstance): void {
                              WHERE rpp.rate_plan_id = rp.id), '[]'::json) AS inclusions
              FROM rate_plan rp JOIN resource_category c ON c.id = rp.category_id
             WHERE rp.property_id = $1 ORDER BY c.code, rp.code`, [Number(propertyId)])
-        return { ratePlans: rows, vatRules: await umsatzsteuer(client, Number(propertyId)) }
+        // Die Regel des Hauses steht neben den Raten, weil sie fuer jede
+        // gilt, die keinen eigenen Fruehstueckspreis hat (Migration 0169).
+        const haus = await client.query<{ breakfastCent: number | null
+                                          childBreakfastCent: number | null }>(
+          `SELECT breakfast_cent AS "breakfastCent",
+                  breakfast_child_cent AS "childBreakfastCent"
+             FROM property WHERE id = $1`, [Number(propertyId)])
+        return { ratePlans: rows, vatRules: await umsatzsteuer(client, Number(propertyId)),
+                 houseBreakfast: haus.rows[0] ?? { breakfastCent: null, childBreakfastCent: null } }
       })
     }
   })
@@ -216,22 +245,7 @@ export function rateRoutes(app: FastifyInstance): void {
       if (!Number.isSafeInteger(plan) || plan <= 0) {
         throw Errors.validation({ ratePlanId: ['field.positiveInteger'] })
       }
-      const body = (req.body ?? {}) as { breakfastCent?: unknown; childBreakfastCent?: unknown }
-      const wert = body.breakfastCent ?? null
-      if (wert !== null
-          && !(typeof wert === 'number' && Number.isInteger(wert)
-               && wert >= BREAKFAST_MIN && wert <= BREAKFAST_MAX)) {
-        throw Errors.validation({ breakfastCent: ['field.range'] },
-          { min: '0,01 €', max: '1.000,00 €' })
-      }
-      // Ohne Fruehstueck gibt es auch keinen Kinderpreis; 0 heisst frei.
-      const kind = wert === null ? null : body.childBreakfastCent ?? null
-      if (kind !== null
-          && !(typeof kind === 'number' && Number.isInteger(kind)
-               && kind >= 0 && kind <= BREAKFAST_MAX)) {
-        throw Errors.validation({ childBreakfastCent: ['field.range'] },
-          { min: '0,00 €', max: '1.000,00 €' })
-      }
+      const { wert, kind } = fruehstueckPruefen(req.body)
       return tx(req.pool, req, async client => {
         await assertPlan(client, Number(propertyId), plan)
         await client.query(
@@ -239,6 +253,32 @@ export function rateRoutes(app: FastifyInstance): void {
             WHERE id = $1 AND property_id = $2`,
           [plan, Number(propertyId), wert, kind])
         return { ratePlanId: plan, breakfastCent: wert, childBreakfastCent: kind }
+      })
+    }
+  })
+
+  /**
+   * Fruehstueck inklusive als Regel des Hauses (Migration 0169).
+   *
+   * Gilt fuer jede Rate ohne eigenen Fruehstueckspreis und fuer Buchungen
+   * ganz ohne Rate -- die aus dem Altsystem und dem Adminpanel. Eine
+   * Reservierung "ohne Fruehstueck" nimmt sich aus. Wirkt wie an der Rate
+   * ab der naechsten Nacht.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/properties/:propertyId/breakfast-rule',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Fruehstueck inklusive als Regel des Hauses setzen',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      const { wert, kind } = fruehstueckPruefen(req.body)
+      return tx(req.pool, req, async client => {
+        await client.query(
+          `UPDATE property SET breakfast_cent = $2, breakfast_child_cent = $3 WHERE id = $1`,
+          [Number(propertyId), wert, kind])
+        return { breakfastCent: wert, childBreakfastCent: kind }
       })
     }
   })

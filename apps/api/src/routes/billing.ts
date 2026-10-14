@@ -460,19 +460,28 @@ async function erwarteteSaetze(
                        WHERE rn.reservation_id = res.id), 0)::bigint AS logis_cent,
             p.personen,
             COALESCE((SELECT sum(LEAST(
-                                CASE WHEN rp.breakfast_child_cent IS NOT NULL
+                                CASE WHEN fp.kind IS NOT NULL
                                           AND p.adults IS NOT NULL
-                                     THEN p.adults::bigint * rp.breakfast_cent
-                                          + COALESCE(p.children, 0)::bigint
-                                            * rp.breakfast_child_cent
-                                     ELSE rp.breakfast_cent::bigint * p.personen END,
+                                     THEN p.adults::bigint * fp.erwachsen
+                                          + COALESCE(p.children, 0)::bigint * fp.kind
+                                     ELSE fp.erwachsen::bigint * p.personen END,
                                 GREATEST(rn.price_cent, 0)))
                         FROM reservation_night rn
-                        JOIN rate_plan rp
+                        LEFT JOIN rate_plan rp
                           ON rp.id = COALESCE(rn.rate_plan_id, res.rate_plan_id)
+                        -- Wie im Nachtlauf: Rate vor Haus, abgewaehlt vor beidem (0169).
+                        CROSS JOIN LATERAL (
+                          SELECT CASE WHEN res.breakfast_declined THEN NULL
+                                      ELSE COALESCE(rp.breakfast_cent, pr.breakfast_cent)
+                                 END AS erwachsen,
+                                 CASE WHEN rp.breakfast_cent IS NOT NULL
+                                      THEN rp.breakfast_child_cent
+                                      ELSE pr.breakfast_child_cent END AS kind
+                        ) fp
                        WHERE rn.reservation_id = res.id
-                         AND rp.breakfast_cent IS NOT NULL), 0)::bigint AS fruehstueck_cent
-       FROM reservation res JOIN p ON p.id = res.id`,
+                         AND fp.erwachsen IS NOT NULL), 0)::bigint AS fruehstueck_cent
+       FROM reservation res JOIN p ON p.id = res.id
+       JOIN property pr ON pr.id = res.property_id`,
     [reservationId, propertyId])
   if (r.rowCount === 0) return []
   const res = r.rows[0]!

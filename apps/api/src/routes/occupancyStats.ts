@@ -77,7 +77,7 @@ function monate(from: string, to: string): number {
  */
 async function personenJeZeitraum(
   client: PoolClient, propertyId: number, from: string, to: string,
-  granularity: 'day' | 'month'
+  granularity: 'day' | 'month', nurMitFruehstueck = false
 ): Promise<Zeile[]> {
   const { rows } = await client.query<Zeile>(
     `WITH tage AS (
@@ -93,6 +93,9 @@ async function personenJeZeitraum(
         WHERE n.property_id = $1
           AND n.date BETWEEN $2::date AND $3::date
           AND r.status::text = ANY ($5::text[])
+          -- Fuer die Fruehstueckszahl: wer "ohne Fruehstueck" gebucht hat,
+          -- isst nicht mit (0169). Die Belegung zaehlt ihn weiter.
+          AND NOT ($6::boolean AND r.breakfast_declined)
      )
      SELECT CASE WHEN $4 = 'month' THEN to_char(t.tag, 'YYYY-MM')
                  ELSE t.tag::text END                         AS period,
@@ -110,7 +113,7 @@ async function personenJeZeitraum(
        LEFT JOIN naechte x ON x.date = t.tag
       GROUP BY 1
       ORDER BY 1`,
-    [propertyId, from, to, granularity, AKTIV])
+    [propertyId, from, to, granularity, AKTIV, nurMitFruehstueck])
   return rows
 }
 
@@ -133,7 +136,7 @@ export async function fruehstueckeJeTag(
 ): Promise<FruehstuecksTag[]> {
   // Eine Zeile je Nacht vor dem Fruehstueckstag, dann um einen Tag weiter.
   const naechte = await personenJeZeitraum(
-    client, propertyId, addDays(from, -1), addDays(to, -1), 'day')
+    client, propertyId, addDays(from, -1), addDays(to, -1), 'day', true)
   return naechte.map(n => ({
     date: addDays(n.period, 1),
     breakfasts: n.personNights,

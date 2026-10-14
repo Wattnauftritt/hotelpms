@@ -227,3 +227,50 @@ describe('Weitere Inklusivleistungen an der Rate (0165)', () => {
     expect((await inklusiv(id, [], rezeption)).statusCode).toBe(403)
   })
 })
+
+describe('Fruehstueck als Regel des Hauses (0169)', () => {
+  const haus = (breakfastCent: unknown, childBreakfastCent: unknown = null,
+                headers = preise) => app.inject({
+    method: 'PUT', url: `/v1/properties/${fx.propertyId}/breakfast-rule`,
+    headers, payload: { breakfastCent, childBreakfastCent } })
+
+  it('setzt, liest und entfernt die Regel', async () => {
+    expect((await haus(1_200, 0)).statusCode).toBe(200)
+    const liste = await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/rate-plans`, headers: preise })
+    expect((JSON.parse(liste.body) as { houseBreakfast: unknown }).houseBreakfast)
+      .toEqual({ breakfastCent: 1_200, childBreakfastCent: 0 })
+
+    expect((await haus(null, 500)).statusCode).toBe(200)
+    const z = await owner.query(
+      `SELECT breakfast_cent, breakfast_child_cent FROM property WHERE id = $1`,
+      [fx.propertyId])
+    expect(z.rows[0]).toEqual({ breakfast_cent: null, breakfast_child_cent: null })
+  })
+
+  it('prueft wie an der Rate und verlangt dasselbe Recht', async () => {
+    for (const falsch of [0, 12.5, 100_001, '1200']) {
+      expect((await haus(falsch)).statusCode, String(falsch)).toBe(422)
+    }
+    expect((await haus(1_000, null, rezeption)).statusCode).toBe(403)
+  })
+
+  it('nimmt eine Reservierung per PATCH vom Fruehstueck aus und zeigt es', async () => {
+    const res = await makeReservation(owner, {
+      propertyId: fx.propertyId, categoryId,
+      arrival: '2027-03-01', departure: '2027-03-03',
+      priceCent: 11_000, reserveInventory: false })
+    const ref = (await owner.query<{ public_ref: string }>(
+      `SELECT public_ref FROM reservation WHERE id = $1`, [res.reservationId])).rows[0]!.public_ref
+    const ohne = await app.inject({
+      method: 'PATCH', url: `/v1/reservations/${ref}`,
+      headers: rezeption, payload: { breakfastDeclined: true } })
+    expect(ohne.statusCode, ohne.body).toBe(200)
+    const z = await owner.query(`SELECT breakfast_declined FROM reservation WHERE id = $1`,
+      [res.reservationId])
+    expect(z.rows[0]!.breakfast_declined).toBe(true)
+    const d = await app.inject({
+      method: 'GET', url: `/v1/reservations/${ref}`, headers: rezeption })
+    expect((JSON.parse(d.body) as { breakfastDeclined: boolean }).breakfastDeclined).toBe(true)
+  })
+})
