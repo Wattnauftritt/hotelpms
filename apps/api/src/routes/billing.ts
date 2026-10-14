@@ -580,8 +580,8 @@ interface RechnungsAuftrag {
   paid?: { paymentMethodCode: string; externalReference?: string }
 }
 
-const EMPFAENGER_FELDER = ['name', 'addressLine1', 'postalCode', 'city', 'country',
-                           'vatId'] as const
+const EMPFAENGER_FELDER = ['name', 'contactName', 'addressLine1', 'postalCode', 'city',
+                           'country', 'vatId'] as const
 const EMPFAENGER_MAX = 200
 /** Laengstes Zahlungsziel, das eine Rechnung tragen darf. */
 const ZIEL_MAX_TAGE = 365
@@ -823,7 +823,7 @@ async function rechnungsEntwurf(
   const recipient = folio.company_id
     ? await client.query<Party>(
         `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                city, country, vat_id AS "vatId",
+                city, country, vat_id AS "vatId", contact_name AS "contactName",
                 buyer_reference AS "buyerReference", invoice_email AS "electronicAddress"
            FROM company WHERE id = $1`, [folio.company_id])
     : folio.guest_id
@@ -2170,7 +2170,7 @@ export function billingRoutes(app: FastifyInstance): void {
         const recipient = folio.company_id
           ? await client.query<Party>(
               `SELECT name, address_line1 AS "addressLine1", postal_code AS "postalCode",
-                      city, country, vat_id AS "vatId",
+                      city, country, vat_id AS "vatId", contact_name AS "contactName",
                       buyer_reference AS "buyerReference",
                       invoice_email AS "electronicAddress"
                  FROM company WHERE id = $1`, [folio.company_id])

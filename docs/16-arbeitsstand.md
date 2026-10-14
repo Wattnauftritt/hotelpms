@@ -1294,6 +1294,10 @@ Tests in `fruehstueckNachtlauf.test.ts` (Worker) und `fruehstueckJeRate.test.ts`
 
 Tests in `rechnungLogoNachweis.test.ts`, `invoicePdf.test.ts`, `emailDelivery.test.ts` und `dsgvo.test.ts`.
 
+### Ansprechpartner in der Firmenanschrift (`0171`) — **erledigt**
+
+Sven, 14.10.2026: Firmenrechnungen brauchen die Zeile „Herr Max Mustermann“ unter dem Firmennamen. `company.contact_name` (Feld „Ansprechpartner“ in der Firmenmaske), im Rechnungsdialog je Rechnung abweichend oder leer. Auf dem Blatt steht er unter dem Namen, im XML als BT-56 (`DefinedTradeContact/PersonName` des Erwerbers). Der Name steht in `audit_redaction`; die übrigen Firmenfelder bleiben nach 0044 im Protokoll. Tests in `companies.test.ts`, `rechnungsdialog.test.ts`, `invoiceCii.test.ts`.
+
 ### Stripe-Konto je Haus (Stripe Connect, `0167`) — **erledigt**
 
 **Warum.** Auf Wunsch von Sven, 14.10.2026: StayGrid soll als SaaS an andere Hotels gehen, und die Plattform will deren Zahlungen nicht verwalten. Bis hierhin lief jeder Checkout über das eine Stripe-Konto der Plattform; das Geld aller Hotels wäre bei uns eingegangen, mit Haftung für Rückbuchungen, Prüfpflichten und Auszahlung an die Häuser.

@@ -574,23 +574,26 @@ export function guestRoutes(app: FastifyInstance): void {
       const body = req.body as {
         accountId?: number; name: string; vatId?: string; addressLine1?: string
         postalCode?: string; city?: string; country?: string
-        paymentTermsDays?: number; invoiceEmail?: string; buyerReference?: string }
+        paymentTermsDays?: number; invoiceEmail?: string; buyerReference?: string
+        contactName?: string }
       const principal = req.principal as Principal
       if (!body.name || body.name.trim() === '') {
         throw Errors.validation({ name: ['field.required'] })
       }
       const leitweg = leitwegId(body.buyerReference)
+      const ansprechpartner = ansprechpartnerName(body.contactName)
       const accountId = accountFor(principal, body.accountId, 'guest:write')
       return tx(req.pool, req, async client => {
         const { rows } = await client.query<{ public_ref: string }>(
           `INSERT INTO company (account_id, name, vat_id, address_line1, postal_code,
                                 city, country, payment_terms_days, invoice_email,
-                                buyer_reference)
-           VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'DE'),COALESCE($8,14),$9,$10)
+                                buyer_reference, contact_name)
+           VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'DE'),COALESCE($8,14),$9,$10,$11)
            RETURNING public_ref`,
           [accountId, body.name.trim(), body.vatId ?? null, body.addressLine1 ?? null,
            body.postalCode ?? null, body.city ?? null, body.country ?? null,
-           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, leitweg ?? null])
+           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, leitweg ?? null,
+           ansprechpartner ?? null])
         reply.status(201)
         return { companyRef: rows[0]!.public_ref, name: body.name.trim() }
       })
@@ -644,7 +647,8 @@ export function guestRoutes(app: FastifyInstance): void {
                            address_line1 AS "addressLine1", postal_code AS "postalCode",
                            city, country, payment_terms_days AS "paymentTermsDays",
                            invoice_email AS "invoiceEmail",
-                           buyer_reference AS "buyerReference", active`
+                           buyer_reference AS "buyerReference",
+                           contact_name AS "contactName", active`
 
   registerRoute(app, {
     method: 'GET',
@@ -672,9 +676,10 @@ export function guestRoutes(app: FastifyInstance): void {
       const body = req.body as {
         name?: string; vatId?: string; addressLine1?: string; postalCode?: string
         city?: string; country?: string; paymentTermsDays?: number; invoiceEmail?: string
-        active?: boolean; buyerReference?: string | null
+        active?: boolean; buyerReference?: string | null; contactName?: string | null
       }
       const leitweg = leitwegId(body.buyerReference)
+      const ansprechpartner = ansprechpartnerName(body.contactName)
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number }>(
           `SELECT id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
@@ -692,16 +697,31 @@ export function guestRoutes(app: FastifyInstance): void {
              invoice_email      = COALESCE($9, invoice_email),
              active             = COALESCE($10, active),
              buyer_reference    = CASE WHEN $11 THEN $12 ELSE buyer_reference END,
+             contact_name       = CASE WHEN $13 THEN $14 ELSE contact_name END,
              updated_at         = now()
            WHERE id = $1 RETURNING ${COMPANY_FIELDS}`,
           [cur.rows[0]!.id, body.name ?? null, body.vatId ?? null, body.addressLine1 ?? null,
            body.postalCode ?? null, body.city ?? null, body.country ?? null,
            body.paymentTermsDays ?? null, body.invoiceEmail ?? null, body.active ?? null,
-           leitweg !== undefined, leitweg ?? null])
+           leitweg !== undefined, leitweg ?? null,
+           ansprechpartner !== undefined, ansprechpartner ?? null])
         return rows[0]
       })
     }
   })
+}
+
+/**
+ * Ansprechpartner der Firma (0171), etwa "Herr Max Mustermann".
+ * `undefined`: nicht genannt; `null`: leer, also loeschen.
+ */
+function ansprechpartnerName(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined
+  if (v === null) return null
+  if (typeof v !== 'string' || v.trim().length > 200) {
+    throw Errors.validation({ contactName: ['field.invalid'] })
+  }
+  return v.trim() === '' ? null : v.trim()
 }
 
 /**

@@ -125,6 +125,28 @@ describe('Firmen', () => {
     expect(JSON.parse((await patch(null)).body).buyerReference).toBeNull()
   })
 
+  it('fuehrt einen Ansprechpartner, laesst ihn beim Aendern stehen und loescht ihn mit leer', async () => {
+    const a = await app.inject({
+      method: 'POST', url: '/v1/companies', headers: auth,
+      payload: { name: 'Musterfirma', contactName: '  Herr Max Mustermann ' } })
+    expect(a.statusCode, a.body).toBe(201)
+    const ref = (JSON.parse(a.body) as { companyRef: string }).companyRef
+    const patch = (payload: unknown) => app.inject({
+      method: 'PATCH', url: `/v1/companies/${ref}`, headers: auth, payload })
+
+    const b = await patch({ city: 'Berlin' })
+    expect(JSON.parse(b.body).contactName).toBe('Herr Max Mustermann')
+    const c = await patch({ contactName: '' })
+    expect(JSON.parse(c.body).contactName).toBeNull()
+    expect((await patch({ contactName: 'x'.repeat(201) })).statusCode).toBe(422)
+
+    // Ein Name gehoert nicht ins Protokoll (0171).
+    const p = await owner.query<{ z: string }>(
+      `SELECT coalesce(changed, '{}'::jsonb)::text AS z FROM audit_log
+        WHERE table_name = 'company'`)
+    for (const z of p.rows) expect(z.z).not.toContain('Mustermann')
+  })
+
   it('haelt Firmen des einen Mandanten vom anderen fern', async () => {
     const ref = await firmaAnlegen()
     const fremd = await makeProperty(owner, { name: 'Fremdhotel', code: 'FREMD' })

@@ -346,7 +346,7 @@ export interface RechnungsAuftrag {
 }
 
 export interface Empfaengerdaten {
-  name?: string | null; addressLine1?: string | null; postalCode?: string | null
+  name?: string | null; contactName?: string | null; addressLine1?: string | null; postalCode?: string | null
   city?: string | null; country?: string | null; vatId?: string | null
 }
 

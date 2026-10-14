@@ -42,7 +42,10 @@ export interface CiiParty {
   registrationId?: string | null
   /** BT-34 beim Aussteller, BT-49 beim Empfänger: elektronische Adresse, hier eine Mailadresse. */
   electronicAddress?: string | null
-  /** BG-6, Kontakt beim Aussteller: BT-41 Ansprechpartner, BT-42 Telefon, BT-43 Mail. */
+  /**
+   * BG-6, Kontakt beim Aussteller: BT-41 Ansprechpartner, BT-42 Telefon,
+   * BT-43 Mail. Beim Erwerber BT-56, nur der Name (0171).
+   */
   contactName?: string | null
   phone?: string | null
   email?: string | null
@@ -273,13 +276,17 @@ function partyNode(name: string, p: CiiParty, opts: { taxNumber: boolean }): Xml
   // Reihenfolge nach der XSD-Sequenz von TradeParty: Name,
   // SpecifiedLegalOrganization, DefinedTradeContact, PostalTradeAddress,
   // URIUniversalCommunication, SpecifiedTaxRegistration.
+  // Beim Erwerber nur der Name (BT-56, "z. Hd."); Telefon und Mail einer
+  // Person dort fuehren wir nicht.
   const kontakt = opts.taxNumber && (p.contactName || p.phone || p.email)
     ? el('ram:DefinedTradeContact',
         p.contactName ? leaf('ram:PersonName', p.contactName) : null,
         p.phone ? el('ram:TelephoneUniversalCommunication',
           leaf('ram:CompleteNumber', p.phone)) : null,
         p.email ? el('ram:EmailURIUniversalCommunication', leaf('ram:URIID', p.email)) : null)
-    : null
+    : !opts.taxNumber && p.contactName
+      ? el('ram:DefinedTradeContact', leaf('ram:PersonName', p.contactName))
+      : null
   // Kein erfundenes Land, wenn keines da ist: ein Gast ohne Landangabe ist
   // nicht automatisch Inlaender, und ein stillschweigendes DE waere im
   // Zweifel eine falsche Angabe in einem steuerlichen Beleg. Fehlt es,

@@ -28,6 +28,7 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
 }): JSX.Element {
   const t = useT()
   const [name, setName] = useState(initial?.name ?? vorschlag ?? '')
+  const [contactName, setContactName] = useState(initial?.contactName ?? '')
   const [vatId, setVatId] = useState(initial?.vatId ?? '')
   const [addressLine1, setAddressLine1] = useState(initial?.addressLine1 ?? '')
   const [postalCode, setPostalCode] = useState(initial?.postalCode ?? '')
@@ -44,7 +45,10 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
 
   const absenden = (): void => {
     const body = {
-      name: name.trim(), vatId: orUndef(vatId), addressLine1: orUndef(addressLine1),
+      name: name.trim(),
+      // Wie die Leitweg-ID: leer beim Aendern entfernt den Ansprechpartner.
+      contactName: initial ? contactName.trim() : orUndef(contactName),
+      vatId: orUndef(vatId), addressLine1: orUndef(addressLine1),
       postalCode: orUndef(postalCode), city: orUndef(city), country: orUndef(country) ?? 'DE',
       paymentTermsDays, invoiceEmail: orUndef(invoiceEmail),
       // Leer schickt einen leeren Text: so laesst sich eine Leitweg-ID
@@ -63,6 +67,10 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
       <h2 className="text-sm font-medium">{t('companies.title')}</h2>
       <input value={name} onChange={e => setName(e.target.value)} disabled={!darfSchreiben}
              placeholder={t('companies.name')}
+             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      <input value={contactName} onChange={e => setContactName(e.target.value)}
+             disabled={!darfSchreiben} placeholder={t('companies.contactName')}
+             maxLength={200}
              className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       <input value={vatId} onChange={e => setVatId(e.target.value)} disabled={!darfSchreiben}
              placeholder={t('companies.vatId')}
