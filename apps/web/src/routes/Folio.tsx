@@ -218,7 +218,8 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
           Fakturieren stimmen muss: auf einem festgeschriebenen Beleg ist er
           eine Momentaufnahme und nicht mehr zu aendern. */}
       <Rechnungsempfaenger folioRef={folioRef} recipient={f.recipient}
-                           geschlossen={f.folio.status === 'closed'} />
+                           geschlossen={f.folio.status === 'closed'}
+                           darfFirmaAnlegen={permissions.includes('guest:write')} />
 
       {/* Anzahlung und Zahlungslink stehen zwischen dem Bestand und den
           Eingabefeldern: sie setzen einen Zahlungsvermerk voraus und gehen
