@@ -214,19 +214,12 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
     fehlt, gebucht
   } = useErfassung({ propertyId, heute, fruehstueckCent, speisenBp })
   const gastFeld = useRef<HTMLInputElement>(null)
-  const gastEingabe = (
-    <Feld label={t('cash.field.guest')} className={art === 'guest' ? 'col-span-2' : ''}>
-      <input ref={gastFeld} value={gast} maxLength={100} onChange={e => setGast(e.target.value)}
-             className={FELD} />
-    </Feld>
-  )
 
   return (
     <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-3">
       <h2 className="text-sm font-medium">{t('cash.new')}</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {/* Bei der Gastbuchung zuerst der Name: er steht auf dem Zettel obenan. */}
-        {art === 'guest' && gastEingabe}
+        {/* Fuer jede Art dieselbe Reihenfolge: Art, Datum, Gast, Text, dann die Betraege. */}
         <Feld label={t('cash.field.kind')}>
           <select value={art} onChange={e => setArt(e.target.value as Erfassung)} className={FELD}>
             {ERFASSUNG.map(([k, key]) => <option key={k} value={k}>{t(key)}</option>)}
@@ -235,6 +228,13 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
         <Feld label={t('cash.field.date')}>
           <input type="date" value={datum} max={heute} onChange={e => setDatum(e.target.value)}
                  className={FELD} />
+        </Feld>
+        <Feld label={t('cash.field.guest')}>
+          <input ref={gastFeld} value={gast} maxLength={100} onChange={e => setGast(e.target.value)}
+                 className={FELD} />
+        </Feld>
+        <Feld label={t('cash.field.text')}>
+          <input value={text} maxLength={255} onChange={e => setText(e.target.value)} className={FELD} />
         </Feld>
         <Feld label={t(art === 'guest' ? 'cash.field.total' : 'cash.field.amount')}>
           <input inputMode="decimal" value={betrag} onChange={e => setBetrag(e.target.value)}
@@ -261,10 +261,6 @@ function Erfassen({ propertyId, heute, fruehstueckCent, speisenBp }: {
             </select>
           </Feld>
         )}
-        {art !== 'guest' && gastEingabe}
-        <Feld label={t('cash.field.text')} className="col-span-2">
-          <input value={text} maxLength={255} onChange={e => setText(e.target.value)} className={FELD} />
-        </Feld>
       </div>
       {art === 'guest' && vorschau.length > 0 && (
         <div className="text-xs text-neutral-600 flex flex-wrap gap-x-4">

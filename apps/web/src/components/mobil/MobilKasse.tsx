@@ -287,6 +287,41 @@ function eigenerEintrag(): boolean {
 }
 
 /**
+ * Der Teil des Bildschirms, den die Tastatur frei laesst.
+ *
+ * Ein `fixed inset-0` misst am Telefon den ganzen Bildschirm, auch wenn
+ * die Tastatur offen ist: Chrome unter Android und Safari verkleinern nur
+ * den sichtbaren Ausschnitt, nicht das Layout. Die untere Haelfte der Seite
+ * lag dann hinter der Tastatur und liess sich nicht hochschieben, weil der
+ * Rollbereich glaubte, er sei ganz zu sehen. Mit der Hoehe des sichtbaren
+ * Ausschnitts endet die Seite ueber der Tastatur, der Knopf „Buchen" steht
+ * darauf, und alles darueber rollt.
+ */
+function useSichtbareFlaeche(): { height: number; top: number } | undefined {
+  const [f, setF] = useState<{ height: number; top: number } | undefined>(undefined)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (vv === null || vv === undefined) return
+    const messen = (): void => {
+      setF({ height: vv.height, top: vv.offsetTop })
+      // Das Feld mit dem Cursor bleibt sichtbar, wenn die Tastatur aufgeht.
+      const fokus = document.activeElement
+      if (fokus instanceof HTMLElement && fokus.tagName === 'INPUT') {
+        requestAnimationFrame(() => fokus.scrollIntoView({ block: 'nearest' }))
+      }
+    }
+    messen()
+    vv.addEventListener('resize', messen)
+    vv.addEventListener('scroll', messen)
+    return () => {
+      vv.removeEventListener('resize', messen)
+      vv.removeEventListener('scroll', messen)
+    }
+  }, [])
+  return f
+}
+
+/**
  * Eine Seite ueber dem ganzen Bildschirm, auch ueber der Leiste: Kopf, Rumpf,
  * Fuss. `onClose` kommt aus `useZurueckSchliesst` beim Aufrufer, damit auch
  * der Fuss (etwa "Buchen") ueber den Verlauf schliessen kann.
@@ -296,8 +331,10 @@ function Vollbild({ titel, onClose, fuss, children }: {
 }): JSX.Element {
   const t = useT()
   useEscape(onClose)
+  const flaeche = useSichtbareFlaeche()
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-40 flex flex-col bg-white">
+    <div role="dialog" aria-modal="true" className="fixed inset-x-0 top-0 z-40 flex h-dvh flex-col bg-white"
+         style={flaeche}>
       <header className="flex items-center gap-2 border-b border-neutral-200 px-2
                          pt-[env(safe-area-inset-top)]">
         <button type="button" onClick={onClose}
@@ -355,9 +392,8 @@ function Wahl<T extends string | number>({ werte, wert, onWert, spalten }: {
 }
 
 /**
- * Neue Buchung als ganze Seite. Reihenfolge nach dem, was man in der Hand
- * hat: bei der Gastbuchung zuerst der Name, dann die Art, der Betrag und der
- * Beleg; Datum und Text sind meist schon richtig oder leer und stehen darunter.
+ * Neue Buchung als ganze Seite, in der Reihenfolge des Zettels: Art, Datum,
+ * Gast, Text, dann Betrag, Fruehstuecke, Kurtaxe und Beleg.
  *
  * Nach dem Buchen bleibt die Seite offen und das Datum stehen: nachgetragen
  * werden meist mehrere Gaeste desselben Tages hintereinander, und jedes Mal
@@ -375,8 +411,10 @@ function NeueBuchung({ propertyId, m, onClose }: {
   const kopf = useRef<HTMLDivElement>(null)
   const weiter = (): void => {
     kopf.current?.scrollIntoView({ block: 'start' })
-    if (f.art === 'guest') gastFeld.current?.focus()
+    gastFeld.current?.focus()
   }
+  // Eine feste Reihenfolge fuer jede Art: Art, Datum, Gast, Text, dann die
+  // Betraege. Felder, die je nach Art den Platz wechseln, fand niemand wieder.
   const gastEingabe = (
     <Feld label={t('cash.field.guest')}>
       <input ref={gastFeld} value={f.gast} maxLength={100} onChange={ev => f.setGast(ev.target.value)}
@@ -399,12 +437,19 @@ function NeueBuchung({ propertyId, m, onClose }: {
                 </button>
               </>}>
       <div ref={kopf} className="space-y-5">
-        {f.art === 'guest' && gastEingabe}
         <Gruppe label={t('cash.field.kind')}>
           <Wahl werte={ERFASSUNG.map(([k, key]) => [k, t(key)] as const)} wert={f.art}
                 onWert={f.setArt} spalten="grid-cols-2" />
         </Gruppe>
-
+        <Feld label={t('cash.field.date')}>
+          <input type="date" value={f.datum} max={m.today} onChange={ev => f.setDatum(ev.target.value)}
+                 className={FELD_GROSS} />
+        </Feld>
+        {gastEingabe}
+        <Feld label={t('cash.field.text')}>
+          <input value={f.text} maxLength={255} onChange={ev => f.setText(ev.target.value)}
+                 className={FELD_GROSS} />
+        </Feld>
         <Feld label={t(f.art === 'guest' ? 'cash.field.total' : 'cash.field.amount')}>
           <div className="relative">
             <input inputMode="decimal" value={f.betrag} onChange={ev => f.setBetrag(ev.target.value)}
@@ -417,7 +462,6 @@ function NeueBuchung({ propertyId, m, onClose }: {
           </div>
         </Feld>
         {f.art === 'other' && <p className="text-sm text-neutral-500">{t('cash.otherHint')}</p>}
-
         {f.art === 'guest' && (
           <div className="grid grid-cols-2 gap-3">
             <Feld label={t('cash.field.breakfasts')}>
@@ -454,16 +498,6 @@ function NeueBuchung({ propertyId, m, onClose }: {
         <Gruppe label={t('cash.col.receipts')}>
           <Belegwahl belege={f.belege} onBelege={f.setBelege} gross />
         </Gruppe>
-
-        <Feld label={t('cash.field.date')}>
-          <input type="date" value={f.datum} max={m.today} onChange={ev => f.setDatum(ev.target.value)}
-                 className={FELD_GROSS} />
-        </Feld>
-        {f.art !== 'guest' && gastEingabe}
-        <Feld label={t('cash.field.text')}>
-          <input value={f.text} maxLength={255} onChange={ev => f.setText(ev.target.value)}
-                 className={FELD_GROSS} />
-        </Feld>
       </div>
     </Vollbild>
   )
