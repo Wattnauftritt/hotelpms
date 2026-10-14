@@ -49,7 +49,7 @@ INSERT INTO audit_redaction (table_name, column_name, grund) VALUES
 -- die Adresse weiterhin sofort (siehe guest_email_redact am Ende).
 
 CREATE OR REPLACE FUNCTION email_redact_old(p_property_id bigint, p_days integer DEFAULT 90)
-RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_count integer; v_alt integer;
 BEGIN
   PERFORM assert_property_in_context(p_property_id);
@@ -94,7 +94,7 @@ END $$;
 -- Altern alles entfernte. Jetzt behaelt eine gealterte Rechnungsmail ihre
 -- Adresse, und ohne die dritte Bedingung ueberlebte sie die Loeschung.
 CREATE OR REPLACE FUNCTION guest_email_redact(p_guest bigint)
-RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS $$
   WITH betroffen AS (
     UPDATE outbound_email e
        SET to_email = 'entfernt@invalid', to_name = NULL,
