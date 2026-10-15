@@ -1,0 +1,16 @@
+[Unit]
+Description=hotelpms Sicherung, Schicht 2 (Dump, Konfiguration, Loeschliste; ops/backup/sicherung.sh)
+# Wants statt Requires: faellt PostgreSQL aus, soll der Lauf scheitern und
+# melden, nicht still uebersprungen werden.
+Wants=postgresql.service
+After=postgresql.service network-online.target
+
+[Service]
+Type=oneshot
+# Als root: liest /etc und die Umgebungsdatei, die nur root und hotelpms
+# lesen duerfen, und ruft pg_dump als postgres auf.
+ExecStart=/usr/local/sbin/hotelpms-sicherung
+# Nachts laeuft der Nachtlauf; die Sicherung soll ihn nicht ausbremsen.
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true

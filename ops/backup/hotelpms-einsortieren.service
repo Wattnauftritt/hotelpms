@@ -1,0 +1,8 @@
+# Auf dem ZWEITEN ZIEL (netcup-VPS), nicht auf der Produktivmaschine.
+# Darum liegt die Unit unter ops/backup/ und nicht unter ops/systemd/.
+[Unit]
+Description=hotelpms Sicherungen aus dem Eingang einsortieren
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hotelpms-einsortieren

@@ -1,0 +1,10 @@
+[Unit]
+Description=hotelpms pgBackRest, differenzielle Sicherung montags bis samstags
+
+[Timer]
+OnCalendar=Mon..Sat *-*-* 02:15:00 Europe/Berlin
+Persistent=true
+Unit=hotelpms-pgbackrest@diff.service
+
+[Install]
+WantedBy=timers.target

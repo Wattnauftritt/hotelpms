@@ -96,8 +96,26 @@ weist jeden Export nach draußen und jeden Versand hart ab.
 
 ## 3. Verfügbarkeit und Belastbarkeit
 
-⟨Sicherungskonzept, Wiederherstellungszeiten, Prüfung der Wiederherstellung —
-vom Betreiber einzutragen; siehe `docs/17-betrieb.md`⟩
+- **Sicherung** in vier Schichten (Dokument 37): laufend mit pgBackRest
+  zu IONOS Object Storage in Frankfurt (jeder Zeitpunkt der letzten 14 bis 21 Tage, Verlust
+  höchstens eine Minute), täglich ein mit `age` verschlüsselter Dump an ein
+  zweites Ziel bei einem anderen Anbieter (30 Tage täglich, 12 Monate
+  monatlich), ein Abbild der VM für den schnellen Neuaufbau und ein
+  Jahresarchiv mit Object Lock über zehn Jahre.
+- **Verschlüsselt, bevor es die Maschine verlässt.** Der Schlüssel des
+  täglichen Dumps liegt nicht auf dem Server.
+- **Nicht löschbar vom Server aus.** Schicht 1 mit Versionierung und Object
+  Lock, Schicht 2 nimmt nur an (`rrsync -wo -no-del`).
+- **Wiederherstellungszeit:** Ziel vier Stunden bis zur arbeitenden
+  Rezeption; jährlich auf einer frischen VM gemessen.
+- **Prüfung der Wiederherstellung:** vierteljährlich mit
+  `scripts/backup/rueckspielprobe.sh`, jedes Rechnungs-PDF und jeder
+  Kassenbeleg gegen seine Prüfsumme, Ergebnis mit Datum im Protokoll.
+- **Löschungen** nach Art. 17 DSGVO werden nach einer Rückspielung
+  nachgeholt (`scripts/backup/loeschnachtrag.sh`); eine Vollsicherung lebt
+  höchstens zwölf Monate.
+- **Überwachung:** der Worker meldet eine stockende WAL-Archivierung als
+  `ALARM:`, ein Totmannschalter das Ausbleiben des täglichen Satzes.
 
 ## 4. Verfahren zur Überprüfung
 

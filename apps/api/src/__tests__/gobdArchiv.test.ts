@@ -122,11 +122,13 @@ describe('GoBD-Archiv', () => {
     const datei = schluss.number.replace(/[^A-Za-z0-9._-]/g, '_')
     expect([...dateien.keys()]).toEqual([
       'index.xml', 'rechnungen.csv', 'positionen.csv', 'zahlungen.csv',
-      'anzahlungsjournal.csv', 'protokoll.csv', `belege/${datei}.pdf`, `belege/${datei}.xml`])
+      'anzahlungsjournal.csv', 'kassenbuch.csv', 'kassenbelege.csv', 'protokoll.csv',
+      `belege/${datei}.pdf`, `belege/${datei}.xml`])
 
     const index = dateien.get('index.xml')!.toString()
     expect(index).toContain('<!DOCTYPE DataSet SYSTEM "gdpdu-01-08-2002.dtd">')
-    for (const t of ['rechnungen', 'positionen', 'zahlungen', 'anzahlungsjournal', 'protokoll']) {
+    for (const t of ['rechnungen', 'positionen', 'zahlungen', 'anzahlungsjournal',
+                     'kassenbuch', 'kassenbelege', 'protokoll']) {
       expect(index).toContain(`<URL>${t}.csv</URL>`)
     }
 
@@ -142,6 +144,51 @@ describe('GoBD-Archiv', () => {
       .toEqual(['"received"', '"refunded"', '"applied"'])
     expect(zeilen('protokoll.csv').some(z => z.includes(';"invoice";'))).toBe(true)
     expect(dateien.get(`belege/${datei}.pdf`)!.subarray(0, 5).toString()).toBe('%PDF-')
+  })
+
+  it('nimmt das Kassenbuch mit seinen Belegen mit', async () => {
+    // Fuer das Jahresarchiv der Sicherung (15.10.2026): ohne Kassenbuch
+    // haette es zehn Jahre lang Rechnungen ohne Barkasse aufbewahrt.
+    const tag = '2026-10-01'
+    const e = (await owner.query<{ id: string; entry_no: string }>(
+      `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp,
+                                   text, external_number)
+       VALUES ($1, $2, 'expense', -1234, 1900, 'Putzmittel; "Glanz"', 'KB-77')
+       RETURNING id::text, entry_no::text`, [fx.propertyId, tag])).rows[0]!
+    const bild = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+    const pdf = Buffer.from('%PDF-1.7 Quittung')
+    const belege = (await owner.query<{ id: string }>(
+      `INSERT INTO cashbook_receipt (property_id, entry_id, mime, bytes, byte_count, sha256)
+       VALUES ($1, $2, 'image/jpeg', $3, $4, 'aaa'), ($1, $2, 'application/pdf', $5, $6, 'bbb')
+       RETURNING id::text`,
+      [fx.propertyId, e.id, bild, bild.length, pdf, pdf.length])).rows.map(r => r.id)
+    // Bis morgen, weil das Protokoll nach der Uhr zaehlt (wie oben).
+    const bis = (await owner.query<{ d: string }>(
+      `SELECT (current_date + 1)::text AS d`)).rows[0]!.d
+    // Ein Eintrag ausserhalb des Zeitraums bleibt draussen.
+    await owner.query(
+      `INSERT INTO cashbook_entry (property_id, business_date, kind, amount_cent, tax_rate_bp)
+       VALUES ($1, $2::date - 40, 'cash_in', 5000, 0)`, [fx.propertyId, tag])
+
+    const r = await app.inject({ method: 'GET', headers: auth,
+      url: `/v1/properties/${fx.propertyId}/exports/gobd?from=${tag}&to=${bis}&format=zip` })
+    expect(r.statusCode, r.body).toBe(200)
+    const dateien = entpacken(r.rawPayload)
+
+    const kasse = dateien.get('kassenbuch.csv')!.toString().trimEnd().split('\r\n')
+    expect(kasse).toHaveLength(2)
+    expect(kasse[1]!.startsWith(`${e.entry_no};`)).toBe(true)
+    expect(kasse[1]).toContain(';"expense";-12,34;19,00;"Putzmittel; ""Glanz""";')
+    expect(kasse[1]).toContain(';"KB-77";')
+
+    const jpg = `KB-${e.entry_no}-${belege[0]}.jpg`
+    const pdfName = `KB-${e.entry_no}-${belege[1]}.pdf`
+    const liste = dateien.get('kassenbelege.csv')!.toString().trimEnd().split('\r\n')
+    expect(liste.slice(1).map(z => z.split(';')[2])).toEqual([`"${jpg}"`, `"${pdfName}"`])
+    expect(liste[1]).toContain(';"image/jpeg";7;"aaa";')
+    expect(dateien.get(`belege/kasse/${jpg}`)).toEqual(bild)
+    expect(dateien.get(`belege/kasse/${pdfName}`)).toEqual(pdf)
+    expect(dateien.get('protokoll.csv')!.toString()).toContain(';"cashbook_entry";')
   })
 
   it('weist ein unbekanntes Format ab', async () => {

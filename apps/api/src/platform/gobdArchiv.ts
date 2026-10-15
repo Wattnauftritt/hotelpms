@@ -37,6 +37,14 @@ interface Tabelle {
   sql: string
 }
 
+/**
+ * Dateiname eines Kassenbelegs: Kassenbuchnummer und Beleg-ID, weil ein
+ * Eintrag mehrere Belege haben kann. Ein Ausdruck ueber `e` und `r`, damit
+ * Tabelle und Ablage denselben Namen bilden.
+ */
+const KASSENBELEG_DATEI = `'KB-' || e.entry_no || '-' || r.id || CASE r.mime
+    WHEN 'application/pdf' THEN '.pdf' WHEN 'image/png' THEN '.png' ELSE '.jpg' END`
+
 const TABELLEN: Tabelle[] = [
   {
     datei: 'rechnungen.csv',
@@ -160,10 +168,77 @@ const TABELLEN: Tabelle[] = [
            ORDER BY d.id`
   },
   {
+    /*
+     * Das Kassenbuch ist ein Handelsbuch (§ 147 Abs. 1 Nr. 1 AO) und gehoert
+     * in dasselbe Archiv wie die Rechnungen. Bis 15.10.2026 fehlte es hier:
+     * das Jahresarchiv der Sicherungsstrategie haette zehn Jahre lang
+     * Rechnungen ohne Barkasse aufbewahrt, und die Belege lagen dann nur in
+     * der Datenbank und bei DATEV, sofern die Upload-Mail lief.
+     */
+    datei: 'kassenbuch.csv',
+    name: 'Kassenbuch',
+    beschreibung: 'Aufzeichnung der Barkasse. Unveraenderlich; eine Korrektur ist eine '
+      + 'Gegenbuchung mit Verweis auf das Original. Der Betrag traegt sein Vorzeichen: '
+      + 'positiv fuer Geld in die Kasse, negativ fuer Geld heraus.',
+    schluessel: { name: 'Kassenbuchnummer', typ: 'zahl' },
+    spalten: [
+      { name: 'Geschaeftstag', typ: 'datum' },
+      { name: 'Art', typ: 'text',
+        beschreibung: 'lodging Logis, breakfast_food Fruehstueck Speisen, breakfast_drinks '
+          + 'Fruehstueck Getraenke, city_tax Kurtaxe, cash_in Einlage, bank_deposit zur Bank, '
+          + 'expense Ausgabe, other Sonstiges, legacy_guest Gastbuchung aus dem Vorsystem' },
+      { name: 'Betrag', typ: 'betrag' },
+      { name: 'Steuersatz', typ: 'prozent' },
+      { name: 'Text', typ: 'text' },
+      { name: 'Gast', typ: 'text' },
+      { name: 'Gruppe', typ: 'zahl',
+        beschreibung: 'Kassenbuchnummer der ersten Zeile derselben Gastbuchung' },
+      { name: 'KorrekturVon', typ: 'zahl', beschreibung: 'Kassenbuchnummer des Originals' },
+      { name: 'Fremdbelegnummer', typ: 'text', beschreibung: 'Belegnummer im Vorsystem' },
+      { name: 'AnDATEV', typ: 'text', beschreibung: 'Zeitpunkt der Uebergabe an DATEV, UTC' },
+      { name: 'BenutzerID', typ: 'zahl' },
+      { name: 'ErfasstVon', typ: 'text', beschreibung: 'Name aus dem Vorsystem' },
+      { name: 'Erfasst', typ: 'text', beschreibung: 'UTC' }
+    ],
+    sql: `SELECT e.entry_no, e.business_date::text, e.kind, e.amount_cent, e.tax_rate_bp,
+                 e.text, e.guest_name, g.entry_no, o.entry_no, e.external_number,
+                 to_char(m.marked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                 e.created_by, e.created_by_name,
+                 to_char(COALESCE(e.origin_created_at, e.created_at) AT TIME ZONE 'UTC',
+                         'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+            FROM cashbook_entry e
+            LEFT JOIN cashbook_entry g ON g.id = e.group_id
+            LEFT JOIN cashbook_entry o ON o.id = e.reverses_id
+            LEFT JOIN cashbook_datev_mark m ON m.entry_id = e.id
+           WHERE e.property_id = $1 AND e.business_date BETWEEN $2::date AND $3::date
+           ORDER BY e.entry_no`
+  },
+  {
+    datei: 'kassenbelege.csv',
+    name: 'Kassenbelege',
+    beschreibung: 'Belege zum Kassenbuch: Fotos und PDF. Die Datei liegt unter belege/kasse/.',
+    schluessel: { name: 'BelegID', typ: 'zahl' },
+    spalten: [
+      { name: 'Kassenbuchnummer', typ: 'zahl' },
+      { name: 'Datei', typ: 'text', beschreibung: 'Dateiname unter belege/kasse/' },
+      { name: 'Format', typ: 'text' },
+      { name: 'Bytes', typ: 'zahl' },
+      { name: 'SHA256', typ: 'text', beschreibung: 'Fingerabdruck der Datei' },
+      { name: 'Originalname', typ: 'text', beschreibung: 'Bei Altdaten der Pfad im Vorsystem' },
+      { name: 'Erfasst', typ: 'text', beschreibung: 'UTC' }
+    ],
+    sql: `SELECT r.id, e.entry_no, ${KASSENBELEG_DATEI}, r.mime, r.byte_count, r.sha256,
+                 r.original_name,
+                 to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+            FROM cashbook_receipt r JOIN cashbook_entry e ON e.id = r.entry_id
+           WHERE e.property_id = $1 AND e.business_date BETWEEN $2::date AND $3::date
+           ORDER BY e.entry_no, r.id`
+  },
+  {
     datei: 'protokoll.csv',
     name: 'Aenderungsprotokoll',
     beschreibung: 'Jede Schreibhandlung an Rechnungen, Belegen, Positionen, Zahlungsvermerken, '
-      + 'Anzahlungsjournal und Mahnungen, mit Zeitpunkt und Benutzer. Personenbezogene '
+      + 'Anzahlungsjournal, Mahnungen und Kassenbuch, mit Zeitpunkt und Benutzer. Personenbezogene '
       + 'Werte sind im Protokoll durch einen Platzhalter ersetzt (Datenschutz).',
     schluessel: { name: 'ProtokollID', typ: 'zahl' },
     spalten: [
@@ -180,7 +255,8 @@ const TABELLEN: Tabelle[] = [
             FROM audit_log a, property p
            WHERE p.id = $1 AND a.property_id = $1
              AND a.table_name IN ('invoice','invoice_document','charge','settlement',
-                                  'deposit_ledger','invoice_reminder')
+                                  'deposit_ledger','invoice_reminder',
+                                  'cashbook_entry','cashbook_receipt')
              AND a.occurred_at >= ($2::date::timestamp AT TIME ZONE p.timezone)
              AND a.occurred_at <  (($3::date + 1)::timestamp AT TIME ZONE p.timezone)
            ORDER BY a.occurred_at, a.id`
@@ -295,9 +371,13 @@ export async function gobdArchiv(client: PoolClient, zip: ZipDatei, propertyId: 
   const haus = (await client.query<{ name: string; city: string | null; tage: number
                                      belege: string }>(
     `SELECT name, city, ($3::date - $2::date + 1) AS tage,
-            (SELECT count(*) FROM invoice i JOIN invoice_document d ON d.invoice_id = i.id
+            ((SELECT count(*) FROM invoice i JOIN invoice_document d ON d.invoice_id = i.id
               WHERE i.property_id = $1
-                AND i.business_date BETWEEN $2::date AND $3::date)::text AS belege
+                AND i.business_date BETWEEN $2::date AND $3::date)
+            + (SELECT count(*) FROM cashbook_receipt r
+                 JOIN cashbook_entry e ON e.id = r.entry_id
+                WHERE e.property_id = $1
+                  AND e.business_date BETWEEN $2::date AND $3::date))::text AS belege
        FROM property WHERE id = $1`, [propertyId, von, bis])).rows[0]!
   const belege = Number(haus.belege)
   if (belege > MAX_BELEGE) {
@@ -328,6 +408,20 @@ export async function gobdArchiv(client: PoolClient, zip: ZipDatei, propertyId: 
       await zip.eintrag(`belege/${r.datei}.pdf`, [r.pdf])
       if (r.xml !== null) await zip.eintrag(`belege/${r.datei}.xml`, [r.xml])
     }
+    if (rows.length < BELEGE_JE_RUNDE) break
+    nach = Number(rows[rows.length - 1]!.id)
+  }
+
+  // Kassenbelege, unveraendert wie gespeichert: ein Foto ist der Beleg.
+  nach = 0
+  for (;;) {
+    const { rows } = await client.query<{ id: string; datei: string; bytes: Buffer }>(
+      `SELECT r.id::text AS id, ${KASSENBELEG_DATEI} AS datei, r.bytes
+         FROM cashbook_receipt r JOIN cashbook_entry e ON e.id = r.entry_id
+        WHERE e.property_id = $1 AND e.business_date BETWEEN $2::date AND $3::date
+          AND r.id > $4
+        ORDER BY r.id LIMIT ${BELEGE_JE_RUNDE}`, [propertyId, von, bis, nach])
+    for (const r of rows) await zip.eintrag(`belege/kasse/${r.datei}`, [r.bytes])
     if (rows.length < BELEGE_JE_RUNDE) break
     nach = Number(rows[rows.length - 1]!.id)
   }
