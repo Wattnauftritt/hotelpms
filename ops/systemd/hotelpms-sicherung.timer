@@ -1,0 +1,12 @@
+[Unit]
+Description=hotelpms Sicherung, taeglich nach dem Nachtlauf
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Europe/Berlin
+# War die Maschine um halb fuenf aus, laeuft die Sicherung beim Hochfahren
+# nach. Ein ausgelassener Tag ist genau der, der dann fehlt.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

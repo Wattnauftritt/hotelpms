@@ -400,3 +400,56 @@ export async function purgeRetention(admin: Pool): Promise<RetentionResult> {
 
   return { webhookDeliveries, emailAttempts, platformEmailBodies, staffTextJobs, staffPushes }
 }
+
+/**
+ * Stand der WAL-Archivierung, aus der die Sicherung (pgBackRest) die
+ * Rueckspielung auf die Minute baut.
+ *
+ * **Warum der Worker das prueft und nicht pgBackRest selbst.** Eine
+ * Sicherung, die still aufhoert, ist der haeufigste Ausfall ueberhaupt:
+ * `archive_command` schlaegt fehl, PostgreSQL versucht es weiter, haelt die
+ * WAL-Dateien zurueck und laeuft Tage spaeter mit voller Platte. Der
+ * Worker schreibt ohnehin `ALARM:` ins Protokoll, und dort sieht der
+ * Betrieb jeden Tag hin (Dokument 17 §9). `pg_stat_archiver` ist fuer jede
+ * Rolle lesbar; es braucht kein Recht und keinen Zugang zum Speicher.
+ */
+export interface ArchivStand {
+  modus: string
+  zuletztGesichert: Date | null
+  zuletztFehlgeschlagen: Date | null
+  fehler: number
+}
+
+export async function archiveStatus(client: PoolClient): Promise<ArchivStand> {
+  const r = await client.query<{ modus: string; ok: Date | null; fehl: Date | null
+                                 fehler: string }>(
+    `SELECT current_setting('archive_mode') AS modus,
+            last_archived_time AS ok, last_failed_time AS fehl,
+            failed_count::text AS fehler
+       FROM pg_stat_archiver`)
+  const z = r.rows[0]!
+  return { modus: z.modus, zuletztGesichert: z.ok, zuletztFehlgeschlagen: z.fehl,
+           fehler: Number(z.fehler) }
+}
+
+/** Ein Tag ohne archivierte WAL-Datei: `archive_timeout` ist 60 s, und der Worker schreibt alle fuenf Minuten. */
+const ARCHIV_HOECHSTENS_STILL_MS = 24 * 60 * 60_000
+
+/**
+ * Bewertet den Stand. `null` heisst: nichts zu melden. Ausserhalb des
+ * Betriebs (Entwicklung, CI) ist eine fehlende Archivierung kein Befund.
+ */
+export function archivBefund(s: ArchivStand, jetzt: Date, betrieb: boolean): string | null {
+  if (s.modus === 'off') {
+    return betrieb ? 'ALARM: WAL-Archivierung ist aus, es laeuft keine Sicherung' : null
+  }
+  if (s.zuletztFehlgeschlagen !== null
+      && (s.zuletztGesichert === null || s.zuletztFehlgeschlagen > s.zuletztGesichert)) {
+    return 'ALARM: WAL-Archivierung schlaegt fehl'
+  }
+  if (s.zuletztGesichert === null) return null
+  if (jetzt.getTime() - s.zuletztGesichert.getTime() > ARCHIV_HOECHSTENS_STILL_MS) {
+    return 'ALARM: Seit ueber einem Tag keine WAL-Datei archiviert'
+  }
+  return null
+}

@@ -398,18 +398,11 @@ UPDATE deploy_request SET status = 'failed', finished_at = now() WHERE id = <id>
 
 ## 9. Sicherung
 
-Ohne sie ist alles andere vergeblich. Dokument 17 §3 sagt, was gilt; hier steht, was eingerichtet wird.
+Ohne sie ist alles andere vergeblich. Dokument 17 §3 sagt, was gilt; [Dokument 37](37-sicherung.md) sagt, was eingerichtet wird, und die Dateien stehen in `ops/backup/`.
 
-```bash
-# Taeglich, als eigener Dienst mit Timer.
-pg_dump --format=custom --file=/var/backups/hotelpms/$(date +%F).dump hotelpms
-```
+**Gesichert wird aus der laufenden VM heraus, nicht das Blockgerät.** Eine Sicherung der verschlüsselten Platte ist ein undurchsichtiger Klumpen: zurückspielen lässt er sich, öffnen nur mit dem Schlüssel — und steckt der bloß in einem Kopf oder in einem vTPM-Zustand, der gar nicht mitgesichert wurde, ist die Sicherung wertlos. Entsperrung und Sicherung sind dieselbe Frage; wer die eine plant, muss die andere mitplanen. Deshalb sichert pgBackRest die Datenbank und `sicherung.sh` die Konfiguration, beide eigenständig verschlüsselt.
 
-Dazu ein Ziel **außer Haus** — eine Kopie auf derselben verschlüsselten Platte überlebt keinen Plattenfehler und keinen Verschlüsselungstrojaner. Ein Anbieter mit Objektspeicher in Deutschland, Übertragung verschlüsselt, Aufbewahrung nach Generationen.
-
-**Gesichert wird aus der laufenden VM heraus, nicht das Blockgerät.** Eine Sicherung der verschlüsselten Platte ist ein undurchsichtiger Klumpen: zurückspielen lässt er sich, öffnen nur mit dem Schlüssel — und steckt der bloß in einem Kopf oder in einem vTPM-Zustand, der gar nicht mitgesichert wurde, ist die Sicherung wertlos. Entsperrung und Sicherung sind dieselbe Frage; wer die eine plant, muss die andere mitplanen. `pg_dump` plus die Belege, eigenständig verschlüsselt, zum Objektspeicher.
-
-**Der Teil, der übersprungen wird und der eigentlich zählt: die Rückspielung.** Vierteljährlich in eine leere Datenbank zurückspielen und nachsehen, ob die Zahlen stimmen. Eine Sicherung, die nie zurückgespielt wurde, ist eine Vermutung. Sie gehört ins Protokoll mit Datum und Ergebnis.
+**Der Teil, der übersprungen wird und der eigentlich zählt: die Rückspielung.** Vierteljährlich mit `scripts/backup/rueckspielprobe.sh` in eine leere Datenbank zurückspielen und nachsehen, ob die Zahlen stimmen. Eine Sicherung, die nie zurückgespielt wurde, ist eine Vermutung.
 
 ---
 

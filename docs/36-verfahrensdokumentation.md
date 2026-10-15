@@ -117,7 +117,7 @@ Quelltext unter Versionsverwaltung; jede Änderung läuft durch eine automatisch
 ## 4. Betriebsdokumentation
 
 - **Betrieb:** **[Haus oder Betreiber: wer die Maschine betreibt]**. Aufbau in Dokument 21, Abläufe in Dokument 17.
-- **Sicherung:** täglich, verschlüsselt, außer Haus; 30 Tage täglich, 12 Monate monatlich (Dokument 17 §3). Die Rückspielung wird vierteljährlich geprobt und mit Datum und Ergebnis protokolliert. **[Haus: Protokoll der Rückspielungen]**
+- **Sicherung:** laufend und täglich, verschlüsselt, außer Haus bei zwei Anbietern; dazu jährlich der GoBD-Export je Haus mit Belegen und Kassenbuch, zehn Jahre unveränderbar gesperrt (Dokument 37). Die Rückspielung wird vierteljährlich geprobt und mit Datum und Ergebnis protokolliert (`scripts/backup/rueckspielprobe.sh`). **[Haus: Protokoll der Rückspielungen]**
 - **Aufbewahrung:** Buchungsbelege acht Jahre (§ 147 Abs. 3 AO seit 2025), Aufzeichnungen zehn. Die Sicherung erfüllt das nicht und soll es nicht; dafür ist der laufende Bestand da. Ein ausscheidendes Haus wird stillgelegt, nicht gelöscht, und erhält seinen Export (Dokument 17 §6).
 - **Gastlöschung:** heißt anonymisieren (Art. 17 DSGVO gegen § 147 AO). Rechnungen, Positionen und Zahlungsvermerke bleiben unberührt; die Momentaufnahme des Empfängers an der Rechnung bleibt, weil eine Rechnung ohne Empfänger wertlos wäre.
 - **Störung:** Erzeugt der Worker einen Beleg nicht, bleibt die Rechnung festgeschrieben, und der Versuch wird wiederholt (`invoice_document_failure`); der Beleg entsteht aus den festgeschriebenen Daten, nicht aus dem aktuellen Stand.

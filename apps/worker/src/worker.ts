@@ -7,7 +7,8 @@ import { ensureAuditPartitions, dropOldAuditPartitions,
          auditDefaultPartitionRows, materializeInventory, materializeInventoryTail,
          reconcileInventory, purgeRegistrations, purgeGuestDocuments,
          completeGuestErasures, purgeExpired, redactOldEmails,
-         overdueNightAudits, purgeRetention } from './jobs/maintenance.js'
+         overdueNightAudits, purgeRetention, archiveStatus, archivBefund }
+  from './jobs/maintenance.js'
 import { TickBreaker } from './jobs/breaker.js'
 import { renderPendingInvoices } from './jobs/invoiceDocument.js'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
@@ -150,6 +151,24 @@ async function platformMaintenance(): Promise<void> {
       if (Object.values(r).some(n => n > 0)) log.info(r, 'Arbeitstabellen aufgeraeumt')
     } catch (e) {
       log.error({ err: e }, 'Aufbewahrung der Arbeitstabellen fehlgeschlagen')
+    }
+  }
+
+  // Die Sicherung: einmal je Stunde, damit eine stockende Archivierung im
+  // Protokoll steht, bevor sie die Platte fuellt (Backupstrategie, 15.10.2026).
+  const stunde = stundenSchluessel()
+  if (faellig('archivierung', stunde)) {
+    try {
+      const stand = await withTransaction(admin, SYSTEM_CONTEXT, c => archiveStatus(c))
+      erledigt('archivierung', stunde)
+      const befund = archivBefund(stand, new Date(), process.env.NODE_ENV === 'production')
+      if (befund !== null) {
+        log.error({ modus: stand.modus, zuletztGesichert: stand.zuletztGesichert,
+                    zuletztFehlgeschlagen: stand.zuletztFehlgeschlagen,
+                    fehler: stand.fehler }, befund)
+      }
+    } catch (e) {
+      log.error({ err: e }, 'Stand der WAL-Archivierung nicht lesbar')
     }
   }
 

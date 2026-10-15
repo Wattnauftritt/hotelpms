@@ -1,0 +1,15 @@
+[Unit]
+Description=hotelpms pgBackRest-Sicherung (%i), Schicht 1
+Wants=postgresql.service
+After=postgresql.service network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+# %i ist full oder diff; die Timer hotelpms-pgbackrest-voll und -diff
+# rufen genau diese beiden auf. Danach raeumt pgBackRest selbst ab, was
+# repo1-retention-full ueberschreitet.
+ExecStart=/usr/bin/pgbackrest --stanza=hotelpms --type=%i backup
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,11 @@
+# Auf dem ZWEITEN ZIEL in ~sicherung/.ssh/authorized_keys, eine Zeile.
+#
+# rrsync -wo: nur schreiben, nicht lesen. -no-del: rsync darf nichts
+# loeschen. restrict: kein Terminal, keine Weiterleitung, kein Agent.
+# from=: nur die oeffentliche Adresse, ueber die die VM nach aussen geht
+# (beim Strato-Host 85.214.124.186; vor dem Eintragen pruefen).
+#
+# Den Schluessel auf der Produktivmaschine erzeugen:
+#   ssh-keygen -t ed25519 -N '' -C hotelpms-sicherung -f /root/.ssh/hotelpms-sicherung
+
+restrict,from="85.214.124.186",command="rrsync -wo -no-del /srv/sicherung/eingang" ssh-ed25519 AAAA... hotelpms-sicherung

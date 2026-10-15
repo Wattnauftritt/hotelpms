@@ -1,0 +1,9 @@
+[Unit]
+Description=hotelpms Sicherungen alle 15 Minuten einsortieren
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

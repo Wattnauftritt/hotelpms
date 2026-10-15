@@ -1,0 +1,11 @@
+# /etc/pgbackrest/conf.d/geheim.conf -- chown postgres:postgres, chmod 600
+#
+# Die Werte stammen aus der Hetzner Console (S3-Zugangsdaten des Projekts
+# mit dem Bucket staygrid-pgbackrest) und aus `openssl rand -base64 48`. Alle drei gehoeren
+# zusaetzlich in den Passwortspeicher und ausgedruckt in den Tresor: brennt
+# die Maschine ab, ist das der einzige Weg an die Sicherung.
+
+[global]
+repo1-s3-key=
+repo1-s3-key-secret=
+repo1-cipher-pass=

@@ -1,0 +1,10 @@
+[Unit]
+Description=hotelpms pgBackRest, Vollsicherung sonntags
+
+[Timer]
+OnCalendar=Sun *-*-* 02:15:00 Europe/Berlin
+Persistent=true
+Unit=hotelpms-pgbackrest@full.service
+
+[Install]
+WantedBy=timers.target

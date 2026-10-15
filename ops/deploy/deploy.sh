@@ -52,6 +52,20 @@ umschalten() {
   ln -sfn "$ziel" "$WURZEL/current.neu"
   mv -Tf "$WURZEL/current.neu" "$CURRENT"
 
+  # Wiederherstellungspunkt vor den Migrationen (Backupstrategie,
+  # 15.10.2026). Die Migrationen wandern beim Zurueckrollen nicht mit
+  # (unten); geht eine schief, ist dieser Punkt der Weg zurueck:
+  # `pgbackrest restore --type=name --target=vor-<sha>` spielt die Datenbank
+  # genau bis vor diese Ausrollung zurueck (Dokument 37).
+  #
+  # Ein fehlender Punkt haelt die Ausrollung nicht auf: ohne eingerichtete
+  # Sicherung oder ohne das GRANT auf pg_create_restore_point gaebe es sonst
+  # gar keine Ausrollung mehr. Er steht dann als Warnung im Journal.
+  if ! psql "$DATABASE_URL_OWNER" -X -q -At -v ON_ERROR_STOP=1 \
+         -c "SELECT pg_create_restore_point('vor-$(basename "$ziel")')" >/dev/null; then
+    echo "WARNUNG: kein Wiederherstellungspunkt vor $(basename "$ziel") gesetzt." >&2
+  fi
+
   # Migrationen mit der Eigentuemerrolle, nie mit der Anwendungsrolle.
   #
   # Nach dem Umschalten und vor dem Neustart: das Schema ist dabei kurz neuer
