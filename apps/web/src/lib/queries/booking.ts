@@ -440,6 +440,23 @@ export function useReservationStatusAction(reservationRef: string) {
 }
 
 /**
+ * Aufenthalt vorab buchen oder die Vorausbuchung zuruecknehmen (0176). Beides
+ * aendert das Folio und die Naechte im Seitenfenster.
+ */
+export function useStayPosting(reservationRef: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (action: 'post-stay' | 'unpost-stay') =>
+      api.post<{ reservationRef: string }>(`/v1/reservations/${reservationRef}/${action}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+      void qc.invalidateQueries({ queryKey: ['folio'] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+    }
+  })
+}
+
+/**
  * Buchungsbestaetigung schicken (A12). Ohne hinterlegte Adresse antwortet
  * die API mit 422 statt zu verschicken -- das Seitenfenster zeigt das als
  * Fehler, nicht als stilles Nichtstun.

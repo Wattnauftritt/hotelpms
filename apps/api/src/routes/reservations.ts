@@ -918,6 +918,28 @@ export async function aufenthalteVerlegen(
   // Bis hierher kaeme die Schleife mit dem Bestand.
   const bisBestand = pruefFehler?.i ?? plaene.length
 
+  /*
+   * Vorab gebuchte Naechte (0176) fallen nicht still aus dem Aufenthalt.
+   * Weggenommen werden unten nur ungebuchte; eine gebuchte Nacht ab heute
+   * ausserhalb des neuen Zeitraums stuende danach im Folio, ohne dass der
+   * Gast sie schlaeft. Erst zuruecknehmen, dann kuerzen. Gebuchte Naechte
+   * vor heute bleiben wie bisher: sie hat der Gast geschlafen.
+   */
+  if (pruefFehler === null) {
+    const voraus = await client.query<{ ab: string }>(
+      `SELECT to_char(min(n.date), 'DD.MM.YYYY') AS ab
+         FROM unnest($1::bigint[], $2::date[], $3::date[]) AS x(id, arrival, departure)
+         JOIN reservation_night n ON n.reservation_id = x.id AND n.posted
+                                 AND (n.date < x.arrival OR n.date >= x.departure)
+        WHERE n.date >= (SELECT COALESCE(max(b.date), current_date) FROM business_day b
+                          WHERE b.property_id = n.property_id)
+       HAVING count(*) > 0`,
+      [plaene.map(p => p.r.id), plaene.map(p => p.neuAnkunft), plaene.map(p => p.neuAbreise)])
+    if (voraus.rowCount !== 0) {
+      throw Errors.unprocessable('stay.postedAhead', { date: voraus.rows[0]!.ab })
+    }
+  }
+
   const zaehlt = plaene.map((p, i) => ({
     vorher: gruppen[i]!.alt ?? p.r.category_id,
     danach: gruppen[i]!.neu ?? p.neuKategorie
@@ -1727,7 +1749,7 @@ export function reservationRoutes(app: FastifyInstance): void {
 
         const naechte = await client.query(
           `SELECT date::text, price_cent AS "priceCent",
-                  rate_plan_id AS "ratePlanId"
+                  rate_plan_id AS "ratePlanId", posted
              FROM reservation_night WHERE reservation_id = $1 ORDER BY date`,
           [kopf.id])
 
@@ -1776,6 +1798,12 @@ export function reservationRoutes(app: FastifyInstance): void {
           cleaningWaiver,
           guestFolder,
           guestRequests,
+          // Vorab gebucht (0176): eine gebuchte Nacht, die der Gast noch
+          // nicht geschlafen hat. Daran haengt der Knopf zum Zuruecknehmen.
+          postedAhead: naechte.rows.some(n => {
+            const x = n as { date: string; posted: boolean }
+            return x.posted && x.date >= geschaeftstag
+          }),
           totalCent: naechte.rows.reduce(
             (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
         }
