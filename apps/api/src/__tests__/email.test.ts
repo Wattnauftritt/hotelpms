@@ -170,6 +170,41 @@ describe('Rechnung verschicken', () => {
     expect(z.body_text).toContain('Dear Anna Beispiel')
   })
 
+  it('nimmt einen eigenen Betreff mit der Buchungsnummer des Portals', async () => {
+    // HRS ordnet die Rechnung nur ueber seine Nummer im Betreff zu
+    // (Sven, 15.10.2026). {nummer} wird durch die Rechnungsnummer ersetzt.
+    await absenderEinrichten()
+    const ref = await rechnung()
+    const r = await post(`/v1/invoices/${ref}/send`,
+      { subject: '  Rechnung {nummer} – HRS 204949532 ' })
+    expect(r.statusCode, r.body).toBe(202)
+    const z = await zeile(JSON.parse(r.body).messageRef)
+    expect(z.subject).toBe('Rechnung 2026-000007 – HRS 204949532')
+    // Der Rumpf bleibt die Vorlage.
+    expect(z.body_text).toContain('Anna Beispiel')
+  })
+
+  it('weist einen Betreff ohne Rechnungsnummer oder mit Zeilenumbruch ab', async () => {
+    await absenderEinrichten()
+    const ref = await rechnung()
+    const ohne = await post(`/v1/invoices/${ref}/send`, { subject: 'HRS 204949532' })
+    expect(ohne.statusCode).toBe(422)
+    expect(ohne.body).toContain('field.subjectNeedsNumber')
+    const umbruch = await post(`/v1/invoices/${ref}/send`,
+      { subject: 'Rechnung {nummer}\r\nBcc: x@y.test' })
+    expect(umbruch.statusCode).toBe(422)
+    // Abgewiesen heisst: nichts eingereiht, auch kein Zahlungslink.
+    expect(await postausgang()).toHaveLength(0)
+  })
+
+  it('nimmt bei leerem Betreff den ueblichen', async () => {
+    await absenderEinrichten()
+    const ref = await rechnung()
+    const r = await post(`/v1/invoices/${ref}/send`, { subject: '   ' })
+    expect(r.statusCode).toBe(202)
+    expect((await zeile(JSON.parse(r.body).messageRef)).subject).toMatch(/^Rechnung 2026-000007/)
+  })
+
   it('verschickt nicht zweimal, wenn zweimal geklickt wird', async () => {
     await absenderEinrichten()
     const ref = await rechnung()
@@ -211,14 +246,18 @@ describe('Rechnung verschicken', () => {
     const ref = await rechnung()
 
     const r = await post(`/v1/invoices/${ref}/send`,
-      { to: 'buchhaltung@firma.test', subject: 'Frohe Weihnachten', body: 'Hallo' })
+      { to: 'buchhaltung@firma.test', body: 'Frohe Weihnachten' })
     expect(r.statusCode).toBe(202)
     const z = await zeile(JSON.parse(r.body).messageRef)
     expect(z.to_email).toBe('buchhaltung@firma.test')
-    // Betreff und Rumpf entstehen aus dem Fachdatum. Sonst waere der
-    // Endpunkt ein Versandapparat fuer beliebige Post.
+    // Der Rumpf entsteht aus dem Fachdatum, sonst waere der Endpunkt ein
+    // Versandapparat fuer beliebige Post. Ein eigener Betreff geht nur mit
+    // der Rechnungsnummer darin (siehe unten).
     expect(z.subject).toContain('Rechnung 2026-000007')
     expect(z.body_text).not.toContain('Frohe Weihnachten')
+    const fremd = await post(`/v1/invoices/${ref}/send`,
+      { resend: true, subject: 'Frohe Weihnachten' })
+    expect(fremd.statusCode).toBe(422)
   })
 
   it('reiht nichts ein, solange der Versand nicht eingeschaltet ist', async () => {

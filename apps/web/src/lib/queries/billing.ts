@@ -116,12 +116,13 @@ export function useBeleg(invoiceRef: string | null) {
 export function useSendInvoice(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ invoiceRef, to, resend, transfer, paymentLink }:
-                 { invoiceRef: string; to?: string; resend?: boolean
+    mutationFn: ({ invoiceRef, to, subject, resend, transfer, paymentLink }:
+                 { invoiceRef: string; to?: string; subject?: string; resend?: boolean
                    transfer?: boolean; paymentLink?: boolean }) =>
       api.post<{ messageRef: string; status: string }>(
         `/v1/invoices/${invoiceRef}/send`,
         { ...(to === undefined || to === '' ? {} : { to }),
+          ...(subject === undefined || subject.trim() === '' ? {} : { subject }),
           ...(resend === true ? { resend: true } : {}),
           ...(transfer === true ? { transfer: true } : {}),
           ...(paymentLink === true ? { paymentLink: true } : {}) }),

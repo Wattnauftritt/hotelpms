@@ -27,15 +27,24 @@ import type { PoolClient } from '@hotelpms/db'
  *
  * **Der Aufrufer bestimmt den Empfaenger, nie den Inhalt.** Das ist die
  * Grenze, an der aus einem Rechnungsversand ein Versandapparat fuer
- * beliebige Post wuerde. Betreff und Rumpf entstehen hier aus dem Fachdatum;
- * uebergeben werden kann nur, an welche Adresse es geht -- und auch das nur,
- * weil es der Alltag verlangt: die Firma will die Rechnung in der
- * Buchhaltung, nicht beim Reisenden.
+ * beliebige Post wuerde. Der Rumpf entsteht hier aus dem Fachdatum;
+ * uebergeben werden kann, an welche Adresse es geht -- weil es der Alltag
+ * verlangt: die Firma will die Rechnung in der Buchhaltung, nicht beim
+ * Reisenden -- und ein Betreff, der die Rechnungsnummer tragen muss, weil
+ * Buchungsportale ihre eigene Nummer darin verlangen.
  */
 
 interface SendInvoiceBody {
   /** Abweichende Adresse. Ohne Angabe die des Rechnungsempfaengers. */
   to?: string
+  /**
+   * Eigener Betreff (Sven, 15.10.2026): Portale wie HRS ordnen eine
+   * Rechnung nur zu, wenn ihre Buchungsnummer im Betreff steht. Er muss die
+   * Rechnungsnummer tragen, als Text oder als `{nummer}`, das hier ersetzt
+   * wird -- so bleibt die Mail erkennbar die Rechnung und wird kein freies
+   * Anschreiben aus der Domain des Hauses. Der Rumpf bleibt die Vorlage.
+   */
+  subject?: string
   /**
    * Erneut schicken, obwohl die Rechnung schon heraus ist. Ausdruecklich,
    * damit ein doppelter Klick keine zweite Mail erzeugt.
@@ -195,6 +204,16 @@ export function emailRoutes(
       if (b.to !== undefined && !isSendableAddress(b.to)) {
         throw Errors.validation({ to: ['field.email'] })
       }
+      if (b.subject !== undefined && typeof b.subject !== 'string') {
+        throw Errors.validation({ subject: ['field.invalid'] })
+      }
+      const eigenerBetreff = b.subject === undefined || b.subject.trim() === ''
+        ? null : b.subject.trim()
+      // Ein Zeilenumbruch im Betreff waere eine zweite Kopfzeile der Mail.
+      if (eigenerBetreff !== null && (eigenerBetreff.length > 200
+            || /[\u0000-\u001f\u007f]/.test(eigenerBetreff))) {
+        throw Errors.validation({ subject: ['field.invalid'] })
+      }
 
       return tx(req.pool, req, async client => {
         /*
@@ -323,9 +342,17 @@ export function emailRoutes(
           paymentLink: link === null ? null : { url: link.url, validUntil: link.validUntil }
         }, emailLanguage(e.language))
 
+        let betreff = text.subject
+        if (eigenerBetreff !== null) {
+          betreff = eigenerBetreff.replaceAll('{nummer}', i.number)
+          if (!betreff.includes(i.number)) {
+            throw Errors.validation({ subject: ['field.subjectNeedsNumber'] })
+          }
+        }
+
         const q = await client.query<{ ref: string }>(
           `SELECT email_enqueue($1,'invoice',$2,$3,$4,$5,$6,$7,NULL,$8) AS ref`,
-          [i.property_id, adresse, e.name, text.subject, text.text, text.html,
+          [i.property_id, adresse, e.name, betreff, text.text, text.html,
            i.id, principal.userId])
         if (link !== null) {
           await client.query(
