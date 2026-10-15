@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useFolio, usePaymentMethods, usePostCharge,
          usePostSettlement } from '../lib/queries.js'
-import { useSplitFolio, useTransferCharge, useSplitBreakfast,
+import { useSplitFolio, useTransferCharge, useSplitBreakfast, useCorrectStayPrice,
          useAccommodationRouting } from '../lib/queries/billing.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
@@ -161,6 +161,14 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
                                                       && /^(Frühstück|Fruehstueck) /
                                                         .test(b.description)))
        && <FruehstueckNachtraeglich folioRef={folioRef} />}
+
+      {/* Offene Uebernachtungen des Nachtlaufs: deren Preis laesst sich als
+          Ganzes korrigieren. Berechnete erst nach der Stornorechnung. */}
+      {f.folio.status === 'open' && permissions.includes('folio:post')
+       && f.charges.some(c => c.invoice_id === null && c.reverses_id === null
+                              && !gegengebucht.has(c.id) && c.revenue_account === '8300'
+                              && /^(Übernachtung|Uebernachtung) /.test(c.description))
+       && <AufenthaltspreisKorrigieren folioRef={folioRef} />}
 
       {f.invoices.length > 0 && (
         <section className="bg-white border border-neutral-200 rounded-sm overflow-hidden">
@@ -329,6 +337,53 @@ function FruehstueckNachtraeglich({ folioRef }: { folioRef: string }): JSX.Eleme
         </p>
       )}
       {teilen.isError && <div className="mt-2"><Fehler error={teilen.error} /></div>}
+    </details>
+  )
+}
+
+/**
+ * Aufenthaltspreis nachtraeglich korrigieren (Sven, 15.10.2026): in der
+ * Buchung stand 268,00 statt 268,80. Eingegeben wird nur der neue
+ * Gesamtpreis; Naechte, Steuersaetze und Fruehstueck rechnet die Route.
+ */
+function AufenthaltspreisKorrigieren({ folioRef }: { folioRef: string }): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const online = useOnline()
+  const korrigieren = useCorrectStayPrice(folioRef)
+  const [preis, setPreis] = useState('')
+  const cent = centAusEingabe(preis)
+  const gueltig = cent !== null && cent > 0
+
+  return (
+    <details className="bg-white border border-neutral-200 rounded-sm p-3 text-sm">
+      <summary className="cursor-pointer font-medium">{t('folio.stayPrice')}</summary>
+      <p className="mt-2 text-xs text-neutral-600">{t('folio.stayPriceHint')}</p>
+      <form className="mt-2 flex flex-wrap items-end gap-3"
+            onSubmit={e => {
+              e.preventDefault()
+              if (!gueltig) return
+              korrigieren.mutate(cent)
+            }}>
+        <label className="block">
+          <span className="block text-xs text-neutral-600">{t('folio.stayPriceTotal')}</span>
+          <input value={preis} onChange={e => setPreis(e.target.value)} inputMode="decimal"
+                 className="mt-0.5 w-32 border border-neutral-300 rounded-sm px-2 py-1
+                            text-end tabular-nums" />
+        </label>
+        <button type="submit" disabled={!online || !gueltig || korrigieren.isPending}
+                className="px-3 py-1.5 rounded-sm bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t('folio.stayPriceDo')}
+        </button>
+      </form>
+      {korrigieren.isSuccess && (
+        <p role="status" className="mt-2 text-emerald-800">
+          {t('folio.stayPriceDone', { nights: korrigieren.data.nights,
+                                      amount: formatMoney(korrigieren.data.totalCent, locale) })}
+        </p>
+      )}
+      {korrigieren.isError && <div className="mt-2"><Fehler error={korrigieren.error} /></div>}
     </details>
   )
 }

@@ -8,7 +8,8 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
-         breakfastPerNight, splitNight, alignLineNets, taxAdjustToGross } from '@hotelpms/domain'
+         breakfastPerNight, splitNight, alignLineNets, taxAdjustToGross,
+         preisJeNacht } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
@@ -1780,6 +1781,159 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const result = { nights: zeilen.filter(z => z.reverses !== null).length,
                          breakfastCent: summe }
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
+   * Aufenthaltspreis nachtraeglich korrigieren (Sven, 15.10.2026: "ich hatte
+   * in der buchung 268€, der betrag war aber 268,80€. da muesste ich ja nun
+   * jede nacht und jedes fruehstueck mit den steuersaetzen ausrechnen per
+   * hand und korrigieren").
+   *
+   * Eingegeben wird der neue Gesamtpreis des Aufenthalts. Er faellt wie beim
+   * Anlegen auf die Naechte (`preisJeNacht`, Rest-Cent auf der ersten). Je
+   * gebuchter Nacht bleibt, was neben der Logis steht -- Fruehstueck und
+   * Inklusivleistungen haben ihren eigenen Preis --, und die Logis traegt den
+   * Unterschied: Gegenbuchung der alten, neue Logis mit dem Geschaeftstag der
+   * Nacht. Die Steuer rechnet jede Zeile selbst, wie im Nachtlauf. Noch nicht
+   * gebuchte Naechte bekommen nur ihren neuen Preis; der Nachtlauf bucht ihn.
+   *
+   * Eine schon berechnete Nacht bleibt: dort hilft nur erst die
+   * Stornorechnung (Haertegrad 1). Danach ist die Nacht wieder offen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/stay-price',
+    permission: 'folio:post',
+    summary: 'Aufenthaltspreis nachtraeglich korrigieren',
+    handler: async (req, reply) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+      const gesamt = ((req.body ?? {}) as { totalCent?: unknown }).totalCent
+      if (!(typeof gesamt === 'number' && Number.isInteger(gesamt)
+            && gesamt >= 1 && gesamt <= MAX_POSITION_CENT)) {
+        throw Errors.validation({ totalCent: ['field.range'] },
+          { min: '0,01 €', max: '1.000.000,00 €' })
+      }
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(client, principal.clientKey, key,
+          { folioRef, gesamt }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const f = await client.query<{ id: number; property_id: number; status: string }>(
+          `SELECT id, property_id, status FROM folio WHERE public_ref = $1 FOR UPDATE`,
+          [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:post', folio.property_id)
+        if (folio.status === 'closed') throw Errors.conflict('folio.closed')
+
+        // Die Uebernachtungen des Nachtlaufs wie beim Fruehstueck: Konto der
+        // Logis, ohne Produkt und ohne Teil, nicht gegengebucht. Berechnete
+        // kommen mit, damit sie den Vorgang abweisen statt still zu fehlen.
+        const logis = await client.query<{
+          id: number; reservation_id: number; business_date: string; description: string
+          gross_cent: string; tax_rate_bp: number; tax_rule_id: number | null
+          invoice_id: number | null; extras: string }>(
+          `SELECT c.id, c.reservation_id, c.business_date::text, c.description, c.gross_cent,
+                  c.tax_rate_bp, c.tax_rule_id, c.invoice_id,
+                  COALESCE((SELECT sum(b.gross_cent) FROM charge b
+                             WHERE b.folio_id = c.folio_id
+                               AND b.reservation_id = c.reservation_id
+                               AND b.business_date = c.business_date
+                               AND b.package_part IS NOT NULL AND b.reverses_id IS NULL
+                               AND NOT EXISTS (SELECT 1 FROM charge x
+                                                WHERE x.reverses_id = b.id)), 0) AS extras
+             FROM charge c
+            WHERE c.folio_id = $1 AND c.reservation_id IS NOT NULL
+              AND c.package_part IS NULL AND c.product_id IS NULL
+              AND c.revenue_account = '8300'
+              AND (c.description LIKE 'Übernachtung %' OR c.description LIKE 'Uebernachtung %')
+              AND c.reverses_id IS NULL AND c.gross_cent > 0
+              AND NOT EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id)
+            ORDER BY c.business_date, c.id
+            FOR UPDATE OF c`, [folio.id])
+        if (logis.rowCount === 0) throw Errors.conflict('stayPrice.nothingOpen')
+        if (logis.rows.some(n => n.invoice_id !== null)) {
+          throw Errors.conflict('stayPrice.invoicedNight')
+        }
+        const reservierungen = new Set(logis.rows.map(n => n.reservation_id))
+        if (reservierungen.size > 1) throw Errors.conflict('stayPrice.multipleStays')
+        const reservationId = logis.rows[0]!.reservation_id
+        // Zwei Logiszeilen an einem Tag sind keine Nacht, sondern ein
+        // Nachtrag von Hand; welche davon der Preis ist, weiss nur die
+        // Rezeption.
+        if (new Set(logis.rows.map(n => n.business_date)).size !== logis.rows.length) {
+          throw Errors.conflict('stayPrice.ambiguousNight')
+        }
+
+        const gebucht = new Set(logis.rows.map(n => n.business_date))
+        const offenNaechte = (await client.query<{ date: string }>(
+          `SELECT date::text FROM reservation_night
+            WHERE reservation_id = $1 AND NOT posted ORDER BY date`,
+          [reservationId])).rows.map(r => r.date).filter(d => !gebucht.has(d))
+        const naechte = [...logis.rows.map(n => ({ datum: n.business_date, nacht: n })),
+                         ...offenNaechte.map(d => ({ datum: d, nacht: null }))]
+          .sort((a, b) => a.datum.localeCompare(b.datum))
+        const preise = preisJeNacht(gesamt, naechte.length)
+
+        const zeilen: Array<{ datum: string; text: string; brutto: number; satz: number
+                              regel: number | null; reverses: number | null }> = []
+        naechte.forEach(({ nacht }, i) => {
+          if (nacht === null) return
+          const neu = preise[i]! - Number(nacht.extras)
+          if (neu < 1) throw Errors.unprocessable('stayPrice.belowExtras')
+          if (neu === Number(nacht.gross_cent)) return
+          zeilen.push(
+            { datum: nacht.business_date, text: `Storno ${nacht.description}`,
+              brutto: -Number(nacht.gross_cent), satz: nacht.tax_rate_bp,
+              regel: nacht.tax_rule_id, reverses: nacht.id },
+            { datum: nacht.business_date, text: nacht.description, brutto: neu,
+              satz: nacht.tax_rate_bp, regel: nacht.tax_rule_id, reverses: null })
+        })
+
+        if (zeilen.length > 0) {
+          // Die Gegenbuchung uebernimmt den Steuerbetrag der Position, nicht
+          // einen neu gerechneten: sonst bliebe ein Cent Steuer stehen.
+          await client.query(
+            `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                                 net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                                 revenue_account, reservation_id, reverses_id, created_by)
+             SELECT $1, $2, z.datum, z.text, 1,
+                    CASE WHEN z.reverses IS NULL
+                         THEN z.brutto - round(z.brutto * z.satz / (10000.0 + z.satz))
+                         ELSE -o.net_cent END,
+                    CASE WHEN z.reverses IS NULL
+                         THEN round(z.brutto * z.satz / (10000.0 + z.satz))
+                         ELSE -o.tax_cent END,
+                    z.brutto, z.satz, z.regel, '8300', $3, z.reverses, $4
+               FROM unnest($5::date[], $6::text[], $7::bigint[], $8::int[], $9::bigint[],
+                           $10::bigint[])
+                    WITH ORDINALITY AS z(datum, text, brutto, satz, regel, reverses, ord)
+               LEFT JOIN charge o ON o.id = z.reverses
+              ORDER BY z.ord`,
+            [folio.property_id, folio.id, reservationId, principal.userId,
+             zeilen.map(z => z.datum), zeilen.map(z => z.text), zeilen.map(z => z.brutto),
+             zeilen.map(z => z.satz), zeilen.map(z => z.regel), zeilen.map(z => z.reverses)])
+        }
+
+        // Die Buchung zeigt danach denselben Preis wie das Folio.
+        await client.query(
+          `UPDATE reservation_night n SET price_cent = x.price
+             FROM unnest($2::date[], $3::bigint[]) AS x(date, price)
+            WHERE n.reservation_id = $1 AND n.date = x.date`,
+          [reservationId, naechte.map(n => n.datum), preise])
+
+        const result = { nights: naechte.length,
+                         corrected: zeilen.filter(z => z.reverses !== null).length,
+                         totalCent: gesamt }
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
