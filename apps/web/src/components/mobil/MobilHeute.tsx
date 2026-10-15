@@ -11,8 +11,8 @@ import { Fehler, Laedt } from '../Shell.tsx'
 import { VerzichtMarke } from '../Reinigungsverzicht.tsx'
 
 type Liste = 'arrivals' | 'departures' | 'inHouse'
-type Zeile = Omit<DailySheet['inHouse'][number], 'registered' | 'waivedDates'>
-  & { registered?: boolean; balanceCent?: number | null; expectedArrival?: string | null
+type Zeile = Omit<DailySheet['inHouse'][number], 'registered' | 'waivedDates' | 'atTerminal'>
+  & { registered?: boolean; atTerminal?: boolean; balanceCent?: number | null; expectedArrival?: string | null
       waivedDates?: string[] }
 
 /**
@@ -111,7 +111,11 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                   {r.waivedDates !== undefined && (
                     <VerzichtMarke dates={r.waivedDates} heute={d.date} />
                   )}
-                  {r.registered === false && (
+                  {r.atTerminal === true ? (
+                    <Marke farbe="bg-sky-100 text-sky-800">
+                      ⌛ {t('today.atTerminal')}
+                    </Marke>
+                  ) : r.registered === false && (
                     <Marke farbe="bg-amber-100 text-amber-900">
                       ⚠ {t('today.registrationMissing')}
                     </Marke>

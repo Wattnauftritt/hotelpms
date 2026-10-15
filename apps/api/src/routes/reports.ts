@@ -179,6 +179,19 @@ export function reportRoutes(app: FastifyInstance): void {
          * sehen, ohne jede Reservierung aufzuklappen (Sven, 12.10.2026);
          * der Index `cleaning_waiver_aktiv` traegt die Abfrage je Zeile.
          */
+        /*
+         * Fuellt der Gast den Meldeschein gerade am Terminal aus (Sven,
+         * 15.10.2026)? Die Rezeption darf den Check-in-Dialog dabei
+         * schliessen -- der Auftrag lebt auf dem Server, nicht im Dialog --
+         * und soll dann hier sehen, dass er laeuft und wann er fertig ist.
+         * Abgelaufene Auftraege zaehlen nicht: das Terminal fragt sie ueber
+         * dieselbe Bedingung ab und zeigt sie nicht mehr.
+         */
+        const amTerminal = `EXISTS (SELECT 1 FROM terminal_job j
+                                     WHERE j.reservation_id = r.id
+                                       AND j.kind IN ('registration_fill', 'registration_sign')
+                                       AND j.state IN ('pending', 'opened')
+                                       AND j.expires_at > now()) AS "atTerminal"`
         const verzicht = `ARRAY(SELECT w.business_date::text FROM cleaning_waiver w
                                  WHERE w.reservation_id = r.id AND w.withdrawn_at IS NULL
                                  ORDER BY w.business_date) AS "waivedDates"`
@@ -204,6 +217,7 @@ export function reportRoutes(app: FastifyInstance): void {
                   -- Was der Gast im Meldeformular angegeben hat (0099), damit
                   -- die Rezeption den Tag danach plant.
                   reg.expected_arrival AS "expectedArrival",
+                  ${amTerminal},
                   ${verzicht}
              ${von}
              LEFT JOIN registration reg ON reg.reservation_id = r.id
@@ -238,6 +252,7 @@ export function reportRoutes(app: FastifyInstance): void {
                    OR EXISTS (SELECT 1 FROM reservation_external_registration ext
                                WHERE ext.reservation_id = r.id
                                  AND ext.completed_at IS NOT NULL)) AS "registered",
+                  ${amTerminal},
                   ${verzicht}
              ${von}
             WHERE r.property_id = $1 AND r.status = 'InHouse'

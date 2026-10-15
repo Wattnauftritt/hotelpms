@@ -272,7 +272,12 @@ export function useSendTerminalJob(nachher: readonly unknown[]) {
   return useMutation({
     mutationFn: (body: AuftragsWunsch) =>
       api.post<{ jobRef: string }>('/v1/terminal-jobs', body),
-    onSettled: () => { void qc.invalidateQueries({ queryKey: nachher }) }
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: nachher })
+      // "Heute" zeigt den laufenden Auftrag an der Anreise; wer den
+      // Check-in-Dialog gleich danach schliesst, soll ihn dort schon sehen.
+      void qc.invalidateQueries({ queryKey: ['daily'] })
+    }
   })
 }
 
@@ -280,7 +285,10 @@ export function useCancelTerminalJob(nachher: readonly unknown[]) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (jobRef: string) => api.post(`/v1/terminal-jobs/${jobRef}/cancel`),
-    onSettled: () => { void qc.invalidateQueries({ queryKey: nachher }) }
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: nachher })
+      void qc.invalidateQueries({ queryKey: ['daily'] })
+    }
   })
 }
 

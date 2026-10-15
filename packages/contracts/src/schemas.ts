@@ -309,6 +309,8 @@ export const DailySheet = Type.Object({
       registered: Type.Boolean(),
       /** Voraussichtliche Ankunftszeit aus dem Meldeformular, Freitext. */
       expectedArrival: Type.Union([Type.String(), Type.Null()]),
+      /** Meldeformular oder Unterschrift ist gerade am Gaesteterminal offen. */
+      atTerminal: Type.Boolean(),
       /** Tage ohne Reinigung auf Wunsch des Gastes (0115), aufsteigend. */
       waivedDates: Type.Array(Type.String())
     })])),
@@ -317,6 +319,7 @@ export const DailySheet = Type.Object({
   inHouse: Type.Array(Type.Composite([
     DailyRow, Type.Object({
       registered: Type.Boolean(),
+      atTerminal: Type.Boolean(),
       waivedDates: Type.Array(Type.String())
     })])),
   /**
