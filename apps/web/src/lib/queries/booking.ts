@@ -753,6 +753,25 @@ export interface AddRoomBody {
 }
 
 /** Ein Zimmer zu einer bestehenden Gruppe, nicht als zweite Buchung. */
+/**
+ * Die Zimmer einer anderen Buchung in diese uebernehmen -- fuer eine Gruppe,
+ * die aus KWHotel in zwei Buchungen ankam (Sven, 15.10.2026).
+ */
+export function useMergeBooking() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ bookingRef, from }: { bookingRef: string; from: string }) =>
+      api.post<{ bookingRef: string; moved: string[] }>(
+        `/v1/bookings/${bookingRef}/merge`, { bookingRef: from }),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['booking'] })
+      for (const ref of r.moved) void qc.invalidateQueries({ queryKey: ['reservation', ref] })
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+      void qc.invalidateQueries({ queryKey: ['suche'] })
+    }
+  })
+}
+
 export function useAddBookingRoom(propertyId: number) {
   const qc = useQueryClient()
   const absicht = useAbsicht()

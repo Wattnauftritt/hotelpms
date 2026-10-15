@@ -2022,6 +2022,100 @@ export function reservationRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * **Zwei Buchungen zu einer zusammenfuehren** (Sven, 15.10.2026).
+   *
+   * Aus KWHotel kamen Gruppen in zwei Buchungen an: KWHotel setzt die
+   * Gruppennummer erst mit dem zweiten Zimmer, und wer beim ersten Import
+   * allein war, behielt seine eigene. Ein Neuimport haette das nachgezogen;
+   * Sven will stattdessen von Hand verknuepfen, nur wo ihm eine Gruppe
+   * auffaellt.
+   *
+   * **Die ganze Buchung, nicht ein Zimmer.** Haengt eine Gruppe an zwei
+   * Buchungen mit je mehreren Zimmern, bliebe beim Herausziehen eines
+   * einzelnen wieder eine halbe Gruppe zurueck. Geaendert wird nur, zu
+   * welcher Buchung die Zimmer gehoeren: Zeitraum, Zimmer, Preise, Gaeste,
+   * Folios und Meldescheine haengen an der Reservierung und bleiben. Die
+   * leere Buchung verschwindet; an ihr haengt sonst nichts.
+   *
+   * **Keine Kanalbuchung.** Ihre Nummer ist die, unter der der Kanal
+   * Aenderungen und Stornos schickt. Eine zusammengefuehrte Buchung haette
+   * danach zwei Herkuenfte, und die naechste Aenderung des Kanals traefe
+   * Zimmer, die er nie verkauft hat.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/bookings/:bookingRef/merge',
+    permission: 'reservation:write',
+    summary: 'Die Zimmer einer anderen Buchung in diese uebernehmen',
+    handler: async (req) => {
+      const { bookingRef } = req.params as { bookingRef: string }
+      const body = (req.body ?? {}) as { bookingRef?: unknown }
+      if (typeof body.bookingRef !== 'string' || body.bookingRef === '') {
+        throw Errors.validation({ bookingRef: ['field.required'] })
+      }
+      const quelleRef = body.bookingRef
+      if (quelleRef === bookingRef) throw Errors.unprocessable('booking.mergeSame')
+      const principal = req.principal as Principal
+
+      return tx(req.pool, req, async client => {
+        const b = await client.query<{
+          id: number; ref: string; property_id: number; source: string
+          external_reference: string | null; legacy_system: string | null
+          legacy_reference: string | null; booker_guest_id: number | null
+          booker_company_id: number | null }>(
+          `SELECT id, public_ref AS ref, property_id, source, external_reference,
+                  legacy_system, legacy_reference, booker_guest_id, booker_company_id
+             FROM booking WHERE public_ref = ANY($1::text[])
+            ORDER BY id FOR UPDATE`, [[bookingRef, quelleRef]])
+        const ziel = b.rows.find(x => x.ref === bookingRef)
+        const quelle = b.rows.find(x => x.ref === quelleRef)
+        if (ziel === undefined || quelle === undefined) throw Errors.notFound('res.booking')
+        rechtImHaus(principal, 'reservation:write', ziel.property_id)
+        rechtImHaus(principal, 'reservation:write', quelle.property_id)
+        // Die Zeilenrichtlinie trennt Mandanten, nicht Haeuser.
+        if (ziel.property_id !== quelle.property_id) {
+          throw Errors.unprocessable('booking.mergeOtherProperty')
+        }
+        if ([ziel, quelle].some(x => x.source === 'channel' || x.external_reference !== null)) {
+          throw Errors.unprocessable('booking.mergeChannel')
+        }
+
+        const umgezogen = await client.query<{
+          public_ref: string; status: ReservationStatus; arrival: string; departure: string
+          category_id: number; resource_id: number | null }>(
+          `UPDATE reservation SET booking_id = $1, updated_at = now()
+            WHERE booking_id = $2
+          RETURNING public_ref, status, arrival::text, departure::text,
+                    category_id, resource_id`, [ziel.id, quelle.id])
+        await client.query(`DELETE FROM booking WHERE id = $1`, [quelle.id])
+        /*
+         * Die KWHotel-Gruppennummer geht mit, wenn die Zielbuchung keine
+         * hat: sonst legte der naechste Import fuer neue Zimmer der Gruppe
+         * wieder eine eigene Buchung an. Der Besteller nur, wo keiner steht.
+         * Erst nach dem Loeschen, weil die Nummer je Haus eindeutig ist.
+         */
+        await client.query(
+          `UPDATE booking
+              SET legacy_system = CASE WHEN legacy_reference IS NULL THEN $2 ELSE legacy_system END,
+                  legacy_reference = COALESCE(legacy_reference, $3),
+                  booker_guest_id = COALESCE(booker_guest_id, $4),
+                  booker_company_id = COALESCE(booker_company_id, $5)
+            WHERE id = $1`,
+          [ziel.id, quelle.legacy_system, quelle.legacy_reference,
+           quelle.booker_guest_id, quelle.booker_company_id])
+
+        await emitEvents(client, ziel.property_id, 'reservation.changed',
+          umgezogen.rows.map(r => ({
+            reservationRef: r.public_ref, bookingRef, status: r.status,
+            arrival: r.arrival, departure: r.departure,
+            categoryId: r.category_id, resourceId: r.resource_id })))
+
+        return { bookingRef, moved: umgezogen.rows.map(r => r.public_ref) }
+      })
+    }
+  })
+
+  /**
    * Die ganze Gruppe in der Zeit verschieben.
    *
    * **Ein Versatz in Tagen, kein neuer Zeitraum.** Nach einzelnen

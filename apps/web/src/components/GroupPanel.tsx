@@ -1,6 +1,8 @@
 import { useState, type JSX } from 'react'
 import { useBooking, useShiftBooking, useAddBookingRoom, useChangeStay, istAusgebucht,
-         useReservationStatusAction, useSetPersons } from '../lib/queries/booking.js'
+         useReservationStatusAction, useSetPersons, useMergeBooking } from '../lib/queries/booking.js'
+import { useSuche, SUCHE_MIN_ZEICHEN } from '../lib/queries/suche.js'
+import { useEntprellt } from '../lib/suche.js'
 import { useT, useLocale, formatDate, formatMoney } from '../lib/i18n/index.js'
 import { daysBetween } from '../lib/dates.js'
 import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
@@ -370,6 +372,8 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
               </div>
               {dazu.isError && <Fehler error={dazu.error} />}
             </Abschnitt>
+
+            <AndereBuchung propertyId={propertyId} bookingRef={bookingRef} />
           </div>
         )}
     </Dialog>
@@ -383,6 +387,67 @@ export function GroupPanel({ propertyId, bookingRef, categories, onClose, onSele
                      onClose={() => setVerlauf(false)} />
     )}
     </>
+  )
+}
+
+/**
+ * Eine andere Buchung in diese Gruppe nehmen (Sven, 15.10.2026).
+ *
+ * Gesucht wird ueber die Suche des Plans, nach Name oder Nummer; was schon
+ * in dieser Buchung steht, faellt heraus. Uebernommen wird immer die ganze
+ * andere Buchung: haengt eine Gruppe an zwei Buchungen mit je mehreren
+ * Zimmern, bliebe sonst wieder eine halbe zurueck.
+ */
+function AndereBuchung({ propertyId, bookingRef }: {
+  propertyId: number; bookingRef: string
+}): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const [begriff, setBegriff] = useState('')
+  const entprellt = useEntprellt(begriff.trim())
+  const q = useSuche(propertyId, entprellt, 'reservation', 8)
+  const zusammen = useMergeBooking()
+  const treffer = (q.data?.reservations ?? []).filter(r => r.bookingRef !== bookingRef)
+  const gesucht = entprellt.length >= SUCHE_MIN_ZEICHEN && q.data !== undefined
+
+  return (
+    <Abschnitt titel={t('group.merge')} hinweis={t('group.mergeHint')}>
+      <input value={begriff} onChange={e => setBegriff(e.target.value)}
+             placeholder={t('group.mergeSearch')} aria-label={t('group.mergeSearch')}
+             className={`${FELD} max-w-sm`} />
+      {gesucht && treffer.length === 0 && (
+        <p className="text-xs text-neutral-500 mt-2">{t('group.mergeNone')}</p>
+      )}
+      {treffer.length > 0 && (
+        <ul className="mt-2 divide-y divide-neutral-100 text-sm">
+          {treffer.map(r => {
+            const name = [r.lastName, r.firstName].filter(Boolean).join(', ') || '—'
+            return (
+              <li key={r.reservationRef} className="flex items-center gap-3 py-1.5">
+                <span className="w-12 tabular-nums">{r.roomCode ?? '—'}</span>
+                <span className="grow truncate">{name}</span>
+                <span className="tabular-nums text-neutral-600 whitespace-nowrap">
+                  {formatDate(r.arrival, locale)} – {formatDate(r.departure, locale)}
+                </span>
+                <button type="button" disabled={zusammen.isPending}
+                        onClick={() => {
+                          if (confirm(t('group.mergeConfirm',
+                                        { ref: r.bookingRef, name }))) {
+                            zusammen.mutate({ bookingRef, from: r.bookingRef },
+                                            { onSuccess: () => setBegriff('') })
+                          }
+                        }}
+                        className="px-2 py-1 text-xs rounded-sm border border-neutral-300
+                                   disabled:opacity-50">
+                  {t('group.add')}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {zusammen.isError && <Fehler error={zusammen.error} />}
+    </Abschnitt>
   )
 }
 
