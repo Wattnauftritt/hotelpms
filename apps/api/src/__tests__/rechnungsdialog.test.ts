@@ -301,7 +301,7 @@ describe('Kontakt, Bank und Leitweg-ID (0164)', () => {
     expect(i.rows[0]!.issuer_snapshot).toMatchObject({
       iban: 'DE02120300000000202051', bic: 'BYLADEM1001', contactName: 'Rezeption',
       registrationId: kontakt.commercialRegister,
-      // Fuss der Rechnung und BT-85 (0176).
+      // Fuss der Rechnung und BT-85 (0177).
       accountHolder: 'Hanna Seerobbe', website: 'www.seerobbe.test' })
     expect(i.rows[0]!.recipient_snapshot).toMatchObject({ buyerReference: '04011000-12345-34' })
 

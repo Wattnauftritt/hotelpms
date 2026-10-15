@@ -52,7 +52,7 @@ interface RechnungOpts {
   ausgleichErste?: number
   // Zusatz je Position (0175), in Reihenfolge der Positionen.
   gaeste?: Array<string | null>
-  // Weitere Angaben in der Momentaufnahme des Ausstellers (0164, 0176).
+  // Weitere Angaben in der Momentaufnahme des Ausstellers (0164, 0177).
   aussteller?: Record<string, unknown>
 }
 
@@ -173,7 +173,7 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
   /**
    * Das Konto eines Einzelunternehmens laeuft auf den Inhaber. Steht im
    * Ueberweisungsformular des Gastes der Name des Hotels, meldet seine Bank
-   * bei der Empfaengerueberpruefung eine Abweichung (0176).
+   * bei der Empfaengerueberpruefung eine Abweichung (0177).
    */
   it('nennt als Kontoinhaber den hinterlegten, sonst das Haus', async () => {
     const bank = { iban: 'DE02120300000000202051', bic: 'BYLADEM1001', bankName: 'DKB' }

@@ -115,7 +115,7 @@ function payee(snapshot: { name?: string; iban?: string | null; bic?: string | n
                            bankName?: string | null
                            accountHolder?: string | null }): CiiPayee | null {
   if (!snapshot.iban) return null
-  // BT-85 ist der Name des Kontos, nicht der des Hotels (0176). Aeltere
+  // BT-85 ist der Name des Kontos, nicht der des Hotels (0177). Aeltere
   // Momentaufnahmen und Haeuser ohne Angabe behalten den Namen des Hauses.
   return { iban: snapshot.iban, bic: snapshot.bic ?? null,
            accountName: snapshot.accountHolder || snapshot.name || null,

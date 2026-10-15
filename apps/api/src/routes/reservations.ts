@@ -325,11 +325,18 @@ async function zimmerFehler(
  * dann auf fuenf Meldescheinen derselbe Name, obwohl in vier Zimmern andere
  * Leute schlafen, und § 30 BMG verlangt den tatsaechlichen Gast.
  *
- * **Nur vor dem Check-in.** Danach liegt der Meldeschein vor, und er ist
- * eine Erklaerung des Gastes ueber sich selbst. Wer den Hauptgast
- * nachtraeglich austauschte, liesse eine Unterschrift unter einem fremden
- * Namen stehen. Wer sich wirklich vertan hat, storniert den Meldeschein
- * nicht, sondern legt fuer die richtige Person einen an.
+ * **Bis zur Abreise, solange kein Meldeschein widerspricht.** Der
+ * Meldeschein ist eine Erklaerung des Gastes ueber sich selbst. Wer den
+ * Hauptgast austauschte, waehrend am Zimmer ein Meldeschein auf eine andere
+ * Person liegt, liesse eine Unterschrift unter einem fremden Namen stehen;
+ * das bleibt abgewiesen. Ohne Meldeschein am Zimmer aber gibt es nichts,
+ * dem der Wechsel widerspraeche. Genau das ist der Fall der Gruppe: der
+ * Gruppencheck-in (#313) checkt alle Zimmer unter dem Namen des Buchers
+ * ein, der Sammelmeldeschein haengt an einem Zimmer, und erst am
+ * Abreisetag steht fest, wer wo geschlafen hat -- und das muss auf die
+ * Rechnung (Sven, 15.10.2026). Bisher war der Wechsel ab dem Check-in
+ * gesperrt, und der Gastname des Zimmers liess sich nur noch im Gastprofil
+ * aendern, also fuer alle Zimmer des Buchers zugleich.
  *
  * **Nur ohne Rechnung.** Am Folio haengt der Rechnungsempfaenger. Ist
  * fakturiert, steht der Name auf einem Beleg mit Haertegrad 1, und ihn
@@ -345,7 +352,7 @@ async function setzeHauptgast(
   guestRef: string
 ): Promise<string> {
   if (res.status !== 'Inquired' && res.status !== 'Optional'
-      && res.status !== 'Confirmed') {
+      && res.status !== 'Confirmed' && res.status !== 'InHouse') {
     throw Errors.conflict('reservation.guestFixedAfterCheckIn',
       { status: res.status })
   }
@@ -353,6 +360,13 @@ async function setzeHauptgast(
   // Im Betrieb des Hauses, nicht nur im Kontext (M4, Sicherheitsaudit
   // 2026-10-11): wer in zwei Betrieben arbeitet, saehe sonst beide Gaeste.
   const guestId = await gastPerRefImBetrieb(client, res.property_id, guestRef)
+
+  const gemeldet = await client.query(
+    `SELECT 1 FROM registration
+      WHERE reservation_id = $1 AND guest_id <> $2 LIMIT 1`, [res.id, guestId])
+  if ((gemeldet.rowCount ?? 0) > 0) {
+    throw Errors.conflict('reservation.guestOnRegistration')
+  }
 
   const fakturiert = await client.query(
     `SELECT 1 FROM charge c
@@ -917,6 +931,28 @@ export async function aufenthalteVerlegen(
   }
   // Bis hierher kaeme die Schleife mit dem Bestand.
   const bisBestand = pruefFehler?.i ?? plaene.length
+
+  /*
+   * Vorab gebuchte Naechte (0176) fallen nicht still aus dem Aufenthalt.
+   * Weggenommen werden unten nur ungebuchte; eine gebuchte Nacht ab heute
+   * ausserhalb des neuen Zeitraums stuende danach im Folio, ohne dass der
+   * Gast sie schlaeft. Erst zuruecknehmen, dann kuerzen. Gebuchte Naechte
+   * vor heute bleiben wie bisher: sie hat der Gast geschlafen.
+   */
+  if (pruefFehler === null) {
+    const voraus = await client.query<{ ab: string }>(
+      `SELECT to_char(min(n.date), 'DD.MM.YYYY') AS ab
+         FROM unnest($1::bigint[], $2::date[], $3::date[]) AS x(id, arrival, departure)
+         JOIN reservation_night n ON n.reservation_id = x.id AND n.posted
+                                 AND (n.date < x.arrival OR n.date >= x.departure)
+        WHERE n.date >= (SELECT COALESCE(max(b.date), current_date) FROM business_day b
+                          WHERE b.property_id = n.property_id)
+       HAVING count(*) > 0`,
+      [plaene.map(p => p.r.id), plaene.map(p => p.neuAnkunft), plaene.map(p => p.neuAbreise)])
+    if (voraus.rowCount !== 0) {
+      throw Errors.unprocessable('stay.postedAhead', { date: voraus.rows[0]!.ab })
+    }
+  }
 
   const zaehlt = plaene.map((p, i) => ({
     vorher: gruppen[i]!.alt ?? p.r.category_id,
@@ -1727,7 +1763,7 @@ export function reservationRoutes(app: FastifyInstance): void {
 
         const naechte = await client.query(
           `SELECT date::text, price_cent AS "priceCent",
-                  rate_plan_id AS "ratePlanId"
+                  rate_plan_id AS "ratePlanId", posted
              FROM reservation_night WHERE reservation_id = $1 ORDER BY date`,
           [kopf.id])
 
@@ -1776,6 +1812,12 @@ export function reservationRoutes(app: FastifyInstance): void {
           cleaningWaiver,
           guestFolder,
           guestRequests,
+          // Vorab gebucht (0176): eine gebuchte Nacht, die der Gast noch
+          // nicht geschlafen hat. Daran haengt der Knopf zum Zuruecknehmen.
+          postedAhead: naechte.rows.some(n => {
+            const x = n as { date: string; posted: boolean }
+            return x.posted && x.date >= geschaeftstag
+          }),
           totalCent: naechte.rows.reduce(
             (sum, n) => sum + Number((n as { priceCent: number }).priceCent), 0)
         }

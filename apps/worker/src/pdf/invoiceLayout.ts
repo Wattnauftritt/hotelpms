@@ -63,7 +63,7 @@ export interface InvoiceLayoutInput {
   title?: string
   /** Logo des Hauses (0170), oben links. PNG oder JPEG. */
   logo?: { mime: string; bytes: Uint8Array } | null
-  /** Webseite des Hauses fuer den Fuss (0176). Kein Teil des XML. */
+  /** Webseite des Hauses fuer den Fuss (0177). Kein Teil des XML. */
   website?: string | null
 }
 

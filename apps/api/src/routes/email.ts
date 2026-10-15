@@ -233,7 +233,7 @@ export function emailRoutes(
                   i.due_on::text AS due_iso,
                   -- Die Bankverbindung, die auf der Rechnung steht, nicht die
                   -- heutige des Hauses (Momentaufnahme, 0164).
-                  -- Der Kontoinhaber, wo das Haus ihn angibt (0176): die Bank des
+                  -- Der Kontoinhaber, wo das Haus ihn angibt (0177): die Bank des
                   -- Gastes gleicht ihn mit dem Konto ab.
                   COALESCE(NULLIF(i.issuer_snapshot->>'accountHolder', ''),
                            i.issuer_snapshot->>'name') AS payee, i.issuer_snapshot->>'iban' AS iban,

@@ -76,9 +76,10 @@ export interface Zusatz {
 
 /**
  * Wann der Hauptgast noch wechseln darf -- dieselbe Regel wie in der
- * Schnittstelle (`setzeHauptgast`): vor dem Check-in.
+ * Schnittstelle (`setzeHauptgast`): bis zur Abreise. Ob ein Meldeschein am
+ * Zimmer widerspricht, weiss nur die Schnittstelle; dann kommt ihre Meldung.
  */
-const GAST_WECHSELBAR = new Set(['Inquired', 'Optional', 'Confirmed'])
+const GAST_WECHSELBAR = new Set(['Inquired', 'Optional', 'Confirmed', 'InHouse'])
 
 export interface PlanZimmer {
   id: number
@@ -401,9 +402,9 @@ export function BuchungVerlegen({ verlegung, zimmer, belegtVon, laeuft, fehler,
                     ? <span className="text-neutral-400">{t('plan.noGuest')}</span>
                     : verlegung.gast}
                 </span>
-                {/* Nach dem Check-in liegt der Meldeschein vor, und die
-                    Schnittstelle weist den Wechsel ab. Der Satz steht hier
-                    statt einer Fehlermeldung nach dem Klick. */}
+                {/* Nach der Abreise weist die Schnittstelle den Wechsel ab.
+                    Der Satz steht hier statt einer Fehlermeldung nach dem
+                    Klick. */}
                 {GAST_WECHSELBAR.has(verlegung.status) ? (
                   <button type="button" onClick={() => setGastWechsel(true)}
                           className="text-xs text-neutral-500 underline">
@@ -411,7 +412,7 @@ export function BuchungVerlegen({ verlegung, zimmer, belegtVon, laeuft, fehler,
                   </button>
                 ) : (
                   <span className="text-xs text-neutral-500">
-                    {t('verlegen.guestFixed')}
+                    {t('verlegen.guestFixedAfterStay')}
                   </span>
                 )}
               </div>

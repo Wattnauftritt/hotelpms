@@ -308,7 +308,7 @@ const KONTAKT_FELDER = {
   contactName: 'invoice_contact_name', phone: 'invoice_phone', email: 'invoice_email',
   iban: 'bank_iban', bic: 'bank_bic', bankName: 'bank_name',
   commercialRegister: 'commercial_register',
-  // Fuss der Rechnung (0176): wem das Konto gehoert, und wo das Haus im
+  // Fuss der Rechnung (0177): wem das Konto gehoert, und wo das Haus im
   // Netz steht.
   accountHolder: 'bank_account_holder', website: 'invoice_website'
 } as const
