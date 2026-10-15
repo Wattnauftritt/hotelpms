@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { withTransaction, type DbContext, type Pool, type PoolClient } from '@hotelpms/db'
-import { buildInvoiceCii, ciiFindings, ciiTotals,
+import { buildInvoiceCii, ciiFindings, ciiTotals, lineWithGuest,
          type CiiFinding, type CiiInvoice, type CiiLine, type CiiParty, type CiiPayee }
   from '@hotelpms/domain'
 import { renderInvoicePdf } from '../pdf/invoiceLayout.js'
@@ -63,6 +63,7 @@ interface InvoiceRow {
   preceding_number: string | null
   preceding_issued_on: string | null
   partial_reversal: boolean
+  line_guests: Record<string, string> | null
 }
 
 interface ChargeRow {
@@ -116,9 +117,9 @@ function payee(snapshot: { name?: string; iban?: string | null; bic?: string | n
            accountName: snapshot.name ?? null, bankName: snapshot.bankName ?? null }
 }
 
-function line(c: ChargeRow, ausgleich: number): CiiLine {
+function line(c: ChargeRow, ausgleich: number, gast: string | undefined): CiiLine {
   return {
-    name: c.description,
+    name: lineWithGuest(c.description, gast),
     quantity: c.quantity,
     // Das Fruehstueck im Zimmerpreis liegt auf demselben Konto, ist aber
     // kein Tag Beherbergung (Migration 0158).
@@ -220,7 +221,7 @@ async function load(
             i.service_from::text, i.service_to::text,
             i.issuer_snapshot, i.recipient_snapshot, i.totals, i.due_on::text,
             o.number AS preceding_number, o.issued_on::text AS preceding_issued_on,
-            i.partial_reversal
+            i.partial_reversal, i.line_guests
        FROM invoice i
        LEFT JOIN invoice o ON o.id = i.reverses_id
       WHERE i.id = $1`, [invoiceId])
@@ -238,6 +239,11 @@ async function load(
   const ausgleich = row.totals.lineAdjustCent ?? {}
   const ausgleichFuer = (x: ChargeRow): number => Number(
     ausgleich[String(row.kind === 'credit_note' ? x.reverses_id ?? x.id : x.id)] ?? 0)
+  // Zimmer und Gast je Position (0175), ebenso aus der Momentaufnahme und
+  // auf der Stornorechnung unter der Buchung des Originals.
+  const gaeste = row.line_guests ?? {}
+  const gastFuer = (x: ChargeRow): string | undefined =>
+    gaeste[String(row.kind === 'credit_note' ? x.reverses_id ?? x.id : x.id)]
 
   /*
    * Bereits vereinnahmt und dieser Rechnung zugeordnet (BT-113).
@@ -279,7 +285,7 @@ async function load(
     buyerReference: (row.recipient_snapshot as { buyerReference?: string | null })
       .buyerReference ?? null,
     payee: payee(row.issuer_snapshot as Parameters<typeof payee>[0]),
-    lines: [...c.rows.map(x => line(x, ausgleichFuer(x))), ...d.rows.map(depositLine)],
+    lines: [...c.rows.map(x => line(x, ausgleichFuer(x), gastFuer(x))), ...d.rows.map(depositLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,

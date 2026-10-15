@@ -9,7 +9,7 @@ import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
          breakfastPerNight, splitNight, alignLineNets, taxAdjustToGross,
-         preisJeNacht } from '@hotelpms/domain'
+         preisJeNacht, guestLineLabel, lineWithGuest } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
@@ -678,6 +678,52 @@ function mitAbweichung(vorgabe: Party, abweichung: RechnungsAuftrag['recipient']
 }
 
 /**
+ * Zimmer und Gast je Position (Sven, 15.10.2026; Migration 0175).
+ *
+ * Eine Firma bucht mehrere Zimmer in einer Buchung und bekommt eine
+ * Sammelrechnung; jede Position eines Zimmers muss dann sagen, wer dort
+ * uebernachtet hat. Gast ist der Hauptgast der Reservierung, aus der die
+ * Buchung stammt -- dort steht er aus Buchung und Meldeschein.
+ *
+ * Nur, wo es etwas sagt: die Rechnung umfasst mehrere Zimmer, oder sie geht
+ * an jemand anderen als den Gast (eine Firma, der Ehepartner). Die eigene
+ * Rechnung eines Einzelgastes nennt ihn schon als Empfaenger; ihn in jeder
+ * Zeile zu wiederholen, waere nur laenger.
+ */
+async function gastJePosition(
+  client: PoolClient,
+  folio: { guest_id: number | null; company_id: number | null },
+  charges: ReadonlyArray<{ id: number; reservation_id: number | null }>
+): Promise<Record<string, string>> {
+  const ids = [...new Set(charges.map(c => c.reservation_id)
+    .filter((x): x is number => x !== null))]
+  if (ids.length === 0) return {}
+  const r = await client.query<{ id: number; guest_id: number | null
+                                 room: string | null; name: string | null }>(
+    `SELECT r.id, r.primary_guest_id AS guest_id, u.code AS room,
+            NULLIF(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name
+       FROM reservation r
+       LEFT JOIN guest g ON g.id = r.primary_guest_id
+       LEFT JOIN resource u ON u.id = r.resource_id
+      WHERE r.id = ANY($1::bigint[])`, [ids])
+  const mehrere = ids.length > 1
+  const zusatz = new Map<number, string>()
+  for (const x of r.rows) {
+    const fremd = folio.company_id !== null
+      || (x.guest_id !== null && Number(x.guest_id) !== Number(folio.guest_id))
+    if (!mehrere && !fremd) continue
+    const label = guestLineLabel(x.room, x.name)
+    if (label !== '') zusatz.set(Number(x.id), label)
+  }
+  const out: Record<string, string> = {}
+  for (const c of charges) {
+    const label = c.reservation_id === null ? undefined : zusatz.get(Number(c.reservation_id))
+    if (label !== undefined) out[String(c.id)] = label
+  }
+  return out
+}
+
+/**
  * Was eine Rechnung waere, ohne sie festzuschreiben.
  *
  * Dieselbe Rechnung fuer die Vorschau im Dialog und fuer das Festschreiben:
@@ -697,18 +743,20 @@ async function rechnungsEntwurf(
   const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
                                        gross_cent: number
                                        description: string; quantity: number
-                                       business_date: string }>(
+                                       business_date: string
+                                       reservation_id: number | null }>(
     auftrag.chargeIds?.length
       ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                business_date::text FROM charge c
+                business_date::text, reservation_id FROM charge c
           WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2)
             AND ${OHNE_KURTAXE} ORDER BY id`
       : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                business_date::text FROM charge c
+                business_date::text, reservation_id FROM charge c
           WHERE folio_id = $1 AND invoice_id IS NULL AND ${OHNE_KURTAXE}
           ORDER BY id`,
     auftrag.chargeIds?.length ? [folio.id, auftrag.chargeIds] : [folio.id])
   if (charges.rowCount === 0) throw Errors.unprocessable('folio.nothingOpen')
+  const lineGuests = await gastJePosition(client, folio, charges.rows)
 
   /*
    * Offene Anzahlungen dieses Folios: Verrechnung als eigene Position
@@ -961,7 +1009,7 @@ async function rechnungsEntwurf(
   const dueOn = offenCent > 0 ? auftrag.dueOn ?? ziel.rows[0]!.vorgabe : null
 
   return {
-    charges: charges.rows, deposits: deposits.rows, totals, vorausbezahlt,
+    charges: charges.rows, deposits: deposits.rows, totals, vorausbezahlt, lineGuests,
     issuer: prop.rows[0] ?? {}, recipient: empfaenger, defaultRecipient: vorgabe,
     businessDate, serviceFrom, serviceTo, dueOn, offenCent, heute
   }
@@ -979,7 +1027,8 @@ function rechnungsMaengel(
     issuer: e.issuer,
     recipient: e.recipient,
     lines: e.charges.map(c => ({
-      description: c.description, quantity: c.quantity,
+      description: lineWithGuest(c.description, e.lineGuests[String(c.id)]),
+      quantity: c.quantity,
       netCent: Number(c.net_cent), rateBp: c.tax_rate_bp })),
     // An der Grenze zur Kleinbetragsrechnung (§ 33 UStDV) entscheidet der
     // Gesamtbetrag der Leistung, wie er gefordert wird -- mit Rundung, aber
@@ -2728,9 +2777,11 @@ export function billingRoutes(app: FastifyInstance): void {
         const cn = await client.query<{ id: number; public_ref: string; number: string }>(
           `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
                                 service_from, service_to, issuer_snapshot,
-                                recipient_snapshot, totals, reverses_id, created_by)
+                                recipient_snapshot, totals, reverses_id, created_by,
+                                line_guests)
            VALUES ($1,$2,$3,$12::date,$4::date,'credit_note',$5::date,$6::date,
-                   $7,$8,$9,$10,$11)
+                   $7,$8,$9,$10,$11,
+                   (SELECT o.line_guests FROM invoice o WHERE o.id = $10))
            RETURNING id, public_ref, number`,
           [original.property_id, original.folio_id, num.rows[0]!.next_invoice_number,
            businessDate, original.service_from, original.service_to,
@@ -3046,7 +3097,8 @@ export function billingRoutes(app: FastifyInstance): void {
         const einstellung = await rechnungseinstellung(client, folio.property_id)
         return {
           lines: e.charges.map(c => ({
-            chargeId: c.id, description: c.description, quantity: c.quantity,
+            chargeId: c.id, description: lineWithGuest(c.description, e.lineGuests[String(c.id)]),
+            quantity: c.quantity,
             businessDate: c.business_date, grossCent: Number(c.gross_cent),
             taxRateBp: c.tax_rate_bp })),
           depositsApplied: e.deposits.map(d => ({
@@ -3139,15 +3191,16 @@ export function billingRoutes(app: FastifyInstance): void {
           `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
                                 service_from, service_to,
                                 issuer_snapshot, recipient_snapshot, totals, created_by,
-                                due_on)
+                                due_on, line_guests)
            VALUES ($1,$2,$3,$13::date,$4::date,$5,$6::date,$7::date,$8,$9,$10,$11,
-                   $12::date)
+                   $12::date,$14)
            RETURNING id, public_ref, number`,
           [folio.property_id, folio.id, num.rows[0]!.next_invoice_number, businessDate,
            body.kind ?? 'final', serviceFrom, serviceTo,
            JSON.stringify(e.issuer), JSON.stringify(e.recipient),
            JSON.stringify(totals), principal.userId,
-           body.paid !== undefined ? null : e.dueOn, e.heute])
+           body.paid !== undefined ? null : e.dueOn, e.heute,
+           JSON.stringify(e.lineGuests)])
 
         // charge.invoice_id wird einmal gesetzt und nie geaendert. Die Tabelle
         // ist append-only, daher hebt der Trigger hier gezielt ab: das

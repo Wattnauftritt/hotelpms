@@ -88,6 +88,24 @@ export interface CiiLine {
   rateBp: BasisPoints
 }
 
+/**
+ * Zimmer und Name des Uebernachtenden als Zusatz einer Position, etwa
+ * "Zimmer 12, Max Mustermann". Leer, wenn beides fehlt.
+ *
+ * Steht im Namen der Position (BT-153) und nicht in einer Anmerkung: auf
+ * dem Blatt wie im XML soll die Zeile ohne Nachschlagen sagen, wem sie
+ * gehoert -- eine Firma rechnet die Reise je Mitarbeiter ab.
+ */
+export function guestLineLabel(room: string | null, name: string | null): string {
+  return [room ? `Zimmer ${room}` : null, name?.trim() || null]
+    .filter((x): x is string => x !== null).join(', ')
+}
+
+/** Positionstext mit Zusatz; Vorschau und Beleg setzen ihn gleich zusammen. */
+export function lineWithGuest(description: string, label: string | undefined): string {
+  return label ? `${description} – ${label}` : description
+}
+
 export interface CiiInvoice {
   /** BT-1. */
   number: string
