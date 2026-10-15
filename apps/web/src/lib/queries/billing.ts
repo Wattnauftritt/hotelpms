@@ -502,6 +502,26 @@ export function useSplitBreakfast(folioRef: string) {
   })
 }
 
+/**
+ * Aufenthaltspreis nachtraeglich korrigieren: neuer Gesamtpreis, gleich auf
+ * die Naechte verteilt; die Logis traegt den Unterschied, Fruehstueck bleibt.
+ */
+export function useCorrectStayPrice(folioRef: string) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (totalCent: number) =>
+      api.post<{ nights: number; corrected: number; totalCent: number }>(
+        `/v1/folios/${folioRef}/stay-price`, { totalCent },
+        { 'idempotency-key': absicht.schluessel(String(totalCent)) }),
+    onSuccess: () => {
+      absicht.erledigt()
+      void qc.invalidateQueries({ queryKey: ['folio', folioRef] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview', folioRef] })
+    }
+  })
+}
+
 /** Uebernachtungen kuenftig auf dieses Folio (oder zurueck aufs Gastfolio). */
 export function useAccommodationRouting(folioRef: string) {
   const qc = useQueryClient()
