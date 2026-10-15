@@ -169,6 +169,16 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
             {t('group.panelTitle')}: {r.bookingRef}
           </button>
         )}
+        {/* An einer Einzelbuchung derselbe Weg, aber unter dem Namen der
+            Handlung: eine Gruppe aus KWHotel kam teils als zwei
+            Einzelbuchungen an (Sven, 15.10.2026), und zusammenfuehren
+            laesst sie sich nur ueber die Gruppenmaske. */}
+        {onOpenGroup !== undefined && r.bookingRooms === 1 && AENDERBAR.has(r.status) && (
+          <button onClick={() => onOpenGroup(r.bookingRef)}
+                  className="text-xs text-neutral-600 underline decoration-dotted">
+            {t('group.merge')}
+          </button>
+        )}
         <div className="grow" />
         {/* Vorn, weil es die haeufigste Handlung an einer Buchung ist: ein
             Name falsch geschrieben, ein Tag mehr, ein anderer Preis. Nicht

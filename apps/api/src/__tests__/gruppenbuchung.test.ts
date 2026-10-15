@@ -830,3 +830,91 @@ describe('Gruppe einchecken', () => {
     expect((await einchecken(refs[0]!, { groupReservationRefs: 'alle' })).statusCode).toBe(422)
   })
 })
+
+/**
+ * Eine Gruppe, die aus KWHotel in zwei Buchungen ankam, fuehrt die
+ * Rezeption von Hand zusammen (Sven, 15.10.2026). Geaendert wird nur die
+ * Zugehoerigkeit; alles, was an der Reservierung haengt, bleibt.
+ */
+describe('Buchungen zusammenfuehren', () => {
+  const zusammen = (ziel: string, quelle: unknown) =>
+    app.inject({ method: 'POST', headers: auth, url: `/v1/bookings/${ziel}/merge`,
+                 payload: { bookingRef: quelle } })
+  async function buchung(ids: number[]): Promise<{ bookingRef: string; refs: string[] }> {
+    const r = await buchen({ rooms: zimmerListe(ids, dz) })
+    expect(r.statusCode, r.body).toBe(201)
+    const b = JSON.parse(r.body) as { bookingRef: string
+                                      reservations: Array<{ reservationRef: string }> }
+    return { bookingRef: b.bookingRef, refs: b.reservations.map(x => x.reservationRef) }
+  }
+
+  it('nimmt alle Zimmer der anderen Buchung und laesst ihre Daten stehen', async () => {
+    const a = await buchung(dzZimmer.slice(0, 2))
+    const b = await buchung(dzZimmer.slice(2, 4))
+    const vorher = await owner.query(
+      `SELECT public_ref, arrival, departure, resource_id, primary_guest_id, status
+         FROM reservation ORDER BY id`)
+
+    const r = await zusammen(a.bookingRef, b.bookingRef)
+    expect(r.statusCode, r.body).toBe(200)
+    expect(JSON.parse(r.body).moved).toEqual(b.refs)
+
+    const g = await app.inject({ method: 'GET', headers: auth, url: `/v1/bookings/${a.bookingRef}` })
+    expect((JSON.parse(g.body) as { rooms: unknown[] }).rooms).toHaveLength(4)
+    expect((await owner.query(`SELECT 1 FROM booking WHERE public_ref = $1`, [b.bookingRef]))
+      .rowCount).toBe(0)
+    const nachher = await owner.query(
+      `SELECT public_ref, arrival, departure, resource_id, primary_guest_id, status
+         FROM reservation ORDER BY id`)
+    expect(nachher.rows).toEqual(vorher.rows)
+    // Bestand unberuehrt: es zieht nichts um, es haengt nur anders zusammen.
+    expect(await bestand(dz)).toBe(4)
+
+    // Der Gruppen-Check-in kennt danach alle vier.
+    const ein = await app.inject({ method: 'POST', headers: auth,
+      url: `/v1/reservations/${a.refs[0]!}/check-in`,
+      payload: { groupReservationRefs: [...a.refs, ...b.refs] } })
+    expect(ein.statusCode, ein.body).toBe(200)
+  })
+
+  it('nimmt die KWHotel-Gruppennummer mit, wenn die Zielbuchung keine hat', async () => {
+    const a = await buchung([dzZimmer[0]!])
+    const b = await buchung([dzZimmer[1]!])
+    await owner.query(`UPDATE booking SET legacy_system = 'kwhotel', legacy_reference = '77'
+                        WHERE public_ref = $1`, [b.bookingRef])
+    expect((await zusammen(a.bookingRef, b.bookingRef)).statusCode).toBe(200)
+    const z = await owner.query<{ legacy_reference: string }>(
+      `SELECT legacy_reference FROM booking WHERE public_ref = $1`, [a.bookingRef])
+    expect(z.rows[0]!.legacy_reference).toBe('77')
+  })
+
+  it('weist eine Kanalbuchung, dieselbe Buchung und eine unbekannte ab', async () => {
+    const a = await buchung([dzZimmer[0]!])
+    const b = await buchung([dzZimmer[1]!])
+    await owner.query(`UPDATE booking SET external_reference = 'BDC-1' WHERE public_ref = $1`,
+      [b.bookingRef])
+    const kanal = await zusammen(a.bookingRef, b.bookingRef)
+    expect(kanal.statusCode).toBe(422)
+    expect(JSON.parse(kanal.body).code).toBe('booking.mergeChannel')
+    expect(JSON.parse((await zusammen(a.bookingRef, a.bookingRef)).body).code)
+      .toBe('booking.mergeSame')
+    expect((await zusammen(a.bookingRef, 'GIBTESNICHT')).statusCode).toBe(404)
+    expect((await zusammen(a.bookingRef, 42)).statusCode).toBe(422)
+    expect(await anzahlBuchungen()).toEqual({ buchungen: 2, reservierungen: 2 })
+  })
+
+  it('weist eine Buchung aus einem anderen Haus ab', async () => {
+    const a = await buchung([dzZimmer[0]!])
+    // Zweites Haus im selben Account: die Zeilenrichtlinie laesst es durch.
+    const fremd = await owner.query<{ id: number }>(
+      `INSERT INTO property (account_id, code, name, address_line1, postal_code, city, country)
+       VALUES ($1, 'GH', 'Gaestehaus', 'Hafenstr. 2', '25813', 'Husum', 'DE') RETURNING id`,
+      [fx.accountId])
+    const g = await owner.query<{ public_ref: string }>(
+      `INSERT INTO booking (property_id) VALUES ($1) RETURNING public_ref`, [fremd.rows[0]!.id])
+    const r = await zusammen(a.bookingRef, g.rows[0]!.public_ref)
+    expect([403, 404, 422]).toContain(r.statusCode)
+    expect((await owner.query(`SELECT 1 FROM booking WHERE public_ref = $1`,
+      [g.rows[0]!.public_ref])).rowCount).toBe(1)
+  })
+})
