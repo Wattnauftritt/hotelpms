@@ -49,6 +49,8 @@ interface RechnungOpts {
   // Ausgleich im Netto der ersten Position (alignLineNets), wie ihn das
   // Festschreiben in die Momentaufnahme schreibt.
   ausgleichErste?: number
+  // Zusatz je Position (0175), in Reihenfolge der Positionen.
+  gaeste?: Array<string | null>
 }
 
 /**
@@ -118,13 +120,16 @@ async function rechnung(
   const inv = await owner.query<{ id: number; public_ref: string }>(
     `INSERT INTO invoice (property_id, folio_id, number, issued_on, business_date, kind,
                           service_from, service_to,
-                          issuer_snapshot, recipient_snapshot, totals)
+                          issuer_snapshot, recipient_snapshot, totals, line_guests)
      VALUES ($1,$2,$3,'2026-10-04'::date,'2026-10-04'::date,$4,
-             '2026-10-01'::date,'2026-10-03'::date,$5,$6,$7)
+             '2026-10-01'::date,'2026-10-03'::date,$5,$6,$7,$8)
      RETURNING id, public_ref`,
     [propertyId, folioId, `2026-${String(Date.now() % 100000).padStart(5, '0')}`,
      opts.kind ?? 'final', JSON.stringify(aussteller.rows[0]),
-     JSON.stringify(empfaenger), JSON.stringify(totals)])
+     JSON.stringify(empfaenger), JSON.stringify(totals),
+     JSON.stringify(Object.fromEntries((opts.gaeste ?? [])
+       .map((g, i) => [String(chargeIds[i]), g])
+       .filter((x): x is [string, string] => x[1] !== null)))])
 
   await owner.query(`UPDATE charge SET invoice_id = $2 WHERE id = ANY($1)`,
     [chargeIds, inv.rows[0]!.id])
@@ -148,6 +153,18 @@ async function beleg(invoiceId: number): Promise<Beleg | null> {
 }
 
 describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
+  it('nennt je Position Zimmer und Gast aus der Momentaufnahme', async () => {
+    const r = await rechnung({
+      positionen: [{ netCent: 10_000 }, { netCent: 10_000 }, { netCent: 1_000 }],
+      gaeste: ['Zimmer 101, Anna Berger', 'Zimmer 102, Jan Petersen', null]
+    })
+    await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    const d = (await beleg(r.id))!
+    expect(d.xml).toContain('<ram:Name>Uebernachtung – Zimmer 101, Anna Berger</ram:Name>')
+    expect(d.xml).toContain('<ram:Name>Uebernachtung – Zimmer 102, Jan Petersen</ram:Name>')
+    expect(d.xml).toContain('<ram:Name>Uebernachtung</ram:Name>')
+  })
+
   it('erzeugt PDF und XML zu einer vollstaendigen Rechnung', async () => {
     const r = await rechnung({
       positionen: [
