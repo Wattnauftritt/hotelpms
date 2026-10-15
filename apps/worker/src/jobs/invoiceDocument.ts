@@ -111,10 +111,14 @@ function party(snapshot: Partial<CiiParty>): CiiParty {
 
 /** Bankverbindung aus der Momentaufnahme des Ausstellers (0164). */
 function payee(snapshot: { name?: string; iban?: string | null; bic?: string | null
-                           bankName?: string | null }): CiiPayee | null {
+                           bankName?: string | null
+                           accountHolder?: string | null }): CiiPayee | null {
   if (!snapshot.iban) return null
+  // BT-85 ist der Name des Kontos, nicht der des Hotels (0176). Aeltere
+  // Momentaufnahmen und Haeuser ohne Angabe behalten den Namen des Hauses.
   return { iban: snapshot.iban, bic: snapshot.bic ?? null,
-           accountName: snapshot.name ?? null, bankName: snapshot.bankName ?? null }
+           accountName: snapshot.accountHolder || snapshot.name || null,
+           bankName: snapshot.bankName ?? null }
 }
 
 function line(c: ChargeRow, ausgleich: number, gast: string | undefined): CiiLine {
@@ -144,7 +148,7 @@ function depositLine(d: DepositLedgerRow): CiiLine {
   // zurueckgezahlte Teil, zum Satz, zu dem er versteuert wurde.
   if (d.kind === 'refunded') {
     return {
-      name: `Rueckzahlung der Anzahlung (Rechnung ${d.deposit_number} `
+      name: `Rückzahlung der Anzahlung (Rechnung ${d.deposit_number} `
         + `vom ${d.deposit_issued_on})`,
       quantity: 1, netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp
     }
@@ -311,9 +315,9 @@ async function load(
     notes: row.preceding_number === null ? []
       : row.partial_reversal ? [
         `Diese Rechnungskorrektur berichtigt die Anzahlungsrechnung ${row.preceding_number} `
-          + `vom ${datumDe(row.preceding_issued_on!)} um die zurueckgezahlte Anzahlung.`]
+          + `vom ${datumDe(row.preceding_issued_on!)} um die zurückgezahlte Anzahlung.`]
       : [`Diese Stornorechnung hebt die Rechnung ${row.preceding_number} vom `
-          + `${datumDe(row.preceding_issued_on!)} vollstaendig auf.`]
+          + `${datumDe(row.preceding_issued_on!)} vollständig auf.`]
   }
   // Das Logo von heute, nicht aus der Momentaufnahme: es ist Gestaltung,
   // keine Angabe der Rechnung. Ein einmal gezeichneter Beleg behaelt das
@@ -362,9 +366,10 @@ async function zeichne(
     invoice,
     publicRef: row.public_ref,
     logo: geladen.logo ?? null,
+    website: (row.issuer_snapshot as { website?: string | null }).website ?? null,
     ...(row.partial_reversal ? { title: 'Rechnungskorrektur' } : {}),
     missingXmlNote: xml === null
-      ? 'Dieser Beleg traegt keine elektronische Rechnung nach EN 16931: '
+      ? 'Dieser Beleg trägt keine elektronische Rechnung nach EN 16931: '
         + findings.map(f => `${f.de} (${f.rule})`).join(' ')
       : null
   })

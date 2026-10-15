@@ -51,6 +51,8 @@ interface RechnungOpts {
   ausgleichErste?: number
   // Zusatz je Position (0175), in Reihenfolge der Positionen.
   gaeste?: Array<string | null>
+  // Weitere Angaben in der Momentaufnahme des Ausstellers (0164, 0176).
+  aussteller?: Record<string, unknown>
 }
 
 /**
@@ -125,7 +127,7 @@ async function rechnung(
              '2026-10-01'::date,'2026-10-03'::date,$5,$6,$7,$8)
      RETURNING id, public_ref`,
     [propertyId, folioId, `2026-${String(Date.now() % 100000).padStart(5, '0')}`,
-     opts.kind ?? 'final', JSON.stringify(aussteller.rows[0]),
+     opts.kind ?? 'final', JSON.stringify({ ...aussteller.rows[0], ...opts.aussteller }),
      JSON.stringify(empfaenger), JSON.stringify(totals),
      JSON.stringify(Object.fromEntries((opts.gaeste ?? [])
        .map((g, i) => [String(chargeIds[i]), g])
@@ -163,6 +165,23 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
     expect(d.xml).toContain('<ram:Name>Uebernachtung – Zimmer 101, Anna Berger</ram:Name>')
     expect(d.xml).toContain('<ram:Name>Uebernachtung – Zimmer 102, Jan Petersen</ram:Name>')
     expect(d.xml).toContain('<ram:Name>Uebernachtung</ram:Name>')
+  })
+
+  /**
+   * Das Konto eines Einzelunternehmens laeuft auf den Inhaber. Steht im
+   * Ueberweisungsformular des Gastes der Name des Hotels, meldet seine Bank
+   * bei der Empfaengerueberpruefung eine Abweichung (0176).
+   */
+  it('nennt als Kontoinhaber den hinterlegten, sonst das Haus', async () => {
+    const bank = { iban: 'DE02120300000000202051', bic: 'BYLADEM1001', bankName: 'DKB' }
+    const mit = await rechnung({ aussteller: { ...bank, accountHolder: 'Hanna Seerobbe' } })
+    const ohne = await rechnung({ aussteller: bank })
+    await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    expect((await beleg(mit.id))!.xml)
+      .toContain('<ram:AccountName>Hanna Seerobbe</ram:AccountName>')
+    const name = (await owner.query<{ name: string }>(
+      `SELECT name FROM property WHERE id = $1`, [fx.propertyId])).rows[0]!.name
+    expect((await beleg(ohne.id))!.xml).toContain(`<ram:AccountName>${name}</ram:AccountName>`)
   })
 
   it('erzeugt PDF und XML zu einer vollstaendigen Rechnung', async () => {
@@ -495,7 +514,7 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
       expect(ergebnis.failed).toEqual([])
       const d = (await beleg(k.rows[0]!.id))!
       expect(d.xml).toContain('<ram:TypeCode>381</ram:TypeCode>')
-      expect(d.xml).toContain(`Rueckzahlung der Anzahlung (Rechnung ${dep.number}`)
+      expect(d.xml).toContain(`Rückzahlung der Anzahlung (Rechnung ${dep.number}`)
       expect(d.xml).toContain('<ram:GrandTotalAmount>80.00</ram:GrandTotalAmount>')
       expect(d.xml).toContain(`<ram:IssuerAssignedID>${dep.number}</ram:IssuerAssignedID>`)
       expect(d.xml).toContain('berichtigt die Anzahlungsrechnung')

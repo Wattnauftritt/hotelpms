@@ -233,7 +233,10 @@ export function emailRoutes(
                   i.due_on::text AS due_iso,
                   -- Die Bankverbindung, die auf der Rechnung steht, nicht die
                   -- heutige des Hauses (Momentaufnahme, 0164).
-                  i.issuer_snapshot->>'name' AS payee, i.issuer_snapshot->>'iban' AS iban,
+                  -- Der Kontoinhaber, wo das Haus ihn angibt (0176): die Bank des
+                  -- Gastes gleicht ihn mit dem Konto ab.
+                  COALESCE(NULLIF(i.issuer_snapshot->>'accountHolder', ''),
+                           i.issuer_snapshot->>'name') AS payee, i.issuer_snapshot->>'iban' AS iban,
                   i.issuer_snapshot->>'bic' AS bic, i.issuer_snapshot->>'bankName' AS bank_name,
                   (i.totals->>'grossCent')::bigint AS gross_cent,
                   -- Anzahlungs- und Stornorechnungen sind nie offen; wie in
