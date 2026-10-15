@@ -469,23 +469,59 @@ describe('Hauptgast je Zimmer setzen', () => {
   })
 
   /**
-   * Nach dem Check-in liegt der Meldeschein vor, und er ist eine Erklaerung
-   * des Gastes ueber sich selbst. Den Hauptgast dann auszutauschen liesse
-   * eine Unterschrift unter einem fremden Namen stehen.
+   * Im Haus geht der Wechsel noch: beim Gruppencheck-in stehen alle Zimmer
+   * auf dem Bucher, und wer wo geschlafen hat, steht oft erst am Abreisetag
+   * fest -- und gehoert auf die Rechnung (Sven, 15.10.2026).
    */
-  it('wechselt den Gast nach dem Check-in nicht mehr', async () => {
+  it('wechselt den Gast eines eingecheckten Zimmers ohne Meldeschein', async () => {
+    const { refs } = await gruppe()
+    const ein = await app.inject({ method: 'POST', headers: auth,
+      url: `/v1/reservations/${refs[1]!}/check-in` })
+    expect(ein.statusCode, ein.body).toBe(200)
+
+    const r = await patch(refs[1]!, { guestRef: await gast('Mueller') })
+    expect(r.statusCode, r.body).toBe(200)
+
+    const z = await owner.query<{ last_name: string }>(
+      `SELECT g.last_name FROM reservation r JOIN guest g ON g.id = r.primary_guest_id
+        WHERE r.public_ref = $1`, [refs[1]!])
+    expect(z.rows[0]!.last_name).toBe('Mueller')
+  })
+
+  /**
+   * Liegt am Zimmer ein Meldeschein auf eine andere Person, ist er eine
+   * Erklaerung dieser Person ueber sich selbst. Den Hauptgast dann
+   * auszutauschen liesse eine Unterschrift unter einem fremden Namen stehen.
+   */
+  it('wechselt den Gast nicht gegen den Meldeschein des Zimmers', async () => {
     const { refs } = await gruppe()
     const ein = await app.inject({ method: 'POST', headers: auth,
       url: `/v1/reservations/${refs[0]!}/check-in` })
     expect(ein.statusCode, ein.body).toBe(200)
+    await owner.query(
+      `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
+                                 planned_departure, is_foreign, destroy_after)
+       SELECT r.property_id, r.id, r.primary_guest_id, r.arrival, r.departure,
+              false, r.departure + 365
+         FROM reservation r WHERE r.public_ref = $1`, [refs[0]!])
 
     const r = await patch(refs[0]!, { guestRef: await gast('Mueller') })
     expect(r.statusCode).toBe(409)
+    expect(r.body).toContain('reservation.guestOnRegistration')
 
     const z = await owner.query<{ last_name: string }>(
       `SELECT g.last_name FROM reservation r JOIN guest g ON g.id = r.primary_guest_id
         WHERE r.public_ref = $1`, [refs[0]!])
     expect(z.rows[0]!.last_name).toBe('Petersen')
+  })
+
+  it('wechselt den Gast nach der Abreise nicht mehr', async () => {
+    const { refs } = await gruppe()
+    await owner.query(
+      `UPDATE reservation SET status = 'CheckedOut' WHERE public_ref = $1`, [refs[2]!])
+    const r = await patch(refs[2]!, { guestRef: await gast('Mueller') })
+    expect(r.statusCode).toBe(409)
+    expect(r.body).toContain('reservation.guestFixedAfterCheckIn')
   })
 
   /**

@@ -325,11 +325,18 @@ async function zimmerFehler(
  * dann auf fuenf Meldescheinen derselbe Name, obwohl in vier Zimmern andere
  * Leute schlafen, und § 30 BMG verlangt den tatsaechlichen Gast.
  *
- * **Nur vor dem Check-in.** Danach liegt der Meldeschein vor, und er ist
- * eine Erklaerung des Gastes ueber sich selbst. Wer den Hauptgast
- * nachtraeglich austauschte, liesse eine Unterschrift unter einem fremden
- * Namen stehen. Wer sich wirklich vertan hat, storniert den Meldeschein
- * nicht, sondern legt fuer die richtige Person einen an.
+ * **Bis zur Abreise, solange kein Meldeschein widerspricht.** Der
+ * Meldeschein ist eine Erklaerung des Gastes ueber sich selbst. Wer den
+ * Hauptgast austauschte, waehrend am Zimmer ein Meldeschein auf eine andere
+ * Person liegt, liesse eine Unterschrift unter einem fremden Namen stehen;
+ * das bleibt abgewiesen. Ohne Meldeschein am Zimmer aber gibt es nichts,
+ * dem der Wechsel widerspraeche. Genau das ist der Fall der Gruppe: der
+ * Gruppencheck-in (#313) checkt alle Zimmer unter dem Namen des Buchers
+ * ein, der Sammelmeldeschein haengt an einem Zimmer, und erst am
+ * Abreisetag steht fest, wer wo geschlafen hat -- und das muss auf die
+ * Rechnung (Sven, 15.10.2026). Bisher war der Wechsel ab dem Check-in
+ * gesperrt, und der Gastname des Zimmers liess sich nur noch im Gastprofil
+ * aendern, also fuer alle Zimmer des Buchers zugleich.
  *
  * **Nur ohne Rechnung.** Am Folio haengt der Rechnungsempfaenger. Ist
  * fakturiert, steht der Name auf einem Beleg mit Haertegrad 1, und ihn
@@ -345,7 +352,7 @@ async function setzeHauptgast(
   guestRef: string
 ): Promise<string> {
   if (res.status !== 'Inquired' && res.status !== 'Optional'
-      && res.status !== 'Confirmed') {
+      && res.status !== 'Confirmed' && res.status !== 'InHouse') {
     throw Errors.conflict('reservation.guestFixedAfterCheckIn',
       { status: res.status })
   }
@@ -353,6 +360,13 @@ async function setzeHauptgast(
   // Im Betrieb des Hauses, nicht nur im Kontext (M4, Sicherheitsaudit
   // 2026-10-11): wer in zwei Betrieben arbeitet, saehe sonst beide Gaeste.
   const guestId = await gastPerRefImBetrieb(client, res.property_id, guestRef)
+
+  const gemeldet = await client.query(
+    `SELECT 1 FROM registration
+      WHERE reservation_id = $1 AND guest_id <> $2 LIMIT 1`, [res.id, guestId])
+  if ((gemeldet.rowCount ?? 0) > 0) {
+    throw Errors.conflict('reservation.guestOnRegistration')
+  }
 
   const fakturiert = await client.query(
     `SELECT 1 FROM charge c
