@@ -859,7 +859,9 @@ export type CreateCompany = Static<typeof CreateCompany>
 export const ReservationNight = Type.Object({
   date: Type.String(),
   priceCent: Cent,
-  ratePlanId: Type.Union([Type.Integer(), Type.Null()])
+  ratePlanId: Type.Union([Type.Integer(), Type.Null()]),
+  /** Schon aufs Folio gebucht, vom Nachtlauf oder vorab (0176). */
+  posted: Type.Boolean()
 })
 
 export const ReservationOccupant = Type.Object({
@@ -971,6 +973,11 @@ export const ReservationDetail = Type.Object({
   canceledAt: Type.Union([Type.String(), Type.Null()]),
   folioRef: Type.Union([Type.String(), Type.Null()]),
   nights: Type.Array(ReservationNight),
+  /**
+   * Eine Nacht ab dem Geschaeftstag ist schon gebucht: der Aufenthalt wurde
+   * beim Check-in vorab gebucht (0176) und laesst sich zuruecknehmen.
+   */
+  postedAhead: Type.Boolean(),
   occupants: Type.Array(ReservationOccupant),
   totalCent: Cent,
   onlineCheckin: Type.Optional(OnlineCheckinStatus),

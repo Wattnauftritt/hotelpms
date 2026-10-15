@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CleaningWaiverView, ReservationDetail } from '@hotelpms/contracts'
 import { useReservation, usePatchReservationNotes, usePatchReservationShortNote,
          useReservationStatusAction, useSetRoomFixed, useSetBreakfastDeclined,
-         useSendConfirmation } from '../lib/queries/booking.js'
+         useSendConfirmation, useStayPosting } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
@@ -373,6 +373,11 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
               {t('plan.openFolio')}
             </button>
           : <span className="text-sm text-neutral-400">{t('plan.noFolio')}</span>}
+        {r.folioRef !== null && (
+          <VorabBuchen reservationRef={r.reservationRef}
+                       offen={r.status === 'InHouse' && r.nights.some(n => !n.posted)}
+                       vorab={r.postedAhead} />
+        )}
       </section>
 
       {/* Anzahlung und Zahlungslink am Aufenthalt: vereinbart wird sie bei
@@ -487,6 +492,43 @@ function NotizFeld({ reservationRef, notes }: {
       </div>
       {speichern.isError && <div className="mt-2"><Fehler error={speichern.error} /></div>}
     </section>
+  )
+}
+
+/**
+ * Aufenthalt beim Check-in vorab buchen (0176), fuer den Gast, der sofort
+ * zahlt und die Rechnung will. Nur angeboten, wo es etwas zu tun gibt: offene
+ * Naechte bei einem Gast im Haus, oder schon vorab gebuchte zum
+ * Zuruecknehmen. Ohne beides kein Knopf.
+ */
+function VorabBuchen({ reservationRef, offen, vorab }: {
+  reservationRef: string; offen: boolean; vorab: boolean
+}): JSX.Element | null {
+  const t = useT()
+  const aktion = useStayPosting(reservationRef)
+  if (!offen && !vorab) return null
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {offen && (
+        <button onClick={() => { if (confirm(t('plan.postStayConfirm'))) aktion.mutate('post-stay') }}
+                disabled={aktion.isPending}
+                className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('plan.postStay')}
+        </button>
+      )}
+      {vorab && (
+        <button onClick={() => {
+                  if (confirm(t('plan.unpostStayConfirm'))) aktion.mutate('unpost-stay')
+                }}
+                disabled={aktion.isPending}
+                className="text-xs px-2 py-1 rounded-sm border border-neutral-300
+                           hover:bg-neutral-50 disabled:opacity-40">
+          {t('plan.unpostStay')}
+        </button>
+      )}
+      {aktion.isError && <div className="basis-full"><Fehler error={aktion.error} /></div>}
+    </div>
   )
 }
 
