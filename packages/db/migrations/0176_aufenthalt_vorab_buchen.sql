@@ -23,13 +23,17 @@
 --    die gegengebuchte Zeile, liess die Nacht aus, und die Kurtaxe fehlte
 --    still. Die Stornorechnung legt neben jede Gegenbuchung eine neue offene
 --    Zeile; die zaehlt weiter, dort bucht also nichts doppelt.
+--
+-- Neu angelegt, deshalb mit `pg_temp` zuletzt im Suchpfad wie jede
+-- SECURITY-DEFINER-Funktion: die Fassung aus 0089 bekam das spaeter per
+-- ALTER, und das DROP nimmt es mit.
 -- ---------------------------------------------------------------------------
 
 DROP FUNCTION post_city_tax(bigint, date);
 
 CREATE FUNCTION post_city_tax(p_property bigint, p_date date,
                               p_reservation bigint DEFAULT NULL)
-RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE n integer;
 BEGIN
   PERFORM assert_property_in_context(p_property);
