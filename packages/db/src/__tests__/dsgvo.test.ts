@@ -350,16 +350,19 @@ describe('Befund 5 und 7: die Loeschung erreicht alles', () => {
       `INSERT INTO outbound_email (property_id, kind, to_email, to_name, subject,
                                    body_text, invoice_id, status, created_at, redacted_at)
        VALUES ($1,'invoice','h.musterfrau@example.de','Hannelore Musterfrau',
-               'Ihre Rechnung','',$2,'sent', now() - interval '100 days', now())`,
+               'Rechnung 2026-000001 – Musterfrau, HRS 204949532','',$2,'sent',
+               now() - interval '100 days', now())`,
       [fx.propertyId, i.rows[0]!.id])
 
     await alsMandant(owner, fx.accountId, fx.propertyId, q =>
       q(`SELECT guest_erase_one($1)`, [gastId]))
 
-    const r = await owner.query<{ to_email: string; to_name: string | null }>(
-      `SELECT to_email, to_name FROM outbound_email`)
+    const r = await owner.query<{ to_email: string; to_name: string | null; subject: string }>(
+      `SELECT to_email, to_name, subject FROM outbound_email`)
     expect(r.rows[0]!.to_email).toBe('entfernt@invalid')
     expect(r.rows[0]!.to_name).toBeNull()
+    // Seit 0174 ist der Betreff frei und kann einen Namen tragen.
+    expect(r.rows[0]!.subject).toBe('entfernt')
   })
 
   it('fasst einen Gast aus einem fremden Account nicht an', async () => {

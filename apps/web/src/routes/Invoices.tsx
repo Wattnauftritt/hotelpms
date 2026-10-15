@@ -11,6 +11,7 @@ import { today } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { OffenePosten } from '../components/OffenePosten.tsx'
 import { ZahlwegWahl, type Zahlweg } from '../components/ZahlwegWahl.tsx'
+import { BetreffFeld } from '../components/BetreffFeld.tsx'
 
 /**
  * Rechnungen: Liste, Beleg, Versand (B5 bis B7 aus Dokument 20).
@@ -95,8 +96,9 @@ function Versand(
   const online = useOnline()
   const senden = useSendInvoice(propertyId)
   const [to, setTo] = useState('')
+  const [betreff, setBetreff] = useState('')
   const [zahlweg, setZahlweg] = useState<Zahlweg>({ transfer: false, paymentLink: false })
-  const wie = offen ? zahlweg : {}
+  const wie = { ...(offen ? zahlweg : {}), subject: betreff }
 
   // 409 heisst hier nicht "kaputt", sondern "schon heraus". Ein zweiter
   // Versand muss ausdruecklich gewollt sein -- ein zweiter Klick ist
@@ -113,6 +115,7 @@ function Versand(
                className="border border-neutral-300 rounded-sm px-2 py-1 w-72" />
         <div className="text-xs text-neutral-500 mt-0.5">{t('inv.send.toHint')}</div>
       </label>
+      <BetreffFeld wert={betreff} setWert={setBetreff} />
       {offen && <ZahlwegWahl wert={zahlweg} setWert={setZahlweg} />}
 
       <div className="flex flex-wrap items-center gap-2">

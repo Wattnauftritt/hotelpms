@@ -1330,3 +1330,7 @@ Tests in `payments.test.ts` (Abschnitt Stripe Connect).
 ### Verfahrensdokumentation — **erledigt**
 
 [`36-verfahrensdokumentation.md`](36-verfahrensdokumentation.md): Vorlage nach dem Muster von AWV und DStV. Was das System tut, steht ausgefüllt; was nur das Haus weiß (Verantwortliche, Kasse, Rhythmus der Übergabe, Vier-Augen-Prinzip), ist markiert. Ein Haus übernimmt sie und lässt sie von der Steuerberatung abnehmen.
+
+### Eigener Betreff für die Rechnungsmail — **erledigt**
+
+Sven, 15.10.2026: Portale wie HRS ordnen eine Rechnung nur zu, wenn ihre Buchungsnummer im Betreff steht. `POST /v1/invoices/{ref}/send` nimmt deshalb `subject` an; Versand in der Rechnungsliste und Rechnungsdialog haben das Feld „Betreff“, leer bleibt der übliche. Der Betreff muss die Rechnungsnummer tragen, als Text oder als `{nummer}`, das ersetzt wird — so bleibt die Mail erkennbar die Rechnung und wird kein freies Anschreiben aus der Domain des Hauses. Steuerzeichen und mehr als 200 Zeichen werden abgewiesen, weil ein Zeilenumbruch eine zweite Kopfzeile wäre. Der Rumpf bleibt die Vorlage. Weil ein frei getippter Betreff einen Namen oder eine Buchungsnummer tragen kann, leert `guest_email_redact()` ihn seit Migration 0174 mit Adresse und Rumpf.

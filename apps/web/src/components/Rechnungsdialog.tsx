@@ -11,6 +11,7 @@ import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler } from './Shell.tsx'
 import { ZahlwegWahl, type Zahlweg } from './ZahlwegWahl.tsx'
+import { BetreffFeld } from './BetreffFeld.tsx'
 
 /**
  * Der Rechnungsdialog (Sven, 13.10.2026).
@@ -65,6 +66,7 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
   const [zahlart, setZahlart] = useState('')
   const [mail, setMail] = useState<string | null>(null)
   const [mailAn, setMailAn] = useState(false)
+  const [betreff, setBetreff] = useState('')
   const [zahlweg, setZahlweg] = useState<Zahlweg>({ transfer: false, paymentLink: false })
   // Ein Schluessel je Dialog: ein zweiter Klick verbraucht keine zweite Nummer.
   const [schluessel] = useState(newIdempotencyKey)
@@ -108,7 +110,7 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
     const inv = await festschreiben.mutateAsync({ auftrag, key: schluessel })
     if (mailAn) {
       const an = (mail ?? v.recipientEmail ?? '').trim()
-      senden.mutate({ invoiceRef: inv.invoiceRef, to: an,
+      senden.mutate({ invoiceRef: inv.invoiceRef, to: an, subject: betreff,
                       ...(bezahlt ? {} : zahlweg) })
     }
   }
@@ -237,6 +239,7 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
                  aria-label={t('inv.send.to')}
                  className="border border-neutral-300 rounded-sm px-2 py-1 text-sm w-72" />
         )}
+        {mailAn && <BetreffFeld wert={betreff} setWert={setBetreff} />}
         {mailAn && !bezahlt && <ZahlwegWahl wert={zahlweg} setWert={setZahlweg} />}
       </div>
 
