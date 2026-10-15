@@ -270,6 +270,7 @@ export interface RechnungsKontakt {
   contactName: string | null; phone: string | null; email: string | null
   iban: string | null; bic: string | null; bankName: string | null
   commercialRegister: string | null
+  accountHolder: string | null; website: string | null
 }
 
 export interface Rechnungseinstellung {

@@ -307,7 +307,10 @@ const KUERZEL = /^[A-Z0-9]{1,6}$/
 const KONTAKT_FELDER = {
   contactName: 'invoice_contact_name', phone: 'invoice_phone', email: 'invoice_email',
   iban: 'bank_iban', bic: 'bank_bic', bankName: 'bank_name',
-  commercialRegister: 'commercial_register'
+  commercialRegister: 'commercial_register',
+  // Fuss der Rechnung (0177): wem das Konto gehoert, und wo das Haus im
+  // Netz steht.
+  accountHolder: 'bank_account_holder', website: 'invoice_website'
 } as const
 type KontaktFeld = keyof typeof KONTAKT_FELDER
 
@@ -952,7 +955,8 @@ async function rechnungsEntwurf(
             commercial_register AS "registrationId", invoice_contact_name AS "contactName",
             invoice_phone AS phone,
             invoice_email AS email, invoice_email AS "electronicAddress",
-            bank_iban AS iban, bank_bic AS bic, bank_name AS "bankName"
+            bank_iban AS iban, bank_bic AS bic, bank_name AS "bankName",
+            bank_account_holder AS "accountHolder", invoice_website AS website
        FROM property WHERE id = $1`, [folio.property_id])
   const recipient = folio.company_id
     ? await client.query<Party>(
@@ -2444,7 +2448,8 @@ export function billingRoutes(app: FastifyInstance): void {
                   commercial_register AS "registrationId", invoice_contact_name AS "contactName",
                   invoice_phone AS phone,
                   invoice_email AS email, invoice_email AS "electronicAddress",
-                  bank_iban AS iban, bank_bic AS bic, bank_name AS "bankName"
+                  bank_iban AS iban, bank_bic AS bic, bank_name AS "bankName",
+            bank_account_holder AS "accountHolder", invoice_website AS website
              FROM property WHERE id = $1`, [folio.property_id])
         const recipient = folio.company_id
           ? await client.query<Party>(

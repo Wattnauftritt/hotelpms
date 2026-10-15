@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { withTransaction, type DbContext, type Pool, type PoolClient } from '@hotelpms/db'
-import { buildInvoiceCii, ciiFindings, ciiTotals, lineWithGuest,
+import { buildInvoiceCii, ciiFindings, ciiTotals, groupInvoiceLines,
+         type InvoiceLineSource,
          type CiiFinding, type CiiInvoice, type CiiLine, type CiiParty, type CiiPayee }
   from '@hotelpms/domain'
 import { renderInvoicePdf } from '../pdf/invoiceLayout.js'
@@ -111,21 +112,43 @@ function party(snapshot: Partial<CiiParty>): CiiParty {
 
 /** Bankverbindung aus der Momentaufnahme des Ausstellers (0164). */
 function payee(snapshot: { name?: string; iban?: string | null; bic?: string | null
-                           bankName?: string | null }): CiiPayee | null {
+                           bankName?: string | null
+                           accountHolder?: string | null }): CiiPayee | null {
   if (!snapshot.iban) return null
+  // BT-85 ist der Name des Kontos, nicht der des Hotels (0177). Aeltere
+  // Momentaufnahmen und Haeuser ohne Angabe behalten den Namen des Hauses.
   return { iban: snapshot.iban, bic: snapshot.bic ?? null,
-           accountName: snapshot.name ?? null, bankName: snapshot.bankName ?? null }
+           accountName: snapshot.accountHolder || snapshot.name || null,
+           bankName: snapshot.bankName ?? null }
 }
 
-function line(c: ChargeRow, ausgleich: number, gast: string | undefined): CiiLine {
+/**
+ * Rang einer Buchung auf der Rechnung: Uebernachtung vor Fruehstueck vor
+ * allem anderen (Sven, 15.10.2026). Aeltere Fruehstuecksbuchungen tragen
+ * kein `package_part`; fuer sie entscheidet der Text.
+ */
+function rang(c: ChargeRow): number {
+  if (c.package_part === 'breakfast_food') return 1
+  if (c.package_part === 'breakfast_drinks') return 2
+  if (c.package_part === 'inclusion') return 3
+  if (/^Fr(ü|ue)hst(ü|ue)ck Getr/.test(c.description)) return 2
+  if (/^Fr(ü|ue)hst(ü|ue)ck/.test(c.description)) return 1
+  if (c.revenue_account === KONTO_LOGIS) return 0
+  return 4
+}
+
+function line(c: ChargeRow, ausgleich: number, gast: string | undefined): InvoiceLineSource {
   return {
-    name: lineWithGuest(c.description, gast),
+    description: c.description,
+    businessDate: c.business_date,
+    guest: gast,
     quantity: c.quantity,
     // Das Fruehstueck im Zimmerpreis liegt auf demselben Konto, ist aber
     // kein Tag Beherbergung (Migration 0158).
     unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
     netCent: Number(c.net_cent) + ausgleich,
-    rateBp: c.tax_rate_bp
+    rateBp: c.tax_rate_bp,
+    rank: rang(c)
   }
 }
 
@@ -144,7 +167,7 @@ function depositLine(d: DepositLedgerRow): CiiLine {
   // zurueckgezahlte Teil, zum Satz, zu dem er versteuert wurde.
   if (d.kind === 'refunded') {
     return {
-      name: `Rueckzahlung der Anzahlung (Rechnung ${d.deposit_number} `
+      name: `Rückzahlung der Anzahlung (Rechnung ${d.deposit_number} `
         + `vom ${d.deposit_issued_on})`,
       quantity: 1, netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp
     }
@@ -285,7 +308,10 @@ async function load(
     buyerReference: (row.recipient_snapshot as { buyerReference?: string | null })
       .buyerReference ?? null,
     payee: payee(row.issuer_snapshot as Parameters<typeof payee>[0]),
-    lines: [...c.rows.map(x => line(x, ausgleichFuer(x), gastFuer(x))), ...d.rows.map(depositLine)],
+    // Je Leistung ueber die Naechte zusammengefasst, Uebernachtung zuerst
+    // (groupInvoiceLines). Blatt und XML lesen dieselbe Liste.
+    lines: [...groupInvoiceLines(c.rows.map(x => line(x, ausgleichFuer(x), gastFuer(x)))),
+            ...d.rows.map(depositLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,
@@ -311,9 +337,9 @@ async function load(
     notes: row.preceding_number === null ? []
       : row.partial_reversal ? [
         `Diese Rechnungskorrektur berichtigt die Anzahlungsrechnung ${row.preceding_number} `
-          + `vom ${datumDe(row.preceding_issued_on!)} um die zurueckgezahlte Anzahlung.`]
+          + `vom ${datumDe(row.preceding_issued_on!)} um die zurückgezahlte Anzahlung.`]
       : [`Diese Stornorechnung hebt die Rechnung ${row.preceding_number} vom `
-          + `${datumDe(row.preceding_issued_on!)} vollstaendig auf.`]
+          + `${datumDe(row.preceding_issued_on!)} vollständig auf.`]
   }
   // Das Logo von heute, nicht aus der Momentaufnahme: es ist Gestaltung,
   // keine Angabe der Rechnung. Ein einmal gezeichneter Beleg behaelt das
@@ -362,9 +388,10 @@ async function zeichne(
     invoice,
     publicRef: row.public_ref,
     logo: geladen.logo ?? null,
+    website: (row.issuer_snapshot as { website?: string | null }).website ?? null,
     ...(row.partial_reversal ? { title: 'Rechnungskorrektur' } : {}),
     missingXmlNote: xml === null
-      ? 'Dieser Beleg traegt keine elektronische Rechnung nach EN 16931: '
+      ? 'Dieser Beleg trägt keine elektronische Rechnung nach EN 16931: '
         + findings.map(f => `${f.de} (${f.rule})`).join(' ')
       : null
   })

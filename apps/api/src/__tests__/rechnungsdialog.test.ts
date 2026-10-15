@@ -252,7 +252,8 @@ describe('Kontakt, Bank und Leitweg-ID (0164)', () => {
   const kontakt = {
     contactName: 'Rezeption', phone: '+49 4721 1234', email: 'rechnung@seerobbe.test',
     iban: 'de02 1203 0000 0000 2020 51', bic: 'byladem1001', bankName: 'DKB',
-    commercialRegister: 'HRB 1234 Amtsgericht Tostedt'
+    commercialRegister: 'HRB 1234 Amtsgericht Tostedt',
+    accountHolder: 'Hanna Seerobbe', website: 'www.seerobbe.test'
   }
   const setzen = (contact: unknown) => app.inject({
     method: 'PUT', url: `/v1/properties/${fx.propertyId}/invoice-settings`,
@@ -299,7 +300,9 @@ describe('Kontakt, Bank und Leitweg-ID (0164)', () => {
       `SELECT issuer_snapshot, recipient_snapshot FROM invoice`)
     expect(i.rows[0]!.issuer_snapshot).toMatchObject({
       iban: 'DE02120300000000202051', bic: 'BYLADEM1001', contactName: 'Rezeption',
-      registrationId: kontakt.commercialRegister })
+      registrationId: kontakt.commercialRegister,
+      // Fuss der Rechnung und BT-85 (0177).
+      accountHolder: 'Hanna Seerobbe', website: 'www.seerobbe.test' })
     expect(i.rows[0]!.recipient_snapshot).toMatchObject({ buyerReference: '04011000-12345-34' })
 
     // Die Bank des Hauses aendert die ausgestellte Rechnung nicht mehr.

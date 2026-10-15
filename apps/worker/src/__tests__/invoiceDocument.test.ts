@@ -36,7 +36,8 @@ beforeEach(async () => {
 
 interface RechnungOpts {
   positionen?: Array<{ description?: string; netCent: number; rateBp?: number
-                       quantity?: number; account?: string }>
+                       quantity?: number; account?: string
+                       datum?: string; teil?: string }>
   mitEmpfaenger?: boolean
   kind?: 'final' | 'interim' | 'deposit' | 'credit_note'
   propertyId?: number
@@ -51,6 +52,8 @@ interface RechnungOpts {
   ausgleichErste?: number
   // Zusatz je Position (0175), in Reihenfolge der Positionen.
   gaeste?: Array<string | null>
+  // Weitere Angaben in der Momentaufnahme des Ausstellers (0164, 0177).
+  aussteller?: Record<string, unknown>
 }
 
 /**
@@ -81,10 +84,12 @@ async function rechnung(
       + (i === 0 ? opts.ausgleichErste ?? 0 : 0))
     const c = await owner.query<{ id: number }>(
       `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
-                           net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account)
-       VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [propertyId, folioId, `2026-10-0${i + 1}`, p.description ?? 'Uebernachtung',
-       p.quantity ?? 1, netto, steuer, netto + steuer, rateBp, p.account ?? '8300'])
+                           net_cent, tax_cent, gross_cent, tax_rate_bp, revenue_account,
+                           package_part)
+       VALUES ($1,$2,$3::date,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      [propertyId, folioId, p.datum ?? `2026-10-0${i + 1}`, p.description ?? 'Uebernachtung',
+       p.quantity ?? 1, netto, steuer, netto + steuer, rateBp, p.account ?? '8300',
+       p.teil ?? null])
     chargeIds.push(c.rows[0]!.id)
   }
   for (const zs of opts.zusaetzlicheSummen ?? []) {
@@ -125,7 +130,7 @@ async function rechnung(
              '2026-10-01'::date,'2026-10-03'::date,$5,$6,$7,$8)
      RETURNING id, public_ref`,
     [propertyId, folioId, `2026-${String(Date.now() % 100000).padStart(5, '0')}`,
-     opts.kind ?? 'final', JSON.stringify(aussteller.rows[0]),
+     opts.kind ?? 'final', JSON.stringify({ ...aussteller.rows[0], ...opts.aussteller }),
      JSON.stringify(empfaenger), JSON.stringify(totals),
      JSON.stringify(Object.fromEntries((opts.gaeste ?? [])
        .map((g, i) => [String(chargeIds[i]), g])
@@ -163,6 +168,44 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
     expect(d.xml).toContain('<ram:Name>Uebernachtung – Zimmer 101, Anna Berger</ram:Name>')
     expect(d.xml).toContain('<ram:Name>Uebernachtung – Zimmer 102, Jan Petersen</ram:Name>')
     expect(d.xml).toContain('<ram:Name>Uebernachtung</ram:Name>')
+  })
+
+  /**
+   * Das Konto eines Einzelunternehmens laeuft auf den Inhaber. Steht im
+   * Ueberweisungsformular des Gastes der Name des Hotels, meldet seine Bank
+   * bei der Empfaengerueberpruefung eine Abweichung (0177).
+   */
+  it('nennt als Kontoinhaber den hinterlegten, sonst das Haus', async () => {
+    const bank = { iban: 'DE02120300000000202051', bic: 'BYLADEM1001', bankName: 'DKB' }
+    const mit = await rechnung({ aussteller: { ...bank, accountHolder: 'Hanna Seerobbe' } })
+    const ohne = await rechnung({ aussteller: bank })
+    await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    expect((await beleg(mit.id))!.xml)
+      .toContain('<ram:AccountName>Hanna Seerobbe</ram:AccountName>')
+    const name = (await owner.query<{ name: string }>(
+      `SELECT name FROM property WHERE id = $1`, [fx.propertyId])).rows[0]!.name
+    expect((await beleg(ohne.id))!.xml).toContain(`<ram:AccountName>${name}</ram:AccountName>`)
+  })
+
+  /**
+   * Sven, 15.10.2026: Preise je Nacht verwirren, und eine Rechnung ueber
+   * vierzehn Tage wird endlos. Gebucht bleibt je Nacht; auf dem Beleg steht
+   * je Leistung eine Zeile, die Uebernachtung zuerst.
+   */
+  it('fasst die Naechte je Leistung zusammen, Uebernachtung zuerst', async () => {
+    const tage = ['01', '02', '03']
+    const r = await rechnung({ positionen: tage.flatMap((t, i) => [
+      { description: `Frühstück Speisen ${t}.10.2026`, datum: `2026-10-${t}`, netCent: 360,
+        account: '8300', teil: 'breakfast_food' },
+      { description: `Übernachtung ${t}.10.2026`, datum: `2026-10-${t}`,
+        netCent: i === 0 ? 7859 : 7860 }]) })
+    await renderPendingInvoices(app, ctx, fx.propertyId, { now: HEUTE })
+    const xml = (await beleg(r.id))!.xml!
+    const namen = [...xml.matchAll(/<ram:Name>([^<]*(?:Übernachtung|Frühstück)[^<]*)<\/ram:Name>/g)]
+      .map(m => m[1])
+    expect(namen).toEqual(['Übernachtung 01.10.–03.10.2026', 'Frühstück Speisen 01.10.–03.10.2026'])
+    expect(xml).toContain('<ram:BilledQuantity unitCode="DAY">3</ram:BilledQuantity>')
+    expect(xml).toContain('<ram:LineTotalAmount>235.79</ram:LineTotalAmount>')
   })
 
   it('erzeugt PDF und XML zu einer vollstaendigen Rechnung', async () => {
@@ -495,7 +538,7 @@ describe('Rechnungsbeleg aus der festgeschriebenen Rechnung', () => {
       expect(ergebnis.failed).toEqual([])
       const d = (await beleg(k.rows[0]!.id))!
       expect(d.xml).toContain('<ram:TypeCode>381</ram:TypeCode>')
-      expect(d.xml).toContain(`Rueckzahlung der Anzahlung (Rechnung ${dep.number}`)
+      expect(d.xml).toContain(`Rückzahlung der Anzahlung (Rechnung ${dep.number}`)
       expect(d.xml).toContain('<ram:GrandTotalAmount>80.00</ram:GrandTotalAmount>')
       expect(d.xml).toContain(`<ram:IssuerAssignedID>${dep.number}</ram:IssuerAssignedID>`)
       expect(d.xml).toContain('berichtigt die Anzahlungsrechnung')

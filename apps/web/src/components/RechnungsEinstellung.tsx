@@ -166,6 +166,8 @@ const KONTAKT: Array<{ feld: keyof RechnungsKontakt
   { feld: 'contactName', label: 'invoiceSettings.contactName' },
   { feld: 'phone', label: 'invoiceSettings.phone' },
   { feld: 'email', label: 'invoiceSettings.email' },
+  { feld: 'website', label: 'invoiceSettings.website' },
+  { feld: 'accountHolder', label: 'invoiceSettings.accountHolder' },
   { feld: 'iban', label: 'invoiceSettings.iban', mono: true },
   { feld: 'bic', label: 'invoiceSettings.bic', mono: true },
   { feld: 'bankName', label: 'invoiceSettings.bankName' },
