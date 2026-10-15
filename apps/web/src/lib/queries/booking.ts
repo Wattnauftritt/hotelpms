@@ -541,10 +541,17 @@ export function useSignRegistration(reservationRef: string) {
 export function useCheckIn(reservationRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () =>
+    // Die weiteren Zimmer der Gruppe gehen im selben Aufruf mit: ganz oder
+    // gar nicht, statt einer halb eingecheckten Gruppe nach einem Fehler.
+    mutationFn: (gruppe: readonly string[] = []) =>
       api.post<{ reservationRef: string; status: string }>(
-        `/v1/reservations/${reservationRef}/check-in`),
-    onSuccess: () => {
+        `/v1/reservations/${reservationRef}/check-in`,
+        gruppe.length > 0 ? { groupReservationRefs: gruppe } : undefined),
+    onSuccess: (_r, gruppe) => {
+      for (const ref of gruppe ?? []) {
+        void qc.invalidateQueries({ queryKey: ['reservation', ref] })
+      }
+      void qc.invalidateQueries({ queryKey: ['booking'] })
       void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
       void qc.invalidateQueries({ queryKey: ['tape'] })
       // Seit der Dialog auch aus "Heute" aufgeht, muss die Anreiseliste den

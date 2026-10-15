@@ -379,7 +379,7 @@ async function uebernehmen(
   // ------------------------------------------------------------- Auswahl
   const counts = { placeholder: 0, beforeFrom: 0, alreadyImported: 0, roomSkipped: 0,
                    confirmed: 0, inHouse: 0, checkedOut: 0, canceled: 0, bookings: 0,
-                   groupBookings: 0, guests: 0, multiGuest: 0 }
+                   groupBookings: 0, guests: 0, multiGuest: 0, regrouped: 0 }
   const codes = new Map<number, number>()
   const unbekannt = new Map<number, string[]>()
   const namen = new Map<string, { name: string; count: number }>()
@@ -536,12 +536,19 @@ async function uebernehmen(
   counts.groupBookings = neueBuchungen.filter(([k]) => k.startsWith('g')).length
   counts.guests = gastIds.size
 
+  const nachzuegler = await gruppenNachziehen(client, propertyId, kandidaten, vorhanden,
+                                              alteBuchungen, new Set(gruppen.keys()))
+  counts.regrouped = nachzuegler.umzuege.length
+
   const imported = befunde.fehler === 0 ? neu.length : 0
-  if (befunde.fehler === 0 && neu.length > 0) {
-    await schreiben(client, {
-      propertyId, accountId, userId, timezone, bestand, neu, zustand, hauptgast,
-      gastIds: [...gastIds], gruppen: neueBuchungen, alteBuchungen, gruppenSchluessel,
-      kategorie, zuordnung })
+  if (befunde.fehler === 0) {
+    const buchungNr = neu.length === 0
+      ? new Map([...alteBuchungen].map(([ref, id]) => [`g${ref}`, id]))
+      : await schreiben(client, {
+          propertyId, accountId, userId, timezone, bestand, neu, zustand, hauptgast,
+          gastIds: [...gastIds], gruppen: neueBuchungen, alteBuchungen, gruppenSchluessel,
+          kategorie, zuordnung })
+    await gruppenUmhaengen(client, nachzuegler, buchungNr)
   }
 
   const daten = bestand.reservations
@@ -565,6 +572,114 @@ async function uebernehmen(
       to: daten.reduce((m, r) => r.departure > m ? r.departure : m, daten[0]!.departure) },
     findings: befunde.liste.slice(0, MAX_BEFUNDE)
   }
+}
+
+/**
+ * Schon uebernommene Zeilen, die in KWHotel inzwischen zu einer Gruppe
+ * gehoeren, aber in StayGrid noch in einer eigenen Buchung stehen.
+ */
+interface Nachzug {
+  umzuege: Array<{ reservationId: number; fromBookingId: number; group: string }>
+  /** Gruppe ohne eigene Buchung: eine Einzelbuchung ihrer Zimmer wird sie. */
+  uebernommen: Map<string, number>
+}
+
+/**
+ * **Gruppen, die erst nach der Uebernahme zur Gruppe wurden** (Sven,
+ * 15.10.2026: "es wird immer nur ein Zimmer eingecheckt").
+ *
+ * KWHotel setzt `group_id` erst, wenn die zweite Zeile dazukommt. War eine
+ * Reservierung beim ersten Lauf noch allein, bekam sie eine eigene Buchung;
+ * der naechste Lauf uebersprang sie als "schon da" und legte die neuen
+ * Zimmer der Gruppe in eine zweite. Am Tresen sah das aus wie zwei
+ * Buchungen: der Meldeschein des Adminpanels nannte alle Personen der
+ * Gruppe, die Gruppenmaske und der Check-in kannten nur ein Zimmer.
+ *
+ * Nachgezogen wird nur aus einer Buchung, die die Uebernahme selbst angelegt
+ * hat (`source = 'import'`). Hat die Rezeption ein Zimmer in StayGrid einer
+ * Buchung zugeordnet, gilt das, was sie getan hat. Aus einer Gruppe heraus
+ * geloest wird nichts: ein Zimmer, das KWHotel aus der Gruppe nimmt, ist
+ * selten und am Tresen sichtbar, eine falsch getrennte Gruppe nicht.
+ */
+async function gruppenNachziehen(
+  client: PoolClient, propertyId: number, kandidaten: KwReservation[],
+  vorhanden: Set<string>, alteBuchungen: Map<string, number>, neueSchluessel: Set<string>
+): Promise<Nachzug> {
+  const nachzug: Nachzug = { umzuege: [], uebernommen: new Map() }
+  const gruppeVon = new Map(kandidaten
+    .filter(r => r.groupId !== null && vorhanden.has(r.id)).map(r => [r.id, r.groupId!]))
+  if (gruppeVon.size === 0) return nachzug
+
+  // Eine Abfrage fuer alle; die Zimmerzahl je Buchung ueber einen Verbund,
+  // nicht je Zeile.
+  const stand = await client.query<{ id: number; ref: string; booking_id: number
+                                     source: string; bref: string | null; n: number }>(
+    `WITH r AS (SELECT id, legacy_reference AS ref, booking_id FROM reservation
+                 WHERE property_id = $1 AND legacy_system = $2
+                   AND legacy_reference = ANY($3::text[]))
+     SELECT r.id, r.ref, r.booking_id, b.source, b.legacy_reference AS bref, z.n
+       FROM r JOIN booking b ON b.id = r.booking_id
+       JOIN (SELECT booking_id, count(*)::int AS n FROM reservation
+              WHERE booking_id IN (SELECT booking_id FROM r) GROUP BY booking_id) z
+         ON z.booking_id = r.booking_id`,
+    [propertyId, SYSTEM, [...gruppeVon.keys()]])
+
+  const jeGruppe = new Map<string, typeof stand.rows>()
+  for (const s of stand.rows.sort((a, b) => Number(a.ref) - Number(b.ref))) {
+    const g = gruppeVon.get(s.ref)!
+    const l = jeGruppe.get(g)
+    if (l === undefined) jeGruppe.set(g, [s])
+    else l.push(s)
+  }
+
+  for (const [g, zeilen] of jeGruppe) {
+    let ziel: number | null = alteBuchungen.get(g) ?? null
+    if (ziel === null && !neueSchluessel.has(`g${g}`)) {
+      // Keine Gruppenbuchung da und keine neue in diesem Lauf: die
+      // Einzelbuchung des aeltesten Zimmers wird die Gruppenbuchung.
+      const einzel = zeilen.find(s => s.source === 'import' && s.bref === null && s.n === 1)
+      if (einzel === undefined) continue
+      ziel = Number(einzel.booking_id)
+      const andere = zeilen.filter(s => Number(s.booking_id) !== ziel && s.source === 'import')
+      if (andere.length === 0) continue
+      nachzug.uebernommen.set(g, ziel)
+    }
+    for (const s of zeilen) {
+      if (s.source !== 'import' || Number(s.booking_id) === ziel) continue
+      nachzug.umzuege.push({ reservationId: Number(s.id),
+                             fromBookingId: Number(s.booking_id), group: g })
+    }
+  }
+  return nachzug
+}
+
+/**
+ * Haengt die Nachzuegler in ihre Gruppenbuchung und entfernt die
+ * Einzelbuchungen, die dabei leer werden. Eine leere Buchung bliebe sonst
+ * stehen, auch nach dem Zuruecknehmen der Uebernahme: das findet Buchungen
+ * nur ueber ihre Reservierungen.
+ */
+async function gruppenUmhaengen(client: PoolClient, n: Nachzug,
+                                buchungNr: Map<string, number>): Promise<void> {
+  if (n.umzuege.length === 0) return
+  if (n.uebernommen.size > 0) {
+    await client.query(
+      `UPDATE booking b SET legacy_system = $1, legacy_reference = x.ref
+         FROM unnest($2::bigint[], $3::text[]) AS x(id, ref)
+        WHERE b.id = x.id AND b.legacy_reference IS NULL`,
+      [SYSTEM, [...n.uebernommen.values()], [...n.uebernommen.keys()]])
+  }
+  await client.query(
+    `UPDATE reservation r SET booking_id = x.booking, updated_at = now()
+       FROM unnest($1::bigint[], $2::bigint[]) AS x(id, booking)
+      WHERE r.id = x.id`,
+    [n.umzuege.map(u => u.reservationId),
+     n.umzuege.map(u => buchungNr.get(`g${u.group}`) ?? n.uebernommen.get(u.group)!)])
+  await client.query(
+    `DELETE FROM booking b
+      WHERE b.id = ANY($1::bigint[]) AND b.source = 'import'
+        AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.booking_id = b.id)`,
+    [[...new Set(n.umzuege.map(u => u.fromBookingId))]])
 }
 
 interface Schreibauftrag {
@@ -593,7 +708,7 @@ interface Schreibauftrag {
  * Reihenfolge der zurueckgegebenen Zeilen verlaesst sich nichts hier: eine
  * Verwechslung wuerde den Aufenthalt eines Menschen einem anderen anhaengen.
  */
-async function schreiben(client: PoolClient, a: Schreibauftrag): Promise<void> {
+async function schreiben(client: PoolClient, a: Schreibauftrag): Promise<Map<string, number>> {
   const refs = async (n: number): Promise<string[]> => n === 0 ? [] :
     (await client.query<{ refs: string[] }>(
       `SELECT array_agg(generate_public_ref()) AS refs FROM generate_series(1, $1)`,
@@ -717,6 +832,7 @@ async function schreiben(client: PoolClient, a: Schreibauftrag): Promise<void> {
          FROM unnest($2::bigint[], $3::bigint[]) AS x(id, guest)`,
       [a.propertyId, offen.map(r => resNr.get(r.id)!), offen.map(gast)])
   }
+  return buchungNr
 }
 
 /** Traegt den Bericht aus der Transaktion heraus und rollt sie dabei zurueck. */

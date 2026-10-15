@@ -430,6 +430,9 @@ function Bericht({ bericht: b, zimmer, gruppen, einstellungen: e,
       {c.multiGuest > 0 && (
         <p className="text-xs text-neutral-500">{t('import.multiGuest', { n: zahl(c.multiGuest) })}</p>
       )}
+      {c.regrouped > 0 && (
+        <p className="text-xs text-neutral-500">{t('import.regrouped', { n: zahl(c.regrouped) })}</p>
+      )}
 
       <div>
         <h3 className="text-xs font-medium text-neutral-700">{t('import.findings')}</h3>

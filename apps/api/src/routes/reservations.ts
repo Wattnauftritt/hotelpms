@@ -2245,9 +2245,9 @@ export function reservationRoutes(app: FastifyInstance): void {
   ) => registerRoute(app, {
     method: 'POST', url, permission, propertyParam: 'propertyId', summary,
     handler: async (req) => {
-      const { reservationRef } = req.params as { reservationRef: string }
+      const { reservationRef: pfadRef } = req.params as { reservationRef: string }
       const principal = req.principal as Principal
-      return tx(req.pool, req, async client => {
+      const wechseln = async (client: PoolClient, reservationRef: string) => {
         const cur = await client.query<{
           id: number; property_id: number; category_id: number; status: ReservationStatus
           arrival: string; departure: string; resource_id: number | null
@@ -2551,6 +2551,43 @@ export function reservationRoutes(app: FastifyInstance): void {
         })
 
         return { reservationRef, status: target, by: principal.userId }
+      }
+
+      /*
+       * **Die Gruppe in einem Zug einchecken** (Sven, 15.10.2026: "es
+       * muessen natuerlich alle Zimmer der Gruppe eingecheckt werden").
+       *
+       * Der Meldeschein einer Gruppe haengt an einem Zimmer und nennt alle
+       * Personen; eingecheckt wurde trotzdem nur dieses eine, die anderen
+       * standen bis zum Nachtlauf als Anreise da. Die weiteren Zimmer kommen
+       * im Rumpf, weil die Rezeption sie abwaehlen kann -- ein Teil der
+       * Gruppe kommt mit dem spaeteren Bus. Alles in einer Transaktion: ein
+       * Zimmer, das nicht geht, haelt die ganze Gruppe an, statt eine halb
+       * eingecheckte zu hinterlassen, die niemand bemerkt.
+       */
+      const mit = act === 'check_in'
+        ? ((req.body ?? {}) as { groupReservationRefs?: unknown }).groupReservationRefs
+        : undefined
+      if (mit !== undefined && (!Array.isArray(mit) || mit.length > GRUPPE_MAX_ZIMMER
+          || mit.some(x => typeof x !== 'string'))) {
+        throw Errors.validation({ groupReservationRefs: ['field.invalid'] })
+      }
+      const weitere = [...new Set((mit ?? []) as string[])].filter(x => x !== pfadRef)
+      return tx(req.pool, req, async client => {
+        const ergebnis = await wechseln(client, pfadRef)
+        if (weitere.length === 0) return ergebnis
+        const gleiche = await client.query<{ ref: string }>(
+          `SELECT x.public_ref AS ref FROM reservation x
+             JOIN reservation h ON h.booking_id = x.booking_id
+            WHERE h.public_ref = $1 AND x.public_ref = ANY($2::text[])
+            ORDER BY x.id`, [pfadRef, weitere])
+        if (gleiche.rowCount !== weitere.length) {
+          throw Errors.unprocessable('stay.groupCheckinForeign')
+        }
+        const gruppe = []
+        for (const g of gleiche.rows) gruppe.push(await wechseln(client, g.ref))
+        return { ...ergebnis, group: gruppe.map(g => ({ reservationRef: g.reservationRef,
+                                                         status: g.status })) }
       })
     }
   })
