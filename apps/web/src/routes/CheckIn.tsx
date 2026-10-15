@@ -111,11 +111,23 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
     onClose()
   }
 
+  /*
+   * Schliessen bricht nichts ab (Sven, 15.10.2026): der Auftrag lebt auf dem
+   * Server, das Terminal fragt ihn selbst ab. Wer den Dialog schliesst, sieht
+   * unter "Heute" "Am Terminal", bis der Schein vorliegt, und nimmt den
+   * Check-in dann ueber dieselbe Zeile wieder auf.
+   */
+  const schliessenErlaubt = (
+    <p className="text-xs text-sky-900 bg-sky-50 border border-sky-200 rounded-sm p-2">
+      {t('checkin.closeWhileAtTerminal')}
+    </p>
+  )
+
   return (
     /*
-     * `nebenbeiSchliessen={false}`: waehrend der Gast am Terminal ausfuellt,
-     * zeigt der Dialog den Stand des Auftrags. Ein Klick neben den Rand waere
-     * er los, und die Rezeption saehe nicht, wann der Schein steht.
+     * `nebenbeiSchliessen={false}`: ein Klick neben den Rand ist meist ein
+     * Versehen. Geschlossen wird bewusst ueber "Zurueck" oder das Kreuz --
+     * auch waehrend der Gast am Terminal ausfuellt, das laeuft weiter.
      */
     <Dialog breite="breit" nebenbeiSchliessen={false} onClose={onClose}
             titel={t(imHaus ? 'checkin.titleInHouse' : 'checkin.title')}
@@ -210,7 +222,8 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                         {t('checkin.signAtTerminal')}
                       </p>
                       <TerminalAuftrag reservationRef={reservationRef} kind="registration_sign"
-                                       beschriftung={t('checkin.requestSignature')} />
+                                       beschriftung={t('checkin.requestSignature')}
+                                       waehrendOffen={schliessenErlaubt} />
                     </>
                   )}
                 </>
@@ -227,6 +240,7 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
                   </div>
                   <TerminalAuftrag reservationRef={reservationRef} kind="registration_fill"
                                    beschriftung={t('checkin.openFormAtTerminal')}
+                                   waehrendOffen={schliessenErlaubt}
                                    ohneTerminal={
                                      <div className="space-y-2 text-center py-4">
                                        <p className="text-sm text-neutral-600">

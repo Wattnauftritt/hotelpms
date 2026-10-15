@@ -1114,3 +1114,47 @@ describe('Mitnutzung durch ein zweites Haus', () => {
     }
   })
 })
+
+describe('Check-in-Dialog geschlossen, Gast fuellt weiter aus', () => {
+  /*
+   * Sven, 15.10.2026: die Rezeption schliesst den Dialog und tut etwas
+   * anderes. Der Auftrag lebt auf dem Server und laeuft weiter; "Heute"
+   * sagt, dass er laeuft, statt "Meldeschein fehlt" zu melden.
+   */
+  const heute = async (): Promise<Record<string, Array<Record<string, unknown>>>> => {
+    const r = await app.inject({ method: 'GET',
+      url: `/v1/properties/${fx.propertyId}/daily-sheet?date=${VON}`, headers: chef })
+    expect(r.statusCode, r.body).toBe(200)
+    return json(r)
+  }
+
+  it('zeigt den offenen Auftrag an der Anreise und laesst ihn danach fallen', async () => {
+    const t = await terminal()
+    const ref = await reservierung(await gast('Jansen'))
+    const zeile = async () => (await heute()).arrivals!.find(r => r.reservationRef === ref)!
+
+    expect(await zeile()).toMatchObject({ atTerminal: false, registered: false })
+
+    const jobRef = json(await auftrag(t.deviceRef, ref, 'registration_fill')).jobRef as string
+    expect(await zeile()).toMatchObject({ atTerminal: true, registered: false })
+
+    const auf = await app.inject({ method: 'POST', url: `/v1/terminal/job/${jobRef}/open`,
+      headers: geraet(t.secret) })
+    expect(auf.statusCode, auf.body).toBe(200)
+    expect((await zeile()).atTerminal).toBe(true)
+
+    const ab = await app.inject({ method: 'POST', url: `/v1/terminal-jobs/${jobRef}/cancel`,
+      headers: chef })
+    expect(ab.statusCode, ab.body).toBe(200)
+    expect(await zeile()).toMatchObject({ atTerminal: false, registered: false })
+  })
+
+  it('zaehlt einen abgelaufenen Auftrag nicht mehr', async () => {
+    const t = await terminal()
+    const ref = await reservierung(await gast('Jansen'))
+    await auftrag(t.deviceRef, ref, 'registration_fill')
+    await owner.query(`UPDATE terminal_job SET expires_at = now() - interval '1 second'`)
+    const z = (await heute()).arrivals!.find(r => r.reservationRef === ref)!
+    expect(z.atTerminal).toBe(false)
+  })
+})

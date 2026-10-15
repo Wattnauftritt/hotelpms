@@ -23,7 +23,8 @@ import { useLocale } from './i18n/index.js'
 
 /** Betriebslisten werden zusätzlich lokal gehalten (E5). */
 function useCachedQuery<T>(
-  key: unknown[], path: string, cacheKey: string | null
+  key: unknown[], path: string, cacheKey: string | null,
+  refetchInterval?: (data: T | undefined) => number | false
 ): UseQueryResult<T> {
   return useQuery<T>({
     queryKey: key,
@@ -38,6 +39,8 @@ function useCachedQuery<T>(
     // Der lokale Stand ist sofort sichtbar, wird aber gleich nachgeladen.
     initialDataUpdatedAt: 0,
     staleTime: 30_000,
+    ...(refetchInterval === undefined ? {}
+      : { refetchInterval: (q: { state: { data: T | undefined } }) => refetchInterval(q.state.data) }),
     retry: 1
   })
 }
@@ -64,7 +67,13 @@ export const useDailySheet = (propertyId: number, date: string) =>
   useCachedQuery<DailySheet>(
     ['daily', propertyId, date],
     `/v1/properties/${propertyId}/daily-sheet?date=${date}`,
-    `daily.${propertyId}.${date}`)
+    `daily.${propertyId}.${date}`,
+    // Fuellt ein Gast gerade am Terminal aus, alle fuenf Sekunden: die
+    // Rezeption hat den Check-in-Dialog geschlossen und soll hier sehen,
+    // wann der Meldeschein vorliegt (Sven, 15.10.2026). Sonst nicht --
+    // vierzig Anreisen alle paar Sekunden neu zu holen kostet ohne Anlass.
+    d => d !== undefined && [...d.arrivals, ...d.inHouse].some(r => r.atTerminal)
+      ? 5_000 : false)
 
 export const useHousekeeping = (propertyId: number, date: string) =>
   useCachedQuery<HousekeepingBoard>(

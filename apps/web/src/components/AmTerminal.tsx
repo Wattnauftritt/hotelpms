@@ -144,11 +144,14 @@ function useNachAuftrag(job: Auftragsstand | null, reservationRef: string): void
  * Schnittstelle (`offers`); ohne Angebot und ohne laufenden Auftrag zeigt
  * die Komponente nichts, ohne Terminal den Ausweich-Inhalt `ohneTerminal`.
  */
-export function TerminalAuftrag({ reservationRef, kind, beschriftung, ohneTerminal }: {
+export function TerminalAuftrag({ reservationRef, kind, beschriftung, ohneTerminal,
+                                 waehrendOffen }: {
   reservationRef: string
   kind: 'registration_fill' | 'registration_sign'
   beschriftung: string
   ohneTerminal?: ReactNode
+  /** Steht unter dem Auftrag, solange er offen ist. */
+  waehrendOffen?: ReactNode
 }): JSX.Element | null {
   const q = useReservationTerminal(reservationRef)
   const schluessel = ['reservation-terminal', reservationRef] as const
@@ -193,6 +196,7 @@ export function TerminalAuftrag({ reservationRef, kind, beschriftung, ohneTermin
         <AuftragZeile job={job} wirdAbgebrochen={abbrechen.isPending}
                       onAbbrechen={() => abbrechen.mutate(job.jobRef)} />
       )}
+      {offen && waehrendOffen}
       {senden.isError && <Fehler error={senden.error} />}
       {abbrechen.isError && <Fehler error={abbrechen.error} />}
     </div>

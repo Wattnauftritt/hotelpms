@@ -78,7 +78,10 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                     🕒 {r.expectedArrival}
                   </span>
                 )}
-                {!r.registered && (
+                {/* Waehrend der Gast am Terminal ausfuellt, fehlt der Schein
+                    nicht, er entsteht gerade -- die Rezeption hat den Dialog
+                    geschlossen und soll sehen, dass es weiterlaeuft. */}
+                {r.atTerminal ? <AmTerminalMarke /> : !r.registered && (
                   <span title={t('today.registrationMissing')}
                         className="text-[11px] px-1 rounded-sm bg-amber-100 text-amber-800">
                     ⚠ {t('today.registrationMissing')}
@@ -159,6 +162,7 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
                 {/* Der Nachtlauf checkt die spaete Anreise ueber den
                     Schluesselsafe ein (0088); am Morgen steht sie nur noch
                     hier, und der Meldeschein fehlt. */}
+                {r.atTerminal && <AmTerminalMarke />}
                 {!r.registered && (
                   <MeldescheinKnopf onClick={() => onCheckIn(r.reservationRef)} />
                 )}
@@ -171,6 +175,20 @@ export function Today({ propertyId, onFolio, onCheckIn }: {
         </Spalte>
       </div>
     </div>
+  )
+}
+
+/**
+ * Der Gast fuellt den Meldeschein gerade am Gaesteterminal aus. Verschwindet
+ * von selbst, sobald er fertig ist; dann steht der Check-in ohne Warnung da.
+ */
+function AmTerminalMarke(): JSX.Element {
+  const t = useT()
+  return (
+    <span title={t('today.atTerminalHint')}
+          className="text-[11px] px-1 rounded-sm bg-sky-100 text-sky-800 animate-pulse">
+      ⌛ {t('today.atTerminal')}
+    </span>
   )
 }
 
