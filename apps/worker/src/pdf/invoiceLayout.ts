@@ -312,8 +312,10 @@ function positionen(z: Zeichner, inv: CiiInvoice): void {
     text(z, menge(l), SPALTE.menge, y, { align: 'right' })
     // Einzelpreis netto. Bei Uebernachtungen der Preis je Nacht; deshalb
     // steht die Menge in Naechten und nicht in Stueck.
-    text(z, euro(Math.round(Math.abs(l.netCent) / (Math.abs(l.quantity) || 1))),
-      SPALTE.einzel, y, { align: 'right' })
+    // Zusammengefasste Naechte zu verschiedenen Preisen: der Durchschnitt,
+    // als solcher gekennzeichnet (groupInvoiceLines).
+    const einzel = euro(Math.round(Math.abs(l.netCent) / (Math.abs(l.quantity) || 1)))
+    text(z, l.averagePrice ? `Ø ${einzel}` : einzel, SPALTE.einzel, y, { align: 'right' })
     text(z, prozent(l.rateBp), SPALTE.satz, y, { align: 'right' })
     text(z, euro(l.netCent), SPALTE.betrag, y, { align: 'right' })
     z.y -= hoehe

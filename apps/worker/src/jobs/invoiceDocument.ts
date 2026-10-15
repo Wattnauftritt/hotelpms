@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { withTransaction, type DbContext, type Pool, type PoolClient } from '@hotelpms/db'
-import { buildInvoiceCii, ciiFindings, ciiTotals, lineWithGuest,
+import { buildInvoiceCii, ciiFindings, ciiTotals, groupInvoiceLines,
+         type InvoiceLineSource,
          type CiiFinding, type CiiInvoice, type CiiLine, type CiiParty, type CiiPayee }
   from '@hotelpms/domain'
 import { renderInvoicePdf } from '../pdf/invoiceLayout.js'
@@ -121,15 +122,33 @@ function payee(snapshot: { name?: string; iban?: string | null; bic?: string | n
            bankName: snapshot.bankName ?? null }
 }
 
-function line(c: ChargeRow, ausgleich: number, gast: string | undefined): CiiLine {
+/**
+ * Rang einer Buchung auf der Rechnung: Uebernachtung vor Fruehstueck vor
+ * allem anderen (Sven, 15.10.2026). Aeltere Fruehstuecksbuchungen tragen
+ * kein `package_part`; fuer sie entscheidet der Text.
+ */
+function rang(c: ChargeRow): number {
+  if (c.package_part === 'breakfast_food') return 1
+  if (c.package_part === 'breakfast_drinks') return 2
+  if (c.package_part === 'inclusion') return 3
+  if (/^Fr(ü|ue)hst(ü|ue)ck Getr/.test(c.description)) return 2
+  if (/^Fr(ü|ue)hst(ü|ue)ck/.test(c.description)) return 1
+  if (c.revenue_account === KONTO_LOGIS) return 0
+  return 4
+}
+
+function line(c: ChargeRow, ausgleich: number, gast: string | undefined): InvoiceLineSource {
   return {
-    name: lineWithGuest(c.description, gast),
+    description: c.description,
+    businessDate: c.business_date,
+    guest: gast,
     quantity: c.quantity,
     // Das Fruehstueck im Zimmerpreis liegt auf demselben Konto, ist aber
     // kein Tag Beherbergung (Migration 0158).
     unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
     netCent: Number(c.net_cent) + ausgleich,
-    rateBp: c.tax_rate_bp
+    rateBp: c.tax_rate_bp,
+    rank: rang(c)
   }
 }
 
@@ -289,7 +308,10 @@ async function load(
     buyerReference: (row.recipient_snapshot as { buyerReference?: string | null })
       .buyerReference ?? null,
     payee: payee(row.issuer_snapshot as Parameters<typeof payee>[0]),
-    lines: [...c.rows.map(x => line(x, ausgleichFuer(x), gastFuer(x))), ...d.rows.map(depositLine)],
+    // Je Leistung ueber die Naechte zusammengefasst, Uebernachtung zuerst
+    // (groupInvoiceLines). Blatt und XML lesen dieselbe Liste.
+    lines: [...groupInvoiceLines(c.rows.map(x => line(x, ausgleichFuer(x), gastFuer(x)))),
+            ...d.rows.map(depositLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,

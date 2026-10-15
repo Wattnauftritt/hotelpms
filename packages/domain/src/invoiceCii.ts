@@ -86,6 +86,13 @@ export interface CiiLine {
   netCent: Cent
   /** BT-152. */
   rateBp: BasisPoints
+  /**
+   * Zusammengefasste Naechte zu verschiedenen Preisen (groupInvoiceLines).
+   * Nur fuers Blatt: der Einzelpreis ist dann ein Durchschnitt und wird so
+   * gekennzeichnet, damit niemand Menge mal Preis nachrechnet und einen
+   * Cent vermisst. Das XML traegt den Preis ohnehin mit vier Stellen.
+   */
+  averagePrice?: boolean
 }
 
 /**
