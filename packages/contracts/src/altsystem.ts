@@ -118,7 +118,12 @@ export const KwhotelImportReport = Type.Object({
     groupBookings: Type.Integer(),
     guests: Type.Integer(),
     /** Zeilen mit mehr als einem Gast; uebernommen wird der Hauptgast. */
-    multiGuest: Type.Integer()
+    multiGuest: Type.Integer(),
+    /**
+     * Schon uebernommene Zimmer, die KWHotel inzwischen einer Gruppe
+     * zuordnet und die dieser Lauf in deren Buchung haengt.
+     */
+    regrouped: Type.Integer()
   }),
   statusCodes: Type.Array(Type.Object({
     code: Type.Integer(),

@@ -218,7 +218,8 @@ describe('Trockenlauf', () => {
     expect(bericht.dryRun).toBe(true)
     expect(bericht.findings.filter(f => f.level === 'error')).toEqual([])
     expect(bericht.counts).toMatchObject({ placeholder: 1, checkedOut: 1, inHouse: 1,
-      confirmed: 2, canceled: 1, bookings: 4, groupBookings: 1, guests: 4, multiGuest: 1 })
+      confirmed: 2, canceled: 1, bookings: 4, groupBookings: 1, guests: 4, multiGuest: 1,
+      regrouped: 0 })
     expect(bericht.imported).toBe(5)
     expect(bericht.rooms.map(r => [r.name, r.roomCode, r.match])).toEqual([
       ['01 EZ Balkon', '1', 'auto'], ['02 DZ', '2', 'auto'], ['08 FZ', '8', 'auto']])
@@ -348,6 +349,82 @@ describe('Uebernahme', () => {
           WHERE legacy_reference IN ('3', '4', '9')`)
       expect(b.rows[0]!.n).toBe(1)
     })
+
+  /*
+   * KWHotel setzt `group_id` erst mit der zweiten Zeile. Wer beim ersten
+   * Lauf allein war, bekam eine eigene Buchung; danach hing die Gruppe an
+   * zwei Buchungen, und der Check-in kannte nur ein Zimmer (Sven,
+   * 15.10.2026).
+   */
+  const ohneGruppe = (): Zeile[] => bestand().map(z => ({ ...z, gruppe: null }))
+  const buchungenDerGruppe = async (refs: string[]) => (await owner.query<{ n: number }>(
+    `SELECT count(DISTINCT booking_id)::int AS n FROM reservation
+      WHERE legacy_reference = ANY($1::text[])`, [refs])).rows[0]!.n
+
+  it('haengt schon uebernommene Zimmer in die Gruppe, die erst spaeter eine wurde',
+    async () => {
+      await uebernehmen(abzug(ohneGruppe(), GAESTE),
+        { commit: true, excludeGuestNames: ['ungereinigt'] })
+      expect(await buchungenDerGruppe(['3', '4'])).toBe(2)
+      const buchungenVorher = (await owner.query(`SELECT 1 FROM booking`)).rowCount!
+
+      const mehr = [...bestand(),
+        { id: 9, room: 3, von: addDays(heute, 10), letzte: addDays(heute, 11), cena: '150.0000',
+          status: 1, gast: 101, gruppe: 77 }]
+      const probe = await uebernehmen(abzug(mehr, GAESTE), { excludeGuestNames: ['ungereinigt'] })
+      expect(probe.bericht.counts.regrouped).toBe(2)
+      expect(await buchungenDerGruppe(['3', '4'])).toBe(2)
+
+      const { bericht } = await uebernehmen(abzug(mehr, GAESTE),
+        { commit: true, excludeGuestNames: ['ungereinigt'] })
+      expect(bericht.dryRun).toBe(false)
+      expect(bericht.counts.regrouped).toBe(2)
+      expect(await buchungenDerGruppe(['3', '4', '9'])).toBe(1)
+      // Zwei Einzelbuchungen weg, eine Gruppenbuchung dazu: keine leere bleibt.
+      expect((await owner.query(`SELECT 1 FROM booking`)).rowCount).toBe(buchungenVorher - 1)
+      const leer = await owner.query(`SELECT 1 FROM booking b
+        WHERE NOT EXISTS (SELECT 1 FROM reservation r WHERE r.booking_id = b.id)`)
+      expect(leer.rowCount).toBe(0)
+
+      // Ein dritter Lauf findet nichts mehr zu tun.
+      const wieder = await uebernehmen(abzug(mehr, GAESTE), { excludeGuestNames: ['ungereinigt'] })
+      expect(wieder.bericht.counts.regrouped).toBe(0)
+    })
+
+  it('macht die Einzelbuchung des aeltesten Zimmers zur Gruppenbuchung, wenn nichts dazukommt',
+    async () => {
+      await uebernehmen(abzug(ohneGruppe(), GAESTE),
+        { commit: true, excludeGuestNames: ['ungereinigt'] })
+      const erste = (await owner.query<{ booking_id: number }>(
+        `SELECT booking_id FROM reservation WHERE legacy_reference = '3'`)).rows[0]!.booking_id
+
+      const { bericht } = await uebernehmen(abzug(bestand(), GAESTE),
+        { commit: true, excludeGuestNames: ['ungereinigt'] })
+      expect(bericht.counts.regrouped).toBe(1)
+      expect(bericht.imported).toBe(0)
+      const b = await owner.query<{ id: number; legacy_reference: string }>(
+        `SELECT DISTINCT b.id, b.legacy_reference FROM booking b
+           JOIN reservation r ON r.booking_id = b.id
+          WHERE r.legacy_reference IN ('3', '4')`)
+      expect(b.rows).toEqual([{ id: erste, legacy_reference: '77' }])
+
+      // Zuruecknehmen findet weiterhin alles, was die Uebernahme angelegt hat.
+      const z = await app.inject({ method: 'POST', url: '/v1/imports/legacy/kwhotel/undo',
+        headers: auth(admin.sessionId), payload: { propertyId: fx.propertyId, commit: true } })
+      expect(z.statusCode, z.body).toBe(200)
+      expect((await owner.query(`SELECT 1 FROM booking`)).rowCount).toBe(0)
+    })
+
+  it('laesst ein Zimmer in einer Buchung, die die Rezeption angelegt hat', async () => {
+    await uebernehmen(abzug(ohneGruppe(), GAESTE),
+      { commit: true, excludeGuestNames: ['ungereinigt'] })
+    await owner.query(`UPDATE booking SET source = 'direct' WHERE id =
+      (SELECT booking_id FROM reservation WHERE legacy_reference = '4')`)
+    const { bericht } = await uebernehmen(abzug(bestand(), GAESTE),
+      { commit: true, excludeGuestNames: ['ungereinigt'] })
+    expect(bericht.counts.regrouped).toBe(0)
+    expect(await buchungenDerGruppe(['3', '4'])).toBe(2)
+  })
 
   it('folgt der Zuordnung des Hauses und laesst ein Zimmer bewusst weg', async () => {
     const { bericht } = await uebernehmen(abzug(bestand(), GAESTE), {

@@ -770,3 +770,63 @@ describe('Zimmer mit eigenen Tagen', () => {
       (JSON.parse(r.body) as { reservationRef: string }).reservationRef)).toHaveLength(6)
   })
 })
+
+/**
+ * Der Meldeschein einer Gruppe haengt an einem Zimmer und nennt alle
+ * Personen; eingecheckt wurde trotzdem nur dieses eine (Sven, 15.10.2026).
+ * Die weiteren Zimmer gehen im selben Aufruf mit, ganz oder gar nicht.
+ */
+describe('Gruppe einchecken', () => {
+  async function gruppe(n = 3): Promise<string[]> {
+    const r = await buchen({ rooms: zimmerListe(dzZimmer.slice(0, n), dz) })
+    expect(r.statusCode, r.body).toBe(201)
+    return (JSON.parse(r.body) as { reservations: Array<{ reservationRef: string }> })
+      .reservations.map(x => x.reservationRef)
+  }
+  const einchecken = (ref: string, payload?: unknown) =>
+    app.inject({ method: 'POST', headers: auth, url: `/v1/reservations/${ref}/check-in`,
+                 ...(payload === undefined ? {} : { payload }) })
+  async function zustaende(refs: string[]): Promise<string[]> {
+    const r = await owner.query<{ status: string }>(
+      `SELECT status FROM reservation WHERE public_ref = ANY($1::text[]) ORDER BY id`, [refs])
+    return r.rows.map(x => x.status)
+  }
+
+  it('checkt die gewaehlten Zimmer mit ein und laesst das abgewaehlte stehen', async () => {
+    const refs = await gruppe()
+    const r = await einchecken(refs[0]!, { groupReservationRefs: [refs[1]!] })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(JSON.parse(r.body).group).toEqual([{ reservationRef: refs[1]!, status: 'InHouse' }])
+    expect(await zustaende(refs)).toEqual(['InHouse', 'InHouse', 'Confirmed'])
+  })
+
+  it('checkt ohne Liste wie bisher nur das eine Zimmer ein', async () => {
+    const refs = await gruppe(2)
+    expect((await einchecken(refs[0]!)).statusCode).toBe(200)
+    expect(await zustaende(refs)).toEqual(['InHouse', 'Confirmed'])
+  })
+
+  it('weist ein Zimmer aus einer anderen Buchung ab und checkt nichts ein', async () => {
+    const refs = await gruppe(2)
+    const fremd = await buchen({ categoryId: dz, resourceId: dzZimmer[4]! })
+    const fremdRef = (JSON.parse(fremd.body) as { reservationRef: string }).reservationRef
+    const r = await einchecken(refs[0]!, { groupReservationRefs: [refs[1]!, fremdRef] })
+    expect(r.statusCode).toBe(422)
+    expect(JSON.parse(r.body).code).toBe('stay.groupCheckinForeign')
+    expect(await zustaende([...refs, fremdRef])).toEqual(['Confirmed', 'Confirmed', 'Confirmed'])
+  })
+
+  it('haelt die ganze Gruppe an, wenn ein Zimmer nicht eingecheckt werden kann', async () => {
+    const refs = await gruppe()
+    await app.inject({ method: 'POST', headers: auth,
+      url: `/v1/reservations/${refs[2]!}/assign-unit`, payload: { resourceId: null } })
+    const r = await einchecken(refs[0]!, { groupReservationRefs: [refs[1]!, refs[2]!] })
+    expect(r.statusCode).toBe(422)
+    expect(await zustaende(refs)).toEqual(['Confirmed', 'Confirmed', 'Confirmed'])
+  })
+
+  it('weist eine Liste ab, die keine ist', async () => {
+    const refs = await gruppe(2)
+    expect((await einchecken(refs[0]!, { groupReservationRefs: 'alle' })).statusCode).toBe(422)
+  })
+})

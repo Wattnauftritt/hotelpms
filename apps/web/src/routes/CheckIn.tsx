@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useReservation, useRegistrationForm, useSubmitRegistration, useCheckIn,
-         useSetReservationGuest, useTerms,
+         useSetReservationGuest, useTerms, useBooking,
          type RegistrationForm } from '../lib/queries/booking.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { GuestPicker } from '../components/GuestPicker.tsx'
@@ -66,15 +66,33 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
     gastSetzen.mutate(g.guestRef, { onSuccess: () => setGastWechseln(false) })
   }
 
-  const einchecken_und_schliessen = async (): Promise<void> => {
-    await einchecken.mutateAsync()
-    onClose()
-  }
-
   // Ohne zugewiesenes Zimmer lehnt die API den Check-in ab -- das sagt die
   // Maske vorher, statt den Knopf drueckbar zu machen und dann zu scheitern.
   const ohneZimmer = reservierung.data !== undefined && reservierung.data.resourceId === null
   const imHaus = reservierung.data?.status === 'InHouse'
+
+  /*
+   * **Die anderen Zimmer der Gruppe** (Sven, 15.10.2026). Der Meldeschein
+   * einer Gruppe haengt an einem Zimmer und nennt alle Personen; einchecken
+   * muss die Rezeption trotzdem alle Zimmer. Angeboten wird, was zur selben
+   * Buchung gehoert, noch nicht im Haus ist und spaetestens heute anreist --
+   * vorgewaehlt, weil eine Gruppe meist zusammen kommt. Wer mit dem spaeteren
+   * Bus kommt, wird abgewaehlt.
+   */
+  const r = reservierung.data
+  const buchung = useBooking(r !== undefined && r.bookingRooms > 1 && !imHaus
+    ? r.bookingRef : null)
+  const gruppenZimmer = r === undefined ? [] : (buchung.data?.rooms ?? []).filter(z =>
+    z.reservationRef !== reservationRef && z.status === 'Confirmed' && z.arrival <= r.arrival)
+  const [abgewaehlt, setAbgewaehlt] = useState<ReadonlySet<string>>(new Set())
+  const mitGruppe = gruppenZimmer
+    .filter(z => z.resourceId !== null && !abgewaehlt.has(z.reservationRef))
+    .map(z => z.reservationRef)
+
+  const einchecken_und_schliessen = async (): Promise<void> => {
+    await einchecken.mutateAsync(mitGruppe)
+    onClose()
+  }
   const f = form.data
   // Vorab per Link erfasst, Unterschrift steht aus: erst unterschreiben,
   // dann einchecken. Sie gehoert an den Anreisetag, und der ist jetzt.
@@ -187,6 +205,11 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
           </p>
         )}
 
+        {!imHaus && gruppenZimmer.length > 0 && (
+          <GruppenZimmer zimmer={gruppenZimmer} abgewaehlt={abgewaehlt}
+                         setAbgewaehlt={setAbgewaehlt} />
+        )}
+
         {form.isError && <Fehler error={form.error} />}
         {f === undefined && !form.isError && <Laedt />}
         {f !== undefined && (() => {
@@ -280,6 +303,45 @@ export function CheckIn({ reservationRef, propertyId, onClose }: {
         })()}
       </div>
     </Dialog>
+  )
+}
+
+/** Die weiteren Zimmer der Buchung, die mit eingecheckt werden. */
+function GruppenZimmer({ zimmer, abgewaehlt, setAbgewaehlt }: {
+  zimmer: ReadonlyArray<{ reservationRef: string; roomCode: string | null
+                          resourceId: number | null; guestName: string | null
+                          guestCount: number | null }>
+  abgewaehlt: ReadonlySet<string>
+  setAbgewaehlt: (s: ReadonlySet<string>) => void
+}): JSX.Element {
+  const t = useT()
+  const umschalten = (ref: string): void => {
+    const neu = new Set(abgewaehlt)
+    if (neu.has(ref)) neu.delete(ref)
+    else neu.add(ref)
+    setAbgewaehlt(neu)
+  }
+  return (
+    <div className="border border-neutral-200 rounded-sm p-2 space-y-1">
+      <p className="text-sm font-medium">{t('checkin.groupRooms')}</p>
+      <p className="text-xs text-neutral-600">{t('checkin.groupRoomsHint')}</p>
+      <ul className="space-y-1">
+        {zimmer.map(z => (
+          <li key={z.reservationRef}>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" disabled={z.resourceId === null}
+                     checked={z.resourceId !== null && !abgewaehlt.has(z.reservationRef)}
+                     onChange={() => umschalten(z.reservationRef)} />
+              <span className="w-12 tabular-nums">{z.roomCode ?? '—'}</span>
+              <span className="grow truncate">{z.guestName ?? ''}</span>
+              {z.resourceId === null && (
+                <span className="text-xs text-amber-800">{t('checkin.groupNoRoom')}</span>
+              )}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
