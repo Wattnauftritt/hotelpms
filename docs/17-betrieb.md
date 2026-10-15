@@ -119,7 +119,7 @@ Ein Datensatz, der sich mit dem alten Schlüssel nicht öffnen lässt, wird übe
 
 **Warum.** Eine Sicherung auf demselben Proxmox-Host überlebt einen Brand, einen Diebstahl und einen Verschlüsselungstrojaner nicht. Für fremde Kunden ist eine Sicherung außer Haus die Bedingung, unter der man ihre Daten überhaupt annehmen darf.
 
-**Wie.** Dokument 37 sagt, was eingerichtet ist und wie zurückgespielt wird; die Dateien liegen in `ops/backup/`. In Kürze: laufend mit pgBackRest zu Hetzner Object Storage, täglich ein mit `age` verschlüsselter Dump an ein zweites Ziel bei einem anderen Anbieter, jährlich der GoBD-Export unveränderbar für zehn Jahre.
+**Wie.** Dokument 37 sagt, was eingerichtet ist und wie zurückgespielt wird; die Dateien liegen in `ops/backup/`. In Kürze: laufend mit pgBackRest zu IONOS Object Storage, täglich ein mit `age` verschlüsselter Dump an ein zweites Ziel bei einem anderen Anbieter, jährlich der GoBD-Export unveränderbar für zehn Jahre.
 
 Der private Schlüssel des Dumps liegt **nicht** auf dem Server. Sonst kann, wer den Server hat, auch die Sicherungen lesen.
 

@@ -2,7 +2,7 @@
 
 Bis 15.10.2026 beschrieb Dokument 17 §3 eine Sicherung, die es nicht gab: weder Skript noch Unit standen in `ops/`, und Dokument 16 führte „Sicherung außer Haus" als offen. Hier steht, was eingerichtet wird, und was zu tun ist, wenn es gebraucht wird. Die Dateien liegen in `ops/backup/`, `ops/systemd/` und `scripts/backup/`; dieses Dokument verweist auf sie und schreibt sie nicht ab.
 
-Die Entscheidungen dahinter traf Sven am 15.10.2026 (OVH war zuerst gewählt und fiel an einer nicht auszahlbaren Vorauszahlung von 100 € heraus): Speicher bei **Hetzner Object Storage** in Deutschland, zweites Ziel ein kleiner **netcup-VPS**, der zugleich den Tang-Server aus Dokument 22 trägt. Dateien bleiben in der Datenbank (Rechnungs-PDF, Kassenbelege, Bilder liegen als `bytea` darin), und eine Datenbanksicherung ist damit vollständig.
+Die Entscheidungen dahinter traf Sven am 15.10.2026: Speicher bei **IONOS Object Storage** in Frankfurt (vorerst; OVH fiel an einer nicht auszahlbaren Vorauszahlung von 100 € heraus, Hetzner kam nicht zustande). IONOS gehört wie Strato zu United Internet; der Speicher steht aber in einem eigenen Vertrag, und Schicht 2 liegt bei einem dritten Anbieter. Zweites Ziel ist ein kleiner **netcup-VPS**, der zugleich den Tang-Server aus Dokument 22 trägt. Dateien bleiben in der Datenbank (Rechnungs-PDF, Kassenbelege, Bilder liegen als `bytea` darin), und eine Datenbanksicherung ist damit vollständig.
 
 ---
 
@@ -10,10 +10,10 @@ Die Entscheidungen dahinter traf Sven am 15.10.2026 (OVH war zuerst gewählt und
 
 | Schicht | Was | Wohin | Wie lange | Schützt gegen |
 |---|---|---|---|---|
-| 1 | pgBackRest: WAL laufend, sonntags voll, sonst differenziell | Hetzner Object Storage, Bucket `staygrid-pgbackrest`, Object Lock | 2 Vollsicherungen, also 14 bis 21 Tage, jeder Zeitpunkt darin | Ausfall der VM oder des Hosts, missglückte Migration, Bedienfehler. Verlust höchstens eine Minute |
-| 2 | `pg_dump`, Rollen, `/etc`, Umgebungsdatei, Löschliste; mit `age` verschlüsselt | netcup-VPS, nimmt nur an (`rrsync -wo -no-del`) | 30 Tage täglich, 12 Monate monatlich | Fehler in pgBackRest, verlorene Passphrase, gesperrtes Hetzner-Konto. Ein Tag Verlust |
+| 1 | pgBackRest: WAL laufend, sonntags voll, sonst differenziell | IONOS Object Storage Frankfurt, Bucket `staygrid-pgbackrest`, Object Lock | 2 Vollsicherungen, also 14 bis 21 Tage, jeder Zeitpunkt darin | Ausfall der VM oder des Hosts, missglückte Migration, Bedienfehler. Verlust höchstens eine Minute |
+| 2 | `pg_dump`, Rollen, `/etc`, Umgebungsdatei, Löschliste; mit `age` verschlüsselt | netcup-VPS, nimmt nur an (`rrsync -wo -no-del`) | 30 Tage täglich, 12 Monate monatlich | Fehler in pgBackRest, verlorene Passphrase, gesperrtes IONOS-Konto. Ein Tag Verlust |
 | 3 | `vzdump` der VM 102 | Proxmox-Host | zwei Generationen | Nur schneller Neuaufbau, keine Sicherung im eigentlichen Sinn |
-| 4 | GoBD-Export je Haus und Jahr, mit Belegen und Kassenbuch | Hetzner, Bucket `staygrid-archiv`, Object Lock **Compliance** 10 Jahre; dazu offline im Tresor | 10 Jahre | Verlust von Datenbank **und** Sicherungen; StayGrid läuft nicht mehr |
+| 4 | GoBD-Export je Haus und Jahr, mit Belegen und Kassenbuch | IONOS, Bucket `staygrid-archiv`, Object Lock **Compliance** 10 Jahre; dazu offline im Tresor | 10 Jahre | Verlust von Datenbank **und** Sicherungen; StayGrid läuft nicht mehr |
 
 Die steuerliche Aufbewahrung erfüllt der laufende Bestand, nicht Schicht 1 bis 3 (Dokument 17 §3). Schicht 4 ist der Fall, in dem es den laufenden Bestand nicht mehr gibt.
 
@@ -21,20 +21,20 @@ Die steuerliche Aufbewahrung erfüllt der laufende Bestand, nicht Schicht 1 bis 
 
 ---
 
-## 2. Einrichten: Hetzner
+## 2. Einrichten: IONOS
 
-In der Hetzner Console, ein eigenes Projekt für die Sicherung:
+Im IONOS Data Center Designer, unter Speicher › Object Storage:
 
-1. Object Storage, Bucket `staygrid-pgbackrest`, Standort Falkenstein (`fsn1`) oder Nürnberg (`nbg1`), privat, **Object Lock an**. Object Lock lässt sich nur beim Anlegen einschalten; die Versionierung kommt damit von selbst. Bucket-Namen sind über alle Kunden eindeutig: ist der Name vergeben, einen anderen wählen und in `ops/backup/pgbackrest.conf` eintragen.
+1. Bucket `staygrid-pgbackrest`, Typ **im Besitz des Vertrags** (contract-owned), Region Frankfurt (`eu-central-4`), privat, **Object Lock an**. Object Lock lässt sich nur beim Anlegen einschalten; die Versionierung kommt damit von selbst. Bucket-Namen sind über alle Kunden eindeutig: ist der Name vergeben, einen anderen wählen und in `ops/backup/pgbackrest.conf` eintragen.
 2. Bucket `staygrid-archiv`, ebenso.
-3. S3-Zugangsdaten erzeugen. Sie gelten für das ganze Projekt, also für beide Buckets. Das Archiv schützt deshalb nicht die Trennung der Schlüssel, sondern die Sperre im **Compliance**-Modus, die niemand aufheben kann, auch nicht mit diesen Schlüsseln (§6).
-4. Den AVV mit Hetzner abschließen; Hetzner bietet ihn im Kundenkonto online an. Ausgedruckt zu den Unterlagen.
+3. Einen Zugangsschlüssel für Object Storage erzeugen. Er gilt für alle Buckets des Vertrags, also für beide. Das Archiv schützt deshalb nicht die Trennung der Schlüssel, sondern die Sperre im **Compliance**-Modus, die niemand aufheben kann, auch nicht mit diesen Schlüsseln (§6).
+4. Den AVV mit IONOS abschließen; IONOS bietet ihn im Kundenkonto online an. Ausgedruckt zu den Unterlagen.
 
 Dann einmal von einem Rechner mit `aws`-CLI, den S3-Zugangsdaten und dem Endpunkt aus `ops/backup/pgbackrest.conf`:
 
 ```bash
-E=https://fsn1.your-objectstorage.com
-R=fsn1
+E=https://s3.eu-central-4.ionoscloud.com
+R=eu-central-4
 
 # Schicht 1: jede Version 21 Tage im Compliance-Modus gesperrt. Das ist
 # laenger als die Aufbewahrung in pgBackRest. Wer die Zugangsdaten vom Server
@@ -197,7 +197,7 @@ Einmal im Jahr, wenn die Steuerberatung das Jahr abgeschlossen hat, je Haus:
 ```bash
 age -r age1… -o gobd-2026-haus1.zip.age gobd-2026-haus1.zip
 sha256sum gobd-2026-haus1.zip.age > gobd-2026-haus1.zip.age.sha256
-aws --endpoint-url https://fsn1.your-objectstorage.com --region fsn1 s3api put-object \
+aws --endpoint-url https://s3.eu-central-4.ionoscloud.com --region eu-central-4 s3api put-object \
   --bucket staygrid-archiv --key 2026/gobd-2026-haus1.zip.age \
   --body gobd-2026-haus1.zip.age \
   --object-lock-mode COMPLIANCE --object-lock-retain-until-date 2037-01-01T00:00:00Z
@@ -227,4 +227,4 @@ Zehn Jahre ab Ende des Kalenderjahres, also bis 2037 für 2026 (§ 147 Abs. 4 AO
 - `einsortieren.sh` mit einem manipulierten und einem halben Satz und der Rotation auf 30 und 12;
 - `rueckspielprobe.sh` und `loeschnachtrag.sh`: ein nach der Sicherung gelöschter Gast war nach der Rückspielung wieder da und nach dem Nachtrag gelöscht.
 
-Nicht erprobt sind das S3-Ziel bei Hetzner und die Units an einem laufenden systemd. Beides gehört beim Einrichten nachgerechnet (CLAUDE.md, Betriebsdateien).
+Nicht erprobt sind das S3-Ziel bei IONOS und die Units an einem laufenden systemd. Beides gehört beim Einrichten nachgerechnet (CLAUDE.md, Betriebsdateien).

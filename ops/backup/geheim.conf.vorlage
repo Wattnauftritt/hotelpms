@@ -1,7 +1,7 @@
 # /etc/pgbackrest/conf.d/geheim.conf -- chown postgres:postgres, chmod 600
 #
-# Die Werte stammen aus der Hetzner Console (S3-Zugangsdaten des Projekts
-# mit dem Bucket staygrid-pgbackrest) und aus `openssl rand -base64 48`. Alle drei gehoeren
+# Die Werte stammen aus dem IONOS Data Center Designer (Object Storage,
+# Zugangsschluessel des Benutzers fuer den Bucket staygrid-pgbackrest) und aus `openssl rand -base64 48`. Alle drei gehoeren
 # zusaetzlich in den Passwortspeicher und ausgedruckt in den Tresor: brennt
 # die Maschine ab, ist das der einzige Weg an die Sicherung.
 
