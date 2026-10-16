@@ -2,5 +2,5 @@ export { countQueries, type QueryReport } from './queryCounter.js'
 export { resetSchema, ensureSchema, truncateAll, appPool, ownerPool } from './database.js'
 export { makeProperty, makeCategory, makeResources, makeUser, makePaymentMethod,
          makeEmailDomain,
-         openBusinessDay, makeReservation, makeGuest, heuteImHaus,
+         openBusinessDay, makeReservation, makeGuest, heuteImHaus, blockInvoiceDocuments,
          type Fixture, type ReservationFixture } from './fixtures.js'

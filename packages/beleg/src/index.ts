@@ -10,3 +10,4 @@
  */
 export * from './invoiceLayout.js'
 export * from './pdfa3.js'
+export * from './rechnungsbeleg.js'

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeGuest,
          makePaymentMethod, type Fixture } from '@hotelpms/testing'
 import { withTransaction, type DbContext, type Pool } from '@hotelpms/db'
-import { renderPendingInvoices } from '../jobs/invoiceDocument.js'
+import { renderPendingInvoices } from '@hotelpms/beleg'
 
 /**
  * Der Beleg entsteht aus der festgeschriebenen Rechnung, nicht aus den

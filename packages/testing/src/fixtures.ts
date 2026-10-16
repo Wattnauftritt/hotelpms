@@ -260,3 +260,33 @@ export function heuteImHaus(versatzTage = 0): string {
   d.setUTCDate(d.getUTCDate() + versatzTage)
   return d.toISOString().slice(0, 10)
 }
+
+/**
+ * Laesst das Ablegen eines Rechnungsbelegs fuer ein Haus scheitern, bis
+ * die zurueckgegebene Funktion aufgerufen wird.
+ *
+ * Seit dem 16.10.2026 zeichnet die API den Beleg gleich beim Festschreiben.
+ * Wer den Zustand "festgeschrieben, Beleg kommt noch" pruefen will -- eine
+ * Rechnung von vorher, oder eine, an der das Zeichnen scheiterte --, kommt
+ * ueber die Schnittstelle nicht mehr hin. Ein Trigger nur fuer dieses Haus
+ * stellt ihn her, ohne etwas anderes zu beruehren; ein Test raeumt ihn im
+ * `finally` wieder ab.
+ */
+export async function blockInvoiceDocuments(
+  owner: Pool, propertyId: number
+): Promise<() => Promise<void>> {
+  const id = Number(propertyId)
+  await owner.query(`
+    CREATE OR REPLACE FUNCTION test_beleg_sperre() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      RAISE EXCEPTION 'Beleg im Test gesperrt';
+    END $$`)
+  await owner.query(`
+    CREATE TRIGGER test_beleg_sperre BEFORE INSERT ON invoice_document
+      FOR EACH ROW WHEN (NEW.property_id = ${id})
+      EXECUTE FUNCTION test_beleg_sperre()`)
+  return async () => {
+    await owner.query('DROP TRIGGER IF EXISTS test_beleg_sperre ON invoice_document')
+  }
+}

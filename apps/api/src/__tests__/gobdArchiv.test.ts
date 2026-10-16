@@ -3,7 +3,7 @@ import { inflateRawSync, crc32 } from 'node:zlib'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          makeGuest, makeCategory, makeResources, makeReservation, makePaymentMethod,
-         openBusinessDay, type Fixture } from '@hotelpms/testing'
+         openBusinessDay, blockInvoiceDocuments, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -98,11 +98,19 @@ describe('GoBD-Archiv', () => {
       .statusCode).toBe(201)
     expect((await post(`/v1/invoices/${anz.invoiceRef}/refund`,
       { amountCent: 20_000, paymentMethodCode: 'BAR' })).statusCode).toBe(201)
-    const s = await post(`/v1/folios/${folioRef}/invoice`)
+    // Die Schlussrechnung mit einem Beleg samt XML. Die Stammdaten der
+    // Fixture reichen fuer keine elektronische Rechnung; das Festschreiben
+    // zeichnete deshalb ein PDF ohne XML, und der Weg des XML ins Archiv
+    // bliebe ungeprueft. Gesperrt und von Hand abgelegt, wie vom Worker.
+    const aufheben = await blockInvoiceDocuments(owner, fx.propertyId)
+    let s: Awaited<ReturnType<typeof post>>
+    try {
+      s = await post(`/v1/folios/${folioRef}/invoice`)
+    } finally {
+      await aufheben()
+    }
     expect(s.statusCode, s.body).toBe(201)
     const schluss = JSON.parse(s.body) as { number: string }
-
-    // Den Beleg zeichnet sonst der Worker.
     await owner.query(
       `INSERT INTO invoice_document (invoice_id, property_id, pdf, xml, byte_count, sha256)
        SELECT id, property_id, '\\x255044462d'::bytea, '<rsm/>', 5, 'abc'
@@ -120,10 +128,15 @@ describe('GoBD-Archiv', () => {
     const dateien = entpacken(r.rawPayload)
 
     const datei = schluss.number.replace(/[^A-Za-z0-9._-]/g, '_')
-    expect([...dateien.keys()]).toEqual([
+    const namen = [...dateien.keys()]
+    expect(namen.slice(0, 8)).toEqual([
       'index.xml', 'rechnungen.csv', 'positionen.csv', 'zahlungen.csv',
-      'anzahlungsjournal.csv', 'kassenbuch.csv', 'kassenbelege.csv', 'protokoll.csv',
-      `belege/${datei}.pdf`, `belege/${datei}.xml`])
+      'anzahlungsjournal.csv', 'kassenbuch.csv', 'kassenbelege.csv', 'protokoll.csv'])
+    // Danach die Belege: je Rechnung das PDF, daneben das XML, wo es eines gibt.
+    expect(namen.slice(8).every(n => n.startsWith('belege/'))).toBe(true)
+    expect(namen.filter(n => n.endsWith('.pdf'))).toHaveLength(3)
+    expect(namen).toContain(`belege/${datei}.pdf`)
+    expect(namen).toContain(`belege/${datei}.xml`)
 
     const index = dateien.get('index.xml')!.toString()
     expect(index).toContain('<!DOCTYPE DataSet SYSTEM "gdpdu-01-08-2002.dtd">')

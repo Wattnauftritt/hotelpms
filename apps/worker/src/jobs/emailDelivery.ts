@@ -83,7 +83,7 @@ async function claim(
    * Die Bedingung auf den Anhang ist der eigentliche Kniff dieser Abfrage.
    *
    * Eine Rechnungsmail darf eingereiht werden, bevor der Beleg existiert --
-   * das PDF entsteht erst im naechsten Lauf von `invoiceDocument`, und
+   * das PDF entsteht erst nach dem Festschreiben (`renderInvoiceDocument`), und
    * darauf in der Routentransaktion zu warten hiesse, den Check-out
    * anzuhalten. Geholt wird sie deshalb erst, wenn der Anhang bereitsteht.
    *
