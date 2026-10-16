@@ -208,14 +208,37 @@ describe('Gemeinsam oder je Haus', () => {
 
     const t = await app.inject({ method: 'GET', url: `/v1/properties/${hotel.propertyId}/my-time`,
       headers: auth(olga.sessionId) })
-    expect(t.json().otherHouses).toEqual([])
+    // Die Kraft sieht ihren Monat ueber beide Haeuser (Sven, 16.10.2026).
+    expect(t.json().houses.map((h: { propertyId: number }) => h.propertyId))
+      .toEqual([hotel.propertyId, gh])
+    expect(t.json().totals.total).toBe(0)
     const z = (await app.inject({ method: 'GET', url: `/v1/properties/${gh}/my-rooms`,
       headers: auth(olga.sessionId) })).json().rooms[0]
     await app.inject({ method: 'POST', url: `/v1/properties/${gh}/my-rooms/${z.taskId}`,
       headers: auth(olga.sessionId), payload: { outcome: 'cleaned' } })
     const t2 = await app.inject({ method: 'GET', url: `/v1/properties/${hotel.propertyId}/my-time`,
       headers: auth(olga.sessionId) })
-    expect(t2.json().otherHouses).toEqual([{ propertyId: gh, name: 'Gaestehaus', total: 30 }])
+    const m2 = t2.json()
+    expect(m2.totals.total).toBe(30)
+    expect(m2.houses.map((h: { name: string; total: number }) => [h.name, h.total]))
+      .toEqual([['Hotel', 0], ['Gaestehaus', 30]])
+    expect(m2.days.find((d: { date: string }) => d.date === TAG).byHouse).toEqual({ [gh]: 30 })
+
+    // Eine Zusatzarbeit im Gaestehaus steht im selben Monat, mit ihrem Haus;
+    // zurueckgezogen wird dort, und die Antwort ist wieder der ganze Monat.
+    const e = await app.inject({ method: 'POST', url: `/v1/properties/${gh}/my-time`,
+      headers: auth(olga.sessionId), payload: { kind: 'extra', description: 'Waesche', minutes: 10 } })
+    expect(e.statusCode, e.body).toBe(201)
+    const m3 = (await app.inject({ method: 'GET', url: `/v1/properties/${hotel.propertyId}/my-time`,
+      headers: auth(olga.sessionId) })).json()
+    expect(m3.totals.total).toBe(40)
+    const eintrag = m3.days.find((d: { date: string }) => d.date === TAG).entries[0]
+    expect(eintrag.propertyId).toBe(gh)
+    const w = await app.inject({ method: 'POST',
+      url: `/v1/properties/${gh}/my-time/${eintrag.id}/withdraw`, headers: auth(olga.sessionId) })
+    expect(w.statusCode, w.body).toBe(200)
+    expect(w.json().totals.total).toBe(30)
+    expect(w.json().houses).toHaveLength(2)
   })
 })
 

@@ -38,8 +38,6 @@ export interface Monat {
   totals: { rooms: number; extra: number; kitchen: number; correction: number; total: number }
   /** 1. bis 15. und 16. bis Monatsende -- die Zeitarbeitsfirma zahlt halbmonatlich. */
   halves: [Haelfte, Haelfte]
-  /** Die Monatssumme in den anderen Haeusern derselben Kraft (0116). */
-  otherHouses?: Array<{ propertyId: number; name: string; total: number }>
 }
 
 /** `2:05` -- Stunden und Minuten, in jeder Sprache gleich lesbar. */

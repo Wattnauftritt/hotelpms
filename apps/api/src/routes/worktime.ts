@@ -151,9 +151,30 @@ function haeuserFuer(p: Principal, propertyId: number, scope: unknown): number[]
   if (scope !== 'all') {
     throw Errors.validation({ scope: ['field.allowedValues'] }, { values: 'house, all' })
   }
+  return mitSchwestern(p, propertyId, 'worktime:manage')
+}
+
+/** Das Haus und jedes Haus desselben Betriebs, in dem der Aufrufer das Recht hat. */
+function mitSchwestern(
+  p: Principal, propertyId: number, recht: 'staff:app' | 'worktime:manage'
+): number[] {
   const betrieb = p.propertyAccounts.get(propertyId)
-  return [propertyId, ...andereMit(p, propertyId, 'worktime:manage')
+  return [propertyId, ...andereMit(p, propertyId, recht)
     .filter(id => p.propertyAccounts.get(id) === betrieb)]
+}
+
+/**
+ * Der Monat der Kraft ueber alle ihre Haeuser (Sven, 16.10.2026: das
+ * Personal soll seine Stunden gesammelt sehen, nicht je Haus). Jeder Tag
+ * traegt die Minuten je Haus, jeder Eintrag sein Haus -- zurueckgezogen
+ * wird am Haus des Eintrags.
+ */
+async function meinMonat(
+  client: PoolClient, p: Principal, propertyId: number, ich: number, month: string
+): Promise<Monat & { today: string }> {
+  const heute = await tagOderOffen(client, propertyId, undefined)
+  return { ...(await liesMonat(client, mitSchwestern(p, propertyId, 'staff:app'), ich, month)),
+           today: heute }
 }
 
 async function monatOffen(client: PoolClient, propertyId: number, date: string): Promise<void> {
@@ -575,8 +596,7 @@ interface Anderswo { propertyId: number; name: string; total: number }
  * `sammle`: gereinigte Zimmer plus nicht zurueckgezogene Eintraege.
  *
  * Welche Haeuser, entscheidet der Aufrufer -- die Leitung sieht nur
- * Haeuser, in denen sie selbst `worktime:manage` hat, die Kraft nur ihre
- * eigenen. Zwei Abfragen fuer alle Personen, nicht zwei je Person.
+ * Haeuser, in denen sie selbst `worktime:manage` hat. Zwei Abfragen fuer alle Personen, nicht zwei je Person.
  */
 async function summeAnderswo(
   client: PoolClient, haeuser: number[], userIds: number[], from: string, to: string
@@ -641,16 +661,9 @@ export function worktimeRoutes(app: FastifyInstance): void {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const ich = personVon(req)
       const q = req.query as { month?: string }
-      const andere = andereMit(req.principal as Principal, propertyId, 'staff:app')
-      return tx(req.pool, req, async client => {
-        const month = await monatOderOffen(client, propertyId, q.month)
-        const heute = await tagOderOffen(client, propertyId, undefined)
-        const monat = await liesMonat(client, [propertyId], ich, month)
-        // Was dieselbe Kraft im selben Monat in ihren anderen Haeusern hat --
-        // auf dem Telefon soll die Summe stehen, nach der abgerechnet wird.
-        const anderswo = await summeAnderswo(client, andere, [ich], monat.from, monat.to)
-        return { ...monat, today: heute, otherHouses: anderswo.get(ich) ?? [] }
-      })
+      return tx(req.pool, req, async client =>
+        meinMonat(client, req.principal as Principal, propertyId, ich,
+          await monatOderOffen(client, propertyId, q.month)))
     }
   })
 
@@ -678,8 +691,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
             await zielDeutsch(client, ich))
         }
         reply.code(201)
-        const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, [propertyId], ich, tag.slice(0, 7))), today: heute }
+        return meinMonat(client, req.principal as Principal, propertyId, ich, tag.slice(0, 7))
       })
     }
   })
@@ -710,8 +722,8 @@ export function worktimeRoutes(app: FastifyInstance): void {
           await reiheUebersetzungEin(client, propertyId, 'work_entry', id,
             await zielDeutsch(client, ich))
         }
-        const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, [propertyId], ich, alt.date.slice(0, 7))), today: heute }
+        return meinMonat(client, req.principal as Principal, propertyId, ich,
+          alt.date.slice(0, 7))
       })
     }
   })
@@ -737,8 +749,8 @@ export function worktimeRoutes(app: FastifyInstance): void {
         await client.query(
           `UPDATE staff_work_entry SET withdrawn_at = now(), updated_by = $2, updated_at = now()
             WHERE id = $1`, [id, ich])
-        const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, [propertyId], ich, alt.date.slice(0, 7))), today: heute }
+        return meinMonat(client, req.principal as Principal, propertyId, ich,
+          alt.date.slice(0, 7))
       })
     }
   })

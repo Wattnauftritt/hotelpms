@@ -48,8 +48,10 @@ export function Zeit({ propertyId, locale, kueche }: {
     setFehler(null)
   }
   const zurueck = useMutation({
-    mutationFn: (id: number) =>
-      api.post<Monat>(`/v1/properties/${propertyId}/my-time/${id}/withdraw`),
+    // Zurueckgezogen wird am Haus des Eintrags; die Antwort ist trotzdem
+    // der ganze Monat ueber alle Haeuser.
+    mutationFn: (a: { id: number; haus: number }) =>
+      api.post<Monat>(`/v1/properties/${a.haus}/my-time/${a.id}/withdraw`),
     onSuccess: uebernehmen,
     onError: e => setFehler(fehlerText(e, locale))
   })
@@ -67,6 +69,8 @@ export function Zeit({ propertyId, locale, kueche }: {
   const aktuell = m.today.slice(0, 7)
   const eigeneTage = [m.today, gestern(m.today)]
   const tage = m.days.filter(d => d.rooms > 0 || d.entries.length > 0).reverse()
+  const haeuser = m.houses ?? []
+  const hausName = (id: number): string => haeuser.find(h => h.propertyId === id)?.name ?? ''
 
   return <div className="space-y-3">
     <div className="flex items-center justify-between">
@@ -87,18 +91,16 @@ export function Zeit({ propertyId, locale, kueche }: {
       <p className="text-sm text-neutral-600 tabular-nums">
         {t('time.halves', { first: hm(m.halves[0].total), second: hm(m.halves[1].total) })}</p>
       {m.closed && <p className="text-sm text-neutral-600 mt-1">{t('time.closed')}</p>}
-      {/* Wer in mehreren Haeusern arbeitet, sieht die Summe, nach der
-          abgerechnet wird -- nicht nur die dieses Hauses (0116). */}
-      {(m.otherHouses ?? []).length > 0 && <div className="mt-2 pt-2 border-t border-neutral-100
-                                                         text-sm text-neutral-700">
-        {m.otherHouses!.map(h => <p key={h.propertyId} className="flex justify-between">
+      {/* Wer in mehreren Haeusern arbeitet, sieht oben die Summe aller
+          Haeuser -- danach wird abgerechnet -- und hier die Aufteilung. */}
+      {haeuser.length > 1 && <div className="mt-2 pt-2 border-t border-neutral-100
+                                             text-sm text-neutral-700">
+        {haeuser.map(h => <p key={h.propertyId} className="flex justify-between">
           <span>{h.name}</span><span className="tabular-nums">{hm(h.total)}</span>
         </p>)}
         <p className="flex justify-between font-semibold">
           <span>{t('time.allHouses')}</span>
-          <span className="tabular-nums">
-            {hm(m.totals.total + m.otherHouses!.reduce((s, h) => s + h.total, 0))}
-          </span>
+          <span className="tabular-nums">{hm(m.totals.total)}</span>
         </p>
       </div>}
     </section>
@@ -119,6 +121,10 @@ export function Zeit({ propertyId, locale, kueche }: {
             <span>{tagName(d.date, locale)}</span>
             <span className="tabular-nums">{hm(d.total)}</span>
           </div>
+          {haeuser.length > 1 && Object.keys(d.byHouse ?? {}).length > 0
+            && <p className="text-xs text-neutral-500">
+              {Object.entries(d.byHouse!).map(([id, min]) => `${hausName(Number(id))} ${hm(min)}`)
+                .join(' · ')}</p>}
           {d.rooms > 0 && <p className="text-sm text-neutral-700 flex justify-between">
             <span>{t('time.rooms', { n: d.rooms })}</span>
             <span className="tabular-nums">{t('room.minutes', { minutes: d.roomMinutes })}</span>
@@ -145,7 +151,9 @@ export function Zeit({ propertyId, locale, kueche }: {
               && e.originalMinutes === null && eigeneTage.includes(e.date)
               && <button type="button" disabled={zurueck.isPending}
                          className="text-sm text-red-800 underline mt-1"
-                         onClick={() => zurueck.mutate(e.id)}>{t('time.withdraw')}</button>}
+                         onClick={() => zurueck.mutate({ id: e.id,
+                                                         haus: e.propertyId ?? propertyId })}>
+                {t('time.withdraw')}</button>}
           </div>)}
         </li>)}
       </ul>}
