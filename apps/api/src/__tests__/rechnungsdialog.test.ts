@@ -96,6 +96,33 @@ describe('Vorschau', () => {
   })
 })
 
+/**
+ * Sven, 16.10.2026: "es waere gut wenn es kuenftig eine rechnungsvorschau
+ * gaebe bevor ich diese festschreibe und diese unveraenderbar ist".
+ */
+describe('PDF-Entwurf', () => {
+  it('zeichnet das Blatt, ohne Nummer, Zahlung oder Zuordnung zu schreiben', async () => {
+    const f = await folio({ terms: 30 })
+    const r = await post(`/v1/folios/${f.ref}/invoice-preview/pdf`,
+      { paid: { paymentMethodCode: 'CASH' } })
+    expect(r.statusCode, r.body.slice(0, 200)).toBe(200)
+    expect(r.headers['content-type']).toBe('application/pdf')
+    expect(r.headers['cache-control']).toBe('no-store')
+    expect(r.rawPayload.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+
+    for (const tabelle of ['invoice', 'invoice_counter', 'settlement']) {
+      expect((await owner.query(`SELECT 1 FROM ${tabelle}`)).rowCount, tabelle).toBe(0)
+    }
+    const offen = await owner.query(`SELECT 1 FROM charge WHERE invoice_id IS NULL`)
+    expect(offen.rowCount).toBe(2)
+  })
+
+  it('weist ein fremdes Folio ab wie die Vorschau', async () => {
+    const r = await post('/v1/folios/GIBTESNICHT/invoice-preview/pdf', {})
+    expect(r.statusCode).toBe(404)
+  })
+})
+
 describe('Festschreiben mit Angaben aus dem Dialog', () => {
   it('nimmt eine abweichende Anschrift nur fuer diese Rechnung', async () => {
     const f = await folio({ terms: 14 })

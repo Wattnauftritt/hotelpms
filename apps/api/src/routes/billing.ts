@@ -14,6 +14,9 @@ import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
          type Party, type InvoiceTotals }
   from '@hotelpms/domain'
+import { groupInvoiceLines, chargeLineSource, depositLedgerLine, partyFromSnapshot,
+         payeeFromSnapshot, type CiiInvoice, type CiiParty } from '@hotelpms/domain'
+import { renderInvoicePdf } from '@hotelpms/beleg'
 import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
@@ -747,14 +750,18 @@ async function rechnungsEntwurf(
                                        gross_cent: number
                                        description: string; quantity: number
                                        business_date: string
-                                       reservation_id: number | null }>(
+                                       reservation_id: number | null
+                                       revenue_account: string
+                                       package_part: string | null }>(
     auftrag.chargeIds?.length
       ? `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                business_date::text, reservation_id FROM charge c
+                business_date::text, reservation_id, revenue_account, package_part
+           FROM charge c
           WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2)
             AND ${OHNE_KURTAXE} ORDER BY id`
       : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
-                business_date::text, reservation_id FROM charge c
+                business_date::text, reservation_id, revenue_account, package_part
+           FROM charge c
           WHERE folio_id = $1 AND invoice_id IS NULL AND ${OHNE_KURTAXE}
           ORDER BY id`,
     auftrag.chargeIds?.length ? [folio.id, auftrag.chargeIds] : [folio.id])
@@ -1016,6 +1023,51 @@ async function rechnungsEntwurf(
     charges: charges.rows, deposits: deposits.rows, totals, vorausbezahlt, lineGuests,
     issuer: prop.rows[0] ?? {}, recipient: empfaenger, defaultRecipient: vorgabe,
     businessDate, serviceFrom, serviceTo, dueOn, offenCent, heute
+  }
+}
+
+/**
+ * Der Entwurf als Rechnung, wie Blatt und XML sie lesen (Sven, 16.10.2026:
+ * eine Vorschau, bevor die Rechnung festgeschrieben und unveraenderbar ist).
+ *
+ * Dieselbe Abbildung wie im Worker (`chargeLineSource`, `groupInvoiceLines`,
+ * `depositLedgerLine`), nur aus dem Entwurf statt aus der Momentaufnahme:
+ * der Entwurf soll genau die Zeilen zeigen, die das Papier danach traegt.
+ * Der Ausgleich je Position steckt schon im Netto der Buchungen
+ * (`rechnungsEntwurf`), deshalb hier null.
+ */
+function entwurfAlsRechnung(
+  e: Awaited<ReturnType<typeof rechnungsEntwurf>>, kind: 'final' | 'interim',
+  bezahlt: boolean
+): CiiInvoice {
+  const issuer = e.issuer as Parameters<typeof payeeFromSnapshot>[0] & Partial<CiiParty>
+  const recipient = e.recipient as Partial<CiiParty> & { buyerReference?: string | null }
+  return {
+    number: 'Entwurf',
+    issuedOn: e.heute,
+    kind,
+    currency: 'EUR',
+    seller: partyFromSnapshot(issuer),
+    buyer: partyFromSnapshot(recipient),
+    buyerReference: recipient.buyerReference ?? null,
+    payee: payeeFromSnapshot(issuer),
+    lines: [
+      ...groupInvoiceLines(e.charges.map(c =>
+        chargeLineSource(c, 0, e.lineGuests[String(c.id)]))),
+      ...e.deposits.map(d => depositLedgerLine({
+        kind: 'applied', net_cent: d.net_cent, tax_rate_bp: d.tax_rate_bp,
+        deposit_number: d.deposit_number, deposit_issued_on: d.deposit_issued_on }))
+    ],
+    serviceFrom: e.serviceFrom,
+    serviceTo: e.serviceTo,
+    // "Bezahlt" schreibt den Zahlungsvermerk erst beim Festschreiben; der
+    // Entwurf zeigt schon, was dann darauf steht.
+    prepaidCent: bezahlt ? e.totals.payableCent : e.totals.prepaidCent,
+    roundingCent: e.totals.roundingCent,
+    ...(e.totals.taxAdjustCent === undefined ? {} : { taxAdjustCent: e.totals.taxAdjustCent }),
+    dueOn: bezahlt ? null : e.dueOn,
+    precedingInvoice: null,
+    notes: []
   }
 }
 
@@ -3121,6 +3173,61 @@ export function billingRoutes(app: FastifyInstance): void {
           findings: maengel.map(m => ({ key: m.key, reference: m.reference, de: m.de, en: m.en }))
         }
       })
+    }
+  })
+
+  /**
+   * Die Rechnung als PDF, bevor sie festgeschrieben ist (Sven, 16.10.2026:
+   * "es waere gut wenn es kuenftig eine rechnungsvorschau gaebe bevor ich
+   * diese festschreibe und diese unveraenderbar ist").
+   *
+   * Dasselbe Blatt wie der Beleg (`@hotelpms/beleg`), aus demselben Entwurf
+   * wie die Vorschau daneben, aber ohne Nummer, ohne XML und mit "ENTWURF"
+   * quer ueber jeder Seite. Geschrieben wird nichts: keine Nummer
+   * verbraucht, kein Zahlungsvermerk, kein Beleg abgelegt. Ein POST, weil
+   * der Auftrag (Auswahl, Anschrift, Zahlung) im Rumpf kommt, wie bei der
+   * Vorschau.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/invoice-preview/pdf',
+    permission: 'invoice:issue',
+    summary: 'Rechnung als PDF-Entwurf vorab ansehen',
+    handler: async (req, reply) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = (req.body ?? {}) as RechnungsAuftrag
+      const principal = req.principal as Principal
+      auftragPruefen(body)
+
+      const { rechnung, logo, website } = await tx(req.pool, req, async client => {
+        const f = await client.query<{ id: number; property_id: number; guest_id: number | null
+                                       company_id: number | null }>(
+          `SELECT id, property_id, guest_id, company_id FROM folio WHERE public_ref = $1`,
+          [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'invoice:issue', folio.property_id)
+        const e = await rechnungsEntwurf(client, folio, body)
+        const l = await client.query<{ mime: string; bytes: Buffer }>(
+          `SELECT mime, bytes FROM property_invoice_logo WHERE property_id = $1`,
+          [folio.property_id])
+        return {
+          rechnung: entwurfAlsRechnung(e, body.kind ?? 'final', body.paid !== undefined),
+          logo: l.rows[0] ?? null,
+          website: (e.issuer as { website?: string | null }).website ?? null
+        }
+      })
+      // Gezeichnet ausserhalb der Transaktion: einige hundert Millisekunden
+      // Rechenarbeit halten sonst eine Verbindung offen (wie im Worker).
+      const doc = await renderInvoicePdf({
+        invoice: rechnung, publicRef: '', draft: true, logo, website
+      })
+      const pdf = await doc.save()
+      reply.header('content-type', 'application/pdf')
+      reply.header('content-disposition', 'inline; filename="Rechnung-Entwurf.pdf"')
+      // Ein Entwurf ist nach der naechsten Buchung ein anderer.
+      reply.header('cache-control', 'no-store')
+      return Buffer.from(pdf)
     }
   })
 

@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Charge, InvoiceRecipient } from '@hotelpms/contracts'
 import { usePaymentMethods } from '../lib/queries.js'
 import { useInvoicePreview, useIssueInvoiceWith, useCorrectCharge, useAddGrossCharge,
-         useSendInvoice, type RechnungsAuftrag,
+         useSendInvoice, holeEntwurf, type RechnungsAuftrag,
          type Empfaengerdaten } from '../lib/queries/billing.js'
 import { usePatchCompany } from '../lib/queries/guests.js'
 import { centAusEingabeMitVorzeichen, eingabeAusCent } from '../lib/preisraster.js'
@@ -91,6 +91,41 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
 
   const v = vorschau.data
   const geaendert = anschrift !== null
+
+  // Zimmer und Gast je Position, wie sie auf der Rechnung stehen werden
+  // (Sven, 16.10.2026: "bei den uebernachtungen steht dort nicht der
+  // gastname des jeweiligen zimmers"). Gemerkt ueber die Vorschauen hinweg,
+  // damit eine abgewaehlte Zeile ihren Namen nicht verliert.
+  const [texte, setTexte] = useState<ReadonlyMap<number, string>>(new Map())
+  useEffect(() => {
+    if (v === undefined) return
+    setTexte(alt => {
+      const neu = new Map(alt)
+      for (const l of v.lines) neu.set(l.chargeId, l.description)
+      return neu
+    })
+  }, [v])
+
+  // Das PDF des Entwurfs, auf Knopfdruck. Die Adresse des Blobs wird beim
+  // Schliessen freigegeben, wie beim Beleg.
+  const [entwurf, setEntwurf] = useState<{ url: string } | { fehler: unknown } | null>(null)
+  const [entwurfLaedt, setEntwurfLaedt] = useState(false)
+  useEffect(() => () => {
+    if (entwurf !== null && 'url' in entwurf) URL.revokeObjectURL(entwurf.url)
+  }, [entwurf])
+  // Aendert sich der Auftrag, zeigt das offene PDF nicht mehr, was
+  // festgeschrieben wuerde.
+  useEffect(() => { setEntwurf(null) }, [auftrag])
+  const entwurfZeigen = async (): Promise<void> => {
+    setEntwurfLaedt(true)
+    try {
+      setEntwurf({ url: URL.createObjectURL(await holeEntwurf(folioRef, auftrag)) })
+    } catch (e) {
+      setEntwurf({ fehler: e })
+    } finally {
+      setEntwurfLaedt(false)
+    }
+  }
   const bereit = online && v !== undefined && !vorschau.isFetching && v.findings.length === 0
     && !v.prefixMissing && ausgewaehlt.length > 0 && (!bezahlt || zahlart !== '')
     && !festschreiben.isPending && !festschreiben.isSuccess
@@ -145,7 +180,7 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
       </div>
 
       <Positionen folioRef={folioRef} offen={offen} abgewaehlt={abgewaehlt}
-                  setAbgewaehlt={setAbgewaehlt} />
+                  setAbgewaehlt={setAbgewaehlt} texte={texte} />
 
       <label className="flex flex-wrap items-center gap-2 text-sm">
         <input type="checkbox" checked={zwischen} onChange={e => setZwischen(e.target.checked)} />
@@ -243,22 +278,50 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
         {mailAn && !bezahlt && <ZahlwegWahl wert={zahlweg} setWert={setZahlweg} />}
       </div>
 
+      {entwurf !== null && 'fehler' in entwurf && <Fehler error={entwurf.fehler} />}
+      {entwurf !== null && 'url' in entwurf && (
+        <div className="space-y-2">
+          <iframe src={entwurf.url} title={t('rdlg.draftPdf')}
+                  className="w-full h-[70vh] border border-neutral-200 rounded-sm bg-white" />
+          <div className="flex flex-wrap gap-3 text-sm">
+            {/* iOS zeigt im eingebetteten Blatt oft nur die erste Seite. */}
+            <a href={entwurf.url} target="_blank" rel="noreferrer" className="underline">
+              {t('rdlg.draftOpen')}
+            </a>
+            <button type="button" onClick={() => setEntwurf(null)} className="underline">
+              {t('common.close')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {festschreiben.isError && <Fehler error={festschreiben.error} />}
       {firma.isError && <Fehler error={firma.error} />}
-      <button onClick={() => { void ausstellen() }} disabled={!bereit}
-              className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
-                         disabled:bg-neutral-300">
-        {t('rdlg.issue', { number: v?.nextNumber ?? '' })}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => { void entwurfZeigen() }}
+                disabled={!online || ausgewaehlt.length === 0 || entwurfLaedt
+                          || vorschau.isError}
+                className="px-3 py-1.5 text-sm rounded-sm border border-neutral-300
+                           disabled:opacity-40">
+          {t('rdlg.draftPdf')}
+        </button>
+        <button onClick={() => { void ausstellen() }} disabled={!bereit}
+                className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
+                           disabled:bg-neutral-300">
+          {t('rdlg.issue', { number: v?.nextNumber ?? '' })}
+        </button>
+      </div>
     </section>
   )
 }
 
-function Positionen({ folioRef, offen, abgewaehlt, setAbgewaehlt }: {
+function Positionen({ folioRef, offen, abgewaehlt, setAbgewaehlt, texte }: {
   folioRef: string
   offen: Charge[]
   abgewaehlt: ReadonlySet<number>
   setAbgewaehlt: (s: ReadonlySet<number>) => void
+  /** Positionstext mit Zimmer und Gast aus der Vorschau, je Buchung. */
+  texte: ReadonlyMap<number, string>
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -280,7 +343,7 @@ function Positionen({ folioRef, offen, abgewaehlt, setAbgewaehlt }: {
               <input type="checkbox" checked={!abgewaehlt.has(c.id)}
                      onChange={() => umschalten(c.id)} aria-label={c.description} />
               <span className="w-24 text-neutral-500">{formatDate(c.business_date, locale)}</span>
-              <span className="grow">{c.description}</span>
+              <span className="grow">{texte.get(c.id) ?? c.description}</span>
               <span className="text-xs text-neutral-500">{c.tax_rate_bp / 100} %</span>
               <span className="w-24 text-end tabular-nums">
                 {formatMoney(c.gross_cent, locale)}

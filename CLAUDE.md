@@ -71,6 +71,7 @@ packages/db     Migrationen, Verbindungen, Transaktionskontext
 packages/domain Fachlogik ohne HTTP und ohne Framework
 packages/contracts  Geteilte Schemata, OpenAPI-Erzeugung
 packages/testing    Fixtures, Abfragezähler
+packages/beleg      Rechnungsblatt und PDF/A-3, für Worker (Beleg) und API (Entwurf)
 ```
 
 Richtung der Abhängigkeiten: `apps → packages`, niemals rückwärts, niemals quer zwischen Apps. ESLint setzt das durch.

@@ -9,11 +9,10 @@
     "start": "node dist/worker.js"
   },
   "dependencies": {
+    "@hotelpms/beleg": "workspace:*",
     "@hotelpms/contracts": "workspace:*",
     "@hotelpms/db": "workspace:*",
     "@hotelpms/domain": "workspace:*",
-    "@pdf-lib/fontkit": "1.1.1",
-    "pdf-lib": "1.17.1",
     "pino": "^9.5.0",
     "web-push": "^3.6.7"
   },

@@ -29,7 +29,8 @@ export const FACTUR_X_FILENAME = 'factur-x.xml'
 /** Profilkennung im XMP. Muss zur Profilkennung im XML passen (BT-24). */
 export const FACTUR_X_CONFORMANCE = 'EN 16931'
 
-const ASSETS = new URL('../../assets/', import.meta.url)
+// Aus src/ wie aus dist/ eine Ebene hoch: die Beigaben liegen neben beiden.
+const ASSETS = new URL('../assets/', import.meta.url)
 
 /**
  * Schriften und Farbprofil einmal je Prozess lesen. Der Worker erzeugt

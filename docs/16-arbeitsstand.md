@@ -71,7 +71,7 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 
 **Warum.** Die B2B-Ausstellungspflicht kommt gestaffelt bis 2028. ZUGFeRD ist PDF/A-3 mit eingebettetem CII-XML nach EN 16931. Ohne das sind Firmenrechnungen ab dem Stichtag nicht mehr verkehrsfähig (E3 in Dokument 13).
 
-**Wo es liegt.** `packages/domain/src/invoiceCii.ts` (XML und die Geschäftsregeln der Norm), `apps/worker/src/pdf/` (Blatt und PDF/A-3), `apps/worker/src/jobs/invoiceDocument.ts` (Erzeugung), Migration `0024` (Ablage), `GET /v1/invoices/:invoiceRef/pdf` (Auslieferung).
+**Wo es liegt.** `packages/domain/src/invoiceCii.ts` (XML und die Geschäftsregeln der Norm), `packages/beleg/` (Blatt und PDF/A-3, seit 16.10.2026 eigenes Paket, weil auch die API den Entwurf zeichnet), `apps/worker/src/jobs/invoiceDocument.ts` (Erzeugung), Migration `0024` (Ablage), `GET /v1/invoices/:invoiceRef/pdf` (Auslieferung).
 
 **Was daraus entschieden wurde.**
 
@@ -79,7 +79,7 @@ Jede ist so geschnitten, dass sie **allein** bearbeitet werden kann. Genannt sin
 - **`invoice.pdf_path` ist unbenutzbar und bleibt leer.** Die Spalte gibt es seit `0010`, aber `invoice` ist Härtegrad 1: ein Pfad ließe sich nur beim Anlegen setzen, also bevor es das PDF gibt. Der Beleg liegt deshalb in `invoice_document`, selbst wieder append-only — eine ausgestellte Rechnung wird nicht neu gerendert, sonst ersetzte eine spätere Layoutänderung still das Dokument, das der Gast in der Hand hält.
 - **Nicht jede gültige Rechnung ist ein EN-16931-Beleg.** Die Norm kennt keine Kleinbetragsrechnung: § 33 UStDV erlaubt bis 250 Euro brutto den Verzicht auf den Empfänger, BR-07 und BR-10 tun das nicht. Und die Steuernummer genügt ihr nicht — § 14 Abs. 4 Nr. 2 UStG lässt Steuernummer *oder* USt-IdNr. genügen, BR-CO-26 verlangt eine Kennung des Verkäufers, und die Steuernummer ist keine. Solche Rechnungen bekommen ein PDF/A-3 **ohne** XML, mit dem Grund auf dem Blatt und in der Zeile. Fehlt die USt-IdNr. des Hauses, ist das keine Eigenschaft der Rechnung, sondern eine Lücke in den Stammdaten: sie trifft jede weitere und wird einmal als Alarm gemeldet.
 - **Eine Gegenbuchung wird über eine negative Menge ausgedrückt**, nicht über einen negativen Preis: BR-27 verbietet den negativen Einzelpreis, und ein Beleg, der ihn trotzdem trägt, fällt erst beim Empfänger durch.
-- **Kein Chromium und kein Ghostscript.** Das Blatt wird direkt gezeichnet und im selben Schritt zu PDF/A-3 ergänzt. Ein Browser oder ein zweiter Prozess wären zwei Laufzeitabhängigkeiten für ein A4-Blatt. Mitgeliefert werden dafür eine Schrift und ein Farbprofil (`apps/worker/assets/`): PDF/A verlangt eingebettete Schriften und ein Ausgabeziel, und beides darf sich nicht mit dem nächsten `pnpm install` ändern.
+- **Kein Chromium und kein Ghostscript.** Das Blatt wird direkt gezeichnet und im selben Schritt zu PDF/A-3 ergänzt. Ein Browser oder ein zweiter Prozess wären zwei Laufzeitabhängigkeiten für ein A4-Blatt. Mitgeliefert werden dafür eine Schrift und ein Farbprofil (`packages/beleg/assets/`): PDF/A verlangt eingebettete Schriften und ein Ausgabeziel, und beides darf sich nicht mit dem nächsten `pnpm install` ändern.
 
 **Nicht dazu.** Versand per E-Mail. Peppol.
 
@@ -1362,3 +1362,7 @@ Sven, 15.10.2026, mit einer Rechnung aus Lexoffice zum Vergleich: „dort sieht 
 ### Nächte je Leistung zusammengefasst, Übernachtung zuerst — **erledigt**
 
 Sven, 15.10.2026: „preise pro nacht sind auch sehr verwirrend und rechnungen für 14 tage werden endlos" und „die übernachtung muss generell vor dem frühstück kommen". Auf dem Beleg steht je Leistung und Zimmer eine Zeile über aufeinanderfolgende Nächte, „Übernachtung 08.10.–21.10.2026", Menge 14; danach Frühstück Speisen, Frühstück Getränke, Inklusivleistungen, dann alles andere (`groupInvoiceLines`). Blatt und XML lesen dieselbe Liste. Gebucht wird weiter je Nacht: Folio, DATEV, Storno einer Nacht und Statistik brauchen sie. Eine Lücke beginnt eine neue Zeile; kosten die Nächte verschieden viel, steht der Einzelpreis als Durchschnitt mit „Ø" da, der Betrag bleibt die genaue Summe. Die Vorschau im Rechnungsdialog zeigt weiter je Buchung, weil dort einzelne Buchungen korrigiert werden.
+
+### Rechnung als PDF-Entwurf vor dem Festschreiben — **erledigt**
+
+Sven, 16.10.2026: Nach dem Umbuchen der Nächte eines zweiten Zimmers aufs erste stand im Rechnungsdialog bei keiner Übernachtung der Gastname des Zimmers, „es wäre gut wenn es künftig eine rechnungsvorschau gäbe bevor ich diese festschreibe und diese unveränderbar ist“. Der Dialog zeigt die Positionen jetzt mit dem Text, den die Rechnung tragen wird („– Zimmer 101, Anna Berger“), und hat einen Knopf „Vorschau als PDF“: dasselbe Blatt wie der Beleg, aus demselben Entwurf, mit „ENTWURF“ quer über jeder Seite und ohne Nummer (`POST /v1/folios/:folioRef/invoice-preview/pdf`). Geschrieben wird dabei nichts. Damit API und Worker dasselbe Blatt zeichnen, liegen Blatt, PDF/A-3-Rahmen und Schriften jetzt in `packages/beleg`, und die Abbildung von Buchungen auf Rechnungszeilen in `packages/domain/src/invoiceSnapshot.ts`.

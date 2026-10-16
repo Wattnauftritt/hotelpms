@@ -29,6 +29,7 @@ export default defineConfig({
       '@hotelpms/domain/cashbook': fileURLToPath(
         new URL('./packages/domain/src/cashbook.ts', import.meta.url)),
       '@hotelpms/db': src('db'),
+      '@hotelpms/beleg': src('beleg'),
       '@hotelpms/testing': src('testing'),
       '@hotelpms/domain': src('domain'),
       '@hotelpms/contracts': src('contracts')

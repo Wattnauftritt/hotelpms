@@ -95,6 +95,32 @@ export async function holeBeleg(invoiceRef: string): Promise<Blob> {
   return await res.blob()
 }
 
+/**
+ * Die Rechnung als PDF-Entwurf, bevor sie festgeschrieben ist: dasselbe
+ * Blatt wie der Beleg, mit "ENTWURF" quer darueber und ohne Nummer. Als
+ * Blob aus demselben Grund wie `holeBeleg`; ein POST, weil der Auftrag im
+ * Rumpf kommt.
+ */
+export async function holeEntwurf(folioRef: string, auftrag: RechnungsAuftrag): Promise<Blob> {
+  const res = await fetch(`/v1/folios/${folioRef}/invoice-preview/pdf`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(auftrag)
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    let problem: unknown = null
+    try { problem = JSON.parse(text) } catch { problem = null }
+    throw new ApiError(
+      problem !== null && typeof problem === 'object' && 'title' in problem
+        ? problem as never
+        : { type: 'urn:staygrid:unknown', title: res.statusText, status: res.status },
+      res.status)
+  }
+  return await res.blob()
+}
+
 /** Wartet der Beleg noch auf den Worker? */
 export function istBelegInArbeit(fehler: unknown): boolean {
   return fehler instanceof ApiError
