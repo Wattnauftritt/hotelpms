@@ -1473,23 +1473,26 @@ export function billingRoutes(app: FastifyInstance): void {
         // eigenen Zimmers, Gastfolio vorn, dann die der anderen Zimmer einer
         // Gruppe. Weitere legt `.../split` als 'company' an.
         const stay = folio.reservation_id === null ? [] : (await client.query<{
-          folioRef: string; label: string | null; main: boolean; saldo: string
+          folioRef: string; label: string | null; main: boolean; group: boolean; saldo: string
           accommodationHere: boolean; room: string | null; ownStay: boolean }>(
           `SELECT x.public_ref AS "folioRef", x.label, x.kind = 'guest' AS main,
+                  x.kind = 'group' AS "group",
                   (COALESCE((SELECT sum(gross_cent) FROM charge WHERE folio_id = x.id), 0)
                  - COALESCE((SELECT sum(amount_cent) FROM settlement
                               WHERE folio_id = x.id), 0))::text AS saldo,
                   EXISTS (SELECT 1 FROM routing_rule rr
                            WHERE rr.reservation_id = x.reservation_id
                              AND rr.target_folio_id = x.id
-                             AND rr.match_kind = 'accommodation') AS "accommodationHere",
+                             AND rr.match_kind IN ('accommodation', 'all'))
+                    AS "accommodationHere",
                   u.code AS room, r.id = $1 AS "ownStay"
              FROM reservation eigene
              JOIN reservation r ON r.booking_id = eigene.booking_id
              JOIN folio x ON x.reservation_id = r.id
              LEFT JOIN resource u ON u.id = r.resource_id
             WHERE eigene.id = $1 AND x.property_id = $2
-            ORDER BY r.id = $1 DESC, r.id, x.kind = 'guest' DESC, x.id
+            -- Das Gruppenfolio vorn: es ist das Konto, auf das alle buchen.
+            ORDER BY x.kind = 'group' DESC, r.id = $1 DESC, r.id, x.kind = 'guest' DESC, x.id
             LIMIT 60`,
           [folio.reservation_id, folio.property_id])).rows
           .map(({ saldo, ...x }) => ({ ...x, balanceCent: Number(saldo) }))
@@ -2114,6 +2117,153 @@ export function billingRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Gruppenfolio: ein Konto fuer die ganze Buchung, auf das die Zimmer
+   * ihre Naechte buchen (Sven, 16.10.2026: "damit man nicht 10 zimmer
+   * einzeln auf eines der zimmer umbuchen muss im folio").
+   *
+   * **Woran es haengt.** An der ersten Reservierung der Buchung, mit der Art
+   * 'group'. So bleibt es ein Folio wie jedes andere: Umbuchen, Empfaenger,
+   * Rechnung, Gastzusatz je Zimmer und das Zuruecksetzen einer
+   * Datenuebernahme gehen ueber `folio.reservation_id` und kennen es damit
+   * schon. Je Buchung gibt es hoechstens eines; ein zweiter Klick findet das
+   * erste wieder.
+   *
+   * **Was darauf laeuft** sagt `scope`: 'accommodation' nimmt Uebernachtung
+   * mit Fruehstueck und Inklusivleistungen, also die ganze gebuchte Nacht;
+   * 'all' auch Minibar, Restaurant und jede andere Position. Beides setzt
+   * die Umleitung fuer jedes Zimmer der Buchung, damit der Nachtlauf
+   * kuenftige Naechte gleich dorthin bucht, und bucht die schon gebuchten
+   * offenen Positionen der Gastfolios um -- Gegenbuchung dort, dieselbe
+   * Position hier, wie `.../transfer`. Ein Split-Folio eines Zimmers ("Firma
+   * zahlt Logis") bleibt, wie es ist: das hat jemand mit Absicht so
+   * gebucht. Die Kurtaxe bleibt am Zimmer: sie steht auf keiner Rechnung,
+   * und ihr Beleg ist die Kurkarte des einzelnen Gastes.
+   *
+   * Empfaenger ist zunaechst der Bucher der Buchung, Firma vor Person; wie
+   * bei jedem Folio aendert ihn `.../recipient`.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/folios/:folioRef/group-folio',
+    permission: 'folio:route',
+    summary: 'Gruppenfolio der Buchung anlegen und die Zimmer darauf umleiten',
+    handler: async (req, reply) => {
+      const { folioRef } = req.params as { folioRef: string }
+      const body = (req.body ?? {}) as { scope?: unknown }
+      if (body.scope !== 'accommodation' && body.scope !== 'all') {
+        throw Errors.validation({ scope: ['field.invalid'] })
+      }
+      const scope = body.scope
+      const principal = req.principal as Principal
+      const key = req.headers['idempotency-key'] as string | undefined
+      if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
+
+      return tx(req.pool, req, async client => {
+        const stored = await beginIdempotent(
+          client, principal.clientKey, key, { folioRef, scope }, principal.accountIds[0]!)
+        if (stored) { reply.status(stored.status); return stored.body }
+
+        const f = await client.query<{ property_id: number; reservation_id: number | null }>(
+          `SELECT property_id, reservation_id FROM folio WHERE public_ref = $1`, [folioRef])
+        if (f.rowCount === 0) throw Errors.notFound('res.folio')
+        const folio = f.rows[0]!
+        rechtImHaus(principal, 'folio:route', folio.property_id)
+        if (folio.reservation_id === null) throw Errors.unprocessable('folio.noGroup')
+
+        // Die Buchung sperren: zwei gleichzeitige Klicks legten sonst zwei
+        // Gruppenfolios an. Haus ausdruecklich mitgeprueft (mehrere Haeuser
+        // je Account).
+        const b = await client.query<{ id: number; booker_guest_id: number | null
+                                       booker_company_id: number | null }>(
+          `SELECT b.id, b.booker_guest_id, b.booker_company_id
+             FROM booking b JOIN reservation r ON r.booking_id = b.id
+            WHERE r.id = $1 AND b.property_id = $2 FOR UPDATE OF b`,
+          [folio.reservation_id, folio.property_id])
+        if (b.rowCount === 0) throw Errors.notFound('res.folio')
+        const buchung = b.rows[0]!
+        const zimmer = (await client.query<{ id: number }>(
+          `SELECT id FROM reservation
+            WHERE booking_id = $1 AND property_id = $2
+              AND status NOT IN ('Canceled', 'NoShow')
+            ORDER BY id`, [buchung.id, folio.property_id])).rows.map(r => r.id)
+        if (zimmer.length < 2) throw Errors.unprocessable('folio.noGroup')
+
+        const vorhanden = await client.query<{ id: number; public_ref: string; status: string }>(
+          `SELECT f.id, f.public_ref, f.status FROM folio f
+             JOIN reservation r ON r.id = f.reservation_id
+            WHERE r.booking_id = $1 AND f.kind = 'group' AND f.property_id = $2
+            ORDER BY f.id LIMIT 1`, [buchung.id, folio.property_id])
+        let gruppe = vorhanden.rows[0]
+        if (gruppe?.status === 'closed') throw Errors.conflict('folio.closed')
+        if (gruppe === undefined) {
+          gruppe = (await client.query<{ id: number; public_ref: string; status: string }>(
+            `INSERT INTO folio (property_id, reservation_id, kind, guest_id, company_id)
+             VALUES ($1, $2, 'group', $3, $4) RETURNING id, public_ref, status`,
+            [folio.property_id, zimmer[0], buchung.booker_guest_id,
+             buchung.booker_company_id])).rows[0]!
+        }
+
+        // Eine Regel je Zimmer. 'all' ersetzt auch eine Logis-Regel, weil die
+        // genauere im Nachtlauf sonst gewoenne und die Naechte dort liesse.
+        await client.query(
+          `DELETE FROM routing_rule
+            WHERE reservation_id = ANY($1::bigint[])
+              AND match_kind = ANY($2::text[])`,
+          [zimmer, scope === 'all' ? ['accommodation', 'all'] : ['accommodation']])
+        await client.query(
+          `INSERT INTO routing_rule (property_id, reservation_id, target_folio_id, match_kind)
+           SELECT $1, x, $2, $3 FROM unnest($4::bigint[]) AS x`,
+          [folio.property_id, gruppe.id, scope, zimmer])
+
+        // Die offenen Positionen der Gastfolios: nicht berechnet, keine
+        // Gegenbuchung und keine gegengebuchte, keine Kurtaxe.
+        const offen = (await client.query<{ id: number }>(
+          `SELECT c.id FROM charge c
+             JOIN folio q ON q.id = c.folio_id
+            WHERE q.reservation_id = ANY($1::bigint[]) AND q.kind = 'guest'
+              AND q.status = 'open' AND q.property_id = $2
+              AND c.invoice_id IS NULL AND c.reverses_id IS NULL
+              AND NOT EXISTS (SELECT 1 FROM charge g WHERE g.reverses_id = c.id)
+              AND ${OHNE_KURTAXE}
+              AND ($3 OR c.revenue_account = '8300' OR c.package_part IS NOT NULL)
+            ORDER BY c.id
+            FOR UPDATE OF q`,
+          [zimmer, folio.property_id, scope === 'all'])).rows.map(r => r.id)
+        if (offen.length > 0) {
+          await client.query(
+            `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                                 net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                                 revenue_account, product_id, reservation_id, reverses_id,
+                                 created_by, package_part)
+             SELECT c.property_id, c.folio_id, c.business_date, 'Umbuchung ' || c.description,
+                    c.quantity, -c.net_cent, -c.tax_cent, -c.gross_cent, c.tax_rate_bp,
+                    c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id, c.id,
+                    $2, c.package_part
+               FROM charge c WHERE c.id = ANY($1::bigint[]) ORDER BY c.id`,
+            [offen, principal.userId])
+          await client.query(
+            `INSERT INTO charge (property_id, folio_id, business_date, description, quantity,
+                                 net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
+                                 revenue_account, product_id, reservation_id,
+                                 created_by, package_part)
+             SELECT c.property_id, $2, c.business_date, c.description,
+                    c.quantity, c.net_cent, c.tax_cent, c.gross_cent, c.tax_rate_bp,
+                    c.tax_rule_id, c.revenue_account, c.product_id, c.reservation_id,
+                    $3, c.package_part
+               FROM charge c WHERE c.id = ANY($1::bigint[]) ORDER BY c.id`,
+            [offen, gruppe.id, principal.userId])
+        }
+
+        const result = { folioRef: gruppe.public_ref, rooms: zimmer.length,
+                         moved: offen.length }
+        await completeIdempotent(client, principal.clientKey, key, 201, result)
+        reply.status(201)
+        return result
+      })
+    }
+  })
+
+  /**
    * Umbuchen: eine offene Position auf ein anderes Folio derselben Buchung,
    * also desselben Zimmers (Split) oder eines anderen Zimmers der Gruppe
    * (Sammelrechnung).
@@ -2255,19 +2405,33 @@ export function billingRoutes(app: FastifyInstance): void {
         if (folio.status === 'closed') throw Errors.conflict('folio.closed')
         if (folio.reservation_id === null) throw Errors.unprocessable('folio.noStay')
 
+        // Ein Gruppenfolio leitet alle Zimmer der Buchung um, jedes andere
+        // nur seinen eigenen Aufenthalt.
+        const zimmer = folio.kind !== 'group' ? [folio.reservation_id]
+          : (await client.query<{ id: number }>(
+              `SELECT b.id FROM reservation a JOIN reservation b ON b.booking_id = a.booking_id
+                WHERE a.id = $1 AND b.property_id = $2
+                  AND b.status NOT IN ('Canceled', 'NoShow')`,
+              [folio.reservation_id, folio.property_id])).rows.map(r => r.id)
+
         // Eine Regel je Aufenthalt: wer sie auf ein Folio setzt, nimmt sie
         // dem bisherigen. Aufs Gastfolio heisst keine Regel -- dorthin
-        // bucht der Nachtlauf ohnehin.
+        // bucht der Nachtlauf ohnehin. Abschalten nimmt auch ein 'all' des
+        // Gruppenfolios weg; die Zimmer buchen dann wieder auf sich.
         await client.query(
           `DELETE FROM routing_rule
-            WHERE reservation_id = $1 AND match_kind = 'accommodation'
-              AND (target_folio_id = $2 OR $3)`,
-          [folio.reservation_id, folio.id, hierher])
+            WHERE reservation_id = ANY($1::bigint[])
+              AND (match_kind = 'accommodation' AND (target_folio_id = $2 OR $3)
+                   OR match_kind = 'all' AND target_folio_id = $2 AND NOT $3)`,
+          [zimmer, folio.id, hierher])
         if (hierher && folio.kind !== 'guest') {
           await client.query(
             `INSERT INTO routing_rule (property_id, reservation_id, target_folio_id, match_kind)
-             VALUES ($1, $2, $3, 'accommodation')`,
-            [folio.property_id, folio.reservation_id, folio.id])
+             SELECT $1, x, $2, 'accommodation' FROM unnest($3::bigint[]) AS x
+              WHERE NOT EXISTS (SELECT 1 FROM routing_rule y
+                                 WHERE y.reservation_id = x AND y.target_folio_id = $2
+                                   AND y.match_kind = 'all')`,
+            [folio.property_id, folio.id, zimmer])
         }
         return { accommodation: hierher && folio.kind !== 'guest' }
       })

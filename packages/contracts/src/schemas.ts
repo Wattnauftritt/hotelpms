@@ -446,11 +446,13 @@ export const FolioView = Type.Object({
    * Zimmers (`ownStay`, Gastfolio zuerst), dann die der anderen Zimmer
    * einer Gruppe. Ziel einer Umbuchung (Split, Sammelrechnung).
    * `accommodationHere`: die Uebernachtungen laufen per Umleitung hierher.
+   * `group`: das Gruppenfolio der Buchung, steht vorn.
    */
   stay: Type.Array(Type.Object({
     folioRef: Type.String(),
     label: Type.Union([Type.String(), Type.Null()]),
     main: Type.Boolean(),
+    group: Type.Boolean(),
     balanceCent: Cent,
     accommodationHere: Type.Boolean(),
     room: Type.Union([Type.String(), Type.Null()]),

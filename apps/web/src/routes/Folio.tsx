@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useFolio, usePaymentMethods, usePostCharge,
          usePostSettlement } from '../lib/queries.js'
 import { useSplitFolio, useTransferCharge, useSplitBreakfast, useCorrectStayPrice,
-         useAccommodationRouting } from '../lib/queries/billing.js'
+         useAccommodationRouting, useGroupFolio } from '../lib/queries/billing.js'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { apiText } from '../lib/meldungen.js'
 import { useOnline } from '../lib/offline.js'
@@ -389,6 +389,8 @@ function AufenthaltspreisKorrigieren({ folioRef }: { folioRef: string }): JSX.El
 }
 
 function kontoName(k: Konto, t: ReturnType<typeof useT>): string {
+  // Das Gruppenfolio gehoert keinem Zimmer, auch wenn es an einem haengt.
+  if (k.group) return k.label ?? t('folio.group')
   const name = k.label ?? (k.main ? t('folio.main') : t('folio.split'))
   // Ein anderes Zimmer der Gruppe (Sammelrechnung) heisst nach dem Zimmer.
   return k.ownStay ? name : `${t('common.room')} ${k.room ?? '–'} · ${name}`
@@ -411,8 +413,13 @@ function Aufenthalt({ folioRef, folio, onFolio, darf }: {
   const locale = useLocale()
   const anlegen = useSplitFolio(folioRef)
   const umleiten = useAccommodationRouting(folioRef)
+  const gruppe = useGroupFolio(folioRef)
   const [neu, setNeu] = useState<string | null>(null)
+  const [gruppeOffen, setGruppeOffen] = useState(false)
   const hier = folio.stay.find(x => x.folioRef === folioRef)
+  // Ein Gruppenfolio nur, wo es eine Gruppe gibt, und nur eines.
+  const gruppeMoeglich = darf && folio.stay.some(x => !x.ownStay)
+    && !folio.stay.some(x => x.group)
 
   // Ein einzelnes Gastfolio braucht keine Leiste, nur den Weg zu einem zweiten.
   if (folio.stay.length < 2 && !darf) return <></>
@@ -439,7 +446,41 @@ function Aufenthalt({ folioRef, folio, onFolio, darf }: {
             + {t('folio.split')}
           </button>
         )}
+        {gruppeMoeglich && !gruppeOffen && (
+          <button onClick={() => { setGruppeOffen(true) }}
+                  className="px-2 py-0.5 rounded-sm border border-dashed border-neutral-400
+                             text-neutral-700 hover:bg-neutral-50">
+            + {t('folio.group')}
+          </button>
+        )}
       </div>
+
+      {/* Logis und Fruehstueck aller Zimmer, Extras bleiben am Zimmer (Sven,
+          16.10.2026). Die API kennt auch 'all'; angeboten wird es nicht. */}
+      {gruppeMoeglich && gruppeOffen && (
+        <form className="space-y-2 text-sm"
+              onSubmit={e => {
+                e.preventDefault()
+                gruppe.mutate('accommodation', {
+                  onSuccess: r => { setGruppeOffen(false); onFolio(r.folioRef) }
+                })
+              }}>
+          <p className="font-medium">{t('folio.group')}</p>
+          <p>{t('folio.groupScopeStay')}</p>
+          <p className="text-xs text-neutral-600">{t('folio.groupHint')}</p>
+          <div className="flex gap-2">
+            <button type="submit" disabled={gruppe.isPending}
+                    className="px-3 py-1 text-sm rounded-sm bg-neutral-900 text-white">
+              {t('folio.create')}
+            </button>
+            <button type="button" onClick={() => { setGruppeOffen(false) }}
+                    className="px-3 py-1 text-sm rounded-sm border border-neutral-300">
+              {t('common.cancel')}
+            </button>
+          </div>
+        </form>
+      )}
+      {gruppe.isError && <Fehler error={gruppe.error} />}
 
       {darf && neu !== null && (
         <form className="flex flex-wrap items-center gap-2"
@@ -472,7 +513,7 @@ function Aufenthalt({ folioRef, folio, onFolio, darf }: {
           <input type="checkbox" checked={hier.accommodationHere}
                  disabled={!darf || umleiten.isPending}
                  onChange={e => { umleiten.mutate(e.target.checked) }} />
-          {t('folio.routeHere')}
+          {t(hier.group ? 'folio.routeHereGroup' : 'folio.routeHere')}
         </label>
       )}
       {umleiten.isError && <Fehler error={umleiten.error} />}
