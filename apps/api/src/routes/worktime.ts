@@ -34,6 +34,8 @@ type Art = 'extra' | 'kitchen' | 'correction'
 
 interface Eintrag {
   id: number
+  /** Das Haus des Eintrags -- in der Ansicht ueber alle Haeuser steht es dabei. */
+  propertyId: number
   date: string
   kind: Art
   description: string | null
@@ -69,15 +71,23 @@ interface Tag {
   rooms: number
   entries: Eintrag[]
   total: number
+  /** Die Summe des Tages je Haus, Schluessel ist die Property-ID. */
+  byHouse: Record<number, number>
 }
 
 interface Haelfte { from: string; to: string; total: number }
+
+/** Ein Haus der Ansicht mit seiner Monatssumme. */
+interface HausSumme { propertyId: number; name: string; total: number; closed: boolean }
 
 interface Monat {
   month: string
   from: string
   to: string
+  /** Bei mehreren Haeusern erst, wenn alle abgeschlossen sind. */
   closed: boolean
+  /** Die Haeuser, ueber die gerechnet wurde; eines, solange nicht `scope=all`. */
+  houses: HausSumme[]
   days: Tag[]
   totals: { rooms: number; extra: number; kitchen: number; correction: number; total: number }
   /**
@@ -112,6 +122,40 @@ async function istAbgeschlossen(
   return rows[0]!.zu
 }
 
+/**
+ * Die Haeuser einer Ansicht, das eigene zuerst, mit Namen und Abschluss.
+ * Eine Abfrage fuer alle.
+ */
+async function liesHaeuser(
+  client: PoolClient, haeuser: number[], from: string
+): Promise<Array<{ propertyId: number; name: string; closed: boolean }>> {
+  const { rows } = await client.query<{ propertyId: number; name: string; closed: boolean }>(
+    `SELECT p.id::int AS "propertyId", p.name, staff_month_is_closed(p.id, $2::date) AS closed
+       FROM property p
+      WHERE p.id = ANY($1::bigint[])
+      ORDER BY p.id <> $3, p.name, p.id`, [haeuser, from, haeuser[0]])
+  return rows
+}
+
+/**
+ * Ueber welche Haeuser eine Ansicht der Leitung rechnet (Sven, 16.10.2026:
+ * wer fuer mehrere Haeuser reinigt, wird je Mensch abgerechnet, und zwei
+ * Monatsplaene von Hand zusammenzuzaehlen ist genau die Arbeit, die das
+ * System abnehmen soll). `scope=all` nimmt jedes Haus desselben Betriebs, in
+ * dem der Aufrufer selbst `worktime:manage` hat -- nie eines, in dem er die
+ * Zeiten nicht sehen darf, und nie eines eines fremden Betriebs, das die
+ * Zeilenrichtlinie ohnehin ausblendete.
+ */
+function haeuserFuer(p: Principal, propertyId: number, scope: unknown): number[] {
+  if (scope === undefined || scope === 'house') return [propertyId]
+  if (scope !== 'all') {
+    throw Errors.validation({ scope: ['field.allowedValues'] }, { values: 'house, all' })
+  }
+  const betrieb = p.propertyAccounts.get(propertyId)
+  return [propertyId, ...andereMit(p, propertyId, 'worktime:manage')
+    .filter(id => p.propertyAccounts.get(id) === betrieb)]
+}
+
 async function monatOffen(client: PoolClient, propertyId: number, date: string): Promise<void> {
   if (await istAbgeschlossen(client, propertyId, date)) {
     throw Errors.conflict('worktime.monthClosed', { month: date.slice(0, 7) })
@@ -119,40 +163,54 @@ async function monatOffen(client: PoolClient, propertyId: number, date: string):
 }
 
 /**
- * Der Monat einer Person, Tag fuer Tag, in zwei Abfragen: Zimmer und
- * Eintraege. Jeder Tag des Monats steht da, auch der leere -- die Kraft
- * soll sehen, dass ein Tag fehlt, und nicht raten, ob er geladen ist.
+ * Der Monat einer Person, Tag fuer Tag, in drei Abfragen: Haeuser, Zimmer
+ * und Eintraege -- gleich, ueber wie viele Haeuser. Jeder Tag des Monats
+ * steht da, auch der leere -- die Kraft soll sehen, dass ein Tag fehlt, und
+ * nicht raten, ob er geladen ist.
  */
 async function liesMonat(
-  client: PoolClient, propertyId: number, userId: number, month: string
+  client: PoolClient, haeuser: number[], userId: number, month: string
 ): Promise<Monat> {
   const { from, to } = monthRange(month)
-  const zimmer = await client.query<{ date: string; minutes: number; rooms: number }>(
-    `SELECT business_date::text AS date, COALESCE(sum(minutes), 0)::int AS minutes,
-            count(*)::int AS rooms
+  const zimmer = await client.query<{ date: string; propertyId: number; minutes: number
+                                      rooms: number }>(
+    `SELECT business_date::text AS date, property_id::int AS "propertyId",
+            COALESCE(sum(minutes), 0)::int AS minutes, count(*)::int AS rooms
        FROM housekeeping_task
-      WHERE property_id = $1 AND assigned_to = $2 AND outcome = 'cleaned'
+      WHERE property_id = ANY($1::bigint[]) AND assigned_to = $2 AND outcome = 'cleaned'
         AND business_date BETWEEN $3::date AND $4::date
-      GROUP BY business_date`, [propertyId, userId, from, to])
-  const eintraege = await liesEintraege(client, propertyId, from, to, userId)
-  const zu = await istAbgeschlossen(client, propertyId, from)
+      GROUP BY 1, 2`, [haeuser, userId, from, to])
+  const eintraege = await liesEintraege(client, haeuser, from, to, userId)
+  const haus = await liesHaeuser(client, haeuser, from)
 
-  const jeTagZimmer = new Map(zimmer.rows.map(z => [z.date, z]))
   const days: Tag[] = []
   const totals = { rooms: 0, extra: 0, kitchen: 0, correction: 0, total: 0 }
+  const jeHaus = new Map(haus.map(h => [h.propertyId, 0]))
   for (let d = from; d <= to; d = addDays(d, 1)) {
-    const z = jeTagZimmer.get(d)
-    const entries = eintraege.rows.filter(e => e.date === d)
-    const zaehlen = entries.filter(e => !e.withdrawn)
-    const roomMinutes = z?.minutes ?? 0
+    const byHouse: Record<number, number> = {}
+    const dazu = (propertyId: number, min: number): void => {
+      byHouse[propertyId] = (byHouse[propertyId] ?? 0) + min
+      jeHaus.set(propertyId, (jeHaus.get(propertyId) ?? 0) + min)
+    }
+    let roomMinutes = 0
+    let rooms = 0
+    for (const z of zimmer.rows) {
+      if (z.date !== d) continue
+      roomMinutes += z.minutes
+      rooms += z.rooms
+      dazu(z.propertyId, z.minutes)
+    }
+    const entries = eintraege.rows.filter(e => e.date === d).map(({ userId: _, ...e }) => e)
     let total = roomMinutes
     totals.rooms += roomMinutes
-    for (const e of zaehlen) {
+    for (const e of entries) {
+      if (e.withdrawn) continue
       totals[e.kind] += e.minutes
       total += e.minutes
+      dazu(e.propertyId, e.minutes)
     }
     totals.total += total
-    days.push({ date: d, roomMinutes, rooms: z?.rooms ?? 0, entries, total })
+    days.push({ date: d, roomMinutes, rooms, entries, total, byHouse })
   }
   const mitte = `${month}-15`
   const summe = (bis: boolean): number =>
@@ -160,7 +218,9 @@ async function liesMonat(
   const halves: [Haelfte, Haelfte] = [
     { from, to: mitte, total: summe(true) },
     { from: addDays(mitte, 1), to, total: summe(false) }]
-  return { month, from, to, closed: zu, days, totals, halves }
+  return { month, from, to, closed: haus.every(h => h.closed),
+           houses: haus.map(h => ({ ...h, total: jeHaus.get(h.propertyId) ?? 0 })),
+           days, totals, halves }
 }
 
 /**
@@ -168,10 +228,11 @@ async function liesMonat(
  * Monat und Tagesansicht lesen hier, damit beide dieselbe Zeile zeigen.
  */
 async function liesEintraege(
-  client: PoolClient, propertyId: number, from: string, to: string, userId: number | null
+  client: PoolClient, haeuser: number[], from: string, to: string, userId: number | null
 ): Promise<{ rows: Array<Eintrag & { userId: number }> }> {
   return client.query<Eintrag & { userId: number }>(
-    `SELECT e.id::int, e.user_id::int AS "userId", e.business_date::text AS date, e.kind,
+    `SELECT e.id::int, e.property_id::int AS "propertyId", e.user_id::int AS "userId",
+            e.business_date::text AS date, e.kind,
             e.description, e.minutes,
             to_char(e.start_time, 'HH24:MI') AS start, to_char(e.end_time, 'HH24:MI') AS "end",
             e.source, u.display_name AS "createdBy", e.created_at AS "createdAt",
@@ -187,9 +248,9 @@ async function liesEintraege(
        LEFT JOIN staff_text_translation tr
               ON tr.source_kind = 'work_entry' AND tr.source_id = e.id AND tr.lang = 'de'
              AND tr.source_hash = digest(e.description, 'sha256')
-      WHERE e.property_id = $1 AND ($2::bigint IS NULL OR e.user_id = $2)
+      WHERE e.property_id = ANY($1::bigint[]) AND ($2::bigint IS NULL OR e.user_id = $2)
         AND e.business_date BETWEEN $3::date AND $4::date
-      ORDER BY e.business_date, e.id`, [propertyId, userId, from, to])
+      ORDER BY e.business_date, e.id`, [haeuser, userId, from, to])
 }
 
 interface ZimmerDesTags {
@@ -234,7 +295,7 @@ async function liesTag(
           AND t.assigned_to IS NOT NULL) z
       ORDER BY NULLIF(substring(z.code from '^[0-9]+'), '')::numeric NULLS LAST, z.code`,
     [propertyId, date])
-  const eintraege = await liesEintraege(client, propertyId, date, date, null)
+  const eintraege = await liesEintraege(client, [propertyId], date, date, null)
   const ids = [...new Set([...zimmer.rows.map(z => z.userId),
                            ...eintraege.rows.map(e => e.userId)])]
   const namen = ids.length === 0 ? [] : (await client.query<{ userId: number; name: string
@@ -362,13 +423,13 @@ function idAusPfad(req: FastifyRequest, name: string): number {
 }
 
 /**
- * Wer in diesem Haus Arbeitszeit haben kann: Reinigung und Kueche -- bei
- * gemeinsamem Personal (0116) die des ganzen Betriebs --, dazu jeder, der
- * im Monat Minuten hat. Ein Name aus einem fremden Haus kommt so
+ * Wer in diesen Haeusern Arbeitszeit haben kann: Reinigung und Kueche --
+ * bei gemeinsamem Personal (0116) die des ganzen Betriebs --, dazu jeder,
+ * der im Monat Minuten hat. Ein Name aus einem fremden Haus kommt so
  * nicht in die Liste -- die Benutzertabelle hat keine Zeilenrichtlinie.
  */
 async function liesKraefte(
-  client: PoolClient, propertyId: number, from: string, to: string
+  client: PoolClient, haeuser: number[], from: string, to: string
 ): Promise<Array<{ userId: number; name: string; username: string | null }>> {
   const { rows } = await client.query<{ userId: number; name: string; username: string | null }>(
     `SELECT u.id::int AS "userId", u.display_name AS name, u.username
@@ -376,55 +437,65 @@ async function liesKraefte(
       WHERE u.id IN (
               SELECT upr.user_id FROM user_property_role upr
                 JOIN role ro ON ro.id = upr.role_id
-               WHERE upr.property_id = ANY (staff_houses($1))
+               WHERE upr.property_id IN (SELECT unnest(staff_houses(h))
+                                           FROM unnest($1::bigint[]) h)
                  AND ro.key IN ('housekeeping_staff','kitchen')
               UNION
               SELECT assigned_to FROM housekeeping_task
-               WHERE property_id = $1 AND outcome = 'cleaned' AND assigned_to IS NOT NULL
+               WHERE property_id = ANY($1::bigint[]) AND outcome = 'cleaned'
+                 AND assigned_to IS NOT NULL
                  AND business_date BETWEEN $2::date AND $3::date
               UNION
               SELECT user_id FROM staff_work_entry
-               WHERE property_id = $1 AND business_date BETWEEN $2::date AND $3::date)
-      ORDER BY u.display_name`, [propertyId, from, to])
+               WHERE property_id = ANY($1::bigint[])
+                 AND business_date BETWEEN $2::date AND $3::date)
+      ORDER BY u.display_name`, [haeuser, from, to])
   return rows
 }
 
 interface TagesSumme {
   rooms: number; roomMinutes: number; extra: number; kitchen: number
   correction: number; total: number
+  /** Die Summe je Haus, Schluessel ist die Property-ID. */
+  byHouse: Record<number, number>
 }
 
 /**
- * Alle Kraefte eines Monats mit ihren Tagessummen nach Art -- vier
- * Abfragen fuer das ganze Haus, nicht vier je Kraft. Die Uebersicht und
- * die Ausgabe lesen beide hier.
+ * Alle Kraefte eines Monats mit ihren Tagessummen nach Art -- fuenf
+ * Abfragen fuer alle Haeuser der Ansicht, nicht fuenf je Kraft oder je
+ * Haus. Die Uebersicht und die Ausgabe lesen beide hier.
  */
-async function sammle(client: PoolClient, propertyId: number, month: string) {
+async function sammle(client: PoolClient, haeuser: number[], month: string) {
   const { from, to } = monthRange(month)
-  const kraefte = await liesKraefte(client, propertyId, from, to)
-  const zimmer = await client.query<{ userId: number; date: string; minutes: number
-                                      rooms: number }>(
+  const kraefte = await liesKraefte(client, haeuser, from, to)
+  const zimmer = await client.query<{ userId: number; date: string; propertyId: number
+                                      minutes: number; rooms: number }>(
     `SELECT assigned_to::int AS "userId", business_date::text AS date,
+            property_id::int AS "propertyId",
             COALESCE(sum(minutes), 0)::int AS minutes, count(*)::int AS rooms
        FROM housekeeping_task
-      WHERE property_id = $1 AND outcome = 'cleaned' AND assigned_to IS NOT NULL
+      WHERE property_id = ANY($1::bigint[]) AND outcome = 'cleaned' AND assigned_to IS NOT NULL
         AND business_date BETWEEN $2::date AND $3::date
-      GROUP BY 1, 2`, [propertyId, from, to])
-  const eintraege = await client.query<{ userId: number; date: string; kind: Art; minutes: number }>(
-    `SELECT user_id::int AS "userId", business_date::text AS date, kind,
-            sum(minutes)::int AS minutes
+      GROUP BY 1, 2, 3`, [haeuser, from, to])
+  const eintraege = await client.query<{ userId: number; date: string; propertyId: number
+                                         kind: Art; minutes: number }>(
+    `SELECT user_id::int AS "userId", business_date::text AS date,
+            property_id::int AS "propertyId", kind, sum(minutes)::int AS minutes
        FROM staff_work_entry
-      WHERE property_id = $1 AND withdrawn_at IS NULL
+      WHERE property_id = ANY($1::bigint[]) AND withdrawn_at IS NULL
         AND business_date BETWEEN $2::date AND $3::date
-      GROUP BY 1, 2, 3`, [propertyId, from, to])
-  const abschluss = await client.query<{ closedAt: string; closedBy: string | null }>(
-    `SELECT c.closed_at AS "closedAt", u.display_name AS "closedBy"
+      GROUP BY 1, 2, 3, 4`, [haeuser, from, to])
+  const abschluss = await client.query<{ propertyId: number; closedAt: string
+                                         closedBy: string | null }>(
+    `SELECT c.property_id::int AS "propertyId", c.closed_at AS "closedAt",
+            u.display_name AS "closedBy"
        FROM staff_month_close c LEFT JOIN app_user u ON u.id = c.closed_by
-      WHERE c.property_id = $1 AND c.month = $2::date AND c.reopened_at IS NULL`,
-    [propertyId, from])
+      WHERE c.property_id = ANY($1::bigint[]) AND c.month = $2::date AND c.reopened_at IS NULL
+      ORDER BY c.closed_at DESC`, [haeuser, from])
+  const haus = await liesHaeuser(client, haeuser, from)
 
   const leer = (): TagesSumme =>
-    ({ rooms: 0, roomMinutes: 0, extra: 0, kitchen: 0, correction: 0, total: 0 })
+    ({ rooms: 0, roomMinutes: 0, extra: 0, kitchen: 0, correction: 0, total: 0, byHouse: {} })
   const jeKraft = new Map<number, Map<string, TagesSumme>>(kraefte.map(k => [k.userId, new Map()]))
   const tag = (userId: number, date: string): TagesSumme | undefined => {
     const m = jeKraft.get(userId)
@@ -433,42 +504,61 @@ async function sammle(client: PoolClient, propertyId: number, month: string) {
     if (t === undefined) { t = leer(); m.set(date, t) }
     return t
   }
+  const dazu = (t: TagesSumme, propertyId: number, min: number): void => {
+    t.total += min
+    t.byHouse[propertyId] = (t.byHouse[propertyId] ?? 0) + min
+  }
   for (const z of zimmer.rows) {
     const t = tag(z.userId, z.date)
     if (t === undefined) continue
-    t.rooms += z.rooms; t.roomMinutes += z.minutes; t.total += z.minutes
+    t.rooms += z.rooms; t.roomMinutes += z.minutes; dazu(t, z.propertyId, z.minutes)
   }
   for (const e of eintraege.rows) {
     const t = tag(e.userId, e.date)
     if (t === undefined) continue
-    t[e.kind] += e.minutes; t.total += e.minutes
+    t[e.kind] += e.minutes; dazu(t, e.propertyId, e.minutes)
   }
+  // Ueber mehrere Haeuser ist der Monat erst zu, wenn jedes Haus zu ist --
+  // eine Abrechnung, in der ein Haus sich noch aendern kann, ist keine.
+  const zu = abschluss.rows.length === haeuser.length ? abschluss.rows[0]! : null
   return {
-    month, from, to, closed: abschluss.rows[0] ?? null,
+    month, from, to,
+    closed: zu === null ? null : { closedAt: zu.closedAt, closedBy: zu.closedBy },
+    houses: haus,
     staff: kraefte.map(k => {
       const tage = [...jeKraft.get(k.userId)!.entries()].sort(([a], [b]) => a.localeCompare(b))
       const totals = { rooms: 0, extra: 0, kitchen: 0, correction: 0, total: 0 }
+      const byHouse: Record<number, number> = {}
       for (const [, t] of tage) {
         totals.rooms += t.roomMinutes; totals.extra += t.extra; totals.kitchen += t.kitchen
         totals.correction += t.correction; totals.total += t.total
+        for (const [h, min] of Object.entries(t.byHouse)) {
+          byHouse[Number(h)] = (byHouse[Number(h)] ?? 0) + min
+        }
       }
-      return { ...k, tage, totals }
+      return { ...k, tage, totals, byHouse }
     })
   }
 }
 
 /**
- * Die Uebersicht: je Kraft die Summe je Tag und die Summen nach Art, dazu
- * die Monatssumme in den anderen Haeusern (`elsewhere`), die die Leitung
- * ebenfalls fuehrt.
+ * Die Uebersicht: je Kraft die Summe je Tag, die Summen nach Art und je
+ * Haus der Ansicht, dazu die Monatssumme in Haeusern ausserhalb der
+ * Ansicht (`elsewhere`), die die Leitung ebenfalls fuehrt.
+ * `combinable` sagt der Oberflaeche, ob es eine Ansicht ueber alle Haeuser
+ * gibt -- auch, solange sie gerade nur ein Haus zeigt.
  */
 async function liesUebersicht(
-  client: PoolClient, propertyId: number, month: string, andere: number[]
+  client: PoolClient, p: Principal, propertyId: number, haeuser: number[], month: string
 ) {
-  const s = await sammle(client, propertyId, month)
-  const anderswo = await summeAnderswo(client, andere, s.staff.map(k => k.userId), s.from, s.to)
+  const andere = andereMit(p, propertyId, 'worktime:manage')
+  const combinable = haeuserFuer(p, propertyId, 'all').length > 1
+  const s = await sammle(client, haeuser, month)
+  const ausserhalb = andere.filter(h => !haeuser.includes(h))
+  const anderswo = await summeAnderswo(client, ausserhalb, s.staff.map(k => k.userId),
+    s.from, s.to)
   return {
-    month: s.month, from: s.from, to: s.to, closed: s.closed,
+    month: s.month, from: s.from, to: s.to, closed: s.closed, houses: s.houses, combinable,
     staff: s.staff.map(({ tage, ...k }) => ({
       ...k, days: Object.fromEntries(tage.map(([d, t]) => [d, t.total])),
       elsewhere: anderswo.get(k.userId) ?? []
@@ -517,20 +607,22 @@ function andereMit(p: Principal, propertyId: number, recht: 'staff:app' | 'workt
   return propertyIds(p).filter(id => id !== propertyId && can(p, recht, id))
 }
 
-/** Gehoert die Person zu diesem Haus? Sonst ist sie fuer die Leitung 404. */
+/** Gehoert die Person zu einem dieser Haeuser? Sonst ist sie fuer die Leitung 404. */
 async function kraftImHaus(
-  client: PoolClient, propertyId: number, userId: number, month: string
+  client: PoolClient, haeuser: number[], userId: number, month: string
 ): Promise<void> {
   const { from, to } = monthRange(month)
   const { rows } = await client.query<{ ja: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM user_property_role
-                     WHERE property_id = ANY (staff_houses($1)) AND user_id = $2)
+                     WHERE property_id IN (SELECT unnest(staff_houses(h))
+                                             FROM unnest($1::bigint[]) h)
+                       AND user_id = $2)
          OR EXISTS (SELECT 1 FROM housekeeping_task
-                     WHERE property_id = $1 AND assigned_to = $2
+                     WHERE property_id = ANY($1::bigint[]) AND assigned_to = $2
                        AND business_date BETWEEN $3::date AND $4::date)
          OR EXISTS (SELECT 1 FROM staff_work_entry
-                     WHERE property_id = $1 AND user_id = $2) AS ja`,
-    [propertyId, userId, from, to])
+                     WHERE property_id = ANY($1::bigint[]) AND user_id = $2) AS ja`,
+    [haeuser, userId, from, to])
   if (!rows[0]!.ja) throw Errors.notFound('res.user')
 }
 
@@ -553,7 +645,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const month = await monatOderOffen(client, propertyId, q.month)
         const heute = await tagOderOffen(client, propertyId, undefined)
-        const monat = await liesMonat(client, propertyId, ich, month)
+        const monat = await liesMonat(client, [propertyId], ich, month)
         // Was dieselbe Kraft im selben Monat in ihren anderen Haeusern hat --
         // auf dem Telefon soll die Summe stehen, nach der abgerechnet wird.
         const anderswo = await summeAnderswo(client, andere, [ich], monat.from, monat.to)
@@ -587,7 +679,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
         }
         reply.code(201)
         const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, propertyId, ich, tag.slice(0, 7))), today: heute }
+        return { ...(await liesMonat(client, [propertyId], ich, tag.slice(0, 7))), today: heute }
       })
     }
   })
@@ -619,7 +711,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
             await zielDeutsch(client, ich))
         }
         const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, propertyId, ich, alt.date.slice(0, 7))), today: heute }
+        return { ...(await liesMonat(client, [propertyId], ich, alt.date.slice(0, 7))), today: heute }
       })
     }
   })
@@ -646,7 +738,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
           `UPDATE staff_work_entry SET withdrawn_at = now(), updated_by = $2, updated_at = now()
             WHERE id = $1`, [id, ich])
         const heute = await tagOderOffen(client, propertyId, undefined)
-        return { ...(await liesMonat(client, propertyId, ich, alt.date.slice(0, 7))), today: heute }
+        return { ...(await liesMonat(client, [propertyId], ich, alt.date.slice(0, 7))), today: heute }
       })
     }
   })
@@ -658,14 +750,15 @@ export function worktimeRoutes(app: FastifyInstance): void {
     url: '/v1/properties/:propertyId/worktime',
     permission: 'worktime:manage',
     propertyParam: 'propertyId',
-    summary: 'Arbeitszeit aller Kraefte eines Monats',
+    summary: 'Arbeitszeit aller Kraefte eines Monats, mit scope=all ueber alle Haeuser',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      const q = req.query as { month?: string }
-      const andere = andereMit(req.principal as Principal, propertyId, 'worktime:manage')
+      const q = req.query as { month?: string; scope?: string }
+      const principal = req.principal as Principal
+      const haeuser = haeuserFuer(principal, propertyId, q.scope)
       return tx(req.pool, req, async client =>
-        liesUebersicht(client, propertyId, await monatOderOffen(client, propertyId, q.month),
-          andere))
+        liesUebersicht(client, principal, propertyId, haeuser,
+          await monatOderOffen(client, propertyId, q.month)))
     }
   })
 
@@ -673,26 +766,32 @@ export function worktimeRoutes(app: FastifyInstance): void {
    * Die Abrechnung fuer die Zeitarbeitsfirma: eine Zeile je Kraft und Tag
    * mit Minuten, dazu eine Summe je Kraft. Nur fuer einen abgeschlossenen
    * Monat -- eine Abrechnung, die sich danach noch aendern kann, ist keine.
+   * Mit `scope=all` eine Zeile je Kraft und Tag ueber alle Haeuser, die
+   * Minuten je Haus hinten angehaengt: die Spalten davor bleiben, wo die
+   * Lohnbuchhaltung sie kennt.
    */
   registerRoute(app, {
     method: 'GET',
     url: '/v1/properties/:propertyId/worktime/export',
     permission: 'worktime:manage',
     propertyParam: 'propertyId',
-    summary: 'Arbeitszeit eines abgeschlossenen Monats als CSV',
+    summary: 'Arbeitszeit eines abgeschlossenen Monats als CSV, mit scope=all ueber alle Haeuser',
     handler: async (req, reply) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      const q = req.query as { month?: string }
+      const q = req.query as { month?: string; scope?: string }
       if (!isMonth(q.month)) throw Errors.validation({ month: ['field.isoMonth'] })
       const month = q.month
+      const haeuser = haeuserFuer(req.principal as Principal, propertyId, q.scope)
       return tx(req.pool, req, async client => {
-        const u = await sammle(client, propertyId, month)
+        const u = await sammle(client, haeuser, month)
         if (u.closed === null) throw Errors.conflict('worktime.notClosed', { month })
+        const jeHaus = u.houses.length > 1 ? u.houses : []
         // Deutsche Ueberschriften, Semikolon, Komma: der Empfaenger ist die
         // Lohnbuchhaltung der Zeitarbeitsfirma mit einer Tabellenkalkulation.
         const kopf = ['Mitarbeiter', 'Benutzername', 'Datum', 'Zimmer', 'Zimmer Minuten',
                       'Zusatzarbeit Minuten', 'Kueche Minuten', 'Korrektur Minuten',
-                      'Summe Minuten', 'Summe Stunden']
+                      'Summe Minuten', 'Summe Stunden',
+                      ...jeHaus.map(h => `${h.name} Minuten`)]
         const zeilen: Array<Array<string | number | null>> = []
         for (const k of u.staff) {
           if (k.tage.length === 0) continue
@@ -702,14 +801,18 @@ export function worktimeRoutes(app: FastifyInstance): void {
           const login = k.username
           for (const [d, t] of k.tage) {
             zeilen.push([name, login, d, t.rooms, t.roomMinutes, t.extra, t.kitchen,
-                         t.correction, t.total, stunden(t.total)])
+                         t.correction, t.total, stunden(t.total),
+                         ...jeHaus.map(h => t.byHouse[h.propertyId] ?? 0)])
           }
           zeilen.push([name, login, 'Summe', null, k.totals.rooms, k.totals.extra,
                        k.totals.kitchen, k.totals.correction, k.totals.total,
-                       stunden(k.totals.total)])
+                       stunden(k.totals.total),
+                       ...jeHaus.map(h => k.byHouse[h.propertyId] ?? 0)])
         }
         reply.header('content-type', 'text/csv; charset=utf-8')
-        reply.header('content-disposition', `attachment; filename="arbeitszeit-${month}.csv"`)
+        const datei = jeHaus.length > 0 ? `arbeitszeit-${month}-alle-haeuser.csv`
+                                        : `arbeitszeit-${month}.csv`
+        reply.header('content-disposition', `attachment; filename="${datei}"`)
         // Mit Byte-Order-Mark: sonst liest Excel die Umlaute der Namen falsch.
         return '﻿' + csv([kopf, ...zeilen])
       })
@@ -811,16 +914,17 @@ export function worktimeRoutes(app: FastifyInstance): void {
     url: '/v1/properties/:propertyId/worktime/:userId',
     permission: 'worktime:manage',
     propertyParam: 'propertyId',
-    summary: 'Arbeitszeit einer Kraft eines Monats, Tag fuer Tag',
+    summary: 'Arbeitszeit einer Kraft eines Monats, Tag fuer Tag, mit scope=all ueber alle Haeuser',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const userId = Number((req.params as { userId: string }).userId)
       if (!Number.isInteger(userId) || userId <= 0) throw Errors.notFound('res.user')
-      const q = req.query as { month?: string }
+      const q = req.query as { month?: string; scope?: string }
+      const haeuser = haeuserFuer(req.principal as Principal, propertyId, q.scope)
       return tx(req.pool, req, async client => {
         const month = await monatOderOffen(client, propertyId, q.month)
-        await kraftImHaus(client, propertyId, userId, month)
-        return liesMonat(client, propertyId, userId, month)
+        await kraftImHaus(client, haeuser, userId, month)
+        return liesMonat(client, haeuser, userId, month)
       })
     }
   })
@@ -857,7 +961,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
       const userId = b.userId as number
       const date = b.date
       return tx(req.pool, req, async client => {
-        await kraftImHaus(client, propertyId, userId, date.slice(0, 7))
+        await kraftImHaus(client, [propertyId], userId, date.slice(0, 7))
         await monatOffen(client, propertyId, date)
         await client.query(
           `INSERT INTO staff_work_entry (property_id, user_id, business_date, kind,
@@ -865,7 +969,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
            VALUES ($1, $2, $3::date, 'correction', $4, $5, $6)`,
           [propertyId, userId, date, grund, b.minutes, principal.userId])
         reply.code(201)
-        return liesMonat(client, propertyId, userId, date.slice(0, 7))
+        return liesMonat(client, [propertyId], userId, date.slice(0, 7))
       })
     }
   })
@@ -921,7 +1025,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
                    origin = 'manual', updated_by = EXCLUDED.updated_by, updated_at = now()`,
             [propertyId, id, e.description, text, principal.userId])
         }
-        return liesMonat(client, propertyId, e.user_id, e.date.slice(0, 7))
+        return liesMonat(client, [propertyId], e.user_id, e.date.slice(0, 7))
       })
     }
   })
@@ -931,26 +1035,30 @@ export function worktimeRoutes(app: FastifyInstance): void {
     url: '/v1/properties/:propertyId/worktime/close',
     permission: 'worktime:manage',
     propertyParam: 'propertyId',
-    summary: 'Monat der Arbeitszeit abschliessen',
+    summary: 'Monat der Arbeitszeit abschliessen, mit scope=all in allen Haeusern',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const principal = req.principal as Principal
-      const month = (req.body as { month?: unknown } | null)?.month
+      const b = (req.body ?? {}) as { month?: unknown; scope?: unknown }
+      const month = b.month
       if (!isMonth(month)) throw Errors.validation({ month: ['field.isoMonth'] })
+      const haeuser = haeuserFuer(principal, propertyId, b.scope)
       return tx(req.pool, req, async client => {
         // Ein Monat, der noch laeuft, ist nicht abzuschliessen: morgen kaeme
-        // eine Reinigung dazu, die nirgends mehr hin darf.
-        const heute = await tagOderOffen(client, propertyId, undefined)
-        if (monthRange(month).to >= heute) {
-          throw Errors.conflict('worktime.monthRunning', { month })
+        // eine Reinigung dazu, die nirgends mehr hin darf. Jedes Haus hat
+        // seinen eigenen Geschaeftstag.
+        for (const h of haeuser) {
+          const heute = await tagOderOffen(client, h, undefined)
+          if (monthRange(month).to >= heute) {
+            throw Errors.conflict('worktime.monthRunning', { month })
+          }
         }
         await client.query(
           `INSERT INTO staff_month_close (property_id, month, closed_by)
-           VALUES ($1, $2::date, $3)
+           SELECT h, $2::date, $3 FROM unnest($1::bigint[]) h
            ON CONFLICT (property_id, month) WHERE reopened_at IS NULL DO NOTHING`,
-          [propertyId, `${month}-01`, principal.userId])
-        return liesUebersicht(client, propertyId, month,
-          andereMit(principal, propertyId, 'worktime:manage'))
+          [haeuser, `${month}-01`, principal.userId])
+        return liesUebersicht(client, principal, propertyId, haeuser, month)
       })
     }
   })
@@ -960,11 +1068,11 @@ export function worktimeRoutes(app: FastifyInstance): void {
     url: '/v1/properties/:propertyId/worktime/reopen',
     permission: 'worktime:manage',
     propertyParam: 'propertyId',
-    summary: 'Abgeschlossenen Monat mit Grund wieder oeffnen',
+    summary: 'Abgeschlossenen Monat mit Grund wieder oeffnen, mit scope=all in allen Haeusern',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const principal = req.principal as Principal
-      const b = (req.body ?? {}) as { month?: unknown; reason?: unknown }
+      const b = (req.body ?? {}) as { month?: unknown; reason?: unknown; scope?: unknown }
       if (!isMonth(b.month)) throw Errors.validation({ month: ['field.isoMonth'] })
       const grund = typeof b.reason === 'string' ? b.reason.trim() : ''
       if (grund === '') throw Errors.validation({ reason: ['worktime.reasonRequired'] })
@@ -972,15 +1080,15 @@ export function worktimeRoutes(app: FastifyInstance): void {
         throw Errors.validation({ reason: ['field.maxLength'] }, { max: BESCHREIBUNG_MAX })
       }
       const month = b.month
+      const haeuser = haeuserFuer(principal, propertyId, b.scope)
       return tx(req.pool, req, async client => {
         const { rowCount } = await client.query(
           `UPDATE staff_month_close
               SET reopened_by = $3, reopened_at = now(), reopen_reason = $4
-            WHERE property_id = $1 AND month = $2::date AND reopened_at IS NULL`,
-          [propertyId, `${month}-01`, principal.userId, grund])
+            WHERE property_id = ANY($1::bigint[]) AND month = $2::date AND reopened_at IS NULL`,
+          [haeuser, `${month}-01`, principal.userId, grund])
         if (rowCount === 0) throw Errors.conflict('worktime.notClosed', { month })
-        return liesUebersicht(client, propertyId, month,
-          andereMit(principal, propertyId, 'worktime:manage'))
+        return liesUebersicht(client, principal, propertyId, haeuser, month)
       })
     }
   })

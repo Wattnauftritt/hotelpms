@@ -20,6 +20,12 @@ import { AltdatenPersonal } from './AltdatenPersonal.tsx'
  *   halbmonatlich bezahlt wird. Dort auch Abschluss, Ausgabe und Korrektur
  *   mit Grund.
  *
+ * Wer mehrere Haeuser leitet, sieht den Monat zuerst ueber alle zusammen,
+ * mit einer Spalte je Haus (Sven, 16.10.2026: dieselben Kraefte reinigen
+ * Hotel und Gaestehaus, und zwei Monatsplaene von Hand zusammenzuzaehlen
+ * ist genau die Arbeit, die das System abnehmen soll). Der Tag bleibt je
+ * Haus: dort wird an Zeilen eines Hauses angepasst.
+ *
  * Die Hausdame sieht diesen Bildschirm nicht -- Arbeitszeit ist
  * Personaldatum.
  */
@@ -28,9 +34,14 @@ interface Summen { rooms: number; extra: number; kitchen: number; correction: nu
                    total: number }
 interface Uebersicht {
   month: string
+  /** Bei mehreren Haeusern erst, wenn alle abgeschlossen sind. */
   closed: { closedAt: string; closedBy: string | null } | null
+  houses: Array<{ propertyId: number; name: string; closed: boolean }>
+  /** Gibt es eine Ansicht ueber alle Haeuser -- auch, solange nur eines gezeigt wird. */
+  combinable: boolean
   staff: Array<{ userId: number; name: string; username: string | null
                  days: Record<string, number>; totals: Summen
+                 byHouse: Record<number, number>
                  /** Monatssumme in anderen Haeusern, die die Leitung fuehrt (0116). */
                  elsewhere?: Array<{ propertyId: number; name: string; total: number }> }>
 }
@@ -56,6 +67,7 @@ export function Arbeitszeit({ propertyId }: { propertyId: number }): JSX.Element
   const [datum, setDatum] = useState(today())
   const [monat, setMonat] = useState(today().slice(0, 7))
   const [kraft, setKraft] = useState<number | null>(null)
+  const [alle, setAlle] = useState(true)
 
   return <div className="space-y-4">
     <div className="flex" role="tablist">
@@ -69,6 +81,7 @@ export function Arbeitszeit({ propertyId }: { propertyId: number }): JSX.Element
     {ansicht === 'tag'
       ? <TagesAnsicht propertyId={propertyId} datum={datum} setDatum={setDatum} />
       : <MonatsAnsicht propertyId={propertyId} monat={monat} kraft={kraft}
+                       alle={alle} setAlle={setAlle}
                        setMonat={m => { setMonat(m); setKraft(null) }} setKraft={setKraft}
                        zumTag={d => { setDatum(d); setAnsicht('tag') }} />}
   </div>
@@ -288,8 +301,9 @@ function ArbeitZeile({ propertyId, eintrag: e, offen, onNeu }: {
 
 // ---------------------------------------------------------------- Monat
 
-function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }: {
+function MonatsAnsicht({ propertyId, monat, kraft, alle, setAlle, setMonat, setKraft, zumTag }: {
   propertyId: number; monat: string; kraft: number | null
+  alle: boolean; setAlle: (a: boolean) => void
   setMonat: (m: string) => void; setKraft: (k: number | null) => void
   zumTag: (d: string) => void
 }): JSX.Element {
@@ -297,18 +311,20 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
   const locale = useLocale()
   const qc = useQueryClient()
   const [grund, setGrund] = useState<string | null>(null)
-  const key = ['worktime', propertyId, monat]
+  const scope = alle ? '&scope=all' : ''
+  const key = ['worktime', propertyId, monat, alle]
   const q = useQuery<Uebersicht>({
     queryKey: key,
-    queryFn: () => api.get(`/v1/properties/${propertyId}/worktime?month=${monat}`)
+    queryFn: () => api.get(`/v1/properties/${propertyId}/worktime?month=${monat}${scope}`)
   })
   const abschluss = useMutation({
     mutationFn: (a: { zu: boolean; reason?: string }) => api.post<Uebersicht>(
       `/v1/properties/${propertyId}/worktime/${a.zu ? 'close' : 'reopen'}`,
-      { month: monat, reason: a.reason }),
+      { month: monat, reason: a.reason, scope: alle ? 'all' : undefined }),
     onSuccess: u => {
       qc.setQueryData(key, u)
       setGrund(null)
+      void qc.invalidateQueries({ queryKey: ['worktime', propertyId, monat] })
       void qc.invalidateQueries({ queryKey: ['worktime-person', propertyId] })
       void qc.invalidateQueries({ queryKey: ['worktime-day', propertyId] })
     }
@@ -320,9 +336,21 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
   const zeilen = u.staff.filter(k => k.totals.total !== 0 || Object.keys(k.days).length > 0)
   const letzter = letzterTag(monat)
   const gewaehlt = u.staff.find(k => k.userId === kraft)
+  // Spalten je Haus nur, wo wirklich mehrere zusammenstehen.
+  const spalten = u.houses.length > 1 ? u.houses : []
 
   return <div className="space-y-4">
+    {u.combinable && <div className="flex" role="tablist">
+      {[true, false].map(a =>
+        <button key={String(a)} type="button" role="tab" aria-selected={alle === a}
+                onClick={() => { setAlle(a); setKraft(null) }}
+                className={`${REITER} ${alle === a ? 'bg-neutral-900 text-white border-neutral-900'
+                                                   : 'bg-white'}`}>
+          {a ? t('worktime.scopeAll') : u.houses[0]?.name}</button>)}
+    </div>}
     <p className="text-sm text-neutral-600 max-w-prose">{t('worktime.hint')}</p>
+    {spalten.length > 0
+      && <p className="text-sm text-neutral-600 max-w-prose">{t('worktime.scopeAllHint')}</p>}
     <div className="flex flex-wrap items-end gap-4">
       <label className="text-sm">
         <span className="block text-neutral-600">{t('worktime.month')}</span>
@@ -350,7 +378,7 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
         : <div className="text-sm flex flex-wrap items-center gap-3">
             <span>{t('worktime.closedBy', { date: formatDate(u.closed.closedAt.slice(0, 10), locale),
                                             name: u.closed.closedBy ?? '–' })}</span>
-            <a href={`/v1/properties/${propertyId}/worktime/export?month=${monat}`}
+            <a href={`/v1/properties/${propertyId}/worktime/export?month=${monat}${scope}`}
                className="px-3 py-1.5 rounded bg-neutral-900 text-white">{t('worktime.export')}</a>
             {grund === null
               ? <button type="button" onClick={() => setGrund('')}
@@ -374,9 +402,9 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
 
     {gewaehlt !== undefined
       ? <KraftMonatAnsicht propertyId={propertyId} userId={gewaehlt.userId} name={gewaehlt.name}
-                           monat={monat} offen={u.closed === null} zumTag={zumTag}
+                           monat={monat} alle={alle} offen={u.closed === null} zumTag={zumTag}
                            onKorrigiert={() => {
-                             void qc.invalidateQueries({ queryKey: key })
+                             void qc.invalidateQueries({ queryKey: ['worktime', propertyId, monat] })
                              void qc.invalidateQueries({ queryKey: ['worktime-day', propertyId] })
                            }} />
       : zeilen.length === 0
@@ -388,6 +416,8 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
             <th className="py-2 pr-3 font-medium text-end">{t('worktime.firstHalf')}</th>
             <th className="py-2 pr-3 font-medium text-end">
               {t('worktime.secondHalf', { last: letzter })}</th>
+            {spalten.map(h => <th key={h.propertyId} className="py-2 pr-3 font-medium text-end">
+              {h.name}</th>)}
             {(['worktime.rooms', 'worktime.extra', 'worktime.kitchen', 'worktime.correction',
                'worktime.total'] as const).map(k =>
               <th key={k} className="py-2 pr-3 font-medium text-end">{t(k)}</th>)}
@@ -411,6 +441,8 @@ function MonatsAnsicht({ propertyId, monat, kraft, setMonat, setKraft, zumTag }:
               </td>
               <td className="py-2 pr-3 text-end tabular-nums">{hm(erste)}</td>
               <td className="py-2 pr-3 text-end tabular-nums">{hm(zweite)}</td>
+              {spalten.map(h => <td key={h.propertyId} className="py-2 pr-3 text-end tabular-nums">
+                {(k.byHouse[h.propertyId] ?? 0) === 0 ? '–' : hm(k.byHouse[h.propertyId]!)}</td>)}
               {([k.totals.rooms, k.totals.extra, k.totals.kitchen, k.totals.correction] as const)
                 .map((v, i) => <td key={i} className="py-2 pr-3 text-end tabular-nums text-neutral-600">
                   {v === 0 ? '–' : hm(v)}</td>)}
@@ -442,27 +474,33 @@ function nachArt(entries: Eintrag[]): { extra: number; kitchen: number; correcti
   return s
 }
 
-function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onKorrigiert }: {
-  propertyId: number; userId: number; name: string; monat: string; offen: boolean
-  zumTag: (d: string) => void; onKorrigiert: () => void
+function KraftMonatAnsicht({ propertyId, userId, name, monat, alle, offen, zumTag,
+                            onKorrigiert }: {
+  propertyId: number; userId: number; name: string; monat: string; alle: boolean
+  offen: boolean; zumTag: (d: string) => void; onKorrigiert: () => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const qc = useQueryClient()
-  const key = ['worktime-person', propertyId, userId, monat]
+  const key = ['worktime-person', propertyId, userId, monat, alle]
   const q = useQuery<Omit<KraftMonat, 'today'>>({
     queryKey: key,
-    queryFn: () => api.get(`/v1/properties/${propertyId}/worktime/${userId}?month=${monat}`)
+    queryFn: () => api.get(`/v1/properties/${propertyId}/worktime/${userId}?month=${monat}`
+                           + (alle ? '&scope=all' : ''))
   })
   const [tag, setTag] = useState(`${monat}-01`)
   const [minuten, setMinuten] = useState('')
   const [grund, setGrund] = useState('')
+  // Eine Korrektur gehoert zu einem Haus: dort wird sie abgerechnet und
+  // mit dessen Monat abgeschlossen.
+  const [haus, setHaus] = useState(propertyId)
   const korrigieren = useMutation({
-    mutationFn: () => api.post<Omit<KraftMonat, 'today'>>(
-      `/v1/properties/${propertyId}/worktime/corrections`,
+    mutationFn: (ziel: number) => api.post<Omit<KraftMonat, 'today'>>(
+      `/v1/properties/${ziel}/worktime/corrections`,
       { userId, date: tag, minutes: Number(minuten), reason: grund.trim() }),
-    onSuccess: m => {
-      qc.setQueryData(key, m); setMinuten(''); setGrund(''); onKorrigiert()
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['worktime-person', propertyId, userId, monat] })
+      setMinuten(''); setGrund(''); onKorrigiert()
     }
   })
   if (q.isError && q.data === undefined) return <Fehler error={q.error} />
@@ -471,6 +509,10 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
   const mitKueche = m.totals.kitchen !== 0
   const mitKorrektur = m.totals.correction !== 0
   const letzter = letzterTag(monat)
+  const spalten = (m.houses ?? []).length > 1 ? m.houses! : []
+  const offeneHaeuser = spalten.filter(h => !h.closed)
+  const ziel = spalten.length === 0 || offeneHaeuser.some(h => h.propertyId === haus) ? haus
+    : offeneHaeuser[0]?.propertyId ?? propertyId
 
   return <div className="space-y-4">
     <p className="text-sm text-neutral-500"><span className="font-medium text-neutral-800">{name}</span>
@@ -485,6 +527,8 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
             {mitKueche && <th className="px-2 py-1.5 font-medium text-end">{t('worktime.kitchen')}</th>}
             {mitKorrektur
               && <th className="px-2 py-1.5 font-medium text-end">{t('worktime.correction')}</th>}
+            {spalten.map(h => <th key={h.propertyId} className="px-2 py-1.5 font-medium text-end">
+              {h.name}</th>)}
             <th className="px-2 py-1.5 font-medium text-end">{t('worktime.total')}</th>
           </tr>
         </thead>
@@ -503,6 +547,8 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
               <td className="px-2 py-1 text-end">{hm(a.extra)}</td>
               {mitKueche && <td className="px-2 py-1 text-end">{hm(a.kitchen)}</td>}
               {mitKorrektur && <td className="px-2 py-1 text-end">{hm(a.correction)}</td>}
+              {spalten.map(h => <td key={h.propertyId} className="px-2 py-1 text-end">
+                {hm(d.byHouse?.[h.propertyId] ?? 0)}</td>)}
               <td className="px-2 py-1 text-end font-medium">{hm(d.total)}</td>
             </tr>
           })}
@@ -512,7 +558,8 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
         <h3 className="text-sm font-medium">{t('worktime.summary')}</h3>
         {([[t('worktime.monthTotal'), m.totals.total],
            [t('worktime.firstHalf'), m.halves[0].total],
-           [t('worktime.secondHalf', { last: letzter }), m.halves[1].total]] as const)
+           [t('worktime.secondHalf', { last: letzter }), m.halves[1].total],
+           ...spalten.map(h => [h.name, h.total] as const)] as const)
           .map(([titel, wert]) => <div key={titel} className="bg-white border border-neutral-200 rounded px-3 py-2">
             <div className="text-xs text-neutral-500">{titel}</div>
             <div className="text-xl font-semibold tabular-nums">{hm(wert)}</div>
@@ -520,10 +567,16 @@ function KraftMonatAnsicht({ propertyId, userId, name, monat, offen, zumTag, onK
         <p className="text-xs text-neutral-500">{t('worktime.halvesHint')}</p>
       </aside>
     </div>
-    {offen && <form className="flex flex-wrap items-end gap-2 text-sm" onSubmit={e => {
-      e.preventDefault(); korrigieren.mutate()
+    {(spalten.length > 0 ? offeneHaeuser.length > 0 : offen)
+      && <form className="flex flex-wrap items-end gap-2 text-sm" onSubmit={e => {
+      e.preventDefault(); korrigieren.mutate(ziel)
     }}>
       <span className="w-full font-medium">{t('worktime.correctionTitle')}</span>
+      {spalten.length > 0 && <label><span className="block text-neutral-600">{t('worktime.house')}</span>
+        <select value={ziel} onChange={e => setHaus(Number(e.target.value))}
+                className="border border-neutral-300 rounded px-2 py-1">
+          {offeneHaeuser.map(h => <option key={h.propertyId} value={h.propertyId}>{h.name}</option>)}
+        </select></label>}
       <label><span className="block text-neutral-600">{t('worktime.day')}</span>
         <input type="date" required value={tag} min={`${monat}-01`} max={m.days.at(-1)?.date}
                onChange={e => setTag(e.target.value)}
