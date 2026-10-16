@@ -153,6 +153,7 @@ describe('Rechnung am Folio', () => {
     expect(liste[0]!.invoiceRef).toBe(inv.invoiceRef)
     expect(liste[0]!.grossCent).toBe(1_190)
     expect(liste[0]!.cancelledBy).toBe(liste[1]!.number)
-    expect(liste[0]!.documentReady).toBe(false)
+    // Der Beleg entsteht gleich mit dem Festschreiben.
+    expect(liste[0]!.documentReady).toBe(true)
   })
 })

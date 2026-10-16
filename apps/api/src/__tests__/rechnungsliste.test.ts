@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
-         makeGuest, makePaymentMethod, openBusinessDay, heuteImHaus, type Fixture }
+         makeGuest, makePaymentMethod, openBusinessDay, heuteImHaus, blockInvoiceDocuments,
+         type Fixture }
   from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
@@ -154,12 +155,19 @@ describe('Rechnungsliste', () => {
   })
 
   /**
-   * Der Beleg entsteht nach dem Festschreiben im Worker. Die Ansicht muss
-   * das unterscheiden können, sonst zeigt sie einen Fehler, wo nur noch
-   * niemand gezeichnet hat.
+   * Der Beleg entsteht nach dem Festschreiben, und scheitert das, holt ihn
+   * der Worker nach. Die Ansicht muss das unterscheiden können, sonst
+   * zeigt sie einen Fehler, wo nur noch niemand gezeichnet hat.
    */
   it('sagt, ob der Beleg schon erzeugt ist', async () => {
-    const { invoiceRef } = await rechnung()
+    // Gezeichnet scheitert, festgeschrieben ist sie trotzdem.
+    const aufheben = await blockInvoiceDocuments(owner, fx.propertyId)
+    let invoiceRef: string
+    try {
+      invoiceRef = (await rechnung()).invoiceRef
+    } finally {
+      await aufheben()
+    }
     const vorher = zeilen((await liste(heute(), heute())).body)
       .find(x => x.invoiceRef === invoiceRef)!
     expect(vorher.documentReady).toBe(false)
@@ -177,6 +185,11 @@ describe('Rechnungsliste', () => {
       .find(x => x.invoiceRef === invoiceRef)!
     expect(nachher.documentReady).toBe(true)
     expect(nachher.hasXml).toBe(true)
+
+    // Der Normalfall seit dem 16.10.2026: gleich mit dem Festschreiben da.
+    const sofort = await rechnung()
+    expect(zeilen((await liste(heute(), heute())).body)
+      .find(x => x.invoiceRef === sofort.invoiceRef)!.documentReady).toBe(true)
   })
 
   it('filtert auf die Art und sortiert die neueste zuerst', async () => {

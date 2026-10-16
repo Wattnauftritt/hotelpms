@@ -125,12 +125,11 @@ describe('Versandnachweis', () => {
 
   it('zeigt Empfaenger, Kennung und ob die Fassung des Belegs stimmt', async () => {
     const inv = await rechnung()
-    await owner.query(
-      `INSERT INTO invoice_document (invoice_id, property_id, pdf, byte_count, sha256)
-       VALUES ($1,$2,'\\x25504446'::bytea,4,'fassung-2')
-       ON CONFLICT (invoice_id) DO UPDATE SET sha256 = 'fassung-2'`,
-      [inv.id, fx.propertyId])
-    for (const [sha, email] of [['fassung-2', 'buch@firma.test'], ['fassung-1', 'entfernt@invalid']]) {
+    // Den Beleg hat das Festschreiben gezeichnet; die erste Mail trug ihn,
+    // die zweite eine andere Fassung.
+    const fassung = (await owner.query<{ sha256: string }>(
+      `SELECT sha256 FROM invoice_document WHERE invoice_id = $1`, [inv.id])).rows[0]!.sha256
+    for (const [sha, email] of [[fassung, 'buch@firma.test'], ['fassung-1', 'entfernt@invalid']]) {
       await owner.query(
         `INSERT INTO outbound_email (property_id, kind, to_email, to_name, subject, body_text,
                                      invoice_id, status, sent_at, provider_message_id,
@@ -144,7 +143,7 @@ describe('Versandnachweis', () => {
     expect(r.statusCode, r.body).toBe(200)
     const b = JSON.parse(r.body) as { documentSha256: string; mails: Array<{
       toEmail: string | null; status: string; providerMessageId: string; sameDocument: boolean }> }
-    expect(b.documentSha256).toBe('fassung-2')
+    expect(b.documentSha256).toBe(fassung)
     expect(b.mails).toHaveLength(2)
     expect(b.mails[0]).toMatchObject({ toEmail: 'buch@firma.test', status: 'sent',
                                        providerMessageId: '<id@anbieter>', sameDocument: true })

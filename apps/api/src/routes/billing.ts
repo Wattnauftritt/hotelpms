@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { createHash } from 'node:crypto'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
@@ -16,7 +16,7 @@ import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix
   from '@hotelpms/domain'
 import { groupInvoiceLines, chargeLineSource, depositLedgerLine, partyFromSnapshot,
          payeeFromSnapshot, type CiiInvoice, type CiiParty } from '@hotelpms/domain'
-import { renderInvoicePdf } from '@hotelpms/beleg'
+import { renderInvoicePdf, renderInvoiceDocument } from '@hotelpms/beleg'
 import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
@@ -26,6 +26,34 @@ import { bildAusRumpf, bildSenden, BILD_MAX_BYTES } from '../platform/terminalBi
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
 const VAT_FALLBACK = 700
+
+/**
+ * Zeichnet den Beleg sofort, nachdem eine Rechnung festgeschrieben ist.
+ *
+ * Gast und Rezeption warteten bisher auf den naechsten Lauf des Workers,
+ * bis zu fuenf Minuten, wenn der Gast die Rechnung gleich gedruckt haben
+ * wollte (Sven, 16.10.2026). Gezeichnet wird **nach** der Transaktion der
+ * Route: in ihr ist die Zaehlerzeile der Rechnungsnummer gesperrt, und ein
+ * PDF darin hielte jede andere Kasse des Hauses an. Die Antwort kommt
+ * dadurch einige hundert Millisekunden spaeter, mit fertigem Beleg.
+ *
+ * Scheitert das Zeichnen, ist die Rechnung trotzdem festgeschrieben und die
+ * Antwort ein Erfolg; der Worker holt den Beleg nach und schlaegt dort
+ * Alarm. Eine wiederholte Anfrage mit demselben Idempotency-Key findet den
+ * Beleg vor und zeichnet nichts.
+ */
+async function mitBeleg<T>(req: FastifyRequest, ergebnis: Promise<T>): Promise<T> {
+  const r = await ergebnis
+  const ref = (r as { invoiceRef?: unknown } | null)?.invoiceRef
+  if (typeof ref === 'string') {
+    try {
+      await renderInvoiceDocument(fn => tx(req.pool, req, fn), ref)
+    } catch (err) {
+      req.log.warn({ err }, 'Beleg nicht sofort erzeugt, der Worker holt ihn nach')
+    }
+  }
+  return r
+}
 
 /**
  * Wer die Rechnung bekommt.
@@ -2559,7 +2587,7 @@ export function billingRoutes(app: FastifyInstance): void {
       const key = req.headers['idempotency-key'] as string | undefined
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
-      return tx(req.pool, req, async client => {
+      return mitBeleg(req, tx(req.pool, req, async client => {
         const stored = await beginIdempotent(
           client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
@@ -2769,7 +2797,7 @@ export function billingRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
-      })
+      }))
     }
   })
 
@@ -2956,7 +2984,7 @@ export function billingRoutes(app: FastifyInstance): void {
       const key = req.headers['idempotency-key'] as string | undefined
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
-      return tx(req.pool, req, async client => {
+      return mitBeleg(req, tx(req.pool, req, async client => {
         const stored = await beginIdempotent(
           client, principal.clientKey, key, { invoiceRef }, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
@@ -3089,7 +3117,7 @@ export function billingRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
-      })
+      }))
     }
   })
 
@@ -3140,7 +3168,7 @@ export function billingRoutes(app: FastifyInstance): void {
       const key = req.headers['idempotency-key'] as string | undefined
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
 
-      return tx(req.pool, req, async client => {
+      return mitBeleg(req, tx(req.pool, req, async client => {
         const stored = await beginIdempotent(
           client, principal.clientKey, key, { invoiceRef, ...body }, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
@@ -3277,7 +3305,7 @@ export function billingRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
-      })
+      }))
     }
   })
 
@@ -3408,7 +3436,7 @@ export function billingRoutes(app: FastifyInstance): void {
       if (!key) throw Errors.validation({ 'idempotency-key': ['field.headerRequired'] })
       auftragPruefen(body)
 
-      return tx(req.pool, req, async client => {
+      return mitBeleg(req, tx(req.pool, req, async client => {
         const stored = await beginIdempotent(
           client, principal.clientKey, key, body, principal.accountIds[0]!)
         if (stored) { reply.status(stored.status); return stored.body }
@@ -3529,7 +3557,7 @@ export function billingRoutes(app: FastifyInstance): void {
         await completeIdempotent(client, principal.clientKey, key, 201, result)
         reply.status(201)
         return result
-      })
+      }))
     }
   })
 

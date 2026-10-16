@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
-         makeGuest, openBusinessDay, type Fixture } from '@hotelpms/testing'
+         makeGuest, openBusinessDay, blockInvoiceDocuments, type Fixture } from '@hotelpms/testing'
+import { renderPendingInvoices } from '@hotelpms/beleg'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -160,22 +161,17 @@ describe('Rechnung und Pflichtangaben', () => {
   })
 
   /**
-   * Der Beleg selbst entsteht im Worker, nicht hier. Geprüft wird deshalb
-   * die Auslieferung: was in der Datenbank liegt, geht unverändert hinaus,
-   * und was nicht da ist, wird als „kommt gleich" beantwortet und nicht
-   * als „gibt es nicht".
+   * Der Beleg entsteht gleich nach dem Festschreiben, noch in derselben
+   * Anfrage, aber nach ihrer Transaktion. Geprüft wird, dass er dann
+   * da ist, dass ihn die Auslieferung unverändert hinausgibt, und dass
+   * ein Scheitern dabei die Rechnung nicht verschluckt: was nicht da ist,
+   * wird als „kommt gleich“ beantwortet und nicht als „gibt es nicht“.
    */
   describe('Auslieferung des Belegs', () => {
-    async function mitBeleg(pdf = Buffer.from('%PDF-1.7 Testbeleg')): Promise<string> {
+    async function mitBeleg(): Promise<string> {
       const r = await fakturieren(await folioMit([{ netCent: 30_000 }]))
-      const inv = JSON.parse(r.body) as { invoiceRef: string }
-      await owner.query(
-        // Beide Male ausdruecklich als bytea: derselbe Parameter in zwei
-        // Rollen laesst PostgreSQL sonst raten und scheitern.
-        `INSERT INTO invoice_document (invoice_id, property_id, pdf, xml, byte_count, sha256)
-         SELECT id, property_id, $2::bytea, '<xml/>', length($2::bytea), 'x'
-           FROM invoice WHERE public_ref = $1`, [inv.invoiceRef, pdf])
-      return inv.invoiceRef
+      expect(r.statusCode, r.body).toBe(201)
+      return (JSON.parse(r.body) as { invoiceRef: string }).invoiceRef
     }
 
     it('liefert das PDF mit Typ und Dateinamen', async () => {
@@ -194,24 +190,70 @@ describe('Rechnung und Pflichtangaben', () => {
     })
 
     it('liefert die Bytes unveraendert', async () => {
-      // Ein Beleg mit Nullbytes und hohen Zeichen: wer ihn durch eine
-      // Zeichenkette schickt, macht ihn unbrauchbar, und zwar erst beim
-      // Empfaenger.
-      const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d, 0x00, 0xff, 0xfe, 0x0a])
-      const ref = await mitBeleg(pdf)
+      // Wer den Beleg durch eine Zeichenkette schickt, macht ihn
+      // unbrauchbar, und zwar erst beim Empfaenger.
+      const ref = await mitBeleg()
+      const d = await owner.query<{ pdf: Buffer }>(
+        `SELECT d.pdf FROM invoice_document d JOIN invoice i ON i.id = d.invoice_id
+          WHERE i.public_ref = $1`, [ref])
       const r = await app.inject({
         method: 'GET', url: `/v1/invoices/${ref}/pdf`, headers: auth })
-      expect(r.rawPayload.equals(pdf)).toBe(true)
+      expect(r.rawPayload.equals(d.rows[0]!.pdf)).toBe(true)
     })
 
-    it('unterscheidet den noch nicht erzeugten Beleg von der fehlenden Rechnung', async () => {
-      const r = await fakturieren(await folioMit([{ netCent: 30_000 }]))
+    /**
+     * Der Gast steht am Tresen und will die Rechnung gedruckt haben. Bis
+     * zum 16.10.2026 kam der Beleg erst mit dem naechsten Lauf des
+     * Workers, bis zu fuenf Minuten spaeter.
+     */
+    it('ist gleich mit dem Festschreiben da, auch bei einer wiederholten Anfrage', async () => {
+      const folio = await folioMit([{ netCent: 30_000 }])
+      const anfrage = {
+        method: 'POST' as const, url: `/v1/folios/${folio}/invoice`,
+        headers: { ...auth, 'idempotency-key': `sofort-${++lauf}` }, payload: {} }
+      const r = await app.inject(anfrage)
+      expect(r.statusCode, r.body).toBe(201)
       const { invoiceRef } = JSON.parse(r.body) as { invoiceRef: string }
+
+      const pdf = await app.inject({
+        method: 'GET', url: `/v1/invoices/${invoiceRef}/pdf`, headers: auth })
+      expect(pdf.statusCode).toBe(200)
+
+      // Dieselbe Anfrage noch einmal: dieselbe Antwort, kein zweiter Beleg.
+      const nochmal = await app.inject(anfrage)
+      expect(nochmal.statusCode).toBe(201)
+      expect(JSON.parse(nochmal.body).invoiceRef).toBe(invoiceRef)
+      const n = await owner.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM invoice_document WHERE property_id = $1`,
+        [fx.propertyId])
+      expect(n.rows[0]!.n).toBe(1)
+    })
+
+    it('meldet die Rechnung, auch wenn der Beleg nicht gleich entsteht', async () => {
+      const aufheben = await blockInvoiceDocuments(owner, fx.propertyId)
+      let invoiceRef: string
+      try {
+        // Festgeschrieben ist festgeschrieben: die Nummer ist vergeben,
+        // und ein Fehler beim Zeichnen darf das nicht verschweigen.
+        const r = await fakturieren(await folioMit([{ netCent: 30_000 }]))
+        expect(r.statusCode, r.body).toBe(201)
+        invoiceRef = (JSON.parse(r.body) as { invoiceRef: string }).invoiceRef
+      } finally {
+        await aufheben()
+      }
 
       const offen = await app.inject({
         method: 'GET', url: `/v1/invoices/${invoiceRef}/pdf`, headers: auth })
       expect(offen.statusCode).toBe(409)
       expect(JSON.parse(offen.body).type).toBe('urn:staygrid:document_pending')
+
+      // Der Worker holt ihn nach.
+      const nach = await renderPendingInvoices(pool,
+        { accountIds: [fx.accountId], propertyIds: [fx.propertyId], userId: null }, fx.propertyId)
+      expect(nach.created).toBe(1)
+      const da = await app.inject({
+        method: 'GET', url: `/v1/invoices/${invoiceRef}/pdf`, headers: auth })
+      expect(da.statusCode).toBe(200)
 
       const unbekannt = await app.inject({
         method: 'GET', url: '/v1/invoices/inv_gibtesnicht/pdf', headers: auth })

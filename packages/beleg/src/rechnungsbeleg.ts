@@ -4,18 +4,27 @@ import { buildInvoiceCii, ciiFindings, ciiTotals, groupInvoiceLines, chargeLineS
          depositLedgerLine, partyFromSnapshot, payeeFromSnapshot,
          type InvoiceChargeRow, type InvoiceDepositRow,
          type CiiFinding, type CiiInvoice, type CiiParty } from '@hotelpms/domain'
-import { renderInvoicePdf, finalizePdfA3 } from '@hotelpms/beleg'
+import { renderInvoicePdf } from './invoiceLayout.js'
+import { finalizePdfA3 } from './pdfa3.js'
 
 /**
  * Erzeugt zu jeder festgeschriebenen Rechnung den Beleg: ein PDF/A-3 mit
  * eingebettetem CII-XML nach EN 16931 (E3, Dokument 13).
  *
- * **Warum im Worker und nicht beim Festschreiben.** Das Festschreiben haelt
- * die Zaehlerzeile der Rechnungsnummer gesperrt und serialisiert damit alle
- * Rechnungen einer Property. Eine PDF-Erzeugung von einigen hundert
- * Millisekunden in dieser Transaktion wuerde bei zwanzig gleichzeitigen
- * Check-outs zwanzig Kassen anhalten. Der Beleg entsteht deshalb danach,
- * aus Daten, die sich nicht mehr aendern koennen.
+ * **Warum nicht in der Transaktion des Festschreibens.** Das Festschreiben
+ * haelt die Zaehlerzeile der Rechnungsnummer gesperrt und serialisiert
+ * damit alle Rechnungen einer Property. Eine PDF-Erzeugung von einigen
+ * hundert Millisekunden in dieser Transaktion wuerde bei zwanzig
+ * gleichzeitigen Check-outs zwanzig Kassen anhalten. Der Beleg entsteht
+ * deshalb danach, aus Daten, die sich nicht mehr aendern koennen.
+ *
+ * **Warum trotzdem sofort danach.** Bisher zeichnete ihn erst der naechste
+ * Fuenf-Minuten-Lauf des Workers, und ein Gast, der beim Check-in die
+ * Rechnung gedruckt haben will, stand so lange am Tresen (Sven,
+ * 16.10.2026). Die API ruft deshalb `renderInvoiceDocument` nach dem
+ * Festschreiben auf, wenn die Sperre schon frei ist; der Worker arbeitet
+ * mit `renderPendingInvoices` nur noch nach, was dabei nicht gelang.
+ * Ein Paket und keine App, weil beide denselben Beleg zeichnen muessen.
  *
  * **Warum das gefahrlos nachtraeglich geht.** Die Rechnung ist Haertegrad 1
  * und ihre Positionen sind ihr fest zugeordnet. Der Beleg von morgen sieht
@@ -357,4 +366,51 @@ export async function renderPendingInvoices(
     }
   }
   return ergebnis
+}
+
+/**
+ * Ein Arbeitsschritt in einer eigenen Transaktion im Kontext des Aufrufers.
+ * Die API reicht `tx(req.pool, req, ...)` herein, damit die Anweisungen in
+ * ihrer Protokollzeile mitzaehlen; der Worker `withTransaction` mit dem
+ * Kontext der Property.
+ */
+export type InTransaction = <T>(fn: (client: PoolClient) => Promise<T>) => Promise<T>
+
+/**
+ * Zeichnet und legt den Beleg genau einer Rechnung ab, sofort nach dem
+ * Festschreiben.
+ *
+ * Lesen und Ablegen in je einer kurzen Transaktion, das Zeichnen in keiner
+ * -- dieselbe Aufteilung wie im Nachlauf und aus demselben Grund. Gibt es
+ * den Beleg schon (eine wiederholte Anfrage mit demselben
+ * Idempotency-Key, oder der Worker war schneller), wird nichts gezeichnet.
+ * Zeichnen beide gleichzeitig, gewinnt die erste Zeile; die Tabelle ist
+ * nur anfuegbar, und `ON CONFLICT DO NOTHING` verwirft die zweite.
+ *
+ * Wirft bei einem Fehler. Einen Fehlschlag vermerkt hier niemand: der
+ * Nachlauf des Workers findet die Rechnung ohnehin beim naechsten Mal und
+ * schlaegt dort mit Rueckstellung und Alarm Laerm. Der Aufrufer soll den
+ * Fehler protokollieren und die Rechnung trotzdem als festgeschrieben
+ * melden -- sie ist es.
+ */
+export async function renderInvoiceDocument(
+  inTx: InTransaction, invoiceRef: string, opts: { now?: Date } = {}
+): Promise<'created' | 'present'> {
+  const geladen = await inTx(async c => {
+    const r = await c.query<{ id: number; property_id: number; vorhanden: boolean }>(
+      `SELECT i.id, i.property_id, d.invoice_id IS NOT NULL AS vorhanden
+         FROM invoice i
+         LEFT JOIN invoice_document d ON d.invoice_id = i.id
+        WHERE i.public_ref = $1`, [invoiceRef])
+    const z = r.rows[0]
+    if (z === undefined) throw new Error('Rechnung nicht gefunden')
+    if (z.vorhanden) return null
+    const l = await load(c, z.id)
+    if (l === null) throw new Error('Rechnung nicht gefunden')
+    return { ...l, id: Number(z.id), propertyId: Number(z.property_id) }
+  })
+  if (geladen === null) return 'present'
+  const g = await zeichne(geladen, opts.now ?? new Date())
+  await inTx(c => ablegen(c, geladen.propertyId, geladen.id, g))
+  return 'created'
 }

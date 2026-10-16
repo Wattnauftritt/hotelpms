@@ -10,7 +10,7 @@ import { ensureAuditPartitions, dropOldAuditPartitions,
          overdueNightAudits, purgeRetention, archiveStatus, archivBefund }
   from './jobs/maintenance.js'
 import { TickBreaker } from './jobs/breaker.js'
-import { renderPendingInvoices } from './jobs/invoiceDocument.js'
+import { renderPendingInvoices } from '@hotelpms/beleg'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'

@@ -149,6 +149,9 @@ importers:
 
   packages/beleg:
     dependencies:
+      '@hotelpms/db':
+        specifier: workspace:*
+        version: link:../db
       '@hotelpms/domain':
         specifier: workspace:*
         version: link:../domain
