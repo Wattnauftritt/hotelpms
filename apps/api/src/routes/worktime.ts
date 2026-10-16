@@ -276,6 +276,8 @@ async function liesEintraege(
 
 interface ZimmerDesTags {
   taskId: number
+  /** Das Haus des Zimmers -- in der Ansicht ueber alle Haeuser steht es dabei. */
+  propertyId: number
   code: string
   kind: 'departure' | 'stayover' | 'deep_clean' | 'inspection'
   /** Geplante Minuten; gezaehlt werden sie nur bei `outcome = 'cleaned'`. */
@@ -297,26 +299,31 @@ interface KraftDesTags {
 /**
  * Ein Tag aller Kraefte, wie die alte App ihn zeigte: je Kraft die
  * zugeteilten Zimmer nach Abreise und Bleiber, die Zusatzarbeiten und die
- * Summen. Drei Abfragen fuer das ganze Haus. Es stehen nur Kraefte da, die
- * an diesem Tag etwas haben -- eine leere Karte je Kraft im Haus waere
- * Rauschen.
+ * Summen. Vier Abfragen fuer alle Haeuser der Ansicht -- mit `scope=all`
+ * steht eine Kraft, die in Hotel und Gaestehaus reinigt, auf einer Karte
+ * (Sven, 16.10.2026). Es stehen nur Kraefte da, die an diesem Tag etwas
+ * haben -- eine leere Karte je Kraft im Haus waere Rauschen.
  */
 async function liesTag(
-  client: PoolClient, propertyId: number, date: string
-): Promise<{ date: string; closed: boolean; staff: KraftDesTags[] }> {
+  client: PoolClient, haeuser: number[], date: string
+): Promise<{ date: string; closed: boolean
+            houses: Array<{ propertyId: number; name: string; closed: boolean }>
+            staff: Array<KraftDesTags & { byHouse: Record<number, number> }> }> {
   const zimmer = await client.query<ZimmerDesTags & { userId: number }>(
     `SELECT * FROM (
        SELECT t.id::int AS "taskId", t.assigned_to::int AS "userId",
-              COALESCE(r.code, a.code) AS code, t.kind, COALESCE(t.minutes, 0) AS minutes,
+              t.property_id::int AS "propertyId", COALESCE(r.code, a.code) AS code, t.kind, COALESCE(t.minutes, 0) AS minutes,
               t.status, t.outcome
          FROM housekeeping_task t
          LEFT JOIN resource r ON r.id = t.resource_id
          LEFT JOIN cleaning_area a ON a.id = t.area_id
-        WHERE t.property_id = $1 AND t.business_date = $2::date
+        WHERE t.property_id = ANY($1::bigint[]) AND t.business_date = $2::date
           AND t.assigned_to IS NOT NULL) z
-      ORDER BY NULLIF(substring(z.code from '^[0-9]+'), '')::numeric NULLS LAST, z.code`,
-    [propertyId, date])
-  const eintraege = await liesEintraege(client, [propertyId], date, date, null)
+      ORDER BY array_position($1::bigint[], z."propertyId"::bigint),
+               NULLIF(substring(z.code from '^[0-9]+'), '')::numeric NULLS LAST, z.code`,
+    [haeuser, date])
+  const eintraege = await liesEintraege(client, haeuser, date, date, null)
+  const haus = await liesHaeuser(client, haeuser, date)
   const ids = [...new Set([...zimmer.rows.map(z => z.userId),
                            ...eintraege.rows.map(e => e.userId)])]
   const namen = ids.length === 0 ? [] : (await client.query<{ userId: number; name: string
@@ -330,21 +337,26 @@ async function liesTag(
       .map(({ userId: _, ...e }) => e)
     const totals = { departure: 0, stayover: 0, otherRooms: 0, extra: 0, kitchen: 0,
                      correction: 0, total: 0 }
+    const byHouse: Record<number, number> = {}
+    const dazu = (h: number, min: number): void => {
+      totals.total += min
+      byHouse[h] = (byHouse[h] ?? 0) + min
+    }
     for (const z of rooms) {
       if (z.outcome !== 'cleaned') continue
       const art = z.kind === 'departure' ? 'departure'
         : z.kind === 'stayover' ? 'stayover' : 'otherRooms'
       totals[art] += z.minutes
-      totals.total += z.minutes
+      dazu(z.propertyId, z.minutes)
     }
     for (const e of entries) {
       if (e.withdrawn) continue
       totals[e.kind] += e.minutes
-      totals.total += e.minutes
+      dazu(e.propertyId, e.minutes)
     }
-    return { ...n, rooms, entries, totals }
+    return { ...n, rooms, entries, totals, byHouse }
   })
-  return { date, closed: await istAbgeschlossen(client, propertyId, date), staff }
+  return { date, closed: haus.every(h => h.closed), houses: haus, staff }
 }
 
 interface EintragsEingabe {
@@ -832,6 +844,30 @@ export function worktimeRoutes(app: FastifyInstance): void {
   })
 
   /**
+   * Die Haeuser, zwischen denen die Leitung auf diesem Bildschirm waehlt:
+   * dieses und jedes andere des Betriebs, in dem sie die Arbeitszeit
+   * fuehrt. Die Reiter stehen ueber Tag und Monat, bevor einer geladen ist.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/worktime/houses',
+    permission: 'worktime:manage',
+    propertyParam: 'propertyId',
+    summary: 'Haeuser, deren Arbeitszeit die Leitung fuehrt',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const haeuser = haeuserFuer(req.principal as Principal, propertyId, 'all')
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query<{ propertyId: number; name: string }>(
+          `SELECT id::int AS "propertyId", name FROM property
+            WHERE id = ANY($1::bigint[])
+            ORDER BY id <> $2, name, id`, [haeuser, propertyId])
+        return { houses: rows }
+      })
+    }
+  })
+
+  /**
    * Ein Tag aller Kraefte mit Zimmern und Zusatzarbeiten (Sven, 10.10.2026:
    * so sah die Stundenuebersicht der alten App aus). Ein Tag ist die
    * Obergrenze des Zeitraums.
@@ -841,15 +877,16 @@ export function worktimeRoutes(app: FastifyInstance): void {
     url: '/v1/properties/:propertyId/worktime/day',
     permission: 'worktime:manage',
     propertyParam: 'propertyId',
-    summary: 'Arbeitszeit aller Kraefte an einem Tag, mit Zimmern und Zusatzarbeiten',
+    summary: 'Arbeitszeit aller Kraefte an einem Tag, mit scope=all ueber alle Haeuser',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
-      const q = req.query as { date?: string }
+      const q = req.query as { date?: string; scope?: string }
       if (q.date !== undefined && !isIsoDate(q.date)) {
         throw Errors.validation({ date: ['field.isoDate'] })
       }
+      const haeuser = haeuserFuer(req.principal as Principal, propertyId, q.scope)
       return tx(req.pool, req, async client =>
-        liesTag(client, propertyId, q.date ?? await tagOderOffen(client, propertyId, undefined)))
+        liesTag(client, haeuser, q.date ?? await tagOderOffen(client, propertyId, undefined)))
     }
   })
 
@@ -888,7 +925,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
                     adjusted_by = $3, adjusted_at = now(), updated_by = $3, updated_at = now()
               WHERE id = $1`, [id, minuten, principal.userId])
         }
-        return liesTag(client, propertyId, e.date)
+        return liesTag(client, [propertyId], e.date)
       })
     }
   })
@@ -916,7 +953,7 @@ export function worktimeRoutes(app: FastifyInstance): void {
             `UPDATE staff_work_entry SET withdrawn_at = now(), updated_by = $2, updated_at = now()
               WHERE id = $1`, [id, principal.userId])
         }
-        return liesTag(client, propertyId, e.date)
+        return liesTag(client, [propertyId], e.date)
       })
     }
   })
