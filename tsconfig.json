@@ -5,6 +5,9 @@
       "path": "./packages/domain"
     },
     {
+      "path": "./packages/beleg"
+    },
+    {
       "path": "./packages/db"
     },
     {

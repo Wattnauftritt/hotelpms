@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
+import { PDFDocument, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { ciiTotals, formatCent, paymentTermsText, type CiiInvoice,
          type CiiLine } from '@hotelpms/domain'
@@ -65,6 +65,12 @@ export interface InvoiceLayoutInput {
   logo?: { mime: string; bytes: Uint8Array } | null
   /** Webseite des Hauses fuer den Fuss (0177). Kein Teil des XML. */
   website?: string | null
+  /**
+   * Vorschau vor dem Festschreiben: quer ueber jeder Seite "ENTWURF", im
+   * Fuss keine Belegkennung. Ein ausgedruckter Entwurf darf nicht als
+   * Rechnung durchgehen; er hat keine Nummer und ist nicht gebucht.
+   */
+  draft?: boolean
 }
 
 /** Hoechstens so gross, dass es ueber dem Anschriftfeld endet (45 mm). */
@@ -420,7 +426,8 @@ function hinweise(z: Zeichner, input: InvoiceLayoutInput): void {
   if (bedingung !== null) {
     zeilen.push({ text: inv.payee?.iban
       ? `${bedingung} Bitte überweisen Sie den Betrag unter Angabe der Rechnungsnummer `
-        + `${inv.number} auf das unten genannte Konto.`
+        // Der Entwurf hat noch keine; die Nummer vergibt das Festschreiben.
+        + `${input.draft ? '' : `${inv.number} `}auf das unten genannte Konto.`
       : bedingung })
   }
   for (const n of inv.notes ?? []) zeilen.push({ text: n })
@@ -510,7 +517,22 @@ function fusszeilen(doc: PDFDocument, schrift: Schriften, input: InvoiceLayoutIn
         }
       }
     }
-    const seitenzahl = `Seite ${i + 1} von ${seiten.length} · Beleg ${input.publicRef}`
+    if (input.draft) {
+      const wort = 'ENTWURF'
+      const groesse = 110
+      const breite = schrift.bold.widthOfTextAtSize(wort, groesse)
+      // Um 40 Grad gedreht durch die Seitenmitte.
+      const w = 40 * Math.PI / 180
+      seite.drawText(wort, {
+        x: A4.width / 2 - Math.cos(w) * breite / 2 + Math.sin(w) * groesse * 0.35,
+        y: A4.height / 2 - Math.sin(w) * breite / 2 - Math.cos(w) * groesse * 0.35,
+        size: groesse, font: schrift.bold, color: rgb(0.85, 0.85, 0.85),
+        rotate: degrees(40), opacity: 0.3
+      })
+    }
+    const seitenzahl = input.draft
+      ? `Seite ${i + 1} von ${seiten.length} · Entwurf, keine Rechnung`
+      : `Seite ${i + 1} von ${seiten.length} · Beleg ${input.publicRef}`
     seite.drawText(seitenzahl, {
       x: (A4.width - schrift.regular.widthOfTextAtSize(seitenzahl, 7)) / 2,
       y: FUSS.seitenzahl, size: 7, font: schrift.regular, color: GRAU

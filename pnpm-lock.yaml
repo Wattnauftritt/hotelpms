@@ -41,6 +41,9 @@ importers:
       '@fastify/cookie':
         specifier: ^11.0.1
         version: 11.1.2
+      '@hotelpms/beleg':
+        specifier: workspace:*
+        version: link:../../packages/beleg
       '@hotelpms/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -115,6 +118,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@hotelpms/beleg':
+        specifier: workspace:*
+        version: link:../../packages/beleg
       '@hotelpms/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -124,12 +130,6 @@ importers:
       '@hotelpms/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@pdf-lib/fontkit':
-        specifier: 1.1.1
-        version: 1.1.1
-      pdf-lib:
-        specifier: 1.17.1
-        version: 1.17.1
       pino:
         specifier: ^9.5.0
         version: 9.14.0
@@ -146,6 +146,22 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.23.13
+
+  packages/beleg:
+    dependencies:
+      '@hotelpms/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@pdf-lib/fontkit':
+        specifier: 1.1.1
+        version: 1.1.1
+      pdf-lib:
+        specifier: 1.17.1
+        version: 1.17.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.2
 
   packages/contracts:
     dependencies:

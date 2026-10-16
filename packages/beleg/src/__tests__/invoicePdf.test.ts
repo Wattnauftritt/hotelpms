@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { PDFDocument, PDFDict, PDFArray, PDFName, PDFRawStream, PDFStream,
          decodePDFRawStream } from 'pdf-lib'
 import { buildInvoiceCii, type CiiInvoice } from '@hotelpms/domain'
-import { renderInvoicePdf, euro, datum } from '../pdf/invoiceLayout.js'
-import { finalizePdfA3, FACTUR_X_FILENAME } from '../pdf/pdfa3.js'
+import { renderInvoicePdf, euro, datum } from '../invoiceLayout.js'
+import { finalizePdfA3, FACTUR_X_FILENAME } from '../pdfa3.js'
 
 /**
  * Geprüft wird, was ein PDF/A-3 von einem gewöhnlichen PDF unterscheidet.

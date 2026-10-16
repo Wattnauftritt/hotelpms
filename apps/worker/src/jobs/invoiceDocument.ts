@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
 import { withTransaction, type DbContext, type Pool, type PoolClient } from '@hotelpms/db'
-import { buildInvoiceCii, ciiFindings, ciiTotals, groupInvoiceLines,
-         type InvoiceLineSource,
-         type CiiFinding, type CiiInvoice, type CiiLine, type CiiParty, type CiiPayee }
-  from '@hotelpms/domain'
-import { renderInvoicePdf } from '../pdf/invoiceLayout.js'
-import { finalizePdfA3 } from '../pdf/pdfa3.js'
+import { buildInvoiceCii, ciiFindings, ciiTotals, groupInvoiceLines, chargeLineSource,
+         depositLedgerLine, partyFromSnapshot, payeeFromSnapshot,
+         type InvoiceChargeRow, type InvoiceDepositRow,
+         type CiiFinding, type CiiInvoice, type CiiParty } from '@hotelpms/domain'
+import { renderInvoicePdf, finalizePdfA3 } from '@hotelpms/beleg'
 
 /**
  * Erzeugt zu jeder festgeschriebenen Rechnung den Beleg: ein PDF/A-3 mit
@@ -23,13 +22,6 @@ import { finalizePdfA3 } from '../pdf/pdfa3.js'
  * deshalb genauso aus wie der von heute; es gibt kein Zeitfenster, in dem
  * sich der Inhalt noch verschiebt.
  */
-
-/**
- * Erloeskonto der Beherbergung. Positionen darauf werden in Naechten
- * abgerechnet, alles andere in Stueck -- das ist der Unterschied zwischen
- * BT-130 `DAY` und `C62`, und er faellt einem Pruefer auf.
- */
-const KONTO_LOGIS = '8300'
 
 export interface InvoiceDocumentResult {
   /** Erzeugte Belege. */
@@ -67,124 +59,13 @@ interface InvoiceRow {
   line_guests: Record<string, string> | null
 }
 
-interface ChargeRow {
-  id: number
-  reverses_id: number | null
-  description: string
-  quantity: number
-  net_cent: string | number
-  tax_rate_bp: number
-  revenue_account: string
-  business_date: string
-  package_part: string | null
-}
-
-interface DepositLedgerRow {
-  kind: 'received' | 'applied' | 'unapplied' | 'refunded'
-  net_cent: string | number
-  tax_rate_bp: number
-  deposit_number: string
-  deposit_issued_on: string
-}
+/** Eine Buchung der Rechnung; die Gegenbuchung kennt ihr Original. */
+type Buchung = InvoiceChargeRow & { reverses_id: number | null }
 
 /** 2026-10-13 als 13.10.2026. */
 function datumDe(iso: string): string {
   const [j, m, t] = iso.split('-')
   return `${t}.${m}.${j}`
-}
-
-function party(snapshot: Partial<CiiParty>): CiiParty {
-  return {
-    name: snapshot.name ?? '',
-    addressLine1: snapshot.addressLine1 ?? null,
-    postalCode: snapshot.postalCode ?? null,
-    city: snapshot.city ?? null,
-    country: snapshot.country ?? null,
-    taxNumber: snapshot.taxNumber ?? null,
-    vatId: snapshot.vatId ?? null,
-    registrationId: snapshot.registrationId ?? null,
-    electronicAddress: snapshot.electronicAddress ?? null,
-    contactName: snapshot.contactName ?? null,
-    phone: snapshot.phone ?? null,
-    email: snapshot.email ?? null
-  }
-}
-
-/** Bankverbindung aus der Momentaufnahme des Ausstellers (0164). */
-function payee(snapshot: { name?: string; iban?: string | null; bic?: string | null
-                           bankName?: string | null
-                           accountHolder?: string | null }): CiiPayee | null {
-  if (!snapshot.iban) return null
-  // BT-85 ist der Name des Kontos, nicht der des Hotels (0177). Aeltere
-  // Momentaufnahmen und Haeuser ohne Angabe behalten den Namen des Hauses.
-  return { iban: snapshot.iban, bic: snapshot.bic ?? null,
-           accountName: snapshot.accountHolder || snapshot.name || null,
-           bankName: snapshot.bankName ?? null }
-}
-
-/**
- * Rang einer Buchung auf der Rechnung: Uebernachtung vor Fruehstueck vor
- * allem anderen (Sven, 15.10.2026). Aeltere Fruehstuecksbuchungen tragen
- * kein `package_part`; fuer sie entscheidet der Text.
- */
-function rang(c: ChargeRow): number {
-  if (c.package_part === 'breakfast_food') return 1
-  if (c.package_part === 'breakfast_drinks') return 2
-  if (c.package_part === 'inclusion') return 3
-  if (/^Fr(ü|ue)hst(ü|ue)ck Getr/.test(c.description)) return 2
-  if (/^Fr(ü|ue)hst(ü|ue)ck/.test(c.description)) return 1
-  if (c.revenue_account === KONTO_LOGIS) return 0
-  return 4
-}
-
-function line(c: ChargeRow, ausgleich: number, gast: string | undefined): InvoiceLineSource {
-  return {
-    description: c.description,
-    businessDate: c.business_date,
-    guest: gast,
-    quantity: c.quantity,
-    // Das Fruehstueck im Zimmerpreis liegt auf demselben Konto, ist aber
-    // kein Tag Beherbergung (Migration 0158).
-    unitCode: c.revenue_account === KONTO_LOGIS && c.package_part === null ? 'DAY' : 'C62',
-    netCent: Number(c.net_cent) + ausgleich,
-    rateBp: c.tax_rate_bp,
-    rank: rang(c)
-  }
-}
-
-/**
- * Anzahlung als Position (Aufgabe 3). Auf der Anzahlungsrechnung selbst die
- * Vereinnahmung, auf der Schlussrechnung die Verrechnung mit negativem
- * Betrag und Verweis auf die Anzahlungsrechnung -- als Text in der
- * Position, denn eine eigene Position ist es, keine Kopfangabe.
- */
-function depositLine(d: DepositLedgerRow): CiiLine {
-  if (d.kind === 'received') {
-    return { name: 'Anzahlung auf den Aufenthalt', quantity: 1,
-              netCent: Number(d.net_cent), rateBp: d.tax_rate_bp }
-  }
-  // Auf der Rechnungskorrektur zur Anzahlungsrechnung (0162): der
-  // zurueckgezahlte Teil, zum Satz, zu dem er versteuert wurde.
-  if (d.kind === 'refunded') {
-    return {
-      name: `Rückzahlung der Anzahlung (Rechnung ${d.deposit_number} `
-        + `vom ${d.deposit_issued_on})`,
-      quantity: 1, netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp
-    }
-  }
-  // Auf der Stornorechnung: die Verrechnung wird mit dem Original
-  // aufgehoben, die Anzahlung ist wieder offen.
-  if (d.kind === 'unapplied') {
-    return {
-      name: `Verrechnung der Anzahlung aufgehoben (Rechnung ${d.deposit_number} `
-        + `vom ${d.deposit_issued_on})`,
-      quantity: 1, netCent: Number(d.net_cent), rateBp: d.tax_rate_bp
-    }
-  }
-  return {
-    name: `Anzahlung verrechnet (Rechnung ${d.deposit_number} vom ${d.deposit_issued_on})`,
-    quantity: -1, netCent: -Number(d.net_cent), rateBp: d.tax_rate_bp
-  }
 }
 
 /**
@@ -251,7 +132,7 @@ async function load(
   if (i.rowCount === 0) return null
   const row = i.rows[0]!
 
-  const c = await client.query<ChargeRow>(
+  const c = await client.query<Buchung>(
     `SELECT id, reverses_id, description, quantity, net_cent, tax_rate_bp, revenue_account,
             business_date::text, package_part
        FROM charge WHERE invoice_id = $1 ORDER BY id`, [invoiceId])
@@ -260,12 +141,12 @@ async function load(
   // Stornorechnung fuehrt ihn unter der Buchung des Originals, auf die ihre
   // Gegenbuchung verweist. Aeltere Rechnungen haben keinen.
   const ausgleich = row.totals.lineAdjustCent ?? {}
-  const ausgleichFuer = (x: ChargeRow): number => Number(
+  const ausgleichFuer = (x: Buchung): number => Number(
     ausgleich[String(row.kind === 'credit_note' ? x.reverses_id ?? x.id : x.id)] ?? 0)
   // Zimmer und Gast je Position (0175), ebenso aus der Momentaufnahme und
   // auf der Stornorechnung unter der Buchung des Originals.
   const gaeste = row.line_guests ?? {}
-  const gastFuer = (x: ChargeRow): string | undefined =>
+  const gastFuer = (x: Buchung): string | undefined =>
     gaeste[String(row.kind === 'credit_note' ? x.reverses_id ?? x.id : x.id)]
 
   /*
@@ -289,7 +170,7 @@ async function load(
   // Anzahlung (Aufgabe 3): auf der Anzahlungsrechnung selbst die
   // Vereinnahmung als einzige Position, auf einer Schlussrechnung die
   // Verrechnung als zusaetzliche Position mit negativem Betrag.
-  const d = await client.query<DepositLedgerRow>(
+  const d = await client.query<InvoiceDepositRow>(
     `SELECT dl.kind, dl.net_cent, dl.tax_rate_bp,
             di.number AS deposit_number, di.issued_on::text AS deposit_issued_on
        FROM deposit_ledger dl
@@ -303,15 +184,15 @@ async function load(
     issuedOn: row.issued_on,
     kind: row.kind,
     currency: row.currency,
-    seller: party(row.issuer_snapshot),
-    buyer: party(row.recipient_snapshot),
+    seller: partyFromSnapshot(row.issuer_snapshot),
+    buyer: partyFromSnapshot(row.recipient_snapshot),
     buyerReference: (row.recipient_snapshot as { buyerReference?: string | null })
       .buyerReference ?? null,
-    payee: payee(row.issuer_snapshot as Parameters<typeof payee>[0]),
+    payee: payeeFromSnapshot(row.issuer_snapshot as Parameters<typeof payeeFromSnapshot>[0]),
     // Je Leistung ueber die Naechte zusammengefasst, Uebernachtung zuerst
     // (groupInvoiceLines). Blatt und XML lesen dieselbe Liste.
-    lines: [...groupInvoiceLines(c.rows.map(x => line(x, ausgleichFuer(x), gastFuer(x)))),
-            ...d.rows.map(depositLine)],
+    lines: [...groupInvoiceLines(c.rows.map(x => chargeLineSource(x, ausgleichFuer(x), gastFuer(x)))),
+            ...d.rows.map(depositLedgerLine)],
     // Der Leistungszeitraum steht seit 0017 an der Rechnung. Aeltere
     // Rechnungen haben ihn nicht; fuer sie gilt, was die Positionen sagen.
     serviceFrom: row.service_from ?? daten[0] ?? row.issued_on,
