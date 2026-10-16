@@ -2424,6 +2424,10 @@ export function reservationRoutes(app: FastifyInstance): void {
          * ist abgereist. Die Rezeption bestaetigt, dann geht es durch.
          * Maschinenzugaenge (Adminpanel) fragt niemand -- dort sitzt kein
          * Mensch, der bestaetigen koennte, und der Abgleich laeuft dort.
+         *
+         * Das Gruppenfolio zaehlt nicht mit: es haengt an der ersten
+         * Reservierung der Buchung, gehoert aber der ganzen Gruppe, und
+         * wer das erste Zimmer auscheckt, rechnet nicht die Gruppe ab.
          */
         const body = (req.body ?? {}) as { openBalance?: string }
         if (act === 'check_out' && principal.userId !== null
@@ -2431,13 +2435,13 @@ export function reservationRoutes(app: FastifyInstance): void {
           const offen = await client.query<{ saldo: string; posten: number }>(
             `SELECT COALESCE((SELECT sum(c.gross_cent) FROM charge c
                                 JOIN folio f ON f.id = c.folio_id
-                               WHERE f.reservation_id = $1), 0)
+                               WHERE f.reservation_id = $1 AND f.kind <> 'group'), 0)
                   - COALESCE((SELECT sum(s.amount_cent) FROM settlement s
                                 JOIN folio f ON f.id = s.folio_id
-                               WHERE f.reservation_id = $1), 0) AS saldo,
+                               WHERE f.reservation_id = $1 AND f.kind <> 'group'), 0) AS saldo,
                     (SELECT count(*)::int FROM charge c
                        JOIN folio f ON f.id = c.folio_id
-                      WHERE f.reservation_id = $1 AND c.invoice_id IS NULL
+                      WHERE f.reservation_id = $1 AND f.kind <> 'group' AND c.invoice_id IS NULL
                         AND c.gross_cent <> 0 AND c.reverses_id IS NULL
                         -- Gegengebucht und noch offen: hebt sich auf.
                         AND NOT EXISTS (SELECT 1 FROM charge g

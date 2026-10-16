@@ -489,6 +489,26 @@ export function useSplitFolio(folioRef: string) {
   })
 }
 
+/**
+ * Gruppenfolio der Buchung: anlegen (oder das vorhandene finden), alle
+ * Zimmer darauf umleiten und ihre offenen Naechte umbuchen.
+ */
+export function useGroupFolio(folioRef: string) {
+  const qc = useQueryClient()
+  const absicht = useAbsicht()
+  return useMutation({
+    mutationFn: (scope: 'accommodation' | 'all') =>
+      api.post<{ folioRef: string; rooms: number; moved: number }>(
+        `/v1/folios/${folioRef}/group-folio`, { scope },
+        { 'idempotency-key': absicht.schluessel(scope) }),
+    onSuccess: () => {
+      absicht.erledigt()
+      void qc.invalidateQueries({ queryKey: ['folio'] })
+      void qc.invalidateQueries({ queryKey: ['invoicePreview'] })
+    }
+  })
+}
+
 /** Offene Position auf ein anderes Folio desselben Aufenthalts. */
 export function useTransferCharge(folioRef: string) {
   const qc = useQueryClient()
