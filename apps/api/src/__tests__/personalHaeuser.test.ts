@@ -302,6 +302,36 @@ describe('Arbeitszeit ueber alle Haeuser', () => {
     expect((await lies('/worktime?month=2026-09&scope=irgendwas')).statusCode).toBe(422)
   })
 
+  it('der Tag ueber beide Haeuser: eine Karte je Kraft, Zimmer mit ihrem Haus', async () => {
+    await zweiHaeuser()
+    const h = (await lies('/worktime/houses')).json()
+    expect(h.houses.map((x: { name: string }) => x.name)).toEqual(['Hotel', 'Gaestehaus'])
+
+    const einzeln = (await lies('/worktime/day?date=2026-09-30')).json()
+    expect(einzeln.houses).toHaveLength(1)
+    expect(einzeln.staff[0].totals.total).toBe(30)
+
+    const alle = await lies('/worktime/day?date=2026-09-30&scope=all')
+    expect(alle.statusCode, alle.body).toBe(200)
+    const d = alle.json()
+    expect(d.houses).toHaveLength(2)
+    expect(d.staff).toHaveLength(1)
+    const o = d.staff[0]
+    expect(o.totals.total).toBe(75)
+    expect(o.byHouse).toEqual({ [hotel.propertyId]: 30, [gh]: 45 })
+    // Erst die Zimmer des eigenen Hauses, dann die des Gaestehauses.
+    expect(o.rooms.map((z: { propertyId: number }) => z.propertyId)).toEqual([hotel.propertyId, gh])
+    expect(o.entries[0].propertyId).toBe(gh)
+
+    // Angepasst wird am Haus des Eintrags.
+    const a = await app.inject({ method: 'PUT',
+      url: `/v1/properties/${gh}/worktime/entries/${o.entries[0].id}`,
+      headers: auth(inhaber.sessionId), payload: { minutes: 20 } })
+    expect(a.statusCode, a.body).toBe(200)
+    expect((await lies('/worktime/day?date=2026-09-30&scope=all')).json().staff[0].totals.total)
+      .toBe(80)
+  })
+
   it('wer nur im Hotel leitet, bekommt auch mit scope=all nur das Hotel', async () => {
     await zweiHaeuser()
     const direktor = await makeUser(owner, { email: 'dir@kunde.de', propertyId: hotel.propertyId,
@@ -309,6 +339,9 @@ describe('Arbeitszeit ueber alle Haeuser', () => {
     const u = (await lies('/worktime?month=2026-09&scope=all', direktor.sessionId)).json()
     expect(u.houses).toHaveLength(1)
     expect(u.combinable).toBe(false)
+    expect((await lies('/worktime/houses', direktor.sessionId)).json().houses).toHaveLength(1)
+    expect((await lies('/worktime/day?date=2026-09-30&scope=all', direktor.sessionId)).json()
+      .staff[0].totals.total).toBe(30)
     expect(u.staff[0].totals.total).toBe(30)
     const m = (await lies(`/worktime/${olga.userId}?month=2026-09&scope=all`,
       direktor.sessionId)).json()
