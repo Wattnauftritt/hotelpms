@@ -6,6 +6,8 @@
 
 export interface Eintrag {
   id: number
+  /** Das Haus des Eintrags; in der Ansicht ueber alle Haeuser zaehlt es. */
+  propertyId?: number
   date: string
   kind: 'extra' | 'kitchen' | 'correction'
   description: string | null
@@ -23,15 +25,19 @@ export interface Eintrag {
   withdrawnBy: string | null
 }
 export interface Tag { date: string; roomMinutes: number; rooms: number; entries: Eintrag[]
-                       total: number }
+                       total: number
+                       /** Die Summe des Tages je Haus, Schluessel ist die Property-ID. */
+                       byHouse?: Record<number, number> }
+/** Ein Haus der Ansicht mit seiner Monatssumme. */
+export interface HausSumme { propertyId: number; name: string; total: number; closed: boolean }
 export interface Haelfte { from: string; to: string; total: number }
 export interface Monat {
   month: string; closed: boolean; today: string; days: Tag[]
+  /** Ueber welche Haeuser gerechnet wurde; mehr als eines nur mit `scope=all`. */
+  houses?: HausSumme[]
   totals: { rooms: number; extra: number; kitchen: number; correction: number; total: number }
   /** 1. bis 15. und 16. bis Monatsende -- die Zeitarbeitsfirma zahlt halbmonatlich. */
   halves: [Haelfte, Haelfte]
-  /** Die Monatssumme in den anderen Haeusern derselben Kraft (0116). */
-  otherHouses?: Array<{ propertyId: number; name: string; total: number }>
 }
 
 /** `2:05` -- Stunden und Minuten, in jeder Sprache gleich lesbar. */
