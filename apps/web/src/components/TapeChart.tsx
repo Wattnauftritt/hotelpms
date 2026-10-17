@@ -3,7 +3,7 @@ import type { TapeChart as TapeChartData } from '@hotelpms/contracts'
 import { eachDay, isWeekend, isWeekEnd, daysBetween, addDays, today }
   from '../lib/dates.js'
 import type { KontextZiel } from './Kontextmenue.tsx'
-import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, type Passung }
+import { auswahlErweitern, auswahlZeitraum, gruppenAuswahl, zimmerPassung, type Passung }
   from '../lib/tapeSelection.js'
 import { spaltenBreite, spanne, balkenUmriss } from '../lib/tapeGeometrie.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../lib/i18n/index.js'
@@ -667,7 +667,21 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
          * steht.
          */
         const neu = gruppenAuswahl(data.units, tage, d)
+        /*
+         * Ein Klick mit Umschalt auf eine schon markierte Zeile erweitert
+         * sie bis zum angeklickten Tag, statt sie durch ihn zu ersetzen --
+         * Begruendung an `auswahlErweitern`. Ein Zug bleibt, was er war:
+         * ein neuer Zeitraum fuer die Zeile.
+         */
+        const klick = d.startIndex === d.index && d.startDay === d.day
+        const getroffen = klick ? neu.rooms[0]?.resourceId : undefined
         setAuswahl(vorher => {
+          // Im Updater entschieden und nicht am `auswahl` dieses Horchers:
+          // der ist beim Aufsetzen verdrahtet und kennt nur, was da stand.
+          if (getroffen !== undefined && (vorher ?? []).some(z => z.resourceId === getroffen)) {
+            return vorher!.map(z => z.resourceId !== getroffen ? z
+              : { resourceId: z.resourceId, ...auswahlErweitern(z, tage, d.day) })
+          }
           /*
            * Jeder Zug bringt seinen eigenen Zeitraum mit.
            *
@@ -1111,8 +1125,9 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
        * markierten Zimmer am 20. anklickt, waehrend die Markierung auf dem
        * 5. liegt, zeigt auf den 20.
        */
-      const inAuswahl = (auswahl ?? []).some(
+      const getroffen = (auswahl ?? []).find(
         z => z.resourceId === resourceId && anreise >= z.arrival && anreise < z.departure)
+      const inAuswahl = getroffen !== undefined
 
       /*
        * **Neben einer Mehrfachmarkierung passiert nichts.**
@@ -1142,10 +1157,22 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         art: 'frei', punkt: { x: e.clientX, y: e.clientY },
         resourceId, categoryId,
         roomCode: zimmerNach.get(resourceId)?.code ?? '',
-        // **Eine Nacht**, nicht der sichtbare Zeitraum. Wer im Plan rechts
-        // klickt, meint diesen Tag; ein Vorschlag ueber sechzig Tage waere
-        // eine Buchung, die niemand wollte.
-        arrival: anreise, departure: addDays(anreise, 1),
+        /*
+         * In der Markierung ihr Zeitraum, daneben **eine Nacht** -- nicht
+         * der sichtbare Zeitraum: wer neben jede Markierung rechts klickt,
+         * meint diesen Tag, und ein Vorschlag ueber sechzig Tage waere eine
+         * Buchung, die niemand wollte.
+         *
+         * Hier stand die eine Nacht auch fuer den Klick **in** die
+         * Markierung. Zwei Naechte markiert, rechts geklickt, "Hier
+         * Reservierung anlegen" -- und die Maske kam mit der Nacht unter
+         * dem Zeiger. Die Leiste unten zeigte dabei weiter "2 N.", und wer
+         * die Daten in der Maske nicht nachlas, buchte eine (Sven,
+         * 17.10.2026). Bei mehreren Zimmern fiel es nicht auf, weil dort
+         * `auswahl` gilt und nicht dieses Paar.
+         */
+        arrival: getroffen?.arrival ?? anreise,
+        departure: getroffen?.departure ?? addDays(anreise, 1),
         leeren: () => setAuswahl(null),
         auswahl: !inAuswahl || auswahl === null ? null : auswahl.flatMap(z => {
           const u = zimmerNach.get(z.resourceId)
