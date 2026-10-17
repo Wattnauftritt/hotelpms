@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
+import { auswahlErweitern, auswahlZeitraum, gruppenAuswahl, zimmerPassung, platzbedarf }
   from '../lib/tapeSelection.js'
 import { spanne, spaltenBreite, SPALTE_MIN, LUECKE, balkenUmriss, SPITZE }
   from '../lib/tapeGeometrie.js'
@@ -51,6 +51,41 @@ describe('Zeitraum einer aufgezogenen Auswahl', () => {
   it('rechnet die Abreise am rechten Rand, statt sie nachzuschlagen', () => {
     expect(auswahlZeitraum(TAGE, 3, 3))
       .toEqual({ arrival: '2026-10-04', departure: '2026-10-05' })
+  })
+})
+
+/**
+ * Klick am 19., Umschalt-Klick am 20. -- gemeint sind zwei Naechte. Vorher
+ * ersetzte der zweite Klick die Zeile durch seinen einen Tag, und die
+ * Maske uebernahm eine Nacht (Sven, 17.10.2026; im Browser nachgestellt).
+ */
+describe('Umschalt-Klick erweitert die markierte Zeile', () => {
+  const eineNacht = { arrival: '2026-10-01', departure: '2026-10-02' }
+
+  it('nach rechts bis einschliesslich des angeklickten Tages', () => {
+    expect(auswahlErweitern(eineNacht, TAGE, 1))
+      .toEqual({ arrival: '2026-10-01', departure: '2026-10-03' })
+  })
+
+  it('nach links ebenso', () => {
+    expect(auswahlErweitern({ arrival: '2026-10-03', departure: '2026-10-04' }, TAGE, 0))
+      .toEqual({ arrival: '2026-10-01', departure: '2026-10-04' })
+  })
+
+  it('laesst die Markierung bei einem Klick in ihr unveraendert', () => {
+    const zwei = { arrival: '2026-10-01', departure: '2026-10-03' }
+    expect(auswahlErweitern(zwei, TAGE, 1)).toEqual(zwei)
+  })
+
+  it('rechnet am rechten Rand die Abreise, statt sie nachzuschlagen', () => {
+    expect(auswahlErweitern(eineNacht, TAGE, 3))
+      .toEqual({ arrival: '2026-10-01', departure: '2026-10-05' })
+  })
+
+  it('gilt nur fuer einen Klick; ein Zug ersetzt die Zeile weiter', () => {
+    const plan = readFileSync(new URL('../components/TapeChart.tsx', import.meta.url), 'utf8')
+    expect(plan).toContain('const klick = d.startIndex === d.index && d.startDay === d.day')
+    expect(plan).toContain('auswahlErweitern(z, tage, d.day)')
   })
 })
 
@@ -854,7 +889,7 @@ describe('Die Mehrfachauswahl sammelt und laesst sich aufheben', () => {
      * vorher genau eines davon erwischt -- ohne dass irgendwo stand,
      * welches.
      */
-    expect(plan).toContain('const inAuswahl = (auswahl ?? []).some(')
+    expect(plan).toContain('const getroffen = (auswahl ?? []).find(')
     expect(plan).toContain(
       'z => z.resourceId === resourceId && anreise >= z.arrival && anreise < z.departure)')
     expect(plan).toContain('leeren: () => setAuswahl(null)')
@@ -1152,7 +1187,22 @@ describe('Der rechte Knopf im Belegungsplan', () => {
   })
 
   it('schlaegt auf freier Flaeche eine Nacht vor, nicht den ganzen Zeitraum', () => {
-    expect(plan).toContain('arrival: anreise, departure: addDays(anreise, 1)')
+    expect(plan).toContain('departure: getroffen?.departure ?? addDays(anreise, 1),')
+  })
+
+  /**
+   * Zwei Naechte markiert, rechts hineingeklickt, "Hier Reservierung
+   * anlegen" -- und die Maske kam mit der einen Nacht unter dem Zeiger
+   * (Sven, 17.10.2026). Im Browser nachgestellt: markiert 19.--21., Maske
+   * 20.--21. Bei einem Zimmer gilt das Paar am Ziel, nicht `auswahl`;
+   * deshalb muss das Paar den Zeitraum der Markierung tragen.
+   */
+  it('uebernimmt in der Markierung ihren Zeitraum, nicht die Nacht unter dem Zeiger', () => {
+    expect(plan).toContain('arrival: getroffen?.arrival ?? anreise,')
+    expect(plan).toContain('departure: getroffen?.departure ?? addDays(anreise, 1),')
+    // Und der Bildschirm legt das einzelne Zimmer mit genau diesem Paar an.
+    const tape = readFileSync(new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
+    expect(tape).toMatch(/setAuswahl\(\{\s*resourceId: z\.resourceId, categoryId: z\.categoryId,\s*arrival: z\.arrival, departure: z\.departure,/)
   })
 
   it('schliesst das Menue bei Esc, Klick daneben und Scrollen', () => {

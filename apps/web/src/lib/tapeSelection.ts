@@ -38,6 +38,28 @@ export function auswahlZeitraum(tage: string[], startDay: number, day: number): 
   }
 }
 
+/**
+ * Ein Umschalt-Klick auf eine schon markierte Zeile erweitert sie.
+ *
+ * **Warum nicht ersetzen wie ein Zug.** Wer dieselbe Zeile noch einmal
+ * **zieht**, meint einen anderen Zeitraum fuer sie (`TapeChart`, Auswahl).
+ * Ein **Klick** mit Umschalt meint dagegen, was er in jeder Tabelle und
+ * jedem Dateifenster meint: bis hierher. Vorher ersetzte er die Zeile
+ * durch den einen angeklickten Tag -- wer am 19. klickte und am 20. mit
+ * Umschalt nachklickte, sah danach eine Nacht statt zwei markiert, und
+ * die Maske uebernahm genau diese eine (Sven, 17.10.2026).
+ *
+ * Erweitert wird in beide Richtungen; ein Klick innerhalb der Markierung
+ * laesst sie, wie sie ist.
+ */
+export function auswahlErweitern(zeile: Zeitraum, tage: string[], day: number): Zeitraum {
+  const z = auswahlZeitraum(tage, day, day)
+  return {
+    arrival: z.arrival < zeile.arrival ? z.arrival : zeile.arrival,
+    departure: z.departure > zeile.departure ? z.departure : zeile.departure
+  }
+}
+
 export interface AuswahlZimmer { resourceId: number; categoryId: number }
 
 /**
