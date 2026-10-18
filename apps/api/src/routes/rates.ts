@@ -6,6 +6,7 @@ import { isIsoDate, nightsBetween } from '@hotelpms/domain'
 import type { PoolClient } from '@hotelpms/db'
 import { emitEvent } from '../platform/events.js'
 import type { Principal } from '../platform/context.js'
+import { PREIS_OFFEN, RESTRIKTION_OFFEN } from './rateCalendarPush.js'
 
 /** Ein Jahr je Anfrage. Mehr braucht niemand, und es begrenzt die Sperrzeit. */
 const MAX_DAYS = 400
@@ -568,7 +569,9 @@ export function rateRoutes(app: FastifyInstance): void {
   /**
    * Preis- und Restriktionsraster fuer die Pflegeansicht.
    * Eine Abfrage fuer den ganzen Zeitraum und alle Plaene einer Kategorie;
-   * die Oberflaeche baut daraus ihr Gitter (P-Gesetz, Dokument 04).
+   * die Oberflaeche baut daraus ihr Gitter (P-Gesetz, Dokument 04). Je Zelle
+   * steht dabei, ob sie vom zuletzt gesendeten Stand abweicht: das Raster
+   * markiert, was noch nicht beim Channel Manager ist (Migration 0180).
    */
   registerRoute(app, {
     method: 'GET',
@@ -587,17 +590,29 @@ export function rateRoutes(app: FastifyInstance): void {
 
       return tx(req.pool, req, async client => {
         const { rows } = await client.query(
-          `SELECT rp.id AS "ratePlanId", rp.code AS "ratePlanCode",
+          `WITH gesendet AS (
+             -- Markiert wird erst, wenn es einen gesendeten Stand gibt, und
+             -- nur ab heute: Vergangenes geht nicht mehr hinaus (0180).
+             SELECT EXISTS (SELECT 1 FROM rate_calendar_push
+                             WHERE property_id = $1 AND status = 'done') AS basis,
+                    (SELECT (now() AT TIME ZONE timezone)::date FROM property
+                      WHERE id = $1) AS heute
+           )
+           SELECT rp.id AS "ratePlanId", rp.code AS "ratePlanCode",
                   d.day::date::text AS date,
                   rd.price_cent AS "priceCent",
                   rs.min_los AS "minLos", rs.max_los AS "maxLos",
                   COALESCE(rs.closed, false) AS closed,
                   COALESCE(rs.closed_to_arrival, false) AS "closedToArrival",
-                  COALESCE(rs.closed_to_departure, false) AS "closedToDeparture"
+                  COALESCE(rs.closed_to_departure, false) AS "closedToDeparture",
+                  (g.basis AND d.day >= g.heute AND ${PREIS_OFFEN}) AS "priceUnsent",
+                  (g.basis AND d.day >= g.heute AND ${RESTRIKTION_OFFEN}) AS "restrictionUnsent"
              FROM rate_plan rp
              CROSS JOIN generate_series($2::date, $3::date, interval '1 day') d(day)
+             CROSS JOIN gesendet g
              LEFT JOIN rate_day rd ON rd.rate_plan_id = rp.id AND rd.date = d.day::date
              LEFT JOIN restriction_day rs ON rs.rate_plan_id = rp.id AND rs.date = d.day::date
+             LEFT JOIN rate_calendar_sent s ON s.rate_plan_id = rp.id AND s.date = d.day::date
             WHERE rp.property_id = $1 AND rp.active
               AND ($4::bigint IS NULL OR rp.category_id = $4)
             ORDER BY rp.code, d.day`,

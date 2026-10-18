@@ -3,7 +3,7 @@ import type { RateGridCell } from '@hotelpms/contracts'
 import { centAusEingabe, eingabeAusCent, wochentagIndex, betroffeneTage,
          preisVorschau, preisNutzlast, restriktionsNutzlast,
          restriktionsZeichen, wochentagKuerzel, sperrZeichen,
-         preisFuerBelegung } from '../lib/preisraster.js'
+         preisFuerBelegung, rueckschrittAufrufe } from '../lib/preisraster.js'
 import { tageInklusive } from '../lib/queries/rates.js'
 import { SCREENS, visibleScreens } from '../screens.js'
 
@@ -127,7 +127,8 @@ const zelle = (
 ): RateGridCell => ({
   ratePlanId, ratePlanCode: 'STD', date, priceCent,
   minLos: null, maxLos: null, closed: false,
-  closedToArrival: false, closedToDeparture: false, ...extra
+  closedToArrival: false, closedToDeparture: false,
+  priceUnsent: false, restrictionUnsent: false, ...extra
 })
 
 describe('Vorschau', () => {
@@ -263,5 +264,37 @@ describe('Preis je Belegung im Raster', () => {
                 closedToDeparture: false } as RateGridCell
     expect(sperrZeichen(z)).toBe(restriktionsZeichen({ ...z, minLos: null }))
     expect(sperrZeichen(z)).not.toContain('3')
+  })
+})
+
+describe('Strg+Z im Preisraster', () => {
+  const z = (date: string, priceCent: number[] | null, minLos: number | null = null) => ({
+    date, zelle: { ratePlanId: 7, ratePlanCode: 'STD', date, priceCent, minLos, maxLos: null,
+                   closed: false, closedToArrival: false, closedToDeparture: false,
+                   priceUnsent: false, restrictionUnsent: false } as RateGridCell })
+
+  it('setzt jeden Tag auf seinen eigenen alten Preis, gleiche Folgetage in einem Aufruf', () => {
+    const a = rueckschrittAufrufe({ propertyId: 1, ratePlanId: 7, art: 'preis', vorher: [
+      z('2026-11-03', [9000]), z('2026-11-01', [8900]), z('2026-11-02', [8900]),
+      z('2026-11-05', [8900])] })
+    expect(a.map(x => [x.nutzlast.from, x.nutzlast.to,
+                       (x.nutzlast as { priceCent: number[] }).priceCent])).toEqual([
+      ['2026-11-01', '2026-11-02', [8900]],
+      ['2026-11-03', '2026-11-03', [9000]],
+      ['2026-11-05', '2026-11-05', [8900]]])
+  })
+
+  it('laesst einen Tag ohne alten Preis aus, statt null Euro zu setzen', () => {
+    const a = rueckschrittAufrufe({ propertyId: 1, ratePlanId: 7, art: 'preis',
+                                    vorher: [z('2026-11-01', null), z('2026-11-02', [8900])] })
+    expect(a.map(x => x.nutzlast.from)).toEqual(['2026-11-02'])
+  })
+
+  it('setzt beim Mindestaufenthalt die ganze alte Restriktion zurueck', () => {
+    const a = rueckschrittAufrufe({ propertyId: 1, ratePlanId: 7, art: 'restriktion',
+                                    vorher: [z('2026-11-01', [8900], 3)] })
+    expect(a).toEqual([{ art: 'restriktion', nutzlast: {
+      propertyId: 1, ratePlanId: 7, from: '2026-11-01', to: '2026-11-01', minLos: 3,
+      maxLos: null, closed: false, closedToArrival: false, closedToDeparture: false } }])
   })
 })

@@ -21,9 +21,10 @@ import { isTrainingProperty } from '../platform/training.js'
  * **StayGrid sagt, was hinausgeht; das Umsystem uebersetzt.** Das Adminpanel
  * holt die Werte je Plancode an `GET /v1/rate-calendar-pushes/:pushRef`
  * und bildet sie auf RoomCloud-Zimmertyp und -Rate ab. Was eine Aenderung
- * ist, entscheidet StayGrid an `rate_day.updated_at` und
- * `restriction_day.updated_at`, denselben Zeitstempeln, die ARI fuer seine
- * Aenderungsmeldung nimmt.
+ * ist, entscheidet StayGrid am Vergleich mit dem zuletzt gesendeten Stand
+ * (`rate_calendar_sent`, Migration 0180), nicht an Zeitstempeln: ein Preis,
+ * der hin und wieder zurueck geaendert wurde, ist keine Aenderung -- beim
+ * Channel Manager steht er schon so.
  */
 
 /** Wie das Preisraster und ARI: ein Jahr und etwas Rand. */
@@ -76,12 +77,25 @@ async function letzteGrenze(client: PoolClient, propertyId: number): Promise<str
 }
 
 /**
+ * Weicht der Tag vom gesendeten Stand ab? Preis und Restriktionen getrennt,
+ * weil das Raster sie in getrennten Zeilen markiert. Ein Tag ohne gesendeten
+ * Stand weicht ab: dort steht beim Channel Manager etwas, das nicht von hier
+ * kam. Erwartet `rd`, `rs` und `s` wie in `TAGE_SQL`.
+ */
+export const PREIS_OFFEN = `(s.rate_plan_id IS NULL OR rd.price_cent IS DISTINCT FROM s.price_cent)`
+export const RESTRIKTION_OFFEN = `(s.rate_plan_id IS NULL
+  OR (rs.min_los, rs.max_los, COALESCE(rs.closed, false), COALESCE(rs.closed_to_arrival, false),
+      COALESCE(rs.closed_to_departure, false))
+     IS DISTINCT FROM
+     (s.min_los, s.max_los, s.closed, s.closed_to_arrival, s.closed_to_departure))`
+
+/**
  * Die Tage, die hinausgehen: je aktivem Plan und Tag, bei "nur Aenderungen"
- * nur, wo Preis oder Restriktion seit der Grenze geschrieben wurde.
+ * nur, wo Preis oder Restriktion vom gesendeten Stand abweicht.
  * Abgeleitete Plaene gehen mit -- drueben sind sie eine Rate wie jede.
  */
 const TAGE_SQL = `
-  SELECT rp.code AS "ratePlanCode", rc.code AS "categoryCode",
+  SELECT rp.id AS "ratePlanId", rp.code AS "ratePlanCode", rc.code AS "categoryCode",
          d.day::date::text AS date,
          rd.price_cent AS "priceCent",
          rs.min_los AS "minLos", rs.max_los AS "maxLos",
@@ -93,9 +107,16 @@ const TAGE_SQL = `
    CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS d(day)
     LEFT JOIN rate_day rd ON rd.rate_plan_id = rp.id AND rd.date = d.day::date
     LEFT JOIN restriction_day rs ON rs.rate_plan_id = rp.id AND rs.date = d.day::date
+    LEFT JOIN rate_calendar_sent s ON s.rate_plan_id = rp.id AND s.date = d.day::date
    WHERE rp.property_id = $1 AND rp.active
-     AND ($4::timestamptz IS NULL
-          OR rd.updated_at > $4::timestamptz OR rs.updated_at > $4::timestamptz)`
+     AND (NOT $4::boolean OR ${PREIS_OFFEN} OR ${RESTRIKTION_OFFEN})`
+
+/** Eine abgeholte Zeile, wie sie in `served` bis zur Rueckmeldung liegt. */
+interface Tag {
+  ratePlanId: number; ratePlanCode: string; categoryCode: string; date: string
+  priceCent: number[] | null; minLos: number | null; maxLos: number | null; closed: boolean
+  closedToArrival: boolean; closedToDeparture: boolean
+}
 
 export function rateCalendarPushRoutes(app: FastifyInstance): void {
   /**
@@ -120,7 +141,7 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
           const von = await heute(client, propertyId)
           const z = await client.query<{ n: number }>(
             `SELECT count(*)::int AS n FROM (${TAGE_SQL}) t`,
-            [propertyId, von, addDays(von, MAX_DAYS - 1), grenze])
+            [propertyId, von, addDays(von, MAX_DAYS - 1), true])
           offen = z.rows[0]!.n
         }
         return { push: rows[0] === undefined ? null : antwort(rows[0]),
@@ -222,18 +243,15 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
         if (s.status !== 'requested') throw Errors.conflict('rateCalendar.closed')
 
         // Erst die Grenze, dann die Werte: eine Aenderung in derselben
-        // Millisekunde geht im Zweifel zweimal hinaus, nie keinmal.
-        const z = await client.query<{ t: string }>(
-          `UPDATE rate_calendar_push SET served_at = clock_timestamp()
-            WHERE id = $1 RETURNING served_at AS t`, [s.id])
-        const { rows } = await client.query<{
-          ratePlanCode: string; categoryCode: string; date: string; priceCent: number[] | null
-          minLos: number | null; maxLos: number | null; closed: boolean
-          closedToArrival: boolean; closedToDeparture: boolean }>(
+        // Millisekunde geht im Zweifel zweimal hinaus, nie keinmal. Die
+        // Werte bleiben bis zur Rueckmeldung liegen; erst "gesendet" macht
+        // sie zum gesendeten Stand.
+        const { rows } = await client.query<Tag>(
           `${TAGE_SQL} ORDER BY rp.code, d.day`,
-          [s.property_id, s.date_from, s.date_to, s.changed_since])
-        await client.query(`UPDATE rate_calendar_push SET days = $2 WHERE id = $1`,
-          [s.id, rows.length])
+          [s.property_id, s.date_from, s.date_to, s.mode === 'changes'])
+        const z = await client.query<{ t: string }>(
+          `UPDATE rate_calendar_push SET served_at = clock_timestamp(), days = $2, served = $3::jsonb
+            WHERE id = $1 RETURNING served_at AS t`, [s.id, rows.length, JSON.stringify(rows)])
 
         const plans = new Map<string, { ratePlanCode: string; categoryCode: string
                                         days: Array<Record<string, unknown>> }>()
@@ -282,8 +300,30 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
           throw Errors.conflict('rateCalendar.notServed')
         }
         const m = typeof body.message === 'string' ? body.message.trim().slice(0, 500) : ''
+        if (body.status === 'done') {
+          // Gesendet ist, was abgeholt wurde -- nicht, was jetzt im Raster
+          // steht. Ein Plan, der seitdem geloescht wurde, faellt heraus.
+          await client.query(
+            `INSERT INTO rate_calendar_sent (property_id, rate_plan_id, date, price_cent, min_los,
+                                             max_los, closed, closed_to_arrival,
+                                             closed_to_departure, sent_at)
+             SELECT p.property_id, t."ratePlanId", t.date, t."priceCent", t."minLos", t."maxLos",
+                    t.closed, t."closedToArrival", t."closedToDeparture", p.served_at
+               FROM rate_calendar_push p,
+                    jsonb_to_recordset(p.served) AS t("ratePlanId" bigint, date date,
+                      "priceCent" bigint[], "minLos" smallint, "maxLos" smallint,
+                      closed boolean, "closedToArrival" boolean, "closedToDeparture" boolean)
+               JOIN rate_plan rp ON rp.id = t."ratePlanId"
+              WHERE p.id = $1
+             ON CONFLICT (rate_plan_id, date) DO UPDATE SET
+               price_cent = EXCLUDED.price_cent, min_los = EXCLUDED.min_los,
+               max_los = EXCLUDED.max_los, closed = EXCLUDED.closed,
+               closed_to_arrival = EXCLUDED.closed_to_arrival,
+               closed_to_departure = EXCLUDED.closed_to_departure, sent_at = EXCLUDED.sent_at`,
+            [s.id])
+        }
         const r = await client.query<Senden>(
-          `UPDATE rate_calendar_push SET status = $2, message = $3, finished_at = now()
+          `UPDATE rate_calendar_push SET status = $2, message = $3, finished_at = now(), served = NULL
             WHERE id = $1 RETURNING ${SPALTEN}`,
           [s.id, body.status, m === '' ? null : m])
         return antwort(r.rows[0]!)

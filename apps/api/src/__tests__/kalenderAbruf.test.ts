@@ -217,6 +217,17 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
     // Das Abonnement nimmt nur den Abruf; `rate.changed` ginge an andere.
     expect(ev.rowCount).toBe(0)
 
+    // Was aus dem Channel Manager kam, steht dort: fuer die gelieferten Tage
+    // ist das der gesendete Stand, sonst stuenden sie als Aenderung im
+    // Raster (Migration 0180).
+    const gesendet = await owner.query<{ date: string; price_cent: string[] | null }>(
+      `SELECT date::text, price_cent::text[] FROM rate_calendar_sent
+        WHERE rate_plan_id = $1 ORDER BY date`, [std])
+    expect(gesendet.rows).toEqual([
+      { date: VON, price_cent: ['9900'] },
+      { date: '2027-05-02', price_cent: ['8000', '9000'] },
+      { date: '2027-05-03', price_cent: ['8000', '9000'] }])
+
     expect((await uebernehmen(ref, s.pull!.version)).statusCode).toBe(409)
     const spaet = await liefern(m, ref, { status: 'delivered', plans: [
       { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [1] }] }] })

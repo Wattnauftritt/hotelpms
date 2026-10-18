@@ -1,5 +1,6 @@
 import type { RateGridCell, SetRates, SetRestrictions } from '@hotelpms/contracts'
 import { intlTag, type Locale } from './i18n/index.js'
+import { addDays } from './dates.js'
 
 /**
  * Die Rechenarbeit hinter dem Preisraster, ohne React und ohne Netz.
@@ -247,3 +248,57 @@ export function restriktionsZeichen(z: RateGridCell): string {
   if (z.minLos !== null && z.minLos > 1) teile.push(String(z.minLos))
   return teile.join('')
 }
+
+/**
+ * Eine Änderung, die Strg+Z zurücknehmen kann: was an den betroffenen Tagen
+ * **vorher** stand (Sven, 18.10.2026: "Strg+Z nimmt Änderungen der Preise
+ * zurück, solange diese noch nicht gesendet wurden"). Gemerkt wird der
+ * Stand des Rasters vor dem Schreiben, nicht die getippte Eingabe -- eine
+ * Massenänderung trifft Tage mit verschiedenen Preisen, und zurück muss
+ * jeder auf seinen eigenen.
+ */
+export interface Rueckschritt {
+  propertyId: number
+  ratePlanId: number
+  art: 'preis' | 'restriktion'
+  vorher: ReadonlyArray<{ date: string; zelle: RateGridCell | undefined }>
+}
+
+/**
+ * Die Aufrufe, die einen Rückschritt ausführen. Aufeinanderfolgende Tage mit
+ * demselben alten Wert werden ein Aufruf; eine Woche zum selben Preis ist
+ * einer und nicht sieben. Ein Tag, der vorher keinen Preis hatte, wird
+ * ausgelassen: einen Preis zu entfernen kennt die API nicht, und null Euro
+ * wäre schlimmer als der neue Preis.
+ */
+export function rueckschrittAufrufe(
+  r: Rueckschritt
+): Array<{ art: 'preis'; nutzlast: SetRates } | { art: 'restriktion'; nutzlast: SetRestrictions }> {
+  const wert = (z: RateGridCell | undefined): string | null => r.art === 'preis'
+    ? (z?.priceCent == null || z.priceCent.length === 0 ? null : JSON.stringify(z.priceCent))
+    : JSON.stringify([z?.minLos ?? null, z?.maxLos ?? null, z?.closed ?? false,
+                      z?.closedToArrival ?? false, z?.closedToDeparture ?? false])
+  const tage = [...r.vorher].sort((a, b) => a.date.localeCompare(b.date))
+  const laeufe: Array<{ from: string; to: string; zelle: RateGridCell | undefined }> = []
+  for (const t of tage) {
+    const w = wert(t.zelle)
+    if (w === null) continue
+    const letzter = laeufe[laeufe.length - 1]
+    if (letzter !== undefined && addDays(letzter.to, 1) === t.date
+        && wert(letzter.zelle) === w) {
+      letzter.to = t.date
+    } else {
+      laeufe.push({ from: t.date, to: t.date, zelle: t.zelle })
+    }
+  }
+  return laeufe.map(l => r.art === 'preis'
+    ? { art: 'preis' as const, nutzlast: preisNutzlast({
+        propertyId: r.propertyId, ratePlanId: r.ratePlanId, from: l.from, to: l.to,
+        weekdays: null, priceCent: l.zelle!.priceCent! }) }
+    : { art: 'restriktion' as const, nutzlast: restriktionsNutzlast({
+        propertyId: r.propertyId, ratePlanId: r.ratePlanId, from: l.from, to: l.to,
+        weekdays: null, minLos: l.zelle?.minLos ?? null, maxLos: l.zelle?.maxLos ?? null,
+        closed: l.zelle?.closed ?? false, closedToArrival: l.zelle?.closedToArrival ?? false,
+        closedToDeparture: l.zelle?.closedToDeparture ?? false }) })
+}
+
