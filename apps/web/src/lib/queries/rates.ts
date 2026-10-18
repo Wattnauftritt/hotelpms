@@ -201,3 +201,68 @@ export const useChannelView = (
     // damit die Gegenueberstellung nicht einen alten Stand zeigt.
     staleTime: 10_000
   })
+
+/** Ein Abruf des Preiskalenders beim Umsystem (Migration 0179). */
+export interface KalenderAbruf {
+  pullRef: string
+  status: 'requested' | 'delivered' | 'failed' | 'applied' | 'superseded'
+  from: string
+  to: string
+  version: number
+  requestedAt: string
+  deliveredAt: string | null
+  appliedAt: string | null
+  message: string | null
+  delivery: Array<{ ratePlanCode: string
+                    result: 'accepted' | 'unknown_code' | 'derived' | 'inactive'
+                    days: number }>
+  result: { prices: number; restrictions: number } | null
+}
+
+export interface KalenderVorschau {
+  priceChanges: number
+  restrictionChanges: number
+  plans: Array<{ ratePlanCode: string; name: string; days: number
+                 priceChanges: number; restrictionChanges: number }>
+  changes: Array<{ ratePlanCode: string; date: string; oldPriceCent: number[] | null
+                   newPriceCent: number[] | null; restrictionChanged: boolean }>
+}
+
+/**
+ * Stand des letzten Abrufs. Solange das Umsystem noch holt, wird alle drei
+ * Sekunden nachgefragt; danach nicht mehr -- ein Bildschirm, der offen
+ * steht, soll die API nicht den ganzen Tag beschaeftigen.
+ */
+export const useKalenderAbruf = (propertyId: number) =>
+  useQuery<{ pull: KalenderAbruf | null; preview: KalenderVorschau | null }>({
+    queryKey: ['rateCalendarPull', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/rate-calendar-pulls/current`),
+    refetchInterval: q => q.state.data?.pull?.status === 'requested' ? 3_000 : false
+  })
+
+export function useKalenderAnfordern(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { from: string; to: string }) =>
+      api.post<KalenderAbruf>(`/v1/properties/${propertyId}/rate-calendar-pulls`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPull', propertyId] })
+    }
+  })
+}
+
+/** Nach der Uebernahme gilt das Raster nicht mehr, ebenso die Steuerungsvorschau. */
+export function useKalenderUebernehmen(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { pullRef: string; version: number }) =>
+      api.post<KalenderAbruf>(
+        `/v1/properties/${propertyId}/rate-calendar-pulls/${p.pullRef}/apply`,
+        { version: p.version }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPull', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
+    }
+  })
+}

@@ -1374,3 +1374,15 @@ Sven, 16.10.2026: Nach dem Umbuchen der Nächte eines zweiten Zimmers aufs erste
 Sven, 16.10.2026: „für gruppenbuchungen sollte es vielleicht auch ein gruppenfolio geben damit man nicht 10 zimmer einzeln auf eines der zimmer umbuchen muss im folio“. Im Folio jedes Zimmers einer Gruppe steht jetzt „+ Gruppenfolio“. Der Knopf legt ein Folio der Art `group` an (am ersten Zimmer der Buchung, Empfänger zunächst der Bucher), leitet Übernachtung und Frühstück aller Zimmer darauf um und bucht die schon gebuchten offenen Nächte mit um (`POST /v1/folios/:folioRef/group-folio`). Extras bleiben am Zimmer, die Kurtaxe auch (Svens Wahl: „Logis und Frühstück“; die API kennt zusätzlich `scope: 'all'`, angeboten wird es nicht). Je Buchung gibt es eines; die Umleitung schaltet man am Gruppenfolio für alle Zimmer zugleich ab. Beim Check-out des ersten Zimmers zählt das Gruppenfolio nicht zum offenen Saldo.
 
 Dabei gefunden: `post_city_tax` buchte die Kurtaxe auf **jedes** offene Folio eines Aufenthalts, also mit jedem Split-Folio ein weiteres Mal. Seit `0178` nur noch aufs Gastfolio.
+
+### Preiskalender aus dem Channel Manager abrufen (`0179`) — **gebaut**, Adminpanel-Seite offen
+
+Sven, 18.10.2026: Preise in StayGrid verwalten, aber nicht alles von Hand eintippen; ein Knopf soll den Kalender vom Channel Manager **abrufen**, über das Adminpanel. Unter **Preise → Preisraster** steht „Vom Channel Manager abrufen“ (Recht `rate:write`).
+
+- **Ablauf in drei Schritten.** Der Knopf legt einen Auftrag an (`POST /v1/properties/:id/rate-calendar-pulls`) und reiht `rate.calendar_pull_requested` ein; nimmt das kein Abonnement entgegen, wird abgewiesen statt gewartet. Das Umsystem liefert an `PUT /v1/rate-calendar-pulls/:pullRef` (Recht `rate:calendar_import`, nur Maschinen) je StayGrid-Ratenplan-Code und Tag Preise je Belegung und Restriktionen, oder `status: failed` mit Meldung. Übernommen wird erst nach der Vorschau (`GET …/current`, `POST …/:pullRef/apply` mit der gesehenen `version`).
+- **Was übernommen wird:** Preis, Mindest- und Höchstaufenthalt, Sperre, Anreise- und Abreisesperre. Ein nicht geliefertes Feld bleibt stehen. **Nicht:** die Zahl freier Zimmer, die rechnet StayGrid selbst.
+- **Schreibweg** wie die Preispflege (`rate_prices_write`, Herkunft `channel_import`): abgeleitete Raten folgen, ein `rate.changed`. Ein abgeleiteter Plan wird in der Lieferung übergangen.
+- **Zuordnung** RoomCloud-Zimmertyp und -Rate zu StayGrid-Plan bleibt im Adminpanel. RoomCloud liefert dort heute je Tag, Zimmertyp und Rate einen Preis, Mindestaufenthalt und Sperre; Standard- und Mehrtagesrate je Kategorie.
+- **Offen:** der Empfänger im Adminpanel (wartet auf Svens Freigabe) und der Rückweg StayGrid → RoomCloud. Der darf erst laufen, wenn Sven umschaltet, sonst schriebe er jeden Abruf sofort zurück.
+
+Tests in `kalenderAbruf.test.ts`.

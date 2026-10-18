@@ -118,6 +118,8 @@ Ein Mensch darf einen extern geführten Plan weiter von Hand ändern; das RMS ü
 
 ---
 
+**Kalender aus dem Channel Manager (Migration 0179).** Wer die Preise einmal aus RoomCloud holen will, statt sie abzutippen, nimmt den Abruf unter Preise (Dokument 16, „Preiskalender aus dem Channel Manager abrufen“). Er schreibt über `rate_prices_write` mit der Herkunft `channel_import`: auf einem von den Regeln gesteuerten Plan wird der gelieferte Preis der neue Grundpreis, wie bei einer Pflege von Hand. Ein externes RMS ist er nicht; er läuft nur, wenn ein Mensch ihn anstößt und die Vorschau übernimmt.
+
 ## 8. Rechte
 
 | Handlung | Recht | Warum |

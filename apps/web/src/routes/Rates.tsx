@@ -15,6 +15,7 @@ import { useOnline } from '../lib/offline.js'
 import { today, addDays } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Preissteuerung } from '../components/Preissteuerung.tsx'
+import { KalenderAbruf } from '../components/KalenderAbruf.tsx'
 import { useReiter } from '../lib/reiter.js'
 
 /**
@@ -828,6 +829,10 @@ function Preisraster(
           </select>
         </label>
       </div>
+
+      {/* Wer schreiben darf, darf holen: uebernommen wird ueber denselben
+          Weg wie die Preispflege, und erst nach der Vorschau. */}
+      {darfSchreiben && <KalenderAbruf propertyId={propertyId} />}
 
       {raster.isError
         ? <Fehler error={raster.error} />

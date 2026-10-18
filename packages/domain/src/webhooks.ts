@@ -18,7 +18,11 @@ export const WEBHOOK_EVENT_TYPES = [
   // Verkaufspreise geaendert, von Hand, durch die Preissteuerung oder durch
   // Neurechnen abgeleiteter Raten (Migration 0066). Ein Ereignis je
   // Schreibvorgang, nicht je Tag; die Werte holt der Empfaenger ueber ARI.
-  'rate.changed'
+  'rate.changed',
+  // Ein Mensch bittet das Umsystem, den Preiskalender aus dem Channel
+  // Manager zu holen (Migration 0179). Traegt nur Auftrag und Zeitraum; die
+  // Antwort kommt an `PUT /v1/rate-calendar-pulls/:pullRef`.
+  'rate.calendar_pull_requested'
 ] as const
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number]
