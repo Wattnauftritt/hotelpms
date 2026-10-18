@@ -68,6 +68,7 @@ export function useSetRates(propertyId: number) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
     }
   })
 }
@@ -167,7 +168,10 @@ export function useSetRestrictions(propertyId: number) {
   return useMutation({
     mutationFn: (body: SetRestrictions) =>
       api.put<{ ratePlanId: number; days: number }>('/v1/restrictions/bulk', body),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] }) }
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
+    }
   })
 }
 
@@ -263,6 +267,39 @@ export function useKalenderUebernehmen(propertyId: number) {
       void qc.invalidateQueries({ queryKey: ['rateCalendarPull', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
+    }
+  })
+}
+
+/** Ein Senden an den Channel Manager (Migration 0179). Nie automatisch. */
+export interface KalenderSenden {
+  pushRef: string
+  mode: 'changes' | 'range' | 'all'
+  status: 'requested' | 'done' | 'failed' | 'superseded'
+  from: string
+  to: string
+  days: number | null
+  message: string | null
+  requestedAt: string
+  finishedAt: string | null
+}
+
+export const useKalenderSendenStand = (propertyId: number) =>
+  useQuery<{ push: KalenderSenden | null; lastSentAt: string | null
+             pendingChanges: number | null }>({
+    queryKey: ['rateCalendarPush', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/rate-calendar-pushes/current`),
+    refetchInterval: q => q.state.data?.push?.status === 'requested' ? 3_000 : false
+  })
+
+export function useKalenderSenden(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { mode: KalenderSenden['mode']; from?: string; to?: string }) =>
+      api.post<KalenderSenden>(`/v1/properties/${propertyId}/rate-calendar-pushes`, body),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
     }
   })
 }

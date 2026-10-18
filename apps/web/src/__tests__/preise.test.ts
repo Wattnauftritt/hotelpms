@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { RateGridCell } from '@hotelpms/contracts'
 import { centAusEingabe, eingabeAusCent, wochentagIndex, betroffeneTage,
          preisVorschau, preisNutzlast, restriktionsNutzlast,
-         restriktionsZeichen, wochentagKuerzel } from '../lib/preisraster.js'
+         restriktionsZeichen, wochentagKuerzel, sperrZeichen,
+         preisFuerBelegung } from '../lib/preisraster.js'
 import { tageInklusive } from '../lib/queries/rates.js'
 import { SCREENS, visibleScreens } from '../screens.js'
 
@@ -239,5 +240,28 @@ describe('Der Bildschirm im Verzeichnis', () => {
   it('bleibt einem Housekeeping-Konto verborgen', () => {
     expect(visibleScreens(['housekeeping:read']).map(s => s.key)).not.toContain('rates')
     expect(visibleScreens(['rate:read']).map(s => s.key)).toContain('rates')
+  })
+})
+
+describe('Preis je Belegung im Raster', () => {
+  /**
+   * Aus RoomCloud kommt oft nur ein Preis je Tag. Die Ansicht fuer zwei
+   * Personen zeigt dann diesen einen Preis, nicht nichts -- so rechnet auch
+   * die Buchung (`[1] ?? [0]`).
+   */
+  it('nimmt die Stufe und faellt auf den letzten Preis zurueck', () => {
+    expect(preisFuerBelegung([8_000, 9_000, 11_000], 2)).toBe(9_000)
+    expect(preisFuerBelegung([8_000], 2)).toBe(8_000)
+    expect(preisFuerBelegung([8_000, 9_000], 4)).toBe(9_000)
+    // Stufe 0 heisst "Standardbelegung" und wird vorher aufgeloest; hier
+    // ist sie wenigstens nicht der Preis von "minus einer Person".
+    expect(preisFuerBelegung([8_000, 9_000], 0)).toBe(8_000)
+  })
+
+  it('zeigt Sperren ohne den Mindestaufenthalt, der eine eigene Zeile hat', () => {
+    const z = { minLos: 3, maxLos: null, closed: false, closedToArrival: true,
+                closedToDeparture: false } as RateGridCell
+    expect(sperrZeichen(z)).toBe(restriktionsZeichen({ ...z, minLos: null }))
+    expect(sperrZeichen(z)).not.toContain('3')
   })
 })

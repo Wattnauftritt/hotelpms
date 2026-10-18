@@ -1,5 +1,5 @@
 import { useMemo, useState, type JSX, type ReactNode } from 'react'
-import type { RateInclusion, RatePlan } from '@hotelpms/contracts'
+import type { RateGridCell, RateInclusion, RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
          useCreateRatePlan, useRebuildDerived, useSetBreakfast, useSetInclusions,
@@ -16,6 +16,7 @@ import { today, addDays } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Preissteuerung } from '../components/Preissteuerung.tsx'
 import { KalenderAbruf } from '../components/KalenderAbruf.tsx'
+import { KalenderSenden } from '../components/KalenderSenden.tsx'
 import { useReiter } from '../lib/reiter.js'
 
 /**
@@ -765,7 +766,9 @@ function Preisraster(
   const [von, setVon] = useState(today())
   const [laenge, setLaenge] = useState<number>(30)
   const [categoryId, setCategoryId] = useState<number | null>(null)
-  const [belegung, setBelegung] = useState(2)
+  // 0 = volle Belegung je Kategorie: so zeigt RoomCloud seine Preise (x1
+  // beim Einzel-, x2 beim Doppelzimmer), und so kennt die Rezeption sie.
+  const [belegung, setBelegung] = useState(0)
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
 
   const bis = addDays(von, laenge - 1)
@@ -774,6 +777,9 @@ function Preisraster(
   // zeichneten sich alle neu -- damit waere das Merken dort wirkungslos.
   const tage = useMemo(() => tageInklusive(von, bis), [von, bis])
   const darfSchreiben = permissions.includes('rate:write')
+  const online = useOnline()
+  const preisSetzen = useSetRates(propertyId)
+  const restriktionSetzen = useSetRestrictions(propertyId)
 
   const plaene = useRatePlans(propertyId)
   const kategorien = useCategories(propertyId)
@@ -823,6 +829,7 @@ function Preisraster(
           <div className="text-neutral-600">{t('rate.occupancy')}</div>
           <select value={belegung} onChange={e => setBelegung(Number(e.target.value))}
                   className="border border-neutral-300 rounded-sm px-2 py-1">
+            <option value={0}>{t('rate.occupancy.standard')}</option>
             {[1, 2, 3, 4].map(n => (
               <option key={n} value={n}>{n} {t('rate.occupancy.n')}</option>
             ))}
@@ -833,6 +840,9 @@ function Preisraster(
       {/* Wer schreiben darf, darf holen: uebernommen wird ueber denselben
           Weg wie die Preispflege, und erst nach der Vorschau. */}
       {darfSchreiben && <KalenderAbruf propertyId={propertyId} />}
+      {/* Senden nur per Knopf; der Zeitraum ist der des Rasters, damit
+          "gewaehlter Zeitraum" genau das meint, was gerade zu sehen ist. */}
+      {darfSchreiben && <KalenderSenden propertyId={propertyId} von={von} bis={bis} />}
 
       {raster.isError
         ? <Fehler error={raster.error} />
@@ -854,15 +864,34 @@ function Preisraster(
               </>
             : <>
                 <RateGrid plans={aktivePlaene} tage={tage} zellen={raster.data.cells}
+                          kategorien={kategorien.data?.categories ?? []}
+                          frei={raster.data.availability}
                           belegung={belegung} auswahl={auswahl}
-                          onAuswahl={setAuswahl} />
+                          onAuswahl={setAuswahl}
+                          {...(darfSchreiben && online ? {
+                            onPreis: (plan: RatePlan, datum: string, priceCent: number[]) =>
+                              preisSetzen.mutate({ propertyId, ratePlanId: plan.id,
+                                                   from: datum, to: datum, priceCent }),
+                            onMindest: (plan: RatePlan, datum: string,
+                                        z: RateGridCell | undefined, minLos: number | null) =>
+                              // Die Route setzt alle Restriktionen des Tages; was
+                              // nicht getippt wurde, geht so mit, wie es steht.
+                              restriktionSetzen.mutate({ propertyId, ratePlanId: plan.id,
+                                from: datum, to: datum, minLos,
+                                maxLos: z?.maxLos ?? null, closed: z?.closed ?? false,
+                                closedToArrival: z?.closedToArrival ?? false,
+                                closedToDeparture: z?.closedToDeparture ?? false })
+                          } : {})} />
+                {(preisSetzen.isError || restriktionSetzen.isError) && (
+                  <Fehler error={preisSetzen.error ?? restriktionSetzen.error} />
+                )}
                 <div className="text-xs text-neutral-500">{t('rate.legend')}</div>
 
                 {/* Unter dem Raster, weil die Frage dort entsteht: wer
                     gerade Preise gesetzt hat, will sehen, was davon
                     hinausgeht. Derselbe Zeitraum wie oben. */}
                 <ChannelSicht propertyId={propertyId} von={von} bis={bis}
-                              belegung={belegung} />
+                              belegung={belegung === 0 ? 2 : belegung} />
 
                 <Ratenplaene propertyId={propertyId}
                              plaene={plaene.data?.ratePlans ?? []}

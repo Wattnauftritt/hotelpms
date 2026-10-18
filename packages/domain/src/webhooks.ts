@@ -22,7 +22,11 @@ export const WEBHOOK_EVENT_TYPES = [
   // Ein Mensch bittet das Umsystem, den Preiskalender aus dem Channel
   // Manager zu holen (Migration 0179). Traegt nur Auftrag und Zeitraum; die
   // Antwort kommt an `PUT /v1/rate-calendar-pulls/:pullRef`.
-  'rate.calendar_pull_requested'
+  'rate.calendar_pull_requested',
+  // Ein Mensch hat "an den Channel Manager senden" gedrueckt (0179). Nie
+  // automatisch. Die Werte holt das Umsystem an
+  // `GET /v1/rate-calendar-pushes/:pushRef` und meldet per PUT zurueck.
+  'rate.calendar_push_requested'
 ] as const
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number]

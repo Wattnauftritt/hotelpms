@@ -23,9 +23,9 @@ export const PERMISSIONS = [
   // weiteres Zutun bewegen, und auf automatisch schalten. Eigenes Recht,
   // weil ein Fehler darin ein Jahr lang falsch verkauft.
   'rate:steer',
-  // Preiskalender aus einem Umsystem (0179): legt Preise zur Vorschau hin,
-  // schreibt keine. Nur fuer Maschinenzugaenge.
-  'rate:calendar_import',
+  // Preiskalender mit dem Channel Manager (0179): Abruf zur Vorschau
+  // liefern, Senden zurueckmelden; schreibt keinen Preis. Nur Maschinen.
+  'rate:channel_sync',
   'inventory:read', 'inventory:write',
   'housekeeping:read', 'housekeeping:write', 'maintenance:write',
   // Reinigungsplan (0106): Zimmer den Kraeften zuteilen und Sollminuten

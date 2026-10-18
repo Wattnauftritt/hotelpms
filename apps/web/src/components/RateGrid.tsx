@@ -1,32 +1,36 @@
-import { memo, useCallback, useMemo, useRef, type JSX } from 'react'
-import type { RateGridCell, RatePlan } from '@hotelpms/contracts'
+import { memo, useCallback, useMemo, useRef, useState, type JSX } from 'react'
+import type { RateGridAvailability, RateGridCell, RatePlan } from '@hotelpms/contracts'
 import { useT, useLocale, weekdayShort, geldFormatierer,
          type Locale } from '../lib/i18n/index.js'
 import { isWeekend } from '../lib/dates.js'
-import { restriktionsZeichen } from '../lib/preisraster.js'
+import { sperrZeichen, preisFuerBelegung, centAusEingabe,
+         eingabeAusCent } from '../lib/preisraster.js'
 
 /**
- * Das Preisraster: Tage waagerecht, Ratenpläne senkrecht.
+ * Das Preisraster: Tage waagerecht, je Kategorie ein Block.
  *
- * **Es ist die Arbeitsfläche, nicht das Bild.** Was man hier sieht, ändert
- * man hier: über die Tage einer Zeile ziehen wählt den Bereich, den die
- * Masken darunter bearbeiten. Eine Maske, die man nur über ein Menü
- * erreicht, wird im Betrieb nicht benutzt (Dokument 19, Abschnitt 3).
+ * **Aufgebaut wie der Channel Manager.** Die Rezeption pflegt Preise seit
+ * Jahren in RoomCloud: je Zimmertyp oben, wie viele Zimmer frei sind,
+ * darunter jede Rate mit ihrem Preis und darunter ihrem Mindestaufenthalt
+ * (Sven, 18.10.2026: "so sind wir es gewohnt und so ist es praktisch").
+ * Standard- und Mehrtagesrate stehen damit untereinander, und wer einen Tag
+ * ansieht, sieht beide Preise und beide Mindestaufenthalte auf einen Blick.
  *
- * **Die Auswahl bleibt in einer Zeile.** Ein Ratenplan ist die Einheit, die
- * die API schreibt (`PUT /v1/rates/bulk` nimmt genau einen), und eine
- * Auswahl über mehrere Zeilen würde vortäuschen, dass ein Klick alle
- * ändert. Wer mehrere Pläne pflegt, pflegt sie nacheinander -- und sieht
- * dabei jeden einzeln.
+ * **Es ist die Arbeitsfläche, nicht das Bild.** Über die Tage einer Zeile
+ * ziehen wählt den Bereich, den die Masken darunter bearbeiten; ein
+ * Doppelklick auf eine Zelle schreibt genau diesen Tag direkt, wie man es
+ * aus RoomCloud kennt. Eine Maske, die man nur über ein Menü erreicht,
+ * wird im Betrieb nicht benutzt (Dokument 19, Abschnitt 3).
+ *
+ * **Die Auswahl bleibt bei einem Plan.** Ein Ratenplan ist die Einheit, die
+ * die API schreibt (`PUT /v1/rates/bulk` nimmt genau einen); Preis- und
+ * Mindestaufenthaltszeile desselben Plans wählen dieselbe Auswahl.
  *
  * **Warum die Zeilen gemerkt werden.** Gemessen an 400 Tagen mal vier
  * Plänen: ohne `memo` zeichnete jede Mausbewegung beim Ziehen alle 1 600
  * Zellen neu, und ein Zug über fünfzig Tage dauerte fünf Sekunden. Beim
- * Ziehen ändert sich aber nur **eine** Zeile. Gemerkt werden deshalb die
- * Zeilen, und die übrigen bleiben stehen -- das ist der Unterschied
- * zwischen einem Raster, in dem man arbeitet, und einem, das man ansieht.
- * Eine Bibliothek zur Virtualisierung braucht es dafür nicht; sie wäre die
- * nächste Stufe, wenn ein Haus dreißig Pläne hat (Dokument 19, Abschnitt 9).
+ * Ziehen ändert sich aber nur **ein** Plan. Gemerkt werden deshalb die
+ * Zeilen, und die übrigen bleiben stehen.
  */
 
 export interface Auswahl {
@@ -35,68 +39,168 @@ export interface Auswahl {
   to: string
 }
 
+/** Die Kategorie, wie das Raster sie braucht. */
+export interface RasterKategorie {
+  id: number
+  name: string
+  code: string
+  maxOccupancy: number
+}
+
 interface Props {
   plans: readonly RatePlan[]
+  kategorien: readonly RasterKategorie[]
   /** Muss stabil sein, sonst greift das Merken der Zeilen nicht. */
   tage: readonly string[]
   zellen: readonly RateGridCell[]
-  /** Welche Belegungsstufe im Raster steht. 1 = eine Person. */
+  frei: readonly RateGridAvailability[]
+  /** Welche Belegungsstufe im Raster steht. 0 = volle Belegung der Kategorie. */
   belegung: number
   auswahl: Auswahl | null
   onAuswahl: (a: Auswahl) => void
+  /** Ohne Schreibrecht `undefined`: dann gibt es kein Tippen in der Zelle. */
+  onPreis?: (plan: RatePlan, datum: string, priceCent: number[]) => void
+  onMindest?: (plan: RatePlan, datum: string, zelle: RateGridCell | undefined,
+               minLos: number | null) => void
 }
+
+/** Welche Zelle gerade getippt wird. Höchstens eine im ganzen Raster. */
+interface Bearbeitung { ratePlanId: number; datum: string; feld: 'preis' | 'mindest' }
 
 interface ZeilenProps {
   plan: RatePlan
   tage: readonly string[]
   zellen: ReadonlyMap<string, RateGridCell> | undefined
-  belegung: number
-  /** Nur gesetzt, wenn die Auswahl in **dieser** Zeile liegt. */
+  /** Index im Preisfeld, 1 = eine Person. */
+  stufe: number
+  /** Nur gesetzt, wenn die Auswahl in **diesem** Plan liegt. */
   von: string | null
   bis: string | null
+  /** Nur gesetzt, wenn die getippte Zelle in **diesem** Plan liegt. */
+  bearbeitung: Bearbeitung | null
   /** Einmal gebaut und weitergereicht, nicht je Zelle erzeugt. */
   geld: Intl.NumberFormat
   abgeleitet: string
+  mindestLabel: string
+  darfTippen: boolean
   onDown: (ratePlanId: number, datum: string) => void
   onEnter: (ratePlanId: number, datum: string) => void
+  onTippen: (b: Bearbeitung | null) => void
+  onSpeichern: (plan: RatePlan, b: Bearbeitung, text: string) => void
 }
 
-const Zeile = memo(function Zeile(p: ZeilenProps): JSX.Element {
+function Eingabe(
+  { anfang, onFertig }: { anfang: string; onFertig: (text: string | null) => void }
+): JSX.Element {
+  const [text, setText] = useState(anfang)
   return (
-    <tr>
-      <th scope="row"
-          className="sticky start-0 z-10 bg-white border-b border-e
-                     border-neutral-200 px-2 py-1 text-start font-normal">
-        <div className="font-medium">{p.plan.name}</div>
-        <div className="text-xs text-neutral-500">
-          {p.plan.code} · {p.plan.categoryCode}
-          {p.plan.baseRatePlanId !== null && <> · {p.abgeleitet}</>}
-        </div>
+    <input autoFocus value={text} onChange={e => setText(e.target.value)}
+           onFocus={e => e.target.select()}
+           onKeyDown={e => {
+             if (e.key === 'Enter') onFertig(text)
+             if (e.key === 'Escape') onFertig(null)
+           }}
+           onBlur={() => onFertig(null)}
+           onMouseDown={e => e.stopPropagation()}
+           className="w-full min-w-12 border border-neutral-400 rounded-sm px-1
+                      text-end text-xs text-neutral-900 tabular-nums" />
+  )
+}
+
+const PlanZeilen = memo(function PlanZeilen(p: ZeilenProps): JSX.Element {
+  const darfPreis = p.darfTippen && p.plan.baseRatePlanId === null
+  const zelle = (d: string, feld: 'preis' | 'mindest'): JSX.Element => {
+    const z = p.zellen?.get(d)
+    const gewaehlt = p.von !== null && p.bis !== null && d >= p.von && d <= p.bis
+    const tippt = p.bearbeitung !== null && p.bearbeitung.datum === d
+      && p.bearbeitung.feld === feld
+    const preis = z === undefined ? undefined : preisFuerBelegung(z.priceCent, p.stufe)
+    const darf = feld === 'preis' ? darfPreis : p.darfTippen
+    const b: Bearbeitung = { ratePlanId: p.plan.id, datum: d, feld }
+    return (
+      <td key={d}
+          onMouseDown={() => { if (!tippt) p.onDown(p.plan.id, d) }}
+          onMouseEnter={() => p.onEnter(p.plan.id, d)}
+          onDoubleClick={() => { if (darf) p.onTippen(b) }}
+          aria-selected={gewaehlt}
+          className={`border-b border-neutral-200 px-1 py-0.5 text-center
+                      tabular-nums cursor-pointer select-none
+                      ${gewaehlt ? 'bg-neutral-900 text-white'
+                                 : z?.closed === true ? 'bg-red-100'
+                                 : isWeekend(d) ? 'bg-neutral-50' : ''}`}>
+        {tippt
+          ? <Eingabe anfang={feld === 'preis'
+                       ? (preis === undefined ? '' : eingabeAusCent(preis))
+                       : String(z?.minLos ?? '')}
+                     onFertig={text => {
+                       p.onTippen(null)
+                       if (text !== null) p.onSpeichern(p.plan, b, text)
+                     }} />
+          : feld === 'preis'
+            ? <>
+                <div className="text-xs">
+                  {preis === undefined
+                    ? <span className="text-neutral-300">—</span>
+                    : p.geld.format(preis / 100).replace(/\s?€/, '')}
+                </div>
+                {z !== undefined && sperrZeichen(z) !== '' && (
+                  <div className={`text-[10px] ${
+                    gewaehlt ? 'text-neutral-300' : 'text-red-700'}`}>{sperrZeichen(z)}</div>
+                )}
+              </>
+            : <div className={`text-xs ${gewaehlt ? '' : 'text-neutral-600'}`}>
+                {z?.minLos ?? <span className="text-neutral-300">1</span>}
+              </div>}
+      </td>
+    )
+  }
+  return (
+    <>
+      <tr>
+        <th scope="row"
+            className="sticky start-0 z-10 bg-white border-b border-e
+                       border-neutral-200 px-2 py-1 text-start font-normal">
+          <div className="font-medium">{p.plan.name}</div>
+          <div className="text-xs text-neutral-500">
+            {p.plan.code}
+            {p.plan.baseRatePlanId !== null && <> · {p.abgeleitet}</>}
+          </div>
+        </th>
+        {p.tage.map(d => zelle(d, 'preis'))}
+      </tr>
+      <tr>
+        <th scope="row"
+            className="sticky start-0 z-10 bg-white border-b border-e border-neutral-200
+                       px-2 py-0.5 text-end text-xs font-normal text-neutral-500">
+          ☾ {p.mindestLabel}
+        </th>
+        {p.tage.map(d => zelle(d, 'mindest'))}
+      </tr>
+    </>
+  )
+})
+
+const KategorieZeile = memo(function KategorieZeile(
+  { kategorie, tage, frei, freiLabel }: {
+    kategorie: RasterKategorie; tage: readonly string[]
+    frei: ReadonlyMap<string, RateGridAvailability> | undefined; freiLabel: string }
+): JSX.Element {
+  return (
+    <tr className="bg-neutral-100">
+      <th scope="rowgroup"
+          className="sticky start-0 z-10 bg-neutral-100 border-b border-e border-neutral-300
+                     px-2 py-1 text-start">
+        <div className="font-semibold">{kategorie.name}</div>
+        <div className="text-xs font-normal text-neutral-500">{freiLabel}</div>
       </th>
-      {p.tage.map(d => {
-        const z = p.zellen?.get(d)
-        const preis = z?.priceCent?.[p.belegung - 1]
-        const zeichen = z === undefined ? '' : restriktionsZeichen(z)
-        const gewaehlt = p.von !== null && p.bis !== null && d >= p.von && d <= p.bis
+      {tage.map(d => {
+        const f = frei?.get(d)
         return (
           <td key={d}
-              onMouseDown={() => p.onDown(p.plan.id, d)}
-              onMouseEnter={() => p.onEnter(p.plan.id, d)}
-              aria-selected={gewaehlt}
-              className={`border-b border-neutral-200 px-1 py-1 text-center
-                          tabular-nums cursor-pointer select-none
-                          ${gewaehlt ? 'bg-neutral-900 text-white'
-                                     : z?.closed === true ? 'bg-red-50'
-                                     : isWeekend(d) ? 'bg-neutral-50' : ''}`}>
-            <div className="text-xs">
-              {preis === undefined
-                ? <span className="text-neutral-300">—</span>
-                : p.geld.format(preis / 100).replace(/\s?€/, '')}
-            </div>
-            {zeichen !== '' && (
-              <div className={`text-[10px] ${
-                gewaehlt ? 'text-neutral-300' : 'text-red-700'}`}>{zeichen}</div>
-            )}
+              className={`border-b border-neutral-300 px-1 py-1 text-center text-xs
+                          tabular-nums ${f !== undefined && f.available <= 0
+                            ? 'bg-red-600 text-white font-semibold' : ''}`}>
+            {f === undefined ? '' : `${f.available} / ${f.capacity}`}
           </td>
         )
       })}
@@ -130,7 +234,8 @@ const Kopfzeile = memo(function Kopfzeile(
 export function RateGrid(props: Props): JSX.Element {
   const t = useT()
   const locale = useLocale()
-  const { onAuswahl } = props
+  const { onAuswahl, onPreis, onMindest } = props
+  const [bearbeitung, setBearbeitung] = useState<Bearbeitung | null>(null)
 
   /*
    * Der Startpunkt des Ziehens steht in einer Referenz und nicht im
@@ -167,8 +272,56 @@ export function RateGrid(props: Props): JSX.Element {
     return m
   }, [props.zellen])
 
+  const freiJeKategorie = useMemo(() => {
+    const m = new Map<number, Map<string, RateGridAvailability>>()
+    for (const f of props.frei) {
+      let je = m.get(f.categoryId)
+      if (je === undefined) { je = new Map(); m.set(f.categoryId, je) }
+      je.set(f.date, f)
+    }
+    return m
+  }, [props.frei])
+
+  const stufeJeKategorie = useMemo(
+    () => new Map(props.kategorien.map(k => [k.id, props.belegung === 0
+      ? Math.max(1, k.maxOccupancy) : props.belegung])),
+    [props.kategorien, props.belegung])
+
+  /*
+   * Ein getippter Preis ersetzt nur die gezeigte Belegungsstufe. Die übrigen
+   * bleiben, wie sie stehen; fehlen Stufen bis zur gezeigten, werden sie mit
+   * dem letzten vorhandenen Preis gefüllt -- denselben, den eine Buchung
+   * dort bisher bekam (`preisFuerBelegung`).
+   */
+  const onSpeichern = useCallback((plan: RatePlan, b: Bearbeitung, text: string): void => {
+    const z = nachPlan.get(plan.id)?.get(b.datum)
+    if (b.feld === 'preis') {
+      const cent = centAusEingabe(text)
+      if (cent === null || onPreis === undefined) return
+      const stufe = stufeJeKategorie.get(plan.categoryId) ?? 1
+      const alt = z?.priceCent ?? []
+      const neu = alt.length === 0 ? [cent]
+        : Array.from({ length: Math.max(alt.length, stufe) },
+                     (_, i) => i === stufe - 1 ? cent : alt[Math.min(i, alt.length - 1)]!)
+      onPreis(plan, b.datum, neu)
+    } else {
+      if (onMindest === undefined) return
+      const s = text.trim()
+      const n = s === '' ? null : Number(s)
+      if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 365)) return
+      onMindest(plan, b.datum, z, n === 1 ? null : n)
+    }
+  }, [nachPlan, stufeJeKategorie, onPreis, onMindest])
+
   const abgeleitet = t('rate.derived')
+  const mindestLabel = t('rate.minLos')
+  const freiLabel = t('rate.grid.free')
   const geld = useMemo(() => geldFormatierer(locale), [locale])
+  const darfTippen = onPreis !== undefined && onMindest !== undefined
+
+  const bloecke = props.kategorien
+    .map(k => ({ k, plaene: props.plans.filter(p => p.categoryId === k.id) }))
+    .filter(b => b.plaene.length > 0)
 
   return (
     <div className="overflow-x-auto border border-neutral-200 rounded-sm bg-white"
@@ -178,16 +331,27 @@ export function RateGrid(props: Props): JSX.Element {
         <thead>
           <Kopfzeile tage={props.tage} locale={locale} planLabel={t('rate.plan')} />
         </thead>
-        <tbody>
-          {props.plans.map(p => (
-            <Zeile key={p.id} plan={p} tage={props.tage} zellen={nachPlan.get(p.id)}
-                   belegung={props.belegung} geld={geld} abgeleitet={abgeleitet}
-                   von={props.auswahl?.ratePlanId === p.id ? props.auswahl.from : null}
-                   bis={props.auswahl?.ratePlanId === p.id ? props.auswahl.to : null}
-                   onDown={onDown} onEnter={onEnter} />
-          ))}
-        </tbody>
+        {bloecke.map(({ k, plaene }) => (
+          <tbody key={k.id}>
+            <KategorieZeile kategorie={k} tage={props.tage}
+                            frei={freiJeKategorie.get(k.id)} freiLabel={freiLabel} />
+            {plaene.map(p => (
+              <PlanZeilen key={p.id} plan={p} tage={props.tage} zellen={nachPlan.get(p.id)}
+                          stufe={stufeJeKategorie.get(k.id) ?? 1}
+                          geld={geld} abgeleitet={abgeleitet} mindestLabel={mindestLabel}
+                          darfTippen={darfTippen}
+                          von={props.auswahl?.ratePlanId === p.id ? props.auswahl.from : null}
+                          bis={props.auswahl?.ratePlanId === p.id ? props.auswahl.to : null}
+                          bearbeitung={bearbeitung?.ratePlanId === p.id ? bearbeitung : null}
+                          onDown={onDown} onEnter={onEnter}
+                          onTippen={setBearbeitung} onSpeichern={onSpeichern} />
+            ))}
+          </tbody>
+        ))}
       </table>
+      {darfTippen && (
+        <div className="px-2 py-1 text-xs text-neutral-500">{t('rate.grid.hint')}</div>
+      )}
     </div>
   )
 }

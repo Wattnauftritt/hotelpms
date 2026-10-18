@@ -523,7 +523,22 @@ export function rateRoutes(app: FastifyInstance): void {
             ORDER BY rp.code, d.day`,
           [Number(propertyId), q.from, q.to,
            q.categoryId === undefined ? null : Number(q.categoryId)])
-        return { from: q.from, to: q.to, cells: rows }
+        // Freie Zimmer je Kategorie und Tag stehen ueber den Raten, wie im
+        // Channel Manager: wer einen Preis setzt, will sehen, wie voll der
+        // Tag ist. Aus dem Zaehler, nicht aus der Aufzeichnung (0014), mit
+        // derselben Rechnung wie ARI, damit Raster und Auslieferung dieselbe
+        // Zahl zeigen.
+        const frei = await client.query(
+          `SELECT d.category_id AS "categoryId", d.date::text, d.capacity,
+                  d.capacity - d.sold - d.blocked + d.overbooking AS available
+             FROM inventory_day d
+            WHERE d.property_id = $1 AND d.category_id <> 0
+              AND d.date BETWEEN $2::date AND $3::date
+              AND ($4::bigint IS NULL OR d.category_id = $4)
+            ORDER BY d.category_id, d.date`,
+          [Number(propertyId), q.from, q.to,
+           q.categoryId === undefined ? null : Number(q.categoryId)])
+        return { from: q.from, to: q.to, cells: rows, availability: frei.rows }
       })
     }
   })

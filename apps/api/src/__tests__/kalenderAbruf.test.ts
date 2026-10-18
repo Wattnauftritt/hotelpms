@@ -170,7 +170,7 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
                  closedToArrival: true } })
 
     const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
-    const m = await maschine(['rate:calendar_import', 'rate:read'])
+    const m = await maschine(['rate:channel_sync', 'rate:read'])
     const l = await liefern(m, ref, { status: 'delivered', plans: [
       { ratePlanCode: 'DZ-STD', days: [
         { date: VON, priceCent: [9900], minLos: 2, closed: false },
@@ -226,7 +226,7 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
   it('zeigt einen gemeldeten Fehler am Auftrag', async () => {
     await abonnieren()
     const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
-    const m = await maschine(['rate:calendar_import'])
+    const m = await maschine(['rate:channel_sync'])
     const l = await liefern(m, ref, { status: 'failed', message: 'RoomCloud antwortet nicht' })
     expect(l.statusCode, l.body).toBe(200)
     const s = await stand()
@@ -238,7 +238,7 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
     await abonnieren()
     await ratenplan('DZ-STD')
     const ref = (await anfordern()).json<{ pullRef: string }>().pullRef
-    const m = await maschine(['rate:calendar_import'])
+    const m = await maschine(['rate:channel_sync'])
     const aussen = await liefern(m, ref, { status: 'delivered', plans: [
       { ratePlanCode: 'DZ-STD', days: [{ date: '2027-06-01', priceCent: [9900] }] }] })
     expect(aussen.statusCode).toBe(422)
@@ -264,7 +264,7 @@ describe('Lieferung, Vorschau, Uebernahme', () => {
     await ratenplan('DZ-STD')
     const alt = (await anfordern()).json<{ pullRef: string }>().pullRef
     const neu = (await anfordern()).json<{ pullRef: string }>().pullRef
-    const m = await maschine(['rate:calendar_import'])
+    const m = await maschine(['rate:channel_sync'])
     const l = await liefern(m, alt, { status: 'delivered', plans: [
       { ratePlanCode: 'DZ-STD', days: [{ date: VON, priceCent: [9900] }] }] })
     expect(l.statusCode).toBe(409)

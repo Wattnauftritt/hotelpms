@@ -217,6 +217,28 @@ export function wochentagKuerzel(index: number, locale: Locale): string {
 const wochenKuerzel = new Map<Locale, string[]>()
 
 /** Kurzzeichen einer Zelle: was an Restriktionen an diesem Tag gilt. */
+/**
+ * Wie `restriktionsZeichen`, aber ohne Mindestaufenthalt: der steht im
+ * Raster in einer eigenen Zeile unter dem Preis, wie im Channel Manager.
+ */
+export function sperrZeichen(z: RateGridCell): string {
+  return restriktionsZeichen({ ...z, minLos: null })
+}
+
+/**
+ * Der Preis einer Belegungsstufe, `stufe` 1 = eine Person.
+ *
+ * Fehlt die Stufe, gilt der letzte vorhandene Preis: ein Channel Manager
+ * liefert oft nur einen Zimmerpreis, und eine Buchung bekommt dann eben
+ * diesen (`priceNights` in der API faellt ebenso auf den ersten zurueck).
+ */
+export function preisFuerBelegung(
+  priceCent: readonly number[] | null, stufe: number
+): number | undefined {
+  if (priceCent === null || priceCent.length === 0) return undefined
+  return priceCent[Math.min(Math.max(1, stufe), priceCent.length) - 1]
+}
+
 export function restriktionsZeichen(z: RateGridCell): string {
   const teile: string[] = []
   if (z.closed) teile.push('G')

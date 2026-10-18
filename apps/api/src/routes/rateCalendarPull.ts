@@ -270,7 +270,9 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
         const a = neu.rows[0]!
         const empfaenger = await emitEvent(client, propertyId, 'rate.calendar_pull_requested',
           { pullRef: a.public_ref, propertyId, from, to })
-        if (empfaenger === 0) throw Errors.conflict('rateCalendar.noReceiver')
+        if (empfaenger === 0) {
+          throw Errors.conflict('rateCalendar.noReceiver', { event: 'rate.calendar_pull_requested' })
+        }
         return antwort(a)
       })
       reply.code(201)
@@ -313,7 +315,7 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'PUT',
     url: '/v1/rate-calendar-pulls/:pullRef',
-    permission: 'rate:calendar_import',
+    permission: 'rate:channel_sync',
     summary: 'Preiskalender aus einem Umsystem liefern',
     bodyLimit: 4 * 1024 * 1024,
     handler: async (req) => {
@@ -328,8 +330,8 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
         const a = await abrufLaden(client, `public_ref = $1`, [pullRef], true)
         if (a === null) throw Errors.notFound('res.rateCalendarPull')
         // Das Recht im Haus des Abrufs: die Route nimmt keine Property.
-        if (!can(principal, 'rate:calendar_import', Number(a.property_id))) {
-          throw Errors.forbidden('access.missingPermission', { permission: 'rate:calendar_import' })
+        if (!can(principal, 'rate:channel_sync', Number(a.property_id))) {
+          throw Errors.forbidden('access.missingPermission', { permission: 'rate:channel_sync' })
         }
         if (!['requested', 'delivered', 'failed'].includes(a.status)) {
           throw Errors.conflict('rateCalendar.closed')

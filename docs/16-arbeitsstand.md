@@ -1375,14 +1375,16 @@ Sven, 16.10.2026: „für gruppenbuchungen sollte es vielleicht auch ein gruppen
 
 Dabei gefunden: `post_city_tax` buchte die Kurtaxe auf **jedes** offene Folio eines Aufenthalts, also mit jedem Split-Folio ein weiteres Mal. Seit `0178` nur noch aufs Gastfolio.
 
-### Preiskalender aus dem Channel Manager abrufen (`0179`) — **gebaut**, Adminpanel-Seite offen
+### Preiskalender mit dem Channel Manager abgleichen (`0179`) — **gebaut**, Adminpanel-Seite offen
 
 Sven, 18.10.2026: Preise in StayGrid verwalten, aber nicht alles von Hand eintippen; ein Knopf soll den Kalender vom Channel Manager **abrufen**, über das Adminpanel. Unter **Preise → Preisraster** steht „Vom Channel Manager abrufen“ (Recht `rate:write`).
 
-- **Ablauf in drei Schritten.** Der Knopf legt einen Auftrag an (`POST /v1/properties/:id/rate-calendar-pulls`) und reiht `rate.calendar_pull_requested` ein; nimmt das kein Abonnement entgegen, wird abgewiesen statt gewartet. Das Umsystem liefert an `PUT /v1/rate-calendar-pulls/:pullRef` (Recht `rate:calendar_import`, nur Maschinen) je StayGrid-Ratenplan-Code und Tag Preise je Belegung und Restriktionen, oder `status: failed` mit Meldung. Übernommen wird erst nach der Vorschau (`GET …/current`, `POST …/:pullRef/apply` mit der gesehenen `version`).
+- **Ablauf in drei Schritten.** Der Knopf legt einen Auftrag an (`POST /v1/properties/:id/rate-calendar-pulls`) und reiht `rate.calendar_pull_requested` ein; nimmt das kein Abonnement entgegen, wird abgewiesen statt gewartet. Das Umsystem liefert an `PUT /v1/rate-calendar-pulls/:pullRef` (Recht `rate:channel_sync`, nur Maschinen) je StayGrid-Ratenplan-Code und Tag Preise je Belegung und Restriktionen, oder `status: failed` mit Meldung. Übernommen wird erst nach der Vorschau (`GET …/current`, `POST …/:pullRef/apply` mit der gesehenen `version`).
 - **Was übernommen wird:** Preis, Mindest- und Höchstaufenthalt, Sperre, Anreise- und Abreisesperre. Ein nicht geliefertes Feld bleibt stehen. **Nicht:** die Zahl freier Zimmer, die rechnet StayGrid selbst.
 - **Schreibweg** wie die Preispflege (`rate_prices_write`, Herkunft `channel_import`): abgeleitete Raten folgen, ein `rate.changed`. Ein abgeleiteter Plan wird in der Lieferung übergangen.
 - **Zuordnung** RoomCloud-Zimmertyp und -Rate zu StayGrid-Plan bleibt im Adminpanel. RoomCloud liefert dort heute je Tag, Zimmertyp und Rate einen Preis, Mindestaufenthalt und Sperre; Standard- und Mehrtagesrate je Kategorie.
-- **Offen:** der Empfänger im Adminpanel (wartet auf Svens Freigabe) und der Rückweg StayGrid → RoomCloud. Der darf erst laufen, wenn Sven umschaltet, sonst schriebe er jeden Abruf sofort zurück.
+- **Senden nur per Knopf** (Sven: „damit nichts ausversehen gepusht wird"). Drei Knöpfe wie in RoomCloud: **nur Änderungen** seit dem letzten erfolgreichen Senden, **gewählter Zeitraum** (der des Rasters), **ganzer Kalender** (heute plus 399 Tage). Kein zeitlich geplantes Senden. `POST /v1/properties/:id/rate-calendar-pushes {mode}` reiht `rate.calendar_push_requested` ein; das Umsystem holt die Werte je Plancode an `GET /v1/rate-calendar-pushes/:pushRef` und meldet `PUT …/:pushRef {status: done|failed}`. „Gesendet" geht nur nach dem Abholen; dessen Zeitpunkt ist die Grenze für das nächste „nur Änderungen", gemessen an `updated_at` von `rate_day` und `restriction_day`. Ohne ein erfolgreiches Senden ist „nur Änderungen" gesperrt. Ein Übungshaus sendet nicht.
+- **Preisraster wie RoomCloud.** Je Kategorie eine Zeile „frei/gesamt" aus `inventory_day` (gesperrt zählt nicht als frei), darunter je Rate eine Preis- und eine Mindestaufenthaltszeile. Voreingestellt ist die Standardbelegung (volle Belegung der Kategorie), wie RoomCloud seine Preise zeigt. Doppelklick auf eine Zelle tippt Preis oder Mindestaufenthalt direkt; ein abgeleiteter Plan nimmt keinen getippten Preis.
+- **Offen:** Abholer und Empfänger im Adminpanel (warten auf Svens Freigabe).
 
-Tests in `kalenderAbruf.test.ts`.
+Tests in `kalenderAbruf.test.ts`, `kalenderSenden.test.ts`, `rateGrid.test.ts`.
