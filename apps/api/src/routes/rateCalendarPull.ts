@@ -462,6 +462,30 @@ export function rateCalendarPullRoutes(app: FastifyInstance): void {
            SELECT count(*)::int AS n FROM geschrieben`,
           [a.property_id, a.id, RESTRIKTIONEN])
 
+        // Was gerade aus dem Channel Manager kam, steht dort: fuer diese
+        // Tage ist der gesendete Stand jetzt der uebernommene (Migration
+        // 0180). Sonst stuenden sie nach dem Abruf als Aenderung im Raster
+        // und gingen beim naechsten "nur Aenderungen" unveraendert zurueck.
+        await client.query(
+          `INSERT INTO rate_calendar_sent (property_id, rate_plan_id, date, price_cent, min_los,
+                                           max_los, closed, closed_to_arrival, closed_to_departure)
+           SELECT DISTINCT ON (l.plan, l.date)
+                  $1, l.plan, l.date, rd.price_cent, rs.min_los, rs.max_los,
+                  COALESCE(rs.closed, false), COALESCE(rs.closed_to_arrival, false),
+                  COALESCE(rs.closed_to_departure, false)
+             FROM (SELECT (x->>'plan')::bigint AS plan, (x->>'date')::date AS date
+                     FROM rate_calendar_pull p, jsonb_array_elements(p.payload) x
+                    WHERE p.id = $2) l
+             JOIN rate_plan rp ON rp.id = l.plan AND rp.property_id = $1
+             LEFT JOIN rate_day rd ON rd.rate_plan_id = l.plan AND rd.date = l.date
+             LEFT JOIN restriction_day rs ON rs.rate_plan_id = l.plan AND rs.date = l.date
+           ON CONFLICT (rate_plan_id, date) DO UPDATE SET
+             price_cent = EXCLUDED.price_cent, min_los = EXCLUDED.min_los,
+             max_los = EXCLUDED.max_los, closed = EXCLUDED.closed,
+             closed_to_arrival = EXCLUDED.closed_to_arrival,
+             closed_to_departure = EXCLUDED.closed_to_departure, sent_at = now()`,
+          [a.property_id, a.id])
+
         const result = { prices: preise.rows[0]!.n ?? 0, restrictions: restriktionen.rows[0]!.n }
         const r = await client.query<Abruf>(
           `UPDATE rate_calendar_pull

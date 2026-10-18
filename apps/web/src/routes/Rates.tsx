@@ -1,15 +1,17 @@
-import { useMemo, useState, type JSX, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX,
+         type ReactNode } from 'react'
 import type { RateGridCell, RateInclusion, RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
 import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions, useDeleteRatePlan,
          useCreateRatePlan, useRebuildDerived, useSetBreakfast, useSetInclusions,
          useSetHouseBreakfast, type Fruehstueckswerte,
-         tageInklusive, type VatRule, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
+         tageInklusive, type VatRule, MAX_RASTER_TAGE,
+         useKalenderSendenStand } from '../lib/queries/rates.js'
 import { RateGrid, type Auswahl } from '../components/RateGrid.tsx'
 import { ChannelSicht } from '../components/ChannelSicht.tsx'
 import { betroffeneTage, centAusEingabe, eingabeAusCent, preisVorschau,
-         preisNutzlast, restriktionsNutzlast, wochentagKuerzel,
-         type Vorschau } from '../lib/preisraster.js'
+         preisNutzlast, restriktionsNutzlast, wochentagKuerzel, rueckschrittAufrufe,
+         type Rueckschritt, type Vorschau } from '../lib/preisraster.js'
 import { useT, useLocale, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { today, addDays } from '../lib/dates.js'
@@ -107,6 +109,11 @@ interface MaskenProps {
   zellen: Parameters<typeof preisVorschau>[1]
   maxBelegung: number
   darfSchreiben: boolean
+  /**
+   * Hält den Stand **vor** dem Schreiben fest; die zurückgegebene Funktion
+   * legt ihn nach dem Erfolg auf den Stapel für Strg+Z.
+   */
+  merke: (art: Rueckschritt['art'], ratePlanId: number, tage: readonly string[]) => () => void
 }
 
 function Preismaske(p: MaskenProps): JSX.Element {
@@ -149,11 +156,12 @@ function Preismaske(p: MaskenProps): JSX.Element {
 
   const uebernehmen = (): void => {
     if (!vollstaendig || geprueft === null || geprueft.signatur !== signatur) return
+    const gemerkt = p.merke('preis', p.plan.id, betroffen)
     setzen.mutate(preisNutzlast({
       propertyId: p.propertyId, ratePlanId: p.plan.id,
       from: p.auswahl.from, to: p.auswahl.to,
       weekdays: wochentage, priceCent: werte as number[]
-    }), { onSuccess: () => setGeprueft(null) })
+    }), { onSuccess: () => { gemerkt(); setGeprueft(null) } })
   }
 
   return (
@@ -244,12 +252,13 @@ function Restriktionsmaske(p: MaskenProps): JSX.Element {
 
   const uebernehmen = (): void => {
     if (geprueft === null || geprueft.signatur !== signatur) return
+    const gemerkt = p.merke('restriktion', p.plan.id, betroffen)
     setzen.mutate(restriktionsNutzlast({
       propertyId: p.propertyId, ratePlanId: p.plan.id,
       from: p.auswahl.from, to: p.auswahl.to, weekdays: wochentage,
       minLos: zahl(minLos), maxLos: zahl(maxLos),
       closed, closedToArrival: cta, closedToDeparture: ctd
-    }), { onSuccess: () => setGeprueft(null) })
+    }), { onSuccess: () => { gemerkt(); setGeprueft(null) } })
   }
 
   return (
@@ -824,6 +833,61 @@ function Preisraster(
   const kategorien = useCategories(propertyId)
   const raster = useRateGrid(propertyId, von, bis, categoryId)
 
+  /*
+   * Strg+Z (Sven, 18.10.2026): nimmt Änderungen zurück, solange sie nicht
+   * gesendet sind. Gemerkt wird der Stand **vor** dem Schreiben, aus dem
+   * Raster, das gerade steht. Nach einem erfolgreichen Senden ist der
+   * Stapel leer -- was beim Channel Manager steht, nimmt Strg+Z nicht mehr
+   * zurück, das wäre eine neue Änderung, die man sehen soll.
+   */
+  const [rueck, setRueck] = useState<readonly Rueckschritt[]>([])
+  const [nimmtZurueck, setNimmtZurueck] = useState(false)
+  const gesendetAm = useKalenderSendenStand(propertyId).data?.lastSentAt ?? null
+  useEffect(() => { setRueck([]) }, [gesendetAm, propertyId])
+  const zellenRef = useRef<readonly RateGridCell[]>([])
+  zellenRef.current = raster.data?.cells ?? []
+
+  // Nur Tage, die das Raster kennt: einen Tag außerhalb kann niemand auf
+  // seinen alten Wert setzen, weil keiner ihn gesehen hat.
+  const merke = useCallback((art: Rueckschritt['art'], ratePlanId: number,
+                             betroffen: readonly string[]): (() => void) => {
+    const jeTag = new Map(zellenRef.current
+      .filter(z => z.ratePlanId === ratePlanId).map(z => [z.date, z]))
+    if (betroffen.length === 0 || betroffen.some(d => !jeTag.has(d))) return () => {}
+    const vorher = betroffen.map(date => ({ date, zelle: jeTag.get(date) }))
+    return () => setRueck(alt => [...alt.slice(-49), { propertyId, ratePlanId, art, vorher }])
+  }, [propertyId])
+
+  const zuruecknehmen = useCallback(async (): Promise<void> => {
+    const letzter = rueck[rueck.length - 1]
+    if (letzter === undefined || nimmtZurueck) return
+    setNimmtZurueck(true)
+    setRueck(alt => alt.slice(0, -1))
+    try {
+      for (const a of rueckschrittAufrufe(letzter)) {
+        if (a.art === 'preis') await preisSetzen.mutateAsync(a.nutzlast)
+        else await restriktionSetzen.mutateAsync(a.nutzlast)
+      }
+    } finally {
+      setNimmtZurueck(false)
+    }
+  }, [rueck, nimmtZurueck, preisSetzen, restriktionSetzen])
+
+  // In einem Eingabefeld gehört Strg+Z dem Feld; sonst dem Raster.
+  useEffect(() => {
+    if (!darfSchreiben) return
+    const taste = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return
+      const ziel = e.target as HTMLElement | null
+      if (ziel !== null && (ziel.isContentEditable
+          || ['INPUT', 'TEXTAREA', 'SELECT'].includes(ziel.tagName))) return
+      e.preventDefault()
+      void zuruecknehmen()
+    }
+    window.addEventListener('keydown', taste)
+    return () => window.removeEventListener('keydown', taste)
+  }, [darfSchreiben, zuruecknehmen])
+
   const aktivePlaene = (plaene.data?.ratePlans ?? [])
     .filter(p => p.active && (categoryId === null || p.categoryId === categoryId))
   const gewaehlterPlan = aktivePlaene.find(p => p.id === auswahl?.ratePlanId)
@@ -910,7 +974,8 @@ function Preisraster(
                           {...(darfSchreiben && online ? {
                             onPreis: (plan: RatePlan, datum: string, priceCent: number[]) =>
                               preisSetzen.mutate({ propertyId, ratePlanId: plan.id,
-                                                   from: datum, to: datum, priceCent }),
+                                                   from: datum, to: datum, priceCent },
+                                { onSuccess: merke('preis', plan.id, [datum]) }),
                             onMindest: (plan: RatePlan, datum: string,
                                         z: RateGridCell | undefined, minLos: number | null) =>
                               // Die Route setzt alle Restriktionen des Tages; was
@@ -919,12 +984,30 @@ function Preisraster(
                                 from: datum, to: datum, minLos,
                                 maxLos: z?.maxLos ?? null, closed: z?.closed ?? false,
                                 closedToArrival: z?.closedToArrival ?? false,
-                                closedToDeparture: z?.closedToDeparture ?? false })
+                                closedToDeparture: z?.closedToDeparture ?? false },
+                                { onSuccess: merke('restriktion', plan.id, [datum]) })
                           } : {})} />
                 {(preisSetzen.isError || restriktionSetzen.isError) && (
                   <Fehler error={preisSetzen.error ?? restriktionSetzen.error} />
                 )}
-                <div className="text-xs text-neutral-500">{t('rate.legend')}</div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs
+                                text-neutral-500">
+                  <span>{t('rate.legend')}</span>
+                  <span>
+                    <span className="inline-block w-3 h-3 align-middle me-1 rounded-sm
+                                     bg-amber-100 border border-amber-300" />
+                    {t('rate.grid.unsent')}
+                  </span>
+                  {darfSchreiben && (
+                    <button type="button" onClick={() => { void zuruecknehmen() }}
+                            disabled={rueck.length === 0 || nimmtZurueck || !online}
+                            className="px-2 py-0.5 rounded-sm border border-neutral-300
+                                       bg-white text-neutral-700 hover:bg-neutral-50
+                                       disabled:opacity-40">
+                      {t('rate.undo')}
+                    </button>
+                  )}
+                </div>
 
                 {/* Unter dem Raster, weil die Frage dort entsteht: wer
                     gerade Preise gesetzt hat, will sehen, was davon
@@ -983,12 +1066,12 @@ function Preisraster(
                                     auswahl={auswahl} tage={tage}
                                     zellen={raster.data.cells}
                                     maxBelegung={maxBelegung}
-                                    darfSchreiben={darfSchreiben} />
+                                    darfSchreiben={darfSchreiben} merke={merke} />
                         <Restriktionsmaske propertyId={propertyId} plan={gewaehlterPlan}
                                            auswahl={auswahl} tage={tage}
                                            zellen={raster.data.cells}
                                            maxBelegung={maxBelegung}
-                                           darfSchreiben={darfSchreiben} />
+                                           darfSchreiben={darfSchreiben} merke={merke} />
                       </div>
                     </>}
               </>}

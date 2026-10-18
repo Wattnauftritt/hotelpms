@@ -12,8 +12,9 @@ import { limiters } from '../platform/rateLimit.js'
  * Preise an den Channel Manager senden, nur auf Knopfdruck (Migration 0179).
  *
  * Geprueft wird, was hinausgeht und was nicht: "nur Aenderungen" braucht
- * ein vorheriges Senden und nimmt nur, was seit dessen Abholen geschrieben
- * wurde; "gesendet" setzt voraus, dass das Umsystem die Werte abgeholt hat;
+ * ein vorheriges Senden und nimmt nur, was vom gesendeten Stand abweicht
+ * (Migration 0180) -- ein zurueckgenommener Preis ist keine Aenderung;
+ * "gesendet" setzt voraus, dass das Umsystem die Werte abgeholt hat;
  * ein Uebungshaus sendet nie.
  */
 
@@ -115,6 +116,15 @@ const preisSetzen = (plan: number, from: string, to: string, priceCent: number[]
   app.inject({ method: 'PUT', url: '/v1/rates/bulk', headers: auth(admin.sessionId),
     payload: { propertyId: fx.propertyId, ratePlanId: plan, from, to, priceCent } })
 
+const raster = async () => {
+  const r = await app.inject({
+    method: 'GET', url: `/v1/properties/${fx.propertyId}/rate-grid?from=${VON}&to=${BIS}`,
+    headers: auth(admin.sessionId) })
+  expect(r.statusCode, r.body).toBe(200)
+  return r.json<{ cells: Array<{ date: string; priceUnsent: boolean
+                                 restrictionUnsent: boolean }> }>().cells
+}
+
 /** Einmal ganz senden, abholen, zurueckmelden: die Grundlage fuer "nur Aenderungen". */
 async function ganzGesendet(m: Record<string, string>): Promise<void> {
   const ref = (await senden({ mode: 'all' })).json<{ pushRef: string }>().pushRef
@@ -170,7 +180,7 @@ describe('Senden an den Channel Manager', () => {
     expect(r.json<{ code: string }>().code).toBe('rateCalendar.noBaseline')
   })
 
-  it('"nur Aenderungen" nimmt nur, was seit dem letzten Abholen geschrieben wurde', async () => {
+  it('"nur Aenderungen" nimmt nur, was vom gesendeten Stand abweicht', async () => {
     await abonnieren()
     const m = await maschine(['rate:channel_sync'])
     const std = await ratenplan('DZ-STD')
@@ -216,5 +226,78 @@ describe('Senden an den Channel Manager', () => {
     await ratenplan('DZ-STD')
     const ref = (await senden({ mode: 'all' })).json<{ pushRef: string }>().pushRef
     expect((await abholen(auth(admin.sessionId), ref)).statusCode).toBe(403)
+  })
+
+  it('ein zurueckgenommener Preis ist keine Aenderung, im Raster nicht und beim Senden nicht',
+    async () => {
+      await abonnieren()
+      const m = await maschine(['rate:channel_sync'])
+      const std = await ratenplan('DZ-STD')
+      await preisSetzen(std, VON, BIS, [8000, 9000])
+      await ganzGesendet(m)
+
+      await preisSetzen(std, VON, VON, [8500, 9500])
+      expect((await stand()).pendingChanges).toBe(1)
+      let z = (await raster()).find(c => c.date === VON)!
+      expect(z.priceUnsent).toBe(true)
+      expect(z.restrictionUnsent).toBe(false)
+
+      await preisSetzen(std, VON, VON, [8000, 9000])
+      expect((await stand()).pendingChanges).toBe(0)
+      z = (await raster()).find(c => c.date === VON)!
+      expect(z.priceUnsent).toBe(false)
+    })
+
+  it('markiert einen geaenderten Mindestaufenthalt getrennt vom Preis', async () => {
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    await ganzGesendet(m)
+    const r = await app.inject({
+      method: 'PUT', url: '/v1/restrictions/bulk', headers: auth(admin.sessionId),
+      payload: { propertyId: fx.propertyId, ratePlanId: std, from: VON, to: VON, minLos: 3 } })
+    expect(r.statusCode, r.body).toBe(200)
+    const z = (await raster()).find(c => c.date === VON)!
+    expect(z.restrictionUnsent).toBe(true)
+    expect(z.priceUnsent).toBe(false)
+  })
+
+  it('gesendet ist, was abgeholt wurde; was danach getippt wurde, bleibt offen', async () => {
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    await ganzGesendet(m)
+
+    await preisSetzen(std, VON, VON, [8500, 9500])
+    const ref = (await senden({ mode: 'changes' })).json<{ pushRef: string }>().pushRef
+    expect((await abholen(m, ref)).statusCode).toBe(200)
+    await preisSetzen(std, addDays(VON, 1), addDays(VON, 1), [7000, 7500])
+    expect((await melden(m, ref, 'done')).statusCode).toBe(200)
+
+    expect((await stand()).pendingChanges).toBe(1)
+    const offen = (await raster()).filter(c => c.priceUnsent).map(c => c.date)
+    expect(offen).toEqual([addDays(VON, 1)])
+  })
+
+  it('ein gescheitertes Senden aendert den gesendeten Stand nicht', async () => {
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    await ganzGesendet(m)
+
+    await preisSetzen(std, VON, addDays(VON, 1), [8500, 9500])
+    const ref = (await senden({ mode: 'changes' })).json<{ pushRef: string }>().pushRef
+    expect((await abholen(m, ref)).statusCode).toBe(200)
+    expect((await melden(m, ref, 'failed')).statusCode).toBe(200)
+    expect((await stand()).pendingChanges).toBe(2)
+  })
+
+  it('markiert nichts, solange noch nie gesendet wurde', async () => {
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    expect((await raster()).some(c => c.priceUnsent || c.restrictionUnsent)).toBe(false)
   })
 })

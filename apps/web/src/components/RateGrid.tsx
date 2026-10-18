@@ -27,6 +27,10 @@ import { sperrZeichen, preisFuerBelegung, centAusEingabe,
  * der Reihenfolge, in der sie angelegt wurden. So steht es in RoomCloud, und
  * nach dem Kürzel sortiert stünde die Mehrtagesrate vorn.
  *
+ * **Geändert, aber nicht gesendet, ist gelb.** Bis zum Senden sieht man,
+ * wo etwas anders ist als beim Channel Manager; wer einen Preis zurück
+ * auf den alten setzt, sieht die Markierung verschwinden (Sven, 18.10.2026).
+ *
  * **Die Auswahl bleibt bei einem Plan.** Ein Ratenplan ist die Einheit, die
  * die API schreibt (`PUT /v1/rates/bulk` nimmt genau einen); Preis- und
  * Mindestaufenthaltszeile desselben Plans wählen dieselbe Auswahl.
@@ -143,6 +147,9 @@ const PlanZeilen = memo(function PlanZeilen(p: ZeilenProps): JSX.Element {
     const darf = feld === 'preis' ? darfPreis : p.darfTippen
     const b: Bearbeitung = { ratePlanId: p.plan.id, datum: d, feld }
     const getippt = p.entwurf?.get(`${d}|${feld}`)
+    // Noch nicht beim Channel Manager: so lange markiert, bis gesendet ist
+    // oder der alte Wert wieder steht (Migration 0180).
+    const offen = feld === 'preis' ? z?.priceUnsent === true : z?.restrictionUnsent === true
     return (
       <td key={d}
           onMouseDown={() => { if (!tippt) p.onDown(p.plan.id, d) }}
@@ -153,6 +160,9 @@ const PlanZeilen = memo(function PlanZeilen(p: ZeilenProps): JSX.Element {
                       select-none ${darf ? 'cursor-text' : 'cursor-pointer'}
                       ${feld === 'preis' ? 'py-1' : 'py-0'}
                       ${tippt ? 'bg-white'
+                        // Die Markierung schlägt die Auswahl: die zuletzt
+                        // getippte Zelle ist fast immer auch die gewählte.
+                        : offen ? `bg-amber-100 ${gewaehlt ? 'ring-1 ring-inset ring-sky-500' : ''}`
                         : gewaehlt ? 'bg-sky-100'
                         : z?.closed === true ? 'bg-red-50'
                         : isWeekend(d) ? 'bg-neutral-50' : ''}`}>

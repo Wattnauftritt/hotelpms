@@ -1,4 +1,5 @@
-import { type JSX } from 'react'
+import { useEffect, useRef, type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useKalenderSendenStand, useKalenderSenden,
          type KalenderSenden as Senden } from '../lib/queries/rates.js'
 import { useT, useLocale, formatDate, intlTag, type Locale } from '../lib/i18n/index.js'
@@ -30,6 +31,17 @@ export function KalenderSenden(
 
   const push = stand.data?.push ?? null
   const laeuft = push?.status === 'requested'
+  // Ist das Senden durch, ist der gesendete Stand neu: die gelben
+  // Markierungen im Raster gelten nicht mehr (Migration 0180).
+  const qc = useQueryClient()
+  const lastSentAt = stand.data?.lastSentAt
+  const vorher = useRef(lastSentAt)
+  useEffect(() => {
+    if (vorher.current !== undefined && lastSentAt !== vorher.current) {
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+    }
+    vorher.current = lastSentAt
+  }, [qc, propertyId, lastSentAt])
   const offen = stand.data?.pendingChanges ?? null
   // Ohne ein erfolgreiches Senden gibt es keinen Stand, gegen den
   // "Aenderungen" rechnen koennte; der Server weist es dann ab.

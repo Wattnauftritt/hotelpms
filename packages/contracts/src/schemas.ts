@@ -1378,7 +1378,11 @@ export const RateGridCell = Type.Object({
   maxLos: Type.Union([Type.Integer(), Type.Null()]),
   closed: Type.Boolean(),
   closedToArrival: Type.Boolean(),
-  closedToDeparture: Type.Boolean()
+  closedToDeparture: Type.Boolean(),
+  // Weicht vom zuletzt an den Channel Manager gesendeten Stand ab (0180).
+  // Immer false, solange noch nie erfolgreich gesendet wurde.
+  priceUnsent: Type.Boolean(),
+  restrictionUnsent: Type.Boolean()
 })
 export type RateGridCell = Static<typeof RateGridCell>
 
