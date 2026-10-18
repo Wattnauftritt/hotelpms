@@ -85,13 +85,28 @@ export function useCreateRatePlan(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: {
-      code: string; name: string; categoryId: number
+      code: string; name: string; categoryIds: number[]
       baseRatePlanId?: number; deriveKind?: 'amount' | 'percent'; deriveValue?: number
-    }) => api.post<{ ratePlanId: number; ratePlanRef: string }>(
+    }) => api.post<{ ratePlanId: number; ratePlanRef: string
+                     ratePlans: Array<{ ratePlanId: number; code: string }> }>(
       `/v1/properties/${propertyId}/rate-plans`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
       void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+    }
+  })
+}
+
+/** Einen vertippten oder ungenutzten Plan loeschen; benutzte weist die API ab. */
+export function useDeleteRatePlan(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ratePlanId: number) =>
+      api.delete(`/v1/properties/${propertyId}/rate-plans/${ratePlanId}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ratePlans', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
     }
   })
 }

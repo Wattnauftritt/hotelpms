@@ -1,7 +1,7 @@
 import { useMemo, useState, type JSX, type ReactNode } from 'react'
 import type { RateGridCell, RateInclusion, RatePlan } from '@hotelpms/contracts'
 import { useCategories } from '../lib/queries.js'
-import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions,
+import { useRatePlans, useRateGrid, useSetRates, useSetRestrictions, useDeleteRatePlan,
          useCreateRatePlan, useRebuildDerived, useSetBreakfast, useSetInclusions,
          useSetHouseBreakfast, type Fruehstueckswerte,
          tageInklusive, type VatRule, MAX_RASTER_TAGE } from '../lib/queries/rates.js'
@@ -565,7 +565,7 @@ function Ratenplaene(
     plaene: readonly RatePlan[]
     vatRules: readonly VatRule[]
     hausFruehstueck: Fruehstueckswerte
-    kategorien: ReadonlyArray<{ id: number; name: string }>
+    kategorien: ReadonlyArray<{ id: number; name: string; code: string }>
     von: string; bis: string; darfSchreiben: boolean }
 ): JSX.Element {
   const t = useT()
@@ -575,22 +575,29 @@ function Ratenplaene(
 
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [categoryId, setCategoryId] = useState(0)
+  // Wie in RoomCloud eine Rate fuer mehrere Zimmergruppen; leer heisst:
+  // die erste Gruppe, damit das Formular ohne Klick sofort benutzbar ist.
+  const [gruppen, setGruppen] = useState<number[]>([])
   const [baseId, setBaseId] = useState(0)
+  const loeschen = useDeleteRatePlan(propertyId)
   const [deriveKind, setDeriveKind] = useState<'amount' | 'percent'>('percent')
   const [deriveValue, setDeriveValue] = useState('-15')
 
-  const gewaehlteKategorie = categoryId !== 0 ? categoryId : kategorien[0]?.id ?? 0
+  const gewaehlt = gruppen.length > 0 ? gruppen
+    : kategorien[0] === undefined ? [] : [kategorien[0].id]
   const wert = Number(deriveValue)
   const abgeleitet = baseId !== 0
-  const bereit = code.trim() !== '' && name.trim() !== '' && gewaehlteKategorie !== 0
-    && (!abgeleitet || Number.isInteger(wert))
+  // Eine abgeleitete Rate hat eine Basis in einer Gruppe; fuer mehrere
+  // gaebe es keine, die API weist es ebenso ab.
+  const bereit = code.trim() !== '' && name.trim() !== '' && gewaehlt.length > 0
+    && (!abgeleitet || (Number.isInteger(wert) && gewaehlt.length === 1))
+  const beispielGruppe = kategorien.find(k => k.id === gewaehlt[0])?.code ?? 'DZ'
 
   const absenden = (e: React.FormEvent): void => {
     e.preventDefault()
     if (!bereit) return
     anlegen.mutate({
-      code: code.trim(), name: name.trim(), categoryId: gewaehlteKategorie,
+      code: code.trim(), name: name.trim(), categoryIds: gewaehlt,
       ...(abgeleitet
         ? { baseRatePlanId: baseId, deriveKind, deriveValue: wert }
         : {})
@@ -652,6 +659,27 @@ function Ratenplaene(
         </div>
       )}
 
+      {darfSchreiben && plaene.length > 0 && (
+        <div className="space-y-1 border-t border-neutral-200 pt-3">
+          {plaene.map(p => (
+            <div key={p.id} className="flex flex-wrap items-center gap-3 text-sm">
+              <span>{p.name} <span className="text-neutral-500">({p.code} · {p.categoryCode})</span></span>
+              <button type="button" disabled={!online || loeschen.isPending}
+                      onClick={() => {
+                        if (window.confirm(t('rate.plan.deleteConfirm',
+                                             { name: p.name, code: p.code }))) {
+                          loeschen.mutate(p.id)
+                        }
+                      }}
+                      className="text-xs text-red-800 underline disabled:opacity-40">
+                {t('rate.plan.delete')}
+              </button>
+            </div>
+          ))}
+          {loeschen.isError && <Fehler error={loeschen.error} />}
+        </div>
+      )}
+
       {darfSchreiben && (
         <form onSubmit={absenden} className="space-y-2 border-t border-neutral-200 pt-3">
           <div className="text-sm text-neutral-600">{t('rate.plan.new')}</div>
@@ -666,14 +694,20 @@ function Ratenplaene(
               <input value={name} onChange={e => setName(e.target.value)} required
                      className="border border-neutral-300 rounded-sm px-2 py-1 w-56" />
             </label>
-            <label className="text-sm">
-              <div className="text-neutral-600">{t('common.category')}</div>
-              <select value={gewaehlteKategorie}
-                      onChange={e => setCategoryId(Number(e.target.value))}
-                      className="border border-neutral-300 rounded-sm px-2 py-1">
-                {kategorien.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
-              </select>
-            </label>
+            <fieldset className="text-sm">
+              <legend className="text-neutral-600">{t('rate.plan.categories')}</legend>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 py-1">
+                {kategorien.map(k => (
+                  <label key={k.id} className="inline-flex items-center gap-1">
+                    <input type="checkbox" checked={gewaehlt.includes(k.id)}
+                           onChange={e => setGruppen(e.target.checked
+                             ? [...gewaehlt, k.id]
+                             : gewaehlt.filter(g => g !== k.id))} />
+                    {k.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <label className="text-sm">
               <div className="text-neutral-600">{t('rate.plan.base')}</div>
               <select value={baseId} onChange={e => setBaseId(Number(e.target.value))}
@@ -705,6 +739,11 @@ function Ratenplaene(
             )}
           </div>
 
+          {gewaehlt.length > 1 && (
+            <div className="text-xs text-neutral-500">
+              {t('rate.plan.multiHint', { example: `${code.trim() || 'standard'}-${beispielGruppe}` })}
+            </div>
+          )}
           {abgeleitet && (
             <div className="text-xs text-neutral-500">
               {t('rate.plan.deriveHint')} {t('rate.plan.emptyHint')}

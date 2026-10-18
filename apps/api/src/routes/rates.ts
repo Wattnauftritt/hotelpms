@@ -187,6 +187,16 @@ export function rateRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Ratenplan anlegen, fuer eine oder mehrere Zimmergruppen.
+   *
+   * In RoomCloud ist eine Rate eine Sache, die man mehreren Zimmertypen
+   * zuweist; hier gehoert ein Plan zu genau einer Zimmergruppe, weil Preis,
+   * Restriktion und Buchung je Gruppe verschieden sind. Wer mehrere Gruppen
+   * waehlt, bekommt deshalb je Gruppe einen Plan mit demselben Namen. Das
+   * Kuerzel endet dann auf die Gruppe (`standard-DZ`), denn ueber das Kuerzel
+   * findet das Umsystem den Plan, und zweimal dasselbe waere zweideutig.
+   */
   registerRoute(app, {
     method: 'POST',
     url: '/v1/properties/:propertyId/rate-plans',
@@ -194,13 +204,20 @@ export function rateRoutes(app: FastifyInstance): void {
     propertyParam: 'propertyId',
     summary: 'Ratenplan anlegen',
     handler: async (req, reply) => {
-      const { propertyId } = req.params as { propertyId: string }
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
       const body = req.body as {
-        code: string; name: string; categoryId: number
+        code: string; name: string; categoryId?: number; categoryIds?: number[]
         baseRatePlanId?: number; deriveKind?: 'amount' | 'percent'; deriveValue?: number
         cancellationPolicyId?: number }
-      if (!body.code || !body.name) {
+      const code = typeof body.code === 'string' ? body.code.trim() : ''
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      if (code === '' || name === '') {
         throw Errors.validation({ code: ['field.required'], name: ['field.required'] })
+      }
+      const gruppen = [...new Set(body.categoryIds ?? (body.categoryId === undefined
+        ? [] : [body.categoryId]))]
+      if (gruppen.length === 0 || gruppen.some(g => !Number.isSafeInteger(g) || g <= 0)) {
+        throw Errors.validation({ categoryIds: ['field.required'] })
       }
       const abgeleitet = body.baseRatePlanId !== undefined
       if (abgeleitet && (body.deriveKind === undefined || body.deriveValue === undefined)) {
@@ -208,18 +225,81 @@ export function rateRoutes(app: FastifyInstance): void {
           deriveKind: ['field.requiredForDerived'],
           deriveValue: ['field.requiredForDerived'] })
       }
+      // Die Basis gehoert zu einer Gruppe; fuer mehrere gaebe es keine.
+      if (abgeleitet && gruppen.length > 1) {
+        throw Errors.validation({ baseRatePlanId: ['field.invalid'] })
+      }
       return tx(req.pool, req, async client => {
-        if (abgeleitet) await assertPlan(client, Number(propertyId), body.baseRatePlanId!)
-        const { rows } = await client.query<{ id: number; public_ref: string }>(
-          `INSERT INTO rate_plan (property_id, category_id, code, name,
-                                  cancellation_policy_id, base_rate_plan_id,
-                                  derive_kind, derive_value)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, public_ref`,
-          [Number(propertyId), body.categoryId, body.code, body.name,
-           body.cancellationPolicyId ?? null, body.baseRatePlanId ?? null,
-           body.deriveKind ?? null, body.deriveValue ?? null])
+        if (abgeleitet) await assertPlan(client, propertyId, body.baseRatePlanId!)
+        // Die Zeilenrichtlinie trennt Mandanten, nicht Haeuser: die Gruppe
+        // muss zu diesem Haus gehoeren.
+        const k = await client.query<{ id: number; code: string }>(
+          `SELECT id, code FROM resource_category
+            WHERE property_id = $1 AND id = ANY ($2::bigint[]) ORDER BY code`,
+          [propertyId, gruppen])
+        if (k.rows.length !== gruppen.length) throw Errors.notFound('res.category')
+
+        const angelegt: Array<{ ratePlanId: number; ratePlanRef: string; code: string }> = []
+        for (const g of k.rows) {
+          const kuerzel = gruppen.length > 1 ? `${code}-${g.code}` : code
+          const vorhanden = await client.query(
+            `SELECT 1 FROM rate_plan WHERE property_id = $1 AND code = $2`,
+            [propertyId, kuerzel])
+          if (vorhanden.rowCount !== 0) {
+            throw Errors.conflict('ratePlan.codeTaken', { code: kuerzel })
+          }
+          const { rows } = await client.query<{ id: number; public_ref: string }>(
+            `INSERT INTO rate_plan (property_id, category_id, code, name,
+                                    cancellation_policy_id, base_rate_plan_id,
+                                    derive_kind, derive_value)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, public_ref`,
+            [propertyId, g.id, kuerzel, name,
+             body.cancellationPolicyId ?? null, body.baseRatePlanId ?? null,
+             body.deriveKind ?? null, body.deriveValue ?? null])
+          angelegt.push({ ratePlanId: rows[0]!.id, ratePlanRef: rows[0]!.public_ref,
+                          code: kuerzel })
+        }
         reply.status(201)
-        return { ratePlanId: rows[0]!.id, ratePlanRef: rows[0]!.public_ref }
+        return { ratePlanId: angelegt[0]!.ratePlanId, ratePlanRef: angelegt[0]!.ratePlanRef,
+                 ratePlans: angelegt }
+      })
+    }
+  })
+
+  /**
+   * Ratenplan loeschen. Gedacht fuer den vertippten oder nie benutzten Plan:
+   * seine Preise und Restriktionen gehen mit. Haengt eine Buchung, ein
+   * Kontingent, eine Regel der Steuerung oder ein abgeleiteter Plan daran,
+   * wird abgewiesen -- eine Buchung nennt ihre Rate auch nach Jahren noch.
+   */
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/properties/:propertyId/rate-plans/:ratePlanId',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Ratenplan loeschen',
+    handler: async (req) => {
+      const { propertyId, ratePlanId } = req.params as { propertyId: string; ratePlanId: string }
+      const plan = Number(ratePlanId)
+      if (!Number.isSafeInteger(plan) || plan <= 0) {
+        throw Errors.validation({ ratePlanId: ['field.positiveInteger'] })
+      }
+      return tx(req.pool, req, async client => {
+        await assertPlan(client, Number(propertyId), plan)
+        const abhaengig = await client.query<{ abgeleitet: boolean; benutzt: boolean }>(
+          `SELECT EXISTS (SELECT 1 FROM rate_plan WHERE base_rate_plan_id = $1) AS abgeleitet,
+                  EXISTS (SELECT 1 FROM reservation WHERE rate_plan_id = $1)
+                  OR EXISTS (SELECT 1 FROM reservation_night WHERE rate_plan_id = $1)
+                  OR EXISTS (SELECT 1 FROM availability_block WHERE rate_plan_id = $1)
+                  OR EXISTS (SELECT 1 FROM rate_steer_rule WHERE rate_plan_id = $1)
+                  OR EXISTS (SELECT 1 FROM rate_steer_change WHERE rate_plan_id = $1)
+                  AS benutzt`, [plan])
+        if (abhaengig.rows[0]!.abgeleitet) throw Errors.conflict('ratePlan.hasDerived')
+        if (abhaengig.rows[0]!.benutzt) throw Errors.conflict('ratePlan.inUse')
+        await client.query(`DELETE FROM restriction_day WHERE rate_plan_id = $1`, [plan])
+        await client.query(`DELETE FROM rate_day WHERE rate_plan_id = $1`, [plan])
+        await client.query(`DELETE FROM rate_plan WHERE id = $1`, [plan])
+        return { ratePlanId: plan, deleted: true }
       })
     }
   })
