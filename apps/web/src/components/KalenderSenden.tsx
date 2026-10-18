@@ -50,7 +50,10 @@ export function KalenderSenden(
         <p className="text-sm text-neutral-600">{t('rate.push.intro')}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {/* Grau ohne erstes Senden: dann gibt es keinen Stand, gegen den
+            sich Aenderungen rechnen. Der Grund steht am Knopf. */}
         <button type="button" className={knopf}
+                title={ohneBasis ? t('rate.push.never') : undefined}
                 disabled={gesperrt || ohneBasis || offen === 0}
                 onClick={() => senden.mutate({ mode: 'changes' })}>
           {t('rate.push.changes')}
