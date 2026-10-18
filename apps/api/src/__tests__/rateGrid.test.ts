@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
-         makeUser, type Fixture } from '@hotelpms/testing'
+         makeResources, makeUser, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -178,6 +178,33 @@ describe('Preisraster lesen', () => {
    * Ansicht, aus der die Preise an den Channel Manager gehen. Darüber
    * hinaus ist jeder Zeitraumparameter ein Selbstangriff.
    */
+  /**
+   * Die Kategoriezeile zeigt frei/gesamt wie RoomCloud, aber aus dem
+   * eigenen Bestand: was StayGrid verkaufen darf, nicht was der Channel
+   * Manager zuletzt gehoert hat. Gesperrt zaehlt nicht als frei.
+   */
+  it('liefert je Kategorie und Tag die freien Zimmer aus dem Bestand', async () => {
+    await ratePlan('BAR')
+    await makeResources(owner, fx.propertyId, catId, 3)
+    await owner.query(
+      `SELECT inventory_materialize($1, '2026-10-01'::date, '2026-10-03'::date)`,
+      [fx.propertyId])
+    await owner.query(
+      `UPDATE inventory_day SET blocked = 1
+        WHERE category_id = $1 AND date = '2026-10-02'`, [catId])
+
+    const r = await raster('2026-10-01', '2026-10-02')
+    expect(r.statusCode, r.body).toBe(200)
+    const frei = (JSON.parse(r.body) as {
+      availability: Array<{ categoryId: number; date: string; capacity: number
+                            available: number }> }).availability
+      .filter(a => a.categoryId === catId)
+    expect(frei).toEqual([
+      { categoryId: catId, date: '2026-10-01', capacity: 3, available: 3 },
+      { categoryId: catId, date: '2026-10-02', capacity: 3, available: 2 }
+    ])
+  })
+
   it('traegt 400 Tage und weist 401 ab', async () => {
     await ratePlan('BAR')
     const gut = await raster('2026-01-01', '2027-02-04')      // 400 Tage

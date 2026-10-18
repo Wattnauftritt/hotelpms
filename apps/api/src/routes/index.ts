@@ -14,6 +14,8 @@ import { priceImportRoutes } from './priceImport.js'
 import { stayPostingRoutes } from './stayPosting.js'
 import { sharedGuestProfileRoutes } from './sharedGuestProfiles.js'
 import { rateRoutes } from './rates.js'
+import { rateCalendarPullRoutes } from './rateCalendarPull.js'
+import { rateCalendarPushRoutes } from './rateCalendarPush.js'
 import { rateSteeringRoutes } from './rateSteering.js'
 import { housekeepingRoutes } from './housekeeping.js'
 import { cleaningPlanRoutes } from './cleaningPlan.js'
@@ -95,6 +97,8 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   stayPostingRoutes(app)
   sharedGuestProfileRoutes(app)
   rateRoutes(app)
+  rateCalendarPullRoutes(app)
+  rateCalendarPushRoutes(app)
   rateSteeringRoutes(app)
   housekeepingRoutes(app)
   cleaningPlanRoutes(app)

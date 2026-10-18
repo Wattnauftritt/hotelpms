@@ -1382,10 +1382,20 @@ export const RateGridCell = Type.Object({
 })
 export type RateGridCell = Static<typeof RateGridCell>
 
+/** Freie Zimmer je Kategorie und Tag, wie sie der Channel Manager bekommt. */
+export const RateGridAvailability = Type.Object({
+  categoryId: Type.Integer(),
+  date: IsoDate,
+  capacity: Type.Integer(),
+  available: Type.Integer()
+})
+export type RateGridAvailability = Static<typeof RateGridAvailability>
+
 export const RateGrid = Type.Object({
   from: IsoDate,
   to: IsoDate,
-  cells: Type.Array(RateGridCell)
+  cells: Type.Array(RateGridCell),
+  availability: Type.Array(RateGridAvailability)
 })
 export type RateGrid = Static<typeof RateGrid>
 
