@@ -6,8 +6,8 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
 import type { Pool } from '@hotelpms/db'
 import { FOLDER_ROOM_HEADER, FOLDER_SESSION_COOKIE, CHECKIN_TOKEN_HEADER,
          folderRefAusFragment, type GuestFolderCards } from '@hotelpms/contracts'
-import { neuesToken, FOLDER_UNLOCK_MAX_FAILURES, folderNameMatches,
-         folderPostalMatches } from '@hotelpms/domain'
+import { neuesToken, FOLDER_UNLOCK_MAX_FAILURES, FOLDER_UNLOCK_MAX_FAILURES_ROOM,
+         folderNameMatches, folderPostalMatches } from '@hotelpms/domain'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 import { limiters } from '../platform/rateLimit.js'
@@ -82,8 +82,10 @@ function cookieAus(r: LightMyRequestResponse): string {
 const mappe = (raum: number, cookie?: string) => app.inject({ method: 'GET', url: '/v1/mappe',
   headers: { [FOLDER_ROOM_HEADER]: refs.get(raum)!,
              ...(cookie === undefined ? {} : { cookie: `${FOLDER_SESSION_COOKIE}=${cookie}` }) } })
-const freischalten = (raum: number, value: string) => app.inject({ method: 'POST',
-  url: '/v1/mappe/unlock', headers: { [FOLDER_ROOM_HEADER]: refs.get(raum)! },
+const freischalten = (raum: number, value: string, herkunft?: string) => app.inject({
+  method: 'POST', url: '/v1/mappe/unlock',
+  headers: { [FOLDER_ROOM_HEADER]: refs.get(raum)!,
+             ...(herkunft === undefined ? {} : { 'x-forwarded-for': herkunft }) },
   payload: { value } })
 
 describe('Vergleich von Nachname und PLZ', () => {
@@ -185,9 +187,55 @@ describe('Freischalten', () => {
     // Nach der Viertelstunde geht es wieder, und der Erfolg loescht den Zaehler.
     await owner.query(`UPDATE guest_folder_unlock_failure
                           SET window_start = now() - interval '16 minutes'`)
+    await owner.query(`UPDATE guest_folder_unlock_failure_origin
+                          SET window_start = now() - interval '16 minutes'`)
     expect((await freischalten(zimmer[0]!, 'Petersen')).statusCode).toBe(200)
     expect((await owner.query(`SELECT 1 FROM guest_folder_unlock_failure WHERE resource_id = $1`,
       [zimmer[0]])).rowCount).toBe(0)
+    expect((await owner.query(
+      `SELECT 1 FROM guest_folder_unlock_failure_origin WHERE resource_id = $1`,
+      [zimmer[0]])).rowCount).toBe(0)
+  })
+
+  it('oeffnet nicht mit einem Namenszusatz wie "von" (Audit 19.10., M4)', async () => {
+    await aufenthalt({ zimmer: zimmer[0]!, arrival: '2026-10-10', departure: '2026-10-14',
+      lastName: 'von Hohenberg' })
+    expect((await freischalten(zimmer[0]!, 'von')).statusCode).toBe(422)
+    expect((await freischalten(zimmer[0]!, 'Hohenberg')).statusCode).toBe(200)
+  })
+
+  it('laesst parallele Fehlversuche die Grenze nicht ueberspringen (Audit 19.10., N2)', async () => {
+    await aufenthalt({ zimmer: zimmer[0]!, arrival: '2026-10-10', departure: '2026-10-14',
+      lastName: 'Petersen' })
+    const antworten = await Promise.all(Array.from({ length: 30 }, (_, i) =>
+      freischalten(zimmer[0]!, `Falsch${i}`, '198.51.100.7')))
+    const codes = antworten.map(r => r.statusCode)
+    expect(codes.filter(c => c === 422)).toHaveLength(FOLDER_UNLOCK_MAX_FAILURES)
+    expect(codes.filter(c => c === 429)).toHaveLength(30 - FOLDER_UNLOCK_MAX_FAILURES)
+    const z = await owner.query<{ failures: number }>(
+      `SELECT failures FROM guest_folder_unlock_failure WHERE resource_id = $1`, [zimmer[0]])
+    expect(z.rows[0]!.failures).toBe(FOLDER_UNLOCK_MAX_FAILURES)
+  })
+
+  it('sperrt den Dritten und nicht den Gast, das Zimmer erst bei der hoeheren Grenze', async () => {
+    await aufenthalt({ zimmer: zimmer[0]!, arrival: '2026-10-10', departure: '2026-10-14',
+      lastName: 'Petersen' })
+    for (let i = 0; i < FOLDER_UNLOCK_MAX_FAILURES; i++) {
+      expect((await freischalten(zimmer[0]!, `Falsch${i}`, '198.51.100.7')).statusCode).toBe(422)
+    }
+    // Die Herkunft des Dritten ist gesperrt, auch mit dem richtigen Namen ...
+    expect((await freischalten(zimmer[0]!, 'Petersen', '198.51.100.7')).statusCode).toBe(429)
+    // ... der Gast von seinem Telefon aus nicht.
+    expect((await freischalten(zimmer[0]!, 'Petersen', '203.0.113.20')).statusCode).toBe(200)
+    // Sein Erfolg hebt die Sperre des Dritten nicht auf.
+    expect((await freischalten(zimmer[0]!, 'Petersen', '198.51.100.7')).statusCode).toBe(429)
+
+    // Wechselnde Adressen enden an der Grenze des Zimmers.
+    for (let i = 0; i < FOLDER_UNLOCK_MAX_FAILURES_ROOM; i++) {
+      const adresse = `192.0.2.${Math.floor(i / FOLDER_UNLOCK_MAX_FAILURES) + 1}`
+      expect((await freischalten(zimmer[0]!, `Falsch${i}`, adresse)).statusCode).toBe(422)
+    }
+    expect((await freischalten(zimmer[0]!, 'Petersen', '203.0.113.99')).statusCode).toBe(429)
   })
 
   it('kennt keinen stornierten und keinen kuenftigen Aufenthalt', async () => {

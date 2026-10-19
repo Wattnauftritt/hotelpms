@@ -102,7 +102,8 @@ export const VERWEISE_ZIMMER = [
  * gehoert dazu: ohne das Zimmer zeigt eine gedruckte Karte ohnehin nichts.
  */
 export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task',
-                               'guest_folder_room', 'guest_folder_unlock_failure'] as const
+                               'guest_folder_room', 'guest_folder_unlock_failure',
+                               'guest_folder_unlock_failure_origin'] as const
 
 export const VERWEISE_GRUPPE = [
   ['resource', 'category_id'], ['reservation', 'category_id'], ['rate_plan', 'category_id'],

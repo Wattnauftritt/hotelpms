@@ -50,7 +50,9 @@ Sprache, Aufenthaltsdaten, Rechnungsdaten, Meldedaten, Ausweisart und
 (Zimmerkarte oder Mail-Link), Zeitpunkt und Abreisetag. Gespeichert wird nur
 der Hash des Cookies, nie Nachname oder PLZ, mit denen der Gast bestätigt;
 beide werden nur verglichen. Die Seite zeigt nach der Freischaltung nur den
-Abreisetag. Fehlversuche zählen je Zimmer, ohne Bezug zu einer Person.
+Abreisetag. Fehlversuche zählen je Zimmer und je Herkunft; für die Herkunft
+steht nur der SHA-256 der IP-Adresse da (pseudonym, Migration 0186), und
+beide Zähler löscht der Worker einen Tag nach dem letzten Fehlversuch.
 Wünsche aus der Mappe (`guest_request`, Migration 0149): Eintrag aus dem
 Katalog des Hauses, Menge, gewünschter Tag, Stand. Sie hängen an der
 Reservierung und werden mit deren Gast anonymisiert; ein angenommenes Extra
@@ -79,8 +81,9 @@ Rechnungsadresse.
 > Nachnamen des Hauptgastes („Sind Sie Herr/Frau …?“). Kein Vorname, keine
 > Daten, keine Anschrift. Die Rückfrage schützt vor einem vertippten Zimmer;
 > dass der Nachname dabei in der Halle steht, hat der Betrieb so entschieden
-> (Sven, 12.10.2026). Ab der vierten Rückfrage ohne „Ja“ in einer Minute
-> macht das Gerät eine Pause, damit niemand die Namen aller Zimmer abliest.
+> (Sven, 12.10.2026). Ab der vierten Rückfrage in einer Minute, mit oder
+> ohne „Ja“, und nach drei „Ja“ in fünf Minuten macht das Gerät eine Pause,
+> damit niemand die Namen aller Zimmer abliest (Audit 19.10., M5).
 
 ## 5. Empfänger
 
