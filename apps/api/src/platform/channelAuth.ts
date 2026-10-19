@@ -36,17 +36,19 @@ export async function authenticateChannel(
   const [publicRef, secret] = token.split('.', 2)
   if (!publicRef || !secret) throw Errors.unauthorized()
 
-  // Bewusst kein Join auf property: property hat eine Zeilenrichtlinie, und
-  // dieser Aufruf laeuft vor jedem Mandantenkontext. account_id liegt daher
-  // direkt auf channel_connection (bei der Anlage einmalig aus der Property
-  // gelesen, dort mit Kontext) - nie ohne Kontext aus einer Tabelle mit
-  // Zeilenrichtlinie lesen, auch nicht ueber einen Join (CLAUDE.md).
+  // Der Status von Account und Haus kommt aus einer SECURITY-DEFINER-Funktion
+  // (Migration 0181): property hat eine Zeilenrichtlinie, und dieser Aufruf
+  // laeuft vor jedem Mandantenkontext -- nie ohne Kontext aus einer Tabelle
+  // mit Zeilenrichtlinie lesen, auch nicht ueber einen Join (CLAUDE.md).
+  // Gesperrter Account oder archiviertes Haus kommen als eigener Status
+  // zurueck und werden unten abgewiesen wie ein falsches Geheimnis (Audit
+  // 19.10.2026, M7).
   const { rows } = await pool.query<{
     id: number; property_id: number; account_id: number; provider: string
     token_hash: string; status: string
   }>(
     `SELECT id, property_id, account_id, provider, token_hash, status
-       FROM channel_connection WHERE public_ref = $1`, [publicRef])
+       FROM channel_connection_for_auth($1)`, [publicRef])
   const row = rows[0]
 
   const passt = await argonVerify(row?.token_hash ?? BLIND_HASH, secret).catch(() => false)

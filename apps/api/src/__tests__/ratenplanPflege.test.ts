@@ -109,6 +109,27 @@ describe('Ratenplan anlegen', () => {
     expect(r.statusCode).toBe(404)
     expect(await plaene()).toEqual([])
   })
+
+  // Audit 19.10.2026, N3: fremde Regel ergab 201, unbekannte Kennung 500.
+  it('nimmt keine Stornoregel eines anderen Hauses oder Kunden', async () => {
+    const regel = async (propertyId: number) => (await owner.query<{ id: number }>(
+      `INSERT INTO cancellation_policy (property_id, code, name)
+       VALUES ($1, 'flex', 'Flexibel') RETURNING id`, [propertyId])).rows[0]!.id
+    const eigene = await regel(fx.propertyId)
+    const nachbar = await regel(await zweitesHaus())
+    const fremd = await regel((await makeProperty(owner, { code: 'FREMD' })).propertyId)
+
+    for (const id of [nachbar, fremd, 999999]) {
+      const r = await anlegen({ code: `s${id}`, name: 'Standardrate', categoryIds: [dz],
+                                cancellationPolicyId: id })
+      expect(r.statusCode, r.body).toBe(422)
+    }
+    expect(await plaene()).toEqual([])
+
+    const ok = await anlegen({ code: 'standard', name: 'Standardrate', categoryIds: [dz],
+                               cancellationPolicyId: eigene })
+    expect(ok.statusCode, ok.body).toBe(201)
+  })
 })
 
 describe('Ratenplan loeschen', () => {

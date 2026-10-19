@@ -48,3 +48,50 @@ describe('SECURITY DEFINER', () => {
     }
   })
 })
+
+/**
+ * Die Leserolle (Audit 19.10.2026, M1, Migration 0183). Sie verspricht "nur
+ * lesen", konnte ueber SECURITY-DEFINER-Funktionen aber Gaeste anonymisieren
+ * und Kunden sperren. Geprueft wird das wirksame Recht, PUBLIC
+ * eingeschlossen -- ein REVOKE von der Rolle allein nimmt ihr nichts, solange
+ * PUBLIC es noch hat.
+ */
+describe('Leserolle', () => {
+  // Bewusst leer: keine Richtlinie und keine Sicht ruft eine
+  // SECURITY-DEFINER-Funktion. Wer hier etwas eintraegt, begruendet es.
+  const ERLAUBT: string[] = []
+
+  it('fuehrt keine SECURITY-DEFINER-Funktion aus', async () => {
+    const r = await owner.query<{ name: string }>(
+      `SELECT p.oid::regprocedure::text AS name
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.prosecdef
+          AND has_function_privilege('hotelpms_readonly', p.oid, 'EXECUTE')
+        ORDER BY 1`)
+    expect(r.rows.map(f => f.name).filter(n => !ERLAUBT.includes(n))).toEqual([])
+  })
+
+  it('kann jede Hilfe der Zeilenrichtlinien weiter ausfuehren', async () => {
+    const r = await owner.query<{ name: string; darf: boolean }>(
+      `SELECT DISTINCT p.oid::regprocedure::text AS name,
+              has_function_privilege('hotelpms_readonly', p.oid, 'EXECUTE') AS darf
+         FROM pg_policies pol
+        CROSS JOIN LATERAL regexp_matches(
+               coalesce(pol.qual, '') || ' ' || coalesce(pol.with_check, ''),
+               '([a-z_][a-z0-9_]*)\\(', 'g') m
+         JOIN pg_proc p ON p.proname = m[1]
+         JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
+        WHERE pol.schemaname = 'public'`)
+    expect(r.rows.length).toBeGreaterThan(0)
+    expect(r.rows.filter(f => !f.darf).map(f => f.name)).toEqual([])
+  })
+
+  it('die Anwendung behaelt ihre Funktionen', async () => {
+    const r = await owner.query<{ darf: boolean }>(
+      `SELECT has_function_privilege('hotelpms_app', 'guest_erase_one(bigint)', 'EXECUTE')
+              AND has_function_privilege('hotelpms_app', 'session_principal(text)', 'EXECUTE')
+              AND has_function_privilege('hotelpms_app', 'channel_connection_for_auth(text)',
+                                         'EXECUTE') AS darf`)
+    expect(r.rows[0]!.darf).toBe(true)
+  })
+})

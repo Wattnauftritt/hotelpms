@@ -171,7 +171,8 @@ describe('Befund 1: die Loeschung schreibt keine Kopie mehr', () => {
                         'guest.id_document_number_enc', 'guest_property_note.note',
                         'reservation.notes', 'registration.signature_svg',
                         'guest_agreement.signature_svg', 'app_user.password_hash',
-                        'app_user.totp_secret_enc', 'app_user.workstation_pin_hash']) {
+                        'app_user.totp_secret_enc', 'app_user.workstation_pin_hash',
+                        'invoice.recipient_snapshot', 'invoice.issuer_snapshot']) {
       expect(paare.has(feld), `${feld} fehlt in audit_redaction`).toBe(true)
     }
   })
@@ -212,6 +213,39 @@ describe('Befund 1, Altbestand: die Migration redigiert auch eine gefuellte Tabe
     expect(scharf.rows[0]!.n).toBe(0)
     await expect(owner.query(
       `UPDATE audit_log SET action = 'UPDATE' WHERE row_id = 4711`)).rejects.toThrow(/unveraenderlich/)
+  })
+})
+
+describe('Audit 19.10.2026, N4 und N5: Rechnungsfelder im Altbestand', () => {
+  /*
+   * 0175 hat recipient_snapshot eingetragen, die alten Zeilen aber stehen
+   * lassen; issuer_snapshot fehlte ganz. Derselbe Weg wie oben: der Block aus
+   * 0182 laeuft gegen eine gefuellte Zeile mit scharfem Trigger.
+   */
+  it('schwaerzt Empfaenger, Aussteller und Uebernachtende alter Rechnungen', async () => {
+    const datei = readFileSync(
+      new URL('../../migrations/0182_rechnung_protokoll_schwaerzen.sql', import.meta.url), 'utf8')
+    const block = datei.slice(
+      datei.indexOf('-- >>> altbestand'), datei.indexOf('-- <<< altbestand'))
+    expect(block).toContain('DO $$')
+
+    await owner.query(
+      `INSERT INTO audit_log (account_id, table_name, row_id, row_key, action, changed)
+       VALUES (NULL, 'invoice', 4712, '{"id":4712}', 'INSERT',
+               '{"recipient_snapshot":{"name":"Hannelore Musterfrau"},
+                 "issuer_snapshot":{"contactPhone":"+49 170 1234567"},
+                 "line_guests":{"1":"Zimmer 12, Max Mustermann"},
+                 "number":"RE-2026-0001"}')`)
+    await owner.query(block)
+
+    const r = await owner.query<{ changed: Record<string, unknown> }>(
+      `SELECT changed FROM audit_log WHERE table_name='invoice' AND row_id=4712`)
+    expect(r.rows[0]!.changed).toEqual({
+      recipient_snapshot: '[redigiert]', issuer_snapshot: '[redigiert]',
+      line_guests: '[redigiert]', number: 'RE-2026-0001' })
+
+    await expect(owner.query(
+      `UPDATE audit_log SET action = 'UPDATE' WHERE row_id = 4712`)).rejects.toThrow(/unveraenderlich/)
   })
 })
 
