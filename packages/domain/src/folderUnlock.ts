@@ -14,9 +14,41 @@
  */
 
 /** Kuerzer ist kein Name, sondern ein Rateversuch ("a", "s"). */
-const MIN_TEIL = 2
+const MIN_NAME = 2
+/**
+ * Ein **Teil** eines Namens oeffnet erst ab vier Zeichen (Audit 19.10., M4).
+ * Der ganze Nachname darf kuerzer sein -- "Li", "Ng", "Oz" muessen oeffnen --,
+ * ein Teil aber ist nur dann ein Ausweis, wenn ihn nicht halb Europa traegt:
+ * Mit "de" oder "da" stuende jede Mappe eines Gastes offen, in dessen Namen
+ * die Silbe als eigenes Wort vorkommt.
+ */
+const MIN_TEIL = 4
 /** Eine PLZ hat mindestens drei Zeichen (Island, Faeroeer); kuerzer ist geraten. */
 const MIN_PLZ = 3
+
+/**
+ * Namenszusaetze und Partikel oeffnen nie als Teil, gleich wie lang: "von"
+ * oeffnete jede Mappe eines "von Hohenberg" (Nachstellung im Audit
+ * 19.10., M4). Sie sagen ueber den Gast nichts, was nicht viele mit ihm
+ * teilen. Die Eintraege stehen in der Form von `folderNameKey`, also ohne
+ * Akzente und Umlaute ("grafin" fuer "Graefin"). Als ganzer Nachname
+ * oeffnen sie weiter: wer "De" heisst, gibt "De" ein.
+ */
+const PARTIKEL: ReadonlySet<string> = new Set([
+  // deutsch und niederlaendisch
+  'von', 'vom', 'van', 'der', 'den', 'des', 'dem', 'het', 'zu', 'zum', 'zur', 'ten', 'ter',
+  'auf', 'aus', 'im', 'am', 'op', 'in', 't',
+  // romanisch
+  'de', 'da', 'di', 'do', 'du', 'la', 'le', 'lo', 'les', 'los', 'las', 'el', 'il', 'y', 'e',
+  'del', 'dei', 'dos', 'das', 'della', 'delle', 'dello', 'degli', 'dalla', 'dal',
+  'saint', 'sainte', 'sankt', 'san', 'santa', 'santo', 'sao',
+  // arabisch, hebraeisch, skandinavisch und andere
+  'al', 'ul', 'bin', 'bint', 'ibn', 'ben', 'bar', 'abu', 'ab', 'af', 'av', 'mac', 'mc',
+  // Adelspraedikate und Zusaetze
+  'freiherr', 'freifrau', 'freiin', 'graf', 'grafin', 'prinz', 'prinzessin', 'baron',
+  'baronin', 'ritter', 'edler', 'edle', 'herzog', 'herzogin', 'furst', 'furstin',
+  'junior', 'senior', 'jr', 'sr'
+])
 
 /**
  * Kleinbuchstaben ohne Akzente, ß als ss, und die deutsche Umschrift der
@@ -31,12 +63,18 @@ export function folderNameKey(s: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 }
 
-/** Die Teile eines Namens: "Schmidt-Hansen" ist auch "Schmidt" und "Hansen". */
+/**
+ * Was zu einem Namen oeffnet: der ganze Name ohne Zwischenraum ab zwei
+ * Zeichen, und jeder Teil ab vier, der kein Partikel ist. "Schmidt-Hansen"
+ * ist auch "Schmidt" und "Hansen"; "von Hohenberg" ist "vonhohenberg" und
+ * "Hohenberg", aber nicht "von".
+ */
 function teile(name: string): string[] {
   const k = folderNameKey(name)
   if (k === '') return []
-  const einzeln = k.split(' ').filter(t => t.length >= MIN_TEIL)
-  return [k.replace(/ /g, ''), ...einzeln]
+  const ganz = k.replace(/ /g, '')
+  const einzeln = k.split(' ').filter(t => t.length >= MIN_TEIL && !PARTIKEL.has(t))
+  return ganz.length >= MIN_NAME ? [ganz, ...einzeln] : einzeln
 }
 
 /**
@@ -45,7 +83,7 @@ function teile(name: string): string[] {
  */
 export function folderNameMatches(eingabe: string, nachnamen: readonly string[]): boolean {
   const e = folderNameKey(eingabe).replace(/ /g, '')
-  if (e.length < MIN_TEIL) return false
+  if (e.length < MIN_NAME) return false
   return nachnamen.some(n => teile(n).includes(e))
 }
 
@@ -61,11 +99,22 @@ export function folderPostalMatches(eingabe: string, plz: readonly string[]): bo
 }
 
 /**
- * Fehlversuche je Zimmer: zehn in einer Viertelstunde, dann wartet das
- * Zimmer, bis die Viertelstunde um ist. Eine PLZ hat fuenf Ziffern; mit
- * zehn Versuchen je Viertelstunde braucht das Durchprobieren im Mittel
- * Wochen, ein Aufenthalt dauert Tage. Ein Gast, der sich vertippt, kommt
- * nie in die Naehe.
+ * Fehlversuche: zehn je Herkunft und Zimmer in einer Viertelstunde, dazu
+ * zwanzig je Zimmer ueber alle Herkuenfte (Audit 19.10., N2). Danach wartet
+ * die Herkunft beziehungsweise das Zimmer, bis die Viertelstunde um ist.
+ *
+ * Was das gegen das Durchprobieren der PLZ bringt, steht hier ohne
+ * Beschoenigung: Es gibt rund 8 200 vergebene Postleitzahlen. Mit zehn
+ * Versuchen je Viertelstunde sind das 960 am Tag, das ganze Feld ist von
+ * einer Herkunft aus in gut acht Tagen durch, von mehreren entsprechend
+ * schneller bis zur Grenze des Zimmers; nach Einwohnern geordnet trifft
+ * man die meisten Gaeste frueher. Voraussetzung ist die Karte aus dem
+ * Zimmer, und der Schaden nach einem Treffer ist begrenzt (Abreisetag,
+ * Wuensche, Reinigungsverzicht). Sven haelt das Risiko deshalb fuer
+ * vertretbar und hat am 19.10. entschieden, die PLZ als Schluessel zu
+ * behalten (Audit 19.10., M4). Ein Gast, der sich vertippt, kommt nie in
+ * die Naehe der Grenze.
  */
 export const FOLDER_UNLOCK_MAX_FAILURES = 10
+export const FOLDER_UNLOCK_MAX_FAILURES_ROOM = 20
 export const FOLDER_UNLOCK_WINDOW_SECONDS = 15 * 60

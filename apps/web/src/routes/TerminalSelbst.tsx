@@ -19,9 +19,10 @@ import { Verzicht } from './GastCheckin.tsx'
  * am Ende ein Neuaufbau. Das Abraeumen gehoert dem Aufrufer; hier wird nur
  * gemeldet, wie es endete.
  *
- * Den Verzicht speichert dieselbe Komponente wie auf der Gastseite, mit
- * dem Link, den die Schnittstelle nach "Ja" ausgibt: ein Endpunkt fuer
- * Telefon und Touchscreen.
+ * Den Verzicht zeigt dieselbe Komponente wie auf der Gastseite; gespeichert
+ * wird ueber die Sitzung der Selbstbedienung wie die Wuensche. Einen
+ * Check-in-Link gibt es hier nicht mehr: er oeffnete auch Meldeschein und
+ * Unterschrift (Audit 19.10., N1).
  */
 
 interface Haus {
@@ -32,7 +33,7 @@ interface Haus {
 type Schritt =
   | { art: 'zimmer' }
   | { art: 'frage'; sessionRef: string; lastName: string; code: string }
-  | { art: 'verzicht'; sessionRef: string; token: string; view: CleaningWaiverView | null
+  | { art: 'verzicht'; sessionRef: string; view: CleaningWaiverView | null
       requests: FolderRequests | null; code: string }
 
 export type SelbstEnde = 'done' | 'canceled'
@@ -72,13 +73,13 @@ export function Selbstbedienung({ onSitzung, onEnde }: {
 
   const antworten = (s: Extract<Schritt, { art: 'frage' }>, yes: boolean): void => {
     setLaeuft(true); setFehler(null)
-    api.post<{ confirmed: boolean; lastName?: string | null; token?: string
+    api.post<{ confirmed: boolean; lastName?: string | null
                cleaningWaiver?: CleaningWaiverView | null
                requests?: FolderRequests | null }>(
       `/v1/terminal/self/sessions/${s.sessionRef}/confirm`, { yes })
       .then(r => {
-        if (r.confirmed && r.token !== undefined) {
-          setSchritt({ art: 'verzicht', sessionRef: s.sessionRef, token: r.token,
+        if (r.confirmed) {
+          setSchritt({ art: 'verzicht', sessionRef: s.sessionRef,
                        view: r.cleaningWaiver ?? null, requests: r.requests ?? null,
                        code: s.code })
         } else if (typeof r.lastName === 'string') {
@@ -153,7 +154,12 @@ export function Selbstbedienung({ onSitzung, onEnde }: {
             ? <p className="text-xl">{t('kiosk.self.nothing')}</p>
             : (
               <>
-                {schritt.view !== null && <Verzicht token={schritt.token} start={schritt.view} gross />}
+                {schritt.view !== null && (
+                  <Verzicht start={schritt.view} gross
+                            speichern={(date, waived) => api.post<CleaningWaiverView | null>(
+                              `/v1/terminal/self/sessions/${schritt.sessionRef}/cleaning-waiver`,
+                              { date, waived })} />
+                )}
                 {schritt.requests !== null && schritt.requests.items.length > 0 && (
                   <Wuensche sessionRef={schritt.sessionRef} start={schritt.requests} />
                 )}

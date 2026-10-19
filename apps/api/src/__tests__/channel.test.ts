@@ -82,6 +82,24 @@ describe('Verwaltung des Channel-Zugangs', () => {
     expect(res.statusCode).toBe(401)
   })
 
+  // Audit 19.10.2026, M7: die Kontosperre stoppte nur Menschen und
+  // OAuth-Zugaenge, der Kanalzugang holte weiter ab und buchte weiter.
+  it('weist den Zugang eines gesperrten Accounts ab', async () => {
+    const token = await makeConnection()
+    const url = `/v1/channel/ari/availability?from=${FROM}&to=${TO}`
+    expect((await ari(token, url)).statusCode).toBe(200)
+    await owner.query(`UPDATE account SET status = 'suspended' WHERE id = $1`, [fx.accountId])
+    expect((await ari(token, url)).statusCode).toBe(401)
+    expect((await book(token, { externalId: 'M7-1' })).statusCode).toBe(401)
+  })
+
+  it('weist den Zugang eines archivierten Hauses ab', async () => {
+    const token = await makeConnection()
+    await owner.query(`UPDATE property SET status = 'archived' WHERE id = $1`, [fx.propertyId])
+    const res = await ari(token, `/v1/channel/ari/availability?from=${FROM}&to=${TO}`)
+    expect(res.statusCode).toBe(401)
+  })
+
   it('lehnt einen erfundenen oder falsch aufgebauten Token ab', async () => {
     await makeConnection()
     const kaputt = await ari('nicht.gueltig', `/v1/channel/ari/availability?from=${FROM}&to=${TO}`)

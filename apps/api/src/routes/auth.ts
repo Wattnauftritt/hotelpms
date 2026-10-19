@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
@@ -118,6 +119,84 @@ export async function hashPassword(kennwort: string): Promise<string> {
   return argonHash(kennwort, { memoryCost: 19_456, timeCost: 2, parallelism: 1 })
 }
 
+/**
+ * Den Personenwechsel auf diesen Benutzer in allen Sitzungen beenden; die
+ * Sitzung selbst bleibt und gehoert wieder ihrem Inhaber.
+ *
+ * Eine Tresensitzung, die per PIN auf B gewechselt ist, traegt B nur in
+ * `active_user_id`, nicht in `user_id`. Wer bei Kennwortwechsel,
+ * Ruecksetzung, neuem PIN, Sperren oder Stilllegen nur `user_id = B`
+ * zurueckzieht, laesst sie stehen, und wer einmal als B gewechselt hat,
+ * arbeitete bis zu dreissig Tage als B weiter (M3, Audit 19.10.2026).
+ * Zurueck auf den Inhaber statt widerrufen: der sitzt am Tresen und hat mit
+ * B nichts falsch gemacht.
+ *
+ * `ausser` laesst die Sitzung stehen, aus der der Betroffene selbst gerade
+ * handelt -- wer am Tresen als B sein Kennwort aendert, will weiterarbeiten.
+ */
+export async function personenwechselBeenden(
+  client: Pick<PoolClient, 'query'>, userId: number, ausser: string | null = null
+): Promise<void> {
+  await client.query(
+    `UPDATE user_session SET active_user_id = NULL
+      WHERE active_user_id = $1 AND revoked_at IS NULL AND id <> COALESCE($2, '')`,
+    [userId, ausser])
+}
+
+/**
+ * Einen Kennwortversuch **vor** der Pruefung auf den Zaehler je Paar aus
+ * Konto und Herkunft buchen. `false` heisst: die Herkunft ist gesperrt, und
+ * es wird nicht gerechnet.
+ *
+ * Vorher wurde die Sperre gelesen, Argon2 gerechnet (rund 50 ms) und erst
+ * danach gezaehlt. Alles, was in diesen 50 ms gleichzeitig einlief, kam an
+ * der Sperre vorbei -- aus einer offenen Sitzung, die keine
+ * Ratenbegrenzung erreicht, beliebig viele Versuche je Sperrfenster
+ * (dasselbe Muster wie H2 beim PIN, Audit 19.10.2026). Hier nimmt
+ * `ON CONFLICT DO UPDATE` die Zeilensperre und wertet das WHERE auf dem
+ * neuesten Stand aus: von gleichzeitigen Anfragen kommen hoechstens
+ * MAX_FEHLVERSUCHE durch.
+ *
+ * `locked_until` wird nur ausserhalb einer laufenden Sperre geschrieben (das
+ * WHERE schliesst sie aus); vorher schrieb jeder spaete Fehlversuch NULL
+ * hinein. Der Zaehler laeuft nach Ablauf weiter wie bisher: nach einer
+ * Sperre bleibt ein Versuch je Viertelstunde, bis einer gelingt.
+ *
+ * Wer danach das richtige Kennwort hatte, raeumt die Zeile mit
+ * `kennwortVersuchGelungen` wieder ab.
+ */
+async function bucheKennwortVersuch(
+  pool: FastifyRequest['pool'], userId: number, herkunft: string
+): Promise<boolean> {
+  const r = await pool.query(
+    `INSERT INTO login_failure (user_id, origin, failed_count, locked_until)
+     VALUES ($1, $2, 1, NULL)
+     ON CONFLICT (user_id, origin) DO UPDATE
+        SET failed_count = login_failure.failed_count + 1,
+            last_failure_at = now(),
+            locked_until = CASE WHEN login_failure.failed_count + 1 >= $3
+                                THEN now() + ($4 || ' minutes')::interval END
+      WHERE login_failure.locked_until IS NULL
+         OR login_failure.locked_until <= now()
+     RETURNING 1`,
+    [userId, herkunft, MAX_FEHLVERSUCHE, SPERRE_MINUTEN])
+  return (r.rowCount ?? 0) > 0
+}
+
+/**
+ * Der vorab gebuchte Versuch war richtig: der Zaehler dieser Herkunft
+ * faellt weg wie nach einer gelungenen Anmeldung. Nur diese Herkunft, nicht
+ * alle -- sonst setzte jeder Erfolg den Zaehler eines Angreifers an seiner
+ * eigenen Adresse zurueck, und der bekaeme nach jedem Arbeitsbeginn zehn
+ * neue Versuche.
+ */
+async function kennwortVersuchGelungen(
+  pool: Pick<PoolClient, 'query'>, userId: number, herkunft: string
+): Promise<void> {
+  await pool.query(`DELETE FROM login_failure WHERE user_id = $1 AND origin = $2`,
+    [userId, herkunft])
+}
+
 function neueSitzungsKennung(): string {
   return randomBytes(32).toString('base64url')
 }
@@ -145,12 +224,10 @@ export function authRoutes(app: FastifyInstance): void {
       const herkunft = req.ip
       const { rows } = await req.pool.query<{
         id: number; password_hash: string | null; status: string
-        locked_until: string | null; herkunft_gesperrt_bis: string | null }>(
-        `SELECT u.id, u.password_hash, u.status, u.locked_until::text,
-                f.locked_until::text AS herkunft_gesperrt_bis
+        locked_until: string | null }>(
+        `SELECT u.id, u.password_hash, u.status, u.locked_until::text
            FROM app_user u
-           LEFT JOIN login_failure f ON f.user_id = u.id AND f.origin = $2
-          WHERE lower(u.email) = lower($1) OR u.username = lower($1)`, [email, herkunft])
+          WHERE lower(u.email) = lower($1) OR u.username = lower($1)`, [email])
       const benutzer = rows[0]
 
       /*
@@ -159,15 +236,18 @@ export function authRoutes(app: FastifyInstance): void {
        * zweite bleibt stehen, weil die Aufsicht ein Konto stilllegen können
        * muss, ohne auf eine Herkunft zu zeigen.
        *
-       * Beide werden geprüft, nicht die erste vorhandene: `??` nahm die
-       * Herkunftssperre auch dann, wenn sie längst abgelaufen war, und
-       * übersah dann die Sperre am Konto -- eine abgelaufene Zeile in
-       * `login_failure` hätte eine Stilllegung von Hand ausgehebelt.
+       * Beide werden geprüft, jede für sich: eine abgelaufene Zeile in
+       * `login_failure` darf eine Stilllegung von Hand nicht aushebeln. Die
+       * Herkunftssperre prüft die Buchung des Versuchs selbst, vor Argon2
+       * und in einer Anweisung (bucheKennwortVersuch); die Ratenbegrenzung
+       * je Herkunft davor hält keinen Zähler je Konto.
        */
-      const sperren = [benutzer?.herkunft_gesperrt_bis, benutzer?.locked_until]
-        .filter((s): s is string => s !== null && s !== undefined)
-      if (sperren.some(s => Date.parse(s) > Date.now())) {
+      if (benutzer?.locked_until != null && Date.parse(benutzer.locked_until) > Date.now()) {
         // Auch hier keine genaue Auskunft: die Sperre selbst ist schon eine.
+        throw Errors.unauthorized('auth.tooManyAttempts')
+      }
+      if (benutzer !== undefined
+          && !await bucheKennwortVersuch(req.pool, benutzer.id, herkunft)) {
         throw Errors.unauthorized('auth.tooManyAttempts')
       }
 
@@ -181,15 +261,6 @@ export function authRoutes(app: FastifyInstance): void {
            * die Aufsicht sieht daran, dass jemand ein Konto durchprobiert,
            * auch wenn jede einzelne Herkunft unter ihrer Grenze bleibt.
            */
-          await req.pool.query(
-            `INSERT INTO login_failure (user_id, origin, failed_count, locked_until)
-             VALUES ($1, $2, 1, NULL)
-             ON CONFLICT (user_id, origin) DO UPDATE
-                SET failed_count = login_failure.failed_count + 1,
-                    last_failure_at = now(),
-                    locked_until = CASE WHEN login_failure.failed_count + 1 >= $3
-                                        THEN now() + ($4 || ' minutes')::interval END`,
-            [benutzer.id, herkunft, MAX_FEHLVERSUCHE, SPERRE_MINUTEN])
           await req.pool.query(
             `UPDATE app_user SET failed_login_count = failed_login_count + 1
               WHERE id = $1`, [benutzer.id])
@@ -211,12 +282,7 @@ export function authRoutes(app: FastifyInstance): void {
       await req.pool.query(
         `UPDATE app_user SET failed_login_count = 0, locked_until = NULL,
                              last_login_at = now() WHERE id = $1`, [benutzer.id])
-      // Nur diese Herkunft, nicht alle: sonst setzte jede erfolgreiche
-      // Anmeldung den Zaehler des Angreifers an seiner eigenen Adresse
-      // zurueck, und der bekaeme nach jedem Arbeitsbeginn zehn neue Versuche.
-      await req.pool.query(
-        `DELETE FROM login_failure WHERE user_id = $1 AND origin = $2`,
-        [benutzer.id, herkunft])
+      await kennwortVersuchGelungen(req.pool, benutzer.id, herkunft)
 
       reply.setCookie(COOKIE, sessionId, {
         httpOnly: true,                       // kein Zugriff aus JavaScript
@@ -452,9 +518,19 @@ export function authRoutes(app: FastifyInstance): void {
       // Sitzung beliebig oft raten (M2, Sicherheitsaudit 2026-10-11).
       const eigen = await eigenesKennwort(req, p.userId)
       if (!await pruefeKennwort(eigen.hash, password)) {
-        await zaehleFehlversuch(req.pool, p.userId, req.ip)
+        await zaehleFehlversuch(req.pool, p.userId)
         throw Errors.unauthorized('auth.badCredentials')
       }
+      await kennwortVersuchGelungen(req.pool, p.userId, req.ip)
+
+      /*
+       * Ein neuer oder entfernter PIN beendet jeden Wechsel auf diese Person,
+       * ausser in der Sitzung, aus der sie das gerade tut. Wer den PIN
+       * aendert, tut das, weil ihn jemand gesehen hat; der Wechsel, den der
+       * damit schon gemacht hat, darf nicht stehen bleiben (M3, Audit
+       * 19.10.2026).
+       */
+      const eigeneSitzung = req.cookies[COOKIE] ?? null
 
       // Kein PIN mehr: der Personenwechsel auf diese Person ist damit zu.
       if (pin === null || pin === undefined || pin === '') {
@@ -463,6 +539,7 @@ export function authRoutes(app: FastifyInstance): void {
               SET workstation_pin_hash = NULL, workstation_pin_set_at = NULL,
                   workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL
             WHERE id = $1`, [p.userId])
+        await personenwechselBeenden(req.pool, p.userId, eigeneSitzung)
         return { ok: true, pinSet: false }
       }
 
@@ -477,6 +554,7 @@ export function authRoutes(app: FastifyInstance): void {
             SET workstation_pin_hash = $2, workstation_pin_set_at = now(),
                 workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL
           WHERE id = $1`, [p.userId, await hashPassword(pin)])
+      await personenwechselBeenden(req.pool, p.userId, eigeneSitzung)
       return { ok: true, pinSet: true }
     }
   })
@@ -528,16 +606,10 @@ export function authRoutes(app: FastifyInstance): void {
       }
 
       const { rows } = await req.pool.query<{
-        id: number; workstation_pin_hash: string | null; status: string
-        workstation_pin_locked_until: string | null }>(
-        `SELECT id, workstation_pin_hash, status, workstation_pin_locked_until
+        id: number; workstation_pin_hash: string | null; status: string }>(
+        `SELECT id, workstation_pin_hash, status
            FROM app_user WHERE lower(email) = lower($1)`, [email])
       const ziel = rows[0]
-
-      if (ziel?.workstation_pin_locked_until != null
-          && Date.parse(ziel.workstation_pin_locked_until) > Date.now()) {
-        throw Errors.unauthorized('auth.tooManyAttempts')
-      }
 
       /*
        * Die Zugehoerigkeit wird **vor** dem Ausgang der PIN-Pruefung
@@ -549,38 +621,54 @@ export function authRoutes(app: FastifyInstance): void {
         `SELECT 1 FROM user_property_scope($1) a
            JOIN user_property_scope($2) b USING (property_id) LIMIT 1`,
         [p.sessionUserId, ziel.id])
+      const imSelbenHaus = (gemeinsam.rowCount ?? 0) > 0
+
+      /*
+       * Der Versuch wird **vor** Argon2 gebucht, in einer Anweisung, die die
+       * Sperre selbst prueft (H2, Audit 19.10.2026). Vorher pruefte die Route
+       * die Sperre in JavaScript, rechnete rund 50 ms und zaehlte erst danach;
+       * alles, was in diesen 50 ms gleichzeitig einlief, kam an der Sperre
+       * vorbei, und ein vierstelliger PIN fiel mit Wellen paralleler
+       * Anfragen in Minuten. Das UPDATE nimmt die Zeilensperre, und
+       * PostgreSQL wertet das WHERE nach dem Warten auf den neuen Stand aus:
+       * von gleichzeitigen Anfragen kommen deshalb hoechstens
+       * PIN_MAX_FEHLVERSUCHE durch, der Rest findet die Sperre gesetzt.
+       *
+       * Gezaehlt wird nur, wenn Aufrufer und Ziel ein Haus teilen. Ohne das
+       * koennte ein Angemeldeter eines ganz anderen Kunden den
+       * Personenwechsel eines Fremden sperren, dessen Adresse er kennt (N2,
+       * Audit 11.10.2026). Von dort kann er ohnehin nie wechseln, `erlaubt`
+       * verlangt das gemeinsame Haus; er braucht den Zaehler also nicht, um
+       * aufgehalten zu werden.
+       *
+       * Mit dem Setzen der Sperre faellt der Zaehler auf null. Sonst stuende
+       * er danach bei fuenf, und schon der naechste Tippfehler des
+       * Betroffenen sperrte wieder eine Viertelstunde. `locked_until` wird
+       * nur hier gesetzt und nur ausserhalb einer laufenden Sperre geleert
+       * (das WHERE schliesst sie aus); vorher schrieb jeder spaete
+       * Fehlversuch NULL hinein und hob die Sperre damit wieder auf.
+       */
+      if (ziel !== undefined && imSelbenHaus) {
+        const gebucht = await req.pool.query(
+          `UPDATE app_user
+              SET workstation_pin_failed_count =
+                    CASE WHEN workstation_pin_failed_count + 1 >= $2 THEN 0
+                         ELSE workstation_pin_failed_count + 1 END,
+                  workstation_pin_locked_until =
+                    CASE WHEN workstation_pin_failed_count + 1 >= $2
+                         THEN now() + ($3 || ' minutes')::interval END
+            WHERE id = $1
+              AND (workstation_pin_locked_until IS NULL
+                   OR workstation_pin_locked_until <= now())`,
+          [ziel.id, PIN_MAX_FEHLVERSUCHE, PIN_SPERRE_MINUTEN])
+        if (gebucht.rowCount === 0) throw Errors.unauthorized('auth.tooManyAttempts')
+      }
 
       const passt = await pruefeKennwort(ziel?.workstation_pin_hash ?? null, pin)
       const erlaubt = passt && ziel !== undefined && ziel.status === 'active'
-        && (gemeinsam.rowCount ?? 0) > 0
+        && imSelbenHaus
 
       if (!erlaubt) {
-        /*
-         * Gezaehlt wird nur, wenn der PIN wirklich falsch war **und** Aufrufer
-         * und Ziel ein Haus teilen. Ohne die zweite Bedingung koennte ein
-         * Angemeldeter eines ganz anderen Kunden den Personenwechsel eines
-         * Fremden sperren, dessen Adresse er kennt (N2, Audit 11.10.2026).
-         * Von dort kann er ohnehin nie wechseln, `erlaubt` verlangt das
-         * gemeinsame Haus; er braucht den Zaehler also nicht, um aufzuhalten.
-         *
-         * Mit dem Setzen der Sperre faellt der Zaehler auf null. Sonst stuende
-         * er danach bei fuenf, und schon der naechste Tippfehler des
-         * Betroffenen sperrte wieder eine Viertelstunde — eine Sperre, die
-         * nie mehr ganz aufgeht, trifft den Kollegen am Tresen haerter als
-         * den, der raet.
-         */
-        if (ziel !== undefined && !passt && (gemeinsam.rowCount ?? 0) > 0) {
-          await req.pool.query(
-            `UPDATE app_user
-                SET workstation_pin_failed_count =
-                      CASE WHEN workstation_pin_failed_count + 1 >= $2 THEN 0
-                           ELSE workstation_pin_failed_count + 1 END,
-                    workstation_pin_locked_until =
-                      CASE WHEN workstation_pin_failed_count + 1 >= $2
-                           THEN now() + ($3 || ' minutes')::interval END
-              WHERE id = $1`,
-            [ziel.id, PIN_MAX_FEHLVERSUCHE, PIN_SPERRE_MINUTEN])
-        }
         // Eine Meldung fuer alle Faelle: falsche Adresse, falscher PIN,
         // fremdes Haus. Wer unterscheidet, verraet die Benutzerliste.
         throw Errors.unauthorized('auth.badPin')
@@ -707,6 +795,7 @@ export function authRoutes(app: FastifyInstance): void {
         await client.query(
           `UPDATE user_session SET revoked_at = now()
             WHERE user_id = $1 AND revoked_at IS NULL`, [userId])
+        await personenwechselBeenden(client, userId)
 
         // Weitere offene Token desselben Benutzers verfallen mit. Sonst laege
         // nach drei Anforderungen dreimal ein gueltiger Zugang im Postfach.
@@ -745,26 +834,23 @@ export function authRoutes(app: FastifyInstance): void {
    * auf denselben Zaehler.
    */
 
-  /** Einen Fehlversuch am eigenen Kennwort zaehlen, wie bei der Anmeldung. */
+  /**
+   * Einen Fehlversuch am eigenen Kennwort festhalten, wie bei der Anmeldung.
+   * Der Zaehler je Herkunft ist schon in `eigenesKennwort` gebucht; hier
+   * laeuft nur noch der Zaehler am Konto mit, den die Aufsicht sieht.
+   */
   async function zaehleFehlversuch(
-    pool: FastifyRequest['pool'], userId: number, ip: string
+    pool: FastifyRequest['pool'], userId: number
   ): Promise<void> {
-    await pool.query(
-      `INSERT INTO login_failure (user_id, origin, failed_count, locked_until)
-       VALUES ($1, $2, 1, NULL)
-       ON CONFLICT (user_id, origin) DO UPDATE
-          SET failed_count = login_failure.failed_count + 1,
-              last_failure_at = now(),
-              locked_until = CASE WHEN login_failure.failed_count + 1 >= $3
-                                  THEN now() + ($4 || ' minutes')::interval END`,
-      [userId, ip, MAX_FEHLVERSUCHE, SPERRE_MINUTEN])
     await pool.query(
       `UPDATE app_user SET failed_login_count = failed_login_count + 1
         WHERE id = $1`, [userId])
   }
 
   /**
-   * Das eigene Kennwort und den Stand der Sperre lesen.
+   * Das eigene Kennwort lesen, die Sperre pruefen und den Versuch vorab
+   * buchen (bucheKennwortVersuch). Wer danach das richtige Kennwort hatte,
+   * ruft `kennwortVersuchGelungen`.
    *
    * Eine gesperrte Sitzung darf hier nicht weiterarbeiten: waere das
    * erlaubt, liesse sich die Sperre der Anmeldung einfach umgehen, indem
@@ -775,17 +861,16 @@ export function authRoutes(app: FastifyInstance): void {
   ): Promise<{ hash: string | null; name: string | null; email: string | null }> {
     const { rows } = await req.pool.query<{
       password_hash: string | null; display_name: string | null; email: string | null
-      locked_until: string | null; herkunft_gesperrt_bis: string | null }>(
-      `SELECT u.password_hash, u.display_name, u.email, u.locked_until::text,
-              f.locked_until::text AS herkunft_gesperrt_bis
+      locked_until: string | null }>(
+      `SELECT u.password_hash, u.display_name, u.email, u.locked_until::text
          FROM app_user u
-         LEFT JOIN login_failure f ON f.user_id = u.id AND f.origin = $2
-        WHERE u.id = $1`, [userId, req.ip])
+        WHERE u.id = $1`, [userId])
     const u = rows[0]
     if (u === undefined) throw Errors.unauthorized()
-    const sperren = [u.herkunft_gesperrt_bis, u.locked_until]
-      .filter((s): s is string => s !== null && s !== undefined)
-    if (sperren.some(s => Date.parse(s) > Date.now())) {
+    if (u.locked_until !== null && Date.parse(u.locked_until) > Date.now()) {
+      throw Errors.unauthorized('auth.tooManyAttempts')
+    }
+    if (!await bucheKennwortVersuch(req.pool, userId, req.ip)) {
       throw Errors.unauthorized('auth.tooManyAttempts')
     }
     return { hash: u.password_hash, name: u.display_name, email: u.email }
@@ -818,14 +903,17 @@ export function authRoutes(app: FastifyInstance): void {
         throw Errors.validation({ newPassword: ['auth.passwordUnchanged'] })
       }
 
+      // Den vorab gebuchten Versuch raeumt ein Erfolg unten mit allen
+      // Zeilen in login_failure ab.
       const eigen = await eigenesKennwort(req, p.userId)
       if (!await pruefeKennwort(eigen.hash, b.currentPassword)) {
-        await zaehleFehlversuch(req.pool, p.userId, req.ip)
+        await zaehleFehlversuch(req.pool, p.userId)
         throw Errors.unauthorized('auth.badCredentials')
       }
 
       const neu = await hashPassword(b.newPassword)
       const eigeneSitzung = req.cookies[COOKIE] ?? null
+      const userId = p.userId
 
       return tx(req.pool, req, async client => {
         await client.query(
@@ -847,6 +935,7 @@ export function authRoutes(app: FastifyInstance): void {
           `UPDATE user_session SET revoked_at = now()
             WHERE user_id = $1 AND revoked_at IS NULL AND id <> COALESCE($2,'')`,
           [p.userId, eigeneSitzung])
+        await personenwechselBeenden(client, userId, eigeneSitzung)
 
         // Offene Einmaltoken verfallen mit: nach einer Aenderung soll kein
         // aelterer Ruecksetzlink mehr im Postfach gelten.
@@ -882,9 +971,10 @@ export function authRoutes(app: FastifyInstance): void {
 
       const eigen = await eigenesKennwort(req, userId)
       if (!await pruefeKennwort(eigen.hash, b.currentPassword)) {
-        await zaehleFehlversuch(req.pool, userId, req.ip)
+        await zaehleFehlversuch(req.pool, userId)
         throw Errors.unauthorized('auth.badCredentials')
       }
+      await kennwortVersuchGelungen(req.pool, userId, req.ip)
       if (neueAdresse.toLowerCase() === eigen.email?.toLowerCase()) {
         throw Errors.validation({ newEmail: ['auth.emailUnchanged'] })
       }

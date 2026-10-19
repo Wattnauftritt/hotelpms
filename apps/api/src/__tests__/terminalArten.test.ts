@@ -33,9 +33,11 @@ const VON = '2026-10-01'
 const BIS = '2026-10-04'
 const UNTERSCHRIFT = '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240">'
   + '<image href="data:image/png;base64,iVBORw0KGgoAAAA" width="720" height="240"/></svg>'
-/** Die ersten Bytes eines PNG, dazu etwas Rumpf. Fuer die Erkennung genuegt das. */
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-                           Buffer.from('rest-des-bildes')])
+/** Ein Bildpunkt, ein gueltiges PNG. Seit M6 (Audit 19.10.) muss der Kopf
+ *  lesbar sein, weil die Masse daraus kommen; die Signatur allein genuegt nicht. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64')
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
 
 beforeAll(async () => {
@@ -393,6 +395,21 @@ describe('Seiten des Hauses', () => {
     const contentRef = await seite('Gross')
     const r = await bild(contentRef, Buffer.concat([PNG, Buffer.alloc(1_048_576)]))
     expect(r.statusCode).toBe(422)
+  })
+
+  it('weist ein Bild mit zu vielen Bildpunkten oder ohne lesbaren Kopf ab (Audit 19.10., M6)', async () => {
+    const contentRef = await seite('Riesig')
+    // Nur der Kopf zaehlt: 12 000 x 12 000 laut IHDR.
+    const kopf = Buffer.from(PNG)
+    kopf.writeUInt32BE(12_000, 16)
+    kopf.writeUInt32BE(12_000, 20)
+    const r = await bild(contentRef, kopf)
+    expect(r.statusCode).toBe(422)
+    expect(r.body).toContain('terminal.imageDimensions')
+    const ohneKopf = await bild(contentRef, Buffer.concat([PNG.subarray(0, 8), Buffer.from('rest')]))
+    expect(ohneKopf.statusCode).toBe(422)
+    const n = await owner.query(`SELECT 1 FROM terminal_content_image`)
+    expect(n.rowCount).toBe(0)
   })
 
   it('legt Bilddaten nicht ins Protokoll', async () => {

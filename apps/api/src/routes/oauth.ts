@@ -6,7 +6,7 @@ import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { hinweisText } from '../platform/texte.js'
 import { hashToken } from '../platform/auth.js'
-import { accountFor, accountRight, can, type Principal } from '../platform/context.js'
+import { accountFor, accountRight, accountsWith, can, type Principal } from '../platform/context.js'
 import { isPermission, PERMISSIONS, type Permission } from '../platform/permissions.js'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
 
@@ -321,8 +321,12 @@ export function oauthRoutes(app: FastifyInstance): void {
                 max(t.last_used_at) AS "lastUsedAt"
            FROM oauth_client c
            LEFT JOIN oauth_access_token t ON t.client_id = c.id
+          WHERE c.account_id = ANY($1::bigint[])
           GROUP BY c.id
-          ORDER BY c.id`)
+          ORDER BY c.id`,
+        // Nur die Accounts, in denen das Recht besteht (Sicherheitsaudit
+        // 2026-10-19, H1): die Zeilenrichtlinie filtert nur nach Account.
+        [accountsWith(req.principal as Principal, 'integration:manage')])
       return { clients: rows, availableScopes: PERMISSIONS.filter(p =>
         !p.startsWith('platform:') && !p.startsWith('terminal:')) }
     })

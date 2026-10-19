@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { folderLink, type GuestFolderStay, type GuestFolderView, type GuestFolderSettings,
@@ -16,7 +17,7 @@ import { verzichtAusRumpf } from './checkin.js'
 import { rechtImHaus } from './depositRequests.js'
 import { checkinTx } from '../platform/checkin.js'
 import { folderNameMatches, folderPostalMatches, FOLDER_UNLOCK_MAX_FAILURES,
-         FOLDER_UNLOCK_WINDOW_SECONDS } from '@hotelpms/domain'
+         FOLDER_UNLOCK_MAX_FAILURES_ROOM, FOLDER_UNLOCK_WINDOW_SECONDS } from '@hotelpms/domain'
 import { tooManyRequests } from '../platform/rateLimit.js'
 import { bildSenden } from '../platform/terminalBild.js'
 
@@ -235,7 +236,8 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
     method: 'POST',
     url: '/v1/mappe/unlock',
     // Oeffentlich: die Zimmer-Referenz ist der Ausweis, Nachname oder PLZ
-    // die Bestaetigung; Fehlversuche zaehlen je Zimmer (0147).
+    // die Bestaetigung; Fehlversuche zaehlen je Herkunft und je Zimmer
+    // (0147, 0186).
     permission: null,
     summary: 'Gaestemappe: mit Nachname oder PLZ freischalten',
     handler: async (req, reply) => {
@@ -243,6 +245,8 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
       const roh = (req.body as { value?: unknown } | undefined)?.value
       const wert = typeof roh === 'string' ? roh.trim() : ''
       if (wert === '' || wert.length > 100) throw Errors.validation({ value: ['field.required'] })
+      // Nur der Hash der Adresse wird gespeichert; verglichen wird auf Gleichheit (0186).
+      const herkunft = createHash('sha256').update(req.ip).digest('hex')
 
       /*
        * Der Fehlversuch muss gezaehlt bleiben, auch wenn die Antwort ein
@@ -251,12 +255,44 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
        */
       const ergebnis = await mappeTx(req, async (client, k): Promise<
         { art: 'gesperrt' } | { art: 'falsch' } | { art: 'ok'; stay: GuestFolderStay }> => {
-        const sperre = await client.query<{ failures: number }>(
-          `SELECT failures FROM guest_folder_unlock_failure
-            WHERE resource_id = $1
-              AND window_start > now() - make_interval(secs => $2)`,
-          [k.resourceId, FOLDER_UNLOCK_WINDOW_SECONDS])
-        if ((sperre.rows[0]?.failures ?? 0) >= FOLDER_UNLOCK_MAX_FAILURES) {
+        /*
+         * Erst den Zaehler holen und sperren, dann pruefen (Audit 19.10.,
+         * N2). Vorher lasen parallele Anfragen alle denselben Stand, bevor
+         * die erste ihren Fehlversuch schrieb, und 50 gleichzeitige ergaben
+         * 17 ausgewertete statt 10. Das Upsert legt die Zeile an oder sperrt
+         * sie bis zum Ende der Transaktion; jede weitere Anfrage auf dasselbe
+         * Zimmer wartet und liest danach den geschriebenen Stand. Zimmer vor
+         * Herkunft, immer in dieser Reihenfolge, damit sich zwei Anfragen
+         * nicht gegenseitig festhalten.
+         *
+         * Gezaehlt wird je Herkunft und je Zimmer: Die Herkunft hat die
+         * Grenze, die vorher das Zimmer hatte; ein Dritter mit der Karte
+         * sperrt damit sich selbst und nicht den Gast. Das Zimmer hat eine
+         * hoehere, damit wechselnde Adressen das Durchprobieren nicht
+         * beliebig vervielfachen (0186). Eine gesperrte Anfrage zaehlt
+         * nicht weiter, sonst truege eine einzelne Herkunft das Zimmer doch
+         * bis an seine Grenze.
+         */
+        const fenster = `CASE WHEN f.window_start > now() - make_interval(secs => $3)`
+        const zimmerStand = await client.query<{ failures: number }>(
+          `INSERT INTO guest_folder_unlock_failure AS f (resource_id, property_id, failures)
+           VALUES ($1, $2, 0)
+           ON CONFLICT (resource_id) DO UPDATE SET
+             failures     = ${fenster} THEN f.failures ELSE 0 END,
+             window_start = ${fenster} THEN f.window_start ELSE now() END
+           RETURNING failures`,
+          [k.resourceId, k.propertyId, FOLDER_UNLOCK_WINDOW_SECONDS])
+        const herkunftStand = await client.query<{ failures: number }>(
+          `INSERT INTO guest_folder_unlock_failure_origin AS f
+                  (resource_id, origin_hash, property_id, failures)
+           VALUES ($1, $4, $2, 0)
+           ON CONFLICT (resource_id, origin_hash) DO UPDATE SET
+             failures     = ${fenster} THEN f.failures ELSE 0 END,
+             window_start = ${fenster} THEN f.window_start ELSE now() END
+           RETURNING failures`,
+          [k.resourceId, k.propertyId, FOLDER_UNLOCK_WINDOW_SECONDS, herkunft])
+        if (zimmerStand.rows[0]!.failures >= FOLDER_UNLOCK_MAX_FAILURES_ROOM
+            || herkunftStand.rows[0]!.failures >= FOLDER_UNLOCK_MAX_FAILURES) {
           return { art: 'gesperrt' }
         }
 
@@ -284,22 +320,24 @@ export function gaestemappeRoutes(app: FastifyInstance): void {
           folderNameMatches(wert, c.last_names) || folderPostalMatches(wert, c.postal_codes))
 
         if (treffer === undefined) {
+          // Beide Zeilen stehen seit oben und sind gesperrt.
           await client.query(
-            `INSERT INTO guest_folder_unlock_failure (resource_id, property_id, failures)
-             VALUES ($1, $2, 1)
-             ON CONFLICT (resource_id) DO UPDATE SET
-               failures = CASE WHEN guest_folder_unlock_failure.window_start
-                                    > now() - make_interval(secs => $3)
-                               THEN guest_folder_unlock_failure.failures + 1 ELSE 1 END,
-               window_start = CASE WHEN guest_folder_unlock_failure.window_start
-                                        > now() - make_interval(secs => $3)
-                                   THEN guest_folder_unlock_failure.window_start ELSE now() END,
-               last_failure_at = now()`,
-            [k.resourceId, k.propertyId, FOLDER_UNLOCK_WINDOW_SECONDS])
+            `UPDATE guest_folder_unlock_failure
+                SET failures = failures + 1, last_failure_at = now()
+              WHERE resource_id = $1`, [k.resourceId])
+          await client.query(
+            `UPDATE guest_folder_unlock_failure_origin
+                SET failures = failures + 1, last_failure_at = now()
+              WHERE resource_id = $1 AND origin_hash = $2`, [k.resourceId, herkunft])
           return { art: 'falsch' }
         }
         await client.query(
           `DELETE FROM guest_folder_unlock_failure WHERE resource_id = $1`, [k.resourceId])
+        // Nur die eigene Herkunft: die Sperre eines Dritten bleibt stehen,
+        // auch wenn der Gast inzwischen hineingekommen ist.
+        await client.query(
+          `DELETE FROM guest_folder_unlock_failure_origin
+            WHERE resource_id = $1 AND origin_hash = $2`, [k.resourceId, herkunft])
         const s = await freischalten(client, reply,
           { propertyId: k.propertyId, reservationId: treffer.id, channel: 'room' })
         return { art: 'ok',

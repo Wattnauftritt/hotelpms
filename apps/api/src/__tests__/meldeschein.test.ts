@@ -247,6 +247,26 @@ describe('Sammelmeldeschein einer Reisegruppe', () => {
       `SELECT 1 FROM registration WHERE property_id = $1`, [fx.propertyId])
     expect(regs.rowCount).toBe(0)
   })
+
+  it('nimmt keinen Gast eines zweiten Betriebs als Mitreisenden (Audit 19.10., H1)', async () => {
+    // Derselbe Mensch putzt nebenher bei einem anderen Kunden: beide Accounts
+    // stehen im Kontext, die Zeilenrichtlinie laesst deren Gaeste durch.
+    const b = await makeProperty(owner, { code: 'FREMD', name: 'Fremdhaus' })
+    await owner.query(
+      `INSERT INTO user_property_role (user_id, property_id, role_id)
+       SELECT u.id, $1, r.id FROM app_user u, role r
+        WHERE u.email = 'chef@test.de' AND r.key = 'housekeeping' AND r.account_id IS NULL`,
+      [b.propertyId])
+    const fremd = await owner.query<{ public_ref: string }>(
+      `INSERT INTO guest (account_id, last_name, country) VALUES ($1,'Fremd','DE')
+       RETURNING public_ref`, [b.accountId])
+    const ref = await reservierung(await gast('Petersen'))
+    expect((await melden(ref, { occupantGuestRefs: [fremd.rows[0]!.public_ref] })).statusCode)
+      .toBe(404)
+    const regs = await owner.query(
+      `SELECT 1 FROM registration WHERE property_id = $1`, [fx.propertyId])
+    expect(regs.rowCount).toBe(0)
+  })
 })
 
 /**

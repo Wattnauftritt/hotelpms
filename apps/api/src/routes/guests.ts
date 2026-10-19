@@ -6,7 +6,8 @@ import { hinweisText } from '../platform/texte.js'
 import { loadConfig } from '../platform/config.js'
 import { decryptIdDocument, maskIdDocument } from '../platform/crypto.js'
 import { gastAnlegen, gastAendern } from '../platform/gast.js'
-import { accountFor, type Principal } from '../platform/context.js'
+import { accountFor, accountsWith, canInAccount, type Principal } from '../platform/context.js'
+import type { Permission } from '../platform/permissions.js'
 import type { PoolClient } from '@hotelpms/db'
 
 const config = loadConfig()
@@ -111,6 +112,27 @@ const NOTIZEN_IM_PROFIL = 50
  */
 const NOTIZ_MAX = 500
 
+/**
+ * Das Recht der Route im Account **dieses** Datensatzes.
+ *
+ * Die Gast- und Firmenrouten nehmen kein Haus, also prueft `registerRoute`
+ * das Recht nur "irgendwo", und die Zeilenrichtlinie auf `guest` und
+ * `company` filtert nur nach Account. Wer bei Kunde A Rezeption ist und bei
+ * Kunde B nur putzt, hat beide Accounts im Kontext -- und konnte bei B Gaeste
+ * lesen, umschreiben und anonymisieren (Sicherheitsaudit 2026-10-19, H1).
+ * Fremd und nicht vorhanden bekommen dieselbe Antwort, damit sich keine
+ * Referenzen abzaehlen lassen.
+ */
+function rechtImAccount(
+  principal: Principal, permission: Permission, accountId: number | string,
+  res: 'res.guest' | 'res.company'
+): void {
+  if (canInAccount(principal, permission, Number(accountId))) return
+  // Ausgeschrieben statt `notFound(res)`: der Meldungstest liest die Quelle
+  // und erkennt nur feste Schluessel.
+  throw res === 'res.guest' ? Errors.notFound('res.guest') : Errors.notFound('res.company')
+}
+
 export function guestRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -124,6 +146,8 @@ export function guestRoutes(app: FastifyInstance): void {
         throw Errors.validation({ q: ['field.minTwoChars'] })
       }
       const limit = Math.min(Number(q.limit ?? 20) || 20, 100)
+      // Nur in den Accounts, in denen das Recht besteht (H1, Audit 2026-10-19).
+      const accounts = accountsWith(req.principal as Principal, 'guest:read')
       return tx(req.pool, req, async client => {
         /*
          * Eine Abfrage, feste Obergrenze, und vor allem: **kein
@@ -171,7 +195,7 @@ export function guestRoutes(app: FastifyInstance): void {
              SELECT * FROM (
                SELECT ${FIELDS}, (last_name <-> $1) AS dist
                  FROM guest
-                WHERE status <> 'anonymized'
+                WHERE status <> 'anonymized' AND account_id = ANY($4::bigint[])
                 ORDER BY last_name <-> $1
                 LIMIT $2
              ) k WHERE dist <= 0.7
@@ -179,14 +203,14 @@ export function guestRoutes(app: FastifyInstance): void {
              SELECT ${FIELDS}, (last_name <-> $1) AS dist FROM (
                SELECT ${FIELDS}, ($1 <<-> last_name) AS wort
                  FROM guest
-                WHERE status <> 'anonymized'
+                WHERE status <> 'anonymized' AND account_id = ANY($4::bigint[])
                 ORDER BY $1 <<-> last_name
                 LIMIT $2
              ) k WHERE wort <= 0.6
            ), nach_email AS (
              SELECT ${FIELDS}, 0.0::real AS dist
                FROM guest
-              WHERE $3 AND status <> 'anonymized'
+              WHERE $3 AND status <> 'anonymized' AND account_id = ANY($4::bigint[])
                 AND email_lower ~>=~ lower($1)
                 AND email_lower ~<~ text_prefix_end(lower($1))
               LIMIT $2
@@ -198,7 +222,7 @@ export function guestRoutes(app: FastifyInstance): void {
               ORDER BY id, dist
            )
            SELECT * FROM zusammen ORDER BY dist, last_name LIMIT $2`,
-          [term, limit, term.includes('@')])
+          [term, limit, term.includes('@'), accounts])
         return { guests: rows.map(present) }
       })
     }
@@ -235,9 +259,10 @@ export function guestRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { guestRef } = req.params as { guestRef: string }
       return tx(req.pool, req, async client => {
-        const { rows, rowCount } = await client.query<GuestRow>(
-          `SELECT ${FIELDS} FROM guest WHERE public_ref = $1`, [guestRef])
+        const { rows, rowCount } = await client.query<GuestRow & { account_id: string }>(
+          `SELECT ${FIELDS}, account_id FROM guest WHERE public_ref = $1`, [guestRef])
         if (rowCount === 0) throw Errors.notFound('res.guest')
+        rechtImAccount(req.principal as Principal, 'guest:read', rows[0]!.account_id, 'res.guest')
         /*
          * Die Hausnotizen gehoeren ins Profil, nicht erst in die Auskunft
          * nach Art. 15: sie sind eine Anforderung des Gastes ("ebenerdiges
@@ -274,9 +299,12 @@ export function guestRoutes(app: FastifyInstance): void {
       const { guestRef } = req.params as { guestRef: string }
       const body = req.body as Partial<GuestBody>
       return tx(req.pool, req, async client => {
-        const cur = await client.query<{ id: number; status: string }>(
-          `SELECT id, status FROM guest WHERE public_ref = $1 FOR UPDATE`, [guestRef])
+        const cur = await client.query<{ id: number; status: string; account_id: string }>(
+          `SELECT id, status, account_id FROM guest WHERE public_ref = $1 FOR UPDATE`,
+          [guestRef])
         if (cur.rowCount === 0) throw Errors.notFound('res.guest')
+        rechtImAccount(req.principal as Principal, 'guest:write', cur.rows[0]!.account_id,
+          'res.guest')
         if (cur.rows[0]!.status === 'anonymized') {
           throw Errors.conflict('guest.anonymizedNotRevived')
         }
@@ -303,12 +331,14 @@ export function guestRoutes(app: FastifyInstance): void {
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const { rows, rowCount } = await client.query<{
-          id: number; id_document_type: string | null
+          id: number; id_document_type: string | null; account_id: string
           id_document_number_enc: Buffer | null; id_document_key_version: number | null }>(
-          `SELECT id, id_document_type, id_document_number_enc, id_document_key_version
+          `SELECT id, id_document_type, id_document_number_enc, id_document_key_version,
+                  account_id
              FROM guest WHERE public_ref = $1`, [guestRef])
         if (rowCount === 0) throw Errors.notFound('res.guest')
         const g = rows[0]!
+        rechtImAccount(principal, 'guest:read_identity', g.account_id, 'res.guest')
         if (g.id_document_number_enc === null || g.id_document_key_version === null) {
           return { guestRef, idDocumentType: g.id_document_type, number: null }
         }
@@ -347,9 +377,12 @@ export function guestRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { guestRef } = req.params as { guestRef: string }
       return tx(req.pool, req, async client => {
-        const g = await client.query<GuestRow & { created_at: string }>(
-          `SELECT ${FIELDS}, created_at::text FROM guest WHERE public_ref = $1`, [guestRef])
+        const g = await client.query<GuestRow & { created_at: string; account_id: string }>(
+          `SELECT ${FIELDS}, created_at::text, account_id FROM guest WHERE public_ref = $1`,
+          [guestRef])
         if (g.rowCount === 0) throw Errors.notFound('res.guest')
+        rechtImAccount(req.principal as Principal, 'guest:export', g.rows[0]!.account_id,
+          'res.guest')
         const id = g.rows[0]!.id
 
         const stays = await client.query(
@@ -453,9 +486,12 @@ export function guestRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { guestRef } = req.params as { guestRef: string }
       return tx(req.pool, req, async client => {
-        const cur = await client.query<{ id: number; status: string }>(
-          `SELECT id, status FROM guest WHERE public_ref = $1 FOR UPDATE`, [guestRef])
+        const cur = await client.query<{ id: number; status: string; account_id: string }>(
+          `SELECT id, status, account_id FROM guest WHERE public_ref = $1 FOR UPDATE`,
+          [guestRef])
         if (cur.rowCount === 0) throw Errors.notFound('res.guest')
+        rechtImAccount(req.principal as Principal, 'guest:export', cur.rows[0]!.account_id,
+          'res.guest')
         const id = cur.rows[0]!.id
         if (cur.rows[0]!.status === 'anonymized') {
           return { guestRef, status: 'anonymized', alreadyDone: true }
@@ -538,8 +574,14 @@ export function guestRoutes(app: FastifyInstance): void {
         throw Errors.validation({ note: ['field.maxLength'] }, { max: NOTIZ_MAX })
       }
       return tx(req.pool, req, async client => {
+        // Der Gast im Betrieb des Hauses: das Haus prueft `propertyParam`, den
+        // Gast fand bisher nur die Zeilenrichtlinie, und die Notiz eines Hauses
+        // von A landete an einem Gast von B (H1, Audit 2026-10-19).
         const g = await client.query<{ id: number; status: string }>(
-          `SELECT id, status FROM guest WHERE public_ref = $1`, [guestRef])
+          `SELECT g.id, g.status FROM guest g
+            WHERE g.public_ref = $1
+              AND g.account_id = (SELECT p.account_id FROM property p WHERE p.id = $2)`,
+          [guestRef, propertyId])
         if (g.rowCount === 0) throw Errors.notFound('res.guest')
         // Mitbehoben: an ein anonymisiertes Profil liess sich eine neue Notiz
         // haengen -- und damit genau das wieder anlegen, was die Loeschung
@@ -609,6 +651,8 @@ export function guestRoutes(app: FastifyInstance): void {
       const q = req.query as { q?: string }
       const term = (q.q ?? '').trim()
       if (term.length < 2) throw Errors.validation({ q: ['field.minTwoChars'] })
+      // Nur in den Accounts, in denen das Recht besteht (H1, Audit 2026-10-19).
+      const accounts = accountsWith(req.principal as Principal, 'guest:read')
       return tx(req.pool, req, async client => {
         /*
          * Wie die Gastsuche: die Schwelle steht aussen, weil `%` nicht
@@ -620,13 +664,13 @@ export function guestRoutes(app: FastifyInstance): void {
           `WITH nach_name AS (
              SELECT * FROM (
                SELECT id, (name <-> $1) AS abstand
-                 FROM company WHERE active
+                 FROM company WHERE active AND account_id = ANY($2::bigint[])
                 ORDER BY name <-> $1 LIMIT 50
              ) k WHERE abstand <= 0.7
            ), nach_anfang AS (
              SELECT id, abstand FROM (
                SELECT id, (name <-> $1) AS abstand, ($1 <<-> name) AS wort
-                 FROM company WHERE active
+                 FROM company WHERE active AND account_id = ANY($2::bigint[])
                 ORDER BY $1 <<-> name LIMIT 50
              ) k WHERE wort <= 0.6
            ), treffer AS (
@@ -637,7 +681,7 @@ export function guestRoutes(app: FastifyInstance): void {
            SELECT c.public_ref AS "companyRef", c.name, c.vat_id AS "vatId", c.city,
                   c.payment_terms_days AS "paymentTermsDays"
              FROM treffer t JOIN company c ON c.id = t.id
-            ORDER BY t.abstand, c.name LIMIT 50`, [term])
+            ORDER BY t.abstand, c.name LIMIT 50`, [term, accounts])
         return { companies: rows }
       })
     }
@@ -658,10 +702,13 @@ export function guestRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { companyRef } = req.params as { companyRef: string }
       return tx(req.pool, req, async client => {
-        const { rows, rowCount } = await client.query(
-          `SELECT ${COMPANY_FIELDS} FROM company WHERE public_ref = $1`, [companyRef])
+        const { rows, rowCount } = await client.query<{ _account: string }>(
+          `SELECT ${COMPANY_FIELDS}, account_id AS _account
+             FROM company WHERE public_ref = $1`, [companyRef])
         if (rowCount === 0) throw Errors.notFound('res.company')
-        return rows[0]
+        const { _account, ...firma } = rows[0]!
+        rechtImAccount(req.principal as Principal, 'guest:read', _account, 'res.company')
+        return firma
       })
     }
   })
@@ -681,9 +728,11 @@ export function guestRoutes(app: FastifyInstance): void {
       const leitweg = leitwegId(body.buyerReference)
       const ansprechpartner = ansprechpartnerName(body.contactName)
       return tx(req.pool, req, async client => {
-        const cur = await client.query<{ id: number }>(
-          `SELECT id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
+        const cur = await client.query<{ id: number; account_id: string }>(
+          `SELECT id, account_id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
         if (cur.rowCount === 0) throw Errors.notFound('res.company')
+        rechtImAccount(req.principal as Principal, 'guest:write', cur.rows[0]!.account_id,
+          'res.company')
 
         const { rows } = await client.query(
           `UPDATE company SET

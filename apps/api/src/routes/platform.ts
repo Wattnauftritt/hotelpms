@@ -3,7 +3,7 @@ import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { tx } from '../platform/db.js'
 import type { Principal } from '../platform/context.js'
-import { einmalTokenUndPost } from './auth.js'
+import { einmalTokenUndPost, personenwechselBeenden } from './auth.js'
 
 /**
  * Das Adminpanel: Kunden, Plattformbenutzer, Betriebszustand.
@@ -403,6 +403,19 @@ export function platformRoutes(app: FastifyInstance): void {
         await client.query(
           `UPDATE app_user SET status = $2, updated_at = now() WHERE id = $1`,
           [id, status])
+        /*
+         * Stilllegen zieht die Sitzungen zurueck, wie beim Entfernen aus
+         * einem Betrieb. Der Status allein haelt nur die Sitzungen an, in
+         * denen der Stillgelegte die handelnde Person ist; seine eigene
+         * Tresensitzung, per PIN auf einen Kollegen gewechselt, liefe weiter
+         * (M3, Audit 19.10.2026).
+         */
+        if (status === 'disabled') {
+          await client.query(
+            `UPDATE user_session SET revoked_at = now()
+              WHERE user_id = $1 AND revoked_at IS NULL`, [id])
+          await personenwechselBeenden(client, id)
+        }
         return { id, status, previous: u.rows[0]!.status }
       })
     }

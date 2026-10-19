@@ -173,10 +173,15 @@ export function registrationRoutes(app: FastifyInstance): void {
           throw Errors.unprocessable(
             'registration.noPrimaryGuest')
         }
-        // Mitreisende in einer Abfrage, in der Reihenfolge der Eingabe.
+        // Mitreisende in einer Abfrage, in der Reihenfolge der Eingabe -- und
+        // nur aus dem Betrieb des Hauses: die Zeilenrichtlinie liesse den Gast
+        // eines zweiten Betriebs auf den Schein (Sicherheitsaudit 2026-10-19, H1).
         const refs = body.occupantGuestRefs ?? []
         const m = await client.query<{ id: number; public_ref: string }>(
-          `SELECT id, public_ref FROM guest WHERE public_ref = ANY($1::text[])`, [refs])
+          `SELECT g.id, g.public_ref FROM guest g
+            WHERE g.public_ref = ANY($1::text[])
+              AND g.account_id = (SELECT p.account_id FROM property p WHERE p.id = $2)`,
+          [refs, body.propertyId])
         const idNachRef = new Map(m.rows.map(r => [r.public_ref, Number(r.id)]))
         const mitreisende = refs.map(ref => {
           const id = idNachRef.get(ref)

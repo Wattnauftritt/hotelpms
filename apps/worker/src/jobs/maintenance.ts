@@ -239,6 +239,10 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
     `DELETE FROM guest_folder_session WHERE expires_on < current_date - 7`)
   const z = await client.query(
     `DELETE FROM guest_folder_unlock_failure WHERE last_failure_at < now() - interval '1 day'`)
+  // Je Herkunft (0186): traegt den Hash einer Adresse, also nicht laenger als das Zimmer.
+  const zh = await client.query(
+    `DELETE FROM guest_folder_unlock_failure_origin
+      WHERE last_failure_at < now() - interval '1 day'`)
   /*
    * Der Text einer Nachricht aus der Gaestemappe (0153), 30 Tage nach der
    * Abreise. Er ist Freitext und kann alles enthalten; die Rezeption
@@ -251,7 +255,7 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
       WHERE r.id = q.reservation_id AND q.message IS NOT NULL
         AND r.departure < current_date - 30`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
-    + (m.rowCount ?? 0) + (z.rowCount ?? 0) + (n.rowCount ?? 0)
+    + (m.rowCount ?? 0) + (z.rowCount ?? 0) + (zh.rowCount ?? 0) + (n.rowCount ?? 0)
 }
 
 /**

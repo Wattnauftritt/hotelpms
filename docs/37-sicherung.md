@@ -128,6 +128,8 @@ systemctl daemon-reload && systemctl enable --now hotelpms-einsortieren.timer
 
 **Warum geschoben und nicht geholt.** Die VM steht hinter dem Proxmox-Host und ist von außen nicht erreichbar. Sie schiebt deshalb, aber der Schlüssel kann nur in `eingang/` schreiben, nicht lesen und nicht löschen. `einsortieren.sh` holt fertige Sätze alle 15 Minuten heraus, prüft die Prüfsummen und legt sie dorthin, wo die VM nicht hinkommt. Wer die VM übernimmt, kann neue Sätze schicken, aber keinen alten anrühren.
 
+Auch nicht über den Namen (Audit 19.10.2026, M8): die Aufbewahrung sortiert danach, und dreißig Sätze `9999-01-01` ff. hätten jeden echten verdrängt. `einsortieren.sh` nimmt deshalb nur ein echtes Datum bis morgen an, ersetzt keinen vorhandenen Satz (der zweite geht nach `defekt/`) und räumt nicht auf, wenn in einem Lauf mehr als drei Sätze ankommen. Dann steht `/srv/sicherung/AUFRAEUMEN_GESPERRT`, der Totmannschalter meldet einen Fehler, und erst wer `taeglich/` angesehen und die Datei gelöscht hat, gibt das Aufräumen wieder frei.
+
 Der Totmannschalter (zum Beispiel healthchecks.io, in `/etc/hotelpms/einsortieren.env` als `MELDEN=`) bekommt nur bei einem neuen, geprüften Satz ein Lebenszeichen. Bleibt es einen Tag aus, kommt eine Mail, auch dann, wenn die VM gar nicht mehr sendet.
 
 ---

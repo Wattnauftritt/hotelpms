@@ -105,7 +105,9 @@ weist jeden Export nach draußen und jeden Versand hart ab.
 - **Verschlüsselt, bevor es die Maschine verlässt.** Der Schlüssel des
   täglichen Dumps liegt nicht auf dem Server.
 - **Nicht löschbar vom Server aus.** Schicht 1 mit Versionierung und Object
-  Lock, Schicht 2 nimmt nur an (`rrsync -wo -no-del`).
+  Lock, Schicht 2 nimmt nur an (`rrsync -wo -no-del`), ersetzt keinen
+  vorhandenen Satz und nimmt keinen mit erfundenem oder künftigem Datum an,
+  der die echten aus der Aufbewahrung drängen könnte.
 - **Wiederherstellungszeit:** Ziel vier Stunden bis zur arbeitenden
   Rezeption; jährlich auf einer frischen VM gemessen.
 - **Prüfung der Wiederherstellung:** vierteljährlich mit

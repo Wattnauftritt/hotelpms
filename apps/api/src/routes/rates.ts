@@ -230,8 +230,23 @@ export function rateRoutes(app: FastifyInstance): void {
       if (abgeleitet && gruppen.length > 1) {
         throw Errors.validation({ baseRatePlanId: ['field.invalid'] })
       }
+      const storno = body.cancellationPolicyId ?? null
+      if (storno !== null && (!Number.isSafeInteger(storno) || storno <= 0)) {
+        throw Errors.validation({ cancellationPolicyId: ['field.invalid'] })
+      }
       return tx(req.pool, req, async client => {
         if (abgeleitet) await assertPlan(client, propertyId, body.baseRatePlanId!)
+        // Wie die Gruppe: die Zeilenrichtlinie trennt nur Mandanten. Eine
+        // Regel eines anderen Hauses rechnete im Nachtlauf die No-Show-Gebuehr
+        // nach fremden Bedingungen (Audit 19.10.2026, N3). Eine unbekannte
+        // oder fremde Kennung sieht gleich aus, damit die Antwort nicht
+        // verraet, ob es sie gibt.
+        if (storno !== null) {
+          const r = await client.query(
+            `SELECT 1 FROM cancellation_policy WHERE id = $1 AND property_id = $2`,
+            [storno, propertyId])
+          if (r.rowCount === 0) throw Errors.validation({ cancellationPolicyId: ['field.invalid'] })
+        }
         // Die Zeilenrichtlinie trennt Mandanten, nicht Haeuser: die Gruppe
         // muss zu diesem Haus gehoeren.
         const k = await client.query<{ id: number; code: string }>(
@@ -255,7 +270,7 @@ export function rateRoutes(app: FastifyInstance): void {
                                     derive_kind, derive_value)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, public_ref`,
             [propertyId, g.id, kuerzel, name,
-             body.cancellationPolicyId ?? null, body.baseRatePlanId ?? null,
+             storno, body.baseRatePlanId ?? null,
              body.deriveKind ?? null, body.deriveValue ?? null])
           angelegt.push({ ratePlanId: rows[0]!.id, ratePlanRef: rows[0]!.public_ref,
                           code: kuerzel })
