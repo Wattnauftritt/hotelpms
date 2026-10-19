@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useT } from '../lib/i18n/index.js'
 import { anschriftAusKarte, vorschlagErgaenzen, type AnschriftVorschlag, type KartenZeile }
   from '../lib/visitenkarte.js'
-import type { Fortschritt, Leser } from '../lib/texterkennung.js'
+import { leserAnlegen, type Fortschritt, type Leser } from '../lib/leser.js'
 
 /**
  * Ein Knopf, der die Kamera oeffnet.
@@ -49,8 +49,8 @@ const LEER: AnschriftVorschlag = {
  * Anschrift hinten. Jede weitere Seite wird gelesen und fuellt nur Felder,
  * die noch leer sind -- was schon korrigiert wurde, bleibt.
  *
- * **Nichts bleibt liegen.** Das Foto wird im Geraet gelesen
- * (`lib/texterkennung.ts`), nicht hochgeladen und nicht gespeichert; mit dem
+ * **Nichts bleibt liegen.** Das Foto wird im Geraet gelesen (`lib/leser.ts`:
+ * in der App von iOS oder Android, im Browser von Tesseract), nicht hochgeladen und nicht gespeichert; mit dem
  * Schliessen ist es weg.
  */
 export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
@@ -78,7 +78,7 @@ export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
     setFehler(false)
     setStand({ schritt: 'laden' })
     try {
-      leser.current ??= import('../lib/texterkennung.js').then(m => m.leserAnlegen())
+      leser.current ??= leserAnlegen()
       const l = await leser.current
       // Haengt die Erkennung trotz allem, steht nach zwei Minuten der
       // Fehler da und nicht endlos „wird gelesen"; der Leser faengt neu an.

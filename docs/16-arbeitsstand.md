@@ -1403,4 +1403,6 @@ Sven, 19.10.2026: Am Handy die Visitenkarte fotografieren, statt die Firmenansch
 - **Caddy.** Die Content-Security-Policy braucht dafür `'wasm-unsafe-eval'` (`ops/caddy/Caddyfile`). Ohne den Eintrag meldet der Scan sofort einen Fehler, statt zu hängen.
 - **Was die Erkennung sucht** (`lib/visitenkarte.ts`): Name über die Rechtsform, sonst die größte Zeile; Postleitzahl und Ort mit Länderkennung (`D-`, `A-`, `CH-`, niederländisch `1013 AB`); Straße davor oder in derselben Zeile; USt-IdNr. Telefon, Fax, Mail und Web werden nie zur Anschrift.
 
+- **Vorbereitet für die eigene App.** `lib/leser.ts` nimmt die Erkennung des Telefons (iOS Vision, Android ML Kit), sobald die App sie unter `window.staygridNative.texterkennung` anbietet; sie liefert nur Zeilen mit Lage, die Zuordnung bleibt in `visitenkarte.ts`. Ohne App ändert sich nichts.
+
 Tests in `visitenkarte.test.ts`.

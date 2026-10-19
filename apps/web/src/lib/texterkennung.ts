@@ -7,7 +7,8 @@ import workerUrl from 'tesseract.js/dist/worker.min.js?url'
 import kernSimdUrl from 'tesseract.js-core/tesseract-core-simd-lstm.wasm.js?url'
 import kernUrl from 'tesseract.js-core/tesseract-core-lstm.wasm.js?url'
 import deuUrl from '@tesseract.js-data/deu/4.0.0_best_int/deu.traineddata.gz?url'
-import type { KartenZeile } from './visitenkarte.js'
+import { zeilenAusBoxen } from './visitenkarte.js'
+import type { Fortschritt, Leser } from './leser.js'
 
 /**
  * Texterkennung im Browser, fuer die Visitenkarte im Firmenformular.
@@ -22,8 +23,9 @@ import type { KartenZeile } from './visitenkarte.js'
  * korrigiert die Rezeption im Vorschlag, bevor etwas gespeichert wird.
  *
  * **Nachgeladen.** Diese Datei wird erst beim ersten Scan geholt
- * (`import()` im Formular); Erkennung und Sprachdaten sind zusammen rund
- * fuenf Megabyte und gehoeren nicht in den Start der Rezeption.
+ * (`import()` in `leser.ts`), in der App gar nicht. Erkennung und
+ * Sprachdaten sind zusammen rund fuenf Megabyte und gehoeren nicht in den
+ * Start der Rezeption.
  *
  * Nur die deutschen Sprachdaten: sie kennen das lateinische Alphabet mit
  * Umlauten und lesen damit auch englische und niederlaendische Karten.
@@ -36,8 +38,6 @@ const MAX_KANTE = 2000
 
 /** Zeilen mit weniger Zuversicht sind meist ein Logo oder Muster, kein Text. */
 const MIN_ZUVERSICHT = 45
-
-export type Fortschritt = { schritt: 'laden' } | { schritt: 'lesen'; anteil: number }
 
 /**
  * Ob der Browser WebAssembly-SIMD kann. Das winzige Modul ist die Pruefung
@@ -57,20 +57,13 @@ function kannSimd(): boolean {
 
 const absolut = (pfad: string): string => new URL(pfad, location.href).href
 
-export interface Leser {
-  lesen(bild: Blob, fortschritt: (f: Fortschritt) => void): Promise<{
-    zeilen: KartenZeile[]
-    text: string
-  }>
-  beenden(): Promise<void>
-}
-
 /**
- * Einen Leser anlegen. Er haelt die Erkennung fuer Vorder- und Rueckseite
+ * Der Leser im Browser. Er haelt die Erkennung fuer Vorder- und Rueckseite
  * bereit und wird danach beendet; die Rechnerei laeuft in einem eigenen
- * Worker, damit die Seite waehrenddessen bedienbar bleibt.
+ * Worker, damit die Seite waehrenddessen bedienbar bleibt. Ausgewaehlt wird
+ * er in `leser.ts`, nur wenn das Geraet keine eigene Erkennung anbietet.
  */
-export function leserAnlegen(): Leser {
+export function tesseractLeser(): Leser {
   let melden: (f: Fortschritt) => void = () => {}
   let worker: Promise<Worker> | null = null
   // Nach `beenden` nimmt der Leser nichts mehr an: tesseract.js schickte
@@ -116,12 +109,10 @@ export function leserAnlegen(): Leser {
       const roh = (data.blocks ?? [])
         .flatMap(b => b.paragraphs.flatMap(p => p.lines))
         .filter(l => l.confidence >= MIN_ZUVERSICHT && l.text.trim() !== '')
-      const hoehen = roh.map(l => l.bbox.y1 - l.bbox.y0).sort((a, b) => a - b)
-      const mitte = hoehen[Math.floor(hoehen.length / 2)] ?? 1
-      return {
-        zeilen: roh.map(l => ({ text: l.text.trim(), hoehe: (l.bbox.y1 - l.bbox.y0) / mitte })),
-        text: roh.map(l => l.text.trim()).join('\n')
-      }
+      const zeilen = zeilenAusBoxen(roh.map(l => ({
+        text: l.text, oben: l.bbox.y0, unten: l.bbox.y1, links: l.bbox.x0
+      })), { sortieren: false })
+      return { zeilen, text: zeilen.map(z => z.text).join('\n') }
     },
     async beenden() {
       beendet = true

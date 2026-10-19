@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { anschriftAusKarte, vorschlagErgaenzen, type KartenZeile }
+import { anschriftAusKarte, vorschlagErgaenzen, zeilenAusBoxen, type KartenZeile }
   from '../lib/visitenkarte.js'
+import { leserAnlegen } from '../lib/leser.js'
 
 /**
  * Der Vorschlag aus dem Text einer Visitenkarte. Geprueft wird an Karten,
@@ -120,5 +121,58 @@ describe('Weitere Seite einarbeiten', () => {
       name: 'Küstenbau GmbH', addressLine1: 'Deichstraße 40', postalCode: '27472',
       city: 'Cuxhaven', country: 'DE', vatId: 'DE123456789'
     })
+  })
+})
+
+describe('Zeilen aus einer Erkennung', () => {
+  it('ordnet ungeordnete Zeilen von oben nach unten und in einer Hoehe von links', () => {
+    // So liefert Apple Vision: in keiner verlaesslichen Reihenfolge.
+    const z = zeilenAusBoxen([
+      { text: '27472 Cuxhaven', oben: 300, unten: 330, links: 10 },
+      { text: 'Nordsee GmbH', oben: 10, unten: 70, links: 10 },
+      { text: 'Hafenstraße 1', oben: 250, unten: 280, links: 10 },
+      { text: 'Fax 2', oben: 352, unten: 380, links: 300 },
+      { text: 'Tel 1', oben: 350, unten: 380, links: 10 }
+    ], { sortieren: true })
+    expect(z.map(x => x.text))
+      .toEqual(['Nordsee GmbH', 'Hafenstraße 1', '27472 Cuxhaven', 'Tel 1', 'Fax 2'])
+    // Die Hoehe zaehlt im Verhaeltnis zur mittleren Zeile: der Name ist doppelt so gross.
+    expect(z[0]!.hoehe).toBe(2)
+  })
+
+  it('laesst die Reihenfolge stehen, wenn die Erkennung sie schon liefert', () => {
+    const z = zeilenAusBoxen([
+      { text: 'b', oben: 50, unten: 60, links: 0 },
+      { text: 'a', oben: 10, unten: 20, links: 0 },
+      { text: '  ', oben: 0, unten: 5, links: 0 }
+    ], { sortieren: false })
+    expect(z.map(x => x.text)).toEqual(['b', 'a'])
+  })
+})
+
+describe('Wer die Karte liest', () => {
+  it('nimmt die Erkennung der App, wenn die App sie anbietet', async () => {
+    const vorher = (globalThis as { window?: unknown }).window
+    let gelesen = 0
+    ;(globalThis as { window?: unknown }).window = {
+      staygridNative: {
+        texterkennung: {
+          erkennen: async () => {
+            gelesen++
+            return { zeilen: [{ text: 'Muster GmbH', oben: 0, unten: 10, links: 0 }] }
+          }
+        }
+      }
+    }
+    try {
+      const leser = await leserAnlegen()
+      const r = await leser.lesen(new Blob(), () => {})
+      expect(gelesen).toBe(1)
+      expect(r.text).toBe('Muster GmbH')
+      await leser.beenden()
+      await expect(leser.lesen(new Blob(), () => {})).rejects.toThrow()
+    } finally {
+      ;(globalThis as { window?: unknown }).window = vorher
+    }
   })
 })

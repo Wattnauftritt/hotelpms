@@ -21,6 +21,45 @@ export interface KartenZeile {
   hoehe: number
 }
 
+/**
+ * Eine Zeile, wie eine Erkennung sie liefert: Text und senkrechte Lage.
+ * Die Einheit ist gleich (Pixel, Anteil der Bildhoehe), solange sie fuer
+ * alle Zeilen einer Seite dieselbe ist; gerechnet wird nur im Verhaeltnis.
+ */
+export interface ErkannteZeile {
+  text: string
+  /** Oberkante, nach unten wachsend. */
+  oben: number
+  unten: number
+  links: number
+}
+
+/**
+ * Erkannte Zeilen in Kartenzeilen: Hoehe relativ zur mittleren Zeile der
+ * Seite, leere Zeilen weg.
+ *
+ * `sortieren` fuer Erkennungen, die keine Lesereihenfolge liefern (Apple
+ * Vision gibt seine Beobachtungen ungeordnet zurueck): dann von oben nach
+ * unten, in einer Hoehe von links nach rechts. Tesseract liefert schon die
+ * Reihenfolge seiner Bloecke, und die waere bei zwei Spalten besser als jede
+ * Sortierung nach Hoehe.
+ */
+export function zeilenAusBoxen(roh: readonly ErkannteZeile[],
+                               { sortieren }: { sortieren: boolean }): KartenZeile[] {
+  const zeilen = roh.filter(z => z.text.trim() !== '' && z.unten > z.oben)
+  if (sortieren) {
+    zeilen.sort((a, b) => {
+      // "Gleiche Hoehe" heisst: die Mitten liegen weniger als eine halbe Zeile auseinander.
+      const halbe = Math.min(a.unten - a.oben, b.unten - b.oben) / 2
+      const dy = (a.oben + a.unten) / 2 - (b.oben + b.unten) / 2
+      return Math.abs(dy) < halbe ? a.links - b.links : dy
+    })
+  }
+  const hoehen = zeilen.map(z => z.unten - z.oben).sort((a, b) => a - b)
+  const mitte = hoehen[Math.floor(hoehen.length / 2)] ?? 1
+  return zeilen.map(z => ({ text: z.text.trim(), hoehe: (z.unten - z.oben) / mitte }))
+}
+
 export interface AnschriftVorschlag {
   name: string
   addressLine1: string
