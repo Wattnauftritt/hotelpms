@@ -46,9 +46,14 @@ const OFFENE_POSTEN = `
            COALESCE((i.totals->>'payableCent')::bigint, (i.totals->>'grossCent')::bigint)
              - COALESCE(b.summe, 0) AS offen,
            -- Seit 0159 steht die Faelligkeit an der Rechnung; aeltere leiten
-           -- sie aus dem Ziel der Firma ab, ohne eines ist sie sofort faellig.
-           COALESCE(i.due_on, i.issued_on + c.payment_terms_days, i.issued_on) AS faellig
+           -- sie aus dem Ziel der Firma ab, ohne eigenes aus dem des Hauses
+           -- (0189), ohne Firma ist sie sofort faellig.
+           COALESCE(i.due_on,
+                    i.issued_on + CASE WHEN c.id IS NOT NULL
+                                       THEN COALESCE(c.payment_terms_days, h.payment_terms_days) END,
+                    i.issued_on) AS faellig
       FROM invoice i
+      JOIN property h ON h.id = i.property_id
       JOIN folio f ON f.id = i.folio_id
       LEFT JOIN company c ON c.id = f.company_id
       LEFT JOIN bezahlt b ON b.invoice_id = i.id

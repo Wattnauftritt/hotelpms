@@ -630,12 +630,12 @@ export function guestRoutes(app: FastifyInstance): void {
           `INSERT INTO company (account_id, name, vat_id, address_line1, postal_code,
                                 city, country, payment_terms_days, invoice_email,
                                 buyer_reference, contact_name)
-           VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'DE'),COALESCE($8,14),$9,$10,$11)
+           VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,'DE'),$8,$9,$10,$11)
            RETURNING public_ref`,
           [accountId, body.name.trim(), body.vatId ?? null, body.addressLine1 ?? null,
            body.postalCode ?? null, body.city ?? null, body.country ?? null,
-           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, leitweg ?? null,
-           ansprechpartner ?? null])
+           zahlungsziel(body.paymentTermsDays) ?? null, body.invoiceEmail ?? null,
+           leitweg ?? null, ansprechpartner ?? null])
         reply.status(201)
         return { companyRef: rows[0]!.public_ref, name: body.name.trim() }
       })
@@ -722,11 +722,12 @@ export function guestRoutes(app: FastifyInstance): void {
       const { companyRef } = req.params as { companyRef: string }
       const body = req.body as {
         name?: string; vatId?: string; addressLine1?: string; postalCode?: string
-        city?: string; country?: string; paymentTermsDays?: number; invoiceEmail?: string
-        active?: boolean; buyerReference?: string | null; contactName?: string | null
+        city?: string; country?: string; paymentTermsDays?: number | null
+        invoiceEmail?: string; active?: boolean; buyerReference?: string | null; contactName?: string | null
       }
       const leitweg = leitwegId(body.buyerReference)
       const ansprechpartner = ansprechpartnerName(body.contactName)
+      const ziel = zahlungsziel(body.paymentTermsDays)
       return tx(req.pool, req, async client => {
         const cur = await client.query<{ id: number; account_id: string }>(
           `SELECT id, account_id FROM company WHERE public_ref = $1 FOR UPDATE`, [companyRef])
@@ -742,7 +743,7 @@ export function guestRoutes(app: FastifyInstance): void {
              postal_code        = COALESCE($5, postal_code),
              city               = COALESCE($6, city),
              country            = COALESCE($7, country),
-             payment_terms_days = COALESCE($8, payment_terms_days),
+             payment_terms_days = CASE WHEN $15 THEN $8::int ELSE payment_terms_days END,
              invoice_email      = COALESCE($9, invoice_email),
              active             = COALESCE($10, active),
              buyer_reference    = CASE WHEN $11 THEN $12 ELSE buyer_reference END,
@@ -751,13 +752,25 @@ export function guestRoutes(app: FastifyInstance): void {
            WHERE id = $1 RETURNING ${COMPANY_FIELDS}`,
           [cur.rows[0]!.id, body.name ?? null, body.vatId ?? null, body.addressLine1 ?? null,
            body.postalCode ?? null, body.city ?? null, body.country ?? null,
-           body.paymentTermsDays ?? null, body.invoiceEmail ?? null, body.active ?? null,
+           ziel ?? null, body.invoiceEmail ?? null, body.active ?? null,
            leitweg !== undefined, leitweg ?? null,
-           ansprechpartner !== undefined, ansprechpartner ?? null])
+           ansprechpartner !== undefined, ansprechpartner ?? null, ziel !== undefined])
         return rows[0]
       })
     }
   })
+}
+
+/**
+ * Zahlungsziel der Firma in Tagen. `undefined`: nicht genannt; `null`:
+ * keines, es gilt die Vorgabe des Hauses, das die Rechnung ausstellt (0189).
+ */
+function zahlungsziel(v: unknown): number | null | undefined {
+  if (v === undefined || v === null) return v
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 365) {
+    throw Errors.validation({ paymentTermsDays: ['field.range'] }, { min: 0, max: 365 })
+  }
+  return v
 }
 
 /**

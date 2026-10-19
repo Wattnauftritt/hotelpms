@@ -67,7 +67,7 @@ export const useIdDocument = (guestRef: string | null, full: boolean) =>
 
 export const useSearchCompanies = (term: string) =>
   useQuery<{ companies: Array<{ companyRef: string; name: string; vatId: string | null
-                                city: string | null; paymentTermsDays: number }> }>({
+                                city: string | null; paymentTermsDays: number | null }> }>({
     queryKey: ['companies', 'search', term],
     queryFn: () => api.get(`/v1/companies?q=${encodeURIComponent(term)}`),
     enabled: term.trim().length >= 2
@@ -92,7 +92,9 @@ export function useCreateCompany() {
 export function usePatchCompany(companyRef: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: Partial<CreateCompany> & { active?: boolean }) =>
+    // `paymentTermsDays: null` loescht das eigene Ziel; dann gilt das des Hauses.
+    mutationFn: (body: Omit<Partial<CreateCompany>, 'paymentTermsDays'>
+                 & { active?: boolean; paymentTermsDays?: number | null }) =>
       api.patch<Company>(`/v1/companies/${companyRef}`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['company', companyRef] })

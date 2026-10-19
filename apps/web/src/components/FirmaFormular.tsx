@@ -48,7 +48,10 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   const [postalCode, setPostalCode] = useState(initial?.postalCode ?? '')
   const [city, setCity] = useState(initial?.city ?? '')
   const [country, setCountry] = useState(initial?.country ?? 'DE')
-  const [paymentTermsDays, setPaymentTermsDays] = useState(initial?.paymentTermsDays ?? 14)
+  // Leer heisst: Vorgabe des Hauses aus den Einstellungen (0189). Eine
+  // vorbelegte Zahl hier waere eine dritte Vorgabe neben Haus und Datenbank.
+  const [paymentTermsDays, setPaymentTermsDays] = useState(
+    initial?.paymentTermsDays == null ? '' : String(initial.paymentTermsDays))
   const [invoiceEmail, setInvoiceEmail] = useState(initial?.invoiceEmail ?? '')
   const [leitweg, setLeitweg] = useState(initial?.buyerReference ?? '')
   const [active, setActive] = useState(initial?.active ?? true)
@@ -58,19 +61,21 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   const speichern = initial ? aendern : anlegen
 
   const absenden = (): void => {
+    const ziel = paymentTermsDays.trim() === '' ? null : Number(paymentTermsDays)
     const body = {
       name: name.trim(),
       // Wie die Leitweg-ID: leer beim Aendern entfernt den Ansprechpartner.
       contactName: initial ? contactName.trim() : orUndef(contactName),
       vatId: orUndef(vatId), addressLine1: orUndef(addressLine1),
       postalCode: orUndef(postalCode), city: orUndef(city), country: orUndef(country) ?? 'DE',
-      paymentTermsDays, invoiceEmail: orUndef(invoiceEmail),
+      paymentTermsDays: ziel ?? undefined, invoiceEmail: orUndef(invoiceEmail),
       // Leer schickt einen leeren Text: so laesst sich eine Leitweg-ID
       // wieder entfernen, wenn die Firma doch keine Behoerde ist.
       buyerReference: initial ? leitweg.trim() : orUndef(leitweg)
     }
     if (initial) {
-      aendern.mutate({ ...body, active }, { onSuccess: onSaved })
+      // Leer beim Aendern loescht das eigene Ziel; dann gilt das des Hauses.
+      aendern.mutate({ ...body, paymentTermsDays: ziel, active }, { onSuccess: onSaved })
     } else {
       anlegen.mutate(body, { onSuccess: onSaved })
     }
@@ -117,9 +122,9 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
                  className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         </Feld>
         <Feld text={t('companies.paymentTerms')}>
-          <input type="number" min={0} value={paymentTermsDays}
-                 onChange={e => setPaymentTermsDays(Number(e.target.value))}
-                 disabled={!darfSchreiben}
+          <input type="number" min={0} max={365} value={paymentTermsDays}
+                 onChange={e => setPaymentTermsDays(e.target.value)}
+                 disabled={!darfSchreiben} placeholder={t('companies.paymentTermsHouse')}
                  className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
         </Feld>
       </div>
