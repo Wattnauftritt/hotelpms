@@ -5,7 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { tx } from '../platform/db.js'
 import type { Principal } from '../platform/context.js'
 import { supportPermissions, type SupportLevel } from '../platform/support.js'
-import { einmalTokenUndPost } from './auth.js'
+import { einmalTokenUndPost, personenwechselBeenden } from './auth.js'
 import { kennung } from './platform.js'
 import { nichtDenLetztenVerwalter } from './userAdmin.js'
 
@@ -191,6 +191,7 @@ export function platformSupportRoutes(app: FastifyInstance): void {
         const r = await client.query(
           `UPDATE user_session SET revoked_at = now()
             WHERE user_id = $1 AND revoked_at IS NULL`, [userId])
+        await personenwechselBeenden(client, userId)
         return { id: userId, revoked: r.rowCount ?? 0 }
       })
     }

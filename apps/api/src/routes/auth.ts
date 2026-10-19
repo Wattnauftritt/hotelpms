@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
@@ -116,6 +117,30 @@ export async function hashPassword(kennwort: string): Promise<string> {
   // Argon2id, Speicher vor Rechenzeit: Grafikkarten sind schnell beim
   // Rechnen und knapp beim Speicher.
   return argonHash(kennwort, { memoryCost: 19_456, timeCost: 2, parallelism: 1 })
+}
+
+/**
+ * Den Personenwechsel auf diesen Benutzer in allen Sitzungen beenden; die
+ * Sitzung selbst bleibt und gehoert wieder ihrem Inhaber.
+ *
+ * Eine Tresensitzung, die per PIN auf B gewechselt ist, traegt B nur in
+ * `active_user_id`, nicht in `user_id`. Wer bei Kennwortwechsel,
+ * Ruecksetzung, neuem PIN, Sperren oder Stilllegen nur `user_id = B`
+ * zurueckzieht, laesst sie stehen, und wer einmal als B gewechselt hat,
+ * arbeitete bis zu dreissig Tage als B weiter (M3, Audit 19.10.2026).
+ * Zurueck auf den Inhaber statt widerrufen: der sitzt am Tresen und hat mit
+ * B nichts falsch gemacht.
+ *
+ * `ausser` laesst die Sitzung stehen, aus der der Betroffene selbst gerade
+ * handelt -- wer am Tresen als B sein Kennwort aendert, will weiterarbeiten.
+ */
+export async function personenwechselBeenden(
+  client: Pick<PoolClient, 'query'>, userId: number, ausser: string | null = null
+): Promise<void> {
+  await client.query(
+    `UPDATE user_session SET active_user_id = NULL
+      WHERE active_user_id = $1 AND revoked_at IS NULL AND id <> COALESCE($2, '')`,
+    [userId, ausser])
 }
 
 function neueSitzungsKennung(): string {
@@ -456,6 +481,15 @@ export function authRoutes(app: FastifyInstance): void {
         throw Errors.unauthorized('auth.badCredentials')
       }
 
+      /*
+       * Ein neuer oder entfernter PIN beendet jeden Wechsel auf diese Person,
+       * ausser in der Sitzung, aus der sie das gerade tut. Wer den PIN
+       * aendert, tut das, weil ihn jemand gesehen hat; der Wechsel, den der
+       * damit schon gemacht hat, darf nicht stehen bleiben (M3, Audit
+       * 19.10.2026).
+       */
+      const eigeneSitzung = req.cookies[COOKIE] ?? null
+
       // Kein PIN mehr: der Personenwechsel auf diese Person ist damit zu.
       if (pin === null || pin === undefined || pin === '') {
         await req.pool.query(
@@ -463,6 +497,7 @@ export function authRoutes(app: FastifyInstance): void {
               SET workstation_pin_hash = NULL, workstation_pin_set_at = NULL,
                   workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL
             WHERE id = $1`, [p.userId])
+        await personenwechselBeenden(req.pool, p.userId, eigeneSitzung)
         return { ok: true, pinSet: false }
       }
 
@@ -477,6 +512,7 @@ export function authRoutes(app: FastifyInstance): void {
             SET workstation_pin_hash = $2, workstation_pin_set_at = now(),
                 workstation_pin_failed_count = 0, workstation_pin_locked_until = NULL
           WHERE id = $1`, [p.userId, await hashPassword(pin)])
+      await personenwechselBeenden(req.pool, p.userId, eigeneSitzung)
       return { ok: true, pinSet: true }
     }
   })
@@ -528,16 +564,10 @@ export function authRoutes(app: FastifyInstance): void {
       }
 
       const { rows } = await req.pool.query<{
-        id: number; workstation_pin_hash: string | null; status: string
-        workstation_pin_locked_until: string | null }>(
-        `SELECT id, workstation_pin_hash, status, workstation_pin_locked_until
+        id: number; workstation_pin_hash: string | null; status: string }>(
+        `SELECT id, workstation_pin_hash, status
            FROM app_user WHERE lower(email) = lower($1)`, [email])
       const ziel = rows[0]
-
-      if (ziel?.workstation_pin_locked_until != null
-          && Date.parse(ziel.workstation_pin_locked_until) > Date.now()) {
-        throw Errors.unauthorized('auth.tooManyAttempts')
-      }
 
       /*
        * Die Zugehoerigkeit wird **vor** dem Ausgang der PIN-Pruefung
@@ -549,38 +579,54 @@ export function authRoutes(app: FastifyInstance): void {
         `SELECT 1 FROM user_property_scope($1) a
            JOIN user_property_scope($2) b USING (property_id) LIMIT 1`,
         [p.sessionUserId, ziel.id])
+      const imSelbenHaus = (gemeinsam.rowCount ?? 0) > 0
+
+      /*
+       * Der Versuch wird **vor** Argon2 gebucht, in einer Anweisung, die die
+       * Sperre selbst prueft (H2, Audit 19.10.2026). Vorher pruefte die Route
+       * die Sperre in JavaScript, rechnete rund 50 ms und zaehlte erst danach;
+       * alles, was in diesen 50 ms gleichzeitig einlief, kam an der Sperre
+       * vorbei, und ein vierstelliger PIN fiel mit Wellen paralleler
+       * Anfragen in Minuten. Das UPDATE nimmt die Zeilensperre, und
+       * PostgreSQL wertet das WHERE nach dem Warten auf den neuen Stand aus:
+       * von gleichzeitigen Anfragen kommen deshalb hoechstens
+       * PIN_MAX_FEHLVERSUCHE durch, der Rest findet die Sperre gesetzt.
+       *
+       * Gezaehlt wird nur, wenn Aufrufer und Ziel ein Haus teilen. Ohne das
+       * koennte ein Angemeldeter eines ganz anderen Kunden den
+       * Personenwechsel eines Fremden sperren, dessen Adresse er kennt (N2,
+       * Audit 11.10.2026). Von dort kann er ohnehin nie wechseln, `erlaubt`
+       * verlangt das gemeinsame Haus; er braucht den Zaehler also nicht, um
+       * aufgehalten zu werden.
+       *
+       * Mit dem Setzen der Sperre faellt der Zaehler auf null. Sonst stuende
+       * er danach bei fuenf, und schon der naechste Tippfehler des
+       * Betroffenen sperrte wieder eine Viertelstunde. `locked_until` wird
+       * nur hier gesetzt und nur ausserhalb einer laufenden Sperre geleert
+       * (das WHERE schliesst sie aus); vorher schrieb jeder spaete
+       * Fehlversuch NULL hinein und hob die Sperre damit wieder auf.
+       */
+      if (ziel !== undefined && imSelbenHaus) {
+        const gebucht = await req.pool.query(
+          `UPDATE app_user
+              SET workstation_pin_failed_count =
+                    CASE WHEN workstation_pin_failed_count + 1 >= $2 THEN 0
+                         ELSE workstation_pin_failed_count + 1 END,
+                  workstation_pin_locked_until =
+                    CASE WHEN workstation_pin_failed_count + 1 >= $2
+                         THEN now() + ($3 || ' minutes')::interval END
+            WHERE id = $1
+              AND (workstation_pin_locked_until IS NULL
+                   OR workstation_pin_locked_until <= now())`,
+          [ziel.id, PIN_MAX_FEHLVERSUCHE, PIN_SPERRE_MINUTEN])
+        if (gebucht.rowCount === 0) throw Errors.unauthorized('auth.tooManyAttempts')
+      }
 
       const passt = await pruefeKennwort(ziel?.workstation_pin_hash ?? null, pin)
       const erlaubt = passt && ziel !== undefined && ziel.status === 'active'
-        && (gemeinsam.rowCount ?? 0) > 0
+        && imSelbenHaus
 
       if (!erlaubt) {
-        /*
-         * Gezaehlt wird nur, wenn der PIN wirklich falsch war **und** Aufrufer
-         * und Ziel ein Haus teilen. Ohne die zweite Bedingung koennte ein
-         * Angemeldeter eines ganz anderen Kunden den Personenwechsel eines
-         * Fremden sperren, dessen Adresse er kennt (N2, Audit 11.10.2026).
-         * Von dort kann er ohnehin nie wechseln, `erlaubt` verlangt das
-         * gemeinsame Haus; er braucht den Zaehler also nicht, um aufzuhalten.
-         *
-         * Mit dem Setzen der Sperre faellt der Zaehler auf null. Sonst stuende
-         * er danach bei fuenf, und schon der naechste Tippfehler des
-         * Betroffenen sperrte wieder eine Viertelstunde — eine Sperre, die
-         * nie mehr ganz aufgeht, trifft den Kollegen am Tresen haerter als
-         * den, der raet.
-         */
-        if (ziel !== undefined && !passt && (gemeinsam.rowCount ?? 0) > 0) {
-          await req.pool.query(
-            `UPDATE app_user
-                SET workstation_pin_failed_count =
-                      CASE WHEN workstation_pin_failed_count + 1 >= $2 THEN 0
-                           ELSE workstation_pin_failed_count + 1 END,
-                    workstation_pin_locked_until =
-                      CASE WHEN workstation_pin_failed_count + 1 >= $2
-                           THEN now() + ($3 || ' minutes')::interval END
-              WHERE id = $1`,
-            [ziel.id, PIN_MAX_FEHLVERSUCHE, PIN_SPERRE_MINUTEN])
-        }
         // Eine Meldung fuer alle Faelle: falsche Adresse, falscher PIN,
         // fremdes Haus. Wer unterscheidet, verraet die Benutzerliste.
         throw Errors.unauthorized('auth.badPin')
@@ -707,6 +753,7 @@ export function authRoutes(app: FastifyInstance): void {
         await client.query(
           `UPDATE user_session SET revoked_at = now()
             WHERE user_id = $1 AND revoked_at IS NULL`, [userId])
+        await personenwechselBeenden(client, userId)
 
         // Weitere offene Token desselben Benutzers verfallen mit. Sonst laege
         // nach drei Anforderungen dreimal ein gueltiger Zugang im Postfach.
@@ -826,6 +873,7 @@ export function authRoutes(app: FastifyInstance): void {
 
       const neu = await hashPassword(b.newPassword)
       const eigeneSitzung = req.cookies[COOKIE] ?? null
+      const userId = p.userId
 
       return tx(req.pool, req, async client => {
         await client.query(
@@ -847,6 +895,7 @@ export function authRoutes(app: FastifyInstance): void {
           `UPDATE user_session SET revoked_at = now()
             WHERE user_id = $1 AND revoked_at IS NULL AND id <> COALESCE($2,'')`,
           [p.userId, eigeneSitzung])
+        await personenwechselBeenden(client, userId, eigeneSitzung)
 
         // Offene Einmaltoken verfallen mit: nach einer Aenderung soll kein
         // aelterer Ruecksetzlink mehr im Postfach gelten.

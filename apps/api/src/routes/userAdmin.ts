@@ -4,7 +4,7 @@ import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { accountRight, can, type Principal } from '../platform/context.js'
-import { einmalTokenUndPost, einmalLink } from './auth.js'
+import { einmalTokenUndPost, einmalLink, personenwechselBeenden } from './auth.js'
 
 /**
  * Der Kunde verwaltet sein Personal selbst.
@@ -249,6 +249,9 @@ async function sitzungenBeenden(client: PoolClient, userId: number): Promise<num
   const r = await client.query(
     `UPDATE user_session SET revoked_at = now()
       WHERE user_id = $1 AND revoked_at IS NULL`, [userId])
+  // Auch die Tresensitzungen, die per PIN auf ihn gewechselt sind; sonst
+  // arbeitet ein Gesperrter dort weiter (M3, Audit 19.10.2026).
+  await personenwechselBeenden(client, userId)
   return r.rowCount ?? 0
 }
 
