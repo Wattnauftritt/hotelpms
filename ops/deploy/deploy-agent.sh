@@ -114,16 +114,9 @@ AUSGABE="$(mktemp)"
 # eingesetzt. Ein Bauprotokoll enthaelt beliebigen Text -- ein $$ darin
 # zerlegte ein dollar-quoting, und Anfuehrungszeichen den Rest. :'name'
 # laesst psql selbst quoten, samt Zeilenumbruechen.
-vermerken() {
-  local status="$1" nachher
-  nachher="$(laufender)"
-  # Ueber stdin, NICHT ueber -c: psql ersetzt :'name' nur in gelesenem
-  # Text, bei -c schickt es die Zeichenkette unveraendert weiter. Hier stand
-  # einmal -c, und die Folge war eine Anforderung, die auf 'running' haengen
-  # blieb -- waehrend das Skript "durch" meldete.
-  if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq \
-       -v status="$status" -v vorher="$VORHER" -v nachher="$nachher" \
-       -v log="$(tail -c 4000 "$AUSGABE" 2>/dev/null || true)" \
+vermerken_() {
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAq \
+       -v status="$1" -v vorher="$VORHER" -v nachher="$2" -v log="$3" \
        -v id="$ID" <<'SQL' >/dev/null
 UPDATE deploy_request
    SET status = :'status', finished_at = now(),
@@ -131,6 +124,30 @@ UPDATE deploy_request
        log = :'log'
  WHERE id = :id;
 SQL
+}
+
+vermerken() {
+  local status="$1" nachher log
+  nachher="$(laufender)"
+  # `tail -c` zaehlt Bytes, nicht Zeichen, und schneidet deshalb gelegentlich
+  # mitten in ein Mehrbytezeichen -- die Dateiliste von vite steht voller
+  # "│". psql weist eine Variable mit kaputtem UTF-8 ab ("invalid multibyte
+  # character"), das UPDATE laeuft nie, und die Anforderung blieb auf
+  # 'running' stehen, obwohl der Lauf durch war (#113, 19.10.2026). iconv -c
+  # wirft die angeschnittenen Bytes weg, der Rest bleibt lesbar.
+  log="$(tail -c 4000 "$AUSGABE" 2>/dev/null | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null || true)"
+  # Ueber stdin, NICHT ueber -c: psql ersetzt :'name' nur in gelesenem
+  # Text, bei -c schickt es die Zeichenkette unveraendert weiter. Hier stand
+  # einmal -c, und die Folge war eine Anforderung, die auf 'running' haengen
+  # blieb -- waehrend das Skript "durch" meldete.
+  #
+  # Scheitert es mit Protokoll, noch einmal ohne: der Status ist das, was den
+  # Knopf freigibt, das Protokoll nur die Erklaerung dazu. Steht es im
+  # Journal, ist es nicht verloren; eine haengende Zeile sperrt dagegen jede
+  # weitere Ausrollung.
+  if ! vermerken_ "$status" "$nachher" "$log" \
+     && ! vermerken_ "$status" "$nachher" \
+            "Protokoll liess sich nicht speichern, siehe journalctl -u hotelpms-deploy."
   then
     # Laut werden. Bleibt die Zeile auf 'running', blockiert sie ueber den
     # eindeutigen Teilindex jede weitere Anforderung, und am Knopf ist nur
