@@ -4,7 +4,7 @@ import { ensureSchema, truncateAll, ownerPool, makeProperty, makeCategory, makeR
 import type { Pool } from '@hotelpms/db'
 
 /**
- * Check-out nach der Reinigung (0181).
+ * Check-out nach der Reinigung (0188).
  *
  * Sven, 19.10.2026: Zimmer 14 und 25 waren am Abreisetag gereinigt, die
  * Rezeption checkte danach aus, und der Check-out setzte sie auf schmutzig.
