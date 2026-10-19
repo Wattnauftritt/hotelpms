@@ -5,7 +5,7 @@ import { pruefeReichweite } from './oauth.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { apiText, hinweisText } from '../platform/texte.js'
-import { accountFor, type Principal } from '../platform/context.js'
+import { accountFor, accountsWith, type Principal } from '../platform/context.js'
 import { isWebhookEventType, WEBHOOK_EVENT_TYPES, checkWebhookTargetUrl,
          isWebhookFailureKind, type WebhookTargetProblem } from '@hotelpms/domain'
 import { loadConfig } from '../platform/config.js'
@@ -190,8 +190,13 @@ export function webhookRoutes(app: FastifyInstance): void {
     permission: 'integration:manage',
     summary: 'Abonnements auflisten',
     handler: async (req) => tx(req.pool, req, async client => {
+      // Nur die Accounts, in denen das Recht besteht: die Zeilenrichtlinie
+      // liesse auch die des Betriebs durch, in dem der Aufrufer nur eine
+      // Hausrolle ohne dieses Recht hat (Sicherheitsaudit 2026-10-19, H1).
       const { rows } = await client.query<SubscriptionRow>(
-        `SELECT ${FIELDS} FROM webhook_subscription ORDER BY id`)
+        `SELECT ${FIELDS} FROM webhook_subscription
+          WHERE account_id = ANY($1::bigint[]) ORDER BY id`,
+        [accountsWith(req.principal as Principal, 'integration:manage')])
       // Der Katalog kommt mit, wie bei den Maschinenzugaengen die Scopes:
       // sonst fuehrt jeder Aufrufer eine eigene Liste, und nach der
       // naechsten neuen Ereignisart fehlt in jeder genau diese.

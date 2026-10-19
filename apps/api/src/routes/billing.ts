@@ -21,7 +21,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { isTrainingProperty, TRAINING_PREFIX } from '../platform/training.js'
 import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
-import { produktImHaus } from '../platform/fremdeIds.js'
+import { produktImHaus, gastPerRefImBetrieb, firmaPerRefImBetrieb } from '../platform/fremdeIds.js'
 import { bildAusRumpf, bildSenden, BILD_MAX_BYTES } from '../platform/terminalBild.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
@@ -1584,30 +1584,21 @@ export function billingRoutes(app: FastifyInstance): void {
         if (folio.status === 'closed') throw Errors.conflict('folio.closed')
 
         /*
-         * Gast und Firma haengen am Account, nicht an der Property. Die
-         * Zeilenrichtlinie filtert nach Mandant, und mehr braucht es hier
-         * nicht: wer den Verweis nicht finden darf, findet ihn nicht.
+         * Gast und Firma haengen am Account, nicht an der Property -- und
+         * zwar am Account **dieses** Hauses. Die Zeilenrichtlinie allein
+         * genuegt nicht: wer in zwei Betrieben arbeitet, hat beide im Kontext
+         * und setzte sonst den Gast oder die Firma des anderen als Empfaenger
+         * (Sicherheitsaudit 2026-10-19, M2).
          */
         let guestId = folio.guest_id
         if (body.guestRef !== undefined) {
-          if (body.guestRef === null) guestId = null
-          else {
-            const g = await client.query<{ id: number }>(
-              `SELECT id FROM guest WHERE public_ref = $1`, [body.guestRef])
-            if (g.rowCount === 0) throw Errors.notFound('res.guest')
-            guestId = g.rows[0]!.id
-          }
+          guestId = body.guestRef === null ? null
+            : await gastPerRefImBetrieb(client, folio.property_id, body.guestRef)
         }
         let companyId = folio.company_id
         if (body.companyRef !== undefined) {
-          if (body.companyRef === null) companyId = null
-          else {
-            const c = await client.query<{ id: number }>(
-              `SELECT id FROM company WHERE public_ref = $1 AND active`,
-              [body.companyRef])
-            if (c.rowCount === 0) throw Errors.notFound('res.company')
-            companyId = c.rows[0]!.id
-          }
+          companyId = body.companyRef === null ? null
+            : await firmaPerRefImBetrieb(client, folio.property_id, body.companyRef)
         }
 
         await client.query(

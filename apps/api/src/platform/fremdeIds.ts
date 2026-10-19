@@ -84,6 +84,25 @@ export async function firmaImBetrieb(
   if (r.rowCount === 0) throw Errors.notFound('res.company')
 }
 
+/**
+ * Eine aktive Firma ueber ihre oeffentliche Referenz finden -- im Betrieb des
+ * Hauses. Das Gegenstueck zu `gastPerRefImBetrieb`: der Rechnungsempfaenger
+ * eines Folios von A nahm sonst die Firma von B an, und das Festschreiben
+ * kopierte deren Anschrift in eine unveraenderliche Rechnung von A
+ * (Sicherheitsaudit 2026-10-19, M2).
+ */
+export async function firmaPerRefImBetrieb(
+  client: PoolClient, propertyId: number, companyRef: string
+): Promise<number> {
+  const c = await client.query<{ id: number }>(
+    `SELECT c.id FROM company c
+      WHERE c.public_ref = $1 AND c.active
+        AND c.account_id = (SELECT p.account_id FROM property p WHERE p.id = $2)`,
+    [companyRef, propertyId])
+  if (c.rowCount === 0) throw Errors.notFound('res.company')
+  return c.rows[0]!.id
+}
+
 /** Der Artikel gehoert zu genau diesem Haus -- Preis und Steuer sind je Haus gepflegt. */
 export async function produktImHaus(
   client: PoolClient, propertyId: number, productId: number | null | undefined

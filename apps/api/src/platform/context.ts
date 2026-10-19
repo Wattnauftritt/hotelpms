@@ -115,6 +115,16 @@ export function canInAccount(p: Principal, permission: Permission, account: numb
   return false
 }
 
+/**
+ * Die Accounts, in denen das Recht besteht -- fuer Listen und Suchen ueber
+ * Tabellen, deren Zeilenrichtlinie nur nach Account filtert (Gast, Firma,
+ * Abonnements). Die Richtlinie laesst jeden Account des Kontexts durch, also
+ * auch den, in dem der Aufrufer nur putzt (Sicherheitsaudit 2026-10-19, H1).
+ */
+export function accountsWith(p: Principal, permission: Permission): number[] {
+  return p.accountIds.filter(a => canInAccount(p, permission, a))
+}
+
 export function hasProperty(p: Principal, property: number): boolean {
   return p.permissionsByProperty.has(property)
 }
