@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { crc32, deflateSync } from 'node:zlib'
 import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          makeGuest, makePaymentMethod, openBusinessDay, heuteImHaus, type Fixture }
@@ -26,7 +27,10 @@ let lauf = 0
 const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64')
-const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')])
+// Mit lesbarem Kopf (VP8X, 1 x 1): seit M6 kommt ein WebP ohne Masse gar
+// nicht bis zur Pruefung der Art.
+const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8X'),
+                            Buffer.alloc(18)])
 const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
 
 beforeAll(async () => {
@@ -86,6 +90,20 @@ describe('Logo auf der Rechnung', () => {
     expect(w.body).toContain('invoice.logoType')
     const n = await owner.query(`SELECT count(*)::int AS n FROM property_invoice_logo`)
     expect(n.rows[0]!.n).toBe(0)
+  })
+
+  it('weist ein Bild mit zu vielen Bildpunkten ab (Audit 19.10., M6)', async () => {
+    // 12 000 x 12 000, einfarbig: wenige Kilobyte, also unter der
+    // Groessengrenze, beim Zeichnen der Vorschau aber ueber ein Gigabyte.
+    const riesig = riesenPng(12_000, 12_000)
+    expect(riesig.length).toBeLessThan(200_000)
+    const r = await hochladen(riesig)
+    expect(r.statusCode).toBe(422)
+    expect(r.body).toContain('terminal.imageDimensions')
+    const n = await owner.query(`SELECT count(*)::int AS n FROM property_invoice_logo`)
+    expect(n.rows[0]!.n).toBe(0)
+    // Die Grenze selbst geht noch.
+    expect((await hochladen(riesenPng(4000, 1000))).statusCode).toBe(200)
   })
 
   it('schreibt die Bilddaten nicht ins Protokoll', async () => {
@@ -157,3 +175,23 @@ describe('Versandnachweis', () => {
     expect(r.statusCode).toBe(404)
   })
 })
+
+/** Ein echtes PNG beliebiger Masse, 1 Bit Graustufen, eine Farbe. */
+function riesenPng(w: number, h: number): Buffer {
+  const block = (art: string, daten: Buffer): Buffer => {
+    const kopf = Buffer.alloc(8)
+    kopf.writeUInt32BE(daten.length, 0)
+    kopf.write(art, 4, 'latin1')
+    const pruef = Buffer.alloc(4)
+    pruef.writeUInt32BE(crc32(Buffer.concat([kopf.subarray(4), daten])), 0)
+    return Buffer.concat([kopf, daten, pruef])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 1; ihdr[9] = 0 // 1 Bit, Graustufen
+  const zeilen = Buffer.alloc((1 + Math.ceil(w / 8)) * h) // Filter 0, alles schwarz
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    block('IHDR', ihdr), block('IDAT', deflateSync(zeilen)), block('IEND', Buffer.alloc(0))
+  ])
+}

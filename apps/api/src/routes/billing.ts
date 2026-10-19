@@ -47,7 +47,9 @@ async function mitBeleg<T>(req: FastifyRequest, ergebnis: Promise<T>): Promise<T
   const ref = (r as { invoiceRef?: unknown } | null)?.invoiceRef
   if (typeof ref === 'string') {
     try {
-      await renderInvoiceDocument(fn => tx(req.pool, req, fn), ref)
+      await renderInvoiceDocument(fn => tx(req.pool, req, fn), ref, {
+        onLogoSkipped: () => req.log.warn('Rechnungslogo zu gross oder unlesbar, Beleg ohne Logo')
+      })
     } catch (err) {
       req.log.warn({ err }, 'Beleg nicht sofort erzeugt, der Worker holt ihn nach')
     }
@@ -3412,7 +3414,8 @@ export function billingRoutes(app: FastifyInstance): void {
       // Gezeichnet ausserhalb der Transaktion: einige hundert Millisekunden
       // Rechenarbeit halten sonst eine Verbindung offen (wie im Worker).
       const doc = await renderInvoicePdf({
-        invoice: rechnung, publicRef: '', draft: true, logo, website
+        invoice: rechnung, publicRef: '', draft: true, logo, website,
+        onLogoSkipped: () => req.log.warn('Rechnungslogo zu gross oder unlesbar, Entwurf ohne Logo')
       })
       const pdf = await doc.save()
       reply.header('content-type', 'application/pdf')

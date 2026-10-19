@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { crc32, deflateSync } from 'node:zlib'
 import { PDFDocument, PDFDict, PDFArray, PDFName, PDFRawStream, PDFStream,
          decodePDFRawStream } from 'pdf-lib'
 import { buildInvoiceCii, type CiiInvoice } from '@hotelpms/domain'
@@ -231,4 +232,44 @@ describe('Logo des Hauses (0170)', () => {
     const kaputt = Buffer.concat([PNG.subarray(0, 8), Buffer.from('kein Bild')])
     expect(await bilder({ mime: 'image/png', bytes: kaputt })).toBe(0)
   })
+
+  it('laesst ein Riesenlogo weg, statt es zu dekodieren (Audit 19.10., M6)', async () => {
+    // Ein gueltiges PNG mit 12 000 x 12 000 Bildpunkten, 1 Bit grau, alles
+    // eine Farbe: wenige Kilobyte, beim Dekodieren ueber ein halbes Gigabyte
+    // und viele Sekunden stehende Ereignisschleife. Vorher hochgeladene
+    // Logos dieser Art stehen noch in der Tabelle.
+    const riesig = riesenPng(12_000, 12_000)
+    expect(riesig.length).toBeLessThan(200_000)
+    const gemeldet: string[] = []
+    const beginn = Date.now()
+    const doc = await renderInvoicePdf({
+      invoice: rechnung, publicRef: 'inv_test', logo: { mime: 'image/png', bytes: riesig },
+      onLogoSkipped: grund => gemeldet.push(grund)
+    })
+    const bytes = await doc.save()
+    expect(Date.now() - beginn).toBeLessThan(3000)
+    expect(gemeldet).toEqual(['dimensions'])
+    expect((Buffer.from(bytes).toString('latin1').match(/\/Subtype\s*\/Image/g) ?? []).length)
+      .toBe(0)
+  })
 })
+
+/** Ein echtes PNG beliebiger Masse, 1 Bit Graustufen, eine Farbe. */
+function riesenPng(w: number, h: number): Buffer {
+  const block = (art: string, daten: Buffer): Buffer => {
+    const kopf = Buffer.alloc(8)
+    kopf.writeUInt32BE(daten.length, 0)
+    kopf.write(art, 4, 'latin1')
+    const pruef = Buffer.alloc(4)
+    pruef.writeUInt32BE(crc32(Buffer.concat([kopf.subarray(4), daten])), 0)
+    return Buffer.concat([kopf, daten, pruef])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 1; ihdr[9] = 0 // 1 Bit, Graustufen
+  const zeilen = Buffer.alloc((1 + Math.ceil(w / 8)) * h) // Filter 0, alles schwarz
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    block('IHDR', ihdr), block('IDAT', deflateSync(zeilen)), block('IEND', Buffer.alloc(0))
+  ])
+}

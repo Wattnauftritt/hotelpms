@@ -1,6 +1,6 @@
 import { PDFDocument, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { ciiTotals, formatCent, paymentTermsText, type CiiInvoice,
+import { ciiTotals, formatCent, imageWithinLimits, paymentTermsText, type CiiInvoice,
          type CiiLine } from '@hotelpms/domain'
 import { loadAssets } from './pdfa3.js'
 
@@ -63,6 +63,10 @@ export interface InvoiceLayoutInput {
   title?: string
   /** Logo des Hauses (0170), oben links. PNG oder JPEG. */
   logo?: { mime: string; bytes: Uint8Array } | null
+  /** Meldet, dass das Logo weggelassen wurde, damit der Aufrufer es ohne
+   *  Gastdaten protokolliert: der Beleg entsteht trotzdem, aber das Haus
+   *  wundert sich sonst ueber Rechnungen ohne Logo. */
+  onLogoSkipped?: (reason: 'dimensions' | 'unreadable') => void
   /** Webseite des Hauses fuer den Fuss (0177). Kein Teil des XML. */
   website?: string | null
   /**
@@ -546,13 +550,24 @@ function fusszeilen(doc: PDFDocument, schrift: Schriften, input: InvoiceLayoutIn
  * Bytes, ein beschaedigtes Bild faellt erst hier auf.
  */
 async function logoEinbetten(
-  doc: PDFDocument, logo: InvoiceLayoutInput['logo']
+  doc: PDFDocument, logo: InvoiceLayoutInput['logo'],
+  onSkipped: InvoiceLayoutInput['onLogoSkipped']
 ): Promise<PDFImage | null> {
   if (logo === undefined || logo === null) return null
+  // Vor dem Dekodieren die Masse aus dem Kopf (Audit 19.10., M6): `embedPng`
+  // dekodiert synchron, und ein Logo mit 12 000 x 12 000 Bildpunkten haelt
+  // Worker oder API sekundenlang an und kostet ueber ein Gigabyte. Die
+  // Schnittstelle weist solche Bilder seither ab; ein vorher hochgeladenes
+  // bleibt aber in der Tabelle und wird hier weggelassen, nicht gezeichnet.
+  if (!imageWithinLimits(logo.bytes)) {
+    onSkipped?.('dimensions')
+    return null
+  }
   try {
     return logo.mime === 'image/png' ? await doc.embedPng(logo.bytes)
       : await doc.embedJpg(logo.bytes)
   } catch {
+    onSkipped?.('unreadable')
     return null
   }
 }
@@ -579,7 +594,7 @@ export async function renderInvoicePdf(input: InvoiceLayoutInput): Promise<PDFDo
     fortsetzung: `${titel} ${input.invoice.number} · Fortsetzung`
   }
   marken(z.seite)
-  kopf(z, input, titel, await logoEinbetten(doc, input.logo))
+  kopf(z, input, titel, await logoEinbetten(doc, input.logo, input.onLogoSkipped))
   positionen(z, input.invoice)
   summen(z, input.invoice)
   hinweise(z, input)

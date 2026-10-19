@@ -244,6 +244,12 @@ async function propertyMaintenance(p: PropertyRow): Promise<void> {
     log.info({ property: p.id, created: belege.created, withoutXml: belege.withoutXml },
       'Rechnungsbelege erzeugt')
   }
+  if (belege.logoSkipped > 0) {
+    // Ein Logo ueber der Grenze von vor der Pruefung beim Hochladen (M6):
+    // die Belege entstehen ohne, das Haus muss es neu hochladen.
+    log.warn({ property: p.id, count: belege.logoSkipped },
+      'Rechnungslogo zu gross oder unlesbar, Belege ohne Logo gezeichnet')
+  }
   for (const fehler of belege.failed) {
     // Kein Beleg heisst: die Rechnung ist festgeschrieben, aber nicht
     // ausgebbar. Das faellt sonst erst dem Gast an der Rezeption auf.

@@ -45,6 +45,8 @@ export interface InvoiceDocumentResult {
   masterDataGaps: CiiFinding[]
   /** Rechnungen, zu denen kein Beleg entstehen konnte. */
   failed: Array<{ invoiceId: number; reason: string }>
+  /** Belege, die ohne Logo entstanden sind, weil es zu gross oder kaputt ist (M6). */
+  logoSkipped: number
 }
 
 interface InvoiceRow {
@@ -244,6 +246,8 @@ interface Gezeichnet {
   pdf: Uint8Array
   xml: string | null
   findings: CiiFinding[]
+  /** Logo weggelassen, weil zu gross oder unlesbar (Audit 19.10., M6). */
+  logoSkipped: boolean
 }
 
 /**
@@ -274,10 +278,12 @@ async function zeichne(
   const findings = ciiFindings(invoice)
   const xml = findings.length === 0 ? buildInvoiceCii(invoice) : null
 
+  let logoSkipped = false
   const doc = await renderInvoicePdf({
     invoice,
     publicRef: row.public_ref,
     logo: geladen.logo ?? null,
+    onLogoSkipped: () => { logoSkipped = true },
     website: (row.issuer_snapshot as { website?: string | null }).website ?? null,
     ...(row.partial_reversal ? { title: 'Rechnungskorrektur' } : {}),
     missingXmlNote: xml === null
@@ -291,7 +297,7 @@ async function zeichne(
     subject: `Rechnung ${invoice.number} vom ${invoice.issuedOn}`,
     createdAt: now
   })
-  return { pdf, xml, findings }
+  return { pdf, xml, findings, logoSkipped }
 }
 
 /** Legt den gezeichneten Beleg ab und vergisst einen frueheren Fehlschlag. */
@@ -330,7 +336,7 @@ export async function renderPendingInvoices(
   const offen = await withTransaction(pool, ctx, c => pending(c, propertyId, limit))
 
   const ergebnis: InvoiceDocumentResult = {
-    created: 0, withoutXml: 0, masterDataGaps: [], failed: []
+    created: 0, withoutXml: 0, masterDataGaps: [], failed: [], logoSkipped: 0
   }
   const gesehen = new Set<string>()
 
@@ -356,6 +362,7 @@ export async function renderPendingInvoices(
     }
     ergebnis.created += 1
     if (g.findings.length > 0) ergebnis.withoutXml += 1
+    if (g.logoSkipped) ergebnis.logoSkipped += 1
     for (const f of g.findings) {
       // Am Haus liegt es, nicht an der Rechnung: das trifft jede weitere
       // und muss deshalb einmal laut gemeldet werden.
@@ -394,7 +401,8 @@ export type InTransaction = <T>(fn: (client: PoolClient) => Promise<T>) => Promi
  * melden -- sie ist es.
  */
 export async function renderInvoiceDocument(
-  inTx: InTransaction, invoiceRef: string, opts: { now?: Date } = {}
+  inTx: InTransaction, invoiceRef: string,
+  opts: { now?: Date; onLogoSkipped?: () => void } = {}
 ): Promise<'created' | 'present'> {
   const geladen = await inTx(async c => {
     const r = await c.query<{ id: number; property_id: number; vorhanden: boolean }>(
@@ -411,6 +419,7 @@ export async function renderInvoiceDocument(
   })
   if (geladen === null) return 'present'
   const g = await zeichne(geladen, opts.now ?? new Date())
+  if (g.logoSkipped) opts.onLogoSkipped?.()
   await inTx(c => ablegen(c, geladen.propertyId, geladen.id, g))
   return 'created'
 }

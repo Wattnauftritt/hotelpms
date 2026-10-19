@@ -1,5 +1,6 @@
 import type { FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
+import { imageDimensions, IMAGE_MAX_SIDE } from '@hotelpms/domain'
 import { Errors } from './errors.js'
 
 /**
@@ -49,6 +50,17 @@ export function bildAusRumpf(body: unknown): { art: BildArt; bytes: Buffer } {
   }
   const art = bildArt(bytes)
   if (art === null) throw Errors.validation({ data: ['terminal.imageType'] })
+  // Die Masse, nicht nur die Bytes (Audit 19.10., M6): ein einfarbiges PNG
+  // mit 12 000 x 12 000 Bildpunkten passt in 140 KB und kostet beim
+  // Zeichnen des Rechnungslogos ueber ein Gigabyte und Sekunden stehender
+  // Ereignisschleife. Ein Kopf, der sich nicht lesen laesst, sagt nicht,
+  // wie gross das Bild ist -- er wird deshalb ebenso abgewiesen.
+  const masse = imageDimensions(bytes)
+  if (masse === null) throw Errors.validation({ data: ['field.invalid'] })
+  if (masse.width > IMAGE_MAX_SIDE || masse.height > IMAGE_MAX_SIDE
+      || masse.width === 0 || masse.height === 0) {
+    throw Errors.validation({ data: ['terminal.imageDimensions'] }, { max: IMAGE_MAX_SIDE })
+  }
   return { art, bytes }
 }
 
