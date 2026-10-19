@@ -1,0 +1,22 @@
+{
+  "name": "@hotelpms/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "www": "node scripts/www.mjs",
+    "sync": "pnpm www && cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/ios": "8.5.3",
+    "@hotelpms/native": "workspace:*"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

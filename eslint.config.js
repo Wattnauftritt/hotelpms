@@ -8,7 +8,11 @@ import importX from 'eslint-plugin-import-x'
  * Durchgesetzt hier, nicht per Absprache.
  */
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/dist-app/**', '**/node_modules/**', '**/*.config.js'] },
+  { ignores: ['**/dist/**', '**/dist-app/**', '**/node_modules/**', '**/*.config.js',
+               // Die App: zusammengesetzte Baue und die nativen Projekte,
+               // in die Capacitor seine eigenen Skripte kopiert.
+               'apps/mobile/www/**', 'apps/mobile/dist-bruecke/**',
+               'apps/mobile/android/**', 'apps/mobile/ios/**'] },
   ...tseslint.configs.recommended,
   {
     plugins: { 'import-x': importX },

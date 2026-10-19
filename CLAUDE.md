@@ -67,11 +67,13 @@ pnpm build          # alle Pakete und beide Apps
 apps/api        Fastify. Routen, Berechtigungen, Fehlerformat
 apps/worker     Nachtlauf und Pflegejobs
 apps/web        Rezeptions-Oberfläche, React und Vite
+apps/mobile     App für iOS und Android: Capacitor-Hülle um apps/web (--mode app)
 packages/db     Migrationen, Verbindungen, Transaktionskontext
 packages/domain Fachlogik ohne HTTP und ohne Framework
 packages/contracts  Geteilte Schemata, OpenAPI-Erzeugung
 packages/testing    Fixtures, Abfragezähler
 packages/beleg      Rechnungsblatt und PDF/A-3, für Worker (Beleg) und API (Entwurf)
+packages/native     Form der Brücke window.staygridNative zwischen Oberfläche und App
 ```
 
 Richtung der Abhängigkeiten: `apps → packages`, niemals rückwärts, niemals quer zwischen Apps. ESLint setzt das durch.
