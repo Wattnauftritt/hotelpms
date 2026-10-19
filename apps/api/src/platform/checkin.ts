@@ -94,12 +94,21 @@ export async function onlineCheckinStand(
   const { rows } = await client.query<{
     property_id: number
     invited_at: string | null; invitation_status: string | null
+    invitation_to: string | null
+    delivery_status: string | null; delivery_reason: string | null
+    delivery_event_at: string | null
     completed_at: string | null; source: OnlineCheckinStatus['source']
     external_system: string | null
     signature_pending: boolean | null; active_links: number }>(
     `SELECT r.property_id,
             e.created_at  AS invited_at,
             e.status      AS invitation_status,
+            -- Wohin, gekuerzt wie im Postausgang: an der Domain sieht die
+            -- Rezeption, ob es die Weiterleitung von Booking.com war.
+            CASE WHEN e.redacted_at IS NOT NULL THEN NULL
+                 ELSE regexp_replace(e.to_email, '(^.).*(@.*$)', '\\1***\\2')
+            END AS invitation_to,
+            e.delivery_status, e.delivery_reason, e.delivery_event_at,
             -- Uebernommen: wann der Gast dort ausgefuellt hat, nicht wann
             -- StayGrid ihn bekam (0087).
             CASE WHEN reg.source IN ('online','terminal') THEN reg.created_at
@@ -117,7 +126,9 @@ export async function onlineCheckinStand(
                       current_date))::int AS active_links
        FROM reservation r
        LEFT JOIN LATERAL (
-              SELECT created_at, status FROM outbound_email
+              SELECT created_at, status, to_email, redacted_at,
+                     delivery_status, delivery_reason, delivery_event_at
+                FROM outbound_email
                WHERE reservation_id = r.id AND kind = 'checkin_invitation'
                ORDER BY id DESC LIMIT 1) e ON true
        LEFT JOIN registration reg
@@ -128,6 +139,11 @@ export async function onlineCheckinStand(
   return {
     invitedAt: z.invited_at === null ? null : new Date(z.invited_at).toISOString(),
     invitationStatus: z.invitation_status,
+    invitationTo: z.invitation_to,
+    deliveryStatus: z.delivery_status,
+    deliveryReason: z.delivery_reason,
+    deliveryAt: z.delivery_event_at === null ? null
+      : new Date(z.delivery_event_at).toISOString(),
     completedAt: z.completed_at === null ? null : new Date(z.completed_at).toISOString(),
     source: z.source,
     importedFrom: z.external_system,

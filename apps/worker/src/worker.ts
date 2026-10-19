@@ -14,6 +14,7 @@ import { renderPendingInvoices } from '@hotelpms/beleg'
 import { deliverWebhooks } from './jobs/webhookDelivery.js'
 import { runRateSteering } from './jobs/rateSteering.js'
 import { deliverEmails } from './jobs/emailDelivery.js'
+import { checkEmailDeliveries } from './jobs/emailDeliveryStatus.js'
 import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
 import { translateFolderPages } from './jobs/folderTranslation.js'
 import { sendStaffPushes, createWebPushSender, vapidSchluessel, propertiesWithDuePushes,
@@ -397,6 +398,23 @@ async function emails(p: PropertyRow, breaker: TickBreaker): Promise<void> {
   }
 }
 
+/**
+ * Nachfragen, was aus angenommener Gastpost wurde (Migration 0187). Hinter
+ * derselben Sicherung wie der Versand: ist Brevo weg, ist es fuer beides weg.
+ */
+async function emailDeliveries(p: PropertyRow, breaker: TickBreaker): Promise<void> {
+  if (mailer === null) return
+  const r = await checkEmailDeliveries(pool, propertyContext(p.account_id, p.id), p.id,
+    mailer, { breaker })
+  if (r.checked === 0) return
+  // Zahlen, kein Empfaenger: wer nicht erreicht wurde, steht an der Mail.
+  log.info({ property: p.id, ...r }, 'Zustellstatus der Gastpost nachgefragt')
+  if (r.undelivered > 0) {
+    log.warn({ property: p.id, undelivered: r.undelivered },
+      'Gastpost vom Empfaenger abgewiesen oder vom Anbieter blockiert')
+  }
+}
+
 /*
  * Uebersetzung der Personaltexte (Baustein 7). Ohne Schluessel bleiben die
  * Auftraege stehen, und jeder liest das Original -- dasselbe Verhalten wie
@@ -483,6 +501,7 @@ async function tickArbeit(): Promise<void> {
       // Vor der Zustellung: was hier eingereiht wird, geht im selben Tick hinaus.
       await onlineCheckins(p)
       await emails(p, brevo)
+      await emailDeliveries(p, brevo)
       await staffTexts(p, deepl)
       await folderPages(p, deepl)
     } catch (e) {

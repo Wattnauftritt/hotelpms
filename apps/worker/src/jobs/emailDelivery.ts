@@ -2,6 +2,7 @@ import { withTransaction, type Pool, type PoolClient, type DbContext } from '@ho
 import { EMAIL_MAX_ATTEMPTS, emailRetryDelaySeconds, emailShouldRetry } from '@hotelpms/domain'
 import { EmailSendError, type EmailAdapter, type EmailAttachment } from '../email/brevo.js'
 import type { TickBreaker } from './breaker.js'
+import { DELIVERY_CHECK_DELAYS } from './emailDeliveryStatus.js'
 
 /**
  * Zustellung ausgehender Gastpost (Brevo).
@@ -212,10 +213,16 @@ async function record(
       `UPDATE outbound_email
           SET status = 'sent', sent_at = now(), provider_message_id = $2,
               attachment_sha256 = $3, last_error = NULL,
+              -- Angenommen ist nicht zugestellt: nachgefragt wird ab hier
+              -- (emailDeliveryStatus.ts, Migration 0187). Ohne Kennung gibt
+              -- es nichts, wonach man fragen koennte.
+              delivery_next_check_at = CASE WHEN $2::text IS NULL THEN NULL
+                                            ELSE now() + make_interval(secs => $5) END,
               body_text = CASE WHEN $4 THEN '' ELSE body_text END,
               body_html = CASE WHEN $4 THEN NULL ELSE body_html END
         WHERE id = $1`,
-      [e.id, r.providerMessageId, e.attachment_sha256, rumpfLeeren])
+      [e.id, r.providerMessageId, e.attachment_sha256, rumpfLeeren,
+       DELIVERY_CHECK_DELAYS[0]])
     return 'sent'
   }
 

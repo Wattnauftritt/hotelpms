@@ -882,6 +882,16 @@ export const OnlineCheckinStatus = Type.Object({
   /** Die letzte Einladung per Mail: eingereiht wann, und wie steht sie. */
   invitedAt: Type.Union([Type.String(), Type.Null()]),
   invitationStatus: Type.Union([Type.String(), Type.Null()]),
+  /** Empfaenger der Einladung, gekuerzt (`m***@guest.booking.com`). */
+  invitationTo: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * Was der Anbieter danach meldet (0187): `invitationStatus = 'sent'` heisst
+   * nur angenommen. Null, solange nicht nachgefragt ist.
+   */
+  deliveryStatus: Type.Union([Type.String(), Type.Null()]),
+  /** Grund einer Abweisung, ohne Adressen darin. */
+  deliveryReason: Type.Union([Type.String(), Type.Null()]),
+  deliveryAt: Type.Union([Type.String(), Type.Null()]),
   /** Meldeschein online oder am Terminal eingereicht, wann. */
   completedAt: Type.Union([Type.String(), Type.Null()]),
   source: Type.Union([Type.Literal('desk'), Type.Literal('online'),
