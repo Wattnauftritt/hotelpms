@@ -149,7 +149,10 @@ export function GastCheckin({ token, modus, onFertig }: {
           <Formular token={token} view={view} gross={gross} onErledigt={setErgebnis} />
         )}
         {view?.cleaningWaiver != null && (
-          <Verzicht token={token} start={view.cleaningWaiver} gross={gross} />
+          <Verzicht start={view.cleaningWaiver} gross={gross}
+                    speichern={(date, waived) => api.post<CleaningWaiverView | null>(
+                      '/v1/checkin/cleaning-waiver', { date, waived },
+                      { [CHECKIN_TOKEN_HEADER]: token })} />
         )}
         {view?.guestFolder === true && modus === 'mail' && <ZurMappe token={token} />}
       </div>
@@ -186,9 +189,14 @@ function OhneLink(): JSX.Element {
  * Reinigungsverzicht (0115). Unter dem Meldeschein und nicht davor: wer den
  * Link oeffnet, soll zuerst sehen, was er tun muss, dann was er tun kann.
  * Eigener Zustand wie der Rest der Seite, kein Zwischenspeicher.
+ *
+ * Gespeichert wird ueber `speichern`: auf der Gastseite mit dem Link, am
+ * Terminal ueber die Sitzung der Selbstbedienung -- dort gibt es keinen
+ * Link mehr, der den ganzen Online-Check-in oeffnete (Audit 19.10., N1).
  */
-export function Verzicht({ token, start, gross }: {
-  token: string; start: CleaningWaiverView; gross: boolean
+export function Verzicht({ start, gross, speichern }: {
+  start: CleaningWaiverView; gross: boolean
+  speichern: (date: string, waived: boolean) => Promise<CleaningWaiverView | null>
 }): JSX.Element | null {
   const t = useT()
   const [view, setView] = useState<CleaningWaiverView | null>(start)
@@ -197,8 +205,7 @@ export function Verzicht({ token, start, gross }: {
   if (view === null) return null
   const setzen = (date: string, waived: boolean): void => {
     setBusy(true); setFehler(null)
-    api.post<CleaningWaiverView | null>('/v1/checkin/cleaning-waiver', { date, waived },
-      { [CHECKIN_TOKEN_HEADER]: token })
+    speichern(date, waived)
       .then(setView)
       .catch((e: unknown) => setFehler(e))
       .finally(() => setBusy(false))

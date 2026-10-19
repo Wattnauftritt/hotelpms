@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
-import { createCheckinToken } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
 import { geraetVon } from '../platform/terminal.js'
-import { verzichtStand } from '../platform/reinigungsverzicht.js'
+import { setzeVerzicht, verzichtStand } from '../platform/reinigungsverzicht.js'
+import { verzichtAusRumpf } from './checkin.js'
 import { mappeWuensche, wunschAusRumpf, wunschAnlegen } from '../platform/gastwuensche.js'
 import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_SQL,
          kissenVorbelegen, einstellungAnsicht } from '../platform/terminalSelbst.js'
@@ -21,11 +21,14 @@ import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_S
  * vertippten Zimmer, nicht vor Absicht: das Geraet steht im Haus (Sven,
  * 12.10.2026).
  *
- * **Kein zweiter Verzicht, kein zweiter Wunsch.** Nach "Ja" bekommt das
- * Terminal einen Check-in-Link (Kanal `terminal`) und ruft damit
- * `POST /v1/checkin/cleaning-waiver` -- denselben Endpunkt wie der Gast auf
- * seinem Telefon, mit derselben Sperre und demselben Push an die Kraft.
- * Kopfkissen und andere Wuensche gehen ueber `wunschAnlegen` aus dem
+ * **Kein zweiter Verzicht, kein zweiter Wunsch.** Nach "Ja" setzt das
+ * Terminal den Verzicht ueber seine Sitzung, mit `setzeVerzicht` -- derselben
+ * Regel wie der Gast auf seinem Telefon, mit derselben Sperre und demselben
+ * Push an die Kraft. Einen Check-in-Link gibt das Terminal nicht mehr aus:
+ * er oeffnete auch Formular, Meldeschein und Unterschrift, und wer aus dem
+ * Kiosk-Browser herauskam, hatte damit den ganzen Online-Check-in eines
+ * fremden Gastes (Audit 19.10., N1). Die Sitzung reicht nur so weit wie
+ * diese Routen. Kopfkissen und andere Wuensche gehen ueber `wunschAnlegen` aus dem
  * Katalog der Gaestemappe (0149), mit Quelle `terminal` und nur, was dort
  * "am Terminal" angehakt und kostenlos ist.
  *
@@ -38,10 +41,14 @@ import { beendeSelbstbedienung, GAST_IM_ZIMMER_SQL, GESCHAEFTSTAG_SQL, HAEUSER_S
 const SITZUNG_MINUTEN = 3
 /** Nach der Bestaetigung: das Terminal raeumt nach einer Minute Stille selbst ab. */
 const BESTAETIGT_MINUTEN = 10
-/** Hoechstens so viele Sitzungen ohne "Ja" ... */
-const OHNE_JA_HOECHSTENS = 4
+/** Hoechstens so viele Sitzungen, mit oder ohne "Ja" ... */
+const SITZUNGEN_HOECHSTENS = 4
 /** ... in diesem Fenster; danach eine Pause, bis die aelteste herausfaellt. */
-const OHNE_JA_FENSTER_SEKUNDEN = 60
+const SITZUNGEN_FENSTER_SEKUNDEN = 60
+/** Hoechstens so viele "Ja" je Geraet ... */
+const JA_HOECHSTENS = 3
+/** ... in diesem Fenster. */
+const JA_FENSTER_SEKUNDEN = 5 * 60
 
 interface Sitzung {
   id: number; property_id: number; resource_id: number; reservation_id: number
@@ -206,20 +213,31 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
       void reply.header('cache-control', 'no-store')
       return tx(req.pool, req, async client => {
         /*
-         * Wer Zimmer um Zimmer antippt, liest Namen, auch ohne je "Nein" zu
-         * sagen. Deshalb zaehlen alle Sitzungen der letzten Minute ohne
-         * "Ja": ab der vierten eine kurze Pause. Ein Gast, der sich einmal
-         * vertippt, merkt davon nichts; vierzig Zimmer durchzulesen dauert
-         * zehn Minuten vor dem Tresen. Gezaehlt am Geraet in der Datenbank:
-         * die allgemeine Ratenbegrenzung erreicht ein gekoppeltes Terminal
-         * nicht (Dokument 31, Abschnitt 2).
+         * Wer Zimmer um Zimmer antippt, liest Namen, mit "Nein", mit "Ja"
+         * oder ohne Antwort. Deshalb zaehlen alle Sitzungen der letzten
+         * Minute: ab der vierten eine kurze Pause. Bis zum 19.10. zaehlten
+         * nur Sitzungen ohne "Ja", und wer nach jedem Namen "Ja" drueckte,
+         * las alle belegten Zimmer in Sekunden (Audit 19.10., M5). Dazu
+         * hoechstens drei "Ja" in fuenf Minuten: Ein echter Gast bestaetigt
+         * einmal, eine Familie vielleicht zweimal; wer bestaetigt, sieht
+         * Bleibetage und kann abbestellen, und das soll niemand Zimmer fuer
+         * Zimmer tun koennen. Ein Gast, der sich einmal vertippt, merkt von
+         * beidem nichts; vierzig Zimmer durchzulesen dauert zehn Minuten vor
+         * dem Tresen. Gezaehlt am Geraet in der Datenbank: die allgemeine
+         * Ratenbegrenzung erreicht ein gekoppeltes Terminal nicht (Dokument
+         * 31, Abschnitt 2).
          */
-        const pause = await client.query<{ n: number }>(
-          `SELECT count(*)::int AS n FROM terminal_self_session
-            WHERE device_id = $1 AND confirmed_at IS NULL
-              AND created_at > now() - make_interval(secs => $2)`,
-          [deviceId, OHNE_JA_FENSTER_SEKUNDEN])
-        if (pause.rows[0]!.n >= OHNE_JA_HOECHSTENS) throw Errors.conflict('terminalSelf.pause')
+        const pause = await client.query<{ n: number; ja: number }>(
+          `SELECT count(*) FILTER (
+                    WHERE created_at > now() - make_interval(secs => $2))::int AS n,
+                  count(*) FILTER (
+                    WHERE confirmed_at > now() - make_interval(secs => $3))::int AS ja
+             FROM terminal_self_session
+            WHERE device_id = $1
+              AND created_at > now() - make_interval(secs => GREATEST($2, $3))`,
+          [deviceId, SITZUNGEN_FENSTER_SEKUNDEN, JA_FENSTER_SEKUNDEN])
+        if (pause.rows[0]!.n >= SITZUNGEN_HOECHSTENS
+            || pause.rows[0]!.ja >= JA_HOECHSTENS) throw Errors.conflict('terminalSelf.pause')
         await beendeSelbstbedienung(client, deviceId, 'replaced')
 
         const gaeste = await aufenthalte(client, propertyIds, raum)
@@ -238,7 +256,7 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
   })
 
   /**
-   * "Ja" oder "Nein". Auf "Ja" der Link und der Stand des Verzichts, in
+   * "Ja" oder "Nein". Auf "Ja" der Stand des Verzichts und der Wuensche, in
    * einer Antwort. Auf "Nein" der naechste Aufenthalt im Zimmer, wenn es
    * einen gibt, sonst endet die Sitzung.
    */
@@ -252,7 +270,7 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
       const { sessionRef } = req.params as { sessionRef: string }
       const ja = (req.body as { yes?: unknown } | undefined)?.yes
       if (typeof ja !== 'boolean') throw Errors.validation({ yes: ['field.invalid'] })
-      // Die Antwort traegt den Link. Sie bleibt in keinem Zwischenspeicher.
+      // Die Antwort traegt Bleibetage und Wuensche. Sie bleibt in keinem Zwischenspeicher.
       void reply.header('cache-control', 'no-store')
       return tx(req.pool, req, async client => {
         const s = await eigeneSitzung(client, deviceId, sessionRef)
@@ -283,17 +301,12 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
           `SELECT ${GESCHAEFTSTAG_SQL}::text AS d FROM property p WHERE p.id = $1`,
           [s.property_id])
         const geschaeftstag = tag.rows[0]!.d
-        const t = await createCheckinToken(client, {
-          reservationId: s.reservation_id, channel: 'terminal', expiresOn: geschaeftstag })
-        if (t === null) throw Errors.conflict('terminalSelf.sessionClosed')
         await client.query(
           `UPDATE terminal_self_session
-              SET confirmed_at = now(), checkin_token_id = $2,
-                  expires_at = now() + make_interval(mins => $3)
-            WHERE id = $1`, [s.id, t.tokenId, BESTAETIGT_MINUTEN])
+              SET confirmed_at = now(), expires_at = now() + make_interval(mins => $2)
+            WHERE id = $1`, [s.id, BESTAETIGT_MINUTEN])
         return {
           confirmed: true,
-          token: t.token,
           cleaningWaiver: await verzichtStand(client, s.reservation_id, s.property_id,
                                               geschaeftstag, true),
           requests: await mappeWuensche(client, s.property_id, s.reservation_id,
@@ -335,7 +348,40 @@ export function terminalSelbstRoutes(app: FastifyInstance): void {
     }
   })
 
-  /** Fertig, abgebrochen oder Stille: die Sitzung endet, der Link faellt. */
+  /**
+   * Auf die Zwischenreinigung eines Tages verzichten oder es zuruecknehmen.
+   * Nur in einer bestaetigten, offenen Sitzung, wie die Wuensche; welche
+   * Tage gehen und bis wann, entscheidet `setzeVerzicht` wie fuer Telefon,
+   * Mappe und Rezeption. Quelle `guest` wie bisher ueber den Link: es ist
+   * der Gast, der verzichtet, nur an einem anderen Bildschirm (Audit 19.10.,
+   * N1).
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/terminal/self/sessions/:sessionRef/cleaning-waiver',
+    permission: 'terminal:device',
+    summary: 'Gaesteterminal: auf die Zwischenreinigung eines Tages verzichten',
+    handler: async (req, reply) => {
+      const { deviceId } = geraetVon(req)
+      const { sessionRef } = req.params as { sessionRef: string }
+      const { date, waived } = verzichtAusRumpf(req.body)
+      void reply.header('cache-control', 'no-store')
+      return tx(req.pool, req, async client => {
+        const s = await eigeneSitzung(client, deviceId, sessionRef)
+        if (s.confirmed_at === null) throw Errors.conflict('terminalSelf.sessionClosed')
+        const tag = await client.query<{ d: string }>(
+          `SELECT ${GESCHAEFTSTAG_SQL}::text AS d FROM property p WHERE p.id = $1`,
+          [s.property_id])
+        const geschaeftstag = tag.rows[0]!.d
+        await setzeVerzicht(client, {
+          reservationId: s.reservation_id, propertyId: s.property_id,
+          businessDate: geschaeftstag, date, waived, source: 'guest', userId: null })
+        return verzichtStand(client, s.reservation_id, s.property_id, geschaeftstag, true)
+      })
+    }
+  })
+
+  /** Fertig, abgebrochen oder Stille: die Sitzung endet. */
   registerRoute(app, {
     method: 'POST',
     url: '/v1/terminal/self/sessions/:sessionRef/end',

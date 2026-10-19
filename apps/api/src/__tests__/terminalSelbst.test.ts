@@ -103,9 +103,9 @@ const antippen = (resourceId: number) =>
 const antworten = (sessionRef: string, yes: boolean) =>
   app.inject({ method: 'POST', url: `/v1/terminal/self/sessions/${sessionRef}/confirm`,
     headers: geraet, payload: { yes } })
-const verzichten = (token: string, date: string) =>
-  app.inject({ method: 'POST', url: '/v1/checkin/cleaning-waiver',
-    headers: { [CHECKIN_TOKEN_HEADER]: token }, payload: { date, waived: true } })
+const verzichten = (sessionRef: string, date: string) =>
+  app.inject({ method: 'POST', url: `/v1/terminal/self/sessions/${sessionRef}/cleaning-waiver`,
+    headers: geraet, payload: { date, waived: true } })
 
 describe('Selbstbedienung am Gaesteterminal', () => {
   it('zeigt keine Zimmer, solange das Haus sie nicht anbietet', async () => {
@@ -133,7 +133,7 @@ describe('Selbstbedienung am Gaesteterminal', () => {
       expect(JSON.stringify(h)).not.toContain('Petersen')
     })
 
-  it('fragt nach dem Nachnamen und gibt nach "Ja" den Verzicht ueber den vorhandenen Endpunkt frei',
+  it('fragt nach dem Nachnamen und gibt nach "Ja" den Verzicht ueber die Sitzung frei',
     async () => {
       await einschalten()
       const a = await aufenthalt(zimmer[0]!, 'Petersen', '2026-09-30', '2026-10-04')
@@ -145,14 +145,18 @@ describe('Selbstbedienung am Gaesteterminal', () => {
       const j = await antworten(s.json().sessionRef, true)
       expect(j.statusCode, j.body).toBe(200)
       expect(j.headers['cache-control']).toBe('no-store')
-      const { token, cleaningWaiver } = j.json<{ token: string; cleaningWaiver: unknown }>()
+      const ref = s.json<{ sessionRef: string }>().sessionRef
+      const { cleaningWaiver } = j.json<{ cleaningWaiver: unknown }>()
       expect(cleaningWaiver).toEqual({ waterGift: false, mayEdit: true, days: [
         { date: '2026-10-01', waived: false, locked: false },
         { date: '2026-10-02', waived: false, locked: false },
         { date: '2026-10-03', waived: false, locked: false }] })
 
-      const v = await verzichten(token, '2026-10-02')
+      const v = await verzichten(ref, '2026-10-02')
       expect(v.statusCode, v.body).toBe(200)
+      expect(v.json()).toMatchObject({ days: [
+        { date: '2026-10-01', waived: false }, { date: '2026-10-02', waived: true },
+        { date: '2026-10-03', waived: false }] })
       const w = await owner.query(
         `SELECT reservation_id, business_date::text AS d, source FROM cleaning_waiver`)
       expect(w.rows).toEqual([{ reservation_id: a.id, d: '2026-10-02', source: 'guest' }])
@@ -160,12 +164,12 @@ describe('Selbstbedienung am Gaesteterminal', () => {
       // Zweimal "Ja" gibt es nicht.
       expect((await antworten(s.json().sessionRef, true)).statusCode).toBe(409)
 
-      // Mit dem Ende der Sitzung faellt der Link.
+      // Mit dem Ende der Sitzung geht nichts mehr.
       const e = await app.inject({ method: 'POST',
         url: `/v1/terminal/self/sessions/${s.json().sessionRef}/end`, headers: geraet,
         payload: { reason: 'done' } })
       expect(e.statusCode, e.body).toBe(200)
-      expect((await verzichten(token, '2026-10-03')).statusCode).toBe(410)
+      expect((await verzichten(ref, '2026-10-03')).statusCode).toBe(409)
     })
 
   it('beendet die Sitzung auf "Nein" und bremst, wer Zimmer um Zimmer durchtippt', async () => {
@@ -184,17 +188,63 @@ describe('Selbstbedienung am Gaesteterminal', () => {
     expect(p.json().code).toBe('terminalSelf.pause')
   })
 
+  it('bremst auch, wer nach jedem Namen "Ja" drueckt (Audit 19.10., M5)', async () => {
+    await einschalten()
+    for (let i = 0; i < 4; i++) {
+      await aufenthalt(zimmer[i]!, `Gast${i}`, '2026-09-30', '2026-10-04')
+    }
+    // Drei Zimmer mit "Ja" gehen -- ein echter Gast bestaetigt einmal.
+    for (let i = 0; i < 3; i++) {
+      const s = await antippen(zimmer[i]!)
+      expect(s.statusCode, s.body).toBe(200)
+      expect((await antworten(s.json().sessionRef, true)).statusCode).toBe(200)
+    }
+    const p = await antippen(zimmer[3]!)
+    expect(p.statusCode).toBe(409)
+    expect(p.json().code).toBe('terminalSelf.pause')
+
+    // Nach der Minute zaehlt die Grenze fuer "Ja" weiter, bis fuenf Minuten um sind.
+    await owner.query(`UPDATE terminal_self_session
+                          SET created_at = created_at - interval '2 minutes',
+                              confirmed_at = confirmed_at - interval '2 minutes'`)
+    expect((await antippen(zimmer[3]!)).statusCode).toBe(409)
+    await owner.query(`UPDATE terminal_self_session
+                          SET created_at = created_at - interval '4 minutes',
+                              confirmed_at = confirmed_at - interval '4 minutes'`)
+    expect((await antippen(zimmer[3]!)).statusCode).toBe(200)
+  })
+
+  it('gibt nach "Ja" keinen Check-in-Link aus, der Meldeschein oder Formular oeffnet (Audit 19.10., N1)',
+    async () => {
+      await einschalten()
+      await aufenthalt(zimmer[0]!, 'Petersen', '2026-09-30', '2026-10-04')
+      const s = await antippen(zimmer[0]!)
+      const ref = s.json<{ sessionRef: string }>().sessionRef
+      const j = await antworten(ref, true)
+      expect(j.statusCode, j.body).toBe(200)
+      expect(Object.keys(j.json()).sort()).toEqual(['cleaningWaiver', 'confirmed', 'requests'])
+      expect((await owner.query(`SELECT 1 FROM checkin_token`)).rowCount).toBe(0)
+      // Was die Selbstbedienung in der Hand hat, oeffnet den Online-Check-in nicht.
+      const f = await app.inject({ method: 'GET', url: '/v1/checkin/form',
+        headers: { [CHECKIN_TOKEN_HEADER]: ref } })
+      expect(f.statusCode).toBeGreaterThanOrEqual(400)
+      expect(f.body).not.toContain('Anna')
+      // Der Verzicht am Terminal geht weiter.
+      expect((await verzichten(ref, '2026-10-02')).statusCode).toBe(200)
+    })
+
   it('beendet eine liegengebliebene Sitzung, sobald die Seite wieder ruht', async () => {
     await einschalten()
     await aufenthalt(zimmer[0]!, 'Petersen', '2026-09-30', '2026-10-04')
     const s = await antippen(zimmer[0]!)
-    const { token } = (await antworten(s.json().sessionRef, true)).json<{ token: string }>()
+    const ref = s.json<{ sessionRef: string }>().sessionRef
+    expect((await antworten(ref, true)).statusCode).toBe(200)
     // Die Seite stuerzt ab und baut sich neu auf; im Ruhezustand holt sie
     // die Diashow.
     const i = await app.inject({ method: 'GET', url: '/v1/terminal/idle', headers: geraet })
     expect(i.statusCode, i.body).toBe(200)
     expect(i.json().selfService).toBe(true)
-    expect((await verzichten(token, '2026-10-02')).statusCode).toBe(410)
+    expect((await verzichten(ref, '2026-10-02')).statusCode).toBe(409)
   })
 
   it('fragt bei zwei Aufenthalten im Zimmer auf "Nein" nach dem zweiten', async () => {
@@ -208,11 +258,12 @@ describe('Selbstbedienung am Gaesteterminal', () => {
     expect((await antworten(s.json().sessionRef, true)).statusCode).toBe(200)
   })
 
-  it('weicht einem Auftrag der Rezeption: die Sitzung endet, der Link faellt', async () => {
+  it('weicht einem Auftrag der Rezeption: die Sitzung endet', async () => {
     await einschalten()
     await aufenthalt(zimmer[0]!, 'Petersen', '2026-09-30', '2026-10-04')
     const s = await antippen(zimmer[0]!)
-    const { token } = (await antworten(s.json().sessionRef, true)).json<{ token: string }>()
+    const ref = s.json<{ sessionRef: string }>().sessionRef
+    expect((await antworten(ref, true)).statusCode).toBe(200)
 
     const desk = await app.inject({ method: 'GET',
       url: `/v1/properties/${fx.propertyId}/terminal-desk`, headers: chef })
@@ -231,7 +282,7 @@ describe('Selbstbedienung am Gaesteterminal', () => {
     const o = await app.inject({ method: 'POST',
       url: `/v1/terminal/job/${f.json().job.jobRef}/open`, headers: geraet })
     expect(o.statusCode, o.body).toBe(200)
-    expect((await verzichten(token, '2026-10-02')).statusCode).toBe(410)
+    expect((await verzichten(ref, '2026-10-02')).statusCode).toBe(409)
     const z = await owner.query(`SELECT ended_reason FROM terminal_self_session`)
     expect(z.rows).toEqual([{ ended_reason: 'job' }])
   })
