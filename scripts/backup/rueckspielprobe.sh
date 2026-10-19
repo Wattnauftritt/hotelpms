@@ -38,20 +38,21 @@ fi
 [ -f "$SATZ/FERTIG" ] || { echo "$SATZ ist kein fertiger Satz." >&2; exit 1; }
 (cd "$SATZ" && sha256sum --quiet -c SHA256SUMS)
 
-ARBEIT="$(mktemp -d)"
-trap 'rm -rf "$ARBEIT"' EXIT
-chmod 755 "$ARBEIT"
 entschluesseln() { age --decrypt --identity "$IDENTITAET" "$SATZ/$1"; }
 
 psql_pg() { runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 "$@"; }
 
 beginn=$(date +%s)
-entschluesseln datenbank.dump.age > "$ARBEIT/datenbank.dump"
-chmod 644 "$ARBEIT/datenbank.dump"
-
 psql_pg -q -d postgres -c "DROP DATABASE IF EXISTS \"$ZIELDB\" WITH (FORCE)"
 psql_pg -q -d postgres -c "CREATE DATABASE \"$ZIELDB\" OWNER $EIGENTUEMER"
-runuser -u postgres -- pg_restore --exit-on-error --dbname="$ZIELDB" "$ARBEIT/datenbank.dump"
+# Der Klartext geht ueber die Leitung, nie auf die Platte (Audit 19.10.,
+# N6): vorher lag er fuer die Dauer der Probe als 644 in einem 755-
+# Verzeichnis, lesbar fuer jeden Benutzer der Maschine, auch fuer den
+# Dienstbenutzer der API. pg_restore liest das Custom-Format auch aus einem
+# Strom; was dabei wegfaellt, ist nur -j, und das benutzt die Probe nicht.
+# pipefail macht einen Fehler beim Entschluesseln zum Fehler der Probe.
+entschluesseln datenbank.dump.age \
+  | runuser -u postgres -- pg_restore --exit-on-error --dbname="$ZIELDB"
 dauer=$(( $(date +%s) - beginn ))
 
 # Als postgres: die Zeilenrichtlinien gelten fuer den Superuser nicht, die
