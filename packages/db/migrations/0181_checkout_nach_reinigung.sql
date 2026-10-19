@@ -26,7 +26,7 @@
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION reservation_checkout_housekeeping() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   IF NEW.status = 'CheckedOut' AND OLD.status IS DISTINCT FROM 'CheckedOut'
      AND NEW.resource_id IS NOT NULL THEN
