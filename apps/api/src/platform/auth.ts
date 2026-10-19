@@ -177,7 +177,33 @@ function principalAus(userId: number, d: PrincipalUserData | null): Principal {
 }
 
 /**
- * Principal aus dem Sitzungscookie, in **einer** Runde zur Datenbank
+ * Woher eine Sitzung kommt: Browser mit Cookie oder die eigene App mit Token
+ * (Migration 0191). Eine Sitzung traegt nur auf ihrem eigenen Weg.
+ */
+export type SessionClient = 'web' | 'app'
+
+/**
+ * Woran die API ein Token der App von einem Maschinentoken unterscheidet.
+ * Beide kommen als `Bearer`. Der Anfang waehlt nur, wo zuerst gesucht wird;
+ * er beweist nichts -- die Art prueft `session_principal`. Ein
+ * Maschinentoken ist reines base64url und beginnt nur aus Zufall so (eins
+ * zu sechzehn Millionen); traegt es als Sitzung nicht, wird es deshalb
+ * noch als Maschinentoken gesucht, statt dass ein Client grundlos abgewiesen
+ * wird.
+ */
+export const APP_TOKEN_PREFIX = 'sga_'
+
+/**
+ * Die Herkuenfte der App (Capacitor): iOS liefert ihre Seiten unter
+ * `capacitor://localhost`, Android unter `https://localhost`. Nur ihnen
+ * antwortet die API mit CORS-Kopfzeilen, und nie mit Cookies: die App
+ * schickt ihr Token selbst, ein Browser von dort hat keines.
+ */
+export const APP_ORIGINS: ReadonlySet<string> =
+  new Set(['capacitor://localhost', 'https://localhost'])
+
+/**
+ * Principal aus einer Sitzung (Cookie oder App-Token), in **einer** Runde zur Datenbank
  * (`session_principal`, Migration 0142).
  *
  * Vorher waren es rund zehn: Sitzung lesen, `loadPrincipal` als eigene
@@ -191,12 +217,12 @@ function principalAus(userId: number, d: PrincipalUserData | null): Principal {
  * `null`, wenn die Sitzung unbekannt, widerrufen oder abgelaufen ist.
  */
 export async function loadSessionPrincipal(
-  pool: Pool, sessionId: string
+  pool: Pool, sessionId: string, client: SessionClient
 ): Promise<Principal | null> {
   const r = await pool.query<{ session_user_id: number; effective_user_id: number
                                principal: PrincipalUserData | null
                                support: SupportData | null }>(
-    `SELECT * FROM session_principal($1)`, [sessionId])
+    `SELECT * FROM session_principal($1, $2)`, [sessionId, client])
   const row = r.rows[0]
   if (row === undefined) return null
   // Arbeitsplatz-PIN wechselt die handelnde Person, ohne Neuanmeldung.

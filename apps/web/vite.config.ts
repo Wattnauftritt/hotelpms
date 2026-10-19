@@ -88,8 +88,49 @@ function serviceWorker(): Plugin {
   }
 }
 
-export default defineConfig({
-  plugins: [react(), serviceWorker()],
+/**
+ * Der Bau fuer die eigene App (`vite build --mode app`, Plan app/plan.md).
+ *
+ * Dieselbe Oberflaeche, drei Unterschiede:
+ *
+ * - **Kein Service Worker.** Die App bringt ihre Dateien selbst mit und
+ *   aktualisiert sie ueber die Huelle; ein Worker daneben hielte eine zweite
+ *   Fassung fest, die niemand wegwirft.
+ * - **Die Content-Security-Policy als `<meta>`.** In der App liefert nicht
+ *   Caddy aus, seine Kopfzeilen kommen dort nie an. Sie entspricht der aus
+ *   `ops/caddy/Caddyfile`, mit der Schnittstelle als zweiter Herkunft fuer
+ *   Abrufe und Bilder -- in der App liegt sie nicht unter `'self'`.
+ *   `frame-ancestors` fehlt, weil ein `<meta>` es nicht kennt; in eine
+ *   WebView rahmt ohnehin niemand ein.
+ * - **Ein eigenes Verzeichnis** (`dist-app`), damit der Bau fuer den
+ *   Browser und der fuer die App nie dieselben Dateien ueberschreiben.
+ *
+ * Die Herkunft der Schnittstelle kommt aus `STAYGRID_API`, sonst die echte;
+ * zur Laufzeit nennt die Huelle sie noch einmal (`window.staygridNative.api`),
+ * und beide muessen uebereinstimmen, sonst weist die Policy den Abruf ab.
+ */
+function appRichtlinie(api: string): Plugin {
+  const csp = [
+    "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'", "style-src-elem 'self'",
+    "style-src-attr 'unsafe-inline'", `img-src 'self' data: blob: ${api}`,
+    `connect-src 'self' ${api}`, 'frame-src https: blob:', "base-uri 'none'",
+    "form-action 'self'"
+  ].join('; ')
+  return {
+    name: 'staygrid-app-richtlinie',
+    apply: 'build',
+    transformIndexHtml: () => [{
+      tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp },
+      injectTo: 'head-prepend'
+    }]
+  }
+}
+
+export default defineConfig(({ mode }) => ({
+  plugins: mode === 'app'
+    ? [react(), appRichtlinie(process.env.STAYGRID_API ?? 'https://app.staygrid.cloud')]
+    : [react(), serviceWorker()],
   server: {
     // Im Entwicklungsbetrieb laeuft die API daneben. Im Betrieb liefert
     // Caddy beides unter derselben Herkunft aus, damit die Sitzung im
@@ -104,7 +145,7 @@ export default defineConfig({
     proxy: { '/v1': API, '/openapi.json': API }
   },
   build: {
-    outDir: 'dist',
+    outDir: mode === 'app' ? 'dist-app' : 'dist',
     /*
      * Quellkarten entstehen weiter, aber ohne Verweis in den ausgelieferten
      * Dateien (`hidden`). Mit `true` lagen 4,4 MB lesbarer Quelltext unter
@@ -143,4 +184,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))

@@ -8,7 +8,7 @@ import importX from 'eslint-plugin-import-x'
  * Durchgesetzt hier, nicht per Absprache.
  */
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/*.config.js'] },
+  { ignores: ['**/dist/**', '**/dist-app/**', '**/node_modules/**', '**/*.config.js'] },
   ...tseslint.configs.recommended,
   {
     plugins: { 'import-x': importX },

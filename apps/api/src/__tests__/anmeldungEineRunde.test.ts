@@ -69,7 +69,7 @@ describe('Anmeldung je Anfrage', () => {
     const u = await makeUser(owner,
       { email: 'rez@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
     const { sicht, report } = await mitSitzung(u.sessionId)
-    expect(report.statements).toEqual(['SELECT * FROM session_principal($1)'])
+    expect(report.statements).toEqual(['SELECT * FROM session_principal($1, $2)'])
     expect(sicht).toMatchObject({ userId: u.userId, sessionUserId: u.userId,
                                   supportSessionId: null, accountIds: [fx.accountId] })
     expect(sicht.properties).toHaveLength(1)

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError } from '../api.js'
+import { api, ApiError, apiFetch } from '../api.js'
 
 /**
  * Kassenbuch (Migration 0095). Ein Aufruf je Monat: Zeilen, laufender
@@ -172,8 +172,7 @@ async function datevHolen(
   const q = new URLSearchParams({ mode: a.mode, ...(a.from ? { from: a.from } : {}),
                                   ...(a.to ? { to: a.to } : {}),
                                   ...(a.mode === 'range' && a.resend ? { resend: 'true' } : {}) })
-  const res = await fetch(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`,
-    { credentials: 'same-origin' })
+  const res = await apiFetch(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`)
   if (!res.ok) {
     let problem: unknown = null
     try { problem = JSON.parse(await res.text()) } catch { /* kein RFC-9457-Rumpf */ }

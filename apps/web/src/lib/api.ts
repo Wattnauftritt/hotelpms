@@ -1,4 +1,5 @@
 import type { Problem } from '@hotelpms/contracts'
+import { nativ, type StaygridNative } from '@hotelpms/native'
 
 /**
  * Zugriff auf die Schnittstelle.
@@ -10,6 +11,13 @@ import type { Problem } from '@hotelpms/contracts'
  * Die Sitzung liegt im Cookie und wird vom Browser mitgeschickt. Es gibt
  * hier bewusst keine Kopfzeile mit einem Token: ein Token im JavaScript ist
  * ein Token, das ein eingeschleustes Skript lesen kann.
+ *
+ * **Die Ausnahme ist die eigene App** (Migration 0191, Plan app/plan.md).
+ * Dort liegen die Seiten unter einer anderen Herkunft als die Schnittstelle,
+ * und das `SameSite=Strict`-Cookie kommt nicht an. Die App weist sich mit
+ * einem Token aus, das im Schluesselbund liegt; warum das dort vertretbar
+ * ist, steht an der Anmeldung (`routes/auth.ts` der API). Im Browser fehlt
+ * `window.staygridNative`, und alles hier laeuft wie bisher.
  */
 
 export class ApiError extends Error {
@@ -23,16 +31,38 @@ export class ApiError extends Error {
   }
 }
 
+/** Das Token der App, einmal aus dem Schluesselbund gelesen. */
+let appToken: Promise<string | null> | null = null
+
+function tokenDerApp(n: StaygridNative): Promise<string | null> {
+  appToken ??= n.sitzung.lesen().catch(() => null)
+  return appToken
+}
+
+/**
+ * `fetch` gegen die Schnittstelle, fuer die wenigen Aufrufe, die eine Datei
+ * statt JSON holen (Beleg, Export). Im Browser derselbe Aufruf wie bisher;
+ * in der App mit der Herkunft der Schnittstelle davor und dem Token, ohne
+ * Cookies.
+ */
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const n = nativ()
+  if (n === undefined) return fetch(path, { credentials: 'same-origin', ...init })
+  const headers = new Headers(init.headers)
+  const token = await tokenDerApp(n)
+  if (token !== null) headers.set('authorization', `Bearer ${token}`)
+  return fetch(n.api + path, { ...init, headers, credentials: 'omit' })
+}
+
 async function request<T>(
   method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}
 ): Promise<T> {
   const headers: Record<string, string> = { ...extraHeaders }
   if (body !== undefined) headers['content-type'] = 'application/json'
 
-  const res = await fetch(path, {
+  const res = await apiFetch(path, {
     method,
     headers,
-    credentials: 'same-origin',
     body: body === undefined ? undefined : JSON.stringify(body)
   })
 
@@ -71,6 +101,41 @@ export const api = {
   // Einrichtung abgeschaltet wird -- ein Webhook-Abonnement etwa. Belege,
   // Reservierungen und Gaeste kennen diesen Weg nicht.
   delete: <T>(path: string) => request<T>('DELETE', path)
+}
+
+/**
+ * Anmelden, im Browser mit Cookie, in der App mit Token. An einer Stelle,
+ * damit Rezeption und Personal-App nicht jede fuer sich wissen muessen, wo
+ * sie laufen.
+ */
+export async function anmelden(login: string, password: string): Promise<void> {
+  const n = nativ()
+  if (n === undefined) {
+    await api.post('/v1/auth/login', { login, password })
+    return
+  }
+  const { token } = await api.post<{ token: string }>('/v1/auth/login',
+    { login, password, client: 'app' })
+  await n.sitzung.speichern(token)
+  appToken = Promise.resolve(token)
+}
+
+/**
+ * Abmelden. In der App geht das Token auch dann aus dem Schluesselbund,
+ * wenn der Aufruf scheitert: ohne Netz bliebe sonst eine Sitzung auf dem
+ * Telefon, von der der Benutzer glaubt, er habe sie beendet. Auf dem Server
+ * laeuft sie dann aus wie jede andere.
+ */
+export async function abmelden(): Promise<void> {
+  try {
+    await api.post('/v1/auth/logout')
+  } finally {
+    const n = nativ()
+    if (n !== undefined) {
+      appToken = Promise.resolve(null)
+      await n.sitzung.loeschen().catch(() => { /* naechster Start fragt neu */ })
+    }
+  }
 }
 
 /**

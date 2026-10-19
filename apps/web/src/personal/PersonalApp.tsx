@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { KENNWORT_MIN, STAFF_LOCALES, type StaffLocale } from '@hotelpms/contracts'
-import { api, ApiError } from '../lib/api.js'
+import { api, ApiError, anmelden, abmelden as abmeldenBeiApi } from '../lib/api.js'
 import { dokumentSprache } from '../lib/dokumentSprache.js'
 import { useInstallation } from '../lib/pwa.js'
 import { offlineKopieLoeschen } from '../lib/offline.js'
@@ -88,7 +88,7 @@ function Anmelden({ locale, onDone }: {
       setFehler(null)
       setLaeuft(true)
       try {
-        await api.post('/v1/auth/login', { login: name.trim(), password: kennwort })
+        await anmelden(name.trim(), kennwort)
         onDone()
       } catch (err) {
         setFehler(fehlerText(err, locale))
@@ -263,7 +263,7 @@ function Installieren(): JSX.Element | null {
 async function abmelden(): Promise<void> {
   offlineKopieLoeschen()
   try {
-    await api.post('/v1/auth/logout')
+    await abmeldenBeiApi()
   } finally {
     location.replace('/personal')
   }
