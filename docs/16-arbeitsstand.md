@@ -1115,6 +1115,8 @@ Auch als generischer Plan (`plan_cache_mode = force_generic_plan`) bleibt der Be
 
 **Nachtrag: Bad am Gästehaus, Kalender nach dem Speichern** (Sven, 08.10.2026). Ein Reinigungsbereich ist nicht mehr jeden Tag fällig, sondern nur, wenn im selben Haus (trägt der Bereich ein Gebäude: im selben Gebäude) letzte Nacht ein Zimmer belegt war oder eines auf schmutzig steht — „wenn das Gästehaus leer ist, ist das Bad natürlich sauber“. Und eine offene, gespeicherte Aufgabe folgt dem Kalender: reist ein Gast früher ab oder verlängert, steht das Zimmer im Plan sofort mit der neuen Art und deren Sollminuten, markiert mit „!“, und Speichern schreibt es an die Aufgabe und schickt es aufs Telefon. Erledigte Aufgaben und Zeilen aus der alten App bleiben, wie sie sind. Tests in `reinigungsplan.test.ts` und `personalHaeuser.test.ts`.
 
+**Nachtrag: Check-out nach der Reinigung** (Sven, 19.10.2026, Migration 0181). Checkt die Rezeption erst aus, nachdem das Personal das Zimmer am Abreisetag als gereinigt oder „war sauber“ gemeldet hat, bleibt es sauber. Bis dahin setzte der Check-out-Trigger aus `0011` ohne Ansehen auf schmutzig, und am Folgetag stand das leere Zimmer als liegen gebliebene Abreise wieder im Plan. Ohne erledigte Abreisereinigung dieses Abreisetags bleibt es beim Schmutzig. Tests in `packages/db/src/__tests__/checkoutNachReinigung.test.ts`.
+
 ### Aufgabe 19 — Digitale Gästemappe — **Bausteine 1 bis 10 fertig**
 
 Svens Wunsch vom 11.10.2026: ein QR-Code im Zimmer öffnet auf dem Telefon des Gastes die Mappe des Hauses; später kann der Gast darüber auf die Reinigung verzichten, Extras bestellen, eine späte Abreise anfragen. Plan mit allen Entscheidungen in [`35-gaestemappe.md`](35-gaestemappe.md).
