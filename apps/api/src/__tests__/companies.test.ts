@@ -53,8 +53,21 @@ describe('Firmen', () => {
     const body = JSON.parse(r.body)
     expect(body).toMatchObject({
       companyRef: ref, name: 'Nordwind GmbH', vatId: 'DE123456789', city: 'Flensburg',
-      country: 'DE', paymentTermsDays: 14, active: true
+      country: 'DE', paymentTermsDays: null, active: true
     })
+  })
+
+  it('fuehrt ohne eigenes Zahlungsziel keines und loescht ein eigenes mit null', async () => {
+    // Ohne eigenes gilt die Vorgabe des Hauses (0189); eine vorbelegte 14
+    // waere eine dritte Vorgabe neben Haus und Datenbank.
+    const ref = await firmaAnlegen()
+    const patch = async (v: unknown) => app.inject({
+      method: 'PATCH', url: `/v1/companies/${ref}`, headers: auth,
+      payload: { paymentTermsDays: v } })
+    expect(JSON.parse((await patch(21)).body).paymentTermsDays).toBe(21)
+    expect(JSON.parse((await patch(null)).body).paymentTermsDays).toBeNull()
+    expect((await patch(400)).statusCode).toBe(422)
+    expect((await patch(2.5)).statusCode).toBe(422)
   })
 
   it('meldet eine unbekannte Firma als nicht gefunden', async () => {

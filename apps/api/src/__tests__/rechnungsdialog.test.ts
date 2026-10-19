@@ -45,7 +45,7 @@ beforeEach(async () => {
 interface Folio { ref: string; id: number; nacht: number; extra: number }
 
 /** Folio eines Gastes mit einer Nacht (107 Euro) und einem Getraenk (11,90 Euro). */
-async function folio(firma?: { terms: number }): Promise<Folio> {
+async function folio(firma?: { terms: number | null }): Promise<Folio> {
   const gast = await makeGuest(owner, fx.accountId)
   let companyId: number | null = null
   if (firma !== undefined) {
@@ -272,6 +272,19 @@ describe('Vorgabe des Hauses', () => {
     const v = JSON.parse((await post(`/v1/folios/${f.ref}/invoice-preview`, {})).body) as {
       dueOn: string }
     expect(v.dueOn).toBe(await heutePlus(21))
+  })
+
+  it('gilt auch fuer eine Firma ohne eigenes Zahlungsziel (0189)', async () => {
+    // Sven, 19.10.2026: die Voreinstellung kommt aus den Einstellungen,
+    // nicht aus einer 14 an der Firma.
+    await app.inject({
+      method: 'PUT', url: `/v1/properties/${fx.propertyId}/invoice-settings`,
+      headers: auth, payload: { paymentTermsDays: 10 } })
+    const f = await folio({ terms: null })
+    const v = JSON.parse((await post(`/v1/folios/${f.ref}/invoice-preview`, {})).body) as {
+      dueOn: string; recipient: { name: string } }
+    expect(v.recipient.name).toBe('Muster GmbH')
+    expect(v.dueOn).toBe(await heutePlus(10))
   })
 })
 

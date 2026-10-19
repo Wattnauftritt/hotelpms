@@ -19,6 +19,20 @@ function orUndef(s: string): string | undefined {
  * verliert das Folio und schreibt die Rechnung im Zweifel an den Gast.
  * Eine zweite, kuerzere Maske im Folio liefe mit der ersten auseinander.
  */
+/**
+ * Beschriftung ueber dem Feld statt nur als Platzhalter: ein Platzhalter
+ * verschwindet, sobald etwas im Feld steht, und bei den vorbelegten Feldern
+ * (Land, Zahlungsziel) stand deshalb eine nackte 14 ohne Erklaerung da.
+ */
+function Feld({ text, children }: { text: string; children: JSX.Element }): JSX.Element {
+  return (
+    <label className="block">
+      <span className="block text-xs text-neutral-500 mb-0.5">{text}</span>
+      {children}
+    </label>
+  )
+}
+
 export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   initial?: Company
   /** Name aus einer Suche ohne Treffer, damit er nicht zweimal getippt wird. */
@@ -34,7 +48,10 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   const [postalCode, setPostalCode] = useState(initial?.postalCode ?? '')
   const [city, setCity] = useState(initial?.city ?? '')
   const [country, setCountry] = useState(initial?.country ?? 'DE')
-  const [paymentTermsDays, setPaymentTermsDays] = useState(initial?.paymentTermsDays ?? 14)
+  // Leer heisst: Vorgabe des Hauses aus den Einstellungen (0189). Eine
+  // vorbelegte Zahl hier waere eine dritte Vorgabe neben Haus und Datenbank.
+  const [paymentTermsDays, setPaymentTermsDays] = useState(
+    initial?.paymentTermsDays == null ? '' : String(initial.paymentTermsDays))
   const [invoiceEmail, setInvoiceEmail] = useState(initial?.invoiceEmail ?? '')
   const [leitweg, setLeitweg] = useState(initial?.buyerReference ?? '')
   const [active, setActive] = useState(initial?.active ?? true)
@@ -44,19 +61,21 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   const speichern = initial ? aendern : anlegen
 
   const absenden = (): void => {
+    const ziel = paymentTermsDays.trim() === '' ? null : Number(paymentTermsDays)
     const body = {
       name: name.trim(),
       // Wie die Leitweg-ID: leer beim Aendern entfernt den Ansprechpartner.
       contactName: initial ? contactName.trim() : orUndef(contactName),
       vatId: orUndef(vatId), addressLine1: orUndef(addressLine1),
       postalCode: orUndef(postalCode), city: orUndef(city), country: orUndef(country) ?? 'DE',
-      paymentTermsDays, invoiceEmail: orUndef(invoiceEmail),
+      paymentTermsDays: ziel ?? undefined, invoiceEmail: orUndef(invoiceEmail),
       // Leer schickt einen leeren Text: so laesst sich eine Leitweg-ID
       // wieder entfernen, wenn die Firma doch keine Behoerde ist.
       buyerReference: initial ? leitweg.trim() : orUndef(leitweg)
     }
     if (initial) {
-      aendern.mutate({ ...body, active }, { onSuccess: onSaved })
+      // Leer beim Aendern loescht das eigene Ziel; dann gilt das des Hauses.
+      aendern.mutate({ ...body, paymentTermsDays: ziel, active }, { onSuccess: onSaved })
     } else {
       anlegen.mutate(body, { onSuccess: onSaved })
     }
@@ -65,42 +84,60 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   return (
     <div className="space-y-2 border border-neutral-200 rounded-sm p-3">
       <h2 className="text-sm font-medium">{t('companies.title')}</h2>
-      <input value={name} onChange={e => setName(e.target.value)} disabled={!darfSchreiben}
-             placeholder={t('companies.name')}
-             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-      <input value={contactName} onChange={e => setContactName(e.target.value)}
-             disabled={!darfSchreiben} placeholder={t('companies.contactName')}
-             maxLength={200}
-             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-      <input value={vatId} onChange={e => setVatId(e.target.value)} disabled={!darfSchreiben}
-             placeholder={t('companies.vatId')}
-             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-      <input value={addressLine1} onChange={e => setAddressLine1(e.target.value)}
-             disabled={!darfSchreiben} placeholder={t('companies.address')}
-             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      <Feld text={t('companies.name')}>
+        <input value={name} onChange={e => setName(e.target.value)} disabled={!darfSchreiben}
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      </Feld>
+      <Feld text={t('companies.contactName')}>
+        <input value={contactName} onChange={e => setContactName(e.target.value)}
+               disabled={!darfSchreiben}
+               maxLength={200}
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      </Feld>
+      <Feld text={t('companies.vatId')}>
+        <input value={vatId} onChange={e => setVatId(e.target.value)} disabled={!darfSchreiben}
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      </Feld>
+      <Feld text={t('companies.address')}>
+        <input value={addressLine1} onChange={e => setAddressLine1(e.target.value)}
+               disabled={!darfSchreiben}
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      </Feld>
       <div className="grid grid-cols-2 gap-2">
-        <input value={postalCode} onChange={e => setPostalCode(e.target.value)}
-               disabled={!darfSchreiben} placeholder={t('companies.postalCode')}
-               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-        <input value={city} onChange={e => setCity(e.target.value)}
-               disabled={!darfSchreiben} placeholder={t('companies.city')}
-               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        <Feld text={t('companies.postalCode')}>
+          <input value={postalCode} onChange={e => setPostalCode(e.target.value)}
+                 disabled={!darfSchreiben}
+                 className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        </Feld>
+        <Feld text={t('companies.city')}>
+          <input value={city} onChange={e => setCity(e.target.value)}
+                 disabled={!darfSchreiben}
+                 className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        </Feld>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <input value={country} onChange={e => setCountry(e.target.value)}
-               disabled={!darfSchreiben} placeholder={t('companies.country')}
-               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-        <input type="number" min={0} value={paymentTermsDays}
-               onChange={e => setPaymentTermsDays(Number(e.target.value))}
-               disabled={!darfSchreiben} placeholder={t('companies.paymentTerms')}
-               className="border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        <Feld text={t('companies.country')}>
+          <input value={country} onChange={e => setCountry(e.target.value)}
+                 disabled={!darfSchreiben}
+                 className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        </Feld>
+        <Feld text={t('companies.paymentTerms')}>
+          <input type="number" min={0} max={365} value={paymentTermsDays}
+                 onChange={e => setPaymentTermsDays(e.target.value)}
+                 disabled={!darfSchreiben} placeholder={t('companies.paymentTermsHouse')}
+                 className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+        </Feld>
       </div>
-      <input value={invoiceEmail} onChange={e => setInvoiceEmail(e.target.value)} type="email"
-             disabled={!darfSchreiben} placeholder={t('companies.invoiceEmail')}
-             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-      <input value={leitweg} onChange={e => setLeitweg(e.target.value)}
-             disabled={!darfSchreiben} placeholder={t('companies.buyerReference')}
-             className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm font-mono" />
+      <Feld text={t('companies.invoiceEmail')}>
+        <input value={invoiceEmail} onChange={e => setInvoiceEmail(e.target.value)} type="email"
+               disabled={!darfSchreiben}
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+      </Feld>
+      <Feld text={t('companies.buyerReference')}>
+        <input value={leitweg} onChange={e => setLeitweg(e.target.value)}
+               disabled={!darfSchreiben}
+               className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm font-mono" />
+      </Feld>
       {leitweg.trim() !== '' && (
         <p className="text-xs text-neutral-500">{t('companies.buyerReferenceHint')}</p>
       )}

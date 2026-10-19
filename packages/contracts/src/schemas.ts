@@ -826,7 +826,8 @@ export const Company = Type.Object({
   postalCode: Type.Union([Type.String(), Type.Null()]),
   city: Type.Union([Type.String(), Type.Null()]),
   country: Type.String(),
-  paymentTermsDays: Type.Integer(),
+  /** Leer: es gilt die Vorgabe des Hauses, das die Rechnung ausstellt (0189). */
+  paymentTermsDays: Type.Union([Type.Integer(), Type.Null()]),
   invoiceEmail: Type.Union([Type.String(), Type.Null()]),
   /** BT-10, Leitweg-ID einer Behoerde. Mit ihr wird die Rechnung eine XRechnung. */
   buyerReference: Type.Union([Type.String(), Type.Null()]),
@@ -844,7 +845,7 @@ export const CreateCompany = Type.Object({
   postalCode: Type.Optional(Type.String()),
   city: Type.Optional(Type.String()),
   country: Type.Optional(Type.String()),
-  paymentTermsDays: Type.Optional(Type.Integer({ minimum: 0 })),
+  paymentTermsDays: Type.Optional(Type.Integer({ minimum: 0, maximum: 365 })),
   invoiceEmail: Type.Optional(Type.String()),
   buyerReference: Type.Optional(Type.String()),
   contactName: Type.Optional(Type.String({ maxLength: 200 }))

@@ -248,10 +248,12 @@ export function emailRoutes(
                                          WHERE s.invoice_id = i.id), 0)
                   END AS open_cent,
                   -- Seit 0159 steht die Faelligkeit an der Rechnung; aeltere
-                  -- leiten sie wie bisher aus dem Ziel der Firma ab.
+                  -- leiten sie wie bisher aus dem Ziel der Firma ab, ohne
+                  -- eigenes aus dem des Hauses (0189).
                   CASE WHEN i.due_on IS NOT NULL THEN to_char(i.due_on, 'DD.MM.YYYY')
-                       WHEN c.payment_terms_days IS NULL THEN NULL
-                       ELSE to_char(i.issued_on + c.payment_terms_days, 'DD.MM.YYYY')
+                       WHEN c.id IS NULL THEN NULL
+                       ELSE to_char(i.issued_on + COALESCE(c.payment_terms_days,
+                                                           p.payment_terms_days), 'DD.MM.YYYY')
                   END AS due_date,
                   p.name AS property_name
              FROM invoice i
