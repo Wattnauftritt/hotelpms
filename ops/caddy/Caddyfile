@@ -134,7 +134,14 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 		# Eintrag zeigte Chrome "Dieser Inhalt ist blockiert" (Sven,
 		# 14.10.2026). Eine Blob-Adresse erzeugt nur die eigene Seite; fremde
 		# Inhalte kommen darüber nicht herein.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		#
+		# `'wasm-unsafe-eval'` für die Texterkennung der Visitenkarte im
+		# Firmenformular: sie läuft als WebAssembly im Browser, damit das
+		# Foto das Gerät nicht verlässt. Der Eintrag erlaubt nur, WebAssembly
+		# zu übersetzen — kein `eval`, kein `new Function`; die Module kommen
+		# wie jedes Skript nur von `'self'`. Ohne ihn blieb die Erkennung
+		# stumm hängen.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		-Server
 	}
 

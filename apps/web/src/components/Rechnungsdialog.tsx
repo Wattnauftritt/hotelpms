@@ -7,6 +7,7 @@ import { useInvoicePreview, useIssueInvoiceWith, useCorrectCharge, useAddGrossCh
 import { usePatchCompany } from '../lib/queries/guests.js'
 import { centAusEingabeMitVorzeichen, eingabeAusCent } from '../lib/preisraster.js'
 import { newIdempotencyKey } from '../lib/api.js'
+import { KarteFotografieren, VisitenkarteScan } from './VisitenkarteScan.tsx'
 import { useT, useLocale, formatMoney, formatDate } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler } from './Shell.tsx'
@@ -466,11 +467,13 @@ function Anschrift({ vorgabe, wert, geaendert, setAnschrift, firma, inFirma, set
   const [entwurf, setEntwurf] = useState<Partial<Record<Feld, string>>>({})
   const anzeigen = (f: Feld): string => entwurf[f] ?? wert?.[f] ?? ''
 
-  const uebernehmen = (): void => {
-    if (Object.keys(entwurf).length === 0) return
+  const [scan, setScan] = useState<File | null>(null)
+
+  const uebernehmen = (e: Partial<Record<Feld, string>> = entwurf): void => {
+    if (Object.keys(e).length === 0) return
     const neu: Partial<Record<Feld, string>> = {}
     for (const f of FELDER) {
-      const x = entwurf[f] ?? wert?.[f] ?? ''
+      const x = e[f] ?? wert?.[f] ?? ''
       if (x !== (vorgabe?.[f] ?? '')) neu[f] = x
     }
     setAnschrift(Object.keys(neu).length === 0 ? null : neu)
@@ -480,13 +483,32 @@ function Anschrift({ vorgabe, wert, geaendert, setAnschrift, firma, inFirma, set
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-medium">{t('rdlg.recipient')}</legend>
+      {scan === null
+        ? <KarteFotografieren onBild={setScan}
+                              className="inline-block text-xs px-2 py-1 border border-neutral-300 rounded-sm">
+            📷 {t('visitenkarte.scan')}
+          </KarteFotografieren>
+        // Was der bestaetigte Vorschlag erkannt hat, ersetzt die Anschrift
+        // dieser Rechnung; leere Felder lassen die bisherige stehen.
+        : <VisitenkarteScan key={`${scan.name}-${scan.lastModified}`} erstesBild={scan}
+                            onSchliessen={() => setScan(null)}
+                            onUebernehmen={v => {
+                              const e = { ...entwurf }
+                              for (const f of ['name', 'addressLine1', 'postalCode', 'city',
+                                               'country', 'vatId'] as const) {
+                                const x = (f === 'country' ? v[f].toUpperCase() : v[f]).trim()
+                                if (x !== '') e[f] = x
+                              }
+                              uebernehmen(e)
+                              setScan(null)
+                            }} />}
       <div className="grid gap-2 sm:grid-cols-2">
         {FELDER.map(f => (
           <label key={f} className={`text-xs ${f === 'name' || f === 'contactName'
                                                 || f === 'addressLine1'
                                                 ? 'sm:col-span-2' : ''}`}>
             {t(FELD_TEXT[f])}
-            <input value={anzeigen(f)} onBlur={uebernehmen}
+            <input value={anzeigen(f)} onBlur={() => uebernehmen()}
                    onChange={e => setEntwurf({ ...entwurf, [f]: f === 'country'
                      ? e.target.value.toUpperCase() : e.target.value })}
                    maxLength={f === 'country' ? 2 : 200} className={eingabe} />

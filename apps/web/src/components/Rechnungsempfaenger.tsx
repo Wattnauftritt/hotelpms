@@ -6,6 +6,7 @@ import { useT } from '../lib/i18n/index.js'
 import { GuestPicker } from './GuestPicker.tsx'
 import { FirmaFormular } from './FirmaFormular.tsx'
 import { Fehler } from './Shell.tsx'
+import { KarteFotografieren } from './VisitenkarteScan.tsx'
 
 /**
  * Wer die Rechnung bekommt.
@@ -109,6 +110,7 @@ function Firma({ folioRef, recipient, darfAnlegen }: {
   const t = useT()
   const [begriff, setBegriff] = useState('')
   const [neu, setNeu] = useState(false)
+  const [scanBild, setScanBild] = useState<File | undefined>(undefined)
   const treffer = useSearchCompanies(begriff)
   const setzen = useSetRecipient(folioRef)
 
@@ -131,13 +133,14 @@ function Firma({ folioRef, recipient, darfAnlegen }: {
       <div className="space-y-1">
         {/* Angelegt heisst hier zugleich gesetzt: wer die Firma aus dem
             Folio anlegt, will die Rechnung an sie. */}
-        <FirmaFormular vorschlag={begriff.trim()} darfSchreiben
+        <FirmaFormular vorschlag={begriff.trim()} scanBild={scanBild} darfSchreiben
                        onSaved={f => {
                          setzen.mutate({ companyRef: f.companyRef })
                          setNeu(false)
+                         setScanBild(undefined)
                          setBegriff('')
                        }} />
-        <button type="button" onClick={() => setNeu(false)}
+        <button type="button" onClick={() => { setNeu(false); setScanBild(undefined) }}
                 className="text-xs text-neutral-500 underline">
           {t('emp.companyNewCancel')}
         </button>
@@ -154,6 +157,14 @@ function Firma({ folioRef, recipient, darfAnlegen }: {
                placeholder={t('emp.companySearch')}
                className="mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
       </label>
+      {/* Gleich neben der Suche und nicht erst hinter „Neue Firma": wer die
+          Visitenkarte in der Hand hat, sucht nicht erst nach dem Namen. */}
+      {darfAnlegen && (
+        <KarteFotografieren onBild={b => { setScanBild(b); setNeu(true) }}
+                            className="mt-1 inline-block text-xs px-2 py-1 border border-neutral-300 rounded-sm">
+          📷 {t('visitenkarte.scan')}
+        </KarteFotografieren>
+      )}
       {treffer.data !== undefined && begriff.trim().length >= 2 && (
         <ul className="mt-1 max-h-40 overflow-y-auto text-sm divide-y divide-neutral-100">
           {treffer.data.companies.map(c => (
