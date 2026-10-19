@@ -1,0 +1,82 @@
+name: App
+# Baut die App fuer Android und iOS (Plan app/plan.md, Baustein 3).
+#
+# Nur wenn sich die Huelle oder die Bruecke aendert, und auf Anforderung von
+# Hand. Ein Lauf auf macOS kostet bei einem privaten Repository das
+# Zehnfache an Minuten; die Oberflaeche selbst prueft `ci.yml` ohnehin bei
+# jedem Pull Request, und in die App kommt sie spaeter als Paket vom Server,
+# nicht ueber einen neuen Bau der Huelle.
+#
+# Noch ohne Signieren und Hochladen: dafuer fehlen die Schluessel aus den
+# Konten bei Apple und Google. Dieser Lauf beweist, dass beide Huellen
+# bauen, und legt die Android-App zum Ausprobieren ab.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/native/**'
+      - '.github/workflows/app.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/native/**'
+      - '.github/workflows/app.yml'
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      # Pakete zuerst: die Oberflaeche liest `@hotelpms/*` aus `dist`.
+      - run: pnpm -r --filter './packages/*' build
+      - name: Oberflaeche und Bruecke zusammensetzen
+        working-directory: apps/mobile
+        run: pnpm sync
+      # Der Laeufer bringt das Android-SDK und Java 21 mit; Capacitor 8
+      # braucht 21.
+      - name: Android bauen
+        working-directory: apps/mobile/android
+        run: |
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: staygrid-android-debug
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter './packages/*' build
+      - name: Oberflaeche und Bruecke zusammensetzen
+        working-directory: apps/mobile
+        run: pnpm sync
+      # Fuer den Simulator und ohne Signatur: das prueft, dass Swift,
+      # Storyboard und Pakete zusammenpassen, ohne ein Zertifikat zu
+      # brauchen.
+      - name: iOS bauen
+        working-directory: apps/mobile/ios/App
+        run: |
+          xcodebuild -version
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build

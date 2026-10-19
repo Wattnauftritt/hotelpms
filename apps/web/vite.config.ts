@@ -91,7 +91,7 @@ function serviceWorker(): Plugin {
 /**
  * Der Bau fuer die eigene App (`vite build --mode app`, Plan app/plan.md).
  *
- * Dieselbe Oberflaeche, drei Unterschiede:
+ * Dieselbe Oberflaeche, vier Unterschiede:
  *
  * - **Kein Service Worker.** Die App bringt ihre Dateien selbst mit und
  *   aktualisiert sie ueber die Huelle; ein Worker daneben hielte eine zweite
@@ -102,6 +102,8 @@ function serviceWorker(): Plugin {
  *   Abrufe und Bilder -- in der App liegt sie nicht unter `'self'`.
  *   `frame-ancestors` fehlt, weil ein `<meta>` es nicht kennt; in eine
  *   WebView rahmt ohnehin niemand ein.
+ * - **`viewport-fit=cover`**, damit die Oberflaeche die Raender selbst
+ *   kennt (siehe unten).
  * - **Ein eigenes Verzeichnis** (`dist-app`), damit der Bau fuer den
  *   Browser und der fuer die App nie dieselben Dateien ueberschreiben.
  *
@@ -120,10 +122,20 @@ function appRichtlinie(api: string): Plugin {
   return {
     name: 'staygrid-app-richtlinie',
     apply: 'build',
-    transformIndexHtml: () => [{
-      tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp },
-      injectTo: 'head-prepend'
-    }]
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html: string) => ({
+        // `viewport-fit=cover`: erst damit liefern `env(safe-area-inset-*)`
+        // in der App die Raender von Kerbe und Leiste, und die Oberflaeche
+        // ruckt sie selbst ein. Im Browser bleibt die Zeile, wie sie ist.
+        html: html.replace('content="width=device-width, initial-scale=1"',
+                           'content="width=device-width, initial-scale=1, viewport-fit=cover"'),
+        tags: [{
+          tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: csp },
+          injectTo: 'head-prepend' as const
+        }]
+      })
+    }
   }
 }
 

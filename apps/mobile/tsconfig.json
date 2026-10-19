@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": [
+      "vite/client"
+    ],
+    "outDir": "dist-types"
+  },
+  "include": [
+    "src/**/*",
+    "capacitor.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/native"
+    }
+  ]
+}

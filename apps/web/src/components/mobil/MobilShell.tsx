@@ -62,7 +62,8 @@ function Rahmen(props: ShellProps): JSX.Element {
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900
                     pb-[calc(4rem+env(safe-area-inset-bottom))]">
-      <header ref={kopf} className="sticky top-0 z-30 bg-white border-b border-neutral-200">
+      <header ref={kopf} className="sticky top-0 z-30 bg-white border-b border-neutral-200
+                                    pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-2 px-4 py-2">
           <span className="shrink-0 font-semibold">StayGrid</span>
           {/*
