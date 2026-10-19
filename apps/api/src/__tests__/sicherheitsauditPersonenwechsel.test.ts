@@ -185,3 +185,87 @@ describe('M3: Personenwechsel endet mit den Sitzungen des Gewechselten', () => {
     expect((await ich(tresen.sessionId)).status).toBe(401)
   })
 })
+
+/*
+ * Dasselbe Muster wie H2 am Kennwort: Anmeldung, Kennwort- und Mailwechsel
+ * und das Setzen des PINs lasen die Sperre, rechneten Argon2 und zaehlten
+ * erst danach. Aus einer offenen Sitzung, die keine Ratenbegrenzung
+ * erreicht, kamen so beliebig viele Versuche je Sperrfenster durch.
+ */
+describe('Kennwortsperre unter parallelen Anfragen', () => {
+  const MAX = 10
+
+  function codes(antworten: Array<{ statusCode: number; json: () => unknown }>) {
+    const zaehlung = { ausgewertet: 0, gesperrt: 0 }
+    for (const r of antworten) {
+      expect(r.statusCode).toBe(401)
+      const code = (r.json() as { code: string }).code
+      expect(['auth.badCredentials', 'auth.tooManyAttempts']).toContain(code)
+      if (code === 'auth.badCredentials') zaehlung.ausgewertet++
+      else zaehlung.gesperrt++
+    }
+    return zaehlung
+  }
+
+  it('Anmeldung: hoechstens zehn ausgewertete Versuche je Konto und Herkunft', async () => {
+    await person('tag@test.de', '1111')
+    const anmelden = (password: string, herkunft: string) =>
+      app.inject({ method: 'POST', url: '/v1/auth/login',
+        headers: { 'x-forwarded-for': herkunft },
+        payload: { email: 'tag@test.de', password } })
+
+    const z = codes(await Promise.all(Array.from({ length: 30 }, (_, i) =>
+      anmelden(`falsch-${i}-kennwort-lang`, '203.0.113.7'))))
+    expect(z.ausgewertet).toBeLessThanOrEqual(MAX)
+    expect(z.gesperrt).toBeGreaterThan(0)
+
+    // Die Sperre steht, auch fuer das richtige Kennwort ...
+    expect((await anmelden(KENNWORT, '203.0.113.7')).json()).toMatchObject(
+      { code: 'auth.tooManyAttempts' })
+    // ... aber nur fuer dieses Paar aus Konto und Herkunft.
+    expect((await anmelden(KENNWORT, '198.51.100.9')).statusCode).toBe(200)
+  })
+
+  it('Kennwortwechsel aus einer offenen Sitzung: hoechstens zehn Versuche', async () => {
+    const u = await person('tag@test.de', '1111')
+    const z = codes(await Promise.all(Array.from({ length: 30 }, (_, i) =>
+      app.inject({ method: 'POST', url: '/v1/auth/password', headers: auth(u.sessionId),
+        payload: { currentPassword: `falsch-${i}-kennwort-lang`,
+                   newPassword: 'ein-ganz-neues-kennwort-2026' } }))))
+    expect(z.ausgewertet).toBeLessThanOrEqual(MAX)
+
+    const richtig = await app.inject({ method: 'POST', url: '/v1/auth/password',
+      headers: auth(u.sessionId),
+      payload: { currentPassword: KENNWORT, newPassword: 'ein-ganz-neues-kennwort-2026' } })
+    expect((richtig.json() as { code: string }).code).toBe('auth.tooManyAttempts')
+  })
+
+  it('Mailwechsel und PIN zaehlen auf denselben Zaehler und halten ebenso', async () => {
+    const u = await person('tag@test.de', '1111')
+    const z = codes(await Promise.all(Array.from({ length: 30 }, (_, i) => i % 2 === 0
+      ? app.inject({ method: 'POST', url: '/v1/auth/email', headers: auth(u.sessionId),
+          payload: { currentPassword: `falsch-${i}-kennwort-lang`,
+                     newEmail: 'neu@test.de' } })
+      : app.inject({ method: 'POST', url: '/v1/auth/workstation-pin',
+          headers: auth(u.sessionId),
+          payload: { password: `falsch-${i}-kennwort-lang`, pin: '2222' } }))))
+    expect(z.ausgewertet).toBeLessThanOrEqual(MAX)
+  })
+
+  it('ein richtiges Kennwort raeumt den vorab gebuchten Versuch wieder ab', async () => {
+    const u = await person('tag@test.de', '1111')
+    for (let i = 0; i < 3; i++) {
+      await app.inject({ method: 'POST', url: '/v1/auth/workstation-pin',
+        headers: auth(u.sessionId), payload: { password: 'falsch-kennwort-lang', pin: '2222' } })
+    }
+    const ok = await app.inject({ method: 'POST', url: '/v1/auth/workstation-pin',
+      headers: auth(u.sessionId), payload: { password: KENNWORT, pin: '2222' } })
+    expect(ok.statusCode, ok.body).toBe(200)
+    const rest = await owner.query(`SELECT 1 FROM login_failure WHERE user_id = $1`, [u.userId])
+    expect(rest.rowCount).toBe(0)
+    // Der Zaehler am Konto, den die Aufsicht sieht, zaehlt nur die Fehler.
+    const konto = await owner.query<{ n: number }>(
+      `SELECT failed_login_count AS n FROM app_user WHERE id = $1`, [u.userId])
+    expect(konto.rows[0]!.n).toBe(3)
+  })
+})
