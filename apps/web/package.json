@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:app": "tsc -b && vite build --mode app",
     "preview": "vite preview"
   },
   "dependencies": {
     "@hotelpms/contracts": "workspace:*",
     "@hotelpms/domain": "workspace:*",
+    "@hotelpms/native": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tesseract.js-data/deu": "1.0.0",
     "qrcode-generator": "^1.5.2",

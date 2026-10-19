@@ -89,7 +89,7 @@ describe('Leserolle', () => {
   it('die Anwendung behaelt ihre Funktionen', async () => {
     const r = await owner.query<{ darf: boolean }>(
       `SELECT has_function_privilege('hotelpms_app', 'guest_erase_one(bigint)', 'EXECUTE')
-              AND has_function_privilege('hotelpms_app', 'session_principal(text)', 'EXECUTE')
+              AND has_function_privilege('hotelpms_app', 'session_principal(text, text)', 'EXECUTE')
               AND has_function_privilege('hotelpms_app', 'channel_connection_for_auth(text)',
                                          'EXECUTE') AS darf`)
     expect(r.rows[0]!.darf).toBe(true)

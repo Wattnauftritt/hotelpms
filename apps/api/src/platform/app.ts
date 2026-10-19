@@ -6,7 +6,8 @@ import { renderMessage } from '@hotelpms/contracts'
 import { AppError, Errors } from './errors.js'
 import { ANONYMOUS, type Principal } from './context.js'
 import { loadSessionPrincipal, loadPrincipalFromToken,
-         loadPrincipalFromDevice, DEVICE_COOKIE } from './auth.js'
+         loadPrincipalFromDevice, DEVICE_COOKIE, APP_TOKEN_PREFIX, APP_ORIGINS,
+         type SessionClient } from './auth.js'
 import { registerRateLimit } from './rateLimit.js'
 
 declare module 'fastify' {
@@ -26,6 +27,13 @@ declare module 'fastify' {
      * (Befund P9, Dokument 29).
      */
     dbKosten: { anweisungen: number; dauerMs: number }
+    /**
+     * Die Sitzung, die die Anfrage vorzeigt -- Cookie oder Token der App
+     * (0191) --, ob sie traegt oder nicht. Wer die eigene Sitzung braucht
+     * (Abmelden, Push-Abo, "alle anderen Sitzungen beenden"), nimmt sie von
+     * hier und nicht aus dem Cookie: sonst gaebe es in der App keine.
+     */
+    sitzung: { id: string; client: SessionClient } | null
   }
 }
 
@@ -160,6 +168,7 @@ export async function buildServer(
   app.decorateRequest('principal')
   app.decorateRequest('pool')
   app.decorateRequest('rawBody')
+  app.decorateRequest('sitzung')
 
   // Ersetzt den eingebauten JSON-Parser nur soweit, dass der rohe Rumpf
   // zusaetzlich erhalten bleibt. Ohne das koennte kein Aufrufer, der eine
@@ -195,7 +204,38 @@ export async function buildServer(
   app.addHook('onRequest', async (req) => {
     req.pool = pool
     req.principal = ANONYMOUS
+    req.sitzung = null
     req.dbKosten = { anweisungen: 0, dauerMs: 0 }
+  })
+
+  /*
+   * CORS nur fuer die eigene App (Baustein 2, Plan app/plan.md). Ihre Seiten
+   * liegen unter einer anderen Herkunft als die Schnittstelle; ohne diese
+   * Kopfzeilen laese die App keine Antwort. Erlaubt sind genau die zwei
+   * Herkuenfte von Capacitor, und nie `Allow-Credentials`: ein Cookie geht
+   * nicht ueber diese Grenze, die App weist sich mit ihrem Token aus. Jeder
+   * andere Ursprung bekommt keine Kopfzeile, und fuer den Browser unter
+   * app.staygrid.cloud aendert sich nichts -- er fragt nie ueber Herkuenfte.
+   *
+   * Vor der Ratenbegrenzung: eine Vorabfrage traegt nie Zugangsdaten und
+   * wuerde sonst die Grenze der Anmeldemasken mitverbrauchen.
+   */
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = req.headers.origin
+    if (origin === undefined || !APP_ORIGINS.has(origin)) return
+    reply.header('access-control-allow-origin', origin)
+    reply.header('vary', 'Origin')
+    reply.header('access-control-expose-headers',
+      'content-disposition, retry-after, x-staygrid-cashbook-entries, '
+      + 'x-staygrid-cashbook-receipts-waiting, x-staygrid-cashbook-resent, '
+      + 'x-staygrid-cashbook-through')
+    if (req.method === 'OPTIONS') {
+      reply.header('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE')
+      reply.header('access-control-allow-headers',
+        'authorization, content-type, idempotency-key, accept-language')
+      reply.header('access-control-max-age', '600')
+      return reply.status(204).send()
+    }
   })
 
   /*
@@ -222,7 +262,20 @@ export async function buildServer(
     // meint das Token.
     const bearer = req.headers.authorization
     if (bearer?.startsWith('Bearer ')) {
-      req.principal = await loadPrincipalFromToken(pool, bearer.slice(7))
+      const token = bearer.slice(7)
+      // Die eigene App (0191): dieselbe Sitzung wie im Browser, nur nicht
+      // im Cookie. Traegt sie nicht, ist es vielleicht doch ein
+      // Maschinentoken, das zufaellig so anfaengt.
+      if (token.startsWith(APP_TOKEN_PREFIX)) {
+        req.sitzung = { id: token, client: 'app' }
+        const p = await loadSessionPrincipal(pool, token, 'app')
+        if (p !== null) {
+          req.principal = p
+          return
+        }
+        req.sitzung = null
+      }
+      req.principal = await loadPrincipalFromToken(pool, token)
       return
     }
 
@@ -245,6 +298,7 @@ export async function buildServer(
 
     const sessionId = req.cookies['hp_session']
     if (!sessionId) return
+    req.sitzung = { id: sessionId, client: 'web' }
     /*
      * Sitzung, handelnde Person (Arbeitsplatz-PIN), Rechte, Support-Sitzung
      * und last_seen_at in einer Runde (Migration 0142). Vorher waren es rund
@@ -252,7 +306,7 @@ export async function buildServer(
      * (Performance-Audit 11.10.2026, Befund 8). Bewusst ohne Zwischenspeicher:
      * eine Sperre soll mit der naechsten Anfrage wirken.
      */
-    const principal = await loadSessionPrincipal(pool, sessionId)
+    const principal = await loadSessionPrincipal(pool, sessionId, 'web')
     if (principal !== null) req.principal = principal
   })
 

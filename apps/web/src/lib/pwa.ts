@@ -92,7 +92,9 @@ export function useInstallation(): (() => void) | null {
 export function serviceWorkerAnmelden(
   { app, neuLaden = false }: { app: 'rezeption' | 'personal'; neuLaden?: boolean }
 ): void {
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
+  // In der App bringt die Huelle die Dateien mit (Bau `--mode app`).
+  if (!import.meta.env.PROD || import.meta.env.MODE === 'app'
+      || !('serviceWorker' in navigator)) return
   const vorladen = (w: ServiceWorker | null | undefined): void => {
     w?.postMessage({ vorladen: app })
   }

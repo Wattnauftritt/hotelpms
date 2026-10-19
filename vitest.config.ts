@@ -32,7 +32,8 @@ export default defineConfig({
       '@hotelpms/beleg': src('beleg'),
       '@hotelpms/testing': src('testing'),
       '@hotelpms/domain': src('domain'),
-      '@hotelpms/contracts': src('contracts')
+      '@hotelpms/contracts': src('contracts'),
+      '@hotelpms/native': src('native')
     }
   },
   test: {

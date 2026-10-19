@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError } from '../lib/api.js'
+import { ApiError, anmelden } from '../lib/api.js'
 import { useT } from '../lib/i18n/index.js'
 
 /**
@@ -27,7 +27,7 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
           setFehler(null)
           setLaeuft(true)
           try {
-            await api.post('/v1/auth/login', { login: email.trim(), password: kennwort })
+            await anmelden(email.trim(), kennwort)
             onDone()
           } catch (err) {
             setFehler(err instanceof ApiError ? err.message : String(err))

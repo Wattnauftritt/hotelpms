@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { InvoiceList, InvoiceRecipient, PaymentLinkCreated,
               PrepaymentView } from '@hotelpms/contracts'
-import { api, ApiError } from '../api.js'
+import { api, ApiError, apiFetch } from '../api.js'
 import { addDays } from '../dates.js'
 import { useAbsicht } from '../absicht.js'
 
@@ -79,9 +79,7 @@ export function belegNachfragen<T>(
  * das, statt eine rote Meldung zu zeigen.
  */
 export async function holeBeleg(invoiceRef: string): Promise<Blob> {
-  const res = await fetch(`/v1/invoices/${invoiceRef}/pdf`, {
-    credentials: 'same-origin'
-  })
+  const res = await apiFetch(`/v1/invoices/${invoiceRef}/pdf`)
   if (!res.ok) {
     const text = await res.text()
     let problem: unknown = null
@@ -102,10 +100,9 @@ export async function holeBeleg(invoiceRef: string): Promise<Blob> {
  * Rumpf kommt.
  */
 export async function holeEntwurf(folioRef: string, auftrag: RechnungsAuftrag): Promise<Blob> {
-  const res = await fetch(`/v1/folios/${folioRef}/invoice-preview/pdf`, {
+  const res = await apiFetch(`/v1/folios/${folioRef}/invoice-preview/pdf`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    credentials: 'same-origin',
     body: JSON.stringify(auftrag)
   })
   if (!res.ok) {

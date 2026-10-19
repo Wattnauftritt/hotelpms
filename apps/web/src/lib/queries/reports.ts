@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import type { KpiReport, NightAuditStatus, AccommodationStatistics }
   from '@hotelpms/contracts'
-import { api, ApiError } from '../api.js'
+import { api, ApiError, apiFetch } from '../api.js'
 
 /**
  * Abfragen der Berichte.
@@ -61,7 +61,7 @@ export const useAccommodationStatistics = (
 export interface Ausgabe { pfad: string; dateiname: string }
 
 async function holeDatei({ pfad, dateiname }: Ausgabe): Promise<void> {
-  const res = await fetch(pfad, { credentials: 'same-origin' })
+  const res = await apiFetch(pfad)
   if (!res.ok) {
     const text = await res.text()
     let problem: unknown = null

@@ -1,4 +1,5 @@
-import { zeilenAusBoxen, type ErkannteZeile, type KartenZeile } from './visitenkarte.js'
+import { nativ, type NativeTexterkennung } from '@hotelpms/native'
+import { zeilenAusBoxen, type KartenZeile } from './visitenkarte.js'
 
 /**
  * Wer die Visitenkarte liest: das Telefon selbst oder der Browser.
@@ -17,23 +18,9 @@ import { zeilenAusBoxen, type ErkannteZeile, type KartenZeile } from './visitenk
  * ML Kit heisst das die gebuendelte Texterkennung, nicht die Cloud-API.
  * Geliefert werden nur Zeilen mit Lage; was davon Firma und Anschrift ist,
  * entscheidet weiter `visitenkarte.ts`, damit Browser und App dasselbe
- * vorschlagen und eine Regel an einer Stelle steht.
+ * vorschlagen und eine Regel an einer Stelle steht. Die Form der Bruecke
+ * steht in `@hotelpms/native`, weil die Huelle sie erfuellen muss.
  */
-export interface NativeTexterkennung {
-  /**
-   * Das Foto lesen. Die Lage in einer beliebigen, aber fuer alle Zeilen
-   * gleichen Einheit, `oben` nach unten wachsend (Vision rechnet von unten:
-   * die App dreht das um). Die Reihenfolge ist egal, sortiert wird hier.
-   */
-  erkennen(bild: Blob): Promise<{ zeilen: ErkannteZeile[] }>
-}
-
-declare global {
-  interface Window {
-    /** Gesetzt von der StayGrid-App, im Browser nie. */
-    staygridNative?: { texterkennung?: NativeTexterkennung }
-  }
-}
 
 export type Fortschritt = { schritt: 'laden' } | { schritt: 'lesen'; anteil: number }
 
@@ -46,7 +33,7 @@ export interface Leser {
 }
 
 function nativeErkennung(): NativeTexterkennung | undefined {
-  return typeof window === 'undefined' ? undefined : window.staygridNative?.texterkennung
+  return nativ()?.texterkennung
 }
 
 export function nativerLeser(erkennung: NativeTexterkennung): Leser {

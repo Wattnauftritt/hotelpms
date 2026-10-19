@@ -16,7 +16,7 @@ import { useAdresse } from './lib/adresse.js'
 import { SprungContext, type Sprungziel } from './lib/suche.js'
 import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
-import { api, ApiError } from './lib/api.js'
+import { api, ApiError, abmelden as abmeldenBeiApi } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
 import { offlineKopieLoeschen } from './lib/offline.js'
 import { useSchmal } from './lib/mobil.js'
@@ -183,7 +183,7 @@ function App(): JSX.Element {
   const abmelden = async (): Promise<void> => {
     offlineKopieLoeschen()
     try {
-      await api.post('/v1/auth/logout')
+      await abmeldenBeiApi()
     } finally {
       location.replace(location.pathname)
     }

@@ -18,8 +18,6 @@ import type { Principal } from '../platform/context.js'
  * Abo selbst gilt fuer alle Haeuser der Person.
  */
 
-const COOKIE = 'hp_session'
-
 function sitzung(req: FastifyRequest): { userId: number; sessionId: string } {
   const p = req.principal as Principal
   // Nur der Mensch, der angemeldet ist: kein Geraet, kein Maschinenzugang,
@@ -29,7 +27,7 @@ function sitzung(req: FastifyRequest): { userId: number; sessionId: string } {
       || (p.sessionUserId !== null && p.sessionUserId !== p.userId)) {
     throw Errors.forbidden('staff.personOnly')
   }
-  const sessionId = req.cookies[COOKIE]
+  const sessionId = req.sitzung?.id
   if (sessionId === undefined) throw Errors.forbidden('staff.personOnly')
   return { userId: p.userId, sessionId }
 }

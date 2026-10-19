@@ -1406,3 +1406,14 @@ Sven, 19.10.2026: Am Handy die Visitenkarte fotografieren, statt die Firmenansch
 - **Vorbereitet für die eigene App.** `lib/leser.ts` nimmt die Erkennung des Telefons (iOS Vision, Android ML Kit), sobald die App sie unter `window.staygridNative.texterkennung` anbietet; sie liefert nur Zeilen mit Lage, die Zuordnung bleibt in `visitenkarte.ts`. Ohne App ändert sich nichts.
 
 Tests in `visitenkarte.test.ts`.
+
+### Eigene App für iOS und Android (`0191`) — **Bausteine 1 und 2 gebaut**
+
+Sven, 19.10.2026: eine eigene App mit nativen Benachrichtigungen und nativer Texterkennung; Technik Capacitor um dieselbe Oberfläche, Veröffentlichung in beiden Stores, Anbieter Wattnauftritt. Der Plan mit allen acht Bausteinen liegt im Projektordner (`app/plan.md`). Browser und installierbare Web-App bleiben unverändert, bis die App fertig ist.
+
+- **Baustein 2, Sitzung der App.** `POST /v1/auth/login` mit `client: 'app'` gibt die Sitzung als Token im Rumpf zurück statt als Cookie (`sga_…`). Dahinter dieselbe Zeile in `user_session`, jetzt mit `client` (`web` | `app`); `session_principal(id, client)` lässt eine Sitzung nur auf ihrem eigenen Weg tragen, ein App-Token also nicht als Cookie und ein Cookie nicht als Token. Abmelden, Fristen, Widerruf bei Kennwortwechsel und das Push-Abo an der Sitzung gelten unverändert. Routen, die die eigene Sitzung brauchen, lesen sie aus `req.sitzung` statt aus dem Cookie.
+- **CORS nur für Capacitor** (`capacitor://localhost`, `https://localhost`), ohne `Allow-Credentials`. Andere Herkünfte bekommen keine Kopfzeile; für den Browser unter einer Herkunft ändert sich nichts.
+- **Baustein 1, Oberfläche.** `packages/native` beschreibt die Brücke `window.staygridNative` (Plattform, Fassung der Hülle, Herkunft der API, Token im Schlüsselbund, Texterkennung), die die Hülle setzt; im Browser fehlt sie. `lib/api.ts` schickt in der App die Herkunft der API und das Token mit, Anmelden und Abmelden gehen über `anmelden()`/`abmelden()`. `vite build --mode app` baut nach `dist-app` ohne Service Worker und mit der Content-Security-Policy als `<meta>`.
+- **Noch offen für Baustein 3:** Bilder und Downloads, die als `href`/`src` auf `/v1/…` zeigen (acht Stellen), brauchen in der App einen Abruf mit Token.
+
+Tests in `appSitzung.test.ts`.

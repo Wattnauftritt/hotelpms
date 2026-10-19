@@ -7,6 +7,7 @@ import { Errors } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { propertyIds, type Principal } from '../platform/context.js'
 import { tx } from '../platform/db.js'
+import { APP_TOKEN_PREFIX } from '../platform/auth.js'
 import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
          renderPasswordResetEmail, renderInviteEmail,
          type AuthTokenKind } from '@hotelpms/domain'
@@ -214,7 +215,8 @@ export function authRoutes(app: FastifyInstance): void {
        * verwechseln. `login` ist der neue Name des Feldes, `email` bleibt,
        * weil Adminpanel und Tests es so schicken.
        */
-      const b = req.body as { login?: string; email?: string; password?: string }
+      const b = req.body as { login?: string; email?: string; password?: string
+                              client?: string }
       const email = (b.login ?? b.email ?? '').trim()
       const password = b.password
       if (!email || !password) {
@@ -270,19 +272,38 @@ export function authRoutes(app: FastifyInstance): void {
         throw Errors.unauthorized('auth.badCredentials')
       }
 
-      const sessionId = neueSitzungsKennung()
+      /*
+       * Die eigene App bekommt dieselbe Sitzung als Token statt als Cookie
+       * (0191, Plan app/plan.md). Ihre Seiten liegen unter einer anderen
+       * Herkunft, und ein `SameSite=Strict`-Cookie kommt dort nicht an.
+       *
+       * Damit liegt in der App ein Token im JavaScript, was oben fuer den
+       * Browser ausdruecklich vermieden wird. Dort hiesse das: ein
+       * eingeschleustes Skript auf app.staygrid.cloud nimmt die Sitzung
+       * mit. In der App laedt die WebView nur die Dateien, die sie selbst
+       * mitbringt, unter einer eigenen Content-Security-Policy, nichts vom
+       * Netz; abgelegt wird das Token im Schluesselbund des Telefons, nicht
+       * in `localStorage`. Und es ist eine gewoehnliche Sitzung: Abmelden,
+       * Kennwortwechsel und Stilllegen ziehen es sofort zurueck, und es
+       * traegt nicht als Cookie.
+       */
+      const fuerApp = b.client === 'app'
+      const sessionId = (fuerApp ? APP_TOKEN_PREFIX : '') + neueSitzungsKennung()
       await req.pool.query(
         `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
-                                   idle_window, ip, user_agent)
+                                   idle_window, ip, user_agent, client)
          VALUES ($1,$2, now() + ($3 || ' hours')::interval,
                         now() + ($4 || ' hours')::interval,
-                        ($3 || ' hours')::interval, $5, $6)`,
+                        ($3 || ' hours')::interval, $5, $6, $7)`,
         [sessionId, benutzer.id, SITZUNG_UNTAETIG_STUNDEN, SITZUNG_ABSOLUT_STUNDEN,
-         req.ip, (req.headers['user-agent'] ?? '').slice(0, 300)])
+         req.ip, (req.headers['user-agent'] ?? '').slice(0, 300),
+         fuerApp ? 'app' : 'web'])
       await req.pool.query(
         `UPDATE app_user SET failed_login_count = 0, locked_until = NULL,
                              last_login_at = now() WHERE id = $1`, [benutzer.id])
       await kennwortVersuchGelungen(req.pool, benutzer.id, herkunft)
+
+      if (fuerApp) return { ok: true, token: sessionId }
 
       reply.setCookie(COOKIE, sessionId, {
         httpOnly: true,                       // kein Zugriff aus JavaScript
@@ -321,7 +342,7 @@ export function authRoutes(app: FastifyInstance): void {
     permission: null,
     summary: 'Abmelden',
     handler: async (req, reply) => {
-      const sessionId = req.cookies[COOKIE]
+      const sessionId = req.sitzung?.id
       if (sessionId !== undefined) {
         // Zurückziehen, nicht löschen: die Zeile bleibt als Spur, wann eine
         // Sitzung bestand und wann sie endete.
@@ -530,7 +551,7 @@ export function authRoutes(app: FastifyInstance): void {
        * damit schon gemacht hat, darf nicht stehen bleiben (M3, Audit
        * 19.10.2026).
        */
-      const eigeneSitzung = req.cookies[COOKIE] ?? null
+      const eigeneSitzung = req.sitzung?.id ?? null
 
       // Kein PIN mehr: der Personenwechsel auf diese Person ist damit zu.
       if (pin === null || pin === undefined || pin === '') {
@@ -589,7 +610,7 @@ export function authRoutes(app: FastifyInstance): void {
     permission: null,
     summary: 'Handelnde Person am Arbeitsplatz wechseln',
     handler: async (req) => {
-      const sessionId = req.cookies[COOKIE]
+      const sessionId = req.sitzung?.id
       if (sessionId === undefined) throw Errors.unauthorized()
       const p = req.principal as Principal
       if (p.sessionUserId === null) throw Errors.unauthorized()
@@ -912,7 +933,7 @@ export function authRoutes(app: FastifyInstance): void {
       }
 
       const neu = await hashPassword(b.newPassword)
-      const eigeneSitzung = req.cookies[COOKIE] ?? null
+      const eigeneSitzung = req.sitzung?.id ?? null
       const userId = p.userId
 
       return tx(req.pool, req, async client => {
