@@ -127,6 +127,19 @@ export default defineConfig({
          * ausserhalb; dazu gehoert `"sideEffects": false` im Paket.
          */
         manualPureFunctions: ['Type']
+      },
+      output: {
+        /*
+         * Die Sprachdaten der Texterkennung (Visitenkarte) unter ihrem
+         * eigenen Namen in einem gehashten Verzeichnis. tesseract.js nimmt
+         * nur ein Verzeichnis entgegen und haengt `deu.traineddata.gz` selbst
+         * an; der Hash im Verzeichnis haelt die Adresse trotzdem so
+         * unveraenderlich wie die jeder anderen Datei unter /assets/.
+         */
+        assetFileNames: info =>
+          (info.names[0] ?? '').endsWith('.traineddata.gz')
+            ? 'assets/tessdata-[hash]/[name][extname]'
+            : 'assets/[name]-[hash][extname]'
       }
     }
   }

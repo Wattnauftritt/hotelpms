@@ -12,6 +12,7 @@ import { useT, useLocale, intlTag } from '../lib/i18n/index.js'
 import { useSprung, type Sprungziel } from '../lib/suche.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { FirmaFormular } from '../components/FirmaFormular.tsx'
+import { KarteFotografieren } from '../components/VisitenkarteScan.tsx'
 
 const BEREICHE = ['guests', 'companies'] as const
 type Bereich = (typeof BEREICHE)[number]
@@ -442,6 +443,7 @@ function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Elemen
   const { auftrag } = useSprung()
   const [ausgewaehlt, setAusgewaehlt] = useState<string | 'new' | null>(
     () => ausAuftrag(auftrag, 'companies'))
+  const [scanBild, setScanBild] = useState<File | undefined>(undefined)
   const suche = useSearchCompanies(begriff)
 
   return (
@@ -471,18 +473,28 @@ function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Elemen
               </ul>
         )}
         {darfSchreiben && (
-          <button type="button" onClick={() => setAusgewaehlt('new')}
-                  className="text-sm text-neutral-600 underline">
-            + {t('companies.new')}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" onClick={() => { setScanBild(undefined); setAusgewaehlt('new') }}
+                    className="text-sm text-neutral-600 underline">
+              + {t('companies.new')}
+            </button>
+            <KarteFotografieren onBild={b => { setScanBild(b); setAusgewaehlt('new') }}
+                                className="text-sm px-2 py-1 border border-neutral-300 rounded-sm">
+              📷 {t('visitenkarte.scan')}
+            </KarteFotografieren>
+          </div>
         )}
       </div>
 
       <div>
         {ausgewaehlt === null && <div className="text-sm text-neutral-400">—</div>}
         {ausgewaehlt === 'new' && (
-          <FirmaFormular darfSchreiben={darfSchreiben}
-                        onSaved={f => setAusgewaehlt(f.companyRef)} />
+          // Je Foto neu aufgebaut, damit ein zweiter Scan nicht in die
+          // halb ausgefuellte Maske des ersten faellt.
+          <FirmaFormular key={scanBild === undefined ? 'neu'
+                                : `${scanBild.name}-${scanBild.lastModified}`}
+                        scanBild={scanBild} darfSchreiben={darfSchreiben}
+                        onSaved={f => { setScanBild(undefined); setAusgewaehlt(f.companyRef) }} />
         )}
         {ausgewaehlt !== null && ausgewaehlt !== 'new' && (
           <FirmaProfil companyRef={ausgewaehlt} darfSchreiben={darfSchreiben} />

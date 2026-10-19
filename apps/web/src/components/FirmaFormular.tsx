@@ -3,6 +3,8 @@ import type { Company } from '@hotelpms/contracts'
 import { useCreateCompany, usePatchCompany } from '../lib/queries/guests.js'
 import { useT } from '../lib/i18n/index.js'
 import { Fehler } from './Shell.tsx'
+import { KarteFotografieren, VisitenkarteScan } from './VisitenkarteScan.tsx'
+import type { AnschriftVorschlag } from '../lib/visitenkarte.js'
 
 function orUndef(s: string): string | undefined {
   const w = s.trim()
@@ -18,6 +20,11 @@ function orUndef(s: string): string | undefined {
  * Rechnung an sie gehen soll; wer dafuer den Bildschirm wechseln muss,
  * verliert das Folio und schreibt die Rechnung im Zweifel an den Gast.
  * Eine zweite, kuerzere Maske im Folio liefe mit der ersten auseinander.
+ *
+ * **Visitenkarte scannen.** Aus demselben Grund sitzt der Scan hier und
+ * nicht an jeder Stelle einzeln: Folio und Firmenliste bekommen ihn beide.
+ * Der erkannte Vorschlag fuellt nur die Felder, die er erkannt hat, und erst
+ * nachdem die Rezeption ihn bestaetigt hat (`VisitenkarteScan`).
  */
 /**
  * Beschriftung ueber dem Feld statt nur als Platzhalter: ein Platzhalter
@@ -33,10 +40,12 @@ function Feld({ text, children }: { text: string; children: JSX.Element }): JSX.
   )
 }
 
-export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
+export function FirmaFormular({ initial, vorschlag, scanBild, darfSchreiben, onSaved }: {
   initial?: Company
   /** Name aus einer Suche ohne Treffer, damit er nicht zweimal getippt wird. */
   vorschlag?: string
+  /** Ein Foto, das schon vor dem Formular aufgenommen wurde; es wird sofort gelesen. */
+  scanBild?: File
   darfSchreiben: boolean
   onSaved: (f: { companyRef: string; name: string }) => void
 }): JSX.Element {
@@ -55,12 +64,30 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
   const [invoiceEmail, setInvoiceEmail] = useState(initial?.invoiceEmail ?? '')
   const [leitweg, setLeitweg] = useState(initial?.buyerReference ?? '')
   const [active, setActive] = useState(initial?.active ?? true)
+  const [scan, setScan] = useState<File | null>(scanBild ?? null)
+  const [uebernommen, setUebernommen] = useState(false)
+
+  const uebernehmen = (v: AnschriftVorschlag): void => {
+    // Nur was erkannt ist: ein leeres Feld im Vorschlag loescht nichts.
+    const wenn = (w: string, setzen: (x: string) => void): void => {
+      if (w.trim() !== '') setzen(w.trim())
+    }
+    wenn(v.name, setName)
+    wenn(v.addressLine1, setAddressLine1)
+    wenn(v.postalCode, setPostalCode)
+    wenn(v.city, setCity)
+    wenn(v.country.toUpperCase(), setCountry)
+    wenn(v.vatId, setVatId)
+    setScan(null)
+    setUebernommen(true)
+  }
 
   const anlegen = useCreateCompany()
   const aendern = usePatchCompany(initial?.companyRef ?? '')
   const speichern = initial ? aendern : anlegen
 
   const absenden = (): void => {
+    setUebernommen(false)
     const ziel = paymentTermsDays.trim() === '' ? null : Number(paymentTermsDays)
     const body = {
       name: name.trim(),
@@ -83,7 +110,24 @@ export function FirmaFormular({ initial, vorschlag, darfSchreiben, onSaved }: {
 
   return (
     <div className="space-y-2 border border-neutral-200 rounded-sm p-3">
-      <h2 className="text-sm font-medium">{t('companies.title')}</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-medium grow">{t('companies.title')}</h2>
+        {darfSchreiben && scan === null && (
+          <KarteFotografieren onBild={b => { setScan(b); setUebernommen(false) }}
+                              className="text-xs px-2 py-1 border border-neutral-300 rounded-sm">
+            📷 {t('visitenkarte.scan')}
+          </KarteFotografieren>
+        )}
+      </div>
+      {scan !== null && (
+        // Der Schluessel baut den Scan je Foto neu auf: ein zweiter Scan
+        // nach dem Verwerfen faengt mit leerem Vorschlag an.
+        <VisitenkarteScan key={`${scan.name}-${scan.lastModified}`} erstesBild={scan}
+                          onUebernehmen={uebernehmen} onSchliessen={() => setScan(null)} />
+      )}
+      {uebernommen && (
+        <p className="text-xs text-sky-800">{t('visitenkarte.uebernommen')}</p>
+      )}
       <Feld text={t('companies.name')}>
         <input value={name} onChange={e => setName(e.target.value)} disabled={!darfSchreiben}
                className="w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />

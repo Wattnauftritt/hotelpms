@@ -1392,3 +1392,15 @@ Sven, 18.10.2026: Preise in StayGrid verwalten, aber nicht alles von Hand eintip
 - **Adminpanel-Seite** gebaut und gemergt (dort PR 234).
 
 Tests in `kalenderAbruf.test.ts`, `kalenderSenden.test.ts`, `rateGrid.test.ts`.
+
+### Visitenkarte scannen für die Firmenanschrift — **gebaut**
+
+Sven, 19.10.2026: Am Handy die Visitenkarte fotografieren, statt die Firmenanschrift abzutippen.
+
+- **Wo.** Im Firmenformular selbst (`FirmaFormular`), damit Folio (Rechnungsempfänger → Neue Firma) und Reiter Firmen ihn beide haben; dazu ein eigener Knopf neben der Firmensuche im Folio, neben „Neue Firma" in der Firmenliste und über der Anschrift im Rechnungsdialog. Ein Dateifeld mit `capture="environment"` öffnet am Telefon die Kamera, am Rechner die Dateiauswahl.
+- **Vorschlag, dann bestätigen.** Die erkannte Anschrift steht in eigenen Feldern zur Korrektur; erst „Übernehmen" füllt das Formular, erst „Speichern" schreibt die Firma. Leere Felder des Vorschlags löschen nichts. Eine Rückseite lässt sich nachscannen und füllt nur, was noch leer ist.
+- **Im Gerät gelesen.** tesseract.js (WebAssembly) mit den deutschen Sprachdaten, von der eigenen Herkunft ausgeliefert und erst beim ersten Scan geladen (rund 5 MB, danach vom Service Worker gehalten). Das Foto verlässt das Telefon nicht und wird nirgends gespeichert. Ein Sprachmodell läse schiefe Fotos besser, schickte aber jedes Foto mit einem Menschen darauf an einen Anbieter außerhalb unserer Server; das wäre eine eigene Entscheidung.
+- **Caddy.** Die Content-Security-Policy braucht dafür `'wasm-unsafe-eval'` (`ops/caddy/Caddyfile`). Ohne den Eintrag meldet der Scan sofort einen Fehler, statt zu hängen.
+- **Was die Erkennung sucht** (`lib/visitenkarte.ts`): Name über die Rechtsform, sonst die größte Zeile; Postleitzahl und Ort mit Länderkennung (`D-`, `A-`, `CH-`, niederländisch `1013 AB`); Straße davor oder in derselben Zeile; USt-IdNr. Telefon, Fax, Mail und Web werden nie zur Anschrift.
+
+Tests in `visitenkarte.test.ts`.
