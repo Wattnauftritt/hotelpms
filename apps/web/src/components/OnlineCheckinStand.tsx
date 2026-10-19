@@ -47,6 +47,30 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
         ? t('onlineCheckin.invitationFailed', { zeit: zeitpunkt(stand.invitedAt, locale) })
         : t('onlineCheckin.invitedAt', { zeit: zeitpunkt(stand.invitedAt, locale) })
 
+  /*
+   * "Verschickt" heisst nur: der Mailanbieter hat angenommen. Was danach
+   * kam, fragt der Worker nach (Migration 0187) -- angezeigt wird es, weil
+   * eine Einladung, die beim Empfaenger abgewiesen wurde, sonst genauso
+   * aussieht wie eine, die angekommen ist. Der Grund kommt vom Anbieter
+   * und bleibt deshalb unuebersetzt, wie ein Fehlertext.
+   */
+  const zustellung: { text: string; schlecht: boolean } | null =
+    stand.invitationStatus !== 'sent' ? null
+      : stand.deliveryStatus === 'delivered'
+        ? { text: t('onlineCheckin.deliveryDelivered', {
+              zeit: zeitpunkt(stand.deliveryAt ?? stand.invitedAt!, locale) }), schlecht: false }
+        : stand.deliveryStatus === 'deferred' || stand.deliveryStatus === 'soft_bounce'
+          ? { text: t('onlineCheckin.deliveryDeferred'), schlecht: false }
+          : stand.deliveryStatus === 'hard_bounce' || stand.deliveryStatus === 'invalid'
+            ? { text: t('onlineCheckin.deliveryBounced'), schlecht: true }
+            : stand.deliveryStatus === 'blocked'
+              ? { text: t('onlineCheckin.deliveryBlocked'), schlecht: true }
+              : stand.deliveryStatus === 'spam'
+                ? { text: t('onlineCheckin.deliverySpam'), schlecht: true }
+                : stand.deliveryStatus === 'error'
+                  ? { text: t('onlineCheckin.deliveryError'), schlecht: true }
+                  : { text: t('onlineCheckin.deliveryPending'), schlecht: false }
+
   const erledigt = stand.completedAt !== null || stand.source === 'desk'
 
   return (
@@ -56,6 +80,21 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
         <li className={stand.invitationStatus === 'failed' ? 'text-red-800' : 'text-neutral-700'}>
           {einladung}
         </li>
+        {stand.invitedAt !== null && stand.invitationTo !== null && (
+          <li className="text-neutral-500">
+            {t('onlineCheckin.invitationTo', { adresse: stand.invitationTo })}
+          </li>
+        )}
+        {zustellung !== null && (
+          <li className={zustellung.schlecht ? 'text-red-800' : 'text-neutral-700'}>
+            {zustellung.text}
+            {zustellung.schlecht && stand.deliveryReason !== null && (
+              <span className="block text-xs text-neutral-500 break-words">
+                {stand.deliveryReason}
+              </span>
+            )}
+          </li>
+        )}
         {stand.completedAt !== null && (
           <li className="text-emerald-800">✓ {stand.source === 'import'
             ? t('onlineCheckin.completedImported', { zeit: zeitpunkt(stand.completedAt, locale),

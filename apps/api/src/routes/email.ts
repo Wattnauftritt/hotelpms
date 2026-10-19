@@ -469,6 +469,9 @@ export function emailRoutes(
                   e.next_attempt_at AS "nextAttemptAt",
                   e.provider_message_id AS "providerMessageId",
                   e.last_error AS "lastError",
+                  e.delivery_status AS "deliveryStatus",
+                  e.delivery_reason AS "deliveryReason",
+                  e.delivery_event_at AS "deliveryAt",
                   e.redacted_at IS NOT NULL AS "redacted",
                   i.public_ref AS "invoiceRef", r.public_ref AS "reservationRef",
                   -- Die vollstaendige Adresse steht in der Zeile, hier geht

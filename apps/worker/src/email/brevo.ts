@@ -61,7 +61,27 @@ export interface EmailAdapter {
   send(message: OutgoingEmail): Promise<EmailSendResult>
 }
 
+/** Ein Ereignis zu einer Nachricht, wie der Anbieter es meldet. */
+export interface DeliveryEvent {
+  /** Name beim Anbieter, etwa `delivered`, `hardBounces`, `blocked`. */
+  event: string
+  /** Zeitpunkt mit Zone, wie geliefert. */
+  date: string | null
+  /** Freitext des Anbieters; kann die Empfaengeradresse enthalten. */
+  reason: string | null
+}
+
+/**
+ * Nachfrage, was aus einer angenommenen Nachricht wurde (Migration 0187).
+ * Eigene Fassade neben `EmailAdapter`, weil die Zugangspost sie nicht
+ * braucht und ihre Testattrappen sie nicht nachbauen sollen.
+ */
+export interface DeliveryLookup {
+  events(providerMessageId: string): Promise<DeliveryEvent[]>
+}
+
 const BREVO_URL = 'https://api.brevo.com/v3/smtp/email'
+const BREVO_EVENTS_URL = 'https://api.brevo.com/v3/smtp/statistics/events'
 
 export interface BrevoOptions {
   timeoutMs?: number
@@ -73,12 +93,44 @@ export interface BrevoOptions {
    * Kodierung des Anhangs.
    */
   baseUrl?: string
+  /** Abweichendes Ziel fuer die Ereignisabfrage, ebenfalls fuer den Test. */
+  eventsUrl?: string
 }
 
-export function createBrevoAdapter(apiKey: string, opts: BrevoOptions = {}): EmailAdapter {
+export function createBrevoAdapter(
+  apiKey: string, opts: BrevoOptions = {}
+): EmailAdapter & DeliveryLookup {
   const url = opts.baseUrl ?? BREVO_URL
+  const eventsUrl = opts.eventsUrl ?? BREVO_EVENTS_URL
   const timeoutMs = opts.timeoutMs ?? 15_000
   return {
+    async events(providerMessageId: string): Promise<DeliveryEvent[]> {
+      // Die Kennung kommt mit spitzen Klammern (`<...@smtp-relay...>`) und
+      // wird genau so gesucht; ohne Kodierung bricht sie die Abfrage.
+      const q = new URLSearchParams({ messageId: providerMessageId, limit: '100', sort: 'desc' })
+      let res: Response
+      try {
+        res = await fetch(`${eventsUrl}?${q.toString()}`, {
+          headers: { 'api-key': apiKey, accept: 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs)
+        })
+      } catch (e) {
+        throw new EmailSendError(null, (e as Error).message.slice(0, 500))
+      }
+      if (!res.ok) {
+        throw new EmailSendError(res.status,
+          `Brevo-Ereignisse nicht abrufbar (${res.status})`)
+      }
+      const json = await res.json().catch(() => ({})) as {
+        events?: Array<{ event?: unknown; date?: unknown; reason?: unknown }>
+      }
+      return (json.events ?? []).flatMap(e => typeof e.event === 'string'
+        ? [{ event: e.event,
+             date: typeof e.date === 'string' ? e.date : null,
+             reason: typeof e.reason === 'string' ? e.reason : null }]
+        : [])
+    },
+
     async send(m: OutgoingEmail): Promise<EmailSendResult> {
       const body = {
         sender: { name: m.from.name ?? undefined, email: m.from.email },
