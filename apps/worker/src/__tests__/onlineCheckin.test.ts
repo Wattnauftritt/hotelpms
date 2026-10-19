@@ -123,6 +123,19 @@ describe('Versand vor Anreise', () => {
     expect(p.map(x => x.reservation_id)).toEqual([korrigiert, vonHand, korrigiert])
   })
 
+  it('laedt nach einem von Booking.com verschluckten Link einmal neu ein', async () => {
+    // 0190: der Absender war bei Booking.com nicht eingetragen, die Mail kam
+    // nie an. Der Grund 'channel_dropped' gibt die Reservierung frei wie ein
+    // Adresswechsel, ohne dass die Adresse falsch war.
+    const verschluckt = await reservierung()
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(1)
+    await owner.query(
+      `UPDATE checkin_token SET revoked_at = now(), revoke_reason = 'channel_dropped'
+        WHERE reservation_id = $1`, [verschluckt])
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(1)
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(0)
+  })
+
   it('laedt nicht ein, wofuer ein Umsystem schon eingeladen oder erfasst hat', async () => {
     const eingeladen = await reservierung()
     const erfasst = await reservierung()
