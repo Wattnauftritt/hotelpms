@@ -57,6 +57,16 @@ export interface NativeDatei {
   oeffnen(datei: Blob, name: string): Promise<void>
 }
 
+/**
+ * Die Aktualisierung ohne Store (Plan §4). Pakete laedt und wechselt die
+ * Huelle selbst; die Oberflaeche erfaehrt nur, wenn ein neueres Paket da ist,
+ * das diese Huelle nicht tragen kann, und bittet dann um den Store.
+ */
+export interface NativeAktualisierung {
+  /** Ruft `beiBedarf` auf, sobald das feststeht -- auch nachtraeglich. */
+  storeNoetig(beiBedarf: () => void): void
+}
+
 export interface StaygridNative {
   plattform: 'ios' | 'android'
   /**
@@ -71,6 +81,8 @@ export interface StaygridNative {
   texterkennung?: NativeTexterkennung
   /** Fehlt bei einer Huelle vor Fassung 3. */
   datei?: NativeDatei
+  /** Fehlt vor Fassung 4 und ohne Schluessel fuer Pakete. */
+  aktualisierung?: NativeAktualisierung
 }
 
 declare global {

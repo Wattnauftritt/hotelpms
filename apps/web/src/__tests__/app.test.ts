@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { StaygridNative } from '@hotelpms/native'
+import { readFileSync } from 'node:fs'
 
 /**
  * Die Oberflaeche in der eigenen App (Plan app/plan.md, Bausteine 1 und 3).
@@ -112,5 +113,25 @@ describe('Dateien in der App', () => {
       status: 404 }), { status: 404 })
     const { holeApiDatei } = await import('../lib/datei.js')
     await expect(holeApiDatei('/v1/invoices/weg/pdf')).rejects.toThrow('Gibt es nicht')
+  })
+})
+
+describe('Fassung der Huelle', () => {
+  /*
+   * Die Bruecke kommt mit jedem Paket vom Server, die Huelle nur aus dem
+   * Store. Ein Paket wird nur angewendet, wenn die Huelle mindestens die
+   * Fassung hat, die seine Bruecke braucht. Laeuft die Zahl in der Bruecke
+   * der nativen davon, nimmt keine App mehr ein Paket an; bleibt sie
+   * dahinter, laedt eine alte App eine Bruecke, deren Erweiterungen sie
+   * nicht hat.
+   */
+  it('ist in Bruecke, iOS und Android dieselbe', () => {
+    const lies = (pfad: string, muster: RegExp): number =>
+      Number(muster.exec(readFileSync(new URL(`../../../mobile/${pfad}`, import.meta.url), 'utf8'))?.[1])
+    const bruecke = lies('src/bruecke.ts', /const HUELLE = (\d+)/)
+    expect(bruecke).toBeGreaterThanOrEqual(4)
+    expect(lies('ios/App/App/Huelle.swift', /static let huelle = (\d+)/)).toBe(bruecke)
+    expect(lies('android/app/src/main/java/cloud/staygrid/app/HuellePlugin.java',
+                /static final int HUELLE = (\d+);/)).toBe(bruecke)
   })
 })

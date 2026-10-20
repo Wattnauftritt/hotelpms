@@ -18,6 +18,7 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(SitzungPlugin())
         bridge?.registerPluginInstance(TexterkennungPlugin())
         bridge?.registerPluginInstance(DateiPlugin())
+        bridge?.registerPluginInstance(HuellePlugin())
         sperre = AppSperre(ansicht: view)
     }
 }
@@ -354,5 +355,25 @@ public class SitzungPlugin: CAPPlugin, CAPBridgedPlugin {
         } else {
             call.reject("Schluesselbund: \(status)")
         }
+    }
+}
+
+/// Die Fassung dieser Huelle, fuer die Aktualisierung ohne Store (Plan §4).
+///
+/// Steht im nativen Code und nicht in der Bruecke, weil die Bruecke mit
+/// jedem Paket vom Server mitwandert: sie wuesste nur, welche Huelle sie
+/// braucht, nicht, welche sie hat. Steigt mit HUELLE in src/bruecke.ts; ein
+/// Test in apps/web haelt beide Seiten und Android aneinander.
+@objc(HuellePlugin)
+public class HuellePlugin: CAPPlugin, CAPBridgedPlugin {
+    static let huelle = 4
+    public let identifier = "HuellePlugin"
+    public let jsName = "StaygridHuelle"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "stand", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func stand(_ call: CAPPluginCall) {
+        call.resolve(["huelle": HuellePlugin.huelle])
     }
 }

@@ -3,6 +3,7 @@
 #
 #   deploy.sh deploy   [marker]   baut den Stand am Marker und schaltet um
 #   deploy.sh rollback <sha>      schaltet auf einen schon gebauten Stand
+#   deploy.sh app-schluessel      legt den Schluessel fuer App-Pakete an
 #
 # **Warum hier und nicht nur in der Anleitung.** Dieses Skript stand bis zur
 # Erstinbetriebnahme ausschliesslich in docs/21 §8 -- und lief damit
@@ -96,6 +97,43 @@ umschalten() {
   echo
 }
 
+# ---------------------------------------------------------- app-schluessel
+#
+# Der Schluessel, mit dem jedes Ausrollen das Paket fuer die App signiert
+# (Plan app/plan.md §4, apps/mobile/scripts/paket.mjs). Er entsteht hier und
+# verlaesst die Maschine nie; ausgegeben wird nur die oeffentliche Haelfte,
+# die als apps/mobile/paket-schluessel.pem in die App kommt.
+#
+# **Einmal, nie ersetzen.** Jede App im Store kennt genau diesen
+# Schluessel. Ein neuer hiesse: keine App nimmt mehr ein Paket an, bis alle
+# eine neue Fassung aus dem Store haben. Deshalb legt der Befehl nichts an,
+# wenn schon einer da ist, und zeigt nur dessen oeffentliche Haelfte.
+#
+# Die Units von API und Worker sperren die Datei aus (InaccessiblePaths):
+# wer sie hat, legt Code in jede App, der dort auch bleibt, wenn der Server
+# laengst wieder sauber ist.
+APP_SCHLUESSEL="$WURZEL/shared/app-paket.key"
+if [ "$MODUS" = "app-schluessel" ]; then
+  if [ ! -e "$APP_SCHLUESSEL" ]; then
+    APP_SCHLUESSEL="$APP_SCHLUESSEL" node -e '
+      const { generateKeyPairSync } = require("node:crypto")
+      const { writeFileSync } = require("node:fs")
+      const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 3072 })
+      writeFileSync(process.env.APP_SCHLUESSEL,
+        privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600, flag: "wx" })'
+    echo "Schluessel angelegt: $APP_SCHLUESSEL" >&2
+  else
+    echo "Schluessel liegt schon unter $APP_SCHLUESSEL und bleibt." >&2
+  fi
+  echo "Oeffentliche Haelfte, fuer apps/mobile/paket-schluessel.pem:" >&2
+  APP_SCHLUESSEL="$APP_SCHLUESSEL" node -e '
+    const { createPublicKey } = require("node:crypto")
+    const { readFileSync } = require("node:fs")
+    process.stdout.write(createPublicKey(readFileSync(process.env.APP_SCHLUESSEL))
+      .export({ type: "spki", format: "pem" }))'
+  exit 0
+fi
+
 # ----------------------------------------------------------------- zurueck
 if [ "$MODUS" = "rollback" ]; then
   SHA="${2:?rollback braucht den Stand: deploy.sh rollback <sha>}"
@@ -175,6 +213,26 @@ cp -a "$ZIEL/apps/web/dist" "$ZIEL/web"
 # liefert der Name 404, und die Datenschutzerklaerung, die in den App-Stores
 # verlinkt ist, ist weg.
 cp -a "$ZIEL/apps/site/dist" "$ZIEL/site"
+
+# Dieselbe Oberflaeche als signiertes Paket fuer die App (Plan app/plan.md
+# §4). Caddy bedient es unter /app-paket/ aus current/web; die App holt dort
+# paket.json, laedt das Zip und prueft die Signatur selbst. Liegt es im
+# Stand und nicht daneben, rollt es mit ihm zurueck: die App folgt dem
+# Server, nicht dem neuesten Bau.
+#
+# **Scheitert das Paket, rollt der Stand trotzdem aus.** Ohne Paket bleiben
+# die Apps beim letzten -- der Browser soll deswegen nicht auf eine
+# Behebung warten. Die Warnung steht im Protokoll der Ausrollung.
+if [ -r "$APP_SCHLUESSEL" ]; then
+  if ! ( STAYGRID_STAND="$SHA" pnpm --filter @hotelpms/mobile www \
+         && HOTELPMS_APP_PAKET_SCHLUESSEL="$APP_SCHLUESSEL" \
+              node apps/mobile/scripts/paket.mjs "$ZIEL/web/app-paket" ); then
+    echo "WARNUNG: kein App-Paket fuer $SHA, die Apps bleiben beim vorigen Stand." >&2
+    rm -rf "$ZIEL/web/app-paket"
+  fi
+else
+  echo "Hinweis: kein $APP_SCHLUESSEL, also kein App-Paket (deploy.sh app-schluessel)." >&2
+fi
 
 # Woher dieser Stand kommt -- Zeitpunkt und Betreff des Commits.
 #

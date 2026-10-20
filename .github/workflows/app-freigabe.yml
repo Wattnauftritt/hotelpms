@@ -46,6 +46,15 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter './packages/*' build
+      # Ohne oeffentlichen Schluessel baut die App ohne Aktualisierung vom
+      # Server (capacitor.config.ts). Zum Ausprobieren in einem Pull Request
+      # geht das; in den Store soll so keine, denn jede Fassung dort bliebe
+      # fuer immer ohne -- bis zur naechsten aus dem Store.
+      - name: Schluessel fuer Pakete pruefen
+        if: startsWith(github.ref, 'refs/tags/app-v') || inputs.hochladen
+        run: |
+          test -s apps/mobile/paket-schluessel.pem || {
+            echo "::error::apps/mobile/paket-schluessel.pem fehlt (deploy.sh app-schluessel)"; exit 1; }
       - name: Oberflaeche und Bruecke zusammensetzen
         working-directory: apps/mobile
         run: pnpm sync

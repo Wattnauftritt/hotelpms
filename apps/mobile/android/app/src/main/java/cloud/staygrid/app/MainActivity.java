@@ -50,6 +50,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SitzungPlugin.class);
         registerPlugin(TexterkennungPlugin.class);
         registerPlugin(DateiPlugin.class);
+        registerPlugin(HuellePlugin.class);
         super.onCreate(savedInstanceState);
         // Zugedeckt wird erst in onResume: die Bruecke setzt ihre Ansicht
         // selbst, und eine Decke von vorher laege darunter oder waere weg.
