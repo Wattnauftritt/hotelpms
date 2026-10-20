@@ -18,9 +18,9 @@ interface Empfangen {
   headers: Record<string, string | undefined>
   body: {
     sender?: { email?: string; name?: string }
-    to?: Array<{ email?: string; name?: string }>
+    to?: Array<{ email?: string; name?: string; contactPixelTrackingConsent?: boolean }>
     replyTo?: { email?: string }
-    bcc?: Array<{ email?: string }>
+    bcc?: Array<{ email?: string; contactPixelTrackingConsent?: boolean }>
     subject?: string
     textContent?: string
     htmlContent?: string
@@ -214,6 +214,9 @@ describe('Zustellung', () => {
     expect(m.body.htmlContent).toContain('<p>')
     // Links unveraendert lassen: Booking.com verwirft Brevos Umleitung (0192).
     expect(m.body.clickTracking).toBe(false)
+    // Kein Lesebeleg je Gast ohne Einwilligung (§ 25 TDDDG).
+    expect(m.body.to?.[0]?.contactPixelTrackingConsent).toBe(false)
+    expect(m.body.bcc?.[0]?.contactPixelTrackingConsent).toBe(false)
 
     const z = await zeile(ref)
     expect(z.status).toBe('sent')

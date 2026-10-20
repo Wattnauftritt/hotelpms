@@ -134,9 +134,16 @@ export function createBrevoAdapter(
     async send(m: OutgoingEmail): Promise<EmailSendResult> {
       const body: Record<string, unknown> = {
         sender: { name: m.from.name ?? undefined, email: m.from.email },
-        to: [{ email: m.to.email, name: m.to.name ?? undefined }],
+        /*
+         * Keine Oeffnungs- und Klickereignisse je Person: Brevo setzt ein
+         * Zaehlpixel, und ein Lesebeleg je Gast ohne dessen Einwilligung ist
+         * nach § 25 TDDDG und DSGVO nicht gedeckt. `false` anonymisiert die
+         * Ereignisse; Zustellung und Abweisung je Nachricht (0187) bleiben.
+         */
+        to: [{ email: m.to.email, name: m.to.name ?? undefined,
+               contactPixelTrackingConsent: false }],
         replyTo: m.replyTo ? { email: m.replyTo.email, name: m.replyTo.name ?? undefined } : undefined,
-        bcc: m.bcc ? [{ email: m.bcc.email }] : undefined,
+        bcc: m.bcc ? [{ email: m.bcc.email, contactPixelTrackingConsent: false }] : undefined,
         subject: m.subject,
         textContent: m.text,
         htmlContent: m.html ?? undefined,
