@@ -95,6 +95,13 @@ export function OnlineCheckinStand({ reservationRef, stand }: {
             )}
           </li>
         )}
+        {/* Zugestellt heisst bei Booking.com nur: deren Server hat angenommen.
+            Geoeffnet sagt, dass die Einladung beim Gast ankam (0192). */}
+        {stand.openedAt !== null && (
+          <li className="text-neutral-700">
+            {t('onlineCheckin.linkOpened', { zeit: zeitpunkt(stand.openedAt, locale) })}
+          </li>
+        )}
         {stand.completedAt !== null && (
           <li className="text-emerald-800">✓ {stand.source === 'import'
             ? t('onlineCheckin.completedImported', { zeit: zeitpunkt(stand.completedAt, locale),

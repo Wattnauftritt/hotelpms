@@ -893,6 +893,8 @@ export const OnlineCheckinStatus = Type.Object({
   /** Grund einer Abweisung, ohne Adressen darin. */
   deliveryReason: Type.Union([Type.String(), Type.Null()]),
   deliveryAt: Type.Union([Type.String(), Type.Null()]),
+  /** Wann der Gast einen Mail-Link zuerst geoeffnet hat (0192). */
+  openedAt: Type.Union([Type.String(), Type.Null()]),
   /** Meldeschein online oder am Terminal eingereicht, wann. */
   completedAt: Type.Union([Type.String(), Type.Null()]),
   source: Type.Union([Type.Literal('desk'), Type.Literal('online'),
