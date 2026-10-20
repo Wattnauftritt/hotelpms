@@ -18,13 +18,14 @@ interface Empfangen {
   headers: Record<string, string | undefined>
   body: {
     sender?: { email?: string; name?: string }
-    to?: Array<{ email?: string; name?: string }>
+    to?: Array<{ email?: string; name?: string; contactPixelTrackingConsent?: boolean }>
     replyTo?: { email?: string }
-    bcc?: Array<{ email?: string }>
+    bcc?: Array<{ email?: string; contactPixelTrackingConsent?: boolean }>
     subject?: string
     textContent?: string
     htmlContent?: string
     attachment?: Array<{ name: string; content: string }>
+    clickTracking?: boolean
   }
 }
 
@@ -211,10 +212,44 @@ describe('Zustellung', () => {
     expect(m.body.bcc?.[0]?.email).toBe('kopie@seeblick.test')
     expect(m.body.textContent).toContain('Anna Beispiel')
     expect(m.body.htmlContent).toContain('<p>')
+    // Links unveraendert lassen: Booking.com verwirft Brevos Umleitung (0192).
+    expect(m.body.clickTracking).toBe(false)
+    // Kein Lesebeleg je Gast ohne Einwilligung (§ 25 TDDDG).
+    expect(m.body.to?.[0]?.contactPixelTrackingConsent).toBe(false)
+    expect(m.body.bcc?.[0]?.contactPixelTrackingConsent).toBe(false)
 
     const z = await zeile(ref)
     expect(z.status).toBe('sent')
     expect(z.provider_message_id).toBe('<nachricht-1@brevo>')
+  })
+
+  it('schickt ohne clickTracking nach, wenn Brevo die Angabe zurueckweist', async () => {
+    const rumpfe: Array<Record<string, unknown>> = []
+    const server: Server = createServer((req, res) => {
+      let body = ''
+      req.on('data', (c: Buffer) => { body += c.toString('utf8') })
+      req.on('end', () => {
+        const b = JSON.parse(body) as Record<string, unknown>
+        rumpfe.push(b)
+        if ('clickTracking' in b) {
+          res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify(
+            { code: 'invalid_parameter', message: 'clickTracking is not a valid parameter' }))
+        } else {
+          res.writeHead(201, { 'content-type': 'application/json' })
+            .end(JSON.stringify({ messageId: '<ohne@brevo>' }))
+        }
+      })
+    })
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+    const port = (server.address() as AddressInfo).port
+    const brevo = createBrevoAdapter('k', { baseUrl: `http://127.0.0.1:${port}/v3/smtp/email` })
+    const r = await brevo.send({ from: { email: 'post@seeblick.test' },
+      to: { email: 'anna@gast.test' }, subject: 'Test', text: 'Text' })
+    await new Promise<void>(r => { server.close(() => { r() }) })
+
+    expect(r.providerMessageId).toBe('<ohne@brevo>')
+    expect(rumpfe).toHaveLength(2)
+    expect(rumpfe[1]).not.toHaveProperty('clickTracking')
   })
 
   it('haengt den archivierten Beleg an, nicht eine neu erzeugte Fassung', async () => {

@@ -20,7 +20,7 @@ import { geltendeBedingungen, stimmeBedingungZu,
          type GeltendeBedingung } from '../platform/hausbedingungen.js'
 import { gastAendern, gastAnlegen } from '../platform/gast.js'
 import { verzichtStand, setzeVerzicht } from '../platform/reinigungsverzicht.js'
-import type { Principal } from '../platform/context.js'
+import { ANONYMOUS, type Principal } from '../platform/context.js'
 import type { Permission } from '../platform/permissions.js'
 import { rechtImHaus } from './depositRequests.js'
 import { mappeZumLink } from '../platform/gaestemappe.js'
@@ -499,6 +499,15 @@ export function checkinRoutes(app: FastifyInstance): void {
       nichtSpeichern(reply)
       return checkinTx(req, async (client, k): Promise<CheckinFormView> => {
         const r = await reservierungZumLink(client, k)
+        // Ob die Einladung ankam, sagt kein Anbieter -- Booking.com nimmt an
+        // und verwirft still (0192). Der erste Abruf durch den Gast schon.
+        // Nur ohne Anmeldung: die Rezeption, die einen kopierten Link
+        // gegenprueft, ist nicht der Gast.
+        if (k.channel === 'mail' && req.principal === ANONYMOUS) {
+          await client.query(
+            `UPDATE checkin_token SET opened_at = now()
+              WHERE id = $1 AND opened_at IS NULL`, [k.tokenId])
+        }
         return {
           propertyName: r.property_name,
           arrival: r.arrival,

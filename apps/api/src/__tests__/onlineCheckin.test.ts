@@ -550,6 +550,26 @@ describe('Rezeption', () => {
     expect(JSON.parse(s.body).code).toBe('checkin.mailNotReady')
   })
 
+  it('zeigt, wann der Gast den Link zuerst geoeffnet hat, und nicht, wann die Rezeption', async () => {
+    const r = await reservierung()
+    const token = await mailLink(r.ref)
+    const stand = async (): Promise<string | null> => (JSON.parse((await app.inject({
+      method: 'GET', url: `/v1/reservations/${r.ref}`, headers: chef })).body) as {
+        onlineCheckin: { openedAt: string | null } }).onlineCheckin.openedAt
+
+    // Die Rezeption prueft den kopierten Link mit ihrer Sitzung gegen.
+    expect((await app.inject({ method: 'GET', url: '/v1/checkin/form',
+      headers: { ...chef, [CHECKIN_TOKEN_HEADER]: token } })).statusCode).toBe(200)
+    expect(await stand()).toBeNull()
+
+    expect((await formular(token)).statusCode).toBe(200)
+    const erstes = await stand()
+    expect(erstes).not.toBeNull()
+    // Ein zweiter Abruf verschiebt den ersten nicht.
+    await formular(token)
+    expect(await stand()).toBe(erstes)
+  })
+
   it('zeigt am Seitenfenster und im Tresen-Meldeschein, dass die Unterschrift fehlt', async () => {
     const r = await reservierung({ anreise: HEUTE })
     expect((await einreichen(await mailLink(r.ref), auslaendisch())).statusCode).toBe(201)

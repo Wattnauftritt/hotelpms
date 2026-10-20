@@ -96,7 +96,7 @@ export async function onlineCheckinStand(
     invited_at: string | null; invitation_status: string | null
     invitation_to: string | null
     delivery_status: string | null; delivery_reason: string | null
-    delivery_event_at: string | null
+    delivery_event_at: string | null; opened_at: string | null
     completed_at: string | null; source: OnlineCheckinStatus['source']
     external_system: string | null
     signature_pending: boolean | null; active_links: number }>(
@@ -109,6 +109,10 @@ export async function onlineCheckinStand(
                  ELSE regexp_replace(e.to_email, '(^.).*(@.*$)', '\\1***\\2')
             END AS invitation_to,
             e.delivery_status, e.delivery_reason, e.delivery_event_at,
+            -- Der Gast hat einen Mail-Link geoeffnet (0192). Zugestellt ohne
+            -- geoeffnet heisst bei Booking.com oft: dort verworfen.
+            (SELECT max(t.opened_at) FROM checkin_token t
+              WHERE t.reservation_id = r.id AND t.channel = 'mail') AS opened_at,
             -- Uebernommen: wann der Gast dort ausgefuellt hat, nicht wann
             -- StayGrid ihn bekam (0087).
             CASE WHEN reg.source IN ('online','terminal') THEN reg.created_at
@@ -144,6 +148,7 @@ export async function onlineCheckinStand(
     deliveryReason: z.delivery_reason,
     deliveryAt: z.delivery_event_at === null ? null
       : new Date(z.delivery_event_at).toISOString(),
+    openedAt: z.opened_at === null ? null : new Date(z.opened_at).toISOString(),
     completedAt: z.completed_at === null ? null : new Date(z.completed_at).toISOString(),
     source: z.source,
     importedFrom: z.external_system,
