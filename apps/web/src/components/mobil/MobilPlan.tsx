@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { TapeChart } from '@hotelpms/contracts'
 import { useTapeChart } from '../../lib/queries.js'
-import { useT, useLocale, formatDate, weekdayShort } from '../../lib/i18n/index.js'
+import { useT, useLocale, formatDate, formatDayMonth, weekdayShort } from '../../lib/i18n/index.js'
 import { useSprung } from '../../lib/suche.js'
 import { useHausrechte } from '../../lib/rechte.js'
 import { addDays, eachDay, today, isWeekend } from '../../lib/dates.js'
@@ -97,7 +97,9 @@ export function MobilPlan({ propertyId }: { propertyId: number }): JSX.Element {
           <h1 className="truncate text-lg font-semibold">
             {ansicht === 'tag'
               ? `${weekdayShort(start, locale)} ${formatDate(start, locale)}`
-              : `${formatDate(start, locale).slice(0, 6)}–${formatDate(addDays(start, WOCHE_TAGE - 1), locale)}`}
+              // Nicht `formatDate(...).slice(0, 6)`: das traf nur "20.10.2026";
+              // in Sprachen mit Jahr vorn stand "2026-1" im Kopf.
+              : `${formatDayMonth(start, locale)}–${formatDate(addDays(start, WOCHE_TAGE - 1), locale)}`}
           </h1>
         </div>
         <div className="flex shrink-0 rounded-lg bg-neutral-200 p-0.5 text-sm" role="tablist">
