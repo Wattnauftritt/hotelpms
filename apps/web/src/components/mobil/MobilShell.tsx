@@ -5,7 +5,7 @@ import { useEscape } from '../../lib/tasten.js'
 import { inLeistenReihenfolge } from '../../lib/leiste.js'
 import { Hauswahl } from '../Hauswahl.tsx'
 import { Detailsuche } from '../Detailsuche.tsx'
-import { Abmelden, Installieren, OfflineHinweis, Sprachwahl, Uebungshinweis, ZurPersonalApp,
+import { Abmelden, Installieren, OfflineHinweis, StoreHinweis, Sprachwahl, Uebungshinweis, ZurPersonalApp,
          type ShellProps } from '../Shell.tsx'
 
 /**
@@ -84,6 +84,7 @@ function Rahmen(props: ShellProps): JSX.Element {
         </div>
         {props.haus?.isTraining === true && <Uebungshinweis haus={props.haus} />}
         {!online && <OfflineHinweis />}
+        <StoreHinweis />
       </header>
 
       <main className="p-3">{props.children}</main>
