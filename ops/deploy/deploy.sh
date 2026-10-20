@@ -171,6 +171,10 @@ pnpm build
 # sie in apps/web/dist, der Caddyfile bedient current/web. Fiel bei der
 # Erstinbetriebnahme auf, weil beide Seiten fuer sich richtig waren.
 cp -a "$ZIEL/apps/web/dist" "$ZIEL/web"
+# Dasselbe fuer die oeffentliche Seite unter staygrid.cloud. Fehlt sie,
+# liefert der Name 404, und die Datenschutzerklaerung, die in den App-Stores
+# verlinkt ist, ist weg.
+cp -a "$ZIEL/apps/site/dist" "$ZIEL/site"
 
 # Woher dieser Stand kommt -- Zeitpunkt und Betreff des Commits.
 #

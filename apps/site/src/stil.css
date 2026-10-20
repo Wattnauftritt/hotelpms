@@ -1,0 +1,124 @@
+/*
+ * Die oeffentliche Seite. Nur Systemschriften: eine Schrift von Google Fonts
+ * schickt die IP-Adresse jedes Besuchers an Google, und genau das hat das
+ * LG Muenchen (3 O 17493/20) einem Seitenbetreiber untersagt. Eine eigene
+ * Schriftdatei waere moeglich, ist aber fuer eine Produktseite Gewicht ohne
+ * Gegenwert.
+ */
+:root {
+  --grund: #fafafa;
+  --flaeche: #ffffff;
+  --text: #171717;
+  --leise: #525252;
+  --linie: #e5e5e5;
+  --akzent: #6d28d9;
+  --akzent-hell: #ede9fe;
+  --knopf: #171717;
+  --knopf-text: #ffffff;
+  --schatten: 0 1px 2px rgb(0 0 0 / 0.05), 0 12px 32px -12px rgb(0 0 0 / 0.18);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grund: #0f0f10;
+    --flaeche: #18181b;
+    --text: #f4f4f5;
+    --leise: #a1a1aa;
+    --linie: #2e2e33;
+    --akzent: #a78bfa;
+    --akzent-hell: #2e1065;
+    --knopf: #f4f4f5;
+    --knopf-text: #171717;
+    --schatten: 0 1px 2px rgb(0 0 0 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.6);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--grund);
+  color: var(--text);
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--akzent); }
+h1, h2, h3 { line-height: 1.2; letter-spacing: -0.015em; }
+h1 { font-size: clamp(2rem, 5vw, 3.25rem); margin: 0 0 0.5em; }
+h2 { font-size: clamp(1.5rem, 3.2vw, 2.25rem); margin: 0 0 0.5em; }
+h3 { font-size: 1.15rem; margin: 0 0 0.35em; }
+
+.breite { max-width: 1160px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .breite { padding: 0 32px; } }
+
+/* Kopf */
+.kopf { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--grund) 88%, transparent);
+        backdrop-filter: blur(8px); border-bottom: 1px solid var(--linie); }
+.kopf-innen { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; }
+.marke { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.marke img { border-radius: 8px; }
+.kopf nav { display: flex; align-items: center; gap: 20px; }
+.kopf nav a:not(.knopf) { color: var(--leise); text-decoration: none; font-size: 0.95rem; }
+.kopf nav a:not(.knopf):hover { color: var(--text); }
+@media (max-width: 640px) { .kopf nav a:not(.knopf) { display: none; } }
+
+.knopf { display: inline-block; background: var(--knopf); color: var(--knopf-text); text-decoration: none;
+         padding: 0.75em 1.3em; border-radius: 10px; font-weight: 600; }
+.knopf-zweit { background: transparent; color: var(--text); border: 1px solid var(--linie); }
+.knopf-klein { padding: 0.45em 0.95em; font-size: 0.95rem; }
+
+/* Einstieg */
+.einstieg { padding: 72px 0 40px; text-align: center; }
+.einstieg .vorzeile { display: inline-block; background: var(--akzent-hell); color: var(--akzent); font-weight: 600;
+                      font-size: 0.85rem; padding: 0.3em 0.8em; border-radius: 999px; margin-bottom: 20px; }
+.einstieg p.unter { font-size: 1.2rem; color: var(--leise); max-width: 720px; margin: 0 auto 32px; }
+.einstieg .knoepfe { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.buehne { margin: 48px auto 0; max-width: 1160px; }
+
+.bild { border-radius: 14px; border: 1px solid var(--linie); box-shadow: var(--schatten); background: var(--flaeche); overflow: hidden; }
+.bildunterschrift { color: var(--leise); font-size: 0.9rem; margin-top: 10px; text-align: center; }
+
+/* Abschnitte */
+.abschnitt { padding: 72px 0; }
+.abschnitt-kopf { max-width: 760px; margin-bottom: 40px; }
+.abschnitt-kopf p { color: var(--leise); font-size: 1.1rem; margin: 0; }
+.hell { background: var(--flaeche); border-top: 1px solid var(--linie); border-bottom: 1px solid var(--linie); }
+
+.funktion { display: grid; gap: 32px; align-items: center; margin-bottom: 72px; }
+.funktion:last-child { margin-bottom: 0; }
+@media (min-width: 900px) {
+  .funktion { grid-template-columns: 5fr 7fr; gap: 56px; }
+  .funktion.gedreht { grid-template-columns: 7fr 5fr; }
+  .funktion.gedreht > :first-child { order: 2; }
+}
+.funktion ul { padding-left: 1.2em; margin: 0.8em 0 0; color: var(--leise); }
+.funktion li { margin: 0.3em 0; }
+.funktion p { color: var(--leise); margin: 0; }
+
+.kacheln { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.kachel { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 14px; padding: 22px; }
+.hell .kachel { background: var(--grund); }
+.kachel p { margin: 0; color: var(--leise); font-size: 0.97rem; }
+
+.telefone { display: flex; gap: 20px; justify-content: center; }
+.telefone .bild { border-radius: 28px; max-width: 260px; min-width: 0; flex: 1 1 0; }
+.funktion > * { min-width: 0; }
+
+/* Rechtstexte */
+.rechtstext { max-width: 780px; padding-top: 48px; padding-bottom: 72px; }
+.rechtstext h2 { font-size: 1.4rem; margin-top: 2em; }
+.rechtstext h3 { margin-top: 1.5em; }
+.rechtstext table { border-collapse: collapse; width: 100%; font-size: 0.95rem; margin: 1em 0; display: block; overflow-x: auto; }
+.rechtstext th, .rechtstext td { border: 1px solid var(--linie); padding: 8px 10px; text-align: left; vertical-align: top; }
+.rechtstext th { background: var(--flaeche); }
+.rechtstext .stand { color: var(--leise); }
+.rechtstext address { font-style: normal; }
+.kasten { background: var(--akzent-hell); border-radius: 12px; padding: 16px 20px; margin: 1.5em 0; }
+
+/* Fuss */
+.fuss { border-top: 1px solid var(--linie); padding: 32px 0; color: var(--leise); font-size: 0.95rem; }
+.fuss-innen { display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; align-items: center; }
+.fuss p { margin: 0; }
+.fuss nav { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.fuss a { color: var(--leise); }
+.weiter { margin-top: 32px; }

@@ -95,6 +95,8 @@ importers:
         specifier: ^6.0.5
         version: 6.4.3(@types/node@22.20.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)
 
+  apps/site: {}
+
   apps/web:
     dependencies:
       '@hotelpms/contracts':
