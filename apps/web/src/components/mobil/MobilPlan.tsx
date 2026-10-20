@@ -3,16 +3,20 @@ import type { TapeChart } from '@hotelpms/contracts'
 import { useTapeChart } from '../../lib/queries.js'
 import { useT, useLocale, formatDate, weekdayShort } from '../../lib/i18n/index.js'
 import { useSprung } from '../../lib/suche.js'
+import { useHausrechte } from '../../lib/rechte.js'
 import { addDays, eachDay, today, isWeekend } from '../../lib/dates.js'
 import { balkenSpanne, istFrei, mobilFenster, zimmerAmTag, zimmerGruppen, WOCHE_TAGE,
          type TagesLage, type ZimmerTag } from '../../lib/mobil.js'
 import { Fehler, Laedt } from '../Shell.tsx'
 import { Blaettern } from './MobilHeute.tsx'
+import { BookingDialog } from '../BookingDialog.tsx'
 
 type Ansicht = 'woche' | 'tag'
 type Filter = { art: 'alle' } | { art: 'frei' } | { art: 'gruppe'; id: number }
 type Einheit = TapeChart['units'][number]
 type Reservierung = TapeChart['reservations'][number]
+/** Was ein angetipptes freies Feld vorschlaegt: dieses Zimmer, ab diesem Tag. */
+type Neu = { zimmer: Einheit; anreise: string }
 
 /**
  * Der Zimmerplan am Telefon, in zwei Ansichten.
@@ -32,6 +36,14 @@ type Reservierung = TapeChart['reservations'][number]
  * Reservierung; was dort geht, geht auch am Telefon. Der Desktop-Plan
  * (`routes/Tape.tsx`) bleibt davon unberuehrt.
  *
+ * **Eingetragen wird durch Antippen eines freien Felds** (Sven, 20.10.2026).
+ * Statt Aufziehen: ein Tipp schlaegt Zimmer und eine Nacht ab diesem Tag
+ * vor, die Maske ist dieselbe wie am Desktop (`BookingDialog`), und dort
+ * wird die Abreise gesetzt. Ein Daumen auf dem Nachbarzimmer richtet
+ * hier keinen Schaden an -- die Maske nennt das Zimmer, und ohne Buchen
+ * entsteht nichts. Angeboten nur mit `reservation:write` und nicht fuer
+ * vergangene Tage.
+ *
  * Beide Ansichten teilen sich **eine** Anfrage (`mobilFenster`): ein Tag
  * vor dem ersten gezeigten, damit die Abreise am ersten Tag mitkommt.
  */
@@ -39,6 +51,8 @@ export function MobilPlan({ propertyId }: { propertyId: number }): JSX.Element {
   const t = useT()
   const locale = useLocale()
   const { springen } = useSprung()
+  const darfBuchen = useHausrechte(propertyId).darf('reservation:write')
+  const [neu, setNeu] = useState<Neu | null>(null)
   const [ansicht, setAnsicht] = useState<Ansicht>('woche')
   const [start, setStart] = useState(today())
   const [filter, setFilter] = useState<Filter>({ art: 'alle' })
@@ -69,6 +83,8 @@ export function MobilPlan({ propertyId }: { propertyId: number }): JSX.Element {
   const gruppen = zimmerGruppen(daten.units.filter(passt), t('mobil.plan.noFloor'),
                                 n => t('mobil.plan.floor', { n }))
   const oeffnen = (ref: string): void => { springen({ art: 'reservierung', ref }) }
+  const buchen = darfBuchen ? (zimmer: Einheit, anreise: string) => setNeu({ zimmer, anreise })
+                            : undefined
 
   const zaehle = (l: TagesLage): number => [...lagen.values()].filter(x => x.lage === l).length
   const frei = [...lagen.values()].filter(x => istFrei(x.lage)).length
@@ -133,9 +149,22 @@ export function MobilPlan({ propertyId }: { propertyId: number }): JSX.Element {
                      if (neu.has(name)) neu.delete(name); else neu.add(name)
                      return neu
                    })}
-                   onOeffnen={oeffnen} />
-          : <Tag gruppen={gruppen} lagen={lagen} onOeffnen={oeffnen} />}
+                   onOeffnen={oeffnen} onBuchen={buchen} />
+          : <Tag start={start} gruppen={gruppen} lagen={lagen} onOeffnen={oeffnen}
+                 onBuchen={buchen} />}
       </div>
+      {buchen !== undefined && gruppen.length > 0 && (
+        <p className="text-center text-[11px] text-neutral-500">{t('mobil.plan.tapToBook')}</p>
+      )}
+
+      {neu !== null && (
+        <BookingDialog propertyId={propertyId}
+                       categoryId={neu.zimmer.category_id} categoryName={neu.zimmer.category_name}
+                       resourceId={neu.zimmer.id} roomCode={neu.zimmer.code}
+                       maxOccupancy={neu.zimmer.max_occupancy}
+                       arrival={neu.anreise} departure={addDays(neu.anreise, 1)}
+                       onClose={() => setNeu(null)} />
+      )}
     </div>
   )
 }
@@ -166,10 +195,12 @@ function balkenFarbe(status: Reservierung['status']): string {
 /** Zeilenhoehe der Woche. 32 Pixel: noch antippbar, zwoelf Zimmer passen auf einen Bildschirm. */
 const ZEILE = 'h-8'
 
-function Woche({ start, daten, gruppen, lagen, zu, onZu, onOeffnen }: {
+function Woche({ start, daten, gruppen, lagen, zu, onZu, onOeffnen, onBuchen }: {
   start: string; daten: TapeChart; gruppen: ReturnType<typeof zimmerGruppen>
   lagen: ReadonlyMap<number, ZimmerTag>; zu: ReadonlySet<string>
   onZu: (name: string) => void; onOeffnen: (ref: string) => void
+  /** Ohne Recht zum Eintragen `undefined`: dann sind freie Felder nur Flaeche. */
+  onBuchen: ((zimmer: Einheit, anreise: string) => void) | undefined
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -227,6 +258,23 @@ function Woche({ start, daten, gruppen, lagen, zu, onZu, onOeffnen }: {
                 </div>
                 <div className="relative grow">
                   {spalten}
+                  {/* Unter den Balken, damit ein Tipp auf einen Aufenthalt
+                      weiter die Reservierung oeffnet. Frei heisst wie in der
+                      Tagesansicht: heute Nacht kann hier jemand schlafen --
+                      der Abreisetag also auch. */}
+                  {onBuchen !== undefined && tage.map((d, i) => {
+                    if (d < heute) return null
+                    const lage = zimmerAmTag(u.id, d, daten.reservations, daten.blocks).lage
+                    if (!istFrei(lage)) return null
+                    return (
+                      <button key={`n${d}`} type="button" onClick={() => onBuchen(u, d)}
+                              aria-label={t('mobil.plan.book', { room: u.code,
+                                                                 date: formatDate(d, locale) })}
+                              style={{ left: `${(i / WOCHE_TAGE) * 100}%`,
+                                       width: `${100 / WOCHE_TAGE}%` }}
+                              className="absolute inset-y-0 active:bg-emerald-100" />
+                    )
+                  })}
                   {daten.blocks.filter(b => b.resource_id === u.id).map((b, i) => {
                     const s = balkenSpanne(start, WOCHE_TAGE, b.from_date, b.to_date)
                     if (s === null) return null
@@ -281,11 +329,16 @@ const ZEICHEN: Partial<Record<TagesLage, string>> = {
   anreise: '→', abreise: '←', wechsel: '⇄'
 }
 
-function Tag({ gruppen, lagen, onOeffnen }: {
-  gruppen: ReturnType<typeof zimmerGruppen>
+function Tag({ start, gruppen, lagen, onOeffnen, onBuchen }: {
+  start: string; gruppen: ReturnType<typeof zimmerGruppen>
   lagen: ReadonlyMap<number, ZimmerTag>; onOeffnen: (ref: string) => void
+  onBuchen: ((zimmer: Einheit, anreise: string) => void) | undefined
 }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
+  // Eine freie Kachel traegt keine Reservierung, die sie oeffnen koennte;
+  // antippbar ist sie nur zum Eintragen, und das nicht rueckwirkend.
+  const buchbar = onBuchen !== undefined && start >= today()
   return (
     <div className="space-y-3">
       {gruppen.map(g => (
@@ -296,10 +349,16 @@ function Tag({ gruppen, lagen, onOeffnen }: {
               const l = lagen.get(u.id) ?? { lage: 'frei' as const, reservierung: null }
               const r = l.reservierung
               const text = r !== null ? (r.last_name ?? r.public_ref) : t(`mobil.lage.${l.lage}`)
+              const neu = r === null && l.lage === 'frei' && buchbar
               return (
-                <button key={u.id} type="button" disabled={r === null}
-                        onClick={() => { if (r !== null) onOeffnen(r.public_ref) }}
-                        aria-label={`${u.code}: ${t(`mobil.lage.${l.lage}`)}${r !== null ? `, ${text}` : ''}`}
+                <button key={u.id} type="button" disabled={r === null && !neu}
+                        onClick={() => {
+                          if (r !== null) onOeffnen(r.public_ref)
+                          else if (neu) onBuchen?.(u, start)
+                        }}
+                        aria-label={neu
+                          ? t('mobil.plan.book', { room: u.code, date: formatDate(start, locale) })
+                          : `${u.code}: ${t(`mobil.lage.${l.lage}`)}${r !== null ? `, ${text}` : ''}`}
                         className={`relative h-14 overflow-hidden rounded-lg p-1.5 text-start ${KACHEL[l.lage]}`}>
                   {u.housekeeping === 'dirty' && (
                     <span title={t('hk.dirty')}
