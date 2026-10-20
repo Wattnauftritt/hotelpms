@@ -33,6 +33,11 @@ ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
+# Der Schluessel fuer App-Pakete (ops/deploy/deploy.sh app-schluessel). Nur
+# das Ausrollen signiert; wer ihn aus diesem Dienst heraus laese, legte Code
+# in jede App, der dort bleibt, auch wenn der Server wieder sauber ist. Das
+# Minus: fehlt die Datei, startet der Dienst trotzdem.
+InaccessiblePaths=-/opt/hotelpms/shared/app-paket.key
 # ---------------------------------------------------------------------------
 # Befund S6: die Haertung war die halbe Liste.
 #

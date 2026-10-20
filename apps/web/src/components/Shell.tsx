@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode }
 import { I18nContext, useT, LOCALES, SPRACHNAMEN, type Locale, type TextKey }
   from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
+import { useStoreNoetig } from '../lib/aktualisierung.js'
 import { useInstallation } from '../lib/pwa.js'
 import { useEscape } from '../lib/tasten.js'
 import { Hauswahl, type Haus } from './Hauswahl.tsx'
@@ -504,6 +505,7 @@ export function Shell(props: Props): JSX.Element {
           </div>
           {props.haus?.isTraining === true && <Uebungshinweis haus={props.haus} />}
           {!online && <OfflineHinweis />}
+          <StoreHinweis />
         </header>
         <main className="p-4">{props.children}</main>
       </div>
@@ -556,6 +558,22 @@ export function OfflineHinweis(): JSX.Element {
     <div role="status"
          className="bg-amber-100 text-amber-900 text-sm px-4 py-1 border-t border-amber-200">
       {t('common.offline')}
+    </div>
+  )
+}
+
+/**
+ * Nur in der App: ein neuer Stand der Oberflaeche liegt bereit, aber diese
+ * Huelle kann ihn nicht tragen. Ohne den Hinweis arbeitete das Telefon still
+ * auf dem alten Stand weiter, waehrend der Browser daneben den neuen zeigt.
+ */
+export function StoreHinweis(): JSX.Element | null {
+  const t = useT()
+  if (!useStoreNoetig()) return null
+  return (
+    <div role="status"
+         className="bg-sky-100 text-sky-900 text-sm px-4 py-1 border-t border-sky-200">
+      {t('app.storeUpdate')}
     </div>
   )
 }
