@@ -132,7 +132,7 @@ export function createBrevoAdapter(
     },
 
     async send(m: OutgoingEmail): Promise<EmailSendResult> {
-      const body = {
+      const body: Record<string, unknown> = {
         sender: { name: m.from.name ?? undefined, email: m.from.email },
         to: [{ email: m.to.email, name: m.to.name ?? undefined }],
         replyTo: m.replyTo ? { email: m.replyTo.email, name: m.replyTo.name ?? undefined } : undefined,
@@ -142,25 +142,49 @@ export function createBrevoAdapter(
         htmlContent: m.html ?? undefined,
         attachment: m.attachments?.length
           ? m.attachments.map(a => ({ name: a.name, content: a.content.toString('base64') }))
-          : undefined
+          : undefined,
+        /*
+         * Links bleiben, wie sie sind. Mit Klick-Tracking ersetzt Brevo jeden
+         * Link durch eine Weiterleitung ueber eine Domain, die sich alle
+         * Brevo-Kunden teilen: Booking.com entfernt solche Links oder
+         * verwirft die ganze Nachricht an die Gastadresse (20.10.2026), und
+         * das Token im Check-in-Link laege bei einem Dritten. Ob der Gast den
+         * Link geoeffnet hat, vermerken wir selbst (Migration 0192). Im
+         * Konto laesst sich das Tracking fuer Transaktionsmails nicht
+         * abschalten, nur je Nachricht.
+         */
+        clickTracking: false
       }
 
-      let res: Response
-      try {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'api-key': apiKey,
-            'content-type': 'application/json',
-            accept: 'application/json'
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(timeoutMs)
-        })
-      } catch (e) {
-        // Zeitueberschreitung, Namensaufloesung, abgelehnte Verbindung: kein
-        // Code, also voruebergehend. Die Warteschlange wiederholt.
-        throw new EmailSendError(null, (e as Error).message.slice(0, 500))
+      const post = async (b: Record<string, unknown>): Promise<Response> => {
+        try {
+          return await fetch(url, {
+            method: 'POST',
+            headers: {
+              'api-key': apiKey,
+              'content-type': 'application/json',
+              accept: 'application/json'
+            },
+            body: JSON.stringify(b),
+            signal: AbortSignal.timeout(timeoutMs)
+          })
+        } catch (e) {
+          // Zeitueberschreitung, Namensaufloesung, abgelehnte Verbindung: kein
+          // Code, also voruebergehend. Die Warteschlange wiederholt.
+          throw new EmailSendError(null, (e as Error).message.slice(0, 500))
+        }
+      }
+
+      let res = await post(body)
+      let fehler = res.ok ? '' : await res.text()
+      if (res.status === 400 && fehler.includes('clickTracking')) {
+        // Die Angabe steht nicht in Brevos API-Referenz, nur in der Auskunft
+        // ihres Supports. Weist Brevo sie zurueck, geht die Mail ohne sie
+        // hinaus -- mit umgeschriebenem Link, aber ueberhaupt.
+        const ohne = { ...body }
+        delete ohne.clickTracking
+        res = await post(ohne)
+        fehler = res.ok ? '' : await res.text()
       }
 
       if (!res.ok) {
@@ -171,7 +195,7 @@ export function createBrevoAdapter(
          * und nie ins Protokoll (C8, Dokument 13).
          */
         throw new EmailSendError(res.status,
-          `Brevo hat abgelehnt (${res.status}): ${(await res.text()).slice(0, 500)}`)
+          `Brevo hat abgelehnt (${res.status}): ${fehler.slice(0, 500)}`)
       }
 
       const json = await res.json().catch(() => ({})) as { messageId?: string }
