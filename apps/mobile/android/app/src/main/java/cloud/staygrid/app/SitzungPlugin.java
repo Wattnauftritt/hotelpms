@@ -39,6 +39,15 @@ public class SitzungPlugin extends Plugin {
         return getContext().getSharedPreferences(DATEI, Context.MODE_PRIVATE);
     }
 
+    /**
+     * Ob eine Sitzung abgelegt ist, ohne sie zu entschluesseln: die Sperre
+     * braucht nur das. Ohne Sitzung steht die Anmeldung da, und vor der gibt
+     * es nichts zu sperren.
+     */
+    static boolean vorhanden(Context kontext) {
+        return kontext.getSharedPreferences(DATEI, Context.MODE_PRIVATE).contains(FELD);
+    }
+
     private SecretKey schluessel() throws Exception {
         KeyStore speicher = KeyStore.getInstance("AndroidKeyStore");
         speicher.load(null);

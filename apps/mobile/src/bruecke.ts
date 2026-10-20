@@ -1,6 +1,6 @@
 import { registerPlugin, Capacitor } from '@capacitor/core'
 import { App } from '@capacitor/app'
-import type { StaygridNative } from '@hotelpms/native'
+import type { ErkannteZeile, StaygridNative } from '@hotelpms/native'
 
 /**
  * Die Bruecke zur Oberflaeche (Plan app/plan.md, Baustein 3).
@@ -12,8 +12,11 @@ import type { StaygridNative } from '@hotelpms/native'
  * was nur im Telefon Sinn hat.
  */
 
-/** Steigt, wenn sich die Bruecke so aendert, dass die Oberflaeche es merkt. */
-const HUELLE = 1
+/**
+ * Steigt, wenn sich die Bruecke so aendert, dass die Oberflaeche es merkt.
+ * 2: Texterkennung im Geraet.
+ */
+const HUELLE = 2
 
 /** Herkunft der Schnittstelle; dieselbe wie in der Policy des Baus. */
 const API = import.meta.env.VITE_STAYGRID_API ?? 'https://app.staygrid.cloud'
@@ -31,6 +34,25 @@ interface SitzungPlugin {
 }
 const Sitzung = registerPlugin<SitzungPlugin>('StaygridSitzung')
 
+/**
+ * Vision bzw. die gebuendelte Erkennung von ML Kit, beide im Geraet. Das
+ * Bild geht als Base64 ueber die Bruecke, weil sie nur JSON traegt; es
+ * verlaesst dabei die App nicht.
+ */
+interface TexterkennungPlugin {
+  erkennen(o: { bild: string }): Promise<{ zeilen: ErkannteZeile[] }>
+}
+const Texterkennung = registerPlugin<TexterkennungPlugin>('StaygridTexterkennung')
+
+function alsBase64(bild: Blob): Promise<string> {
+  return new Promise((ok, fehler) => {
+    const leser = new FileReader()
+    leser.onload = () => ok(String(leser.result).replace(/^data:[^,]*,/, ''))
+    leser.onerror = () => fehler(leser.error ?? new Error('Bild nicht lesbar'))
+    leser.readAsDataURL(bild)
+  })
+}
+
 const plattform = Capacitor.getPlatform()
 if (plattform === 'ios' || plattform === 'android') {
   const bruecke: StaygridNative = {
@@ -41,6 +63,9 @@ if (plattform === 'ios' || plattform === 'android') {
       lesen: async () => (await Sitzung.lesen()).token,
       speichern: async token => { await Sitzung.speichern({ token }) },
       loeschen: async () => { await Sitzung.loeschen() }
+    },
+    texterkennung: {
+      erkennen: async bild => Texterkennung.erkennen({ bild: await alsBase64(bild) })
     }
   }
   window.staygridNative = bruecke

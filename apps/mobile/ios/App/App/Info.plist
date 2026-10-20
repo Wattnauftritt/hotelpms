@@ -45,6 +45,8 @@
 	</dict>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>StayGrid bleibt angemeldet und öffnet sich mit Face ID, damit niemand anderes an deinem Telefon die Hotelseiten sieht.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>StayGrid fotografiert Visitenkarten, um die Firmenanschrift auszufüllen. Das Foto verlässt das Telefon nicht.</string>
 	<key>UIMainStoryboardFile</key>
