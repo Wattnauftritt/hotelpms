@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api.js'
+import { dateiGeben } from '../datei.js'
 
 /**
  * Meldeschein als Datei fuer AVS (Migration 0091): Stand an der
@@ -44,13 +45,8 @@ export const useAvsStand = (reservationRef: string, schluessel: unknown) =>
  * ist: so steht ein Fehler (Uebungshaus, schon gemeldet) als Meldung am
  * Knopf und nicht in einem leeren Fenster.
  */
-export function dateiGeben(d: AvsDatei): void {
-  const url = URL.createObjectURL(new Blob([d.xml], { type: 'application/xml' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = d.fileName
-  a.click()
-  setTimeout(() => { URL.revokeObjectURL(url) }, 0)
+export function meldedateiGeben(d: AvsDatei): Promise<void> {
+  return dateiGeben(new Blob([d.xml], { type: 'application/xml' }), d.fileName)
 }
 
 export function useAvsMelden(reservationRef: string) {
@@ -59,7 +55,7 @@ export function useAvsMelden(reservationRef: string) {
     mutationFn: (body: { digitalGuestCard?: boolean }) =>
       api.post<AvsDatei>(`/v1/reservations/${reservationRef}/avs-export`, body),
     onSuccess: d => {
-      dateiGeben(d)
+      void meldedateiGeben(d)
       void qc.invalidateQueries({ queryKey: ['avs', reservationRef] })
       void qc.invalidateQueries({ queryKey: ['meldescheine'] })
     }
@@ -69,7 +65,7 @@ export function useAvsMelden(reservationRef: string) {
 export function useAvsErneut(reservationRef: string) {
   return useMutation({
     mutationFn: () => api.get<AvsDatei>(`/v1/reservations/${reservationRef}/avs-export/file`),
-    onSuccess: dateiGeben
+    onSuccess: meldedateiGeben
   })
 }
 

@@ -88,3 +88,29 @@ describe('Schnittstelle in der App', () => {
     expect(b.ablage.token).toBeNull()
   })
 })
+
+describe('Dateien in der App', () => {
+  it('holt die Datei mit Token und gibt sie der Huelle statt einem Download', async () => {
+    const geoeffnet: { name: string; groesse: number }[] = []
+    g.window = { staygridNative: { ...bruecke('sga_datei'), datei: {
+      oeffnen: async (b: Blob, name: string) => { geoeffnet.push({ name, groesse: b.size }) }
+    } } }
+    antwort = () => new Response('%PDF-1.7', { status: 200, headers: {
+      'content-disposition': 'attachment; filename="R-2026-0001.pdf"' } })
+    const { holeApiDatei, dateiGeben, dateinameAus } = await import('../lib/datei.js')
+    const res = await holeApiDatei('/v1/invoices/abc/pdf')
+    await dateiGeben(await res.blob(), dateinameAus(res, 'Rechnung.pdf'))
+
+    expect(abrufe[0]!.url).toBe('https://app.staygrid.cloud/v1/invoices/abc/pdf')
+    expect(kopf(abrufe[0]!, 'authorization')).toBe('Bearer sga_datei')
+    expect(geoeffnet).toEqual([{ name: 'R-2026-0001.pdf', groesse: 8 }])
+  })
+
+  it('gibt einen Fehler der Schnittstelle als Meldung statt als Datei', async () => {
+    g.window = { staygridNative: bruecke('sga_datei') }
+    antwort = () => new Response(JSON.stringify({ type: 'urn:staygrid:x', title: 'Gibt es nicht',
+      status: 404 }), { status: 404 })
+    const { holeApiDatei } = await import('../lib/datei.js')
+    await expect(holeApiDatei('/v1/invoices/weg/pdf')).rejects.toThrow('Gibt es nicht')
+  })
+})

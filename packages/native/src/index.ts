@@ -47,6 +47,16 @@ export interface NativeSitzung {
   loeschen(): Promise<void>
 }
 
+/**
+ * Eine Datei zeigen und weitergeben: Beleg, Export, Meldedatei. Die WebView
+ * einer App laedt nichts herunter, und ein PDF im `iframe` zeigt Android gar
+ * nicht an. Die Huelle legt die Datei voruebergehend ab und oeffnet sie in
+ * der Vorschau des Telefons, von dort teilen, drucken, sichern.
+ */
+export interface NativeDatei {
+  oeffnen(datei: Blob, name: string): Promise<void>
+}
+
 export interface StaygridNative {
   plattform: 'ios' | 'android'
   /**
@@ -59,6 +69,8 @@ export interface StaygridNative {
   sitzung: NativeSitzung
   /** Fehlt, solange die Huelle keine Erkennung mitbringt. */
   texterkennung?: NativeTexterkennung
+  /** Fehlt bei einer Huelle vor Fassung 3. */
+  datei?: NativeDatei
 }
 
 declare global {

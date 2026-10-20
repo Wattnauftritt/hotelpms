@@ -13,6 +13,7 @@ import { useOnline } from '../lib/offline.js'
 import { Fehler } from './Shell.tsx'
 import { ZahlwegWahl, type Zahlweg } from './ZahlwegWahl.tsx'
 import { BetreffFeld } from './BetreffFeld.tsx'
+import { dateiGeben, dateienUeberApp } from '../lib/datei.js'
 
 /**
  * Der Rechnungsdialog (Sven, 13.10.2026).
@@ -120,7 +121,14 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
   const entwurfZeigen = async (): Promise<void> => {
     setEntwurfLaedt(true)
     try {
-      setEntwurf({ url: URL.createObjectURL(await holeEntwurf(folioRef, auftrag)) })
+      const pdf = await holeEntwurf(folioRef, auftrag)
+      // In der App gleich in die Vorschau des Telefons: ein PDF im iframe
+      // zeigt Android nicht an.
+      if (dateienUeberApp()) {
+        await dateiGeben(pdf, 'Rechnungsentwurf.pdf')
+        return
+      }
+      setEntwurf({ url: URL.createObjectURL(pdf) })
     } catch (e) {
       setEntwurf({ fehler: e })
     } finally {

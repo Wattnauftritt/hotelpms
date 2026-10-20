@@ -7,6 +7,7 @@ import { useTerminalInhalte, useCreateSeite, useAendereSeite, useArchiviereSeite
 import { Inhaltstext } from './Inhaltstext.tsx'
 import { Fehler, Laedt } from './Shell.tsx'
 import { referrerFuer } from '../lib/rahmen.js'
+import { ApiBild } from './DateiLink.tsx'
 
 /**
  * Was das Gaesteterminal zeigen darf: Seiten, die Diashow des Ruhezustands
@@ -95,7 +96,7 @@ function SeiteKarte({ propertyId, seite, onBearbeiten }: {
     <li className="border border-neutral-200 rounded-sm p-2 space-y-2">
       <div className="flex items-start gap-3">
         {seite.imageRef !== null && (
-          <img src={`/v1/properties/${propertyId}/terminal-images/${seite.imageRef}`} alt=""
+          <ApiBild src={`/v1/properties/${propertyId}/terminal-images/${seite.imageRef}`} alt=""
                className="w-20 h-14 object-cover rounded-sm border border-neutral-200" />
         )}
         <div className="grow min-w-0">

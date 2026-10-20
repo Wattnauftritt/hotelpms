@@ -17,6 +17,7 @@ class MainViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(SitzungPlugin())
         bridge?.registerPluginInstance(TexterkennungPlugin())
+        bridge?.registerPluginInstance(DateiPlugin())
         sperre = AppSperre(ansicht: view)
     }
 }
@@ -182,6 +183,71 @@ public class TexterkennungPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject(error.localizedDescription)
             }
         }
+    }
+}
+
+/// Eine Datei der Oberflaeche zeigen und weitergeben (Beleg, Export,
+/// Meldedatei; Vertrag `NativeDatei` in `@hotelpms/native`).
+///
+/// Die WebView laedt nichts herunter. Die Datei kommt in einen eigenen
+/// Ordner unter `tmp`, geschuetzt, solange das Telefon gesperrt ist, und
+/// oeffnet sich in der Vorschau von iOS; deren Knopf zum Teilen druckt,
+/// sichert in Dateien und schickt per Mail. Kann die Vorschau sie nicht
+/// zeigen, kommt gleich das Teilen. Nach dem Schliessen der Vorschau, und
+/// spaetestens beim naechsten Aufruf, ist die Datei wieder weg: in einer
+/// Rechnung steht ein Gast.
+@objc(DateiPlugin)
+public class DateiPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentInteractionControllerDelegate {
+    public let identifier = "DateiPlugin"
+    public let jsName = "StaygridDatei"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "oeffnen", returnType: CAPPluginReturnPromise)
+    ]
+
+    private var vorschau: UIDocumentInteractionController?
+    private var ordner: URL?
+
+    @objc func oeffnen(_ call: CAPPluginCall) {
+        guard let roh = call.getString("daten"), let daten = Data(base64Encoded: roh),
+              let name = call.getString("name") else {
+            call.reject("Datei fehlt")
+            return
+        }
+        DispatchQueue.main.async {
+            self.aufraeumen()
+            let neu = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            do {
+                try FileManager.default.createDirectory(at: neu, withIntermediateDirectories: true)
+                let ziel = neu.appendingPathComponent(name.replacingOccurrences(of: "/", with: "_"))
+                try daten.write(to: ziel, options: [.completeFileProtection])
+                self.ordner = neu
+                let v = UIDocumentInteractionController(url: ziel)
+                v.delegate = self
+                self.vorschau = v
+                if !v.presentPreview(animated: true), let ansicht = self.bridge?.viewController?.view {
+                    v.presentOptionsMenu(from: ansicht.bounds, in: ansicht, animated: true)
+                }
+                call.resolve()
+            } catch {
+                call.reject("Datei nicht ablegbar")
+            }
+        }
+    }
+
+    public func documentInteractionControllerViewControllerForPreview(
+        _ controller: UIDocumentInteractionController) -> UIViewController {
+        bridge?.viewController ?? UIViewController()
+    }
+
+    public func documentInteractionControllerDidEndPreview(_ controller: UIDocumentInteractionController) {
+        aufraeumen()
+    }
+
+    private func aufraeumen() {
+        if let alt = ordner { try? FileManager.default.removeItem(at: alt) }
+        ordner = nil
+        vorschau = nil
     }
 }
 
