@@ -12,6 +12,8 @@ import { Fehler, Laedt } from '../components/Shell.tsx'
 import { OffenePosten } from '../components/OffenePosten.tsx'
 import { ZahlwegWahl, type Zahlweg } from '../components/ZahlwegWahl.tsx'
 import { BetreffFeld } from '../components/BetreffFeld.tsx'
+import { DateiLink } from '../components/DateiLink.tsx'
+import { dateiGeben, dateienUeberApp } from '../lib/datei.js'
 
 /**
  * Rechnungen: Liste, Beleg, Versand (B5 bis B7 aus Dokument 20).
@@ -65,6 +67,19 @@ function Beleg({ invoiceRef }: { invoiceRef: string }): JSX.Element {
       : <Fehler error={q.error} />
   }
   if (url === null) return <Laedt />
+
+  // In der App: kein Blatt im iframe, das Android nicht zeigt, sondern die
+  // Vorschau des Telefons mit Teilen und Drucken.
+  if (dateienUeberApp()) {
+    const blob = q.data
+    return (
+      <button type="button" onClick={() => { void dateiGeben(blob, `Rechnung-${invoiceRef}.pdf`) }}
+              className="inline-block text-sm px-3 py-1.5 rounded-sm border border-neutral-300
+                         hover:bg-neutral-50">
+        {t('inv.openDocument')}
+      </button>
+    )
+  }
 
   return (
     <div className="space-y-2">
@@ -271,15 +286,19 @@ function Zeile(
             eigenen Fenster, dort druckt der Browser ihn, auch auf iOS. */}
         {r.documentReady && (
           <>
-            <a href={`/v1/invoices/${r.invoiceRef}/pdf`}
-               className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
+            <DateiLink pfad={`/v1/invoices/${r.invoiceRef}/pdf`} name={`Rechnung-${r.invoiceRef}.pdf`}
+                       className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
               {t('inv.pdf')}
-            </a>
-            <a href={`/v1/invoices/${r.invoiceRef}/pdf?inline=1`} target="_blank"
-               rel="noreferrer"
-               className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
-              {t('inv.print')}
-            </a>
+            </DateiLink>
+            {/* In der App oeffnet schon der erste Knopf die Vorschau des
+                Telefons, aus der heraus gedruckt wird. */}
+            {!dateienUeberApp() && (
+              <a href={`/v1/invoices/${r.invoiceRef}/pdf?inline=1`} target="_blank"
+                 rel="noreferrer"
+                 className="px-2 py-1 rounded-sm border border-neutral-300 hover:bg-neutral-50">
+                {t('inv.print')}
+              </a>
+            )}
           </>
         )}
         {r.mailStatus !== null && (

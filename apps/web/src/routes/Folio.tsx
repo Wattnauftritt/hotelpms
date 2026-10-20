@@ -12,6 +12,7 @@ import { Rechnungsempfaenger } from '../components/Rechnungsempfaenger.tsx'
 import { Rechnungsdialog } from '../components/Rechnungsdialog.tsx'
 import { centAusEingabe, centAusEingabeMitVorzeichen } from '../lib/preisraster.js'
 import type { FolioView } from '@hotelpms/contracts'
+import { DateiLink } from '../components/DateiLink.tsx'
 
 /**
  * Das Folio: Positionen, Zahlungsvermerke, Saldo.
@@ -194,11 +195,12 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
                     PDF im iframe oft gar nicht an, ein geoeffneter Beleg
                     geht ueberall. */}
                 {i.documentReady
-                  ? <a href={`/v1/invoices/${i.invoiceRef}/pdf?inline=1`} target="_blank" rel="noreferrer"
-                       className="text-xs px-2 py-0.5 rounded-sm border border-neutral-300
-                                  hover:bg-neutral-50">
+                  ? <DateiLink pfad={`/v1/invoices/${i.invoiceRef}/pdf?inline=1`} neuesFenster
+                               name={`Rechnung-${i.invoiceRef}.pdf`}
+                               className="text-xs px-2 py-0.5 rounded-sm border border-neutral-300
+                                          hover:bg-neutral-50">
                       {t('inv.openDocument')}
-                    </a>
+                    </DateiLink>
                   : <span className="text-xs text-amber-800">{t('inv.document.pending')}</span>}
               </li>
             ))}

@@ -1,7 +1,8 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import type { KpiReport, NightAuditStatus, AccommodationStatistics }
   from '@hotelpms/contracts'
-import { api, ApiError, apiFetch } from '../api.js'
+import { api } from '../api.js'
+import { dateiGeben, holeApiDatei } from '../datei.js'
 
 /**
  * Abfragen der Berichte.
@@ -61,29 +62,8 @@ export const useAccommodationStatistics = (
 export interface Ausgabe { pfad: string; dateiname: string }
 
 async function holeDatei({ pfad, dateiname }: Ausgabe): Promise<void> {
-  const res = await apiFetch(pfad)
-  if (!res.ok) {
-    const text = await res.text()
-    let problem: unknown = null
-    try { problem = JSON.parse(text) } catch { /* kein RFC-9457-Rumpf */ }
-    throw new ApiError(
-      problem !== null && typeof problem === 'object' && 'title' in problem
-        ? problem as ApiError['problem']
-        : { type: 'urn:staygrid:unknown', title: res.statusText, status: res.status },
-      res.status)
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = dateiname
-  a.click()
-  // Ohne Freigabe bleibt der ganze Export im Speicher des Fensters liegen,
-  // und ein Mandantenexport ist kein kleiner Rumpf. Erst nach dem
-  // Durchlauf der Ereignisschleife: wer die Adresse im selben Zug
-  // freigibt, nimmt dem Browser die Datei unter dem noch nicht
-  // begonnenen Download weg.
-  setTimeout(() => { URL.revokeObjectURL(url) }, 0)
+  const res = await holeApiDatei(pfad)
+  await dateiGeben(await res.blob(), dateiname)
 }
 
 export const useAusgabe = () => useMutation({ mutationFn: holeDatei })

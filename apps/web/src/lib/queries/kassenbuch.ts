@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, apiFetch } from '../api.js'
+import { api } from '../api.js'
+import { dateiGeben, dateinameAus, holeApiDatei } from '../datei.js'
 
 /**
  * Kassenbuch (Migration 0095). Ein Aufruf je Monat: Zeilen, laufender
@@ -172,22 +173,8 @@ async function datevHolen(
   const q = new URLSearchParams({ mode: a.mode, ...(a.from ? { from: a.from } : {}),
                                   ...(a.to ? { to: a.to } : {}),
                                   ...(a.mode === 'range' && a.resend ? { resend: 'true' } : {}) })
-  const res = await apiFetch(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`)
-  if (!res.ok) {
-    let problem: unknown = null
-    try { problem = JSON.parse(await res.text()) } catch { /* kein RFC-9457-Rumpf */ }
-    throw new ApiError(problem !== null && typeof problem === 'object' && 'title' in problem
-      ? problem as ApiError['problem']
-      : { type: 'urn:staygrid:unknown', title: res.statusText, status: res.status }, res.status)
-  }
-  const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1]
-    ?? 'kassenbuch-datev.csv'
-  link.click()
-  setTimeout(() => { URL.revokeObjectURL(url) }, 0)
+  const res = await holeApiDatei(`/v1/properties/${propertyId}/cashbook/datev?${q.toString()}`)
+  await dateiGeben(await res.blob(), dateinameAus(res, 'kassenbuch-datev.csv'))
   return { through: Number(res.headers.get('x-staygrid-cashbook-through') ?? 0),
            entries: Number(res.headers.get('x-staygrid-cashbook-entries') ?? 0),
            resent: Number(res.headers.get('x-staygrid-cashbook-resent') ?? 0),

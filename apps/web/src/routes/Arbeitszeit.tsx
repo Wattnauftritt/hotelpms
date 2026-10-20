@@ -6,6 +6,7 @@ import { addDays, today } from '../lib/dates.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { haelften, hm, type Eintrag, type Monat as KraftMonat } from '../lib/arbeitszeit.js'
 import { AltdatenPersonal } from './AltdatenPersonal.tsx'
+import { DateiLink } from '../components/DateiLink.tsx'
 
 /**
  * Arbeitszeit (Aufgabe 18, Baustein 6) -- fuer die Leitung.
@@ -416,8 +417,9 @@ function MonatsAnsicht({ propertyId, monat, kraft, alle, setMonat, setKraft, zum
         : <div className="text-sm flex flex-wrap items-center gap-3">
             <span>{t('worktime.closedBy', { date: formatDate(u.closed.closedAt.slice(0, 10), locale),
                                             name: u.closed.closedBy ?? '–' })}</span>
-            <a href={`/v1/properties/${propertyId}/worktime/export?month=${monat}${scope}`}
-               className="px-3 py-1.5 rounded bg-neutral-900 text-white">{t('worktime.export')}</a>
+            <DateiLink pfad={`/v1/properties/${propertyId}/worktime/export?month=${monat}${scope}`}
+                       name={`Arbeitszeit-${monat}.csv`}
+                       className="px-3 py-1.5 rounded bg-neutral-900 text-white">{t('worktime.export')}</DateiLink>
             {grund === null
               ? <button type="button" onClick={() => setGrund('')}
                         className="px-3 py-1.5 rounded border border-neutral-300">

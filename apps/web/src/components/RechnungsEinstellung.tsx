@@ -4,6 +4,7 @@ import { useInvoiceSettings, useSaveInvoiceSettings, useInvoiceLogo, type Rechnu
 import { useT } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from './Shell.tsx'
+import { ApiBild } from './DateiLink.tsx'
 
 /**
  * Rechnungskuerzel des Hauses (Migration 0157).
@@ -99,7 +100,7 @@ function LogoFeld({ propertyId, logo }: {
       <h3 className="text-sm font-medium">{t('invoiceSettings.logo')}</h3>
       <p className="text-xs text-neutral-600">{t('invoiceSettings.logoHint')}</p>
       {logo !== null && (
-        <img src={`/v1/properties/${propertyId}/invoice-logo?v=${encodeURIComponent(logo.updatedAt)}`}
+        <ApiBild src={`/v1/properties/${propertyId}/invoice-logo?v=${encodeURIComponent(logo.updatedAt)}`}
              alt={t('invoiceSettings.logo')}
              className="max-h-12 max-w-40 border border-neutral-200 rounded-sm bg-white p-1" />
       )}

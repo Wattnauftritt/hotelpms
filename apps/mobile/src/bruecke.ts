@@ -14,9 +14,9 @@ import type { ErkannteZeile, StaygridNative } from '@hotelpms/native'
 
 /**
  * Steigt, wenn sich die Bruecke so aendert, dass die Oberflaeche es merkt.
- * 2: Texterkennung im Geraet.
+ * 2: Texterkennung im Geraet. 3: Dateien zeigen und teilen.
  */
-const HUELLE = 2
+const HUELLE = 3
 
 /** Herkunft der Schnittstelle; dieselbe wie in der Policy des Baus. */
 const API = import.meta.env.VITE_STAYGRID_API ?? 'https://app.staygrid.cloud'
@@ -44,6 +44,12 @@ interface TexterkennungPlugin {
 }
 const Texterkennung = registerPlugin<TexterkennungPlugin>('StaygridTexterkennung')
 
+/** Belege und Exporte in der Vorschau des Telefons statt als Download. */
+interface DateiPlugin {
+  oeffnen(o: { daten: string; name: string; typ: string }): Promise<void>
+}
+const Datei = registerPlugin<DateiPlugin>('StaygridDatei')
+
 function alsBase64(bild: Blob): Promise<string> {
   return new Promise((ok, fehler) => {
     const leser = new FileReader()
@@ -66,6 +72,12 @@ if (plattform === 'ios' || plattform === 'android') {
     },
     texterkennung: {
       erkennen: async bild => Texterkennung.erkennen({ bild: await alsBase64(bild) })
+    },
+    datei: {
+      oeffnen: async (datei, name) => {
+        await Datei.oeffnen({ daten: await alsBase64(datei), name,
+                              typ: datei.type || 'application/octet-stream' })
+      }
     }
   }
   window.staygridNative = bruecke
