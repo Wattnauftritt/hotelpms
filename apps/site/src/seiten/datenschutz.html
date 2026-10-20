@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datenschutzerklärung – StayGrid</title>
+  <meta name="description" content="Datenschutzerklärung für die Webseite staygrid.cloud und die App StayGrid für iOS und Android.">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="alternate" hreflang="en" href="https://staygrid.cloud/en/privacy">
+  <link rel="stylesheet" href="/stil.css">
+</head>
+<body>
+<!--#kopf-->
+<main class="breite rechtstext">
+  <h1>Datenschutzerklärung</h1>
+  <p class="stand">für die Webseite staygrid.cloud und die App „StayGrid“ für iOS und Android · Stand: 20. Oktober 2026 · <a href="/en/privacy" hreflang="en" lang="en">English version</a></p>
+
+  <div class="kasten">
+    <p><strong>Kurz gesagt:</strong> Die App ist ein Arbeitswerkzeug für Beschäftigte von Hotels, die StayGrid einsetzen. Sie speichert auf dem Telefon nur Ihre Anmeldung, gesichert im Schlüsselbund bzw. Android Keystore. Face ID und Fingerabdruck prüft allein Ihr Telefon. Fotos von Visitenkarten werden im Gerät ausgewertet und nicht übertragen. Es gibt keine Werbung, kein Tracking und keine Analysedienste. Die Server stehen in Deutschland.</p>
+  </div>
+
+  <h2>1. Wer verantwortlich ist</h2>
+  <address>
+    Wattnauftritt, Inhaber Sven Rotermundt<br>
+    Poststraße 58, 27474 Cuxhaven, Deutschland<br>
+    E-Mail: <a href="mailto:datenschutz@staygrid.cloud">datenschutz@staygrid.cloud</a>
+  </address>
+  <p>Einen Datenschutzbeauftragten haben wir nicht benannt, weil die Voraussetzungen von Art. 37 DSGVO und § 38 BDSG nicht vorliegen. Fragen zum Datenschutz richten Sie bitte an die Adresse oben.</p>
+
+  <h2>2. Zwei Rollen: Anbieter der App und Dienstleister des Hotels</h2>
+  <p>StayGrid ist eine Software für Beherbergungsbetriebe. Die App richtet sich an deren Beschäftigte. Konten legt das Hotel an; eine Registrierung in der App gibt es nicht.</p>
+  <ul>
+    <li><strong>Als Anbieter der App und der Webseite</strong> sind wir Verantwortlicher für das, was nötig ist, um beides bereitzustellen und sicher zu betreiben: Anmeldung, Sitzung, Schutz vor Missbrauch und die Auslieferung der Webseite (Abschnitte 3 bis 6).</li>
+    <li><strong>Für die Inhalte</strong>, die Sie in StayGrid bearbeiten (Reservierungen, Gäste, Meldescheine, Rechnungen, Kassenbuch, Reinigungsplan, Ihr Benutzerkonto und Ihre Arbeitszeit), ist das Hotel verantwortlich, für das Sie arbeiten. Wir verarbeiten diese Daten nur in seinem Auftrag und nach seinen Weisungen (Art. 28 DSGVO). Ihre Rechte an diesen Daten machen Sie am besten beim Hotel geltend; wir unterstützen es dabei.</li>
+  </ul>
+
+  <h2>3. Was die App verarbeitet</h2>
+
+  <h3>Anmeldung und Sitzung</h3>
+  <p>Zur Anmeldung übertragen Sie Ihre E-Mail-Adresse oder Ihren Benutzernamen und Ihr Kennwort. Das Kennwort speichern wir nur als kryptographischen Hash. Nach der Anmeldung erhält die App ein zufälliges Sitzungstoken. Es liegt auf Ihrem Telefon im <strong>Schlüsselbund</strong> (iOS) bzw. verschlüsselt mit einem Schlüssel aus dem <strong>Android Keystore</strong> und wird nicht in eine Gerätesicherung übernommen.</p>
+  <p>Auf dem Server steht zu jeder Sitzung: das Benutzerkonto, Beginn und letzte Aktivität, die IP-Adresse bei der Anmeldung und die Kennung Ihres Geräts und Betriebssystems, wie sie die App mitsendet (User-Agent, höchstens 300 Zeichen). Das dient dazu, Ihnen und dem Hotel die angemeldeten Geräte zeigen und sie abmelden zu können.</p>
+  <p>Eine Sitzung endet, wenn Sie sich abmelden, das Hotel sie beendet, nach 30 Tagen ohne Nutzung, spätestens aber nach 180 Tagen. Sieben Tage danach wird sie gelöscht.</p>
+  <p>Fehlgeschlagene Anmeldungen zählen wir je Konto und Herkunft, um das Durchprobieren von Kennwörtern zu verhindern. Diese Zähler löschen wir sieben Tage nach dem letzten Fehlversuch.</p>
+  <p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Bereitstellung der App, die Sie nutzen) und lit. f (unser berechtigtes Interesse an einem sicheren Betrieb).</p>
+
+  <h3>Face ID, Touch ID und Fingerabdruck</h3>
+  <p>Die App sperrt sich beim Start und nach fünf Minuten im Hintergrund und lässt sich mit der Gerätesperre Ihres Telefons wieder öffnen. Die Prüfung übernimmt ausschließlich das Betriebssystem. Die App erfährt nur, ob sie gelungen ist; biometrische Merkmale erhalten weder die App noch wir.</p>
+
+  <h3>Kamera: Visitenkarten abfotografieren</h3>
+  <p>Wenn Sie es auslösen, fotografiert die App eine Visitenkarte, um Name und Anschrift einer Firma vorzuschlagen. Die Texterkennung läuft <strong>im Gerät</strong>: unter iOS mit Apple Vision, unter Android mit Google ML Kit, jeweils mit eingebautem Modell. Das Foto wird nicht an uns übertragen und von der App nicht gespeichert. Auf den Server gelangt nur, was Sie im Formular übernehmen und speichern. Den Zugriff auf die Kamera können Sie in den Einstellungen Ihres Telefons jederzeit entziehen.</p>
+  <p>Anders ist es bei Fotos, die Sie ausdrücklich zum Hochladen aufnehmen oder auswählen, etwa einem Beleg im Kassenbuch: Dieses eine Bild geht an den Server und wird dort im Auftrag des Hotels gespeichert. Die App sieht dabei nur das Bild, das Sie selbst aussuchen, nicht Ihre Fotomediathek.</p>
+  <p><strong>Hinweis zu Android:</strong> Google ML Kit übermittelt nach den Bedingungen von Google Angaben zum Gerät (Hersteller, Modell, Betriebssystemversion), zur App (Paketname, Version) sowie Leistungs- und Nutzungswerte der Texterkennung an Google, um den Dienst zu betreiben und zu verbessern. Bilder und erkannter Text werden dabei nicht übermittelt. Empfänger ist Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland; eine Übermittlung in die USA ist möglich und durch den Angemessenheitsbeschluss zum EU-US Data Privacy Framework abgedeckt. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO; unser Interesse ist eine Texterkennung, die ohne Upload des Fotos auskommt.</p>
+
+  <h3>Dateien</h3>
+  <p>Öffnen Sie eine Rechnung oder einen Export, legt die App die Datei im Zwischenspeicher der App ab und reicht sie an die Vorschau oder das Teilen-Menü Ihres Telefons weiter. Dort liegt immer nur die zuletzt geöffnete Datei; sie wird beim nächsten Öffnen ersetzt. Was Sie über das Teilen-Menü weitergeben, liegt in Ihrer Hand.</p>
+
+  <h3>Lesbare Kopie bei Netzausfall</h3>
+  <p>Damit die Arbeit bei einem Netzausfall weitergeht, hält die App die Anreise- und Hausliste sowie den Zimmerstatus von gestern, heute und den kommenden Tagen als lesbare Kopie auf dem Gerät. Ältere Tage entfernt sie selbst, und beim Abmelden oder wenn die Sitzung abläuft, löscht sie die Kopie ganz.</p>
+
+  <h3>Aktualisierungen</h3>
+  <p>Die App lädt neue Fassungen ihrer Oberfläche von unserem Server unter app.staygrid.cloud und prüft vor dem Wechsel deren Signatur. Dabei fallen nur die üblichen Angaben eines Abrufs an (IP-Adresse, Gerätekennung); eine eigene Kennung oder Statistik gibt es dafür nicht.</p>
+
+  <h3>Mitteilungen</h3>
+  <p>Die App sendet derzeit keine Push-Mitteilungen. Kommt diese Funktion hinzu, ergänzen wir diese Erklärung vorher.</p>
+
+  <h3>Was die App nicht tut</h3>
+  <ul>
+    <li>Keine Werbung, kein Tracking, keine Analyse- oder Absturzdienste von Dritten</li>
+    <li>Kein Zugriff auf Standort, Kontakte, Mikrofon, Kalender oder die Fotomediathek als Ganzes</li>
+    <li>Keine Weitergabe oder Verkauf von Daten an Dritte</li>
+    <li>Keine Kartendaten und keine Ausweiskopien, auch nicht im Auftrag des Hotels</li>
+  </ul>
+
+  <h3>App Store und Google Play</h3>
+  <p>Laden Sie die App herunter, verarbeiten Apple bzw. Google dabei Daten in eigener Verantwortung, etwa Ihr Konto und den Kauf- bzw. Ladevorgang. Haben Sie in den Einstellungen Ihres Telefons zugestimmt, stellen uns Apple und Google zusammengefasste Statistiken und Absturzberichte ohne Bezug zu Ihrer Person zur Verfügung. Näheres steht in den Datenschutzhinweisen von Apple und Google.</p>
+
+  <h2>4. Server und Dienstleister</h2>
+  <p>App und Webanwendung sprechen ausschließlich mit unserem Server unter app.staygrid.cloud, verschlüsselt über TLS. Unsere Protokolle enthalten keine IP-Adressen und keine Suchbegriffe. Wir setzen folgende Dienstleister ein, jeweils mit Vertrag zur Auftragsverarbeitung:</p>
+  <table>
+    <thead><tr><th>Dienstleister</th><th>Zweck</th><th>Ort</th></tr></thead>
+    <tbody>
+      <tr><td>STRATO, Berlin</td><td>Betrieb des Servers (Rechenzentrum)</td><td>Deutschland</td></tr>
+      <tr><td>IONOS, Montabaur</td><td>Datensicherung, vor dem Hochladen verschlüsselt</td><td>Deutschland (Frankfurt)</td></tr>
+      <tr><td>netcup, Karlsruhe</td><td>zweite Datensicherung, verschlüsselt</td><td>Deutschland</td></tr>
+      <tr><td>Brevo (Sendinblue SAS), Paris</td><td>Versand von E-Mails, etwa Einladung und Kennwort zurücksetzen</td><td>EU (Frankreich)</td></tr>
+      <tr><td>DeepL SE, Köln</td><td>Übersetzung freier Texte in der Personal-App, ohne Namen</td><td>Deutschland</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Die Webseite staygrid.cloud</h2>
+  <p>Beim Aufruf dieser Seite verarbeitet unser Server Ihre IP-Adresse und die Angaben Ihres Browsers, weil er die Seite sonst nicht ausliefern kann (Art. 6 Abs. 1 lit. f DSGVO). Ein Protokoll der Aufrufe führen wir nicht. Die Seite setzt keine Cookies, lädt keine Schriften, Skripte oder Bilder von fremden Servern und verwendet keine Analysedienste. Schreiben Sie uns eine E-Mail, verwenden wir Ihre Angaben, um zu antworten (Art. 6 Abs. 1 lit. b bzw. f DSGVO), und löschen sie, wenn die Sache erledigt ist und keine Aufbewahrungspflicht besteht.</p>
+
+  <h2>6. Wie lange wir speichern</h2>
+  <ul>
+    <li>Sitzungen: bis sieben Tage nach ihrem Ende (siehe Abschnitt 3)</li>
+    <li>Zähler fehlgeschlagener Anmeldungen: sieben Tage nach dem letzten Fehlversuch</li>
+    <li>Benutzerkonto: solange das Hotel es führt</li>
+    <li>Inhalte im Auftrag des Hotels: nach dessen Weisung und den gesetzlichen Fristen, etwa zehn Jahre für Rechnungen nach § 147 AO</li>
+    <li>Daten auf dem Telefon: bis zum Abmelden oder Löschen der App</li>
+  </ul>
+
+  <h2>7. Ihre Rechte</h2>
+  <p>Sie haben das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch gegen Verarbeitungen auf Grundlage von Art. 6 Abs. 1 lit. f (Art. 21). Schreiben Sie dazu an <a href="mailto:datenschutz@staygrid.cloud">datenschutz@staygrid.cloud</a>. Betrifft Ihr Anliegen Daten, die wir im Auftrag eines Hotels verarbeiten, leiten wir es an das Hotel weiter.</p>
+  <p>Sie können sich außerdem bei einer Datenschutz-Aufsichtsbehörde beschweren. Für uns zuständig ist die Landesbeauftragte für den Datenschutz Niedersachsen, Prinzenstraße 5, 30159 Hannover.</p>
+
+  <h2>8. Konto löschen</h2>
+  <p>Ihr Benutzerkonto gehört zum Hotel, das es angelegt hat. Möchten Sie es löschen lassen, wenden Sie sich an das Hotel oder an <a href="mailto:datenschutz@staygrid.cloud">datenschutz@staygrid.cloud</a>; wir sorgen gemeinsam mit dem Hotel dafür. Die Daten auf dem Telefon entfernen Sie, indem Sie sich abmelden oder die App löschen.</p>
+
+  <h2>9. Sicherheit</h2>
+  <p>Die Übertragung ist durchgehend verschlüsselt. Die Daten verschiedener Hotels sind in der Datenbank durch Zeilenrichtlinien getrennt, Ausweisnummern werden verschlüsselt gespeichert, Sicherungen verlassen den Server nur verschlüsselt.</p>
+
+  <h2>10. Kinder</h2>
+  <p>Die App ist ein Arbeitswerkzeug und richtet sich nicht an Kinder.</p>
+
+  <h2>11. Änderungen</h2>
+  <p>Ändert sich, was die App verarbeitet, passen wir diese Erklärung vorher an. Es gilt die jeweils hier veröffentlichte Fassung.</p>
+</main>
+<!--#fuss-->
+</body>
+</html>

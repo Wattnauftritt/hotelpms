@@ -1425,3 +1425,13 @@ Sven, 19.10.2026: eine eigene App mit nativen Benachrichtigungen und nativer Tex
   - **Ohne öffentlichen Schlüssel bleibt die Aktualisierung aus**, statt ungeprüft zu laufen; der Freigabelauf weist einen Upload ohne ihn ab. Ohne privaten Schlüssel auf der Maschine rollt der Browser-Stand trotzdem aus, nur ohne Paket.
 
 Tests in `appSitzung.test.ts` und `app.test.ts`.
+
+### Öffentliche Seite unter staygrid.cloud — **gebaut**
+
+Sven, 20.10.2026: eine Produktseite mit Bildern aus der echten Oberfläche und die Datenschutzerklärung für die App, die in App Store und Google Play verlinkt ist (`https://staygrid.cloud/datenschutz`).
+
+- **`apps/site`**, handgeschriebenes HTML ohne Bauwerkzeug: `build.mjs` setzt Kopf und Fuß aus `src/teile/` ein und legt alles in `dist/`. Seiten: Start, `/datenschutz`, `/en/privacy`, `/impressum`, 404.
+- **Die Bilder stammen aus `db:testhotel`** (Testhotel Wattenblick, Übungshaus, erfundene Gäste); der violette Übungshinweis ist für die Aufnahme ausgeblendet. Das Aufnahmeskript liegt im Projektordner unter `webseite/screenshots/`. Nie Bilder aus einem echten Haus nehmen.
+- **Ohne Cookies, Skript und fremde Herkunft**; die Richtlinie in `ops/caddy/Caddyfile` verbietet beides, Caddy schreibt für den Namen kein Zugriffsprotokoll. Die Datenschutzerklärung sagt genau das; wer der Seite ein Skript, eine Schrift von außen oder ein Protokoll gibt, ändert sie mit.
+- **Die Datenschutzerklärung beschreibt die App, wie sie ist.** Kommt eine Fähigkeit dazu, die Daten erhebt oder weitergibt (Push über APNs und FCM, ein neues Plugin, ein neuer Dienstleister), wird sie **vorher** ergänzt, ebenso die Angaben zur Datensicherheit in beiden Stores.
+- **Ausrollen:** `deploy.sh` legt `apps/site/dist` nach `current/site`. Der neue Block im Caddyfile gilt erst, wenn er nach `/etc/caddy/Caddyfile` übernommen und Caddy neu geladen ist.

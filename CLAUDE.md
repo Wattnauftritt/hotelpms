@@ -68,6 +68,7 @@ apps/api        Fastify. Routen, Berechtigungen, Fehlerformat
 apps/worker     Nachtlauf und Pflegejobs
 apps/web        Rezeptions-Oberfläche, React und Vite
 apps/mobile     App für iOS und Android: Capacitor-Hülle um apps/web (--mode app)
+apps/site       Öffentliche Seite staygrid.cloud: Produkt, Impressum, Datenschutzerklärung der App
 packages/db     Migrationen, Verbindungen, Transaktionskontext
 packages/domain Fachlogik ohne HTTP und ohne Framework
 packages/contracts  Geteilte Schemata, OpenAPI-Erzeugung

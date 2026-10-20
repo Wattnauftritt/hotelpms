@@ -227,6 +227,47 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 	}
 }
 
+# Die oeffentliche Seite: Produkt, Impressum, Datenschutzerklaerung.
+#
+# **Die Adresse /datenschutz steht in App Store und Google Play.** Beide
+# pruefen sie bei jeder Einreichung; liefert sie einen Fehler, wird die App
+# abgelehnt. Wer die Seite umbaut, laesst diesen Pfad stehen.
+#
+# Ein eigener Name und ein eigenes Verzeichnis, nicht ein Pfad unter
+# app.staygrid.cloud: dort haengt die Sitzung am Cookie, und eine Werbeseite
+# braucht weder sie noch die lockerere Richtlinie der Oberflaeche. Die Seite
+# laedt nichts von aussen und hat kein Skript, also verbietet die Richtlinie
+# beides. Kein `log`: ein Zugriffsprotokoll ueber Besucher braucht niemand,
+# und die Datenschutzerklaerung sagt, dass es keines gibt.
+#
+# `www.staygrid.cloud` fehlt mit Absicht, solange dafuer kein DNS-Eintrag
+# besteht: Caddy versuchte sonst bei jedem Start ein Zertifikat fuer einen
+# Namen zu holen, den niemand aufloesen kann.
+staygrid.cloud {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+		-Server
+	}
+	root * /opt/hotelpms/current/site
+	@bilder path /bilder/*
+	header @bilder Cache-Control "public, max-age=86400"
+	try_files {path} {path}.html {path}/index.html
+	file_server
+	# Die Fehlerseiten laufen als eigene Route; `root` von oben gilt dort
+	# nicht von selbst.
+	handle_errors {
+		root * /opt/hotelpms/current/site
+		rewrite * /404.html
+		file_server
+	}
+}
+
 # Eigener Name für Maschinen: Channel Manager, Buchungsstrecke, Kassensysteme.
 # Sie brauchen keine Oberfläche und sollen sie auch nicht sehen.
 #
