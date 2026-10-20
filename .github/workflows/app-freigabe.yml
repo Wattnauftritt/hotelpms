@@ -1,0 +1,105 @@
+name: App-Freigabe
+# Signiert die App und laedt sie in den internen Test der Stores (Plan
+# app/plan.md, Baustein 3). Zuerst Android; iOS kommt dazu, sobald das
+# Apple-Konto die Schluessel liefert.
+#
+# Hochgeladen wird nur bei einem Tag `app-v…` oder von Hand mit
+# `hochladen`. Ein Pull Request, der diesen Lauf aendert, baut und signiert
+# nur: er beweist, dass die Schluessel passen, ohne Google eine Fassung zu
+# schicken. Oeffentlich wird nichts von hier aus; das ist der Klick in der
+# Play Console.
+#
+# Den allerersten Upload einer App nimmt Google nur in der Play Console an.
+# Dafuer liegt das signierte Bundle jedes Laufs als Artefakt bereit.
+on:
+  push:
+    tags: ['app-v*']
+  workflow_dispatch:
+    inputs:
+      hochladen:
+        description: In den internen Test von Google Play hochladen
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - '.github/workflows/app-freigabe.yml'
+      - 'apps/mobile/android/app/build.gradle'
+      - 'apps/mobile/scripts/play.mjs'
+
+concurrency:
+  group: app-freigabe-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    # Secrets erreichen einen Pull Request aus einem fremden Fork nicht;
+    # dort waere der Lauf nur rot.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter './packages/*' build
+      - name: Oberflaeche und Bruecke zusammensetzen
+        working-directory: apps/mobile
+        run: pnpm sync
+      # Google nimmt jede Fassungsnummer nur einmal und verlangt sie
+      # steigend. Die Laufnummer steigt von selbst; der Versatz liegt ueber
+      # allem, was von Hand gebaut wurde (dort ist sie 1).
+      - name: Fassung bestimmen
+        id: fassung
+        run: |
+          code=$((100 + GITHUB_RUN_NUMBER))
+          if [[ "$GITHUB_REF" == refs/tags/app-v* ]]; then
+            name="${GITHUB_REF#refs/tags/app-v}"
+          else
+            name="0.1.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Fassung $name ($code)"
+      - name: Upload-Schluessel auspacken
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "::error::Secret ANDROID_UPLOAD_KEYSTORE_B64 fehlt"; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+      - name: Android signiert bauen
+        working-directory: apps/mobile/android
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ runner.temp }}/upload.jks
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          STAYGRID_VERSION_CODE: ${{ steps.fassung.outputs.code }}
+          STAYGRID_VERSION_NAME: ${{ steps.fassung.outputs.name }}
+        run: |
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          ./gradlew --no-daemon bundleRelease
+      # Ohne Schluessel baut Gradle still unsigniert; Google wiese das
+      # Bundle erst beim Hochladen ab. Hier faellt es sofort auf.
+      - name: Signatur pruefen
+        run: |
+          aab=apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
+          "$JAVA_HOME_21_X64/bin/jarsigner" -verify "$aab" | tee /dev/stderr | grep -q 'jar verified'
+          cp "$aab" "$RUNNER_TEMP/staygrid-${{ steps.fassung.outputs.name }}.aab"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: staygrid-android-${{ steps.fassung.outputs.name }}
+          path: ${{ runner.temp }}/staygrid-${{ steps.fassung.outputs.name }}.aab
+          retention-days: 30
+      - name: In den internen Test hochladen
+        if: startsWith(github.ref, 'refs/tags/app-v') || inputs.hochladen
+        working-directory: apps/mobile
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/play.mjs "$RUNNER_TEMP/staygrid-${{ steps.fassung.outputs.name }}.aab" "${{ steps.fassung.outputs.name }}"
+      - name: Schluessel entfernen
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks"
