@@ -7,8 +7,11 @@ android {
         applicationId "cloud.staygrid.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Kommen aus dem Freigabelauf (`app-freigabe.yml`): Google nimmt
+        // jede Nummer nur einmal an, und von Hand hochgezaehlt waere sie
+        // beim zweiten Zweig doppelt.
+        versionCode((System.getenv('STAYGRID_VERSION_CODE') ?: '1') as Integer)
+        versionName(System.getenv('STAYGRID_VERSION_NAME') ?: '0.0.0')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +19,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Der Upload-Schluessel liegt nur als GitHub-Secret vor und nie im
+    // Repository. Ohne ihn baut `bundleRelease` unsigniert; das genuegt fuer
+    // die Pruefung in `app.yml`, hochladen laesst es sich nicht.
+    def uploadKeystore = System.getenv('ANDROID_UPLOAD_KEYSTORE')
+    signingConfigs {
+        if (uploadKeystore) {
+            upload {
+                storeFile file(uploadKeystore)
+                storePassword System.getenv('ANDROID_UPLOAD_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_UPLOAD_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_UPLOAD_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (uploadKeystore) {
+                signingConfig signingConfigs.upload
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
