@@ -84,9 +84,13 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
       <ul className="space-y-2">
         {zeilen.map(r => (
           <li key={r.reservationRef}
-              className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+            {/* Mindestens 10rem fuer den Namen; reicht die Breite daneben
+                nicht, rutschen die Knoepfe in die naechste Zeile. Mit zwei
+                Knoepfen (Check-in zuruecknehmen und Meldeschein) blieb auf
+                einem 412 Punkte breiten Telefon vom Namen sonst nichts. */}
             <button type="button" onClick={() => springen({ art: 'reservierung', ref: r.reservationRef })}
-                    className="flex min-w-0 grow items-center gap-3 text-start">
+                    className="flex min-w-40 grow basis-0 items-center gap-3 text-start">
               <Zimmer code={r.roomCode} />
               <div className="min-w-0">
                 <div className="truncate font-semibold">{name(r)}</div>
@@ -129,43 +133,45 @@ export function MobilHeute({ propertyId, onFolio, onCheckIn }: {
                 </div>
               </div>
             </button>
-            {liste === 'arrivals' && r.status === 'InHouse' && (
-              <Handlung leise disabled={!online || aktion.isPending}
-                        onClick={() => {
-                          if (confirm(t('today.undoCheckinConfirm'))) {
-                            aktion.mutate({ ref: r.reservationRef, action: 'undo-check-in' })
-                          }
-                        }}>
-                {t('today.undoCheckin')}
-              </Handlung>
-            )}
-            {liste === 'arrivals' && r.status !== 'InHouse' && (
-              <Handlung disabled={!online || r.roomCode === null}
-                        onClick={() => onCheckIn(r.reservationRef)}>
-                {t('today.checkin')}
-              </Handlung>
-            )}
-            {liste === 'departures' && (
-              <Handlung disabled={!online || aktion.isPending || r.status === 'CheckedOut'}
-                        onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-out' })}>
-                {t('today.checkout')}
-              </Handlung>
-            )}
-            {/* Spaete Anreise ueber den Schluesselsafe: der Nachtlauf hat
-                eingecheckt, der Meldeschein fehlt noch. */}
-            {liste !== 'departures' && r.status === 'InHouse' && r.registered === false && (
-              <Handlung disabled={!online} onClick={() => onCheckIn(r.reservationRef)}>
-                {t('today.registration')}
-              </Handlung>
-            )}
-            {/* Bei der Abreise wird abgerechnet; ohne den Weg ins Folio
-                blieb am Telefon nur der Check-out ueber den offenen Saldo
-                hinweg (Pruefung 13.10.2026). */}
-            {liste !== 'arrivals' && r.folioRef !== null && (
-              <Handlung leise disabled={false} onClick={() => onFolio(r.folioRef!)}>
-                {t('mobil.today.folio')}
-              </Handlung>
-            )}
+            <div className="ms-auto flex shrink-0 gap-2">
+              {liste === 'arrivals' && r.status === 'InHouse' && (
+                <Handlung leise disabled={!online || aktion.isPending}
+                          onClick={() => {
+                            if (confirm(t('today.undoCheckinConfirm'))) {
+                              aktion.mutate({ ref: r.reservationRef, action: 'undo-check-in' })
+                            }
+                          }}>
+                  {t('today.undoCheckin')}
+                </Handlung>
+              )}
+              {liste === 'arrivals' && r.status !== 'InHouse' && (
+                <Handlung disabled={!online || r.roomCode === null}
+                          onClick={() => onCheckIn(r.reservationRef)}>
+                  {t('today.checkin')}
+                </Handlung>
+              )}
+              {liste === 'departures' && (
+                <Handlung disabled={!online || aktion.isPending || r.status === 'CheckedOut'}
+                          onClick={() => aktion.mutate({ ref: r.reservationRef, action: 'check-out' })}>
+                  {t('today.checkout')}
+                </Handlung>
+              )}
+              {/* Spaete Anreise ueber den Schluesselsafe: der Nachtlauf hat
+                  eingecheckt, der Meldeschein fehlt noch. */}
+              {liste !== 'departures' && r.status === 'InHouse' && r.registered === false && (
+                <Handlung disabled={!online} onClick={() => onCheckIn(r.reservationRef)}>
+                  {t('today.registration')}
+                </Handlung>
+              )}
+              {/* Bei der Abreise wird abgerechnet; ohne den Weg ins Folio
+                  blieb am Telefon nur der Check-out ueber den offenen Saldo
+                  hinweg (Pruefung 13.10.2026). */}
+              {liste !== 'arrivals' && r.folioRef !== null && (
+                <Handlung leise disabled={false} onClick={() => onFolio(r.folioRef!)}>
+                  {t('mobil.today.folio')}
+                </Handlung>
+              )}
+            </div>
           </li>
         ))}
       </ul>
