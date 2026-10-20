@@ -69,6 +69,20 @@ describe('Sitzung der App', () => {
     expect(zeile.rows[0]?.client).toBe('app')
   })
 
+  it('bleibt laenger angemeldet als der Browser, aber nicht unbegrenzt', async () => {
+    const token = await appAnmelden()
+    const web = await app.inject({ method: 'POST', url: '/v1/auth/login',
+      payload: { login: 'rezeption@test.de', password: KENNWORT } })
+    const cookie = String(web.headers['set-cookie']).split(';')[0]!.split('=')[1]!
+    const { rows } = await owner.query<{ id: string; idle: number; absolut: number }>(
+      `SELECT id, extract(epoch FROM idle_window) / 86400 AS idle,
+              round(extract(epoch FROM absolute_expires_at - created_at) / 86400) AS absolut
+         FROM user_session WHERE id = ANY($1)`, [[token, cookie]])
+    const je = Object.fromEntries(rows.map(r => [r.id, [Number(r.idle), Number(r.absolut)]]))
+    expect(je[token]).toEqual([30, 180])
+    expect(je[cookie]).toEqual([7, 30])
+  })
+
   it('traegt nicht als Cookie, und eine Browsersitzung nicht als Token', async () => {
     const token = await appAnmelden()
     expect((await ich({ cookie: `hp_session=${token}` })).statusCode).toBe(401)

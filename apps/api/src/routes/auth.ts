@@ -54,6 +54,23 @@ const config = loadConfig()
  */
 const SITZUNG_UNTAETIG_STUNDEN = 7 * 24
 const SITZUNG_ABSOLUT_STUNDEN = 30 * 24
+
+/**
+ * **Die eigene App bleibt laenger angemeldet: dreissig Tage Untaetigkeit,
+ * ein halbes Jahr fest** (Sven, 20.10.2026: „sollte eingeloggt bleiben …
+ * wie normale Apps“).
+ *
+ * Die Gruende fuer die kurzen Fristen oben gelten dort nur halb. Das Token
+ * liegt im Schluesselbund bzw. Keystore dieses einen Telefons, wandert in
+ * keine Sicherung, und die App oeffnet sich nach einer Pause nur mit
+ * Fingerabdruck, Face ID oder der Sperre des Telefons (Huelle, Plan
+ * app/plan.md Abschnitt 5). Wer das Telefon in der Hand hat, kommt also
+ * nicht weiter als bis zu dieser Sperre. Abmelden, Kennwortwechsel und
+ * Stilllegen ziehen auch diese Sitzung sofort zurueck. Die feste Frist
+ * bleibt, damit ein Token, das doch einmal abfliesst, nicht ewig traegt.
+ */
+const APP_SITZUNG_UNTAETIG_STUNDEN = 30 * 24
+const APP_SITZUNG_ABSOLUT_STUNDEN = 180 * 24
 const COOKIE = 'hp_session'
 
 /**
@@ -295,7 +312,9 @@ export function authRoutes(app: FastifyInstance): void {
          VALUES ($1,$2, now() + ($3 || ' hours')::interval,
                         now() + ($4 || ' hours')::interval,
                         ($3 || ' hours')::interval, $5, $6, $7)`,
-        [sessionId, benutzer.id, SITZUNG_UNTAETIG_STUNDEN, SITZUNG_ABSOLUT_STUNDEN,
+        [sessionId, benutzer.id,
+         fuerApp ? APP_SITZUNG_UNTAETIG_STUNDEN : SITZUNG_UNTAETIG_STUNDEN,
+         fuerApp ? APP_SITZUNG_ABSOLUT_STUNDEN : SITZUNG_ABSOLUT_STUNDEN,
          req.ip, (req.headers['user-agent'] ?? '').slice(0, 300),
          fuerApp ? 'app' : 'web'])
       await req.pool.query(
