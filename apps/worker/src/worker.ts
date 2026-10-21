@@ -17,8 +17,9 @@ import { deliverEmails } from './jobs/emailDelivery.js'
 import { checkEmailDeliveries } from './jobs/emailDeliveryStatus.js'
 import { translateStaffTexts, createDeeplTranslator } from './jobs/staffTranslation.js'
 import { translateFolderPages } from './jobs/folderTranslation.js'
-import { sendStaffPushes, createWebPushSender, vapidSchluessel, propertiesWithDuePushes,
-         type PushSender } from './jobs/staffPush.js'
+import { sendStaffPushes, createWebPushSender, createPushSender, vapidSchluessel,
+         propertiesWithDuePushes, type PushSender } from './jobs/staffPush.js'
+import { createFcmSender, fcmKontoLesen } from './jobs/fcm.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { sortDueRooms } from './jobs/roomSortAuto.js'
@@ -551,12 +552,33 @@ async function pushVorbereiten(): Promise<void> {
       publicKey: process.env.VAPID_PUBLIC_KEY ?? null,
       privateKey: process.env.VAPID_PRIVATE_KEY ?? null
     })
-    pushSender = createWebPushSender({ publicKey: v.publicKey, privateKey: v.privateKey,
+    const web = createWebPushSender({ publicKey: v.publicKey, privateKey: v.privateKey,
       subject: process.env.VAPID_SUBJECT ?? 'mailto:info@staygrid.cloud' })
     if (v.quelle === 'neu') log.info('VAPID-Schluessel erzeugt und in der Datenbank abgelegt')
+    pushSender = createPushSender(web, await fcmVorbereiten())
   } catch (e) {
     // Ohne Schluessel laeuft alles andere weiter; der naechste Start versucht es neu.
     log.error({ err: e }, 'VAPID-Schluessel nicht verfuegbar: keine Push-Meldungen an das Personal')
+  }
+}
+
+/*
+ * Push in die eigene App (0193). Das Dienstkonto von Firebase liegt als
+ * Datei neben der Umgebung; fehlt sie oder ist sie kaputt, geht Web-Push
+ * weiter, und die Abos aus der App warten, bis sie da ist.
+ */
+async function fcmVorbereiten(): Promise<PushSender | null> {
+  const pfad = process.env.FCM_SERVICE_ACCOUNT_FILE ?? '/opt/hotelpms/shared/fcm.json'
+  try {
+    const konto = await fcmKontoLesen(pfad)
+    if (konto === null) {
+      log.info('Kein Dienstkonto fuer Firebase: keine Push-Meldungen in die App')
+      return null
+    }
+    return createFcmSender(konto)
+  } catch (e) {
+    log.error({ err: e }, 'Dienstkonto fuer Firebase unlesbar: keine Push-Meldungen in die App')
+    return null
   }
 }
 

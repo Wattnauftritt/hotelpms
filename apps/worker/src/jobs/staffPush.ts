@@ -16,6 +16,10 @@ import { renderPushText, STAFF_LOCALES, type StaffLocale, type PushTextKey }
  * Antwortet der Dienst 404 oder 410, gibt es das Abo nicht mehr (App
  * geloescht, Berechtigung entzogen), und es wird entfernt. Hat die Kraft
  * kein Telefon angemeldet, ist die Meldung erledigt, nicht gescheitert.
+ *
+ * Zwei Wege zum Telefon (0193): Web-Push an die Adresse des Browsers, und
+ * in der eigenen App Firebase Cloud Messaging an die Kennung des Geraets
+ * (`fcm.ts`). Eine Meldung geht an alle Abos der Kraft, gleich welcher Art.
  */
 
 export interface PushPayload {
@@ -27,12 +31,28 @@ export interface PushPayload {
   tag: string
 }
 
-export interface PushTarget { endpoint: string; p256dh: string; auth: string }
+export type PushTarget =
+  | { art: 'web'; endpoint: string; p256dh: string; auth: string }
+  | { art: 'fcm'; token: string }
 
 /** Nur diese Fassade, damit ein Test einen Sender unterschieben kann. */
 export interface PushSender {
-  /** Liefert den Status des Dienstes; wirft nur, wenn keiner kam. */
-  send(target: PushTarget, payload: PushPayload, ttlSeconds: number): Promise<number>
+  /**
+   * Liefert den Status des Dienstes; wirft nur, wenn keiner kam. `null`
+   * heisst: dieser Weg ist hier nicht eingerichtet (FCM ohne Dienstkonto).
+   * Das Abo bleibt dann stehen und zaehlt weder als zugestellt noch als
+   * Fehler -- es ist kein Telefon, das gerade nicht antwortet.
+   */
+  send(target: PushTarget, payload: PushPayload, ttlSeconds: number): Promise<number | null>
+}
+
+/** Web-Push und, wenn eingerichtet, FCM hinter einer Fassade. */
+export function createPushSender(web: PushSender, fcm: PushSender | null): PushSender {
+  return {
+    send: (t, payload, ttl) =>
+      t.art === 'web' ? web.send(t, payload, ttl)
+        : fcm === null ? Promise.resolve(null) : fcm.send(t, payload, ttl)
+  }
 }
 
 /**
@@ -72,6 +92,7 @@ export function createWebPushSender(vapid: {
 }): PushSender {
   return {
     async send(target, payload, ttlSeconds) {
+      if (target.art !== 'web') return null
       try {
         const r = await webpush.sendNotification(
           { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
@@ -118,8 +139,11 @@ async function claim(
        RETURNING p.id, p.user_id, p.kind, p.params, p.attempts AS attempt
      )
      SELECT b.id::int, b.user_id::int, b.kind, b.params, b.attempt, u.locale,
-            COALESCE((SELECT jsonb_agg(jsonb_build_object('id', s.id, 'endpoint', s.endpoint,
-                                                          'p256dh', s.p256dh, 'auth', s.auth))
+            COALESCE((SELECT jsonb_agg(CASE WHEN s.fcm_token IS NULL
+                         THEN jsonb_build_object('id', s.id, 'art', 'web', 'endpoint', s.endpoint,
+                                                 'p256dh', s.p256dh, 'auth', s.auth)
+                         ELSE jsonb_build_object('id', s.id, 'art', 'fcm', 'token', s.fcm_token)
+                         END)
                         FROM push_subscription s
                         JOIN user_session us ON us.id = s.session_id
                        WHERE s.user_id = b.user_id AND us.revoked_at IS NULL
@@ -165,10 +189,12 @@ async function sende(sender: PushSender, p: ClaimedPush): Promise<Versand> {
   const v: Versand = { gesendet: 0, weg: [], fehler: null }
   for (const t of p.targets) {
     // Noch einmal gegen die Liste: was beim Anmelden durchging, soll auch
-    // nach einer Aenderung der Liste nicht ins eigene Netz fuehren.
-    if (!isPushEndpoint(t.endpoint)) { v.weg.push(t.id); continue }
+    // nach einer Aenderung der Liste nicht ins eigene Netz fuehren. Eine
+    // Kennung von FCM ist keine Adresse; sie geht nur an FCM.
+    if (t.art === 'web' && !isPushEndpoint(t.endpoint)) { v.weg.push(t.id); continue }
     try {
       const status = await sender.send(t, payload, pushTtlSeconds(p.kind))
+      if (status === null) continue
       if (status >= 200 && status < 300) v.gesendet++
       else if (status === 404 || status === 410) v.weg.push(t.id)
       else v.fehler = `http_${status}`

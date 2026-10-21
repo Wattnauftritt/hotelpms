@@ -374,6 +374,9 @@ public class HuellePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     @objc func stand(_ call: CAPPluginCall) {
-        call.resolve(["huelle": HuellePlugin.huelle])
+        // Benachrichtigungen unter iOS kommen mit dem Konto bei Apple
+        // (APNs-Schluessel in Firebase); bis dahin bietet die Huelle sie
+        // nicht an.
+        call.resolve(["huelle": HuellePlugin.huelle, "push": false])
     }
 }

@@ -55,6 +55,22 @@ jobs:
         run: |
           test -s apps/mobile/paket-schluessel.pem || {
             echo "::error::apps/mobile/paket-schluessel.pem fehlt (deploy.sh app-schluessel)"; exit 1; }
+      # Firebase fuer die Benachrichtigungen der Personal-App (0193). Ohne
+      # die Datei wendet build.gradle das Plugin nicht an, und die Huelle
+      # meldet `push: false` -- die App laeuft, nur ohne Benachrichtigungen.
+      # Die Datei ist kein Geheimnis im engeren Sinn (sie steckt in jeder
+      # ausgelieferten App), aber sie nennt das Projekt und gehoert nicht
+      # ins Repository.
+      - name: Firebase einrichten
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > apps/mobile/android/app/google-services.json
+            node -e 'const j=require("./apps/mobile/android/app/google-services.json"); if (!j.client?.some(c => c.client_info?.android_client_info?.package_name === "cloud.staygrid.app")) { console.error("::error::google-services.json kennt cloud.staygrid.app nicht"); process.exit(1) }'
+          else
+            echo "::warning::Secret FIREBASE_GOOGLE_SERVICES_JSON fehlt: App ohne Benachrichtigungen"
+          fi
       - name: Oberflaeche und Bruecke zusammensetzen
         working-directory: apps/mobile
         run: pnpm sync
@@ -111,4 +127,4 @@ jobs:
         run: node scripts/play.mjs "$RUNNER_TEMP/staygrid-${{ steps.fassung.outputs.name }}.aab" "${{ steps.fassung.outputs.name }}"
       - name: Schluessel entfernen
         if: always()
-        run: rm -f "$RUNNER_TEMP/upload.jks"
+        run: rm -f "$RUNNER_TEMP/upload.jks" apps/mobile/android/app/google-services.json

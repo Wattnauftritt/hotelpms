@@ -116,6 +116,59 @@ describe('Telefon anmelden', () => {
   })
 })
 
+describe('Telefon in der App anmelden (0193)', () => {
+  const TOKEN = 'dGVzdA:APA91bH_kennung-eines-telefons-1234567890'
+
+  it('nimmt eine Kennung von Firebase, bindet sie an die Sitzung und gibt sie weiter', async () => {
+    const falsch = await app.inject({ method: 'POST', url: p('/push/app'),
+      headers: auth(olga.sessionId), payload: { token: 'https://intern.local/x' } })
+    expect(falsch.statusCode).toBe(422)
+    for (const s of [olga, anna]) {
+      const r = await app.inject({ method: 'POST', url: p('/push/app'), headers: auth(s.sessionId),
+        payload: { token: TOKEN } })
+      expect(r.statusCode).toBe(201)
+    }
+    const { rows } = await owner.query<{ user_id: number; endpoint: string | null }>(
+      'SELECT user_id::int, endpoint FROM push_subscription')
+    expect(rows).toEqual([{ user_id: anna.userId, endpoint: null }])
+
+    // Abmelden nimmt das Abo mit, wie beim Browser.
+    await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: auth(anna.sessionId) })
+    expect((await owner.query('SELECT 1 FROM push_subscription')).rowCount).toBe(0)
+  })
+
+  it('schaltet aus, aber nur das eigene', async () => {
+    await app.inject({ method: 'POST', url: p('/push/app'), headers: auth(olga.sessionId),
+      payload: { token: TOKEN } })
+    await app.inject({ method: 'POST', url: p('/push/app/off'), headers: auth(anna.sessionId),
+      payload: { token: TOKEN } })
+    expect((await owner.query('SELECT 1 FROM push_subscription')).rowCount).toBe(1)
+    await app.inject({ method: 'POST', url: p('/push/app/off'), headers: auth(olga.sessionId),
+      payload: { token: TOKEN } })
+    expect((await owner.query('SELECT 1 FROM push_subscription')).rowCount).toBe(0)
+  })
+
+  it('erneuert beim Start nur eine Kennung, die angemeldet ist', async () => {
+    const NEU = 'dGVzdA:APA91bH_erneuerte-kennung-0987654321'
+    const an = async (): Promise<unknown> => (await app.inject({ method: 'GET',
+      url: p('/push/app'), headers: auth(olga.sessionId) })).json()
+    const erneuern = async (): Promise<unknown> => (await app.inject({ method: 'POST',
+      url: p('/push/app/refresh'), headers: auth(olga.sessionId), payload: { token: NEU } })).json()
+
+    // Ausgeschaltet bleibt aus: der Start legt kein Abo an.
+    expect(await an()).toEqual({ an: false })
+    expect(await erneuern()).toEqual({ an: false })
+    expect((await owner.query('SELECT 1 FROM push_subscription')).rowCount).toBe(0)
+
+    await app.inject({ method: 'POST', url: p('/push/app'), headers: auth(olga.sessionId),
+      payload: { token: TOKEN } })
+    expect(await an()).toEqual({ an: true })
+    expect(await erneuern()).toEqual({ an: true })
+    const { rows } = await owner.query<{ fcm_token: string }>('SELECT fcm_token FROM push_subscription')
+    expect(rows).toEqual([{ fcm_token: NEU }])
+  })
+})
+
 describe('Schluessel aus der Datenbank', () => {
   // Ohne Umgebungsvariable der Schluessel, den der Worker abgelegt hat (0117).
   it('liest den oeffentlichen Schluessel, den der Worker erzeugt hat', async () => {

@@ -22,6 +22,11 @@ public class HuellePlugin extends Plugin {
     public void stand(PluginCall call) {
         JSObject antwort = new JSObject();
         antwort.put("huelle", HUELLE);
+        // Benachrichtigungen nur, wenn der Bau google-services.json hatte
+        // (Freigabelauf). Ohne sie ist Firebase nicht eingerichtet, und
+        // PushNotifications.register() bricht die App ab, statt zu scheitern.
+        antwort.put("push", getContext().getResources().getIdentifier(
+            "google_app_id", "string", getContext().getPackageName()) != 0);
         call.resolve(antwort);
     }
 }
