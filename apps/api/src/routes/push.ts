@@ -40,6 +40,19 @@ function endpointAus(req: FastifyRequest): string {
   return e
 }
 
+/**
+ * Kennung von Firebase Cloud Messaging, wie die App sie bekommt. Geprueft
+ * wird nur die Form: eine Kennung ist keine Adresse, der Worker schickt nie
+ * an sie, sondern an FCM -- ein Weg ins eigene Netz ist sie nicht.
+ */
+function fcmTokenAus(req: FastifyRequest): string {
+  const t = (req.body as { token?: unknown } | null)?.token
+  if (typeof t !== 'string' || !/^[A-Za-z0-9_:-]{20,1000}$/.test(t)) {
+    throw Errors.validation({ token: ['push.token'] })
+  }
+  return t
+}
+
 export function pushRoutes(app: FastifyInstance): void {
   const config = loadConfig()
   let gespeichert: string | null = null
@@ -114,6 +127,47 @@ export function pushRoutes(app: FastifyInstance): void {
       const endpoint = endpointAus(req)
       await req.pool.query(
         'DELETE FROM push_subscription WHERE endpoint = $1 AND user_id = $2', [endpoint, userId])
+      return { ok: true }
+    }
+  })
+
+  /*
+   * Dasselbe fuer die eigene App (0193): dort gibt es kein Web-Push, das
+   * Telefon meldet sich mit einer Kennung von FCM an. Gleiche Regeln --
+   * ein Abo je Sitzung, und ein Telefon wechselt den Besitzer, statt zwei
+   * Personen gemeldet zu bekommen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/push/app',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Dieses Telefon in der App fuer Benachrichtigungen anmelden (Personal-App)',
+    handler: async (req, reply) => {
+      const { userId, sessionId } = sitzung(req)
+      const token = fcmTokenAus(req)
+      await req.pool.query(
+        `INSERT INTO push_subscription (user_id, session_id, fcm_token)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (fcm_token) DO UPDATE
+           SET user_id = EXCLUDED.user_id, session_id = EXCLUDED.session_id, created_at = now()`,
+        [userId, sessionId, token])
+      reply.code(201)
+      return { ok: true }
+    }
+  })
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/push/app/off',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Benachrichtigungen in der App fuer dieses Telefon abschalten (Personal-App)',
+    handler: async (req) => {
+      const { userId } = sitzung(req)
+      const token = fcmTokenAus(req)
+      await req.pool.query(
+        'DELETE FROM push_subscription WHERE fcm_token = $1 AND user_id = $2', [token, userId])
       return { ok: true }
     }
   })

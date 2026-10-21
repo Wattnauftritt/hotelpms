@@ -4,8 +4,9 @@ import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeUser,
          type Fixture } from '@hotelpms/testing'
 import type { DbContext, Pool } from '@hotelpms/db'
 import { PUSH_MAX_ATTEMPTS } from '@hotelpms/domain'
-import { sendStaffPushes, buildPushPayload, vapidSchluessel, type PushSender, type PushTarget,
-         type PushPayload } from '../jobs/staffPush.js'
+import { sendStaffPushes, buildPushPayload, vapidSchluessel, createPushSender,
+         type PushSender, type PushTarget, type PushPayload } from '../jobs/staffPush.js'
+import { fcmNachricht, fcmStatus } from '../jobs/fcm.js'
 
 /**
  * Der Versand der Push-Meldungen (0113, Baustein 8) mit untergeschobenem
@@ -34,17 +35,25 @@ beforeEach(async () => {
   await owner.query(`UPDATE app_user SET locale = 'uk' WHERE id = $1`, [olga.userId])
 })
 
-function sender(status: (t: PushTarget) => number): PushSender & {
+function sender(status: (t: PushTarget) => number | null): PushSender & {
   gesendet: Array<{ endpoint: string; payload: PushPayload }>
 } {
   const gesendet: Array<{ endpoint: string; payload: PushPayload }> = []
   return {
     gesendet,
     async send(t, payload) {
-      gesendet.push({ endpoint: t.endpoint, payload })
-      return status(t)
+      const s = status(t)
+      if (s !== null) gesendet.push({ endpoint: t.art === 'web' ? t.endpoint : t.token, payload })
+      return s
     }
   }
+}
+
+async function appTelefon(sessionId: string, token: string): Promise<string> {
+  await owner.query(
+    `INSERT INTO push_subscription (user_id, session_id, fcm_token) VALUES ($1, $2, $3)`,
+    [olga.userId, sessionId, token])
+  return token
 }
 
 async function telefon(sessionId: string, name: string): Promise<string> {
@@ -112,6 +121,44 @@ describe('sendStaffPushes', () => {
                                      last_error: 'http_503' }])
   })
 
+  it('schickt dieselbe Meldung an Browser und App', async () => {
+    const web = await telefon(olga.sessionId, 'eins')
+    const app_ = await appTelefon(olga.sessionId, 'fcm-kennung-1234567890')
+    await meldung()
+    const s = sender(() => 200)
+    expect(await sendStaffPushes(app, ctx, fx.propertyId, s)).toMatchObject({ sent: 1 })
+    expect(s.gesendet.map(g => g.endpoint).sort()).toEqual([web, app_].sort())
+  })
+
+  /*
+   * Ohne Dienstkonto fuer Firebase (fcm.json fehlt) bleibt das Abo aus der
+   * App stehen, und die Meldung gilt nicht als gescheitert: es antwortet
+   * kein Telefon nicht, der Weg ist nur noch nicht eingerichtet.
+   */
+  it('laesst App-Abos ohne Firebase stehen', async () => {
+    await appTelefon(olga.sessionId, 'fcm-kennung-1234567890')
+    await meldung()
+    const web = sender(() => 201)
+    const r = await sendStaffPushes(app, ctx, fx.propertyId, createPushSender(web, null))
+    expect(r).toMatchObject({ sent: 1, retrying: 0, failed: 0 })
+    expect(web.gesendet).toEqual([])
+    expect((await owner.query('SELECT 1 FROM push_subscription')).rowCount).toBe(1)
+  })
+
+  it('entfernt ein App-Abo, das Firebase nicht mehr kennt', async () => {
+    await appTelefon(olga.sessionId, 'fcm-kennung-1234567890')
+    await meldung()
+    await sendStaffPushes(app, ctx, fx.propertyId, sender(() => 410))
+    expect((await owner.query('SELECT 1 FROM push_subscription')).rowCount).toBe(0)
+  })
+
+  it('nimmt ein Abo nur ganz an: Adresse und Schluessel oder Kennung', async () => {
+    await expect(owner.query(
+      `INSERT INTO push_subscription (user_id, session_id, endpoint, fcm_token)
+       VALUES ($1, $2, 'https://fcm.googleapis.com/fcm/send/x', 'kennung')`,
+      [olga.userId, olga.sessionId])).rejects.toThrow(/push_subscription_art/)
+  })
+
   it('schreibt das Datum eines Plans aus', () => {
     expect(buildPushPayload('plan', { date: '2026-10-08' }, 'de')).toMatchObject({
       body: 'Deine Zimmer für Donnerstag, 8.10. haben sich geändert.', tag: 'plan-2026-10-08' })
@@ -150,5 +197,35 @@ describe('VAPID-Schluessel', () => {
     expect(rows).toEqual([{ k: v.publicKey }])
     await expect(app.query('SELECT private_key FROM platform_vapid_key'))
       .rejects.toThrow(/permission denied/)
+  })
+})
+
+describe('Antwort von Firebase', () => {
+  const fehler = (errorCode: string, message = '') =>
+    JSON.stringify({ error: { message, details: [{ '@type': 'x', errorCode }] } })
+
+  // 404 und 410 heissen in staffPush: das Abo gibt es nicht mehr.
+  it('erkennt eine Kennung, die es nicht mehr gibt', () => {
+    expect(fcmStatus(404, fehler('UNREGISTERED'))).toBe(404)
+    expect(fcmStatus(400, fehler('INVALID_ARGUMENT', 'The registration token is not a valid FCM registration token'))).toBe(410)
+    expect(fcmStatus(403, fehler('SENDER_ID_MISMATCH'))).toBe(410)
+  })
+
+  it('loescht kein Abo wegen einer falsch gebauten Meldung', () => {
+    expect(fcmStatus(400, fehler('INVALID_ARGUMENT', 'Invalid value at message.android.ttl'))).toBe(400)
+    expect(fcmStatus(503, 'kein JSON')).toBe(503)
+    expect(fcmStatus(401, fehler('THIRD_PARTY_AUTH_ERROR'))).toBe(401)
+  })
+
+  it('traegt Titel, Text und Ziel, aber nichts darueber hinaus', () => {
+    const n = fcmNachricht('kennung', { title: 'Zimmer 101 ist frei', body: 'Der Gast ist abgereist.',
+      url: '/personal', tag: 'room_free-101' }, 600) as {
+      message: { token: string; notification: unknown; data: unknown
+                 android: { ttl: string; collapse_key: string } }
+    }
+    expect(n.message.token).toBe('kennung')
+    expect(n.message.notification).toEqual({ title: 'Zimmer 101 ist frei', body: 'Der Gast ist abgereist.' })
+    expect(n.message.data).toEqual({ url: '/personal', tag: 'room_free-101' })
+    expect(n.message.android).toMatchObject({ ttl: '600s', collapse_key: 'room_free-101' })
   })
 })

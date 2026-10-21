@@ -1,7 +1,8 @@
 import { registerPlugin, Capacitor, CapacitorHttp } from '@capacitor/core'
 import { App } from '@capacitor/app'
 import { LiveUpdate } from '@capawesome/capacitor-live-update'
-import type { ErkannteZeile, StaygridNative } from '@hotelpms/native'
+import { PushNotifications } from '@capacitor/push-notifications'
+import type { ErkannteZeile, NativePush, StaygridNative } from '@hotelpms/native'
 
 /**
  * Die Bruecke zur Oberflaeche (Plan app/plan.md, Baustein 3).
@@ -58,7 +59,8 @@ interface DateiPlugin {
 const Datei = registerPlugin<DateiPlugin>('StaygridDatei')
 
 interface HuellePlugin {
-  stand(): Promise<{ huelle: number }>
+  /** `push` fehlt bei Huellen vor den Benachrichtigungen. */
+  stand(): Promise<{ huelle: number; push?: boolean }>
 }
 const Huelle = registerPlugin<HuellePlugin>('StaygridHuelle')
 
@@ -173,6 +175,73 @@ function aktualisieren() {
   void App.addListener('resume', () => { if (bereit) void nachsehen().catch(fehlerMelden) })
 }
 
+// ------------------------------------------- Benachrichtigungen (0193)
+
+/*
+ * Nur wenn die Huelle die Erweiterung hat UND Firebase eingerichtet ist. Die
+ * Bruecke kommt mit jedem Paket, die Erweiterung nur mit dem Store; eine
+ * Huelle der Fassung 4 ohne sie bekommt das Paket trotzdem und zeigt dann
+ * nur keinen Knopf (deshalb keine neue Fassung der Huelle).
+ */
+const PUSH_VORHANDEN = Capacitor.isPluginAvailable('PushNotifications')
+
+async function pushMoeglich(): Promise<boolean> {
+  if (!PUSH_VORHANDEN) return false
+  try {
+    return (await Huelle.stand()).push === true
+  } catch {
+    return false
+  }
+}
+
+async function pushErlaubnis(): Promise<'erteilt' | 'abgelehnt' | 'offen'> {
+  const { receive } = await PushNotifications.checkPermissions()
+  return receive === 'granted' ? 'erteilt' : receive === 'denied' ? 'abgelehnt' : 'offen'
+}
+
+const push: NativePush = {
+  moeglich: pushMoeglich,
+  erlaubnis: pushErlaubnis,
+  async anmelden() {
+    if (!await pushMoeglich()) return null
+    let stand = await pushErlaubnis()
+    if (stand === 'offen') {
+      const { receive } = await PushNotifications.requestPermissions()
+      stand = receive === 'granted' ? 'erteilt' : 'abgelehnt'
+    }
+    if (stand !== 'erteilt') return null
+    // Die Kennung kommt als Ereignis, nicht als Rueckgabe von register().
+    return new Promise<string>((ok, fehler) => {
+      const hoerer: Array<Promise<{ remove: () => Promise<void> }>> = []
+      const fertig = () => { for (const h of hoerer) void h.then(x => x.remove()) }
+      hoerer.push(PushNotifications.addListener('registration', t => { fertig(); ok(t.value) }))
+      hoerer.push(PushNotifications.addListener('registrationError', e => {
+        fertig(); fehler(new Error(e.error))
+      }))
+      PushNotifications.register().catch((e: unknown) => {
+        fertig(); fehler(e instanceof Error ? e : new Error(String(e)))
+      })
+    })
+  },
+  async abmelden() {
+    if (await pushMoeglich()) await PushNotifications.unregister()
+  }
+}
+
+/**
+ * Ein Tippen auf die Meldung oeffnet die Seite, die sie nennt. Nur ein Pfad
+ * dieser App: die Meldung kommt von unserem Server, aber eine fremde Adresse
+ * soll aus ihr nie werden, auch wenn sich dort einmal etwas verschiebt.
+ */
+function aufTippenOeffnen() {
+  void PushNotifications.addListener('pushNotificationActionPerformed', a => {
+    const url = (a.notification.data as { url?: unknown } | undefined)?.url
+    if (typeof url === 'string' && /^\/(?!\/)/.test(url) && location.pathname !== url) {
+      location.assign(url)
+    }
+  })
+}
+
 const plattform = Capacitor.getPlatform()
 if (plattform === 'ios' || plattform === 'android') {
   const bruecke: StaygridNative = {
@@ -193,6 +262,10 @@ if (plattform === 'ios' || plattform === 'android') {
                               typ: datei.type || 'application/octet-stream' })
       }
     }
+  }
+  if (PUSH_VORHANDEN) {
+    bruecke.push = push
+    void pushMoeglich().then(ja => { if (ja) aufTippenOeffnen() })
   }
   if (PAKET) {
     bruecke.aktualisierung = {

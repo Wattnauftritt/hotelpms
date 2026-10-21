@@ -36,9 +36,22 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Benachrichtigungen der Personal-App (Migration 0193). Das Symbol
+             in der Statusleiste muss einfarbig sein; das bunte App-Symbol
+             zeichnet Android dort als weisses Quadrat. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_staygrid" />
+        <!-- Kein Firebase Analytics: StayGrid zaehlt nicht, wer die App wie
+             benutzt, und die Angaben im Store sagen das so. -->
+        <meta-data android:name="firebase_analytics_collection_deactivated" android:value="true" />
+        <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Ab Android 13 fragt die App vor der ersten Benachrichtigung. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

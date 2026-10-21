@@ -334,11 +334,16 @@ Wer die Schlüssel selbst setzen will, setzt beide in die Umgebung — sie gewin
 
 **Ein Abo hängt an der Sitzung.** Abmelden, Ablauf oder ein Kennwortwechsel beenden es; auf einem Telefon, das die nächste Kraft in die Hand nimmt, kommen keine Meldungen der vorigen an. Auf dem iPhone gibt es Push nur für die auf dem Home-Bildschirm installierte App; das sagt die App selbst.
 
+**In der eigenen App über Firebase** (Migration 0193). Die WebView der App kennt kein Web-Push; das Telefon meldet sich dort mit einer Kennung von Firebase Cloud Messaging an (`push_subscription.fcm_token`), und der Worker schickt über die HTTP-v1-Schnittstelle von FCM (`apps/worker/src/jobs/fcm.ts`, ohne Admin-SDK). Dafür braucht der Worker das Dienstkonto des Firebase-Projekts als Datei: `/opt/hotelpms/shared/fcm.json`, Besitzer `hotelpms`, `chmod 600` (anderer Ort über `FCM_SERVICE_ACCOUNT_FILE`). Nicht in die Umgebungsdatei — die liest auch die API, und die braucht das Konto nicht. Fehlt die Datei, läuft Web-Push weiter, und die Abos aus der App warten; im Protokoll steht beim Start „Kein Dienstkonto für Firebase“. Nach dem Ablegen den Worker neu starten.
+
+**Anders als bei Web-Push ist der Inhalt hier nicht Ende-zu-Ende verschlüsselt:** Google sieht Titel und Text, also eine Zimmernummer oder ein Datum. Einen Gast und die Notiz der Hausdame enthält die Meldung auch hier nie. Die Datenschutzerklärung nennt Firebase deshalb als Empfänger, bevor eine Fassung mit Benachrichtigungen in den Store geht.
+
 | Befund in `staff_push` | Ursache |
 |---|---|
 | `pending`, Versuche 0, älter als eine Minute | Worker ohne Schlüssel — im Protokoll steht „VAPID-Schlüssel nicht verfügbar“ |
 | `sent`, aber nichts kam an | Die Kraft hat kein Telefon angemeldet (das ist kein Fehler), oder das Telefon unterdrückt Meldungen der App |
 | `last_error` `http_403` | Öffentlicher und privater Schlüssel passen nicht zusammen |
+| `last_error` `http_401` bei einer Kraft mit der App | `fcm.json` gehört zu einem anderen Projekt oder das Dienstkonto ist gelöscht |
 
 ---
 

@@ -1,3 +1,6 @@
 www/
 dist-bruecke/
 dist-types/
+# Aus den Secrets im Freigabelauf, nie im Repository (Firebase)
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist

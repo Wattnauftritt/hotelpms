@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { StaffLocale } from '@hotelpms/contracts'
+import { nativ } from '@hotelpms/native'
 import { api } from '../lib/api.js'
 import { fehlerText, usePT } from './texte.js'
 import { Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
@@ -16,6 +17,12 @@ import { Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
  *
  * Auf dem iPhone gibt es Push nur fuer die installierte App; im Browser
  * steht deshalb der Weg dorthin statt eines Knopfs, der nichts tut.
+ *
+ * In der eigenen App gibt es kein Web-Push (0193): dort meldet die Huelle
+ * eine Kennung von Firebase, und dieselbe Karte schaltet sie an und aus.
+ * Ob die Kraft ausgeschaltet hat, merkt sich das Telefon -- die Erlaubnis
+ * des Systems bleibt dabei erteilt, und ohne die Marke meldete der naechste
+ * Start das Telefon wieder an.
  */
 
 type Stand = 'laedt' | 'nichtMoeglich' | 'iosInstallieren' | 'aus' | 'an' | 'abgelehnt'
@@ -28,6 +35,17 @@ function schluessel(base64url: string): ArrayBuffer {
   const sicht = new Uint8Array(puffer)
   for (let i = 0; i < roh.length; i++) sicht[i] = roh.charCodeAt(i)
   return puffer
+}
+
+const APP_AUS = 'staygrid-push-aus'
+function appAus(): boolean {
+  try { return localStorage.getItem(APP_AUS) === '1' } catch { return false }
+}
+function appAusMerken(aus: boolean): void {
+  try {
+    if (aus) localStorage.setItem(APP_AUS, '1')
+    else localStorage.removeItem(APP_AUS)
+  } catch { /* dann fragt die Karte beim naechsten Start wieder */ }
 }
 
 async function registrierung(): Promise<ServiceWorkerRegistration | null> {
@@ -46,6 +64,15 @@ async function anmelden(propertyId: number, abo: PushSubscription): Promise<void
  * die neue Sitzung gebunden. Scheitert das, bleibt es beim naechsten Start.
  */
 export async function pushNeuBinden(propertyId: number): Promise<void> {
+  const np = nativ()?.push
+  if (np !== undefined) {
+    try {
+      if (appAus() || !await np.moeglich() || await np.erlaubnis() !== 'erteilt') return
+      const token = await np.anmelden()
+      if (token !== null) await api.post(`/v1/properties/${propertyId}/push/app`, { token })
+    } catch { /* naechster Start */ }
+    return
+  }
   try {
     const reg = await registrierung()
     if (reg === null || Notification.permission !== 'granted') return
@@ -58,10 +85,14 @@ export function Benachrichtigung({ propertyId, locale }: {
   propertyId: number; locale: StaffLocale
 }): JSX.Element | null {
   const t = usePT()
+  const np = nativ()?.push
   const q = useQuery<{ publicKey: string | null }>({
     queryKey: ['push-key', propertyId],
     queryFn: () => api.get(`/v1/properties/${propertyId}/push`),
-    staleTime: Infinity
+    staleTime: Infinity,
+    // In der App kommt die Meldung ueber Firebase; der Schluessel fuer
+    // Web-Push wird dort nicht gebraucht.
+    enabled: np === undefined
   })
   const [stand, setStand] = useState<Stand>('laedt')
   const [fehler, setFehler] = useState<string | null>(null)
@@ -70,6 +101,13 @@ export function Benachrichtigung({ propertyId, locale }: {
   useEffect(() => {
     let weg = false
     void (async () => {
+      if (np !== undefined) {
+        const erlaubnis = await np.moeglich().then(ja => ja ? np.erlaubnis() : null).catch(() => null)
+        if (weg) return
+        setStand(erlaubnis === null ? 'nichtMoeglich' : erlaubnis === 'abgelehnt' ? 'abgelehnt'
+          : erlaubnis === 'erteilt' && !appAus() ? 'an' : 'aus')
+        return
+      }
       const reg = await registrierung()
       if (reg === null) {
         const ios = /iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -82,13 +120,27 @@ export function Benachrichtigung({ propertyId, locale }: {
       if (!weg) setStand(abo !== null ? 'an' : 'aus')
     })()
     return () => { weg = true }
-  }, [propertyId])
+  }, [propertyId, np])
 
-  if (q.data?.publicKey == null || stand === 'laedt') return null
+  if (stand === 'laedt') return null
+  // In der App ohne Firebase (iOS bis zum Konto bei Apple) gar keine Karte:
+  // „Dieser Browser kann keine Benachrichtigungen empfangen" stimmte dort nicht.
+  if (np !== undefined ? stand === 'nichtMoeglich' : q.data?.publicKey == null) return null
 
   const einschalten = async (): Promise<void> => {
     setLaeuft(true); setFehler(null)
     try {
+      if (np !== undefined) {
+        const token = await np.anmelden()
+        if (token === null) {
+          setStand(await np.erlaubnis() === 'abgelehnt' ? 'abgelehnt' : 'aus')
+          return
+        }
+        await api.post(`/v1/properties/${propertyId}/push/app`, { token })
+        appAusMerken(false)
+        setStand('an')
+        return
+      }
       const erlaubt = await Notification.requestPermission()
       if (erlaubt !== 'granted') { setStand(erlaubt === 'denied' ? 'abgelehnt' : 'aus'); return }
       const reg = await registrierung()
@@ -106,6 +158,16 @@ export function Benachrichtigung({ propertyId, locale }: {
   const ausschalten = async (): Promise<void> => {
     setLaeuft(true); setFehler(null)
     try {
+      if (np !== undefined) {
+        // Die Erlaubnis ist erteilt; anmelden() fragt also nicht, es gibt
+        // nur die Kennung, die der Server abmelden soll.
+        const token = await np.anmelden()
+        if (token !== null) await api.post(`/v1/properties/${propertyId}/push/app/off`, { token })
+        await np.abmelden()
+        appAusMerken(true)
+        setStand('aus')
+        return
+      }
       const abo = await (await registrierung())?.pushManager.getSubscription()
       if (abo != null) {
         await api.post(`/v1/properties/${propertyId}/push/off`, { endpoint: abo.endpoint })

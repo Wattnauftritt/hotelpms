@@ -67,6 +67,25 @@ export interface NativeAktualisierung {
   storeNoetig(beiBedarf: () => void): void
 }
 
+/**
+ * Benachrichtigungen der Personal-App in der eigenen App (Migration 0193).
+ * Statt Web-Push eine Kennung von Firebase Cloud Messaging; die Oberflaeche
+ * meldet sie dem Server wie im Browser das Abo. Ein Tippen auf die Meldung
+ * oeffnet die Seite, die sie nennt -- das erledigt die Huelle.
+ */
+export interface NativePush {
+  /** Ob diese Huelle Benachrichtigungen kann (Android mit Firebase, spaeter iOS). */
+  moeglich(): Promise<boolean>
+  erlaubnis(): Promise<'erteilt' | 'abgelehnt' | 'offen'>
+  /**
+   * Fragt, wenn noch offen, nach der Erlaubnis und gibt die Kennung dieses
+   * Telefons; `null`, wenn die Erlaubnis verweigert ist.
+   */
+  anmelden(): Promise<string | null>
+  /** Nimmt die Kennung bei Firebase zurueck. */
+  abmelden(): Promise<void>
+}
+
 export interface StaygridNative {
   plattform: 'ios' | 'android'
   /**
@@ -83,6 +102,8 @@ export interface StaygridNative {
   datei?: NativeDatei
   /** Fehlt vor Fassung 4 und ohne Schluessel fuer Pakete. */
   aktualisierung?: NativeAktualisierung
+  /** Fehlt, wenn die Huelle die Erweiterung fuer Benachrichtigungen nicht hat. */
+  push?: NativePush
 }
 
 declare global {
