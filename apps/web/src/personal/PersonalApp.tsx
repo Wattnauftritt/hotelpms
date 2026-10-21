@@ -5,6 +5,7 @@ import { api, ApiError, anmelden, abmelden as abmeldenBeiApi } from '../lib/api.
 import { dokumentSprache } from '../lib/dokumentSprache.js'
 import { useInstallation } from '../lib/pwa.js'
 import { offlineKopieLoeschen } from '../lib/offline.js'
+import { kurzbefehleFuer, kurzbefehleSetzen } from '../lib/kurzbefehle.js'
 import { nurPersonal, personalSeite } from './adresse.js'
 import { SpracheContext, SPRACHNAME, fehlerText, startSprache, usePT }
   from './texte.js'
@@ -288,8 +289,13 @@ function Start({ me, locale, onLocale }: {
   type Reiter = 'heute' | 'kontrolle' | 'kueche' | 'zeit' | 'mehr'
   const reiterListe: Reiter[] = ['heute', ...(kontrolle ? ['kontrolle' as const] : []),
     ...(kueche ? ['kueche' as const] : []), 'zeit', 'mehr']
-  const [reiter, setReiter] = useState<Reiter>(
-    () => kontrolle ? 'kontrolle' : kueche ? 'kueche' : 'heute')
+  const [reiter, setReiter] = useState<Reiter>(() => {
+    // Eine Schnellaktion am App-Symbol nennt den Reiter (`lib/kurzbefehle.ts`).
+    const gewuenscht = new URLSearchParams(location.search).get('reiter')
+    const ziel = reiterListe.find(r => r === gewuenscht)
+    if (ziel !== undefined) return ziel
+    return kontrolle ? 'kontrolle' : kueche ? 'kueche' : 'heute'
+  })
   useEffect(() => { if (haus !== 0) void pushNeuBinden(haus) }, [haus])
   const hausWahl = haeuser.length > 1 && <label className="block">
     <span className="block text-sm text-neutral-600">{t('today.property')}</span>
@@ -384,6 +390,16 @@ export function PersonalApp(): JSX.Element {
     enabled: seite.art === 'app',
     refetchInterval: q => serverWeg(q.state.error) ? 15_000 : false
   })
+
+  /*
+   * Schnellaktionen am App-Symbol: nach dem Anmelden und bei jedem Start nach
+   * den Rechten setzen, in der gewaehlten Sprache; ohne Sitzung leer. Im
+   * Browser tut das nichts.
+   */
+  useEffect(() => {
+    if (me.data !== undefined) kurzbefehleSetzen(kurzbefehleFuer(me.data.properties, locale))
+    else if (me.error instanceof ApiError && me.error.status === 401) kurzbefehleSetzen([])
+  }, [me.data, me.error, locale])
 
   // Die gespeicherte Sprache gilt, sobald bekannt ist, wer angemeldet ist --
   // auf jedem Telefon dieselbe, nicht die des Geraets.

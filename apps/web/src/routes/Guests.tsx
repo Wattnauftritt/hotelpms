@@ -35,6 +35,19 @@ function ausAuftrag(auftrag: Sprungziel | null, bereich: Bereich): string | 'new
   return null
 }
 
+/**
+ * Die Schnellaktion „Visitenkarte scannen“ am App-Symbol
+ * (`lib/kurzbefehle.ts`): neue Firma, gleich mit der Kamera. Einmal gelesen
+ * und aus der Adresse genommen, damit ein Neuladen nicht wieder fotografiert.
+ */
+function vomAppSymbol(): boolean {
+  const p = new URLSearchParams(location.search)
+  if (p.get('kurzbefehl') !== 'visitenkarte') return false
+  p.delete('kurzbefehl')
+  history.replaceState(history.state, '', `${location.pathname}?${p.toString()}`)
+  return true
+}
+
 function orUndef(s: string): string | undefined {
   const w = s.trim()
   return w === '' ? undefined : w
@@ -56,8 +69,9 @@ export function Guests({ propertyId }: { propertyId: number }): JSX.Element {
   const { darf, geladen } = useHausrechte(propertyId)
   const [reiter, setReiter] = useReiter<Bereich>('gaestereiter', BEREICHE, 'guests')
   const { auftrag } = useSprung()
+  const [kamera] = useState(vomAppSymbol)
   // Ein Sprung aus der Suche bestimmt den Reiter, nicht die Adresse von gestern.
-  const zielReiter: Bereich | null = ausAuftrag(auftrag, 'companies') !== null ? 'companies'
+  const zielReiter: Bereich | null = kamera || ausAuftrag(auftrag, 'companies') !== null ? 'companies'
     : ausAuftrag(auftrag, 'guests') !== null ? 'guests' : null
   useEffect(() => {
     if (zielReiter !== null && zielReiter !== reiter) setReiter(zielReiter)
@@ -86,7 +100,7 @@ export function Guests({ propertyId }: { propertyId: number }): JSX.Element {
           ? <GaesteReiter propertyId={propertyId} darfSchreiben={darf('guest:write')}
                           darfIdentitaet={darf('guest:read_identity')}
                           darfExport={darf('guest:export')} />
-          : <FirmenReiter darfSchreiben={darf('guest:write')} />}
+          : <FirmenReiter darfSchreiben={darf('guest:write')} kamera={kamera} />}
     </div>
   )
 }
@@ -437,7 +451,10 @@ export function AusweisFeld({ guestRef, hasIdDocumentNumber, idDocumentType, dar
   )
 }
 
-function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Element {
+function FirmenReiter({ darfSchreiben, kamera = false }: {
+  darfSchreiben: boolean
+  kamera?: boolean
+}): JSX.Element {
   const t = useT()
   const [begriff, setBegriff] = useState('')
   const { auftrag } = useSprung()
@@ -471,6 +488,15 @@ function FirmenReiter({ darfSchreiben }: { darfSchreiben: boolean }): JSX.Elemen
                   </li>
                 ))}
               </ul>
+        )}
+        {darfSchreiben && kamera && (
+          // Vom App-Symbol: der Knopf gross und oben, falls das Telefon die
+          // Kamera nicht ohne Tippen oeffnet.
+          <KarteFotografieren sofort onBild={b => { setScanBild(b); setAusgewaehlt('new') }}
+                              className="block text-center text-base px-3 py-3 border
+                                         border-neutral-300 rounded-sm bg-white">
+            📷 {t('visitenkarte.scan')}
+          </KarteFotografieren>
         )}
         {darfSchreiben && (
           <div className="flex flex-wrap items-center gap-3">

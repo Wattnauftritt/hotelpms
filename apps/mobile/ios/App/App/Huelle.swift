@@ -20,6 +20,7 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(TexterkennungPlugin())
         bridge?.registerPluginInstance(DateiPlugin())
         bridge?.registerPluginInstance(HuellePlugin())
+        bridge?.registerPluginInstance(KurzbefehlePlugin())
         sperre = AppSperre(ansicht: view)
     }
 }
@@ -379,5 +380,81 @@ public class HuellePlugin: CAPPlugin, CAPBridgedPlugin {
         // (ein Bau ohne Secret) gaebe es keine Kennung, die der Server
         // erreichen koennte (AppDelegate).
         call.resolve(["huelle": HuellePlugin.huelle, "push": FirebaseApp.app() != nil])
+    }
+}
+
+/// Schnellaktionen am App-Symbol (Plan app/plan.md; Sven, 20.10.2026).
+///
+/// Welche es gibt, entscheidet die Oberflaeche nach den Rechten der Person;
+/// hier steht nur, wie iOS sie zeigt und wie ein Tippen in die Seite kommt.
+/// Eine Aktion traegt einen Pfad dieser App und sonst nichts -- eine
+/// Adresse von aussen wird daraus nie. Eigene Erweiterung neben der Huelle,
+/// damit eine Huelle ohne sie die Pakete weiter annimmt.
+@objc(KurzbefehlePlugin)
+public class KurzbefehlePlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "KurzbefehlePlugin"
+    public let jsName = "StaygridKurzbefehle"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setzen", returnType: CAPPluginReturnPromise)
+    ]
+
+    private static weak var aktiv: KurzbefehlePlugin?
+    private static var wartend: String?
+
+    static func erlaubt(_ pfad: String?) -> Bool {
+        guard let pfad else { return false }
+        return pfad.count <= 200 && pfad.hasPrefix("/") && !pfad.hasPrefix("//")
+    }
+
+    /// Aus dem SceneDelegate: beim Kaltstart kommt das Tippen vor der Bruecke.
+    static func gewaehlt(_ eintrag: UIApplicationShortcutItem) -> Bool {
+        let pfad = eintrag.userInfo?["pfad"] as? String
+        guard erlaubt(pfad), let pfad else { return false }
+        if let aktiv { aktiv.melden(pfad) } else { wartend = pfad }
+        return true
+    }
+
+    override public func load() {
+        KurzbefehlePlugin.aktiv = self
+        if let pfad = KurzbefehlePlugin.wartend {
+            KurzbefehlePlugin.wartend = nil
+            melden(pfad)
+        }
+    }
+
+    private func melden(_ pfad: String) {
+        // Bis die Bruecke zuhoert.
+        notifyListeners("gewaehlt", data: ["pfad": pfad], retainUntilConsumed: true)
+    }
+
+    @objc func setzen(_ call: CAPPluginCall) {
+        let liste = call.getArray("liste", JSObject.self) ?? []
+        let eintraege: [UIApplicationShortcutItem] = liste.prefix(4).compactMap { a in
+            guard let id = a["id"] as? String, let titel = a["titel"] as? String, !titel.isEmpty,
+                  let pfad = a["pfad"] as? String, KurzbefehlePlugin.erlaubt(pfad) else { return nil }
+            return UIApplicationShortcutItem(
+                type: "cloud.staygrid.app.\(id)", localizedTitle: titel, localizedSubtitle: nil,
+                icon: UIApplicationShortcutIcon(systemImageName: KurzbefehlePlugin.symbol(a["symbol"] as? String)),
+                userInfo: ["pfad": pfad as NSString])
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.shortcutItems = eintraege
+            call.resolve()
+        }
+    }
+
+    private static func symbol(_ name: String?) -> String {
+        switch name {
+        case "kalender": return "calendar"
+        case "heute": return "person.crop.circle.badge.plus"
+        case "kasse": return "eurosign.circle"
+        case "kamera": return "camera"
+        case "pruefen": return "checkmark.seal"
+        case "plan": return "list.bullet.rectangle"
+        case "zimmer": return "bed.double"
+        case "eintragen": return "square.and.pencil"
+        case "kueche": return "cup.and.saucer"
+        default: return "clock"
+        }
     }
 }

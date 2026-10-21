@@ -86,6 +86,25 @@ export interface NativePush {
   abmelden(): Promise<void>
 }
 
+/**
+ * Schnellaktionen am App-Symbol (Plan, „Schnellaktionen“). Die Oberflaeche
+ * setzt sie nach den Rechten der Person, eine leere Liste nimmt alle weg.
+ * Ein Tippen darauf oeffnet `pfad` -- das erledigt die Huelle; ein Pfad
+ * dieser App, nie eine Adresse.
+ */
+export interface Kurzbefehl {
+  id: string
+  titel: string
+  pfad: string
+  /** Ein Name aus einer festen Liste; die Huelle waehlt das Bild dazu. */
+  symbol: 'kalender' | 'heute' | 'kasse' | 'kamera' | 'pruefen' | 'plan' | 'zimmer'
+    | 'eintragen' | 'kueche' | 'zeit'
+}
+
+export interface NativeKurzbefehle {
+  setzen(liste: readonly Kurzbefehl[]): Promise<void>
+}
+
 export interface StaygridNative {
   plattform: 'ios' | 'android'
   /**
@@ -104,6 +123,8 @@ export interface StaygridNative {
   aktualisierung?: NativeAktualisierung
   /** Fehlt, wenn die Huelle die Erweiterung fuer Benachrichtigungen nicht hat. */
   push?: NativePush
+  /** Fehlt, wenn die Huelle keine Schnellaktionen kennt. */
+  kurzbefehle?: NativeKurzbefehle
 }
 
 declare global {
