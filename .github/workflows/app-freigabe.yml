@@ -1,13 +1,13 @@
 name: App-Freigabe
 # Signiert die App und laedt sie in den internen Test der Stores (Plan
-# app/plan.md, Baustein 3). Zuerst Android; iOS kommt dazu, sobald das
-# Apple-Konto die Schluessel liefert.
+# app/plan.md, Baustein 3): Android in den internen Test von Google Play,
+# iOS zu TestFlight.
 #
 # Hochgeladen wird nur bei einem Tag `app-v…` oder von Hand mit
 # `hochladen`. Ein Pull Request, der diesen Lauf aendert, baut und signiert
-# nur: er beweist, dass die Schluessel passen, ohne Google eine Fassung zu
-# schicken. Oeffentlich wird nichts von hier aus; das ist der Klick in der
-# Play Console.
+# nur: er beweist, dass die Schluessel passen, ohne Google oder Apple eine
+# Fassung zu schicken. Oeffentlich wird nichts von hier aus; das ist der
+# Klick in der Play Console und in App Store Connect.
 #
 # Den allerersten Upload einer App nimmt Google nur in der Play Console an.
 # Dafuer liegt das signierte Bundle jedes Laufs als Artefakt bereit.
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       hochladen:
-        description: In den internen Test von Google Play hochladen
+        description: In den internen Test von Google Play und zu TestFlight hochladen
         type: boolean
         default: false
   pull_request:
@@ -25,6 +25,8 @@ on:
       - '.github/workflows/app-freigabe.yml'
       - 'apps/mobile/android/app/build.gradle'
       - 'apps/mobile/scripts/play.mjs'
+      - 'apps/mobile/ios/App/App.xcodeproj/**'
+      - 'apps/mobile/ios/App/App/AppDelegate.swift'
 
 concurrency:
   group: app-freigabe-${{ github.ref }}
@@ -128,3 +130,113 @@ jobs:
       - name: Schluessel entfernen
         if: always()
         run: rm -f "$RUNNER_TEMP/upload.jks" apps/mobile/android/app/google-services.json
+
+  ios:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter './packages/*' build
+      - name: Schluessel fuer Pakete pruefen
+        if: startsWith(github.ref, 'refs/tags/app-v') || inputs.hochladen
+        run: |
+          test -s apps/mobile/paket-schluessel.pem || {
+            echo "::error::apps/mobile/paket-schluessel.pem fehlt (deploy.sh app-schluessel)"; exit 1; }
+      # Wie google-services.json bei Android: ohne die Datei startet die App
+      # Firebase nicht und bietet keine Benachrichtigungen an (AppDelegate).
+      - name: Firebase einrichten
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.FIREBASE_GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          ziel=apps/mobile/ios/App/App/GoogleService-Info.plist
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" > "$ziel"
+            test "$(plutil -extract BUNDLE_ID raw "$ziel")" = cloud.staygrid.app || {
+              echo "::error::GoogleService-Info.plist gehoert nicht zu cloud.staygrid.app"; exit 1; }
+          else
+            echo "::warning::Secret FIREBASE_GOOGLE_SERVICE_INFO_PLIST fehlt: App ohne Benachrichtigungen"
+          fi
+      - name: Oberflaeche und Bruecke zusammensetzen
+        working-directory: apps/mobile
+        run: pnpm sync
+      # Dieselbe Rechnung wie bei Android, damit beide Stores dieselbe
+      # Nummer fuer denselben Lauf zeigen. Apple verlangt drei Zahlen.
+      - name: Fassung bestimmen
+        id: fassung
+        run: |
+          code=$((100 + GITHUB_RUN_NUMBER))
+          if [[ "$GITHUB_REF" == refs/tags/app-v* ]]; then
+            name="${GITHUB_REF#refs/tags/app-v}"
+          else
+            name="0.1.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Fassung $name ($code)"
+      # Kein Zertifikat und kein Profil im Repository oder in den Secrets:
+      # mit dem API-Schluessel legt Xcode beim Export beides selbst an und
+      # verwaltet das Verteilungszertifikat bei Apple (cloud signing).
+      - name: API-Schluessel auspacken
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for n in APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_TEAM_ID; do
+            test -n "${!n}" || { echo "::error::Secret $n fehlt"; exit 1; }
+          done
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+      # Das Archiv wird nur ad hoc signiert, mit den Entitlements (Push),
+      # und erst der Export signiert fuer den Store. Automatisch signiert
+      # verlangte schon das Archiv ein Entwicklungsprofil, und das gibt
+      # Apple erst, wenn ein Geraet im Konto eingetragen ist -- eins, das
+      # wir fuer den Store nie brauchen.
+      - name: iOS bauen
+        working-directory: apps/mobile/ios/App
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild -version
+          xcodebuild archive -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- AD_HOC_CODE_SIGNING_ALLOWED=YES PROVISIONING_PROFILE_SPECIFIER= \
+            CURRENT_PROJECT_VERSION="${{ steps.fassung.outputs.code }}" \
+            MARKETING_VERSION="${{ steps.fassung.outputs.name }}"
+      # `destination upload` schickt das Archiv selbst zu App Store Connect;
+      # ohne Hochladen entsteht nur die .ipa, und der Lauf beweist, dass die
+      # Signatur fuer den Store taugt.
+      - name: Exportieren und zu TestFlight hochladen
+        working-directory: apps/mobile/ios/App
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          HOCHLADEN: ${{ startsWith(github.ref, 'refs/tags/app-v') || inputs.hochladen }}
+        run: |
+          ziel=export; [ "$HOCHLADEN" = true ] && ziel=upload
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$ziel</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$APPLE_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APPLE_API_ISSUER_ID"
+      - name: Schluessel entfernen
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8" apps/mobile/ios/App/App/GoogleService-Info.plist
