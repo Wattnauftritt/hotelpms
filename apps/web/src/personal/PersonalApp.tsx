@@ -33,6 +33,8 @@ interface Me {
   username: string | null
   locale: string | null
   properties: Array<{ id: number; name: string; permissions: string[] }>
+  /** Das Standardhaus aus dem eigenen Konto (Migration 0194). */
+  defaultPropertyId: number | null
 }
 
 /** Vor der Anmeldung: eine Spalte mittig, mit Sprachwahl darueber. */
@@ -278,7 +280,9 @@ function Start({ me, locale, onLocale }: {
   // Meist ein Haus. Arbeitet jemand in zweien, zeigt "Heute" beide in einer
   // Liste; Kontrolle, Kueche und Zeit gelten je Haus, gewaehlt wird oben.
   const haeuser = me.properties.filter(p => p.permissions.includes('staff:app'))
-  const [haus, setHaus] = useState(() => haeuser[0]?.id ?? 0)
+  // Das Standardhaus aus dem Konto, wenn es hier ueberhaupt zur Wahl steht.
+  const [haus, setHaus] = useState(() =>
+    (haeuser.find(h => h.id === me.defaultPropertyId) ?? haeuser[0])?.id ?? 0)
   const rechte = haeuser.find(h => h.id === haus)?.permissions ?? []
   // Die Hausdame beginnt mit der Kontrolle, die Kueche mit dem Fruehstueck:
   // Zimmer haben beide selten selbst. Die Kontrolle zeigt alle Haeuser

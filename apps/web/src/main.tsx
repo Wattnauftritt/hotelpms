@@ -57,6 +57,8 @@ interface Me {
   workstationSwitched: boolean
   properties: Array<{ id: number; code: string; name: string; isTraining: boolean
                       permissions: string[] }>
+  /** Das selbst gewaehlte Standardhaus; `null` ohne Wahl (Migration 0194). */
+  defaultPropertyId: number | null
 }
 
 /**
@@ -230,6 +232,19 @@ function App(): JSX.Element {
   }, [me.data, me.error, locale])
 
   /*
+   * Das Standardhaus gilt fuer den **Start**, nicht fuer die laufende Sitzung.
+   *
+   * Festgehalten beim ersten `me`: wer es im Konto umstellt, waehrend die
+   * Adresse noch kein Haus traegt, saehe sonst den Bildschirm unter dem
+   * Dialog ins andere Haus springen. Ebenso nach einem Personenwechsel --
+   * der wechselt, wer handelt, nicht das Haus, in dem gearbeitet wird.
+   */
+  const [startHaus, setStartHaus] = useState<number | null | undefined>(undefined)
+  useEffect(() => {
+    if (startHaus === undefined && me.data !== undefined) setStartHaus(me.data.defaultPropertyId)
+  }, [me.data, startHaus])
+
+  /*
    * Kein Server, keine Anmeldemaske.
    *
    * Die Anmeldemaske ist die Antwort auf "nicht angemeldet" -- eine 401.
@@ -276,12 +291,15 @@ function App(): JSX.Element {
     return <I18nContext.Provider value={locale}><StripeVerbunden /></I18nContext.Provider>
   }
 
-  // Das Haus aus der Adresse, sonst das erste, auf das der Benutzer Zugriff
-  // hat. Ein Haus zu raten, auf das er keinen Zugriff hat, ergaebe auf jedem
-  // Bildschirm eine 403.
+  // Das Haus aus der Adresse, sonst das selbst gewaehlte Standardhaus, sonst
+  // das erste, auf das der Benutzer Zugriff hat. Ein Haus zu raten, auf das
+  // er keinen Zugriff hat, ergaebe auf jedem Bildschirm eine 403 -- deshalb
+  // jedes nur, wenn es unter seinen Haeusern steht.
   const haeuser: Haus[] = me.data.properties.map(p => ({
     id: p.id, code: p.code, name: p.name, isTraining: p.isTraining }))
-  const haus = haeuser.find(h => h.id === adresse.property) ?? haeuser[0]
+  const start = startHaus === undefined ? me.data.defaultPropertyId : startHaus
+  const haus = haeuser.find(h => h.id === adresse.property)
+    ?? haeuser.find(h => h.id === start) ?? haeuser[0]
 
   if (haus === undefined) {
     /*
@@ -433,6 +451,7 @@ function App(): JSX.Element {
                       pinGesetzt={me.data.workstationPinSet}
                       gewechselt={me.data.workstationSwitched}
                       mitArbeitsplatz
+                      haeuser={haeuser} standardHaus={me.data.defaultPropertyId}
                       onClose={() => setArbeitsplatz(false)} />
       )}
       {/*
