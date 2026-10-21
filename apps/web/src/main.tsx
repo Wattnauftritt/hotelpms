@@ -19,6 +19,7 @@ import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, type Locale
 import { api, ApiError, abmelden as abmeldenBeiApi } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
 import { offlineKopieLoeschen } from './lib/offline.js'
+import { kurzbefehleFuer, kurzbefehleSetzen } from './lib/kurzbefehle.js'
 import { useSchmal } from './lib/mobil.js'
 import './styles.css'
 import { nurPersonal } from './personal/adresse.js'
@@ -217,6 +218,16 @@ function App(): JSX.Element {
     // fragte. Dann fragen wir selbst nach, bis er wieder antwortet.
     refetchInterval: q => serverWeg(q.state.error) ? 15_000 : false
   })
+
+  /*
+   * Schnellaktionen am App-Symbol: nach dem Anmelden und bei jedem Start nach
+   * den Rechten setzen, in der gewaehlten Sprache; ohne Sitzung leer. Im
+   * Browser tut das nichts.
+   */
+  useEffect(() => {
+    if (me.data !== undefined) kurzbefehleSetzen(kurzbefehleFuer(me.data.properties, locale))
+    else if (me.error instanceof ApiError && me.error.status === 401) kurzbefehleSetzen([])
+  }, [me.data, me.error, locale])
 
   /*
    * Kein Server, keine Anmeldemaske.

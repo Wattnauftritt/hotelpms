@@ -2,7 +2,7 @@ import { registerPlugin, Capacitor, CapacitorHttp } from '@capacitor/core'
 import { App } from '@capacitor/app'
 import { LiveUpdate } from '@capawesome/capacitor-live-update'
 import { PushNotifications } from '@capacitor/push-notifications'
-import type { ErkannteZeile, NativePush, StaygridNative } from '@hotelpms/native'
+import type { ErkannteZeile, Kurzbefehl, NativePush, StaygridNative } from '@hotelpms/native'
 
 /**
  * Die Bruecke zur Oberflaeche (Plan app/plan.md, Baustein 3).
@@ -242,6 +242,34 @@ function aufTippenOeffnen() {
   })
 }
 
+// ------------------------------------------- Schnellaktionen am App-Symbol
+
+/*
+ * Wie bei den Benachrichtigungen: nur mit der Erweiterung in der Huelle, und
+ * deshalb keine neue Fassung -- eine aeltere Huelle zeigt nur keine.
+ */
+interface KurzbefehlePlugin {
+  setzen(o: { liste: readonly Kurzbefehl[] }): Promise<void>
+  addListener(ereignis: 'gewaehlt', f: (d: { pfad: string }) => void): Promise<{ remove: () => Promise<void> }>
+}
+const KURZBEFEHLE_VORHANDEN = Capacitor.isPluginAvailable('StaygridKurzbefehle')
+const Kurzbefehle = registerPlugin<KurzbefehlePlugin>('StaygridKurzbefehle')
+
+/**
+ * Ein Tippen auf eine Schnellaktion. Neu geladen statt in der Seite
+ * umgeschaltet: Rezeption und Personal-App sind zwei Oberflaechen, und
+ * welche laeuft, entscheidet der Pfad beim Start. Beim Kaltstart kommt das
+ * Ereignis, sobald hier jemand zuhoert -- die Huelle haelt es so lange.
+ */
+function kurzbefehleHoeren() {
+  void Kurzbefehle.addListener('gewaehlt', ({ pfad }) => {
+    if (typeof pfad === 'string' && /^\/(?!\/)/.test(pfad)
+        && location.pathname + location.search !== pfad) {
+      location.assign(pfad)
+    }
+  })
+}
+
 const plattform = Capacitor.getPlatform()
 if (plattform === 'ios' || plattform === 'android') {
   const bruecke: StaygridNative = {
@@ -266,6 +294,10 @@ if (plattform === 'ios' || plattform === 'android') {
   if (PUSH_VORHANDEN) {
     bruecke.push = push
     void pushMoeglich().then(ja => { if (ja) aufTippenOeffnen() })
+  }
+  if (KURZBEFEHLE_VORHANDEN) {
+    bruecke.kurzbefehle = { setzen: async liste => { await Kurzbefehle.setzen({ liste }) } }
+    kurzbefehleHoeren()
   }
   if (PAKET) {
     bruecke.aktualisierung = {

@@ -35,6 +35,7 @@ import { kueche } from './kueche.js'
 import { arbeitszeit } from './arbeitszeit.js'
 import { gaestemappe } from './gaestemappe.js'
 import { visitenkarte } from './visitenkarte.js'
+import { kurzbefehle } from './kurzbefehle.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -242,6 +243,7 @@ export type TextKey =
   | keyof typeof arbeitszeit
   | keyof typeof gaestemappe
   | keyof typeof visitenkarte
+  | keyof typeof kurzbefehle
 
 const texts: Record<TextKey, LocalizedText> = {
   ...common,
@@ -278,7 +280,8 @@ const texts: Record<TextKey, LocalizedText> = {
   ...kueche,
   ...arbeitszeit,
   ...gaestemappe,
-  ...visitenkarte
+  ...visitenkarte,
+  ...kurzbefehle
 }
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */

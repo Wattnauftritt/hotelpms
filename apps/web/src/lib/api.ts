@@ -133,6 +133,8 @@ export async function abmelden(): Promise<void> {
     const n = nativ()
     if (n !== undefined) {
       appToken = Promise.resolve(null)
+      // Die Schnellaktionen gehoeren der Person, nicht dem Telefon.
+      await n.kurzbefehle?.setzen([]).catch(() => { /* naechster Start */ })
       await n.sitzung.loeschen().catch(() => { /* naechster Start fragt neu */ })
     }
   }

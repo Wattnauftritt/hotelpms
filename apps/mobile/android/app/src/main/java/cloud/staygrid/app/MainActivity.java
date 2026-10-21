@@ -1,5 +1,6 @@
 package cloud.staygrid.app;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.TypedValue;
@@ -51,10 +52,19 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(TexterkennungPlugin.class);
         registerPlugin(DateiPlugin.class);
         registerPlugin(HuellePlugin.class);
+        registerPlugin(KurzbefehlePlugin.class);
         super.onCreate(savedInstanceState);
+        KurzbefehlePlugin.ausIntent(getIntent());
         // Zugedeckt wird erst in onResume: die Bruecke setzt ihre Ansicht
         // selbst, und eine Decke von vorher laege darunter oder waere weg.
         gesperrt = SitzungPlugin.vorhanden(this);
+    }
+
+    /** Eine Schnellaktion, waehrend die App schon laeuft (singleTask). */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        KurzbefehlePlugin.ausIntent(intent);
     }
 
     /**

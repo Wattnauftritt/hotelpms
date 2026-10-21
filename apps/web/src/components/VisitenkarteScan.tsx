@@ -13,15 +13,23 @@ import { leserAnlegen, type Fortschritt, type Leser } from '../lib/leser.js'
  * Feld, damit der Druck selbst die Kamera oeffnet; ein Klick, der erst nach
  * einem Neuzeichnen ausgeloest wird, laesst Safari nicht durch.
  */
-export function KarteFotografieren({ onBild, className, children }: {
+export function KarteFotografieren({ onBild, className, children, sofort }: {
   onBild: (bild: File) => void
   className?: string
   children: ReactNode
+  /**
+   * Gleich die Kamera oeffnen (Schnellaktion am App-Symbol). Ohne Tippen
+   * laesst das System sie nicht immer zu; dann bleibt der Knopf, und ein
+   * Tippen genuegt.
+   */
+  sofort?: boolean
 }): JSX.Element {
+  const feld = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (sofort === true) feld.current?.click() }, [])
   return (
     <label className={`cursor-pointer ${className ?? ''}`}>
       {children}
-      <input type="file" accept="image/*" capture="environment" className="sr-only"
+      <input ref={feld} type="file" accept="image/*" capture="environment" className="sr-only"
              onChange={e => {
                const bild = e.target.files?.[0]
                // Leeren, damit dieselbe Datei ein zweites Mal ausloest.
