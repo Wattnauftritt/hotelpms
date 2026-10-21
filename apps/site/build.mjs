@@ -10,6 +10,12 @@
  * Kopf und Fuss stehen einmal in `src/teile/`, nicht in jeder Seite: zwei
  * Fassungen desselben Impressum-Links laufen auseinander, und eine davon
  * ist irgendwann falsch.
+ *
+ * Jede Seite wird ein Ordner mit `index.html` (`datenschutz.html` ->
+ * `datenschutz/index.html`). Die Seite liegt auf dem Plesk-Host, nicht auf
+ * unserer Maschine, und so findet jeder Webserver `/datenschutz` ohne
+ * Umschreiberegel -- die Adresse steht in App Store und Google Play und
+ * darf nicht davon abhaengen, ob dort mod_rewrite an ist.
  */
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
@@ -41,12 +47,14 @@ for (const pfad of seiten(join(quelle, 'seiten'))) {
     if (!(name in teile)) throw new Error(`Baustein ${name} fehlt (${relative(quelle, pfad)})`)
     return teile[name]
   })
-  const aus = join(ziel, relative(join(quelle, 'seiten'), pfad))
+  const rel = relative(join(quelle, 'seiten'), pfad)
+  const aus = /^(index|404)\.html$/.test(rel) ? join(ziel, rel)
+    : join(ziel, rel.replace(/\.html$/, ''), 'index.html')
   mkdirSync(dirname(aus), { recursive: true })
   writeFileSync(aus, html)
 }
 
-for (const name of ['stil.css', 'icon.svg', 'apple-touch-icon.png', 'bilder']) {
+for (const name of ['.htaccess', 'stil.css', 'icon.svg', 'apple-touch-icon.png', 'bilder']) {
   cpSync(join(quelle, name), join(ziel, name), { recursive: true })
 }
 console.log('Seite gebaut:', relative(process.cwd(), ziel))
