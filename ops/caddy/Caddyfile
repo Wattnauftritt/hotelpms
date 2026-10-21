@@ -230,8 +230,8 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 # `staygrid.cloud` selbst (Produktseite, Impressum, Datenschutzerklaerung)
 # steht mit Absicht NICHT hier: die Seite liegt auf dem Plesk-Host, nicht auf
 # dieser Maschine (Sven, 21.10.2026). Eine oeffentliche Werbeseite ist eine
-# Angriffsflaeche mehr, und die gehoert nicht neben die Gastdaten. Quelle und
-# Bau in apps/site, Anleitung in apps/site/README.md.
+# Angriffsflaeche mehr, und die gehoert nicht neben die Gastdaten. Sie liegt
+# im Repo Wattnauftritt/staygrid_website, das Plesk zieht.
 
 # Eigener Name für Maschinen: Channel Manager, Buchungsstrecke, Kassensysteme.
 # Sie brauchen keine Oberfläche und sollen sie auch nicht sehen.
