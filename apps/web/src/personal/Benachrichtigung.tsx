@@ -20,9 +20,10 @@ import { Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
  *
  * In der eigenen App gibt es kein Web-Push (0193): dort meldet die Huelle
  * eine Kennung von Firebase, und dieselbe Karte schaltet sie an und aus.
- * Ob die Kraft ausgeschaltet hat, merkt sich das Telefon -- die Erlaubnis
- * des Systems bleibt dabei erteilt, und ohne die Marke meldete der naechste
- * Start das Telefon wieder an.
+ * Ob sie an ist, weiss der Server, nicht das Telefon: die Erlaubnis des
+ * Systems bleibt beim Ausschalten erteilt, und eine Marke auf dem Telefon
+ * gehoerte nach dem Abmelden der naechsten Person. Die Sitzung der App
+ * ueberdauert den Neustart; der Start erneuert nur die Kennung.
  */
 
 type Stand = 'laedt' | 'nichtMoeglich' | 'iosInstallieren' | 'aus' | 'an' | 'abgelehnt'
@@ -35,17 +36,6 @@ function schluessel(base64url: string): ArrayBuffer {
   const sicht = new Uint8Array(puffer)
   for (let i = 0; i < roh.length; i++) sicht[i] = roh.charCodeAt(i)
   return puffer
-}
-
-const APP_AUS = 'staygrid-push-aus'
-function appAus(): boolean {
-  try { return localStorage.getItem(APP_AUS) === '1' } catch { return false }
-}
-function appAusMerken(aus: boolean): void {
-  try {
-    if (aus) localStorage.setItem(APP_AUS, '1')
-    else localStorage.removeItem(APP_AUS)
-  } catch { /* dann fragt die Karte beim naechsten Start wieder */ }
 }
 
 async function registrierung(): Promise<ServiceWorkerRegistration | null> {
@@ -67,9 +57,10 @@ export async function pushNeuBinden(propertyId: number): Promise<void> {
   const np = nativ()?.push
   if (np !== undefined) {
     try {
-      if (appAus() || !await np.moeglich() || await np.erlaubnis() !== 'erteilt') return
+      if (!await np.moeglich() || await np.erlaubnis() !== 'erteilt') return
+      if (!(await api.get<{ an: boolean }>(`/v1/properties/${propertyId}/push/app`)).an) return
       const token = await np.anmelden()
-      if (token !== null) await api.post(`/v1/properties/${propertyId}/push/app`, { token })
+      if (token !== null) await api.post(`/v1/properties/${propertyId}/push/app/refresh`, { token })
     } catch { /* naechster Start */ }
     return
   }
@@ -103,9 +94,12 @@ export function Benachrichtigung({ propertyId, locale }: {
     void (async () => {
       if (np !== undefined) {
         const erlaubnis = await np.moeglich().then(ja => ja ? np.erlaubnis() : null).catch(() => null)
+        const an = erlaubnis === 'erteilt'
+          && await api.get<{ an: boolean }>(`/v1/properties/${propertyId}/push/app`)
+            .then(r => r.an).catch(() => false)
         if (weg) return
         setStand(erlaubnis === null ? 'nichtMoeglich' : erlaubnis === 'abgelehnt' ? 'abgelehnt'
-          : erlaubnis === 'erteilt' && !appAus() ? 'an' : 'aus')
+          : an ? 'an' : 'aus')
         return
       }
       const reg = await registrierung()
@@ -137,7 +131,6 @@ export function Benachrichtigung({ propertyId, locale }: {
           return
         }
         await api.post(`/v1/properties/${propertyId}/push/app`, { token })
-        appAusMerken(false)
         setStand('an')
         return
       }
@@ -164,7 +157,6 @@ export function Benachrichtigung({ propertyId, locale }: {
         const token = await np.anmelden()
         if (token !== null) await api.post(`/v1/properties/${propertyId}/push/app/off`, { token })
         await np.abmelden()
-        appAusMerken(true)
         setStand('aus')
         return
       }

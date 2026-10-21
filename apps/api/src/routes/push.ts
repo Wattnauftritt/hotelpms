@@ -157,6 +157,58 @@ export function pushRoutes(app: FastifyInstance): void {
     }
   })
 
+  /**
+   * Ob diese Sitzung in der App angemeldet ist. Gemerkt wird das hier und
+   * nicht auf dem Telefon: die Personal-App legt dort nichts ab, und eine
+   * Marke „ausgeschaltet" gehoerte nach dem Abmelden der naechsten Person.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/push/app',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Ist dieses Telefon in der App fuer Benachrichtigungen angemeldet? (Personal-App)',
+    handler: async (req) => {
+      const { sessionId } = sitzung(req)
+      const { rowCount } = await req.pool.query(
+        'SELECT 1 FROM push_subscription WHERE session_id = $1 AND fcm_token IS NOT NULL',
+        [sessionId])
+      return { an: (rowCount ?? 0) > 0 }
+    }
+  })
+
+  /**
+   * Beim Start der App: Firebase kann die Kennung erneuern, und die alte
+   * liefe dann ins Leere. Ersetzt wird nur, was die Sitzung schon hat --
+   * wer ausgeschaltet hat, bleibt aus, und eine neue Sitzung schaltet
+   * ausdruecklich ein.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/push/app/refresh',
+    permission: 'staff:app',
+    propertyParam: 'propertyId',
+    summary: 'Neue Kennung von Firebase fuer ein schon angemeldetes Telefon (Personal-App)',
+    handler: async (req) => {
+      const { userId, sessionId } = sitzung(req)
+      const token = fcmTokenAus(req)
+      const an = await tx(req.pool, req, async (c) => {
+        const { rowCount } = await c.query(
+          `DELETE FROM push_subscription WHERE session_id = $1 AND fcm_token IS NOT NULL`,
+          [sessionId])
+        if ((rowCount ?? 0) === 0) return false
+        await c.query(
+          `INSERT INTO push_subscription (user_id, session_id, fcm_token)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (fcm_token) DO UPDATE
+             SET user_id = EXCLUDED.user_id, session_id = EXCLUDED.session_id, created_at = now()`,
+          [userId, sessionId, token])
+        return true
+      })
+      return { an }
+    }
+  })
+
   registerRoute(app, {
     method: 'POST',
     url: '/v1/properties/:propertyId/push/app/off',
