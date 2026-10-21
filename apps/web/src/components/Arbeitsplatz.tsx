@@ -37,7 +37,8 @@ import { Fehler } from './Shell.tsx'
  * gelten für alle.
  */
 export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
-                               mitArbeitsplatz, onClose }: {
+                               mitArbeitsplatz, haeuser = [], standardHaus = null,
+                               onClose }: {
   benutzer: string
   /** Die eigene Anmeldeadresse. Steht als Ausgangswert im Feld. */
   email: string
@@ -45,6 +46,9 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
   gewechselt: boolean
   /** Hat dieser Benutzer überhaupt ein Haus? Sonst kein Personenwechsel. */
   mitArbeitsplatz: boolean
+  /** Die Haeuser des Benutzers; die Wahl des Standardhauses erst ab zweien. */
+  haeuser?: Array<{ id: number; name: string }>
+  standardHaus?: number | null
   onClose: () => void
 }): JSX.Element {
   const t = useT()
@@ -91,6 +95,15 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
     mutationFn: () => api.post<{ status: string }>('/v1/auth/email',
       { currentPassword: mailKennwort, newEmail: neueMail.trim() }),
     onSuccess: () => { setMailKennwort('') }
+  })
+
+  // Gespeichert wird bei der Auswahl, ohne eigenen Knopf: wie die Sprache
+  // ist es eine Vorliebe, kein Vorgang, und sie gibt kein Recht.
+  const standardSetzen = useMutation({
+    mutationFn: (propertyId: number | null) =>
+      api.put<{ defaultPropertyId: number | null }>('/v1/auth/default-property',
+        { propertyId }),
+    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['me'] }) }
   })
 
   const pinSetzen = useMutation({
@@ -177,6 +190,28 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
             {t('konto.emailSave')}
           </button>
         </Abschnitt>
+
+        {/*
+          * Erst ab zwei Haeusern: mit einem gibt es nichts zu waehlen, und
+          * ein Feld mit einer einzigen Antwort ist eine Frage zu viel.
+          */}
+        {haeuser.length > 1 && (
+          <Abschnitt titel={t('konto.defaultProperty')} hinweis={t('konto.defaultPropertyHint')}>
+            <Feld label={t('konto.defaultProperty')}>
+              <select value={standardHaus ?? ''} disabled={standardSetzen.isPending}
+                      onChange={e => standardSetzen.mutate(
+                        e.target.value === '' ? null : Number(e.target.value))}
+                      className={FELD}>
+                <option value="">{t('konto.defaultPropertyNone')}</option>
+                {haeuser.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </Feld>
+            {standardSetzen.isError && <Fehler error={standardSetzen.error} />}
+            {standardSetzen.isSuccess && (
+              <p className="text-sm text-emerald-800">✓ {t('konto.defaultPropertySaved')}</p>
+            )}
+          </Abschnitt>
+        )}
 
         {mitArbeitsplatz && <>
         <Abschnitt titel={t('workstation.switch')} hinweis={t('workstation.switchHint')}>

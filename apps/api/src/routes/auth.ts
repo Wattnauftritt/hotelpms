@@ -397,9 +397,10 @@ export function authRoutes(app: FastifyInstance): void {
 
       const benutzer = await req.pool.query<{ display_name: string; email: string | null
                                              username: string | null; locale: string | null
-                                             hat_pin: boolean }>(
+                                             hat_pin: boolean
+                                             default_property_id: number | null }>(
         `SELECT display_name, email, username, locale,
-                workstation_pin_hash IS NOT NULL AS hat_pin
+                workstation_pin_hash IS NOT NULL AS hat_pin, default_property_id
            FROM app_user WHERE id = $1`, [p.userId])
 
       const haeuser = propertyIds(p)
@@ -460,6 +461,15 @@ export function authRoutes(app: FastifyInstance): void {
          */
         workstationPinSet: benutzer.rows[0]?.hat_pin ?? false,
         workstationSwitched: p.sessionUserId !== null && p.sessionUserId !== p.userId,
+        /*
+         * Das Haus, in dem die Oberflaeche beginnt (Migration 0194). Nur,
+         * wenn es unter den Haeusern dieser Antwort steht: ein Haus, auf das
+         * der Benutzer keinen Zugriff mehr hat, waere als Start eine 403 auf
+         * jedem Bildschirm. Der gespeicherte Wert bleibt trotzdem stehen.
+         */
+        defaultPropertyId: properties.rows.some(r =>
+          Number(r.id) === Number(benutzer.rows[0]?.default_property_id))
+          ? Number(benutzer.rows[0]!.default_property_id) : null,
         /*
          * Fuer die Oberflaeche die Vereinigung: sie blendet danach Menues
          * ein. Geprueft wird je Account (`can`, `accountFor`), nicht hier.
@@ -523,6 +533,39 @@ export function authRoutes(app: FastifyInstance): void {
         `UPDATE app_user SET locale = $2, updated_at = now() WHERE id = $1`,
         [p.userId, locale])
       return { locale }
+    }
+  })
+
+  /**
+   * Das eigene Standardhaus festhalten oder wieder loesen (Migration 0194).
+   *
+   * Nur ein Haus, auf das der Benutzer gerade Zugriff hat. Die Pruefung ist
+   * keine Sicherheitsfrage -- das Haus gibt kein Recht -- sondern verhindert
+   * einen Start, der auf jedem Bildschirm mit 403 endet. Ein fremdes und ein
+   * nicht vorhandenes Haus bekommen dieselbe Antwort: ob es eine Nummer
+   * gibt, verraet diese Route nicht.
+   *
+   * Kein Kennwort noetig, aus demselben Grund wie bei der Sprache.
+   */
+  registerRoute(app, {
+    method: 'PUT',
+    url: '/v1/auth/default-property',
+    permission: null,
+    summary: 'Eigenes Standardhaus festhalten',
+    handler: async (req) => {
+      const p = req.principal as Principal
+      if (p.userId === null) throw Errors.unauthorized()
+      const body = req.body as { propertyId?: unknown } | undefined
+      const wert = body?.propertyId
+      if (wert === undefined) throw Errors.validation({ propertyId: ['field.required'] })
+      if (wert !== null && !(typeof wert === 'number' && Number.isInteger(wert)
+                             && propertyIds(p).some(id => Number(id) === wert))) {
+        throw Errors.validation({ propertyId: ['field.invalid'] })
+      }
+      await req.pool.query(
+        `UPDATE app_user SET default_property_id = $2, updated_at = now() WHERE id = $1`,
+        [p.userId, wert])
+      return { defaultPropertyId: wert }
     }
   })
 
