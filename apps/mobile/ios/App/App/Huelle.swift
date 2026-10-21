@@ -1,4 +1,5 @@
 import Capacitor
+import FirebaseCore
 import Foundation
 import LocalAuthentication
 import Security
@@ -374,9 +375,9 @@ public class HuellePlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     @objc func stand(_ call: CAPPluginCall) {
-        // Benachrichtigungen unter iOS kommen mit dem Konto bei Apple
-        // (APNs-Schluessel in Firebase); bis dahin bietet die Huelle sie
-        // nicht an.
-        call.resolve(["huelle": HuellePlugin.huelle, "push": false])
+        // Benachrichtigungen nur mit Firebase: ohne GoogleService-Info.plist
+        // (ein Bau ohne Secret) gaebe es keine Kennung, die der Server
+        // erreichen koennte (AppDelegate).
+        call.resolve(["huelle": HuellePlugin.huelle, "push": FirebaseApp.app() != nil])
     }
 }
