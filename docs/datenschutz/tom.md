@@ -97,7 +97,7 @@ weist jeden Export nach draußen und jeden Versand hart ab.
 ## 3. Verfügbarkeit und Belastbarkeit
 
 - **Sicherung** in vier Schichten (Dokument 37): laufend mit pgBackRest
-  zu IONOS Object Storage in Frankfurt (jeder Zeitpunkt der letzten 14 bis 21 Tage, Verlust
+  zu plusserver S3 Storage in Köln (jeder Zeitpunkt der letzten 14 bis 21 Tage, Verlust
   höchstens eine Minute), täglich ein mit `age` verschlüsselter Dump an ein
   zweites Ziel bei einem anderen Anbieter (30 Tage täglich, 12 Monate
   monatlich), ein Abbild der VM für den schnellen Neuaufbau und ein

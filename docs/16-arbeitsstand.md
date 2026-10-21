@@ -392,7 +392,7 @@ Eine vollständige Sicherheitsprüfung des Systems liegt seit dem 19.09.2026 in 
 | Schlüsselrotation (C4) | **erledigt** als Werkzeug, `apps/api/src/cli/rotate-keys.ts` |
 | Mandantenexport (E7) | **erledigt**, `GET /v1/properties/:id/exports/tenant` |
 | Plattenverschlüsselung (C3) | **offen**, Betriebsarbeit. Entwurf steht: verschlüsselt wird der **Host-Speicher**, nicht die VM, entsperrt über das physische TPM und einen Tang-Server statt durch einen wachen Menschen. Anleitung in Dokument 17 §1 |
-| Sicherung außer Haus | **gebaut**, Dokument 37; offen ist das Einrichten auf der Maschine (IONOS, netcup-VPS) und die erste Rückspielprobe dort |
+| Sicherung außer Haus | **gebaut**, Dokument 37; offen ist das Einrichten auf der Maschine (plusserver, netcup-VPS) und die erste Rückspielprobe dort |
 | Ratenbegrenzung in Caddy | **offen**, Baustein in Dokument 17 |
 
 Dabei ist ein Fehler aufgefallen, der die Rotation still unbrauchbar gemacht hätte: der Zwischenspeicher der abgeleiteten Schlüssel merkte sich nur die **Version**, nicht das Geheimnis. Bei einer Rotation sind beide Geheimnisse gleichzeitig in Gebrauch; der erste Aufruf hätte den Eintrag für alle weiteren belegt, das Entschlüsseln mit dem falschen Geheimnis hätte still funktioniert, und die Rotation hätte Chiffrate erzeugt, die niemand mehr öffnen kann. Ein Test fängt das jetzt ab.
@@ -1341,7 +1341,7 @@ Tests in `payments.test.ts` (Abschnitt Stripe Connect).
 
 ### Sicherung — **gebaut**, Einrichten offen
 
-[`37-sicherung.md`](37-sicherung.md), Sven, 15.10.2026: laufend mit pgBackRest zu IONOS Object Storage, täglich ein mit `age` verschlüsselter Dump an einen netcup-VPS, der nur annimmt (`ops/backup/`), jährlich der GoBD-Export mit Object Lock über zehn Jahre. Dazu gekommen: der GoBD-Export enthält jetzt das Kassenbuch mit seinen Belegen (vorher fehlte es, und das Jahresarchiv hätte die Barkasse nicht aufbewahrt), `deploy.sh` setzt vor jeder Migration einen Wiederherstellungspunkt, und der Worker meldet eine stockende WAL-Archivierung als `ALARM:`. Rückspielprobe und Löschnachtrag stehen in `scripts/backup/`. Offen ist das Einrichten auf der Maschine; Sven richtet selbst ein.
+[`37-sicherung.md`](37-sicherung.md), Sven, 15.10.2026: laufend mit pgBackRest zu plusserver S3 Storage, täglich ein mit `age` verschlüsselter Dump an einen netcup-VPS, der nur annimmt (`ops/backup/`), jährlich der GoBD-Export mit Object Lock über zehn Jahre. Dazu gekommen: der GoBD-Export enthält jetzt das Kassenbuch mit seinen Belegen (vorher fehlte es, und das Jahresarchiv hätte die Barkasse nicht aufbewahrt), `deploy.sh` setzt vor jeder Migration einen Wiederherstellungspunkt, und der Worker meldet eine stockende WAL-Archivierung als `ALARM:`. Rückspielprobe und Löschnachtrag stehen in `scripts/backup/`. Offen ist das Einrichten auf der Maschine; Sven richtet selbst ein.
 
 ### Eigener Betreff für die Rechnungsmail — **erledigt**
 

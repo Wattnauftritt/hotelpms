@@ -91,7 +91,7 @@ Rechnungsadresse.
 |---|---|---|---|
 | ⟨Hoster⟩ | Unterauftragsverarbeiter | alle, im Rahmen des Betriebs | ⟨Land⟩ |
 | Stripe | Unterauftragsverarbeiter | **nur** Belegnummer, Betrag, Währung — kein Name, keine Anschrift | Irland / USA, Angemessenheitsbeschluss bzw. SCC |
-| IONOS | Unterauftragsverarbeiter | Sicherung (Dokument 37): alle Daten, **vor** dem Hochladen verschlüsselt, der Anbieter sieht keinen Klartext | Deutschland |
+| plusserver GmbH (S3 Storage, Köln) | Unterauftragsverarbeiter | Sicherung (Dokument 37): alle Daten, **vor** dem Hochladen verschlüsselt, der Anbieter sieht keinen Klartext | Deutschland |
 | netcup | Unterauftragsverarbeiter | zweites Sicherungsziel (Dokument 37): alle Daten, mit `age` verschlüsselt, Schlüssel nicht beim Anbieter | Deutschland |
 | Brevo | Unterauftragsverarbeiter | Empfängeradresse, Name, Nachrichtentext | Frankreich |
 | DeepL | Unterauftragsverarbeiter | freie Texte des Personals aus der Personal-App (Tätigkeit, Zimmerproblem, Notiz der Hausdame) und die Hausseiten der Gästemappe (Migration 0144) — **keine** Gastdaten, kein Name des Personals; nur mit Pro-Vertrag | Deutschland |
