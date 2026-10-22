@@ -81,7 +81,7 @@ const RECHTSFORM = new RegExp(
   'i')
 
 /** Strassenwoerter, auch als Wortende ("Hafenstrasse", "Am Deich"). */
-const STRASSE = /(stra(ss|ß)e|str\.|weg\b|platz\b|allee\b|ring\b|damm\b|gasse\b|ufer\b|chaussee\b|deich\b|kai\b|markt\b|steig\b|pfad\b|berg\b|hof\b|park\b|street\b|st\.|road\b|rd\.|avenue\b|ave\.|lane\b|straat\b|laan\b|weg\b|gade\b|vej\b|v[aä]gen\b|gatan\b|rue\b|via\b|calle\b|ulica\b|ul\.)/i
+const STRASSE = /(stra(ss|ß|b)e|str\.|str\b|weg\b|platz\b|allee\b|ring\b|damm\b|gasse\b|ufer\b|chaussee\b|deich\b|kai\b|markt\b|steig\b|pfad\b|berg\b|hof\b|park\b|street\b|st\.|road\b|rd\.|avenue\b|ave\.|lane\b|straat\b|laan\b|weg\b|gade\b|vej\b|v[aä]gen\b|gatan\b|rue\b|via\b|calle\b|ulica\b|ul\.)/i
 
 /** Hausnummer am Ende: "12", "12a", "12-14", "12 / 3". */
 const HAUSNUMMER = /\d+\s?[a-zA-Z]?(\s?[-/]\s?\d+\s?[a-zA-Z]?)?$/
@@ -110,11 +110,35 @@ const PLZ_PRAEFIX: Readonly<Record<string, string>> = {
   B: 'BE', BE: 'BE', L: 'LU', LU: 'LU', F: 'FR', FR: 'FR', PL: 'PL', S: 'SE', SE: 'SE', N: 'NO', NO: 'NO'
 }
 
-const ORT = "\\p{L}[\\p{L}\\p{M} .'()/-]*\\p{L}\\.?\\)?"
-/** "27472 Cuxhaven", "D-27472 Cuxhaven", "A-1010 Wien". */
-const PLZ_ORT = new RegExp(`^(?:([A-Z]{1,2})\\s?[-‐–]\\s?)?(\\d{4,5})\\s+(${ORT})$`, 'u')
+/**
+ * Ein Wort des Ortsnamens: "Frankfurt", "am", "Cuxhaven-Döse", "St.".
+ * Kleine Woerter sind erlaubt, weil Orte sie tragen ("Frankfurt am Main",
+ * "Halle (Saale)").
+ */
+const ORTWORT = "[\\p{L}][\\p{L}\\p{M}.'()-]*"
+/**
+ * Postleitzahl und Ort irgendwo in einem Abschnitt, nicht nur am Anfang:
+ * die Erkennung des Telefons liefert "Hafenstrasse 12a 27472 Cuxhaven" als
+ * eine Zeile ohne das Trennzeichen, das auf der Karte steht.
+ *
+ * Davor darf keine Ziffer, kein "+", "(" oder "/" stehen, sonst ist es der
+ * hintere Teil einer Telefonnummer ("04721 / 12345 Zentrale").
+ */
+const PLZ_ORT = new RegExp(
+  `(?:^|[^\\d+(/\\s])?\\s*(?:\\b([A-Z]{1,2})\\s?[-‐–]\\s?)?(?<![\\d+(/]\\s?)\\b(\\d{5}|\\d{4})\\s+(${ORTWORT}(?:\\s${ORTWORT}){0,3})`,
+  'u')
 /** Niederlande: "1012 AB Amsterdam". */
-const PLZ_ORT_NL = new RegExp(`^(?:NL\\s?[-‐–]\\s?)?(\\d{4})\\s?([A-Z]{2})\\s+(${ORT})$`, 'u')
+const PLZ_ORT_NL = new RegExp(`(?:\\bNL\\s?[-‐–]\\s?)?\\b(\\d{4})\\s?([A-Z]{2})\\s+(${ORTWORT}(?:\\s${ORTWORT}){0,2})`, 'u')
+
+/** Was vor einer Anschrift als Beschriftung steht. */
+const BESCHRIFTUNG = /^(anschrift|adresse|address|postanschrift|besucheradresse|hausanschrift|sitz|firmensitz|office)\s*:?\s*/i
+
+/**
+ * Woerter, an denen eine Zeile als Berufsbezeichnung zu erkennen ist. Die
+ * Zeile darueber oder darunter ist dann der Name eines Menschen, nicht der
+ * Firma -- und der steht auf Visitenkarten gern am groessten.
+ */
+const BERUF = /\b(gesch[aä]ftsf[uü]hr\w*|inhaber\w*|leiter\w*|leitung|vertrieb\w*|verkauf\w*|manager\w*|management|direktor\w*|director|prokurist\w*|assisten\w*|referent\w*|berater\w*|consultant|sales|ceo|cfo|cto|coo|founder|gr[uü]nder\w*|vorstand\w*|partner\w*|sachbearbeit\w*|projekt\w*|key account|account|marketing|einkauf\w*|buchhaltung|disposition|mitarbeiter\w*|kaufm\w*|meister\w*|ingenieur\w*|dipl\.?-?\w*|head of|team ?lead\w*)\b/i
 
 function bereinigen(s: string): string {
   return s.replace(/\s+/g, ' ').trim()
@@ -122,10 +146,13 @@ function bereinigen(s: string): string {
 
 /**
  * Eine Zeile in ihre Abschnitte. Visitenkarten setzen die ganze Anschrift
- * gern in eine Zeile, getrennt durch Komma, Punkt in der Mitte oder Strich.
+ * gern in eine Zeile, getrennt durch Komma, senkrechten Strich, Punkt in der
+ * Mitte oder Strich. Die Erkennung liest den senkrechten Strich oft als
+ * grosses I oder kleines l -- allein zwischen zwei Leerzeichen ist er nie
+ * ein Wort.
  */
 function abschnitte(zeile: string): string[] {
-  return zeile.split(/\s*[,|•·]\s*|\s+[-–]\s+/).map(bereinigen).filter(s => s !== '')
+  return zeile.split(/\s*[,|•·;]\s*|\s+[-–—Il/]\s+/).map(bereinigen).filter(s => s !== '')
 }
 
 /** Steht in der Zeile nichts als Rechtsform und Bindewort ("GmbH & Co. KG")? */
@@ -140,18 +167,37 @@ function landAusText(text: string): string {
   return ''
 }
 
-/** Ein Landesname hinter dem Ort gehoert nicht zum Ort. */
-function ortOhneLand(ort: string): string {
-  let o = ort
-  for (const [muster] of LAENDER) o = o.replace(muster, '')
-  return o.replace(/[\s,/-]+$/, '').trim()
+/**
+ * Der Ort ohne das, was die Zeile danach noch traegt: Land, Telefon,
+ * Adresse im Netz. Der Ausdruck nimmt bis zu vier Woerter, weil "Frankfurt
+ * am Main" drei hat; "Cuxhaven Tel." oder "Cuxhaven Germany" schneidet erst
+ * diese Funktion zurecht.
+ */
+function ortBereinigen(ort: string): string {
+  const woerter: string[] = []
+  for (const w of ort.split(' ')) {
+    if (KONTAKT.test(w) || landAusText(w) !== '' || /^(www|http)/i.test(w)) break
+    woerter.push(w)
+  }
+  // Kleine Woerter am Ende ("Cuxhaven und") gehoeren nicht zum Ort.
+  while (woerter.length > 1 && /^\p{Ll}/u.test(woerter[woerter.length - 1]!)) woerter.pop()
+  return woerter.join(' ').replace(/[\s,.;:/-]+$/, '').trim()
 }
 
-function istStrasse(s: string): boolean {
+/** Eine Strasse ohne Beschriftung davor und Satzzeichen dahinter. */
+function strasseBereinigen(s: string): string {
+  return s.replace(BESCHRIFTUNG, '').replace(/[\s,.;:·|/–-]+$/, '').trim()
+}
+
+function istStrasse(roh: string): boolean {
+  const s = strasseBereinigen(roh)
   if (KONTAKT.test(s) || !/\p{L}{2}/u.test(s)) return false
   if (/^postfach\b|^p\.?\s?o\.?\s?box\b/i.test(s)) return true
+  // Eine Zeile mit Postleitzahl ist keine Strasse, auch wenn sie so endet.
+  if (/\b\d{5}\b/.test(s) || BERUF.test(s)) return false
   // Hausnummer am Ende reicht allein nicht: "Fax 04721 12345" endet auch so.
-  return (HAUSNUMMER.test(s) && /^\p{L}/u.test(s)) || (STRASSE.test(s) && /\d/.test(s))
+  return (HAUSNUMMER.test(s) && /^\p{L}/u.test(s) && !/\d{4,}$/.test(s))
+    || (STRASSE.test(s) && /\d/.test(s))
 }
 
 function ustId(text: string): string {
@@ -163,11 +209,74 @@ function ustId(text: string): string {
   return roh.replace(/[\s.]/g, '').toUpperCase()
 }
 
+/** Fuer den Vergleich mit der Domain: klein, Umlaute ausgeschrieben, nur Buchstaben. */
+function vergleichbar(s: string): string {
+  return s.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * Der Name der Firma, wie ihn Mail- und Webadresse tragen: "kuestenbau" aus
+ * "a.schroeder@kuestenbau.de". Freemailer verraten nichts.
+ */
+function domainStaemme(text: string): string[] {
+  const stamm = new Set<string>()
+  for (const m of text.matchAll(/(?:@|www\.|https?:\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)*)\.[a-z]{2,}/gi)) {
+    const teile = m[1]!.toLowerCase().split('.')
+    const s = vergleichbar(teile[teile.length - 1]!)
+    if (s.length >= 4 && !/^(gmail|googlemail|gmx|web|outlook|hotmail|yahoo|icloud|tonline|freenet|aol|posteo|mailbox)$/.test(s)) {
+      stamm.add(s)
+    }
+  }
+  return [...stamm]
+}
+
+interface Ortstreffer { postalCode: string; city: string; country: string; vor: string }
+
+/** Postleitzahl und Ort in einem Abschnitt, mit dem, was davor steht. */
+function ortIn(abschnitt: string): Ortstreffer | null {
+  const nl = PLZ_ORT_NL.exec(abschnitt)
+  if (nl !== null) {
+    const city = ortBereinigen(nl[3]!)
+    if (city !== '') {
+      return { postalCode: `${nl[1]} ${nl[2]}`, city, country: 'NL',
+               vor: abschnitt.slice(0, nl.index) }
+    }
+  }
+  const re = new RegExp(PLZ_ORT.source, 'gu')
+  for (const m of abschnitt.matchAll(re)) {
+    const [, praefix, plz, ortRoh] = m
+    const start = m.index + m[0].indexOf(praefix !== undefined ? praefix : plz!)
+    const vor = abschnitt.slice(0, start)
+    // Hinter einer Telefonbeschriftung ist es eine Rufnummer.
+    if (KONTAKT.test(vor) || /[\d+(/]\s*$/.test(vor)) continue
+    // Registernummer, Bank und Steuer stehen mit fuenf Ziffern, aber ohne Ort.
+    if (/\b(HRB|HRA|Amtsgericht|Registergericht|IBAN|BIC|BLZ|Konto|St\.?-?Nr|Steuer)/i.test(vor)) continue
+    // Vierstellig nur mit Laenderkennung oder am Anfang: "Haus 1234 Ort" ist
+    // sonst zu oft etwas anderes.
+    if (plz!.length === 4 && praefix === undefined && vor.trim() !== '') continue
+    const city = ortBereinigen(ortRoh!)
+    if (city === '' || KONTAKT.test(city.split(' ')[0]!)) continue
+    let country = praefix !== undefined ? (PLZ_PRAEFIX[praefix] ?? '') : ''
+    if (country === '' && plz!.length === 5) country = 'DE'
+    return { postalCode: plz!, city, country, vor }
+  }
+  return null
+}
+
 /**
  * Den Vorschlag aus den Zeilen aller fotografierten Seiten.
  *
  * Die Seiten kommen hintereinander: steht der Name vorn und die Anschrift
  * hinten, findet sich beides trotzdem.
+ *
+ * **Reihenfolge der Suche.** Zuerst der Ort, weil er am sichersten zu
+ * erkennen ist (fuenf Ziffern und ein Wort, nicht hinter "Tel."). Die
+ * Strasse steht dann davor: im selben Abschnitt ("Hafenstrasse 12a 27472
+ * Cuxhaven"), im Abschnitt davor oder in einer der drei Zeilen darueber --
+ * drei, weil bei zwei Spalten nach Hoehe sortiert die Zeilen der anderen
+ * Spalte dazwischenliegen. Erst wenn das nichts ergibt, gilt die erste
+ * Zeile, die nach Strasse aussieht.
  */
 export function anschriftAusKarte(zeilen: readonly KartenZeile[]): AnschriftVorschlag {
   const klar = zeilen
@@ -184,30 +293,23 @@ export function anschriftAusKarte(zeilen: readonly KartenZeile[]): AnschriftVors
   suche: for (let i = 0; i < klar.length; i++) {
     const teile = abschnitte(klar[i]!.text)
     for (let j = 0; j < teile.length; j++) {
-      const t = teile[j]!
-      if (KONTAKT.test(t)) continue
-      const nl = PLZ_ORT_NL.exec(t)
-      const de = nl === null ? PLZ_ORT.exec(t) : null
-      if (nl === null && de === null) continue
-      if (nl !== null) {
-        postalCode = `${nl[1]} ${nl[2]}`
-        city = ortOhneLand(nl[3]!)
-        country = 'NL'
-      } else {
-        postalCode = de![2]!
-        city = ortOhneLand(de![3]!)
-        const praefix = de![1]
-        country = praefix !== undefined ? (PLZ_PRAEFIX[praefix] ?? '') : ''
-        if (country === '' && postalCode.length === 5) country = 'DE'
-      }
+      const treffer = ortIn(teile[j]!)
+      if (treffer === null) continue
+      ;({ postalCode, city, country } = treffer)
       verbraucht.add(i)
-      // Die Strasse steht davor: im selben Abschnittszug oder eine Zeile hoeher.
-      const davor = teile.slice(0, j).reverse().find(istStrasse)
-      if (davor !== undefined) {
-        addressLine1 = davor
-      } else if (i > 0 && istStrasse(klar[i - 1]!.text)) {
-        addressLine1 = klar[i - 1]!.text
-        verbraucht.add(i - 1)
+      const kandidaten = [treffer.vor, ...teile.slice(0, j).reverse()]
+      const imSelben = kandidaten.find(istStrasse)
+      if (imSelben !== undefined) {
+        addressLine1 = strasseBereinigen(imSelben)
+      } else {
+        for (let k = i - 1; k >= Math.max(0, i - 3); k--) {
+          const s = abschnitte(klar[k]!.text).reverse().find(istStrasse)
+          if (s !== undefined) {
+            addressLine1 = strasseBereinigen(s)
+            verbraucht.add(k)
+            break
+          }
+        }
       }
       break suche
     }
@@ -218,7 +320,7 @@ export function anschriftAusKarte(zeilen: readonly KartenZeile[]): AnschriftVors
     for (let i = 0; i < klar.length; i++) {
       const treffer = abschnitte(klar[i]!.text).find(istStrasse)
       if (treffer !== undefined) {
-        addressLine1 = treffer
+        addressLine1 = strasseBereinigen(treffer)
         verbraucht.add(i)
         break
       }
@@ -234,23 +336,50 @@ export function anschriftAusKarte(zeilen: readonly KartenZeile[]): AnschriftVors
     country = kennung === 'EL' ? 'GR' : kennung
   }
 
-  // Der Name: zuerst eine Zeile mit Rechtsform, sonst die groesste Zeile,
-  // die weder Kontakt noch Anschrift noch Nummer ist.
-  const kandidaten = klar.filter((z, i) => !verbraucht.has(i)
-    && !KONTAKT.test(z.text) && !istStrasse(z.text)
-    && !/\d{4,}/.test(z.text) && /\p{L}{2}/u.test(z.text)
-    && !/^(USt|UID|VAT|BTW|Steuer|HRB|HRA|Amtsgericht|Gesch[aä]ftsf[uü]hr)/i.test(z.text))
+  return { name: firmenname(klar, verbraucht, ganzerText), addressLine1, postalCode, city,
+           country, vatId }
+}
+
+/**
+ * Der Name der Firma, in dieser Reihenfolge: eine Zeile mit Rechtsform; eine
+ * Zeile, die die Domain der Mail- oder Webadresse traegt; sonst die groesste
+ * Zeile, die weder Kontakt noch Anschrift noch Nummer ist -- und nicht ueber
+ * einer Berufsbezeichnung steht, denn dort steht ein Mensch.
+ */
+function firmenname(klar: ReadonlyArray<{ text: string; hoehe: number }>,
+                    verbraucht: ReadonlySet<number>, ganzerText: string): string {
+  const beruf = klar.map(z => BERUF.test(z.text))
+  // Nur die Berufsbezeichnung allein in der Zeile verweist auf den Menschen
+  // darueber; "Max Mustermann | Geschaeftsfuehrer" traegt ihn selbst.
+  const nurBeruf = klar.map((z, i) => beruf[i] === true && abschnitte(z.text).length === 1)
+  const kandidaten = klar
+    .map((z, i) => ({ ...z, i }))
+    .filter(z => !verbraucht.has(z.i) && !beruf[z.i]
+      && !KONTAKT.test(z.text) && !istStrasse(z.text) && ortIn(z.text) === null
+      && !/\d{4,}/.test(z.text) && /\p{L}{2}/u.test(z.text)
+      // Oeffnungszeiten sind kein Name.
+      && !/\d{1,2}[:.]\d{2}|\bUhr\b|\b(Mo|Di|Mi|Do|Fr|Sa|So)\.?\s*[-–]/i.test(z.text)
+      && landAusText(z.text) !== z.text.trim().toLowerCase()
+      && !/^(USt|UID|VAT|BTW|Steuer|HRB|HRA|Amtsgericht|Registergericht|Sitz)/i.test(z.text))
   const mitForm = kandidaten.find(z => RECHTSFORM.test(z.text))
-  const groesste = [...kandidaten].sort((a, b) => b.hoehe - a.hoehe)[0]
-  let name = (mitForm ?? groesste)?.text ?? ''
-  if (mitForm !== undefined && nurRechtsform(mitForm.text)) {
+  if (mitForm !== undefined) {
+    if (!nurRechtsform(mitForm.text)) return mitForm.text
     // "KÜSTENBAU" gross, darunter klein "GmbH & Co. KG": die Rechtsform
     // allein ist kein Name, sie gehoert an die Zeile darueber.
     const davor = kandidaten[kandidaten.indexOf(mitForm) - 1]
-    if (davor !== undefined) name = `${davor.text} ${mitForm.text}`
+    return davor !== undefined ? `${davor.text} ${mitForm.text}` : mitForm.text
   }
-
-  return { name, addressLine1, postalCode, city, country, vatId }
+  const staemme = domainStaemme(ganzerText)
+  const ausDomain = kandidaten.find(z => {
+    const v = vergleichbar(z.text)
+    return v.length >= 4 && staemme.some(s => s.includes(v) || v.includes(s))
+  })
+  if (ausDomain !== undefined) return ausDomain.text
+  // Der Mensch steht ueber seiner Berufsbezeichnung ("Anna Schroeder",
+  // darunter "Projektleitung"); die Zeile darunter ist oft schon die Firma.
+  const person = (i: number): boolean => nurBeruf[i + 1] === true
+  const sortiert = [...kandidaten].sort((a, b) => b.hoehe - a.hoehe)
+  return (sortiert.find(z => !person(z.i)) ?? sortiert[0])?.text ?? ''
 }
 
 /**

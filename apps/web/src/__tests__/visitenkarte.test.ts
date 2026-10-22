@@ -176,3 +176,87 @@ describe('Wer die Karte liest', () => {
     }
   })
 })
+
+/**
+ * Karten, wie die Erkennung des Telefons sie zurueckgibt (Sven, 22.10.2026:
+ * „erkennt die Strasse, traegt sie aber nicht ein"). Vision und ML Kit
+ * liefern Zeilen ohne die Trennzeichen, die ein Mensch sieht: ein senkrechter
+ * Strich wird zum grossen I, ein Punkt in der Mitte faellt weg, und bei zwei
+ * Spalten liegt zwischen Strasse und Ort eine Zeile der anderen Spalte.
+ */
+describe('Anschrift aus der Erkennung des Telefons', () => {
+  const ziel = { addressLine1: 'Hafenstraße 12a', postalCode: '27472', city: 'Cuxhaven' }
+
+  it('trennt Strasse und Ort ohne Trennzeichen in einer Zeile', () => {
+    expect(anschriftAusKarte(zeilen('Nordsee Logistik GmbH', 'Hafenstraße 12a 27472 Cuxhaven')))
+      .toMatchObject(ziel)
+  })
+
+  it('liest einen senkrechten Strich, den die Erkennung als I oder l liest', () => {
+    for (const strich of ['I', 'l', '|', '/', '–', '-']) {
+      expect(anschriftAusKarte(zeilen('Nordsee Logistik GmbH',
+                                      `Hafenstraße 12a ${strich} 27472 Cuxhaven`)))
+        .toMatchObject(ziel)
+    }
+  })
+
+  it('findet die Strasse auch zwei Zeilen ueber dem Ort', () => {
+    // Zwei Spalten, nach Hoehe sortiert: links Kontakt, rechts Anschrift.
+    expect(anschriftAusKarte(zeilen(
+      ['Nordsee Logistik GmbH', 1.6],
+      'Tel. 04721 123456', 'Hafenstraße 12a',
+      'Fax 04721 123457', '27472 Cuxhaven'))).toMatchObject(ziel)
+  })
+
+  it('nimmt die Strasse mit Satzzeichen am Ende, Abkuerzung oder Beschriftung', () => {
+    for (const s of ['Hafenstraße 12a,', 'Anschrift: Hafenstraße 12a', 'Adresse Hafenstraße 12a']) {
+      expect(anschriftAusKarte(zeilen('Muster GmbH', s, '27472 Cuxhaven')).addressLine1)
+        .toBe('Hafenstraße 12a')
+    }
+    expect(anschriftAusKarte(zeilen('Muster GmbH', 'Hafenstr 12', '27472 Cuxhaven')).addressLine1)
+      .toBe('Hafenstr 12')
+    // "ß" als "B" gelesen: so steht es da, die Rezeption korrigiert den Buchstaben.
+    expect(anschriftAusKarte(zeilen('Muster GmbH', 'HafenstraBe 12', '27472 Cuxhaven')).addressLine1)
+      .toBe('HafenstraBe 12')
+  })
+
+  it('nimmt Strassen ohne Strassenwort, wenn die Hausnummer folgt', () => {
+    for (const s of ['Neuer Wall 10', 'An der Alster 1', 'Bei den Mühren 70', 'Straße des 17. Juni 112']) {
+      expect(anschriftAusKarte(zeilen('Muster GmbH', s, '20095 Hamburg')).addressLine1).toBe(s)
+    }
+  })
+
+  it('schneidet am Ort ab, was danach in der Zeile steht', () => {
+    for (const z of ['27472 Cuxhaven Tel. 04721 1234', '27472 Cuxhaven · www.muster.de',
+                     '27472 Cuxhaven Germany', 'D-27472 Cuxhaven, Deutschland']) {
+      const v = anschriftAusKarte(zeilen('Muster GmbH', 'Hafenstraße 12a', z))
+      expect(v.city, z).toBe('Cuxhaven')
+      expect(v.postalCode, z).toBe('27472')
+    }
+    expect(anschriftAusKarte(zeilen('Muster GmbH', 'Am Hafen 1', '60311 Frankfurt am Main')).city)
+      .toBe('Frankfurt am Main')
+    expect(anschriftAusKarte(zeilen('Muster GmbH', 'Am Hafen 1', '27476 Cuxhaven-Döse')).city)
+      .toBe('Cuxhaven-Döse')
+  })
+
+  it('haelt eine Telefonnummer nie fuer Postleitzahl und Ort', () => {
+    const v = anschriftAusKarte(zeilen('Muster GmbH', '+49 4721 12345 Zentrale', '0170 12345 Mobil',
+                                       'Hafenstraße 12a', '27472 Cuxhaven'))
+    expect(v).toMatchObject(ziel)
+  })
+
+  it('nimmt als Namen die Firma und nicht die Person darueber', () => {
+    // Person gross, Firma klein, ohne Rechtsform: die Mailadresse verraet sie.
+    const v = anschriftAusKarte(zeilen(
+      ['Anna Schröder', 2], 'Geschäftsführerin', ['Küstenbau', 1.2],
+      'Deichstraße 40', '27472 Cuxhaven', 'a.schroeder@kuestenbau.de'))
+    expect(v.name).toBe('Küstenbau')
+  })
+
+  it('nimmt ohne andere Hinweise nicht die Zeile ueber der Berufsbezeichnung', () => {
+    const v = anschriftAusKarte(zeilen(
+      ['Anna Schröder', 2], 'Projektleitung', ['Hotelbedarf Nord', 1.3],
+      'Deichstraße 40', '27472 Cuxhaven'))
+    expect(v.name).toBe('Hotelbedarf Nord')
+  })
+})
