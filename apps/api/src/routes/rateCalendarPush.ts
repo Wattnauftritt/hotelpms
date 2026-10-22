@@ -78,16 +78,25 @@ async function letzteGrenze(client: PoolClient, propertyId: number): Promise<str
 
 /**
  * Weicht der Tag vom gesendeten Stand ab? Preis und Restriktionen getrennt,
- * weil das Raster sie in getrennten Zeilen markiert. Ein Tag ohne gesendeten
- * Stand weicht ab: dort steht beim Channel Manager etwas, das nicht von hier
- * kam. Erwartet `rd`, `rs` und `s` wie in `TAGE_SQL`.
+ * weil das Raster sie in getrennten Zeilen markiert. Erwartet `rd`, `rs`
+ * und `s` wie in `TAGE_SQL`.
+ *
+ * Ein Tag ohne gesendeten Stand weicht nur ab, wenn hier etwas steht: dort
+ * steht beim Channel Manager etwas, das nicht von hier kam. Steht hier
+ * nichts, gibt es nichts zu senden. Bis zum 22.10.2026 zaehlte auch der
+ * leere Tag: das Fenster reicht 400 Tage ab heute, und jeden Morgen rueckte
+ * je Plan ein leerer Tag hinten nach -- bei sieben Plaenen nach drei Tagen
+ * "21 Aenderungen", die niemand gemacht hatte und keiner verwerfen konnte.
  */
-export const PREIS_OFFEN = `(s.rate_plan_id IS NULL OR rd.price_cent IS DISTINCT FROM s.price_cent)`
-export const RESTRIKTION_OFFEN = `(s.rate_plan_id IS NULL
-  OR (rs.min_los, rs.max_los, COALESCE(rs.closed, false), COALESCE(rs.closed_to_arrival, false),
-      COALESCE(rs.closed_to_departure, false))
-     IS DISTINCT FROM
-     (s.min_los, s.max_los, s.closed, s.closed_to_arrival, s.closed_to_departure))`
+export const PREIS_OFFEN = `(CASE WHEN s.rate_plan_id IS NULL THEN rd.price_cent IS NOT NULL
+  ELSE rd.price_cent IS DISTINCT FROM s.price_cent END)`
+export const RESTRIKTION_OFFEN = `(CASE WHEN s.rate_plan_id IS NULL
+  THEN rs.min_los IS NOT NULL OR rs.max_los IS NOT NULL OR COALESCE(rs.closed, false)
+       OR COALESCE(rs.closed_to_arrival, false) OR COALESCE(rs.closed_to_departure, false)
+  ELSE (rs.min_los, rs.max_los, COALESCE(rs.closed, false), COALESCE(rs.closed_to_arrival, false),
+        COALESCE(rs.closed_to_departure, false))
+       IS DISTINCT FROM
+       (s.min_los, s.max_los, s.closed, s.closed_to_arrival, s.closed_to_departure) END)`
 
 /**
  * Die Tage, die hinausgehen: je aktivem Plan und Tag, bei "nur Aenderungen"
@@ -146,6 +155,116 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
         }
         return { push: rows[0] === undefined ? null : antwort(rows[0]),
                  lastSentAt: grenze, pendingChanges: offen }
+      })
+    }
+  })
+
+  /**
+   * Welche Tage offen sind, je Plan und Tag. Die Zahl am Knopf allein sagt
+   * nicht, woher sie kommt; hier steht es. Hoechstens tausend Zeilen -- wer
+   * mehr offen hat, hat den ganzen Kalender geaendert und will ihn senden.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/rate-calendar-pushes/pending',
+    permission: 'rate:read',
+    propertyParam: 'propertyId',
+    summary: 'Offene Aenderungen gegenueber dem gesendeten Stand',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      return tx(req.pool, req, async client => {
+        if (await letzteGrenze(client, propertyId) === null) return { total: 0, days: [] }
+        const von = await heute(client, propertyId)
+        const { rows } = await client.query<{
+          ratePlanCode: string; ratePlanName: string; date: string; price: boolean
+          restriction: boolean; neverSent: boolean; priceCent: number[] | null
+          sentPriceCent: number[] | null; total: number }>(
+          `SELECT rp.code AS "ratePlanCode", rp.name AS "ratePlanName",
+                  d.day::date::text AS date,
+                  ${PREIS_OFFEN} AS price, ${RESTRIKTION_OFFEN} AS restriction,
+                  s.rate_plan_id IS NULL AS "neverSent",
+                  rd.price_cent AS "priceCent", s.price_cent AS "sentPriceCent",
+                  (count(*) OVER ())::int AS total
+             FROM rate_plan rp
+            CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS d(day)
+             LEFT JOIN rate_day rd ON rd.rate_plan_id = rp.id AND rd.date = d.day::date
+             LEFT JOIN restriction_day rs ON rs.rate_plan_id = rp.id AND rs.date = d.day::date
+             LEFT JOIN rate_calendar_sent s ON s.rate_plan_id = rp.id AND s.date = d.day::date
+            WHERE rp.property_id = $1 AND rp.active AND (${PREIS_OFFEN} OR ${RESTRIKTION_OFFEN})
+            ORDER BY d.day, rp.code
+            LIMIT 1000`,
+          [propertyId, von, addDays(von, MAX_DAYS - 1)])
+        return { total: rows[0]?.total ?? 0,
+                 days: rows.map(({ total: _, ...r }) => r) }
+      })
+    }
+  })
+
+  /**
+   * Offene Aenderungen verwerfen: Preise und Restriktionen gehen auf den
+   * zuletzt gesendeten Stand zurueck. Hinaus geht dabei **nichts** -- der
+   * Knopf ist fuer den Fall, dass im Channel Manager inzwischen andere
+   * Preise stehen und das hier Getippte nicht mehr gelten soll.
+   *
+   * Zurueck geht nur, wofuer es einen gesendeten Wert gibt. Ein Tag, der nie
+   * gesendet wurde, behaelt seinen Preis: welcher dort drueben steht, weiss
+   * StayGrid nicht, und ihn zu loeschen hiesse, eine Buchung an dem Tag ohne
+   * Preis zu lassen. Den fuellt ein Abruf. Abgeleitete Plaene rechnen sich
+   * aus ihrer Basis neu; sie direkt zu setzen, ueberschriebe die naechste
+   * Aenderung der Basis ohnehin.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/rate-calendar-pushes/discard',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Offene Aenderungen auf den gesendeten Stand zuruecksetzen',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      return tx(req.pool, req, async client => {
+        if (await letzteGrenze(client, propertyId) === null) {
+          return { prices: 0, restrictions: 0, remaining: 0 }
+        }
+        const von = await heute(client, propertyId)
+        const bis = addDays(von, MAX_DAYS - 1)
+
+        const preise = await client.query<{ n: number | null }>(
+          `SELECT rate_prices_write($1, array_agg(s.rate_plan_id), array_agg(s.date),
+                                    array_agg(s.price_cent::text), 'manual') AS n
+             FROM rate_calendar_sent s
+             JOIN rate_plan rp ON rp.id = s.rate_plan_id AND rp.property_id = $1
+                              AND rp.active AND rp.base_rate_plan_id IS NULL
+             LEFT JOIN rate_day rd ON rd.rate_plan_id = s.rate_plan_id AND rd.date = s.date
+            WHERE s.date BETWEEN $2::date AND $3::date
+              AND s.price_cent IS NOT NULL
+              AND rd.price_cent IS DISTINCT FROM s.price_cent`,
+          [propertyId, von, bis])
+
+        const restriktionen = await client.query(
+          `INSERT INTO restriction_day (property_id, rate_plan_id, date, min_los, max_los,
+                                        closed, closed_to_arrival, closed_to_departure)
+           SELECT $1, s.rate_plan_id, s.date, s.min_los, s.max_los,
+                  s.closed, s.closed_to_arrival, s.closed_to_departure
+             FROM rate_calendar_sent s
+             JOIN rate_plan rp ON rp.id = s.rate_plan_id AND rp.property_id = $1 AND rp.active
+             LEFT JOIN restriction_day rs ON rs.rate_plan_id = s.rate_plan_id AND rs.date = s.date
+            WHERE s.date BETWEEN $2::date AND $3::date
+              AND (rs.min_los, rs.max_los, COALESCE(rs.closed, false),
+                   COALESCE(rs.closed_to_arrival, false), COALESCE(rs.closed_to_departure, false))
+                  IS DISTINCT FROM
+                  (s.min_los, s.max_los, s.closed, s.closed_to_arrival, s.closed_to_departure)
+           ON CONFLICT (rate_plan_id, date) DO UPDATE SET
+             min_los = EXCLUDED.min_los, max_los = EXCLUDED.max_los,
+             closed = EXCLUDED.closed,
+             closed_to_arrival = EXCLUDED.closed_to_arrival,
+             closed_to_departure = EXCLUDED.closed_to_departure,
+             updated_at = now()`,
+          [propertyId, von, bis])
+
+        const rest = await client.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM (${TAGE_SQL}) t`, [propertyId, von, bis, true])
+        return { prices: preise.rows[0]!.n ?? 0, restrictions: restriktionen.rowCount ?? 0,
+                 remaining: rest.rows[0]!.n }
       })
     }
   })

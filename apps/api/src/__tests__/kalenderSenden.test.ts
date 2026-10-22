@@ -300,4 +300,99 @@ describe('Senden an den Channel Manager', () => {
     await preisSetzen(std, VON, BIS, [8000, 9000])
     expect((await raster()).some(c => c.priceUnsent || c.restrictionUnsent)).toBe(false)
   })
+
+  it('ein nie gesendeter Tag ohne Wert ist keine Aenderung, einer mit Preis schon', async () => {
+    // So entstanden die "21 Aenderungen" vom 22.10.2026: das Fenster rueckt
+    // jeden Tag einen leeren Tag je Plan nach.
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    const ref = (await senden({ mode: 'range', from: VON, to: BIS }))
+      .json<{ pushRef: string }>().pushRef
+    expect((await abholen(m, ref)).statusCode).toBe(200)
+    expect((await melden(m, ref, 'done')).statusCode).toBe(200)
+    expect((await stand()).pendingChanges).toBe(0)
+
+    await preisSetzen(std, addDays(BIS, 3), addDays(BIS, 3), [7000, 7500])
+    expect((await stand()).pendingChanges).toBe(1)
+  })
+
+  it('nennt die offenen Tage mit Plan und Datum', async () => {
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    await ganzGesendet(m)
+    await preisSetzen(std, VON, VON, [8500, 9500])
+    await app.inject({
+      method: 'PUT', url: '/v1/restrictions/bulk', headers: auth(admin.sessionId),
+      payload: { propertyId: fx.propertyId, ratePlanId: std, from: addDays(VON, 1),
+                 to: addDays(VON, 1), minLos: 3 } })
+
+    const r = await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/rate-calendar-pushes/pending`,
+      headers: auth(admin.sessionId) })
+    expect(r.statusCode, r.body).toBe(200)
+    const body = r.json<{ total: number; days: Array<Record<string, unknown>> }>()
+    expect(body.total).toBe(2)
+    expect(body.days).toEqual([
+      expect.objectContaining({ ratePlanCode: 'DZ-STD', date: VON, price: true,
+                                restriction: false, neverSent: false,
+                                priceCent: [8500, 9500], sentPriceCent: [8000, 9000] }),
+      expect.objectContaining({ date: addDays(VON, 1), price: false, restriction: true })
+    ])
+  })
+
+  it('verwerfen setzt auf den gesendeten Stand zurueck und sendet nichts', async () => {
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    const ref = (await senden({ mode: 'range', from: VON, to: BIS }))
+      .json<{ pushRef: string }>().pushRef
+    expect((await abholen(m, ref)).statusCode).toBe(200)
+    expect((await melden(m, ref, 'done')).statusCode).toBe(200)
+
+    await preisSetzen(std, VON, addDays(VON, 1), [8500, 9500])
+    await app.inject({
+      method: 'PUT', url: '/v1/restrictions/bulk', headers: auth(admin.sessionId),
+      payload: { propertyId: fx.propertyId, ratePlanId: std, from: VON, to: VON,
+                 minLos: 3, closed: true } })
+    // Nie gesendet: bleibt stehen, StayGrid weiss nicht, was drueben steht.
+    await preisSetzen(std, addDays(BIS, 3), addDays(BIS, 3), [7000, 7500])
+    expect((await stand()).pendingChanges).toBe(3)
+    const vorher = await owner.query(`SELECT count(*)::int AS n FROM rate_calendar_push`)
+
+    const r = await app.inject({
+      method: 'POST', url: `/v1/properties/${fx.propertyId}/rate-calendar-pushes/discard`,
+      headers: auth(admin.sessionId) })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json()).toEqual({ prices: 2, restrictions: 1, remaining: 1 })
+
+    const preise = await owner.query<{ date: string; price_cent: string[] }>(
+      `SELECT date::text, price_cent FROM rate_day WHERE rate_plan_id = $1
+        ORDER BY date`, [std])
+    expect(preise.rows.find(z => z.date === VON)!.price_cent.map(Number)).toEqual([8000, 9000])
+    expect(preise.rows.find(z => z.date === addDays(BIS, 3))!.price_cent.map(Number))
+      .toEqual([7000, 7500])
+    const sperre = await owner.query<{ min_los: number | null; closed: boolean }>(
+      `SELECT min_los, closed FROM restriction_day WHERE rate_plan_id = $1 AND date = $2`,
+      [std, VON])
+    expect(sperre.rows[0]).toEqual({ min_los: null, closed: false })
+    expect((await stand()).pendingChanges).toBe(1)
+
+    const nachher = await owner.query(`SELECT count(*)::int AS n FROM rate_calendar_push`)
+    expect(nachher.rows[0]).toEqual(vorher.rows[0])
+  })
+
+  it('verwerfen braucht Schreibrecht', async () => {
+    const leser = await makeUser(owner,
+      { email: 'leser@test.de', propertyId: fx.propertyId, roleKey: 'housekeeping',
+        accountId: fx.accountId })
+    const r = await app.inject({
+      method: 'POST', url: `/v1/properties/${fx.propertyId}/rate-calendar-pushes/discard`,
+      headers: auth(leser.sessionId) })
+    expect(r.statusCode).toBe(403)
+  })
 })

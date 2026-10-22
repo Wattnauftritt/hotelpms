@@ -308,6 +308,39 @@ export const useKalenderSendenStand = (propertyId: number) =>
     refetchInterval: q => q.state.data?.push?.status === 'requested' ? 3_000 : false
   })
 
+/** Ein offener Tag: weicht vom zuletzt gesendeten Stand ab (Migration 0180). */
+export interface OffenerTag {
+  ratePlanCode: string
+  ratePlanName: string
+  date: string
+  price: boolean
+  restriction: boolean
+  neverSent: boolean
+  priceCent: number[] | null
+  sentPriceCent: number[] | null
+}
+
+export const useOffeneAenderungen = (propertyId: number, aktiv: boolean) =>
+  useQuery<{ total: number; days: OffenerTag[] }>({
+    queryKey: ['rateCalendarPush', propertyId, 'pending'],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/rate-calendar-pushes/pending`),
+    enabled: aktiv
+  })
+
+/** Setzt offene Aenderungen auf den gesendeten Stand zurueck. Sendet nichts. */
+export function useAenderungenVerwerfen(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<{ prices: number; restrictions: number; remaining: number }>(
+      `/v1/properties/${propertyId}/rate-calendar-pushes/discard`, {}),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
+    }
+  })
+}
+
 export function useKalenderSenden(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({

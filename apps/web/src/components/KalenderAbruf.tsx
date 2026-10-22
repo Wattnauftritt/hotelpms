@@ -76,7 +76,9 @@ export function KalenderAbruf({ propertyId }: { propertyId: number }): JSX.Eleme
         </label>
         <label className="text-sm">
           <div className="text-neutral-600">{t('common.to')}</div>
-          <input type="date" value={bis} min={von} onChange={e => setBis(e.target.value)}
+          <input type="date" value={bis} min={von}
+                 max={von === '' ? undefined : addDays(von, MAX_RASTER_TAGE - 1)}
+                 onChange={e => setBis(e.target.value)}
                  className="border border-neutral-300 rounded-sm px-2 py-1" />
         </label>
         <button type="submit"
@@ -86,6 +88,13 @@ export function KalenderAbruf({ propertyId }: { propertyId: number }): JSX.Eleme
           {t('rate.pull.start')}
         </button>
       </form>
+      {/* Ein grauer Knopf ohne Grund sah aus wie gesperrt durch offene
+          Aenderungen (22.10.2026); der Grund war ein Bis zwei Jahre weiter. */}
+      {von !== '' && bis !== '' && tage > MAX_RASTER_TAGE && (
+        <div className="text-sm text-amber-800">
+          {t('rate.pull.tooLong', { max: MAX_RASTER_TAGE })}
+        </div>
+      )}
       {anfordern.isError && <Fehler error={anfordern.error} />}
       {stand.isError && <Fehler error={stand.error} />}
 
