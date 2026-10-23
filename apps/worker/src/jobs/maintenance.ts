@@ -323,6 +323,7 @@ export interface RetentionResult {
   platformEmailBodies: number
   staffTextJobs: number
   staffPushes: number
+  supportTickets: number
 }
 
 const STAPEL = 5_000
@@ -406,7 +407,22 @@ export async function purgeRetention(admin: Pool): Promise<RetentionResult> {
         WHERE status <> 'pending' AND created_at < now() - interval '30 days'
         LIMIT $1)`)
 
-  return { webhookDeliveries, emailAttempts, platformEmailBodies, staffTextJobs, staffPushes }
+  /*
+   * Tickets (0208): zwei Jahre nach dem Schliessen weg, mit Faden und
+   * Anhaengen (ON DELETE CASCADE). Darin steht, was eine Rezeption im
+   * Betrieb geschrieben hat, und das ist oft ein Gast; danach fragt nach
+   * zwei Jahren niemand mehr, und eine Frist, die niemand vollzieht, ist
+   * keine. Eine Support-Sitzung aus dem Ticket bleibt als Nachweis stehen,
+   * nur ohne Verweis.
+   */
+  const supportTickets = await stapelweise(admin,
+    `DELETE FROM support_ticket WHERE id IN (
+       SELECT id FROM support_ticket
+        WHERE status = 'closed' AND closed_at < now() - interval '24 months'
+        LIMIT $1)`)
+
+  return { webhookDeliveries, emailAttempts, platformEmailBodies, staffTextJobs, staffPushes,
+           supportTickets }
 }
 
 /**

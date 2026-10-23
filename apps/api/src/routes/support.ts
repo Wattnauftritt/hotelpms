@@ -108,7 +108,8 @@ export function supportRoutes(app: FastifyInstance): void {
     summary: 'Support-Sitzung beim Kunden anfragen',
     handler: async (req, reply) => {
       const b = (req.body ?? {}) as {
-        accountId?: number; reason?: string; level?: string; hours?: number }
+        accountId?: number; reason?: string; level?: string; hours?: number
+        ticketId?: number }
       const principal = req.principal as Principal
 
       const anlass = String(b.reason ?? '').trim()
@@ -129,7 +130,28 @@ export function supportRoutes(app: FastifyInstance): void {
         throw Errors.validation({ accountId: ['field.required'] })
       }
 
+      const ticketId = b.ticketId === undefined || b.ticketId === null
+        ? null : Number(b.ticketId)
+      if (ticketId !== null && (!Number.isInteger(ticketId) || ticketId <= 0)) {
+        throw Errors.validation({ ticketId: ['field.invalid'] })
+      }
+
       const angelegt = await tx(req.pool, req, async client => {
+        /*
+         * Aus einem Ticket angefragt (0208): dann erscheint die Anfrage im
+         * Faden, und der Kunde gibt dort frei. Das Ticket muss zu diesem
+         * Kunden gehoeren -- sonst stuende die Anfrage im Faden eines
+         * anderen. Gelesen ueber platform_tickets(), weil die Plattform ohne
+         * Sitzung keinen Kontext hat; ohne platform:tickets liefert sie nichts.
+         */
+        if (ticketId !== null) {
+          const t = await client.query<{ account_id: number }>(
+            `SELECT account_id FROM platform_tickets(NULL, $1)`, [ticketId])
+          if (t.rows[0]?.account_id !== accountId) {
+            throw Errors.validation({ ticketId: ['field.invalid'] })
+          }
+        }
+
         /*
          * Wer darf freigeben: jemand mit settings:account im Zielaccount.
          * Ohne einen solchen Menschen laege die Anfrage fuer immer da, und
@@ -154,10 +176,10 @@ export function supportRoutes(app: FastifyInstance): void {
 
         const s = await client.query<{ id: number }>(
           `INSERT INTO support_session
-             (account_id, platform_user_id, level, reason, expires_at)
-           VALUES ($1,$2,$3,$4, now() + ($5 || ' hours')::interval)
+             (account_id, platform_user_id, level, reason, expires_at, ticket_id)
+           VALUES ($1,$2,$3,$4, now() + ($5 || ' hours')::interval, $6)
            RETURNING id`,
-          [accountId, principal.userId, level, anlass, stunden])
+          [accountId, principal.userId, level, anlass, stunden, ticketId])
         const id = s.rows[0]!.id
 
         const staff = await client.query<{ display_name: string }>(

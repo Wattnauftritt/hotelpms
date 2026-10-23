@@ -55,6 +55,7 @@ import { emailRoutes } from './email.js'
 import { userRoutes } from './users.js'
 import { onboardingRoutes } from './onboarding.js'
 import { supportRoutes } from './support.js'
+import { ticketRoutes } from './tickets.js'
 import { deploymentRoutes } from './deployments.js'
 import { platformRoutes } from './platform.js'
 import { platformSupportRoutes } from './platformSupport.js'
@@ -145,6 +146,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   userRoutes(app)
   onboardingRoutes(app)
   supportRoutes(app)
+  ticketRoutes(app)
   deploymentRoutes(app)
   platformRoutes(app)
   platformSupportRoutes(app)

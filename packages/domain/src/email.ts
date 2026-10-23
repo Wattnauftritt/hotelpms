@@ -2424,6 +2424,63 @@ export function renderDomainRequestNotice(d: DomainRequestNoticeData): RenderedE
            text: lines.join('\n\n'), html: htmlBody(lines) }
 }
 
+/*
+ * Tickets (Migration 0208): zwei Hinweise, **beide ohne Inhalt**.
+ *
+ * Was im Ticket steht, schreibt eine Rezeption mitten im Betrieb, und das
+ * ist oft ein Gast. In einem Postfach liegt es ohne Frist und ohne
+ * Zeilenrichtlinie, und eine weitergeleitete Mail nimmt es mit. Die Mail
+ * sagt deshalb nur, dass es etwas Neues gibt, und wo -- gelesen und
+ * geantwortet wird in StayGrid.
+ *
+ * Nur deutsch, wie die uebrige Post an Benutzer: die Zugangspost bleibt
+ * deutsch (Dokument 16, Sprachen), und die an uns sowieso.
+ */
+export interface TicketNoticeData {
+  ticketId: number
+  /** Name des Kunden, nicht der Person: der Eingang sortiert nach Kunden. */
+  accountName: string
+  /** Neues Ticket oder Antwort auf ein bestehendes. */
+  neu: boolean
+  /** "Betrieb steht" -- das Einzige, was am Betreff etwas aendern soll. */
+  dringend: boolean
+  link: string
+}
+
+export function renderTicketNotice(d: TicketNoticeData): RenderedEmail {
+  const lines = [
+    'Guten Tag,',
+    d.neu
+      ? `${d.accountName} hat eine neue Anfrage gestellt (#${d.ticketId}).`
+      : `${d.accountName} hat auf die Anfrage #${d.ticketId} geantwortet.`,
+    ...(d.dringend ? ['Der Kunde meldet: der Betrieb steht.'] : []),
+    'Gelesen und beantwortet wird im Adminpanel, nicht per Antwort auf diese Nachricht:',
+    d.link
+  ]
+  const betreff = `${d.dringend ? 'DRINGEND: ' : ''}`
+    + `${d.neu ? 'Neue Anfrage' : 'Antwort'} #${d.ticketId} von ${d.accountName}`
+  return { subject: betreff, text: lines.join('\n\n'), html: htmlBody(lines) }
+}
+
+export interface TicketReplyData {
+  userName: string | null
+  ticketId: number
+  link: string
+}
+
+export function renderTicketReplyEmail(d: TicketReplyData): RenderedEmail {
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    `der StayGrid-Support hat auf Ihre Anfrage #${d.ticketId} geantwortet.`,
+    'Die Antwort lesen Sie in StayGrid unter "Hilfe & Support":',
+    d.link,
+    'Bitte antworten Sie dort und nicht auf diese Nachricht. Den Inhalt Ihrer '
+      + 'Anfrage schicken wir bewusst nicht per Mail.'
+  ]
+  return { subject: `Antwort auf Ihre Anfrage #${d.ticketId}`, text: lines.join('\n\n'),
+           html: htmlBody(lines) }
+}
+
 /**
  * Bestaetigung einer neuen Mailadresse, an die **neue** Adresse.
  *

@@ -36,6 +36,7 @@ Tabelle `account`.
 | 7 | Benutzer- und Rechteverwaltung des Betriebs | Organisation des Verantwortlichen |
 | 8 | Protokollierung | Art. 32 Abs. 1 lit. b, Nachweisbarkeit |
 | 9 | Digitale Gästemappe | Erfüllung des Vertrags: Hausinfos, später Wünsche und Reinigungsverzicht des laufenden Aufenthalts |
+| 10 | Support-Anfragen (Tickets) | Unterstützung des Verantwortlichen beim Betrieb der Software (Migration 0208) |
 
 ## 4. Kategorien betroffener Personen und Daten
 
@@ -64,6 +65,13 @@ Löschfristen.
 
 **Beschäftigte des Betriebs.** Name, dienstliche E-Mail, Rolle, Zeitpunkt der
 letzten Anmeldung, Authentifizierungsmerkmale.
+
+**Support-Anfragen.** Verfasser, Haus, Betreff, Text und angehängte Bilder
+oder PDFs einer Anfrage an den StayGrid-Support, dazu die Antworten. Das
+Formular bittet ausdrücklich, keine Gast- und Kartendaten hineinzuschreiben;
+ein Bildschirmfoto kann sie trotzdem zeigen. Deshalb: Zeilenrichtlinie je
+Account, keine Werte im Protokoll (`audit_redaction`), keine Inhalte in Mails,
+Löschung 24 Monate nach dem Schließen.
 
 **Ansprechpartner von Firmenkunden.** Firmenname, Anschrift, USt-IdNr.,
 Rechnungsadresse.
@@ -124,6 +132,7 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Freischaltungen der Gästemappe | 7 Tage nach dem Abreisetag, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
 | Text einer Nachricht aus der Gästemappe | 30 Tage nach der Abreise, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
 | Idempotenzschlüssel | 24 Stunden | `purgeExpired()` |
+| Support-Anfragen samt Anhängen | 24 Monate nach dem Schließen | `purgeRetention()` (Worker) |
 | Protokoll | zehn Jahre | `audit_log_drop_old_partitions()` |
 
 ## 8. Technische und organisatorische Maßnahmen

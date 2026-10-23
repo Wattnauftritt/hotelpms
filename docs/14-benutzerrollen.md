@@ -73,9 +73,11 @@ Fester Katalog, im Code definiert, nicht vom Kunden änderbar. Rund 40 Schlüsse
 | | `settings:account` | Accountweite Einstellungen, Properties anlegen |
 | | `user:manage` | Nutzer einladen, Rollen zuweisen |
 | | `integration:manage` | API-Clients, Webhooks, Channel Manager |
+| Support | `support:ticket` | Anfragen an den StayGrid-Support stellen, eigene lesen; jede Kundenrolle (0208) |
 | Plattform | `platform:accounts` | Accounts anlegen, sperren |
 | | `platform:support_session` | Support-Sitzung anfragen |
 | | `platform:billing` | Abonnements und unsere Rechnungen an Kunden |
+| | `platform:tickets` | Anfragen aller Kunden bearbeiten (0208) |
 
 **Konvention:** `ressource:handlung`. Lesen und Schreiben sind stets getrennt. Handlungen mit erhöhtem Risiko haben eigene Schlüssel statt eines allgemeinen `write`.
 
