@@ -252,3 +252,83 @@ describe('Zimmer als andere Kategorie verkaufen', () => {
     expect(r.statusCode, r.body).toBe(409)
   })
 })
+
+describe('Verfuegbarkeit je Verkaufseinheit', () => {
+  /*
+   * Sven, 23.10.2026: StayGrid gibt die Verfuegbarkeit je Kategorie vor, die
+   * das Haus verkauft, und das Adminpanel rechnet nichts mehr nach. Der Fall
+   * vom Bildschirmfoto: das Familienzimmer aus der Gruppe "Apart" (Code FZ)
+   * wird am Samstag als Doppelzimmer verkauft.
+   */
+  interface Einheit { code: string; date: string; capacity: number; sold: number
+                      unassigned: number; available: number }
+  const einheiten = async (from = TAG, to = DANACH): Promise<Einheit[]> => {
+    const r = await app.inject({ method: 'GET', headers: auth,
+      url: `/v1/properties/${fx.propertyId}/availability?from=${from}&to=${to}&by=salesUnit` })
+    expect(r.statusCode, r.body).toBe(200)
+    return (JSON.parse(r.body) as { unitDays: Einheit[] }).unitDays
+  }
+  const von = (e: Einheit[], code: string, date = TAG) =>
+    e.find(x => x.code === code && x.date === date)
+
+  let apart: number
+  let fz: number
+  let apt: number
+  beforeEach(async () => {
+    apart = await makeCategory(owner, fx.propertyId, { code: 'APART', name: 'Apart' })
+    ;[fz, apt] = await makeResources(owner, fx.propertyId, apart, 2, 'A') as [number, number]
+    await owner.query(`UPDATE resource SET sales_code = 'FZ' WHERE id = $1`, [fz])
+    await owner.query(`UPDATE resource SET sales_code = 'APT' WHERE id = $1`, [apt])
+    // Die Gruppe kam nach dem Anlegen des Bestands dazu.
+    await owner.query(`SELECT inventory_materialize($1,'2027-02-01'::date,'2027-05-01'::date)`,
+      [fx.propertyId])
+  })
+
+  it('teilt jedes Zimmer genau einer Einheit zu, ohne verkaufte Tage', async () => {
+    const e = await einheiten()
+    expect(e.map(x => [x.code, x.capacity, x.available]).sort()).toEqual(
+      [['APT', 1, 1], ['DZ', 1, 1], ['FZ', 1, 1], ['VZ', 2, 2]])
+  })
+
+  it('zaehlt das als Doppelzimmer verkaufte Familienzimmer beim Doppelzimmer', async () => {
+    expect((await verkaufen(fz, TAG, DANACH, dz)).statusCode).toBe(200)
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      resourceId: dzZimmer, arrival: TAG, departure: DANACH })
+
+    const e = await einheiten(TAG, UEBERNAECHSTER)
+    expect(von(e, 'DZ')).toMatchObject({ capacity: 2, sold: 1, available: 1 })
+    expect(von(e, 'FZ')).toMatchObject({ capacity: 0, available: 0 })
+    // Am Tag danach ist es wieder das Familienzimmer.
+    expect(von(e, 'DZ', DANACH)).toMatchObject({ capacity: 1, available: 1 })
+    expect(von(e, 'FZ', DANACH)).toMatchObject({ capacity: 1, available: 1 })
+
+    // Der Doppelzimmergast im Familienzimmer zaehlt beim Doppelzimmer.
+    const g = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      arrival: TAG, departure: DANACH })
+    const z = await post(`/v1/reservations/${await refVon(g.reservationId)}/assign-unit`,
+      { resourceId: fz })
+    expect(z.statusCode, z.body).toBe(200)
+    const n = await einheiten()
+    expect(von(n, 'DZ')).toMatchObject({ capacity: 2, sold: 2, available: 0 })
+    expect(von(n, 'FZ')).toMatchObject({ capacity: 0, sold: 0, available: 0 })
+  })
+
+  it('zieht eine Buchung ohne Zimmer und Code von jeder Einheit ihrer Gruppe ab', async () => {
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: apart,
+      arrival: TAG, departure: DANACH })
+    // Und eine Doppelzimmerbuchung ohne Zimmer zaehlt beim Doppelzimmer selbst.
+    await makeReservation(owner, { propertyId: fx.propertyId, categoryId: dz,
+      arrival: TAG, departure: DANACH })
+    const e = await einheiten()
+    expect(von(e, 'FZ')).toMatchObject({ capacity: 1, sold: 0, unassigned: 1, available: 0 })
+    expect(von(e, 'APT')).toMatchObject({ capacity: 1, sold: 0, unassigned: 1, available: 0 })
+    expect(von(e, 'DZ')).toMatchObject({ capacity: 1, sold: 1, unassigned: 0, available: 0 })
+  })
+
+  it('laesst ein Zimmer ausser Betrieb aus der Kapazitaet', async () => {
+    await owner.query(
+      `INSERT INTO maintenance_block (property_id, resource_id, kind, from_date, to_date, reason)
+       VALUES ($1, $2, 'out_of_order', $3, $4, 'Wasserschaden')`, [fx.propertyId, vzZweites, TAG, DANACH])
+    expect(von(await einheiten(), 'VZ')).toMatchObject({ capacity: 1, available: 1 })
+  })
+})

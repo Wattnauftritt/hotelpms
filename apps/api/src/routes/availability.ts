@@ -299,6 +299,113 @@ async function jeVerkaufscode(
   })
 }
 
+/**
+ * Verfuegbarkeit je Verkaufseinheit: jedes Zimmer gehoert an jedem Tag genau
+ * einer an.
+ *
+ * Sven, 23.10.2026: StayGrid soll die Verfuegbarkeit je Kategorie, die das
+ * Haus verkauft, selbst vorgeben, und das Adminpanel soll dafuer nichts mehr
+ * nachrechnen. Bis dahin zaehlte es Zimmer fuer Zimmer mit einer festen
+ * Liste "Zimmernummer -> RoomCloud-Kategorie" und wusste deshalb nicht, dass
+ * ein Familienzimmer an einem Samstag als Doppelzimmer verkauft wird (0197).
+ *
+ * **Warum nicht `inventory_day`.** Der Bestand bindet je Gruppe, und in einer
+ * Gruppe koennen Zimmer liegen, die ein Kanal getrennt verkauft
+ * (Verkaufscode, 0090). **Warum nicht `by=salesCode`.** Das zeigt nur die
+ * Zimmer mit Code; wer die uebrigen braucht, muesste sie aus der Gruppe
+ * herausrechnen -- genau das Nachdenken, das der Abrufer nicht mehr soll.
+ *
+ * Die Einheit eines Zimmers an einem Tag ist, in dieser Reihenfolge:
+ *   1. die Gruppe, als die es an dem Tag verkauft wird (`room_sell_as`),
+ *   2. sein Verkaufscode,
+ *   3. das Kuerzel seiner Gruppe.
+ * Damit zerfallen die Zimmer jeden Tag ohne Rest und ohne Doppel.
+ *
+ * Belegt ist, was bindet, in der Einheit seines Zimmers an diesem Tag. Eine
+ * Buchung ohne Zimmer zaehlt in ihrem Verkaufscode, sonst unter dem Kuerzel
+ * ihrer Gruppe -- so, wie sie gebucht ist. Gibt es diese Einheit nicht, weil
+ * jedes Zimmer der Gruppe einen Code traegt (Zimmer 8 und 9, "Apart" als FZ
+ * und APT), steht sie als `unassigned` bei **jeder** Einheit der Gruppe und
+ * ist in `available` schon abgezogen: wem sie zufaellt, weiss niemand, bis
+ * sie ein Zimmer hat, und raten verkaufte das andere Zimmer doppelt (wie
+ * `by=salesCode`). Ausser Betrieb zaehlt nicht zur Kapazitaet.
+ * Kontingente der Gruppe (`blocked`) stehen nicht darin: sie haengen an der
+ * Gruppe und an keiner Einheit.
+ */
+async function jeVerkaufseinheit(
+  req: FastifyRequest, propertyId: number, from: string, to: string
+): Promise<unknown[]> {
+  const r = await tx(req.pool, req, client => client.query(
+    `WITH tage AS (
+       SELECT d::date AS date FROM generate_series($2::date, $3::date - 1, interval '1 day') d
+     ), zimmer_tag AS (
+       SELECT u.id, t.date,
+              COALESCE(vk.code, u.sales_code, k.code) AS code,
+              COALESCE(a.category_id, u.category_id) AS category_id,
+              EXISTS (SELECT 1 FROM maintenance_block m
+                       WHERE m.resource_id = u.id AND m.kind = 'out_of_order'
+                         AND t.date >= m.from_date AND t.date < m.to_date) AS ausser_betrieb
+         FROM resource u
+        CROSS JOIN tage t
+         JOIN resource_category k ON k.id = u.category_id
+         LEFT JOIN room_sell_as a ON a.resource_id = u.id AND a.date = t.date
+         LEFT JOIN resource_category vk ON vk.id = a.category_id
+        WHERE u.property_id = $1 AND u.active
+     ), kapazitaet AS (
+       SELECT code, category_id, date, count(*) FILTER (WHERE NOT ausser_betrieb)::int AS n
+         FROM zimmer_tag GROUP BY 1, 2, 3
+     ), belegung AS (
+       SELECT COALESCE(z.code, r.sales_code, k.code) AS code,
+              COALESCE(z.category_id, s.category_id) AS category_id, n.date
+         FROM reservation_night n
+         JOIN reservation r ON r.id = n.reservation_id
+         -- Das Zimmer dieser Nacht, nicht das von heute (0195).
+         JOIN reservation_room_stay s ON s.id = r.id
+                                     AND n.date >= s.arrival AND n.date < s.departure
+         JOIN resource_category k ON k.id = s.category_id
+         LEFT JOIN zimmer_tag z ON z.id = s.resource_id AND z.date = n.date
+        WHERE n.property_id = $1 AND n.date >= $2::date AND n.date < $3::date
+          AND r.status IN ('Optional','Confirmed','InHouse')
+     ), einheit AS (
+       -- Auch die eigene Einheit jedes Zimmers, wenn es im ganzen Zeitraum
+       -- anders verkauft wird: der Abrufer soll fuer FZ eine 0 lesen und
+       -- nicht nichts, sonst bliebe drueben der alte Wert stehen.
+       SELECT code, category_id FROM zimmer_tag
+       UNION
+       SELECT COALESCE(u.sales_code, k.code), u.category_id
+         FROM resource u JOIN resource_category k ON k.id = u.category_id
+        WHERE u.property_id = $1 AND u.active
+     ), verkauft AS (
+       SELECT b.code, b.category_id, b.date, count(*)::int AS n
+         FROM belegung b JOIN einheit e ON e.code = b.code AND e.category_id = b.category_id
+        GROUP BY 1, 2, 3
+     ), offen AS (
+       SELECT b.category_id, b.date, count(*)::int AS n
+         FROM belegung b
+        WHERE NOT EXISTS (SELECT 1 FROM einheit e
+                           WHERE e.code = b.code AND e.category_id = b.category_id)
+        GROUP BY 1, 2
+     )
+     SELECT e.code, e.category_id AS "categoryId", k.code AS "categoryCode",
+            k.name AS "categoryName", t.date::text AS date,
+            COALESCE(kp.n, 0) AS capacity, COALESCE(v.n, 0) AS sold,
+            COALESCE(o.n, 0) AS unassigned
+       FROM einheit e
+       JOIN resource_category k ON k.id = e.category_id
+      CROSS JOIN tage t
+       LEFT JOIN kapazitaet kp ON kp.code = e.code AND kp.category_id = e.category_id
+                              AND kp.date = t.date
+       LEFT JOIN verkauft v ON v.code = e.code AND v.category_id = e.category_id
+                           AND v.date = t.date
+       LEFT JOIN offen o ON o.category_id = e.category_id AND o.date = t.date
+      ORDER BY e.code, e.category_id, t.date`,
+    [propertyId, from, to]))
+  return r.rows.map(z => {
+    const row = z as { capacity: number; sold: number; unassigned: number }
+    return { ...row, available: row.capacity - row.sold - row.unassigned }
+  })
+}
+
 export function availabilityRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'GET',
@@ -310,9 +417,12 @@ export function availabilityRoutes(app: FastifyInstance): void {
       const { propertyId } = req.params as { propertyId: string }
       const { from, to } = range(req, MAX_AVAILABILITY_DAYS)
       const by = (req.query as { by?: string }).by
-      if (by !== undefined && by !== 'category' && by !== 'salesCode') {
+      if (by !== undefined && by !== 'category' && by !== 'salesCode' && by !== 'salesUnit') {
         throw Errors.validation({ by: ['field.allowedValues'] },
-          { values: 'category, salesCode' })
+          { values: 'category, salesCode, salesUnit' })
+      }
+      if (by === 'salesUnit') {
+        return { unitDays: await jeVerkaufseinheit(req, Number(propertyId), from, to) }
       }
       if (by === 'salesCode') {
         return { salesDays: await jeVerkaufscode(req, Number(propertyId), from, to) }
