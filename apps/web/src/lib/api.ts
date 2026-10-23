@@ -1,5 +1,6 @@
 import type { Problem } from '@hotelpms/contracts'
 import { nativ, type StaygridNative } from '@hotelpms/native'
+import { bestaetigen, verlangtBestaetigung } from './bestaetigung.js'
 
 /**
  * Zugriff auf die Schnittstelle.
@@ -55,7 +56,8 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 }
 
 async function request<T>(
-  method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}
+  method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {},
+  wiederholt = false
 ): Promise<T> {
   const headers: Record<string, string> = { ...extraHeaders }
   if (body !== undefined) headers['content-type'] = 'application/json'
@@ -75,6 +77,12 @@ async function request<T>(
       type: 'urn:staygrid:unknown',
       title: res.statusText || 'Unbekannter Fehler',
       status: res.status
+    }
+    // Eine kritische Handlung ohne frische Bestaetigung: fragen und genau
+    // einmal erneut senden (lib/bestaetigung.ts). Derselbe Rumpf, derselbe
+    // Idempotenzschluessel -- es ist dieselbe Absicht.
+    if (!wiederholt && verlangtBestaetigung(res.status, problem) && await bestaetigen()) {
+      return request<T>(method, path, body, extraHeaders, true)
     }
     throw new ApiError(problem, res.status)
   }

@@ -47,6 +47,7 @@ import { oauthRoutes } from './oauth.js'
 import { paymentsRoutes, type PaymentRouteOverrides } from './payments.js'
 import { depositRequestRoutes } from './depositRequests.js'
 import { webhookRoutes } from './webhooks.js'
+import { securityEventRoutes } from './securityEvents.js'
 import { channelRoutes } from './channel.js'
 import { channelPushRoutes } from './channelPush.js'
 import { channelAdapterRoutes } from './channelAdapters.js'
@@ -137,6 +138,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   paymentsRoutes(app, overrides.payments)
   depositRequestRoutes(app)
   webhookRoutes(app)
+  securityEventRoutes(app)
   channelRoutes(app)
   channelPushRoutes(app)
   channelAdapterRoutes(app)

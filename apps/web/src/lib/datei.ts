@@ -1,5 +1,6 @@
 import { nativ } from '@hotelpms/native'
 import { ApiError, apiFetch } from './api.js'
+import { bestaetigen, verlangtBestaetigung } from './bestaetigung.js'
 
 /**
  * Eine Datei an den Benutzer geben, im Browser und in der App.
@@ -37,11 +38,16 @@ export function dateienUeberApp(): boolean {
  * dem Rumpf nach RFC 9457, damit er am Knopf als Meldung steht und nicht
  * als leere Datei.
  */
-export async function holeApiDatei(pfad: string): Promise<Response> {
+export async function holeApiDatei(pfad: string, wiederholt = false): Promise<Response> {
   const res = await apiFetch(pfad)
   if (res.ok) return res
   let problem: unknown = null
   try { problem = JSON.parse(await res.text()) } catch { /* kein RFC-9457-Rumpf */ }
+  // Mandantenexport, GoBD-Archiv, Gaesteverzeichnis: erst das Kennwort,
+  // dann dieselbe Datei noch einmal (lib/bestaetigung.ts).
+  if (!wiederholt && verlangtBestaetigung(res.status, problem) && await bestaetigen()) {
+    return holeApiDatei(pfad, true)
+  }
   throw new ApiError(
     problem !== null && typeof problem === 'object' && 'title' in problem
       ? problem as ApiError['problem']

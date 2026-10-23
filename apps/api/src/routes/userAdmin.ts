@@ -3,6 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { leitungsrolleAbsichern } from '../platform/bestaetigung.js'
 import { accountRight, can, type Principal } from '../platform/context.js'
 import { einmalTokenUndPost, einmalLink, personenwechselBeenden } from './auth.js'
 
@@ -359,6 +360,8 @@ export function userAdminRoutes(app: FastifyInstance): void {
             throw Errors.conflict('user.usernameTaken')
           }
           verlangtBetriebsrecht(ziel, principal, accountId)
+          await leitungsrolleAbsichern(client, req, { userId: ziel.id },
+            rollen.rows.map(r => r.id), accountId, propertyId)
           // Hinzu, nicht ersetzen: wer im Haus schon Rollen hat, verliert
           // durch eine zweite Einladung keine davon.
           await client.query(
@@ -373,6 +376,8 @@ export function userAdminRoutes(app: FastifyInstance): void {
           `INSERT INTO app_user (email, username, display_name, status)
            VALUES (NULLIF($1, ''), NULLIF($2, ''), $3, 'invited')
            RETURNING id, public_ref`, [email, username, name])
+        await leitungsrolleAbsichern(client, req, { userId: u.rows[0]!.id },
+          rollen.rows.map(r => r.id), accountId, propertyId)
         await client.query(
           `INSERT INTO user_property_role (user_id, property_id, role_id, granted_by)
            SELECT $1, $2, unnest($3::bigint[]), $4`,
@@ -715,6 +720,8 @@ export function userAdminRoutes(app: FastifyInstance): void {
           await nichtDenLetztenVerwalter(client, accountId, ziel.id)
         }
 
+        await leitungsrolleAbsichern(client, req, { userId: ziel.id },
+          rollen.rows.map(r => r.id), accountId, null)
         await client.query(
           `DELETE FROM user_account_role WHERE user_id = $1 AND account_id = $2`,
           [ziel.id, accountId])

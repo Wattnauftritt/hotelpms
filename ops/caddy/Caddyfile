@@ -143,6 +143,7 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 		# stumm hängen.
 		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src https: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		-Server
+		-Via
 	}
 
 	# Die Schnittstelle unter demselben Namen. Der Unix-Socket bedeutet:
@@ -236,10 +237,42 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 # Eigener Name für Maschinen: Channel Manager, Buchungsstrecke, Kassensysteme.
 # Sie brauchen keine Oberfläche und sollen sie auch nicht sehen.
 #
-# Kein Gegenstueck zur Ratenbegrenzung oben: hier meldet sich kein Mensch an,
-# sondern ein Client mit Client Credentials, und der holt sein Token einmal
-# je Stunde. Die Anwendung begrenzt /oauth/token ohnehin selbst.
+# **Eine Grenze am Tokenendpunkt** (Bedrohungsanalyse 23.10.2026, T6). Hier
+# stand zuerst keine: ein Client holt sein Token einmal je Stunde, und die
+# Anwendung begrenzt /oauth/token ohnehin selbst. Aber ein Angreifer mit
+# einer erbeuteten Client-Kennung -- aus einem Protokoll, einem Ticket, dem
+# Quelltext eines Umsystems -- probiert Geheimnisse genau hier, und er tut es
+# von vielen Adressen zugleich, gesteuert von einem Programm, das nicht
+# muede wird. Die Grenze der Anwendung zaehlt erst, wenn die Anfrage schon
+# einen Node-Prozess beschaeftigt; diese fängt den Schwall davor ab.
+#
+# 60 je Minute und Adresse: ein ehrlicher Client braucht eine je Stunde,
+# auch ein Adminpanel mit mehreren Arbeitern kommt nicht in die Naehe.
+#
+# Die Fachaufrufe der Maschinen bleiben ohne Grenze hier, aus demselben
+# Grund wie bei der Rezeption: ein Channel Manager, der in der Hauptsaison
+# tausend Verfuegbarkeiten am Stueck abholt, ist kein Angriff, und der
+# Schaden einer Sperre waeren Ueberbuchungen.
+#
+# `-Via`: Caddy nennt sich seit 2.7 in der Antwort des Proxys. Wer
+# angreift, liest daraus Software und Fassung ab; der Name `-Server` oben
+# nimmt nur die halbe Angabe weg.
+#
+# Gegen Caddy 2.11.7 mit caddy-ratelimit nachgerechnet (23.10.2026): die
+# 61. Anfrage einer Minute an /oauth/token bekommt 429, andere Pfade nicht;
+# ohne `-Via` stand "Via: 1.0 Caddy" in der Antwort, mit nicht mehr. Auf
+# der Maschine einzutragen beim naechsten Abgleich mit /etc/caddy/Caddyfile.
 api.staygrid.cloud {
+	rate_limit {
+		zone token {
+			match {
+				path /oauth/token
+			}
+			key    {remote_host}
+			events 60
+			window 1m
+		}
+	}
 	reverse_proxy unix//run/hotelpms/api.sock {
 		import echte_herkunft
 	}
@@ -249,5 +282,6 @@ api.staygrid.cloud {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
 		-Server
+		-Via
 	}
 }

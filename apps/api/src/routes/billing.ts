@@ -23,6 +23,7 @@ import { anzahlungssicht, rechtImHaus } from './depositRequests.js'
 import type { Principal } from '../platform/context.js'
 import { produktImHaus, gastPerRefImBetrieb, firmaPerRefImBetrieb } from '../platform/fremdeIds.js'
 import { bildAusRumpf, bildSenden, BILD_MAX_BYTES } from '../platform/terminalBild.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis, kuerze } from '../platform/bestaetigung.js'
 
 /** Ermaessigter Satz als Rueckfall, wie im Nachtlauf. */
 const VAT_FALLBACK = 700
@@ -346,6 +347,36 @@ const KONTAKT_FELDER = {
   accountHolder: 'bank_account_holder', website: 'invoice_website'
 } as const
 type KontaktFeld = keyof typeof KONTAKT_FELDER
+
+/**
+ * Wohin das Geld geht, aendert nur, wer sich eben ausgewiesen hat
+ * (Bedrohungsanalyse 23.10.2026, T3). Eine getauschte IBAN ist der
+ * klassische Rechnungsbetrug: jede Firmenrechnung druckt danach das Konto
+ * des Angreifers, und auffallen tut es erst beim Mahnlauf. Geprueft wird nur,
+ * wenn sich Bankangaben wirklich aendern -- die Maske schickt alle Felder
+ * bei jedem Speichern mit, und eine Kennwortfrage beim Aendern der
+ * Telefonnummer waere eine Huerde ohne Gegenwert.
+ */
+async function bankAenderungAbsichern(
+  client: PoolClient, req: FastifyRequest, propertyId: number,
+  kontakt: Partial<Record<KontaktFeld, string | null>>
+): Promise<void> {
+  const bank: KontaktFeld[] = ['iban', 'bic', 'accountHolder', 'bankName']
+  const { rows } = await client.query<Record<string, string | null> & { account_id: number }>(
+    `SELECT account_id, bank_iban AS iban, bank_bic AS bic,
+            bank_account_holder AS "accountHolder", bank_name AS "bankName"
+       FROM property WHERE id = $1`, [propertyId])
+  const alt = rows[0]
+  if (alt === undefined) return
+  const geaendert = bank.filter(k => k in kontakt && (kontakt[k] ?? null) !== (alt[k] ?? null))
+  if (geaendert.length === 0) return
+  await verlangeBestaetigung(req)
+  await meldeSicherheitsereignis(client, req, {
+    kind: 'bank_details_changed', accountId: alt.account_id, propertyId,
+    detail: { fields: geaendert, ibanOld: kuerze(alt.iban), ibanNew: kuerze(kontakt.iban ?? alt.iban) },
+    hint: kontakt.iban !== undefined ? `IBAN ${kuerze(kontakt.iban) ?? '–'}` : null
+  })
+}
 
 /**
  * Prueft und vereinheitlicht die Kontaktangaben aus dem Rumpf. Nur die
@@ -1206,6 +1237,7 @@ export function billingRoutes(app: FastifyInstance): void {
         }
         if (kontakt !== null) {
           const felder = Object.keys(kontakt) as KontaktFeld[]
+          await bankAenderungAbsichern(client, req, Number(propertyId), kontakt)
           await client.query(
             `UPDATE property SET ${felder.map((k, i) => `${KONTAKT_FELDER[k]} = $${i + 2}`)
               .join(', ')} WHERE id = $1`,

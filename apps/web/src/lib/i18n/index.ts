@@ -38,6 +38,7 @@ import { gaestemappe } from './gaestemappe.js'
 import { visitenkarte } from './visitenkarte.js'
 import { kurzbefehle } from './kurzbefehle.js'
 import { verkaufenAls } from './verkaufenAls.js'
+import { sicherheit } from './sicherheit.js'
 import { passkey } from './passkey.js'
 
 /**
@@ -250,6 +251,7 @@ export type TextKey =
   | keyof typeof kurzbefehle
   | keyof typeof verkaufenAls
   | keyof typeof passkey
+  | keyof typeof sicherheit
 
 const texts: Record<TextKey, LocalizedText> = {
   ...common,
@@ -290,7 +292,8 @@ const texts: Record<TextKey, LocalizedText> = {
   ...visitenkarte,
   ...kurzbefehle,
   ...verkaufenAls,
-  ...passkey
+  ...passkey,
+  ...sicherheit
 }
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */

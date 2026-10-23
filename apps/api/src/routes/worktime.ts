@@ -5,6 +5,7 @@ import { addDays, isClockTime, isIsoDate, isMonth, minutesBetween, monthRange }
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { exportMelden } from '../platform/bestaetigung.js'
 import { can, propertyIds, type Principal } from '../platform/context.js'
 import { tagOderOffen } from './cleaningPlan.js'
 import { writeCsv as csv } from '../platform/csv.js'
@@ -806,6 +807,8 @@ export function worktimeRoutes(app: FastifyInstance): void {
       if (!isMonth(q.month)) throw Errors.validation({ month: ['field.isoMonth'] })
       const month = q.month
       const haeuser = haeuserFuer(req.principal as Principal, propertyId, q.scope)
+      await exportMelden(req, propertyId, 'worktime',
+        { bestaetigen: false, detail: { month, houses: haeuser.length } })
       return tx(req.pool, req, async client => {
         const u = await sammle(client, haeuser, month)
         if (u.closed === null) throw Errors.conflict('worktime.notClosed', { month })

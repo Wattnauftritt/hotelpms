@@ -4,6 +4,7 @@ import { CHANNEL_CREDENTIALS_PURPOSE } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis, meldeImHaus } from '../platform/bestaetigung.js'
 import { encryptSecret } from '../platform/crypto.js'
 import { loadConfig } from '../platform/config.js'
 import { isTrainingProperty } from '../platform/training.js'
@@ -108,6 +109,7 @@ export function channelAdapterRoutes(app: FastifyInstance): void {
       const credentials = text(body.credentials, 'credentials', MAX_CREDENTIALS)
       const m = body.mode === undefined ? 'shadow' : modus(body.mode)
       const principal = req.principal as Principal
+      await verlangeBestaetigung(req)
 
       return tx(req.pool, req, async client => {
         const prop = await client.query<{ account_id: number }>(
@@ -131,6 +133,10 @@ export function channelAdapterRoutes(app: FastifyInstance): void {
           [propertyId, prop.rows[0]!.account_id, provider, name, m,
            encryptSecret(credentials, config.idDocumentKey, CHANNEL_CREDENTIALS_PURPOSE),
            hinweis(credentials), externalPropertyId, principal.userId])
+        await meldeSicherheitsereignis(client, req, {
+          kind: 'channel_connection_created', accountId: prop.rows[0]!.account_id, propertyId,
+          detail: { connectionRef: r.rows[0]!.public_ref, provider, externalPropertyId },
+          hint: provider })
         reply.status(201)
         return { connectionRef: r.rows[0]!.public_ref, mode: m }
       })
@@ -193,9 +199,18 @@ export function channelAdapterRoutes(app: FastifyInstance): void {
         : text(body.externalPropertyId, 'externalPropertyId', 100)
       const credentials = body.credentials === undefined ? null
         : text(body.credentials, 'credentials', MAX_CREDENTIALS)
+      // Andere Zugangsdaten oder ein anderes Haus beim Anbieter lenken den
+      // Abgleich um; Modus und Name nicht.
+      if (credentials !== null || externalPropertyId !== null) await verlangeBestaetigung(req)
 
       return tx(req.pool, req, async client => {
         const a = await adapterLesen(client, propertyId, connectionRef, true)
+        if (credentials !== null || externalPropertyId !== null) {
+          await meldeImHaus(client, req, propertyId, {
+            kind: 'channel_connection_created',
+            detail: { connectionRef, changed: true, externalPropertyId },
+            hint: a.provider })
+        }
         if (m !== null) await adminpanelSperre(client, propertyId, a.provider, m)
         // Wer umschaltet oder ein anderes Haus beim Anbieter angibt, will den
         // ganzen Bestand drueben sehen, nicht nur, was sich ab jetzt aendert.

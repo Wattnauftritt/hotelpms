@@ -87,6 +87,12 @@ export async function makeUser(
     roleKey?: string
     platformRoleKey?: string
     isPlatformStaff?: boolean
+    /**
+     * Sitzung fuer kritische Handlungen bestaetigt (Migration 0208)?
+     * Vorgabe ja: die meisten Tests pruefen die Handlung, nicht die Huerde
+     * davor. Die Tests der Bestaetigung selbst setzen `false`.
+     */
+    confirmed?: boolean
   }
 ): Promise<{ userId: number; sessionId: string }> {
   const u = await owner.query<{ id: number }>(
@@ -116,9 +122,14 @@ export async function makeUser(
 
   const sessionId = `sess_${Math.random().toString(36).slice(2)}${Date.now()}`
   await owner.query(
-    `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at)
-     VALUES ($1, $2, now() + interval '1 hour', now() + interval '8 hours')`,
-    [sessionId, userId])
+    `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
+                               confirmed_at, confirmed_user_id)
+     VALUES ($1, $2, now() + interval '1 hour', now() + interval '8 hours',
+             -- In der Zukunft, damit die fuenf Minuten ueber einen langen
+             -- Testlauf tragen; eine echte Bestaetigung liegt nie dort.
+             CASE WHEN $3 THEN now() + interval '8 hours' END,
+             CASE WHEN $3 THEN $2::bigint END)`,
+    [sessionId, userId, opts.confirmed ?? true])
   return { userId, sessionId }
 }
 

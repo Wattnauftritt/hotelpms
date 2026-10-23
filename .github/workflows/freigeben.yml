@@ -39,6 +39,14 @@ concurrency:
 jobs:
   freigeben:
     runs-on: ubuntu-latest
+    # Die Umgebung `produktion` (Bedrohungsanalyse 23.10.2026, T8). Ohne
+    # Regeln aendert sie nichts; mit ihnen ist sie die einzige Stelle, an der
+    # GitHub eine Freigabe aufhalten kann, bevor der Tag steht: eine
+    # Wartezeit, in der ein fremd ausgeloester Lauf abgebrochen werden kann,
+    # und die Beschraenkung auf `main`. Eintragen kann die Regeln nur Sven,
+    # unter Settings, Environments. Pruefende Person allein hilft hier
+    # nicht: Claude arbeitet unter Svens Konto und waere dieselbe.
+    environment: produktion
     steps:
       # Die ganze Geschichte, nicht nur der Kopf: sonst laesst sich ein
       # aelterer Commit nicht aufloesen, und genau dafuer ist das Eingabefeld
@@ -70,6 +78,15 @@ jobs:
           # etwas anderes, als hier ausgewaehlt wurde.
           if ! sha="$(git rev-parse --verify "$REF^{commit}" 2>/dev/null)"; then
             echo "::error::'$REF' ist kein Commit, Zweig oder Tag in diesem Repository."
+            exit 1
+          fi
+          # Nur was auf main liegt. Ein Zweig ist ungeprueft durch die
+          # Durchsicht, auch wenn seine CI gruen ist -- und ein Zweig ist
+          # genau das, was jemand mit einem gestohlenen Schreibzugang als
+          # Erstes anlegen wuerde (Bedrohungsanalyse 23.10.2026, T8).
+          git fetch --no-tags --quiet origin main
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::$sha liegt nicht auf main. Freigegeben wird nur, was gemergt ist."
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"

@@ -65,6 +65,19 @@ Löschfristen.
 **Beschäftigte des Betriebs.** Name, dienstliche E-Mail, Rolle, Zeitpunkt der
 letzten Anmeldung, Authentifizierungsmerkmale.
 
+**Sicherheitsereignisse** (`security_event`, Migration 0208). Bei einer
+kritischen Handlung — Bankverbindung, Zahlungskonto, Maschinenzugang,
+Webhook, Kanalzugang, Leitungsrolle, Support-Freigabe, Datenexport — und bei
+einem falschen Kennwort in einer gültigen Sitzung: wer, wann, welche
+Handlung, **die ungekürzte IP-Adresse** und gekürzte Angaben (etwa die
+letzten vier Stellen einer IBAN), nie ein Gastname. Rechtsgrundlage ist
+Art. 6 Abs. 1 lit. f DSGVO in Verbindung mit Art. 32: das berechtigte
+Interesse, einen Missbrauch zu erkennen, zu belegen und zur Anzeige zu
+bringen; eine gekürzte Adresse taugt dafür nicht (Entscheidung Sven Rotermundt,
+23.10.2026). Die Leitung des Betriebs sieht die Ereignisse unter
+„Benutzer" und bekommt je Ereignis einen Hinweis per Mail, ohne Link. Fristen
+siehe Löschfristen.
+
 **Ansprechpartner von Firmenkunden.** Firmenname, Anschrift, USt-IdNr.,
 Rechnungsadresse.
 
@@ -125,6 +138,8 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Text einer Nachricht aus der Gästemappe | 30 Tage nach der Abreise, bei Löschverlangen sofort | `purgeExpired()`, `guest_erase_one()`, `guest_erase_partial()` |
 | Idempotenzschlüssel | 24 Stunden | `purgeExpired()` |
 | Protokoll | zehn Jahre | `audit_log_drop_old_partitions()` |
+| Sicherheitsereignis: IP-Adresse | 180 Tage voll, danach auf das Netz gekürzt (/24, /48) | `security_event_prune()` im Job `purgeExpired` |
+| Sicherheitsereignis | zwei Jahre | `security_event_prune()` |
 
 ## 8. Technische und organisatorische Maßnahmen
 

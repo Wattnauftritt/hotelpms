@@ -11,7 +11,9 @@ import { APP_TOKEN_PREFIX } from '../platform/auth.js'
 import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
          renderPasswordResetEmail, renderInviteEmail,
          type AuthTokenKind } from '@hotelpms/domain'
-import { kennwortZuKurz, KENNWORT_MIN, BENUTZERSPRACHEN } from '@hotelpms/contracts'
+import { kennwortZuKurz, KENNWORT_MIN, BENUTZERSPRACHEN,
+         BESTAETIGUNG_MINUTEN } from '@hotelpms/contracts'
+import { istBestaetigt, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { isSendableAddress, renderEmailChangeEmail,
          renderEmailChangeNotice, maskEmail } from '@hotelpms/domain'
 
@@ -1073,6 +1075,64 @@ export function authRoutes(app: FastifyInstance): void {
 
         return { status: 'ok' }
       })
+    }
+  })
+
+  /*
+   * Die eigene Sitzung fuer kritische Handlungen bestaetigen (Migration
+   * 0208, Bedrohungsanalyse 23.10.2026, T3).
+   *
+   * Dasselbe Kennwort, dieselbe Sperre und dieselben Zaehler wie beim
+   * Kennwortwechsel: eine angemeldete Anfrage erreicht die allgemeine
+   * Ratenbegrenzung nicht, also zaehlt die Route selbst. Bestaetigt wird
+   * die **handelnde** Person; nach einem PIN-Wechsel ist das die, auf die
+   * gewechselt wurde, und ihre Bestaetigung gilt nicht fuer die naechste.
+   * Ein Passkey setzt dieselbe Spalte (Thread "Passkeys und Passwort
+   * vergessen").
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/confirm',
+    permission: null,
+    summary: 'Sitzung fuer kritische Handlungen bestaetigen',
+    handler: async (req) => {
+      const p = req.principal as Principal
+      if (p.userId === null || req.sitzung === null) throw Errors.unauthorized()
+      const b = req.body as { password?: string }
+      if (!b.password) throw Errors.validation({ password: ['field.required'] })
+
+      try {
+        await kennwortBestaetigen(req, p.userId, b.password)
+      } catch (e) {
+        /*
+         * Ein falsches Kennwort in einer **gueltigen** Sitzung: das ist
+         * nicht der Benutzer, der sich vertippt hat -- der war ja schon
+         * angemeldet --, sondern eher jemand an seinem Rechner, der weiter
+         * will, als die Sitzung traegt. Nur an uns, ohne Hinweis an den
+         * Betrieb; ein Vertipper soll keine Mail an die Leitung ausloesen.
+         */
+        await tx(req.pool, req, client => meldeSicherheitsereignis(client, req, {
+          kind: 'confirmation_failed', accountId: p.accountIds[0] ?? null }))
+        throw e
+      }
+      const { rows } = await req.pool.query<{ until: string }>(
+        `UPDATE user_session SET confirmed_at = now(), confirmed_user_id = $2
+          WHERE id = $1
+          RETURNING (now() + make_interval(mins => $3))::text AS until`,
+        [req.sitzung.id, p.userId, BESTAETIGUNG_MINUTEN])
+      return { confirmedUntil: new Date(rows[0]!.until).toISOString() }
+    }
+  })
+
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/auth/confirm',
+    permission: null,
+    summary: 'Ist die Sitzung gerade bestaetigt?',
+    handler: async (req) => {
+      const p = req.principal as Principal
+      if (p.userId === null) throw Errors.unauthorized()
+      return { confirmed: await istBestaetigt(req) }
     }
   })
 

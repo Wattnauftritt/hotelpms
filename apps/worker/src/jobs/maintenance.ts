@@ -257,9 +257,16 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
   // Herausforderungen fuer Passkeys (0207) leben fuenf Minuten. Wer eine
   // Anmeldung anfaengt und nicht beendet, hinterlaesst eine Zeile.
   const w = await client.query(`DELETE FROM webauthn_challenge WHERE expires_at < now()`)
+  /*
+   * Sicherheitsereignisse (0208): die volle Adresse 180 Tage, dann nur das
+   * Netz; die Zeile zwei Jahre. Voll, solange sie fuer eine Anzeige oder
+   * eine Sperre taugt (Sven, 23.10.2026) -- danach ist sie nur noch eine
+   * Angabe ueber einen Menschen, die niemand mehr braucht.
+   */
+  const se = await client.query<{ n: number }>(`SELECT security_event_prune() AS n`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
     + (m.rowCount ?? 0) + (z.rowCount ?? 0) + (zh.rowCount ?? 0) + (n.rowCount ?? 0)
-    + (w.rowCount ?? 0)
+    + (w.rowCount ?? 0) + (se.rows[0]?.n ?? 0)
 }
 
 /**

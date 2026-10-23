@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { tx } from '../platform/db.js'
 import type { Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
@@ -147,6 +148,11 @@ export function deploymentRoutes(app: FastifyInstance): void {
     permission: 'platform:operations',
     summary: 'Ausrollen des freigegebenen Standes anfordern',
     handler: async (req, reply) => {
+      // Plattformhandlung (Bedrohungsanalyse 23.10.2026, T4): nur nach
+      // Bestaetigung, und festgehalten, bevor sie wirkt.
+      await verlangeBestaetigung(req)
+      await tx(req.pool, req, client => meldeSicherheitsereignis(client, req, {
+        kind: 'deployment', accountId: null, detail: { route: 'POST /v1/platform/deployments' } }))
       const principal = req.principal as Principal
 
       const angelegt = await tx(req.pool, req, async client => {
@@ -190,6 +196,11 @@ export function deploymentRoutes(app: FastifyInstance): void {
     permission: 'platform:operations',
     summary: 'Auf einen frueheren Stand zurueckrollen',
     handler: async (req, reply) => {
+      // Plattformhandlung (Bedrohungsanalyse 23.10.2026, T4): nur nach
+      // Bestaetigung, und festgehalten, bevor sie wirkt.
+      await verlangeBestaetigung(req)
+      await tx(req.pool, req, client => meldeSicherheitsereignis(client, req, {
+        kind: 'deployment', accountId: null, detail: { route: 'POST /v1/platform/deployments/rollback' } }))
       const principal = req.principal as Principal
       const { commit } = (req.body ?? {}) as { commit?: string }
       if (typeof commit !== 'string' || !/^[0-9a-f]{7,40}$/.test(commit)) {
