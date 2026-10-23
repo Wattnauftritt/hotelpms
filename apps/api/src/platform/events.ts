@@ -1,5 +1,5 @@
 import type { PoolClient } from '@hotelpms/db'
-import type { WebhookEventType } from '@hotelpms/domain'
+import { enqueueEvents, type WebhookEventType } from '@hotelpms/domain'
 
 /**
  * Ereignis einreihen (Aufgabe 4, Dokument 16).
@@ -48,9 +48,5 @@ export async function emitEvents(
   type: WebhookEventType,
   rows: Array<Record<string, unknown>>
 ): Promise<number> {
-  if (rows.length === 0) return 0
-  const { rows: r } = await client.query<{ n: number }>(
-    `SELECT webhook_enqueue_bulk($1, $2, $3::jsonb[]) AS n`,
-    [propertyId, type, rows.map(d => JSON.stringify(d))])
-  return r[0]!.n
+  return enqueueEvents(client, propertyId, type, rows)
 }
