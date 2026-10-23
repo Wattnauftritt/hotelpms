@@ -382,7 +382,7 @@ Drei weitere fehlen und sind bisher nirgends benannt:
 |---|---|---|
 | Stripe | Zahlungslink | Belegnummer, Betrag, Währung — **kein** Name, **keine** Adresse |
 | Brevo (`api.brevo.com`) | Gastpost | Empfängeradresse, Name, Nachrichtentext |
-| Channel Manager (roomcloud) | Preise und Verfügbarkeit | keine Gastdaten |
+| Channel Manager (über das Adminpanel, seit 0198 auch direkt: RoomCloud, Channex) | Preise und Verfügbarkeit; beim Abholen nur die Kennung der Revision zur Bestätigung | keine Gastdaten. Gastdaten kommen von dort **herein** (Buchungen), nicht hinaus |
 | Statistisches Landesamt | Beherbergungsstatistik | aggregiert nach Wohnsitzland — das System **erzeugt** den Satz, übermittelt wird er außerhalb über eSTATISTIK.core |
 | GitHub | Ausrollen | keine Gastdaten |
 

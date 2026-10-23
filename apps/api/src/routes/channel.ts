@@ -180,10 +180,13 @@ export function channelRoutes(app: FastifyInstance): void {
     handler: async (req, reply) => {
       const { propertyId } = req.params as { propertyId: string }
       const body = req.body as { provider: string; name: string }
-      // `generic`: ein Umsystem, das Buchungen fuehrt und per PUT abgleicht
-      // (channelPush.ts). Die Schnittstelle ist dieselbe; der Name sagt,
-      // wer dahinter steht.
-      if (body.provider !== 'roomcloud' && body.provider !== 'generic') {
+      // `adminpanel`: Svens Adminpanel, das mit RoomCloud spricht (bis 0198
+      // hiess das `roomcloud`; der Name gehoert jetzt dem Adapter, der
+      // RoomCloud wirklich anspricht). `generic`: ein anderes Umsystem, das
+      // Buchungen fuehrt und per PUT abgleicht (channelPush.ts). Die
+      // Schnittstelle ist dieselbe; der Name sagt, wer dahinter steht.
+      // Einen Adapter legt `channel-adapters` an, nicht diese Route.
+      if (body.provider !== 'adminpanel' && body.provider !== 'generic') {
         throw Errors.validation({ provider: ['field.channelProvider'] })
       }
       if (!body.name) throw Errors.validation({ name: ['field.required'] })
@@ -199,6 +202,16 @@ export function channelRoutes(app: FastifyInstance): void {
           `SELECT account_id FROM property WHERE id = $1`, [Number(propertyId)])
         if (prop.rowCount === 0) throw Errors.notFound('res.property')
         await assertNoChannelForTraining(client, Number(propertyId))
+        // Die Gegenrichtung der Sperre am Adapter (`channelAdapters.ts`):
+        // fuehrt der direkte RoomCloud-Zugang schon, kaeme mit einem neuen
+        // Adminpanel-Zugang ein zweiter Sender an dasselbe RoomCloud-Haus.
+        if (body.provider === 'adminpanel') {
+          const direkt = await client.query(
+            `SELECT 1 FROM channel_connection
+              WHERE property_id = $1 AND kind = 'adapter' AND provider = 'roomcloud'
+                AND sync_mode = 'active' AND status = 'active' LIMIT 1`, [Number(propertyId)])
+          if ((direkt.rowCount ?? 0) > 0) throw Errors.conflict('channel.adminpanelStillActive')
+        }
 
         const r = await client.query<{ id: number; public_ref: string }>(
           `INSERT INTO channel_connection
@@ -224,7 +237,8 @@ export function channelRoutes(app: FastifyInstance): void {
         const { rows } = await client.query(
           `SELECT public_ref AS "connectionRef", provider, name, status,
                   last_used_at AS "lastUsedAt", created_at AS "createdAt"
-             FROM channel_connection WHERE property_id = $1 ORDER BY created_at`,
+             FROM channel_connection WHERE property_id = $1 AND kind = 'inbound'
+            ORDER BY created_at`,
           [Number(propertyId)])
         return { connections: rows }
       })
@@ -246,7 +260,7 @@ export function channelRoutes(app: FastifyInstance): void {
         // registerRoute's propertyParam gegen den Principal.
         const r = await client.query(
           `UPDATE channel_connection SET status = 'disabled'
-            WHERE public_ref = $1 AND property_id = $2 RETURNING id`,
+            WHERE public_ref = $1 AND property_id = $2 AND kind = 'inbound' RETURNING id`,
           [connectionRef, Number(propertyId)])
         if (r.rowCount === 0) throw Errors.notFound('res.connection')
         return { ok: true }

@@ -67,7 +67,7 @@ async function codesSetzen(): Promise<void> {
 async function kanal(): Promise<string> {
   const r = await app.inject({
     method: 'POST', url: `/v1/properties/${fx.propertyId}/channel-connections`,
-    headers: auth, payload: { provider: 'roomcloud', name: 'RoomCloud' } })
+    headers: auth, payload: { provider: 'adminpanel', name: 'RoomCloud' } })
   expect(r.statusCode).toBe(201)
   return (JSON.parse(r.body) as { token: string }).token
 }

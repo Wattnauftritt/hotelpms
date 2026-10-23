@@ -119,7 +119,10 @@ export const VERWEISE_GRUPPE = [
   ['cleaning_norm', 'category_id'],
   // Die Kategorie, als die ein Zimmer verkauft wird (0197); aus demselben
   // Grund wie oben.
-  ['room_sell_as', 'category_id']
+  ['room_sell_as', 'category_id'],
+  // Einem Zimmertyp beim Channel Manager zugeordnet (0198): eingerichtet,
+  // also gearbeitet -- die Gruppe bleibt stehen.
+  ['channel_room_map', 'category_id']
 ] as const
 
 class Zurueck extends Error {

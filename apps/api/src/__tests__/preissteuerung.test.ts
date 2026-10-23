@@ -487,7 +487,7 @@ describe('Uebernehmen', () => {
        VALUES ($1, 'https://rms.example.de/hook', 'geheim')`, [fx.accountId])
     const kanal = await app.inject({
       method: 'POST', url: `/v1/properties/${fx.propertyId}/channel-connections`,
-      headers: auth(admin.sessionId), payload: { provider: 'roomcloud', name: 'RC' } })
+      headers: auth(admin.sessionId), payload: { provider: 'adminpanel', name: 'RC' } })
     const token = json<{ token: string }>(kanal).token
 
     await regel({ kind: 'occupancy', occupancyMinBp: 8500,
@@ -677,7 +677,7 @@ describe('Uebungshaus', () => {
                   effectKind: 'percent', effectValue: 1000 })
     const kanal = await app.inject({
       method: 'POST', url: `/v1/properties/${fx.propertyId}/channel-connections`,
-      headers: auth(admin.sessionId), payload: { provider: 'roomcloud', name: 'RC' } })
+      headers: auth(admin.sessionId), payload: { provider: 'adminpanel', name: 'RC' } })
     const token = json<{ token: string }>(kanal).token
     await owner.query(`UPDATE property SET is_training = true WHERE id = $1`, [fx.propertyId])
 
@@ -695,7 +695,7 @@ describe('Uebungshaus', () => {
     // ... und ein neuer laesst sich nicht anlegen.
     const neu = await app.inject({
       method: 'POST', url: `/v1/properties/${fx.propertyId}/channel-connections`,
-      headers: auth(admin.sessionId), payload: { provider: 'roomcloud', name: 'RC2' } })
+      headers: auth(admin.sessionId), payload: { provider: 'adminpanel', name: 'RC2' } })
     expect(neu.statusCode).toBe(422)
   })
 })

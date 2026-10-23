@@ -506,7 +506,7 @@ describe('Buchungskanal aus dem Umsystem', () => {
     const r = await reservierung()
     const z = await owner.query<{ id: number }>(
       `INSERT INTO channel_connection (property_id, account_id, provider, name, token_hash)
-       VALUES ($1,$2,'roomcloud','RoomCloud','x') RETURNING id`,
+       VALUES ($1,$2,'adminpanel','RoomCloud','x') RETURNING id`,
       [fx.propertyId, fx.accountId])
     await owner.query(`UPDATE booking SET channel_connection_id = $2 WHERE id = $1`,
       [r.bookingId, z.rows[0]!.id])

@@ -165,7 +165,10 @@ describe('Die Quelle benutzt nur Schluessel', () => {
     const erlaubt = new Set([
       // Durchgereichte Meldungen aus der Fachlogik und von aussen. Sie
       // entstehen dort, wo sie entstehen, und tragen keinen Schluessel.
-      'e.message', '(err as Error).message'
+      'e.message', '(err as Error).message',
+      // Der Schluessel eines `DomainError` (platform/domainError.ts). Er ist
+      // dort, wo er geworfen wird, ein Literal; geprueft wird er unten.
+      'key'
     ])
     const uebrig: string[] = []
     for (const quelle of quellen) {
@@ -175,6 +178,35 @@ describe('Die Quelle benutzt nur Schluessel', () => {
       }
     }
     expect(uebrig, 'Diese Meldungen gehoeren in den Katalog').toEqual([])
+  })
+
+  /**
+   * Die Fachlogik in `@hotelpms/domain` wirft `DomainError` mit einem
+   * Schluessel, und die API reicht ihn durch (Migration 0198). Ohne diese
+   * Pruefung stuende dort der naechste deutsche Satz, und der Test oben saehe
+   * ihn nie -- er liest nur die API.
+   */
+  it('wirft aus der Fachlogik nur Schluessel aus dem Katalog', () => {
+    const domaene = quellDateien(join(WURZEL, '..', '..', '..', 'packages', 'domain', 'src'))
+      .map(p => readFileSync(p, 'utf8'))
+    const uebrig: string[] = []
+    let gesehen = 0
+    for (const quelle of domaene) {
+      for (const rumpf of argumenteVon(quelle, /DomainError\.validation\(/g)) {
+        for (const liste of erstesArgument(rumpf).matchAll(/\[([^\]]*)\]/g)) {
+          for (const lit of liste[1]!.matchAll(/'((?:[^'\\]|\\.)*)'/g)) {
+            gesehen++
+            if (!isMessageKey(lit[1]!)) uebrig.push(lit[1]!)
+          }
+        }
+      }
+      for (const m of quelle.matchAll(/new DomainError\('\w+', '([^']*)'/g)) {
+        gesehen++
+        if (!isMessageKey(m[1]!)) uebrig.push(m[1]!)
+      }
+    }
+    expect(gesehen).toBeGreaterThan(10)
+    expect(uebrig, 'Diese Schluessel fehlen im Katalog').toEqual([])
   })
 
   it('gibt keinen Hinweis als deutschen Satz aus', () => {

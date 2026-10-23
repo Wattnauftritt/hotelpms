@@ -13,7 +13,10 @@ import { geschaeftstag, rechtImHaus } from './depositRequests.js'
 import { applyAction, InvalidTransitionError, eachNight, nightsBetween,
          isIsoDate, occupiesInventory, preisJeNacht, gruppeAufteilen, addDays,
          type ReservationStatus, type ReservationAction,
-         type WebhookEventType } from '@hotelpms/domain'
+         type WebhookEventType, personenPruefen, type Personen } from '@hotelpms/domain'
+import { alsApiFehler } from '../platform/domainError.js'
+
+export type { Personen }
 import { can, type Principal } from '../platform/context.js'
 import { gaesteImBetrieb, gastPerRefImBetrieb, ratenplanImHaus } from '../platform/fremdeIds.js'
 import type { PoolClient } from '@hotelpms/db'
@@ -55,54 +58,15 @@ const GRUPPE_MAX_ZIMMER = 50
  */
 const MAX_STAY_NIGHTS = 400
 
-/** Was an Personen in einer Reservierung steht, so wie es gespeichert wird. */
-export interface Personen {
-  guestCount: number | null
-  adults: number | null
-  children: number | null
-}
-
 /**
  * Personenzahl aus Gesamtzahl oder aus Erwachsenen und Kindern (0076).
- *
- * **Zwei Wege, ein Ergebnis.** Die Rezeption am Telefon kennt oft nur "zu
- * dritt", ein Kanal liefert Erwachsene und Kinder getrennt. Beides ist
- * richtig, und gespeichert wird die Gesamtzahl immer: Kurtaxe und Plan lesen
- * sie und wissen von der Aufteilung nichts. Wer beides schickt, muss
- * dasselbe meinen -- eine Gesamtzahl, die der Summe widerspricht, ist eine
- * Frage, und welche Zahl gilt, gehoert nicht geraten.
- *
- * Kinder ohne Erwachsene ergeben keine Summe und sind fast immer ein
- * vergessenes Feld, nicht eine Reservierung nur fuer Kinder.
+ * Die Regel steht in `@hotelpms/domain` (`personenPruefen`), weil der
+ * Worker sie fuer abgeholte Kanalbuchungen genauso braucht.
  */
 export function personenAngabe(body: {
   guestCount?: number; adults?: number; children?: number
 }): Personen {
-  if (body.guestCount !== undefined
-      && (!Number.isInteger(body.guestCount)
-          || body.guestCount < 1 || body.guestCount > 99)) {
-    throw Errors.validation({ guestCount: ['field.positiveInteger'] })
-  }
-  if (body.adults !== undefined
-      && (!Number.isInteger(body.adults) || body.adults < 1 || body.adults > 99)) {
-    throw Errors.validation({ adults: ['field.positiveInteger'] })
-  }
-  if (body.children !== undefined
-      && (!Number.isInteger(body.children) || body.children < 0 || body.children > 98)) {
-    throw Errors.validation({ children: ['field.nonNegativeInteger'] })
-  }
-  if (body.children !== undefined && body.adults === undefined) {
-    throw Errors.validation({ children: ['field.childrenNeedAdults'] })
-  }
-  if (body.adults === undefined) {
-    return { guestCount: body.guestCount ?? null, adults: null, children: null }
-  }
-  const summe = body.adults + (body.children ?? 0)
-  if (summe > 99) throw Errors.validation({ children: ['field.maxValue'] }, { max: 99 })
-  if (body.guestCount !== undefined && body.guestCount !== summe) {
-    throw Errors.validation({ guestCount: ['field.guestCountMismatch'] }, { sum: summe })
-  }
-  return { guestCount: summe, adults: body.adults, children: body.children ?? null }
+  return alsApiFehler(() => personenPruefen(body))
 }
 
 /** Ein Zimmer einer Gruppenbuchung. */

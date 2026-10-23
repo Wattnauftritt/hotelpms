@@ -23,6 +23,8 @@ import { createFcmSender, fcmKontoLesen } from './jobs/fcm.js'
 import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail.js'
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { sortDueRooms } from './jobs/roomSortAuto.js'
+import { syncChannels } from './jobs/channelSync.js'
+import { kanalAdapter } from './channel/index.js'
 import { createBrevoAdapter } from './email/brevo.js'
 import { parseCidrList } from '@hotelpms/domain'
 
@@ -613,6 +615,49 @@ async function pushTakt(): Promise<void> {
   }
 }
 
+/*
+ * Kanalabgleich mit einem Channel Manager, den StayGrid selbst anspricht
+ * (Migration 0198). Ein eigener Takt von einer Minute: was eine Buchung an
+ * der Rezeption bindet, muss beim Portal sein, bevor es dasselbe Zimmer
+ * noch einmal verkauft, und fuenf Minuten Tick sind dafuer zu lang.
+ *
+ * Zuerst fragt der Takt, welche Haeuser ueberhaupt einen Adapter haben;
+ * `channel_connection` hat keine Zeilenrichtlinie (0023), die Abfrage ueber
+ * alle Haeuser ist deshalb ohne Kontext richtig. Die Arbeit selbst laeuft im
+ * Kontext genau eines Hauses.
+ */
+const KANAL_INTERVAL_MS = 60_000
+const kanalSchluessel = process.env.ID_DOCUMENT_KEY ?? null
+let kanalLaeuft = false
+async function kanalTakt(): Promise<void> {
+  if (kanalLaeuft || kanalSchluessel === null) return
+  kanalLaeuft = true
+  try {
+    const mitAdapter = await withTransaction(admin, SYSTEM_CONTEXT, async c => new Set(
+      (await c.query<{ property_id: number }>(
+        `SELECT DISTINCT property_id FROM channel_connection
+          WHERE kind = 'adapter' AND status = 'active'`)).rows.map(r => Number(r.property_id))))
+    if (mitAdapter.size === 0) return
+    for (const p of await activeProperties()) {
+      if (!mitAdapter.has(p.id)) continue
+      try {
+        const r = await syncChannels(pool, propertyContext(p.account_id, p.id), p.id,
+          { adapters: kanalAdapter, secret: kanalSchluessel, log })
+        // Zahlen, keine Buchung und kein Gast.
+        if (r.days > 0 || r.bookings > 0) log.info({ property: p.id, ...r }, 'Kanalabgleich')
+        if (r.failed > 0) log.warn({ property: p.id, failed: r.failed },
+          'Kanalabgleich mit Fehlern, siehe Kanalprotokoll')
+      } catch (e) {
+        log.error({ property: p.id, err: e }, 'ALARM: Kanalabgleich fehlgeschlagen')
+      }
+    }
+  } catch (e) {
+    log.error({ err: e }, 'ALARM: Kanalabgleich fehlgeschlagen')
+  } finally {
+    kanalLaeuft = false
+  }
+}
+
 async function main(): Promise<void> {
   log.info('hotelpms Worker gestartet')
   await pushVorbereiten()
@@ -623,12 +668,17 @@ async function main(): Promise<void> {
   const mailInterval = setInterval(() => { void platformEmailsTakt() },
     PLATFORM_EMAIL_INTERVAL_MS)
   const pushInterval = setInterval(() => { void pushTakt() }, PUSH_INTERVAL_MS)
+  if (kanalSchluessel === null) {
+    log.warn('ID_DOCUMENT_KEY ist nicht gesetzt: kein Kanalabgleich mit Channel Managern.')
+  }
+  const kanalInterval = setInterval(() => { void kanalTakt() }, KANAL_INTERVAL_MS)
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       log.info('Sanftes Herunterfahren')
       clearInterval(interval)
       clearInterval(mailInterval)
       clearInterval(pushInterval)
+      clearInterval(kanalInterval)
       void Promise.all([pool.end(), admin.end()]).then(() => process.exit(0))
     })
   }

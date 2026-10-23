@@ -43,7 +43,7 @@ beforeEach(async () => {
 async function makeConnection(): Promise<string> {
   const r = await app.inject({
     method: 'POST', url: `/v1/properties/${fx.propertyId}/channel-connections`,
-    headers: auth(admin.sessionId), payload: { provider: 'roomcloud', name: 'Roomcloud Test' } })
+    headers: auth(admin.sessionId), payload: { provider: 'adminpanel', name: 'Roomcloud Test' } })
   expect(r.statusCode).toBe(201)
   return (JSON.parse(r.body) as { token: string }).token
 }
@@ -214,7 +214,7 @@ describe('ARI eingehend: Reservierungen', () => {
       [fx.propertyId])
     expect(booking.rows).toHaveLength(1)
     expect(booking.rows[0]).toMatchObject(
-      { source: 'channel', channel_code: 'roomcloud', external_reference: 'RC-100' })
+      { source: 'channel', channel_code: 'adminpanel', external_reference: 'RC-100' })
   })
 
   it('legt bei wiederholter Zustellung derselben externen Nummer nichts doppelt an', async () => {

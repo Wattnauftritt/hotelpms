@@ -263,9 +263,9 @@ describe('Anlegen und Abgleichen', () => {
   })
 
   it('aendert keine Buchung, die ein anderer Zugang angelegt hat', async () => {
-    const roomcloud = await zugang('roomcloud')
+    const adminpanel = await zugang('adminpanel')
     const fremd = await app.inject({ method: 'POST', url: '/v1/channel/ari/bookings',
-      headers: { authorization: `Bearer ${roomcloud}` },
+      headers: { authorization: `Bearer ${adminpanel}` },
       payload: { externalReference: 'rc-1', categoryCode: 'GH',
                  arrival: '2026-11-02', departure: '2026-11-03' } })
     expect(fremd.statusCode).toBe(201)
