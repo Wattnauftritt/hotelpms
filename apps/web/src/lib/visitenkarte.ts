@@ -62,12 +62,20 @@ export function zeilenAusBoxen(roh: readonly ErkannteZeile[],
 
 export interface AnschriftVorschlag {
   name: string
+  /** Der Mensch auf der Karte; auf der Rechnung steht er unter dem Firmennamen. */
+  contactName: string
   addressLine1: string
   postalCode: string
   city: string
   /** ISO 3166-1 alpha-2, leer wenn die Karte es nicht verraet. */
   country: string
   vatId: string
+  /**
+   * Nur von Hand aus dem erkannten Text gewaehlt, nie von selbst (Sven,
+   * 23.10.2026): auf der Karte steht die Adresse des Menschen, nicht die
+   * der Buchhaltung, und die Rechnung ginge an die falsche Stelle.
+   */
+  invoiceEmail: string
 }
 
 /**
@@ -138,7 +146,7 @@ const BESCHRIFTUNG = /^(anschrift|adresse|address|postanschrift|besucheradresse|
  * Zeile darueber oder darunter ist dann der Name eines Menschen, nicht der
  * Firma -- und der steht auf Visitenkarten gern am groessten.
  */
-const BERUF = /\b(gesch[aä]ftsf[uü]hr\w*|inhaber\w*|leiter\w*|leitung|vertrieb\w*|verkauf\w*|manager\w*|management|direktor\w*|director|prokurist\w*|assisten\w*|referent\w*|berater\w*|consultant|sales|ceo|cfo|cto|coo|founder|gr[uü]nder\w*|vorstand\w*|partner\w*|sachbearbeit\w*|projekt\w*|key account|account|marketing|einkauf\w*|buchhaltung|disposition|mitarbeiter\w*|kaufm\w*|meister\w*|ingenieur\w*|dipl\.?-?\w*|head of|team ?lead\w*)\b/i
+const BERUF = /\b(gesch[aä]ftsf[uü]hr\w*|inhaber\w*|leiter\w*|leitung|vertrieb\w*|verkauf\w*|manager\w*|management|direktor\w*|director|directeur|directrice|direttore|prokurist\w*|assisten\w*|referent\w*|berater\w*|consultant|sales|ceo|cfo|cto|coo|founder|gr[uü]nder\w*|vorstand\w*|partner\w*|sachbearbeit\w*|projekt\w*|key account|account|marketing|einkauf\w*|buchhaltung|disposition|mitarbeiter\w*|kaufm\w*|meister\w*|ingenieur\w*|dipl\.?-?\w*|head of|team ?lead\w*)\b/i
 
 function bereinigen(s: string): string {
   return s.replace(/\s+/g, ' ').trim()
@@ -151,7 +159,7 @@ function bereinigen(s: string): string {
  * grosses I oder kleines l -- allein zwischen zwei Leerzeichen ist er nie
  * ein Wort.
  */
-function abschnitte(zeile: string): string[] {
+export function abschnitte(zeile: string): string[] {
   return zeile.split(/\s*[,|•·;]\s*|\s+[-–—Il/]\s+/).map(bereinigen).filter(s => s !== '')
 }
 
@@ -336,8 +344,75 @@ export function anschriftAusKarte(zeilen: readonly KartenZeile[]): AnschriftVors
     country = kennung === 'EL' ? 'GR' : kennung
   }
 
-  return { name: firmenname(klar, verbraucht, ganzerText), addressLine1, postalCode, city,
-           country, vatId }
+  const person = ansprechpartner(klar, ganzerText)
+  const name = firmenname(klar, verbraucht, ganzerText, person)
+  // Was als Firma gilt, ist nicht zugleich der Mensch: lieber ein leeres
+  // Feld als zweimal derselbe Name.
+  const contactName = person !== '' && !vergleichbar(name).includes(vergleichbar(person))
+    ? person : ''
+  return { name, contactName, addressLine1, postalCode, city, country, vatId, invoiceEmail: '' }
+}
+
+/**
+ * Wie ein Personenname aussieht: zwei bis vier gross geschriebene Woerter,
+ * davor vielleicht ein Titel, dazwischen vielleicht "von" oder "van der".
+ * Keine Ziffer, keine Rechtsform. "Elbe Consult" sieht genauso aus; deshalb
+ * zaehlt die Form allein nie, nur zusammen mit einem Hinweis von aussen.
+ */
+const PERSON = /^(?:(?:Dr|Prof|Dipl|Ing|Herr|Frau|Mr|Mrs|Ms)\.?(?:-\p{L}+\.?)?\s+)*\p{Lu}[\p{L}'’.-]*(?:\s+(?:(?:von|van|vom|zu|de|der|den|di|da|la|le|ten|ter)\s+)*\p{Lu}[\p{L}'’.-]*){1,3}$/u
+
+function siehtAusWiePerson(s: string): boolean {
+  return s.length <= 50 && PERSON.test(s) && !RECHTSFORM.test(s) && !BERUF.test(s)
+    && !KONTAKT.test(s) && !istStrasse(s) && landAusText(s) === ''
+}
+
+/**
+ * Der Ansprechpartner. Gesucht wird nur mit einem Hinweis, nie nach Groesse
+ * allein -- ein leeres Feld faellt auf, ein Firmenname im Feld des Menschen
+ * nicht. In dieser Reihenfolge:
+ *
+ * 1. Die Zeile ueber einer Berufsbezeichnung, die allein in ihrer Zeile steht.
+ * 2. Der Name neben der Berufsbezeichnung in derselben Zeile
+ *    ("Max Mustermann | Geschaeftsfuehrer").
+ * 3. Die Zeile, deren Name im vorderen Teil der Mailadresse steckt
+ *    ("a.schroeder@..." und "Anja Schröder").
+ * 4. Die Zeile unter einer Berufsbezeichnung; seltener, aber es kommt vor.
+ */
+function ansprechpartner(klar: ReadonlyArray<{ text: string }>, ganzerText: string): string {
+  const beruf = klar.map(z => BERUF.test(z.text))
+  const nurBeruf = klar.map((z, i) => beruf[i] === true && abschnitte(z.text).length === 1)
+  const name = (i: number): string | undefined =>
+    klar[i] === undefined ? undefined : abschnitte(klar[i]!.text).find(siehtAusWiePerson)
+
+  for (let i = 0; i < klar.length - 1; i++) {
+    if (nurBeruf[i + 1] === true) {
+      const n = name(i)
+      if (n !== undefined) return n
+    }
+  }
+  for (let i = 0; i < klar.length; i++) {
+    const teile = abschnitte(klar[i]!.text)
+    if (teile.length > 1 && teile.some(t => BERUF.test(t))) {
+      const n = teile.find(t => !BERUF.test(t) && siehtAusWiePerson(t))
+      if (n !== undefined) return n
+    }
+  }
+  const lokal = [...ganzerText.matchAll(/([a-z0-9._-]+)@/gi)]
+    .flatMap(m => m[1]!.split(/[._-]/)).map(vergleichbar).filter(t => t.length >= 4)
+  if (lokal.length > 0) {
+    for (let i = 0; i < klar.length; i++) {
+      const n = abschnitte(klar[i]!.text)
+        .find(t => siehtAusWiePerson(t) && lokal.some(l => vergleichbar(t).includes(l)))
+      if (n !== undefined) return n
+    }
+  }
+  for (let i = 1; i < klar.length; i++) {
+    if (nurBeruf[i - 1] === true) {
+      const n = name(i)
+      if (n !== undefined) return n
+    }
+  }
+  return ''
 }
 
 /**
@@ -347,7 +422,8 @@ export function anschriftAusKarte(zeilen: readonly KartenZeile[]): AnschriftVors
  * einer Berufsbezeichnung steht, denn dort steht ein Mensch.
  */
 function firmenname(klar: ReadonlyArray<{ text: string; hoehe: number }>,
-                    verbraucht: ReadonlySet<number>, ganzerText: string): string {
+                    verbraucht: ReadonlySet<number>, ganzerText: string,
+                    person: string): string {
   const beruf = klar.map(z => BERUF.test(z.text))
   // Nur die Berufsbezeichnung allein in der Zeile verweist auf den Menschen
   // darueber; "Max Mustermann | Geschaeftsfuehrer" traegt ihn selbst.
@@ -377,9 +453,11 @@ function firmenname(klar: ReadonlyArray<{ text: string; hoehe: number }>,
   if (ausDomain !== undefined) return ausDomain.text
   // Der Mensch steht ueber seiner Berufsbezeichnung ("Anna Schroeder",
   // darunter "Projektleitung"); die Zeile darunter ist oft schon die Firma.
-  const person = (i: number): boolean => nurBeruf[i + 1] === true
+  // Der schon erkannte Ansprechpartner ist es auch nicht.
+  const istPerson = (z: { i: number; text: string }): boolean => nurBeruf[z.i + 1] === true
+    || (person !== '' && abschnitte(z.text).includes(person))
   const sortiert = [...kandidaten].sort((a, b) => b.hoehe - a.hoehe)
-  return (sortiert.find(z => !person(z.i)) ?? sortiert[0])?.text ?? ''
+  return (sortiert.find(z => !istPerson(z)) ?? sortiert[0])?.text ?? ''
 }
 
 /**
@@ -392,10 +470,87 @@ export function vorschlagErgaenzen(bisher: AnschriftVorschlag,
   const fuellen = (a: string, b: string): string => (a.trim() !== '' ? a : b)
   return {
     name: fuellen(bisher.name, neu.name),
+    contactName: fuellen(bisher.contactName, neu.contactName),
     addressLine1: fuellen(bisher.addressLine1, neu.addressLine1),
     postalCode: fuellen(bisher.postalCode, neu.postalCode),
     city: fuellen(bisher.city, neu.city),
     country: fuellen(bisher.country, neu.country),
-    vatId: fuellen(bisher.vatId, neu.vatId)
+    vatId: fuellen(bisher.vatId, neu.vatId),
+    invoiceEmail: fuellen(bisher.invoiceEmail, neu.invoiceEmail)
   }
+}
+
+/**
+ * Wohin ein Stueck erkannten Texts gelegt werden kann. "ort" fuellt
+ * Postleitzahl und Ort auf einmal, "nameAnhaengen" setzt einen Firmennamen
+ * fort, der auf der Karte ueber zwei Zeilen steht.
+ */
+export type Ziel = 'name' | 'nameAnhaengen' | 'contactName' | 'addressLine1' | 'ort'
+  | 'country' | 'vatId' | 'invoiceEmail'
+
+/** Das Land, das ein Stueck nennt: "Deutschland", "Germany" oder schon "DE". */
+export function landAus(stueck: string): string {
+  const s = bereinigen(stueck)
+  return landAusText(s) || (/^[A-Za-z]{2}$/.test(s) ? s.toUpperCase() : '')
+}
+
+/**
+ * Ein Stueck des erkannten Texts in ein Feld legen, von Hand gewaehlt.
+ *
+ * **Warum nicht einfach den Text ins Feld.** Wer "27472 Cuxhaven" antippt,
+ * meint zwei Felder; wer "Anschrift: Hafenstr. 12," antippt, meint die
+ * Strasse ohne Beschriftung und Komma. Dieselben Regeln wie beim
+ * Vorschlag, damit das Antippen nicht mehr Nacharbeit macht als das Tippen.
+ */
+export function zuweisen(v: AnschriftVorschlag, ziel: Ziel, stueck: string): AnschriftVorschlag {
+  const s = bereinigen(stueck)
+  switch (ziel) {
+    case 'name': return { ...v, name: s }
+    case 'nameAnhaengen': return { ...v, name: v.name.trim() === '' ? s : `${v.name.trim()} ${s}` }
+    case 'contactName': return { ...v, contactName: s }
+    case 'addressLine1': return { ...v, addressLine1: strasseBereinigen(s) }
+    case 'country': return { ...v, country: landAus(s) || v.country }
+    case 'vatId': {
+      const nummer = ustId(s) || s.replace(/^[^:]*:\s*/, '').replace(/[\s.]/g, '').toUpperCase()
+      return { ...v, vatId: nummer }
+    }
+    case 'invoiceEmail': {
+      return { ...v, invoiceEmail: /[^\s@:]+@[^\s@]+\.[a-z]{2,}/i.exec(s)?.[0] ?? s }
+    }
+    case 'ort': {
+      const treffer = ortIn(s)
+      if (treffer !== null) {
+        return { ...v, postalCode: treffer.postalCode, city: treffer.city,
+                 country: treffer.country !== '' ? treffer.country : v.country }
+      }
+      // Ohne erkennbare Postleitzahl: eine Ziffernfolge vorn ist sie, der Rest der Ort.
+      const m = /^([A-Z0-9-]*\d[A-Z0-9-]*)\s+(.+)$/i.exec(s)
+      return m !== null ? { ...v, postalCode: m[1]!, city: m[2]! } : { ...v, city: s }
+    }
+  }
+}
+
+/**
+ * In welchen Feldern ein Stueck gerade steht, damit die Rezeption sieht,
+ * was schon zugeordnet ist und was uebrig bleibt. Verglichen wird ohne
+ * Gross- und Kleinschreibung, Umlaute und Satzzeichen, weil die Felder
+ * bereinigt sind und das Stueck nicht. Das Land fehlt: zwei Buchstaben
+ * stecken in fast jedem Stueck.
+ */
+export function zugeordnet(v: AnschriftVorschlag, stueck: string): Ziel[] {
+  const s = vergleichbar(stueck)
+  if (s.length < 2) return []
+  const felder: Array<[Ziel, string]> = [
+    ['name', v.name], ['contactName', v.contactName], ['addressLine1', v.addressLine1],
+    ['ort', v.postalCode !== '' && v.city !== '' ? `${v.postalCode} ${v.city}` : v.city],
+    ['vatId', v.vatId], ['invoiceEmail', v.invoiceEmail]
+  ]
+  // Ein Stueck mit Telefon oder Mail traegt den Namen oft in der Adresse
+  // ("max.mustermann@..."); im Feld des Menschen steht es deshalb nicht.
+  const kontakt = KONTAKT.test(stueck)
+  return felder.filter(([ziel, wert]) => {
+    const w = vergleichbar(wert)
+    return w.length >= 2
+      && (w.includes(s) || (s.includes(w) && (!kontakt || ziel === 'invoiceEmail')))
+  }).map(([ziel]) => ziel)
 }

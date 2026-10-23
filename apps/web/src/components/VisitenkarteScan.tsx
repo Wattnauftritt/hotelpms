@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useT } from '../lib/i18n/index.js'
-import { anschriftAusKarte, vorschlagErgaenzen, type AnschriftVorschlag, type KartenZeile }
-  from '../lib/visitenkarte.js'
+import { abschnitte, anschriftAusKarte, landAus, vorschlagErgaenzen, zugeordnet, zuweisen,
+         type AnschriftVorschlag, type KartenZeile, type Ziel } from '../lib/visitenkarte.js'
 import { leserAnlegen, type Fortschritt, type Leser } from '../lib/leser.js'
 
 /**
@@ -41,8 +41,21 @@ export function KarteFotografieren({ onBild, className, children, sofort }: {
 }
 
 const LEER: AnschriftVorschlag = {
-  name: '', addressLine1: '', postalCode: '', city: '', country: '', vatId: ''
+  name: '', contactName: '', addressLine1: '', postalCode: '', city: '', country: '', vatId: '',
+  invoiceEmail: ''
 }
+
+/**
+ * Die Feldnamen des Formulars, damit Vorschlag und Formular dieselben Woerter
+ * tragen; der Ansprechpartner ohne das Beispiel in Klammern, das neben jeder
+ * Zeile und jedem Knopf nur Platz kostet.
+ */
+const ZIEL_TEXT = {
+  name: 'companies.name', nameAnhaengen: 'visitenkarte.anhaengen',
+  contactName: 'visitenkarte.ansprechpartner', addressLine1: 'companies.address',
+  ort: 'visitenkarte.plzOrt', country: 'companies.country', vatId: 'companies.vatId',
+  invoiceEmail: 'companies.invoiceEmail'
+} as const satisfies Record<Ziel, string>
 
 /**
  * Visitenkarte lesen und die erkannte Anschrift zur Pruefung vorlegen.
@@ -57,12 +70,20 @@ const LEER: AnschriftVorschlag = {
  * Anschrift hinten. Jede weitere Seite wird gelesen und fuellt nur Felder,
  * die noch leer sind -- was schon korrigiert wurde, bleibt.
  *
+ * **Antippen statt abschreiben** (Sven, 23.10.2026). Was der Vorschlag
+ * verfehlt, steht fast immer richtig im erkannten Text. Jedes Stueck davon
+ * laesst sich antippen und einem Feld zuweisen; neben dem Stueck steht, in
+ * welchem Feld es gerade ist, damit sichtbar bleibt, was noch fehlt. Die
+ * Mailadresse fuellt sich nur so, nie von selbst (`visitenkarte.ts`).
+ *
  * **Nichts bleibt liegen.** Das Foto wird im Geraet gelesen (`lib/leser.ts`:
  * in der App von iOS oder Android, im Browser von Tesseract), nicht hochgeladen und nicht gespeichert; mit dem
  * Schliessen ist es weg.
  */
-export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
+export function VisitenkarteScan({ erstesBild, mitMail, onUebernehmen, onSchliessen }: {
   erstesBild: File
+  /** Ob das Formular eine Rechnungs-Mail hat; die Anschrift einer einzelnen Rechnung hat keine. */
+  mitMail?: boolean
   onUebernehmen: (v: AnschriftVorschlag) => void
   onSchliessen: () => void
 }): JSX.Element {
@@ -73,6 +94,7 @@ export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
   const [vorschlag, setVorschlag] = useState<AnschriftVorschlag | null>(null)
   const [stand, setStand] = useState<Fortschritt | null>(null)
   const [fehler, setFehler] = useState(false)
+  const [gewaehlt, setGewaehlt] = useState<number | null>(null)
 
   // Jeder Aufbau bekommt eine eigene Runde. Was eine abgebaute Runde noch
   // zurueckliefert, wird verworfen: der StrictMode baut im Entwicklungsbetrieb
@@ -103,6 +125,7 @@ export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
       zeilen.current = [...zeilen.current, ...ergebnis.zeilen]
       const neu = anschriftAusKarte(zeilen.current)
       setTexte(v => [...v, ergebnis.text])
+      setGewaehlt(null)
       setVorschlag(v => (v === null ? neu : vorschlagErgaenzen(v, neu)))
     } catch {
       if (!aktuell()) return
@@ -126,15 +149,38 @@ export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
     }
   }, [])
 
+  const setzen = (schluessel: keyof AnschriftVorschlag, wert: string): void =>
+    setVorschlag(v => ({ ...(v ?? LEER), [schluessel]: wert }))
+
   const feld = (schluessel: keyof AnschriftVorschlag, beschriftung: string,
                 extra = ''): JSX.Element => (
-    <label className={`block ${extra}`}>
-      <span className="block text-xs text-neutral-600">{beschriftung}</span>
-      <input value={vorschlag?.[schluessel] ?? ''}
-             onChange={e => setVorschlag(v => ({ ...(v ?? LEER), [schluessel]: e.target.value }))}
-             className="mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
-    </label>
+    <div className={`block ${extra}`}>
+      <label>
+        <span className="block text-xs text-neutral-600">{beschriftung}</span>
+        <span className="mt-0.5 flex">
+          <input value={vorschlag?.[schluessel] ?? ''}
+                 onChange={e => setzen(schluessel, e.target.value)}
+                 className="min-w-0 grow border border-neutral-300 rounded-sm px-2 py-1 text-sm" />
+          {(vorschlag?.[schluessel] ?? '') !== '' && (
+            <button type="button" onClick={() => setzen(schluessel, '')}
+                    aria-label={t('visitenkarte.leeren')} title={t('visitenkarte.leeren')}
+                    className="px-2 text-neutral-400 hover:text-neutral-700">✕</button>
+          )}
+        </span>
+      </label>
+    </div>
   )
+
+  // Jede Zeile in ihre Abschnitte: "Hafenstrasse 12 | 27472 Cuxhaven" sind
+  // zwei Felder und sollen sich einzeln antippen lassen. Was auf beiden
+  // Seiten steht, nur einmal.
+  const stuecke = [...new Set(zeilen.current.flatMap(z => abschnitte(z.text)))]
+  const ziele: Ziel[] = ['name', 'nameAnhaengen', 'contactName', 'addressLine1', 'ort',
+    'country', 'vatId', ...(mitMail === true ? ['invoiceEmail' as const] : [])]
+  const zuweisenAn = (ziel: Ziel, stueck: string): void => {
+    setVorschlag(v => zuweisen(v ?? LEER, ziel, stueck))
+    setGewaehlt(null)
+  }
 
   const nichts = vorschlag !== null && Object.values(vorschlag).every(w => w.trim() === '')
 
@@ -154,6 +200,7 @@ export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
           <h3 className="text-sm font-medium">{t('visitenkarte.vorschlag')}</h3>
           {nichts && <p className="text-xs text-amber-800">{t('visitenkarte.nichtsErkannt')}</p>}
           {feld('name', t('companies.name'))}
+          {feld('contactName', t('companies.contactName'))}
           {feld('addressLine1', t('companies.address'))}
           <div className="grid grid-cols-3 gap-2">
             {feld('postalCode', t('companies.postalCode'))}
@@ -163,15 +210,52 @@ export function VisitenkarteScan({ erstesBild, onUebernehmen, onSchliessen }: {
             {feld('country', t('companies.country'))}
             {feld('vatId', t('companies.vatId'), 'col-span-2')}
           </div>
+          {mitMail === true && feld('invoiceEmail', t('companies.invoiceEmail'))}
           <p className="text-xs text-neutral-500">
             {t('visitenkarte.seiten', { anzahl: texte.length })}
           </p>
-          {texte.some(x => x.trim() !== '') && (
-            <details className="text-xs text-neutral-600">
-              <summary className="cursor-pointer">{t('visitenkarte.text')}</summary>
-              {/* Zum Abschreiben, was der Vorschlag verfehlt hat. */}
-              <pre className="mt-1 whitespace-pre-wrap font-sans">{texte.join('\n\n')}</pre>
-            </details>
+          {stuecke.length > 0 && (
+            <section className="text-xs text-neutral-600 space-y-1">
+              <h4 className="font-medium text-neutral-700">{t('visitenkarte.text')}</h4>
+              <p>{t('visitenkarte.antippen')}</p>
+              <ul className="space-y-1">
+                {stuecke.map((s, i) => {
+                  const drin = zugeordnet(vorschlag, s)
+                  return (
+                    <li key={s}>
+                      <button type="button" aria-expanded={gewaehlt === i}
+                              onClick={() => setGewaehlt(g => (g === i ? null : i))}
+                              className={`w-full text-left px-2 py-1.5 rounded-sm border text-sm
+                                ${gewaehlt === i ? 'border-sky-600 bg-white'
+                                  : drin.length > 0 ? 'border-neutral-200 bg-white/60 text-neutral-500'
+                                    : 'border-neutral-300 bg-white text-neutral-900'}`}>
+                        {s}
+                        {drin.map(z => (
+                          <span key={z} className="ml-2 text-[10px] px-1 rounded-sm bg-sky-100 text-sky-900">
+                            {t(ZIEL_TEXT[z])}
+                          </span>
+                        ))}
+                      </button>
+                      {gewaehlt === i && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className="text-neutral-500">{t('visitenkarte.zuordnen')}</span>
+                          {ziele
+                            // Ein Land, das nicht zu erkennen ist, liesse das Feld stehen.
+                            .filter(z => z !== 'country' || landAus(s) !== '')
+                            .filter(z => z !== 'nameAnhaengen' || vorschlag.name.trim() !== '')
+                            .map(z => (
+                              <button key={z} type="button" onClick={() => zuweisenAn(z, s)}
+                                      className="px-2 py-1 rounded-sm border border-neutral-300 bg-white">
+                                {t(ZIEL_TEXT[z])}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
           )}
         </>
       )}

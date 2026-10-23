@@ -529,8 +529,9 @@ function Anschrift({ vorgabe, wert, geaendert, setAnschrift, firma, inFirma, set
                             onSchliessen={() => setScan(null)}
                             onUebernehmen={v => {
                               const e = { ...entwurf }
-                              for (const f of ['name', 'addressLine1', 'postalCode', 'city',
-                                               'country', 'vatId'] as const) {
+                              for (const f of ['name', 'contactName', 'addressLine1',
+                                               'postalCode', 'city', 'country',
+                                               'vatId'] as const) {
                                 const x = (f === 'country' ? v[f].toUpperCase() : v[f]).trim()
                                 if (x !== '') e[f] = x
                               }
