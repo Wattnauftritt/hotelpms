@@ -495,6 +495,22 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Ein Hinweis an die alte Adresse, ohne Link.** Wer eine geliehene Sitzung übernimmt, würde das Konto sonst lautlos an sich ziehen. Der Link fehlt mit Absicht: eine Nachricht über eine Änderung, die man nicht veranlasst hat, mit einem Knopf darin, ist die Bauform jeder Phishing-Mail. Die neue Adresse steht nur angedeutet — hätte ein Fremder die Änderung angestoßen, stünde sonst dessen Adresse im Postfach des Opfers.
 - **Das Kennwort beendet die anderen Sitzungen, die Adresse nicht.** Beim Kennwort ist der häufige Anlass, dass jemand anderes es kennt; dann nützt das neue nichts, solange die fremde Sitzung läuft. Die eigene bleibt stehen — anders als bei der Rücksetzung sitzt hier der Benutzer davor und will weiterarbeiten. Bei der Adresse ist nichts kompromittiert, und jemanden mitten im Check-in hinauszuwerfen wäre Schaden ohne Gegenwert.
 
+### Aufgabe 13c — Anmelden mit Passkey — **erledigt**
+
+**Warum.** Sven, 23.10.2026: „integriere die Möglichkeit Passkeys zu nutzen“. Die Bedrohungsanalyse vom selben Tag fand keinen zweiten Faktor, nirgends. Ein Passkey mit Prüfung des Benutzers ist Besitz und Fingerabdruck, Gesicht oder Geräte-PIN in einem Schritt und hält gegen Phishing, weil der Browser ihn nur unter der eigenen Domain herausgibt. „Kennwort vergessen“ gab es schon (Aufgabe 13b, `Zugang.tsx`); daran hat sich nichts geändert.
+
+**Wo es liegt.** Migration `0207`, `apps/api/src/platform/passkey.ts` (Herausforderung, Prüfung; für spätere Bestätigungen wiederverwendbar), `apps/api/src/routes/passkey.ts` (sechs Routen), `apps/web/src/lib/passkey.ts`, `Login.tsx` (Knopf), `Passkeys.tsx` im Arbeitsplatz-Dialog. Geprüft wird mit `@simplewebauthn/server`; der Test baut ein Gerät aus Software und schickt echte Unterschriften durch.
+
+**Was daraus entschieden wurde.**
+
+- **Neben dem Kennwort, nicht statt seiner.** Telefon verloren hieße sonst Zugang verloren. Das Kennwort bleibt der Weg auf ein neues Gerät, die Rücksetzung per Mail der Weg, wenn es vergessen ist.
+- **Anlegen verlangt das aktuelle Kennwort** und zählt auf den Zähler der Anmeldung, aus dem Grund von 13b. Ein fremder Passkey an einem Konto überlebte jede Kennwortänderung. Dazu ein Hinweis an die eigene Adresse, ohne Link.
+- **Prüfung des Benutzers ist Pflicht** (`userVerification: required`). Ohne sie wäre ein Passkey ein Schlüssel für jeden, der das entsperrte Telefon hält.
+- **Die Herausforderung gilt einmal und fünf Minuten**, beim Anlegen zusätzlich nur in der Sitzung, die sie angefordert hat. Die Bibliothek prüft, ob sie passt, nicht, ob sie schon benutzt wurde.
+- **Gebunden an `PUBLIC_APP_URL`.** Wer die öffentliche Adresse ändert, entwertet alle Passkeys; das Kennwort trägt weiter.
+- **Nicht in der App.** Die WebView läuft unter `capacitor://localhost` bzw. `https://localhost`, ein Passkey für app.staygrid.cloud gilt dort nicht. Die App schützt ihre Sitzung mit Fingerabdruck oder Gesicht des Telefons. Native Passkeys bräuchten ein Plugin und `apple-app-site-association` bzw. `assetlinks.json` auf der Domain.
+- **Offen:** Bestätigung kritischer Handlungen mit Passkey (`POST /v1/auth/passkey/confirm`) folgt, sobald `user_session.confirmed_at` auf `main` ist; Passkey-Pflicht für Plattformpersonal danach.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**

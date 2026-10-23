@@ -2532,3 +2532,44 @@ export function renderEmailChangeNotice(
   return { subject: 'Aenderung Ihrer Mailadresse angefordert',
            text: lines.join('\n\n'), html: htmlBody(lines, lang) }
 }
+
+/**
+ * Hinweis an die eigene Adresse, dass ein Passkey dazugekommen ist.
+ *
+ * Aus demselben Grund wie der Hinweis bei der Adressaenderung: wer eine
+ * offene Sitzung samt Kennwort in die Hand bekommt, legte sich sonst
+ * lautlos einen dauerhaften Zugang an, der jede Kennwortaenderung
+ * ueberlebt. Ohne Link, aus demselben Grund wie dort.
+ */
+export interface PasskeyAddedNoticeData {
+  userName: string | null
+  /** Die Bezeichnung, die beim Anlegen getippt wurde. */
+  passkeyName: string
+}
+
+export function renderPasskeyAddedNotice(
+  d: PasskeyAddedNoticeData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      `a passkey named "${d.passkeyName}" was added to your account. `
+        + 'It can now be used to sign in without a password.',
+      'If this was not you, remove the passkey under "Workstation", change your '
+        + 'password and tell your administrator. This message contains no link '
+        + 'on purpose.'
+    ]
+    return { subject: 'New passkey on your account',
+             text: lines.join('\n\n'), html: htmlBody(lines, lang) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    `an Ihrem Zugang wurde ein Passkey mit der Bezeichnung „${d.passkeyName}“ `
+      + 'angelegt. Mit ihm ist jetzt eine Anmeldung ohne Kennwort moeglich.',
+    'Waren Sie das nicht, entfernen Sie den Passkey unter „Arbeitsplatz“, aendern '
+      + 'Sie Ihr Kennwort und sagen Sie Ihrer Verwaltung Bescheid. Diese '
+      + 'Nachricht enthaelt bewusst keinen Link.'
+  ]
+  return { subject: 'Neuer Passkey an Ihrem Zugang',
+           text: lines.join('\n\n'), html: htmlBody(lines, lang) }
+}

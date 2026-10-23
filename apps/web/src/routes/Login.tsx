@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ApiError, anmelden } from '../lib/api.js'
 import { useT } from '../lib/i18n/index.js'
+import { passkeyMoeglich, mitPasskeyAnmelden, abgebrochen } from '../lib/passkey.js'
 
 /**
  * Anmeldung.
@@ -64,6 +65,32 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
                            disabled:bg-neutral-300">
           {t(laeuft ? 'common.loading' : 'login.submit')}
         </button>
+        {/*
+          * Unter dem Kennwort, nicht davor: das Kennwort hat jeder, einen
+          * Passkey nur, wer ihn im Arbeitsplatz-Dialog angelegt hat. Eine
+          * Adresse braucht er nicht -- der Browser fragt selbst, welcher
+          * Passkey es sein soll.
+          */}
+        {passkeyMoeglich() && (
+          <button type="button" disabled={laeuft}
+                  onClick={async () => {
+                    setFehler(null)
+                    setLaeuft(true)
+                    try {
+                      await mitPasskeyAnmelden()
+                      onDone()
+                    } catch (err) {
+                      setFehler(abgebrochen(err) ? t('passkey.cancelled')
+                        : err instanceof ApiError ? err.message : String(err))
+                    } finally {
+                      setLaeuft(false)
+                    }
+                  }}
+                  className="w-full py-1.5 text-sm rounded-sm border border-neutral-300
+                             text-neutral-800 disabled:text-neutral-400">
+            {t('passkey.login')}
+          </button>
+        )}
         {/*
           * Ein echter Verweis, kein Knopf mit Sprungbefehl: wer sein Kennwort
           * vergessen hat, macht die Seite gern in einem zweiten Reiter auf,

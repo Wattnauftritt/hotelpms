@@ -254,8 +254,12 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
        FROM reservation r
       WHERE r.id = q.reservation_id AND q.message IS NOT NULL
         AND r.departure < current_date - 30`)
+  // Herausforderungen fuer Passkeys (0207) leben fuenf Minuten. Wer eine
+  // Anmeldung anfaengt und nicht beendet, hinterlaesst eine Zeile.
+  const w = await client.query(`DELETE FROM webauthn_challenge WHERE expires_at < now()`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
     + (m.rowCount ?? 0) + (z.rowCount ?? 0) + (zh.rowCount ?? 0) + (n.rowCount ?? 0)
+    + (w.rowCount ?? 0)
 }
 
 /**
