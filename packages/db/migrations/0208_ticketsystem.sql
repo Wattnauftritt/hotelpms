@@ -237,7 +237,7 @@ RETURNS TABLE (
   screen text, client_version text,
   created_at timestamptz, updated_at timestamptz, last_customer_at timestamptz,
   last_staff_at timestamptz, closed_at timestamptz, messages bigint
-) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT t.id, t.account_id, a.name, p.name, t.created_by, cu.display_name,
          t.subject, t.category, t.urgency, t.status, t.assigned_to, au.display_name,
          t.screen, t.client_version,
@@ -266,7 +266,7 @@ CREATE OR REPLACE FUNCTION platform_ticket_messages(p_ticket bigint)
 RETURNS TABLE (
   id bigint, author_side text, author_name text, internal boolean,
   body text, created_at timestamptz
-) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT m.id, m.author_side, u.display_name, m.internal, m.body, m.created_at
     FROM support_ticket_message m
     LEFT JOIN app_user u ON u.id = m.author_id
@@ -281,7 +281,7 @@ GRANT EXECUTE ON FUNCTION platform_ticket_messages(bigint) TO hotelpms_app;
 /* Die Anhaenge, ohne Inhalt. */
 CREATE OR REPLACE FUNCTION platform_ticket_attachments(p_ticket bigint)
 RETURNS TABLE (id bigint, message_id bigint, file_name text, mime text, byte_count integer)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT x.id, x.message_id, x.file_name, x.mime, x.byte_count
     FROM support_ticket_attachment x
    WHERE x.ticket_id = p_ticket
@@ -296,7 +296,7 @@ GRANT EXECUTE ON FUNCTION platform_ticket_attachments(bigint) TO hotelpms_app;
  * fremde Anhangnummer unter einem fremden Ticket liefert nichts. */
 CREATE OR REPLACE FUNCTION platform_ticket_attachment(p_ticket bigint, p_id bigint)
 RETURNS TABLE (file_name text, mime text, bytes bytea)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT x.file_name, x.mime, x.bytes
     FROM support_ticket_attachment x
    WHERE x.id = p_id AND x.ticket_id = p_ticket
@@ -316,7 +316,7 @@ GRANT EXECUTE ON FUNCTION platform_ticket_attachment(bigint, bigint) TO hotelpms
  */
 CREATE OR REPLACE FUNCTION platform_ticket_reply(p_ticket bigint, p_body text, p_internal boolean)
 RETURNS bigint
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
   v_account bigint;
   v_id      bigint;
@@ -357,7 +357,7 @@ GRANT EXECUTE ON FUNCTION platform_ticket_reply(bigint, text, boolean) TO hotelp
  */
 CREATE OR REPLACE FUNCTION platform_ticket_set(p_ticket bigint, p_status text, p_assign text)
 RETURNS boolean
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   IF NOT platform_can('platform:tickets') THEN
     RAISE EXCEPTION 'Recht platform:tickets fehlt' USING ERRCODE = 'insufficient_privilege';
@@ -395,7 +395,7 @@ CREATE OR REPLACE FUNCTION platform_ticket_sessions(p_ticket bigint)
 RETURNS TABLE (
   id bigint, staff_name text, level text, requested_at timestamptz,
   granted_at timestamptz, expires_at timestamptz, revoked_at timestamptz
-) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+) LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
   SELECT s.id, u.display_name, s.level, s.requested_at, s.granted_at,
          s.expires_at, s.revoked_at
     FROM support_session s
