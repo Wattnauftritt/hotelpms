@@ -474,6 +474,28 @@ async function rechnungseinstellung(client: PoolClient, propertyId: number): Pro
 const OHNE_KURTAXE = `NOT EXISTS (SELECT 1 FROM tax_rule tr
                                    WHERE tr.id = c.tax_rule_id AND tr.kind = 'city_tax')`
 
+/**
+ * Ein offenes Storno-Paar steht auf keiner Rechnung (Sven, 23.10.2026: "die
+ * alten falschen buchungen und die gegenbuchungen ... sollten automatisch
+ * nicht auf der rechnung landen").
+ *
+ * Wer im Folio einen Preis korrigiert, hebt die alte Position mit einer
+ * Gegenbuchung auf und bucht sie neu. Beide Haelften bleiben am Folio, wie
+ * GoBD es will, und heben sich auf; auf dem Beleg waeren sie nur zwei
+ * Zeilen, die der Gast nachrechnen muss, und an der Rezeption musste jemand
+ * sie von Hand abwaehlen. Unberechnet bleiben sie, und das ist richtig: ein
+ * Paar aendert weder Saldo noch Steuer, und der Check-out zaehlt es schon
+ * jetzt nicht als offen (reservations.ts, `checkout.openBalance`).
+ *
+ * Nur, solange **beide** offen sind. Steht eine Haelfte schon auf einer
+ * Rechnung, gehoert die andere auf die naechste, sonst fehlte dem Beleg
+ * eine Buchung.
+ */
+const OHNE_STORNOPAAR = `NOT EXISTS (SELECT 1 FROM charge g
+                                      WHERE g.reverses_id = c.id AND g.invoice_id IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM charge o
+                   WHERE o.id = c.reverses_id AND o.invoice_id IS NULL)`
+
 /** Was am Folio an Kurtaxe gebucht ist, brutto: der Teil des Saldos, der auf keiner Rechnung steht. */
 async function kurtaxeAmFolio(client: PoolClient, folioId: number): Promise<number> {
   const r = await client.query<{ cent: string }>(
@@ -775,7 +797,8 @@ async function rechnungsEntwurf(
 ) {
   // Eine Rechnung umfasst eine Menge von Charges, nicht ein Folio.
   // Damit sind Zwischenrechnungen und getrennte Rechnungen moeglich.
-  // Die Kurtaxe nie: siehe OHNE_KURTAXE.
+  // Die Kurtaxe nie: siehe OHNE_KURTAXE. Ein offenes Storno-Paar auch
+  // nicht, auch nicht ausdruecklich gewaehlt: siehe OHNE_STORNOPAAR.
   const charges = await client.query<{ id: number; net_cent: number; tax_rate_bp: number
                                        gross_cent: number
                                        description: string; quantity: number
@@ -788,11 +811,12 @@ async function rechnungsEntwurf(
                 business_date::text, reservation_id, revenue_account, package_part
            FROM charge c
           WHERE folio_id = $1 AND invoice_id IS NULL AND id = ANY($2)
-            AND ${OHNE_KURTAXE} ORDER BY id`
+            AND ${OHNE_KURTAXE} AND ${OHNE_STORNOPAAR} ORDER BY id`
       : `SELECT id, net_cent, tax_rate_bp, gross_cent, description, quantity,
                 business_date::text, reservation_id, revenue_account, package_part
            FROM charge c
           WHERE folio_id = $1 AND invoice_id IS NULL AND ${OHNE_KURTAXE}
+            AND ${OHNE_STORNOPAAR}
           ORDER BY id`,
     auftrag.chargeIds?.length ? [folio.id, auftrag.chargeIds] : [folio.id])
   if (charges.rowCount === 0) throw Errors.unprocessable('folio.nothingOpen')
