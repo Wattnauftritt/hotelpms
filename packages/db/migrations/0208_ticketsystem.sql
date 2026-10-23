@@ -213,7 +213,7 @@ ALTER TABLE platform_email DROP CONSTRAINT platform_email_kind_check;
 ALTER TABLE platform_email ADD CONSTRAINT platform_email_kind_check
   CHECK (kind IN ('invite', 'password_reset', 'support_request',
                   'domain_request', 'email_change', 'email_change_notice',
-                  'ticket_notice', 'ticket_reply'));
+                  'passkey_added', 'ticket_notice', 'ticket_reply'));
 
 ALTER TABLE platform_email DROP CONSTRAINT platform_email_empfaenger_check;
 ALTER TABLE platform_email ADD CONSTRAINT platform_email_empfaenger_check
