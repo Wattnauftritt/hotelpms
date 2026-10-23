@@ -521,7 +521,7 @@ function ChannelManager({ propertyId }: { propertyId: number }): JSX.Element {
   const q = useChannelConnections(propertyId)
   const anlegen = useCreateChannelConnection(propertyId)
   const [name, setName] = useState('')
-  const [anbieter, setAnbieter] = useState<'roomcloud' | 'generic'>('roomcloud')
+  const [anbieter, setAnbieter] = useState<'adminpanel' | 'generic'>('adminpanel')
   const [geheimnis, setGeheimnis] = useState<string | null>(null)
 
   return (
@@ -542,11 +542,13 @@ function ChannelManager({ propertyId }: { propertyId: number }): JSX.Element {
           <label className="text-sm">
             <div className="text-neutral-600">{t('chan.provider')}</div>
             {/* Eine Auswahl statt Freitext, weil die API nur diese zwei
-                annimmt. `generic` ist ein Umsystem, das seine Buchungen
-                fuehrt und per PUT abgleicht (etwa das Adminpanel). */}
+                annimmt. `adminpanel` hiess bis Migration 0198 `roomcloud`:
+                es ist das Adminpanel, das mit RoomCloud spricht, nicht
+                RoomCloud selbst. `generic` ist ein anderes Umsystem, das
+                seine Buchungen fuehrt und per PUT abgleicht. */}
             <select className={feld} value={anbieter}
-                    onChange={e => setAnbieter(e.target.value as 'roomcloud' | 'generic')}>
-              <option value="roomcloud">roomcloud</option>
+                    onChange={e => setAnbieter(e.target.value as 'adminpanel' | 'generic')}>
+              <option value="adminpanel">Adminpanel</option>
               <option value="generic">generic</option>
             </select>
           </label>

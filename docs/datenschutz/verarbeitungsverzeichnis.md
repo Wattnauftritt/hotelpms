@@ -96,7 +96,7 @@ Rechnungsadresse.
 | Brevo | Unterauftragsverarbeiter | Empfängeradresse, Name, Nachrichtentext | Frankreich |
 | DeepL | Unterauftragsverarbeiter | freie Texte des Personals aus der Personal-App (Tätigkeit, Zimmerproblem, Notiz der Hausdame) und die Hausseiten der Gästemappe (Migration 0144) — **keine** Gastdaten, kein Name des Personals; nur mit Pro-Vertrag | Deutschland |
 | Push-Dienste der Browserhersteller (Google, Apple, Mozilla, Microsoft) | Übermittlungsweg, keine Verarbeitung im Auftrag: der Inhalt ist Ende-zu-Ende verschlüsselt | Geräteadresse des Telefons; Inhalt (Zimmernummer oder Datum) nur verschlüsselt — **keine** Gastdaten | je nach Hersteller, USA mit Angemessenheitsbeschluss |
-| Channel Manager ⟨Anbieter⟩ | eigenständig | Preise, Verfügbarkeit, Restriktionen — **keine** Gastdaten | ⟨Land⟩ |
+| Channel Manager ⟨Anbieter⟩ | eigenständig | Preise, Verfügbarkeit, Restriktionen, beim Abholen von Buchungen die Kennung der Revision — **keine** Gastdaten. Buchungen mit Gastdaten kommen von dort herein (Kanaladapter, Migration 0198); die Zugangsdaten des Hauses beim Anbieter liegen verschlüsselt | ⟨Land⟩ |
 | Meldebehörde | gesetzlich | Meldedaten | Deutschland |
 | Statistisches Landesamt | gesetzlich | aggregiert nach Wohnsitzland; das System **erzeugt** den Satz, übermittelt wird er außerhalb über eSTATISTIK.core | Deutschland |
 

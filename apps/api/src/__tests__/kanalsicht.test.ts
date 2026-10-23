@@ -75,7 +75,7 @@ async function connectionToken(): Promise<string> {
   const r = await app.inject({
     method: 'POST', url: `/v1/properties/${fx.propertyId}/channel-connections`,
     headers: auth(admin.sessionId),
-    payload: { provider: 'roomcloud', name: 'Roomcloud Test' } })
+    payload: { provider: 'adminpanel', name: 'Roomcloud Test' } })
   expect(r.statusCode).toBe(201)
   return (r.json() as { token: string }).token
 }

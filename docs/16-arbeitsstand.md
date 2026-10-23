@@ -313,7 +313,7 @@ spätere statt der sofortigen Meldung.
 **Umfang.**
 - Ausgehend: Verfügbarkeit, Raten und Restriktionen je Kategorie und Tag, als Änderungsmeldung und als Vollabgleich.
 - Eingehend: Reservierungen des Portals, mit `booking.external_reference` als Schlüssel gegen Doppelanlage.
-- Erste Anbindung an einen Channel Manager, laut Dokument 02 unter anderem Roomcloud.
+- Erste Anbindung an einen Channel Manager, laut Dokument 02 unter anderem Roomcloud. Seit `0198` spricht StayGrid Channel Manager auch selbst an, Abschnitt „Kanaladapter“.
 
 **Abnahme.** Eine Reservierung des Portals bindet Kontingent über `inventory_reserve`, nicht über einen direkten Schreibzugriff. Ein zweiter Eingang derselben externen Nummer legt nichts doppelt an.
 
@@ -1392,6 +1392,20 @@ Sven, 18.10.2026: Preise in StayGrid verwalten, aber nicht alles von Hand eintip
 - **Adminpanel-Seite** gebaut und gemergt (dort PR 234).
 
 Tests in `kalenderAbruf.test.ts`, `kalenderSenden.test.ts`, `rateGrid.test.ts`.
+
+### Kanaladapter: StayGrid spricht den Channel Manager selbst an (`0198`) — **Kern gebaut**
+
+Sven, 23.10.2026 (Thread „Anbindung weiterer Channelmanager“, Bewertung der Anbieter dort): RoomCloud direkt und Channex anbinden. Die Annahme aus Dokument 02 (Entscheidung 5, eine Standardschnittstelle, an die die Anbieter andocken) trägt nicht; fast jeder Channel Manager erwartet, dass das PMS **seine** Schnittstelle spricht. Bis hier ist der Kern gebaut, der für alle Anbieter derselbe ist; die Adapter selbst kommen einzeln.
+
+- **Zwei Arten von Zugang in `channel_connection`.** `inbound`: ein Umsystem ruft StayGrid mit Token (alles Bisherige). `adapter`: StayGrid ruft den Anbieter mit dessen Zugangsdaten, verschlüsselt wie der Stripe-Schlüssel, angezeigt wird nur Anfang und Ende. Höchstens ein aktiver Adapter je Haus und Anbieter.
+- **„roomcloud“ heißt jetzt „adminpanel“** (Sven: die bisherige Verbindung ist nicht RoomCloud nativ). Der Name `roomcloud` gehört dem Adapter, der RoomCloud wirklich anspricht. Bestehende Buchungen behalten ihren `channel_code`.
+- **Verfügbarkeit geht automatisch hinaus, Preise nur per Knopf** (Sven, 23.10.2026). Der Worker (`jobs/channelSync.ts`, jede Minute) sendet je zugeordneter Gruppe die freien Zimmer der nächsten 365 Tage ab Geschäftstag, beim ersten Mal und nach „alles neu senden“ alle, sonst nur Tage mit geändertem `inventory_day.updated_at` (zwei Minuten Überlappung für spät festgeschriebene Transaktionen). Neue Zuordnung, Umschalten auf aktiv oder neue Zugangsdaten verlangen den ganzen Bestand.
+- **Buchungen** holt der Worker ab, gleicht sie mit derselben Fachlogik wie der Kanalpush ab (`packages/domain/src/channelBooking.ts`, aus `routes/channelPush.ts` dorthin verlegt, Schutz `kept_local` und `kept_checked_in` eingeschlossen) und bestätigt die Revision erst nach dem Festschreiben. Eine Revision, die zweimal kommt, wird nur noch einmal bestätigt (`channel_booking_revision`). Ein Zimmertyp ohne Zuordnung wird nicht bestätigt und kommt nach der Zuordnung wieder.
+- **Probebetrieb** (`sync_mode = 'shadow'`, Voreinstellung). Im eigenen Hotel bleibt die Verbindung über das Adminpanel parallel bestehen (Sven, 23.10.2026). Ein Adapter im Probebetrieb sendet nichts, bestätigt nichts und schreibt nichts, er liest Buchungen höchstens alle 15 Minuten ohne sie abzuholen und schreibt ins Kanalprotokoll, wie viele StayGrid anders kennt. Ein RoomCloud-Adapter lässt sich nicht aktiv schalten, solange ein Adminpanel-Zugang im Haus aktiv ist, und umgekehrt (`channel.adminpanelStillActive`).
+- **Kanalprotokoll** (`channel_sync_log`, 90 Tage): je Lauf Art, Modus, Anzahl, Unterschiede und ein Fehlerschlüssel, nie Text des Anbieters. Ein Fehler steht einmal darin, nicht in jedem Lauf.
+- **Schnittstelle** `routes/channelAdapters.ts`, Recht `integration:manage`: anlegen, ändern, stilllegen, „alles neu senden“, Zuordnung von Gruppen und Ratenplänen (je als Ganzes), Protokoll. Ein Übungshaus bekommt keinen Adapter und sendet nichts.
+
+Offen: Oberfläche für Zuordnung, Modus und Protokoll; der Channex-Adapter mit Zertifizierung (wartet auf das Testkonto bei Channex) und mit ihm das Senden der Preise über den Adapter; das Abo über Stripe (wartet auf Preis und Karenzzeit); der RoomCloud-Adapter (wartet auf die Unterlagen von RoomCloud). Beim späteren Umstieg des eigenen Hotels gehören die Buchungen mit `rc-` noch dem Adminpanel-Zugang und brauchen einen Übernahmeschritt. Tests in `kanalabgleich.test.ts` (Worker) und `kanaladapter.test.ts`.
 
 ### Visitenkarte scannen für die Firmenanschrift — **gebaut**
 

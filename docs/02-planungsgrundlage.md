@@ -250,6 +250,8 @@ Das ist machbar, aber nur unter zwei Bedingungen:
 **Zu 5: „Alle Channel Manager" heißt, dass wir keinen einzeln bauen.**
 Wir bauen **eine** ARI-Schnittstelle (Availability, Rates, Inventory) nach Branchenstandard und lassen die Anbieter andocken. Dirs21, HotelSpider, SiteMinder, Roomcloud und Cultuzz sprechen alle Varianten desselben Musters. Eine saubere Standardschnittstelle plus eine gute Dokumentation ist billiger als fünf Einzelintegrationen und skaliert auf den sechsten Anbieter ohne Arbeit.
 
+> **Korrektur, 23.10.2026.** Das Andocken trägt nicht. Die Prüfung der Anbieter (Thread „Anbindung weiterer Channelmanager“) hat gezeigt, dass fast jeder Channel Manager erwartet, dass das PMS **seine** Schnittstelle spricht und sich dafür zertifizieren lässt; keiner baut auf die Schnittstelle eines kleinen PMS hin. Die ARI-Schnittstelle bleibt für Umsysteme wie das Adminpanel. Für die Anbieter gibt es jetzt einen gemeinsamen Kern mit einem Adapter je Anbieter (Migration 0198, Dokument 16, Abschnitt „Kanaladapter“), zuerst Channex und RoomCloud.
+
 **Zu 6: „Alle drei Payment-Anbieter" bedeutet zwingend eine Abstraktionsschicht.**
 Wie bei der Fiskalisierung: eine eigene interne Schnittstelle `PaymentAdapter` mit Autorisieren, Belasten, Erstatten, Token speichern, Pay-by-Link. Adyen, Stripe und Mollie sind Implementierungen dahinter. **Kartendaten fassen wir nie selbst an**, nur Tokens, sonst greift PCI DSS in voller Härte.
 Reihenfolge: Stripe zuerst, weil am schnellsten integriert und für den Start ausreichend. Mollie danach, weil im DACH-Raum bei kleinen Betrieben beliebt und günstiger. Adyen zuletzt, weil es sich erst ab Volumen und bei größeren Häusern lohnt.

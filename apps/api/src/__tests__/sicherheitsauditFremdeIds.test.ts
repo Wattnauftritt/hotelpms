@@ -319,7 +319,7 @@ describe('M4: fremde Kennungen aus dem Rumpf', () => {
       email: 'dir@a.de', propertyId: a.propertyId, roleKey: 'hotel_director' })
     const verbindung = await app.inject({
       method: 'POST', url: `/v1/properties/${a.propertyId}/channel-connections`,
-      headers: auth(dir.sessionId), payload: { provider: 'roomcloud', name: 'RC' } })
+      headers: auth(dir.sessionId), payload: { provider: 'adminpanel', name: 'RC' } })
     expect(verbindung.statusCode, verbindung.body).toBe(201)
     const token = (JSON.parse(verbindung.body) as { token: string }).token
     const fremd = await makeGuest(owner, b.accountId)
