@@ -449,7 +449,7 @@ export function useRoomMove() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ reservationRef, ...body }:
-                 { reservationRef: string; from?: string; resourceId: number
+                 { reservationRef: string; from?: string; resourceId: number | null
                    priceCent?: number }) =>
       api.post(`/v1/reservations/${reservationRef}/room-move`, body),
     onSuccess: (_r, { reservationRef }) => nachZimmerwechsel(qc, reservationRef)

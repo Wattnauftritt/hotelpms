@@ -950,8 +950,9 @@ export type CleaningWaiverSettings = Static<typeof CleaningWaiverSettings>
  * `to` (Abreisetag des Abschnitts). `movedOut`: der Gast hat es verlassen.
  */
 export const RoomPart = Type.Object({
-  resourceId: Type.Integer(),
-  roomCode: Type.String(),
+  /** Leer: der Abschnitt liegt im Band und wartet auf ein Zimmer (0196). */
+  resourceId: Type.Union([Type.Integer(), Type.Null()]),
+  roomCode: Type.Union([Type.String(), Type.Null()]),
   from: Type.String(),
   to: Type.String(),
   movedOut: Type.Boolean()

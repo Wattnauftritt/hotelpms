@@ -61,15 +61,16 @@ async function lade(
 /** Die Abschnitte, wie Seitenfenster und Antwort sie zeigen. */
 export async function zimmerAbschnitte(
   client: PoolClient, reservationId: number
-): Promise<Array<{ resourceId: number; roomCode: string; from: string; to: string
-                   movedOut: boolean }>> {
-  const { rows } = await client.query<{ resourceId: number; roomCode: string; from: string
-                                        to: string; movedOut: boolean }>(
+): Promise<Array<{ resourceId: number | null; roomCode: string | null; from: string
+                   to: string; movedOut: boolean }>> {
+  // Ein Abschnitt ohne Zimmer liegt im Band (0196) und steht mit in der Liste.
+  const { rows } = await client.query<{ resourceId: number | null; roomCode: string | null
+                                        from: string; to: string; movedOut: boolean }>(
     `SELECT s.resource_id::int AS "resourceId", u.code AS "roomCode",
             s.arrival::text AS "from", s.departure::text AS "to",
             (s.status = 'CheckedOut' AND s.stay_status = 'InHouse') AS "movedOut"
        FROM reservation_room_stay s
-       JOIN resource u ON u.id = s.resource_id
+       LEFT JOIN resource u ON u.id = s.resource_id
       WHERE s.id = $1 AND s.room_moved
       ORDER BY s.arrival`, [reservationId])
   return rows
@@ -152,7 +153,9 @@ export function roomMoveRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { reservationRef } = req.params as { reservationRef: string }
       const body = (req.body ?? {}) as { from?: unknown; resourceId?: unknown; priceCent?: unknown }
-      if (!Number.isInteger(body.resourceId)) {
+      // `null` legt den Gast ab dem Tag ins Band (0196): im vollen Haus ist
+      // oft erst ein Zimmer frei, wenn ein anderer Gast umgelegt ist.
+      if (body.resourceId !== null && !Number.isInteger(body.resourceId)) {
         throw Errors.validation({ resourceId: ['field.required'] })
       }
       if (body.from !== undefined && !istKalendertag(body.from)) {
@@ -163,7 +166,7 @@ export function roomMoveRoutes(app: FastifyInstance): void {
               || (body.priceCent as number) > 100_000_000)) {
         throw Errors.validation({ priceCent: ['field.nonNegativeInteger'] })
       }
-      const resourceId = body.resourceId as number
+      const resourceId = body.resourceId as number | null
       const principal = req.principal as Principal
       return tx(req.pool, req, async client => {
         const r = await lade(client, reservationRef, principal)
@@ -183,15 +186,22 @@ export function roomMoveRoutes(app: FastifyInstance): void {
         if (r.status === 'InHouse' && ab < heute) {
           throw Errors.unprocessable('roomMove.datePast', { date: deutsch(heute) })
         }
-        if (r.resource_id === null && ab > r.arrival) {
+        if (!r.room_moved && r.resource_id === null && ab > r.arrival) {
           throw Errors.unprocessable('roomMove.needsRoom')
+        }
+        // Ab der Anreise ins Band hiesse: ein angereister Gast ohne Zimmer.
+        // Mitten im Aufenthalt behaelt er das alte, bis er ein neues hat (0196).
+        if (resourceId === null && r.status === 'InHouse' && ab <= r.arrival) {
+          throw Errors.conflict('stay.inHouseKeepsRoom')
         }
         if (await zimmerAm(client, r, ab) === resourceId) {
           throw Errors.unprocessable('roomMove.sameRoom')
         }
-        await assertUnitAssignable(client, {
-          resourceId, propertyId: r.property_id,
-          arrival: ab, departure: r.departure, exceptReservationId: r.id })
+        if (resourceId !== null) {
+          await assertUnitAssignable(client, {
+            resourceId, propertyId: r.property_id,
+            arrival: ab, departure: r.departure, exceptReservationId: r.id })
+        }
 
         await client.query(`SELECT reservation_room_move($1, $2::date, $3, $4::date)`,
                            [r.id, ab, resourceId, heute])
@@ -246,7 +256,7 @@ export function roomMoveRoutes(app: FastifyInstance): void {
           throw Errors.conflict('roomMove.nothingToUndo')
         }
         const heute = await geschaeftstag(client, r.property_id)
-        const teile = await client.query<{ from_date: string; resource_id: number }>(
+        const teile = await client.query<{ from_date: string; resource_id: number | null }>(
           `SELECT from_date::text, resource_id::int FROM reservation_room_part
             WHERE reservation_id = $1 AND from_date < $2::date
             ORDER BY from_date DESC LIMIT 2`, [r.id, r.departure])
@@ -254,10 +264,12 @@ export function roomMoveRoutes(app: FastifyInstance): void {
         if (letzter === undefined || davor === undefined || letzter.from_date < heute) {
           throw Errors.conflict('roomMove.nothingToUndo')
         }
-        // Das alte Zimmer muss ab dem Wechseltag noch frei sein.
-        await assertUnitAssignable(client, {
-          resourceId: davor.resource_id, propertyId: r.property_id,
-          arrival: letzter.from_date, departure: r.departure, exceptReservationId: r.id })
+        // Das alte Zimmer muss ab dem Wechseltag noch frei sein; das Band ist es immer.
+        if (davor.resource_id !== null) {
+          await assertUnitAssignable(client, {
+            resourceId: davor.resource_id, propertyId: r.property_id,
+            arrival: letzter.from_date, departure: r.departure, exceptReservationId: r.id })
+        }
         await client.query(`SELECT reservation_room_move_undo($1, $2::date)`, [r.id, heute])
 
         const nachher = await client.query<{ resource_id: number | null }>(

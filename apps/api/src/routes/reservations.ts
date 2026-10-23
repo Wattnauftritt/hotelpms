@@ -1856,7 +1856,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   s.arrival::text AS "from", s.departure::text AS "to",
                   (s.status = 'CheckedOut' AND s.stay_status = 'InHouse') AS "movedOut"
              FROM reservation_room_stay s
-             JOIN resource u ON u.id = s.resource_id
+             LEFT JOIN resource u ON u.id = s.resource_id
             WHERE s.id = $1 AND s.room_moved
             ORDER BY s.arrival`, [kopf.id])
 
@@ -2868,9 +2868,39 @@ export function reservationRoutes(app: FastifyInstance): void {
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
         rechtImHaus(req.principal as Principal, 'reservation:write', res.property_id)
-        // Ein geteilter Aufenthalt (0195) hat mehr als ein Zimmer; welches
-        // hier gemeint waere, weiss die Route nicht.
-        if (res.room_moved) throw Errors.conflict('stay.roomMovedUseMove')
+        /*
+         * Ein geteilter Aufenthalt (0195) hat mehr als ein Zimmer; welches
+         * hier gemeint waere, weiss die Route nicht. Mit einer Ausnahme:
+         * liegt sein letzter Abschnitt im Band (0196), ist es dieser -- der
+         * Balken, den die Rezeption aus dem Band in eine Zeile zieht.
+         */
+        if (res.room_moved) {
+          const band = await client.query<{ from_date: string }>(
+            `SELECT from_date::text FROM reservation_room_part
+              WHERE reservation_id = $1 AND from_date < $2::date
+              ORDER BY from_date DESC LIMIT 1`, [res.id, res.departure])
+          const letzter = band.rows[0]
+          const leer = letzter === undefined ? null : await client.query<{ leer: boolean }>(
+            `SELECT resource_id IS NULL AS leer FROM reservation_room_part
+              WHERE reservation_id = $1 AND from_date = $2::date`, [res.id, letzter.from_date])
+          if (resourceId === null || letzter === undefined || leer?.rows[0]?.leer !== true) {
+            throw Errors.conflict('stay.roomMovedUseMove')
+          }
+          await assertUnitAssignable(client, {
+            resourceId, propertyId: res.property_id,
+            arrival: letzter.from_date, departure: res.departure, exceptReservationId: res.id })
+          const heute = await geschaeftstag(client, res.property_id)
+          await client.query(`SELECT reservation_room_move($1, $2::date, $3, $4::date)`,
+                             [res.id, letzter.from_date, resourceId, heute])
+          const nachher = await client.query<{ resource_id: number | null }>(
+            `SELECT resource_id::int FROM reservation WHERE id = $1`, [res.id])
+          await emitEvent(client, res.property_id, 'reservation.changed', {
+            reservationRef, status: res.status, arrival: res.arrival, departure: res.departure,
+            categoryId: res.category_id, resourceId: nachher.rows[0]?.resource_id ?? null,
+            roomMove: { from: letzter.from_date, resourceId }
+          })
+          return { reservationRef, resourceId }
+        }
 
         /*
          * `null` nimmt das Zimmer wieder ab und legt die Buchung zurueck

@@ -293,3 +293,63 @@ describe('Aufenthalt vor der Anreise teilen', () => {
     expect(await abweichungen()).toEqual([])
   })
 })
+
+/*
+ * Ins Band (0196, Sven 23.10.2026): im vollen Haus ist ab dem Wechseltag
+ * oft kein Zimmer frei, solange nicht erst ein anderer Gast umgelegt ist.
+ */
+describe('Zimmerwechsel ins Ablageband', () => {
+  it('legt den Gast ab heute ins Band und gibt ihm von dort ein Zimmer', async () => {
+    const g = await aufenthalt({ arrival: '2026-11-08', departure: '2026-11-13',
+                                 resourceId: d1, status: 'InHouse' })
+    const r = await post(`/v1/reservations/${g.ref}/room-move`, { resourceId: null })
+    expect(r.statusCode, r.body).toBe(200)
+    // Am Aufenthalt bleibt das alte Zimmer: der Gast schlaeft dort, bis er
+    // ein neues hat, und ein angereister Gast hat immer ein Zimmer.
+    expect(await zimmerHeute(g.id)).toEqual({ resource_id: d1, room_moved: true })
+    expect(await reinigung(d1)).not.toBe('dirty')
+    // Ohne Zimmer zaehlt die Nacht in der gebuchten Gruppe, und D1 ist frei.
+    expect(await bestand(dz, HEUTE)).toBe(1)
+    expect(await abweichungen()).toEqual([])
+
+    const plan = JSON.parse((await get(
+      `/v1/properties/${fx.propertyId}/tape-chart?from=2026-11-05&to=2026-11-20`)).body)
+    const balken = (plan.reservations as Array<Record<string, unknown>>)
+      .filter(x => x.public_ref === g.ref).map(x => [x.resource_id, x.arrival, x.departure])
+    expect(balken).toEqual([[d1, '2026-11-08', HEUTE], [null, HEUTE, '2026-11-13']])
+
+    const neu = await aufenthalt({ arrival: HEUTE, departure: '2026-11-12', resourceId: d2 })
+    expect((await post(`/v1/reservations/${neu.ref}/assign-unit`, { resourceId: d1 })).statusCode)
+      .toBe(200)
+
+    // Aus dem Band in eine Zeile gezogen: das Zimmer gilt fuer den Teil im Band.
+    const z = await post(`/v1/reservations/${g.ref}/assign-unit`, { resourceId: s1 })
+    expect(z.statusCode, z.body).toBe(200)
+    expect(await zimmerHeute(g.id)).toEqual({ resource_id: s1, room_moved: true })
+    expect(await reinigung(d1)).toBe('dirty')
+    expect(await reinigung(s1)).toBe('occupied')
+    expect(await bestand(su, HEUTE)).toBe(1)
+    expect(await abweichungen()).toEqual([])
+
+    const d = JSON.parse((await get(`/v1/reservations/${g.ref}`)).body)
+    expect(d.roomParts.map((p: { resourceId: number | null }) => p.resourceId)).toEqual([d1, s1])
+  })
+
+  it('nimmt den Wechsel ins Band zurueck', async () => {
+    const g = await aufenthalt({ arrival: '2026-11-15', departure: '2026-11-18', resourceId: d1 })
+    expect((await post(`/v1/reservations/${g.ref}/room-move`,
+                       { from: '2026-11-16', resourceId: null })).statusCode).toBe(200)
+    expect(await bestand(dz, '2026-11-16')).toBe(1)
+    const r = await post(`/v1/reservations/${g.ref}/room-move/undo`, {})
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await zimmerHeute(g.id)).toEqual({ resource_id: d1, room_moved: false })
+    expect(await abweichungen()).toEqual([])
+  })
+
+  it('weist das Zuweisen ab, solange der letzte Teil ein Zimmer hat', async () => {
+    const g = await aufenthalt({ arrival: '2026-11-15', departure: '2026-11-18', resourceId: d1 })
+    await post(`/v1/reservations/${g.ref}/room-move`, { from: '2026-11-16', resourceId: s1 })
+    expect((await post(`/v1/reservations/${g.ref}/assign-unit`, { resourceId: d2 })).statusCode)
+      .toBe(409)
+  })
+})

@@ -31,13 +31,16 @@ export function ZimmerWechseln({ reservationRef, onClose }: {
   const [ab, setAb] = useState<string | null>(null)
   const optionen = useRoomMoveOptions(reservationRef, ab)
   const wechseln = useRoomMove()
-  const [zimmer, setZimmer] = useState<number | null>(null)
+  // `'band'`: ohne Zimmer ab dem Tag, ins Band ueber dem Plan (0196). Im
+  // vollen Haus ist ein Zimmer oft erst frei, wenn ein anderer Gast umgelegt
+  // ist -- und genau dafuer ist das Band der Ablageplatz.
+  const [zimmer, setZimmer] = useState<number | 'band' | null>(null)
   const [neuerPreis, setNeuerPreis] = useState(false)
   const [preisText, setPreisText] = useState<string | null>(null)
 
   const o = optionen.data
   const frei = (o?.rooms ?? []).filter(z => z.free)
-  const gewaehlt = frei.some(z => z.resourceId === zimmer) ? zimmer : null
+  const gewaehlt = zimmer === 'band' || frei.some(z => z.resourceId === zimmer) ? zimmer : null
   const vorbelegt = o?.nightPriceCent ?? null
   const text = preisText ?? (vorbelegt === null ? '' : eingabeAusCent(vorbelegt))
   const preisCent = neuerPreis ? centAusEingabe(text) : null
@@ -47,7 +50,8 @@ export function ZimmerWechseln({ reservationRef, onClose }: {
 
   const speichern = (): void => {
     if (o === undefined || gewaehlt === null) return
-    wechseln.mutate({ reservationRef, from: o.from, resourceId: gewaehlt,
+    wechseln.mutate({ reservationRef, from: o.from,
+                      resourceId: gewaehlt === 'band' ? null : gewaehlt,
                       ...(preisCent === null ? {} : { priceCent: preisCent }) },
                     { onSuccess: onClose })
   }
@@ -91,6 +95,19 @@ export function ZimmerWechseln({ reservationRef, onClose }: {
             <div className="text-neutral-600">{t('rm.newRoom')}</div>
             {frei.length === 0 && (
               <p className="text-neutral-500">{t('rm.noRooms')}</p>
+            )}
+            {o.currentResourceId !== null && (
+              <div className="space-y-1">
+                <button type="button" onClick={() => setZimmer('band')}
+                        aria-pressed={gewaehlt === 'band'}
+                        className={`px-2 py-1 rounded-sm border
+                                    ${gewaehlt === 'band'
+                                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                                      : 'border-neutral-300 bg-white hover:bg-neutral-50'}`}>
+                  {t('rm.toBand')}
+                </button>
+                <span className="block text-xs text-neutral-500">{t('rm.toBandHint')}</span>
+              </div>
             )}
             {gruppen.map(g => (
               <div key={g.name} className="space-y-1">
