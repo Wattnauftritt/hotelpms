@@ -1093,7 +1093,9 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                // Ein Aufenthalt mit Zimmerwechsel (0195) liegt in mehr als
                // einer Zeile; welchen Teil ein Zug meinte, waere geraten.
                // Ein Klick oeffnet ihn, gewechselt wird im Seitenfenster.
-               fest: r.status === 'CheckedOut' || r.room_moved,
+               // Ausnahme: der Teil im Band (0196). Ihn in eine Zeile zu
+               // ziehen, gibt genau ihm ein Zimmer.
+               fest: r.status === 'CheckedOut' || (r.room_moved && r.resource_id !== null),
                startDay: tag, day: tag,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
                overResourceId: null, ueberBand: false, moved: false })

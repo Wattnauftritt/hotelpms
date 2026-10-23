@@ -716,7 +716,7 @@ function Zimmerwechsel({ reservation: r }: { reservation: ReservationDetail }): 
         <ul className="text-xs text-neutral-600 space-y-0.5">
           {r.roomParts.map(p => (
             <li key={p.from} className={p.movedOut ? 'text-neutral-400' : ''}>
-              <span className="tabular-nums font-medium">{p.roomCode}</span>
+              <span className="tabular-nums font-medium">{p.roomCode ?? t('rm.band')}</span>
               {' '}{formatDate(p.from, locale)} – {formatDate(p.to, locale)}
               {p.movedOut && <> · {t('rm.movedOut')}</>}
             </li>
