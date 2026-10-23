@@ -1456,3 +1456,14 @@ Sven, 23.10.2026: Gäste wechseln während des Aufenthalts das Zimmer (Upgrade, 
 - **Nicht gebaut: Baustein 3**, die Abschnitte über die Schnittstelle fürs Adminpanel. Bis dahin sieht es das Zimmer von heute und im Ereignis `reservation.changed` die Abschnitte.
 
 Tests in `zimmerwechsel.test.ts`.
+
+### Zimmer als andere Kategorie verkaufen (`0197`) — **erledigt**
+
+Sven, 23.10.2026: Ist kein Doppelzimmer mehr frei, aber ein Vierbettzimmer, verkauft das Haus das Vierbettzimmer als Doppelzimmer. StayGrid wusste das nicht und meldete weiter ein freies VZ und kein DZ; bisher half nur, die Verfügbarkeitsprüfung im Adminpanel zu sperren und RoomCloud von Hand zu stellen, oder ein Doppelzimmer für eine Nacht ins VZ zu schieben. Gewählt hat Sven Vorschlag A: je Zimmer und Tag markieren, im Kalender auf einen Blick sichtbar.
+
+- **`room_sell_as`, eine Zeile je Zimmer und Tag.** An diesen Tagen zählt das Zimmer im Bestand der anderen Kategorie: Kapazität dort +1, in der eigenen −1, die Haussumme bleibt. Wer an einem solchen Tag darin liegt, zählt ebenfalls dort — die Regel aus `0120` mit einer Gruppe je Tag statt je Zimmer. Kapazitätsrechnung, Bestandstrigger, `reservation_room_shift_rows` und der tägliche Abgleich (`inventory_sold_expected`) rechnen je Tag; `change-stay` bewegt den Bestand über `inventory_move_by_room`, das ohne einen solchen Tag genau `inventory_move` ist.
+- **`PUT /v1/properties/:id/room-sell-as`** `{ roomId, from, to, categoryId }`, `null` oder die eigene Gruppe hebt auf. Recht `reservation:write` — mit demselben Recht ging die Rezeption bisher den Umweg. Ab dem Geschäftstag, höchstens 92 Tage. Ein belegter Tag geht nur, wenn der Gast dort genau in der Kategorie gebucht ist, in der das Zimmer danach zählt (das früher von Hand ins VZ geschobene DZ lässt sich nachträglich markieren, ein VZ-Gast macht sein Zimmer nicht zum DZ). Umgruppieren weist ab, solange künftige Tage markiert sind.
+- **Kalender:** violettes, schraffiertes Band „als DZ“ von Tagesmitte zu Tagesmitte wie eine Nacht, ein Streifen darüber, der auch über einem Balken sichtbar bleibt, und ein Zeichen an der Zimmernummer. Rechter Knopf auf freier Fläche: „Als andere Kategorie verkaufen …“, derselbe Dialog hebt über die eigene Kategorie wieder auf. Eine neue Buchung in einem so verkauften Zimmer bekommt die verkaufte Kategorie, wenn jede Nacht so verkauft ist.
+- **Adminpanel und Kanal:** `/availability` je Kategorie stimmt von selbst, ohne Änderung dort. `/availability?by=salesCode` lässt an solchen Tagen Zimmer und Belegung aus seinem Code heraus. Der Sortierer legt an diesen Tagen Gäste der verkauften Kategorie hinein und keine der eigenen.
+
+Tests in `verkaufenAls.test.ts` und im Sortierer (`roomSortEngine.test.ts`).

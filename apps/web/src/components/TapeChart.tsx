@@ -11,6 +11,8 @@ import { useEscape, istTextEingabe } from '../lib/tasten.js'
 import { ReinigungsZeichen, ZahlungsZeichen, PersonenZeichen, useBalkenTitel }
   from './PlanZeichen.tsx'
 import { Schwebehinweis } from './Schwebehinweis.tsx'
+import { verkauftAlsStrecken, kategorieImZimmer, type VerkauftAlsStrecke }
+  from '../lib/verkauftAls.js'
 
 /**
  * Der Zimmerplan.
@@ -576,6 +578,20 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     return m
   }, [data.blocks])
 
+  /*
+   * Tage, an denen ein Zimmer als andere Kategorie verkauft wird (0197).
+   * Ein Plan von vor diesem Feld kommt aus dem Zwischenspeicher ohne es.
+   */
+  const verkauftJeZimmer = useMemo(
+    () => verkauftAlsStrecken(data.sell_as ?? []), [data.sell_as])
+  /** Die Kategorie, in der eine Buchung in diesem Zimmer an diesen Tagen liegt. */
+  const kategorieFuer = useCallback(
+    (resourceId: number, arrival: string, departure: string): number | undefined => {
+      const u = zimmerNach.get(resourceId)
+      return u === undefined ? undefined
+        : kategorieImZimmer(verkauftJeZimmer.get(resourceId), u.category_id, arrival, departure)
+    }, [zimmerNach, verkauftJeZimmer])
+
   /**
    * Wo im Raster liegt ein Zeitraum, auf den sichtbaren Ausschnitt
    * beschnitten. Von Tagesmitte zu Tagesmitte -- die Begruendung steht in
@@ -973,17 +989,17 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
     if (auswahl === null || auswahl.length === 0) return
     if (auswahl.length === 1) {
       const z = auswahl[0]!
-      const u = zimmerNach.get(z.resourceId)
-      if (u !== undefined) {
-        onCreate?.({ resourceId: z.resourceId, categoryId: u.category_id,
+      const categoryId = kategorieFuer(z.resourceId, z.arrival, z.departure)
+      if (categoryId !== undefined) {
+        onCreate?.({ resourceId: z.resourceId, categoryId,
                      arrival: z.arrival, departure: z.departure })
       }
     } else {
       onCreateGroup?.({
         rooms: auswahl.flatMap(z => {
-          const u = zimmerNach.get(z.resourceId)
-          return u === undefined ? [] : [{
-            resourceId: z.resourceId, categoryId: u.category_id,
+          const categoryId = kategorieFuer(z.resourceId, z.arrival, z.departure)
+          return categoryId === undefined ? [] : [{
+            resourceId: z.resourceId, categoryId,
             arrival: z.arrival, departure: z.departure }]
         }),
         // Oben die Klammer: sie ist die Vorgabe der Maske und fuer jedes
@@ -1164,9 +1180,14 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
         setAuswahl([{ resourceId, arrival: anreise, departure: addDays(anreise, 1) }])
       }
 
+      const arrival = getroffen?.arrival ?? anreise
+      const departure = getroffen?.departure ?? addDays(anreise, 1)
       onKontext?.({
         art: 'frei', punkt: { x: e.clientX, y: e.clientY },
-        resourceId, categoryId,
+        resourceId,
+        // Im als andere Kategorie verkauften Zimmer bucht man diese (0197).
+        categoryId: kategorieFuer(resourceId, arrival, departure) ?? categoryId,
+        roomCategoryId: categoryId,
         roomCode: zimmerNach.get(resourceId)?.code ?? '',
         /*
          * In der Markierung ihr Zeitraum, daneben **eine Nacht** -- nicht
@@ -1182,16 +1203,16 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
          * 17.10.2026). Bei mehreren Zimmern fiel es nicht auf, weil dort
          * `auswahl` gilt und nicht dieses Paar.
          */
-        arrival: getroffen?.arrival ?? anreise,
-        departure: getroffen?.departure ?? addDays(anreise, 1),
+        arrival, departure,
         leeren: () => setAuswahl(null),
         auswahl: !inAuswahl || auswahl === null ? null : auswahl.flatMap(z => {
           const u = zimmerNach.get(z.resourceId)
           return u === undefined ? [] : [{
-            resourceId: z.resourceId, categoryId: u.category_id, roomCode: u.code,
+            resourceId: z.resourceId, roomCode: u.code,
+            categoryId: kategorieFuer(z.resourceId, z.arrival, z.departure) ?? u.category_id,
             arrival: z.arrival, departure: z.departure }]
         }) })
-    }, [onKontext, tagUnter, tage, zimmerNach, auswahl])
+    }, [onKontext, tagUnter, tage, zimmerNach, auswahl, kategorieFuer])
 
   /*
    * Der rechte Knopf auf der Zimmernummer.
@@ -1456,6 +1477,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
           return (
             <Zimmerzeile key={u.id} unit={u} tagesSpalten={tagesSpalten} zeile={ZEILE}
                          reservations={jeZimmer.get(u.id)} blocks={blockeJeZimmer.get(u.id)}
+                         verkauft={verkauftJeZimmer.get(u.id)}
                          balken={balken} umriss={umriss}
                          gruppenAnfang={nachGruppe === true && i > 0
                            && data.units[i - 1]?.category_id !== u.category_id}
@@ -1558,6 +1580,8 @@ interface ZimmerzeileProps {
   tagesSpalten: readonly JSX.Element[]
   reservations: ReservationRow[] | undefined
   blocks: TapeChartData['blocks'] | undefined
+  /** Tage "verkauft als" (0197) als Strecken; gemerkt, also stabil. */
+  verkauft: VerkauftAlsStrecke[] | undefined
   /** Stabil ueber `useCallback` in der Elternkomponente. */
   balken: (von: string, bis: string) => { left: number; width: number }
   /** Ebenso stabil; die Umrisslinie als `clip-path`. */
@@ -1635,11 +1659,36 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           <span aria-hidden title={t('plan.tooSmall')}
                 className="text-red-700 shrink-0">!</span>
         )}
+        {/* Am Zimmer, damit es auch auffaellt, wenn das Band gerade unter
+            einem Balken liegt oder ausserhalb des Ausschnitts beginnt. */}
+        {p.verkauft !== undefined && p.verkauft.length > 0 && (
+          <span title={t('sa.roomBadge', { codes: [...new Set(p.verkauft.map(v => v.categoryCode))].join(', ') })}
+                className="ms-auto shrink-0 rounded bg-violet-100 px-1 text-[10px]
+                           font-medium text-violet-800 ring-1 ring-violet-300">
+            {t('sa.band', { code: [...new Set(p.verkauft.map(v => v.categoryCode))].join('/') })}
+          </span>
+        )}
       </div>
       <div className="relative grow cursor-crosshair"
            onPointerDown={e => p.onCreatePointerDown(u.id, u.category_id, e)}
            onContextMenu={e => p.onFreiKontext(u.id, u.category_id, e)}>
         {p.tagesSpalten}
+        {/*
+          * Die Tage "verkauft als" (0197), hinter den Balken: von Tagesmitte
+          * zu Tagesmitte wie eine Nacht, denn verkauft wird die Nacht. Ohne
+          * Zeigerereignisse -- darauf zieht man weiter Buchungen auf, und
+          * der rechte Knopf landet in der Zeile.
+          */}
+        {(p.verkauft ?? []).map(v => (
+          <div key={`sa-${v.from}`} aria-hidden
+               style={{ ...p.balken(v.from, v.to), top: 0, height: innen }}
+               className="absolute pointer-events-none rounded-sm border border-dashed
+                          border-violet-400 bg-violet-100/80 px-1.5 text-[11px] font-medium
+                          text-violet-800 truncate flex items-center
+                          bg-[repeating-linear-gradient(135deg,transparent,transparent_5px,rgba(139,92,246,.12)_5px,rgba(139,92,246,.12)_10px)]">
+            {t('sa.band', { code: v.categoryCode })}
+          </div>
+        ))}
         {(p.blocks ?? []).map((b, i) => (
           <div key={i}
                style={{ ...p.balken(b.from_date, b.to_date), ...balkenHoehe }}
@@ -1749,6 +1798,15 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
             </button>
           )
         })}
+        {/* Ein Streifen ueber den Balken: belegt, bleibt der Tag sonst
+            unsichtbar, und gerade dann zaehlt der Gast in der anderen
+            Kategorie. */}
+        {(p.verkauft ?? []).map(v => (
+          <div key={`sa-top-${v.from}`} aria-hidden
+               style={{ left: p.balken(v.from, v.to).left, width: p.balken(v.from, v.to).width,
+                        top: 0, height: 3 }}
+               className="absolute pointer-events-none bg-violet-500" />
+        ))}
         {p.ghostHier && (
           <div style={{ left: p.ghostLinks, width: p.ghostBreite, ...balkenHoehe,
                         lineHeight: `${innen - 4}px` }}

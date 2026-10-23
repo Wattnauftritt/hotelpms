@@ -189,3 +189,47 @@ describe('Hotel: Gewichtung', () => {
     expect(sortRooms(raeume, stays, W)).toEqual(sortRooms(raeume, stays, W))
   })
 })
+
+/*
+ * Ein Zimmer an einzelnen Tagen als andere Kategorie verkauft (0197): an
+ * diesen Tagen gehoert es der anderen Gruppe -- deren Gaeste duerfen hinein,
+ * die eigenen nicht.
+ */
+describe('Verkauft als andere Kategorie', () => {
+  const dz = zimmer('10', 80)
+  // Das Vierbettzimmer, am 10. als Doppelzimmer (Gruppe 1) verkauft.
+  const vz = zimmer('40', 90, { categoryId: 2,
+                                sellAs: [{ date: '2026-10-10', categoryId: 1 }] })
+
+  it('legt den zweiten Doppelzimmer-Gast an diesem Tag ins Vierbettzimmer', () => {
+    const da = gast('2026-10-10', '2026-10-11', { resourceId: 10, fixed: true })
+    const g = gast('2026-10-10', '2026-10-11')
+    const r = sortRooms([dz, vz], [da, g], W)
+    expect(r.moves).toEqual([{ stayId: g.id, fromRoomId: null, toRoomId: 40 }])
+  })
+
+  it('aber nicht ueber den Tag hinaus', () => {
+    const da = gast('2026-10-10', '2026-10-12', { resourceId: 10, fixed: true })
+    const g = gast('2026-10-10', '2026-10-12')
+    const r = sortRooms([dz, vz], [da, g], W)
+    expect(r.unplaced).toEqual([g.id])
+  })
+
+  it('legt keinen Vierbettzimmer-Gast an diesem Tag hinein', () => {
+    const g = gast('2026-10-10', '2026-10-11', { categoryId: 2 })
+    const r = sortRooms([dz, vz], [g], W)
+    expect(r.unplaced).toEqual([g.id])
+    // Am Tag danach ist es wieder seins.
+    const h = gast('2026-10-11', '2026-10-12', { categoryId: 2 })
+    expect(sortRooms([dz, vz], [h], W).moves)
+      .toEqual([{ stayId: h.id, fromRoomId: null, toRoomId: 40 }])
+  })
+
+  it('laesst den Doppelzimmer-Gast im Vierbettzimmer liegen, statt ihn als Upgrade festzuhalten', () => {
+    const g = gast('2026-10-10', '2026-10-11', { resourceId: 40 })
+    const r = sortRooms([dz, vz], [g], W)
+    // Beweglich: das Doppelzimmer ist frei und ihm ebenso recht.
+    const lage = nachher([g], r)
+    expect([10, 40]).toContain(lage.get(g.id))
+  })
+})

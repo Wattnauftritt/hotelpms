@@ -1028,12 +1028,23 @@ export async function aufenthalteVerlegen(
     }
   }
 
+  /*
+   * Mit dem Zimmer dazu: an Tagen, an denen es als andere Kategorie verkauft
+   * wird (0197), zaehlt der Aufenthalt dort, nicht in der Gruppe des
+   * Zimmers. `inventory_move_by_room` rechnet das je Tag und ist ohne einen
+   * solchen Tag `inventory_move`.
+   */
   const zaehlt = plaene.map((p, i) => ({
     vorher: gruppen[i]!.alt ?? p.r.category_id,
-    danach: gruppen[i]!.neu ?? p.neuKategorie
+    danach: gruppen[i]!.neu ?? p.neuKategorie,
+    zimmerVorher: p.r.room_moved ? p.r.last_room : p.r.resource_id,
+    zimmerDanach: p.r.room_moved ? p.r.last_room : p.zielZimmer
   }))
   const zuBewegen = plaene.slice(0, bisBestand).flatMap((p, i) =>
-    p.zeitraumAnders || zaehlt[i]!.vorher !== zaehlt[i]!.danach ? [i] : [])
+    // Ein anderes Zimmer derselben Gruppe kann an einem Tag anderswo zaehlen
+    // (0197); ohne einen solchen Tag ist der Aufruf ein Nichts.
+    p.zeitraumAnders || zaehlt[i]!.vorher !== zaehlt[i]!.danach
+      || zaehlt[i]!.zimmerVorher !== zaehlt[i]!.zimmerDanach ? [i] : [])
   if (zuBewegen.length > 0) {
     /*
      * Ein `inventory_move` je Aufenthalt, nacheinander in der Reihenfolge
@@ -1042,14 +1053,16 @@ export async function aufenthalteVerlegen(
      * Antwort zaehlt nicht, und die Transaktion rollt ohnehin zurueck.
      */
     const inv = await client.query<{ ord: number; e: string | null }>(
-      `SELECT x.ord, inventory_move(x.haus, x.vk, x.va, x.vd, x.nk, x.na, x.nd) AS e
+      `SELECT x.ord,
+              inventory_move_by_room(x.haus, x.vk, x.vz, x.va, x.vd, x.nk, x.nz, x.na, x.nd) AS e
          FROM unnest($1::int[], $2::bigint[], $3::bigint[], $4::date[], $5::date[],
-                     $6::bigint[], $7::date[], $8::date[])
-           AS x(ord, haus, vk, va, vd, nk, na, nd)`,
+                     $6::bigint[], $7::date[], $8::date[], $9::bigint[], $10::bigint[])
+           AS x(ord, haus, vk, va, vd, nk, na, nd, vz, nz)`,
       [zuBewegen, zuBewegen.map(i => plaene[i]!.r.property_id),
        zuBewegen.map(i => zaehlt[i]!.vorher), zuBewegen.map(i => plaene[i]!.r.arrival),
        zuBewegen.map(i => plaene[i]!.r.departure), zuBewegen.map(i => zaehlt[i]!.danach),
-       zuBewegen.map(i => plaene[i]!.neuAnkunft), zuBewegen.map(i => plaene[i]!.neuAbreise)])
+       zuBewegen.map(i => plaene[i]!.neuAnkunft), zuBewegen.map(i => plaene[i]!.neuAbreise),
+       zuBewegen.map(i => zaehlt[i]!.zimmerVorher), zuBewegen.map(i => zaehlt[i]!.zimmerDanach)])
     const ersterFehler = [...inv.rows].sort((a, b) => a.ord - b.ord).find(x => x.e !== null)
     if (ersterFehler) inventoryError(ersterFehler.e)
   }

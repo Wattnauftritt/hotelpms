@@ -564,6 +564,23 @@ export function setupRoutes(app: FastifyInstance): void {
           }
         }
 
+        /*
+         * Umgruppieren, solange das Zimmer an kuenftigen Tagen als andere
+         * Kategorie verkauft wird (0197): das Mitnehmen der Buchungen
+         * (`inventory_carry_room`) rechnet je Gruppe des Zimmers, nicht je
+         * Tag. Erst aufheben, dann umgruppieren -- das ist ein Klick und
+         * kein Raetsel im Zaehler.
+         */
+        if (body.categoryId !== undefined && body.categoryId !== zimmer.category_id) {
+          const verkauft = await client.query<{ ab: string }>(
+            `SELECT to_char(min(date), 'DD.MM.YYYY') AS ab FROM room_sell_as
+              WHERE resource_id = $1 AND date >= current_date HAVING count(*) > 0`,
+            [zimmer.id])
+          if (verkauft.rowCount !== 0) {
+            throw Errors.conflict('sellAs.regroup', { date: verkauft.rows[0]!.ab })
+          }
+        }
+
         // Neuer Code, neue Gruppe oder beides: der Code, der danach gilt,
         // muss in der Gruppe liegen, die danach gilt.
         const codeDanach = salesCode !== undefined ? salesCode

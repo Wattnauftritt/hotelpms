@@ -41,6 +41,11 @@ export interface SortRoom {
   attributes: string[]
   /** Out of Order: dort darf niemand hinein. */
   blocked: Array<{ from: IsoDate; to: IsoDate }>
+  /**
+   * Tage, an denen das Zimmer als andere Kategorie verkauft wird (0197). An
+   * diesen Tagen gehoert es zu deren Gruppe und nicht zur eigenen.
+   */
+  sellAs?: Array<{ date: IsoDate; categoryId: number }>
 }
 
 export interface SortStay {
@@ -142,13 +147,30 @@ export function sortRooms(rooms: SortRoom[], stays: SortStay[], weights: RoomSor
     fest.get(s.resourceId)?.push({ a: tag(s.arrival), d: tag(s.departure) })
   }
 
+  /*
+   * Die Gruppe eines Zimmers je Tag (0197): ohne Eintrag seine eigene, an
+   * einem Tag "verkauft als" die andere.
+   */
+  const verkauftAls = new Map(rooms.map(r =>
+    [r.id, new Map((r.sellAs ?? []).map(x => [tag(x.date), x.categoryId]))]))
+  const passt = (z: SortRoom, categoryId: number, iv: Iv): boolean => {
+    const tage = verkauftAls.get(z.id)!
+    for (let t = iv.a; t < iv.d; t++) if ((tage.get(t) ?? z.categoryId) !== categoryId) return false
+    return true
+  }
+
   const gruppen = new Map<number, SortStay[]>()
   for (const s of stays) {
     if (s.fixed) continue
     // Liegt ein beweglicher Gast in einem Zimmer einer anderen Gruppe, ist
     // das ein Upgrade, das jemand bewusst gemacht hat: er bleibt. Der
-    // Aufrufer markiert das schon; hier nur als Sicherung.
-    if (s.resourceId !== null && raumNach.get(s.resourceId)?.categoryId !== s.categoryId) {
+    // Aufrufer markiert das schon; hier nur als Sicherung. Ein Zimmer, das
+    // an allen seinen Naechten als seine Gruppe verkauft wird, ist keine
+    // andere Gruppe.
+    const raum = s.resourceId === null ? undefined : raumNach.get(s.resourceId)
+    if (s.resourceId !== null
+        && (raum === undefined
+            || !passt(raum, s.categoryId, { a: tag(s.arrival), d: tag(s.departure) }))) {
       fest.get(s.resourceId)?.push({ a: tag(s.arrival), d: tag(s.departure) })
       continue
     }
@@ -158,12 +180,39 @@ export function sortRooms(rooms: SortRoom[], stays: SortStay[], weights: RoomSor
   }
 
   for (const [categoryId, liste] of gruppen) {
-    const zimmer = rooms.filter(r => r.categoryId === categoryId)
+    /*
+     * Die Zimmer dieser Gruppe, und fuer jedes die Tage, an denen es ihr
+     * nicht gehoert, als Sperre: ein eigenes Zimmer an seinen Tagen
+     * "verkauft als", ein fremdes an allen Tagen ausser diesen. Die Sperren
+     * gelten nur in dieser Gruppe, deshalb eine eigene Karte.
+     */
+    const festHier = new Map(fest)
+    const zimmer: SortRoom[] = []
+    for (const r of rooms) {
+      const tage = verkauftAls.get(r.id)!
+      const eigen = r.categoryId === categoryId
+      if (!eigen && ![...tage.values()].includes(categoryId)) continue
+      zimmer.push(r)
+      if (tage.size === 0) continue
+      const weg: Iv[] = []
+      if (eigen) {
+        for (const t of tage.keys()) weg.push({ a: t, d: t + 1 })
+      } else {
+        const hier = [...tage].filter(([, k]) => k === categoryId).map(([t]) => t).sort((x, y) => x - y)
+        let ab = -1e9
+        for (const t of hier) {
+          if (t > ab) weg.push({ a: ab, d: t })
+          ab = t + 1
+        }
+        weg.push({ a: ab, d: 1e9 })
+      }
+      festHier.set(r.id, [...(fest.get(r.id) ?? []), ...weg])
+    }
     if (zimmer.length === 0) {
       result.unplaced.push(...liste.filter(s => s.resourceId === null).map(s => s.id))
       continue
     }
-    const r = sortiereGruppe(zimmer, liste, fest, weights)
+    const r = sortiereGruppe(zimmer, liste, festHier, weights)
     result.moves.push(...r.moves)
     result.unplaced.push(...r.unplaced)
     result.costBefore += r.costBefore

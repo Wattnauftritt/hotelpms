@@ -142,6 +142,11 @@ export type KontextZiel =
       status: string; resourceId: number | null }
   | { art: 'frei'; punkt: MenuePunkt
       resourceId: number; categoryId: number; roomCode: string
+      /**
+       * Die Gruppe des Zimmers. `categoryId` ist die, in der eine Buchung
+       * hier liegt -- an Tagen "verkauft als" (0197) eine andere.
+       */
+      roomCategoryId: number
       /** Der Tag unter dem Zeiger. Eine Nacht, nicht der ganze Zeitraum. */
       arrival: string; departure: string
       /**

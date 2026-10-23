@@ -30,6 +30,7 @@ import { usePlanReinigung } from '../lib/queries/housekeeping.js'
 import { useHausrechte } from '../lib/rechte.js'
 import { useSortierEinstellung } from '../lib/queries/zimmerSortieren.js'
 import { PlanSuche } from '../components/PlanSuche.tsx'
+import { VerkaufenAls } from '../components/VerkaufenAls.tsx'
 
 const SPANNEN = [14, 30, 60] as const
 /** Wie viele Schritte Strg+Z zurueckreicht. */
@@ -179,6 +180,9 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const [zimmerWechsel, setZimmerWechsel] = useState<string | null>(null)
   const [sperren, setSperren] = useState<
     { zimmer: Array<{ resourceId: number; roomCode: string }>
+      ab: string; bis: string } | null>(null)
+  const [verkaufenAls, setVerkaufenAls] = useState<
+    { resourceId: number; roomCode: string; categoryId: number
       ab: string; bis: string } | null>(null)
   const t = useT()
   const bis = addDays(von, tage)
@@ -793,18 +797,35 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                               return
                             }
                             const u = zimmer.get(z.resourceId)
+                            // Im als andere Kategorie verkauften Zimmer (0197)
+                            // ist `categoryId` die verkaufte, nicht die des
+                            // Zimmers -- und Name und Plaetze folgen ihr.
+                            const k = (kategorien.data?.categories ?? [])
+                              .find(c => c.id === z.categoryId)
                             setAuswahl({
                               resourceId: z.resourceId, categoryId: z.categoryId,
                               arrival: z.arrival, departure: z.departure,
                               roomCode: u?.code ?? '',
-                              categoryName: u?.category_name ?? '',
-                              maxOccupancy: u?.max_occupancy })
+                              categoryName: k?.name ?? u?.category_name ?? '',
+                              maxOccupancy: k?.maxOccupancy ?? u?.max_occupancy })
                           }}
                           onSperren={setSperren}
+                          onVerkaufenAls={setVerkaufenAls}
                           reinigungsstand={id =>
                             daten?.units.find(u => u.id === id)?.housekeeping}
                           onReinigung={(resourceIds, status) =>
                             reinigung.mutate({ resourceIds, status })} />
+      )}
+
+      {verkaufenAls !== null && (
+        <VerkaufenAls propertyId={propertyId} resourceId={verkaufenAls.resourceId}
+                      roomCode={verkaufenAls.roomCode} categoryId={verkaufenAls.categoryId}
+                      ab={verkaufenAls.ab} bis={verkaufenAls.bis}
+                      vorbelegt={(daten?.sell_as ?? []).find(a =>
+                        a.resource_id === verkaufenAls.resourceId
+                        && a.date === verkaufenAls.ab)?.category_id ?? null}
+                      kategorien={kategorien.data?.categories ?? []}
+                      onClose={() => setVerkaufenAls(null)} />
       )}
 
       {sperren !== null && (
