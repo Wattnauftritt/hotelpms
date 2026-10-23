@@ -158,10 +158,12 @@ export function housekeepingRoutes(app: FastifyInstance): void {
              LEFT JOIN housekeeping_status h ON h.resource_id = r.id
              LEFT JOIN housekeeping_task t
                     ON t.resource_id = r.id AND t.business_date = tag.d
-             LEFT JOIN reservation ab
+             -- Je Zimmerabschnitt (0195): wer heute umzieht, reist aus dem
+             -- alten Zimmer ab und kommt im neuen an.
+             LEFT JOIN reservation_room_stay ab
                     ON ab.resource_id = r.id AND ab.departure = tag.d
                    AND ab.status IN ('Confirmed','InHouse','CheckedOut')
-             LEFT JOIN reservation an
+             LEFT JOIN reservation_room_stay an
                     ON an.resource_id = r.id AND an.arrival = tag.d
                    AND an.status IN ('Confirmed','InHouse')
              LEFT JOIN LATERAL (
@@ -169,7 +171,7 @@ export function housekeepingRoutes(app: FastifyInstance): void {
                            EXISTS (SELECT 1 FROM cleaning_waiver w
                                     WHERE w.reservation_id = b.id AND w.business_date = tag.d
                                       AND w.withdrawn_at IS NULL) AS waived
-                      FROM reservation b
+                      FROM reservation_room_stay b
                      WHERE b.resource_id = r.id
                        AND b.arrival < tag.d AND b.departure > tag.d
                        AND b.status IN ('Confirmed','InHouse')
@@ -279,9 +281,9 @@ export function housekeepingRoutes(app: FastifyInstance): void {
            SELECT $1, res.resource_id, tag.d, res.kind FROM tag, LATERAL (
              SELECT r.resource_id,
                     CASE WHEN r.departure = tag.d THEN 'departure' ELSE 'stayover' END AS kind
-               FROM reservation r
+               FROM reservation_room_stay r
               WHERE r.property_id = $1 AND r.resource_id IS NOT NULL
-                AND r.status = 'InHouse'
+                AND r.stay_status = 'InHouse'
                 AND r.arrival <= tag.d AND r.departure >= tag.d
            ) res
            ON CONFLICT (resource_id, business_date, kind) DO NOTHING`,

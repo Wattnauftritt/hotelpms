@@ -260,7 +260,10 @@ async function jeVerkaufscode(
        SELECT COALESCE(u.sales_code, r.sales_code) AS sales_code, r.category_id, n.date
          FROM reservation_night n
          JOIN reservation r ON r.id = n.reservation_id
-         LEFT JOIN resource u ON u.id = r.resource_id
+         -- Das Zimmer dieser Nacht, nicht das von heute (0195).
+         JOIN reservation_room_stay s ON s.id = r.id
+                                     AND n.date >= s.arrival AND n.date < s.departure
+         LEFT JOIN resource u ON u.id = s.resource_id
         WHERE n.property_id = $1 AND n.date >= $2::date AND n.date < $3::date
           AND r.status IN ('Optional','Confirmed','InHouse')
      ), verkauft AS (
@@ -382,8 +385,18 @@ export function availabilityRoutes(app: FastifyInstance): void {
             ORDER BY c.sort_order, c.id, ${zimmerNachNummer('r')}`, [pid])
 
         const reservations = await client.query(
-          `SELECT r.id, r.booking_id, r.public_ref, r.resource_id, r.category_id,
-                  r.arrival::text, r.departure::text, r.status,
+          /*
+           * Je Zimmerabschnitt eine Zeile (0195): wer mitten im Aufenthalt
+           * umzieht, steht bis zum Wechseltag im alten Zimmer und ab dort im
+           * neuen -- zwei Balken einer Reservierung. Ohne Wechsel ist es eine
+           * Zeile wie bisher. Tage und Zimmer sind die des Abschnitts, der
+           * ganze Aufenthalt steht in `stay_*`.
+           */
+          `SELECT r.id, r.booking_id, r.public_ref, s.resource_id, r.category_id,
+                  s.arrival::text, s.departure::text, r.status,
+                  r.arrival::text AS stay_arrival, r.departure::text AS stay_departure,
+                  s.room_moved, s.part_first, s.part_last,
+                  (s.status = 'CheckedOut' AND r.status = 'InHouse') AS moved_out,
                   g.last_name, g.first_name,
                   -- Zwei Notizen, zwei Aufgaben. short_note ist das Merkmal
                   -- fuer den Balken (Balkon, 1. Stock, Spaetanreise) und
@@ -438,7 +451,8 @@ export function availabilityRoutes(app: FastifyInstance): void {
                   COALESCE(nt.min_cent, 0) AS night_price_min_cent,
                   COALESCE(nt.max_cent, 0) AS night_price_max_cent` : ''}
                   ${mitGastnotiz ? ', COALESCE(gn.notes, ARRAY[]::text[]) AS guest_notes' : ''}
-             FROM reservation r
+             FROM reservation_room_stay s
+             JOIN reservation r ON r.id = s.id
              JOIN booking b ON b.id = r.booking_id
              JOIN resource_category rc ON rc.id = r.category_id
              LEFT JOIN guest g ON g.id = r.primary_guest_id
@@ -465,8 +479,8 @@ export function availabilityRoutes(app: FastifyInstance): void {
                  FROM guest_property_note gpn
                 WHERE gpn.property_id = $1 AND gpn.guest_id = r.primary_guest_id
              ) gn ON true` : ''}
-            WHERE r.property_id = $1
-              AND r.arrival < $3::date AND r.departure > $2::date
+            WHERE s.property_id = $1
+              AND s.arrival < $3::date AND s.departure > $2::date
               -- Abgereiste gehoeren in den Plan: wer zurueckblaettert,
               -- sucht, wer letzte Woche in Zimmer 12 lag. Nur Storno und
               -- No-Show fehlen, weil sie nie ein Zimmer belegt haben. Die

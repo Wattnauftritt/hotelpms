@@ -204,7 +204,13 @@ type DragState =
       pointerDownX: number; pointerDownY: number; overResourceId: number | null
       moved: boolean }
   | { kind: 'resize'; reservationRef: string; resourceId: number; edge: 'start' | 'end'
-      arrival: string; departure: string; day: number }
+      /**
+       * Die Tage des Balkens, fuer den Schatten. `stayArrival` ist die
+       * Anreise des ganzen Aufenthalts: nach einem Zimmerwechsel (0195)
+       * beginnt der letzte Balken am Wechseltag, verlaengert wird aber der
+       * Aufenthalt, und dessen Anreise bleibt.
+       */
+      arrival: string; departure: string; stayArrival: string; day: number }
 
 /**
  * Eine Zeile der stehenden Mehrfachauswahl.
@@ -762,7 +768,7 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
           if (neuerTag < d.departure) onChangeStay?.(d.reservationRef, neuerTag, d.departure)
         } else {
           const abreise = addDays(neuerTag, 1)
-          if (abreise > d.arrival) onChangeStay?.(d.reservationRef, d.arrival, abreise)
+          if (abreise > d.arrival) onChangeStay?.(d.reservationRef, d.stayArrival, abreise)
         }
       }
     }
@@ -1084,7 +1090,10 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
                // beim Loslassen waere eine andere Frage als die, die der
                // Mensch beim Greifen beantwortet hat.
                alleDerGruppe: e.altKey,
-               fest: r.status === 'CheckedOut',
+               // Ein Aufenthalt mit Zimmerwechsel (0195) liegt in mehr als
+               // einer Zeile; welchen Teil ein Zug meinte, waere geraten.
+               // Ein Klick oeffnet ihn, gewechselt wird im Seitenfenster.
+               fest: r.status === 'CheckedOut' || r.room_moved,
                startDay: tag, day: tag,
                pointerDownX: e.clientX, pointerDownY: e.clientY,
                overResourceId: null, ueberBand: false, moved: false })
@@ -1206,7 +1215,8 @@ export function TapeChart({ data, nachGruppe, onSelect, onCreate, onCreateGroup,
       e.preventDefault()
       e.stopPropagation()
       setDragState({ kind: 'resize', reservationRef: r.public_ref, resourceId: r.resource_id!,
-                 edge, arrival: r.arrival, departure: r.departure, day: tagUnter(e.clientX) })
+                 edge, arrival: r.arrival, departure: r.departure,
+                 stayArrival: r.stay_arrival, day: tagUnter(e.clientX) })
     }, [tagUnter, setDragState])
 
   // `dir="ltr"`: die Balken stehen ueber `left` in Pixeln oder Prozent. In
@@ -1593,6 +1603,7 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
   const innen = ZEILE - GITTER - (p.gruppenAnfang ? 2 : 0)
   const balkenHoehe = { top: 0, height: innen, lineHeight: `${innen}px` }
   const balkenTitel = useBalkenTitel()
+  const locale = useLocale()
   const u = p.unit
   return (
     <div className={`flex relative border-b border-neutral-200
@@ -1648,7 +1659,16 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
           // tauschen.
           const inGehaltenerGruppe = p.gruppenRef !== null
             && r.booking_ref === p.gruppenRef
-          const fest = r.status === 'CheckedOut'
+          const fest = r.status === 'CheckedOut' || r.room_moved
+          // Das verlassene Zimmer nach einem Wechsel sieht aus wie ein
+          // abgereister Aufenthalt: dort ist der Gast nicht mehr.
+          const zustand = r.moved_out ? 'CheckedOut' : r.status
+          /*
+           * Nach einem Zimmerwechsel nur das Ende des letzten Teils: es ist
+           * die Abreise. Der Anfang eines Teils ist der Wechseltag, und den
+           * verschiebt der Dialog, nicht ein Rand.
+           */
+          const ende = r.status !== 'CheckedOut' && (!r.room_moved || r.part_last)
           return (
             <button key={r.id} data-reservation-ref={r.public_ref}
                     // Daran findet die Schnellsuche (`PlanSuche`) den Balken,
@@ -1659,7 +1679,12 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                     // oeffnete das Menue fuer "hier ist nichts" -- ueber
                     // einem Balken, auf den man gerade gezielt hat.
                     onContextMenu={e => p.onBalkenKontext(r, e)}
-                    data-tip={balkenTitel(r)}
+                    // Der Balken zeigt nach einem Zimmerwechsel nur seinen
+                    // Teil; der Hinweis nennt den ganzen Aufenthalt.
+                    data-tip={balkenTitel(r, r.room_moved
+                      ? t('rm.split', { from: formatDate(r.stay_arrival, locale),
+                                        to: formatDate(r.stay_departure, locale) })
+                      : undefined)}
                     style={{ ...b, ...balkenHoehe, clipPath: umriss,
                              opacity: versteckt ? 0.35 : 1 }}
                     /*
@@ -1673,13 +1698,17 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
                                 text-xs text-white text-start hover:brightness-110
                                 ${fest ? 'cursor-pointer' : 'cursor-move'}
                                 ${inGehaltenerGruppe
-                                  ? 'bg-sky-500 z-10' : FARBE[r.status] ?? 'bg-neutral-400'}`}>
+                                  ? 'bg-sky-500 z-10' : FARBE[zustand] ?? 'bg-neutral-400'}`}>
               {inGehaltenerGruppe && (
-                <Fuellung farbe={FARBE[r.status] ?? 'bg-neutral-400'} umriss={umriss} />
+                <Fuellung farbe={FARBE[zustand] ?? 'bg-neutral-400'} umriss={umriss} />
               )}
               {/* Vor dem Namen: am schmalen Balken schneidet `truncate`
                   hinten ab, und der Zahlungsstand soll stehen bleiben. */}
               <SchlossZeichen fest={r.room_fixed} />
+              {/* Zwei Balken, ein Gast: das Zeichen sagt, dass der andere
+                  Teil in einer anderen Zeile liegt, und kein zweiter Gast
+                  mit demselben Namen. */}
+              {r.room_moved && <span aria-hidden className="me-1 shrink-0">⇄</span>}
               <ZahlungsZeichen zahlung={r.payment} />
               <span className="truncate min-w-0">
                 {r.last_name ?? t('tape.noGuest')}
@@ -1708,12 +1737,12 @@ const Zimmerzeile = memo(function Zimmerzeile(p: ZimmerzeileProps): JSX.Element 
               {/* Griffe an den Raendern: verkuerzen und verlaengern (A4).
                   Nicht am abgereisten Aufenthalt: der ist Vergangenheit. */}
               {!fest && (
-                <>
-                  <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
-                        className="absolute inset-y-0 start-0 w-2 cursor-ew-resize" />
-                  <span onPointerDown={e => p.onResizePointerDown(r, 'end', e)}
-                        className="absolute inset-y-0 end-0 w-2 cursor-ew-resize" />
-                </>
+                <span onPointerDown={e => p.onResizePointerDown(r, 'start', e)}
+                      className="absolute inset-y-0 start-0 w-2 cursor-ew-resize" />
+              )}
+              {ende && (
+                <span onPointerDown={e => p.onResizePointerDown(r, 'end', e)}
+                      className="absolute inset-y-0 end-0 w-2 cursor-ew-resize" />
               )}
             </button>
           )

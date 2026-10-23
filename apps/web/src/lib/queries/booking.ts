@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ReservationDetail, BookingCreated, AvailabilityDay } from '@hotelpms/contracts'
+import type { ReservationDetail, BookingCreated, AvailabilityDay, RoomMoveOptions }
+  from '@hotelpms/contracts'
 import { api, ApiError } from '../api.js'
 import { auschecken } from '../auschecken.js'
 import { useLocale } from '../i18n/index.js'
@@ -412,6 +413,56 @@ export function useChangeStay() {
       // Eine gemerkte Vorschau rechnete vom alten Stand aus.
       qc.removeQueries({ queryKey: ['stay-preview', reservationRef] })
     }
+  })
+}
+
+/**
+ * Was der Dialog "Zimmer wechseln" zur Wahl stellt: die Zimmer, frei ab dem
+ * gewaehlten Tag bis zur Abreise, und der Nachtpreis an dem Tag. `staleTime: 0`,
+ * weil ein frei gemeldetes Zimmer, das inzwischen jemand anderes bekommen
+ * hat, erst beim Speichern auffiele.
+ */
+export const useRoomMoveOptions = (reservationRef: string | null, from: string | null) =>
+  useQuery<RoomMoveOptions>({
+    queryKey: ['room-move', reservationRef, from],
+    queryFn: () => api.get(`/v1/reservations/${reservationRef!}/room-move`
+                           + (from === null ? '' : `?from=${from}`)),
+    enabled: reservationRef !== null,
+    staleTime: 0
+  })
+
+/**
+ * Nach einem Zimmerwechsel ist mehr veraltet als Plan und Reservierung: das
+ * alte Zimmer ist beim Gast im Haus sofort schmutzig, das neue belegt
+ * (Sven, 23.10.2026), und das zeigt die Reinigung.
+ */
+function nachZimmerwechsel(qc: ReturnType<typeof useQueryClient>, reservationRef: string): void {
+  void qc.invalidateQueries({ queryKey: ['tape'] })
+  void qc.invalidateQueries({ queryKey: ['reservation', reservationRef] })
+  void qc.invalidateQueries({ queryKey: ['hk'] })
+  qc.removeQueries({ queryKey: ['room-move', reservationRef] })
+  qc.removeQueries({ queryKey: ['stay-preview', reservationRef] })
+}
+
+/** Den Gast ab einem Tag in ein anderes Zimmer legen, im selben Aufenthalt (0195). */
+export function useRoomMove() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ reservationRef, ...body }:
+                 { reservationRef: string; from?: string; resourceId: number
+                   priceCent?: number }) =>
+      api.post(`/v1/reservations/${reservationRef}/room-move`, body),
+    onSuccess: (_r, { reservationRef }) => nachZimmerwechsel(qc, reservationRef)
+  })
+}
+
+/** Den letzten Zimmerwechsel zuruecknehmen, solange er nicht in der Vergangenheit liegt. */
+export function useRoomMoveUndo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ reservationRef }: { reservationRef: string }) =>
+      api.post(`/v1/reservations/${reservationRef}/room-move/undo`, {}),
+    onSuccess: (_r, { reservationRef }) => nachZimmerwechsel(qc, reservationRef)
   })
 }
 

@@ -52,8 +52,12 @@ async function tage(
             EXISTS (SELECT 1 FROM cleaning_waiver w
                      WHERE w.reservation_id = r.id AND w.business_date = d::date
                        AND w.withdrawn_at IS NULL) AS waived,
+            -- Das Zimmer dieses Tages; nach einem Zimmerwechsel (0195) ein
+            -- anderes als heute.
             EXISTS (SELECT 1 FROM housekeeping_task t
-                     WHERE t.resource_id = r.resource_id AND t.business_date = d::date
+                     JOIN reservation_room_stay s ON s.id = r.id AND s.resource_id = t.resource_id
+                                                 AND d::date >= s.arrival AND d::date < s.departure
+                     WHERE t.business_date = d::date
                        AND t.kind = 'stayover' AND t.outcome IS NOT NULL) AS locked
        FROM reservation r
        CROSS JOIN LATERAL generate_series(

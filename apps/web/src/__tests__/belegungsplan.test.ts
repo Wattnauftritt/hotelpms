@@ -1446,7 +1446,9 @@ describe('Das Band der Buchungen ohne Zimmer', () => {
     // Ein Rand und keine andere Fuellfarbe: die Fuellung sagt den Zustand.
     expect(plan).toContain("dringlich(r.arrival)")
     expect(plan).toContain("? 'bg-red-600' : FARBE[r.status]")
-    expect(plan.match(/<Fuellung farbe=\{FARBE\[r\.status\]/g)).toHaveLength(2)
+    // `zustand` ist in der Zimmerzeile der Zustand des Balkens: nach einem
+    // Zimmerwechsel (0195) zeigt das verlassene Zimmer "abgereist".
+    expect(plan.match(/<Fuellung farbe=\{FARBE\[(r\.status|zustand)\]/g)).toHaveLength(2)
   })
 
   it('macht die Kopfzeile zum Knopf, statt still zu scrollen', () => {
