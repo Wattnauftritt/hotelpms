@@ -207,7 +207,7 @@ interface CreateBooking {
  * bekommt die Juniorsuite. Abgerechnet wird, was gebucht wurde; wer wirklich
  * die Gruppe wechseln will, nimmt `change-stay`.
  */
-async function assertUnitAssignable(
+export async function assertUnitAssignable(
   client: PoolClient, opts: Omit<ZimmerFrage, 'ord'>
 ): Promise<void> {
   const [fehler] = await zimmerFehler(client, [{ ...opts, ord: 0 }])
@@ -215,7 +215,7 @@ async function assertUnitAssignable(
 }
 
 /** Eine Frage an `zimmerFehler`: darf dieser Aufenthalt in dieses Zimmer? */
-interface ZimmerFrage {
+export interface ZimmerFrage {
   /**
    * Die Stelle in der Reihenfolge des Aufrufers. Sie entscheidet bei
    * `mitVerlegt`, ob ein anderer Aufenthalt derselben Anfrage schon am
@@ -254,7 +254,7 @@ interface MitVerlegt {
  * Verschiebungen durchgelassen, die bisher abgewiesen wurden -- zwei
  * Zimmer der Gruppe hintereinander im selben Zimmer etwa.
  */
-async function zimmerFehler(
+export async function zimmerFehler(
   client: PoolClient, fragen: readonly ZimmerFrage[],
   mitVerlegt: readonly MitVerlegt[] = []
 ): Promise<Array<AppError | null>> {
@@ -276,10 +276,12 @@ async function zimmerFehler(
                      WHERE m.resource_id = f.resource_id AND m.kind = 'out_of_order'
                        AND m.from_date < f.departure AND m.to_date > f.arrival)
               AS ausser_betrieb,
-            EXISTS (SELECT 1 FROM reservation r
+            -- Je Zimmerabschnitt (0195): wer am Mittwoch aus Zimmer 12
+            -- auszieht, belegt es bis Mittwoch und nicht bis zur Abreise.
+            EXISTS (SELECT 1 FROM reservation_room_stay r
                      WHERE r.resource_id = f.resource_id
                        AND r.id <> COALESCE(f.ausser1, -1) AND r.id <> COALESCE(f.ausser2, -1)
-                       AND r.status IN ('Confirmed','InHouse')
+                       AND r.stay_status IN ('Confirmed','InHouse')
                        AND r.arrival < f.departure AND r.departure > f.arrival
                        AND NOT EXISTS (SELECT 1 FROM v WHERE v.id = r.id))
             OR EXISTS (SELECT 1 FROM v
@@ -695,6 +697,8 @@ interface AufenthaltZeile {
   id: number; public_ref: string; property_id: number; category_id: number
   status: ReservationStatus; arrival: string; departure: string
   resource_id: number | null; rate_plan_id: number | null; block_id: number | null
+  /** Zimmerwechsel im Aufenthalt (0195); dann das Zimmer und der Beginn des letzten Abschnitts. */
+  room_moved: boolean; last_room: number | null; last_from: string | null
 }
 
 /** Was nach den Pruefungen ohne Datenbank fuer einen Aufenthalt feststeht. */
@@ -755,6 +759,25 @@ function verlegungPlanen(
   if (r.block_id !== null && bestandAnders) {
     throw Errors.conflict(
       'stay.pickupNotMovable')
+  }
+  /*
+   * **Ein Aufenthalt mit Zimmerwechsel (0195) wandert nur am Ende.**
+   *
+   * Verlaengern und Kuerzen gehen, die letzten Naechte gehoeren dem
+   * letzten Zimmer. Anreise, Gruppe und Zimmer aber haengen an den
+   * Abschnitten: eine Anreise einen Tag frueher -- in welches der beiden
+   * Zimmer? Eine neue Gruppe -- fuer welchen Teil? Statt zu raten weist die
+   * Route ab und nennt den Weg: den Wechsel zuruecknehmen oder ein neuer
+   * Wechsel. Als Zimmer gilt das heutige wie das letzte: der Plan schickt
+   * das Zimmer des Balkens mit, den man am Ende gezogen hat.
+   */
+  if (r.room_moved) {
+    if (neuAnkunft !== r.arrival) throw Errors.conflict('stay.roomMovedArrivalFixed')
+    if (neuKategorie !== r.category_id
+        || (body.resourceId !== undefined && body.resourceId !== r.resource_id
+            && body.resourceId !== r.last_room)) {
+      throw Errors.conflict('stay.roomMovedUseMove')
+    }
   }
   /*
    * Das Zimmer danach. Bei einem Kategoriewechsel **ohne** ausdrueckliche
@@ -822,14 +845,54 @@ export async function aufenthalteVerlegen(
     throw new Error('aufenthalteVerlegen: derselbe Aufenthalt zweimal')
   }
 
+  /*
+   * **Zimmerwechsel (0195): nur einzeln, und ein geplanter Wechsel nach dem
+   * neuen Ende faellt weg.** Reist der Gast am Dienstag ab, zieht er am
+   * Donnerstag nicht mehr in die Suite -- das gilt fuer den vorzeitigen
+   * Check-out wie fuer das Kuerzen von Hand. Ein vollzogener Wechsel bleibt:
+   * die Naechte im alten Zimmer hat der Gast geschlafen, und wer davor
+   * kuerzen will, nimmt erst den Wechsel zurueck.
+   *
+   * In der Gruppe nicht: die Gruppenverlegung schiebt alle Zimmer um
+   * dieselben Tage, und ein geteilter Aufenthalt wandert nur am Ende.
+   */
+  const geteilt = await client.query<{ id: number; property_id: number; departure: string }>(
+    `SELECT id, property_id, departure::text FROM reservation
+      WHERE public_ref = ANY($1::text[]) AND room_moved
+      ORDER BY id FOR UPDATE`, [auftraege.map(a => a.ref)])
+  if (geteilt.rows.length > 0 && auftraege.length > 1) {
+    throw Errors.conflict('stay.roomMovedInGroup')
+  }
+  const kuerzer = auftraege[0]!.body.departure
+  if (geteilt.rows.length > 0 && kuerzer !== undefined && isIsoDate(kuerzer)
+      && kuerzer < geteilt.rows[0]!.departure) {
+    const g = geteilt.rows[0]!
+    const heute = await geschaeftstag(client, g.property_id)
+    await client.query(`SELECT reservation_room_trim($1, $2::date, $3::date)`,
+                       [g.id, kuerzer, heute])
+    const rest = await client.query<{ ab: string | null; datum: string | null }>(
+      `SELECT max(from_date)::text AS ab, to_char(max(from_date), 'DD.MM.YYYY') AS datum
+         FROM reservation_room_part WHERE reservation_id = $1`, [g.id])
+    const ab = rest.rows[0]?.ab ?? null
+    if (ab !== null && kuerzer < ab) {
+      throw Errors.conflict('stay.roomMovedEndsBefore', { date: rest.rows[0]!.datum! })
+    }
+  }
+
   // Gesperrt in der Reihenfolge der ids, wie die Gruppenroute es tut: zwei
   // Vorgaenge, die dieselben Zeilen in verschiedener Reihenfolge sperren,
   // blockieren einander.
   const cur = await client.query<AufenthaltZeile>(
-    `SELECT id, public_ref, property_id, category_id, status, arrival::text,
-            departure::text, resource_id, rate_plan_id, block_id
-       FROM reservation WHERE public_ref = ANY($1::text[])
-      ORDER BY id FOR UPDATE`, [auftraege.map(a => a.ref)])
+    `SELECT r.id, r.public_ref, r.property_id, r.category_id, r.status, r.arrival::text,
+            r.departure::text, r.resource_id, r.rate_plan_id, r.block_id, r.room_moved,
+            lp.resource_id AS last_room, lp.from_date::text AS last_from
+       FROM reservation r
+       LEFT JOIN LATERAL (
+              SELECT p.resource_id, p.from_date FROM reservation_room_part p
+               WHERE p.reservation_id = r.id AND r.room_moved
+               ORDER BY p.from_date DESC LIMIT 1) lp ON true
+      WHERE r.public_ref = ANY($1::text[])
+      ORDER BY r.id FOR UPDATE OF r`, [auftraege.map(a => a.ref)])
   const nachRef = new Map(cur.rows.map(r => [r.public_ref, r]))
 
   // Erst alles, was ohne Datenbank feststeht. Was davon zuerst scheitert,
@@ -869,8 +932,11 @@ export async function aufenthalteVerlegen(
          AS x(ord, kategorie, haus, alt, neu)
       ORDER BY x.ord`,
     [plaene.map((_, i) => i), plaene.map(p => p.neuKategorie),
-     plaene.map(p => p.r.property_id), plaene.map(p => p.r.resource_id),
-     plaene.map(p => p.zielZimmer)])).rows
+     // Ein geteilter Aufenthalt wandert nur am Ende, also in der Gruppe
+     // seines letzten Zimmers -- vorher wie nachher.
+     plaene.map(p => p.r.property_id),
+     plaene.map(p => p.r.room_moved ? p.r.last_room : p.r.resource_id),
+     plaene.map(p => p.r.room_moved ? p.r.last_room : p.zielZimmer)])).rows
 
   /*
    * **Das zugewiesene Zimmer muss im neuen Zeitraum auch frei sein.**
@@ -890,7 +956,15 @@ export async function aufenthalteVerlegen(
    * denselben Tagen braucht keine Frage.
    */
   const fragen: ZimmerFrage[] = plaene.flatMap((p, i) =>
-    p.zielZimmer !== null && (p.zeitraumAnders || p.zielZimmer !== p.r.resource_id)
+    // Beim geteilten Aufenthalt nur der letzte Abschnitt: davor liegt er in
+    // anderen Zimmern, und die aendern sich nicht.
+    p.r.room_moved && p.r.last_room !== null && p.r.last_from !== null
+      ? (p.zeitraumAnders && p.neuAbreise > p.r.last_from
+          ? [{ ord: i, resourceId: p.r.last_room, propertyId: p.r.property_id,
+               arrival: p.r.last_from, departure: p.neuAbreise,
+               exceptReservationId: p.r.id }]
+          : [])
+    : p.zielZimmer !== null && (p.zeitraumAnders || p.zielZimmer !== p.r.resource_id)
       ? [{ ord: i, resourceId: p.zielZimmer, propertyId: p.r.property_id,
            arrival: p.neuAnkunft, departure: p.neuAbreise, exceptReservationId: p.r.id }]
       : [])
@@ -1776,6 +1850,16 @@ export function reservationRoutes(app: FastifyInstance): void {
             WHERE o.reservation_id = $1
             ORDER BY o.is_primary DESC, o.id`, [kopf.id])
 
+        // Zimmerwechsel (0195): die Zimmer nacheinander. Leer ohne Wechsel.
+        const abschnitte = await client.query<{ from: string }>(
+          `SELECT s.resource_id::int AS "resourceId", u.code AS "roomCode",
+                  s.arrival::text AS "from", s.departure::text AS "to",
+                  (s.status = 'CheckedOut' AND s.stay_status = 'InHouse') AS "movedOut"
+             FROM reservation_room_stay s
+             JOIN resource u ON u.id = s.resource_id
+            WHERE s.id = $1 AND s.room_moved
+            ORDER BY s.arrival`, [kopf.id])
+
         // Online-Check-in: verschickt, ausgefuellt, Unterschrift offen
         // (Dokument 30). Im selben Aufruf, nicht als zweiter vom Fenster.
         const onlineCheckin = await onlineCheckinStand(client, kopf.id as number,
@@ -1812,6 +1896,11 @@ export function reservationRoutes(app: FastifyInstance): void {
           cleaningWaiver,
           guestFolder,
           guestRequests,
+          roomParts: abschnitte.rows,
+          // Der letzte Wechsel laesst sich bis zu seinem Tag zuruecknehmen.
+          roomMoveUndoable: abschnitte.rows.length > 1
+            && ['Optional', 'Confirmed', 'InHouse'].includes(kopf.status as string)
+            && abschnitte.rows[abschnitte.rows.length - 1]!.from >= geschaeftstag,
           // Vorab gebucht (0176): eine gebuchte Nacht, die der Gast noch
           // nicht geschlafen hat. Daran haengt der Knopf zum Zuruecknehmen.
           postedAhead: naechte.rows.some(n => {
@@ -2537,9 +2626,15 @@ export function reservationRoutes(app: FastifyInstance): void {
           }
           if (r.resource_id !== null) {
             const bis = undo !== null && undo.departure > r.departure ? undo.departure : r.departure
+            // Nach einem Zimmerwechsel (0195) nur der letzte Abschnitt: in
+            // den Zimmern davor hat der Gast seine Naechte schon gehabt.
+            const letzter = await client.query<{ resource_id: number; ab: string }>(
+              `SELECT resource_id, from_date::text AS ab FROM reservation_room_part
+                WHERE reservation_id = $1 ORDER BY from_date DESC LIMIT 1`, [r.id])
+            const teil = letzter.rows[0]
             await assertUnitAssignable(client, {
-              resourceId: r.resource_id, propertyId: r.property_id,
-              arrival: r.arrival, departure: bis, exceptReservationId: r.id })
+              resourceId: teil?.resource_id ?? r.resource_id, propertyId: r.property_id,
+              arrival: teil?.ab ?? r.arrival, departure: bis, exceptReservationId: r.id })
           }
         }
 
@@ -2766,12 +2861,16 @@ export function reservationRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const r = await client.query<{ id: number; property_id: number; category_id: number
                                        arrival: string; departure: string
-                                       status: ReservationStatus }>(
-          `SELECT id, property_id, category_id, arrival::text, departure::text, status
+                                       status: ReservationStatus; room_moved: boolean }>(
+          `SELECT id, property_id, category_id, arrival::text, departure::text, status,
+                  room_moved
              FROM reservation WHERE public_ref = $1 FOR UPDATE`, [reservationRef])
         if (r.rowCount === 0) throw Errors.notFound('res.reservation')
         const res = r.rows[0]!
         rechtImHaus(req.principal as Principal, 'reservation:write', res.property_id)
+        // Ein geteilter Aufenthalt (0195) hat mehr als ein Zimmer; welches
+        // hier gemeint waere, weiss die Route nicht.
+        if (res.room_moved) throw Errors.conflict('stay.roomMovedUseMove')
 
         /*
          * `null` nimmt das Zimmer wieder ab und legt die Buchung zurueck
@@ -2851,9 +2950,9 @@ export function reservationRoutes(app: FastifyInstance): void {
         const rs = await client.query<{ id: number; public_ref: string; property_id: number
                                         category_id: number; status: ReservationStatus
                                         arrival: string; departure: string
-                                        resource_id: number | null }>(
+                                        resource_id: number | null; room_moved: boolean }>(
           `SELECT id, public_ref, property_id, category_id, status,
-                  arrival::text, departure::text, resource_id
+                  arrival::text, departure::text, resource_id, room_moved
              FROM reservation WHERE public_ref = ANY($1::text[])
             ORDER BY id FOR UPDATE`, [[reservationRef, withReservationRef]])
         const a = rs.rows.find(x => x.public_ref === reservationRef)
@@ -2870,6 +2969,9 @@ export function reservationRoutes(app: FastifyInstance): void {
             || a.resource_id === b.resource_id) {
           throw Errors.unprocessable('stay.swapNeedsRooms')
         }
+        // Getauscht werden ganze Aufenthalte; ein geteilter liegt nicht ganz
+        // in einem Zimmer (0195).
+        if (a.room_moved || b.room_moved) throw Errors.conflict('stay.roomMovedUseMove')
         await assertUnitAssignable(client, {
           resourceId: b.resource_id, propertyId: a.property_id,
           arrival: a.arrival, departure: a.departure,

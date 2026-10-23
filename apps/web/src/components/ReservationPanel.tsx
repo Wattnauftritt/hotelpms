@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CleaningWaiverView, ReservationDetail } from '@hotelpms/contracts'
 import { useReservation, usePatchReservationNotes, usePatchReservationShortNote,
          useReservationStatusAction, useSetRoomFixed, useSetBreakfastDeclined,
-         useSendConfirmation, useStayPosting } from '../lib/queries/booking.js'
+         useSendConfirmation, useStayPosting, useRoomMoveUndo } from '../lib/queries/booking.js'
 import { useT, useLocale, formatMoney, formatDate, intlTag, type Locale }
   from '../lib/i18n/index.js'
 import { useEscape } from '../lib/tasten.js'
@@ -17,6 +17,7 @@ import { useSetCleaningWaiver } from '../lib/queries/checkin.js'
 import { Fehler, Laedt } from './Shell.tsx'
 import { useSprung } from '../lib/suche.js'
 import { kanalFarbe } from '../lib/kanalFarbe.js'
+import { ZimmerWechseln } from './ZimmerWechseln.tsx'
 
 const NOTES_MAX_LENGTH = 2000
 const SHORT_NOTE_MAX_LENGTH = 40
@@ -283,6 +284,7 @@ function Inhalt({ reservation: r, onOpenFolio, onOpenCheckIn, onOpenGroup, onAen
           {r.floor !== null && <span className="text-neutral-400"> · {r.floor}</span>}
           <ZimmerFest reservationRef={r.reservationRef} fest={r.roomFixed}
                       offen={r.canceledAt === null && r.checkedOutAt === null} />
+          <Zimmerwechsel reservation={r} />
         </Feld>
         <Feld label={t('plan.category')}>{r.categoryName}</Feld>
         <Feld label={t('plan.ratePlan')}>
@@ -689,6 +691,59 @@ function ZimmerFest(
         {t('plan.roomFixed')}
       </label>
       {setzen.isError && <Fehler error={setzen.error} />}
+    </div>
+  )
+}
+
+/**
+ * Die Zimmer des Aufenthalts und der Weg, sie zu wechseln (Migration 0195).
+ *
+ * Am Zimmer, nicht unter "Aendern": "Aendern" verlegt den ganzen Aufenthalt,
+ * der Wechsel nur den Teil ab einem Tag -- und genau den Unterschied soll
+ * niemand an einer Rezeption nachlesen muessen. Die Liste steht nur da, wenn
+ * es mehr als ein Zimmer gibt; sonst sagt das Feld darueber schon alles.
+ */
+function Zimmerwechsel({ reservation: r }: { reservation: ReservationDetail }): JSX.Element | null {
+  const t = useT()
+  const locale = useLocale()
+  const [offen, setOffen] = useState(false)
+  const zurueck = useRoomMoveUndo()
+  const aenderbar = AENDERBAR.has(r.status) && r.resourceId !== null
+  if (!aenderbar && r.roomParts.length < 2) return null
+  return (
+    <div className="mt-1 space-y-1">
+      {r.roomParts.length > 1 && (
+        <ul className="text-xs text-neutral-600 space-y-0.5">
+          {r.roomParts.map(p => (
+            <li key={p.from} className={p.movedOut ? 'text-neutral-400' : ''}>
+              <span className="tabular-nums font-medium">{p.roomCode}</span>
+              {' '}{formatDate(p.from, locale)} – {formatDate(p.to, locale)}
+              {p.movedOut && <> · {t('rm.movedOut')}</>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {aenderbar && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <button onClick={() => setOffen(true)}
+                  className="text-xs text-neutral-600 underline decoration-dotted">
+            {t('rm.button')}
+          </button>
+          {r.roomMoveUndoable && (
+            <button disabled={zurueck.isPending}
+                    onClick={() => {
+                      if (confirm(t('rm.undoConfirm'))) {
+                        zurueck.mutate({ reservationRef: r.reservationRef })
+                      }
+                    }}
+                    className="text-xs text-neutral-600 underline decoration-dotted">
+              {t('rm.undo')}
+            </button>
+          )}
+        </div>
+      )}
+      {zurueck.isError && <Fehler error={zurueck.error} />}
+      {offen && <ZimmerWechseln reservationRef={r.reservationRef} onClose={() => setOffen(false)} />}
     </div>
   )
 }

@@ -60,7 +60,9 @@ export const FOLGEN_RESERVIERUNG = [
   'guest_request',
   // Ein Gast hat sich am Terminal als Gast dieses Zimmers bestaetigt (0150):
   // die Buchung ist benutzt worden, also keine Fehluebernahme mehr.
-  'terminal_self_session'
+  'terminal_self_session',
+  // Ein Zimmerwechsel (0195): an der Buchung ist gearbeitet worden.
+  'reservation_room_part'
 ] as const
 export const FOLGEN_FOLIO = [
   'invoice', 'charge', 'settlement', 'routing_rule', 'payment_intent', 'deposit_ledger',
@@ -95,7 +97,10 @@ export const VERWEISE_ZIMMER = [
   ['guest_request', 'resource_id'],
   // Am Terminal angetippt (0150); haengt immer auch an einer Reservierung,
   // die die Ruecknahme schon aufhaelt.
-  ['terminal_self_session', 'resource_id']
+  ['terminal_self_session', 'resource_id'],
+  // Ein Abschnitt eines Zimmerwechsels (0195); haengt wie das Terminal
+  // immer an einer Reservierung, die die Ruecknahme schon aufhaelt.
+  ['reservation_room_part', 'resource_id']
 ] as const
 /**
  * Zustand des Zimmers, der mit ihm geht. Die Referenz der Gaestemappe (0143)

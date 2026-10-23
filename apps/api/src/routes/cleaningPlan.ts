@@ -235,7 +235,9 @@ async function liesZimmer(
                    WHEN liegen.found THEN 'departure' END AS due,
               COALESCE(ab.status = 'CheckedOut', bl.found IS NULL AND liegen.found, false)
                 AS "departureCheckedOut",
-              EXISTS (SELECT 1 FROM reservation an
+              -- Je Zimmerabschnitt (0195): wer umzieht, reist aus dem alten
+              -- Zimmer ab und kommt im neuen an.
+              EXISTS (SELECT 1 FROM reservation_room_stay an
                        WHERE an.resource_id = r.id AND an.arrival = $2::date
                          AND an.status IN ('Confirmed','InHouse')) AS "arrivalToday",
               t.id::int AS "taskId", t.kind, t.assigned_to::int AS "assignedTo",
@@ -247,7 +249,7 @@ async function liesZimmer(
          FROM resource r
          JOIN resource_category c ON c.id = r.category_id
          LEFT JOIN LATERAL (
-                SELECT a.status FROM reservation a
+                SELECT a.status FROM reservation_room_stay a
                  WHERE a.resource_id = r.id AND a.departure = $2::date
                    AND a.status IN ('Confirmed','InHouse','CheckedOut')
                  ORDER BY a.status = 'CheckedOut' DESC LIMIT 1) ab ON true
@@ -256,7 +258,7 @@ async function liesZimmer(
                        EXISTS (SELECT 1 FROM cleaning_waiver w
                                 WHERE w.reservation_id = b.id AND w.business_date = $2::date
                                   AND w.withdrawn_at IS NULL) AS waived
-                  FROM reservation b
+                  FROM reservation_room_stay b
                  WHERE b.resource_id = r.id
                    AND b.arrival < $2::date AND b.departure > $2::date
                    AND b.status IN ('Confirmed','InHouse')
@@ -291,7 +293,7 @@ async function liesZimmer(
                      SELECT 1 FROM resource n
                       WHERE n.property_id = a.property_id AND n.active
                         AND (a.building IS NULL OR n.building = a.building)
-                        AND (EXISTS (SELECT 1 FROM reservation g
+                        AND (EXISTS (SELECT 1 FROM reservation_room_stay g
                                       WHERE g.resource_id = n.id
                                         AND g.arrival < $2::date AND g.departure >= $2::date
                                         AND g.status IN ('Confirmed','InHouse','CheckedOut'))

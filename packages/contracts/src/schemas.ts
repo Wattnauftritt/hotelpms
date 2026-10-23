@@ -213,6 +213,19 @@ export const TapeChart = Type.Object({
     arrival: Type.String(),
     departure: Type.String(),
     status: ReservationStatus,
+    /**
+     * Zimmerwechsel im Aufenthalt (0195). Dann steht die Reservierung
+     * einmal je Zimmer im Plan: `arrival`, `departure` und `resource_id`
+     * sind die des Abschnitts, `stay_arrival` und `stay_departure` die des
+     * ganzen Aufenthalts. `moved_out`: der Gast hat dieses Zimmer verlassen.
+     * Ohne Wechsel `room_moved` falsch und alles wie bisher.
+     */
+    stay_arrival: Type.String(),
+    stay_departure: Type.String(),
+    room_moved: Type.Boolean(),
+    part_first: Type.Boolean(),
+    part_last: Type.Boolean(),
+    moved_out: Type.Boolean(),
     last_name: Type.Union([Type.String(), Type.Null()]),
     first_name: Type.Union([Type.String(), Type.Null()]),
     /**
@@ -932,6 +945,47 @@ export const CleaningWaiverSettings = Type.Object({
 }, { additionalProperties: false })
 export type CleaningWaiverSettings = Static<typeof CleaningWaiverSettings>
 
+/**
+ * Ein Zimmer eines Aufenthalts mit Zimmerwechsel (0195), von `from` bis
+ * `to` (Abreisetag des Abschnitts). `movedOut`: der Gast hat es verlassen.
+ */
+export const RoomPart = Type.Object({
+  resourceId: Type.Integer(),
+  roomCode: Type.String(),
+  from: Type.String(),
+  to: Type.String(),
+  movedOut: Type.Boolean()
+})
+export type RoomPart = Static<typeof RoomPart>
+
+/** Was der Dialog "Zimmer wechseln" braucht (`GET .../room-move`). */
+export const RoomMoveOptions = Type.Object({
+  reservationRef: Type.String(),
+  status: ReservationStatus,
+  arrival: Type.String(),
+  departure: Type.String(),
+  businessDate: Type.String(),
+  /** Frueheste Wahl: beim Gast im Haus der Geschaeftstag, sonst die Anreise. */
+  earliestFrom: Type.String(),
+  from: Type.String(),
+  categoryId: Type.Integer(),
+  /** Wo der Gast am Tag `from` liegt. */
+  currentResourceId: Type.Union([Type.Integer(), Type.Null()]),
+  /** Preis der Nacht am Tag `from`, als Vorbelegung fuer einen neuen Preis. */
+  nightPriceCent: Type.Union([Cent, Type.Null()]),
+  parts: Type.Array(RoomPart),
+  rooms: Type.Array(Type.Object({
+    resourceId: Type.Integer(),
+    code: Type.String(),
+    categoryId: Type.Integer(),
+    categoryName: Type.String(),
+    maxOccupancy: Type.Integer(),
+    /** Ab `from` bis zur Abreise frei, und nicht das Zimmer von `from`. */
+    free: Type.Boolean()
+  }))
+})
+export type RoomMoveOptions = Static<typeof RoomMoveOptions>
+
 export const ReservationDetail = Type.Object({
   reservationRef: Type.String(),
   bookingRef: Type.String(),
@@ -1001,7 +1055,11 @@ export const ReservationDetail = Type.Object({
   /** Freischaltungen der Gaestemappe (0147); `null`, wenn das Haus keine Mappe anbietet. */
   guestFolder: Type.Optional(Type.Union([GuestFolderStayStatus, Type.Null()])),
   /** Die Wuensche dieses Aufenthalts aus der Gaestemappe (0149), neueste zuerst. */
-  guestRequests: Type.Optional(Type.Array(GuestRequestRow))
+  guestRequests: Type.Optional(Type.Array(GuestRequestRow)),
+  /** Zimmer nacheinander bei einem Zimmerwechsel (0195); leer ohne Wechsel. */
+  roomParts: Type.Array(RoomPart),
+  /** Der letzte Wechsel liegt am Geschaeftstag oder spaeter und laesst sich zuruecknehmen. */
+  roomMoveUndoable: Type.Boolean()
 })
 export type ReservationDetail = Static<typeof ReservationDetail>
 

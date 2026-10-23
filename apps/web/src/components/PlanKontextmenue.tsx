@@ -33,6 +33,7 @@ import { angeboteneStaende, reinigungsZiele, type SetzbarerStand } from '../lib/
  */
 export function PlanKontextmenue({ propertyId, ziel, onClose,
                                    onOeffnen, onCheckIn, onGruppe, onAnlegen, onSperren,
+                                   onZimmerWechseln,
                                    reinigungsstand, onReinigung }: {
   propertyId: number
   ziel: KontextZiel
@@ -51,6 +52,8 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
   onOeffnen: (reservationRef: string) => void
   onCheckIn: (reservationRef: string) => void
   onGruppe: (bookingRef: string) => void
+  /** Der Dialog "Zimmer wechseln" (0195); liegt im Bildschirm wie die anderen. */
+  onZimmerWechseln: (reservationRef: string) => void
   onAnlegen: (ziel: Extract<KontextZiel, { art: 'frei' }>) => void
   onSperren: (z: { zimmer: Array<{ resourceId: number; roomCode: string }>
                    ab: string; bis: string }) => void
@@ -114,6 +117,18 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                              onError: e => alert(fehlerMeldung(e, locale).text) })
                          }
                        } })
+    }
+
+    /*
+     * Zimmer wechseln am Balken: der Gast steht am Tresen und will ein
+     * anderes Zimmer, und der Blick liegt dabei auf dem Plan. Auch an der
+     * Option und vor der Anreise -- dort teilt es den Aufenthalt.
+     */
+    if (rechte.darf('reservation:write') && ziel.resourceId !== null
+        && (ziel.status === 'Optional' || ziel.status === 'Confirmed'
+            || ziel.status === 'InHouse')) {
+      eintraege.push({ schluessel: 'zimmerWechseln', text: t('rm.button'),
+                       onClick: () => onZimmerWechseln(ziel.reservationRef) })
     }
 
     if (ziel.bookingRooms > 1) {

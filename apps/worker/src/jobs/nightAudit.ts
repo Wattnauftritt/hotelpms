@@ -157,6 +157,13 @@ async function rollover(
     `INSERT INTO business_day (property_id, date) VALUES ($1, $2::date)
      ON CONFLICT DO NOTHING`,
     [propertyId, addDays(businessDate, 1)])
+  /*
+   * Geplante Zimmerwechsel des neuen Tages (0195): ab jetzt liegt der Gast
+   * im neuen Zimmer, das alte wird schmutzig. Vor `departedRoomsDirty`, weil
+   * diese nach dem Zimmer von heute fragt -- und das ist danach das neue.
+   */
+  await client.query(`SELECT reservation_room_day_roll($1, $2::date)`,
+                     [propertyId, addDays(businessDate, 1)])
   await departedRoomsDirty(client, propertyId, businessDate)
   return 1
 }

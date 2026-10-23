@@ -63,10 +63,12 @@ async function liesKontrolle(
             u.display_name AS "staffName", t.status, t.outcome, t.inspection,
             t.inspection_note AS "inspectionNote", i.display_name AS "inspectedBy",
             (t.kind <> 'departure' OR NOT EXISTS (
-               SELECT 1 FROM reservation a
+               -- Je Zimmerabschnitt (0195): nach einem Zimmerwechsel ist
+               -- das alte Zimmer frei wie nach einer Abreise.
+               SELECT 1 FROM reservation_room_stay a
                 WHERE a.resource_id = r.id AND a.departure = t.business_date
                   AND a.status IN ('Confirmed','InHouse'))) AS free,
-            EXISTS (SELECT 1 FROM reservation an
+            EXISTS (SELECT 1 FROM reservation_room_stay an
                      WHERE an.resource_id = r.id AND an.arrival = t.business_date
                        AND an.status IN ('Confirmed','InHouse')) AS "arrivalToday",
             (SELECT count(*)::int FROM maintenance_ticket m

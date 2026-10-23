@@ -20,6 +20,7 @@ import { GroupBookingDialog, type GroupSelection }
 import { GroupPanel } from '../components/GroupPanel.tsx'
 import type { KontextZiel } from '../components/Kontextmenue.tsx'
 import { PlanKontextmenue } from '../components/PlanKontextmenue.tsx'
+import { ZimmerWechseln } from '../components/ZimmerWechseln.tsx'
 import { ZimmerSperren } from '../components/ZimmerSperren.tsx'
 import { VerlaufDialog } from '../components/Verlauf.tsx'
 import { ZimmerSortieren } from '../components/ZimmerSortieren.tsx'
@@ -175,6 +176,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const [gruppenBuchung, setGruppenBuchung] = useState<string | null>(null)
   /** Was unter dem rechten Knopf lag. Null heisst: kein Menue offen. */
   const [kontext, setKontext] = useState<KontextZiel | null>(null)
+  const [zimmerWechsel, setZimmerWechsel] = useState<string | null>(null)
   const [sperren, setSperren] = useState<
     { zimmer: Array<{ resourceId: number; roomCode: string }>
       ab: string; bis: string } | null>(null)
@@ -207,14 +209,19 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
   const vorschlag = (reservationRef: string,
                      ziel: (r: TapeChartData['reservations'][number]) => Ziel,
                      gruppe?: Verlegung['gruppe']): Verlegung | null => {
-    const r = daten?.reservations.find(x => x.public_ref === reservationRef)
+    /*
+     * Nach einem Zimmerwechsel (0195) steht derselbe Aufenthalt in mehreren
+     * Zeilen. Gezogen wird dann nur das Ende, und das gehoert dem letzten
+     * Teil; die Tage davor sind die des ganzen Aufenthalts.
+     */
+    const r = daten?.reservations.find(x => x.public_ref === reservationRef && x.part_last)
     if (r === undefined) return null
     return {
       reservationRef, status: r.status, categoryId: r.category_id,
       gast: [r.first_name, r.last_name].filter(x => x !== null && x !== '').join(' '),
       bedarf: platzbedarf({ occupants: r.occupants,
                             categoryMaxOccupancy: r.category_max_occupancy }),
-      alt: { resourceId: r.resource_id, arrival: r.arrival, departure: r.departure },
+      alt: { resourceId: r.resource_id, arrival: r.stay_arrival, departure: r.stay_departure },
       neu: ziel(r), gruppe,
       personen: gruppe === undefined
         ? { guestCount: r.guest_count, adults: r.adults, children: r.children }
@@ -662,8 +669,8 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                         // Was der Zug nicht angefasst hat, bleibt: `null`
                         // heisst bei der Zeile "dieselbe", nicht "keine".
                         resourceId: u.resourceId ?? r.resource_id,
-                        arrival: u.zeitraum?.arrival ?? r.arrival,
-                        departure: u.zeitraum?.departure ?? r.departure
+                        arrival: u.zeitraum?.arrival ?? r.stay_arrival,
+                        departure: u.zeitraum?.departure ?? r.stay_departure
                       })))}
                       onChangeStay={(reservationRef, arrival, departure) =>
                         gezogen(vorschlag(reservationRef,
@@ -685,7 +692,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onUnassign={reservationRef =>
                         gezogen(vorschlag(reservationRef, r => ({
                           resourceId: null,
-                          arrival: r.arrival, departure: r.departure })))}
+                          arrival: r.stay_arrival, departure: r.stay_departure })))}
                       onKontext={setKontext} />}
       {daten !== undefined && (
         <QuerLeiste von={von} tage={tage} onVon={setVon} links={LABEL_BREITE} />
@@ -741,12 +748,17 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                             onClose={() => setGruppe(null)} />
       )}
 
+      {zimmerWechsel !== null && (
+        <ZimmerWechseln reservationRef={zimmerWechsel} onClose={() => setZimmerWechsel(null)} />
+      )}
+
       {kontext !== null && (
         <PlanKontextmenue propertyId={propertyId} ziel={kontext}
                           onClose={() => setKontext(null)}
                           onOeffnen={setAusgewaehlt}
                           onCheckIn={onCheckIn}
                           onGruppe={setGruppenBuchung}
+                          onZimmerWechseln={setZimmerWechsel}
                           onAnlegen={z => {
                             /*
                              * Alle oder keines: liegt der Klick in einer

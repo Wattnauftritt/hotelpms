@@ -43,6 +43,8 @@ export interface RoomSortStayRow {
   arrival: string; departure: string; resource_id: number | null; status: string
   room_fixed: boolean; channel_owner: string | null; price_cent: number | null
   text: string; last_name: string | null; updated_at: string
+  /** Zimmerwechsel im Aufenthalt (0195): eine Zeile je Zimmer, und fest. */
+  room_moved: boolean
 }
 
 export interface RoomSortSituation {
@@ -101,20 +103,25 @@ export async function roomSortLoad(
   const today = known.today ?? await roomSortToday(client, propertyId)
 
   const stays = await client.query(
+    // Je Zimmerabschnitt (0195): ein Aufenthalt mit Zimmerwechsel belegt
+    // jedes seiner Zimmer nur an dessen Tagen, und genau so muss der
+    // Sortierer ihn sehen -- als feste Belegung, nicht als einen Balken
+    // ueber den ganzen Aufenthalt im Zimmer von heute.
     `SELECT r.id, r.public_ref, r.booking_id, r.category_id,
-            r.arrival::text, r.departure::text, r.resource_id, r.status::text,
-            r.room_fixed, b.channel_owner,
+            s.arrival::text, s.departure::text, s.resource_id, r.status::text,
+            r.room_fixed, b.channel_owner, r.room_moved,
             (SELECT round(avg(n.price_cent))::int FROM reservation_night n
               WHERE n.reservation_id = r.id) AS price_cent,
             concat_ws(' ', r.short_note, r.notes) AS text,
             g.last_name, r.updated_at::text
-       FROM reservation r
+       FROM reservation_room_stay s
+       JOIN reservation r ON r.id = s.id
        JOIN booking b ON b.id = r.booking_id
        LEFT JOIN guest g ON g.id = r.primary_guest_id
-      WHERE r.property_id = $1
-        AND r.arrival < $3::date AND r.departure > $2::date
+      WHERE s.property_id = $1
+        AND s.arrival < $3::date AND s.departure > $2::date
         AND r.status IN ('Optional','Confirmed','InHouse','CheckedOut')
-      ORDER BY r.id
+      ORDER BY r.id, s.arrival
       ${lock ? 'FOR UPDATE OF r' : ''}`, [propertyId, from, to])
   const stayRows = stays.rows as RoomSortStayRow[]
 
@@ -152,7 +159,7 @@ export function roomSortMovable(
   x: RoomSortStayRow, l: RoomSortSituation, from: string, to: string
 ): boolean {
   if (x.status !== 'Optional' && x.status !== 'Confirmed') return false
-  if (x.room_fixed || x.channel_owner === 'local') return false
+  if (x.room_fixed || x.channel_owner === 'local' || x.room_moved) return false
   if (x.arrival < from || x.departure > to) return false
   // Wer heute anreist, wird mitsortiert, solange er nicht eingecheckt ist
   // (Status oben). Sven, 11.10.2026: "das ist der einzige punkt" -- bis zum
@@ -209,9 +216,9 @@ export async function roomSortWrite(
     `SELECT u.code, r.public_ref AS ref
        FROM reservation r JOIN resource u ON u.id = r.resource_id
       WHERE r.id = ANY($1::bigint[])
-        AND (EXISTS (SELECT 1 FROM reservation o
+        AND (EXISTS (SELECT 1 FROM reservation_room_stay o
                       WHERE o.resource_id = r.resource_id AND o.id <> r.id
-                        AND o.status IN ('Optional','Confirmed','InHouse')
+                        AND o.stay_status IN ('Optional','Confirmed','InHouse')
                         AND o.arrival < r.departure AND o.departure > r.arrival)
              OR EXISTS (SELECT 1 FROM maintenance_block m
                          WHERE m.resource_id = r.resource_id AND m.kind = 'out_of_order'

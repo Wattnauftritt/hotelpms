@@ -29,6 +29,7 @@ import { mobil } from './mobil.js'
 import { meldescheine } from './meldescheine.js'
 import { kassenbuch } from './kassenbuch.js'
 import { zimmerSortieren } from './zimmerSortieren.js'
+import { zimmerwechsel } from './zimmerwechsel.js'
 import { reinigungsplan } from './reinigungsplan.js'
 import { kontrolle } from './kontrolle.js'
 import { kueche } from './kueche.js'
@@ -237,6 +238,7 @@ export type TextKey =
   | keyof typeof meldescheine
   | keyof typeof kassenbuch
   | keyof typeof zimmerSortieren
+  | keyof typeof zimmerwechsel
   | keyof typeof reinigungsplan
   | keyof typeof kontrolle
   | keyof typeof kueche
@@ -275,6 +277,7 @@ const texts: Record<TextKey, LocalizedText> = {
   ...meldescheine,
   ...kassenbuch,
   ...zimmerSortieren,
+  ...zimmerwechsel,
   ...reinigungsplan,
   ...kontrolle,
   ...kueche,
