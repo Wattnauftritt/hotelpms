@@ -73,11 +73,13 @@ export function FirmaFormular({ initial, vorschlag, scanBild, darfSchreiben, onS
       if (w.trim() !== '') setzen(w.trim())
     }
     wenn(v.name, setName)
+    wenn(v.contactName, setContactName)
     wenn(v.addressLine1, setAddressLine1)
     wenn(v.postalCode, setPostalCode)
     wenn(v.city, setCity)
     wenn(v.country.toUpperCase(), setCountry)
     wenn(v.vatId, setVatId)
+    wenn(v.invoiceEmail, setInvoiceEmail)
     setScan(null)
     setUebernommen(true)
   }
@@ -122,7 +124,7 @@ export function FirmaFormular({ initial, vorschlag, scanBild, darfSchreiben, onS
       {scan !== null && (
         // Der Schluessel baut den Scan je Foto neu auf: ein zweiter Scan
         // nach dem Verwerfen faengt mit leerem Vorschlag an.
-        <VisitenkarteScan key={`${scan.name}-${scan.lastModified}`} erstesBild={scan}
+        <VisitenkarteScan key={`${scan.name}-${scan.lastModified}`} erstesBild={scan} mitMail
                           onUebernehmen={uebernehmen} onSchliessen={() => setScan(null)} />
       )}
       {uebernommen && (

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { anschriftAusKarte, vorschlagErgaenzen, zeilenAusBoxen, type KartenZeile }
+import { anschriftAusKarte, vorschlagErgaenzen, zeilenAusBoxen, zuweisen, zugeordnet,
+         type AnschriftVorschlag, type KartenZeile }
   from '../lib/visitenkarte.js'
 import { leserAnlegen } from '../lib/leser.js'
 
@@ -25,8 +26,9 @@ describe('Anschrift aus einer Visitenkarte', () => {
       'max.mustermann@nordsee-logistik.de',
       'www.nordsee-logistik.de'))
     expect(v).toEqual({
-      name: 'Nordsee Logistik GmbH', addressLine1: 'Hafenstraße 12a',
-      postalCode: '27472', city: 'Cuxhaven', country: 'DE', vatId: ''
+      name: 'Nordsee Logistik GmbH', contactName: 'Max Mustermann',
+      addressLine1: 'Hafenstraße 12a', postalCode: '27472', city: 'Cuxhaven', country: 'DE',
+      vatId: '', invoiceEmail: ''
     })
   })
 
@@ -91,7 +93,8 @@ describe('Anschrift aus einer Visitenkarte', () => {
 
   it('laesst Felder leer, die die Karte nicht hergibt', () => {
     expect(anschriftAusKarte(zeilen('ä', '???'))).toEqual({
-      name: '', addressLine1: '', postalCode: '', city: '', country: '', vatId: ''
+      name: '', contactName: '', addressLine1: '', postalCode: '', city: '', country: '',
+      vatId: '', invoiceEmail: ''
     })
   })
 
@@ -113,13 +116,15 @@ describe('Anschrift aus einer Visitenkarte', () => {
 
 describe('Weitere Seite einarbeiten', () => {
   it('fuellt nur, was noch leer ist, und laesst Korrekturen stehen', () => {
-    const korrigiert = { name: 'Küstenbau GmbH', addressLine1: '', postalCode: '',
-                         city: '', country: 'DE', vatId: '' }
-    const neu = { name: 'Kustenbau GmbH', addressLine1: 'Deichstraße 40', postalCode: '27472',
-                  city: 'Cuxhaven', country: 'DE', vatId: 'DE123456789' }
+    const korrigiert = { name: 'Küstenbau GmbH', contactName: '', addressLine1: '',
+                         postalCode: '', city: '', country: 'DE', vatId: '', invoiceEmail: '' }
+    const neu = { name: 'Kustenbau GmbH', contactName: 'Anja Schröder',
+                  addressLine1: 'Deichstraße 40', postalCode: '27472', city: 'Cuxhaven',
+                  country: 'DE', vatId: 'DE123456789', invoiceEmail: '' }
     expect(vorschlagErgaenzen(korrigiert, neu)).toEqual({
-      name: 'Küstenbau GmbH', addressLine1: 'Deichstraße 40', postalCode: '27472',
-      city: 'Cuxhaven', country: 'DE', vatId: 'DE123456789'
+      name: 'Küstenbau GmbH', contactName: 'Anja Schröder', addressLine1: 'Deichstraße 40',
+      postalCode: '27472', city: 'Cuxhaven', country: 'DE', vatId: 'DE123456789',
+      invoiceEmail: ''
     })
   })
 })
@@ -258,5 +263,83 @@ describe('Anschrift aus der Erkennung des Telefons', () => {
       ['Anna Schröder', 2], 'Projektleitung', ['Hotelbedarf Nord', 1.3],
       'Deichstraße 40', '27472 Cuxhaven'))
     expect(v.name).toBe('Hotelbedarf Nord')
+  })
+})
+
+describe('Ansprechpartner', () => {
+  it('nimmt den Namen ueber der Berufsbezeichnung, auch wenn die Firma groesser ist', () => {
+    const v = anschriftAusKarte(zeilen(
+      ['Küstenbau GmbH & Co. KG', 1.8], ['Anja Schröder', 1.3], 'Projektleitung',
+      'Deichstraße 40 | 27472 Cuxhaven'))
+    expect(v).toMatchObject({ name: 'Küstenbau GmbH & Co. KG', contactName: 'Anja Schröder' })
+  })
+
+  it('nimmt den Namen neben der Berufsbezeichnung in derselben Zeile', () => {
+    const v = anschriftAusKarte(zeilen(
+      ['Nordsee Logistik GmbH', 1.5], 'Dr. Max Mustermann | Geschäftsführer', '27472 Cuxhaven'))
+    expect(v.contactName).toBe('Dr. Max Mustermann')
+  })
+
+  it('erkennt den Menschen an seiner Mailadresse und haelt ihn aus dem Firmennamen', () => {
+    // Groesser als die Firma und ohne Berufsbezeichnung: nur die Mail verraet ihn.
+    const v = anschriftAusKarte(zeilen(
+      ['Jan de Vries', 1.6], ['Elbe Consult', 1.2], 'Bei den Mühren 70', '20457 Hamburg',
+      'jan.devries@elbe-consult.de'))
+    expect(v).toMatchObject({ name: 'Elbe Consult', contactName: 'Jan de Vries' })
+  })
+
+  it('laesst das Feld leer, wenn nichts auf einen Menschen hinweist', () => {
+    const v = anschriftAusKarte(zeilen(
+      ['Elbe Consult', 1.6], 'Hafenstraße 12', '27472 Cuxhaven', 'info@elbe-consult.de'))
+    expect(v).toMatchObject({ name: 'Elbe Consult', contactName: '' })
+  })
+
+  it('uebernimmt die Mailadresse nie von selbst', () => {
+    const v = anschriftAusKarte(zeilen('Nordsee GmbH', 'rechnung@nordsee.de'))
+    expect(v.invoiceEmail).toBe('')
+  })
+})
+
+describe('Erkannten Text von Hand zuordnen', () => {
+  const leer: AnschriftVorschlag = { name: '', contactName: '', addressLine1: '', postalCode: '',
+    city: '', country: '', vatId: '', invoiceEmail: '' }
+
+  it('teilt PLZ und Ort auf zwei Felder und erkennt das Land an der Kennung', () => {
+    expect(zuweisen(leer, 'ort', '27472 Cuxhaven')).toMatchObject(
+      { postalCode: '27472', city: 'Cuxhaven', country: 'DE' })
+    expect(zuweisen(leer, 'ort', 'A-1010 Wien')).toMatchObject(
+      { postalCode: '1010', city: 'Wien', country: 'AT' })
+    expect(zuweisen(leer, 'ort', 'Cuxhaven')).toMatchObject({ postalCode: '', city: 'Cuxhaven' })
+  })
+
+  it('nimmt Beschriftung und Satzzeichen von der Strasse', () => {
+    expect(zuweisen(leer, 'addressLine1', 'Anschrift: Hafenstr. 12,').addressLine1)
+      .toBe('Hafenstr. 12')
+  })
+
+  it('setzt einen Firmennamen ueber zwei Zeilen fort', () => {
+    const v = zuweisen(zuweisen(leer, 'name', 'Küstenbau'), 'nameAnhaengen', 'GmbH & Co. KG')
+    expect(v.name).toBe('Küstenbau GmbH & Co. KG')
+  })
+
+  it('liest USt-IdNr., Mail und Land aus der beschrifteten Zeile', () => {
+    expect(zuweisen(leer, 'vatId', 'USt-IdNr.: DE 123 456 789').vatId).toBe('DE123456789')
+    expect(zuweisen(leer, 'invoiceEmail', 'E-Mail: buchhaltung@nordsee.de').invoiceEmail)
+      .toBe('buchhaltung@nordsee.de')
+    expect(zuweisen(leer, 'country', 'Germany').country).toBe('DE')
+    // Was kein Land ist, laesst das Feld stehen.
+    expect(zuweisen({ ...leer, country: 'DE' }, 'country', 'Hamburg').country).toBe('DE')
+  })
+
+  it('zeigt, in welchem Feld ein Stueck steht', () => {
+    const v = { ...leer, name: 'Küstenbau GmbH & Co. KG', addressLine1: 'Deichstraße 40',
+                postalCode: '27472', city: 'Cuxhaven' }
+    expect(zugeordnet(v, 'KÜSTENBAU')).toEqual(['name'])
+    expect(zugeordnet(v, 'Deichstraße 40,')).toEqual(['addressLine1'])
+    expect(zugeordnet(v, '27472 Cuxhaven')).toEqual(['ort'])
+    expect(zugeordnet(v, 'Tel. 04721 123456')).toEqual([])
+    // Der Name in der Mailadresse macht die Zeile nicht zum Ansprechpartner.
+    expect(zugeordnet({ ...v, contactName: 'Max Mustermann' },
+                      'Tel. 04721 123456 + max.mustermann@nordsee.de')).toEqual([])
   })
 })
