@@ -289,6 +289,17 @@ export const TapeChart = Type.Object({
     to_date: Type.String(),
     kind: Type.String(),
     reason: Type.String()
+  })),
+  /**
+   * Tage, an denen ein Zimmer als andere Kategorie verkauft wird (0197),
+   * einer je Zeile. Ohne Eintrag gilt die Gruppe des Zimmers.
+   */
+  sell_as: Type.Array(Type.Object({
+    resource_id: Type.Integer(),
+    date: IsoDate,
+    category_id: Type.Integer(),
+    category_code: Type.String(),
+    category_name: Type.String()
   }))
 })
 export type TapeChart = Static<typeof TapeChart>

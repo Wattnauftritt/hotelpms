@@ -100,7 +100,10 @@ export const VERWEISE_ZIMMER = [
   ['terminal_self_session', 'resource_id'],
   // Ein Abschnitt eines Zimmerwechsels (0195); haengt wie das Terminal
   // immer an einer Reservierung, die die Ruecknahme schon aufhaelt.
-  ['reservation_room_part', 'resource_id']
+  ['reservation_room_part', 'resource_id'],
+  // An einzelnen Tagen als andere Kategorie verkauft (0197): von Hand am Plan
+  // eingetragen, also gearbeitet -- das Zimmer bleibt stehen.
+  ['room_sell_as', 'resource_id']
 ] as const
 /**
  * Zustand des Zimmers, der mit ihm geht. Die Referenz der Gaestemappe (0143)
@@ -113,7 +116,10 @@ export const ZUSTAND_ZIMMER = ['housekeeping_status', 'housekeeping_task',
 export const VERWEISE_GRUPPE = [
   ['resource', 'category_id'], ['reservation', 'category_id'], ['rate_plan', 'category_id'],
   ['availability_block', 'category_id'], ['rate_steer_rule', 'category_id'],
-  ['cleaning_norm', 'category_id']
+  ['cleaning_norm', 'category_id'],
+  // Die Kategorie, als die ein Zimmer verkauft wird (0197); aus demselben
+  // Grund wie oben.
+  ['room_sell_as', 'category_id']
 ] as const
 
 class Zurueck extends Error {

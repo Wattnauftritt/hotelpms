@@ -255,6 +255,10 @@ async function jeVerkaufscode(
             SELECT 1 FROM maintenance_block m
              WHERE m.resource_id = u.id AND m.kind = 'out_of_order'
                AND t.date >= m.from_date AND t.date < m.to_date)
+          -- An einem Tag als andere Kategorie verkauft (0197), gehoert das
+          -- Zimmer nicht zu seinem Code: es zaehlt in der verkauften Gruppe.
+          AND NOT EXISTS (
+            SELECT 1 FROM room_sell_as a WHERE a.resource_id = u.id AND a.date = t.date)
         GROUP BY 1, 2
      ), belegung AS (
        SELECT COALESCE(u.sales_code, r.sales_code) AS sales_code, r.category_id, n.date
@@ -264,8 +268,11 @@ async function jeVerkaufscode(
          JOIN reservation_room_stay s ON s.id = r.id
                                      AND n.date >= s.arrival AND n.date < s.departure
          LEFT JOIN resource u ON u.id = s.resource_id
+         -- Und wer dann darin liegt, auch nicht (siehe Kapazitaet).
+         LEFT JOIN room_sell_as a ON a.resource_id = s.resource_id AND a.date = n.date
         WHERE n.property_id = $1 AND n.date >= $2::date AND n.date < $3::date
           AND r.status IN ('Optional','Confirmed','InHouse')
+          AND a.resource_id IS NULL
      ), verkauft AS (
        SELECT sales_code, date, count(*)::int AS n FROM belegung
         WHERE sales_code IS NOT NULL GROUP BY 1, 2
@@ -362,7 +369,7 @@ export function availabilityRoutes(app: FastifyInstance): void {
        */
       const mitGastnotiz = can(principal, 'guest:read', pid)
 
-      // Drei Abfragen, mit Zahlungsrecht vier -- unabhaengig von Haus- und
+      // Vier Abfragen, mit Zahlungsrecht fuenf -- unabhaengig von Haus- und
       // Belegungsgroesse. Ein Aggregat-Endpunkt statt 400 Einzelaufrufen.
       return tx(req.pool, req, async client => {
         const units = await client.query(
@@ -502,10 +509,19 @@ export function availabilityRoutes(app: FastifyInstance): void {
             WHERE property_id = $1 AND from_date < $3::date AND to_date > $2::date`,
           [pid, from, to])
 
+        // Die Tage, an denen ein Zimmer als andere Kategorie verkauft wird
+        // (0197): der Plan zeigt sie auf einen Blick (Sven, 23.10.2026).
+        const sellAs = await client.query(
+          `SELECT a.resource_id, a.date::text, a.category_id,
+                  k.code AS category_code, k.name AS category_name
+             FROM room_sell_as a JOIN resource_category k ON k.id = a.category_id
+            WHERE a.property_id = $1 AND a.date >= $2::date AND a.date < $3::date
+            ORDER BY a.resource_id, a.date`, [pid, from, to])
+
         const zeilen = reservations.rows as Array<{ id: number; booking_id: number }>
         const zahlung = mitZahlung ? await planPayments(client, pid, zeilen) : null
         return {
-          from, to, units: units.rows, blocks: blocks.rows,
+          from, to, units: units.rows, blocks: blocks.rows, sell_as: sellAs.rows,
           // `booking_id` traegt nur die Zahlungsabfrage; nach aussen geht
           // die Buchung als `booking_ref`, wie bisher.
           reservations: zeilen.map(({ booking_id: _b, ...r }) => zahlung === null ? r

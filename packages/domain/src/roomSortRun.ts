@@ -131,25 +131,36 @@ export async function roomSortLoad(
                                                         'to', m.to_date::text))
                         FROM maintenance_block m
                        WHERE m.resource_id = r.id AND m.kind = 'out_of_order'
-                         AND m.from_date < $3::date AND m.to_date > $2::date), '[]') AS blocked
+                         AND m.from_date < $3::date AND m.to_date > $2::date), '[]') AS blocked,
+            -- Tage "verkauft als" (0197): an ihnen gehoert das Zimmer der
+            -- anderen Gruppe, auch fuer den Sortierer.
+            COALESCE((SELECT json_agg(json_build_object('date', a.date::text,
+                                                        'categoryId', a.category_id)
+                                      ORDER BY a.date)
+                        FROM room_sell_as a
+                       WHERE a.resource_id = r.id
+                         AND a.date >= $2::date AND a.date < $3::date), '[]') AS sell_as
        FROM resource r WHERE r.property_id = $1 AND r.active
       ORDER BY r.id`, [propertyId, from, to])
   const roomRows = rooms.rows as Array<{ id: number; category_id: number; code: string
                                          quality: number; floor: string | null
                                          building: string | null; attributes: string[]
-                                         blocked: Array<{ from: string; to: string }> }>
+                                         blocked: Array<{ from: string; to: string }>
+                                         sell_as: Array<{ date: string; categoryId: number }> }>
 
   const basis = createHash('sha256').update(JSON.stringify([
     stayRows.map(x => [x.id, x.resource_id, x.arrival, x.departure, x.status, x.room_fixed,
                        x.channel_owner, x.updated_at]),
-    roomRows.map(x => [x.id, x.category_id, x.blocked])
+    roomRows.map(x => [x.id, x.category_id, x.blocked, x.sell_as])
   ])).digest('base64url')
 
   return {
     stays: stayRows,
     rooms: roomRows.map(x => ({ id: Number(x.id), categoryId: Number(x.category_id), code: x.code,
                                 quality: x.quality, floor: x.floor, building: x.building,
-                                attributes: x.attributes, blocked: x.blocked })),
+                                attributes: x.attributes, blocked: x.blocked,
+                                sellAs: x.sell_as.map(a => ({ date: a.date,
+                                                              categoryId: Number(a.categoryId) })) })),
     basis, today,
     weights: resolveRoomSortWeights(einstellung.weights)
   }

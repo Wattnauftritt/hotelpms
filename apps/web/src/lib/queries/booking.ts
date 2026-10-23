@@ -855,3 +855,22 @@ export function useAddBookingRoom(propertyId: number) {
     }
   })
 }
+
+/**
+ * Ein Zimmer an einzelnen Tagen als andere Kategorie verkaufen oder das
+ * aufheben (0197). `categoryId: null` hebt auf.
+ */
+export function useRoomSellAs(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { roomId: number; from: string; to: string; categoryId: number | null }) =>
+      api.put<{ roomId: number; from: string; to: string; categoryId: number | null }>(
+        `/v1/properties/${propertyId}/room-sell-as`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tape'] })
+      // Die Kapazitaet beider Gruppen hat sich geaendert, das Raster
+      // rechnet aus `inventory_day`.
+      void qc.invalidateQueries({ queryKey: ['availability', propertyId] })
+    }
+  })
+}

@@ -33,7 +33,7 @@ import { angeboteneStaende, reinigungsZiele, type SetzbarerStand } from '../lib/
  */
 export function PlanKontextmenue({ propertyId, ziel, onClose,
                                    onOeffnen, onCheckIn, onGruppe, onAnlegen, onSperren,
-                                   onZimmerWechseln,
+                                   onZimmerWechseln, onVerkaufenAls,
                                    reinigungsstand, onReinigung }: {
   propertyId: number
   ziel: KontextZiel
@@ -57,6 +57,9 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
   onAnlegen: (ziel: Extract<KontextZiel, { art: 'frei' }>) => void
   onSperren: (z: { zimmer: Array<{ resourceId: number; roomCode: string }>
                    ab: string; bis: string }) => void
+  /** Der Dialog "als andere Kategorie verkaufen" (0197). */
+  onVerkaufenAls: (z: { resourceId: number; roomCode: string; categoryId: number
+                        ab: string; bis: string }) => void
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -214,6 +217,19 @@ export function PlanKontextmenue({ propertyId, ziel, onClose,
                          bis: zimmer.reduce(
                            (sp, z) => z.departure > sp ? z.departure : sp,
                            zimmer[0]!.departure) }) } })
+    }
+    /*
+     * Als andere Kategorie verkaufen (0197): ein Zimmer, der markierte
+     * Zeitraum. Mit dem Recht, mit dem die Rezeption bisher den Umweg ging
+     * -- ein Doppelzimmer ins Vierbettzimmer schieben.
+     */
+    if (rechte.darf('reservation:write') && zimmer.length === 1) {
+      const z = zimmer[0]!
+      eintraege.push({ schluessel: 'verkaufenAls', text: t('sa.menu'),
+                       onClick: () => onVerkaufenAls({
+                         resourceId: z.resourceId, roomCode: z.roomCode,
+                         categoryId: ziel.roomCategoryId,
+                         ab: z.arrival, bis: z.departure }) })
     }
   }
 

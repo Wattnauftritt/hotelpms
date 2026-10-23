@@ -1187,7 +1187,7 @@ describe('Der rechte Knopf im Belegungsplan', () => {
   })
 
   it('schlaegt auf freier Flaeche eine Nacht vor, nicht den ganzen Zeitraum', () => {
-    expect(plan).toContain('departure: getroffen?.departure ?? addDays(anreise, 1),')
+    expect(plan).toContain('const departure = getroffen?.departure ?? addDays(anreise, 1)')
   })
 
   /**
@@ -1198,8 +1198,8 @@ describe('Der rechte Knopf im Belegungsplan', () => {
    * deshalb muss das Paar den Zeitraum der Markierung tragen.
    */
   it('uebernimmt in der Markierung ihren Zeitraum, nicht die Nacht unter dem Zeiger', () => {
-    expect(plan).toContain('arrival: getroffen?.arrival ?? anreise,')
-    expect(plan).toContain('departure: getroffen?.departure ?? addDays(anreise, 1),')
+    expect(plan).toContain('const arrival = getroffen?.arrival ?? anreise')
+    expect(plan).toContain('const departure = getroffen?.departure ?? addDays(anreise, 1)')
     // Und der Bildschirm legt das einzelne Zimmer mit genau diesem Paar an.
     const tape = readFileSync(new URL('../routes/Tape.tsx', import.meta.url), 'utf8')
     expect(tape).toMatch(/setAuswahl\(\{\s*resourceId: z\.resourceId, categoryId: z\.categoryId,\s*arrival: z\.arrival, departure: z\.departure,/)
