@@ -259,6 +259,8 @@ PLATFORM_EMAIL_FROM=mail@staygrid.cloud
 PLATFORM_EMAIL_FROM_NAME=StayGrid
 ```
 
+Neue Tickets und Antworten von Kunden meldet StayGrid an `PLATFORM_SUPPORT_EMAIL` (Vorgabe `support@staygrid.cloud`, Migration 0208) — nur Nummer und Link, nie den Inhalt. Das Postfach muss es geben, sonst kommt der Hinweis nirgends an; die Anfragen selbst stehen trotzdem im Adminpanel.
+
 `PLATFORM_EMAIL_REPLY_TO` bleibt leer, solange Antworten an den Absender gehen sollen. Ohne `Reply-To` tut jedes Mailprogramm genau das; dieselbe Adresse ein zweites Mal einzutragen ändert nichts und läuft beim nächsten Wechsel auseinander.
 
 **Ohne `PLATFORM_EMAIL_FROM` bleibt diese Post liegen** — bewusst, statt unter einem erfundenen Absender hinauszugehen. Der Worker meldet es einmal beim Start. Die Adresse muss bei Brevo verifiziert sein, sonst gilt Punkt 1 oben: 400, dauerhaft, ohne Wiederholung.

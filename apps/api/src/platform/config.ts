@@ -55,6 +55,12 @@ export interface Config {
    */
   platformNoticeEmail: string
   /**
+   * Postfach, an das ein neues Ticket und jede Antwort eines Kunden gemeldet
+   * werden (0208). Getrennt vom Hinweispostfach, weil hier ein Kunde wartet
+   * und dort ein Antrag.
+   */
+  platformSupportEmail: string
+  /**
    * Unterdomain fuer Haeuser ohne eigene Domain. Sie ist beim Anbieter
    * **einmal** hinterlegt; ein Haus bekommt darunter nur einen Namensteil.
    * Steht sie nicht, laesst sich dieser Weg nicht freigeben -- besser als
@@ -170,6 +176,7 @@ export function loadConfig(): Config {
     allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS),
     brevoApiKey: process.env.BREVO_API_KEY ?? null,
     platformNoticeEmail,
+    platformSupportEmail: process.env.PLATFORM_SUPPORT_EMAIL ?? 'support@staygrid.cloud',
     relayEmailDomain,
     vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null,
     secureTransport: isSecureTransport(nodeEnv, publicAppUrl),

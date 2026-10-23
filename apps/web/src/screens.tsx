@@ -50,6 +50,7 @@ const MobilHeute = faul(() => import('./components/mobil/MobilHeute.tsx'), 'Mobi
 const MobilPlan = faul(() => import('./components/mobil/MobilPlan.tsx'), 'MobilPlan')
 const MobilZimmer = faul(() => import('./components/mobil/MobilZimmer.tsx'), 'MobilZimmer')
 const MobilKasse = faul(() => import('./components/mobil/MobilKasse.tsx'), 'MobilKasse')
+const Hilfe = faul(() => import('./routes/Hilfe.tsx'), 'Hilfe')
 
 /*
  * Was `main.tsx` ueber den Bildschirmen oeffnet, ebenso erst bei Bedarf:
@@ -247,7 +248,12 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { key: 'breakfast', group: 'housekeeping', nav: 'nav.breakfast', permission: 'kitchen:breakfast',
     render: c => <Fruehstueck propertyId={c.propertyId} /> },
   { key: 'worktime', group: 'housekeeping', nav: 'nav.worktime', permission: 'worktime:manage',
-    render: c => <Arbeitszeit propertyId={c.propertyId} /> }
+    render: c => <Arbeitszeit propertyId={c.propertyId} /> },
+  // Anfragen an uns (0208). Im Menue "Einstellungen", damit es am Telefon
+  // unter "Mehr" steht; am Rechner fuehrt zusaetzlich ein Knopf in der
+  // Kopfleiste hierher, weil man Hilfe nicht in den Einstellungen sucht.
+  { key: 'support', group: 'settings', nav: 'nav.support', permission: 'support:ticket',
+    render: c => <Hilfe propertyId={c.propertyId} /> }
 ]
 
 /**

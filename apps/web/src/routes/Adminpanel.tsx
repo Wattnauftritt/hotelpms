@@ -14,6 +14,7 @@ import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { Anfrage, Liste, Ausrollen, LaufenderStand } from './SupportKonsole.tsx'
+import { TicketEingang } from './TicketEingang.tsx'
 
 /**
  * Das Adminpanel.
@@ -42,7 +43,8 @@ import { Anfrage, Liste, Ausrollen, LaufenderStand } from './SupportKonsole.tsx'
  * dasselbe.
  */
 
-type Reiter = 'accounts' | 'domains' | 'payments' | 'staff' | 'operations' | 'support'
+type Reiter = 'tickets' | 'accounts' | 'domains' | 'payments' | 'staff' | 'operations'
+  | 'support'
 
 const KONTO_ZUSTAND: Record<PlatformAccount['status'], TextKey> = {
   active: 'admin.status.active',
@@ -1226,6 +1228,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
    * anfragen und ausrollen, aber keine Kunden anlegen und keine Kollegen.
    */
   const reiters: Array<[Reiter, TextKey, string]> = ([
+    // Vorn: der Eingang ist das, womit ein Tag im Support beginnt.
+    ['tickets', 'admin.tab.tickets', 'platform:tickets'],
     ['accounts', 'admin.tab.accounts', 'platform:accounts'],
     ['domains', 'admin.domain.title', 'platform:accounts'],
     ['payments', 'admin.tab.payments', 'platform:billing'],
@@ -1235,7 +1239,9 @@ function AbsenderdomainFreigaben(): JSX.Element {
   ] as Array<[Reiter, TextKey, string]>)
     .filter(([, , recht]) => platformPermissions.includes(recht))
 
-  const [reiter, setReiter] = useState<Reiter | null>(null)
+  // Der Link aus der Mail an support@ fuehrt mit `?ticket=` direkt in den Eingang.
+  const [reiter, setReiter] = useState<Reiter | null>(
+    () => new URLSearchParams(window.location.search).has('ticket') ? 'tickets' : null)
   const offen = reiter !== null && reiters.some(([k]) => k === reiter)
     ? reiter
     : reiters[0]?.[0] ?? null
@@ -1287,6 +1293,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
           <KundeAnlegen />
         </div>
       )}
+
+      {offen === 'tickets' && <TicketEingang eigeneId={userId ?? null} />}
 
       {offen === 'domains' && <AbsenderdomainFreigaben />}
 

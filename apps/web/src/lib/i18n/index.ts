@@ -39,6 +39,7 @@ import { visitenkarte } from './visitenkarte.js'
 import { kurzbefehle } from './kurzbefehle.js'
 import { verkaufenAls } from './verkaufenAls.js'
 import { passkey } from './passkey.js'
+import { tickets } from './tickets.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -250,6 +251,7 @@ export type TextKey =
   | keyof typeof kurzbefehle
   | keyof typeof verkaufenAls
   | keyof typeof passkey
+  | keyof typeof tickets
 
 const texts: Record<TextKey, LocalizedText> = {
   ...common,
@@ -290,7 +292,8 @@ const texts: Record<TextKey, LocalizedText> = {
   ...visitenkarte,
   ...kurzbefehle,
   ...verkaufenAls,
-  ...passkey
+  ...passkey,
+  ...tickets
 }
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */
