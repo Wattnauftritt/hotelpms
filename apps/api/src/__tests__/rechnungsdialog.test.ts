@@ -233,6 +233,43 @@ describe('Korrektur einer Position', () => {
     expect(JSON.parse(neu.body)).toMatchObject({ netCent: 500, taxCent: 95, grossCent: 595 })
   })
 
+  /**
+   * Sven, 23.10.2026: "die alten falschen buchungen und die gegenbuchungen
+   * ... sollten automatisch nicht auf der rechnung landen sondern nur die
+   * korrekten uebernachtungsbuchungen".
+   */
+  it('laesst alte Position und Gegenbuchung von der Rechnung, sie bleiben am Folio', async () => {
+    const f = await folio()
+    const storno = await post(`/v1/folios/${f.ref}/charges/${f.nacht}/reverse`, {})
+    expect(storno.statusCode, storno.body).toBe(201)
+    const gegen = JSON.parse(storno.body).chargeId as number
+    const neu = await post(`/v1/folios/${f.ref}/charges`,
+      { description: 'Uebernachtung', grossCent: 9_630, taxRateBp: 700 })
+    expect(neu.statusCode, neu.body).toBe(201)
+
+    // Auch ausdruecklich gewaehlt kommt das Paar nicht auf den Beleg.
+    const v = await post(`/v1/folios/${f.ref}/invoice-preview`,
+      { chargeIds: [f.nacht, gegen, f.extra] })
+    expect(v.statusCode, v.body).toBe(200)
+    expect((JSON.parse(v.body) as { lines: Array<{ chargeId: number }> })
+      .lines.map(l => l.chargeId)).toEqual([f.extra])
+
+    const r = await post(`/v1/folios/${f.ref}/invoice`, {})
+    expect(r.statusCode, r.body).toBe(201)
+    const zeilen = await owner.query<{ id: string; invoiced: boolean }>(
+      `SELECT id, invoice_id IS NOT NULL AS invoiced FROM charge WHERE folio_id = $1 ORDER BY id`,
+      [f.id])
+    expect(zeilen.rows.map(z => [Number(z.id), z.invoiced])).toEqual([
+      [f.nacht, false], [f.extra, true], [gegen, false],
+      [Number(JSON.parse(neu.body).chargeId), true]])
+    const i = await owner.query<{ totals: { grossCent: number } }>(`SELECT totals FROM invoice`)
+    expect(i.rows[0]!.totals.grossCent).toBe(9_630 + 1_190)
+
+    // Nichts mehr offen, was auf eine Rechnung gehoerte.
+    const noch = await post(`/v1/folios/${f.ref}/invoice-preview`, {})
+    expect(noch.statusCode).toBe(422)
+  })
+
   it('bucht keine schon berechnete Position gegen', async () => {
     const f = await folio()
     expect((await post(`/v1/folios/${f.ref}/invoice`, {})).statusCode).toBe(201)

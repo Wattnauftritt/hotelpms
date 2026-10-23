@@ -13,6 +13,7 @@ import { Rechnungsdialog } from '../components/Rechnungsdialog.tsx'
 import { centAusEingabe, centAusEingabeMitVorzeichen } from '../lib/preisraster.js'
 import type { FolioView } from '@hotelpms/contracts'
 import { DateiLink } from '../components/DateiLink.tsx'
+import { offeneStornoPaare } from '../lib/stornoPaar.js'
 
 /**
  * Das Folio: Positionen, Zahlungsvermerke, Saldo.
@@ -50,7 +51,11 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
 
   // Die Kurtaxe steht auf keiner Rechnung (Beleg ist die Kurkarte). Zaehlte
   // sie als offen, boete die Maske ein Abrechnen an, das nichts abrechnet.
-  const offen = f.charges.filter(c => c.invoice_id === null && !c.city_tax)
+  // Ein offenes Storno-Paar ebenso wenig: alte Position und Gegenbuchung
+  // heben sich auf und stehen nur grau da (Sven, 23.10.2026).
+  const paar = offeneStornoPaare(f.charges)
+  const offen = f.charges.filter(c => c.invoice_id === null && !c.city_tax && !paar.has(c.id))
+  const aufgehoben = f.charges.filter(c => paar.has(c.id) && !c.city_tax)
   const gegengebucht = new Set(f.charges.map(c => c.reverses_id).filter(x => x !== null))
   const andere = f.stay.filter(x => x.folioRef !== folioRef)
   const umbuchbar = darfUmbuchen && online && f.folio.status === 'open' && andere.length > 0
@@ -90,14 +95,20 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
         <table className="w-full text-sm">
           <tbody className="divide-y divide-neutral-100">
             {f.charges.map(c => (
-              <tr key={c.id} className={c.gross_cent < 0 ? 'text-emerald-800' : ''}>
+              <tr key={c.id} className={paar.has(c.id) ? 'text-neutral-400'
+                                        : c.gross_cent < 0 ? 'text-emerald-800' : ''}>
                 <td className="px-3 py-1.5 w-24 text-neutral-500 tabular-nums">
                   {formatDate(c.business_date, locale)}
                 </td>
                 <td className="px-3 py-1.5">
-                  {c.description}
+                  <span className={paar.has(c.id) ? 'line-through' : ''}>{c.description}</span>
                   {c.reverses_id !== null && (
                     <span className="ml-1 text-xs text-neutral-500">({t('folio.reversal')})</span>
+                  )}
+                  {paar.has(c.id) && (
+                    <span className="ms-1 text-xs text-neutral-400">
+                      · {t('folio.reversedPair')}
+                    </span>
                   )}
                   {c.city_tax && (
                     <span className="ms-1 text-xs text-neutral-500">
@@ -117,6 +128,9 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
                 <td className="px-3 py-1.5 w-8 text-center">
                   {c.invoice_id !== null && (
                     <span title={t('folio.invoiced')} className="text-neutral-400">🔒</span>
+                  )}
+                  {paar.has(c.id) && (
+                    <span title={t('folio.reversedPair')} className="text-neutral-300">🔒</span>
                   )}
                 </td>
                 {umbuchbar && (
@@ -266,6 +280,7 @@ export function Folio({ folioRef, propertyId, permissions, onFolio, onClose }: {
           Haertegrad 1; was danach nicht stimmt, braucht eine Stornorechnung. */}
       {offen.length > 0 && online && (dialog
         ? <Rechnungsdialog folioRef={folioRef} propertyId={propertyId} offen={offen}
+                           aufgehoben={aufgehoben}
                            empfaenger={f.recipient} onClose={() => setDialog(false)} />
         : (
           <section className="bg-white border border-neutral-200 rounded-sm p-3">

@@ -46,11 +46,17 @@ const FELD_TEXT = {
 
 const eingabe = 'mt-0.5 w-full border border-neutral-300 rounded-sm px-2 py-1 text-sm'
 
-export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClose }: {
+export function Rechnungsdialog({ folioRef, propertyId, offen, aufgehoben = [], empfaenger,
+                                  onClose }: {
   folioRef: string
   propertyId: number
-  /** Offene Positionen ohne Kurtaxe, wie das Folio sie zeigt. */
+  /** Offene Positionen ohne Kurtaxe und ohne Storno-Paare, wie das Folio sie zeigt. */
   offen: Charge[]
+  /**
+   * Offene Storno-Paare: nur zur Ansicht, grau und nicht waehlbar. Die
+   * Schnittstelle nimmt sie auf keine Rechnung (Sven, 23.10.2026).
+   */
+  aufgehoben?: Charge[]
   empfaenger: InvoiceRecipient
   onClose: () => void
 }): JSX.Element {
@@ -188,8 +194,8 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
         </button>
       </div>
 
-      <Positionen folioRef={folioRef} offen={offen} abgewaehlt={abgewaehlt}
-                  setAbgewaehlt={setAbgewaehlt} texte={texte} />
+      <Positionen folioRef={folioRef} offen={offen} aufgehoben={aufgehoben}
+                  abgewaehlt={abgewaehlt} setAbgewaehlt={setAbgewaehlt} texte={texte} />
 
       <label className="flex flex-wrap items-center gap-2 text-sm">
         <input type="checkbox" checked={zwischen} onChange={e => setZwischen(e.target.checked)} />
@@ -324,9 +330,10 @@ export function Rechnungsdialog({ folioRef, propertyId, offen, empfaenger, onClo
   )
 }
 
-function Positionen({ folioRef, offen, abgewaehlt, setAbgewaehlt, texte }: {
+function Positionen({ folioRef, offen, aufgehoben, abgewaehlt, setAbgewaehlt, texte }: {
   folioRef: string
   offen: Charge[]
+  aufgehoben: Charge[]
   abgewaehlt: ReadonlySet<number>
   setAbgewaehlt: (s: ReadonlySet<number>) => void
   /** Positionstext mit Zimmer und Gast aus der Vorschau, je Buchung. */
@@ -371,6 +378,26 @@ function Positionen({ folioRef, offen, abgewaehlt, setAbgewaehlt, texte }: {
           </li>
         ))}
       </ul>
+      {/* Sichtbar, damit niemand die alte Nacht vermisst, aber ohne
+          Haken: abwaehlen musste man sie bisher von Hand. */}
+      {aufgehoben.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs text-neutral-500">{t('rdlg.reversedPairs')}</div>
+          <ul className="divide-y divide-neutral-100 text-sm text-neutral-400">
+            {aufgehoben.map(c => (
+              <li key={c.id} className="py-1 flex flex-wrap items-center gap-2">
+                <input type="checkbox" checked={false} disabled aria-label={c.description} />
+                <span className="w-24">{formatDate(c.business_date, locale)}</span>
+                <span className="grow line-through">{c.description}</span>
+                <span className="text-xs">{c.tax_rate_bp / 100} %</span>
+                <span className="w-24 text-end tabular-nums">
+                  {formatMoney(c.gross_cent, locale)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="text-xs text-neutral-500">{t('rdlg.positionsHint')}</div>
       <NeueZeile folioRef={folioRef} />
     </div>
