@@ -692,7 +692,7 @@ export function Tape({ propertyId, onFolio, onCheckIn }: {
                       onUnassign={reservationRef =>
                         gezogen(vorschlag(reservationRef, r => ({
                           resourceId: null,
-                          arrival: r.stay_arrival, departure: r.stay_departure })))}
+                          arrival: r.arrival, departure: r.departure })))}
                       onKontext={setKontext} />}
       {daten !== undefined && (
         <QuerLeiste von={von} tage={tage} onVon={setVon} links={LABEL_BREITE} />
