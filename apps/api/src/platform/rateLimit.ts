@@ -171,6 +171,9 @@ export const KOPPLUNG_FEHLVERSUCHE: RateLimitOptions = {
 // ein Kiosk tut es einmal je Start, nicht je Frage.
 const TEURE_PFADE = ['/v1/auth/login', '/v1/auth/workstation-switch',
                      '/v1/auth/password-reset', '/oauth/token',
+                     // Passkey-Anmeldung (0207): prueft kein ratbares
+                     // Geheimnis, legt aber je Aufruf eine Herausforderung an.
+                     '/v1/auth/passkey/login',
                      '/v1/terminal/pair', '/v1/terminal/resume',
                      // Nachname oder PLZ der Gaestemappe (0147). Zaehlt
                      // ausserdem je Zimmer in der Datenbank; diese Grenze
@@ -214,7 +217,8 @@ function zeigtZugangsdaten(req: FastifyRequest): boolean {
  * Der Personenwechsel steht nicht hier; er zaehlt seine Fehlversuche selbst
  * und kommt an einem vollen Tresen oefter vor, als die Grenze erlaubt.
  */
-const IMMER_GEZAEHLT = ['/v1/auth/login', '/v1/auth/password-reset']
+const IMMER_GEZAEHLT = ['/v1/auth/login', '/v1/auth/password-reset',
+                        '/v1/auth/passkey/login']
 
 /**
  * Der Pfad, wie Fastify ihn zugeordnet hat. Die rohe URL liesse sich mit

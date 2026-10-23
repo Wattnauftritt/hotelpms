@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2'
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
@@ -215,8 +215,109 @@ async function kennwortVersuchGelungen(
     [userId, herkunft])
 }
 
+/**
+ * Das eigene Kennwort einer angemeldeten Person pruefen, mit denselben
+ * Sperren und Zaehlern wie die Anmeldung. Wirft bei Sperre oder falschem
+ * Kennwort; kehrt nur zurueck, wenn es stimmte.
+ *
+ * Fuer Handlungen ausserhalb dieser Datei, die eine Sitzung allein nicht
+ * genuegen lassen -- einen Passkey anlegen etwa. Die allgemeine
+ * Ratenbegrenzung erreicht eine angemeldete Anfrage nicht (H4, Dokument
+ * 25), also zaehlt diese Pruefung selbst, auf den Zaehler der Anmeldung.
+ */
+export async function kennwortBestaetigen(
+  req: FastifyRequest, userId: number, kennwort: string
+): Promise<void> {
+  const { rows } = await req.pool.query<{ password_hash: string | null
+                                          locked_until: string | null }>(
+    `SELECT password_hash, locked_until::text FROM app_user WHERE id = $1`, [userId])
+  const u = rows[0]
+  if (u === undefined) throw Errors.unauthorized()
+  if (u.locked_until !== null && Date.parse(u.locked_until) > Date.now()) {
+    throw Errors.unauthorized('auth.tooManyAttempts')
+  }
+  if (!await bucheKennwortVersuch(req.pool, userId, req.ip)) {
+    throw Errors.unauthorized('auth.tooManyAttempts')
+  }
+  if (!await pruefeKennwort(u.password_hash, kennwort)) {
+    await req.pool.query(
+      `UPDATE app_user SET failed_login_count = failed_login_count + 1 WHERE id = $1`,
+      [userId])
+    throw Errors.unauthorized('auth.badCredentials')
+  }
+  await kennwortVersuchGelungen(req.pool, userId, req.ip)
+}
+
 function neueSitzungsKennung(): string {
   return randomBytes(32).toString('base64url')
+}
+
+/**
+ * Eine Sitzung anlegen und im Browser als Cookie setzen, in der App als
+ * Token zurueckgeben. Kennwort- und Passkey-Anmeldung teilen sie: zwei
+ * Stellen, die eine Sitzung anlegen, laufen beim naechsten Cookie-Attribut
+ * auseinander, und dann ist eine von beiden die schwaechere Tuer.
+ */
+export async function sitzungAnlegen(
+  req: FastifyRequest, reply: FastifyReply, userId: number, fuerApp: boolean
+): Promise<{ ok: true; token?: string }> {
+  /*
+   * Die eigene App bekommt dieselbe Sitzung als Token statt als Cookie
+   * (0191, Plan app/plan.md). Ihre Seiten liegen unter einer anderen
+   * Herkunft, und ein `SameSite=Strict`-Cookie kommt dort nicht an.
+   *
+   * Damit liegt in der App ein Token im JavaScript, was oben fuer den
+   * Browser ausdruecklich vermieden wird. Dort hiesse das: ein
+   * eingeschleustes Skript auf app.staygrid.cloud nimmt die Sitzung
+   * mit. In der App laedt die WebView nur die Dateien, die sie selbst
+   * mitbringt, unter einer eigenen Content-Security-Policy, nichts vom
+   * Netz; abgelegt wird das Token im Schluesselbund des Telefons, nicht
+   * in `localStorage`. Und es ist eine gewoehnliche Sitzung: Abmelden,
+   * Kennwortwechsel und Stilllegen ziehen es sofort zurueck, und es
+   * traegt nicht als Cookie.
+   */
+  const sessionId = (fuerApp ? APP_TOKEN_PREFIX : '') + neueSitzungsKennung()
+  await req.pool.query(
+    `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
+                               idle_window, ip, user_agent, client)
+     VALUES ($1,$2, now() + ($3 || ' hours')::interval,
+                    now() + ($4 || ' hours')::interval,
+                    ($3 || ' hours')::interval, $5, $6, $7)`,
+    [sessionId, userId,
+     fuerApp ? APP_SITZUNG_UNTAETIG_STUNDEN : SITZUNG_UNTAETIG_STUNDEN,
+     fuerApp ? APP_SITZUNG_ABSOLUT_STUNDEN : SITZUNG_ABSOLUT_STUNDEN,
+     req.ip, (req.headers['user-agent'] ?? '').slice(0, 300),
+     fuerApp ? 'app' : 'web'])
+  if (fuerApp) return { ok: true, token: sessionId }
+
+  reply.setCookie(COOKIE, sessionId, {
+    httpOnly: true,                       // kein Zugriff aus JavaScript
+    /*
+     * `strict`, nicht `lax` (H6, Dokument 25).
+     *
+     * `lax` schickt das Cookie bei einer **Navigation der obersten
+     * Ebene** mit — ein `window.open`, ein Meta-Refresh, ein angeklickter
+     * Link. Damit konnte eine fremde Seite `GET /v1/guests/:ref/
+     * id-document` auslösen, und diese Route schreibt: jeder Abruf eines
+     * Ausweismerkmals wird protokolliert. Lesen konnte die fremde Seite
+     * die Antwort nicht — es war kein Datenabfluss —, aber sie konnte
+     * einen Prüfeintrag erzeugen, der aussagt, das Opfer habe die
+     * Ausweisnummer eines Gastes gelesen. Getroffen hätte das
+     * ausgerechnet die Eigenschaft, für die es diesen Eintrag gibt: seine
+     * Beweiskraft.
+     *
+     * Der Preis ist gering, weil die Anwendung **eine** Herkunft ist und
+     * von außen niemand auf sie verlinkt: es gibt keinen Zugang, bei dem
+     * ein Klick von einer anderen Seite in einer angemeldeten Sitzung
+     * landen soll.
+     */
+    sameSite: 'strict',
+    // An die oeffentliche Adresse gekoppelt, nicht nur an NODE_ENV (N6).
+    secure: config.secureTransport,
+    path: '/',
+    maxAge: SITZUNG_ABSOLUT_STUNDEN * 3600
+  })
+  return { ok: true }
 }
 
 export function authRoutes(app: FastifyInstance): void {
@@ -289,69 +390,13 @@ export function authRoutes(app: FastifyInstance): void {
         throw Errors.unauthorized('auth.badCredentials')
       }
 
-      /*
-       * Die eigene App bekommt dieselbe Sitzung als Token statt als Cookie
-       * (0191, Plan app/plan.md). Ihre Seiten liegen unter einer anderen
-       * Herkunft, und ein `SameSite=Strict`-Cookie kommt dort nicht an.
-       *
-       * Damit liegt in der App ein Token im JavaScript, was oben fuer den
-       * Browser ausdruecklich vermieden wird. Dort hiesse das: ein
-       * eingeschleustes Skript auf app.staygrid.cloud nimmt die Sitzung
-       * mit. In der App laedt die WebView nur die Dateien, die sie selbst
-       * mitbringt, unter einer eigenen Content-Security-Policy, nichts vom
-       * Netz; abgelegt wird das Token im Schluesselbund des Telefons, nicht
-       * in `localStorage`. Und es ist eine gewoehnliche Sitzung: Abmelden,
-       * Kennwortwechsel und Stilllegen ziehen es sofort zurueck, und es
-       * traegt nicht als Cookie.
-       */
       const fuerApp = b.client === 'app'
-      const sessionId = (fuerApp ? APP_TOKEN_PREFIX : '') + neueSitzungsKennung()
-      await req.pool.query(
-        `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
-                                   idle_window, ip, user_agent, client)
-         VALUES ($1,$2, now() + ($3 || ' hours')::interval,
-                        now() + ($4 || ' hours')::interval,
-                        ($3 || ' hours')::interval, $5, $6, $7)`,
-        [sessionId, benutzer.id,
-         fuerApp ? APP_SITZUNG_UNTAETIG_STUNDEN : SITZUNG_UNTAETIG_STUNDEN,
-         fuerApp ? APP_SITZUNG_ABSOLUT_STUNDEN : SITZUNG_ABSOLUT_STUNDEN,
-         req.ip, (req.headers['user-agent'] ?? '').slice(0, 300),
-         fuerApp ? 'app' : 'web'])
+      const antwort = await sitzungAnlegen(req, reply, benutzer.id, fuerApp)
       await req.pool.query(
         `UPDATE app_user SET failed_login_count = 0, locked_until = NULL,
                              last_login_at = now() WHERE id = $1`, [benutzer.id])
       await kennwortVersuchGelungen(req.pool, benutzer.id, herkunft)
-
-      if (fuerApp) return { ok: true, token: sessionId }
-
-      reply.setCookie(COOKIE, sessionId, {
-        httpOnly: true,                       // kein Zugriff aus JavaScript
-        /*
-         * `strict`, nicht `lax` (H6, Dokument 25).
-         *
-         * `lax` schickt das Cookie bei einer **Navigation der obersten
-         * Ebene** mit — ein `window.open`, ein Meta-Refresh, ein angeklickter
-         * Link. Damit konnte eine fremde Seite `GET /v1/guests/:ref/
-         * id-document` auslösen, und diese Route schreibt: jeder Abruf eines
-         * Ausweismerkmals wird protokolliert. Lesen konnte die fremde Seite
-         * die Antwort nicht — es war kein Datenabfluss —, aber sie konnte
-         * einen Prüfeintrag erzeugen, der aussagt, das Opfer habe die
-         * Ausweisnummer eines Gastes gelesen. Getroffen hätte das
-         * ausgerechnet die Eigenschaft, für die es diesen Eintrag gibt: seine
-         * Beweiskraft.
-         *
-         * Der Preis ist gering, weil die Anwendung **eine** Herkunft ist und
-         * von außen niemand auf sie verlinkt: es gibt keinen Zugang, bei dem
-         * ein Klick von einer anderen Seite in einer angemeldeten Sitzung
-         * landen soll.
-         */
-        sameSite: 'strict',
-        // An die oeffentliche Adresse gekoppelt, nicht nur an NODE_ENV (N6).
-        secure: config.secureTransport,
-        path: '/',
-        maxAge: SITZUNG_ABSOLUT_STUNDEN * 3600
-      })
-      return { ok: true }
+      return antwort
     }
   })
 
