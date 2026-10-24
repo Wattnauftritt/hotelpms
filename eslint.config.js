@@ -37,5 +37,18 @@ export default tseslint.config(
   {
     files: ['packages/db/**/*.ts', 'apps/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'warn' }
+  },
+  {
+    // Ein Kanaladapter geht nur ueber kanalAbruf() ins Netz: feste Ziele,
+    // Zeitgrenze, Groessengrenze (Bedrohungsanalyse 23.10.2026, T10). Ein
+    // eigenes fetch() mit der Adresse aus den Zugangsdaten waere ein Weg fuer
+    // Anfragefaelschung vom Server aus.
+    files: ['apps/worker/src/channel/**/*.ts'],
+    ignores: ['apps/worker/src/channel/abruf.ts'],
+    rules: {
+      'no-restricted-globals': ['error', {
+        name: 'fetch', message: 'Kanaladapter rufen ueber kanalAbruf() aus channel/abruf.ts ab.'
+      }]
+    }
   }
 )

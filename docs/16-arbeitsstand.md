@@ -565,6 +565,12 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Die Gästemappe** sagt unten, dass sie nie nach Kartendaten fragt. Ein überklebter QR-Code auf der Zimmerkarte führt sonst zu einer Mappe, die „Late Check-out, Karte eingeben“ verkauft.
 - Alle Sätze in 33 Sprachen.
 
+**Siebter Teil: Kanaladapter** (T10; `packages/domain/src/fremdtext.ts`, `kanalSignatur.ts`, `apps/worker/src/channel/abruf.ts`). Vorausschauend, bevor der erste Adapter Daten bringt.
+
+- **Eingehende Buchungen sind fremde Eingaben.** `kanalRumpfPruefen()` bereinigt Name, Mail, Telefon, Notiz und Portal: Steuer- und Richtungszeichen fort, Weißraum gefaltet, nach Zeichen gekürzt statt abgewiesen (eine abgewiesene Kanalbuchung fehlte im Plan). Eine kaputte Adresse oder Rufnummer wird verworfen. Das gilt für das Adminpanel und jeden Adapter, weil es im Kern steht.
+- **Ausgehend nur zu festen Zielen.** `kanalAbruf()` kennt die Basisadressen der Anbieter (`KANAL_ZIELE`), nimmt vom Adapter nur einen Pfad, folgt keiner Weiterleitung, bricht nach 20 Sekunden und bei mehr als 4 MB ab. ESLint verbietet `fetch` im Ordner der Adapter.
+- **Nachrichten vom Anbieter** prüft `kanalSignaturGueltig()`: HMAC-SHA256 über Zeitstempel und Rumpf, konstante Zeit, fünf Minuten Fenster. Ohne Signatur beim Anbieter wird abgeholt, nicht empfangen.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**
