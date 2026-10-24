@@ -9,6 +9,7 @@ import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/best
 import { hinweisText } from '../platform/texte.js'
 import { hashToken } from '../platform/auth.js'
 import { fremdesNetzMelden } from '../platform/maschinennetz.js'
+import { koederZugangBenutzt } from '../platform/koederMelden.js'
 import { accountFor, accountRight, accountsWith, can, type Principal } from '../platform/context.js'
 import { isPermission, PERMISSIONS, type Permission } from '../platform/permissions.js'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
@@ -231,6 +232,17 @@ export function oauthRoutes(app: FastifyInstance): void {
           'Kennung und Geheimnis fehlen.')
       }
 
+      /*
+       * Ein Koederzugang (Migration 0213) traegt nie. Seine Kennung steht
+       * nur dort, wo der Betrieb sie als Falle abgelegt hat; wer sie
+       * benutzt, hat diese Stelle gelesen -- mit oder ohne das richtige
+       * Geheimnis. Die Antwort ist dieselbe wie bei jedem falschen Zugang.
+       */
+      if (await koederZugangBenutzt(req, daten.id)) {
+        return oauthFehler(reply, 401, 'invalid_client',
+          'Kennung oder Geheimnis stimmt nicht.')
+      }
+
       // Ueber eine SECURITY-DEFINER-Funktion: `oauth_client` traegt eine
       // Zeilenrichtlinie ueber den Account, und den kennt man erst, wenn der
       // Client gefunden ist (Migration 0023).
@@ -378,6 +390,9 @@ export function oauthRoutes(app: FastifyInstance): void {
            FROM oauth_client c
            LEFT JOIN oauth_access_token t ON t.client_id = c.id
           WHERE c.account_id = ANY($1::bigint[])
+            -- Koederzugaenge (Migration 0213) sieht der Kunde nicht: wer
+            -- einen Zugang sieht, den niemand kennt, raeumt ihn auf.
+            AND NOT c.is_decoy
           GROUP BY c.id
           ORDER BY c.id`,
         // Nur die Accounts, in denen das Recht besteht (Sicherheitsaudit
@@ -440,7 +455,7 @@ export function oauthRoutes(app: FastifyInstance): void {
         const c = await client.query<{ id: number; account_id: number; status: string
                                        scopes: string[]; property_ids: number[] }>(
           `SELECT id, account_id, status, scopes, property_ids
-             FROM oauth_client WHERE public_ref = $1 FOR UPDATE`,
+             FROM oauth_client WHERE public_ref = $1 AND NOT is_decoy FOR UPDATE`,
           [clientRef])
         if (c.rowCount === 0) throw Errors.notFound('res.oauthClient')
         const z = c.rows[0]!
@@ -526,7 +541,7 @@ export function oauthRoutes(app: FastifyInstance): void {
       return tx(req.pool, req, async client => {
         const c = await client.query<{ id: number; account_id: number; property_ids: number[] }>(
           `SELECT id, account_id, property_ids
-             FROM oauth_client WHERE public_ref = $1 FOR UPDATE`, [clientRef])
+             FROM oauth_client WHERE public_ref = $1 AND NOT is_decoy FOR UPDATE`, [clientRef])
         if (c.rowCount === 0) throw Errors.notFound('res.oauthClient')
         // Sperren darf, wer den Zugang in dieser Reichweite verwalten darf --
         // sonst legte die Direktion eines Hauses das Umsystem aller still.

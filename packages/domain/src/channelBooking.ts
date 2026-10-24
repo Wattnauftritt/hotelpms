@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { fremdEmail, fremdTelefon, fremdText } from './fremdtext.js'
 import { isIsoDate, nightsBetween, eachNight, addDays } from './dates.js'
 import { preisJeNacht } from './groupPrice.js'
 import { roomSortAuto, roomSortMarkDue, roomSortSetting, roomSortToday, roomSortLock,
@@ -235,11 +236,32 @@ export function kanalRumpfPruefen(roh: unknown): KanalRumpf & { quelle: string |
       && (typeof body.channelCode !== 'string' || body.channelCode.length > 50)) {
     throw DomainError.validation({ channelCode: ['field.invalid'] })
   }
-  if (body.guest !== undefined && (typeof body.guest?.lastName !== 'string'
-      || body.guest.lastName.trim() === '')) {
-    throw DomainError.validation({ 'guest.lastName': ['field.required'] })
+  /*
+   * Name, Kontakt und Notiz kommen aus einem fremden System und werden
+   * bereinigt, bevor sie irgendwo stehen (`fremdText`, Bedrohungsanalyse
+   * 23.10.2026, T10). Hier und nicht im Adapter: dieselbe Pruefung laeuft
+   * fuer das Adminpanel und fuer jeden kuenftigen Kanal, und ein Adapter,
+   * der es vergaesse, faellt nicht auf.
+   */
+  let guest: KanalRumpf['guest']
+  if (body.guest !== undefined) {
+    const lastName = fremdText(body.guest?.lastName, 100)
+    if (lastName === undefined) throw DomainError.validation({ 'guest.lastName': ['field.required'] })
+    const firstName = fremdText(body.guest.firstName, 100)
+    const email = fremdEmail(body.guest.email)
+    const phone = fremdTelefon(body.guest.phone)
+    guest = { lastName, ...(firstName === undefined ? {} : { firstName }),
+              ...(email === undefined ? {} : { email }), ...(phone === undefined ? {} : { phone }) }
   }
-  return { ...body, quelle: kanalZeitpunktPruefen(body.sourceUpdatedAt, 'sourceUpdatedAt') }
+  const notes = fremdText(body.notes, 2000, true)
+  const channelCode = fremdText(body.channelCode, 50)
+  return { segments: body.segments,
+           ...(body.totalCent === undefined ? {} : { totalCent: body.totalCent }),
+           ...(body.sourceUpdatedAt === undefined ? {} : { sourceUpdatedAt: body.sourceUpdatedAt }),
+           ...(guest === undefined ? {} : { guest }),
+           ...(notes === undefined ? {} : { notes }),
+           ...(channelCode === undefined ? {} : { channelCode }),
+           quelle: kanalZeitpunktPruefen(body.sourceUpdatedAt, 'sourceUpdatedAt') }
 }
 
 /**

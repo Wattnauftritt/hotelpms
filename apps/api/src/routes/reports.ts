@@ -10,6 +10,8 @@ import { assertNotTraining } from '../platform/training.js'
 import { zimmerNachNummer } from '../platform/zimmerReihenfolge.js'
 import { offeneWuensche } from '../platform/gastwuensche.js'
 import { sendeJsonExport, type JsonExportDatei } from '../platform/exportDatei.js'
+import { koederAdressen, koederKennung, koederErsetzen } from '../platform/koeder.js'
+import type { Principal } from '../platform/context.js'
 import { formelsicher, writeCsv as csv } from '../platform/csv.js'
 import { sendeZip } from '../platform/zipDatei.js'
 import { gobdArchiv } from '../platform/gobdArchiv.js'
@@ -1050,8 +1052,14 @@ export function reportRoutes(app: FastifyInstance): void {
       const exportedAt = new Date().toISOString()
       await exportMelden(req, id, 'tenant', { bestaetigen: true })
 
+      // Der Koedergast erscheint mit der Kennung dessen, der exportiert hat
+      // (Migration 0213).
+      const adressen = await koederAdressen(req.pool)
+      const kennung = koederKennung(req.principal as Principal, 'export')
       return sendeJsonExport(reply, datei => tx(req.pool, req,
-        client => schreibeMandantenexport(client, id, datei, exportedAt)))
+        client => schreibeMandantenexport(client, id, datei, exportedAt)),
+        kennung === null || adressen.length === 0
+          ? undefined : text => koederErsetzen(text, adressen, kennung))
     }
   })
 }

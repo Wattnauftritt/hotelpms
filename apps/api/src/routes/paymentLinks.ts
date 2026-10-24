@@ -131,11 +131,13 @@ async function lage(
     invoice_id: number | null
     amount_cent: string; valid_until: string; revoked: boolean
     property_name: string; currency: string; is_training: boolean
+    phone: string | null
     arrival: string | null; departure: string | null; language: string | null
     bezahlt: boolean }>(
     `SELECT l.id, l.folio_id, f.public_ref AS folio_ref, l.deposit_request_id, l.invoice_id,
             l.amount_cent, l.valid_until::text, l.revoked_at IS NOT NULL AS revoked,
             p.name AS property_name, p.currency, p.is_training,
+            nullif(btrim(p.invoice_phone), '') AS phone,
             r.arrival::text, r.departure::text, g.language,
             EXISTS (SELECT 1 FROM payment_intent b
                      WHERE b.payment_link_id = l.id AND b.status = 'succeeded') AS bezahlt
@@ -154,7 +156,8 @@ async function lage(
     propertyName: z.property_name, currency: z.currency,
     ...(z.arrival === null ? {} : { arrival: z.arrival }),
     ...(z.departure === null ? {} : { departure: z.departure }),
-    deposit: z.deposit_request_id !== null, validUntil: z.valid_until
+    deposit: z.deposit_request_id !== null, validUntil: z.valid_until,
+    ...(z.phone === null ? {} : { phone: z.phone })
   }
   const grund = { lang, daten, linkId: z.id, propertyId: s.property_id,
                   accountId: s.account_id,

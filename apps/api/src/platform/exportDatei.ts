@@ -38,9 +38,18 @@ export const EXPORT_STAPEL = 2000
 export class JsonExportDatei {
   private cursoren = 0
 
-  private constructor (private readonly fh: FileHandle) {}
+  /**
+   * `markieren` laeuft ueber jedes geschriebene Stueck, fuer die
+   * Kennzeichnung der Koeder (platform/koeder.ts). Ein Stueck ist immer ein
+   * ganzer Wert oder ganze Zeilen, eine Adresse reisst also nie mitten
+   * durch.
+   */
+  private constructor (private readonly fh: FileHandle,
+                       private readonly markieren: (text: string) => string) {}
 
-  static async anlegen(): Promise<JsonExportDatei> {
+  static async anlegen(
+    markieren: (text: string) => string = t => t
+  ): Promise<JsonExportDatei> {
     const pfad = join(tmpdir(), `staygrid-export-${randomUUID()}.json`)
     const fh = await open(pfad, 'wx+', 0o600)
     try {
@@ -49,12 +58,12 @@ export class JsonExportDatei {
       await fh.close()
       throw err
     }
-    return new JsonExportDatei(fh)
+    return new JsonExportDatei(fh, markieren)
   }
 
   /** Haengt Text an. Jeder Aufruf gibt die Ereignisschleife frei. */
   async schreibe(text: string): Promise<void> {
-    await this.fh.write(text)
+    await this.fh.write(this.markieren(text))
   }
 
   /** Haengt einen Wert so an, wie `JSON.stringify` ihn im Ganzen schriebe. */
@@ -127,9 +136,10 @@ export class JsonExportDatei {
  * auf den Empfaenger wartet.
  */
 export async function sendeJsonExport(
-  reply: FastifyReply, fuellen: (datei: JsonExportDatei) => Promise<void>
+  reply: FastifyReply, fuellen: (datei: JsonExportDatei) => Promise<void>,
+  markieren?: (text: string) => string
 ): Promise<FastifyReply> {
-  const datei = await JsonExportDatei.anlegen()
+  const datei = await JsonExportDatei.anlegen(markieren)
   let strom: Readable
   let bytes: number
   try {

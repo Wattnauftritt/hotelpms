@@ -550,6 +550,27 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Die Hausleitung beendet alle Anmeldungen eines Mitarbeiters** („Überall abmelden“ unter Benutzer), ohne dessen Kennwort. Wer eine Rolle im ganzen Betrieb hat, nur mit dem Recht im Betrieb.
 - **Ein Maschinenzugang gilt nur aus den Netzen, die der Betrieb nennt** (`oauth_client.allowed_networks`, leer heißt überall). Geprüft bei der Ausgabe des Tokens und bei jeder Anfrage damit, denn ein unterwegs abgegriffenes Token trüge sonst eine Stunde lang von überall. Ein richtiges Geheimnis aus einem fremden Netz bekommt dieselbe Antwort wie ein falsches und wird `client_origin_denied`, einmal je Zugang und Stunde, mit Hinweis an die Leitung. Netze ändern verlangt eine Bestätigung: wer sie leert, öffnet den Zugang wieder.
 
+**Fünfter Teil: Köder** (E5; Migration `0213`, `routes/koeder.ts`, `platform/koeder.ts`).
+
+- **Ein Ködergast je Haus**, angelegt im Adminpanel unter dem Kunden. Ein erfundener Name, eine Adresse auf einer Catch-all-Domain, die nur bei uns ankommt (`DECOY_EMAIL_DOMAIN`, ohne sie keine Köder), und eine **stornierte** Buchung fünf bis sieben Monate voraus: sie bindet keine Kapazität, steht in keiner Belegung und keiner Kurtaxe, wandert aber mit jedem Abruf und jedem Export hinaus wie jede andere. Kommt an diese Adresse Post, ist ein Datenbestand draußen.
+- **Die Adresse nennt den Weg.** Gespeichert steht `<tag>@<domain>`; jede gezählte Leseroute und der Mandantenexport geben stattdessen `<tag>-c<zugang>@`, `-u<benutzer>@`, `-e<benutzer>@` (Export) oder `-t<terminal>@` aus. Ersetzt wird im fertigen Antworttext, nicht in den Abfragen, damit der nächste Endpunkt mit Gästen nicht ohne Kennzeichnung dazukommt. Post an die gespeicherte Fassung heißt: Datenbank oder Sicherung.
+- **Ein Köderzugang** ist ein Maschinenzugang ohne Umsystem, `oauth_client.is_decoy`. Der Kunde sieht ihn in seiner Liste nicht und kann ihn nicht ändern; die Tokenausgabe weist ihn immer ab, mit derselben Antwort wie bei einem falschen Geheimnis, und meldet `honeytoken`, einmal je Zugang und Stunde. Sein Geheimnis gehört dorthin, wo ein Angreifer suchen würde.
+- **Der Kunde erfährt nichts vom Köder**, bis er anschlägt: kein Sicherheitsereignis beim Anlegen, das Anlegen steht nur im Protokoll. Wer beim Kunden einen Zugang hat, auch einen übernommenen, soll den Köder nicht aussortieren können.
+- **Grenze.** Speichert eine Rezeptionskraft den Ködergast nach dem Öffnen, steht danach ihre Fassung (`-u…`) in der Datenbank. Der Köder schlägt dann weiter an, nennt aber den falschen Weg. Entfernt wird über `decoy_remove()`, das den Gast über `guest_erase_one()` anonymisiert.
+
+**Sechster Teil: Phishing an Gäste** (T8; `packages/domain/src/email.ts`, `payPage.ts`, `GastMappe.tsx`).
+
+- **Ein fester Satz in jeder Gastpost mit Geldbezug** (Buchungsbestätigung, Rechnung mit offenem Betrag, Erinnerung und Mahnung, Zahlungslink): wir fragen nie per WhatsApp, SMS oder Telefon nach Kartendaten und teilen eine neue Bankverbindung nie per E-Mail mit. Bei einem Link dazu, mit welcher Adresse er beginnt, genommen aus dem Link selbst.
+- **Die Zahlungsseite** trägt denselben Satz und die Rufnummer des Hauses aus den Stammdaten (`invoice_phone`), nie aus dem Link: der Gast fragt auf einem Weg nach, den der Absender einer falschen Seite nicht in der Hand hat.
+- **Die Gästemappe** sagt unten, dass sie nie nach Kartendaten fragt. Ein überklebter QR-Code auf der Zimmerkarte führt sonst zu einer Mappe, die „Late Check-out, Karte eingeben“ verkauft.
+- Alle Sätze in 33 Sprachen.
+
+**Siebter Teil: Kanaladapter** (T10; `packages/domain/src/fremdtext.ts`, `kanalSignatur.ts`, `apps/worker/src/channel/abruf.ts`). Vorausschauend, bevor der erste Adapter Daten bringt.
+
+- **Eingehende Buchungen sind fremde Eingaben.** `kanalRumpfPruefen()` bereinigt Name, Mail, Telefon, Notiz und Portal: Steuer- und Richtungszeichen fort, Weißraum gefaltet, nach Zeichen gekürzt statt abgewiesen (eine abgewiesene Kanalbuchung fehlte im Plan). Eine kaputte Adresse oder Rufnummer wird verworfen. Das gilt für das Adminpanel und jeden Adapter, weil es im Kern steht.
+- **Ausgehend nur zu festen Zielen.** `kanalAbruf()` kennt die Basisadressen der Anbieter (`KANAL_ZIELE`), nimmt vom Adapter nur einen Pfad, folgt keiner Weiterleitung, bricht nach 20 Sekunden und bei mehr als 4 MB ab. ESLint verbietet `fetch` im Ordner der Adapter.
+- **Nachrichten vom Anbieter** prüft `kanalSignaturGueltig()`: HMAC-SHA256 über Zeitstempel und Rumpf, konstante Zeit, fünf Minuten Fenster. Ohne Signatur beim Anbieter wird abgeholt, nicht empfangen.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**

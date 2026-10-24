@@ -43,6 +43,12 @@ export interface PayPageData {
   validUntil?: string
   /** Wohin der Knopf fuehrt. Relativ, auf dieselbe Herkunft. */
   checkoutHref?: string
+  /**
+   * Rufnummer des Hauses aus den Stammdaten (`property.invoice_phone`), nie
+   * aus dem Link oder dem Auftrag: der Gast soll ueber einen Weg nachfragen
+   * koennen, den kein Absender einer falschen Seite in der Hand hat.
+   */
+  phone?: string
 }
 
 interface Seitentexte {
@@ -63,6 +69,9 @@ interface Seitentexte {
   unbekannt: string
   zurueck: string
   abgebrochen: string
+  /** Bedrohungsanalyse 23.10.2026, T8: der Weg, auf dem wir nie fragen. */
+  warnung: string
+  telefon: string
   rueckfrage: string
 }
 
@@ -96,6 +105,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
       + 'vermerkt das Haus sie. Sie können dieses Fenster schließen.',
     abgebrochen: 'Die Zahlung wurde nicht abgeschlossen. Sie können den Link aus '
       + 'Ihrer E-Mail erneut öffnen.',
+    warnung: 'Wir fragen nie per WhatsApp, SMS oder Telefon nach Kartendaten und teilen eine neue Bankverbindung nie per E-Mail mit.',
+    telefon: 'Rückfragen direkt an das Haus: {telefon}',
     rueckfrage: 'Bei Fragen antworten Sie auf die E-Mail, mit der Sie diesen Link '
       + 'erhalten haben.'
   },
@@ -123,6 +134,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
       + 'property will record it. You can close this window.',
     abgebrochen: 'The payment was not completed. You can open the link from your '
       + 'email again.',
+    warnung: 'We never ask for card details by WhatsApp, text message or phone, and we never announce new bank details by email.',
+    telefon: 'Questions directly to the property: {telefon}',
     rueckfrage: 'If you have any questions, reply to the email in which you '
       + 'received this link.'
   },
@@ -151,6 +164,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
       + 'hotel haar vast. U kunt dit venster sluiten.',
     abgebrochen: 'De betaling is niet afgerond. U kunt de link uit uw e-mail opnieuw '
       + 'openen.',
+    warnung: 'Wij vragen nooit via WhatsApp, sms of telefoon om kaartgegevens en geven een nieuw rekeningnummer nooit per e-mail door.',
+    telefon: 'Vragen rechtstreeks aan de accommodatie: {telefon}',
     rueckfrage: 'Heeft u vragen, antwoord dan op de e-mail waarmee u deze link heeft '
       + 'ontvangen.'
   },
@@ -179,6 +194,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
       + 'odnotuje. Można zamknąć to okno.',
     abgebrochen: 'Płatność nie została zakończona. Link z wiadomości można otworzyć '
       + 'ponownie.',
+    warnung: 'Nigdy nie prosimy o dane karty przez WhatsApp, SMS ani telefon i nigdy nie podajemy nowego rachunku bankowego e-mailem.',
+    telefon: 'Pytania bezpośrednio do obiektu: {telefon}',
     rueckfrage: 'W razie pytań prosimy odpowiedzieć na wiadomość, w której '
       + 'otrzymali Państwo ten link.'
   },
@@ -201,6 +218,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Dette link er ugyldigt. Kontrollér venligst, at det er kopieret helt fra e-mailen.',
     zurueck: 'Mange tak. Så snart betalingsudbyderen bekræfter betalingen, registrerer hotellet den. Du kan lukke dette vindue.',
     abgebrochen: 'Betalingen blev ikke gennemført. Du kan åbne linket fra din e-mail igen.',
+    warnung: 'Vi beder aldrig om kortoplysninger via WhatsApp, sms eller telefon og meddeler aldrig nye bankoplysninger pr. e-mail.',
+    telefon: 'Spørgsmål direkte til hotellet: {telefon}',
     rueckfrage: 'Har du spørgsmål, så svar på den e-mail, du har modtaget dette link med.'
   },
 
@@ -222,6 +241,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Denna länk är ogiltig. Kontrollera att den kopierats fullständigt från mejlet.',
     zurueck: 'Tack. Så snart betalleverantören bekräftar betalningen registrerar hotellet den. Du kan stänga detta fönster.',
     abgebrochen: 'Betalningen slutfördes inte. Du kan öppna länken i ditt mejl igen.',
+    warnung: 'Vi ber aldrig om kortuppgifter via WhatsApp, sms eller telefon och meddelar aldrig nya bankuppgifter via e-post.',
+    telefon: 'Frågor direkt till boendet: {telefon}',
     rueckfrage: 'Har du frågor, svara på mejlet där du fick denna länk.'
   },
 
@@ -243,6 +264,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Denne lenken er ugyldig. Kontroller at den er kopiert fullstendig fra e-posten.',
     zurueck: 'Tusen takk. Så snart betalingsleverandøren bekrefter betalingen, registrerer hotellet den. Du kan lukke dette vinduet.',
     abgebrochen: 'Betalingen ble ikke fullført. Du kan åpne lenken fra e-posten din på nytt.',
+    warnung: 'Vi ber aldri om kortopplysninger via WhatsApp, SMS eller telefon og oppgir aldri ny bankforbindelse per e-post.',
+    telefon: 'Spørsmål direkte til hotellet: {telefon}',
     rueckfrage: 'Har du spørsmål, svarer du på e-posten du fikk denne lenken i.'
   },
 
@@ -264,6 +287,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Ce lien n’est pas valable. Veuillez vérifier qu’il a été copié en entier depuis l’e-mail.',
     zurueck: 'Merci beaucoup. Dès que le prestataire de paiement aura confirmé le paiement, l’établissement l’enregistrera. Vous pouvez fermer cette fenêtre.',
     abgebrochen: 'Le paiement n’a pas abouti. Vous pouvez rouvrir le lien figurant dans votre e-mail.',
+    warnung: 'Nous ne demandons jamais vos données de carte par WhatsApp, SMS ou téléphone, et n’annonçons jamais de nouvelles coordonnées bancaires par e-mail.',
+    telefon: 'Questions directement à l’établissement : {telefon}',
     rueckfrage: 'Pour toute question, répondez à l’e-mail par lequel vous avez reçu ce lien.'
   },
 
@@ -285,6 +310,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Questo link non è valido. Verifichi di averlo copiato per intero dall’e-mail.',
     zurueck: 'Grazie mille. Non appena il fornitore di pagamento conferma il pagamento, la struttura lo registra. Può chiudere questa finestra.',
     abgebrochen: 'Il pagamento non è stato completato. Può riaprire il link dalla Sua e-mail.',
+    warnung: 'Non chiediamo mai i dati della carta via WhatsApp, SMS o telefono e non comunichiamo mai nuove coordinate bancarie via e-mail.',
+    telefon: 'Domande direttamente alla struttura: {telefon}',
     rueckfrage: 'Per qualsiasi domanda risponda all’e-mail con cui ha ricevuto questo link.'
   },
 
@@ -306,6 +333,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Este enlace no es válido. Compruebe que lo ha copiado completo desde el e-mail.',
     zurueck: 'Muchas gracias. En cuanto el proveedor de pagos confirme el pago, el establecimiento lo registrará. Puede cerrar esta ventana.',
     abgebrochen: 'El pago no se ha completado. Puede volver a abrir el enlace desde su e-mail.',
+    warnung: 'Nunca pedimos datos de tarjeta por WhatsApp, SMS o teléfono, ni comunicamos nunca una nueva cuenta bancaria por correo electrónico.',
+    telefon: 'Consultas directamente al alojamiento: {telefon}',
     rueckfrage: 'Si tiene alguna pregunta, responda al e-mail con el que recibió este enlace.'
   },
 
@@ -327,6 +356,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Bu bağlantı geçersiz. Lütfen e-postadan eksiksiz kopyalanıp kopyalanmadığını kontrol edin.',
     zurueck: 'Teşekkür ederiz. Ödeme hizmet sağlayıcısı ödemeyi onaylar onaylamaz tesis bunu kaydedecektir. Bu pencereyi kapatabilirsiniz.',
     abgebrochen: 'Ödeme tamamlanmadı. E-postanızdaki bağlantıyı yeniden açabilirsiniz.',
+    warnung: 'Kart bilgilerini asla WhatsApp, SMS veya telefonla istemeyiz ve yeni bir banka hesabını asla e-postayla bildirmeyiz.',
+    telefon: 'Sorularınız için doğrudan tesis: {telefon}',
     rueckfrage: 'Sorularınız için bu bağlantıyı aldığınız e-postayı yanıtlayın.'
   },
 
@@ -348,6 +379,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Эта ссылка недействительна. Пожалуйста, проверьте, полностью ли она скопирована из письма.',
     zurueck: 'Большое спасибо. Как только платёжный провайдер подтвердит платёж, отель его зарегистрирует. Вы можете закрыть это окно.',
     abgebrochen: 'Оплата не была завершена. Вы можете снова открыть ссылку из Вашего письма.',
+    warnung: 'Мы никогда не запрашиваем данные карты через WhatsApp, SMS или по телефону и никогда не сообщаем новые банковские реквизиты по электронной почте.',
+    telefon: 'Вопросы напрямую в отель: {telefon}',
     rueckfrage: 'Если у Вас есть вопросы, ответьте на письмо, в котором Вы получили эту ссылку.'
   },
 
@@ -369,6 +402,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Tento odkaz je neplatný. Zkontrolujte prosím, zda byl z e-mailu převzat celý.',
     zurueck: 'Děkujeme. Jakmile poskytovatel platebních služeb platbu potvrdí, hotel ji zaznamená. Toto okno můžete zavřít.',
     abgebrochen: 'Platba nebyla dokončena. Odkaz z Vašeho e-mailu můžete otevřít znovu.',
+    warnung: 'Nikdy nežádáme údaje o kartě přes WhatsApp, SMS ani telefon a nové bankovní spojení nikdy neoznamujeme e-mailem.',
+    telefon: 'Dotazy přímo na ubytování: {telefon}',
     rueckfrage: 'S dotazy odpovězte na e-mail, ve kterém jste tento odkaz obdrželi.'
   },
 
@@ -390,6 +425,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Це посилання недійсне. Будь ласка, перевірте, чи його повністю скопійовано з листа.',
     zurueck: 'Щиро дякуємо. Щойно платіжний провайдер підтвердить оплату, готель її зафіксує. Ви можете закрити це вікно.',
     abgebrochen: 'Оплату не завершено. Ви можете знову відкрити посилання з Вашого листа.',
+    warnung: 'Ми ніколи не запитуємо дані картки через WhatsApp, SMS чи телефоном і ніколи не повідомляємо нові банківські реквізити електронною поштою.',
+    telefon: 'Питання безпосередньо до готелю: {telefon}',
     rueckfrage: 'Якщо у Вас є запитання, дайте відповідь на лист, у якому Ви отримали це посилання.'
   },
 
@@ -411,6 +448,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: '此链接无效。请检查是否已从邮件中完整复制。',
     zurueck: '非常感谢。支付服务商确认付款后，酒店将予以登记。您可以关闭此窗口。',
     abgebrochen: '付款未完成。您可以从邮件中再次打开链接。',
+    warnung: '我们绝不会通过 WhatsApp、短信或电话索取银行卡信息，也绝不会通过电子邮件通知新的银行账户。',
+    telefon: '如有疑问请直接联系住宿：{telefon}',
     rueckfrage: '如有任何疑问，请回复您收到此链接的那封邮件。'
   },
 
@@ -432,6 +471,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: '유효하지 않은 링크입니다. 이메일에서 링크 전체를 복사했는지 확인해 주세요.',
     zurueck: '감사합니다. 결제 대행사가 결제를 확인하는 대로 호텔에서 기록합니다. 이 창을 닫으셔도 됩니다.',
     abgebrochen: '결제가 완료되지 않았습니다. 이메일의 링크를 다시 열어 주세요.',
+    warnung: '저희는 WhatsApp, 문자 또는 전화로 카드 정보를 절대 묻지 않으며, 새 은행 계좌를 이메일로 알리는 일도 없습니다.',
+    telefon: '문의는 숙소로 직접: {telefon}',
     rueckfrage: '궁금하신 점이 있으시면 이 링크를 받으신 이메일에 회신해 주세요.'
   },
 
@@ -453,6 +494,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'هذا الرابط غير صالح. يرجى التحقق من أنه نُسخ كاملًا من الرسالة.',
     zurueck: 'شكرًا جزيلًا. بمجرد أن يؤكد مزوّد خدمة الدفع الدفعة، ستسجّلها المنشأة. يمكنكم إغلاق هذه النافذة.',
     abgebrochen: 'لم تكتمل عملية الدفع. يمكنكم فتح الرابط من رسالتكم مرة أخرى.',
+    warnung: 'لا نطلب أبدًا بيانات البطاقة عبر واتساب أو الرسائل النصية أو الهاتف، ولا نُبلغ أبدًا عن حساب مصرفي جديد عبر البريد الإلكتروني.',
+    telefon: 'للاستفسار مباشرة من المنشأة: {telefon}',
     rueckfrage: 'إذا كانت لديكم أي أسئلة، فردّوا على الرسالة التي تلقيتم فيها هذا الرابط.'
   },
 
@@ -474,6 +517,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Este link é inválido. Verifique se foi copiado por completo do e-mail.',
     zurueck: 'Muito obrigado. Assim que o prestador de serviços de pagamento confirmar o pagamento, o hotel regista-o. Pode fechar esta janela.',
     abgebrochen: 'O pagamento não foi concluído. Pode abrir novamente o link do seu e-mail.',
+    warnung: 'Nunca pedimos dados do cartão por WhatsApp, SMS ou telefone, nem comunicamos nunca novos dados bancários por e-mail.',
+    telefon: 'Dúvidas diretamente ao alojamento: {telefon}',
     rueckfrage: 'Em caso de dúvidas, responda ao e-mail através do qual recebeu este link.'
   },
 
@@ -495,6 +540,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Tämä linkki on virheellinen. Tarkistakaa, että se on kopioitu sähköpostista kokonaan.',
     zurueck: 'Kiitos. Heti kun maksupalveluntarjoaja vahvistaa maksun, majoituspaikka kirjaa sen. Voitte sulkea tämän ikkunan.',
     abgebrochen: 'Maksua ei suoritettu loppuun. Voitte avata sähköpostissanne olevan linkin uudelleen.',
+    warnung: 'Emme koskaan kysy korttitietoja WhatsAppissa, tekstiviestillä tai puhelimessa emmekä koskaan ilmoita uusia pankkitietoja sähköpostilla.',
+    telefon: 'Kysymykset suoraan majoituspaikkaan: {telefon}',
     rueckfrage: 'Jos teillä on kysyttävää, vastatkaa sähköpostiin, jossa saitte tämän linkin.'
   },
 
@@ -516,6 +563,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Þessi tengill er ógildur. Vinsamlegast athugaðu hvort hann hafi verið afritaður í heild úr tölvupóstinum.',
     zurueck: 'Kærar þakkir. Um leið og greiðsluþjónustan staðfestir greiðsluna skráir hótelið hana. Þú getur lokað þessum glugga.',
     abgebrochen: 'Greiðslunni var ekki lokið. Þú getur opnað tengilinn úr tölvupóstinum aftur.',
+    warnung: 'Við biðjum aldrei um kortaupplýsingar í gegnum WhatsApp, SMS eða síma og tilkynnum aldrei nýjar bankaupplýsingar í tölvupósti.',
+    telefon: 'Fyrirspurnir beint til gististaðarins: {telefon}',
     rueckfrage: 'Ef þú hefur spurningar skaltu svara tölvupóstinum sem þú fékkst þennan tengil í.'
   },
 
@@ -537,6 +586,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Tento odkaz je neplatný. Skontrolujte, prosím, či bol z e-mailu prevzatý celý.',
     zurueck: 'Ďakujeme. Hneď ako poskytovateľ platobných služieb platbu potvrdí, hotel ju zaznamená. Toto okno môžete zavrieť.',
     abgebrochen: 'Platba nebola dokončená. Odkaz z Vášho e-mailu môžete otvoriť znova.',
+    warnung: 'Nikdy nežiadame údaje o karte cez WhatsApp, SMS ani telefón a nové bankové spojenie nikdy neoznamujeme e-mailom.',
+    telefon: 'Otázky priamo na ubytovanie: {telefon}',
     rueckfrage: 'Ak máte otázky, odpovedzte na e-mail, v ktorom ste dostali tento odkaz.'
   },
 
@@ -558,6 +609,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Ta povezava ni veljavna. Prosimo, preverite, ali ste jo iz e-pošte prevzeli v celoti.',
     zurueck: 'Najlepša hvala. Takoj ko ponudnik plačilnih storitev potrdi plačilo, ga bo hotel evidentiral. To okno lahko zaprete.',
     abgebrochen: 'Plačilo ni bilo zaključeno. Povezavo iz e-pošte lahko odprete znova.',
+    warnung: 'Nikoli ne sprašujemo po podatkih kartice prek WhatsAppa, SMS-a ali telefona in nikoli ne sporočamo novega bančnega računa po e-pošti.',
+    telefon: 'Vprašanja neposredno nastanitvi: {telefon}',
     rueckfrage: 'Če imate vprašanja, odgovorite na e-pošto, s katero ste prejeli to povezavo.'
   },
 
@@ -579,6 +632,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Ez a link érvénytelen. Kérjük, ellenőrizze, hogy teljes egészében átmásolta-e az e-mailből.',
     zurueck: 'Köszönjük. Amint a fizetési szolgáltató visszaigazolja a fizetést, a szálloda rögzíti. Ezt az ablakot bezárhatja.',
     abgebrochen: 'A fizetés nem fejeződött be. Az e-mailjében lévő linket újra megnyithatja.',
+    warnung: 'Soha nem kérünk kártyaadatot WhatsAppon, SMS-ben vagy telefonon, és új bankszámlát soha nem közlünk e-mailben.',
+    telefon: 'Kérdés esetén közvetlenül a szálláshely: {telefon}',
     rueckfrage: 'Kérdés esetén válaszoljon arra az e-mailre, amelyben ezt a linket kapta.'
   },
 
@@ -600,6 +655,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Acest link este invalid. Vă rugăm să verificați dacă a fost copiat complet din e-mail.',
     zurueck: 'Vă mulțumim. Imediat ce furnizorul de plăți confirmă plata, hotelul o va înregistra. Puteți închide această fereastră.',
     abgebrochen: 'Plata nu a fost finalizată. Puteți deschide din nou linkul din e-mailul dumneavoastră.',
+    warnung: 'Nu cerem niciodată datele cardului prin WhatsApp, SMS sau telefon și nu comunicăm niciodată un cont bancar nou prin e-mail.',
+    telefon: 'Întrebări direct la unitate: {telefon}',
     rueckfrage: 'Pentru întrebări, răspundeți la e-mailul prin care ați primit acest link.'
   },
 
@@ -621,6 +678,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Този линк е невалиден. Моля, проверете дали е копиран изцяло от имейла.',
     zurueck: 'Благодарим Ви. Щом доставчикът на платежни услуги потвърди плащането, хотелът ще го отбележи. Можете да затворите този прозорец.',
     abgebrochen: 'Плащането не беше завършено. Можете да отворите отново линка от имейла си.',
+    warnung: 'Никога не искаме данни за карта чрез WhatsApp, SMS или телефон и никога не съобщаваме нова банкова сметка по имейл.',
+    telefon: 'Въпроси директно към обекта: {telefon}',
     rueckfrage: 'При въпроси отговорете на имейла, с който сте получили този линк.'
   },
 
@@ -642,6 +701,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Ova poveznica nije valjana. Molimo provjerite je li u cijelosti preuzeta iz e-poruke.',
     zurueck: 'Hvala Vam. Čim pružatelj platnih usluga potvrdi plaćanje, objekt će ga evidentirati. Možete zatvoriti ovaj prozor.',
     abgebrochen: 'Plaćanje nije dovršeno. Poveznicu iz svoje e-poruke možete ponovno otvoriti.',
+    warnung: 'Nikad ne tražimo podatke kartice putem WhatsAppa, SMS-a ili telefona i nikad ne javljamo novi bankovni račun e-poštom.',
+    telefon: 'Pitanja izravno objektu: {telefon}',
     rueckfrage: 'Za pitanja odgovorite na e-poruku kojom ste primili ovu poveznicu.'
   },
 
@@ -663,6 +724,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Ovaj link je nevažeći. Molimo proverite da li je u potpunosti preuzet iz e-poruke.',
     zurueck: 'Hvala Vam. Čim pružalac platnih usluga potvrdi plaćanje, objekat će ga evidentirati. Možete zatvoriti ovaj prozor.',
     abgebrochen: 'Plaćanje nije završeno. Možete ponovo otvoriti link iz Vaše e-poruke.',
+    warnung: 'Nikada ne tražimo podatke o kartici preko WhatsAppa, SMS-a ili telefona i nikada ne javljamo novi bankovni račun imejlom.',
+    telefon: 'Pitanja direktno objektu: {telefon}',
     rueckfrage: 'Za pitanja odgovorite na e-poruku kojom ste dobili ovaj link.'
   },
 
@@ -684,6 +747,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Овој линк е неважечки. Ве молиме проверете дали е целосно копиран од е-пораката.',
     zurueck: 'Ви благодариме. Штом давателот на платежни услуги го потврди плаќањето, објектот ќе го евидентира. Можете да го затворите овој прозорец.',
     abgebrochen: 'Плаќањето не е завршено. Можете повторно да го отворите линкот од Вашата е-порака.',
+    warnung: 'Никогаш не бараме податоци за картичка преку WhatsApp, SMS или телефон и никогаш не соопштуваме нова банкарска сметка по е-пошта.',
+    telefon: 'Прашања директно до објектот: {telefon}',
     rueckfrage: 'Ако имате прашања, одговорете на е-пораката со која го добивте овој линк.'
   },
 
@@ -705,6 +770,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Kjo lidhje është e pavlefshme. Ju lutemi kontrolloni nëse është kopjuar plotësisht nga e-maili.',
     zurueck: 'Faleminderit. Sapo ofruesi i shërbimit të pagesave ta konfirmojë pagesën, hoteli do ta regjistrojë. Mund ta mbyllni këtë dritare.',
     abgebrochen: 'Pagesa nuk u përfundua. Mund ta hapni sërish lidhjen nga e-maili juaj.',
+    warnung: 'Nuk kërkojmë kurrë të dhëna karte me WhatsApp, SMS ose telefon dhe nuk njoftojmë kurrë llogari të re bankare me e-mail.',
+    telefon: 'Pyetje drejtpërdrejt te prona: {telefon}',
     rueckfrage: 'Për pyetje, përgjigjuni e-mailit me të cilin morët këtë lidhje.'
   },
 
@@ -726,6 +793,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Αυτός ο σύνδεσμος δεν είναι έγκυρος. Παρακαλούμε ελέγξτε ότι αντιγράφηκε ολόκληρος από το email.',
     zurueck: 'Σας ευχαριστούμε. Μόλις ο πάροχος πληρωμών επιβεβαιώσει την πληρωμή, το κατάλυμα θα την καταχωρίσει. Μπορείτε να κλείσετε αυτό το παράθυρο.',
     abgebrochen: 'Η πληρωμή δεν ολοκληρώθηκε. Μπορείτε να ανοίξετε ξανά τον σύνδεσμο από το email σας.',
+    warnung: 'Δεν ζητάμε ποτέ στοιχεία κάρτας μέσω WhatsApp, SMS ή τηλεφώνου και δεν ανακοινώνουμε ποτέ νέο τραπεζικό λογαριασμό μέσω email.',
+    telefon: 'Ερωτήσεις απευθείας στο κατάλυμα: {telefon}',
     rueckfrage: 'Για οποιαδήποτε ερώτηση απαντήστε στο email με το οποίο λάβατε αυτόν τον σύνδεσμο.'
   },
 
@@ -747,6 +816,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Ši nuoroda neteisinga. Patikrinkite, ar ji visiškai nukopijuota iš el. laiško.',
     zurueck: 'Labai ačiū. Kai tik mokėjimo paslaugų teikėjas patvirtins mokėjimą, viešbutis jį užregistruos. Galite uždaryti šį langą.',
     abgebrochen: 'Mokėjimas nebuvo užbaigtas. Galite dar kartą atidaryti nuorodą iš savo el. laiško.',
+    warnung: 'Niekada neprašome kortelės duomenų per WhatsApp, SMS ar telefonu ir niekada nepranešame naujų banko rekvizitų el. paštu.',
+    telefon: 'Klausimai tiesiogiai apgyvendinimo įstaigai: {telefon}',
     rueckfrage: 'Kilus klausimams, atsakykite į el. laišką, kuriuo gavote šią nuorodą.'
   },
 
@@ -768,6 +839,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'Šī saite nav derīga. Lūdzu, pārbaudiet, vai tā no e-pasta nokopēta pilnībā.',
     zurueck: 'Paldies. Tiklīdz maksājumu pakalpojumu sniedzējs apstiprinās maksājumu, viesnīca to reģistrēs. Varat aizvērt šo logu.',
     abgebrochen: 'Maksājums netika pabeigts. Varat vēlreiz atvērt saiti no sava e-pasta.',
+    warnung: 'Mēs nekad neprasām kartes datus caur WhatsApp, īsziņu vai pa tālruni un nekad nepaziņojam jaunu bankas kontu pa e-pastu.',
+    telefon: 'Jautājumi tieši naktsmītnei: {telefon}',
     rueckfrage: 'Ja Jums ir jautājumi, atbildiet uz e-pastu, kurā saņēmāt šo saiti.'
   },
 
@@ -789,6 +862,8 @@ const TEXTE: Record<EmailLanguage, Seitentexte> = {
     unbekannt: 'See link on kehtetu. Palun kontrollige, kas see kopeeriti e-kirjast täielikult.',
     zurueck: 'Täname! Niipea kui makseteenuse pakkuja makse kinnitab, märgib hotell selle. Võite selle akna sulgeda.',
     abgebrochen: 'Makset ei lõpetatud. Võite oma e-kirjast lingi uuesti avada.',
+    warnung: 'Me ei küsi kunagi kaardiandmeid WhatsAppi, SMS-i ega telefoni teel ega teata kunagi uut pangakontot e-postiga.',
+    telefon: 'Küsimused otse majutusasutusele: {telefon}',
     rueckfrage: 'Küsimuste korral vastake e-kirjale, millega selle lingi saite.'
   }
 }
@@ -853,6 +928,14 @@ export function renderPayPage(
         + `border-radius:6px;text-decoration:none">${esc(t.knopf)}</a></p>`)
       teile.push(absatz(t.karte))
       if (d.validUntil !== undefined) teile.push(absatz(einsetzen(t.gueltig, werte)))
+      /*
+       * Seit den Abfluessen bei Seekda und HotelNetSolutions kommen falsche
+       * Zahlungsaufforderungen mit echten Buchungsdaten. Der Gast sieht hier,
+       * auf welchem Weg wir nie fragen, und wen er unabhaengig vom Link
+       * anrufen kann (Bedrohungsanalyse 23.10.2026, T8).
+       */
+      teile.push(absatz(t.warnung))
+      if (d.phone !== undefined) teile.push(absatz(einsetzen(t.telefon, { telefon: d.phone })))
       break
     }
     case 'paid': teile.push(absatz(t.bezahlt)); break

@@ -325,6 +325,9 @@ interface Gastposttexte {
   zahlungLink: string
   zahlungKarte: string
   zahlungGueltig: string
+  /** Bedrohungsanalyse 23.10.2026, T8. */
+  warnungKarte: string
+  warnungLink: string
   zahlungHinweis: string
   // Online-Check-in (Dokument 30)
   checkinAnredeMitName: string
@@ -386,6 +389,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'nicht.',
     zahlungGueltig: 'Der Link gilt bis einschließlich {gueltig}. Ist er abgelaufen, '
       + 'schicken wir Ihnen gern einen neuen.',
+    warnungKarte: 'Wir fragen nie per WhatsApp, SMS oder Telefon nach Kartendaten und teilen eine neue Bankverbindung nie per E-Mail mit.',
+    warnungLink: 'Ein Zahlungslink von uns beginnt immer mit https://{domain}/.',
     zahlungHinweis: 'Bei Fragen antworten Sie einfach auf diese E-Mail und nennen '
       + 'Sie die Buchungsnummer {ref}.',
     // Herzlicher als die Anrede der uebrigen Post, auf Wunsch des Hauses
@@ -452,6 +457,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'receives them.',
     zahlungGueltig: 'The link is valid up to and including {gueltig}. If it has '
       + 'expired, we will gladly send you a new one.',
+    warnungKarte: 'We never ask for card details by WhatsApp, text message or phone, and we never announce new bank details by email.',
+    warnungLink: 'A payment link from us always starts with https://{domain}/.',
     zahlungHinweis: 'If you have any questions, simply reply to this email and '
       + 'quote the booking reference {ref}.',
     checkinAnredeMitName: 'Hello {name},',
@@ -516,6 +523,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'niet.',
     zahlungGueltig: 'De link is geldig tot en met {gueltig}. Is hij verlopen, dan '
       + 'sturen wij u graag een nieuwe.',
+    warnungKarte: 'Wij vragen nooit via WhatsApp, sms of telefoon om kaartgegevens en geven een nieuw rekeningnummer nooit per e-mail door.',
+    warnungLink: 'Een betaallink van ons begint altijd met https://{domain}/.',
     zahlungHinweis: 'Heeft u vragen, antwoord dan gewoon op deze e-mail en vermeld '
       + 'het boekingsnummer {ref}.',
     checkinAnredeMitName: 'Hallo {name},',
@@ -594,6 +603,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
       + 'otrzymuje.',
     zahlungGueltig: 'Link jest ważny do dnia {gueltig} włącznie. Jeśli wygaśnie, '
       + 'chętnie prześlemy nowy.',
+    warnungKarte: 'Nigdy nie prosimy o dane karty przez WhatsApp, SMS ani telefon i nigdy nie podajemy nowego rachunku bankowego e-mailem.',
+    warnungLink: 'Link do płatności od nas zawsze zaczyna się od https://{domain}/.',
     zahlungHinweis: 'W razie pytań wystarczy odpowiedzieć na tę wiadomość, '
       + 'podając numer rezerwacji {ref}.',
     checkinAnredeMitName: 'Dzień dobry,',
@@ -645,6 +656,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Via følgende link betaler du sikkert hos hotellets betalingsudbyder:',
     zahlungKarte: 'Dine kortoplysninger indtaster du kun der; hotellet modtager dem aldrig.',
     zahlungGueltig: 'Linket gælder til og med {gueltig}. Er det udløbet, sender vi dig gerne et nyt.',
+    warnungKarte: 'Vi beder aldrig om kortoplysninger via WhatsApp, sms eller telefon og meddeler aldrig nye bankoplysninger pr. e-mail.',
+    warnungLink: 'Et betalingslink fra os starter altid med https://{domain}/.',
     zahlungHinweis: 'Har du spørgsmål, så svar blot på denne e-mail, og angiv bookingnummeret {ref}.',
     checkinAnredeMitName: 'Hej {name}',
     checkinAnredeOhneName: 'Hej',
@@ -689,6 +702,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Du kan betala säkert hos hotellets betalleverantör via följande länk:',
     zahlungKarte: 'Du anger dina kortuppgifter bara där; hotellet får aldrig ta del av dem.',
     zahlungGueltig: 'Länken gäller till och med {gueltig}. Om den har gått ut skickar vi gärna en ny.',
+    warnungKarte: 'Vi ber aldrig om kortuppgifter via WhatsApp, sms eller telefon och meddelar aldrig nya bankuppgifter via e-post.',
+    warnungLink: 'En betalningslänk från oss börjar alltid med https://{domain}/.',
     zahlungHinweis: 'Har du frågor, svara bara på detta mejl och ange bokningsnumret {ref}.',
     checkinAnredeMitName: 'Hej {name},',
     checkinAnredeOhneName: 'Hej,',
@@ -733,6 +748,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Via lenken nedenfor betaler du trygt hos hotellets betalingsleverandør:',
     zahlungKarte: 'Kortopplysningene dine legger du bare inn der; hotellet mottar dem aldri.',
     zahlungGueltig: 'Lenken gjelder til og med {gueltig}. Har den utløpt, sender vi deg gjerne en ny.',
+    warnungKarte: 'Vi ber aldri om kortopplysninger via WhatsApp, SMS eller telefon og oppgir aldri ny bankforbindelse per e-post.',
+    warnungLink: 'En betalingslenke fra oss begynner alltid med https://{domain}/.',
     zahlungHinweis: 'Har du spørsmål, svarer du bare på denne e-posten og oppgir bookingnummeret {ref}.',
     checkinAnredeMitName: 'Hei {name},',
     checkinAnredeOhneName: 'Hei,',
@@ -777,6 +794,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Le lien suivant vous permet de payer en toute sécurité auprès du prestataire de paiement de l’établissement :',
     zahlungKarte: 'Vous saisissez vos données de carte uniquement là-bas ; l’établissement ne les reçoit pas.',
     zahlungGueltig: 'Le lien est valable jusqu’au {gueltig} inclus. S’il a expiré, nous vous en enverrons volontiers un nouveau.',
+    warnungKarte: 'Nous ne demandons jamais vos données de carte par WhatsApp, SMS ou téléphone, et n’annonçons jamais de nouvelles coordonnées bancaires par e-mail.',
+    warnungLink: 'Un lien de paiement de notre part commence toujours par https://{domain}/.',
     zahlungHinweis: 'Pour toute question, répondez simplement à cet e-mail en indiquant le numéro de réservation {ref}.',
     checkinAnredeMitName: 'Bonjour {name},',
     checkinAnredeOhneName: 'Bonjour,',
@@ -821,6 +840,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Tramite il seguente link può pagare in modo sicuro presso il fornitore di pagamento della struttura:',
     zahlungKarte: 'I dati della Sua carta li inserisce solo lì; la struttura non li riceve.',
     zahlungGueltig: 'Il link è valido fino al {gueltig} incluso. Se è scaduto, Le invieremo volentieri un nuovo link.',
+    warnungKarte: 'Non chiediamo mai i dati della carta via WhatsApp, SMS o telefono e non comunichiamo mai nuove coordinate bancarie via e-mail.',
+    warnungLink: 'Un link di pagamento da parte nostra inizia sempre con https://{domain}/.',
     zahlungHinweis: 'Per qualsiasi domanda risponda semplicemente a questa e-mail indicando il numero di prenotazione {ref}.',
     checkinAnredeMitName: 'Buongiorno {name},',
     checkinAnredeOhneName: 'Buongiorno,',
@@ -865,6 +886,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Mediante el siguiente enlace puede pagar de forma segura a través del proveedor de pagos del establecimiento:',
     zahlungKarte: 'Sus datos de tarjeta solo los introduce allí; el establecimiento no los recibe.',
     zahlungGueltig: 'El enlace es válido hasta el {gueltig} inclusive. Si ha caducado, le enviaremos uno nuevo con mucho gusto.',
+    warnungKarte: 'Nunca pedimos datos de tarjeta por WhatsApp, SMS o teléfono, ni comunicamos nunca una nueva cuenta bancaria por correo electrónico.',
+    warnungLink: 'Un enlace de pago nuestro siempre empieza por https://{domain}/.',
     zahlungHinweis: 'Si tiene alguna pregunta, responda simplemente a este e-mail indicando el número de reserva {ref}.',
     checkinAnredeMitName: 'Hola, {name}:',
     checkinAnredeOhneName: 'Hola:',
@@ -909,6 +932,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Aşağıdaki bağlantı üzerinden tesisin ödeme hizmet sağlayıcısında güvenle ödeme yapabilirsiniz:',
     zahlungKarte: 'Kart bilgilerinizi yalnızca orada girersiniz; tesis bu bilgileri almaz.',
     zahlungGueltig: 'Bağlantı {gueltig} tarihi dahil geçerlidir. Süresi dolmuşsa size memnuniyetle yenisini göndeririz.',
+    warnungKarte: 'Kart bilgilerini asla WhatsApp, SMS veya telefonla istemeyiz ve yeni bir banka hesabını asla e-postayla bildirmeyiz.',
+    warnungLink: 'Bizden gelen bir ödeme bağlantısı her zaman https://{domain}/ ile başlar.',
     zahlungHinweis: 'Sorularınız için bu e-postayı yanıtlamanız ve {ref} rezervasyon numarasını belirtmeniz yeterlidir.',
     checkinAnredeMitName: 'Merhaba {name},',
     checkinAnredeOhneName: 'Merhaba,',
@@ -953,6 +978,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'По следующей ссылке Вы можете безопасно оплатить у платёжного провайдера отеля:',
     zahlungKarte: 'Данные карты Вы вводите только там; отель их не получает.',
     zahlungGueltig: 'Ссылка действует до {gueltig} включительно. Если срок её действия истёк, мы с удовольствием пришлём Вам новую.',
+    warnungKarte: 'Мы никогда не запрашиваем данные карты через WhatsApp, SMS или по телефону и никогда не сообщаем новые банковские реквизиты по электронной почте.',
+    warnungLink: 'Ссылка на оплату от нас всегда начинается с https://{domain}/.',
     zahlungHinweis: 'Если у Вас есть вопросы, просто ответьте на это письмо и укажите номер бронирования {ref}.',
     checkinAnredeMitName: 'Здравствуйте, {name}!',
     checkinAnredeOhneName: 'Здравствуйте!',
@@ -997,6 +1024,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Pomocí následujícího odkazu zaplatíte bezpečně u poskytovatele platebních služeb hotelu:',
     zahlungKarte: 'Údaje o kartě zadáváte pouze tam; hotel je nedostane.',
     zahlungGueltig: 'Odkaz platí do {gueltig} včetně. Pokud vyprší, rádi Vám pošleme nový.',
+    warnungKarte: 'Nikdy nežádáme údaje o kartě přes WhatsApp, SMS ani telefon a nové bankovní spojení nikdy neoznamujeme e-mailem.',
+    warnungLink: 'Platební odkaz od nás vždy začíná https://{domain}/.',
     zahlungHinweis: 'S dotazy jednoduše odpovězte na tento e-mail a uveďte číslo rezervace {ref}.',
     checkinAnredeMitName: 'Dobrý den, {name},',
     checkinAnredeOhneName: 'Dobrý den,',
@@ -1041,6 +1070,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'За наведеним нижче посиланням Ви можете безпечно оплатити через платіжного провайдера готелю:',
     zahlungKarte: 'Дані своєї картки Ви вводите лише там; готель їх не отримує.',
     zahlungGueltig: 'Посилання дійсне до {gueltig} включно. Якщо термін його дії минув, ми охоче надішлемо Вам нове.',
+    warnungKarte: 'Ми ніколи не запитуємо дані картки через WhatsApp, SMS чи телефоном і ніколи не повідомляємо нові банківські реквізити електронною поштою.',
+    warnungLink: 'Посилання на оплату від нас завжди починається з https://{domain}/.',
     zahlungHinweis: 'Якщо у Вас є запитання, просто дайте відповідь на цей лист і вкажіть номер бронювання {ref}.',
     checkinAnredeMitName: 'Вітаємо, {name},',
     checkinAnredeOhneName: 'Вітаємо,',
@@ -1085,6 +1116,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: '您可以通过以下链接，在酒店的支付服务商处安全付款：',
     zahlungKarte: '您只需在那里输入银行卡信息；酒店不会获得这些信息。',
     zahlungGueltig: '此链接有效期至 {gueltig}（含当日）。如已过期，我们很乐意为您发送新链接。',
+    warnungKarte: '我们绝不会通过 WhatsApp、短信或电话索取银行卡信息，也绝不会通过电子邮件通知新的银行账户。',
+    warnungLink: '我们的付款链接总是以 https://{domain}/ 开头。',
     zahlungHinweis: '如有任何疑问，请直接回复此邮件并注明预订编号 {ref}。',
     checkinAnredeMitName: '{name}，您好：',
     checkinAnredeOhneName: '您好：',
@@ -1129,6 +1162,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: '아래 링크를 통해 호텔의 결제 대행사에서 안전하게 결제하실 수 있습니다:',
     zahlungKarte: '카드 정보는 그곳에서만 입력하시며, 호텔은 카드 정보를 받지 않습니다.',
     zahlungGueltig: '이 링크는 {gueltig}까지(당일 포함) 유효합니다. 만료된 경우 새 링크를 보내 드리겠습니다.',
+    warnungKarte: '저희는 WhatsApp, 문자 또는 전화로 카드 정보를 절대 묻지 않으며, 새 은행 계좌를 이메일로 알리는 일도 없습니다.',
+    warnungLink: '저희가 보내는 결제 링크는 항상 https://{domain}/ 으로 시작합니다.',
     zahlungHinweis: '궁금하신 점이 있으시면 예약 번호 {ref}와 함께 이 이메일에 회신해 주세요.',
     checkinAnredeMitName: '안녕하세요, {name} 님,',
     checkinAnredeOhneName: '안녕하세요,',
@@ -1173,6 +1208,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'عبر الرابط التالي يمكنكم الدفع بأمان لدى مزوّد خدمة الدفع الخاص بالمنشأة:',
     zahlungKarte: 'تُدخلون بيانات بطاقتكم هناك فقط؛ ولا تحصل عليها المنشأة.',
     zahlungGueltig: 'الرابط صالح حتى {gueltig} شاملًا. وإذا انتهت صلاحيته، يسعدنا أن نرسل لكم رابطًا جديدًا.',
+    warnungKarte: 'لا نطلب أبدًا بيانات البطاقة عبر واتساب أو الرسائل النصية أو الهاتف، ولا نُبلغ أبدًا عن حساب مصرفي جديد عبر البريد الإلكتروني.',
+    warnungLink: 'يبدأ رابط الدفع منّا دائمًا بـ https://{domain}/.',
     zahlungHinweis: 'إذا كانت لديكم أي أسئلة، فما عليكم إلا الرد على هذه الرسالة مع ذكر رقم الحجز {ref}.',
     checkinAnredeMitName: 'مرحبًا {name}،',
     checkinAnredeOhneName: 'مرحبًا،',
@@ -1217,6 +1254,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Através do seguinte link pode pagar em segurança junto do prestador de serviços de pagamento do hotel:',
     zahlungKarte: 'Os dados do seu cartão são introduzidos apenas aí; o hotel nunca os recebe.',
     zahlungGueltig: 'O link é válido até {gueltig}, inclusive. Se tiver expirado, teremos todo o gosto em enviar-lhe um novo.',
+    warnungKarte: 'Nunca pedimos dados do cartão por WhatsApp, SMS ou telefone, nem comunicamos nunca novos dados bancários por e-mail.',
+    warnungLink: 'Um link de pagamento nosso começa sempre por https://{domain}/.',
     zahlungHinweis: 'Em caso de dúvidas, responda simplesmente a este e-mail e indique o número da reserva {ref}.',
     checkinAnredeMitName: 'Olá, {name},',
     checkinAnredeOhneName: 'Olá,',
@@ -1261,6 +1300,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Seuraavan linkin kautta maksatte turvallisesti majoituspaikan maksupalveluntarjoajalle:',
     zahlungKarte: 'Syötätte korttitietonne vain siellä; majoituspaikka ei saa niitä.',
     zahlungGueltig: 'Linkki on voimassa {gueltig} asti (mukaan lukien). Jos se on vanhentunut, lähetämme mielellämme uuden.',
+    warnungKarte: 'Emme koskaan kysy korttitietoja WhatsAppissa, tekstiviestillä tai puhelimessa emmekä koskaan ilmoita uusia pankkitietoja sähköpostilla.',
+    warnungLink: 'Meiltä tuleva maksulinkki alkaa aina https://{domain}/.',
     zahlungHinweis: 'Jos teillä on kysyttävää, vastatkaa tähän sähköpostiin ja mainitkaa varausnumero {ref}.',
     checkinAnredeMitName: 'Hei {name},',
     checkinAnredeOhneName: 'Hei,',
@@ -1305,6 +1346,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Með eftirfarandi tengli greiðir þú á öruggan hátt hjá greiðsluþjónustu hótelsins:',
     zahlungKarte: 'Kortaupplýsingarnar slærðu aðeins inn þar; hótelið fær þær aldrei.',
     zahlungGueltig: 'Tengillinn gildir til og með {gueltig}. Ef hann er útrunninn sendum við þér gjarnan nýjan.',
+    warnungKarte: 'Við biðjum aldrei um kortaupplýsingar í gegnum WhatsApp, SMS eða síma og tilkynnum aldrei nýjar bankaupplýsingar í tölvupósti.',
+    warnungLink: 'Greiðslutengill frá okkur byrjar alltaf á https://{domain}/.',
     zahlungHinweis: 'Ef þú hefur spurningar skaltu einfaldlega svara þessum tölvupósti og tilgreina bókunarnúmerið {ref}.',
     checkinAnredeMitName: 'Halló {name},',
     checkinAnredeOhneName: 'Halló,',
@@ -1349,6 +1392,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Prostredníctvom nasledujúceho odkazu zaplatíte bezpečne u poskytovateľa platobných služieb hotela:',
     zahlungKarte: 'Údaje o svojej karte zadávate len tam; hotel ich nedostane.',
     zahlungGueltig: 'Odkaz platí do {gueltig} vrátane. Ak vyprší, radi Vám pošleme nový.',
+    warnungKarte: 'Nikdy nežiadame údaje o karte cez WhatsApp, SMS ani telefón a nové bankové spojenie nikdy neoznamujeme e-mailom.',
+    warnungLink: 'Platobný odkaz od nás vždy začína https://{domain}/.',
     zahlungHinweis: 'Ak máte otázky, jednoducho odpovedzte na tento e-mail a uveďte číslo rezervácie {ref}.',
     checkinAnredeMitName: 'Dobrý deň, {name},',
     checkinAnredeOhneName: 'Dobrý deň,',
@@ -1393,6 +1438,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Prek naslednje povezave varno plačate pri ponudniku plačilnih storitev hotela:',
     zahlungKarte: 'Podatke kartice vnesete le tam; hotel jih ne prejme.',
     zahlungGueltig: 'Povezava velja do vključno {gueltig}. Če je potekla, vam bomo z veseljem poslali novo.',
+    warnungKarte: 'Nikoli ne sprašujemo po podatkih kartice prek WhatsAppa, SMS-a ali telefona in nikoli ne sporočamo novega bančnega računa po e-pošti.',
+    warnungLink: 'Plačilna povezava od nas se vedno začne s https://{domain}/.',
     zahlungHinweis: 'Če imate vprašanja, preprosto odgovorite na to e-pošto in navedite številko rezervacije {ref}.',
     checkinAnredeMitName: 'Pozdravljeni, {name},',
     checkinAnredeOhneName: 'Pozdravljeni,',
@@ -1437,6 +1484,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Az alábbi linken biztonságosan fizethet a szálloda fizetési szolgáltatójánál:',
     zahlungKarte: 'Kártyaadatait csak ott adja meg; a szálloda nem kapja meg őket.',
     zahlungGueltig: 'A link {gueltig} napjával bezárólag érvényes. Ha lejárt, szívesen küldünk újat.',
+    warnungKarte: 'Soha nem kérünk kártyaadatot WhatsAppon, SMS-ben vagy telefonon, és új bankszámlát soha nem közlünk e-mailben.',
+    warnungLink: 'A tőlünk érkező fizetési link mindig így kezdődik: https://{domain}/.',
     zahlungHinweis: 'Kérdés esetén egyszerűen válaszoljon erre az e-mailre, és adja meg a(z) {ref} foglalási számot.',
     checkinAnredeMitName: 'Kedves {name}!',
     checkinAnredeOhneName: 'Üdvözöljük!',
@@ -1481,6 +1530,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Prin linkul următor plătiți în siguranță la furnizorul de plăți al hotelului:',
     zahlungKarte: 'Datele cardului le introduceți doar acolo; hotelul nu le primește.',
     zahlungGueltig: 'Linkul este valabil până la {gueltig} inclusiv. Dacă a expirat, vă trimitem cu plăcere unul nou.',
+    warnungKarte: 'Nu cerem niciodată datele cardului prin WhatsApp, SMS sau telefon și nu comunicăm niciodată un cont bancar nou prin e-mail.',
+    warnungLink: 'Un link de plată de la noi începe întotdeauna cu https://{domain}/.',
     zahlungHinweis: 'Pentru întrebări, răspundeți pur și simplu la acest e-mail și menționați numărul de rezervare {ref}.',
     checkinAnredeMitName: 'Bună, {name},',
     checkinAnredeOhneName: 'Bună,',
@@ -1525,6 +1576,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Чрез следния линк плащате сигурно при доставчика на платежни услуги на хотела:',
     zahlungKarte: 'Данните от картата си въвеждате само там; хотелът не ги получава.',
     zahlungGueltig: 'Линкът е валиден до {gueltig} включително. Ако е изтекъл, с удоволствие ще Ви изпратим нов.',
+    warnungKarte: 'Никога не искаме данни за карта чрез WhatsApp, SMS или телефон и никога не съобщаваме нова банкова сметка по имейл.',
+    warnungLink: 'Линк за плащане от нас винаги започва с https://{domain}/.',
     zahlungHinweis: 'При въпроси просто отговорете на този имейл и посочете номера на резервацията {ref}.',
     checkinAnredeMitName: 'Здравейте, {name},',
     checkinAnredeOhneName: 'Здравейте,',
@@ -1569,6 +1622,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Putem sljedeće poveznice sigurno plaćate kod pružatelja platnih usluga objekta:',
     zahlungKarte: 'Podatke svoje kartice unosite samo ondje; objekt ih ne dobiva.',
     zahlungGueltig: 'Poveznica vrijedi do uključivo {gueltig}. Ako je istekla, rado ćemo Vam poslati novu.',
+    warnungKarte: 'Nikad ne tražimo podatke kartice putem WhatsAppa, SMS-a ili telefona i nikad ne javljamo novi bankovni račun e-poštom.',
+    warnungLink: 'Poveznica za plaćanje od nas uvijek počinje s https://{domain}/.',
     zahlungHinweis: 'Za pitanja jednostavno odgovorite na ovu e-poruku i navedite broj rezervacije {ref}.',
     checkinAnredeMitName: 'Pozdrav, {name},',
     checkinAnredeOhneName: 'Pozdrav,',
@@ -1613,6 +1668,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Preko sledećeg linka bezbedno plaćate kod pružaoca platnih usluga objekta:',
     zahlungKarte: 'Podatke o kartici unosite samo tamo; objekat ih ne dobija.',
     zahlungGueltig: 'Link važi do uključno {gueltig}. Ako je istekao, rado ćemo Vam poslati novi.',
+    warnungKarte: 'Nikada ne tražimo podatke o kartici preko WhatsAppa, SMS-a ili telefona i nikada ne javljamo novi bankovni račun imejlom.',
+    warnungLink: 'Link za plaćanje od nas uvek počinje sa https://{domain}/.',
     zahlungHinweis: 'Za pitanja jednostavno odgovorite na ovu e-poruku i navedite broj rezervacije {ref}.',
     checkinAnredeMitName: 'Dobar dan, {name},',
     checkinAnredeOhneName: 'Dobar dan,',
@@ -1657,6 +1714,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Преку следниот линк безбедно плаќате кај давателот на платежни услуги на објектот:',
     zahlungKarte: 'Податоците за Вашата картичка ги внесувате само таму; објектот не ги добива.',
     zahlungGueltig: 'Линкот важи до и вклучително {gueltig}. Ако истече, со задоволство ќе Ви испратиме нов.',
+    warnungKarte: 'Никогаш не бараме податоци за картичка преку WhatsApp, SMS или телефон и никогаш не соопштуваме нова банкарска сметка по е-пошта.',
+    warnungLink: 'Линк за плаќање од нас секогаш започнува со https://{domain}/.',
     zahlungHinweis: 'Ако имате прашања, едноставно одговорете на оваа е-порака и наведете го бројот на резервацијата {ref}.',
     checkinAnredeMitName: 'Добар ден {name},',
     checkinAnredeOhneName: 'Добар ден,',
@@ -1701,6 +1760,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Përmes lidhjes së mëposhtme paguani në mënyrë të sigurt te ofruesi i shërbimit të pagesave i hotelit:',
     zahlungKarte: 'Të dhënat e kartës i futni vetëm atje; hoteli nuk i merr ato.',
     zahlungGueltig: 'Lidhja është e vlefshme deri më {gueltig} përfshirë. Nëse ka skaduar, do t\'ju dërgojmë me kënaqësi një të re.',
+    warnungKarte: 'Nuk kërkojmë kurrë të dhëna karte me WhatsApp, SMS ose telefon dhe nuk njoftojmë kurrë llogari të re bankare me e-mail.',
+    warnungLink: 'Një lidhje pagese nga ne fillon gjithmonë me https://{domain}/.',
     zahlungHinweis: 'Për pyetje thjesht përgjigjuni këtij e-maili dhe përmendni numrin e rezervimit {ref}.',
     checkinAnredeMitName: 'Përshëndetje {name},',
     checkinAnredeOhneName: 'Përshëndetje,',
@@ -1745,6 +1806,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Μέσω του παρακάτω συνδέσμου πληρώνετε με ασφάλεια στον πάροχο πληρωμών του καταλύματος:',
     zahlungKarte: 'Τα στοιχεία της κάρτας σας τα εισάγετε μόνο εκεί· το κατάλυμα δεν τα λαμβάνει.',
     zahlungGueltig: 'Ο σύνδεσμος ισχύει έως και {gueltig}. Αν έχει λήξει, θα σας στείλουμε ευχαρίστως νέο.',
+    warnungKarte: 'Δεν ζητάμε ποτέ στοιχεία κάρτας μέσω WhatsApp, SMS ή τηλεφώνου και δεν ανακοινώνουμε ποτέ νέο τραπεζικό λογαριασμό μέσω email.',
+    warnungLink: 'Ένας σύνδεσμος πληρωμής από εμάς ξεκινά πάντα με https://{domain}/.',
     zahlungHinweis: 'Για οποιαδήποτε ερώτηση απαντήστε απλώς σε αυτό το email αναφέροντας τον αριθμό κράτησης {ref}.',
     checkinAnredeMitName: 'Γεια σας {name},',
     checkinAnredeOhneName: 'Γεια σας,',
@@ -1789,6 +1852,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Šia nuoroda saugiai sumokėsite per viešbučio mokėjimo paslaugų teikėją:',
     zahlungKarte: 'Kortelės duomenis įvedate tik ten; viešbutis jų negauna.',
     zahlungGueltig: 'Nuoroda galioja iki {gueltig} imtinai. Jei ji nebegalios, mielai atsiųsime naują.',
+    warnungKarte: 'Niekada neprašome kortelės duomenų per WhatsApp, SMS ar telefonu ir niekada nepranešame naujų banko rekvizitų el. paštu.',
+    warnungLink: 'Mūsų mokėjimo nuoroda visada prasideda https://{domain}/.',
     zahlungHinweis: 'Kilus klausimams, tiesiog atsakykite į šį el. laišką ir nurodykite rezervacijos numerį {ref}.',
     checkinAnredeMitName: 'Sveiki, {name},',
     checkinAnredeOhneName: 'Sveiki,',
@@ -1833,6 +1898,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Jūs varat droši samaksāt pie viesnīcas maksājumu pakalpojumu sniedzēja, izmantojot šo saiti:',
     zahlungKarte: 'Kartes datus Jūs ievadāt tikai tur; viesnīca tos nekad nesaņem.',
     zahlungGueltig: 'Saite ir derīga līdz {gueltig} ieskaitot. Ja tās derīgums ir beidzies, mēs labprāt nosūtīsim Jums jaunu.',
+    warnungKarte: 'Mēs nekad neprasām kartes datus caur WhatsApp, īsziņu vai pa tālruni un nekad nepaziņojam jaunu bankas kontu pa e-pastu.',
+    warnungLink: 'Mūsu maksājuma saite vienmēr sākas ar https://{domain}/.',
     zahlungHinweis: 'Ja Jums ir jautājumi, vienkārši atbildiet uz šo e-pastu un norādiet rezervācijas numuru {ref}.',
     checkinAnredeMitName: 'Sveiki, {name},',
     checkinAnredeOhneName: 'Sveiki,',
@@ -1877,6 +1944,8 @@ const TEXTE: Record<EmailLanguage, Gastposttexte> = {
     zahlungLink: 'Järgmise lingi kaudu saate turvaliselt maksta hotelli makseteenuse pakkuja juures:',
     zahlungKarte: 'Kaardiandmed sisestate ainult seal; hotell neid ei saa.',
     zahlungGueltig: 'Link kehtib kuni {gueltig} (kaasa arvatud). Kui see on aegunud, saadame Teile hea meelega uue.',
+    warnungKarte: 'Me ei küsi kunagi kaardiandmeid WhatsAppi, SMS-i ega telefoni teel ega teata kunagi uut pangakontot e-postiga.',
+    warnungLink: 'Meie makselink algab alati https://{domain}/.',
     zahlungHinweis: 'Küsimuste korral vastake lihtsalt sellele e-kirjale ja märkige broneeringu number {ref}.',
     checkinAnredeMitName: 'Tere, {name}!',
     checkinAnredeOhneName: 'Tere!',
@@ -1905,6 +1974,25 @@ function anrede(name: string | null, lang: EmailLanguage): string {
   return name === null || name === ''
     ? t.anredeOhneName
     : einsetzen(t.anredeMitName, { name })
+}
+
+/**
+ * Der feste Satz gegen falsche Zahlungsaufforderungen (Bedrohungsanalyse
+ * 23.10.2026, T8). Nach den Abfluessen bei Seekda und HotelNetSolutions
+ * schrieben Angreifer Gaesten mit echtem Hotel, Datum und Betrag; der Gast
+ * konnte die echte Post nicht von der falschen unterscheiden. In jeder Post
+ * mit Geldbezug steht deshalb, auf welchem Weg wir nie fragen -- und bei
+ * einem Link, mit welcher Adresse er beginnt. Die Adresse kommt aus dem
+ * Link selbst, nie aus einer Einstellung des Hauses.
+ */
+function warnung(t: Gastposttexte, url: string | null): string[] {
+  const zeilen = [t.warnungKarte]
+  if (url !== null) {
+    try {
+      zeilen.push(einsetzen(t.warnungLink, { domain: new URL(url).host }))
+    } catch { /* kein gueltiger Link: dann nur der erste Satz */ }
+  }
+  return zeilen
 }
 
 export function renderInvoiceEmail(
@@ -1950,6 +2038,7 @@ export function renderInvoiceEmail(
       : t.rechnungBeglichen,
     ...ueberweisung,
     ...link,
+    ...(offen ? warnung(t, d.paymentLink?.url ?? null) : []),
     t.rechnungDank,
     d.propertyName
   ]
@@ -1982,6 +2071,7 @@ export function renderReminderEmail(
     einsetzen(t.mahnungOffen, werte),
     einsetzen(t.mahnungFrist, werte),
     t.mahnungUeberschneidung,
+    ...warnung(t, null),
     d.propertyName
   ]
   return {
@@ -2018,6 +2108,7 @@ export function renderReservationEmail(
     einsetzen(t.buchungBestaetigt, werte),
     eckdaten,
     t.buchungHinweis,
+    ...warnung(t, null),
     d.propertyName
   ]
   return {
@@ -2082,6 +2173,7 @@ export function renderPaymentLinkEmail(
     d.url,
     t.zahlungKarte,
     einsetzen(t.zahlungGueltig, werte),
+    ...warnung(t, d.url),
     einsetzen(t.zahlungHinweis, werte),
     d.propertyName
   ]

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { Principal } from './context.js'
+import { koederAdressen, koederInWert, koederKennung } from './koeder.js'
 
 /**
  * Wer fragt, und wie viel (Bedrohungsanalyse 23.10.2026, E1 und E2).
@@ -89,9 +90,16 @@ export function abrufmengeAnmelden(app: FastifyInstance): void {
     reply.log = req.log
   })
 
+  /*
+   * Hier auch die Kennzeichnung der Koeder (Migration 0213): dieselben
+   * Routen, dieselbe Stelle, an der jede Antwort mit Gaesten vorbeikommt.
+   */
   app.addHook('preSerialization', async (req, _reply, payload) => {
-    if (gezaehlt(req)) req.abrufZeilen = datensaetze(payload)
-    return payload
+    if (!gezaehlt(req)) return payload
+    req.abrufZeilen = datensaetze(payload)
+    const adressen = await koederAdressen(req.pool)
+    return koederInWert(payload, adressen,
+      koederKennung(req.principal as Principal | undefined, 'api'))
   })
 
   app.addHook('onResponse', async (req, reply) => {

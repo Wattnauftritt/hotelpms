@@ -7,7 +7,8 @@ import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
          useSetCustomerPropertyRoles, useSetCustomerAccountRoles,
          useSupportAudit, useSessionActivity, useSetStaffRole, useStaffAccessLink,
          useEmailDomainRequests, useApproveEmailDomain, useRejectEmailDomain,
-         usePaymentProvider, useSavePaymentProvider, type ZugangQuelle,
+         usePaymentProvider, useSavePaymentProvider, usePlatformDecoys, useDecoyAction,
+         useCreateDecoyClient, type ZugangQuelle,
          type PlatformAccount, type PlatformAccountUser, type PlatformProperty,
          type SupportAuditRow } from '../lib/queries/platform.js'
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
@@ -497,6 +498,98 @@ function HausAnlegen({ accountId }: { accountId: number }): JSX.Element {
   )
 }
 
+/**
+ * Koeder eines Kunden (Migration 0213, Bedrohungsanalyse 23.10.2026, E5).
+ * Nur hier, nie beim Kunden: ein Koeder taugt, solange ihn niemand kennt,
+ * der Daten abziehen koennte -- und das ist jeder mit einem Zugang dort.
+ */
+function KundenKoeder({ accountId, properties }: {
+  accountId: number; properties: PlatformProperty[]
+}): JSX.Element {
+  const t = useT()
+  const q = usePlatformDecoys(accountId)
+  const aktion = useDecoyAction()
+  const zugang = useCreateDecoyClient()
+  const [name, setName] = useState('')
+
+  if (q.isError) return <Fehler error={q.error} />
+  if (q.data === undefined) return <Laedt />
+  const { decoys, clients, domainConfigured } = q.data
+
+  return (
+    <div className="space-y-2 border-t border-neutral-100 pt-3">
+      <h3 className={UEBERSCHRIFT}>{t('admin.decoy.title')}</h3>
+      <p className="text-xs text-neutral-600">{t('admin.decoy.hint')}</p>
+      {!domainConfigured && (
+        <p className="text-xs text-amber-800">{t('admin.decoy.noDomain')}</p>
+      )}
+      <ul className="space-y-1 text-sm">
+        {properties.map(p => {
+          const d = decoys.find(x => x.propertyId === p.id)
+          return (
+            <li key={p.id} className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-mono text-xs">{p.code}</span>
+              <span className="text-xs text-neutral-600 break-all">
+                {d?.address ?? t('admin.decoy.none')}
+              </span>
+              {d === undefined ? (
+                <button type="button" className={KNOPF_KLEIN}
+                        disabled={!domainConfigured || aktion.isPending}
+                        onClick={() => aktion.mutate({ accountId, propertyId: p.id,
+                                                       remove: false })}>
+                  {t('admin.decoy.plant')}
+                </button>
+              ) : (
+                <button type="button" className={KNOPF_KLEIN} disabled={aktion.isPending}
+                        onClick={() => {
+                          if (!window.confirm(t('admin.decoy.removeConfirm',
+                            { name: p.name }))) return
+                          aktion.mutate({ accountId, propertyId: p.id, remove: true })
+                        }}>
+                  {t('admin.decoy.remove')}
+                </button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {aktion.isError && <Fehler error={aktion.error} />}
+
+      <h4 className="text-xs text-neutral-600">{t('admin.decoy.clients')}</h4>
+      {clients.length > 0 && (
+        <ul className="space-y-0.5 text-xs">
+          {clients.map(c => (
+            <li key={c.clientId}><span className="font-mono">{c.clientId}</span> · {c.name}</li>
+          ))}
+        </ul>
+      )}
+      <form className="flex flex-wrap items-end gap-2"
+            onSubmit={e => {
+              e.preventDefault()
+              zugang.mutate({ accountId, name: name.trim() },
+                { onSuccess: () => setName('') })
+            }}>
+        <label className="block">
+          <span className="block text-xs text-neutral-600">{t('admin.decoy.clientName')}</span>
+          <input required maxLength={100} value={name}
+                 onChange={e => setName(e.target.value)} className={FELD} />
+        </label>
+        <button type="submit" disabled={zugang.isPending} className={KNOPF_KLEIN}>
+          {t('admin.decoy.client')}
+        </button>
+      </form>
+      {zugang.isError && <Fehler error={zugang.error} />}
+      {zugang.data !== undefined && (
+        <div className="text-xs border border-amber-300 bg-amber-50 rounded-sm p-2 space-y-1">
+          <p>{t('admin.decoy.clientSecret')}</p>
+          <p className="font-mono break-all">client_id={zugang.data.clientId}</p>
+          <p className="font-mono break-all">client_secret={zugang.data.clientSecret}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Eine Support-Sitzung in einer Zeile, mit aufklappbaren Aenderungszahlen. */
 function SitzungZeile({ s, mitKunde }: { s: SupportAuditRow; mitKunde: boolean }): JSX.Element {
   const t = useT()
@@ -665,6 +758,8 @@ function KundeDetail({ id, onClose, darfSupport }: {
       </div>
 
       <BenutzerEinladen accountId={id} properties={properties} />
+
+      <KundenKoeder accountId={id} properties={properties} />
 
       {darfSupport && <KundenSitzungen accountId={id} accountName={account.name} />}
     </section>
