@@ -1,14 +1,16 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { generateRegistrationOptions, verifyRegistrationResponse,
          type RegistrationResponseJSON } from '@simplewebauthn/server'
-import { PASSKEY_MAX, PASSKEY_NAME_MAX, type PasskeyInfo } from '@hotelpms/contracts'
+import { PASSKEY_MAX, PASSKEY_NAME_MAX, BESTAETIGUNG_MINUTEN,
+         type PasskeyInfo } from '@hotelpms/contracts'
 import { renderPasskeyAddedNotice } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
 import type { Principal } from '../platform/context.js'
 import { tx } from '../platform/db.js'
+import { meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { passkeyPartei, herausforderungAblegen, herausforderungEinloesen,
-         anmeldeOptionen, pruefePasskeyAntwort, HERAUSFORDERUNG_MS } from '../platform/passkey.js'
+         anmeldeOptionen, bestaetigungsOptionen, pruefePasskeyAntwort, HERAUSFORDERUNG_MS } from '../platform/passkey.js'
 import { kennwortBestaetigen, sitzungAnlegen } from './auth.js'
 
 /**
@@ -241,9 +243,51 @@ export function passkeyRoutes(app: FastifyInstance): void {
        * oben); bekaeme sie ein Token aus dieser Route, waere das ein Weg,
        * den niemand benutzt und deshalb niemand prueft.
        */
-      const antwort = await sitzungAnlegen(req, reply, userId, false)
+      // Bestaetigt von Anfang an: dieselbe Pruefung wie /passkey/confirm.
+      const antwort = await sitzungAnlegen(req, reply, userId, false, true)
       await req.pool.query(`UPDATE app_user SET last_login_at = now() WHERE id = $1`, [userId])
       return antwort
+    }
+  })
+
+  /*
+   * Eine kritische Handlung mit Passkey bestaetigen (0209), der zweite Weg
+   * neben dem Kennwort in `POST /v1/auth/confirm`. Setzt dasselbe: die
+   * Sitzung gilt fuer einige Minuten als bestaetigt, fuer genau die Person,
+   * die gerade handelt -- nach einem Personenwechsel am Tresen ist das die
+   * gewechselte, und es muss ihr eigener Passkey sein.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/passkey/confirm/options',
+    permission: null,
+    summary: 'Mit Passkey bestaetigen: Herausforderung anfordern',
+    handler: async (req) => bestaetigungsOptionen(req, eigeneSitzung(req).userId)
+  })
+
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/auth/passkey/confirm',
+    permission: null,
+    summary: 'Sitzung mit Passkey fuer kritische Handlungen bestaetigen',
+    handler: async (req) => {
+      const { userId, sessionId } = eigeneSitzung(req)
+      const p = req.principal as Principal
+      const b = req.body as { challengeId?: string; response?: unknown }
+      try {
+        await pruefePasskeyAntwort(req, b.challengeId, b.response, userId)
+      } catch (e) {
+        // Wie beim Kennwort: nur an uns, ohne Hinweis an den Betrieb.
+        await tx(req.pool, req, client => meldeSicherheitsereignis(client, req, {
+          kind: 'confirmation_failed', accountId: p.accountIds[0] ?? null }))
+        throw e
+      }
+      const { rows } = await req.pool.query<{ until: string }>(
+        `UPDATE user_session SET confirmed_at = now(), confirmed_user_id = $2
+          WHERE id = $1
+          RETURNING (now() + make_interval(mins => $3))::text AS until`,
+        [sessionId, userId, BESTAETIGUNG_MINUTEN])
+      return { confirmedUntil: new Date(rows[0]!.until).toISOString() }
     }
   })
 }

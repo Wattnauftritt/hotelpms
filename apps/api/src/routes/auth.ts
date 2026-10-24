@@ -261,7 +261,15 @@ function neueSitzungsKennung(): string {
  * auseinander, und dann ist eine von beiden die schwaechere Tuer.
  */
 export async function sitzungAnlegen(
-  req: FastifyRequest, reply: FastifyReply, userId: number, fuerApp: boolean
+  req: FastifyRequest, reply: FastifyReply, userId: number, fuerApp: boolean,
+  /**
+   * Die Sitzung beginnt bestaetigt (0209). Nur fuer die Passkey-Anmeldung:
+   * sie hat gerade Besitz und Fingerabdruck oder Geraete-PIN gezeigt, mehr
+   * verlangt auch `/v1/auth/passkey/confirm` nicht. Nach dem Kennwort
+   * nicht -- sonst waere ein abgefangenes Kennwort zugleich die
+   * Bestaetigung, gegen die sie stehen soll.
+   */
+  bestaetigt = false
 ): Promise<{ ok: true; token?: string }> {
   /*
    * Die eigene App bekommt dieselbe Sitzung als Token statt als Cookie
@@ -281,15 +289,17 @@ export async function sitzungAnlegen(
   const sessionId = (fuerApp ? APP_TOKEN_PREFIX : '') + neueSitzungsKennung()
   await req.pool.query(
     `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
-                               idle_window, ip, user_agent, client)
+                               idle_window, ip, user_agent, client,
+                               confirmed_at, confirmed_user_id)
      VALUES ($1,$2, now() + ($3 || ' hours')::interval,
                     now() + ($4 || ' hours')::interval,
-                    ($3 || ' hours')::interval, $5, $6, $7)`,
+                    ($3 || ' hours')::interval, $5, $6, $7,
+                    CASE WHEN $8 THEN now() END, CASE WHEN $8 THEN $2::bigint END)`,
     [sessionId, userId,
      fuerApp ? APP_SITZUNG_UNTAETIG_STUNDEN : SITZUNG_UNTAETIG_STUNDEN,
      fuerApp ? APP_SITZUNG_ABSOLUT_STUNDEN : SITZUNG_ABSOLUT_STUNDEN,
      req.ip, (req.headers['user-agent'] ?? '').slice(0, 300),
-     fuerApp ? 'app' : 'web'])
+     fuerApp ? 'app' : 'web', bestaetigt])
   if (fuerApp) return { ok: true, token: sessionId }
 
   reply.setCookie(COOKIE, sessionId, {

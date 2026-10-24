@@ -129,8 +129,9 @@ beforeEach(async () => {
   await truncateAll()
   limiters.reset()
   fx = await makeProperty(owner)
-  const u = await makeUser(owner,
-    { email: 'rezeption@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
+  // Unbestaetigt: sonst saehe die Bestaetigung per Passkey unten nichts.
+  const u = await makeUser(owner, { email: 'rezeption@test.de', propertyId: fx.propertyId,
+                                    roleKey: 'reception', confirmed: false })
   userId = u.userId
   await owner.query(`UPDATE app_user SET password_hash = $2 WHERE id = $1`,
     [userId, await hashPassword(KENNWORT)])
@@ -296,5 +297,73 @@ describe('Eigene Passkeys verwalten', () => {
     expect(eigen.statusCode).toBe(204)
     const rest = await owner.query(`SELECT 1 FROM user_passkey WHERE user_id = $1`, [userId])
     expect(rest.rows).toHaveLength(0)
+  })
+})
+
+describe('Kritische Handlung mit Passkey bestaetigen (0209)', () => {
+  const bestaetigt = async (headers: Record<string, string>): Promise<boolean> =>
+    (await app.inject({ method: 'GET', url: '/v1/auth/confirm', headers }))
+      .json<{ confirmed: boolean }>().confirmed
+
+  async function bestaetigen(g: Geraet, headers: Record<string, string>) {
+    const o = await post('/v1/auth/passkey/confirm/options', {}, headers)
+    if (o.statusCode !== 200) return o
+    const j = o.json<{ challengeId: string; options: { challenge: string
+      allowCredentials: Array<{ id: string }> } }>()
+    return post('/v1/auth/passkey/confirm',
+      { challengeId: j.challengeId, response: g.anmelden(j.options.challenge) }, headers)
+  }
+
+  it('bestaetigt die Sitzung und bietet nur die eigenen Passkeys an', async () => {
+    const g = new Geraet()
+    await anlegen(g)
+    expect(await bestaetigt(auth)).toBe(false)
+    const o = await post('/v1/auth/passkey/confirm/options', {}, auth)
+    expect(o.json<{ options: { allowCredentials: Array<{ id: string }> } }>()
+      .options.allowCredentials.map(c => c.id)).toEqual([g.credId.toString('base64url')])
+    const r = await bestaetigen(g, auth)
+    expect(r.statusCode, r.body).toBe(200)
+    expect(await bestaetigt(auth)).toBe(true)
+  })
+
+  it('nimmt keinen Passkey einer anderen Person', async () => {
+    /*
+     * Am Tresen liegen Passkeys mehrerer Leute im selben Browser. Wer in
+     * der Sitzung von A steht, darf mit dem Passkey von B nicht bestaetigen.
+     */
+    const gA = new Geraet()
+    await anlegen(gA)
+    const b = await makeUser(owner,
+      { email: 'b@test.de', propertyId: fx.propertyId, roleKey: 'reception' })
+    await owner.query(`UPDATE app_user SET password_hash = $2 WHERE id = $1`,
+      [b.userId, await hashPassword(KENNWORT)])
+    const authB = { cookie: `hp_session=${b.sessionId}` }
+    const gB = new Geraet()
+    expect((await anlegen(gB, authB)).statusCode).toBe(201)
+
+    const r = await bestaetigen(gB, auth)
+    expect(r.statusCode).toBe(401)
+    expect(await bestaetigt(auth)).toBe(false)
+    const e = await owner.query(
+      `SELECT 1 FROM security_event WHERE kind = 'confirmation_failed'`)
+    expect(e.rows.length).toBeGreaterThan(0)
+  })
+
+  it('verlangt einen eigenen Passkey', async () => {
+    const r = await post('/v1/auth/passkey/confirm/options', {}, auth)
+    expect(r.statusCode).toBe(401)
+  })
+
+  it('eine Passkey-Anmeldung beginnt bestaetigt, eine mit Kennwort nicht', async () => {
+    const g = new Geraet()
+    await anlegen(g)
+    const { challengeId, challenge } = await anmeldeHerausforderung()
+    const r = await post('/v1/auth/passkey/login', { challengeId, response: g.anmelden(challenge) })
+    const cookie = r.cookies.find(c => c.name === 'hp_session')!
+    expect(await bestaetigt({ cookie: `hp_session=${cookie.value}` })).toBe(true)
+
+    const k = await post('/v1/auth/login', { email: 'rezeption@test.de', password: KENNWORT })
+    const kc = k.cookies.find(c => c.name === 'hp_session')!
+    expect(await bestaetigt({ cookie: `hp_session=${kc.value}` })).toBe(false)
   })
 })
