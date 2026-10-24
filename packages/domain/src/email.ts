@@ -2660,9 +2660,10 @@ export type SecurityNoticeAction =
   | 'oauth_client_changed' | 'webhook_created' | 'webhook_changed'
   | 'channel_connection_created' | 'role_granted' | 'support_granted'
   | 'export' | 'login_new_device' | 'access_volume' | 'honeytoken'
+  | 'client_origin_denied'
 
 const NOTICE_ACTION: Record<SecurityNoticeAction, { de: string; en: string }> = {
-  bank_details_changed: { de: 'die Bankverbindung auf den Rechnungen geaendert',
+  bank_details_changed: { de: 'die Bankverbindung auf den Rechnungen geändert',
                           en: 'changed the bank details printed on invoices' },
   payment_account_connected: { de: 'ein Zahlungskonto (Stripe) verbunden',
                                en: 'connected a payment account (Stripe)' },
@@ -2670,11 +2671,11 @@ const NOTICE_ACTION: Record<SecurityNoticeAction, { de: string; en: string }> = 
                                   en: 'disconnected the payment account (Stripe)' },
   oauth_client_created: { de: 'einen Maschinenzugang zur Schnittstelle angelegt',
                           en: 'created a machine access to the API' },
-  oauth_client_changed: { de: 'die Rechte eines Maschinenzugangs geaendert',
+  oauth_client_changed: { de: 'die Rechte eines Maschinenzugangs geändert',
                           en: 'changed the permissions of a machine access' },
   webhook_created: { de: 'ein Webhook-Ziel angelegt',
                      en: 'created a webhook target' },
-  webhook_changed: { de: 'die Adresse eines Webhook-Ziels geaendert',
+  webhook_changed: { de: 'die Adresse eines Webhook-Ziels geändert',
                      en: 'changed the address of a webhook target' },
   channel_connection_created: { de: 'einen Kanalzugang angelegt',
                                 en: 'created a channel connection' },
@@ -2684,12 +2685,14 @@ const NOTICE_ACTION: Record<SecurityNoticeAction, { de: string; en: string }> = 
                      en: 'granted StayGrid support access' },
   export: { de: 'einen Datenexport heruntergeladen',
             en: 'downloaded a data export' },
-  login_new_device: { de: 'sich von einem neuen Geraet angemeldet',
+  login_new_device: { de: 'sich von einem neuen Gerät angemeldet',
                       en: 'signed in from a new device' },
-  access_volume: { de: 'ungewoehnlich viele Gastdaten abgerufen',
+  access_volume: { de: 'ungewöhnlich viele Gastdaten abgerufen',
                    en: 'retrieved an unusual amount of guest data' },
-  honeytoken: { de: 'einen Koederdatensatz abgerufen, den niemand im Betrieb kennt',
-                en: 'retrieved a decoy record that nobody in your business knows' }
+  honeytoken: { de: 'einen Köderdatensatz abgerufen, den niemand im Betrieb kennt',
+                en: 'retrieved a decoy record that nobody in your business knows' },
+  client_origin_denied: { de: 'den Zugang aus einem Netz benutzt, das für ihn nicht freigegeben ist',
+                          en: 'used the access from a network that is not allowed for it' }
 }
 
 export function renderSecurityNotice(
@@ -2716,9 +2719,9 @@ export function renderSecurityNotice(
       + (d.hint ? ` Angabe: ${d.hint}.` : ''),
     'War das so geplant, ist nichts zu tun.',
     'Hat das niemand aus Ihrem Betrieb getan, melden Sie sich wie gewohnt an, '
-      + 'pruefen Sie das Sicherheitsprotokoll unter Einstellungen und aendern '
+      + 'prüfen Sie das Sicherheitsprotokoll unter Einstellungen und ändern '
       + 'Sie Ihr Kennwort. Sagen Sie danach dem StayGrid-Support Bescheid. '
-      + 'Diese Nachricht enthaelt bewusst keinen Link.'
+      + 'Diese Nachricht enthält bewusst keinen Link.'
   ]
   return { subject: `Sicherheitshinweis: ${a.de}`,
            text: lines.join('\n\n'), html: htmlBody(lines, lang) }

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { isIP } from 'node:net'
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
@@ -7,6 +8,7 @@ import { Errors } from '../platform/errors.js'
 import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { hinweisText } from '../platform/texte.js'
 import { hashToken } from '../platform/auth.js'
+import { fremdesNetzMelden } from '../platform/maschinennetz.js'
 import { accountFor, accountRight, accountsWith, can, type Principal } from '../platform/context.js'
 import { isPermission, PERMISSIONS, type Permission } from '../platform/permissions.js'
 import { withTransaction, SYSTEM_CONTEXT } from '@hotelpms/db'
@@ -56,6 +58,8 @@ interface ClientRow {
   scopes: string[]
   property_ids: string[]
   status: string
+  /** Kommt die Anfrage aus einem freigegebenen Netz (Migration 0212)? */
+  origin_ok: boolean
 }
 
 /** Kennung und Geheimnis aus Kopfzeile oder Rumpf, in dieser Reihenfolge. */
@@ -184,6 +188,28 @@ export function pruefeReichweite(
   }
 }
 
+/**
+ * Die Netze, aus denen ein Zugang gilt (Migration 0212): Adressen oder
+ * Netze in CIDR-Schreibweise, hoechstens zwanzig. Hier geprueft und nicht
+ * erst an der Datenbank, die ein `10.0.0.300` mit einem Fehler 500
+ * beantworten wuerde.
+ */
+function pruefeNetze(v: unknown): asserts v is string[] {
+  const ok = Array.isArray(v) && v.length <= 20 && v.every(x => {
+    if (typeof x !== 'string') return false
+    const [adresse, laenge, ...rest] = x.trim().split('/')
+    const art = isIP(adresse ?? '')
+    if (art === 0 || rest.length > 0) return false
+    if (laenge === undefined) return true
+    const n = Number(laenge)
+    return /^\d+$/.test(laenge) && n >= 0 && n <= (art === 4 ? 32 : 128)
+  })
+  if (!ok) throw Errors.validation({ allowedNetworks: ['field.invalid'] })
+}
+
+/** Als Netz gespeichert: `10.0.0.7/8` wird `10.0.0.0/8`, eine Adresse `/32`. */
+const NETZE_SQL = `ARRAY(SELECT network(x::inet)::cidr FROM unnest($N::text[]) x)`
+
 export function oauthRoutes(app: FastifyInstance): void {
   registerRoute(app, {
     method: 'POST',
@@ -209,7 +235,8 @@ export function oauthRoutes(app: FastifyInstance): void {
       // Zeilenrichtlinie ueber den Account, und den kennt man erst, wenn der
       // Client gefunden ist (Migration 0023).
       const gefunden = await withTransaction(req.pool, SYSTEM_CONTEXT, client =>
-        client.query<ClientRow>(`SELECT * FROM oauth_client_for_auth($1)`, [daten.id]))
+        client.query<ClientRow>(`SELECT * FROM oauth_client_for_auth($1, $2::inet)`,
+          [daten.id, req.ip || null]))
 
       /*
        * Rechenzeit auch dann verbrauchen, wenn es den Client nicht gibt --
@@ -223,6 +250,18 @@ export function oauthRoutes(app: FastifyInstance): void {
 
       const c = gefunden.rows[0]
       if (c === undefined || !stimmt || c.status !== 'active') {
+        return oauthFehler(reply, 401, 'invalid_client',
+          'Kennung oder Geheimnis stimmt nicht.')
+      }
+
+      /*
+       * Richtiges Geheimnis, falsches Netz (Migration 0212). Dieselbe
+       * Antwort wie ein falsches Geheimnis: wer es abgezogen hat, soll
+       * nicht erfahren, dass es stimmt und nur der Ort nicht passt. Der
+       * Betrieb erfaehrt es dafuer sofort.
+       */
+      if (!c.origin_ok) {
+        await fremdesNetzMelden(req.pool, Number(c.account_id), daten.id, req.ip || null, 'token')
         return oauthFehler(reply, 401, 'invalid_client',
           'Kennung oder Geheimnis stimmt nicht.')
       }
@@ -265,7 +304,8 @@ export function oauthRoutes(app: FastifyInstance): void {
     summary: 'Maschinenzugang anlegen',
     handler: async (req, reply) => {
       const body = req.body as {
-        accountId?: number; name: string; scopes: string[]; propertyIds?: number[] }
+        accountId?: number; name: string; scopes: string[]; propertyIds?: number[]
+        allowedNetworks?: unknown }
       const principal = req.principal as Principal
       const accountId = accountFor(principal, body.accountId, 'integration:manage')
 
@@ -273,6 +313,8 @@ export function oauthRoutes(app: FastifyInstance): void {
         throw Errors.validation({ name: ['field.required'] })
       }
       pruefeScopes(body.scopes)
+      const netze = body.allowedNetworks ?? []
+      pruefeNetze(netze)
       // Ein Maschinenzugang ueberlebt Kennwortwechsel und Abmelden -- die
       // bequemste Hintertuer fuer jemanden mit geliehener Sitzung
       // (Bedrohungsanalyse 23.10.2026, T3).
@@ -291,15 +333,18 @@ export function oauthRoutes(app: FastifyInstance): void {
         }
         pruefeReichweite(principal, accountId, body.scopes, propertyIds)
 
-        const r = await client.query<{ public_ref: string }>(
-          `INSERT INTO oauth_client (account_id, name, secret_hash, scopes, property_ids)
-           VALUES ($1,$2,$3,$4::text[],$5::bigint[]) RETURNING public_ref`,
+        const r = await client.query<{ public_ref: string; netze: string[] }>(
+          `INSERT INTO oauth_client (account_id, name, secret_hash, scopes, property_ids,
+                                     allowed_networks)
+           VALUES ($1,$2,$3,$4::text[],$5::bigint[], ${NETZE_SQL.replace('$N', '$6')})
+           RETURNING public_ref, allowed_networks::text[] AS netze`,
           [accountId, body.name.trim(),
            await argonHash(secret, { memoryCost: 19_456, timeCost: 2, parallelism: 1 }),
-           body.scopes, propertyIds])
+           body.scopes, propertyIds, netze])
         await meldeSicherheitsereignis(client, req, {
           kind: 'oauth_client_created', accountId,
-          detail: { clientId: r.rows[0]!.public_ref, scopes: body.scopes, propertyIds },
+          detail: { clientId: r.rows[0]!.public_ref, scopes: body.scopes, propertyIds,
+                    allowedNetworks: r.rows[0]!.netze },
           hint: body.scopes.join(', ') })
 
         reply.status(201)
@@ -309,6 +354,7 @@ export function oauthRoutes(app: FastifyInstance): void {
           scopes: body.scopes,
           propertyIds,
           allProperties: propertyIds.length === 0,
+          allowedNetworks: r.rows[0]!.netze,
           hinweis: hinweisText('hint.oauthSecretOnce'),
           hinweisKey: 'hint.oauthSecretOnce'
         }
@@ -325,6 +371,7 @@ export function oauthRoutes(app: FastifyInstance): void {
       const { rows } = await client.query(
         `SELECT c.public_ref AS "clientId", c.name, c.scopes, c.property_ids AS "propertyIds",
                 c.status, c.created_at AS "createdAt",
+                c.allowed_networks::text[] AS "allowedNetworks",
                 count(t.id) FILTER (
                   WHERE t.revoked_at IS NULL AND t.expires_at > now())::int AS "activeTokens",
                 max(t.last_used_at) AS "lastUsedAt"
@@ -366,12 +413,13 @@ export function oauthRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { clientRef } = req.params as { clientRef: string }
       const body = (req.body ?? {}) as {
-        name?: unknown; scopes?: unknown; propertyIds?: unknown }
+        name?: unknown; scopes?: unknown; propertyIds?: unknown; allowedNetworks?: unknown }
       if (body.name !== undefined
           && (typeof body.name !== 'string' || body.name.trim() === '')) {
         throw Errors.validation({ name: ['field.required'] })
       }
       if (body.scopes !== undefined) pruefeScopes(body.scopes)
+      if (body.allowedNetworks !== undefined) pruefeNetze(body.allowedNetworks)
       if (body.propertyIds !== undefined
           && (!Array.isArray(body.propertyIds)
               || body.propertyIds.some(x => !Number.isSafeInteger(x)))) {
@@ -380,9 +428,13 @@ export function oauthRoutes(app: FastifyInstance): void {
       const name = body.name as string | undefined
       const scopes = body.scopes as string[] | undefined
       const propertyIds = body.propertyIds as number[] | undefined
-      // Nur ein neuer Name ist keine Frage der Sicherheit; Rechte und
-      // Haeuser sind es.
-      if (scopes !== undefined || propertyIds !== undefined) await verlangeBestaetigung(req)
+      const netze = body.allowedNetworks as string[] | undefined
+      // Nur ein neuer Name ist keine Frage der Sicherheit; Rechte, Haeuser
+      // und Netze sind es -- wer die Netze leert, oeffnet den Zugang wieder
+      // fuer ueberall.
+      const sicherheit = scopes !== undefined || propertyIds !== undefined
+        || netze !== undefined
+      if (sicherheit) await verlangeBestaetigung(req)
 
       return tx(req.pool, req, async client => {
         const c = await client.query<{ id: number; account_id: number; status: string
@@ -414,21 +466,23 @@ export function oauthRoutes(app: FastifyInstance): void {
           scopes ?? z.scopes, propertyIds ?? z.property_ids.map(Number))
 
         const neu = await client.query<{ name: string; scopes: string[]
-                                         property_ids: string[] }>(
+                                         property_ids: string[]; netze: string[] }>(
           `UPDATE oauth_client
               SET name = COALESCE($2, name),
                   scopes = COALESCE($3::text[], scopes),
-                  property_ids = COALESCE($4::bigint[], property_ids)
+                  property_ids = COALESCE($4::bigint[], property_ids),
+                  allowed_networks = CASE WHEN $5::text[] IS NULL THEN allowed_networks
+                                          ELSE ${NETZE_SQL.replace('$N', '$5')} END
             WHERE id = $1
-           RETURNING name, scopes, property_ids`,
-          [z.id, name?.trim() ?? null, scopes ?? null, propertyIds ?? null])
+           RETURNING name, scopes, property_ids, allowed_networks::text[] AS netze`,
+          [z.id, name?.trim() ?? null, scopes ?? null, propertyIds ?? null, netze ?? null])
         const n = neu.rows[0]!
         const haeuser = n.property_ids.map(Number)
-        if (scopes !== undefined || propertyIds !== undefined) {
+        if (sicherheit) {
           await meldeSicherheitsereignis(client, req, {
             kind: 'oauth_client_changed', accountId: Number(z.account_id),
             detail: { clientId: clientRef, scopesBefore: z.scopes, scopes: n.scopes,
-                      propertyIds: haeuser },
+                      propertyIds: haeuser, allowedNetworks: n.netze },
             hint: n.scopes.join(', ') })
         }
 
@@ -457,7 +511,7 @@ export function oauthRoutes(app: FastifyInstance): void {
           [z.id, haeuser])
 
         return { clientId: clientRef, name: n.name, scopes: n.scopes, propertyIds: haeuser,
-                 allProperties: haeuser.length === 0 }
+                 allProperties: haeuser.length === 0, allowedNetworks: n.netze }
       })
     }
   })

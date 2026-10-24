@@ -38,7 +38,7 @@ export const HINWEIS_ARTEN: ReadonlySet<SecurityEventKind> = new Set<SecurityEve
   'bank_details_changed', 'payment_account_connected', 'payment_account_disconnected',
   'oauth_client_created', 'oauth_client_changed', 'webhook_created', 'webhook_changed',
   'channel_connection_created', 'role_granted', 'support_granted', 'export',
-  'login_new_device', 'access_volume', 'honeytoken'
+  'login_new_device', 'access_volume', 'honeytoken', 'client_origin_denied'
 ])
 
 /**

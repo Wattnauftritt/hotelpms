@@ -202,6 +202,18 @@ function BenutzerZeile(
                       }}>
                 {t(benutzer.blocked ? 'user.unblock' : 'user.block')}
               </button>
+              {!benutzer.blocked && (
+                <button disabled={!online || aktion.isPending} className={knopf}
+                        onClick={() => {
+                          if (window.confirm(t('user.revokeSessionsConfirm',
+                                               { name: benutzer.displayName }))) {
+                            aktion.mutate({ userRef: benutzer.userRef,
+                                            action: 'sessions/revoke' })
+                          }
+                        }}>
+                  {t('user.revokeSessions')}
+                </button>
+              )}
               <button disabled={!online || entfernen.isPending}
                       className={`${knopf} text-red-800`}
                       onClick={() => {
@@ -213,6 +225,11 @@ function BenutzerZeile(
                 {t('user.remove')}
               </button>
             </>
+          )}
+          {aktion.isSuccess && aktion.data.revoked !== undefined && (
+            <span className="text-xs text-green-800 self-center">
+              {t('user.sessionsRevoked', { count: aktion.data.revoked })}
+            </span>
           )}
           {aktion.isSuccess && aktion.data.kind !== undefined
             && aktion.data.link === undefined && (

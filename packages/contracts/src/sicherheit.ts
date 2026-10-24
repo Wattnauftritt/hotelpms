@@ -12,7 +12,8 @@ export const SECURITY_EVENT_KINDS = [
   'support_granted', 'export', 'deployment',
   'platform_role_changed', 'payment_provider_changed',
   'confirmation_failed', 'login_new_device',
-  'access_volume', 'honeytoken', 'platform_passkey_changed'
+  'access_volume', 'honeytoken', 'platform_passkey_changed',
+  'client_origin_denied'
 ] as const
 export type SecurityEventKind = (typeof SECURITY_EVENT_KINDS)[number]
 

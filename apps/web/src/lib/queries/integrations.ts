@@ -81,7 +81,8 @@ export interface OAuthClientCreated {
 export function useCreateOAuthClient() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; scopes: string[]; propertyIds?: number[] }) =>
+    mutationFn: (body: { name: string; scopes: string[]; propertyIds?: number[]
+                         allowedNetworks?: string[] }) =>
       api.post<OAuthClientCreated>('/v1/oauth-clients', body),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['oauthClients'] }) }
   })
@@ -91,7 +92,8 @@ export function useUpdateOAuthClient() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ clientRef, ...body }: { clientRef: string; name?: string
-                                           scopes?: string[]; propertyIds?: number[] }) =>
+                                           scopes?: string[]; propertyIds?: number[]
+                                           allowedNetworks?: string[] }) =>
       api.patch(`/v1/oauth-clients/${clientRef}`, body),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['oauthClients'] }) }
   })
@@ -194,10 +196,11 @@ export function useUserAction(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ userRef, action, delivery }: {
-      userRef: string; action: 'access-link' | 'unlock' | 'block' | 'unblock'
+      userRef: string
+      action: 'access-link' | 'unlock' | 'block' | 'unblock' | 'sessions/revoke'
       /** Nur beim Zugangslink: per Mail oder zum Weitergeben (0105). */
       delivery?: 'email' | 'link' }) =>
-      api.post<{ kind?: string; sessionsRevoked?: number
+      api.post<{ kind?: string; sessionsRevoked?: number; revoked?: number
                  link?: string; linkExpiresAt?: string }>(
         `/v1/properties/${propertyId}/users/${userRef}/${action}`,
         delivery === undefined ? undefined : { delivery }),

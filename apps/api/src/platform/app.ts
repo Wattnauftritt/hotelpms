@@ -276,7 +276,7 @@ export async function buildServer(
         }
         req.sitzung = null
       }
-      req.principal = await loadPrincipalFromToken(pool, token)
+      req.principal = await loadPrincipalFromToken(pool, token, req.ip)
       return
     }
 

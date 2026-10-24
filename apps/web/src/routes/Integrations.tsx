@@ -317,6 +317,23 @@ function HausWahl({ haeuser, gewaehlt, onChange }: {
 }
 
 /** „Gästehaus (ID 3)“ statt einer nackten Zahl; ein fremdes Haus bleibt Zahl. */
+/** Eine Adresse oder ein Netz je Zeile; Kommas gehen auch. */
+function netzeAus(text: string): string[] {
+  return text.split(/[\s,]+/).map(x => x.trim()).filter(x => x !== '')
+}
+
+function NetzFeld({ wert, onChange }: { wert: string; onChange: (v: string) => void }): JSX.Element {
+  const t = useT()
+  return (
+    <label className="text-sm block">
+      <div className="text-neutral-600">{t('client.networks')}</div>
+      <textarea value={wert} onChange={e => onChange(e.target.value)} rows={2}
+                spellCheck={false} className={`${feld} w-64 font-mono text-xs`} />
+      <div className="text-xs text-neutral-500 mt-1 max-w-prose">{t('client.networksHint')}</div>
+    </label>
+  )
+}
+
 function hausNamen(ids: number[], haeuser: Haus[]): string {
   return ids.map(id => {
     const h = haeuser.find(x => x.id === id)
@@ -332,7 +349,8 @@ function Zugang({ client, verfuegbar, haeuser }: {
   const sperren = useRevokeOAuthClient()
   const aendern = useUpdateOAuthClient()
   const aktiv = client.status === 'active'
-  const [entwurf, setEntwurf] = useState<{ scopes: string[]; haeuser: number[] } | null>(null)
+  const [entwurf, setEntwurf] = useState<{ scopes: string[]; haeuser: number[]
+                                           netze: string } | null>(null)
 
   return (
     <li className={`rounded-sm border border-neutral-200 bg-white p-3
@@ -346,7 +364,8 @@ function Zugang({ client, verfuegbar, haeuser }: {
         </span>
         {aktiv && entwurf === null && (
           <button onClick={() => setEntwurf({
-                    scopes: client.scopes, haeuser: client.propertyIds.map(Number) })}
+                    scopes: client.scopes, haeuser: client.propertyIds.map(Number),
+                    netze: client.allowedNetworks.join('\n') })}
                   disabled={!online} className={knopf}>
             {t('client.edit')}
           </button>
@@ -371,6 +390,11 @@ function Zugang({ client, verfuegbar, haeuser }: {
             ? t('client.allProperties')
             : hausNamen(client.propertyIds.map(Number), haeuser)}
         </span>
+        <span>
+          {client.allowedNetworks.length === 0
+            ? t('client.networksAny')
+            : t('client.networksOnly', { list: client.allowedNetworks.join(', ') })}
+        </span>
       </div>
       {entwurf === null
         ? <div className="mt-1 flex flex-wrap gap-1">
@@ -384,13 +408,15 @@ function Zugang({ client, verfuegbar, haeuser }: {
                   e.preventDefault()
                   if (entwurf.scopes.length === 0) return
                   aendern.mutate({ clientRef: client.clientId, scopes: entwurf.scopes,
-                                   propertyIds: entwurf.haeuser },
+                                   propertyIds: entwurf.haeuser,
+                                   allowedNetworks: netzeAus(entwurf.netze) },
                     { onSuccess: () => setEntwurf(null) })
                 }}>
             <ScopeWahl verfuegbar={verfuegbar} gewaehlt={entwurf.scopes}
                        onChange={s => setEntwurf({ ...entwurf, scopes: s })} />
             <HausWahl haeuser={haeuser} gewaehlt={entwurf.haeuser}
                       onChange={h => setEntwurf({ ...entwurf, haeuser: h })} />
+            <NetzFeld wert={entwurf.netze} onChange={n => setEntwurf({ ...entwurf, netze: n })} />
             <div className="text-xs text-neutral-500">{t('client.editHint')}</div>
             {aendern.isError && <Fehler error={aendern.error} />}
             <div className="flex gap-2">
@@ -423,6 +449,7 @@ function Maschinenzugaenge({ propertyId }: { propertyId: number }): JSX.Element 
   // Vorgewählt ist das Haus aus der Kopfzeile, nicht „alle“: ein Zugang für
   // alle Häuser soll eine Entscheidung sein, kein übersehenes Feld.
   const [hausIds, setHausIds] = useState<number[]>([propertyId])
+  const [netze, setNetze] = useState('')
   const [geheimnis, setGeheimnis] = useState<{ wert: string; hinweis: string } | null>(null)
 
   return (
@@ -436,12 +463,13 @@ function Maschinenzugaenge({ propertyId }: { propertyId: number }): JSX.Element 
             onSubmit={e => {
               e.preventDefault()
               if (name.trim() === '' || scopes.length === 0) return
-              anlegen.mutate({ name: name.trim(), scopes, propertyIds: hausIds },
+              anlegen.mutate({ name: name.trim(), scopes, propertyIds: hausIds,
+                               allowedNetworks: netzeAus(netze) },
                 { onSuccess: r => {
                     setGeheimnis({
                       wert: `${r.clientId}:${r.clientSecret}`,
                       hinweis: apiText(r.hinweisKey, r.hinweis, locale) })
-                    setName(''); setScopes([]); setHausIds([propertyId])
+                    setName(''); setScopes([]); setHausIds([propertyId]); setNetze('')
                   } })
             }}>
         <div className="font-medium">{t('client.new')}</div>
@@ -457,6 +485,7 @@ function Maschinenzugaenge({ propertyId }: { propertyId: number }): JSX.Element 
           <div className="text-xs text-neutral-500 mt-1">{t('client.scopesHint')}</div>
         </div>
         <HausWahl haeuser={haeuser} gewaehlt={hausIds} onChange={setHausIds} />
+        <NetzFeld wert={netze} onChange={setNetze} />
         {anlegen.isError && <Fehler error={anlegen.error} />}
         <button type="submit"
                 disabled={!online || anlegen.isPending || name.trim() === ''
