@@ -137,6 +137,26 @@ export function useSollminutenSpeichern(propertyId: number) {
   })
 }
 
+export type Nachrechnung = { from: string | null; rooms: number; minutesBefore: number
+                            minutesAfter: number }
+
+/** Den laufenden Monat mit den aktuellen Sollminuten nachrechnen, erst als Vorschau. */
+export function useSollminutenNachrechnen(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (preview: boolean) =>
+      api.post<Nachrechnung>(`/v1/properties/${propertyId}/cleaning-norms/recalculate`,
+        { preview }),
+    onSuccess: (_, preview) => {
+      if (!preview) {
+        void qc.invalidateQueries({ queryKey: ['cleaning-plan', propertyId] })
+        void qc.invalidateQueries({ queryKey: ['worktime'] })
+        void qc.invalidateQueries({ queryKey: ['worktime-day'] })
+      }
+    }
+  })
+}
+
 export function useBereicheSpeichern(propertyId: number) {
   const qc = useQueryClient()
   return useMutation({

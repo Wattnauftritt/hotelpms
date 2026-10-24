@@ -5,6 +5,7 @@ import { today } from '../lib/dates.js'
 import { Fehler, Laedt, DatumsWahl } from '../components/Shell.tsx'
 import {
   useReinigungsplan, usePlanSpeichern, usePlanVorschlag, useSollminutenSpeichern,
+  useSollminutenNachrechnen,
   useBereicheSpeichern, usePersonalGemeinsam, usePersonalGemeinsamSpeichern, zielVon,
   type Reinigungsplan as Plan, type PlanZimmer, type ReinigungsArt, type Sollminute,
   type Zuteilung, type Bereich
@@ -496,8 +497,59 @@ function Sollminuten({ propertyId, plan }: { propertyId: number; plan: Plan }): 
                          disabled:bg-neutral-300">
         {t(sichern.isPending ? 'common.loading' : 'cleaningPlan.normSave')}
       </button>
+      <Nachrechnen propertyId={propertyId} />
     </div>
   </details>
+}
+
+/**
+ * Den laufenden Monat nachrechnen (Sven, 24.10.2026: FZ stand auf 60, die
+ * Zimmer liefen mit 30, "muss auch rueckwirkend fuer den ganzen Monat
+ * behoben werden"). Erst die Vorschau, dann Uebernehmen -- es aendert
+ * abgerechnete Minuten, und die Hausdame soll vorher sehen, um wie viel.
+ * Nach dem Speichern der Sollminuten, nicht stattdessen: gerechnet wird mit
+ * dem gespeicherten Stand.
+ */
+function Nachrechnen({ propertyId }: { propertyId: number }): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  const online = useOnline()
+  const vorschau = useSollminutenNachrechnen(propertyId)
+  const uebernehmen = useSollminutenNachrechnen(propertyId)
+  const v = vorschau.data
+  const knopf = 'text-sm px-3 py-1 rounded-sm border border-neutral-300 disabled:opacity-40'
+  // Ein Kalenderdatum, kein Zeitpunkt: in UTC formatiert, damit es nicht
+  // je nach Zeitzone auf den Vortag rutscht.
+  const datum = (iso: string): string => new Intl.DateTimeFormat(intlTag(locale),
+    { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${iso}T00:00:00Z`))
+  return <div className="space-y-1 text-sm">
+    <button type="button" className={knopf}
+            disabled={!online || vorschau.isPending || uebernehmen.isPending}
+            onClick={() => { uebernehmen.reset(); vorschau.mutate(true) }}>
+      {t(vorschau.isPending ? 'common.loading' : 'cleaningPlan.normRecalc')}
+    </button>
+    {vorschau.isError && <Fehler error={vorschau.error} />}
+    {uebernehmen.isError && <Fehler error={uebernehmen.error} />}
+    {uebernehmen.isSuccess
+      ? <p className="text-neutral-700">
+          {t('cleaningPlan.normRecalcDone', { rooms: uebernehmen.data.rooms })}
+        </p>
+      : v !== undefined && (v.rooms === 0
+        ? <p className="text-neutral-700">{t('cleaningPlan.normRecalcNone')}</p>
+        : <div className="flex flex-wrap items-center gap-2">
+            <span className="text-neutral-700">
+              {t('cleaningPlan.normRecalcPreview', {
+                from: datum(v.from!), rooms: v.rooms,
+                before: v.minutesBefore, after: v.minutesAfter })}
+            </span>
+            <button type="button" className={knopf}
+                    disabled={!online || uebernehmen.isPending}
+                    onClick={() => uebernehmen.mutate(false)}>
+              {t(uebernehmen.isPending ? 'common.loading' : 'cleaningPlan.normRecalcApply')}
+            </button>
+          </div>)}
+  </div>
 }
 
 /**
