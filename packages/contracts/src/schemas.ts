@@ -1353,7 +1353,9 @@ export const OAuthClient = Type.Object({
   status: Type.String(),
   createdAt: Type.String(),
   activeTokens: Type.Integer(),
-  lastUsedAt: Type.Union([Type.String(), Type.Null()])
+  lastUsedAt: Type.Union([Type.String(), Type.Null()]),
+  /** Leer: aus jedem Netz (Migration 0212). */
+  allowedNetworks: Type.Array(Type.String())
 })
 export type OAuthClient = Static<typeof OAuthClient>
 

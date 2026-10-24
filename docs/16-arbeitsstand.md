@@ -544,6 +544,12 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Hat ein Plattformkonto schon einen Passkey, ändert nur eine Passkey-Sitzung die Liste**, Anlegen wie Entfernen (`urn:staygrid:passkey_required`). Sonst legte sich jeder mit erbeutetem Kennwort seinen eigenen dazu. Der erste geht mit Kennwort, und jede Änderung ist das Sicherheitsereignis `platform_passkey_changed` mit Mail an das Sicherheitspostfach. Wer alle Passkeys verliert, dem entfernt der Betrieb die Zeilen in `user_passkey` auf der Maschine; danach gilt wieder der erste.
 - **Kein Kennwort aus Listen geleakter Kennwörter**, beim Ändern und beim Setzen über den Link (`auth.passwordKnown`). Lokal als Bloom-Filter (rund 73 000 Einträge ab zwölf Zeichen aus SecLists, Fehlerrate ein Tausendstel, `scripts/kennwortliste-bauen.py`), nicht bei Have I Been Pwned: dann ginge bei jedem Wechsel ein Hashanfang an einen Dritten, und die Maschine bräuchte einen Weg nach draußen. Dazu weder `staygrid` noch der eigene Anmeldename (ab vier Zeichen) im Kennwort.
 
+**Vierter Teil: gestohlene Sitzungen und Geheimnisse** (A4, A5, D2; Migration `0212`, `routes/sitzungen.ts`, `platform/maschinennetz.ts`).
+
+- **Jeder sieht seine Anmeldungen** (Arbeitsplatz-Dialog, „Angemeldete Geräte“): Gerät, Adresse, zuletzt aktiv, mit Passkey oder nicht. Einzelne oder alle anderen lassen sich beenden, ohne dass ein Kennwortwechsel alle Geräte hinauswirft. Nach außen geht nur ein Abdruck der Sitzungskennung, nie die Kennung selbst: die steht im Cookie. Während eines Arbeitsplatzwechsels gibt es die Liste nicht.
+- **Die Hausleitung beendet alle Anmeldungen eines Mitarbeiters** („Überall abmelden“ unter Benutzer), ohne dessen Kennwort. Wer eine Rolle im ganzen Betrieb hat, nur mit dem Recht im Betrieb.
+- **Ein Maschinenzugang gilt nur aus den Netzen, die der Betrieb nennt** (`oauth_client.allowed_networks`, leer heißt überall). Geprüft bei der Ausgabe des Tokens und bei jeder Anfrage damit, denn ein unterwegs abgegriffenes Token trüge sonst eine Stunde lang von überall. Ein richtiges Geheimnis aus einem fremden Netz bekommt dieselbe Antwort wie ein falsches und wird `client_origin_denied`, einmal je Zugang und Stunde, mit Hinweis an die Leitung. Netze ändern verlangt eine Bestätigung: wer sie leert, öffnet den Zugang wieder.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**

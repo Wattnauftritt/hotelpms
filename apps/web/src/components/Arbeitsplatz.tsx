@@ -6,6 +6,7 @@ import { useT } from '../lib/i18n/index.js'
 import { Dialog, Abschnitt, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Shell.tsx'
 import { Passkeys } from './Passkeys.tsx'
+import { EigeneSitzungen } from './EigeneSitzungen.tsx'
 
 /**
  * Der Arbeitsplatz: wer handelt hier gerade, und wie wechselt man das.
@@ -193,6 +194,10 @@ export function Arbeitsplatz({ benutzer, email, pinGesetzt, gewechselt,
         </Abschnitt>
 
         <Passkeys />
+
+        {/* Nur fuer die eigene Person: wer gerade per PIN als Kollegin
+            arbeitet, sieht nicht die Anmeldungen des Angemeldeten. */}
+        {!gewechselt && <EigeneSitzungen />}
 
         {/*
           * Erst ab zwei Haeusern: mit einem gibt es nichts zu waehlen, und

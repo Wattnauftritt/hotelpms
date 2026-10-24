@@ -5,6 +5,7 @@ import type { Principal } from './context.js'
 import { ANONYMOUS } from './context.js'
 import { isSupportLevel, supportPermissions } from './support.js'
 import { isPermission, type Permission } from './permissions.js'
+import { fremdesNetzMelden } from './maschinennetz.js'
 
 /** Was `principal_user_data` (Migration 0142) liefert, Schluessel kurz gehalten. */
 interface PrincipalUserData {
@@ -272,7 +273,9 @@ interface TokenRow {
  * Rechteweg und deshalb auch keine zweite Pruefung -- `registerRoute` sieht
  * keinen Unterschied zwischen Mensch und Maschine.
  */
-export async function loadPrincipalFromToken(pool: Pool, token: string): Promise<Principal> {
+export async function loadPrincipalFromToken(
+  pool: Pool, token: string, origin: string | null = null
+): Promise<Principal> {
   return withTransaction(pool, SYSTEM_CONTEXT, async client => {
     /*
      * Ueber eine SECURITY-DEFINER-Funktion, weil `oauth_client` eine
@@ -280,10 +283,19 @@ export async function loadPrincipalFromToken(pool: Pool, token: string): Promise
      * er ergibt sich ja erst aus dem Token (Migration 0023, wie 0018).
      */
     const r = await client.query<TokenRow>(
-      `SELECT * FROM oauth_token_principal($1)`, [hashToken(token)])
+      `SELECT * FROM oauth_token_principal($1, $2::inet)`, [hashToken(token), origin || null])
 
     if (r.rowCount === 0) return ANONYMOUS
     const row = r.rows[0]!
+    /*
+     * Gueltiges Token aus einem Netz, das der Betrieb fuer diesen Zugang
+     * nicht nennt (Migration 0212): das Token ist abgeflossen. Anonym wie
+     * jedes ungueltige, und gemeldet.
+     */
+    if (row.client_status === 'origin_denied') {
+      await fremdesNetzMelden(pool, Number(row.account_id), row.public_ref, origin, 'request')
+      return ANONYMOUS
+    }
     if (row.client_status !== 'active') return ANONYMOUS
 
     // Leere Liste bedeutet alle aktiven Haeuser des Accounts. Die Aufloesung
