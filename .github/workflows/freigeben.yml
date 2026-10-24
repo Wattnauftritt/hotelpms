@@ -12,11 +12,16 @@ name: Fuer die Produktion freigeben
 # anlegen. Vier Klicks und jedes Mal die Gelegenheit, den falschen Commit zu
 # erwischen.
 #
-# **Warum kein Schluessel noetig ist.** Der eingebaute GITHUB_TOKEN reicht,
-# und er wirkt nur in diesem Repository. Ein Deploy-Key mit Schreibrecht auf
-# der Produktivmaschine waere der Weg vom Produktivsystem in den Quellcode
-# und ist deshalb ausgeschlossen (Dokument 21 §5) -- hier steht das Problem
-# gar nicht erst.
+# **Welcher Schluessel.** Steht der Tag unter einem Regelwerk (Settings,
+# Rules: nur eine Ausnahme darf ihn setzen), traegt der eingebaute
+# GITHUB_TOKEN nicht mehr: "GitHub Actions" laesst sich in einem
+# persoenlichen Repository nicht als Ausnahme eintragen. Ausnahme ist dann
+# "Deploy keys", und der Schluessel dazu liegt als Geheimnis
+# PRODUKTION_TAG_KEY **in der Umgebung `produktion`** -- erreichbar nur fuer
+# einen Lauf, der deren Regeln passiert hat (nur main, Wartezeit). Nie auf
+# der Produktivmaschine: ein Deploy-Key mit Schreibrecht dort waere der Weg
+# vom Produktivsystem in den Quellcode (Dokument 21 §5). Ohne das Geheimnis
+# setzt der Workflow den Tag wie bisher mit dem GITHUB_TOKEN.
 
 on:
   workflow_dispatch:
@@ -158,6 +163,8 @@ jobs:
       - name: Tag setzen
         env:
           SHA: ${{ steps.stand.outputs.sha }}
+          REPO: ${{ github.repository }}
+          TAG_KEY: ${{ secrets.PRODUKTION_TAG_KEY }}
         run: |
           set -euo pipefail
           sha="$SHA"
@@ -166,5 +173,21 @@ jobs:
           # wissen will, was wann lief, liest deploy_request auf der
           # Maschine, nicht die Tagliste.
           git tag -f produktion "$sha"
-          git push -f origin produktion
+          if [ -z "$TAG_KEY" ]; then
+            git push -f origin produktion
+          else
+            # Der Deploy-Key ist die eine Ausnahme im Regelwerk des Tags
+            # (s. Kopf). Der Hostschluessel von GitHub steht fest hier und
+            # wird nicht beim ersten Kontakt geglaubt: sonst naehme ssh
+            # jeden Server an, der sich als github.com ausgibt.
+            umask 077
+            dir="$RUNNER_TEMP/tagkey"
+            mkdir -p "$dir"
+            printf '%s\n' "$TAG_KEY" > "$dir/key"
+            echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+              > "$dir/known_hosts"
+            GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts -o StrictHostKeyChecking=yes" \
+              git push -f "git@github.com:$REPO.git" produktion
+            rm -rf "$dir"
+          fi
           echo "produktion zeigt jetzt auf ${sha:0:12}" >> "$GITHUB_STEP_SUMMARY"
