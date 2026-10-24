@@ -40,6 +40,7 @@ import { kurzbefehle } from './kurzbefehle.js'
 import { verkaufenAls } from './verkaufenAls.js'
 import { sicherheit } from './sicherheit.js'
 import { passkey } from './passkey.js'
+import { tickets } from './tickets.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -252,6 +253,7 @@ export type TextKey =
   | keyof typeof verkaufenAls
   | keyof typeof passkey
   | keyof typeof sicherheit
+  | keyof typeof tickets
 
 const texts: Record<TextKey, LocalizedText> = {
   ...common,
@@ -293,7 +295,8 @@ const texts: Record<TextKey, LocalizedText> = {
   ...kurzbefehle,
   ...verkaufenAls,
   ...passkey,
-  ...sicherheit
+  ...sicherheit,
+  ...tickets
 }
 
 /** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */

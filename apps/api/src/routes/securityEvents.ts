@@ -5,7 +5,7 @@ import { Errors } from '../platform/errors.js'
 import { accountRight, can, propertyIds, type Principal } from '../platform/context.js'
 
 /**
- * Die Sicherheitsereignisse lesen (Migration 0208, Bedrohungsanalyse
+ * Die Sicherheitsereignisse lesen (Migration 0209, Bedrohungsanalyse
  * 23.10.2026, E3).
  *
  * Die Hinweismail sagt der Leitung, **dass** etwas geschah; hier steht, was

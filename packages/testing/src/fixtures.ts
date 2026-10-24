@@ -88,7 +88,7 @@ export async function makeUser(
     platformRoleKey?: string
     isPlatformStaff?: boolean
     /**
-     * Sitzung fuer kritische Handlungen bestaetigt (Migration 0208)?
+     * Sitzung fuer kritische Handlungen bestaetigt (Migration 0209)?
      * Vorgabe ja: die meisten Tests pruefen die Handlung, nicht die Huerde
      * davor. Die Tests der Bestaetigung selbst setzen `false`.
      */

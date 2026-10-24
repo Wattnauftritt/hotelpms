@@ -5,7 +5,7 @@ import { bestaetigungAnmelden } from '../lib/bestaetigung.js'
 
 /**
  * Eine kritische Handlung ohne frische Bestaetigung fragt nach dem
- * Kennwort und laeuft danach **einmal** erneut (Migration 0208). Der
+ * Kennwort und laeuft danach **einmal** erneut (Migration 0209). Der
  * Bildschirm, der sie ausloest, bekommt davon nichts mit.
  */
 

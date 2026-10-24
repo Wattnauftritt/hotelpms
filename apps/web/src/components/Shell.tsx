@@ -11,6 +11,7 @@ import { Detailsuche } from './Detailsuche.tsx'
 import type { Gruppe, ScreenDefinition } from '../screens.js'
 import { inLeistenReihenfolge } from '../lib/leiste.js'
 import { useSchmal } from '../lib/mobil.js'
+import { merkeHerkunft } from '../lib/hilfe.js'
 import { MobilShell } from './mobil/MobilShell.tsx'
 
 export type { Haus }
@@ -498,6 +499,9 @@ export function Shell(props: Props): JSX.Element {
               <Installieren />
               {props.personalApp === true && <ZurPersonalApp />}
               <Hauswahl haeuser={props.haeuser} haus={props.haus} onHaus={props.onHaus} />
+              {props.screens.some(s => s.key === 'support') && (
+                <HilfeKnopf screen={props.screen} onScreen={props.onScreen} />
+              )}
               <Sprachwahl locale={props.locale} onLocale={props.onLocale} />
               <Abmelden benutzer={props.benutzer} onAbmelden={props.onAbmelden}
                         onArbeitsplatz={props.onArbeitsplatz}
@@ -514,6 +518,28 @@ export function Shell(props: Props): JSX.Element {
           dasselbe, und der zehnte Bildschirm vergaesse es. */}
       <BestaetigungsDialog />
     </I18nContext.Provider>
+  )
+}
+
+/**
+ * Der Weg zu "Hilfe & Support" (0208). In der Kopfleiste und nicht nur im
+ * Menue "Einstellungen": wer nicht weiterkommt, sucht Hilfe nicht dort. Er
+ * merkt sich, von welchem Bildschirm jemand kam -- die erste Frage des
+ * Supports ist sonst "wo genau?".
+ */
+export function HilfeKnopf({ screen, onScreen }: Pick<Props, 'screen' | 'onScreen'>
+): JSX.Element {
+  const t = useT()
+  return (
+    <button type="button" title={t('nav.support')}
+            onClick={() => { merkeHerkunft(screen); onScreen('support') }}
+            aria-current={screen === 'support' ? 'page' : undefined}
+            className={`text-sm px-2 py-1 rounded-sm
+                        ${screen === 'support' ? 'bg-neutral-900 text-white'
+                          : 'text-neutral-600 hover:bg-neutral-100'}`}>
+      ?
+      <span className="sr-only">{t('nav.support')}</span>
+    </button>
   )
 }
 

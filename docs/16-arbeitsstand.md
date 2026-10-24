@@ -515,7 +515,7 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 
 **Warum.** Bedrohungsanalyse vom 23.10.2026 (`/mnt/project-files/security/bedrohungsanalyse-2026-10-23.md`, T3, E3, T6, T8, T9), Sven: „setz alles um bis jeder punkt abgesichert ist“. Wer eine Sitzung übernimmt — nachgebaute Anmeldeseite, Infostealer am Rezeptionsrechner, ein Rechner, an dem jemand kurz aufsteht —, konnte ohne weitere Hürde die IBAN auf den Rechnungen tauschen, das Stripe-Konto umhängen, einen Maschinenzugang als Hintertür anlegen und die ganze Gästedatei ziehen. Keiner dieser Schritte fragte das Kennwort, keiner sagte jemandem Bescheid.
 
-**Wo es liegt.** Migration `0208` (`user_session.confirmed_at`, `security_event`, Hinweis- und Alarmpost), `apps/api/src/platform/bestaetigung.ts`, `POST`/`GET /v1/auth/confirm` in `routes/auth.ts`, `routes/securityEvents.ts`; Oberfläche `lib/bestaetigung.ts`, `components/BestaetigungsDialog.tsx` (in der `Shell`), `components/Sicherheitsprotokoll.tsx` (unter „Benutzer“ und als Reiter im Adminpanel).
+**Wo es liegt.** Migration `0209` (`user_session.confirmed_at`, `security_event`, Hinweis- und Alarmpost), `apps/api/src/platform/bestaetigung.ts`, `POST`/`GET /v1/auth/confirm` in `routes/auth.ts`, `routes/securityEvents.ts`; Oberfläche `lib/bestaetigung.ts`, `components/BestaetigungsDialog.tsx` (in der `Shell`), `components/Sicherheitsprotokoll.tsx` (unter „Benutzer“ und als Reiter im Adminpanel).
 
 **Was daraus entschieden wurde.**
 
@@ -578,7 +578,7 @@ Drei Stücke, in dieser Reihenfolge, weil jedes auf dem vorigen steht:
 | 13a | **Einmaltoken**: Einladung *und* Passwort vergessen | **fertig.** Migration 0030 (`auth_token`, `platform_email`), `POST /v1/auth/password-reset` und `.../confirm`, Zustellung im Worker. Ein Mechanismus für beide Anlässe, verschieden nur in Frist und Text |
 | 13b | **Onboarding-Endpunkt** hinter Plattformrecht | **fertig.** `POST /v1/platform/accounts` hinter `platform:accounts`, Migration 0031 (`account_provision`). Account, erstes Haus, Inhaber und Einladung in einer Transaktion. Kein Selbstbedienungsweg; das ist eine Produktentscheidung, keine Lücke |
 | 13d | **Zugangsseiten** der Oberfläche | **fertig.** `/einladung` und `/kennwort` samt „Kennwort vergessen" an der Anmeldung. Ohne sie bekam der eingeladene Kunde einen gültigen Link auf eine Seite, die es nicht gab |
-| 13c | **Adminoberfläche** mit Support-Sitzungen | **fertig.** Migration 0032, Routen unter `/v1/platform/support-sessions` und `/v1/support-sessions`, Konsole für die Plattform, Freigabe beim Kunden unter Einstellungen. Ticketsystem weiterhin angebunden statt gebaut — siehe unten |
+| 13c | **Adminoberfläche** mit Support-Sitzungen | **fertig.** Migration 0032, Routen unter `/v1/platform/support-sessions` und `/v1/support-sessions`, Konsole für die Plattform, Freigabe beim Kunden unter Einstellungen. Ticketsystem seit 0208 im Produkt gebaut — siehe unten |
 
 **Was 13a hinterlässt, worauf 13b aufsetzt.** Ein Token wird über `POST /v1/auth/password-reset` angefordert oder — für eine Einladung — beim Anlegen eines Benutzers als Zeile in `auth_token` hinterlegt; eingelöst wird beides über dieselbe Route. Der Onboarding-Endpunkt muss also keinen eigenen Einladungsweg bauen, sondern nur Token und Nachricht einreihen.
 
@@ -613,7 +613,7 @@ Was eine Sitzung darf, steht in [`apps/api/src/platform/support.ts`](../apps/api
 
 Ein Trigger hält Stufe, Anlass und Beteiligte fest, sobald angefragt ist, und verhindert das Verlängern der Frist und das Wiederbeleben einer widerrufenen Sitzung. Ohne ihn ließe sich nach der Freigabe nachschieben — und im Protokoll stehen die Handlungen, nicht die Rechte, unter denen sie geschahen.
 
-**Ticketsystem:** angebunden, nicht gebaut. Verlauf, Postfachanbindung, Zuweisung und Suche sind Wochen Arbeit und haben mit Hotels nichts zu tun. Die Adminoberfläche verlinkt, und die Support-Sitzung trägt die Ticketnummer als Grund.
+**Ticketsystem:** ~~angebunden, nicht gebaut~~ — angebunden wurde nie etwas, und seit Migration 0208 ist ein schmales Ticketsystem im Produkt gebaut (Abschnitt „Ticketsystem für Kunden“ unten). Die Einschätzung „Wochen Arbeit“ galt für ein vollständiges Helpdesk mit Postfach; gebaut ist bewusst nur der Teil ohne Postfach.
 
 ---
 
@@ -1517,3 +1517,16 @@ Sven, 23.10.2026: Ist kein Doppelzimmer mehr frei, aber ein Vierbettzimmer, verk
 - **Verfügbarkeit je Verkaufseinheit** (`/availability?by=salesUnit`, nachgezogen am selben Tag). Das Adminpanel las StayGrids Verfügbarkeit nicht, sondern zählte Zimmer für Zimmer mit einer festen Liste „Zimmernummer → RoomCloud-Kategorie“, weil Zimmer 8 und 9 sich die Gruppe „Apart“ teilen. Das als DZ verkaufte FZ stand dort weiter als FZ (Svens Bildschirmfoto aus RoomCloud). Sven: StayGrid soll die Verfügbarkeit je verkaufter Kategorie vorgeben, das Adminpanel nichts mehr nachrechnen. Jedes Zimmer gehört jeden Tag genau einer Einheit an: der verkauften Gruppe, sonst seinem Verkaufscode, sonst dem Kürzel seiner Gruppe. Belegt zählt in der Einheit des Zimmers an dem Tag; eine Buchung ohne Zimmer in ihrem Code oder ihrer Gruppe, und gibt es die als Einheit nicht, als `unassigned` bei jeder Einheit der Gruppe, in `available` schon abgezogen. Kontingente (`blocked`) hängen an der Gruppe und stehen nicht darin.
 
 Tests in `verkaufenAls.test.ts` und im Sortierer (`roomSortEngine.test.ts`).
+
+### Ticketsystem für Kunden (`0208`) — **gebaut**
+
+Sven, 23.10.2026: „bau das Ticketsystem“ (Konzept im Thread „Ticketsystem für Kunden“). Vorher stand hier nur „angebunden, nicht gebaut“ — angebunden war nichts. Gebaut statt eines fremden Systems, weil nur so Konto, Haus und Benutzer feststehen und eine Support-Sitzung im Faden der Frage angefragt und freigegeben wird; ein fremder Helpdesk wäre ein weiterer Auftragsverarbeiter für Bildschirmfotos voller Gastnamen.
+
+- **Kundenseite „Hilfe & Support“** (Bildschirm `support`, Menü „Einstellungen“ und ein `?` in der Kopfleiste). Anfrage mit Betreff, Art (Frage, Fehler, Wunsch, Abrechnung), „Der Betrieb steht“, Text und bis zu drei Bildern oder PDFs à 5 MB (Fotos werden verkleinert wie Kassenbelege). Mitgeschickt werden Haus und der Bildschirm, von dem jemand kam — nie die Adresse, in deren Abfrageteil ein Suchbegriff stünde. Recht `support:ticket`, jede Kundenrolle hat es.
+- **Wer was sieht (Sven):** jeder seine eigenen Tickets; wer im Betrieb `settings:account` hat, alle des Betriebs. Ohne Anmeldung kein Ticket — wer ausgesperrt ist, hat „Kennwort vergessen“ und die Mail an support@.
+- **Adminpanel, Reiter „Tickets“** (`platform:tickets`, Admin und Support): Eingang aller Kunden, „Betrieb steht“ zuerst, dann wer am längsten wartet. Antworten, interne Notiz, übernehmen/abgeben, schließen, und **Zugriff beim Kunden anfragen** — die Sitzung trägt `support_session.ticket_id`, der Kunde sieht die Bitte im Faden und gibt dort frei (wer nicht freigeben darf, sieht sie ohne Knopf).
+- **Interne Notizen schließt die Zeilenrichtlinie aus** (`NOT internal` in der Richtlinie von `support_ticket_message`), nicht die Abfrage der Route. Ein Test liest unter dem Kontext des Kunden an der Route vorbei.
+- **Keine Ticketinhalte in Mails.** Neues Ticket und Antwort des Kunden melden an `PLATFORM_SUPPORT_EMAIL` (Vorgabe `support@staygrid.cloud`, Sven), eine Antwort des Supports an den Fragenden — jeweils nur Nummer und Link (`ticket_notice`, `ticket_reply` in `platform_email`). Kein Antworten per Mail: das wäre die teure Hälfte eines Helpdesks.
+- **Grenzen:** 30 Nachrichten je Mensch und Stunde, in der Datenbank gezählt (die allgemeine Ratenbegrenzung erreicht Angemeldete nicht). Betreff, Text, Dateiname und Inhalt der Anhänge stehen in `audit_redaction`. Der Worker löscht geschlossene Tickets 24 Monate nach dem Schließen samt Faden und Anhängen.
+
+Bewusst nicht: Antworten per Mail, Push in der App, Textbausteine, Kennzahlen zur Reaktionszeit. Tests in `apps/api/src/__tests__/tickets.test.ts`.

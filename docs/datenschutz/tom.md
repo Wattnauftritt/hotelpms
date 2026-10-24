@@ -33,7 +33,7 @@ nach **Art. 32 DSGVO**. Anlage zum Auftragsverarbeitungsvertrag.
   Kanalzugang, Leitungsrolle, Support-Freigabe, Mandantenexport,
   GoBD-Archiv, Gästeverzeichnis und die Plattformhandlungen (Ausrollen,
   Plattformrollen, Zahlungsanbieter). Die Bestätigung gilt fünf Minuten und
-  nur für die Person, die sie gegeben hat (Migration 0208).
+  nur für die Person, die sie gegeben hat (Migration 0209).
 - Geheimnisse von Kanalzugängen sind 192 Bit Zufall und liegen als SHA-256
   vor; die Prüfung kostet damit keine Rechenzeit, die ein Angreifer mit
   gefälschten Anfragen binden könnte.
@@ -91,7 +91,7 @@ Felder. „Wer" ist ein Benutzer oder, am Gästeterminal, das Gerät
 (`terminal_device_id`, Migration 0072). **In der Datenbank und nicht in der Anwendung** — was in der
 Anwendung liegt, wird irgendwann an einer Stelle vergessen.
 
-**Sicherheitsereignisse** (Migration 0208) halten jede kritische Handlung
+**Sicherheitsereignisse** (Migration 0209) halten jede kritische Handlung
 mit Person, Zeit und ungekürzter IP-Adresse fest. Die Anwendung kann sie nur
 lesen; geschrieben wird ausschließlich über `security_event_record()`,
 gekürzt und gelöscht ausschließlich über `security_event_prune()`. Zu jedem

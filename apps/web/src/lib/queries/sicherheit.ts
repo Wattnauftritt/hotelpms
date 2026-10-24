@@ -3,7 +3,7 @@ import type { SecurityEventRow } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /**
- * Das Sicherheitsprotokoll (Migration 0208). Seitenweise ueber die Kennung,
+ * Das Sicherheitsprotokoll (Migration 0209). Seitenweise ueber die Kennung,
  * nicht ueber einen Versatz: kommt waehrend des Blaetterns ein Ereignis
  * dazu, verschoebe ein Versatz alles um eine Zeile, und eine stuende
  * doppelt da.

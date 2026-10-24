@@ -8,7 +8,7 @@ import { Fehler } from './Fehler.tsx'
 
 /**
  * Die Frage nach dem Kennwort vor einer kritischen Handlung (Migration
- * 0208, Bedrohungsanalyse 23.10.2026, T3).
+ * 0209, Bedrohungsanalyse 23.10.2026, T3).
  *
  * Haengt einmal in der `Shell` und wartet, bis `lib/bestaetigung.ts` fragt.
  * Der Bildschirm, der die Handlung ausloest, weiss davon nichts: er schickt

@@ -11,7 +11,7 @@ import { limiters } from '../platform/rateLimit.js'
 
 /**
  * Kritische Handlungen verlangen eine frische Bestaetigung und hinterlassen
- * ein Sicherheitsereignis samt Hinweis an die Leitung (Migration 0208,
+ * ein Sicherheitsereignis samt Hinweis an die Leitung (Migration 0209,
  * Bedrohungsanalyse 23.10.2026, T3 und E3).
  *
  * Der Angriff dahinter: eine geliehene oder gestohlene Sitzung. Sie kann

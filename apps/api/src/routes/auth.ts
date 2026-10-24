@@ -1080,7 +1080,7 @@ export function authRoutes(app: FastifyInstance): void {
 
   /*
    * Die eigene Sitzung fuer kritische Handlungen bestaetigen (Migration
-   * 0208, Bedrohungsanalyse 23.10.2026, T3).
+   * 0209, Bedrohungsanalyse 23.10.2026, T3).
    *
    * Dasselbe Kennwort, dieselbe Sperre und dieselben Zaehler wie beim
    * Kennwortwechsel: eine angemeldete Anfrage erreicht die allgemeine

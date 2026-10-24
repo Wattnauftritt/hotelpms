@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- 0208 -- Kritische Handlungen bestaetigen und als Sicherheitsereignis melden.
+-- 0209 -- Kritische Handlungen bestaetigen und als Sicherheitsereignis melden.
 --
 -- Bedrohungsanalyse 23.10.2026, T3 und E3
 -- (/mnt/project-files/security/bedrohungsanalyse-2026-10-23.md). Sven: "setz
@@ -175,11 +175,13 @@ ALTER TABLE platform_email DROP CONSTRAINT platform_email_kind_check;
 ALTER TABLE platform_email ADD CONSTRAINT platform_email_kind_check
   CHECK (kind IN ('invite', 'password_reset', 'support_request',
                   'domain_request', 'email_change', 'email_change_notice',
-                  'passkey_added', 'security_notice', 'security_alert'));
+                  'passkey_added', 'ticket_notice', 'ticket_reply',
+                  'security_notice', 'security_alert'));
 
 ALTER TABLE platform_email DROP CONSTRAINT platform_email_empfaenger_check;
 ALTER TABLE platform_email ADD CONSTRAINT platform_email_empfaenger_check
-  CHECK (user_id IS NOT NULL OR kind IN ('domain_request', 'security_alert'));
+  CHECK (user_id IS NOT NULL OR kind IN ('domain_request', 'ticket_notice',
+                                         'security_alert'));
 
 CREATE INDEX platform_email_dedupe ON platform_email (dedupe_key, created_at)
   WHERE dedupe_key IS NOT NULL;

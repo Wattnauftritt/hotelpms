@@ -7,7 +7,7 @@ import { Laedt } from './Shell.tsx'
 
 /**
  * Das Sicherheitsprotokoll: wer wann von wo eine kritische Handlung
- * ausgeloest hat (Migration 0208, Bedrohungsanalyse 23.10.2026, E3).
+ * ausgeloest hat (Migration 0209, Bedrohungsanalyse 23.10.2026, E3).
  *
  * Die Hinweismail sagt nur, **dass** etwas geschah, und hat bewusst keinen
  * Link. Wer sie bekommt, meldet sich wie gewohnt an und findet hier, was

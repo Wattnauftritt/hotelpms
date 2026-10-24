@@ -9,7 +9,7 @@ import { loadConfig } from './config.js'
 import { tx } from './db.js'
 
 /**
- * Kritische Handlungen: bestaetigen lassen und melden (Migration 0208,
+ * Kritische Handlungen: bestaetigen lassen und melden (Migration 0209,
  * Bedrohungsanalyse 23.10.2026, T3 und E3).
  *
  * **Was als kritisch gilt.** Was ein Angreifer mit einer geliehenen Sitzung

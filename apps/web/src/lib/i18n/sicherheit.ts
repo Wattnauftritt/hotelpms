@@ -2,7 +2,7 @@ import type { LocalizedText } from '@hotelpms/contracts'
 
 /**
  * Bestaetigung kritischer Handlungen und das Sicherheitsprotokoll
- * (Migration 0208, Bedrohungsanalyse 23.10.2026).
+ * (Migration 0209, Bedrohungsanalyse 23.10.2026).
  */
 export const sicherheit = {
   'sicherheit.confirm.title': {

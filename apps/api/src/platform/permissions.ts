@@ -65,7 +65,12 @@ export const PERMISSIONS = [
   'kitchen:breakfast',
   // Arbeitszeit (0111): alle Kraefte sehen, korrigieren, abschliessen,
   // ausgeben. Leitung, nicht die Hausdame -- Arbeitszeit ist Personaldatum.
-  'worktime:manage'
+  'worktime:manage',
+  // Ticketsystem (0208): Anfragen an uns stellen. Jede Kundenrolle; was
+  // vom ganzen Betrieb zu sehen ist, entscheidet settings:account.
+  'support:ticket',
+  // Und die Gegenseite: Anfragen aller Kunden bearbeiten.
+  'platform:tickets'
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]

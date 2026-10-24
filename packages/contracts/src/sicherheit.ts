@@ -1,5 +1,5 @@
 /**
- * Arten von Sicherheitsereignissen (Migration 0208, Bedrohungsanalyse
+ * Arten von Sicherheitsereignissen (Migration 0209, Bedrohungsanalyse
  * 23.10.2026). Dieselbe Liste wie die CHECK-Bedingung an `security_event`;
  * ein Test vergleicht beide, damit eine neue Art nicht nur an einer Stelle
  * entsteht.
