@@ -1,8 +1,7 @@
 import type { FastifyRequest } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
-import { BESTAETIGUNG_FEHLT, BESTAETIGUNG_MINUTEN,
-         type SecurityEventKind } from '@hotelpms/contracts'
-import { renderSecurityNotice, type SecurityNoticeAction } from '@hotelpms/domain'
+import { BESTAETIGUNG_FEHLT, BESTAETIGUNG_MINUTEN } from '@hotelpms/contracts'
+import { sicherheitsereignisMelden, type Ereignis, type Taeter } from '@hotelpms/domain'
 import { AppError } from './errors.js'
 import type { Principal } from './context.js'
 import { loadConfig } from './config.js'
@@ -63,18 +62,9 @@ export async function verlangeBestaetigung(req: FastifyRequest): Promise<void> {
   if (!await istBestaetigt(req)) throw bestaetigungFehlt()
 }
 
-export interface Ereignis {
-  kind: SecurityEventKind
-  accountId: number | null
-  propertyId?: number | null
-  /** Nur Kennungen, Zahlen und gekuerzte Werte; nie ein Gastname. */
-  detail?: Record<string, unknown>
-  /** Kurz und ungefaehrlich fuer die Mail, etwa "…1234" einer IBAN. */
-  hint?: string | null
-}
+export type { Ereignis } from '@hotelpms/domain'
 
-function taeter(p: Principal): { kind: 'user' | 'client' | 'system'; userId: number | null
-                                 ref: string | null } {
+function taeter(p: Principal): Taeter {
   if (p.userId !== null) return { kind: 'user', userId: p.userId, ref: null }
   if (p.clientKey.startsWith('client:')) {
     return { kind: 'client', userId: null, ref: p.clientKey.slice(7) }
@@ -82,88 +72,18 @@ function taeter(p: Principal): { kind: 'user' | 'client' | 'system'; userId: num
   return { kind: 'system', userId: null, ref: p.clientKey.slice(0, 64) }
 }
 
-/** Die Arten, zu denen der Betrieb einen Hinweis bekommt. */
-const HINWEIS: ReadonlySet<SecurityEventKind> = new Set<SecurityEventKind>([
-  'bank_details_changed', 'payment_account_connected', 'payment_account_disconnected',
-  'oauth_client_created', 'oauth_client_changed', 'webhook_created', 'webhook_changed',
-  'channel_connection_created', 'role_granted', 'support_granted', 'export',
-  'login_new_device', 'access_volume'
-])
-
 /**
  * Das Ereignis festhalten und Bescheid sagen: den Berechtigten im Betrieb
  * und dem Sicherheitspostfach der Plattform. In der Transaktion der Route,
  * damit eine Handlung, die zurueckrollt, auch keine Meldung hinterlaesst --
- * und eine, die gilt, nie ohne.
+ * und eine, die gilt, nie ohne. Die Arbeit steht in der Domaene, weil der
+ * Worker dasselbe meldet (`sicherheitsereignisMelden`).
  */
 export async function meldeSicherheitsereignis(
   client: PoolClient, req: FastifyRequest, e: Ereignis
 ): Promise<void> {
-  const p = req.principal as Principal
-  const t = taeter(p)
-  await client.query(
-    'SELECT security_event_record($1, $2, $3, $4, $5, $6, $7::inet, $8::jsonb)',
-    [e.accountId, e.propertyId ?? null, e.kind, t.kind, t.userId, t.ref,
-     req.ip || null, JSON.stringify(e.detail ?? {})])
-
-  await benachrichtige(client, e, t, req.ip)
-}
-
-/**
- * Wie oben, aber ohne Anfrage: fuer den Worker (Mengenalarm, Koeder).
- */
-export async function benachrichtige(
-  client: PoolClient, e: Ereignis,
-  t: { kind: string; userId: number | null; ref: string | null }, herkunft: string | null
-): Promise<void> {
-  const namen = await client.query<{ actor: string | null; account: string | null
-                                     property: string | null }>(
-    `SELECT (SELECT display_name FROM app_user WHERE id = $1) AS actor,
-            (SELECT name FROM account WHERE id = $2) AS account,
-            (SELECT name FROM property WHERE id = $3) AS property`,
-    [t.userId, e.accountId, e.propertyId ?? null])
-  const n = namen.rows[0]!
-  const wer = n.actor ?? (t.kind === 'client' ? `Maschinenzugang ${t.ref ?? ''}`.trim()
-                                              : 'StayGrid')
-  const wann = new Intl.DateTimeFormat('de-DE', {
-    dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Berlin'
-  }).format(new Date())
-
-  if (e.accountId !== null && HINWEIS.has(e.kind)) {
-    const empfaenger = await client.query<{ user_id: number; email: string
-                                            display_name: string | null; locale: string | null }>(
-      'SELECT user_id, email, display_name, locale FROM security_notice_recipients($1)',
-      [e.accountId])
-    for (const r of empfaenger.rows) {
-      const m = renderSecurityNotice({
-        userName: r.display_name, accountName: n.account ?? '', propertyName: n.property,
-        actorName: wer, when: wann, action: e.kind as SecurityNoticeAction,
-        hint: e.hint ?? null
-      }, r.locale === 'de' || r.locale === null ? 'de' : 'en')
-      await client.query(
-        `INSERT INTO platform_email (user_id, kind, to_email, to_name, subject,
-                                     body_text, body_html)
-         VALUES ($1, 'security_notice', $2, $3, $4, $5, $6)`,
-        [r.user_id, r.email, r.display_name, m.subject, m.text, m.html])
-    }
-  }
-
-  /*
-   * An uns: knapp und ohne Personendaten ausser der Kennung. Gleiche Art,
-   * gleicher Betrieb, gleicher Taeter binnen einer Stunde ist eine Mail.
-   */
-  const zeilen = [
-    `Art: ${e.kind}`,
-    `Betrieb: ${e.accountId ?? '-'} ${n.account ?? ''}`.trim(),
-    `Haus: ${e.propertyId ?? '-'} ${n.property ?? ''}`.trim(),
-    `Taeter: ${t.kind} ${t.userId ?? t.ref ?? ''}`.trim(),
-    `Herkunft: ${herkunft ?? '-'}`,
-    `Zeit: ${wann}`,
-    `Angaben: ${JSON.stringify(e.detail ?? {})}`
-  ]
-  await client.query('SELECT platform_alert_enqueue($1, $2, $3, $4)',
-    [config.platformNoticeEmail, `[StayGrid] Sicherheitsereignis: ${e.kind}`,
-     zeilen.join('\n'), `${e.kind}:${e.accountId ?? 0}:${t.userId ?? t.ref ?? ''}`])
+  await sicherheitsereignisMelden(client, e, taeter(req.principal as Principal),
+    req.ip || null, config.platformNoticeEmail)
 }
 
 /** Die letzten vier Stellen, der Rest als Punkte. Fuer IBAN und Kennungen. */

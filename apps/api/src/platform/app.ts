@@ -9,6 +9,7 @@ import { loadSessionPrincipal, loadPrincipalFromToken,
          loadPrincipalFromDevice, DEVICE_COOKIE, APP_TOKEN_PREFIX, APP_ORIGINS,
          type SessionClient } from './auth.js'
 import { registerRateLimit } from './rateLimit.js'
+import { abrufmengeAnmelden } from './abrufmenge.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -338,6 +339,11 @@ export async function buildServer(
       instance
     })
   })
+
+  // Aufrufer und Adresse in jede Protokollzeile, Gastdatenabrufe zaehlen
+  // (Bedrohungsanalyse 23.10.2026, E1 und E2). Nach preValidation oben:
+  // erst dort steht fest, wer fragt.
+  abrufmengeAnmelden(app)
 
   app.setNotFoundHandler((req, reply) => {
     reply.status(404).type('application/problem+json')

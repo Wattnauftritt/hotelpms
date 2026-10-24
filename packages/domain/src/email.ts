@@ -2659,7 +2659,7 @@ export type SecurityNoticeAction =
   | 'payment_account_disconnected' | 'oauth_client_created'
   | 'oauth_client_changed' | 'webhook_created' | 'webhook_changed'
   | 'channel_connection_created' | 'role_granted' | 'support_granted'
-  | 'export' | 'login_new_device' | 'access_volume'
+  | 'export' | 'login_new_device' | 'access_volume' | 'honeytoken'
 
 const NOTICE_ACTION: Record<SecurityNoticeAction, { de: string; en: string }> = {
   bank_details_changed: { de: 'die Bankverbindung auf den Rechnungen geaendert',
@@ -2687,7 +2687,9 @@ const NOTICE_ACTION: Record<SecurityNoticeAction, { de: string; en: string }> = 
   login_new_device: { de: 'sich von einem neuen Geraet angemeldet',
                       en: 'signed in from a new device' },
   access_volume: { de: 'ungewoehnlich viele Gastdaten abgerufen',
-                   en: 'retrieved an unusual amount of guest data' }
+                   en: 'retrieved an unusual amount of guest data' },
+  honeytoken: { de: 'einen Koederdatensatz abgerufen, den niemand im Betrieb kennt',
+                en: 'retrieved a decoy record that nobody in your business knows' }
 }
 
 export function renderSecurityNotice(

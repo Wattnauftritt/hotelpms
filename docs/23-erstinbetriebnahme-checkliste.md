@@ -133,6 +133,15 @@ visudo -c
 
 **Fertig, wenn:** `systemctl list-timers hotelpms-deploy.timer` eine nächste Auslösung zeigt.
 
+Die Frist des Journals: die API schreibt seit Oktober 2026 die volle IP-Adresse jedes Aufrufers ins Protokoll, und dort bleibt sie 30 Tage, nicht unbegrenzt (Begründung in der Datei selbst):
+
+```bash
+install -D -m 0644 /opt/hotelpms/current/ops/journald/hotelpms.conf \
+        /etc/systemd/journald.conf.d/hotelpms.conf
+systemctl restart systemd-journald
+systemd-analyze cat-config systemd/journald.conf | grep MaxRetentionSec
+```
+
 **Die Probe:** im Adminpanel unter *Betrieb* „Jetzt ausrollen" drücken. Binnen einer Minute muss die Zeile auf „Läuft" und dann auf „Durch" springen. Bleibt sie auf „Wartet", läuft der Timer nicht — `journalctl -u hotelpms-deploy -n 50`.
 
 ---

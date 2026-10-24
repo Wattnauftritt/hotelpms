@@ -530,6 +530,14 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Caddy:** Grenze von 60 je Minute und Adresse auf `/oauth/token` unter `api.staygrid.cloud`, `-Via` auf beiden Namen; gegen Caddy 2.11.7 mit caddy-ratelimit nachgerechnet, auf der Maschine noch einzutragen.
 - **Freigabe:** `freigeben.yml` läuft in der Umgebung `produktion` und gibt nur Commits frei, die auf `main` liegen. Regeln für die Umgebung (Wartezeit, nur `main`) kann nur Sven setzen.
 
+**Zweiter Teil: wer fragt und wie viel** (E1, E2, E4; Migration `0210`, `platform/abrufmenge.ts`, `apps/worker/src/jobs/abrufmenge.ts` und `alarm.ts`).
+
+- **Jede Protokollzeile der API nennt Aufrufer und volle Adresse** (`wer`, `ip`), auch „request completed“. Das Journal hält sie 30 Tage (`ops/journald/hotelpms.conf`, Schritt in Dokument 23).
+- **Gezählt wird am Rückgabewert, nicht im Handler**, über `preSerialization`: Listen zählen ihre Länge. Welche Routen zählen, steht in `GEZAEHLT`; ein Test hält fest, dass es sie gibt.
+- **Verglichen wird mit der größten Stunde der letzten vierzehn Tage, nicht mit dem Durchschnitt.** Das Adminpanel holt nachts einmal tausend Reservierungen und sonst nichts; gegen den Durchschnitt wäre jede Nacht ein Alarm. Grenze: mindestens 500 Datensätze und mehr als das Fünffache. Ein Aufrufer ohne Vorgeschichte hat die Grenze null.
+- **Nachts:** ein Mensch, der zwischen 0 und 5 Uhr mindestens 100 Datensätze liest und das in den vierzehn Nächten davor nie getan hat.
+- **ALARM-Zeilen des Workers** ab Stufe `error` gehen als Mail an das Sicherheitspostfach, eine je Meldung und Stunde, ohne Fehlertext.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**
