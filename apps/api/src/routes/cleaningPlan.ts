@@ -120,6 +120,60 @@ async function liesNormen(client: PoolClient, propertyId: number): Promise<Clean
 }
 
 /**
+ * Aufgaben eines Hauses ab einem Tag auf die aktuellen Sollminuten bringen.
+ * Nur Zimmer -- ein Bereich traegt seine Minuten selbst -- und nie eine
+ * Zeile aus der alten App: deren Minuten hat die alte App gezaehlt, und ein
+ * neuer Import setzt sie ohnehin zurueck. Wo die Sollminuten 0 ergeben
+ * (keine Zwischenreinigung), bleibt die Aufgabe, wie sie ist: jemand hat sie
+ * bewusst eingeteilt, und ein gereinigtes Zimmer mit null Minuten
+ * abzurechnen, waere falsch.
+ *
+ * `auchErledigte` ist das Nachrechnen eines Monats (Sven, 24.10.2026: "muss
+ * auch rueckwirkend fuer den ganzen Monat behoben werden"); sonst ziehen nur
+ * offene Aufgaben mit. Ein abgeschlossener Monat bleibt in jedem Fall
+ * unberuehrt -- er ist abgerechnet (0111).
+ */
+async function sollminutenNachziehen(
+  client: PoolClient, propertyId: number, norms: CleaningNorm[],
+  o: { ab: string | null; auchErledigte: boolean; schreiben: boolean }
+): Promise<{ rooms: number; minutesBefore: number; minutesAfter: number }> {
+  const leer = { rooms: 0, minutesBefore: 0, minutesAfter: 0 }
+  if (o.ab === null) return leer
+  const { rows } = await client.query<{ id: number; resourceId: number; categoryId: number
+                                        kind: CleaningKind; minutes: number | null }>(
+    `SELECT t.id::int, t.resource_id::int AS "resourceId",
+            r.category_id::int AS "categoryId", t.kind, t.minutes
+       FROM housekeeping_task t
+       JOIN resource r ON r.id = t.resource_id
+      WHERE t.property_id = $1 AND t.source <> 'legacy'
+        AND t.kind IN ('departure','stayover')
+        AND t.business_date >= $2::date
+        AND (t.status = 'open' OR ($3 AND t.status = 'done' AND t.outcome = 'cleaned'))
+        AND NOT staff_month_is_closed(t.property_id, t.business_date)`,
+    [propertyId, o.ab, o.auchErledigte])
+  const geaendert = rows.flatMap(t => {
+    const m = resolveCleaningMinutes(norms, t, t.kind)
+    return m === 0 || m === t.minutes ? [] : [{ id: t.id, vorher: t.minutes ?? 0, minutes: m }]
+  })
+  if (o.schreiben && geaendert.length > 0) {
+    await client.query(
+      `UPDATE housekeeping_task t SET minutes = n.minutes
+         FROM unnest($1::bigint[], $2::int[]) AS n(id, minutes)
+        WHERE t.id = n.id`,
+      [geaendert.map(t => t.id), geaendert.map(t => t.minutes)])
+  }
+  return geaendert.reduce((a, t) => ({ rooms: a.rooms + 1,
+    minutesBefore: a.minutesBefore + t.vorher, minutesAfter: a.minutesAfter + t.minutes }), leer)
+}
+
+async function ersterOffenerTag(client: PoolClient, propertyId: number): Promise<string | null> {
+  const { rows } = await client.query<{ d: string | null }>(
+    `SELECT min(date)::text AS d FROM business_day WHERE property_id = $1 AND status = 'open'`,
+    [propertyId])
+  return rows[0]!.d
+}
+
+/**
  * Die Kraefte des Hauses. Wer heute schon Zimmer hat, steht auch dann da,
  * wenn er die Rolle inzwischen nicht mehr hat -- sonst stuende an seinen
  * Zimmern eine Nummer statt eines Namens. `active` sagt, ob er neue
@@ -890,30 +944,36 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
              principal.userId])
         }
         const neu = await liesNormen(client, propertyId)
-        const { rows: offen } = await client.query<{ id: number; resourceId: number
-                                                     categoryId: number; kind: CleaningKind
-                                                     minutes: number | null }>(
-          `SELECT t.id::int, t.resource_id::int AS "resourceId",
-                  r.category_id::int AS "categoryId", t.kind, t.minutes
-             FROM housekeeping_task t
-             JOIN resource r ON r.id = t.resource_id
-            WHERE t.property_id = $1 AND t.status = 'open' AND t.source <> 'legacy'
-              AND t.kind IN ('departure','stayover')
-              AND t.business_date >= (SELECT min(d.date) FROM business_day d
-                                       WHERE d.property_id = $1 AND d.status = 'open')`,
-          [propertyId])
-        const geaendert = offen.flatMap(t => {
-          const m = resolveCleaningMinutes(neu, t, t.kind)
-          return m === t.minutes ? [] : [{ id: t.id, minutes: m }]
-        })
-        if (geaendert.length > 0) {
-          await client.query(
-            `UPDATE housekeeping_task t SET minutes = n.minutes
-               FROM unnest($1::bigint[], $2::int[]) AS n(id, minutes)
-              WHERE t.id = n.id`,
-            [geaendert.map(t => t.id), geaendert.map(t => t.minutes)])
-        }
+        await sollminutenNachziehen(client, propertyId, neu, {
+          ab: await ersterOffenerTag(client, propertyId), auchErledigte: false, schreiben: true })
         return { norms: neu, defaults: DEFAULT_CLEANING_MINUTES }
+      })
+    }
+  })
+
+  /**
+   * Den laufenden Monat mit den aktuellen Sollminuten nachrechnen: jedes
+   * gereinigte und jedes offene Zimmer seit dem Ersten des Monats, in dem
+   * der offene Geschaeftstag liegt. Mit `preview` nur zaehlen -- die
+   * Hausdame sieht vor dem Uebernehmen, wie viele Zimmer sich um wie viele
+   * Minuten aendern. Jede Aenderung steht im Verlauf der Aufgabe
+   * (`housekeeping_task_log`) mit dem alten Wert.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/cleaning-norms/recalculate',
+    permission: 'housekeeping:plan',
+    propertyParam: 'propertyId',
+    summary: 'Laufenden Monat mit den aktuellen Sollminuten nachrechnen',
+    handler: async (req) => {
+      const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      const preview = (req.body as { preview?: unknown } | null)?.preview === true
+      return tx(req.pool, req, async client => {
+        const tag = await ersterOffenerTag(client, propertyId)
+        const ab = tag === null ? null : `${tag.slice(0, 7)}-01`
+        const r = await sollminutenNachziehen(client, propertyId,
+          await liesNormen(client, propertyId), { ab, auchErledigte: true, schreiben: !preview })
+        return { from: ab, ...r }
       })
     }
   })
