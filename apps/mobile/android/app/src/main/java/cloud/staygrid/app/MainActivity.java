@@ -53,6 +53,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(DateiPlugin.class);
         registerPlugin(HuellePlugin.class);
         registerPlugin(KurzbefehlePlugin.class);
+        registerPlugin(PasskeyPlugin.class);
         super.onCreate(savedInstanceState);
         KurzbefehlePlugin.ausIntent(getIntent());
         // Zugedeckt wird erst in onResume: die Bruecke setzt ihre Ansicht

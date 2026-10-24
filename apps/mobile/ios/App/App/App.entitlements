@@ -4,5 +4,12 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Passkeys von app.staygrid.cloud (PasskeyPlugin in Huelle.swift). Die
+	     App-ID braucht dafuer die Faehigkeit "Associated Domains", und die
+	     Domain nennt die App in /.well-known/apple-app-site-association. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:app.staygrid.cloud</string>
+	</array>
 </dict>
 </plist>

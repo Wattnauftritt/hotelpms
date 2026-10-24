@@ -124,6 +124,14 @@ export async function anmelden(login: string, password: string): Promise<void> {
   }
   const { token } = await api.post<{ token: string }>('/v1/auth/login',
     { login, password, client: 'app' })
+  await appSitzungUebernehmen(n, token)
+}
+
+/**
+ * Das Token einer neuen Sitzung der App ablegen und ab sofort benutzen --
+ * nach dem Kennwort wie nach dem Passkey (lib/passkey.ts).
+ */
+export async function appSitzungUebernehmen(n: StaygridNative, token: string): Promise<void> {
   await n.sitzung.speichern(token)
   appToken = Promise.resolve(token)
 }

@@ -3,7 +3,7 @@ import type { FastifyRequest } from 'fastify'
 import { generateAuthenticationOptions, verifyAuthenticationResponse,
          type AuthenticationResponseJSON,
          type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/server'
-import type { PasskeyOptionen } from '@hotelpms/contracts'
+import { APP_ANDROID_ZERTIFIKATE, androidHerkunft, type PasskeyOptionen } from '@hotelpms/contracts'
 import { loadConfig } from './config.js'
 import { Errors } from './errors.js'
 
@@ -22,10 +22,19 @@ const config = loadConfig()
  * Daraus folgt: wer die oeffentliche Adresse aendert, entwertet alle
  * Passkeys. Sie bleiben gespeichert, der Browser bietet sie unter der neuen
  * Domain nur nicht mehr an; das Kennwort traegt weiter.
+ *
+ * **Die eigene App** benutzt dieselben Passkeys derselben Domain. Unter iOS
+ * meldet das Telefon dabei dieselbe Herkunft wie der Browser; unter Android
+ * `android:apk-key-hash:` mit dem Hash des Zertifikats, mit dem die App
+ * signiert ist (`APP_ANDROID_ZERTIFIKATE` in @hotelpms/contracts). Mehr als
+ * diese Herkuenfte nimmt die Pruefung nicht an -- insbesondere nicht die der
+ * WebView (`https://localhost`), die jede App fuer sich behaupten kann.
  */
-export function passkeyPartei(): { rpID: string; origin: string; rpName: string } {
+export function passkeyPartei(): { rpID: string; origin: string; origins: string[]; rpName: string } {
   const url = new URL(config.publicAppUrl)
-  return { rpID: url.hostname, origin: url.origin, rpName: 'StayGrid' }
+  return { rpID: url.hostname, origin: url.origin,
+           origins: [url.origin, ...APP_ANDROID_ZERTIFIKATE.map(androidHerkunft)],
+           rpName: 'StayGrid' }
 }
 
 /**
@@ -179,7 +188,7 @@ export async function pruefePasskeyAntwort(
     ergebnis = await verifyAuthenticationResponse({
       response: antwort,
       expectedChallenge: challenge,
-      expectedOrigin: partei.origin,
+      expectedOrigin: partei.origins,
       expectedRPID: partei.rpID,
       requireUserVerification: true,
       credential: { id: antwort.id, publicKey: new Uint8Array(k.public_key),

@@ -30,11 +30,12 @@ import { kennwortBestaetigen, sitzungAnlegen } from './auth.js'
  * geaendert hat. Entfernen verlangt es nicht: wer einen fremden Passkey
  * entfernt, sperrt niemanden aus, das Kennwort traegt weiter.
  *
- * **In der App gibt es den Weg nicht.** Die WebView der App laeuft unter
- * `capacitor://localhost` bzw. `https://localhost`, und ein Passkey fuer
- * app.staygrid.cloud gilt dort nicht. Die App schuetzt ihre Sitzung mit
- * Fingerabdruck oder Gesicht des Telefons (Plan app/plan.md, Abschnitt 5);
- * die Oberflaeche zeigt den Passkey-Knopf dort nicht an.
+ * **In der App** fragt die Huelle das Telefon selbst nach dem Passkey
+ * (Credential Manager unter Android, AuthenticationServices unter iOS) und
+ * reicht die Antwort durch; die WebView unter `https://localhost` kann es
+ * nicht. Welche App das darf, sagt app.staygrid.cloud in assetlinks.json
+ * und apple-app-site-association (@hotelpms/contracts, `APP_PAKET`), und
+ * die Pruefung nimmt genau deren Herkunft an (platform/passkey.ts).
  */
 
 /** Die angemeldete Person und ihre Sitzung, sonst 401. */
@@ -126,7 +127,7 @@ export function passkeyRoutes(app: FastifyInstance): void {
         const r = await verifyRegistrationResponse({
           response: b.response as RegistrationResponseJSON,
           expectedChallenge: challenge,
-          expectedOrigin: partei.origin,
+          expectedOrigin: partei.origins,
           expectedRPID: partei.rpID,
           requireUserVerification: true
         })
@@ -241,15 +242,16 @@ export function passkeyRoutes(app: FastifyInstance): void {
     permission: null,
     summary: 'Mit Passkey anmelden',
     handler: async (req, reply) => {
-      const b = req.body as { challengeId?: string; response?: unknown }
+      const b = req.body as { challengeId?: string; response?: unknown; client?: string }
       const userId = await pruefePasskeyAntwort(req, b.challengeId, b.response, null)
       /*
-       * Nur der Browser. Die App kann hier keinen Passkey vorlegen (siehe
-       * oben); bekaeme sie ein Token aus dieser Route, waere das ein Weg,
-       * den niemand benutzt und deshalb niemand prueft.
+       * Die App bekommt ihr Token wie nach dem Kennwort (`client: 'app'`).
+       * Woher die Antwort kam, sagt die Herkunft in ihr, und die hat die
+       * Pruefung schon gegen die erlaubten genommen; der Schalter waehlt nur
+       * Token statt Cookie. Bestaetigt von Anfang an: dieselbe Pruefung wie
+       * /passkey/confirm.
        */
-      // Bestaetigt von Anfang an: dieselbe Pruefung wie /passkey/confirm.
-      const antwort = await sitzungAnlegen(req, reply, userId, false, true)
+      const antwort = await sitzungAnlegen(req, reply, userId, b.client === 'app', true)
       await req.pool.query(`UPDATE app_user SET last_login_at = now() WHERE id = $1`, [userId])
       return antwort
     }

@@ -1,6 +1,6 @@
 import type { PasskeyInfo, PasskeyOptionen } from '@hotelpms/contracts'
 import { nativ } from '@hotelpms/native'
-import { api } from './api.js'
+import { api, appSitzungUebernehmen } from './api.js'
 
 /**
  * Passkeys im Browser (Migration 0207).
@@ -31,15 +31,18 @@ function zuText(buf: ArrayBuffer | null): string | undefined {
 }
 
 /**
- * Kann dieser Browser Passkeys, und sind wir im Browser?
+ * Kann dieses Geraet hier Passkeys?
  *
- * In der eigenen App nicht: die WebView laeuft unter einer anderen Herkunft
- * als app.staygrid.cloud, und ein Passkey dieser Domain gilt dort nicht. Die
- * App schuetzt sich mit Fingerabdruck oder Gesicht des Telefons.
+ * In der eigenen App nur ueber die Huelle: die WebView laeuft unter einer
+ * anderen Herkunft als app.staygrid.cloud, und das Telefon bietet ihr einen
+ * Passkey dieser Domain nicht an. Eine Huelle ohne die Erweiterung zeigt
+ * den Knopf deshalb nicht -- `navigator.credentials` gaebe es dort, es
+ * faende nur nie etwas.
  */
 export function passkeyMoeglich(): boolean {
-  return nativ() === undefined
-    && typeof window !== 'undefined'
+  const n = nativ()
+  if (n !== undefined) return n.passkey !== undefined
+  return typeof window !== 'undefined'
     && typeof window.PublicKeyCredential === 'function'
     && typeof navigator.credentials?.get === 'function'
 }
@@ -69,13 +72,8 @@ interface AnfrageOptionen {
   allowCredentials?: Array<{ id: string; type: 'public-key'; transports?: string[] }>
 }
 
-/**
- * Herausforderung holen, den Browser nach dem Passkey fragen und die Antwort
- * an `ziel` schicken. Anmeldung und Bestaetigung unterscheiden sich nur in
- * den beiden Adressen.
- */
-async function passkeyVorlegen(optionenUrl: string, ziel: string): Promise<void> {
-  const { challengeId, options } = await api.post<PasskeyOptionen<AnfrageOptionen>>(optionenUrl)
+/** Den Browser nach dem Passkey fragen und seine Antwort als JSON fassen. */
+async function imBrowserVorlegen(options: AnfrageOptionen): Promise<unknown> {
   const cred = await navigator.credentials.get({
     publicKey: {
       challenge: zuBytes(options.challenge),
@@ -89,35 +87,56 @@ async function passkeyVorlegen(optionenUrl: string, ziel: string): Promise<void>
   }) as PublicKeyCredential | null
   if (cred === null) throw new DOMException('kein Passkey', 'NotAllowedError')
   const r = cred.response as AuthenticatorAssertionResponse
-  await api.post(ziel, {
-    challengeId,
+  return {
+    id: cred.id,
+    rawId: zuText(cred.rawId),
+    type: cred.type,
+    clientExtensionResults: cred.getClientExtensionResults(),
+    authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
     response: {
-      id: cred.id,
-      rawId: zuText(cred.rawId),
-      type: cred.type,
-      clientExtensionResults: cred.getClientExtensionResults(),
-      authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
-      response: {
-        clientDataJSON: zuText(r.clientDataJSON),
-        authenticatorData: zuText(r.authenticatorData),
-        signature: zuText(r.signature),
-        userHandle: zuText(r.userHandle)
-      }
+      clientDataJSON: zuText(r.clientDataJSON),
+      authenticatorData: zuText(r.authenticatorData),
+      signature: zuText(r.signature),
+      userHandle: zuText(r.userHandle)
     }
-  })
+  }
 }
 
 /**
- * Mit Passkey anmelden. Der Browser fragt selbst, welcher Passkey es sein
- * soll; eine Adresse muss vorher niemand tippen.
+ * Herausforderung holen, nach dem Passkey fragen und die Antwort an `ziel`
+ * schicken. Anmeldung und Bestaetigung unterscheiden sich nur in den beiden
+ * Adressen. In der App fragt die Huelle das Telefon; was zurueckkommt, hat
+ * dieselbe Form wie im Browser.
  */
-export function mitPasskeyAnmelden(): Promise<void> {
-  return passkeyVorlegen('/v1/auth/passkey/login/options', '/v1/auth/passkey/login')
+async function passkeyVorlegen<T>(optionenUrl: string, ziel: string,
+                                  extra: Record<string, unknown> = {}): Promise<T> {
+  const { challengeId, options } = await api.post<PasskeyOptionen<AnfrageOptionen>>(optionenUrl)
+  const passkey = nativ()?.passkey
+  const response = passkey !== undefined
+    ? await passkey.vorlegen(options)
+    : await imBrowserVorlegen(options)
+  return api.post<T>(ziel, { challengeId, response, ...extra })
+}
+
+/**
+ * Mit Passkey anmelden. Das Geraet fragt selbst, welcher Passkey es sein
+ * soll; eine Adresse muss vorher niemand tippen. Die App bekommt dafuer ein
+ * Token wie nach dem Kennwort (`anmelden` in lib/api.ts).
+ */
+export async function mitPasskeyAnmelden(): Promise<void> {
+  const n = nativ()
+  if (n === undefined) {
+    await passkeyVorlegen('/v1/auth/passkey/login/options', '/v1/auth/passkey/login')
+    return
+  }
+  const { token } = await passkeyVorlegen<{ token: string }>(
+    '/v1/auth/passkey/login/options', '/v1/auth/passkey/login', { client: 'app' })
+  await appSitzungUebernehmen(n, token)
 }
 
 /** Eine kritische Handlung mit einem eigenen Passkey bestaetigen (0209). */
-export function mitPasskeyBestaetigen(): Promise<void> {
-  return passkeyVorlegen('/v1/auth/passkey/confirm/options', '/v1/auth/passkey/confirm')
+export async function mitPasskeyBestaetigen(): Promise<void> {
+  await passkeyVorlegen('/v1/auth/passkey/confirm/options', '/v1/auth/passkey/confirm')
 }
 
 /**
@@ -127,6 +146,14 @@ export function mitPasskeyBestaetigen(): Promise<void> {
 export async function passkeyAnlegen(currentPassword: string, name: string): Promise<PasskeyInfo> {
   const { challengeId, options } = await api.post<PasskeyOptionen<ErstellOptionen>>(
     '/v1/auth/passkey/register/options', { currentPassword })
+  const passkey = nativ()?.passkey
+  const response = passkey !== undefined
+    ? await passkey.anlegen(options)
+    : await imBrowserAnlegen(options)
+  return api.post<PasskeyInfo>('/v1/auth/passkey/register', { challengeId, name, response })
+}
+
+async function imBrowserAnlegen(options: ErstellOptionen): Promise<unknown> {
   const cred = await navigator.credentials.create({
     publicKey: {
       challenge: zuBytes(options.challenge),
@@ -144,22 +171,18 @@ export async function passkeyAnlegen(currentPassword: string, name: string): Pro
   }) as PublicKeyCredential | null
   if (cred === null) throw new DOMException('kein Passkey', 'NotAllowedError')
   const r = cred.response as AuthenticatorAttestationResponse
-  return api.post<PasskeyInfo>('/v1/auth/passkey/register', {
-    challengeId,
-    name,
+  return {
+    id: cred.id,
+    rawId: zuText(cred.rawId),
+    type: cred.type,
+    clientExtensionResults: cred.getClientExtensionResults(),
+    authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
     response: {
-      id: cred.id,
-      rawId: zuText(cred.rawId),
-      type: cred.type,
-      clientExtensionResults: cred.getClientExtensionResults(),
-      authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
-      response: {
-        clientDataJSON: zuText(r.clientDataJSON),
-        attestationObject: zuText(r.attestationObject),
-        // Ohne die Transportwege bietet der Browser den Passkey spaeter
-        // nicht ueber Bluetooth oder USB an, nur auf diesem Geraet.
-        transports: typeof r.getTransports === 'function' ? r.getTransports() : undefined
-      }
+      clientDataJSON: zuText(r.clientDataJSON),
+      attestationObject: zuText(r.attestationObject),
+      // Ohne die Transportwege bietet der Browser den Passkey spaeter
+      // nicht ueber Bluetooth oder USB an, nur auf diesem Geraet.
+      transports: typeof r.getTransports === 'function' ? r.getTransports() : undefined
     }
-  })
+  }
 }

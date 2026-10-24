@@ -62,6 +62,11 @@ dependencies {
     // oder hochgeladen (TexterkennungPlugin).
     implementation "com.google.mlkit:text-recognition:16.0.1"
     implementation "androidx.exifinterface:exifinterface:1.3.7"
+    // Passkeys von app.staygrid.cloud (PasskeyPlugin). Der zweite Teil
+    // reicht die Anfrage unter Android 13 und aelter an die Google-Dienste
+    // weiter, wo die Passkeys des Google-Passwortmanagers liegen.
+    implementation "androidx.credentials:credentials:1.5.0"
+    implementation "androidx.credentials:credentials-play-services-auth:1.5.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
