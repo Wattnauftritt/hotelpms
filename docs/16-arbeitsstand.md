@@ -558,6 +558,13 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Der Kunde erfährt nichts vom Köder**, bis er anschlägt: kein Sicherheitsereignis beim Anlegen, das Anlegen steht nur im Protokoll. Wer beim Kunden einen Zugang hat, auch einen übernommenen, soll den Köder nicht aussortieren können.
 - **Grenze.** Speichert eine Rezeptionskraft den Ködergast nach dem Öffnen, steht danach ihre Fassung (`-u…`) in der Datenbank. Der Köder schlägt dann weiter an, nennt aber den falschen Weg. Entfernt wird über `decoy_remove()`, das den Gast über `guest_erase_one()` anonymisiert.
 
+**Sechster Teil: Phishing an Gäste** (T8; `packages/domain/src/email.ts`, `payPage.ts`, `GastMappe.tsx`).
+
+- **Ein fester Satz in jeder Gastpost mit Geldbezug** (Buchungsbestätigung, Rechnung mit offenem Betrag, Erinnerung und Mahnung, Zahlungslink): wir fragen nie per WhatsApp, SMS oder Telefon nach Kartendaten und teilen eine neue Bankverbindung nie per E-Mail mit. Bei einem Link dazu, mit welcher Adresse er beginnt, genommen aus dem Link selbst.
+- **Die Zahlungsseite** trägt denselben Satz und die Rufnummer des Hauses aus den Stammdaten (`invoice_phone`), nie aus dem Link: der Gast fragt auf einem Weg nach, den der Absender einer falschen Seite nicht in der Hand hat.
+- **Die Gästemappe** sagt unten, dass sie nie nach Kartendaten fragt. Ein überklebter QR-Code auf der Zimmerkarte führt sonst zu einer Mappe, die „Late Check-out, Karte eingeben“ verkauft.
+- Alle Sätze in 33 Sprachen.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**

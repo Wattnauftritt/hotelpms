@@ -93,3 +93,12 @@ describe('Frist des Links', () => {
     expect(paymentLinkValid('2026-10-17', '2026-10-18')).toBe(false)
   })
 })
+
+describe('Rueckfrage auf einem bekannten Weg', () => {
+  it('nennt die Rufnummer des Hauses und den Weg, auf dem wir nie fragen', () => {
+    const html = renderPayPage('open', { ...offen, phone: '+49 4721 12345' }, 'de')
+    expect(html).toContain('Rückfragen direkt an das Haus: +49 4721 12345')
+    expect(html).toContain('nie per WhatsApp')
+    expect(renderPayPage('open', offen, 'de')).not.toContain('Rückfragen direkt')
+  })
+})

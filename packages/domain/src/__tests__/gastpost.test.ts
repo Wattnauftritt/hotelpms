@@ -250,3 +250,28 @@ describe('Einladung zum Online-Check-in auf Deutsch', () => {
     ].join('\n\n'))
   })
 })
+
+describe('Satz gegen falsche Zahlungsaufforderungen', () => {
+  /**
+   * Bedrohungsanalyse 23.10.2026, T8. Der Gast soll in jeder Post mit
+   * Geldbezug lesen, auf welchem Weg wir nie fragen; bei einem Link
+   * ausserdem, womit er beginnt -- aus dem Link selbst, nicht aus einer
+   * Einstellung, die jemand verstellen koennte.
+   */
+  it('steht in der Zahlungsmail samt Adresse des Links, in jeder Sprache', () => {
+    for (const lang of EMAIL_LANGUAGES) {
+      const m = renderPaymentLinkEmail(zahlung, lang)
+      expect(m.text, lang).toContain('https://app.staygrid.test/')
+    }
+    expect(renderPaymentLinkEmail(zahlung, 'en').text).toContain('never ask for card details')
+  })
+
+  it('steht in der Buchungsbestaetigung, ohne Link', () => {
+    const m = renderReservationEmail({ propertyName: 'Hotel Nordsee', guestName: null,
+      reservationRef: 'ABC123', arrival: '01.10.2026', departure: '04.10.2026',
+      categoryName: 'Doppelzimmer', totalCent: 30_000, currency: 'EUR',
+      checkinTime: '15:00', checkoutTime: '11:00' }, 'de')
+    expect(m.text).toContain('nie per WhatsApp, SMS oder Telefon nach Kartendaten')
+    expect(m.text).not.toContain('Zahlungslink von uns')
+  })
+})

@@ -88,6 +88,7 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
               {stand.view.pages.map(s => (
                 <Seite key={s.contentRef} seite={s} roomRef={roomRef} locale={locale} />
               ))}
+              <KeineKarte />
             </>
           )}
         </div>
@@ -550,6 +551,17 @@ function Wlan({ wifi }: { wifi: FolderWifi }): JSX.Element {
  * Adresse, nie eine aus dem Aufenthalt; in einem neuen Fenster und ohne
  * `Referer`, damit die Bewertungsseite die Mappe nicht kennt.
  */
+/**
+ * Der QR-Code der Zimmerkarte laesst sich ueberkleben, und die falsche
+ * Mappe verkauft dann "Late Check-out, Karte eingeben". Die echte fragt nie
+ * danach -- das soll der Gast wissen, bevor er es braucht (Bedrohungsanalyse
+ * 23.10.2026, T8).
+ */
+function KeineKarte(): JSX.Element {
+  const t = useMappeT()
+  return <p className="px-1 text-xs text-neutral-500">{t('safety.noCard')}</p>
+}
+
 function Bewertung({ review }: { review: { label: string; url: string } }): JSX.Element {
   const t = useMappeT()
   return (
