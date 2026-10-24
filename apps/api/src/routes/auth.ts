@@ -14,6 +14,7 @@ import { neuesToken, hashToken, TOKEN_GUELTIGKEIT,
 import { kennwortZuKurz, KENNWORT_MIN, BENUTZERSPRACHEN,
          BESTAETIGUNG_MINUTEN } from '@hotelpms/contracts'
 import { istBestaetigt, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
+import { kennwortBekannt, kennwortZuNah } from '../platform/kennwortliste.js'
 import { isSendableAddress, renderEmailChangeEmail,
          renderEmailChangeNotice, maskEmail } from '@hotelpms/domain'
 
@@ -263,13 +264,14 @@ function neueSitzungsKennung(): string {
 export async function sitzungAnlegen(
   req: FastifyRequest, reply: FastifyReply, userId: number, fuerApp: boolean,
   /**
-   * Die Sitzung beginnt bestaetigt (0209). Nur fuer die Passkey-Anmeldung:
+   * Mit Passkey angemeldet. Die Sitzung beginnt dann bestaetigt (0209):
    * sie hat gerade Besitz und Fingerabdruck oder Geraete-PIN gezeigt, mehr
    * verlangt auch `/v1/auth/passkey/confirm` nicht. Nach dem Kennwort
    * nicht -- sonst waere ein abgefangenes Kennwort zugleich die
-   * Bestaetigung, gegen die sie stehen soll.
+   * Bestaetigung, gegen die sie stehen soll. Und nur sie traegt
+   * Plattformrechte (0211).
    */
-  bestaetigt = false
+  viaPasskey = false
 ): Promise<{ ok: true; token?: string }> {
   /*
    * Die eigene App bekommt dieselbe Sitzung als Token statt als Cookie
@@ -290,16 +292,16 @@ export async function sitzungAnlegen(
   await req.pool.query(
     `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
                                idle_window, ip, user_agent, client,
-                               confirmed_at, confirmed_user_id)
+                               confirmed_at, confirmed_user_id, via_passkey)
      VALUES ($1,$2, now() + ($3 || ' hours')::interval,
                     now() + ($4 || ' hours')::interval,
                     ($3 || ' hours')::interval, $5, $6, $7,
-                    CASE WHEN $8 THEN now() END, CASE WHEN $8 THEN $2::bigint END)`,
+                    CASE WHEN $8 THEN now() END, CASE WHEN $8 THEN $2::bigint END, $8)`,
     [sessionId, userId,
      fuerApp ? APP_SITZUNG_UNTAETIG_STUNDEN : SITZUNG_UNTAETIG_STUNDEN,
      fuerApp ? APP_SITZUNG_ABSOLUT_STUNDEN : SITZUNG_ABSOLUT_STUNDEN,
      req.ip, (req.headers['user-agent'] ?? '').slice(0, 300),
-     fuerApp ? 'app' : 'web', bestaetigt])
+     fuerApp ? 'app' : 'web', viaPasskey])
   if (fuerApp) return { ok: true, token: sessionId }
 
   reply.setCookie(COOKIE, sessionId, {
@@ -506,6 +508,12 @@ export function authRoutes(app: FastifyInstance): void {
         /** Die selbst gewaehlte Sprache; `null`, solange niemand gewaehlt hat. */
         locale: benutzer.rows[0]?.locale ?? null,
         isPlatformStaff: p.isPlatformStaff,
+        /*
+         * Plattformpersonal, mit Kennwort angemeldet: die Plattformrechte
+         * ruhen, bis die Sitzung mit Passkey beginnt (Migration 0211). Die
+         * Oberflaeche sagt das, statt ein leeres Adminpanel zu zeigen.
+         */
+        platformPasskeyRequired: p.isPlatformStaff && p.viaPasskey !== true,
         supportSession: p.supportSessionId !== null,
         /*
          * Arbeitsplatz: hat diese Person einen PIN, und handelt gerade
@@ -889,6 +897,9 @@ export function authRoutes(app: FastifyInstance): void {
       if (kennwortZuKurz(password)) {
         throw Errors.validation({ password: ['auth.passwordTooShort'] }, { min: KENNWORT_MIN })
       }
+      if (kennwortBekannt(password) || kennwortZuNah(password, null)) {
+        throw Errors.validation({ password: ['auth.passwordKnown'] })
+      }
 
       return tx(req.pool, req, async client => {
         /*
@@ -1032,6 +1043,16 @@ export function authRoutes(app: FastifyInstance): void {
       if (kennwortZuKurz(b.newPassword)) {
         throw Errors.validation({ newPassword: ['auth.passwordTooShort'] },
           { min: KENNWORT_MIN })
+      }
+      /*
+       * Geleakt oder mit dem eigenen Namen darin (Bedrohungsanalyse
+       * 23.10.2026, A2). Der Anmeldename steht hier zur Hand; beim
+       * Zuruecksetzen per Link oben noch nicht, dort gilt nur die Liste.
+       */
+      const { rows: [ich] } = await req.pool.query<{ login: string | null }>(
+        'SELECT COALESCE(email, username) AS login FROM app_user WHERE id = $1', [p.userId])
+      if (kennwortBekannt(b.newPassword) || kennwortZuNah(b.newPassword, ich?.login ?? null)) {
+        throw Errors.validation({ newPassword: ['auth.passwordKnown'] })
       }
       /*
        * Dasselbe Kennwort noch einmal zu setzen ist kein Fehler, aber es

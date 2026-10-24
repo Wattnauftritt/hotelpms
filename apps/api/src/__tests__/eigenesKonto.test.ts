@@ -124,6 +124,15 @@ describe('Eigenes Kennwort aendern', () => {
     expect(r.statusCode).toBe(422)
   })
 
+  it('nimmt kein geleaktes Kennwort und keins mit dem eigenen Namen', async () => {
+    for (const neu of ['iloveyou1234', 'rezeption-sommer-26']) {
+      const r = await kennwortAendern({ currentPassword: ALT, newPassword: neu })
+      expect(r.statusCode, neu).toBe(422)
+      expect(r.json<{ errorKeys: Record<string, string[]> }>().errorKeys)
+        .toEqual({ newPassword: ['auth.passwordKnown'] })
+    }
+  })
+
   it('beendet die anderen Sitzungen und laesst die eigene bestehen', async () => {
     /*
      * Wer sein Kennwort aendert, tut das oft genug, weil jemand anderes es

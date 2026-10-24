@@ -93,6 +93,11 @@ export async function makeUser(
      * davor. Die Tests der Bestaetigung selbst setzen `false`.
      */
     confirmed?: boolean
+    /**
+     * Sitzung mit Passkey begonnen (Migration 0211)? Vorgabe ja, aus
+     * demselben Grund: ohne sie truege Plattformpersonal keine Rechte.
+     */
+    viaPasskey?: boolean
   }
 ): Promise<{ userId: number; sessionId: string }> {
   const u = await owner.query<{ id: number }>(
@@ -123,13 +128,13 @@ export async function makeUser(
   const sessionId = `sess_${Math.random().toString(36).slice(2)}${Date.now()}`
   await owner.query(
     `INSERT INTO user_session (id, user_id, expires_at, absolute_expires_at,
-                               confirmed_at, confirmed_user_id)
+                               confirmed_at, confirmed_user_id, via_passkey)
      VALUES ($1, $2, now() + interval '1 hour', now() + interval '8 hours',
              -- In der Zukunft, damit die fuenf Minuten ueber einen langen
              -- Testlauf tragen; eine echte Bestaetigung liegt nie dort.
              CASE WHEN $3 THEN now() + interval '8 hours' END,
-             CASE WHEN $3 THEN $2::bigint END)`,
-    [sessionId, userId, opts.confirmed ?? true])
+             CASE WHEN $3 THEN $2::bigint END, $4)`,
+    [sessionId, userId, opts.confirmed ?? true, opts.viaPasskey ?? true])
   return { userId, sessionId }
 }
 

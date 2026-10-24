@@ -367,3 +367,95 @@ describe('Kritische Handlung mit Passkey bestaetigen (0209)', () => {
     expect(await bestaetigt({ cookie: `hp_session=${kc.value}` })).toBe(false)
   })
 })
+
+describe('Plattformkonto nur mit Passkey (Migration 0211)', () => {
+  let staff: { userId: number; sessionId: string }
+  let mitKennwort: Record<string, string>
+
+  beforeEach(async () => {
+    // Eine Sitzung wie nach der Anmeldung mit Kennwort.
+    staff = await makeUser(owner, { email: 'admin@wir.de', platformRoleKey: 'platform_admin',
+                                    isPlatformStaff: true, viaPasskey: false })
+    await owner.query(`UPDATE app_user SET password_hash = $2 WHERE id = $1`,
+      [staff.userId, await hashPassword(KENNWORT)])
+    mitKennwort = { cookie: `hp_session=${staff.sessionId}` }
+  })
+
+  const ich = async (headers: Record<string, string>) => (await app.inject(
+    { method: 'GET', url: '/v1/auth/me', headers })).json<{
+      platformPermissions: string[]; platformPasskeyRequired: boolean }>()
+
+  async function mitPasskeyAnmelden(g: Geraet): Promise<Record<string, string>> {
+    const { challengeId, challenge } = await anmeldeHerausforderung()
+    const r = await post('/v1/auth/passkey/login', { challengeId, response: g.anmelden(challenge) })
+    expect(r.statusCode, r.body).toBe(200)
+    return { cookie: `hp_session=${r.cookies.find(c => c.name === 'hp_session')!.value}` }
+  }
+
+  it('traegt mit Kennwort keine Plattformrechte, mit Passkey schon', async () => {
+    const vorher = await ich(mitKennwort)
+    expect(vorher.platformPermissions).toEqual([])
+    expect(vorher.platformPasskeyRequired).toBe(true)
+    const adminpanel = await app.inject({ method: 'GET', url: '/v1/platform/security-events',
+      headers: mitKennwort })
+    expect(adminpanel.statusCode).toBe(403)
+
+    // Der erste Passkey geht mit Kennwort, sonst kaeme niemand hinein ...
+    const g = new Geraet()
+    expect((await anlegen(g, mitKennwort)).statusCode).toBe(201)
+    // ... und landet beim Sicherheitspostfach.
+    const e = await owner.query<{ detail: { action: string; viaPasskey: boolean } }>(
+      `SELECT detail FROM security_event WHERE kind = 'platform_passkey_changed'`)
+    expect(e.rows.map(r => r.detail)).toEqual([{ action: 'added', viaPasskey: false }])
+    const alarm = await owner.query(
+      `SELECT 1 FROM platform_email WHERE kind = 'security_alert'
+         AND subject LIKE '%platform_passkey_changed%'`)
+    expect(alarm.rows).toHaveLength(1)
+
+    const nachher = await ich(await mitPasskeyAnmelden(g))
+    expect(nachher.platformPermissions.length).toBeGreaterThan(0)
+    expect(nachher.platformPasskeyRequired).toBe(false)
+  })
+
+  it('aendert vorhandene Passkeys nur aus einer Passkey-Sitzung', async () => {
+    const g = new Geraet()
+    expect((await anlegen(g, mitKennwort)).statusCode).toBe(201)
+
+    // Wer nur das Kennwort hat, legt keinen eigenen dazu ...
+    const o = await post('/v1/auth/passkey/register/options',
+      { currentPassword: KENNWORT }, mitKennwort)
+    expect(o.statusCode).toBe(403)
+    expect(o.json<{ type: string }>().type).toBe('urn:staygrid:passkey_required')
+    // ... und entfernt keinen, um danach wieder beim ersten zu stehen.
+    const { rows: [k] } = await owner.query<{ id: number }>(
+      `SELECT id FROM user_passkey WHERE user_id = $1`, [staff.userId])
+    const weg = await app.inject({ method: 'DELETE', url: `/v1/auth/passkeys/${k!.id}`,
+      headers: mitKennwort })
+    expect(weg.statusCode).toBe(403)
+
+    const mitPasskey = await mitPasskeyAnmelden(g)
+    expect((await anlegen(new Geraet(), mitPasskey, 'Zweiter')).statusCode).toBe(201)
+    const entfernt = await app.inject({ method: 'DELETE', url: `/v1/auth/passkeys/${k!.id}`,
+      headers: mitPasskey })
+    expect(entfernt.statusCode).toBe(204)
+  })
+
+  it('laesst die Sitzung eines anderen Menschen nicht als Passkey gelten', async () => {
+    // Arbeitsplatz-PIN: der Passkey gehoert dem Angemeldeten, nicht dem,
+    // der gerade handelt.
+    const r = await owner.query<{ id: string }>(
+      `INSERT INTO user_session (id, user_id, active_user_id, expires_at,
+                                 absolute_expires_at, via_passkey)
+       VALUES ('sess_pin_' || md5(random()::text), $1, $2, now() + interval '1 hour',
+               now() + interval '8 hours', true) RETURNING id`, [userId, staff.userId])
+    const fremd = await ich({ cookie: `hp_session=${r.rows[0]!.id}` })
+    expect(fremd.platformPermissions).toEqual([])
+  })
+
+  it('aendert fuer Hauspersonal nichts', async () => {
+    expect((await anlegen(new Geraet())).statusCode).toBe(201)
+    expect((await anlegen(new Geraet(), auth, 'Zweiter')).statusCode).toBe(201)
+    const e = await owner.query(`SELECT 1 FROM security_event`)
+    expect(e.rows).toHaveLength(0)
+  })
+})
