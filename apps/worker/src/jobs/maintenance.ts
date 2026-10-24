@@ -264,9 +264,11 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
    * Angabe ueber einen Menschen, die niemand mehr braucht.
    */
   const se = await client.query<{ n: number }>(`SELECT security_event_prune() AS n`)
+  // Abrufzaehler (0210): 30 Tage, der Vergleich braucht vierzehn.
+  const av = await client.query<{ n: number }>(`SELECT access_volume_prune() AS n`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
     + (m.rowCount ?? 0) + (z.rowCount ?? 0) + (zh.rowCount ?? 0) + (n.rowCount ?? 0)
-    + (w.rowCount ?? 0) + (se.rows[0]?.n ?? 0)
+    + (w.rowCount ?? 0) + (se.rows[0]?.n ?? 0) + (av.rows[0]?.n ?? 0)
 }
 
 /**

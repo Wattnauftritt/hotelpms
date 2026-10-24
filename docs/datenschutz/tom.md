@@ -91,6 +91,15 @@ Felder. „Wer" ist ein Benutzer oder, am Gästeterminal, das Gerät
 (`terminal_device_id`, Migration 0072). **In der Datenbank und nicht in der Anwendung** — was in der
 Anwendung liegt, wird irgendwann an einer Stelle vergessen.
 
+**Wer fragt, steht im Protokoll** (Migration 0210): jede Zeile der API nennt
+den Aufrufer (Benutzer, Maschinenzugang, Terminal) und seine volle
+IP-Adresse; das Journal hält sie 30 Tage. Die Routen, die Gäste in Mengen
+liefern, zählen je Aufrufer und Stunde Anfragen und Datensätze. Der Worker
+vergleicht jede Stunde mit den vierzehn Tagen davor und meldet einen
+Ausreißer — ein Vielfaches der gewohnten Menge, oder ein Mensch, der nachts
+liest und das sonst nie tut — als Sicherheitsereignis. ALARM-Meldungen des
+Workers gehen als Mail an das Sicherheitspostfach.
+
 **Sicherheitsereignisse** (Migration 0209) halten jede kritische Handlung
 mit Person, Zeit und ungekürzter IP-Adresse fest. Die Anwendung kann sie nur
 lesen; geschrieben wird ausschließlich über `security_event_record()`,

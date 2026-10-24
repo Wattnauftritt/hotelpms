@@ -24,14 +24,49 @@ import { deliverPlatformEmails, type PlatformSender } from './jobs/platformEmail
 import { inviteOnlineCheckins } from './jobs/onlineCheckin.js'
 import { sortDueRooms } from './jobs/roomSortAuto.js'
 import { syncChannels } from './jobs/channelSync.js'
+import { pruefeAbrufmengen } from './jobs/abrufmenge.js'
+import { alarmEinreihen } from './jobs/alarm.js'
 import { kanalAdapter } from './channel/index.js'
 import { createBrevoAdapter } from './email/brevo.js'
 import { parseCidrList } from '@hotelpms/domain'
 
 // Eigener Serialisierer fuer Fehler: ein pg-Fehler traegt in `detail` die
 // ganze Zeile, und im Nachtlauf sind das Gastnamen (N10, Audit 11.10.2026).
+// Vor dem Logger: er fragt bei jeder Zeile danach (siehe unten).
+const ALARM_AN = process.env.PLATFORM_NOTICE_EMAIL ?? 'info@staygrid.cloud'
+let alarmPool: Pool | null = null
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info',
-                   serializers: { err: serializeLogError } })
+                   serializers: { err: serializeLogError },
+                   hooks: { logMethod (args, method, level) {
+                     alarmWeitergeben(args, level)
+                     method.apply(this, args)
+                   } } })
+
+/*
+ * ALARM-Zeilen erreichen jemanden (Bedrohungsanalyse 23.10.2026, E4).
+ *
+ * Bis hierhin las sie nur, wer ins Journal schaute -- und wer schaut, wenn
+ * nichts auffaellt? Ein ausgefallener Nachtlauf, eine stockende Sicherung
+ * oder ein Bestandszaehler, der von den Reservierungen abweicht, fiel dann
+ * am Tresen auf, Tage spaeter. Jetzt geht jede ALARM-Zeile ab Stufe `error`
+ * als Mail an das Sicherheitspostfach, hoechstens eine je Meldung und Stunde
+ * (`platform_alert_enqueue`, Migration 0209).
+ *
+ * In die Mail kommen nur Zahlen, Wahrheitswerte und kurze Kennungen aus
+ * dem Objekt, nie ein Fehlerobjekt: dessen Text kann eine Zeile mit
+ * Gastnamen tragen (N10, Audit 11.10.2026). Faellt das Einreihen aus, steht
+ * es im Journal -- eine Schleife, die den Alarm ueber den Alarm meldet,
+ * gibt es nicht.
+ */
+
+function alarmWeitergeben(args: unknown[], level: number): void {
+  if (alarmPool === null) return
+  alarmEinreihen(alarmPool, ALARM_AN, args, level)
+    .catch((e: unknown) => {
+      // Nicht ueber `log.error`: das waere wieder ein Alarm.
+      process.stderr.write(`Alarm nicht eingereiht: ${(e as Error).message}\n`)
+    })
+}
 
 /*
  * Netze, in die ein Webhook trotz Sperrliste zugestellt werden darf
@@ -62,6 +97,7 @@ if (allowedWebhookCidrs.length > 0) {
  */
 const pool = createPool({ kind: 'direct', max: 4, applicationName: 'hotelpms-worker',
                           statementTimeoutMs: STAPEL_TIMEOUT_MS })
+alarmPool = pool
 
 // Zwei Verbindungen, zwei Rollen, und das mit Absicht:
 //
@@ -155,6 +191,18 @@ async function platformMaintenance(): Promise<void> {
       if (Object.values(r).some(n => n > 0)) log.info(r, 'Arbeitstabellen aufgeraeumt')
     } catch (e) {
       log.error({ err: e }, 'Aufbewahrung der Arbeitstabellen fehlgeschlagen')
+    }
+  }
+
+  // Mengenalarm (0210): die abgeschlossene Stunde, einmal je Stunde.
+  if (faellig('abrufmenge', stundenSchluessel())) {
+    try {
+      const vorige = new Date(Date.now() - 3_600_000)
+      const n = await pruefeAbrufmengen(pool, ALARM_AN, vorige)
+      erledigt('abrufmenge', stundenSchluessel())
+      if (n > 0) log.warn({ ausreisser: n }, 'Ungewoehnlich viele Gastdatenabrufe gemeldet')
+    } catch (e) {
+      log.error({ err: e }, 'Mengenalarm nicht geprueft')
     }
   }
 

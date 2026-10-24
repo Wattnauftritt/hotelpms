@@ -149,6 +149,8 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 | Protokoll | zehn Jahre | `audit_log_drop_old_partitions()` |
 | Sicherheitsereignis: IP-Adresse | 180 Tage voll, danach auf das Netz gekürzt (/24, /48) | `security_event_prune()` im Job `purgeExpired` |
 | Sicherheitsereignis | zwei Jahre | `security_event_prune()` |
+| Protokoll der Anwendung (Journal) mit voller IP-Adresse und Aufrufer | 30 Tage | `ops/journald/hotelpms.conf` |
+| Abrufzähler je Aufrufer und Stunde (`access_volume`) mit voller IP-Adresse | 30 Tage | `access_volume_prune()` im Job `purgeExpired` |
 
 ## 8. Technische und organisatorische Maßnahmen
 
