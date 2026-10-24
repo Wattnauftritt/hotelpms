@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
-import { BESTAETIGUNG_MINUTEN } from '@hotelpms/contracts'
+import { useQuery } from '@tanstack/react-query'
+import { BESTAETIGUNG_MINUTEN, type PasskeyInfo } from '@hotelpms/contracts'
 import { api } from '../lib/api.js'
 import { bestaetigungAnmelden } from '../lib/bestaetigung.js'
+import { passkeyMoeglich, mitPasskeyBestaetigen, abgebrochen } from '../lib/passkey.js'
 import { useT } from '../lib/i18n/index.js'
 import { Dialog, Feld, FELD, KNOPF, KNOPF_LEISE } from './Dialog.tsx'
 import { Fehler } from './Fehler.tsx'
@@ -19,8 +21,10 @@ import { Fehler } from './Fehler.tsx'
  * von dem jemand kurz aufgestanden ist, oder mit einem gestohlenen Cookie.
  * Einen Knopf "Ja, wirklich" drueckt er genauso.
  *
- * Ein Passkey kommt als zweiter Weg daneben (Thread "Passkeys und Passwort
- * vergessen"); er bekommt seinen Knopf unter dem Feld.
+ * Ein Passkey ist der zweite Weg daneben, mit einem Knopf unter dem Feld --
+ * nur, wenn der Browser es kann und die Person einen Passkey hat. Wer
+ * keinen hat, soll keinen Knopf sehen, der nur in eine Fehlermeldung des
+ * Browsers fuehrt.
  */
 export function BestaetigungsDialog(): JSX.Element | null {
   const t = useT()
@@ -29,6 +33,13 @@ export function BestaetigungsDialog(): JSX.Element | null {
   const [laeuft, setLaeuft] = useState(false)
   const [fehler, setFehler] = useState<unknown>(null)
   const antwort = useRef<((ok: boolean) => void) | null>(null)
+
+  const passkeys = useQuery({
+    queryKey: ['passkeys'],
+    queryFn: () => api.get<{ passkeys: PasskeyInfo[] }>('/v1/auth/passkeys'),
+    enabled: offen && passkeyMoeglich()
+  })
+  const mitPasskey = passkeyMoeglich() && (passkeys.data?.passkeys.length ?? 0) > 0
 
   useEffect(() => bestaetigungAnmelden(() => new Promise<boolean>(resolve => {
     antwort.current = resolve
@@ -59,6 +70,20 @@ export function BestaetigungsDialog(): JSX.Element | null {
     }
   }
 
+  const perPasskey = async (): Promise<void> => {
+    setLaeuft(true)
+    setFehler(null)
+    try {
+      await mitPasskeyBestaetigen()
+      schliessen(true)
+    } catch (e) {
+      // Abgebrochen ist kein Fehler: das Kennwortfeld steht ja noch da.
+      if (!abgebrochen(e)) setFehler(e)
+    } finally {
+      setLaeuft(false)
+    }
+  }
+
   if (!offen) return null
   return (
     <Dialog titel={t('sicherheit.confirm.title')} breite="schmal"
@@ -82,6 +107,12 @@ export function BestaetigungsDialog(): JSX.Element | null {
                  value={kennwort} onChange={e => setKennwort(e.target.value)}
                  className={FELD} />
         </Feld>
+        {mitPasskey && (
+          <button type="button" disabled={laeuft} onClick={() => { void perPasskey() }}
+                  className={`${KNOPF_LEISE} w-full disabled:text-neutral-400`}>
+            {t('passkey.confirm')}
+          </button>
+        )}
         {fehler !== null && <Fehler error={fehler} />}
       </form>
     </Dialog>

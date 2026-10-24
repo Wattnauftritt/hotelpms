@@ -509,7 +509,7 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Die Herausforderung gilt einmal und fünf Minuten**, beim Anlegen zusätzlich nur in der Sitzung, die sie angefordert hat. Die Bibliothek prüft, ob sie passt, nicht, ob sie schon benutzt wurde.
 - **Gebunden an `PUBLIC_APP_URL`.** Wer die öffentliche Adresse ändert, entwertet alle Passkeys; das Kennwort trägt weiter.
 - **Nicht in der App.** Die WebView läuft unter `capacitor://localhost` bzw. `https://localhost`, ein Passkey für app.staygrid.cloud gilt dort nicht. Die App schützt ihre Sitzung mit Fingerabdruck oder Gesicht des Telefons. Native Passkeys bräuchten ein Plugin und `apple-app-site-association` bzw. `assetlinks.json` auf der Domain.
-- **Offen:** Bestätigung kritischer Handlungen mit Passkey (`POST /v1/auth/passkey/confirm`) folgt, sobald `user_session.confirmed_at` auf `main` ist; Passkey-Pflicht für Plattformpersonal danach.
+- **Bestätigen mit Passkey** (`POST /v1/auth/passkey/confirm`, Knopf im Bestätigungsdialog) setzt dasselbe wie das Kennwort in `POST /v1/auth/confirm`. Es zählt nur ein Passkey der Person, die gerade handelt; der Browser bekommt nur deren Schlüssel angeboten. Eine Passkey-Anmeldung beginnt bestätigt, eine mit Kennwort nicht: sonst wäre ein abgefangenes Kennwort zugleich die Bestätigung, gegen die sie steht.
 
 ### Aufgabe 13d — Kritische Handlungen bestätigen und melden — **erledigt**
 

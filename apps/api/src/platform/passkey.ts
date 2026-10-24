@@ -97,6 +97,30 @@ export async function anmeldeOptionen(
   return { challengeId, options }
 }
 
+/**
+ * Optionen fuer die Bestaetigung einer kritischen Handlung (0209): wie die
+ * Anmeldung, aber nur mit den eigenen Passkeys. Der Browser bietet dann
+ * keinen Schluessel eines anderen Kontos an, das auf diesem Rechner auch
+ * einen hat -- am Tresen ist das der Normalfall. Gepruefte Zugehoerigkeit
+ * macht trotzdem erst `pruefePasskeyAntwort` mit `nurFuer`.
+ */
+export async function bestaetigungsOptionen(
+  req: FastifyRequest, userId: number
+): Promise<PasskeyOptionen<PublicKeyCredentialRequestOptionsJSON>> {
+  const eigene = await req.pool.query<{ credential_id: string; transports: string[] }>(
+    `SELECT credential_id, transports FROM user_passkey WHERE user_id = $1`, [userId])
+  if (eigene.rows.length === 0) throw Errors.unauthorized('auth.passkeyFailed')
+  const options = await generateAuthenticationOptions({
+    rpID: passkeyPartei().rpID,
+    userVerification: 'required',
+    timeout: HERAUSFORDERUNG_MS,
+    allowCredentials: eigene.rows.map(k => ({ id: k.credential_id, transports: k.transports }))
+  })
+  const challengeId = await herausforderungAblegen(req,
+    { purpose: 'login', challenge: options.challenge })
+  return { challengeId, options }
+}
+
 function istAntwort(v: unknown): v is AuthenticationResponseJSON {
   if (typeof v !== 'object' || v === null) return false
   const o = v as Record<string, unknown>

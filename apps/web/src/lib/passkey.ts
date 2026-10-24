@@ -70,12 +70,12 @@ interface AnfrageOptionen {
 }
 
 /**
- * Mit Passkey anmelden. Der Browser fragt selbst, welcher Passkey es sein
- * soll; eine Adresse muss vorher niemand tippen.
+ * Herausforderung holen, den Browser nach dem Passkey fragen und die Antwort
+ * an `ziel` schicken. Anmeldung und Bestaetigung unterscheiden sich nur in
+ * den beiden Adressen.
  */
-export async function mitPasskeyAnmelden(): Promise<void> {
-  const { challengeId, options } =
-    await api.post<PasskeyOptionen<AnfrageOptionen>>('/v1/auth/passkey/login/options')
+async function passkeyVorlegen(optionenUrl: string, ziel: string): Promise<void> {
+  const { challengeId, options } = await api.post<PasskeyOptionen<AnfrageOptionen>>(optionenUrl)
   const cred = await navigator.credentials.get({
     publicKey: {
       challenge: zuBytes(options.challenge),
@@ -89,7 +89,7 @@ export async function mitPasskeyAnmelden(): Promise<void> {
   }) as PublicKeyCredential | null
   if (cred === null) throw new DOMException('kein Passkey', 'NotAllowedError')
   const r = cred.response as AuthenticatorAssertionResponse
-  await api.post('/v1/auth/passkey/login', {
+  await api.post(ziel, {
     challengeId,
     response: {
       id: cred.id,
@@ -105,6 +105,19 @@ export async function mitPasskeyAnmelden(): Promise<void> {
       }
     }
   })
+}
+
+/**
+ * Mit Passkey anmelden. Der Browser fragt selbst, welcher Passkey es sein
+ * soll; eine Adresse muss vorher niemand tippen.
+ */
+export function mitPasskeyAnmelden(): Promise<void> {
+  return passkeyVorlegen('/v1/auth/passkey/login/options', '/v1/auth/passkey/login')
+}
+
+/** Eine kritische Handlung mit einem eigenen Passkey bestaetigen (0209). */
+export function mitPasskeyBestaetigen(): Promise<void> {
+  return passkeyVorlegen('/v1/auth/passkey/confirm/options', '/v1/auth/passkey/confirm')
 }
 
 /**
