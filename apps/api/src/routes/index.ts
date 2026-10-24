@@ -3,6 +3,7 @@ import { healthRoutes } from './health.js'
 import { authRoutes } from './auth.js'
 import { passkeyRoutes } from './passkey.js'
 import { sitzungRoutes } from './sitzungen.js'
+import { koederRoutes } from './koeder.js'
 import { availabilityRoutes } from './availability.js'
 import { reservationRoutes } from './reservations.js'
 import { roomMoveRoutes } from './roomMove.js'
@@ -154,6 +155,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   deploymentRoutes(app)
   platformRoutes(app)
   platformSupportRoutes(app)
+  koederRoutes(app)
   platformDomainRoutes(app, { domains: overrides.domains })
   userAdminRoutes(app)
   terminalRoutes(app)

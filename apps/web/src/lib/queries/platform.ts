@@ -372,3 +372,45 @@ export function useSavePaymentProvider() {
     }
   })
 }
+
+// ------------------------------------------------------------------ Koeder
+
+export interface PlatformDecoys {
+  decoys: Array<{ propertyId: number; address: string; createdAt: string }>
+  clients: Array<{ clientId: string; name: string; createdAt: string }>
+  domainConfigured: boolean
+}
+
+/** Koeder eines Kunden (Migration 0213). Der Kunde selbst sieht sie nie. */
+export function usePlatformDecoys(accountId: number) {
+  return useQuery({
+    queryKey: ['platform-decoys', accountId],
+    queryFn: () => api.get<PlatformDecoys>(`/v1/platform/accounts/${accountId}/decoys`)
+  })
+}
+
+export function useDecoyAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, propertyId, remove }: {
+      accountId: number; propertyId: number; remove: boolean }) => {
+      const url = `/v1/platform/accounts/${accountId}/properties/${propertyId}/decoy`
+      return remove ? api.delete(url) : api.post(url)
+    },
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-decoys', accountId] })
+    }
+  })
+}
+
+export function useCreateDecoyClient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ accountId, name }: { accountId: number; name: string }) =>
+      api.post<{ clientId: string; clientSecret: string; name: string }>(
+        `/v1/platform/accounts/${accountId}/decoy-clients`, { name }),
+    onSuccess: (_r, { accountId }) => {
+      void qc.invalidateQueries({ queryKey: ['platform-decoys', accountId] })
+    }
+  })
+}

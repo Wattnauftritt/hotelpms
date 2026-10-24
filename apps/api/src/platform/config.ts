@@ -55,6 +55,12 @@ export interface Config {
    */
   platformNoticeEmail: string
   /**
+   * Die Catch-all-Domain der Koedergaeste (Migration 0213). Unauffaellig
+   * und ohne Bezug zu StayGrid: eine Adresse unter staygrid.cloud sortiert
+   * jeder Angreifer aus. Ohne sie lassen sich keine Koeder anlegen.
+   */
+  decoyEmailDomain: string | null
+  /**
    * Postfach, an das ein neues Ticket und jede Antwort eines Kunden gemeldet
    * werden (0208). Getrennt vom Hinweispostfach, weil hier ein Kunde wartet
    * und dort ein Antrag.
@@ -176,6 +182,7 @@ export function loadConfig(): Config {
     allowedWebhookCidrs: parseCidrList(process.env.WEBHOOK_ALLOWED_PRIVATE_CIDRS),
     brevoApiKey: process.env.BREVO_API_KEY ?? null,
     platformNoticeEmail,
+    decoyEmailDomain: process.env.DECOY_EMAIL_DOMAIN?.trim().toLowerCase() || null,
     platformSupportEmail: process.env.PLATFORM_SUPPORT_EMAIL ?? 'support@staygrid.cloud',
     relayEmailDomain,
     vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? null,
