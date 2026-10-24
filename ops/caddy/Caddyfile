@@ -221,6 +221,12 @@ app.staygrid.cloud, pms.wattnauftritt.de {
 		header @pwa Cache-Control "public, max-age=86400"
 		header /manifest.webmanifest Content-Type "application/manifest+json"
 		header /sw.js Cache-Control "no-cache"
+		# Passkeys in der eigenen App: iOS liest die Datei ohne Endung, und
+		# Caddy kennt ihren Typ nicht. assetlinks.json fuer Android traegt
+		# ihn schon ueber die Endung. Beide Dateien legt der Bau der
+		# Oberflaeche an (apps/web/vite.config.ts, `appZuordnung`). Auf der
+		# Maschine einzutragen, bevor die App unter iOS Passkeys anbietet.
+		header /.well-known/apple-app-site-association Content-Type "application/json"
 		@seite not path /assets/* /manifest.webmanifest /icons/* /sw.js
 		header @seite Cache-Control "no-store"
 		try_files {path} /index.html

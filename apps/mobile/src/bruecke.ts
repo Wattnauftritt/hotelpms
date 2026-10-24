@@ -270,6 +270,43 @@ function kurzbefehleHoeren() {
   })
 }
 
+// ------------------------------------------------ Passkeys (app.staygrid.cloud)
+
+/*
+ * Die WebView laeuft unter einer eigenen Herkunft, und das Telefon bietet
+ * ihr keinen Passkey von app.staygrid.cloud an. Die Erweiterung fragt
+ * Credential Manager bzw. AuthenticationServices selbst; ob die App das
+ * fuer diese Domain darf, prueft das Telefon gegen assetlinks.json bzw.
+ * apple-app-site-association. Optionen und Antwort gehen als JSON-Text
+ * ueber die Bruecke, genau so, wie Schnittstelle und Credential Manager sie
+ * schreiben.
+ *
+ * Wie bei den Benachrichtigungen ohne neue Fassung der Huelle: eine Huelle
+ * ohne die Erweiterung bekommt das Paket und zeigt nur keinen Knopf.
+ */
+interface PasskeyPlugin {
+  vorlegen(o: { optionen: string }): Promise<{ antwort: string }>
+  anlegen(o: { optionen: string }): Promise<{ antwort: string }>
+}
+const PASSKEY_VORHANDEN = Capacitor.isPluginAvailable('StaygridPasskey')
+const Passkey = registerPlugin<PasskeyPlugin>('StaygridPasskey')
+
+/**
+ * Abbruch und „kein passender Passkey“ melden die Erweiterungen mit dem Code
+ * `abgebrochen`. Die Oberflaeche kennt dafuer aus dem Browser den
+ * `NotAllowedError` und zeigt dann keinen Fehler, nur den Hinweis.
+ */
+async function passkeyRufen(f: () => Promise<{ antwort: string }>): Promise<unknown> {
+  try {
+    return JSON.parse((await f()).antwort) as unknown
+  } catch (e) {
+    if ((e as { code?: unknown } | null)?.code === 'abgebrochen') {
+      throw new DOMException('abgebrochen', 'NotAllowedError')
+    }
+    throw e
+  }
+}
+
 const plattform = Capacitor.getPlatform()
 if (plattform === 'ios' || plattform === 'android') {
   const bruecke: StaygridNative = {
@@ -298,6 +335,12 @@ if (plattform === 'ios' || plattform === 'android') {
   if (KURZBEFEHLE_VORHANDEN) {
     bruecke.kurzbefehle = { setzen: async liste => { await Kurzbefehle.setzen({ liste }) } }
     kurzbefehleHoeren()
+  }
+  if (PASSKEY_VORHANDEN) {
+    bruecke.passkey = {
+      vorlegen: optionen => passkeyRufen(() => Passkey.vorlegen({ optionen: JSON.stringify(optionen) })),
+      anlegen: optionen => passkeyRufen(() => Passkey.anlegen({ optionen: JSON.stringify(optionen) }))
+    }
   }
   if (PAKET) {
     bruecke.aktualisierung = {

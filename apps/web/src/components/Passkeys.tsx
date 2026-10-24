@@ -15,9 +15,9 @@ import { Fehler } from './Shell.tsx'
  * Arbeitsplatz-Dialog steht: alles, was jemand „an sich" aendert, liegt
  * hinter einem Knopf, den auch Plattformpersonal erreicht.
  *
- * In der App fehlt der Abschnitt ganz. Ein Passkey laesst sich dort weder
- * anlegen noch benutzen (lib/passkey.ts), und eine Liste, an der man nichts
- * tun kann, lenkt nur ab.
+ * In einer App, deren Huelle noch keine Passkeys kann, fehlt der Abschnitt
+ * ganz. Ein Passkey laesst sich dort weder anlegen noch benutzen
+ * (lib/passkey.ts), und eine Liste, an der man nichts tun kann, lenkt nur ab.
  */
 export function Passkeys(): JSX.Element | null {
   const t = useT()
@@ -26,11 +26,12 @@ export function Passkeys(): JSX.Element | null {
   const [name, setName] = useState('')
   const [kennwort, setKennwort] = useState('')
   const [abbruch, setAbbruch] = useState(false)
+  const anzeigen = nativ() === undefined || passkeyMoeglich()
 
   const liste = useQuery({
     queryKey: ['passkeys'],
     queryFn: () => api.get<{ passkeys: PasskeyInfo[] }>('/v1/auth/passkeys'),
-    enabled: nativ() === undefined
+    enabled: anzeigen
   })
 
   const anlegen = useMutation({
@@ -49,7 +50,7 @@ export function Passkeys(): JSX.Element | null {
     onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['passkeys'] }) }
   })
 
-  if (nativ() !== undefined) return null
+  if (!anzeigen) return null
 
   const datum = (iso: string): string =>
     new Intl.DateTimeFormat(intlTag(locale), { dateStyle: 'medium' }).format(new Date(iso))

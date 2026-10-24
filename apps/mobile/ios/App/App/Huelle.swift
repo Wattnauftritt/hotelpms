@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Capacitor
 import FirebaseCore
 import Foundation
@@ -21,6 +22,7 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(DateiPlugin())
         bridge?.registerPluginInstance(HuellePlugin())
         bridge?.registerPluginInstance(KurzbefehlePlugin())
+        bridge?.registerPluginInstance(PasskeyPlugin())
         sperre = AppSperre(ansicht: view)
     }
 }
@@ -455,6 +457,165 @@ public class KurzbefehlePlugin: CAPPlugin, CAPBridgedPlugin {
         case "eintragen": return "square.and.pencil"
         case "kueche": return "cup.and.saucer"
         default: return "clock"
+        }
+    }
+}
+
+/// Passkeys von app.staygrid.cloud in der App (Vertrag `NativePasskey` in
+/// `@hotelpms/native`).
+///
+/// Die WebView laeuft unter `capacitor://localhost`, und dort bietet iOS
+/// keinen Passkey dieser Domain an. AuthenticationServices tut es fuer die
+/// App, wenn app.staygrid.cloud sie in apple-app-site-association nennt und
+/// die App die Domain unter `webcredentials:` in ihren Entitlements traegt.
+/// Die Herkunft in der Antwort ist dann `https://app.staygrid.cloud`, wie im
+/// Browser.
+///
+/// Anders als Credential Manager unter Android nimmt iOS kein JSON. Hier
+/// steht deshalb die Uebersetzung in beide Richtungen, und nur die: was die
+/// Antwort wert ist, entscheidet die Schnittstelle. Abbruch und „kein
+/// Passkey“ melden sich wie im Browser gleich (`abgebrochen`).
+@objc(PasskeyPlugin)
+public class PasskeyPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthorizationControllerDelegate,
+                            ASAuthorizationControllerPresentationContextProviding {
+    public let identifier = "PasskeyPlugin"
+    public let jsName = "StaygridPasskey"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "vorlegen", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "anlegen", returnType: CAPPluginReturnPromise)
+    ]
+
+    private var offen: CAPPluginCall?
+    private var steuerung: ASAuthorizationController?
+
+    private static func bytes(_ b64url: Any?) -> Data? {
+        guard var s = b64url as? String else { return nil }
+        s = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        s += String(repeating: "=", count: (4 - s.count % 4) % 4)
+        return Data(base64Encoded: s)
+    }
+
+    private static func text(_ d: Data) -> String {
+        d.base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func optionen(_ call: CAPPluginCall) -> [String: Any]? {
+        guard let roh = call.getString("optionen")?.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: roh)) as? [String: Any]
+    }
+
+    private static func pruefung(_ v: Any?) -> ASAuthorizationPublicKeyCredentialUserVerificationPreference {
+        switch v as? String {
+        case "discouraged": return .discouraged
+        case "preferred": return .preferred
+        default: return .required
+        }
+    }
+
+    @objc func vorlegen(_ call: CAPPluginCall) {
+        guard let o = Self.optionen(call), let rp = o["rpId"] as? String,
+              let challenge = Self.bytes(o["challenge"]) else {
+            call.reject("Optionen fehlen")
+            return
+        }
+        let anfrage = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
+            .createCredentialAssertionRequest(challenge: challenge)
+        anfrage.userVerificationPreference = Self.pruefung(o["userVerification"])
+        let erlaubt = (o["allowCredentials"] as? [[String: Any]] ?? []).compactMap { Self.bytes($0["id"]) }
+        anfrage.allowedCredentials = erlaubt.map { ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        starten(call, anfrage)
+    }
+
+    @objc func anlegen(_ call: CAPPluginCall) {
+        guard let o = Self.optionen(call), let rp = (o["rp"] as? [String: Any])?["id"] as? String,
+              let challenge = Self.bytes(o["challenge"]),
+              let benutzer = o["user"] as? [String: Any], let name = benutzer["name"] as? String,
+              let kennung = Self.bytes(benutzer["id"]) else {
+            call.reject("Optionen fehlen")
+            return
+        }
+        let anfrage = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rp)
+            .createCredentialRegistrationRequest(challenge: challenge, name: name, userID: kennung)
+        anfrage.userVerificationPreference = Self.pruefung(
+            (o["authenticatorSelection"] as? [String: Any])?["userVerification"])
+        // Schon vorhandene nicht noch einmal anlegen; iOS kennt die Liste erst ab 17.4.
+        if #available(iOS 17.4, *) {
+            let vorhanden = (o["excludeCredentials"] as? [[String: Any]] ?? []).compactMap { Self.bytes($0["id"]) }
+            anfrage.excludedCredentials = vorhanden.map {
+                ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: $0) }
+        }
+        starten(call, anfrage)
+    }
+
+    private func starten(_ call: CAPPluginCall, _ anfrage: ASAuthorizationRequest) {
+        DispatchQueue.main.async {
+            // Eine Anfrage zur Zeit: ein zweiter Druck auf den Knopf ersetzt
+            // die erste, statt zwei Dialoge uebereinander zu legen.
+            self.offen?.reject("Abgebrochen", "abgebrochen")
+            self.offen = call
+            let s = ASAuthorizationController(authorizationRequests: [anfrage])
+            s.delegate = self
+            s.presentationContextProvider = self
+            self.steuerung = s
+            s.performRequests()
+        }
+    }
+
+    public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        bridge?.viewController?.view.window ?? ASPresentationAnchor()
+    }
+
+    public func authorizationController(controller: ASAuthorizationController,
+                                        didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let call = offen else { return }
+        offen = nil
+        steuerung = nil
+        let antwort: [String: Any]
+        if let a = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion {
+            antwort = [
+                "id": Self.text(a.credentialID), "rawId": Self.text(a.credentialID), "type": "public-key",
+                "authenticatorAttachment": "platform", "clientExtensionResults": [String: Any](),
+                "response": [
+                    "clientDataJSON": Self.text(a.rawClientDataJSON),
+                    "authenticatorData": Self.text(a.rawAuthenticatorData),
+                    "signature": Self.text(a.signature),
+                    "userHandle": Self.text(a.userID)
+                ]
+            ]
+        } else if let r = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
+                  let attestation = r.rawAttestationObject {
+            antwort = [
+                "id": Self.text(r.credentialID), "rawId": Self.text(r.credentialID), "type": "public-key",
+                "authenticatorAttachment": "platform", "clientExtensionResults": [String: Any](),
+                "response": [
+                    "clientDataJSON": Self.text(r.rawClientDataJSON),
+                    "attestationObject": Self.text(attestation),
+                    "transports": ["internal", "hybrid"]
+                ]
+            ]
+        } else {
+            call.reject("Kein Passkey", "abgebrochen")
+            return
+        }
+        guard let json = try? JSONSerialization.data(withJSONObject: antwort),
+              let text = String(data: json, encoding: .utf8) else {
+            call.reject("Antwort nicht lesbar")
+            return
+        }
+        call.resolve(["antwort": text])
+    }
+
+    public func authorizationController(controller: ASAuthorizationController,
+                                        didCompleteWithError error: Error) {
+        guard let call = offen else { return }
+        offen = nil
+        steuerung = nil
+        let code = (error as? ASAuthorizationError)?.code
+        if code == .canceled || code == .notInteractive {
+            call.reject("Abgebrochen", "abgebrochen")
+        } else {
+            call.reject(error.localizedDescription)
         }
     }
 }

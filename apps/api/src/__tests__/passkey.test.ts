@@ -9,6 +9,8 @@ import { registerAllRoutes } from '../routes/index.js'
 import { hashPassword } from '../routes/auth.js'
 import { limiters } from '../platform/rateLimit.js'
 import { passkeyPartei } from '../platform/passkey.js'
+import { androidHerkunft, assetLinks, appleAppSiteAssociation, APP_ANDROID_ZERTIFIKATE,
+         APP_PAKET } from '@hotelpms/contracts'
 
 /**
  * Passkeys (Migration 0207), gegen ein Geraet aus Software.
@@ -274,6 +276,53 @@ describe('Mit Passkey anmelden', () => {
     const r = await post('/v1/auth/passkey/login', { challengeId, response: g.anmelden(challenge) })
     expect(r.statusCode).toBe(401)
   })
+
+  it('gibt der eigenen App ein Token statt eines Cookies', async () => {
+    const g = new Geraet()
+    await anlegen(g)
+    const { challengeId, challenge } = await anmeldeHerausforderung()
+    const r = await post('/v1/auth/passkey/login',
+      { challengeId, response: g.anmelden(challenge), client: 'app' })
+    expect(r.statusCode, r.body).toBe(200)
+    const { token } = r.json<{ token: string }>()
+    expect(token).toMatch(/^sga_/)
+    expect(r.cookies.find(c => c.name === 'hp_session')).toBeUndefined()
+
+    const me = await app.inject({ method: 'GET', url: '/v1/auth/me',
+      headers: { authorization: `Bearer ${token}` } })
+    expect(me.statusCode).toBe(200)
+    // Mit Passkey begonnen, also bestaetigt und mit Plattformrechten, wie im Browser.
+    const s = await owner.query<{ client: string; via_passkey: boolean }>(
+      `SELECT client, via_passkey FROM user_session WHERE id = $1`, [token])
+    expect(s.rows[0]).toEqual({ client: 'app', via_passkey: true })
+  })
+
+  it('nimmt die Antwort aus der Android-App an, mit ihrer eigenen Herkunft', async () => {
+    // Derselbe Passkey, im Browser angelegt, unter Android aus der App
+    // vorgelegt: Credential Manager schreibt android:apk-key-hash:… hinein.
+    const g = new Geraet()
+    await anlegen(g)
+    const aus = Object.assign(new Geraet(androidHerkunft(APP_ANDROID_ZERTIFIKATE[0]!)), {
+      credId: g.credId, privat: g.privat, oeffentlich: g.oeffentlich, benutzer: g.benutzer })
+    const { challengeId, challenge } = await anmeldeHerausforderung()
+    const r = await post('/v1/auth/passkey/login',
+      { challengeId, response: aus.anmelden(challenge), client: 'app' })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json<{ token: string }>().token).toMatch(/^sga_/)
+  })
+
+  it('nimmt die Herkunft der WebView nicht an', async () => {
+    // Unter https://localhost laeuft jede App mit Capacitor. Eine Antwort von
+    // dort hat nicht das Telefon gegen app.staygrid.cloud geprueft.
+    const g = new Geraet()
+    await anlegen(g)
+    const fremd = Object.assign(new Geraet('https://localhost'), {
+      credId: g.credId, privat: g.privat, oeffentlich: g.oeffentlich, benutzer: g.benutzer })
+    const { challengeId, challenge } = await anmeldeHerausforderung()
+    const r = await post('/v1/auth/passkey/login',
+      { challengeId, response: fremd.anmelden(challenge), client: 'app' })
+    expect(r.statusCode).toBe(401)
+  })
 })
 
 describe('Eigene Passkeys verwalten', () => {
@@ -457,5 +506,34 @@ describe('Plattformkonto nur mit Passkey (Migration 0211)', () => {
     expect((await anlegen(new Geraet(), auth, 'Zweiter')).statusCode).toBe(201)
     const e = await owner.query(`SELECT 1 FROM security_event`)
     expect(e.rows).toHaveLength(0)
+  })
+})
+
+describe('Passkeys in der eigenen App', () => {
+  const FINGERABDRUCK = sha256('zertifikat')
+
+  it('rechnet den Fingerabdruck der Play Console in die Herkunft von Android um', () => {
+    const playConsole = [...FINGERABDRUCK].map(b => b.toString(16).padStart(2, '0'))
+      .join(':').toUpperCase()
+    expect(androidHerkunft(playConsole))
+      .toBe('android:apk-key-hash:' + FINGERABDRUCK.toString('base64url'))
+    expect(androidHerkunft(playConsole.toLowerCase())).toBe(androidHerkunft(playConsole))
+    expect(() => androidHerkunft('AB:CD')).toThrow()
+  })
+
+  it('nennt in assetlinks.json nur die Anmeldung, keine Links', () => {
+    const hex = FINGERABDRUCK.toString('hex')
+    expect(assetLinks([hex])).toEqual([{
+      relation: ['delegate_permission/common.get_login_creds'],
+      target: { namespace: 'android_app', package_name: APP_PAKET,
+                sha256_cert_fingerprints: [hex.toUpperCase().match(/../g)!.join(':')] } }])
+    expect(assetLinks([])).toEqual([])
+    expect(appleAppSiteAssociation(['ABCDE12345.cloud.staygrid.app']))
+      .toEqual({ webcredentials: { apps: ['ABCDE12345.cloud.staygrid.app'] } })
+  })
+
+  it('prueft gegen genau die Herkuenfte aus assetlinks.json', () => {
+    expect(passkeyPartei().origins)
+      .toEqual([passkeyPartei().origin, ...APP_ANDROID_ZERTIFIKATE.map(androidHerkunft)])
   })
 })

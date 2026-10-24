@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { defineConfig, type Plugin, type Rollup } from 'vite'
 import react from '@vitejs/plugin-react'
+import { assetLinks, appleAppSiteAssociation } from '@hotelpms/contracts'
 import { serviceWorkerQuelle, type Huelle } from './src/pwa/serviceWorker.ts'
 
 const API = process.env.API_URL ?? 'http://127.0.0.1:3000'
@@ -89,6 +90,34 @@ function serviceWorker(): Plugin {
 }
 
 /**
+ * Die beiden Dateien, mit denen app.staygrid.cloud die eigene App als ihre
+ * benennt (Passkeys in der App, @hotelpms/contracts). Caddy liefert sie aus
+ * `current/web` wie jede andere Datei aus; im Bau statt in `public/`, damit
+ * sie aus denselben Werten entstehen, die die Schnittstelle prueft.
+ *
+ * Fehlt ein Wert noch, fehlt die Datei: eine leere assetlinks.json saehe aus,
+ * als sei etwas eingerichtet, und waere es nicht.
+ */
+function appZuordnung(): Plugin {
+  return {
+    name: 'staygrid-app-zuordnung',
+    apply: 'build',
+    generateBundle() {
+      const android = assetLinks()
+      if (android.length > 0) {
+        this.emitFile({ type: 'asset', fileName: '.well-known/assetlinks.json',
+                        source: JSON.stringify(android, null, 2) + '\n' })
+      }
+      const apple = appleAppSiteAssociation()
+      if (apple.webcredentials.apps.length > 0) {
+        this.emitFile({ type: 'asset', fileName: '.well-known/apple-app-site-association',
+                        source: JSON.stringify(apple, null, 2) + '\n' })
+      }
+    }
+  }
+}
+
+/**
  * Der Bau fuer die eigene App (`vite build --mode app`, Plan app/plan.md).
  *
  * Dieselbe Oberflaeche, vier Unterschiede:
@@ -142,7 +171,7 @@ function appRichtlinie(api: string): Plugin {
 export default defineConfig(({ mode }) => ({
   plugins: mode === 'app'
     ? [react(), appRichtlinie(process.env.STAYGRID_API ?? 'https://app.staygrid.cloud')]
-    : [react(), serviceWorker()],
+    : [react(), serviceWorker(), appZuordnung()],
   server: {
     // Im Entwicklungsbetrieb laeuft die API daneben. Im Betrieb liefert
     // Caddy beides unter derselben Herkunft aus, damit die Sitzung im

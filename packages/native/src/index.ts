@@ -105,6 +105,26 @@ export interface NativeKurzbefehle {
   setzen(liste: readonly Kurzbefehl[]): Promise<void>
 }
 
+/**
+ * Passkeys von app.staygrid.cloud in der App. Die WebView laeuft unter
+ * `https://localhost` bzw. `capacitor://localhost`, und dort bietet das
+ * Telefon keinen Passkey dieser Domain an; die Huelle fragt deshalb selbst
+ * (Credential Manager, AuthenticationServices). Hinein gehen die Optionen,
+ * wie die Schnittstelle sie liefert, heraus die Antwort in derselben Form
+ * wie im Browser -- WebAuthn als JSON, Bytes als base64url. Pruefen tut
+ * weiter nur die Schnittstelle.
+ *
+ * Bricht der Benutzer ab oder hat das Telefon keinen passenden Passkey,
+ * scheitert der Aufruf mit einer `DOMException` namens `NotAllowedError`,
+ * wie im Browser.
+ */
+export interface NativePasskey {
+  /** `navigator.credentials.get()` */
+  vorlegen(optionen: unknown): Promise<unknown>
+  /** `navigator.credentials.create()` */
+  anlegen(optionen: unknown): Promise<unknown>
+}
+
 export interface StaygridNative {
   plattform: 'ios' | 'android'
   /**
@@ -125,6 +145,8 @@ export interface StaygridNative {
   push?: NativePush
   /** Fehlt, wenn die Huelle keine Schnellaktionen kennt. */
   kurzbefehle?: NativeKurzbefehle
+  /** Fehlt bei einer Huelle ohne die Erweiterung fuer Passkeys. */
+  passkey?: NativePasskey
 }
 
 declare global {
