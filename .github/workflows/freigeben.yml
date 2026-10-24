@@ -183,7 +183,18 @@ jobs:
             umask 077
             dir="$RUNNER_TEMP/tagkey"
             mkdir -p "$dir"
-            printf '%s\n' "$TAG_KEY" > "$dir/key"
+            # Aus einem Windows-Editor kopiert, traegt der Schluessel CRLF
+            # und oft Leerzeichen am Rand; ssh meldet dann nur "error in
+            # libcrypto" (Lauf #133, 24.10.2026). Eine Schluesseldatei hat
+            # beides nie, also wird es hier entfernt statt beim Eintragen
+            # verlangt.
+            printf '%s\n' "$TAG_KEY" | tr -d '\r' \
+              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' > "$dir/key"
+            if ! head -n 1 "$dir/key" | grep -qx -- '-----BEGIN OPENSSH PRIVATE KEY-----'; then
+              echo "::error::PRODUKTION_TAG_KEY ist kein privater SSH-Schluessel: erwartet wird der Inhalt von produktion_tag (ohne .pub), von -----BEGIN bis -----END."
+              rm -rf "$dir"
+              exit 1
+            fi
             echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
               > "$dir/known_hosts"
             GIT_SSH_COMMAND="ssh -i $dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$dir/known_hosts -o StrictHostKeyChecking=yes" \
