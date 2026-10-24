@@ -67,7 +67,11 @@ export const APP_PAKET = 'cloud.staygrid.app'
  * Telefon vergleicht mit assetlinks.json -- und ihre Antwort naehme die
  * Schnittstelle auch nicht an.
  */
-export const APP_ANDROID_ZERTIFIKATE: readonly string[] = []
+export const APP_ANDROID_ZERTIFIKATE: readonly string[] = [
+  // App-Signaturschluessel von Google, ausgelesen aus der APK, die Play
+  // ausliefert (Fassung 112, 24.10.2026; Zertifikat CN=Android, Google Inc.).
+  '45:5C:68:C2:2C:B8:57:3E:10:76:AA:AB:90:68:71:AA:7D:E5:1C:E4:A4:F0:67:53:BC:A1:31:81:8A:C8:AE:A9'
+]
 
 /**
  * Kennung der iOS-App fuer Apple, `TEAMID.cloud.staygrid.app`. Die Team-ID

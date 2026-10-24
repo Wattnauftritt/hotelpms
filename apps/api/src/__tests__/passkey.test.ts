@@ -297,6 +297,20 @@ describe('Mit Passkey anmelden', () => {
     expect(s.rows[0]).toEqual({ client: 'app', via_passkey: true })
   })
 
+  it('nimmt die Antwort aus der Android-App an, mit ihrer eigenen Herkunft', async () => {
+    // Derselbe Passkey, im Browser angelegt, unter Android aus der App
+    // vorgelegt: Credential Manager schreibt android:apk-key-hash:… hinein.
+    const g = new Geraet()
+    await anlegen(g)
+    const aus = Object.assign(new Geraet(androidHerkunft(APP_ANDROID_ZERTIFIKATE[0]!)), {
+      credId: g.credId, privat: g.privat, oeffentlich: g.oeffentlich, benutzer: g.benutzer })
+    const { challengeId, challenge } = await anmeldeHerausforderung()
+    const r = await post('/v1/auth/passkey/login',
+      { challengeId, response: aus.anmelden(challenge), client: 'app' })
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json<{ token: string }>().token).toMatch(/^sga_/)
+  })
+
   it('nimmt die Herkunft der WebView nicht an', async () => {
     // Unter https://localhost laeuft jede App mit Capacitor. Eine Antwort von
     // dort hat nicht das Telefon gegen app.staygrid.cloud geprueft.
