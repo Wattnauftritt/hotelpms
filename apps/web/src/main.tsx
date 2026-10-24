@@ -51,6 +51,8 @@ interface Me {
   accountSuspended: boolean
   /** Rechte der Plattform. Haengen an keinem Haus. */
   platformPermissions: string[]
+  /** Plattformpersonal mit Kennwort angemeldet: Rechte ruhen (Migration 0211). */
+  platformPasskeyRequired?: boolean
   /** Hat diese Person einen Arbeitsplatz-PIN hinterlegt? */
   workstationPinSet: boolean
   /** Es handelt gerade jemand anderes als der Angemeldete. */
@@ -344,6 +346,11 @@ function App(): JSX.Element {
                          */
                         mitArbeitsplatz={false}
                         onClose={() => setArbeitsplatz(false)} />
+        )}
+        {me.data.platformPasskeyRequired === true && (
+          <p className="m-4 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-sm p-3">
+            <Text k="sicherheit.platformPasskey" />
+          </p>
         )}
         <Nachladen schluessel="admin">
           <AdminpanelSeite userId={me.data.userId}

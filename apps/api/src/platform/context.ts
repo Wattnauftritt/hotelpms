@@ -53,6 +53,12 @@ export interface Principal {
    * genuegt.
    */
   terminalDeviceId: number | null
+  /**
+   * Begann die Sitzung mit einem Passkey der handelnden Person (Migration
+   * 0211)? Nur fuer Sitzungen gesetzt. Plattformrechte und Support-Sitzung
+   * wirken nur dann: ein Kennwort laesst sich abfangen, ein Passkey nicht.
+   */
+  viaPasskey?: boolean
 }
 
 export const ANONYMOUS: Principal = {

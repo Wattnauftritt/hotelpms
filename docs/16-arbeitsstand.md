@@ -538,6 +538,12 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Nachts:** ein Mensch, der zwischen 0 und 5 Uhr mindestens 100 Datensätze liest und das in den vierzehn Nächten davor nie getan hat.
 - **ALARM-Zeilen des Workers** ab Stufe `error` gehen als Mail an das Sicherheitspostfach, eine je Meldung und Stunde, ohne Fehlertext.
 
+**Dritter Teil: Anmeldung** (A2, A3; Migration `0211`, `platform/plattformPasskey.ts`, `platform/kennwortliste.ts`).
+
+- **Plattformrechte nur in einer Sitzung, die mit Passkey begann** (`user_session.via_passkey`). Mit Kennwort angemeldet, bleibt das Plattformkonto benutzbar, aber ohne Plattformrechte und ohne Support-Sitzung; die Konsole sagt das (`platformPasskeyRequired` in `/v1/auth/me`). Ein Passkey antwortet nur `app.staygrid.cloud` und lässt sich von keiner nachgebauten Seite abgreifen. Ein Wechsel per Arbeitsplatz-PIN gilt nicht als Passkey der handelnden Person. In der App gibt es keinen Passkey, dort also auch keine Plattformrechte.
+- **Hat ein Plattformkonto schon einen Passkey, ändert nur eine Passkey-Sitzung die Liste**, Anlegen wie Entfernen (`urn:staygrid:passkey_required`). Sonst legte sich jeder mit erbeutetem Kennwort seinen eigenen dazu. Der erste geht mit Kennwort, und jede Änderung ist das Sicherheitsereignis `platform_passkey_changed` mit Mail an das Sicherheitspostfach. Wer alle Passkeys verliert, dem entfernt der Betrieb die Zeilen in `user_passkey` auf der Maschine; danach gilt wieder der erste.
+- **Kein Kennwort aus Listen geleakter Kennwörter**, beim Ändern und beim Setzen über den Link (`auth.passwordKnown`). Lokal als Bloom-Filter (rund 73 000 Einträge ab zwölf Zeichen aus SecLists, Fehlerrate ein Tausendstel, `scripts/kennwortliste-bauen.py`), nicht bei Have I Been Pwned: dann ginge bei jedem Wechsel ein Hashanfang an einen Dritten, und die Maschine bräuchte einen Weg nach draußen. Dazu weder `staygrid` noch der eigene Anmeldename (ab vier Zeichen) im Kennwort.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**

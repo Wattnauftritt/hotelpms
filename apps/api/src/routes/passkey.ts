@@ -11,6 +11,7 @@ import { tx } from '../platform/db.js'
 import { meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { passkeyPartei, herausforderungAblegen, herausforderungEinloesen,
          anmeldeOptionen, bestaetigungsOptionen, pruefePasskeyAntwort, HERAUSFORDERUNG_MS } from '../platform/passkey.js'
+import { plattformPasskeyAendern, plattformPasskeyMelden } from '../platform/plattformPasskey.js'
 import { kennwortBestaetigen, sitzungAnlegen } from './auth.js'
 
 /**
@@ -65,6 +66,7 @@ export function passkeyRoutes(app: FastifyInstance): void {
         throw Errors.validation({ currentPassword: ['field.required'] })
       }
       await kennwortBestaetigen(req, userId, b.currentPassword)
+      await plattformPasskeyAendern(req, userId)
 
       const { rows: [u] } = await req.pool.query<{
         public_ref: string; email: string | null; username: string | null
@@ -153,6 +155,7 @@ export function passkeyRoutes(app: FastifyInstance): void {
            info.credentialBackedUp, name])
         const zeile = neu.rows[0]
         if (zeile === undefined) throw Errors.conflict('auth.passkeyExists')
+        await plattformPasskeyMelden(client, req, 'added', name)
 
         /*
          * Der Hinweis an die eigene Adresse, ohne Link. Wer bisher keine
@@ -205,12 +208,14 @@ export function passkeyRoutes(app: FastifyInstance): void {
       const { userId } = eigeneSitzung(req)
       const id = Number((req.params as { id: string }).id)
       if (!Number.isSafeInteger(id) || id <= 0) throw Errors.notFound('res.passkey')
+      await plattformPasskeyAendern(req, userId)
       return tx(req.pool, req, async client => {
         // Nur die eigenen: dieselbe Kennung eines fremden Passkeys ergibt
         // dasselbe 404 wie eine, die es nicht gibt.
         const r = await client.query(
           `DELETE FROM user_passkey WHERE id = $1 AND user_id = $2`, [id, userId])
         if (r.rowCount === 0) throw Errors.notFound('res.passkey')
+        await plattformPasskeyMelden(client, req, 'removed', null)
         reply.status(204)
         return null
       })

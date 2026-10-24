@@ -221,16 +221,28 @@ export async function loadSessionPrincipal(
 ): Promise<Principal | null> {
   const r = await pool.query<{ session_user_id: number; effective_user_id: number
                                principal: PrincipalUserData | null
-                               support: SupportData | null }>(
+                               support: SupportData | null; via_passkey: boolean }>(
     `SELECT * FROM session_principal($1, $2)`, [sessionId, client])
   const row = r.rows[0]
   if (row === undefined) return null
   // Arbeitsplatz-PIN wechselt die handelnde Person, ohne Neuanmeldung.
   let principal = principalAus(row.effective_user_id, row.principal)
+  /*
+   * Plattformrechte nur mit Passkey (Migration 0211, Bedrohungsanalyse
+   * 23.10.2026, A3). Ein Plattformkonto erreicht jeden Kunden, und sein
+   * Kennwort ist das lohnendste Ziel jeder nachgebauten Anmeldeseite. Mit
+   * Kennwort angemeldet, bleibt die Sitzung brauchbar -- fuer den ersten
+   * Passkey --, aber ohne Plattformrechte; die Support-Sitzung liefert
+   * `session_principal` dann schon gar nicht.
+   */
+  if (principal.isPlatformStaff && !row.via_passkey) {
+    principal = { ...principal, platformPermissions: new Set() }
+  }
   principal = mitSupport(principal, row.support)
   // Wer sich angemeldet hat, bleibt bekannt, auch wenn gerade jemand
   // anderes handelt: die Oberflaeche zeigt den Wechsel damit an.
-  return { ...principal, sessionUserId: row.session_user_id }
+  return { ...principal, sessionUserId: row.session_user_id,
+           viaPasskey: row.via_passkey }
 }
 
 /**
