@@ -10,7 +10,8 @@ import { registerAllRoutes } from '../routes/index.js'
 import { readKwhotelDump, decimalToCent } from '../platform/legacyImport/kwhotel.js'
 import { readDumpTables, DumpFormatError } from '../platform/legacyImport/mysqlDump.js'
 import { roomKey } from '../routes/kwhotelImport.js'
-import { FOLGEN_RESERVIERUNG, FOLGEN_FOLIO, TEIL_DER_UEBERNAHME, VERWEISE_GAST,
+import { FOLGEN_RESERVIERUNG, UNSICHTBAR_FUER_RUECKNAHME, FOLGEN_FOLIO, TEIL_DER_UEBERNAHME,
+         VERWEISE_GAST,
          VERWEISE_ZIMMER, ZUSTAND_ZIMMER, VERWEISE_GRUPPE } from '../routes/kwhotelUndo.js'
 
 /**
@@ -719,6 +720,7 @@ describe('Uebernahme zuruecknehmen', () => {
           AND c.confrelid::regclass::text IN
               ('reservation', 'folio', 'guest', 'resource', 'resource_category')`)
     const bekannt = (ziel: string, von: string, spalte: string): boolean => {
+      if ((UNSICHTBAR_FUER_RUECKNAHME as readonly string[]).includes(von)) return true
       switch (ziel) {
         case 'reservation': return (FOLGEN_RESERVIERUNG as readonly string[]).includes(von)
           || (TEIL_DER_UEBERNAHME as readonly string[]).includes(von)

@@ -77,6 +77,15 @@ export const TEIL_DER_UEBERNAHME = [
   'reservation_external_price'
 ] as const
 
+/**
+ * Verweise, die die Ruecknahme nicht sehen darf und nicht sehen muss: der
+ * Koeder (0213) ist fuer die Anwendung unlesbar, damit ihn kein Zugang beim
+ * Kunden findet. Er haengt nie an einer Uebernahme -- sein Gast und seine
+ * stornierte Buchung entstehen in decoy_plant(), ohne `legacy_system` --,
+ * also entfernt die Ruecknahme ihn nie mit.
+ */
+export const UNSICHTBAR_FUER_RUECKNAHME = ['decoy'] as const
+
 /** Was an einem Gastprofil haengen kann. Ebenso gegen die Datenbank getestet. */
 export const VERWEISE_GAST = [
   ['guest_property_note', 'guest_id'], ['booking', 'booker_guest_id'],
