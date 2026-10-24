@@ -5,7 +5,8 @@ import type { SteerRule, SteerPreviewCell } from '@hotelpms/contracts'
 import { bpAusEingabe, prozentText, eingabeAusBp, regelSatz, regelNutzlast,
          eingabeAusRegel, auswahlNutzlast, zellSchluessel, stufenpreis,
          LEERE_REGEL } from '../lib/preissteuerung.js'
-import { LOCALES, textFor, type TextKey } from '../lib/i18n/index.js'
+import { LOCALES, type TextKey } from '../lib/i18n/index.js'
+import { textFor } from '../lib/i18n/katalog.js'
 
 /**
  * Die Preissteuerung in der Oberflaeche (Dokument 32).

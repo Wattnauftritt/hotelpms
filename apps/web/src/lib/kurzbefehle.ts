@@ -1,6 +1,8 @@
 import type { MessageLocale } from '@hotelpms/contracts'
 import { nativ, type Kurzbefehl } from '@hotelpms/native'
-import { kurzbefehle as TEXTE, type KurzbefehlKey } from './i18n/kurzbefehle.js'
+import lader from 'virtual:sprachpaket/kurzbefehle'
+import type { kurzbefehle, KurzbefehlKey } from './i18n/kurzbefehle.js'
+import { Sprachpakete } from './sprachpaket.js'
 
 /**
  * Schnellaktionen am App-Symbol (Plan app/plan.md, „Schnellaktionen“; Sven,
@@ -69,6 +71,15 @@ const ROLLEN: ReadonlyArray<{ rolle: string; aktionen: readonly Eintrag[] }> = [
 
 const HOECHSTENS = 4
 
+/**
+ * Die Titel der Aktionen, je Sprache ein kleines Paket. Ein eigenes und
+ * nicht das der Oberflaeche: auch die Personal-App setzt sie, und die holt
+ * den Katalog der Rezeption nicht. Im Browser gibt es kein App-Symbol, dort
+ * wird gar nichts geholt.
+ */
+export const titelTexte = new Sprachpakete<MessageLocale>(lader)
+type Titel = keyof typeof kurzbefehle
+
 export function kurzbefehleFuer(
   properties: ReadonlyArray<{ permissions: readonly string[] }>, locale: MessageLocale
 ): Kurzbefehl[] {
@@ -85,7 +96,8 @@ export function kurzbefehleFuer(
       // Kontrolle und Fruehstueck haben zwei Ziele; das erste passende gilt.
       if (liste.length >= HOECHSTENS || texte.has(a.text) || !darf(a.rechte)) continue
       texte.add(a.text)
-      liste.push({ id: a.id, titel: TEXTE[a.text][locale], pfad: a.pfad, symbol: a.symbol })
+      const titel = titelTexte.paket(locale)?.[a.text satisfies Titel] ?? a.text
+      liste.push({ id: a.id, titel, pfad: a.pfad, symbol: a.symbol })
     }
   }
   return liste
@@ -99,4 +111,14 @@ export function kurzbefehleFuer(
  */
 export function kurzbefehleSetzen(liste: readonly Kurzbefehl[]): void {
   void nativ()?.kurzbefehle?.setzen(liste).catch(() => { /* naechster Start */ })
+}
+
+/** Die Aktionen nach den Rechten setzen, sobald ihre Titel in der Sprache da sind. */
+export function kurzbefehleAktualisieren(
+  properties: ReadonlyArray<{ permissions: readonly string[] }>, locale: MessageLocale
+): void {
+  if (nativ()?.kurzbefehle === undefined) return
+  titelTexte.laden(locale)
+    .then(() => kurzbefehleSetzen(kurzbefehleFuer(properties, locale)))
+    .catch(() => { /* naechster Start */ })
 }

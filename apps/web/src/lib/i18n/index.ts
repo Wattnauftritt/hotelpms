@@ -1,46 +1,9 @@
-import { createContext, useContext } from 'react'
-import type { LocalizedText, MessageLocale } from '@hotelpms/contracts'
-import { common } from './common.js'
-import { tagesgeschaeft } from './tagesgeschaeft.js'
-import { housekeeping } from './housekeeping.js'
-import { einrichtung } from './einrichtung.js'
-import { folio } from './folio.js'
-import { gruppen } from './gruppen.js'
-import { plan } from './plan.js'
-import { berichte } from './berichte.js'
-import { einstellungen } from './einstellungen.js'
-import { schnittstellen } from './schnittstellen.js'
-import { benutzer } from './benutzer.js'
-import { preise } from './preise.js'
-import { preissteuerung } from './preissteuerung.js'
-import { gaeste } from './gaeste.js'
-import { rechnung } from './rechnung.js'
-import { zugang } from './zugang.js'
-import { support } from './support.js'
-import { admin } from './admin.js'
-import { terminal } from './terminal.js'
-import { hausnotiz } from './hausnotiz.js'
-import { planstatus } from './planstatus.js'
-import { suche } from './suche.js'
-import { onlineCheckin } from './onlineCheckin.js'
-import { ersteSchritte } from './ersteSchritte.js'
-import { altsystem } from './altsystem.js'
-import { mobil } from './mobil.js'
-import { meldescheine } from './meldescheine.js'
-import { kassenbuch } from './kassenbuch.js'
-import { zimmerSortieren } from './zimmerSortieren.js'
-import { zimmerwechsel } from './zimmerwechsel.js'
-import { reinigungsplan } from './reinigungsplan.js'
-import { kontrolle } from './kontrolle.js'
-import { kueche } from './kueche.js'
-import { arbeitszeit } from './arbeitszeit.js'
-import { gaestemappe } from './gaestemappe.js'
-import { visitenkarte } from './visitenkarte.js'
-import { kurzbefehle } from './kurzbefehle.js'
-import { verkaufenAls } from './verkaufenAls.js'
-import { sicherheit } from './sicherheit.js'
-import { passkey } from './passkey.js'
-import { tickets } from './tickets.js'
+import { createContext, createElement, useContext, type ReactNode } from 'react'
+import type { MessageLocale } from '@hotelpms/contracts'
+import lader from 'virtual:sprachpaket/oberflaeche'
+import meldungsLader from 'virtual:sprachpaket/meldungen'
+import { einsetzen, Sprachpakete, useSprachpakete } from '../sprachpaket.js'
+import type { TextKey } from './katalog.js'
 
 /**
  * Deutsch und Englisch von Anfang an (AP 12).
@@ -57,10 +20,15 @@ import { tickets } from './tickets.js'
  * Ordnungsliebe, sondern Arbeitsteilung: an einer einzigen Textdatei
  * arbeiten drei Bearbeiter zwangsläufig an derselben Stelle, und jeder Merge
  * wird zur Handarbeit. So berührt ein neuer Bildschirm seine eigene Datei
- * und **eine** Zeile hier.
+ * und **eine** Zeile in `katalog.ts`.
  *
- * Wer einen Bereich hinzufügt: Datei daneben legen, hier importieren, unten
- * in `texts` eintragen. Der Typ `TextKey` wächst von allein mit.
+ * Wer einen Bereich hinzufügt: Datei daneben legen, in `katalog.ts`
+ * importieren und dort in `TextKey` und `texts` eintragen.
+ *
+ * **Ausgeliefert wird je Sprache ein Paket, nicht der Katalog.** Diese
+ * Datei importiert die Bereiche nicht; der Bau schreibt aus `katalog.ts`
+ * eine Datei je Sprache, und der Browser holt genau die, die gilt
+ * (`<Sprache>` unten, `lib/sprachpaket.ts`).
  *
  * **Die Sprachen stehen je Schlüssel beieinander, nicht in Blöcken.** Ein
  * Bereich hatte früher einen `de`- und einen `en`-Block; wer einen Satz
@@ -203,113 +171,55 @@ const DATUMSFORM: Record<Locale, Datumsform> = {
   ko: 'iso'
 }
 
+export type { TextKey } from './katalog.js'
+
 /**
- * Alle Schluessel, aus den Bereichen zusammengesetzt.
- *
- * **Warum ausgeschrieben und nicht `keyof typeof texts`.** Mit dreiunddreissig
- * Sprachen ist der abgeleitete Typ des ganzen Katalogs -- jeder Satz als
- * eigener Zeichenkettentyp -- groesser, als `tsc` beim Schreiben der
- * Deklarationen ausgeben mag (TS7056). Die Schluessel allein sind klein;
- * die Werte braucht niemand als Literal, nur als `LocalizedText`.
+ * Die Pakete der Oberflaeche und der Meldungen der Schnittstelle, je
+ * Sprache eines (`lib/sprachpaket.ts`). Beide gehoeren zu jedem Bildschirm
+ * und werden deshalb immer zusammen geholt.
  */
-export type TextKey =
-  | keyof typeof common
-  | keyof typeof tagesgeschaeft
-  | keyof typeof housekeeping
-  | keyof typeof einrichtung
-  | keyof typeof folio
-  | keyof typeof gruppen
-  | keyof typeof plan
-  | keyof typeof berichte
-  | keyof typeof einstellungen
-  | keyof typeof schnittstellen
-  | keyof typeof benutzer
-  | keyof typeof preise
-  | keyof typeof preissteuerung
-  | keyof typeof gaeste
-  | keyof typeof rechnung
-  | keyof typeof zugang
-  | keyof typeof support
-  | keyof typeof admin
-  | keyof typeof terminal
-  | keyof typeof hausnotiz
-  | keyof typeof planstatus
-  | keyof typeof suche
-  | keyof typeof onlineCheckin
-  | keyof typeof ersteSchritte
-  | keyof typeof altsystem
-  | keyof typeof mobil
-  | keyof typeof meldescheine
-  | keyof typeof kassenbuch
-  | keyof typeof zimmerSortieren
-  | keyof typeof zimmerwechsel
-  | keyof typeof reinigungsplan
-  | keyof typeof kontrolle
-  | keyof typeof kueche
-  | keyof typeof arbeitszeit
-  | keyof typeof gaestemappe
-  | keyof typeof visitenkarte
-  | keyof typeof kurzbefehle
-  | keyof typeof verkaufenAls
-  | keyof typeof passkey
-  | keyof typeof sicherheit
-  | keyof typeof tickets
-
-const texts: Record<TextKey, LocalizedText> = {
-  ...common,
-  ...tagesgeschaeft,
-  ...housekeeping,
-  ...einrichtung,
-  ...folio,
-  ...gruppen,
-  ...plan,
-  ...berichte,
-  ...einstellungen,
-  ...schnittstellen,
-  ...benutzer,
-  ...preise,
-  ...preissteuerung,
-  ...gaeste,
-  ...rechnung,
-  ...zugang,
-  ...support,
-  ...admin,
-  ...terminal,
-  ...hausnotiz,
-  ...planstatus,
-  ...suche,
-  ...onlineCheckin,
-  ...ersteSchritte,
-  ...altsystem,
-  ...mobil,
-  ...meldescheine,
-  ...kassenbuch,
-  ...zimmerSortieren,
-  ...zimmerwechsel,
-  ...reinigungsplan,
-  ...kontrolle,
-  ...kueche,
-  ...arbeitszeit,
-  ...gaestemappe,
-  ...visitenkarte,
-  ...kurzbefehle,
-  ...verkaufenAls,
-  ...passkey,
-  ...sicherheit,
-  ...tickets
-}
-
-/** Alle Schluessel. Ein Test prueft damit jede Sprache durch. */
-export function textKeys(): TextKey[] {
-  return Object.keys(texts) as TextKey[]
-}
-
-/** Ein Text ohne React, fuer Tests und fuer den Aufruf ausserhalb einer Komponente. */
-export function textFor(key: TextKey, locale: Locale): string {
-  return texts[key][locale]
-}
+export const oberflaechenTexte = new Sprachpakete<Locale>(lader)
+export const meldungsTexte = new Sprachpakete<Locale>(meldungsLader)
+const PAKETE = [oberflaechenTexte, meldungsTexte]
 
 export const I18nContext = createContext<Locale>('de')
+
+/**
+ * Die Sprache fuer alles darunter, mit ihren Paketen.
+ *
+ * An die Stelle von `<I18nContext.Provider>`: der Kontext nennt erst eine
+ * Sprache, wenn ihre Saetze da sind. Beim ersten Aufbau steht deshalb einen
+ * Augenblick nichts da; beim Umstellen bleibt die bisherige Sprache stehen,
+ * bis die neue geladen ist. `zusaetzlich` holt weitere Kataloge in derselben
+ * Sprache mit -- das Terminal braucht die Saetze der Gaestemappe.
+ */
+export function Sprache(props: {
+  locale: Locale
+  zusaetzlich?: ReadonlyArray<Sprachpakete<Locale>>
+  children?: ReactNode
+}): JSX.Element | null {
+  const aktiv = useSprachpakete(
+    props.zusaetzlich === undefined ? PAKETE : [...PAKETE, ...props.zusaetzlich],
+    props.locale, 'de')
+  if (aktiv === null) return null
+  return createElement(I18nContext.Provider, { value: aktiv }, props.children)
+}
+
+/**
+ * Ein Satz ohne React, in einer geladenen Sprache.
+ *
+ * Fehlt das Paket -- die Bildschirmtastatur fragt nach der Sprache des
+ * Feldes, und die kann eine andere sein als die des Rahmens --, steht der
+ * deutsche Satz da, und ohne den der Schluessel. Eine leere Taste waere
+ * schlimmer als eine in der falschen Sprache.
+ */
+export function textFor(
+  key: TextKey, locale: Locale, params?: Record<string, string | number>
+): string {
+  const satz = oberflaechenTexte.paket(locale)?.[key]
+    ?? oberflaechenTexte.paket('de')?.[key] ?? key
+  return einsetzen(satz, params)
+}
 
 /**
  * Ein Text der Oberflaeche, mit eingesetzten Werten.
@@ -322,12 +232,7 @@ export const I18nContext = createContext<Locale>('de')
 export function useT(): (key: TextKey, params?: Record<string, string | number>)
   => string {
   const locale = useContext(I18nContext)
-  return (key, params) => {
-    const text: string = texts[key][locale]
-    if (params === undefined) return text
-    return text.replace(/\{(\w+)\}/g, (ganz, name: string) =>
-      Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : ganz)
-  }
+  return (key, params) => textFor(key, locale, params)
 }
 
 export function useLocale(): Locale {

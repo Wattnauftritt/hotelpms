@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { depositFromPercent, DEPOSIT_REQUEST_STATES } from '@hotelpms/domain/depositRequest'
 import { prozentAusEingabe, anforderungsBetrag,
          faelligkeitVorschlag } from '../lib/vorauszahlung.js'
-import { textKeys } from '../lib/i18n/index.js'
+import { textKeys } from '../lib/i18n/katalog.js'
 
 /**
  * Anzahlung und Zahlungslink in der Oberflaeche (Migration 0060).

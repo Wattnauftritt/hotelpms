@@ -167,6 +167,7 @@ Jede einzelne steht hier, weil ihr Bruch still passiert und teuer auffällt.
 ### Leistung
 
 - **Ein Aufruf je Bildschirm, nicht je Zeile.** Die Endpunkte sind Aggregate. Wer sie im Frontend wieder auflöst und je Zeile nachlädt, macht aus einer Runde vierhundert.
+- **Der Browser bekommt eine Sprache, nicht den Katalog.** Die Kataloge tragen alle Sprachen je Schlüssel; der Bau schreibt daraus je Sprache eine Datei (`lib/sprachpaketBau.ts`), und `<Sprache>` holt die, die gilt. Wer einen Katalog oder einen Bereich daraus zur Laufzeit als Wert importiert, schickt wieder alle dreiunddreißig Sprachen auf jedes Telefon — bis zum 24.10.2026 waren das 5,6 MB vor der Anmeldung. Neue Bereiche kommen in `lib/i18n/katalog.ts`.
 - **Keine korrelierte Unterabfrage je Zeile.** Ein `SELECT ... OFFSET (i % n) LIMIT 1` in einer Schleife über 200 000 Zeilen läuft nicht zu Ende. Verbund statt Schleife.
 - **Jeder Zeitraumparameter hat eine Obergrenze.** Ohne sie ist jeder Endpunkt ein Selbstangriff.
 - **Jede Anfrage zählt ihre Datenbankanweisungen mit.** Über fünfzig (`DB_QUERY_WARN`) steht eine Warnung mit Anzahl und Datenbankzeit in der Protokollzeile. Der Abfragezähler im Test fängt ein N+1 nur dort, wo ein Test hinsieht; im Betrieb sah eine Antwort in 300 ms gleich aus, ob sie aus einer Abfrage kam oder aus vierhundert (Befund P9, Dokument 29). Wer die Schwelle anhebt, begründet den Stapelendpunkt, der das nötig macht.

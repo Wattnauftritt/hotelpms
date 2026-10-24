@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, useLocale, formatDate, type Locale }
+import { LOCALES, sprachKuerzel, dokumentSprache, Sprache, useT, useLocale, formatDate, type Locale }
   from '../lib/i18n/index.js'
 import { api, ApiError } from '../lib/api.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
@@ -15,7 +15,7 @@ import { TERMINAL_PFAD, istTerminalAdresse } from '../gast/adresse.js'
 import { Selbstbedienung, type SelbstEnde } from './TerminalSelbst.tsx'
 import { wifiQrText, type FolderWifi } from '@hotelpms/contracts'
 import { useQr } from '../lib/qr.js'
-import { mappeText } from '../gast/mappeTexte.js'
+import { mappeText, mappeTexte } from '../gast/mappeTexte.js'
 
 /**
  * Die Seite am Gaesteterminal (Dokument 31).
@@ -136,9 +136,11 @@ export function TerminalSeite(): JSX.Element {
   const [locale, setLocale] = useState<Locale>(spracheDesBrowsers)
   useEffect(() => { dokumentSprache(locale) }, [locale])
   return (
-    <I18nContext.Provider value={locale}>
+    // Die Saetze der Gaestemappe mit: Wuensche und Selbstbedienung am
+    // Terminal sprechen wie die Mappe.
+    <Sprache locale={locale} zusaetzlich={[mappeTexte]}>
       <Terminal onLocale={setLocale} />
-    </I18nContext.Provider>
+    </Sprache>
   )
 }
 

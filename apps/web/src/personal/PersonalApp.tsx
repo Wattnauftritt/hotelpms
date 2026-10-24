@@ -5,9 +5,9 @@ import { api, ApiError, anmelden, abmelden as abmeldenBeiApi } from '../lib/api.
 import { dokumentSprache } from '../lib/dokumentSprache.js'
 import { useInstallation } from '../lib/pwa.js'
 import { offlineKopieLoeschen } from '../lib/offline.js'
-import { kurzbefehleFuer, kurzbefehleSetzen } from '../lib/kurzbefehle.js'
+import { kurzbefehleAktualisieren, kurzbefehleSetzen } from '../lib/kurzbefehle.js'
 import { nurPersonal, personalSeite } from './adresse.js'
-import { SpracheContext, SPRACHNAME, fehlerText, startSprache, usePT }
+import { PersonalSprache, SPRACHNAME, fehlerText, startSprache, usePT }
   from './texte.js'
 import { FELD, Fehler, KNOPF, KNOPF_LEISE, Karte } from './teile.js'
 import { MeineZimmer } from './MeineZimmer.js'
@@ -401,7 +401,7 @@ export function PersonalApp(): JSX.Element {
    * Browser tut das nichts.
    */
   useEffect(() => {
-    if (me.data !== undefined) kurzbefehleSetzen(kurzbefehleFuer(me.data.properties, locale))
+    if (me.data !== undefined) kurzbefehleAktualisieren(me.data.properties, locale)
     else if (me.error instanceof ApiError && me.error.status === 401) kurzbefehleSetzen([])
   }, [me.data, me.error, locale])
 
@@ -429,9 +429,9 @@ export function PersonalApp(): JSX.Element {
   }
 
   const rahmen = (inhalt: React.ReactNode): JSX.Element =>
-    <SpracheContext.Provider value={locale}>
+    <PersonalSprache locale={locale}>
       <Vorraum locale={locale} onLocale={spracheWaehlen}>{inhalt}</Vorraum>
-    </SpracheContext.Provider>
+    </PersonalSprache>
 
   if (seite.art !== 'app') {
     return rahmen(<KennwortSetzen art={seite.art} token={seite.token} locale={locale} />)
@@ -466,9 +466,9 @@ export function PersonalApp(): JSX.Element {
     </Hinweis>)
   }
 
-  return <SpracheContext.Provider value={locale}>
+  return <PersonalSprache locale={locale}>
     <Start me={me.data} locale={locale} onLocale={spracheWaehlen} />
-  </SpracheContext.Provider>
+  </PersonalSprache>
 }
 
 function T({ k }: { k: Parameters<ReturnType<typeof usePT>>[0] }): JSX.Element {

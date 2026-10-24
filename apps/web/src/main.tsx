@@ -14,12 +14,12 @@ import { ErsteSchritteRahmen } from './components/ErsteSchritte.tsx'
 import { visibleScreens, resolveScreen } from './screens.js'
 import { useAdresse } from './lib/adresse.js'
 import { SprungContext, type Sprungziel } from './lib/suche.js'
-import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, type Locale, type TextKey }
+import { LOCALES, sprachKuerzel, dokumentSprache, Sprache, useT, type Locale, type TextKey }
   from './lib/i18n/index.js'
 import { api, ApiError, abmelden as abmeldenBeiApi } from './lib/api.js'
 import { serviceWorkerAnmelden } from './lib/pwa.js'
 import { offlineKopieLoeschen } from './lib/offline.js'
-import { kurzbefehleFuer, kurzbefehleSetzen } from './lib/kurzbefehle.js'
+import { kurzbefehleAktualisieren, kurzbefehleSetzen } from './lib/kurzbefehle.js'
 import { useSchmal } from './lib/mobil.js'
 import './styles.css'
 import { nurPersonal } from './personal/adresse.js'
@@ -195,9 +195,9 @@ function App(): JSX.Element {
   }
 
   if (zugang !== null) {
-    return <I18nContext.Provider value={locale}>
+    return <Sprache locale={locale}>
       <Zugang art={zugang.art} token={zugang.token} />
-    </I18nContext.Provider>
+    </Sprache>
   }
 
   // Wer ist angemeldet. Schlaegt das mit 401 fehl, kommt die Anmeldemaske.
@@ -229,7 +229,7 @@ function App(): JSX.Element {
    * Browser tut das nichts.
    */
   useEffect(() => {
-    if (me.data !== undefined) kurzbefehleSetzen(kurzbefehleFuer(me.data.properties, locale))
+    if (me.data !== undefined) kurzbefehleAktualisieren(me.data.properties, locale)
     else if (me.error instanceof ApiError && me.error.status === 401) kurzbefehleSetzen([])
   }, [me.data, me.error, locale])
 
@@ -263,7 +263,7 @@ function App(): JSX.Element {
   const unerreichbar = (me.isPending && me.fetchStatus === 'paused')
     || (me.isError && serverWeg(me.error))
   if (unerreichbar) {
-    return <I18nContext.Provider value={locale}>
+    return <Sprache locale={locale}>
       <Hinweis>
         <div className="grid gap-3 justify-items-center text-center max-w-md">
           <Text k="app.serverUnreachable" />
@@ -274,23 +274,23 @@ function App(): JSX.Element {
           </button>
         </div>
       </Hinweis>
-    </I18nContext.Provider>
+    </Sprache>
   }
   if (me.isPending) {
-    return <I18nContext.Provider value={locale}>
+    return <Sprache locale={locale}>
       <div className="min-h-screen grid place-items-center text-sm text-neutral-500">…</div>
-    </I18nContext.Provider>
+    </Sprache>
   }
   if (me.isError) {
-    return <I18nContext.Provider value={locale}>
+    return <Sprache locale={locale}>
       <Login onDone={() => void qc.invalidateQueries({ queryKey: ['me'] })} />
-    </I18nContext.Provider>
+    </Sprache>
   }
 
   // Rueckkehr von Stripe nach dem Verbinden eines Kontos (0167). Erst nach
   // der Anmeldung: die Seite reicht den Code mit der Sitzung weiter.
   if (istStripeRueckkehr()) {
-    return <I18nContext.Provider value={locale}><StripeVerbunden /></I18nContext.Provider>
+    return <Sprache locale={locale}><StripeVerbunden /></Sprache>
   }
 
   // Das Haus aus der Adresse, sonst das selbst gewaehlte Standardhaus, sonst
@@ -363,11 +363,11 @@ function App(): JSX.Element {
      * "Noch kein Haus zugeordnet" an jemanden, dessen Account gesperrt ist,
      * schickt ihn und den Support in die falsche Richtung.
      */
-    return <I18nContext.Provider value={locale}>
+    return <Sprache locale={locale}>
       <Hinweis>
         <Text k={me.data.accountSuspended ? 'app.accountSuspended' : 'app.noProperty'} />
       </Hinweis>
-    </I18nContext.Provider>
+    </Sprache>
   }
 
   const rechte = me.data.properties.find(p => p.id === haus.id)?.permissions ?? []
@@ -417,9 +417,9 @@ function App(): JSX.Element {
       location.replace('/personal')
       return <></>
     }
-    return <I18nContext.Provider value={locale}>
+    return <Sprache locale={locale}>
       <Hinweis><Text k="app.noScreen" params={{ haus: haus.name }} /></Hinweis>
-    </I18nContext.Provider>
+    </Sprache>
   }
 
   return (

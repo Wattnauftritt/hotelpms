@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { BestaetigungsDialog } from './BestaetigungsDialog.tsx'
-import { I18nContext, useT, LOCALES, SPRACHNAMEN, type Locale, type TextKey }
+import { Sprache, useT, LOCALES, SPRACHNAMEN, type Locale, type TextKey }
   from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { useStoreNoetig } from '../lib/aktualisierung.js'
@@ -469,7 +469,7 @@ export function Shell(props: Props): JSX.Element {
    */
   if (schmal) return <MobilShell {...props} />
   return (
-    <I18nContext.Provider value={props.locale}>
+    <Sprache locale={props.locale}>
       <div className="min-h-screen bg-neutral-50 text-neutral-900">
         <header className="bg-white border-b border-neutral-200 sticky top-0 z-30">
           {/* Nicht auf Papier: gedruckt wird der Bildschirm, nicht die Leiste.
@@ -517,7 +517,7 @@ export function Shell(props: Props): JSX.Element {
       {/* Hier und nicht am Bildschirm: jede kritische Handlung fragt
           dasselbe, und der zehnte Bildschirm vergaesse es. */}
       <BestaetigungsDialog />
-    </I18nContext.Provider>
+    </Sprache>
   )
 }
 

@@ -33,7 +33,7 @@ Die Spuren sind so geschnitten, dass jede in **eigenen Dateien** arbeitet. Es bl
 | Gemeinsame Datei | Regel |
 |---|---|
 | `apps/web/src/screens.tsx` | **Anhängen, nie einfügen.** Jeder Eintrag ist eine Zeile am Ende der Liste. Zwei angehängte Zeilen erzeugen keinen Konflikt, den jemand von Hand auflösen muss |
-| `apps/web/src/lib/i18n/index.ts` | **Ein Import und eine Zeile je Bereich**, beide am Ende ihres Blocks. Die Texte selbst liegen in **deiner eigenen** Datei unter `lib/i18n/` |
+| `apps/web/src/lib/i18n/katalog.ts` | **Ein Import und eine Zeile je Bereich**, beide am Ende ihres Blocks. Die Texte selbst liegen in **deiner eigenen** Datei unter `lib/i18n/` |
 | `apps/web/src/lib/queries.ts` | **Nicht anfassen.** Neue Abfragen kommen in `lib/queries/<bereich>.ts`. Bestehende bleiben, wo sie sind |
 | `packages/contracts/src/schemas.ts` | Nur ergänzen, nie bestehende Typen ändern. Wer einen ändern **muss**, sagt es vorher den anderen beiden |
 

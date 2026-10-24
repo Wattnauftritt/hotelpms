@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { beforeAll, describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FOLDER_LOCALES, folderLink, folderRefAusFragment, wifiQrText } from '@hotelpms/contracts'
 import { istMappeAdresse, istCheckinAdresse } from '../gast/adresse.js'
-import { MAPPE_TEXTE, mappeText, startSprache } from '../gast/mappeTexte.js'
+import { mappeText, mappeTexte, startSprache } from '../gast/mappeTexte.js'
+import { MAPPE_TEXTE } from '../gast/mappeKatalog.js'
 
 /**
  * Die digitale Gaestemappe in der Oberflaeche (Migration 0143).
@@ -16,6 +17,8 @@ import { MAPPE_TEXTE, mappeText, startSprache } from '../gast/mappeTexte.js'
 
 const quelle = (datei: string): string =>
   readFileSync(join(import.meta.dirname, '..', datei), 'utf8')
+
+beforeAll(async () => { await Promise.all(FOLDER_LOCALES.map(l => mappeTexte.laden(l))) })
 
 describe('Adresse der Mappe', () => {
   it('traegt die Zimmer-Referenz im Fragment, nicht im Pfad', () => {

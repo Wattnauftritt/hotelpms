@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { ApiError, anmelden } from '../lib/api.js'
-import { useT } from '../lib/i18n/index.js'
+import { anmelden } from '../lib/api.js'
+import { useLocale, useT } from '../lib/i18n/index.js'
+import { fehlerMeldung } from '../lib/meldungen.js'
 import { passkeyMoeglich, mitPasskeyAnmelden, abgebrochen } from '../lib/passkey.js'
 
 /**
@@ -14,6 +15,7 @@ import { passkeyMoeglich, mitPasskeyAnmelden, abgebrochen } from '../lib/passkey
  */
 export function Login({ onDone }: { onDone: () => void }): JSX.Element {
   const t = useT()
+  const locale = useLocale()
   const [email, setEmail] = useState('')
   const [kennwort, setKennwort] = useState('')
   const [fehler, setFehler] = useState<string | null>(null)
@@ -31,7 +33,9 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
             await anmelden(email.trim(), kennwort)
             onDone()
           } catch (err) {
-            setFehler(err instanceof ApiError ? err.message : String(err))
+            // In der Sprache der Maske; bis hierher stand der deutsche Satz
+            // der Schnittstelle auch vor einer polnischen Anmeldung.
+            setFehler(fehlerMeldung(err, locale).text)
           } finally {
             setLaeuft(false)
           }
@@ -81,7 +85,7 @@ export function Login({ onDone }: { onDone: () => void }): JSX.Element {
                       onDone()
                     } catch (err) {
                       setFehler(abgebrochen(err) ? t('passkey.cancelled')
-                        : err instanceof ApiError ? err.message : String(err))
+                        : fehlerMeldung(err, locale).text)
                     } finally {
                       setLaeuft(false)
                     }

@@ -1,6 +1,17 @@
-import { renderMessage, type MessageLocale, type MessageParams }
-  from '@hotelpms/contracts'
+import type { MessageLocale, MessageParams } from '@hotelpms/contracts'
 import { ApiError } from './api.js'
+import { meldungsTexte } from './i18n/index.js'
+import { einsetzen } from './sprachpaket.js'
+
+/**
+ * Eine Meldung der Schnittstelle aus dem geladenen Paket (`<Sprache>` holt
+ * es mit). Wie `renderMessage` im Vertrag: ein unbekannter Schluessel kommt
+ * unveraendert zurueck, eine leere Fehlermeldung waere schlimmer.
+ */
+function renderMessage(key: string, locale: MessageLocale, params?: MessageParams): string {
+  const paket = meldungsTexte.paket(locale) ?? meldungsTexte.paket('de')
+  return einsetzen(paket?.[key] ?? key, params)
+}
 
 /**
  * Die Meldung eines Fehlers in der Sprache des Personals.

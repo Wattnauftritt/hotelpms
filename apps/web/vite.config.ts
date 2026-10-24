@@ -3,6 +3,7 @@ import { defineConfig, type Plugin, type Rollup } from 'vite'
 import react from '@vitejs/plugin-react'
 import { assetLinks, appleAppSiteAssociation } from '@hotelpms/contracts'
 import { serviceWorkerQuelle, type Huelle } from './src/pwa/serviceWorker.ts'
+import { sprachpakete, istSprachpaket, sprachpaketDatei } from './src/lib/sprachpaketBau.ts'
 
 const API = process.env.API_URL ?? 'http://127.0.0.1:3000'
 
@@ -32,6 +33,12 @@ const APPS: Record<string, string> = {
  *   ohne Netz von einem Bildschirm zum naechsten gehen koennen soll, waehrend
  *   `lib/offline.ts` die Daten haelt; ein Bildschirm, dessen Datei fehlt,
  *   ginge dann nicht auf.
+ *
+ * **Ohne die Sprachpakete.** Nachgeladen ist auch jede Sprache, und mit
+ * ihnen lud der Worker wieder alle dreiunddreissig auf jedes Geraet -- das,
+ * wogegen sie geteilt sind. Eine Sprache landet im Speicher, sobald das
+ * Fenster sie einmal geholt hat (Abruf unter `/assets/`); fuer den Betrieb
+ * ohne Netz genuegt das, denn gezeigt wird die, die gerade gilt.
  */
 function huelleAusBau(bundle: Rollup.OutputBundle): Huelle {
   const chunks = Object.values(bundle).filter((c): c is Rollup.OutputChunk => c.type === 'chunk')
@@ -50,7 +57,9 @@ function huelleAusBau(bundle: Rollup.OutputBundle): Huelle {
         // Nicht zurueck in den Einstieg: `boot.ts` laedt jede Anwendung
         // nach, und ueber ihn stuende jede in jeder Liste. Er selbst liegt
         // ohnehin im Grund.
-        if (n !== undefined && (!nachgeladen || !n.isEntry)) offen.push(n)
+        if (n !== undefined && (!nachgeladen || !n.isEntry) && !istSprachpaket(n.moduleIds)) {
+          offen.push(n)
+        }
       }
     }
     return ['/', ...[...gesehen, ...css].sort().map(d => '/' + d)]
@@ -170,8 +179,9 @@ function appRichtlinie(api: string): Plugin {
 
 export default defineConfig(({ mode }) => ({
   plugins: mode === 'app'
-    ? [react(), appRichtlinie(process.env.STAYGRID_API ?? 'https://app.staygrid.cloud')]
-    : [react(), serviceWorker(), appZuordnung()],
+    ? [react(), sprachpakete(),
+       appRichtlinie(process.env.STAYGRID_API ?? 'https://app.staygrid.cloud')]
+    : [react(), sprachpakete(), serviceWorker(), appZuordnung()],
   server: {
     // Im Entwicklungsbetrieb laeuft die API daneben. Im Betrieb liefert
     // Caddy beides unter derselben Herkunft aus, damit die Sitzung im
@@ -218,6 +228,7 @@ export default defineConfig(({ mode }) => ({
          * an; der Hash im Verzeichnis haelt die Adresse trotzdem so
          * unveraenderlich wie die jeder anderen Datei unter /assets/.
          */
+        chunkFileNames: info => sprachpaketDatei(info.moduleIds) ?? 'assets/[name]-[hash].js',
         assetFileNames: info =>
           (info.names[0] ?? '').endsWith('.traineddata.gz')
             ? 'assets/tessdata-[hash]/[name][extname]'

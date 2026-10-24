@@ -1,9 +1,13 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
+import { sprachpakete } from './apps/web/src/lib/sprachpaketBau.ts'
 
 const src = (p: string) => fileURLToPath(new URL(`./packages/${p}/src/index.ts`, import.meta.url))
 
 export default defineConfig({
+  // Die Oberflaeche holt ihre Saetze je Sprache als erzeugtes Modul; die
+  // Tests, die sie laden, brauchen dieselben Module wie der Bau.
+  plugins: [sprachpakete()],
   resolve: {
     // Tests laufen gegen die Quellen, nicht gegen dist. Kein Build noetig.
     alias: {

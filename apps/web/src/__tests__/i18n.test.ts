@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { EMAIL_LANGUAGES } from '@hotelpms/contracts'
-import { LOCALES, textKeys, textFor, formatMoney, geldFormatierer,
-         weekdayShort } from '../lib/i18n/index.js'
+import { LOCALES, formatMoney, geldFormatierer, weekdayShort } from '../lib/i18n/index.js'
+import { textKeys, textFor } from '../lib/i18n/katalog.js'
 
 /**
  * Der Katalog der Oberflaeche.
@@ -20,7 +20,7 @@ const I18N = join(import.meta.dirname, '..', 'lib', 'i18n')
 
 function bereichsDateien(): string[] {
   return readdirSync(I18N)
-    .filter(n => n.endsWith('.ts') && n !== 'index.ts')
+    .filter(n => n.endsWith('.ts') && n !== 'index.ts' && n !== 'katalog.ts')
     .map(n => n.replace(/\.ts$/, ''))
 }
 
@@ -68,12 +68,12 @@ describe('Katalog der Oberflaeche', () => {
   })
 
   /**
-   * Jeder Bereich liegt in seiner eigenen Datei und ist im Index eingetragen.
+   * Jeder Bereich liegt in seiner eigenen Datei und ist im Katalog eingetragen.
    * Eine Datei, die niemand importiert, faellt sonst erst auf, wenn ein
    * Bildschirm seine Schluessel unuebersetzt zeigt.
    */
   it('traegt jeden Bereich in den Katalog ein', () => {
-    const index = readFileSync(join(I18N, 'index.ts'), 'utf8')
+    const index = readFileSync(join(I18N, 'katalog.ts'), 'utf8')
     expect(bereichsDateien().length).toBeGreaterThan(5)
     for (const bereich of bereichsDateien()) {
       expect(index, `${bereich} ist nicht importiert`)
