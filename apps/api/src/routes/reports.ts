@@ -3,6 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { exportMelden } from '../platform/bestaetigung.js'
 import { hinweisText } from '../platform/texte.js'
 import { isIsoDate, nightsBetween, businessDateFor } from '@hotelpms/domain'
 import { assertNotTraining } from '../platform/training.js'
@@ -574,6 +575,7 @@ export function reportRoutes(app: FastifyInstance): void {
                                fiscalYearStart?: string }
       checkRange(q.from, q.to)
       const id = Number(propertyId)
+      await exportMelden(req, id, 'datev', { bestaetigen: false, detail: { from: q.from, to: q.to } })
 
       return tx(req.pool, req, async client => {
         // Ein Stapel aus Uebungsdaten landet in der echten Buchhaltung und
@@ -766,6 +768,7 @@ export function reportRoutes(app: FastifyInstance): void {
       if (q.format !== undefined && q.format !== 'zip' && q.format !== 'json') {
         throw Errors.validation({ format: ['field.invalid'] })
       }
+      await exportMelden(req, id, 'gobd', { bestaetigen: true, detail: { from: q.from, to: q.to } })
 
       /*
        * Das Archiv fuer die Betriebspruefung: Tabellen mit Beschreibung
@@ -886,6 +889,8 @@ export function reportRoutes(app: FastifyInstance): void {
       const q = req.query as { from: string; to: string; format?: string }
       checkRange(q.from, q.to)
       const id = Number(propertyId)
+      await exportMelden(req, id, 'guest-levy',
+        { bestaetigen: true, detail: { from: q.from, to: q.to } })
 
       return tx(req.pool, req, async client => {
         // Ein Nachweis aus Uebungsdaten geht an eine Behoerde. Derselbe
@@ -1043,6 +1048,7 @@ export function reportRoutes(app: FastifyInstance): void {
       // Zeitpunkt des Snapshots, nicht des letzten Bytes: der Export zeigt
       // den Stand bei Beginn der Transaktion.
       const exportedAt = new Date().toISOString()
+      await exportMelden(req, id, 'tenant', { bestaetigen: true })
 
       return sendeJsonExport(reply, datei => tx(req.pool, req,
         client => schreibeMandantenexport(client, id, datei, exportedAt)))

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import type { Config } from '../platform/config.js'
 import type { Principal } from '../platform/context.js'
 import { encryptSecret } from '../platform/crypto.js'
@@ -102,6 +103,11 @@ export function paymentProviderRoutes(
     permission: 'platform:billing',
     summary: 'Stripe-Zugang der Plattform eintragen',
     handler: async (req) => {
+      // Plattformhandlung (Bedrohungsanalyse 23.10.2026, T4): nur nach
+      // Bestaetigung, und festgehalten, bevor sie wirkt.
+      await verlangeBestaetigung(req)
+      await tx(req.pool, req, client => meldeSicherheitsereignis(client, req, {
+        kind: 'payment_provider_changed', accountId: null, detail: { route: 'PUT /v1/platform/payment-provider' } }))
       const body = (req.body ?? {}) as Record<string, unknown>
       const principal = req.principal as Principal
       const fehler: Record<string, Array<'field.invalid'>> = {}

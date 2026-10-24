@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { hinweisText } from '../platform/texte.js'
 import { loadConfig } from '../platform/config.js'
 import { decryptIdDocument, maskIdDocument } from '../platform/crypto.js'
@@ -384,6 +385,9 @@ export function guestRoutes(app: FastifyInstance): void {
         rechtImAccount(req.principal as Principal, 'guest:export', g.rows[0]!.account_id,
           'res.guest')
         const id = g.rows[0]!.id
+        await meldeSicherheitsereignis(client, req, {
+          kind: 'export', accountId: Number(g.rows[0]!.account_id),
+          detail: { art: 'guest-data-export', guestRef }, hint: 'Auskunft Art. 15' })
 
         const stays = await client.query(
           `SELECT r.public_ref AS "reservationRef", p.name AS property,

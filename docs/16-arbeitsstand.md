@@ -511,6 +511,25 @@ Der Folio-Bildschirm hat drei Eigenschaften, die bewusst so sind: **es gibt kein
 - **Nicht in der App.** Die WebView läuft unter `capacitor://localhost` bzw. `https://localhost`, ein Passkey für app.staygrid.cloud gilt dort nicht. Die App schützt ihre Sitzung mit Fingerabdruck oder Gesicht des Telefons. Native Passkeys bräuchten ein Plugin und `apple-app-site-association` bzw. `assetlinks.json` auf der Domain.
 - **Offen:** Bestätigung kritischer Handlungen mit Passkey (`POST /v1/auth/passkey/confirm`) folgt, sobald `user_session.confirmed_at` auf `main` ist; Passkey-Pflicht für Plattformpersonal danach.
 
+### Aufgabe 13d — Kritische Handlungen bestätigen und melden — **erledigt**
+
+**Warum.** Bedrohungsanalyse vom 23.10.2026 (`/mnt/project-files/security/bedrohungsanalyse-2026-10-23.md`, T3, E3, T6, T8, T9), Sven: „setz alles um bis jeder punkt abgesichert ist“. Wer eine Sitzung übernimmt — nachgebaute Anmeldeseite, Infostealer am Rezeptionsrechner, ein Rechner, an dem jemand kurz aufsteht —, konnte ohne weitere Hürde die IBAN auf den Rechnungen tauschen, das Stripe-Konto umhängen, einen Maschinenzugang als Hintertür anlegen und die ganze Gästedatei ziehen. Keiner dieser Schritte fragte das Kennwort, keiner sagte jemandem Bescheid.
+
+**Wo es liegt.** Migration `0209` (`user_session.confirmed_at`, `security_event`, Hinweis- und Alarmpost), `apps/api/src/platform/bestaetigung.ts`, `POST`/`GET /v1/auth/confirm` in `routes/auth.ts`, `routes/securityEvents.ts`; Oberfläche `lib/bestaetigung.ts`, `components/BestaetigungsDialog.tsx` (in der `Shell`), `components/Sicherheitsprotokoll.tsx` (unter „Benutzer“ und als Reiter im Adminpanel).
+
+**Was daraus entschieden wurde.**
+
+- **Kennwort statt Klick, fünf Minuten, nur für die Person, die bestätigt hat.** Der Angreifer sitzt schon in der Sitzung; einen Knopf „Wirklich?“ drückt er auch. Nach einem Arbeitsplatzwechsel trägt die Bestätigung des Vorgängers nicht hinüber (`confirmed_user_id`).
+- **Was als kritisch gilt:** Bankverbindung (nur wenn sie sich wirklich ändert), Zahlungskonto verbinden und trennen, Maschinenzugang anlegen und in Rechten ändern, Webhook, Kanalzugang und Kanaladapter, Leitungsrollen (Rollen mit `settings:account`, `user:manage`, `integration:manage`, `guest:export`, `report:export`), Support-Freigabe, Mandantenexport, GoBD-Archiv, Gästeverzeichnis, und auf der Plattform Ausrollen, Plattformrollen und Zahlungsanbieter. DATEV, Kassenbuch, Arbeitszeit und der Auskunftsexport eines Gastes werden nur gemeldet: Monatsroutine, eine Hürde wäre Schaden ohne Gegenwert.
+- **Maschinen bestätigen nicht**, sie haben kein Kennwort. Jede ihrer kritischen Handlungen steht als Ereignis da, und die Meldung ist bei ihnen die Sicherung.
+- **Die Oberfläche fragt an einer Stelle.** `request()` und `holeApiDatei()` erkennen `urn:staygrid:confirmation_required`, öffnen den Dialog und senden dieselbe Anfrage genau einmal erneut. Kein Bildschirm weiß davon, also vergisst es auch keiner.
+- **Volle IP-Adresse** (Sven, 23.10.2026): für eine Anzeige und eine Sperre taugt nur die ungekürzte. 180 Tage voll, dann das Netz, nach zwei Jahren weg (`security_event_prune()` im Job `purgeExpired`). Verarbeitungsverzeichnis und TOM sind nachgezogen.
+- **Hinweis an die Leitung ohne Link**, an alle mit `settings:account` im Betrieb und an die Hausleitung (`user:manage` im Haus) — die Direktion hat `settings:account` nicht, kann aber die IBAN ihres Hauses ändern. Ein falsches Kennwort in gültiger Sitzung geht nur an uns.
+- **Kanalgeheimnisse als SHA-256 statt Argon2.** 192 Bit Zufall brauchen keine teure Rechnung; die teure Rechnung band bei jeder gefälschten Anfrage 19 MB und zwei Durchläufe. Alte Hashes werden beim ersten gelungenen Aufruf umgeschrieben.
+- **`/openapi.json` anonym ohne Plattform- und Terminalrouten**, angemeldet ohne Plattform, vollständig nur für Plattformpersonal.
+- **Caddy:** Grenze von 60 je Minute und Adresse auf `/oauth/token` unter `api.staygrid.cloud`, `-Via` auf beiden Namen; gegen Caddy 2.11.7 mit caddy-ratelimit nachgerechnet, auf der Maschine noch einzutragen.
+- **Freigabe:** `freigeben.yml` läuft in der Umgebung `produktion` und gibt nur Commits frei, die auf `main` liegen. Regeln für die Umgebung (Wartezeit, nur `main`) kann nur Sven setzen.
+
 ---
 
 ### Aufgabe 12 — Rundung zwischen Netto- und Bruttosumme — **erledigt**

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { FastifyInstance } from 'fastify'
-import { ensureSchema, appPool } from '@hotelpms/testing'
+import { ensureSchema, appPool, ownerPool, makeUser } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
@@ -27,16 +27,29 @@ beforeAll(async () => {
   pool = built.pool
   registerAllRoutes(app)
   await app.ready()
-  const r = await app.inject({ method: 'GET', url: '/openapi.json' })
-  doc = JSON.parse(r.body)
+  // Vollstaendig nur fuer Plattformpersonal (Bedrohungsanalyse 23.10.2026, T9).
+  // Ohne truncateAll: die Adresse ist je Lauf eine andere.
+  const owner = ownerPool()
+  try {
+    const personal = await makeUser(owner, {
+      email: `vertrag-${Date.now()}@staygrid.local`, isPlatformStaff: true })
+    const r = await app.inject({ method: 'GET', url: '/openapi.json',
+      headers: { cookie: `hp_session=${personal.sessionId}` } })
+    doc = JSON.parse(r.body)
+  } finally { await owner.end() }
 })
 afterAll(async () => { await app.close(); await pool.end() })
 
 describe('Schnittstellenbeschreibung', () => {
-  it('ist ohne Anmeldung lesbar', async () => {
+  it('ist ohne Anmeldung lesbar, aber ohne Plattform und Terminal', async () => {
     const r = await app.inject({ method: 'GET', url: '/openapi.json' })
     expect(r.statusCode).toBe(200)
     expect(doc.openapi).toBe('3.1.0')
+    const pfade = Object.keys((JSON.parse(r.body) as typeof doc).paths)
+    expect(pfade).toContain(toOpenApiPath('/v1/properties/:propertyId/availability'))
+    expect(pfade.filter(p => p.startsWith('/v1/platform'))).toEqual([])
+    expect(pfade.filter(p => p.startsWith('/v1/terminal'))).toEqual([])
+    expect(Object.keys(doc.paths).some(p => p.startsWith('/v1/platform'))).toBe(true)
   })
 
   /**

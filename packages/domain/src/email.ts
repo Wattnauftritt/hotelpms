@@ -2630,3 +2630,94 @@ export function renderPasskeyAddedNotice(
   return { subject: 'Neuer Passkey an Ihrem Zugang',
            text: lines.join('\n\n'), html: htmlBody(lines, lang) }
 }
+
+/**
+ * Hinweis auf eine kritische Handlung (Migration 0209, Bedrohungsanalyse
+ * 23.10.2026, T3).
+ *
+ * Geht an alle mit settings:account im Betrieb und an die Hausleitung, auch an den, der gehandelt
+ * hat: der Angreifer mit einer geliehenen Sitzung ist meist nicht der, dem
+ * sie gehoert. **Ohne Link**, aus demselben Grund wie der Hinweis auf eine
+ * Mailaenderung -- eine Nachricht ueber etwas, das man nicht veranlasst
+ * hat, mit einem Knopf darin, ist die Bauform jeder Phishing-Mail. Der Weg
+ * zum Nachsehen ist der, den der Empfaenger ohnehin kennt.
+ */
+export interface SecurityNoticeData {
+  userName: string | null
+  accountName: string
+  propertyName: string | null
+  actorName: string
+  /** Schon in der Ortszeit des Betriebs formatiert. */
+  when: string
+  action: SecurityNoticeAction
+  /** Gekuerzter Wert, etwa die letzten vier Stellen einer IBAN. */
+  hint: string | null
+}
+
+export type SecurityNoticeAction =
+  | 'bank_details_changed' | 'payment_account_connected'
+  | 'payment_account_disconnected' | 'oauth_client_created'
+  | 'oauth_client_changed' | 'webhook_created' | 'webhook_changed'
+  | 'channel_connection_created' | 'role_granted' | 'support_granted'
+  | 'export' | 'login_new_device' | 'access_volume'
+
+const NOTICE_ACTION: Record<SecurityNoticeAction, { de: string; en: string }> = {
+  bank_details_changed: { de: 'die Bankverbindung auf den Rechnungen geaendert',
+                          en: 'changed the bank details printed on invoices' },
+  payment_account_connected: { de: 'ein Zahlungskonto (Stripe) verbunden',
+                               en: 'connected a payment account (Stripe)' },
+  payment_account_disconnected: { de: 'das Zahlungskonto (Stripe) getrennt',
+                                  en: 'disconnected the payment account (Stripe)' },
+  oauth_client_created: { de: 'einen Maschinenzugang zur Schnittstelle angelegt',
+                          en: 'created a machine access to the API' },
+  oauth_client_changed: { de: 'die Rechte eines Maschinenzugangs geaendert',
+                          en: 'changed the permissions of a machine access' },
+  webhook_created: { de: 'ein Webhook-Ziel angelegt',
+                     en: 'created a webhook target' },
+  webhook_changed: { de: 'die Adresse eines Webhook-Ziels geaendert',
+                     en: 'changed the address of a webhook target' },
+  channel_connection_created: { de: 'einen Kanalzugang angelegt',
+                                en: 'created a channel connection' },
+  role_granted: { de: 'eine Leitungsrolle vergeben',
+                  en: 'granted a management role' },
+  support_granted: { de: 'dem StayGrid-Support Zugriff gegeben',
+                     en: 'granted StayGrid support access' },
+  export: { de: 'einen Datenexport heruntergeladen',
+            en: 'downloaded a data export' },
+  login_new_device: { de: 'sich von einem neuen Geraet angemeldet',
+                      en: 'signed in from a new device' },
+  access_volume: { de: 'ungewoehnlich viele Gastdaten abgerufen',
+                   en: 'retrieved an unusual amount of guest data' }
+}
+
+export function renderSecurityNotice(
+  d: SecurityNoticeData, lang: EmailLanguage = 'de'
+): RenderedEmail {
+  const a = NOTICE_ACTION[d.action]
+  const wo = d.propertyName ? ` (${d.propertyName})` : ''
+  if (lang === 'en') {
+    const lines = [
+      d.userName ? `Dear ${d.userName},` : 'Hello,',
+      `in ${d.accountName}${wo}, ${d.actorName} has ${a.en} on ${d.when}.`
+        + (d.hint ? ` Detail: ${d.hint}.` : ''),
+      'If this was planned, there is nothing to do.',
+      'If nobody in your business did this, sign in as usual, check the '
+        + 'security log under Settings and change your password. Then tell '
+        + 'StayGrid support. This message contains no link on purpose.'
+    ]
+    return { subject: `Security notice: ${a.en}`,
+             text: lines.join('\n\n'), html: htmlBody(lines, lang) }
+  }
+  const lines = [
+    d.userName ? `Guten Tag ${d.userName},` : 'Guten Tag,',
+    `im Betrieb ${d.accountName}${wo} hat ${d.actorName} am ${d.when} ${a.de}.`
+      + (d.hint ? ` Angabe: ${d.hint}.` : ''),
+    'War das so geplant, ist nichts zu tun.',
+    'Hat das niemand aus Ihrem Betrieb getan, melden Sie sich wie gewohnt an, '
+      + 'pruefen Sie das Sicherheitsprotokoll unter Einstellungen und aendern '
+      + 'Sie Ihr Kennwort. Sagen Sie danach dem StayGrid-Support Bescheid. '
+      + 'Diese Nachricht enthaelt bewusst keinen Link.'
+  ]
+  return { subject: `Sicherheitshinweis: ${a.de}`,
+           text: lines.join('\n\n'), html: htmlBody(lines, lang) }
+}

@@ -4,6 +4,7 @@ import { isIsoDate } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors, type Meldung } from '../platform/errors.js'
+import { exportMelden } from '../platform/bestaetigung.js'
 import { assertNotTraining } from '../platform/training.js'
 import { einstellungLesen, geschaeftstag, type Einstellung } from '../platform/kassenbuch.js'
 import type { Principal } from '../platform/context.js'
@@ -249,6 +250,7 @@ export function cashbookDatevRoutes(app: FastifyInstance): void {
     summary: 'Kassenbuch: DATEV-CSV (Kassenbuch online), ohne zu markieren',
     handler: async (req, reply) => {
       const haus = Number((req.params as { propertyId: string }).propertyId)
+      await exportMelden(req, haus, 'cashbook-datev', { bestaetigen: false })
       return tx(req.pool, req, async client => {
         const e = await einstellungLesen(client, haus)
         const heute = await stichtagPruefen(client, haus, e)

@@ -13,6 +13,7 @@ import { usePlatformAccounts, usePlatformAccount, useSetAccountStatus,
 import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
+import { Sicherheitsprotokoll } from '../components/Sicherheitsprotokoll.tsx'
 import { Anfrage, Liste, Ausrollen, LaufenderStand } from './SupportKonsole.tsx'
 import { TicketEingang } from './TicketEingang.tsx'
 
@@ -44,7 +45,7 @@ import { TicketEingang } from './TicketEingang.tsx'
  */
 
 type Reiter = 'tickets' | 'accounts' | 'domains' | 'payments' | 'staff' | 'operations'
-  | 'support'
+  | 'support' | 'security'
 
 const KONTO_ZUSTAND: Record<PlatformAccount['status'], TextKey> = {
   active: 'admin.status.active',
@@ -1235,7 +1236,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
     ['payments', 'admin.tab.payments', 'platform:billing'],
     ['staff', 'admin.tab.staff', 'platform:staff'],
     ['operations', 'admin.tab.operations', 'platform:operations'],
-    ['support', 'admin.tab.support', 'platform:support_session']
+    ['support', 'admin.tab.support', 'platform:support_session'],
+    ['security', 'sicherheit.log.title', 'platform:accounts']
   ] as Array<[Reiter, TextKey, string]>)
     .filter(([, , recht]) => platformPermissions.includes(recht))
 
@@ -1308,6 +1310,8 @@ function AbsenderdomainFreigaben(): JSX.Element {
           <Ausrollen />
         </div>
       )}
+
+      {offen === 'security' && <Sicherheitsprotokoll plattform />}
 
       {offen === 'support' && (
         <div className="space-y-4">

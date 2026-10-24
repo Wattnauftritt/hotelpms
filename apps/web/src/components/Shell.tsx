@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { BestaetigungsDialog } from './BestaetigungsDialog.tsx'
 import { I18nContext, useT, LOCALES, SPRACHNAMEN, type Locale, type TextKey }
   from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
@@ -513,6 +514,9 @@ export function Shell(props: Props): JSX.Element {
         </header>
         <main className="p-4">{props.children}</main>
       </div>
+      {/* Hier und nicht am Bildschirm: jede kritische Handlung fragt
+          dasselbe, und der zehnte Bildschirm vergaesse es. */}
+      <BestaetigungsDialog />
     </I18nContext.Provider>
   )
 }

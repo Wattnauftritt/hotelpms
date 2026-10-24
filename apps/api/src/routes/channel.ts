@@ -1,13 +1,13 @@
 import { randomBytes } from 'node:crypto'
-import { hash as argonHash } from '@node-rs/argon2'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import type { PoolClient } from '@hotelpms/db'
 import { isIsoDate, nightsBetween, eachNight } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx, txIm } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { emitEvent } from '../platform/events.js'
-import { authenticateChannel, channelContext } from '../platform/channelAuth.js'
+import { authenticateChannel, channelContext, kanalGeheimnisHash } from '../platform/channelAuth.js'
 import type { Principal } from '../platform/context.js'
 import { inventoryError, priceNights, personenAngabe } from './reservations.js'
 import { isTrainingProperty } from '../platform/training.js'
@@ -191,11 +191,14 @@ export function channelRoutes(app: FastifyInstance): void {
       }
       if (!body.name) throw Errors.validation({ name: ['field.required'] })
       const principal = req.principal as Principal
+      // Ein Kanalzugang legt Buchungen an und storniert sie; ein neuer ist
+      // eine Huerde wert (Bedrohungsanalyse 23.10.2026, T3).
+      await verlangeBestaetigung(req)
 
       // Das Geheimnis wird nur diesmal ausgegeben. Gespeichert wird der Hash,
-      // genau wie beim Kennwort (auth.ts) - aus demselben Grund.
+      // als SHA-256 und nicht als Argon2 (platform/channelAuth.ts).
       const secret = randomBytes(24).toString('base64url')
-      const tokenHash = await argonHash(secret, { memoryCost: 19_456, timeCost: 2, parallelism: 1 })
+      const tokenHash = kanalGeheimnisHash(secret)
 
       return tx(req.pool, req, async client => {
         const prop = await client.query<{ account_id: number }>(
@@ -219,6 +222,11 @@ export function channelRoutes(app: FastifyInstance): void {
            VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, public_ref`,
           [Number(propertyId), prop.rows[0]!.account_id, body.provider, body.name, tokenHash,
            principal.userId])
+        await meldeSicherheitsereignis(client, req, {
+          kind: 'channel_connection_created', accountId: prop.rows[0]!.account_id,
+          propertyId: Number(propertyId),
+          detail: { connectionRef: r.rows[0]!.public_ref, provider: body.provider },
+          hint: body.provider })
         reply.status(201)
         return { connectionRef: r.rows[0]!.public_ref, token: `${r.rows[0]!.public_ref}.${secret}` }
       })

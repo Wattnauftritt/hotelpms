@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeImHaus } from '../platform/bestaetigung.js'
 import type { Config } from '../platform/config.js'
 import type { Principal } from '../platform/context.js'
 import { isTrainingProperty } from '../platform/training.js'
@@ -101,6 +102,11 @@ export function paymentAccountRoutes(
       }
       if (principal.userId === null) throw Errors.forbidden('access.missingPermission',
         { permission: 'integration:manage' })
+      // Wohin die Zahlungen der Gaeste gehen: nur nach Bestaetigung
+      // (Bedrohungsanalyse 23.10.2026, T3). Hier und nicht bei der
+      // Rueckkehr -- bei Stripe vergehen Minuten, und die Bestaetigung
+      // waere bis dahin abgelaufen.
+      await verlangeBestaetigung(req)
       // Ein Uebungshaus bekommt kein echtes Zahlungskonto, aus demselben
       // Grund, aus dem es keinen Zahlungslink erzeugt.
       await tx(req.pool, req, async client => {
@@ -160,7 +166,8 @@ export function paymentAccountRoutes(
         throw Errors.upstreamFailed('payments.providerUnavailable')
       }
 
-      await tx(req.pool, req, client => client.query(
+      await tx(req.pool, req, async client => {
+        await client.query(
         `INSERT INTO property_payment_account
            (property_id, provider, provider_account, charges_enabled, connected_by)
          VALUES ($1, 'stripe', $2, $3, $4)
@@ -169,7 +176,11 @@ export function paymentAccountRoutes(
                 charges_enabled = EXCLUDED.charges_enabled,
                 connected_by = EXCLUDED.connected_by,
                 connected_at = now(), updated_at = now()`,
-        [s.propertyId, accountId, chargesEnabled, principal.userId]))
+        [s.propertyId, accountId, chargesEnabled, principal.userId])
+        await meldeImHaus(client, req, s.propertyId, {
+          kind: 'payment_account_connected', detail: { providerAccount: accountId },
+          hint: `Stripe ${accountId}` })
+      })
       return { propertyId: s.propertyId, accountId, chargesEnabled }
     }
   })
@@ -197,6 +208,7 @@ export function paymentAccountRoutes(
     summary: 'Stripe-Konto des Hauses trennen',
     handler: async (req) => {
       const propertyId = Number((req.params as { propertyId: string }).propertyId)
+      await verlangeBestaetigung(req)
       const erst = await tx(req.pool, req, async client => {
         const r = await client.query<{ provider_account: string }>(
           `SELECT provider_account FROM property_payment_account
@@ -213,6 +225,8 @@ export function paymentAccountRoutes(
         const andere = await client.query(
           `SELECT 1 FROM property_payment_account
             WHERE provider = 'stripe' AND provider_account = $1 LIMIT 1`, [konto])
+        await meldeImHaus(client, req, propertyId, {
+          kind: 'payment_account_disconnected', detail: { providerAccount: konto } })
         return { konto, geteilt: (andere.rowCount ?? 0) > 0 }
       })
 

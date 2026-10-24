@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeResources, makeUser, type Fixture } from '@hotelpms/testing'
 import type { Pool } from '@hotelpms/db'
+import { hash as argonHash } from '@node-rs/argon2'
 import { buildServer } from '../platform/app.js'
 import { registerAllRoutes } from '../routes/index.js'
 
@@ -106,6 +107,34 @@ describe('Verwaltung des Channel-Zugangs', () => {
     expect(kaputt.statusCode).toBe(401)
     const ohnePunkt = await ari('ganzfalsch', `/v1/channel/ari/availability?from=${FROM}&to=${TO}`)
     expect(ohnePunkt.statusCode).toBe(401)
+  })
+
+  /**
+   * SHA-256 statt Argon2 (Bedrohungsanalyse 23.10.2026, T6): ein
+   * Zufallsgeheimnis braucht keine teure Rechnung, und die teure Rechnung
+   * band bei jeder gefaelschten Anfrage Speicher und Zeit.
+   */
+  it('speichert das Geheimnis als SHA-256 und schreibt einen alten Argon2-Hash um', async () => {
+    const token = await makeConnection()
+    const [ref, geheim] = token.split('.') as [string, string]
+    const neu = await owner.query<{ token_hash: string }>(
+      'SELECT token_hash FROM channel_connection WHERE public_ref = $1', [ref])
+    expect(neu.rows[0]!.token_hash).toMatch(/^sha256:[0-9a-f]{64}$/)
+
+    // Ein Zugang von vor der Umstellung.
+    await owner.query('UPDATE channel_connection SET token_hash = $2 WHERE public_ref = $1',
+      [ref, await argonHash(geheim, { memoryCost: 19_456, timeCost: 2, parallelism: 1 })])
+    const url = `/v1/channel/ari/availability?from=${FROM}&to=${TO}`
+    expect((await ari(`${ref}.falsch`, url)).statusCode).toBe(401)
+    const alt = await owner.query<{ token_hash: string }>(
+      'SELECT token_hash FROM channel_connection WHERE public_ref = $1', [ref])
+    expect(alt.rows[0]!.token_hash).toMatch(/^\$argon2id/)
+
+    expect((await ari(token, url)).statusCode).toBe(200)
+    const danach = await owner.query<{ token_hash: string }>(
+      'SELECT token_hash FROM channel_connection WHERE public_ref = $1', [ref])
+    expect(danach.rows[0]!.token_hash).toBe(neu.rows[0]!.token_hash)
+    expect((await ari(token, url)).statusCode).toBe(200)
   })
 })
 

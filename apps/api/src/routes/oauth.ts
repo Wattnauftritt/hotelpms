@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { hinweisText } from '../platform/texte.js'
 import { hashToken } from '../platform/auth.js'
 import { accountFor, accountRight, accountsWith, can, type Principal } from '../platform/context.js'
@@ -272,6 +273,10 @@ export function oauthRoutes(app: FastifyInstance): void {
         throw Errors.validation({ name: ['field.required'] })
       }
       pruefeScopes(body.scopes)
+      // Ein Maschinenzugang ueberlebt Kennwortwechsel und Abmelden -- die
+      // bequemste Hintertuer fuer jemanden mit geliehener Sitzung
+      // (Bedrohungsanalyse 23.10.2026, T3).
+      await verlangeBestaetigung(req)
 
       // Das Geheimnis entsteht hier und wird genau einmal herausgegeben.
       const secret = randomBytes(32).toString('base64url')
@@ -292,6 +297,10 @@ export function oauthRoutes(app: FastifyInstance): void {
           [accountId, body.name.trim(),
            await argonHash(secret, { memoryCost: 19_456, timeCost: 2, parallelism: 1 }),
            body.scopes, propertyIds])
+        await meldeSicherheitsereignis(client, req, {
+          kind: 'oauth_client_created', accountId,
+          detail: { clientId: r.rows[0]!.public_ref, scopes: body.scopes, propertyIds },
+          hint: body.scopes.join(', ') })
 
         reply.status(201)
         return {
@@ -371,6 +380,9 @@ export function oauthRoutes(app: FastifyInstance): void {
       const name = body.name as string | undefined
       const scopes = body.scopes as string[] | undefined
       const propertyIds = body.propertyIds as number[] | undefined
+      // Nur ein neuer Name ist keine Frage der Sicherheit; Rechte und
+      // Haeuser sind es.
+      if (scopes !== undefined || propertyIds !== undefined) await verlangeBestaetigung(req)
 
       return tx(req.pool, req, async client => {
         const c = await client.query<{ id: number; account_id: number; status: string
@@ -412,6 +424,13 @@ export function oauthRoutes(app: FastifyInstance): void {
           [z.id, name?.trim() ?? null, scopes ?? null, propertyIds ?? null])
         const n = neu.rows[0]!
         const haeuser = n.property_ids.map(Number)
+        if (scopes !== undefined || propertyIds !== undefined) {
+          await meldeSicherheitsereignis(client, req, {
+            kind: 'oauth_client_changed', accountId: Number(z.account_id),
+            detail: { clientId: clientRef, scopesBefore: z.scopes, scopes: n.scopes,
+                      propertyIds: haeuser },
+            hint: n.scopes.join(', ') })
+        }
 
         /*
          * Laufende Token kuerzen. Scopes: Schnittmenge. Haeuser: ein leeres

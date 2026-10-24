@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { businessDateFor } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
+import { leitungsrolleAbsichern } from '../platform/bestaetigung.js'
 import { tx } from '../platform/db.js'
 import type { Principal } from '../platform/context.js'
 import { supportPermissions, type SupportLevel } from '../platform/support.js'
@@ -355,6 +357,8 @@ export function platformSupportRoutes(app: FastifyInstance): void {
         if (haus.rowCount === 0) throw Errors.validation({ propertyId: ['field.invalid'] })
         const rollen = await rollenDerEbene(client, accountId, 'property', b.roleKeys)
 
+        await leitungsrolleAbsichern(client, req, { userId: benutzer.id },
+          rollen.map(r => r.id), accountId, propertyId)
         await client.query(
           `DELETE FROM user_property_role WHERE user_id = $1 AND property_id = $2`,
           [benutzer.id, propertyId])
@@ -390,6 +394,8 @@ export function platformSupportRoutes(app: FastifyInstance): void {
               [rollen.map(r => r.id)])).rows[0]!.n)
         if (behaeltRecht === 0) await nichtDenLetztenVerwalter(client, accountId, benutzer.id)
 
+        await leitungsrolleAbsichern(client, req, { userId: benutzer.id },
+          rollen.map(r => r.id), accountId, null)
         await client.query(
           `DELETE FROM user_account_role WHERE user_id = $1 AND account_id = $2`,
           [benutzer.id, accountId])
@@ -535,6 +541,11 @@ export function platformSupportRoutes(app: FastifyInstance): void {
     permission: 'platform:staff',
     summary: 'Rolle eines Plattformbenutzers festlegen',
     handler: async (req) => {
+      // Plattformhandlung (Bedrohungsanalyse 23.10.2026, T4): nur nach
+      // Bestaetigung, und festgehalten, bevor sie wirkt.
+      await verlangeBestaetigung(req)
+      await tx(req.pool, req, client => meldeSicherheitsereignis(client, req, {
+        kind: 'platform_role_changed', accountId: null, detail: { route: 'PUT /v1/platform/staff/:id/role' } }))
       const id = kennung(req)
       const roleKey = String((req.body as { roleKey?: string } | undefined)?.roleKey ?? '')
       const principal = req.principal as Principal

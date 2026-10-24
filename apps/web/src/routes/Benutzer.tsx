@@ -9,6 +9,7 @@ import { useT, useLocale, type TextKey } from '../lib/i18n/index.js'
 import { useOnline } from '../lib/offline.js'
 import { Fehler, Laedt } from '../components/Shell.tsx'
 import { ZugangsLink } from '../components/ZugangsLink.tsx'
+import { Sicherheitsprotokoll } from '../components/Sicherheitsprotokoll.tsx'
 
 /**
  * Benutzer und Rollen: der Kunde verwaltet sein Personal selbst (0040).
@@ -392,6 +393,9 @@ export function Benutzer({ propertyId }: { propertyId: number }): JSX.Element {
                   </ul>}
               <BenutzerEinladen propertyId={propertyId} rollen={rollen.data.roles} />
             </>}
+      {/* Hier, weil es dieselben Menschen sind, die den Hinweis per Mail
+          bekommen: wer Personal verwaltet. */}
+      <Sicherheitsprotokoll />
     </div>
   )
 }

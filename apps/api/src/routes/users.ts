@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { leitungsrolleAbsichern } from '../platform/bestaetigung.js'
 import { accountFor, type Principal } from '../platform/context.js'
 
 /**
@@ -225,6 +226,8 @@ export function userRoutes(app: FastifyInstance): void {
           }
         }
 
+        await leitungsrolleAbsichern(client, req, { userId }, rollen.rows.map(r => r.id),
+          accountId, id)
         await client.query(
           `DELETE FROM user_property_role WHERE user_id = $1 AND property_id = $2`,
           [userId, id])

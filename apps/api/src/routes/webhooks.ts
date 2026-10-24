@@ -4,6 +4,7 @@ import { registerRoute } from '../platform/routes.js'
 import { pruefeReichweite } from './oauth.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { apiText, hinweisText } from '../platform/texte.js'
 import { accountFor, accountsWith, type Principal } from '../platform/context.js'
 import { isWebhookEventType, WEBHOOK_EVENT_TYPES, checkWebhookTargetUrl,
@@ -146,6 +147,10 @@ export function webhookRoutes(app: FastifyInstance): void {
           { values: unbekannt.join(', ') })
       }
 
+      // Ein neues Ziel ist ein Weg nach draussen, der jedes Abmelden
+      // ueberlebt (Bedrohungsanalyse 23.10.2026, T3).
+      await verlangeBestaetigung(req)
+
       // Der gemeinsame Schluessel entsteht hier und wird genau einmal
       // herausgegeben. Ihn vom Aufrufer entgegenzunehmen hiesse, schwache
       // Schluessel zuzulassen; ihn spaeter erneut zu zeigen, ihn unnoetig
@@ -172,6 +177,11 @@ export function webhookRoutes(app: FastifyInstance): void {
            VALUES ($1,$2,$3,$4::text[],$5::bigint[],$6)
            RETURNING ${FIELDS}`,
           [accountId, body.url, secret, eventTypes, propertyIds, principal.userId])
+        await meldeSicherheitsereignis(client, req, {
+          kind: 'webhook_created', accountId,
+          detail: { subscriptionRef: r.rows[0]!.public_ref, host: new URL(body.url).host,
+                    eventTypes, propertyIds },
+          hint: new URL(body.url).host })
 
         reply.status(201)
         return {

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { verify as argonVerify } from '@node-rs/argon2'
 import type { Pool, DbContext } from '@hotelpms/db'
 import { Errors } from './errors.js'
@@ -22,12 +23,44 @@ export function channelContext(p: ChannelPrincipal): DbContext {
   return { accountIds: [p.accountId], propertyIds: [p.propertyId], userId: null }
 }
 
-// Verbraucht Rechenzeit auch fuer eine unbekannte Kennung, aus demselben
-// Grund wie beim Anmelden (auth.ts): sonst unterscheidet die Antwortzeit
-// eine gueltige von einer erfundenen Verbindungskennung.
-const BLIND_HASH =
-  '$argon2id$v=19$m=19456,t=2,p=1$c2FsemVzYWx6ZXNhbHplcw$'
-  + 'Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyYg'
+/**
+ * Das Geheimnis eines Kanalzugangs als SHA-256, nicht als Argon2
+ * (Bedrohungsanalyse 23.10.2026, T6).
+ *
+ * Argon2 ist fuer Kennwoerter da: ein Mensch waehlt eines, das sich
+ * durchprobieren laesst, und die teure Rechnung macht jeden Versuch teuer.
+ * Dieses Geheimnis waehlt niemand, es sind 24 Zufallsbytes -- 192 Bit, die
+ * sich auch mit einer schnellen Pruefsumme nicht durchprobieren lassen.
+ * Die teure Rechnung traf hier deshalb nur einen: uns. Jede Anfrage an den
+ * Kanal, auch jede gefaelschte, band 19 MB Speicher und zwei Durchlaeufe,
+ * und ein Programm, das mit erfundenen Geheimnissen auf eine bekannte
+ * Kennung feuert, legte damit die Schnittstelle lahm, bevor es abgewiesen
+ * wurde. Dasselbe Verfahren wie beim Maschinenzugang (`hashToken`).
+ *
+ * **Alte Zugaenge** tragen noch Argon2. Sie werden einmal so geprueft und
+ * beim ersten gelungenen Aufruf umgeschrieben; danach gibt es fuer sie
+ * keinen teuren Weg mehr. Eine unbekannte Kennung kostet nichts: sie
+ * vergleicht gegen einen Hash, den es nicht gibt.
+ */
+const SHA = 'sha256:'
+
+export function kanalGeheimnisHash(secret: string): string {
+  return SHA + createHash('sha256').update(secret).digest('hex')
+}
+
+const NIEMAND = kanalGeheimnisHash('niemand')
+
+async function geheimnisPasst(
+  hash: string, secret: string
+): Promise<{ passt: boolean; umschreiben: boolean }> {
+  if (hash.startsWith(SHA)) {
+    const a = Buffer.from(hash)
+    const b = Buffer.from(kanalGeheimnisHash(secret))
+    return { passt: a.length === b.length && timingSafeEqual(a, b), umschreiben: false }
+  }
+  const passt = await argonVerify(hash, secret).catch(() => false)
+  return { passt, umschreiben: passt }
+}
 
 export async function authenticateChannel(
   pool: Pool, authorization: string | undefined
@@ -51,10 +84,14 @@ export async function authenticateChannel(
        FROM channel_connection_for_auth($1)`, [publicRef])
   const row = rows[0]
 
-  const passt = await argonVerify(row?.token_hash ?? BLIND_HASH, secret).catch(() => false)
+  const { passt, umschreiben } = await geheimnisPasst(row?.token_hash ?? NIEMAND, secret)
   if (!passt || row === undefined || row.status !== 'active') throw Errors.unauthorized()
 
-  await pool.query(`UPDATE channel_connection SET last_used_at = now() WHERE id = $1`, [row.id])
+  await pool.query(
+    `UPDATE channel_connection
+        SET last_used_at = now(), token_hash = COALESCE($2, token_hash)
+      WHERE id = $1`,
+    [row.id, umschreiben ? kanalGeheimnisHash(secret) : null])
   return { connectionId: row.id, propertyId: row.property_id, accountId: row.account_id,
            provider: row.provider }
 }

@@ -38,6 +38,7 @@ import { gaestemappe } from './gaestemappe.js'
 import { visitenkarte } from './visitenkarte.js'
 import { kurzbefehle } from './kurzbefehle.js'
 import { verkaufenAls } from './verkaufenAls.js'
+import { sicherheit } from './sicherheit.js'
 import { passkey } from './passkey.js'
 import { tickets } from './tickets.js'
 
@@ -251,6 +252,7 @@ export type TextKey =
   | keyof typeof kurzbefehle
   | keyof typeof verkaufenAls
   | keyof typeof passkey
+  | keyof typeof sicherheit
   | keyof typeof tickets
 
 const texts: Record<TextKey, LocalizedText> = {
@@ -293,6 +295,7 @@ const texts: Record<TextKey, LocalizedText> = {
   ...kurzbefehle,
   ...verkaufenAls,
   ...passkey,
+  ...sicherheit,
   ...tickets
 }
 

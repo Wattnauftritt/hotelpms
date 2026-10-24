@@ -28,6 +28,15 @@ nach **Art. 32 DSGVO**. Anlage zum Auftragsverarbeitungsvertrag.
   im Protokoll steht, wer tatsächlich gehandelt hat.
 - Maschinenzugänge über OAuth 2.0 Client Credentials mit begrenzten
   Zugriffsbereichen; das Geheimnis wird genau einmal ausgegeben.
+- **Kritische Handlungen verlangen das Kennwort erneut**, auch in einer
+  gültigen Sitzung: Bankverbindung, Zahlungskonto, Maschinenzugang, Webhook,
+  Kanalzugang, Leitungsrolle, Support-Freigabe, Mandantenexport,
+  GoBD-Archiv, Gästeverzeichnis und die Plattformhandlungen (Ausrollen,
+  Plattformrollen, Zahlungsanbieter). Die Bestätigung gilt fünf Minuten und
+  nur für die Person, die sie gegeben hat (Migration 0209).
+- Geheimnisse von Kanalzugängen sind 192 Bit Zufall und liegen als SHA-256
+  vor; die Prüfung kostet damit keine Rechenzeit, die ein Angreifer mit
+  gefälschten Anfragen binden könnte.
 - Gästeterminals (Touchscreen an der Rezeption) melden sich nicht mit einem
   Benutzer an, sondern werden einmal mit einem zehn Minuten gültigen Code
   gekoppelt; danach ein eigenes Gerätegeheimnis im `httpOnly`-Cookie, nur
@@ -81,6 +90,15 @@ fachlich tragenden Tabellen: wer, wann, welche Tabelle, welche Zeile, welche
 Felder. „Wer" ist ein Benutzer oder, am Gästeterminal, das Gerät
 (`terminal_device_id`, Migration 0072). **In der Datenbank und nicht in der Anwendung** — was in der
 Anwendung liegt, wird irgendwann an einer Stelle vergessen.
+
+**Sicherheitsereignisse** (Migration 0209) halten jede kritische Handlung
+mit Person, Zeit und ungekürzter IP-Adresse fest. Die Anwendung kann sie nur
+lesen; geschrieben wird ausschließlich über `security_event_record()`,
+gekürzt und gelöscht ausschließlich über `security_event_prune()`. Zu jedem
+Ereignis bekommt die Leitung des Betriebs einen Hinweis per Mail — ohne
+Link, damit er nicht wie eine Phishing-Mail aussieht — und das
+Sicherheitspostfach der Plattform eine Meldung, höchstens eine je Art,
+Betrieb und Person in der Stunde.
 
 Das Protokoll hält **welches Feld** sich geändert hat, nicht seinen Wert,
 soweit das Feld personenbezogen ist oder ein Geheimnis trägt

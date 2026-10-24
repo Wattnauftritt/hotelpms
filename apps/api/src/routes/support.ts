@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { renderSupportRequestEmail } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { Errors } from '../platform/errors.js'
+import { verlangeBestaetigung, meldeSicherheitsereignis } from '../platform/bestaetigung.js'
 import { loadConfig } from '../platform/config.js'
 import { tx } from '../platform/db.js'
 import { canInAccount, type Principal } from '../platform/context.js'
@@ -285,6 +286,11 @@ export function supportRoutes(app: FastifyInstance): void {
     handler: async (req) => {
       const { id } = req.params as { id: string }
       const principal = req.principal as Principal
+      // Ein Anruf "hier ist der StayGrid-Support, geben Sie bitte frei" ist
+      // mit einer Stimme aus dem Rechner billig geworden (Bedrohungsanalyse
+      // 23.10.2026, T3). Die Freigabe verlangt deshalb das Kennwort, und alle
+      // Berechtigten erfahren davon.
+      await verlangeBestaetigung(req)
 
       return tx(req.pool, req, async client => {
         /*
@@ -321,6 +327,11 @@ export function supportRoutes(app: FastifyInstance): void {
 
         const z = await client.query<Zeile>(
           `SELECT ${SPALTEN} ${VERBUND} WHERE s.id = $1`, [Number(id)])
+        const konto = await client.query<{ account_id: number }>(
+          'SELECT account_id FROM support_session WHERE id = $1', [Number(id)])
+        await meldeSicherheitsereignis(client, req, {
+          kind: 'support_granted', accountId: konto.rows[0]!.account_id,
+          detail: { supportSessionId: Number(id) } })
         return nachAussen(z.rows[0]!, Date.now())
       })
     }
