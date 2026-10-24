@@ -6,7 +6,7 @@ import { CHECKIN_TOKEN_HEADER, LAENDER, checkinTokenAusFragment,
 import { api, ApiError } from '../lib/api.js'
 import { fehlerMeldung } from '../lib/meldungen.js'
 import { istCheckinAdresse } from '../gast/adresse.js'
-import { LOCALES, sprachKuerzel, dokumentSprache, I18nContext, useT, useLocale, intlTag, formatDate, type Locale,
+import { LOCALES, sprachKuerzel, dokumentSprache, Sprache, useT, useLocale, intlTag, formatDate, type Locale,
          type TextKey } from '../lib/i18n/index.js'
 import { Unterschriftsfeld } from '../components/Unterschriftsfeld.tsx'
 import { Sprachauswahl } from '../components/Sprachauswahl.tsx'
@@ -126,7 +126,7 @@ export function GastCheckin({ token, modus, onFertig }: {
   const gross = modus === 'terminal'
 
   return (
-    <I18nContext.Provider value={locale}>
+    <Sprache locale={locale}>
       <div lang={locale}
            className={`mx-auto w-full ${gross ? 'max-w-3xl text-lg' : 'max-w-xl text-sm'}
                        space-y-4`}>
@@ -156,7 +156,7 @@ export function GastCheckin({ token, modus, onFertig }: {
         )}
         {view?.guestFolder === true && modus === 'mail' && <ZurMappe token={token} />}
       </div>
-    </I18nContext.Provider>
+    </Sprache>
   )
 }
 
@@ -167,7 +167,7 @@ export function GastCheckinSeite({ token }: { token: string | null }): JSX.Eleme
   return (
     <div className="min-h-screen bg-neutral-50 p-4 sm:p-8">
       {token === null
-        ? <I18nContext.Provider value={locale}><OhneLink /></I18nContext.Provider>
+        ? <Sprache locale={locale}><OhneLink /></Sprache>
         : <GastCheckin token={token} modus="mail" />}
     </div>
   )

@@ -157,6 +157,8 @@ Aus dem Betrieb abgeleitet, nicht aus Geschmack. Wer einen bricht, sollte sagen 
 
 **Kein Text im Code, nur Schlüssel**, je Bereich in `lib/i18n/`. Die Sprache der Oberfläche ist die des Personals, die der Gastpost steht am Gastprofil.
 
+**Ausgeliefert wird eine Sprache, nicht der Katalog.** In der Quelle stehen die Sprachen je Schlüssel nebeneinander (`lib/i18n/katalog.ts`, `personal/katalog.ts`, `gast/mappeKatalog.ts`, die Meldungen in `@hotelpms/contracts`). Der Bau schreibt daraus je Katalog und Sprache eine Datei (`lib/sprachpaketBau.ts`), und der Browser holt genau die, die gilt: ohne Wahl Deutsch, sonst die gewählte; eine andere erst beim Umstellen (`<Sprache>`, `lib/sprachpaket.ts`). Bis zum 24.10.2026 lud jede Seite alle dreiunddreißig Sprachen, die Anmeldung 5,6 MB. Zur Laufzeit importiert deshalb niemand einen Katalog oder Bereich als Wert; `__tests__/sprachpakete.test.ts` hält das fest. Der Service Worker lädt die Sprachen nicht vor, er behält die, die einmal geholt wurde.
+
 **Die Berechtigung steht am Bildschirm** (`screens.tsx`). Keine Sicherheitsmaßnahme — die liegt in der API — sondern Brauchbarkeit: ein Knopf, der 403 antwortet, ist schlechter als kein Knopf.
 
 **Zustand steht in der Adresse.** Lesezeichen, Weitergabe, Neuladen am geteilten Rechner.

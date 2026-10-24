@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { BestaetigungsDialog } from '../BestaetigungsDialog.tsx'
-import { I18nContext, useT, type TextKey } from '../../lib/i18n/index.js'
+import { Sprache, useT, type TextKey } from '../../lib/i18n/index.js'
 import { useOnline } from '../../lib/offline.js'
 import { useEscape } from '../../lib/tasten.js'
 import { inLeistenReihenfolge } from '../../lib/leiste.js'
@@ -38,10 +38,10 @@ const VORN: ReadonlyArray<{ key: string; text: TextKey; icon: ReactNode }> = [
 
 export function MobilShell(props: ShellProps): JSX.Element {
   return (
-    <I18nContext.Provider value={props.locale}>
+    <Sprache locale={props.locale}>
       <Rahmen {...props} />
       <BestaetigungsDialog />
-    </I18nContext.Provider>
+    </Sprache>
   )
 }
 

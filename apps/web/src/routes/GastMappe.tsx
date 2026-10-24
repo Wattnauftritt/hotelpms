@@ -7,7 +7,7 @@ import { dokumentSprache } from '../lib/dokumentSprache.js'
 import { useQr } from '../lib/qr.js'
 import { Inhaltstext } from '../components/Inhaltstext.tsx'
 import { VerzichtListe } from '../components/VerzichtListe.tsx'
-import { FOLDER_LOCALES, MappeSprache, startSprache, useMappeT,
+import { FOLDER_LOCALES, MappeSpracheRahmen, startSprache, useMappeT,
          type MappeTextKey } from '../gast/mappeTexte.js'
 
 /**
@@ -64,7 +64,7 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
   }, [stand])
 
   return (
-    <MappeSprache.Provider value={locale}>
+    <MappeSpracheRahmen locale={locale}>
       <div lang={locale} className="min-h-screen bg-neutral-50 px-4 py-6">
         <div className="mx-auto w-full max-w-xl space-y-4 text-[15px]">
           <Kopf view={stand.art === 'da' ? stand.view : null} locale={locale}
@@ -93,7 +93,7 @@ export function GastMappeSeite({ roomRef }: { roomRef: string | null }): JSX.Ele
           )}
         </div>
       </div>
-    </MappeSprache.Provider>
+    </MappeSpracheRahmen>
   )
 }
 

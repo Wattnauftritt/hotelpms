@@ -1,5 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox'
-import { LOCALES } from './messages.js'
+import { LOCALES } from './sprachen.js'
 import { CleaningWaiverView } from './cleaningWaiver.js'
 
 /**

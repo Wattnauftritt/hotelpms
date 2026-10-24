@@ -4,7 +4,8 @@ import { wifiQrText, type FolderWifi } from '@hotelpms/contracts'
 import { useZimmerkarten, useZimmerkarteErneuern } from '../lib/queries/gaestemappe.js'
 import { useT } from '../lib/i18n/index.js'
 import { useQr } from '../lib/qr.js'
-import { mappeText } from '../gast/mappeTexte.js'
+import { mappeText, mappeTexte } from '../gast/mappeTexte.js'
+import { useSprachpakete } from '../lib/sprachpaket.js'
 import { Fehler, Laedt } from './Shell.tsx'
 
 /**
@@ -29,6 +30,11 @@ export function Zimmerkarten({ propertyId, onClose }: {
   const t = useT()
   const q = useZimmerkarten(propertyId, true)
   const erneuern = useZimmerkarteErneuern(propertyId)
+  // Die Karte spricht Deutsch und Englisch, die Rezeption vielleicht keins
+  // von beiden: beide Pakete der Mappe holen, bevor eine Karte steht.
+  const deutsch = useSprachpakete([mappeTexte], 'de', 'de')
+  const englisch = useSprachpakete([mappeTexte], 'en', 'en')
+  const saetze = deutsch !== null && englisch !== null
 
   useEffect(() => {
     const taste = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
@@ -43,7 +49,7 @@ export function Zimmerkarten({ propertyId, onClose }: {
                       px-4 py-3 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-semibold mr-auto">{t('folder.cards')}</h2>
-          <button type="button" onClick={() => window.print()} disabled={q.data === undefined}
+          <button type="button" onClick={() => window.print()} disabled={q.data === undefined || !saetze}
                   className="px-3 py-1.5 text-sm rounded-sm bg-neutral-900 text-white
                              disabled:opacity-40">
             {t('folder.cardsPrint')}
@@ -61,8 +67,8 @@ export function Zimmerkarten({ propertyId, onClose }: {
       </div>
       <div className="p-4 flex flex-wrap gap-4 justify-center">
         {q.isError && <Fehler error={q.error} />}
-        {q.data === undefined && !q.isError && <Laedt />}
-        {q.data?.rooms.map(z => (
+        {(q.data === undefined || !saetze) && !q.isError && <Laedt />}
+        {saetze && q.data?.rooms.map(z => (
           <div key={z.resourceId} className="space-y-1">
             <Karte haus={q.data.propertyName} zimmer={z.name ?? z.code}
                    link={z.link} wifi={q.data.wifi} />

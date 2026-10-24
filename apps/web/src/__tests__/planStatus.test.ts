@@ -4,7 +4,8 @@ import type { PlanPayment } from '@hotelpms/contracts'
 import { REINIGUNG, ZAHLUNG, zahlungsTitel, reinigungsZiele, angeboteneStaende,
          REINIGUNG_SETZBAR, balkenTitel, personenzahl } from '../lib/planStatus.js'
 import { gruppeVerschieben } from '../components/Stammdaten.tsx'
-import { textFor, type TextKey } from '../lib/i18n/index.js'
+import type { TextKey } from '../lib/i18n/index.js'
+import { textFor } from '../lib/i18n/katalog.js'
 
 /**
  * Reinigungs- und Zahlungsstand im Belegungsplan.

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { LOCALES, sprachKuerzel, textFor, useLocale, type Locale, type TextKey } from '../lib/i18n/index.js'
+import { LOCALES, oberflaechenTexte, sprachKuerzel, textFor, useLocale, type Locale, type TextKey }
+  from '../lib/i18n/index.js'
+import { useSprachpakete } from '../lib/sprachpaket.js'
 import { EBENEN, einfuegen, grossSchreiben, loeschen, startEbene,
          type Ebene, type Feldstand, type Taste } from '../lib/bildschirmtastatur.js'
 
@@ -90,7 +92,11 @@ export function Bildschirmtastatur(): JSX.Element {
     return () => window.clearTimeout(z)
   }, [offen, ebene])
 
-  const t = (key: TextKey): string => textFor(key, sprache)
+  // Die Sprache des Feldes erst holen: bis sie da ist, sprechen die Tasten
+  // wie der Rahmen.
+  const tastenSprache = useSprachpakete([oberflaechenTexte], sprache, terminalSprache)
+    ?? terminalSprache
+  const t = (key: TextKey): string => textFor(key, tastenSprache)
 
   const druecken = (taste: Taste): void => {
     const el = feld.current

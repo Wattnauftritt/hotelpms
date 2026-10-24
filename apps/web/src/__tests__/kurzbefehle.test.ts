@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { kurzbefehleFuer } from '../lib/kurzbefehle.js'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { kurzbefehleFuer, titelTexte } from '../lib/kurzbefehle.js'
+
+// Die Titel kommen als Paket je Sprache; im Betrieb holt
+// `kurzbefehleAktualisieren` es vor dem Setzen.
+beforeAll(async () => { await titelTexte.laden('de') })
 
 const ids = (...haeuser: string[][]): string[] =>
   kurzbefehleFuer(haeuser.map(permissions => ({ permissions })), 'de').map(k => k.id)

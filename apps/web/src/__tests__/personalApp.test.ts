@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { beforeAll, describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { STAFF_LOCALES } from '@hotelpms/contracts'
 import { istPersonalAdresse, nurPersonal, personalSeite } from '../personal/adresse.js'
-import { fehlerText, personalKeys, startSprache, text } from '../personal/texte.js'
+import { fehlerText, personalTexte, startSprache, text } from '../personal/texte.js'
+import { personalKeys } from '../personal/katalog.js'
 import { ApiError } from '../lib/api.js'
 import { meinChip, type MeinZimmer } from '../personal/MeineZimmer.js'
 import { abschnitt, type KontrollZimmer } from '../personal/Kontrolle.js'
@@ -21,6 +22,10 @@ import { chipZustand, jeZimmer, kachelSichtbar, nachKraft } from '../lib/kontrol
 
 const QUELLE = join(import.meta.dirname, '..')
 const lies = (pfad: string): string => readFileSync(join(QUELLE, pfad), 'utf8')
+
+// Die App holt ihre Saetze je Sprache als Paket; hier alle, wie der Bau sie
+// schreibt. Damit prueft der Katalogtest die Pakete und nicht nur die Quelle.
+beforeAll(async () => { await Promise.all(STAFF_LOCALES.map(l => personalTexte.laden(l))) })
 
 describe('Adresse der Personal-App', () => {
   it('erkennt /personal und alles darunter, sonst nichts', () => {

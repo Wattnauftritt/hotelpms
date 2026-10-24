@@ -1,4 +1,4 @@
-import type { StaffLocale } from './messages.js'
+import type { StaffLocale } from './sprachen.js'
 
 /**
  * Texte der Push-Meldungen an das Personal (Baustein 8, Migration 0113).
