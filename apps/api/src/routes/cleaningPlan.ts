@@ -16,9 +16,13 @@ import {
  * Die Hausdame teilt je Tag die faelligen Zimmer -- Abreisen und Bleiber --
  * den Reinigungskraeften zu. StayGrid schlaegt die Zuteilung vor, sie
  * schiebt nach und speichert. Jede Zuteilung traegt die Sollminuten, nach
- * denen die Zeitarbeitsfirma abrechnet; sie werden beim Speichern
- * festgeschrieben (`housekeeping_task.minutes`), damit eine spaetere
- * Aenderung der Sollminuten keinen abgerechneten Monat verschiebt.
+ * denen die Zeitarbeitsfirma abrechnet (`housekeeping_task.minutes`). Fest
+ * sind sie erst, wenn das Zimmer gemeldet ist: eine offene Aufgabe folgt
+ * geaenderten Sollminuten, eine erledigte nicht, damit eine spaetere
+ * Aenderung keinen abgerechneten Tag verschiebt. Festgeschrieben schon beim
+ * Planen hiess, dass ein Zimmer, das morgens noch mit der alten Vorgabe
+ * eingeteilt war, nach dem Hochsetzen der Kategorie weiter mit der alten
+ * Zahl lief (Sven, 24.10.2026: FZ auf 60, Zimmer 8 mit 30).
  *
  * Der Plan steht in `housekeeping_task`, nicht in einer zweiten Tabelle:
  * der Housekeeping-Bildschirm und die Personal-App lesen dieselben Zeilen,
@@ -502,10 +506,9 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
    * Eine Zeile nennt `resourceId` oder `areaId`. Ein Bereich hat immer die
    * Art `departure` (0116).
    *
-   * Minuten: bleibt die Art gleich, bleiben die festgeschriebenen Minuten;
-   * eine neue Aufgabe oder eine andere Art bekommt die aktuellen
-   * Sollminuten, ein Bereich seine eigenen. Eine Zeile aus der alten App
-   * behaelt ihre Minuten immer.
+   * Minuten: eine offene Aufgabe bekommt die aktuellen Sollminuten, ein
+   * Bereich seine eigenen; eine erledigte oder uebersprungene behaelt ihre.
+   * Eine Zeile aus der alten App behaelt ihre Minuten immer.
    */
   registerRoute(app, {
     method: 'PUT',
@@ -624,7 +627,7 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
           const k = ziel(a)
           const alt = jeZiel.get(k)
           const behalten = alt !== undefined && alt.minutes !== null
-            && (alt.kind === a.kind || alt.source === 'legacy')
+            && (alt.source === 'legacy' || (alt.kind === a.kind && alt.status !== 'open'))
           if (a.areaId != null) {
             const b = bereichInfo.get(a.areaId)!
             return { key: k, propertyId: b.property_id, resourceId: null, areaId: a.areaId,
@@ -828,8 +831,10 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
   /**
    * Sollminuten des Hauses ersetzen. Die Liste ist der ganze Stand: was
    * fehlt, faellt weg und damit auf die naechste Stufe zurueck (Kategorie,
-   * Haus, Vorgabe). Bestehende Plaene aendert das nicht; ihre Minuten sind
-   * festgeschrieben.
+   * Haus, Vorgabe). Offene Aufgaben ab dem offenen Geschaeftstag ziehen
+   * mit -- sonst rechnete ein heute schon eingeteiltes Zimmer weiter mit
+   * der alten Zahl. Erledigte und solche aus der alten App bleiben, wie sie
+   * sind: an ihnen haengt die Abrechnung.
    */
   registerRoute(app, {
     method: 'PUT',
@@ -884,7 +889,31 @@ export function cleaningPlanRoutes(app: FastifyInstance): void {
              norms.map(n => n.resourceId ?? null), norms.map(n => n.minutes),
              principal.userId])
         }
-        return { norms: await liesNormen(client, propertyId), defaults: DEFAULT_CLEANING_MINUTES }
+        const neu = await liesNormen(client, propertyId)
+        const { rows: offen } = await client.query<{ id: number; resourceId: number
+                                                     categoryId: number; kind: CleaningKind
+                                                     minutes: number | null }>(
+          `SELECT t.id::int, t.resource_id::int AS "resourceId",
+                  r.category_id::int AS "categoryId", t.kind, t.minutes
+             FROM housekeeping_task t
+             JOIN resource r ON r.id = t.resource_id
+            WHERE t.property_id = $1 AND t.status = 'open' AND t.source <> 'legacy'
+              AND t.kind IN ('departure','stayover')
+              AND t.business_date >= (SELECT min(d.date) FROM business_day d
+                                       WHERE d.property_id = $1 AND d.status = 'open')`,
+          [propertyId])
+        const geaendert = offen.flatMap(t => {
+          const m = resolveCleaningMinutes(neu, t, t.kind)
+          return m === t.minutes ? [] : [{ id: t.id, minutes: m }]
+        })
+        if (geaendert.length > 0) {
+          await client.query(
+            `UPDATE housekeeping_task t SET minutes = n.minutes
+               FROM unnest($1::bigint[], $2::int[]) AS n(id, minutes)
+              WHERE t.id = n.id`,
+            [geaendert.map(t => t.id), geaendert.map(t => t.minutes)])
+        }
+        return { norms: neu, defaults: DEFAULT_CLEANING_MINUTES }
       })
     }
   })

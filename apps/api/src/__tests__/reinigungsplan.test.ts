@@ -10,8 +10,8 @@ import { registerAllRoutes } from '../routes/index.js'
 /**
  * Reinigungsplan (Migration 0106, Baustein 2 des Personalsystems).
  *
- * Geprueft wird, was an Geld haengt: die Minuten werden beim Planen
- * festgeschrieben, eine erledigte Reinigung bleibt bei der Kraft, die sie
+ * Geprueft wird, was an Geld haengt: die Minuten einer offenen Aufgabe
+ * folgen den Sollminuten, die einer gemeldeten bleiben, eine erledigte Reinigung bleibt bei der Kraft, die sie
  * gemacht hat, jede Aenderung steht im Verlauf -- und nur Reinigungskraefte
  * dieses Hauses bekommen Zimmer.
  */
@@ -92,7 +92,7 @@ describe('Reinigungsplan lesen', () => {
 })
 
 describe('Sollminuten', () => {
-  it('nimmt Zimmer vor Kategorie vor Haus und haelt geplante Minuten fest', async () => {
+  it('nimmt Zimmer vor Kategorie vor Haus', async () => {
     const n = await app.inject({ method: 'PUT',
       url: `/v1/properties/${fx.propertyId}/cleaning-norms`, headers: auth(hausdame.sessionId),
       payload: { norms: [
@@ -108,16 +108,38 @@ describe('Sollminuten', () => {
     expect(s.statusCode).toBe(200)
     const geplant = s.json().rooms.slice(0, 2).map((z: { minutes: number }) => z.minutes)
     expect(geplant).toEqual([60, 35])
+  })
 
-    // Spaeter geaenderte Sollminuten verschieben den geplanten Tag nicht.
-    await app.inject({ method: 'PUT',
+  it('zieht offene Aufgaben nach, gemeldete nicht', async () => {
+    // Morgens eingeteilt mit der Vorgabe, dann die Kategorie hochgesetzt
+    // (Sven, 24.10.2026: FZ auf 60, Zimmer 8 rechnete weiter mit 30).
+    const s = await speichern([
+      { resourceId: zimmer[0], kind: 'departure', assignedTo: anna.userId },
+      { resourceId: zimmer[1], kind: 'departure', assignedTo: anna.userId }])
+    expect(s.json().rooms.slice(0, 2).map((z: { minutes: number }) => z.minutes))
+      .toEqual([30, 30])
+    await owner.query(`UPDATE housekeeping_task SET status = 'done', outcome = 'cleaned',
+                         done_at = now() WHERE resource_id = $1`, [zimmer[1]])
+
+    const n = await app.inject({ method: 'PUT',
       url: `/v1/properties/${fx.propertyId}/cleaning-norms`, headers: auth(hausdame.sessionId),
-      payload: { norms: [] } })
+      payload: { norms: [
+        { kind: 'departure', categoryId: kategorie, resourceId: null, minutes: 60 }] } })
+    expect(n.statusCode).toBe(200)
+    const gespeichert = await owner.query<{ resource_id: string; minutes: number }>(
+      `SELECT resource_id, minutes FROM housekeeping_task ORDER BY resource_id`)
+    expect(gespeichert.rows.map(r => r.minutes)).toEqual([60, 30])
+    expect((await lies()).json().rooms.slice(0, 2).map((z: { minutes: number }) => z.minutes))
+      .toEqual([60, 30])
+
+    // Auch ein Speichern des Plans nimmt fuer offene die aktuellen Minuten.
+    await owner.query(`UPDATE housekeeping_task SET minutes = 30 WHERE resource_id = $1`,
+      [zimmer[0]])
     const nochmal = await speichern([
       { resourceId: zimmer[0], kind: 'departure', assignedTo: olga.userId },
       { resourceId: zimmer[1], kind: 'departure', assignedTo: anna.userId }])
     expect(nochmal.json().rooms.slice(0, 2).map((z: { minutes: number }) => z.minutes))
-      .toEqual([60, 35])
+      .toEqual([60, 30])
   })
 
   it('weist Kategorie und Zimmer zugleich ab', async () => {
