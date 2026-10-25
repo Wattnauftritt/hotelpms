@@ -521,10 +521,11 @@ describe('Passkeys in der eigenen App', () => {
     expect(() => androidHerkunft('AB:CD')).toThrow()
   })
 
-  it('nennt in assetlinks.json nur die Anmeldung, keine Links', () => {
+  it('nennt in assetlinks.json die App mit den Rechten aus Googles Anleitung', () => {
     const hex = FINGERABDRUCK.toString('hex')
     expect(assetLinks([hex])).toEqual([{
-      relation: ['delegate_permission/common.get_login_creds'],
+      relation: ['delegate_permission/common.handle_all_urls',
+                 'delegate_permission/common.get_login_creds'],
       target: { namespace: 'android_app', package_name: APP_PAKET,
                 sha256_cert_fingerprints: [hex.toUpperCase().match(/../g)!.join(':')] } }])
     expect(assetLinks([])).toEqual([])
