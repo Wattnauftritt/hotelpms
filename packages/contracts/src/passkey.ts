@@ -74,12 +74,15 @@ export const APP_ANDROID_ZERTIFIKATE: readonly string[] = [
 ]
 
 /**
- * Kennung der iOS-App fuer Apple, `TEAMID.cloud.staygrid.app`. Die Team-ID
- * steht erst fest, wenn das Konto im Apple Developer Program bezahlt ist.
+ * Kennung der iOS-App fuer Apple, `TEAMID.cloud.staygrid.app`.
  * iOS meldet die Herkunft als `https://app.staygrid.cloud`, wie der Browser;
  * fuer die Schnittstelle aendert sich unter iOS deshalb nichts.
  */
-export const APP_APPLE_KENNUNGEN: readonly string[] = []
+export const APP_APPLE_KENNUNGEN: readonly string[] = [
+  // Team-ID von Wattnauftritt (developer.apple.com, Membership details;
+  // Sven, 25.10.2026).
+  '58UD4DN6AZ.cloud.staygrid.app'
+]
 
 /** `AB:CD:…` in die Herkunft, die Android in `clientDataJSON` schreibt. */
 export function androidHerkunft(sha256: string): string {
