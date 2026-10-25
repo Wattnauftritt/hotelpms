@@ -109,15 +109,22 @@ function mitDoppelpunkten(sha256: string): string {
 }
 
 /**
- * Inhalt von assetlinks.json. Nur `get_login_creds`, nicht
- * `handle_all_urls`: die App soll Passkeys der Domain benutzen duerfen, aber
- * nicht jeden Link auf app.staygrid.cloud an sich ziehen -- ein Link aus
- * einer Mail an die Rezeption soll im Browser aufgehen, wie bisher.
+ * Inhalt von assetlinks.json, in der Form aus Googles Anleitung fuer
+ * Passkeys: `get_login_creds` und `handle_all_urls` zusammen. Hier stand
+ * zuerst nur `get_login_creds`, und Credential Manager meldete auf Svens
+ * Telefon „RP ID cannot be validated“, obwohl die Digital-Asset-Links-API
+ * die Zuordnung bestaetigte (25.10.2026).
+ *
+ * `handle_all_urls` zieht dabei keine Links an sich: das tut eine App erst
+ * mit einem Intent-Filter mit `autoVerify` fuer diese Domain, und den hat
+ * StayGrid nicht. Ein Link aus einer Mail an die Rezeption geht weiter im
+ * Browser auf.
  */
 export function assetLinks(zertifikate: readonly string[] = APP_ANDROID_ZERTIFIKATE): unknown[] {
   if (zertifikate.length === 0) return []
   return [{
-    relation: ['delegate_permission/common.get_login_creds'],
+    relation: ['delegate_permission/common.handle_all_urls',
+               'delegate_permission/common.get_login_creds'],
     target: {
       namespace: 'android_app',
       package_name: APP_PAKET,
