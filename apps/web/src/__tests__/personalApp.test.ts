@@ -201,6 +201,13 @@ describe('Kueche', () => {
     expect(nurPersonal([{ permissions: ['kitchen:breakfast'] }])).toBe(false)
   })
 
+  it('schickt das Personal trotz Support-Recht in die Personal-App', () => {
+    // 0208 gab jeder Rolle `support:ticket`; das allein macht niemanden zur Rezeption
+    expect(nurPersonal([{ permissions: ['staff:app', 'support:ticket'] }])).toBe(true)
+    expect(nurPersonal([{ permissions: ['staff:app', 'kitchen:breakfast', 'support:ticket'] }])).toBe(true)
+    expect(nurPersonal([{ permissions: ['support:ticket', 'reservation:read'] }])).toBe(false)
+  })
+
   it('nennt den Tag ohne Verschiebung durch die Zeitzone', () => {
     expect(tagName('2026-10-01', 'de')).toContain('1.10')
   })

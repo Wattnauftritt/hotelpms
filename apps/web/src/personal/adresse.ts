@@ -32,7 +32,14 @@ export function personalSeite(pathname: string, search: string): PersonalSeite {
  * (Fruehstueck), arbeitet aber am Telefon; wer **nur** diese Rechte hat,
  * gehoert in die Personal-App, nicht vor den Zimmerplan.
  */
-export const PERSONAL_RECHTE: readonly string[] = ['staff:app', 'kitchen:breakfast']
+export const PERSONAL_RECHTE: readonly string[] = [
+  'staff:app', 'kitchen:breakfast',
+  // Seit dem Ticketsystem (Migration 0208) darf jede Rolle eine Anfrage
+  // stellen, auch die Reinigung. Ohne diesen Eintrag galt danach niemand
+  // mehr als "nur Personal", und die Reinigungskraefte landeten auf "Hilfe
+  // und Support" statt in ihren Zimmern.
+  'support:ticket'
+]
 
 /** Nur Personal: in irgendeinem Haus `staff:app`, und nirgends mehr als die Personalrechte. */
 export function nurPersonal(
