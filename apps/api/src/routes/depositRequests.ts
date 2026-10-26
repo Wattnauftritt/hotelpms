@@ -202,7 +202,8 @@ export async function anzahlungssicht(
 
   const kopf = await client.query<{ is_training: boolean; email: string | null
                                     anonymized: boolean | null }>(
-    `SELECT p.is_training, g.email, g.status = 'anonymized' AS anonymized
+    `SELECT p.is_training, guest_mail_address(g.id, r.id) AS email,
+            g.status = 'anonymized' AS anonymized
        FROM property p
        LEFT JOIN reservation r ON r.id = $2
        LEFT JOIN guest g ON g.id = r.primary_guest_id

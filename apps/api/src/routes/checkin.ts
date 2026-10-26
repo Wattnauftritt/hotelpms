@@ -439,7 +439,8 @@ async function reservierungAmTresen(
 ): Promise<ReservierungAmTresen> {
   const { rows } = await client.query<ReservierungAmTresen>(
     `SELECT r.id, r.property_id, r.status::text, r.arrival::text, r.departure::text,
-            r.primary_guest_id, g.status AS guest_status, g.email, g.language,
+            r.primary_guest_id, g.status AS guest_status,
+            guest_mail_address(g.id, r.id) AS email, g.language,
             nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name,
             p.name AS property_name, p.is_training,
             reg.id AS reg_id

@@ -136,6 +136,26 @@ describe('Versand vor Anreise', () => {
     expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(0)
   })
 
+  it('schreibt einem Stammgast aus Booking.com an die Weiterleitung dieser Buchung', async () => {
+    // 0214: die Rezeption hat die neue Buchung an das vorhandene Profil
+    // gehaengt, und darin steht die Weiterleitung vom letzten Aufenthalt.
+    const alt = await reservierung({ anreise: '2026-09-01', email: 'alt1@guest.booking.com' })
+    const neu = await reservierung()
+    await owner.query(
+      `UPDATE reservation SET primary_guest_id = (SELECT primary_guest_id FROM reservation
+                                                   WHERE id = $2) WHERE id = $1`, [neu, alt])
+
+    // Ohne die neue Adresse wartet die Einladung, statt ins Leere zu gehen.
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(0)
+
+    await owner.query(`UPDATE reservation SET booking_email = 'neu2@guest.booking.com'
+                        WHERE id = $1`, [neu])
+    expect((await inviteOnlineCheckins(app, ctx, fx.propertyId, opts)).invited).toBe(1)
+    const an = await owner.query<{ to_email: string }>(
+      `SELECT to_email FROM outbound_email WHERE reservation_id = $1`, [neu])
+    expect(an.rows).toEqual([{ to_email: 'neu2@guest.booking.com' }])
+  })
+
   it('laedt nicht ein, wofuer ein Umsystem schon eingeladen oder erfasst hat', async () => {
     const eingeladen = await reservierung()
     const erfasst = await reservierung()

@@ -115,7 +115,8 @@ describe('Nachtragen', () => {
       address: { line1: 'Deichweg 4', postalCode: '27472', city: 'Cuxhaven', country: 'de' } })
     expect(a.statusCode, a.body).toBe(200)
     expect(a.json()).toEqual({ reservationRef: r.ref, guestRef: r.gastRef, fields: {
-      email: { result: 'applied' }, phone: { result: 'applied' },
+      email: { result: 'applied', target: 'reservation', profile: { result: 'applied' } },
+      phone: { result: 'applied' },
       language: { result: 'applied' }, address: { result: 'applied' } } })
 
     const g = await gast(r.gastId)
@@ -128,7 +129,8 @@ describe('Nachtragen', () => {
 
     // Derselbe Aufruf noch einmal aendert nichts.
     const b = await senden(m, r.ref, { email: 'jan@example.org' })
-    expect(b.json<{ fields: unknown }>().fields).toEqual({ email: { result: 'unchanged' } })
+    expect(b.json<{ fields: unknown }>().fields).toEqual(
+      { email: { result: 'unchanged', target: 'reservation', profile: { result: 'unchanged' } } })
   })
 
   it('laesst stehen, was die Rezeption eingetragen hat', async () => {
@@ -140,18 +142,21 @@ describe('Nachtragen', () => {
     const a = await senden(m, r.ref, { email: 'quelle@example.org', language: 'en',
                                        phone: '0170 1' })
     expect(a.statusCode, a.body).toBe(200)
+    // Im Profil bleibt die Adresse der Rezeption; an der Buchung steht die,
+    // mit der sie kam (0214).
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'kept_existing', reason: 'set_otherwise' },
+      email: { result: 'applied', target: 'reservation',
+               profile: { result: 'kept_existing', reason: 'set_otherwise' } },
       language: { result: 'kept_existing', reason: 'set_otherwise' },
       phone: { result: 'applied' } })
     const g = await gast(r.gastId)
     expect(g.email).toBe('tresen@example.org')
     expect(g.language).toBe('da')
 
-    // Zurueckziehen kann es nur, was es selbst gesetzt hat.
+    // Zurueckziehen kann es im Profil nur, was es selbst gesetzt hat.
     const b = await senden(m, r.ref, { email: null })
-    expect(b.json<{ fields: unknown }>().fields)
-      .toEqual({ email: { result: 'kept_existing', reason: 'set_otherwise' } })
+    expect(b.json<{ fields: unknown }>().fields).toEqual({ email: { result: 'withdrawn', target: 'reservation',
+      profile: { result: 'kept_existing', reason: 'set_otherwise' } } })
     expect((await gast(r.gastId)).email).toBe('tresen@example.org')
   })
 
@@ -163,7 +168,8 @@ describe('Nachtragen', () => {
 
     const a = await senden(m, r.ref, { email: 'richtig@example.org', address: null })
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'applied' }, address: { result: 'withdrawn' } })
+      email: { result: 'applied', target: 'reservation', profile: { result: 'applied' } },
+      address: { result: 'withdrawn' } })
     const g = await gast(r.gastId)
     expect(g.email).toBe('richtig@example.org')
     expect(g.address_line1).toBeNull()
@@ -182,7 +188,8 @@ describe('Nachtragen', () => {
 
     const a = await senden(m, r.ref, { email: 'quelle2@example.org', phone: '0170 2' })
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'kept_existing', reason: 'set_otherwise' },
+      email: { result: 'applied', target: 'reservation',
+               profile: { result: 'kept_existing', reason: 'set_otherwise' } },
       phone: { result: 'applied' } })
     expect((await gast(r.gastId)).email).toBe('tresen@example.org')
   })
@@ -274,8 +281,8 @@ describe('Nachtragen', () => {
     const r = await reservierung()
     await senden(erstes, r.ref, { email: 'eins@example.org' })
     const a = await senden(zweites, r.ref, { email: 'zwei@example.org' })
-    expect(a.json<{ fields: unknown }>().fields)
-      .toEqual({ email: { result: 'kept_existing', reason: 'set_otherwise' } })
+    expect(a.json<{ fields: unknown }>().fields).toEqual({ email: { result: 'applied', target: 'reservation',
+      profile: { result: 'kept_existing', reason: 'set_otherwise' } } })
   })
 })
 
@@ -290,7 +297,8 @@ describe('Sperren', () => {
 
     const a = await senden(m, r.ref, { email: 'richtig@example.org', phone: '0170 1' })
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'applied', checkinLinkRevoked: true },
+      email: { result: 'applied', target: 'reservation', profile: { result: 'applied' },
+               checkinLinkRevoked: true },
       phone: { result: 'applied' } })
     expect((await gast(r.gastId)).email).toBe('richtig@example.org')
     const t = await owner.query<{ revoked: boolean; revoke_reason: string | null }>(
@@ -300,7 +308,8 @@ describe('Sperren', () => {
 
     // Ohne offenen Link wird nichts zurueckgezogen.
     const b = await senden(m, r.ref, { email: 'noch-richtiger@example.org' })
-    expect(b.json<{ fields: unknown }>().fields).toEqual({ email: { result: 'applied' } })
+    expect(b.json<{ fields: unknown }>().fields).toEqual(
+      { email: { result: 'applied', target: 'reservation', profile: { result: 'applied' } } })
   })
 
   it('zieht den Link auch zurueck, wenn die Adresse ganz zurueckgenommen wird', async () => {
@@ -312,10 +321,11 @@ describe('Sperren', () => {
        VALUES ($1,$2,'h-2','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
     const a = await senden(m, r.ref, { email: null })
     expect(a.json<{ fields: unknown }>().fields)
-      .toEqual({ email: { result: 'withdrawn', checkinLinkRevoked: true } })
+      .toEqual({ email: { result: 'withdrawn', target: 'reservation', profile: { result: 'withdrawn' },
+                          checkinLinkRevoked: true } })
   })
 
-  it('laesst den Link einer fremden Adresse stehen', async () => {
+  it('laesst den Link stehen, solange die Adresse fuer den Aufenthalt dieselbe bleibt', async () => {
     const m = await maschine(['guest:contact_write'], [fx.propertyId])
     const r = await reservierung()
     await app.inject({ method: 'PATCH', url: `/v1/guests/${r.gastRef}`,
@@ -323,9 +333,10 @@ describe('Sperren', () => {
     await owner.query(
       `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
        VALUES ($1,$2,'h-3','mail','2026-10-12')`, [fx.propertyId, r.reservationId])
-    const a = await senden(m, r.ref, { email: 'quelle@example.org' })
+    // Eine Weiterleitung aendert nichts: die private Adresse geht ihr vor.
+    const a = await senden(m, r.ref, { email: 'x1@guest.booking.com' })
     expect(a.json<{ fields: unknown }>().fields)
-      .toEqual({ email: { result: 'kept_existing', reason: 'set_otherwise' } })
+      .toEqual({ email: { result: 'applied', target: 'reservation' } })
     const t = await owner.query<{ revoked: boolean }>(
       `SELECT revoked_at IS NOT NULL AS revoked FROM checkin_token WHERE reservation_id = $1`,
       [r.reservationId])
@@ -344,7 +355,8 @@ describe('Sperren', () => {
 
     const a = await senden(m, r.ref, { email: 'quelle@example.org', phone: null })
     expect(a.json<{ fields: unknown }>().fields).toEqual({
-      email: { result: 'kept_existing', reason: 'registration_recorded' },
+      email: { result: 'applied', target: 'reservation',
+               profile: { result: 'kept_existing', reason: 'registration_recorded' } },
       phone: { result: 'kept_existing', reason: 'registration_recorded' } })
     const g = await gast(r.gastId)
     expect(g.email).toBeNull()
@@ -540,6 +552,161 @@ describe('Buchungskanal aus dem Umsystem', () => {
     const r = await reservierung()
     expect((await senden(m, r.ref, { channelCode: 'x'.repeat(51) })).statusCode).toBe(422)
     expect((await senden(m, r.ref, { channelCode: 42 })).statusCode).toBe(422)
+  })
+})
+
+describe('Weiterleitungsadresse je Buchung (0214)', () => {
+  const ALT = 'alt123@guest.booking.com'
+  const NEU = 'neu456@guest.booking.com'
+
+  /** Stammgast: die Rezeption haengt die neue Reservierung an sein Profil. */
+  async function stammgast() {
+    const erste = await reservierung()
+    const zweite = await makeReservation(owner, { propertyId: fx.propertyId, categoryId: katId,
+      arrival: '2026-11-10', departure: '2026-11-12', reserveInventory: false, withFolio: false })
+    const ref = await owner.query<{ public_ref: string }>(
+      `UPDATE reservation SET primary_guest_id = $2 WHERE id = $1 RETURNING public_ref`,
+      [zweite.reservationId, erste.gastId])
+    return { erste, zweite: { id: zweite.reservationId, ref: ref.rows[0]!.public_ref } }
+  }
+
+  /** Im Kontext des Accounts, wie in der API: ohne ihn gibt es keine Antwort. */
+  async function adresse(reservationId: number): Promise<string | null> {
+    const c = await owner.connect()
+    try {
+      await c.query('BEGIN')
+      await c.query(`SELECT set_config('app.account_ids', $1, true)`, [String(fx.accountId)])
+      const r = await c.query<{ a: string | null }>(
+        `SELECT guest_mail_address(primary_guest_id, id) AS a FROM reservation WHERE id = $1`,
+        [reservationId])
+      await c.query('COMMIT')
+      return r.rows[0]!.a
+    } finally { c.release() }
+  }
+
+  const detail = async (ref: string) => (await app.inject({
+    method: 'GET', url: `/v1/reservations/${ref}`, headers: auth(admin.sessionId) }))
+    .json<{ guestEmail: string | null }>().guestEmail
+
+  it('nimmt die neue Weiterleitung an die Buchung, auch wenn die alte im Profil steht', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const { erste, zweite } = await stammgast()
+    // Stand vor 0214: die Weiterleitung vom ersten Aufenthalt im Profil.
+    await owner.query(`UPDATE guest SET email = $2 WHERE id = $1`, [erste.gastId, ALT])
+
+    const a = await senden(m, zweite.ref, { email: NEU })
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'applied', target: 'reservation' } })
+    // Das Profil bleibt, wie es ist, und am Stammgast: es geht nichts hinein.
+    expect((await gast(erste.gastId)).email).toBe(ALT)
+    const r = await owner.query<{ primary_guest_id: number; booking_email: string | null }>(
+      `SELECT primary_guest_id, booking_email FROM reservation WHERE id = $1`, [zweite.id])
+    expect(r.rows[0]).toEqual({ primary_guest_id: erste.gastId, booking_email: NEU })
+
+    expect(await adresse(zweite.id)).toBe(NEU)
+    expect(await detail(zweite.ref)).toBe(NEU)
+    // Die alte Weiterleitung im geteilten Profil gilt fuer keine Buchung mehr:
+    // ob sie vom ersten Aufenthalt stammt, weiss niemand.
+    expect(await adresse(erste.reservationId)).toBeNull()
+
+    expect((await senden(m, zweite.ref, { email: NEU.toUpperCase() }))
+      .json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'unchanged', target: 'reservation' } })
+  })
+
+  it('gilt fuer die Buchung, die sie meldet, und nicht fuer die naechste', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const { erste, zweite } = await stammgast()
+    await senden(m, erste.ref, { email: ALT })
+    await senden(m, zweite.ref, { email: NEU })
+    expect(await adresse(erste.reservationId)).toBe(ALT)
+    expect(await adresse(zweite.id)).toBe(NEU)
+    expect((await gast(erste.gastId)).email).toBeNull()
+  })
+
+  it('eine echte Adresse im Profil geht vor', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await app.inject({ method: 'PATCH', url: `/v1/guests/${r.gastRef}`,
+      headers: auth(admin.sessionId), payload: { email: 'jan@example.org' } })
+    const a = await senden(m, r.ref, { email: NEU })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'applied', target: 'reservation' } })
+    expect(await adresse(r.reservationId)).toBe('jan@example.org')
+  })
+
+  it('nutzt eine Weiterleitung im Profil, solange es an keiner anderen Buchung haengt', async () => {
+    const r = await reservierung()
+    await owner.query(`UPDATE guest SET email = $2 WHERE id = $1`, [r.gastId, ALT])
+    expect(await adresse(r.reservationId)).toBe(ALT)
+  })
+
+  it('zieht einen offenen Link zurueck, wenn eine neue Weiterleitung kommt', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const { erste, zweite } = await stammgast()
+    await owner.query(`UPDATE guest SET email = $2 WHERE id = $1`, [erste.gastId, ALT])
+    await owner.query(
+      `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
+       VALUES ($1,$2,'h-w1','mail','2026-11-12')`, [fx.propertyId, zweite.id])
+    const a = await senden(m, zweite.ref, { email: NEU })
+    expect(a.json<{ fields: unknown }>().fields).toEqual({
+      email: { result: 'applied', target: 'reservation', checkinLinkRevoked: true } })
+
+    await owner.query(
+      `INSERT INTO checkin_token (property_id, reservation_id, token_hash, channel, expires_on)
+       VALUES ($1,$2,'h-w2','mail','2026-11-12')`, [fx.propertyId, zweite.id])
+    const b = await senden(m, zweite.ref, { email: null })
+    expect(b.json<{ fields: unknown }>().fields).toEqual({
+      email: { result: 'withdrawn', target: 'reservation', checkinLinkRevoked: true } })
+    const r = await owner.query<{ booking_email: string | null; primary_guest_id: number }>(
+      `SELECT booking_email, primary_guest_id FROM reservation WHERE id = $1`, [zweite.id])
+    // Zurueckgezogen, und der Stammgast bleibt an der Buchung.
+    expect(r.rows[0]).toEqual({ booking_email: null, primary_guest_id: erste.gastId })
+  })
+
+  it('nimmt sie auch nach dem Meldeschein an', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await owner.query(
+      `INSERT INTO registration (property_id, reservation_id, guest_id, arrival,
+                                 planned_departure, is_foreign, destroy_after)
+       VALUES ($1,$2,$3,'2026-10-10','2026-10-12',false,'2027-10-12')`,
+      [fx.propertyId, r.reservationId, r.gastId])
+    const a = await senden(m, r.ref, { email: NEU })
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'applied', target: 'reservation' } })
+  })
+
+  it('nimmt eine private Adresse aus der neuen Buchung vor die aus dem Profil', async () => {
+    // Sven: neue Adresse aus neuer Buchung ueberschreibt die alte.
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const { erste, zweite } = await stammgast()
+    await app.inject({ method: 'PATCH', url: `/v1/guests/${erste.gastRef}`,
+      headers: auth(admin.sessionId), payload: { email: 'alt@example.org' } })
+    const a = await senden(m, zweite.ref, { email: 'neu@example.org' })
+    // Ins geteilte Profil geht sie nicht, und der Stammgast bleibt ungeteilt.
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ email: { result: 'applied', target: 'reservation' } })
+    expect(await adresse(zweite.id)).toBe('neu@example.org')
+    expect(await adresse(erste.reservationId)).toBe('alt@example.org')
+    expect((await gast(erste.gastId)).email).toBe('alt@example.org')
+    const r = await owner.query<{ primary_guest_id: number }>(
+      `SELECT primary_guest_id FROM reservation WHERE id = $1`, [zweite.id])
+    expect(r.rows[0]!.primary_guest_id).toBe(erste.gastId)
+  })
+
+  it('wird mit dem Gast geloescht', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { email: NEU })
+    await owner.query(`UPDATE reservation SET status = 'Canceled' WHERE id = $1`, [r.reservationId])
+    const a = await app.inject({ method: 'POST', url: `/v1/guests/${r.gastRef}/anonymize`,
+      headers: auth(admin.sessionId), payload: {} })
+    expect(a.statusCode, a.body).toBeLessThan(300)
+    const z = await owner.query<{ booking_email: string | null }>(
+      `SELECT booking_email FROM reservation WHERE id = $1`, [r.reservationId])
+    expect(z.rows[0]!.booking_email).toBeNull()
   })
 })
 

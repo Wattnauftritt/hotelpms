@@ -1753,7 +1753,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   rp.code                 AS "ratePlanCode",
                   g.public_ref            AS "guestRef",
                   nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS "guestName",
-                  g.email                 AS "guestEmail",
+                  guest_mail_address(g.id, r.id) AS "guestEmail",
                   g.phone                 AS "guestPhone",
                   -- Die Nummer fuer den Aufenthalt aus dem Meldeformular
                   -- (0123), meist das Handy; die aus dem Profil ist oft das

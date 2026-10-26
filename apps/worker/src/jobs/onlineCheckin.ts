@@ -65,7 +65,7 @@ export async function inviteOnlineCheckins(
           WHERE b.property_id = $1 AND b.status = 'open'
           ORDER BY b.date DESC LIMIT 1
        )
-       SELECT r.id, r.public_ref, r.arrival::text, g.email, g.language,
+       SELECT r.id, r.public_ref, r.arrival::text, m.email, g.language,
               nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name,
               p.name AS property_name
          FROM heute
@@ -74,12 +74,16 @@ export async function inviteOnlineCheckins(
          JOIN property_email_setting es   ON es.property_id = p.id AND es.enabled
          JOIN reservation r               ON r.property_id = p.id
          JOIN guest g                     ON g.id = r.primary_guest_id
+         -- Die Adresse fuer diesen Aufenthalt (0214): bei einem Stammgast
+         -- aus Booking.com die Weiterleitung dieser Buchung, nicht die vom
+         -- letzten Mal.
+         CROSS JOIN LATERAL (SELECT guest_mail_address(g.id, r.id) AS email) m
         WHERE email_sender_allowed(p.id, es.from_email)
           AND r.status = 'Confirmed'
           AND r.arrival >  heute.date
           AND r.arrival <= heute.date + cs.days_before
           AND g.status = 'active' AND g.erasure_requested_at IS NULL
-          AND g.email IS NOT NULL
+          AND m.email IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM registration reg WHERE reg.reservation_id = r.id)
           AND NOT EXISTS (SELECT 1 FROM checkin_token t
                            WHERE t.reservation_id = r.id AND t.channel = 'mail'

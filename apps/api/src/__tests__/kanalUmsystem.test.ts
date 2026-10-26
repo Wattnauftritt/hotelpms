@@ -136,6 +136,25 @@ describe('Anlegen und Abgleichen', () => {
     expect(await verkauft('2026-11-01', '2026-11-07')).toEqual([0, 1, 1, 1, 1, 0])
   })
 
+  it('haelt die Mailadresse der Buchung an jedem Aufenthalt und nimmt eine neue an', async () => {
+    // 0214: die Adresse gilt fuer diese Buchung, auch wenn die Rezeption
+    // einen Aufenthalt spaeter an einen Stammgast haengt.
+    const token = await zugang()
+    const mit = (email: string) => ({ ...ZWEI_ABSCHNITTE,
+      guest: { ...ZWEI_ABSCHNITTE.guest, email } })
+    const a = JSON.parse((await put(token, 'rc-1', mit('a1@guest.booking.com'))).body) as Antwort
+    const adressen = async () => (await owner.query<{ booking_email: string | null }>(
+      `SELECT r.booking_email FROM reservation r JOIN booking b ON b.id = r.booking_id
+        WHERE b.public_ref = $1 ORDER BY r.arrival`, [a.bookingRef]))
+      .rows.map(x => x.booking_email)
+    expect(await adressen()).toEqual(['a1@guest.booking.com', 'a1@guest.booking.com'])
+
+    const zweit = await put(token, 'rc-1', { ...mit('erika@example.org'),
+                                             sourceUpdatedAt: '2026-10-06T10:00:00Z' })
+    expect((JSON.parse(zweit.body) as Antwort).status).toBe('unchanged')
+    expect(await adressen()).toEqual(['erika@example.org', 'erika@example.org'])
+  })
+
   it('zieht um und verlaengert, ohne die Nummern zu wechseln, und der Zaehler stimmt', async () => {
     const token = await zugang()
     const a = JSON.parse((await put(token, 'rc-1', ZWEI_ABSCHNITTE)).body) as Antwort

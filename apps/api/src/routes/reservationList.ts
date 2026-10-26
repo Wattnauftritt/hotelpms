@@ -162,7 +162,7 @@ export function reservationListRoutes(app: FastifyInstance): void {
                        ELSE nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '')
                   END                     AS "guestName",
                   COALESCE(g.status = 'anonymized', false) AS "guestAnonymized",
-                  CASE WHEN $8 THEN g.email END AS "guestEmail",
+                  CASE WHEN $8 THEN guest_mail_address(g.id, r.id) END AS "guestEmail",
                   r.guest_count           AS "guestCount",
                   r.adults, r.children,
                   n.total::text           AS "totalCent",
