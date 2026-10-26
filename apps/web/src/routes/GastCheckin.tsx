@@ -160,15 +160,44 @@ export function GastCheckin({ token, modus, onFertig }: {
   )
 }
 
-/** Die Seite unter `/checkin`, fuer den Link aus der Mail. */
+/**
+ * Die Seite unter `/checkin`, fuer den Link aus der Mail.
+ *
+ * **Erst ein Klick, dann das Formular.** Booking.com oeffnet jeden Link in
+ * einer Mail an seine Weiterleitungsadressen, bevor es sie zustellt, und
+ * zwar in einem Browser, der JavaScript ausfuehrt: am 24.10.2026 stand
+ * "Link geoeffnet" eine Minute nach der Zustellung, um 04:02. Sah der
+ * Pruefer dort ein Formular, das nach Geburtsdatum und Ausweisnummer
+ * fragt, kam die Mail beim Gast nie an; die Testmail mit einem Link ohne
+ * Token kam an. Die Seite laedt deshalb nichts, bevor ein Mensch auf den
+ * Knopf drueckt. Damit stimmt auch `opened_at` wieder: es zaehlt den Gast,
+ * nicht den Pruefer.
+ */
 export function GastCheckinSeite({ token }: { token: string | null }): JSX.Element {
   const [locale] = useState<Locale>(() => startSprache(navigator.language))
+  const [begonnen, setBegonnen] = useState(false)
   useEffect(() => { dokumentSprache(locale) }, [locale])
   return (
     <div className="min-h-screen bg-neutral-50 p-4 sm:p-8">
       {token === null
         ? <Sprache locale={locale}><OhneLink /></Sprache>
-        : <GastCheckin token={token} modus="mail" />}
+        : begonnen
+          ? <GastCheckin token={token} modus="mail" />
+          : <Sprache locale={locale}><Vorschalt onWeiter={() => setBegonnen(true)} /></Sprache>}
+    </div>
+  )
+}
+
+function Vorschalt({ onWeiter }: { onWeiter: () => void }): JSX.Element {
+  const t = useT()
+  return (
+    <div className="mx-auto max-w-xl rounded-sm border border-neutral-200 bg-white p-6 space-y-4">
+      <h1 className="font-semibold">{t('gastCheckin.title')}</h1>
+      <p className="text-sm text-neutral-700">{t('gastCheckin.introBeforeArrival')}</p>
+      <button type="button" onClick={onWeiter}
+              className="rounded-sm bg-neutral-900 px-4 py-2 text-sm font-medium text-white">
+        {t('gastCheckin.start')}
+      </button>
     </div>
   )
 }
