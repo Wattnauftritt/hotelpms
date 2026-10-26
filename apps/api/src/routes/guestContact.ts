@@ -458,28 +458,31 @@ async function kontaktSchreiben(
   const buchungsMail = eingabe.email === undefined ? null
     : await buchungsadresseSchreiben(client, Number(res.id), eingabe.email)
   /*
-   * Ins Profil nur eine echte Adresse und nur ein ungeteiltes Profil.
-   * Eine Weiterleitung gilt fuer eine Buchung, nicht fuer den Menschen;
-   * und an einem Stammgast entschiede eine Mailadresse sonst ueber die
-   * Trennung (0107), die die Rezeption gerade nicht wollte.
-   */
-  const insProfil = eingabe.email !== undefined && !isChannelRelayAddress(eingabe.email)
-    && !(await profilGeteilt(client, Number(gast.id), Number(res.id)))
-  const profilEingabe: Eingabe = insProfil ? eingabe : { ...eingabe, email: undefined }
-  /*
    * Haengt das Profil noch an anderen Reservierungen, bekommt diese ein
    * eigenes, bevor etwas hineingeschrieben wird (Migration 0107). Das
    * Umsystem meint diesen Aufenthalt; ein Vorname, den es fuer ihn schickt,
    * stand sonst in jeder Reservierung desselben KWHotel-Gastsatzes. Nicht,
    * wenn der Meldeschein erfasst ist: dann aendert der Abgleich ohnehin
    * nichts, und ein Profil ohne Anlass entstuende.
+   *
+   * Die Mailadresse zaehlt dabei nicht mit (0214): sie hat ihren Platz an
+   * der Buchung, und an einem Stammgast entschiede sie sonst ueber eine
+   * Trennung, die die Rezeption gerade nicht wollte.
    */
-  const felderDa = (['firstName', 'email', 'phone', 'language', 'address'] as const)
-    .some(f => profilEingabe[f] !== undefined)
+  const felderDa = (['firstName', 'phone', 'language', 'address'] as const)
+    .some(f => eingabe[f] !== undefined)
   if (!erfasst && felderDa) {
     const profil = await eigenesProfil(client, Number(res.id), Number(gast.id))
     if (profil.getrennt) gast = await lesen(profil.id)
   }
+  /*
+   * Ins Profil nur eine echte Adresse und nur, wenn es (jetzt) allein an
+   * dieser Reservierung haengt. Eine Weiterleitung gilt fuer eine Buchung,
+   * nicht fuer den Menschen.
+   */
+  const insProfil = eingabe.email !== undefined && !isChannelRelayAddress(eingabe.email)
+    && !(await profilGeteilt(client, Number(gast.id), Number(res.id)))
+  const profilEingabe: Eingabe = insProfil ? eingabe : { ...eingabe, email: undefined }
 
   const sperre = await client.query<{ link: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM checkin_token
