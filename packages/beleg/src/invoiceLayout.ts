@@ -126,6 +126,25 @@ function menge(l: CiiLine): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ',')
 }
 
+/**
+ * Einzelpreis netto, wie er im XML steht (BT-146, vier Nachkommastellen).
+ *
+ * Seit die Fruehstueckszeilen die Zahl der Fruehstuecke tragen (Sven,
+ * 26.10.2026), geht der Betrag selten glatt auf: 17,99 Speisen fuer zwei
+ * Fruehstuecke sind 8,995 je Stueck. Auf zwei Stellen gerundet stuende
+ * dort 9,00, und Menge mal Preis verfehlte die Position, ohne dass das
+ * Blatt es sagt. Ein Durchschnitt ueber Naechte bleibt auf zwei Stellen;
+ * er ist mit "Ø" schon als solcher gekennzeichnet.
+ */
+export function einzelpreis(l: CiiLine): string {
+  const menge = Math.abs(l.quantity) || 1
+  const netto = Math.abs(l.netCent)
+  if (l.averagePrice || netto % menge === 0) return euro(Math.round(netto / menge))
+  const hundertstelCent = Math.round((netto * 100) / menge)
+  const stellen = String(hundertstelCent % 100).padStart(2, '0').replace(/0+$/, '')
+  return euro(Math.trunc(hundertstelCent / 100)) + stellen
+}
+
 function iban(i: string): string {
   return i.replace(/(.{4})(?=.)/g, '$1 ')
 }
@@ -324,7 +343,7 @@ function positionen(z: Zeichner, inv: CiiInvoice): void {
     // steht die Menge in Naechten und nicht in Stueck.
     // Zusammengefasste Naechte zu verschiedenen Preisen: der Durchschnitt,
     // als solcher gekennzeichnet (groupInvoiceLines).
-    const einzel = euro(Math.round(Math.abs(l.netCent) / (Math.abs(l.quantity) || 1)))
+    const einzel = einzelpreis(l)
     text(z, l.averagePrice ? `Ø ${einzel}` : einzel, SPALTE.einzel, y, { align: 'right' })
     text(z, prozent(l.rateBp), SPALTE.satz, y, { align: 'right' })
     text(z, euro(l.netCent), SPALTE.betrag, y, { align: 'right' })

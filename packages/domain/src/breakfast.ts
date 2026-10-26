@@ -53,6 +53,31 @@ export function breakfastPerNight(input: {
 }
 
 /**
+ * Wie viele Fruehstuecke eine Nacht berechnet: die Menge auf Folio und
+ * Rechnung (Sven, 26.10.2026: "5 personen mal 2 naechte also 10
+ * fruehstuecke"). § 14 Abs. 4 Nr. 5 UStG verlangt den Umfang der Leistung,
+ * und ein Arbeitgeber kuerzt die Verpflegungspauschale je gestelltem
+ * Fruehstueck (§ 9 Abs. 4a EStG); "2" fuer zwei Naechte zu fuenft sagt
+ * beiden das Falsche.
+ *
+ * Gezaehlt wird, wer bezahlt, nach derselben Regel wie
+ * `breakfastPerNight`: ein freies Kinderfruehstueck (`childCent` 0) steht
+ * nicht in der Menge, sonst laege der Einzelpreis auf der Rechnung unter
+ * dem Preis, den ein Erwachsener zahlt.
+ */
+export function breakfastCount(input: {
+  childCent: Cent | null
+  persons: number
+  adults: number | null
+  children: number | null
+}): number {
+  if (input.childCent !== null && input.adults !== null) {
+    return Math.max(input.adults + (input.childCent > 0 ? input.children ?? 0 : 0), 1)
+  }
+  return Math.max(input.persons, 1)
+}
+
+/**
  * Eine Nacht in Logis, Speisen und Getraenke.
  *
  * Nie mehr Fruehstueck als die Nacht selbst: ein Ratenpreis unter dem

@@ -316,17 +316,20 @@ describe('Fruehstueck nachtraeglich aufteilen (0169)', () => {
 
     const z = await owner.query<{ business_date: string; description: string
                                   gross_cent: number; tax_rate_bp: number
-                                  package_part: string | null }>(
-      `SELECT business_date::text, description, gross_cent::int, tax_rate_bp, package_part
+                                  package_part: string | null; quantity: number }>(
+      `SELECT business_date::text, description, gross_cent::int, tax_rate_bp, package_part,
+              quantity
          FROM charge WHERE folio_id = $1 ORDER BY id`, [a.folioId])
     const erste = z.rows.filter(x => x.business_date === '2026-10-08')
-    expect(erste.map(x => [x.description, x.gross_cent, x.tax_rate_bp, x.package_part]))
+    // Die Menge der Fruehstueckszeilen ist die Zahl der Fruehstuecke (26.10.2026).
+    expect(erste.map(x => [x.description, x.gross_cent, x.tax_rate_bp, x.package_part,
+                           x.quantity]))
       .toEqual([
-        ['Uebernachtung 08.10.2026', 8_933, 700, null],
-        ['Storno Uebernachtung 08.10.2026', -8_933, 700, null],
-        ['Uebernachtung 08.10.2026', 8_933 - 2_400, 700, null],
-        ['Frühstück Speisen 08.10.2026', 1_680, 700, 'breakfast_food'],
-        ['Frühstück Getränke 08.10.2026', 720, 1900, 'breakfast_drinks']])
+        ['Uebernachtung 08.10.2026', 8_933, 700, null, 1],
+        ['Storno Uebernachtung 08.10.2026', -8_933, 700, null, 1],
+        ['Uebernachtung 08.10.2026', 8_933 - 2_400, 700, null, 1],
+        ['Frühstück Speisen 08.10.2026', 1_680, 700, 'breakfast_food', 2],
+        ['Frühstück Getränke 08.10.2026', 720, 1900, 'breakfast_drinks', 2]])
     // Kein Datum ausser denen der Naechte: der Leistungszeitraum bleibt.
     expect(new Set(z.rows.map(x => x.business_date)))
       .toEqual(new Set(['2026-10-08', '2026-10-09']))

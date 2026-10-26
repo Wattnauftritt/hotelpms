@@ -93,6 +93,16 @@ export async function postNights(
                                                  WHERE o.reservation_id = r.id)::int), 1)
                     END,
                     GREATEST(rn.price_cent, 0)) AS fruehstueck,
+              -- Die Menge der Fruehstueckszeilen wie breakfastCount
+              -- (domain): wer zahlt, ein freies Kinderfruehstueck nicht.
+              CASE WHEN fp.kind IS NOT NULL AND r.adults IS NOT NULL
+                     THEN GREATEST(r.adults + CASE WHEN fp.kind > 0
+                                                   THEN COALESCE(r.children, 0)
+                                                   ELSE 0 END, 1)
+                   ELSE GREATEST(COALESCE(r.guest_count,
+                                          (SELECT count(*) FROM reservation_occupant o
+                                            WHERE o.reservation_id = r.id)::int), 1)
+              END AS fruehstuecke,
               COALESCE(rn.rate_plan_id, r.rate_plan_id) AS plan_id,
               r.arrival,
               GREATEST(COALESCE(r.guest_count,
@@ -157,19 +167,20 @@ export async function postNights(
          FROM inklusiv GROUP BY reservation_id, date
      ), zeilen AS (
        SELECT t.property_id, t.folio_id, t.reservation_id, t.date,
-              z.n, z.text, z.brutto, z.satz, z.konto, z.teil
+              z.n, z.text, z.menge, z.brutto, z.satz, z.konto, z.teil
          FROM teile t CROSS JOIN steuer s
          LEFT JOIN inklusiv_summe k ON k.reservation_id = t.reservation_id AND k.date = t.date
          -- Die Texte stehen so auf der Rechnung des Gastes; dort gehoeren
          -- die Umlaute hin (Sven, 14.10.2026). Aeltere Buchungen tragen
          -- noch die Umschreibung, die Abfragen kennen beide.
          CROSS JOIN LATERAL (VALUES
-           (1, 'Übernachtung', t.price_cent - t.fruehstueck - COALESCE(k.summe, 0),
+           (1, 'Übernachtung', 1, t.price_cent - t.fruehstueck - COALESCE(k.summe, 0),
                s.rate_bp, '8300', NULL::text),
-           (2, 'Frühstück Speisen', t.fruehstueck - t.getraenke, $4::int, $6::text,
-               'breakfast_food'),
-           (3, 'Frühstück Getränke', t.getraenke, $5::int, $7::text, 'breakfast_drinks')
-         ) z(n, text, brutto, satz, konto, teil)
+           (2, 'Frühstück Speisen', t.fruehstuecke, t.fruehstueck - t.getraenke, $4::int,
+               $6::text, 'breakfast_food'),
+           (3, 'Frühstück Getränke', t.fruehstuecke, t.getraenke, $5::int, $7::text,
+               'breakfast_drinks')
+         ) z(n, text, menge, brutto, satz, konto, teil)
         -- Die Logis auch bei null: eine Nacht, die gebucht wurde, steht im
         -- Folio, wie bisher. Fruehstuecksteile nur, wenn es sie gibt.
         WHERE z.n = 1 OR z.brutto > 0
@@ -179,7 +190,7 @@ export async function postNights(
        SELECT t.property_id, t.folio_id, t.reservation_id, t.date,
               3 + row_number() OVER (PARTITION BY i.reservation_id, i.date
                                      ORDER BY i.product_id),
-              i.name, i.anteil, COALESCE(i.rate_bp, s.rate_bp), i.revenue_account,
+              i.name, 1, i.anteil, COALESCE(i.rate_bp, s.rate_bp), i.revenue_account,
               'inclusion'
          FROM inklusiv i
          JOIN teile t ON t.reservation_id = i.reservation_id AND t.date = i.date
@@ -190,7 +201,7 @@ export async function postNights(
                            net_cent, tax_cent, gross_cent, tax_rate_bp,
                            revenue_account, reservation_id, package_part)
        SELECT z.property_id, z.folio_id, z.date,
-              z.text || ' ' || to_char(z.date, 'DD.MM.YYYY'), 1,
+              z.text || ' ' || to_char(z.date, 'DD.MM.YYYY'), z.menge,
               z.brutto - round(z.brutto * z.satz / (10000.0 + z.satz)),
               round(z.brutto * z.satz / (10000.0 + z.satz)),
               z.brutto, z.satz, z.konto, z.reservation_id, z.teil

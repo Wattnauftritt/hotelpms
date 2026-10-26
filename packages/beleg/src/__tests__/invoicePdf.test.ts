@@ -3,7 +3,7 @@ import { crc32, deflateSync } from 'node:zlib'
 import { PDFDocument, PDFDict, PDFArray, PDFName, PDFRawStream, PDFStream,
          decodePDFRawStream } from 'pdf-lib'
 import { buildInvoiceCii, type CiiInvoice } from '@hotelpms/domain'
-import { renderInvoicePdf, euro, datum } from '../invoiceLayout.js'
+import { renderInvoicePdf, euro, datum, einzelpreis } from '../invoiceLayout.js'
 import { finalizePdfA3, FACTUR_X_FILENAME } from '../pdfa3.js'
 
 /**
@@ -205,6 +205,22 @@ describe('Darstellung von Betrag und Datum', () => {
     // Beleg je nach Serverzeitzone um einen Tag verschiebt.
     expect(datum('2026-10-01')).toBe('01.10.2026')
     expect(datum('2026-01-31')).toBe('31.01.2026')
+  })
+
+  /**
+   * Fruehstueck je Stueck (Sven, 26.10.2026): 17,99 fuer zwei Fruehstuecke
+   * sind 8,995, nicht 9,00 -- sonst ergaebe Menge mal Preis 18,00.
+   */
+  it('schreibt den Einzelpreis so genau wie das XML', () => {
+    const zeile = (netCent: number, quantity: number, averagePrice?: boolean) =>
+      einzelpreis({ name: 'Frühstück Speisen', quantity, netCent, rateBp: 700,
+                    ...(averagePrice ? { averagePrice } : {}) })
+    expect(zeile(1_799, 2)).toBe('8,995')
+    expect(zeile(10_000, 3)).toBe('33,3333')
+    expect(zeile(1_000, 4)).toBe('2,50')
+    expect(zeile(-1_799, -2)).toBe('8,995')
+    // Ein Durchschnitt ueber Naechte bleibt auf zwei Stellen; "Ø" sagt es.
+    expect(zeile(23_832, 2, true)).toBe('119,16')
   })
 })
 
