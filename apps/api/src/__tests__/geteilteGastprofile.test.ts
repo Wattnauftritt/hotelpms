@@ -163,7 +163,8 @@ describe('Meldeschein und Gastkontakt trennen ab', () => {
     const b = await kontaktSenden(m, a2.ref, { firstName: 'Jens', email: 'jens@example.org' })
     expect(b.statusCode, b.body).toBe(200)
     expect(b.json<{ fields: unknown }>().fields).toEqual({
-      firstName: { result: 'applied' }, email: { result: 'applied' } })
+      firstName: { result: 'applied' },
+      email: { result: 'applied', target: 'reservation', profile: { result: 'applied' } } })
     expect(await hauptgast(a2.id)).toMatchObject({ first_name: 'Jens', email: 'jens@example.org' })
     expect(await hauptgast(a1.id)).toMatchObject({ first_name: null, email: null })
     expect(Number((await hauptgast(a1.id)).id)).toBe(g.id)

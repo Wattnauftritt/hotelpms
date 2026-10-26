@@ -49,6 +49,24 @@ export function isSendableAddress(value: string | null | undefined): boolean {
 }
 
 /*
+ * Domains, unter denen ein Buchungsportal dem Gast eine Weiterleitungsadresse
+ * vergibt. Booking.com gibt fuer **jede** Buchung eine neue
+ * (`xyz@guest.booking.com`); die vom letzten Aufenthalt fuehrt ins Leere,
+ * und die Post verschwindet ohne Rueckmeldung. Eine solche Adresse gehoert
+ * deshalb zur Reservierung (`reservation.booking_email`, Migration 0214),
+ * nicht ins Gastprofil eines Stammgastes. Dieselbe Liste steht in
+ * `email_is_channel_relay()`; aendern nur beide zusammen.
+ */
+const WEITERLEITUNGS_DOMAINS = ['guest.booking.com']
+
+/** Ist das eine Weiterleitungsadresse eines Buchungsportals? */
+export function isChannelRelayAddress(value: string | null | undefined): boolean {
+  if (!value) return false
+  const at = value.trim().lastIndexOf('@')
+  return at > 0 && WEITERLEITUNGS_DOMAINS.includes(value.trim().slice(at + 1).toLowerCase())
+}
+
+/*
  * Anbieter, unter deren Domain niemand eine Absenderdomain anmelden kann --
  * und zwar mit gutem Grund: wer `gmx.de` anmelden koennte, koennte im Namen
  * jedes GMX-Kunden schreiben. Der Versandanbieter weist das ohnehin ab.

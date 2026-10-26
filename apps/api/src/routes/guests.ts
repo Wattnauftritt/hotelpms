@@ -392,7 +392,10 @@ export function guestRoutes(app: FastifyInstance): void {
         const stays = await client.query(
           `SELECT r.public_ref AS "reservationRef", p.name AS property,
                   r.arrival::text AS arrival, r.departure::text AS departure,
-                  r.status::text AS status
+                  r.status::text AS status,
+                  -- Die Weiterleitungsadresse des Portals (0214) ist seine
+                  -- Adresse fuer diese Buchung, auch wenn sie nicht im Profil steht.
+                  CASE WHEN r.primary_guest_id = $1 THEN r.booking_email END AS "bookingEmail"
              FROM reservation r
              JOIN property p ON p.id = r.property_id
             WHERE r.primary_guest_id = $1

@@ -3379,7 +3379,7 @@ export function billingRoutes(app: FastifyInstance): void {
         const f = await client.query<{ id: number; property_id: number; guest_id: number | null
                                        company_id: number | null; email: string | null }>(
           `SELECT f.id, f.property_id, f.guest_id, f.company_id,
-                  COALESCE(c.invoice_email, g.email) AS email
+                  COALESCE(c.invoice_email, guest_mail_address(g.id, f.reservation_id)) AS email
              FROM folio f
              LEFT JOIN company c ON c.id = f.company_id
              LEFT JOIN guest g ON g.id = f.guest_id

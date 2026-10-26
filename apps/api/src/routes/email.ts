@@ -67,7 +67,7 @@ export async function invoiceRecipient(
   const { rows } = await client.query<{
     email: string | null; name: string | null; language: string | null
     anonymized: boolean }>(
-    `SELECT COALESCE(c.invoice_email, g.email)                       AS email,
+    `SELECT COALESCE(c.invoice_email, guest_mail_address(g.id, f.reservation_id)) AS email,
             COALESCE(c.name, nullif(trim(concat_ws(' ', g.first_name, g.last_name)), ''))
                                                                      AS name,
             g.language,
@@ -403,7 +403,7 @@ export function emailRoutes(
                   to_char(p.checkin_time,  'HH24:MI') AS checkin_time,
                   to_char(p.checkout_time, 'HH24:MI') AS checkout_time,
                   rc.name AS category_name,
-                  g.email, g.language,
+                  guest_mail_address(g.id, r.id) AS email, g.language,
                   nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name,
                   COALESCE(g.status = 'anonymized', false) AS anonymized,
                   COALESCE((SELECT sum(n.price_cent) FROM reservation_night n

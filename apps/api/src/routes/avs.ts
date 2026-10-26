@@ -89,7 +89,8 @@ async function scheine(client: PoolClient, reservationId: number): Promise<Zeile
             reg.signature_required, reg.signed_at::text,
             reg.avs_reported_at::text, reg.avs_export_id, reg.digital_guest_card,
             g.id AS guest_id, g.last_name, g.first_name, g.birth_date::text,
-            g.nationality, g.address_line1, g.postal_code, g.city, g.country, g.email,
+            g.nationality, g.address_line1, g.postal_code, g.city, g.country,
+            guest_mail_address(g.id, r.id) AS email,
             g.id_document_number_enc AS id_enc, g.id_document_key_version AS id_key,
             x.avs_category
        FROM registration reg

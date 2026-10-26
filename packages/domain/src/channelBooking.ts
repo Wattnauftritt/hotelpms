@@ -417,6 +417,21 @@ function zuordnen(
   return { paare, neu: [...offen], uebrig: [...frei] }
 }
 
+/**
+ * Die Adresse, mit der die Buchung kam, an jedem ihrer Aufenthalte (0214):
+ * haengt die Rezeption einen davon spaeter an einen Stammgast, gilt fuer ihn
+ * weiter die Adresse dieser Buchung, nicht die vom letzten Mal. Eine
+ * Aenderung im Portal ersetzt sie; fehlt sie im Push, bleibt die bisherige.
+ */
+async function buchungsadresse(
+  client: KanalClient, ids: number[], email: string | undefined
+): Promise<void> {
+  if (email === undefined || ids.length === 0) return
+  await client.query(
+    `UPDATE reservation SET booking_email = $2
+      WHERE id = ANY($1::bigint[]) AND booking_email IS DISTINCT FROM $2`, [ids, email])
+}
+
 async function gastAnlegen(
   client: KanalClient, p: KanalZugang, guest: KanalRumpf['guest']
 ): Promise<number | null> {
@@ -760,6 +775,8 @@ export async function kanalBuchungSetzen(
   const lebend = ist.filter(r => LEBEND.has(r.status))
 
   if (!angelegt && buchung.source_hash === hash && lebend.length === soll.length) {
+    // Die Pruefsumme kennt keine Gastdaten; eine neue Adresse kommt trotzdem an.
+    await buchungsadresse(client, lebend.map(r => r.id), body.guest?.email)
     await wartendePlatzieren(client, propertyId)
     await client.query(
       `UPDATE booking SET source_updated_at = COALESCE($2::timestamptz, source_updated_at)
@@ -846,6 +863,7 @@ export async function kanalBuchungSetzen(
   await naechteSchreiben(client, propertyId,
     body.totalCent ?? body.segments.reduce((t, x) => t + (x.totalCent ?? 0), 0), traeger)
   const ids = traeger.map(t => t.reservationId)
+  await buchungsadresse(client, ids, body.guest?.email)
   if (selbst) {
     await zimmerFreiMachen(client, ids)
     const heute = await roomSortToday(client, propertyId)

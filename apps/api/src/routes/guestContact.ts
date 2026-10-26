@@ -1,12 +1,12 @@
 import type { FastifyInstance } from 'fastify'
-import { isSendableAddress } from '@hotelpms/domain'
+import { isChannelRelayAddress, isSendableAddress } from '@hotelpms/domain'
 import { istLand } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
 import { Errors } from '../platform/errors.js'
 import { can, type Principal } from '../platform/context.js'
 import type { PoolClient } from '@hotelpms/db'
-import { eigenesProfil } from '../platform/gast.js'
+import { eigenesProfil, profilGeteilt } from '../platform/gast.js'
 
 /**
  * Kontaktdaten eines Gastes aus einem Umsystem (Migration 0083).
@@ -36,11 +36,34 @@ import { eigenesProfil } from '../platform/gast.js'
  * wird zurueckgezogen, mit Grund, und der naechste Lauf des Workers laedt an
  * die neue Adresse ein. Stehen zu lassen hiesse: ein Fremder haelt einen
  * Link zu Buchungsdaten, und der Gast bekommt keinen.
+ *
+ * **Die Mailadresse gehoert zuerst zur Buchung** (Migration 0214, Sven
+ * 26.10.2026). Jede gemeldete Adresse steht an der Reservierung und ersetzt
+ * dort die vorige, ohne Rangfolge: sie stammt aus genau dieser Buchung.
+ * Booking.com vergibt fuer jede Buchung eine neue Weiterleitung unter
+ * `guest.booking.com`; ein Stammgast, dessen Profil die Rezeption an die
+ * neue Reservierung gehaengt hat, bekam sonst den Link an die Adresse vom
+ * letzten Mal -- oder gar keinen, weil die alte nicht vom Umsystem stammte
+ * (`kept_existing`). Welche Adresse dann gilt, entscheidet
+ * `guest_mail_address()`: eine private Adresse im Profil geht einer
+ * Weiterleitung vor.
+ *
+ * Ins Profil geht die Adresse daneben nach den alten Regeln, aber nur eine
+ * echte und nur, solange das Profil an keiner anderen Reservierung haengt.
+ * Eine Mailadresse allein trennt keinen Stammgast mehr ab (0107); sie hat
+ * ihren Platz an der Buchung.
  */
 
 type Feld = 'firstName' | 'email' | 'phone' | 'language' | 'address'
 type Ergebnis = 'applied' | 'unchanged' | 'kept_existing' | 'withdrawn'
 type Grund = 'set_otherwise' | 'registration_recorded'
+interface FeldErgebnis {
+  result: Ergebnis; reason?: Grund; checkinLinkRevoked?: boolean
+  /** `reservation`: an der Reservierung als Adresse dieser Buchung (0214). */
+  target?: 'reservation'
+  /** Was dabei im Profil geschah, wenn die Adresse auch dorthin ging. */
+  profile?: { result: Ergebnis; reason?: Grund }
+}
 
 interface Anschrift { line1: string; postalCode: string; city: string; country: string | null }
 
@@ -407,9 +430,7 @@ async function kontaktSchreiben(
   client: PoolClient,
   res: { id: number; primary_guest_id: number | null },
   eingabe: Eingabe, quelle: NonNullable<Eingabe['source']>, principal: Principal
-): Promise<{ guestRef: string
-             felder: Partial<Record<Feld, { result: Ergebnis; reason?: Grund
-                                             checkinLinkRevoked?: boolean }>> }> {
+): Promise<{ guestRef: string; felder: Partial<Record<Feld, FeldErgebnis>> }> {
   if (res.primary_guest_id === null) throw Errors.conflict('reservation.noPrimaryGuest')
 
   const lesen = async (id: number) => (await client.query<GastZeile & { loeschantrag: boolean }>(
@@ -426,6 +447,16 @@ async function kontaktSchreiben(
   const erfasstAbfrage = await client.query<{ erfasst: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM registration WHERE reservation_id = $1) AS erfasst`, [res.id])
   const { erfasst } = erfasstAbfrage.rows[0]!
+
+  // Wohin Gastpost zu diesem Aufenthalt bisher ging; am Ende verglichen.
+  const vorher = await mailAdresse(client, Number(res.id))
+  /*
+   * Die Adresse an die Reservierung (0214), auch nach dem Meldeschein: sie
+   * ist keine Angabe, die der Gast dort bestaetigt hat, sondern der Weg, auf
+   * dem ihn die Buchung erreicht. `null` zieht sie zurueck.
+   */
+  const buchungsMail = eingabe.email === undefined ? null
+    : await buchungsadresseSchreiben(client, Number(res.id), eingabe.email)
   /*
    * Haengt das Profil noch an anderen Reservierungen, bekommt diese ein
    * eigenes, bevor etwas hineingeschrieben wird (Migration 0107). Das
@@ -433,13 +464,25 @@ async function kontaktSchreiben(
    * stand sonst in jeder Reservierung desselben KWHotel-Gastsatzes. Nicht,
    * wenn der Meldeschein erfasst ist: dann aendert der Abgleich ohnehin
    * nichts, und ein Profil ohne Anlass entstuende.
+   *
+   * Die Mailadresse zaehlt dabei nicht mit (0214): sie hat ihren Platz an
+   * der Buchung, und an einem Stammgast entschiede sie sonst ueber eine
+   * Trennung, die die Rezeption gerade nicht wollte.
    */
-  const felderDa = (['firstName', 'email', 'phone', 'language', 'address'] as const)
+  const felderDa = (['firstName', 'phone', 'language', 'address'] as const)
     .some(f => eingabe[f] !== undefined)
   if (!erfasst && felderDa) {
     const profil = await eigenesProfil(client, Number(res.id), Number(gast.id))
     if (profil.getrennt) gast = await lesen(profil.id)
   }
+  /*
+   * Ins Profil nur eine echte Adresse und nur, wenn es (jetzt) allein an
+   * dieser Reservierung haengt. Eine Weiterleitung gilt fuer eine Buchung,
+   * nicht fuer den Menschen.
+   */
+  const insProfil = eingabe.email !== undefined && !isChannelRelayAddress(eingabe.email)
+    && !(await profilGeteilt(client, Number(gast.id), Number(res.id)))
+  const profilEingabe: Eingabe = insProfil ? eingabe : { ...eingabe, email: undefined }
 
   const sperre = await client.query<{ link: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM checkin_token
@@ -454,8 +497,7 @@ async function kontaktSchreiben(
                language: string; address: Anschrift | null } = {
     firstName: gast.first_name?.trim() || null, email: gast.email, phone: gast.phone,
     language: gast.language, address: anschriftVon(gast) }
-  const felder: Partial<Record<Feld, { result: Ergebnis; reason?: Grund
-                                       checkinLinkRevoked?: boolean }>> = {}
+  const felder: Partial<Record<Feld, FeldErgebnis>> = {}
   /*
    * Ein Land ohne Strasse, Postleitzahl und Ort ist keine Anschrift, die
    * jemand eingetragen hat. Der KWHotel-Import bringt genau das mit: in der
@@ -503,7 +545,7 @@ async function kontaktSchreiben(
 
   const gesperrt: Grund | null = erfasst ? 'registration_recorded' : null
   entscheiden('firstName', eingabe.firstName, null, gesperrt)
-  entscheiden('email', eingabe.email, null, gesperrt)
+  entscheiden('email', profilEingabe.email, null, gesperrt)
   entscheiden('phone', eingabe.phone, null, gesperrt)
   entscheiden('language', eingabe.language, SPRACHE_VORGABE, gesperrt)
   // Ohne Land bleibt das Land, das schon da ist. Ein Umsystem, das keines
@@ -512,13 +554,10 @@ async function kontaktSchreiben(
     ? { ...eingabe.address, country: gast.country } : eingabe.address
   entscheiden('address', anschrift, null, gesperrt)
 
-  const mail = felder.email
-  if (link && mail && (mail.result === 'applied' || mail.result === 'withdrawn')) {
-    await client.query(
-      `UPDATE checkin_token SET revoked_at = now(), revoke_reason = 'contact_changed'
-        WHERE reservation_id = $1 AND channel = 'mail' AND revoked_at IS NULL`,
-      [res.id])
-    mail.checkinLinkRevoked = true
+  if (buchungsMail !== null) {
+    const imProfil = felder.email
+    felder.email = { ...buchungsMail, target: 'reservation',
+                     ...(imProfil ? { profile: imProfil } : {}) }
   }
 
   const geaendert = Object.values(felder)
@@ -537,5 +576,47 @@ async function kontaktSchreiben(
        JSON.stringify(origin), neu.firstName])
   }
 
+  /*
+   * Der Link ging an die Adresse, die bis eben galt. Verglichen wird die
+   * Adresse, an die Post tatsaechlich geht (0214), nicht das Feld im
+   * Profil: eine neue Adresse an der Buchung aendert das Profil nicht und
+   * macht den Link trotzdem falsch adressiert.
+   */
+  const mail = felder.email
+  if (link && mail && vorher !== await mailAdresse(client, Number(res.id))) {
+    await client.query(
+      `UPDATE checkin_token SET revoked_at = now(), revoke_reason = 'contact_changed'
+        WHERE reservation_id = $1 AND channel = 'mail' AND revoked_at IS NULL`,
+      [res.id])
+    mail.checkinLinkRevoked = true
+  }
+
   return { guestRef: gast.public_ref, felder }
+}
+
+/** Die Adresse, an die Gastpost zu dieser Reservierung geht (0214). */
+async function mailAdresse(client: PoolClient, reservationId: number): Promise<string | null> {
+  const r = await client.query<{ adresse: string | null }>(
+    `SELECT guest_mail_address(primary_guest_id, id) AS adresse
+       FROM reservation WHERE id = $1`, [reservationId])
+  return r.rows[0]?.adresse ?? null
+}
+
+/**
+ * Die Adresse der Buchung setzen oder zurueckziehen. Sie stammt nur aus
+ * Kanal und Umsystem, und die neueste Meldung gilt.
+ */
+async function buchungsadresseSchreiben(
+  client: PoolClient, reservationId: number, adresse: string | null
+): Promise<{ result: Ergebnis }> {
+  const alt = (await client.query<{ booking_email: string | null }>(
+    `SELECT booking_email FROM reservation WHERE id = $1 FOR UPDATE`,
+    [reservationId])).rows[0]!
+  if ((alt.booking_email?.toLowerCase() ?? null) === (adresse?.toLowerCase() ?? null)) {
+    return { result: 'unchanged' }
+  }
+  await client.query(
+    `UPDATE reservation SET booking_email = $2, updated_at = now() WHERE id = $1`,
+    [reservationId, adresse])
+  return { result: adresse === null ? 'withdrawn' : 'applied' }
 }

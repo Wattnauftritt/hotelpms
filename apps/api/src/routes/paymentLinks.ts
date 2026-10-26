@@ -312,7 +312,8 @@ export function paymentLinkRoutes(
               property_name: string; currency: string; email: string | null
               name: string | null; language: string | null; anonymized: boolean }>(
               `SELECT r.public_ref, r.arrival::text, r.departure::text,
-                      p.name AS property_name, p.currency, g.email, g.language,
+                      p.name AS property_name, p.currency,
+                      guest_mail_address(g.id, r.id) AS email, g.language,
                       nullif(trim(concat_ws(' ', g.first_name, g.last_name)), '') AS name,
                       COALESCE(g.status = 'anonymized', false) AS anonymized
                  FROM reservation r
