@@ -8,7 +8,7 @@ import { beginIdempotent, completeIdempotent } from '../platform/idempotency.js'
 import { emitEvent } from '../platform/events.js'
 import { isIsoDate, isSendableAddress, nightsBetween, BREAKFAST_DRINKS_RATE_BP, BREAKFAST_DRINKS_SHARE_BP,
          BREAKFAST_FOOD_RATE_BP, BREAKFAST_FOOD_ACCOUNT, BREAKFAST_DRINKS_ACCOUNT,
-         breakfastPerNight, splitNight, alignLineNets, taxAdjustToGross,
+         breakfastPerNight, breakfastCount, splitNight, alignLineNets, taxAdjustToGross,
          preisJeNacht, guestLineLabel, lineWithGuest } from '@hotelpms/domain'
 import { sumInvoice, taxFromNet, taxFromGross, blockingFindings, expectedRateMix,
          splitDeposit, depositLines, type RateGroupAmount, type ExpectedItem,
@@ -1907,7 +1907,8 @@ export function billingRoutes(app: FastifyInstance): void {
 
         const zeilen: Array<{ datum: string; text: string; brutto: number; satz: number
                               regel: number | null; konto: string; teil: string | null
-                              reservation: number; reverses: number | null }> = []
+                              reservation: number; reverses: number | null
+                              menge: number }> = []
         let summe = 0
         for (const n of naechte.rows) {
           const brutto = Number(n.gross_cent)
@@ -1918,7 +1919,10 @@ export function billingRoutes(app: FastifyInstance): void {
           summe += teile.foodCent + teile.drinksCent
           // Das Datum der Nacht steht im Text des Nachtlaufs; es bleibt.
           const tag = n.description.replace(/^(Übernachtung|Uebernachtung) /, '')
-          const gemeinsam = { datum: n.business_date, reservation: n.reservation_id }
+          const gemeinsam = { datum: n.business_date, reservation: n.reservation_id, menge: 1 }
+          // Die Fruehstueckszeilen tragen die Zahl der Fruehstuecke wie im Nachtlauf.
+          const fruehstuecke = { ...gemeinsam, menge: breakfastCount({
+            childCent: kind, persons: n.personen, adults: n.adults, children: n.children }) }
           zeilen.push(
             { ...gemeinsam, text: `Storno ${n.description}`, brutto: -brutto,
               satz: n.tax_rate_bp, regel: n.tax_rule_id, konto: '8300', teil: null,
@@ -1926,11 +1930,11 @@ export function billingRoutes(app: FastifyInstance): void {
             { ...gemeinsam, text: n.description, brutto: teile.lodgingCent,
               satz: n.tax_rate_bp, regel: n.tax_rule_id, konto: '8300', teil: null,
               reverses: null },
-            { ...gemeinsam, text: `Frühstück Speisen ${tag}`, brutto: teile.foodCent,
+            { ...fruehstuecke, text: `Frühstück Speisen ${tag}`, brutto: teile.foodCent,
               satz: BREAKFAST_FOOD_RATE_BP, regel: null, konto: BREAKFAST_FOOD_ACCOUNT,
               teil: 'breakfast_food', reverses: null })
           if (teile.drinksCent > 0) {
-            zeilen.push({ ...gemeinsam, text: `Frühstück Getränke ${tag}`,
+            zeilen.push({ ...fruehstuecke, text: `Frühstück Getränke ${tag}`,
               brutto: teile.drinksCent, satz: BREAKFAST_DRINKS_RATE_BP, regel: null,
               konto: BREAKFAST_DRINKS_ACCOUNT, teil: 'breakfast_drinks', reverses: null })
           }
@@ -1944,7 +1948,7 @@ export function billingRoutes(app: FastifyInstance): void {
                                net_cent, tax_cent, gross_cent, tax_rate_bp, tax_rule_id,
                                revenue_account, reservation_id, reverses_id, created_by,
                                package_part)
-           SELECT $1, $2, z.datum, z.text, 1,
+           SELECT $1, $2, z.datum, z.text, COALESCE(o.quantity, z.menge),
                   CASE WHEN z.reverses IS NULL
                        THEN z.brutto - round(z.brutto * z.satz / (10000.0 + z.satz))
                        ELSE -o.net_cent END,
@@ -1953,16 +1957,17 @@ export function billingRoutes(app: FastifyInstance): void {
                        ELSE -o.tax_cent END,
                   z.brutto, z.satz, z.regel, z.konto, z.reservation, z.reverses, $3, z.teil
              FROM unnest($4::date[], $5::text[], $6::bigint[], $7::int[], $8::bigint[],
-                         $9::text[], $10::bigint[], $11::bigint[], $12::text[])
+                         $9::text[], $10::bigint[], $11::bigint[], $12::text[],
+                         $13::int[])
                   WITH ORDINALITY AS z(datum, text, brutto, satz, regel, konto, reservation,
-                                       reverses, teil, ord)
+                                       reverses, teil, menge, ord)
              LEFT JOIN charge o ON o.id = z.reverses
             ORDER BY z.ord`,
           [folio.property_id, folio.id, principal.userId,
            zeilen.map(z => z.datum), zeilen.map(z => z.text), zeilen.map(z => z.brutto),
            zeilen.map(z => z.satz), zeilen.map(z => z.regel), zeilen.map(z => z.konto),
            zeilen.map(z => z.reservation), zeilen.map(z => z.reverses),
-           zeilen.map(z => z.teil)])
+           zeilen.map(z => z.teil), zeilen.map(z => z.menge)])
 
         const result = { nights: zeilen.filter(z => z.reverses !== null).length,
                          breakfastCent: summe }

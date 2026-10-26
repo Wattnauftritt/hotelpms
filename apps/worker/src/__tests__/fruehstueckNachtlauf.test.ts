@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { ensureSchema, truncateAll, appPool, ownerPool, makeProperty, makeCategory,
          makeResources, makeReservation, openBusinessDay, type Fixture } from '@hotelpms/testing'
 import { type DbContext, type Pool } from '@hotelpms/db'
-import { breakfastPerNight, splitNight } from '@hotelpms/domain'
+import { breakfastCount, breakfastPerNight, splitNight } from '@hotelpms/domain'
 import { runNightAudit } from '../jobs/nightAudit.js'
 
 /**
@@ -154,8 +154,41 @@ describe('Fruehstueck im Zimmerpreis', () => {
     expect(await summe(nurSumme)).toBe(3 * 1_500)
     expect(breakfastPerNight({ adultCent: 1_500, childCent: 800, persons: 3,
                                adults: 2, children: 1 })).toBe(3_800)
+
+    // Die Menge zaehlt, wer bezahlt: das freie Kind nicht.
+    const mengen = async (id: number): Promise<number[]> =>
+      (await menge(id)).filter(z => z.package_part !== null).map(z => z.quantity)
+    expect(await mengen(getrennt)).toEqual([3, 3])
+    expect(await mengen(frei)).toEqual([2, 2])
+    expect(await mengen(nurSumme)).toEqual([3, 3])
+    expect(breakfastCount({ childCent: 0, persons: 3, adults: 2, children: 1 })).toBe(2)
+  })
+
+  /**
+   * Sven, 26.10.2026: "5 personen mal 2 naechte also 10 fruehstuecke" --
+   * die Fruehstueckszeilen tragen die Zahl der Fruehstuecke, die Logis
+   * bleibt eine Nacht.
+   */
+  it('bucht je Nacht so viele Fruehstuecke, wie Personen zahlen', async () => {
+    const r = await gast({ ratePlanId: await rate(1_375), personen: 5,
+                           preis: 30_000, zimmer: 0 })
+    await runNightAudit(app, ctx, fx.propertyId, { businessDate: TAG })
+
+    expect(await menge(r)).toEqual([
+      { package_part: null, quantity: 1 },
+      { package_part: 'breakfast_food', quantity: 5 },
+      { package_part: 'breakfast_drinks', quantity: 5 }
+    ])
   })
 })
+
+async function menge(reservationId: number):
+    Promise<Array<{ package_part: string | null; quantity: number }>> {
+  const r = await owner.query<{ package_part: string | null; quantity: number }>(
+    `SELECT package_part, quantity FROM charge WHERE reservation_id = $1 ORDER BY id`,
+    [reservationId])
+  return r.rows
+}
 
 /**
  * Fruehstueck als Regel des Hauses (Migration 0169, Sven 14.10.2026): gilt
