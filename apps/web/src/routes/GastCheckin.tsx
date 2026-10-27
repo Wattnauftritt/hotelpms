@@ -61,7 +61,7 @@ export function checkinAusAdresse(
  * eher Englisch als Deutsch. Am Terminal ist der Browser der des Hauses,
  * dort zaehlt die Sprache am Gastprofil.
  */
-function startSprache(browser: string, profil?: string): Locale {
+export function startSprache(browser: string, profil?: string): Locale {
   const angeboten = (l: string): l is Locale => (LOCALES as readonly string[]).includes(l)
   if (profil !== undefined && angeboten(profil)) return profil
   const b = sprachKuerzel(browser)
@@ -146,7 +146,12 @@ export function GastCheckin({ token, modus, onFertig }: {
             : <Dank zustand="signatureOnly" gross={gross} modus={modus} onFertig={onFertig} />
         )}
         {view !== null && ergebnis === null && view.state === 'open' && (
-          <Formular token={token} view={view} gross={gross} onErledigt={setErgebnis} />
+          <Formular view={view} gross={gross} kopf={<Begruessung view={view} />}
+                    senden={async body => {
+                      const r = await api.post<CheckinSubmitted>('/v1/checkin/form', body,
+                        { [CHECKIN_TOKEN_HEADER]: token })
+                      setErgebnis(r.state)
+                    }} />
         )}
         {view?.cleaningWaiver != null && (
           <Verzicht start={view.cleaningWaiver} gross={gross}
@@ -283,7 +288,7 @@ function ZurMappe({ token }: { token: string }): JSX.Element {
   )
 }
 
-function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => void }
+export function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => void }
 ): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -298,12 +303,12 @@ function Kopf({ gross, onLocale }: { gross: boolean; onLocale: (l: Locale) => vo
   )
 }
 
-function Laden(): JSX.Element {
+export function Laden(): JSX.Element {
   const t = useT()
   return <p className="text-neutral-500">{t('gastCheckin.loading')}</p>
 }
 
-function Meldung({ fehler, gross }: { fehler: unknown; gross: boolean }): JSX.Element {
+export function Meldung({ fehler, gross }: { fehler: unknown; gross: boolean }): JSX.Element {
   const locale = useLocale()
   const { text } = fehlerMeldung(fehler, locale)
   return (
@@ -348,7 +353,7 @@ function useLaender(): Array<{ code: string; name: string }> {
   }, [locale])
 }
 
-function Feld({ label, fehler, gross, children }: {
+export function Feld({ label, fehler, gross, children }: {
   label: string; fehler?: string; gross: boolean; children: React.ReactNode
 }): JSX.Element {
   return (
@@ -409,9 +414,51 @@ function vollerName(view: CheckinFormView): string {
   return [view.firstName, view.lastName].filter(Boolean).join(' ')
 }
 
-function Formular({ token, view, gross, onErledigt }: {
-  token: string; view: CheckinFormView; gross: boolean
-  onErledigt: (s: CheckinSubmitted['state']) => void
+/** Was das Formular von der Seite braucht; der feste Link je Haus kennt keinen Gast. */
+export type FormularView = Pick<CheckinFormView, 'propertyName' | 'firstName' | 'lastName'
+  | 'channel' | 'signatureAllowed' | 'maxCompanions' | 'terms' | 'digitalGuestCardOffered'
+  | 'exemptionReasons'>
+
+/** Werkzeug fuer Felder, die eine Seite vor das Formular stellt. */
+export interface FormularFelder {
+  felder: Map<string, string>
+  eingabe: string
+  rahmen: (pfad: string) => string
+  abschnitt: string
+}
+
+/** Begruessung und Aufenthalt, fuer den Link aus der Mail und das Terminal. */
+function Begruessung({ view }: { view: CheckinFormView }): JSX.Element {
+  const t = useT()
+  const locale = useLocale()
+  return (
+    <>
+      <p className="font-medium">{t('gastCheckin.welcome', { name: vollerName(view) })}</p>
+      <p>{t('gastCheckin.stay', { haus: view.propertyName,
+                                   von: formatDate(view.arrival, locale),
+                                   bis: formatDate(view.departure, locale) })}</p>
+      {/* Am Terminal ist der Gast schon da: "spart Zeit bei der Ankunft"
+          stimmt dort nicht mehr (Sven, 05.10.2026). Der Link aus der Mail
+          kommt vor der Anreise und behaelt den Satz. */}
+      <p className="text-neutral-600">
+        {t(view.channel === 'terminal' ? 'gastCheckin.intro' : 'gastCheckin.introBeforeArrival')}
+      </p>
+    </>
+  )
+}
+
+/**
+ * Das Meldeformular. Derselbe Baustein fuer den Link aus der Mail, das
+ * Terminal und den festen Link je Haus (0216): drei Masken fuer denselben
+ * Meldeschein liefen auseinander. Was die Seite davor zeigt, kommt als
+ * `kopf`; was sie zusaetzlich fragt, als `vorne`; wohin abgegeben wird, als
+ * `senden`. Wirft `senden`, steht der Fehler an den Feldern.
+ */
+export function Formular({ view, gross, kopf, vorne, senden }: {
+  view: FormularView; gross: boolean
+  kopf: React.ReactNode
+  vorne?: (f: FormularFelder) => React.ReactNode
+  senden: (body: CheckinSubmit) => Promise<void>
 }): JSX.Element {
   const t = useT()
   const locale = useLocale()
@@ -497,9 +544,7 @@ function Formular({ token, view, gross, onErledigt }: {
       confirmed: true
     }
     try {
-      const r = await api.post<CheckinSubmitted>('/v1/checkin/form', body,
-        { [CHECKIN_TOKEN_HEADER]: token })
-      onErledigt(r.state)
+      await senden(body)
     } catch (e) {
       setFehler(e)
     } finally {
@@ -571,18 +616,8 @@ function Formular({ token, view, gross, onErledigt }: {
   return (
     <form ref={formular} className="space-y-4" noValidate
           onSubmit={e => { e.preventDefault(); void absenden() }}>
-      <div className={abschnitt}>
-        <p className="font-medium">{t('gastCheckin.welcome', { name: vollerName(view) })}</p>
-        <p>{t('gastCheckin.stay', { haus: view.propertyName,
-                                     von: formatDate(view.arrival, locale),
-                                     bis: formatDate(view.departure, locale) })}</p>
-        {/* Am Terminal ist der Gast schon da: "spart Zeit bei der Ankunft"
-            stimmt dort nicht mehr (Sven, 05.10.2026). Der Link aus der Mail
-            kommt vor der Anreise und behaelt den Satz. */}
-        <p className="text-neutral-600">
-          {t(view.channel === 'terminal' ? 'gastCheckin.intro' : 'gastCheckin.introBeforeArrival')}
-        </p>
-      </div>
+      <div className={abschnitt}>{kopf}</div>
+      {vorne?.({ felder, eingabe, rahmen, abschnitt })}
 
       <div className={abschnitt}>
         <h2 className="font-semibold">{t('gastCheckin.nationality.title')}</h2>

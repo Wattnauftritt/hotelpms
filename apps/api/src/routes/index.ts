@@ -70,6 +70,7 @@ import { terminalInhaltRoutes } from './terminalInhalte.js'
 import { terminalSelbstRoutes } from './terminalSelbst.js'
 import { searchRoutes } from './search.js'
 import { checkinRoutes } from './checkin.js'
+import { meldescheinPortalRoutes } from './meldescheinPortal.js'
 import { cleaningWaiverRoutes } from './cleaningWaiver.js'
 import { gaestemappeRoutes } from './gaestemappe.js'
 import { gastwuenscheRoutes } from './gastwuensche.js'
@@ -162,6 +163,7 @@ export function registerAllRoutes(app: FastifyInstance, overrides: RouteOverride
   terminalInhaltRoutes(app)
   terminalSelbstRoutes(app)
   checkinRoutes(app)
+  meldescheinPortalRoutes(app)
   cleaningWaiverRoutes(app)
   gaestemappeRoutes(app)
   gastwuenscheRoutes(app)

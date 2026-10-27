@@ -1,5 +1,6 @@
 import { istPersonalAdresse } from './personal/adresse.js'
-import { istCheckinAdresse, istMappeAdresse, istTerminalAdresse } from './gast/adresse.js'
+import { istCheckinAdresse, istMappeAdresse, istMeldescheinPortalAdresse,
+         istTerminalAdresse } from './gast/adresse.js'
 
 /**
  * Welche Oberflaeche dieser Aufruf laedt.
@@ -23,6 +24,8 @@ if (istPersonalAdresse(location.pathname)) {
   void import('./gast/terminal.tsx')
 } else if (istCheckinAdresse(location.pathname)) {
   void import('./gast/checkin.tsx')
+} else if (istMeldescheinPortalAdresse(location.pathname)) {
+  void import('./gast/meldeschein.tsx')
 } else if (istMappeAdresse(location.pathname)) {
   void import('./gast/mappe.tsx')
 } else {

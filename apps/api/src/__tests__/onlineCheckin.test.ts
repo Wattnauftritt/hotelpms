@@ -602,7 +602,7 @@ describe('Rezeption', () => {
   it('haelt die Einstellung je Haus', async () => {
     const vorher = await app.inject({ method: 'GET',
       url: `/v1/properties/${fx.propertyId}/online-checkin-settings`, headers: chef })
-    expect(JSON.parse(vorher.body)).toEqual({ enabled: false, daysBefore: 3 })
+    expect(JSON.parse(vorher.body)).toMatchObject({ enabled: false, daysBefore: 3 })
     const put = await app.inject({ method: 'PUT',
       url: `/v1/properties/${fx.propertyId}/online-checkin-settings`, headers: chef,
       payload: { enabled: true, daysBefore: 5 } })
@@ -613,7 +613,7 @@ describe('Rezeption', () => {
     expect(zuviel.statusCode).toBe(422)
     const nachher = await app.inject({ method: 'GET',
       url: `/v1/properties/${fx.propertyId}/online-checkin-settings`, headers: chef })
-    expect(JSON.parse(nachher.body)).toEqual({ enabled: true, daysBefore: 5 })
+    expect(JSON.parse(nachher.body)).toMatchObject({ enabled: true, daysBefore: 5 })
   })
 })
 

@@ -266,9 +266,21 @@ export async function purgeExpired(client: PoolClient): Promise<number> {
   const se = await client.query<{ n: number }>(`SELECT security_event_prune() AS n`)
   // Abrufzaehler (0210): 30 Tage, der Vergleich braucht vierzehn.
   const av = await client.query<{ n: number }>(`SELECT access_volume_prune() AS n`)
+  /*
+   * Meldescheine vom festen Link (0216), die keiner Reservierung zugeordnet
+   * wurden: sieben Tage nach dem angegebenen Anreisetag (Sven, 27.10.2026).
+   * Bis dahin hat die Rezeption den Gast im Haus gesehen; was dann noch
+   * wartet, ist eine Sammlung von Ausweisdaten ohne Aufenthalt. Die Zaehler
+   * je Herkunft nach einem Tag, ihr Fenster ist einer.
+   */
+  const ps = await client.query(
+    `DELETE FROM checkin_portal_submission WHERE arrival < current_date - 7`)
+  const po = await client.query(
+    `DELETE FROM checkin_portal_origin WHERE window_start < now() - interval '1 day'`)
   return (s.rowCount ?? 0) + (i.rowCount ?? 0) + (t.rows[0]?.n ?? 0) + (f.rowCount ?? 0)
     + (m.rowCount ?? 0) + (z.rowCount ?? 0) + (zh.rowCount ?? 0) + (n.rowCount ?? 0)
     + (w.rowCount ?? 0) + (se.rows[0]?.n ?? 0) + (av.rows[0]?.n ?? 0)
+    + (ps.rowCount ?? 0) + (po.rowCount ?? 0)
 }
 
 /**

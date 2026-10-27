@@ -8,6 +8,7 @@ import { txIm } from '../platform/db.js'
 import { alsApiFehler, alsApiFehlerAsync } from '../platform/domainError.js'
 import { authenticateChannel, channelContext } from '../platform/channelAuth.js'
 import { sortierKonflikt } from './roomSort.js'
+import { abgabenZurNummer } from './meldescheinPortal.js'
 
 /*
  * Kanalbuchungen aus einem fuehrenden Umsystem (Migration 0092).
@@ -33,9 +34,18 @@ export function channelPushRoutes(app: FastifyInstance): void {
         (req.params as { externalReference: string }).externalReference))
       const body = alsApiFehler(() => kanalRumpfPruefen(req.body))
 
-      const ergebnis = await txIm(req.pool, req, channelContext(principal), client =>
-        alsApiFehlerAsync(() => sortierKonflikt(() =>
-          kanalBuchungSetzen(client, principal, ref, body))))
+      const ergebnis = await txIm(req.pool, req, channelContext(principal), async client => {
+        const e = await alsApiFehlerAsync(() => sortierKonflikt(() =>
+          kanalBuchungSetzen(client, principal, ref, body)))
+        // Ein Meldeschein, der ueber den festen Link vor der Nummer kam,
+        // findet jetzt seine Reservierung (0216). Bei jedem Push, nicht nur
+        // wenn die Nummer neu ist: kam der Schein nach der Nummer, aber vor
+        // dem Hauptgast, wartet er sonst bis zur Rezeption.
+        if (body.channelBookingNumber !== undefined) {
+          await abgabenZurNummer(client, principal.propertyId, body.channelBookingNumber)
+        }
+        return e
+      })
 
       reply.status(ergebnis.status === 'created' ? 201 : 200)
       return ergebnis

@@ -65,8 +65,40 @@ export function OnlineCheckinEinstellung({ propertyId, isTraining }: {
           {speichern.isSuccess && <span className="text-xs text-emerald-700">✓</span>}
         </div>
       </form>
+      {q.data.portalLink !== undefined && <FesterLink link={q.data.portalLink} />}
       <OnlineCheckinTestmail propertyId={propertyId} isTraining={isTraining} />
     </div>
+  )
+}
+
+/**
+ * Der feste Link des Hauses fuer Gaeste von Booking.com (0216). Steht
+ * unabhaengig vom Schalter oben: er verschickt nichts, er kommt in eine
+ * Nachrichtenvorlage bei Booking.com, und dort wird genau diese Adresse
+ * freigegeben. Markierbar daneben, falls die Zwischenablage fehlt.
+ */
+function FesterLink({ link }: { link: string }): JSX.Element {
+  const t = useT()
+  const [kopiert, setKopiert] = useState(false)
+  return (
+    <section className="rounded-sm border border-neutral-200 bg-white p-3 space-y-2 max-w-2xl">
+      <h2 className="text-sm font-medium">{t('onlineCheckin.portal.title')}</h2>
+      <p className="text-xs text-neutral-500">{t('onlineCheckin.portal.hint')}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input readOnly value={link} onFocus={e => e.target.select()}
+               className="grow min-w-0 border border-neutral-300 rounded-sm px-2 py-1 text-sm
+                          font-mono" />
+        <button type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(link)
+                    .then(() => setKopiert(true), () => setKopiert(false))
+                }}
+                className="text-sm px-3 py-1.5 rounded-sm border border-neutral-300">
+          {t('onlineCheckin.copy')}
+        </button>
+        {kopiert && <span className="text-xs text-emerald-700">{t('onlineCheckin.portal.copied')}</span>}
+      </div>
+    </section>
   )
 }
 

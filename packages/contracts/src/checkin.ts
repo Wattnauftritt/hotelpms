@@ -39,6 +39,25 @@ export function checkinLink(baseUrl: string, token: string): string {
   return `${baseUrl.replace(/\/+$/, '')}${CHECKIN_PATH}#${token}`
 }
 
+/** Der Pfad des festen Links je Haus (0216), fuer die Vorlage bei Booking.com. */
+export const MELDESCHEIN_PORTAL_PATH = '/meldeschein'
+
+/**
+ * Der feste Link eines Hauses. Die Kennung steht im Pfad, nicht im Fragment
+ * wie das Token: sie ist nicht geheim, sie steht in einer Vorlage, die jeder
+ * Gast bekommt. Und im Pfad laesst sich die Adresse bei Booking.com genau so
+ * freigeben, wie sie hier steht.
+ */
+export function meldescheinPortalLink(baseUrl: string, ref: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}${MELDESCHEIN_PORTAL_PATH}/${ref}`
+}
+
+/** Die Kennung aus dem Pfad, oder null, wenn es nicht diese Seite ist. */
+export function meldescheinPortalAusPfad(pathname: string): string | null {
+  const m = /^\/meldeschein\/([0-9A-Z]{8,32})\/?$/.exec(pathname)
+  return m === null ? null : m[1]!
+}
+
 /**
  * Das Token aus dem Fragment, oder null.
  *
@@ -296,9 +315,37 @@ export const CheckinSignature = Type.Object({
 
 export const CheckinSettings = Type.Object({
   enabled: Type.Boolean(),
-  daysBefore: Type.Integer({ minimum: 1, maximum: 14 })
+  daysBefore: Type.Integer({ minimum: 1, maximum: 14 }),
+  /**
+   * Der feste Link des Hauses fuer Gaeste von Booking.com (0216): in die
+   * Nachrichtenvorlage dort, und genau so dort als Link freigeben.
+   */
+  portalLink: Type.Optional(Type.String())
 }, { additionalProperties: false })
 export type CheckinSettings = Static<typeof CheckinSettings>
+
+/** Abgabe ueber den festen Link: Buchungsnummer und Anreisetag zum Meldeschein. */
+export type MeldescheinPortalSubmit = CheckinSubmit & { bookingNumber: string; arrival: string }
+
+/**
+ * Was das Formular am festen Link braucht (0216). Nichts ueber eine Buchung:
+ * kein Name, kein Zeitraum -- die Seite fragt nach keiner.
+ */
+export const MeldescheinPortalView = Type.Object({
+  propertyName: Type.String(),
+  maxCompanions: Type.Integer(),
+  terms: CheckinFormView.properties.terms,
+  digitalGuestCardOffered: Type.Boolean(),
+  exemptionReasons: CheckinFormView.properties.exemptionReasons
+})
+export type MeldescheinPortalView = Static<typeof MeldescheinPortalView>
+
+/**
+ * Immer dieselbe Antwort, ob es die Buchung gibt oder nicht: mit Nummer und
+ * Anreisetag allein soll sich nichts erfahren lassen.
+ */
+export const MeldescheinPortalSubmitted = Type.Object({ state: Type.Literal('received') })
+export type MeldescheinPortalSubmitted = Static<typeof MeldescheinPortalSubmitted>
 
 /**
  * Vorschau der Einladung, mit Beispieldaten, und ob sie hinausginge.
