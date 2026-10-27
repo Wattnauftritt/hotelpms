@@ -116,3 +116,29 @@ describe('Maske und Schnittstelle sind sich einig', () => {
     expect(checkin).toContain('f.signatureRequired')
   })
 })
+
+/*
+ * Booking.com oeffnet den Link vor der Zustellung in einem Browser und
+ * verwarf die Einladung, wenn dahinter das Meldeformular stand (26.10.2026).
+ * Ohne Klick darf die Seite per Mail deshalb nichts vom Gast laden.
+ */
+describe('Per Mail erst nach dem Klick', () => {
+  const seite = quelle('routes/GastCheckin.tsx')
+  const ohneKommentare = seite.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  const rumpf = (name: string): string => {
+    const start = ohneKommentare.indexOf(`function ${name}(`)
+    expect(start, name).toBeGreaterThanOrEqual(0)
+    const ende = ohneKommentare.indexOf('\nfunction ', start + 1)
+    const ende2 = ohneKommentare.indexOf('\nexport function ', start + 1)
+    const e = [ende, ende2].filter(i => i > 0)
+    return ohneKommentare.slice(start, e.length ? Math.min(...e) : undefined)
+  }
+
+  it('bindet das Formular erst ein, wenn der Gast begonnen hat', () => {
+    expect(rumpf('GastCheckinSeite')).toMatch(/begonnen\s*\?\s*<GastCheckin token=\{token\} modus="mail"/)
+  })
+
+  it('laedt auf der Vorschaltseite nichts', () => {
+    expect(rumpf('Vorschalt')).not.toMatch(/api\.|fetch\(/)
+  })
+})
