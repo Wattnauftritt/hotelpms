@@ -155,6 +155,25 @@ describe('Anlegen und Abgleichen', () => {
     expect(await adressen()).toEqual(['erika@example.org', 'erika@example.org'])
   })
 
+  it('nimmt die Buchungsnummer beim Portal, auch an einer lokal gefuehrten Buchung (0215)', async () => {
+    const token = await zugang()
+    const nummer = async (ref: string) => (await owner.query<{ n: string | null }>(
+      `SELECT channel_booking_number AS n FROM booking WHERE public_ref = $1`, [ref])).rows[0]!.n
+    const a = JSON.parse((await put(token, 'rc-1',
+      { ...ZWEI_ABSCHNITTE, channelBookingNumber: 4711223344 })).body) as Antwort
+    expect(await nummer(a.bookingRef)).toBe('4711223344')
+    // Die Nummer beschreibt die Buchung, nicht ihre Belegung: auch eine
+    // Buchung, die die Rezeption fuehrt, bekommt sie noch.
+    await owner.query(`UPDATE booking SET channel_owner = 'local' WHERE public_ref = $1`,
+      [a.bookingRef])
+    const b = await put(token, 'rc-1', { ...ZWEI_ABSCHNITTE, channelBookingNumber: '4711223345',
+                                         sourceUpdatedAt: '2026-10-06T10:00:00Z' })
+    expect((JSON.parse(b.body) as Antwort).status).toBe('kept_local')
+    expect(await nummer(a.bookingRef)).toBe('4711223345')
+    expect((await put(token, 'rc-2', { ...ZWEI_ABSCHNITTE, channelBookingNumber: 'a b' }))
+      .statusCode).toBe(422)
+  })
+
   it('zieht um und verlaengert, ohne die Nummern zu wechseln, und der Zaehler stimmt', async () => {
     const token = await zugang()
     const a = JSON.parse((await put(token, 'rc-1', ZWEI_ABSCHNITTE)).body) as Antwort
