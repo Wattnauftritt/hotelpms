@@ -9,6 +9,7 @@ import { useAvsMelden, useAvsErneut } from '../lib/queries/avs.js'
 import { Dialog, KNOPF_LEISE } from '../components/Dialog.tsx'
 import { AusweisFeld } from './Guests.tsx'
 import { VerzichtMarke } from '../components/Reinigungsverzicht.tsx'
+import { WartendeMeldescheine } from '../components/WartendeMeldescheine.tsx'
 
 /**
  * Meldescheine: alle Scheine eines Zeitraums nach Anreise (Sven, 04.10.2026).
@@ -94,6 +95,10 @@ export function Meldescheine({ propertyId, permissions }: {
                  className="border border-neutral-300 rounded-sm px-2 py-1 w-48" />
         </label>
       </div>
+
+      {/* Vom festen Link fuer Booking.com (0216): zuordnen heisst einen
+          Meldeschein anlegen, deshalb unter dem Recht des Tresens. */}
+      {permissions.includes('reservation:checkin') && <WartendeMeldescheine propertyId={propertyId} />}
 
       {!gueltig
         ? <div className="text-sm text-amber-800">

@@ -137,6 +137,8 @@ Standardvertragsklauseln — nach tatsächlicher Vertragslage eintragen⟩.
 |---|---|---|
 | Meldeschein | ⟨ein Jahr, nach Landesrecht⟩ | `registration.destroy_after`, Job `purgeRegistrations` |
 | Ausweisnummer | nach Abreise | `guest_document_purge()` |
+| Meldeschein vom festen Link (Booking.com), noch keiner Reservierung zugeordnet; verschlüsselt, nur der Nachname im Klartext | 7 Tage nach dem angegebenen Anreisetag, auf Verlangen sofort über „Verwerfen“ unter Meldescheine (Migration 0216) | `purgeExpired()` |
+| Abgaben je Herkunft am festen Link (Hash der IP-Adresse) | 1 Tag | `purgeExpired()` |
 | Gästebeitragsnachweis | ⟨nach kommunaler Satzung⟩ | `property.guest_levy_retention_years` |
 | Rechnungen und Belege | zehn Jahre | keine Löschung, Aufbewahrungspflicht |
 | Gastprofil | auf Verlangen, sobald keine Frist entgegensteht | `guest_erase_one()`, `guest_erasure_complete()` |

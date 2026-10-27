@@ -224,3 +224,71 @@ describe('Abgabe', () => {
     expect(h.rows[0]!.origin_hash).toMatch(/^[0-9a-f]{64}$/)
   })
 })
+
+describe('Rezeption', () => {
+  const liste = () => app.inject({ method: 'GET',
+    url: `/v1/properties/${fx.propertyId}/checkin-portal/submissions`, headers: chef })
+
+  it('zeigt die wartenden Scheine mit Nachname, Nummer und Grund', async () => {
+    expect((await abgeben(meldeschein())).statusCode).toBe(201)
+    const l = await liste()
+    expect(l.statusCode, l.body).toBe(200)
+    const [s] = l.json<{ submissions: Array<Record<string, unknown>> }>().submissions
+    expect(s).toMatchObject({ lastName: 'Jansen', bookingNumber: '4711223344',
+                              arrival: ANREISE, holdReason: null })
+    // Nichts aus dem Inhalt: keine Anschrift, keine Ausweisnummer.
+    expect(l.body).not.toMatch(/Herengracht|NX12345P7/)
+  })
+
+  it('schlaegt Reservierungen um den Anreisetag vor und ordnet von Hand zu', async () => {
+    const r = await reservierung(null, '2026-10-04')
+    expect((await abgeben(meldeschein())).statusCode).toBe(201)
+    const ref = (await liste()).json<{ submissions: Array<{ ref: string }> }>().submissions[0]!.ref
+    const k = await app.inject({ method: 'GET',
+      url: `/v1/checkin-portal/submissions/${ref}/candidates`, headers: chef })
+    expect(k.statusCode, k.body).toBe(200)
+    expect(k.json<{ candidates: Array<{ reservationRef: string }> }>().candidates
+      .map(c => c.reservationRef)).toEqual([r.ref])
+
+    const z = await app.inject({ method: 'POST',
+      url: `/v1/checkin-portal/submissions/${ref}/assign`, headers: chef,
+      payload: { reservationRef: r.ref } })
+    expect(z.statusCode, z.body).toBe(200)
+    expect((await schein(r.id))?.source).toBe('online')
+    expect(await wartend()).toEqual([])
+  })
+
+  it('sagt beim Zuordnen von Hand, warum es nicht geht', async () => {
+    const r = await reservierung('4711223344')
+    expect((await abgeben(meldeschein())).statusCode).toBe(201)
+    expect((await abgeben(meldeschein())).statusCode).toBe(201)
+    const ref = (await liste()).json<{ submissions: Array<{ ref: string }> }>().submissions[0]!.ref
+    const z = await app.inject({ method: 'POST',
+      url: `/v1/checkin-portal/submissions/${ref}/assign`, headers: chef,
+      payload: { reservationRef: r.ref } })
+    expect(z.statusCode).toBe(409)
+    expect(await wartend()).toHaveLength(1)
+  })
+
+  it('verwirft einen Schein', async () => {
+    expect((await abgeben(meldeschein())).statusCode).toBe(201)
+    const ref = (await liste()).json<{ submissions: Array<{ ref: string }> }>().submissions[0]!.ref
+    const d = await app.inject({ method: 'DELETE',
+      url: `/v1/checkin-portal/submissions/${ref}`, headers: chef })
+    expect(d.statusCode, d.body).toBe(204)
+    expect(await wartend()).toEqual([])
+  })
+
+  it('laesst ein anderes Konto nicht heran', async () => {
+    expect((await abgeben(meldeschein())).statusCode).toBe(201)
+    const ref = (await liste()).json<{ submissions: Array<{ ref: string }> }>().submissions[0]!.ref
+    const fremd = await makeProperty(owner)
+    const u = await makeUser(owner, { email: 'fremd@test.de', propertyId: fremd.propertyId,
+                                      roleKey: 'hotel_director' })
+    const d = await app.inject({ method: 'DELETE',
+      url: `/v1/checkin-portal/submissions/${ref}`,
+      headers: { cookie: `hp_session=${u.sessionId}` } })
+    expect(d.statusCode).toBe(404)
+    expect(await wartend()).toHaveLength(1)
+  })
+})
