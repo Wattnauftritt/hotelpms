@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../lib/i18n/index.js'
-import { datumAusIso, datumLesen, datumTippen, heuteIso } from '../lib/bildschirmtastatur.js'
+import { datumAusIso, datumLesen, datumTippen, heuteIso, type DatumArt } from '../lib/bildschirmtastatur.js'
 
 /**
  * Ein Geburtsdatum am Touchscreen und auf dem Telefon: getippt statt
@@ -21,8 +21,10 @@ import { datumAusIso, datumLesen, datumTippen, heuteIso } from '../lib/bildschir
  * Format YYYY-MM-DD erwartet") ist fuer Programme geschrieben, nicht fuer
  * jemanden am Tresen.
  */
-export function Datumsfeld({ value, onChange, className, autoComplete = 'off' }: {
+export function Datumsfeld({ value, onChange, className, autoComplete = 'off', art = 'geburt' }: {
   value: string; onChange: (iso: string) => void; className: string
+  /** `anreise` laesst Tage nach heute zu; ein Geburtsdatum nicht. */
+  art?: DatumArt
   /** `bday` auf dem eigenen Geraet des Gastes, `off` am Terminal fuer alle. */
   autoComplete?: string
 }): JSX.Element {
@@ -33,7 +35,7 @@ export function Datumsfeld({ value, onChange, className, autoComplete = 'off' }:
   // nach): neu anzeigen. Ein halb getipptes Datum ist nach aussen `''` und
   // bleibt deshalb stehen.
   useEffect(() => {
-    if (value !== datumLesen(text, heuteIso())) {
+    if (value !== datumLesen(text, heuteIso(), art)) {
       setText(datumAusIso(value))
       setUnlesbar(false)
     }
@@ -46,10 +48,10 @@ export function Datumsfeld({ value, onChange, className, autoComplete = 'off' }:
                const neu = datumTippen(e.target.value.replace(/[^0-9./ -]/g, ''))
                setText(neu)
                setUnlesbar(false)
-               onChange(datumLesen(neu, heuteIso()))
+               onChange(datumLesen(neu, heuteIso(), art))
              }}
              onBlur={() => {
-               const iso = datumLesen(text, heuteIso())
+               const iso = datumLesen(text, heuteIso(), art)
                if (iso !== '') setText(datumAusIso(iso))
                else setUnlesbar(text.trim() !== '')
              }}
