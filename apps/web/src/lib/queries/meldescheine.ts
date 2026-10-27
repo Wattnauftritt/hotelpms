@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { CheckinPortalCandidate, CheckinPortalSubmission } from '@hotelpms/contracts'
 import { api } from '../api.js'
 
 /**
@@ -114,3 +115,42 @@ export const useMeldeschein = (id: number | null) =>
     queryFn: () => api.get(`/v1/registrations/${id!}`),
     enabled: id !== null
   })
+
+/**
+ * Meldescheine vom festen Link je Haus (0216), die noch keiner Reservierung
+ * gehoeren. Eine Liste je Bildschirm; die Vorschlaege erst beim Zuordnen.
+ */
+export const usePortalAbgaben = (propertyId: number, aktiv: boolean) =>
+  useQuery<{ submissions: CheckinPortalSubmission[] }>({
+    queryKey: ['checkinPortal', propertyId],
+    queryFn: () => api.get(`/v1/properties/${propertyId}/checkin-portal/submissions`),
+    enabled: aktiv
+  })
+
+export const usePortalKandidaten = (ref: string | null) =>
+  useQuery<{ candidates: CheckinPortalCandidate[] }>({
+    queryKey: ['checkinPortal', 'candidates', ref],
+    queryFn: () => api.get(`/v1/checkin-portal/submissions/${ref}/candidates`),
+    enabled: ref !== null
+  })
+
+export function usePortalZuordnen() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { ref: string; reservationRef: string }) =>
+      api.post(`/v1/checkin-portal/submissions/${v.ref}/assign`,
+        { reservationRef: v.reservationRef }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['checkinPortal'] })
+      void qc.invalidateQueries({ queryKey: ['meldescheine'] })
+    }
+  })
+}
+
+export function usePortalVerwerfen() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => api.delete(`/v1/checkin-portal/submissions/${ref}`),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['checkinPortal'] }) }
+  })
+}

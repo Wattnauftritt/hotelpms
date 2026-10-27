@@ -3,9 +3,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { withTransaction, SYSTEM_CONTEXT, type PoolClient } from '@hotelpms/db'
 import { encryptSecret, decryptSecret, isIsoDate, addDays,
          PORTAL_NUMMER } from '@hotelpms/domain'
-import { MAX_MITREISENDE, type MeldescheinPortalView,
-         type MeldescheinPortalSubmitted } from '@hotelpms/contracts'
+import { MAX_MITREISENDE, type MeldescheinPortalView, type MeldescheinPortalSubmitted,
+         type CheckinPortalSubmission, type CheckinPortalCandidate } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
+import { tx } from '../platform/db.js'
+import type { Principal } from '../platform/context.js'
+import { rechtImHaus } from './depositRequests.js'
 import { AppError, Errors, type Meldung } from '../platform/errors.js'
 import { loadConfig } from '../platform/config.js'
 import { tooManyRequests } from '../platform/rateLimit.js'
@@ -121,6 +124,7 @@ export async function abgabeZuordnen(
 
   const r = await reservierungLaden(client, ziel)
   if (r === null || r.property_id !== s.property_id) throw Errors.notFound('res.reservation')
+  if (r.reg_id !== null && reservationId !== undefined) throw Errors.conflict('checkin.alreadyDone')
   if (r.reg_id !== null) {
     await client.query(
       `UPDATE checkin_portal_submission SET hold_reason = 'registered' WHERE id = $1`, [s.id])
@@ -132,8 +136,10 @@ export async function abgabeZuordnen(
     // Ueber den Link aus der Mail: unterschrieben wird am Anreisetag im Haus.
     await meldescheinEinreichen(client, r, abgabeEntschluesseln(s.payload_enc),
       { hier: false, quelle: 'online' })
-  } catch {
+  } catch (e) {
     await client.query('ROLLBACK TO SAVEPOINT portal_zuordnen')
+    // Von Hand soll die Rezeption den Grund sehen, nicht nur "liegt weiter".
+    if (reservationId !== undefined) throw e
     await client.query(
       `UPDATE checkin_portal_submission SET hold_reason = 'rejected' WHERE id = $1`, [s.id])
     return 'rejected'
@@ -311,4 +317,147 @@ export function meldescheinPortalRoutes(app: FastifyInstance): void {
       })
     }
   })
+}
+
+// ------------------------------------------------------------------ Rezeption
+
+/** Wie weit die Rezeption beim Zuordnen von Hand um den angegebenen Anreisetag sucht. */
+const KANDIDATEN_TAGE = 3
+
+export function meldescheinPortalRezeptionRoutes(app: FastifyInstance): void {
+  /**
+   * Was am festen Link abgegeben wurde und noch keiner Reservierung gehoert.
+   * Nur Nachname, Nummer, Anreisetag und Grund: mehr braucht die Rezeption
+   * nicht, um zu sehen, wessen Schein es ist. Der Inhalt steht danach am
+   * Meldeschein, hinter dessen eigenem Recht.
+   *
+   * Unter `reservation:checkin` wie das Erfassen am Tresen: zuordnen heisst
+   * einen Meldeschein anlegen.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/properties/:propertyId/checkin-portal/submissions',
+    permission: 'reservation:checkin',
+    propertyParam: 'propertyId',
+    summary: 'Meldescheine vom festen Link, die noch keiner Reservierung gehoeren',
+    handler: async (req) => {
+      const { propertyId } = req.params as { propertyId: string }
+      return tx(req.pool, req, async client => {
+        const { rows } = await client.query<CheckinPortalSubmission>(
+          `SELECT public_ref AS ref, last_name AS "lastName", booking_number AS "bookingNumber",
+                  arrival::text, created_at AS "createdAt", hold_reason AS "holdReason"
+             FROM checkin_portal_submission
+            WHERE property_id = $1
+            ORDER BY arrival, id`, [Number(propertyId)])
+        return { submissions: rows }
+      })
+    }
+  })
+
+  /**
+   * Reservierungen, zu denen ein wartender Schein gehoeren koennte: um den
+   * angegebenen Anreisetag, noch offen, noch ohne Meldeschein. Die mit
+   * derselben Nummer oder demselben Nachnamen zuerst.
+   */
+  registerRoute(app, {
+    method: 'GET',
+    url: '/v1/checkin-portal/submissions/:ref/candidates',
+    permission: 'reservation:checkin',
+    summary: 'Reservierungen, denen ein Meldeschein vom festen Link gehoeren koennte',
+    handler: async (req) => {
+      const { ref } = req.params as { ref: string }
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const s = await abgabeZurKennung(client, ref, principal)
+        const { rows } = await client.query<CheckinPortalCandidate>(
+          `SELECT r.public_ref AS "reservationRef", r.arrival::text, r.departure::text,
+                  g.last_name AS "lastName", g.first_name AS "firstName",
+                  x.code AS room, b.channel_booking_number AS "bookingNumber"
+             FROM reservation r
+             JOIN booking b ON b.id = r.booking_id
+             JOIN guest g ON g.id = r.primary_guest_id
+             LEFT JOIN resource x ON x.id = r.resource_id
+            WHERE r.property_id = $1 AND r.status::text = ANY ($2::text[])
+              AND r.arrival BETWEEN $3::date - $4::int AND $3::date + $4::int
+              AND NOT EXISTS (SELECT 1 FROM registration m WHERE m.reservation_id = r.id)
+            ORDER BY (b.channel_booking_number IS NOT DISTINCT FROM $5) DESC,
+                     (lower(g.last_name) = lower($6)) DESC,
+                     abs(r.arrival - $3::date), g.last_name, r.id
+            LIMIT 100`,
+          [s.property_id, OFFEN, s.arrival, KANDIDATEN_TAGE, s.booking_number, s.last_name])
+        return { candidates: rows }
+      })
+    }
+  })
+
+  /**
+   * Von Hand zuordnen. Laeuft ueber dieselbe Zuordnung wie der Abgleich,
+   * nur dass ein Fehler hier zur Rezeption geht, statt den Schein liegen zu
+   * lassen: sie soll sehen, warum es nicht geht.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/checkin-portal/submissions/:ref/assign',
+    permission: 'reservation:checkin',
+    summary: 'Meldeschein vom festen Link einer Reservierung zuordnen',
+    handler: async (req) => {
+      const { ref } = req.params as { ref: string }
+      const b = req.body as { reservationRef?: unknown } | undefined
+      if (typeof b?.reservationRef !== 'string') {
+        throw Errors.validation({ reservationRef: ['field.required'] })
+      }
+      const principal = req.principal as Principal
+      return tx(req.pool, req, async client => {
+        const s = await abgabeZurKennung(client, ref, principal)
+        const r = await client.query<{ id: number; property_id: number }>(
+          `SELECT id::int, property_id::int FROM reservation WHERE public_ref = $1`,
+          [b.reservationRef])
+        // Die Zeilenrichtlinie laesst jedes Haus des Kontos durch, nicht nur dieses.
+        if (r.rows[0] === undefined || r.rows[0].property_id !== s.property_id) {
+          throw Errors.notFound('res.reservation')
+        }
+        await abgabeZuordnen(client, s.id, r.rows[0].id)
+        return { reservationRef: b.reservationRef }
+      })
+    }
+  })
+
+  /**
+   * Verwerfen, etwa einen doppelt abgegebenen Schein. Bis zum siebten Tag
+   * nach der Anreise verschwaende er ohnehin; hier geht es frueher.
+   */
+  registerRoute(app, {
+    method: 'DELETE',
+    url: '/v1/checkin-portal/submissions/:ref',
+    permission: 'reservation:checkin',
+    summary: 'Meldeschein vom festen Link verwerfen',
+    handler: async (req, reply) => {
+      const { ref } = req.params as { ref: string }
+      const principal = req.principal as Principal
+      await tx(req.pool, req, async client => {
+        const s = await abgabeZurKennung(client, ref, principal)
+        await client.query(`DELETE FROM checkin_portal_submission WHERE id = $1`, [s.id])
+      })
+      reply.status(204)
+    }
+  })
+}
+
+/**
+ * Eine wartende Abgabe zur oeffentlichen Kennung, mit dem Recht im Haus:
+ * die Routen nehmen keine Property, und `registerRoute` prueft dann nur
+ * "irgendwo".
+ */
+async function abgabeZurKennung(
+  client: PoolClient, ref: string, principal: Principal
+): Promise<{ id: number; property_id: number; booking_number: string; arrival: string
+             last_name: string }> {
+  const { rows } = await client.query<{ id: number; property_id: number
+    booking_number: string; arrival: string; last_name: string }>(
+    `SELECT id::int, property_id::int, booking_number, arrival::text, last_name
+       FROM checkin_portal_submission WHERE public_ref = $1`, [ref])
+  const s = rows[0]
+  if (s === undefined) throw Errors.notFound('res.registration')
+  rechtImHaus(principal, 'reservation:checkin', s.property_id)
+  return s
 }

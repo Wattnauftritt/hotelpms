@@ -276,7 +276,9 @@ Antworten auf ungültige Links: 404 (unbekannt oder verstümmelt), 410 mit `chec
 
 **Grenzen.** Die Seite ist anonym und fällt unter die allgemeine Grenze je Herkunft. Dazu zwanzig Abgaben je Herkunft und Tag (nur der Hash der Adresse steht in der Datenbank) und fünf wartende je Nummer.
 
-**Noch offen:** die Liste der wartenden Scheine an der Rezeption mit Zuordnung von Hand. Holt StayGrid Buchungen selbst bei einem Channel Manager ab (Worker), ordnet es dort noch nicht zu; das Adminpanel meldet die Nummer heute ohnehin über die Schnittstelle.
+**An der Rezeption** stehen wartende Scheine über der Liste unter „Meldescheine“, mit Nachname, Nummer, Anreisetag und Grund (Recht `reservation:checkin`, weil zuordnen einen Meldeschein anlegt). „Zuordnen“ schlägt Reservierungen ohne Meldeschein drei Tage um den angegebenen Anreisetag vor, gleiche Nummer und gleicher Nachname zuerst; geht es nicht, sieht die Rezeption den Grund. „Verwerfen“ löscht sofort.
+
+**Noch offen:** Holt StayGrid Buchungen selbst bei einem Channel Manager ab (Worker), ordnet es dort noch nicht zu; das Adminpanel meldet die Nummer heute ohnehin über die Schnittstelle.
 
 ---
 

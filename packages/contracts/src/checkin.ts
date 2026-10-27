@@ -348,6 +348,34 @@ export const MeldescheinPortalSubmitted = Type.Object({ state: Type.Literal('rec
 export type MeldescheinPortalSubmitted = Static<typeof MeldescheinPortalSubmitted>
 
 /**
+ * Ein wartender Schein in der Liste der Rezeption. Nur der Nachname: mehr
+ * braucht niemand, um zu sehen, wessen Schein es ist.
+ *   holdReason null        noch keine Buchung mit Nummer und Anreisetag
+ *              registered  die Buchung hat schon einen Meldeschein
+ *              rejected    die Buchung passt, der Schein nicht mehr
+ */
+export const CheckinPortalSubmission = Type.Object({
+  ref: Type.String(),
+  lastName: Type.String(),
+  bookingNumber: Type.String(),
+  arrival: IsoDate,
+  createdAt: Type.String(),
+  holdReason: Type.Union([Type.Literal('registered'), Type.Literal('rejected'), Type.Null()])
+})
+export type CheckinPortalSubmission = Static<typeof CheckinPortalSubmission>
+
+export const CheckinPortalCandidate = Type.Object({
+  reservationRef: Type.String(),
+  arrival: IsoDate,
+  departure: IsoDate,
+  lastName: Type.String(),
+  firstName: Type.Union([Type.String(), Type.Null()]),
+  room: Type.Union([Type.String(), Type.Null()]),
+  bookingNumber: Type.Union([Type.String(), Type.Null()])
+})
+export type CheckinPortalCandidate = Static<typeof CheckinPortalCandidate>
+
+/**
  * Vorschau der Einladung, mit Beispieldaten, und ob sie hinausginge.
  *
  * `ready` beantwortet die Frage, die sonst als "warum kommt nichts an"
