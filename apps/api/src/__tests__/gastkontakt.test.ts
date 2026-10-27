@@ -555,6 +555,62 @@ describe('Buchungskanal aus dem Umsystem', () => {
   })
 })
 
+describe('Buchungsnummer beim Portal (0215)', () => {
+  const nummer = async (bookingId: number) => (await owner.query<{
+    channel_booking_number: string | null }>(
+    `SELECT channel_booking_number FROM booking WHERE id = $1`, [bookingId]))
+    .rows[0]!.channel_booking_number
+
+  it('traegt die Nummer ohne Quelle nach, ersetzt sie und zieht sie zurueck', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    const a = await senden(m, r.ref, { channelBookingNumber: 4711223344 })
+    expect(a.statusCode, a.body).toBe(200)
+    expect(a.json<{ fields: unknown }>().fields)
+      .toEqual({ channelBookingNumber: { result: 'applied' } })
+    expect(await nummer(r.bookingId)).toBe('4711223344')
+    expect((await senden(m, r.ref, { channelBookingNumber: ' 4711223344 ' }))
+      .json<{ fields: unknown }>().fields)
+      .toEqual({ channelBookingNumber: { result: 'unchanged' } })
+    // Anders als beim Kanal ersetzt das Umsystem auch eine Nummer, die von
+    // woanders kam: es ist die einzige Quelle, die sie kennt.
+    await owner.query(`UPDATE booking SET channel_booking_number = '1' WHERE id = $1`,
+      [r.bookingId])
+    expect((await senden(m, r.ref, { channelBookingNumber: '4711223344' }))
+      .json<{ fields: unknown }>().fields)
+      .toEqual({ channelBookingNumber: { result: 'applied' } })
+    expect((await senden(m, r.ref, { channelBookingNumber: null }))
+      .json<{ fields: unknown }>().fields)
+      .toEqual({ channelBookingNumber: { result: 'withdrawn' } })
+    expect(await nummer(r.bookingId)).toBeNull()
+  })
+
+  it('zeigt die Nummer an der Reservierung und in der Liste fuers Umsystem', async () => {
+    const m = await maschine(['guest:contact_write', 'reservation:read'], [fx.propertyId])
+    const r = await reservierung()
+    await senden(m, r.ref, { channelBookingNumber: '4711223344' })
+    const d = await app.inject({ method: 'GET', headers: auth(admin.sessionId),
+      url: `/v1/reservations/${r.ref}` })
+    expect(d.json<{ channelBookingNumber: string | null }>().channelBookingNumber)
+      .toBe('4711223344')
+    const l = await app.inject({ method: 'GET', headers: m,
+      url: `/v1/properties/${fx.propertyId}/reservations` })
+    expect(l.statusCode, l.body).toBe(200)
+    expect(l.json<{ reservations: Array<{ reservationRef: string; channelBookingNumber: string | null }> }>()
+      .reservations.find(x => x.reservationRef === r.ref)!.channelBookingNumber)
+      .toBe('4711223344')
+  })
+
+  it('weist eine Nummer ab, die keine ist', async () => {
+    const m = await maschine(['guest:contact_write'], [fx.propertyId])
+    const r = await reservierung()
+    for (const falsch of ['', ' ', 'a b', '<x>', 'x'.repeat(65), -1, 1.5, true]) {
+      const a = await senden(m, r.ref, { channelBookingNumber: falsch })
+      expect(a.statusCode, String(falsch)).toBe(422)
+    }
+  })
+})
+
 describe('Weiterleitungsadresse je Buchung (0214)', () => {
   const ALT = 'alt123@guest.booking.com'
   const NEU = 'neu456@guest.booking.com'

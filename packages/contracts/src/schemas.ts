@@ -1038,6 +1038,8 @@ export const ReservationDetail = Type.Object({
   blockName: Type.Union([Type.String(), Type.Null()]),
   source: Type.String(),
   externalReference: Type.Union([Type.String(), Type.Null()]),
+  /** Nummer der Buchung beim Portal (0215), etwa bei Booking.com. */
+  channelBookingNumber: Type.Union([Type.String(), Type.Null()]),
   channelCode: Type.Union([Type.String(), Type.Null()]),
   /**
    * Bei einer Buchung aus einem fuehrenden Umsystem (Migration 0092):

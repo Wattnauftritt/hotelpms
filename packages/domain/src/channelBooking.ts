@@ -141,6 +141,11 @@ export interface KanalRumpf {
   totalCent?: number
   /** Ursprung beim Umsystem, etwa `Booking.com` oder `E-Mail`. */
   channelCode?: string
+  /**
+   * Nummer der Buchung beim Portal (0215), nicht die Nummer des Zugangs im
+   * Pfad. Mit ihr weist sich ein Gast von Booking.com am Meldeschein aus.
+   */
+  channelBookingNumber?: string
   guest?: { firstName?: string; lastName: string; email?: string; phone?: string }
   notes?: string
   /** Stand der Quelle. Ein aelterer als der zuletzt angenommene wird ignoriert. */
@@ -172,6 +177,25 @@ const BINDEND = new Set(['Optional', 'Confirmed', 'InHouse'])
 export function kanalRefPruefen(roh: string): string {
   if (!REF_MUSTER.test(roh)) throw DomainError.validation({ externalReference: ['field.invalid'] })
   return roh
+}
+
+const PORTAL_NUMMER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+
+/**
+ * Nummer der Buchung beim Portal (0215). Dieselbe Form wie die CHECK-Regel
+ * an `booking.channel_booking_number`, damit ein Fehler hier mit Feldnamen
+ * ankommt und nicht als Verstoss gegen eine Regel der Datenbank. Eine Zahl
+ * wird angenommen: ein Umsystem, das die Nummer als Zahl fuehrt, schickt sie
+ * so.
+ */
+export function portalNummerPruefen(roh: unknown): string | undefined {
+  if (roh === undefined || roh === null) return undefined
+  const t = typeof roh === 'number' && Number.isSafeInteger(roh) && roh >= 0 ? String(roh)
+    : typeof roh === 'string' ? roh.trim() : null
+  if (t === null || !PORTAL_NUMMER.test(t)) {
+    throw DomainError.validation({ channelBookingNumber: ['field.invalid'] })
+  }
+  return t
 }
 
 export function kanalZeitpunktPruefen(roh: unknown, feld: string): string | null {
@@ -255,12 +279,14 @@ export function kanalRumpfPruefen(roh: unknown): KanalRumpf & { quelle: string |
   }
   const notes = fremdText(body.notes, 2000, true)
   const channelCode = fremdText(body.channelCode, 50)
+  const channelBookingNumber = portalNummerPruefen(body.channelBookingNumber)
   return { segments: body.segments,
            ...(body.totalCent === undefined ? {} : { totalCent: body.totalCent }),
            ...(body.sourceUpdatedAt === undefined ? {} : { sourceUpdatedAt: body.sourceUpdatedAt }),
            ...(guest === undefined ? {} : { guest }),
            ...(notes === undefined ? {} : { notes }),
            ...(channelCode === undefined ? {} : { channelCode }),
+           ...(channelBookingNumber === undefined ? {} : { channelBookingNumber }),
            quelle: kanalZeitpunktPruefen(body.sourceUpdatedAt, 'sourceUpdatedAt') }
 }
 
@@ -746,6 +772,16 @@ export async function kanalBuchungSetzen(
     angelegt = true
   }
   eigeneBuchung(buchung, zugang)
+  // Vor jeder Weiche: die Nummer beim Portal beschreibt, welche Buchung das
+  // ist, nicht wie sie belegt. Auch eine von der Rezeption gefuehrte oder
+  // angereiste Buchung bekommt sie, sonst faende der Gast seinen Meldeschein
+  // gerade dort nicht.
+  if (body.channelBookingNumber !== undefined) {
+    await client.query(
+      `UPDATE booking SET channel_booking_number = $2
+        WHERE id = $1 AND channel_booking_number IS DISTINCT FROM $2`,
+      [buchung.id, body.channelBookingNumber])
+  }
 
   // Die Rezeption fuehrt die Buchung, oder der Gast ist schon da. In
   // beiden Faellen aendert der Push nichts; sagt die Quelle jetzt etwas

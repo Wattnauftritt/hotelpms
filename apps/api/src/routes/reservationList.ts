@@ -134,6 +134,9 @@ export function reservationListRoutes(app: FastifyInstance): void {
                   r.public_ref            AS "reservationRef",
                   b.public_ref            AS "bookingRef",
                   b.external_reference    AS "externalReference",
+                  -- Die Nummer beim Portal (0215), die das Umsystem selbst
+                  -- meldet; zurueck, damit es sieht, was StayGrid hat.
+                  b.channel_booking_number AS "channelBookingNumber",
                   -- Die Nummer im Altsystem, getrennt von der Kanalnummer
                   -- (Migration 0078). Das Adminpanel findet daran jede
                   -- Zeile wieder, die es unter ihrer KWHotel-Nummer kennt.

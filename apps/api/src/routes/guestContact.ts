@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import { isChannelRelayAddress, isSendableAddress } from '@hotelpms/domain'
+import { DomainError, isChannelRelayAddress, isSendableAddress, portalNummerPruefen }
+  from '@hotelpms/domain'
 import { istLand } from '@hotelpms/contracts'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
@@ -117,6 +118,8 @@ interface Eingabe {
   registration?: Vermerk | null
   /** Buchungskanal (0155), unabhaengig von den Kontaktfeldern. */
   channelCode?: string | null
+  /** Buchungsnummer beim Portal (0215), ebenso unabhaengig. */
+  channelBookingNumber?: string | null
 }
 
 /** Ein Zeitpunkt mit Zone. Ohne Zone waere er je nach Server ein anderer. */
@@ -281,15 +284,28 @@ function pruefen(body: unknown): Eingabe {
     falsch('channelCode', 'field.maxLength')
   }
 
+  // Die Nummer beim Portal (0215) gehoert wie der Kanal zur Buchung.
+  let channelBookingNumber: string | null | undefined
+  if (b.channelBookingNumber === null) {
+    channelBookingNumber = null
+  } else {
+    try {
+      channelBookingNumber = portalNummerPruefen(b.channelBookingNumber)
+    } catch (e) {
+      if (!(e instanceof DomainError)) throw e
+      falsch('channelBookingNumber', 'field.invalid')
+    }
+  }
+
   if (!mitKontakt && b.registration === undefined && channelCode === undefined
-      && Object.keys(fehler).length === 0) {
+      && channelBookingNumber === undefined && Object.keys(fehler).length === 0) {
     falsch('email', 'field.required')
   }
   if (Object.keys(fehler).length > 0 || source === undefined
       || (mitKontakt && source === null)) {
     throw Errors.validation(fehler)
   }
-  return { ...eingabe, source, registration, channelCode }
+  return { ...eingabe, source, registration, channelCode, channelBookingNumber }
 }
 
 /**
@@ -340,6 +356,7 @@ export function guestContactRoutes(app: FastifyInstance): void {
         }
         const vermerk = await vermerkSchreiben(client, res, eingabe.registration)
         const kanal = await kanalSchreiben(client, res, eingabe.channelCode)
+        const nummer = await portalNummerSchreiben(client, res, eingabe.channelBookingNumber)
         // Nur mit Kontaktfeldern: ein Aufruf, der allein den Kanal nennt,
         // braucht keinen Hauptgast, auch wenn er die Quelle mitschickt.
         const mitKontakt = (['firstName', 'email', 'phone', 'language', 'address'] as const)
@@ -351,7 +368,8 @@ export function guestContactRoutes(app: FastifyInstance): void {
           reservationRef,
           guestRef: kontakt?.guestRef ?? null,
           fields: { ...kontakt?.felder, ...(vermerk ? { registration: vermerk } : {}),
-                    ...(kanal ? { channelCode: kanal } : {}) }
+                    ...(kanal ? { channelCode: kanal } : {}),
+                    ...(nummer ? { channelBookingNumber: nummer } : {}) }
         }
       })
     }
@@ -390,6 +408,32 @@ async function kanalSchreiben(
     `UPDATE booking SET channel_code = $2::text, channel_code_external = ($2::text IS NOT NULL)
       WHERE id = $1`, [alt.id, code])
   return { result: code === null ? 'withdrawn' : 'applied' }
+}
+
+/**
+ * Die Buchungsnummer beim Portal (Migration 0215).
+ *
+ * **Ersetzt, statt nur Leeres zu fuellen.** Anders als beim Kanal gibt es
+ * keine zweite Quelle, die es genauer wuesste: die Rezeption traegt die
+ * Nummer nicht ein, und das Umsystem hat sie aus dem Channel Manager
+ * uebernommen. Laut Sven stimmt sie immer, auch wo ein Name falsch erfasst
+ * ist; liegt der Abgleich bei der Reservierung daneben, korrigiert der
+ * naechste Aufruf sie. An der Buchung, nicht an der Reservierung: eine
+ * Buchung mit drei Zimmern hat beim Portal eine Nummer.
+ */
+async function portalNummerSchreiben(
+  client: PoolClient, res: { id: number }, nummer: string | null | undefined
+): Promise<{ result: Ergebnis } | null> {
+  if (nummer === undefined) return null
+  const b = await client.query<{ id: number; channel_booking_number: string | null }>(
+    `SELECT b.id, b.channel_booking_number
+       FROM booking b JOIN reservation r ON r.booking_id = b.id
+      WHERE r.id = $1 FOR UPDATE OF b`, [res.id])
+  const alt = b.rows[0]!
+  if (alt.channel_booking_number === nummer) return { result: 'unchanged' }
+  await client.query(
+    `UPDATE booking SET channel_booking_number = $2::text WHERE id = $1`, [alt.id, nummer])
+  return { result: nummer === null ? 'withdrawn' : 'applied' }
 }
 
 /**

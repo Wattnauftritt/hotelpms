@@ -1767,6 +1767,7 @@ export function reservationRoutes(app: FastifyInstance): void {
                   bl.public_ref           AS "blockRef",
                   bl.name                 AS "blockName",
                   b.source, b.external_reference AS "externalReference",
+                  b.channel_booking_number AS "channelBookingNumber",
                   b.channel_code          AS "channelCode",
                   b.channel_owner         AS "channelOwner",
                   b.source_changed_at     AS "sourceChangedAt",
