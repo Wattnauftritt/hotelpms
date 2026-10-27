@@ -396,3 +396,117 @@ describe('Senden an den Channel Manager', () => {
     expect(r.statusCode).toBe(403)
   })
 })
+
+describe('Gegenpruefung vor dem Senden (Migration 0218)', () => {
+  const pruefen = (headers: Record<string, string>, ref: string, conflicts: unknown[]) =>
+    app.inject({ method: 'PUT', url: `/v1/rate-calendar-pushes/${ref}`, headers,
+                 payload: { status: 'checked', conflicts } })
+
+  const entscheiden = (ref: string, decisions: unknown[]) =>
+    app.inject({ method: 'POST',
+                 url: `/v1/properties/${fx.propertyId}/rate-calendar-pushes/${ref}/resolve`,
+                 headers: auth(admin.sessionId), payload: { decisions } })
+
+  async function preis(plan: number, date: string): Promise<number[] | null> {
+    const r = await owner.query<{ price_cent: string[] }>(
+      `SELECT price_cent FROM rate_day WHERE rate_plan_id = $1 AND date = $2::date`, [plan, date])
+    return r.rows[0]?.price_cent.map(Number) ?? null
+  }
+
+  /** Gesendet mit 80/90, danach hier zwei Tage auf 85/95 geaendert. */
+  async function aufbauen() {
+    await abonnieren()
+    const m = await maschine(['rate:channel_sync'])
+    const std = await ratenplan('DZ-STD')
+    await preisSetzen(std, VON, BIS, [8000, 9000])
+    await ganzGesendet(m)
+    await preisSetzen(std, VON, addDays(VON, 1), [8500, 9500])
+    const ref = (await senden({ mode: 'changes' })).json<{ pushRef: string }>().pushRef
+    return { m, std, ref }
+  }
+
+  it('gibt zu jedem Tag den zuletzt abgeglichenen Stand mit', async () => {
+    const { m, ref } = await aufbauen()
+    const tage = (await abholen(m, ref)).json<{ plans: Array<{ days: Array<{
+      sent: { priceCent: number[] } | null }> }> }>().plans.flatMap(p => p.days)
+    expect(tage[0]!.sent).toMatchObject({ priceCent: [8000, 9000], closed: false })
+  })
+
+  it('ohne Abweichung geht das Senden weiter wie bisher', async () => {
+    const { m, ref } = await aufbauen()
+    await abholen(m, ref)
+    const r = await pruefen(m, ref, [])
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json<{ proceed: boolean; status: string }>()).toMatchObject(
+      { proceed: true, status: 'requested' })
+    expect((await melden(m, ref, 'done')).statusCode).toBe(200)
+  })
+
+  it('haelt bei Abweichung an, sendet nichts und zeigt drei Staende je Tag', async () => {
+    const { m, ref } = await aufbauen()
+    expect((await pruefen(m, ref, [])).statusCode).toBe(409) // erst abholen
+    await abholen(m, ref)
+    const r = await pruefen(m, ref, [{ ratePlanCode: 'DZ-STD', date: VON, priceCent: [8800] }])
+    expect(r.statusCode, r.body).toBe(200)
+    expect(r.json<{ proceed: boolean }>().proceed).toBe(false)
+    // Danach wird nicht mehr gesendet.
+    expect((await melden(m, ref, 'done')).statusCode).toBe(409)
+
+    const s = await app.inject({
+      method: 'GET', url: `/v1/properties/${fx.propertyId}/rate-calendar-pushes/current`,
+      headers: auth(admin.sessionId) })
+    const push = s.json<{ push: { status: string; conflicts: unknown[] } }>().push
+    expect(push.status).toBe('conflict')
+    expect(push.conflicts).toEqual([expect.objectContaining({
+      ratePlanCode: 'DZ-STD', date: VON,
+      sent: expect.objectContaining({ priceCent: [8000, 9000] }),
+      local: expect.objectContaining({ priceCent: [8500, 9500] }),
+      channel: { priceCent: [8800] } })])
+    // Gesendeter Stand unveraendert: beide Tage bleiben offen.
+    expect((await stand()).pendingChanges).toBe(2)
+  })
+
+  it('weist Abweichungen an Tagen ab, die nicht hinausgehen sollten', async () => {
+    const { m, ref } = await aufbauen()
+    await abholen(m, ref)
+    const r = await pruefen(m, ref, [{ ratePlanCode: 'DZ-STD', date: BIS, priceCent: [1] }])
+    expect(r.statusCode).toBe(422)
+  })
+
+  it('"uebernehmen" schreibt den Wert von drueben, "meinen" sendet den eigenen', async () => {
+    const { m, std, ref } = await aufbauen()
+    await abholen(m, ref)
+    const zweiter = addDays(VON, 1)
+    await pruefen(m, ref, [
+      { ratePlanCode: 'DZ-STD', date: VON, priceCent: [8800], minLos: 3 },
+      { ratePlanCode: 'DZ-STD', date: zweiter, priceCent: [8700] }])
+
+    // Unvollstaendig wird abgewiesen.
+    expect((await entscheiden(ref, [
+      { ratePlanCode: 'DZ-STD', date: VON, take: 'channel' }])).statusCode).toBe(422)
+
+    const r = await entscheiden(ref, [
+      { ratePlanCode: 'DZ-STD', date: VON, take: 'channel' },
+      { ratePlanCode: 'DZ-STD', date: zweiter, take: 'mine' }])
+    expect(r.statusCode, r.body).toBe(201)
+    const neu = r.json<{ pushRef: string; mode: string; status: string }>()
+    expect(neu).toMatchObject({ mode: 'changes', status: 'requested' })
+    expect(neu.pushRef).not.toBe(ref)
+
+    expect(await preis(std, VON)).toEqual([8800])
+    expect(await preis(std, zweiter)).toEqual([8500, 9500])
+    const rs = await owner.query<{ min_los: number }>(
+      `SELECT min_los FROM restriction_day WHERE rate_plan_id = $1 AND date = $2`, [std, VON])
+    expect(rs.rows[0]?.min_los).toBe(3)
+
+    // Hinaus geht nur der Tag, an dem der eigene Wert gewaehlt wurde.
+    const tage = (await abholen(m, neu.pushRef)).json<Werte>().plans.flatMap(p => p.days)
+    expect(tage.map(d => d.date)).toEqual([zweiter])
+    expect(tage[0]!.priceCent).toEqual([8500, 9500])
+
+    // Ein zweites Mal entscheiden geht nicht.
+    expect((await entscheiden(ref, [
+      { ratePlanCode: 'DZ-STD', date: VON, take: 'channel' },
+      { ratePlanCode: 'DZ-STD', date: zweiter, take: 'mine' }])).statusCode).toBe(409)
+  })
+})

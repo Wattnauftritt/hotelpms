@@ -3,7 +3,7 @@ import type { PoolClient } from '@hotelpms/db'
 import { addDays, isIsoDate, nightsBetween } from '@hotelpms/domain'
 import { registerRoute } from '../platform/routes.js'
 import { tx } from '../platform/db.js'
-import { Errors } from '../platform/errors.js'
+import { Errors, type Meldung } from '../platform/errors.js'
 import { emitEvent } from '../platform/events.js'
 import { can, type Principal } from '../platform/context.js'
 import { isTrainingProperty } from '../platform/training.js'
@@ -46,16 +46,42 @@ interface Senden {
   requested_at: string
   served_at: string | null
   finished_at: string | null
+  checked_at: string | null
+  conflicts: Konflikt[] | null
+  resolved_at: string | null
 }
 
 const SPALTEN = `id, property_id, public_ref, mode, date_from::text, date_to::text, changed_since,
-                 status, days, message, requested_at, served_at, finished_at`
+                 status, days, message, requested_at, served_at, finished_at,
+                 checked_at, conflicts, resolved_at`
+
+/** Preis und Restriktionen eines Tages, wie sie hinausgehen. */
+interface Werte {
+  priceCent: number[] | null; minLos: number | null; maxLos: number | null
+  closed: boolean; closedToArrival: boolean; closedToDeparture: boolean
+}
+
+/**
+ * Ein Tag, an dem der Channel Manager vom zuletzt abgeglichenen Stand
+ * abweicht (Migration 0218). Drei Staende, weil die Entscheidung genau
+ * zwischen ihnen faellt: was war, was hier steht, was drueben steht.
+ * `channel` traegt nur, was das Umsystem geliefert hat.
+ */
+interface Konflikt {
+  ratePlanId: number; ratePlanCode: string; date: string
+  sent: Werte | null; local: Werte; channel: Partial<Werte>
+}
+
+const WERT_FELDER = ['priceCent', 'minLos', 'maxLos', 'closed', 'closedToArrival',
+                     'closedToDeparture'] as const
 
 function antwort(s: Senden) {
   return {
     pushRef: s.public_ref, mode: s.mode, status: s.status, from: s.date_from, to: s.date_to,
     changedSince: s.changed_since, days: s.days, message: s.message,
-    requestedAt: s.requested_at, servedAt: s.served_at, finishedAt: s.finished_at
+    requestedAt: s.requested_at, servedAt: s.served_at, finishedAt: s.finished_at,
+    checkedAt: s.checked_at, resolvedAt: s.resolved_at,
+    conflicts: s.status === 'conflict' && s.resolved_at === null ? s.conflicts ?? [] : null
   }
 }
 
@@ -110,7 +136,11 @@ const TAGE_SQL = `
          rs.min_los AS "minLos", rs.max_los AS "maxLos",
          COALESCE(rs.closed, false) AS closed,
          COALESCE(rs.closed_to_arrival, false) AS "closedToArrival",
-         COALESCE(rs.closed_to_departure, false) AS "closedToDeparture"
+         COALESCE(rs.closed_to_departure, false) AS "closedToDeparture",
+         CASE WHEN s.rate_plan_id IS NOT NULL THEN jsonb_build_object(
+           'priceCent', s.price_cent, 'minLos', s.min_los, 'maxLos', s.max_los,
+           'closed', s.closed, 'closedToArrival', s.closed_to_arrival,
+           'closedToDeparture', s.closed_to_departure) END AS sent
     FROM rate_plan rp
     JOIN resource_category rc ON rc.id = rp.category_id
    CROSS JOIN generate_series($2::date, $3::date, interval '1 day') AS d(day)
@@ -125,6 +155,87 @@ interface Tag {
   ratePlanId: number; ratePlanCode: string; categoryCode: string; date: string
   priceCent: number[] | null; minLos: number | null; maxLos: number | null; closed: boolean
   closedToArrival: boolean; closedToDeparture: boolean
+  /** Zuletzt beim Channel Manager, oder `null`: nie abgeglichen. */
+  sent: Werte | null
+}
+
+/**
+ * Einen Sendeauftrag anlegen und das Ereignis einreihen. Fuer den Knopf und
+ * fuer "Entscheidung uebernehmen und senden" nach einer Gegenpruefung.
+ */
+async function anlegen(
+  client: PoolClient, propertyId: number, mode: Modus, from: string, to: string,
+  seit: string | null, userId: number | null
+): Promise<Senden> {
+  await client.query(
+    `UPDATE rate_calendar_push SET status = 'superseded'
+      WHERE property_id = $1 AND status = 'requested'`, [propertyId])
+  const neu = await client.query<Senden>(
+    `INSERT INTO rate_calendar_push (property_id, mode, date_from, date_to, changed_since,
+                                     requested_by)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${SPALTEN}`,
+    [propertyId, mode, from, to, seit, userId])
+  const s = neu.rows[0]!
+  const empfaenger = await emitEvent(client, propertyId, 'rate.calendar_push_requested',
+    { pushRef: s.public_ref, propertyId, mode, from, to })
+  if (empfaenger === 0) {
+    throw Errors.conflict('rateCalendar.noReceiver', { event: 'rate.calendar_push_requested' })
+  }
+  return s
+}
+
+const ganz = (v: unknown, min: number, max: number): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max
+
+/**
+ * Die gemeldeten Abweichungen pruefen. Jeder Tag muss zu den abgeholten
+ * gehoeren: eine Abweichung an einem Tag, der nicht hinausgehen sollte,
+ * gibt es fuer dieses Senden nicht. Felder wie beim Abruf: fehlend oder
+ * `null` heisst "nicht geliefert".
+ */
+function abweichungenPruefen(roh: unknown, served: Tag[]): Konflikt[] {
+  if (!Array.isArray(roh) || roh.length > served.length) {
+    throw Errors.validation({ conflicts: ['field.invalid'] })
+  }
+  const nachTag = new Map(served.map(t => [`${t.ratePlanCode}|${t.date}`, t]))
+  const gesehen = new Set<string>()
+  const fehler: Record<string, Meldung[]> = {}
+  const aus: Konflikt[] = []
+  roh.forEach((r: unknown, i) => {
+    const k = (r ?? {}) as Record<string, unknown>
+    const feld = (n: string): string => `conflicts.${i}.${n}`
+    const schluessel = `${String(k.ratePlanCode)}|${String(k.date)}`
+    const t = nachTag.get(schluessel)
+    if (t === undefined || gesehen.has(schluessel)) {
+      fehler[feld('date')] = ['field.invalid']
+      return
+    }
+    gesehen.add(schluessel)
+    const channel: Partial<Werte> = {}
+    if (k.priceCent != null) {
+      const p = k.priceCent
+      if (!Array.isArray(p) || p.length === 0 || p.length > 10
+          || !p.every(c => ganz(c, 0, 10_000_000))) {
+        fehler[feld('priceCent')] = ['field.centAmount']
+      } else {
+        channel.priceCent = p as number[]
+      }
+    }
+    for (const n of ['minLos', 'maxLos'] as const) {
+      if (k[n] == null) continue
+      if (!ganz(k[n], 1, 365)) fehler[feld(n)] = ['field.invalid']
+      else channel[n] = k[n]
+    }
+    for (const n of ['closed', 'closedToArrival', 'closedToDeparture'] as const) {
+      if (k[n] == null) continue
+      if (typeof k[n] !== 'boolean') fehler[feld(n)] = ['field.invalid']
+      else channel[n] = k[n]
+    }
+    const { ratePlanId, ratePlanCode, date, sent, ...local } = t
+    aus.push({ ratePlanId: Number(ratePlanId), ratePlanCode, date, sent, local, channel })
+  })
+  if (Object.keys(fehler).length > 0) throw Errors.validation(fehler)
+  return aus
 }
 
 export function rateCalendarPushRoutes(app: FastifyInstance): void {
@@ -317,20 +428,7 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
           }
         }
 
-        await client.query(
-          `UPDATE rate_calendar_push SET status = 'superseded'
-            WHERE property_id = $1 AND status = 'requested'`, [propertyId])
-        const neu = await client.query<Senden>(
-          `INSERT INTO rate_calendar_push (property_id, mode, date_from, date_to, changed_since,
-                                           requested_by)
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${SPALTEN}`,
-          [propertyId, mode, from, to, seit, principal.userId])
-        const s = neu.rows[0]!
-        const empfaenger = await emitEvent(client, propertyId, 'rate.calendar_push_requested',
-          { pushRef: s.public_ref, propertyId, mode, from, to })
-        if (empfaenger === 0) {
-          throw Errors.conflict('rateCalendar.noReceiver', { event: 'rate.calendar_push_requested' })
-        }
+        const s = await anlegen(client, propertyId, mode, from, to, seit, principal.userId)
         return antwort(s)
       })
       reply.code(201)
@@ -383,7 +481,7 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
           p.days.push({ date: r.date, priceCent: r.priceCent, minLos: r.minLos,
                         maxLos: r.maxLos, closed: r.closed,
                         closedToArrival: r.closedToArrival,
-                        closedToDeparture: r.closedToDeparture })
+                        closedToDeparture: r.closedToDeparture, sent: r.sent })
         }
         return { pushRef: s.public_ref, mode: s.mode, from: s.date_from, to: s.date_to,
                  servedAt: z.rows[0]!.t, plans: [...plans.values()] }
@@ -391,7 +489,15 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
     }
   })
 
-  /** Die Rueckmeldung des Umsystems: gesendet oder gescheitert. */
+  /**
+   * Die Rueckmeldung des Umsystems: gesendet oder gescheitert, und vorher
+   * wahlweise das Ergebnis der Gegenpruefung (Migration 0218).
+   *
+   * `checked` ohne Abweichung laesst den Auftrag offen, das Umsystem sendet
+   * und meldet danach `done`. Mit Abweichungen wird **nicht** gesendet: der
+   * Auftrag steht auf `conflict`, und die Antwort sagt es (`proceed: false`).
+   * Ein Umsystem, das nicht prueft, meldet wie bisher nur `done`.
+   */
   registerRoute(app, {
     method: 'PUT',
     url: '/v1/rate-calendar-pushes/:pushRef',
@@ -399,8 +505,8 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
     summary: 'Ergebnis eines Sendeauftrags zurueckmelden',
     handler: async (req) => {
       const { pushRef } = req.params as { pushRef: string }
-      const body = (req.body ?? {}) as { status?: unknown; message?: unknown }
-      if (body.status !== 'done' && body.status !== 'failed') {
+      const body = (req.body ?? {}) as { status?: unknown; message?: unknown; conflicts?: unknown }
+      if (body.status !== 'done' && body.status !== 'failed' && body.status !== 'checked') {
         throw Errors.validation({ status: ['field.invalid'] })
       }
       const principal = req.principal as Principal
@@ -415,8 +521,25 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
         if (s.status !== 'requested') throw Errors.conflict('rateCalendar.closed')
         // "Gesendet" ohne Abholen hiesse: drueben steht nichts von hier,
         // und die Grenze fuer "nur Aenderungen" laege im Leeren.
-        if (body.status === 'done' && s.served_at === null) {
+        if ((body.status === 'done' || body.status === 'checked') && s.served_at === null) {
           throw Errors.conflict('rateCalendar.notServed')
+        }
+        if (body.status === 'checked') {
+          const { rows: [roh] } = await client.query<{ served: Tag[] }>(
+            `SELECT served FROM rate_calendar_push WHERE id = $1`, [s.id])
+          const konflikte = abweichungenPruefen(body.conflicts, roh?.served ?? [])
+          const r = konflikte.length === 0
+            ? await client.query<Senden>(
+              `UPDATE rate_calendar_push SET checked_at = now() WHERE id = $1
+               RETURNING ${SPALTEN}`, [s.id])
+            // Nichts ist hinausgegangen: der gesendete Stand bleibt, wie er
+            // war, und die abgeholten Werte werden nicht mehr gebraucht.
+            : await client.query<Senden>(
+              `UPDATE rate_calendar_push
+                  SET status = 'conflict', checked_at = now(), finished_at = now(),
+                      conflicts = $2::jsonb, served = NULL
+                WHERE id = $1 RETURNING ${SPALTEN}`, [s.id, JSON.stringify(konflikte)])
+          return { ...antwort(r.rows[0]!), proceed: konflikte.length === 0 }
         }
         const m = typeof body.message === 'string' ? body.message.trim().slice(0, 500) : ''
         if (body.status === 'done') {
@@ -447,6 +570,134 @@ export function rateCalendarPushRoutes(app: FastifyInstance): void {
           [s.id, body.status, m === '' ? null : m])
         return antwort(r.rows[0]!)
       })
+    }
+  })
+
+  /**
+   * Die Entscheidung je abweichendem Tag, und dann senden.
+   *
+   * Beide Wahlen setzen den zuletzt abgeglichenen Stand auf das, was drueben
+   * jetzt steht: StayGrid weiss es ja nun. "Uebernehmen" schreibt es
+   * ausserdem hier, der Tag ist danach keine Aenderung mehr und geht nicht
+   * hinaus. "Meinen senden" laesst den eigenen Wert stehen; er weicht vom
+   * neuen Stand ab und geht mit dem neuen Auftrag hinaus, der hier gleich
+   * mit angelegt wird -- der Klick ist der Knopfdruck. Dessen Gegenpruefung
+   * findet an diesen Tagen nichts mehr, es sei denn, drueben aendert sich
+   * schon wieder etwas.
+   *
+   * Felder, die das Umsystem nicht geliefert hat, behalten den vorigen
+   * abgeglichenen Wert, ohne einen den eigenen.
+   */
+  registerRoute(app, {
+    method: 'POST',
+    url: '/v1/properties/:propertyId/rate-calendar-pushes/:pushRef/resolve',
+    permission: 'rate:write',
+    propertyParam: 'propertyId',
+    summary: 'Abweichungen zum Channel Manager entscheiden und senden',
+    handler: async (req, reply) => {
+      const { propertyId: pid, pushRef } = req.params as { propertyId: string; pushRef: string }
+      const propertyId = Number(pid)
+      const body = (req.body ?? {}) as { decisions?: unknown }
+      const principal = req.principal as Principal
+
+      const ergebnis = await tx(req.pool, req, async client => {
+        const a = await client.query<Senden>(
+          `SELECT ${SPALTEN} FROM rate_calendar_push
+            WHERE public_ref = $1 AND property_id = $2 FOR UPDATE`, [pushRef, propertyId])
+        const s = a.rows[0]
+        if (s === undefined) throw Errors.notFound('res.rateCalendarPush')
+        if (s.status !== 'conflict' || s.resolved_at !== null) {
+          throw Errors.conflict('rateCalendar.closed')
+        }
+        const konflikte = s.conflicts ?? []
+
+        // Jeder Tag genau einmal, keiner zu viel: eine halbe Entscheidung
+        // liesse offen, was mit dem Rest geschieht.
+        const roh = body.decisions
+        if (!Array.isArray(roh) || roh.length !== konflikte.length) {
+          throw Errors.validation({ decisions: ['field.invalid'] })
+        }
+        const wahl = new Map<string, 'mine' | 'channel'>()
+        roh.forEach((d: unknown, i) => {
+          const e = (d ?? {}) as Record<string, unknown>
+          const k = `${String(e.ratePlanCode)}|${String(e.date)}`
+          if ((e.take !== 'mine' && e.take !== 'channel') || wahl.has(k)) {
+            throw Errors.validation({ [`decisions.${i}`]: ['field.invalid'] })
+          }
+          wahl.set(k, e.take)
+        })
+        const zeilen = konflikte.map(k => {
+          const take = wahl.get(`${k.ratePlanCode}|${k.date}`)
+          if (take === undefined) throw Errors.validation({ decisions: ['field.invalid'] })
+          // Der neue abgeglichene Stand: geliefert vor zuletzt abgeglichen vor hier.
+          const neu = Object.fromEntries(WERT_FELDER.map(f =>
+            [f, k.channel[f] !== undefined ? k.channel[f]
+              : k.sent !== null ? k.sent[f] : k.local[f]])) as unknown as Werte
+          return { plan: k.ratePlanId, date: k.date, take, ...neu }
+        })
+        const json = JSON.stringify(zeilen)
+        const ZEILEN = `jsonb_to_recordset($2::jsonb) AS z(plan bigint, date date, take text,
+          "priceCent" bigint[], "minLos" smallint, "maxLos" smallint, closed boolean,
+          "closedToArrival" boolean, "closedToDeparture" boolean)`
+
+        // Hier uebernehmen: Preise auf dem Weg der Preispflege, abgeleitete
+        // Plaene folgen ihrer Basis und bekommen keinen eigenen.
+        await client.query(
+          `SELECT rate_prices_write($1, array_agg(z.plan), array_agg(z.date),
+                                    array_agg(z."priceCent"::text), 'channel_import')
+             FROM ${ZEILEN}
+             JOIN rate_plan rp ON rp.id = z.plan AND rp.property_id = $1
+                              AND rp.base_rate_plan_id IS NULL
+             LEFT JOIN rate_day rd ON rd.rate_plan_id = z.plan AND rd.date = z.date
+            WHERE z.take = 'channel' AND z."priceCent" IS NOT NULL
+              AND rd.price_cent IS DISTINCT FROM z."priceCent"
+           HAVING count(*) > 0`, [propertyId, json])
+        await client.query(
+          `INSERT INTO restriction_day (property_id, rate_plan_id, date, min_los, max_los,
+                                        closed, closed_to_arrival, closed_to_departure)
+           SELECT $1, z.plan, z.date, z."minLos", z."maxLos", z.closed, z."closedToArrival",
+                  z."closedToDeparture"
+             FROM ${ZEILEN}
+             JOIN rate_plan rp ON rp.id = z.plan AND rp.property_id = $1
+            WHERE z.take = 'channel'
+           ON CONFLICT (rate_plan_id, date) DO UPDATE SET
+             min_los = EXCLUDED.min_los, max_los = EXCLUDED.max_los, closed = EXCLUDED.closed,
+             closed_to_arrival = EXCLUDED.closed_to_arrival,
+             closed_to_departure = EXCLUDED.closed_to_departure, updated_at = now()
+           WHERE (restriction_day.min_los, restriction_day.max_los, restriction_day.closed,
+                  restriction_day.closed_to_arrival, restriction_day.closed_to_departure)
+                 IS DISTINCT FROM
+                 (EXCLUDED.min_los, EXCLUDED.max_los, EXCLUDED.closed,
+                  EXCLUDED.closed_to_arrival, EXCLUDED.closed_to_departure)`,
+          [propertyId, json])
+        await client.query(
+          `INSERT INTO rate_calendar_sent (property_id, rate_plan_id, date, price_cent, min_los,
+                                           max_los, closed, closed_to_arrival,
+                                           closed_to_departure, sent_at)
+           SELECT $1, z.plan, z.date, z."priceCent", z."minLos", z."maxLos", z.closed,
+                  z."closedToArrival", z."closedToDeparture", now()
+             FROM ${ZEILEN}
+             JOIN rate_plan rp ON rp.id = z.plan AND rp.property_id = $1
+           ON CONFLICT (rate_plan_id, date) DO UPDATE SET
+             price_cent = EXCLUDED.price_cent, min_los = EXCLUDED.min_los,
+             max_los = EXCLUDED.max_los, closed = EXCLUDED.closed,
+             closed_to_arrival = EXCLUDED.closed_to_arrival,
+             closed_to_departure = EXCLUDED.closed_to_departure, sent_at = EXCLUDED.sent_at`,
+          [propertyId, json])
+        await client.query(
+          `UPDATE rate_calendar_push SET resolved_at = now() WHERE id = $1`, [s.id])
+
+        // Derselbe Auftrag noch einmal. "Nur Aenderungen" rechnet ab dem
+        // letzten erfolgreichen Senden; ein Konflikt ist keines.
+        const seit = s.mode === 'changes' ? await letzteGrenze(client, propertyId) : null
+        if (s.mode === 'changes' && seit === null) throw Errors.conflict('rateCalendar.noBaseline')
+        const von = s.mode === 'range' ? s.date_from : await heute(client, propertyId)
+        const bis = s.mode === 'range' ? s.date_to : addDays(von, MAX_DAYS - 1)
+        return antwort(await anlegen(client, propertyId, s.mode, von, bis, seit,
+                                     principal.userId))
+      })
+      reply.code(201)
+      return ergebnis
     }
   })
 }

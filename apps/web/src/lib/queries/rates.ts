@@ -299,13 +299,30 @@ export function useKalenderUebernehmen(propertyId: number) {
 export interface KalenderSenden {
   pushRef: string
   mode: 'changes' | 'range' | 'all'
-  status: 'requested' | 'done' | 'failed' | 'superseded'
+  status: 'requested' | 'done' | 'failed' | 'superseded' | 'conflict'
   from: string
   to: string
   days: number | null
   message: string | null
   requestedAt: string
   finishedAt: string | null
+  /** Offene Abweichungen zum Channel Manager (Migration 0218), sonst `null`. */
+  conflicts: KalenderKonflikt[] | null
+}
+
+/** Preis und Restriktionen eines Tages. */
+export interface KalenderWerte {
+  priceCent: number[] | null; minLos: number | null; maxLos: number | null
+  closed: boolean; closedToArrival: boolean; closedToDeparture: boolean
+}
+
+/** Ein Tag, an dem drueben parallel etwas geaendert wurde. */
+export interface KalenderKonflikt {
+  ratePlanCode: string
+  date: string
+  sent: KalenderWerte | null
+  local: KalenderWerte
+  channel: Partial<KalenderWerte>
 }
 
 export const useKalenderSendenStand = (propertyId: number) =>
@@ -356,6 +373,27 @@ export function useKalenderSenden(propertyId: number) {
       api.post<KalenderSenden>(`/v1/properties/${propertyId}/rate-calendar-pushes`, body),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
+    }
+  })
+}
+
+/**
+ * Je abweichendem Tag entscheiden und gleich senden. Der Klick ist der
+ * Knopfdruck; ohne ihn geht nach einer Abweichung nichts hinaus.
+ */
+export function useKonflikteEntscheiden(propertyId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (p: { pushRef: string
+                      decisions: Array<{ ratePlanCode: string; date: string
+                                         take: 'mine' | 'channel' }> }) =>
+      api.post<KalenderSenden>(
+        `/v1/properties/${propertyId}/rate-calendar-pushes/${p.pushRef}/resolve`,
+        { decisions: p.decisions }),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['rateCalendarPush', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateGrid', propertyId] })
+      void qc.invalidateQueries({ queryKey: ['rateSteerPreview', propertyId] })
     }
   })
 }
